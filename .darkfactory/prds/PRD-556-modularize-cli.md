@@ -28,13 +28,14 @@ blocks:
   - "[[PRD-556.16-move-run]]"
   - "[[PRD-556.17-move-reconcile]]"
   - "[[PRD-556.18-final-cleanup]]"
+  - "[[PRD-556.15-move-plan]]"
 impacts: []
 workflow:
 assignee:
 reviewers: []
 target_version:
 created: 2026-04-08
-updated: '2026-04-09'
+updated: 2026-04-09
 tags:
   - refactor
   - tests
