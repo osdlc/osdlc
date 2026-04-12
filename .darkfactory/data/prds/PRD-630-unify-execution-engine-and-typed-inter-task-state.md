@@ -1,42 +1,43 @@
 ---
 id: PRD-630
 title: Unify execution engine and introduce typed inter-task state
-kind: epic
-status: ready
+kind: task
+status: review
 priority: high
 effort: l
 capability: complex
-parent: null
+parent:
 depends_on: []
 blocks: []
 impacts:
-  - src/darkfactory/workflow.py
-  - src/darkfactory/system.py
+  - src/darkfactory/builtins/__init__.py
+  - src/darkfactory/builtins/_registry.py
+  - src/darkfactory/builtins/discuss_prd.py
+  - src/darkfactory/builtins/gather_prd_context.py
+  - src/darkfactory/builtins/resolve_rework_context.py
+  - src/darkfactory/builtins/system_builtins.py
+  - src/darkfactory/cli/discuss.py
+  - src/darkfactory/cli/run.py
+  - src/darkfactory/cli/system.py
+  - src/darkfactory/commands/discuss/operation.py
+  - src/darkfactory/invoke.py
+  - src/darkfactory/loader.py
   - src/darkfactory/runner.py
+  - src/darkfactory/system.py
   - src/darkfactory/system_runner.py
   - src/darkfactory/templates.py
   - src/darkfactory/templates_builtin.py
-  - src/darkfactory/loader.py
-  - src/darkfactory/invoke.py
-  - src/darkfactory/builtins/__init__.py
-  - src/darkfactory/builtins/_registry.py
-  - src/darkfactory/builtins/system_builtins.py
-  - src/darkfactory/builtins/gather_prd_context.py
-  - src/darkfactory/builtins/discuss_prd.py
-  - src/darkfactory/builtins/resolve_rework_context.py
-  - src/darkfactory/commands/discuss/operation.py
-  - src/darkfactory/cli/run.py
-  - src/darkfactory/cli/discuss.py
-  - src/darkfactory/cli/system.py
-workflow: null
-assignee: null
+  - src/darkfactory/workflow.py
+workflow:
+assignee:
 reviewers: []
-target_version: null
-created: '2026-04-11'
-updated: '2026-04-11'
+target_version:
+created: 2026-04-11
+updated: 2026-04-12
+app_version: 0.1.0
 tags:
-  - refactor
   - architecture
+  - refactor
   - runner
   - workflow
 ---
@@ -346,4 +347,4 @@ builtins.
 - [ ] Should unused templates (`REWORK_TEMPLATE`, `SYSTEM_OPERATION_TEMPLATE`
   in `templates_builtin.py`) be removed as part of this work, or left for
   a separate cleanup? They were defined by PRD-227.5/227.6 but never
-  adopted by their respective recipes.
+  adopted by their respective recipes. KEEP THEM FOR NOW

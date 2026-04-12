@@ -2,21 +2,22 @@
 id: PRD-621
 title: Refactor common functionality in regards to external systems, services, commands to util modules
 kind: task
-status: ready
+status: review
 priority: medium
 effort: m
 capability: complex
-parent:
+parent: null
 depends_on:
   - "[[PRD-628-refactor-gitopspy-to-utilsgit]]"
 blocks: []
 impacts: []
-workflow:
-assignee:
+workflow: null
+assignee: null
 reviewers: []
-target_version:
-created: 2026-04-11
-updated: 2026-04-11
+target_version: null
+created: '2026-04-11'
+updated: '2026-04-12'
+app_version: "0.1.0"
 tags: []
 ---
 
