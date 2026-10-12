@@ -43,11 +43,17 @@
  * lifts the blockers it depends on — the same staging the dispatchability
  * filter uses.
  *
+ * A lease predicate keeps the pool free of work a person has taken: a candidate
+ * whose local lease mirror names a `human` owner (`sdlc task start`) is dropped
+ * into `skipped_human`, so neither `task-work`'s no-arg pickup nor the
+ * orchestrator offers it. It runs last and only on the survivors, since it
+ * reads one git ref per task.
+ *
  * `cli.render` preserves the line-per-basename stdout format and the
  * `CYCLE basenames=<comma-separated>` stderr marker; it returns 1 on a cycle so
  * the exit code shapes correctly without throwing. `--explain` emits the lifted
  * sort tuple alongside each basename. Skipped candidates surface on stderr
- * (`skipped-parent: …`, `skipped-kind: …`, `skipped-blocked: …`) and,
+ * (`skipped-parent: …`, `skipped-kind: …`, `skipped-human: …`, `skipped-blocked: …`) and,
  * structurally, in the matching output arrays (`--output json`).
  */
 
@@ -62,9 +68,11 @@ import { unwrapWikilink } from '@lib/util/wikilinks'
 import { loadCorpus, type CorpusEntry } from '@lib/model/corpus/loader'
 import { scanEntities } from '@lib/model/read'
 import { resolveTarget } from '@lib/model/corpus/resolve'
+import { isNonExpiringOwner } from '@lib/services/lease/index'
 import { isSatisfied, CLOSED_PREFIX } from '@lib/model/corpus/satisfied'
 import { buildEdges, findCycles } from '@lib/model/corpus/graph'
 import { readTask } from '../read.ts'
+import { readLocalLease } from './_probe_core.ts'
 
 // ---------------------------------------------------------------------------
 // Sort key helpers (algorithm unchanged from the pre-rename `task sort`)
@@ -354,6 +362,12 @@ const skippedKindSchema = z.object({
   kind: z.string(),
 })
 
+/** A candidate removed because a person holds its lease (`sdlc task start`), with the lease's phase. */
+const skippedHumanSchema = z.object({
+  basename: z.string(),
+  phase: z.string(),
+})
+
 const output = z.object({
   /** Ordered list of dispatchable task entries (after lift, sort, the leaf and
    *  kind predicates, and — unless `--include-blocked` — the dispatchability
@@ -373,6 +387,8 @@ const output = z.object({
   skipped_parent: z.array(skippedParentSchema),
   /** Candidates dropped by the kind predicate. */
   skipped_kind: z.array(skippedKindSchema),
+  /** Candidates dropped because a person holds the task lease (read off the local ref mirror). */
+  skipped_human: z.array(skippedHumanSchema),
 })
 
 export default defineOp({
@@ -417,6 +433,9 @@ export default defineOp({
       }
       for (const s of out.skipped_kind) {
         io.stderr(`skipped-kind: ${s.basename} (kind: ${s.kind})\n`)
+      }
+      for (const s of out.skipped_human) {
+        io.stderr(`skipped-human: ${s.basename} (held by a person, lease phase: ${s.phase})\n`)
       }
       for (const s of out.skipped_blocked) {
         io.stderr(
@@ -487,6 +506,7 @@ export default defineOp({
         skipped_blocked: [],
         skipped_parent: [],
         skipped_kind: [],
+        skipped_human: [],
       }
     }
 
@@ -510,6 +530,7 @@ export default defineOp({
         skipped_blocked: [],
         skipped_parent: [],
         skipped_kind: [],
+        skipped_human: [],
       }
     }
 
@@ -528,6 +549,7 @@ export default defineOp({
     const skippedParent: Array<{ basename: string; children: string[] }> = []
     const skippedKind: Array<{ basename: string; kind: string }> = []
     const skippedBlocked: Array<{ basename: string; unsatisfied: string[] }> = []
+    const skippedHuman: Array<{ basename: string; phase: string }> = []
     const kept: string[] = []
     for (const b of orderedBasenames) {
       const fm = taskFm.get(b)!
@@ -545,6 +567,14 @@ export default defineOp({
           skippedBlocked.push({ basename: b, unsatisfied: unsat })
           continue
         }
+      }
+      // A person started this task by hand (`sdlc task start`): it is theirs
+      // until they release it, so it is never offered for pickup or dispatch.
+      // Read off the local lease mirror, network-free like `task inflight`.
+      const lease = readLocalLease(b, projectRoot, ctx)
+      if (lease !== null && isNonExpiringOwner(lease.ownerKind)) {
+        skippedHuman.push({ basename: b, phase: lease.phase })
+        continue
       }
       kept.push(b)
     }
@@ -576,6 +606,7 @@ export default defineOp({
       skipped_blocked: skippedBlocked,
       skipped_parent: skippedParent,
       skipped_kind: skippedKind,
+      skipped_human: skippedHuman,
     }
   },
 })

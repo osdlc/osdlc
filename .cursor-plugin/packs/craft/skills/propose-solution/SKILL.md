@@ -1,10 +1,10 @@
 ---
 name: propose-solution
 description: |
-  Propose one solution as a canvas document that ends in a decision: the problem, the
+  Propose one solution as a parley document that ends in a decision: the problem, the
   solution as typed blocks, and a question with a recommendation for every trade-off the
   reviewer must ratify, so the page can be approved or sent back. Domains are notes beside
-  this skill (sql today). Then hand it to canvas. Use it when the reader must decide.
+  this skill (sql and ui). Then hand it to parley. Use it when the reader must decide.
 allowed-tools: Read Grep Glob Write Shell
 ---
 
@@ -20,11 +20,11 @@ Usage:
   against a schema document.
 
 Scope: one problem to one document with questions. Not in scope: explaining what exists
-(`/explain`), applying the solution, or serving the page (`/canvas`).
+(`/explain`), applying the solution, or serving the page (`/parley`).
 
 Inputs: the domain, the problem or change in a sentence, the domain note `domains/<domain>.md`
 beside this skill, and what the repo says about the current state. Output:
-`docs/canvas/<id>.json`, checked and served, with at least one question.
+`docs/parley/<id>.json`, checked and served, with at least one question.
 
 ## What a proposal is
 
@@ -57,9 +57,10 @@ flowchart TD
 4. If a node fails it, split it the way the domain note says and return to step 2.
 5. Group the nodes as the domain note asks and write the questions, each with a
    recommendation.
-6. Write `docs/canvas/<id>.json`, run `/canvas check`, then `/canvas serve` and give the
-   link.
-7. Read the answers with `/canvas` when told. On `changes-requested` return to step 2,
+6. Write `docs/parley/<id>.json`, run `/parley check`, then `/parley serve`, which
+   starts the listener, and give the link.
+7. Answer each comment as it arrives, without waiting to be told. On the verdict read the
+   answers with `/parley`; on `changes-requested` return to step 2,
    keeping every node id; on `approved` stop.
 
 ## Grading
@@ -71,6 +72,6 @@ flowchart TD
 
 ## Test environment
 
-`examples/sql/orders-change.json` beside `/canvas` is a reference output. Propose "replace
+`examples/sql/orders-change.json` beside `/parley` is a reference output. Propose "replace
 `orders.shipped` with a status enum" against `orders-schema` and compare.
 `examples/sql/orders-design-review.json` shows explanation blocks inside a proposal.

@@ -192,6 +192,30 @@ export function resolveTaskFile(projectRoot: string, arg: string, cwd: string): 
   return notFound(arg)
 }
 
+/** A task id: a type letter and its key (`T-QNZJ`, `T-0001`). */
+const TASK_ID_RE = /^[A-Z]+-[A-Z0-9]+$/
+
+/**
+ * Resolve `arg` for a caller that does not trust it (a PR footer's `task=`):
+ * only a basename (with or without `.md`) or a task id, matched exactly — a
+ * basename equal to `arg`, or for an id, a basename of `<id>` or
+ * `<id>-<slug>`. A path, a dot segment, or a partial name resolves nothing,
+ * so the text cannot point at an arbitrary file or glob onto some task.
+ */
+export function resolveTaskExact(projectRoot: string, arg: string): ResolveResult {
+  if (arg === '' || arg.includes('/') || arg.includes('\\') || arg.startsWith('.')) {
+    return notFound(arg)
+  }
+  const argBase = arg.endsWith(MD_EXT) ? arg.slice(0, -MD_EXT.length) : arg
+  const isId = TASK_ID_RE.test(argBase)
+  const tasksDirs = searchRoots(projectRoot).map((root) => join(root, ...TASKS_SUBPATH))
+  const hits = matchingFiles(
+    tasksDirs,
+    (stem) => stem === argBase || (isId && stem.startsWith(`${argBase}-`)),
+  )
+  return fromHits(arg, 'exact', hits) ?? notFound(arg)
+}
+
 // ---------------------------------------------------------------------------
 // Op descriptor
 // ---------------------------------------------------------------------------

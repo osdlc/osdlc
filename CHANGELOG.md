@@ -7,6 +7,504 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-10-12
+
+Sessions you can watch and drive, agent logging, `review-pr` state on a git ref, and the
+`craft` skill `canvas` renamed to `parley`. `craft` ships as 0.6.0.
+
+Agent logging: one log root holds session lifecycle, session activity and a
+project journal, with always-on redaction (guide:
+`docs/logging.md`).
+
+Four more session hosts, a delivery receipt for the live route, and
+Windows and Linux groundwork.
+
+### Added
+
+- `review-pr` and `check-pr` keep review state on one git ref per PR on origin,
+  `refs/review-pr/<number>`, written by the new `review-state.mjs` beside `review-pr` (node 22+ and
+  git only, compare-and-swap with `--force-with-lease`). Each commit holds a `state.json` (claim,
+  round, findings with their status) and the history is the audit log. `review-pr` claims through it
+  instead of a local ref, hands the open and declined findings to the delta review, marks every
+  finding with `<!-- review-pr: finding=<id> -->`, rebuilds the ref from the PR when it is missing,
+  and archives it to `refs/review-pr/archive/<number>` when the PR closes. `check-pr` replies
+  `fixed in <sha>` or `declined: <reason>` on a finding's thread and records the answer on the ref.
+  ([#3064](https://github.com/sksizer/dev/pull/3064))
+- `review-state.mjs from-pr` turns the JSON that `gh api --paginate` returns for a PR's reviews and
+  inline comments into the `rebuild` input (markers, `declined:` / `fixed in <sha>` replies, round),
+  so `review-pr` no longer describes that parsing in prose. An opt-in end-to-end suite,
+  `review-pr/tests/review-state.e2e.test.mjs`, runs the state script against real GitHub: run it
+  with `REVIEW_PR_E2E=1 bun test <that file>` (repo from `REVIEW_PR_E2E_REPO`, default
+  `sksizer/marketplace-sdlc`); it opens two draft PRs and closes them, deletes its branches and
+  state refs, and removes its temp dirs, even on failure.
+  ([#3073](https://github.com/sksizer/dev/pull/3073))
+- `craft` review rubrics for duplication, modules, correctness and error paths, written once in
+  `code-review/references/` as short portable prose (`duplication-rubric`, `modules-rubric`,
+  `correctness-rubric`, `error-paths-rubric`). `review-rubric` embeds all four in its severity order
+  and no longer carries their detail, so `code-review` and `review-pr` apply them. `sks-code-review`
+  embeds the same files in its external-reviewer brief, so codex and claude get identical wording.
+  ([#3046](https://github.com/sksizer/dev/pull/3046))
+- `craft` gains the `code-review`, `comment-review`, `review-pr` and `check-pr` skills, moved from
+  the `dev-agent` and `pr-tools` plugins of the `sksizer` marketplace. Invoke them as
+  `/craft:code-review`, `/craft:comment-review`, `/craft:review-pr` and `/craft:check-pr`; the
+  `dev-agent:` and `pr-tools:` names no longer exist, and the `pr-tools` plugin is removed from the
+  marketplace (`dev-agent` keeps `dev-update-docs` and `pr-mermaid-comment`). Consumers who enabled
+  `pr-tools` or called these skills from `dev-agent` enable `craft` and rename the calls. The skills
+  no longer name this repo's layout: `comment-review` takes the project's docs directories as
+  `docsRoots` (default `docs/`) and `check-pr` recognises any tool's lease footer, not only sdlc's.
+  The `<!-- pr-tools: ... -->` comment marker keeps its name so existing PR comments still parse.
+  ([#3045](https://github.com/sksizer/dev/pull/3045))
+- A `profiles:` config section: named, ordered lists of model references
+  (`[claude/opus, codex/max@high]`, or the long form with `order`, `host`,
+  `context`). A bad
+  reference, an unknown tool or an unsupported effort fails the load and names
+  the entry. `codex` has built-in tiers.
+- A profile has no `headless:` field: the launching command picks the mode, and a profile that
+  sets one fails the load.
+- A `router:` config section: `providers`, `tools` (a built-in tool's extra `serves`, or a
+  declared tool with `serves`, `openness`, `modes` and a `headless` launch template; it runs as
+  the command its id names, is never run for `--version`, and its template runs only in a
+  trusted repository), `pins` (hold a tier to one model across refreshes), `strict` (refuse a
+  model the catalogue does not know, rather than warn about it).
+- A `routing:` section of rules, each a `when` and a `profile`; the first match wins. A launch
+  resolves in this order: `--tool`, the first matching rule, the workflow's `profile:` or
+  `tool:`, then `profiles.default`.
+- Reference qualifiers: `[ctx=<size>]` asks for at least that much context, and traits (`local`,
+  `agent`, `reasoning`, `long-context`) narrow a tier, as in `*/fast[local]`. A wildcard tool,
+  `*/<tier>`, walks every tool that offers the tier.
+- A context size passes to a tool with no context form only when the catalogue states the
+  window the tool runs the model with (`context.default`), never a model's `max`. The snapshot
+  gives codex its own 272k window for the models it lists; an Ollama model's `context_length`
+  is a maximum, so `pi/ollama/qwen3:4b[ctx=32k]` is skipped as `not-launchable`, and the run
+  record never names a context the run did not have.
+- Built-in profiles `default` (`*/standard`) and `small` (`*/fast`). A project may redefine either.
+- `sdlc models refresh` rebuilds a machine catalogue from models.dev and local probes, validates
+  each row and reports models that have gone (`--dry-run` writes nothing). `sdlc models list`
+  shows the catalogue by tier; `sdlc models explain <ref>` shows how a reference resolves, with
+  the source and date of every fact.
+- `sdlc route resolve [profile] --in-session <tool>` gives the model alias and effort a subagent
+  in this session takes. `sdlc route report` groups launches by model, profile, `via`, role,
+  fallback depth or author-reviewer pair.
+- A PR body's lease footer carries `author=<tool>/<model>@<effort>` and `run=<id>`, and a review
+  sdlc posts ends with `role=review reviewed=<author>`. The author keeps the exact model id, so
+  the record holds even for interactive sessions, which report no model.
+- The journal records each launch as `route.chose` (requested and resolved reference, `via`,
+  skipped entries with a reason code and detail, effort, context, role, warnings) and its outcome as
+  `route.outcome` (`ok`, `rate-limit`, `auth`, `error`).
+- `sdlc project doctor` adds routing rows: one per profile entry and workflow binding, held
+  pins, deprecated or withdrawn models, and `ANTHROPIC_DEFAULT_*_MODEL` variables that bypass
+  the catalogue.
+- The model catalogue's `tools` table is the one tool list. A walk skips an entry the launcher
+  cannot run (`not-launchable`), so `*/standard` falls through to the next tool.
+- A reviewer trusts a PR footer only as far as the lease backs it. A footer naming another lease
+  or a lease bound to another PR, and any footer on a fork PR, leaves the author unknown, and an
+  author only the footer names is warned about. A fork PR is reviewed
+  only by an allow-listed tool (`claude`), unless `--trust` is passed.
+- A rate-limit cooldown is kept per tool and model and lasts until the reset the tool reports, at
+  most 7 days ahead (15 minutes when the reset cannot be read). The model is the exact id
+  (`claude/claude-opus-5-5`, not `claude/opus`), and `route.outcome` records the same id; a
+  profile entry naming an alias is matched by resolving it first.
+- `log.store.scope: repo | worktree`: where a relative `log.store.path` resolves. `repo` (the new
+  default) resolves it against the repository's main checkout (the git common dir's worktree), so
+  every git worktree shares one log and the session hooks and the op journal write to the same
+  place; `worktree` resolves it per worktree and records everything a session does (hook
+  `--project-root`, `SDLC_PROJECT_ROOT`, launch records) in the worktree the session works in, so a
+  committed path such as `sdlc/log` travels with its branch. New `sdlc log setup` writes the
+  `.gitattributes` union-merge rule for a committed journal (`sdlc project doctor` warns while it is
+  missing) and `sdlc log stage` stages a committed store from a `pre-commit` hook step. Sessions and
+  trace nodes show the worktree and branch they ran in.
+- Log lineage for a harness the agent starts directly: when a hook arrives under a session's
+  `SDLC_SESSION` from another harness, or another harness session id, the reporter files it under a
+  new child record (origin `spawned`, `parent` the tagged session, same run) instead of the tagged
+  session, notes the child once on the parent's timeline, and shows it under the parent in the
+  trace and the sessions tree ("started directly by <session>" in the dashboard). Best effort: the
+  record is `headless` with no host. A new conversation id in the same process (`SessionStart`
+  `source` `clear`, `resume`, `compact`; Pi `new`, `fork`, `reload`) is the same session: the record
+  takes the new id and keeps the old, so late hooks of the old id still match.
+- Log explorer, originator and time zone: a session's `launched` event and record, and `run.start`,
+  record who started it (`startedBy`: git `user.name`, else the OS login), the machine's `hostname`
+  and its `tz`. The runs index and trace nodes show them with the command that started the run
+  (`sdlc <op> <flag names>`, never flag values); the root lane reads "Started by <name>: <command>"
+  and op lanes "ran sdlc <op>". A time zone picker in the dashboard header (Local by default, UTC,
+  Recorded, or any IANA zone, remembered in localStorage) drives one formatter behind every time
+  on screen, Recorded included on the session page, event drawer, state strip and search rows
+  (each in its own session's zone); axis ticks stay on the zone's clock across a DST change, and
+  a change of zone in one tab reaches the others. `log.capture.originator` (default on) switches
+  the name and hostname off: `startedBy` is then `null` and `hostname` omitted, while `tz` and the
+  hashed machine id stay.
+- Log explorer: a Runs home at `/logs` (one row per run with state, problems, cost and a lane
+  sparkline, last-24-hour cards, running / problems / origin filters), a Live tab, and search
+  moved to `/logs/search`. A run opens as a branched timeline (lanes, state spans, event marks,
+  squeeze, zoom, problems-only filter) or the execution graph (show-ops collapse, minimap, path
+  from the run). The session view is by turn, with a state strip and an event drawer. Deep links:
+  `?view`, `?sel`, `?event`. New endpoints: `GET /api/log/runs`, `GET /api/log/trace/:id/marks`;
+  trace session and subagent nodes carry `spans` and `facts`; the session detail carries `turns`
+  and `spans` (one span derivation for both pages); `subagent.start` takes `parent_agent_id`.
+- Log explorer, nested subagents and attribution: the Claude digest reads each subagent's
+  `agent-<id>.meta.json` sidecar, so a subagent spawned by another shows under its parent
+  (`parent_agent_id` on `subagent.start`) and its tool calls carry `agent_id` (also set from
+  the `agent_id` of tool hooks fired inside a subagent). Codex, Cursor, Pi and OpenCode stay
+  flat (`harness-adapters.md` records what each exposes).
+- Log explorer: `GET /api/log/runs` takes `harness=` (runs with a session of that harness);
+  the session detail (`GET /api/log/sessions/:id`, `sdlc session show --json`) carries
+  `resume: { command } | null`, the `sdlc session attach <id>` command for an ended, resumable
+  session.
+- Log explorer UI: the run timeline dims lanes by harness and by node kind; `harness=`, `kind=`,
+  `from=`/`to=` (zoom window) and `collapsed=` are kept in the URL. The Runs home filters by
+  harness. The session view has a "Copy resume command" button (selectable text when the clipboard
+  is refused).
+- Log explorer trace view: clicking a node (or its timeline row) selects it (`?sel=<node id>`) and
+  an Events panel under the graph lists that node's events; `GET /api/log/search` takes
+  `invocation=` to filter to one op run.
+- Session names: `sdlc session launch --name`, `sdlc session rename <id> <name>`, and a name
+  derived from what launched a session (`pr-review · PR #12`, `task-work · T-ABCD`); the
+  harness's own title (Claude, Codex) is used when `log.capture.prompts` is on. `session list`,
+  `session show`, the journal and the dashboard log explorer show it beside the id.
+- A `friction` entity: a deduplicated record of something that cost time or
+  failed, holding counts and ids only. `sdlc friction detect` finds ten signals
+  in the agent log (`--apply` writes them); post-mortems and the setup wizard's
+  look-back step record reported frictions; `sdlc friction promote --to
+  task|backlog` turns one into work. The dashboard log explorer has a Friction
+  tab with promote and dismiss.
+- `sdlc session reconcile [id] [--dry-run] [--grace <dur>] [--backfill]` ends session
+  records that never got an end (launcher killed, pane closed, harness with no
+  hooks): no process, no host pane and a quiet log past the grace (default 15
+  minutes) make it `ended` with outcome `lost`, stamped at the last evidence
+  time. `lost` is terminal; a later hook is noted, never revives it. Runs once per
+  `orchestrate run` pass, every minute in the dashboard server, with
+  `session list --reconcile`, and as a dry-run line in `project doctor`.
+  `--backfill` digests ended sessions with no digest marker.
+- `sdlc task start <task>` starts a task yourself: it takes the task lease as a
+  person, creates the worktree and branch, opens an interactive `task-work`
+  session and focuses it. The lease has a new `human` owner kind that never
+  expires and is never stolen; `task next` skips a task a person holds
+  (`skipped_human`) and `task inflight` reports the lease owner kind.
+- `sdlc session adopt` tracks a session sdlc did not start: a record bound to
+  the current directory, branch and task, with the host and harness session read
+  from the environment. Hooks cannot be added to a running session, so it is
+  `launch-only`.
+- `session launch --skill-args` appends arguments to a `--skill` first message.
+- A `log:` config block: `store` (path, layout), `capture` (activity, prompts,
+  messages, tool_args, tool_output, raw_transcript), `journal` (ops, sessions,
+  workflow), `redact` (extra patterns and env names), `retention` and size
+  caps. Content capture is opt-in per channel; activity metadata is on.
+- A deterministic redactor (secretlint plus in-house rules and secret-named
+  environment values) that every content string passes before it reaches disk.
+  It cannot be turned off, only extended.
+- The project journal at `<log root>/journal/<writer>/<yyyy-mm>.jsonl`:
+  `op.start`/`op.end` for every top-level command, `session.*`, `step.*`,
+  `dispatch.decision` and `run.*`. `sdlc journal append|tail`;
+  `SDLC_LOG_JOURNAL=off` stops a process writing it.
+- Correlation ids: `SDLC_RUN`, `SDLC_SUBJECT`, `SDLC_INVOCATION` and
+  `SDLC_INVOCATION_PID` ride into every launched session.
+- Claude hooks injected per launch (`sdlc session hook`) with a preset
+  `--session-id`: session activity in `activity.jsonl`, and hands-off hosts
+  (every host but `terminal`) now reach `ended`.
+- Codex hooks: `sdlc log hooks install|uninstall|status --harness codex` manage
+  sdlc's entries in `~/.codex/hooks.json` without disturbing the user's other
+  hooks (append-only, idempotent, backed up, refused on a file that does not
+  parse; an older sdlc command is updated in place, which needs approving again).
+  The hook command returns at once and runs the reporter detached, so Codex is
+  never blocked. Codex runs them only after the user approves them in `/hooks`;
+  `status` and `sdlc project doctor` say so. `--dangerously-bypass-hook-trust`
+  is never used. A Codex launch with approved hooks records `capture: hooks`.
+  Behind this, `lib/services/log/adapters/<harness>.ts` is the per-harness seam
+  (payload, status, transcript locate and parse); Claude and Codex are its first
+  two adapters. The launch also sets `SDLC_PROJECT_ROOT`.
+- Cursor logging adapter. Cursor's hooks are installed once with
+  `sdlc log hooks install --harness cursor` into `~/.cursor/hooks.json` (Cursor
+  reads no other file), through the same append-only, backed-up, compare-and-swap
+  edit as Codex's; Cursor has no approval step for user hooks, so installed means
+  ready, and `sdlc project doctor` reports the state. Cursor was checked against
+  a live cursor-agent, interactive and `--headless` (`-p --output-format json
+  --trust`, with usage from its result).
+- Pi and OpenCode sessions are launched observed. Per launch, sdlc writes a small
+  forwarding extension (Pi, loaded with `-e`, session id preset with
+  `--session-id`) or plugin (OpenCode, added through `OPENCODE_CONFIG_CONTENT`) into
+  the session's own directory and never touches the user's pi or opencode config.
+  It hands each event to `sdlc session hook --harness pi|opencode` detached, so the
+  agent is never blocked. `opencode` is a new `--model` tool (interactive only).
+- A transcript digest at `ended` (headless runs, per-turn usage) and an opt-in
+  redacted raw transcript copy; `sdlc session digest <id>` finishes a digest
+  that ran out of time.
+- Readers: `sdlc session show`, `sdlc session list --tree`, `sdlc trace <id>`
+  (`--graph`, `--format json|mermaid|dot`; `--follow` redraws text output until
+  nothing runs, nothing changes for about two minutes, or Ctrl-C, and is
+  CLI-only), `sdlc log search` and `sdlc log prune`. `session show`, `log
+  search`, `journal tail` and `trace` are also MCP tools.
+- A log explorer in the dashboard: `/logs` (search), `/logs/sessions`,
+  `/logs/sessions/:id` and `/logs/trace/:id`, over `/api/log/*`.
+- `sdlc dashboard start --lan` serves the dashboard to other machines on the
+  network: it binds every interface and prints a URL carrying a per-process
+  access token, which the first visit swaps for an HttpOnly cookie. Remote
+  viewers are read-only. Whether a request is local is decided by the socket's
+  address, not the `Host` header alone, which also closes that gap for a plain
+  `--host 0.0.0.0`; an unknown peer address counts as remote. `/api/health` reports
+  `readOnly`, and the SPA hides mutating buttons from read-only viewers. The pidfile,
+  registry and `dashboard.log`, which hold the token, are created 0600. `start --lan`
+  against a running dashboard started without it fails and says to stop it first.
+- The setup wizard's `log` step writes real `log:` keys. `record`, `keep`,
+  `publish` and `keepRaw` map to journal, retention, a tracked `sdlc/log` store
+  and `capture.raw_transcript`; a new `capture` choice picks content channels.
+- Session hosts `herdr`, `otty`, `wezterm`, `vscode` and `jetbrains` (`otty` and
+  `wezterm` are unverified against a live app), each
+  fulfilling `session` and `terminal` plus `send`, `find` and `focus` (and
+  `capture` where the app can read a terminal back). `vscode` covers VS Code,
+  Cursor and Windsurf through the `sdlc-host` companion extension
+  (`packages/ts/vscode-host`; the compiled `sdlc` binary needs `node` or `bun`
+  on `PATH` to reach it, and reports the host unavailable otherwise);
+  `jetbrains` drives a companion plugin (`ide/jetbrains`; the host is unavailable until the
+  plugin is installed). The plugin builds (CI job `jetbrains-plugin`, with JUnit tests for its
+  IDE-free logic) and was verified in the `gradle runIde` sandbox on macOS, IntelliJ IDEA 2025.3
+  (owner-observed 2026-10-10), so the host lists `darwin` only. It compares the bearer token in
+  constant time, runs terminal calls on the EDT without ever acting after a request timed out
+  (the CLI then sees a 503 with nothing done), gives every tab it opens its own id, selects the
+  tab on `focus`, refuses `send` unless a command still runs in the tab, reaps registry files of
+  dead IDEs, and records `startedAt` so the CLI picks the newest IDE on a tie. The host
+  verifies the ping's `pid` against the registry file, surfaces the plugin's error text, times
+  pings out after 1.5 s and caches the answering IDEs for 5 s. `host.default`,
+  `pr_review.host` and `--host` accept the new names.
+- The `cmux` host now fulfils `send`, `find`, `focus` and `capture`. `live`
+  sends type only into a known agent session: cmux needs a session-store row
+  naming the agent, otty an sdlc-tagged pane; a match by working directory
+  alone is refused.
+- Wrapper hosts pass session environment on Windows through PowerShell
+  instead of POSIX `env`.
+- A `capture` host part (recent screen text of a session), also on `tmux`.
+- `orchestrator.router.receipt_timeout_ms` (default `15000`): how long the
+  `live` route waits, after typing into a running session, for a delivery
+  receipt. Evidence comes from the host's own ack, a harness hook (only with
+  `log.capture.activity` on and the session not mid-turn), the
+  session state log, Claude's own state file and the host's `capture`. A
+  receipt that never arrives while a confirming signal was expected sends the
+  delivery on to `resume` or `fresh`; the result reports the `evidence` and
+  `armed` probes.
+- Standard S-0021: macOS and Linux are supported, Windows is a target.
+  Hosts declare their `platforms` and report "not supported on <os>"
+  elsewhere; PATH lookup and command quoting go through shared helpers
+  instead of a POSIX shell. CI runs the suite on macOS (blocking) and
+  Windows (non-blocking).
+- `sdlc markdown fmt|check [paths]` format and check markdown with a pinned rumdl, passing its exit
+  code through. `sdlc project setup` writes the managed rule set to `.sdlc/rumdl.base.toml` and
+  points the project's `.rumdl.toml` at it with `extends`; `check` fails when that base is stale.
+- The `markdown-format` skill moves into the sdlc plugin as a thin wrapper over those verbs.
+- `craft` gains the `collaborate-in-markdown` and `sks-code-review` skills, moved from the
+  `dev-agent` plugin of the `sksizer` marketplace. Invoke them as `/craft:collaborate-in-markdown`
+  and `/craft:sks-code-review`; the `dev-agent:` names no longer exist. `sks-code-review` no
+  longer names this repo's `docs/LIBRARIES.md` and `packages/`. Its brief tells the external
+  reviewer to read the project's agent instruction files (`CLAUDE.md`, `AGENTS.md`) and follow
+  their library-roster and reuse rules.
+  ([#2979](https://github.com/sksizer/dev/pull/2979))
+- `parley` gains the decision board's features: live Storybook stories and screenshots on
+  questions, options and a new `story` block; a document `revision`, closed questions with a
+  `resolution`, changed and stale answers, answer history, and `answers --mark-read`; reviewer
+  notes on the whole document and a `group` heading on questions. `propose-solution` gains a `ui`
+  domain note.
+- `sdlc orchestrate` can run a task's agent sessions in a host pane you can watch and type into.
+  Choose it per run (`--interactive`), per task (`session: interactive`) or per workflow
+  (`workflows.<name>.headless: false`). ([#3095](https://github.com/sksizer/dev/pull/3095))
+- sdlc sends a notification when a session starts waiting for input (`session.waiting`) and when
+  it says it is done (`session.done`). `sdlc session focus` also takes a session id. ([#3092](https://github.com/sksizer/dev/pull/3092))
+- An agent can end its session with `sdlc session done --outcome ok|failed`. On a hands-off host
+  the harness runs under `sdlc session run`, which records its real exit code. ([#3075](https://github.com/sksizer/dev/pull/3075))
+- Each host binds the pane it opens to the sdlc session id, so two sessions in one worktree are
+  told apart. `host.close_pane` in `sdlc.yaml` says when sdlc closes a session's pane.
+  ([#3082](https://github.com/sksizer/dev/pull/3082))
+- The `parley` page reconnects after a dropped connection and keeps unsent answers in the
+  browser. A missing document returns 404. ([#3058](https://github.com/sksizer/dev/pull/3058), [#3063](https://github.com/sksizer/dev/pull/3063))
+- `parley` markdown output starts with OKF frontmatter. ([#3081](https://github.com/sksizer/dev/pull/3081))
+
+### Changed
+
+- `review-state.mjs archive` on a PR with no live ref now exits 0 with
+  `{"archived":false,"reason":"no live state"}` instead of 1. `review-pr` reports a merged or closed
+  PR as `REVIEW=closed`, says so when the person named it, falls back to a generated session id when
+  the harness PID is unreadable, uses `<skill>@dev` without a plugin manifest, and spells out the
+  `origin` comparison for `--remote` (also in `check-pr`).
+  ([#3073](https://github.com/sksizer/dev/pull/3073))
+- `review-state.mjs` works from any directory: outside a git checkout it uses a cached bare repo
+  under the temp directory, so `--remote <url>` is enough. `from-pr` takes the last marker in a
+  comment, accepts a backticked sha in `fixed in`, uses the line at the reviewed commit
+  (`original_line`) and a short title (first line, markdown and a `Category:` label removed).
+  `review-pr`: a generated session id is the default, the model is the exact id, `<base>` is the
+  merge-base with `origin/<baseRefName>`, only reviews carrying the marker count, missing coverage
+  is a finding only when it points at a diff line, and step 6 is a numbered order (re-check,
+  record, post, answer, release). `check-pr` creates its worktree when it skipped the rebase,
+  replies, then answers, then resolves, pages through review threads, and passes full shas. The
+  `origin` comparison lives once, in `references/agent-work-signature.md`, and strips
+  `user[:token]@`.
+  ([#3073](https://github.com/sksizer/dev/pull/3073))
+- `review-state.mjs rebuild` keeps the title already recorded for a finding id (`from-pr` titles are
+  excerpts) and the full fix sha when a reply carried only a prefix of it; `review-pr` and
+  `check-pr` pass the PR's repository to every `gh` call.
+  ([#3073](https://github.com/sksizer/dev/pull/3073))
+- **BREAKING:** routing is the **tool router**, and a binding names its reference with `tool:`.
+  `workflows.<name>.model`, `pr_review.model` and `verify.model` are now `.tool` (beside
+  `profile`); the old key fails the load as an unknown key. The `--model` flag of
+  `sdlc session launch` and `sdlc pr review` is now `--tool`, and a route's `via` for a binding
+  is `tool`. A reference is `tool/model[qualifiers]@effort`: tool, model, effort and context. The
+  `sdlc models` and `route.chose`'s `model` keep their names.
+- **BREAKING:** the author rule moves from profiles into `pr_review:`
+  (`pr_review: { profile: reviewers, not_the_author: true, if_only_author_left: different-model }`,
+  same defaults: off, then `different-model`). A profile is an ordered list plus `host` and
+  `context`; `not_the_author` or `if_only_author_left` on a profile fails the load as an unknown
+  key. `sdlc pr review` is the one launch that passes the rule, and it applies to whatever the
+  review walks except `--tool`; a `--tool` that lands on the author's tool (a wildcard's pick
+  included) runs with a warning naming the author's tool and the chosen reference. Setup writes the
+  reviewer profile as a bare list and the rule under `pr_review:`.
+- **BREAKING:** `router.tools.<id>.binary` is dropped: a tool's executable is not config. A
+  built-in tool runs as the snapshot names it and a declared tool as its id; `binary:` fails the
+  load as an unknown key. Launch, `session attach`, the dashboard's resume, `sdlc verify`, the
+  orchestrator's resume delivery and `harness detect` no longer read an override. Use a shell
+  alias or a `PATH` shim for a wrapper command.
+- **BREAKING:** the `models:` config block is renamed `router:`. It keeps `tools`, `providers`,
+  `models`, `strict`, `classify`, `chains` and `pins`; `profiles:` and `routing:` stay top-level.
+  A `models:` key now fails the load as an unknown key. `sdlc models refresh|list|explain`, the
+  machine catalogue's path and `route.chose`'s `model` keep their names.
+- A binding's `tool:` (`workflows.<name>.tool`, `pr_review.tool`, `verify.tool`) and `--tool` may
+  be a wildcard such as `"*/max"` or `"*/fast[local]"`, walked as a one-entry profile with
+  availability probed. It expands through `router.chains.order`, or the built-in order when that
+  is unset, as a profile wildcard does.
+- `sdlc pr review` refusing a fork PR, under `pr_review.untrusted: refuse` or because no tool
+  that asks for workspace trust is left, exits 21, `UNTRUSTED`, not 17, `SERVICE_ERROR`:
+  `--trust` is the fix.
+- **Breaking:** the default log scope is `repo`, so a relative `log.store.path` now resolves against
+  the repository's main checkout rather than the worktree you run in. A `.sdlc/log` that an earlier
+  version wrote inside a linked worktree is no longer read: move its `sessions/` and `journal/` into
+  the main checkout's `.sdlc/log`, or set `log.store.scope: worktree` to keep one log per worktree.
+- Log explorer: the runs index reads the journal incrementally (per shard file, from the last
+  byte offset), so a poll no longer re-reads every journal event.
+- The machine id (`machine` on session records, `writer` on log lines and the journal directory
+  name) is now stable: `m-` plus 16 hex characters derived from the platform machine UUID, instead
+  of the hostname, which changes when a laptop's network renames. The UUID is never written.
+  Hard cutover, no migration: records and journal directories written with a hostname keep it and
+  read as another machine's, so reconcile and the live checks leave them alone.
+- The hidden step `task-work` shells out to (lease `claimed` to `working`, reset
+  the task branch) is now `sdlc task begin`; `sdlc task start` is the new
+  person-facing verb above.
+- **Breaking:** the `sessions:` config block is replaced by `log:`. An old
+  block is rejected as an unknown key. `sessions.store`
+  becomes `log.store`; `sessions.keep_raw` becomes
+  `log.capture.raw_transcript`.
+- **Breaking:** the default session store moved from `.sdlc/sessions` to
+  `.sdlc/log/sessions`. Existing sessions are not moved; relocate them by hand
+  or point `log.store.path` at the old location.
+- **Breaking:** `workflows.<name>.engine` and `pr_review.engine` are replaced
+  by exactly one of `profile:` (a name from the new `profiles:` section) or
+  `model:` (a reference such as `codex` or `claude/opus@high`). A config that
+  still sets `engine` is an unrecognized key. The `--engine` flags of
+  `sdlc pr review` and `sdlc session launch` become `--model <reference>`. A
+  launch picks its tool from `--model`, the first matching `routing:` rule, the
+  workflow's binding, then the built-in `profiles.default`.
+- **Breaking:** `verify.engine` and `verify.model` are replaced by exactly one
+  of `verify.profile` or `verify.model`, now a reference such as
+  `claude/haiku@low`; a bare model id such as `claude-sonnet-5` no longer
+  loads. A config that still sets `verify.engine` is an unrecognized key. A nested
+  `sdlc.yaml` that sets either key replaces both of
+  its parent's. The tool must be one of claude, codex, antigravity or opencode.
+- An external `log.store.path` is an error in `sdlc.yaml`; set it in
+  `sdlc.local.yaml`.
+- The setup wizard's `history` and `sessions` steps are one `log` step, and it
+  has no `redact` choice (an old one is rejected as unknown): redaction is always on.
+  It warns about every content channel captured into a tracked (`publish: repo`) store.
+- `Host.send` returns `{accepted, ack}`; `ack` is true only when the host itself confirmed the
+  harness consumed the input (`orca`, `herdr`; `jetbrains` passes the plugin's `consumed` through,
+  always false today). `uncertain` marks a send that was accepted but whose landing the host cannot
+  tell; it arms no `host-ack` and is not re-sent.
+- The `live` route is skipped while the session is `waiting_for_input`, so
+  the Enter cannot answer a permission prompt.
+- `herdr` refuses to type into a pane it does not recognise as an agent.
+- `log.capture.prompts` now also governs the launch prompt text stored in a session's `launched`
+  event, and `capture.messages` / `capture.tool_output` govern the headless `log.txt`; with them off
+  neither is stored. The `turn.prompt` digest is written only when `log.capture.prompts` is on.
+- `log.max_blob_bytes` must be at least `log.max_inline_bytes` (config error otherwise), and
+  `log.redact.extra_patterns` refuses more catastrophic shapes (overlapping alternation under an
+  unbounded repeat, large repeats of unbounded groups).
+- `sdlc project doctor` reports `lostSessions` as `{count, unknown?, hostsSkipped?}`, says when the
+  check could not run, and skips host probes when many sessions are open on a host.
+- The Codex and Cursor hook spool is `sdlc-hook.*` in `$TMPDIR`, and stale files are swept; re-run
+  `sdlc log hooks install` to pick up the new command.
+- The machine id is cached in the user cache dir and the hostname fallback is hashed.
+- Run explorer: narrow-screen layouts for Runs, Sessions and Search; `?fixtures=1` shows a
+  fixture-data banner; the search poll pauses once you page past the first page; the read-only probe
+  is shared and buttons stay hidden until it answers; the execution graph colours follow the
+  light/dark tokens.
+- Journal `since` queries compare instants (fractional seconds and offsets). The explorer's run and
+  op reads share one incremental journal reader, and session scans read incrementally.
+- The `craft` skill `canvas` is now `parley`: invoke `/craft:parley`, and keep documents in
+  `docs/parley/`. There is no alias for the old name. Its engine is the `@sksizer/parley` package;
+  the skill ships it as one bundled `parley.mjs` that runs under bun, node 22+ and deno.
+  `answers --wait --timeout` now exits `10` when nothing arrives (it was `3`), and the env vars
+  are `PARLEY_DOC`, `PARLEY_DIR` and `PARLEY_MODEL`.
+- `/sdlc:backlog-triage` checks each item against `origin/main` before deciding. It leaves an
+  item alone when an open PR already addresses it. ([#3067](https://github.com/sksizer/dev/pull/3067))
+- The `sdlc.yaml` schema accepts `orchestrator.target_branch`, `orchestrator.merge` and
+  `orchestrator.goal`. They have no effect yet. ([#3042](https://github.com/sksizer/dev/pull/3042))
+
+### Fixed
+
+- A codex reference to a local model (`codex/ollama/qwen3:4b`, or a tier that resolves to one)
+  launched codex without `--oss --local-provider <provider>`, so the run went to OpenAI. Every
+  codex launch (headless, interactive, `sdlc verify changes`, a step of `sdlc run`, and a
+  `codex exec resume` delivery) now passes the launch mode the catalogue's `via` names for the
+  provider, with the model by the name the mode takes. The route, `route.chose` and the author
+  record name the model `provider/id`, so they say where it ran.
+- Hooks of a harness an agent started directly (a Claude session running `codex exec` or
+  `cursor-agent`) were filed in the parent session because the child inherits `SDLC_SESSION`, and
+  the child's `SessionEnd` could end the parent. They now go to a child record of their own.
+- Reconcile no longer ends a session as `lost` when the process scan fails (`ps` error,
+  unreadable `/proc`) or the host probe throws; both read as unknown. `scanTaggedProcesses`
+  (`@sksizer/agent-session`) returns `null` when it could not scan.
+- A hook `state_changed` planned from a stale state is applied when its target is legal from
+  the current state, so a late `Stop` no longer leaves a session `waiting_for_input`; the
+  journal gets no `session.*` line for an event the session log ignored.
+- Pi: a provider retry no longer logs a `turn.stop` or flips the session idle; the turn ends
+  on `agent_settled`, and the session-file parser keeps only a retried turn's final stop.
+- OpenCode: a malformed `OPENCODE_CONFIG_CONTENT` makes the launch launch-only instead of
+  dropping the user's config; the plugin URL is file-URL encoded; a turn with no reply no
+  longer reports the previous one. Pi and OpenCode no longer count a not-yet-written
+  transcript as a rejected path. Forwarder spool files older than an hour are swept.
+- Digest: a long run keeps its lock alive and only one racing digest can take over a stale
+  lock; one malformed transcript field (bad timestamp, negative cost) is skipped with a note
+  instead of aborting; a failed raw copy leaves the session pending so the next run retries.
+- Raw-transcript redaction is about 3x faster and no longer blanks session ids or token
+  counts. Mermaid and DOT trace labels are escaped. Hook metadata strings are capped at
+  200 characters.
+- `/logs/sessions/<id>` and its blob route accept a unique id prefix. A paused log page stays
+  paused across navigation; Escape in an input no longer clears the trace selection; the
+  trace Events panel filters subagent events on the server (`/api/log/search?agent=`) and
+  says when results are capped; the session list polls every 15 s and says when it shows only
+  the newest 200. Reconcile failures in the dashboard log a line.
+- `sdlc journal append` exits 0 with `written: false` when the journal is turned off.
+- Friction: `dispatch-fallback` fires on route order (`resume`/`fresh` after `live` for the
+  same PR), not on reason text; a strict-failed step is journalled `failed` so it yields
+  `step-failure`; step fingerprints use the step's kind and name, not its index.
+- Live delivery: wezterm types only into a pane it spawned and still sees on the same tty;
+  otty sends only when it sees the agent in the pane's foreground; the never-type-twice guard
+  no longer expires with the capped attempt log; journalled reasons are redacted before they
+  are cut. The VS Code host
+  tightens existing socket and registry directories to 0700. A win32 env var name that is not
+  a plain identifier is refused.
+- Log search skips non-matching lines before parsing them, and a live session's cost is summed
+  incrementally rather than re-read on every poll.
+- The `sdlc platforms` CI job runs the moon `sdlc:test` task (timeout, ignores, preload).
+- The Pi adapter finds session files where Pi writes them: `PI_CODING_AGENT_SESSION_DIR`, else
+  `$PI_CODING_AGENT_DIR/sessions`, else `~/.pi/agent/sessions` (it ignored `PI_CODING_AGENT_DIR`, so
+  the digest found no transcript for a Pi with a moved config).
+- `sdlc session digest` and `sdlc session reconcile` accept a unique id prefix, like `show` and
+  `trace`.
+- A dashboard server built for a real socket treats a request with no socket bindings as remote, so
+  the LAN token and read-only mutation gates cannot be bypassed by a runtime that omits them. The
+  LAN token redirect is same-origin and path-only, and the LAN cookie is port-scoped
+  (`sdlc_dashboard_token_<port>`).
+- Friction promote and dismiss report a closed friction as `CAS_FAILED` (CLI exit 10, HTTP 409) and
+  a missing one as `REF_NOT_FOUND` (HTTP 404).
+- The path guard no longer lets a dangling symlink or a `..` after a missing name escape the
+  root, and more path checks use it. ([#2999](https://github.com/sksizer/dev/pull/2999), [#3024](https://github.com/sksizer/dev/pull/3024), [#2997](https://github.com/sksizer/dev/pull/2997))
+- On a `parley` choice question, words typed with no option ticked become a question for the
+  agent instead of a note marked answered. ([#3011](https://github.com/sksizer/dev/pull/3011))
+- Resuming a session from the dashboard keeps it in the session log. ([#3069](https://github.com/sksizer/dev/pull/3069))
+
 ## [0.13.0] - 2026-10-10
 
 Antigravity replaces Gemini CLI, and the `canvas` review page becomes a conversation with the

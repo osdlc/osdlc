@@ -1,0 +1,24 @@
+<!--
+  Friction body template (Eta). Body-only — frontmatter is synthesized
+  from the entity's Zod schema by the authoring pipeline (lib/model/authoring.ts),
+  which strips this comment from rendered instances.
+
+  A friction is committed while the agent log is gitignored, so the body holds
+  counts, ids and fixed labels only: never prompt, message, argument or output
+  text, and never a path that resolves on one machine. `friction detect --apply`
+  passes `it.observation` and `it.evidence` for a detected friction.
+-->
+
+# <%= it.title ?? "<Friction>" %>
+
+## Observation
+
+<%= it.observation ?? "<One or two sentences: what cost time or failed, and how often.>" %>
+
+## Evidence
+
+<% if (it.evidence) { %><%= it.evidence %><% } else { %><Counts by session and op or tool. Ids, counts and fixed labels only; no log content.><% } %>
+
+## Proposal
+
+<What to change so it stops recurring. Delete if there is no proposal yet.>

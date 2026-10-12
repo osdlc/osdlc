@@ -381,6 +381,28 @@ If it fails, fix the frontmatter and re-run. Never commit a file
 that fails validation. The linked file edits are committed in
 step 7 alongside the post-mortem updates from step 6.
 
+### 5b. Record each bullet as a friction
+
+Every bullet from step 1, including the ones step 2 skipped, is recorded as a reported
+`friction` entity, so the retro view and `sdlc friction detect` see it beside the frictions
+detected from the log. Map the step 2a classification to `scope`: `Local` is `local`,
+`Upstream-plugin` is `upstream`, `Cross-project-request` is `external`.
+
+```bash
+sdlc friction create --title "<bullet, one line>" --source reported --scope <scope> \
+  --subjects '["<originating task id>"]' --json
+```
+
+Then, for a bullet that became or was linked to a task, close the friction against it:
+
+```bash
+sdlc friction update <friction basename> \
+  --set '{"state":"closed/promoted","result":"[[<task-slug>]]"}'
+```
+
+A skipped bullet stays `open/accepted`. A friction file holds the bullet's one-line title,
+never the post-mortem prose. Stage the friction files with the task changes in step 7.
+
 ### 6. Update the originating post-mortem
 
 After processing all bullets, edit the originating task body:
@@ -417,7 +439,7 @@ Re-run the validator on the originating task as a defensive check
 ### 7. Commit and report
 
 The only files this sub-agent stages on the originating feature
-branch are:
+branch are (plus the friction files from step 5b):
 
 - The originating task file (post-mortem updates from step 6).
 - Any **existing local task files** edited in step 3 because the

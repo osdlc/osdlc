@@ -65,6 +65,10 @@ const CATEGORY_OTHER = 'other'
  *    Phase beats an open PR: the PR appears a moment before the transition to
  *    `awaiting-review` lands, and the lease is the authority on which slot the
  *    run occupies.
+ *    The lease's OWNER does not change the bucket: a person's (`human`) lease
+ *    in `claimed`/`working` holds an implementation slot exactly as a
+ *    worker's does, so a task someone started by hand counts against
+ *    `orchestrator.limits.implement` and never reads as free.
  * 3. `blocked` → `other`, matching the frontmatter rule it replaces
  *    (`in-progress/blocked` has always landed in `other`). `closing` also falls
  *    through: a run in close-out is neither implementing nor awaiting review.
@@ -106,6 +110,8 @@ const InflightTask = z.object({
   open_pr_number: z.number().int().nullable(),
   /** Execution phase off the local lease mirror, or null when no lease. */
   lease_phase: z.string().nullable(),
+  /** Who holds the lease (`human` for a person driving the task), or null when no lease. */
+  lease_owner_kind: z.string().nullable(),
   category: z.string(),
 })
 
@@ -184,7 +190,8 @@ export default defineOp({
 
       // Local mirror only — the roster scan runs every orchestrate tick and
       // must stay network-free.
-      const leasePhase = readLocalLease(basename, projectRoot, ctx)?.phase ?? null
+      const lease = readLocalLease(basename, projectRoot, ctx)
+      const leasePhase = lease?.phase ?? null
 
       const category = classify(taskState, openPrNumber, leasePhase)
       tasks.push({
@@ -194,6 +201,7 @@ export default defineOp({
         task_state: taskState,
         open_pr_number: openPrNumber,
         lease_phase: leasePhase,
+        lease_owner_kind: lease?.ownerKind ?? null,
         category,
       })
     }

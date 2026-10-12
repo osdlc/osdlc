@@ -2,8 +2,9 @@
 name: spawn-task-pr
 description: |
   Open a PR carrying a single scaffolded follow-up task file on a
-  target repo. /sdlc:spawn-from-post-mortem (Step 4) dispatches one
-  invocation per classified friction bullet, so each follow-up lands
+  target repo. /sdlc:task-work Step 8 runs the spawn-from-post-mortem
+  procedure, whose step 4 dispatches one invocation per classified
+  friction bullet, so each follow-up lands
   as its own PR. Upstream-plugin / Cross-project-request bullets
   target the resolved foreign repo; Local bullets target this repo.
   Idempotent and non-interactive: takes the target-repo path, slug,
@@ -47,7 +48,8 @@ $sdlc:spawn-task-pr \
 
 `--drive-to-ready` and `--fallback-status` come from the caller's resolved
 `task.execution.spawn_from_post_mortem` policy (see
-`${CLAUDE_PLUGIN_ROOT}/conventions/sdlc-yaml.md`); `/sdlc:spawn-from-post-mortem`
+`${CLAUDE_PLUGIN_ROOT}/conventions/sdlc-yaml.md`); the spawn-from-post-mortem
+procedure (`${CLAUDE_PLUGIN_ROOT}/lib/model/entities/task/spawn-from-post-mortem.md`)
 passes them through. Omitted, they default to the pre-drive behavior: land the
 task at `planning/draft`, no readiness drive.
 
@@ -443,7 +445,7 @@ status when Step 6a did not run — `--drive-to-ready false`, or
   per-slug idempotency check); it never double-adds the task.
 
 The local worktree and branch are left in place — the caller (typically
-`/sdlc:spawn-from-post-mortem`) decides whether to keep or tear them down.
+the spawn-from-post-mortem procedure) decides whether to keep or tear them down.
 
 ## Failure modes
 
@@ -496,7 +498,7 @@ Capture context, do not silently abandon:
   caller-chosen shared branch (e.g. `meta-task/followups-<orig>` per-execution,
   `meta-task/spawn-followups` per-project).
 - **PR grouping.** `--branch` + `--pr open|rolling` are the mechanism; the CALLER
-  (`/sdlc:spawn-from-post-mortem`) maps `target.pr_grouping` /
+  (the spawn-from-post-mortem procedure) maps `target.pr_grouping` /
   `target.pr_title_pattern` (see `${CLAUDE_PLUGIN_ROOT}/conventions/sdlc-yaml.md`) to a branch, PR
   mode, and resolved title. This skill stays a pure mechanism — it never reads config or resolves
   title placeholders itself.

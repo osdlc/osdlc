@@ -23,8 +23,9 @@ orchestrator-owned.
 
 ## `meta-task/<slug>`
 
-**Created by:** `/sdlc:spawn-task-pr` (invoked from
-`/sdlc:spawn-from-post-mortem`).
+**Created by:** `/sdlc:spawn-task-pr` (run by the
+spawn-from-post-mortem procedure,
+`lib/model/entities/task/spawn-from-post-mortem.md`).
 **Purpose:** carries a single spawned follow-up task — a planning/draft
 task file filed against the target repo because a `/sdlc:task-work`
 post-mortem identified a friction bullet worth turning into its own

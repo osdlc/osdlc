@@ -20,8 +20,8 @@ Usage:
 
 - `/status-dashboard` — start the dashboard in the background (detached, survives this
   shell/agent) and print its URL.
-- `/status-dashboard start [--port N] [--host H] [--no-network]` — same, forwarding optional
-  flags to the service.
+- `/status-dashboard start [--port N] [--host H] [--no-network] [--lan]` — same, forwarding
+  optional flags to the service.
 - `/status-dashboard stop` — stop this project's running instance.
 - `/status-dashboard list` — list every dashboard running across all project checkouts on this
   machine.
