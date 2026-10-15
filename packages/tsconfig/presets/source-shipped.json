@@ -1,0 +1,22 @@
+{
+  // The shared bar plus the two options that assume packages are consumed as
+  // SOURCE — resolved through a `bun` export condition to TypeScript rather
+  // than to a built `dist/` — so an import may name its `.ts` extension.
+  //
+  // Split out of ./base.json rather than left in it because these two are the
+  // only part of the bar an outside consumer would not want. A package that
+  // builds with tsc and imports `./x.js` wants base; a package consumed as
+  // source wants this file, directly or through ./node-lib.json and ./vue.json.
+  //
+  // The two travel together by force, not by preference: TypeScript rejects
+  // `allowImportingTsExtensions` unless one of `noEmit`, `emitDeclarationOnly`
+  // or `rewriteRelativeImportExtensions` is set (TS5096). That is why they moved
+  // as a pair and why neither belongs in base alone. ./build.json sets
+  // `rewriteRelativeImportExtensions`, which is what lets an emitting build
+  // override this file's `noEmit` without tripping the same rule.
+  "extends": "./base.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "noEmit": true
+  }
+}
