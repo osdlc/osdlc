@@ -11,30 +11,53 @@ what holds for all of them.
 
 - Each library lives in `packages/<name>/` and is published to npm from this
   repository.
-- Each release is tagged `<name>/vX.Y.Z`, for example `command-seam/v0.3.0`.
+- Each release is tagged `<name>/vX.Y.Z`, for example `tsconfig/v0.3.2`.
   The name keeps one library's tags apart from another's. sdlc's own tags
   are plain `vX.Y.Z`.
 - `.github/workflows/packages-publish.yml` publishes a library when its tag
   is pushed. It uses npm trusted publishing, so no long-lived npm token is
   stored. npm can only set up trusted publishing for a package that already
   exists, so the first version of each library is published once by hand.
-- A release pushes straight to `main`. The admin bypass on the `Protect main`
-  ruleset lets it through. The tree is checked before the push, and
-  `packages-publish.yml` checks it again before anything reaches npm.
+- A `command-seam` release pushes straight to `main`. The admin bypass on the
+  `Protect main` ruleset lets it through. The tree is checked before the push,
+  and `packages-publish.yml` checks it again before anything reaches npm.
 - A library can move to its own repository later if it grows.
 
 ## Why one repository
 
 One public repository is simpler to secure and maintain than one per library.
 The libraries change together: the shared TypeScript and Prettier configs set
-the rules for the others, and the pnpm workspace here links them.
+the rules for the others. `command-seam` links both through this workspace,
+so a config change here runs against its build in CI.
 
 ## Where changes are made
 
-The libraries are developed in the maintainer's development repository and
-copied here with each release. A change made here directly is replaced by the
-next release. Open an issue or a pull request here, and the maintainer ports
-accepted changes.
+Developed here, in this repository:
+
+- `packages/tsconfig` (`@sksizer/tsconfig`)
+- `packages/prettier-config` (`@sksizer/prettier-config`)
+
+The development repository keeps its own copy for now; do not change these
+libraries until it moves to the npm versions.
+
+Developed in the maintainer's development repository and copied here with
+each release:
+
+- `packages/command-seam` (`@sksizer/command-seam`)
+
+A change made to a copied library here is replaced by the next release. Open
+an issue or a pull request here, and the maintainer ports accepted changes.
+
+### Releasing a library developed here
+
+1. In a pull request, bump `version` in the library's `package.json` and add a
+   dated section to its `CHANGELOG.md`. Merge it when `test` and `verify`
+   pass.
+2. Tag the merge commit `<name>/vX.Y.Z` and push the tag, for example
+   `git tag tsconfig/v0.3.2 <sha>` then `git push origin tsconfig/v0.3.2`.
+3. `packages-publish.yml` checks the library and publishes it with
+   provenance. If `publish` fails on the npm side, fix the trusted publisher
+   setting on npmjs.com and re-run the failed job. Do not re-tag.
 
 ## Working on a library
 
