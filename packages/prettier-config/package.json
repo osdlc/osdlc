@@ -1,6 +1,6 @@
 {
   "name": "@sksizer/prettier-config",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "A shared Prettier config: no semicolons, single quotes, trailing commas, 100 columns. Markdown is left alone.",
   "license": "MIT",
   "author": "SK Sizer",
