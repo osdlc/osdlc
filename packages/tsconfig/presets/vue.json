@@ -1,0 +1,17 @@
+{
+  // A Vue 3 component package: the modern browser, the DOM and the iterable form
+  // of its collections, SFC/JSX left for the bundler, and NO ambient @types at
+  // all — a browser component must not silently pick up node globals, which is
+  // what an omitted `types` gets you once anything hoists them into reach.
+  //
+  // A Vue package that targets ES2022, or sets no `jsx`, is a different shape
+  // rather than a drifted copy of this one; it extends ./source-shipped.json
+  // directly and states its own facts.
+  "extends": "./source-shipped.json",
+  "compilerOptions": {
+    "target": "ESNext",
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "jsx": "preserve",
+    "types": []
+  }
+}

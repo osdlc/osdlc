@@ -1,0 +1,22 @@
+{
+  // Resolution probe — the `check` task points tsc at this file.
+  //
+  // Extends every preset BY THE BARE SPECIFIER A CONSUMER WRITES, so tsc has to
+  // resolve each one through this package's `exports` map. That is the only
+  // thing here that catches the one mistake invisible from inside the package:
+  // adding a preset file and forgetting its `exports` entry, which breaks every
+  // consumer and nothing local.
+  //
+  // The array form also exercises the left-to-right merge the tsconfig.build.json
+  // consumers depend on. `--noEmit` is passed on the command line, which is
+  // authoritative over build.json's `noEmit: false`.
+  "extends": [
+    "@sksizer/tsconfig/base",
+    "@sksizer/tsconfig/source-shipped",
+    "@sksizer/tsconfig/node-lib",
+    "@sksizer/tsconfig/bun-lib",
+    "@sksizer/tsconfig/vue",
+    "@sksizer/tsconfig/build"
+  ],
+  "include": ["probe.ts"]
+}

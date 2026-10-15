@@ -1,0 +1,24 @@
+{
+  // A node library whose tests (or runtime) are Bun: node globals plus bun's.
+  //
+  // Adds nothing but `types`. `customConditions: ["bun"]` is deliberately NOT
+  // folded in, because it is a per-package fact rather than a property of this
+  // shape — packages in this shape legitimately differ on it.
+  //
+  // What that setting decides: whether a workspace sibling resolves to its
+  // TypeScript source or to its published `dist/`. Getting it wrong is not a
+  // style choice. A package that imports a source-shipped sibling typechecks
+  // THAT sibling's source under ITS OWN options, so if the sibling in turn
+  // reaches a package whose `types` point at a `dist/` no typecheck builds, the
+  // import is unresolvable — TS2307 — even though the sibling's own check is
+  // green. Nothing reports it until the importing package is next checked, so a
+  // package can sit red for as long as nothing touches it.
+  //
+  // So: a package importing a source-shipped sibling must match that sibling's
+  // condition. The alternative is to build the dependency first, which requires
+  // it to have a build task — a source-shipped package may not.
+  "extends": "./node-lib.json",
+  "compilerOptions": {
+    "types": ["node", "bun"]
+  }
+}

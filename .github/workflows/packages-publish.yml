@@ -1,0 +1,146 @@
+# Publishes one library from packages/ to npm when its tag is pushed. Generated:
+# written by sksizer/dev's scripts/sdlc-mirror/assemble.ts, so edit
+# scripts/sdlc-mirror/templates/hosted/github/ there, not here.
+#
+# Tag grammar: `<name>/vX.Y.Z` publishes packages/<name> at version X.Y.Z, for
+# example `command-seam/v0.3.0`. sksizer/dev's publish-lib workflow pushes
+# these tags with each release. The tag version must equal the package.json
+# version. Plain `vX.Y.Z` tags are sdlc's own and do not match.
+#
+# npm auth is trusted publishing (OIDC) only. Configure it per package on
+# npmjs.com: Settings -> Trusted publisher, repository sksizer/sdlc, workflow
+# packages-publish.yml. Trusted publishing can only be configured on a package
+# that already exists, so the FIRST publish of each package is done by hand by
+# the owner with a token. This workflow refuses a package that is not on npm
+# yet rather than trying.
+#
+# Only the `publish` job gets `id-token: write`. It publishes the exact tarball
+# the `verify` job built and checked.
+#
+# Every action is pinned to a commit SHA; the comment names its release.
+name: packages-publish
+
+on:
+  push:
+    tags: ['*/v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: packages-publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    outputs:
+      name: ${{ steps.pkg.outputs.name }}
+      tarball: ${{ steps.pack.outputs.tarball }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Resolve the package from the tag
+        id: pkg
+        run: |
+          set -euo pipefail
+          PREFIX="${GITHUB_REF_NAME%/v*}"
+          VERSION="${GITHUB_REF_NAME##*/v}"
+          DIR="packages/${PREFIX}"
+          if [ ! -f "${DIR}/package.json" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} names ${DIR}, which has no package.json"
+            exit 1
+          fi
+          PKG_VER="$(node -p "require('./${DIR}/package.json').version")"
+          if [ "${VERSION}" != "${PKG_VER}" ]; then
+            echo "::error::tag version ${VERSION} does not match ${DIR}/package.json version ${PKG_VER}"
+            exit 1
+          fi
+          NAME="$(node -p "require('./${DIR}/package.json').name")"
+          echo "name=${NAME}  dir=${DIR}  version=${VERSION}"
+          {
+            echo "name=${NAME}"
+            echo "dir=${DIR}"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          cache: pnpm
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: '1.4.2'
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # Build before test; see packages-ci.yml. `<name>...` also selects the
+      # package's workspace dependencies, so one with a build step is built
+      # first. (A path selector, `./packages/x...`, does not do that.)
+      - name: Typecheck, build, test, smoke
+        env:
+          NAME: ${{ steps.pkg.outputs.name }}
+        run: |
+          set -euo pipefail
+          for script in typecheck build test smoke; do
+            pnpm --filter "${NAME}..." --if-present run "$script"
+          done
+
+      - name: Pack, publint, attw
+        id: pack
+        env:
+          DIR: ${{ steps.pkg.outputs.dir }}
+        run: |
+          set -euo pipefail
+          OUT="${RUNNER_TEMP}/pack"
+          node .github/scripts/check-packages.mjs --out "$OUT" "$DIR"
+          TARBALL="$(ls "$OUT"/*.tgz)"
+          echo "tarball=$(basename "$TARBALL")" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: package
+          path: ${{ runner.temp }}/pack/*.tgz
+          if-no-files-found: error
+
+  publish:
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # OIDC token for npm trusted publishing; provenance is attested with it.
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: package
+          path: pack
+
+      # npm 11.5.1 or later is required for trusted publishing; Node 24 bundles it.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Refuse a first publish
+        env:
+          NAME: ${{ needs.verify.outputs.name }}
+        run: |
+          set -euo pipefail
+          if ! npm view "$NAME" name >/dev/null 2>&1; then
+            echo "::error::$NAME is not on npm yet. The first publish is done by hand with a token, then trusted publishing is configured. See the header of this file."
+            exit 1
+          fi
+
+      - name: Publish to npm
+        env:
+          TARBALL: pack/${{ needs.verify.outputs.tarball }}
+        run: |
+          set -euo pipefail
+          echo "npm $(npm --version)"
+          npm publish "$TARBALL" --access public

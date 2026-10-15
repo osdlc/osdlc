@@ -1,0 +1,37 @@
+{
+  "name": "@sksizer/prettier-config",
+  "version": "0.2.0",
+  "description": "A shared Prettier config: no semicolons, single quotes, trailing commas, 100 columns. Markdown is left alone.",
+  "license": "MIT",
+  "author": "SK Sizer",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sksizer/sdlc.git",
+    "directory": "packages/prettier-config"
+  },
+  "homepage": "https://github.com/sksizer/sdlc/tree/main/packages/prettier-config#readme",
+  "bugs": "https://github.com/sksizer/sdlc/issues",
+  "keywords": [
+    "prettier",
+    "prettier-config"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "main": "index.json",
+  "files": [
+    "index.json",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "oxlint . --no-error-on-unmatched-pattern"
+  },
+  "devDependencies": {
+    "oxlint": "^1.65.0",
+    "prettier": "3.9.6"
+  }
+}
