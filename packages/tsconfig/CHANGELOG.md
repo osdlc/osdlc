@@ -7,6 +7,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-15
+
 ### Changed
 
 - Published to npm from [sksizer/sdlc](https://github.com/sksizer/sdlc), with a LICENSE file
