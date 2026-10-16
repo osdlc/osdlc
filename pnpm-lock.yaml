@@ -17,10 +17,10 @@ importers:
 
   packages/command-seam:
     devDependencies:
-      '@sksizer/prettier-config':
+      '@osdlc/prettier-config':
         specifier: workspace:^
         version: link:../prettier-config
-      '@sksizer/tsconfig':
+      '@osdlc/tsconfig':
         specifier: workspace:^
         version: link:../tsconfig
       '@types/bun':
@@ -50,7 +50,7 @@ importers:
 
   packages/tsconfig:
     devDependencies:
-      '@sksizer/prettier-config':
+      '@osdlc/prettier-config':
         specifier: workspace:^
         version: link:../prettier-config
       oxlint:

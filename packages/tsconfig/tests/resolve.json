@@ -11,12 +11,12 @@
   // consumers depend on. `--noEmit` is passed on the command line, which is
   // authoritative over build.json's `noEmit: false`.
   "extends": [
-    "@sksizer/tsconfig/base",
-    "@sksizer/tsconfig/source-shipped",
-    "@sksizer/tsconfig/node-lib",
-    "@sksizer/tsconfig/bun-lib",
-    "@sksizer/tsconfig/vue",
-    "@sksizer/tsconfig/build"
+    "@osdlc/tsconfig/base",
+    "@osdlc/tsconfig/source-shipped",
+    "@osdlc/tsconfig/node-lib",
+    "@osdlc/tsconfig/bun-lib",
+    "@osdlc/tsconfig/vue",
+    "@osdlc/tsconfig/build"
   ],
   "include": ["probe.ts"]
 }

@@ -1,10 +1,10 @@
-# @sksizer/tsconfig
+# @osdlc/tsconfig
 
 Strict TypeScript compiler presets: one shared bar, plus the package shapes
 that recur on top of it. Consumed through `extends`; ships no code.
 
 ```sh
-npm install --save-dev @sksizer/tsconfig typescript
+npm install --save-dev @osdlc/tsconfig typescript
 ```
 
 Requires TypeScript 5.7 or later (`build` uses `rewriteRelativeImportExtensions`
@@ -33,7 +33,7 @@ imports `./x.js` wants `base`.
 ```jsonc
 // tsconfig.json — the family preset, then your own per-package facts
 {
-  "extends": "@sksizer/tsconfig/node-lib",
+  "extends": "@osdlc/tsconfig/node-lib",
   "include": ["index.ts", "sync.ts"]
 }
 ```
@@ -47,7 +47,7 @@ The emit mixin goes **last in an array**, on top of the package's own config:
 ```jsonc
 // tsconfig.build.json
 {
-  "extends": ["./tsconfig.json", "@sksizer/tsconfig/build"],
+  "extends": ["./tsconfig.json", "@osdlc/tsconfig/build"],
   "compilerOptions": { "rootDir": "." }
 }
 ```
@@ -75,10 +75,10 @@ that way. Layering this bar on top would clobber the `paths`, `types`,
 ## Source and releases
 
 Developed in a private monorepo and released from
-[sksizer/sdlc](https://github.com/sksizer/sdlc/tree/main/packages/tsconfig),
+[osdlc/osdlc](https://github.com/osdlc/osdlc/tree/main/packages/tsconfig),
 where this package lives under `packages/tsconfig`. Report issues at
-[sksizer/sdlc/issues](https://github.com/sksizer/sdlc/issues).
+[osdlc/osdlc/issues](https://github.com/osdlc/osdlc/issues).
 
 ## License
 
-[MIT](https://github.com/sksizer/sdlc/blob/main/packages/tsconfig/LICENSE)
+[MIT](https://github.com/osdlc/osdlc/blob/main/packages/tsconfig/LICENSE)

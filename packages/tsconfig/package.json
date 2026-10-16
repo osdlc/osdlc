@@ -1,16 +1,16 @@
 {
-  "name": "@sksizer/tsconfig",
-  "version": "0.3.2",
+  "name": "@osdlc/tsconfig",
+  "version": "0.3.3",
   "description": "Strict TypeScript compiler presets: a shared bar plus node, bun, vue and build shapes. Consumed through `extends`; ships no code.",
   "license": "MIT",
   "author": "SK Sizer",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/sksizer/sdlc.git",
+    "url": "git+https://github.com/osdlc/osdlc.git",
     "directory": "packages/tsconfig"
   },
-  "homepage": "https://github.com/sksizer/sdlc/tree/main/packages/tsconfig#readme",
-  "bugs": "https://github.com/sksizer/sdlc/issues",
+  "homepage": "https://github.com/osdlc/osdlc/tree/main/packages/tsconfig#readme",
+  "bugs": "https://github.com/osdlc/osdlc/issues",
   "keywords": [
     "tsconfig",
     "typescript",
@@ -48,7 +48,7 @@
     "lint": "oxlint ."
   },
   "devDependencies": {
-    "@sksizer/prettier-config": "workspace:^",
+    "@osdlc/prettier-config": "workspace:^",
     "oxlint": "^1.65.0",
     "prettier": "3.9.6",
     "typescript": "~6.0.3"

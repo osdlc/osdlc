@@ -7,6 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-10-16
+
+### Changed
+
+- Renamed from `@sksizer/prettier-config`. No other changes.
+
 ## [0.2.2] - 2026-10-15
 
 ### Changed
