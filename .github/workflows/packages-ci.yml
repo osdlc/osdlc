@@ -1,4 +1,4 @@
-# Checks the libraries under packages/ on every pull request and push to main.
+# Checks the libraries under packages/ts/ on every pull request and push to main.
 # Generated: written by sksizer/dev's scripts/sdlc-mirror/assemble.ts, so edit
 # scripts/sdlc-mirror/templates/hosted/github/ there, not here.
 #

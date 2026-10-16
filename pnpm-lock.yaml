@@ -15,14 +15,14 @@ importers:
         specifier: 0.3.24
         version: 0.3.24
 
-  packages/command-seam:
+  packages/ts/command-seam:
     devDependencies:
       '@osdlc/prettier-config':
-        specifier: workspace:^
-        version: link:../prettier-config
+        specifier: ^0.2.3
+        version: 0.2.3
       '@osdlc/tsconfig':
-        specifier: workspace:^
-        version: link:../tsconfig
+        specifier: ^0.3.3
+        version: 0.3.3
       '@types/bun':
         specifier: ^1.1.14
         version: 1.4.3
@@ -39,7 +39,7 @@ importers:
         specifier: ~6.0.3
         version: 6.0.3
 
-  packages/prettier-config:
+  packages/ts/prettier-config:
     devDependencies:
       oxlint:
         specifier: ^1.65.0
@@ -48,7 +48,7 @@ importers:
         specifier: 3.9.6
         version: 3.9.6
 
-  packages/tsconfig:
+  packages/ts/tsconfig:
     devDependencies:
       '@osdlc/prettier-config':
         specifier: workspace:^
@@ -86,6 +86,12 @@ packages:
 
   '@loaderkit/resolve@1.0.6':
     resolution: {integrity: sha512-G8FdIoF5CypfwmD9rl8BXod5HDn8JqB0CCNBXDTaRZ+yRYhARrrSToX1zg1zy9jX3zLqigsELwhT4gNtkdQAUg==}
+
+  '@osdlc/prettier-config@0.2.3':
+    resolution: {integrity: sha512-znBSdA6GnSVa4worNvbmsWHmNrvy7aVv6AdiWR+xsid/hn6aDkFae6Ezk7Vx1rZttuptvclOgzaToncu7Wjh+g==}
+
+  '@osdlc/tsconfig@0.3.3':
+    resolution: {integrity: sha512-iTCGFF+tnJmNi7bfpCL9Km0cFPOYvu5NlLuiEGMvDKfPwLn4GcEUTip/QgwfVHQzIAcRprF3sMgIc29cU1zdyQ==}
 
   '@oxlint/binding-android-arm-eabi@1.88.0':
     resolution: {integrity: sha512-k6Fgkf86ubfeH4GvqYsRolfuVAp0pfYVZvifSlXNHPdMaWUOfxUrmLEeDD7hF6U2oJuhsVxhSWq86/xCJ+9MmA==}
@@ -492,6 +498,10 @@ snapshots:
   '@loaderkit/resolve@1.0.6':
     dependencies:
       '@braidai/lang': 1.1.2
+
+  '@osdlc/prettier-config@0.2.3': {}
+
+  '@osdlc/tsconfig@0.3.3': {}
 
   '@oxlint/binding-android-arm-eabi@1.88.0':
     optional: true

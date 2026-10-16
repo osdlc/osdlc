@@ -2,15 +2,16 @@
 # written by sksizer/dev's scripts/sdlc-mirror/assemble.ts, so edit
 # scripts/sdlc-mirror/templates/hosted/github/ there, not here.
 #
-# Tag grammar: `<name>/vX.Y.Z` publishes packages/<name> at version X.Y.Z, for
-# example `command-seam/v0.3.0`. sksizer/dev's release tooling pushes the tag
+# Tag grammar: `<name>/vX.Y.Z` publishes the package in packages/*/<name> at
+# version X.Y.Z, for example `command-seam/v0.4.0` for packages/ts/command-seam.
+# The run fails when no directory or more than one matches the name. sksizer/dev's release tooling pushes the tag
 # for a package copied from there; the owner pushes the tag for a package
 # developed here (packages/README.md lists which is which). The tag version
 # must equal the package.json version. Plain `vX.Y.Z` tags are sdlc's own and
 # do not match.
 #
 # npm auth is trusted publishing (OIDC) only. Configure it per package on
-# npmjs.com: Settings -> Trusted publisher, repository sksizer/sdlc, workflow
+# npmjs.com: Settings -> Trusted publisher, repository osdlc/osdlc, workflow
 # packages-publish.yml. Trusted publishing can only be configured on a package
 # that already exists, so the FIRST publish of each package is done by hand by
 # the owner, approved with the owner's npm passkey (no token). This workflow
@@ -44,28 +45,14 @@ jobs:
         with:
           persist-credentials: false
 
+      # check-packages.mjs --resolve-tag finds packages/*/<name>, refuses a
+      # missing or ambiguous match and a version that differs from the tag,
+      # and prints name=, dir= and version= lines.
       - name: Resolve the package from the tag
         id: pkg
         run: |
           set -euo pipefail
-          PREFIX="${GITHUB_REF_NAME%/v*}"
-          VERSION="${GITHUB_REF_NAME##*/v}"
-          DIR="packages/${PREFIX}"
-          if [ ! -f "${DIR}/package.json" ]; then
-            echo "::error::tag ${GITHUB_REF_NAME} names ${DIR}, which has no package.json"
-            exit 1
-          fi
-          PKG_VER="$(node -p "require('./${DIR}/package.json').version")"
-          if [ "${VERSION}" != "${PKG_VER}" ]; then
-            echo "::error::tag version ${VERSION} does not match ${DIR}/package.json version ${PKG_VER}"
-            exit 1
-          fi
-          NAME="$(node -p "require('./${DIR}/package.json').name")"
-          echo "name=${NAME}  dir=${DIR}  version=${VERSION}"
-          {
-            echo "name=${NAME}"
-            echo "dir=${DIR}"
-          } >> "$GITHUB_OUTPUT"
+          node .github/scripts/check-packages.mjs --resolve-tag "${GITHUB_REF_NAME}" | tee -a "$GITHUB_OUTPUT"
 
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
 
@@ -83,7 +70,7 @@ jobs:
 
       # Build before test; see packages-ci.yml. `<name>...` also selects the
       # package's workspace dependencies, so one with a build step is built
-      # first. (A path selector, `./packages/x...`, does not do that.)
+      # first. (A path selector, `./packages/ts/x...`, does not do that.)
       - name: Typecheck, build, test, smoke
         env:
           NAME: ${{ steps.pkg.outputs.name }}
@@ -141,6 +128,7 @@ jobs:
 
       - name: Publish to npm
         env:
+          # The ./ is needed: npm reads a bare `pack/x.tgz` as GitHub shorthand (owner/repo).
           TARBALL: ./pack/${{ needs.verify.outputs.tarball }}
         run: |
           set -euo pipefail
