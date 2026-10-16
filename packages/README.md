@@ -37,8 +37,8 @@ Developed here, in this repository:
 - `packages/tsconfig` (`@osdlc/tsconfig`)
 - `packages/prettier-config` (`@osdlc/prettier-config`)
 
-The development repository keeps its own copy for now; do not change these
-libraries until it moves to the npm versions.
+The development repository takes these libraries from npm, under the `@osdlc`
+scope.
 
 Developed in the maintainer's development repository and copied here with
 each release:

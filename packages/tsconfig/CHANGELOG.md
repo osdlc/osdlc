@@ -12,6 +12,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 ### Changed
 
 - Renamed from `@sksizer/tsconfig`. No other changes.
+- To move, replace `@sksizer/tsconfig` with `@osdlc/tsconfig` in `devDependencies` and in every
+  `extends`.
 
 ## [0.3.2] - 2026-10-15
 

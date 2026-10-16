@@ -50,9 +50,9 @@ cascade, so each project keeps its own. This package does not ship one.
 
 ## Source and releases
 
-Developed in a private monorepo and released from
+Developed and released in
 [osdlc/osdlc](https://github.com/osdlc/osdlc/tree/main/packages/prettier-config),
-where this package lives under `packages/prettier-config`. Report issues at
+under `packages/prettier-config`. Report issues at
 [osdlc/osdlc/issues](https://github.com/osdlc/osdlc/issues).
 
 ## License

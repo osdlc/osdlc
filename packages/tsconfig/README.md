@@ -74,9 +74,9 @@ that way. Layering this bar on top would clobber the `paths`, `types`,
 
 ## Source and releases
 
-Developed in a private monorepo and released from
+Developed and released in
 [osdlc/osdlc](https://github.com/osdlc/osdlc/tree/main/packages/tsconfig),
-where this package lives under `packages/tsconfig`. Report issues at
+under `packages/tsconfig`. Report issues at
 [osdlc/osdlc/issues](https://github.com/osdlc/osdlc/issues).
 
 ## License
