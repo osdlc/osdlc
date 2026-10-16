@@ -30,10 +30,9 @@ what holds for all of them.
 ## Why one repository
 
 One public repository is simpler to secure and maintain than one per library.
-The shared TypeScript and Prettier configs set the rules for the others.
-`command-seam` takes both from npm by version range, not from this workspace.
-A config change here reaches its build only after its development repository
-moves that range to the new version.
+The libraries change together: the shared TypeScript and Prettier configs set
+the rules for the others. `command-seam` links both through this workspace,
+so a config change here runs against its build in CI.
 
 ## Where changes are made
 
