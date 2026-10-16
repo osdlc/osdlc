@@ -1,21 +1,26 @@
-# osdlc (Open SDLC)
+# sdlc
 
-This repository is the home of the `sdlc` CLI and its two plugins, `sdlc` and `craft`. It also
-holds the `@osdlc` libraries under `packages/ts/`.
+A control plane for a software factory: the `sdlc` CLI, entity model, and
+agent-harness plugin that captures the artifacts of building software —
+roadmaps, milestones, tasks — as plain markdown files with schema-validated
+frontmatter, and runs the workflows that move that work through its
+lifecycle.
 
-The CLI and the plugins are still named `sdlc`. They will be renamed `osdlc` later.
+This repository is sdlc's published home: a two-plugin marketplace,
+self-contained at the repo root, for Claude Code, Codex, Cursor and Pi. It
+carries two plugins:
 
-- `sdlc` (CLI and plugin): captures the work of building software, such as roadmaps, milestones
-  and tasks, as markdown files with schema-checked frontmatter. It runs the workflows that move
-  that work through its lifecycle.
-- `craft` (plugin): portable skills for the software development lifecycle, with no scripts. Each
-  skill describes one process. A project fills a skill's extension points in
-  `<project>/sdlc/extend/skills/<skill>.lifecycle`. `craft` works without `sdlc`, so you can
-  install either plugin or both.
+- `sdlc`: the CLI, entity model and workflows described above.
+- `craft`: script-free, portable skills for the software development lifecycle. Each is a terse
+  description of one process. A project fills a skill's extension points in
+  `<project>/sdlc/extend/skills/<skill>.lifecycle`. `craft` works without `sdlc`; install either
+  plugin alone or both.
 
-The repository is a plugin marketplace for Claude Code, Codex, Cursor and Pi. It is developed in a
-separate development repository and released here. See [CHANGELOG.md](./CHANGELOG.md) for what
-each version shipped.
+sdlc is developed in [sksizer/dev](https://github.com/sksizer/dev)
+(`solutions/ontological`) and released here — see
+[CHANGELOG.md](./CHANGELOG.md) for what shipped in each version. This
+repo's own git history predates sdlc (it was a standalone Python project);
+that history is kept, never rewritten, when a release replaces the tree.
 
 ## Current version
 
@@ -26,21 +31,23 @@ each version shipped.
 ### Claude Code
 
 ```text
-/plugin marketplace add osdlc/osdlc
-/plugin install sdlc@osdlc
-/plugin install craft@osdlc
+/plugin marketplace add sksizer/sdlc
+/plugin install sdlc@sdlc
+/plugin install craft@sdlc
 ```
 
 ### Codex
 
-Codex reads a marketplace manifest at `.agents/plugins/marketplace.json` in a repository root.
-Point your Codex configuration at this repository to pick up both plugins. Use a local path once
-cloned, or the remote-repository option your Codex CLI version supports.
+Codex reads a marketplace manifest at `.agents/plugins/marketplace.json` in
+a repository root. Point your Codex configuration at this repository (by
+local path once cloned, or by whatever remote-repository mechanism your
+Codex CLI version supports) to pick up both plugins.
 
 ### Cursor
 
-Cursor reads a marketplace manifest at `.cursor-plugin/marketplace.json` in a repository root.
-Point Cursor at this repository to pick up both plugins.
+Cursor reads a marketplace manifest at `.cursor-plugin/marketplace.json` in
+a repository root, the same way. Point Cursor at this repository to pick up
+both plugins.
 
 ### Pi
 
@@ -51,23 +58,14 @@ pi install <clone>/.pi/packs/sdlc
 pi install <clone>/.pi/packs/craft
 ```
 
-Pi names each skill `<plugin>-<skill>` and runs it as `/skill:<plugin>-<skill>`, for example
-`/skill:sdlc-task-work`. A skill that calls another skill names it in that form once the skill
-sources use the `/[[skill]]` call syntax. Until then the call reads `/sdlc:<skill>`, which Pi
-cannot run.
-
-## Libraries
-
-`packages/ts/` holds TypeScript libraries published to npm from this repository:
-
-- `@osdlc/command-seam`: runs external commands through a small interface you can replace in
-  tests.
-- `@osdlc/tsconfig`: shared TypeScript compiler presets.
-- `@osdlc/prettier-config`: the shared Prettier config.
-
-See [packages/README.md](./packages/README.md) for how they are developed and released.
+Pi names each skill `<plugin>-<skill>` and runs it as
+`/skill:<plugin>-<skill>` (for example `/skill:sdlc-task-work`).
+Calls from one skill to another render in that form once the skill
+sources use the `/[[skill]]` call syntax. Until then they read
+`/sdlc:<skill>`, which Pi cannot run.
 
 ## License
 
-Apache-2.0 with an AI-training restriction (see [LICENSE](./LICENSE)). Because of the added
-condition this is source-available, not OSI-approved open source. See also [NOTICE](./NOTICE).
+Apache-2.0 with an AI-training restriction (see [LICENSE](./LICENSE)).
+Because of the added condition this is source-available, not OSI-approved
+open source. See also [NOTICE](./NOTICE).
