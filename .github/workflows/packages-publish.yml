@@ -6,7 +6,8 @@
 # example `command-seam/v0.3.0`. sksizer/dev's release tooling pushes the tag
 # for a package copied from there; the owner pushes the tag for a package
 # developed here (packages/README.md lists which is which). The tag version
-# must equal the package.json version. Plain `vX.Y.Z` tags are sdlc's own and do not match.
+# must equal the package.json version. Plain `vX.Y.Z` tags are sdlc's own and
+# do not match.
 #
 # npm auth is trusted publishing (OIDC) only. Configure it per package on
 # npmjs.com: Settings -> Trusted publisher, repository sksizer/sdlc, workflow
@@ -140,7 +141,7 @@ jobs:
 
       - name: Publish to npm
         env:
-          TARBALL: pack/${{ needs.verify.outputs.tarball }}
+          TARBALL: ./pack/${{ needs.verify.outputs.tarball }}
         run: |
           set -euo pipefail
           echo "npm $(npm --version)"
