@@ -1,16 +1,16 @@
 {
-  "name": "@sksizer/prettier-config",
-  "version": "0.2.2",
+  "name": "@osdlc/prettier-config",
+  "version": "0.2.3",
   "description": "A shared Prettier config: no semicolons, single quotes, trailing commas, 100 columns. Markdown is left alone.",
   "license": "MIT",
   "author": "SK Sizer",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/sksizer/sdlc.git",
+    "url": "git+https://github.com/osdlc/osdlc.git",
     "directory": "packages/prettier-config"
   },
-  "homepage": "https://github.com/sksizer/sdlc/tree/main/packages/prettier-config#readme",
-  "bugs": "https://github.com/sksizer/sdlc/issues",
+  "homepage": "https://github.com/osdlc/osdlc/tree/main/packages/prettier-config#readme",
+  "bugs": "https://github.com/osdlc/osdlc/issues",
   "keywords": [
     "prettier",
     "prettier-config"

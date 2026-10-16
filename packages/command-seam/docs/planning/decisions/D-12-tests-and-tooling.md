@@ -22,12 +22,12 @@ In the package:
 - A test that needs a grandchild in its own session starts it with the
   test's own runtime, not with perl.
 - `typecheck` covers the tests and the examples as well as the source.
-- `tsconfig.json` extends `@sksizer/tsconfig/bun-lib`, because the tests
-  use `bun:test`. `tsconfig.build.json` adds `@sksizer/tsconfig/build` and
-  Node types only. The prettier config is `@sksizer/prettier-config`. Both
+- `tsconfig.json` extends `@osdlc/tsconfig/bun-lib`, because the tests
+  use `bun:test`. `tsconfig.build.json` adds `@osdlc/tsconfig/build` and
+  Node types only. The prettier config is `@osdlc/prettier-config`. Both
   config packages are devDependencies, as are `prettier` and `oxlint`, so
   `format` and `lint` run in a clean checkout.
-- The workspace in sksizer/sdlc uses pnpm with a committed lockfile. Every
+- The workspace in osdlc/osdlc uses pnpm with a committed lockfile. Every
   GitHub Action there is pinned to a commit SHA. CI runs on Node 22 and 24,
   on Linux and macOS.
 
@@ -41,7 +41,7 @@ In the package:
 - A lockfile and pinned actions make CI repeatable and limit what a
   compromised dependency can do.
 - Shared config packages keep one source for the compiler and format rules
-  across the libraries hosted in sksizer/sdlc.
+  across the libraries hosted in osdlc/osdlc.
 
 ## Consequences
 

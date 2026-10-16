@@ -7,6 +7,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-10-16
+
+### Changed
+
+- Renamed from `@sksizer/prettier-config`. No other changes.
+- To move, replace `@sksizer/prettier-config` with `@osdlc/prettier-config` in `devDependencies` and in every
+  Prettier `"prettier"` reference.
+
 ## [0.2.2] - 2026-10-15
 
 ### Changed

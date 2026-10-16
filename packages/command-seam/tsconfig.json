@@ -1,6 +1,6 @@
 {
   // Typechecks the sources, tests/ and examples/. The build has its own include.
-  "extends": "@sksizer/tsconfig/bun-lib",
+  "extends": "@osdlc/tsconfig/bun-lib",
   "compilerOptions": {
     // Resolve `@sksizer/command-seam` in examples/ to the sources, as bun does.
     "customConditions": ["bun"]

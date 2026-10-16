@@ -1,11 +1,11 @@
-# @sksizer/prettier-config
+# @osdlc/prettier-config
 
 A shared [Prettier](https://prettier.io) config: no semicolons, single quotes,
 trailing commas everywhere, 100 columns, two-space indent. Markdown is left
 alone (see below).
 
 ```sh
-npm install --save-dev @sksizer/prettier-config prettier
+npm install --save-dev @osdlc/prettier-config prettier
 ```
 
 ## Use
@@ -13,13 +13,13 @@ npm install --save-dev @sksizer/prettier-config prettier
 Name the package in your Prettier config. In `package.json`:
 
 ```json
-{ "prettier": "@sksizer/prettier-config" }
+{ "prettier": "@osdlc/prettier-config" }
 ```
 
 Or in a `.prettierrc`:
 
 ```text
-"@sksizer/prettier-config"
+"@osdlc/prettier-config"
 ```
 
 The quotes are required in `.prettierrc`: it is parsed as YAML, and a bare `@`
@@ -50,11 +50,11 @@ cascade, so each project keeps its own. This package does not ship one.
 
 ## Source and releases
 
-Developed in a private monorepo and released from
-[sksizer/sdlc](https://github.com/sksizer/sdlc/tree/main/packages/prettier-config),
-where this package lives under `packages/prettier-config`. Report issues at
-[sksizer/sdlc/issues](https://github.com/sksizer/sdlc/issues).
+Developed and released in
+[osdlc/osdlc](https://github.com/osdlc/osdlc/tree/main/packages/prettier-config),
+under `packages/prettier-config`. Report issues at
+[osdlc/osdlc/issues](https://github.com/osdlc/osdlc/issues).
 
 ## License
 
-[MIT](https://github.com/sksizer/sdlc/blob/main/packages/prettier-config/LICENSE)
+[MIT](https://github.com/osdlc/osdlc/blob/main/packages/prettier-config/LICENSE)

@@ -2,7 +2,7 @@
   // The emit block, as a MIXIN. Use it as the LAST element of an extends array,
   // never on its own:
   //
-  //   "extends": ["./tsconfig.json", "@sksizer/tsconfig/build"]
+  //   "extends": ["./tsconfig.json", "@osdlc/tsconfig/build"]
   //
   // Two things here are deliberate, and both fail silently if changed.
   //

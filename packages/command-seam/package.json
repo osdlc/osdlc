@@ -6,11 +6,11 @@
   "author": "SK Sizer",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/sksizer/sdlc.git",
+    "url": "git+https://github.com/osdlc/osdlc.git",
     "directory": "packages/command-seam"
   },
-  "homepage": "https://github.com/sksizer/sdlc/tree/main/packages/command-seam#readme",
-  "bugs": "https://github.com/sksizer/sdlc/issues",
+  "homepage": "https://github.com/osdlc/osdlc/tree/main/packages/command-seam#readme",
+  "bugs": "https://github.com/osdlc/osdlc/issues",
   "keywords": [
     "subprocess",
     "spawn",
@@ -86,8 +86,8 @@
     }
   },
   "devDependencies": {
-    "@sksizer/prettier-config": "workspace:^",
-    "@sksizer/tsconfig": "workspace:^",
+    "@osdlc/prettier-config": "workspace:^",
+    "@osdlc/tsconfig": "workspace:^",
     "@types/bun": "^1.1.14",
     "@types/node": "^26.1.0",
     "oxlint": "^1.65.0",
