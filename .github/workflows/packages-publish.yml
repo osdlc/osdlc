@@ -1,6 +1,4 @@
-# Publishes one library from packages/ to npm when its tag is pushed. Generated:
-# written by sksizer/dev's scripts/sdlc-mirror/assemble.ts, so edit
-# scripts/sdlc-mirror/templates/hosted/github/ there, not here.
+# Publishes one library from packages/ to npm when its tag is pushed.
 #
 # Tag grammar: `<name>/vX.Y.Z` publishes the package in packages/*/<name> at
 # version X.Y.Z, for example `command-seam/v0.4.0` for packages/ts/command-seam.

@@ -3,9 +3,7 @@
 // Are The Types Wrong for a package that ships types, then a clean consumer:
 // `npm install <tarball>` into an empty project, load every entry point under
 // Node, and run the package's `smoke.mjs` from the installed copy if it ships
-// one (that calls the API against the tarball's own dist/). Generated: written by
-// sksizer/dev's scripts/sdlc-mirror/assemble.ts (edit
-// scripts/sdlc-mirror/templates/hosted/github/scripts/check-packages.mjs there).
+// one (that calls the API against the tarball's own dist/).
 //
 //   node .github/scripts/check-packages.mjs [--out <dir>] [packages/ts/<name> ...]
 //   node .github/scripts/check-packages.mjs --resolve-tag <name>/vX.Y.Z

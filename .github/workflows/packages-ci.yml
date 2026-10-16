@@ -1,6 +1,4 @@
 # Checks the libraries under packages/ts/ on every pull request and push to main.
-# Generated: written by sksizer/dev's scripts/sdlc-mirror/assemble.ts, so edit
-# scripts/sdlc-mirror/templates/hosted/github/ there, not here.
 #
 # Build runs before test: the examples import each package by its own name,
 # and under Node that name resolves through `exports` to dist/.
