@@ -40,16 +40,10 @@ Developed here, in this repository:
 
 - `packages/ts/tsconfig` (`@osdlc/tsconfig`)
 - `packages/ts/prettier-config` (`@osdlc/prettier-config`)
-
-The development repository takes them from npm, like any other consumer.
-
-Developed in the maintainer's development repository and copied here with
-each release:
-
 - `packages/ts/command-seam` (`@osdlc/command-seam`)
 
-A change made to a copied library here is replaced by the next release. Open
-an issue or a pull request here, and the maintainer ports accepted changes.
+The development repository takes them from npm, like any other consumer.
+Open issues and pull requests here.
 
 ### Releasing a library developed here
 
