@@ -23,9 +23,11 @@ created: 2026-10-13
   runners register each group they start with `processGroup: true`. While one
   is registered, the signal sends `SIGTERM` to every group, `SIGKILL` to any
   still there after a [grace period](../terms/TM-07-grace-period.md), and the
-  host then exits with `128 + signal number`. An `exit` handler also
-  `SIGKILL`s any group still registered. `liveProcessGroups()` lists the
-  registered groups.
+  host then exits with `128 + signal number`. A group stays registered until
+  it is empty, so a forwarded signal also kills a member that a settled run
+  left behind. The host's normal exit `SIGKILL`s only the groups whose run is
+  still in flight, so a daemon a settled run left behind keeps running.
+  `liveProcessGroups()` lists the registered groups.
 - When [forwarding](../terms/TM-05-signal-forwarding.md)
   [owns the exit](../terms/TM-11-exit-owner.md), the first forwarded signal puts
   the host in a [stopping state](../terms/TM-06-stopping-state.md). The runners

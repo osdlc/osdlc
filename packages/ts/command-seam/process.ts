@@ -11,7 +11,7 @@
 import { spawn } from 'node:child_process'
 import { constants } from 'node:os'
 
-import { groupStartRefusal, releaseWhenEmpty, trackGroup } from './groups.ts'
+import { groupStartRefusal, releaseWhenEmpty, settleGroup, trackGroup } from './groups.ts'
 import { cwdError, mergedEnv, timerMs, type EnvOverrides, type NeverExitedReason } from './sync.ts'
 
 /** Per-call options for a {@link ManagedProcessRunner}. */
@@ -162,7 +162,11 @@ export function managedProcessRunner(binary: string): ManagedProcessRunner {
         child.on('exit', (code, signal) => {
           // The leader is gone but the group may not be: stay registered until
           // no member is left, so a signal to the host still reaches the rest.
-          if (untrackGroup !== undefined) releaseWhenEmpty(pid, untrackGroup)
+          // Unless `kill()` is stopping it, the host's exit leaves it running.
+          if (untrackGroup !== undefined) {
+            if (sent.size === 0) settleGroup(pid)
+            releaseWhenEmpty(pid, untrackGroup)
+          }
           finish({
             exitCode: code ?? 1,
             signal,

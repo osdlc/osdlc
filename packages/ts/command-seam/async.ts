@@ -11,7 +11,13 @@
 import { spawn } from 'node:child_process'
 import { StringDecoder } from 'node:string_decoder'
 
-import { groupExists, groupStartRefusal, releaseWhenEmpty, trackGroup } from './groups.ts'
+import {
+  groupExists,
+  groupStartRefusal,
+  releaseWhenEmpty,
+  settleGroup,
+  trackGroup,
+} from './groups.ts'
 import {
   CommandFailed,
   cwdError,
@@ -167,7 +173,11 @@ export function spawnRunnerAsync(binary: string): AsyncCommandRunner {
           ...mergedEnv(opts),
         })
         const untrackGroup = group && child.pid !== undefined ? trackGroup(child.pid) : undefined
+        // Set once this runner signals the child: a group it is stopping stays
+        // in flight for the host's exit handler.
+        let stopping = false
         const signalChild = (sig: NodeJS.Signals) => {
+          stopping = true
           if (group && child.pid !== undefined) {
             try {
               process.kill(-child.pid, sig)
@@ -224,8 +234,10 @@ export function spawnRunnerAsync(binary: string): AsyncCommandRunner {
           settled = true
           // The group can outlive the settle: a background member, or an aborted
           // group waiting for its SIGKILL. It stays registered until it is empty,
-          // so a signal to the host still reaches the rest.
+          // so a signal to the host still reaches the rest. Unless this runner
+          // is stopping it, the host's exit leaves it running.
           if (untrackGroup !== undefined && child.pid !== undefined) {
+            if (!stopping) settleGroup(child.pid)
             releaseWhenEmpty(child.pid, untrackGroup)
           }
           if (timer !== undefined) clearTimeout(timer)

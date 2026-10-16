@@ -28,11 +28,11 @@ These exports are experimental (see the README's Stability section).
   `SIGTERM` and `SIGHUP` send `SIGTERM` to every group, `SIGKILL` after
   `graceMs` (default 1000), then exit with `128 + signal number`. A repeat
   signal escalates to `SIGKILL` at once; an `exit` handler `SIGKILL`s groups
-  still registered. Listeners are attached only while a group is live, ahead
-  of the host's own. A host with its own listener, `process.once` included,
-  keeps the exit; its groups still get `SIGKILL` after
-  `graceMs`, or on exit if sooner. Returns an uninstall function. POSIX only;
-  a no-op on Windows. `SIGKILL` of the host still orphans its groups. When
+  whose run is still in flight. Listeners are attached only while a group is
+  live, ahead of the host's own. A host with its own listener, `process.once`
+  included, keeps the exit; its groups still get `SIGKILL` after `graceMs`, or
+  on exit if sooner and the run is in flight. Returns an uninstall function.
+  POSIX only; a no-op on Windows. `SIGKILL` of the host still orphans its groups. When
   forwarding owns the exit, a new `processGroup: true` run after the first
   forwarded signal is refused: it starts nothing and settles with
   `reason: 'abort'`. The uninstall function resets this.
@@ -42,8 +42,10 @@ These exports are experimental (see the README's Stability section).
   `undefined`. A host that sets its own exit code keeps this one over it.
 - `liveProcessGroups()`: the pids of the groups currently registered. A group
   stays registered until it is empty, also after its run settles or its
-  leader exits, so forwarding still reaches a background member or one
-  waiting for the `SIGKILL` follow-up.
+  leader exits, so a forwarded signal still kills a background member or one
+  waiting for the `SIGKILL` follow-up. The host's normal exit kills only the
+  groups whose run is still in flight, so a daemon a settled run left behind
+  keeps running.
 - `unref` on the managed-process runner's options: the parent can exit while
   the (usually `processGroup`) child keeps running. Such a group is not tracked
   by `installGroupSignalForwarding`: a signal to the parent does not reach it

@@ -41,7 +41,7 @@ async function startHost(extra: string[] = []) {
 }
 
 test.skipIf(!posix)(
-  'the async runner registers a group and unregisters it when the run settles',
+  'the async runner registers a group and unregisters it once the group is empty',
   async () => {
     const before = liveProcessGroups().length
     const run = spawnRunnerAsync('sh').run(['-c', 'sleep 0.3'], { cwd: CWD, processGroup: true })
@@ -139,6 +139,38 @@ test.skipIf(!posix)(
     } finally {
       reap(grandchild)
       host.kill('SIGKILL')
+    }
+  },
+  20_000,
+)
+
+test.skipIf(!posix)(
+  "a normal host exit leaves a settled async run's background member running",
+  async () => {
+    const { host, ready } = await startHost(['--async-background', '--exit'])
+    const exited = new Promise<number | null>((res) => host.on('exit', (code) => res(code)))
+    const { grandchild } = await ready
+    try {
+      expect(await exited).toBe(0)
+      expect(alive(grandchild)).toBe(true)
+    } finally {
+      reap(grandchild)
+    }
+  },
+  20_000,
+)
+
+test.skipIf(!posix)(
+  'a normal host exit kills the group of an async run still in flight',
+  async () => {
+    const { host, ready } = await startHost(['--in-flight', '--exit'])
+    const exited = new Promise<number | null>((res) => host.on('exit', (code) => res(code)))
+    const { grandchild } = await ready
+    try {
+      expect(await exited).toBe(0)
+      expect(await gone(grandchild)).toBe(true)
+    } finally {
+      reap(grandchild)
     }
   },
   20_000,

@@ -11,8 +11,14 @@
  * `--long-grace` sets `graceMs` to 30 s; `--unref` starts the group with
  * `unref: true`, so forwarding does not track it; `--async-background` starts
  * the group through the async runner instead, whose `sh` leaves a background
- * grandchild and exits at once.
+ * grandchild and exits at once. `--exit` makes the host exit with code 0 on its
+ * own instead of waiting for a signal: after that run settles, or, with
+ * `--in-flight`, while an async run is still going.
  */
+
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 import {
   installGroupSignalForwarding,
@@ -28,6 +34,11 @@ const ownHandlerImmediate = process.argv.includes('--own-handler-immediate')
 const ownOnce = process.argv.includes('--own-once')
 const unref = process.argv.includes('--unref')
 const asyncBackground = process.argv.includes('--async-background')
+const exitOnOwn = process.argv.includes('--exit')
+const inFlight = process.argv.includes('--in-flight')
+
+/** Write `text` to stdout and wait until it is flushed, so an exit cannot cut it off. */
+const print = (text: string) => new Promise<void>((res) => process.stdout.write(text, () => res()))
 
 installGroupSignalForwarding({ graceMs: longGrace ? 30_000 : 500 })
 if (ownHandler) process.on('SIGTERM', () => setTimeout(() => process.exit(7), 700))
@@ -49,13 +60,33 @@ if (ownOnce) {
 const script = stubborn
   ? `trap "" TERM; sleep 30 & echo grandchild=$!; wait`
   : `sleep 30 & echo grandchild=$!; wait`
-if (asyncBackground) {
+if (inFlight) {
+  // The async runner captures output, so `sh` hands over the grandchild's pid
+  // through a file. The run never settles before the host exits.
+  const dir = mkdtempSync(join(tmpdir(), 'forwarding-host-'))
+  const pidFile = join(dir, 'pid')
+  void spawnRunnerAsync('sh').run(['-c', 'sleep 30 & echo $! > "$1"; wait', 'sh', pidFile], {
+    cwd: process.cwd(),
+    processGroup: true,
+  })
+  let pid = ''
+  while (pid === '') {
+    await new Promise((res) => setTimeout(res, 25))
+    try {
+      pid = readFileSync(pidFile, 'utf8').trim()
+    } catch {
+      // Not written yet.
+    }
+  }
+  rmSync(dir, { recursive: true, force: true })
+  await print(`grandchild=${pid}\n`)
+} else if (asyncBackground) {
   // The run settles when `sh` exits; the grandchild holds no pipe and outlives it.
   const r = await spawnRunnerAsync('sh').run(
     ['-c', 'sleep 30 >/dev/null 2>&1 & echo grandchild=$!'],
     { cwd: process.cwd(), processGroup: true },
   )
-  process.stdout.write(r.stdout)
+  await print(r.stdout)
 } else {
   // The managed runner inherits stdio, so the child's `grandchild=<pid>` line reaches the test.
   void managedProcessRunner('sh').run(['-c', script], {
@@ -64,5 +95,6 @@ if (asyncBackground) {
     ...(unref ? { unref: true } : {}),
   })
 }
+if (exitOnOwn) process.exit(0)
 // Keep the host alive: only a forwarded signal ends it.
 setInterval(() => {}, 1000)

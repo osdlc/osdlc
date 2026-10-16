@@ -247,16 +247,19 @@ While a group is live, one of those signals sends `SIGTERM` to every live
 group (async and managed runners with `processGroup: true`), then `SIGKILL` to
 those still registered after `graceMs`, and the process exits with
 `128 + signal number`. A second signal during the grace skips to `SIGKILL`. An
-`exit` handler also `SIGKILL`s any group still registered, so a host that exits
-first leaves none behind. The listeners are attached when the first group
+`exit` handler also `SIGKILL`s every group whose run is still in flight, so a
+host that exits first leaves none behind. The listeners are attached when the first group
 starts and removed when the last one is gone, so a host with no live group
 keeps each signal's default action. If the host has its own listener for the
 signal (`process.once` counts too), the groups still get `SIGTERM` at once
-and `SIGKILL` after `graceMs` (or on exit, if sooner), but that listener keeps
-the exit. By default the exit
+and `SIGKILL` after `graceMs` (or on exit, if sooner and the run is in
+flight), but that listener keeps the exit. By default the exit
 sets `process.exitCode` and lets output drain, then calls `process.exit` after
 500 ms, so piped stdout is not cut. A group stays registered until no member is
-left, also after its async run settles or its managed leader exits. `SIGKILL`
+left, also after its async run settles or its managed leader exits. A
+forwarded signal kills what such a group left behind, such as a daemon. The
+host's normal exit leaves it running, unless the runner was stopping the group
+(an abort, a timeout or `kill()`). `SIGKILL`
 of the host cannot be caught. POSIX only; a no-op on Windows.
 `liveProcessGroups()` lists the registered group pids.
 

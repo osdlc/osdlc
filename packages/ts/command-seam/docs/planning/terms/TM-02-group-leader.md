@@ -25,4 +25,5 @@ its leader: members it started stay in the group after it exits.
 - A group stays registered after its leader exits, until no member is left.
   This holds for the async and managed runners.
   [Signal forwarding](TM-05-signal-forwarding.md) can then still reach a member
-  that outlived the leader.
+  that outlived the leader. After a run that settled on its own, the host's
+  normal exit leaves such a member running.

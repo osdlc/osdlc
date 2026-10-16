@@ -5,7 +5,10 @@
  * receives the terminal's Ctrl-C. When the host is then killed by `SIGINT`,
  * `SIGTERM` or `SIGHUP`, the child and everything it started would be orphaned
  * (ppid 1). The runners register each such group here, and
- * {@link installGroupSignalForwarding} makes the host kill them before it exits.
+ * {@link installGroupSignalForwarding} makes the host kill them when it is
+ * signalled. A group stays registered until it is empty. Once its run has
+ * settled, the host's normal exit leaves what is left of it running, such as a
+ * daemon; a forwarded signal still kills it.
  *
  * Once a signal has been forwarded and this module owns the exit, the host is
  * stopping: the runners refuse to start a new group, and
@@ -21,8 +24,8 @@ import { constants } from 'node:os'
 
 const osSignals = constants.signals as Record<string, number>
 
-/** Pids of live group leaders, in start order. */
-const live = new Set<number>()
+/** Live group leaders, in start order, and whether each one's run has settled. */
+const live = new Map<number, { settled: boolean }>()
 
 /**
  * Options for {@link installGroupSignalForwarding}.
@@ -78,12 +81,24 @@ let escalated = false
  * @internal
  */
 export function trackGroup(pid: number): () => void {
-  live.add(pid)
+  live.set(pid, { settled: false })
   arm()
   return () => {
     live.delete(pid)
     if (live.size === 0) disarm()
   }
+}
+
+/**
+ * Mark the run of the group led by `pid` as settled: the host's exit no longer
+ * kills what is left of the group. A forwarded signal still does. A runner
+ * does not call this for a group it is stopping itself.
+ *
+ * @internal
+ */
+export function settleGroup(pid: number): void {
+  const entry = live.get(pid)
+  if (entry !== undefined) entry.settled = true
 }
 
 /**
@@ -151,7 +166,7 @@ function signalGroup(pid: number, sig: NodeJS.Signals): void {
  * @experimental
  */
 export function liveProcessGroups(): number[] {
-  return [...live]
+  return [...live.keys()]
 }
 
 /**
@@ -185,8 +200,8 @@ function arm(): void {
   const { signals, graceMs, exit } = config
   const onExit = () => {
     // The host is going away: nothing async runs after this, so end every group
-    // that is still registered now.
-    for (const pid of live) signalGroup(pid, 'SIGKILL')
+    // whose run is still in flight now. A settled run's leftovers stay.
+    for (const [pid, { settled }] of live) if (!settled) signalGroup(pid, 'SIGKILL')
   }
   const handlers = signals.map((sig) => {
     const handler = () => {
@@ -194,7 +209,7 @@ function arm(): void {
       if (forwarded !== undefined || killing) {
         // A repeat signal: stop waiting.
         escalated = true
-        for (const pid of live) signalGroup(pid, 'SIGKILL')
+        for (const pid of live.keys()) signalGroup(pid, 'SIGKILL')
         if (!othersListen(sig)) exit(code)
         return
       }
@@ -244,16 +259,17 @@ function othersListen(sig: NodeJS.Signals): boolean {
  * grace, or any later one, skips straight to `SIGKILL` and the exit. From the
  * first signal on, {@link forwardedSignal} returns it and the runners refuse
  * to start a new `processGroup` run, until the uninstall function resets
- * that. A `process` `exit` handler,
- * armed with the listeners, also `SIGKILL`s any group still registered, so a
- * host that exits first does not leave one behind.
+ * that. A `process` `exit` handler, armed with the listeners, also `SIGKILL`s
+ * every group whose run is still in flight, so a host that exits first does
+ * not leave one behind. A member that a settled run left behind, such as a
+ * daemon, outlives the host's exit; a forwarded signal still kills it.
  *
  * The listeners are attached when the first group registers and removed when
  * the last one goes, so a host with no live group keeps each signal's default
  * action. If the host has its own listener for the signal (`process.once`
  * counts too), the groups still
  * get `SIGTERM` at once and `SIGKILL` after `graceMs` (or on `exit`, if
- * sooner), but that listener keeps the exit, and later runs are not refused.
+ * sooner and the run is in flight), but that listener keeps the exit, and later runs are not refused.
  * Calling it again while installed is a no-op returning the same
  * uninstall function. `SIGKILL` of the host cannot be caught and still orphans
  * its groups. POSIX only; a no-op on Windows.
