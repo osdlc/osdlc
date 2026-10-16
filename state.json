@@ -1,12 +1,112 @@
 {
   "schema": 1,
   "pr": 221,
-  "head": null,
-  "base": null,
-  "round": 0,
+  "head": "c533dff8b7ec42d77b24d538f72f86b70246f261",
+  "base": "cf629fbb0d62364831f5aad16a37378b6e7101a6",
+  "round": 1,
   "claim": {
     "owner": "KellyMBP.local:claude-9167of",
     "at": "2026-10-16T20:51:39.262Z"
   },
-  "findings": []
+  "findings": [
+    {
+      "id": "r1-1",
+      "round": 1,
+      "path": "README.md",
+      "line": 30,
+      "title": "Install ids name an osdlc marketplace this tree does not ship",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-2",
+      "round": 1,
+      "path": "packages/README.md",
+      "line": 50,
+      "title": "command-seam still listed as copied from the development repo",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-3",
+      "round": 1,
+      "path": "packages/ts/command-seam/CONTRIBUTING.md",
+      "line": 16,
+      "title": "CONTRIBUTING still calls the package a release mirror",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-4",
+      "round": 1,
+      "path": "packages/ts/command-seam/docs/planning/README.md",
+      "line": null,
+      "title": "Planning README still says files are copied from the development repo",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-5",
+      "round": 1,
+      "path": "packages/ts/command-seam/package.json",
+      "line": 90,
+      "title": "Config packages taken from npm instead of the workspace",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-6",
+      "round": 1,
+      "path": "packages/ts/command-seam/async.ts",
+      "line": 231,
+      "title": "Async runner unregisters a group that still has members",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-7",
+      "round": 1,
+      "path": "package.json",
+      "line": 4,
+      "title": "Generated-by headers become false at merge",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-8",
+      "round": 1,
+      "path": ".github/workflows/packages-publish.yml",
+      "line": 7,
+      "title": "Publish header names a tag and a release path that will not exist",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-9",
+      "round": 1,
+      "path": "packages/ts/command-seam/tests/support/forwarding-host.ts",
+      "line": 47,
+      "title": "door metaphor for runner in test comment and names",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    }
+  ]
 }
