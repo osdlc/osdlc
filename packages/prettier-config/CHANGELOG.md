@@ -7,6 +7,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-10-15
+
+### Changed
+
+- First release made from [sksizer/sdlc](https://github.com/sksizer/sdlc) CI, through npm trusted
+  publishing, so the package now carries provenance. The package contents are unchanged.
+
 ## [0.2.1] - 2026-10-15
 
 ### Changed

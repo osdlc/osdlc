@@ -1,6 +1,6 @@
 {
   "name": "@sksizer/tsconfig",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Strict TypeScript compiler presets: a shared bar plus node, bun, vue and build shapes. Consumed through `extends`; ships no code.",
   "license": "MIT",
   "author": "SK Sizer",
