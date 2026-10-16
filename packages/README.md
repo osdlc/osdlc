@@ -21,10 +21,6 @@ what holds for all of them.
   exists, so the first version of each library is published once by hand.
   That first publish also leaves a `0.0.0-stage` placeholder version on npm.
   It is harmless and stays.
-- A release of a copied library pushes straight to `main`. The admin bypass
-  on the `Protect main` ruleset lets it through. The tree is checked before
-  the push, and `packages-publish.yml` checks it again before anything
-  reaches npm.
 - A library can move to its own repository later if it grows.
 
 ## Why one repository
