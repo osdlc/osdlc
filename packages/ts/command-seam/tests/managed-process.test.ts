@@ -6,6 +6,9 @@
  */
 
 import { describe, expect, test } from 'bun:test'
+import { mkdtempSync, readFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 import {
   managedProcessRunner,
@@ -27,6 +30,30 @@ describe('managedProcessRunner', () => {
     return handle.exited.then((r) => {
       expect(r).toEqual({ exitCode: 0, signal: null })
     })
+  })
+
+  test('unref still runs the child to completion and reports its exit', async () => {
+    const handle = managedProcessRunner('sh').run(['-c', 'exit 3'], { cwd: CWD, unref: true })
+    expect(handle.pid).toBeGreaterThan(0)
+    expect((await handle.exited).exitCode).toBe(3)
+  })
+
+  test('detached puts the child in its own session and process group, away from the parent', async () => {
+    const out = join(mkdtempSync(join(tmpdir(), 'mp-')), 'ids')
+    const ids = (pid: string): string => `ps -o pgid= -p ${pid} | tr -s ' '`
+    const handle = managedProcessRunner('sh').run(['-c', `${ids('$$')} > "${out}"`], {
+      cwd: CWD,
+      processGroup: true,
+      unref: true,
+    })
+    await handle.exited
+    const child = readFileSync(out, 'utf-8').trim().split(' ')
+    const parent = Bun.spawnSync(['sh', '-c', ids(String(process.pid))])
+      .stdout.toString()
+      .trim()
+      .split(' ')
+    expect(child[0]).not.toBe(parent[0])
+    expect(child[0]).toBe(String(handle.pid))
   })
 
   test('exited resolves with the real exit code', async () => {

@@ -682,3 +682,28 @@ describe('resolveRunner', () => {
     expect(r.stdout).toBe('hi')
   })
 })
+
+describe('timeoutMs: the cap fires on the deadline', () => {
+  test('a hung child that ignores stdin is killed within a bound, and reported as a timeout', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'seam-bound-'))
+    const pidfile = join(dir, 'grandchild.pid')
+    let grandchild = 0
+    try {
+      const started = Date.now()
+      const r = await spawnRunnerAsync('sh').run(
+        ['-c', `sleep 301 & echo $! > ${pidfile}; exec sleep 302`],
+        { cwd: CWD, timeoutMs: 300, processGroup: true },
+      )
+      const elapsed = Date.now() - started
+      for (let i = 0; i < 100 && !existsSync(pidfile); i++) await Bun.sleep(20)
+      grandchild = Number(readFileSync(pidfile, 'utf-8').trim())
+      expect(r).toMatchObject({ exitCode: 1, neverExited: true, reason: 'timeout' })
+      expect(elapsed).toBeGreaterThanOrEqual(250)
+      expect(elapsed).toBeLessThan(3000)
+      expect(await gone(grandchild, 3000)).toBe(true)
+    } finally {
+      reap(grandchild)
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})

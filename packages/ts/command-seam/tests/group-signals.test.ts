@@ -67,6 +67,42 @@ test.skipIf(!posix)('the managed runner registers a group until the leader exits
   expect(liveProcessGroups().length).toBe(before)
 })
 
+test.skipIf(!posix)(
+  "an unref'd managed group is not registered: it may outlive the host",
+  async () => {
+    const before = liveProcessGroups().length
+    const h = managedProcessRunner('sh').run(['-c', 'sleep 30'], {
+      cwd: CWD,
+      processGroup: true,
+      unref: true,
+    })
+    expect(liveProcessGroups().length).toBe(before)
+    h.kill('SIGKILL')
+    await h.exited
+  },
+)
+
+test.skipIf(!posix)(
+  "a signal to the host leaves an unref'd group alive: it may outlive the host",
+  async () => {
+    const { host, ready } = await startHost(['--unref'])
+    const exited = new Promise<number | null>((res) => host.on('exit', (code) => res(code)))
+    const { grandchild } = await ready
+    try {
+      expect(alive(grandchild)).toBe(true)
+      host.kill('SIGTERM')
+      await exited
+      // Forwarding would have killed it within the 500 ms grace; wait past that.
+      await new Promise((res) => setTimeout(res, 1_000))
+      expect(alive(grandchild)).toBe(true)
+    } finally {
+      reap(grandchild)
+      host.kill('SIGKILL')
+    }
+  },
+  20_000,
+)
+
 for (const sig of ['SIGTERM', 'SIGINT', 'SIGHUP'] as const) {
   test.skipIf(!posix)(
     `${sig} to the host kills a grandchild and exits 128+signo`,

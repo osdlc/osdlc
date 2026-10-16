@@ -33,6 +33,16 @@ export interface ManagedProcessRunOptions {
    * (`reason: 'abort'`, pid `-1`).
    */
   processGroup?: boolean | undefined
+  /**
+   * Let the parent exit while the child runs: the child's handle stops
+   * holding the parent's event loop open. Meant for a `processGroup` child
+   * that is supposed to outlive the call that started it (a loop tick that
+   * starts a run and returns); {@link ManagedProcessHandle.exited} then only
+   * settles while the parent is still alive. An `unref`'d group is not tracked
+   * by `installGroupSignalForwarding`: a signal to the parent does not reach it,
+   * and the parent's exit does not `SIGKILL` it.
+   */
+  unref?: boolean | undefined
 }
 
 /** How a managed process ended. */
@@ -130,7 +140,9 @@ export function managedProcessRunner(binary: string): ManagedProcessRunner {
         ...mergedEnv(opts),
       })
       const pid = child.pid ?? -1
-      const untrackGroup = group && pid !== -1 ? trackGroup(pid) : undefined
+      if (opts.unref === true) child.unref()
+      // An `unref`'d group is meant to outlive the host, so forwarding must not reap it.
+      const untrackGroup = group && pid !== -1 && opts.unref !== true ? trackGroup(pid) : undefined
       // The signals `kill()` has sent. A death by one of them is the caller's
       // own stop; a death by any other signal came from elsewhere.
       const sent = new Set<NodeJS.Signals>()

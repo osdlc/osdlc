@@ -44,6 +44,10 @@ These exports are experimental (see the README's Stability section).
   stays registered until it is empty, also after its run settles or its
   leader exits, so forwarding still reaches a background member or one
   waiting for the `SIGKILL` follow-up.
+- `unref` on the managed-process runner's options: the parent can exit while
+  the (usually `processGroup`) child keeps running. Such a group is not tracked
+  by `installGroupSignalForwarding`: a signal to the parent does not reach it
+  and the parent's exit does not `SIGKILL` it.
 
 ## [0.3.0] - 2026-10-15
 

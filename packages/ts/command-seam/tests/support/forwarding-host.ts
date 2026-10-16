@@ -8,9 +8,10 @@
  * `--own-handler-immediate` gives it one that exits 9 at once; `--own-once`
  * gives it a `process.once` listener, added before the group starts, that
  * starts one more group run after 700 ms, prints `later=<result>` and exits 7;
- * `--long-grace` sets `graceMs` to 30 s; `--async-background` starts the group
- * through the async runner instead, whose `sh` leaves a background grandchild
- * and exits at once.
+ * `--long-grace` sets `graceMs` to 30 s; `--unref` starts the group with
+ * `unref: true`, so forwarding does not track it; `--async-background` starts
+ * the group through the async runner instead, whose `sh` leaves a background
+ * grandchild and exits at once.
  */
 
 import {
@@ -25,6 +26,7 @@ const ownHandler = process.argv.includes('--own-handler')
 const longGrace = process.argv.includes('--long-grace')
 const ownHandlerImmediate = process.argv.includes('--own-handler-immediate')
 const ownOnce = process.argv.includes('--own-once')
+const unref = process.argv.includes('--unref')
 const asyncBackground = process.argv.includes('--async-background')
 
 installGroupSignalForwarding({ graceMs: longGrace ? 30_000 : 500 })
@@ -59,6 +61,7 @@ if (asyncBackground) {
   void managedProcessRunner('sh').run(['-c', script], {
     cwd: process.cwd(),
     processGroup: true,
+    ...(unref ? { unref: true } : {}),
   })
 }
 // Keep the host alive: only a forwarded signal ends it.
