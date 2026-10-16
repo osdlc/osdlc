@@ -13,11 +13,8 @@ See [SECURITY.md](./SECURITY.md).
 ## Pull requests
 
 This package lives in [osdlc/osdlc](https://github.com/osdlc/osdlc) under
-`packages/ts/command-seam`, which is a release mirror. Each release is
-published there as a snapshot of the source, so changes cannot be merged
-there directly. You can still open a pull request. The maintainer ports
-accepted changes to the source and they appear in the next release. Please
-expect that to take some time.
+`packages/ts/command-seam`. Open pull requests there. They are reviewed and
+merged there.
 
 ## Running the tests
 

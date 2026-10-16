@@ -255,9 +255,10 @@ signal (`process.once` counts too), the groups still get `SIGTERM` at once
 and `SIGKILL` after `graceMs` (or on exit, if sooner), but that listener keeps
 the exit. By default the exit
 sets `process.exitCode` and lets output drain, then calls `process.exit` after
-500 ms, so piped stdout is not cut. A managed group stays registered after its leader exits until no
-member is left. `SIGKILL` of the host cannot be caught. POSIX only; a no-op on
-Windows. `liveProcessGroups()` lists the registered group pids.
+500 ms, so piped stdout is not cut. A group stays registered until no member is
+left, also after its async run settles or its managed leader exits. `SIGKILL`
+of the host cannot be caught. POSIX only; a no-op on Windows.
+`liveProcessGroups()` lists the registered group pids.
 
 When forwarding owns the exit (the host has no listener of its own for the
 signal), the first forwarded signal puts the host in a stopping state. A new

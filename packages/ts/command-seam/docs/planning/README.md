@@ -4,10 +4,9 @@ Why `@osdlc/command-seam` has the shape it has, and what is still open.
 The [README](../../README.md) says how to use the package. This folder says
 why.
 
-These files are maintained in the maintainer's development repository and
-copied here with each release. A change made here directly is replaced by the
-next release. Open an issue or a pull request, and the maintainer ports
-accepted changes.
+These files are maintained here, in
+[osdlc/osdlc](https://github.com/osdlc/osdlc). Open an issue or a pull request
+there.
 
 ## Layout
 

@@ -22,6 +22,7 @@ its leader: members it started stay in the group after it exits.
 - With `processGroup: true`, the runner's direct child is the leader of a new
   group. Signalling `-pid` reaches the whole group; signalling `pid` reaches
   only the leader.
-- A managed group stays registered after its leader exits, until no member is
-  left. [Signal forwarding](TM-05-signal-forwarding.md) can then still reach a
-  member that outlived the leader.
+- A group stays registered after its leader exits, until no member is left.
+  This holds for the async and managed runners.
+  [Signal forwarding](TM-05-signal-forwarding.md) can then still reach a member
+  that outlived the leader.

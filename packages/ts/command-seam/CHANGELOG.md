@@ -40,9 +40,10 @@ These exports are experimental (see the README's Stability section).
   `undefined`. A host that runs one command after another checks it to stop.
 - `forwardedExitCode()`: `128 + signal number` for `forwardedSignal()`, or
   `undefined`. A host that sets its own exit code keeps this one over it.
-- `liveProcessGroups()`: the pids of the groups currently registered. An
-  aborted run's group stays registered until it is empty, so forwarding still
-  reaches a member waiting for the `SIGKILL` follow-up.
+- `liveProcessGroups()`: the pids of the groups currently registered. A group
+  stays registered until it is empty, also after its run settles or its
+  leader exits, so forwarding still reaches a background member or one
+  waiting for the `SIGKILL` follow-up.
 
 ## [0.3.0] - 2026-10-15
 

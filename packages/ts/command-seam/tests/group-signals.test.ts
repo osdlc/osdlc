@@ -41,7 +41,7 @@ async function startHost(extra: string[] = []) {
 }
 
 test.skipIf(!posix)(
-  'the async door registers a group and unregisters it when the run settles',
+  'the async runner registers a group and unregisters it when the run settles',
   async () => {
     const before = liveProcessGroups().length
     const run = spawnRunnerAsync('sh').run(['-c', 'sleep 0.3'], { cwd: CWD, processGroup: true })
@@ -58,7 +58,7 @@ test.skipIf(!posix)('a run without processGroup is not registered', async () => 
   await run
 })
 
-test.skipIf(!posix)('the managed door registers a group until the leader exits', async () => {
+test.skipIf(!posix)('the managed runner registers a group until the leader exits', async () => {
   const before = liveProcessGroups().length
   const h = managedProcessRunner('sh').run(['-c', 'sleep 30'], { cwd: CWD, processGroup: true })
   expect(liveProcessGroups()).toContain(h.pid)
@@ -88,6 +88,25 @@ for (const sig of ['SIGTERM', 'SIGINT', 'SIGHUP'] as const) {
     20_000,
   )
 }
+
+test.skipIf(!posix)(
+  'an async group stays registered after the run settles, so SIGTERM still kills a background member',
+  async () => {
+    const { host, ready } = await startHost(['--async-background'])
+    const exited = new Promise<number | null>((res) => host.on('exit', (code) => res(code)))
+    const { grandchild } = await ready
+    try {
+      expect(alive(grandchild)).toBe(true)
+      host.kill('SIGTERM')
+      expect(await exited).toBe(143)
+      expect(await gone(grandchild)).toBe(true)
+    } finally {
+      reap(grandchild)
+      host.kill('SIGKILL')
+    }
+  },
+  20_000,
+)
 
 test.skipIf(!posix)(
   'a grandchild that ignores SIGTERM gets SIGKILL after the grace',

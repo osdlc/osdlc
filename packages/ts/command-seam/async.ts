@@ -190,11 +190,7 @@ export function spawnRunnerAsync(binary: string): AsyncCommandRunner {
         // Set once the child exits; a later timeout or abort reports this
         // rather than a stand-in, since the command did answer.
         let exited: Omit<CommandResult, 'stdout' | 'stderr'> | undefined
-        // Set by an abort: its group gets SIGKILL up to 1 s after the settle,
-        // so it stays registered until it is empty.
-        let aborted = false
         const onAbort = () => {
-          aborted = true
           signalChild('SIGTERM')
           // Outlives the settle on purpose. Not unref'd: an unref'd timer
           // does not reliably fire on every Bun version. Cleared when the
@@ -226,9 +222,11 @@ export function spawnRunnerAsync(binary: string): AsyncCommandRunner {
         const finish = (result: Omit<CommandResult, 'stdout' | 'stderr'>, error?: string) => {
           if (settled) return
           settled = true
-          if (untrackGroup !== undefined) {
-            if (aborted && child.pid !== undefined) releaseWhenEmpty(child.pid, untrackGroup)
-            else untrackGroup()
+          // The group can outlive the settle: a background member, or an aborted
+          // group waiting for its SIGKILL. It stays registered until it is empty,
+          // so a signal to the host still reaches the rest.
+          if (untrackGroup !== undefined && child.pid !== undefined) {
+            releaseWhenEmpty(child.pid, untrackGroup)
           }
           if (timer !== undefined) clearTimeout(timer)
           if (graceTimer !== undefined) clearTimeout(graceTimer)
