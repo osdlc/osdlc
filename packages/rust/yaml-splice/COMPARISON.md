@@ -8,7 +8,8 @@ top-level keys of a mapping and checks its result.
 
 - yaml-edit 0.3.2 (crates.io, 2026-09-17).
 - yaml-edit main at commit 57f9106 (2026-10-17). Main still reports version 0.3.2.
-- yaml-splice 0.2.1. The harness uses it by path, so the numbers hold for yaml-splice at this commit.
+- yaml-splice 0.2.1. The harness uses it by path, so the numbers hold for yaml-splice at this
+  commit.
 - Resolved dependencies of yaml-edit: rowan 0.16.1, text-size 1.1.1.
 
 ## Method
@@ -69,8 +70,10 @@ quotes on both (example 5).
   and [#127](https://github.com/jelmer/yaml-edit/pull/127) (block and single-quoted scalar
   rendering). Later results may differ.
 - Reported to yaml-edit on 2026-10-17 and re-checked on yaml-edit main 282046d7c:
-  [#220](https://github.com/jelmer/yaml-edit/issues/220) (example 1, lost key), [#221](https://github.com/jelmer/yaml-edit/issues/221) (examples 2 and 3, comment becomes value
-  text) and [#222](https://github.com/jelmer/yaml-edit/issues/222) (example 4, `|+` loses a line break).
+  [#220](https://github.com/jelmer/yaml-edit/issues/220) (example 1, lost key),
+  [#221](https://github.com/jelmer/yaml-edit/issues/221) (examples 2 and 3, comment becomes value
+  text) and [#222](https://github.com/jelmer/yaml-edit/issues/222) (example 4, `|+` loses a line
+  break).
 
 ## Examples
 
@@ -87,12 +90,14 @@ Example 4 is a sweep sample. All give the same result on 0.3.2 and on main.
    - Edit: Set `first` = `"line1\nline2\n"`
    - yaml-edit: `first: |\n  line1\n  line2 # c\nsecond: x\n`
    - yaml-splice: `first: | # c\n  line1\n  line2\nsecond: x\n`
-3. Less-indented comment becomes value text ([#221](https://github.com/jelmer/yaml-edit/issues/221)).
+3. Less-indented comment becomes value text
+   ([#221](https://github.com/jelmer/yaml-edit/issues/221)).
    - Input: `first: |\n    x\n  # note\nsecond: 1\n`
    - Edit: Set `first` = `"a\nb\n"`
    - yaml-edit: `first: |\n  a\n  b  # note\nsecond: 1\n`
    - yaml-splice: refused
-4. Keep-chomp (`|+`) value loses a trailing line break ([#222](https://github.com/jelmer/yaml-edit/issues/222)).
+4. Keep-chomp (`|+`) value loses a trailing line break
+   ([#222](https://github.com/jelmer/yaml-edit/issues/222)).
    - Input: `first: 1\n\nsecond: 1\nlast: end # t\n`
    - Edit: Set `last` = `"kept\n\n\n"`
    - yaml-edit: `first: 1\n\nsecond: 1\nlast: |+\n  kept\n\n # t\n` (` # t` is indented less than
