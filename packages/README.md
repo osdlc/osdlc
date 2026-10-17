@@ -48,9 +48,8 @@ Open issues and pull requests here.
 2. When the pull request merges, `packages-publish.yml` opens or updates one
    "Version Packages" pull request. It bumps each library's version and
    writes its CHANGELOG from the pending changesets.
-3. The Version Packages pull request is opened by GitHub Actions, so its
-   checks wait for approval. Select "Approve workflows to run" on it, then
-   merge it when `test` and `verify` pass.
+3. The osdlc-release GitHub App opens the Version Packages pull request, so
+   its checks start on their own. Merge it when `test` and `verify` pass.
 4. On that merge, `packages-publish.yml` runs the full `verify` matrix and
    the package checks again, then publishes every bumped library. A version
    already on npm is skipped, so re-running a failed run is safe. If
