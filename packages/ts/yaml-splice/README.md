@@ -40,6 +40,8 @@ ESM only. Node.js 22 or later, or Bun.
 ## Quick start
 
 ```ts
+import assert from 'node:assert/strict'
+
 import { editYaml } from '@osdlc/yaml-splice'
 
 const source = new TextEncoder().encode("title: 'Draft'  # shown in the header\nstatus: draft\n")
@@ -49,8 +51,8 @@ const out = editYaml(source, [
   { Rename: { from: 'title', to: 'name' } },
 ])
 
-new TextDecoder().decode(out.bytes) // "name: 'Draft'  # shown in the header\nstatus: done\n"
-out.changed // true
+assert.equal(new TextDecoder().decode(out.bytes), "name: 'Draft'  # shown in the header\nstatus: done\n")
+assert.equal(out.changed, true)
 ```
 
 More in `examples/`: setting values, removing and renaming in one batch, and
