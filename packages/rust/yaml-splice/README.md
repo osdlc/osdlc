@@ -142,11 +142,13 @@ byte span.
 |---|---|---|---|---|
 | Keeps comments and formatting outside the edit | yes | yes | yes | no |
 | Edits nested keys by path | no | yes | yes | yes |
-| Byte-identical no-op when nothing changes | yes | not stated | not stated | no |
+| Byte-identical no-op when nothing changes | yes | no | not stated | no |
 | New values written as the npm `yaml` package writes them | yes | no | no | no |
-| Checks that other keys did not change | yes | not stated | not stated | n/a |
+| Checks that other keys did not change | yes | no | not stated | n/a |
 
 The other columns are from each crate's crates.io description and docs.
+The `yaml-edit` cells for the no-op and result-check rows come from a measurement, described in
+[COMPARISON.md](https://github.com/osdlc/osdlc/blob/main/packages/rust/yaml-splice/COMPARISON.md).
 `yaml-edit` is a lossless syntax tree for general YAML editing. `yamlpatch` applies patch
 operations at paths and keeps formatting. Pick one of them when you edit
 nested structure. Pick yaml-splice when you change a few top-level fields and
