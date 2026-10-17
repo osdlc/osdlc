@@ -1,33 +1,15 @@
 # Releases the libraries under packages/ts/ with Changesets on every push to
-# main.
+# main: the full packages-ci.yml matrix, then either the Version Packages pull
+# request or the publish of the versions not on npm yet. packages/README.md
+# describes the release steps.
 #
-# 1. `verify` runs the full packages-ci.yml matrix on the pushed commit.
-# 2. `select-mode` asks Changesets what to do:
-#    - `version`: changesets are pending. `version` opens or updates the one
-#      "Version Packages" pull request, which bumps versions and writes the
-#      CHANGELOGs.
-#    - `publish`: no changesets, and some package version is not on npm yet.
-#      This is the merge of the Version Packages pull request.
-#    - `none`: nothing to do.
-# 3. `pack` builds, runs check-packages.mjs and packs the tarballs.
-# 4. `publish` publishes those tarballs, then pushes a `<name>@<version>` tag
-#    and a GitHub release for each. A version already on npm is skipped, so a
-#    re-run is safe.
-#
-# npm auth is trusted publishing (OIDC) only, with provenance. No npm token is
-# stored. Each package's trusted publisher on npmjs.com names repository
-# osdlc/osdlc and this file, packages-publish.yml, so the file keeps its name
-# and the `publish` job stays in it. Only `publish` gets `id-token: write`.
-#
-# npm can only set up trusted publishing on a package that already exists. A
-# new package needs a one-time placeholder publish and trusted-publisher setup
-# by the owner first; `pack` stops the run while a package is not on npm.
-#
-# The Version Packages pull request is opened with GITHUB_TOKEN, so its CI runs
-# wait for approval: select "Approve workflows to run" on the pull request.
+# npm auth is trusted publishing (OIDC) only, with provenance. Each package's
+# trusted publisher on npmjs.com names this file, packages-publish.yml, so the
+# file keeps its name and the `publish` job stays in it. Only `publish` gets
+# `id-token: write`.
 #
 # The repository setting "Allow GitHub Actions to create and approve pull
-# requests" must be on.
+# requests" must be on, or `version` cannot open its pull request.
 #
 # Every action is pinned to a commit SHA; the comment names its release.
 name: packages-publish
@@ -119,17 +101,21 @@ jobs:
           package-manager-cache: false
 
       - name: Install
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile --ignore-scripts
 
-      # Trusted publishing cannot create a package. See the header.
+      # Trusted publishing cannot create a package; see packages/README.md.
       - name: Refuse a package that is not on npm yet
         run: |
           set -euo pipefail
           for manifest in packages/ts/*/package.json; do
             name="$(node -p "const p = require('./$manifest'); p.private ? '' : p.name")"
             [ -n "$name" ] || continue
-            if ! npm view "$name" name >/dev/null 2>&1; then
-              echo "::error::$name is not on npm yet. The owner publishes a placeholder once and sets up its trusted publisher. See packages/README.md."
+            if ! err="$(npm view "$name" name 2>&1 >/dev/null)"; then
+              if grep -q E404 <<<"$err"; then
+                echo "::error::$name is not on npm yet. The owner publishes a placeholder once and sets up its trusted publisher. See packages/README.md."
+              else
+                echo "::error::npm view $name failed: $err"
+              fi
               exit 1
             fi
           done
@@ -166,21 +152,16 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
           package-manager-cache: false
 
-      # pnpm 10 hands a tarball to `npm publish`, and npm 11.5.1 or later is
-      # needed for trusted publishing. Node 24 bundles a newer npm today.
-      - name: Ensure npm 11.5.1 or later
+      # pnpm 10 hands a tarball to `npm publish`, and trusted publishing needs
+      # npm 11.5.1 or later.
+      - name: Install npm 11.19.1
         run: |
           set -euo pipefail
-          if ! node -e '
-            const [a, b, c] = process.argv[1].split(".").map(Number)
-            process.exit(a > 11 || (a === 11 && (b > 5 || (b === 5 && c >= 1))) ? 0 : 1)
-          ' "$(npm --version)"; then
-            npm install -g npm@11.19.1
-          fi
+          npm install -g npm@11.19.1
           echo "npm $(npm --version)"
 
       - name: Install
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile --ignore-scripts
 
       - uses: changesets/action/publish@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
         env:

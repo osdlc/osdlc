@@ -61,9 +61,10 @@ npm can only set up trusted publishing on a package that already exists, so
 CI cannot publish a new library's first version. Before its first release:
 
 1. The owner publishes a placeholder version by hand, `0.0.1-stage`, with
-   `npm publish --access public --tag stage`. npm reserves `0.0.0-stage`, and
-   a prerelease needs `--tag` so it does not become `latest`. The placeholder
-   stays on npm and is harmless.
+   `npm publish --access public --tag stage`. npm reserves `0.0.0-stage`.
+   npm points `latest` at a new package's first version even with `--tag`,
+   so the placeholder is `latest` until the first CI release moves it. The
+   placeholder stays on npm.
 2. On npmjs.com, under the package's Settings, Trusted publisher, the owner
    adds repository `osdlc/osdlc` and workflow `packages-publish.yml`.
 
