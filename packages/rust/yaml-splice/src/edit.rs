@@ -25,8 +25,8 @@ use saphyr_parser::{Event, Parser};
 
 use crate::parse::{self, KeySpan, ParseError, Parsed};
 use crate::render;
-use crate::splice::{apply_eol, line_indent, line_start};
-use crate::value::Value;
+use crate::splice::{apply_eol, fit_assignment, line_indent, line_start};
+use crate::value::{Mapping, Value};
 
 /// The UTF-8 byte-order mark, `EF BB BF`.
 const BOM: &str = "\u{feff}";
@@ -432,21 +432,23 @@ fn apply_one(
         FieldEdit::Rename { from, to } => rename(current, &parsed, from, to, opts, bom_len)?,
     };
     if changed {
-        check_other_keys_unchanged(&parsed.root, &next, edit, opts)?;
+        check_result(&parsed.root, &next, edit, opts)?;
     }
     Ok((next, changed))
 }
 
-/// Refuses an edit that changed the value or order of any key it does not
-/// address.
+/// Refuses an edit whose parsed result is not what the edit asked for: the
+/// addressed key must hold the new value (`Set`), be gone (`Remove`) or hold
+/// its old value under the new name (`Rename`), and every other key must keep
+/// its value and order.
 ///
-/// The span arithmetic is meant to make that impossible, but YAML has corners
-/// where bytes left in place change meaning once a neighbour moves: blank
-/// lines after a keep-chomped block scalar (`|+`) belong to it, so removing
-/// the next key can hand that scalar the removed value's trailing blank line.
-/// Checking the parsed result turns such a case into a refusal rather than a
-/// silent change.
-fn check_other_keys_unchanged(
+/// The span arithmetic is meant to make a wrong result impossible, but YAML
+/// has corners where bytes left in place change meaning once a neighbour
+/// moves: blank lines after a keep-chomped block scalar (`|+`) belong to it,
+/// so removing the next key can hand that scalar the removed value's trailing
+/// blank line. Checking the parsed result turns such a case into a refusal
+/// rather than a silent change.
+fn check_result(
     before: &Value,
     after_src: &str,
     edit: &FieldEdit,
@@ -455,26 +457,78 @@ fn check_other_keys_unchanged(
     let after = parse::parse_with_spans(after_src).map_err(|e| EditError::InvalidResult {
         message: e.to_string(),
     })?;
+    let empty = Mapping::new();
+    let before = before.as_mapping().unwrap_or(&empty);
+    let after = after.root.as_mapping().unwrap_or(&empty);
     let addressed: &[&str] = match edit {
         FieldEdit::Set { key, .. } | FieldEdit::Remove { key } => &[key.as_str()],
         FieldEdit::Rename { from, to } => &[from.as_str(), to.as_str()],
     };
-    let others = |root: &Value| -> Vec<(String, Value)> {
-        root.as_mapping()
-            .map(|m| {
-                m.iter()
-                    .filter(|(k, _)| !addressed.iter().any(|a| key_eq(k, a, opts)))
-                    .map(|(k, v)| (k.to_string(), v.clone()))
-                    .collect()
-            })
-            .unwrap_or_default()
+    let others = |m: &'_ Mapping| -> Vec<(String, Value)> {
+        m.iter()
+            .filter(|(k, _)| !addressed.iter().any(|a| key_eq(k, a, opts)))
+            .map(|(k, v)| (k.to_string(), v.clone()))
+            .collect()
     };
-    if others(before) == others(&after.root) {
-        Ok(())
-    } else {
+    let (b, a) = (others(before), others(after));
+    let others_kept = b.len() == a.len()
+        && b.iter()
+            .zip(&a)
+            .all(|((kb, vb), (ka, va))| kb == ka && same_value(vb, va));
+    let matching = |m: &Mapping, key: &str| -> Vec<Value> {
+        m.iter()
+            .filter(|(k, _)| key_eq(k, key, opts))
+            .map(|(_, v)| v.clone())
+            .collect()
+    };
+    let addressed_ok = match edit {
+        FieldEdit::Set { key, value } => {
+            matches!(matching(after, key).as_slice(), [v] if same_value(v, value))
+        }
+        FieldEdit::Remove { key } => matching(after, key).is_empty(),
+        FieldEdit::Rename { from, to } => {
+            let old = matching(before, from);
+            let new: Vec<Value> = after
+                .iter()
+                .filter(|(k, _)| *k == to.as_str())
+                .map(|(_, v)| v.clone())
+                .collect();
+            let from_gone = key_eq(from, to, opts) || matching(after, from).is_empty();
+            from_gone && matches!((old.as_slice(), new.as_slice()), ([o], [n]) if same_value(o, n))
+        }
+    };
+    if !others_kept {
         Err(EditError::InvalidResult {
             message: "the edit would change a key it does not address".to_string(),
         })
+    } else if !addressed_ok {
+        Err(EditError::InvalidResult {
+            message: "the edited key would not read back as the edit asked".to_string(),
+        })
+    } else {
+        Ok(())
+    }
+}
+
+/// Value equality as a reader of the YAML sees it: `.nan` equals `.nan`, and
+/// a float with an integer value equals that integer (`1.0` renders as `1`,
+/// which parses back as an integer).
+fn same_value(a: &Value, b: &Value) -> bool {
+    match (a, b) {
+        (Value::Float(x), Value::Float(y)) => x == y || (x.is_nan() && y.is_nan()),
+        // The cast is the comparison: an integer equals the float it converts to.
+        #[allow(clippy::cast_precision_loss)]
+        (Value::Int(i), Value::Float(f)) | (Value::Float(f), Value::Int(i)) => *i as f64 == *f,
+        (Value::Seq(x), Value::Seq(y)) => {
+            x.len() == y.len() && x.iter().zip(y).all(|(x, y)| same_value(x, y))
+        }
+        (Value::Map(x), Value::Map(y)) => {
+            x.len() == y.len()
+                && x.iter()
+                    .zip(y.iter())
+                    .all(|((kx, vx), (ky, vy))| kx == ky && same_value(vx, vy))
+        }
+        _ => a == b,
     }
 }
 
@@ -613,7 +667,11 @@ fn replace_value(
     let text = apply_eol(&text, eol);
     // From just past the `:` — the separator is part of the replaced range so
     // a scalar/collection layout switch is a single edit.
-    let range = span.assign_end..span.value_range.end.max(span.assign_end);
+    let (range, text) = fit_assignment(
+        current,
+        span.assign_end..span.value_range.end.max(span.assign_end),
+        text,
+    );
     let mut out = String::with_capacity(current.len());
     out.push_str(&current[..range.start]);
     out.push_str(&text);
@@ -799,5 +857,45 @@ mod frontmatter_tests {
             edit_yaml(src.as_bytes(), &edits),
             Err(EditError::InvalidResult { .. })
         ));
+    }
+
+    #[test]
+    fn a_nan_neighbour_does_not_block_an_edit() {
+        let src = "n: .nan\nm: [1, .nan, {x: .NaN}]\nt: a\n";
+        let set = [FieldEdit::Set {
+            key: "t".to_string(),
+            value: Value::from("b"),
+        }];
+        let out = edit_yaml(src.as_bytes(), &set).unwrap();
+        assert_eq!(
+            String::from_utf8(out.bytes).unwrap(),
+            "n: .nan\nm: [1, .nan, {x: .NaN}]\nt: b\n"
+        );
+        let remove = [FieldEdit::Remove {
+            key: "t".to_string(),
+        }];
+        assert!(edit_yaml(src.as_bytes(), &remove).unwrap().changed);
+    }
+
+    #[test]
+    fn values_compare_as_a_reader_sees_them() {
+        assert!(same_value(&Value::Float(f64::NAN), &Value::Float(f64::NAN)));
+        assert!(same_value(&Value::Float(1.0), &Value::Int(1)));
+        assert!(!same_value(&Value::Float(1.5), &Value::Int(1)));
+        assert!(same_value(
+            &Value::Seq(vec![Value::Float(f64::NAN)]),
+            &Value::Seq(vec![Value::Float(f64::NAN)])
+        ));
+        assert!(!same_value(&Value::from("1"), &Value::Int(1)));
+    }
+
+    #[test]
+    fn a_float_with_an_integer_value_can_be_set() {
+        let edits = [FieldEdit::Set {
+            key: "f".to_string(),
+            value: Value::Float(2.0),
+        }];
+        let out = edit_yaml(b"f: 1\n", &edits).unwrap();
+        assert_eq!(out.bytes, b"f: 2\n");
     }
 }

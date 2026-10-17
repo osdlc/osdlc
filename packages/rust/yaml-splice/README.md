@@ -105,11 +105,13 @@ byte span.
   whose source is missing (`MissingKey`) or whose destination exists
   (`KeyConflict`).
 - A value the emitter cannot write (`UnrenderableValue`).
-- An edit whose result would not parse, or would change a key the edit does
-  not address (`InvalidResult`). Each edit is checked by parsing its result.
-  One YAML corner needs this: blank lines after a keep-chomped block scalar
-  (`|+`) belong to that scalar, so removing the key after it can change its
-  value. That edit is refused.
+- An edit whose result would not parse, would change a key the edit does not
+  address, or would not read back as the edit asked (`InvalidResult`). Each
+  edit is checked by parsing its result. A few YAML corners need this. Blank
+  lines after a keep-chomped block scalar (`|+`) belong to that scalar, so
+  removing the key after it can change its value, and a new `|+` value
+  followed by a blank line would gain that line. A comment indented less
+  than an old block value can land inside a new one. Those edits are refused.
 
 ## When not to use it
 
@@ -146,7 +148,7 @@ want the smallest possible diff, or output that matches JavaScript's `yaml`.
 | An equal `Set` is a byte-identical no-op | conformance `resent_equal_value_is_a_byte_identical_no_op`, `no_op_does_not_normalize_a_bare_scalar` |
 | A quoted value keeps its trailing comment | conformance `a_quoted_value_keeps_its_trailing_comment` |
 | Block scalars are replaced and removed without their neighbours | conformance `setting_a_block_scalar_keeps_the_next_key_on_its_own_line`, `removing_a_block_scalar_removes_only_its_own_lines` |
-| No edit changes a key it does not address | `neighbours::an_edit_changes_only_the_key_it_addresses` |
+| No edit changes a key it does not address, and each reads back as asked | `neighbours::an_edit_changes_only_the_key_it_addresses` |
 | BOM, CRLF and mixed line endings are kept | conformance `a_bom_is_preserved_and_outside_every_span`, `crlf_line_endings_survive_outside_the_edited_span`, `mixed_line_endings_are_not_normalized` |
 | An appended key uses the document's line ending, and lands before `...` | conformance `an_appended_key_uses_the_documents_line_ending`, `an_append_lands_before_an_explicit_document_end_marker` |
 | `Remove` takes the key, its value and its inline comment | conformance `remove_takes_the_key_its_value_and_its_inline_comment` |
@@ -155,6 +157,8 @@ want the smallest possible diff, or output that matches JavaScript's `yaml`.
 | A batch runs in order and applies all or nothing | conformance `a_batch_applies_in_declared_order_atomically`, `a_later_edit_sees_an_earlier_one`, `a_failing_edit_discards_the_whole_batch` |
 | Unsupported input is refused | conformance `invalid_utf8_is_a_structured_refusal_with_the_offset`, `malformed_yaml_is_a_structured_refusal`, `a_multi_document_stream_is_unsupported`, `a_directive_is_unsupported`, `a_sequence_root_is_a_root_not_mapping_refusal` |
 | A change that would alter a neighbour is refused | `edit::frontmatter_tests::an_edit_that_would_change_a_neighbour_is_refused` |
+| A `.nan` elsewhere does not block an edit | `edit::frontmatter_tests::a_nan_neighbour_does_not_block_an_edit` |
+| A trailing comment moves to the header of a new block value | `splice::tests::a_trailing_comment_moves_to_the_header_of_a_new_block_value` |
 | Hostile input does not panic | `conformance::no_panic_on_hostile_input` |
 | `edit_frontmatter` returns split form | `edit::frontmatter_tests::appending_to_an_unterminated_block_returns_split_form`, `removing_the_last_key_leaves_no_trailing_newline` |
 | New values match the npm `yaml` package | `render::tests`, expected strings captured from `yaml` 2.9.0 |

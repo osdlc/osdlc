@@ -685,18 +685,34 @@ fn top_level_spans(events: &[Ev], src: &str) -> Vec<KeySpan> {
         if value_idx >= events.len() {
             break;
         }
-        let value_start = byte_index(src, events[value_idx].span.start.index());
+        let mut value_start = byte_index(src, events[value_idx].span.start.index());
         let after_value = skip_node(events, value_idx);
         let subtree = &events[value_idx..after_value];
         // An alias is a leaf with source text, exactly like a scalar, so it
         // counts towards the floor that protects real `#` content from being
         // trimmed as a comment.
-        let value_scalar_end = subtree
+        let mut value_scalar_end = subtree
             .iter()
             .filter(|e| matches!(e.kind, EvKind::Scalar(..) | EvKind::Alias(_)))
             .map(|e| scalar_end(src, e))
             .max()
             .unwrap_or(value_start);
+        // An empty block scalar (`a: |` and no content lines) has an empty
+        // span at the start of the next line. Its source text is the header,
+        // from after the colon to the end of the indicator.
+        if subtree.len() == 1 && is_empty_block_scalar(&subtree[0]) {
+            let bytes = src.as_bytes();
+            let mut s = assign_end(src, key_range.end, value_start);
+            while s < bytes.len() && matches!(bytes[s], b' ' | b'\t') {
+                s += 1;
+            }
+            let mut e = s;
+            while e < bytes.len() && !matches!(bytes[e], b' ' | b'\t' | b'\r' | b'\n') {
+                e += 1;
+            }
+            value_start = s;
+            value_scalar_end = e;
+        }
         let value_event_end = subtree
             .iter()
             .map(|e| byte_index(src, e.span.end.index()))
@@ -761,12 +777,31 @@ fn scalar_end(src: &str, ev: &Ev) -> usize {
         .unwrap_or(span_end)
 }
 
+fn is_empty_block_scalar(ev: &Ev) -> bool {
+    matches!(
+        ev.kind,
+        EvKind::Scalar(_, ScalarStyle::Literal | ScalarStyle::Folded, ..)
+    ) && ev.span.start.index() == ev.span.end.index()
+}
+
 /// Moves `end` back over trailing line breaks and blank lines, but never
 /// before `start`. Spaces at the end of the last content line are content and
 /// are kept.
+///
+/// The span can also end part-way into the next line: the parser consumes up
+/// to the scalar's indent of a following, less indented line (a comment, say)
+/// before it sees that the scalar is over. Spaces and tabs that run back to a
+/// line break are stepped over first.
 fn block_scalar_end(bytes: &[u8], start: usize, end: usize) -> usize {
     let mut end = end.min(bytes.len());
     loop {
+        let mut ws = end;
+        while ws > start && matches!(bytes[ws - 1], b' ' | b'\t') {
+            ws -= 1;
+        }
+        if ws < end && ws > start && bytes[ws - 1] == b'\n' {
+            end = ws;
+        }
         let mut e = end;
         if e > start && bytes[e - 1] == b'\n' {
             e -= 1;

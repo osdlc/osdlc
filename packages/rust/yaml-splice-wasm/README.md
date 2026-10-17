@@ -11,7 +11,8 @@ it.
 
 `build.sh` builds the crate for `wasm32-unknown-unknown`, runs `wasm-bindgen
 --target nodejs` and `wasm-opt -Oz`, and writes the result to
-`packages/ts/yaml-splice/wasm/` (set `OUT_DIR` to write elsewhere). It needs:
+`packages/ts/yaml-splice/wasm/`, where the npm package will live once it
+moves to this repo (set `OUT_DIR` to write elsewhere). It needs:
 
 - the toolchain pinned in `packages/rust/rust-toolchain.toml`, with the
   target added: `rustup target add wasm32-unknown-unknown`;

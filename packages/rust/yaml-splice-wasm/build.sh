@@ -4,7 +4,9 @@
 #   cargo build --release --target wasm32-unknown-unknown   (the cdylib)
 #     -> wasm-bindgen --target nodejs                        (JS/TS glue)
 #       -> wasm-opt -Oz                                      (size)
-#         -> packages/ts/yaml-splice/wasm/                   (the npm package's wasm/)
+#         -> $OUT_DIR, default packages/ts/yaml-splice/wasm/ (the npm package's
+#            wasm/; that package is not in this repo yet, so set OUT_DIR or
+#            the directory is created)
 #
 # PINNED TOOL VERSIONS. The artifact is only reproducible against these:
 #   * wasm-bindgen CLI : 0.2.126   (MUST equal the wasm-bindgen crate pin in
@@ -75,9 +77,10 @@ mv "$BG_WASM.tmp" "$BG_WASM"
 
 # wasm-bindgen's nodejs target emits CommonJS glue (require/__dirname/exports).
 # The TS package is "type": "module", so mark this dir CommonJS or Node reads
-# the .js as ESM and the glue breaks. Emitted here (not committed by hand) so
-# the `rm -rf` above never strips it and the drift diff stays reproducible.
-printf '{ "type": "commonjs" }\n' > "$OUT_DIR/package.json"
+# the .js as ESM and the glue breaks. Emitted here (not written by hand) so
+# the `rm -rf` above never strips it and a rebuild reproduces it, in the
+# layout a formatter gives it.
+printf '{\n  "type": "commonjs"\n}\n' > "$OUT_DIR/package.json"
 
 echo "done. artifact:"
 ls -la "$OUT_DIR"

@@ -9,7 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [0.2.1](https://github.com/osdlc/osdlc/releases/tag/yaml-splice/v0.2.1) - 2026-10-17
 
-First release on crates.io. Versions 0.1.0 to 0.2.0 were not published.
+First release on crates.io. Earlier versions, including an internal 0.2.1, were
+not published.
 
 ### Added
 
@@ -21,8 +22,8 @@ First release on crates.io. Versions 0.1.0 to 0.2.0 were not published.
 - `edit_frontmatter` and `edit_frontmatter_with`: the same for a Markdown
   frontmatter block in split form (no final line ending).
 - `EditError`: every refusal as a value, with byte spans where known. An edit
-  whose result would not parse, or would change a key it does not address, is
-  refused as `InvalidResult`.
+  whose result would not parse, would change a key it does not address, or
+  would not read back as asked, is refused as `InvalidResult`.
 - `Value` and `Mapping`: an insertion-ordered value model, with a conversion
   from `serde_json::Value`.
 - `parse`, `render` and `splice` modules (unstable): the span-keeping parser,

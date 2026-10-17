@@ -45,6 +45,7 @@
 use crate::parse::{self, ParseError};
 use crate::render::{self, RenderError};
 use crate::value::Value;
+use std::ops::Range;
 
 /// Why a splice failed.
 ///
@@ -131,7 +132,8 @@ pub fn splice_keys(yaml: &str, edits: Vec<(String, Replacement)>) -> Result<Stri
                 let text = render_assignment(&replacement, &key_indent)?;
                 // From just past the `:` — see `KeySpan::assign_end` for why
                 // the separator has to be part of the replaced range.
-                applied.push((
+                applied.push(fit_assignment(
+                    yaml,
                     span.assign_end..span.value_range.end.max(span.assign_end),
                     text,
                 ));
@@ -249,6 +251,34 @@ fn render_assignment(replacement: &Replacement, key_indent: &str) -> Result<Stri
         // scalar-vs-block layout decision.
         Replacement::Value(v) => render::assignment(v, key_indent),
     }
+}
+
+/// Where a rendered assignment goes: `range` of `src`, widened when needed.
+///
+/// A value that renders over several lines cannot keep the text that follows
+/// the old value on its line (a trailing `# comment`): left there it would
+/// land on the new value's last line and become content. That text is moved
+/// to the end of the new value's first line, where a comment is allowed after
+/// a block indicator or an empty `key:`.
+pub(crate) fn fit_assignment(
+    src: &str,
+    range: Range<usize>,
+    text: String,
+) -> (Range<usize>, String) {
+    let Some((head, rest)) = text.split_once('\n') else {
+        return (range, text);
+    };
+    let line_end = src[range.end..]
+        .find(['\r', '\n'])
+        .map_or(src.len(), |i| range.end + i);
+    let tail = &src[range.end..line_end];
+    if tail.is_empty() {
+        return (range, text);
+    }
+    let (head, eol) = head
+        .strip_suffix('\r')
+        .map_or((head, "\n"), |h| (h, "\r\n"));
+    (range.start..line_end, format!("{head}{tail}{eol}{rest}"))
 }
 
 /// The leading whitespace of the line `pos` sits on.
@@ -444,6 +474,41 @@ status: draft
         let src = "body: |\n  first\n  second\nnext: 2";
         assert_eq!(splice_key(src, "body", s("x")).unwrap(), "body: x\nnext: 2");
         assert_eq!(remove_key(src, "body").unwrap(), "next: 2");
+    }
+
+    #[test]
+    fn a_less_indented_comment_after_a_block_scalar_is_kept() {
+        let src = "a: |\n    x\n  # note\nb: 1";
+        assert_eq!(
+            splice_key(src, "a", s("Z")).unwrap(),
+            "a: Z\n  # note\nb: 1"
+        );
+        assert_eq!(remove_key(src, "a").unwrap(), "  # note\nb: 1");
+    }
+
+    #[test]
+    fn a_trailing_comment_moves_to_the_header_of_a_new_block_value() {
+        let src = "a: x # why\nb: 1";
+        assert_eq!(
+            splice_key(src, "a", s("l1\nl2\n")).unwrap(),
+            "a: | # why\n  l1\n  l2\nb: 1"
+        );
+    }
+
+    #[test]
+    fn a_keep_chomped_value_keeps_its_trailing_line_breaks() {
+        let src = "a: x\nb: 1";
+        assert_eq!(
+            splice_key(src, "a", s("kept\n\n")).unwrap(),
+            "a: |+\n  kept\n\nb: 1"
+        );
+    }
+
+    #[test]
+    fn an_empty_block_scalar_is_replaced_and_removed() {
+        let src = "a: |\nb: 1";
+        assert_eq!(splice_key(src, "a", s("Z")).unwrap(), "a: Z\nb: 1");
+        assert_eq!(remove_key(src, "a").unwrap(), "b: 1");
     }
 
     #[test]

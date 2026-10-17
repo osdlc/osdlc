@@ -1,5 +1,5 @@
 # The wasm-bindgen wrapper over yaml-splice: the WebAssembly half of the
-# `@sksizer/yaml-splice` npm package. Not published to crates.io. build.sh
+# yaml-splice npm package. Not published to crates.io. build.sh
 # builds it for wasm32-unknown-unknown.
 [package]
 name = "yaml-splice-wasm"

@@ -130,10 +130,10 @@ pub fn render_value(value: &Value, opts: EmitOptions) -> Result<String, RenderEr
         in_flow: false,
         opts,
     };
+    // `yaml@2` always ends the document with a line break, even after a
+    // keep-chomped (`|+`) scalar whose own text already ends in one.
     let mut out = stringify(value, &ctx)?;
-    if !out.ends_with('\n') {
-        out.push('\n');
-    }
+    out.push('\n');
     Ok(out)
 }
 
@@ -151,7 +151,9 @@ pub(crate) fn assignment(value: &Value, key_indent: &str) -> Result<String, Rend
     wrapper.insert("k", value.clone());
     let rendered = render_value(&Value::Map(wrapper), EmitOptions::line_width_0())?;
     let body = rendered.strip_prefix("k:").unwrap_or(&rendered);
-    let body = body.trim_end_matches('\n');
+    // Only the final line break is the emitter's: further ones are the
+    // content of a keep-chomped (`|+`) scalar.
+    let body = body.strip_suffix('\n').unwrap_or(body);
     let (raw, block) = match body.strip_prefix('\n') {
         Some(rest) => (rest.to_string(), true),
         None => (body.strip_prefix(' ').unwrap_or(body).to_string(), false),
