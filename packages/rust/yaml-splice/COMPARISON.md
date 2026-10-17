@@ -68,29 +68,31 @@ quotes on both (example 5).
   scalar), [#126](https://github.com/jelmer/yaml-edit/pull/126) (value extraction of block scalars)
   and [#127](https://github.com/jelmer/yaml-edit/pull/127) (block and single-quoted scalar
   rendering). Later results may differ.
-- No upstream reports have been filed with yaml-edit yet.
+- Reported to yaml-edit on 2026-10-17 and re-checked on yaml-edit main 282046d7c:
+  [#220](https://github.com/jelmer/yaml-edit/issues/220) (example 1, lost key), [#221](https://github.com/jelmer/yaml-edit/issues/221) (examples 2 and 3, comment becomes value
+  text) and [#222](https://github.com/jelmer/yaml-edit/issues/222) (example 4, `|+` loses a line break).
 
 ## Examples
 
 Outputs are copied from the harness output. Examples 1 to 3 and 5 to 6 are hand-picked cases.
 Example 4 is a sweep sample. All give the same result on 0.3.2 and on main.
 
-1. Lost key.
+1. Lost key ([#220](https://github.com/jelmer/yaml-edit/issues/220)).
    - Input: `first: | # c\n  x\nsecond: 1\n`
    - Edit: Set `first` = `Z`
    - yaml-edit: `first: Z # csecond: 1\n` (the line break is gone, so key `second` is gone)
    - yaml-splice: `first: Z\nsecond: 1\n`
-2. Comment becomes value text.
+2. Comment becomes value text ([#221](https://github.com/jelmer/yaml-edit/issues/221)).
    - Input: `first: a # c\nsecond: x\n`
    - Edit: Set `first` = `"line1\nline2\n"`
    - yaml-edit: `first: |\n  line1\n  line2 # c\nsecond: x\n`
    - yaml-splice: `first: | # c\n  line1\n  line2\nsecond: x\n`
-3. Less-indented comment becomes value text.
+3. Less-indented comment becomes value text ([#221](https://github.com/jelmer/yaml-edit/issues/221)).
    - Input: `first: |\n    x\n  # note\nsecond: 1\n`
    - Edit: Set `first` = `"a\nb\n"`
    - yaml-edit: `first: |\n  a\n  b  # note\nsecond: 1\n`
    - yaml-splice: refused
-4. Keep-chomp (`|+`) value loses a trailing line break.
+4. Keep-chomp (`|+`) value loses a trailing line break ([#222](https://github.com/jelmer/yaml-edit/issues/222)).
    - Input: `first: 1\n\nsecond: 1\nlast: end # t\n`
    - Edit: Set `last` = `"kept\n\n\n"`
    - yaml-edit: `first: 1\n\nsecond: 1\nlast: |+\n  kept\n\n # t\n` (` # t` is indented less than
