@@ -48,12 +48,14 @@ The first release on crates.io.
 
 - **Breaking:** `BaseDirs::from_parts` is no longer public.
 
-## [0.1.0] - 2026-10-06
+## History before the first public release
 
-Developed in a private repository before it moved here. This version was not
-published.
+These versions were never published. They are rebuilt from the git history.
+The crate was developed in a private repository before it moved here.
 
-### Added
+### [0.1.0] - 2026-10-06 (unpublished)
+
+#### Added
 
 - Initial release, split out of a larger directories crate as the generic
   half: machine-local directories addressed on two axes, tier (`vendor()`,
