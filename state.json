@@ -1,12 +1,35 @@
 {
   "schema": 1,
   "pr": 227,
-  "head": null,
-  "base": null,
-  "round": 0,
+  "head": "9a4624261fedd17180df947b49ddf3a3fc11b94e",
+  "base": "9b6f85d431a738c730c7523cfda42250f880d43a",
+  "round": 1,
   "claim": {
     "owner": "Mac.local:claude-r7p2qx",
     "at": "2026-10-17T02:40:47.115Z"
   },
-  "findings": []
+  "findings": [
+    {
+      "id": "r1-1",
+      "round": 1,
+      "path": ".github/workflows/packages-publish.yml",
+      "line": 72,
+      "title": "version job reads the App key as a repo secret; #226 scopes it to environments",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-2",
+      "round": 1,
+      "path": ".github/workflows/packages-publish.yml",
+      "line": 14,
+      "title": "header sentence restates the secret name on line 72",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    }
+  ]
 }
