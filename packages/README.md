@@ -50,6 +50,7 @@ Developed here, in this repository:
 - `packages/ts/command-seam` (`@osdlc/command-seam`)
 - `packages/ts/gfm-table` (`@osdlc/gfm-table`)
 - `packages/rust/etag-write` (`etag-write` on crates.io)
+- `packages/rust/tiered-dirs` (`tiered-dirs` on crates.io)
 - `packages/rust/yaml-splice` (`yaml-splice` on crates.io)
 - `packages/rust/yaml-splice-wasm`, the WebAssembly build of `yaml-splice`
   for its npm package (not published to crates.io)
