@@ -51,9 +51,9 @@ Developed here, in this repository:
 - `packages/rust/etag-write` (`etag-write` on crates.io)
 - `packages/ts/etag-write` (`@osdlc/etag-write` on npm, the crate's TypeScript twin)
 
-The development repository takes each TypeScript library from npm, like any
-other consumer, once the library is on npm. Open issues and pull requests
-here.
+The development repository will take each TypeScript library from npm, like
+any other consumer. Today it still keeps its own copies. Open issues and pull
+requests here.
 
 ### Releasing a TypeScript library
 
