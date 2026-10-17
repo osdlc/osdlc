@@ -1,0 +1,26 @@
+# The wasm-bindgen wrapper over yaml-splice: the WebAssembly half of the
+# `@sksizer/yaml-splice` npm package. Not published to crates.io. build.sh
+# builds it for wasm32-unknown-unknown.
+[package]
+name = "yaml-splice-wasm"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+description = "wasm-bindgen wrapper exposing yaml-splice's edit_yaml to JavaScript and TypeScript over WebAssembly."
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+js-sys = { workspace = true }
+serde_json = { workspace = true }
+# Must equal the wasm-bindgen CLI version build.sh runs; the workspace pins it
+# exactly.
+wasm-bindgen = { workspace = true }
+yaml-splice = { workspace = true }
+
+[lints]
+workspace = true

@@ -1,0 +1,29 @@
+[package]
+name = "yaml-splice"
+version = "0.2.1"
+edition.workspace = true
+rust-version.workspace = true
+description = "Edit top-level fields of a YAML mapping in place: set, remove and rename a key while every other byte, comments, key order and quoting included, stays as it was."
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
+keywords = ["yaml", "frontmatter", "edit", "lossless", "comments"]
+categories = ["parser-implementations", "text-processing", "encoding"]
+include = [
+  "src/**/*.rs",
+  "examples/**/*.rs",
+  "tests/**/*.rs",
+  "tests/fixtures/*.json",
+  "README.md",
+  "CHANGELOG.md",
+  "LICENSE-MIT",
+  "LICENSE-APACHE",
+]
+
+[dependencies]
+saphyr-parser = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[lints]
+workspace = true

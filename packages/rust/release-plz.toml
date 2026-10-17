@@ -20,3 +20,10 @@ release_always = true
 # is not checked.
 semver_check = true
 changelog_update = true
+
+# The wasm-bindgen wrapper is built into an npm package and never released as
+# a crate (`publish = false`). `release = false` keeps it out of the release
+# pull request too, so it gets no version bump, changelog or tag.
+[[package]]
+name = "yaml-splice-wasm"
+release = false
