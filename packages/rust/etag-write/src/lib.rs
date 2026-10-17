@@ -91,6 +91,23 @@ pub enum WriteError {
     },
 }
 
+/// Why a read did not happen.
+///
+/// The `Display` text shows the path with [`Path::display`], which is lossy
+/// for a path that is not UTF-8.
+///
+/// **Stability:** stable in 0.x. The field is not expected to change.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+#[error("io error reading {}: {source}", path.display())]
+pub struct ReadError {
+    /// The path that was read, as given.
+    pub path: PathBuf,
+    /// The underlying error.
+    #[source]
+    pub source: io::Error,
+}
+
 /// The etag of some bytes: lowercase hex sha256.
 ///
 /// **Stability:** stable in 0.x. The etag format will not change.
@@ -114,8 +131,9 @@ pub fn etag(bytes: &[u8]) -> String {
 ///
 /// # Errors
 ///
-/// Any read error other than `NotFound`, such as permission denied. An
-/// unreadable file is never reported as absent.
+/// [`ReadError`] for any read error other than `NotFound`, such as
+/// permission denied. It carries the path. An unreadable file is never
+/// reported as absent.
 ///
 /// # Examples
 ///
@@ -128,10 +146,14 @@ pub fn etag(bytes: &[u8]) -> String {
 ///
 /// std::fs::write(&path, b"hello")?;
 /// assert_eq!(etag_of_file(&path)?, Some(etag(b"hello")));
-/// # Ok::<(), std::io::Error>(())
+/// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
-pub fn etag_of_file(path: &Path) -> io::Result<Option<String>> {
-    Ok(read_or_none(path)?.map(|b| etag(&b)))
+pub fn etag_of_file(path: &Path) -> Result<Option<String>, ReadError> {
+    let bytes = read_or_none(path).map_err(|source| ReadError {
+        path: path.to_path_buf(),
+        source,
+    })?;
+    Ok(bytes.map(|b| etag(&b)))
 }
 
 /// The file's bytes, or `None` if it does not exist.
@@ -866,7 +888,23 @@ mod tests {
         };
         let got = etag_of_file(&p);
         set_mode(&p, 0o600);
-        assert_eq!(got.unwrap_err().kind(), io::ErrorKind::PermissionDenied);
+        let err = got.unwrap_err();
+        assert_eq!(err.source.kind(), io::ErrorKind::PermissionDenied);
+        assert_eq!(err.path, p);
+    }
+
+    #[test]
+    fn read_error_carries_the_path_and_names_it_in_the_message() {
+        let d = tempfile::tempdir().unwrap();
+        // A directory is not a readable file, on every platform.
+        let err = etag_of_file(d.path()).unwrap_err();
+        assert_eq!(err.path, d.path());
+        let msg = err.to_string();
+        assert!(
+            msg.starts_with(&format!("io error reading {}: ", d.path().display())),
+            "got {msg}"
+        );
+        assert!(std::error::Error::source(&err).is_some());
     }
 
     #[cfg(unix)]

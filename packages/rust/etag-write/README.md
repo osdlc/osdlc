@@ -90,7 +90,9 @@ These are the guarantees, and how far the tests go:
 | unreadable | any | `WriteError::Io`, never treated as absent |
 
 `etag_of_file` follows the same rule: a missing file is `Ok(None)`, and any
-other read error is an error.
+other read error is a `ReadError`. `ReadError` carries the path and the
+underlying `io::Error`. Reads and writes have separate error types: `ReadError`
+for `etag_of_file`, `WriteError` for the write functions.
 
 ## Behaviour to know
 
@@ -127,6 +129,7 @@ other read error is an error.
 | A symlink is replaced, not written through, and takes its target's mode | `a_symlink_at_the_target_is_replaced_not_written_through` |
 | Compare-and-swap rules, rows 1 to 6 | `cas_rejects_a_stale_etag_and_accepts_a_fresh_one`, `cas_rejects_a_blind_overwrite`, `cas_creates_when_absent_and_no_etag_is_sent`, `cas_creates_when_the_file_was_deleted_under_us`, `cas_refuses_to_overwrite_an_unreadable_file` |
 | `etag_of_file` on a missing and an unreadable file | `etag_of_file_is_none_for_a_missing_file`, `etag_of_file_is_an_error_for_an_unreadable_file` |
+| `ReadError` carries the path | `read_error_carries_the_path_and_names_it_in_the_message`, `etag_of_file_is_an_error_for_an_unreadable_file` |
 | `write_if_changed` skips identical bytes and leaves mtime alone | `write_if_changed_skips_identical_content` |
 | An unreadable file is never replaced by `write_if_changed` | `write_if_changed_refuses_to_overwrite_an_unreadable_file` |
 | Etags are lowercase hex sha256 | `etag_is_hex_sha256` |
@@ -168,11 +171,12 @@ than one writer edits the same file and a lost update matters.
 
 ## Stability
 
-0.1 is the first release. The crate stays on 0.x for now. The six public items
-(`etag`, `etag_of_file`, `write_atomic`, `write_cas`, `write_if_changed` and
-`WriteError`) are each marked "stable in 0.x" in their docs: they are not
+0.1 is the first release. The crate stays on 0.x for now. The seven public items
+(`etag`, `etag_of_file`, `write_atomic`, `write_cas`, `write_if_changed`,
+`WriteError` and `ReadError`) are each marked "stable in 0.x" in their docs: they are not
 expected to change. `WriteError` is `#[non_exhaustive]`, so a later release can
-add a variant without a breaking change.
+add a variant without a breaking change. `ReadError` is `#[non_exhaustive]`
+too.
 
 ## License
 

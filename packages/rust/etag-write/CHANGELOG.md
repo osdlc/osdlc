@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking:** `etag_of_file` returns `ReadError`, which carries the path,
+  instead of `std::io::Error`. A missing file is still `Ok(None)`. `WriteError`
+  is unchanged.
+
+### Added
+
+- `ReadError`, marked `#[non_exhaustive]`, with the `path` and the `source`
+  `io::Error`.
+
 ## [0.1.0](https://github.com/osdlc/osdlc/releases/tag/etag-write/v0.1.0) - 2026-10-16
 
 First release.
