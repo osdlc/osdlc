@@ -1,14 +1,15 @@
 # yaml-splice compared with yaml-edit
 
 Date: 2026-10-17. This page records one measurement. It is not a ranking. The two crates have
-different goals: yaml-edit edits nested YAML by path and reorders keys, yaml-splice changes
+different goals. yaml-edit edits nested YAML by path and reorders keys. yaml-splice changes
 top-level keys of a mapping and checks its result.
 
 ## What was compared
 
 - yaml-edit 0.3.2 (crates.io, 2026-09-17).
-- yaml-edit main at commit 57f9106 (2026-10-17).
-- yaml-splice 0.2.1.
+- yaml-edit main at commit 57f9106 (2026-10-17). Main still reports version 0.3.2.
+- yaml-splice 0.2.1. The harness uses it by path, so the numbers hold for yaml-splice at this commit.
+- Resolved dependencies of yaml-edit: rowan 0.16.1, text-size 1.1.1.
 
 ## Method
 
@@ -16,33 +17,42 @@ The harness is the crate in [compare/](./compare/README.md). It loads a document
 `YamlFile::from_str`, calls `Mapping::set` or `Mapping::remove` on the root mapping, and prints the
 result. The same edit runs through yaml-splice's `edit_yaml`.
 
-1. 19 hand-picked cases.
+1. 19 hand-picked cases. yaml-edit gives the expected mapping on 16 (on 0.3.2 and on main). Three
+   are real failures (examples 1 to 3). The harness once marked the BOM case wrong on both crates.
+   That was a checker fault, now fixed.
 2. A sweep over the document shapes of `tests/neighbours.rs`: 25 value shapes, every pair in `first`
    and `second`, three separators between them, then `last: end # t`; LF and CRLF. On each of the
    three keys: one Remove and six Sets (`Z`, three multi-line strings, `1.5`, `7`).
-   78,750 edits. The sequence and mapping values that `tests/neighbours.rs` also sets are left
-   out, because the harness sets scalars only.
+   78,750 edits. `tests/neighbours.rs` sets 7 values: it also sets a sequence and a mapping, and
+   it does not set the integer 7. The harness sets scalars only, so it has 6 values.
+   With the Remove that is 7 edits per key instead of 8. 3,750 documents x 3 keys x 8 = 90,000
+   becomes 3,750 x 3 x 7 = 78,750.
 
 An edit is "correct" when the result parses, with yaml-splice's parser, to the original mapping
-with only the addressed key changed. Run against yaml-edit main by changing the `yaml-edit` line in
-`compare/Cargo.toml`.
+with only the addressed key changed. A leading BOM is stripped before the check. Run against
+yaml-edit main by replacing the `yaml-edit` line in `compare/Cargo.toml` with:
+
+```toml
+yaml-edit = { git = "https://github.com/jelmer/yaml-edit", rev = "57f9106451c818c8ef9a85d0fd38185f25cf80fe", default-features = false }
+```
 
 ## Results of the sweep
 
-| | correct | silently wrong | parse errors | panics |
-|---|---|---|---|---|
-| yaml-edit 0.3.2 | 40,952 | 31,624 | 6,174 | 0 |
-| yaml-edit main | 45,360 | 33,390 | 0 | 0 |
-| yaml-splice | 73,820 | 0 | 0 | 0 |
+| | correct | silently wrong | parse errors | panics | refused |
+|---|---|---|---|---|---|
+| yaml-edit 0.3.2 | 40,952 | 31,624 | 6,174 | 0 | 0 |
+| yaml-edit main | 45,360 | 33,390 | 0 | 0 | 0 |
+| yaml-splice | 73,820 | 0 | 0 | 0 | 4,930 |
 
-yaml-splice also refused 4,930 edits. A refusal returns an error and leaves the document alone.
-Correct, wrong, errors and refusals add up to 78,750 for each crate.
+A refusal returns an error and leaves the document alone. The columns add up to 78,750 for each
+crate.
 
 The 0.3.2 parse errors are valid YAML with a comment indented less than a block sequence. Main
 parses them.
 
 No-op check: `Set` of `last` to its current value `end` in 3,750 documents. The result was
-byte-identical in 3,456 on 0.3.2 and in 3,750 on main. A quoted value was re-written without its
+byte-identical in 3,456 on 0.3.2 (the other 294 are the documents 0.3.2 fails to parse) and in all
+3,750 on main. A quoted value was re-written without its
 quotes on both (example 5).
 
 ## Caveats
@@ -53,6 +63,11 @@ quotes on both (example 5).
   of a document. Results read by hand were real changes: a lost key, or a comment turned into value
   text.
 - The shapes come from yaml-splice's own tests, so they favour the cases yaml-splice was built for.
+- yaml-edit has open pull requests on block-scalar rendering and comments that are not in
+  57f9106: [#125](https://github.com/jelmer/yaml-edit/pull/125) (column-0 comment after a block
+  scalar), [#126](https://github.com/jelmer/yaml-edit/pull/126) (value extraction of block scalars)
+  and [#127](https://github.com/jelmer/yaml-edit/pull/127) (block and single-quoted scalar
+  rendering). Later results may differ.
 - No upstream reports have been filed with yaml-edit yet.
 
 ## Examples
@@ -75,12 +90,13 @@ Example 4 is a sweep sample. All give the same result on 0.3.2 and on main.
    - Edit: Set `first` = `"a\nb\n"`
    - yaml-edit: `first: |\n  a\n  b  # note\nsecond: 1\n`
    - yaml-splice: refused
-4. Keep-chomp (`|+`) value loses blank lines, and a comment lands in the value.
+4. Keep-chomp (`|+`) value loses a trailing line break.
    - Input: `first: 1\n\nsecond: 1\nlast: end # t\n`
    - Edit: Set `last` = `"kept\n\n\n"`
-   - yaml-edit: `first: 1\n\nsecond: 1\nlast: |+\n  kept\n\n # t\n`
-   - yaml-splice: refused
-5. Equal value re-quoted (not corruption, but not a no-op).
+   - yaml-edit: `first: 1\n\nsecond: 1\nlast: |+\n  kept\n\n # t\n` (` # t` is indented less than
+     the value, so it is a trailing comment; the value is `"kept\n\n"`, one line break short)
+   - yaml-splice: `first: 1\n\nsecond: 1\nlast: |+ # t\n  kept\n\n\n`
+5. Equal value loses its quotes (not corruption, but not a no-op).
    - Input: `title: 'Draft'   # keep\ntags: [a, b]\n`
    - Edit: Set `title` = `Draft`
    - yaml-edit: `title: Draft   # keep\ntags: [a, b]\n`

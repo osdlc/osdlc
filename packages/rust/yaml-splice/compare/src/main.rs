@@ -1,7 +1,13 @@
 use std::collections::BTreeMap;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::str::FromStr;
-use yaml_splice::{FieldEdit, Mapping, Value, edit_yaml, parse::parse_mapping};
+use yaml_splice::{FieldEdit, Mapping, Value, edit_yaml, parse};
+
+/// The checker's parser. A leading BOM is stripped first, so neither crate is
+/// marked wrong for keeping it.
+fn parse_mapping(s: &str) -> Result<Mapping, parse::ParseError> {
+    parse::parse_mapping(s.strip_prefix('\u{feff}').unwrap_or(s))
+}
 
 #[derive(Clone, Debug)]
 enum Op {
@@ -237,7 +243,8 @@ fn main() {
         mut panics,
         mut noop_identical,
         mut noop_total,
-    ) = (0, 0, 0, 0, 0, 0, 0);
+        mut noop_errors,
+    ) = (0, 0, 0, 0, 0, 0, 0, 0);
     let mut s_correct = 0;
     let mut s_refused = 0;
     let mut s_wrong = 0;
@@ -297,17 +304,18 @@ fn main() {
                     }
                     // no-op: set `last` to its current value "end"
                     noop_total += 1;
-                    if let Ok(t) = ye(&src, &Op::Set("last".into(), NV::S("end"))) {
-                        if t == src {
-                            noop_identical += 1
-                        }
+                    match ye(&src, &Op::Set("last".into(), NV::S("end"))) {
+                        Ok(t) if t == src => noop_identical += 1,
+                        Ok(_) => {}
+                        Err(_) => noop_errors += 1,
                     }
                 }
             }
         }
     }
     println!(
-        "## Neighbours sweep\n\nchecked={checked}\nyaml-edit: correct={correct} wrong(silent)={wrong} error={errs} panic={panics}\nyaml-splice: correct={s_correct} refused={s_refused} wrong(silent)={s_wrong}\nyaml-edit no-op byte-identical: {noop_identical}/{noop_total}\nyaml-edit wrong by op: {wrong_by_value:?}\n"
+        "## Neighbours sweep\n\nchecked={checked}\nyaml-edit: correct={correct} wrong(silent)={wrong} error={errs} panic={panics}\nyaml-splice: correct={s_correct} refused={s_refused} wrong(silent)={s_wrong}\nyaml-edit no-op byte-identical: {noop_identical}/{noop_total} (parse errors: {noop_errors}, non-identical: {})\nyaml-edit wrong by op: {wrong_by_value:?}\n",
+        noop_total - noop_identical - noop_errors
     );
     // breakdown
     let mut by: BTreeMap<String, usize> = BTreeMap::new();
