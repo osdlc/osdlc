@@ -137,8 +137,9 @@ Rust crates are released by `.github/workflows/release-plz.yml` with
 - A pull request with a breaking change sets the crate's new version in the
   crate's `Cargo.toml` itself. Before 1.0, bump the minor: 0.2.2 becomes
   0.3.0. From 1.0, bump the major. Also update the crate's `version` in
-  `[workspace.dependencies]` when it is listed there. The version does not
-  depend on commit titles or on how the pull request is merged.
+  `[workspace.dependencies]` when it is listed there.
+- Do not use `!` or `BREAKING CHANGE` in a pull request title. release-plz
+  would bump the minor for it. The version is set in `Cargo.toml`.
 - A non-breaking change leaves the version alone. release-plz bumps the
   patch in its release pull request.
 - A bumped version is not on crates.io, so the push that merges it starts a
@@ -147,19 +148,24 @@ Rust crates are released by `.github/workflows/release-plz.yml` with
 - Pull requests are squash-merged, and the squash commit takes the pull
   request title. release-plz writes the CHANGELOG from commits, so the title
   becomes a CHANGELOG line. Write it for readers.
-- Do not write an entry under `## [Unreleased]` by hand. release-plz
-  generates it in the release pull request.
-- A pull request that bumps the version adds the CHANGELOG section for it by
-  hand, for example `## [0.3.0] - 2026-10-17`, under `## [Unreleased]`.
-  release-plz keeps a section that is already there. Without it, the
-  GitHub release takes the notes of the previous section, because the
-  release runs before release-plz adds the section. release-plz then adds it
-  in a release pull request after the release.
+- For a change that does not bump the version, do not write a CHANGELOG
+  entry by hand. release-plz generates it in the release pull request.
+- A pull request that bumps the version writes the CHANGELOG section for
+  that version by hand, with its own entries. It goes as its own section,
+  below the `## [Unreleased]` heading, for example
+  `## [0.3.0] - 2026-10-17`. Without it, the GitHub release takes the notes
+  of the previous section, because the release runs before any release pull
+  request.
+- release-plz never adds to a hand-written section. That section is the only
+  record for that version. Approve the release before merging more changes
+  to that crate, or add those changes to the section by hand.
 - The `semver-version` job in `.github/workflows/rust-ci.yml` runs
   cargo-semver-checks on each changed crate that is on crates.io. When it
   finds a breaking change and the version is not bumped, the job fails and
-  names the version to set. cargo-semver-checks misses some breaking
-  changes, such as a changed return type, so reviewers still check.
+  names the version to set. A change to the workspace `Cargo.toml` or
+  `Cargo.lock` checks every published crate. cargo-semver-checks misses some
+  breaking changes, such as a changed return type or a break that comes
+  from a dependency's types, so reviewers still check.
 
 ## Working on a library
 

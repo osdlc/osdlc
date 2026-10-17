@@ -311,11 +311,9 @@ jobs:
           persist-credentials: false
           fetch-depth: 2
 
+      # No build cache: it is saved only on main, and this job runs only on
+      # pull requests.
       - uses: ./.github/actions/rust-toolchain
-
-      - uses: ./.github/actions/rust-build-cache
-        with:
-          key: semver
 
       - uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2.87.28
         with:
