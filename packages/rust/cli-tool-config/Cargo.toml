@@ -1,0 +1,37 @@
+[package]
+name = "cli-tool-config"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+description = "Config files for a command-line tool: a committed project file and a per-machine file, named-path tokens, dotted-key lookup, and the check a command runs for the settings it needs."
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
+keywords = ["config", "cli", "yaml", "settings", "configuration"]
+categories = ["config", "command-line-interface"]
+include = [
+  "src/**/*.rs",
+  "examples/**/*.rs",
+  "README.md",
+  "CHANGELOG.md",
+  "LICENSE-MIT",
+  "LICENSE-APACHE",
+]
+
+[dependencies]
+# Floors the minimal-versions job needs: serde 1.0.220 to match the
+# dev-dependency below, and serde_yaml 0.9.34, since 0.9.0 reads an empty
+# document as an error instead of null.
+serde = "1.0.220"
+serde_yaml = "0.9.34"
+thiserror = { workspace = true }
+tiered-dirs = { workspace = true }
+
+[dev-dependencies]
+# 1.0.220 is the first serde that pins its own serde_derive. With an older
+# serde, the lowest versions resolve a newer serde_derive that does not build.
+serde = { version = "1.0.220", features = ["derive"] }
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

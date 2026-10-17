@@ -47,6 +47,7 @@ Developed here, in this repository:
 - `packages/ts/tsconfig` (`@osdlc/tsconfig`)
 - `packages/ts/prettier-config` (`@osdlc/prettier-config`)
 - `packages/ts/command-seam` (`@osdlc/command-seam`)
+- `packages/rust/cli-tool-config` (`cli-tool-config` on crates.io)
 - `packages/rust/etag-write` (`etag-write` on crates.io)
 - `packages/rust/yaml-splice` (`yaml-splice` on crates.io)
 - `packages/rust/yaml-splice-wasm`, the WebAssembly build of `yaml-splice`

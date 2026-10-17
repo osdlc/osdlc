@@ -9,7 +9,7 @@
 [workspace]
 # resolver 3 picks dependency versions that support `rust-version` (the MSRV).
 resolver = "3"
-members = ["etag-write", "tiered-dirs", "yaml-splice", "yaml-splice-wasm"]
+members = ["cli-tool-config", "etag-write", "tiered-dirs", "yaml-splice", "yaml-splice-wasm"]
 
 [workspace.package]
 edition = "2024"
@@ -32,6 +32,9 @@ tempfile = "3"
 # 2.0.17 is what saphyr-parser 0.0.11 needs. The workspace resolves one
 # thiserror 2.x, so the minimal-versions job needs every member to agree.
 thiserror = "2.0.17"
+# A member crate, also named by version so the published manifest points at
+# crates.io. release-plz publishes it before the crates that depend on it.
+tiered-dirs = { path = "tiered-dirs", version = "0.1" }
 # Must equal the version of the wasm-bindgen CLI that
 # yaml-splice-wasm/build.sh runs, so it is pinned exactly.
 wasm-bindgen = "=0.2.126"
