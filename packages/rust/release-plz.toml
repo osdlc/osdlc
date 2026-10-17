@@ -28,4 +28,3 @@ changelog_update = true
 [[package]]
 name = "yaml-splice-wasm"
 publish = false
-release = false
