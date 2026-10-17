@@ -1,0 +1,11 @@
+# The toolchain for every cargo command run under packages/rust/.
+# https://rust-lang.github.io/rustup/overrides.html#the-toolchain-file
+#
+# An exact version, not `stable`: clippy gains lints between releases and CI
+# runs it with `-D warnings`, so `stable` would turn a commit red on one
+# machine and green on another. Moving to a newer compiler is a commit here.
+# The MSRV (`rust-version` in Cargo.toml) is checked separately in CI.
+[toolchain]
+channel = "1.98.0"
+components = ["rustfmt", "clippy"]
+profile = "minimal"
