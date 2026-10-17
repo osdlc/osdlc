@@ -223,7 +223,7 @@ describe('EditErrorCode', () => {
     )
     const body = /pub enum EditError \{([\s\S]*?)\n\}/.exec(source)?.[1]
     expect(body).toBeDefined()
-    const variants = [...body!.matchAll(/^    ([A-Z][A-Za-z0-9]*) \{/gm)].map((m) => m[1]!)
+    const variants = [...body!.matchAll(/^    ([A-Z][A-Za-z0-9]*)\b/gm)].map((m) => m[1]!)
     expect(variants.length).toBeGreaterThan(0)
     expect([...variants].sort()).toEqual(Object.keys(CODES).sort())
   })

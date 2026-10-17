@@ -35,7 +35,7 @@ created: 2026-10-17
   so a missing `wasm/` would cost every contributor the toolchain, not only
   this package's.
 - Without the path mapping the `.wasm` named the builder's home directory in
-  24 places, and every build machine gave different bytes. With it, the bytes
+  many places, and every build machine gave different bytes. With it, the bytes
   depend only on the pinned tools and the source, so CI can compare the
   rebuild with the commit byte for byte.
 

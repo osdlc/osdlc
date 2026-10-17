@@ -264,8 +264,8 @@ jobs:
       - name: The committed wasm matches the rebuild
         run: |
           set -euo pipefail
-          if ! git diff --exit-code --stat -- packages/ts/yaml-splice/wasm/ \
-            || [ -n "$(git status --porcelain -- packages/ts/yaml-splice/wasm/)" ]; then
+          if [ -n "$(git status --porcelain -- packages/ts/yaml-splice/wasm/)" ]; then
+            git status --short -- packages/ts/yaml-splice/wasm/
             echo "::error::packages/ts/yaml-splice/wasm/ differs from a rebuild. Run packages/rust/yaml-splice-wasm/build.sh and commit the result, or take the rebuilt files from this run's yaml-splice-wasm artifact."
             exit 1
           fi

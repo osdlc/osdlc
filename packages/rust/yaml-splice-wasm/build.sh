@@ -26,11 +26,15 @@
 set -euo pipefail
 
 REQUIRED_WASM_BINDGEN="0.2.126"
+REQUIRED_WASM_OPT="131"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 WORKSPACE="$REPO_ROOT/packages/rust"
 OUT_DIR="${OUT_DIR:-$REPO_ROOT/packages/ts/yaml-splice/wasm}"
+# Absolute, because the build below runs from the workspace.
+mkdir -p "$OUT_DIR"
+OUT_DIR="$(cd "$OUT_DIR" && pwd)"
 TARGET_DIR="${CARGO_TARGET_DIR:-$WORKSPACE/target}"
 CRATE_WASM="$TARGET_DIR/wasm32-unknown-unknown/release/yaml_splice_wasm.wasm"
 
@@ -56,9 +60,16 @@ if [ "$GOT_VERSION" != "$REQUIRED_WASM_BINDGEN" ]; then
   exit 1
 fi
 
+GOT_WASM_OPT="$("$WASM_OPT" --version | awk '{print $3}')"
+if [ "$GOT_WASM_OPT" != "$REQUIRED_WASM_OPT" ]; then
+  echo "error: wasm-opt version mismatch: need $REQUIRED_WASM_OPT, got $GOT_WASM_OPT." >&2
+  echo "       CI compares the built bytes with the committed ones." >&2
+  exit 1
+fi
+
 # --- 1. compile the cdylib to wasm32 ---------------------------------------
 # rustup picks the toolchain from rust-toolchain.toml in the current
-# directory, not from --manifest-path, so run from the workspace. An inherited
+# directory, so run from the workspace. An inherited
 # RUSTUP_TOOLCHAIN would override that file, so drop it.
 cd "$WORKSPACE"
 unset RUSTUP_TOOLCHAIN
@@ -74,7 +85,7 @@ RUSTC_COMMIT="$(rustc -vV | sed -n 's/^commit-hash: //p')"
 export RUSTFLAGS="--remap-path-prefix=${CARGO_HOME:-$HOME/.cargo}=/cargo --remap-path-prefix=$SYSROOT/lib/rustlib/src/rust=/rustc/$RUSTC_COMMIT --remap-path-prefix=$WORKSPACE=/src"
 
 echo "[1/3] cargo build --release --target wasm32-unknown-unknown"
-cargo build --manifest-path "$WORKSPACE/Cargo.toml" --locked \
+cargo build --locked \
   -p yaml-splice-wasm --release --target wasm32-unknown-unknown
 
 # --- 2. generate the nodejs glue -------------------------------------------
@@ -102,10 +113,10 @@ printf '{\n  "type": "commonjs"\n}\n' > "$OUT_DIR/package.json"
 
 # The wasm is committed and published, so it must not name the machine that
 # built it. A path left here means the remapping above missed one.
-LEAKED="$(strings "$BG_WASM" | grep -cE '/Users/|/home/' || true)"
+LEAKED="$(strings "$BG_WASM" | grep -cE -e '/Users/|/home/|/root/' -e "$HOME" -e "$REPO_ROOT" || true)"
 if [ "$LEAKED" != "0" ]; then
   echo "error: $BG_WASM still contains $LEAKED machine path(s):" >&2
-  strings "$BG_WASM" | grep -E '/Users/|/home/' | head -5 >&2
+  strings "$BG_WASM" | grep -E -e '/Users/|/home/|/root/' -e "$HOME" -e "$REPO_ROOT" | head -5 >&2
   exit 1
 fi
 

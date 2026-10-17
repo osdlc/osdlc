@@ -11,7 +11,7 @@ created: 2026-10-17
 
 - The first published version is `0.1.4`. Versions 0.1.0 to 0.1.3 were used
   during development and never published; the CHANGELOG lists them.
-- All seven exports are stable within 0.x: `editYaml`, `FieldEdit`,
+- Every export is stable within 0.x: `editYaml`, `FieldEdit`,
   `EditValue`, `EditOutcome`, `EditError`, `EditErrorCode` and `EditSpan`.
   None is experimental, and the README's experimental list is empty.
 - The owner approved the API for 0.1.4 on 2026-10-17, with these answers:

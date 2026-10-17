@@ -36,10 +36,7 @@ export type FieldEdit =
   | { readonly Remove: { readonly key: string } }
   | { readonly Rename: { readonly from: string; readonly to: string } }
 
-/**
- * The result of an edit batch. A plain object — the bindgen handle has
- * already been freed by the time you hold this.
- */
+/** The result of an edit batch. */
 export interface EditOutcome {
   /** The complete output bytes. On a semantic no-op, byte-identical to input. */
   readonly bytes: Uint8Array
