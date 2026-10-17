@@ -58,6 +58,27 @@ test.skipIf(!posix)('a run without processGroup is not registered', async () => 
   await run
 })
 
+test.skipIf(!posix)('the listeners are armed before a group child is spawned', async () => {
+  // The child can run and the host be signalled before spawn returns.
+  const { spawnTrackedGroup } = await import('../groups.ts')
+  expect(liveProcessGroups()).toEqual([])
+  const uninstall = installGroupSignalForwarding({ exit: () => {} })
+  try {
+    const before = process.listenerCount('SIGTERM')
+    let during = -1
+    const { untrack } = spawnTrackedGroup(() => {
+      during = process.listenerCount('SIGTERM')
+      return { pid: undefined }
+    })
+    expect(during).toBe(before + 1)
+    // No pid, so nothing registered: the listeners go again.
+    expect(untrack).toBeUndefined()
+    expect(process.listenerCount('SIGTERM')).toBe(before)
+  } finally {
+    uninstall()
+  }
+})
+
 test.skipIf(!posix)('the managed runner registers a group until the leader exits', async () => {
   const before = liveProcessGroups().length
   const h = managedProcessRunner('sh').run(['-c', 'sleep 30'], { cwd: CWD, processGroup: true })

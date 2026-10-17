@@ -29,7 +29,7 @@ These exports are experimental (see the README's Stability section).
   `graceMs` (default 1000), then exit with `128 + signal number`. A repeat
   signal escalates to `SIGKILL` at once; an `exit` handler `SIGKILL`s groups
   whose run is still in flight. Listeners are attached only while a group is
-  live, ahead of the host's own. A host with its own listener, `process.once`
+  starting or live, ahead of the host's own. A host with its own listener, `process.once`
   included, keeps the exit; its groups still get `SIGKILL` after `graceMs`, or
   on exit if sooner and the run is in flight. Returns an uninstall function.
   POSIX only; a no-op on Windows. `SIGKILL` of the host still orphans its groups. When

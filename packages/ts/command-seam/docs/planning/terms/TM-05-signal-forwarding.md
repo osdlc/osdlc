@@ -25,8 +25,8 @@ signal and is left as an [orphan](TM-09-orphan.md).
 
 - Opt-in, experimental and POSIX only
   ([D-07](../decisions/D-07-process-groups.md)).
-- The listeners are attached only while a group is live, ahead of the host's
-  own listeners.
+- The listeners are attached only while a group is starting or live, ahead of
+  the host's own listeners.
 - When forwarding is the [exit owner](TM-11-exit-owner.md), it ends the host
   with `128 + signal number` and enters the
   [stopping state](TM-06-stopping-state.md).

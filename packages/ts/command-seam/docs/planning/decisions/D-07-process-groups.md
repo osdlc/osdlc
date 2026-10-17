@@ -71,7 +71,7 @@ server.kill()
 - Forwarding is opt-in because it adds signal listeners to the host. A
   listener replaces the signal's default action, so the package does not add
   one unless the caller asks. The listeners are attached only while a group is
-  live. If the host has its own listener for the signal, the groups are still
+  starting or live. If the host has its own listener for the signal, the groups are still
   killed, but the host's listener decides when to exit.
 - The listener replaces the default action, so the host's code keeps running
   after the signal. A host that awaits one command and then starts the next

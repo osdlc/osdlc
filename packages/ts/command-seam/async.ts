@@ -16,7 +16,7 @@ import {
   groupStartRefusal,
   releaseWhenEmpty,
   settleGroup,
-  trackGroup,
+  spawnTrackedGroup,
 } from './groups.ts'
 import {
   CommandFailed,
@@ -167,12 +167,15 @@ export function spawnRunnerAsync(binary: string): AsyncCommandRunner {
         // Abort is handled below rather than through spawn's `signal` option,
         // which sends one SIGTERM to the direct child only: no SIGKILL
         // follow-up and no group.
-        const child = spawn(binary, argv, {
-          cwd: opts.cwd,
-          detached: group,
-          ...mergedEnv(opts),
-        })
-        const untrackGroup = group && child.pid !== undefined ? trackGroup(child.pid) : undefined
+        const start = () =>
+          spawn(binary, argv, {
+            cwd: opts.cwd,
+            detached: group,
+            ...mergedEnv(opts),
+          })
+        const { child, untrack: untrackGroup } = group
+          ? spawnTrackedGroup(start)
+          : { child: start(), untrack: undefined }
         // Set once this runner signals the child: a group it is stopping stays
         // in flight for the host's exit handler.
         let stopping = false

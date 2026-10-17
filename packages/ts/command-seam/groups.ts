@@ -14,10 +14,10 @@
  * stopping: the runners refuse to start a new group, and
  * {@link forwardedSignal} tells the host's own code to stop.
  *
- * The signal listeners exist only while a group is registered. A JS listener
- * replaces the default "terminate" action and runs only when the event loop
- * turns, so keeping one armed would make a host blocked in a sync spawn ignore
- * a signal it would otherwise die from.
+ * The signal listeners exist only while a group is starting or registered. A
+ * JS listener replaces the default "terminate" action and runs only when the
+ * event loop turns, so keeping one armed would make a host blocked in a sync
+ * spawn ignore a signal it would otherwise die from.
  */
 
 import { constants } from 'node:os'
@@ -26,6 +26,8 @@ const osSignals = constants.signals as Record<string, number>
 
 /** Live group leaders, in start order, and whether each one's run has settled. */
 const live = new Map<number, { settled: boolean }>()
+/** Group spawns in progress: the listeners are armed before their pid is known. */
+let spawning = 0
 
 /**
  * Options for {@link installGroupSignalForwarding}.
@@ -60,7 +62,7 @@ interface Config {
 
 /** Set while forwarding is installed. */
 let config: Config | undefined
-/** Set while the listeners are attached: forwarding installed and a group live. */
+/** Set while the listeners are attached: forwarding installed and a group starting or live. */
 let armed: { off: () => void } | undefined
 /**
  * The first signal forwarded since install whose exit this module owns (the
@@ -85,7 +87,30 @@ export function trackGroup(pid: number): () => void {
   arm()
   return () => {
     live.delete(pid)
-    if (live.size === 0) disarm()
+    disarmIfIdle()
+  }
+}
+
+/**
+ * Start a group leader with `start` and register it. The listeners are armed
+ * before `start` runs: the child can print, and the host be signalled, before
+ * `spawn` returns, and a signal that comes before the listeners would kill the
+ * host by default and orphan the group. `untrack` is `undefined` when the
+ * child got no pid.
+ *
+ * @internal
+ */
+export function spawnTrackedGroup<C extends { readonly pid?: number | undefined }>(
+  start: () => C,
+): { child: C; untrack: (() => void) | undefined } {
+  spawning += 1
+  arm()
+  try {
+    const child = start()
+    return { child, untrack: child.pid === undefined ? undefined : trackGroup(child.pid) }
+  } finally {
+    spawning -= 1
+    disarmIfIdle()
   }
 }
 
@@ -196,7 +221,7 @@ export function forwardedExitCode(): number | undefined {
 }
 
 function arm(): void {
-  if (config === undefined || armed !== undefined || live.size === 0) return
+  if (config === undefined || armed !== undefined || (live.size === 0 && spawning === 0)) return
   const { signals, graceMs, exit } = config
   const onExit = () => {
     // The host is going away: nothing async runs after this, so end every group
@@ -244,6 +269,10 @@ function disarm(): void {
   armed = undefined
 }
 
+function disarmIfIdle(): void {
+  if (live.size === 0 && spawning === 0) disarm()
+}
+
 /** Another listener than ours is attached for `sig`: it owns the exit. */
 function othersListen(sig: NodeJS.Signals): boolean {
   return process.listenerCount(sig) > 1
@@ -264,8 +293,8 @@ function othersListen(sig: NodeJS.Signals): boolean {
  * not leave one behind. A member that a settled run left behind, such as a
  * daemon, outlives the host's exit; a forwarded signal still kills it.
  *
- * The listeners are attached when the first group registers and removed when
- * the last one goes, so a host with no live group keeps each signal's default
+ * The listeners are attached just before the first group starts and removed
+ * when the last one goes, so a host with no live group keeps each signal's default
  * action. If the host has its own listener for the signal (`process.once`
  * counts too), the groups still
  * get `SIGTERM` at once and `SIGKILL` after `graceMs` (or on `exit`, if

@@ -11,7 +11,7 @@
 import { spawn } from 'node:child_process'
 import { constants } from 'node:os'
 
-import { groupStartRefusal, releaseWhenEmpty, settleGroup, trackGroup } from './groups.ts'
+import { groupStartRefusal, releaseWhenEmpty, settleGroup, spawnTrackedGroup } from './groups.ts'
 import { cwdError, mergedEnv, timerMs, type EnvOverrides, type NeverExitedReason } from './sync.ts'
 
 /** Per-call options for a {@link ManagedProcessRunner}. */
@@ -133,16 +133,20 @@ export function managedProcessRunner(binary: string): ManagedProcessRunner {
       if (refusal !== undefined) {
         return { pid: -1, kill: () => {}, exited: Promise.resolve(refusedExit(refusal)) }
       }
-      const child = spawn(binary, argv, {
-        cwd: opts.cwd,
-        detached: group,
-        stdio: 'inherit',
-        ...mergedEnv(opts),
-      })
+      const start = () =>
+        spawn(binary, argv, {
+          cwd: opts.cwd,
+          detached: group,
+          stdio: 'inherit',
+          ...mergedEnv(opts),
+        })
+      // An `unref`'d group is meant to outlive the host, so forwarding must not reap it.
+      const { child, untrack: untrackGroup } =
+        group && opts.unref !== true
+          ? spawnTrackedGroup(start)
+          : { child: start(), untrack: undefined }
       const pid = child.pid ?? -1
       if (opts.unref === true) child.unref()
-      // An `unref`'d group is meant to outlive the host, so forwarding must not reap it.
-      const untrackGroup = group && pid !== -1 && opts.unref !== true ? trackGroup(pid) : undefined
       // The signals `kill()` has sent. A death by one of them is the caller's
       // own stop; a death by any other signal came from elsewhere.
       const sent = new Set<NodeJS.Signals>()

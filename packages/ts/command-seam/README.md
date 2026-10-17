@@ -248,8 +248,8 @@ group (async and managed runners with `processGroup: true`), then `SIGKILL` to
 those still registered after `graceMs`, and the process exits with
 `128 + signal number`. A second signal during the grace skips to `SIGKILL`. An
 `exit` handler also `SIGKILL`s every group whose run is still in flight, so a
-host that exits first leaves none behind. The listeners are attached when the first group
-starts and removed when the last one is gone, so a host with no live group
+host that exits first leaves none behind. The listeners are attached just before the first
+group starts and removed when the last one is gone, so a host with no live group
 keeps each signal's default action. If the host has its own listener for the
 signal (`process.once` counts too), the groups still get `SIGTERM` at once
 and `SIGKILL` after `graceMs` (or on exit, if sooner and the run is in
