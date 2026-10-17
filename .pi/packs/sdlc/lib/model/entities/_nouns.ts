@@ -15,6 +15,7 @@ import { BacklogNoun } from './backlog/noun.ts'
 import { CapabilityNoun } from './capability/noun.ts'
 import { DecisionNoun } from './decision/noun.ts'
 import { DriverNoun } from './driver/noun.ts'
+import { FrictionNoun } from './friction/noun.ts'
 import { MilestoneNoun } from './milestone/noun.ts'
 import { NoteNoun } from './note/noun.ts'
 import { PrincipleNoun } from './principle/noun.ts'
@@ -41,6 +42,7 @@ export const ENTITY_NOUNS: Readonly<Record<string, EntityNoun>> = {
   capability: CapabilityNoun,
   decision: DecisionNoun,
   driver: DriverNoun,
+  friction: FrictionNoun,
   milestone: MilestoneNoun,
   note: NoteNoun,
   principle: PrincipleNoun,

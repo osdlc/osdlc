@@ -318,6 +318,10 @@ scripts/sdlc lease task acquire <basename>
 ``--project-root`` defaults to the nearest sdlc.yaml at or above the cwd (else the cwd); the CLI
 reads ``lease_authority:`` from ``<project-root>/sdlc.yaml`` automatically.)
 
+The lease also records who runs the work (tool, exact model, effort, context), read from the
+``SDLC_AUTHOR`` variable the launcher put in this session's environment. Nothing to pass; Step 10's
+footer carries it so a reviewer can pick a different model.
+
 Branch on exit code:
 
 - **Exit 0** — the lease is held. The CLI emits one stdout line in
@@ -339,7 +343,7 @@ Branch on exit code:
   stop; no side effect attempted.
 
 On success the lease's ``phase`` is ``claimed``; Step 5b's
-``sdlc task start`` invocation will CAS-REPLACE it to ``working``.
+``sdlc task begin`` invocation will CAS-REPLACE it to ``working``.
 Every subsequent transition (Step 6's heartbeat, Step 10's transition
 to ``awaiting-review``) lands on the same ref by re-invoking the CLI —
 never by importing the library inline.
@@ -666,10 +670,10 @@ Only reached when 5a returned `ENSURE-READY-OK:`. Starting a run writes nothing 
 the lease from `claimed` to `working` and resets the task branch (in the worktree) onto the current
 `origin/main` tip.
 
-Shell out to `scripts/sdlc task start`:
+Shell out to `scripts/sdlc task begin`:
 
 ```text
-scripts/sdlc task start \
+scripts/sdlc task begin \
     <absolute path to task file in the worktree> \
     --worktree <absolute worktree path> \
     --branch task/<basename> \
@@ -691,7 +695,7 @@ lacks one. Frontmatter reads `open/ready` throughout.
 
 The lease-authority value is the same `lease_authority:` configured in `<project-root>/sdlc.yaml`
 (or the `SDLC_LEASE_AUTHORITY` env override the lease library honors). Step 2a's `acquire_lease()`
-call already resolved it; pass the same string through to `sdlc task start` so the CAS-REPLACE
+call already resolved it; pass the same string through to `sdlc task begin` so the CAS-REPLACE
 targets the same authority that holds the `claimed` ref.
 
 Exit codes the caller must dispatch on:
@@ -934,7 +938,7 @@ scripts/sdlc lease task transition <basename> --phase blocked
 Before opening the PR, while the implementation context is still fresh, fill the `## Post-mortem`
 stub that Step 5b already appended to the end of the task file in the worktree. The section's
 placement (end of body) and structure (the H2, the caption, and the three H3 subsections) are
-already materialized by `sdlc task start` — you replace each subsection's
+already materialized by `sdlc task begin` — you replace each subsection's
 `_TBD — filled at Step 8._` placeholder with the real content below. Write it through one lens:
 **automate as much as possible** — record where this run needed a human.
 
@@ -1235,14 +1239,21 @@ The lease ref is at `phase: working` at this point.
      file by path with a one-line description. Otherwise omit the
      whole section.>
 
-     <!-- sdlc-lease: task=<basename> lease=<lease_id> -->
+     <!-- sdlc-lease: task=<basename> lease=<lease_id> author=<tool>/<model>@<effort> run=<run_id> -->
      ```
 
    The footer is the **last line** of the body, immediately before EOF. No surrounding whitespace,
-   no trailing newline beyond the standard one `gh pr create` appends. Format is exact:
-   `<!-- sdlc-lease: task=<basename> lease=<lease_id> -->`. The HTML comment is invisible in the
-   rendered PR but greppable from `gh pr view --json body`. `/pr-respond` reads this footer to
-   verify the right task on resume.
+   no trailing newline beyond the standard one `gh pr create` appends. Do not type it: print the
+   exact line with `scripts/sdlc lease task footer <basename>` and paste it.
+   Format is exact, on one line:
+   `<!-- sdlc-lease: task=<basename> lease=<lease_id> author=<tool>/<model>@<effort>
+   run=<run_id> -->`, with `[ctx=<size>]` after the model when a context was resolved
+   (`author=claude/claude-opus-4-1[ctx=1m]@high`); the line has no `author=` when the lease records
+   none. `run=` is this session's run id (`SDLC_RUN`), which joins the pull request to the routing
+   and usage records in the journal; the line has no `run=` when the session has none. Nothing
+   else rides the footer. The HTML comment is invisible in the rendered PR but greppable from
+   `gh pr view --json body`. `/pr-respond` reads this footer to verify the right task on resume,
+   and `sdlc pr review` reads the author from it so the reviewer can be a different model.
 
 3. Capture the PR number from the `gh pr create` output (the URL ends in `/pull/<N>`).
 
@@ -1470,3 +1481,22 @@ silently abandon. Edit the task file in the worktree:
   exiting after Step 5a (the 2026-05-28 incident that drove slug-namespacing; the pre-namespace bare
   `READY:` marker). Two defenses: Step 10's final-marker wording prevents the confusion; Step 2's
   resume-detection branch recovers the half-finished worktree when prevention fails.
+
+## Finish the session
+
+If the `SDLC_SESSION` environment variable is set, this run is an sdlc-tracked
+session, and the orchestrator learns the task is finished only from you. Check
+`echo "$SDLC_SESSION"`; when it is empty, skip this section.
+
+Run it only when this skill was the session's own top-level task (your first
+message asked for it). If you loaded this skill from inside another skill or a
+sub-agent, do not run it: the invoker finishes the session.
+
+When all of this skill's work is complete, as the last thing you do:
+
+- Success: `sdlc session done --outcome ok`
+- Failure, or the work cannot continue: `sdlc session done --outcome failed --note "<one line why>"`
+
+Never run it before the work is complete: the orchestrator treats `done` as
+"go on to the next step". Do not run it while a question to the person is
+open. Headless runs run it too, which is harmless.

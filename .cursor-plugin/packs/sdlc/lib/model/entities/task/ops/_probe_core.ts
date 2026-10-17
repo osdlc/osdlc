@@ -41,7 +41,7 @@ export function taskBranch(basename: string): string {
  * Absolute worktree path `/sdlc:task-work` parks a basename's worktree at:
  * `<primary-checkout>/.sdlc/worktrees/<basename>`. Rooted at the git primary
  * checkout, NOT `projectRoot` (the nearest `sdlc.yaml`, possibly nested), so
- * every op agrees with `task start`. Keep `projectRoot` for the task file,
+ * every op agrees with `task begin`. Keep `projectRoot` for the task file,
  * branches and lease.
  */
 export function worktreePath(projectRoot: string, basename: string, ctx: OpCtx): string {
@@ -97,6 +97,8 @@ export function leaseRef(basename: string): string {
 export interface LocalLeaseSnapshot {
   /** Execution phase: claimed | working | blocked | awaiting-review | responding | closing. */
   phase: string
+  /** Who holds the lease (`claude-code`, `human`, ...). A `human` lease is a person driving the task. */
+  ownerKind: string
   /** The in-flight PR binding carried on the lease, or null. */
   prNumber: number | null
   /** Per-run gate stamps (payload v2), or null on a v1 payload. */
@@ -158,6 +160,7 @@ export function readLocalLease(
 
   return {
     phase: lease.phase,
+    ownerKind: lease.owner_kind,
     prNumber: lease.pr_number,
     gates:
       lease.gates === undefined

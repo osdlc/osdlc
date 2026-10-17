@@ -275,7 +275,7 @@ verification check failed, surface it rather than reporting clean.
   consolidation PR carries it. Never reorder these.
 - **Dedup is a shared op.** This skill reuses
   `scripts/sdlc task dedup-search` — the same
-  keyword-scoring dedup `/sdlc:spawn-from-post-mortem` uses — so a
+  keyword-scoring dedup the spawn-from-post-mortem procedure uses — so a
   duplicate is dropped-and-linked the same way on both the spawn and the
   consolidate side.
 - **Branch naming.** The consolidation branch is

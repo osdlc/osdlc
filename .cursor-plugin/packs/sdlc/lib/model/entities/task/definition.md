@@ -48,6 +48,7 @@ schema's property descriptions. The roster:
 | `impact`, `complexity` | optional | Triage enums |
 | `priority` | optional | Sparse boolean override valve for ordering |
 | `autonomy` | optional | `human-only` / `supervised` / `autonomous/pr` execution gate |
+| `session` | optional | `interactive` / `headless` — how an orchestrated run starts this task's work chain (define, implement, check); PR review and respond follow only `--interactive`; absent defers to the workflow's `headless` setting |
 | `kind` | optional | `implementation` (absent) / `planning` / `research` runner selector; leaf-execution-only, never gates a rollup |
 | `scope` | optional | Declared write region: a pattern set plus its enforcement tier (advisory filtering, or a mandatory hard lock). Absent means unscoped, which schedules as before |
 | `scheduling` | optional | Soft scheduling hints — concurrency class, not-before instant, recurrence. Policy may ignore all of them |

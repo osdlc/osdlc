@@ -35,6 +35,7 @@ import { applyFrontmatterUpdates, readInstanceDoc } from '@lib/model/ops/_update
 import { entityFromDir, type Entity } from '@lib/model/entity'
 import { pluginLibDir } from '@lib/util/plugin-root'
 import { renderTaskLifecycleCommit } from '@lib/model/entities/task/commits/lifecycle/schema'
+import { closePanesForCloseOut } from '@lib/services/session/close'
 import { CommitToMainError, commitToMainViaWorktree } from '@lib/services/git/commit-to-main'
 import { DATE_PATTERN } from '@lib/model/entities/_common'
 import { appendPostMortemStub } from '../post-mortem.ts'
@@ -201,6 +202,16 @@ export default defineOp({
         throw new OpError('SERVICE_ERROR', e.message)
       }
       throw e
+    }
+
+    // The worktree is torn down after this op (the task-close-out skill removes the worktree), so the panes of
+    // the task branch's sessions close now. Not under --dry-run; best effort.
+    if (!ctx.dryRun) {
+      closePanesForCloseOut({
+        projectRoot: args.projectRoot,
+        basename: args.basename,
+        config: ctx.sdlcConfig,
+      })
     }
 
     return {

@@ -28,6 +28,7 @@ import { BacklogSchema, SCHEMA_VERSION as BACKLOG_VERSION } from './backlog/sche
 import { CapabilitySchema, SCHEMA_VERSION as CAPABILITY_VERSION } from './capability/schema.ts'
 import { DecisionSchema, SCHEMA_VERSION as DECISION_VERSION } from './decision/schema.ts'
 import { DriverSchema, SCHEMA_VERSION as DRIVER_VERSION } from './driver/schema.ts'
+import { FrictionSchema, SCHEMA_VERSION as FRICTION_VERSION } from './friction/schema.ts'
 import { MilestoneSchema, SCHEMA_VERSION as MILESTONE_VERSION } from './milestone/schema.ts'
 import { NoteSchema, SCHEMA_VERSION as NOTE_VERSION } from './note/schema.ts'
 import { PrincipleSchema, SCHEMA_VERSION as PRINCIPLE_VERSION } from './principle/schema.ts'
@@ -183,6 +184,7 @@ export const ENTITY_SCHEMAS: Record<string, EntitySchemaEntry> = {
   capability: entry('capability', CapabilitySchema, CAPABILITY_VERSION),
   decision: entry('decision', DecisionSchema, DECISION_VERSION),
   driver: entry('driver', DriverSchema, DRIVER_VERSION),
+  friction: entry('friction', FrictionSchema, FRICTION_VERSION),
   milestone: entry('milestone', MilestoneSchema, MILESTONE_VERSION),
   note: entry('note', NoteSchema, NOTE_VERSION),
   principle: entry('principle', PrincipleSchema, PRINCIPLE_VERSION),

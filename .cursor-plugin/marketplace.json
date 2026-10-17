@@ -8,13 +8,13 @@
       "name": "craft",
       "source": ".cursor-plugin/packs/craft",
       "description": "Script-free skills for the software development lifecycle: each one a terse description of one process, done the way we want it done, with extension points a project fills through files. Portable to any harness and any repo; sdlc links them in and adds the deterministic tail.",
-      "version": "0.5.0"
+      "version": "0.6.0"
     },
     {
       "name": "sdlc",
       "source": ".cursor-plugin/packs/sdlc",
       "description": "Lightweight SDLC workflow: capture backlog items, capabilities, decisions, drivers, milestones, principles, products, references, standards, tasks, and terms as markdown files with validated frontmatter. Ships task-level skills (task-work, task-review, task-ensure-ready, task-define) plus a JSON-schema-driven frontmatter validator every entity type plugs into.",
-      "version": "0.13.0"
+      "version": "0.14.0"
     }
   ]
 }

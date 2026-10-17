@@ -1,6 +1,6 @@
 {
   "name": "craft",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Script-free skills for the software development lifecycle: each one a terse description of one process, done the way we want it done, with extension points a project fills through files. Portable to any harness and any repo; sdlc links them in and adds the deterministic tail.",
   "author": {
     "name": "sksizer"

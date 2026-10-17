@@ -16,6 +16,7 @@ import { BacklogContract } from './backlog/schema.ts'
 import { CapabilityContract } from './capability/schema.ts'
 import { DecisionContract } from './decision/schema.ts'
 import { DriverContract } from './driver/schema.ts'
+import { FrictionContract } from './friction/schema.ts'
 import { MilestoneContract } from './milestone/schema.ts'
 import { NoteContract } from './note/schema.ts'
 import { PrincipleContract } from './principle/schema.ts'
@@ -32,6 +33,7 @@ const CONTRACTS: Readonly<Record<string, Contract>> = {
   capability: CapabilityContract,
   decision: DecisionContract,
   driver: DriverContract,
+  friction: FrictionContract,
   milestone: MilestoneContract,
   note: NoteContract,
   principle: PrincipleContract,

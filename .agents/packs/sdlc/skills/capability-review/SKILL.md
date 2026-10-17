@@ -107,9 +107,20 @@ its parent when that parent is in scope, otherwise the group keyed by itself. So
 members by capability id and split it into chunks of at most five, so the same scope groups the
 same way on every run. A review reads a file and its anchors, so one agent per capability is
 more agents than the work needs. For every group, dispatch **one sub-agent in a single message**
-so they run concurrently. Use the `general-purpose` subagent type with the sonnet model; these
-are well-briefed reads. Sub-agents are **read-only**: they read files and run `git log`; they
-never write.
+so they run concurrently. Use the `general-purpose` subagent type with the built-in `default`
+profile; these are well-briefed reads. Sub-agents are **read-only**: they read files and run
+`git log`; they never write.
+
+Resolve the profile once, before the first dispatch:
+
+```text
+sdlc route resolve default --in-session claude --json
+```
+
+Pass its `alias` as each sub-agent's model and its `effort`, when present, as each sub-agent's
+effort. `degraded: true` means the profile's first choice is on another tool; say so in the
+report. On a non-zero exit, report the command's stderr (it carries the trace) and stop. Do not
+dispatch without a model: the sub-agents would run on this session's model.
 
 Each sub-agent prompt carries:
 

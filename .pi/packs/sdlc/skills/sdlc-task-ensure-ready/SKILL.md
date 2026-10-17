@@ -548,3 +548,22 @@ deterministic teardown.
   | `ENSURE-READY-LEASED: <basename>` | `--commit` refused: a run holds this task | None |
   | `ENSURE-READY-NO-TASK-FOUND` | Argument resolved to nothing | None |
   | `ENSURE-READY-AMBIGUOUS: <arg>` | Argument matched several tasks | None |
+
+## Finish the session
+
+If the `SDLC_SESSION` environment variable is set, this run is an sdlc-tracked
+session, and the orchestrator learns the task is finished only from you. Check
+`echo "$SDLC_SESSION"`; when it is empty, skip this section.
+
+Run it only when this skill was the session's own top-level task (your first
+message asked for it). If you loaded this skill from inside another skill or a
+sub-agent, do not run it: the invoker finishes the session.
+
+When all of this skill's work is complete, as the last thing you do:
+
+- Success: `sdlc session done --outcome ok`
+- Failure, or the work cannot continue: `sdlc session done --outcome failed --note "<one line why>"`
+
+Never run it before the work is complete: the orchestrator treats `done` as
+"go on to the next step". Do not run it while a question to the person is
+open. Headless runs run it too, which is harmless.

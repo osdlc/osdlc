@@ -1,9 +1,9 @@
 ---
 name: craft-explain
 description: |
-  Explain one thing as a canvas document with no questions: the subject as typed blocks with
+  Explain one thing as a parley document with no questions: the subject as typed blocks with
   numbered nodes anchored to the exact text, a walkthrough the reader comments on. Domains
-  are notes beside this skill (sql today). Then hand it to canvas. Use it when the reader
+  are notes beside this skill (sql today). Then hand it to parley. Use it when the reader
   needs to understand something, not decide something.
 allowed-tools: Read Grep Glob Write Bash
 ---
@@ -20,10 +20,10 @@ Usage:
 - `/skill:craft-explain sql <ddl, migrations dir or dump>` describes the database it defines.
 
 Scope: one subject to one document with no questions. Not in scope: proposing a change
-(`/skill:craft-propose-solution`), running the thing explained, or serving the page (`/skill:craft-canvas`).
+(`/skill:craft-propose-solution`), running the thing explained, or serving the page (`/skill:craft-parley`).
 
 Inputs: the domain, the subject, and the domain note `domains/<domain>.md` beside this skill.
-Output: `docs/canvas/<id>.json`, checked and served, with no `questions`.
+Output: `docs/parley/<id>.json`, checked and served, with no `questions`.
 
 ## What an explanation is
 
@@ -39,13 +39,14 @@ Output: `docs/canvas/<id>.json`, checked and served, with no `questions`.
 ## Steps
 
 1. Read the domain note and the subject; name the dialect or language. If the domain has no
-   note, say so, suggest one, and proceed on the block types alone (`/skill:craft-canvas`).
+   note, say so, suggest one, and proceed on the block types alone (`/skill:craft-parley`).
 2. List the nodes in the order the domain note asks for and give each a stable id, a word
    never a number.
 3. For each node write the anchor, title, summary, detail and warnings, and the domain's extra
    fields.
-4. Write `docs/canvas/<id>.json`, `id` being the kebab-case title, and run `/skill:craft-canvas check`.
-5. Run `/skill:craft-canvas serve` and give the link. Read the comments with `/skill:craft-canvas` when told.
+4. Write `docs/parley/<id>.json`, `id` being the kebab-case title, and run `/skill:craft-parley check`.
+5. Run `/skill:craft-parley serve`, which starts the listener, and give the link. Answer each comment
+   as it arrives, without waiting to be told.
 
 ## Grading
 
@@ -57,4 +58,4 @@ Output: `docs/canvas/<id>.json`, checked and served, with no `questions`.
 ## Test environment
 
 `examples/sql/orders-query-explained.json` and `examples/sql/orders-schema.json` beside
-`/skill:craft-canvas` are reference outputs. Explain their subjects from scratch and compare.
+`/skill:craft-parley` are reference outputs. Explain their subjects from scratch and compare.

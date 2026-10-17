@@ -13,7 +13,7 @@ description: |
   `review`-stage workflow ([[D-0019-sdlc-chain-stages-and-labels]]); the
   `prs` orchestrator tick dispatches it for a PR it has never classified
   before (`merges` never dispatches `pr-review` — only `pr-respond`, for a
-  merge conflict), under the engine `workflows.pr-review.engine` names.
+  merge conflict), under the model `workflows.pr-review.profile` or `.model` names.
 allowed-tools: Bash Read
 ---
 
@@ -34,17 +34,18 @@ D-0019-sdlc-chain-stages-and-labels) for a PR it has never classified
 before — see `lib/services/orchestrator/ticks/prs.ts`'s doc comment. An
 operator may also invoke it directly against any open PR.
 
-## Engine
+## Agent
 
-This skill runs inside whatever session dispatched it — `session launch`
-picks the engine BEFORE this skill starts, from `workflows.pr-review.engine`
-in `sdlc.yaml` (`lib/config/load.ts`; falls back to `'claude'` when unset) —
-the same per-workflow setting every other workflow name resolves through
-(`lib/services/orchestrator/step-runner.ts`'s `resolveEngine`), so an
+This skill runs inside whatever session dispatched it. `session launch`
+picks the agent BEFORE this skill starts: a matching `routing:` rule first,
+else `workflows.pr-review.profile` or `.model` in `sdlc.yaml`
+(`lib/config/load.ts`), else the built-in `profiles.default` (`*/standard`).
+That per-workflow binding is the one every other workflow name resolves
+through (`lib/services/orchestrator/step-runner.ts`'s `resolveEngine`), so an
 unattended review can run a different model from the one that authored the
-PR. This skill does not itself pick an engine or dispatch a further
+PR. This skill does not itself choose an agent or dispatch a further
 sub-agent for the judgment — the review IS the work this session does
-directly, under whichever engine launched it.
+directly, under whichever agent launched it.
 
 References:
 
@@ -81,7 +82,7 @@ ERROR reason="<one-line description>"
 ## 1. Fetch the PR's diff and context
 
 ```bash
-gh pr view <pr-number> --json title,url,author,baseRefName,headRefName,state
+gh pr view <pr-number> --json title,url,author,baseRefName,headRefName,state,isCrossRepository
 gh pr diff <pr-number>
 ```
 
@@ -154,6 +155,36 @@ does not open a discussion thread per finding (that granularity is
 `/skill:sdlc-pr-respond`'s job, reacting to whatever a human or this comment
 prompts next).
 
+End the body with the review footer, one hidden line that records which
+model reviewed which (D-5C1M-model-catalogue-mappings-and-resolver).
+When the PR body carries an `sdlc-lease` footer, read its task id, then
+print the line and paste it as the comment's last line. Do not type it:
+
+```bash
+scripts/sdlc lease parse-footer <pr-number>
+# FOOTER task=<task_id> lease=<lease_id>
+scripts/sdlc lease task footer <task_id> --role review
+```
+
+The printed line has this exact format:
+
+```text
+<!-- sdlc-lease: task=<task_id> lease=<lease_id> author=<tool>/<model>@<effort> run=<run_id> role=review reviewed=<tool>/<model>@<effort> -->
+```
+
+| Key | Value |
+| --- | --- |
+| `author=` | this session's model, from `SDLC_AUTHOR` |
+| `run=` | this session's run, from `SDLC_RUN` |
+| `reviewed=` | the pull request's author, from its lease |
+
+A key whose value is unknown is left out. A PR with no `sdlc-lease` footer
+(`parse-footer` exits 13 with `LEASE-FOOTER-MISSING`) gets no review footer.
+Nor does a fork PR (`isCrossRepository` true), whose footer is the fork
+author's own text, or one whose printed `lease=` differs from the footer's:
+that lease is not this PR's. In each case the author is unknown: say "author
+unknown (<why>); independence not checked" in the comment.
+
 ## 4. Post the comment
 
 Reuse `/skill:sdlc-pr-respond`'s comment-posting mechanism — do not shell out to a
@@ -221,3 +252,22 @@ real limitation.
   comment) — not on every later commit push to the same PR. A repeat
   review on subsequent pushes is out of scope for this skill; see that
   tick's own doc comment for the tracked limitation.
+
+## Finish the session
+
+If the `SDLC_SESSION` environment variable is set, this run is an sdlc-tracked
+session, and the orchestrator learns the task is finished only from you. Check
+`echo "$SDLC_SESSION"`; when it is empty, skip this section.
+
+Run it only when this skill was the session's own top-level task (your first
+message asked for it). If you loaded this skill from inside another skill or a
+sub-agent, do not run it: the invoker finishes the session.
+
+When all of this skill's work is complete, as the last thing you do:
+
+- Success: `sdlc session done --outcome ok`
+- Failure, or the work cannot continue: `sdlc session done --outcome failed --note "<one line why>"`
+
+Never run it before the work is complete: the orchestrator treats `done` as
+"go on to the next step". Do not run it while a question to the person is
+open. Headless runs run it too, which is harmless.

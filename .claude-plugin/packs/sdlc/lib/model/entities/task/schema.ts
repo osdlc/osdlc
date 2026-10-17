@@ -68,6 +68,15 @@ export const TASK_STATE = z.enum([
   'closed/wontdo',
 ])
 
+/**
+ * The task triage vocabularies. Exported so a consumer that matches on them
+ * (`routing:` rules, `lib/config/load.ts`) validates against these sets
+ * instead of re-declaring the strings.
+ */
+export const TASK_IMPACT = z.enum(['high', 'medium', 'low'])
+export const TASK_COMPLEXITY = z.enum(['small', 'medium', 'large'])
+export const TASK_AUTONOMY = z.enum(['human-only', 'supervised', 'autonomous/pr'])
+
 /** ISO 8601 UTC datetime stamp shape. */
 export const DATETIME_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]00:00)$/
 
@@ -97,10 +106,7 @@ export const TaskSchema = CommonFrontmatter.extend({
   ),
   title: CommonFrontmatter.shape.title.optional(),
   created: CommonFrontmatter.shape.created.optional(),
-  impact: z
-    .enum(['high', 'medium', 'low'])
-    .default('medium')
-    .describe('Triage value of doing this work.'),
+  impact: TASK_IMPACT.default('medium').describe('Triage value of doing this work.'),
   priority: z
     .boolean()
     .optional()
@@ -110,20 +116,26 @@ export const TaskSchema = CommonFrontmatter.extend({
         "Boolean by design — a sparse 'do this one first' override valve. Absent " +
         'means false.',
     ),
-  complexity: z
-    .enum(['small', 'medium', 'large'])
-    .default('medium')
-    .describe('Rough effort. small: <1 day, medium: 1-3 days, large: multi-day or ' + 'multi-PR.'),
-  autonomy: z
-    .enum(['human-only', 'supervised', 'autonomous/pr'])
+  complexity: TASK_COMPLEXITY.default('medium').describe(
+    'Rough effort. small: <1 day, medium: 1-3 days, large: multi-day or ' + 'multi-PR.',
+  ),
+  autonomy: TASK_AUTONOMY.optional().describe(
+    'Who may execute this task. `human-only`: an LLM agent should not pick this ' +
+      'up. `supervised`: an LLM may attempt the work, but a human must review and ' +
+      'approve before any state-changing action beyond opening a PR. ' +
+      '`autonomous/pr`: an agent may best-effort self-ready and implement this ' +
+      'task autonomously up to opening a PR; it never merges. Absent: unclassified ' +
+      '(downstream pickup skills decide policy).',
+  ),
+  session: z
+    .enum(['interactive', 'headless'])
     .optional()
     .describe(
-      'Who may execute this task. `human-only`: an LLM agent should not pick this ' +
-        'up. `supervised`: an LLM may attempt the work, but a human must review and ' +
-        'approve before any state-changing action beyond opening a PR. ' +
-        '`autonomous/pr`: an agent may best-effort self-ready and implement this ' +
-        'task autonomously up to opening a PR; it never merges. Absent: unclassified ' +
-        '(downstream pickup skills decide policy).',
+      "How an orchestrated run starts this task's work chain (define, implement, check); PR " +
+        'review and respond follow only the `--interactive` run flag. `interactive`: in a host ' +
+        'pane you can watch and type into (the tick launches it and moves on). `headless`: detached. ' +
+        "Absent: the workflow's `headless` setting decides, then headless. Overridden by the " +
+        '`--interactive` run flag.',
     ),
   kind: z
     .enum(['implementation', 'planning', 'research'])
