@@ -17,7 +17,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
-use tiered_dirs::{BaseDirs, Dir, EnvVars, Error, Home, Tier, TierKind, TieredDirs};
+use tiered_dirs::{
+    BaseDirs, Convention, Dir, EnvVars, Error, Home, ResolveOptions, Tier, TierKind, TieredDirs,
+};
 
 type Env = BTreeMap<String, String>;
 
@@ -28,8 +30,12 @@ const FIXTURE_JSON: &str = include_str!("fixtures/parity.json");
 /// The fixture's `env_prefix`, as the names `env_vars!` derives from it.
 const ENV: EnvVars = tiered_dirs::env_vars!("EXAMPLE");
 
+/// Every top-level key, so a misspelled or stray one fails here.
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct Fixture {
+    #[serde(rename = "_comment")]
+    _comment: Vec<String>,
     vendor: String,
     env_prefix: String,
     cases: Vec<Case>,
@@ -42,10 +48,14 @@ struct Fixture {
 
 /// Base directories resolved from the environment. `expected` maps a home
 /// name (or `scratch`) to an absolute path; an omitted one is the same
-/// resolution with no override variable set.
+/// resolution under the default convention with no override variable set.
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct EnvCase {
     name: String,
+    /// The constructor's convention. Omitted means the default.
+    #[serde(default)]
+    convention: Option<String>,
     env: Env,
     expected: Env,
     /// `expected` holds XDG paths, which a Windows host does not use.
@@ -326,8 +336,8 @@ fn host_var(env: &Env, name: &str) -> Option<std::ffi::OsString> {
     env.get(name).map(|value| host_abs(value).into_os_string())
 }
 
-fn from_vars(env: &Env) -> BaseDirs {
-    BaseDirs::from_env_with(&ENV, |name| host_var(env, name))
+fn from_vars(opts: ResolveOptions, env: &Env) -> BaseDirs {
+    BaseDirs::from_env_opts_with(&ENV, opts, |name| host_var(env, name))
         .unwrap_or_else(|err| panic!("{env:?}: {err}"))
 }
 
@@ -351,16 +361,27 @@ fn every_env_case_resolves_to_its_fixture_paths() {
         return;
     }
     for case in fixture().env_cases {
-        // The same resolution with no override variable set.
+        let windows_native = cfg!(windows) && case.windows_native;
+        // The default convention with no override variable set. On Windows a
+        // `windows_native` row also drops the convention and `XDG_*`, so the
+        // row proves Xdg is Native there and `XDG_*` is ignored.
         let unmoved: Env = case
             .env
             .iter()
-            .filter(|(name, _)| !ENV.overrides().contains(&name.as_str()))
+            .filter(|(name, _)| !ENV.overrides().any(|var| var == name.as_str()))
+            .filter(|(name, _)| {
+                !windows_native || (name.as_str() != ENV.convention && !name.starts_with("XDG_"))
+            })
             .map(|(name, value)| (name.clone(), value.clone()))
             .collect();
-        let os = from_vars(&unmoved);
-        let base = from_vars(&case.env);
-        let windows_native = cfg!(windows) && case.windows_native;
+        let os = from_vars(ResolveOptions::new(), &unmoved);
+        let convention = match case.convention.as_deref() {
+            None => Convention::default(),
+            Some(name) => name
+                .parse()
+                .unwrap_or_else(|err| panic!("{}: {err}", case.name)),
+        };
+        let base = from_vars(ResolveOptions::new().with_convention(convention), &case.env);
         for name in base_names() {
             let want = match case.expected.get(name) {
                 Some(path) if !windows_native => host_abs(path),
@@ -378,7 +399,7 @@ fn every_override_var_has_an_env_case() {
         .iter()
         .flat_map(|case| case.env.keys().cloned())
         .collect();
-    for var in ENV.overrides().into_iter().chain([ENV.convention]) {
+    for var in ENV.overrides().chain([ENV.convention]) {
         assert!(covered.contains(var), "no env case sets {var}");
     }
 }
@@ -410,6 +431,10 @@ fn every_rejected_convention_is_refused() {
             (var == ENV.convention).then(|| value.clone().into())
         })
         .unwrap_err();
+        assert!(
+            err.to_string().contains(&format!("{value:?}")),
+            "{name}: {err}"
+        );
         assert_eq!(
             err,
             Error::InvalidConvention {

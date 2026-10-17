@@ -54,7 +54,7 @@ permissions:
 
 env:
   # The release-plz binary the action installs. Keep it at the version
-  # checked locally.
+  # checked locally. rust-ci.yml reads this line for its dry run.
   RELEASE_PLZ_VERSION: 0.3.172
 
 jobs:

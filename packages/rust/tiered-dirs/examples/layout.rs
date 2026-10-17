@@ -7,8 +7,8 @@
 use std::ffi::OsString;
 
 use tiered_dirs::{
-    BaseDirs, Convention, Dir, EnvVars, Error, Home, Tier, TierKind, TieredDirs, env_vars,
-    is_valid_segment, is_vendor_bundle_id, test_root,
+    BaseDirs, Convention, Dir, EnvVars, Error, Home, ResolveOptions, Tier, TierKind, TieredDirs,
+    env_vars, is_valid_segment, is_vendor_bundle_id, test_root,
 };
 
 const VENDOR: &str = "com.example";
@@ -94,10 +94,11 @@ fn main() -> Result<(), Error> {
     dirs.assert_vendor_bundle_id(bundle_id);
 
     // A CLI tool picks the XDG table: `~/.config/devtool` on macOS too.
-    let cli = TieredDirs::from_env_in(VENDOR, &ENV, Convention::Xdg)?;
+    let opts = ResolveOptions::new().with_convention("xdg".parse()?);
+    let cli = TieredDirs::from_env_opts(VENDOR, &ENV, opts)?;
     println!(
         "\nunder {}: devtool config is {}",
-        Convention::Xdg.as_str(),
+        opts.convention.as_str(),
         show(cli.standalone("devtool")?.config().path())
     );
     let home = std::path::Path::new("/home/me");
@@ -112,19 +113,13 @@ fn main() -> Result<(), Error> {
         show(moved.vendor().config().path())
     );
 
-    // Or from explicit parts, as `dirs` hands them over. No runtime: it falls
-    // back to `<durable>/run`.
-    let root = std::env::temp_dir();
-    let parts = BaseDirs::from_parts(
-        Some(root.join("d")),
-        Some(root.join("c")),
-        Some(root.join("k")),
-        Some(root.join("st")),
-        Some(root.join("l")),
-        None,
-        Some(root.join("s")),
-    )?;
-    println!("runtime from parts: {}", show(parts.get(Home::Runtime)));
+    println!(
+        "conventions: {:?}",
+        Convention::ALL
+            .iter()
+            .map(|c| c.as_str())
+            .collect::<Vec<_>>()
+    );
     let into: std::path::PathBuf = index.into_path();
     println!("as a PathBuf: {}", show(&into));
     Ok(())

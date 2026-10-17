@@ -19,18 +19,23 @@ First release.
   `Dir::app` narrow a directory. Every segment is checked to be one safe path
   segment.
 - `BaseDirs`: the per-OS base directories, resolved once. Logs go to
-  `~/Library/Logs` on macOS, and logs and runtime never go under cache.
-- `Convention`: `Native` (the default) or `Xdg`, chosen with
-  `BaseDirs::from_env_in` and `TieredDirs::from_env_in`. `Xdg` gives the XDG
-  paths on macOS too; Linux is the same under both, and on Windows `Xdg` means
+  `~/Library/Logs` on macOS, and logs, state and runtime never go under
+  cache. On Windows state is `%LOCALAPPDATA%\state`.
+- `Convention`: `Native` (the default) or `Xdg`. `Xdg` gives the XDG paths on
+  macOS too; Linux is the same under both, and on Windows `Xdg` means
   `Native`. `BaseDirs::xdg` builds the XDG table under any home. The crate
   reads `XDG_*` itself, ignores a relative value and does not expand `~`.
+  `Convention` implements `FromStr`, and `Convention::ALL` lists them.
+- `ResolveOptions`, with `with_convention`: how `from_env_opts` and
+  `from_env_opts_with` resolve, on `BaseDirs` and `TieredDirs`. `from_env` and
+  `from_env_with` use the defaults. A later knob goes on `ResolveOptions`.
 - `EnvVars` and `env_vars!`: override variables under a caller-chosen
   prefix, `<P>_ROOT` and `<P>_<HOME>_DIR`, the same on every OS.
   `<P>_CONVENTION=native|xdg` overrides the caller's convention; any other
-  value is `Error::InvalidConvention`.
+  value is `Error::InvalidConvention`. `EnvVars::overrides` is an iterator.
 - Tests kept off the real home: a cargo test binary defaults to a
   per-process scratch root (`test_root`), and `<P>_REQUIRE_OVERRIDE` turns an
   OS fallback into an error.
-- `Error`, marked `#[non_exhaustive]`.
+- `Error`, `Convention`, `EnvVars` and `ResolveOptions` are
+  `#[non_exhaustive]`. `Home` is exhaustive: a new home is a breaking release.
 - Minimum supported Rust version 1.85.

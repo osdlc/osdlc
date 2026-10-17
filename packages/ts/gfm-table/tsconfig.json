@@ -1,0 +1,10 @@
+{
+  // Typechecks the sources, tests/ and examples/. The build has its own include.
+  "extends": "@osdlc/tsconfig/bun-lib",
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    // Resolve `@osdlc/gfm-table` in examples/ to the sources, as bun does.
+    "customConditions": ["bun"]
+  },
+  "include": ["src/**/*.ts", "tests/**/*.ts", "examples/**/*.ts"]
+}

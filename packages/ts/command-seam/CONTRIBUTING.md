@@ -30,8 +30,9 @@ pnpm test
 ```
 
 Build before testing: the examples import the package by name, and under Node
-that name resolves to `dist/`. After a build, `pnpm run smoke` runs a short
-check of the built package under Node.
+that name resolves to `dist/`. After a build, `pnpm run smoke` runs
+`tests/smoke.mjs`, a short check of the built package under Node. It is not
+published.
 
 Other checks:
 
