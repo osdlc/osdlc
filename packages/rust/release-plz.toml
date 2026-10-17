@@ -1,0 +1,23 @@
+# release-plz settings for the crates in this workspace.
+# Reference: https://release-plz.dev/docs/config
+#
+# .github/workflows/release-plz.yml passes this file with the action's
+# `config` input. release-plz only looks for it in the directory it runs in,
+# which is the repository root.
+[workspace]
+# Tags are `<crate>/vX.Y.Z`, like every other library tag in this
+# repository. The release-plz default is `<crate>-vX.Y.Z`, or a bare
+# `vX.Y.Z` while the workspace has one public crate. A bare `vX.Y.Z` is the
+# sdlc CLI's own tag, so the template must stay set.
+git_tag_name = "{{ package }}/v{{ version }}"
+git_release_name = "{{ package }} v{{ version }}"
+git_release_enable = true
+# `release` runs on every push to main and publishes each crate whose
+# version is not on crates.io yet. The `crates-io` environment approval
+# gates each publish. This is the default, set here so it is not changed by
+# accident.
+release_always = true
+# cargo-semver-checks on each release PR. A crate with no published version
+# is not checked.
+semver_check = true
+changelog_update = true

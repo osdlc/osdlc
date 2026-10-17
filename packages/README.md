@@ -80,6 +80,28 @@ CI cannot publish a new library's first version. Before its first release:
 Until then, `packages-publish.yml` stops before publishing and names the
 library that is not on npm yet.
 
+### Releasing a Rust crate
+
+Rust crates are released by `.github/workflows/release-plz.yml` with
+[release-plz](https://release-plz.dev). Its settings are in
+`packages/rust/release-plz.toml`.
+
+1. On each push to `main`, release-plz opens or updates a release pull
+   request. It bumps the version and changelog of each crate with unreleased
+   changes. Merge it when its checks pass.
+2. On each push to `main`, the workflow also checks crates.io. When a
+   crate's version is not published yet, the release job waits for approval
+   of the `crates-io` environment. Once approved, it publishes the crate,
+   tags it `<name>/vX.Y.Z` and creates a GitHub release.
+3. A new crate's first release is published with the shared
+   `CARGO_REGISTRY_TOKEN` in the `crates-io` environment. Then add a trusted
+   publisher for the crate on crates.io (repository `osdlc/osdlc`, workflow
+   `release-plz.yml`, environment `crates-io`). Later releases use it and
+   need no token.
+4. One run uses one credential, so a push must not hold both a crate's first
+   release and a new version of a crate already on crates.io. The workflow
+   refuses such a run and says how to split it.
+
 ## Working on a library
 
 ### TypeScript
