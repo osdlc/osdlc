@@ -55,6 +55,8 @@ Developed here, in this repository:
 - `packages/rust/yaml-splice` (`yaml-splice` on crates.io)
 - `packages/rust/yaml-splice-wasm`, the WebAssembly build of `yaml-splice`
   for its npm package (not published to crates.io)
+- `packages/ts/yaml-splice` (`@osdlc/yaml-splice` on npm, the crate built to
+  WebAssembly, with the built `wasm/` committed)
 - `packages/ts/etag-write` (`@osdlc/etag-write` on npm, the crate's TypeScript twin)
 - `packages/ts/frontmatter-lossless` (`@osdlc/frontmatter-lossless` on npm,
   the TypeScript twin of the `frontmatter-lossless` crate, which has not moved
@@ -206,8 +208,9 @@ license, repository) and lints from it. `packages/rust/rust-toolchain.toml`
 pins the compiler, and rustup installs it on first use.
 `.github/workflows/rust-ci.yml` runs clippy and the tests on Linux, macOS
 and Windows, and the format check, docs and `cargo package` on Linux. It
-also tests on the MSRV and with minimal dependency versions, and builds
-`yaml-splice-wasm` for `wasm32-unknown-unknown`. On a pull request it
+also tests on the MSRV and with minimal dependency versions, and rebuilds
+the `yaml-splice` wasm with `build.sh` and checks that it equals the one
+committed in `packages/ts/yaml-splice/wasm/`. On a pull request it
 checks that a breaking change bumps the version. Its `rust` job
 is the one check to require.
 
