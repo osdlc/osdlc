@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.2](https://github.com/osdlc/osdlc/compare/yaml-splice/v0.2.1...yaml-splice/v0.2.2) - 2026-10-17
+
+### Other
+
+- restore the CHANGELOG history from before the packages moved here
+
 ## [0.2.1](https://github.com/osdlc/osdlc/releases/tag/yaml-splice/v0.2.1) - 2026-10-17
 
 First release on crates.io. Versions 0.1.0 and 0.2.0, and an earlier 0.2.1
