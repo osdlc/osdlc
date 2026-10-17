@@ -29,7 +29,8 @@ pnpm run build
 pnpm test
 ```
 
-`pnpm run smoke` runs a short check of the built package under Node.
+`pnpm run smoke` runs `tests/smoke.mjs`, a short check of the built package
+under Node. It is not published.
 `pnpm run coverage` reports test coverage.
 
 Other checks:

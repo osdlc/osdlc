@@ -41,7 +41,6 @@
   "files": [
     "dist/",
     "index.ts",
-    "smoke.mjs",
     "README.md",
     "CHANGELOG.md",
     "LICENSE-MIT",
@@ -54,7 +53,7 @@
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "test": "bun test",
     "coverage": "bun test --coverage",
-    "smoke": "node smoke.mjs",
+    "smoke": "node tests/smoke.mjs",
     "prepublishOnly": "npm run clean && npm run build",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

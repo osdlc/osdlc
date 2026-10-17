@@ -3,8 +3,11 @@
 // anywhere else. A broken emit passes every other check and fails on the
 // consumer's machine.
 //
-// Not a test-runner suite: it must run from the installed tarball with only
-// dist/ present.
+// It imports the package by name, so Node resolves it through `exports` as a
+// consumer would. `pnpm run smoke` runs it here, where the name resolves to
+// this package's own dist/. check-packages.mjs copies it into a clean project
+// that installed the tarball, so it must not import other repo files. It is
+// not a test-runner suite and is not in `files`.
 
 import { strict as assert } from 'node:assert'
 import { mkdtempSync, readFileSync, rmSync, statSync, chmodSync } from 'node:fs'
@@ -19,7 +22,7 @@ import {
   WriteConflictError,
   writeCas,
   writeIfChanged,
-} from './dist/index.js'
+} from '@osdlc/etag-write'
 
 const dir = mkdtempSync(join(tmpdir(), 'etag-write-smoke-'))
 try {
