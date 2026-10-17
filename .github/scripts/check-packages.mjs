@@ -2,8 +2,10 @@
 // tarball: `pnpm pack` (which rewrites `workspace:` ranges), then publint, then
 // Are The Types Wrong for a package that ships types, then a clean consumer:
 // `npm install <tarball>` into an empty project, load every entry point under
-// Node, and run the package's `smoke.mjs` from the installed copy if it ships
-// one (that calls the API against the tarball's own dist/).
+// Node, and run the package's smoke check against it if the package has one.
+// The smoke check is `test/smoke.mjs` or `tests/smoke.mjs` in the package
+// directory. It is not shipped: it is copied into the consumer project and
+// imports the package by name, so it runs against the installed tarball.
 //
 //   node .github/scripts/check-packages.mjs [packages/ts/<name> ...]
 //
@@ -12,6 +14,7 @@
 // tarball must contain dist/.
 import { execFileSync } from 'node:child_process'
 import {
+  copyFileSync,
   existsSync,
   mkdtempSync,
   readdirSync,
@@ -37,6 +40,11 @@ const bin = (name) => join(root, 'node_modules', '.bin', name)
 const run = (cmd, argv, cwd) =>
   execFileSync(cmd, argv, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] })
 
+/** The package's smoke check, or undefined if it has none. */
+function smokeFile(pkgDir) {
+  return ['test', 'tests'].map((d) => join(pkgDir, d, 'smoke.mjs')).find((f) => existsSync(f))
+}
+
 /** The specifiers a consumer can load: `name` plus each `exports` subpath
  * (pattern subpaths skipped), or `name` alone for a `main`-only package. */
 function entryPoints(pkg) {
@@ -52,9 +60,9 @@ function entryPoints(pkg) {
 /** Installs `tarball` into an empty project and loads each entry point the
  * way a Node consumer would: code through `import()`; a JSON entry (a config
  * preset, possibly with comments) is resolved and read, since its consumer
- * is a tool rather than Node. Then runs the installed `smoke.mjs`, if the
- * package ships one. */
-function cleanConsumer(pkg, tarball) {
+ * is a tool rather than Node. Then copies in the package's smoke check, if
+ * it has one, and runs it there. */
+function cleanConsumer(pkg, pkgDir, tarball) {
   const consumer = mkdtempSync(join(tmpdir(), 'check-packages-consumer-'))
   try {
     writeFileSync(
@@ -77,8 +85,11 @@ function cleanConsumer(pkg, tarball) {
       }
     `
     process.stdout.write(run('node', ['--input-type=module', '-e', probe], consumer))
-    const smoke = join(consumer, 'node_modules', ...pkg.name.split('/'), 'smoke.mjs')
-    if (existsSync(smoke)) process.stdout.write(run('node', [smoke], consumer))
+    const smoke = smokeFile(pkgDir)
+    if (smoke) {
+      copyFileSync(smoke, join(consumer, 'smoke.mjs'))
+      process.stdout.write(run('node', ['smoke.mjs'], consumer))
+    }
   } finally {
     rmSync(consumer, { recursive: true, force: true })
   }
@@ -107,7 +118,7 @@ for (const dir of dirs) {
     } else {
       console.log('attw: skipped, the package ships no types')
     }
-    cleanConsumer(pkg, tarball)
+    cleanConsumer(pkg, pkgDir, tarball)
   } catch (err) {
     failed++
     console.error(`FAILED: ${pkg.name}: ${err.message.split('\n')[0]}`)

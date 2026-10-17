@@ -4,12 +4,15 @@
 // dependency with no dist/ of its own — passes every other gate and fails on
 // the consumer's machine.
 //
-// Deliberately not a test-runner suite: it must run from the extracted
-// snapshot with only `dist/` and production dependencies present.
+// It imports the package by name, so Node resolves it through `exports` as a
+// consumer would. `pnpm run smoke` runs it here, where the name resolves to
+// this package's own dist/. check-packages.mjs copies it into a clean project
+// that installed the tarball, so it must not import other repo files. It is
+// not a test-runner suite and is not in `files`.
 
 import { strict as assert } from 'node:assert'
-import { spawnRunner, runChecked, CommandFailed, asAsync, withDefaults } from './dist/index.js'
-import { fakeProcess, fakeRunner } from './dist/testing.js'
+import { spawnRunner, runChecked, CommandFailed, asAsync, withDefaults } from '@osdlc/command-seam'
+import { fakeProcess, fakeRunner } from '@osdlc/command-seam/testing'
 
 const runner = spawnRunner('node')
 const ok = runner.run(['-e', "process.stdout.write('hi')"], { cwd: process.cwd() })
