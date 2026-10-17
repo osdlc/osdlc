@@ -645,8 +645,8 @@ The package is at 0.x. Each export is stable or experimental.
 - **Stable** exports are the runner contract: the runners, their options and
   results, `CommandFailed`, and the helpers around them. The runners and
   helpers are in use by other packages; a type that names their options or
-  results is stable with them. A breaking change to one is listed under
-  "Breaking" in the CHANGELOG.
+  results is stable with them. A breaking change to one is marked
+  **Breaking** in the CHANGELOG.
 - **Experimental** exports are newer or have no user yet. Any release may
   change or remove one. Each has an `@experimental` tag in its TSDoc.
 

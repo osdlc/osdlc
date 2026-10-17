@@ -31,7 +31,7 @@ breaking change.
 
 ## Consequences
 
-- A breaking change to a stable export will be listed under "Breaking" in the
+- A breaking change to a stable export will be marked **Breaking** in the
   CHANGELOG.
 - Any release may change or remove an experimental export.
 - `1.0` comes once the experimental exports have gone 60 to 90 days without
