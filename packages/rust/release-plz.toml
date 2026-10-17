@@ -5,10 +5,9 @@
 # `config` input. release-plz only looks for it in the directory it runs in,
 # which is the repository root.
 [workspace]
-# Tags are `<crate>/vX.Y.Z`, like every other library tag in this
-# repository. The release-plz default is `<crate>-vX.Y.Z`, or a bare
-# `vX.Y.Z` while the workspace has one public crate. A bare `vX.Y.Z` is the
-# sdlc CLI's own tag, so the template must stay set.
+# Tags are `<crate>/vX.Y.Z`. The release-plz default is `<crate>-vX.Y.Z`, or
+# a bare `vX.Y.Z` while the workspace has one public crate. A bare `vX.Y.Z`
+# is the sdlc CLI's own tag, so the template must stay set.
 git_tag_name = "{{ package }}/v{{ version }}"
 git_release_name = "{{ package }} v{{ version }}"
 git_release_enable = true
