@@ -1,19 +1,21 @@
 # Libraries hosted in osdlc/osdlc
 
-Each folder under `packages/<language>/` is one library, published to npm from
-this repository. Each library's own README says how to use it. This file covers
-what holds for all of them.
+Each folder under `packages/<language>/` is one library, published from this
+repository: TypeScript libraries to npm, Rust crates to crates.io. Each
+library's own README says how to use it. This file covers what holds for all
+of them.
 
 ## Home and publishing
 
 - Each library lives in `packages/<language>/<name>/`, for example
-  `packages/ts/command-seam/`, and is published to npm from this repository.
-  Only TypeScript libraries exist today, under `packages/ts/`.
-- Releases run from CI with [Changesets](https://changesets.dev).
-  `.github/workflows/packages-publish.yml` publishes through npm trusted
-  publishing, with provenance, so no npm token is stored. Only a new
-  library's placeholder version is published by hand (see below).
-- Each published version gets a git tag and a GitHub release named
+  `packages/ts/command-seam/`. TypeScript libraries are under `packages/ts/`
+  and Rust crates under `packages/rust/`.
+- TypeScript libraries are published to npm from CI with
+  [Changesets](https://changesets.dev). `.github/workflows/packages-publish.yml`
+  publishes through npm trusted publishing, with provenance, so no npm token
+  is stored. Only a new library's placeholder version is published by hand
+  (see below).
+- Each published npm version gets a git tag and a GitHub release named
   `<package>@<version>`, for example `@osdlc/command-seam@0.4.0`. The sdlc
   CLI's own tags are plain `vX.Y.Z`.
 - A library can move to its own repository later if it grows.
@@ -72,6 +74,8 @@ library that is not on npm yet.
 
 ## Working on a library
 
+### TypeScript
+
 The repository root is a pnpm workspace that holds only `packages/ts/*`.
 
 ```sh
@@ -82,3 +86,17 @@ pnpm run test
 ```
 
 The root scripts run each library's script of the same name.
+
+### Rust
+
+`packages/rust/` is a Cargo workspace. Each crate is listed in `members` in
+`packages/rust/Cargo.toml` and takes the shared fields (edition, MSRV,
+license, repository) and lints from it. `packages/rust/rust-toolchain.toml`
+pins the compiler, and rustup installs it on first use.
+
+```sh
+cd packages/rust
+cargo fmt --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+```

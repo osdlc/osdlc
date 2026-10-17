@@ -1,0 +1,25 @@
+# Cargo workspace for the Rust crates published to crates.io from this
+# repository. Each crate lives in packages/rust/<name>/ and is listed in
+# `members` by hand, so a stray directory never becomes a crate.
+#
+# A member opts in to the shared fields with `<key>.workspace = true` and to
+# the lints with `[lints] workspace = true`. Shared dependency versions go in
+# `[workspace.dependencies]`, and a member names them with
+# `<dep> = { workspace = true }`.
+[workspace]
+# resolver 3 picks dependency versions that support `rust-version` (the MSRV).
+resolver = "3"
+members = []
+
+[workspace.package]
+edition = "2024"
+# The MSRV. Edition 2024 needs 1.85. CI builds every member on it.
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/osdlc/osdlc"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[workspace.dependencies]
