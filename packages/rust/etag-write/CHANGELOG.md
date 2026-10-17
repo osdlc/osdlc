@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [0.1.0] - 2026-10-16
+## [0.1.0](https://github.com/osdlc/osdlc/releases/tag/etag-write/v0.1.0) - 2026-10-16
 
 First release.
 
@@ -25,5 +25,3 @@ First release.
   an unreadable file is an error, never treated as absent.
 - `WriteError`, marked `#[non_exhaustive]`.
 - Minimum supported Rust version 1.85.
-
-[0.1.0]: https://github.com/osdlc/osdlc/releases/tag/etag-write/v0.1.0

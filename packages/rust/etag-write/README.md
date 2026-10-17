@@ -165,10 +165,6 @@ This comparison is from each crate's documentation. Pick one of the others when
 you stream a large file or only need atomic replace. Pick `etag-write` when more
 than one writer edits the same file and a lost update matters.
 
-A TypeScript version, `@sksizer/etag-write`, has the same write sequence, etag
-format and compare-and-swap rules. It keeps a file's permissions only when the
-caller passes `mode`.
-
 ## Stability
 
 0.1 is the first release. The crate stays on 0.x for now. The six public items
@@ -177,7 +173,7 @@ caller passes `mode`.
 expected to change. `WriteError` is `#[non_exhaustive]`, so a later release can
 add a variant without a breaking change.
 
-## Licence
+## License
 
 Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or
-[MIT licence](LICENSE-MIT), at your option.
+[MIT License](LICENSE-MIT), at your option.

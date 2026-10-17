@@ -10,7 +10,7 @@
 #
 # The toolchain is the pin in packages/rust/rust-toolchain.toml, except in
 # the `msrv` job (the workspace `rust-version`) and the `minimal-versions`
-# lockfile step (nightly, for `-Z direct-minimal-versions`).
+# lockfile step (a dated nightly, for `-Z direct-minimal-versions`).
 #
 # Every action is pinned to a commit SHA; the comment names its release.
 name: rust
@@ -54,8 +54,9 @@ jobs:
           persist-credentials: false
           fetch-depth: 2
 
-      # A pull request lists its files through the API. A push compares the
-      # pushed commit with the one before it. A manual run, a new branch, or
+      # A pull request lists its files through the API, with the old name of
+      # a renamed file. A push compares the pushed commit with the one before
+      # it, with renames split into a delete and an add. A manual run, a new branch, or
       # a diff that fails, runs everything.
       - name: Did a Rust path change?
         id: diff
@@ -70,11 +71,11 @@ jobs:
           files=""
           case "$EVENT" in
             pull_request)
-              files="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${PR}/files" --jq '.[].filename')"
+              files="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${PR}/files" --jq '.[] | .filename, (.previous_filename // empty)')"
               ;;
             push)
               if [ -n "$BEFORE" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ]; then
-                files="$(git diff --name-only "$BEFORE" "$AFTER" 2>/dev/null || echo '*')"
+                files="$(git diff --name-only --no-renames "$BEFORE" "$AFTER" 2>/dev/null || echo '*')"
               else
                 files='*'
               fi
@@ -117,10 +118,10 @@ jobs:
       - name: Package
         run: cargo package --workspace --locked
 
-  test:
+  rust-test:
     needs: changes
     if: needs.changes.outputs.rust == 'true'
-    name: test (${{ matrix.os }})
+    name: rust test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -193,9 +194,11 @@ jobs:
         with:
           persist-credentials: false
 
+      # A dated nightly, so a nightly regression cannot turn CI red on its
+      # own. Only the lockfile step uses it. Move the date when needed.
       - uses: ./.github/actions/rust-toolchain
         with:
-          toolchain: nightly
+          toolchain: nightly-2026-10-15
 
       - name: Resolve direct dependencies to their minimal versions
         run: cargo update -Z direct-minimal-versions
@@ -211,7 +214,7 @@ jobs:
         run: cargo test --workspace --locked
 
   rust:
-    needs: [changes, lint, test, msrv, minimal-versions]
+    needs: [changes, lint, rust-test, msrv, minimal-versions]
     if: always()
     runs-on: ubuntu-latest
     defaults:
