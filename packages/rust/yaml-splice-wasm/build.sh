@@ -64,11 +64,14 @@ cd "$WORKSPACE"
 unset RUSTUP_TOOLCHAIN
 
 # Map the machine's paths to fixed names, so no home directory ends up in the
-# wasm's panic messages. The sysroot must be read after the `cd`: from
-# anywhere else rustc reports the default toolchain's sysroot, not the
-# pinned one's.
+# wasm's panic messages and every machine gets the same bytes. The standard
+# library's source maps to `/rustc/<commit>`, the path rustc uses when the
+# rust-src component is not installed, so the bytes do not depend on whether
+# it is. The sysroot must be read after the `cd`: from anywhere else rustc
+# reports the default toolchain's sysroot, not the pinned one's.
 SYSROOT="$(rustc --print sysroot)"
-export RUSTFLAGS="--remap-path-prefix=${CARGO_HOME:-$HOME/.cargo}=/cargo --remap-path-prefix=$SYSROOT=/rustc-sysroot --remap-path-prefix=$WORKSPACE=/src"
+RUSTC_COMMIT="$(rustc -vV | sed -n 's/^commit-hash: //p')"
+export RUSTFLAGS="--remap-path-prefix=${CARGO_HOME:-$HOME/.cargo}=/cargo --remap-path-prefix=$SYSROOT/lib/rustlib/src/rust=/rustc/$RUSTC_COMMIT --remap-path-prefix=$WORKSPACE=/src"
 
 echo "[1/3] cargo build --release --target wasm32-unknown-unknown"
 cargo build --manifest-path "$WORKSPACE/Cargo.toml" --locked \
@@ -82,10 +85,12 @@ mkdir -p "$OUT_DIR"
 "$WASM_BINDGEN" --target nodejs --out-dir "$OUT_DIR" "$CRATE_WASM"
 
 # --- 3. size-optimize the wasm in place ------------------------------------
-# wasm-opt reads and rewrites the _bg.wasm the glue `require`s.
-echo "[3/3] wasm-opt -Oz"
+# wasm-opt reads and rewrites the _bg.wasm the glue `require`s. It also drops
+# the "producers" section, which names the tool builds: a wasm-bindgen built
+# with `cargo install` writes "0.2.126", a release binary "0.2.126 (<commit>)".
+echo "[3/3] wasm-opt -Oz --strip-producers"
 BG_WASM="$OUT_DIR/yaml_splice_wasm_bg.wasm"
-"$WASM_OPT" -Oz "$BG_WASM" -o "$BG_WASM.tmp"
+"$WASM_OPT" -Oz --strip-producers "$BG_WASM" -o "$BG_WASM.tmp"
 mv "$BG_WASM.tmp" "$BG_WASM"
 
 # wasm-bindgen's nodejs target emits CommonJS glue (require/__dirname/exports).
