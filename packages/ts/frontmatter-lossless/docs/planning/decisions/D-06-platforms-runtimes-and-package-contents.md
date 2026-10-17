@@ -24,9 +24,11 @@ created: 2026-10-17
 
 ## Why
 
-- A package that ships `.ts` source under `node_modules` cannot be loaded by
-  Node, which does not strip types there. Compiled JavaScript works in every
-  runtime and needs nothing from the consumer.
+- One artifact for every runtime. With a `bun` condition, Bun would run the
+  TypeScript source while Node runs `dist/`, so a Bun user could run code the
+  Node tests never saw. Without the condition, shipping the source would only
+  add files nobody loads. Compiled JavaScript works in every runtime and
+  needs nothing from the consumer.
 - The code is pure string handling, so it has no platform-specific path.
   Testing on two operating systems still guards the build and the packaging.
 - Node 20 is past end of life.

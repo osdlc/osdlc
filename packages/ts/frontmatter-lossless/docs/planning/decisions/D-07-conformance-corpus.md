@@ -35,5 +35,9 @@ fixtures here now.
   corpus together. Until the crate moves, the copy here is updated with the
   crate's corpus, and the hash in `tests/index.test.ts` and this note are
   updated with it.
-- Cases that only the TypeScript code has a branch for are hand-written tests
-  in `tests/index.test.ts`, not corpus fixtures.
+- Cases the copy does not cover are hand-written tests in
+  `tests/index.test.ts`. A case that both implementations should pin goes
+  into the crate's corpus first, then into the copy.
+- The TypeScript package fixed `compose` writing new YAML into a shape taken
+  from an empty block before its first release. The crate still has that
+  bug; its fix and a corpus fixture for it come with the crate.

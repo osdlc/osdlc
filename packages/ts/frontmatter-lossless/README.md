@@ -67,10 +67,10 @@ compose(yaml, body, shape) === note // true
   `'\r\n'`), `closeEol` (a `CloseEol`, which can also be `''` when the note
   ends at the closing fence) and `closeSep`. Take it from `split` and pass it
   to `compose`. Do not build one by hand: a minor release may add a field.
-- `splitLenient(content)` reads hand-written input that `split` rejects:
-  blank lines before the block and trailing spaces on the fence lines. It
-  returns a `LenientSplit` (`yaml` and `body`), or `null` when there is no
-  block. It keeps no framing, so use it to read, not to rewrite.
+- `splitLenient(content)` reads hand-written input that `split` rejects: blank lines or indentation
+  before the opening fence, and trailing spaces on the fence lines. The closing fence must not be
+  indented. It returns a `LenientSplit` (`yaml` and `body`), or `null` when there is no block. It
+  keeps no framing, so use it to read, not to rewrite.
 
 Offsets are JavaScript string indices (UTF-16 code units):
 `src.slice(yamlRange.start, yamlRange.end) === yaml` and

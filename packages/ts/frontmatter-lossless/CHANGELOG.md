@@ -2,8 +2,8 @@
 
 ## History before the first public release
 
-These versions were developed in a private repository before the package moved here, and were
-never published. They are rebuilt from the git history.
+This version was developed in a private repository before the package moved here, and was
+never published. It is rebuilt from the git history.
 
 ### [0.1.0] - 2026-08-07 (unpublished)
 

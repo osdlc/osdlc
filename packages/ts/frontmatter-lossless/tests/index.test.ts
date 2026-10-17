@@ -9,11 +9,9 @@
  * value swap, the empty block), so the two suites cover the same ground even
  * where the corpus JSON has no field for it.
  *
- * `fixtures/conformance.json` is a copy of the Rust crate's corpus (24
- * fixtures, sha256 02b7468385e8d743e1a3d4388c3a9f04eb97732d375e901ae99f653764d849c3),
- * until the crate moves into this repository and both read one file. Keep the
- * copy byte-identical to the crate's: see
- * docs/planning/decisions/D-07-conformance-corpus.md.
+ * `fixtures/conformance.json` is a copy of the Rust crate's corpus, pinned by
+ * `CORPUS_SHA256` below, until the crate moves into this repository and both
+ * read one file. See docs/planning/decisions/D-07-conformance-corpus.md.
  */
 import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
@@ -150,5 +148,33 @@ describe('branches the corpus does not reach', () => {
     expect(s.yaml).toBe('a: 1\n---x\nb: 2')
     expect(s.body).toBe('body\n')
     expect(compose(s.yaml, s.body, s.shape)).toBe(src)
+  })
+})
+
+describe('writing YAML into an empty block', () => {
+  for (const [name, src, want] of [
+    ['LF', '---\n---\nbody\n', '---\ntitle: x\n---\nbody\n'],
+    ['CRLF', '---\r\n---\r\nbody\r\n', '---\r\ntitle: x\r\n---\r\nbody\r\n'],
+  ] as const) {
+    test(`${name}: the new text gets its own line and splits back`, () => {
+      const s = split(src)
+      const yaml = name === 'CRLF' ? 'title: x\r' : 'title: x'
+      const out = compose(yaml, s.body, s.shape)
+      expect(out).toBe(want)
+      expect(split(out).yaml).toBe(yaml)
+    })
+  }
+})
+
+describe('splitLenient indentation', () => {
+  test('an indented opening fence is accepted', () => {
+    expect(splitLenient('  ---\na: 1\n---\nbody\n')).toEqual({ yaml: 'a: 1', body: 'body\n' })
+  })
+
+  test('an indented closing fence does not close the block', () => {
+    expect(splitLenient('---\na: 1\n  ---\nb: 2\n---\nbody\n')).toEqual({
+      yaml: 'a: 1\n  ---\nb: 2',
+      body: 'body\n',
+    })
   })
 })

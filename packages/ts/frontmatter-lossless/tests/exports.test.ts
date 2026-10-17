@@ -51,19 +51,19 @@ test('every export is used by examples/, which imports the package name only', (
     .map((f) => readFileSync(join(dir, f), 'utf-8'))
   const imported = new Set<string>()
   const specifiers = new Set<string>()
-  for (const source of sources) {
-    for (const m of source.matchAll(/import\s*\{([^}]*)\}\s*from\s*'([^']+)'/g)) {
-      specifiers.add(m[2]!)
-      if (m[2] !== PACKAGE_NAME) continue
-      for (const name of m[1]!.split(',')) {
-        const clean = name.trim().replace(/^type\s+/, '')
-        if (clean) imported.add(clean)
-      }
+  for (const [i, source] of sources.entries()) {
+    const sf = ts.createSourceFile(`example-${i}.ts`, source, ts.ScriptTarget.Latest)
+    for (const statement of sf.statements) {
+      if (!ts.isImportDeclaration(statement)) continue
+      const specifier = (statement.moduleSpecifier as ts.StringLiteral).text
+      specifiers.add(specifier)
+      const named = statement.importClause?.namedBindings
+      if (specifier !== PACKAGE_NAME || !named || !ts.isNamedImports(named)) continue
+      for (const element of named.elements)
+        imported.add((element.propertyName ?? element.name).text)
     }
   }
-  expect(
-    [...specifiers].filter((s) => s !== PACKAGE_NAME && s !== 'bun:test' && !s.startsWith('node:')),
-  ).toEqual([])
+  expect([...specifiers].filter((s) => s !== PACKAGE_NAME && s !== 'bun:test')).toEqual([])
   expect([...EXPORTS.keys()].filter((name) => !imported.has(name))).toEqual([])
 })
 
@@ -79,7 +79,7 @@ test('the README experimental list matches the @experimental tags', () => {
 })
 
 test('the README names every export', () => {
-  // A code span that starts with the name, such as `etag(data)`, names it.
+  // A code span that starts with the name, such as `split(src)`, names it.
   const named = new Set([...README.matchAll(/`([A-Za-z_$][\w$]*)/g)].map((m) => m[1]!))
   expect([...EXPORTS.keys()].filter((name) => !named.has(name))).toEqual([])
 })

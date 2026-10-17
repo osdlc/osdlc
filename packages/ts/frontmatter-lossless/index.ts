@@ -7,8 +7,8 @@
  * {@link compose} rebuilds the original file exactly — same BOM, same `\n` vs
  * `\r\n` fences, same trailing state.
  *
- * No YAML parsing, no file system, no dependencies, so it runs in any ES2022
- * runtime. Reading the frontmatter's *values* is a job for a YAML parser; this
+ * No YAML parsing, no file system, no dependencies: plain ES2022 string
+ * handling. Reading the frontmatter's *values* is a job for a YAML parser; this
  * module only finds where the block is and puts it back.
  *
  * It is the TypeScript twin of the `frontmatter-lossless` Rust crate. It
@@ -100,7 +100,8 @@ export interface Split {
 
 /** The result of a tolerant read-only split: see {@link splitLenient}. */
 export interface LenientSplit {
-  /** The YAML between the fences, trailing fence-line whitespace stripped. */
+  /** The text between the fence lines, without the line break before the
+   *  closing fence. */
   readonly yaml: string
   /** Everything after the closing fence line. */
   readonly body: string
@@ -230,7 +231,9 @@ export function compose(frontmatter: string | null, body: string, shape: NoteSha
   // `openEol`, rebuilds the original text). It is driven by the recorded
   // shape, never inferred from the yaml text: a block ENDING in a blank
   // line legitimately ends with `\n` and still had a separator after it.
-  if (shape.closeSep) out += '\n'
+  // Only empty YAML can omit it: text written into a shape taken from an
+  // empty `---\n---` block still needs its own line before the closing fence.
+  if (shape.closeSep || frontmatter !== '') out += '\n'
   out += '---' + shape.closeEol + body
   return out
 }
@@ -240,8 +243,9 @@ export function compose(frontmatter: string | null, body: string, shape: NoteSha
  *
  * {@link split} is strict and lossless — the basis of the write path. This
  * accepts what hand-authored notes drift into and a *reader* can safely
- * ignore: a leading BOM or blank lines before the block, and trailing
- * whitespace on the `---` fence lines. It returns `{ yaml, body }`, or `null`
+ * ignore: a leading BOM, blank lines or indentation before the opening
+ * fence, and trailing whitespace on the `---` fence lines. The closing fence
+ * must not be indented. It returns `{ yaml, body }`, or `null`
  * when there is no block (where {@link split} gives a result with
  * `yaml: null`). It tracks no framing, so it is not a round trip —
  * parse with it, never rewrite. A fence still closes only on `---` alone on
