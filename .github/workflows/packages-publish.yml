@@ -10,8 +10,7 @@
 #
 # `version` opens the Version Packages pull request as the osdlc-release
 # GitHub App, so its pull_request checks start without an approval click. A
-# pull request opened with GITHUB_TOKEN would wait for one. The app's private
-# key is the RELEASE_PLZ_APP_PRIVATE_KEY secret.
+# pull request opened with GITHUB_TOKEN would wait for one.
 #
 # Every action is pinned to a commit SHA; the comment names its release.
 name: packages-publish
@@ -62,6 +61,8 @@ jobs:
     needs: select-mode
     if: needs.select-mode.outputs.mode == 'version'
     runs-on: ubuntu-latest
+    # The app's key lives in this environment, shared with release-plz.
+    environment: release-plz
     permissions:
       contents: read
     steps:
