@@ -107,11 +107,23 @@ byte span.
 - A value the emitter cannot write (`UnrenderableValue`).
 - An edit whose result would not parse, would change a key the edit does not
   address, or would not read back as the edit asked (`InvalidResult`). Each
-  edit is checked by parsing its result. A few YAML corners need this. Blank
-  lines after a keep-chomped block scalar (`|+`) belong to that scalar, so
-  removing the key after it can change its value, and a new `|+` value
-  followed by a blank line would gain that line. A comment indented less
-  than an old block value can land inside a new one. Those edits are refused.
+  edit is checked by parsing its result. These shapes are refused:
+  - a `Set` writes a keep-chomped (`|+`) value and a blank line follows it,
+    which would join the value;
+  - a `Set` writes a block value where the old block had a comment indented
+    less than its content, which would land at the new indent and become
+    content;
+  - a neighbour is keep-chomped (`|+`) and the edit moves a blank line up
+    against it;
+  - a `Remove` keeps such a less-indented comment, and it would join the
+    previous key's block scalar;
+  - a `Remove` leaves an empty block scalar (`a: |`) as the document's last
+    line, which the parser then reads as a line break.
+
+  These refusals are a choice, not a limit of YAML. Another layout, such as
+  an explicit indentation indicator (`|4`) or moving the comment, could make
+  some of these edits safe. `tests/neighbours.rs` pins how many of its cases
+  each shape refuses.
 
 ## When not to use it
 

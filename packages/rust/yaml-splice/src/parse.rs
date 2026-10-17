@@ -698,8 +698,8 @@ fn top_level_spans(events: &[Ev], src: &str) -> Vec<KeySpan> {
             .max()
             .unwrap_or(value_start);
         // An empty block scalar (`a: |` and no content lines) has an empty
-        // span at the start of the next line. Its source text is the header,
-        // from after the colon to the end of the indicator.
+        // span at the start of the next line. Its source text is the header
+        // line after the colon (a tag or anchor included), up to a comment.
         if subtree.len() == 1 && is_empty_block_scalar(&subtree[0]) {
             let bytes = src.as_bytes();
             let mut s = assign_end(src, key_range.end, value_start);
@@ -707,8 +707,14 @@ fn top_level_spans(events: &[Ev], src: &str) -> Vec<KeySpan> {
                 s += 1;
             }
             let mut e = s;
-            while e < bytes.len() && !matches!(bytes[e], b' ' | b'\t' | b'\r' | b'\n') {
+            while e < bytes.len() && !matches!(bytes[e], b'\r' | b'\n') {
+                if bytes[e] == b'#' && matches!(bytes[e - 1], b' ' | b'\t') {
+                    break;
+                }
                 e += 1;
+            }
+            while e > s && matches!(bytes[e - 1], b' ' | b'\t') {
+                e -= 1;
             }
             value_start = s;
             value_scalar_end = e;

@@ -255,11 +255,13 @@ fn render_assignment(replacement: &Replacement, key_indent: &str) -> Result<Stri
 
 /// Where a rendered assignment goes: `range` of `src`, widened when needed.
 ///
-/// A value that renders over several lines cannot keep the text that follows
-/// the old value on its line (a trailing `# comment`): left there it would
-/// land on the new value's last line and become content. That text is moved
-/// to the end of the new value's first line, where a comment is allowed after
-/// a block indicator or an empty `key:`.
+/// A block value (a first line that is empty, as for a block collection, or
+/// ends in a block scalar header such as `|` or `>-`) cannot keep the text
+/// that follows the old value on its line (a trailing `# comment`): left there
+/// it would land on the new value's last line and become content. That text
+/// is moved to the end of the first line, where a comment is allowed. Any
+/// other multi-line text (a quoted or plain scalar that continues on the next
+/// line) is left as it is, since its first line is not a place for a comment.
 pub(crate) fn fit_assignment(
     src: &str,
     range: Range<usize>,
@@ -268,17 +270,32 @@ pub(crate) fn fit_assignment(
     let Some((head, rest)) = text.split_once('\n') else {
         return (range, text);
     };
+    let (head, eol) = head
+        .strip_suffix('\r')
+        .map_or((head, "\n"), |h| (h, "\r\n"));
+    if !opens_a_block(head) {
+        return (range, text);
+    }
     let line_end = src[range.end..]
         .find(['\r', '\n'])
         .map_or(src.len(), |i| range.end + i);
     let tail = &src[range.end..line_end];
-    if tail.is_empty() {
-        return (range, text);
+    // Trailing spaces alone are dropped: kept, they would become the end of
+    // the new value's last line.
+    if tail.trim().is_empty() {
+        return (range.start..line_end, text);
     }
-    let (head, eol) = head
-        .strip_suffix('\r')
-        .map_or((head, "\n"), |h| (h, "\r\n"));
     (range.start..line_end, format!("{head}{tail}{eol}{rest}"))
+}
+
+/// Whether an assignment's first line (after the `:`) opens a block: it is
+/// empty, or its last token is a block scalar header (`[|>][-+1-9]*`).
+fn opens_a_block(head: &str) -> bool {
+    let Some(last) = head.split_whitespace().last() else {
+        return true;
+    };
+    let mut chars = last.chars();
+    matches!(chars.next(), Some('|' | '>')) && chars.all(|c| matches!(c, '-' | '+' | '1'..='9'))
 }
 
 /// The leading whitespace of the line `pos` sits on.
@@ -487,11 +504,62 @@ status: draft
     }
 
     #[test]
+    fn an_empty_block_scalar_with_a_tag_or_anchor_is_replaced() {
+        assert_eq!(
+            splice_key("a: !!str | # c\nb: 1", "a", s("Z")).unwrap(),
+            "a: Z # c\nb: 1"
+        );
+        assert_eq!(
+            splice_key("a: &x >-\nb: 1", "a", s("Z")).unwrap(),
+            "a: Z\nb: 1"
+        );
+        assert_eq!(remove_key("a: !!str |\nb: 1", "a").unwrap(), "b: 1");
+    }
+
+    #[test]
     fn a_trailing_comment_moves_to_the_header_of_a_new_block_value() {
         let src = "a: x # why\nb: 1";
         assert_eq!(
             splice_key(src, "a", s("l1\nl2\n")).unwrap(),
             "a: | # why\n  l1\n  l2\nb: 1"
+        );
+    }
+
+    #[test]
+    fn raw_multi_line_text_keeps_the_trailing_comment_where_it_was() {
+        let src = "title: done # c\nn: 1";
+        assert_eq!(
+            splice_key(src, "title", Replacement::Raw("'multi\n  line'".into())).unwrap(),
+            "title: 'multi\n  line' # c\nn: 1"
+        );
+        assert_eq!(
+            splice_key(src, "title", Replacement::Raw("plain\n  more".into())).unwrap(),
+            "title: plain\n  more # c\nn: 1"
+        );
+        let out = splice_key(
+            "title: done\nn: 1",
+            "title",
+            Replacement::Raw("plain\n  more".into()),
+        )
+        .unwrap();
+        assert_eq!(out, "title: plain\n  more\nn: 1");
+        assert!(parse::parse_mapping(&out).is_ok());
+    }
+
+    #[test]
+    fn raw_block_text_moves_the_trailing_comment_to_its_header() {
+        let src = "title: done # c\nn: 1";
+        assert_eq!(
+            splice_key(src, "title", Replacement::Raw("|-\n  a\n  b".into())).unwrap(),
+            "title: |- # c\n  a\n  b\nn: 1"
+        );
+    }
+
+    #[test]
+    fn trailing_spaces_after_an_old_value_are_dropped_for_a_block_value() {
+        assert_eq!(
+            splice_key("a: x   \nb: 1", "a", s("l1\nl2\n")).unwrap(),
+            "a: |\n  l1\n  l2\nb: 1"
         );
     }
 

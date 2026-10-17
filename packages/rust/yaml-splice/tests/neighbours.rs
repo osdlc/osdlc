@@ -7,9 +7,20 @@
 //! key. The new values include ones that render as block scalars, `|+` with
 //! trailing blank lines among them. The result either parses to the original
 //! mapping with only that key changed, or is an `InvalidResult` refusal. It
-//! is never a silently different document, and refusals stay rare.
+//! is never a silently different document.
+//!
+//! Every refusal must have a known cause, found by running the same edit
+//! through the unchecked `splice` functions and comparing what they produce.
+//! The count for each cause is pinned, so a new cause, or a shape that starts
+//! failing, is a test failure. See [`Cause`] for the causes.
 
-use yaml_splice::{EditError, FieldEdit, Value, edit_yaml, parse::parse_mapping};
+use std::collections::BTreeMap;
+
+use yaml_splice::{
+    EditError, FieldEdit, Mapping, Value, edit_yaml,
+    parse::parse_mapping,
+    splice::{remove_key, splice_key},
+};
 
 const VALUES: &[&str] = &[
     "1",
@@ -35,12 +46,14 @@ const VALUES: &[&str] = &[
     "|\n    x\n  # note",
     ">-\n    deep\n # one space\n",
     "\n    - a\n  # less\n    - b\n",
+    "!!str | # c",
+    "&x >-\n  y\n",
 ];
 
 /// Values a `Set` writes: plain, and ones that render as block scalars
 /// (`|`, `|-`, `|+` with trailing blank lines) and block collections.
 fn new_values() -> Vec<Value> {
-    let mut map = yaml_splice::Mapping::new();
+    let mut map = Mapping::new();
     map.insert("k", Value::from("two\nlines"));
     vec![
         Value::from("Z"),
@@ -59,7 +72,7 @@ const SEPARATORS: &[&str] = &["", "# between\n", "\n"];
 fn an_edit_changes_only_the_key_it_addresses() {
     let mut checked = 0;
     let mut failures = Vec::new();
-    let mut refused = Vec::new();
+    let mut refused: BTreeMap<Cause, usize> = BTreeMap::new();
     for eol in ["\n", "\r\n"] {
         for a in VALUES {
             for b in VALUES {
@@ -94,7 +107,12 @@ fn an_edit_changes_only_the_key_it_addresses() {
                                     }
                                 }
                                 Err(EditError::InvalidResult { .. }) => {
-                                    refused.push(format!("{edit:?} on {src:?}"))
+                                    match cause(&src, &edit, &original, &want) {
+                                        Some(c) => *refused.entry(c).or_insert(0) += 1,
+                                        None => failures.push(format!(
+                                            "{edit:?} on {src:?} was refused for no known cause"
+                                        )),
+                                    }
                                 }
                                 Err(e) => failures.push(format!("{edit:?} on {src:?}: {e}")),
                             }
@@ -104,25 +122,123 @@ fn an_edit_changes_only_the_key_it_addresses() {
             }
         }
     }
-    assert!(checked > 5000, "only {checked} cases ran");
-    // Some shapes are refused, and should be: blank lines after a new `|+`
-    // value would join it, and a comment indented less than the old block
-    // lands at the new block's indent. A jump in refusals means a regression.
-    assert!(
-        refused.len() * 12 < checked,
-        "{} of {checked} edits were refused, for example:\n{}",
-        refused.len(),
-        refused
-            .iter()
-            .take(20)
-            .cloned()
-            .collect::<Vec<_>>()
-            .join("\n")
-    );
+    assert_eq!(checked, 90_000, "the number of edits run");
     assert!(
         failures.is_empty(),
         "{} of {checked} edits went wrong:\n{}",
         failures.len(),
         failures.join("\n")
     );
+    let expected = BTreeMap::from([
+        (Cause::NewKeepValueGainsBlankLines, 3650),
+        (Cause::CommentLandsInNewBlock, 900),
+        (Cause::KeepNeighbourGainsBlankLines, 40),
+        (Cause::KeptCommentJoinsPreviousBlock, 40),
+        (Cause::TrailingEmptyBlockReadsAsLineBreak, 300),
+    ]);
+    // Pinned exactly: a change in any count means a shape changed behaviour.
+    assert_eq!(refused, expected, "refusals by cause, of {checked} edits");
+}
+
+/// Why an edit is refused: the shapes the README's "What is refused" lists.
+/// Each refusal is a choice, not a limit of YAML: another layout (an explicit
+/// indentation indicator such as `|4`, or moving the comment) could make some
+/// of these edits safe. The refusal is the simple, safe answer for now.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Cause {
+    /// A `Set` writes a keep-chomped (`|+`) value, and a blank line follows
+    /// it in the document. The blank line would join the new value.
+    NewKeepValueGainsBlankLines,
+    /// A `Set` writes a block value where the old block value had a comment
+    /// indented less than its content. The comment lands at the new block's
+    /// indent and becomes content.
+    CommentLandsInNewBlock,
+    /// A neighbour is keep-chomped (`|+`), and the edit moves a blank line up
+    /// against it (removing the next key, or a block value whose trailing
+    /// blank lines stay). The neighbour would gain the blank line.
+    KeepNeighbourGainsBlankLines,
+    /// A `Remove` keeps a comment that was indented less than the removed
+    /// block value's content, and that comment now follows the previous key's
+    /// block scalar at or past its indent, so it would become that value's
+    /// content.
+    KeptCommentJoinsPreviousBlock,
+    /// After a `Remove`, an empty block scalar (`a: |`) is the last line of
+    /// the document; `saphyr-parser` then reads it as a line break, not as an
+    /// empty string.
+    TrailingEmptyBlockReadsAsLineBreak,
+}
+
+/// The cause of a refusal, from what the unchecked splice of the same edit
+/// produces. `None` when it fits no known cause.
+fn cause(src: &str, edit: &FieldEdit, original: &Mapping, want: &Mapping) -> Option<Cause> {
+    let out = match edit {
+        FieldEdit::Set { key, value } => splice_key(src, key, value.clone()),
+        FieldEdit::Remove { key } => remove_key(src, key),
+        _ => return None,
+    }
+    .ok()?;
+    let got = parse_mapping(&out).ok()?;
+    let keys: Vec<&str> = want.iter().map(|(k, _)| k).collect();
+    if got.iter().map(|(k, _)| k).collect::<Vec<_>>() != keys {
+        return None;
+    }
+    let mut causes = Vec::new();
+    for (k, w) in want.iter() {
+        let g = got.get(k)?;
+        if g == w {
+            continue;
+        }
+        let addressed = matches!(edit, FieldEdit::Set { key, .. } if key == k);
+        let c = if addressed && gains_line_breaks(g, w) {
+            Cause::NewKeepValueGainsBlankLines
+        } else if addressed && gains_comment(g, w) {
+            Cause::CommentLandsInNewBlock
+        } else if !addressed && matches!(edit, FieldEdit::Remove { .. }) && gains_comment(g, w) {
+            Cause::KeptCommentJoinsPreviousBlock
+        } else if !addressed && w == &Value::from("") && g == &Value::from("\n") {
+            Cause::TrailingEmptyBlockReadsAsLineBreak
+        } else if !addressed && gains_line_breaks(g, w) && original.get(k) == Some(w) {
+            Cause::KeepNeighbourGainsBlankLines
+        } else {
+            return None;
+        };
+        causes.push(c);
+    }
+    match causes.as_slice() {
+        [c] => Some(*c),
+        _ => None,
+    }
+}
+
+/// `got` is `want` with extra line breaks at the end of one or more strings.
+fn gains_line_breaks(got: &Value, want: &Value) -> bool {
+    match (got, want) {
+        (Value::Str(g), Value::Str(w)) => {
+            g.len() > w.len()
+                && w.ends_with('\n')
+                && g.starts_with(w.as_str())
+                && g[w.len()..].chars().all(|c| c == '\n')
+        }
+        (Value::Seq(g), Value::Seq(w)) => {
+            g.len() == w.len()
+                && g.iter()
+                    .zip(w)
+                    .all(|(g, w)| g == w || gains_line_breaks(g, w))
+        }
+        _ => false,
+    }
+}
+
+/// `got` is `want` with a `# ...` comment line taken into a string.
+fn gains_comment(got: &Value, want: &Value) -> bool {
+    match (got, want) {
+        (Value::Str(g), Value::Str(w)) => g != w && g.contains("# ") && !w.contains("# "),
+        (Value::Map(g), Value::Map(w)) => {
+            g.len() == w.len()
+                && g.iter()
+                    .zip(w.iter())
+                    .all(|((gk, gv), (wk, wv))| gk == wk && (gv == wv || gains_comment(gv, wv)))
+        }
+        _ => false,
+    }
 }

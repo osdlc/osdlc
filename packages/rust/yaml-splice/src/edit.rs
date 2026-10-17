@@ -338,9 +338,26 @@ pub fn edit_frontmatter_with(
     edits: &[FieldEdit],
     opts: &EditOptions,
 ) -> Result<EditOutcome, EditError> {
-    let mut outcome = edit_yaml_with(block.as_bytes(), edits, opts)?;
-    if outcome.changed && !block.ends_with('\n') && outcome.bytes.last() == Some(&b'\n') {
-        outcome.bytes.pop();
+    if block.is_empty() || block.ends_with('\n') {
+        let mut outcome = edit_yaml_with(block.as_bytes(), edits, opts)?;
+        if outcome.changed && block.is_empty() && outcome.bytes.last() == Some(&b'\n') {
+            outcome.bytes.pop();
+        }
+        return Ok(outcome);
+    }
+    // Edit the block with the line break its framing adds back, so the result
+    // check reads the block as a reader of the whole file will: the trailing
+    // line breaks of a keep-chomped (`|+`) last value depend on it.
+    let mut framed = String::with_capacity(block.len() + 1);
+    framed.push_str(block);
+    framed.push('\n');
+    let mut outcome = edit_yaml_with(framed.as_bytes(), edits, opts)?;
+    if outcome.changed {
+        if outcome.bytes.last() == Some(&b'\n') {
+            outcome.bytes.pop();
+        }
+    } else {
+        outcome.bytes = block.as_bytes().to_vec();
     }
     Ok(outcome)
 }
@@ -483,7 +500,7 @@ fn check_result(
     };
     let addressed_ok = match edit {
         FieldEdit::Set { key, value } => {
-            matches!(matching(after, key).as_slice(), [v] if same_value(v, value))
+            matches!(matching(after, key).as_slice(), [v] if reads_back_as(v, value))
         }
         FieldEdit::Remove { key } => matching(after, key).is_empty(),
         FieldEdit::Rename { from, to } => {
@@ -510,23 +527,34 @@ fn check_result(
     }
 }
 
-/// Value equality as a reader of the YAML sees it: `.nan` equals `.nan`, and
-/// a float with an integer value equals that integer (`1.0` renders as `1`,
-/// which parses back as an integer).
+/// Value equality where `.nan` equals `.nan`, at any depth.
 fn same_value(a: &Value, b: &Value) -> bool {
+    value_eq(a, b, false)
+}
+
+/// [`same_value`], and also a float with an integer value equals that
+/// integer. Only for reading back a `Set`: `1.0` renders as `1`, which parses
+/// back as an integer.
+fn reads_back_as(read: &Value, written: &Value) -> bool {
+    value_eq(read, written, true)
+}
+
+fn value_eq(a: &Value, b: &Value, int_is_float: bool) -> bool {
     match (a, b) {
         (Value::Float(x), Value::Float(y)) => x == y || (x.is_nan() && y.is_nan()),
         // The cast is the comparison: an integer equals the float it converts to.
         #[allow(clippy::cast_precision_loss)]
-        (Value::Int(i), Value::Float(f)) | (Value::Float(f), Value::Int(i)) => *i as f64 == *f,
+        (Value::Int(i), Value::Float(f)) | (Value::Float(f), Value::Int(i)) => {
+            int_is_float && *i as f64 == *f
+        }
         (Value::Seq(x), Value::Seq(y)) => {
-            x.len() == y.len() && x.iter().zip(y).all(|(x, y)| same_value(x, y))
+            x.len() == y.len() && x.iter().zip(y).all(|(x, y)| value_eq(x, y, int_is_float))
         }
         (Value::Map(x), Value::Map(y)) => {
             x.len() == y.len()
                 && x.iter()
                     .zip(y.iter())
-                    .all(|((kx, vx), (ky, vy))| kx == ky && same_value(vx, vy))
+                    .all(|((kx, vx), (ky, vy))| kx == ky && value_eq(vx, vy, int_is_float))
         }
         _ => a == b,
     }
@@ -549,7 +577,7 @@ fn set(
             let existing = parsed.root.as_mapping().and_then(|m| m.get(&span.key));
             // `Set`: an equal value is a byte-identical no-op — no quoting
             // normalization, no collection reordering, no scalar re-spelling.
-            if existing == Some(value) {
+            if existing.is_some_and(|e| same_value(e, value)) {
                 Ok((current.to_string(), false))
             } else {
                 Ok((
@@ -878,10 +906,28 @@ mod frontmatter_tests {
     }
 
     #[test]
+    fn a_keep_chomped_last_value_can_be_set_in_split_form() {
+        let edits = [FieldEdit::Set {
+            key: "b".to_string(),
+            value: Value::from("kept\n\n"),
+        }];
+        let out = edit_frontmatter("a: 1\nb: x", &edits).unwrap();
+        let block = String::from_utf8(out.bytes).unwrap();
+        assert_eq!(block, "a: 1\nb: |+\n  kept\n");
+        // Framed as a file, the block reads back as the value that was set.
+        let note = format!("{block}\n");
+        assert_eq!(
+            parse::parse_mapping(&note).unwrap().get("b"),
+            Some(&Value::from("kept\n\n"))
+        );
+    }
+
+    #[test]
     fn values_compare_as_a_reader_sees_them() {
         assert!(same_value(&Value::Float(f64::NAN), &Value::Float(f64::NAN)));
-        assert!(same_value(&Value::Float(1.0), &Value::Int(1)));
-        assert!(!same_value(&Value::Float(1.5), &Value::Int(1)));
+        assert!(!same_value(&Value::Float(1.0), &Value::Int(1)));
+        assert!(reads_back_as(&Value::Int(1), &Value::Float(1.0)));
+        assert!(!reads_back_as(&Value::Int(1), &Value::Float(1.5)));
         assert!(same_value(
             &Value::Seq(vec![Value::Float(f64::NAN)]),
             &Value::Seq(vec![Value::Float(f64::NAN)])
