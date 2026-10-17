@@ -15,9 +15,13 @@
 // succeed with either credential, so this script refuses it (exit 1) and says
 // how to split it. It reads the crates.io sparse index, so it needs no token.
 //
+// It also refuses a new crate when the same name with `-` and `_` swapped is
+// on crates.io: crates.io treats the two as one name, so the first publish
+// would fail.
+//
 // Prints `auth=<none|token|oidc>` (to GITHUB_OUTPUT when set) and a table of
-// every crate (to GITHUB_STEP_SUMMARY when set). A crate with `publish = false`
-// is skipped.
+// every crate (to GITHUB_STEP_SUMMARY when set). A crate is skipped unless its
+// `publish` field allows crates.io (unset, or a list that names `crates-io`).
 import { execFileSync } from 'node:child_process'
 import { appendFileSync } from 'node:fs'
 
@@ -47,6 +51,7 @@ function indexPath(name) {
 async function publishedVersions(name) {
   const res = await fetch(`https://index.crates.io/${indexPath(name)}`, {
     headers: { 'User-Agent': 'osdlc-release-plz (https://github.com/osdlc/osdlc)' },
+    signal: AbortSignal.timeout(30_000),
   })
   if (res.status === 404) return null
   if (!res.ok) throw new Error(`crates.io index returned ${res.status} for ${name}`)
@@ -54,13 +59,20 @@ async function publishedVersions(name) {
   return new Set(lines.map((l) => JSON.parse(l).vers))
 }
 
+/** The name with every `-` turned into `_` and every `_` into `-`. */
+const swapped = (name) => name.replace(/[-_]/g, (c) => (c === '-' ? '_' : '-'))
+
 const rows = []
+const clashes = []
 for (const id of metadata.workspace_members) {
   const pkg = metadata.packages.find((p) => p.id === id)
-  // `publish = false` shows as an empty registry list.
-  if (Array.isArray(pkg.publish) && pkg.publish.length === 0) continue
+  // `publish` is null when unset, [] for `publish = false`, or a registry list.
+  if (pkg.publish !== null && !pkg.publish.includes('crates-io')) continue
   const versions = await publishedVersions(pkg.name)
   const exists = versions !== null
+  if (!exists && swapped(pkg.name) !== pkg.name) {
+    if ((await publishedVersions(swapped(pkg.name))) !== null) clashes.push(pkg.name)
+  }
   const published = exists && versions.has(pkg.version)
   rows.push({ name: pkg.name, version: pkg.version, exists, published })
 }
@@ -81,7 +93,13 @@ const table = [
 
 let auth
 let problem = null
-if (pending.length === 0) auth = 'none'
+if (clashes.length > 0) {
+  auth = 'refused'
+  problem =
+    `crates.io already has ${clashes.map((n) => `${swapped(n)} (for ${n})`).join(', ')}. ` +
+    'crates.io treats `-` and `_` as the same, so the first publish would fail. ' +
+    'Rename the crate.'
+} else if (pending.length === 0) auth = 'none'
 else if (update.length === 0) auth = 'token'
 else if (first.length === 0) auth = 'oidc'
 else {

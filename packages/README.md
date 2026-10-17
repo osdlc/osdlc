@@ -101,6 +101,13 @@ Rust crates are released by `.github/workflows/release-plz.yml` with
 4. One run uses one credential, so a push must not hold both a crate's first
    release and a new version of a crate already on crates.io. The workflow
    refuses such a run and says how to split it.
+5. If the crate is published but the tag or the GitHub release fails, do not
+   re-run the job to publish again: crates.io already has the version, so
+   the next run skips the crate and never tags it. Create both by hand on
+   the commit that was released (the tag ruleset lets an admin do this). For example, for etag-write 0.1.0:
+   `git tag etag-write/v0.1.0 <sha>`, `git push origin etag-write/v0.1.0`,
+   then `gh release create etag-write/v0.1.0 --title "etag-write v0.1.0"`
+   with the CHANGELOG section as the notes.
 
 ## Working on a library
 

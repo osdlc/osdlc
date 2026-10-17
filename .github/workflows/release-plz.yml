@@ -22,10 +22,15 @@
 # refuses a run that mixes a first release with a new version of an
 # existing crate. See .github/scripts/crates-io-auth-plan.mjs.
 #
-# Tokens. The GitHub App `osdlc-release` (secrets RELEASE_PLZ_APP_ID and
-# RELEASE_PLZ_APP_PRIVATE_KEY) opens the release pull request and creates the
-# tags. A pull request opened with GITHUB_TOKEN would not start the required
-# checks. The `*/v*` tag ruleset must let the App create tags.
+# Tokens. The GitHub App `osdlc-release` opens the release pull request and
+# creates the tags. A pull request opened with GITHUB_TOKEN would not start
+# the required checks. Its secrets, RELEASE_PLZ_APP_ID and
+# RELEASE_PLZ_APP_PRIVATE_KEY, are environment secrets, so only the two jobs
+# that need them can read them: `release-pr` in the `release-plz`
+# environment (main only, no reviewer) and `release` in `crates-io`.
+#
+# Prerequisite, created by the owner: a tag ruleset on `*/v*` that lets only
+# the App (and admins) create those tags.
 #
 # A manual run (workflow_dispatch) is a dry run unless `dry_run` is
 # unchecked. A dry run still asks for the environment approval, and
@@ -56,6 +61,8 @@ jobs:
   release-pr:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
+    # Main only, no reviewer. Holds the App secrets.
+    environment: release-plz
     # One release pull request update at a time. A newer push waits.
     concurrency:
       group: release-plz-pr-${{ github.ref }}
@@ -88,6 +95,7 @@ jobs:
 
   plan:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       auth: ${{ steps.plan.outputs.auth }}
     steps:
@@ -111,8 +119,14 @@ jobs:
     needs: plan
     if: needs.plan.outputs.auth == 'token' || needs.plan.outputs.auth == 'oidc'
     runs-on: ubuntu-latest
-    # Branch main only, required reviewer, holds CARGO_REGISTRY_TOKEN.
+    # Branch main only, required reviewer. Holds CARGO_REGISTRY_TOKEN and the
+    # App secrets.
     environment: crates-io
+    # Releases run one at a time and are never cancelled: a cancelled run can
+    # stop between the publish and the tag.
+    concurrency:
+      group: release-plz-release
+      cancel-in-progress: false
     permissions:
       contents: read
       # For trusted publishing. Unused on a first release.
@@ -124,6 +138,16 @@ jobs:
           persist-credentials: false
 
       - uses: ./.github/actions/rust-toolchain
+
+      - name: Check the shared token is set
+        if: needs.plan.outputs.auth == 'token'
+        env:
+          TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::error::A first release needs CARGO_REGISTRY_TOKEN in the crates-io environment, and it is empty or missing."
+            exit 1
+          fi
 
       - name: Get a GitHub App token
         id: app-token
