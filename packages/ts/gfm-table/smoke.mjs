@@ -1,0 +1,35 @@
+// Runs the BUILT package under Node. `bun test` resolves the `bun` export
+// condition to the TypeScript sources, so dist/ is compiled but never run
+// anywhere else. A broken emit, such as an unrewritten `.ts` import, passes
+// every other check and fails on the consumer's machine.
+//
+// Not a test-runner suite: it must run from the installed tarball with only
+// dist/ present.
+
+import { strict as assert } from 'node:assert'
+import {
+  gridFromCsv,
+  readDelimited,
+  readTable,
+  renderTable,
+  rowCellTexts,
+  splitRow,
+  toCsv,
+} from './dist/index.js'
+
+assert.deepEqual(rowCellTexts('| a \\| b | c |'), ['a | b', 'c'])
+
+const markdown = renderTable({ header: ['Name', 'Value'], rows: [['a|b', '1']] })
+assert.equal(markdown, '| Name | Value |\n| --- | --- |\n| a\\|b | 1 |')
+assert.equal(readTable(markdown.split('\n'))?.rows[0]?.[0]?.text, 'a|b')
+
+assert.equal(splitRow('| a |', 10).cells[0]?.content.from, 12)
+
+const grid = [
+  ['a', 'b'],
+  ['1', '2'],
+]
+assert.deepEqual(gridFromCsv(toCsv(grid)), grid)
+assert.equal(readDelimited('x;y\n1;2\n').delimiter, ';')
+
+console.log('gfm-table smoke: OK')
