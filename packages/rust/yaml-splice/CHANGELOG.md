@@ -9,8 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [0.2.1](https://github.com/osdlc/osdlc/releases/tag/yaml-splice/v0.2.1) - 2026-10-17
 
-First release on crates.io. Earlier versions, including an internal 0.2.1, were
-not published.
+First release on crates.io. Versions 0.1.0 and 0.2.0, and an earlier 0.2.1
+(2026-10-06, packaging changes only, no API change), were developed in a private
+repository before the package moved here, and were not published. This 0.2.1
+includes the changes made since then.
 
 ### Added
 
@@ -32,3 +34,21 @@ not published.
 - `FieldEdit`, `EditError`, `EditOptions`, `EditOutcome` and the other error
   and option types are `#[non_exhaustive]`.
 - Minimum supported Rust version 1.85.
+
+## [0.2.0] - 2026-08-08
+
+Developed in a private repository before the package moved here. Not published.
+
+### Changed
+
+- **BREAKING:** `splice_key` returns the split form on every path; previously it
+  returned the file-line form (trailing newline) when appending a key and the
+  split form when replacing one.
+
+## [0.1.0] - 2026-07-21
+
+Developed in a private repository before the package moved here. Not published.
+
+### Added
+
+- Initial release: the pure YAML frontmatter field-editing crate.
