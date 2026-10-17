@@ -9,7 +9,7 @@
 [workspace]
 # resolver 3 picks dependency versions that support `rust-version` (the MSRV).
 resolver = "3"
-members = []
+members = ["etag-write"]
 
 [workspace.package]
 edition = "2024"
@@ -23,3 +23,6 @@ unsafe_code = "forbid"
 missing_docs = "warn"
 
 [workspace.dependencies]
+sha2 = "0.10"
+tempfile = "3"
+thiserror = "2"

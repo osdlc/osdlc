@@ -1,0 +1,235 @@
+# Checks the Cargo workspace under packages/rust/ on every pull request and
+# push to main.
+#
+# The workflow always runs, so its final `rust` job always reports. That job
+# is the one to require in the "Protect main" ruleset. A workflow-level
+# `paths` filter would leave a required check pending forever on a pull
+# request that touches no Rust file. Instead the `changes` job decides, and
+# the other jobs skip when nothing under the Rust paths changed. `rust`
+# passes when every job it needs passed or was skipped.
+#
+# The toolchain is the pin in packages/rust/rust-toolchain.toml, except in
+# the `msrv` job (the workspace `rust-version`) and the `minimal-versions`
+# lockfile step (a dated nightly, for `-Z direct-minimal-versions`).
+#
+# Every action is pinned to a commit SHA; the comment names its release.
+name: rust
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rust-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: '0'
+
+defaults:
+  run:
+    shell: bash
+    working-directory: packages/rust
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      rust: ${{ steps.diff.outputs.rust }}
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+
+      # A pull request lists its files through the API, with the old name of
+      # a renamed file. A push compares the pushed commit with the one before
+      # it, with renames split into a delete and an add. A manual run, a new branch, or
+      # a diff that fails, runs everything.
+      - name: Did a Rust path change?
+        id: diff
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          PR: ${{ github.event.pull_request.number }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          files=""
+          case "$EVENT" in
+            pull_request)
+              files="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${PR}/files" --jq '.[] | .filename, (.previous_filename // empty)')"
+              ;;
+            push)
+              if [ -n "$BEFORE" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ]; then
+                files="$(git diff --name-only --no-renames "$BEFORE" "$AFTER" 2>/dev/null || echo '*')"
+              else
+                files='*'
+              fi
+              ;;
+            *)
+              files='*'
+              ;;
+          esac
+          if [ "$files" = '*' ] || grep -qE '^(packages/rust/|\.github/workflows/rust-ci\.yml$|\.github/actions/rust-)' <<<"$files"; then
+            echo "rust=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "rust=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  lint:
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/rust-toolchain
+        with:
+          components: rustfmt clippy
+
+      - uses: ./.github/actions/rust-build-cache
+
+      - name: Format check
+        run: cargo fmt --all --check
+
+      - name: Docs
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --workspace --no-deps --locked
+
+      # Builds each crate from its packaged files only, so a file missing from
+      # a crate's `include` list fails here and not on crates.io.
+      - name: Package
+        run: cargo package --workspace --locked
+
+  rust-test:
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    name: rust test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/rust-toolchain
+        with:
+          components: clippy
+
+      - uses: ./.github/actions/rust-build-cache
+
+      # Per OS, because code behind `cfg(unix)` or `cfg(windows)` is only
+      # linted on that OS.
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: Test
+        run: cargo test --workspace --locked
+
+  # Builds and tests on the workspace `rust-version` with a lockfile resolved
+  # fresh on that toolchain. resolver 3 then picks dependency versions that
+  # support it, as a consumer on that toolchain would get.
+  msrv:
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Read rust-version
+        id: msrv
+        run: |
+          set -euo pipefail
+          v="$(sed -n 's/^rust-version = "\(.*\)"$/\1/p' Cargo.toml)"
+          test -n "$v"
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+      - uses: ./.github/actions/rust-toolchain
+        with:
+          toolchain: ${{ steps.msrv.outputs.version }}
+
+      - uses: ./.github/actions/rust-build-cache
+        with:
+          key: msrv
+
+      - name: Resolve a fresh lockfile
+        run: |
+          rm -f Cargo.lock
+          cargo generate-lockfile
+
+      - name: Test
+        run: cargo test --workspace --locked
+
+  # Resolves each crate's direct dependencies to the lowest versions its
+  # manifest allows, then tests. Catches a version requirement that is lower
+  # than what the code needs.
+  minimal-versions:
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # A dated nightly, so a nightly regression cannot turn CI red on its
+      # own. Only the lockfile step uses it. Move the date when needed.
+      - uses: ./.github/actions/rust-toolchain
+        with:
+          toolchain: nightly-2026-10-15
+
+      - name: Resolve direct dependencies to their minimal versions
+        run: cargo update -Z direct-minimal-versions
+
+      # Back to the pinned toolchain for the build and the tests.
+      - uses: ./.github/actions/rust-toolchain
+
+      - uses: ./.github/actions/rust-build-cache
+        with:
+          key: minimal-versions
+
+      - name: Test
+        run: cargo test --workspace --locked
+
+  rust:
+    needs: [changes, lint, rust-test, msrv, minimal-versions]
+    if: always()
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - name: Every Rust job passed or was skipped
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          set -euo pipefail
+          echo "results: $RESULTS"
+          for r in $RESULTS; do
+            case "$r" in
+              success|skipped) ;;
+              *) echo "::error::a Rust job ended with: $r"; exit 1 ;;
+            esac
+          done
