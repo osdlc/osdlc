@@ -1,0 +1,20 @@
+# Comparison harness: runs the edit shapes of `tests/neighbours.rs` through
+# yaml-edit and yaml-splice and counts the results. See ../COMPARISON.md.
+#
+# Not published and not part of the yaml-splice package. It is its own
+# workspace, so a yaml-edit release cannot break the main workspace's CI.
+[package]
+name = "yaml-splice-compare"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Comparison harness for yaml-splice and yaml-edit. Not published."
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/osdlc/osdlc"
+publish = false
+
+[dependencies]
+yaml-edit = { version = "=0.3.2", default-features = false }
+yaml-splice = { path = ".." }
+
+[workspace]

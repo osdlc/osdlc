@@ -1,0 +1,273 @@
+[
+  {
+    "name": "resent_equal_value_is_a_byte_identical_no_op",
+    "source": "title: 'Deadlifts'\nlist: 'Reminders'\ncount: 3\n",
+    "edits": [{ "Set": { "key": "list", "value": "Reminders" } }],
+    "expect": { "changed": false, "bytes": "title: 'Deadlifts'\nlist: 'Reminders'\ncount: 3\n" }
+  },
+  {
+    "name": "no_op_does_not_normalize_a_bare_scalar",
+    "source": "status: draft\n",
+    "edits": [{ "Set": { "key": "status", "value": "draft" } }],
+    "expect": { "changed": false, "bytes": "status: draft\n" }
+  },
+  {
+    "name": "resetting_an_int_to_the_same_int_is_a_no_op",
+    "source": "n: 1\n",
+    "edits": [{ "Set": { "key": "n", "value": 1 } }],
+    "expect": { "changed": false, "bytes": "n: 1\n" }
+  },
+  {
+    "name": "a_changed_value_keeps_comments_key_order_and_quoting",
+    "source": "# The note's own header comment.\ntitle: 'Single quoted on purpose'\nstatus: draft   # why it is a draft\nzeta: 1\nalpha: 2\n",
+    "edits": [{ "Set": { "key": "status", "value": "published" } }],
+    "expect": {
+      "changed": true,
+      "bytes": "# The note's own header comment.\ntitle: 'Single quoted on purpose'\nstatus: published   # why it is a draft\nzeta: 1\nalpha: 2\n",
+      "single_span": true
+    }
+  },
+  {
+    "name": "a_quoted_value_keeps_its_trailing_comment",
+    "source": "title: 'Draft'   # keep me\nnote: \"it's \\\"here\\\"\" # and me\n",
+    "edits": [
+      { "Set": { "key": "title", "value": "Final" } },
+      { "Set": { "key": "note", "value": "gone" } }
+    ],
+    "expect": { "changed": true, "bytes": "title: Final   # keep me\nnote: gone # and me\n" }
+  },
+  {
+    "name": "setting_a_block_scalar_keeps_the_next_key_on_its_own_line",
+    "source": "body: |\n  first\n  second\n# about next\nnext: 2\n",
+    "edits": [{ "Set": { "key": "body", "value": "short" } }],
+    "expect": { "changed": true, "bytes": "body: short\n# about next\nnext: 2\n" }
+  },
+  {
+    "name": "removing_a_block_scalar_removes_only_its_own_lines",
+    "source": "body: >-\n  folded\n  text\n\nnext: 2\n",
+    "edits": [{ "Remove": { "key": "body" } }],
+    "expect": { "changed": true, "bytes": "\nnext: 2\n" }
+  },
+  {
+    "name": "a_quoted_key_is_addressable_and_its_spelling_is_preserved",
+    "source": "'title': old\nstatus: draft\n",
+    "edits": [{ "Set": { "key": "title", "value": "new" } }],
+    "expect": { "changed": true, "bytes": "'title': new\nstatus: draft\n" }
+  },
+  {
+    "name": "a_bom_is_preserved_and_outside_every_span",
+    "source": "﻿title: old\nstatus: draft\n",
+    "edits": [{ "Set": { "key": "title", "value": "new" } }],
+    "expect": { "changed": true, "bytes": "﻿title: new\nstatus: draft\n", "single_span": true }
+  },
+  {
+    "name": "crlf_line_endings_survive_outside_the_edited_span",
+    "source": "a: 1\r\nb: 2\r\nc: 3\r\n",
+    "edits": [{ "Set": { "key": "b", "value": 9 } }],
+    "expect": { "changed": true, "bytes": "a: 1\r\nb: 9\r\nc: 3\r\n" }
+  },
+  {
+    "name": "an_appended_key_uses_the_documents_line_ending",
+    "source": "a: 1\r\nb: 2\r\n",
+    "edits": [{ "Set": { "key": "c", "value": 3 } }],
+    "expect": { "changed": true, "bytes": "a: 1\r\nb: 2\r\nc: 3\r\n" }
+  },
+  {
+    "name": "a_file_without_a_final_newline_still_appends",
+    "source": "a: 1",
+    "edits": [{ "Set": { "key": "b", "value": 2 } }],
+    "expect": { "changed": true, "bytes": "a: 1\nb: 2\n" }
+  },
+  {
+    "name": "mixed_line_endings_are_not_normalized",
+    "source": "a: 1\r\nb: 2\nc: 3\r\n",
+    "edits": [{ "Set": { "key": "b", "value": 9 } }],
+    "expect": { "changed": true, "bytes": "a: 1\r\nb: 9\nc: 3\r\n" }
+  },
+  {
+    "name": "a_block_scalar_neighbour_is_left_byte_for_byte",
+    "source": "desc: |\n  first line\n  # looks like a comment but is not\nstatus: draft\n",
+    "edits": [{ "Set": { "key": "status", "value": "done" } }],
+    "expect": {
+      "changed": true,
+      "bytes": "desc: |\n  first line\n  # looks like a comment but is not\nstatus: done\n",
+      "single_span": true
+    }
+  },
+  {
+    "name": "a_flow_collection_neighbour_is_preserved",
+    "source": "tags: [a, b, c]\nstatus: draft\n",
+    "edits": [{ "Set": { "key": "status", "value": "done" } }],
+    "expect": { "changed": true, "bytes": "tags: [a, b, c]\nstatus: done\n" }
+  },
+  {
+    "name": "an_anchor_alias_neighbour_is_preserved",
+    "source": "anchors: &pos {x: 10, y: 20}\nlayout:\n  s: *pos\nstatus: draft\n",
+    "edits": [{ "Set": { "key": "status", "value": "done" } }],
+    "expect": {
+      "changed": true,
+      "bytes": "anchors: &pos {x: 10, y: 20}\nlayout:\n  s: *pos\nstatus: done\n",
+      "single_span": true
+    }
+  },
+  {
+    "name": "a_collection_value_reindents_under_its_key",
+    "source": "name: x\ntags:\n  - old\nafter: y\n",
+    "edits": [{ "Set": { "key": "tags", "value": ["one", "two"] } }],
+    "expect": { "changed": true, "bytes": "name: x\ntags:\n  - one\n  - two\nafter: y\n" }
+  },
+  {
+    "name": "an_empty_document_gains_the_first_entry",
+    "source": "",
+    "edits": [{ "Set": { "key": "kind", "value": "note" } }],
+    "expect": { "changed": true, "bytes": "kind: note\n" }
+  },
+  {
+    "name": "a_comments_only_document_keeps_its_comments_before_the_new_entry",
+    "source": "# just a header comment\n",
+    "edits": [{ "Set": { "key": "kind", "value": "note" } }],
+    "expect": { "changed": true, "bytes": "# just a header comment\nkind: note\n" }
+  },
+  {
+    "name": "an_append_lands_before_an_explicit_document_end_marker",
+    "source": "a: 1\n...\n",
+    "edits": [{ "Set": { "key": "b", "value": 2 } }],
+    "expect": { "changed": true, "bytes": "a: 1\nb: 2\n...\n" }
+  },
+  {
+    "name": "remove_takes_the_key_its_value_and_its_inline_comment",
+    "source": "a: 1\nb: 2   # gone with it\nc: 3\n",
+    "edits": [{ "Remove": { "key": "b" } }],
+    "expect": { "changed": true, "bytes": "a: 1\nc: 3\n" }
+  },
+  {
+    "name": "removing_an_absent_key_is_a_no_op",
+    "source": "a: 1\nc: 3\n",
+    "edits": [{ "Remove": { "key": "b" } }],
+    "expect": { "changed": false, "bytes": "a: 1\nc: 3\n" }
+  },
+  {
+    "name": "rename_changes_the_key_token_in_place",
+    "source": "# hdr\nold: value   # keep me\nother: 2\n",
+    "edits": [{ "Rename": { "from": "old", "to": "new" } }],
+    "expect": { "changed": true, "bytes": "# hdr\nnew: value   # keep me\nother: 2\n" }
+  },
+  {
+    "name": "rename_of_a_missing_source_is_a_missing_key_refusal",
+    "source": "a: 1\n",
+    "edits": [{ "Rename": { "from": "nope", "to": "x" } }],
+    "expect": { "error": "MissingKey" }
+  },
+  {
+    "name": "rename_onto_an_existing_destination_is_a_key_conflict",
+    "source": "a: 1\nb: 2\n",
+    "edits": [{ "Rename": { "from": "a", "to": "b" } }],
+    "expect": { "error": "KeyConflict" }
+  },
+  {
+    "name": "addressing_is_case_insensitive_by_default",
+    "source": "Status: draft\n",
+    "edits": [{ "Set": { "key": "status", "value": "done" } }],
+    "expect": { "changed": true, "bytes": "Status: done\n" }
+  },
+  {
+    "name": "case_sensitive_mode_treats_case_variants_as_distinct",
+    "source": "Status: draft\n",
+    "edits": [{ "Set": { "key": "status", "value": "done" } }],
+    "case_sensitive": true,
+    "expect": { "changed": true, "bytes": "Status: draft\nstatus: done\n" }
+  },
+  {
+    "name": "two_keys_that_fold_to_one_identity_are_an_ambiguous_key_refusal",
+    "source": "Title: A\ntitle: B\nstatus: draft\n",
+    "edits": [{ "Set": { "key": "title", "value": "C" } }],
+    "expect": { "error": "AmbiguousKey", "error_span_within_source": true }
+  },
+  {
+    "name": "case_sensitive_addressing_resolves_a_folded_pair_distinctly",
+    "source": "Title: A\ntitle: B\nstatus: draft\n",
+    "edits": [{ "Set": { "key": "title", "value": "C" } }],
+    "case_sensitive": true,
+    "expect": { "changed": true, "bytes": "Title: A\ntitle: C\nstatus: draft\n" }
+  },
+  {
+    "name": "a_duplicate_targeted_key_is_an_ambiguous_key_refusal",
+    "source": "title: First\ntitle: Second\n",
+    "edits": [{ "Set": { "key": "title", "value": "Third" } }],
+    "expect": { "error": "AmbiguousKey" }
+  },
+  {
+    "name": "a_non_string_key_is_preserved_and_not_targetable",
+    "source": "1: original\nname: x\n",
+    "edits": [{ "Set": { "key": "1", "value": "added" } }],
+    "expect": { "changed": true, "bytes": "1: original\nname: x\n\"1\": added\n" }
+  },
+  {
+    "name": "unicode_keys_and_values_are_edited_without_disturbing_neighbours",
+    "source": "имя: Вася\nstatus: draft\nemoji: 🎉\n",
+    "edits": [{ "Set": { "key": "status", "value": "готов" } }],
+    "expect": {
+      "changed": true,
+      "bytes": "имя: Вася\nstatus: готов\nemoji: 🎉\n",
+      "single_span": true
+    }
+  },
+  {
+    "name": "a_batch_applies_in_declared_order_atomically",
+    "source": "# hi\na: 1\nb: 2\nc: 3\n",
+    "edits": [
+      { "Set": { "key": "a", "value": 10 } },
+      { "Set": { "key": "c", "value": "three" } },
+      { "Set": { "key": "d", "value": "appended" } }
+    ],
+    "expect": { "changed": true, "bytes": "# hi\na: 10\nb: 2\nc: three\nd: appended\n" }
+  },
+  {
+    "name": "a_later_edit_sees_an_earlier_one",
+    "source": "a: 1\n",
+    "edits": [{ "Set": { "key": "x", "value": "v" } }, { "Rename": { "from": "x", "to": "y" } }],
+    "expect": { "changed": true, "bytes": "a: 1\ny: v\n" }
+  },
+  {
+    "name": "a_failing_edit_discards_the_whole_batch",
+    "source": "a: 1\nb: 2\n",
+    "edits": [{ "Set": { "key": "a", "value": 9 } }, { "Rename": { "from": "a", "to": "b" } }],
+    "expect": { "error": "KeyConflict" }
+  },
+  {
+    "name": "invalid_utf8_is_a_structured_refusal_with_the_offset",
+    "source_bytes": [97, 58, 32, 255, 10],
+    "edits": [{ "Set": { "key": "a", "value": "x" } }],
+    "expect": { "error": "InvalidUtf8", "error_valid_up_to": 3 }
+  },
+  {
+    "name": "malformed_yaml_is_a_structured_refusal",
+    "source": "a: [1, 2\nb: 3\n",
+    "edits": [{ "Set": { "key": "a", "value": "x" } }],
+    "expect": { "error": "MalformedYaml" }
+  },
+  {
+    "name": "a_sequence_root_is_a_root_not_mapping_refusal",
+    "source": "- one\n- two\n",
+    "edits": [{ "Set": { "key": "a", "value": "x" } }],
+    "expect": { "error": "RootNotMapping" }
+  },
+  {
+    "name": "a_scalar_root_is_a_root_not_mapping_refusal",
+    "source": "just a string\n",
+    "edits": [{ "Set": { "key": "a", "value": "x" } }],
+    "expect": { "error": "RootNotMapping" }
+  },
+  {
+    "name": "a_multi_document_stream_is_unsupported",
+    "source": "a: 1\n---\nb: 2\n",
+    "edits": [{ "Set": { "key": "a", "value": "x" } }],
+    "expect": { "error": "UnsupportedDocument" }
+  },
+  {
+    "name": "a_directive_is_unsupported",
+    "source": "%YAML 1.2\n---\na: 1\n",
+    "edits": [{ "Set": { "key": "a", "value": "x" } }],
+    "expect": { "error": "UnsupportedDocument" }
+  }
+]
