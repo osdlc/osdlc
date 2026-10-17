@@ -18,8 +18,8 @@
 //!
 //! **Convention — which per-OS table the homes come from:**
 //! [`Convention::Native`] (the default) or [`Convention::Xdg`]. They differ on
-//! macOS only. CLI and developer tools use Xdg; GUI apps use Native. See
-//! [`Convention`].
+//! macOS only. CLI and developer tools use Xdg; GUI apps use Native. A caller
+//! picks one through [`ResolveOptions`]. See [`Convention`].
 //!
 //! [`TieredDirs::scratch`] sits outside both axes: see "`scratch` is not a
 //! home".
@@ -121,17 +121,19 @@
 //! harness can run a whole app inside one scratch root. The caller names the
 //! variables with [`EnvVars`], usually through [`env_vars!`] and a prefix:
 //! `env_vars!("MYAPP")` reads `MYAPP_ROOT`, `MYAPP_<HOME>_DIR`,
-//! `MYAPP_SCRATCH_DIR` and `MYAPP_REQUIRE_OVERRIDE`.
+//! `MYAPP_SCRATCH_DIR`, `MYAPP_REQUIRE_OVERRIDE` and `MYAPP_CONVENTION`.
 //!
 //! Per base directory, the first answer wins: the per-home variable, then the
 //! root variable laid out as [`BaseDirs::rooted`], then the OS default for the
 //! convention. `<P>_CONVENTION` picks that convention over the caller's. See
-//! [`BaseDirs::from_env_in`]. The TS twin's `systemBaseDirs` resolves the same
+//! [`BaseDirs::from_env_opts`]. The TS twin's `systemBaseDirs` resolves the same
 //! order, held to it by the `env_cases` in the parity fixture.
 //!
 //! # Tests never resolve a real home
 //!
-//! Two rules sit in [`BaseDirs::from_env`], above that order:
+//! Two rules sit in [`BaseDirs::from_env`] and [`BaseDirs::from_env_opts`],
+//! and so in the [`TieredDirs`] constructors of the same names, above that
+//! order:
 //!
 //! - **A cargo test binary defaults to a scratch root.** When the root
 //!   variable is unset in a test binary that cargo or nextest runs, it reads
@@ -144,8 +146,8 @@
 //!   spawns without a scratch root fails loudly instead of writing to the
 //!   real home.
 //!
-//! [`BaseDirs::from_env_with`] applies neither rule. A test that means to
-//! read the OS defaults calls it directly.
+//! [`BaseDirs::from_env_with`] and [`BaseDirs::from_env_opts_with`] apply
+//! neither rule. A test that means to read the OS defaults calls one of them.
 //!
 //! # Windows
 //!
@@ -167,7 +169,9 @@
 //! Each public item's docs say "stable in 0.x": it is not expected to change
 //! in a breaking way before 1.0. [`Error`] and [`Convention`] are
 //! `#[non_exhaustive]`, so a later release can add a variant without a
-//! breaking change.
+//! breaking change. [`EnvVars`] and [`ResolveOptions`] are too, so a later
+//! release can add a field. [`Home`] is exhaustive: adding a home changes
+//! every caller's layout, so it is a breaking (0.x minor) release.
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs, clippy::missing_errors_doc, clippy::missing_panics_doc)]
@@ -183,11 +187,12 @@ use std::path::{Path, PathBuf};
 /// The names of the environment variables that move base directories.
 ///
 /// Build one with [`env_vars!`], which derives every name from a prefix. The
-/// fields are public so a caller with names that follow no prefix can spell
-/// them out.
+/// fields are public for reading. The struct is `#[non_exhaustive]`, so a
+/// later release can add a variable without a breaking change.
 ///
 /// **Stability:** stable in 0.x.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub struct EnvVars {
     /// Moves every base directory not moved by its own variable into the
     /// [`BaseDirs::rooted`] layout under the named root.
@@ -231,22 +236,54 @@ pub struct EnvVars {
 #[macro_export]
 macro_rules! env_vars {
     ($prefix:literal) => {
-        $crate::EnvVars {
-            root: concat!($prefix, "_ROOT"),
-            durable: concat!($prefix, "_DURABLE_DIR"),
-            config: concat!($prefix, "_CONFIG_DIR"),
-            cache: concat!($prefix, "_CACHE_DIR"),
-            state: concat!($prefix, "_STATE_DIR"),
-            logs: concat!($prefix, "_LOGS_DIR"),
-            runtime: concat!($prefix, "_RUNTIME_DIR"),
-            scratch: concat!($prefix, "_SCRATCH_DIR"),
-            require_override: concat!($prefix, "_REQUIRE_OVERRIDE"),
-            convention: concat!($prefix, "_CONVENTION"),
-        }
+        $crate::EnvVars::__from_names(
+            concat!($prefix, "_ROOT"),
+            concat!($prefix, "_DURABLE_DIR"),
+            concat!($prefix, "_CONFIG_DIR"),
+            concat!($prefix, "_CACHE_DIR"),
+            concat!($prefix, "_STATE_DIR"),
+            concat!($prefix, "_LOGS_DIR"),
+            concat!($prefix, "_RUNTIME_DIR"),
+            concat!($prefix, "_SCRATCH_DIR"),
+            concat!($prefix, "_REQUIRE_OVERRIDE"),
+            concat!($prefix, "_CONVENTION"),
+        )
     };
 }
 
 impl EnvVars {
+    /// What [`env_vars!`] expands to. Not public API: use the macro.
+    #[doc(hidden)]
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "one name per field, in field order"
+    )]
+    pub const fn __from_names(
+        root: &'static str,
+        durable: &'static str,
+        config: &'static str,
+        cache: &'static str,
+        state: &'static str,
+        logs: &'static str,
+        runtime: &'static str,
+        scratch: &'static str,
+        require_override: &'static str,
+        convention: &'static str,
+    ) -> Self {
+        Self {
+            root,
+            durable,
+            config,
+            cache,
+            state,
+            logs,
+            runtime,
+            scratch,
+            require_override,
+            convention,
+        }
+    }
+
     /// The variable that moves one base directory: a [`Home`]'s, or scratch's
     /// for `None` (scratch is not a home).
     pub const fn dir(&self, home: Option<Home>) -> &'static str {
@@ -261,10 +298,10 @@ impl EnvVars {
         }
     }
 
-    /// Every variable that moves a base directory: the root and the seven
+    /// Every variable that moves a base directory: the root, then the
     /// per-directory names. Excludes [`EnvVars::require_override`] and
     /// [`EnvVars::convention`], which move nothing.
-    pub const fn overrides(&self) -> [&'static str; 8] {
+    pub fn overrides(&self) -> impl Iterator<Item = &'static str> + use<> {
         [
             self.root,
             self.durable,
@@ -275,12 +312,12 @@ impl EnvVars {
             self.runtime,
             self.scratch,
         ]
+        .into_iter()
     }
 
     /// Whether `var` sets any of [`EnvVars::overrides`] to a non-empty value.
     pub fn is_overridden(&self, var: impl Fn(&str) -> Option<OsString>) -> bool {
         self.overrides()
-            .iter()
             .any(|name| var(name).is_some_and(|value| !value.is_empty()))
     }
 }
@@ -352,11 +389,13 @@ pub enum Error {
         require_var: &'static str,
     },
 
-    /// [`EnvVars::convention`] holds something other than `native` or `xdg`.
-    /// The value is trimmed, then must match exactly, in lower case.
+    /// [`EnvVars::convention`] holds something other than `native` or `xdg`,
+    /// or [`Convention`]'s `FromStr` got one. The variable is trimmed, then
+    /// must match exactly, in lower case.
     #[error("{var} must be \"native\" or \"xdg\", got {value:?}")]
     InvalidConvention {
-        /// [`EnvVars::convention`].
+        /// [`EnvVars::convention`], or `convention` from
+        /// [`Convention::from_str`](std::str::FromStr::from_str).
         var: &'static str,
         /// The value as given.
         value: String,
@@ -417,7 +456,8 @@ fn check_key(kind: &'static str, key: &str) -> Result<(), Error> {
 /// Distinct from the tier axis, and orthogonal to it — every tier offers
 /// every home.
 ///
-/// **Stability:** stable in 0.x.
+/// **Stability:** stable in 0.x. Exhaustive on purpose: a new home changes
+/// every caller's layout, so adding one is a breaking (0.x minor) release.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Home {
     /// State that must survive: registries, minted ids, user content.
@@ -477,7 +517,8 @@ impl Home {
 /// both: Xdg means Native there. A CLI or developer tool uses `Xdg`, where its
 /// users look for dotfiles. A GUI app uses `Native`.
 ///
-/// [`EnvVars::convention`] picks one over the caller's choice.
+/// [`EnvVars::convention`] picks one over the caller's choice, which is
+/// [`ResolveOptions::convention`].
 ///
 /// **Stability:** stable in 0.x. New variants may be added.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
@@ -491,6 +532,9 @@ pub enum Convention {
 }
 
 impl Convention {
+    /// Every convention, the default first.
+    pub const ALL: &'static [Convention] = &[Convention::Native, Convention::Xdg];
+
     /// The name [`EnvVars::convention`] takes: `native` or `xdg`.
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -500,12 +544,72 @@ impl Convention {
     }
 }
 
+/// Parses [`Convention::as_str`]: exactly `native` or `xdg`, in lower case,
+/// untrimmed.
+impl std::str::FromStr for Convention {
+    type Err = Error;
+
+    /// # Errors
+    ///
+    /// [`Error::InvalidConvention`] with `var` set to `"convention"`.
+    fn from_str(value: &str) -> Result<Self, Error> {
+        Convention::ALL
+            .iter()
+            .copied()
+            .find(|convention| convention.as_str() == value)
+            .ok_or_else(|| Error::InvalidConvention {
+                var: "convention",
+                value: value.to_string(),
+            })
+    }
+}
+
+/// How [`BaseDirs::from_env_opts`] and [`TieredDirs::from_env_opts`] resolve.
+///
+/// One value for every knob, so a new knob is a new field here rather than a
+/// new constructor. Build it with [`ResolveOptions::new`] or `default()`, then
+/// the `with_*` setters:
+///
+/// ```
+/// use tiered_dirs::{Convention, ResolveOptions};
+///
+/// const CLI: ResolveOptions = ResolveOptions::new().with_convention(Convention::Xdg);
+/// assert_eq!(CLI.convention, Convention::Xdg);
+/// assert_eq!(ResolveOptions::default().convention, Convention::Native);
+/// ```
+///
+/// **Stability:** stable in 0.x. `#[non_exhaustive]`, so a later release can
+/// add a field without a breaking change.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub struct ResolveOptions {
+    /// The per-OS table for the OS defaults. [`EnvVars::convention`] beats it
+    /// when set.
+    pub convention: Convention,
+}
+
+impl ResolveOptions {
+    /// The defaults: [`Convention::Native`].
+    pub const fn new() -> Self {
+        Self {
+            convention: Convention::Native,
+        }
+    }
+
+    /// These options with `convention`.
+    #[must_use]
+    pub const fn with_convention(mut self, convention: Convention) -> Self {
+        self.convention = convention;
+        self
+    }
+}
+
 /// The platform base directories, resolved once: the six homes plus
 /// `scratch`.
 ///
-/// Construct with [`BaseDirs::from_env`] or [`BaseDirs::from_env_in`] in
+/// Construct with [`BaseDirs::from_env`] or [`BaseDirs::from_env_opts`] in
 /// production and [`BaseDirs::rooted`], [`BaseDirs::xdg`] or
-/// [`BaseDirs::from_parts`] in tests. Once built, nothing in this crate
+/// [`BaseDirs::from_env_with`] in tests. Once built, nothing in this crate
 /// consults the environment again — path resolution below this type is pure.
 ///
 /// **Stability:** stable in 0.x.
@@ -521,13 +625,14 @@ pub struct BaseDirs {
 }
 
 impl BaseDirs {
-    /// [`BaseDirs::from_env_in`] with [`Convention::Native`].
+    /// [`BaseDirs::from_env_opts`] with the default [`ResolveOptions`]
+    /// ([`Convention::Native`]).
     ///
     /// # Errors
     ///
-    /// The errors of [`BaseDirs::from_env_in`].
+    /// The errors of [`BaseDirs::from_env_opts`].
     pub fn from_env(vars: &EnvVars) -> Result<Self, Error> {
-        Self::from_env_in(vars, Convention::Native)
+        Self::from_env_opts(vars, ResolveOptions::new())
     }
 
     /// Resolve from the environment and the platform, once.
@@ -537,14 +642,14 @@ impl BaseDirs {
     /// 1. Its own variable: [`EnvVars::dir`].
     /// 2. [`EnvVars::root`] — the [`BaseDirs::rooted`] layout.
     /// 3. The OS default for the convention. [`EnvVars::convention`] picks
-    ///    it when set; `convention` otherwise.
+    ///    it when set; [`ResolveOptions::convention`] otherwise.
     ///
     /// | home    | Linux, and macOS under Xdg | macOS under Native | Windows |
     /// |---------|----------------------------|--------------------|---------|
     /// | durable | `$XDG_DATA_HOME`, else `~/.local/share` | `~/Library/Application Support` | `%APPDATA%` |
     /// | config  | `$XDG_CONFIG_HOME`, else `~/.config` | `~/Library/Application Support` | `%APPDATA%` |
     /// | cache   | `$XDG_CACHE_HOME`, else `~/.cache` | `~/Library/Caches` | `%LOCALAPPDATA%` |
-    /// | state   | `$XDG_STATE_HOME`, else `~/.local/state` | `~/Library/Application Support` | `%LOCALAPPDATA%` |
+    /// | state   | `$XDG_STATE_HOME`, else `~/.local/state` | `~/Library/Application Support` | `%LOCALAPPDATA%\state` |
     /// | logs    | `$XDG_STATE_HOME`, else `~/.local/state` | `~/Library/Logs` | `%APPDATA%\logs` |
     /// | runtime | `$XDG_RUNTIME_DIR`, else `<durable>/run` | `<durable>/run` | `<durable>/run` |
     /// | scratch | `std::env::temp_dir()` | the same | the same |
@@ -562,6 +667,8 @@ impl BaseDirs {
     /// [`test_root`], and with [`EnvVars::require_override`] set an OS
     /// fallback is [`Error::OverrideRequired`].
     ///
+    /// A later knob goes on [`ResolveOptions`], not on a new constructor.
+    ///
     /// # Errors
     ///
     /// [`Error::RelativeOverride`] when a variable holds a relative path,
@@ -570,24 +677,24 @@ impl BaseDirs {
     /// [`EnvVars::require_override`] is set and a base directory would fall
     /// back to the OS default, and [`Error::MissingBaseDir`] when the platform
     /// has no such directory.
-    pub fn from_env_in(vars: &EnvVars, convention: Convention) -> Result<Self, Error> {
-        Self::from_env_guarded(vars, convention, |name| std::env::var_os(name), test_root())
+    pub fn from_env_opts(vars: &EnvVars, opts: ResolveOptions) -> Result<Self, Error> {
+        Self::from_env_guarded(vars, opts, |name| std::env::var_os(name), test_root())
     }
 
-    /// [`BaseDirs::from_env_in`] with the environment and the test root
+    /// [`BaseDirs::from_env_opts`] with the environment and the test root
     /// injected, so the test rules are testable without the process env.
     fn from_env_guarded(
         vars: &EnvVars,
-        convention: Convention,
+        opts: ResolveOptions,
         var: impl Fn(&str) -> Option<OsString>,
         test_root: Option<&Path>,
     ) -> Result<Self, Error> {
         let var = |name: &str| var(name).filter(|value| !value.is_empty());
         if var(vars.root).is_some() {
-            return Self::from_env_in_with(vars, convention, var);
+            return Self::from_env_opts_with(vars, opts, var);
         }
         if let Some(root) = test_root {
-            return Self::from_env_in_with(vars, convention, |name| {
+            return Self::from_env_opts_with(vars, opts, |name| {
                 if name == vars.root {
                     Some(root.as_os_str().to_owned())
                 } else {
@@ -613,22 +720,22 @@ impl BaseDirs {
                 });
             }
         }
-        Self::from_env_in_with(vars, convention, var)
+        Self::from_env_opts_with(vars, opts, var)
     }
 
-    /// [`BaseDirs::from_env_in_with`] with [`Convention::Native`].
+    /// [`BaseDirs::from_env_opts_with`] with the default [`ResolveOptions`].
     ///
     /// # Errors
     ///
-    /// The errors of [`BaseDirs::from_env_in_with`].
+    /// The errors of [`BaseDirs::from_env_opts_with`].
     pub fn from_env_with(
         vars: &EnvVars,
         var: impl Fn(&str) -> Option<OsString>,
     ) -> Result<Self, Error> {
-        Self::from_env_in_with(vars, Convention::Native, var)
+        Self::from_env_opts_with(vars, ResolveOptions::new(), var)
     }
 
-    /// [`BaseDirs::from_env_in`] with every variable read through `var`
+    /// [`BaseDirs::from_env_opts`] with every variable read through `var`
     /// instead of the process environment: the override variables, the
     /// convention variable and `XDG_*`. The home directory and the macOS
     /// Native and Windows cells still come from the platform. The seam that
@@ -641,13 +748,13 @@ impl BaseDirs {
     /// [`Error::InvalidConvention`] when [`EnvVars::convention`] names no
     /// convention, and [`Error::MissingBaseDir`] when the platform has no such
     /// directory.
-    pub fn from_env_in_with(
+    pub fn from_env_opts_with(
         vars: &EnvVars,
-        convention: Convention,
+        opts: ResolveOptions,
         var: impl Fn(&str) -> Option<OsString>,
     ) -> Result<Self, Error> {
         let var = |name: &str| var(name).filter(|value| !value.is_empty());
-        let convention = env_convention(vars, var)?.unwrap_or(convention);
+        let convention = env_convention(vars, var)?.unwrap_or(opts.convention);
         let read = |name: &'static str| -> Result<Option<PathBuf>, Error> {
             match var(name) {
                 None => Ok(None),
@@ -703,7 +810,7 @@ impl BaseDirs {
     ///
     /// [`Error::MissingBaseDir`] for the first of durable, config, cache,
     /// state, logs and scratch that is `None`.
-    pub fn from_parts(
+    pub(crate) fn from_parts(
         durable: Option<PathBuf>,
         config: Option<PathBuf>,
         cache: Option<PathBuf>,
@@ -807,14 +914,14 @@ fn env_convention(
     let Some(value) = var(vars.convention) else {
         return Ok(None);
     };
-    match value.to_str().map(str::trim) {
-        Some("native") => Ok(Some(Convention::Native)),
-        Some("xdg") => Ok(Some(Convention::Xdg)),
-        _ => Err(Error::InvalidConvention {
+    value
+        .to_str()
+        .and_then(|value| value.trim().parse().ok())
+        .map(Some)
+        .ok_or_else(|| Error::InvalidConvention {
             var: vars.convention,
             value: value.to_string_lossy().into_owned(),
-        }),
-    }
+        })
 }
 
 /// An `XDG_*` variable, honoured only when it holds an absolute path.
@@ -895,7 +1002,8 @@ fn os_defaults(convention: Convention, var: impl Fn(&str) -> Option<OsString>) -
 ///
 /// Logs land at `<durable>/logs`, not under `%LOCALAPPDATA%`: that is the
 /// same root as cache, which the OS purges (trap 1 by another route). State
-/// goes to `%LOCALAPPDATA%`: it is machine-local and need not roam.
+/// goes to `%LOCALAPPDATA%\state`: machine-local, so it need not roam, and
+/// never the cache directory itself.
 #[cfg(windows)]
 #[allow(
     clippy::disallowed_methods,
@@ -906,7 +1014,7 @@ fn os_defaults(_convention: Convention, _var: impl Fn(&str) -> Option<OsString>)
         durable: dirs::data_dir(),
         config: dirs::config_dir(),
         cache: dirs::cache_dir(),
-        state: dirs::data_local_dir(),
+        state: dirs::data_local_dir().map(|local| local.join("state")),
         logs: dirs::data_dir().map(|data| data.join("logs")),
         runtime: None,
     }
@@ -973,19 +1081,19 @@ impl TieredDirs {
         Self::with_base_dirs(vendor, BaseDirs::from_env(vars)?)
     }
 
-    /// [`TieredDirs::from_env`] with the OS defaults taken from
-    /// `convention`'s table; see [`BaseDirs::from_env_in`].
+    /// [`TieredDirs::from_env`] resolved with `opts`, such as another
+    /// [`Convention`]; see [`BaseDirs::from_env_opts`].
     ///
     /// # Errors
     ///
-    /// The errors of [`BaseDirs::from_env_in`], and [`Error::InvalidKey`] when
-    /// `vendor` is not a valid segment.
-    pub fn from_env_in(
+    /// The errors of [`BaseDirs::from_env_opts`], and [`Error::InvalidKey`]
+    /// when `vendor` is not a valid segment.
+    pub fn from_env_opts(
         vendor: &str,
         vars: &EnvVars,
-        convention: Convention,
+        opts: ResolveOptions,
     ) -> Result<Self, Error> {
-        Self::with_base_dirs(vendor, BaseDirs::from_env_in(vars, convention)?)
+        Self::with_base_dirs(vendor, BaseDirs::from_env_opts(vars, opts)?)
     }
 
     /// [`TieredDirs::from_env`] with the variables read through `var`; see
@@ -1003,20 +1111,20 @@ impl TieredDirs {
         Self::with_base_dirs(vendor, BaseDirs::from_env_with(vars, var)?)
     }
 
-    /// [`TieredDirs::from_env_in`] with the variables read through `var`; see
-    /// [`BaseDirs::from_env_in_with`].
+    /// [`TieredDirs::from_env_opts`] with the variables read through `var`;
+    /// see [`BaseDirs::from_env_opts_with`].
     ///
     /// # Errors
     ///
-    /// The errors of [`BaseDirs::from_env_in_with`], and [`Error::InvalidKey`]
-    /// when `vendor` is not a valid segment.
-    pub fn from_env_in_with(
+    /// The errors of [`BaseDirs::from_env_opts_with`], and
+    /// [`Error::InvalidKey`] when `vendor` is not a valid segment.
+    pub fn from_env_opts_with(
         vendor: &str,
         vars: &EnvVars,
-        convention: Convention,
+        opts: ResolveOptions,
         var: impl Fn(&str) -> Option<OsString>,
     ) -> Result<Self, Error> {
-        Self::with_base_dirs(vendor, BaseDirs::from_env_in_with(vars, convention, var)?)
+        Self::with_base_dirs(vendor, BaseDirs::from_env_opts_with(vars, opts, var)?)
     }
 
     /// Build from injected base directories. The testable constructor.
@@ -1317,8 +1425,9 @@ mod tests {
         assert_eq!(ENV.dir(None), "EXAMPLE_SCRATCH_DIR");
         assert_eq!(ENV.dir(Some(Home::Logs)), "EXAMPLE_LOGS_DIR");
         assert_eq!(ENV.dir(Some(Home::State)), "EXAMPLE_STATE_DIR");
-        assert!(!ENV.overrides().contains(&ENV.require_override));
-        assert!(!ENV.overrides().contains(&ENV.convention));
+        assert_eq!(ENV.overrides().count(), 8);
+        assert!(!ENV.overrides().any(|name| name == ENV.require_override));
+        assert!(!ENV.overrides().any(|name| name == ENV.convention));
     }
 
     #[test]
@@ -1580,8 +1689,9 @@ mod tests {
                     assert!(base.get(home).is_absolute(), "{}", home.as_str());
                 }
                 assert!(base.scratch().is_absolute());
-                // Logs never fold into cache — the OS purges cache.
+                // Logs and state never fold into cache — the OS purges cache.
                 assert_ne!(base.get(Home::Logs), base.get(Home::Cache));
+                assert_ne!(base.get(Home::State), base.get(Home::Cache));
                 assert_ne!(base.get(Home::Runtime), base.get(Home::Cache));
                 // Scratch is swept; runtime describes a live process.
                 assert_ne!(base.scratch(), base.get(Home::Runtime));
@@ -1633,7 +1743,7 @@ mod tests {
         let test_root = test_root.map(abs);
         BaseDirs::from_env_guarded(
             &ENV,
-            Convention::Native,
+            ResolveOptions::new(),
             |name| {
                 vars.iter()
                     .find(|(key, _)| *key == name)
@@ -1813,9 +1923,10 @@ mod tests {
         assert_eq!(base.get(Home::Runtime), support.join("run"));
     }
 
-    /// `from_env_in_with` over a fixed map, under one convention.
+    /// `from_env_opts_with` over a fixed map, under one convention.
     fn from_vars_in(convention: Convention, vars: &[(&str, &str)]) -> Result<BaseDirs, Error> {
-        BaseDirs::from_env_in_with(&ENV, convention, |name| {
+        let opts = ResolveOptions::new().with_convention(convention);
+        BaseDirs::from_env_opts_with(&ENV, opts, |name| {
             vars.iter()
                 .find(|(key, _)| *key == name)
                 .map(|(_, value)| OsString::from(host_value(value)))
@@ -1923,8 +2034,30 @@ mod tests {
     #[test]
     fn convention_names_match_the_env_values() {
         assert_eq!(Convention::default(), Convention::Native);
+        assert_eq!(Convention::ALL[0], Convention::default());
         assert_eq!(Convention::Native.as_str(), "native");
         assert_eq!(Convention::Xdg.as_str(), "xdg");
+        for convention in Convention::ALL {
+            assert_eq!(convention.as_str().parse(), Ok(*convention));
+        }
+        // Untrimmed and lower case only; the variable is trimmed first.
+        for bad in [" xdg", "XDG", ""] {
+            assert_eq!(
+                bad.parse::<Convention>(),
+                Err(Error::InvalidConvention {
+                    var: "convention",
+                    value: bad.to_string(),
+                })
+            );
+        }
+    }
+
+    #[test]
+    fn resolve_options_default_to_native() {
+        assert_eq!(ResolveOptions::new(), ResolveOptions::default());
+        assert_eq!(ResolveOptions::new().convention, Convention::Native);
+        let xdg = ResolveOptions::new().with_convention(Convention::Xdg);
+        assert_eq!(xdg.convention, Convention::Xdg);
     }
 
     #[test]

@@ -21,7 +21,8 @@ directory.
 `scratch()` sits outside both axes: the platform temp directory.
 
 A **convention** picks the per-OS table the homes come from: `Native` (the
-default) or `Xdg`. They differ on macOS only.
+default) or `Xdg`. They differ on macOS only. A caller picks one through
+`ResolveOptions`.
 
 It is for a vendor with more than one program, or one program with tests that
 must not touch the real home. It computes paths only: it creates, reads and
@@ -103,7 +104,7 @@ only. Both are a plain prefix test.
 | durable | `~/.local/share` | `~/Library/Application Support` | `~/.local/share` | `%APPDATA%` |
 | config | `~/.config` | `~/Library/Application Support` | `~/.config` | `%APPDATA%` |
 | cache | `~/.cache` | `~/Library/Caches` | `~/.cache` | `%LOCALAPPDATA%` |
-| state | `~/.local/state` | `~/Library/Application Support` | `~/.local/state` | `%LOCALAPPDATA%` |
+| state | `~/.local/state` | `~/Library/Application Support` | `~/.local/state` | `%LOCALAPPDATA%\state` |
 | logs | `~/.local/state` | `~/Library/Logs` | `~/.local/state` | `%APPDATA%\logs` |
 | runtime | `$XDG_RUNTIME_DIR`, else `~/.local/share/run` | `~/Library/Application Support/run` | `$XDG_RUNTIME_DIR`, else `~/.local/share/run` | `%APPDATA%\run` |
 | scratch | the temp directory | the temp directory | the temp directory | the temp directory |
@@ -113,11 +114,12 @@ The XDG paths are defaults: `XDG_DATA_HOME`, `XDG_CONFIG_HOME`,
 reads those variables itself, through the same environment as the override
 variables. A relative value is ignored, as the XDG spec says, and `~` is not
 expanded. On Windows, `Xdg` means `Native`. The macOS Native and Windows cells
-come from the `dirs` crate. Two rules of this crate apply to every cell:
+come from the `dirs` crate. Three rules of this crate apply to every cell:
 
-- Logs never go under cache, and runtime never goes under cache, because the
-  OS may purge cache. Where the platform has no logs or runtime directory,
-  they go under durable.
+- Logs, state and runtime never go under cache, because the OS may purge
+  cache. Where the platform has no logs or runtime directory, they go under
+  durable. On Windows state is `%LOCALAPPDATA%\state`, beside cache, not in
+  it.
 - Under XDG, logs and state share one directory. Keep their file names apart.
 - A missing base directory is `Error::MissingBaseDir`, never a panic.
   Headless CI and sandboxes do not always have a home directory.
@@ -132,19 +134,25 @@ come from the `dirs` crate. Two rules of this crate apply to every cell:
   owns it, under that program's convention.
 
 `BaseDirs::from_env` and `TieredDirs::from_env` mean `Native`.
-`BaseDirs::from_env_in(&ENV, Convention::Xdg)` and
-`TieredDirs::from_env_in(vendor, &ENV, Convention::Xdg)` pick `Xdg`.
-`<P>_CONVENTION=native` or `xdg` overrides the caller's choice; any other value
-is `Error::InvalidConvention`. The value is trimmed, then must match exactly,
-in lower case.
+`from_env_opts` takes a `ResolveOptions`; set `Xdg` on it with
+`with_convention`. `<P>_CONVENTION=native` or `xdg` overrides the caller's
+choice; any other value is `Error::InvalidConvention`. The value is trimmed,
+then must match exactly, in lower case. `Convention` also implements
+`FromStr`, which takes `native` or `xdg` exactly, for a command-line flag.
+
+`BaseDirs` and `TieredDirs` each read the environment through four
+constructors: `from_env`, `from_env_with`, `from_env_opts` and
+`from_env_opts_with`. A later knob goes on `ResolveOptions`, not on a new
+constructor.
 
 ```rust
-use tiered_dirs::{Convention, EnvVars, TieredDirs, env_vars};
+use tiered_dirs::{Convention, EnvVars, ResolveOptions, TieredDirs, env_vars};
 
 const ENV: EnvVars = env_vars!("DEVTOOL");
+const OPTS: ResolveOptions = ResolveOptions::new().with_convention(Convention::Xdg);
 
 fn main() -> Result<(), tiered_dirs::Error> {
-    let dirs = TieredDirs::from_env_in("com.example", &ENV, Convention::Xdg)?;
+    let dirs = TieredDirs::from_env_opts("com.example", &ENV, OPTS)?;
     // ~/.config/devtool on Linux and macOS, %APPDATA%\devtool on Windows.
     println!("{}", dirs.standalone("devtool")?.config().path().display());
     Ok(())
@@ -170,7 +178,7 @@ A relative path is `Error::RelativeOverride`. On Windows an absolute path has a
 drive or a UNC prefix (`C:\state`, `\\server\share`); `\state` alone is
 relative to the current drive and is refused.
 
-`BaseDirs::from_env_with` (and `from_env_in_with`) reads the variables through
+`BaseDirs::from_env_with` (and `from_env_opts_with`) reads the variables through
 a caller's own function, `XDG_*` included, so a test can try every case
 without changing the process environment. `BaseDirs::xdg(home, var)` builds
 the XDG table under any home, on any OS.
@@ -178,8 +186,8 @@ the XDG table under any home, on any OS.
 
 ## Tests never resolve a real home
 
-`BaseDirs::from_env` (and `TieredDirs::from_env`) apply two rules before that
-order:
+`from_env` and `from_env_opts`, on `BaseDirs` and on `TieredDirs`, apply two
+rules before that order:
 
 - In a test binary that cargo or nextest runs (one in
   `<target>/<profile>/deps/`, run with `CARGO` or `NEXTEST` set), an unset
@@ -191,8 +199,8 @@ order:
   processes inherit the variable, so a program a test starts fails loudly
   instead of writing to the real home.
 
-`BaseDirs::from_env_with` applies neither rule, so a test that means to read
-the OS defaults calls it directly.
+`from_env_with` and `from_env_opts_with` apply neither rule, so a test that
+means to read the OS defaults calls one of them.
 
 ## Scratch
 
@@ -254,10 +262,10 @@ here).
 | Unsafe segments are refused in every position | `every_rejected_segment_is_rejected_in_every_position`, `keys_reject_separators_dotdot_and_empty` |
 | Override order, and runtime follows durable | `every_env_case_resolves_to_its_fixture_paths`, `a_home_var_beats_the_root_var_for_its_own_home_only`, `runtime_follows_an_overridden_durable` |
 | The XDG table, and a relative `XDG_*` value is ignored | `every_convention_case_resolves_to_its_fixture_paths`, `the_xdg_layout_reads_its_variables_and_ignores_relative_ones` |
-| `<P>_CONVENTION` beats the caller; Xdg is Native on Windows; Linux is the same under both | `the_convention_var_beats_the_callers_convention`, `the_xdg_convention_is_the_xdg_table_off_windows` |
+| `<P>_CONVENTION` beats the caller; Xdg is Native on Windows; Linux is the same under both | `every_env_case_resolves_to_its_fixture_paths`, `the_convention_var_beats_the_callers_convention`, `the_xdg_convention_is_the_xdg_table_off_windows` |
 | An unknown convention is refused | `every_rejected_convention_is_refused`, `an_unknown_convention_is_refused` |
 | A relative override is refused; on Windows `\state` is relative and a UNC path is absolute | `a_relative_override_is_refused`, `a_path_with_no_drive_is_relative_on_windows`, `a_unc_path_is_absolute_on_windows` |
-| Runtime and logs never sit under cache | `runtime_is_not_cache`, `from_env_resolves_or_errors_without_panicking` |
+| Runtime, logs and state never sit under cache | `runtime_is_not_cache`, `from_env_resolves_or_errors_without_panicking` |
 | A missing base directory is an error | `a_missing_base_dir_is_an_error_not_a_panic` |
 | A cargo test binary resolves under the scratch root | `a_cargo_test_binary_resolves_under_the_scratch_root` |
 | `<P>_REQUIRE_OVERRIDE` refuses an OS fallback | `require_override_refuses_an_os_fallback_and_names_the_fix` |
@@ -268,10 +276,17 @@ Coverage is not measured.
 
 0.1 is the first release. The crate stays on 0.x for now. Every public item is
 marked "stable in 0.x" in its docs: `BaseDirs`, `Convention`, `Dir`, `EnvVars`,
-`env_vars!`, `Error`, `Home`, `Tier`, `TierKind`, `TieredDirs`,
-`assert_vendor_bundle_id`, `is_valid_segment`, `is_vendor_bundle_id` and
-`test_root`. `Error` and `Convention` are `#[non_exhaustive]`, so a later
-release can add a variant without a breaking change.
+`env_vars!`, `Error`, `Home`, `ResolveOptions`, `Tier`, `TierKind`,
+`TieredDirs`, `assert_vendor_bundle_id`, `is_valid_segment`,
+`is_vendor_bundle_id` and `test_root`.
+
+- `Error` and `Convention` are `#[non_exhaustive]`, so a later release can add
+  a variant without a breaking change.
+- `EnvVars` and `ResolveOptions` are `#[non_exhaustive]` too, so a later
+  release can add a field. Build `EnvVars` with `env_vars!` and
+  `ResolveOptions` with `new()` or `default()`.
+- `Home` is exhaustive on purpose. A new home changes every caller's layout,
+  so adding one is a breaking (0.x minor) release.
 
 ## License
 

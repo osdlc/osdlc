@@ -35,14 +35,17 @@
     "scratch root.",
     "",
     "`env_cases` drive base-directory resolution from the override variables:",
-    "`BaseDirs::from_env_with` in Rust, `systemBaseDirs(vars, { env })` in TS.",
-    "`env` is the variables set: the override variables, `<prefix>_CONVENTION` and",
-    "`XDG_*`. `expected` pins absolute paths, which must match on both twins. A",
-    "base directory it omits must equal the same resolution with no override",
-    "variable set (`<prefix>_CONVENTION` and `XDG_*` kept). A row with",
-    "`windows_native: true` expects XDG paths; on a Windows host, where Xdg means",
-    "Native, its `expected` is dropped and the whole row must equal that",
-    "resolution.",
+    "`BaseDirs::from_env_opts_with` in Rust, `systemBaseDirs(vars, { env,",
+    "convention })` in TS. `convention` is the constructor's convention, `native`",
+    "when omitted. `env` is the variables set: the override variables,",
+    "`<prefix>_CONVENTION` and `XDG_*`. `expected` pins absolute paths, which must",
+    "match on both twins. A base directory it omits must equal the resolution",
+    "under the default convention with no override variable set",
+    "(`<prefix>_CONVENTION` and `XDG_*` kept). A row with `windows_native: true`",
+    "expects XDG paths. On a Windows host, where Xdg means Native, its `expected`",
+    "is dropped, `<prefix>_CONVENTION` and `XDG_*` are dropped from that",
+    "resolution too, and the whole row must equal it: Xdg is Native there and",
+    "`XDG_*` is ignored.",
     "",
     "`convention_cases` drive the XDG layout under one home, with no platform in",
     "the way: `BaseDirs::xdg(home, var)` in Rust, `xdgBaseDirs(home, env)` in TS.",
@@ -522,6 +525,34 @@
         "runtime": "/run/u/1"
       },
       "windows_native": true
+    },
+    {
+      "name": "the constructor's xdg selects the XDG table",
+      "convention": "xdg",
+      "env": {
+        "XDG_DATA_HOME": "/x/d",
+        "XDG_CONFIG_HOME": "/x/c",
+        "XDG_CACHE_HOME": "/x/k",
+        "XDG_STATE_HOME": "/x/s",
+        "XDG_RUNTIME_DIR": "/run/u/1"
+      },
+      "expected": {
+        "durable": "/x/d",
+        "config": "/x/c",
+        "cache": "/x/k",
+        "state": "/x/s",
+        "logs": "/x/s",
+        "runtime": "/run/u/1"
+      },
+      "windows_native": true
+    },
+    {
+      "name": "EXAMPLE_CONVENTION=native beats the constructor's xdg",
+      "convention": "xdg",
+      "env": {
+        "EXAMPLE_CONVENTION": "native"
+      },
+      "expected": {}
     },
     {
       "name": "EXAMPLE_ROOT beats xdg",
