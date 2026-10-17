@@ -1,4 +1,6 @@
-# Checks the libraries under packages/ts/ on every pull request and push to main.
+# Checks the libraries under packages/ts/ on every pull request. On a push to
+# main, packages-publish.yml calls this workflow and releases only if it
+# passes. The "Protect main" ruleset requires each `verify` job.
 #
 # Build runs before test: the examples import each package by its own name,
 # and under Node that name resolves through `exports` to dist/.
@@ -12,8 +14,7 @@ name: packages
 
 on:
   pull_request:
-  push:
-    branches: [main]
+  workflow_call:
   workflow_dispatch:
 
 permissions:
