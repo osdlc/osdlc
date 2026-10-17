@@ -1,0 +1,73 @@
+{
+  "id": "file-view-review",
+  "title": "File view: second pass",
+  "summary": "A UI review with live Storybook stories on each option, grouped questions and one question already settled.",
+  "created": "2026-10-10",
+  "revision": 2,
+  "storybook": "http://localhost:6006",
+  "storybookStart": "bun run storybook",
+  "blocks": [
+    {
+      "type": "prose",
+      "id": "intro",
+      "title": "What changed",
+      "text": "Revision 2 settles the tab question and asks about the empty state. Each option shows the story that renders it; with Storybook stopped, the banner names the command that starts it."
+    },
+    {
+      "type": "story",
+      "id": "today",
+      "title": "Today",
+      "caption": "The file view as it ships",
+      "stories": [{ "id": "explore-file-view--today", "label": "Today", "height": 420 }],
+      "detail": "The tree on the left, the note on the right, and the shell's tabs drawn over both."
+    },
+    {
+      "type": "question",
+      "id": "asks",
+      "questions": [
+        {
+          "id": "window-tabs",
+          "group": "Layout",
+          "kind": "single",
+          "prompt": "Should the file view show window tabs?",
+          "status": "closed",
+          "resolution": "No tabs. Open in Notes hands the file off.",
+          "options": [{ "id": "none", "label": "No tabs; hand off to Notes" }]
+        },
+        {
+          "id": "selection",
+          "group": "Layout",
+          "kind": "single",
+          "prompt": "What does a click on a file select?",
+          "recommended": "file",
+          "options": [
+            {
+              "id": "file",
+              "label": "The file",
+              "detail": "One row is on at a time. Esc returns to the check.",
+              "stories": ["explore-file-view--selection-file-clicked"]
+            },
+            {
+              "id": "check",
+              "label": "The check stays selected",
+              "detail": "Today's behaviour, with a wash on the file.",
+              "stories": [
+                {
+                  "id": "explore-file-view--today-image-on-check",
+                  "label": "Today",
+                  "globals": "theme:dark"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "empty-state",
+          "group": "Viewers",
+          "kind": "text",
+          "prompt": "What should an empty folder say?"
+        }
+      ]
+    }
+  ]
+}

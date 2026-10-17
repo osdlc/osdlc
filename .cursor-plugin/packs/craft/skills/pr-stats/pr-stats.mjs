@@ -48,7 +48,7 @@ var __exportCjs = (target, getters, setters) => {
 }
 var __require = /* @__PURE__ */ createRequire(import.meta.url)
 
-// node_modules/.bun/commander@12.1.0/node_modules/commander/lib/error.js
+// ../../../node_modules/.bun/commander@12.1.0/node_modules/commander/lib/error.js
 var require_error = __commonJS(function (exports) {
   class CommanderError extends Error {
     constructor(exitCode, code, message) {
@@ -72,7 +72,7 @@ var require_error = __commonJS(function (exports) {
   exports.InvalidArgumentError = InvalidArgumentError
 })
 
-// node_modules/.bun/commander@12.1.0/node_modules/commander/lib/argument.js
+// ../../../node_modules/.bun/commander@12.1.0/node_modules/commander/lib/argument.js
 var require_argument = __commonJS(function (exports) {
   var { InvalidArgumentError } = require_error()
 
@@ -151,7 +151,7 @@ var require_argument = __commonJS(function (exports) {
   exports.humanReadableArgName = humanReadableArgName
 })
 
-// node_modules/.bun/commander@12.1.0/node_modules/commander/lib/help.js
+// ../../../node_modules/.bun/commander@12.1.0/node_modules/commander/lib/help.js
 var require_help = __commonJS(function (exports) {
   var { humanReadableArgName } = require_argument()
 
@@ -427,7 +427,7 @@ var require_help = __commonJS(function (exports) {
   exports.Help = Help
 })
 
-// node_modules/.bun/commander@12.1.0/node_modules/commander/lib/option.js
+// ../../../node_modules/.bun/commander@12.1.0/node_modules/commander/lib/option.js
 var require_option = __commonJS(function (exports) {
   var { InvalidArgumentError } = require_error()
 
@@ -576,7 +576,7 @@ var require_option = __commonJS(function (exports) {
   exports.DualOptions = DualOptions
 })
 
-// node_modules/.bun/commander@12.1.0/node_modules/commander/lib/suggestSimilar.js
+// ../../../node_modules/.bun/commander@12.1.0/node_modules/commander/lib/suggestSimilar.js
 var require_suggestSimilar = __commonJS(function (exports) {
   var maxDistance = 3
   function editDistance(a, b) {
@@ -646,7 +646,7 @@ var require_suggestSimilar = __commonJS(function (exports) {
   exports.suggestSimilar = suggestSimilar
 })
 
-// node_modules/.bun/commander@12.1.0/node_modules/commander/lib/command.js
+// ../../../node_modules/.bun/commander@12.1.0/node_modules/commander/lib/command.js
 var require_command = __commonJS(function (exports) {
   var EventEmitter = __require('node:events').EventEmitter
   var childProcess = __require('node:child_process')
@@ -1965,7 +1965,7 @@ Expecting one of '${allowedValues.join("', '")}'`)
   exports.Command = Command
 })
 
-// node_modules/.bun/lru-cache@11.5.2/node_modules/lru-cache/dist/commonjs/node/index.min.js
+// ../../../node_modules/.bun/lru-cache@11.5.2/node_modules/lru-cache/dist/commonjs/node/index.min.js
 var require_index_min = __commonJS(function (exports) {
   var j = (u, t) => () => (t || u((t = { exports: {} }).exports, t), t.exports)
   var I = j((O) => {
@@ -2941,7 +2941,7 @@ var require_index_min = __commonJS(function (exports) {
   exports.LRUCache = M
 })
 
-// node_modules/.bun/hosted-git-info@10.1.1/node_modules/hosted-git-info/lib/hosts.js
+// ../../../node_modules/.bun/hosted-git-info@10.1.1/node_modules/hosted-git-info/lib/hosts.js
 var require_hosts = __commonJS(function (exports, module) {
   var maybeJoin = (...args) => (args.every((arg) => arg) ? args.join('') : '')
   var maybeEncode = (arg) => (arg ? encodeURIComponent(arg) : '')
@@ -3158,7 +3158,7 @@ var require_hosts = __commonJS(function (exports, module) {
   module.exports = hosts
 })
 
-// node_modules/.bun/hosted-git-info@10.1.1/node_modules/hosted-git-info/lib/parse-url.js
+// ../../../node_modules/.bun/hosted-git-info@10.1.1/node_modules/hosted-git-info/lib/parse-url.js
 var require_parse_url = __commonJS(function (exports, module) {
   var lastIndexOfBefore = (str, char, beforeChar) => {
     const startPosition = str.indexOf(beforeChar)
@@ -3205,7 +3205,7 @@ var require_parse_url = __commonJS(function (exports, module) {
   }
 })
 
-// node_modules/.bun/hosted-git-info@10.1.1/node_modules/hosted-git-info/lib/from-url.js
+// ../../../node_modules/.bun/hosted-git-info@10.1.1/node_modules/hosted-git-info/lib/from-url.js
 var require_from_url = __commonJS(function (exports, module) {
   var parseUrl = require_parse_url()
   var isGitHubShorthand = (arg) => {
@@ -3308,7 +3308,7 @@ var require_from_url = __commonJS(function (exports, module) {
   }
 })
 
-// node_modules/.bun/hosted-git-info@10.1.1/node_modules/hosted-git-info/lib/index.js
+// ../../../node_modules/.bun/hosted-git-info@10.1.1/node_modules/hosted-git-info/lib/index.js
 var require_lib = __commonJS(function (exports, module) {
   var { LRUCache } = require_index_min()
   var hosts = require_hosts()
@@ -3479,13 +3479,13 @@ var require_lib = __commonJS(function (exports, module) {
   }
   module.exports = GitHost
 })
-// packages/ts/cli-tool/exit.ts
+// ../cli-tool/exit.ts
 var EXIT = {
   ok: 0,
   error: 1,
   usage: 2,
 }
-// node_modules/.bun/commander@12.1.0/node_modules/commander/index.js
+// ../../../node_modules/.bun/commander@12.1.0/node_modules/commander/index.js
 var exports_commander = {}
 __exportCjs(
   exports_commander,
@@ -3533,7 +3533,7 @@ var $CommanderError = CommanderError
 var $InvalidArgumentError = InvalidArgumentError
 var $InvalidOptionArgumentError = InvalidArgumentError
 
-// node_modules/.bun/commander@12.1.0/node_modules/commander/esm.mjs
+// ../../../node_modules/.bun/commander@12.1.0/node_modules/commander/esm.mjs
 var {
   program,
   createCommand,
@@ -3548,7 +3548,7 @@ var {
   Help: Help2,
 } = exports_commander
 
-// packages/ts/cli-tool/define-cli.ts
+// ../cli-tool/define-cli.ts
 function kebab(name) {
   return name.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)
 }
@@ -3679,7 +3679,7 @@ ${epilogue}`,
     },
   }
 }
-// packages/ts/cli-tool/io.ts
+// ../cli-tool/io.ts
 var processIo = {
   stdout: (text) => {
     process.stdout.write(text)
@@ -3692,7 +3692,7 @@ function processContext() {
   return { io: processIo, cwd: process.cwd(), env: process.env }
 }
 
-// packages/ts/cli-tool/run-main.ts
+// ../cli-tool/run-main.ts
 async function runMain(main, options) {
   const ctx = options.context ?? processContext()
   const argv = options.argv ?? process.argv.slice(2)
@@ -3705,7 +3705,7 @@ async function runMain(main, options) {
     process.exitCode = EXIT.error
   }
 }
-// packages/ts/command-seam/sync.ts
+// ../command-seam/sync.ts
 import { spawnSync } from 'node:child_process'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -3788,6 +3788,9 @@ function runViaChildRedirect(binary, argv, opts) {
     rmSync(dir, { recursive: true, force: true })
   }
 }
+function resolveRunner(binary, injected) {
+  return injected ?? spawnRunner(binary)
+}
 function spawnRunner(binary) {
   return {
     run(argv, opts) {
@@ -3810,7 +3813,7 @@ function spawnRunner(binary) {
     },
   }
 }
-// packages/ts/easy-gh/parse.ts
+// ../easy-gh/parse.ts
 function isRecord(x) {
   return typeof x === 'object' && x !== null && !Array.isArray(x)
 }
@@ -3955,7 +3958,7 @@ function parsePullRequest(raw) {
   }
 }
 
-// packages/ts/easy-gh/verbs.ts
+// ../easy-gh/verbs.ts
 var PR_REF_FIELDS = ['number', 'state', 'headRefName', 'url']
 var PR_LIST_FIELDS = [
   'number',
@@ -4067,11 +4070,62 @@ function prList(opts = {}) {
   return { argv, checked: false, parse: manyOrNull }
 }
 function prView(number, fields = PR_VIEW_FIELDS) {
+  const asked = fields.includes('number') ? fields : ['number', ...fields]
   return {
-    argv: ['pr', 'view', String(number), '--json', fields.join(',')],
+    argv: ['pr', 'view', String(number), '--json', asked.join(',')],
     checked: false,
     parse: oneOrNull,
   }
+}
+function prBody(number) {
+  return {
+    argv: ['pr', 'view', String(number), '--json', 'body', '-q', '.body'],
+    checked: false,
+    parse: (r) => (r.exitCode === 0 ? r.stdout.replace(/\n+$/, '') : null),
+  }
+}
+function api(endpoint, opts = {}) {
+  const conditional = opts.etag !== undefined && opts.etag !== null && opts.etag !== ''
+  const withHeaders = conditional || opts.includeHeaders === true
+  const argv = ['api']
+  if (withHeaders) argv.push('-i')
+  if (conditional) argv.push('-H', `If-None-Match: ${opts.etag}`)
+  argv.push(endpoint)
+  return { argv, checked: false, parse: (r) => parseApi(r, withHeaders) }
+}
+function parseApi(r, withHeaders) {
+  let status = r.exitCode === 0 ? 200 : 0
+  let etag = null
+  let bodyText = r.stdout
+  if (withHeaders) {
+    const raw = r.stdout
+    const crlf = raw.indexOf(`\r
+\r
+`)
+    const sepIdx =
+      crlf >= 0
+        ? crlf
+        : raw.indexOf(`
+
+`)
+    const headerBlock = sepIdx >= 0 ? raw.slice(0, sepIdx) : raw
+    bodyText = sepIdx >= 0 ? raw.slice(sepIdx).replace(/^[\r\n]+/, '') : ''
+    const statusMatch = headerBlock.match(/HTTP\/[\d.]+\s+(\d{3})/i)
+    if (statusMatch) status = Number(statusMatch[1])
+    const etagMatch = headerBlock.match(/^etag:\s*(.+)$/im)
+    if (etagMatch) etag = etagMatch[1].trim()
+  }
+  let body = null
+  let malformed = false
+  if (r.exitCode === 0 && bodyText.trim() !== '') {
+    try {
+      body = JSON.parse(bodyText)
+    } catch {
+      malformed = true
+    }
+  }
+  const ok = r.exitCode === 0 && status >= 200 && status < 400
+  return { ok, status, etag, body, malformed, stderr: r.stderr.trim() }
 }
 function version() {
   return { argv: ['--version'], checked: false, parse: (r) => r.exitCode === 0 }
@@ -4130,6 +4184,14 @@ function editPr(number, opts) {
   if (opts.body !== undefined) argv.push('--body', opts.body)
   return { argv, checked: true, parse: nothing }
 }
+function editPrBody(number, body) {
+  return editPr(number, { body })
+}
+function prUpdateBranch(number, style = 'merge') {
+  const argv = ['pr', 'update-branch', String(number)]
+  if (style === 'rebase') argv.push('--rebase')
+  return { argv, checked: true, parse: nothing }
+}
 function labelCreate(opts) {
   const argv = [
     'label',
@@ -4155,6 +4217,59 @@ function setIssueLabel(number, currentLabel, newLabel) {
   argv.push('--add-label', newLabel)
   return { argv, checked: true, parse: nothing }
 }
+function prDiff(number) {
+  return { argv: ['pr', 'diff', String(number)], checked: true, parse: (r) => r.stdout }
+}
+function prComment(number, body) {
+  return {
+    argv: ['pr', 'comment', String(number), '--body', body],
+    checked: true,
+    parse(r) {
+      const lines = r.stdout
+        .split(
+          `
+`,
+        )
+        .map((l) => l.trim())
+        .filter((l) => l !== '')
+      const last = lines[lines.length - 1] ?? ''
+      return /^https?:\/\//.test(last) ? last : ''
+    },
+  }
+}
+function reviewCreate(number, opts) {
+  const payload = {
+    commit_id: opts.commitId,
+    body: opts.body,
+    event: 'COMMENT',
+    comments: opts.comments.map((c) => ({
+      path: c.path,
+      line: c.line,
+      side: 'RIGHT',
+      body: c.body,
+    })),
+  }
+  return {
+    argv: [
+      'api',
+      '--method',
+      'POST',
+      `repos/{owner}/{repo}/pulls/${number}/reviews`,
+      '--input',
+      '-',
+    ],
+    checked: true,
+    input: JSON.stringify(payload),
+    parse(r) {
+      try {
+        const url = JSON.parse(r.stdout).html_url
+        return typeof url === 'string' ? url : ''
+      } catch {
+        return ''
+      }
+    },
+  }
+}
 function pickPrForBranch(rows, branch) {
   if (rows === null) return null
   return rows.find((r) => r.headRefName === branch) ?? null
@@ -4163,10 +4278,10 @@ function needsMergeStateRetry(pr) {
   return pr.mergeable === 'UNKNOWN' || pr.mergeStateStatus === 'UNKNOWN'
 }
 
-// packages/ts/easy-git/sync.ts
+// ../easy-git/sync.ts
 import { dirname } from 'node:path'
 
-// packages/ts/easy-git/outcome.ts
+// ../easy-git/outcome.ts
 function asOutcome(error) {
   if (error instanceof CommandFailed) return { ok: false, error }
   throw error
@@ -4177,7 +4292,8 @@ function facade(client, wrap) {
       const value = Reflect.get(target, prop)
       if (typeof value !== 'function') return value
       const method = value
-      return (...args) => wrap(() => method.apply(target, args))
+      const name = String(prop)
+      return (...args) => wrap(() => method.apply(target, args), name)
     },
   })
 }
@@ -4190,8 +4306,86 @@ function triedSync(client) {
     }
   })
 }
+function fallbackFor(table, name) {
+  const kind = table[name]
+  if (kind === undefined) {
+    throw new TypeError(
+      `git.soft.${name} has no absence value; call it through git.try (or the plain verb) instead`,
+    )
+  }
+  return kind === 'empty' ? [] : kind === 'null' ? null : false
+}
+function softSync(client, table) {
+  return facade(client, (call, name) => {
+    try {
+      return call()
+    } catch (error) {
+      if (error instanceof CommandFailed) return fallbackFor(table, name)
+      throw error
+    }
+  })
+}
 
-// packages/ts/easy-git/verbs.ts
+// ../easy-git/remote-url.ts
+function parseRemoteUrl(url) {
+  const trimmed = url.trim()
+  const scp = /^[\w.-]+@([^:/]+):(.+)$/.exec(trimmed)
+  const uri = /^[a-z][a-z0-9+.-]*:\/\/(?:[^@/]+@)?([^/:]+)(?::(\d+))?\/(.+)$/i.exec(trimmed)
+  const match = scp ?? uri
+  if (match === null) return null
+  const host = match[1]
+  const isHttp = match === uri && /^https?:/i.test(trimmed)
+  const port = isHttp && match[2] !== undefined ? Number(match[2]) : null
+  const rest = match === uri ? match[3] : match[2]
+  const path = rest.replace(/\.git$/, '').replace(/^\/+|\/+$/g, '')
+  const parts = path.split('/').filter((p) => p !== '')
+  if (parts.length < 2) return null
+  return { host, port, owner: parts[parts.length - 2], repo: parts[parts.length - 1] }
+}
+
+// ../easy-git/soft.ts
+var SOFT_TABLE = {
+  showAtRev: 'null',
+  revParse: 'null',
+  resolveRef: 'null',
+  hasHistory: 'false',
+  headRef: 'null',
+  topLevel: 'null',
+  gitCommonDir: 'null',
+  symbolicRef: 'null',
+  mainCheckout: 'null',
+  currentBranch: 'null',
+  statusPorcelain: 'empty',
+  statusEntries: 'empty',
+  isDirty: 'false',
+  branches: 'empty',
+  branchExists: 'false',
+  worktrees: 'empty',
+  mergeBase: 'null',
+  logSubject: 'null',
+  configGet: 'null',
+  objectExists: 'false',
+  lsRemote: 'empty',
+  lsFiles: 'empty',
+  lsFilesTagged: 'empty',
+  refs: 'empty',
+  forEachRef: 'empty',
+  diffNameOnly: 'empty',
+  diffNameStatus: 'empty',
+  logLines: 'empty',
+  lsTree: 'empty',
+  diffTree: 'empty',
+  diffTreeNumstat: 'empty',
+  grep: 'empty',
+  isAncestor: 'false',
+  remote: 'empty',
+  remoteGetUrl: 'null',
+  remoteOwnerRepo: 'null',
+  configRemoveSection: 'false',
+  lsFilesUnmerged: 'empty',
+}
+
+// ../easy-git/verbs.ts
 function gate(verb, result, argv) {
   if (result.neverExited || (result.exitCode !== 0 && !verb.absent.includes(result.exitCode))) {
     throw new CommandFailed(argv ?? verb.argv, result)
@@ -4290,7 +4484,11 @@ function currentBranch() {
 function statusPorcelain(opts = {}) {
   const argv = ['status', '--porcelain']
   if (opts.paths !== undefined && opts.paths.length > 0) argv.push('--', ...opts.paths)
-  return { argv, absent: NONE, parse: lines }
+  return {
+    argv,
+    absent: NONE,
+    parse: (r) => lines(r).map((l) => l.replace(/\r$/, '')),
+  }
 }
 function statusEntries() {
   return {
@@ -4629,6 +4827,10 @@ function commit(opts) {
   if (opts.amend) argv.push('--amend')
   if (opts.noVerify) argv.push('--no-verify')
   if (opts.signoff) argv.push('--signoff')
+  if (opts.messageStdin !== undefined) {
+    argv.push('-F', '-')
+    return { argv, input: opts.messageStdin, absent: NONE, parse: nothing2 }
+  }
   if (opts.messageFile !== undefined) argv.push('-F', opts.messageFile)
   else {
     argv.push('-m', opts.message ?? '')
@@ -4667,11 +4869,21 @@ function clone(url, dest, opts = {}) {
   if (dest !== undefined) argv.push(dest)
   return { argv, absent: NONE, parse: nothing2 }
 }
+function forceWithLeaseArg(lease) {
+  if (lease.ref === '') throw new Error('force-with-lease: ref is empty')
+  if (lease.expect === '') {
+    throw new Error(`force-with-lease: empty expected oid for ${lease.ref}; use null for "absent"`)
+  }
+  return `--force-with-lease=${lease.ref}:${lease.expect ?? ''}`
+}
 function push(remote, refspec, opts = {}) {
   const argv = ['push']
   const lease = opts.forceWithLease
-  if (typeof lease === 'string') argv.push(`--force-with-lease=${lease}`)
-  else if (lease) argv.push('--force-with-lease')
+  if (lease === true) argv.push('--force-with-lease')
+  else if (typeof lease === 'object' && lease !== null) argv.push(forceWithLeaseArg(lease))
+  else if (lease !== undefined && lease !== false) {
+    throw new Error(`force-with-lease: unsupported value ${JSON.stringify(lease)}`)
+  }
   argv.push(remote, refspec)
   return { argv, absent: NONE, parse: nothing2 }
 }
@@ -4844,7 +5056,7 @@ function checkout(ref, opts = {}) {
   return { argv, absent: NONE, parse: nothing2 }
 }
 
-// packages/ts/easy-git/sync.ts
+// ../easy-git/sync.ts
 class Git {
   cwd
   runner
@@ -4852,9 +5064,10 @@ class Git {
   workTree
   env
   tried
+  softened
   constructor(cwd, opts = {}) {
     this.cwd = cwd
-    this.runner = opts.runner ?? spawnRunner('git')
+    this.runner = resolveRunner('git', opts.runner)
     this.gitDir = opts.gitDir
     this.workTree = opts.workTree
     this.env = opts.env
@@ -4869,6 +5082,9 @@ class Git {
   }
   get try() {
     return (this.tried ??= triedSync(this))
+  }
+  get soft() {
+    return (this.softened ??= softSync(this, SOFT_TABLE))
   }
   raw(argv, opts = {}) {
     return this.runner.run(this.argv(argv), this.runOpts(opts))
@@ -5022,6 +5238,10 @@ class Git {
   remoteGetUrl(name, opts = {}) {
     return this.exec(remoteGetUrl(name), opts)
   }
+  remoteOwnerRepo(remote = 'origin', opts = {}) {
+    const url = this.remoteGetUrl(remote, opts)
+    return url === null ? null : parseRemoteUrl(url)
+  }
   fetch(remote, refspec, opts = {}) {
     this.exec(fetch(remote, refspec, opts), opts)
   }
@@ -5101,7 +5321,7 @@ class Git {
     this.exec(checkout(ref, opts), opts)
   }
 }
-// packages/ts/easy-git/git-url.ts
+// ../easy-git/git-url.ts
 var import_hosted_git_info = __toESM(require_lib(), 1)
 function parseGitUrl(ref) {
   const info = import_hosted_git_info.default.fromUrl(ref)
@@ -5114,7 +5334,7 @@ function parseGitUrl(ref) {
     committish: info.committish === '' ? null : info.committish,
   }
 }
-// packages/ts/easy-gh/repo.ts
+// ../easy-gh/repo.ts
 function parseOwnerRepo(remoteUrl) {
   const info = parseGitUrl(remoteUrl)
   if (info === null) return null
@@ -5123,7 +5343,7 @@ function parseOwnerRepo(remoteUrl) {
   return { owner: user, repo: project }
 }
 
-// packages/ts/easy-gh/sync.ts
+// ../easy-gh/sync.ts
 var MERGE_STATE_RETRY_DELAY_MS = 1500
 
 class Gh {
@@ -5131,7 +5351,7 @@ class Gh {
   runner
   constructor(cwd, opts = {}) {
     this.cwd = cwd
-    this.runner = opts.runner ?? spawnRunner('gh')
+    this.runner = resolveRunner('gh', opts.runner)
   }
   at(cwd) {
     return new Gh(cwd, { runner: this.runner })
@@ -5144,6 +5364,7 @@ class Gh {
   }
   exec(verb, timeoutMs) {
     const opts = { cwd: this.cwd }
+    if (verb.input !== undefined) opts.input = verb.input
     if (timeoutMs !== undefined) opts.timeoutMs = timeoutMs
     const result = verb.checked
       ? runChecked(this.runner, verb.argv, opts)
@@ -5175,6 +5396,12 @@ class Gh {
     }
     return last
   }
+  prBody(number, opts = {}) {
+    return this.exec(prBody(number), opts.timeoutMs)
+  }
+  api(endpoint, opts = {}) {
+    return this.exec(api(endpoint, opts), opts.timeoutMs)
+  }
   labelList(opts = {}) {
     return this.exec(labelList(), opts.timeoutMs)
   }
@@ -5205,6 +5432,21 @@ class Gh {
   editPr(number, opts) {
     this.exec(editPr(number, opts))
   }
+  prDiff(number) {
+    return this.exec(prDiff(number))
+  }
+  prComment(number, body) {
+    return this.exec(prComment(number, body))
+  }
+  createReview(number, opts) {
+    return this.exec(reviewCreate(number, opts))
+  }
+  editPrBody(number, body) {
+    this.exec(editPrBody(number, body))
+  }
+  prUpdateBranch(number, style = 'merge') {
+    this.exec(prUpdateBranch(number, style))
+  }
   createLabel(opts) {
     this.exec(labelCreate(opts))
   }
@@ -5218,7 +5460,7 @@ class Gh {
 function sleepSync(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
 }
-// packages/ts/pr-stats/src/heuristic.ts
+// src/heuristic.ts
 var SOURCE_EXT = [
   '.ts',
   '.tsx',
@@ -5262,7 +5504,7 @@ function isCommentOrBlank(line) {
   return isBlank(line) || isCommentLine(line)
 }
 
-// node_modules/.bun/zod@4.4.3/node_modules/zod/v4/core/core.js
+// ../../../node_modules/.bun/zod@4.4.3/node_modules/zod/v4/core/core.js
 var _a
 function $constructor(name, initializer, params) {
   function init(inst, def) {
@@ -5334,7 +5576,7 @@ function config(newConfig) {
   if (newConfig) Object.assign(globalConfig, newConfig)
   return globalConfig
 }
-// node_modules/.bun/zod@4.4.3/node_modules/zod/v4/core/util.js
+// ../../../node_modules/.bun/zod@4.4.3/node_modules/zod/v4/core/util.js
 function getEnumValues(entries) {
   const numericValues = Object.values(entries).filter((v) => typeof v === 'number')
   const values = Object.entries(entries)
@@ -5734,7 +5976,7 @@ function issue(...args) {
   return { ...iss }
 }
 
-// node_modules/.bun/zod@4.4.3/node_modules/zod/v4/core/errors.js
+// ../../../node_modules/.bun/zod@4.4.3/node_modules/zod/v4/core/errors.js
 var initializer = (inst, def) => {
   inst.name = '$ZodError'
   Object.defineProperty(inst, '_zod', {
@@ -5803,7 +6045,7 @@ function formatError(error, mapper = (issue) => issue.message) {
   return fieldErrors
 }
 
-// node_modules/.bun/zod@4.4.3/node_modules/zod/v4/core/parse.js
+// ../../../node_modules/.bun/zod@4.4.3/node_modules/zod/v4/core/parse.js
 var _parse = (_Err) => (schema, value, _ctx, _params) => {
   const ctx = _ctx ? { ..._ctx, async: false } : { async: false }
   const result = schema._zod.run({ value, issues: [] }, ctx)
@@ -5888,7 +6130,7 @@ var _safeEncodeAsync = (_Err) => async (schema, value, _ctx) => {
 var _safeDecodeAsync = (_Err) => async (schema, value, _ctx) => {
   return _safeParseAsync(_Err)(schema, value, _ctx)
 }
-// node_modules/.bun/zod@4.4.3/node_modules/zod/v4/core/regexes.js
+// ../../../node_modules/.bun/zod@4.4.3/node_modules/zod/v4/core/regexes.js
 var cuid = /^[cC][0-9a-z]{6,}$/
 var cuid2 = /^[0-9a-z]+$/
 var ulid = /^[0-9A-HJKMNP-TV-Za-hjkmnp-tv-z]{26}$/
@@ -5958,7 +6200,7 @@ var boolean = /^(?:true|false)$/i
 var lowercase = /^[^A-Z]*$/
 var uppercase = /^[^a-z]*$/
 
-// node_modules/.bun/zod@4.4.3/node_modules/zod/v4/core/checks.js
+// ../../../node_modules/.bun/zod@4.4.3/node_modules/zod/v4/core/checks.js
 var $ZodCheck = /* @__PURE__ */ $constructor('$ZodCheck', (inst, def) => {
   var _a
   inst._zod ?? (inst._zod = {})
@@ -6341,7 +6583,7 @@ var $ZodCheckOverwrite = /* @__PURE__ */ $constructor('$ZodCheckOverwrite', (ins
   }
 })
 
-// node_modules/.bun/zod@4.4.3/node_modules/zod/v4/core/doc.js
+// ../../../node_modules/.bun/zod@4.4.3/node_modules/zod/v4/core/doc.js
 class Doc {
   constructor(args = []) {
     this.content = []
@@ -6387,14 +6629,14 @@ class Doc {
   }
 }
 
-// node_modules/.bun/zod@4.4.3/node_modules/zod/v4/core/versions.js
+// ../../../node_modules/.bun/zod@4.4.3/node_modules/zod/v4/core/versions.js
 var version3 = {
   major: 4,
   minor: 4,
   patch: 3,
 }
 
-// node_modules/.bun/zod@4.4.3/node_modules/zod/v4/core/schemas.js
+// ../../../node_modules/.bun/zod@4.4.3/node_modules/zod/v4/core/schemas.js
 var $ZodType = /* @__PURE__ */ $constructor('$ZodType', (inst, def) => {
   var _a
   inst ?? (inst = {})
@@ -7627,7 +7869,7 @@ function handleRefineResult(result, payload, input, inst) {
     payload.issues.push(issue(_iss))
   }
 }
-// node_modules/.bun/zod@4.4.3/node_modules/zod/v4/core/registries.js
+// ../../../node_modules/.bun/zod@4.4.3/node_modules/zod/v4/core/registries.js
 var _a2
 var $output = Symbol('ZodOutput')
 var $input = Symbol('ZodInput')
@@ -7677,7 +7919,7 @@ function registry() {
 }
 ;(_a2 = globalThis).__zod_globalRegistry ?? (_a2.__zod_globalRegistry = registry())
 var globalRegistry = globalThis.__zod_globalRegistry
-// node_modules/.bun/zod@4.4.3/node_modules/zod/v4/core/api.js
+// ../../../node_modules/.bun/zod@4.4.3/node_modules/zod/v4/core/api.js
 function _string(Class, params) {
   return new Class({
     type: 'string',
@@ -8125,7 +8367,7 @@ function _check(fn, params) {
   ch._zod.check = fn
   return ch
 }
-// node_modules/.bun/zod@4.4.3/node_modules/zod/v4/core/to-json-schema.js
+// ../../../node_modules/.bun/zod@4.4.3/node_modules/zod/v4/core/to-json-schema.js
 function initializeContext(params) {
   let target = params?.target ?? 'draft-2020-12'
   if (target === 'draft-4') target = 'draft-04'
@@ -8482,7 +8724,7 @@ var createStandardJSONSchemaMethod =
     extractDefs(ctx, schema)
     return finalize(ctx, schema)
   }
-// node_modules/.bun/zod@4.4.3/node_modules/zod/v4/core/json-schema-processors.js
+// ../../../node_modules/.bun/zod@4.4.3/node_modules/zod/v4/core/json-schema-processors.js
 var formatMap = {
   guid: 'uuid',
   url: 'uri',
@@ -8724,7 +8966,7 @@ var optionalProcessor = (schema, ctx, _json, params) => {
   const seen = ctx.seen.get(schema)
   seen.ref = def.innerType
 }
-// node_modules/.bun/zod@4.4.3/node_modules/zod/v4/classic/iso.js
+// ../../../node_modules/.bun/zod@4.4.3/node_modules/zod/v4/classic/iso.js
 var ZodISODateTime = /* @__PURE__ */ $constructor('ZodISODateTime', (inst, def) => {
   $ZodISODateTime.init(inst, def)
   ZodStringFormat.init(inst, def)
@@ -8754,7 +8996,7 @@ function duration2(params) {
   return _isoDuration(ZodISODuration, params)
 }
 
-// node_modules/.bun/zod@4.4.3/node_modules/zod/v4/classic/errors.js
+// ../../../node_modules/.bun/zod@4.4.3/node_modules/zod/v4/classic/errors.js
 var initializer2 = (inst, issues) => {
   $ZodError.init(inst, issues)
   inst.name = 'ZodError'
@@ -8788,7 +9030,7 @@ var ZodRealError = /* @__PURE__ */ $constructor('ZodError', initializer2, {
   Parent: Error,
 })
 
-// node_modules/.bun/zod@4.4.3/node_modules/zod/v4/classic/parse.js
+// ../../../node_modules/.bun/zod@4.4.3/node_modules/zod/v4/classic/parse.js
 var parse3 = /* @__PURE__ */ _parse(ZodRealError)
 var parseAsync2 = /* @__PURE__ */ _parseAsync(ZodRealError)
 var safeParse2 = /* @__PURE__ */ _safeParse(ZodRealError)
@@ -8802,7 +9044,7 @@ var safeDecode = /* @__PURE__ */ _safeDecode(ZodRealError)
 var safeEncodeAsync = /* @__PURE__ */ _safeEncodeAsync(ZodRealError)
 var safeDecodeAsync = /* @__PURE__ */ _safeDecodeAsync(ZodRealError)
 
-// node_modules/.bun/zod@4.4.3/node_modules/zod/v4/classic/schemas.js
+// ../../../node_modules/.bun/zod@4.4.3/node_modules/zod/v4/classic/schemas.js
 var _installedGroups = /* @__PURE__ */ new WeakMap()
 function _installLazyMethods(inst, group, methods) {
   const proto = Object.getPrototypeOf(inst)
@@ -9568,7 +9810,7 @@ function refine(fn, _params = {}) {
 function superRefine(fn, params) {
   return _superRefine(fn, params)
 }
-// packages/ts/pr-stats/src/types.ts
+// src/types.ts
 var LINE_KINDS = ['code', 'comment', 'blank', 'prose']
 var FILE_GROUPS = ['source', 'tests', 'docs', 'generated', 'other']
 var CATEGORIES = [
@@ -9675,7 +9917,7 @@ var reportSchema = object({
   notes: array(string2()).describe('Anything skipped or capped, and why.'),
 })
 
-// packages/ts/pr-stats/src/lines.ts
+// src/lines.ts
 var PROSE_EXT = ['.md', '.mdx', '.txt', '.rst']
 var LOCKFILES = new Set([
   'bun.lock',
@@ -9743,7 +9985,7 @@ function computeLineStats(files) {
   return { kinds, groups }
 }
 
-// packages/ts/pr-stats/src/ts-loader.ts
+// src/ts-loader.ts
 import { createRequire as createRequire2 } from 'node:module'
 var cache
 function loadTs() {
@@ -9758,7 +10000,7 @@ function loadTs() {
   return cache
 }
 
-// packages/ts/pr-stats/src/api.ts
+// src/api.ts
 var TS_ENTRY = /^index\.(?:ts|tsx|mts|cts|js|mjs|cjs)$/
 var TS_FILE = /\.(?:ts|tsx|mts|cts|js|jsx|mjs|cjs)$/
 function apiLanguage(path) {
@@ -9862,7 +10104,7 @@ function diffApi(before, after) {
   return delta
 }
 
-// packages/ts/pr-stats/src/categories.ts
+// src/categories.ts
 var VERSIONISH = /^(?:[\^~<>=*]|\d|workspace:|npm:|github:|git\+|file:|link:|catalog:)/
 var PKG_LINE = /^\s*"([^"]+)"\s*:\s*"([^"]*)"\s*,?\s*$/
 var CARGO_SKIP = new Set([
@@ -9940,7 +10182,7 @@ function categorize(f) {
   return 'logic'
 }
 
-// packages/ts/pr-stats/src/complexity.ts
+// src/complexity.ts
 import {
   mkdtempSync as mkdtempSync2,
   rmSync as rmSync2,
@@ -10138,7 +10380,7 @@ function defaultAnalyzers() {
   return [typescriptAnalyzer, lizardAnalyzer()]
 }
 
-// packages/ts/pr-stats/src/diff.ts
+// src/diff.ts
 var HUNK = /^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@/
 function headerPath(line) {
   const i = line.lastIndexOf(' b/')
@@ -10214,7 +10456,7 @@ function parseDiff(diff) {
   return files
 }
 
-// packages/ts/pr-stats/src/report.ts
+// src/report.ts
 function buildReport(source, diff, ports, opts = {}) {
   const files = parseDiff(diff)
   const notes = []
@@ -10395,7 +10637,7 @@ function buildReport(source, diff, ports, opts = {}) {
   }
 }
 
-// packages/ts/pr-stats/src/splice.ts
+// src/splice.ts
 var STATS_START = '<!-- sdlc-pr-stats:start -->'
 var STATS_END = '<!-- sdlc-pr-stats:end -->'
 var HEADING = '## Change statistics'
@@ -10443,7 +10685,7 @@ ${section}
 `
 }
 
-// packages/ts/pr-stats/src/render.ts
+// src/render.ts
 var KIND_LABEL = {
   code: 'Code',
   comment: 'Comments',
@@ -10589,7 +10831,7 @@ function renderReport(r, opts = {}) {
 `)
 }
 
-// packages/ts/pr-stats/src/run.ts
+// src/run.ts
 class StatsError extends Error {}
 function runStats(args, env) {
   if (args.pr !== null && args.base !== null) {
@@ -10644,7 +10886,7 @@ function revPorts(git, baseRev, headRev) {
   return { baseRev, headRev, showAtRev: (rev, path) => git.showAtRev(rev, path) }
 }
 
-// packages/ts/pr-stats/src/cli.ts
+// src/cli.ts
 var cli = defineCli({
   name: 'pr-stats',
   summary: 'Line, category, API and complexity statistics for a PR or branch diff.',
@@ -10709,5 +10951,5 @@ async function main(argv, ctx) {
 if (false) {
 }
 
-// packages/ts/pr-stats/scripts/bundle-entry.ts
+// scripts/bundle-entry.ts
 await runMain(main, { name: 'pr-stats' })

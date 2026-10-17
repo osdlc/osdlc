@@ -1,0 +1,66 @@
+{
+  "id": "review-diff",
+  "title": "Review: ship orders with a notification",
+  "summary": "A small PR that notifies the customer when an order ships, with four review findings anchored to its lines.",
+  "created": "2026-10-10",
+  "repo": {
+    "remote": "https://github.com/acme/shop",
+    "commit": "9f3c2a1d4e5b6c7d8e9f0a1b2c3d4e5f67890abc",
+    "root": "/path/to/repo"
+  },
+  "blocks": [
+    {
+      "id": "pr",
+      "type": "diff",
+      "title": "Ship orders with a notification",
+      "base": "main",
+      "head": "feature/notify-shipped",
+      "diff": "diff --git a/src/orders/ship.ts b/src/orders/ship.ts\nindex 3f2a1c4..8b7d9e0 100644\n--- a/src/orders/ship.ts\n+++ b/src/orders/ship.ts\n@@ -1,9 +1,13 @@\n import { db } from '../db.ts'\n+import { notifyShipped } from './notify.ts'\n import type { Order } from './types.ts'\n \n-export async function markShipped(id: number): Promise<Order> {\n-  const order = await db.orders.find(id)\n-  order.status = 'shipped'\n-  await db.orders.save(order)\n+export async function markShipped(id: number, carrier?: string): Promise<Order> {\n+  const order = await db.orders.find(id)\n+  if (order.status === 'shipped') return order\n+  order.status = 'shipped'\n+  order.carrier = carrier ?? 'unknown'\n+  await db.orders.save(order)\n+  await notifyShipped(order)\n   return order\n }\n@@ -30,4 +35,5 @@\n \n export async function cancel(id: number): Promise<void> {\n-  await db.orders.delete(id)\n+  const order = await db.orders.find(id)\n+  await db.orders.save({ ...order, status: 'cancelled' })\n }\ndiff --git a/src/orders/notify.ts b/src/orders/notify.ts\nnew file mode 100644\nindex 0000000..c41e5aa\n--- /dev/null\n+++ b/src/orders/notify.ts\n@@ -0,0 +1,11 @@\n+import { mailer } from '../mailer.ts'\n+import type { Order } from './types.ts'\n+\n+// Sends the shipping email; failures are logged, never thrown.\n+export async function notifyShipped(order: Order): Promise<void> {\n+  try {\n+    await mailer.send(order.email, `Order ${order.id} shipped via ${order.carrier}`)\n+  } catch (e) {\n+    console.log('notify failed', e)\n+  }\n+}\ndiff --git a/docs/shipping.md b/docs/runbook/shipping.md\nsimilarity index 80%\nrename from docs/shipping.md\nrename to docs/runbook/shipping.md\nindex 51d0c2e..a9f3b17 100644\n--- a/docs/shipping.md\n+++ b/docs/runbook/shipping.md\n@@ -3,4 +3,5 @@\n ## When a label fails to print\n \n-Retry from the admin page. Escalate after two failures.\n+Retry from the admin page, then check `notify failed` in the logs.\n+Escalate after two failures.\n \n",
+      "findings": [
+        {
+          "id": "d-swallow",
+          "title": "The notification failure is swallowed",
+          "file": "src/orders/notify.ts",
+          "line": 8,
+          "endLine": 10,
+          "severity": "violation",
+          "category": "error handling",
+          "summary": "A failed email is logged with console.log and dropped.",
+          "detail": "The order is already saved as shipped, so throwing would be wrong, but nothing retries and nothing alerts. Use the shared logger at `error` level and enqueue a retry.",
+          "suggestion": "  } catch (e) {\n    logger.error('notify failed', { orderId: order.id, error: e })\n    await retryQueue.add('notify-shipped', order.id)\n  }"
+        },
+        {
+          "id": "d-idempotent",
+          "title": "The early return skips the notification",
+          "file": "src/orders/ship.ts",
+          "line": 7,
+          "severity": "tension",
+          "category": "behaviour",
+          "summary": "A second call returns before notifying; correct, but a first call that failed to notify is never retried here.",
+          "detail": "If the first call saved the order and then failed inside `notifyShipped`, calling `markShipped` again is a no-op. That ties back to the swallowed failure."
+        },
+        {
+          "id": "d-old-delete",
+          "title": "The old cancel deleted the row",
+          "file": "src/orders/ship.ts",
+          "line": 32,
+          "side": "old",
+          "severity": "drift",
+          "category": "data",
+          "summary": "Cancel used to delete; it now keeps the row, so queries that count orders include cancelled ones.",
+          "detail": "Reports that read `db.orders` without a status filter will change. Worth a line in the PR description.",
+          "warnings": ["No test covers the report queries."]
+        },
+        {
+          "id": "d-docs",
+          "title": "The runbook now names a log line",
+          "file": "docs/runbook/shipping.md",
+          "line": 5,
+          "severity": "praise",
+          "category": "docs",
+          "summary": "The runbook tells operators what to search for; keep the wording in sync with the log message."
+        }
+      ]
+    }
+  ]
+}

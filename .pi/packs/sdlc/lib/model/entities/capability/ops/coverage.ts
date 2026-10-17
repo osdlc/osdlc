@@ -21,14 +21,15 @@
  */
 
 import { readFileSync } from 'node:fs'
-import { basename as pathBasename, isAbsolute, join, relative } from 'node:path'
+import { basename as pathBasename, join, relative, resolve, sep } from 'node:path'
 
 import { buildSystemGraph } from '@sksizer/manifest-graph'
+import { isInside } from '@sksizer/path-guard'
 import { z } from 'zod'
 
 import { OpError, defineOp, type OpIo } from '@lib/registry'
 import { isDir, rglob } from '@lib/util/fs'
-import { locationPath, locationResolves, normalizeRelativePath } from '@lib/util/location'
+import { locationPath, locationResolves } from '@lib/util/location'
 import { cmpStr } from '@lib/util/strings'
 
 import { CapabilityEntity } from '../schema.ts'
@@ -98,8 +99,9 @@ const CAPABILITY_ID = /^C-[0-9A-Z]{4}$/
  * directory, is refused rather than read as an empty report.
  */
 function scopeDir(root: string, scope: string): string {
-  const dir = normalizeRelativePath(isAbsolute(scope) ? relative(root, scope) : scope)
-  if (dir === '..' || dir.startsWith('../') || isAbsolute(dir) || !isDir(join(root, dir))) {
+  const abs = resolve(root, scope)
+  const dir = isInside(root, abs) ? relative(root, abs).split(sep).join('/') : null
+  if (dir === null || !isDir(join(root, dir))) {
     throw new OpError('INVALID_INPUT', `scope is not a directory under the project: ${scope}`)
   }
   return dir

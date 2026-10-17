@@ -96,6 +96,37 @@ function resolveBaseRefs(g: Git, candidate: string): string[] {
   return resolved
 }
 
+// The integration branch a task branch builds against counts as trunk for that
+// branch. An integration branch such as `sdlc-1.0` collects reviewed task PRs
+// and the state commits that ready them; a task branch cut from it inherits
+// those commits, which are not exclusive to the task branch. The branch is the
+// `orchestrator.target_branch` in the task branch's own `sdlc.yaml`, so only a
+// branch the project names counts: a wip push to some other remote branch
+// still leaves a state-only commit flagged. Returns `origin/<target>` (else the
+// local `<target>`) when it resolves, otherwise nothing.
+function integrationBase(g: Git, runner: CommandRunner, branch: string): string[] {
+  const raw = fileAtRev(runner, g.cwd, branch, 'sdlc.yaml')
+  if (raw === null) {
+    return []
+  }
+  let target: unknown
+  try {
+    target = (parseYaml(raw) as { orchestrator?: { target_branch?: unknown } } | null)?.orchestrator
+      ?.target_branch
+  } catch {
+    return []
+  }
+  if (typeof target !== 'string' || target.length === 0) {
+    return []
+  }
+  for (const ref of [`origin/${target}`, target]) {
+    if (lintRead(`git rev-parse --verify ${ref}`, () => g.resolveRef(ref)) !== null) {
+      return [ref]
+    }
+  }
+  return []
+}
+
 function listTaskBranches(g: Git): string[] {
   const refs = lintRead('git for-each-ref refs/heads', () =>
     g.forEachRef('refs/heads', { format: '%(refname:short)' }),
@@ -242,7 +273,7 @@ export function lint(
   let totalViolations = 0
 
   for (const branch of [...branches].sort()) {
-    const commits = commitsOnBranch(g, branch, bases)
+    const commits = commitsOnBranch(g, branch, [...bases, ...integrationBase(g, runner, branch)])
     const branchViolations: string[] = []
     for (const sha of commits) {
       const [isViolation, reason] = isStateOnlyCommit(g, runner, sha)

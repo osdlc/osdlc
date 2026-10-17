@@ -144,7 +144,15 @@ workflows:                  # named lifecycle workflows: setup, setup-hooks, che
     - run: lint
     - bun test
   pr-review:
-    engine: codex            # engine/host live beside steps on any entry
+    tool: codex              # profile|tool/host live beside steps on any entry
+
+profiles:                   # named tool preferences — see below
+  default: [claude/standard, codex/standard]
+  reviewer: [codex/max, claude/max@high]
+
+pr_review:                  # sdlc pr review
+  profile: reviewer
+  not_the_author: true      # the author rule — see profiles: below
 
 orchestrator:
   limits:                  # per-operation concurrency caps — see below
@@ -205,16 +213,17 @@ checkout:                   # sdlc repo checkout <url>
   protocol: https           # https | ssh, for a bare owner/repo input
 
 host:
-  default: terminal         # terminal | orca | cmux | tmux
+  default: terminal         # terminal | orca | cmux | tmux | herdr | otty | wezterm | vscode | jetbrains
+  close_pane: on-close-out  # when sdlc closes a session's host pane: on-close-out | on-done | never
 
 pr_review:                  # sdlc pr review
-  engine: claude            # claude | codex | cursor | pi
+  profile: reviewer         # a profiles: name; or `tool: codex` — exactly one
   untrusted: skip-init      # skip-init | full | refuse
   setup: true               # run setup on every launch; --no-setup skips it
   refresh: update           # update | pull | off, for a reused worktree; --no-refresh skips it
 
 verify:                     # sdlc verify changes
-  engine: claude            # claude | codex | antigravity | opencode
+  tool: claude/haiku@low    # a reference, or profile: <name> — exactly one
   blocking: false
 ```
 
@@ -248,9 +257,11 @@ and `check` are run by SDLC itself; [[S-0013-baseline-task-vocabulary]] names
 is allowed and validated for shape only. sdlc's own `setup`/`check` sit above
 the S-0013 runner vocabulary — a project's S-0013 tasks (`moon run fmt`, etc.)
 are typically what a `workflows:` entry invokes. An entry may also set
-`engine`/`host` (`workflows.<name>.engine`/`.host`) with no `steps` at all —
-the one place a workflow's session engine/host live, read by `resolveWorkflow`
-and dispatched by the orchestrate loop and `sdlc session launch` alike.
+`profile` or `tool` (exactly one) and `host` with no `steps` at all — the one
+place a workflow's binding and host live, read by `resolveWorkflow` and
+dispatched by the orchestrate loop and `sdlc session launch` alike. `profile`
+names a `profiles:` entry; `tool` is a reference (`codex`, `claude/opus@high`).
+`engine` and `model` were removed: each is an unrecognized key.
 
 Execution semantics:
 
@@ -596,7 +607,7 @@ orchestrator:
   key (same default, same semantics) now that every dispatching
   operation has its own cap.
 - **`limits.pr_review:`** — cap on concurrent `pr-review` dispatches
-  (the `prs` tick's new-PR path). Counted from live `.sdlc/sessions/`
+  (the `prs` tick's new-PR path). Counted from live `.sdlc/log/sessions/`
   records plus this pass's own dispatches (see
   `limits.session_ttl_minutes` for what "live" means). Default: `2`.
 - **`limits.pr_respond:`** — cap on concurrent `pr-respond`
@@ -623,7 +634,7 @@ orchestrator:
 - **`limits.close_out:`** — cap on concurrent `close-out` dispatches
   (the `merges` tick's MERGED-verdict path, and a `close-out`
   chain-stage advance from the `issues` tick). Counted from live
-  `.sdlc/sessions/` records plus this pass's own dispatches. A merged
+  `.sdlc/log/sessions/` records plus this pass's own dispatches. A merged
   PR leaves the open-PR listing, so a close-out a cap (or a pause)
   holds back is recorded in `.sdlc/orchestrator-pending-close-outs.json`
   and retried first on the next pass. Default: `5`.
@@ -704,26 +715,31 @@ orchestrator:
 
 workflows:
   pr-review:
-    engine: codex    # the prs/merges ticks' dispatch engine — see below
+    tool: codex      # the prs/merges ticks' dispatch tool — see below
 ```
 
 Configures the `prs`/`merges` ticks' (`sdlc orchestrate run`) built-in
-`pr-review` workflow dispatch. The dispatch ENGINE is no longer set here —
+`pr-review` workflow dispatch. The dispatch MODEL is no longer set here —
 `orchestrator.review.engine` was retired
 ([[D-LSLH-collapse-verbs-workflows-chain-hooks]]) in favor of
-`workflows.pr-review.engine`, the one place a workflow's engine/host live
-(see `workflows:` above). It is deliberately separate from `pr_review.engine`
-(the interactive `sdlc pr review` engine) so an unattended review can run a
-different model from the one the PR author used. Default: `claude`.
+`workflows.pr-review.profile` or `.tool`, the one place a workflow's
+binding/host live (see `workflows:` above). It is deliberately separate from
+`pr_review.profile`/`pr_review.tool` (the interactive `sdlc pr review`
+binding) so an unattended review can run a different model from the one the PR
+author used. The author is recorded in the lease and the PR footer, but the
+dispatch does not read it yet. Default: the built-in `profiles.default`
+(`*/standard`) when none is set.
 
 Every orchestrate/`sdlc run` dispatch is HEADLESS — there is no person
-sitting at a terminal to attend it — so `engine` here (and on any other
-`workflows.<name>` entry a headless caller runs) must be `claude` or `codex`.
-`cursor`/`pi` have no headless mode at all (`session/ops/launch.ts`'s
-`headlessArgv` doc) and are rejected before any step runs
-(`orchestrator/step-runner.ts`'s `runWorkflow`), not merely warned about or
-left to fail partway through a step. An interactive `sdlc session launch
---workflow` has no such restriction — all four engines are valid there.
+sitting at a terminal to attend it — so it is routed as a headless launch
+(`lib/services/route/launch.ts`): a profile's walk skips an entry whose tool
+sdlc cannot launch headless, or whose launcher cannot take the resolved model
+and effort, and a `tool:` reference that cannot launch is rejected before any
+step runs (`orchestrator/step-runner.ts`'s `runWorkflow`), not left to fail
+partway through a step. claude, codex, cursor (no model or effort), antigravity
+and a tool declared with a `router.tools.<id>.headless` template launch
+headless; pi and opencode launch interactive only. An interactive `sdlc session
+launch --workflow` is routed as an interactive launch instead.
 
 - **`max_rounds:`** — cap on review/respond round-trips per PR
   (tracked on the per-PR cursor's `review_rounds` field) before the
@@ -752,12 +768,11 @@ left to fail partway through a step. An interactive `sdlc session launch
   diff already opened.
 
 Missing block or missing key defaults to `max_rounds: 3` and no
-`response_policy` (built-in fallback); a missing `workflows.pr-review.engine`
-defaults to `claude`. (An earlier `command` field here backed the OLD
-`/sdlc:orchestrate`
-Step 2a opt-in review phase; that phase and its `get-review-policy` op
-were retired when the orchestrate skill was rewritten as a thin
-`orchestrate run` wrapper — see [[T-XRFD]].)
+`response_policy` (built-in fallback); a missing `workflows.pr-review` binding
+falls to the built-in `profiles.default` (`*/standard`). (An earlier `command`
+field here backed the OLD `/sdlc:orchestrate` Step 2a opt-in review phase; that
+phase and its `get-review-policy` op were retired when the orchestrate skill was
+rewritten as a thin `orchestrate run` wrapper — see [[T-XRFD]].)
 
 #### `orchestrator.router:` — delivering PR feedback into its producing session
 
@@ -769,6 +784,7 @@ orchestrator:
     live_enabled: false                  # default
     max_deliveries_per_pr: 20            # default
     quiet_period_secs: 120               # default
+    receipt_timeout_ms: 15000            # default
 ```
 
 The Router (M-27ZR, `lib/services/dispatch/`) is how the `prs`/`merges`
@@ -778,7 +794,7 @@ brand-new, context-less `pr-respond` sub-agent. It tries an ordered
 fallback chain and stops at the first route that succeeds:
 
 - **`live`** — send text into a still-running session (any host with
-  a `send` part — `orca`/`tmux` today). Off by default
+  a `send` part — every host but `terminal`). Off by default
   (`live_enabled: false`) for the `prs`/`merges` loop — unverified
   end-to-end against a real hosted session. An explicit
   `sdlc pr route <n> --route live` still attempts it regardless of
@@ -818,8 +834,16 @@ cap `pr-respond` itself already respects.
   one batch. Failing checks and conflicts never start the wait;
   `sdlc pr route --force` and `--route` skip it. `0` turns it off.
   Default: `120`.
+- **`receipt_timeout_ms:`** — milliseconds a `live` send waits for a delivery
+  receipt: the host confirming it, a harness hook reporting the prompt (armed only
+  when `log.capture.activity` is on and the session is not mid-turn), or
+  weaker signs the agent started a turn. A receipt that never arrives while a
+  confirming signal was expected sends the delivery on to `resume`/`fresh`
+  (or holds while the session runs); with none expected, the send counts as
+  unconfirmed. `0` checks once and does not wait. Default: `15000`. See
+  `solutions/ontological/conventions/host.md`.
 
-Missing block or missing key defaults to all five values above.
+Missing block or missing key defaults to all the values above.
 
 #### `orchestrator.polling:` — skipping unchanged PRs
 
@@ -1087,9 +1111,9 @@ task:
       fallback_status: planning/draft  # default planning/draft
 ```
 
-Governs the Step 8 post-mortem → follow-up-task flow
-(`/sdlc:spawn-from-post-mortem` → `/sdlc:spawn-task-pr`). Read once per
-`/sdlc:task-work` run via `sdlc config get-spawn-policy`.
+Governs the Step 8 post-mortem → follow-up-task flow (the spawn-from-post-mortem procedure, which
+hands each bullet to `/sdlc:spawn-task-pr`). Read once per `/sdlc:task-work` run via
+`sdlc config get-spawn-policy`.
 
 - **`enabled`** — whether Step 8 spawns follow-up tasks at all. `false`
   skips the spawn sub-step entirely (the post-mortem is still written and
@@ -1159,7 +1183,7 @@ repos, so the modes below bundle *within each target repo*.
   task in the PR, so prefer run-level tokens there.
 
 The `spawn-task-pr` sub-skill stays a pure mechanism (`--branch` +
-`--pr open|rolling` + `--pr-title`); `spawn-from-post-mortem` maps this config
+`--pr open|rolling` + `--pr-title`); the spawn-from-post-mortem procedure maps this config
 onto those flags per target-repo group.
 
 ### `backlog.capture:` — how `sdlc backlog create` submits captured items
@@ -1193,6 +1217,20 @@ Governs the deterministic tail behind `/sdlc:backlog-capture`
 
 Missing block or missing keys default to `enabled: true`,
 `pr_grouping: per-project` — today's rolling-capture behavior.
+
+### `log.store:` — where the agent log lives
+
+`log.store.path` (default `.sdlc/log`, gitignored) is the log root. A relative path is relative to
+the checkout `log.store.scope` names: `repo` (the default) is the repository's **main checkout**,
+found from the git common dir, so every worktree of a repo shares one log and the session hooks and
+the op journal cannot disagree; `worktree` is each worktree's own project root, and everything a
+session does (its hook command's `--project-root`, `SDLC_PROJECT_ROOT`, the launch records) goes to
+the worktree it works in. Absolute, `~` and `{token}` paths and `layout: by-project` ignore the
+scope. Outside git (or in a bare repo) the project root is used. A committed store, normally
+`scope: worktree` with a path like `sdlc/log`, needs `sdlc log setup` (the `.gitattributes`
+union-merge rule for the append-only journal) and `sdlc log stage` as a `hooks: pre-commit` step;
+see `docs/logging.md` ("Where the log lives"). The change of default is a hard cutover: a
+`.sdlc/log` left inside a worktree is not read.
 
 ### `paths:` — named directories the other path settings refer to
 
@@ -1294,32 +1332,116 @@ to (see `solutions/ontological/cli/README.md`, "Shell integration").
 Both keys also live in the machine-level config (below), where each one set
 wins over the project's.
 
+### `profiles:` — which tool and model a launch uses
+
+Words used here and under `router:`: [[TM-0052-tool-router|tool router]], [[TM-0053-tool|tool]],
+[[TM-0054-provider|provider]], [[TM-0055-reference|reference]], [[TM-0056-profile|profile]],
+[[TM-0057-tier|tier]] and [[TM-0051-effort|effort]] (defined in the glossary).
+
+```yaml
+profiles:
+  default: [claude/standard, codex/standard]   # a bare list: tried in order
+  reviewer:                                    # the long form
+    order: [codex/max, claude/max@high]
+    host: tmux
+
+pr_review:
+  profile: reviewer
+  not_the_author: true                         # the author rule
+  if_only_author_left: different-model         # different-model | wait | person
+
+workflows:
+  implement: { profile: default }
+  pr-review: { profile: reviewer }
+  pr-respond: { tool: claude/opus@high }
+```
+
+A profile is a named, ordered list of references. A reference is
+`tool[/model][@effort]`: the tool is one the model catalogue knows (built in:
+`claude`, `codex`, `cursor`, `antigravity`, `pi`, `opencode`; more under
+`router.tools`), or `*` for every tool that offers the tier; the model a tier
+(`fast`, `standard`, `max`) or a model name; the effort a level the tool
+accepts. A bare tool (`codex`) is a valid reference. `workflows.<name>`
+and `pr_review` each take exactly one of `profile:` (a name defined here) or
+`tool:` (a reference); `--tool <reference>` on `sdlc pr review` and `sdlc
+session launch` names one for a single run.
+
+A `tool:` (or `--tool`) may be a wildcard, `"*/max"` or `"*/fast[local]"`: it
+walks as a one-entry profile, every tool that offers the tier, skipping the
+unavailable. The tools come in `router.chains.order`, or the built-in order
+(claude, codex, cursor, antigravity, pi, opencode) when it is unset, as for a
+wildcard in a profile.
+
+```yaml
+router:
+  chains: { order: [codex, claude] }
+workflows:
+  pr-respond: { tool: "*/max" }
+```
+
+The author rule is `pr_review`'s, not a profile's: `sdlc pr review` is the one
+launch that knows an author (from the PR's lease and footer). With
+`not_the_author: true` the review skips every entry on the author's tool; when
+only that tool is left, `if_only_author_left` decides: `different-model`
+(default) takes a model that differs from the author's, `wait` stops, `person`
+hands the review to a person. An author nobody could establish counts as on
+every tool. The rule applies to whatever the review walks, but not to `--tool`:
+a `--tool` that lands on the author's tool (a wildcard's pick included) runs,
+with a warning naming the author's tool and the chosen reference.
+
+| Order | Source |
+| --- | --- |
+| 1 | the `--tool` flag |
+| 2 | the first matching `routing:` rule |
+| 3 | the workflow's (or `pr_review`'s) `profile:` / `tool:` |
+| 4 | `profiles.default`, the built-in `*/standard` when unset |
+
+The `router:` and `routing:` sections are described field by field in the
+generated reference, `docs/sdlc-yaml-reference.md` in the sdlc repository.
+
+A launch passes the resolved model, effort and context to the tool. A profile
+walk skips an entry that is unavailable (not installed, signed out, cooling
+down) or that the launcher cannot run, and records why. A syntax error, an
+unknown tool, a tier the tool has no model for, an effort the tool lacks, a
+`profile:` naming an entry that is not defined, or both keys on one binding is
+a load error that names the entry. `sdlc.local.yaml` can define profiles that `sdlc.yaml` names.
+
 ### `host:` — where sdlc puts work in front of you
 
 ```yaml
 host:
-  default: terminal       # terminal | orca | cmux | tmux
+  default: terminal       # terminal | orca | cmux | tmux | herdr | otty | wezterm | vscode | jetbrains
+  close_pane: on-close-out  # on-close-out | on-done | never
 ```
 
 The default host for every feature that opens something for a person — an
 agent session, a command in a terminal. `terminal` runs it in the current
 terminal and returns when it ends; `orca` opens a terminal tab in the Orca
 app; `cmux` opens a cmux workspace; `tmux` opens a detached tmux session
-named deterministically from the working directory. Every host is a
-WRAPPER host: it runs whichever coding-agent CLI (`engine`, see below) the
-feature resolves, in a terminal/workspace it opens — the two are
-independent, never a fixed pairing; `claude`/`codex`/`cursor` are engines,
-never hosts. A feature's own key (`pr_review.host`) overrides this, and a
-`--host` flag overrides both. Hosts fulfil a contract in parts; a feature
-that needs a part the host lacks fails rather than falling back. See
+named from the sdlc session id; `herdr`, `otty` and
+`wezterm` open a workspace or tab in that terminal app; `vscode` and
+`jetbrains` open a terminal in the IDE window that has the project open,
+through a companion extension or plugin. `close_pane` says when sdlc closes the host
+pane a session ran in (the host's `close` part; a host without one leaves the pane
+open): `on-close-out` (default) when a merged task is closed out (`sdlc task close-commit`),
+before the worktree is removed; `on-done` when the agent runs `sdlc session done`; `never`.
+Closing a pane ends whatever still runs in it. Hosts are platform-bound (macOS,
+Linux or all; see host.md) and report themselves unavailable elsewhere. Every host is a
+WRAPPER host: it runs whichever coding-agent CLI (the tool a `profile:` or
+`tool:` binding resolves to, see below) the feature picks, in a
+terminal/workspace it opens — the two are independent, never a fixed pairing;
+`claude`/`codex`/`cursor` are tools, never hosts. A feature's own key
+(`pr_review.host`) overrides this, and a `--host` flag overrides both. Hosts
+fulfil a contract in parts; a feature that needs a part the host lacks fails
+rather than falling back. See
 `solutions/ontological/conventions/host.md`.
 
 ### `pr_review:` — how `sdlc pr review` opens a session
 
 ```yaml
 pr_review:
-  engine: claude          # claude | codex | cursor | pi
-  host: orca              # terminal | orca | cmux | tmux; optional, absent → host.default
+  profile: reviewer       # a profiles: name, or `tool: codex`; set one, not both
+  host: orca              # any host name above; optional, absent → host.default
   untrusted: skip-init    # skip-init | full | refuse
   setup: true             # run setup on every launch; --no-setup skips it
   prompt:
@@ -1328,8 +1450,10 @@ pr_review:
       Also check that every PR mention is hyperlinked.
 ```
 
-- **`engine`** — the interactive agent started in the PR's worktree, with the
-  review brief as its first message. `--engine` overrides per run.
+- **`profile`** / **`tool`** — which agent starts in the PR's worktree, with
+  the review brief as its first message. `profile` names a `profiles:` entry;
+  `tool` is a reference (`codex`, `claude/opus@high`). Set one, not both.
+  `--tool <reference>` overrides per run. `engine` was removed.
 - **`host`** — where the session opens when it should differ from
   `host.default` (see above). `--host` overrides per run.
 - **`setup`** (default `true`) — whether the `setup` verb runs in the PR
@@ -1360,8 +1484,8 @@ pr_review:
   it likes. The built-in brief is `DEFAULT_REVIEW_PROMPT` in
   `solutions/ontological/lib/services/pr/review/prompt.ts`.
 
-Missing block defaults to `claude` in the current terminal with the built-in
-brief.
+Missing block uses `profiles.default` (built in as `*/standard`) in the current
+terminal with the built-in brief.
 
 ### `hooks:`
 
@@ -1465,15 +1589,19 @@ shapes, picked by `type`: `desktop` (no other fields — raises a desktop
 notification on the machine running the loop), `ntfy` (`topic_url:`, an ntfy
 HTTP topic to POST to), or `webhook` (`url:` plus `format:` — `slack`,
 `discord`, or `raw`, the default — controlling the POSTed JSON body's shape).
-`events` has exactly 10 fixed keys — `pr.needs_response`, `pr.ci_failed`,
+`events` has exactly 12 fixed keys — `pr.needs_response`, `pr.ci_failed`,
 `task.parked`, `stage.ceiling_reached`, `phase.ready_for_review`,
-`lease.expired`, `session.ended`, `hook.blocked`, `orchestrator.dead_stop`,
-`usage.budget_exceeded` — each an ordered list of channel names from
+`lease.expired`, `session.ended`, `session.waiting`, `session.done`, `hook.blocked`,
+`orchestrator.dead_stop`, `usage.budget_exceeded` — each an ordered list of channel names from
 `channels`; an unknown event key, or an `events.*` entry naming a channel
 that `channels` does not define, fails validation at `sdlc.yaml` load time.
 An event with no list, or an empty one, fires no channel — a silent no-op.
 `phase.ready_for_review` and `orchestrator.dead_stop` are config-only today:
-no detector fires them yet.
+no detector fires them yet. `session.waiting` fires once when an interactive
+Claude session enters `waiting_for_input`, `session.done` when an agent runs
+`sdlc session done`; the session events and `task.parked` carry
+a `focus` field, the `sdlc session focus …` command that brings the session
+forward.
 
 ```yaml
 notify:
@@ -1641,20 +1769,22 @@ there too. The list below is the narrative companion.
   **`_pr_action.ts`** — read `ctx.sdlcConfig.orchestrator.review.max_rounds`
   to cap `pr-review`/`pr-respond` round-trips per PR.
 - **`solutions/ontological/lib/services/orchestrator/step-runner.ts`** —
-  `resolveEngine`/`resolveHost` read `resolveWorkflow(name).engine`/`.host`
-  (i.e. `workflows.<name>.engine`/`.host`) to pick a dispatched workflow's
-  engine/host, falling back to `'claude'`/`host.default` when unset. The
-  retired `orchestrator.workflows`/`orchestrator.review.engine` settings
+  `resolveEngine`/`resolveHost` read `resolveWorkflow(name).profile|tool`/
+  `.host` (i.e. `workflows.<name>.profile|tool`/`.host`) to pick a dispatched
+  workflow's tool/host (the tool through `lib/services/route/route.ts`),
+  falling back to the built-in `profiles.default` (`*/standard`), and `host.default` when
+  unset. The retired `orchestrator.workflows`/`orchestrator.review.engine` settings
   collapsed into this one place
   ([[D-LSLH-collapse-verbs-workflows-chain-hooks]]).
 - **`solutions/ontological/lib/services/session/ops/launch.ts`** — resolves
-  `resolveWorkflow(name).engine`/`.host` (i.e. `workflows.<name>.engine`/
-  `.host`, the SAME setting `step-runner.ts` reads above) as a `--workflow
-  <name>` launch's fallback default, below `--engine`/`--host` and above the
-  hardcoded `claude`/`host.default` fallbacks. `--skill`/`--prompt` launches
+  `resolveWorkflow(name).profile|tool`/`.host` (i.e.
+  `workflows.<name>.profile|tool`/`.host`, the SAME setting `step-runner.ts`
+  reads above) as a `--workflow <name>` launch's fallback default, below
+  `--tool`/`--host` and above `profiles.default` and the hardcoded
+  `host.default` fallback. `--skill`/`--prompt` launches
   never consult it (no workflow name to key off).
 - **`solutions/ontological/lib/services/pr/ops/review.ts`** — reads
-  `ctx.sdlcConfig.pr_review` for the engine, host and prompt, and
+  `ctx.sdlcConfig.pr_review` for the binding, host and prompt, and
   `loadConfig(<target-repo>).repos` + `loadMachineConfig().repos` (via
   `repoContainers` in `lib/services/repo/locate.ts`) to find another
   repository's checkout.

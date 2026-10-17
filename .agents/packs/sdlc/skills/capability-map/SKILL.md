@@ -110,8 +110,20 @@ session into it.
 ## 4. Dispatch one sub-agent per candidate (single message, parallel)
 
 For every candidate, dispatch **one sub-agent in a single message** so they run concurrently.
-Use the `general-purpose` subagent type with the sonnet model; these are well-briefed reads.
-Sub-agents are **read-only**: they read files and run `git log`; they never write.
+Use the `general-purpose` subagent type with the built-in `default` profile; these are
+well-briefed reads. Sub-agents are **read-only**: they read files and run `git log`; they never
+write.
+
+Resolve the profile once, before the first dispatch:
+
+```text
+sdlc route resolve default --in-session claude --json
+```
+
+Pass its `alias` as each sub-agent's model and its `effort`, when present, as each sub-agent's
+effort. `degraded: true` means the profile's first choice is on another tool; say so in the
+report. On a non-zero exit, report the command's stderr (it carries the trace) and stop. Do not
+dispatch without a model: the sub-agents would run on this session's model.
 
 Each sub-agent prompt carries:
 
