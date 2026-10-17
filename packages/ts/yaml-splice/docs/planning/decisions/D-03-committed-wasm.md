@@ -19,8 +19,8 @@ created: 2026-10-17
   the workspace) to fixed names with `--remap-path-prefix`. The standard
   library's source maps to `/rustc/<commit>`, as when the `rust-src`
   component is not installed. `wasm-opt` drops the `producers` section, which
-  differs between a `cargo install`ed and a released `wasm-bindgen`. It fails when the
-  built `.wasm` still contains a `/Users/` or `/home/` path.
+  differs between a `cargo install`ed and a released `wasm-bindgen`. It fails
+  when the built `.wasm` still contains a `/Users/` or `/home/` path.
 - The `wasm` job in `.github/workflows/rust-ci.yml` runs `build.sh` on every
   pull request that touches the crates or `wasm/`, and fails when the result
   differs from what is committed. On a difference it uploads the rebuilt
