@@ -100,25 +100,27 @@ function tempPath(path: string): string {
 /**
  * The mode a write gives the file: the caller's, else the old file's
  * permission bits. setuid, setgid and sticky are dropped, as the crate drops
- * them, because the new file has a new owner. `undefined` for a new file.
+ * them, because the new file has a new owner. `undefined` (a new file's mode)
+ * when the target is missing, is not a regular file, or cannot be stat'ed, as
+ * the crate does: any real problem with the path surfaces from the write.
  */
 function keptMode(path: string, mode: number | undefined): number | undefined {
   if (mode !== undefined) return mode
   try {
-    return statSync(path).mode & 0o777
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return undefined
-    throw err
+    const st = statSync(path)
+    return st.isFile() ? st.mode & 0o777 : undefined
+  } catch {
+    return undefined
   }
 }
 
 async function keptModeAsync(path: string, mode: number | undefined): Promise<number | undefined> {
   if (mode !== undefined) return mode
   try {
-    return (await stat(path)).mode & 0o777
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return undefined
-    throw err
+    const st = await stat(path)
+    return st.isFile() ? st.mode & 0o777 : undefined
+  } catch {
+    return undefined
   }
 }
 

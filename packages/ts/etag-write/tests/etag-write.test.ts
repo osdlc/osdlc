@@ -143,6 +143,25 @@ describe.each([
   )
 
   test.skipIf(process.platform === 'win32')(
+    'a target that is not a regular file gives the temp file a new file mode',
+    async () => {
+      const dir = join(root, 'tight')
+      mkdirSync(dir)
+      chmodSync(dir, 0o700)
+      const loop = join(root, 'loop')
+      symlinkSync(loop, loop)
+      const plain = join(root, 'plain.txt')
+      writeFileSync(plain, 'x')
+      // A directory target still fails at the rename, and a looping link is
+      // replaced; neither takes the target's bits.
+      await expect(async () => write(dir, 'y')).toThrow()
+      await write(loop, 'new')
+      expect(lstatSync(loop).isSymbolicLink()).toBe(false)
+      expect(statSync(loop).mode & 0o777).toBe(statSync(plain).mode & 0o777)
+    },
+  )
+
+  test.skipIf(process.platform === 'win32')(
     'a symlink is replaced, not written through, and takes its target mode',
     async () => {
       const target = join(root, 'target.txt')

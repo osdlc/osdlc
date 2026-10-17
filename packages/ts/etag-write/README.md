@@ -103,8 +103,11 @@ write, and blind writes lose data.
 - **Permissions.** `mode` sets the file's exact permission bits, whatever the
   umask. Without it, an overwrite keeps the old file's permission bits, and a
   new file gets the mode `writeFileSync` would give it: `0o666` less the
-  umask. The setuid, setgid and sticky bits are dropped, because the new file
-  has a new owner. Owner and group are not copied.
+  umask. An overwrite without `mode` drops the setuid, setgid and sticky bits,
+  because the new file has a new owner. Owner and group are not copied. A
+  target that is not a regular file, or cannot be stat'ed, gets a new file's
+  mode. The old bits are read before the temp file is written, so a `chmod` of
+  the target between that read and the rename is lost.
 - **Symlinks.** The rename replaces a symlink at `path` with a regular file. It
   does not write through the link. The new file takes the mode of the file the
   link pointed to.
