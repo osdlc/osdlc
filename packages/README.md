@@ -49,6 +49,9 @@ Developed here, in this repository:
 - `packages/ts/prettier-config` (`@osdlc/prettier-config`)
 - `packages/ts/command-seam` (`@osdlc/command-seam`)
 - `packages/rust/etag-write` (`etag-write` on crates.io)
+- `packages/rust/yaml-splice` (`yaml-splice` on crates.io)
+- `packages/rust/yaml-splice-wasm`, the WebAssembly build of `yaml-splice`
+  for its npm package (not published to crates.io)
 - `packages/ts/etag-write` (`@osdlc/etag-write` on npm, the crate's TypeScript twin)
 
 The development repository will take each TypeScript library from npm, like
@@ -118,6 +121,10 @@ Rust crates are released by `.github/workflows/release-plz.yml` with
    `git push origin etag-write/v0.1.0`, then
    `gh release create etag-write/v0.1.0 --title "etag-write v0.1.0"` with
    the CHANGELOG section as the notes.
+6. A crate that is never released, such as `yaml-splice-wasm`, has
+   `publish = false` in its `Cargo.toml` and `release = false` for it in
+   `packages/rust/release-plz.toml`. The workflow and release-plz then skip
+   it.
 
 ## Working on a library
 
@@ -142,7 +149,8 @@ license, repository) and lints from it. `packages/rust/rust-toolchain.toml`
 pins the compiler, and rustup installs it on first use.
 `.github/workflows/rust-ci.yml` runs clippy and the tests on Linux, macOS
 and Windows, and the format check, docs and `cargo package` on Linux. It
-also tests on the MSRV and with minimal dependency versions. Its `rust` job
+also tests on the MSRV and with minimal dependency versions, and builds
+`yaml-splice-wasm` for `wasm32-unknown-unknown`. Its `rust` job
 is the one check to require.
 
 ```sh

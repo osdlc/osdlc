@@ -8,9 +8,10 @@
 # the other jobs skip when nothing under the Rust paths changed. `rust`
 # passes when every job it needs passed or was skipped.
 #
-# The toolchain is the pin in packages/rust/rust-toolchain.toml, except in
-# the `msrv` job (the workspace `rust-version`) and the `minimal-versions`
-# lockfile step (a dated nightly, for `-Z direct-minimal-versions`).
+# The toolchain is the pin in packages/rust/rust-toolchain.toml (with the
+# wasm32 target added in the `wasm` job), except in the `msrv` job (the
+# workspace `rust-version`) and the `minimal-versions` lockfile step (a dated
+# nightly, for `-Z direct-minimal-versions`).
 #
 # Every action is pinned to a commit SHA; the comment names its release.
 name: rust
@@ -213,8 +214,29 @@ jobs:
       - name: Test
         run: cargo test --workspace --locked
 
+  # yaml-splice-wasm is a wasm-bindgen crate. The other jobs build it for the
+  # host target only; this checks that it still builds for the target it
+  # exists for.
+  wasm:
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/rust-toolchain
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: ./.github/actions/rust-build-cache
+
+      - name: Build yaml-splice-wasm for wasm32
+        run: cargo build -p yaml-splice-wasm --target wasm32-unknown-unknown --release --locked
+
   rust:
-    needs: [changes, lint, rust-test, msrv, minimal-versions]
+    needs: [changes, lint, rust-test, msrv, minimal-versions, wasm]
     if: always()
     runs-on: ubuntu-latest
     defaults:
