@@ -138,12 +138,14 @@ pnpm run test
 
 The root scripts run each library's script of the same name.
 
-A library can have a smoke check: `smoke.mjs` in its test directory (`test/`
-or `tests/`). It runs the built package under Node. It imports the package by
-name, so Node resolves it through `exports` as a consumer would. It is not in
-`files`, so npm users do not get it. Two things run it:
+A library can have a smoke check: `tests/smoke.mjs`. It runs the built package
+under Node. It imports the package by name, so Node resolves it through
+`exports` as a consumer would. The library needs an `exports` field for this:
+`pnpm run smoke` relies on Node's self-reference by package name, which works
+only with `exports`. The check is not in `files`, so npm users do not get it.
+Two things run it:
 
-- The library's `smoke` script, `node <test dir>/smoke.mjs`, run by
+- The library's `smoke` script, `node tests/smoke.mjs`, run by
   `pnpm run smoke`. Here the name resolves to the library's own `dist/`.
 - `pnpm run check:packages`. It installs the packed tarball into an empty
   project, copies the smoke check there and runs it, so the name resolves to

@@ -3,9 +3,9 @@
 // Are The Types Wrong for a package that ships types, then a clean consumer:
 // `npm install <tarball>` into an empty project, load every entry point under
 // Node, and run the package's smoke check against it if the package has one.
-// The smoke check is `test/smoke.mjs` or `tests/smoke.mjs` in the package
-// directory. It is not shipped: it is copied into the consumer project and
-// imports the package by name, so it runs against the installed tarball.
+// The smoke check is `tests/smoke.mjs` in the package directory. It is not
+// shipped: it is copied into the consumer project and imports the package by
+// name, so it runs against the installed tarball.
 //
 //   node .github/scripts/check-packages.mjs [packages/ts/<name> ...]
 //
@@ -42,7 +42,8 @@ const run = (cmd, argv, cwd) =>
 
 /** The package's smoke check, or undefined if it has none. */
 function smokeFile(pkgDir) {
-  return ['test', 'tests'].map((d) => join(pkgDir, d, 'smoke.mjs')).find((f) => existsSync(f))
+  const file = join(pkgDir, 'tests', 'smoke.mjs')
+  return existsSync(file) ? file : undefined
 }
 
 /** The specifiers a consumer can load: `name` plus each `exports` subpath
@@ -89,6 +90,8 @@ function cleanConsumer(pkg, pkgDir, tarball) {
     if (smoke) {
       copyFileSync(smoke, join(consumer, 'smoke.mjs'))
       process.stdout.write(run('node', ['smoke.mjs'], consumer))
+    } else {
+      console.log(`${pkg.name}: no smoke check (no tests/smoke.mjs)`)
     }
   } finally {
     rmSync(consumer, { recursive: true, force: true })
