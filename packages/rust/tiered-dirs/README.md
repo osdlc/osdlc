@@ -168,7 +168,7 @@ fn main() -> Result<(), tiered_dirs::Error> {
 Every base directory can be moved by an environment variable, on every OS, so
 a test or harness can run a whole program inside one scratch root. The caller
 names the variables with `EnvVars`, through `env_vars!("<P>")`. Every name
-shares that one prefix. In 0.1 there is no public way to pick unrelated names.
+shares that one prefix. In 0.2 there is no public way to pick unrelated names.
 For each base directory, the first answer wins:
 
 | order | source | effect |
@@ -280,7 +280,7 @@ Coverage is not measured.
 
 ## Stability
 
-0.1 is the first release. The crate stays on 0.x for now. Every public item is
+0.2 is the first published release. The crate stays on 0.x for now. Every public item is
 marked "stable in 0.x" in its docs: `BaseDirs`, `Convention`, `Dir`, `EnvVars`,
 `env_vars!`, `Error`, `Home`, `ResolveOptions`, `Tier`, `TierKind`,
 `TieredDirs`, `assert_vendor_bundle_id`, `is_valid_segment`,

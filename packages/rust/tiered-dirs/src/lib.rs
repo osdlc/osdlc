@@ -356,7 +356,7 @@ const RESERVED_SEGMENTS: [&str; 3] = ["state", "logs", RUNTIME_FALLBACK_SEGMENT]
 
 /// Everything this crate can fail with.
 ///
-/// New variants may be added in a compatible release (0.1.z), so a `match`
+/// New variants may be added in a compatible release (0.2.z), so a `match`
 /// needs a wildcard arm.
 ///
 /// **Stability:** stable in 0.x. The five variants and their fields are not
