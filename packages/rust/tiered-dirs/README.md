@@ -70,8 +70,8 @@ produced a tier.
 
 Every segment a caller passes (vendor, suite key, tool, scope kind and key,
 app) must be one safe path segment: a leading ASCII letter or digit, then
-letters, digits, `.`, `_` or `-`, with no `..`. Anything else is
-`Error::InvalidKey`.
+letters, digits, `.`, `_` or `-`, with no `..`. It must not be `state`, `logs`
+or `run`, in any case (see Homes). Anything else is `Error::InvalidKey`.
 
 `examples/layout.rs` prints every directory for one vendor. Run it with
 `cargo run --example layout`.
@@ -118,8 +118,12 @@ come from the `dirs` crate. Three rules of this crate apply to every cell:
 
 - Logs, state and runtime never go under cache, because the OS may purge
   cache. Where the platform has no logs or runtime directory, they go under
-  durable. On Windows state is `%LOCALAPPDATA%\state`, beside cache, not in
-  it.
+  durable. On Windows state is `%LOCALAPPDATA%\state`: under the same root
+  as each tier's cache folder and beside it, never the same folder.
+- `state`, `logs` and `run` are reserved, in any case. A tier, scope or app
+  segment with one of those names is `Error::InvalidKey`. Otherwise
+  `standalone("state").cache()` would be the Windows state root, and
+  `standalone("logs").durable()` the Windows logs root.
 - Under XDG, logs and state share one directory. Keep their file names apart.
 - A missing base directory is `Error::MissingBaseDir`, never a panic.
   Headless CI and sandboxes do not always have a home directory.
@@ -163,8 +167,9 @@ fn main() -> Result<(), tiered_dirs::Error> {
 
 Every base directory can be moved by an environment variable, on every OS, so
 a test or harness can run a whole program inside one scratch root. The caller
-names the variables with `EnvVars`, usually through `env_vars!("<P>")`. For
-each base directory, the first answer wins:
+names the variables with `EnvVars`, through `env_vars!("<P>")`. Every name
+shares that one prefix. In 0.1 there is no public way to pick unrelated names.
+For each base directory, the first answer wins:
 
 | order | source | effect |
 |---|---|---|
@@ -259,6 +264,7 @@ here).
 | Every tier and home gives the fixture's path | `every_case_resolves_to_its_fixture_path`, `every_tier_by_home_pair_has_a_case` |
 | A standalone tool and scratch carry no vendor segment | `nothing_outside_the_suite_carries_the_vendor_segment`, `a_standalone_tool_gets_no_vendor_segment` |
 | Tiers are distinct addresses | `tiers_are_distinct_addresses` |
+| No tier lands on another home's root; `state`, `logs` and `run` are reserved | `no_tier_lands_on_or_above_another_homes_root`, `reserved_names_are_refused_in_any_case` |
 | Unsafe segments are refused in every position | `every_rejected_segment_is_rejected_in_every_position`, `keys_reject_separators_dotdot_and_empty` |
 | Override order, and runtime follows durable | `every_env_case_resolves_to_its_fixture_paths`, `a_home_var_beats_the_root_var_for_its_own_home_only`, `runtime_follows_an_overridden_durable` |
 | The XDG table, and a relative `XDG_*` value is ignored | `every_convention_case_resolves_to_its_fixture_paths`, `the_xdg_layout_reads_its_variables_and_ignores_relative_ones` |

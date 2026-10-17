@@ -119,7 +119,7 @@
 //!
 //! Every base directory can be moved by environment variable, so a test or
 //! harness can run a whole app inside one scratch root. The caller names the
-//! variables with [`EnvVars`], usually through [`env_vars!`] and a prefix:
+//! variables with [`EnvVars`], through [`env_vars!`] and one shared prefix:
 //! `env_vars!("MYAPP")` reads `MYAPP_ROOT`, `MYAPP_<HOME>_DIR`,
 //! `MYAPP_SCRATCH_DIR`, `MYAPP_REQUIRE_OVERRIDE` and `MYAPP_CONVENTION`.
 //!
@@ -237,16 +237,16 @@ pub struct EnvVars {
 macro_rules! env_vars {
     ($prefix:literal) => {
         $crate::EnvVars::__from_names(
-            concat!($prefix, "_ROOT"),
-            concat!($prefix, "_DURABLE_DIR"),
-            concat!($prefix, "_CONFIG_DIR"),
-            concat!($prefix, "_CACHE_DIR"),
-            concat!($prefix, "_STATE_DIR"),
-            concat!($prefix, "_LOGS_DIR"),
-            concat!($prefix, "_RUNTIME_DIR"),
-            concat!($prefix, "_SCRATCH_DIR"),
-            concat!($prefix, "_REQUIRE_OVERRIDE"),
-            concat!($prefix, "_CONVENTION"),
+            ::core::concat!($prefix, "_ROOT"),
+            ::core::concat!($prefix, "_DURABLE_DIR"),
+            ::core::concat!($prefix, "_CONFIG_DIR"),
+            ::core::concat!($prefix, "_CACHE_DIR"),
+            ::core::concat!($prefix, "_STATE_DIR"),
+            ::core::concat!($prefix, "_LOGS_DIR"),
+            ::core::concat!($prefix, "_RUNTIME_DIR"),
+            ::core::concat!($prefix, "_SCRATCH_DIR"),
+            ::core::concat!($prefix, "_REQUIRE_OVERRIDE"),
+            ::core::concat!($prefix, "_CONVENTION"),
         )
     };
 }
@@ -347,6 +347,13 @@ pub fn assert_vendor_bundle_id(vendor: &str, bundle_id: &str) {
 /// runtime directory of its own (trap 2).
 const RUNTIME_FALLBACK_SEGMENT: &str = "run";
 
+/// Folders this crate places directly under another home's base on some OS:
+/// state under cache and logs under durable on Windows, and runtime under
+/// durable wherever the platform has no runtime directory. A tier segment
+/// with one of these names would land on that home's root, so
+/// [`is_valid_segment`] refuses them, ignoring case.
+const RESERVED_SEGMENTS: [&str; 3] = ["state", "logs", RUNTIME_FALLBACK_SEGMENT];
+
 /// Everything this crate can fail with.
 ///
 /// New variants may be added in a compatible release (0.1.z), so a `match`
@@ -401,10 +408,11 @@ pub enum Error {
         value: String,
     },
 
-    /// A caller-supplied segment is not a safe single path segment.
+    /// A caller-supplied segment is not a safe single path segment, or is
+    /// one of the reserved names `state`, `logs` and `run`.
     #[error(
         "invalid {kind} key {key:?}: want a leading letter/digit then ._-, \
-         no path separator or \"..\""
+         no path separator or \"..\", and not state, logs or run"
     )]
     InvalidKey {
         /// What the segment was for: `vendor`, `suite`, `standalone`,
@@ -418,6 +426,11 @@ pub enum Error {
 /// Whether `key` is a safe single path segment: a leading ASCII letter/digit,
 /// then letters/digits and `.`/`_`/`-`, with no separator and no `..`.
 ///
+/// `state`, `logs` and `run` are refused in any case. This crate puts those
+/// folders under another home's base on some OS (state beside the cache
+/// folders on Windows, for one), so a tier named after one would land on that
+/// home's root. Windows and macOS paths ignore case, so `State` is refused too.
+///
 /// Mirrors the TS twin's `isValidSegment`. [`TieredDirs::with_base_dirs`],
 /// [`TieredDirs::suite`], [`Dir::scoped`] and [`Dir::app`] apply it
 /// themselves; this is for callers that want the answer without the path.
@@ -428,6 +441,12 @@ pub fn is_valid_segment(key: &str) -> bool {
         return false;
     }
     if key.contains('/') || key.contains('\\') || key.contains("..") {
+        return false;
+    }
+    if RESERVED_SEGMENTS
+        .iter()
+        .any(|reserved| key.eq_ignore_ascii_case(reserved))
+    {
         return false;
     }
     let first_ok = key
@@ -1002,8 +1021,10 @@ fn os_defaults(convention: Convention, var: impl Fn(&str) -> Option<OsString>) -
 ///
 /// Logs land at `<durable>/logs`, not under `%LOCALAPPDATA%`: that is the
 /// same root as cache, which the OS purges (trap 1 by another route). State
-/// goes to `%LOCALAPPDATA%\state`: machine-local, so it need not roam, and
-/// never the cache directory itself.
+/// goes to `%LOCALAPPDATA%\state`: machine-local, so it need not roam. That
+/// puts it beside each tier's cache folder under the same root, never the same
+/// folder: [`is_valid_segment`] refuses `state`, `logs` and `run` as segments,
+/// so no tier folder can be another home's root.
 #[cfg(windows)]
 #[allow(
     clippy::disallowed_methods,
@@ -2118,6 +2139,78 @@ mod tests {
         dirs.assert_vendor_bundle_id("com.example.notes.desktop");
         assert!(dirs.is_vendor_bundle_id("com.example.tool"));
         assert!(!dirs.is_vendor_bundle_id("com.legacy.notes"));
+    }
+
+    const RESERVED_SPELLINGS: [&str; 6] = ["state", "logs", "run", "State", "LOGS", "Run"];
+
+    #[test]
+    fn reserved_names_are_refused_in_any_case() {
+        let dirs = dirs();
+        for name in RESERVED_SPELLINGS {
+            assert!(!is_valid_segment(name), "{name}");
+            assert_eq!(
+                dirs.standalone(name).unwrap_err(),
+                Error::InvalidKey {
+                    kind: "standalone",
+                    key: name.to_string()
+                }
+            );
+            assert!(TieredDirs::with_base_dirs(name, BaseDirs::rooted("/stub")).is_err());
+            assert!(dirs.vendor().cache().app(name).is_err());
+        }
+        for near in ["states", "log", "runs", "run-1", "state.d"] {
+            assert!(is_valid_segment(near), "{near}");
+        }
+    }
+
+    /// The Windows layout: state under the cache base, logs and runtime under
+    /// the durable base.
+    fn windows_layout() -> BaseDirs {
+        from_vars(&[
+            ("EXAMPLE_DURABLE_DIR", "/roaming"),
+            ("EXAMPLE_CONFIG_DIR", "/roaming"),
+            ("EXAMPLE_CACHE_DIR", "/local"),
+            ("EXAMPLE_STATE_DIR", "/local/state"),
+            ("EXAMPLE_LOGS_DIR", "/roaming/logs"),
+            ("EXAMPLE_SCRATCH_DIR", "/tmp"),
+        ])
+        .unwrap()
+    }
+
+    #[test]
+    fn no_tier_lands_on_or_above_another_homes_root() {
+        let windows = windows_layout();
+        assert_eq!(windows.get(Home::Runtime), abs("/roaming/run"));
+        let names = RESERVED_SPELLINGS.into_iter().chain(["notes", "states"]);
+        for layout in [windows, BaseDirs::rooted(abs("/stub"))] {
+            for name in names.clone() {
+                let as_vendor = TieredDirs::with_base_dirs(name, layout.clone());
+                let suite_owner = TieredDirs::with_base_dirs(VENDOR, layout.clone()).unwrap();
+                let tiers = [
+                    as_vendor.as_ref().ok().map(TieredDirs::vendor),
+                    suite_owner.suite(name).ok(),
+                    suite_owner.standalone(name).ok(),
+                ];
+                for tier in tiers.iter().flatten() {
+                    for home in Home::ALL {
+                        let dir = tier.home(home);
+                        for other in Home::ALL {
+                            let root = layout.get(other);
+                            if root == layout.get(home) {
+                                continue;
+                            }
+                            assert!(
+                                !root.starts_with(dir.path()),
+                                "{name}: {} {} holds the {} root",
+                                tier.kind().as_str(),
+                                home.as_str(),
+                                other.as_str(),
+                            );
+                        }
+                    }
+                }
+            }
+        }
     }
 
     #[test]

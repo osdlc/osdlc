@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.1
+
+### Patch Changes
+
+- 4fa373f: The npm package no longer contains `smoke.mjs`. It was a check for this
+  repository's CI, not part of the API.
+
 ## 0.4.0
 
 ### Minor Changes

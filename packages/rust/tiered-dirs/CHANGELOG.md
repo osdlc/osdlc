@@ -17,10 +17,12 @@ First release.
   `standalone(tool)`) and home (`durable`, `config`, `cache`, `state`,
   `logs`, `runtime`), plus an untiered `scratch()` root. `Dir::scoped` and
   `Dir::app` narrow a directory. Every segment is checked to be one safe path
-  segment.
+  segment. `state`, `logs` and `run` are reserved, in any case, so no tier
+  lands on another home's root.
 - `BaseDirs`: the per-OS base directories, resolved once. Logs go to
   `~/Library/Logs` on macOS, and logs, state and runtime never go under
-  cache. On Windows state is `%LOCALAPPDATA%\state`.
+  cache. On Windows state is `%LOCALAPPDATA%\state`, beside each tier's
+  cache folder under the same root, never the same folder.
 - `Convention`: `Native` (the default) or `Xdg`. `Xdg` gives the XDG paths on
   macOS too; Linux is the same under both, and on Windows `Xdg` means
   `Native`. `BaseDirs::xdg` builds the XDG table under any home. The crate

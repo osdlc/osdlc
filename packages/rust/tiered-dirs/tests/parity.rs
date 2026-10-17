@@ -66,6 +66,7 @@ struct EnvCase {
 /// The XDG layout under `home`, from `XDG_*` variables only. `expected` pins
 /// every home.
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ConventionCase {
     name: String,
     home: String,
@@ -74,6 +75,7 @@ struct ConventionCase {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct Case {
     name: String,
     tier: String,
@@ -87,6 +89,7 @@ struct Case {
 
 /// `TieredDirs::scratch` is untiered and has no home, so its cases carry neither.
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ScratchCase {
     name: String,
     scope_kind: Option<String>,
@@ -96,6 +99,7 @@ struct ScratchCase {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct Rejected {
     name: String,
     value: String,
@@ -452,6 +456,10 @@ fn every_rejected_segment_is_rejected_in_every_position() {
     let dirs = dirs();
     let cache = dirs.suite("notes").unwrap().cache();
     for Rejected { name, value } in &fixture.rejected {
+        assert!(
+            TieredDirs::with_base_dirs(value, BaseDirs::rooted("/stub")).is_err(),
+            "vendor: {name}"
+        );
         assert!(dirs.suite(value).is_err(), "suite: {name}");
         assert!(dirs.standalone(value).is_err(), "standalone: {name}");
         assert!(cache.app(value).is_err(), "app: {name}");

@@ -46,11 +46,17 @@
     "is dropped, `<prefix>_CONVENTION` and `XDG_*` are dropped from that",
     "resolution too, and the whole row must equal it: Xdg is Native there and",
     "`XDG_*` is ignored.",
+    "The two `<prefix>_CONVENTION` precedence rows only discriminate on macOS.",
     "",
     "`convention_cases` drive the XDG layout under one home, with no platform in",
     "the way: `BaseDirs::xdg(home, var)` in Rust, `xdgBaseDirs(home, env)` in TS.",
     "`env` holds only `XDG_*` variables. `expected` pins every home; scratch is",
     "left out. A relative `XDG_*` value is ignored, as the XDG spec says.",
+    "",
+    "`rejected` are segments every position must refuse, the vendor included.",
+    "`state`, `logs` and `run` are refused in any case: the crate puts those",
+    "folders under another home's base on some OS, so a tier with one of those",
+    "names could land on that home's root.",
     "",
     "`rejected_conventions` are values `<prefix>_CONVENTION` must refuse. The rule:",
     "trim, then exactly `native` or `xdg`, in lower case."
@@ -782,6 +788,30 @@
     {
       "name": "tilde",
       "value": "~root"
+    },
+    {
+      "name": "reserved state",
+      "value": "state"
+    },
+    {
+      "name": "reserved logs",
+      "value": "logs"
+    },
+    {
+      "name": "reserved run",
+      "value": "run"
+    },
+    {
+      "name": "reserved state in another case",
+      "value": "State"
+    },
+    {
+      "name": "reserved logs in another case",
+      "value": "LOGS"
+    },
+    {
+      "name": "reserved run in another case",
+      "value": "Run"
     }
   ],
   "rejected_conventions": [
