@@ -1,0 +1,73 @@
+{
+  "name": "@osdlc/etag-write",
+  "version": "0.1.0",
+  "description": "Atomic file writes, sha256 etags and compare-and-swap: a temp file in the same directory, fsync, rename, fsync the directory, so a reader never sees a torn file and a crash never leaves one. CAS refuses a blind overwrite.",
+  "license": "MIT OR Apache-2.0",
+  "author": "SK Sizer",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/osdlc/osdlc.git",
+    "directory": "packages/ts/etag-write"
+  },
+  "homepage": "https://github.com/osdlc/osdlc/tree/main/packages/ts/etag-write#readme",
+  "bugs": "https://github.com/osdlc/osdlc/issues",
+  "keywords": [
+    "atomic",
+    "write",
+    "fsync",
+    "rename",
+    "etag",
+    "compare-and-swap",
+    "cas",
+    "durability",
+    "lost-update",
+    "typescript"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    ".": {
+      "bun": "./index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist/",
+    "index.ts",
+    "smoke.mjs",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE-MIT",
+    "LICENSE-APACHE",
+    "SECURITY.md",
+    "CONTRIBUTING.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "test": "bun test",
+    "coverage": "bun test --coverage",
+    "smoke": "node smoke.mjs",
+    "prepublishOnly": "npm run clean && npm run build",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "oxlint .",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit"
+  },
+  "devDependencies": {
+    "@osdlc/prettier-config": "workspace:^",
+    "@osdlc/tsconfig": "workspace:^",
+    "@types/bun": "^1.1.14",
+    "@types/node": "^26.1.0",
+    "oxlint": "^1.65.0",
+    "prettier": "3.9.6",
+    "typescript": "~6.0.3"
+  }
+}

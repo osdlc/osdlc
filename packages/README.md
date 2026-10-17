@@ -29,8 +29,9 @@ of them.
 ## Licenses
 
 Each library carries its own license, named in its manifest and kept as
-license files in its directory. The TypeScript libraries are MIT. The Rust
-crates are `MIT OR Apache-2.0`. The root `LICENSE` of this repository
+license files in its directory. `command-seam`, `tsconfig` and
+`prettier-config` are MIT. The Rust crates and the other TypeScript
+libraries are `MIT OR Apache-2.0`. The root `LICENSE` of this repository
 applies to everything outside `packages/`.
 
 ## Why one repository
@@ -48,9 +49,11 @@ Developed here, in this repository:
 - `packages/ts/prettier-config` (`@osdlc/prettier-config`)
 - `packages/ts/command-seam` (`@osdlc/command-seam`)
 - `packages/rust/etag-write` (`etag-write` on crates.io)
+- `packages/ts/etag-write` (`@osdlc/etag-write` on npm, the crate's TypeScript twin)
 
-The development repository takes the TypeScript libraries from npm, like any
-other consumer. Open issues and pull requests here.
+The development repository takes each TypeScript library from npm, like any
+other consumer, once the library is on npm. Open issues and pull requests
+here.
 
 ### Releasing a TypeScript library
 
