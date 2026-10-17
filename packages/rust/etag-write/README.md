@@ -95,9 +95,8 @@ other read error is an error.
 ## Behaviour to know
 
 - **Permissions.** Overwriting a file keeps its permissions: the Unix `0o777`
-  mode bits, or the read-only flag on Windows (untested: the tests have not
-  run on Windows). The setuid, setgid and sticky bits are dropped, because
-  the new file has a new owner. Owner and group are
+  mode bits, or the read-only flag on Windows. The setuid, setgid and sticky
+  bits are dropped, because the new file has a new owner. Owner and group are
   not copied. A new file gets the same mode `fs::write` would give it: `0o666`
   less the umask on Unix.
 - **Temp files** are named `.<name>.etag-write-<pid>-<n>.tmp` in the target's
@@ -138,9 +137,9 @@ measured.
 ## Platforms
 
 The code uses only the standard library, `sha2` and `thiserror`, and is written
-for Linux, macOS and Windows. So far the tests have been run on macOS only. The
-directory fsync is skipped where a directory cannot be opened as a file, which
-is the case on Windows.
+for Linux, macOS and Windows. CI runs the tests on all three. The directory
+fsync is skipped where a directory cannot be opened as a file, which is the case
+on Windows.
 
 Minimum supported Rust version: 1.85, checked by running the tests on 1.85.
 
