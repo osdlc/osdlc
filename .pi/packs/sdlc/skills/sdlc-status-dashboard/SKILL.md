@@ -20,8 +20,8 @@ Usage:
 
 - `/skill:sdlc-status-dashboard` — start the dashboard in the background (detached, survives this
   shell/agent) and print its URL.
-- `/skill:sdlc-status-dashboard start [--port N] [--host H] [--no-network]` — same, forwarding optional
-  flags to the service.
+- `/skill:sdlc-status-dashboard start [--port N] [--host H] [--no-network] [--lan]` — same, forwarding
+  optional flags to the service.
 - `/skill:sdlc-status-dashboard stop` — stop this project's running instance.
 - `/skill:sdlc-status-dashboard list` — list every dashboard running across all project checkouts on this
   machine.

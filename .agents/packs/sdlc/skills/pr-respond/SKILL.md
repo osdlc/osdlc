@@ -51,7 +51,7 @@ References:
   minimize-churn / loop-guard-at-`max_rounds`. See Step 6 for how the
   skill resolves it (and its built-in fallback) before Step 7 hands it
   to the sub-agent.
-- `pr-tools`' `check-pr` skill (a different plugin — see its own
+- `craft`'s `check-pr` skill (a different plugin — see its own
   `SKILL.md` when installed) is a general, lease-unaware "tend any PR"
   tool with no notion of sdlc's task lease — it must never be invoked
   directly against a PR carrying an `sdlc-lease` footer (it would
@@ -82,7 +82,8 @@ Or one of these structured stderr markers (still exits 0 — the marker
 is the dispatch surface, not the exit code):
 
 - `LEASE-FOOTER-MISSING pr=<n>` — the PR's body does not contain a
-  parseable `<!-- sdlc-lease: task=<id> lease=<id> -->` footer.
+  parseable `<!-- sdlc-lease: task=<id> lease=<id> author=<tool>/<model>@<effort> -->` footer
+  (`author=` is optional).
   task-work never opened this PR, or the footer was edited away. No
   worktree mutation, no commit, no push.
 - `WORKTREE-MISSING task=<task_id>` — the footer parsed but
@@ -123,8 +124,9 @@ Branch on exit code:
   `FOOTER task=<task_id> lease=<lease_id>`. Parse the `task=` and
   `lease=` tokens off that line and keep both in scope; downstream
   steps need them. The literal footer that `$sdlc:task-work` plants
-  is `<!-- sdlc-lease: task=<task_id> lease=<lease_id> -->`, the last
-  line of the PR body — `parse-footer` returns the same pair.
+  is `<!-- sdlc-lease: task=<task_id> lease=<lease_id> author=<tool>/<model>@<effort> -->`, the
+  last line of the PR body (`author=` is optional and not used here) — `parse-footer` returns the
+  task and lease pair.
 - **Exit 5** — `LEASE-FOOTER-MISSING pr=<n>` on stderr. The PR's body
   has no parseable footer. Exit cleanly with the same marker on
   stderr. **No worktree mutation, no commit, no push.** task-work
@@ -451,3 +453,22 @@ force-push; surface the failure to the operator and stop.
   multiline-commit pattern in
   `${CLAUDE_PLUGIN_ROOT}/conventions/commit-messages.md` (don't drop
   back to single-line `-m`).
+
+## Finish the session
+
+If the `SDLC_SESSION` environment variable is set, this run is an sdlc-tracked
+session, and the orchestrator learns the task is finished only from you. Check
+`echo "$SDLC_SESSION"`; when it is empty, skip this section.
+
+Run it only when this skill was the session's own top-level task (your first
+message asked for it). If you loaded this skill from inside another skill or a
+sub-agent, do not run it: the invoker finishes the session.
+
+When all of this skill's work is complete, as the last thing you do:
+
+- Success: `sdlc session done --outcome ok`
+- Failure, or the work cannot continue: `sdlc session done --outcome failed --note "<one line why>"`
+
+Never run it before the work is complete: the orchestrator treats `done` as
+"go on to the next step". Do not run it while a question to the person is
+open. Headless runs run it too, which is harmless.

@@ -114,7 +114,7 @@ dependencies = [
 
 [[package]]
 name = "etag-write"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "sha2",
  "tempfile",
@@ -543,7 +543,7 @@ dependencies = [
 
 [[package]]
 name = "yaml-splice"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "saphyr-parser",
  "serde_json",

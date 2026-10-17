@@ -26,7 +26,10 @@ Usage:
   block (including `!.claude/hooks/` and `!.claude/hooks/**` so hook scripts under
   `.claude/hooks/<name>.py` can be committed without `git add -f`). All three pieces are idempotent
   — existing dirs / files are left alone; a fence-present `.gitignore` block missing only the hooks
-  un-ignore lines is patched in place, leaving the rest of the file byte-identical.
+  un-ignore lines is patched in place, leaving the rest of the file byte-identical. Setup also
+  installs sdlc's managed markdown rule set at `.sdlc/rumdl.base.toml` (rewritten when it differs
+  from this sdlc's rules, and committed) and makes the project's `.rumdl.toml` `extends` it; an
+  existing `.rumdl.toml` keeps its content and gains only the `extends` line.
 - `/skill:sdlc-setup --dry-run` — report what would be created or patched without touching the filesystem.
   Applies to every write path: directories, `sdlc.yaml`, **and** `.gitignore`.
 - `/skill:sdlc-setup --obsidian` — additionally emit one Obsidian Bases file per entity that ships a view
@@ -90,6 +93,9 @@ Project context (don't re-derive every run):
    - What `.gitignore` action was taken: created (no prior file), appended block (file existed
      without the Claude fence), patched (fence present but hooks lines missing), or left alone
      (canonical block already present). Under `--dry-run` the verbs are prefixed with `would …`.
+   - The markdown rules status: `.sdlc/rumdl.base.toml` created, updated or already current, and
+     whether `.rumdl.toml` was created, got the `extends` line prepended, or was left alone (relay
+     any note the op prints about a foreign `extends` or a rumdl config living elsewhere).
 
 3. If nothing was created and everything already existed (planning dirs, `sdlc.yaml`, **and** the
    canonical `.gitignore` block), say so plainly — the planning environment is already set up.

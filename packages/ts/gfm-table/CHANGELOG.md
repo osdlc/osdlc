@@ -16,3 +16,28 @@
   - Delimited files: `readDelimited` reads CSV, TSV, semicolon and pipe files tolerantly. It sniffs the delimiter, detects a header and reports each problem by line. `parseDelimited`, `sniffDelimiter` and `looksLikeHeader` are its parts.
   
   Node.js 22 or later, ESM only; Bun loads the TypeScript source through the `bun` export condition. The README's Stability section lists the experimental exports. Licensed `MIT OR Apache-2.0`.
+
+## 0.1.1
+
+Developed in a private repository before the package moved here. Not published.
+
+### Fixed
+
+- Table rows may be indented by 0-3 spaces before the opening pipe.
+- Cells inside a backtick code span are escaped correctly, via `escapeCodeCell`; indented
+  rows are handled.
+
+## 0.1.0
+
+Developed in a private repository before the package moved here. Not published.
+
+First cut. GFM pipe-table string code, moved out of the editor into its own dependency-free
+package.
+
+### Added
+
+- Row functions: `splitRow`, `rowPipes`, `isDelimiterRow`, `parseAlign`.
+- Whole tables: `readTable`, `rowCellTexts`, `renderTable`.
+- Cell text: `cellTextFromSource`, `escapeCell`, `literalPipeFixes`, `endsWithEscape`.
+- Edits: `rowLineText`, `insertCellSplice`, `deleteCellSplice`, `padRowSplice`.
+- Grids and clipboard: TSV and CSV conversion, with a CSV paste rule.

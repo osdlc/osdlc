@@ -1,0 +1,367 @@
+Review like a senior engineer who has shipped the incident this code
+could cause. Prefer a concrete example of the failure over an abstract
+"this could be safer". If the fix is a one-liner, give it in the finding
+rather than only naming the problem.
+
+Read the changed files, not just the diff hunks. A renamed variable or a
+shifted guard clause often only makes sense in context. When a change
+alters a contract, follow the function to its callers.
+
+Report, in order of severity. Each category below carries its own rules.
+Report a defect once, under the category that states its harm. Report one
+finding per concrete instance. Judge what the change adds or alters; code it
+does not touch is out of scope unless the change makes it newly wrong.
+
+### 1. Errors
+
+Bugs, broken contracts, and behaviour the change description promises that
+the code does not deliver. Failure handling is judged separately, right after.
+
+#### Correctness
+
+Correctness is whether the code does what the change says it does, and
+whether it still does when the input is hostile or the timing is unlucky.
+These are the defects that reach production and cost the most, so they come
+first. A finding here names a concrete input, ordering or caller for which the
+code is wrong.
+
+Look for:
+
+- Behaviour the description, commit message, comment or name promises that the
+  code does not deliver.
+- Logic and boundaries: off-by-one, empty and single-element input, null or
+  missing values, an inverted condition, the wrong operator, integer, time-zone
+  and encoding edges.
+- Broken contracts: a changed signature, return shape or invariant with a
+  caller that still assumes the old one. Follow the function to its callers.
+- Concurrency and ordering: a check followed by an act across an await or a
+  thread boundary, shared mutable state, a read before the write it needs,
+  unawaited work, cleanup that depends on order.
+- Resource leaks: processes, file handles, subscriptions, timers, transactions
+  and connections opened and not released on every path.
+- Input trust: a value from a user, file, network, environment variable or
+  subprocess used as a path, key, index, size or command without validation at
+  the point it enters.
+- Injection: untrusted text placed into a shell command, SQL, path, regex, HTML
+  or prompt without escaping or an argument array.
+- Secrets: a token or credential reaching a log line, error message, artifact
+  or command line.
+- Authentication and authorization: a caller-controlled value (a header, a
+  path, an id) trusted to grant access; one actor able to act with another's
+  authority; a check placed after the action it guards.
+- A dry-run or read-only mode that still writes, spawns, pushes or posts.
+
+Not a finding:
+
+- Pre-existing code the change leaves untouched, unless the change makes it
+  newly reachable.
+- A guard that the surrounding code already provides. Read the callers and
+  callees before reporting.
+- Defences against inputs the program cannot produce, such as validating a
+  value the type system already constrains.
+- Style, naming and anything a linter or type checker reports.
+
+Writing the finding: cite file:line. State the failing input or sequence
+("two calls interleaved at the await on line 40 both pass the check") or, for
+a security finding, who controls the value and what it reaches. Give the fix
+when it is a line or two.
+
+#### Error paths
+
+Error paths are the least exercised code in a change and the code that runs
+when someone is already in trouble. A swallowed error turns a loud failure into
+silent corruption; a missing cleanup turns one failure into a pile-up on the
+next run. Judge each catch, error branch, failure result, non-zero exit and
+fallback the change adds or alters.
+
+Look for:
+
+- Swallowed errors: an empty catch, a discarded failure result, a fallback
+  that hides the cause, a promise rejection nobody observes.
+- Partial writes: if step N of M fails, what is left behind (a half-written
+  file, a held lock, a created directory, a posted message)? Can a later run
+  detect it and recover?
+- Cleanup: temp files, locks, processes, sessions and handles released on every
+  exit path, including the failing one.
+- Retries: bounded, backed off, limited to errors that can succeed on retry,
+  and applied only to operations that are safe to repeat.
+- Exit codes: a failure that exits zero, or an error that is logged and then
+  treated as success by the caller.
+- Messages: an error that names what failed, on which input, and what the
+  reader can do next, without leaking a secret. One generic message for several
+  distinct causes is a finding when the reader must act differently on each.
+- Inconsistency: a new helper that returns null on failure where its siblings
+  throw, so callers handle two conventions.
+
+Not a finding:
+
+- A deliberate, commented best-effort step whose failure the caller does not
+  depend on (for example removing a cache file that may not exist).
+- Handling at the right layer: an error passed up unchanged to a caller that
+  handles it is correct. Do not ask every function to catch.
+- Errors the language or framework already reports with a usable message.
+- Formatting or naming of error text, and anything a linter catches.
+
+Writing the finding: cite file:line. Trace the failure: name the failing call,
+what the code does next, and the state or message that results. Name the
+missing cleanup or the lost cause, and give the fix, such as a finally block, a
+rethrow with context, or a cap on the retry loop.
+
+### 2. Missing coverage
+
+Behaviour the change alters without a test that would catch a regression in
+it, including each new error branch. Say plainly which changed behaviour has
+no test.
+
+### 3. Duplication
+
+Duplication is logic, strings or types the change writes that already exist,
+or that now exist in two places. Two copies drift: a fix lands in one and the
+other keeps the bug. The cheapest time to remove a copy is the diff that adds
+it. The fix is to call the existing code, or to move the shared part to one
+home both callers use.
+
+Look for:
+
+- A helper, type or constant the change declares that the repo already
+  exports under another name. Search by behaviour, not only by name: grep for
+  the distinctive call, regex or literal.
+- A block copied from elsewhere with small edits, where the differences could
+  be parameters.
+- The same string literal, message, path or magic number written in several
+  places, so changing one means finding the rest.
+- A new implementation of something the change's own feature generalizes: the
+  old bespoke version left standing beside its replacement.
+- Parallel types or schemas that must be edited together to stay correct.
+
+Not a finding:
+
+- Similar shape with different meaning. Two loops over different data, or two
+  functions that happen to look alike but change for different reasons, are
+  not one concept. Merging them couples things that should move apart.
+- Test fixtures, test setup and expected values. A test that spells out its
+  data is easier to read than one that shares a builder with ten others.
+- Two similar blocks when neither is a callable shared symbol. Name them if
+  they are clearly the same concept, but do not demand an abstraction until a
+  third copy appears or the shared meaning is clear. Re-implementing a helper
+  the repo already exports is always a finding.
+- Generated files, vendored code, and repetition a formatter or linter already
+  reports.
+
+A private helper that a second consumer should call, rather than copy, is a
+modules finding, not a duplication finding.
+
+Writing the finding: cite the new code and the existing code, each as
+file:line. Name the canonical home: the existing symbol to call, or the
+module where the shared version should live. Say what differs between the
+copies, if anything, so the author can tell whether a parameter is enough.
+
+### 4. Modules and structure
+
+Modules and packages are how a codebase reuses work. Two failures cost the
+most: code that hand-rolls what an existing package already provides, and
+code with a clear second use that stays buried where it was written. The
+opposite failure is just as real: a shared package created for one caller.
+By default, co-locate first and promote when a second consumer appears, and
+keep each module's public surface small. Where the project's instruction files
+or standards place code differently, follow them.
+
+Look for:
+
+- Hand-rolled code for something the project already depends on or names in
+  its library roster: argument parsing, schema validation, retry logic, path
+  handling, date handling, a git or process wrapper. Read the project's
+  instruction files (CLAUDE.md, AGENTS.md) and any library roster they name,
+  and look at the shared-package directory they point to, before judging.
+- A helper general enough that a second consumer is visible in the diff or in
+  the repo, but still private to one file. Name the consumer and the module it
+  should move to.
+- A new shared module or package with one caller and no sign of another.
+  Suggest keeping it beside that caller until a second one exists.
+- Reaching into another module's internals: deep imports past its entry
+  point, reading its private files, or depending on its non-public types.
+- Test-only exports: a symbol exported from a module only so a test can reach
+  it. Test through the public surface, or move the logic to a module whose
+  public surface it belongs on.
+- A module whose public surface grew by more than the change needs, or a
+  dependency edge that points the wrong way (a low-level module importing a
+  higher-level one).
+
+Not a finding:
+
+- Boundary rules a linter or import checker already enforces. Flag a boundary
+  break only when no such tool covers it.
+- A small helper used once. Duplicating five lines is cheaper than a package.
+- A deliberate choice the project's instruction files or standards document,
+  such as a preferred library for one job or a rule on where capabilities
+  live.
+- File placement that matches how the neighbouring files are organized.
+
+Writing the finding: cite file:line. For a missed package, name the package
+and the function to call. For a promotion, name the second consumer and the
+destination module. For a boundary break, name the import and the public entry
+point to use instead.
+
+### 5. Cleanup
+
+Dead code, naming drift, departures from the conventions of the surrounding
+code, and comments that fail the comment rules below: a comment the change
+made wrong, one that restates the code, one that pins a count or version
+nothing keeps true, or a fact that belongs in a name, a type, or the
+declaration's doc annotation.
+
+### Reporting
+
+Skip anything the repo's linters and formatters already catch. Before
+flagging naming or formatting that CI does not cover, check it against the
+house style:
+
+- Functions read top to bottom: the happy path first, guard clauses after.
+- Booleans are named as a question (`isReady`, `hasChanges`), never
+  `flag` or `ok`.
+- A comment explains why, never what.
+- No commented-out code in a merged diff. Delete it; git remembers.
+
+Cite the file and line for every finding, most severe first. Re-open the
+file and confirm the line before writing the finding down; a wrong finding
+costs more than a missed one. Say "no findings" for an empty category
+rather than padding.
+
+Comments are judged by the rules `/craft:comment-review` applies as verdicts:
+
+The rules a comment is judged by: where a fact belongs, what earns an inline
+comment, how a kept comment reads, and when a comment is a duplicate of
+something with a better home. `/craft:comment-review` applies them as verdicts; `/craft:code-review`
+and `/craft:review-pr` apply them to the comments in a diff.
+
+### The expression ladder
+
+A fact about code has exactly one right home. Work down this list and stop at the
+first rung that can carry it:
+
+1. **The identifier.** A function, variable, type, or constant whose name states
+   the fact needs no comment stating it. `// retry three times` above
+   `const n = 3` is `const MAX_RETRIES = 3`.
+2. **The signature and the types.** Parameter names, a union instead of a string,
+   a non-null return instead of a documented "never null", an options object
+   instead of three positional booleans. A comment describing what a type already
+   guarantees is a duplicate of the type.
+3. **The declaration's doc annotation.** One block on the declaration, for the
+   contract a *caller* needs and cannot read off the signature: what the function
+   promises, what it throws, what it mutates, what invariant it assumes on entry.
+   Facts a caller needs go here, not scattered inline where a caller never looks.
+   Use the language's own annotation form rather than a loose block above the
+   declaration — TSDoc `/** */` with `@param`, `@returns`, `@throws`; rustdoc
+   `///` with `# Errors` and `# Panics`; the docstring in Python. The native form
+   is what tooling, hovers, and generated docs read, so a fact written there
+   reaches the caller where a bare `//` above the line does not. A per-parameter
+   fact belongs in that parameter's tag, not in an inline comment beside the
+   argument.
+4. **An inline comment.** Everything left over — and only what is left over.
+
+### What earns an inline comment
+
+Only a fact a competent reader cannot deduce from the code in front of them:
+
+- **The why**, where the obvious alternative was tried and does not work. Name the
+  alternative and what broke.
+- **An empirical fact about the outside world** — an API's undocumented behavior, a
+  browser or runtime bug, a measured cost. Facts nothing in the file can imply.
+- **A non-local constraint** — an ordering another file depends on, an invariant
+  held elsewhere, a call this code must not make.
+- **A deliberate deviation** from a convention the reader will otherwise read as a
+  mistake.
+- **A pointer to an external cause** — an issue, a spec section, a decision entity.
+
+Everything else is noise. In particular these never earn one: restating the
+statement below it; naming a block (`// loop over the items`); describing a
+parameter the signature already names and types; change history; decorative
+banners and section rules; a summary of a well-named function's body; a count or
+other project measurement that nothing keeps true.
+
+### How a kept comment reads
+
+A comment that earns its place still has to be worth reading. A comment that
+is kept or rewritten obeys four rules:
+
+- **Short.** One or two sentences. A comment that needs a paragraph is usually a
+  fact with a home further down the ladder, or one that belongs in documentation.
+- **Plain and literal.** State the fact directly. No metaphor, no analogy, no
+  jokes — a reader who does not share the reference has to decode the sentence
+  before they can use it, and a metaphor that drifts from the code cannot be
+  detected as wrong.
+- **Descriptive, not evaluative.** "Runs before the index is built" is a fact.
+  "Careful here!" and "this is tricky" are not; they warn without saying what of.
+- **One idea per comment.** Two unrelated facts stacked in one block are two
+  comments, each next to the code it is about.
+
+### A comment does not pin volatile project state
+
+A count, a version, a date, a list of the files that do something, the name of
+whoever owns a thing — each is true when written and drifts the moment the project
+moves, with nothing to notice. The comment is not merely stale afterwards; it is
+wrong, and it is wrong in a way a reader has no reason to suspect.
+
+Apply one test: **does the exact value change what the reader does?** Usually it
+does not, and the sentence is better without it.
+
+```text
+# All 67 of these libraries are members of the ROOT bun workspace, so prettier,
+# oxlint and tsc come from the root node_modules.
+```
+
+The load is carried by *all of them are workspace members*. The 67 adds nothing a
+reader acts on and is wrong on the next library added. Drop the number and keep
+the sentence. Same for `15 of the 67 declare a build script` — `some declare a
+build script; the rest are source-shipped` says what the reader needs, and stays
+true.
+
+When the exact value genuinely is load-bearing — a pinned version another tool
+must match, a threshold a measurement has to stay under — it is not volatile
+state, it is a constraint. Keep it, and say what breaks when it changes. When a
+reader would want the current number, point at the command that computes it rather
+than writing the answer down.
+
+### Duplication becomes a reference
+
+The same explanation written in two places drifts: one site is updated and the
+other goes stale silently, with nothing to detect it. When one fact is explained
+in more than one place, pick a single canonical home and make every other site a
+pointer to it.
+
+- **Choosing the home.** For a fact about one function, its doc annotation. For a
+  fact about a mechanism several call sites share, the declaration of that
+  mechanism. For a project convention, the convention doc or standard that owns
+  it — never a source file.
+- **The reference form.** Code: a relative path and a symbol, as in
+  `see writeJsonAtomic in lib/util/fs.ts`. Planning entities: a wikilink, as in
+  `[[markdown-formatting]]`. Both are greppable, and both break loudly when
+  the target moves.
+- **Not everything repeated is duplication.** Two comments about the same subject
+  that each carry a distinct local fact are two comments. Collapse only when one
+  is genuinely a copy of the other's content.
+
+Data is the sharpest case. A comment that lists the valid statuses, restates a
+config default, or spells out a table's columns is a second copy of that data and
+will disagree with the first one within a release. Point at the canonical
+definition — the enum, the schema, the config file — and let the reader read the
+values there.
+
+#### A concept explained in code may belong in documentation
+
+When a comment block explains a whole mechanism — the design of a subsystem, a
+protocol between components, the reasoning behind an architecture — it has
+outgrown the source file. Before keeping it, search the documentation for the
+concept: the project's docs directories, its conventions, and any planning
+or decision records (standards, decisions, principles).
+
+- **The concept is already documented.** Replace the block with a wikilink to the
+  entity or a relative path to the doc, keeping only the one line the reader of
+  *this* file needs. Read the target first and confirm it says what you are about
+  to stop saying here.
+- **The concept is not documented and deserves to be.** Flag the gap, naming
+  the concept, the file, and the entity kind that should own it. Leave the
+  comment in place until the doc exists — the fact has nowhere else to live
+  yet.
+- **The concept is local to this one declaration.** It stays, tightened to the
+  rules above. Not every explanation is a document.
