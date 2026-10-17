@@ -14,3 +14,25 @@
   - `WriteData`: `string | Uint8Array`.
   
   Node.js 22 or later, ESM only; Bun loads the TypeScript source through the `bun` export condition. Tested on Linux and macOS. Licensed `MIT OR Apache-2.0`.
+
+## 0.1.0
+
+Developed in a private repository before the package moved here. Not published.
+
+First cut. Renamed from `@sksizer/atomic-write` to `@sksizer/etag-write`, matching the
+`etag-write` crate.
+
+### Changed
+
+- Package renamed from `@sksizer/atomic-write`. The `atomicWrite` and `atomicWriteAsync`
+  names stay.
+
+### Added
+
+- `atomicWrite` and `atomicWriteAsync`: temp file beside the target, fsync, rename,
+  best-effort directory fsync, temp file removed on failure. A `mode` option sets the file's
+  exact permissions.
+- `etag` and `etagOfFile`: lowercase hex sha256, matching the Rust crate.
+- `writeCas`: compare-and-swap under the crate's contract table, failing with
+  `WriteConflictError` (`changed` or `exists-without-etag`).
+- `writeIfChanged`: skips a write whose content is already on disk.
