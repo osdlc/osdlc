@@ -37,13 +37,16 @@ The first release on crates.io.
 - **Breaking:** `MachineConfigFile::with_base_dirs`. Pass the directories to
   `new` instead.
 
-## [0.4.0] - 2026-10-06
+## History before the first public release
 
-Versions 0.1.0 to 0.4.0 were the config part of a TypeScript CLI package and
-its Rust twin (this crate, then named `cli-config`). They were developed in a
-private repository before they moved here. These versions were not published.
+These versions were never published. They are rebuilt from the git history.
+They were the config part of a TypeScript CLI package and its Rust twin (this
+crate, then named `cli-config`), developed in a private repository before they
+moved here.
 
-### Changed
+### [0.4.0] - 2026-10-06 (unpublished)
+
+#### Changed
 
 - **Breaking (TypeScript):** the machine file takes the tool's own vendor
   directories, so it lives under the tool's vendor-scoped config home
@@ -51,31 +54,27 @@ private repository before they moved here. These versions were not published.
   from `tiered-dirs`.
 - Machine-config writes (TypeScript) are atomic, through `etag-write`.
 
-## [0.3.0] - 2026-10-04
+### [0.3.0] - 2026-10-04 (unpublished)
 
-Not published.
-
-### Added
+#### Added
 
 - Safe machine-config writes and migrations (TypeScript): a write replaces
   the machine file atomically after a schema check and keeps a `.bak`, and a
   list of migrations upgrades an older file on load.
 
-### Changed
+#### Changed
 
 - An invalid machine config file (TypeScript) keeps its valid sections and
   reports what it dropped, instead of falling back to the defaults whole. An
   unreadable file is reported apart from a YAML error.
 
-## [0.2.1] - 2026-09-26
+### [0.2.1] - 2026-09-26 (unpublished)
 
-Not published. No config changes.
+No config changes.
 
-## [0.2.0] - 2026-09-18
+### [0.2.0] - 2026-09-18 (unpublished)
 
-Not published.
-
-### Added
+#### Added
 
 - The Rust twin, the `cli-config` crate 0.1.0:
   - `paths`: named directories under a `paths:` map and `{name}` token
@@ -94,11 +93,9 @@ Not published.
     it starts. A tool declares a static `KeySpec` table beside its serde
     structs.
 
-## [0.1.0] - 2026-09-14
+### [0.1.0] - 2026-09-14 (unpublished)
 
-Not published.
-
-### Added
+#### Added
 
 - The config part, in TypeScript: named directories under a `paths:` map
   and `{token}` expansion, where an unknown token is an error rather than an
