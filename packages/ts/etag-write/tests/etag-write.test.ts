@@ -145,16 +145,22 @@ describe.each([
   test.skipIf(process.platform === 'win32')(
     'a target that is not a regular file gives the temp file a new file mode',
     async () => {
-      const dir = join(root, 'tight')
-      mkdirSync(dir)
-      chmodSync(dir, 0o700)
+      // A looping link cannot be read with stat, so its write takes a new
+      // file's mode instead of failing.
       const loop = join(root, 'loop')
       symlinkSync(loop, loop)
       const plain = join(root, 'plain.txt')
       writeFileSync(plain, 'x')
-      // A directory target still fails at the rename, and a looping link is
-      // replaced; neither takes the target's bits.
+      // A directory target fails at the rename whatever the mode, so this
+      // part guards only the cleanup: the directory is left as it was and no
+      // temp file stays behind.
+      const dir = join(root, 'dir')
+      mkdirSync(dir)
+      const before = readdirSync(root).sort()
       await expect(async () => write(dir, 'y')).toThrow()
+      expect(statSync(dir).isDirectory()).toBe(true)
+      expect(readdirSync(dir)).toEqual([])
+      expect(readdirSync(root).sort()).toEqual(before)
       await write(loop, 'new')
       expect(lstatSync(loop).isSymbolicLink()).toBe(false)
       expect(statSync(loop).mode & 0o777).toBe(statSync(plain).mode & 0o777)
