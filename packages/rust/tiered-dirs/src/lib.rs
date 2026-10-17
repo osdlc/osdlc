@@ -147,11 +147,11 @@
 //!
 //! # The TypeScript twin
 //!
-//! This crate has a TypeScript twin, developed in the same repository. The
-//! two must agree on the path produced for a given (tier, home, scope, app),
-//! or a Rust program and a TypeScript program over the same state split it.
-//! Neither twin may add a path shape the other lacks. A shared fixture of
-//! cases holds both to that.
+//! A TypeScript twin is developed alongside it and will be published later.
+//! Both are checked against `tests/fixtures/parity.json`. The two must agree
+//! on the path produced for a given (tier, home, scope, app), or a Rust
+//! program and a TypeScript program over the same state split it. Neither
+//! twin may add a path shape the other lacks.
 //!
 //! # Stability
 //!
@@ -292,8 +292,8 @@ const RUNTIME_FALLBACK_SEGMENT: &str = "run";
 
 /// Everything this crate can fail with.
 ///
-/// New variants may be added in a minor release, so a `match` needs a
-/// wildcard arm.
+/// New variants may be added in a compatible release (0.1.z), so a `match`
+/// needs a wildcard arm.
 ///
 /// **Stability:** stable in 0.x. The four variants and their fields are not
 /// expected to change; new variants may be added.
@@ -1551,6 +1551,17 @@ mod tests {
                 var: "EXAMPLE_ROOT"
             }
         );
+    }
+
+    /// A UNC path is absolute on Windows, so it is accepted.
+    #[cfg(windows)]
+    #[test]
+    fn a_unc_path_is_absolute_on_windows() {
+        let base = BaseDirs::from_env_with(&ENV, |name| {
+            (name == "EXAMPLE_ROOT").then(|| OsString::from(r"\\server\share\state"))
+        })
+        .unwrap();
+        assert_eq!(base, BaseDirs::rooted(r"\\server\share\state"));
     }
 
     #[test]

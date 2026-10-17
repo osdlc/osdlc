@@ -2,9 +2,9 @@
 //!
 //! `tests/fixtures/parity.json` is the contract between this crate and its
 //! TypeScript twin, which carries a byte-identical copy and a test that fails
-//! when the copies differ: same input, same `relative`, byte for byte. Base directories are
-//! stubbed so the comparison is about path shape; `env_cases` pin the
-//! absolute base directories the override variables resolve to. The TS
+//! when the copies differ: same input, same `relative`, byte for byte. Base
+//! directories are stubbed so the comparison is about path shape; `env_cases`
+//! pin the absolute base directories the override variables resolve to. The TS
 //! twin's `tests/parity.test.ts` drives the same file with the same
 //! assertions; a case added on either side goes in the fixture, never in one
 //! twin's own suite.

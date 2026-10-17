@@ -195,13 +195,13 @@ follow the `XDG_*` variables.
 
 ## Parity with the TypeScript twin
 
-A TypeScript twin of this crate is developed in the same repository. The two
-must give the same path for the same tier, home, scope and app, so a Rust
-program and a TypeScript program can share state. `tests/fixtures/parity.json`
-holds the cases: tier, home, scope and app with the expected path, scratch
-cases and override cases. Both twins run every case with stubbed base
-directories (`BaseDirs::rooted("/stub")` here). The twin keeps a byte-identical
-copy, and a test there fails when the copies differ.
+A TypeScript twin is developed alongside it and will be published later. Both
+are checked against `tests/fixtures/parity.json`. The two must give the same
+path for the same tier, home, scope and app, so a Rust program and a
+TypeScript program can share state. The fixture holds the cases: tier, home,
+scope and app with the expected path, scratch cases and override cases. Both
+twins run every case with stubbed base directories (`BaseDirs::rooted("/stub")`
+here).
 
 ## Which test shows what
 
@@ -212,7 +212,7 @@ copy, and a test there fails when the copies differ.
 | Tiers are distinct addresses | `tiers_are_distinct_addresses` |
 | Unsafe segments are refused in every position | `every_rejected_segment_is_rejected_in_every_position`, `keys_reject_separators_dotdot_and_empty` |
 | Override order, and runtime follows durable | `every_env_case_resolves_to_its_fixture_paths`, `a_home_var_beats_the_root_var_for_its_own_home_only`, `runtime_follows_an_overridden_durable` |
-| A relative override is refused, and `\state` is relative on Windows | `a_relative_override_is_refused`, `a_path_with_no_drive_is_relative_on_windows` |
+| A relative override is refused; on Windows `\state` is relative and a UNC path is absolute | `a_relative_override_is_refused`, `a_path_with_no_drive_is_relative_on_windows`, `a_unc_path_is_absolute_on_windows` |
 | Runtime and logs never sit under cache | `runtime_is_not_cache`, `from_env_resolves_or_errors_without_panicking` |
 | A missing base directory is an error | `a_missing_base_dir_is_an_error_not_a_panic` |
 | A cargo test binary resolves under the scratch root | `a_cargo_test_binary_resolves_under_the_scratch_root` |
