@@ -1,10 +1,13 @@
 # Changelog
 
-## 0.1.0
+## History before the first public release
 
-Developed in a private repository before the package moved here. Not published.
+These versions were developed in a private repository before the package moved here, and were
+never published. They are rebuilt from the git history.
 
-### Added
+### [0.1.0] - 2026-08-07 (unpublished)
+
+#### Added
 
 - `split(src)` splits a note into `yaml` (verbatim, without the `---` fences, or `null` when the
   note has no block), `body`, the source offsets `yamlRange` and `bodyStart`, and a `shape` that
