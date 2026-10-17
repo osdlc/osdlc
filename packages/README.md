@@ -51,6 +51,7 @@ Developed here, in this repository:
 - `packages/rust/yaml-splice` (`yaml-splice` on crates.io)
 - `packages/rust/yaml-splice-wasm`, the WebAssembly build of `yaml-splice`
   for its npm package (not published to crates.io)
+- `packages/rust/tiered-dirs` (`tiered-dirs` on crates.io)
 
 The development repository takes the TypeScript libraries from npm, like any
 other consumer. Open issues and pull requests here.
