@@ -13,7 +13,7 @@
 //!   without, and the one message an unmet need renders.
 //!
 //! **Stability.** Every public item is stable in 0.x: it is not expected to
-//! change, and a breaking change would ship as 0.2. There are no unstable
+//! change, and a breaking change would ship as 0.6. There are no unstable
 //! items.
 
 #![forbid(unsafe_code)]

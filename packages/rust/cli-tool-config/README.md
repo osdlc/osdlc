@@ -204,7 +204,7 @@ gain fields in 0.5.
 
 The public API takes and returns `serde_yaml` values. `serde_yaml` is no
 longer maintained upstream. A move to a maintained YAML crate would change
-those types and ship as 0.2.
+those types and ship as 0.6.
 
 ## License
 
