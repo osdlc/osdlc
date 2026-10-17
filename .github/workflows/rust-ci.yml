@@ -85,7 +85,7 @@ jobs:
               files='*'
               ;;
           esac
-          if [ "$files" = '*' ] || grep -qE '^(packages/rust/|\.github/workflows/rust-ci\.yml$|\.github/actions/rust-)' <<<"$files"; then
+          if [ "$files" = '*' ] || grep -qE '^(packages/rust/|\.github/workflows/(rust-ci|release-plz)\.yml$|\.github/actions/rust-)' <<<"$files"; then
             echo "rust=true" >> "$GITHUB_OUTPUT"
           else
             echo "rust=false" >> "$GITHUB_OUTPUT"
@@ -235,8 +235,59 @@ jobs:
       - name: Build yaml-splice-wasm for wasm32
         run: cargo build -p yaml-splice-wasm --target wasm32-unknown-unknown --release --locked
 
+  # Runs release-plz as the release workflow does, but without publishing,
+  # tagging or pushing, so a bad release-plz.toml fails here and not after
+  # the merge. `release --dry-run` checks the config against each manifest.
+  # `update` runs in the throwaway checkout and its edits are discarded with
+  # it. The release-plz version is the one in release-plz.yml.
+  release-plz:
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    # cargo-binstall compiles release-plz when no prebuilt binary is found.
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: ./.github/actions/rust-toolchain
+
+      - name: Read the release-plz version
+        id: version
+        run: |
+          set -euo pipefail
+          v="$(sed -n 's/^  RELEASE_PLZ_VERSION: \(.*\)$/\1/p' .github/workflows/release-plz.yml)"
+          # Exactly one plain X.Y.Z, since the action puts it in a shell command.
+          if ! [[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::RELEASE_PLZ_VERSION in release-plz.yml is not one X.Y.Z version: '$v'"
+            exit 1
+          fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+      # Same action pin and version as release-plz.yml. It installs the
+      # release-plz binary, which the next step reuses.
+      - uses: release-plz/action@8921286633dfa0c4020f7f30bd1c14fe19cbb10e # v0.5.142
+        with:
+          command: release
+          manifest_path: packages/rust/Cargo.toml
+          config: packages/rust/release-plz.toml
+          version: ${{ steps.version.outputs.version }}
+          dry_run: 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: release-plz update
+        run: release-plz update --config packages/rust/release-plz.toml --manifest-path packages/rust/Cargo.toml
+
   rust:
-    needs: [changes, lint, rust-test, msrv, minimal-versions, wasm]
+    needs: [changes, lint, rust-test, msrv, minimal-versions, wasm, release-plz]
     if: always()
     runs-on: ubuntu-latest
     defaults:

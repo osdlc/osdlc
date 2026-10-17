@@ -1,0 +1,9 @@
+{
+  // Typechecks the source, tests/ and examples/. The build has its own include.
+  "extends": "@osdlc/tsconfig/bun-lib",
+  "compilerOptions": {
+    // Resolve `@osdlc/etag-write` in examples/ to the source, as bun does.
+    "customConditions": ["bun"]
+  },
+  "include": ["index.ts", "tests/*.ts", "examples/*.ts"]
+}

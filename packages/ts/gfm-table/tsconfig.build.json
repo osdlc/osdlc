@@ -1,0 +1,10 @@
+{
+  // Emit config for the published dist/; the dev tsconfig.json stays noEmit.
+  // Sources only, and no Bun types, so a Bun global in a source fails the build.
+  "extends": ["./tsconfig.json", "@osdlc/tsconfig/build"],
+  "compilerOptions": {
+    "rootDir": "src",
+    "types": []
+  },
+  "include": ["src/**/*.ts"]
+}

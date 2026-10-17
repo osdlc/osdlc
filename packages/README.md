@@ -29,8 +29,9 @@ of them.
 ## Licenses
 
 Each library carries its own license, named in its manifest and kept as
-license files in its directory. The TypeScript libraries are MIT. The Rust
-crates are `MIT OR Apache-2.0`. The root `LICENSE` of this repository
+license files in its directory. `command-seam`, `tsconfig` and
+`prettier-config` are MIT. The Rust crates and the other TypeScript
+libraries are `MIT OR Apache-2.0`. The root `LICENSE` of this repository
 applies to everything outside `packages/`.
 
 ## Why one repository
@@ -47,14 +48,17 @@ Developed here, in this repository:
 - `packages/ts/tsconfig` (`@osdlc/tsconfig`)
 - `packages/ts/prettier-config` (`@osdlc/prettier-config`)
 - `packages/ts/command-seam` (`@osdlc/command-seam`)
+- `packages/ts/gfm-table` (`@osdlc/gfm-table`)
 - `packages/rust/etag-write` (`etag-write` on crates.io)
 - `packages/rust/tiered-dirs` (`tiered-dirs` on crates.io)
 - `packages/rust/yaml-splice` (`yaml-splice` on crates.io)
 - `packages/rust/yaml-splice-wasm`, the WebAssembly build of `yaml-splice`
   for its npm package (not published to crates.io)
+- `packages/ts/etag-write` (`@osdlc/etag-write` on npm, the crate's TypeScript twin)
 
-The development repository takes the TypeScript libraries from npm, like any
-other consumer. Open issues and pull requests here.
+The development repository will take each TypeScript library from npm, like
+any other consumer. Today it still keeps its own copies. Open issues and pull
+requests here.
 
 ### Releasing a TypeScript library
 
@@ -138,6 +142,22 @@ pnpm run test
 ```
 
 The root scripts run each library's script of the same name.
+
+A library can have a smoke check: `tests/smoke.mjs`. It runs the built package
+under Node. It imports the package by name, so Node resolves it through
+`exports` as a consumer would. The library needs an `exports` field for this:
+`pnpm run smoke` relies on Node's self-reference by package name, which works
+only with `exports`. The check is not in `files`, so npm users do not get it.
+Two things run it:
+
+- The library's `smoke` script, `node tests/smoke.mjs`, run by
+  `pnpm run smoke`. Here the name resolves to the library's own `dist/`.
+- `pnpm run check:packages`. It installs the packed tarball into an empty
+  project, copies the smoke check there and runs it, so the name resolves to
+  the installed tarball. The file must not import other files from the
+  repository.
+
+The name has no `.test.` part, so the test runner does not pick it up.
 
 ### Rust
 
