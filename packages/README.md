@@ -49,6 +49,7 @@ Developed here, in this repository:
 - `packages/ts/prettier-config` (`@osdlc/prettier-config`)
 - `packages/ts/command-seam` (`@osdlc/command-seam`)
 - `packages/ts/gfm-table` (`@osdlc/gfm-table`)
+- `packages/rust/cli-tool-config` (`cli-tool-config` on crates.io)
 - `packages/rust/etag-write` (`etag-write` on crates.io)
 - `packages/rust/tiered-dirs` (`tiered-dirs` on crates.io)
 - `packages/rust/yaml-splice` (`yaml-splice` on crates.io)
