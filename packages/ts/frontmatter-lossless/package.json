@@ -1,0 +1,72 @@
+{
+  "name": "@osdlc/frontmatter-lossless",
+  "version": "0.1.0",
+  "description": "Byte-exact Markdown frontmatter framing: split a note into verbatim YAML and body with source offsets, and put it back together byte for byte. BOM, CRLF and fence bytes are kept. No dependencies.",
+  "license": "MIT OR Apache-2.0",
+  "author": "sksizer",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/osdlc/osdlc.git",
+    "directory": "packages/ts/frontmatter-lossless"
+  },
+  "homepage": "https://github.com/osdlc/osdlc/tree/main/packages/ts/frontmatter-lossless#readme",
+  "bugs": "https://github.com/osdlc/osdlc/issues",
+  "keywords": [
+    "markdown",
+    "frontmatter",
+    "front-matter",
+    "yaml",
+    "split",
+    "lossless",
+    "round-trip",
+    "byte-identical",
+    "crlf",
+    "bom",
+    "typescript"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE-MIT",
+    "LICENSE-APACHE",
+    "SECURITY.md",
+    "CONTRIBUTING.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "test": "bun test && npm run test:node",
+    "test:node": "pnpm run build && node --test tests/corpus-node.mjs",
+    "coverage": "bun test --coverage",
+    "smoke": "node tests/smoke.mjs",
+    "prepublishOnly": "npm run clean && npm run build",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "oxlint .",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit"
+  },
+  "devDependencies": {
+    "@osdlc/prettier-config": "workspace:^",
+    "@osdlc/tsconfig": "workspace:^",
+    "@types/bun": "^1.1.14",
+    "@types/node": "^26.1.0",
+    "oxlint": "^1.65.0",
+    "prettier": "3.9.6",
+    "typescript": "~6.0.3"
+  }
+}
