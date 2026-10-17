@@ -71,7 +71,7 @@ export interface EditSpan {
 }
 
 /**
- * A typed, structured refusal from the Rust core. `name`/`code` is the variant
+ * A typed refusal of an edit batch. `name`/`code` is the variant
  * and `span` carries the byte range where one is known. Thrown by
  * {@link editYaml} in place of the raw bindgen error.
  */
@@ -92,17 +92,20 @@ export class EditError extends Error {
   }
 }
 
-const ERROR_CODES: ReadonlySet<string> = new Set<EditErrorCode>([
-  'InvalidUtf8',
-  'MalformedYaml',
-  'UnsupportedDocument',
-  'RootNotMapping',
-  'AmbiguousKey',
-  'MissingKey',
-  'KeyConflict',
-  'UnrenderableValue',
-  'InvalidResult',
-])
+// Every code, so the type check fails when a code is missing here.
+const ERROR_CODE_TABLE = {
+  InvalidUtf8: true,
+  MalformedYaml: true,
+  UnsupportedDocument: true,
+  RootNotMapping: true,
+  AmbiguousKey: true,
+  MissingKey: true,
+  KeyConflict: true,
+  UnrenderableValue: true,
+  InvalidResult: true,
+} as const satisfies Record<EditErrorCode, true>
+
+const ERROR_CODES: ReadonlySet<string> = new Set(Object.keys(ERROR_CODE_TABLE))
 
 /**
  * Edit `source` (raw UTF-8 YAML bytes) with an ordered batch of `edits`,

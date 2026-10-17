@@ -79,7 +79,7 @@ test('the README experimental list matches the @experimental tags', () => {
 })
 
 test('the README names every export', () => {
-  // A code span that starts with the name, such as `split(src)`, names it.
+  // A code span that starts with the name, such as `editYaml(source, edits)`, names it.
   const named = new Set([...README.matchAll(/`([A-Za-z_$][\w$]*)/g)].map((m) => m[1]!))
   expect([...EXPORTS.keys()].filter((name) => !named.has(name))).toEqual([])
 })
