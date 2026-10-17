@@ -138,6 +138,30 @@ importers:
         specifier: ~6.0.3
         version: 6.0.3
 
+  packages/ts/yaml-splice:
+    devDependencies:
+      '@osdlc/prettier-config':
+        specifier: workspace:^
+        version: link:../prettier-config
+      '@osdlc/tsconfig':
+        specifier: workspace:^
+        version: link:../tsconfig
+      '@types/bun':
+        specifier: ^1.1.14
+        version: 1.4.3
+      '@types/node':
+        specifier: ^26.1.0
+        version: 26.6.5
+      oxlint:
+        specifier: ^1.65.0
+        version: 1.88.0
+      prettier:
+        specifier: 3.9.6
+        version: 3.9.6
+      typescript:
+        specifier: ~6.0.3
+        version: 6.0.3
+
 packages:
 
   '@andrewbranch/untar.js@1.0.4':

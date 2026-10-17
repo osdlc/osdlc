@@ -1,0 +1,11 @@
+# Dependencies installed for the extracted package.
+node_modules/
+
+# Build output (`npm run build`).
+dist/
+
+# Scratch directories from the README example test.
+.readme-*/
+
+# wasm/ is committed on purpose: it is the built WebAssembly and its glue, so
+# building or testing the package needs no Rust toolchain. Do not add it here.

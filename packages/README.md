@@ -55,6 +55,8 @@ Developed here, in this repository:
 - `packages/rust/yaml-splice` (`yaml-splice` on crates.io)
 - `packages/rust/yaml-splice-wasm`, the WebAssembly build of `yaml-splice`
   for its npm package (not published to crates.io)
+- `packages/ts/yaml-splice` (`@osdlc/yaml-splice` on npm, the crate built to
+  WebAssembly, with the built `wasm/` committed)
 - `packages/ts/etag-write` (`@osdlc/etag-write` on npm, the crate's TypeScript twin)
 - `packages/ts/frontmatter-lossless` (`@osdlc/frontmatter-lossless` on npm,
   the TypeScript twin of the `frontmatter-lossless` crate, which has not moved
