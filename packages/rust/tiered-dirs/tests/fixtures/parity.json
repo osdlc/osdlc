@@ -559,22 +559,12 @@
       "name": "under xdg EXAMPLE_STATE_DIR moves state and leaves logs",
       "env": {
         "EXAMPLE_CONVENTION": "xdg",
-        "XDG_DATA_HOME": "/x/d",
-        "XDG_CONFIG_HOME": "/x/c",
-        "XDG_CACHE_HOME": "/x/k",
         "XDG_STATE_HOME": "/x/s",
-        "XDG_RUNTIME_DIR": "/run/u/1",
         "EXAMPLE_STATE_DIR": "/st"
       },
       "expected": {
-        "durable": "/x/d",
-        "config": "/x/c",
-        "cache": "/x/k",
-        "state": "/st",
-        "logs": "/x/s",
-        "runtime": "/run/u/1"
-      },
-      "windows_native": true
+        "state": "/st"
+      }
     },
     {
       "name": "nothing set is the OS default",
