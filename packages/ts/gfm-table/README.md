@@ -22,7 +22,7 @@ When not to use it:
   [micromark](https://github.com/micromark/micromark) with its GFM table
   extension, or [remark](https://github.com/remarkjs/remark). This package
   does not find tables in a document, and does not strip container prefixes
-  such as `> ` or list indentation. The caller passes the table's lines.
+  such as a blockquote `>` or list indentation. The caller passes the table's lines.
 - To render inline markdown inside a cell. Cell text keeps its inline markup;
   only the table-level `\|` escape is read.
 - For a general CSV library with streaming, typed columns or a writer with
