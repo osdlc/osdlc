@@ -1,6 +1,6 @@
 /**
  * The package used the way a consumer uses it: through its name only. Every
- * export appears here at least once; `test/exports.test.ts` checks that.
+ * export appears here at least once; `tests/exports.test.ts` checks that.
  */
 
 import { describe, expect, test } from 'bun:test'
