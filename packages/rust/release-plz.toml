@@ -23,8 +23,10 @@ changelog_update = true
 
 # The wasm-bindgen wrapper is built into an npm package and never released as
 # a crate. `publish = false` must match its Cargo.toml, or `release-plz
-# release` stops with an error. `release = false` keeps it out of the release
-# pull request too, so it gets no version bump, changelog or tag.
+# release` stops with an error. It also keeps the crate out of the release
+# pull request. `release = false` says the same explicitly: no version bump,
+# changelog or tag.
 [[package]]
 name = "yaml-splice-wasm"
 publish = false
+release = false
