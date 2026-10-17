@@ -8,7 +8,7 @@ use crate::value::value_is_set;
 
 /// What can go wrong loading a config file.
 ///
-/// New variants may be added in a compatible release (0.1.z), so a `match` needs a
+/// New variants may be added in a compatible release (0.5.z), so a `match` needs a
 /// wildcard arm.
 ///
 /// **Stability:** stable in 0.x.

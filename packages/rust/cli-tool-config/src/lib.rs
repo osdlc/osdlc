@@ -28,8 +28,8 @@ pub mod value;
 /// The directory resolver [`machine::MachineConfigFile`] takes, re-exported so
 /// a caller names the same version this crate was built against.
 ///
-/// **Stability:** follows `tiered-dirs` 0.1; a move to `tiered-dirs` 0.2
-/// would be a 0.2 release of this crate.
+/// **Stability:** follows `tiered-dirs` 0.2; a move to `tiered-dirs` 0.3
+/// would be a 0.6 release of this crate.
 pub use tiered_dirs;
 
 /// Runs the README's code blocks as doc-tests.

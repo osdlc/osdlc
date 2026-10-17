@@ -13,7 +13,7 @@ use crate::value::{value_at, value_is_set};
 
 /// Which config file(s) a key may live in.
 ///
-/// New variants may be added in a compatible release (0.1.z), so a `match` needs a
+/// New variants may be added in a compatible release (0.5.z), so a `match` needs a
 /// wildcard arm.
 ///
 /// **Stability:** stable in 0.x.

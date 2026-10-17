@@ -179,9 +179,9 @@ wants the project and machine split and the messages that go with it.
 
 ## Stability
 
-0.1 is the first release, and the crate stays on 0.x for now. Every public
-item is marked "stable in 0.x" in its docs: it is not expected to change, and
-a breaking change would ship as 0.2. There are no unstable items. The 20
+0.5 is the first published release, and the crate stays on 0.x for now. Every
+public item is marked "stable in 0.x" in its docs: it is not expected to change,
+and a breaking change would ship as 0.6. There are no unstable items. The 20
 items are:
 
 - `file`: `FileProblem`, `read_mapping`, `find_up`, `overlay_top_level`,
@@ -192,15 +192,15 @@ items are:
   `expand_tokens`, `expand_tokens_with_hint`
 - `value`: `value_at`, `value_is_set`
 
-The re-export `tiered_dirs` follows `tiered-dirs` 0.1: a move to its 0.2
-would be a 0.2 release of this crate.
+The re-export `tiered_dirs` follows `tiered-dirs` 0.2: a move to its 0.3
+would be a 0.6 release of this crate.
 
 `tests/stability.rs` checks that every item carries the marker and that this
 list names it. `file::FileProblem` and
 `needs::Scope` are `#[non_exhaustive]`, so a later release can add a variant
 without a breaking change. `needs::KeySpec` and `needs::Need` are plain
 structs you build with struct literals in a `static` table, so they will not
-gain fields in 0.1.
+gain fields in 0.5.
 
 The public API takes and returns `serde_yaml` values. `serde_yaml` is no
 longer maintained upstream. A move to a maintained YAML crate would change
