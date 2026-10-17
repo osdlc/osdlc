@@ -20,6 +20,14 @@ of them.
   CLI's own tags are plain `vX.Y.Z`.
 - A library can move to its own repository later if it grows.
 
+## Licenses
+
+Each library carries its own license, named in its manifest and kept as
+license files in its directory. The TypeScript libraries are MIT. The Rust
+crates are `MIT OR Apache-2.0`. The root `LICENSE` of this repository
+applies to the repository root only, not to the libraries under
+`packages/`.
+
 ## Why one repository
 
 One public repository is simpler to secure and maintain than one per library.
@@ -34,8 +42,10 @@ Developed here, in this repository:
 - `packages/ts/tsconfig` (`@osdlc/tsconfig`)
 - `packages/ts/prettier-config` (`@osdlc/prettier-config`)
 - `packages/ts/command-seam` (`@osdlc/command-seam`)
+- `packages/rust/etag-write` (`etag-write` on crates.io)
 
-The development repository takes them from npm, like any other consumer.
+The development repository takes them from npm or crates.io, like any other
+consumer.
 Open issues and pull requests here.
 
 ### Releasing a library developed here
@@ -94,6 +104,9 @@ The root scripts run each library's script of the same name.
 `packages/rust/Cargo.toml` and takes the shared fields (edition, MSRV,
 license, repository) and lints from it. `packages/rust/rust-toolchain.toml`
 pins the compiler, and rustup installs it on first use.
+`.github/workflows/rust-ci.yml` runs the checks below on Linux, macOS and
+Windows, plus a build on the MSRV and one with minimal dependency versions.
+Its `rust` job is the one check to require.
 
 ```sh
 cd packages/rust

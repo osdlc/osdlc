@@ -1,0 +1,29 @@
+[package]
+name = "etag-write"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+description = "Atomic file writes with sha256 etags and compare-and-swap, so a reader never sees a torn file and a stale write never overwrites newer changes."
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
+keywords = ["atomic", "write", "etag", "compare-and-swap", "filesystem"]
+categories = ["filesystem"]
+include = [
+  "src/**/*.rs",
+  "examples/**/*.rs",
+  "README.md",
+  "CHANGELOG.md",
+  "LICENSE-MIT",
+  "LICENSE-APACHE",
+]
+
+[dependencies]
+sha2 = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[lints]
+workspace = true
