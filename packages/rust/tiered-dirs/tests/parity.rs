@@ -4,7 +4,8 @@
 //! TypeScript twin, which carries a byte-identical copy and a test that fails
 //! when the copies differ: same input, same `relative`, byte for byte. Base
 //! directories are stubbed so the comparison is about path shape; `env_cases`
-//! pin the absolute base directories the override variables resolve to. The TS
+//! pin the absolute base directories the override variables resolve to, and
+//! `convention_cases` pin the XDG layout under one home. The TS
 //! twin's `tests/parity.test.ts` drives the same file with the same
 //! assertions; a case added on either side goes in the fixture, never in one
 //! twin's own suite.
@@ -17,6 +18,8 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 use tiered_dirs::{BaseDirs, Dir, EnvVars, Error, Home, Tier, TierKind, TieredDirs};
+
+type Env = BTreeMap<String, String>;
 
 /// Compiled in rather than read at runtime: the test binary then carries the
 /// fixture, and a moved or deleted fixture is a build error, not a late panic.
@@ -32,16 +35,32 @@ struct Fixture {
     cases: Vec<Case>,
     scratch_cases: Vec<ScratchCase>,
     env_cases: Vec<EnvCase>,
+    convention_cases: Vec<ConventionCase>,
     rejected: Vec<Rejected>,
+    rejected_conventions: Vec<Rejected>,
 }
 
-/// Base directories resolved from override variables. `expected` maps a home
-/// name (or `scratch`) to an absolute path; an omitted one is the OS default.
+/// Base directories resolved from the environment. `expected` maps a home
+/// name (or `scratch`) to an absolute path; an omitted one is the same
+/// resolution with no override variable set.
 #[derive(Deserialize)]
 struct EnvCase {
     name: String,
-    env: BTreeMap<String, String>,
-    expected: BTreeMap<String, String>,
+    env: Env,
+    expected: Env,
+    /// `expected` holds XDG paths, which a Windows host does not use.
+    #[serde(default)]
+    windows_native: bool,
+}
+
+/// The XDG layout under `home`, from `XDG_*` variables only. `expected` pins
+/// every home.
+#[derive(Deserialize)]
+struct ConventionCase {
+    name: String,
+    home: String,
+    env: Env,
+    expected: Env,
 }
 
 #[derive(Deserialize)]
@@ -301,11 +320,15 @@ fn host_abs(path: &str) -> PathBuf {
     }
 }
 
-fn from_vars(env: &BTreeMap<String, String>) -> BaseDirs {
-    BaseDirs::from_env_with(&ENV, |name| {
-        env.get(name).map(|value| host_abs(value).into_os_string())
-    })
-    .unwrap_or_else(|err| panic!("{env:?}: {err}"))
+/// A fixture variable as the host reads it: [`host_abs`] for a value that
+/// starts with `/`, anything else unchanged.
+fn host_var(env: &Env, name: &str) -> Option<std::ffi::OsString> {
+    env.get(name).map(|value| host_abs(value).into_os_string())
+}
+
+fn from_vars(env: &Env) -> BaseDirs {
+    BaseDirs::from_env_with(&ENV, |name| host_var(env, name))
+        .unwrap_or_else(|err| panic!("{env:?}: {err}"))
 }
 
 /// A base directory by its fixture name: a home, or `scratch`.
@@ -317,20 +340,31 @@ fn base_of<'a>(base: &'a BaseDirs, name: &str) -> &'a Path {
     }
 }
 
+fn base_names() -> impl Iterator<Item = &'static str> {
+    Home::ALL.into_iter().map(Home::as_str).chain(["scratch"])
+}
+
 #[test]
 fn every_env_case_resolves_to_its_fixture_paths() {
-    // Rows that omit a base directory compare it against this machine's OS
-    // default; a machine with no home directory cannot answer that.
-    let Ok(os) = BaseDirs::from_env_with(&ENV, |_| None) else {
+    // A machine with no home directory has no OS default to compare with.
+    if BaseDirs::from_env_with(&ENV, |_| None).is_err() {
         return;
-    };
-    let names = Home::ALL.into_iter().map(Home::as_str).chain(["scratch"]);
+    }
     for case in fixture().env_cases {
+        // The same resolution with no override variable set.
+        let unmoved: Env = case
+            .env
+            .iter()
+            .filter(|(name, _)| !ENV.overrides().contains(&name.as_str()))
+            .map(|(name, value)| (name.clone(), value.clone()))
+            .collect();
+        let os = from_vars(&unmoved);
         let base = from_vars(&case.env);
-        for name in names.clone() {
+        let windows_native = cfg!(windows) && case.windows_native;
+        for name in base_names() {
             let want = match case.expected.get(name) {
-                Some(path) => host_abs(path),
-                None => base_of(&os, name).to_path_buf(),
+                Some(path) if !windows_native => host_abs(path),
+                _ => base_of(&os, name).to_path_buf(),
             };
             assert_eq!(base_of(&base, name), want, "{}: {name}", case.name);
         }
@@ -344,8 +378,46 @@ fn every_override_var_has_an_env_case() {
         .iter()
         .flat_map(|case| case.env.keys().cloned())
         .collect();
-    for var in ENV.overrides() {
+    for var in ENV.overrides().into_iter().chain([ENV.convention]) {
         assert!(covered.contains(var), "no env case sets {var}");
+    }
+}
+
+#[test]
+fn every_convention_case_resolves_to_its_fixture_paths() {
+    for case in fixture().convention_cases {
+        let base = BaseDirs::xdg(host_abs(&case.home), |name| host_var(&case.env, name));
+        for home in Home::ALL {
+            let want = case
+                .expected
+                .get(home.as_str())
+                .unwrap_or_else(|| panic!("{}: no {}", case.name, home.as_str()));
+            assert_eq!(
+                base.get(home),
+                host_abs(want),
+                "{}: {}",
+                case.name,
+                home.as_str()
+            );
+        }
+    }
+}
+
+#[test]
+fn every_rejected_convention_is_refused() {
+    for Rejected { name, value } in fixture().rejected_conventions {
+        let err = BaseDirs::from_env_with(&ENV, |var| {
+            (var == ENV.convention).then(|| value.clone().into())
+        })
+        .unwrap_err();
+        assert_eq!(
+            err,
+            Error::InvalidConvention {
+                var: ENV.convention,
+                value,
+            },
+            "{name}"
+        );
     }
 }
 

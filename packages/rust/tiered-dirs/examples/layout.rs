@@ -1,13 +1,14 @@
 //! Prints every directory one vendor's programs would use on this machine.
 //!
 //! Run with `cargo run --example layout`. Set `EXAMPLE_ROOT` to an absolute
-//! path to see the whole layout move under it.
+//! path to see the whole layout move under it, or `EXAMPLE_CONVENTION=xdg` to
+//! see the XDG table.
 
 use std::ffi::OsString;
 
 use tiered_dirs::{
-    BaseDirs, Dir, EnvVars, Error, Home, Tier, TierKind, TieredDirs, env_vars, is_valid_segment,
-    is_vendor_bundle_id, test_root,
+    BaseDirs, Convention, Dir, EnvVars, Error, Home, Tier, TierKind, TieredDirs, env_vars,
+    is_valid_segment, is_vendor_bundle_id, test_root,
 };
 
 const VENDOR: &str = "com.example";
@@ -92,6 +93,17 @@ fn main() -> Result<(), Error> {
     tiered_dirs::assert_vendor_bundle_id(VENDOR, bundle_id);
     dirs.assert_vendor_bundle_id(bundle_id);
 
+    // A CLI tool picks the XDG table: `~/.config/devtool` on macOS too.
+    let cli = TieredDirs::from_env_in(VENDOR, &ENV, Convention::Xdg)?;
+    println!(
+        "\nunder {}: devtool config is {}",
+        Convention::Xdg.as_str(),
+        show(cli.standalone("devtool")?.config().path())
+    );
+    let home = std::path::Path::new("/home/me");
+    let xdg = BaseDirs::xdg(home, |name| std::env::var_os(name));
+    println!("XDG state under /home/me: {}", show(xdg.get(Home::State)));
+
     // A test resolves from its own map of variables, never the process env.
     let fake = |name: &str| (name == ENV.root).then(|| OsString::from(std::env::temp_dir()));
     let moved = TieredDirs::from_env_with(VENDOR, &ENV, fake)?;
@@ -107,6 +119,7 @@ fn main() -> Result<(), Error> {
         Some(root.join("d")),
         Some(root.join("c")),
         Some(root.join("k")),
+        Some(root.join("st")),
         Some(root.join("l")),
         None,
         Some(root.join("s")),

@@ -14,13 +14,21 @@ First release.
 ### Added
 
 - `TieredDirs`: directories addressed by tier (`vendor()`, `suite(key)`,
-  `standalone(tool)`) and home (`durable`, `config`, `cache`, `logs`,
-  `runtime`), plus an untiered `scratch()` root. `Dir::scoped` and `Dir::app`
-  narrow a directory. Every segment is checked to be one safe path segment.
+  `standalone(tool)`) and home (`durable`, `config`, `cache`, `state`,
+  `logs`, `runtime`), plus an untiered `scratch()` root. `Dir::scoped` and
+  `Dir::app` narrow a directory. Every segment is checked to be one safe path
+  segment.
 - `BaseDirs`: the per-OS base directories, resolved once. Logs go to
   `~/Library/Logs` on macOS, and logs and runtime never go under cache.
+- `Convention`: `Native` (the default) or `Xdg`, chosen with
+  `BaseDirs::from_env_in` and `TieredDirs::from_env_in`. `Xdg` gives the XDG
+  paths on macOS too; Linux is the same under both, and on Windows `Xdg` means
+  `Native`. `BaseDirs::xdg` builds the XDG table under any home. The crate
+  reads `XDG_*` itself, ignores a relative value and does not expand `~`.
 - `EnvVars` and `env_vars!`: override variables under a caller-chosen
   prefix, `<P>_ROOT` and `<P>_<HOME>_DIR`, the same on every OS.
+  `<P>_CONVENTION=native|xdg` overrides the caller's convention; any other
+  value is `Error::InvalidConvention`.
 - Tests kept off the real home: a cargo test binary defaults to a
   per-process scratch root (`test_root`), and `<P>_REQUIRE_OVERRIDE` turns an
   OS fallback into an error.

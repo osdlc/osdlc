@@ -14,7 +14,12 @@
 //! | standalone | `<tool>`             | one general tool, shipped outside the vendor's suite |
 //!
 //! **Home — how durable the state is:** `durable`, `config`, `cache`,
-//! `logs`, `runtime`.
+//! `state`, `logs`, `runtime`.
+//!
+//! **Convention — which per-OS table the homes come from:**
+//! [`Convention::Native`] (the default) or [`Convention::Xdg`]. They differ on
+//! macOS only. CLI and developer tools use Xdg; GUI apps use Native. See
+//! [`Convention`].
 //!
 //! [`TieredDirs::scratch`] sits outside both axes: see "`scratch` is not a
 //! home".
@@ -52,8 +57,10 @@
 //! their machine.
 //!
 //! [`TieredDirs::standalone`] is the tier for that tool. Its segment is the
-//! bare tool name — `~/.config/<tool>`, what a general CLI idiomatically owns —
-//! with no vendor composition.
+//! bare tool name, with no vendor composition. Its config directory is
+//! `~/.config/<tool>` on Linux, and on macOS under [`Convention::Xdg`]; it is
+//! `~/Library/Application Support/<tool>` on macOS under
+//! [`Convention::Native`].
 //!
 //! [`Tier::kind`] reports which constructor produced a tier, so a caller or a
 //! gate can tell a suite address from a standalone one without parsing the
@@ -91,8 +98,8 @@
 //! 1. **`logs` has no `dirs` equivalent.** macOS wants `~/Library/Logs`.
 //!    [`BaseDirs::from_env`] branches on the platform explicitly. Folding logs
 //!    into cache would be silently wrong — the OS purges cache.
-//! 2. **`dirs::runtime_dir()` is `None` off Linux** (it needs
-//!    `XDG_RUNTIME_DIR`). Where it is absent, runtime resolves under
+//! 2. **Only `XDG_RUNTIME_DIR` names a runtime directory**, and it is
+//!    usually set on Linux only. Where it is absent, runtime resolves under
 //!    `<durable>/run`, deliberately NOT under cache: the OS may purge cache
 //!    while the process a pidfile describes is still alive.
 //! 3. **Every base directory can fail.** Headless CI and sandboxes do not
@@ -104,8 +111,9 @@
 //! Base directories are resolved ONCE, at construction, and are injectable.
 //! Nothing below [`BaseDirs`] reads the environment, so a test asserts exact
 //! paths without touching a real home directory. [`BaseDirs::rooted`] is the
-//! seam the parity fixture uses, and [`BaseDirs::from_env_with`] takes the
-//! override variables from a test's own map.
+//! seam the parity fixture uses, [`BaseDirs::xdg`] builds the XDG layout under
+//! any home, and [`BaseDirs::from_env_with`] takes the override variables from
+//! a test's own map.
 //!
 //! # Overrides and scratch roots
 //!
@@ -116,8 +124,9 @@
 //! `MYAPP_SCRATCH_DIR` and `MYAPP_REQUIRE_OVERRIDE`.
 //!
 //! Per base directory, the first answer wins: the per-home variable, then the
-//! root variable laid out as [`BaseDirs::rooted`], then the OS default. See
-//! [`BaseDirs::from_env`]. The TS twin's `systemBaseDirs` resolves the same
+//! root variable laid out as [`BaseDirs::rooted`], then the OS default for the
+//! convention. `<P>_CONVENTION` picks that convention over the caller's. See
+//! [`BaseDirs::from_env_in`]. The TS twin's `systemBaseDirs` resolves the same
 //! order, held to it by the `env_cases` in the parity fixture.
 //!
 //! # Tests never resolve a real home
@@ -156,8 +165,9 @@
 //! # Stability
 //!
 //! Each public item's docs say "stable in 0.x": it is not expected to change
-//! in a breaking way before 1.0. [`Error`] is `#[non_exhaustive]`, so a later
-//! release can add a variant without a breaking change.
+//! in a breaking way before 1.0. [`Error`] and [`Convention`] are
+//! `#[non_exhaustive]`, so a later release can add a variant without a
+//! breaking change.
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs, clippy::missing_errors_doc, clippy::missing_panics_doc)]
@@ -188,6 +198,8 @@ pub struct EnvVars {
     pub config: &'static str,
     /// Moves the cache home.
     pub cache: &'static str,
+    /// Moves the state home.
+    pub state: &'static str,
     /// Moves the logs home.
     pub logs: &'static str,
     /// Moves the runtime home.
@@ -197,11 +209,15 @@ pub struct EnvVars {
     /// When set (non-empty), [`BaseDirs::from_env`] errors instead of falling
     /// back to an OS home.
     pub require_override: &'static str,
+    /// Picks the [`Convention`], over the one the caller passed: `native` or
+    /// `xdg`. Moves no directory itself.
+    pub convention: &'static str,
 }
 
 /// [`EnvVars`] named from one prefix: `<P>_ROOT`, `<P>_DURABLE_DIR`,
-/// `<P>_CONFIG_DIR`, `<P>_CACHE_DIR`, `<P>_LOGS_DIR`, `<P>_RUNTIME_DIR`,
-/// `<P>_SCRATCH_DIR` and `<P>_REQUIRE_OVERRIDE`.
+/// `<P>_CONFIG_DIR`, `<P>_CACHE_DIR`, `<P>_STATE_DIR`, `<P>_LOGS_DIR`,
+/// `<P>_RUNTIME_DIR`, `<P>_SCRATCH_DIR`, `<P>_REQUIRE_OVERRIDE` and
+/// `<P>_CONVENTION`.
 ///
 /// Usable in a `const`:
 ///
@@ -220,10 +236,12 @@ macro_rules! env_vars {
             durable: concat!($prefix, "_DURABLE_DIR"),
             config: concat!($prefix, "_CONFIG_DIR"),
             cache: concat!($prefix, "_CACHE_DIR"),
+            state: concat!($prefix, "_STATE_DIR"),
             logs: concat!($prefix, "_LOGS_DIR"),
             runtime: concat!($prefix, "_RUNTIME_DIR"),
             scratch: concat!($prefix, "_SCRATCH_DIR"),
             require_override: concat!($prefix, "_REQUIRE_OVERRIDE"),
+            convention: concat!($prefix, "_CONVENTION"),
         }
     };
 }
@@ -236,21 +254,23 @@ impl EnvVars {
             Some(Home::Durable) => self.durable,
             Some(Home::Config) => self.config,
             Some(Home::Cache) => self.cache,
+            Some(Home::State) => self.state,
             Some(Home::Logs) => self.logs,
             Some(Home::Runtime) => self.runtime,
             None => self.scratch,
         }
     }
 
-    /// Every variable that moves a base directory: the root and the six
-    /// per-directory names. Excludes [`EnvVars::require_override`], which
-    /// moves nothing.
-    pub const fn overrides(&self) -> [&'static str; 7] {
+    /// Every variable that moves a base directory: the root and the seven
+    /// per-directory names. Excludes [`EnvVars::require_override`] and
+    /// [`EnvVars::convention`], which move nothing.
+    pub const fn overrides(&self) -> [&'static str; 8] {
         [
             self.root,
             self.durable,
             self.config,
             self.cache,
+            self.state,
             self.logs,
             self.runtime,
             self.scratch,
@@ -295,7 +315,7 @@ const RUNTIME_FALLBACK_SEGMENT: &str = "run";
 /// New variants may be added in a compatible release (0.1.z), so a `match`
 /// needs a wildcard arm.
 ///
-/// **Stability:** stable in 0.x. The four variants and their fields are not
+/// **Stability:** stable in 0.x. The five variants and their fields are not
 /// expected to change; new variants may be added.
 #[derive(Debug, thiserror::Error, PartialEq, Eq, Clone)]
 #[non_exhaustive]
@@ -330,6 +350,16 @@ pub enum Error {
         root_var: &'static str,
         /// [`EnvVars::require_override`].
         require_var: &'static str,
+    },
+
+    /// [`EnvVars::convention`] holds something other than `native` or `xdg`.
+    /// The value is trimmed, then must match exactly, in lower case.
+    #[error("{var} must be \"native\" or \"xdg\", got {value:?}")]
+    InvalidConvention {
+        /// [`EnvVars::convention`].
+        var: &'static str,
+        /// The value as given.
+        value: String,
     },
 
     /// A caller-supplied segment is not a safe single path segment.
@@ -396,6 +426,9 @@ pub enum Home {
     Config,
     /// Regenerable derived state. The OS may purge it at any time.
     Cache,
+    /// State that should outlive a restart but is not user data: history,
+    /// recent files, trust markers.
+    State,
     /// Log files. Never cache — purging logs loses the evidence.
     Logs,
     /// Process-lifetime state: pidfiles, sockets, locks.
@@ -410,28 +443,70 @@ impl Home {
             Home::Durable => "durable",
             Home::Config => "config",
             Home::Cache => "cache",
+            Home::State => "state",
             Home::Logs => "logs",
             Home::Runtime => "runtime",
         }
     }
 
     /// Every home.
-    pub const ALL: [Home; 5] = [
+    pub const ALL: [Home; 6] = [
         Home::Durable,
         Home::Config,
         Home::Cache,
+        Home::State,
         Home::Logs,
         Home::Runtime,
     ];
 }
 
-/// The platform base directories, resolved once: the five homes plus
+/// Which per-OS table the homes come from when no override moves them.
+///
+/// The two differ on macOS only:
+///
+/// | home    | Native (macOS)                       | Xdg (macOS)                               |
+/// |---------|--------------------------------------|-------------------------------------------|
+/// | durable | `~/Library/Application Support`      | `$XDG_DATA_HOME`, else `~/.local/share`   |
+/// | config  | `~/Library/Application Support`      | `$XDG_CONFIG_HOME`, else `~/.config`      |
+/// | cache   | `~/Library/Caches`                   | `$XDG_CACHE_HOME`, else `~/.cache`        |
+/// | state   | `~/Library/Application Support`      | `$XDG_STATE_HOME`, else `~/.local/state`  |
+/// | logs    | `~/Library/Logs`                     | `$XDG_STATE_HOME`, else `~/.local/state`  |
+/// | runtime | `~/Library/Application Support/run`  | `$XDG_RUNTIME_DIR`, else `<durable>/run`  |
+///
+/// Linux uses the XDG table under both. Windows uses its Known Folders under
+/// both: Xdg means Native there. A CLI or developer tool uses `Xdg`, where its
+/// users look for dotfiles. A GUI app uses `Native`.
+///
+/// [`EnvVars::convention`] picks one over the caller's choice.
+///
+/// **Stability:** stable in 0.x. New variants may be added.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum Convention {
+    /// The platform's own places. The default.
+    #[default]
+    Native,
+    /// The XDG Base Directory rules, on macOS as on Linux.
+    Xdg,
+}
+
+impl Convention {
+    /// The name [`EnvVars::convention`] takes: `native` or `xdg`.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Convention::Native => "native",
+            Convention::Xdg => "xdg",
+        }
+    }
+}
+
+/// The platform base directories, resolved once: the six homes plus
 /// `scratch`.
 ///
-/// Construct with [`BaseDirs::from_env`] in production and
-/// [`BaseDirs::rooted`] or [`BaseDirs::from_parts`] in tests. Once built,
-/// nothing in this crate consults the environment again — path resolution
-/// below this type is pure.
+/// Construct with [`BaseDirs::from_env`] or [`BaseDirs::from_env_in`] in
+/// production and [`BaseDirs::rooted`], [`BaseDirs::xdg`] or
+/// [`BaseDirs::from_parts`] in tests. Once built, nothing in this crate
+/// consults the environment again — path resolution below this type is pure.
 ///
 /// **Stability:** stable in 0.x.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -439,35 +514,48 @@ pub struct BaseDirs {
     durable: PathBuf,
     config: PathBuf,
     cache: PathBuf,
+    state: PathBuf,
     logs: PathBuf,
     runtime: PathBuf,
     scratch: PathBuf,
 }
 
 impl BaseDirs {
+    /// [`BaseDirs::from_env_in`] with [`Convention::Native`].
+    ///
+    /// # Errors
+    ///
+    /// The errors of [`BaseDirs::from_env_in`].
+    pub fn from_env(vars: &EnvVars) -> Result<Self, Error> {
+        Self::from_env_in(vars, Convention::Native)
+    }
+
     /// Resolve from the environment and the platform, once.
     ///
     /// Each base directory takes the first answer in this order:
     ///
     /// 1. Its own variable: [`EnvVars::dir`].
     /// 2. [`EnvVars::root`] — the [`BaseDirs::rooted`] layout.
-    /// 3. The OS default:
+    /// 3. The OS default for the convention. [`EnvVars::convention`] picks
+    ///    it when set; `convention` otherwise.
     ///
-    /// | home    | OS default |
-    /// |---------|------------|
-    /// | durable | `dirs::data_dir()` |
-    /// | config  | `dirs::config_dir()` |
-    /// | cache   | `dirs::cache_dir()` |
-    /// | logs    | `~/Library/Logs` on macOS; `dirs::state_dir()`, else `<durable>/logs`, elsewhere |
-    /// | runtime | `dirs::runtime_dir()` where the platform has one, else `<durable>/run` |
-    /// | scratch | `std::env::temp_dir()` |
+    /// | home    | Linux, and macOS under Xdg | macOS under Native | Windows |
+    /// |---------|----------------------------|--------------------|---------|
+    /// | durable | `$XDG_DATA_HOME`, else `~/.local/share` | `~/Library/Application Support` | `%APPDATA%` |
+    /// | config  | `$XDG_CONFIG_HOME`, else `~/.config` | `~/Library/Application Support` | `%APPDATA%` |
+    /// | cache   | `$XDG_CACHE_HOME`, else `~/.cache` | `~/Library/Caches` | `%LOCALAPPDATA%` |
+    /// | state   | `$XDG_STATE_HOME`, else `~/.local/state` | `~/Library/Application Support` | `%LOCALAPPDATA%` |
+    /// | logs    | `$XDG_STATE_HOME`, else `~/.local/state` | `~/Library/Logs` | `%APPDATA%\logs` |
+    /// | runtime | `$XDG_RUNTIME_DIR`, else `<durable>/run` | `<durable>/run` | `<durable>/run` |
+    /// | scratch | `std::env::temp_dir()` | the same | the same |
+    ///
+    /// The `XDG_*` variables are read through the same environment as the
+    /// override variables. A relative `XDG_*` value is ignored, as the XDG
+    /// spec says. The macOS Native and Windows cells come from `dirs`.
     ///
     /// Runtime follows durable: when the runtime variable is unset but durable
     /// is moved by step 1 or 2, runtime is `<durable>/run`, never the OS
     /// runtime directory. An empty variable counts as unset.
-    ///
-    /// Errors rather than panics when a base directory is unavailable, or
-    /// when an override is not an absolute path.
     ///
     /// Two test rules run first (see "Tests never resolve a real home" in the
     /// crate docs): in a cargo test binary an unset root variable reads as
@@ -477,26 +565,29 @@ impl BaseDirs {
     /// # Errors
     ///
     /// [`Error::RelativeOverride`] when a variable holds a relative path,
-    /// [`Error::OverrideRequired`] when [`EnvVars::require_override`] is set and
-    /// a base directory would fall back to the OS default, and
-    /// [`Error::MissingBaseDir`] when the platform has no such directory.
-    pub fn from_env(vars: &EnvVars) -> Result<Self, Error> {
-        Self::from_env_guarded(vars, |name| std::env::var_os(name), test_root())
+    /// [`Error::InvalidConvention`] when [`EnvVars::convention`] names no
+    /// convention, [`Error::OverrideRequired`] when
+    /// [`EnvVars::require_override`] is set and a base directory would fall
+    /// back to the OS default, and [`Error::MissingBaseDir`] when the platform
+    /// has no such directory.
+    pub fn from_env_in(vars: &EnvVars, convention: Convention) -> Result<Self, Error> {
+        Self::from_env_guarded(vars, convention, |name| std::env::var_os(name), test_root())
     }
 
-    /// [`BaseDirs::from_env`] with the environment and the test root
+    /// [`BaseDirs::from_env_in`] with the environment and the test root
     /// injected, so the test rules are testable without the process env.
     fn from_env_guarded(
         vars: &EnvVars,
+        convention: Convention,
         var: impl Fn(&str) -> Option<OsString>,
         test_root: Option<&Path>,
     ) -> Result<Self, Error> {
         let var = |name: &str| var(name).filter(|value| !value.is_empty());
         if var(vars.root).is_some() {
-            return Self::from_env_with(vars, var);
+            return Self::from_env_in_with(vars, convention, var);
         }
         if let Some(root) = test_root {
-            return Self::from_env_with(vars, |name| {
+            return Self::from_env_in_with(vars, convention, |name| {
                 if name == vars.root {
                     Some(root.as_os_str().to_owned())
                 } else {
@@ -510,6 +601,7 @@ impl BaseDirs {
                 vars.durable,
                 vars.config,
                 vars.cache,
+                vars.state,
                 vars.logs,
                 vars.scratch,
             ];
@@ -521,28 +613,43 @@ impl BaseDirs {
                 });
             }
         }
-        Self::from_env_with(vars, var)
+        Self::from_env_in_with(vars, convention, var)
     }
 
-    /// [`BaseDirs::from_env`] with the override variables read through `var`
-    /// instead of the process environment. The OS defaults still come from
-    /// the platform. The seam that lets a test exercise every precedence case
-    /// without mutating the process env.
+    /// [`BaseDirs::from_env_in_with`] with [`Convention::Native`].
     ///
     /// # Errors
     ///
-    /// [`Error::RelativeOverride`] when a variable holds a relative path, and
-    /// [`Error::MissingBaseDir`] when the platform has no such directory.
-    #[allow(
-        clippy::disallowed_methods,
-        reason = "this is the one place that resolves platform base directories"
-    )]
+    /// The errors of [`BaseDirs::from_env_in_with`].
     pub fn from_env_with(
         vars: &EnvVars,
         var: impl Fn(&str) -> Option<OsString>,
     ) -> Result<Self, Error> {
+        Self::from_env_in_with(vars, Convention::Native, var)
+    }
+
+    /// [`BaseDirs::from_env_in`] with every variable read through `var`
+    /// instead of the process environment: the override variables, the
+    /// convention variable and `XDG_*`. The home directory and the macOS
+    /// Native and Windows cells still come from the platform. The seam that
+    /// lets a test exercise every precedence case without mutating the
+    /// process env. Applies neither test rule.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::RelativeOverride`] when a variable holds a relative path,
+    /// [`Error::InvalidConvention`] when [`EnvVars::convention`] names no
+    /// convention, and [`Error::MissingBaseDir`] when the platform has no such
+    /// directory.
+    pub fn from_env_in_with(
+        vars: &EnvVars,
+        convention: Convention,
+        var: impl Fn(&str) -> Option<OsString>,
+    ) -> Result<Self, Error> {
+        let var = |name: &str| var(name).filter(|value| !value.is_empty());
+        let convention = env_convention(vars, var)?.unwrap_or(convention);
         let read = |name: &'static str| -> Result<Option<PathBuf>, Error> {
-            match var(name).filter(|value| !value.is_empty()) {
+            match var(name) {
                 None => Ok(None),
                 Some(value) => {
                     let path = PathBuf::from(value);
@@ -556,29 +663,33 @@ impl BaseDirs {
         };
         let rooted = read(vars.root)?.map(Self::rooted);
         let from_root = |pick: fn(&Self) -> &Path| rooted.as_ref().map(|r| pick(r).to_path_buf());
+        let os = os_defaults(convention, var);
 
         let durable = read(vars.durable)?.or_else(|| from_root(|r| &r.durable));
         let durable_moved = durable.is_some();
-        let durable = durable.or_else(dirs::data_dir);
+        let durable = durable.or(os.durable);
         let config = read(vars.config)?
             .or_else(|| from_root(|r| &r.config))
-            .or_else(dirs::config_dir);
+            .or(os.config);
         let cache = read(vars.cache)?
             .or_else(|| from_root(|r| &r.cache))
-            .or_else(dirs::cache_dir);
+            .or(os.cache);
+        let state = read(vars.state)?
+            .or_else(|| from_root(|r| &r.state))
+            .or(os.state);
         let logs = read(vars.logs)?
             .or_else(|| from_root(|r| &r.logs))
-            .or_else(env_logs_dir);
+            .or(os.logs);
         // `None` makes `from_parts` fall back to `<durable>/run`.
         let runtime = match read(vars.runtime)? {
             Some(runtime) => Some(runtime),
             None if durable_moved => None,
-            None => dirs::runtime_dir(),
+            None => os.runtime,
         };
         let scratch = read(vars.scratch)?
             .or_else(|| from_root(|r| &r.scratch))
             .or_else(|| Some(std::env::temp_dir()));
-        Self::from_parts(durable, config, cache, logs, runtime, scratch)
+        Self::from_parts(durable, config, cache, state, logs, runtime, scratch)
     }
 
     /// Assemble from raw optional roots, exactly as `dirs` hands them over.
@@ -590,12 +701,13 @@ impl BaseDirs {
     ///
     /// # Errors
     ///
-    /// [`Error::MissingBaseDir`] for the first of durable, config, cache, logs
-    /// and scratch that is `None`.
+    /// [`Error::MissingBaseDir`] for the first of durable, config, cache,
+    /// state, logs and scratch that is `None`.
     pub fn from_parts(
         durable: Option<PathBuf>,
         config: Option<PathBuf>,
         cache: Option<PathBuf>,
+        state: Option<PathBuf>,
         logs: Option<PathBuf>,
         runtime: Option<PathBuf>,
         scratch: Option<PathBuf>,
@@ -603,6 +715,7 @@ impl BaseDirs {
         let durable = durable.ok_or(Error::MissingBaseDir { home: "durable" })?;
         let config = config.ok_or(Error::MissingBaseDir { home: "config" })?;
         let cache = cache.ok_or(Error::MissingBaseDir { home: "cache" })?;
+        let state = state.ok_or(Error::MissingBaseDir { home: "state" })?;
         let logs = logs.ok_or(Error::MissingBaseDir { home: "logs" })?;
         let scratch = scratch.ok_or(Error::MissingBaseDir { home: "scratch" })?;
         let runtime = runtime.unwrap_or_else(|| durable.join(RUNTIME_FALLBACK_SEGMENT));
@@ -610,6 +723,7 @@ impl BaseDirs {
             durable,
             config,
             cache,
+            state,
             logs,
             runtime,
             scratch,
@@ -617,8 +731,8 @@ impl BaseDirs {
     }
 
     /// Every base directory under one stub root: `<root>/durable`,
-    /// `<root>/config`, `<root>/cache`, `<root>/logs`, `<root>/scratch`, and
-    /// runtime at `<root>/durable/run`.
+    /// `<root>/config`, `<root>/cache`, `<root>/state`, `<root>/logs`,
+    /// `<root>/scratch`, and runtime at `<root>/durable/run`.
     ///
     /// The layout [`EnvVars::root`] selects, and the test and parity-fixture
     /// seam. The TS twin ships the same helper with the same layout, so a
@@ -631,9 +745,36 @@ impl BaseDirs {
             durable,
             config: root.join("config"),
             cache: root.join("cache"),
+            state: root.join("state"),
             logs: root.join("logs"),
             runtime,
             scratch: root.join("scratch"),
+        }
+    }
+
+    /// The XDG layout under `home`, with the `XDG_*` variables read through
+    /// `var`: the [`Convention::Xdg`] table, on any OS. Scratch is
+    /// `std::env::temp_dir()`.
+    ///
+    /// Each home is its `XDG_*` variable when that holds an absolute path,
+    /// else its default under `home`. A relative value is ignored, as the XDG
+    /// spec says. Logs share the state home. Runtime is `$XDG_RUNTIME_DIR`,
+    /// else `<durable>/run`. The TS twin's `xdgBaseDirs` builds the same
+    /// layout, held to it by the parity fixture's `convention_cases`.
+    pub fn xdg(home: impl AsRef<Path>, var: impl Fn(&str) -> Option<OsString>) -> Self {
+        let home = home.as_ref();
+        let under = |segments: &[&str]| segments.iter().fold(home.to_path_buf(), |p, s| p.join(s));
+        let durable = xdg_var(&var, "XDG_DATA_HOME").unwrap_or_else(|| under(&[".local", "share"]));
+        let state = xdg_var(&var, "XDG_STATE_HOME").unwrap_or_else(|| under(&[".local", "state"]));
+        Self {
+            config: xdg_var(&var, "XDG_CONFIG_HOME").unwrap_or_else(|| under(&[".config"])),
+            cache: xdg_var(&var, "XDG_CACHE_HOME").unwrap_or_else(|| under(&[".cache"])),
+            logs: state.clone(),
+            state,
+            runtime: xdg_var(&var, "XDG_RUNTIME_DIR")
+                .unwrap_or_else(|| durable.join(RUNTIME_FALLBACK_SEGMENT)),
+            durable,
+            scratch: std::env::temp_dir(),
         }
     }
 
@@ -643,6 +784,7 @@ impl BaseDirs {
             Home::Durable => &self.durable,
             Home::Config => &self.config,
             Home::Cache => &self.cache,
+            Home::State => &self.state,
             Home::Logs => &self.logs,
             Home::Runtime => &self.runtime,
         }
@@ -654,6 +796,126 @@ impl BaseDirs {
     pub fn scratch(&self) -> &Path {
         &self.scratch
     }
+}
+
+/// [`EnvVars::convention`], parsed: trimmed, then `native` or `xdg` exactly.
+/// `None` when unset or empty.
+fn env_convention(
+    vars: &EnvVars,
+    var: impl Fn(&str) -> Option<OsString>,
+) -> Result<Option<Convention>, Error> {
+    let Some(value) = var(vars.convention) else {
+        return Ok(None);
+    };
+    match value.to_str().map(str::trim) {
+        Some("native") => Ok(Some(Convention::Native)),
+        Some("xdg") => Ok(Some(Convention::Xdg)),
+        _ => Err(Error::InvalidConvention {
+            var: vars.convention,
+            value: value.to_string_lossy().into_owned(),
+        }),
+    }
+}
+
+/// An `XDG_*` variable, honoured only when it holds an absolute path.
+fn xdg_var(var: impl Fn(&str) -> Option<OsString>, name: &str) -> Option<PathBuf> {
+    var(name)
+        .map(PathBuf::from)
+        .filter(|path| path.is_absolute())
+}
+
+/// The OS defaults for one convention, before any override. A `None` is a
+/// base directory this machine lacks; for runtime it means `<durable>/run`.
+struct OsDefaults {
+    durable: Option<PathBuf>,
+    config: Option<PathBuf>,
+    cache: Option<PathBuf>,
+    state: Option<PathBuf>,
+    logs: Option<PathBuf>,
+    runtime: Option<PathBuf>,
+}
+
+impl From<BaseDirs> for OsDefaults {
+    fn from(base: BaseDirs) -> Self {
+        Self {
+            durable: Some(base.durable),
+            config: Some(base.config),
+            cache: Some(base.cache),
+            state: Some(base.state),
+            logs: Some(base.logs),
+            runtime: Some(base.runtime),
+        }
+    }
+}
+
+/// The XDG table under the platform's home directory. With no home, only the
+/// `XDG_*` variables that hold absolute paths give directories.
+#[cfg(not(windows))]
+#[allow(
+    clippy::disallowed_methods,
+    reason = "this is the one place that resolves platform base directories"
+)]
+fn xdg_defaults(var: impl Fn(&str) -> Option<OsString>) -> OsDefaults {
+    if let Some(home) = dirs::home_dir() {
+        return BaseDirs::xdg(home, var).into();
+    }
+    let state = xdg_var(&var, "XDG_STATE_HOME");
+    OsDefaults {
+        durable: xdg_var(&var, "XDG_DATA_HOME"),
+        config: xdg_var(&var, "XDG_CONFIG_HOME"),
+        cache: xdg_var(&var, "XDG_CACHE_HOME"),
+        logs: state.clone(),
+        state,
+        runtime: xdg_var(&var, "XDG_RUNTIME_DIR"),
+    }
+}
+
+/// macOS: Native is Apple's places, with logs in `~/Library/Logs`, which
+/// `dirs` has no accessor for (trap 1). Xdg is the XDG table.
+#[cfg(target_os = "macos")]
+#[allow(
+    clippy::disallowed_methods,
+    reason = "this is the one place that resolves platform base directories"
+)]
+fn os_defaults(convention: Convention, var: impl Fn(&str) -> Option<OsString>) -> OsDefaults {
+    match convention {
+        Convention::Native => OsDefaults {
+            durable: dirs::data_dir(),
+            config: dirs::config_dir(),
+            cache: dirs::cache_dir(),
+            state: dirs::data_dir(),
+            logs: dirs::home_dir().map(|home| home.join("Library").join("Logs")),
+            runtime: None,
+        },
+        Convention::Xdg => xdg_defaults(var),
+    }
+}
+
+/// Windows: the Known Folders under both conventions. Xdg means Native here.
+///
+/// Logs land at `<durable>/logs`, not under `%LOCALAPPDATA%`: that is the
+/// same root as cache, which the OS purges (trap 1 by another route). State
+/// goes to `%LOCALAPPDATA%`: it is machine-local and need not roam.
+#[cfg(windows)]
+#[allow(
+    clippy::disallowed_methods,
+    reason = "this is the one place that resolves platform base directories"
+)]
+fn os_defaults(_convention: Convention, _var: impl Fn(&str) -> Option<OsString>) -> OsDefaults {
+    OsDefaults {
+        durable: dirs::data_dir(),
+        config: dirs::config_dir(),
+        cache: dirs::cache_dir(),
+        state: dirs::data_local_dir(),
+        logs: dirs::data_dir().map(|data| data.join("logs")),
+        runtime: None,
+    }
+}
+
+/// Linux and other Unix systems: the XDG table under both conventions.
+#[cfg(not(any(windows, target_os = "macos")))]
+fn os_defaults(_convention: Convention, var: impl Fn(&str) -> Option<OsString>) -> OsDefaults {
+    xdg_defaults(var)
 }
 
 /// `<temp>/tiered-dirs-test-<pid>-<start nanos>` when this process is a test
@@ -687,29 +949,6 @@ pub fn test_root() -> Option<&'static Path> {
     .as_deref()
 }
 
-/// macOS keeps logs in its own place and `dirs` has no accessor for it
-/// (trap 1). Elsewhere the XDG state directory is the closest match, and where
-/// the platform has none — Windows — logs land at `<durable>/logs`.
-///
-/// The local data directory is deliberately NOT the fallback: on Windows that
-/// is `%LOCALAPPDATA%`, the same root as `cache_dir()`, so logs would sit in
-/// the tree the OS purges. That is trap 1 by another route. The TS twin's
-/// per-OS table resolves the same three cells.
-#[allow(
-    clippy::disallowed_methods,
-    reason = "this is the one place that resolves platform base directories"
-)]
-fn env_logs_dir() -> Option<PathBuf> {
-    #[cfg(target_os = "macos")]
-    {
-        dirs::home_dir().map(|home| home.join("Library").join("Logs"))
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        dirs::state_dir().or_else(|| dirs::data_dir().map(|data| data.join("logs")))
-    }
-}
-
 /// The entry point. Holds the vendor and the resolved base directories, and
 /// hands out tiers.
 ///
@@ -734,6 +973,21 @@ impl TieredDirs {
         Self::with_base_dirs(vendor, BaseDirs::from_env(vars)?)
     }
 
+    /// [`TieredDirs::from_env`] with the OS defaults taken from
+    /// `convention`'s table; see [`BaseDirs::from_env_in`].
+    ///
+    /// # Errors
+    ///
+    /// The errors of [`BaseDirs::from_env_in`], and [`Error::InvalidKey`] when
+    /// `vendor` is not a valid segment.
+    pub fn from_env_in(
+        vendor: &str,
+        vars: &EnvVars,
+        convention: Convention,
+    ) -> Result<Self, Error> {
+        Self::with_base_dirs(vendor, BaseDirs::from_env_in(vars, convention)?)
+    }
+
     /// [`TieredDirs::from_env`] with the variables read through `var`; see
     /// [`BaseDirs::from_env_with`] for what it skips.
     ///
@@ -747,6 +1001,22 @@ impl TieredDirs {
         var: impl Fn(&str) -> Option<OsString>,
     ) -> Result<Self, Error> {
         Self::with_base_dirs(vendor, BaseDirs::from_env_with(vars, var)?)
+    }
+
+    /// [`TieredDirs::from_env_in`] with the variables read through `var`; see
+    /// [`BaseDirs::from_env_in_with`].
+    ///
+    /// # Errors
+    ///
+    /// The errors of [`BaseDirs::from_env_in_with`], and [`Error::InvalidKey`]
+    /// when `vendor` is not a valid segment.
+    pub fn from_env_in_with(
+        vendor: &str,
+        vars: &EnvVars,
+        convention: Convention,
+        var: impl Fn(&str) -> Option<OsString>,
+    ) -> Result<Self, Error> {
+        Self::with_base_dirs(vendor, BaseDirs::from_env_in_with(vars, convention, var)?)
     }
 
     /// Build from injected base directories. The testable constructor.
@@ -805,8 +1075,10 @@ impl TieredDirs {
     ///
     /// For a general tool the vendor ships into other people's repositories.
     /// It is not part of the vendor's suite, so it must not write under the
-    /// vendor's namespace; it owns `~/.config/<tool>` the way any general CLI
-    /// does.
+    /// vendor's namespace. Its config directory is `<config>/<tool>`:
+    /// `~/.config/<tool>` on Linux and under [`Convention::Xdg`] on macOS,
+    /// `~/Library/Application Support/<tool>` under [`Convention::Native`] on
+    /// macOS.
     ///
     /// `tool` is validated as a single path segment. Use
     /// [`TieredDirs::suite`] for anything that ships as part of the suite —
@@ -935,6 +1207,11 @@ impl Tier<'_> {
         self.home(Home::Cache)
     }
 
+    /// State that should outlive a restart but is not user data.
+    pub fn state(&self) -> Dir {
+        self.home(Home::State)
+    }
+
     /// Log files.
     pub fn logs(&self) -> Dir {
         self.home(Home::Logs)
@@ -1029,15 +1306,19 @@ mod tests {
                 durable: "EXAMPLE_DURABLE_DIR",
                 config: "EXAMPLE_CONFIG_DIR",
                 cache: "EXAMPLE_CACHE_DIR",
+                state: "EXAMPLE_STATE_DIR",
                 logs: "EXAMPLE_LOGS_DIR",
                 runtime: "EXAMPLE_RUNTIME_DIR",
                 scratch: "EXAMPLE_SCRATCH_DIR",
                 require_override: "EXAMPLE_REQUIRE_OVERRIDE",
+                convention: "EXAMPLE_CONVENTION",
             }
         );
         assert_eq!(ENV.dir(None), "EXAMPLE_SCRATCH_DIR");
         assert_eq!(ENV.dir(Some(Home::Logs)), "EXAMPLE_LOGS_DIR");
+        assert_eq!(ENV.dir(Some(Home::State)), "EXAMPLE_STATE_DIR");
         assert!(!ENV.overrides().contains(&ENV.require_override));
+        assert!(!ENV.overrides().contains(&ENV.convention));
     }
 
     #[test]
@@ -1078,6 +1359,10 @@ mod tests {
             Path::new("/stub/cache/com.example.notes")
         );
         assert_eq!(
+            suite.state().path(),
+            Path::new("/stub/state/com.example.notes")
+        );
+        assert_eq!(
             suite.logs().path(),
             Path::new("/stub/logs/com.example.notes")
         );
@@ -1095,6 +1380,7 @@ mod tests {
             (Home::Durable, tier.durable()),
             (Home::Config, tier.config()),
             (Home::Cache, tier.cache()),
+            (Home::State, tier.state()),
             (Home::Logs, tier.logs()),
             (Home::Runtime, tier.runtime()),
         ] {
@@ -1240,6 +1526,7 @@ mod tests {
             Some(PathBuf::from("/d")),
             Some(PathBuf::from("/c")),
             Some(PathBuf::from("/cache")),
+            Some(PathBuf::from("/s")),
             Some(PathBuf::from("/l")),
             None,
             Some(PathBuf::from("/tmp")),
@@ -1260,6 +1547,7 @@ mod tests {
             Some(PathBuf::from("/d")),
             Some(PathBuf::from("/c")),
             Some(PathBuf::from("/cache")),
+            Some(PathBuf::from("/s")),
             Some(PathBuf::from("/l")),
             Some(PathBuf::from("/run/user/501")),
             Some(PathBuf::from("/tmp")),
@@ -1272,31 +1560,13 @@ mod tests {
     fn a_missing_base_dir_is_an_error_not_a_panic() {
         // Trap 3. Headless CI and sandboxes do not always have a home.
         let some = |p: &str| Some(PathBuf::from(p));
-        let cases: [(&str, [Option<PathBuf>; 5]); 5] = [
-            (
-                "durable",
-                [None, some("/c"), some("/x"), some("/l"), some("/t")],
-            ),
-            (
-                "config",
-                [some("/d"), None, some("/x"), some("/l"), some("/t")],
-            ),
-            (
-                "cache",
-                [some("/d"), some("/c"), None, some("/l"), some("/t")],
-            ),
-            (
-                "logs",
-                [some("/d"), some("/c"), some("/x"), None, some("/t")],
-            ),
-            (
-                "scratch",
-                [some("/d"), some("/c"), some("/x"), some("/l"), None],
-            ),
-        ];
-        for (home, [durable, config, cache, logs, scratch]) in cases {
-            let err =
-                BaseDirs::from_parts(durable, config, cache, logs, None, scratch).unwrap_err();
+        let names = ["durable", "config", "cache", "state", "logs", "scratch"];
+        for (missing, home) in names.into_iter().enumerate() {
+            let mut parts = names.map(|name| some(&format!("/{name}")));
+            parts[missing] = None;
+            let [durable, config, cache, state, logs, scratch] = parts;
+            let err = BaseDirs::from_parts(durable, config, cache, state, logs, None, scratch)
+                .unwrap_err();
             assert_eq!(err, Error::MissingBaseDir { home });
         }
     }
@@ -1363,6 +1633,7 @@ mod tests {
         let test_root = test_root.map(abs);
         BaseDirs::from_env_guarded(
             &ENV,
+            Convention::Native,
             |name| {
                 vars.iter()
                     .find(|(key, _)| *key == name)
@@ -1426,6 +1697,7 @@ mod tests {
             ("EXAMPLE_DURABLE_DIR", "/d"),
             ("EXAMPLE_CONFIG_DIR", "/c"),
             ("EXAMPLE_CACHE_DIR", "/k"),
+            ("EXAMPLE_STATE_DIR", "/st"),
             ("EXAMPLE_LOGS_DIR", "/l"),
             ("EXAMPLE_SCRATCH_DIR", "/s"),
         ];
@@ -1446,11 +1718,12 @@ mod tests {
         })
     }
 
-    fn all_six(base: &BaseDirs) -> [&Path; 6] {
+    fn all_seven(base: &BaseDirs) -> [&Path; 7] {
         [
             base.get(Home::Durable),
             base.get(Home::Config),
             base.get(Home::Cache),
+            base.get(Home::State),
             base.get(Home::Logs),
             base.get(Home::Runtime),
             base.scratch(),
@@ -1458,10 +1731,11 @@ mod tests {
     }
 
     #[test]
-    fn the_root_var_alone_moves_all_six_base_dirs() {
+    fn the_root_var_alone_moves_all_seven_base_dirs() {
         let base = from_vars(&[("EXAMPLE_ROOT", "/scratch")]).unwrap();
         assert_eq!(base, BaseDirs::rooted(abs("/scratch")));
-        for path in all_six(&base) {
+        assert_eq!(base.get(Home::State), abs("/scratch/state"));
+        for path in all_seven(&base) {
             assert!(path.starts_with(abs("/scratch")), "{path:?}");
         }
     }
@@ -1501,17 +1775,15 @@ mod tests {
     }
 
     #[test]
-    #[allow(
-        clippy::disallowed_methods,
-        reason = "checks resolution against the OS defaults"
-    )]
     fn no_override_is_the_os_default() {
+        let os = os_defaults(Convention::Native, |_| None);
         let Ok(os) = BaseDirs::from_parts(
-            dirs::data_dir(),
-            dirs::config_dir(),
-            dirs::cache_dir(),
-            env_logs_dir(),
-            dirs::runtime_dir(),
+            os.durable,
+            os.config,
+            os.cache,
+            os.state,
+            os.logs,
+            os.runtime,
             Some(std::env::temp_dir()),
         ) else {
             return;
@@ -1519,6 +1791,140 @@ mod tests {
         assert_eq!(from_vars(&[]).unwrap(), os);
         // An empty value counts as unset.
         assert_eq!(from_vars(&[("EXAMPLE_ROOT", "")]).unwrap(), os);
+    }
+
+    /// The Native table off Linux comes from `dirs` and Apple's places.
+    #[cfg(target_os = "macos")]
+    #[test]
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "checks resolution against the OS defaults"
+    )]
+    fn the_native_table_on_macos_is_apples() {
+        let (Some(home), Ok(base)) = (dirs::home_dir(), from_vars(&[])) else {
+            return;
+        };
+        let support = home.join("Library").join("Application Support");
+        assert_eq!(base.get(Home::Durable), support);
+        assert_eq!(base.get(Home::Config), support);
+        assert_eq!(base.get(Home::Cache), home.join("Library").join("Caches"));
+        assert_eq!(base.get(Home::State), support);
+        assert_eq!(base.get(Home::Logs), home.join("Library").join("Logs"));
+        assert_eq!(base.get(Home::Runtime), support.join("run"));
+    }
+
+    /// `from_env_in_with` over a fixed map, under one convention.
+    fn from_vars_in(convention: Convention, vars: &[(&str, &str)]) -> Result<BaseDirs, Error> {
+        BaseDirs::from_env_in_with(&ENV, convention, |name| {
+            vars.iter()
+                .find(|(key, _)| *key == name)
+                .map(|(_, value)| OsString::from(host_value(value)))
+        })
+    }
+
+    /// Off Windows, Xdg is the XDG table under the home directory. On
+    /// Windows it is the Native table. On Linux the two are the same.
+    #[test]
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "checks resolution against the OS defaults"
+    )]
+    fn the_xdg_convention_is_the_xdg_table_off_windows() {
+        let (Some(home), Ok(native)) = (dirs::home_dir(), from_vars(&[])) else {
+            return;
+        };
+        let xdg = from_vars_in(Convention::Xdg, &[]).unwrap();
+        if cfg!(windows) {
+            assert_eq!(xdg, native);
+        } else {
+            assert_eq!(xdg, BaseDirs::xdg(&home, |_| None));
+            assert_eq!(xdg.get(Home::Config), home.join(".config"));
+        }
+        if cfg!(not(any(windows, target_os = "macos"))) {
+            assert_eq!(xdg, native);
+        }
+    }
+
+    #[test]
+    fn the_convention_var_beats_the_callers_convention() {
+        let Ok(native) = from_vars(&[]) else { return };
+        let Ok(xdg) = from_vars_in(Convention::Xdg, &[]) else {
+            return;
+        };
+        assert_eq!(from_vars(&[(ENV.convention, "xdg")]).unwrap(), xdg);
+        assert_eq!(
+            from_vars_in(Convention::Xdg, &[(ENV.convention, "native")]).unwrap(),
+            native
+        );
+        // Trimmed; an empty value counts as unset.
+        assert_eq!(from_vars(&[(ENV.convention, " xdg\n")]).unwrap(), xdg);
+        assert_eq!(from_vars(&[(ENV.convention, "")]).unwrap(), native);
+    }
+
+    #[test]
+    fn an_unknown_convention_is_refused() {
+        for bad in ["XDG", "Native", "apple", "unix", " "] {
+            assert_eq!(
+                from_vars(&[(ENV.convention, bad)]).unwrap_err(),
+                Error::InvalidConvention {
+                    var: "EXAMPLE_CONVENTION",
+                    value: bad.to_string(),
+                },
+            );
+        }
+        // Refused even when the root moves every directory.
+        assert!(from_vars(&[("EXAMPLE_ROOT", "/r"), (ENV.convention, "apple")]).is_err());
+    }
+
+    #[test]
+    fn under_xdg_an_override_still_wins() {
+        let base = from_vars_in(
+            Convention::Xdg,
+            &[("XDG_CONFIG_HOME", "/xc"), ("EXAMPLE_CONFIG_DIR", "/c")],
+        )
+        .unwrap();
+        assert_eq!(base.get(Home::Config), abs("/c"));
+        let base = from_vars_in(Convention::Xdg, &[("EXAMPLE_ROOT", "/r")]).unwrap();
+        assert_eq!(base, BaseDirs::rooted(abs("/r")));
+    }
+
+    #[test]
+    fn the_xdg_layout_reads_its_variables_and_ignores_relative_ones() {
+        let home = abs("/h");
+        let vars = |pairs: &'static [(&'static str, &'static str)]| {
+            move |name: &str| {
+                pairs
+                    .iter()
+                    .find(|(key, _)| *key == name)
+                    .map(|(_, value)| OsString::from(host_value(value)))
+            }
+        };
+        let base = BaseDirs::xdg(&home, vars(&[]));
+        assert_eq!(base.get(Home::Durable), abs("/h/.local/share"));
+        assert_eq!(base.get(Home::Config), abs("/h/.config"));
+        assert_eq!(base.get(Home::Cache), abs("/h/.cache"));
+        assert_eq!(base.get(Home::State), abs("/h/.local/state"));
+        assert_eq!(base.get(Home::Logs), abs("/h/.local/state"));
+        assert_eq!(base.get(Home::Runtime), abs("/h/.local/share/run"));
+        let base = BaseDirs::xdg(
+            &home,
+            vars(&[
+                ("XDG_DATA_HOME", "/d"),
+                ("XDG_CACHE_HOME", "rel"),
+                ("XDG_STATE_HOME", ""),
+            ]),
+        );
+        assert_eq!(base.get(Home::Durable), abs("/d"));
+        assert_eq!(base.get(Home::Runtime), abs("/d/run"));
+        assert_eq!(base.get(Home::Cache), abs("/h/.cache"));
+        assert_eq!(base.get(Home::State), abs("/h/.local/state"));
+    }
+
+    #[test]
+    fn convention_names_match_the_env_values() {
+        assert_eq!(Convention::default(), Convention::Native);
+        assert_eq!(Convention::Native.as_str(), "native");
+        assert_eq!(Convention::Xdg.as_str(), "xdg");
     }
 
     #[test]

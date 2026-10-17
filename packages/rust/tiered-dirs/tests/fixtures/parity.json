@@ -36,9 +36,21 @@
     "",
     "`env_cases` drive base-directory resolution from the override variables:",
     "`BaseDirs::from_env_with` in Rust, `systemBaseDirs(vars, { env })` in TS.",
-    "`env` is the only override variables set. `expected` pins absolute paths,",
-    "which must match on both twins; a base directory it omits must equal that",
-    "twin's OS default, the same resolution with no override variable set."
+    "`env` is the variables set: the override variables, `<prefix>_CONVENTION` and",
+    "`XDG_*`. `expected` pins absolute paths, which must match on both twins. A",
+    "base directory it omits must equal the same resolution with no override",
+    "variable set (`<prefix>_CONVENTION` and `XDG_*` kept). A row with",
+    "`windows_native: true` expects XDG paths; on a Windows host, where Xdg means",
+    "Native, its `expected` is dropped and the whole row must equal that",
+    "resolution.",
+    "",
+    "`convention_cases` drive the XDG layout under one home, with no platform in",
+    "the way: `BaseDirs::xdg(home, var)` in Rust, `xdgBaseDirs(home, env)` in TS.",
+    "`env` holds only `XDG_*` variables. `expected` pins every home; scratch is",
+    "left out. A relative `XDG_*` value is ignored, as the XDG spec says.",
+    "",
+    "`rejected_conventions` are values `<prefix>_CONVENTION` must refuse. The rule:",
+    "trim, then exactly `native` or `xdg`, in lower case."
   ],
   "vendor": "com.example",
   "env_prefix": "EXAMPLE",
@@ -68,6 +80,16 @@
       "tier": "vendor",
       "key": null,
       "home": "cache",
+      "scope_kind": null,
+      "scope_key": null,
+      "app": null,
+      "relative": "com.example"
+    },
+    {
+      "name": "vendor state",
+      "tier": "vendor",
+      "key": null,
+      "home": "state",
       "scope_kind": null,
       "scope_key": null,
       "app": null,
@@ -148,6 +170,16 @@
       "tier": "suite",
       "key": "notes",
       "home": "cache",
+      "scope_kind": null,
+      "scope_key": null,
+      "app": null,
+      "relative": "com.example.notes"
+    },
+    {
+      "name": "suite state",
+      "tier": "suite",
+      "key": "notes",
+      "home": "state",
       "scope_kind": null,
       "scope_key": null,
       "app": null,
@@ -254,7 +286,7 @@
       "relative": "devtool"
     },
     {
-      "name": "standalone config — the ~/.config/<tool> idiom, no vendor prefix",
+      "name": "standalone config — a general tool's own config root, no vendor prefix",
       "tier": "standalone",
       "key": "devtool",
       "home": "config",
@@ -282,6 +314,26 @@
       "scope_key": null,
       "app": "orchestrator",
       "relative": "devtool/orchestrator"
+    },
+    {
+      "name": "standalone state, scoped — trust markers per project",
+      "tier": "standalone",
+      "key": "devtool",
+      "home": "state",
+      "scope_kind": "projects",
+      "scope_key": "proj-9",
+      "app": null,
+      "relative": "devtool/projects/proj-9"
+    },
+    {
+      "name": "standalone state, scoped then app",
+      "tier": "standalone",
+      "key": "devtool",
+      "home": "state",
+      "scope_kind": "projects",
+      "scope_key": "proj-9",
+      "app": "history",
+      "relative": "devtool/projects/proj-9/history"
     },
     {
       "name": "standalone logs, scoped by project",
@@ -336,7 +388,7 @@
   ],
   "env_cases": [
     {
-      "name": "EXAMPLE_ROOT alone moves all six",
+      "name": "EXAMPLE_ROOT alone moves all seven",
       "env": {
         "EXAMPLE_ROOT": "/fr"
       },
@@ -344,6 +396,7 @@
         "durable": "/fr/durable",
         "config": "/fr/config",
         "cache": "/fr/cache",
+        "state": "/fr/state",
         "logs": "/fr/logs",
         "runtime": "/fr/durable/run",
         "scratch": "/fr/scratch"
@@ -359,6 +412,7 @@
         "durable": "/fr/durable",
         "config": "/fr/config",
         "cache": "/warm",
+        "state": "/fr/state",
         "logs": "/fr/logs",
         "runtime": "/fr/durable/run",
         "scratch": "/fr/scratch"
@@ -393,6 +447,7 @@
         "durable": "/d",
         "config": "/fr/config",
         "cache": "/fr/cache",
+        "state": "/fr/state",
         "logs": "/fr/logs",
         "runtime": "/d/run",
         "scratch": "/fr/scratch"
@@ -404,6 +459,7 @@
         "EXAMPLE_DURABLE_DIR": "/t/d",
         "EXAMPLE_CONFIG_DIR": "/t/c",
         "EXAMPLE_CACHE_DIR": "/t/k",
+        "EXAMPLE_STATE_DIR": "/t/st",
         "EXAMPLE_LOGS_DIR": "/t/l",
         "EXAMPLE_RUNTIME_DIR": "/t/r",
         "EXAMPLE_SCRATCH_DIR": "/t/s"
@@ -412,15 +468,253 @@
         "durable": "/t/d",
         "config": "/t/c",
         "cache": "/t/k",
+        "state": "/t/st",
         "logs": "/t/l",
         "runtime": "/t/r",
         "scratch": "/t/s"
       }
     },
     {
+      "name": "EXAMPLE_STATE_DIR moves only state",
+      "env": {
+        "EXAMPLE_STATE_DIR": "/st"
+      },
+      "expected": {
+        "state": "/st"
+      }
+    },
+    {
+      "name": "EXAMPLE_CONVENTION=xdg selects the XDG table",
+      "env": {
+        "EXAMPLE_CONVENTION": "xdg",
+        "XDG_DATA_HOME": "/x/d",
+        "XDG_CONFIG_HOME": "/x/c",
+        "XDG_CACHE_HOME": "/x/k",
+        "XDG_STATE_HOME": "/x/s",
+        "XDG_RUNTIME_DIR": "/run/u/1"
+      },
+      "expected": {
+        "durable": "/x/d",
+        "config": "/x/c",
+        "cache": "/x/k",
+        "state": "/x/s",
+        "logs": "/x/s",
+        "runtime": "/run/u/1"
+      },
+      "windows_native": true
+    },
+    {
+      "name": "EXAMPLE_CONVENTION is trimmed",
+      "env": {
+        "EXAMPLE_CONVENTION": " xdg ",
+        "XDG_DATA_HOME": "/x/d",
+        "XDG_CONFIG_HOME": "/x/c",
+        "XDG_CACHE_HOME": "/x/k",
+        "XDG_STATE_HOME": "/x/s",
+        "XDG_RUNTIME_DIR": "/run/u/1"
+      },
+      "expected": {
+        "durable": "/x/d",
+        "config": "/x/c",
+        "cache": "/x/k",
+        "state": "/x/s",
+        "logs": "/x/s",
+        "runtime": "/run/u/1"
+      },
+      "windows_native": true
+    },
+    {
+      "name": "EXAMPLE_ROOT beats xdg",
+      "env": {
+        "EXAMPLE_CONVENTION": "xdg",
+        "EXAMPLE_ROOT": "/fr",
+        "XDG_DATA_HOME": "/x/d",
+        "XDG_CONFIG_HOME": "/x/c",
+        "XDG_CACHE_HOME": "/x/k",
+        "XDG_STATE_HOME": "/x/s",
+        "XDG_RUNTIME_DIR": "/run/u/1"
+      },
+      "expected": {
+        "durable": "/fr/durable",
+        "config": "/fr/config",
+        "cache": "/fr/cache",
+        "state": "/fr/state",
+        "logs": "/fr/logs",
+        "runtime": "/fr/durable/run",
+        "scratch": "/fr/scratch"
+      }
+    },
+    {
+      "name": "EXAMPLE_CONFIG_DIR beats XDG_CONFIG_HOME",
+      "env": {
+        "EXAMPLE_CONVENTION": "xdg",
+        "XDG_CONFIG_HOME": "/x/c",
+        "EXAMPLE_CONFIG_DIR": "/ec"
+      },
+      "expected": {
+        "config": "/ec"
+      }
+    },
+    {
+      "name": "under xdg EXAMPLE_STATE_DIR moves state and leaves logs",
+      "env": {
+        "EXAMPLE_CONVENTION": "xdg",
+        "XDG_DATA_HOME": "/x/d",
+        "XDG_CONFIG_HOME": "/x/c",
+        "XDG_CACHE_HOME": "/x/k",
+        "XDG_STATE_HOME": "/x/s",
+        "XDG_RUNTIME_DIR": "/run/u/1",
+        "EXAMPLE_STATE_DIR": "/st"
+      },
+      "expected": {
+        "durable": "/x/d",
+        "config": "/x/c",
+        "cache": "/x/k",
+        "state": "/st",
+        "logs": "/x/s",
+        "runtime": "/run/u/1"
+      },
+      "windows_native": true
+    },
+    {
       "name": "nothing set is the OS default",
       "env": {},
       "expected": {}
+    }
+  ],
+  "convention_cases": [
+    {
+      "name": "nothing set is the XDG defaults under home",
+      "home": "/h",
+      "env": {},
+      "expected": {
+        "durable": "/h/.local/share",
+        "config": "/h/.config",
+        "cache": "/h/.cache",
+        "state": "/h/.local/state",
+        "logs": "/h/.local/state",
+        "runtime": "/h/.local/share/run"
+      }
+    },
+    {
+      "name": "XDG_CONFIG_HOME moves config",
+      "home": "/h",
+      "env": {
+        "XDG_CONFIG_HOME": "/x/c"
+      },
+      "expected": {
+        "durable": "/h/.local/share",
+        "config": "/x/c",
+        "cache": "/h/.cache",
+        "state": "/h/.local/state",
+        "logs": "/h/.local/state",
+        "runtime": "/h/.local/share/run"
+      }
+    },
+    {
+      "name": "XDG_STATE_HOME moves state and logs together",
+      "home": "/h",
+      "env": {
+        "XDG_STATE_HOME": "/x/s"
+      },
+      "expected": {
+        "durable": "/h/.local/share",
+        "config": "/h/.config",
+        "cache": "/h/.cache",
+        "state": "/x/s",
+        "logs": "/x/s",
+        "runtime": "/h/.local/share/run"
+      }
+    },
+    {
+      "name": "XDG_RUNTIME_DIR moves runtime",
+      "home": "/h",
+      "env": {
+        "XDG_RUNTIME_DIR": "/run/u/1"
+      },
+      "expected": {
+        "durable": "/h/.local/share",
+        "config": "/h/.config",
+        "cache": "/h/.cache",
+        "state": "/h/.local/state",
+        "logs": "/h/.local/state",
+        "runtime": "/run/u/1"
+      }
+    },
+    {
+      "name": "XDG_DATA_HOME moves durable and carries runtime",
+      "home": "/h",
+      "env": {
+        "XDG_DATA_HOME": "/x/d"
+      },
+      "expected": {
+        "durable": "/x/d",
+        "config": "/h/.config",
+        "cache": "/h/.cache",
+        "state": "/h/.local/state",
+        "logs": "/h/.local/state",
+        "runtime": "/x/d/run"
+      }
+    },
+    {
+      "name": "XDG_CACHE_HOME moves cache",
+      "home": "/h",
+      "env": {
+        "XDG_CACHE_HOME": "/x/k"
+      },
+      "expected": {
+        "durable": "/h/.local/share",
+        "config": "/h/.config",
+        "cache": "/x/k",
+        "state": "/h/.local/state",
+        "logs": "/h/.local/state",
+        "runtime": "/h/.local/share/run"
+      }
+    },
+    {
+      "name": "a relative XDG_CACHE_HOME is ignored",
+      "home": "/h",
+      "env": {
+        "XDG_CACHE_HOME": "rel"
+      },
+      "expected": {
+        "durable": "/h/.local/share",
+        "config": "/h/.config",
+        "cache": "/h/.cache",
+        "state": "/h/.local/state",
+        "logs": "/h/.local/state",
+        "runtime": "/h/.local/share/run"
+      }
+    },
+    {
+      "name": "a ~ value is relative, so it is ignored",
+      "home": "/h",
+      "env": {
+        "XDG_CONFIG_HOME": "~/c"
+      },
+      "expected": {
+        "durable": "/h/.local/share",
+        "config": "/h/.config",
+        "cache": "/h/.cache",
+        "state": "/h/.local/state",
+        "logs": "/h/.local/state",
+        "runtime": "/h/.local/share/run"
+      }
+    },
+    {
+      "name": "an empty XDG_STATE_HOME is unset",
+      "home": "/h",
+      "env": {
+        "XDG_STATE_HOME": ""
+      },
+      "expected": {
+        "durable": "/h/.local/share",
+        "config": "/h/.config",
+        "cache": "/h/.cache",
+        "state": "/h/.local/state",
+        "logs": "/h/.local/state",
+        "runtime": "/h/.local/share/run"
+      }
     }
   ],
   "rejected": [
@@ -467,6 +761,28 @@
     {
       "name": "tilde",
       "value": "~root"
+    }
+  ],
+  "rejected_conventions": [
+    {
+      "name": "another convention",
+      "value": "apple"
+    },
+    {
+      "name": "upper case",
+      "value": "XDG"
+    },
+    {
+      "name": "title case",
+      "value": "Native"
+    },
+    {
+      "name": "a unix single folder",
+      "value": "unix"
+    },
+    {
+      "name": "spaces only",
+      "value": " "
     }
   ]
 }

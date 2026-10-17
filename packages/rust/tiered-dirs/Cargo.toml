@@ -3,7 +3,7 @@ name = "tiered-dirs"
 version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
-description = "Per-OS directories for a vendor's programs, by tier (vendor, suite, standalone tool) and home (durable, config, cache, logs, runtime), with override variables and tests kept off the real home."
+description = "Per-OS directories for a vendor's programs, by tier (vendor, suite, standalone tool) and home (durable, config, cache, state, logs, runtime), with native or XDG paths, override variables and tests kept off the real home."
 license.workspace = true
 repository.workspace = true
 readme = "README.md"
@@ -19,7 +19,8 @@ include = [
 ]
 
 [dependencies]
-dirs = "6"
+# 7 changed only `preference_dir` on Windows, which this crate does not call.
+dirs = ">=6, <8"
 thiserror = { workspace = true }
 
 # tests/parity.rs only: it reads tests/fixtures/parity.json, the fixture the

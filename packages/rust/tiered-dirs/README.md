@@ -16,9 +16,12 @@ directory.
   the programs of one suite. `standalone(tool)` is the bare `<tool>`, for a
   general tool that is not part of the vendor's suite.
 - **home**: how long the state must last. `durable`, `config`, `cache`,
-  `logs` or `runtime`.
+  `state`, `logs` or `runtime`.
 
 `scratch()` sits outside both axes: the platform temp directory.
+
+A **convention** picks the per-OS table the homes come from: `Native` (the
+default) or `Xdg`. They differ on macOS only.
 
 It is for a vendor with more than one program, or one program with tests that
 must not touch the real home. It computes paths only: it creates, reads and
@@ -29,9 +32,6 @@ deletes nothing on disk.
 - One program with one config file. `dirs` or `directories` is enough.
 - You want the app framework's own directories, for example Tauri's. Use the
   framework's.
-- You need the XDG rules on macOS too (`~/.config` instead of
-  `~/Library/Application Support`). `etcetera` has an XDG strategy for every
-  OS.
 
 ## Install
 
@@ -83,7 +83,9 @@ suite. `suite("tool")` would write the vendor's name onto a stranger's
 machine.
 
 `standalone(tool)` is the tier for that tool. Its segment is the bare tool
-name, as in `~/.config/<tool>`, with no vendor in it.
+name, with no vendor in it. Its config directory is `~/.config/<tool>` on
+Linux, and on macOS under `Xdg`. Under `Native` on macOS it is
+`~/Library/Application Support/<tool>`.
 
 ## The product tier
 
@@ -96,23 +98,58 @@ only. Both are a plain prefix test.
 
 ## Homes
 
-| home | Linux | macOS | Windows |
-|---|---|---|---|
-| durable | `~/.local/share` | `~/Library/Application Support` | `%APPDATA%` |
-| config | `~/.config` | `~/Library/Application Support` | `%APPDATA%` |
-| cache | `~/.cache` | `~/Library/Caches` | `%LOCALAPPDATA%` |
-| logs | `~/.local/state` | `~/Library/Logs` | `%APPDATA%\logs` |
-| runtime | `$XDG_RUNTIME_DIR`, else `~/.local/share/run` | `~/Library/Application Support/run` | `%APPDATA%\run` |
-| scratch | the temp directory | the temp directory | the temp directory |
+| home | Linux (both) | macOS, Native | macOS, Xdg | Windows (both) |
+|---|---|---|---|---|
+| durable | `~/.local/share` | `~/Library/Application Support` | `~/.local/share` | `%APPDATA%` |
+| config | `~/.config` | `~/Library/Application Support` | `~/.config` | `%APPDATA%` |
+| cache | `~/.cache` | `~/Library/Caches` | `~/.cache` | `%LOCALAPPDATA%` |
+| state | `~/.local/state` | `~/Library/Application Support` | `~/.local/state` | `%LOCALAPPDATA%` |
+| logs | `~/.local/state` | `~/Library/Logs` | `~/.local/state` | `%APPDATA%\logs` |
+| runtime | `$XDG_RUNTIME_DIR`, else `~/.local/share/run` | `~/Library/Application Support/run` | `$XDG_RUNTIME_DIR`, else `~/.local/share/run` | `%APPDATA%\run` |
+| scratch | the temp directory | the temp directory | the temp directory | the temp directory |
 
-The Linux paths are the XDG defaults; the `XDG_*_HOME` variables move them.
-The table comes from the `dirs` crate, plus two rules of this crate:
+The XDG paths are defaults: `XDG_DATA_HOME`, `XDG_CONFIG_HOME`,
+`XDG_CACHE_HOME`, `XDG_STATE_HOME` and `XDG_RUNTIME_DIR` move them. This crate
+reads those variables itself, through the same environment as the override
+variables. A relative value is ignored, as the XDG spec says, and `~` is not
+expanded. On Windows, `Xdg` means `Native`. The macOS Native and Windows cells
+come from the `dirs` crate. Two rules of this crate apply to every cell:
 
 - Logs never go under cache, and runtime never goes under cache, because the
   OS may purge cache. Where the platform has no logs or runtime directory,
   they go under durable.
+- Under XDG, logs and state share one directory. Keep their file names apart.
 - A missing base directory is `Error::MissingBaseDir`, never a panic.
   Headless CI and sandboxes do not always have a home directory.
+
+## Choosing a convention
+
+- A CLI or developer tool uses `Xdg`. Its users look for `~/.config/<tool>`
+  and keep it in their dotfiles.
+- A GUI app uses `Native`. macOS users and tools expect
+  `~/Library/Application Support`.
+- A file that two programs read is resolved in one place, by the program that
+  owns it, under that program's convention.
+
+`BaseDirs::from_env` and `TieredDirs::from_env` mean `Native`.
+`BaseDirs::from_env_in(&ENV, Convention::Xdg)` and
+`TieredDirs::from_env_in(vendor, &ENV, Convention::Xdg)` pick `Xdg`.
+`<P>_CONVENTION=native` or `xdg` overrides the caller's choice; any other value
+is `Error::InvalidConvention`. The value is trimmed, then must match exactly,
+in lower case.
+
+```rust
+use tiered_dirs::{Convention, EnvVars, TieredDirs, env_vars};
+
+const ENV: EnvVars = env_vars!("DEVTOOL");
+
+fn main() -> Result<(), tiered_dirs::Error> {
+    let dirs = TieredDirs::from_env_in("com.example", &ENV, Convention::Xdg)?;
+    // ~/.config/devtool on Linux and macOS, %APPDATA%\devtool on Windows.
+    println!("{}", dirs.standalone("devtool")?.config().path().display());
+    Ok(())
+}
+```
 
 ## Overrides
 
@@ -123,9 +160,9 @@ each base directory, the first answer wins:
 
 | order | source | effect |
 |---|---|---|
-| 1 | `<P>_<HOME>_DIR` | moves one: `<P>_DURABLE_DIR`, `<P>_CONFIG_DIR`, `<P>_CACHE_DIR`, `<P>_LOGS_DIR`, `<P>_RUNTIME_DIR`, `<P>_SCRATCH_DIR` |
-| 2 | `<P>_ROOT` | the rooted layout: `<root>/durable`, `<root>/config`, `<root>/cache`, `<root>/logs`, `<root>/scratch`, and runtime at `<root>/durable/run` |
-| 3 | the OS default | the table above |
+| 1 | `<P>_<HOME>_DIR` | moves one: `<P>_DURABLE_DIR`, `<P>_CONFIG_DIR`, `<P>_CACHE_DIR`, `<P>_STATE_DIR`, `<P>_LOGS_DIR`, `<P>_RUNTIME_DIR`, `<P>_SCRATCH_DIR` |
+| 2 | `<P>_ROOT` | the rooted layout: `<root>/durable`, `<root>/config`, `<root>/cache`, `<root>/state`, `<root>/logs`, `<root>/scratch`, and runtime at `<root>/durable/run` |
+| 3 | the OS default | the table above, for `<P>_CONVENTION` when set, else the caller's convention |
 
 Runtime follows durable: when `<P>_RUNTIME_DIR` is unset but durable is moved
 by step 1 or 2, runtime is `<durable>/run`. An empty variable counts as unset.
@@ -133,8 +170,10 @@ A relative path is `Error::RelativeOverride`. On Windows an absolute path has a
 drive or a UNC prefix (`C:\state`, `\\server\share`); `\state` alone is
 relative to the current drive and is refused.
 
-`BaseDirs::from_env_with` reads the variables through a caller's own function,
-so a test can try every case without changing the process environment.
+`BaseDirs::from_env_with` (and `from_env_in_with`) reads the variables through
+a caller's own function, `XDG_*` included, so a test can try every case
+without changing the process environment. `BaseDirs::xdg(home, var)` builds
+the XDG table under any home, on any OS.
 `EnvVars::is_overridden` reports whether any override variable is set.
 
 ## Tests never resolve a real home
@@ -183,7 +222,8 @@ Minimum supported Rust version: 1.85.
 
 | | `tiered-dirs` | `dirs` | `directories` | `etcetera` |
 |---|---|---|---|---|
-| Per-OS base directories | yes, through `dirs` | yes | yes | yes |
+| Per-OS base directories | yes, through `dirs` and its own XDG reading | yes | yes | yes |
+| XDG paths on macOS when asked | yes (`Convention::Xdg`) | no | no | yes (`Xdg` strategy) |
 | Per-program directories | yes | no | yes (`ProjectDirs`) | yes (app strategy) |
 | Directories shared by several programs of one vendor | yes (vendor and suite tiers) | no | no | no |
 | Logs directory on macOS | `~/Library/Logs` | no | no | no |
@@ -199,7 +239,8 @@ A TypeScript twin is developed alongside it and will be published later. Both
 are checked against `tests/fixtures/parity.json`. The two must give the same
 path for the same tier, home, scope and app, so a Rust program and a
 TypeScript program can share state. The fixture holds the cases: tier, home,
-scope and app with the expected path, scratch cases and override cases. Both
+scope and app with the expected path, scratch cases, override cases, the XDG
+layout under a stub home, and refused convention values. Both
 twins run every case with stubbed base directories (`BaseDirs::rooted("/stub")`
 here).
 
@@ -212,6 +253,9 @@ here).
 | Tiers are distinct addresses | `tiers_are_distinct_addresses` |
 | Unsafe segments are refused in every position | `every_rejected_segment_is_rejected_in_every_position`, `keys_reject_separators_dotdot_and_empty` |
 | Override order, and runtime follows durable | `every_env_case_resolves_to_its_fixture_paths`, `a_home_var_beats_the_root_var_for_its_own_home_only`, `runtime_follows_an_overridden_durable` |
+| The XDG table, and a relative `XDG_*` value is ignored | `every_convention_case_resolves_to_its_fixture_paths`, `the_xdg_layout_reads_its_variables_and_ignores_relative_ones` |
+| `<P>_CONVENTION` beats the caller; Xdg is Native on Windows; Linux is the same under both | `the_convention_var_beats_the_callers_convention`, `the_xdg_convention_is_the_xdg_table_off_windows` |
+| An unknown convention is refused | `every_rejected_convention_is_refused`, `an_unknown_convention_is_refused` |
 | A relative override is refused; on Windows `\state` is relative and a UNC path is absolute | `a_relative_override_is_refused`, `a_path_with_no_drive_is_relative_on_windows`, `a_unc_path_is_absolute_on_windows` |
 | Runtime and logs never sit under cache | `runtime_is_not_cache`, `from_env_resolves_or_errors_without_panicking` |
 | A missing base directory is an error | `a_missing_base_dir_is_an_error_not_a_panic` |
@@ -223,11 +267,11 @@ Coverage is not measured.
 ## Stability
 
 0.1 is the first release. The crate stays on 0.x for now. Every public item is
-marked "stable in 0.x" in its docs: `BaseDirs`, `Dir`, `EnvVars`,
+marked "stable in 0.x" in its docs: `BaseDirs`, `Convention`, `Dir`, `EnvVars`,
 `env_vars!`, `Error`, `Home`, `Tier`, `TierKind`, `TieredDirs`,
 `assert_vendor_bundle_id`, `is_valid_segment`, `is_vendor_bundle_id` and
-`test_root`. `Error` is `#[non_exhaustive]`, so a later release can add a
-variant without a breaking change.
+`test_root`. `Error` and `Convention` are `#[non_exhaustive]`, so a later
+release can add a variant without a breaking change.
 
 ## License
 
