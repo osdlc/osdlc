@@ -289,13 +289,23 @@ pub(crate) fn fit_assignment(
 }
 
 /// Whether an assignment's first line (after the `:`) opens a block: it is
-/// empty, or its last token is a block scalar header (`[|>][-+1-9]*`).
+/// empty, or it is a block scalar header, that is zero or more tags (`!…`)
+/// and anchors (`&…`) and then one `[|>][-+1-9]*` token, before any comment.
+/// A scalar that only ends in ` |` or ` >` (`'a |`, or a folded plain line)
+/// is not a header.
 fn opens_a_block(head: &str) -> bool {
-    let Some(last) = head.split_whitespace().last() else {
+    let bytes = head.as_bytes();
+    let code_end = (1..bytes.len())
+        .find(|&i| bytes[i] == b'#' && matches!(bytes[i - 1], b' ' | b'\t'))
+        .unwrap_or(bytes.len());
+    let tokens: Vec<&str> = head[..code_end].split_whitespace().collect();
+    let Some((last, props)) = tokens.split_last() else {
         return true;
     };
     let mut chars = last.chars();
-    matches!(chars.next(), Some('|' | '>')) && chars.all(|c| matches!(c, '-' | '+' | '1'..='9'))
+    props.iter().all(|t| t.starts_with(['!', '&']))
+        && matches!(chars.next(), Some('|' | '>'))
+        && chars.all(|c| matches!(c, '-' | '+' | '1'..='9'))
 }
 
 /// The leading whitespace of the line `pos` sits on.
@@ -544,6 +554,53 @@ status: draft
         .unwrap();
         assert_eq!(out, "title: plain\n  more\nn: 1");
         assert!(parse::parse_mapping(&out).is_ok());
+    }
+
+    #[test]
+    fn a_scalar_ending_in_a_bar_is_not_a_block_header() {
+        let src = "title: done # c\nn: 1";
+        assert_eq!(
+            splice_key(src, "title", Replacement::Raw("'a |\n  b'".into())).unwrap(),
+            "title: 'a |\n  b' # c\nn: 1"
+        );
+    }
+
+    #[test]
+    fn a_folded_plain_line_ending_in_a_greater_than_sign_is_not_a_block_header() {
+        // `assignment` never folds (line width 0), but a caller can pass the
+        // emitter's folded output as Raw text. Fold right after ` >`.
+        let head = "word ".repeat(15);
+        let long = format!("{head}> {}", "tail ".repeat(12).trim_end());
+        let mut m = crate::value::Mapping::new();
+        m.insert("t", s(&long));
+        let rendered =
+            render::render_value(&Value::Map(m), render::EmitOptions::default()).unwrap();
+        let raw = rendered.strip_prefix("t: ").unwrap().trim_end_matches('\n');
+        let first = raw.split('\n').next().unwrap();
+        assert!(
+            first.ends_with(" >"),
+            "the fold lands after the sign: {raw:?}"
+        );
+
+        let out = splice_key("t: x # c\nn: 1", "t", Replacement::Raw(raw.to_string())).unwrap();
+        assert!(out.ends_with(" # c\nn: 1"), "{out:?}");
+        assert_eq!(
+            parse::parse_mapping(&out).unwrap().get("t"),
+            Some(&s(&long))
+        );
+    }
+
+    #[test]
+    fn a_raw_header_with_its_own_comment_is_a_block() {
+        assert!(opens_a_block(" | # x"));
+        assert!(opens_a_block(" !!str &a >-"));
+        assert!(opens_a_block(""));
+        assert!(!opens_a_block(" 'a |"));
+        assert!(!opens_a_block(" a >"));
+        assert_eq!(
+            splice_key("t: x # c\nn: 1", "t", Replacement::Raw("| # x\n  a".into())).unwrap(),
+            "t: | # x # c\n  a\nn: 1"
+        );
     }
 
     #[test]

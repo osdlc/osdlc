@@ -338,6 +338,8 @@ pub fn edit_frontmatter_with(
     edits: &[FieldEdit],
     opts: &EditOptions,
 ) -> Result<EditOutcome, EditError> {
+    // A block that already ends in a line break reads the same framed or not,
+    // and an empty one has no last value to protect, so neither gets one.
     if block.is_empty() || block.ends_with('\n') {
         let mut outcome = edit_yaml_with(block.as_bytes(), edits, opts)?;
         if outcome.changed && block.is_empty() && outcome.bytes.last() == Some(&b'\n') {

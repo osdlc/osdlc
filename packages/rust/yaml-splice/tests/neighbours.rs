@@ -191,9 +191,10 @@ fn cause(src: &str, edit: &FieldEdit, original: &Mapping, want: &Mapping) -> Opt
         let addressed = matches!(edit, FieldEdit::Set { key, .. } if key == k);
         let c = if addressed && gains_line_breaks(g, w) {
             Cause::NewKeepValueGainsBlankLines
-        } else if addressed && gains_comment(g, w) {
+        } else if addressed && gains_comment(g, w, src) {
             Cause::CommentLandsInNewBlock
-        } else if !addressed && matches!(edit, FieldEdit::Remove { .. }) && gains_comment(g, w) {
+        } else if !addressed && matches!(edit, FieldEdit::Remove { .. }) && gains_comment(g, w, src)
+        {
             Cause::KeptCommentJoinsPreviousBlock
         } else if !addressed && w == &Value::from("") && g == &Value::from("\n") {
             Cause::TrailingEmptyBlockReadsAsLineBreak
@@ -229,15 +230,36 @@ fn gains_line_breaks(got: &Value, want: &Value) -> bool {
     }
 }
 
-/// `got` is `want` with a `# ...` comment line taken into a string.
-fn gains_comment(got: &Value, want: &Value) -> bool {
+/// `got` is `want` with one line added to a string (line breaks at the end
+/// aside), and that line is a comment line of `src` indented less than the
+/// line before it (an old block value's content).
+fn gains_comment(got: &Value, want: &Value, src: &str) -> bool {
     match (got, want) {
-        (Value::Str(g), Value::Str(w)) => g != w && g.contains("# ") && !w.contains("# "),
+        (Value::Str(g), Value::Str(w)) => {
+            let lines: Vec<&str> = src.lines().map(|l| l.trim_end_matches('\r')).collect();
+            let indent = |l: &str| l.len() - l.trim_start().len();
+            let comments: Vec<&str> = lines
+                .windows(2)
+                .filter(|p| p[1].trim_start().starts_with('#') && indent(p[1]) < indent(p[0]))
+                .map(|p| p[1].trim())
+                .collect();
+            let g_lines: Vec<&str> = g.split('\n').collect();
+            (0..g_lines.len()).any(|i| {
+                comments.contains(&g_lines[i].trim()) && {
+                    // The line breaks around the comment can change with it
+                    // (a blank run before it becomes content, and a folded
+                    // block folds them), so only those are let differ.
+                    let mut rest = g_lines.clone();
+                    rest.remove(i);
+                    rest.join("\n").trim_end_matches('\n') == w.trim_end_matches('\n')
+                }
+            })
+        }
         (Value::Map(g), Value::Map(w)) => {
             g.len() == w.len()
-                && g.iter()
-                    .zip(w.iter())
-                    .all(|((gk, gv), (wk, wv))| gk == wk && (gv == wv || gains_comment(gv, wv)))
+                && g.iter().zip(w.iter()).all(|((gk, gv), (wk, wv))| {
+                    gk == wk && (gv == wv || gains_comment(gv, wv, src))
+                })
         }
         _ => false,
     }
