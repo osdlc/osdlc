@@ -53,6 +53,7 @@ Developed here, in this repository:
 - `packages/rust/yaml-splice` (`yaml-splice` on crates.io)
 - `packages/rust/yaml-splice-wasm`, the WebAssembly build of `yaml-splice`
   for its npm package (not published to crates.io)
+- `packages/ts/etag-write` (`@osdlc/etag-write` on npm, the crate's TypeScript twin)
 
 The development repository will take each TypeScript library from npm, like
 any other consumer. Today it still keeps its own copies. Open issues and pull
