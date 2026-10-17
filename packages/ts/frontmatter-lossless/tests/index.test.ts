@@ -1,17 +1,20 @@
 /**
  * @osdlc/frontmatter-lossless conformance — the TS half of the shared framing
- * corpus. The `frontmatter-lossless` Rust crate runs the same fixtures, so a
- * framing change that lands in only one implementation fails the other's
- * suite. Each fixture checks split parity, lenient parity, offset validity and
- * a byte-identical round trip.
+ * corpus. The `frontmatter-lossless` Rust crate runs the same fixtures. Each
+ * fixture checks split parity, lenient parity, offset validity, a
+ * byte-identical round trip and its `edit` case, if it has one.
  *
  * Plus TS mirrors of the Rust crate's hand-written tests (mid-text BOM, CRLF
- * value swap, the empty block), so the two suites cover the same ground even
- * where the corpus JSON has no field for it.
+ * value swap, new text written into an empty block or after a closing fence at
+ * the end of the file), so the two suites cover the same ground even where the
+ * corpus JSON has no field for it.
  *
  * `fixtures/conformance.json` is a copy of the Rust crate's corpus, pinned by
- * `CORPUS_SHA256` below, until the crate moves into this repository and both
- * read one file. See docs/planning/decisions/D-07-conformance-corpus.md.
+ * `CORPUS_SHA256` below. The pin only stops the copy changing by accident: a
+ * change to the crate's corpus does not reach this suite, and a change made
+ * only here fails nothing in the crate. The copy is re-synced by hand until
+ * the crate moves into this repository (sksizer/dev task T-ACAH) and both
+ * suites read one file. See docs/planning/decisions/D-07-conformance-corpus.md.
  */
 import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
@@ -21,7 +24,7 @@ import { split, compose, splitLenient, type CloseEol, type OpenEol } from '../in
 import corpus from './fixtures/conformance.json'
 
 /** The Rust crate's corpus this copy was taken from. Change it only with the crate's. */
-const CORPUS_SHA256 = '02b7468385e8d743e1a3d4388c3a9f04eb97732d375e901ae99f653764d849c3'
+const CORPUS_SHA256 = '75f48441a439f578b1f5207e273454c4ca9e298c91179c3a23d9c1c3958e606d'
 
 test('the corpus copy matches the revision it was copied from', () => {
   const bytes = readFileSync(new URL('./fixtures/conformance.json', import.meta.url))
@@ -40,12 +43,12 @@ interface Fixture {
     closeSep: boolean
   }
   lenient: { yaml: string; body: string } | null
+  edit?: { yaml: string; body: string; out: string }
 }
 
 const fixtures = corpus as Fixture[]
 
-// Built at runtime so no literal U+FEFF hides in this file's source.
-const BOM = String.fromCharCode(0xfeff)
+const BOM = '\uFEFF'
 
 describe('shared conformance corpus', () => {
   test('the corpus is non-empty', () => {
@@ -82,6 +85,15 @@ describe('shared conformance corpus', () => {
       }
     })
 
+    const edit = fx.edit
+    if (edit) {
+      test(`[${fx.name}] new text composed into its shape splits back`, () => {
+        const out = compose(edit.yaml, edit.body, split(fx.source).shape)
+        expect(out).toBe(edit.out)
+        expect(split(out)).toMatchObject({ yaml: edit.yaml, body: edit.body })
+      })
+    }
+
     // `yamlRange` and `bodyStart` index the original source exactly (as
     // string indices — the port's native indexing, per the module doc).
     test(`[${fx.name}] offsets index the original source`, () => {
@@ -108,13 +120,6 @@ describe('framing details (mirrors of the Rust hand-written tests)', () => {
     const out = compose('title: new\r', s.body, s.shape)
     expect(out).toBe('---\r\ntitle: new\r\n---\r\nbody\r\n')
     expect(out.includes('---\n')).toBe(false)
-  })
-
-  test('compose reproduces an empty block', () => {
-    const s = split('---\n---\nbody\n')
-    expect(s.yaml).toBe('')
-    expect(s.body).toBe('body\n')
-    expect(compose(s.yaml, s.body, s.shape)).toBe('---\n---\nbody\n')
   })
 
   test('lenient still needs a bare fence to close', () => {
@@ -162,6 +167,26 @@ describe('writing YAML into an empty block', () => {
       const out = compose(yaml, s.body, s.shape)
       expect(out).toBe(want)
       expect(split(out).yaml).toBe(yaml)
+    })
+  }
+})
+
+describe('adding a body after a closing fence at the end of the file', () => {
+  for (const [name, src, yaml, body, want] of [
+    ['LF', '---\ntitle: x\n---', 'title: x', 'new\n', '---\ntitle: x\n---\nnew\n'],
+    [
+      'CRLF',
+      '---\r\ntitle: x\r\n---',
+      'title: x\r',
+      'new\r\n',
+      '---\r\ntitle: x\r\n---\r\nnew\r\n',
+    ],
+    ['adjacent fences', '---\n---', '', 'new\n', '---\n---\nnew\n'],
+  ] as const) {
+    test(`${name}: the body gets its own line and splits back`, () => {
+      const out = compose(yaml, body, split(src).shape)
+      expect(out).toBe(want)
+      expect(split(out)).toMatchObject({ yaml, body })
     })
   }
 })

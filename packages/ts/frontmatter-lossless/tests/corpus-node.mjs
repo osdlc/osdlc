@@ -1,7 +1,8 @@
 // Runs the conformance corpus against the BUILT package under Node's own test
 // runner. `bun test` covers the TypeScript source; this covers dist/, the code
 // npm users get, on each Node line CI runs. It imports the package by name, so
-// Node resolves it through `exports` to dist/: run `pnpm run build` first.
+// Node resolves it through `exports` to dist/, which the `test:node` script
+// builds first.
 // The name has no `.test.` part, so `bun test` does not pick it up.
 
 import { strict as assert } from 'node:assert'
@@ -19,7 +20,7 @@ test('the corpus is non-empty', () => {
 })
 
 for (const fx of fixtures) {
-  test(`[${fx.name}] split, round trip, offsets and lenient`, () => {
+  test(`[${fx.name}] split, round trip, offsets, lenient and edit`, () => {
     const s = split(fx.source)
     assert.equal(s.yaml, fx.split.yaml)
     assert.equal(s.body, fx.split.body)
@@ -38,5 +39,11 @@ for (const fx of fixtures) {
     }
     assert.equal(fx.source.slice(s.bodyStart), s.body)
     assert.deepEqual(splitLenient(fx.source), fx.lenient)
+    if (fx.edit) {
+      const out = compose(fx.edit.yaml, fx.edit.body, s.shape)
+      assert.equal(out, fx.edit.out)
+      const back = split(out)
+      assert.deepEqual([back.yaml, back.body], [fx.edit.yaml, fx.edit.body])
+    }
   })
 }

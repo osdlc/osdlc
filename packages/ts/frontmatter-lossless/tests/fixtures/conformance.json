@@ -103,6 +103,11 @@
     "lenient": {
       "yaml": "",
       "body": "body\n"
+    },
+    "edit": {
+      "yaml": "title: x",
+      "body": "body\n",
+      "out": "---\ntitle: x\n---\nbody\n"
     }
   },
   {
@@ -119,6 +124,11 @@
     "lenient": {
       "yaml": "",
       "body": "body\r\n"
+    },
+    "edit": {
+      "yaml": "title: x\r",
+      "body": "body\r\n",
+      "out": "---\r\ntitle: x\r\n---\r\nbody\r\n"
     }
   },
   {
@@ -151,6 +161,11 @@
     "lenient": {
       "yaml": "a: 1",
       "body": ""
+    },
+    "edit": {
+      "yaml": "a: 1",
+      "body": "new\n",
+      "out": "---\na: 1\n---\nnew\n"
     }
   },
   {
@@ -183,6 +198,11 @@
     "lenient": {
       "yaml": "a: 1",
       "body": ""
+    },
+    "edit": {
+      "yaml": "a: 1\r",
+      "body": "new\r\n",
+      "out": "---\r\na: 1\r\n---\r\nnew\r\n"
     }
   },
   {

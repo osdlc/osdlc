@@ -178,19 +178,16 @@ export function split(src: string): Split {
     if (found === -1) return noFrontmatter()
     const dashesStart = found + 1
     const afterDashes = dashesStart + 3
-    let yamlLen: number
+    const yamlLen = found
     let bodyRel: number
     let closeEol: CloseEol
     if (afterDashes >= afterMarker.length) {
-      yamlLen = dashesStart - 1
       bodyRel = afterMarker.length
       closeEol = ''
     } else if (afterMarker[afterDashes] === '\n') {
-      yamlLen = dashesStart - 1
       bodyRel = afterDashes + 1
       closeEol = '\n'
     } else if (afterMarker[afterDashes] === '\r' && afterMarker[afterDashes + 1] === '\n') {
-      yamlLen = dashesStart - 1
       bodyRel = afterDashes + 2
       closeEol = '\r\n'
     } else {
@@ -234,7 +231,9 @@ export function compose(frontmatter: string | null, body: string, shape: NoteSha
   // Only empty YAML can omit it: text written into a shape taken from an
   // empty `---\n---` block still needs its own line before the closing fence.
   if (shape.closeSep || frontmatter !== '') out += '\n'
-  out += '---' + shape.closeEol + body
+  // A shape from a file that ended at its closing fence has no line ending
+  // there; a new body still needs one, so borrow the opening fence's.
+  out += '---' + (shape.closeEol === '' && body !== '' ? shape.openEol : shape.closeEol) + body
   return out
 }
 
