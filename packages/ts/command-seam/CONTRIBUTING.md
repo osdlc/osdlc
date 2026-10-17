@@ -55,4 +55,7 @@ is installed.
   code a user would write. The change is judged by how that code reads. See
   [D-15](https://github.com/osdlc/osdlc/blob/main/packages/ts/command-seam/docs/planning/decisions/D-15-api-changes-start-from-consumer-code.md).
 - Keep comments short. Say why, not what.
-- Update `CHANGELOG.md` for changes users can see.
+- For a change users can see, add a changeset: run `pnpm changeset` at the
+  repository root. Start a breaking change's summary with `**Breaking:**`.
+  Do not edit `CHANGELOG.md` or `version` by hand; the release writes them.
+  See [packages/README.md](https://github.com/osdlc/osdlc/blob/main/packages/README.md).

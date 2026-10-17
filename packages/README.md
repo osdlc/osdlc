@@ -9,15 +9,13 @@ what holds for all of them.
 - Each library lives in `packages/<language>/<name>/`, for example
   `packages/ts/command-seam/`, and is published to npm from this repository.
   Only TypeScript libraries exist today, under `packages/ts/`.
-- Each release is tagged `<name>/vX.Y.Z`, for example `tsconfig/v0.3.3`.
-  The name keeps one library's tags apart from another's, so it must be
-  unique across `packages/*/`. The sdlc CLI's own tags are plain `vX.Y.Z`.
-- `.github/workflows/packages-publish.yml` publishes a library when its tag
-  is pushed. It uses npm trusted publishing, so no long-lived npm token is
-  stored. npm can only set up trusted publishing for a package that already
-  exists, so the first version of each library is published once by hand.
-  That first publish also leaves a `0.0.0-stage` placeholder version on npm.
-  It is harmless and stays.
+- Releases run from CI with [Changesets](https://changesets.dev).
+  `.github/workflows/packages-publish.yml` publishes through npm trusted
+  publishing, with provenance, so no npm token is stored. Only a new
+  library's placeholder version is published by hand (see below).
+- Each published version gets a git tag and a GitHub release named
+  `<package>@<version>`, for example `@osdlc/command-seam@0.4.0`. The sdlc
+  CLI's own tags are plain `vX.Y.Z`.
 - A library can move to its own repository later if it grows.
 
 ## Why one repository
@@ -40,14 +38,36 @@ Open issues and pull requests here.
 
 ### Releasing a library developed here
 
-1. In a pull request, bump `version` in the library's `package.json` and add a
-   dated section to its `CHANGELOG.md`. Merge it when `test` and `verify`
-   pass.
-2. Tag the merge commit `<name>/vX.Y.Z` and push the tag, for example
-   `git tag tsconfig/v0.3.3 <sha>` then `git push origin tsconfig/v0.3.3`.
-3. `packages-publish.yml` checks the library and publishes it with
-   provenance. If `publish` fails on the npm side, fix the trusted publisher
-   setting on npmjs.com and re-run the failed job. Do not re-tag.
+1. In the pull request that makes a change users can see, add a changeset:
+   run `pnpm changeset` at the repository root, pick the libraries and the
+   bump, and write the summary. It lands in `.changeset/` and becomes the
+   CHANGELOG entry. Start a breaking change's summary with `**Breaking:**`.
+   Do not edit `version` or `CHANGELOG.md` by hand.
+2. When the pull request merges, `packages-publish.yml` opens or updates one
+   "Version Packages" pull request. It bumps each library's version and
+   writes its CHANGELOG from the pending changesets.
+3. The Version Packages pull request is opened by GitHub Actions, so its
+   checks wait for approval. Select "Approve workflows to run" on it, then
+   merge it when `test` and `verify` pass.
+4. On that merge, `packages-publish.yml` runs the full `verify` matrix and
+   the package checks again, then publishes every bumped library. A version
+   already on npm is skipped, so re-running a failed run is safe. If
+   `publish` fails on the npm side, fix the trusted publisher setting on
+   npmjs.com and re-run the failed jobs.
+
+### Publishing a new library for the first time
+
+npm can only set up trusted publishing on a package that already exists, so
+CI cannot publish a new library's first version. Before its first release:
+
+1. The owner publishes a placeholder version by hand, for example
+   `0.0.0-stage`, approved with the owner's npm passkey. It stays on npm and
+   is harmless.
+2. On npmjs.com, under the package's Settings, Trusted publisher, the owner
+   adds repository `osdlc/osdlc` and workflow `packages-publish.yml`.
+
+Until then, `packages-publish.yml` stops before publishing and names the
+library that is not on npm yet.
 
 ## Working on a library
 
