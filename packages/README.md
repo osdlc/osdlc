@@ -18,6 +18,12 @@ of them.
 - Each published npm version gets a git tag and a GitHub release named
   `<package>@<version>`, for example `@osdlc/command-seam@0.4.0`. The sdlc
   CLI's own tags are plain `vX.Y.Z`.
+- Rust crates are published to crates.io from CI with
+  [release-plz](https://release-plz.dev), through
+  `.github/workflows/release-plz.yml`. Each release is tagged
+  `<crate>/vX.Y.Z`, for example `etag-write/v0.1.0`, and gets a GitHub
+  release. The crate name keeps one crate's tags apart from another's, so
+  it must be unique across `packages/rust/`.
 - A library can move to its own repository later if it grows.
 
 ## Licenses
@@ -46,7 +52,7 @@ Developed here, in this repository:
 The development repository takes the TypeScript libraries from npm, like any
 other consumer. Open issues and pull requests here.
 
-### Releasing a library developed here
+### Releasing a TypeScript library
 
 1. In the pull request that makes a change users can see, add a changeset:
    run `pnpm changeset` at the repository root, pick the libraries and the
@@ -79,6 +85,36 @@ CI cannot publish a new library's first version. Before its first release:
 
 Until then, `packages-publish.yml` stops before publishing and names the
 library that is not on npm yet.
+
+### Releasing a Rust crate
+
+Rust crates are released by `.github/workflows/release-plz.yml` with
+[release-plz](https://release-plz.dev). Its settings are in
+`packages/rust/release-plz.toml`.
+
+1. On each push to `main`, release-plz opens or updates a release pull
+   request. It bumps the version and changelog of each crate with unreleased
+   changes. Merge it when its checks pass.
+2. On each push to `main`, the workflow also checks crates.io. When a
+   crate's version is not published yet, the release job waits for approval
+   of the `crates-io` environment. Once approved, it publishes the crate,
+   tags it `<name>/vX.Y.Z` and creates a GitHub release.
+3. A new crate's first release is published with the shared
+   `CARGO_REGISTRY_TOKEN` in the `crates-io` environment. Then add a trusted
+   publisher for the crate on crates.io (repository `osdlc/osdlc`, workflow
+   `release-plz.yml`, environment `crates-io`). Later releases use it and
+   need no token.
+4. One run uses one credential, so a push must not hold both a crate's first
+   release and a new version of a crate already on crates.io. The workflow
+   refuses such a run and says how to split it.
+5. If the crate is published but the tag or the GitHub release fails, do not
+   re-run the job to publish again: crates.io already has the version, so
+   the next run skips the crate and never tags it. Create both by hand on
+   the commit that was released (the tag ruleset lets an admin do this).
+   For example, for etag-write 0.1.0: `git tag etag-write/v0.1.0 <sha>`,
+   `git push origin etag-write/v0.1.0`, then
+   `gh release create etag-write/v0.1.0 --title "etag-write v0.1.0"` with
+   the CHANGELOG section as the notes.
 
 ## Working on a library
 

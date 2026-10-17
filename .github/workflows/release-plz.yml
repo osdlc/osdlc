@@ -1,0 +1,173 @@
+# Releases the Rust crates under packages/rust/ with release-plz.
+# Reference: https://release-plz.dev/docs/github/quickstart
+#
+# On every push to main:
+#
+# - `release-pr` opens or updates the release pull request, which bumps the
+#   version and changelog of each crate with unreleased changes.
+# - `plan` checks the crates.io index. When every crate's version is already
+#   published it stops there, so most pushes ask for no approval.
+# - `release` runs only when `plan` found something to publish. It waits for
+#   approval of the `crates-io` environment, then publishes each unpublished
+#   crate, tags it `<crate>/vX.Y.Z` and creates a GitHub release.
+#   Settings are in packages/rust/release-plz.toml.
+#
+# crates.io auth. The first release of a crate uses the shared
+# CARGO_REGISTRY_TOKEN, a publish-new-only token stored in the `crates-io`
+# environment. crates.io allows trusted publishing (OIDC) only for a crate
+# that exists, so later releases use it: once the crate has a trusted
+# publisher on crates.io (repository osdlc/osdlc, workflow release-plz.yml,
+# environment crates-io), no token is passed and release-plz fetches an OIDC
+# token itself. One run uses one credential for every crate, so `plan`
+# refuses a run that mixes a first release with a new version of an
+# existing crate. See .github/scripts/crates-io-auth-plan.mjs.
+#
+# Tokens. The GitHub App `osdlc-release` opens the release pull request and
+# creates the tags. A pull request opened with GITHUB_TOKEN would not start
+# the required checks. Its secrets, RELEASE_PLZ_APP_ID and
+# RELEASE_PLZ_APP_PRIVATE_KEY, are environment secrets, so only the two jobs
+# that need them can read them: `release-pr` in the `release-plz`
+# environment (main only, no reviewer) and `release` in `crates-io`.
+#
+# Prerequisite, created by the owner: a tag ruleset on `*/v*` that lets only
+# the App (and admins) create those tags.
+#
+# A manual run (workflow_dispatch) is a dry run unless `dry_run` is
+# unchecked. A dry run still asks for the environment approval, and
+# release-plz does not fetch an OIDC token in a dry run.
+#
+# Every action is pinned to a commit SHA; the comment names its release.
+name: release-plz
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Dry run (publish nothing, create no tag or release)
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+env:
+  # The release-plz binary the action installs. Keep it at the version
+  # checked locally.
+  RELEASE_PLZ_VERSION: 0.3.172
+
+jobs:
+  release-pr:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    # Main only, no reviewer. Holds the App secrets.
+    environment: release-plz
+    # One release pull request update at a time. A newer push waits.
+    concurrency:
+      group: release-plz-pr-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: ./.github/actions/rust-toolchain
+
+      - name: Get a GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.RELEASE_PLZ_APP_ID }}
+          private-key: ${{ secrets.RELEASE_PLZ_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      - uses: release-plz/action@8921286633dfa0c4020f7f30bd1c14fe19cbb10e # v0.5.142
+        with:
+          command: release-pr
+          manifest_path: packages/rust/Cargo.toml
+          config: packages/rust/release-plz.toml
+          version: ${{ env.RELEASE_PLZ_VERSION }}
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      auth: ${{ steps.plan.outputs.auth }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/rust-toolchain
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+
+      # Prints auth=none, token or oidc, and a table of every crate in the
+      # job summary. Fails on a mixed run.
+      - name: Pick the crates.io credential
+        id: plan
+        run: node .github/scripts/crates-io-auth-plan.mjs packages/rust/Cargo.toml
+
+  release:
+    needs: plan
+    if: needs.plan.outputs.auth == 'token' || needs.plan.outputs.auth == 'oidc'
+    runs-on: ubuntu-latest
+    # Branch main only, required reviewer. Holds CARGO_REGISTRY_TOKEN and the
+    # App secrets.
+    environment: crates-io
+    # Releases run one at a time and are never cancelled: a cancelled run can
+    # stop between the publish and the tag.
+    concurrency:
+      group: release-plz-release
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      # For trusted publishing. Unused on a first release.
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: ./.github/actions/rust-toolchain
+
+      - name: Check the shared token is set
+        if: needs.plan.outputs.auth == 'token'
+        env:
+          TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::error::A first release needs CARGO_REGISTRY_TOKEN in the crates-io environment, and it is empty or missing."
+            exit 1
+          fi
+
+      - name: Get a GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.RELEASE_PLZ_APP_ID }}
+          private-key: ${{ secrets.RELEASE_PLZ_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: read
+
+      # `token` is the shared token only for a first release. Left empty,
+      # release-plz uses trusted publishing. The action adds --dry-run for any
+      # non-empty `dry_run`, so it is '' unless a manual run asks for one.
+      - uses: release-plz/action@8921286633dfa0c4020f7f30bd1c14fe19cbb10e # v0.5.142
+        with:
+          command: release
+          manifest_path: packages/rust/Cargo.toml
+          config: packages/rust/release-plz.toml
+          version: ${{ env.RELEASE_PLZ_VERSION }}
+          token: ${{ needs.plan.outputs.auth == 'token' && secrets.CARGO_REGISTRY_TOKEN || '' }}
+          dry_run: ${{ (github.event_name == 'workflow_dispatch' && inputs.dry_run) && 'true' || '' }}
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
