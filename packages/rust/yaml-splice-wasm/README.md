@@ -1,8 +1,8 @@
 # yaml-splice-wasm
 
 The wasm-bindgen wrapper that exposes [`yaml-splice`](../yaml-splice) to
-JavaScript and TypeScript: the WebAssembly half of the yaml-splice npm
-package. It has no logic of its own, only bindings.
+JavaScript and TypeScript: the WebAssembly half of the
+[`@osdlc/yaml-splice`](../../ts/yaml-splice) npm package. It has no logic of its own, only bindings.
 
 It is not published to crates.io (`publish = false`), and release-plz skips
 it.
@@ -11,8 +11,9 @@ it.
 
 `build.sh` builds the crate for `wasm32-unknown-unknown`, runs `wasm-bindgen
 --target nodejs` and `wasm-opt -Oz`, and writes the result to
-`packages/ts/yaml-splice/wasm/`, where the npm package will live once it
-moves to this repo (set `OUT_DIR` to write elsewhere). It needs:
+`packages/ts/yaml-splice/wasm/`, which is committed (set `OUT_DIR` to write
+elsewhere). Rebuild it whenever this crate or `yaml-splice` changes, and
+commit the result. It needs:
 
 - the toolchain pinned in `packages/rust/rust-toolchain.toml`, with the
   target added: `rustup target add wasm32-unknown-unknown`;
@@ -26,7 +27,9 @@ bash packages/rust/yaml-splice-wasm/build.sh
 ```
 
 The crate also builds for the host target, so it is part of the normal
-workspace build and tests. CI also builds it for `wasm32-unknown-unknown`.
+workspace build and tests. The `wasm` job in `.github/workflows/rust-ci.yml`
+runs `build.sh` and fails when the result differs from the committed
+`packages/ts/yaml-splice/wasm/`.
 
 ## License
 

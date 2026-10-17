@@ -5,8 +5,7 @@
 #     -> wasm-bindgen --target nodejs                        (JS/TS glue)
 #       -> wasm-opt -Oz                                      (size)
 #         -> $OUT_DIR, default packages/ts/yaml-splice/wasm/ (the npm package's
-#            wasm/; that package is not in this repo yet, so set OUT_DIR or
-#            the directory is created)
+#            committed wasm/)
 #
 # PINNED TOOL VERSIONS. The artifact is only reproducible against these:
 #   * wasm-bindgen CLI : 0.2.126   (MUST equal the wasm-bindgen crate pin in
@@ -17,9 +16,10 @@
 #                        the wasm32-unknown-unknown target added
 #                        (`rustup target add wasm32-unknown-unknown`)
 #
-# Same toolchain and OS in, byte-identical output out. Builds on different
-# OSes differ in metadata bytes, so compare an artifact by its behaviour (the
-# conformance corpus in yaml-splice/tests/fixtures/), not its bytes.
+# Same tools and source in, byte-identical output out: machine paths are
+# remapped (below), so the build machine does not show in the bytes. The
+# `wasm` job in .github/workflows/rust-ci.yml rebuilds and compares with the
+# committed files.
 # Override the tool locations with WASM_BINDGEN / WASM_OPT if they are not on
 # PATH (e.g. prebuilt tarballs); otherwise PATH is used. CARGO_TARGET_DIR is
 # honoured. OUT_DIR overrides the output folder.
@@ -57,6 +57,19 @@ if [ "$GOT_VERSION" != "$REQUIRED_WASM_BINDGEN" ]; then
 fi
 
 # --- 1. compile the cdylib to wasm32 ---------------------------------------
+# rustup picks the toolchain from rust-toolchain.toml in the current
+# directory, not from --manifest-path, so run from the workspace. An inherited
+# RUSTUP_TOOLCHAIN would override that file, so drop it.
+cd "$WORKSPACE"
+unset RUSTUP_TOOLCHAIN
+
+# Map the machine's paths to fixed names, so no home directory ends up in the
+# wasm's panic messages. The sysroot must be read after the `cd`: from
+# anywhere else rustc reports the default toolchain's sysroot, not the
+# pinned one's.
+SYSROOT="$(rustc --print sysroot)"
+export RUSTFLAGS="--remap-path-prefix=${CARGO_HOME:-$HOME/.cargo}=/cargo --remap-path-prefix=$SYSROOT=/rustc-sysroot --remap-path-prefix=$WORKSPACE=/src"
+
 echo "[1/3] cargo build --release --target wasm32-unknown-unknown"
 cargo build --manifest-path "$WORKSPACE/Cargo.toml" --locked \
   -p yaml-splice-wasm --release --target wasm32-unknown-unknown
@@ -81,6 +94,15 @@ mv "$BG_WASM.tmp" "$BG_WASM"
 # the `rm -rf` above never strips it and a rebuild reproduces it, in the
 # layout a formatter gives it.
 printf '{\n  "type": "commonjs"\n}\n' > "$OUT_DIR/package.json"
+
+# The wasm is committed and published, so it must not name the machine that
+# built it. A path left here means the remapping above missed one.
+LEAKED="$(strings "$BG_WASM" | grep -cE '/Users/|/home/' || true)"
+if [ "$LEAKED" != "0" ]; then
+  echo "error: $BG_WASM still contains $LEAKED machine path(s):" >&2
+  strings "$BG_WASM" | grep -E '/Users/|/home/' | head -5 >&2
+  exit 1
+fi
 
 echo "done. artifact:"
 ls -la "$OUT_DIR"
