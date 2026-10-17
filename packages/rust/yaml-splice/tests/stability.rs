@@ -21,7 +21,9 @@ fn ticked(line: &str) -> Vec<String> {
 
 fn readme_lists() -> (BTreeSet<String>, BTreeSet<String>) {
     let readme = fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("README.md"))
-        .expect("README.md is readable");
+        .expect("README.md is readable")
+        // A Windows checkout may convert the README to CRLF.
+        .replace("\r\n", "\n");
     let section = readme
         .split("\n## Stability\n")
         .nth(1)
