@@ -24,6 +24,7 @@
 // `publish` field allows crates.io (unset, or a list that names `crates-io`).
 import { execFileSync } from 'node:child_process'
 import { appendFileSync } from 'node:fs'
+import { indexEntries, publishesToCratesIo } from './crates-io-index.mjs'
 
 const manifest = process.argv[2]
 if (!manifest) {
@@ -39,24 +40,10 @@ const metadata = JSON.parse(
   ),
 )
 
-/** The sparse-index path of a crate name, per the cargo registry index format. */
-function indexPath(name) {
-  const n = name.toLowerCase()
-  if (n.length <= 2) return `${n.length}/${n}`
-  if (n.length === 3) return `3/${n[0]}/${n}`
-  return `${n.slice(0, 2)}/${n.slice(2, 4)}/${n}`
-}
-
-/** The versions of `name` on crates.io, or null when the crate does not exist. */
+/** The versions of `name` on crates.io, yanked ones too, or null when the crate does not exist. */
 async function publishedVersions(name) {
-  const res = await fetch(`https://index.crates.io/${indexPath(name)}`, {
-    headers: { 'User-Agent': 'osdlc-release-plz (https://github.com/osdlc/osdlc)' },
-    signal: AbortSignal.timeout(30_000),
-  })
-  if (res.status === 404) return null
-  if (!res.ok) throw new Error(`crates.io index returned ${res.status} for ${name}`)
-  const lines = (await res.text()).split('\n').filter((l) => l.trim() !== '')
-  return new Set(lines.map((l) => JSON.parse(l).vers))
+  const entries = await indexEntries(name)
+  return entries === null ? null : new Set(entries.map((e) => e.vers))
 }
 
 /** The name with every `-` turned into `_` and every `_` into `-`. */
@@ -66,8 +53,7 @@ const rows = []
 const clashes = []
 for (const id of metadata.workspace_members) {
   const pkg = metadata.packages.find((p) => p.id === id)
-  // `publish` is null when unset, [] for `publish = false`, or a registry list.
-  if (pkg.publish !== null && !pkg.publish.includes('crates-io')) continue
+  if (!publishesToCratesIo(pkg)) continue
   const versions = await publishedVersions(pkg.name)
   const exists = versions !== null
   if (!exists && swapped(pkg.name) !== pkg.name) {

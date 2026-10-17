@@ -85,7 +85,7 @@ jobs:
               files='*'
               ;;
           esac
-          if [ "$files" = '*' ] || grep -qE '^(packages/rust/|\.github/workflows/(rust-ci|release-plz)\.yml$|\.github/actions/rust-)' <<<"$files"; then
+          if [ "$files" = '*' ] || grep -qE '^(packages/rust/|\.github/workflows/(rust-ci|release-plz)\.yml$|\.github/actions/rust-|\.github/scripts/(crates-io-|semver-))' <<<"$files"; then
             echo "rust=true" >> "$GITHUB_OUTPUT"
           else
             echo "rust=false" >> "$GITHUB_OUTPUT"
@@ -286,8 +286,48 @@ jobs:
       - name: release-plz update
         run: release-plz update --config packages/rust/release-plz.toml --manifest-path packages/rust/Cargo.toml
 
+  # A pull request with a breaking change to a crate on crates.io must set
+  # the crate's new version in its Cargo.toml. See
+  # .github/scripts/semver-version-check.mjs. cargo-semver-checks misses some
+  # breaking changes, so reviewers still check.
+  #
+  # cargo-semver-checks reads the rustdoc JSON of the pinned toolchain, so its
+  # version must support that toolchain. 0.51 reads the format of Rust 1.98
+  # (0.47 does not). It is the version the release-plz action installs. Move
+  # both together.
+  semver-version:
+    needs: changes
+    if: github.event_name == 'pull_request' && needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      # The pull request's merge commit. Its first parent is the base branch,
+      # which the script diffs against.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+
+      # No build cache: it is saved only on main, and this job runs only on
+      # pull requests.
+      - uses: ./.github/actions/rust-toolchain
+
+      - uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2.87.28
+        with:
+          tool: cargo-semver-checks@0.51.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+
+      - name: Breaking changes set their own version
+        run: node .github/scripts/semver-version-check.mjs packages/rust/Cargo.toml HEAD^1
+
   rust:
-    needs: [changes, lint, rust-test, msrv, minimal-versions, wasm, release-plz]
+    needs: [changes, lint, rust-test, msrv, minimal-versions, wasm, release-plz, semver-version]
     if: always()
     runs-on: ubuntu-latest
     defaults:

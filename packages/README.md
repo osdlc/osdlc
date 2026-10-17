@@ -132,6 +132,41 @@ Rust crates are released by `.github/workflows/release-plz.yml` with
    `packages/rust/release-plz.toml`. The workflow and release-plz then skip
    it.
 
+#### Versions and breaking changes
+
+- A pull request with a breaking change sets the crate's new version in the
+  crate's `Cargo.toml` itself. Before 1.0, bump the minor: 0.2.2 becomes
+  0.3.0. From 1.0, bump the major. Also update the crate's `version` in
+  `[workspace.dependencies]` when it is listed there.
+- Do not use `!` or `BREAKING CHANGE` in a pull request title. release-plz
+  would bump the minor for it. The version is set in `Cargo.toml`.
+- A non-breaking change leaves the version alone. release-plz bumps the
+  patch in its release pull request.
+- A bumped version is not on crates.io, so the push that merges it starts a
+  release. Once the `crates-io` environment is approved, the crate is
+  published and tagged. No release pull request is needed.
+- Pull requests are squash-merged, and the squash commit takes the pull
+  request title. release-plz writes the CHANGELOG from commits, so the title
+  becomes a CHANGELOG line. Write it for readers.
+- For a change that does not bump the version, do not write a CHANGELOG
+  entry by hand. release-plz generates it in the release pull request.
+- A pull request that bumps the version writes the CHANGELOG section for
+  that version by hand, with its own entries. It goes as its own section,
+  below the `## [Unreleased]` heading, for example
+  `## [0.3.0] - 2026-10-17`. Without it, the GitHub release takes the notes
+  of the previous section, because the release runs before any release pull
+  request.
+- release-plz never adds to a hand-written section. That section is the only
+  record for that version. Approve the release before merging more changes
+  to that crate, or add those changes to the section by hand.
+- The `semver-version` job in `.github/workflows/rust-ci.yml` runs
+  cargo-semver-checks on each changed crate that is on crates.io. When it
+  finds a breaking change and the version is not bumped, the job fails and
+  names the version to set. A change to the workspace `Cargo.toml` or
+  `Cargo.lock` checks every published crate. cargo-semver-checks misses some
+  breaking changes, such as a changed return type or a break that comes
+  from a dependency's types, so reviewers still check.
+
 ## Working on a library
 
 ### TypeScript
@@ -172,7 +207,8 @@ pins the compiler, and rustup installs it on first use.
 `.github/workflows/rust-ci.yml` runs clippy and the tests on Linux, macOS
 and Windows, and the format check, docs and `cargo package` on Linux. It
 also tests on the MSRV and with minimal dependency versions, and builds
-`yaml-splice-wasm` for `wasm32-unknown-unknown`. Its `rust` job
+`yaml-splice-wasm` for `wasm32-unknown-unknown`. On a pull request it
+checks that a breaking change bumps the version. Its `rust` job
 is the one check to require.
 
 ```sh
