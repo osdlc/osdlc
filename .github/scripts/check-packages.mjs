@@ -3,16 +3,21 @@
 // Are The Types Wrong for a package that ships types, then a clean consumer:
 // `npm install <tarball>` into an empty project, load every entry point under
 // Node, and run the package's `smoke.mjs` from the installed copy if it ships
-// one (that calls the API against the tarball's own dist/). Generated: written by
-// sksizer/dev's scripts/sdlc-mirror/assemble.ts (edit
-// scripts/sdlc-mirror/templates/hosted/github/scripts/check-packages.mjs there).
+// one (that calls the API against the tarball's own dist/).
 //
-//   node .github/scripts/check-packages.mjs [--out <dir>] [packages/<name> ...]
+//   node .github/scripts/check-packages.mjs [--out <dir>] [packages/ts/<name> ...]
+//   node .github/scripts/check-packages.mjs --resolve-tag <name>/vX.Y.Z
 //
-// With no package arguments it checks every packages/* directory. `--out`
+// With no package arguments it checks every packages/ts/* package. `--out`
 // keeps the tarballs there (the publish workflow uploads the one it checked);
 // otherwise they go to a temporary directory. Run `pnpm run build` first: the
 // tarball must contain dist/.
+//
+// `--resolve-tag` checks nothing. It finds the one packages/*/<name> directory
+// with a package.json, checks that its version equals the tag's, and prints
+// `name=`, `dir=` and `version=` lines for the publish workflow. A missing or
+// ambiguous match, or a version mismatch, prints an `::error::` line to stderr
+// and exits 1.
 import { execFileSync } from 'node:child_process'
 import {
   existsSync,
@@ -28,6 +33,42 @@ import { basename, join, resolve } from 'node:path'
 
 const root = process.cwd()
 const args = process.argv.slice(2)
+
+/** Finds the package a `<name>/vX.Y.Z` tag names, or exits 1. */
+function resolveTag(tag) {
+  const fail = (msg) => {
+    console.error(`::error::${msg}`)
+    process.exit(1)
+  }
+  // The name is one directory name, so the lookup cannot leave packages/.
+  const m = /^([a-z0-9][a-z0-9._-]*)\/v(\d+\.\d+\.\d+.*)$/.exec(tag ?? '')
+  if (!m) fail(`tag ${tag} is not <name>/vX.Y.Z`)
+  const [, name, version] = m
+  const packages = join(root, 'packages')
+  const matches = existsSync(packages)
+    ? readdirSync(packages, { withFileTypes: true })
+        .filter((e) => e.isDirectory())
+        .map((e) => `packages/${e.name}/${name}`)
+        .filter((dir) => existsSync(join(root, dir, 'package.json')))
+        .sort()
+    : []
+  if (matches.length === 0) fail(`tag ${tag} names no packages/*/${name} with a package.json`)
+  if (matches.length > 1) fail(`tag ${tag} matches more than one package: ${matches.join(', ')}`)
+  const dir = matches[0]
+  const pkg = JSON.parse(readFileSync(join(root, dir, 'package.json'), 'utf8'))
+  if (pkg.version !== version) {
+    fail(`tag version ${version} does not match ${dir}/package.json version ${pkg.version}`)
+  }
+  console.log(`name=${pkg.name}`)
+  console.log(`dir=${dir}`)
+  console.log(`version=${version}`)
+}
+
+if (args[0] === '--resolve-tag') {
+  resolveTag(args[1])
+  process.exit(0)
+}
+
 let out = null
 const dirs = []
 for (let i = 0; i < args.length; i++) {
@@ -35,8 +76,9 @@ for (let i = 0; i < args.length; i++) {
   else dirs.push(args[i])
 }
 if (dirs.length === 0) {
-  for (const name of readdirSync(join(root, 'packages')).sort()) {
-    if (existsSync(join(root, 'packages', name, 'package.json'))) dirs.push(join('packages', name))
+  const ts = join(root, 'packages', 'ts')
+  for (const name of existsSync(ts) ? readdirSync(ts).sort() : []) {
+    if (existsSync(join(ts, name, 'package.json'))) dirs.push(join('packages', 'ts', name))
   }
 }
 out ??= mkdtempSync(join(tmpdir(), 'check-packages-'))
