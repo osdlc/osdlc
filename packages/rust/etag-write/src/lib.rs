@@ -9,7 +9,8 @@
 //! The fix is the standard one: write a temp file in the SAME directory
 //! (`rename` is only atomic within a filesystem), fsync it so the bytes are
 //! durable before the name points at them, rename, then best-effort fsync the
-//! directory so the rename itself survives a power cut.
+//! directory so the rename itself survives a power cut. Windows cannot open a
+//! directory as a file, so it skips the directory fsync.
 //!
 //! **Lost updates.** When a person and a program edit the same file, a
 //! program that writes without checking silently discards whatever the
@@ -301,9 +302,9 @@ fn write_atomic_with(
     rename(tmp.path(), path).map_err(io)?;
     tmp.disarm();
 
-    // Best effort: not every platform lets you open a directory, and a
-    // failure here costs durability of the rename, not correctness of the
-    // contents.
+    // Best effort: not every platform lets you open a directory (Windows does
+    // not, so this is a no-op there), and a failure here costs durability of
+    // the rename, not correctness of the contents.
     if let Ok(d) = fs::File::open(dir) {
         let _ = d.sync_all();
     }
@@ -688,11 +689,16 @@ mod tests {
     fn a_bare_name_lives_in_the_current_directory() {
         assert_eq!(parent_dir(Path::new("x.md")), Path::new("."));
         assert_eq!(parent_dir(Path::new("a/x.md")), Path::new("a"));
-        // The directory fsync opens this path, so it has to be openable.
-        let _cwd = CWD
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        fs::File::open(parent_dir(Path::new("x.md"))).unwrap();
+        // The directory fsync opens this path, so it has to be openable. That
+        // holds on Unix only: Windows cannot open a directory with
+        // `File::open`, so the fsync is skipped there.
+        #[cfg(unix)]
+        {
+            let _cwd = CWD
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            fs::File::open(parent_dir(Path::new("x.md"))).unwrap();
+        }
     }
 
     /// Held by every test that reads or changes the working directory,

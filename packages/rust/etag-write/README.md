@@ -12,7 +12,8 @@ It is for programs that rewrite files that people or other programs also edit:
 notes, config files, state files.
 
 - `write_atomic` writes a temp file in the same directory, fsyncs it, renames
-  it over the target and then fsyncs the directory.
+  it over the target and then fsyncs the directory (not on Windows, which
+  cannot open a directory as a file).
 - `write_cas` takes the etag you read and refuses the write if the file
   changed since then, or if the file exists and you sent no etag.
 - `write_if_changed` skips the write when the bytes are the same, so file
@@ -72,8 +73,9 @@ These are the guarantees, and how far the tests go:
   file is removed. Parent directories the write created stay. A crash at that
   point also leaves the target untouched, but it can leave the temp file
   behind.
-- The temp file is fsynced before the rename, and the directory after it, so
-  that the new bytes and the rename survive a power cut. That depends on the
+- The temp file is fsynced before the rename, and the directory after it
+  (except on Windows, which skips the directory fsync), so that the new bytes
+  and the rename survive a power cut. That depends on the
   operating system and the disk honouring fsync. No test covers it.
 
 ## The compare-and-swap rules
