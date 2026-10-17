@@ -171,12 +171,12 @@ than one writer edits the same file and a lost update matters.
 
 ## Stability
 
-0.1 is the first release. The crate stays on 0.x for now. The seven public items
-(`etag`, `etag_of_file`, `write_atomic`, `write_cas`, `write_if_changed`,
-`WriteError` and `ReadError`) are each marked "stable in 0.x" in their docs: they are not
-expected to change. `WriteError` is `#[non_exhaustive]`, so a later release can
-add a variant without a breaking change. `ReadError` is `#[non_exhaustive]`
-too.
+0.1 is the first release. The crate stays on 0.x for now. The seven public
+items (`etag`, `etag_of_file`, `write_atomic`, `write_cas`, `write_if_changed`,
+`WriteError` and `ReadError`) are each marked "stable in 0.x" in their docs:
+they are not expected to change. `WriteError` is `#[non_exhaustive]`, so a
+later release can add a variant without a breaking change. `ReadError` is
+`#[non_exhaustive]` too.
 
 ## License
 
