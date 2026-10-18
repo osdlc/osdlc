@@ -54,24 +54,24 @@ export function templateRefusal(args: readonly string[], choice: ModelChoice): s
  * {@link customAdapter} does.
  *
  * @throws {Error} From `plan` (so from `planCall` and `callAgent`) when the
- * spec's model or effort does not fit the slots ({@link templateRefusal}), when
- * `promptVia` is `'argv'` and `args` has no `{prompt}` slot, or when it is
- * `'stdin'` and `args` has one.
+ * spec's model or effort does not fit the slots ({@link templateRefusal}).
+ * @throws {Error} From `templateAdapter` itself when `promptVia` is `'argv'` and
+ * `args` has no `{prompt}` slot, or when it is `'stdin'` and `args` has one.
  * @experimental Part of the launch-argv helpers, which may change in a minor release.
  */
 export function templateAdapter(options: TemplateAdapterOptions): AgentAdapter {
+  const hasPromptSlot = options.args.includes('{prompt}')
+  if (options.promptVia === 'argv' && !hasPromptSlot) {
+    throw new Error(`${options.name}: promptVia 'argv' needs a {prompt} slot in args`)
+  }
+  if (options.promptVia === 'stdin' && hasPromptSlot) {
+    throw new Error(`${options.name}: promptVia 'stdin' cannot have a {prompt} slot in args`)
+  }
   return customAdapter({
     name: options.name,
     binary: options.binary,
     promptVia: options.promptVia,
     args: (spec, prompt) => {
-      const hasPromptSlot = options.args.includes('{prompt}')
-      if (options.promptVia === 'argv' && !hasPromptSlot) {
-        throw new Error(`${options.name}: promptVia 'argv' needs a {prompt} slot in args`)
-      }
-      if (options.promptVia === 'stdin' && hasPromptSlot) {
-        throw new Error(`${options.name}: promptVia 'stdin' cannot have a {prompt} slot in args`)
-      }
       const refusal = templateRefusal(options.args, spec)
       if (refusal !== null) throw new Error(`${options.name}: ${refusal}`)
       const slots: Record<string, string | undefined> = {

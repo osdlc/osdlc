@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { afterAll, describe, expect, test } from 'vitest'
 
 import { customAdapter } from '../src/adapters/custom.js'
-import { adapterFor, BUILTIN_AGENTS, detectAgents } from '../src/registry.js'
+import { adapterFor, BUILTIN_AGENTS, detectAgents, probeVersion } from '../src/registry.js'
 
 describe('adapterFor', () => {
   test('returns the adapter named, with its default binary', () => {
@@ -75,6 +75,11 @@ describe('detectAgents', () => {
     const [result] = await detectAgents([customAdapter({ name: 'bad', binary, args: () => [] })])
     expect(result?.available).toBe(false)
     expect(result?.version).toBeUndefined()
+  })
+
+  test('a probe still running at the timeout is unavailable', async () => {
+    const binary = fakeCli('forking', '(sleep 5) &\necho "fork 1.0"')
+    expect(await probeVersion(binary, 300)).toBeUndefined()
   })
 
   test('probes every adapter given, in order', async () => {

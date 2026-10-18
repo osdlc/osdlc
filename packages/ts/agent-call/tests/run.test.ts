@@ -1,10 +1,9 @@
 import { describe, expect, test } from 'vitest'
-import { existsSync } from 'node:fs'
+import { existsSync, readdirSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { readdirSync } from 'node:fs'
 import { antigravityAdapter } from '../src/adapters/antigravity.js'
 import { customAdapter } from '../src/adapters/custom.js'
 import { claudeAdapter } from '../src/adapters/claude.js'
@@ -268,7 +267,31 @@ describe('child stdin', () => {
     const result = await callAgent(failing, { prompt: 'x' })
     expect(result.error?.reason).toBe('nonzero-exit')
     expect(result.error?.detail).toContain('exited 1')
+    expect(result.error?.detail).toContain('no parseable envelope')
     expect(result.error?.detail).toContain('Invalid API key')
+  })
+
+  test('a nonzero exit with empty stderr leaves no trailing colon', async () => {
+    const quiet = customAdapter({ name: 'quiet', binary: '/bin/sh', args: () => ['-c', 'exit 2'] })
+    const result = await callAgent(quiet, { prompt: 'x' })
+    expect(result.error?.detail).toBe('/bin/sh exited 2')
+  })
+
+  test('a timeout followed by an abort is still reported as the timeout', async () => {
+    const stubborn = customAdapter({
+      name: 'stubborn',
+      binary: '/bin/sh',
+      args: () => ['-c', "trap '' TERM; sleep 3"],
+    })
+    const controller = new AbortController()
+    setTimeout(() => controller.abort(), 600)
+    const result = await callAgent(
+      stubborn,
+      { prompt: 'x', timeoutMs: 150 },
+      { signal: controller.signal },
+    )
+    expect(result.error).toEqual({ reason: 'timeout', detail: 'killed after 150ms' })
+    expect(result.raw.cutShortBy).toBe('timeout')
   })
 
   describe('temp files', () => {
@@ -290,9 +313,9 @@ describe('child stdin', () => {
       const marker = `leak-check-${process.pid}.txt`
       const adapter = withFiles([
         { name: marker, content: 'a' },
-        { name: 'missing-dir-b.txt/x', content: 'b' },
+        { name: '.', content: 'b' }, // passes the name check; writeFile hits the directory itself
       ])
-      await expect(callAgent(adapter, { prompt: 'x' })).rejects.toThrow()
+      await expect(callAgent(adapter, { prompt: 'x' })).rejects.toThrow(/EISDIR/)
       expect(leftovers(marker)).toEqual([])
     })
 

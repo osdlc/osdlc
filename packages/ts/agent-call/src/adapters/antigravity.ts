@@ -29,9 +29,8 @@ export interface AntigravityAdapterOptions {
  * `--output-format text|json|stream-json`. Effort, the output schema,
  * session continuation and the full-auto posture are native flags; the CLI
  * documents no system-prompt flag, so system prompts are emulated; `cwd` and
- * `env` apply to the process. Model slugs
- * are not documented (`agy models` lists them), so `model` passes through as
- * given.
+ * `env` apply to the process. Model slugs are not documented (`agy models`
+ * lists them), so `model` passes through as given.
  */
 export function antigravityAdapter(options: AntigravityAdapterOptions = {}): AgentAdapter {
   const binary = options.binary ?? 'agy'

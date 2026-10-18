@@ -117,10 +117,12 @@ and an `error`: `{ reason, detail }`. The reasons today are `spawn-failed`,
 minor release may add one, so handle the reasons you know and keep a default
 branch.
 
-It does reject, with an `Error`, in two cases. Planning can throw:
-`templateAdapter` throws when the spec's model or effort does not fit its
-template, and `customAdapter` passes on whatever your `args` function throws.
-Or the temp directory for the plan's temp files cannot be created or written.
+It does reject, with an `Error`, in three cases. Planning can throw:
+`templateAdapter` throws for a model, effort or prompt that does not fit its
+template (see its TSDoc), and `customAdapter` passes on whatever your `args`
+function throws. A plan's `TempFile.name` can be not a plain file name (empty,
+or holding `/`, `\` or `..`). Or the temp directory for the plan's temp files
+cannot be created or written.
 A parser that throws on the output does not reject: the result is `ok: false`
 with reason `agent-error`. `planCall` throws the same way as planning. The
 `callAgent` TSDoc is the full list.

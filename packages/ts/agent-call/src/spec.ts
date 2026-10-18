@@ -5,7 +5,8 @@
  * shape, session behavior — never HOW a particular CLI expresses it. Each
  * built-in adapter translates the spec into a concrete invocation on a
  * best-effort basis and records every approximation as a `CapabilityNote` (see
- * plan.ts). Custom and template adapters note only `permissions.mode`.
+ * plan.ts). Custom and template adapters note the fields they fold into the prompt and
+ * `permissions.mode`; any other field the `args` builder leaves out is not noted.
  */
 
 import type { EffortLevel } from './models.js'

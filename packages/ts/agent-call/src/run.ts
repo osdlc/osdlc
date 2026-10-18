@@ -1,4 +1,3 @@
-import { spawn } from 'node:child_process'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -6,6 +5,7 @@ import { join } from 'node:path'
 import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './adapters/types.js'
 import type { Conversation } from './conversation.js'
 import { TMP_TOKEN, type PlannedCall } from './plan.js'
+import { spawnCollect } from './spawn.js'
 import type { AgentCallSpec } from './spec.js'
 
 /**
@@ -52,16 +52,12 @@ export interface CallOptions {
   signal?: AbortSignal | undefined
 }
 
-/** Grace period between SIGTERM and SIGKILL on timeout/abort. */
-const KILL_GRACE_MS = 5_000
-
 /**
  * Plan a call without running it: the exact argv, stdin, env, temp files,
  * and capability notes the adapter would use. Pure and side-effect free.
  *
- * @throws Whatever the adapter's `plan` throws: `templateAdapter` throws an
- * `Error` when the spec's model or effort does not fit its slots, and
- * `customAdapter` lets its `args` function throw.
+ * @throws Whatever the adapter's `plan` throws: see `templateAdapter`'s
+ * `@throws`; and `customAdapter` lets its `args` function throw.
  */
 export function planCall(adapter: AgentAdapter, spec: AgentCallSpec): PlannedCall {
   return adapter.plan(spec)
@@ -81,13 +77,12 @@ export function planCall(adapter: AgentAdapter, spec: AgentCallSpec): PlannedCal
  * interrupted must pass a `signal` and abort it from its own SIGINT/SIGTERM
  * handler. The runner installs no exit handlers.
  *
- * @throws The returned promise rejects, rather than resolving `ok: false`, in
- * two cases: planning throws (see {@link planCall}), or the per-call temp
- * directory for the plan's temp files cannot be created or written, or a
- * `TempFile.name` is not a plain file name (empty, or holding `/`, `\\` or
- * `..`). The directory is removed in every case. A parser
- * that throws on the output does not reject: the result is `ok: false` with
- * reason `agent-error`.
+ * @throws The returned promise rejects, rather than resolving `ok: false`,
+ * when planning throws (see {@link planCall}), when a `TempFile.name` is not a
+ * plain file name (empty, or holding `/`, `\` or `..`), or when the per-call
+ * temp directory cannot be created or written. A directory that was made is
+ * removed. A parser that throws on the output does not reject: the result is
+ * `ok: false` with reason `agent-error`.
  */
 export async function callAgent(
   adapter: AgentAdapter,
@@ -110,7 +105,7 @@ export async function callAgent(
     error = {
       reason: 'timeout',
       detail:
-        options.signal?.aborted === true
+        raw.cutShortBy === 'abort'
           ? 'aborted by the caller'
           : `killed after ${spec.timeoutMs ?? 0}ms`,
     }
@@ -129,11 +124,14 @@ export async function callAgent(
   }
 
   if (error === undefined && raw.exitCode !== 0) {
+    const stderrTail = raw.stderr.trim().slice(0, 500)
     error = {
       reason: 'nonzero-exit',
       detail: [
         parsed.errorDetail,
-        `${planned.argv[0]} exited ${raw.exitCode}: ${raw.stderr.trim().slice(0, 500)}`,
+        stderrTail === ''
+          ? `${planned.argv[0]} exited ${raw.exitCode}`
+          : `${planned.argv[0]} exited ${raw.exitCode}: ${stderrTail}`,
       ]
         .filter((part) => part !== undefined && part !== '')
         .join('; '),
@@ -233,151 +231,4 @@ async function execute(
       await rm(tempDir, { recursive: true, force: true })
     }
   }
-}
-
-interface SpawnOptions {
-  stdin?: string | undefined
-  cwd?: string | undefined
-  env: NodeJS.ProcessEnv
-  timeoutMs?: number | undefined
-  signal?: AbortSignal | undefined
-}
-
-/** Spawn, collect output, honor timeout and abort. Shared with `detectAgents`. */
-export function spawnCollect(argv: string[], options: SpawnOptions): Promise<RawProcessOutput> {
-  return new Promise((resolve) => {
-    const [binary, ...args] = argv
-    if (binary === undefined) {
-      resolve({
-        stdout: '',
-        stderr: 'empty argv',
-        exitCode: null,
-        durationMs: 0,
-        timedOut: false,
-      })
-      return
-    }
-
-    // An already-aborted signal never fires `abort` again, so it has to be
-    // honored before spawn — otherwise the agent runs the full turn. The
-    // result mirrors a mid-run abort: cut short, with no exit code.
-    if (options.signal?.aborted === true) {
-      resolve({
-        stdout: '',
-        stderr: '',
-        exitCode: null,
-        durationMs: 0,
-        timedOut: true,
-      })
-      return
-    }
-
-    // Raw `node:child_process`, not the command seam: the package stays
-    // dependency-free and this manages a long-lived process group (D-07).
-    const child = spawn(binary, args, {
-      cwd: options.cwd,
-      env: options.env,
-      stdio: ['pipe', 'pipe', 'pipe'],
-      // Own process group, so a timeout/abort can kill the whole tree. Without
-      // it, a shell child (e.g. `sh -c "sleep 30"`) leaves its grandchild
-      // orphaned holding the stdio pipe open, and `close` never fires — the
-      // call hangs until the real command ends instead of honoring timeoutMs.
-      detached: true,
-    })
-
-    let stdout = ''
-    let stderr = ''
-    let timedOut = false
-    let stdinError: string | undefined
-    let settled = false
-
-    let killTimer: ReturnType<typeof setTimeout> | undefined
-    let graceTimer: ReturnType<typeof setTimeout> | undefined
-    const killTree = (signal: NodeJS.Signals): void => {
-      const pid = child.pid
-      try {
-        // Negative pid targets the whole process group (child is a group
-        // leader via `detached`), so grandchildren die too and release the
-        // stdio pipe. Fall back to a direct kill if the group is already gone
-        // or the platform lacks process groups.
-        if (pid !== undefined) process.kill(-pid, signal)
-        else child.kill(signal)
-      } catch {
-        try {
-          child.kill(signal)
-        } catch {
-          /* already exited */
-        }
-      }
-    }
-    const terminate = (): void => {
-      killTree('SIGTERM')
-      graceTimer = setTimeout(() => killTree('SIGKILL'), KILL_GRACE_MS)
-    }
-    if (options.timeoutMs !== undefined && options.timeoutMs > 0) {
-      killTimer = setTimeout(() => {
-        timedOut = true
-        terminate()
-      }, options.timeoutMs)
-    }
-    const onAbort = (): void => {
-      timedOut = true
-      terminate()
-    }
-    options.signal?.addEventListener('abort', onAbort, { once: true })
-
-    const settle = (
-      exitCode: number | null,
-      spawnError?: Error,
-      signal?: NodeJS.Signals | null,
-    ): void => {
-      if (settled) return
-      settled = true
-      if (killTimer !== undefined) clearTimeout(killTimer)
-      if (graceTimer !== undefined) clearTimeout(graceTimer)
-      options.signal?.removeEventListener('abort', onAbort)
-      if (spawnError !== undefined && stderr === '') {
-        stderr = spawnError.message
-      }
-      resolve({
-        stdout,
-        stderr,
-        exitCode,
-        durationMs: 0,
-        timedOut,
-        stdinError,
-        signal: signal ?? undefined,
-      })
-    }
-
-    // Decode through the stream, not per chunk: a UTF-8 sequence straddling
-    // two reads must be held over the boundary instead of becoming two U+FFFD.
-    child.stdout.setEncoding('utf8')
-    child.stderr.setEncoding('utf8')
-    child.stdout.on('data', (chunk: string) => {
-      stdout += chunk
-    })
-    child.stderr.on('data', (chunk: string) => {
-      stderr += chunk
-    })
-    child.on('error', (err) => settle(null, err))
-    child.on('close', (code, signal) => settle(code, undefined, signal))
-
-    // The child may exit before draining stdin (bad flag, auth failure, or a
-    // kill from the timeout/abort path), which fails the write with EPIPE.
-    // Without a listener that stream error is an uncaught exception that takes
-    // the host process down. It is recorded rather than dropped: the failure
-    // means the agent saw a truncated prompt, and nothing else reveals that
-    // when the child still exits 0. Recorded at `settle` so the diagnostic
-    // rides on the resolved value; node closes stdin before emitting `close`,
-    // so the error always lands first.
-    child.stdin.on('error', (err: Error) => {
-      stdinError ??= err.message
-    })
-
-    if (options.stdin !== undefined) {
-      child.stdin.write(options.stdin)
-    }
-    child.stdin.end()
-  })
 }
