@@ -1,6 +1,6 @@
 {
   "name": "@osdlc/observe",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Observability tier: a JSONL log envelope with correlation ids passed to child processes, a stable machine id, agent session records with their state machine, a process scan and the reconcile decision that ends a record whose process is gone.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",
