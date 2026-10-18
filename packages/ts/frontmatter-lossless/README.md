@@ -69,10 +69,23 @@ compose(yaml, body, shape) === note // true
   `'\r\n'`), `closeEol` (a `CloseEol`, which can also be `''` when the note
   ends at the closing fence) and `closeSep`. Take it from `split` and pass it
   to `compose`. Do not build one by hand: a minor release may add a field.
+- `newShape(opts?)` returns the `NoteShape` for a new note that has no source
+  text to split. Its `NewShapeOptions` are `eol` (`'\n'` by default, or
+  `'\r\n'`) for both fences and `bom` (`false` by default). Pass the YAML
+  text the way `split` returns it, without the line break before the closing
+  fence: trim the trailing newline a YAML serializer adds.
 - `splitLenient(content)` reads hand-written input that `split` rejects: blank lines or indentation
   before the opening fence, and trailing spaces on the fence lines. The closing fence must not be
   indented. It returns a `LenientSplit` (`yaml` and `body`), or `null` when there is no block. It
   keeps no framing, so use it to read, not to rewrite.
+
+```ts
+import { compose, newShape } from '@osdlc/frontmatter-lossless'
+
+const yaml = 'title: New\ntags: [a]\n' // as a YAML serializer writes it
+compose(yaml.replace(/\n$/, ''), '# New\n', newShape())
+// '---\ntitle: New\ntags: [a]\n---\n# New\n'
+```
 
 Offsets are JavaScript string indices (UTF-16 code units):
 `src.slice(yamlRange.start, yamlRange.end) === yaml` and

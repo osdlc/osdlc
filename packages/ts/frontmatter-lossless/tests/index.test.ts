@@ -20,7 +20,7 @@ import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 
 import { test, expect, describe } from 'bun:test'
-import { split, compose, splitLenient, type CloseEol, type OpenEol } from '../index.ts'
+import { split, compose, newShape, splitLenient, type CloseEol, type OpenEol } from '../index.ts'
 import corpus from './fixtures/conformance.json'
 
 /** The Rust crate's corpus this copy was taken from. Change it only with the crate's. */
@@ -243,5 +243,43 @@ describe('unterminated', () => {
       const s = split(fx.source)
       if (s.unterminated) expect(s.yaml).toBeNull()
     }
+  })
+})
+
+describe('newShape', () => {
+  test('defaults: LF fences, no BOM, a closing line ending', () => {
+    expect(newShape()).toEqual({ bom: false, openEol: '\n', closeEol: '\n', closeSep: true })
+    expect(newShape({ eol: undefined, bom: undefined })).toEqual(newShape())
+  })
+
+  test('is the shape split reads from a note composed with it', () => {
+    for (const eol of ['\n', '\r\n'] as const) {
+      for (const bom of [false, true]) {
+        const shape = newShape({ eol, bom })
+        const yaml = eol === '\n' ? 'a: 1\nb: 2' : 'a: 1\r\nb: 2\r'
+        const note = compose(yaml, `body${eol}`, shape)
+        const back = split(note)
+        expect(back.shape).toEqual(shape)
+        expect([back.yaml, back.body]).toEqual([yaml, `body${eol}`])
+        expect(compose(back.yaml, back.body, back.shape)).toBe(note)
+      }
+    }
+  })
+
+  for (const [name, yaml, body, want] of [
+    ['an empty block', '', 'body\n', '---\n\n---\nbody\n'],
+    ['an empty body', 'a: 1', '', '---\na: 1\n---\n'],
+    ['no block', null, 'body\n', 'body\n'],
+  ] as const) {
+    test(`${name}`, () => {
+      const out = compose(yaml, body, newShape())
+      expect(out).toBe(want)
+      const back = split(out)
+      expect([back.yaml, back.body]).toEqual([yaml, body])
+    })
+  }
+
+  test('a fresh object each call', () => {
+    expect(newShape()).not.toBe(newShape())
   })
 })

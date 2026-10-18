@@ -49,9 +49,10 @@ export type CloseEol = '' | '\n' | '\r\n'
  * file whose fences were `---\r\n`, and now every line of the note shows as
  * changed in git. The fences are data too.
  *
- * Take it from {@link split} and pass it back to {@link compose}; do not build
- * one by hand. A minor release may add a field, which would break an object
- * literal typed as `NoteShape`.
+ * Take it from {@link split} and pass it back to {@link compose}, or, for a
+ * new note with no source text, from {@link newShape}. Do not build one by
+ * hand: a minor release may add a field, which would break an object literal
+ * typed as `NoteShape`.
  */
 export interface NoteShape {
   /** The byte-order mark, if the file had one. */
@@ -103,6 +104,14 @@ export interface Split {
    *  keeps going; a caller that holds authored notes to a contract can read
    *  this to report the note as malformed instead. `false` otherwise. */
   readonly unterminated: boolean
+}
+
+/** Options for {@link newShape}. */
+export interface NewShapeOptions {
+  /** Line ending of both fences. Default `'\n'`. */
+  readonly eol?: OpenEol | undefined
+  /** Whether the note starts with a byte-order mark. Default `false`. */
+  readonly bom?: boolean | undefined
 }
 
 /** The result of a tolerant read-only split: see {@link splitLenient}. */
@@ -248,6 +257,30 @@ export function compose(frontmatter: string | null, body: string, shape: NoteSha
   // there; a new body still needs one, so borrow the opening fence's.
   out += '---' + (shape.closeEol === '' && body !== '' ? shape.openEol : shape.closeEol) + body
   return out
+}
+
+/**
+ * The shape for a new note, one with no source text to {@link split}: both
+ * fences end in `eol` and the closing fence has its line ending. It stays
+ * valid when {@link NoteShape} gains fields, which an object literal would
+ * not.
+ *
+ * `compose(yaml, body, newShape())` gives `---\n<yaml>\n---\n<body>`. The
+ * `yaml` argument is the text between the fences as {@link split} returns
+ * it: without the line break before the closing fence. A YAML serializer's
+ * output usually ends in one, so drop it first, or the block ends in a
+ * blank line. With `eol: '\r\n'`, `compose` writes the fences as CRLF and
+ * the yaml text keeps its own line endings, so end its lines in `\r\n` and
+ * the text itself in `\r`, as {@link split} returns a CRLF block.
+ *
+ * @example
+ * ```ts
+ * compose('title: A', '# A\n', newShape()) // '---\ntitle: A\n---\n# A\n'
+ * ```
+ */
+export function newShape(opts: NewShapeOptions = {}): NoteShape {
+  const eol = opts.eol ?? '\n'
+  return { bom: opts.bom ?? false, openEol: eol, closeEol: eol, closeSep: true }
 }
 
 /**
