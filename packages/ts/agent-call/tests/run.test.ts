@@ -4,6 +4,8 @@ import { rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import { readdirSync } from 'node:fs'
+import { antigravityAdapter } from '../src/adapters/antigravity.js'
 import { customAdapter } from '../src/adapters/custom.js'
 import { claudeAdapter } from '../src/adapters/claude.js'
 import { callAgent, planCall } from '../src/run.js'
@@ -215,5 +217,93 @@ describe('child stdin', () => {
     const result = await callAgent(reader, { prompt: 'x'.repeat(1_000_000) })
     expect(result.exitCode).toBe(0)
     expect(result.raw.stdinError).toBeUndefined()
+  })
+
+  test('an abort mid-run is reported as aborted by the caller', async () => {
+    const sleeper = customAdapter({
+      name: 'sleeper',
+      binary: '/bin/sh',
+      args: () => ['-c', 'sleep 30'],
+    })
+    const controller = new AbortController()
+    setTimeout(() => controller.abort(), 200)
+    const result = await callAgent(sleeper, { prompt: 'x' }, { signal: controller.signal })
+    expect(result.ok).toBe(false)
+    expect(result.error).toEqual({ reason: 'timeout', detail: 'aborted by the caller' })
+  })
+
+  test('a timeout names the deadline', async () => {
+    const sleeper = customAdapter({
+      name: 'sleeper',
+      binary: '/bin/sh',
+      args: () => ['-c', 'sleep 30'],
+    })
+    const result = await callAgent(sleeper, { prompt: 'x', timeoutMs: 200 })
+    expect(result.error?.detail).toBe('killed after 200ms')
+  })
+
+  test('a throwing toConversation marks the result failed', async () => {
+    const throwing = {
+      ...echoAdapter,
+      toConversation: () => {
+        throw new Error('bad transcript')
+      },
+    }
+    const result = await callAgent(throwing, { prompt: 'x' }, { captureConversation: true })
+    expect(result.ok).toBe(false)
+    expect(result.error?.reason).toBe('agent-error')
+    expect(result.error?.detail).toContain('bad transcript')
+  })
+
+  test('a nonzero exit keeps the parser detail and adds the exit code and stderr', async () => {
+    const adapter = antigravityAdapter({ binary: '/bin/sh' })
+    const planned = adapter.plan({ prompt: 'x', output: { format: 'json' } })
+    const failing = {
+      ...adapter,
+      plan: () => ({
+        ...planned,
+        argv: ['/bin/sh', '-c', 'echo "Invalid API key" >&2; exit 1'],
+      }),
+    }
+    const result = await callAgent(failing, { prompt: 'x' })
+    expect(result.error?.reason).toBe('nonzero-exit')
+    expect(result.error?.detail).toContain('exited 1')
+    expect(result.error?.detail).toContain('Invalid API key')
+  })
+
+  describe('temp files', () => {
+    const withFiles = (tempFiles: { name: string; content: string }[]) => ({
+      ...echoAdapter,
+      plan: (spec: Parameters<typeof echoAdapter.plan>[0]) => ({
+        ...echoAdapter.plan(spec),
+        tempFiles,
+      }),
+    })
+    // Other test files run in parallel and make their own agent-call-* dirs, so
+    // look for a dir holding this test's marker file, not for any new dir.
+    const leftovers = (marker: string): string[] =>
+      readdirSync(tmpdir())
+        .filter((n) => n.startsWith('agent-call-'))
+        .filter((n) => existsSync(join(tmpdir(), n, marker)))
+
+    test('a failed write removes the temp directory', async () => {
+      const marker = `leak-check-${process.pid}.txt`
+      const adapter = withFiles([
+        { name: marker, content: 'a' },
+        { name: 'missing-dir-b.txt/x', content: 'b' },
+      ])
+      await expect(callAgent(adapter, { prompt: 'x' })).rejects.toThrow()
+      expect(leftovers(marker)).toEqual([])
+    })
+
+    test.each(['', '..', 'a/b', 'a\\b', '../x'])('refuses the name %j', async (name) => {
+      const marker = `leak-check-${process.pid}.txt`
+      const adapter = withFiles([
+        { name: marker, content: 'a' },
+        { name, content: 'x' },
+      ])
+      await expect(callAgent(adapter, { prompt: 'x' })).rejects.toThrow(/plain file name/)
+      expect(leftovers(marker)).toEqual([])
+    })
   })
 })

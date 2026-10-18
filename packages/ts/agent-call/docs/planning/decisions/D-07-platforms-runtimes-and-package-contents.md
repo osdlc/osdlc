@@ -22,6 +22,9 @@ created: 2026-10-18
 - Tests run on Vitest under Node: CI runs the unit tests on Node 22 and 24,
   the smoke check against the built package, and the clean-consumer check on
   the packed tarball.
+- The package spawns through `node:child_process` directly, not
+  `@osdlc/command-seam`. This keeps it dependency-free, and it manages
+  long-lived process groups.
 - Another runtime, such as Bun, Deno or a browser, is claimed only once a
   test runs on it.
 

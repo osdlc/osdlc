@@ -76,9 +76,16 @@ export function planCall(adapter: AgentAdapter, spec: AgentCallSpec): PlannedCal
  * abort, so it needs POSIX process groups (Linux, macOS). The child inherits
  * the parent's environment plus `spec.env`.
  *
+ * Because the agent has its own process group, a terminal Ctrl+C or a kill of
+ * the host does not reach it, and it keeps running. A host that can be
+ * interrupted must pass a `signal` and abort it from its own SIGINT/SIGTERM
+ * handler. The runner installs no exit handlers.
+ *
  * @throws The returned promise rejects, rather than resolving `ok: false`, in
  * two cases: planning throws (see {@link planCall}), or the per-call temp
- * directory for the plan's temp files cannot be created or written. A parser
+ * directory for the plan's temp files cannot be created or written, or a
+ * `TempFile.name` is not a plain file name (empty, or holding `/`, `\\` or
+ * `..`). The directory is removed in every case. A parser
  * that throws on the output does not reject: the result is `ok: false` with
  * reason `agent-error`.
  */
@@ -102,7 +109,10 @@ export async function callAgent(
   } else if (raw.timedOut) {
     error = {
       reason: 'timeout',
-      detail: `killed after ${spec.timeoutMs ?? 0}ms`,
+      detail:
+        options.signal?.aborted === true
+          ? 'aborted by the caller'
+          : `killed after ${spec.timeoutMs ?? 0}ms`,
     }
   }
 
@@ -121,9 +131,12 @@ export async function callAgent(
   if (error === undefined && raw.exitCode !== 0) {
     error = {
       reason: 'nonzero-exit',
-      detail:
-        parsed.errorDetail ??
+      detail: [
+        parsed.errorDetail,
         `${planned.argv[0]} exited ${raw.exitCode}: ${raw.stderr.trim().slice(0, 500)}`,
+      ]
+        .filter((part) => part !== undefined && part !== '')
+        .join('; '),
     }
   } else if (error === undefined && parsed.isError === true) {
     error = {
@@ -155,6 +168,10 @@ export async function callAgent(
   return result
 }
 
+function isPlainFileName(name: string): boolean {
+  return name !== '' && !name.includes('/') && !name.includes('\\') && !name.includes('..')
+}
+
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
@@ -164,24 +181,31 @@ async function execute(
   spec: AgentCallSpec,
   signal?: AbortSignal,
 ): Promise<RawProcessOutput> {
+  for (const file of planned.tempFiles) {
+    if (!isPlainFileName(file.name)) {
+      throw new Error(`temp file name ${JSON.stringify(file.name)} is not a plain file name`)
+    }
+  }
   let tempDir: string | undefined
   if (planned.tempFiles.length > 0) {
     tempDir = await mkdtemp(join(tmpdir(), 'agent-call-'))
-    for (const file of planned.tempFiles) {
-      await writeFile(join(tempDir, file.name), file.content, 'utf8')
-    }
   }
-  const resolveTmp = (value: string): string =>
-    tempDir === undefined ? value : value.replaceAll(TMP_TOKEN, tempDir)
-
-  const argv = planned.argv.map(resolveTmp)
-  const env: NodeJS.ProcessEnv = { ...process.env }
-  for (const [key, value] of Object.entries(planned.env)) {
-    env[key] = resolveTmp(value)
-  }
-
-  const startedAt = Date.now()
   try {
+    if (tempDir !== undefined) {
+      for (const file of planned.tempFiles) {
+        await writeFile(join(tempDir, file.name), file.content, 'utf8')
+      }
+    }
+    const resolveTmp = (value: string): string =>
+      tempDir === undefined ? value : value.replaceAll(TMP_TOKEN, tempDir)
+
+    const argv = planned.argv.map(resolveTmp)
+    const env: NodeJS.ProcessEnv = { ...process.env }
+    for (const [key, value] of Object.entries(planned.env)) {
+      env[key] = resolveTmp(value)
+    }
+
+    const startedAt = Date.now()
     const raw = await spawnCollect(argv, {
       stdin: planned.stdin,
       cwd: planned.cwd,
@@ -219,7 +243,8 @@ interface SpawnOptions {
   signal?: AbortSignal | undefined
 }
 
-function spawnCollect(argv: string[], options: SpawnOptions): Promise<RawProcessOutput> {
+/** Spawn, collect output, honor timeout and abort. Shared with `detectAgents`. */
+export function spawnCollect(argv: string[], options: SpawnOptions): Promise<RawProcessOutput> {
   return new Promise((resolve) => {
     const [binary, ...args] = argv
     if (binary === undefined) {
@@ -247,6 +272,8 @@ function spawnCollect(argv: string[], options: SpawnOptions): Promise<RawProcess
       return
     }
 
+    // Raw `node:child_process`, not the command seam: the package stays
+    // dependency-free and this manages a long-lived process group (D-07).
     const child = spawn(binary, args, {
       cwd: options.cwd,
       env: options.env,

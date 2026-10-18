@@ -165,6 +165,7 @@ function planOpencode(binary: string, spec: AgentCallSpec): PlannedCall {
     argv,
     env,
     cwd: spec.cwd,
+    prompt,
     outputFormat: format,
     tempFiles: [],
     notes,
@@ -224,7 +225,7 @@ function opencodeConversation(
   raw: RawProcessOutput,
 ): Conversation | undefined {
   const parsed = parseOpencode(planned, raw)
-  const prompt = planned.argv[planned.argv.length - 1] ?? ''
+  const prompt = planned.prompt ?? ''
   const messages: ConversationMessage[] = [
     { role: 'user', parts: [{ type: 'text', text: prompt }] },
   ]

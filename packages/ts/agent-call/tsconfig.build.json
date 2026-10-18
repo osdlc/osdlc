@@ -1,7 +1,6 @@
 {
   // Emit config for the published dist/; the dev tsconfig.json stays noEmit.
-  // The source only, and no Node types, so a runtime global that is not in
-  // ES2022 fails the build, except the Node modules the source imports.
+  // The source only, with Node types: the runner uses node:child_process and process.
   "extends": ["./tsconfig.json", "@osdlc/tsconfig/build"],
   "compilerOptions": {
     "rootDir": "src",

@@ -47,12 +47,16 @@ export function templateRefusal(args: readonly string[], choice: ModelChoice): s
 
 /**
  * A headless call through an argument template for any one-shot CLI: the slots
- * are filled, the prompt goes in `{prompt}` or on stdin, and every spec field
- * the template cannot express is folded into the prompt or dropped with a
- * note, as {@link customAdapter} does.
+ * are filled and the prompt goes in `{prompt}` or on stdin. Context, system
+ * prompt and schema are folded into the prompt; `permissions.mode` is noted
+ * as dropped. Any other field the template cannot express (budget, session,
+ * mcp, plugins, dirs, tool rules) is left out with no note, as
+ * {@link customAdapter} does.
  *
  * @throws {Error} From `plan` (so from `planCall` and `callAgent`) when the
- * spec's model or effort does not fit the slots ({@link templateRefusal}).
+ * spec's model or effort does not fit the slots ({@link templateRefusal}), when
+ * `promptVia` is `'argv'` and `args` has no `{prompt}` slot, or when it is
+ * `'stdin'` and `args` has one.
  * @experimental Part of the launch-argv helpers, which may change in a minor release.
  */
 export function templateAdapter(options: TemplateAdapterOptions): AgentAdapter {
@@ -61,6 +65,13 @@ export function templateAdapter(options: TemplateAdapterOptions): AgentAdapter {
     binary: options.binary,
     promptVia: options.promptVia,
     args: (spec, prompt) => {
+      const hasPromptSlot = options.args.includes('{prompt}')
+      if (options.promptVia === 'argv' && !hasPromptSlot) {
+        throw new Error(`${options.name}: promptVia 'argv' needs a {prompt} slot in args`)
+      }
+      if (options.promptVia === 'stdin' && hasPromptSlot) {
+        throw new Error(`${options.name}: promptVia 'stdin' cannot have a {prompt} slot in args`)
+      }
       const refusal = templateRefusal(options.args, spec)
       if (refusal !== null) throw new Error(`${options.name}: ${refusal}`)
       const slots: Record<string, string | undefined> = {

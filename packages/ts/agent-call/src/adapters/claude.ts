@@ -5,7 +5,7 @@ import {
   type Part,
   type Usage,
 } from '../conversation.js'
-import { note, type CapabilityNote, type PlannedCall } from '../plan.js'
+import { note, TMP_TOKEN, type CapabilityNote, type PlannedCall, type TempFile } from '../plan.js'
 import type { AgentCallSpec, OutputFormat, PluginSpec } from '../spec.js'
 import {
   applyPermissionMode,
@@ -18,6 +18,8 @@ import {
   tryParseJson,
 } from './shared.js'
 import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './types.js'
+
+const MCP_CONFIG_FILE = 'mcp.json'
 
 /** Options for {@link claudeAdapter}. */
 export interface ClaudeAdapterOptions {
@@ -79,6 +81,7 @@ export function claudePluginArgv(plugins: PluginSpec): string[] {
 
 function planClaude(binary: string, spec: AgentCallSpec): PlannedCall {
   const notes: CapabilityNote[] = []
+  const tempFiles: TempFile[] = []
   const argv = [binary, '-p']
 
   // Prefer the JSON envelope when the caller didn't ask for a specific
@@ -104,7 +107,13 @@ function planClaude(binary: string, spec: AgentCallSpec): PlannedCall {
   }
 
   if (spec.mcp?.servers !== undefined) {
-    argv.push('--mcp-config', JSON.stringify({ mcpServers: spec.mcp.servers }))
+    // A file, not inline JSON: server `env` holds tokens, and argv is readable
+    // by any local user.
+    tempFiles.push({
+      name: MCP_CONFIG_FILE,
+      content: JSON.stringify({ mcpServers: spec.mcp.servers }),
+    })
+    argv.push('--mcp-config', `${TMP_TOKEN}/${MCP_CONFIG_FILE}`)
     note(notes, 'mcp.servers', 'native', '--mcp-config')
     if (spec.mcp.strict === true) argv.push('--strict-mcp-config')
   }
@@ -197,7 +206,7 @@ function planClaude(binary: string, spec: AgentCallSpec): PlannedCall {
     env: { ...spec.env },
     cwd: spec.cwd,
     outputFormat: format,
-    tempFiles: [],
+    tempFiles,
     notes,
     spec,
   }

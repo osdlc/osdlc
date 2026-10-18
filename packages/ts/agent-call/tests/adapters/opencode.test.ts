@@ -16,6 +16,7 @@ describe('opencode plan', () => {
     expect(planned.argv).toContain('--format')
     expect(planned.argv[planned.argv.length - 1]).toBe('say hi')
     expect(planned.stdin).toBeUndefined()
+    expect(planned.prompt).toBe('say hi')
   })
 
   test('permissions ride OPENCODE_PERMISSION env', () => {
