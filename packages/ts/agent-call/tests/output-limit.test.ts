@@ -7,6 +7,9 @@ import { incompleteUtf8Tail } from '../src/spawn.js'
 // maxOutputBytes: a per-stream cap that stops the process group like a
 // timeout. Real processes, harmless shell scripts.
 
+// A script that waits after its output `exec`s the wait: a `sleep` forked
+// while the cap's SIGTERM is in flight can miss the group signal on macOS and
+// hold the pipe until SIGKILL, 5 s later.
 const sh = (name: string, script: string) =>
   customAdapter({ name, binary: '/bin/sh', args: () => ['-c', script] })
 
@@ -41,7 +44,7 @@ describe('maxOutputBytes', () => {
   test('the cut backs off to a character boundary', async () => {
     // 'a' then two 4-byte emoji: a cap of 6 bytes falls inside the second.
     const result = await callAgent(
-      sh('emoji', "printf 'a\\360\\237\\231\\202\\360\\237\\231\\202'; sleep 5"),
+      sh('emoji', "printf 'a\\360\\237\\231\\202\\360\\237\\231\\202'; exec sleep 5"),
       { prompt: 'x', maxOutputBytes: 6 },
     )
     expect(result.error?.reason).toBe('output-limit')
@@ -50,7 +53,7 @@ describe('maxOutputBytes', () => {
 
   test('the cut holds when the split character straddles two reads', async () => {
     const result = await callAgent(
-      sh('straddle', "printf 'ab\\360\\237'; sleep 0.1; printf '\\231\\202cd'; sleep 5"),
+      sh('straddle', "printf 'ab\\360\\237'; sleep 0.1; printf '\\231\\202cd'; exec sleep 5"),
       { prompt: 'x', maxOutputBytes: 4 },
     )
     expect(result.error?.reason).toBe('output-limit')

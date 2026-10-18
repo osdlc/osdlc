@@ -21,14 +21,17 @@ const xs = (n: number) => `head -c ${n} /dev/zero | tr '\\0' x`
 
 describe('spawnRunnerAsync maxOutputBytes', () => {
   test('passing the cap on stdout kills the child and keeps the first bytes', async () => {
-    const r = await sh.run(['-c', `${xs(100_000)}; sleep 10`], { cwd: CWD, maxOutputBytes: 1000 })
+    const r = await sh.run(['-c', `${xs(100_000)}; exec sleep 10`], {
+      cwd: CWD,
+      maxOutputBytes: 1000,
+    })
     expect(r).toMatchObject({ exitCode: 1, neverExited: true, reason: 'output' })
     expect(r.stdout).toBe('x'.repeat(1000))
     expect(r.error).toBe('stdout passed maxOutputBytes (1000 bytes)')
   }, 10_000)
 
   test('the cap applies to stderr on its own', async () => {
-    const r = await sh.run(['-c', `${xs(10)}; ${xs(5000)} >&2; sleep 10`], {
+    const r = await sh.run(['-c', `${xs(10)}; ${xs(5000)} >&2; exec sleep 10`], {
       cwd: CWD,
       maxOutputBytes: 100,
     })
@@ -96,7 +99,7 @@ describe('spawnRunnerAsync maxOutputBytes', () => {
     expect(
       (await sh.run(['-c', xs(5000)], { cwd: CWD, maxOutputBytes: Infinity })).stdout,
     ).toHaveLength(5000)
-    const r = await sh.run(['-c', `${xs(100)}; sleep 10`], { cwd: CWD, maxOutputBytes: 9.2 })
+    const r = await sh.run(['-c', `${xs(100)}; exec sleep 10`], { cwd: CWD, maxOutputBytes: 9.2 })
     expect(r.stdout).toBe('x'.repeat(10))
   }, 10_000)
 
