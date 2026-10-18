@@ -1,6 +1,7 @@
 // Stages a new library on npm so CI can publish it. For each package it
-// publishes the `0.0.1-stage` placeholder, then adds the GitHub Actions trusted
-// publisher with `npm trust github`. npm can only add a trusted publisher to a
+// builds and packs the package at version `0.0.1-stage`, publishes that tarball
+// under the `stage` tag, then adds the GitHub Actions trusted publisher with
+// `npm trust github`. package.json is restored after packing. npm can only add a trusted publisher to a
 // package that already exists (see packages/README.md, "Publishing a new
 // library for the first time").
 //
@@ -47,7 +48,7 @@ function npm(args, opts = {}) {
   return spawnSync('npx', ['-y', NPM, ...args], { encoding: 'utf8', ...opts })
 }
 
-/** Name and licence of a publishable @osdlc package directory. */
+/** Name of a publishable @osdlc package directory. */
 function readTarget(dir) {
   const manifest = join(dir, 'package.json')
   if (!existsSync(manifest)) throw new Error(`${dir}: no package.json`)
@@ -56,8 +57,7 @@ function readTarget(dir) {
   if (typeof pkg.name !== 'string' || !pkg.name.startsWith(`@${OWNER}/`)) {
     throw new Error(`${dir}: the name is not in the @${OWNER} scope`)
   }
-  if (typeof pkg.license !== 'string') throw new Error(`${dir}: no license`)
-  return { name: pkg.name, license: pkg.license }
+  return { dir, name: pkg.name }
 }
 
 /** True when the package exists, false on E404. Any other failure stops the script. */
@@ -69,27 +69,37 @@ function onNpm(name) {
   process.exit(1)
 }
 
-/** Publishes a two-file placeholder under the `stage` tag. */
-function publishPlaceholder(name, license) {
-  const dir = mkdtempSync(join(tmpdir(), 'stage-npm-package-'))
+/** Builds and packs `dir` at the placeholder version, and publishes it under the `stage` tag. */
+function publishPlaceholder(dir) {
+  const manifest = join(dir, 'package.json')
+  const original = readFileSync(manifest, 'utf8')
+  const out = mkdtempSync(join(tmpdir(), 'stage-npm-package-'))
   try {
-    const pkg = {
-      name,
-      version: PLACEHOLDER,
-      description: `Placeholder so npm can set up trusted publishing. Releases come from ${OWNER}/${REPO}.`,
-      license,
-      repository: { type: 'git', url: `git+https://github.com/${OWNER}/${REPO}.git` },
+    const pkg = JSON.parse(original)
+    writeFileSync(manifest, JSON.stringify({ ...pkg, version: PLACEHOLDER }, null, 2) + '\n')
+    let tarball
+    try {
+      for (const step of [
+        ['run', 'build'],
+        ['pack', '--pack-destination', out],
+      ]) {
+        console.log(`  pnpm ${step.join(' ')}`)
+        const r = spawnSync('pnpm', step, {
+          cwd: dir,
+          encoding: 'utf8',
+          stdio: ['ignore', 'pipe', 'inherit'],
+        })
+        if (r.status !== 0) return false
+        if (step[0] === 'pack') tarball = r.stdout.trim().split('\n').at(-1)
+      }
+    } finally {
+      writeFileSync(manifest, original)
     }
-    writeFileSync(join(dir, 'package.json'), JSON.stringify(pkg, null, 2) + '\n')
-    writeFileSync(
-      join(dir, 'README.md'),
-      `# ${name}\n\nPlaceholder version. The first real release is published from https://github.com/${OWNER}/${REPO}.\n`,
-    )
-    const publish = ['publish', '--access', 'public', '--tag', 'stage', ...dry]
+    const publish = ['publish', tarball, '--access', 'public', '--tag', 'stage', ...dry]
     console.log(`  npm ${publish.join(' ')}`)
-    return npm(publish, { cwd: dir, stdio: 'inherit' }).status === 0
+    return npm(publish, { stdio: 'inherit' }).status === 0
   } finally {
-    rmSync(dir, { recursive: true, force: true })
+    rmSync(out, { recursive: true, force: true })
   }
 }
 
@@ -120,12 +130,12 @@ const trust = [
   '--allow-publish',
 ]
 let failed = false
-for (const { name, license } of targets) {
+for (const { dir, name } of targets) {
   console.log(`\n${name}`)
   const existed = onNpm(name)
   if (existed) {
     console.log('  already on npm; no placeholder needed.')
-  } else if (!publishPlaceholder(name, license)) {
+  } else if (!publishPlaceholder(dir)) {
     console.error('  the placeholder publish failed; skipping its trusted publisher.')
     failed = true
     continue
