@@ -252,7 +252,8 @@ follow the `XDG_*` variables.
 
 ## Parity with the TypeScript twin
 
-A TypeScript twin is developed alongside it and will be published later. Both
+A TypeScript twin is published as
+[`@osdlc/tiered-dirs`](https://www.npmjs.com/package/@osdlc/tiered-dirs). Both
 are checked against `tests/fixtures/parity.json`. The two must give the same
 path for the same tier, home, scope and app, so a Rust program and a
 TypeScript program can share state. The fixture holds the cases: tier, home,

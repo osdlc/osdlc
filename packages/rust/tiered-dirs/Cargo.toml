@@ -24,7 +24,7 @@ dirs = ">=6, <8"
 thiserror = { workspace = true }
 
 # tests/parity.rs only: it reads tests/fixtures/parity.json, the fixture the
-# TypeScript twin carries a copy of. This crate parses nothing at runtime.
+# TypeScript twin reads too. This crate parses nothing at runtime.
 [dev-dependencies]
 # 1.0.220 is the first serde that pins its own serde_derive. With an older
 # serde, the lowest versions resolve a newer serde_derive that does not build.
