@@ -135,6 +135,8 @@ export function claudeStyleConversation(
     for (const event of parsed.events) {
       const type = get(event, 'type')
       if (type !== 'assistant' && type !== 'user') continue
+      // Sub-agent traffic stays in `raw`; the conversation is the main thread.
+      if (get(event, 'parent_tool_use_id') != null) continue
       const parts = anthropicContentParts(get(event, 'message', 'content'))
       if (parts.length > 0) {
         messages.push({ role: type === 'assistant' ? 'assistant' : 'tool', parts })

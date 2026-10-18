@@ -1,5 +1,5 @@
 ---
-'@osdlc/agent-call': minor
+"@osdlc/agent-call": minor
 ---
 
 **Breaking:** `AgentName` and `BUILTIN_AGENTS` gain six built-in agents:
@@ -9,3 +9,6 @@ has an adapter factory and options type (`copilotAdapter`, `piAdapter`,
 `qwenAdapter`, `droidAdapter`, `cursorAdapter`, `deepseekAdapter`). An
 exhaustive `switch` over `AgentName` needs the new cases. The README's
 capability map lists every mapping.
+
+The conversation of a claude run no longer lifts sub-agent events (those with
+a `parent_tool_use_id`) into the main thread; they stay in `raw`.

@@ -4,7 +4,7 @@ import {
   type ConversationMessage,
   type Part,
 } from '../conversation.js'
-import { note, type CapabilityNote, type PlannedCall } from '../plan.js'
+import { note, TMP_TOKEN, type CapabilityNote, type PlannedCall, type TempFile } from '../plan.js'
 import type { AgentCallSpec, OutputFormat } from '../spec.js'
 import { claudeStyleConversation, claudeStyleUsage, parseClaudeStyle } from './claude-style.js'
 import {
@@ -18,6 +18,8 @@ import {
   tryParseJson,
 } from './shared.js'
 import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './types.js'
+
+const APPEND_SYSTEM_PROMPT_FILE = 'append-system-prompt.md'
 
 /** Options for {@link droidAdapter}. */
 export interface DroidAdapterOptions {
@@ -54,6 +56,7 @@ export function droidAdapter(options: DroidAdapterOptions = {}): AgentAdapter {
 
 function planDroid(binary: string, spec: AgentCallSpec): PlannedCall {
   const notes: CapabilityNote[] = []
+  const tempFiles: TempFile[] = []
   const argv = [binary, 'exec']
 
   // The json envelope carries usage and the session id; text is the CLI's
@@ -81,8 +84,10 @@ function planDroid(binary: string, spec: AgentCallSpec): PlannedCall {
   }
 
   if (spec.appendSystemPrompt !== undefined) {
-    argv.push('--append-system-prompt', spec.appendSystemPrompt)
-    note(notes, 'appendSystemPrompt', 'native', '--append-system-prompt')
+    // A file keeps the text out of the process list.
+    tempFiles.push({ name: APPEND_SYSTEM_PROMPT_FILE, content: spec.appendSystemPrompt })
+    argv.push('--append-system-prompt-file', `${TMP_TOKEN}/${APPEND_SYSTEM_PROMPT_FILE}`)
+    note(notes, 'appendSystemPrompt', 'native', '--append-system-prompt-file <temp file>')
   }
 
   // Exec ignores the autonomy level in settings.json, so no flag is read-only.
@@ -188,7 +193,7 @@ function planDroid(binary: string, spec: AgentCallSpec): PlannedCall {
     env: { ...spec.env },
     cwd: spec.cwd,
     outputFormat: format,
-    tempFiles: [],
+    tempFiles,
     notes,
     spec,
   }

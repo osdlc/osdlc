@@ -319,7 +319,7 @@ The same rows for the agents added in 0.5.0:
 | `model` | `--model` | `--model` (provider/model) | `--model` | `--model` (`custom:<id>` for BYOK) | `--model` | `--patch` model row (approximated) |
 | `effort` (`low` to `max`, `xhigh` included) | `--reasoning-effort` | `--thinking` | `QWEN_CODE_SYSTEM_DEFAULTS_PATH` file (approximated) | `--reasoning-effort` | dropped (some model slugs take `[effort=…]`) | `--patch` model row (approximated; `medium` → `high`, `xhigh` → `max`) |
 | `systemPrompt` | prompt-emulated | `--system-prompt` (temp file) | `--system-prompt` | prompt-emulated | prompt-emulated | `--patch` persona prefix (approximated) |
-| `appendSystemPrompt` | `COPILOT_CUSTOM_INSTRUCTIONS_DIRS` file (approximated) | `--append-system-prompt` (temp file) | `--append-system-prompt` | `--append-system-prompt` | prompt-emulated | `--patch` persona suffix |
+| `appendSystemPrompt` | `COPILOT_CUSTOM_INSTRUCTIONS_DIRS` file (approximated) | `--append-system-prompt` (temp file) | `--append-system-prompt` | `--append-system-prompt-file` (temp file) | prompt-emulated | `--patch` persona suffix |
 | `permissions.mode: read-only` | `--deny-tool=write` (approximated) | `--tools read,grep,find,ls` (approximated) | `--approval-mode plan` (approximated) | no flag (`droid exec` is read-only) | `--mode ask` (approximated) | `DSH_PERMISSION_MODE` `read-only` |
 | `permissions.mode: edits` | `--allow-tool=write` | `--tools read,grep,find,ls,edit,write` (approximated) | `--approval-mode auto-edit` | `--auto low` (approximated) | no flag (print mode applies edits, rejects commands) | `DSH_PERMISSION_MODE` `workspace-write` (approximated) |
 | `permissions.mode: full-auto` | `--allow-all-tools` (approximated) | `--tools` all built-ins (approximated) | auto-edit + allowed shell and web fetch (approximated) | `--auto medium` (approximated) | `--sandbox enabled` | `DSH_PERMISSION_MODE` `workspace-write` |
@@ -380,7 +380,7 @@ format (a JSON envelope or an event stream), so metadata is captured.
   including `env` values, go on the command line as `-c mcp_servers.*`
   overrides. claude's `systemPrompt` and `appendSystemPrompt` are also argv.
   copilot, pi, qwen, droid, cursor and deepseek read the prompt from stdin.
-  qwen's system prompts and droid's `appendSystemPrompt` are argv. copilot, qwen,
+  qwen's system prompts are argv. copilot, qwen,
   cursor and deepseek read MCP config from a temp file.
 - Not every posture is a sandbox. pi never asks before a tool call and has no
   sandbox: its modes only choose which tools are enabled, and MCP tools stay
@@ -401,6 +401,13 @@ format (a JSON envelope or an event stream), so metadata is captured.
   (`--dangerously-skip-permissions` and its equivalents). Use it only in an
   environment that is sandboxed from outside.
 - The runner starts the binary with an argument array and no shell.
+- A resumed deepseek session keeps the permission it was created with, so
+  `permissions.mode` is dropped (and noted) when `session.resume` is set.
+- cursor refuses a headless run in a workspace it does not trust.
+  `cursorAdapter({ trustWorkspace: true })` passes `--trust`, which marks the
+  working directory and each `context.dirs` entry trusted under
+  `~/.cursor/projects/` for good, interactive sessions included. Do not use it
+  on a checkout you would not open in Cursor yourself.
 - cursor's default binary is `agent`, and deepseek's is `dsh`. Both names are
   generic, and `detectAgents` only checks that `<binary> --version` exits 0,
   so an unrelated program with that name reads as installed. Pass `binary`

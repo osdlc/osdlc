@@ -15,9 +15,9 @@ function noteFor(planned: ReturnType<typeof adapter.plan>, field: string) {
 }
 
 describe('cursor plan', () => {
-  test('minimal spec: json envelope, --trust, prompt on stdin', () => {
+  test('minimal spec: json envelope, prompt on stdin', () => {
     const planned = adapter.plan({ prompt: 'say hi' })
-    expect(planned.argv).toEqual(['agent', '-p', '--trust', '--output-format', 'json'])
+    expect(planned.argv).toEqual(['agent', '-p', '--output-format', 'json'])
     expect(planned.stdin).toBe('say hi')
     expect(planned.agent).toBe('cursor')
     expect(planned.notes).toEqual([])
@@ -71,7 +71,7 @@ describe('cursor plan', () => {
 
     // No flag: observed headless, print mode applies writes and rejects shell commands.
     const edits = adapter.plan({ prompt: 'x', permissions: { mode: 'edits' } })
-    expect(edits.argv).toEqual(['agent', '-p', '--trust', '--output-format', 'json'])
+    expect(edits.argv).toEqual(['agent', '-p', '--output-format', 'json'])
     expect(noteFor(edits, 'permissions.mode')?.support).toBe('native')
 
     const fullAuto = adapter.plan({ prompt: 'x', permissions: { mode: 'full-auto' } })
@@ -84,10 +84,21 @@ describe('cursor plan', () => {
 
     const def = adapter.plan({ prompt: 'x', permissions: { mode: 'default' } })
     expect(noteFor(def, 'permissions.mode')).toBeUndefined()
-    // --trust is there in every mode: without it a headless run exits 1.
+    // --trust leaves a lasting trust marker, so no mode passes it on its own.
     for (const planned of [readOnly, edits, fullAuto, bypass, def]) {
-      expect(planned.argv).toContain('--trust')
+      expect(planned.argv).not.toContain('--trust')
     }
+  })
+
+  test('trustWorkspace opts in to --trust', () => {
+    const trusting = cursorAdapter({ trustWorkspace: true })
+    expect(trusting.plan({ prompt: 'x' }).argv).toEqual([
+      'agent',
+      '-p',
+      '--trust',
+      '--output-format',
+      'json',
+    ])
   })
 
   test('tool rules are dropped', () => {
@@ -463,7 +474,7 @@ describe('cursor parse', () => {
   })
 
   test('the workspace-trust refusal is reported from stderr', () => {
-    // Real stderr of a run without --trust (the adapter always passes it).
+    // Real stderr of a run in an untrusted workspace without trustWorkspace.
     const stderr =
       '\n⚠ Workspace Trust Required\n\n  Do you trust the contents of this directory?\n\n' +
       '  To proceed, you can either:\n    • Pass --trust, --yolo, or -f if you trust this directory\n'

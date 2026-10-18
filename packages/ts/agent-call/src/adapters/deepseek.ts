@@ -28,8 +28,9 @@ const PATCH_FILE = 'dsh-patch.yml'
 /** The shipped default model, restated when only the effort changes (a patch replaces the whole row). */
 const DEFAULT_PROVIDER = 'deepseek-official'
 const DEFAULT_MODEL = 'deepseek-flash'
-/** The headless bundle's persona prefix, restated when only the suffix changes. */
+/** The headless bundle's persona prefix and suffix, restated when a patch replaces the row. */
 const HEADLESS_PERSONA_PREFIX = 'You are a coding agent powered by the {{model}} model.'
+const HEADLESS_PERSONA_SUFFIX = 'Your working directory is {{cwd}}.'
 
 /** permissions.mode → `DSH_PERMISSION_MODE`, the preset the sandbox and approval rows read. */
 const PERMISSION_ENV: Record<Exclude<PermissionMode, 'default'>, string> = {
@@ -97,9 +98,12 @@ function planDeepseek(binary: string, spec: AgentCallSpec): PlannedCall {
         notes,
         'effort',
         'approximated',
-        effort.clamped
+        (effort.clamped
           ? `reasoningEffort: ${effort.value} in a --patch overlay (dsh takes off|low|high|max)`
-          : 'reasoningEffort in a --patch overlay of the agent-default-model row',
+          : 'reasoningEffort in a --patch overlay of the agent-default-model row') +
+          (spec.model === undefined
+            ? `; the row also pins ${DEFAULT_PROVIDER}/${DEFAULT_MODEL}, replacing any default model configured in $DSH_HOME`
+            : ''),
       )
     }
     patch.push({ id: 'agent-default-model', config })
@@ -108,7 +112,7 @@ function planDeepseek(binary: string, spec: AgentCallSpec): PlannedCall {
         notes,
         'model',
         'approximated',
-        `no model flag; set on the agent-default-model row of a --patch overlay (provider ${DEFAULT_PROVIDER})`,
+        `no model flag; set on the agent-default-model row of a --patch overlay (provider ${DEFAULT_PROVIDER}, replacing any configured provider)`,
       )
     }
   }
@@ -129,8 +133,13 @@ function planDeepseek(binary: string, spec: AgentCallSpec): PlannedCall {
     } else {
       config['personaPrefix'] = HEADLESS_PERSONA_PREFIX
     }
+    // The headless suffix tells the model its working directory; keep it ahead
+    // of any appended text.
+    config['personaSuffix'] =
+      spec.appendSystemPrompt === undefined
+        ? HEADLESS_PERSONA_SUFFIX
+        : `${HEADLESS_PERSONA_SUFFIX}\n\n${spec.appendSystemPrompt}`
     if (spec.appendSystemPrompt !== undefined) {
-      config['personaSuffix'] = spec.appendSystemPrompt
       note(notes, 'appendSystemPrompt', 'native', 'personaSuffix in a --patch overlay')
     }
     patch.push({ id: 'system-prompt', config })
@@ -185,7 +194,16 @@ function planDeepseek(binary: string, spec: AgentCallSpec): PlannedCall {
 
   const permissions = spec.permissions
   const mode = permissions?.mode
-  if (mode !== undefined && mode !== 'default') {
+  if (mode !== undefined && mode !== 'default' && spec.session?.resume !== undefined) {
+    // DSH_PERMISSION_MODE seeds new sessions only; a resumed session keeps the
+    // permission it recorded, so setting it would claim a posture dsh ignores.
+    note(
+      notes,
+      'permissions.mode',
+      'dropped',
+      'a resumed dsh session keeps the permission it was created with; DSH_PERMISSION_MODE applies to new sessions only',
+    )
+  } else if (mode !== undefined && mode !== 'default') {
     env['DSH_PERMISSION_MODE'] = PERMISSION_ENV[mode]
     if (mode === 'edits') {
       note(

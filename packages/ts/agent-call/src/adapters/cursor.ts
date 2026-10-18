@@ -28,6 +28,13 @@ const PLUGIN_NAME = 'agent-call'
 export interface CursorAdapterOptions {
   /** Binary to spawn. Default: the CLI's own name. */
   binary?: string
+  /**
+   * Pass `--trust`, which permanently marks the working directory (and each
+   * `context.dirs` entry) trusted under `~/.cursor/projects/`, for later
+   * interactive sessions too. Default: false, so a headless call in a
+   * workspace Cursor does not trust yet fails with the CLI's own error.
+   */
+  trustWorkspace?: boolean
 }
 
 /**
@@ -35,9 +42,9 @@ export interface CursorAdapterOptions {
  * the older `cursor-agent`; `--help` and the CLI's own error messages name
  * `agent`, so that is the default. The prompt travels on stdin (read when no
  * prompt argument is given), `--output-format text|json|stream-json` prints
- * a claude-style result envelope or event stream, and `--trust` is always
- * passed because a headless run in an untrusted workspace exits 1 instead of
- * asking. The CLI has no effort, system-prompt or schema flag; system prompts
+ * a claude-style result envelope or event stream. A headless run in a
+ * workspace Cursor does not trust exits 1 instead of asking; pass
+ * `trustWorkspace: true` to trust it (persistently) with `--trust`. The CLI has no effort, system-prompt or schema flag; system prompts
  * and the schema are emulated. Verified against agent 2026.08.11-e8db854
  * driven by a fake Cursor backend (`--endpoint`), not a live account.
  */
@@ -47,7 +54,7 @@ export function cursorAdapter(options: CursorAdapterOptions = {}): AgentAdapter 
     name: 'cursor',
     binary,
     plan(spec) {
-      return planCursor(binary, spec)
+      return planCursor(binary, options.trustWorkspace === true, spec)
     },
     parseResult(planned, raw) {
       return parseCursor(planned, raw)
@@ -58,14 +65,15 @@ export function cursorAdapter(options: CursorAdapterOptions = {}): AgentAdapter 
   }
 }
 
-function planCursor(binary: string, spec: AgentCallSpec): PlannedCall {
+function planCursor(binary: string, trust: boolean, spec: AgentCallSpec): PlannedCall {
   const notes: CapabilityNote[] = []
   const tempFiles: TempFile[] = []
-  // --trust marks the workspace trusted (a marker under ~/.cursor/projects/)
-  // instead of exiting with "Workspace Trust Required". It approves nothing
-  // else: commands and MCP servers keep their own gates. Passed always, since
-  // a fresh checkout would otherwise fail every call in every mode.
-  const argv = [binary, '-p', '--trust']
+  // --trust marks the workspace trusted (a lasting marker under
+  // ~/.cursor/projects/) instead of exiting with "Workspace Trust Required".
+  // It approves nothing else: commands and MCP servers keep their own gates.
+  // Opt-in, since the trust outlives the call.
+  const argv = [binary, '-p']
+  if (trust) argv.push('--trust')
 
   // Explicit even for text: the documented default has changed between releases.
   const format: OutputFormat = spec.output?.format ?? 'json'

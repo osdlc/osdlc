@@ -94,7 +94,12 @@ describe('deepseek plan', () => {
     expect(patchRows(replace)).toEqual([
       {
         id: 'system-prompt',
-        config: { includeHarnessIdentity: false, personaPrefix: 'be terse' },
+        // The headless working-directory suffix is restated: a row's config is replaced whole.
+        config: {
+          includeHarnessIdentity: false,
+          personaPrefix: 'be terse',
+          personaSuffix: 'Your working directory is {{cwd}}.',
+        },
       },
     ])
     expect(replace.stdin).toBe('q')
@@ -104,10 +109,10 @@ describe('deepseek plan', () => {
     expect(patchRows(append)).toEqual([
       {
         id: 'system-prompt',
-        // The headless persona prefix is restated: a row's config is replaced whole.
+        // The headless persona prefix and suffix are restated, and the text appends.
         config: {
           personaPrefix: 'You are a coding agent powered by the {{model}} model.',
-          personaSuffix: 'cite files',
+          personaSuffix: 'Your working directory is {{cwd}}.\n\ncite files',
         },
       },
     ])
@@ -132,6 +137,23 @@ describe('deepseek plan', () => {
     const def = adapter.plan({ prompt: 'x', permissions: { mode: 'default' } })
     expect(def.env).toEqual({})
     expect(noteFor(def, 'permissions.mode')).toBeUndefined()
+  })
+
+  test('a resumed session keeps its own permission, so the mode is dropped', () => {
+    const planned = adapter.plan({
+      prompt: 'x',
+      permissions: { mode: 'read-only' },
+      session: { resume: 'session-1' },
+    })
+    expect(planned.env['DSH_PERMISSION_MODE']).toBeUndefined()
+    expect(noteFor(planned, 'permissions.mode')?.support).toBe('dropped')
+  })
+
+  test('effort alone says it pins the default model', () => {
+    const planned = adapter.plan({ prompt: 'x', effort: 'low' })
+    expect(noteFor(planned, 'effort')?.detail).toContain('deepseek-official/deepseek-flash')
+    const withModel = adapter.plan({ prompt: 'x', effort: 'low', model: 'deepseek-pro' })
+    expect(noteFor(withModel, 'effort')?.detail).not.toContain('pins')
   })
 
   test('tool rules, extra dirs, continueLast, session pinning, persist and budget are dropped', () => {

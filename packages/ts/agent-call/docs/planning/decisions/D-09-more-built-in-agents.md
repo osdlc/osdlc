@@ -50,13 +50,14 @@ created: 2026-10-18
 
 ## Consequences
 
-- The capability map has ten columns. `tests/contract.test.ts` checks every
-  cell of the new columns.
+- The capability map gains a second table, with a column for each new
+  agent. `tests/contract.test.ts` checks every cell of the new columns.
 - Each adapter was checked against its CLI's `--help` output and source, at
   the version the README names. pi, qwen, copilot, droid and deepseek fixtures
   were captured from real runs against a local fake model server, since no API
-  key was used. cursor could not be installed and is built from its
-  documentation, as antigravity is. The live suite has no case for the new
-  adapters until someone with credentials runs them.
+  key was used. cursor's fixtures come from its real CLI run against a fake
+  Cursor backend, because its backend speaks Cursor's own protocol. The live
+  suite has no case for the new adapters until someone with credentials runs
+  them.
 - DeepSeek Harness is a developer preview. Its adapter targets the version
   the README names, and later releases may break it.

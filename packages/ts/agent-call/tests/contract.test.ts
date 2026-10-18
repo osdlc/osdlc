@@ -102,7 +102,7 @@ const ROWS: Row[] = [
       copilot: { support: 'approximated', readme: 'COPILOT_CUSTOM_INSTRUCTIONS_DIRS' },
       pi: { support: 'native', readme: '--append-system-prompt' },
       qwen: { support: 'native', readme: '--append-system-prompt' },
-      droid: { support: 'native', readme: '--append-system-prompt' },
+      droid: { support: 'native', readme: '--append-system-prompt-file' },
       cursor: { support: 'emulated', planned: '<instructions>' },
       deepseek: { support: 'native', readme: '--patch' },
     },

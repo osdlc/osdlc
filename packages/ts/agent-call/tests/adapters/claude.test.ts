@@ -225,6 +225,30 @@ describe('claude parse', () => {
     expect(parsed.events).toHaveLength(1)
   })
 
+  test('sub-agent events stay out of the conversation', () => {
+    const lines = [
+      { type: 'assistant', message: { content: [{ type: 'text', text: 'main' }] } },
+      {
+        type: 'user',
+        parent_tool_use_id: 'call_1',
+        message: { content: [{ type: 'text', text: 'SUBAGENT PROMPT' }] },
+      },
+      {
+        type: 'assistant',
+        parent_tool_use_id: 'call_1',
+        message: { content: [{ type: 'text', text: 'sub answer' }] },
+      },
+      { type: 'result', subtype: 'success', is_error: false, result: 'main', session_id: 's' },
+    ]
+    const planned = adapter.plan({ prompt: 'hi', output: { format: 'stream-json' } })
+    const stdout = lines.map((l) => JSON.stringify(l)).join('\n')
+    const conversation = adapter.toConversation?.(planned, raw(stdout))
+    expect(conversation?.messages.map((m) => m.parts)).toEqual([
+      [{ type: 'text', text: 'hi' }],
+      [{ type: 'text', text: 'main' }],
+    ])
+  })
+
   test('stream-json events and conversation', () => {
     const lines = [
       JSON.stringify({
