@@ -52,6 +52,17 @@ export interface CallOptions {
   captureConversation?: boolean | undefined
   /** Abort the run early: kills the child, or skips the spawn if already aborted. */
   signal?: AbortSignal | undefined
+  /**
+   * Called with the agent's output as it arrives, for a host that shows
+   * progress while it waits. Each chunk is decoded UTF-8 text, whole
+   * characters only, tagged with its stream; the chunks of one stream join to
+   * exactly what `raw` collects. Output is still collected and parsed as
+   * usual. Nothing is delivered past `maxOutputBytes`. The callback runs
+   * synchronously on the data event, so keep it quick. If it throws, the
+   * error is swallowed, the callback is not called again for this run, and
+   * the run carries on.
+   */
+  onOutput?: ((chunk: string, stream: 'stdout' | 'stderr') => void) | undefined
 }
 
 /**
@@ -94,7 +105,7 @@ export async function callAgent(
 ): Promise<AgentResult> {
   const maxOutputBytes = outputCap(spec.maxOutputBytes)
   const planned = adapter.plan(spec)
-  const raw = await execute(planned, spec, maxOutputBytes, options.signal)
+  const raw = await execute(planned, spec, maxOutputBytes, options)
 
   let error: CallError | undefined
   if (raw.outputLimit !== undefined) {
@@ -196,7 +207,7 @@ async function execute(
   planned: PlannedCall,
   spec: AgentCallSpec,
   maxOutputBytes: number | undefined,
-  signal?: AbortSignal,
+  options: CallOptions,
 ): Promise<RawProcessOutput> {
   for (const file of planned.tempFiles) {
     if (!isPlainFileName(file.name)) {
@@ -228,8 +239,9 @@ async function execute(
       cwd: planned.cwd,
       env,
       timeoutMs: spec.timeoutMs,
-      signal,
+      signal: options.signal,
       maxOutputBytes,
+      onOutput: options.onOutput,
     })
     raw.durationMs = Date.now() - startedAt
 

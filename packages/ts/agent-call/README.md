@@ -26,9 +26,9 @@ When not to use it:
 
 - For a conversation. A call is one prompt and one answer. It can resume a
   session by id, but it holds no session open.
-- For a run you want to steer or watch live. Output is collected, not
-  streamed to your code as it arrives (`stream-json` returns the events after
-  the run).
+- For a run you want to steer. A call takes no input once it starts. You can
+  watch it: the `onOutput` option hands you the output as it arrives, but the
+  result, parsed events included, comes after the run.
 - For an agent that has no one-shot CLI mode.
 - For an exact, identical result on every agent. Where a CLI cannot express a
   field, the adapter approximates it, folds it into the prompt, or drops it,
@@ -121,6 +121,21 @@ const result = await callAgent(shout, { prompt: 'hello' })
 
 Every example in this README is in `examples/`, which runs as part of the test
 suite.
+
+### Watching a run
+
+Output is collected and returned after the run. To show it while a person
+waits, pass `onOutput`: it gets each chunk of decoded text as it arrives,
+tagged `stdout` or `stderr`, and the output is still collected and parsed.
+
+```ts
+const result = await callAgent(adapter, spec, {
+  onOutput: (chunk, stream) => (stream === 'stdout' ? process.stdout : process.stderr).write(chunk),
+})
+```
+
+A throw from `onOutput` is swallowed and stops later calls; the run carries
+on. Nothing is delivered past `maxOutputBytes`.
 
 ### Failures
 

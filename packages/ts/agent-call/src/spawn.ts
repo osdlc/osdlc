@@ -14,6 +14,8 @@ export interface SpawnOptions {
   signal?: AbortSignal | undefined
   /** Per-stream byte cap; passing it stops the group like a timeout. */
   maxOutputBytes?: number | undefined
+  /** Called with each decoded chunk as it arrives. A throw stops later calls. */
+  onOutput?: ((chunk: string, stream: 'stdout' | 'stderr') => void) | undefined
 }
 
 /**
@@ -46,7 +48,10 @@ class StreamCollector {
   /** Trailing bytes of an incomplete character, held by the decoder. */
   private carry: Buffer = Buffer.alloc(0)
 
-  constructor(private readonly cap: number | undefined) {}
+  constructor(
+    private readonly cap: number | undefined,
+    private readonly emit: (text: string) => void,
+  ) {}
 
   /** Take one chunk. Returns `true` when this chunk passed the cap. */
   push(chunk: Buffer): boolean {
@@ -68,12 +73,18 @@ class StreamCollector {
 
   /** Flush the decoder at end of stream. A capped stream holds no partial character worth keeping. */
   end(): void {
-    if (!this.capped) this.text += this.decoder.end()
+    if (!this.capped) this.append(this.decoder.end())
+  }
+
+  private append(text: string): void {
+    if (text === '') return
+    this.text += text
+    this.emit(text)
   }
 
   private accept(chunk: Buffer): void {
     this.bytes += chunk.length
-    this.text += this.decoder.write(chunk)
+    this.append(this.decoder.write(chunk))
     // An incomplete character is at most 3 bytes, so the last 3 bytes of the
     // chunk (after any carry) are enough to find it.
     const tail = Buffer.concat([this.carry, chunk.subarray(Math.max(0, chunk.length - 3))])
@@ -124,8 +135,21 @@ export function spawnCollect(argv: string[], options: SpawnOptions): Promise<Raw
       detached: true,
     })
 
-    const out = new StreamCollector(options.maxOutputBytes)
-    const err = new StreamCollector(options.maxOutputBytes)
+    // A caller's callback must not take the run down: the first throw is
+    // swallowed and stops later calls, and the output is still collected.
+    let onOutput = options.onOutput
+    const emitter =
+      (stream: 'stdout' | 'stderr') =>
+      (text: string): void => {
+        if (onOutput === undefined) return
+        try {
+          onOutput(text, stream)
+        } catch {
+          onOutput = undefined
+        }
+      }
+    const out = new StreamCollector(options.maxOutputBytes, emitter('stdout'))
+    const err = new StreamCollector(options.maxOutputBytes, emitter('stderr'))
     let timedOut = false
     let cutShortBy: 'timeout' | 'abort' | undefined
     let outputLimit: 'stdout' | 'stderr' | undefined

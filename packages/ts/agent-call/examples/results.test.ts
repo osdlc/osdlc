@@ -26,6 +26,27 @@ import {
 const node = (script: string): AgentAdapter =>
   customAdapter({ name: 'node-script', binary: 'node', args: () => ['-e', script] })
 
+describe('onOutput', () => {
+  test('hands over the output as it arrives, and the result still has it all', async () => {
+    const adapter = node('console.log("one"); setTimeout(() => console.error("two"), 50)')
+    const spec: AgentCallSpec = { prompt: 'x' }
+    const seen: string[] = []
+    const process = {
+      stdout: { write: (chunk: string) => seen.push(`out:${chunk}`) },
+      stderr: { write: (chunk: string) => seen.push(`err:${chunk}`) },
+    }
+
+    const result = await callAgent(adapter, spec, {
+      onOutput: (chunk, stream) =>
+        (stream === 'stdout' ? process.stdout : process.stderr).write(chunk),
+    })
+
+    expect(seen).toEqual(['out:one\n', 'err:two\n'])
+    expect(result.ok).toBe(true)
+    expect(result.raw.stdout).toBe('one\n')
+  })
+})
+
 describe('AgentResult', () => {
   test('a good run has the text, the exit code and the plan that ran', async () => {
     const result: AgentResult = await callAgent(node('console.log("fine")'), { prompt: 'x' })
