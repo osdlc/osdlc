@@ -413,10 +413,11 @@ pub(crate) fn is_string_key(src: &str, span: &KeySpan) -> bool {
 fn parse_int(text: &str) -> Option<i64> {
     let unsigned = text.strip_prefix(['-', '+']).unwrap_or(text);
     let negative = text.starts_with('-');
-    if !unsigned.is_empty() && unsigned.bytes().all(|c| c.is_ascii_digit()) {
-        if let Ok(i) = text.parse::<i64>() {
-            return Some(i);
-        }
+    if !unsigned.is_empty()
+        && unsigned.bytes().all(|c| c.is_ascii_digit())
+        && let Ok(i) = text.parse::<i64>()
+    {
+        return Some(i);
     }
     for (prefix, radix) in [("0x", 16), ("0o", 8)] {
         let Some(digits) = unsigned.strip_prefix(prefix) else {
