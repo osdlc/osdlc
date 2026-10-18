@@ -246,6 +246,22 @@ describe('compositeOver', () => {
     expect(compositeOver(WHITE, BLACK)).toBe(WHITE)
   })
 
+  test.each([2, 1.5])('a source alpha of %s is treated as opaque', (a) => {
+    const src: Rgba = { r: 10, g: 20, b: 30, a }
+    const out = compositeOver(src, WHITE)
+    expect(out).toEqual({ r: 10, g: 20, b: 30, a: 1 })
+    expect(out).not.toBe(src)
+  })
+
+  test.each([-1, -0.5])('a source alpha of %s is treated as 0', (a) => {
+    expect(compositeOver({ r: 10, g: 20, b: 30, a }, { r: 1, g: 2, b: 3, a: 1 })).toEqual({
+      r: 1,
+      g: 2,
+      b: 3,
+      a: 1,
+    })
+  })
+
   test('50% black over white is the 8-bit midpoint, opaque', () => {
     expect(compositeOver({ r: 0, g: 0, b: 0, a: 0.5 }, WHITE)).toEqual({
       r: 128,

@@ -54,7 +54,7 @@
 
 ## History before the first public release
 
-These versions were never published. The package was developed in the sksizer/dev repository. The
+These versions were never published. The package was developed in a private repository. The
 version numbers were assigned afterwards, from its git history, and have no tags.
 
 ### [0.3.0] - 2026-10-11 (unpublished)

@@ -246,5 +246,6 @@ describe('independence from any host project', () => {
   test('the changelog links no pull request and names no repository', () => {
     expect(CHANGELOG).not.toMatch(/#\d{2,}\b/)
     expect(CHANGELOG).not.toMatch(/github\.com/)
+    expect(CHANGELOG).not.toMatch(/sksizer\//)
   })
 })

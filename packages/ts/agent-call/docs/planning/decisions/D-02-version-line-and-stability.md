@@ -16,7 +16,7 @@ created: 2026-10-18
   goes in a minor release and is marked `Breaking` in the CHANGELOG.
 - Eight exports are experimental (see [D-03](D-03-experimental-exports.md)).
   They may change in any minor release.
-- Earlier versions were used during development in `sksizer/dev` and were
+- Earlier versions were used during development in a private repository and were
   never published. The CHANGELOG keeps that history in its own section.
 
 ## Why
