@@ -76,7 +76,14 @@ Plan a call without running it. `planned.argv` is the exact command line, and
 `planned.notes` says what was approximated:
 
 ```ts
-import { adapterFor, callAgent, customAdapter, planCall, type AgentCallSpec } from '@osdlc/agent-call'
+import {
+  adapterFor,
+  callAgent,
+  customAdapter,
+  planCall,
+  templateAdapter,
+  type AgentCallSpec,
+} from '@osdlc/agent-call'
 
 const spec: AgentCallSpec = {
   prompt: 'Summarize the failing tests and propose a fix.',
@@ -121,6 +128,19 @@ const shout = customAdapter({
 
 const result = await callAgent(shout, { prompt: 'hello' })
 // result.ok is true and result.text is 'HELLO'
+```
+
+A CLI with an argument template, such as Aider, fits `templateAdapter`
+(experimental). Aider and Crush print no machine-readable output, so they have
+no built-in adapter:
+
+```ts
+const aider = templateAdapter({
+  name: 'aider',
+  binary: 'aider',
+  args: ['--message', '{prompt}', '--model', '{model}', '--yes-always', '--no-auto-commits'],
+  promptVia: 'argv',
+})
 ```
 
 Every example in this README is in `examples/`, which runs as part of the test
@@ -359,8 +379,8 @@ format (a JSON envelope or an event stream), so metadata is captured.
   from a temp file. codex has no config-file option, so its MCP servers,
   including `env` values, go on the command line as `-c mcp_servers.*`
   overrides. claude's `systemPrompt` and `appendSystemPrompt` are also argv.
-  copilot, pi, qwen, droid, cursor and deepseek read the prompt from stdin. qwen's
-  system prompts and droid's `appendSystemPrompt` are argv. copilot, qwen,
+  copilot, pi, qwen, droid, cursor and deepseek read the prompt from stdin.
+  qwen's system prompts and droid's `appendSystemPrompt` are argv. copilot, qwen,
   cursor and deepseek read MCP config from a temp file.
 - Not every posture is a sandbox. pi never asks before a tool call and has no
   sandbox: its modes only choose which tools are enabled, and MCP tools stay
