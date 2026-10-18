@@ -1,6 +1,6 @@
 {
   "name": "@osdlc/color",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "sRGB colour arithmetic: parse the CSS colour syntaxes a browser reports, mix and composite in gamma-encoded sRGB, and measure WCAG 2 relative luminance and contrast. No dependencies.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",

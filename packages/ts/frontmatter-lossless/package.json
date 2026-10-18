@@ -1,6 +1,6 @@
 {
   "name": "@osdlc/frontmatter-lossless",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Byte-exact Markdown frontmatter framing: split a note into verbatim YAML and body with source offsets, and put it back together byte for byte. BOM, CRLF and fence bytes are kept. No dependencies.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",

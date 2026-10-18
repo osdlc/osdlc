@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.1
+
+### Patch Changes
+
+- 828fa0f: `compositeOver` clamps a finite source alpha to 0-1, so `a: 2` is treated as opaque and `a: -1` as transparent, as `withAlpha` does.
+
 ## 1.0.0
 
 ### Major Changes
