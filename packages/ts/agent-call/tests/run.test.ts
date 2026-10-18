@@ -203,7 +203,8 @@ describe('child stdin', () => {
     })
     const result = await callAgent(partial, { prompt: 'x'.repeat(1_000_000) })
     expect(result.exitCode).toBe(0)
-    expect(result.raw.stdinError).toContain('EPIPE')
+    // macOS reports ENOTCONN instead of EPIPE when the pipe closes mid-write.
+    expect(result.raw.stdinError).toMatch(/EPIPE|ENOTCONN/)
   })
 
   test('a prompt the child read in full leaves no stdin error', async () => {

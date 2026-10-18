@@ -140,7 +140,8 @@ export function spawnCollect(argv: string[], options: SpawnOptions): Promise<Raw
     child.on('close', (code, signal) => settle(code, undefined, signal))
 
     // The child may exit before draining stdin (bad flag, auth failure, or a
-    // kill from the timeout/abort path), which fails the write with EPIPE.
+    // kill from the timeout/abort path), which fails the write with EPIPE, or
+    // ENOTCONN on macOS when the pipe closes mid-write.
     // Without a listener that stream error is an uncaught exception that takes
     // the host process down. It is recorded rather than dropped: the failure
     // means the agent saw a truncated prompt, and nothing else reveals that
