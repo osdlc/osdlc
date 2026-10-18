@@ -10,7 +10,7 @@ import {
   isVendorBundleId,
   rootedBaseDirs,
 } from '../index.ts'
-import type { BaseDirs, Tier } from '../index.ts'
+import type { BaseDirs, Dir, Tier } from '../index.ts'
 
 const VENDOR = 'com.example'
 
@@ -272,5 +272,13 @@ describe('vendor bundle assertion', () => {
       expect(isVendorBundleId(VENDOR, id)).toBe(dirs.isVendorBundleId(id))
     }
     expect(isVendorBundleId('org.other', 'org.other.app')).toBe(true)
+  })
+})
+
+describe('Dir', () => {
+  test('is nominal: an object literal is not a Dir', () => {
+    // @ts-expect-error a Dir has a private field only the class can set
+    const fake: Dir = { base: '/x', segments: [], path: '/x', relative: '' }
+    expect(fake.base).toBe('/x')
   })
 })

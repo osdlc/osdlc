@@ -5,7 +5,7 @@ import { systemBaseDirs } from './base-dirs.ts'
 import { assertSegment } from './segment.ts'
 
 /**
- * Which constructor produced a {@link Tier}.
+ * Which method produced a {@link Tier}.
  *
  * Exposed so a caller — or a gate run over a third party's install — can tell
  * a suite address from a standalone one without parsing the segment string.
@@ -53,11 +53,15 @@ export class Dir {
   /** The resolved root this path hangs off: a home's base, or scratch. */
   readonly base: string
   /** Validated segments below {@link base}, outermost first. */
-  readonly segments: readonly string[]
+  get segments(): readonly string[] {
+    return this.#segments
+  }
+  // A private field makes the type nominal: an object literal is not a `Dir`.
+  readonly #segments: readonly string[]
 
   constructor(base: string, segments: readonly string[]) {
     this.base = base
-    this.segments = Object.freeze([...segments])
+    this.#segments = Object.freeze([...segments])
   }
 
   /** The absolute directory, joined with the host's separator. */
@@ -119,7 +123,7 @@ export class Tier {
   /** The directory segment this tier contributes, e.g. `com.example.notes`. */
   readonly segment: string
 
-  /** Which constructor produced this tier. */
+  /** Which method produced this tier (`vendor`, `suite` or `standalone`). */
   readonly kind: TierKind
 
   readonly #bases: BaseDirs

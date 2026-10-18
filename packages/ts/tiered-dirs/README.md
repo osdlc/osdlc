@@ -89,7 +89,8 @@ of this package.
 
 The vendor is the one segment the caller fixes up front. The suite segment is
 composed from it. `suiteKey` is a caller-supplied constant, not derived from a
-bundle identifier. `Tier.kind` reports which constructor produced a tier.
+bundle identifier. `Tier.kind` reports which method produced a tier (`vendor`,
+`suite` or `standalone`).
 
 `Tier` and `Dir` are exported as types only. Their constructors are not part
 of the package, so a value always comes from a checked method:
@@ -208,12 +209,9 @@ first:
   default: set `<P>_ROOT` there. A test runner
   process is one with a test file as its entry point that runs with
   `NODE_ENV=test`, `NODE_TEST_CONTEXT` (set by `node --test`) or under Bun.
-  A Vitest worker is detected too: `VITEST_WORKER_ID` or `VITEST_POOL_ID` is
-  set and the entry point is a file in the `vitest` package's `dist/workers`
-  folder (Vitest 4 and later) or tinypool's `dist/entry/process.js` or
-  `dist/entry/worker.js` (Vitest 3 and earlier). A test that points `HOME` at a fixture keeps it. A child process a
-  test spawns gets no default, because its entry point is neither a test file
-  nor a Vitest worker, even though it inherits the Vitest variables.
+  A Vitest worker is detected too. A test that points `HOME` at a fixture
+  keeps it. A child process a test spawns gets no default, because its entry
+  point is neither a test file nor a Vitest worker.
 - With `<P>_REQUIRE_OVERRIDE` set, a root that would fall back to the per-OS
   table throws a `TieredDirsError` naming the fix.
 
