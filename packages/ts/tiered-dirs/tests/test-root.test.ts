@@ -13,6 +13,7 @@ import {
   systemBaseDirs,
   testRoot,
 } from '../index.ts'
+import { isTestRunnerProcess } from '../base-dirs.ts'
 
 const VENDOR = 'com.example'
 const ENV = envVars('EXAMPLE')
@@ -65,15 +66,15 @@ describe('under a test runner', () => {
   })
 
   test('the default environment resolves every home under the scratch root', () => {
-    const fleet = TieredDirs.fromEnv(VENDOR, ENV)
-    const root = dirname(fleet.bases.durable)
+    const dirs = TieredDirs.fromEnv(VENDOR, ENV)
+    const root = dirname(dirs.bases.durable)
     // Unique per process, so a reused pid does not inherit old state.
     expect(root.startsWith(join(tmpdir(), `tiered-dirs-test-${process.pid}-`))).toBe(true)
     for (const home of HOMES) {
-      expect(fleet.bases[home].startsWith(root + sep)).toBe(true)
+      expect(dirs.bases[home].startsWith(root + sep)).toBe(true)
     }
-    expect(fleet.bases.scratch.startsWith(root + sep)).toBe(true)
-    expect(TieredDirs.fromEnv(VENDOR, ENV).bases.durable).toBe(fleet.bases.durable)
+    expect(dirs.bases.scratch.startsWith(root + sep)).toBe(true)
+    expect(TieredDirs.fromEnv(VENDOR, ENV).bases.durable).toBe(dirs.bases.durable)
   })
 
   test('a NODE_ENV set to another value does not turn the default off', () => {
@@ -167,5 +168,30 @@ describe(ENV.requireOverride, () => {
     })
     expect(child.exitCode).toBe(0)
     expect(JSON.parse(child.stdout).runtime).toBe('/d/run')
+  })
+})
+
+describe('isTestRunnerProcess entry points', () => {
+  const vitestEnv = { VITEST_WORKER_ID: '1' }
+  const cases: [string, Record<string, string>, string, boolean][] = [
+    ['Vitest 4 worker', vitestEnv, '/n/node_modules/vitest/dist/workers/forks.js', true],
+    ['Vitest 3 forks worker', vitestEnv, '/n/node_modules/tinypool/dist/entry/process.js', true],
+    ['Vitest 3 threads worker', vitestEnv, '/n/node_modules/tinypool/dist/entry/worker.js', true],
+    [
+      'pool id only',
+      { VITEST_POOL_ID: '1' },
+      '/n/node_modules/tinypool/dist/entry/process.js',
+      true,
+    ],
+    [
+      'tinypool entry without Vitest variables',
+      {},
+      '/n/node_modules/tinypool/dist/entry/process.js',
+      false,
+    ],
+    ['child of a test, Vitest variables inherited', vitestEnv, '/tmp/child.mjs', false],
+  ]
+  test.each(cases)('%s', (_name, env, entry, expected) => {
+    expect(isTestRunnerProcess(env, entry)).toBe(expected)
   })
 })

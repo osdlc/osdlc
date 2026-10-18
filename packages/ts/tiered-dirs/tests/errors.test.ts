@@ -11,7 +11,7 @@ import {
 import type { TieredDirsErrorCode } from '../index.ts'
 
 const ENV = envVars('EXAMPLE')
-const fleet = new TieredDirs('com.example', rootedBaseDirs('/b'))
+const dirs = new TieredDirs('com.example', rootedBaseDirs('/b'))
 
 /** The error `run` throws, which must be a `TieredDirsError`. */
 function thrown(run: () => unknown): TieredDirsError {
@@ -49,11 +49,11 @@ describe('every throw site sets its code', () => {
     ],
     ['an unknown convention string', 'INVALID_CONVENTION', () => parseConvention('apple')],
     ['a bad vendor', 'INVALID_KEY', () => new TieredDirs('../x', rootedBaseDirs('/b'))],
-    ['a bad suite', 'INVALID_KEY', () => fleet.suite('state')],
-    ['a bad standalone tool', 'INVALID_KEY', () => fleet.standalone('')],
-    ['a bad scope kind', 'INVALID_KEY', () => fleet.vendor().cache().scoped('a/b', 'k')],
-    ['a bad scope', 'INVALID_KEY', () => fleet.vendor().cache().scoped('vaults', '..')],
-    ['a bad app', 'INVALID_KEY', () => fleet.vendor().cache().app('run')],
+    ['a bad suite', 'INVALID_KEY', () => dirs.suite('state')],
+    ['a bad standalone tool', 'INVALID_KEY', () => dirs.standalone('')],
+    ['a bad scope kind', 'INVALID_KEY', () => dirs.vendor().cache().scoped('a/b', 'k')],
+    ['a bad scope', 'INVALID_KEY', () => dirs.vendor().cache().scoped('vaults', '..')],
+    ['a bad app', 'INVALID_KEY', () => dirs.vendor().cache().app('run')],
   ]
 
   test.each(cases)('%s: %s', (_name, code, run) => {

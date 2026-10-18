@@ -278,7 +278,7 @@ describe('the injectable seam', () => {
   test('roots handed in wholesale need no environment at all', () => {
     // A server that cannot read the environment takes the roots from its own
     // configuration.
-    const fleet = new TieredDirs(VENDOR, {
+    const dirs = new TieredDirs(VENDOR, {
       durable: '/srv/data',
       config: '/srv/config',
       cache: '/srv/cache',
@@ -287,23 +287,23 @@ describe('the injectable seam', () => {
       runtime: '/srv/run',
       scratch: '/srv/tmp',
     })
-    expect(normalize(normalize(fleet.suite('notes').cache().app('vault-search').path))).toBe(
+    expect(normalize(dirs.suite('notes').cache().app('vault-search').path)).toBe(
       normalize('/srv/cache/com.example.notes/vault-search'),
     )
   })
 
   test('the CLI arm resolves the same shape from the environment', () => {
     const cli = TieredDirs.fromEnv(VENDOR, ENV, { platform: 'linux', env: { HOME: '/home/x' } })
-    expect(normalize(normalize(cli.suite('notes').cache().app('vault-search').path))).toBe(
+    expect(normalize(cli.suite('notes').cache().app('vault-search').path)).toBe(
       normalize('/home/x/.cache/com.example.notes/vault-search'),
     )
   })
 
   test('the environment is read once, at construction', () => {
     const env: Record<string, string | undefined> = { HOME: '/home/x' }
-    const fleet = TieredDirs.fromEnv(VENDOR, ENV, { platform: 'linux', env })
+    const dirs = TieredDirs.fromEnv(VENDOR, ENV, { platform: 'linux', env })
     env['XDG_CACHE_HOME'] = '/moved'
-    expect(normalize(fleet.bases.cache)).toBe(normalize('/home/x/.cache'))
+    expect(normalize(dirs.bases.cache)).toBe(normalize('/home/x/.cache'))
   })
 
   test('every root is populated on every platform', () => {
@@ -433,5 +433,28 @@ describe('isOverridden', () => {
       if (saved === undefined) delete process.env[ENV.dirs.cache]
       else process.env[ENV.dirs.cache] = saved
     }
+  })
+})
+
+describe('home on Windows', () => {
+  test('USERPROFILE is read, and HOME is ignored, as Rust dirs does', () => {
+    const bases = systemBaseDirs(ENV, {
+      platform: 'win32',
+      env: { HOME: '/c/Users/x', USERPROFILE: 'C:\\Users\\x' },
+    })
+    expect(bases.durable.startsWith('C:\\Users\\x') || bases.durable.startsWith('C:/Users/x')).toBe(
+      true,
+    )
+  })
+})
+
+describe('the README example with an injected HOME', () => {
+  test('xdg config on darwin sits under ~/.config', () => {
+    const cli = TieredDirs.fromEnv('com.example', envVars('TOOL'), {
+      convention: 'xdg',
+      platform: 'darwin',
+      env: { HOME: '/Users/ada' },
+    })
+    expect(cli.standalone('tool').config().path).toBe('/Users/ada/.config/tool')
   })
 })

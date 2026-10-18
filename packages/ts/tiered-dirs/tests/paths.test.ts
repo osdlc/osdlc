@@ -20,40 +20,40 @@ const VENDOR = 'com.example'
  */
 const BASES = rootedBaseDirs('/b')
 
-const fleet = new TieredDirs(VENDOR, BASES)
+const dirs = new TieredDirs(VENDOR, BASES)
 
 describe('composition', () => {
   test('the suite segment is composed from the vendor', () => {
     expect(VENDOR).toBe('com.example')
-    expect(fleet.suite('notes').segment).toBe('com.example.notes')
-    expect(fleet.suite('tasks').segment).toBe('com.example.tasks')
+    expect(dirs.suite('notes').segment).toBe('com.example.notes')
+    expect(dirs.suite('tasks').segment).toBe('com.example.tasks')
   })
 
   test('each home puts the tier segment under its own root', () => {
-    expect(normalize(fleet.suite('notes').durable().path)).toBe(
+    expect(normalize(dirs.suite('notes').durable().path)).toBe(
       normalize('/b/durable/com.example.notes'),
     )
-    expect(normalize(fleet.suite('notes').config().path)).toBe(
+    expect(normalize(dirs.suite('notes').config().path)).toBe(
       normalize('/b/config/com.example.notes'),
     )
-    expect(normalize(fleet.suite('notes').cache().path)).toBe(
+    expect(normalize(dirs.suite('notes').cache().path)).toBe(
       normalize('/b/cache/com.example.notes'),
     )
-    expect(normalize(fleet.suite('notes').logs().path)).toBe(normalize('/b/logs/com.example.notes'))
-    expect(normalize(fleet.suite('notes').runtime().path)).toBe(
+    expect(normalize(dirs.suite('notes').logs().path)).toBe(normalize('/b/logs/com.example.notes'))
+    expect(normalize(dirs.suite('notes').runtime().path)).toBe(
       normalize('/b/durable/run/com.example.notes'),
     )
   })
 
   test('the vendor tier is the bare vendor segment', () => {
-    expect(normalize(fleet.vendor().durable().path)).toBe(normalize('/b/durable/com.example'))
-    expect(fleet.vendor().segment).toBe('com.example')
+    expect(normalize(dirs.vendor().durable().path)).toBe(normalize('/b/durable/com.example'))
+    expect(dirs.vendor().segment).toBe('com.example')
   })
 
   test('a standalone tool gets its own root and no vendor segment', () => {
     // The whole point: a general tool installed in someone else's repository
     // must not write under the vendor's namespace.
-    const tier = fleet.standalone('devtool')
+    const tier = dirs.standalone('devtool')
     expect(tier.segment).toBe('devtool')
     expect(tier.segment).not.toContain(VENDOR)
     expect(normalize(tier.config().path)).toBe(normalize('/b/config/devtool'))
@@ -62,14 +62,14 @@ describe('composition', () => {
   })
 
   test('kind names the constructor that produced the tier', () => {
-    expect(fleet.vendor().kind).toBe('vendor')
-    expect(fleet.suite('notes').kind).toBe('suite')
-    expect(fleet.standalone('devtool').kind).toBe('standalone')
+    expect(dirs.vendor().kind).toBe('vendor')
+    expect(dirs.suite('notes').kind).toBe('suite')
+    expect(dirs.standalone('devtool').kind).toBe('standalone')
     expect(TIER_KINDS).toEqual(['vendor', 'suite', 'standalone'])
   })
 
   test('a suite path scoped by content root, then app', () => {
-    const dir = fleet.suite('notes').cache().scoped('vaults', 'vault-7kq2p').app('vault-search')
+    const dir = dirs.suite('notes').cache().scoped('vaults', 'vault-7kq2p').app('vault-search')
     expect(normalize(dir.path)).toBe(
       normalize('/b/cache/com.example.notes/vaults/vault-7kq2p/vault-search'),
     )
@@ -77,56 +77,56 @@ describe('composition', () => {
   })
 
   test('home() names the same six homes dynamically', () => {
-    const tier = fleet.suite('notes')
+    const tier = dirs.suite('notes')
     expect(tier.home('cache').path).toBe(tier.cache().path)
     expect(tier.home('runtime').path).toBe(tier.runtime().path)
   })
 
   test('toString is the absolute path', () => {
-    expect(normalize(`${fleet.vendor().logs()}`)).toBe(normalize('/b/logs/com.example'))
+    expect(normalize(`${dirs.vendor().logs()}`)).toBe(normalize('/b/logs/com.example'))
   })
 })
 
 describe('scratch', () => {
   test('scratch is the bare platform temp root, untiered', () => {
-    expect(normalize(fleet.scratch().path)).toBe(normalize('/b/scratch'))
-    expect(fleet.scratch().relative).toBe('')
-    expect(fleet.scratch().path).not.toContain(VENDOR)
+    expect(normalize(dirs.scratch().path)).toBe(normalize('/b/scratch'))
+    expect(dirs.scratch().relative).toBe('')
+    expect(dirs.scratch().path).not.toContain(VENDOR)
   })
 
   test('it narrows like any other directory', () => {
-    expect(normalize(fleet.scratch().app('cage-lima').path)).toBe(normalize('/b/scratch/cage-lima'))
-    expect(fleet.scratch().scoped('vaults', 'v7').app('cage-lima').relative).toBe(
-      'vaults/v7/cage-lima',
+    expect(normalize(dirs.scratch().app('vault-sync').path)).toBe(
+      normalize('/b/scratch/vault-sync'),
+    )
+    expect(dirs.scratch().scoped('vaults', 'v7').app('vault-sync').relative).toBe(
+      'vaults/v7/vault-sync',
     )
   })
 
   test('scratch is not the runtime home — different lifetimes', () => {
     // A pidfile outlives the call and describes a live process; a scratch
     // file does not outlive the call at all.
-    expect(fleet.scratch().path).not.toBe(fleet.vendor().runtime().path)
+    expect(dirs.scratch().path).not.toBe(dirs.vendor().runtime().path)
     expect(BASES.scratch).not.toBe(BASES.runtime)
   })
 })
 
 describe('tiers do not merge', () => {
   test('vendor and suite are different addresses in the same home', () => {
-    expect(fleet.vendor().durable().path).not.toBe(fleet.suite('notes').durable().path)
+    expect(dirs.vendor().durable().path).not.toBe(dirs.suite('notes').durable().path)
   })
 
   test('a suite key and the same standalone name are different addresses', () => {
-    expect(fleet.suite('devtool').durable().path).not.toBe(
-      fleet.standalone('devtool').durable().path,
-    )
+    expect(dirs.suite('devtool').durable().path).not.toBe(dirs.standalone('devtool').durable().path)
   })
 
   test('there is no API that reads two tiers at once', () => {
     // The absence is the contract. A reader that wants both looks up both
     // deliberately, per file, at its own call site.
-    const tier = fleet.suite('notes') as unknown as Record<string, unknown>
+    const tier = dirs.suite('notes') as unknown as Record<string, unknown>
     expect(tier['merge']).toBeUndefined()
     expect(tier['resolve']).toBeUndefined()
-    expect((fleet as unknown as Record<string, unknown>)['lookup']).toBeUndefined()
+    expect((dirs as unknown as Record<string, unknown>)['lookup']).toBeUndefined()
   })
 })
 
@@ -146,32 +146,32 @@ describe('segment validation', () => {
 
   test('suite key, standalone name, scope kind, scope key and app share one rule', () => {
     for (const bad of rejected) {
-      expect(() => fleet.suite(bad)).toThrow(TieredDirsError)
-      expect(() => fleet.standalone(bad)).toThrow(TieredDirsError)
-      expect(() => fleet.suite('notes').cache().app(bad)).toThrow(TieredDirsError)
-      expect(() => fleet.suite('notes').cache().scoped(bad, 'ok')).toThrow(TieredDirsError)
-      expect(() => fleet.suite('notes').cache().scoped('ok', bad)).toThrow(TieredDirsError)
+      expect(() => dirs.suite(bad)).toThrow(TieredDirsError)
+      expect(() => dirs.standalone(bad)).toThrow(TieredDirsError)
+      expect(() => dirs.suite('notes').cache().app(bad)).toThrow(TieredDirsError)
+      expect(() => dirs.suite('notes').cache().scoped(bad, 'ok')).toThrow(TieredDirsError)
+      expect(() => dirs.suite('notes').cache().scoped('ok', bad)).toThrow(TieredDirsError)
     }
   })
 
   test('the message names the argument that failed', () => {
-    expect(() => fleet.suite('notes').cache().scoped('vaults', '../etc')).toThrow(
+    expect(() => dirs.suite('notes').cache().scoped('vaults', '../etc')).toThrow(
       /invalid scope key "\.\.\/etc"/,
     )
-    expect(() => fleet.suite('notes').cache().scoped('../etc', 'ok')).toThrow(
+    expect(() => dirs.suite('notes').cache().scoped('../etc', 'ok')).toThrow(
       /invalid scope kind key/,
     )
-    expect(() => fleet.suite('notes').cache().app('')).toThrow(/invalid app key ""/)
-    expect(() => fleet.suite('')).toThrow(/invalid suite key ""/)
-    expect(() => fleet.standalone('')).toThrow(/invalid standalone key ""/)
+    expect(() => dirs.suite('notes').cache().app('')).toThrow(/invalid app key ""/)
+    expect(() => dirs.suite('')).toThrow(/invalid suite key ""/)
+    expect(() => dirs.standalone('')).toThrow(/invalid standalone key ""/)
   })
 
   test('ordinary slugs pass', () => {
     for (const ok of ['notes', 'vault-search', 'repo_2.1-beta', 'Vault-7KQ2P', 'a']) {
-      expect(() => fleet.suite('notes').cache().app(ok)).not.toThrow()
+      expect(() => dirs.suite('notes').cache().app(ok)).not.toThrow()
     }
     for (const near of ['states', 'log', 'runs', 'run-1', 'state.d']) {
-      expect(() => fleet.standalone(near)).not.toThrow()
+      expect(() => dirs.standalone(near)).not.toThrow()
     }
   })
 })
@@ -182,8 +182,8 @@ describe('reserved names', () => {
   test('state, logs and run are refused in any case, the vendor included', () => {
     for (const name of RESERVED) {
       expect(() => new TieredDirs(name, BASES)).toThrow(TieredDirsError)
-      expect(() => fleet.standalone(name)).toThrow(/and not state, logs or run/)
-      expect(() => fleet.vendor().cache().app(name)).toThrow(TieredDirsError)
+      expect(() => dirs.standalone(name)).toThrow(/and not state, logs or run/)
+      expect(() => dirs.vendor().cache().app(name)).toThrow(TieredDirsError)
     }
   })
 
@@ -231,7 +231,7 @@ describe('reserved names', () => {
 
 describe('immutability', () => {
   test('builders return new values and never mutate the receiver', () => {
-    const root = fleet.suite('notes').cache()
+    const root = dirs.suite('notes').cache()
     const a = root.app('vault-search')
     const b = root.app('vault-graph')
     expect(normalize(root.path)).toBe(normalize('/b/cache/com.example.notes'))
@@ -249,14 +249,14 @@ describe('immutability', () => {
 
 describe('vendor bundle assertion', () => {
   test('conformant identifiers pass', () => {
-    expect(fleet.isVendorBundleId('com.example')).toBe(true)
-    expect(fleet.isVendorBundleId('com.example.family.notes')).toBe(true)
-    expect(fleet.isVendorBundleId('com.example.tasks.desktop')).toBe(true)
+    expect(dirs.isVendorBundleId('com.example')).toBe(true)
+    expect(dirs.isVendorBundleId('com.example.family.notes')).toBe(true)
+    expect(dirs.isVendorBundleId('com.example.tasks.desktop')).toBe(true)
   })
 
   test('the legacy prefixes fail, and there is no allowlist for them', () => {
-    expect(fleet.isVendorBundleId('com.legacy.notes')).toBe(false)
-    expect(fleet.isVendorBundleId('org.other.app')).toBe(false)
+    expect(dirs.isVendorBundleId('com.legacy.notes')).toBe(false)
+    expect(dirs.isVendorBundleId('org.other.app')).toBe(false)
   })
 
   test('the check is a bare prefix test, matching the Rust twin', () => {
@@ -264,12 +264,12 @@ describe('vendor bundle assertion', () => {
     // tighter dot-boundary rule here would make the two twins disagree about
     // which apps are conformant, which is the drift this package exists to
     // stop.
-    expect(fleet.isVendorBundleId('com.exampleorp.app')).toBe(true)
+    expect(dirs.isVendorBundleId('com.exampleorp.app')).toBe(true)
   })
 
   test('the free function answers as the method does, with no TieredDirs', () => {
     for (const id of ['com.example', 'com.example.notes', 'com.exampleorp.app', 'org.other']) {
-      expect(isVendorBundleId(VENDOR, id)).toBe(fleet.isVendorBundleId(id))
+      expect(isVendorBundleId(VENDOR, id)).toBe(dirs.isVendorBundleId(id))
     }
     expect(isVendorBundleId('org.other', 'org.other.app')).toBe(true)
   })

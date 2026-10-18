@@ -100,7 +100,7 @@ const ENV = envVars(fixture.env_prefix)
 /** The Rust twin stubs with `BaseDirs::rooted("/stub")`. Same layout here. */
 const BASES = rootedBaseDirs('/stub')
 
-const fleet = new TieredDirs(VENDOR, BASES)
+const dirs = new TieredDirs(VENDOR, BASES)
 const cases = fixture.cases
 const scratchCases = fixture.scratch_cases
 const envCases = fixture.env_cases
@@ -136,11 +136,11 @@ function tierOf(c: Case): Dir {
   }
   switch (c.tier) {
     case 'vendor':
-      return fleet.vendor().home(c.home as Home)
+      return dirs.vendor().home(c.home as Home)
     case 'suite':
-      return fleet.suite(key()).home(c.home as Home)
+      return dirs.suite(key()).home(c.home as Home)
     case 'standalone':
-      return fleet.standalone(key()).home(c.home as Home)
+      return dirs.standalone(key()).home(c.home as Home)
     default:
       throw new Error(`fixture names a tier this twin lacks: ${c.tier}`)
   }
@@ -202,7 +202,7 @@ describe('parity fixture', () => {
   })
 
   test.each(scratchCases.map((c) => [c.name, c] as const))('scratch: %s', (_name, c) => {
-    const dir = narrow(fleet.scratch(), c)
+    const dir = narrow(dirs.scratch(), c)
     expect(dir.relative).toBe(c.relative)
     expect(dir.path).toBe(expectedPath(BASES.scratch, c.relative))
   })
@@ -217,7 +217,7 @@ describe('parity fixture', () => {
     for (const c of scratchCases) {
       expect(c.relative).not.toContain(VENDOR)
     }
-    expect(fleet.standalone('devtool').segment).not.toContain(VENDOR)
+    expect(dirs.standalone('devtool').segment).not.toContain(VENDOR)
   })
 
   // Coverage, so a new axis value with no case fails here rather than going
@@ -306,10 +306,10 @@ describe('parity fixture', () => {
   test.each(fixture.rejected.map((r) => [r.name, r.value] as const))(
     'rejected: %s',
     (_name, value) => {
-      const cache = fleet.suite('notes').cache()
+      const cache = dirs.suite('notes').cache()
       expect(() => new TieredDirs(value, BASES)).toThrow(TieredDirsError)
-      expect(() => fleet.suite(value)).toThrow(TieredDirsError)
-      expect(() => fleet.standalone(value)).toThrow(TieredDirsError)
+      expect(() => dirs.suite(value)).toThrow(TieredDirsError)
+      expect(() => dirs.standalone(value)).toThrow(TieredDirsError)
       expect(() => cache.app(value)).toThrow(TieredDirsError)
       expect(() => cache.scoped(value, 'v7')).toThrow(TieredDirsError)
       expect(() => cache.scoped('vaults', value)).toThrow(TieredDirsError)

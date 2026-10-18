@@ -30,8 +30,8 @@ export function isValidSegment(key: string): boolean {
 
 /**
  * Throw unless `key` is a safe single path segment. `kind` names the argument
- * in the message — `vendor`, `suite`, `standalone`, `scope kind`, `scope`, `app` — matching
- * the Rust twin's `check_key`.
+ * in the message (`vendor`, `suite`, `standalone`, `scope kind`, `scope`,
+ * `app`), matching the Rust twin's `check_key`.
  */
 export function assertSegment(kind: string, key: string): void {
   if (!isValidSegment(key)) {

@@ -194,18 +194,24 @@ When neither `env` nor `home` is injected, `systemBaseDirs` applies two rules
 first:
 
 - In a test runner process where `<P>_ROOT` is unset and `HOME` is not moved,
-  `<P>_ROOT` reads as `<tmp>/tiered-dirs-test-<pid>-<start ms>`. A test runner
+  `<P>_ROOT` reads as `<tmp>/tiered-dirs-test-<pid>-<start ms>`. "HOME moved"
+  means `HOME` differs from the passwd home. The Rust twin has no such
+  condition. A CI job that sets `HOME` itself, such as a GitHub Actions
+  container job (`HOME=/github/home`, passwd home `/root`), therefore gets no
+  test-root default: set `<P>_ROOT` there. A test runner
   process is one with a test file as its entry point that runs with
   `NODE_ENV=test`, `NODE_TEST_CONTEXT` (set by `node --test`) or under Bun.
   A Vitest worker is detected too: `VITEST_WORKER_ID` or `VITEST_POOL_ID` is
   set and the entry point is a file in the `vitest` package's `dist/workers`
-  folder. A test that points `HOME` at a fixture keeps it. A child process a
+  folder (Vitest 4 and later) or tinypool's `dist/entry/process.js` or
+  `dist/entry/worker.js` (Vitest 3 and earlier). A test that points `HOME` at a fixture keeps it. A child process a
   test spawns gets no default, because its entry point is neither a test file
   nor a Vitest worker, even though it inherits the Vitest variables.
 - With `<P>_REQUIRE_OVERRIDE` set, a root that would fall back to the per-OS
   table throws a `TieredDirsError` naming the fix.
 
-`testRoot()` returns that per-process root in a test runner process, and
+`testRoot()` returns that root, cached per module instance (per test file under
+Vitest's default isolation), in a test runner process, and
 `undefined` elsewhere. A layer that reads its own variables, such as a
 product tier, uses it to apply the same default. Pass `{ testRoot: false }`
 to `systemBaseDirs` or `TieredDirs.fromEnv` to skip the first rule only.
@@ -254,7 +260,7 @@ always have a home. `systemBaseDirs` and `TieredDirs.fromEnv` throw
 `TieredDirsError` rather than assert, and `overrides` rescues an environment
 with no home at all. `vendor`, `suiteKey`, `tool`, `kind`, `key` and `app` are
 each checked as a single path segment: non-empty, no separator, no `..`,
-matching `^[a-z0-9][a-z0-9._-]*$/i`, and not `state`, `logs` or `run`.
+matching `/^[a-z0-9][a-z0-9._-]*$/i`, and not `state`, `logs` or `run`.
 `isValidSegment(key)` is that rule. An invalid one throws `TieredDirsError`.
 
 `TieredDirsError.code` says which failure it is, one code per variant of the

@@ -6,7 +6,8 @@ First public release. Machine-local directories for one vendor's products, addre
 the tier says who shares the state (the vendor, a suite of products, or one standalone tool), and
 the home says how durable it is (durable, config, cache, state, logs, runtime). The homes come
 from a per-OS table with native or XDG paths, every root can be moved by an override variable,
-and tests run under a scratch root instead of the real home.
+and a test runner process gets a scratch root instead of the real home unless `<P>_ROOT` is set
+or `HOME` was moved off the passwd home (see the README for the rules).
 
 The additions:
 
@@ -37,7 +38,8 @@ The additions:
   `TieredDirsErrorCode`, and the lists `HOMES`, `CONVENTIONS` and `TIER_KINDS`. A minor release
   may add a member to `TierKind`, `Convention` or `TieredDirsErrorCode`, or a name to `EnvVars`.
 - The test-root rule recognises a Vitest worker (`VITEST_WORKER_ID` or `VITEST_POOL_ID` set, and
-  the entry point in the `vitest` package's `dist/workers` folder), as well as `NODE_ENV=test`,
+  the entry point in the `vitest` package's `dist/workers` folder, or tinypool's
+  `dist/entry/process.js` or `dist/entry/worker.js` on Vitest 3 and earlier), as well as `NODE_ENV=test`,
   `node --test` and Bun. A child process a test spawns still gets no default.
 
 Changes:

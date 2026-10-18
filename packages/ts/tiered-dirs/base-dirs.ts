@@ -311,23 +311,32 @@ export interface ResolveOptions {
  *
  * - In a test runner process with the root variable unset and `HOME` not
  *   moved, the root reads as {@link testRoot}:
- *   `<tmp>/tiered-dirs-test-<pid>-<start ms>`, unique per process.
+ *   `<tmp>/tiered-dirs-test-<pid>-<start ms>`, unique per process and
+ *   cached per module instance (per test file under Vitest's default isolation).
  *   `opts.testRoot: false` turns this rule off; the next one still applies.
  *   A test runner process has a test file as its entry point and runs
  *   under `NODE_ENV=test`, `NODE_TEST_CONTEXT` (set by `node --test`), Bun, or
  *   a Vitest worker. Bun counts on its own because `bun test` keeps a
  *   `NODE_ENV` that is already set. A Vitest worker has `VITEST_WORKER_ID` or
  *   `VITEST_POOL_ID` set, and its entry point is a file in the `dist/workers`
- *   folder of the `vitest` package, not the test file, so a worker counts by
- *   that entry point instead of the test-file check. A child a test spawns
+ *   folder of the `vitest` package (Vitest 4 and later) or tinypool's
+ *   `dist/entry/process.js` or `dist/entry/worker.js` (Vitest 3 and earlier),
+ *   not the test file, so a worker counts by that entry point instead of the
+ *   test-file check. A child a test spawns
  *   inherits the Vitest variables but has a different entry point, so it gets
  *   no default. A test that points `HOME` at a fixture, in-process or for a child,
  *   keeps it.
  * - With {@link EnvVars.requireOverride} set, a root that would fall back to
  *   the per-OS table throws a {@link TieredDirsError} naming the fix.
  *
- * The Rust twin's `BaseDirs::from_env` applies the same two rules; it detects a
- * test by its cargo test binary rather than by the environment.
+ * The Rust twin's `BaseDirs::from_env` applies the same two rules, with two
+ * differences. It detects a test by its cargo test binary rather than by the
+ * environment. And the "`HOME` not moved" condition exists only here: a
+ * TypeScript test can point `HOME` at a fixture to redirect the home, which a
+ * Rust test cannot do through `dirs`, so the TypeScript rule yields to it.
+ * The cost is that a CI job whose `HOME` differs from the passwd home, such as
+ * a GitHub Actions container job (`HOME=/github/home`, passwd home `/root`),
+ * gets no test-root default. Set `<P>_ROOT` there.
  *
  * Stable in 0.x.
  */
@@ -388,7 +397,9 @@ let processTestRoot: { root: string | undefined } | undefined
 
 /**
  * `<tmp>/tiered-dirs-test-<pid>-<start ms>` when this process is a test runner
- * process, else `undefined`. Resolved once per process.
+ * process, else `undefined`. Resolved once per module instance: once per test
+ * file under Vitest's default isolation, and once per installed copy of the
+ * package.
  *
  * A test runner process is the one {@link systemBaseDirs} describes: a test
  * file as its entry point under `NODE_ENV=test`, `NODE_TEST_CONTEXT` or Bun,
@@ -416,12 +427,19 @@ export function testRoot(): string | undefined {
 /** A test file name: `*.test.ts`, `*_spec.mjs`, and the like. */
 const TEST_FILE = /[._](test|spec)\.[cm]?[jt]sx?$/
 
-/** A Vitest worker's entry point: a file in the `vitest` package's `dist/workers` folder. */
-const VITEST_WORKER_ENTRY = /[\\/]vitest[\\/]dist[\\/]workers[\\/]/
+/**
+ * A Vitest worker's entry point: a file in the `vitest` package's
+ * `dist/workers` folder (Vitest 4+), or tinypool's `dist/entry/process.js` or
+ * `dist/entry/worker.js` (Vitest 3 and earlier).
+ */
+const VITEST_WORKER_ENTRY =
+  /[\\/]vitest[\\/]dist[\\/]workers[\\/]|[\\/]tinypool[\\/]dist[\\/]entry[\\/](process|worker)\.[cm]?js$/
 
 /** Whether this process is a test runner running a test file (see {@link systemBaseDirs}). */
-function isTestRunnerProcess(env: Record<string, string | undefined>): boolean {
-  const entry = process.argv[1] ?? ''
+export function isTestRunnerProcess(
+  env: Record<string, string | undefined>,
+  entry: string = process.argv[1] ?? '',
+): boolean {
   // Vitest sets its variables in the worker's environment, so a child a test
   // spawns inherits them; its entry point is what tells it apart.
   if (
@@ -600,7 +618,9 @@ function resolveHome(
     return opts.home
   }
 
-  const fromEnv = env['HOME'] || (platform === 'win32' ? env['USERPROFILE'] : undefined)
+  // Rust's `dirs` ignores HOME on Windows, and under Cygwin or MSYS it can be
+  // a POSIX-style path, so Windows reads USERPROFILE only.
+  const fromEnv = platform === 'win32' ? env['USERPROFILE'] : env['HOME']
   if (fromEnv) return fromEnv
 
   // An injected environment is the whole story — falling back to the host's
