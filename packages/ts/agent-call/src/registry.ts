@@ -1,10 +1,9 @@
-import { spawn } from 'node:child_process'
-
 import { claudeAdapter } from './adapters/claude.js'
 import { codexAdapter } from './adapters/codex.js'
 import { antigravityAdapter } from './adapters/antigravity.js'
 import { opencodeAdapter } from './adapters/opencode.js'
 import type { AgentAdapter } from './adapters/types.js'
+import { spawnCollect } from './spawn.js'
 import type { AgentName } from './spec.js'
 
 /** Instantiate a built-in adapter by name. */
@@ -33,7 +32,7 @@ export const BUILTIN_AGENTS: readonly AgentName[] = Object.freeze([
 export interface AgentAvailability {
   /** The adapter's name. */
   name: string
-  /** `<binary> --version` ran and exited 0. */
+  /** `<binary> --version` ran, exited 0 and finished within 10 seconds. */
   available: boolean
   /** First line of the `--version` output, when available. */
   version?: string | undefined
@@ -55,26 +54,11 @@ export async function detectAgents(
   )
 }
 
-function probeVersion(binary: string): Promise<string | undefined> {
-  return new Promise((resolve) => {
-    const child = spawn(binary, ['--version'], {
-      stdio: ['ignore', 'pipe', 'ignore'],
-    })
-    let out = ''
-    const timer = setTimeout(() => {
-      child.kill('SIGKILL')
-      resolve(undefined)
-    }, 10_000)
-    child.stdout.on('data', (chunk: Buffer) => {
-      out += chunk.toString('utf8')
-    })
-    child.on('error', () => {
-      clearTimeout(timer)
-      resolve(undefined)
-    })
-    child.on('close', (code) => {
-      clearTimeout(timer)
-      resolve(code === 0 ? out.trim().split('\n')[0] : undefined)
-    })
-  })
+/** @internal `timeoutMs` is a parameter so a test can shorten it. */
+export async function probeVersion(
+  binary: string,
+  timeoutMs = 10_000,
+): Promise<string | undefined> {
+  const raw = await spawnCollect([binary, '--version'], { env: process.env, timeoutMs })
+  return raw.exitCode === 0 && !raw.timedOut ? raw.stdout.trim().split('\n')[0] : undefined
 }

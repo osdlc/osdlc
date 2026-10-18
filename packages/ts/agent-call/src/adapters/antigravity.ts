@@ -28,10 +28,9 @@ export interface AntigravityAdapterOptions {
  * Google Antigravity CLI (`agy`). Headless via `-p <prompt>` with
  * `--output-format text|json|stream-json`. Effort, the output schema,
  * session continuation and the full-auto posture are native flags; the CLI
- * documents no system-prompt flag, working-directory flag or env vars, so
- * system prompts are emulated and the rest dropped with a note. Model slugs
- * are not documented (`agy models` lists them), so `model` passes through as
- * given.
+ * documents no system-prompt flag, so system prompts are emulated; `cwd` and
+ * `env` apply to the process. Model slugs are not documented (`agy models`
+ * lists them), so `model` passes through as given.
  */
 export function antigravityAdapter(options: AntigravityAdapterOptions = {}): AgentAdapter {
   const binary = options.binary ?? 'agy'

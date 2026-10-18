@@ -29,9 +29,9 @@ export interface CustomAdapterOptions {
 
 /**
  * Escape hatch for agents this package has no adapter for: aider, goose,
- * anything with a one-shot CLI. Spec fields with no representation in your
- * `args` builder are folded into the prompt (context, system, schema) or
- * recorded as dropped (permissions), so best-effort semantics still hold.
+ * anything with a one-shot CLI. Context, system prompt and schema are folded
+ * into the prompt, and `permissions.mode` is noted as dropped. Any other spec
+ * field is the `args` builder's to handle; it is not noted if left out.
  */
 export function customAdapter(options: CustomAdapterOptions): AgentAdapter {
   return {

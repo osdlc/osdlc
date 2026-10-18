@@ -1,6 +1,3 @@
-// Barrel: re-exports only, no logic of its own. Every public entry point of
-// the library is surfaced from here.
-
 export { EFFORT_LEVELS } from './models.js'
 export type { EffortLevel } from './models.js'
 export type {

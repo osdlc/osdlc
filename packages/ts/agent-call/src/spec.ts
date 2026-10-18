@@ -3,9 +3,10 @@
  *
  * A spec says WHAT you want — prompt, permission posture, context, output
  * shape, session behavior — never HOW a particular CLI expresses it. Each
- * adapter translates the spec into a concrete invocation on a best-effort
- * basis and records every approximation as a `CapabilityNote` (see plan.ts),
- * so nothing is ever silently dropped.
+ * built-in adapter translates the spec into a concrete invocation on a
+ * best-effort basis and records every approximation as a `CapabilityNote` (see
+ * plan.ts). Custom and template adapters note the fields they fold into the prompt and
+ * `permissions.mode`; any other field the `args` builder leaves out is not noted.
  */
 
 import type { EffortLevel } from './models.js'
@@ -33,7 +34,7 @@ export interface PermissionSpec {
   /**
    * Tool patterns to pre-approve. Passed through verbatim where the agent
    * supports tool rules (claude's `--allowedTools "Bash(git *) Edit"`);
-   * recorded as dropped elsewhere.
+   * recorded as dropped by the other built-in adapters.
    */
   allowTools?: string[] | undefined
   /** Tool patterns to deny. Same passthrough semantics as `allowTools`. */

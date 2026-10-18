@@ -36,6 +36,15 @@ describe('templateAdapter', () => {
     expect(planned.stdin).toBe('hello')
   })
 
+  test('refuses a prompt slot that disagrees with promptVia when built', () => {
+    expect(() =>
+      templateAdapter({ name: 'x', binary: 'x', args: ['--model', '{model}'], promptVia: 'argv' }),
+    ).toThrow(/needs a \{prompt\} slot/)
+    expect(() =>
+      templateAdapter({ name: 'x', binary: 'x', args: ['{prompt}'], promptVia: 'stdin' }),
+    ).toThrow(/cannot have a \{prompt\} slot/)
+  })
+
   test('refuses a model or effort the slots cannot carry', () => {
     expect(templateRefusal(GROK_ARGS, { model: 'grok-4' })).toBeNull()
     expect(templateRefusal(GROK_ARGS, { model: 'grok-4', effort: 'high' })).toBe(

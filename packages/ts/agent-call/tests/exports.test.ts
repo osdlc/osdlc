@@ -238,7 +238,7 @@ describe('independence from any host project', () => {
     }
     for (const file of unshipped) {
       const text = readFileSync(file, 'utf-8')
-      const others = [...text.matchAll(/@sksizer\/[\w-]+(\/[\w-]+)?/g)].map((m) => m[0])
+      const others = [...text.matchAll(/@osdlc\/[\w-]+(\/[\w-]+)?/g)].map((m) => m[0])
       for (const spec of others) expect([PACKAGE_NAME, `${PACKAGE_NAME}/models`]).toContain(spec)
     }
   })

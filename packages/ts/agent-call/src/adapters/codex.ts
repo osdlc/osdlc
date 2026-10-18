@@ -51,9 +51,8 @@ export function codexAdapter(options: CodexAdapterOptions = {}): AgentAdapter {
 
 /**
  * `-c model_reasoning_effort="<level>"`, quoted as codex's TOML override
- * expects. The level passes through as given: codex 0.162 (`codex debug
- * models`) lists `low` to `xhigh` on every model and `max` on all but
- * `gpt-5.5`; which levels a model takes is the caller's to know.
+ * expects. The level passes through as given; which levels a model takes
+ * is the caller's to know (`codex debug models` lists them).
  */
 export function codexEffortArgv(effort: string): string[] {
   return ['-c', `model_reasoning_effort="${effort}"`]

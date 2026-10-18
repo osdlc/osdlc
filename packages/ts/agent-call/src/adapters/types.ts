@@ -10,6 +10,8 @@ export interface RawProcessOutput {
   durationMs: number
   /** The run was cut short: a timeout elapsed, or the caller aborted. */
   timedOut: boolean
+  /** Which came first when the run was cut short: the timeout or a caller abort. */
+  cutShortBy?: 'timeout' | 'abort' | undefined
   /** The signal that ended the child, when it died on one (for example `SIGKILL`). */
   signal?: string | undefined
   /**

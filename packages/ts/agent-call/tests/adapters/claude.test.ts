@@ -136,7 +136,9 @@ describe('claude plan', () => {
     })
     const idx = planned.argv.indexOf('--mcp-config')
     expect(idx).toBeGreaterThan(-1)
-    expect(JSON.parse(planned.argv[idx + 1]!)).toEqual({
+    expect(planned.argv[idx + 1]).toBe('__AGENT_CALL_TMP__/mcp.json')
+    expect(planned.tempFiles).toHaveLength(1)
+    expect(JSON.parse(planned.tempFiles[0]!.content)).toEqual({
       mcpServers: { docs: { command: 'bun', args: ['run', 'mcp.ts'] } },
     })
     expect(planned.argv).toContain('--strict-mcp-config')
@@ -266,5 +268,16 @@ describe('claude parse', () => {
     expect(roles).toEqual(['user', 'assistant', 'tool'])
     const assistant = conversation?.messages[1]
     expect(assistant?.parts.map((p) => p.type)).toEqual(['text', 'tool-call'])
+  })
+})
+
+describe('claude mcp secrets', () => {
+  test('server env stays out of argv', () => {
+    const planned = adapter.plan({
+      prompt: 'x',
+      mcp: { servers: { docs: { command: 'bun', env: { TOKEN: 'sekrit-value' } } } },
+    })
+    expect(planned.argv.join(' ')).not.toContain('sekrit-value')
+    expect(planned.tempFiles[0]?.content).toContain('sekrit-value')
   })
 })

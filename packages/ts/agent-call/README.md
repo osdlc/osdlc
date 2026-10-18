@@ -117,10 +117,12 @@ and an `error`: `{ reason, detail }`. The reasons today are `spawn-failed`,
 minor release may add one, so handle the reasons you know and keep a default
 branch.
 
-It does reject, with an `Error`, in two cases. Planning can throw:
-`templateAdapter` throws when the spec's model or effort does not fit its
-template, and `customAdapter` passes on whatever your `args` function throws.
-Or the temp directory for the plan's temp files cannot be created or written.
+It does reject, with an `Error`, when planning throws: `templateAdapter`
+throws for a model or effort that does not fit its template, and
+`customAdapter` passes on whatever your `args` function throws. It also rejects
+when a plan's `TempFile.name` is not a plain file name (empty, or holding `/`,
+`\` or `..`), or when the temp directory for the plan's temp files cannot be
+created or written.
 A parser that throws on the output does not reject: the result is `ok: false`
 with reason `agent-error`. `planCall` throws the same way as planning. The
 `callAgent` TSDoc is the full list.
@@ -252,16 +254,23 @@ format (a JSON envelope or an event stream), so metadata is captured.
   timeout or abort kills the agent's whole process group, which needs POSIX
   process groups. On Windows the group kill fails and the call falls back to
   killing the direct child, so a grandchild process can outlive a timeout.
+- **Interrupts:** the agent runs in its own process group, so Ctrl+C or a kill
+  of the host does not reach it. The package installs no exit handlers. A host
+  that can be interrupted must pass a `signal` to `callAgent` and abort it from
+  its own SIGINT/SIGTERM handler, or the agent keeps running.
 
 ## Security
 
 - The child process inherits the parent's whole environment, plus the spec's
   `env`. Credentials in your environment reach the agent CLI. Pass a trimmed
   environment to the parent if that matters.
-- The prompt travels in argv for antigravity (`-p <prompt>`) and opencode
-  (positional). Any local user can read argv in the process list, so do not
+- Any local user can read argv in the process list. The prompt travels in
+  argv for antigravity (`-p <prompt>`) and opencode (positional), so do not
   put secrets in a prompt for those two agents. claude and codex read the
-  prompt from stdin.
+  prompt from stdin. claude reads MCP server config, including `env` values,
+  from a temp file. codex has no config-file option, so its MCP servers,
+  including `env` values, go on the command line as `-c mcp_servers.*`
+  overrides. claude's `systemPrompt` and `appendSystemPrompt` are also argv.
 - `permissions.mode: 'bypass'` skips all approvals and sandboxing
   (`--dangerously-skip-permissions` and its equivalents). Use it only in an
   environment that is sandboxed from outside.
@@ -281,8 +290,7 @@ is set, which that script does.
 
 Verified against: claude 2.x, codex and opencode 1.x (live). The
 antigravity mappings are built from the CLI's documentation and tested against
-fixtures only. Flag drift there shows up in the live suite once the CLI is
-installed.
+fixtures only. The live suite has no antigravity case.
 
 ## Non-goals
 
