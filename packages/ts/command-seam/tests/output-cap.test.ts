@@ -18,6 +18,13 @@ import { gone, reap } from './support/procs.ts'
 const CWD = process.cwd()
 const sh = spawnRunnerAsync('sh')
 const xs = (n: number) => `head -c ${n} /dev/zero | tr '\\0' x`
+/**
+ * Run `cmd` in the background once the shell itself is gone and reaped, so
+ * its output lands inside the 250 ms exit grace without a fixed sleep that a
+ * slow runner can push past it.
+ */
+const afterExit = (cmd: string) =>
+  `p=$$; (while kill -0 $p 2>/dev/null; do sleep 0.01; done; ${cmd}) &`
 
 describe('spawnRunnerAsync maxOutputBytes', () => {
   test('passing the cap on stdout kills the child and keeps the first bytes', async () => {
@@ -52,8 +59,8 @@ describe('spawnRunnerAsync maxOutputBytes', () => {
 
   test('passing the cap after the child exited keeps its exit code', async () => {
     // The child exits at once; a process it started floods stdout during the
-    // exit grace.
-    const r = await sh.run(['-c', `(sleep 0.1; ${xs(5000)}) & exit 0`], {
+    // exit grace, as soon as the child is gone.
+    const r = await sh.run(['-c', `${afterExit(xs(5000))}\nexit 0`], {
       cwd: CWD,
       maxOutputBytes: 100,
     })
@@ -64,7 +71,7 @@ describe('spawnRunnerAsync maxOutputBytes', () => {
   }, 10_000)
 
   test('a child killed by a signal keeps that reason when output then passes the cap', async () => {
-    const r = await sh.run(['-c', `(sleep 0.1; ${xs(5000)}) & kill -9 $$`], {
+    const r = await sh.run(['-c', `${afterExit(xs(5000))}\nkill -9 $$`], {
       cwd: CWD,
       maxOutputBytes: 100,
     })
