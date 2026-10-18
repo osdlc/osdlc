@@ -63,6 +63,8 @@ Developed here, in this repository:
   here yet)
 - `packages/ts/color` (`@osdlc/color` on npm, sRGB colour arithmetic for
   contrast checks)
+- `packages/ts/agent-call` (`@osdlc/agent-call` on npm, one call spec for
+  headless coding-agent CLIs)
 
 The development repository will take each TypeScript library from npm, like
 any other consumer. Today it still keeps its own copies. Open issues and pull
