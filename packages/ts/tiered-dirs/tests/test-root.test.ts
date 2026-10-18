@@ -4,7 +4,15 @@ import { dirname, join, sep } from 'node:path'
 
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 
-import { HOMES, TieredDirs, envVars, overrideVars, systemBaseDirs } from '../index.ts'
+import {
+  HOMES,
+  TieredDirs,
+  TieredDirsError,
+  envVars,
+  overrideVars,
+  systemBaseDirs,
+  testRoot,
+} from '../index.ts'
 
 const VENDOR = 'com.example'
 const ENV = envVars('EXAMPLE')
@@ -28,8 +36,8 @@ afterEach(() => {
   }
 })
 
-/** `systemBaseDirs(ENV)` in a spawned node script, with `extra` on the process env. */
-function resolveInChild(extra: Record<string, string>) {
+/** `expression` printed as JSON by a spawned node script, with `extra` on the process env. */
+function runInChild(extra: Record<string, string>, expression: string) {
   const env: Record<string, string | undefined> = { ...process.env, ...extra }
   // Node 22 before 22.18 needs the flag to run `.ts`; later versions accept it.
   const child = spawnSync(
@@ -39,11 +47,16 @@ function resolveInChild(extra: Record<string, string>) {
       '--no-warnings',
       '--input-type=module',
       '-e',
-      "import { envVars, systemBaseDirs } from './index.ts'; console.log(JSON.stringify(systemBaseDirs(envVars('EXAMPLE'))))",
+      `import { envVars, systemBaseDirs, testRoot } from './index.ts'; console.log(JSON.stringify(${expression}))`,
     ],
     { cwd: join(import.meta.dirname, '..'), env: env as NodeJS.ProcessEnv, encoding: 'utf-8' },
   )
   return { exitCode: child.status, stdout: child.stdout, stderr: child.stderr }
+}
+
+/** `systemBaseDirs(ENV)` in a spawned node script, with `extra` on the process env. */
+function resolveInChild(extra: Record<string, string>) {
+  return runInChild(extra, "systemBaseDirs(envVars('EXAMPLE'))")
 }
 
 describe('under a test runner', () => {
@@ -82,6 +95,49 @@ describe('under a test runner', () => {
   test('a test that moved HOME keeps it', () => {
     process.env['HOME'] = '/moved-home'
     expect(systemBaseDirs(ENV, { platform: 'linux' }).durable).toBe('/moved-home/.local/share')
+  })
+
+  test('testRoot() is the root the default uses', () => {
+    const root = testRoot()
+    expect(root).toBeDefined()
+    expect(root!.startsWith(join(tmpdir(), `tiered-dirs-test-${process.pid}-`))).toBe(true)
+    expect(systemBaseDirs(ENV).durable).toBe(join(root!, 'durable'))
+    expect(testRoot()).toBe(root)
+  })
+
+  test('testRoot() is undefined in a child process a test spawns', () => {
+    const child = runInChild({ NODE_ENV: 'test' }, 'testRoot() ?? null')
+    expect(child.exitCode).toBe(0)
+    expect(JSON.parse(child.stdout)).toBeNull()
+  })
+
+  test('testRoot: false skips the default and resolves the per-OS table', () => {
+    expect(systemBaseDirs(ENV, { platform: 'linux', testRoot: true }).durable).toBe(
+      join(testRoot()!, 'durable'),
+    )
+    const bases = systemBaseDirs(ENV, { platform: 'linux', testRoot: false })
+    // An injected environment runs no test rule: the per-OS table, unguarded.
+    expect(bases).toEqual(systemBaseDirs(ENV, { platform: 'linux', env: { ...process.env } }))
+    expect(bases.durable.startsWith(testRoot()!)).toBe(false)
+  })
+
+  test('testRoot: false still honours EXAMPLE_ROOT', () => {
+    process.env['EXAMPLE_ROOT'] = '/explicit'
+    expect(systemBaseDirs(ENV, { testRoot: false }).durable).toBe('/explicit/durable')
+  })
+
+  test('testRoot: false still applies EXAMPLE_REQUIRE_OVERRIDE', () => {
+    process.env[ENV.requireOverride] = '1'
+    const run = (): unknown => TieredDirs.fromEnv(VENDOR, ENV, { testRoot: false })
+    expect(run).toThrow(TieredDirsError)
+    expect(run).toThrow(/EXAMPLE_REQUIRE_OVERRIDE is set but neither EXAMPLE_ROOT/)
+    try {
+      run()
+    } catch (error) {
+      expect((error as TieredDirsError).code).toBe('OVERRIDE_REQUIRED')
+    }
+    // With the default on, the test root fills the root variable first.
+    expect(() => systemBaseDirs(ENV)).not.toThrow()
   })
 
   test('an injected environment is the whole story', () => {

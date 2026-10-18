@@ -1,6 +1,6 @@
 import { join } from 'node:path'
 
-import type { BaseDirs, EnvVars, Home, SystemBaseDirsOptions } from './base-dirs.ts'
+import type { BaseDirs, EnvVars, Home, ResolveOptions } from './base-dirs.ts'
 import { systemBaseDirs } from './base-dirs.ts'
 import { assertSegment } from './segment.ts'
 
@@ -9,6 +9,9 @@ import { assertSegment } from './segment.ts'
  *
  * Exposed so a caller — or a gate run over a third party's install — can tell
  * a suite address from a standalone one without parsing the segment string.
+ *
+ * A minor release may add a kind, as the Rust `TierKind` is
+ * `#[non_exhaustive]`. A `switch` over it needs a `default` arm.
  *
  * Stable in 0.x.
  */
@@ -20,6 +23,21 @@ export type TierKind = 'vendor' | 'suite' | 'standalone'
  * Stable in 0.x.
  */
 export const TIER_KINDS: readonly TierKind[] = ['vendor', 'suite', 'standalone']
+
+/**
+ * Whether a bundle identifier sits under `vendor`: a bare prefix test. The
+ * Rust twin's `is_vendor_bundle_id` is the same test. Nothing stricter: a
+ * dot-boundary rule would make the twins disagree about which apps conform.
+ *
+ * For a caller with no {@link TieredDirs}. The Rust twin also has a
+ * debug-only assert form; TypeScript has no debug build, so the caller
+ * decides what to do with the answer.
+ *
+ * Stable in 0.x.
+ */
+export function isVendorBundleId(vendor: string, bundleId: string): boolean {
+  return bundleId.startsWith(vendor)
+}
 
 /**
  * A directory addressed by tier and home — or the untiered scratch root — plus
@@ -169,7 +187,8 @@ export class TieredDirs {
    * Build from injected roots — the seam a server that cannot read the
    * environment uses, handing in roots from its own config.
    *
-   * Throws {@link TieredDirsError} unless `vendor` is a single path segment.
+   * Throws {@link TieredDirsError} with code `INVALID_KEY` unless `vendor` is
+   * a single path segment.
    */
   constructor(vendor: string, bases: BaseDirs) {
     assertSegment('vendor', vendor)
@@ -183,9 +202,10 @@ export class TieredDirs {
    * paths without a real home directory. `opts.convention` picks the per-OS
    * table: `native` (the default) or `xdg`.
    *
-   * Throws {@link TieredDirsError} when no home directory can be found.
+   * Throws {@link TieredDirsError} as {@link systemBaseDirs} does, and with
+   * code `INVALID_KEY` unless `vendor` is a single path segment.
    */
-  static fromEnv(vendor: string, vars: EnvVars, opts: SystemBaseDirsOptions = {}): TieredDirs {
+  static fromEnv(vendor: string, vars: EnvVars, opts: ResolveOptions = {}): TieredDirs {
     return new TieredDirs(vendor, systemBaseDirs(vars, opts))
   }
 
@@ -225,12 +245,12 @@ export class TieredDirs {
   /**
    * Whether a bundle identifier sits under this vendor.
    *
-   * A bare prefix test, matching the Rust twin's `is_vendor_bundle_id`. A
-   * migration tracker, not a gate: TS has no debug assertion, so the caller
-   * decides what to do with the answer.
+   * {@link isVendorBundleId} with this vendor. A migration tracker, not a
+   * gate: TS has no debug assertion, so the caller decides what to do with
+   * the answer.
    */
   isVendorBundleId(bundleId: string): boolean {
-    return bundleId.startsWith(this.vendorName)
+    return isVendorBundleId(this.vendorName, bundleId)
   }
 
   /**

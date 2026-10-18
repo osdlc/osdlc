@@ -20,16 +20,20 @@
  */
 
 export { TieredDirsError } from './errors.ts'
+export type { TieredDirsErrorCode } from './errors.ts'
 export { isValidSegment } from './segment.ts'
 export {
   CONVENTIONS,
   HOMES,
   envVars,
+  isOverridden,
   overrideVars,
+  parseConvention,
   rootedBaseDirs,
   systemBaseDirs,
+  testRoot,
   xdgBaseDirs,
 } from './base-dirs.ts'
-export type { BaseDirs, Convention, EnvVars, Home, SystemBaseDirsOptions } from './base-dirs.ts'
-export { TIER_KINDS, Dir, Tier, TieredDirs } from './tiered-dirs.ts'
+export type { BaseDirs, Convention, EnvVars, Home, ResolveOptions } from './base-dirs.ts'
+export { TIER_KINDS, Dir, Tier, TieredDirs, isVendorBundleId } from './tiered-dirs.ts'
 export type { TierKind } from './tiered-dirs.ts'

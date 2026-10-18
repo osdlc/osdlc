@@ -10,6 +10,7 @@ import {
   TieredDirsError,
   envVars,
   overrideVars,
+  parseConvention,
   rootedBaseDirs,
   systemBaseDirs,
   xdgBaseDirs,
@@ -297,6 +298,7 @@ describe('parity fixture', () => {
       expect(run).toThrow(TieredDirsError)
       expect(run).toThrow(`${ENV.convention} must be "native" or "xdg"`)
       expect(run).toThrow(JSON.stringify(value))
+      expect(() => parseConvention(value)).toThrow(TieredDirsError)
     },
   )
 

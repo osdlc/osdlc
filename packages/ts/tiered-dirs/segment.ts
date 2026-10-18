@@ -36,6 +36,7 @@ export function isValidSegment(key: string): boolean {
 export function assertSegment(kind: string, key: string): void {
   if (!isValidSegment(key)) {
     throw new TieredDirsError(
+      'INVALID_KEY',
       `invalid ${kind} key ${JSON.stringify(key)}: want a leading letter/digit ` +
         'then ._-, no path separator or "..", and not state, logs or run',
     )

@@ -2,7 +2,14 @@ import { join, normalize, sep } from 'node:path'
 
 import { describe, expect, test } from 'vitest'
 
-import { HOMES, TIER_KINDS, TieredDirs, TieredDirsError, rootedBaseDirs } from '../index.ts'
+import {
+  HOMES,
+  TIER_KINDS,
+  TieredDirs,
+  TieredDirsError,
+  isVendorBundleId,
+  rootedBaseDirs,
+} from '../index.ts'
 import type { BaseDirs, Tier } from '../index.ts'
 
 const VENDOR = 'com.example'
@@ -258,5 +265,12 @@ describe('vendor bundle assertion', () => {
     // which apps are conformant, which is the drift this package exists to
     // stop.
     expect(fleet.isVendorBundleId('com.exampleorp.app')).toBe(true)
+  })
+
+  test('the free function answers as the method does, with no TieredDirs', () => {
+    for (const id of ['com.example', 'com.example.notes', 'com.exampleorp.app', 'org.other']) {
+      expect(isVendorBundleId(VENDOR, id)).toBe(fleet.isVendorBundleId(id))
+    }
+    expect(isVendorBundleId('org.other', 'org.other.app')).toBe(true)
   })
 })

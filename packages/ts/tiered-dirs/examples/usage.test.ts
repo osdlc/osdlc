@@ -15,26 +15,31 @@ import {
   TieredDirs,
   TieredDirsError,
   envVars,
+  isOverridden,
   isValidSegment,
+  isVendorBundleId,
   overrideVars,
+  parseConvention,
   rootedBaseDirs,
   systemBaseDirs,
+  testRoot,
   xdgBaseDirs,
   type BaseDirs,
   type Convention,
   type Dir,
   type EnvVars,
   type Home,
-  type SystemBaseDirsOptions,
+  type ResolveOptions,
   type Tier,
   type TierKind,
+  type TieredDirsErrorCode,
 } from '@osdlc/tiered-dirs'
 
 const VENDOR = 'com.example'
 const VARS: EnvVars = envVars('EXAMPLE')
 
 /** A Linux user, so the paths do not depend on the machine running the examples. */
-const LINUX: SystemBaseDirsOptions = { platform: 'linux', env: { HOME: '/home/ada' } }
+const LINUX: ResolveOptions = { platform: 'linux', env: { HOME: '/home/ada' } }
 
 describe('find where a product keeps its state', () => {
   const dirs = TieredDirs.fromEnv(VENDOR, VARS, LINUX)
@@ -86,11 +91,15 @@ describe('find where a product keeps its state', () => {
     expect(dirs.isVendorBundleId('com.example.notes.desktop')).toBe(true)
     expect(dirs.isVendorBundleId('org.other.app')).toBe(false)
   })
+
+  test('a layer with no TieredDirs checks a bundle id against the vendor', () => {
+    expect(isVendorBundleId(VENDOR, 'com.example.notes.desktop')).toBe(true)
+  })
 })
 
 describe('choose the per-OS table', () => {
   test('native is the default; xdg gives XDG paths on macOS too', () => {
-    const mac: SystemBaseDirsOptions = { platform: 'darwin', env: { HOME: '/Users/ada' } }
+    const mac: ResolveOptions = { platform: 'darwin', env: { HOME: '/Users/ada' } }
     expect(CONVENTIONS).toEqual(['native', 'xdg'])
     const native = systemBaseDirs(VARS, mac)
     const xdg = systemBaseDirs(VARS, { ...mac, convention: 'xdg' satisfies Convention })
@@ -110,6 +119,12 @@ describe('choose the per-OS table', () => {
       env: { HOME: '/Users/ada', EXAMPLE_CONVENTION: 'xdg' },
     })
     expect(normalize(bases.cache)).toBe(normalize('/Users/ada/.cache'))
+  })
+
+  test('a convention from a flag or a config file is parsed exactly', () => {
+    const convention: Convention = parseConvention('xdg')
+    expect(systemBaseDirs(VARS, { ...LINUX, convention }).config).toBe('/home/ada/.config')
+    expect(() => parseConvention(' xdg')).toThrow(TieredDirsError)
   })
 })
 
@@ -137,6 +152,27 @@ describe('move directories for a test or a harness', () => {
     expect(VARS.requireOverride).toBe('EXAMPLE_REQUIRE_OVERRIDE')
     expect(VARS.convention).toBe('EXAMPLE_CONVENTION')
     expect(overrideVars(VARS)).toContain('EXAMPLE_SCRATCH_DIR')
+  })
+
+  test('isOverridden tells whether the environment moves any directory', () => {
+    expect(isOverridden(VARS, { EXAMPLE_CACHE_DIR: '/warm' })).toBe(true)
+    expect(isOverridden(VARS, { EXAMPLE_CONVENTION: 'xdg' })).toBe(false)
+  })
+
+  test('a test run reads a per-process scratch root', () => {
+    // Under Vitest this process is a test runner process.
+    const root = testRoot()
+    expect(root).toContain('tiered-dirs-test-')
+    // A product-tier layer that reads its own variables applies the same default.
+    expect(normalize(systemBaseDirs(VARS).durable)).toBe(normalize(`${root}/durable`))
+  })
+
+  test('testRoot: false resolves as outside a test runner', () => {
+    const bases = systemBaseDirs(VARS, {
+      testRoot: false,
+      overrides: rootedBaseDirs('/srv/app'),
+    })
+    expect(normalize(bases.cache)).toBe(normalize('/srv/app/cache'))
   })
 
   test('rootedBaseDirs lays every directory out under one root', () => {
@@ -179,11 +215,46 @@ describe('check names before they become paths', () => {
     const env = { HOME: '/home/ada', EXAMPLE_CONVENTION: 'apple' }
     expect(() => systemBaseDirs(VARS, { platform: 'linux', env })).toThrow(TieredDirsError)
   })
+
+  test('the error code says which failure it is', () => {
+    const explain = (code: TieredDirsErrorCode): string => {
+      switch (code) {
+        case 'INVALID_KEY':
+          return 'fix the name'
+        case 'RELATIVE_OVERRIDE':
+          return 'use an absolute path'
+        default:
+          // A minor release may add a code.
+          return 'see the message'
+      }
+    }
+    try {
+      new TieredDirs(VENDOR, rootedBaseDirs('/stub')).suite('../etc')
+    } catch (error) {
+      if (!(error instanceof TieredDirsError)) throw error
+      expect(error.code).toBe('INVALID_KEY')
+      expect(explain(error.code)).toBe('fix the name')
+    }
+    expect.assertions(2)
+  })
 })
 
 describe('the tier kinds', () => {
   test('there are three', () => {
     const kinds: readonly TierKind[] = TIER_KINDS
     expect(kinds).toEqual(['vendor', 'suite', 'standalone'])
+  })
+
+  test('a switch over a kind keeps a default arm, as a minor release may add one', () => {
+    const shared = (kind: TierKind): boolean => {
+      switch (kind) {
+        case 'vendor':
+        case 'suite':
+          return true
+        default:
+          return false
+      }
+    }
+    expect(TIER_KINDS.filter(shared)).toEqual(['vendor', 'suite'])
   })
 })

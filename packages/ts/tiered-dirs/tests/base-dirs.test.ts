@@ -7,6 +7,9 @@ import {
   TieredDirs,
   TieredDirsError,
   envVars,
+  isOverridden,
+  overrideVars,
+  parseConvention,
   rootedBaseDirs,
   systemBaseDirs,
   xdgBaseDirs,
@@ -386,5 +389,49 @@ describe('override variables', () => {
       overrides: { cache: '/o' },
     })
     expect(bases).toEqual({ ...rootedBaseDirs('/r'), cache: '/o' })
+  })
+})
+
+describe('parseConvention', () => {
+  test('takes exactly native or xdg', () => {
+    expect(parseConvention('native')).toBe('native')
+    expect(parseConvention('xdg')).toBe('xdg')
+  })
+
+  test('does not trim and does not fold case, unlike EXAMPLE_CONVENTION', () => {
+    for (const bad of [' xdg ', 'xdg\n', 'XDG', 'Native', '', 'apple']) {
+      expect(() => parseConvention(bad)).toThrow(TieredDirsError)
+    }
+    expect(() => parseConvention(' xdg')).toThrow(
+      'convention must be "native" or "xdg", got " xdg"',
+    )
+  })
+})
+
+describe('isOverridden', () => {
+  test('is false when no override variable is set, or each is empty', () => {
+    expect(isOverridden(ENV, {})).toBe(false)
+    expect(isOverridden(ENV, Object.fromEntries(overrideVars(ENV).map((n) => [n, ''])))).toBe(false)
+  })
+
+  test('is true for any one override variable set non-empty', () => {
+    for (const name of overrideVars(ENV)) {
+      expect(isOverridden(ENV, { [name]: '/x' })).toBe(true)
+    }
+  })
+
+  test('ignores the variables that move nothing', () => {
+    expect(isOverridden(ENV, { [ENV.requireOverride]: '1', [ENV.convention]: 'xdg' })).toBe(false)
+  })
+
+  test('reads process.env by default', () => {
+    const saved = process.env[ENV.dirs.cache]
+    try {
+      process.env[ENV.dirs.cache] = '/k'
+      expect(isOverridden(ENV)).toBe(true)
+    } finally {
+      if (saved === undefined) delete process.env[ENV.dirs.cache]
+      else process.env[ENV.dirs.cache] = saved
+    }
   })
 })

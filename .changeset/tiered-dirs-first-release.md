@@ -19,13 +19,23 @@ The additions:
   directory, and `xdgBaseDirs(home, env)` builds the XDG table under any home.
 - `envVars(prefix)` names the override variables: `<P>_ROOT`, `<P>_<HOME>_DIR`,
   `<P>_SCRATCH_DIR`, `<P>_REQUIRE_OVERRIDE` and `<P>_CONVENTION`. `overrideVars(vars)` lists the
-  ones that move a directory.
+  ones that move a directory. `isOverridden(vars, env)` says whether any of them is set to a
+  non-empty value.
 - Conventions: `native` (the default) or `xdg`, chosen by the caller or by `<P>_CONVENTION`.
+  `parseConvention(value)` parses one exactly, untrimmed.
 - `isValidSegment(key)`, the rule every caller-supplied segment must pass. `state`, `logs` and
   `run` are reserved.
-- `TieredDirsError`, the one error class the package throws.
-- The types `BaseDirs`, `EnvVars`, `Home`, `Convention`, `TierKind` and `SystemBaseDirsOptions`,
-  and the lists `HOMES`, `CONVENTIONS` and `TIER_KINDS`.
+- `isVendorBundleId(vendor, bundleId)`, the check `TieredDirs.isVendorBundleId` makes, for a
+  caller with no `TieredDirs`.
+- `TieredDirsError`, the one error class the package throws. Its `code` is one of
+  `MISSING_BASE_DIR`, `RELATIVE_OVERRIDE`, `OVERRIDE_REQUIRED`, `INVALID_CONVENTION` and
+  `INVALID_KEY`.
+- `ResolveOptions`, the options of `systemBaseDirs` and `TieredDirs.fromEnv`. `testRoot: false`
+  skips the test-root default; `<P>_ROOT` and `<P>_REQUIRE_OVERRIDE` still apply.
+- `testRoot()`, the per-process scratch root in a test runner process, else `undefined`.
+- The types `BaseDirs`, `EnvVars`, `Home`, `Convention`, `TierKind`, `ResolveOptions` and
+  `TieredDirsErrorCode`, and the lists `HOMES`, `CONVENTIONS` and `TIER_KINDS`. A minor release
+  may add a member to `TierKind`, `Convention` or `TieredDirsErrorCode`, or a name to `EnvVars`.
 - The test-root rule recognises a Vitest worker (`VITEST_WORKER_ID` or `VITEST_POOL_ID` set, and
   the entry point in the `vitest` package's `dist/workers` folder), as well as `NODE_ENV=test`,
   `node --test` and Bun. A child process a test spawns still gets no default.

@@ -9,6 +9,9 @@ import { TieredDirsError } from './errors.ts'
  *
  * A caller names both: `suite('notes').cache()`.
  *
+ * Exhaustive on purpose, as in the Rust twin: a new home changes every
+ * caller's layout, so adding one is a breaking (0.x minor) release.
+ *
  * Stable in 0.x.
  */
 export type Home = 'durable' | 'config' | 'cache' | 'state' | 'logs' | 'runtime'
@@ -27,6 +30,9 @@ export const HOMES: readonly Home[] = ['durable', 'config', 'cache', 'state', 'l
  * `native`. A CLI or developer tool uses `xdg`; a GUI app uses `native`. The
  * Rust twin's `Convention` has the same two.
  *
+ * A minor release may add a convention, as the Rust `Convention` is
+ * `#[non_exhaustive]`. A `switch` over it needs a `default` arm.
+ *
  * Stable in 0.x.
  */
 export type Convention = 'native' | 'xdg'
@@ -37,6 +43,29 @@ export type Convention = 'native' | 'xdg'
  * Stable in 0.x.
  */
 export const CONVENTIONS: readonly Convention[] = ['native', 'xdg']
+
+/** The {@link Convention} named exactly `value`, if any. */
+function findConvention(value: string): Convention | undefined {
+  return CONVENTIONS.find((convention) => convention === value)
+}
+
+/**
+ * Parse a {@link Convention}: exactly `native` or `xdg`, in lower case,
+ * untrimmed. The Rust twin's `Convention::from_str` is the same rule.
+ *
+ * Throws {@link TieredDirsError} with code `INVALID_CONVENTION` for any other
+ * value. {@link EnvVars.convention} is read differently: it is trimmed first.
+ *
+ * Stable in 0.x.
+ */
+export function parseConvention(value: string): Convention {
+  const convention = findConvention(value)
+  if (convention !== undefined) return convention
+  throw new TieredDirsError(
+    'INVALID_CONVENTION',
+    `convention must be "native" or "xdg", got ${JSON.stringify(value)}`,
+  )
+}
 
 /**
  * The per-OS roots the whole package is built on.
@@ -79,6 +108,10 @@ const RUNTIME_FALLBACK_SEGMENT = 'run'
 /**
  * The names of the environment variables that move base directories. Build one
  * with {@link envVars}, which derives every name from a prefix.
+ *
+ * A minor release may add a name, as the Rust `EnvVars` is
+ * `#[non_exhaustive]`. An object built by hand would then miss it, so build
+ * one with {@link envVars}. `dirs[home]` is the Rust `EnvVars::dir`.
  *
  * Stable in 0.x.
  */
@@ -139,6 +172,19 @@ export function overrideVars(vars: EnvVars): readonly string[] {
 }
 
 /**
+ * Whether `env` sets any of {@link overrideVars} to a non-empty value. The
+ * Rust twin's `EnvVars::is_overridden` is the same test.
+ *
+ * Stable in 0.x.
+ */
+export function isOverridden(
+  vars: EnvVars,
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return overrideVars(vars).some((name) => Boolean(env[name]))
+}
+
+/**
  * Every base directory under one stub root: `<root>/durable`, `<root>/config`,
  * `<root>/cache`, `<root>/state`, `<root>/logs`, `<root>/scratch`, and runtime
  * at `<root>/durable/run`.
@@ -163,11 +209,14 @@ export function rootedBaseDirs(root: string): BaseDirs {
 }
 
 /**
- * Inputs for {@link systemBaseDirs}. Every one is optional and injectable.
+ * How {@link systemBaseDirs} and `TieredDirs.fromEnv` resolve. Every input is
+ * optional and injectable. The Rust twin's `ResolveOptions` has `convention`
+ * and `testRoot`; `platform`, `env`, `home` and `overrides` are this twin's
+ * own seams.
  *
  * Stable in 0.x.
  */
-export interface SystemBaseDirsOptions {
+export interface ResolveOptions {
   /** Defaults to `process.platform`. */
   platform?: string
   /**
@@ -190,6 +239,14 @@ export interface SystemBaseDirsOptions {
    * environment and the per-OS table put them.
    */
   overrides?: Partial<BaseDirs>
+  /**
+   * Whether an unset root variable reads as {@link testRoot} in a test runner
+   * process. Defaults to `true`. With `false`, resolution runs as it would
+   * outside a test runner: {@link EnvVars.root} and
+   * {@link EnvVars.requireOverride} still apply. Has no effect when `env` or
+   * `home` is injected, since neither test rule runs then.
+   */
+  testRoot?: boolean
 }
 
 /**
@@ -242,16 +299,21 @@ export interface SystemBaseDirsOptions {
  * the same question; the two roots need not match, because parity pins only
  * what sits below a root.
  *
- * Throws {@link TieredDirsError} when a root falls back to the home directory and
- * none can be found, or when an override variable is not absolute. Headless
- * CI and sandboxes do not always have a home directory.
+ * Throws {@link TieredDirsError}. Its `code` is `MISSING_BASE_DIR` when a
+ * root falls back to the home directory and none can be found,
+ * `RELATIVE_OVERRIDE` when an override variable is not absolute,
+ * `INVALID_CONVENTION` when {@link EnvVars.convention} names no convention,
+ * and `OVERRIDE_REQUIRED` as the second test rule below says. Headless CI and
+ * sandboxes do not always have a home directory.
  *
  * Two test rules run first, and only when neither `env` nor `home` is
  * injected (an injected environment is the whole story):
  *
  * - In a test runner process with the root variable unset and `HOME` not
- *   moved, the root reads as `<tmp>/tiered-dirs-test-<pid>-<start ms>`, unique per
- *   process. A test runner process has a test file as its entry point and runs
+ *   moved, the root reads as {@link testRoot}:
+ *   `<tmp>/tiered-dirs-test-<pid>-<start ms>`, unique per process.
+ *   `opts.testRoot: false` turns this rule off; the next one still applies.
+ *   A test runner process has a test file as its entry point and runs
  *   under `NODE_ENV=test`, `NODE_TEST_CONTEXT` (set by `node --test`), Bun, or
  *   a Vitest worker. Bun counts on its own because `bun test` keeps a
  *   `NODE_ENV` that is already set. A Vitest worker has `VITEST_WORKER_ID` or
@@ -269,12 +331,12 @@ export interface SystemBaseDirsOptions {
  *
  * Stable in 0.x.
  */
-export function systemBaseDirs(vars: EnvVars, opts: SystemBaseDirsOptions = {}): BaseDirs {
+export function systemBaseDirs(vars: EnvVars, opts: ResolveOptions = {}): BaseDirs {
   const platform = opts.platform ?? process.platform
   const over = stripUndefined(opts.overrides ?? {})
   const env =
     opts.env === undefined && opts.home === undefined
-      ? guardedEnv(vars, process.env, over)
+      ? guardedEnv(vars, process.env, over, opts.testRoot ?? true)
       : (opts.env ?? process.env)
 
   let cachedHome: string | undefined
@@ -299,10 +361,12 @@ function guardedEnv(
   vars: EnvVars,
   env: Record<string, string | undefined>,
   overrides: Partial<BaseDirs>,
+  useTestRoot: boolean,
 ): Record<string, string | undefined> {
   if (env[vars.root]) return env
-  if (isTestRunnerProcess(env) && !homeMoved(env)) {
-    return { ...env, [vars.root]: testRoot() }
+  const root = useTestRoot ? testRoot() : undefined
+  if (root !== undefined && !homeMoved(env)) {
+    return { ...env, [vars.root]: root }
   }
   if (env[vars.requireOverride]) {
     // Runtime follows a moved durable, so it needs no variable of its own.
@@ -310,6 +374,7 @@ function guardedEnv(
     const missing = required.find((key) => !env[vars.dirs[key]])
     if (missing !== undefined) {
       throw new TieredDirsError(
+        'OVERRIDE_REQUIRED',
         `${vars.requireOverride} is set but neither ${vars.root} nor ${vars.dirs[missing]} is: ` +
           `set ${vars.root} to a scratch directory, or build from rootedBaseDirs`,
       )
@@ -318,13 +383,34 @@ function guardedEnv(
   return env
 }
 
+/** {@link testRoot}'s answer, once it has looked. */
+let processTestRoot: { root: string | undefined } | undefined
+
 /**
- * This process's scratch root. The start time keeps a later process that
- * reuses the pid off this one's leftover state.
+ * `<tmp>/tiered-dirs-test-<pid>-<start ms>` when this process is a test runner
+ * process, else `undefined`. Resolved once per process.
+ *
+ * A test runner process is the one {@link systemBaseDirs} describes: a test
+ * file as its entry point under `NODE_ENV=test`, `NODE_TEST_CONTEXT` or Bun,
+ * or a Vitest worker. A child a test spawns is not one.
+ *
+ * The start time keeps a later process that reuses the pid off this one's
+ * leftover state. Callers that read the environment themselves, such as a
+ * product-tier layer, use this to apply the same default. The Rust twin's
+ * `test_root()` is the same per-process root, detected by its cargo test
+ * binary.
+ *
+ * Stable in 0.x.
  */
-let processTestRoot: string | undefined
-function testRoot(): string {
-  return (processTestRoot ??= join(tmpdir(), `tiered-dirs-test-${process.pid}-${Date.now()}`))
+export function testRoot(): string | undefined {
+  if (!processTestRoot) {
+    processTestRoot = {
+      root: isTestRunnerProcess(process.env)
+        ? join(tmpdir(), `tiered-dirs-test-${process.pid}-${Date.now()}`)
+        : undefined,
+    }
+  }
+  return processTestRoot.root
 }
 
 /** A test file name: `*.test.ts`, `*_spec.mjs`, and the like. */
@@ -373,8 +459,10 @@ function envConvention(
   const value = env[vars.convention]
   if (!value) return undefined
   const trimmed = value.trim()
-  if (trimmed === 'native' || trimmed === 'xdg') return trimmed
+  const convention = findConvention(trimmed)
+  if (convention !== undefined) return convention
   throw new TieredDirsError(
+    'INVALID_CONVENTION',
     `${vars.convention} must be "native" or "xdg", got ${JSON.stringify(value)}`,
   )
 }
@@ -389,7 +477,7 @@ function envOverrides(
     const value = env[name]
     if (!value) return undefined
     if (!isAbsolutePath(value, platform)) {
-      throw new TieredDirsError(`${name} must be an absolute path`)
+      throw new TieredDirsError('RELATIVE_OVERRIDE', `${name} must be an absolute path`)
     }
     return value
   }
@@ -501,13 +589,13 @@ function posixScratch(env: Record<string, string | undefined>, platform: string)
 }
 
 function resolveHome(
-  opts: SystemBaseDirsOptions,
+  opts: ResolveOptions,
   platform: string,
   env: Record<string, string | undefined>,
 ): string {
   if (opts.home !== undefined) {
     if (opts.home === '') {
-      throw new TieredDirsError('home must be a non-empty path')
+      throw new TieredDirsError('MISSING_BASE_DIR', 'home must be a non-empty path')
     }
     return opts.home
   }
@@ -519,6 +607,7 @@ function resolveHome(
   // real home here would make a test's paths depend on the machine running it.
   if (opts.env !== undefined) {
     throw new TieredDirsError(
+      'MISSING_BASE_DIR',
       'no home directory: the supplied environment sets neither HOME nor USERPROFILE',
     )
   }
@@ -532,6 +621,7 @@ function resolveHome(
   if (host) return host
 
   throw new TieredDirsError(
+    'MISSING_BASE_DIR',
     'no home directory: HOME is unset and the OS reports none — pass `home` or `overrides`',
   )
 }

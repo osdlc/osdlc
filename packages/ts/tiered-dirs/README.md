@@ -95,6 +95,8 @@ The product tier, one product's own directory keyed by bundle identifier, is
 not here. An app framework usually resolves it, and this package takes no
 framework dependency. `TieredDirs.isVendorBundleId(bundleId)` lets a layer
 above check that a product's bundle id sits under the vendor.
+`isVendorBundleId(vendor, bundleId)` is the same check for a caller with no
+`TieredDirs`. Both are a bare prefix test, as in the Rust twin.
 
 Tiers are distinct addresses and there is no merge. `vendor().durable()`,
 `suite(k).durable()` and `standalone(t).durable()` are different locations.
@@ -159,7 +161,9 @@ means `native`.
 Pass `{ convention: 'xdg' }` to `systemBaseDirs` or `TieredDirs.fromEnv`.
 `<P>_CONVENTION=native` or `xdg` overrides the caller's choice; any other value
 throws `TieredDirsError`. The value is trimmed, then must match exactly, in
-lower case. `xdgBaseDirs(home, env)` builds the XDG table under any home, on
+lower case. `parseConvention(value)` parses a convention from anywhere else,
+such as a flag: exactly `native` or `xdg`, untrimmed, like the Rust twin's
+`FromStr`. `xdgBaseDirs(home, env)` builds the XDG table under any home, on
 any host.
 
 ## Overrides and scratch roots
@@ -168,7 +172,9 @@ Every base directory can be moved by environment variable, so a test or harness
 can run a whole app inside one scratch root. The caller picks the names:
 `envVars('EXAMPLE')` reads `EXAMPLE_ROOT`, `EXAMPLE_<HOME>_DIR`,
 `EXAMPLE_SCRATCH_DIR`, `EXAMPLE_REQUIRE_OVERRIDE` and `EXAMPLE_CONVENTION`.
-`overrideVars(vars)` lists the ones that move a directory. Per base directory,
+`overrideVars(vars)` lists the ones that move a directory, and
+`isOverridden(vars, env)` says whether any of them is set to a non-empty value
+(`env` defaults to `process.env`). Per base directory,
 the first answer wins:
 
 | order | source | effect |
@@ -198,6 +204,12 @@ first:
   nor a Vitest worker, even though it inherits the Vitest variables.
 - With `<P>_REQUIRE_OVERRIDE` set, a root that would fall back to the per-OS
   table throws a `TieredDirsError` naming the fix.
+
+`testRoot()` returns that per-process root in a test runner process, and
+`undefined` elsewhere. A layer that reads its own variables, such as a
+product tier, uses it to apply the same default. Pass `{ testRoot: false }`
+to `systemBaseDirs` or `TieredDirs.fromEnv` to skip the first rule only.
+`<P>_ROOT` and `<P>_REQUIRE_OVERRIDE` still apply.
 
 ## Scratch
 
@@ -245,11 +257,25 @@ each checked as a single path segment: non-empty, no separator, no `..`,
 matching `^[a-z0-9][a-z0-9._-]*$/i`, and not `state`, `logs` or `run`.
 `isValidSegment(key)` is that rule. An invalid one throws `TieredDirsError`.
 
+`TieredDirsError.code` says which failure it is, one code per variant of the
+Rust twin's `Error`. Its type is `TieredDirsErrorCode`:
+
+| code | when |
+|---|---|
+| `MISSING_BASE_DIR` | a root needs a home directory and none can be found |
+| `RELATIVE_OVERRIDE` | an override variable holds a relative path |
+| `OVERRIDE_REQUIRED` | `<P>_REQUIRE_OVERRIDE` is set and a root would fall back to the per-OS table |
+| `INVALID_CONVENTION` | `<P>_CONVENTION` or `parseConvention` got a value other than `native` or `xdg` |
+| `INVALID_KEY` | a segment fails `isValidSegment` |
+
+The message gives the details, such as the variable or the key.
+
 ## API
 
 ```typescript
 function envVars(prefix: string): EnvVars
 function overrideVars(vars: EnvVars): readonly string[]
+function isOverridden(vars: EnvVars, env?: Record<string, string | undefined>): boolean
 interface EnvVars {
   root: string
   dirs: Record<keyof BaseDirs, string>
@@ -263,23 +289,26 @@ type Home = 'durable' | 'config' | 'cache' | 'state' | 'logs' | 'runtime'
 const HOMES: readonly Home[]
 type Convention = 'native' | 'xdg'
 const CONVENTIONS: readonly Convention[]
+function parseConvention(value: string): Convention
 type TierKind = 'vendor' | 'suite' | 'standalone'
 const TIER_KINDS: readonly TierKind[]
 interface BaseDirs { durable; config; cache; state; logs; runtime; scratch: string }
-interface SystemBaseDirsOptions {
+interface ResolveOptions {
   platform?: string
   convention?: Convention
   env?: Record<string, string | undefined>
   home?: string
   overrides?: Partial<BaseDirs>
+  testRoot?: boolean // default true
 }
-function systemBaseDirs(vars: EnvVars, opts?: SystemBaseDirsOptions): BaseDirs
+function systemBaseDirs(vars: EnvVars, opts?: ResolveOptions): BaseDirs
+function testRoot(): string | undefined
 function rootedBaseDirs(root: string): BaseDirs
 function xdgBaseDirs(home: string, env: Record<string, string | undefined>): BaseDirs
 
 class TieredDirs {
   constructor(vendor: string, bases: BaseDirs)
-  static fromEnv(vendor: string, vars: EnvVars, opts?: SystemBaseDirsOptions): TieredDirs
+  static fromEnv(vendor: string, vars: EnvVars, opts?: ResolveOptions): TieredDirs
   readonly vendorName: string
   readonly bases: Readonly<BaseDirs>
   vendor(): Tier
@@ -288,6 +317,7 @@ class TieredDirs {
   scratch(): Dir
   isVendorBundleId(bundleId: string): boolean
 }
+function isVendorBundleId(vendor: string, bundleId: string): boolean
 
 class Tier {
   readonly segment: string
@@ -310,7 +340,15 @@ class Dir {
   app(app: string): Dir
 }
 
-class TieredDirsError extends Error {}
+type TieredDirsErrorCode =
+  | 'MISSING_BASE_DIR'
+  | 'RELATIVE_OVERRIDE'
+  | 'OVERRIDE_REQUIRED'
+  | 'INVALID_CONVENTION'
+  | 'INVALID_KEY'
+class TieredDirsError extends Error {
+  readonly code: TieredDirsErrorCode
+}
 ```
 
 ## Parity
@@ -327,13 +365,20 @@ Neither twin may add a path shape the other lacks.
 ## Stability
 
 Every export is stable in 0.x, and its TSDoc says so: `TieredDirs`, `Tier`,
-`Dir`, `TieredDirsError`, `envVars`, `overrideVars`, `systemBaseDirs`,
-`rootedBaseDirs`, `xdgBaseDirs`, `isValidSegment`, `HOMES`, `CONVENTIONS`,
-`TIER_KINDS` and the types `BaseDirs`, `EnvVars`, `Home`, `Convention`,
-`TierKind` and `SystemBaseDirsOptions`. A breaking change to one of them
-ships only in a new 0.x minor release, with a CHANGELOG entry that starts with
-`Breaking:`. `Home` is exhaustive on purpose: a new home changes every
-caller's layout, so adding one is a breaking release.
+`Dir`, `TieredDirsError`, `envVars`, `overrideVars`, `isOverridden`,
+`systemBaseDirs`, `testRoot`, `rootedBaseDirs`, `xdgBaseDirs`,
+`parseConvention`, `isValidSegment`, `isVendorBundleId`, `HOMES`,
+`CONVENTIONS`, `TIER_KINDS` and the types `BaseDirs`, `EnvVars`, `Home`,
+`Convention`, `TierKind`, `ResolveOptions` and `TieredDirsErrorCode`. A
+breaking change to one of them ships only in a new 0.x minor release, with a
+CHANGELOG entry that starts with `Breaking:`.
+
+Some of them may grow in a minor release, as their Rust twins are
+`#[non_exhaustive]`: `TierKind` and `Convention` may gain a member,
+`TieredDirsErrorCode` a code, and `EnvVars` a name. A `switch` over one of the
+unions needs a `default` arm. Build `EnvVars` with `envVars()`, not by hand,
+so a new name is filled in. `Home` is exhaustive on purpose: a new home
+changes every caller's layout, so adding one is a breaking release.
 
 ## Runtimes and platforms
 
