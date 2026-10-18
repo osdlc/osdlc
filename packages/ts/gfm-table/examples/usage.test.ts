@@ -28,6 +28,7 @@ import {
   looksLikeHeader,
   padRow,
   padRowSplice,
+  padTable,
   parseAlign,
   parseDelimited,
   pasteRect,
@@ -56,6 +57,7 @@ import {
   type DelimitedRecord,
   type Delimiter,
   type LineSplice,
+  type PadTableOptions,
   type PipeFix,
   type ReadDelimitedOptions,
   type RenderTableOptions,
@@ -92,6 +94,24 @@ describe('write a table from data', () => {
   test('escapeCell for one cell, escapeCodeCell for a cell in a code span', () => {
     expect(escapeCell(' two\nlines | here ')).toBe('two lines \\| here')
     expect(escapeCodeCell('a|b\\c')).toBe('a\\|b\\c')
+  })
+
+  test('padTable lines up the pipes of a table', () => {
+    const table = ['| Name | Qty |', '|:--|--:|', '| 東京 | 3 |', '| a long note | 12 |']
+    expect(padTable(table.join('\n')).split('\n')).toEqual([
+      '| Name        |  Qty |',
+      '| :---------- | ---: |',
+      '| 東京        |    3 |',
+      '| a long note |   12 |',
+    ])
+    // A cell over the cap does not widen its column.
+    const options: PadTableOptions = { maxColumnWidth: 6 }
+    expect(padTable(table.join('\n'), options).split('\n')).toEqual([
+      '| Name |  Qty |',
+      '| :--- | ---: |',
+      '| 東京 |    3 |',
+      '| a long note |   12 |',
+    ])
   })
 
   test('rowLineText builds a row and says where each cell starts', () => {
