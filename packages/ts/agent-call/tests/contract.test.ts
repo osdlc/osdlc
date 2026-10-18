@@ -48,6 +48,11 @@ const ROWS: Row[] = [
       codex: { support: 'native', readme: '--model' },
       antigravity: { support: 'native', readme: '--model' },
       opencode: { support: 'native', readme: '--model' },
+      copilot: { support: 'native', readme: '--model' },
+      pi: { support: 'native', readme: '--model' },
+      qwen: { support: 'native', readme: '--model' },
+      droid: { support: 'native', readme: '--model' },
+      deepseek: { support: 'approximated', readme: '--patch' },
     },
   },
   {
@@ -59,6 +64,11 @@ const ROWS: Row[] = [
       codex: { support: 'native', readme: 'model_reasoning_effort' },
       antigravity: { support: 'native', readme: '--effort' },
       opencode: { support: 'approximated', readme: '--variant' },
+      copilot: { support: 'native', readme: '--reasoning-effort' },
+      pi: { support: 'native', readme: '--thinking' },
+      qwen: { support: 'approximated', readme: 'QWEN_CODE_SYSTEM_DEFAULTS_PATH' },
+      droid: { support: 'native', readme: '--reasoning-effort' },
+      deepseek: { support: 'approximated', readme: '--patch' },
     },
   },
   {
@@ -70,6 +80,11 @@ const ROWS: Row[] = [
       codex: { support: 'emulated', planned: '<system>' },
       antigravity: { support: 'emulated', planned: '<system>' },
       opencode: { support: 'emulated', planned: '<system>' },
+      copilot: { support: 'emulated', planned: '<system>' },
+      pi: { support: 'native', readme: '--system-prompt' },
+      qwen: { support: 'native', readme: '--system-prompt' },
+      droid: { support: 'emulated', planned: '<system>' },
+      deepseek: { support: 'approximated', readme: '--patch' },
     },
   },
   {
@@ -81,6 +96,11 @@ const ROWS: Row[] = [
       codex: { support: 'emulated', planned: '<instructions>' },
       antigravity: { support: 'emulated', planned: '<instructions>' },
       opencode: { support: 'emulated', planned: '<instructions>' },
+      copilot: { support: 'approximated', readme: 'COPILOT_CUSTOM_INSTRUCTIONS_DIRS' },
+      pi: { support: 'native', readme: '--append-system-prompt' },
+      qwen: { support: 'native', readme: '--append-system-prompt' },
+      droid: { support: 'native', readme: '--append-system-prompt' },
+      deepseek: { support: 'native', readme: '--patch' },
     },
   },
   {
@@ -92,6 +112,15 @@ const ROWS: Row[] = [
       codex: { support: 'native', readme: '--sandbox read-only' },
       antigravity: { support: 'approximated', readme: '--sandbox' },
       opencode: { support: 'approximated', readme: 'OPENCODE_PERMISSION' },
+      copilot: { support: 'approximated', readme: '--deny-tool=write' },
+      pi: { support: 'approximated', readme: '--tools read,grep,find,ls' },
+      qwen: { support: 'approximated', readme: '--approval-mode plan' },
+      droid: { support: 'native', readme: 'no flag', planned: '' },
+      deepseek: {
+        support: 'native',
+        readme: 'DSH_PERMISSION_MODE',
+        planned: '"DSH_PERMISSION_MODE":"read-only"',
+      },
     },
   },
   {
@@ -103,6 +132,15 @@ const ROWS: Row[] = [
       codex: { support: 'approximated', readme: '--sandbox workspace-write' },
       antigravity: { support: 'dropped', planned: '' },
       opencode: { support: 'approximated', readme: 'OPENCODE_PERMISSION' },
+      copilot: { support: 'native', readme: '--allow-tool=write' },
+      pi: { support: 'approximated', readme: '--tools read,grep,find,ls,edit,write' },
+      qwen: { support: 'native', readme: '--approval-mode auto-edit' },
+      droid: { support: 'approximated', readme: '--auto low' },
+      deepseek: {
+        support: 'approximated',
+        readme: 'DSH_PERMISSION_MODE',
+        planned: '"DSH_PERMISSION_MODE":"workspace-write"',
+      },
     },
   },
   {
@@ -118,6 +156,19 @@ const ROWS: Row[] = [
       codex: { support: 'native', readme: '--sandbox workspace-write' },
       antigravity: { support: 'approximated', readme: '--dangerously-skip-permissions' },
       opencode: { support: 'approximated', readme: 'OPENCODE_PERMISSION' },
+      copilot: { support: 'approximated', readme: '--allow-all-tools' },
+      pi: { support: 'approximated', readme: '--tools', planned: '--tools +read,+bash' },
+      qwen: {
+        support: 'approximated',
+        readme: 'auto-edit',
+        planned: '--approval-mode auto-edit --allowed-tools run_shell_command',
+      },
+      droid: { support: 'approximated', readme: '--auto medium' },
+      deepseek: {
+        support: 'native',
+        readme: 'DSH_PERMISSION_MODE',
+        planned: '"DSH_PERMISSION_MODE":"workspace-write"',
+      },
     },
   },
   {
@@ -129,6 +180,15 @@ const ROWS: Row[] = [
       codex: { support: 'native', readme: '--dangerously-bypass-approvals-and-sandbox' },
       antigravity: { support: 'native', readme: '--dangerously-skip-permissions' },
       opencode: { support: 'approximated', readme: 'OPENCODE_PERMISSION' },
+      copilot: { support: 'native', readme: '--allow-all' },
+      pi: { support: 'native', readme: '--tools', planned: '--tools +read,+bash' },
+      qwen: { support: 'native', readme: '--approval-mode yolo' },
+      droid: { support: 'native', readme: '--skip-permissions-unsafe' },
+      deepseek: {
+        support: 'native',
+        readme: 'DSH_PERMISSION_MODE',
+        planned: '"DSH_PERMISSION_MODE":"danger-full-access"',
+      },
     },
   },
   {
@@ -140,6 +200,11 @@ const ROWS: Row[] = [
       codex: { support: 'dropped', planned: '' },
       antigravity: { support: 'dropped', planned: '' },
       opencode: { support: 'dropped', planned: '' },
+      copilot: { support: 'native', readme: '--allow-tool' },
+      pi: { support: 'approximated', readme: '--tools' },
+      qwen: { support: 'native', readme: '--allowed-tools' },
+      droid: { support: 'approximated', readme: '--add-tools' },
+      deepseek: { support: 'dropped', planned: '' },
     },
   },
   {
@@ -151,6 +216,11 @@ const ROWS: Row[] = [
       codex: { support: 'dropped', planned: '' },
       antigravity: { support: 'dropped', planned: '' },
       opencode: { support: 'dropped', planned: '' },
+      copilot: { support: 'native', readme: '--deny-tool' },
+      pi: { support: 'native', readme: '--exclude-tools' },
+      qwen: { support: 'native', readme: '--exclude-tools' },
+      droid: { support: 'approximated', readme: '--remove-tools' },
+      deepseek: { support: 'dropped', planned: '' },
     },
   },
   {
@@ -162,6 +232,11 @@ const ROWS: Row[] = [
       codex: { support: 'emulated', readme: 'prompt preamble', planned: '- src/a.ts' },
       antigravity: { support: 'emulated', readme: '@path', planned: '@src/a.ts' },
       opencode: { support: 'native', readme: '--file' },
+      copilot: { support: 'emulated', readme: 'prompt preamble', planned: '- src/a.ts' },
+      pi: { support: 'native', readme: '@path', planned: '@src/a.ts' },
+      qwen: { support: 'emulated', readme: '@path', planned: '@src/a.ts' },
+      droid: { support: 'emulated', readme: 'prompt preamble', planned: '- src/a.ts' },
+      deepseek: { support: 'emulated', readme: 'prompt preamble', planned: '- src/a.ts' },
     },
   },
   {
@@ -173,6 +248,11 @@ const ROWS: Row[] = [
       codex: { support: 'native', readme: '--add-dir' },
       antigravity: { support: 'dropped', planned: '' },
       opencode: { support: 'dropped', planned: '' },
+      copilot: { support: 'native', readme: '--add-dir' },
+      pi: { support: 'dropped', planned: '' },
+      qwen: { support: 'native', readme: '--include-directories' },
+      droid: { support: 'dropped', planned: '' },
+      deepseek: { support: 'dropped', planned: '' },
     },
   },
   {
@@ -185,6 +265,11 @@ const ROWS: Row[] = [
       codex: { support: 'emulated', readme: 'prompt preamble', planned: '<context>' },
       antigravity: { support: 'emulated', readme: 'prompt preamble', planned: '<context>' },
       opencode: { support: 'emulated', readme: 'prompt preamble', planned: '<context>' },
+      copilot: { support: 'emulated', readme: 'prompt preamble', planned: '<context>' },
+      pi: { support: 'emulated', readme: 'prompt preamble', planned: '<context>' },
+      qwen: { support: 'emulated', readme: 'prompt preamble', planned: '<context>' },
+      droid: { support: 'emulated', readme: 'prompt preamble', planned: '<context>' },
+      deepseek: { support: 'emulated', readme: 'prompt preamble', planned: '<context>' },
     },
   },
   {
@@ -196,6 +281,11 @@ const ROWS: Row[] = [
       codex: { support: 'native', readme: '--output-schema' },
       antigravity: { support: 'native', readme: '--json-schema' },
       opencode: { support: 'emulated', planned: 'validates against this JSON Schema' },
+      copilot: { support: 'emulated', planned: 'validates against this JSON Schema' },
+      pi: { support: 'emulated', planned: 'validates against this JSON Schema' },
+      qwen: { support: 'native', readme: '--json-schema' },
+      droid: { support: 'emulated', planned: 'validates against this JSON Schema' },
+      deepseek: { support: 'emulated', planned: 'validates against this JSON Schema' },
     },
   },
   {
@@ -207,6 +297,11 @@ const ROWS: Row[] = [
       codex: { support: 'native', readme: 'exec resume <id>', planned: 'exec resume abc' },
       antigravity: { support: 'native', readme: '--conversation', planned: '--conversation abc' },
       opencode: { support: 'native', readme: '--session', planned: '--session abc' },
+      copilot: { support: 'native', readme: '--resume=<id>', planned: '--resume=abc' },
+      pi: { support: 'native', readme: '--session', planned: '--session abc' },
+      qwen: { support: 'native', readme: '--resume=<id>', planned: '--resume=abc' },
+      droid: { support: 'native', readme: '--session-id', planned: '--session-id abc' },
+      deepseek: { support: 'native', readme: '--session-id', planned: '--session-id=abc' },
     },
   },
   {
@@ -218,6 +313,11 @@ const ROWS: Row[] = [
       codex: { support: 'native', readme: 'exec resume --last' },
       antigravity: { support: 'native', readme: '--continue' },
       opencode: { support: 'native', readme: '--continue' },
+      copilot: { support: 'native', readme: '--continue' },
+      pi: { support: 'native', readme: '--continue' },
+      qwen: { support: 'native', readme: '--continue' },
+      droid: { support: 'dropped', planned: '' },
+      deepseek: { support: 'dropped', planned: '' },
     },
   },
   {
@@ -229,6 +329,11 @@ const ROWS: Row[] = [
       codex: { support: 'dropped', planned: '' },
       antigravity: { support: 'dropped', planned: '' },
       opencode: { support: 'dropped', planned: '' },
+      copilot: { support: 'native', readme: '--session-id', planned: '--session-id=fixed-id' },
+      pi: { support: 'native', readme: '--session-id', planned: '--session-id fixed-id' },
+      qwen: { support: 'native', readme: '--session-id', planned: '--session-id fixed-id' },
+      droid: { support: 'approximated', readme: '--session-id', planned: '--session-id fixed-id' },
+      deepseek: { support: 'dropped', planned: '' },
     },
   },
   {
@@ -240,6 +345,11 @@ const ROWS: Row[] = [
       codex: { support: 'native', readme: '--ephemeral' },
       antigravity: { support: 'dropped', planned: '' },
       opencode: { support: 'dropped', planned: '' },
+      copilot: { support: 'dropped', planned: '' },
+      pi: { support: 'native', readme: '--no-session' },
+      qwen: { support: 'approximated', readme: '--chat-recording false' },
+      droid: { support: 'dropped', planned: '' },
+      deepseek: { support: 'dropped', planned: '' },
     },
   },
   {
@@ -255,6 +365,11 @@ const ROWS: Row[] = [
       },
       antigravity: { support: 'dropped', planned: '' },
       opencode: { support: 'dropped', planned: '' },
+      copilot: { support: 'native', readme: '--additional-mcp-config' },
+      pi: { support: 'dropped', planned: '' },
+      qwen: { support: 'native', readme: '--mcp-config' },
+      droid: { support: 'dropped', planned: '' },
+      deepseek: { support: 'approximated', readme: '--patch' },
     },
   },
   {
@@ -266,6 +381,11 @@ const ROWS: Row[] = [
       codex: { support: 'dropped', planned: '' },
       antigravity: { support: 'dropped', planned: '' },
       opencode: { support: 'dropped', planned: '' },
+      copilot: { support: 'dropped', planned: '' },
+      pi: { support: 'dropped', planned: '' },
+      qwen: { support: 'dropped', planned: '' },
+      droid: { support: 'dropped', planned: '' },
+      deepseek: { support: 'dropped', planned: '' },
     },
   },
 ]
@@ -363,27 +483,41 @@ describe('capability map: the other rows', () => {
     expect(plan('antigravity').argv.slice(-2)).toEqual(['-p', 'PROMPT'])
     expect(plan('opencode').stdin).toBeUndefined()
     expect(plan('opencode').argv.at(-1)).toBe('PROMPT')
+    for (const agent of ['copilot', 'pi', 'qwen', 'droid'] as const) {
+      expect(plan(agent).stdin).toBe('PROMPT')
+    }
+    expect(plan('deepseek').stdin).toBe('PROMPT')
+    expect(plan('deepseek').argv.at(-1)).toBe('-')
     const cells = tableRow('prompt')
     expect(cells['claude']).toBe('stdin')
     expect(cells['codex']).toContain('stdin')
     expect(cells['antigravity']).toContain('-p <prompt>')
     expect(cells['opencode']).toBe('positional')
+    for (const agent of ['copilot', 'pi', 'qwen', 'droid'] as const)
+      expect(cells[agent]).toBe('stdin')
+    expect(cells['deepseek']).toContain('stdin')
   })
 
-  test('effort xhigh and max clamp to high on antigravity only', () => {
+  test('effort xhigh and max pass through, except where the README says they clamp', () => {
     for (const effort of ['xhigh', 'max'] as const) {
       for (const agent of AGENTS) {
         const planned = planCall(adapterFor(agent), { prompt: 'x', effort })
         const note = planned.notes.find((n) => n.field === 'effort')
+        // Effort can travel in a temp file (qwen, deepseek), so look there too.
+        const text = [plannedText(planned), ...planned.tempFiles.map((f) => f.content)].join('\n')
         if (agent === 'antigravity') {
           expect(note?.support).toBe('approximated')
           expect(planned.argv.join(' ')).toContain('--effort high')
+        } else if (agent === 'deepseek') {
+          expect(note?.support).toBe('approximated')
+          expect(text).toContain('"reasoningEffort": "max"')
         } else {
-          expect(planned.argv.join(' ')).toContain(effort)
+          expect(text).toContain(effort)
         }
       }
     }
     expect(tableRow('effort')['antigravity']).toContain('`xhigh`, `max` → `high`')
+    expect(tableRow('effort')['deepseek']).toContain('`xhigh` → `max`')
   })
 
   test('output.format reaches each CLI as the README says', () => {
@@ -400,6 +534,19 @@ describe('capability map: the other rows', () => {
         'stream-json': '--output-format stream-json',
       },
       opencode: { text: '', json: '--format json', 'stream-json': '--format json' },
+      copilot: { text: '-s', json: '--output-format json', 'stream-json': '--output-format json' },
+      pi: { text: '-p', json: '--mode json', 'stream-json': '--mode json' },
+      qwen: {
+        text: '--output-format text',
+        json: '--output-format json',
+        'stream-json': '--output-format stream-json',
+      },
+      droid: {
+        text: '--output-format text',
+        json: '--output-format json',
+        'stream-json': '--output-format stream-json',
+      },
+      deepseek: { text: '', json: '--json', 'stream-json': '--json' },
     }
     for (const agent of AGENTS) {
       for (const format of ['text', 'json', 'stream-json'] as const) {
@@ -417,6 +564,11 @@ describe('capability map: the other rows', () => {
     expect(cells['codex']).toContain('--json')
     expect(cells['antigravity']).toContain('text|json|stream-json')
     expect(cells['opencode']).toContain('--format json')
+    expect(cells['copilot']).toContain('--output-format json')
+    expect(cells['pi']).toContain('--mode json')
+    expect(cells['qwen']).toContain('text|json|stream-json')
+    expect(cells['droid']).toContain('text|json|stream-json')
+    expect(cells['deepseek']).toContain('--json')
   })
 
   test('timeoutMs is library-level: no flag, no note, on every agent', () => {

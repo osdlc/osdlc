@@ -52,4 +52,20 @@ describe.skipIf(!live)('live smoke', () => {
     expect(result.ok).toBe(true)
     expect(result.text.toLowerCase()).toContain('pong')
   })
+  // The agents added in 0.5.0. Each answers with its own default model and
+  // credentials; pi needs a model with credentials in the environment.
+  for (const name of ['copilot', 'pi', 'qwen', 'droid', 'deepseek'] as const) {
+    test(`${name} answers`, { timeout: 150_000 }, async () => {
+      const [agent] = await detectAgents([adapterFor(name)])
+      if (agent?.available !== true) return
+      const result = await callAgent(adapterFor(name), {
+        prompt: 'Reply with exactly the word: pong',
+        permissions: { mode: 'read-only' },
+        timeoutMs: 120_000,
+      })
+      expect(result.ok).toBe(true)
+      expect(result.text.toLowerCase()).toContain('pong')
+      expect(result.sessionId).toBeDefined()
+    })
+  }
 })

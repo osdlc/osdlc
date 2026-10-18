@@ -197,7 +197,7 @@ function planCodex(command: readonly string[], spec: AgentCallSpec): PlannedCall
   }
 
   if (spec.plugins !== undefined) {
-    note(notes, 'plugins', 'dropped', 'session-only plugins are claude only')
+    note(notes, 'plugins', 'dropped', 'session-only plugins are claude and copilot only')
   }
   if (spec.budgetUsd !== undefined) {
     note(notes, 'budgetUsd', 'dropped', 'codex has no budget cap flag')

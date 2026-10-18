@@ -194,7 +194,7 @@ function planPi(binary: string, spec: AgentCallSpec): PlannedCall {
     }
   }
   if (spec.plugins !== undefined) {
-    note(notes, 'plugins', 'dropped', 'session-only plugins are claude only')
+    note(notes, 'plugins', 'dropped', 'session-only plugins are claude and copilot only')
   }
   if (spec.budgetUsd !== undefined) {
     note(notes, 'budgetUsd', 'dropped', 'pi has no budget cap flag')

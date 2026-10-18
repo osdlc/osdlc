@@ -2,6 +2,11 @@ import { claudeAdapter } from './adapters/claude.js'
 import { codexAdapter } from './adapters/codex.js'
 import { antigravityAdapter } from './adapters/antigravity.js'
 import { opencodeAdapter } from './adapters/opencode.js'
+import { copilotAdapter } from './adapters/copilot.js'
+import { piAdapter } from './adapters/pi.js'
+import { qwenAdapter } from './adapters/qwen.js'
+import { droidAdapter } from './adapters/droid.js'
+import { deepseekAdapter } from './adapters/deepseek.js'
 import type { AgentAdapter } from './adapters/types.js'
 import { spawnCollect } from './spawn.js'
 import type { CommandOptions } from './adapters/shared.js'
@@ -21,6 +26,16 @@ export function adapterFor(name: AgentName, options: CommandOptions = {}): Agent
       return antigravityAdapter(options)
     case 'opencode':
       return opencodeAdapter(options)
+    case 'copilot':
+      return copilotAdapter(options)
+    case 'pi':
+      return piAdapter(options)
+    case 'qwen':
+      return qwenAdapter(options)
+    case 'droid':
+      return droidAdapter(options)
+    case 'deepseek':
+      return deepseekAdapter(options)
   }
 }
 
@@ -30,6 +45,11 @@ export const BUILTIN_AGENTS: readonly AgentName[] = Object.freeze([
   'codex',
   'antigravity',
   'opencode',
+  'copilot',
+  'pi',
+  'qwen',
+  'droid',
+  'deepseek',
 ])
 
 /** Whether one agent CLI is installed, as `detectAgents` reports it. */
