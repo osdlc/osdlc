@@ -59,6 +59,11 @@ describe('modelArgs', () => {
     expect(modelArgs('claude', { effort: 'minimal' })).toEqual(['--effort', 'low'])
   })
 
+  test('pi spells none as off', () => {
+    expect(modelArgs('pi', { effort: 'none' })).toEqual(['--thinking', 'off'])
+    expect(modelArgs('pi', { effort: 'minimal' })).toEqual(['--thinking', 'minimal'])
+  })
+
   test('claude and pi pass xhigh through', () => {
     expect(modelArgs('claude', { effort: 'xhigh' })).toEqual(['--effort', 'xhigh'])
     expect(modelArgs('pi', { effort: 'xhigh' })).toEqual(['--thinking', 'xhigh'])

@@ -22,12 +22,12 @@ export interface ModelChoice {
  * Each tool's effort flag, keyed by tool name: the tools whose command line a
  * caller builds itself with a model and an effort. A tool run through an
  * adapter or a template translates its own. pi's `--thinking <level>` takes
- * `off` through `max`, so a level passes through as given.
+ * `off` through `max`: `none` becomes `off` (pi's spelling), the rest pass through.
  */
 const EFFORT_ARGV: Record<string, (effort: string) => string[]> = {
   claude: claudeEffortArgv,
   codex: codexEffortArgv,
-  pi: (effort) => ['--thinking', effort],
+  pi: (effort) => ['--thinking', effort === 'none' ? 'off' : effort],
 }
 
 /**
