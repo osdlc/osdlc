@@ -1,0 +1,40 @@
+[package]
+name = "config-layers"
+version = "0.6.0"
+edition.workspace = true
+# serde-saphyr needs 1.89. The workspace rust-version is 1.85.
+rust-version = "1.89"
+description = "Layered config files: a committed project file and a per-machine file read as YAML, merged by key, with named-directory substitution, dotted-key lookup and the check a program runs for the settings it needs."
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
+keywords = ["config", "yaml", "settings", "configuration", "layers"]
+categories = ["config", "filesystem"]
+include = [
+  "src/**/*.rs",
+  "examples/**/*.rs",
+  "README.md",
+  "CHANGELOG.md",
+  "LICENSE-MIT",
+  "LICENSE-APACHE",
+]
+
+[dependencies]
+# 1.0.220 to match the dev-dependency below.
+serde = "1.0.220"
+# preserve_order keeps a mapping's keys in file order. It is on for every
+# user of this crate, since `serde_json::Map` is in the public API.
+serde_json = { workspace = true, features = ["preserve_order"] }
+# Only the deserializer: this crate reads YAML and never writes it.
+serde-saphyr = { version = "2.0.0", default-features = false, features = ["deserialize"] }
+thiserror = { workspace = true }
+tiered-dirs = { workspace = true }
+
+[dev-dependencies]
+# 1.0.220 is the first serde that pins its own serde_derive. With an older
+# serde, the lowest versions resolve a newer serde_derive that does not build.
+serde = { version = "1.0.220", features = ["derive"] }
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

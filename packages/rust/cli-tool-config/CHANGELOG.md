@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.3](https://github.com/osdlc/osdlc/compare/cli-tool-config/v0.5.2...cli-tool-config/v0.5.3) - 2026-10-18
+
+The last release. The crate continues as
+[`config-layers`](https://crates.io/crates/config-layers) 0.6.0.
+
+### Changed
+
+- The README and the crate description point to `config-layers`. No code
+  changed.
+
 ## [0.5.2](https://github.com/osdlc/osdlc/compare/cli-tool-config/v0.5.1...cli-tool-config/v0.5.2) - 2026-10-19
 
 ### Added

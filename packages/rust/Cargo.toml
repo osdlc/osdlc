@@ -9,7 +9,7 @@
 [workspace]
 # resolver 3 picks dependency versions that support `rust-version` (the MSRV).
 resolver = "3"
-members = ["cli-tool-config", "etag-write", "path-guard", "slug-collate", "tiered-dirs", "yaml-splice", "yaml-splice-wasm"]
+members = ["cli-tool-config", "config-layers", "etag-write", "path-guard", "slug-collate", "tiered-dirs", "yaml-splice", "yaml-splice-wasm"]
 
 [workspace.package]
 edition = "2024"
