@@ -1,12 +1,211 @@
 {
   "schema": 1,
   "pr": 266,
-  "head": null,
-  "base": null,
-  "round": 0,
+  "head": "7b43a9009eb1eff5ae7145061c64d7dd6343b670",
+  "base": "1338057b50f1cea3ba0b85393df7b8cc57187bc1",
+  "round": 1,
   "claim": {
     "owner": "Mac.local:claude-w1qhwv",
     "at": "2026-10-18T05:04:39.008Z"
   },
-  "findings": []
+  "findings": [
+    {
+      "id": "r1-1",
+      "round": 1,
+      "path": "packages/ts/agent-call/src/run.ts",
+      "line": 125,
+      "title": "nonzero-exit detail replaces stderr with the parser's missing-envelope message",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-2",
+      "round": 1,
+      "path": "packages/ts/agent-call/src/adapters/template.ts",
+      "line": 64,
+      "title": "templateAdapter drops the prompt when args has no {prompt} slot, and sends it twice with promptVia stdin",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-3",
+      "round": 1,
+      "path": "packages/ts/agent-call/src/run.ts",
+      "line": 258,
+      "title": "detached child keeps running when the host is interrupted",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-4",
+      "round": 1,
+      "path": "packages/ts/agent-call/src/adapters/claude.ts",
+      "line": 107,
+      "title": "MCP server config (env secrets) travels in argv; README security section omits it",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-5",
+      "round": 1,
+      "path": "packages/ts/agent-call/src/run.ts",
+      "line": 171,
+      "title": "temp dir is left behind when a temp-file write fails",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-6",
+      "round": 1,
+      "path": "packages/ts/agent-call/src/adapters/template.ts",
+      "line": 52,
+      "title": "template/custom adapters record no note for most unexpressed spec fields",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-7",
+      "round": 1,
+      "path": "packages/ts/agent-call/src/run.ts",
+      "line": 105,
+      "title": "caller abort reported as 'killed after 0ms'",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-8",
+      "round": 1,
+      "path": "packages/ts/agent-call/src/adapters/opencode.ts",
+      "line": 161,
+      "title": "opencode positional prompt starting with '-' is read as an option",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-9",
+      "round": 1,
+      "path": "packages/ts/agent-call/tests/exports.test.ts",
+      "line": 241,
+      "title": "unshipped-import check still matches the old @sksizer scope, so it checks nothing",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-10",
+      "round": 1,
+      "path": "packages/ts/agent-call/README.md",
+      "line": 284,
+      "title": "README says the live suite covers antigravity; it has no antigravity test",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-11",
+      "round": 1,
+      "path": "packages/ts/agent-call/src/registry.ts",
+      "line": 58,
+      "title": "probeVersion re-implements spawnCollect",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-12",
+      "round": 1,
+      "path": "packages/ts/agent-call/src/adapters/opencode.ts",
+      "line": 227,
+      "title": "opencode does not set PlannedCall.prompt and reads the prompt off argv",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-13",
+      "round": 1,
+      "path": "packages/ts/agent-call/tsconfig.build.json",
+      "line": 3,
+      "title": "comment says no Node types; the config loads them",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-14",
+      "round": 1,
+      "path": "packages/ts/agent-call/src/adapters/antigravity.ts",
+      "line": 31,
+      "title": "doc says cwd and env are dropped with a note; they are applied, with no note",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-15",
+      "round": 1,
+      "path": "packages/ts/agent-call/src/adapters/codex.ts",
+      "line": 54,
+      "title": "doc comment pins a codex version and per-model effort list",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-16",
+      "round": 1,
+      "path": "packages/ts/agent-call/src/index.ts",
+      "line": 1,
+      "title": "barrel comment restates the file",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-17",
+      "round": 1,
+      "path": null,
+      "line": null,
+      "title": "dev repo LIBRARIES.md and its agent-call copy still claim to be the source of truth",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-18",
+      "round": 1,
+      "path": null,
+      "line": null,
+      "title": "raw node:child_process instead of @osdlc/command-seam is not recorded as a decision",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    }
+  ]
 }
