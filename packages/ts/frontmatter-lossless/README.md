@@ -60,6 +60,8 @@ compose(yaml, body, shape) === note // true
   found only when the note starts with `---` and a line break, after an
   optional BOM, and is closed by `---` alone on a line. Anything else,
   including a block with no closing fence, is body. It never throws.
+  `unterminated` is `true` when the note opens a block that never closes, so
+  a caller can report that note as malformed rather than read it as body.
 - `compose(frontmatter, body, shape)` rebuilds the note. `frontmatter` is
   `null` for no block, `''` for an empty block, or the YAML text. Passing back
   what `split` returned gives the original text.

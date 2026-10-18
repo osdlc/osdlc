@@ -203,3 +203,45 @@ describe('splitLenient indentation', () => {
     })
   })
 })
+
+describe('unterminated', () => {
+  for (const [name, src] of [
+    ['LF', '---\ntitle: A\nno closing fence\n'],
+    ['CRLF', '---\r\ntitle: A\r\nno closing fence\r\n'],
+    ['BOM', `${BOM}---\ntitle: A\n`],
+    ['BOM and CRLF', `${BOM}---\r\ntitle: A\r\n`],
+    ['only the opening fence', '---\n'],
+    ['a fence-like line that is not a terminator', '---\na: 1\n---x\n'],
+  ] as const) {
+    test(`${name}: flagged, and still read as body`, () => {
+      const s = split(src)
+      expect(s.unterminated).toBe(true)
+      expect(s.yaml).toBeNull()
+      expect(s.body).toBe(src.startsWith(BOM) ? src.slice(BOM.length) : src)
+      expect(compose(s.yaml, s.body, s.shape)).toBe(src)
+    })
+  }
+
+  for (const [name, src] of [
+    ['no frontmatter', 'just text\n'],
+    ['empty', ''],
+    ['a fence with no line break', '---'],
+    ['a fence after a blank line', '\n---\na: 1\n'],
+    ['an indented fence', ' ---\na: 1\n'],
+    ['a closed block', '---\na: 1\n---\nbody\n'],
+    ['an empty block', '---\n---\n'],
+    ['adjacent fences at the end', '---\n---'],
+    ['a block closed at the end of the file', '---\na: 1\n---'],
+  ] as const) {
+    test(`${name}: not flagged`, () => {
+      expect(split(src).unterminated).toBe(false)
+    })
+  }
+
+  test('across the corpus, only a note with no block can be flagged', () => {
+    for (const fx of fixtures) {
+      const s = split(fx.source)
+      if (s.unterminated) expect(s.yaml).toBeNull()
+    }
+  })
+})

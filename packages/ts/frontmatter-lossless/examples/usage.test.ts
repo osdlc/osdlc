@@ -55,8 +55,11 @@ describe('split and compose', () => {
     expect(compose('title: Added', body, shape)).toBe('---\ntitle: Added\n---\njust text\n')
   })
 
-  test('an unclosed block is body, not an error', () => {
-    expect(split('---\ntitle: A\nno closing fence\n').yaml).toBeNull()
+  test('an unclosed block is body, not an error, and is flagged', () => {
+    const unclosed = split('---\ntitle: A\nno closing fence\n')
+    expect(unclosed.yaml).toBeNull()
+    expect(unclosed.unterminated).toBe(true)
+    expect(split('just text\n').unterminated).toBe(false)
   })
 })
 

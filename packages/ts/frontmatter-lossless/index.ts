@@ -96,6 +96,13 @@ export interface Split {
   readonly bodyStart: number
   /** The framing to restore when writing this note back. */
   readonly shape: NoteShape
+  /** `true` when the note opens a frontmatter block that never closes: it
+   *  starts with a valid opening fence (`---` and a line break, after an
+   *  optional BOM) and no closing `---` line follows. `yaml` is still `null`
+   *  and `body` the whole text, as for a note with no block, so a projection
+   *  keeps going; a caller that holds authored notes to a contract can read
+   *  this to report the note as malformed instead. `false` otherwise. */
+  readonly unterminated: boolean
 }
 
 /** The result of a tolerant read-only split: see {@link splitLenient}. */
@@ -114,7 +121,8 @@ const BOM = '\uFEFF'
  *
  * Frontmatter is recognised only when the document begins with `---\n` (or
  * `---\r\n`, or either after a BOM) and is closed by `---` alone on a line.
- * Anything else — including a missing terminator — is body. A leading BOM is
+ * Anything else — including a missing terminator — is body; a missing
+ * terminator also sets {@link Split.unterminated}. A leading BOM is
  * framing: it is recorded in {@link Split.shape} and excluded from both
  * `yaml` and `body`, never duplicated into the content.
  */
@@ -123,12 +131,13 @@ export function split(src: string): Split {
   const rest = bom ? src.slice(BOM.length) : src
   const offset = bom ? BOM.length : 0
 
-  const noFrontmatter = (): Split => ({
+  const noFrontmatter = (unterminated: boolean): Split => ({
     yaml: null,
     yamlRange: { start: 0, end: 0 },
     body: rest,
     bodyStart: offset,
     shape: { bom, openEol: '\n', closeEol: '\n', closeSep: true },
+    unterminated,
   })
 
   let afterMarker: string
@@ -143,7 +152,7 @@ export function split(src: string): Split {
     markerLen = 5
     openEol = '\r\n'
   } else {
-    return noFrontmatter()
+    return noFrontmatter(false)
   }
   const yamlStart = offset + markerLen
 
@@ -159,6 +168,7 @@ export function split(src: string): Split {
         body: afterMarker.slice(len),
         bodyStart: yamlStart + len,
         shape: { bom, openEol, closeEol, closeSep: false },
+        unterminated: false,
       }
     }
   }
@@ -169,13 +179,15 @@ export function split(src: string): Split {
       body: '',
       bodyStart: src.length,
       shape: { bom, openEol, closeEol: '', closeSep: false },
+      unterminated: false,
     }
   }
 
   let searchStart = 0
   for (;;) {
     const found = afterMarker.indexOf('\n---', searchStart)
-    if (found === -1) return noFrontmatter()
+    // An opening fence with no closing one.
+    if (found === -1) return noFrontmatter(true)
     const dashesStart = found + 1
     const afterDashes = dashesStart + 3
     const yamlLen = found
@@ -201,6 +213,7 @@ export function split(src: string): Split {
       body: afterMarker.slice(bodyRel),
       bodyStart: yamlStart + bodyRel,
       shape: { bom, openEol, closeEol, closeSep: true },
+      unterminated: false,
     }
   }
 }
