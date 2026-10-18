@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.4
+
+### Patch Changes
+
+- 4f3fb00: README: clarify reconcile on Windows.
+
 ## 0.3.3
 
 ### Patch Changes
