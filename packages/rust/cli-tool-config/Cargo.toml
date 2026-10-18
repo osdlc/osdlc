@@ -1,6 +1,6 @@
 [package]
 name = "cli-tool-config"
-version = "0.6.0"
+version = "0.5.0"
 edition.workspace = true
 rust-version.workspace = true
 description = "Config files for a command-line tool: a committed project file and a per-machine file, named-path tokens, dotted-key lookup, and the check a command runs for the settings it needs."
