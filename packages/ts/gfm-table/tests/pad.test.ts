@@ -105,9 +105,9 @@ describe('padTable', () => {
     )
   })
 
-  test('keeps the 0-3 spaces before the opening pipe', () => {
-    expect(padTable(lines('  | a |', '  | - |', '   | bcde |'))).toBe(
-      lines('  | a    |', '  | ---- |', '   | bcde |'),
+  test("every row takes the 0-3 spaces before the header's opening pipe", () => {
+    expect(padTable(lines('  | a |', '  | - |', '   | bcde |', 'f | g'))).toBe(
+      lines('  | a    |', '  | ---- |', '  | bcde |', '  | f    | g   |'),
     )
   })
 
@@ -145,6 +145,14 @@ describe('padTable', () => {
 })
 
 describe('padTable maxColumnWidth', () => {
+  test('must be a positive integer', () => {
+    const table = lines('| a |', '| - |')
+    for (const bad of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() => padTable(table, { maxColumnWidth: bad })).toThrow(RangeError)
+    }
+    expect(padTable(table, { maxColumnWidth: 1 })).toBe(lines('| a   |', '| --- |'))
+  })
+
   test('a cell over the cap keeps one space per side and does not widen its column', () => {
     const table = lines(
       '| Name | Note |',

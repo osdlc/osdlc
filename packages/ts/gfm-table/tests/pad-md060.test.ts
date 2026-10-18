@@ -14,9 +14,9 @@
  * column's width, colons kept. See also docs/md060.md in the same release.
  *
  * Inputs MD060 and padTable read differently are left out of the corpus and
- * tested on their own below: an unescaped pipe in a code span, `\\|`, a
- * table already aligned with extra padding, and 1-3 spaces before the
- * opening pipe.
+ * tested on their own below: an unescaped pipe in a code span, `\\|` (which
+ * padTable leaves as is), a table already aligned with extra padding, and
+ * 1-3 spaces before the opening pipe.
  */
 
 import { readFileSync } from 'node:fs'
@@ -59,10 +59,9 @@ describe('where padTable and MD060 differ', () => {
     expect(padTable('  | a |\n  |-|')).toBe('  | a   |\n  | --- |')
   })
 
-  test('a pipe after two backslashes ends the cell; MD060 keeps it in the cell', () => {
-    expect(padTable('| a | b |\n| - | - |\n| x\\\\|y |')).toBe(
-      '| a   | b   |\n| --- | --- |\n| x\\\\ | y   |',
-    )
+  test('a table with a pipe after two backslashes is left as is; GitHub keeps that pipe in the cell', () => {
+    const table = '| a | b |\n| - | - |\n| x\\\\|y |'
+    expect(padTable(table)).toBe(table)
   })
 
   test('an unescaped pipe in a code span ends the cell; MD060 leaves the table as is', () => {

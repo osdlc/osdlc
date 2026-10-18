@@ -71,7 +71,7 @@ larger document and use the result against the document.
   "aligned" style of [rumdl](https://github.com/rvben/rumdl)'s MD060 rule.
   It counts display width, so East Asian wide characters and emoji take 2
   columns. `maxColumnWidth` caps the width a cell can widen its column to.
-  Padding a padded table changes nothing.
+  Unlike `padRow`, it adds no cells. Padding a padded table changes nothing.
 - Cell text: `cellTextFromSource`, `sourceOffset`, `textOffset`,
   `escapeCell` (a cell written at once), `escapeCellInsert` (text typed into
   a cell), `escapeCodeCell` (a cell inside a backtick code span),
@@ -117,8 +117,10 @@ file.issues // [{ line: 3, message: '1 fields, header has 2' }]
   do not give splices that edit one cell without touching the rest of the
   line. Use them to find a table in a document; use this package to read,
   write or edit the table's lines.
-- [markdown-table](https://github.com/wooorm/markdown-table) writes tables,
-  with column alignment and padding. It does not read tables or give offsets.
+- [markdown-table](https://github.com/wooorm/markdown-table) writes a table
+  from cell data, with column alignment and padding, and takes a function for
+  string width. It does not read tables or give offsets. `padTable` instead
+  re-pads a table's existing source and keeps each cell's bytes as written.
 - CSV libraries read and write CSV in full. This package has only what a table
   editor needs for the clipboard and for opening a CSV-like file: strict RFC
   4180 for paste, and a tolerant reader that reports problems by line.
