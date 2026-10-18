@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.1](https://github.com/osdlc/osdlc/compare/cli-tool-config/v0.5.0...cli-tool-config/v0.5.1) - 2026-10-18
+
+### Added
+
+- *(tiered-dirs)* 0.3.0 constructor, TierKind and test-root changes ([#260](https://github.com/osdlc/osdlc/pull/260))
+
 ## [0.5.0](https://github.com/osdlc/osdlc/releases/tag/cli-tool-config/v0.5.0) - 2026-10-17
 
 The first release on crates.io.
