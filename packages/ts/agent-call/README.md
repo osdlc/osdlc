@@ -137,6 +137,20 @@ const result = await callAgent(adapter, spec, {
 A throw from `onOutput` is swallowed and stops later calls; the run carries
 on. Nothing is delivered past `maxOutputBytes`.
 
+### Capping output
+
+`maxOutputBytes` on the spec keeps a runaway agent from filling the host's
+memory before `timeoutMs` fires. It caps stdout and stderr separately, in
+bytes the agent wrote. When a stream passes the cap, the run is stopped the way
+a timeout stops it (SIGTERM, then SIGKILL after 5 s) and `callAgent` resolves
+`ok: false` with the reason `output-limit`. The output read so far stays in
+`raw`, cut to the cap on a character boundary, and `raw.outputLimit` names the
+stream. `Infinity` means no cap.
+
+`@osdlc/command-seam` has the same option on its capture runners, with the
+reason `output` and an immediate SIGKILL. Each package matches its own timeout
+handling.
+
 ### Failures
 
 `callAgent` does not throw when the agent fails. It resolves with `ok: false`
@@ -146,12 +160,13 @@ minor release may add one, so handle the reasons you know and keep a default
 branch.
 
 It rejects with a `RangeError` when `maxOutputBytes` is `0`, negative or `NaN`,
-and a `TypeError` when it is not a number; a fraction rounds up. It also rejects, with an `Error`, when planning throws: `templateAdapter`
-throws for a model or effort that does not fit its template, and
-`customAdapter` passes on whatever your `args` function throws. It also rejects
-when a plan's `TempFile.name` is not a plain file name (empty, or holding `/`,
-`\` or `..`), or when the temp directory for the plan's temp files cannot be
-created or written.
+and a `TypeError` when it is not a number; a fraction rounds up. It also
+rejects, with an `Error`, when planning throws: `templateAdapter` throws for a
+model or effort that does not fit its template, and `customAdapter` passes on
+whatever your `args` function throws. It also rejects when a plan's
+`TempFile.name` is not a plain file name (empty, or holding `/`, `\` or `..`),
+or when the temp directory for the plan's temp files cannot be created or
+written.
 A parser that throws on the output does not reject: the result is `ok: false`
 with reason `agent-error`. `planCall` throws the same way as planning. The
 `callAgent` TSDoc is the full list.

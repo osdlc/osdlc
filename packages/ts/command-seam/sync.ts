@@ -141,12 +141,14 @@ export interface CommandRunOptions {
   /** Text written to the child's stdin. Stdin is closed after it, or at once when omitted. */
   input?: string | undefined
   /**
-   * The most bytes to capture from each of stdout and stderr. A child that
+   * The most bytes to read from each of stdout and stderr. A child that
    * writes more to either stream is killed with `SIGKILL` (its whole group
    * with `processGroup`), and the result has `neverExited: true`,
-   * `reason: 'output'`, and that stream cut to at most this many bytes, on a
-   * character boundary. A child that exits before the kill lands keeps its
-   * exit code and gets `outputIncomplete: true` instead.
+   * `reason: 'output'`, and that stream cut to the cap on a character
+   * boundary. The cap counts the bytes the child wrote, not the decoded text:
+   * bytes that are not valid UTF-8 decode to U+FFFD, which is 3 bytes, so the
+   * string can be longer than the cap in UTF-8. A child that exits before the
+   * kill lands keeps its exit code and gets `outputIncomplete: true` instead.
    *
    * The sync runners default to 256 MB per stream; the async runners have no
    * default cap. `undefined` keeps the default and `Infinity` means no cap. A

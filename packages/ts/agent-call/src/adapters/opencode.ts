@@ -10,6 +10,7 @@ import {
   asString,
   buildEffectivePrompt,
   commandPrefix,
+  type CommandOptions,
   get,
   parseJsonLines,
   tryParseJson,
@@ -17,18 +18,8 @@ import {
 import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './types.js'
 
 /** Options for {@link opencodeAdapter}. */
-export interface OpencodeAdapterOptions {
-  /** Binary to spawn. Default: the CLI's own name. */
-  binary?: string
-  /**
-   * The command to run, as argv: the binary and any arguments that must come
-   * before the adapter's own, such as `['npx', '-y', '@anthropic-ai/claude-code']`
-   * or `['codex', '--profile', 'work']`. It replaces `binary` when it has at
-   * least one element; an empty array is ignored. `planned.argv` starts with
-   * it, and `detectAgents` runs it with `--version` appended.
-   */
-  command?: readonly string[] | undefined
-}
+/** Options for `opencodeAdapter`: `binary`, or a `command` prefix. */
+export interface OpencodeAdapterOptions extends CommandOptions {}
 
 /**
  * opencode (`opencode run`). Context files attach natively (`-f`);

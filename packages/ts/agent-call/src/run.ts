@@ -93,7 +93,8 @@ export function planCall(adapter: AgentAdapter, spec: AgentCallSpec): PlannedCal
  *
  * @throws The returned promise rejects, rather than resolving `ok: false`,
  * with a `RangeError` when `spec.maxOutputBytes` is `0`, negative or `NaN`,
- * and a `TypeError` when it is not a number (a fraction rounds up); when planning throws (see {@link planCall}); when a `TempFile.name` is not a
+ * and a `TypeError` when it is not a number (a fraction rounds up); when
+ * planning throws (see {@link planCall}); when a `TempFile.name` is not a
  * plain file name (empty, or holding `/`, `\` or `..`), or when the per-call
  * temp directory cannot be created or written. A directory that was made is
  * removed. A parser that throws on the output does not reject: the result is

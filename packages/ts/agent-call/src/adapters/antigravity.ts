@@ -16,22 +16,13 @@ import {
   parseJsonLines,
   tryParseJson,
   commandPrefix,
+  type CommandOptions,
 } from './shared.js'
 import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './types.js'
 
 /** Options for {@link antigravityAdapter}. */
-export interface AntigravityAdapterOptions {
-  /** Binary to spawn. Default: the CLI's own name. */
-  binary?: string
-  /**
-   * The command to run, as argv: the binary and any arguments that must come
-   * before the adapter's own, such as `['npx', '-y', '@anthropic-ai/claude-code']`
-   * or `['codex', '--profile', 'work']`. It replaces `binary` when it has at
-   * least one element; an empty array is ignored. `planned.argv` starts with
-   * it, and `detectAgents` runs it with `--version` appended.
-   */
-  command?: readonly string[] | undefined
-}
+/** Options for `antigravityAdapter`: `binary`, or a `command` prefix. */
+export interface AntigravityAdapterOptions extends CommandOptions {}
 
 /**
  * Google Antigravity CLI (`agy`). Headless via `-p <prompt>` with

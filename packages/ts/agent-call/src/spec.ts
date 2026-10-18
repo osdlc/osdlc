@@ -139,12 +139,14 @@ export interface AgentCallSpec {
   /** Kill the process after this long (SIGTERM, then SIGKILL after 5s). */
   timeoutMs?: number | undefined
   /**
-   * Cap each output stream, stdout and stderr, at this many bytes. A stream
-   * that passes it stops the process group as a timeout does (SIGTERM, then
-   * SIGKILL after 5s), and the result is `ok: false` with reason
-   * `output-limit`. The output read so far is kept in `raw`, truncated to the
-   * cap on a UTF-8 character boundary. `Infinity` means no cap, and a
-   * fraction rounds up. `0`, a negative value or `NaN` makes `callAgent`
+   * Cap each output stream, stdout and stderr, at this many bytes read. A
+   * stream that passes it stops the process group as a timeout does (SIGTERM,
+   * then SIGKILL after 5s), and the result is `ok: false` with reason
+   * `output-limit`. The output read so far is kept in `raw`, cut to the cap on
+   * a UTF-8 character boundary. The cap counts the bytes the agent wrote, not
+   * the decoded text: bytes that are not valid UTF-8 decode to U+FFFD, which
+   * is 3 bytes, so a string can be longer than the cap in UTF-8. `Infinity`
+   * means no cap, and a fraction rounds up. `0`, a negative value or `NaN` makes `callAgent`
    * reject with a `RangeError`, and a value that is not a number with a
    * `TypeError`.
    */

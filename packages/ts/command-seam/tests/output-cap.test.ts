@@ -18,13 +18,16 @@ import { gone, reap } from './support/procs.ts'
 const CWD = process.cwd()
 const sh = spawnRunnerAsync('sh')
 const xs = (n: number) => `head -c ${n} /dev/zero | tr '\\0' x`
+/** `n` zeros from the shell's own `printf`, with no process to start. */
+const zeros = (n: number) => `printf '%0${n}d' 0`
 /**
  * Run `cmd` in the background once the shell itself is gone and reaped, so
  * its output lands inside the 250 ms exit grace without a fixed sleep that a
- * slow runner can push past it.
+ * slow runner can push past it. Pass a shell builtin: the loop and the write
+ * start no process after the shell's exit, which is the part that can run
+ * late on a slow runner.
  */
-const afterExit = (cmd: string) =>
-  `p=$$; (while kill -0 $p 2>/dev/null; do sleep 0.01; done; ${cmd}) &`
+const afterExit = (cmd: string) => `p=$$; (while kill -0 $p 2>/dev/null; do :; done; ${cmd}) &`
 
 describe('spawnRunnerAsync maxOutputBytes', () => {
   test('passing the cap on stdout kills the child and keeps the first bytes', async () => {
@@ -60,23 +63,26 @@ describe('spawnRunnerAsync maxOutputBytes', () => {
   test('passing the cap after the child exited keeps its exit code', async () => {
     // The child exits at once; a process it started floods stdout during the
     // exit grace, as soon as the child is gone.
-    const r = await sh.run(['-c', `${afterExit(xs(5000))}\nexit 0`], {
+    const r = await sh.run(['-c', `${afterExit(zeros(5000))}\nexit 0`], {
       cwd: CWD,
       maxOutputBytes: 100,
     })
-    expect(r).toMatchObject({ exitCode: 0, outputIncomplete: true, stdout: 'x'.repeat(100) })
+    expect(r).toMatchObject({ exitCode: 0, outputIncomplete: true, stdout: '0'.repeat(100) })
     expect(r.neverExited).toBeUndefined()
     expect(r.reason).toBeUndefined()
     expect(r.error).toBe('stdout passed maxOutputBytes (100 bytes)')
   }, 10_000)
 
   test('a child killed by a signal keeps that reason when output then passes the cap', async () => {
-    const r = await sh.run(['-c', `${afterExit(xs(5000))}\nkill -9 $$`], {
+    const r = await sh.run(['-c', `${afterExit(zeros(5000))}\nkill -9 $$`], {
       cwd: CWD,
       maxOutputBytes: 100,
     })
     expect(r).toMatchObject({ neverExited: true, reason: 'signal', signal: 'SIGKILL' })
     expect(r.outputIncomplete).toBeUndefined()
+    // The cap fired: without these, a writer that missed the exit grace would pass too.
+    expect(r.error).toBe('stdout passed maxOutputBytes (100 bytes)')
+    expect(r.stdout).toBe('0'.repeat(100))
   }, 10_000)
 
   test('output at or under the cap is untouched', async () => {
