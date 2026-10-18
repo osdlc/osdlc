@@ -65,6 +65,8 @@ Developed here, in this repository:
   contrast checks)
 - `packages/ts/agent-call` (`@osdlc/agent-call` on npm, one call spec for
   headless coding-agent CLIs)
+- `packages/ts/observe` (`@osdlc/observe` on npm, a JSONL log envelope with
+  correlation ids, agent session records, a process scan and reconcile)
 
 The development repository will take each TypeScript library from npm, like
 any other consumer. Today it still keeps its own copies. Open issues and pull

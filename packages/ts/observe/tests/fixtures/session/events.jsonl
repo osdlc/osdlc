@@ -1,0 +1,12 @@
+{"ts":"2026-10-09T10:00:00.000Z","kind":"launched","id":"0b6f2c8e-6a51-4c1e-9d55-2f0f6f3f8a11","harness":"aider","sessionKind":"interactive","origin":{"kind":"task","lease":null},"author":{"tool":"aider","requested":"fast","model":"model-a","effort":null},"host":"tmux","cwd":"/work/repo","branch":"feature/login","launched":{"kind":"skill","name":"fix-tests"},"operation":"fix.tests","launchFlags":{"verbose":true},"pin":"agent-tool@1.2.0","capture":"hooks","machine":"host-a","run":"r-01JABCDEF","subject":"issue-42","writer":"host-a","parent":{"session":null,"invocation":"i-01JXYZ"}}
+{"ts":"2026-10-09T10:00:01.000Z","kind":"host_attached","host":"tmux","harnessSessionId":null,"pid":4242}
+{"ts":"2026-10-09T10:00:01.500Z","kind":"state_changed","from":"starting","to":"running","cause":"launch"}
+{"ts":"2026-10-09T10:00:02.000Z","via":"hook","kind":"harness_session_resolved","harnessSessionId":"abc-123","how":"hook","transcriptPath":"/tmp/transcripts/abc-123.jsonl"}
+{"ts":"2026-10-09T10:05:00.000Z","kind":"usage_sample","source":"interactive","usage":{"model":"model-a","inputTokens":100,"outputTokens":50,"cacheReadTokens":null,"cacheWriteTokens":null,"totalTokens":150,"costUsd":0.01}}
+{"ts":"2026-10-09T10:06:00.000Z","via":"hook","kind":"state_changed","from":"running","to":"waiting_for_input","cause":"hook: Notification"}
+{"ts":"2026-10-09T10:07:00.000Z","kind":"state_changed","from":"starting","to":"starting","cause":"illegal on purpose"}
+{"ts":"2026-10-09T10:08:00.000Z","kind":"pr_linked","prNumber":17}
+{"ts":"2026-10-09T10:09:00.000Z","kind":"outcome","outcome":"ok","exitCode":0}
+{"ts":"2026-10-09T10:09:00.000Z","via":"hook","kind":"state_changed","from":"waiting_for_input","to":"ended","cause":"hook: SessionEnd"}
+{"ts":"2026-10-09T10:09:00.000Z","kind":"ended"}
+{"ts":"2026-10-09T10:09:01.000Z","kind":"ended"}

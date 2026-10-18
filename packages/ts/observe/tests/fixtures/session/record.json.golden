@@ -1,0 +1,48 @@
+{
+  "id": "0b6f2c8e-6a51-4c1e-9d55-2f0f6f3f8a11",
+  "harness": "aider",
+  "host": "tmux",
+  "cwd": "/work/repo",
+  "kind": "interactive",
+  "origin": {
+    "kind": "task",
+    "lease": null
+  },
+  "author": {
+    "tool": "aider",
+    "requested": "fast",
+    "model": "model-a",
+    "effort": null
+  },
+  "state": "ended",
+  "outcome": "ok",
+  "launched": {
+    "kind": "skill",
+    "name": "fix-tests"
+  },
+  "name": null,
+  "nameSource": null,
+  "startedAt": "2026-10-09T10:00:00.000Z",
+  "endedAt": "2026-10-09T10:09:00.000Z",
+  "exitCode": 0,
+  "harnessSessionId": "abc-123",
+  "logPath": null,
+  "branch": "feature/login",
+  "prNumber": 17,
+  "operation": "fix.tests",
+  "pid": 4242,
+  "machine": "host-a",
+  "run": "r-01JABCDEF",
+  "subject": "issue-42",
+  "parent": {
+    "session": null,
+    "invocation": "i-01JXYZ"
+  },
+  "launchFlags": {
+    "verbose": true
+  },
+  "pin": "agent-tool@1.2.0",
+  "capture": "hooks",
+  "transcriptPath": "/tmp/transcripts/abc-123.jsonl",
+  "logBytes": 1839
+}
