@@ -58,9 +58,9 @@ export function claudeResumeFlag(id: string): string {
   return `--resume=${id}`
 }
 
-/** `--effort <level>`: passed through as given, so a level the CLI adds later needs no change here. */
+/** `--effort <level>`: levels below `low` become `low`; anything else passes through, so a new CLI level needs no change. */
 export function claudeEffortArgv(effort: string): string[] {
-  return ['--effort', effort]
+  return ['--effort', effort === 'none' || effort === 'minimal' ? 'low' : effort]
 }
 
 /**
@@ -102,12 +102,10 @@ function planClaude(binary: string, spec: AgentCallSpec): PlannedCall {
   if (spec.model !== undefined) argv.push(...modelFlag(spec.model))
 
   if (spec.effort !== undefined) {
-    // claude's `--effort` starts at `low`; `none` and `minimal` rise to it.
+    argv.push(...claudeEffortArgv(spec.effort))
     if (spec.effort === 'none' || spec.effort === 'minimal') {
-      argv.push(...claudeEffortArgv('low'))
       note(notes, 'effort', 'approximated', '--effort low (claude has no level below low)')
     } else {
-      argv.push(...claudeEffortArgv(spec.effort))
       note(notes, 'effort', 'native', '--effort')
     }
   }
