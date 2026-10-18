@@ -31,6 +31,12 @@ describe('modelArgs', () => {
     expect(modelArgs('codex', { effort: 'max' })).toEqual(['-c', 'model_reasoning_effort="max"'])
   })
 
+  test('codex passes none and minimal through', () => {
+    for (const effort of ['none', 'minimal']) {
+      expect(modelArgs('codex', { effort })).toEqual(['-c', `model_reasoning_effort="${effort}"`])
+    }
+  })
+
   test('codex: a launch mode goes before the model (a local Ollama model)', () => {
     expect(
       modelArgs('codex', {

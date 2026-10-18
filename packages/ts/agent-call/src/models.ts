@@ -6,11 +6,8 @@
 
 /**
  * Reasoning-effort intent, a separate axis from model choice: the closed set
- * the adapters translate, ordered least to most reasoning. Maps to claude
- * `--effort` (`none` and `minimal` raised to `low`), codex
- * `model_reasoning_effort`, antigravity `--effort` (`none` and `minimal` raised
- * to `low`; `xhigh` and `max` clamped to `high`), opencode `--variant`. Frozen
- * at run time.
+ * the adapters translate, ordered least to most reasoning. Each tool's
+ * mapping is in the README capability table. Frozen at run time.
  */
 export const EFFORT_LEVELS = Object.freeze([
   'none',
@@ -23,3 +20,8 @@ export const EFFORT_LEVELS = Object.freeze([
 ] as const)
 /** One of {@link EFFORT_LEVELS}. */
 export type EffortLevel = (typeof EFFORT_LEVELS)[number]
+
+/** True for the levels below `low` (`none`, `minimal`), which tools with a `low` floor raise to it. */
+export function isBelowLow(effort: string): boolean {
+  return effort === 'none' || effort === 'minimal'
+}

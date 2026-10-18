@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
-import { EFFORT_LEVELS } from '../src/models.js'
+import { EFFORT_LEVELS, isBelowLow } from '../src/models.js'
 import * as barrel from '../src/index.js'
 
 /** Module specifiers of the real import/export-from statements in `src`; comments are stripped first. */
@@ -17,6 +17,10 @@ function importSpecifiers(src: string): string[] {
 describe('models entry point', () => {
   test('exposes the effort levels in order, none to max', () => {
     expect([...EFFORT_LEVELS]).toEqual(['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'])
+  })
+
+  test('isBelowLow is true for none and minimal only', () => {
+    expect(EFFORT_LEVELS.filter(isBelowLow)).toEqual(['none', 'minimal'])
   })
 
   test('the barrel re-exports the same values and no tier tables', () => {
