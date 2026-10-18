@@ -114,7 +114,7 @@ describe('the built-in adapters', () => {
   })
 
   test('the effort vocabulary is a frozen list', () => {
-    expect([...EFFORT_LEVELS]).toEqual(['low', 'medium', 'high', 'xhigh', 'max'])
+    expect([...EFFORT_LEVELS]).toEqual(['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'])
     // The Node-free entry point exports the same list.
     expect(MODELS_EFFORT_LEVELS).toBe(EFFORT_LEVELS)
   })

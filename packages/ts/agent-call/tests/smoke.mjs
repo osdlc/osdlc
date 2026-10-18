@@ -14,7 +14,7 @@ import { adapterFor, BUILTIN_AGENTS, callAgent, customAdapter, planCall } from '
 import { EFFORT_LEVELS } from '@osdlc/agent-call/models'
 
 assert.deepEqual([...BUILTIN_AGENTS], ['claude', 'codex', 'antigravity', 'opencode'])
-assert.deepEqual([...EFFORT_LEVELS], ['low', 'medium', 'high', 'xhigh', 'max'])
+assert.deepEqual([...EFFORT_LEVELS], ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'])
 
 const planned = planCall(adapterFor('codex'), {
   prompt: 'hi',

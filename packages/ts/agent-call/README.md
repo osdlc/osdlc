@@ -260,7 +260,7 @@ that did not map one to one:
 |---|---|---|---|---|
 | `prompt` | stdin | stdin (`-`) | `-p <prompt>` | positional |
 | `model` | `--model` | `--model` | `--model` | `--model` (provider/model) |
-| `effort` (`low` to `max`, `xhigh` included) | `--effort` | `model_reasoning_effort` | `--effort` (`xhigh`, `max` → `high`) | `--variant` |
+| `effort` (`none` to `max`, least to most reasoning) | `--effort` (`none`, `minimal` → `low`) | `model_reasoning_effort` | `--effort` (`none`, `minimal` → `low`; `xhigh`, `max` → `high`) | `--variant` |
 | `systemPrompt` | `--system-prompt` | prompt-emulated | prompt-emulated | prompt-emulated |
 | `appendSystemPrompt` | `--append-system-prompt` | prompt-emulated | prompt-emulated | prompt-emulated |
 | `permissions.mode: read-only` | `--permission-mode plan` | `--sandbox read-only` | `--sandbox` (approximated) | `OPENCODE_PERMISSION` deny map |

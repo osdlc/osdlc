@@ -4,6 +4,7 @@ import {
   type ConversationMessage,
   type Usage,
 } from '../conversation.js'
+import { isBelowLow } from '../models.js'
 import { note, type CapabilityNote, type PlannedCall } from '../plan.js'
 import type { AgentCallSpec, OutputFormat } from '../spec.js'
 import {
@@ -62,14 +63,18 @@ function planAntigravity(command: readonly string[], spec: AgentCallSpec): Plann
   if (spec.model !== undefined) argv.push(...modelFlag(spec.model))
 
   if (spec.effort !== undefined) {
-    // agy documents low|medium|high; `xhigh` and `max` clamp to the top rung.
-    const clamped = spec.effort === 'xhigh' || spec.effort === 'max'
-    argv.push('--effort', clamped ? 'high' : spec.effort)
+    const requested = spec.effort
+    const [sent, why] = isBelowLow(requested)
+      ? (['low', 'agy has no level below low'] as const)
+      : requested === 'xhigh' || requested === 'max'
+        ? (['high', 'agy tops out at high'] as const)
+        : ([requested, ''] as const)
+    argv.push('--effort', sent)
     note(
       notes,
       'effort',
-      clamped ? 'approximated' : 'native',
-      clamped ? '--effort high (agy tops out at high)' : '--effort',
+      sent === requested ? 'native' : 'approximated',
+      sent === requested ? '--effort' : `--effort ${sent} (${why})`,
     )
   }
   if (spec.mcp?.servers !== undefined) {

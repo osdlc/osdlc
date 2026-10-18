@@ -5,6 +5,7 @@ import {
   type Part,
   type Usage,
 } from '../conversation.js'
+import { isBelowLow } from '../models.js'
 import { note, TMP_TOKEN, type CapabilityNote, type PlannedCall, type TempFile } from '../plan.js'
 import type { AgentCallSpec, OutputFormat, PluginSpec } from '../spec.js'
 import {
@@ -60,9 +61,9 @@ export function claudeResumeFlag(id: string): string {
   return `--resume=${id}`
 }
 
-/** `--effort <level>`: passed through as given, so a level the CLI adds later needs no change here. */
+/** `--effort <level>`: levels below `low` become `low`; anything else passes through, so a new CLI level needs no change. */
 export function claudeEffortArgv(effort: string): string[] {
-  return ['--effort', effort]
+  return ['--effort', isBelowLow(effort) ? 'low' : effort]
 }
 
 /**
@@ -105,7 +106,11 @@ function planClaude(command: readonly string[], spec: AgentCallSpec): PlannedCal
 
   if (spec.effort !== undefined) {
     argv.push(...claudeEffortArgv(spec.effort))
-    note(notes, 'effort', 'native', '--effort')
+    if (isBelowLow(spec.effort)) {
+      note(notes, 'effort', 'approximated', '--effort low (claude has no level below low)')
+    } else {
+      note(notes, 'effort', 'native', '--effort')
+    }
   }
 
   if (spec.mcp?.servers !== undefined) {
