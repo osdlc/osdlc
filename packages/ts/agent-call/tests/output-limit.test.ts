@@ -75,12 +75,25 @@ describe('maxOutputBytes', () => {
     expect(result.text).toHaveLength(5000)
   })
 
-  test('an invalid cap rejects with a RangeError before anything runs', async () => {
-    for (const bad of [0, -1, 1.5, Number.NaN]) {
+  test('an invalid cap rejects before anything runs', async () => {
+    for (const bad of [0, -1, Number.NaN]) {
       await expect(
         callAgent(sh('never', 'exit 0'), { prompt: 'x', maxOutputBytes: bad }),
       ).rejects.toThrow(RangeError)
     }
+    const notANumber = '10' as unknown as number
+    await expect(
+      callAgent(sh('never', 'exit 0'), { prompt: 'x', maxOutputBytes: notANumber }),
+    ).rejects.toThrow(TypeError)
+  })
+
+  test('a fractional cap rounds up', async () => {
+    const result = await callAgent(sh('flood', 'while :; do echo xxxxxxxxx; done'), {
+      prompt: 'x',
+      maxOutputBytes: 9.2,
+    })
+    expect(result.error?.reason).toBe('output-limit')
+    expect(result.raw.stdout).toBe('xxxxxxxxx\n')
   })
 
   test('a timeout that came first stays the cause', async () => {
@@ -89,8 +102,9 @@ describe('maxOutputBytes', () => {
       { prompt: 'x', timeoutMs: 100, maxOutputBytes: 100 },
     )
     expect(result.error?.reason).toBe('timeout')
-    expect(result.raw.outputLimit).toBeUndefined()
-    expect(Buffer.byteLength(result.raw.stdout)).toBeLessThanOrEqual(100)
+    // The cap still cut the output during the kill grace, and says so.
+    expect(result.raw.outputLimit).toBe('stdout')
+    expect(Buffer.byteLength(result.raw.stdout)).toBe(100)
   }, 15_000)
 })
 

@@ -193,7 +193,7 @@ const sh = shellRunner(spawnRunner('sh'))
 console.log(lines.stdout, same.stdout, later.stdout, sh.run('echo hi', { cwd }).stdout)
 ```
 
-`runShell` takes the capture options (`timeoutMs`, `env`, `input`) and returns a `CommandResult`. A
+`runShell` takes the capture options (`timeoutMs`, `env`, `input`, `maxOutputBytes`) and returns a `CommandResult`. A
 fake passed to `shellRunner` receives `['-c', '--', verb]`, then `scriptName` and `args` when given.
 `shellJoin(argv)` quotes a whole command line, for printing one a person can paste.
 

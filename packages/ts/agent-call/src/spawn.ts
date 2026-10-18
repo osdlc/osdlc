@@ -135,17 +135,24 @@ export function spawnCollect(argv: string[], options: SpawnOptions): Promise<Raw
       detached: true,
     })
 
-    // A caller's callback must not take the run down: the first throw is
-    // swallowed and stops later calls, and the output is still collected.
+    // A caller's callback must not take the run down: the first throw, or
+    // the first rejection of a promise it returns, is swallowed and stops
+    // later calls, and the output is still collected.
     let onOutput = options.onOutput
+    const stopOutput = (): void => {
+      onOutput = undefined
+    }
     const emitter =
       (stream: 'stdout' | 'stderr') =>
       (text: string): void => {
         if (onOutput === undefined) return
         try {
-          onOutput(text, stream)
+          // Typed `void`, which an async function satisfies: an unhandled
+          // rejection would take a Node host down.
+          const returned: unknown = onOutput(text, stream)
+          if (isThenable(returned)) returned.then(undefined, stopOutput)
         } catch {
-          onOutput = undefined
+          stopOutput()
         }
       }
     const out = new StreamCollector(options.maxOutputBytes, emitter('stdout'))
@@ -228,9 +235,9 @@ export function spawnCollect(argv: string[], options: SpawnOptions): Promise<Raw
 
     const onData = (collector: StreamCollector, stream: 'stdout' | 'stderr') => (chunk: Buffer) => {
       if (!collector.push(chunk)) return
-      // The first stream past the cap is the cause, unless a timeout or an
-      // abort cut the run short first; either way the group is stopped.
-      if (!timedOut) outputLimit ??= stream
+      // The first stream past the cap. A timeout or abort that came first
+      // stays the cause (`timedOut`); either way the group is stopped.
+      outputLimit ??= stream
       terminate()
     }
     child.stdout.on('data', onData(out, 'stdout'))
@@ -255,4 +262,12 @@ export function spawnCollect(argv: string[], options: SpawnOptions): Promise<Raw
     }
     child.stdin.end()
   })
+}
+
+function isThenable(value: unknown): value is PromiseLike<unknown> {
+  return (
+    (typeof value === 'object' || typeof value === 'function') &&
+    value !== null &&
+    typeof (value as { then?: unknown }).then === 'function'
+  )
 }

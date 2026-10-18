@@ -47,6 +47,28 @@ describe('spawnRunnerAsync maxOutputBytes', () => {
     expect(r.reason === 'output' || r.outputIncomplete === true).toBe(true)
   }, 10_000)
 
+  test('passing the cap after the child exited keeps its exit code', async () => {
+    // The child exits at once; a process it started floods stdout during the
+    // exit grace.
+    const r = await sh.run(['-c', `(sleep 0.1; ${xs(5000)}) & exit 0`], {
+      cwd: CWD,
+      maxOutputBytes: 100,
+    })
+    expect(r).toMatchObject({ exitCode: 0, outputIncomplete: true, stdout: 'x'.repeat(100) })
+    expect(r.neverExited).toBeUndefined()
+    expect(r.reason).toBeUndefined()
+    expect(r.error).toBe('stdout passed maxOutputBytes (100 bytes)')
+  }, 10_000)
+
+  test('a child killed by a signal keeps that reason when output then passes the cap', async () => {
+    const r = await sh.run(['-c', `(sleep 0.1; ${xs(5000)}) & kill -9 $$`], {
+      cwd: CWD,
+      maxOutputBytes: 100,
+    })
+    expect(r).toMatchObject({ neverExited: true, reason: 'signal', signal: 'SIGKILL' })
+    expect(r.outputIncomplete).toBeUndefined()
+  }, 10_000)
+
   test('output at or under the cap is untouched', async () => {
     const r = await sh.run(['-c', xs(1000)], { cwd: CWD, maxOutputBytes: 1000 })
     expect(r).toEqual({ exitCode: 0, stdout: 'x'.repeat(1000), stderr: '' })

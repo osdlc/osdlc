@@ -143,8 +143,10 @@ export interface AgentCallSpec {
    * that passes it stops the process group as a timeout does (SIGTERM, then
    * SIGKILL after 5s), and the result is `ok: false` with reason
    * `output-limit`. The output read so far is kept in `raw`, truncated to the
-   * cap on a UTF-8 character boundary. A positive integer, or `Infinity` for
-   * no cap; anything else makes `callAgent` reject with a `RangeError`.
+   * cap on a UTF-8 character boundary. `Infinity` means no cap, and a
+   * fraction rounds up. `0`, a negative value or `NaN` makes `callAgent`
+   * reject with a `RangeError`, and a value that is not a number with a
+   * `TypeError`.
    */
   maxOutputBytes?: number | undefined
   /** Escape hatch: appended verbatim to the built argv, after everything. */

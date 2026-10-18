@@ -52,22 +52,25 @@ export interface CommandResult {
   /**
    * The signal that ended the child, when the runner knows it: always for
    * `reason: 'signal'`, and for a sync `'timeout'` or `'output'` (`SIGKILL`).
-   * The async runner settles a timeout or abort before the child is gone, so
-   * it leaves this unset there.
+   * The async runner settles a timeout, an abort or the output cap before the
+   * child is gone, so it leaves this unset there.
    */
   signal?: NodeJS.Signals | undefined
   /**
    * `true` when the child exited but the runner stopped reading its output
    * early, so `stdout` and `stderr` may be cut short. `exitCode` is the
    * child's own, `neverExited` and `reason` are absent, and `error` says why.
-   * Absent otherwise. Two cases, both on the sync capture runner:
+   * Absent otherwise. Two cases:
    *
-   * - The child exited, but a process it started (`cmd &`, a daemon, a
-   *   postinstall script) still held stdout or stderr open when `timeoutMs`
-   *   ran out. Anything that process wrote after the deadline is lost, and it
-   *   keeps running. Without `timeoutMs` the run waits for it to exit.
-   * - The child passed the 256 MB output cap but exited before the runner's
-   *   kill landed, on Node or Bun.
+   * - Sync capture runner: the child exited, but a process it started (`cmd
+   *   &`, a daemon, a postinstall script) still held stdout or stderr open
+   *   when `timeoutMs` ran out. Anything that process wrote after the
+   *   deadline is lost, and it keeps running. Without `timeoutMs` the run
+   *   waits for it to exit.
+   * - Either capture runner: output passed the cap (`maxOutputBytes`, or the
+   *   sync runner's default of 256 MB) after the child had exited, or before
+   *   the runner's kill landed. On the async runner this is a process the
+   *   child started, still writing during the exit grace.
    *
    * The `bun test` capture path writes output to files and never waits on a
    * held pipe, so it never sets this flag.

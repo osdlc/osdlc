@@ -145,8 +145,8 @@ and an `error`: `{ reason, detail }`. The reasons today are `spawn-failed`,
 minor release may add one, so handle the reasons you know and keep a default
 branch.
 
-It rejects with a `RangeError` when `maxOutputBytes` is not a positive integer
-or `Infinity`. It also rejects, with an `Error`, when planning throws: `templateAdapter`
+It rejects with a `RangeError` when `maxOutputBytes` is `0`, negative or `NaN`,
+and a `TypeError` when it is not a number; a fraction rounds up. It also rejects, with an `Error`, when planning throws: `templateAdapter`
 throws for a model or effort that does not fit its template, and
 `customAdapter` passes on whatever your `args` function throws. It also rejects
 when a plan's `TempFile.name` is not a plain file name (empty, or holding `/`,

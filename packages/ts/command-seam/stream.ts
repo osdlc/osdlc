@@ -27,8 +27,9 @@ import {
 
 /**
  * Per-call options for a {@link StreamRunner}. Same as {@link
- * CommandRunOptions} minus `input`: stdin is inherited from the parent
- * process, not fed programmatically, so there is nothing to write to.
+ * CommandRunOptions} minus `input` and `maxOutputBytes`: stdio is inherited
+ * from the parent process, so there is nothing to write to and no output to
+ * cap.
  */
 export type StreamRunOptions = Omit<CommandRunOptions, 'input' | 'maxOutputBytes'>
 

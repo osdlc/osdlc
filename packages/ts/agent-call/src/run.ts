@@ -58,9 +58,10 @@ export interface CallOptions {
    * characters only, tagged with its stream; the chunks of one stream join to
    * exactly what `raw` collects. Output is still collected and parsed as
    * usual. Nothing is delivered past `maxOutputBytes`. The callback runs
-   * synchronously on the data event, so keep it quick. If it throws, the
-   * error is swallowed, the callback is not called again for this run, and
-   * the run carries on.
+   * synchronously on the data event, so keep it quick. If it throws, or
+   * returns a promise that rejects, the error is swallowed, the callback is
+   * not called again for this run, and the run carries on. A returned promise
+   * is not awaited.
    */
   onOutput?: ((chunk: string, stream: 'stdout' | 'stderr') => void) | undefined
 }
@@ -91,8 +92,8 @@ export function planCall(adapter: AgentAdapter, spec: AgentCallSpec): PlannedCal
  * handler. The runner installs no exit handlers.
  *
  * @throws The returned promise rejects, rather than resolving `ok: false`,
- * with a `RangeError` when `spec.maxOutputBytes` is not a positive integer or
- * `Infinity`; when planning throws (see {@link planCall}); when a `TempFile.name` is not a
+ * with a `RangeError` when `spec.maxOutputBytes` is `0`, negative or `NaN`,
+ * and a `TypeError` when it is not a number (a fraction rounds up); when planning throws (see {@link planCall}); when a `TempFile.name` is not a
  * plain file name (empty, or holding `/`, `\` or `..`), or when the per-call
  * temp directory cannot be created or written. A directory that was made is
  * removed. A parser that throws on the output does not reject: the result is
@@ -108,7 +109,7 @@ export async function callAgent(
   const raw = await execute(planned, spec, maxOutputBytes, options)
 
   let error: CallError | undefined
-  if (raw.outputLimit !== undefined) {
+  if (raw.outputLimit !== undefined && !raw.timedOut) {
     error = {
       reason: 'output-limit',
       detail: `${raw.outputLimit} passed maxOutputBytes (${maxOutputBytes} bytes); the run was stopped and its output truncated`,
@@ -186,13 +187,20 @@ export async function callAgent(
   return result
 }
 
-/** `maxOutputBytes` as the runner applies it: `undefined` for no cap. */
+/**
+ * `maxOutputBytes` as the runner applies it: `undefined` for no cap, else a
+ * whole number of bytes, a fraction rounded up. The same rule as
+ * `@osdlc/command-seam`.
+ */
 function outputCap(value: number | undefined): number | undefined {
   if (value === undefined || value === Infinity) return undefined
-  if (!Number.isInteger(value) || value <= 0) {
-    throw new RangeError(`maxOutputBytes must be a positive integer or Infinity, got ${value}`)
+  if (typeof value !== 'number') {
+    throw new TypeError(`maxOutputBytes must be a number, got ${typeof value}`)
   }
-  return value
+  if (!(value > 0)) {
+    throw new RangeError(`maxOutputBytes must be a positive number or Infinity, got ${value}`)
+  }
+  return Math.ceil(value)
 }
 
 function isPlainFileName(name: string): boolean {

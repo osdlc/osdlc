@@ -79,6 +79,32 @@ describe('onOutput', () => {
     expect(result.raw.stdout).toBe('one\ntwo\n')
   })
 
+  test('a rejected promise from an async callback is swallowed too', async () => {
+    let calls = 0
+    const unhandled: unknown[] = []
+    const onUnhandled = (reason: unknown) => unhandled.push(reason)
+    process.on('unhandledRejection', onUnhandled)
+    try {
+      const result = await callAgent(
+        sh('rejecting', 'echo one; sleep 0.1; echo two'),
+        { prompt: 'x' },
+        {
+          onOutput: async () => {
+            calls++
+            throw new Error('boom')
+          },
+        },
+      )
+      await new Promise((res) => setTimeout(res, 50))
+      expect(unhandled).toEqual([])
+      expect(calls).toBe(1)
+      expect(result.ok).toBe(true)
+      expect(result.raw.stdout).toBe('one\ntwo\n')
+    } finally {
+      process.off('unhandledRejection', onUnhandled)
+    }
+  })
+
   test('it accepts undefined, for exactOptionalPropertyTypes callers', async () => {
     const result = await callAgent(sh('plain', 'echo hi'), { prompt: 'x' }, { onOutput: undefined })
     expect(result.text).toBe('hi')

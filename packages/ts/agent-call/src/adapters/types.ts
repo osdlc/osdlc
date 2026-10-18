@@ -13,9 +13,10 @@ export interface RawProcessOutput {
   /** Which came first when the run was cut short: the timeout or a caller abort. */
   cutShortBy?: 'timeout' | 'abort' | undefined
   /**
-   * The stream that passed `maxOutputBytes`, when the cap stopped the run.
-   * Both streams are then truncated at the cap on a character boundary, and
-   * `timedOut` is `false` unless a timeout or abort came first.
+   * The first stream that passed `maxOutputBytes`. Each stream is truncated
+   * at the cap on a character boundary. When the cap stopped the run,
+   * `timedOut` is `false`. When a timeout or abort came first, `timedOut` is
+   * `true` and stays the cause, and this field still marks the truncation.
    */
   outputLimit?: 'stdout' | 'stderr' | undefined
   /** The signal that ended the child, when it died on one (for example `SIGKILL`). */
@@ -58,10 +59,12 @@ export interface AgentAdapter {
   /** Binary to spawn; override via each adapter factory's `binary` option. */
   binary: string
   /**
-   * The full command prefix when it is more than the binary, such as
-   * `['npx', '-y', '@anthropic-ai/claude-code']`; `binary` is its first
-   * element. The built-in adapters always set it. `detectAgents` probes it,
-   * or `binary` when it is absent.
+   * The full command prefix, such as `['npx', '-y', '@anthropic-ai/claude-code']`
+   * or just `['claude']`; `binary` is its first element. The built-in adapters
+   * always set it. `detectAgents` probes it, or `binary` when it is absent, so
+   * an adapter copied with a new `binary` (`{ ...claudeAdapter(), binary }`)
+   * must also replace `command`; pass `binary` or `command` to the factory
+   * instead.
    */
   command?: readonly string[] | undefined
   plan(spec: AgentCallSpec): PlannedCall

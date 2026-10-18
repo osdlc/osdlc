@@ -286,7 +286,11 @@ export function spawnRunnerAsync(binary: string): AsyncCommandRunner {
           else stderr += errDecoder.write(fits)
           hardKill()
           const message = `${name} passed maxOutputBytes (${cap} bytes)`
-          if (exited !== undefined) finish({ ...exited, outputIncomplete: true }, message)
+          // A child that exited keeps its answer; one that died by a signal
+          // keeps `reason: 'signal'`, since `outputIncomplete` means it exited.
+          if (exited !== undefined && exited.neverExited !== true) {
+            finish({ ...exited, outputIncomplete: true }, message)
+          } else if (exited !== undefined) finish(exited, message)
           else finish({ exitCode: 1, neverExited: true, reason: 'output' }, message)
         }
         child.stdout?.on('data', (d: Buffer) => {
