@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.0
+
+### Minor Changes
+
+- 778129e: The built-in adapters take a `command` option: the command to run as argv, for an agent that runs through a launcher or needs arguments before the adapter's own, such as `['npx', '-y', '@anthropic-ai/claude-code']` or `['codex', '--profile', 'work']`. It replaces `binary` when it has at least one element, and an empty array is ignored. `planned.argv` starts with it, `adapterFor` passes it through, and `detectAgents` runs it with `--version` appended. `AgentAdapter` gains an optional `command` field, which the built-in adapters always set; `binary` is its first element.
+  
+  - **Breaking:** `detectAgents` probes `command` when it is set, so an adapter copied with only a new `binary` (`{ ...claudeAdapter(), binary: '/opt/claude' }`) now probes the original command, where before it probed the copy's `binary`. Pass `binary` or `command` to the factory instead.
+- 778129e: Add `maxOutputBytes` to `AgentCallSpec`: a cap on the bytes read from each output stream, stdout and stderr. It counts the bytes the agent wrote, so output that is not valid UTF-8 can decode to a longer string. A stream that passes it stops the agent's process group as a timeout does (SIGTERM, then SIGKILL after 5s), and `callAgent` resolves `ok: false` with the new `CallError` reason `output-limit`, whose `detail` names the stream. The output read so far stays in `raw`, truncated to the cap on a UTF-8 character boundary, and the new `RawProcessOutput.outputLimit` names the stream that passed it. A timeout or abort that came first stays the cause, and `outputLimit` still marks a stream it truncated. `Infinity` means no cap and a fraction rounds up; `0`, a negative value or `NaN` makes `callAgent` reject with a `RangeError`, and a value that is not a number with a `TypeError`, the same rule as `@osdlc/command-seam`. Output is now read as bytes and decoded with the same streaming UTF-8 decoder as before, so collected text is unchanged.
+- 778129e: Add `onOutput` to `CallOptions`: a callback that gets the agent's output as it arrives, for a host that shows progress while a person waits. Each call gets a chunk of decoded UTF-8 text, whole characters only, and its stream (`'stdout'` or `'stderr'`); one stream's chunks join to exactly what `raw` collects. Output is still collected and parsed as before, and nothing is delivered past `maxOutputBytes`. A throw from the callback, or a rejection of a promise it returns, is swallowed, stops later calls for that run, and does not affect the result.
+- 03e5f5d: **Breaking:** adds `none` and `minimal` to `EffortLevel` and `EFFORT_LEVELS`, below `low`. An exhaustive `switch` or a `Record<EffortLevel, …>` must now handle them. codex and opencode pass them through; claude and antigravity raise them to `low` and record an approximation note. The claude launch argv helper does the same, and the pi launch argv helper sends `none` as `off`.
+
 ## 0.4.1
 
 ### Patch Changes
