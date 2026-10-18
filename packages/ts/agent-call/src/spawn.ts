@@ -83,6 +83,7 @@ export function spawnCollect(argv: string[], options: SpawnOptions): Promise<Raw
       }
     }
     const terminate = (): void => {
+      if (graceTimer !== undefined) return
       killTree('SIGTERM')
       graceTimer = setTimeout(() => killTree('SIGKILL'), KILL_GRACE_MS)
     }

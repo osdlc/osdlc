@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import { existsSync, readdirSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -84,7 +84,7 @@ describe('callAgent', () => {
     const sleeper = customAdapter({
       name: 'sleeper',
       binary: '/bin/sh',
-      args: () => ['-c', 'sleep 30'],
+      args: () => ['-c', 'sleep 10'],
     })
     const started = Date.now()
     const result = await callAgent(sleeper, { prompt: 'x', timeoutMs: 300 })
@@ -275,6 +275,23 @@ describe('child stdin', () => {
     const quiet = customAdapter({ name: 'quiet', binary: '/bin/sh', args: () => ['-c', 'exit 2'] })
     const result = await callAgent(quiet, { prompt: 'x' })
     expect(result.error?.detail).toBe('/bin/sh exited 2')
+  })
+
+  test('a timeout plus an abort starts one kill timer', async () => {
+    const spy = vi.spyOn(globalThis, 'setTimeout')
+    try {
+      const stubborn = customAdapter({
+        name: 'stubborn',
+        binary: '/bin/sh',
+        args: () => ['-c', "trap '' TERM; sleep 1"],
+      })
+      const controller = new AbortController()
+      setTimeout(() => controller.abort(), 400)
+      await callAgent(stubborn, { prompt: 'x', timeoutMs: 100 }, { signal: controller.signal })
+      expect(spy.mock.calls.filter(([, ms]) => ms === 5_000)).toHaveLength(1)
+    } finally {
+      spy.mockRestore()
+    }
   })
 
   test('a timeout followed by an abort is still reported as the timeout', async () => {
