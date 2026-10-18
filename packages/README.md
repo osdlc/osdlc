@@ -91,7 +91,11 @@ requests here.
 ### Publishing a new library for the first time
 
 npm can only set up trusted publishing on a package that already exists, so
-CI cannot publish a new library's first version. Before its first release:
+CI cannot publish a new library's first version. Before its first release
+the owner does the two steps below.
+`node .github/scripts/stage-npm-package.mjs packages/ts/<name>` does step 1
+and opens the npm page for step 2 with the values to enter. Add `--dry-run`
+to see what it would publish without publishing.
 
 1. The owner publishes a placeholder version by hand, `0.0.1-stage`, with
    `npm publish --access public --tag stage`. npm reserves `0.0.0-stage`.
@@ -99,7 +103,8 @@ CI cannot publish a new library's first version. Before its first release:
    so the placeholder is `latest` until the first CI release moves it. The
    placeholder stays on npm.
 2. On npmjs.com, under the package's Settings, Trusted publisher, the owner
-   adds repository `osdlc/osdlc` and workflow `packages-publish.yml`.
+   adds a GitHub Actions publisher: organization `osdlc`, repository
+   `osdlc`, workflow `packages-publish.yml`, and no environment.
 
 Until then, `packages-publish.yml` stops before publishing and names the
 library that is not on npm yet.
