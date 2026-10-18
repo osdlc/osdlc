@@ -33,6 +33,7 @@ type Probe = {
   timeoutFraction: CommandResult
   missingBinary: CommandResult
   outputCap: Omit<CommandResult, 'stdout'> & { stdout: number }
+  outputCapSet: CommandResult
   signalDeath: CommandResult
   genuineExit1: CommandResult
   badCwd: CommandResult
@@ -139,6 +140,13 @@ describe('spawnRunner — production pipe path (NODE_ENV unset)', () => {
       signal: 'SIGKILL',
     })
     expect(probe.outputCap.error).toContain('ENOBUFS')
+  })
+
+  test('maxOutputBytes replaces the default cap and cuts on a character boundary', () => {
+    const r = probe.outputCapSet
+    expect(r.stdout).toBe('€'.repeat(33))
+    expect(r.reason === 'output' || r.outputIncomplete === true).toBe(true)
+    expect(r.error).toContain('ENOBUFS')
   })
 
   test('a signal-killed child is neverExited; a genuine exit 1 is not', () => {

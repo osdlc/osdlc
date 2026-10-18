@@ -22,6 +22,7 @@ import {
   CommandFailed,
   cwdError,
   mergedEnv,
+  normalizeOutputCap,
   normalizeTimeout,
   spawnFailure,
   type CommandResult,
@@ -122,7 +123,8 @@ const ABORT_KILL_GRACE_MS = 1000
  * `SIGPIPE` on its next write. With `processGroup`, the group is killed
  * instead. A timeout settles on the deadline, not when the pipes close.
  *
- * Output is captured through pipes with no size cap. Under `bun test` with a
+ * Output is captured through pipes with no size cap unless `maxOutputBytes`
+ * is given. Under `bun test` with a
  * large module graph loaded, Bun can return empty output from child pipes.
  * The sync `spawnRunner` works around this; this runner does not.
  *
@@ -149,6 +151,7 @@ export function spawnRunnerAsync(binary: string): AsyncCommandRunner {
         // Inside the executor, so an invalid timeoutMs (or a throw from spawn)
         // rejects and nothing is spawned.
         const timeoutMs = normalizeTimeout(opts.timeoutMs)
+        const cap = normalizeOutputCap(opts.maxOutputBytes) ?? Infinity
         const cwdMessage = cwdError(`spawn ${binary}`, binary, argv, opts)
         if (cwdMessage !== undefined) {
           resolve(spawnFailure(cwdMessage))
@@ -227,6 +230,10 @@ export function spawnRunnerAsync(binary: string): AsyncCommandRunner {
         // whole file, at once, so they do not need this.)
         const outDecoder = new StringDecoder('utf8')
         const errDecoder = new StringDecoder('utf8')
+        // Bytes captured per stream, for `maxOutputBytes`.
+        let outBytes = 0
+        let errBytes = 0
+        let capped: 'stdout' | 'stderr' | undefined
         /**
          * Settle once, with the streams flushed. `end()` is what surfaces a
          * sequence the decoder is still holding back when the output ends
@@ -249,8 +256,9 @@ export function spawnRunnerAsync(binary: string): AsyncCommandRunner {
           if (timer !== undefined) clearTimeout(timer)
           if (graceTimer !== undefined) clearTimeout(graceTimer)
           opts.signal?.removeEventListener('abort', onAbort)
-          stdout += outDecoder.end()
-          stderr += errDecoder.end()
+          // Past the cap, a held-back partial character is the cut, not output.
+          if (capped !== 'stdout') stdout += outDecoder.end()
+          if (capped !== 'stderr') stderr += errDecoder.end()
           // Close the read ends. On `close` this is a no-op. On the other
           // paths a surviving grandchild may still hold the write ends and
           // keep writing. Handlers left installed would go on appending to
@@ -266,10 +274,31 @@ export function spawnRunnerAsync(binary: string): AsyncCommandRunner {
             ...(error ? { error } : {}),
           })
         }
+        /**
+         * Stop at the cap: keep what fits, kill the child (or its group) and
+         * settle as the sync runner does. The decoder holds back a character
+         * the cut splits, and `finish` does not flush it, so the stream ends
+         * on a character boundary.
+         */
+        const overCap = (name: 'stdout' | 'stderr', fits: Buffer) => {
+          capped = name
+          if (name === 'stdout') stdout += outDecoder.write(fits)
+          else stderr += errDecoder.write(fits)
+          hardKill()
+          const message = `${name} passed maxOutputBytes (${cap} bytes)`
+          if (exited !== undefined) finish({ ...exited, outputIncomplete: true }, message)
+          else finish({ exitCode: 1, neverExited: true, reason: 'output' }, message)
+        }
         child.stdout?.on('data', (d: Buffer) => {
+          if (settled) return
+          if (outBytes + d.length > cap) return overCap('stdout', d.subarray(0, cap - outBytes))
+          outBytes += d.length
           stdout += outDecoder.write(d)
         })
         child.stderr?.on('data', (d: Buffer) => {
+          if (settled) return
+          if (errBytes + d.length > cap) return overCap('stderr', d.subarray(0, cap - errBytes))
+          errBytes += d.length
           stderr += errDecoder.write(d)
         })
         child.on('error', (err) => {
