@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.1](https://github.com/osdlc/osdlc/compare/tiered-dirs/v0.3.0...tiered-dirs/v0.3.1) - 2026-10-18
+
+### Other
+
+- add @osdlc/tiered-dirs for its 0.3.0 npm release ([#287](https://github.com/osdlc/osdlc/pull/287))
+
 ## [0.3.0](https://github.com/osdlc/osdlc/compare/tiered-dirs/v0.2.0...tiered-dirs/v0.3.0) - 2026-10-17
 
 ### Added
