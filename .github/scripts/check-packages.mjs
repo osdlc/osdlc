@@ -29,17 +29,17 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { basename, join, resolve } from 'node:path'
+import { basename, join, relative, resolve } from 'node:path'
 
 const root = process.cwd()
 
 const allDirs = []
 const ts = join(root, 'packages', 'ts')
 for (const name of existsSync(ts) ? readdirSync(ts).sort() : []) {
-  if (existsSync(join(ts, name, 'package.json'))) allDirs.push(join('packages', 'ts', name))
+  if (existsSync(join(ts, name, 'package.json'))) allDirs.push(join(ts, name))
 }
 const args = process.argv.slice(2)
-const dirs = args.length === 0 ? allDirs : args
+const dirs = args.length === 0 ? allDirs : [...new Set(args.map((d) => resolve(root, d)))]
 const out = mkdtempSync(join(tmpdir(), 'check-packages-'))
 
 const bin = (name) => join(root, 'node_modules', '.bin', name)
@@ -69,12 +69,13 @@ function entryPoints(pkg) {
  * preset, possibly with comments) is resolved and read, since its consumer
  * is a tool rather than Node. Then copies in the package's smoke check, if
  * it has one, and runs it there. */
-function cleanConsumer(pkg, pkgDir, tarball, tarballs) {
+function cleanConsumer(pkg, pkgDir, tarball, packed) {
   const consumer = mkdtempSync(join(tmpdir(), 'check-packages-consumer-'))
   try {
-    // Workspace siblings come from their local tarballs, not npm.
     const overrides = {}
-    for (const [name, file] of tarballs) if (name !== pkg.name) overrides[name] = `file:${file}`
+    for (const [dir, p] of packed) {
+      if (dir !== pkgDir && p.tarball) overrides[p.pkg.name] = `file:${p.tarball}`
+    }
     writeFileSync(
       join(consumer, 'package.json'),
       JSON.stringify({ name: 'consumer', private: true, type: 'module', overrides }),
@@ -113,30 +114,23 @@ function shipsTypes(pkg) {
   return JSON.stringify(pkg.exports ?? {}).includes('"types"')
 }
 
-/** Packs the package at `dir`; returns its manifest and tarball path. */
-function pack(dir) {
-  const pkgDir = resolve(root, dir)
-  const pkg = JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf8'))
-  const packed = run('pnpm', ['pack', '--pack-destination', out], pkgDir).trim().split('\n').pop()
-  return { pkg, tarball: join(out, basename(packed)) }
-}
-
-// name -> tarball path, for every package, so overrides cover unselected ones.
-const tarballs = new Map()
-const packedByDir = new Map()
-for (const dir of new Set([...allDirs, ...dirs])) {
-  const result = pack(dir)
-  packedByDir.set(dir, result)
-  tarballs.set(result.pkg.name, result.tarball)
+const packed = new Map()
+for (const pkgDir of new Set([...allDirs, ...dirs])) {
+  try {
+    const pkg = JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf8'))
+    const packedName = run('pnpm', ['pack', '--pack-destination', out], pkgDir).trim().split('\n').pop()
+    packed.set(pkgDir, { pkg, tarball: join(out, basename(packedName)) })
+  } catch (error) {
+    packed.set(pkgDir, { pkg: { name: basename(pkgDir) }, error })
+  }
 }
 
 let failed = 0
-for (const dir of dirs) {
-  const pkgDir = resolve(root, dir)
-  const pkg = JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf8'))
-  console.log(`\n== ${pkg.name}@${pkg.version} (${dir})`)
+for (const pkgDir of dirs) {
+  const { pkg, tarball, error } = packed.get(pkgDir)
+  console.log(`\n== ${pkg.name}@${pkg.version} (${relative(root, pkgDir)})`)
   try {
-    const { tarball } = packedByDir.get(dir)
+    if (error) throw error
     console.log(`packed ${tarball}`)
     process.stdout.write(run(bin('publint'), ['run', tarball, '--strict'], root))
     if (shipsTypes(pkg)) {
@@ -146,7 +140,7 @@ for (const dir of dirs) {
     } else {
       console.log('attw: skipped, the package ships no types')
     }
-    cleanConsumer(pkg, pkgDir, tarball, tarballs)
+    cleanConsumer(pkg, pkgDir, tarball, packed)
   } catch (err) {
     failed++
     console.error(`FAILED: ${pkg.name}: ${err.message.split('\n')[0]}`)
