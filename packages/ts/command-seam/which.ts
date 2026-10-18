@@ -32,8 +32,10 @@ export interface WhichOptions {
  * The absolute path of the file a spawn of `binary` would run, or
  * `undefined` when there is none. A name with a `/` is taken relative to
  * `cwd`; a bare name is looked up on `PATH`, first match wins. A match must be
- * an executable file. With `PATH` unset, it searches `/usr/bin:/bin`. POSIX
- * only: `PATHEXT` is not read.
+ * an executable file. With `PATH` unset, it searches `/usr/bin:/bin`. An
+ * empty `PATH` entry (`PATH=''`, `a::b`, a trailing `:`) means `cwd`, as it
+ * does for Node's spawn; Bun's spawn skips empty entries, so under Bun such
+ * a match may not start. POSIX only: `PATHEXT` is not read.
  *
  * Never throws for a missing binary, an unreadable folder or a bad `cwd`.
  *

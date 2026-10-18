@@ -24,7 +24,12 @@ import {
  * the TOP-LEVEL key being edited is addressed by `key`, never rebuilt.
  */
 export type EditValue =
-  null | boolean | number | string | readonly EditValue[] | { readonly [key: string]: EditValue }
+  | null
+  | boolean
+  | number
+  | string
+  | readonly EditValue[]
+  | { readonly [key: string]: EditValue }
 
 /**
  * One top-level field edit, externally tagged to match the crate's `FieldEdit`
@@ -175,18 +180,26 @@ function assertFiniteValue(value: EditValue, key: string): void {
 }
 
 /**
- * Whether a thrown value is one of the wasm side's refusals: an `Error` whose
- * `name` is a known code. Anything else, such as a Rust panic
- * (`RuntimeError: unreachable`), is rethrown as is: it means the module is
- * broken, not that the edit was refused.
+ * The `.name` the wasm gives a crate `EditError` variant it has no name for
+ * (the crate's enum is `#[non_exhaustive]`). Still a refusal: reported as
+ * `InvalidResult`, as before 0.2.0.
  */
-function isRefusal(raw: unknown): raw is Error & { name: EditErrorCode } {
-  return raw instanceof Error && ERROR_CODES.has(raw.name)
+const UNNAMED_REFUSAL = 'EditError'
+
+/**
+ * Whether a thrown value is one of the wasm side's refusals: an `Error` whose
+ * `name` is a known code, or {@link UNNAMED_REFUSAL}. Anything else, such as a
+ * Rust panic (`RuntimeError: unreachable`), is rethrown as is: it means the
+ * module is broken, not that the edit was refused.
+ */
+function isRefusal(raw: unknown): raw is Error {
+  return raw instanceof Error && (ERROR_CODES.has(raw.name) || raw.name === UNNAMED_REFUSAL)
 }
 
 /** Map a bindgen refusal (`.name` = code, `.span`) to `EditError`. */
-function toEditError(raw: Error & { name: EditErrorCode }): EditError {
-  return new EditError(raw.name, raw.message, readSpan((raw as { span?: unknown }).span))
+function toEditError(raw: Error): EditError {
+  const code = ERROR_CODES.has(raw.name) ? (raw.name as EditErrorCode) : 'InvalidResult'
+  return new EditError(code, raw.message, readSpan((raw as { span?: unknown }).span))
 }
 
 function readSpan(span: unknown): EditSpan | undefined {

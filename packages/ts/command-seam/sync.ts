@@ -66,7 +66,11 @@ export interface CommandResult {
    *   postinstall script) still held stdout or stderr open when `timeoutMs`
    *   ran out. Anything that process wrote after the deadline is lost, and it
    *   keeps running. Without `timeoutMs` the run waits for it to exit.
-   * - Under Bun, the child exited right at the 256 MB output cap.
+   * - The child passed the 256 MB output cap but exited before the runner's
+   *   kill landed, on Node or Bun.
+   *
+   * The `bun test` capture path writes output to files and never waits on a
+   * held pipe, so it never sets this flag.
    *
    * `ran` and `runChecked` go by the exit code alone, so they still count
    * such a run as a success. Check this flag when the output must be whole.
@@ -479,7 +483,8 @@ export function fromSpawnSync(
     // Bun reports a failed spawn with `status` undefined, not null.
     ...(proc.status == null ? { neverExited: true as const, ...syncStop(proc) } : {}),
     // A real status with a timeout: the child exited, but a process it started
-    // held the pipes until the deadline. With the cap: Bun, at the cap.
+    // held the pipes until the deadline. With the cap: the child passed it and
+    // exited before the kill landed.
     ...(proc.status != null && (code === 'ETIMEDOUT' || code === 'ENOBUFS')
       ? { outputIncomplete: true as const }
       : {}),

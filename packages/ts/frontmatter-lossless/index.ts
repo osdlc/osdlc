@@ -102,8 +102,10 @@ export interface Split {
    *  optional BOM) and no closing `---` line follows. `yaml` is still `null`
    *  and `body` the whole text, as for a note with no block, so a projection
    *  keeps going; a caller that holds authored notes to a contract can read
-   *  this to report the note as malformed instead. `false` otherwise. */
-  readonly unterminated: boolean
+   *  this to report the note as malformed instead. `false` otherwise.
+   *  Optional so a `Split` built by hand, such as a test fake, still type-checks;
+   *  {@link split} always sets it. */
+  readonly unterminated?: boolean | undefined
 }
 
 /** Options for {@link newShape}. */
@@ -272,6 +274,10 @@ export function compose(frontmatter: string | null, body: string, shape: NoteSha
  * blank line. With `eol: '\r\n'`, `compose` writes the fences as CRLF and
  * the yaml text keeps its own line endings, so end its lines in `\r\n` and
  * the text itself in `\r`, as {@link split} returns a CRLF block.
+ *
+ * An empty `yaml` gives `---\n\n---\n`: since the closing fence keeps its
+ * line break, the block holds one blank line. It round-trips through
+ * {@link split}.
  *
  * @example
  * ```ts

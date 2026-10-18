@@ -51,6 +51,12 @@ describe('which', () => {
     expect(which('a/plain', { cwd: root })).toBeUndefined()
   })
 
+  test('an empty PATH entry means cwd, as for Node', () => {
+    const a = join(root, 'a')
+    expect(which('tool', { cwd: a, env: { PATH: '' } })).toBe(first)
+    expect(which('tool', { cwd: a, env: { PATH: `${join(root, 'nope')}::/x` } })).toBe(first)
+  })
+
   test('a relative PATH entry is resolved against cwd', () => {
     expect(which('tool', { cwd: root, env: { PATH: 'b' } })).toBe(second)
   })

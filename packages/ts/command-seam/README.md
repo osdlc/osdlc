@@ -366,6 +366,9 @@ resolved against `cwd`, a bare name is searched on `PATH`, and a match must
 be an executable file. `opts` takes `cwd` (default `process.cwd()`) and
 `env`, merged over the parent's as the runners take it, so
 `which('tool', { env: { PATH: binDir } })` checks a test's own `PATH`.
+An empty `PATH` entry means `cwd`, as it does for Node's spawn. Bun's spawn
+skips empty entries, so under Bun `which` can find a binary there that a
+spawn would not.
 
 ## Reading results
 
@@ -606,7 +609,10 @@ console.log(await server.exited) // { exitCode: 0, signal: null }
   `outputIncomplete: true`, no `reason`, and spawnSync's `ETIMEDOUT` message
   in `error`. Output written after the deadline is lost, and the process
   keeps running. A run that may start background work belongs on an async
-  runner with `processGroup: true`.
+  runner with `processGroup: true`. Under `bun test` the sync runner captures
+  through temp files instead of pipes (see Known issue: `bun test`), so it
+  returns as soon as the child exits: later output is lost without
+  `outputIncomplete` or `error`, and a test there never sees the flag.
 - The sync runners (`spawnRunner`, `runShell`, `shellRunner`) and
   `streamRunner` kill only the direct child on timeout. Processes it started
   keep running, and these runners have no option to change that. The async
@@ -654,15 +660,16 @@ console.log(await server.exited) // { exitCode: 0, signal: null }
   - a failed stdin write: only `error` says what went wrong;
   - a sync run whose child exited while a process it started held the output
     pipes past `timeoutMs` (see Timeouts and cancellation): `outputIncomplete: true`;
-  - under Bun, a child that exits right at the output cap:
-    `outputIncomplete: true`.
+  - a child that passes the output cap but exits before the runner's kill
+    lands, on Node or Bun: `outputIncomplete: true`.
 
   `ran` and `runChecked` go by the exit code, so they treat the last two as
   success. Check `outputIncomplete` when the output must be whole.
 - **Output is text.** Captured output is decoded as UTF-8. The sync pipe
   path caps each stream at 256 MB and usually kills a child that passes it,
-  with `reason: 'output'`. Under Bun, a child that exits right at the cap
-  keeps its exit code and gets `outputIncomplete: true` and `error`. The `bun test` capture path and
+  with `reason: 'output'`. A child that passes the cap but exits before the
+  kill lands keeps its exit code and gets `outputIncomplete: true` and
+  `error`. The `bun test` capture path and
   the async runner have no cap.
 
 ## Known issue: `bun test`

@@ -289,5 +289,8 @@ describe('EditErrorCode', () => {
       'utf-8',
     )
     for (const code of WRAPPER_CODES) expect(wrapper).toContain(`"${code}"`)
+    // A variant missing from the wrapper's `variant_name` would reach JS under
+    // the catch-all name `EditError` and be reported as `InvalidResult`.
+    for (const v of variants) expect(wrapper).toContain(`EditError::${v} { .. } => "${v}"`)
   })
 })
