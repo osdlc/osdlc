@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.1.0
+
+### Minor Changes
+
+- 2f3fc7c: Add `newShape(opts?)`, with its options type `NewShapeOptions`: the
+  `NoteShape` for a new note, one with no source text to `split`. Both fences
+  end in `eol` (`'\n'` by default, or `'\r\n'`), and `bom` (default `false`)
+  adds a byte-order mark. `compose(yaml, body, newShape())` gives
+  `---\n<yaml>\n---\n<body>`. Pass the YAML text the way `split` returns it,
+  without the line break before the closing fence. Until now there was no
+  supported way to write a new note, because a `NoteShape` must not be built by
+  hand.
+- 2f3fc7c: `Split` has a new `unterminated` field. It is `true` when a note starts with a
+  valid opening fence (`---` and a line break, after an optional BOM) and no
+  closing `---` line follows. `yaml` is still `null` and `body` the whole text,
+  as before, so only a caller that wants to report the note as malformed needs
+  to read it. Until now such a caller had to repeat the opening-fence check
+  itself.
+
 ## 1.0.0
 
 ### Major Changes
