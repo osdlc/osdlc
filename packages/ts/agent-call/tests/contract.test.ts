@@ -270,22 +270,32 @@ const ROWS: Row[] = [
   },
 ]
 
-/** The capability-map table rows: first column (backticks removed) to the four agent cells. */
-function readmeTable(): Map<string, string[]> {
+/**
+ * The capability-map tables: first column (backticks removed) to each agent's
+ * cell, keyed by the agent named in the header. The map may be split across
+ * several tables, each with its own header row of agent names.
+ */
+function readmeTable(): Map<string, Record<string, string>> {
   const start = README.indexOf('### Capability map')
   expect(start).toBeGreaterThan(-1)
-  const rows = new Map<string, string[]>()
+  const rows = new Map<string, Record<string, string>>()
+  let header: string[] = []
   for (const line of README.slice(start).split('\n').slice(1)) {
-    if (!line.startsWith('|')) {
-      if (rows.size > 0) break
-      continue
-    }
+    if (/^#{2,3} /.test(line)) break
+    if (!line.startsWith('|')) continue
     const cells = line
       .replace(/^\||\|\s*$/g, '')
       .split(/(?<!\\)\|/)
       .map((c) => c.trim().replace(/\\\|/g, '|'))
-    if (cells[0] === 'Spec field' || /^-+$/.test(cells[0] ?? '')) continue
-    rows.set((cells[0] ?? '').replaceAll('`', ''), cells.slice(1))
+    if (cells[0] === 'Spec field') {
+      header = cells.slice(1)
+      continue
+    }
+    if (/^-+$/.test(cells[0] ?? '')) continue
+    const label = (cells[0] ?? '').replaceAll('`', '')
+    const row = rows.get(label) ?? {}
+    for (const [i, agent] of header.entries()) row[agent] = cells[i + 1] ?? ''
+    rows.set(label, row)
   }
   return rows
 }
@@ -293,7 +303,7 @@ function readmeTable(): Map<string, string[]> {
 const TABLE = readmeTable()
 
 /** The README row whose label is `label`, or one that starts with it and a space. */
-function tableRow(label: string): string[] {
+function tableRow(label: string): Record<string, string> {
   for (const [key, cells] of TABLE) {
     if (key === label || key.startsWith(`${label} `)) return cells
   }
@@ -311,7 +321,7 @@ function plannedText(planned: ReturnType<typeof planCall>): string {
 
 describe('capability map: support levels match the notes', () => {
   for (const row of ROWS) {
-    for (const [index, agent] of AGENTS.entries()) {
+    for (const agent of AGENTS) {
       const cell = row.cells[agent]
       test(`${row.label} on ${agent} is ${cell.support}`, () => {
         const planned = planCall(adapterFor(agent), { prompt: 'PROMPT', ...row.spec })
@@ -329,7 +339,7 @@ describe('capability map: support levels match the notes', () => {
           expect(plannedText(planned)).toContain(expected)
         }
 
-        const shown = tableRow(row.label)[index]
+        const shown = tableRow(row.label)[agent]
         expect(shown).toBeDefined()
         if (cell.readme !== undefined) expect(shown).toContain(cell.readme)
         // A support word in the README cell must agree with the note.
@@ -354,10 +364,10 @@ describe('capability map: the other rows', () => {
     expect(plan('opencode').stdin).toBeUndefined()
     expect(plan('opencode').argv.at(-1)).toBe('PROMPT')
     const cells = tableRow('prompt')
-    expect(cells[0]).toBe('stdin')
-    expect(cells[1]).toContain('stdin')
-    expect(cells[2]).toContain('-p <prompt>')
-    expect(cells[3]).toBe('positional')
+    expect(cells['claude']).toBe('stdin')
+    expect(cells['codex']).toContain('stdin')
+    expect(cells['antigravity']).toContain('-p <prompt>')
+    expect(cells['opencode']).toBe('positional')
   })
 
   test('effort xhigh and max clamp to high on antigravity only', () => {
@@ -373,7 +383,7 @@ describe('capability map: the other rows', () => {
         }
       }
     }
-    expect(tableRow('effort')[2]).toContain('`xhigh`, `max` → `high`')
+    expect(tableRow('effort')['antigravity']).toContain('`xhigh`, `max` → `high`')
   })
 
   test('output.format reaches each CLI as the README says', () => {
@@ -403,10 +413,10 @@ describe('capability map: the other rows', () => {
       }
     }
     const cells = tableRow('output.format')
-    expect(cells[0]).toContain('text|json|stream-json')
-    expect(cells[1]).toContain('--json')
-    expect(cells[2]).toContain('text|json|stream-json')
-    expect(cells[3]).toContain('--format json')
+    expect(cells['claude']).toContain('text|json|stream-json')
+    expect(cells['codex']).toContain('--json')
+    expect(cells['antigravity']).toContain('text|json|stream-json')
+    expect(cells['opencode']).toContain('--format json')
   })
 
   test('timeoutMs is library-level: no flag, no note, on every agent', () => {
@@ -415,7 +425,7 @@ describe('capability map: the other rows', () => {
       expect(planned.argv.join(' ')).not.toContain('1234')
       expect(planned.notes.find((n) => n.field === 'timeoutMs')).toBeUndefined()
     }
-    expect(tableRow('timeoutMs')[0]).toContain('library-level')
+    expect(tableRow('timeoutMs')['claude']).toContain('library-level')
   })
 
   test('maxOutputBytes is library-level: no flag, no note, on every agent', () => {
@@ -436,7 +446,7 @@ describe('capability map: the other rows', () => {
       expect(planned.argv).toContain('--zz')
       expect(planned.argv).toContain('value with space')
     }
-    expect(tableRow('extraArgs')[0]).toContain('appended verbatim')
+    expect(tableRow('extraArgs')['claude']).toContain('appended verbatim')
   })
 
   test('every README row is covered by a test above', () => {
