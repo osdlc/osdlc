@@ -1,9 +1,9 @@
 // Stages a new library on npm so CI can publish it. For each package it
-// builds and packs the package at version `0.0.1-stage`, publishes that tarball
-// under the `stage` tag, then adds the GitHub Actions trusted publisher with
-// `npm trust github`. package.json is restored after packing. npm can only add a trusted publisher to a
-// package that already exists (see packages/README.md, "Publishing a new
-// library for the first time").
+// builds and packs the package at version `0.0.1-stage`, publishes that
+// tarball under the `stage` tag, then adds the GitHub Actions trusted
+// publisher with `npm trust github`. package.json is restored after packing.
+// npm can only add a trusted publisher to a package that already exists (see
+// packages/README.md, "Publishing a new library for the first time").
 //
 //   node .github/scripts/stage-npm-package.mjs [--dry-run] <package> ...
 //
@@ -13,7 +13,8 @@
 // the @osdlc scope. `npm trust` needs two-factor authentication on the account;
 // npm asks for a one-time password or a browser login. npm runs through npx at
 // the version packages-publish.yml uses, because `npm trust` needs 11.15 or
-// later.
+// later. A dry run publishes nothing and changes nothing on npm, but it does
+// build the package.
 import { spawnSync } from 'node:child_process'
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -43,12 +44,22 @@ const dryRun = parsed.values['dry-run'] ?? false
 const dry = dryRun ? ['--dry-run'] : []
 if (parsed.positionals.length === 0) usage('no package given')
 
+/** Runs pnpm in a package directory. */
+function pnpm(dir, args, stdout = 'inherit') {
+  console.log(`  pnpm ${args.join(' ')}`)
+  return spawnSync('pnpm', args, {
+    cwd: dir,
+    encoding: 'utf8',
+    stdio: ['ignore', stdout, 'inherit'],
+  })
+}
+
 /** Runs npm at the pinned version. */
 function npm(args, opts = {}) {
   return spawnSync('npx', ['-y', NPM, ...args], { encoding: 'utf8', ...opts })
 }
 
-/** Name of a publishable @osdlc package directory. */
+/** Checks that `dir` is a publishable @osdlc package. Returns its directory and name. */
 function readTarget(dir) {
   const manifest = join(dir, 'package.json')
   if (!existsSync(manifest)) throw new Error(`${dir}: no package.json`)
@@ -57,6 +68,7 @@ function readTarget(dir) {
   if (typeof pkg.name !== 'string' || !pkg.name.startsWith(`@${OWNER}/`)) {
     throw new Error(`${dir}: the name is not in the @${OWNER} scope`)
   }
+  if (typeof pkg.license !== 'string') throw new Error(`${dir}: no license`)
   return { dir, name: pkg.name }
 }
 
@@ -78,22 +90,22 @@ function publishPlaceholder(dir) {
     const pkg = JSON.parse(original)
     writeFileSync(manifest, JSON.stringify({ ...pkg, version: PLACEHOLDER }, null, 2) + '\n')
     let tarball
+    // Ctrl-C would otherwise exit before the finally restores package.json.
+    const ignoreInterrupt = () => {}
+    process.on('SIGINT', ignoreInterrupt)
     try {
-      for (const step of [
-        ['run', 'build'],
-        ['pack', '--pack-destination', out],
-      ]) {
-        console.log(`  pnpm ${step.join(' ')}`)
-        const r = spawnSync('pnpm', step, {
-          cwd: dir,
-          encoding: 'utf8',
-          stdio: ['ignore', 'pipe', 'inherit'],
-        })
-        if (r.status !== 0) return false
-        if (step[0] === 'pack') tarball = r.stdout.trim().split('\n').at(-1)
+      // pnpm pack, unlike npm pack, rewrites workspace: and catalog: versions.
+      if (pnpm(dir, ['run', '--if-present', 'build']).status !== 0) return false
+      const pack = pnpm(dir, ['pack', '--json', '--pack-destination', out], 'pipe')
+      if (pack.status !== 0) return false
+      tarball = JSON.parse(pack.stdout).filename
+      if (!existsSync(tarball)) {
+        console.error(`  pnpm pack reported ${tarball}, which does not exist.`)
+        return false
       }
     } finally {
       writeFileSync(manifest, original)
+      process.off('SIGINT', ignoreInterrupt)
     }
     const publish = ['publish', tarball, '--access', 'public', '--tag', 'stage', ...dry]
     console.log(`  npm ${publish.join(' ')}`)
@@ -118,7 +130,7 @@ if (!loggedIn && !dryRun) {
   process.exit(1)
 }
 console.log(`npm user: ${loggedIn ? who.stdout.trim() : '(not logged in)'}`)
-if (dryRun) console.log('Dry run: nothing is published or changed.')
+if (dryRun) console.log('Dry run: nothing is published or changed on npm.')
 
 const trust = [
   'trust',

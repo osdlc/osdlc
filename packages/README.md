@@ -94,15 +94,17 @@ npm can only set up trusted publishing on a package that already exists, so
 CI cannot publish a new library's first version. Before its first release
 the owner does the two steps below.
 `node .github/scripts/stage-npm-package.mjs packages/ts/<name>` does both.
-It skips a step that is already done, and `--dry-run` shows what it would
-do without changing anything.
+It skips a step that is already done. `--dry-run` builds the package and
+shows what it would publish, without changing anything on npm.
 
 1. The owner publishes a real build as a placeholder version, `0.0.1-stage`:
-   set the version to `0.0.1-stage` without committing it, run `pnpm run build`
-   and `pnpm pack`, then `npm publish ./<tarball>.tgz --access public --tag
-   stage`. npm reserves `0.0.0-stage`. npm points `latest` at a new package's
-   first version even with `--tag`, so the placeholder is `latest` until the
-   first CI release moves it. The placeholder stays on npm.
+   set the version to `0.0.1-stage` without committing it, run
+   `pnpm run build` and `pnpm pack`, then
+   `npm publish ./<tarball>.tgz --access public --tag stage`. Use
+   `pnpm pack`, not `npm pack`: it rewrites `workspace:` and `catalog:`
+   versions. npm reserves `0.0.0-stage`. npm points `latest` at a new
+   package's first version even with `--tag`, so the placeholder is `latest`
+   until the first CI release moves it. The placeholder stays on npm.
 2. The owner adds a GitHub Actions trusted publisher with permission to
    publish: repository `osdlc/osdlc`, workflow `packages-publish.yml`, and
    no environment. The script runs `npm trust github`, which needs npm 11.15
