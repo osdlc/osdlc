@@ -2,7 +2,7 @@ import type { Conversation } from '../conversation.js'
 import { note, TMP_TOKEN, type CapabilityNote, type PlannedCall, type TempFile } from '../plan.js'
 import type { AgentCallSpec, OutputFormat } from '../spec.js'
 import { claudeStyleConversation, parseClaudeStyle } from './claude-style.js'
-import { applyPermissionMode, asString, buildEffectivePrompt, get, modelFlag } from './shared.js'
+import { applyPermissionMode, buildEffectivePrompt, modelFlag } from './shared.js'
 import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './types.js'
 
 const MCP_CONFIG_FILE = 'mcp.json'
@@ -65,7 +65,7 @@ function planQwen(binary: string, spec: AgentCallSpec): PlannedCall {
       notes,
       'effort',
       'approximated',
-      'model.reasoningEffort via QWEN_CODE_SYSTEM_DEFAULTS_PATH (no flag; a reasoningEffort in user or project settings wins)',
+      'model.reasoningEffort via QWEN_CODE_SYSTEM_DEFAULTS_PATH (no flag; a reasoningEffort in user or project settings wins, and any system-defaults file is replaced for this run)',
     )
   }
 
@@ -173,7 +173,7 @@ function planQwen(binary: string, spec: AgentCallSpec): PlannedCall {
   }
 
   if (spec.plugins !== undefined) {
-    note(notes, 'plugins', 'dropped', 'session-only plugins are claude and copilot only')
+    note(notes, 'plugins', 'dropped', 'qwen has no session-only plugin flag')
   }
   if (spec.budgetUsd !== undefined) {
     note(
@@ -208,26 +208,7 @@ function planQwen(binary: string, spec: AgentCallSpec): PlannedCall {
 }
 
 function parseQwen(planned: PlannedCall, raw: RawProcessOutput): ParsedOutput {
-  const parsed = parseClaudeStyle(planned, raw, { label: 'qwen --output-format' })
-  const result = lastResultEvent(parsed.events)
-  if (result === undefined) return parsed
-  // Departures from claude's envelope: a failed run has no `result` text but
-  // an `error.message`, and the schema answer is at `structured_result`.
-  if (parsed.isError === true) {
-    parsed.errorDetail = asString(get(result, 'error', 'message')) ?? parsed.errorDetail
-  }
-  if (planned.spec.output?.schema !== undefined) {
-    parsed.structured = get(result, 'structured_result') ?? parsed.structured
-  }
-  return parsed
-}
-
-function lastResultEvent(events: unknown[] | undefined): unknown {
-  const list = events ?? []
-  for (let i = list.length - 1; i >= 0; i--) {
-    if (get(list[i], 'type') === 'result') return list[i]
-  }
-  return undefined
+  return parseClaudeStyle(planned, raw, { label: 'qwen --output-format' })
 }
 
 function qwenConversation(planned: PlannedCall, raw: RawProcessOutput): Conversation | undefined {

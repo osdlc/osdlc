@@ -13,7 +13,7 @@ import {
   buildEffectivePrompt,
   get,
   parseJsonLines,
-  tryParseJson,
+  withStructured,
 } from './shared.js'
 import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './types.js'
 
@@ -254,7 +254,7 @@ function planDeepseek(binary: string, spec: AgentCallSpec): PlannedCall {
     note(notes, 'session.persist', 'dropped', 'dsh always persists sessions under $DSH_HOME')
   }
   if (spec.plugins !== undefined) {
-    note(notes, 'plugins', 'dropped', 'session-only plugins are claude and copilot only')
+    note(notes, 'plugins', 'dropped', 'dsh has no session-only plugin flag')
   }
   if (spec.budgetUsd !== undefined) {
     note(notes, 'budgetUsd', 'dropped', 'dsh has no budget cap')
@@ -370,13 +370,6 @@ function parseDeepseek(planned: PlannedCall, raw: RawProcessOutput): ParsedOutpu
     isError: errorDetail !== undefined,
     errorDetail,
   })
-}
-
-function withStructured(planned: PlannedCall, parsed: ParsedOutput): ParsedOutput {
-  if (planned.spec.output?.schema !== undefined && parsed.text !== '') {
-    parsed.structured = tryParseJson(parsed.text)
-  }
-  return parsed
 }
 
 /** The last `dsh: ...` diagnostic on stderr, without its prefix. */

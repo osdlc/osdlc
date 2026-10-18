@@ -401,6 +401,10 @@ format (a JSON envelope or an event stream), so metadata is captured.
   (`--dangerously-skip-permissions` and its equivalents). Use it only in an
   environment that is sandboxed from outside.
 - The runner starts the binary with an argument array and no shell.
+- cursor's default binary is `agent`, and deepseek's is `dsh`. Both names are
+  generic, and `detectAgents` only checks that `<binary> --version` exits 0,
+  so an unrelated program with that name reads as installed. Pass `binary`
+  with a full path to be sure.
 
 ## Development
 

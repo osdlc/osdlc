@@ -99,10 +99,11 @@ describe('pi plan', () => {
 
     const readOnly = adapter.plan({
       prompt: 'x',
-      permissions: { mode: 'read-only', allowTools: ['bash'] },
+      permissions: { mode: 'read-only', allowTools: ['bash', '+codemode'] },
     })
     expect(readOnly.argv.filter((a) => a === '--tools')).toHaveLength(1)
-    expect(readOnly.argv.join(' ')).toContain('--tools read,grep,find,ls,bash')
+    // pi rejects a list mixing plain names with +name entries.
+    expect(readOnly.argv.join(' ')).toContain('--tools read,grep,find,ls,bash,codemode')
 
     const bypass = adapter.plan({
       prompt: 'x',

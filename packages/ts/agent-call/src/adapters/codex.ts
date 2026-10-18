@@ -14,7 +14,7 @@ import {
   get,
   modelFlag,
   parseJsonLines,
-  tryParseJson,
+  withStructured,
   commandPrefix,
   type CommandOptions,
 } from './shared.js'
@@ -197,7 +197,7 @@ function planCodex(command: readonly string[], spec: AgentCallSpec): PlannedCall
   }
 
   if (spec.plugins !== undefined) {
-    note(notes, 'plugins', 'dropped', 'session-only plugins are claude and copilot only')
+    note(notes, 'plugins', 'dropped', 'codex has no session-only plugin flag')
   }
   if (spec.budgetUsd !== undefined) {
     note(notes, 'budgetUsd', 'dropped', 'codex has no budget cap flag')
@@ -307,13 +307,6 @@ function parseCodex(planned: PlannedCall, raw: RawProcessOutput): ParsedOutput {
     isError,
     errorDetail,
   })
-}
-
-function withStructured(planned: PlannedCall, parsed: ParsedOutput): ParsedOutput {
-  if (planned.spec.output?.schema !== undefined && parsed.text !== '') {
-    parsed.structured = tryParseJson(parsed.text)
-  }
-  return parsed
 }
 
 function codexUsage(usage: unknown): Usage | undefined {

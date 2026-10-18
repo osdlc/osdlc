@@ -157,7 +157,7 @@ function planOpencode(command: readonly string[], spec: AgentCallSpec): PlannedC
     note(notes, 'session.persist', 'dropped', 'opencode always persists sessions')
   }
   if (spec.plugins !== undefined) {
-    note(notes, 'plugins', 'dropped', 'session-only plugins are claude and copilot only')
+    note(notes, 'plugins', 'dropped', 'opencode has no session-only plugin flag')
   }
   if (spec.budgetUsd !== undefined) {
     note(notes, 'budgetUsd', 'dropped', 'opencode has no budget cap flag')

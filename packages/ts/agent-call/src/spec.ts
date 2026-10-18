@@ -121,7 +121,7 @@ export interface McpSpec {
 }
 
 /**
- * Plugins for this session only (claude; copilot loads `dirs` only). `dirs`
+ * Plugins for this session only (claude; copilot and cursor load `dirs` only). `dirs`
  * load with `--plugin-dir`; `disable` lists installed plugin ids
  * (`name@marketplace`) turned off through `--settings`.
  */

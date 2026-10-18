@@ -1,6 +1,8 @@
 import type { CapabilityNote, Support } from '../plan.js'
 import { note } from '../plan.js'
 import type { AgentCallSpec, PermissionMode } from '../spec.js'
+import type { PlannedCall } from '../plan.js'
+import type { ParsedOutput } from './types.js'
 
 /** The `binary` and `command` options every built-in adapter takes. */
 /** The command a built-in adapter runs, as each adapter factory and `adapterFor` take it. */
@@ -135,6 +137,14 @@ export function buildEffectivePrompt(
   }
 
   return sections.join('\n\n')
+}
+
+/** Parse the final text as the schema answer when the call asked for one. */
+export function withStructured(planned: PlannedCall, parsed: ParsedOutput): ParsedOutput {
+  if (planned.spec.output?.schema !== undefined && parsed.text !== '') {
+    parsed.structured = tryParseJson(parsed.text)
+  }
+  return parsed
 }
 
 /** Strip one surrounding markdown code fence, if present. */

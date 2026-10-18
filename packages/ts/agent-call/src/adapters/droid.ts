@@ -169,7 +169,7 @@ function planDroid(binary: string, spec: AgentCallSpec): PlannedCall {
     note(notes, 'session.persist', 'dropped', 'droid always writes sessions to ~/.factory/sessions')
   }
   if (spec.plugins !== undefined) {
-    note(notes, 'plugins', 'dropped', 'session-only plugins are claude and copilot only')
+    note(notes, 'plugins', 'dropped', 'droid has no session-only plugin flag')
   }
   if (spec.budgetUsd !== undefined) {
     note(notes, 'budgetUsd', 'dropped', 'droid has no budget cap flag')

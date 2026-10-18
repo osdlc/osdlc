@@ -15,6 +15,7 @@ import {
   modelFlag,
   parseJsonLines,
   tryParseJson,
+  withStructured,
 } from './shared.js'
 import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './types.js'
 
@@ -133,7 +134,7 @@ function planCopilot(binary: string, spec: AgentCallSpec): PlannedCall {
       notes,
       'appendSystemPrompt',
       'approximated',
-      `written to a custom-instructions file loaded via ${INSTRUCTIONS_ENV} (appended to the system prompt)`,
+      `written to a custom-instructions file loaded via ${INSTRUCTIONS_ENV} (appended to the system prompt; replaces a ${INSTRUCTIONS_ENV} from the parent environment, so pass that in spec.env to keep it)`,
     )
   }
 
@@ -289,13 +290,6 @@ function parseCopilot(planned: PlannedCall, raw: RawProcessOutput): ParsedOutput
     parsed.isError = false
   }
   return withStructured(planned, parsed)
-}
-
-function withStructured(planned: PlannedCall, parsed: ParsedOutput): ParsedOutput {
-  if (planned.spec.output?.schema !== undefined && parsed.text !== '') {
-    parsed.structured = tryParseJson(parsed.text)
-  }
-  return parsed
 }
 
 /**

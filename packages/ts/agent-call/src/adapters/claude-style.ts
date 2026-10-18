@@ -77,11 +77,17 @@ export function parseClaudeStyle(
   }
 }
 
-/** The fields of one result envelope (the `json` envelope or the stream's `result` event). */
+/**
+ * The fields of one result envelope (the `json` envelope or the stream's
+ * `result` event). qwen departs from claude in two places, read as fallbacks:
+ * a failed run carries `error.message` instead of `result` text, and the schema
+ * answer is at `structured_result`.
+ */
 export function claudeStyleFields(envelope: unknown, planned: PlannedCall): ParsedOutput {
   const text = asString(get(envelope, 'result')) ?? ''
   const subtype = asString(get(envelope, 'subtype'))
   const isError = get(envelope, 'is_error') === true || subtype === 'error'
+  const errorMessage = asString(get(envelope, 'error', 'message'))
   const parsed: ParsedOutput = {
     text,
     sessionId: asString(get(envelope, 'session_id')),
@@ -89,10 +95,11 @@ export function claudeStyleFields(envelope: unknown, planned: PlannedCall): Pars
     usage: claudeStyleUsage(get(envelope, 'usage')),
     stopReason: subtype,
     isError,
-    errorDetail: isError ? text || subtype : undefined,
+    errorDetail: isError ? text || errorMessage || subtype : undefined,
   }
   if (planned.spec.output?.schema !== undefined) {
-    parsed.structured = get(envelope, 'structured_output') ?? tryParseJson(text)
+    parsed.structured =
+      get(envelope, 'structured_output') ?? get(envelope, 'structured_result') ?? tryParseJson(text)
   }
   return parsed
 }

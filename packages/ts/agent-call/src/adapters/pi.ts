@@ -58,6 +58,11 @@ export function piAdapter(options: PiAdapterOptions = {}): AgentAdapter {
   }
 }
 
+/** `--thinking <level>`: pi takes `off` through `max`. `none` is pi's `off`; the rest pass through. */
+export function piThinkingArgv(effort: string): string[] {
+  return ['--thinking', effort === 'none' ? 'off' : effort]
+}
+
 function planPi(binary: string, spec: AgentCallSpec): PlannedCall {
   const notes: CapabilityNote[] = []
   const tempFiles: TempFile[] = []
@@ -82,8 +87,8 @@ function planPi(binary: string, spec: AgentCallSpec): PlannedCall {
   if (spec.model !== undefined) argv.push(...modelFlag(spec.model))
 
   if (spec.effort !== undefined) {
-    // pi takes off|minimal|low|medium|high|xhigh|max, so every level passes through.
-    argv.push('--thinking', spec.effort)
+    // pi takes off|minimal|low|medium|high|xhigh|max: `none` is its `off`, the rest pass through.
+    argv.push(...piThinkingArgv(spec.effort))
     note(notes, 'effort', 'native', '--thinking (pi clamps it to what the model supports)')
   }
 
@@ -112,18 +117,20 @@ function planPi(binary: string, spec: AgentCallSpec): PlannedCall {
   // pi has no approval prompt, so a posture is a tool selection. `--tools`
   // takes one list (the last flag wins), so allowTools merge into it: plain
   // names join an allowlist, `+name` entries add to the default selection.
+  // pi rejects a list that mixes the two, so each side is normalized.
   const permissions = spec.permissions
   const allow = permissions?.allowTools ?? []
   const plus = (tools: string[]): string[] => tools.map((t) => (t.startsWith('+') ? t : `+${t}`))
+  const plain = (tools: string[]): string[] => tools.map((t) => t.replace(/^\+/, ''))
   const toolsArgv = (tools: string[]): string[] => ['--tools', tools.join(',')]
   applyPermissionMode(argv, notes, permissions?.mode, {
     'read-only': {
-      argv: toolsArgv([...READ_ONLY_TOOLS, ...allow]),
+      argv: toolsArgv([...READ_ONLY_TOOLS, ...plain(allow)]),
       support: 'approximated',
       detail: `read-only mapped to --tools ${READ_ONLY_TOOLS.join(',')} (no bash, edit or write; MCP tools stay enabled)`,
     },
     edits: {
-      argv: toolsArgv([...EDIT_TOOLS, ...allow]),
+      argv: toolsArgv([...EDIT_TOOLS, ...plain(allow)]),
       support: 'approximated',
       detail: `edits mapped to --tools ${EDIT_TOOLS.join(',')} (no bash; MCP tools stay enabled)`,
     },
@@ -194,7 +201,7 @@ function planPi(binary: string, spec: AgentCallSpec): PlannedCall {
     }
   }
   if (spec.plugins !== undefined) {
-    note(notes, 'plugins', 'dropped', 'session-only plugins are claude and copilot only')
+    note(notes, 'plugins', 'dropped', 'pi has no session-only plugin flag')
   }
   if (spec.budgetUsd !== undefined) {
     note(notes, 'budgetUsd', 'dropped', 'pi has no budget cap flag')

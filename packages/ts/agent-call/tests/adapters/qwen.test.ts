@@ -313,6 +313,15 @@ describe('qwen parse', () => {
     expect(parsed.errorDetail).toBe('[API Error: Connection error. (cause: fetch failed)]')
   })
 
+  test('a lone error envelope, not wrapped in an array, still reports error.message', () => {
+    const planned = adapter.plan({ prompt: 'hi' })
+    const envelope =
+      '{"type":"result","subtype":"error_during_execution","is_error":true,"error":{"message":"quota exceeded"}}'
+    const parsed = adapter.parseResult(planned, raw(envelope, 1))
+    expect(parsed.isError).toBe(true)
+    expect(parsed.errorDetail).toBe('quota exceeded')
+  })
+
   test('the schema answer comes from structured_result', () => {
     const planned = adapter.plan({ prompt: 'q', output: { schema: { type: 'object' } } })
     const parsed = adapter.parseResult(planned, raw(JSON_SCHEMA_RUN))
