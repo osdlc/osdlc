@@ -1,0 +1,152 @@
+# Changelog
+
+## 0.3.3
+
+### Patch Changes
+
+- 8bf138a: The first release on npm. Earlier versions were used only during development and were never published, so this entry lists everything the package does. See what a running system of tools and agents is
+  doing, and what it did, from plain files: one JSONL log envelope with correlation ids that flow to child
+  processes, a stable machine id, and the record of an agent session that a launcher starts (an
+  append-only event log per session that reduces to a record, the session state machine, the
+  environment tags a launched agent carries, a process scan that reads them back, and the decision
+  that ends a record whose session is gone).
+  
+  - Two entry points. `@osdlc/observe` holds the log envelope, correlation ids and their environment
+    tags, sortable ids, the JSONL writer and readers, the machine id and the originator.
+    `@osdlc/observe/session` holds the session model and record, the state machine, the session
+    environment tags, the process scan, hook status, reconcile and the lifecycle runner.
+  - `SessionEventOfModel`, `NewSessionEventOfModel` and `SessionRecordOfModel` name the event, new
+    event and record types of a model: `SessionEventOfModel<typeof model>`.
+  - `sessionEnv` takes an optional `machine`, `reconcileSessions` an optional `machine` in its deps,
+    and `isThisMachine` an optional second argument, so a caller can avoid the implicit
+    `machineId()` call and its side effects, which its TSDoc now lists.
+  - Stability tiers. The reconcile run (`reconcileSessions`, `ReconcileDeps`, `ReconcileRow`,
+    `ReconcileReport`, `BACKFILL_STATUSES`, `BackfillStatus`) and the lifecycle runner
+    (`runHeadlessSession`, `runInteractiveSession`, `endSession`, `resolveRun`, `resolveLineage`,
+    `LifecycleEvent`, `LifecyclePorts`, `HostOpened`, `InteractiveRun`, `InteractiveResult`,
+    `RunContext`) are tagged `@experimental` and may change in a minor release. Everything else is
+    stable for 0.x. A new value in a closed union (`SessionRunState`, `SessionOutcome`,
+    `SessionOrigin`, `LogSource`, `AgentStatus`) is a breaking change.
+  - TSDoc on every export, with `@throws` on `appendJsonl`, `readJsonl`, `runHeadlessSession` and
+    `runInteractiveSession`.
+  - Runnable examples for every export, a test of the exports, and a README.
+  - Node.js 22 or later is supported (`engines.node`), and the tests run under Vitest on Node. Linux
+    and macOS are supported; on Windows the record works and the process scan reports that it
+    cannot tell.
+  
+  - Breaking: the environment tags are named `OBSERVE_*`: `OBSERVE_SESSION`, `OBSERVE_RUN`,
+    `OBSERVE_SUBJECT`, `OBSERVE_INVOCATION`, `OBSERVE_INVOCATION_PID`, `OBSERVE_TASK`,
+    `OBSERVE_PROJECT_ROOT`, `OBSERVE_PINNED_CMD`, `OBSERVE_AUTHOR` and `OBSERVE_MACHINE_ID`. The
+    `*_ENV_VAR` constants hold the new names. They were named `SDLC_*`. `sessionEnv` sets both
+    names, and every reader takes the `OBSERVE_` value, or the old name when the two differ, so
+    processes on either side of the change still see each other.
+  - Breaking: the record and `launched` event keys `engine`, `claudeFlags` and `sdlcPin` are now
+    `harness`, `launchFlags` and `pin`, matching the `SessionVocabulary` keys. The schemas read the
+    old keys as the new ones, so an existing store loads unchanged; new events and records are written
+    with the new keys. `ReconcilableRecord` and `ReconcileRow` use `harness`, and `sessionEnv` takes
+    `pin`.
+  - Breaking: `zod` is a peer dependency (`^4`), since the session model takes the consumer's zod
+    schemas and returns zod schemas.
+  - Breaking: the `types` carrier on a model is gone; use the helper types above.
+  - Breaking: `parseJsonlLines`, `lineageFromEnv`, `parsePsEnvironment`, `resolveMachineId` and
+    `reconcileCause` are no longer exported, and `LOST_HOOK_NOTE` is removed (it is a consumer's
+    message).
+  - The machine id's hash seeds and its cache file (`~/.cache/sdlc/machine-id`) are unchanged, so
+    every machine keeps its id.
+  - The docs no longer refer to a particular host project.
+  
+  - Process spawning goes through `@osdlc/command-seam`. No API change.
+
+## History before the first public release
+
+These versions were never published. They are rebuilt from the git history.
+
+### [0.3.2] - 2026-10-16 (unpublished)
+
+#### Changed
+
+- `runHeadlessSession` accepts a result with `timedOut: true` and ends the record with outcome
+  `timeout`. Its `onEnd` callback reports a timeout as `failed`.
+
+### [0.3.1] - 2026-10-11 (unpublished)
+
+#### Changed
+
+- A `resumed` event reopens an ended session for a new run of the same harness session: the state
+  goes back to `starting`, `endedAt`, `exitCode` and the outcome are cleared, and `host` and `pid`
+  are refreshed. On a session that has not ended, the reducer ignores it as an illegal transition.
+
+### [0.3.0] - 2026-10-11 (unpublished)
+
+#### Added
+
+- `SESSION_DONE_OUTCOMES`, `SessionDoneOutcomeSchema`, `SessionDoneSchema` and the types
+  `SessionDoneOutcome` and `SessionDone`.
+
+#### Changed
+
+- Breaking: a new session state, `done`. A `done` event (the agent declares its work finished,
+  `ok` or `failed`, with a note or `null`) moves `running`, `waiting_for_input` or `idle` to
+  `done` and sets the record's `done` field. A new prompt (`running`) clears it. Code that handles
+  every `SessionRunState` must now handle `done`.
+- A `pid_recorded` event records the pid of the process that runs an interactive session. A later
+  `host_attached` with no pid keeps it.
+
+### [0.2.1] - 2026-10-11 (unpublished)
+
+#### Added
+
+- `AUTHOR_ENV_VAR` (then `SDLC_AUTHOR`) and `authorFromEnv`. `sessionEnv` takes an `author` text and
+  sets the tag, or sets it empty so a parent's value does not leak.
+
+### [0.2.0] - 2026-10-11 (unpublished)
+
+#### Added
+
+- The log envelope: `LogEnvelopeSchema`, `LOG_ENVELOPE_VERSION`, `LOG_SOURCES`,
+  `correlationFromEnv`, `lineageFromEnv`, `newSortableId`, `newRunId`, and the correlation tags,
+  then named `SDLC_RUN`, `SDLC_SUBJECT`, `SDLC_INVOCATION` and `SDLC_INVOCATION_PID`.
+- The JSONL writer and reader: `appendJsonl` (one `O_APPEND` write per line, optional fsync, a torn
+  last line repaired), `parseJsonl`, `parseJsonlLines`, `readJsonl`, `readJsonlFrom` (reads only
+  what was appended after an offset) and `jsonlSize`.
+- The session model: `defineSessionModel` builds the event and record schemas, the reducer and the
+  file functions over the consumer's harness, host and launch-flag schemas. Every append re-reduces
+  the whole log and rewrites `record.json`, so a stale projection never overwrites a newer one.
+  `looseSessionModel` reads any vocabulary. Also the state machine (`isLegalTransition`), the
+  vocabulary schemas and types, `SessionLogError`, `EVENTS_FILE`, `RECORD_FILE` and
+  `sessionEventsPath`.
+- Session names: a person's rename wins over the launch name, which wins over a title the harness
+  generated (`SessionNameSourceSchema`).
+- `sessionEnv`, the environment tags a launcher sets on an agent process, with `SESSION_ENV_VAR`,
+  `TASK_ENV_VAR`, `PROJECT_ROOT_ENV_VAR`, `PINNED_CMD_ENV_VAR` and `SESSION_ID_RE`.
+- A stable machine id: `machineId()` is `m-` plus 16 hex characters derived from the platform's
+  machine UUID (macOS, Linux, Windows), or from the hostname when no UUID can be read. The UUID is
+  never written. It is resolved once per process, handed to child processes through
+  `MACHINE_ENV_VAR`, and cached in a file. Also `deriveMachineId`, `MachineProbe` and
+  `isThisMachine`.
+- `resolveOriginator` records who started a session (git `user.name`, else the OS login), the
+  hostname and the time zone; with `identity` off it records the time zone only.
+- `runStateForStatus` and `AgentStatus`: the session state a harness hook status reports.
+- Reconcile: `decideReconcile` ends a record as `lost` only when no process carries the session id,
+  no host pane is open (or there is no host to ask) and the grace period has passed. A failed scan
+  or host probe never ends a record. `reconcileSessions` runs it over a store through injected
+  probes. Also `endedAsLost`, `DEFAULT_GRACE_MS` and the report types.
+- The start lifecycle behind ports: `runHeadlessSession`, `runInteractiveSession`, `endSession`,
+  `resolveRun` and `resolveLineage`. A failed spawn or open still ends the record `failed`.
+
+#### Changed
+
+- Breaking: `scanTaggedProcesses` returns `null` when the scan could not run (unsupported platform,
+  `ps` failed, `/proc` unreadable), and `parsePsEnvironment` returns `null` when a tagged process
+  changed its command line between the two `ps` snapshots. Before, both returned `[]`. Treat
+  `null` as "could not tell", not as "none running".
+- The macOS scan reads plain command lines only for the processes that carry a tag.
+
+### [0.1.0] - 2026-10-06 (unpublished)
+
+#### Added
+
+- The process scan: `scanTaggedProcesses` finds running processes tagged with a session id (then
+  `SDLC_SESSION`) and task (then `SDLC_TASK`) by reading their environment, through `ps -E` on macOS
+  and `/proc` on Linux. Also `parsePsEnvironment`, `processScanSupported`, `TaggedProcess`,
+  `LiveIds` and `liveSessionIds`.

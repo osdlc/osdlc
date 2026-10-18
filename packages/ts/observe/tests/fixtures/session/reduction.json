@@ -1,0 +1,14 @@
+{
+  "state": "ended",
+  "outcome": "ok",
+  "ignored": [
+    {
+      "index": 6,
+      "reason": "illegal_transition"
+    },
+    {
+      "index": 11,
+      "reason": "after_ended"
+    }
+  ]
+}
