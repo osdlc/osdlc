@@ -28,6 +28,7 @@ type Probe = {
   timeoutIgnoresTerm: Timed
   timeoutPartialOutput: Timed
   timeoutDirectChild: { neverExited: boolean | undefined; pid: number }
+  grandchildHoldsPipes: Timed & { pid: number }
   timeoutZero: string
   timeoutFraction: CommandResult
   missingBinary: CommandResult
@@ -97,6 +98,20 @@ describe('spawnRunner — production pipe path (NODE_ENV unset)', () => {
     try {
       expect(neverExited).toBe(true)
       expect(pid).toBeGreaterThan(0)
+      expect(alive(pid)).toBe(true)
+    } finally {
+      reap(pid)
+    }
+  })
+
+  test('a grandchild holding the pipes past the timeout is outputIncomplete', () => {
+    const { value, ms, pid } = probe.grandchildHoldsPipes
+    try {
+      expect(ms).toBeLessThan(5000)
+      expect(value).toMatchObject({ exitCode: 0, outputIncomplete: true, stdout: 'hi\n' })
+      expect(value.neverExited).toBeUndefined()
+      expect(value.reason).toBeUndefined()
+      expect(value.error).toContain('ETIMEDOUT')
       expect(alive(pid)).toBe(true)
     } finally {
       reap(pid)

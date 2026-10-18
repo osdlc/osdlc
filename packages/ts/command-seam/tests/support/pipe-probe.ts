@@ -55,6 +55,17 @@ try {
     rmSync(pidFile, { force: true })
     return { neverExited: r.neverExited, pid }
   })()
+  // The child exits at once, but the backgrounded `sleep` holds its stdout.
+  // The pid goes through a file, and the test reaps it.
+  results['grandchildHoldsPipes'] = (() => {
+    const pidFile = join(tmpdir(), `seam-probe-held-${process.pid}`)
+    const value = timed(() =>
+      sh.run(['-c', `sleep 30 & echo $! > "${pidFile}"; echo hi`], { cwd: CWD, timeoutMs: 500 }),
+    )
+    const pid = Number(readFileSync(pidFile, 'utf8').trim())
+    rmSync(pidFile, { force: true })
+    return { ...value, pid }
+  })()
   results['timeoutZero'] = (() => {
     try {
       sh.run(['-c', 'echo ran'], { cwd: CWD, timeoutMs: 0 })

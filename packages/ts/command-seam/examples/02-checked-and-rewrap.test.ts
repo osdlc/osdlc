@@ -181,11 +181,11 @@ test('an unreachable remote counts as no tag', async () => {
 
 // ---- The real runner -------------------------------------------------------
 
-test('a real failure: the message names the argv and the stderr', () => {
+test('a real failure: the message names the binary, the argv and the stderr', () => {
   const sh = spawnRunner('sh')
   const argv = ['-c', 'echo "hook said no"; echo "commit failed" >&2; exit 1']
 
   expect(() => runChecked(sh, argv, { cwd: process.cwd() })).toThrow(
-    `command failed (exit 1): -c 'echo "hook said no"; echo "commit failed" >&2; exit 1'\ncommit failed`,
+    `command failed (exit 1): sh -c 'echo "hook said no"; echo "commit failed" >&2; exit 1'\ncommit failed`,
   )
 }, 15_000)

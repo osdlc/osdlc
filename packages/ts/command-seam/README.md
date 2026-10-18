@@ -93,7 +93,7 @@ try {
   of arguments, without the binary name. The binary is fixed when you create
   the runner.
 - **Result**: what a capture runner returns: `exitCode`, `stdout`, `stderr`,
-  `neverExited`, `reason`, `signal` and `error`.
+  `neverExited`, `reason`, `signal`, `outputIncomplete` and `error`.
 - **`neverExited`**: `true` when the command never reported an exit status.
   The spawn failed, a timeout or abort killed it, a signal ended it, or the
   sync runner killed it at the output cap.
@@ -106,6 +106,10 @@ try {
   runner's 256 MB output cap). `signal` names the signal when the runner
   knows it. A timeout may pass on a retry; a spawn failure or the output cap
   will not.
+- **`outputIncomplete`**: `true` when the child exited but the runner stopped
+  reading its output early, so `stdout` and `stderr` may be cut short. The
+  exit code is real and `reason` is absent. See "`error` can come with a real
+  exit code" under Behaviour.
 - **`error`**: the runner's own message, such as a spawn error or
   `timed out after 500ms`. It is never copied into `stderr`, which holds only
   what the child wrote. `failureText` and `CommandFailed` read `error` when
@@ -411,13 +415,18 @@ else if (checked.reason === 'invalid') console.error(checked.message, checked.ca
 
 ## Reporting failures
 
-`CommandFailed` carries `argv` and the full `result`. Its `message` is
-`command failed (exit N): <argv>`, with argv quoted by `shellJoin`, then the
+`CommandFailed` carries `binary`, `argv` and the full `result`. Its `message`
+is `command failed (exit N): <binary> <argv>`, quoted by `shellJoin`, then the
 stderr, or the runner's `error` when the child wrote no stderr. It never
 includes stdout. Some commands explain a failure on stdout instead, such as a
 git hook that rejects a commit. `e.detail` joins both
 streams, trimmed, and drops empty ones: it is
 `failureText(e.result, { both: true })`. Show `detail` to a person.
+
+`runChecked` and `runCheckedAsync` take the binary from the runner's
+`binary` property, which `spawnRunner`, `spawnRunnerAsync`, `asAsync` and
+`withDefaults` runners have. A fake runner may leave it out; the message then
+shows the argv alone and `e.binary` is `undefined`.
 
 The message carries the full argv, so it reaches error logs and crash
 reports. Do not pass a secret, such as a token in a URL, as an argument:
@@ -572,6 +581,14 @@ console.log(await server.exited) // { exitCode: 0, signal: null }
   the output captured so far. The sync runner also sets `signal: 'SIGKILL'`.
   Both runners set `error`: the async runner's is `timed out after <N>ms`,
   the sync runner's is spawnSync's `ETIMEDOUT` message.
+- The sync capture runners wait for the output pipes to close, not only for
+  the child to exit. If the child exits but a process it started still holds
+  stdout or stderr, the run waits until `timeoutMs` (or, without one, until
+  that process exits). The result then has the child's own `exitCode`,
+  `outputIncomplete: true`, no `reason`, and spawnSync's `ETIMEDOUT` message
+  in `error`. Output written after the deadline is lost, and the process
+  keeps running. A run that may start background work belongs on an async
+  runner with `processGroup: true`.
 - The sync runners (`spawnRunner`, `runShell`, `shellRunner`) and
   `streamRunner` kill only the direct child on timeout. Processes it started
   keep running, and these runners have no option to change that. The async
@@ -614,13 +631,20 @@ console.log(await server.exited) // { exitCode: 0, signal: null }
   written, the result keeps the child's exit code. The async runner and the
   sync runner on Node put the write error in `error`. The sync runner under
   Bun does not report it.
-- **`error` can come with a real exit code.** After a failed stdin write, or
-  a child that exits right at the output cap under Bun, `exitCode` is the
-  child's own, `reason` is absent and only `error` says what went wrong.
+- **`error` can come with a real exit code.** `exitCode` is then the child's
+  own and `reason` is absent. Three cases:
+  - a failed stdin write: only `error` says what went wrong;
+  - a sync run whose child exited while a process it started held the output
+    pipes past `timeoutMs` (see Timeouts and cancellation): `outputIncomplete: true`;
+  - under Bun, a child that exits right at the output cap:
+    `outputIncomplete: true`.
+
+  `ran` and `runChecked` go by the exit code, so they treat the last two as
+  success. Check `outputIncomplete` when the output must be whole.
 - **Output is text.** Captured output is decoded as UTF-8. The sync pipe
   path caps each stream at 256 MB and usually kills a child that passes it,
   with `reason: 'output'`. Under Bun, a child that exits right at the cap
-  keeps its exit code and gets only `error`. The `bun test` capture path and
+  keeps its exit code and gets `outputIncomplete: true` and `error`. The `bun test` capture path and
   the async runner have no cap.
 
 ## Known issue: `bun test`
@@ -678,9 +702,9 @@ are settled, and Windows support has landed, if that is feasible.
 | `mapFailed`, `mapFailedAsync`                                   | function  | Rethrow a `CommandFailed` as another error                     |
 | `catchFailed`, `catchFailedAsync`                               | function  | Turn a `CommandFailed` into a value                            |
 | `asAsync`                                                       | function  | Wrap a sync runner as an async one                             |
-| `CommandFailed`                                                 | class     | Error with `argv`, `result` and `detail`; `message` shows argv |
-| `CommandRunner`, `AsyncCommandRunner`                           | interface | Capture runner contracts                                       |
-| `CommandResult`                                                 | interface | `exitCode`, `stdout`, `stderr`, `neverExited`, `reason`, `signal`, `error` |
+| `CommandFailed`                                                 | class     | Error with `binary`, `argv`, `result` and `detail`; `message` shows the command |
+| `CommandRunner`, `AsyncCommandRunner`                           | interface | Capture runner contracts; `binary` names the program          |
+| `CommandResult`                                                 | interface | `exitCode`, `stdout`, `stderr`, `neverExited`, `reason`, `signal`, `outputIncomplete`, `error` |
 | `NeverExitedReason`                                             | type      | `'spawn' \| 'timeout' \| 'abort' \| 'signal' \| 'output'`       |
 | `CommandRunOptions`, `AsyncCommandRunOptions`                   | interface | `cwd`, `timeoutMs`, `input`, `env`; async adds `signal`, `onSpawn`, `processGroup` |
 | `EnvOverrides`                                                  | type      | `Record<string, string \| undefined>`                          |

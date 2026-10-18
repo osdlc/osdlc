@@ -20,10 +20,13 @@ import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 
 import {
+  asAsync,
   CommandFailed,
   failureText,
   managedProcessRunner,
   runJson,
+  runChecked,
+  runCheckedAsync,
   runJsonAsync,
   runShell,
   runShellAsync,
@@ -34,8 +37,10 @@ import {
   spawnRunner,
   spawnRunnerAsync,
   streamRunner,
+  withDefaults,
   type AsyncCommandRunOptions,
   type CommandResult,
+  type CommandRunner,
   type CommandRunOptions,
 } from '../index.ts'
 import { alive, gone, reap } from './support/procs.ts'
@@ -694,6 +699,54 @@ describe('posix', () => {
         expect(e.detail).toBe(failureText(result, { both: true }))
       }
       expect(new CommandFailed(['x'], { exitCode: 3, stdout: '', stderr: '' }).detail).toBe('')
+    })
+
+    test('message names the binary when given, and binary is exposed', () => {
+      const e = new CommandFailed(
+        ['plugin', 'list'],
+        { exitCode: 1, stdout: '', stderr: '' },
+        'my tool',
+      )
+      expect(e.message).toBe(`command failed (exit 1): 'my tool' plugin list`)
+      expect(e.binary).toBe('my tool')
+      expect(e.argv).toEqual(['plugin', 'list'])
+      expect(
+        new CommandFailed(['x'], { exitCode: 1, stdout: '', stderr: '' }).binary,
+      ).toBeUndefined()
+    })
+  })
+
+  describe('runChecked names the binary', () => {
+    const failing = ['-c', 'echo nope >&2; exit 3']
+
+    test('spawnRunner and spawnRunnerAsync report their binary', async () => {
+      expect(spawnRunner('sh').binary).toBe('sh')
+      expect(spawnRunnerAsync('sh').binary).toBe('sh')
+      expect(() => runChecked(spawnRunner('sh'), failing, { cwd: CWD })).toThrow(
+        `command failed (exit 3): sh -c 'echo nope >&2; exit 3'\nnope`,
+      )
+      const e = await runCheckedAsync(spawnRunnerAsync('sh'), failing, { cwd: CWD }).catch(
+        (x: unknown) => x,
+      )
+      expect(e).toBeInstanceOf(CommandFailed)
+      expect((e as CommandFailed).binary).toBe('sh')
+    })
+
+    test('withDefaults and asAsync keep the binary', async () => {
+      const bound = withDefaults(spawnRunner('sh'), { cwd: CWD })
+      expect(bound.binary).toBe('sh')
+      expect(() => runChecked(bound, failing)).toThrow('command failed (exit 3): sh -c')
+      expect(withDefaults(spawnRunnerAsync('sh'), { cwd: CWD }).binary).toBe('sh')
+      const e = await runCheckedAsync(asAsync(spawnRunner('sh')), failing, { cwd: CWD }).catch(
+        (x: unknown) => x,
+      )
+      expect((e as CommandFailed).binary).toBe('sh')
+    })
+
+    test('a runner without binary keeps the argv-only message', () => {
+      const fake: CommandRunner = { run: () => ({ exitCode: 2, stdout: '', stderr: '' }) }
+      expect(withDefaults(fake, { cwd: CWD }).binary).toBeUndefined()
+      expect(() => runChecked(fake, ['x'], { cwd: CWD })).toThrow(/^command failed \(exit 2\): x$/)
     })
   })
 })

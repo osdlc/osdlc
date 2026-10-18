@@ -67,6 +67,8 @@ export interface AsyncCommandRunOptions extends CommandRunOptions {
 
 /** The async form of {@link CommandRunner}: `run` returns a promise. */
 export interface AsyncCommandRunner {
+  /** The binary this runner runs, when it has one. See `CommandRunner.binary`. */
+  readonly binary?: string | undefined
   /**
    * Run the binary with `argv` (without the binary name). The promise never
    * rejects for a failed command: a non-zero exit, a missing binary, a
@@ -141,6 +143,7 @@ const ABORT_KILL_GRACE_MS = 1000
  */
 export function spawnRunnerAsync(binary: string): AsyncCommandRunner {
   return {
+    binary,
     run(argv: string[], opts: AsyncCommandRunOptions): Promise<CommandResult> {
       return new Promise((resolve) => {
         // Inside the executor, so an invalid timeoutMs (or a throw from spawn)
@@ -391,17 +394,23 @@ export async function runCheckedAsync(
   opts: AsyncCommandRunOptions,
 ): Promise<CommandResult>
 export async function runCheckedAsync<P extends unknown[]>(
-  runner: { run(argv: string[], ...opts: P): Promise<CommandResult> },
+  runner: {
+    readonly binary?: string | undefined
+    run(argv: string[], ...opts: P): Promise<CommandResult>
+  },
   argv: string[],
   ...opts: NoInfer<P>
 ): Promise<CommandResult>
 export async function runCheckedAsync(
-  runner: { run(argv: string[], ...opts: unknown[]): Promise<CommandResult> },
+  runner: {
+    readonly binary?: string | undefined
+    run(argv: string[], ...opts: unknown[]): Promise<CommandResult>
+  },
   argv: string[],
   ...opts: unknown[]
 ): Promise<CommandResult> {
   const result = await runner.run(argv, ...opts)
-  if (result.exitCode !== 0) throw new CommandFailed(argv, result)
+  if (result.exitCode !== 0) throw new CommandFailed(argv, result, runner.binary)
   return result
 }
 
@@ -416,6 +425,7 @@ export async function runCheckedAsync(
  */
 export function asAsync(runner: CommandRunner): AsyncCommandRunner {
   return {
+    ...(runner.binary === undefined ? {} : { binary: runner.binary }),
     run: async (argv, opts) => runner.run(argv, opts),
   }
 }
