@@ -52,6 +52,7 @@ const ROWS: Row[] = [
       pi: { support: 'native', readme: '--model' },
       qwen: { support: 'native', readme: '--model' },
       droid: { support: 'native', readme: '--model' },
+      cursor: { support: 'native', readme: '--model' },
       deepseek: { support: 'approximated', readme: '--patch' },
     },
   },
@@ -68,6 +69,7 @@ const ROWS: Row[] = [
       pi: { support: 'native', readme: '--thinking' },
       qwen: { support: 'approximated', readme: 'QWEN_CODE_SYSTEM_DEFAULTS_PATH' },
       droid: { support: 'native', readme: '--reasoning-effort' },
+      cursor: { support: 'dropped', planned: '' },
       deepseek: { support: 'approximated', readme: '--patch' },
     },
   },
@@ -84,6 +86,7 @@ const ROWS: Row[] = [
       pi: { support: 'native', readme: '--system-prompt' },
       qwen: { support: 'native', readme: '--system-prompt' },
       droid: { support: 'emulated', planned: '<system>' },
+      cursor: { support: 'emulated', planned: '<system>' },
       deepseek: { support: 'approximated', readme: '--patch' },
     },
   },
@@ -100,6 +103,7 @@ const ROWS: Row[] = [
       pi: { support: 'native', readme: '--append-system-prompt' },
       qwen: { support: 'native', readme: '--append-system-prompt' },
       droid: { support: 'native', readme: '--append-system-prompt' },
+      cursor: { support: 'emulated', planned: '<instructions>' },
       deepseek: { support: 'native', readme: '--patch' },
     },
   },
@@ -116,6 +120,7 @@ const ROWS: Row[] = [
       pi: { support: 'approximated', readme: '--tools read,grep,find,ls' },
       qwen: { support: 'approximated', readme: '--approval-mode plan' },
       droid: { support: 'native', readme: 'no flag', planned: '' },
+      cursor: { support: 'approximated', readme: '--mode ask' },
       deepseek: {
         support: 'native',
         readme: 'DSH_PERMISSION_MODE',
@@ -136,6 +141,7 @@ const ROWS: Row[] = [
       pi: { support: 'approximated', readme: '--tools read,grep,find,ls,edit,write' },
       qwen: { support: 'native', readme: '--approval-mode auto-edit' },
       droid: { support: 'approximated', readme: '--auto low' },
+      cursor: { support: 'native', readme: 'no flag', planned: '' },
       deepseek: {
         support: 'approximated',
         readme: 'DSH_PERMISSION_MODE',
@@ -164,6 +170,7 @@ const ROWS: Row[] = [
         planned: '--approval-mode auto-edit --allowed-tools run_shell_command',
       },
       droid: { support: 'approximated', readme: '--auto medium' },
+      cursor: { support: 'native', readme: '--sandbox enabled' },
       deepseek: {
         support: 'native',
         readme: 'DSH_PERMISSION_MODE',
@@ -184,6 +191,7 @@ const ROWS: Row[] = [
       pi: { support: 'native', readme: '--tools', planned: '--tools +read,+bash' },
       qwen: { support: 'native', readme: '--approval-mode yolo' },
       droid: { support: 'native', readme: '--skip-permissions-unsafe' },
+      cursor: { support: 'native', readme: '--force --sandbox disabled' },
       deepseek: {
         support: 'native',
         readme: 'DSH_PERMISSION_MODE',
@@ -204,6 +212,7 @@ const ROWS: Row[] = [
       pi: { support: 'approximated', readme: '--tools' },
       qwen: { support: 'native', readme: '--allowed-tools' },
       droid: { support: 'approximated', readme: '--add-tools' },
+      cursor: { support: 'dropped', planned: '' },
       deepseek: { support: 'dropped', planned: '' },
     },
   },
@@ -220,6 +229,7 @@ const ROWS: Row[] = [
       pi: { support: 'native', readme: '--exclude-tools' },
       qwen: { support: 'native', readme: '--exclude-tools' },
       droid: { support: 'approximated', readme: '--remove-tools' },
+      cursor: { support: 'dropped', planned: '' },
       deepseek: { support: 'dropped', planned: '' },
     },
   },
@@ -236,6 +246,7 @@ const ROWS: Row[] = [
       pi: { support: 'native', readme: '@path', planned: '@src/a.ts' },
       qwen: { support: 'emulated', readme: '@path', planned: '@src/a.ts' },
       droid: { support: 'emulated', readme: 'prompt preamble', planned: '- src/a.ts' },
+      cursor: { support: 'emulated', readme: 'prompt preamble', planned: '- src/a.ts' },
       deepseek: { support: 'emulated', readme: 'prompt preamble', planned: '- src/a.ts' },
     },
   },
@@ -252,6 +263,7 @@ const ROWS: Row[] = [
       pi: { support: 'dropped', planned: '' },
       qwen: { support: 'native', readme: '--include-directories' },
       droid: { support: 'dropped', planned: '' },
+      cursor: { support: 'native', readme: '--add-dir' },
       deepseek: { support: 'dropped', planned: '' },
     },
   },
@@ -269,6 +281,7 @@ const ROWS: Row[] = [
       pi: { support: 'emulated', readme: 'prompt preamble', planned: '<context>' },
       qwen: { support: 'emulated', readme: 'prompt preamble', planned: '<context>' },
       droid: { support: 'emulated', readme: 'prompt preamble', planned: '<context>' },
+      cursor: { support: 'emulated', readme: 'prompt preamble', planned: '<context>' },
       deepseek: { support: 'emulated', readme: 'prompt preamble', planned: '<context>' },
     },
   },
@@ -285,6 +298,7 @@ const ROWS: Row[] = [
       pi: { support: 'emulated', planned: 'validates against this JSON Schema' },
       qwen: { support: 'native', readme: '--json-schema' },
       droid: { support: 'emulated', planned: 'validates against this JSON Schema' },
+      cursor: { support: 'emulated', planned: 'validates against this JSON Schema' },
       deepseek: { support: 'emulated', planned: 'validates against this JSON Schema' },
     },
   },
@@ -301,6 +315,7 @@ const ROWS: Row[] = [
       pi: { support: 'native', readme: '--session', planned: '--session abc' },
       qwen: { support: 'native', readme: '--resume=<id>', planned: '--resume=abc' },
       droid: { support: 'native', readme: '--session-id', planned: '--session-id abc' },
+      cursor: { support: 'native', readme: '--resume=<id>', planned: '--resume=abc' },
       deepseek: { support: 'native', readme: '--session-id', planned: '--session-id=abc' },
     },
   },
@@ -317,6 +332,7 @@ const ROWS: Row[] = [
       pi: { support: 'native', readme: '--continue' },
       qwen: { support: 'native', readme: '--continue' },
       droid: { support: 'dropped', planned: '' },
+      cursor: { support: 'native', readme: '--continue' },
       deepseek: { support: 'dropped', planned: '' },
     },
   },
@@ -333,6 +349,7 @@ const ROWS: Row[] = [
       pi: { support: 'native', readme: '--session-id', planned: '--session-id fixed-id' },
       qwen: { support: 'native', readme: '--session-id', planned: '--session-id fixed-id' },
       droid: { support: 'approximated', readme: '--session-id', planned: '--session-id fixed-id' },
+      cursor: { support: 'approximated', readme: '--new-session-id' },
       deepseek: { support: 'dropped', planned: '' },
     },
   },
@@ -349,6 +366,7 @@ const ROWS: Row[] = [
       pi: { support: 'native', readme: '--no-session' },
       qwen: { support: 'approximated', readme: '--chat-recording false' },
       droid: { support: 'dropped', planned: '' },
+      cursor: { support: 'dropped', planned: '' },
       deepseek: { support: 'dropped', planned: '' },
     },
   },
@@ -369,6 +387,7 @@ const ROWS: Row[] = [
       pi: { support: 'dropped', planned: '' },
       qwen: { support: 'native', readme: '--mcp-config' },
       droid: { support: 'dropped', planned: '' },
+      cursor: { support: 'approximated', readme: '--plugin-dir' },
       deepseek: { support: 'approximated', readme: '--patch' },
     },
   },
@@ -385,6 +404,7 @@ const ROWS: Row[] = [
       pi: { support: 'dropped', planned: '' },
       qwen: { support: 'dropped', planned: '' },
       droid: { support: 'dropped', planned: '' },
+      cursor: { support: 'dropped', planned: '' },
       deepseek: { support: 'dropped', planned: '' },
     },
   },
@@ -483,7 +503,7 @@ describe('capability map: the other rows', () => {
     expect(plan('antigravity').argv.slice(-2)).toEqual(['-p', 'PROMPT'])
     expect(plan('opencode').stdin).toBeUndefined()
     expect(plan('opencode').argv.at(-1)).toBe('PROMPT')
-    for (const agent of ['copilot', 'pi', 'qwen', 'droid'] as const) {
+    for (const agent of ['copilot', 'pi', 'qwen', 'droid', 'cursor'] as const) {
       expect(plan(agent).stdin).toBe('PROMPT')
     }
     expect(plan('deepseek').stdin).toBe('PROMPT')
@@ -493,12 +513,12 @@ describe('capability map: the other rows', () => {
     expect(cells['codex']).toContain('stdin')
     expect(cells['antigravity']).toContain('-p <prompt>')
     expect(cells['opencode']).toBe('positional')
-    for (const agent of ['copilot', 'pi', 'qwen', 'droid'] as const)
+    for (const agent of ['copilot', 'pi', 'qwen', 'droid', 'cursor'] as const)
       expect(cells[agent]).toBe('stdin')
     expect(cells['deepseek']).toContain('stdin')
   })
 
-  test('effort xhigh and max pass through, except where the README says they clamp', () => {
+  test('effort xhigh and max pass through, except where the README says they clamp or drop', () => {
     for (const effort of ['xhigh', 'max'] as const) {
       for (const agent of AGENTS) {
         const planned = planCall(adapterFor(agent), { prompt: 'x', effort })
@@ -508,6 +528,8 @@ describe('capability map: the other rows', () => {
         if (agent === 'antigravity') {
           expect(note?.support).toBe('approximated')
           expect(planned.argv.join(' ')).toContain('--effort high')
+        } else if (agent === 'cursor') {
+          expect(note?.support).toBe('dropped')
         } else if (agent === 'deepseek') {
           expect(note?.support).toBe('approximated')
           expect(text).toContain('"reasoningEffort": "max"')
@@ -546,6 +568,11 @@ describe('capability map: the other rows', () => {
         json: '--output-format json',
         'stream-json': '--output-format stream-json',
       },
+      cursor: {
+        text: '--output-format text',
+        json: '--output-format json',
+        'stream-json': '--output-format stream-json',
+      },
       deepseek: { text: '', json: '--json', 'stream-json': '--json' },
     }
     for (const agent of AGENTS) {
@@ -568,6 +595,7 @@ describe('capability map: the other rows', () => {
     expect(cells['pi']).toContain('--mode json')
     expect(cells['qwen']).toContain('text|json|stream-json')
     expect(cells['droid']).toContain('text|json|stream-json')
+    expect(cells['cursor']).toContain('text|json|stream-json')
     expect(cells['deepseek']).toContain('--json')
   })
 

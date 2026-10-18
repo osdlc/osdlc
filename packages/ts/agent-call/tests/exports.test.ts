@@ -71,8 +71,8 @@ function sourceFiles(dir: string): string[] {
   })
 }
 
-test('the entry point exports 65 names', () => {
-  expect(EXPORTS.size).toBe(65)
+test('the entry point exports 67 names', () => {
+  expect(EXPORTS.size).toBe(67)
 })
 
 test('the runtime exports are the functions and constants, no more', () => {
@@ -98,6 +98,7 @@ test('the runtime exports are the functions and constants, no more', () => {
       'piAdapter',
       'qwenAdapter',
       'droidAdapter',
+      'cursorAdapter',
       'deepseekAdapter',
       'planCall',
       'templateAdapter',

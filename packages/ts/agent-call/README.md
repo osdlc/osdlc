@@ -4,11 +4,12 @@ One call spec for headless coding-agent CLIs.
 
 You describe a call once: the prompt, the permission posture, the context, the
 output shape and the session. Each adapter turns that into a command line for
-`claude`, `codex`, `agy`, `opencode`, `copilot`, `pi`, `qwen`, `droid` or `dsh`
-on a best-effort basis and records every approximation. The result comes back normalized (final text,
-structured output, session id, token usage, cost) with the raw output kept. An
-optional layer lifts the whole transcript into one conversation model for
-analysis afterwards. No dependencies.
+`claude`, `codex`, `agy`, `opencode`, `copilot`, `pi`, `qwen`, `droid`,
+`agent` (Cursor) or `dsh` on a best-effort basis and records every
+approximation. The result comes back normalized (final text, structured
+output, session id, token usage, cost) with the raw output kept. An optional
+layer lifts the whole transcript into one conversation model for analysis
+afterwards. No dependencies.
 
 ## Why
 
@@ -65,7 +66,8 @@ npm install @osdlc/agent-call
 ESM only. Node.js 22 or later.
 
 The agent CLIs are not installed by this package. Install the ones you call
-(`claude`, `codex`, `agy`, `opencode`, `copilot`, `pi`, `qwen`, `droid`, `dsh`)
+(`claude`, `codex`, `agy`, `opencode`, `copilot`, `pi`, `qwen`, `droid`,
+`agent` for Cursor, `dsh`)
 and sign in to each.
 
 ## Quick start
@@ -90,10 +92,10 @@ const planned = planCall(adapterFor('codex'), spec)
 To run a built-in agent, pass its adapter to `callAgent`:
 `callAgent(adapterFor('claude'), spec)`. Swap `'claude'` for any name in
 `BUILTIN_AGENTS` (`'codex'`, `'antigravity'`, `'opencode'`, `'copilot'`,
-`'pi'`, `'qwen'`, `'droid'` or `'deepseek'`) and the same spec runs there. `callAgent`
-resolves to an `AgentResult`: `ok`, `text`, `structured`, `sessionId`, `usage`,
-`costUsd`, `exitCode`, `durationMs`, the `planned` call that ran, and the `raw`
-output.
+`'pi'`, `'qwen'`, `'droid'`, `'cursor'` or `'deepseek'`) and the same spec
+runs there. `callAgent` resolves to an `AgentResult`: `ok`, `text`,
+`structured`, `sessionId`, `usage`, `costUsd`, `exitCode`, `durationMs`, the
+`planned` call that ran, and the `raw` output.
 
 Each built-in adapter takes a `binary` option, or a `command` for an agent
 that runs through a launcher or needs arguments before its own, such as
@@ -194,10 +196,11 @@ The stable exports:
 - Built-in adapters: `adapterFor`, `BUILTIN_AGENTS`, `detectAgents`,
   `AgentAvailability`, `claudeAdapter`, `codexAdapter`, `antigravityAdapter`,
   `opencodeAdapter`, `copilotAdapter`, `piAdapter`, `qwenAdapter`,
-  `droidAdapter`, `deepseekAdapter`, and their options types
+  `droidAdapter`, `cursorAdapter`, `deepseekAdapter`, and their options types
   `ClaudeAdapterOptions`, `CodexAdapterOptions`, `AntigravityAdapterOptions`,
   `OpencodeAdapterOptions`, `CopilotAdapterOptions`, `PiAdapterOptions`,
-  `QwenAdapterOptions`, `DroidAdapterOptions` and `DeepseekAdapterOptions`.
+  `QwenAdapterOptions`, `DroidAdapterOptions`, `CursorAdapterOptions` and
+  `DeepseekAdapterOptions`.
 - Your own adapters: `customAdapter`, `CustomAdapterOptions`, `AgentAdapter`,
   `ParsedOutput` and `RawProcessOutput`.
 - The conversation model: `Conversation`, `ConversationMessage`, `Part`,
@@ -290,32 +293,32 @@ that did not map one to one:
 
 The same rows for the agents added in 0.5.0:
 
-| Spec field | copilot | pi | qwen | droid | deepseek |
-|---|---|---|---|---|---|
-| `prompt` | stdin | stdin | stdin | stdin | stdin (`-`) |
-| `model` | `--model` | `--model` (provider/model) | `--model` | `--model` (`custom:<id>` for BYOK) | `--patch` model row (approximated) |
-| `effort` (`low` to `max`, `xhigh` included) | `--reasoning-effort` | `--thinking` | `QWEN_CODE_SYSTEM_DEFAULTS_PATH` file (approximated) | `--reasoning-effort` | `--patch` model row (approximated; `medium` → `high`, `xhigh` → `max`) |
-| `systemPrompt` | prompt-emulated | `--system-prompt` (temp file) | `--system-prompt` | prompt-emulated | `--patch` persona prefix (approximated) |
-| `appendSystemPrompt` | `COPILOT_CUSTOM_INSTRUCTIONS_DIRS` file (approximated) | `--append-system-prompt` (temp file) | `--append-system-prompt` | `--append-system-prompt` | `--patch` persona suffix |
-| `permissions.mode: read-only` | `--deny-tool=write` (approximated) | `--tools read,grep,find,ls` (approximated) | `--approval-mode plan` (approximated) | no flag (`droid exec` is read-only) | `DSH_PERMISSION_MODE` `read-only` |
-| `permissions.mode: edits` | `--allow-tool=write` | `--tools read,grep,find,ls,edit,write` (approximated) | `--approval-mode auto-edit` | `--auto low` (approximated) | `DSH_PERMISSION_MODE` `workspace-write` (approximated) |
-| `permissions.mode: full-auto` | `--allow-all-tools` (approximated) | `--tools` all built-ins (approximated) | auto-edit + allowed shell and web fetch (approximated) | `--auto medium` (approximated) | `DSH_PERMISSION_MODE` `workspace-write` |
-| `permissions.mode: bypass` | `--allow-all` | `--tools` all built-ins | `--approval-mode yolo` | `--skip-permissions-unsafe` | `DSH_PERMISSION_MODE` `danger-full-access` |
-| `permissions.allowTools` | `--allow-tool` | `--tools` (approximated) | `--allowed-tools` | `--add-tools` (approximated) | dropped |
-| `permissions.denyTools` | `--deny-tool` | `--exclude-tools` | `--exclude-tools` | `--remove-tools` (approximated) | dropped |
-| `context.files` | prompt preamble | `@path` arguments | `@path` in prompt | prompt preamble | prompt preamble |
-| `context.dirs` | `--add-dir` | dropped | `--include-directories` | dropped | dropped |
-| `context.text` | prompt preamble | prompt preamble | prompt preamble | prompt preamble | prompt preamble |
-| `output.format` | `--output-format json` events; text is `-s` | `--mode json` events; text is `-p` | `text\|json\|stream-json` | `text\|json\|stream-json` | `--json` events |
-| `output.schema` | prompt-emulated | prompt-emulated | `--json-schema` | prompt-emulated | prompt-emulated |
-| `session.resume` | `--resume=<id>` | `--session` | `--resume=<id>` | `--session-id` | `--session-id` (same cwd only) |
-| `session.continueLast` | `--continue` | `--continue` | `--continue` | dropped | dropped |
-| `session.id` | `--session-id` (UUID) | `--session-id` | `--session-id` (UUID) | `--session-id` (approximated) | dropped |
-| `session.persist: false` | dropped | `--no-session` | `--chat-recording false` (approximated) | dropped | dropped |
-| `mcp.servers` | `--additional-mcp-config` | dropped | `--mcp-config` | dropped | `--patch` mcp-client rows (approximated) |
-| `budgetUsd` | dropped | dropped | dropped | dropped | dropped |
-| `timeoutMs` | library-level (SIGTERM → SIGKILL) on all agents | | | | |
-| `extraArgs` | appended verbatim on all agents | | | | |
+| Spec field | copilot | pi | qwen | droid | cursor | deepseek |
+|---|---|---|---|---| --- |---|
+| `prompt` | stdin | stdin | stdin | stdin | stdin | stdin (`-`) |
+| `model` | `--model` | `--model` (provider/model) | `--model` | `--model` (`custom:<id>` for BYOK) | `--model` | `--patch` model row (approximated) |
+| `effort` (`low` to `max`, `xhigh` included) | `--reasoning-effort` | `--thinking` | `QWEN_CODE_SYSTEM_DEFAULTS_PATH` file (approximated) | `--reasoning-effort` | dropped (some model slugs take `[effort=…]`) | `--patch` model row (approximated; `medium` → `high`, `xhigh` → `max`) |
+| `systemPrompt` | prompt-emulated | `--system-prompt` (temp file) | `--system-prompt` | prompt-emulated | prompt-emulated | `--patch` persona prefix (approximated) |
+| `appendSystemPrompt` | `COPILOT_CUSTOM_INSTRUCTIONS_DIRS` file (approximated) | `--append-system-prompt` (temp file) | `--append-system-prompt` | `--append-system-prompt` | prompt-emulated | `--patch` persona suffix |
+| `permissions.mode: read-only` | `--deny-tool=write` (approximated) | `--tools read,grep,find,ls` (approximated) | `--approval-mode plan` (approximated) | no flag (`droid exec` is read-only) | `--mode ask` (approximated) | `DSH_PERMISSION_MODE` `read-only` |
+| `permissions.mode: edits` | `--allow-tool=write` | `--tools read,grep,find,ls,edit,write` (approximated) | `--approval-mode auto-edit` | `--auto low` (approximated) | no flag (print mode applies edits, rejects commands) | `DSH_PERMISSION_MODE` `workspace-write` (approximated) |
+| `permissions.mode: full-auto` | `--allow-all-tools` (approximated) | `--tools` all built-ins (approximated) | auto-edit + allowed shell and web fetch (approximated) | `--auto medium` (approximated) | `--sandbox enabled` | `DSH_PERMISSION_MODE` `workspace-write` |
+| `permissions.mode: bypass` | `--allow-all` | `--tools` all built-ins | `--approval-mode yolo` | `--skip-permissions-unsafe` | `--force --sandbox disabled` | `DSH_PERMISSION_MODE` `danger-full-access` |
+| `permissions.allowTools` | `--allow-tool` | `--tools` (approximated) | `--allowed-tools` | `--add-tools` (approximated) | dropped | dropped |
+| `permissions.denyTools` | `--deny-tool` | `--exclude-tools` | `--exclude-tools` | `--remove-tools` (approximated) | dropped | dropped |
+| `context.files` | prompt preamble | `@path` arguments | `@path` in prompt | prompt preamble | prompt preamble | prompt preamble |
+| `context.dirs` | `--add-dir` | dropped | `--include-directories` | dropped | `--add-dir` | dropped |
+| `context.text` | prompt preamble | prompt preamble | prompt preamble | prompt preamble | prompt preamble | prompt preamble |
+| `output.format` | `--output-format json` events; text is `-s` | `--mode json` events; text is `-p` | `text\|json\|stream-json` | `text\|json\|stream-json` | `text\|json\|stream-json` | `--json` events |
+| `output.schema` | prompt-emulated | prompt-emulated | `--json-schema` | prompt-emulated | prompt-emulated | prompt-emulated |
+| `session.resume` | `--resume=<id>` | `--session` | `--resume=<id>` | `--session-id` | `--resume=<id>` | `--session-id` (same cwd only) |
+| `session.continueLast` | `--continue` | `--continue` | `--continue` | dropped | `--continue` | dropped |
+| `session.id` | `--session-id` (UUID) | `--session-id` | `--session-id` (UUID) | `--session-id` (approximated) | `--new-session-id` (UUID; approximated) | dropped |
+| `session.persist: false` | dropped | `--no-session` | `--chat-recording false` (approximated) | dropped | dropped | dropped |
+| `mcp.servers` | `--additional-mcp-config` | dropped | `--mcp-config` | dropped | `--plugin-dir` temp plugin (approximated) | `--patch` mcp-client rows (approximated) |
+| `budgetUsd` | dropped | dropped | dropped | dropped | dropped | dropped |
+| `timeoutMs` | library-level (SIGTERM → SIGKILL) on all agents | | | | | |
+| `extraArgs` | appended verbatim on all agents | | | | | |
 
 `deepseek` is the DeepSeek Harness (`dsh --profile headless`). It has no flags
 for model, effort or system prompts, so the adapter writes a profile overlay to
@@ -356,9 +359,9 @@ format (a JSON envelope or an event stream), so metadata is captured.
   from a temp file. codex has no config-file option, so its MCP servers,
   including `env` values, go on the command line as `-c mcp_servers.*`
   overrides. claude's `systemPrompt` and `appendSystemPrompt` are also argv.
-  copilot, pi, qwen, droid and deepseek read the prompt from stdin. qwen's
-  system prompts and droid's `appendSystemPrompt` are argv. copilot, qwen and
-  deepseek read MCP config from a temp file.
+  copilot, pi, qwen, droid, cursor and deepseek read the prompt from stdin. qwen's
+  system prompts and droid's `appendSystemPrompt` are argv. copilot, qwen,
+  cursor and deepseek read MCP config from a temp file.
 - Not every posture is a sandbox. pi never asks before a tool call and has no
   sandbox: its modes only choose which tools are enabled, and MCP tools stay
   enabled unless denied. droid's `--auto` levels and copilot's tool rules
@@ -368,7 +371,8 @@ format (a JSON envelope or an event stream), so metadata is captured.
   trimmed environment.
 - Most of the agents keep sessions on disk whatever the spec says: copilot
   under `~/.copilot`, droid under `~/.factory`, qwen under `~/.qwen`, pi under
-  `~/.pi/agent` unless `session.persist` is false, and deepseek under
+  `~/.pi/agent` unless `session.persist` is false, cursor under `~/.cursor`
+  (and its auth token in `~/.config/cursor`), and deepseek under
   `$DSH_HOME` (default `~/.dsh`).
 - The DeepSeek Harness sends the session log so far and an anonymous install
   id with each model request, and asks the model for a session title. Set
@@ -398,7 +402,10 @@ copilot 1.0.98, pi 1.3.0, qwen 0.25.2, droid 0.244.0 and dsh 0.2.0-rc.2 were
 checked against their `--help` and source. Their fixtures come from real runs
 against a local fake model server through each CLI's custom-provider setting,
 not a vendor's model. dsh is a developer preview and may change in any
-release. The live suite has no case for these five yet.
+release. cursor (`agent` 2026.08.11) was checked against its bundled source
+and run against a fake Cursor backend, since its backend speaks Cursor's own
+protocol rather than a model API; read-only enforcement happens in Cursor's
+backend and was not exercised. The live suite has no case for these six yet.
 
 ## Non-goals
 

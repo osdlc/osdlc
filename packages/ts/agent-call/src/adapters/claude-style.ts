@@ -2,8 +2,9 @@
  * The result shape Claude Code's `--output-format json|stream-json` made
  * common: a `result` envelope with `result`, `subtype`, `is_error`,
  * `session_id` and `usage`, and a stream of `assistant`/`user` events whose
- * `message.content` holds Anthropic content blocks. claude, qwen and cursor
- * emit it; droid's json envelope does too. Parsing it lives here once.
+ * `message.content` holds Anthropic content blocks. claude and qwen emit it;
+ * droid's json envelope and cursor's json and stream envelopes do too (cursor
+ * with its own usage names). Parsing it lives here once.
  */
 
 import {

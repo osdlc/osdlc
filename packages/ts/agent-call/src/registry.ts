@@ -6,6 +6,7 @@ import { copilotAdapter } from './adapters/copilot.js'
 import { piAdapter } from './adapters/pi.js'
 import { qwenAdapter } from './adapters/qwen.js'
 import { droidAdapter } from './adapters/droid.js'
+import { cursorAdapter } from './adapters/cursor.js'
 import { deepseekAdapter } from './adapters/deepseek.js'
 import type { AgentAdapter } from './adapters/types.js'
 import { spawnCollect } from './spawn.js'
@@ -34,6 +35,8 @@ export function adapterFor(name: AgentName, options: CommandOptions = {}): Agent
       return qwenAdapter(options)
     case 'droid':
       return droidAdapter(options)
+    case 'cursor':
+      return cursorAdapter(options)
     case 'deepseek':
       return deepseekAdapter(options)
   }
@@ -49,6 +52,7 @@ export const BUILTIN_AGENTS: readonly AgentName[] = Object.freeze([
   'pi',
   'qwen',
   'droid',
+  'cursor',
   'deepseek',
 ])
 

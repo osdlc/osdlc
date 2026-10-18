@@ -13,7 +13,16 @@ import type { EffortLevel } from './models.js'
 
 /** Adapters shipped with this package. Custom adapters may use any name. */
 export type AgentName =
-  'claude' | 'codex' | 'antigravity' | 'opencode' | 'copilot' | 'pi' | 'qwen' | 'droid' | 'deepseek'
+  | 'claude'
+  | 'codex'
+  | 'antigravity'
+  | 'opencode'
+  | 'copilot'
+  | 'pi'
+  | 'qwen'
+  | 'droid'
+  | 'cursor'
+  | 'deepseek'
 
 /**
  * Canonical permission posture, ordered from most to least restricted.

@@ -54,7 +54,7 @@ describe.skipIf(!live)('live smoke', () => {
   })
   // The agents added in 0.5.0. Each answers with its own default model and
   // credentials; pi needs a model with credentials in the environment.
-  for (const name of ['copilot', 'pi', 'qwen', 'droid', 'deepseek'] as const) {
+  for (const name of ['copilot', 'pi', 'qwen', 'droid', 'cursor', 'deepseek'] as const) {
     test(`${name} answers`, { timeout: 150_000 }, async () => {
       const [agent] = await detectAgents([adapterFor(name)])
       if (agent?.available !== true) return

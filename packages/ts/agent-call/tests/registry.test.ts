@@ -18,6 +18,7 @@ describe('adapterFor', () => {
       pi: 'pi',
       qwen: 'qwen',
       droid: 'droid',
+      cursor: 'agent',
       deepseek: 'dsh',
     }
     for (const name of BUILTIN_AGENTS) {
@@ -78,6 +79,7 @@ describe('BUILTIN_AGENTS', () => {
       'pi',
       'qwen',
       'droid',
+      'cursor',
       'deepseek',
     ])
   })
@@ -88,7 +90,7 @@ describe('BUILTIN_AGENTS', () => {
     expect(() => {
       ;(BUILTIN_AGENTS as unknown as string[])[0] = 'x'
     }).toThrow(TypeError)
-    expect(BUILTIN_AGENTS).toHaveLength(9)
+    expect(BUILTIN_AGENTS).toHaveLength(10)
   })
 
   test('every name has an adapter', () => {
@@ -178,6 +180,7 @@ describe('detectAgents', () => {
         { name: 'pi', available: false, version: undefined },
         { name: 'qwen', available: false, version: undefined },
         { name: 'droid', available: false, version: undefined },
+        { name: 'cursor', available: false, version: undefined },
         { name: 'deepseek', available: true, version: 'dsh 9.9' },
       ])
     } finally {

@@ -12,6 +12,7 @@ import {
   claudeAdapter,
   codexAdapter,
   copilotAdapter,
+  cursorAdapter,
   deepseekAdapter,
   droidAdapter,
   EFFORT_LEVELS,
@@ -28,6 +29,7 @@ import {
   type ClaudeAdapterOptions,
   type CodexAdapterOptions,
   type CopilotAdapterOptions,
+  type CursorAdapterOptions,
   type DeepseekAdapterOptions,
   type DroidAdapterOptions,
   type ContextSpec,
@@ -88,6 +90,7 @@ describe('the built-in adapters', () => {
       'pi',
       'qwen',
       'droid',
+      'cursor',
       'deepseek',
     ])
   })
@@ -101,6 +104,7 @@ describe('the built-in adapters', () => {
     const piOptions: PiAdapterOptions = { binary: '/opt/pi/pi' }
     const qwenOptions: QwenAdapterOptions = { binary: '/opt/qwen/qwen' }
     const droidOptions: DroidAdapterOptions = { binary: '/opt/factory/droid' }
+    const cursorOptions: CursorAdapterOptions = { binary: '/opt/cursor/agent' }
     const deepseekOptions: DeepseekAdapterOptions = { binary: '/opt/dsh/dsh' }
     const adapters: AgentAdapter[] = [
       claudeAdapter(claudeOptions),
@@ -111,6 +115,7 @@ describe('the built-in adapters', () => {
       piAdapter(piOptions),
       qwenAdapter(qwenOptions),
       droidAdapter(droidOptions),
+      cursorAdapter(cursorOptions),
       deepseekAdapter(deepseekOptions),
     ]
     expect(adapters.map((a) => a.binary)).toEqual([
@@ -122,6 +127,7 @@ describe('the built-in adapters', () => {
       '/opt/pi/pi',
       '/opt/qwen/qwen',
       '/opt/factory/droid',
+      '/opt/cursor/agent',
       '/opt/dsh/dsh',
     ])
   })
