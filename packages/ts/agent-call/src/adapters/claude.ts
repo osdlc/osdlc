@@ -102,8 +102,14 @@ function planClaude(binary: string, spec: AgentCallSpec): PlannedCall {
   if (spec.model !== undefined) argv.push(...modelFlag(spec.model))
 
   if (spec.effort !== undefined) {
-    argv.push(...claudeEffortArgv(spec.effort))
-    note(notes, 'effort', 'native', '--effort')
+    // claude's `--effort` starts at `low`; `none` and `minimal` rise to it.
+    if (spec.effort === 'none' || spec.effort === 'minimal') {
+      argv.push(...claudeEffortArgv('low'))
+      note(notes, 'effort', 'approximated', '--effort low (claude has no level below low)')
+    } else {
+      argv.push(...claudeEffortArgv(spec.effort))
+      note(notes, 'effort', 'native', '--effort')
+    }
   }
 
   if (spec.mcp?.servers !== undefined) {

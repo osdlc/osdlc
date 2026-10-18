@@ -15,8 +15,8 @@ function importSpecifiers(src: string): string[] {
 }
 
 describe('models entry point', () => {
-  test('exposes the effort levels, xhigh included', () => {
-    expect([...EFFORT_LEVELS]).toEqual(['low', 'medium', 'high', 'xhigh', 'max'])
+  test('exposes the effort levels in order, none to max', () => {
+    expect([...EFFORT_LEVELS]).toEqual(['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'])
   })
 
   test('the barrel re-exports the same values and no tier tables', () => {

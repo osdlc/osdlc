@@ -68,9 +68,11 @@ describe('opencode plan', () => {
     expect(planned.argv.join(' ')).toContain('--variant high')
   })
 
-  test('xhigh passes through as --variant', () => {
-    const planned = adapter.plan({ prompt: 'x', effort: 'xhigh' })
-    expect(planned.argv.join(' ')).toContain('--variant xhigh')
+  test('none, minimal and xhigh pass through as --variant', () => {
+    for (const effort of ['none', 'minimal', 'xhigh'] as const) {
+      const planned = adapter.plan({ prompt: 'x', effort })
+      expect(planned.argv.join(' ')).toContain(`--variant ${effort}`)
+    }
   })
 })
 

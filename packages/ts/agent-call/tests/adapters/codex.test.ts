@@ -105,8 +105,8 @@ describe('codex plan', () => {
     expect(planned.argv.join(' ')).toContain('model_reasoning_effort="low"')
   })
 
-  test('xhigh and max pass through natively', () => {
-    for (const effort of ['xhigh', 'max'] as const) {
+  test('none, minimal, xhigh and max pass through natively', () => {
+    for (const effort of ['none', 'minimal', 'xhigh', 'max'] as const) {
       const planned = adapter.plan({ prompt: 'x', effort })
       expect(planned.argv.join(' ')).toContain(`model_reasoning_effort="${effort}"`)
       expect(planned.notes.find((n) => n.field === 'effort')?.support).toBe('native')

@@ -60,15 +60,18 @@ function planAntigravity(binary: string, spec: AgentCallSpec): PlannedCall {
   if (spec.model !== undefined) argv.push(...modelFlag(spec.model))
 
   if (spec.effort !== undefined) {
-    // agy documents low|medium|high; `xhigh` and `max` clamp to the top rung.
-    const clamped = spec.effort === 'xhigh' || spec.effort === 'max'
-    argv.push('--effort', clamped ? 'high' : spec.effort)
-    note(
-      notes,
-      'effort',
-      clamped ? 'approximated' : 'native',
-      clamped ? '--effort high (agy tops out at high)' : '--effort',
-    )
+    // agy documents low|medium|high; `none` and `minimal` rise to `low`, `xhigh` and `max` clamp to `high`.
+    const effort = spec.effort
+    if (effort === 'none' || effort === 'minimal') {
+      argv.push('--effort', 'low')
+      note(notes, 'effort', 'approximated', '--effort low (agy has no level below low)')
+    } else if (effort === 'xhigh' || effort === 'max') {
+      argv.push('--effort', 'high')
+      note(notes, 'effort', 'approximated', '--effort high (agy tops out at high)')
+    } else {
+      argv.push('--effort', effort)
+      note(notes, 'effort', 'native', '--effort')
+    }
   }
   if (spec.mcp?.servers !== undefined) {
     note(
