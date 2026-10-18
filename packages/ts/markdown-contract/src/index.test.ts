@@ -1,54 +1,6 @@
 import { expect, test } from 'vitest'
 import type { SectionView } from './index.js'
-import {
-  ContractError,
-  code,
-  contract,
-  defineConfig,
-  docRule,
-  gap,
-  list,
-  maxWords,
-  oneOf,
-  optional,
-  parse,
-  rule,
-  runCorpus,
-  section,
-  sections,
-  table,
-} from './index.js'
-
-test('every documented runtime export is defined', () => {
-  // Combinators + projection + leaves + runner — all functions.
-  const fns = {
-    parse,
-    contract,
-    sections,
-    section,
-    optional,
-    oneOf,
-    gap,
-    rule,
-    docRule,
-    table,
-    list,
-    code,
-    maxWords,
-    runCorpus,
-    defineConfig,
-  }
-  for (const [name, fn] of Object.entries(fns)) {
-    expect(typeof fn, name).toBe('function')
-  }
-
-  // ContractError is a constructor.
-  expect(typeof ContractError).toBe('function')
-  const err = new ContractError([], 'boom')
-  expect(err).toBeInstanceOf(Error)
-  expect(err.name).toBe('ContractError')
-  expect(Array.isArray(err.findings)).toBe(true)
-})
+import { ContractError, contract, parse, section, sections } from './index.js'
 
 test('the engine doors run end to end: parse, validate, and read', () => {
   // `parse` returns a DocTree; it does not throw.

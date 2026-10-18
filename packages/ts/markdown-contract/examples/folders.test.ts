@@ -2,11 +2,11 @@
  * Checking a folder: the runner with a config in code, YAML contracts and configs, config
  * inference, and the command as a function.
  */
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { beforeAll, describe, expect, test } from 'vitest'
+import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 import { z } from 'zod'
 
 import {
@@ -34,6 +34,30 @@ import {
 } from '@osdlc/markdown-contract/declarative'
 
 let dir = ''
+
+const CONTRACT_YAML = `mcVersion: 2
+kind: contract
+frontmatter:
+  type: object
+  required: [status]
+  properties:
+    status: { enum: [open, accepted] }
+body:
+  sections:
+    - section: Context
+    - section: Decision
+`
+
+const CONFIG_YAML = `mcVersion: 2
+kind: config
+rules:
+  - include: ['decisions/*.md']
+    contract: ./decision.contract.yaml
+`
+
+afterAll(() => {
+  rmSync(dir, { recursive: true, force: true })
+})
 
 beforeAll(() => {
   dir = mkdtempSync(join(tmpdir(), 'markdown-contract-example-'))
@@ -73,21 +97,8 @@ describe('runCorpus', () => {
 })
 
 describe('YAML contracts and configs', () => {
-  const contractYaml = `mcVersion: 2
-kind: contract
-frontmatter:
-  type: object
-  required: [status]
-  properties:
-    status: { enum: [open, accepted] }
-body:
-  sections:
-    - section: Context
-    - section: Decision
-`
-
   test('a YAML contract compiles to the same Contract as code', () => {
-    const decision = loadContract(contractYaml)
+    const decision = loadContract(CONTRACT_YAML)
     const findings = decision.validate('---\nstatus: open\n---\n\n## Context\n\nx\n', {
       path: 'b.md',
     }).findings
@@ -98,21 +109,15 @@ body:
   })
 
   test('a YAML config maps globs to contract files', () => {
-    writeFileSync(join(dir, 'decision.contract.yaml'), contractYaml)
-    const configYaml = `mcVersion: 2
-kind: config
-rules:
-  - include: ['decisions/*.md']
-    contract: ./decision.contract.yaml
-`
-    writeFileSync(join(dir, 'markdown-contract.yaml'), configYaml)
+    writeFileSync(join(dir, 'decision.contract.yaml'), CONTRACT_YAML)
+    writeFileSync(join(dir, 'markdown-contract.yaml'), CONFIG_YAML)
 
     expect(
       loadContractFile(join(dir, 'decision.contract.yaml')).validate('## Context\n', {
         path: 'x.md',
       }).findings,
     ).toHaveLength(2)
-    expect(loadConfig(configYaml, dir).rules).toHaveLength(1)
+    expect(loadConfig(CONFIG_YAML, dir).rules).toHaveLength(1)
     expect(
       runCorpus(loadConfigFile(join(dir, 'markdown-contract.yaml')), { cwd: dir }).exitCode,
     ).toBe(1)
@@ -145,6 +150,8 @@ describe('inferConfig (experimental)', () => {
 
 describe('runCli (experimental)', () => {
   test('runs the command and returns what it would print', async () => {
+    writeFileSync(join(dir, 'decision.contract.yaml'), CONTRACT_YAML)
+    writeFileSync(join(dir, 'markdown-contract.yaml'), CONFIG_YAML)
     const result: CliResult = await runCli(['validate', '.', '--format', 'json'], { cwd: dir })
     expect(result.code).toBe(1)
     expect(JSON.parse(result.stdout)[0].id).toBe('structure/section-missing')
@@ -153,7 +160,7 @@ describe('runCli (experimental)', () => {
   test('migrate rewrites a version 1 contract as version 2', async () => {
     writeFileSync(
       join(dir, 'old.contract.yaml'),
-      'mcVersion: 1\nkind: contract\nbody:\n  sections:\n    - Context\n',
+      'mcVersion: 1\nkind: contract\nbody:\n  sections:\n    - section: Context\n',
     )
     const result = await runCli(['migrate', 'old.contract.yaml', '--write'], { cwd: dir })
     expect(result.code).toBe(0)

@@ -7,4 +7,4 @@ body:
   additionalSections: false
   sections:
     - section: Summary
-      # GAP: rule("summary/names-contract", fn) — node-level rule with custom finding/pos/level is not expressible in v1 (rule()/docRule() are deferred)
+      # GAP: rule("summary/names-contract", fn) — node-level rule with custom finding/pos/level is not expressible in YAML (rule()/docRule() are deferred)

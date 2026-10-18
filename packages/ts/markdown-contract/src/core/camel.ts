@@ -7,8 +7,8 @@
  * drop empties, and lowerCamel-join — lowercasing the first word, capitalizing the first
  * letter of each subsequent word and lowercasing its remainder.
  *
- * Used here for collision detection (`structure/key-collision`, `contract/key-collision`)
- * and by the dual-key consumption model later.
+ * Used for collision detection (`structure/key-collision`, `contract/key-collision`) and for the
+ * dual-key access of the typed model.
  *
  * A heading that yields no alphanumeric run (e.g. `"---"`, or a caseless script with no
  * `\p{L}`/`\p{N}` content) produces an empty key (`""`); callers treat an empty key as

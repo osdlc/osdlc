@@ -2,6 +2,9 @@
   // Typechecks src/, tests/ and examples/. The build has its own include.
   "extends": "@osdlc/tsconfig/node-lib",
   "compilerOptions": {
+    // @osdlc/gfm-table is a workspace sibling that ships a `bun` condition
+    // pointing at its source, so a typecheck needs no `dist/` to exist.
+    "customConditions": ["bun"],
     // The package ships no TypeScript source, so `exports` has no `bun`
     // condition. Map the package's own name to the source instead, for tsc and
     // (in vitest.config.ts) for the tests, so examples/ and the README blocks

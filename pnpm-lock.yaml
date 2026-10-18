@@ -173,6 +173,9 @@ importers:
 
   packages/ts/markdown-contract:
     dependencies:
+      '@osdlc/gfm-table':
+        specifier: workspace:^
+        version: link:../gfm-table
       '@types/mdast':
         specifier: ^4.0.4
         version: 4.0.4

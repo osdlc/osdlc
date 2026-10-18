@@ -7,12 +7,12 @@
  * matcher, so it fails loudly if `**\/` ever stops spanning the root (an opts change or a
  * picomatch upgrade), rather than silently un-routing root-level files.
  */
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { describe, expect, it } from 'vitest'
-import { extractVaultRefs } from '../core/dialect/index.js'
+import { afterAll, describe, expect, it } from 'vitest'
+import { extractVaultRefs } from '../../tests/support/wikilinks.js'
 import {
   type Contract,
   contract,
@@ -25,9 +25,16 @@ import {
 } from '../core/index.js'
 import { type CorpusConfig, compileMatcher, runCorpus } from './corpus.js'
 
-/** Lay down a tiny corpus in a fresh temp dir and return its absolute root. */
+const made: string[] = []
+
+afterAll(() => {
+  for (const dir of made) rmSync(dir, { recursive: true, force: true })
+})
+
+/** Lay down a tiny corpus in a fresh temp dir, removed after the suite, and return its root. */
 function vault(files: Record<string, string>): string {
   const root = mkdtempSync(join(tmpdir(), 'mc-corpus-'))
+  made.push(root)
   for (const [rel, content] of Object.entries(files)) {
     const abs = join(root, rel)
     mkdirSync(join(abs, '..'), { recursive: true })
@@ -99,6 +106,23 @@ describe('runCorpus — run stats', () => {
     expect(stats.matchedByRule.length).toBe(config.rules.length)
     expect(stats.matchedByRule.reduce((a, b) => a + b, 0)).toBe(stats.filesMatched)
     expect(stats.filesScanned - stats.filesMatched).toBe(stats.filesUnmatched)
+  })
+
+  it('does not walk .git or node_modules folders', () => {
+    const root = vault({
+      'T-0001.md': '# task',
+      'node_modules/pkg/T-0002.md': '# vendored',
+      '.git/T-0003.md': '# git',
+      'sub/node_modules/T-0004.md': '# nested vendored',
+    })
+    const config: CorpusConfig = {
+      rules: [{ include: ['**/T-*.md'], contract: acceptAll, name: 'task' }],
+    }
+
+    const { stats } = runCorpus(config, { cwd: root })
+
+    expect(stats.filesScanned).toBe(1)
+    expect(stats.matchedByRule).toEqual([1])
   })
 
   it('a file matching no rule is counted as unmatched', () => {

@@ -32,7 +32,7 @@ import { compileBodyTextRule } from './text.js'
  *   sections:
  *     - section: Summary
  * `);
- * c.validate("## Summary\n\nHello.\n").findings; // []
+ * c.validate('## Summary\n\nHello.\n', { path: 'doc.md' }).findings; // []
  * ```
  */
 export function loadContract(yamlText: string): Contract {
@@ -59,14 +59,21 @@ export function loadContractFile(path: string): Contract {
 
 /**
  * Compiles a contract that is already parsed into an object, such as an inline contract in
- * a config. The object has the shape of a contract file without its `mcVersion` / `kind`
- * envelope: `{ description?, frontmatter?, body? }`.
+ * a config. The object has the shape of a contract file, `{ description?, frontmatter?, body? }`,
+ * and may keep its `mcVersion: 2` / `kind: contract` envelope.
  *
  * @param raw The contract object.
  * @returns The compiled contract.
- * @throws {DeclarativeError} When the object is not a valid contract.
+ * @throws {DeclarativeError} When the object is not a valid contract, including one whose
+ *   `mcVersion` is not 2.
  */
 export function compileContractObject(raw: Record<string, unknown>): Contract {
+  if ('mcVersion' in raw && raw.mcVersion !== 2) {
+    throw new DeclarativeError(
+      `contract: unsupported mcVersion ${JSON.stringify(raw.mcVersion)} (only 2 is supported; ` +
+        'rewrite a version 1 contract with `markdown-contract migrate`)',
+    )
+  }
   assertContractKeys(raw)
   const def: ContractDef = {}
 

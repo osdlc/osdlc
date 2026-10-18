@@ -8,7 +8,7 @@
 import { describe, expect, test } from 'vitest'
 import { z } from 'zod'
 import type { DocTree, Finding } from '../index.js'
-import { code, contract, list, maxWords, section, sections, table } from '../index.js'
+import { code, contract, list, maxWords, parse, section, sections, table } from '../index.js'
 
 const CTX = { path: 'fixture.md' }
 
@@ -109,12 +109,12 @@ describe('table leaf', () => {
   })
 })
 
-// ── Table typed-cell cache ───────────────────────────────────────────────
-// `validateTable` keeps a cell transform's parsed output (previously discarded) and caches it
-// on the table node's sparse overlay, reachable via `node.typed(row, col)` — the runtime
-// substrate the model layer reads. The raw `rows` stay verbatim.
+// ── Typed cell values ────────────────────────────────────────────────────
+// `validateTable` keeps a cell transform's parsed output for the typed model. The values belong to
+// one `validate()` call, so the parse tree's rows stay raw and a second contract that validates
+// the same tree never sees them.
 
-describe('table typed-cell cache', () => {
+describe('table typed cells', () => {
   // A transform cell: "path" or "path#symbol" → { path, symbol? }.
   const Location = z.string().transform((s, ctx) => {
     const m = /^([^#]+)(?:#(.+))?$/.exec(s.trim())
@@ -136,14 +136,12 @@ describe('table typed-cell cache', () => {
     ]),
   })
 
-  /** The projected table `BlockNode` for the first section's first block. */
-  function tableNode(c: ReturnType<typeof contract>, source: string) {
-    const node = c.validate(source, CTX).tree.root.sections[0]!.blocks[0]!
-    if (node.kind !== 'table') throw new Error('expected a table block')
-    return node
+  /** The rows the model reads back for the `Files` table. */
+  function rowsOf(c: ReturnType<typeof contract>, source: string): Record<string, unknown>[] {
+    return (c.read(source, CTX).body as any).Files.rows
   }
 
-  test('a transform cell caches its parsed output, retrievable via typed(row, col)', () => {
+  test('a transform cell reads back its parsed output; the tree rows stay raw', () => {
     const src = [
       '## Files',
       '',
@@ -151,17 +149,18 @@ describe('table typed-cell cache', () => {
       '| --- | --- | --- |',
       '| src/core/content.ts#validateTable | modify | keep res.data |',
     ].join('\n')
-    const node = tableNode(filesWithLocation, src)
-    // The transform cell's `z.output` is cached beside the raw rows.
-    expect(node.typed(0, 'Location')).toEqual({
-      path: 'src/core/content.ts',
-      symbol: 'validateTable',
+    const res = filesWithLocation.validate(src, CTX)
+    expect((res.doc!.body as any).Files.rows[0]).toEqual({
+      Location: { path: 'src/core/content.ts', symbol: 'validateTable' },
+      Kind: 'modify',
+      Change: 'keep res.data',
     })
-    // Raw rows retained verbatim — the overlay is additive, not a replacement.
+    const node = res.tree.root.sections[0]!.blocks[0]!
+    if (node.kind !== 'table') throw new Error('expected a table block')
     expect(node.rows[0]).toEqual(['src/core/content.ts#validateTable', 'modify', 'keep res.data'])
   })
 
-  test('a column with no declared cell reports typed(...) === undefined', () => {
+  test('a column with no declared cell reads back the raw string', () => {
     const src = [
       '## Files',
       '',
@@ -169,12 +168,10 @@ describe('table typed-cell cache', () => {
       '| --- | --- | --- |',
       '| src/a.ts | modify | tidy |',
     ].join('\n')
-    const node = tableNode(filesWithLocation, src)
-    expect(node.typed(0, 'Change')).toBeUndefined() // "Change" declares no cell → nothing cached
-    expect(node.typed(9, 'Location')).toBeUndefined() // an out-of-range row is undefined too
+    expect(rowsOf(filesWithLocation, src)[0]!.Change).toBe('tidy')
   })
 
-  test('a failing transform caches nothing and still emits one content/table/cell finding', () => {
+  test('a failing transform emits one content/table/cell finding and no model', () => {
     const src = [
       '## Files', // 1
       '', // 2
@@ -183,17 +180,13 @@ describe('table typed-cell cache', () => {
       '| #no-path | modify | oops |', // 5 row 0 — Location transform rejects (starts with #)
     ].join('\n')
     const res = filesWithLocation.validate(src, CTX)
-    // Exactly one cell finding, pinned to the offending row's line (A3 remap preserved).
     expect(shape(res.findings)).toEqual([{ id: 'content/table/cell', line: 5 }])
-    // Nothing cached for the failed cell.
-    const node = res.tree.root.sections[0]!.blocks[0]!
-    if (node.kind !== 'table') throw new Error('expected a table block')
-    expect(node.typed(0, 'Location')).toBeUndefined()
+    expect(res.doc).toBeUndefined()
   })
 
-  test('the cached output rides only on the accessor, never on the serialized tree', () => {
-    // The transform injects a sentinel that appears NOWHERE in the raw source, so finding it in
-    // a serialized `tree` would mean the typed overlay leaked onto the public surface.
+  test('the parsed output never lands on the serialized tree', () => {
+    // The transform injects a sentinel that appears nowhere in the source, so finding it in a
+    // serialized `tree` would mean the typed value leaked onto the public surface.
     const Tagged = z.string().transform((s) => ({ raw: s, tag: 'CLOSURE_ONLY_9f3a' }))
     const c = contract({
       body: sections({}, [
@@ -203,63 +196,169 @@ describe('table typed-cell cache', () => {
       ]),
     })
     const src = ['## Files', '', '| Location |', '| --- |', '| src/a.ts |'].join('\n')
-    const { tree } = c.validate(src, CTX)
-    const node = tree.root.sections[0]!.blocks[0]!
-    if (node.kind !== 'table') throw new Error('expected a table block')
-    // Reachable by CALLING the accessor…
-    expect(node.typed(0, 'Location')).toEqual({ raw: 'src/a.ts', tag: 'CLOSURE_ONLY_9f3a' })
-    // …but not serialized onto the node or the wider tree.
-    expect(JSON.stringify(node)).not.toContain('CLOSURE_ONLY_9f3a')
+    const { tree, doc } = c.validate(src, CTX)
+    expect((doc!.body as any).Files.rows[0].Location).toEqual({
+      raw: 'src/a.ts',
+      tag: 'CLOSURE_ONLY_9f3a',
+    })
     expect(JSON.stringify(tree)).not.toContain('CLOSURE_ONLY_9f3a')
   })
-})
 
-// ── List ────────────────────────────────────────────────────────────────────────
-
-describe('list leaf', () => {
-  test('everyItem: checkbox — item-kind per non-checkbox item, at its line', () => {
-    const c = contract({
+  test('one contract does not leak its parsed cells into another that validates the same tree', () => {
+    const withNumber = contract({
       body: sections({}, [
-        section('Acceptance criteria', { content: list({ everyItem: 'checkbox', minItems: 1 }) }),
+        section('Files', {
+          content: table({ columns: ['n'], cells: { n: z.string().transform(Number) } }),
+        }),
       ]),
     })
-    const src = [
-      '## Acceptance criteria', // 1
-      '', // 2
-      '- [ ] one', // 3 checkbox
-      '- bare', // 4 not a checkbox
-      '- [x] three', // 5 checkbox
+    const plain = contract({
+      body: sections({}, [section('Files', { content: table({ columns: ['n'] }) })]),
+    })
+    const tree = parse(['## Files', '', '| n |', '| - |', '| 5 |'].join('\n'))
+    expect((withNumber.validate(tree, CTX).doc!.body as any).Files.rows).toEqual([{ n: 5 }])
+    expect((plain.validate(tree, CTX).doc!.body as any).Files.rows).toEqual([{ n: '5' }])
+  })
+
+  test('a hand-built table block validates without any writer methods', () => {
+    const tree: DocTree = {
+      frontmatter: null,
+      body: '',
+      mdast: { type: 'root', children: [] },
+      root: {
+        name: '',
+        depth: 1,
+        pos: { line: 0 },
+        anchors: [],
+        blocks: [],
+        sections: [
+          {
+            name: 'Files',
+            depth: 2,
+            pos: { line: 1 },
+            anchors: [],
+            sections: [],
+            blocks: [
+              {
+                kind: 'table',
+                columns: ['n'],
+                rows: [['7']],
+                rowPos: () => ({ line: 5 }),
+                cellPos: () => ({ line: 5 }),
+                inlineSpans: () => [],
+                pos: { line: 3 },
+              },
+            ],
+          },
+        ],
+      },
+    }
+    const c = contract({
+      body: sections({}, [
+        section('Files', {
+          content: table({ columns: ['n'], cells: { n: z.string().transform(Number) } }),
+        }),
+      ]),
+    })
+    expect((c.validate(tree, CTX).doc!.body as any).Files.rows).toEqual([{ n: 7 }])
+  })
+})
+
+// ── Repeatable sections ──────────────────────────────────────────────────
+
+describe('a repeatable section is checked on every occurrence', () => {
+  const step = contract({
+    body: sections({}, [
+      section('Step', {
+        repeatable: true,
+        content: table({
+          columns: ['n'],
+          minRows: 1,
+          cells: { n: z.string().regex(/^\d+$/).transform(Number) },
+        }),
+      }),
+    ]),
+  })
+  const SRC = [
+    '## Step', // 1
+    '', // 2
+    '| n |', // 3
+    '| - |', // 4
+    '| 1 |', // 5
+    '', // 6
+    '## Step', // 7
+    '', // 8
+    '| n |', // 9
+    '| - |', // 10
+    '| oops |', // 11
+    '', // 12
+    '## Step', // 13
+    '', // 14
+    '| n |', // 15
+    '| - |', // 16
+  ].join('\n')
+
+  test('the second occurrence’s bad cell and the third’s missing rows are reported', () => {
+    expect(shape(find(step, SRC))).toEqual([
+      { id: 'content/table/cell', line: 11 },
+      { id: 'content/table/min-rows', line: 15 },
+    ])
+  })
+
+  test('every occurrence reads back transformed', () => {
+    const doc = [
+      '## Step',
+      '',
+      '| n |',
+      '| - |',
+      '| 1 |',
+      '',
+      '## Step',
+      '',
+      '| n |',
+      '| - |',
+      '| 2 |',
     ].join('\n')
-    expect(shape(find(c, src))).toEqual([{ id: 'content/list/item-kind', line: 4 }])
-  })
-
-  test("everyItem: ZodType — runs over each item's text", () => {
-    const c = contract({
-      body: sections({}, [
-        section('Tags', { content: list({ everyItem: z.string().regex(/^#/) }) }),
-      ]),
-    })
-    const src = ['## Tags', '', '- #alpha', '- beta', '- #gamma'].join('\n')
-    expect(shape(find(c, src))).toEqual([{ id: 'content/list/item-kind', line: 4 }])
-  })
-
-  test('min-items — the count floor fires below the bound', () => {
-    const c = contract({
-      body: sections({}, [
-        section('Acceptance criteria', { content: list({ everyItem: 'checkbox', minItems: 2 }) }),
-      ]),
-    })
-    const src = ['## Acceptance criteria', '', '- [ ] only one'].join('\n')
-    expect(shape(find(c, src))).toEqual([{ id: 'content/list/min-items', line: 3 }])
+    expect((step.read(doc, CTX).body as any).Step.map((t: any) => t.rows)).toEqual([
+      [{ n: 1 }],
+      [{ n: 2 }],
+    ])
   })
 })
 
-// ── List typed-item cache ────────────────────────────────────────────────
-// `validateList` keeps an `everyItem` transform's parsed output (previously discarded) and caches it
-// on the list node's sparse overlay, reachable via `node.typedItem(i)` — the runtime substrate the
-// model layer reads. The raw `items` stay verbatim. The `"checkbox"` gate caches nothing.
+// ── Frontmatter YAML ────────────────────────────────────────────────────
 
-describe('list typed-item cache', () => {
+describe('frontmatter YAML errors', () => {
+  const c = contract({ frontmatter: z.object({ title: z.string() }) })
+  const noSchema = contract({})
+
+  test('a duplicate key is a frontmatter/yaml error at the repeated key', () => {
+    const src = ['---', 'title: a', 'title: b', '---', '', '# T'].join('\n')
+    expect(shape(find(c, src))).toEqual([{ id: 'frontmatter/yaml', line: 3 }])
+  })
+
+  test('broken syntax gives one frontmatter/yaml finding, not a misleading type finding', () => {
+    const src = ['---', 'title: [unclosed', '---', '', '# T'].join('\n')
+    expect(find(c, src).map((f) => f.id)).toEqual(['frontmatter/yaml'])
+  })
+
+  test('a contract with no frontmatter schema still reports it', () => {
+    const src = ['---', 'a: b', 'a: c', '---'].join('\n')
+    expect(find(noSchema, src).map((f) => f.id)).toEqual(['frontmatter/yaml'])
+  })
+
+  test('an alias to an undefined anchor is a finding, not a throw', () => {
+    const src = ['---', 'title: *nope', '---', '', '# T'].join('\n')
+    expect(() => find(c, src)).not.toThrow()
+    expect(find(c, src).map((f) => f.id)).toEqual(['frontmatter/yaml'])
+  })
+})
+
+// ── List typed items ─────────────────────────────────────────────────────
+// `validateList` keeps an `everyItem` transform's parsed output for the typed model. The raw
+// `items` on the tree stay verbatim. The `"checkbox"` gate keeps nothing.
+
+describe('list typed items', () => {
   // A transform item: `AC-1: do the thing` → { ref: "AC-1", text: "do the thing" }.
   const criterion = z.string().transform((raw) => {
     const [ref = '', ...rest] = raw.split(':')
@@ -279,44 +378,34 @@ describe('list typed-item cache', () => {
     return node
   }
 
-  /** The projected list `BlockNode` for the first section's first block. */
-  function listNode(c: ReturnType<typeof contract>, source: string) {
-    return listBlockOf(c.validate(source, CTX).tree)
+  /** The items the model reads back for the first list of `section`. */
+  function itemsOf(c: ReturnType<typeof contract>, section: string, source: string): unknown[] {
+    return (c.read(source, CTX).body as any)[section].lists[0].items
   }
 
-  test('a transform item caches its parsed output, retrievable via typedItem(i)', () => {
+  test('a transform item reads back its parsed output; the tree items stay raw', () => {
     const src = ['## Acceptance criteria', '', '- AC-1: scaffold it', '- AC-2: stub it'].join('\n')
-    const node = listNode(acceptance, src)
-    // Each item's `z.output` is cached beside the raw items.
-    expect(node.typedItem(0)).toEqual({ ref: 'AC-1', text: 'scaffold it' })
-    expect(node.typedItem(1)).toEqual({ ref: 'AC-2', text: 'stub it' })
-    // Raw items retained verbatim — the overlay is additive, not a replacement.
+    expect(itemsOf(acceptance, 'Acceptance criteria', src)).toEqual([
+      { ref: 'AC-1', text: 'scaffold it' },
+      { ref: 'AC-2', text: 'stub it' },
+    ])
+    const node = listBlockOf(acceptance.validate(src, CTX).tree)
     expect(node.items.map((i) => i.text)).toEqual(['AC-1: scaffold it', 'AC-2: stub it'])
   })
 
-  test('everyItem: checkbox caches nothing (the typed store stays empty)', () => {
+  test('everyItem: checkbox reads back the raw items', () => {
     const c = contract({
       body: sections({}, [
         section('Acceptance criteria', { content: list({ everyItem: 'checkbox', minItems: 1 }) }),
       ]),
     })
     const src = ['## Acceptance criteria', '', '- [ ] one', '- [x] two'].join('\n')
-    const node = listNode(c, src)
-    // The `"checkbox"` branch never runs a schema, so nothing is cached — the store is sparse/empty.
-    expect(node.typedItem(0)).toBeUndefined()
-    expect(node.typedItem(1)).toBeUndefined()
+    expect(
+      (itemsOf(c, 'Acceptance criteria', src) as { text: string }[]).map((i) => i.text),
+    ).toEqual(['one', 'two'])
   })
 
-  test('a list with no everyItem caches nothing', () => {
-    const c = contract({ body: sections({}, [section('Notes', { content: list({}) })]) })
-    const node = listNode(c, ['## Notes', '', '- a', '- b'].join('\n'))
-    expect(node.typedItem(0)).toBeUndefined()
-    expect(node.typedItem(9)).toBeUndefined() // an out-of-range index is undefined too
-  })
-
-  test('a failing item emits exactly one content/list/item-kind finding and caches nothing there', () => {
-    // `AC-1: ok` parses (the transform never rejects), but a stricter schema exercises the failure
-    // branch: require each item to start with `#`. Item 1 fails; items 0 and 2 succeed and cache.
+  test('a failing item emits exactly one content/list/item-kind finding', () => {
     const tags = contract({
       body: sections({}, [
         section('Tags', { content: list({ everyItem: z.string().regex(/^#/) }) }),
@@ -330,28 +419,20 @@ describe('list typed-item cache', () => {
       '- #gamma', // 5 item 2 — ok
     ].join('\n')
     const res = tags.validate(src, CTX)
-    // Exactly one item-kind finding, pinned to the offending item's line (unchanged).
     expect(shape(res.findings)).toEqual([{ id: 'content/list/item-kind', line: 4 }])
-    // Nothing cached for the failed item; the successful items DID cache (regex passthrough → string).
-    const node = listBlockOf(res.tree)
-    expect(node.typedItem(1)).toBeUndefined()
-    expect(node.typedItem(0)).toBe('#alpha')
-    expect(node.typedItem(2)).toBe('#gamma')
+    expect(res.doc).toBeUndefined()
   })
 
-  test('the cached output rides only on the accessor, never on the serialized tree', () => {
-    // The transform injects a sentinel that appears NOWHERE in the raw source, so finding it in a
-    // serialized `tree` would mean the typed overlay leaked onto the public surface.
+  test('the parsed output never lands on the serialized tree', () => {
     const Tagged = z.string().transform((s) => ({ raw: s, tag: 'CLOSURE_ONLY_7b2c' }))
     const c = contract({
       body: sections({}, [section('Notes', { content: list({ everyItem: Tagged }) })]),
     })
-    const { tree } = c.validate(['## Notes', '', '- a', '- b'].join('\n'), CTX)
-    const node = listBlockOf(tree)
-    // Reachable by CALLING the accessor…
-    expect(node.typedItem(0)).toEqual({ raw: 'a', tag: 'CLOSURE_ONLY_7b2c' })
-    // …but not serialized onto the node or the wider tree.
-    expect(JSON.stringify(node)).not.toContain('CLOSURE_ONLY_7b2c')
+    const { tree, doc } = c.validate(['## Notes', '', '- a', '- b'].join('\n'), CTX)
+    expect((doc!.body as any).Notes.lists[0].items[0]).toEqual({
+      raw: 'a',
+      tag: 'CLOSURE_ONLY_7b2c',
+    })
     expect(JSON.stringify(tree)).not.toContain('CLOSURE_ONLY_7b2c')
   })
 })

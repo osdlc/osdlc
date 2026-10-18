@@ -5,6 +5,7 @@
 import { describe, expect, test } from 'vitest'
 
 import {
+  ContractBuildError,
   LENIENT,
   STRICT,
   contract,
@@ -128,5 +129,15 @@ describe('the grammar values', () => {
     expect(() => sections(LENIENT, [section('Next steps'), section('Next Steps')])).toThrow(
       /camelCase key/,
     )
+  })
+
+  test('the build error is a ContractBuildError that names the check', () => {
+    try {
+      sections(LENIENT, [section('Next steps'), section('Next Steps')])
+      expect.unreachable()
+    } catch (err) {
+      expect(err).toBeInstanceOf(ContractBuildError)
+      expect((err as ContractBuildError).id).toBe('contract/key-collision')
+    }
   })
 })

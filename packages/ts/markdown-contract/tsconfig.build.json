@@ -7,10 +7,7 @@
     "rootDir": "src",
     "types": ["node"],
     // src/ is not published, so a declaration map would point at nothing.
-    "declarationMap": false,
-    // Drops members tagged `@internal` from the .d.ts files: the engine's own
-    // writers on the parse tree's blocks.
-    "stripInternal": true
+    "declarationMap": false
   },
   "include": ["src"],
   "exclude": ["src/**/*.test.ts"]

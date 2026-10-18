@@ -115,13 +115,23 @@ The files in [`examples/`](./examples) run as tests and use every export.
 - **rules**: `rule(id, fn)` on a section and `docRule(id, fn)` on the whole
   document, for checks a grammar cannot express. `requires`, `forbids` and
   `textRule` check that a phrase or a regular expression appears, or does
-  not.
+  not. They read the text of paragraphs, list items, table cells and code
+  blocks. They do not read blockquotes, nested list items, heading text or
+  raw HTML, so a `forbids` aimed at those finds nothing.
 - **description**: guidance for authors. A finding carries the nearest
   `description` as its `hint`.
 
 A finding is `{ id, level, path, pos?, message, hint?, fix? }`. Its `level`
 comes from the contract: `error`, `warn` or `report`. Only `error` fails a
 document.
+
+Frontmatter that is not valid YAML, such as a duplicate key or a broken
+alias, gives a `frontmatter/yaml` finding. The frontmatter schema is not run
+over it. `parse` and `validate` do not throw on it.
+
+In the typed model, `doc.frontmatter` is the output of the frontmatter schema:
+transforms, defaults and `trim()` are applied. A repeatable section is checked
+on every occurrence, and each one reads back with its transformed values.
 
 ## YAML contracts
 
@@ -180,6 +190,14 @@ markdown-contract init ./docs --check              # fail when files drift from 
 markdown-contract migrate old.contract.yaml --write
 ```
 
+Each command takes only its own flags; a flag from another command, or a second
+`validate` path, exits with 2. `migrate` loads each result before it prints or
+writes it. A file that version 2 cannot load is reported and left alone, and
+the exit code is 2. With several files and no `--write`, each document follows
+a `---` line and a `# <file>` line. A file that is already version 2 is noted
+on stderr and does not change the exit code. `validate` and the runner do not
+enter `.git` or `node_modules` folders.
+
 Without `--config <file>` or `--contract <file>`, `validate` looks in the
 current folder for `markdown-contract.config.js`, `.mjs`, `.yaml` or `.yml`,
 then `markdown-contract.yaml` or `.yml`. `--glob`, `--include` and `--exclude`
@@ -201,7 +219,8 @@ Node.
   the `Mdast` tree. `ParseOptions` takes `MicromarkExtension`s.
   `splitFrontmatter` returns a `FrontmatterSplit` without a full parse.
 - Build a contract: `contract`, `ContractDef`, `Contract`, `sections`,
-  `section`, `optional`, `oneOf`, `gap`, `LevelOpts`, `SectionOpts`, `Spec`,
+  `section`, `optional`, `oneOf`, `gap`, `ContractBuildError` (thrown for a
+  malformed contract, with an `id`), `LevelOpts`, `SectionOpts`, `Spec`,
   `SectionSpec`, `OptionalSpec`, `OneOfSpec`, `GapSpec`, `SectionSeq`,
   `LENIENT`, `STRICT`, `lenientBody`, `strictBody` and `optionalSection`.
 - Content leaves: `table`, `list`, `code`, `maxWords`, `LeafSpec` and
@@ -264,15 +283,15 @@ formats are experimental in the same way.
   markers, line length. They do not know what a document of one type must
   contain. Use them alongside this package.
 
-## Typed rows since 0.2.0
+## Typed rows
 
 The typed model reads table rows back with the output type of each declared
 cell schema. A cell whose schema transforms its value, such as
 `z.coerce.number()`, reads back as the transformed value; other columns stay
 strings. `table()`, `section()`, `sections()` and `Infer` carry the cell
-types, and `RowOf` computes the row type. Code written for 0.1 that treated
-every row as `Record<string, string>`, or passed explicit type arguments to
-these functions, needs updating.
+types, and `RowOf` computes the row type. The parse tree keeps the raw
+strings; the values belong to the model of one `validate()` call, so several
+contracts can validate one tree.
 
 ## Security
 

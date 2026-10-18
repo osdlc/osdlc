@@ -15,10 +15,16 @@
  *     section's generated lowerCamelCase key; a `requires` miss / count violation pins at the
  *     section heading.
  *   - `textRule({ requires?, forbids? })` → a cross-plane `DocRule` over the WHOLE document.
- *     The `DocRule` now also receives the projected `DocTree`, so the whole-document text is
+ *     The `DocRule` receives the projected `DocTree`, so the whole-document text is
  *     reconstructed line-faithfully from the projected tree (`tree.root`) — a whole-document
  *     `forbids` hit therefore anchors at the exact offending source line. The `scopeKey` is the
  *     literal `"doc"`; a `requires` miss is document-level (no position).
+ *
+ * What the matcher sees: the text of the paragraphs, list items, table cells and code blocks that
+ * the projection holds in `SectionNode.blocks`. It does not see a blockquote, a nested list item,
+ * a heading's own text or raw HTML (such as a comment), because the projection builds no block
+ * from them. A `forbids` aimed at one of those finds nothing. "Whole document" means every
+ * section's blocks, including those under the H1.
  *
  * Purity: a `requires` entry whose bound expresses ABSENCE (`max: 0`, or `max < min`)
  * is a constructor-time error — the absence form is `forbids`. The check fires when `requires(...)`
@@ -154,7 +160,7 @@ function docScopeText(tree: DocTree): string {
  * entry (`max: 0` / `max < min`) at construction (use {@link forbids}).
  *
  * @param specs The phrases, each with its own options.
- * @throws {Error} When an entry's bound expresses absence (`max: 0`, or `max` below `min`).
+ * @throws {ContractBuildError} When an entry's bound expresses absence (`max: 0`, or `max` below `min`).
  */
 export function requires(specs: TextMatchSpec[]): Rule {
   assertRequiresPurity(specs)
@@ -224,7 +230,7 @@ export function forbids(specs: TextMatchSpec[]): Rule {
  * `requires` arm enforces the same absence-form purity as {@link requires}.
  *
  * @param spec The `requires` and `forbids` lists.
- * @throws {Error} When a `requires` entry's bound expresses absence (`max: 0`, or `max` below `min`).
+ * @throws {ContractBuildError} When a `requires` entry's bound expresses absence (`max: 0`, or `max` below `min`).
  */
 export function textRule(spec: TextRuleSpec): DocRule {
   const requiresSpecs = spec.requires ?? []

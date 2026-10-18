@@ -68,4 +68,21 @@ describe('tableRowLines — header + data-row lines (separator excluded)', () =>
     ].join('\n')
     expect([...tableRowLines(parse(doc).root)].sort((a, b) => a - b)).toEqual([5, 7])
   })
+
+  test('a table under the H1, before the first section, counts', () => {
+    const doc = [
+      '# Title', // 1
+      '', // 2
+      '| A | B |', // 3  header
+      '| - | - |', // 4  separator
+      '| 1 | 2 |', // 5  data
+      '', // 6
+      '## S', // 7
+      '', // 8
+      '| C |', // 9  header
+      '| - |', // 10  separator
+      '| 3 |', // 11  data
+    ].join('\n')
+    expect([...tableRowLines(parse(doc).root)].sort((a, b) => a - b)).toEqual([3, 5, 9, 11])
+  })
 })

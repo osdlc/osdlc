@@ -1,4 +1,4 @@
-import { extractVaultRefs } from '../../../src/core/dialect/index.js'
+import { extractVaultRefs } from '../../support/wikilinks.js'
 import { contract, docRule, section, sections } from '../../../src/index.js'
 import type { ValidationFixture } from '../../harness.js'
 import { loadCorpusSource, loadExpected } from '../../harness.js'

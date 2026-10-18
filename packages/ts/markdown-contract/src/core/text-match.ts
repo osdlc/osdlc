@@ -19,9 +19,9 @@
  *      a short hash of the normalized pattern (NOT index-based, so it survives entry reordering);
  *      returns the entry's explicit `id` when set.
  *
- * This module is the matcher + finding plumbing only. The combinator builders
- * (`requires` / `forbids` / `textRule`), scope binding, and the YAML surface are downstream
- *  — nothing here knows about a `DocTree`, a section, or YAML.
+ * This module is the matcher and finding plumbing only. The combinator builders
+ * (`requires` / `forbids` / `textRule`), scope binding and the YAML surface are downstream.
+ * Nothing here knows about a `DocTree`, a section or YAML.
  */
 import type { Ctx, Finding, FindingLevel, SourcePos } from './types.js'
 
@@ -89,17 +89,23 @@ function normalizedPatternSource(pattern: string): string {
   return trimmed.split(/\s+/).map(escapeRegex).join('\\s+')
 }
 
-/** Map a 0-based character offset in `text` to a 1-based { line, col } source position. */
-function offsetToPos(text: string, offset: number): SourcePos {
+/**
+ * A function that maps a 0-based character offset in `text` to a 1-based { line, col } source
+ * position. Offsets must not decrease between calls: it scans forward from the last one.
+ */
+function positionMapper(text: string): (offset: number) => SourcePos {
   let line = 1
   let lastNewline = -1
-  for (let i = 0; i < offset; i++) {
-    if (text[i] === '\n') {
-      line++
-      lastNewline = i
+  let scanned = 0
+  return (offset) => {
+    for (; scanned < offset; scanned++) {
+      if (text[scanned] === '\n') {
+        line++
+        lastNewline = scanned
+      }
     }
+    return { line, col: offset - lastNewline }
   }
-  return { line, col: offset - lastNewline }
 }
 
 /**
@@ -125,9 +131,10 @@ export function matchText(text: string, spec: TextMatchSpec): TextMatchResult {
   const flags = spec.ignoreCase ? 'gi' : 'g'
   const re = new RegExp(source, flags)
   const positions: SourcePos[] = []
+  const posAt = positionMapper(text)
   let m: RegExpExecArray | null
   while ((m = re.exec(text)) !== null) {
-    positions.push(offsetToPos(text, m.index))
+    positions.push(posAt(m.index))
     // Guard against a zero-width match (e.g. a `regex` that can match empty) looping forever.
     if (m.index === re.lastIndex) re.lastIndex++
   }

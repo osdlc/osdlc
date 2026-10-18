@@ -19,7 +19,7 @@ import {
   loadConfigFile,
   loadContractFile,
 } from '../declarative/index.js'
-import { migrateV1ToV2 } from '../declarative/migrate.js'
+import { assertLoads, isVersion2, migrateV1ToV2 } from '../declarative/migrate.js'
 import { type CorpusConfig, runCorpus } from '../runner/index.js'
 import { formatHuman, formatJson, formatRunSummary, formatSarif } from './format.js'
 
@@ -29,7 +29,7 @@ const USAGE = [
   '       [--glob <glob> ...] [--include <glob> ...] [--exclude <glob> ...]',
   '',
   '       markdown-contract init <dir> ... [--meta] [--depth <n>] [--relax] [--inline]',
-  '       [--out <dir>] [--force] [--dry-run] [--check] [--infer-bounds]',
+  '       [--out <dir>] [--force] [--dry-run] [--check]',
   '       [--max-const-len <n>] [--min-const-examples <n>]',
   '       [--glob <glob> ...] [--include <glob> ...] [--exclude <glob> ...]',
   '',
@@ -72,7 +72,7 @@ function parseCliArgs(argv: string[]) {
   return parseArgs({
     args: argv,
     options: {
-      format: { type: 'string', default: 'human' }, // human | json | sarif
+      format: { type: 'string' }, // human (default) | json | sarif
       config: { type: 'string' },
       contract: { type: 'string', multiple: true }, // a YAML contract (repeatable for pairs)
       path: { type: 'string', multiple: true }, // the target dir paired with each --contract
@@ -89,7 +89,6 @@ function parseCliArgs(argv: string[]) {
       force: { type: 'boolean' }, // overwrite an existing config (default: refuse)
       'dry-run': { type: 'boolean' }, // print the would-be files to stdout; write nothing
       check: { type: 'boolean' }, // verify an existing config still accepts the tree
-      'infer-bounds': { type: 'boolean' }, // opt into pattern / min / max inference
       'max-const-len': { type: 'string' }, // cap: strings longer than this never become const/enum
       'min-const-examples': { type: 'string' }, // floor: a uniform scalar needs >= n docs to become const
       // `migrate` flag.
@@ -101,6 +100,39 @@ function parseCliArgs(argv: string[]) {
 
 /** The parsed CLI flag bag (`parseArgs` values) threaded into the command handlers. */
 type CliValues = ReturnType<typeof parseCliArgs>['values']
+
+/** The flags each command accepts. `--help` is handled before the command runs. */
+const COMMAND_FLAGS: Record<string, readonly string[]> = {
+  validate: ['format', 'config', 'contract', 'path', 'glob', 'include', 'exclude'],
+  init: [
+    'meta',
+    'depth',
+    'relax',
+    'inline',
+    'out',
+    'force',
+    'dry-run',
+    'check',
+    'max-const-len',
+    'min-const-examples',
+    'glob',
+    'include',
+    'exclude',
+  ],
+  migrate: ['write'],
+}
+
+/** A usage error for the first flag the command does not take, or `null` when all fit. */
+function checkFlags(command: string, values: CliValues): CliResult | null {
+  const allowed = COMMAND_FLAGS[command] ?? []
+  const stray = Object.keys(values).find((flag) => flag !== 'help' && !allowed.includes(flag))
+  if (stray === undefined) return null
+  return {
+    code: 2,
+    stdout: '',
+    stderr: `markdown-contract: --${stray} does not apply to ${command}\n${USAGE}`,
+  }
+}
 
 /**
  * Runs the `markdown-contract` command in-process: `argv` is what follows the command name, such
@@ -137,15 +169,19 @@ export async function runCli(argv: string[], opts?: { cwd?: string }): Promise<C
   if (values.help) return { code: 0, stdout: USAGE, stderr: '' }
   if (positionals.length === 0) return { code: 2, stdout: '', stderr: USAGE }
 
-  const [command, ...rest] = positionals
+  const [command = '', ...rest] = positionals
+  if (!Object.hasOwn(COMMAND_FLAGS, command)) {
+    return {
+      code: 2,
+      stdout: '',
+      stderr: `markdown-contract: unknown command "${command}"\n${USAGE}`,
+    }
+  }
+  const stray = checkFlags(command, values)
+  if (stray) return stray
   if (command === 'init') return runInit(cwd, rest, values)
   if (command === 'validate') return runValidate(cwd, rest, values)
-  if (command === 'migrate') return runMigrate(cwd, rest, values.write === true)
-  return {
-    code: 2,
-    stdout: '',
-    stderr: `markdown-contract: unknown command "${command}"\n${USAGE}`,
-  }
+  return runMigrate(cwd, rest, values.write === true)
 }
 
 /**
@@ -155,6 +191,13 @@ export async function runCli(argv: string[], opts?: { cwd?: string }): Promise<C
  * usage/config error raised here.
  */
 async function runValidate(cwd: string, rest: string[], values: CliValues): Promise<CliResult> {
+  if (rest.length > 1) {
+    return {
+      code: 2,
+      stdout: '',
+      stderr: `markdown-contract: validate takes one <path> (got ${rest.length})\n${USAGE}`,
+    }
+  }
   const format = values.format ?? 'human'
   const pathArg = rest[0]
   const contracts = values.contract ?? []
@@ -297,8 +340,12 @@ function formatOutput(
 /**
  * `markdown-contract migrate <file>…` rewrites YAML contracts and configs from `mcVersion: 1` to
  * `mcVersion: 2`. It prints each result to stdout, or with `--write` rewrites each file in place.
- * Warnings go to stderr. A file that cannot be read or is not a version 1 document is reported
- * and skipped, and the exit code is then 2.
+ * With several files and no `--write`, each document follows a `---` line and a `# <file>` line.
+ * Warnings go to stderr.
+ *
+ * A result that version 2 cannot load is reported and not printed or written. A file that cannot
+ * be read, or is not a version 1 document, is also reported and skipped; the exit code is then 2.
+ * A file that is already version 2 is noted on stderr and does not change the exit code.
  */
 function runMigrate(cwd: string, files: string[], write: boolean): CliResult {
   if (files.length === 0) {
@@ -314,13 +361,24 @@ function runMigrate(cwd: string, files: string[], write: boolean): CliResult {
   for (const file of files) {
     const abs = resolve(cwd, file)
     try {
-      const { out, warnings } = migrateV1ToV2(readFileSync(abs, 'utf8'), file)
+      const text = readFileSync(abs, 'utf8')
+      if (isVersion2(text)) {
+        stderr.push(`${file}: already version 2`)
+        continue
+      }
+      const { out, warnings } = migrateV1ToV2(text, file)
       for (const w of warnings) stderr.push(`warn: ${w}`)
+      try {
+        assertLoads(out)
+      } catch (err) {
+        throw new Error(`${file}: the migrated file does not load: ${(err as Error).message}`)
+      }
       if (write) {
         writeFileSync(abs, out)
         stdout.push(`migrated: ${file}`)
       } else {
-        stdout.push(out.endsWith('\n') ? out.slice(0, -1) : out)
+        const body = out.endsWith('\n') ? out.slice(0, -1) : out
+        stdout.push(files.length > 1 ? `---\n# ${file}\n${body}` : body)
       }
     } catch (err) {
       failed = true
@@ -340,7 +398,6 @@ interface InitFlags {
   force?: boolean
   'dry-run'?: boolean
   check?: boolean
-  'infer-bounds'?: boolean
   'max-const-len'?: string
   'min-const-examples'?: string
   glob?: string[]
@@ -360,10 +417,11 @@ const INIT_CONFIG_NAME = 'markdown-contract.yaml'
  *    as `validate` scopes a run; the same globs also scope the self-check.
  *  - **`--dry-run`** — print the would-be files to stdout and write nothing (exit 0).
  *  - **write** — otherwise write `result.files` under `--out` (default: the single inferred root,
- *    so `validate <dir>` / `init <dir> --check` find the scaffold from any cwd; a multi-root run
- *    has no single natural base, so it falls back to cwd with a stderr warning), REFUSING to
- *    clobber an existing config without `--force` (exit 2). Single-contract mode additionally
- *    writes a `markdown-contract.yaml` router so `validate <dir>` auto-discovers the scaffold.
+ *    so `init <dir> --check` finds it from any cwd and `validate` finds it when run inside
+ *    `<dir>`; a multi-root run has no single natural base, so it falls back to cwd with a
+ *    stderr warning), REFUSING to clobber an existing config without `--force` (exit 2).
+ *    Single-contract mode additionally writes a `markdown-contract.yaml` router, which
+ *    `validate` loads when run inside `<dir>` or given `--config <dir>/markdown-contract.yaml`.
  *  - **self-check** — after writing, load the scaffold back through `loadConfigFile` and run it
  *    over the corpus via `runCorpus`; an error-level finding is an inferer bug, reported loudly.
  *  - **`--check`** — do NOT infer or write: load the EXISTING config and run it over the tree;
@@ -501,9 +559,10 @@ function checkRootsExist(absRoots: string[]): CliResult | null {
 
 /**
  * Resolve the write target and any multi-root warning. Default the target to the SINGLE inferred
- * root, so the config, `contracts/`, and the root-relative globs share one base and
- * `init <dir> --check` finds what `init <dir>` wrote from any cwd. A multi-root run has no single
- * natural base, so it keeps the cwd fallback (with a warning). Explicit `--out` overrides both.
+ * root, so the config, `contracts/`, and the root-relative globs share one base. `init <dir>
+ * --check` resolves `<dir>/markdown-contract.yaml` from any cwd; `validate` loads the config only
+ * from the current folder or from `--config`. A multi-root run has no single natural base, so it
+ * keeps the cwd fallback (with a warning). Explicit `--out` overrides both.
  */
 function resolveInitOutDir(
   flags: InitFlags,
@@ -534,7 +593,6 @@ function buildInferOptions(
     meta: flags.meta === true,
     relax: flags.relax === true,
     inline: flags.inline === true,
-    inferBounds: flags['infer-bounds'] === true,
     ...(nums.depth !== undefined ? { depth: nums.depth } : {}),
     ...(nums.maxConstStringLength !== undefined
       ? { maxConstStringLength: nums.maxConstStringLength }
@@ -628,8 +686,8 @@ function runInitCheck(
  * pass through (a multi-root run keeps the first root's config as the discoverable router; the
  * self-check verifies each root independently). In single-contract mode each root emits one
  * `<name>.contract.yaml`; the verb additionally synthesizes a `markdown-contract.yaml` router
- * over those contracts so `validate <dir>` auto-discovers the scaffold (inference
- * leaves single mode as a bare contract file; the router is the discovery affordance the verb adds).
+ * over those contracts, so `validate` finds the scaffold when run inside `<dir>` (inference
+ * leaves single mode as a bare contract file; the router is the file the verb adds).
  */
 function mergeFiles(results: InferResult[], opts: InferOptions): InferredFile[] {
   if (opts.meta === true) {

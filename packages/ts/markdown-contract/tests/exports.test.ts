@@ -15,12 +15,15 @@ const README = readFileSync(join(PACKAGE_DIR, 'README.md'), 'utf-8')
 const CHANGELOG = readFileSync(join(PACKAGE_DIR, 'CHANGELOG.md'), 'utf-8')
 const MANIFEST = JSON.parse(readFileSync(join(PACKAGE_DIR, 'package.json'), 'utf-8')) as {
   name: string
+  dependencies: Record<string, string>
   exports: Record<string, Record<string, string>>
   bin: Record<string, string>
   files: string[]
   [field: string]: unknown
 }
 const PACKAGE_NAME = MANIFEST.name
+/** The workspace libraries this package depends on; tests may name them. */
+const OWN_DEPENDENCIES = Object.keys(MANIFEST.dependencies).filter((d) => d.startsWith('@osdlc/'))
 
 /** Each public entry: its import specifier and its source file. */
 const ENTRIES: Record<string, string> = {
@@ -92,8 +95,8 @@ const EXAMPLE_FILES = readdirSync(join(PACKAGE_DIR, 'examples'))
 test('the entries export the names this test lists', () => {
   const sizes = Object.fromEntries([...BY_ENTRY].map(([spec, m]) => [spec, m.size]))
   expect(sizes).toEqual({
-    [PACKAGE_NAME]: 86,
-    [`${PACKAGE_NAME}/core`]: 82,
+    [PACKAGE_NAME]: 87,
+    [`${PACKAGE_NAME}/core`]: 83,
     [`${PACKAGE_NAME}/declarative`]: 11,
     [`${PACKAGE_NAME}/cli`]: 2,
   })
@@ -175,7 +178,6 @@ test('the functions that can throw say so with @throws, and no others do', () =>
       'oneOf',
       'optionalSection',
       'requires',
-      'parse',
       'runCorpus',
       'section',
       'sections',
@@ -227,8 +229,16 @@ describe('the manifest', () => {
     expect(MANIFEST.dependencies).not.toHaveProperty('zod')
   })
 
-  test('the published files are dist/ and the docs', () => {
-    expect(MANIFEST.files.filter((f) => /\.ts$|^src/.test(f))).toEqual([])
+  test('the published files are dist/ and the docs, with no source', () => {
+    expect(MANIFEST.files).toEqual([
+      'dist/',
+      'README.md',
+      'CHANGELOG.md',
+      'LICENSE-MIT',
+      'LICENSE-APACHE',
+      'SECURITY.md',
+      'CONTRIBUTING.md',
+    ])
   })
 })
 
@@ -279,7 +289,8 @@ describe('independence from any host project', () => {
     for (const file of unshipped) {
       const text = readFileSync(file, 'utf-8')
       const others = [...text.matchAll(/@osdlc\/[\w-]+(\/[\w-]+)?/g)].map((m) => m[0])
-      for (const spec of others) expect(Object.keys(ENTRIES)).toContain(spec)
+      for (const spec of others)
+        expect([...Object.keys(ENTRIES), ...OWN_DEPENDENCIES]).toContain(spec)
     }
   })
 

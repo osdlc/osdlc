@@ -58,24 +58,21 @@ export class ContractBuildError extends Error {
  * ```
  */
 export function contract<F, B>(def: ContractDef<F, B>): Contract<F, B> {
-  const self = {
+  return {
     validate(input: string | DocTree, ctx: ValidateCtx) {
       return validateEntry<F, B>(def, input, ctx)
     },
     read(source: string, ctx: ValidateCtx): Doc<F, B> {
       return readEntry<F, B>(def, source, ctx)
     },
-  } as Contract<F, B> & { __def?: ContractDef<F, B> }
-  // Stash the def for entry points / introspection (typed loosely; the public shape is `Contract`).
-  self.__def = def
-  return self
+  } as Contract<F, B>
 }
 
 /**
  * Builds a body grammar from level options and an ordered list of specs. The result types the
  * body: each declared section's heading is a key of `doc.body` (see `BodyOf`).
  *
- * @throws {Error} When two declared names at this level have the same camelCase key
+ * @throws {ContractBuildError} When two declared names at this level have the same camelCase key
  *   (`contract/key-collision`).
  */
 export function sections<const S extends readonly Spec[]>(
@@ -158,7 +155,7 @@ function assertRepeatBounds(opts: SectionOpts | undefined, label: string): void 
  * set its content, child sections, rules, anchor and repeat counts. The result's type carries
  * the value the section reads back as (see `SectionValue`).
  *
- * @throws {Error} When `min` or `max` is invalid, or set without `repeatable: true`
+ * @throws {ContractBuildError} When `min` or `max` is invalid, or set without `repeatable: true`
  *   (`contract/repeat-bounds`).
  */
 export function section<
@@ -180,7 +177,7 @@ export function optional(spec: Spec): Spec {
 /**
  * Accepts any one of several heading spellings at one position.
  *
- * @throws {Error} When `min` or `max` is invalid (`contract/repeat-bounds`).
+ * @throws {ContractBuildError} When `min` or `max` is invalid (`contract/repeat-bounds`).
  */
 export function oneOf(names: string[], opts?: SectionOpts): Spec {
   assertRepeatBounds(opts, names[0] ?? '')

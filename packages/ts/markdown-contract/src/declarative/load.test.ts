@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { contract, section, sections } from '../core/grammar.js'
 import type { Finding } from '../core/types.js'
-import { DeclarativeError, loadContract } from './index.js'
+import { compileContractObject, DeclarativeError, loadContract } from './index.js'
 
 const FM = `mcVersion: 2
 kind: contract
@@ -46,6 +46,14 @@ describe('loadContract — envelope + current-build limits', () => {
     expect(() => loadContract(yaml)).toThrow(
       'mcVersion 1 is no longer supported; rewrite the file as mcVersion 2 with `markdown-contract migrate --write <file>` (the CLI of @osdlc/markdown-contract)',
     )
+  })
+
+  it('compileContractObject takes the mcVersion 2 envelope and rejects any other version', () => {
+    expect(() => compileContractObject({ mcVersion: 2, kind: 'contract' })).not.toThrow()
+    expect(() => compileContractObject({ mcVersion: 1, body: { sections: [] } })).toThrow(
+      DeclarativeError,
+    )
+    expect(() => compileContractObject({ mcVersion: 1 })).toThrow(/migrate/)
   })
 
   it('rejects an unsupported mcVersion (3; this build supports 2)', () => {

@@ -23,10 +23,12 @@
  * Zod shape along the issue path, falling back to the contract-root description. A
  * description-free contract mints byte-identical findings (no `hint` key).
  */
-import { withHint } from './registry.js'
-import { leafHintOf } from './structure.js'
 import type { ZodType } from 'zod'
 
+import type { ParsedValues } from './parsed-values.js'
+import { frontmatterYamlErrors } from './projection.js'
+import { withHint } from './registry.js'
+import { leafHintOf } from './structure.js'
 import type {
   BlockNode,
   ContractDef,
@@ -122,9 +124,13 @@ function contentSlots(specs: readonly Spec[]): ContentSlot[] {
   return slots
 }
 
-/** The first doc section at this level whose name is in `names` (first-occurrence binds). */
-function findSection(nodes: SectionNode[], names: string[]): SectionNode | undefined {
-  return nodes.find((n) => names.includes(n.name))
+/**
+ * The doc sections at this level that fill a slot: every occurrence of a repeatable slot, else
+ * the first one (a second occurrence is the structure plane's `duplicate-section`).
+ */
+function sectionsFor(nodes: SectionNode[], slot: ContentSlot): SectionNode[] {
+  const hits = nodes.filter((n) => slot.names.includes(n.name))
+  return slot.opts.repeatable === true ? hits : hits.slice(0, 1)
 }
 
 /**
@@ -137,15 +143,19 @@ function matchLevel(
   seq: SectionSeq,
   ctx: Ctx,
   out: Finding[],
+  values: ParsedValues,
   inheritedHint?: string,
 ): void {
   const levelHint = seq.opts.description ?? inheritedHint
   for (const slot of contentSlots(seq.specs)) {
-    const node = findSection(nodes, slot.names)
-    if (!node) continue // absence is structure's concern (structure/section-missing)
-    const sectionHint = slot.opts.description ?? levelHint
-    validateSectionContent(node, slot.opts, ctx, out, sectionHint)
-    if (slot.opts.children) matchLevel(node.sections, slot.opts.children, ctx, out, sectionHint)
+    // An absent section is the structure plane's concern (structure/section-missing).
+    for (const node of sectionsFor(nodes, slot)) {
+      const sectionHint = slot.opts.description ?? levelHint
+      validateSectionContent(node, slot.opts, ctx, out, values, sectionHint)
+      if (slot.opts.children) {
+        matchLevel(node.sections, slot.opts.children, ctx, out, values, sectionHint)
+      }
+    }
   }
 }
 
@@ -155,14 +165,15 @@ function validateSectionContent(
   opts: SectionOpts,
   ctx: Ctx,
   out: Finding[],
+  values: ParsedValues,
   sectionHint?: string,
 ): void {
   if (opts.content === undefined) return
   if (isLeafSpec(opts.content)) {
-    validateLeaf(node, opts.content, undefined, ctx, out, sectionHint)
+    validateLeaf(node, opts.content, undefined, ctx, out, values, sectionHint)
   } else {
     for (const [anchor, leaf] of Object.entries(opts.content)) {
-      validateLeaf(node, leaf, anchor, ctx, out, sectionHint)
+      validateLeaf(node, leaf, anchor, ctx, out, values, sectionHint)
     }
   }
 }
@@ -193,6 +204,7 @@ function validateLeaf(
   anchor: string | undefined,
   baseCtx: Ctx,
   out: Finding[],
+  values: ParsedValues,
   sectionHint?: string,
 ): void {
   const block = pickBlock(node, anchor)
@@ -209,6 +221,7 @@ function validateLeaf(
         leaf.config as TableConfig,
         ctx,
         out,
+        values,
       )
       break
     case 'list':
@@ -217,6 +230,7 @@ function validateLeaf(
         leaf.config as ListConfig,
         ctx,
         out,
+        values,
       )
       break
     case 'code':
@@ -255,10 +269,11 @@ function validateTable(
   cfg: TableConfig,
   ctx: Ctx,
   out: Finding[],
+  values: ParsedValues,
 ): void {
   checkTableColumns(node, cfg, ctx, out)
   checkTableMinRows(node, cfg, ctx, out)
-  checkTableCells(node, cfg, ctx, out)
+  checkTableCells(node, cfg, ctx, out, values)
 }
 
 /** Missing declared columns and (when `extraColumns: "error"`) undeclared columns. */
@@ -321,6 +336,7 @@ function checkTableCells(
   cfg: TableConfig,
   ctx: Ctx,
   out: Finding[],
+  values: ParsedValues,
 ): void {
   if (!cfg.cells) return
   for (const [col, schema] of Object.entries(cfg.cells)) {
@@ -331,9 +347,8 @@ function checkTableCells(
       const value = row[colIdx] ?? ''
       const res = zod.safeParse(value)
       if (res.success) {
-        // keep the parsed output (previously discarded) and cache it on the table node's
-        // sparse typed overlay, from this SAME `safeParse` (no second Zod pass / traversal).
-        node.setTyped(i, col, res.data)
+        // Keep the parsed output for the typed model, from this same `safeParse`.
+        values.setCell(node, i, col, res.data)
       } else {
         out.push(
           ctx.finding({
@@ -361,6 +376,7 @@ function validateList(
   cfg: ListConfig,
   ctx: Ctx,
   out: Finding[],
+  values: ParsedValues,
 ): void {
   if (cfg.everyItem === 'checkbox') {
     for (const item of node.items) {
@@ -379,9 +395,8 @@ function validateList(
     node.items.forEach((item, i) => {
       const res = zod.safeParse(item.text)
       if (res.success) {
-        // keep the parsed output (previously discarded) and cache it on the list node's sparse
-        // typed overlay, from this SAME `safeParse` (no second Zod pass), mirroring the table cell.
-        node.setTypedItem(i, res.data)
+        // Keep the parsed output for the typed model, from this same `safeParse`.
+        values.setItem(node, i, res.data)
       } else {
         out.push(
           ctx.finding({
@@ -450,9 +465,9 @@ function validateParagraph(
 // ── Frontmatter ────────────────────────────────────────────────────────────────
 
 /**
- * Map a Zod issue code to its frontmatter-plane finding id. The corpus's frontmatter ids
- * (E1 / 07a) are `frontmatter/enum`, `frontmatter/unknown-key`, `frontmatter/type`,
- * `frontmatter/required`; any other code falls back to `frontmatter/type`.
+ * Map a Zod issue code to its frontmatter-plane finding id: `frontmatter/enum`,
+ * `frontmatter/unknown-key`, `frontmatter/type`, `frontmatter/required` or `frontmatter/refine`.
+ * Any other code falls back to `frontmatter/type`.
  */
 function frontmatterIdFor(issue: ZodIssue): string {
   switch (issue.code) {
@@ -653,11 +668,16 @@ function matchFrontmatter(
   schema: ZodType,
   ctx: Ctx,
   out: Finding[],
+  values: ParsedValues,
   rootHint?: string,
 ): void {
   const data: unknown = tree.frontmatter ? tree.frontmatter.data : {}
   const res = asZod(schema).safeParse(data)
-  if (res.success || !res.error) return
+  if (res.success) {
+    values.frontmatter = { data: res.data }
+    return
+  }
+  if (!res.error) return
 
   const lineFor = (path: (string | number)[]): SourcePos | undefined => {
     const line = tree.frontmatter?.lineForPath(path)
@@ -726,16 +746,44 @@ function isMissingRequired(data: unknown, path: (string | number)[]): boolean {
 // ── Public entry ─────────────────────────────────────────────────────────────────
 
 /**
+ * Emit one `frontmatter/yaml` finding per YAML error in the frontmatter block, at the error's
+ * line. Returns whether the YAML is sound; the schema is not run over a broken block, since its
+ * findings would only echo the syntax error.
+ */
+function checkFrontmatterYaml(tree: DocTree, ctx: Ctx, out: Finding[]): boolean {
+  if (!tree.frontmatter) return true
+  const errors = frontmatterYamlErrors(tree.frontmatter)
+  for (const e of errors) {
+    out.push(
+      ctx.finding({
+        id: 'frontmatter/yaml',
+        message: `frontmatter is not valid YAML: ${e.message}`,
+        pos: { line: e.line },
+      }),
+    )
+  }
+  return errors.length === 0
+}
+
+/**
  * Run the content plane: frontmatter Zod (if declared) plus every section's content leaf.
  * Returns findings in emission order; `validate()` applies the deterministic cross-plane sort.
+ * The values the schemas parse (frontmatter, transformed cells and items) go into `values`, for
+ * the typed model.
  */
-export function matchContent(tree: DocTree, def: ContractDef, ctx: Ctx): Finding[] {
+export function matchContent(
+  tree: DocTree,
+  def: ContractDef,
+  ctx: Ctx,
+  values: ParsedValues,
+): Finding[] {
   const out: Finding[] = []
-  if (def.frontmatter !== undefined) {
-    matchFrontmatter(tree, def.frontmatter, ctx, out, def.description)
+  const yamlOk = checkFrontmatterYaml(tree, ctx, out)
+  if (def.frontmatter !== undefined && yamlOk) {
+    matchFrontmatter(tree, def.frontmatter, ctx, out, values, def.description)
   }
   if (def.body !== undefined) {
-    matchLevel(tree.root.sections, def.body, ctx, out, def.description)
+    matchLevel(tree.root.sections, def.body, ctx, out, values, def.description)
   }
   return out
 }

@@ -201,22 +201,10 @@ function projectList(node: MdList): Extract<BlockNode, { kind: 'list' }> {
     return item
   })
 
-  // the sparse typed overlay (the list analogue of the table's `typedStore`). A closure-captured
-  // `Map<itemIndex, value>` (NOT an enumerable property) so `typedItem`/`setTypedItem` are the only
-  // way in and the cache never serializes onto the public `tree`. Starts empty; the content plane's
-  // per-item `safeParse` pass fills it (a plain / `"checkbox"` list leaves it empty).
-  const typedStore = new Map<number, unknown>()
-
   return {
     kind: 'list',
     ordered: node.ordered === true,
     items,
-    typedItem(i: number): unknown | undefined {
-      return typedStore.get(i)
-    },
-    setTypedItem(i: number, value: unknown): void {
-      typedStore.set(i, value)
-    },
     pos: posOf(node),
   }
 }
@@ -267,13 +255,6 @@ function projectTable(
     row.children.map((cell) => inlineSpansOf(cell.children, source)),
   )
 
-  // the sparse typed overlay. A closure-captured store (NOT an enumerable property on the
-  // block) so `typed`/`setTyped` are the only way in and the cache never serializes onto the
-  // public `tree`. Nested `Map<row, Map<col, value>>` keys by column NAME safely — a delimiter
-  // join would collide when a column name itself contains the delimiter. Starts empty; the
-  // content plane's per-cell `safeParse` pass fills it (a plain-string table leaves it empty).
-  const typedStore = new Map<number, Map<string, unknown>>()
-
   const block: Extract<BlockNode, { kind: 'table' }> = {
     kind: 'table',
     columns,
@@ -286,17 +267,6 @@ function projectTable(
     },
     inlineSpans(row: number, col: number): InlineSpan[] {
       return cellSpans[row]?.[col] ?? []
-    },
-    typed(row: number, col: string): unknown | undefined {
-      return typedStore.get(row)?.get(col)
-    },
-    setTyped(row: number, col: string, value: unknown): void {
-      let byCol = typedStore.get(row)
-      if (byCol === undefined) {
-        byCol = new Map<string, unknown>()
-        typedStore.set(row, byCol)
-      }
-      byCol.set(col, value)
     },
     pos: posOf(node),
   }
@@ -336,9 +306,9 @@ function newSection(name: string, depth: number, pos: SourcePos): SectionNode {
  * - A leading `# H1` is captured as the document title (`root.name`); it does not become
  *   a body section. (Only the *first* H1 is the title; a later H1 nests like any heading.)
  * - H2 are the top-level body sections (`root.sections`).
- * - H3/H4… nest under the nearest ancestor of smaller depth (D3: a skipped level attaches
- *   to the nearest ancestor with its TRUE `depth` preserved — no synthesized intermediate).
- * - Non-heading content attaches to the current section's `blocks` (D4: only root-level
+ * - H3/H4… nest under the nearest ancestor of smaller depth (a skipped level attaches
+ *   to the nearest ancestor with its true `depth` preserved; nothing is inserted).
+ * - Non-heading content attaches to the current section's `blocks` (only root-level
  *   blocks; nested blockquote/list blocks are not hoisted).
  * - `^block-id` anchors bind to the block they terminate (`BlockNode.anchor`) or, when
  *   standalone with no preceding block in the section, to the section (`SectionNode.anchors`).
@@ -370,7 +340,7 @@ function buildTree(
       continue
     }
 
-    // Non-heading content → a BlockNode on the current (deepest open) section (D4: root-level only).
+    // Non-heading content → a BlockNode on the current (deepest open) section (root-level only).
     attachContentNode(stack[stack.length - 1] as SectionNode, node, source)
   }
 
@@ -379,7 +349,7 @@ function buildTree(
 
 /** Attach `child` under the nearest open ancestor whose depth is < child.depth. */
 function attachSection(stack: SectionNode[], child: SectionNode): void {
-  // Pop the stack to the nearest ancestor of smaller depth (D3 nearest-ancestor attach).
+  // Pop the stack to the nearest ancestor of smaller depth.
   while (stack.length > 1 && (stack[stack.length - 1] as SectionNode).depth >= child.depth) {
     stack.pop()
   }
@@ -388,7 +358,7 @@ function attachSection(stack: SectionNode[], child: SectionNode): void {
 }
 
 /**
- * Project one non-heading root node and attach its block to `sec` (D4: root-level only). A table's
+ * Project one non-heading root node and attach its block to `sec` (root-level only). A table's
  * absorbed `^id` row becomes the table anchor; a standalone `^block-id` paragraph binds an anchor
  * and yields no block; a trailing `^id` on a paragraph / list item is stripped onto the block.
  */
@@ -414,7 +384,7 @@ function attachContentNode(sec: SectionNode, node: RootContent, source: string):
     }
   }
 
-  if (!block) return // D4: blockquote / nested content yields no section-level block
+  if (!block) return // blockquote / nested content yields no section-level block
 
   bindTrailingAnchor(block)
   sec.blocks.push(block)
@@ -474,11 +444,21 @@ function bindAnchor(sec: SectionNode, id: string): void {
  * document line *after* the opening `---` (which sits on `pos.line`). A block-local 1-based
  * line `L` therefore maps to document line `pos.line + L`.
  */
-function buildFrontmatter(node: Yaml): DocTree['frontmatter'] {
+function buildFrontmatter(node: Yaml): NonNullable<DocTree['frontmatter']> {
   const pos = posOf(node)
   const raw = node.value
   const doc = parseDocument(raw)
-  const data: unknown = doc.toJS()
+  const errors: FrontmatterYamlError[] = doc.errors.map((e) => ({
+    message: e.message.split('\n')[0]!.replace(/ at line \d+, column \d+:?$/, ''),
+    line: pos.line + (e.linePos?.[0].line ?? 1),
+  }))
+  let data: unknown = null
+  try {
+    data = doc.toJS()
+  } catch (err) {
+    // An alias to an anchor that is not defined throws while the value is built.
+    errors.push({ message: (err as Error).message, line: pos.line + 1 })
+  }
 
   // Document line of the opening `---`; the YAML text begins on `pos.line + 1`, and a
   // block-local 1-based line L maps to document line `pos.line + L`.
@@ -491,7 +471,25 @@ function buildFrontmatter(node: Yaml): DocTree['frontmatter'] {
     return blockBaseLine + offsetToLine(raw, localOffset)
   }
 
-  return { raw, data, pos, lineForPath }
+  const frontmatter = { raw, data, pos, lineForPath }
+  yamlErrors.set(frontmatter, errors)
+  return frontmatter
+}
+
+/** A YAML error in a frontmatter block, with the document line it is on. */
+export interface FrontmatterYamlError {
+  message: string
+  line: number
+}
+
+/** The YAML errors of each frontmatter block `parse()` built. */
+const yamlErrors = new WeakMap<object, FrontmatterYamlError[]>()
+
+/** The YAML errors in a frontmatter block from `parse()`; `[]` for any other object. */
+export function frontmatterYamlErrors(
+  frontmatter: NonNullable<DocTree['frontmatter']>,
+): FrontmatterYamlError[] {
+  return yamlErrors.get(frontmatter) ?? []
 }
 
 /**
@@ -571,8 +569,8 @@ function processorFor(extensions: MicromarkExtension[] | undefined): {
  * at the end of a block, or alone on the line after it, binds that id to the block; one alone
  * before any block binds it to the section. `[[wikilinks]]` and `![[embeds]]` are kept as text.
  *
- * @throws {Error} Only when the frontmatter YAML cannot be resolved, such as an alias to an
- *   anchor that is not defined. Other YAML errors give a best-effort `frontmatter.data`.
+ * It does not throw on bad frontmatter YAML. `frontmatter.data` is then best-effort (`null` when
+ * the value cannot be built), and validating the tree gives a `frontmatter/yaml` finding.
  */
 export function parse(markdown: string, opts?: ParseOptions): DocTree {
   const mdast = processorFor(opts?.extensions).parse(markdown) as Root

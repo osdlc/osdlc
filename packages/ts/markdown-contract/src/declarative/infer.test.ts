@@ -494,3 +494,16 @@ describe('inferConfig — emission + determinism', () => {
     expect(() => compileContractObject(a.contracts[0]!.def)).not.toThrow()
   })
 })
+
+describe('inferConfig — a file with broken frontmatter YAML', () => {
+  it('names a file whose frontmatter alias is undefined', () => {
+    file('ok.md', '---\ntitle: A\n---\n\n## Summary\n\nx\n')
+    file('bad.md', '---\ntitle: *missing\n---\n\n## Summary\n\nx\n')
+    expect(() => inferConfig(root)).toThrow(/bad\.md: frontmatter is not valid YAML/)
+  })
+
+  it('names a file whose frontmatter has a duplicate key', () => {
+    file('dup.md', '---\ntitle: a\ntitle: b\n---\n\n## Summary\n\nx\n')
+    expect(() => inferConfig(root)).toThrow(/dup\.md: frontmatter is not valid YAML/)
+  })
+})

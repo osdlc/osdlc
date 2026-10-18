@@ -4,7 +4,7 @@
  * writes output or exits.
  */
 import { readdirSync, readFileSync } from 'node:fs'
-import { resolve, sep } from 'node:path'
+import { resolve } from 'node:path'
 
 import picomatch from 'picomatch'
 
@@ -76,11 +76,6 @@ function compile(config: CorpusConfig): CompiledRule[] {
   }))
 }
 
-/** Normalize a path to POSIX separators so globs match the same on every platform. */
-function toPosix(p: string): string {
-  return sep === '/' ? p : p.split(sep).join('/')
-}
-
 /** Whether `posixRel` survives the optional global include/exclude pre-filter (AND-narrowing). */
 function passesPreFilter(
   posixRel: string,
@@ -97,10 +92,13 @@ function firstMatchingRule(rules: CompiledRule[], posixRel: string): number {
   return rules.findIndex((r) => r.include(posixRel) && !(r.exclude && r.exclude(posixRel)))
 }
 
+/** Directories the walk never enters. */
+const SKIPPED_DIRS = new Set(['.git', 'node_modules'])
+
 /**
  * Every file under `root`, as paths relative to `root` with `/` separators. Entries are sorted
  * before recursion, so the order is stable. Symbolic links are neither files nor directories to
- * `Dirent`, so they are skipped.
+ * `Dirent`, so they are skipped, and so are `.git` and `node_modules` directories.
  */
 function walkSync(root: string): string[] {
   const out: string[] = []
@@ -109,8 +107,9 @@ function walkSync(root: string): string[] {
     entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
     for (const entry of entries) {
       const rel = relDir === '' ? entry.name : `${relDir}/${entry.name}`
-      if (entry.isDirectory()) recur(resolve(absDir, entry.name), rel)
-      else if (entry.isFile()) out.push(rel)
+      if (entry.isDirectory()) {
+        if (!SKIPPED_DIRS.has(entry.name)) recur(resolve(absDir, entry.name), rel)
+      } else if (entry.isFile()) out.push(rel)
     }
   }
   recur(root, '')
@@ -124,7 +123,8 @@ function walkSync(root: string): string[] {
  * Each file goes to the first rule whose `include` globs match it and whose `exclude` globs do
  * not, so a specific rule can sit before a catch-all without a file being checked twice. A file
  * no rule matches is skipped. A finding's `path` is the file's path relative to `cwd`, with `/`.
- * The walk is sorted by name and does not follow symbolic links.
+ * The walk is sorted by name. It does not follow symbolic links and does not enter `.git` or
+ * `node_modules` folders.
  *
  * `include` and `exclude` narrow the run before rules apply: a file must match one `include`
  * glob, when any are given, and no `exclude` glob.
@@ -150,10 +150,8 @@ export function runCorpus(
   const rules = compile(config)
 
   // Optional global pre-filter, applied before rule matching (AND-narrowing).
-  const include =
-    opts?.include && opts.include.length > 0 ? picomatch(opts.include, PICOMATCH_OPTS) : null
-  const exclude =
-    opts?.exclude && opts.exclude.length > 0 ? picomatch(opts.exclude, PICOMATCH_OPTS) : null
+  const include = opts?.include && opts.include.length > 0 ? compileMatcher(opts.include) : null
+  const exclude = opts?.exclude && opts.exclude.length > 0 ? compileMatcher(opts.exclude) : null
 
   const findings: Finding[] = []
   const files = walkSync(root)
@@ -165,14 +163,13 @@ export function runCorpus(
   let filesMatched = 0
 
   for (const rel of files) {
-    const posixRel = toPosix(rel)
-    if (!passesPreFilter(posixRel, include, exclude)) continue
-    const idx = firstMatchingRule(rules, posixRel)
+    if (!passesPreFilter(rel, include, exclude)) continue
+    const idx = firstMatchingRule(rules, rel)
     if (idx === -1) continue
-    matchedByRule[idx] = (matchedByRule[idx] ?? 0) + 1
+    matchedByRule[idx] = matchedByRule[idx]! + 1
     filesMatched += 1
     const source = readFileSync(resolve(root, rel), 'utf8')
-    const result = rules[idx]!.contract.validate(source, { path: posixRel })
+    const result = rules[idx]!.contract.validate(source, { path: rel })
     findings.push(...result.findings)
   }
 

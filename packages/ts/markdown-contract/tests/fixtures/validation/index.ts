@@ -1,9 +1,7 @@
 // Barrel of validation fixtures, in numeric order.
-// v01 is the worked sample; the rest are ported in two parts (01a–11, 12–21b). The
-// declarative text-constraint fixtures sit beside their peers here, each
-// marked `peerless` until lands their `.contract.yaml` twins — no longer hidden in a
-// `./text/` subdirectory to dodge the yaml-parity "peers exist" check. v27–v28 are the
-// mcVersion 2 parity fixtures: description→hint and minContains/maxContains.
+// v01 is the worked sample; the rest are in two parts (01a–11, 12–21b). The declarative
+// text-constraint fixtures sit beside their peers here. v27–v28 are the mcVersion 2 parity
+// fixtures: description→hint and minContains/maxContains.
 import type { ValidationFixture } from '../../harness.js'
 import { partA } from './_part-a.js'
 import { partB } from './_part-b.js'

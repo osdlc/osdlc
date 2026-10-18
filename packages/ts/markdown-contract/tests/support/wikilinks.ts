@@ -1,12 +1,8 @@
 /**
- * `[[wikilink]]` / `![[transclusion]]` recognition (BUNDLED dialect, default-on).
- *
- * Recognized so they survive projection intact and their targets are extractable.
- * Implemented as a post-parse string recognition pass over already-flattened text (NOT a
- * micromark syntax extension): remark already parses these as ordinary text, so a
- * recognition pass is sufficient and avoids owning a micromark `syntax` + `mdast-util` pair
- * for a construct the projection only needs to recognize (see `./index.ts`). The validation corpus does not exercise these, so this is
- * deliberately a recognition pass, not a full grammar.
+ * `[[wikilink]]` / `![[transclusion]]` recognition, as a test helper. `parse()` leaves these as
+ * ordinary text; the tests use this string pass over flattened text to extract their targets,
+ * for example to check that a wikilink survives a parse, stringify, re-parse cycle. It is not
+ * part of the package.
  */
 
 /** A recognized `[[wikilink]]` or `![[transclusion]]` reference, extracted from flattened text. */
@@ -24,15 +20,13 @@ interface VaultRef {
 }
 
 // Tolerant of remark-stringify's backslash-escaping of `[` (`\[\[…]]`): the `\\*` before
-// each bracket lets the *construct* be recognized after a parse→stringify→re-parse cycle,
-// even though remark-stringify escapes the literal brackets. See the round-trip note in
-// `./index.ts`.
+// each bracket lets the construct be recognized after a parse, stringify, re-parse cycle.
 const VAULT_REF_RE = /(!?)\\*\[\\*\[([^\]]+)\]\]/g
 
 /**
- * Recognize every `[[wikilink]]` / `![[transclusion]]` in already-flattened text. Light,
- * correct recognition (BUNDLED dialect) — the targets are parsed out of the
- * `target|alias#fragment` form, tolerating remark-stringify's backslash escaping.
+ * Recognize every `[[wikilink]]` / `![[transclusion]]` in already-flattened text. The targets are
+ * parsed out of the `target|alias#fragment` form, tolerating remark-stringify's backslash
+ * escaping.
  */
 export function extractVaultRefs(text: string): VaultRef[] {
   const refs: VaultRef[] = []

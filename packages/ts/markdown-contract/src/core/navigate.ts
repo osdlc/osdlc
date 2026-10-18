@@ -1,13 +1,10 @@
 /**
- * Section navigation — standalone helpers over the projected section tree
- * (`DocTree.root` and its nested `SectionNode`s). These absorb the section-finding
- * glue consumers hand-roll on top of `root.sections`: the `find(s => s.depth===2 &&
- * s.name===X)` lookup, the `filter(s => s.depth===d)` slice, the "last heading ≤ line"
- * enclosing-section scan, the repeated next-sibling body-extent math, and the
- * `.blocks.find(b => b.kind==="table")` / recursive block walk.
+ * Section navigation: helpers over the projected section tree (`DocTree.root` and its nested
+ * `SectionNode`s). They find a section by name, slice sections by depth, map a source line to its
+ * enclosing section, compute a section's body extent, and collect blocks of one kind.
  *
- * Pure functions over the EXISTING `SectionNode` / `BlockNode` shapes — nothing here
- * parses, mutates, or reshapes the tree.
+ * Pure functions over the `SectionNode` and `BlockNode` shapes. Nothing here parses, mutates or
+ * reshapes the tree.
  */
 import type { BlockNode, SectionNode } from './types.js'
 
@@ -17,8 +14,7 @@ import type { BlockNode, SectionNode } from './types.js'
  * depth; `opts.ci` matches case-insensitively (names are otherwise exact and
  * case-sensitive, as `SectionNode.name` is trimmed heading text).
  *
- * Absorbs `root.sections.find(s => s.depth === 2 && s.name === "Operations")` →
- * `findSection(root, "Operations", { depth: 2 })`.
+ * For example, `findSection(root, "Operations", { depth: 2 })`.
  */
 export function findSection(
   root: SectionNode,
@@ -42,10 +38,9 @@ export function sectionsAt(root: SectionNode, depth: number): SectionNode[] {
 
 /**
  * The section enclosing a source `line`: the last top-level section (at `opts.depth`, or any
- * depth by default) whose heading `pos.line <= line`. Because `root.sections` is in document
- * order, the last section at or before `line` is the one whose body extends up to (but not
- * into) the next same-depth sibling — so this is exactly the "last heading ≤ line" scan
- * consumers hand-roll to map a finding's line back to its section.
+ * depth by default) whose heading `pos.line <= line`. `root.sections` is in document order, so
+ * that is the section whose body extends up to (but not into) the next same-depth sibling. It
+ * maps a finding's line back to its section.
  */
 export function sectionForLine(
   root: SectionNode,
@@ -72,9 +67,9 @@ export interface SectionSpan {
 }
 
 /**
- * Each section's body extent, for every top-level section at `opts.depth` (default `2`). A section's body runs from the line after its heading (`start = pos.line + 1`) to the
- * line before the next same-depth sibling (`end = next.pos.line - 1`), or to `lineCount` for the
- * last section. Absorbs the repeated next-sibling boundary math (the line→section map builder).
+ * Each section's body extent, for every top-level section at `opts.depth` (default `2`). A
+ * section's body runs from the line after its heading (`start = pos.line + 1`) to the line before
+ * the next same-depth sibling (`end = next.pos.line - 1`), or to `lineCount` for the last section.
  */
 export function sectionSpans(
   root: SectionNode,
@@ -96,8 +91,7 @@ export function sectionSpans(
 /**
  * The section's blocks of a given `kind`, narrowed to the matching `BlockNode` arm. With
  * `opts.recursive`, descends the section's subsection tree (`section.sections`) too, this
- * section's own blocks first. Absorbs both `section.blocks.find(b => b.kind === "table")`
- * (take `[0]`) and the recursive table walk over a section subtree.
+ * section's own blocks first.
  */
 export function blocksOfKind<K extends BlockNode['kind']>(
   section: SectionNode,

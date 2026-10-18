@@ -1,7 +1,7 @@
 /**
  * The CLI output formatters — `human`, `json`, `sarif`. Each takes the aggregated
  * `Finding[]` from the runner and returns a string the CLI writes to stdout. Pure:
- * no IO, no `process`. The CLI (`./index.ts`) owns the streams and the exit.
+ * no IO, no `process`. `./bin.ts` owns the streams and the exit code.
  *
  * - `human`  — a readable per-file report plus a summary count.
  * - `json`   — the findings array as-is (machine-parseable, stable shape).
@@ -14,7 +14,7 @@
  * Imports flow one way: cli → runner/core (types only). The only runner dependency is
  * the `RunStats` shape `formatRunSummary` renders.
  */
-import type { Finding, FindingLevel } from '../core/index.js'
+import { countByLevel, type Finding, type FindingLevel } from '../core/index.js'
 import type { RunStats } from '../runner/index.js'
 
 const SARIF_SCHEMA =
@@ -161,10 +161,4 @@ export function formatSarif(findings: Finding[]): string {
   }
 
   return JSON.stringify(log, null, 2)
-}
-
-function countByLevel(findings: Finding[]): Record<FindingLevel, number> {
-  const counts: Record<FindingLevel, number> = { error: 0, warn: 0, report: 0 }
-  for (const f of findings) counts[f.level]++
-  return counts
 }

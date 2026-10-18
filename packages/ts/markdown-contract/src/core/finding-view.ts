@@ -1,8 +1,6 @@
 /**
- * Finding formatting + filtering — presentation and selection helpers over `Finding[]`.
- * A `Finding` carries its own `id`, `level`, `path`, optional `pos`, and `message`; how a
- * consumer renders a location, formats a line, filters by area/id, or summarizes levels is
- * caller-side glue this module absorbs. Pure functions — nothing here mutates a finding.
+ * Finding formatting and filtering: helpers over `Finding[]` that render a location, format a
+ * line, filter by area or id, and count levels. Pure functions; nothing here mutates a finding.
  */
 import type { Finding } from './types.js'
 
@@ -13,8 +11,7 @@ import type { Finding } from './types.js'
  *   - else `line <n>` when the finding is position-pinned;
  *   - else `opts.root` (default `"<root>"`) — the whole-document fallback.
  *
- * Composable to reproduce both `validate.ts`'s parenthesized `(line N)` (wrap the result) and
- * `entity.ts`'s `line N` / `<root>` (default options).
+ * Wrap the result in parentheses for a `(line N)` form.
  */
 export function findingLocation(f: Finding, opts?: { root?: string; withPath?: boolean }): string {
   if (opts?.withPath && f.path) {
@@ -29,8 +26,7 @@ export function findingLocation(f: Finding, opts?: { root?: string; withPath?: b
  *   - `"full"` (default): `[<id>] (<location>): <message>` — always carries a location token
  *     (`findingLocation`, so `<root>` when unpinned).
  *   - `"line"`: `[<id>] (line <n>): <message>`, with the ` (line <n>)` omitted when the finding
- *     has no `pos`. Reproduces `validate.ts`'s per-error detail line exactly once a caller adds
- *     its two-space indent: `"  " + formatFinding(f, { style: "line" })`.
+ *     has no `pos`.
  */
 export function formatFinding(f: Finding, opts?: { style?: 'line' | 'full' }): string {
   const style = opts?.style ?? 'full'

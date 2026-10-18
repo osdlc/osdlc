@@ -6,7 +6,19 @@
  * - Bounds beside a `format`: v1 ignored `min`, `max` and `pattern` next to a `format`, but v2
  *   would apply them, so they are dropped with a warning and the findings stay the same.
  */
-import { type Document, Pair, parseDocument, Scalar, YAMLMap, YAMLSeq } from 'yaml'
+import {
+  type Document,
+  Pair,
+  parseDocument,
+  Scalar,
+  stringify as stringifyYaml,
+  YAMLMap,
+  YAMLSeq,
+} from 'yaml'
+
+import { loadConfig } from './config.js'
+import { compileContractObject } from './load.js'
+import { parseDeclarativeDoc } from './parse.js'
 
 const LEAF_KEYS = new Set(['table', 'list', 'code', 'maxWords'])
 
@@ -58,17 +70,11 @@ function transformSchemaNode(cx: Cx, node: unknown, path: string): void {
   if (!isMap(node)) return // malformed — leave for the compiler to reject
   const type = scalarOf(node, 'type')
 
-  if (has(node, 'nullable')) {
-    if (typeof type === 'string') {
-      // nullable: true → type: [T, "null"]
-      deleteKey(node, 'nullable')
-      const tp = getPair(node, 'type')
-      if (tp) tp.value = flowSeq(cx, [type, 'null'])
-    } else {
-      cx.warnings.push(
-        `${cx.file}: ${path}: 'nullable' on an enum/const base has no v2 spelling — migrate by hand`,
-      )
-    }
+  // An object field's `optional` is consumed by its parent. Anywhere else (a table cell, a list
+  // item, an array element) it had no effect, and v2 rejects the key.
+  if (has(node, 'optional')) {
+    deleteKey(node, 'optional')
+    cx.warnings.push(`${cx.file}: ${path}: dropped 'optional' (it had no effect here in version 1)`)
   }
 
   switch (type) {
@@ -112,6 +118,21 @@ function transformSchemaNode(cx: Cx, node: unknown, path: string): void {
     default:
       break // enum / const / boolean bases: wrappers only
   }
+
+  // After the base type is settled (`int` may have turned `number` into `integer`):
+  // nullable: true → type: [T, "null"], keeping T.
+  if (has(node, 'nullable')) {
+    const base = scalarOf(node, 'type')
+    if (typeof base === 'string') {
+      deleteKey(node, 'nullable')
+      const tp = getPair(node, 'type')
+      if (tp) tp.value = flowSeq(cx, [base, 'null'])
+    } else {
+      cx.warnings.push(
+        `${cx.file}: ${path}: 'nullable' on an enum/const base has no v2 spelling — migrate by hand`,
+      )
+    }
+  }
 }
 
 /**
@@ -128,11 +149,9 @@ function transformObjectSchema(cx: Cx, node: YAMLMap, path: string): void {
     for (const p of fields.items) {
       const name = keyOf(p)
       const child = p.value
-      if (isMap(child) && scalarOf(child, 'optional') === true) {
-        deleteKey(child, 'optional')
-      } else {
-        required.push(name)
-      }
+      const optional = isMap(child) && scalarOf(child, 'optional') === true
+      if (isMap(child)) deleteKey(child, 'optional')
+      if (!optional) required.push(name)
       transformSchemaNode(cx, child, `${path}.${name}`)
     }
     ;(fieldsPair.key as Scalar).value = 'properties'
@@ -170,6 +189,17 @@ function transformBodyLevel(cx: Cx, level: unknown, path: string): void {
 
 function transformBodyNode(cx: Cx, node: unknown, path: string): void {
   if (!isMap(node)) return
+
+  // A gap has its own bounds; v1 ignored occurrence keys beside it, and v2 rejects them.
+  if (has(node, 'gap')) {
+    for (const key of ['optional', 'repeatable', 'min', 'max']) {
+      if (has(node, key)) {
+        deleteKey(node, key)
+        cx.warnings.push(`${cx.file}: ${path}: dropped '${key}' (it had no effect on a gap)`)
+      }
+    }
+    return
+  }
 
   // Occurrence: optional / repeatable / min / max become minContains / maxContains.
   const wasOptional = scalarOf(node, 'optional') === true
@@ -251,10 +281,14 @@ function transformContractObject(cx: Cx, raw: YAMLMap, path: string): void {
  * key order. `file` labels the warnings and errors. A warning names a v1 spelling that has no exact
  * v2 form, or a v1 key that had no effect and was dropped so the findings stay the same.
  *
- * @throws {Error} When the text is not a YAML mapping, not `mcVersion: 1`, or of an unknown kind.
+ * @throws {Error} When the text is not valid YAML, not a YAML mapping, not `mcVersion: 1`, or of an
+ *   unknown kind.
  */
 export function migrateV1ToV2(text: string, file: string): { out: string; warnings: string[] } {
   const doc = parseDocument(text)
+  if (doc.errors.length > 0) {
+    throw new Error(`${file}: invalid YAML: ${doc.errors[0]!.message.split('\n')[0]}`)
+  }
   const cx: Cx = { doc, file, warnings: [] }
   const root = doc.contents
   if (!isMap(root)) throw new Error(`${file}: not a YAML mapping`)
@@ -280,4 +314,38 @@ export function migrateV1ToV2(text: string, file: string): { out: string; warnin
   }
 
   return { out: doc.toString({ lineWidth: 0 }), warnings: cx.warnings }
+}
+
+/** Whether `text` is a YAML mapping that already declares `mcVersion: 2`. */
+export function isVersion2(text: string): boolean {
+  const root = parseDocument(text).contents
+  return isMap(root) && scalarOf(root, 'mcVersion') === 2
+}
+
+/**
+ * Loads migrated text the way `loadContract` or `loadConfig` would, so a result that v2 rejects
+ * is caught before it is printed or written. A config's contract refs to other files are not
+ * followed: those files are migrated on their own.
+ *
+ * @throws {Error} When the result does not load, with the loader's message.
+ */
+export function assertLoads(out: string): void {
+  const doc = parseDeclarativeDoc(out)
+  if (doc.kind === 'contract') {
+    compileContractObject(doc.raw)
+    return
+  }
+  const rules = Array.isArray(doc.raw.rules) ? doc.raw.rules : []
+  const checked = {
+    ...doc.raw,
+    contracts: {},
+    rules: rules.map((r: unknown) =>
+      r !== null &&
+      typeof r === 'object' &&
+      typeof (r as { contract?: unknown }).contract === 'string'
+        ? { ...(r as object), contract: {} }
+        : r,
+    ),
+  }
+  loadConfig(stringifyYaml(checked), '.')
 }

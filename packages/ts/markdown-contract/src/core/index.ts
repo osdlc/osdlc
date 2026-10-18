@@ -10,7 +10,17 @@ export { splitFrontmatter } from './frontmatter.js'
 export type { FrontmatterSplit } from './frontmatter.js'
 
 // Build a contract.
-export { contract, docRule, gap, oneOf, optional, rule, section, sections } from './grammar.js'
+export {
+  ContractBuildError,
+  contract,
+  docRule,
+  gap,
+  oneOf,
+  optional,
+  rule,
+  section,
+  sections,
+} from './grammar.js'
 export { LENIENT, lenientBody, optionalSection, STRICT, strictBody } from './presets.js'
 export { code, list, maxWords, table } from './leaves.js'
 export type { RowOf } from './leaves.js'

@@ -12,7 +12,6 @@ const SUPPORTED_VERSIONS = new Set([2])
 
 /** A parsed YAML document whose envelope passed the checks. */
 export interface DeclarativeDoc {
-  mcVersion: number
   kind: 'contract' | 'config'
   /** the parsed YAML mapping, envelope validated */
   raw: Record<string, unknown>
@@ -55,5 +54,5 @@ export function parseDeclarativeDoc(yamlText: string): DeclarativeDoc {
     )
   }
 
-  return { mcVersion: version, kind: obj.kind, raw: obj }
+  return { kind: obj.kind, raw: obj }
 }

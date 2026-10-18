@@ -275,6 +275,31 @@ describe('frontmatter and the doc shape', () => {
     expect((doc.body as any).body.name).toBe('Body')
   })
 
+  test('frontmatter is the schema output: transforms, defaults and trims apply', () => {
+    const c = contract({
+      frontmatter: z.object({
+        n: z.string().transform(Number),
+        d: z.string().default('dflt'),
+        t: z.string().trim(),
+      }),
+    })
+    const doc = c.read('---\nn: "42"\nt: "  pad  "\n---\n\n# T\n', PATH)
+    expect(doc.frontmatter).toEqual({ n: 42, d: 'dflt', t: 'pad' })
+  })
+
+  test('a contract with no frontmatter schema reads the parsed YAML', () => {
+    const doc = contract({}).read('---\nn: "42"\n---\n\n# T\n', PATH)
+    expect(doc.frontmatter).toEqual({ n: '42' })
+  })
+
+  test('byAnchor finds a block under the H1 before the first section', () => {
+    const doc = contract({ body: sections({ allowUnknown: true }, [section('S')]) }).read(
+      '# T\n\nintro ^a1\n\n## S\n\nx\n',
+      PATH,
+    )
+    expect(doc.byAnchor('a1')?.kind).toBe('paragraph')
+  })
+
   test('a list leaf surfaces as a ListView on SectionView.lists', () => {
     const c = contract({
       body: sections({}, [
@@ -357,13 +382,12 @@ describe('typed cell read-back', () => {
       path: 'src/core/leaves.ts',
       symbol: 'table',
     })
-    // Projection: the SAME table block's raw `rows` are untouched strings — the transform output
-    // rides on the sparse `typed(...)` overlay the model reads, never on `tree`.
+    // Projection: the same table block's raw `rows` are untouched strings; the transform output
+    // rides only on the model.
     const block = result.tree.root.sections[0]?.blocks.find((b) => b.kind === 'table')
     expect(block?.kind).toBe('table')
     if (block?.kind !== 'table') throw new Error('expected a table block')
     expect(block.rows[0]?.[0]).toBe('src/core/leaves.ts#table') // raw cell, not the parsed object
-    expect(block.typed(0, 'Location')).toEqual({ path: 'src/core/leaves.ts', symbol: 'table' })
   })
 
   test('a table with no declared cells reads back raw-string rows (string default)', () => {
@@ -488,13 +512,12 @@ describe('typed list-item read-back', () => {
     if (!doc) throw new Error('expected a valid doc')
     const view = doc.body['Acceptance criteria'].lists[0]
     expect(view?.items[0]).toEqual({ ref: 'AC-1', text: 'scaffold it' })
-    // Projection: the SAME list block's raw `items` are untouched strings — the transform output
-    // rides on the sparse `typedItem(...)` overlay the model reads, never on `tree`.
+    // Projection: the same list block's raw `items` are untouched strings; the transform output
+    // rides only on the model.
     const block = result.tree.root.sections[0]?.blocks.find((b) => b.kind === 'list')
     expect(block?.kind).toBe('list')
     if (block?.kind !== 'list') throw new Error('expected a list block')
     expect(block.items[0]?.text).toBe('AC-1: scaffold it') // raw item, not the parsed object
-    expect(block.typedItem(0)).toEqual({ ref: 'AC-1', text: 'scaffold it' })
   })
 
   test('a list with no everyItem reads back raw ListItems (each .text a string)', () => {

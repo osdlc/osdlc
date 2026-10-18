@@ -49,7 +49,8 @@ import { basename, resolve, sep } from 'node:path'
 import picomatch from 'picomatch'
 import { stringify as stringifyYaml } from 'yaml'
 import { toCamelKey } from '../core/camel.js'
-import { parse } from '../core/index.js'
+import { type DocTree, parse } from '../core/index.js'
+import { frontmatterYamlErrors } from '../core/projection.js'
 import { DEFAULT_MAX_CONST_STRING_LENGTH, DEFAULT_MIN_CONST_EXAMPLES } from './constants.js'
 import { DeclarativeError } from './errors.js'
 import { compileSchemaV2 } from './schema-v2.js'
@@ -68,8 +69,6 @@ export interface InferOptions {
   relax?: boolean
   /** Put the contracts inline in one config file, instead of one file per contract. */
   inline?: boolean
-  /** Also infer `pattern`, `min` and `max` bounds on frontmatter values. */
-  inferBounds?: boolean
   /** Strings longer than this never become a `const` or an `enum` value. Default `64`. */
   maxConstStringLength?: number
   /** A value seen in fewer files than this never becomes a `const`. Default `3`. */
@@ -184,15 +183,14 @@ function byName(a: { name: string }, b: { name: string }): number {
 /**
  * Recursively collect every `*.md` under `root`, returned as paths relative to `root`
  * (POSIX-separated), in a deterministic order: directory entries are sorted before
- * recursion, so re-running over an unchanged corpus walks the files identically
- * . Mirrors the runner's own `walkSync` so inference sees exactly
- * the file set the self-check will route.
+ * recursion, so re-running over an unchanged corpus walks the files identically. It mirrors the
+ * runner's own `walkSync`, so inference sees exactly the file set the self-check will route.
  *
- * An optional `include` / `exclude` glob pre-filter (relative to `root`, matched with the same
- * `picomatch` and AND-narrowing semantics the runner uses — 1, "the same `--glob`
- * / `--include` / `--exclude` scoping as validate") narrows which files feed inference: a file is
- * kept only if it matches at least one `include` glob (when any are given) and no `exclude` glob.
- * The self-check applies the identical scope, so what inference saw is exactly what is routed.
+ * An optional `include` / `exclude` glob pre-filter (relative to `root`) narrows which files feed
+ * inference. It uses the same `picomatch` options and AND-narrowing as `validate`'s `--glob`,
+ * `--include` and `--exclude`: a file is kept only if it matches at least one `include` glob (when
+ * any are given) and no `exclude` glob. The self-check applies the identical scope, so what
+ * inference saw is exactly what is routed.
  */
 function discover(root: string, scope?: { include?: string[]; exclude?: string[] }): string[] {
   const include =
@@ -232,13 +230,23 @@ function asFrontmatterMap(data: unknown): Record<string, unknown> {
 }
 
 /**
- * Parse one corpus file into a `ParsedDoc`. A file that fails to parse is reported by the
- * caller and skipped.
- * Only the top-level H2 spine drives the contract in v1 (nested sections are recorded by the
- * projection but not consumed here of scope).
+ * Parse one corpus file into a `ParsedDoc`. Only the top-level H2 spine drives the contract:
+ * nested sections are in the parse tree but not used here.
+ *
+ * @throws {DeclarativeError} Naming `rel`, when the file cannot be read or its frontmatter is not
+ *   valid YAML. Inference cannot accept a file that validation would reject.
  */
 function parseDoc(root: string, rel: string): ParsedDoc {
-  const tree = parse(readFileSync(resolve(root, rel), 'utf8'))
+  let tree: DocTree
+  try {
+    tree = parse(readFileSync(resolve(root, rel), 'utf8'))
+  } catch (err) {
+    throw new DeclarativeError(`${rel}: ${(err as Error).message}`)
+  }
+  const yamlError = tree.frontmatter ? frontmatterYamlErrors(tree.frontmatter)[0] : undefined
+  if (yamlError) {
+    throw new DeclarativeError(`${rel}: frontmatter is not valid YAML: ${yamlError.message}`)
+  }
   return {
     rel: toPosix(rel),
     sections: tree.root.sections.map((s) => s.name),
@@ -376,7 +384,7 @@ function topoSort(union: string[], edges: Map<string, Set<string>>): string[] {
 
 /**
  * The ordered `format` candidates the ladder auto-detects (a conservative subset of the
- *  `format` vocabulary). Each is **structurally distinctive** — a plain word or free-form
+ * `format` vocabulary). Each is **structurally distinctive** — a plain word or free-form
  * phrase can never accidentally match — so detecting one is a genuine signal, not a coincidence.
  * The loose formats (`hostname`, `cuid2`, `base64`, `emoji`, …) are deliberately
  * EXCLUDED here: an ordinary token like `policy` validates as a `hostname`/`cuid2`, which would
@@ -430,9 +438,8 @@ function isScalar(v: unknown): v is string | number | boolean {
 }
 
 /**
- * Infer one field's schema from its observed values — the **tight-but-accepting value ladder**
- * . For the observed values of a single frontmatter key, pick the *most
- * specific* schema that still admits *every* value, defaulting looser only when no tighter rung
+ * Infer one field's schema from its observed values with the **tight-but-accepting value
+ * ladder**. For the observed values of a single frontmatter key, pick the *most specific* schema that still admits *every* value, defaulting looser only when no tighter rung
  * fits — so the choice can never break accept-by-construction:
  *
  *  1. all values **identical** (a scalar), seen in **≥ `opts.minConstExamples`** docs, and — for
@@ -450,8 +457,8 @@ function isScalar(v: unknown): v is string | number | boolean {
  * `relax` skips rung 6 so a categorical field stays `{ type: string }` (`--relax`
  * drops enums); `maxConstStringLength` keeps a long free-text value off rungs 1 and 6;
  * `minConstExamples` keeps a uniform scalar off rung 1 until enough docs back it. Each guard only
- * ever loosens the rung, so accept-by-construction holds. `min` / `max` / `pattern` are never
- * inferred here (opt-in via `--infer-bounds`, a future phase).
+ * ever loosens the rung, so accept-by-construction holds. `min`, `max` and `pattern` are never
+ * inferred.
  */
 function inferFieldSchema(
   values: unknown[],
@@ -1008,8 +1015,9 @@ function emitMetaFiles(contracts: InferredContract[], inline: boolean): Inferred
  * @param root The folder to read.
  * @param opts How to infer; see {@link InferOptions}.
  * @returns The contracts, the YAML files to write, and warnings.
- * @throws {DeclarativeError} When the files cannot give a contract that accepts them all, such as
- *   two headings in one file that map to the same key.
+ * @throws {DeclarativeError} When the files cannot give a contract that accepts them all: two
+ *   headings in one file that map to the same key, a file that cannot be read, or a file whose
+ *   frontmatter is not valid YAML. The message names the file.
  * @throws {Error} When `root` cannot be read.
  * @experimental
  */

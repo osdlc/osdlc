@@ -31,6 +31,37 @@ async function loadConfig(): Promise<CorpusConfig> {
   return mod.default
 }
 
+describe('runCli — usage errors', () => {
+  test('validate takes one path; a second path exits 2', async () => {
+    const r = await runCli(['validate', CORPUS, CLEAN_SUBTREE, '--config', CONFIG], { cwd: CORPUS })
+    expect(r.code).toBe(2)
+    expect(r.stderr).toContain('validate takes one <path>')
+  })
+
+  test.each([
+    [['validate', CORPUS, '--config', CONFIG, '--write'], '--write does not apply to validate'],
+    [['validate', CORPUS, '--config', CONFIG, '--meta'], '--meta does not apply to validate'],
+    [['migrate', 'a.yaml', '--format', 'json'], '--format does not apply to migrate'],
+    [['init', CORPUS, '--contract', 'c.yaml'], '--contract does not apply to init'],
+  ])('a flag from another command is rejected: %j', async (argv, message) => {
+    const r = await runCli(argv, { cwd: CORPUS })
+    expect(r.code).toBe(2)
+    expect(r.stderr).toContain(message)
+  })
+
+  test('--infer-bounds is not a flag', async () => {
+    const r = await runCli(['init', CORPUS, '--infer-bounds'], { cwd: CORPUS })
+    expect(r.code).toBe(2)
+    expect(r.stderr).toContain('infer-bounds')
+  })
+
+  test('an unknown command name that is an Object property is still unknown', async () => {
+    const r = await runCli(['toString'], { cwd: CORPUS })
+    expect(r.code).toBe(2)
+    expect(r.stderr).toContain('unknown command "toString"')
+  })
+})
+
 describe('runCli — in-process over the fixture corpus', () => {
   test('failing corpus → exit 1 (the bad decision has error-level findings)', async () => {
     const r = await runCli(['validate', CORPUS, '--config', CONFIG], { cwd: CORPUS })

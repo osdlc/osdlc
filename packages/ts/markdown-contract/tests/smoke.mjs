@@ -80,6 +80,29 @@ try {
     assert.equal(bad.status, 1, `${command} on a failing folder: ${bad.stderr}`)
     assert.match(bad.stdout, /structure\/section-missing/)
   }
+
+  // Output larger than a pipe buffer (64 KB) must arrive whole: the bin sets the exit code and
+  // lets the streams drain, instead of calling process.exit.
+  const many = join(dir, 'many')
+  mkdirSync(many)
+  writeFileSync(join(many, 'markdown-contract.yaml'), CONTRACT_YAML)
+  const COUNT = 3000
+  for (let i = 0; i < COUNT; i++) writeFileSync(join(many, `doc-${i}.md`), '## Other\n\nx\n')
+  for (const [command, prefix] of runs) {
+    const args = [...prefix, 'validate', '.', '--contract', 'markdown-contract.yaml']
+    for (const format of ['json', 'sarif']) {
+      const big = spawnSync(command, [...args, '--format', format], {
+        cwd: many,
+        encoding: 'utf8',
+        maxBuffer: 256 * 1024 * 1024,
+      })
+      assert.equal(big.status, 1, `${command} --format ${format}: ${big.stderr}`)
+      assert.ok(big.stdout.length > 65536, `${format} output is larger than a pipe buffer`)
+      const parsed = JSON.parse(big.stdout)
+      const count = format === 'json' ? parsed.length : parsed.runs[0].results.length
+      assert.equal(count, COUNT, `${command} --format ${format} was cut short`)
+    }
+  }
 } finally {
   rmSync(dir, { recursive: true, force: true })
 }

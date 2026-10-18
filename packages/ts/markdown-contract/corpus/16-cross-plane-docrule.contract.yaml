@@ -37,4 +37,4 @@ body:
         - section: What worked
         - section: Friction and automation gaps
 
-# GAP: docRule("task/post-mortem-when-worked") — cross-plane docRule with custom function; rule() and docRule() are not expressible in v1
+# GAP: docRule("task/post-mortem-when-worked") — cross-plane docRule with custom function; rule() and docRule() are not expressible in YAML

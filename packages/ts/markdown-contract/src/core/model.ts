@@ -12,20 +12,22 @@
  * sections matching no slot land in `unknown` (always present, `[]` when none, document
  * order); a declared-and-absent section is simply not a key (so it reads as `undefined`).
  *
- *   - `doc.frontmatter` — the parsed `tree.frontmatter?.data`;
+ *   - `doc.frontmatter` — the frontmatter schema's output (the parsed YAML when the contract has
+ *     no schema);
  *   - `doc.body` — the dual-key `SectionGroup` over `tree.root.sections` against `def.body`,
  *     recursing into each declared section's `children` grammar;
  *   - `SectionView` — `name`, `pos`, `anchors`, `text(scope?)`, `tables`/`table`, `lists`,
  *     `byAnchor(id)`, nested dual-key `sections`;
  *   - `doc.byAnchor(id)` — doc-wide anchor lookup → a `.kind`-discriminated `BlockView`.
  *
- * A table row is keyed by column name; a declared transforming `cells` schema reads its cell back
- * as the CACHED transform output (`node.typed(...)`'s overlay), an undeclared / no-transform
- * cell stays the raw string. The *static typing* of rows / section keys is `Infer`'s job
- * (top-level). The model is **additive**: the validator never consults it, and the typed value
- * rides only here — the projected `tree` rows stay raw strings.
+ * A table row is keyed by column name; a declared `cells` schema reads its cell back as the
+ * schema's output, from the `ParsedValues` of the validation pass. An undeclared cell stays the
+ * raw string. The *static typing* of rows / section keys is `Infer`'s job (top-level). The
+ * model is **additive**: the validator never consults it, and the typed values ride only here;
+ * the projected `tree` rows stay raw strings.
  */
 import { toCamelKey } from './camel.js'
+import { createParsedValues, type ParsedValues } from './parsed-values.js'
 import type {
   BlockNode,
   BlockView,
@@ -59,19 +61,18 @@ type TableBlock = Extract<BlockNode, { kind: 'table' }>
 
 /**
  * A `TableView` over a projected table block. Each row is keyed by column name; a cell reads back
- * the CACHED transform output when a declared `cells` schema produced one (`node.typed(row, col)`,
- * the sparse overlay filled from the content plane's per-cell `safeParse`), falling back to
- * the RAW cell string otherwise — so a declared transforming cell (e.g. `Location` → `{ path,
- * symbol? }`) reads back the parsed object while an undeclared / no-transform column stays a string.
- * The typed value flows ONLY through this model; `node.rows` (the projected
- * tree) is untouched and stays raw strings. `Infer`'s `TableView<Row>` types the rows
- * statically for a declared table; at runtime the row map is `Record<string, unknown>`.
+ * the output of its declared `cells` schema when one ran (`values.cell`, filled by the content
+ * plane's per-cell `safeParse`), else the raw cell string. A transforming cell (e.g. `Location`
+ * → `{ path, symbol? }`) reads back the parsed object while an undeclared column stays a string.
+ * The typed value flows only through this model; `node.rows` stays raw strings. `Infer`'s
+ * `TableView<Row>` types the rows statically for a declared table; at runtime the row map is
+ * `Record<string, unknown>`.
  */
-function tableView(node: Extract<BlockNode, { kind: 'table' }>): TableView {
+function tableView(node: Extract<BlockNode, { kind: 'table' }>, values: ParsedValues): TableView {
   const rows: Record<string, unknown>[] = node.rows.map((cells, r) => {
     const row: Record<string, unknown> = {}
     node.columns.forEach((col, i) => {
-      const typed = node.typed(r, col)
+      const typed = values.cell(node, r, col)
       row[col] = typed !== undefined ? typed : (cells[i] ?? '')
     })
     return row
@@ -107,18 +108,16 @@ function tableView(node: Extract<BlockNode, { kind: 'table' }>): TableView {
 }
 
 /**
- * A `ListView` over a projected list block. Each item reads back the CACHED transform output when a
- * declared `everyItem` schema produced one (`node.typedItem(i)`, the sparse overlay fills from
- * the content plane's per-item `safeParse`), falling back to the RAW `ListItem` otherwise — so a
- * declared transforming list (e.g. `AC-1: …` → `{ ref, text }`) reads back the parsed value while a
- * plain / `"checkbox"` list stays raw `ListItem`s, the list analogue of `tableView`. The
- * typed value flows ONLY through this model; `node.items` (the projected tree) stays raw.
- * `Infer`'s `ListView<Item>` types the items statically for a declared list; at runtime each is
- * `unknown` (the cached value or the raw item).
+ * A `ListView` over a projected list block. Each item reads back the output of the `everyItem`
+ * schema when one ran (`values.item`, filled by the content plane's per-item `safeParse`), else
+ * the raw `ListItem`. A transforming list (e.g. `AC-1: …` → `{ ref, text }`) reads back the parsed
+ * value while a plain or `"checkbox"` list stays raw `ListItem`s. The typed value flows only
+ * through this model; `node.items` stays raw. `Infer`'s `ListView<Item>` types the items
+ * statically for a declared list; at runtime each is `unknown`.
  */
-function listView(node: Extract<BlockNode, { kind: 'list' }>): ListView {
+function listView(node: Extract<BlockNode, { kind: 'list' }>, values: ParsedValues): ListView {
   const items: unknown[] = node.items.map((raw, i) => {
-    const typed = node.typedItem(i)
+    const typed = values.item(node, i)
     return typed !== undefined ? typed : raw
   })
   const view: ListView = {
@@ -145,12 +144,12 @@ function paragraphView(node: Extract<BlockNode, { kind: 'paragraph' }>): Paragra
 }
 
 /** Project one `BlockNode` into its discriminated `BlockView`. */
-function blockView(node: BlockNode): BlockView {
+function blockView(node: BlockNode, values: ParsedValues): BlockView {
   switch (node.kind) {
     case 'table':
-      return tableView(node)
+      return tableView(node, values)
     case 'list':
-      return listView(node)
+      return listView(node, values)
     case 'code':
       return codeView(node)
     case 'paragraph':
@@ -244,13 +243,17 @@ function sectionAnchors(node: SectionNode): string[] {
  * partition, and a `content` *record* of `^anchor`-bound tables surfaces each as a named field
  * on the view.
  */
-function sectionView(node: SectionNode, opts: SectionOpts | undefined): SectionView {
+function sectionView(
+  node: SectionNode,
+  opts: SectionOpts | undefined,
+  values: ParsedValues,
+): SectionView {
   const tables = node.blocks
     .filter((b): b is Extract<BlockNode, { kind: 'table' }> => b.kind === 'table')
-    .map(tableView)
+    .map((b) => tableView(b, values))
   const lists = node.blocks
     .filter((b): b is Extract<BlockNode, { kind: 'list' }> => b.kind === 'list')
-    .map(listView)
+    .map((b) => listView(b, values))
 
   const view: SectionView = {
     name: node.name,
@@ -266,11 +269,11 @@ function sectionView(node: SectionNode, opts: SectionOpts | undefined): SectionV
     lists,
     byAnchor(id: string): BlockView | undefined {
       const block = node.blocks.find((b) => b.anchor === id)
-      return block ? blockView(block) : undefined
+      return block ? blockView(block, values) : undefined
     },
     // `sections` is the same dual-key group shape as `doc.body` — recursion is uniform,
     // partitioned against this section's declared `children` grammar.
-    sections: sectionGroup(node.sections, opts?.children),
+    sections: sectionGroup(node.sections, opts?.children, values),
   }
   // The sole table, when exactly one. (Dynamic `Record<string,string>` rows — a one-table
   // section is not auto-typed, since that would make its type depend on content count.)
@@ -284,7 +287,7 @@ function sectionView(node: SectionNode, opts: SectionOpts | undefined): SectionV
       const anchor = (leaf.config as { anchor?: string } | undefined)?.anchor
       const block = anchor ? node.blocks.find((b) => b.anchor === anchor) : undefined
       if (block && block.kind === 'table' && !(fieldName in view)) {
-        ;(view as unknown as Record<string, TableView>)[fieldName] = tableView(block)
+        ;(view as unknown as Record<string, TableView>)[fieldName] = tableView(block, values)
       }
     }
   }
@@ -308,7 +311,11 @@ function sectionView(node: SectionNode, opts: SectionOpts | undefined): SectionV
  * A declared-but-absent section is simply not a key here ⇒ it reads as `undefined` (an absent
  * optional section's `undefined`; a required absent section blocks `doc` upstream anyway).
  */
-function sectionGroup(nodes: SectionNode[], seq: SectionSeq | undefined): SectionGroup {
+function sectionGroup(
+  nodes: SectionNode[],
+  seq: SectionSeq | undefined,
+  values: ParsedValues,
+): SectionGroup {
   const declared = declaredNames(seq)
 
   // Build each section's view, partitioning declared vs unknown in document order. The value a
@@ -328,7 +335,7 @@ function sectionGroup(nodes: SectionNode[], seq: SectionSeq | undefined): Sectio
   const byExact = new Map<string, SectionView>()
   for (const node of nodes) {
     const opts = optsFor(seq, node.name)
-    const view = sectionView(node, opts)
+    const view = sectionView(node, opts, values)
     if (!byExact.has(view.name)) byExact.set(view.name, view) // first occurrence wins
     if (!declared.has(node.name)) {
       unknown.push(view)
@@ -414,28 +421,37 @@ function promotedTable(view: SectionView, opts: SectionOpts | undefined): TableV
 // ── Public entry ─────────────────────────────────────────────────────────────────
 
 /**
- * Build the typed model for a validated document — a lazy facade over the projection.
- * `frontmatter` is the parsed YAML; `body` is the dual-key group over the top-level sections
- * (partitioned against `def.body`); `byAnchor` resolves a `^anchor` anywhere in the document.
+ * Build the typed model for a validated document, a lazy facade over the projection.
+ * `frontmatter` is the frontmatter schema's output from `values` (the parsed YAML when the
+ * contract has no schema); `body` is the dual-key group over the top-level sections (partitioned
+ * against `def.body`); `byAnchor` resolves a `^anchor` anywhere in the document, including under
+ * the H1 before the first section.
  */
 export function buildModel<F, B>(
   tree: DocTree,
   def: ContractDef<F, B>,
   _ctx: ValidateCtx,
+  values: ParsedValues = createParsedValues(),
 ): Doc<F, B> {
-  const frontmatter = (tree.frontmatter ? tree.frontmatter.data : undefined) as F
-  const body = sectionGroup(tree.root.sections, def.body as SectionSeq | undefined) as unknown as B
+  const frontmatter = (
+    values.frontmatter !== undefined ? values.frontmatter.data : tree.frontmatter?.data
+  ) as F
+  const body = sectionGroup(
+    tree.root.sections,
+    def.body as SectionSeq | undefined,
+    values,
+  ) as unknown as B
 
   return {
     frontmatter,
     body,
     byAnchor(id: string): BlockView | undefined {
-      return findAnchor(tree.root.sections, id)
+      return findAnchor([tree.root], id, values)
     },
     inlineSpans(row: Record<string, string>, col: string): InlineSpan[] {
       // Doc-wide companion to `TableView.cellPos`: find the table holding `row` (by content — the
       // doc holds no table view to `indexOf` against), then return that cell's inline-code spans.
-      const hit = tableForRow(tree.root.sections, row)
+      const hit = tableForRow([tree.root], row)
       if (!hit) return []
       const ci = hit.node.columns.indexOf(col)
       if (ci < 0) return []
@@ -445,11 +461,11 @@ export function buildModel<F, B>(
 }
 
 /** Walk the section tree depth-first for a block carrying anchor `id`. */
-function findAnchor(nodes: SectionNode[], id: string): BlockView | undefined {
+function findAnchor(nodes: SectionNode[], id: string, values: ParsedValues): BlockView | undefined {
   for (const node of nodes) {
     const block = node.blocks.find((b) => b.anchor === id)
-    if (block) return blockView(block)
-    const nested = findAnchor(node.sections, id)
+    if (block) return blockView(block, values)
+    const nested = findAnchor(node.sections, id, values)
     if (nested) return nested
   }
   return undefined

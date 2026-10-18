@@ -2,7 +2,7 @@
  * The declarative text-constraint compiler — the closed `requires:` / `forbids:` match-spec
  * vocabulary of a `*.contract.yaml`, compiled onto the TS text-predicate builders
  * (`requires` / `forbids` / `textRule` in `../core/text-constraints.ts`). It is
- * the data-authoring twin of `schema.ts`: a finite vocabulary in, the engine's builders out, with
+ * the data-authoring twin of `schema-v2.ts`: a finite vocabulary in, the engine's builders out, with
  * the authoring mistakes rejected at compile time rather than surfacing as confusing findings.
  *
  * A `requires:` / `forbids:` value is a LIST of match-spec entries. Each entry is checked against

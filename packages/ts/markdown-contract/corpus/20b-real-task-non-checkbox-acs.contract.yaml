@@ -66,4 +66,4 @@ body:
       minContains: 0
       maxContains: 1
 
-# GAP: docRule("task/completion-note-when-closed") — runtime cross-field rule (closed status requires Completion note section); not expressible in v1 (docRule/custom-fn)
+# GAP: docRule("task/completion-note-when-closed") — runtime cross-field rule (closed status requires Completion note section); not expressible in YAML (docRule/custom-fn)

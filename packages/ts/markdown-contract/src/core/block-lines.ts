@@ -40,9 +40,10 @@ export function codeBlockLines(tree: DocTree): Set<number> {
 }
 
 /**
- * Every table row line — each table's header line (`table.pos.line`) plus every data-row line
- * (`table.rowPos(i).line`) — recursive over the section tree. The separator row is absent (the
- * projection forms no data row for it). These are the lines a table-cell scanner inspects.
+ * Every table row line: each table's header line (`table.pos.line`) plus every data-row line
+ * (`table.rowPos(i).line`). It covers the blocks under `root` itself (the H1) and every section
+ * below it. The separator row is absent (the projection forms no data row for it). These are the
+ * lines a table-cell scanner inspects.
  */
 export function tableRowLines(root: SectionNode): Set<number> {
   const lines = new Set<number>()
@@ -57,6 +58,6 @@ export function tableRowLines(root: SectionNode): Set<number> {
       walk(s.sections)
     }
   }
-  walk(root.sections)
+  walk([root])
   return lines
 }

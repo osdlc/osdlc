@@ -7,19 +7,40 @@
  * + `--force` clobber refusal, `--meta --depth N`, `--inline`, the `--check` drift guard,
  * multi-root runs, and `--include`/`--exclude` scoping.
  */
-import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  cpSync,
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { describe, expect, test } from 'vitest'
+import { afterAll, describe, expect, test } from 'vitest'
 
 import { runCli } from '../src/cli/index.js'
+
+const made: string[] = []
+
+/** A fresh temp dir, removed after the suite. */
+function tmp(prefix: string): string {
+  const dir = mkdtempSync(join(tmpdir(), prefix))
+  made.push(dir)
+  return dir
+}
+
+afterAll(() => {
+  for (const dir of made) rmSync(dir, { recursive: true, force: true })
+})
 
 /** Copy a fixture vault into a fresh temp dir so write-mode `init` runs never mutate fixtures. */
 function stageVault(rel: string): string {
   const src = fileURLToPath(new URL(`./fixtures/infer/${rel}/vault`, import.meta.url))
-  const dst = mkdtempSync(join(tmpdir(), 'mc-init-'))
+  const dst = tmp('mc-init-')
   cpSync(src, dst, { recursive: true })
   return dst
 }
@@ -73,8 +94,8 @@ describe('markdown-contract init (CLI)', () => {
     // Three distinct dirs: the source vault to infer from, the write target, and an
     // unrelated cwd. --out must steer every written file to <dir>, never to cwd.
     const vault = stageVault('07-tree-depth1')
-    const outDir = mkdtempSync(join(tmpdir(), 'mc-out-'))
-    const cwd = mkdtempSync(join(tmpdir(), 'mc-cwd-'))
+    const outDir = tmp('mc-out-')
+    const cwd = tmp('mc-cwd-')
 
     const r = await runCli(['init', vault, '--meta', '--out', outDir], { cwd })
     expect(r.code).toBe(0)
@@ -96,7 +117,7 @@ describe('markdown-contract init (CLI)', () => {
     // The scaffold is anchored to the single inferred root by default, so it shares one base
     // with the root-relative globs and `--check` — regardless of where the command is run from.
     const vault = stageVault('07-tree-depth1')
-    const cwd = mkdtempSync(join(tmpdir(), 'mc-cwd-'))
+    const cwd = tmp('mc-cwd-')
 
     const r = await runCli(['init', vault, '--meta'], { cwd })
     expect(r.code).toBe(0)
@@ -120,7 +141,7 @@ describe('markdown-contract init (CLI)', () => {
     // The round-trip that fails today: with the scaffold written to the inferred root, `--check`
     // (which loads resolve(<dir>, markdown-contract.yaml)) finds it from any cwd.
     const vault = stageVault('01-flat-uniform')
-    const cwd = mkdtempSync(join(tmpdir(), 'mc-cwd-'))
+    const cwd = tmp('mc-cwd-')
 
     const init = await runCli(['init', vault], { cwd })
     expect(init.code).toBe(0)
@@ -133,7 +154,7 @@ describe('markdown-contract init (CLI)', () => {
     // A multi-root run has no single natural base, so it keeps the cwd fallback — and says so.
     const a = stageVault('01-flat-uniform')
     const b = stageVault('02-optional-sections')
-    const cwd = mkdtempSync(join(tmpdir(), 'mc-cwd-'))
+    const cwd = tmp('mc-cwd-')
 
     const r = await runCli(['init', a, b, '--meta'], { cwd })
     expect(r.code).toBe(0)
@@ -250,7 +271,7 @@ describe('markdown-contract validate — run summary', () => {
 describe('markdown-contract init — heading key-collision', () => {
   /** A fresh empty temp vault to write ad-hoc collision fixtures into. */
   function freshVault(): string {
-    return mkdtempSync(join(tmpdir(), 'mc-kcol-'))
+    return tmp('mc-kcol-')
   }
 
   test('does not crash on key-colliding peer headings — exits 2 with a descriptive message', async () => {

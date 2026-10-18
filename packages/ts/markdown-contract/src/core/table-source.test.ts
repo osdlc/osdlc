@@ -94,4 +94,17 @@ describe('rawTableRow — the literal, unpadded cell array for one row', () => {
     // Unpadded — the caller sees the 2-vs-3 mismatch against the header.
     expect(rawTableRow(table, doc, 0)).toEqual(['x', 'y'])
   })
+
+  test('an escaped pipe stays inside its cell, so the arity is not inflated', () => {
+    const doc = [
+      '## T', // 1
+      '', // 2
+      '| A | B |', // 3
+      '| - | - |', // 4
+      '| x \\| y | z |', // 5  two cells; the first holds `\|`
+    ].join('\n')
+    const table = opsTable(doc)
+    expect(rawTableRow(table, doc, 0)).toEqual(['x \\| y', 'z'])
+    expect(rawTableRows(table, doc).rows).toEqual([['x \\| y', 'z']])
+  })
 })

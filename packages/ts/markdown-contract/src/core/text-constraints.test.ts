@@ -24,22 +24,12 @@ function para(line: number, text: string): BlockNode {
   return { kind: 'paragraph', text, pos: { line, col: 1 }, inlineSpans: () => [] }
 }
 
-/** A heading-direct unordered list block with a live (unused-here) sparse typed-item overlay. */
+/** A heading-direct unordered list block. */
 function listBlock(
   line: number,
   items: { text: string; pos: { line: number; col: number } }[],
 ): BlockNode {
-  const typedStore = new Map<number, unknown>()
-  return {
-    kind: 'list',
-    ordered: false,
-    pos: { line, col: 1 },
-    items,
-    typedItem: (i) => typedStore.get(i),
-    setTypedItem: (i, value) => {
-      typedStore.set(i, value)
-    },
-  }
+  return { kind: 'list', ordered: false, pos: { line, col: 1 }, items }
 }
 
 /** A minimal projected `SectionNode` for direct-run unit cases. */

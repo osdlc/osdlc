@@ -47,7 +47,14 @@ test('the built ./core graph imports no Node built-in', () => {
   const node = [...bare].filter((s) => s.startsWith('node:') || NODE_BUILTINS.has(s))
   expect(node).toEqual([])
   expect([...bare].sort()).toEqual(
-    ['remark-frontmatter', 'remark-gfm', 'remark-parse', 'unified', 'yaml'].sort(),
+    [
+      '@osdlc/gfm-table',
+      'remark-frontmatter',
+      'remark-gfm',
+      'remark-parse',
+      'unified',
+      'yaml',
+    ].sort(),
   )
 })
 

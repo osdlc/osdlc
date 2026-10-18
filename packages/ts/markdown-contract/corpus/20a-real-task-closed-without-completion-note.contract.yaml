@@ -51,7 +51,7 @@ frontmatter:
       type: array
       items:
         type: string
-# GAP: .refine() on frontmatter object — "a closed task must record a completion_note" (closed/* ⇒ completion_note present); not expressible in v1
+# GAP: .refine() on frontmatter object — "a closed task must record a completion_note" (closed/* ⇒ completion_note present); not expressible in YAML
 
 body:
   order: recognized-relative

@@ -1,9 +1,9 @@
 /**
  * The finding-id → default `FindingLevel` registry plus the `Ctx` factory (`makeCtx`).
  *
- * `level` is **contract data**, not a call-site choice: a finding id has one
- * default severity wherever it fires. This registry holds the structure- and content-plane
- * defaults; the rule (`rule/*` / `docRule`) defaults are added when that plane lands.
+ * `level` is **contract data**, not a call-site choice: a finding id has one default severity
+ * wherever it fires. This registry holds the defaults for the structure, content (including
+ * frontmatter), text and rule planes.
  *
  * `makeCtx(path, registry)` returns the `Ctx` a rule body uses: its `finding(...)` stamps
  * the document `path` and fills `level` from the registry when the caller does not supply
@@ -44,7 +44,8 @@ const CONTENT_LEVELS: Record<string, FindingLevel> = {
   'content/code/lang': 'error',
   // paragraph
   'content/max-words': 'error',
-  // frontmatter (Zod over the YAML)
+  // frontmatter: the YAML itself, then Zod over it
+  'frontmatter/yaml': 'error',
   'frontmatter/enum': 'error',
   'frontmatter/unknown-key': 'error',
   'frontmatter/type': 'error',
@@ -81,7 +82,7 @@ const TEXT_LEVELS: Record<string, FindingLevel> = {
   'text/count': 'error',
 }
 
-/** The id → default-level registry. extends it with rule ids. */
+/** The id → default-level registry. */
 type LevelRegistry = Record<string, FindingLevel>
 
 /** A fresh registry seeded with the structure-, content-, text-, and rule-plane defaults. */

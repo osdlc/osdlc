@@ -30,29 +30,29 @@ module in `src/` as `*.test.ts` files.
 4. Write `tests/fixtures/validation/<name>.ts`:
 
    ```ts
-   import { contract, section, sections, table } from "../../../src/index.js";
-   import { loadCorpusSource, loadExpected } from "../../harness.js";
-   import type { ValidationFixture } from "../../harness.js";
+   import { contract, section, sections, table } from '../../../src/index.js'
+   import { loadCorpusSource, loadExpected } from '../../harness.js'
+   import type { ValidationFixture } from '../../harness.js'
 
    const v10b: ValidationFixture = {
-     id: "v10b",
-     title: "Table missing a declared column",
-     component: "content",
+     id: 'v10b',
+     title: 'Table missing a declared column',
+     component: 'content',
      build: () =>
        contract({
          body: sections({}, [
-           section("Files", { content: table({ columns: ["Location", "Kind", "Change"] }) }),
+           section('Files', { content: table({ columns: ['Location', 'Kind', 'Change'] }) }),
          ]),
        }),
      cases: [
        {
-         label: "fail — Change column dropped",
-         source: loadCorpusSource("./10b-table-missing-column.fail.md"),
-         findings: loadExpected("./10b-table-missing-column.fail.expected.json"),
+         label: 'fail — Change column dropped',
+         source: loadCorpusSource('./10b-table-missing-column.fail.md'),
+         findings: loadExpected('./10b-table-missing-column.fail.expected.json'),
        },
      ],
-   };
-   export default v10b;
+   }
+   export default v10b
    ```
 
 5. Add the fixture to `tests/fixtures/validation/index.ts` and to

@@ -1,27 +1,25 @@
 /**
- * The v2 body-grammar + content-leaf compiler — the v2 YAML body DSL → the SAME engine
- * combinators v1 targets. What changes is the authoring vocabulary,
- * not the runtime: `sections` / `section` / `oneOf` / `gap` / `optional` and the four leaves
- * (`table` / `list` / `code` / `maxWords`) still carry everything.
+ * The v2 body-grammar and content-leaf compiler: the YAML body vocabulary compiles to the engine
+ * combinators `sections` / `section` / `oneOf` / `gap` / `optional` and the four leaves
+ * (`table` / `list` / `code` / `maxWords`).
  *
- * v2 spellings (all closed — an unknown node/level/leaf key is a `DeclarativeError`, where
- * v1's compilers silently ignored it):
+ * The spellings are closed: an unknown node, level or leaf key is a `DeclarativeError`.
  *   - `additionalSections` (boolean) replaces `allowUnknown` on a level;
  *   - occurrence is declared with `minContains` / `maxContains` (JSON Schema's counting
  *     names) instead of `optional` / `repeatable` / `min` / `max` — both absent is a plain
  *     slot; either present is a counted slot with lo = minContains ?? 1, hi = maxContains ?? ∞;
  *   - a nested level HOISTS onto its section node: `sections` (+ optional `order` /
- *     `additionalSections`) sit directly on the node (v1's `children:` wrapper is gone);
+ *     `additionalSections`) sit directly on the node, with no `children:` wrapper;
  *   - a list leaf constrains items with `items` (checkbox | schema node) instead of
  *     `everyItem`; leaf `cells` / `items` schemas compile through the v2 schema subset;
  *   - `description` is admitted on levels, nodes, and leaf mappings — it becomes the
  *     hint findings carry.
- * `requires:` / `forbids:` reuse the v1 text-constraint compiler verbatim.
+ * `requires:` / `forbids:` compile through `text.ts`.
  */
-import { gap, oneOf, optional, section, sections } from '../core/grammar.js'
-import { code, list, maxWords, table } from '../core/leaves.js'
 import type { ZodType } from 'zod'
 
+import { gap, oneOf, optional, section, sections } from '../core/grammar.js'
+import { code, list, maxWords, table } from '../core/leaves.js'
 import type { LeafSpec, LevelOpts, SectionOpts, SectionSeq, Spec } from '../core/types.js'
 import { DeclarativeError } from './errors.js'
 import { compileSchemaV2 } from './schema-v2.js'

@@ -328,7 +328,7 @@ function typedSchema(n: Record<string, unknown>, base: string, path: string): z.
 /**
  * `type: string` — a named `format` (the closed constructor map above) or a plain string,
  * COMPOSED with `minLength` / `maxLength` / `pattern`. In v1 a `format` was exclusive; in v2
- * the constraints chain onto the format constructor (verified on zod 4.4.3).
+ * the constraints chain onto the format constructor.
  */
 function stringSchema(n: Record<string, unknown>, path: string): z.ZodType {
   let s: z.ZodString

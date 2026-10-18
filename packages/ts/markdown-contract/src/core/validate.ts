@@ -19,6 +19,7 @@
 import { matchContent } from './content.js'
 import { ContractError } from './finding.js'
 import { buildModel } from './model.js'
+import { createParsedValues, type ParsedValues } from './parsed-values.js'
 import { parse } from './projection.js'
 import { defaultRegistry, makeCtx, withHint } from './registry.js'
 import { matchStructure, scanHeadingDepthJumps } from './structure.js'
@@ -50,7 +51,7 @@ const PLANE_ORDER = ['frontmatter', 'structure', 'content', 'text', 'rule'] as c
  * The plane a finding belongs to, derived from its id prefix. The named planes map by their
  * leading segment; any other prefix (a contract-chosen rule namespace like `task/...` or
  * `summary/...`, minted by `rule` / `docRule`) is the `rule` plane — so a custom rule id sorts
- * after `content` and `text`, as requires.
+ * after `content` and `text`, as the plane order requires.
  */
 function planeRank(id: string): number {
   const area = id.slice(0, id.indexOf('/'))
@@ -94,9 +95,15 @@ function sortFindings(findings: Finding[]): Finding[] {
  * level. The model is built once here only when the contract declares rules (so a rule-free
  * validation never forces model construction).
  */
-function runDocRules<F, B>(def: ContractDef<F, B>, tree: DocTree, ctx: Ctx, out: Finding[]): void {
+function runDocRules<F, B>(
+  def: ContractDef<F, B>,
+  tree: DocTree,
+  ctx: Ctx,
+  values: ParsedValues,
+  out: Finding[],
+): void {
   if (!def.rules || def.rules.length === 0) return
-  const doc = buildModel(tree, def, { path: ctx.path })
+  const doc = buildModel(tree, def, { path: ctx.path }, values)
   // Document-scoped rules (incl. the body-root `textRule`) have no nearer description than the
   // contract root, so their findings carry it as `hint` when one is authored.
   const rctx = withHint(ctx, def.description)
@@ -106,7 +113,7 @@ function runDocRules<F, B>(def: ContractDef<F, B>, tree: DocTree, ctx: Ctx, out:
 }
 
 /**
- * The "show me everything" door — never throws; findings as data. Parses a `source: string`
+ * The "show me everything" door: problems come back as findings, not exceptions. Parses a `source: string`
  * (bundled projection) or accepts a pre-parsed `DocTree`. Runs every plane in one
  * pass, merges + sorts the findings, and gates the typed model on no error-level
  * finding: `doc` is built lazily (a getter) so a passing fixture that only reads
@@ -133,9 +140,10 @@ export function validate<F, B>(
   }
   // Content plane: frontmatter Zod + each section's content leaf over a present, correct-kind
   // block. Guarded inside `matchContent` so it never re-reports the structure kind-gate.
-  findings.push(...matchContent(tree, def, fctx))
+  const values = createParsedValues()
+  findings.push(...matchContent(tree, def, fctx, values))
   // Rule plane: cross-plane `docRule(...)` over the built model (only when rules exist).
-  runDocRules(def, tree, fctx, findings)
+  runDocRules(def, tree, fctx, values, findings)
 
   const sorted = sortFindings(findings)
   const hasError = sorted.some((f) => f.level === 'error')
@@ -149,7 +157,7 @@ export function validate<F, B>(
       enumerable: true,
       configurable: true,
       get(): Doc<F, B> {
-        if (built === undefined) built = buildModel(tree, def, { path: ctx.path })
+        if (built === undefined) built = buildModel(tree, def, { path: ctx.path }, values)
         return built
       },
     })

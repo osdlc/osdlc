@@ -102,8 +102,8 @@ export interface ListItem {
 
 /**
  * One block in the parse tree, by `kind`: a table, a list, a fenced code block or a paragraph.
- * `anchor` is the `^anchor` id bound to the block, if any. Read typed cell and item values with
- * `typed()` and `typedItem()`: the content plane fills them when a schema transforms a value.
+ * `anchor` is the `^anchor` id bound to the block, if any. Cell and item text is raw here; the
+ * values a schema transforms are in the typed model (`Contract.read`).
  */
 export type BlockNode =
   | {
@@ -118,13 +118,6 @@ export type BlockNode =
       cellPos(row: number, col: number): SourcePos
       /** The inline code spans in one cell, in document order; `[]` when it has none. */
       inlineSpans(row: number, col: number): InlineSpan[]
-      /**
-       * The typed value of one cell, by row index and column name: the output of the cell
-       * schema when it transforms the text, or `undefined` when no schema did.
-       */
-      typed(row: number, col: string): unknown | undefined
-      /** @internal The content plane stores a cell's parsed value here. */
-      setTyped(row: number, col: string, value: unknown): void
       anchor?: string
       pos: SourcePos
     }
@@ -132,13 +125,6 @@ export type BlockNode =
       kind: 'list'
       ordered: boolean
       items: ListItem[]
-      /**
-       * The typed value of item `i`: the output of the `everyItem` schema when it transforms
-       * the text, or `undefined` when no schema did.
-       */
-      typedItem(i: number): unknown | undefined
-      /** @internal The content plane stores an item's parsed value here. */
-      setTypedItem(i: number, value: unknown): void
       anchor?: string
       pos: SourcePos
     }
@@ -308,7 +294,7 @@ export interface SectionSeq<B = unknown> {
 export interface Ctx {
   /** The document's path, as given in `ValidateCtx.path`. */
   path: string
-  /** Makes a finding. The path is filled in; `level` defaults to `error`. */
+  /** Makes a finding. The path is filled in; `level` defaults to the id's registered level, else `error`. */
   finding(f: { id: string; message: string; level?: FindingLevel; pos?: SourcePos }): Finding
 }
 
@@ -352,9 +338,9 @@ export interface ValidateCtx {
 /** A compiled contract for one document type, the value `contract()` returns. */
 export interface Contract<F = unknown, B = unknown> {
   /**
-   * Validates a document's source. Problems come back as findings.
+   * Validates a document's source. Problems come back as findings, including frontmatter YAML
+   * that is not valid (`frontmatter/yaml`).
    *
-   * @throws {Error} Only where `parse()` does: frontmatter YAML that cannot be resolved.
    * @throws {SyntaxError} When a text check's `regex` is not a valid regular expression.
    */
   validate(source: string, ctx: ValidateCtx): ValidationResult<F, B>
@@ -364,7 +350,6 @@ export interface Contract<F = unknown, B = unknown> {
    * Validates a document's source and returns its typed model.
    *
    * @throws {ContractError} When the document has an error-level finding.
-   * @throws {Error} Where `parse()` does: frontmatter YAML that cannot be resolved.
    * @throws {SyntaxError} When a text check's `regex` is not a valid regular expression.
    */
   read(source: string, ctx: ValidateCtx): Doc<F, B>
