@@ -1,0 +1,35 @@
+/**
+ * `@osdlc/tiered-dirs` — one answer to "where does this state live?" for a
+ * vendor's products, in Rust and TypeScript alike.
+ *
+ * Two axes. The tier says who shares the state (the vendor, a suite of
+ * products that share user data, or one general tool shipped outside the
+ * suite). The home says how durable it is (durable, config, cache, state,
+ * logs, runtime). A caller names both:
+ *
+ * ```ts
+ * TieredDirs.fromEnv('com.example', envVars('EXAMPLE')).suite('notes').cache().app('search')
+ * ```
+ *
+ * `TieredDirs.scratch()` sits outside both axes: the platform temp directory,
+ * for state that does not outlive a single call.
+ *
+ * This module is the twin of the Rust `tiered-dirs` crate. Identical input
+ * must yield an identical relative path in both, and `tests/parity.test.ts`
+ * pins that against a fixture both twins read.
+ */
+
+export { TieredDirsError } from './errors.ts'
+export { isValidSegment } from './segment.ts'
+export {
+  CONVENTIONS,
+  HOMES,
+  envVars,
+  overrideVars,
+  rootedBaseDirs,
+  systemBaseDirs,
+  xdgBaseDirs,
+} from './base-dirs.ts'
+export type { BaseDirs, Convention, EnvVars, Home, SystemBaseDirsOptions } from './base-dirs.ts'
+export { TIER_KINDS, Dir, Tier, TieredDirs } from './tiered-dirs.ts'
+export type { TierKind } from './tiered-dirs.ts'

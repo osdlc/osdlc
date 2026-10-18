@@ -1,0 +1,14 @@
+{
+  // Typechecks the source, tests/ and examples/. The build has its own include.
+  "extends": "@osdlc/tsconfig/node-lib",
+  "compilerOptions": {
+    // The package ships no TypeScript source, so `exports` has no `bun`
+    // condition. Map the package's own name to the source instead, for tsc and
+    // (in vitest.config.ts) for the tests, so examples/ and the README blocks
+    // run before a build.
+    "paths": {
+      "@osdlc/tiered-dirs": ["./index.ts"]
+    }
+  },
+  "include": ["*.ts", "tests/*.ts", "examples/*.ts"]
+}
