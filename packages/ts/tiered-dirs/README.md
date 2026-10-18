@@ -201,10 +201,11 @@ first:
 - In a test runner process where `<P>_ROOT` is unset and `HOME` is not moved,
   `<P>_ROOT` reads as `<tmp>/tiered-dirs-test-<pid>-<start ms>`. "HOME moved"
   means `HOME` differs from the passwd home. The Rust twin has no such
-  condition. This rule is kept deliberately, and `{ testRoot: false }` is the
-  explicit switch that turns it off. A CI job that sets `HOME` itself, such as a GitHub Actions
-  container job (`HOME=/github/home`, passwd home `/root`), therefore gets no
-  test-root default: set `<P>_ROOT` there. A test runner
+  condition. It is kept so a test that points `HOME` at a fixture keeps its
+  paths. `{ testRoot: false }` turns the test-root default off explicitly. A CI
+  job that sets `HOME` itself, such as a GitHub Actions container job
+  (`HOME=/github/home`, passwd home `/root`), therefore gets no test-root
+  default: set `<P>_ROOT` there. A test runner
   process is one with a test file as its entry point that runs with
   `NODE_ENV=test`, `NODE_TEST_CONTEXT` (set by `node --test`) or under Bun.
   A Vitest worker is detected too: `VITEST_WORKER_ID` or `VITEST_POOL_ID` is
