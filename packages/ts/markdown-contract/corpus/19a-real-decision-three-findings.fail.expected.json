@@ -1,0 +1,5 @@
+[
+  { "id": "frontmatter/enum", "level": "error", "line": 3 },
+  { "id": "structure/anchor-missing", "level": "error", "line": 10 },
+  { "id": "structure/section-order", "level": "error", "line": 22 }
+]

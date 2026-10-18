@@ -1,0 +1,11 @@
+mcVersion: 1
+kind: contract
+# fixture: v04a — Recognized sections out of declared order  (TS fixture: 04a-recognized-relative-out-of-order.ts)
+
+body:
+  order: recognized-relative
+  allowUnknown: true
+  sections:
+    - section: Title
+    - section: Overview
+    - section: Status

@@ -1,0 +1,12 @@
+mcVersion: 2
+kind: contract
+# fixture: v22 — Section-scoped requires  (TS fixture: 22-text-requires-section.ts)
+
+body:
+  order: recognized-relative
+  additionalSections: true
+  sections:
+    - section: Summary
+      requires:
+        - pattern: outcome
+          note: the decision outcome must be named

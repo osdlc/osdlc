@@ -1,0 +1,11 @@
+mcVersion: 2
+kind: contract
+# fixture: v02a — One of several required missing  (TS fixture: 02a-one-of-several-missing.ts)
+
+body:
+  order: none
+  additionalSections: true
+  sections:
+    - section: Title
+    - section: Overview
+    - section: Status

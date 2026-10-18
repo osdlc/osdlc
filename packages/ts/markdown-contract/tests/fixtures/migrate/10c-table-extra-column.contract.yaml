@@ -1,0 +1,17 @@
+mcVersion: 1
+kind: contract
+# fixture: v10c — Table with an extra column  (TS fixture: 10c-table-extra-column.ts)
+
+body:
+  order: none
+  allowUnknown: false
+  sections:
+    - section: Files
+      content:
+        table:
+          columns:
+            - Location
+            - Kind
+            - Change
+          minRows: 1
+          extraColumns: error

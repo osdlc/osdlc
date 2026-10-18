@@ -1,0 +1,27 @@
+mcVersion: 2
+kind: contract
+# fixture: v08a — Both planes fail in one findings list  (TS fixture: 08a-both-planes-fail-merged.ts)
+
+frontmatter:
+  type: object
+  required: [ id, status, title ]
+  additionalProperties: false
+  properties:
+    id:
+      type: string
+      pattern: '^D-[0-9A-Z]{4}$'
+    status:
+      enum:
+        - open/proposed
+        - open/accepted
+        - closed/superseded
+    title:
+      type: string
+      minLength: 1
+
+body:
+  order: none
+  additionalSections: true
+  sections:
+    - section: Summary
+    - section: Context

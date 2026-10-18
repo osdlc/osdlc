@@ -1,0 +1,82 @@
+mcVersion: 2
+kind: contract
+# fixture: v20a — Closed task missing Completion note  (TS fixture: 20a-real-task-closed-without-completion-note.ts)
+
+frontmatter:
+  type: object
+  required: [ id, status ]
+  additionalProperties: false
+  properties:
+    id:
+      type: string
+      pattern: '^T-[0-9A-Z]{4}$'
+    status:
+      enum:
+        - planning/draft
+        - open/ready
+        - in-progress/active
+        - closed/done
+        - closed/superseded
+    completion_note:
+      type: string
+      minLength: 1
+    title:
+      type: string
+      minLength: 1
+    type:
+      const: task
+    schema_version:
+      type: string
+    # GAP: z.unknown() has no v1 equivalent (no "any" type); under `strict` the keys must still be
+    # declared or they read as unknown-key, so they are approximated as optional strings.
+    created:
+      type: string
+    last_reviewed:
+      type: string
+    impact:
+      enum:
+        - low
+        - medium
+        - high
+    complexity:
+      enum:
+        - small
+        - medium
+        - large
+    tags:
+      type: array
+      items:
+        type: string
+    prs:
+      type: array
+      items:
+        type: string
+# GAP: .refine() on frontmatter object — "a closed task must record a completion_note" (closed/* ⇒ completion_note present); not expressible in v1
+
+body:
+  order: recognized-relative
+  additionalSections: true
+  sections:
+    - oneOf:
+        - Goal
+        - Goal / Problem statement
+    - section: Files to touch
+      minContains: 0
+      maxContains: 1
+      content:
+        table:
+          columns:
+            - Location
+            - Kind
+            - Change
+          cells:
+            Kind:
+              enum:
+                - add
+                - modify
+                - delete
+    - section: Acceptance criteria
+      content:
+        list:
+          items: checkbox
+          minItems: 1

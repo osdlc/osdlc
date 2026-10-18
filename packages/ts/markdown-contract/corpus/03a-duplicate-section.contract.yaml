@@ -1,0 +1,12 @@
+mcVersion: 2
+kind: contract
+# fixture: v03a — Duplicate section heading  (TS fixture: 03a-duplicate-section.ts)
+
+body:
+  order: none
+  additionalSections: true
+  sections:
+    - section: Title
+    - section: Overview
+      minContains: 0
+      maxContains: 1

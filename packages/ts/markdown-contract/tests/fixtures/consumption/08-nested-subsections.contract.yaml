@@ -1,0 +1,17 @@
+mcVersion: 2
+kind: contract
+# fixture: c08 — Nested subsections  (TS fixture: 08-nested-subsections.ts)
+
+body:
+  order: recognized-relative
+  additionalSections: true
+  sections:
+    - section: Post-mortem
+      minContains: 0
+      maxContains: 1
+      order: strict
+      additionalSections: false
+      sections:
+        - section: Acceptance criteria coverage
+        - section: What worked
+        - section: Friction and automation gaps

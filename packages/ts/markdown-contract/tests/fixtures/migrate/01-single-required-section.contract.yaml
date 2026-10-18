@@ -1,0 +1,9 @@
+mcVersion: 1
+kind: contract
+# fixture: v01 — Single required section  (TS fixture: 01-single-required-section.ts)
+
+body:
+  order: none
+  allowUnknown: true
+  sections:
+    - section: Overview

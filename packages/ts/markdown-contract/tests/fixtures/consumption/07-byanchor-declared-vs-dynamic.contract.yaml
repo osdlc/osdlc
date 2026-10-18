@@ -1,0 +1,23 @@
+mcVersion: 2
+kind: contract
+# fixture: c07 — byAnchor — declared vs dynamic  (TS fixture: 07-byanchor-declared-vs-dynamic.ts)
+
+body:
+  order: none
+  additionalSections: false
+  sections:
+    - section: Decision
+      content:
+        components:
+          table:
+            anchor: components
+            columns:
+              - "#"
+              - Component
+              - Resolution
+        risks:
+          table:
+            anchor: risks
+            columns:
+              - Risk
+              - Mitigation

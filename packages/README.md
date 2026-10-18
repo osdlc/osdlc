@@ -69,6 +69,9 @@ Developed here, in this repository:
   correlation ids, agent session records, a process scan and reconcile)
 - `packages/ts/tiered-dirs` (`@osdlc/tiered-dirs` on npm, machine-local
   directories by tier and home, the TypeScript twin of the `tiered-dirs` crate)
+- `packages/ts/markdown-contract` (`@osdlc/markdown-contract` on npm,
+  contracts for markdown documents: one parse gives findings with lines and a
+  typed model; contracts in TypeScript or YAML, a folder runner and a CLI)
 
 The development repository will take each TypeScript library from npm, like
 any other consumer. Today it still keeps its own copies. Open issues and pull

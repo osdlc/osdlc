@@ -1,0 +1,12 @@
+mcVersion: 2
+kind: contract
+# fixture: v27 — v2 description → finding hint  (TS fixture: 27-v2-description-hint.ts)
+
+description: A decision record needs its core sections.
+body:
+  order: none
+  additionalSections: true
+  sections:
+    - section: Summary
+      description: One paragraph naming the outcome.
+    - section: Context

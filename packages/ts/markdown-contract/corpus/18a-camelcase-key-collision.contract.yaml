@@ -1,0 +1,10 @@
+mcVersion: 2
+kind: contract
+# fixture: v18a — camelCase key collision (contract-build error)  (TS fixture: 18a-camelcase-key-collision.ts)
+
+body:
+  order: none
+  additionalSections: true
+  sections:
+    - section: Files to touch
+    - section: Files changed

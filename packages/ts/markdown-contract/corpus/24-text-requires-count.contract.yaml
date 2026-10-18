@@ -1,0 +1,13 @@
+mcVersion: 2
+kind: contract
+# fixture: v24 — Section-scoped requires with a min count  (TS fixture: 24-text-requires-count.ts)
+
+body:
+  order: recognized-relative
+  additionalSections: true
+  sections:
+    - section: Checklist
+      requires:
+        - pattern: DONE
+          min: 2
+          note: every step must be marked DONE

@@ -1,0 +1,23 @@
+mcVersion: 2
+kind: contract
+# fixture: c06 — Named tables via the content record  (TS fixture: 06-named-tables-content-record.ts)
+
+body:
+  order: none
+  additionalSections: false
+  sections:
+    - section: Decision
+      content:
+        components:
+          table:
+            anchor: components
+            columns:
+              - "#"
+              - Component
+              - Resolution
+        risks:
+          table:
+            anchor: risks
+            columns:
+              - Risk
+              - Mitigation

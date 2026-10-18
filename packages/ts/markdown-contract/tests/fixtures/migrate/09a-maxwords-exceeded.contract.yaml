@@ -1,0 +1,12 @@
+mcVersion: 1
+kind: contract
+# fixture: v09a — maxWords exceeded  (TS fixture: 09a-maxwords-exceeded.ts)
+
+body:
+  order: none
+  allowUnknown: true
+  sections:
+    - section: Summary
+      anchor: summary
+      content:
+        maxWords: 120

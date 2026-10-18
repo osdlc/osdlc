@@ -1,0 +1,12 @@
+mcVersion: 2
+kind: contract
+# fixture: v25 — Section-scoped requires via a regex alternation  (TS fixture: 25-text-regex.ts)
+
+body:
+  order: recognized-relative
+  additionalSections: true
+  sections:
+    - section: Failure modes
+      requires:
+        - regex: "LEASE-(CONFLICT|MISSING) ref="
+          note: lease failure markers

@@ -1,0 +1,10 @@
+mcVersion: 1
+kind: contract
+# fixture: v21b — Code fence containing a ## line  (TS fixture: 21b-fence-contains-heading-line.ts)
+
+body:
+  order: strict
+  allowUnknown: false
+  sections:
+    - section: Capability
+    - section: Sample document

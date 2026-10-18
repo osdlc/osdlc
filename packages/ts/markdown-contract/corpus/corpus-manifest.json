@@ -1,0 +1,925 @@
+[
+  {
+    "id": "v01",
+    "contract": "01-single-required-section.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "01-single-required-section.pass.md",
+        "expected": "01-single-required-section.pass.expected.json"
+      },
+      {
+        "source": "01-single-required-section.fail.md",
+        "expected": "01-single-required-section.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v01a",
+    "contract": "01a-single-section-missing.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "01a-single-section-missing.pass.md",
+        "expected": "01a-single-section-missing.pass.expected.json"
+      },
+      {
+        "source": "01a-single-section-missing.fail.md",
+        "expected": "01a-single-section-missing.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v02",
+    "contract": "02-multiple-required-sequence.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "02-multiple-required-sequence.pass.md",
+        "expected": "02-multiple-required-sequence.pass.expected.json"
+      },
+      {
+        "source": "02-multiple-required-sequence.fail.md",
+        "expected": "02-multiple-required-sequence.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v02a",
+    "contract": "02a-one-of-several-missing.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "02a-one-of-several-missing.pass.md",
+        "expected": "02a-one-of-several-missing.pass.expected.json"
+      },
+      {
+        "source": "02a-one-of-several-missing.fail.md",
+        "expected": "02a-one-of-several-missing.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v03",
+    "contract": "03-optional-sections.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "03-optional-sections.pass-1.md",
+        "expected": "03-optional-sections.pass-1.expected.json"
+      },
+      {
+        "source": "03-optional-sections.pass-2.md",
+        "expected": "03-optional-sections.pass-2.expected.json"
+      },
+      {
+        "source": "03-optional-sections.fail.md",
+        "expected": "03-optional-sections.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v03a",
+    "contract": "03a-duplicate-section.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "03a-duplicate-section.pass.md",
+        "expected": "03a-duplicate-section.pass.expected.json"
+      },
+      {
+        "source": "03a-duplicate-section.fail.md",
+        "expected": "03a-duplicate-section.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v04",
+    "contract": "04-recognized-relative-order.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "04-recognized-relative-order.pass.md",
+        "expected": "04-recognized-relative-order.pass.expected.json"
+      },
+      {
+        "source": "04-recognized-relative-order.fail.md",
+        "expected": "04-recognized-relative-order.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v04a",
+    "contract": "04a-recognized-relative-out-of-order.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "04a-recognized-relative-out-of-order.pass.md",
+        "expected": "04a-recognized-relative-out-of-order.pass.expected.json"
+      },
+      {
+        "source": "04a-recognized-relative-out-of-order.fail.md",
+        "expected": "04a-recognized-relative-out-of-order.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v05",
+    "contract": "05-strict-prefix-gap-tail.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "05-strict-prefix-gap-tail.pass.md",
+        "expected": "05-strict-prefix-gap-tail.pass.expected.json"
+      },
+      {
+        "source": "05-strict-prefix-gap-tail.fail.md",
+        "expected": "05-strict-prefix-gap-tail.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v05a",
+    "contract": "05a-strict-prefix-violated.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "05a-strict-prefix-violated.pass.md",
+        "expected": "05a-strict-prefix-violated.pass.expected.json"
+      },
+      {
+        "source": "05a-strict-prefix-violated.fail.md",
+        "expected": "05a-strict-prefix-violated.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v05b",
+    "contract": "05b-gap-bounds.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "05b-gap-bounds.pass.md",
+        "expected": "05b-gap-bounds.pass.expected.json"
+      },
+      {
+        "source": "05b-gap-bounds.fail-1.md",
+        "expected": "05b-gap-bounds.fail-1.expected.json"
+      },
+      {
+        "source": "05b-gap-bounds.fail-2.md",
+        "expected": "05b-gap-bounds.fail-2.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v06",
+    "contract": "06-alias-sets-oneof.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "06-alias-sets-oneof.pass-1.md",
+        "expected": "06-alias-sets-oneof.pass-1.expected.json"
+      },
+      {
+        "source": "06-alias-sets-oneof.pass-2.md",
+        "expected": "06-alias-sets-oneof.pass-2.expected.json"
+      },
+      {
+        "source": "06-alias-sets-oneof.fail.md",
+        "expected": "06-alias-sets-oneof.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v06a",
+    "contract": "06a-oneof-none-present.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "06a-oneof-none-present.pass.md",
+        "expected": "06a-oneof-none-present.pass.expected.json"
+      },
+      {
+        "source": "06a-oneof-none-present.fail.md",
+        "expected": "06a-oneof-none-present.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v06b",
+    "contract": "06b-oneof-two-members-present.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "06b-oneof-two-members-present.pass.md",
+        "expected": "06b-oneof-two-members-present.pass.expected.json"
+      },
+      {
+        "source": "06b-oneof-two-members-present.fail.md",
+        "expected": "06b-oneof-two-members-present.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v07",
+    "contract": "07-frontmatter-only-zod.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "07-frontmatter-only-zod.pass.md",
+        "expected": "07-frontmatter-only-zod.pass.expected.json"
+      },
+      {
+        "source": "07-frontmatter-only-zod.fail.md",
+        "expected": "07-frontmatter-only-zod.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v07a",
+    "contract": "07a-frontmatter-enum-and-unknown-key.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "07a-frontmatter-enum-and-unknown-key.pass.md",
+        "expected": "07a-frontmatter-enum-and-unknown-key.pass.expected.json"
+      },
+      {
+        "source": "07a-frontmatter-enum-and-unknown-key.fail.md",
+        "expected": "07a-frontmatter-enum-and-unknown-key.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v08",
+    "contract": "08-frontmatter-plus-body-one-pass.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "08-frontmatter-plus-body-one-pass.pass.md",
+        "expected": "08-frontmatter-plus-body-one-pass.pass.expected.json"
+      },
+      {
+        "source": "08-frontmatter-plus-body-one-pass.fail.md",
+        "expected": "08-frontmatter-plus-body-one-pass.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v08a",
+    "contract": "08a-both-planes-fail-merged.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "08a-both-planes-fail-merged.pass.md",
+        "expected": "08a-both-planes-fail-merged.pass.expected.json"
+      },
+      {
+        "source": "08a-both-planes-fail-merged.fail.md",
+        "expected": "08a-both-planes-fail-merged.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v09",
+    "contract": "09-section-content-leaf-maxwords-anchor.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "09-section-content-leaf-maxwords-anchor.pass.md",
+        "expected": "09-section-content-leaf-maxwords-anchor.pass.expected.json"
+      },
+      {
+        "source": "09-section-content-leaf-maxwords-anchor.fail.md",
+        "expected": "09-section-content-leaf-maxwords-anchor.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v09a",
+    "contract": "09a-maxwords-exceeded.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "09a-maxwords-exceeded.pass.md",
+        "expected": "09a-maxwords-exceeded.pass.expected.json"
+      },
+      {
+        "source": "09a-maxwords-exceeded.fail.md",
+        "expected": "09a-maxwords-exceeded.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v09b",
+    "contract": "09b-anchor-missing.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "09b-anchor-missing.pass.md",
+        "expected": "09b-anchor-missing.pass.expected.json"
+      },
+      {
+        "source": "09b-anchor-missing.fail.md",
+        "expected": "09b-anchor-missing.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v10",
+    "contract": "10-table-leaf-columns-minrows.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "10-table-leaf-columns-minrows.pass.md",
+        "expected": "10-table-leaf-columns-minrows.pass.expected.json"
+      },
+      {
+        "source": "10-table-leaf-columns-minrows.fail.md",
+        "expected": "10-table-leaf-columns-minrows.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v10a",
+    "contract": "10a-table-empty-and-minrows.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "10a-table-empty-and-minrows.pass.md",
+        "expected": "10a-table-empty-and-minrows.pass.expected.json"
+      },
+      {
+        "source": "10a-table-empty-and-minrows.fail.md",
+        "expected": "10a-table-empty-and-minrows.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v10b",
+    "contract": "10b-table-missing-column.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "10b-table-missing-column.pass.md",
+        "expected": "10b-table-missing-column.pass.expected.json"
+      },
+      {
+        "source": "10b-table-missing-column.fail.md",
+        "expected": "10b-table-missing-column.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v10c",
+    "contract": "10c-table-extra-column.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "10c-table-extra-column.pass.md",
+        "expected": "10c-table-extra-column.pass.expected.json"
+      },
+      {
+        "source": "10c-table-extra-column.fail.md",
+        "expected": "10c-table-extra-column.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v11",
+    "contract": "11-typed-cells-enum-pattern.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "11-typed-cells-enum-pattern.pass.md",
+        "expected": "11-typed-cells-enum-pattern.pass.expected.json"
+      },
+      {
+        "source": "11-typed-cells-enum-pattern.fail.md",
+        "expected": "11-typed-cells-enum-pattern.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v11a",
+    "contract": "11a-cell-enum-violation.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "11a-cell-enum-violation.pass.md",
+        "expected": "11a-cell-enum-violation.pass.expected.json"
+      },
+      {
+        "source": "11a-cell-enum-violation.fail.md",
+        "expected": "11a-cell-enum-violation.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v12",
+    "contract": "12-list-leaf-checkbox-minitems.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "12-list-leaf-checkbox-minitems.pass.md",
+        "expected": "12-list-leaf-checkbox-minitems.pass.expected.json"
+      },
+      {
+        "source": "12-list-leaf-checkbox-minitems.fail.md",
+        "expected": "12-list-leaf-checkbox-minitems.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v12a",
+    "contract": "12a-non-checkbox-list-item.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "12a-non-checkbox-list-item.pass.md",
+        "expected": "12a-non-checkbox-list-item.pass.expected.json"
+      },
+      {
+        "source": "12a-non-checkbox-list-item.fail.md",
+        "expected": "12a-non-checkbox-list-item.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v12b",
+    "contract": "12b-list-below-minitems.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "12b-list-below-minitems.pass.md",
+        "expected": "12b-list-below-minitems.pass.expected.json"
+      },
+      {
+        "source": "12b-list-below-minitems.fail.md",
+        "expected": "12b-list-below-minitems.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v13",
+    "contract": "13-code-leaf-lang.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "13-code-leaf-lang.pass.md",
+        "expected": "13-code-leaf-lang.pass.expected.json"
+      },
+      {
+        "source": "13-code-leaf-lang.fail.md",
+        "expected": "13-code-leaf-lang.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v13a",
+    "contract": "13a-code-wrong-lang.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "13a-code-wrong-lang.pass.md",
+        "expected": "13a-code-wrong-lang.pass.expected.json"
+      },
+      {
+        "source": "13a-code-wrong-lang.fail.md",
+        "expected": "13a-code-wrong-lang.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v14",
+    "contract": "14-nested-children-subsections.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "14-nested-children-subsections.pass.md",
+        "expected": "14-nested-children-subsections.pass.expected.json"
+      },
+      {
+        "source": "14-nested-children-subsections.fail.md",
+        "expected": "14-nested-children-subsections.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v14a",
+    "contract": "14a-skipped-heading-level.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "14a-skipped-heading-level.pass.md",
+        "expected": "14a-skipped-heading-level.pass.expected.json"
+      },
+      {
+        "source": "14a-skipped-heading-level.fail.md",
+        "expected": "14a-skipped-heading-level.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v14b",
+    "contract": "14b-content-before-first-subheading.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "14b-content-before-first-subheading.pass.md",
+        "expected": "14b-content-before-first-subheading.pass.expected.json"
+      },
+      {
+        "source": "14b-content-before-first-subheading.fail.md",
+        "expected": "14b-content-before-first-subheading.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v15",
+    "contract": "15-multiple-anchored-tables-one-section.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "15-multiple-anchored-tables-one-section.pass.md",
+        "expected": "15-multiple-anchored-tables-one-section.pass.expected.json"
+      },
+      {
+        "source": "15-multiple-anchored-tables-one-section.fail.md",
+        "expected": "15-multiple-anchored-tables-one-section.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v15a",
+    "contract": "15a-declared-anchor-absent.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "15a-declared-anchor-absent.pass.md",
+        "expected": "15a-declared-anchor-absent.pass.expected.json"
+      },
+      {
+        "source": "15a-declared-anchor-absent.fail.md",
+        "expected": "15a-declared-anchor-absent.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v15b",
+    "contract": "15b-undeclared-anchor-dynamic-access.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "15b-undeclared-anchor-dynamic-access.md",
+        "expected": "15b-undeclared-anchor-dynamic-access.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v16",
+    "contract": "16-cross-plane-docrule.contract.yaml",
+    "shared": false,
+    "cases": [
+      {
+        "source": "16-cross-plane-docrule.pass-1.md",
+        "expected": "16-cross-plane-docrule.pass-1.expected.json"
+      },
+      {
+        "source": "16-cross-plane-docrule.pass-2.md",
+        "expected": "16-cross-plane-docrule.pass-2.expected.json"
+      },
+      {
+        "source": "16-cross-plane-docrule.fail.md",
+        "expected": "16-cross-plane-docrule.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v16a",
+    "contract": "16a-docrule-violation.contract.yaml",
+    "shared": false,
+    "cases": [
+      {
+        "source": "16a-docrule-violation.pass.md",
+        "expected": "16a-docrule-violation.pass.expected.json"
+      },
+      {
+        "source": "16a-docrule-violation.fail.md",
+        "expected": "16a-docrule-violation.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v17",
+    "contract": "17-node-level-custom-rule.contract.yaml",
+    "shared": false,
+    "cases": [
+      {
+        "source": "17-node-level-custom-rule.pass.md",
+        "expected": "17-node-level-custom-rule.pass.expected.json"
+      },
+      {
+        "source": "17-node-level-custom-rule.fail.md",
+        "expected": "17-node-level-custom-rule.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v17a",
+    "contract": "17a-node-rule-violation-with-pos.contract.yaml",
+    "shared": false,
+    "cases": [
+      {
+        "source": "17a-node-rule-violation-with-pos.pass.md",
+        "expected": "17a-node-rule-violation-with-pos.pass.expected.json"
+      },
+      {
+        "source": "17a-node-rule-violation-with-pos.fail.md",
+        "expected": "17a-node-rule-violation-with-pos.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v18",
+    "contract": "18-oom-consumption-typed-views.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "18-oom-consumption-typed-views.pass.md",
+        "expected": "18-oom-consumption-typed-views.pass.expected.json"
+      },
+      {
+        "source": "18-oom-consumption-typed-views.fail.md",
+        "expected": "18-oom-consumption-typed-views.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v18a",
+    "contract": "18a-camelcase-key-collision.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "18a-camelcase-key-collision.md",
+        "expected": "18a-camelcase-key-collision.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v18b",
+    "contract": "18b-read-throws-on-error.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "18b-read-throws-on-error.pass.md",
+        "expected": "18b-read-throws-on-error.pass.expected.json"
+      },
+      {
+        "source": "18b-read-throws-on-error.fail.md",
+        "expected": "18b-read-throws-on-error.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v19",
+    "contract": "19-real-decision-contract-end-to-end.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "19-real-decision-contract-end-to-end.pass.md",
+        "expected": "19-real-decision-contract-end-to-end.pass.expected.json"
+      },
+      {
+        "source": "19-real-decision-contract-end-to-end.fail.md",
+        "expected": "19-real-decision-contract-end-to-end.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v19a",
+    "contract": "19a-real-decision-three-findings.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "19a-real-decision-three-findings.pass.md",
+        "expected": "19a-real-decision-three-findings.pass.expected.json"
+      },
+      {
+        "source": "19a-real-decision-three-findings.fail.md",
+        "expected": "19a-real-decision-three-findings.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v19b",
+    "contract": "19b-real-decision-alias-recommendation.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "19b-real-decision-alias-recommendation.pass.md",
+        "expected": "19b-real-decision-alias-recommendation.pass.expected.json"
+      },
+      {
+        "source": "19b-real-decision-alias-recommendation.fail.md",
+        "expected": "19b-real-decision-alias-recommendation.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v20",
+    "contract": "20-real-task-contract-end-to-end.contract.yaml",
+    "shared": false,
+    "cases": [
+      {
+        "source": "20-real-task-contract-end-to-end.pass.md",
+        "expected": "20-real-task-contract-end-to-end.pass.expected.json"
+      },
+      {
+        "source": "20-real-task-contract-end-to-end.fail.md",
+        "expected": "20-real-task-contract-end-to-end.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v20a",
+    "contract": "20a-real-task-closed-without-completion-note.contract.yaml",
+    "shared": false,
+    "cases": [
+      {
+        "source": "20a-real-task-closed-without-completion-note.pass.md",
+        "expected": "20a-real-task-closed-without-completion-note.pass.expected.json"
+      },
+      {
+        "source": "20a-real-task-closed-without-completion-note.fail.md",
+        "expected": "20a-real-task-closed-without-completion-note.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v20b",
+    "contract": "20b-real-task-non-checkbox-acs.contract.yaml",
+    "shared": false,
+    "cases": [
+      {
+        "source": "20b-real-task-non-checkbox-acs.pass.md",
+        "expected": "20b-real-task-non-checkbox-acs.pass.expected.json"
+      },
+      {
+        "source": "20b-real-task-non-checkbox-acs.fail.md",
+        "expected": "20b-real-task-non-checkbox-acs.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v21",
+    "contract": "21-real-milestone-or-skill-doctype.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "21-real-milestone-or-skill-doctype.pass.md",
+        "expected": "21-real-milestone-or-skill-doctype.pass.expected.json"
+      },
+      {
+        "source": "21-real-milestone-or-skill-doctype.fail.md",
+        "expected": "21-real-milestone-or-skill-doctype.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v21a",
+    "contract": "21a-table-inside-blockquote-or-list.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "21a-table-inside-blockquote-or-list.pass.md",
+        "expected": "21a-table-inside-blockquote-or-list.pass.expected.json"
+      },
+      {
+        "source": "21a-table-inside-blockquote-or-list.fail.md",
+        "expected": "21a-table-inside-blockquote-or-list.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v21b",
+    "contract": "21b-fence-contains-heading-line.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "21b-fence-contains-heading-line.md",
+        "expected": "21b-fence-contains-heading-line.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v22",
+    "contract": "22-text-requires-section.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "22-text-requires-section.pass.md",
+        "expected": "22-text-requires-section.pass.expected.json"
+      },
+      {
+        "source": "22-text-requires-section.fail.md",
+        "expected": "22-text-requires-section.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v23",
+    "contract": "23-text-forbids-body-root.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "23-text-forbids-body-root.pass.md",
+        "expected": "23-text-forbids-body-root.pass.expected.json"
+      },
+      {
+        "source": "23-text-forbids-body-root.fail.md",
+        "expected": "23-text-forbids-body-root.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v24",
+    "contract": "24-text-requires-count.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "24-text-requires-count.pass.md",
+        "expected": "24-text-requires-count.pass.expected.json"
+      },
+      {
+        "source": "24-text-requires-count.fail.md",
+        "expected": "24-text-requires-count.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v25",
+    "contract": "25-text-regex.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "25-text-regex.pass.md",
+        "expected": "25-text-regex.pass.expected.json"
+      },
+      {
+        "source": "25-text-regex.fail.md",
+        "expected": "25-text-regex.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v26",
+    "contract": null,
+    "shared": false,
+    "cases": [
+      {
+        "source": "26-in-doc-dead-anchor.pass.md",
+        "expected": "26-in-doc-dead-anchor.pass.expected.json"
+      },
+      {
+        "source": "26-in-doc-dead-anchor.fail.md",
+        "expected": "26-in-doc-dead-anchor.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v27",
+    "contract": "27-v2-description-hint.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "27-v2-description-hint.pass.md",
+        "expected": "27-v2-description-hint.pass.expected.json"
+      },
+      {
+        "source": "27-v2-description-hint.fail.md",
+        "expected": "27-v2-description-hint.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v28",
+    "contract": "28-v2-min-max-contains.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "28-v2-min-max-contains.pass.md",
+        "expected": "28-v2-min-max-contains.pass.expected.json"
+      },
+      {
+        "source": "28-v2-min-max-contains.fail-few.md",
+        "expected": "28-v2-min-max-contains.fail-few.expected.json"
+      },
+      {
+        "source": "28-v2-min-max-contains.fail-many.md",
+        "expected": "28-v2-min-max-contains.fail-many.expected.json"
+      }
+    ]
+  }
+]

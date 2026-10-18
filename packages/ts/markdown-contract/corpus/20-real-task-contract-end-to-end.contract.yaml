@@ -1,0 +1,62 @@
+mcVersion: 2
+kind: contract
+# fixture: v20 — Real Task contract end-to-end  (TS fixture: 20-real-task-contract-end-to-end.ts)
+
+frontmatter:
+  type: object
+  required: [ id, status ]
+  additionalProperties: false
+  properties:
+    id:
+      type: string
+      pattern: '^T-[0-9A-Z]{4}$'
+    type:
+      const: task
+    status:
+      enum: [ open/ready, in-progress/active, closed/done, closed/dropped ]
+    title:
+      type: string
+      minLength: 1
+    tags:
+      type: array
+      items:
+        type: string
+    impact:
+      enum: [ low, medium, high ]
+    complexity:
+      enum: [ small, medium, large ]
+
+body:
+  order: recognized-relative
+  additionalSections: true
+  sections:
+    - oneOf: [ Goal, Goal / Problem statement ]
+    - section: Today
+      minContains: 0
+      maxContains: 1
+    - section: Files to touch
+      minContains: 0
+      maxContains: 1
+      content:
+        table:
+          columns: [ Location, Kind, Change ]
+          minRows: 1
+          cells:
+            Kind:
+              enum: [ new, modify, delete ]
+    - section: Acceptance criteria
+      content:
+        list:
+          items: checkbox
+          minItems: 1
+    - section: Post-mortem
+      minContains: 0
+      maxContains: 1
+      order: strict
+      additionalSections: false
+      sections:
+        - section: Acceptance criteria coverage
+        - section: What worked
+        - section: Friction and automation gaps
+
+# GAP: docRule("task/post-mortem-when-worked") — cross-plane rule with custom function (isWorked closure); rule()/docRule() with arbitrary fn is not expressible in v1

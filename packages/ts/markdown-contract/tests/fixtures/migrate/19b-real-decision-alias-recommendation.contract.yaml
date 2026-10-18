@@ -1,0 +1,50 @@
+mcVersion: 1
+kind: contract
+# fixture: v19b — Decision body alias (Recommendation for Decision)  (TS fixture: 19b-real-decision-alias-recommendation.ts)
+
+frontmatter:
+  strict: true
+  fields:
+    id:
+      type: string
+      pattern: '^D-[0-9A-Z]{4}$'
+    status:
+      enum:
+        - open/proposed
+        - open/accepted
+        - closed/superseded
+    title:
+      type: string
+      min: 1
+    related:
+      type: array
+      of:
+        type: string
+      default: []
+
+body:
+  order: recognized-relative
+  allowUnknown: true
+  sections:
+    - section: Summary
+      anchor: summary
+      content:
+        maxWords: 120
+    - section: Context
+      optional: true
+    - section: Options considered
+      optional: true
+      children:
+        order: none
+        allowUnknown: true
+        sections:
+          - gap: {}
+    - oneOf:
+        - Decision
+        - Recommendation
+        - Conclusion
+        - Resolution
+    - section: Consequences
+      optional: true
+    - section: Notes
+      optional: true
