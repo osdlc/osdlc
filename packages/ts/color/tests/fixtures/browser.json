@@ -1,0 +1,679 @@
+{
+  "note": "Recorded by tests/fixtures/record-browser.mjs in headless Chromium. colors: each input is assigned to an element's style.color, and the value getComputedStyle reports is kept; computed is null when the browser rejected the input. colorMix: the same for color-mix(in srgb, base, overlay percent%). paint: src filled over ground on a 1x1 2D canvas, read back with getImageData.",
+  "browser": "Chromium 149.0.7827.55 (Playwright headless shell)",
+  "recorded": "2026-10-18",
+  "colors": [
+    {
+      "input": "#f00",
+      "computed": "rgb(255, 0, 0)"
+    },
+    {
+      "input": "#f008",
+      "computed": "rgba(255, 0, 0, 0.533)"
+    },
+    {
+      "input": "#1a2b3c",
+      "computed": "rgb(26, 43, 60)"
+    },
+    {
+      "input": "#1a2b3c80",
+      "computed": "rgba(26, 43, 60, 0.5)"
+    },
+    {
+      "input": "#12345",
+      "computed": null
+    },
+    {
+      "input": "#1234567",
+      "computed": null
+    },
+    {
+      "input": "#ggg",
+      "computed": null
+    },
+    {
+      "input": "rgb(1, 2, 3)",
+      "computed": "rgb(1, 2, 3)"
+    },
+    {
+      "input": "rgb(1 2 3)",
+      "computed": "rgb(1, 2, 3)"
+    },
+    {
+      "input": "rgba(1, 2, 3, 0.5)",
+      "computed": "rgba(1, 2, 3, 0.5)"
+    },
+    {
+      "input": "rgba(1 2 3 / 0.5)",
+      "computed": "rgba(1, 2, 3, 0.5)"
+    },
+    {
+      "input": "rgb(1 2 3 / 0.5)",
+      "computed": "rgba(1, 2, 3, 0.5)"
+    },
+    {
+      "input": "rgba(1, 2, 3)",
+      "computed": "rgb(1, 2, 3)"
+    },
+    {
+      "input": "rgb(1, 2, 3, 0.5)",
+      "computed": "rgba(1, 2, 3, 0.5)"
+    },
+    {
+      "input": "rgb(1.5, 2.25, 3.75)",
+      "computed": "rgb(2, 2, 4)"
+    },
+    {
+      "input": "RGB(1, 2, 3)",
+      "computed": "rgb(1, 2, 3)"
+    },
+    {
+      "input": "rgb( 1 , 2 , 3 )",
+      "computed": "rgb(1, 2, 3)"
+    },
+    {
+      "input": "rgb(100%, 0%, 50%)",
+      "computed": "rgb(255, 0, 128)"
+    },
+    {
+      "input": "rgb(100% 0% 50% / 50%)",
+      "computed": "rgba(255, 0, 128, 0.5)"
+    },
+    {
+      "input": "rgba(0, 0, 0, 50%)",
+      "computed": "rgba(0, 0, 0, 0.5)"
+    },
+    {
+      "input": "rgba(0, 0, 0, 0)",
+      "computed": "rgba(0, 0, 0, 0)"
+    },
+    {
+      "input": "rgb(1e1 2 3)",
+      "computed": "rgb(10, 2, 3)"
+    },
+    {
+      "input": "rgb(.5 2 3)",
+      "computed": "rgb(1, 2, 3)"
+    },
+    {
+      "input": "rgb(100% 0 0)",
+      "computed": "rgb(255, 0, 0)"
+    },
+    {
+      "input": "rgb(0 50% 255)",
+      "computed": "rgb(0, 128, 255)"
+    },
+    {
+      "input": "rgb(10% 20 30% / 0.5)",
+      "computed": "rgba(26, 20, 77, 0.5)"
+    },
+    {
+      "input": "rgb(300 0 0)",
+      "computed": "rgb(255, 0, 0)"
+    },
+    {
+      "input": "rgb(-5, 0, 0, 2)",
+      "computed": "rgb(0, 0, 0)"
+    },
+    {
+      "input": "rgb(0 0 0 / -1)",
+      "computed": "rgba(0, 0, 0, 0)"
+    },
+    {
+      "input": "rgb(200% 0% 0%)",
+      "computed": "rgb(255, 0, 0)"
+    },
+    {
+      "input": "rgb(1 2 3 4 5)",
+      "computed": null
+    },
+    {
+      "input": "rgb(1 2 3 4)",
+      "computed": null
+    },
+    {
+      "input": "rgb(1, 2, 3, 4, 5)",
+      "computed": null
+    },
+    {
+      "input": "rgb(12abc 0 0)",
+      "computed": null
+    },
+    {
+      "input": "rgb(1, 2 3)",
+      "computed": null
+    },
+    {
+      "input": "rgb(1 2, 3)",
+      "computed": null
+    },
+    {
+      "input": "rgb(1, 2, 3 / 0.5)",
+      "computed": null
+    },
+    {
+      "input": "rgb(1 2 3 /)",
+      "computed": null
+    },
+    {
+      "input": "rgb(1 2 / 3)",
+      "computed": null
+    },
+    {
+      "input": "rgb(1, 2)",
+      "computed": null
+    },
+    {
+      "input": "rgb(1 2)",
+      "computed": null
+    },
+    {
+      "input": "rgb()",
+      "computed": null
+    },
+    {
+      "input": "rgb(a, b, c)",
+      "computed": null
+    },
+    {
+      "input": "rgb(1,, 2, 3)",
+      "computed": null
+    },
+    {
+      "input": "rgb(1, 2, 3,)",
+      "computed": null
+    },
+    {
+      "input": "rgb(1 2 3) x",
+      "computed": null
+    },
+    {
+      "input": "rgb(100%, 0, 0)",
+      "computed": null
+    },
+    {
+      "input": "color(srgb 1 0 0)",
+      "computed": "color(srgb 1 0 0)"
+    },
+    {
+      "input": "color(srgb 0 0 0 / 0.25)",
+      "computed": "color(srgb 0 0 0 / 0.25)"
+    },
+    {
+      "input": "color(srgb 100% 0% 0%)",
+      "computed": "color(srgb 1 0 0)"
+    },
+    {
+      "input": "color(srgb 0.858824 0.87451 0.882353)",
+      "computed": "color(srgb 0.858824 0.87451 0.882353)"
+    },
+    {
+      "input": "color(srgb 0.5 0.5 0.5 / 50%)",
+      "computed": "color(srgb 0.5 0.5 0.5 / 0.5)"
+    },
+    {
+      "input": "color(srgb 2 0 0)",
+      "computed": "color(srgb 2 0 0)"
+    },
+    {
+      "input": "color(srgb -1 0 0)",
+      "computed": "color(srgb -1 0 0)"
+    },
+    {
+      "input": "color(srgb 0 0 0 / 2)",
+      "computed": "color(srgb 0 0 0)"
+    },
+    {
+      "input": "color(srgb 1 0)",
+      "computed": null
+    },
+    {
+      "input": "color(srgb 1 0 0 0.5)",
+      "computed": null
+    },
+    {
+      "input": "color(srgb 1 0 0 0 0)",
+      "computed": null
+    },
+    {
+      "input": "color(srgb x y z)",
+      "computed": null
+    },
+    {
+      "input": "color(srgb 1, 0, 0)",
+      "computed": null
+    },
+    {
+      "input": "color(srgb 1 0 0 /)",
+      "computed": null
+    },
+    {
+      "input": "red",
+      "computed": "rgb(255, 0, 0)"
+    },
+    {
+      "input": "transparent",
+      "computed": "rgba(0, 0, 0, 0)"
+    },
+    {
+      "input": "hsl(0 0% 0%)",
+      "computed": "rgb(0, 0, 0)"
+    },
+    {
+      "input": "rgb(none 0 0)",
+      "computed": "rgb(0, 0, 0)"
+    },
+    {
+      "input": "color(display-p3 1 0 0)",
+      "computed": "color(display-p3 1 0 0)"
+    },
+    {
+      "input": "color(srgb-linear 1 0 0)",
+      "computed": "color(srgb-linear 1 0 0)"
+    }
+  ],
+  "colorMix": [
+    {
+      "base": "#000000",
+      "overlay": "#ffffff",
+      "percent": 0,
+      "computed": "color(srgb 0 0 0)"
+    },
+    {
+      "base": "#000000",
+      "overlay": "#ffffff",
+      "percent": 10,
+      "computed": "color(srgb 0.1 0.1 0.1)"
+    },
+    {
+      "base": "#000000",
+      "overlay": "#ffffff",
+      "percent": 25,
+      "computed": "color(srgb 0.25 0.25 0.25)"
+    },
+    {
+      "base": "#000000",
+      "overlay": "#ffffff",
+      "percent": 33.3,
+      "computed": "color(srgb 0.333 0.333 0.333)"
+    },
+    {
+      "base": "#000000",
+      "overlay": "#ffffff",
+      "percent": 50,
+      "computed": "color(srgb 0.5 0.5 0.5)"
+    },
+    {
+      "base": "#000000",
+      "overlay": "#ffffff",
+      "percent": 75,
+      "computed": "color(srgb 0.75 0.75 0.75)"
+    },
+    {
+      "base": "#000000",
+      "overlay": "#ffffff",
+      "percent": 90,
+      "computed": "color(srgb 0.9 0.9 0.9)"
+    },
+    {
+      "base": "#000000",
+      "overlay": "#ffffff",
+      "percent": 100,
+      "computed": "color(srgb 1 1 1)"
+    },
+    {
+      "base": "#ff0000",
+      "overlay": "#0000ff",
+      "percent": 0,
+      "computed": "color(srgb 1 0 0)"
+    },
+    {
+      "base": "#ff0000",
+      "overlay": "#0000ff",
+      "percent": 10,
+      "computed": "color(srgb 0.9 0 0.1)"
+    },
+    {
+      "base": "#ff0000",
+      "overlay": "#0000ff",
+      "percent": 25,
+      "computed": "color(srgb 0.75 0 0.25)"
+    },
+    {
+      "base": "#ff0000",
+      "overlay": "#0000ff",
+      "percent": 33.3,
+      "computed": "color(srgb 0.667 0 0.333)"
+    },
+    {
+      "base": "#ff0000",
+      "overlay": "#0000ff",
+      "percent": 50,
+      "computed": "color(srgb 0.5 0 0.5)"
+    },
+    {
+      "base": "#ff0000",
+      "overlay": "#0000ff",
+      "percent": 75,
+      "computed": "color(srgb 0.25 0 0.75)"
+    },
+    {
+      "base": "#ff0000",
+      "overlay": "#0000ff",
+      "percent": 90,
+      "computed": "color(srgb 0.1 0 0.9)"
+    },
+    {
+      "base": "#ff0000",
+      "overlay": "#0000ff",
+      "percent": 100,
+      "computed": "color(srgb 0 0 1)"
+    },
+    {
+      "base": "#1a2b3c",
+      "overlay": "#f0e0d0",
+      "percent": 0,
+      "computed": "color(srgb 0.101961 0.168627 0.235294)"
+    },
+    {
+      "base": "#1a2b3c",
+      "overlay": "#f0e0d0",
+      "percent": 10,
+      "computed": "color(srgb 0.185882 0.239608 0.293333)"
+    },
+    {
+      "base": "#1a2b3c",
+      "overlay": "#f0e0d0",
+      "percent": 25,
+      "computed": "color(srgb 0.311765 0.346078 0.380392)"
+    },
+    {
+      "base": "#1a2b3c",
+      "overlay": "#f0e0d0",
+      "percent": 33.3,
+      "computed": "color(srgb 0.38142 0.404992 0.428565)"
+    },
+    {
+      "base": "#1a2b3c",
+      "overlay": "#f0e0d0",
+      "percent": 50,
+      "computed": "color(srgb 0.521569 0.523529 0.52549)"
+    },
+    {
+      "base": "#1a2b3c",
+      "overlay": "#f0e0d0",
+      "percent": 75,
+      "computed": "color(srgb 0.731373 0.70098 0.670588)"
+    },
+    {
+      "base": "#1a2b3c",
+      "overlay": "#f0e0d0",
+      "percent": 90,
+      "computed": "color(srgb 0.857255 0.807451 0.757647)"
+    },
+    {
+      "base": "#1a2b3c",
+      "overlay": "#f0e0d0",
+      "percent": 100,
+      "computed": "color(srgb 0.941176 0.878431 0.815686)"
+    },
+    {
+      "base": "rgb(12, 200, 99)",
+      "overlay": "rgb(250, 3, 177)",
+      "percent": 0,
+      "computed": "color(srgb 0.0470588 0.784314 0.388235)"
+    },
+    {
+      "base": "rgb(12, 200, 99)",
+      "overlay": "rgb(250, 3, 177)",
+      "percent": 10,
+      "computed": "color(srgb 0.140392 0.707059 0.418824)"
+    },
+    {
+      "base": "rgb(12, 200, 99)",
+      "overlay": "rgb(250, 3, 177)",
+      "percent": 25,
+      "computed": "color(srgb 0.280392 0.591177 0.464706)"
+    },
+    {
+      "base": "rgb(12, 200, 99)",
+      "overlay": "rgb(250, 3, 177)",
+      "percent": 33.3,
+      "computed": "color(srgb 0.357859 0.527055 0.490094)"
+    },
+    {
+      "base": "rgb(12, 200, 99)",
+      "overlay": "rgb(250, 3, 177)",
+      "percent": 50,
+      "computed": "color(srgb 0.513726 0.398039 0.541176)"
+    },
+    {
+      "base": "rgb(12, 200, 99)",
+      "overlay": "rgb(250, 3, 177)",
+      "percent": 75,
+      "computed": "color(srgb 0.747059 0.204902 0.617647)"
+    },
+    {
+      "base": "rgb(12, 200, 99)",
+      "overlay": "rgb(250, 3, 177)",
+      "percent": 90,
+      "computed": "color(srgb 0.887059 0.0890196 0.663529)"
+    },
+    {
+      "base": "rgb(12, 200, 99)",
+      "overlay": "rgb(250, 3, 177)",
+      "percent": 100,
+      "computed": "color(srgb 0.980392 0.0117647 0.694118)"
+    },
+    {
+      "base": "#777777",
+      "overlay": "#123456",
+      "percent": 0,
+      "computed": "color(srgb 0.466667 0.466667 0.466667)"
+    },
+    {
+      "base": "#777777",
+      "overlay": "#123456",
+      "percent": 10,
+      "computed": "color(srgb 0.427059 0.440392 0.453725)"
+    },
+    {
+      "base": "#777777",
+      "overlay": "#123456",
+      "percent": 25,
+      "computed": "color(srgb 0.367647 0.40098 0.434314)"
+    },
+    {
+      "base": "#777777",
+      "overlay": "#123456",
+      "percent": 33.3,
+      "computed": "color(srgb 0.334773 0.379173 0.423573)"
+    },
+    {
+      "base": "#777777",
+      "overlay": "#123456",
+      "percent": 50,
+      "computed": "color(srgb 0.268627 0.335294 0.401961)"
+    },
+    {
+      "base": "#777777",
+      "overlay": "#123456",
+      "percent": 75,
+      "computed": "color(srgb 0.169608 0.269608 0.369608)"
+    },
+    {
+      "base": "#777777",
+      "overlay": "#123456",
+      "percent": 90,
+      "computed": "color(srgb 0.110196 0.230196 0.350196)"
+    },
+    {
+      "base": "#777777",
+      "overlay": "#123456",
+      "percent": 100,
+      "computed": "color(srgb 0.0705882 0.203922 0.337255)"
+    }
+  ],
+  "paint": [
+    {
+      "src": "rgba(0, 0, 0, 0.5)",
+      "ground": "rgb(255, 255, 255)",
+      "pixel": [127, 127, 127, 255]
+    },
+    {
+      "src": "rgba(0, 0, 0, 0.6)",
+      "ground": "rgb(255, 255, 255)",
+      "pixel": [102, 102, 102, 255]
+    },
+    {
+      "src": "rgba(255, 0, 0, 0.25)",
+      "ground": "rgb(255, 255, 255)",
+      "pixel": [255, 191, 191, 255]
+    },
+    {
+      "src": "rgba(26, 115, 232, 0.1)",
+      "ground": "rgb(255, 255, 255)",
+      "pixel": [232, 241, 253, 255]
+    },
+    {
+      "src": "rgba(200, 100, 50, 0.75)",
+      "ground": "rgb(255, 255, 255)",
+      "pixel": [214, 139, 101, 255]
+    },
+    {
+      "src": "rgba(12, 200, 99, 0.333)",
+      "ground": "rgb(255, 255, 255)",
+      "pixel": [174, 237, 203, 255]
+    },
+    {
+      "src": "color(srgb 2 0 0)",
+      "ground": "rgb(255, 255, 255)",
+      "pixel": [255, 0, 0, 255]
+    },
+    {
+      "src": "color(srgb -1 0 0)",
+      "ground": "rgb(255, 255, 255)",
+      "pixel": [0, 0, 0, 255]
+    },
+    {
+      "src": "rgba(0, 0, 0, 0.5)",
+      "ground": "rgb(0, 0, 0)",
+      "pixel": [0, 0, 0, 255]
+    },
+    {
+      "src": "rgba(0, 0, 0, 0.6)",
+      "ground": "rgb(0, 0, 0)",
+      "pixel": [0, 0, 0, 255]
+    },
+    {
+      "src": "rgba(255, 0, 0, 0.25)",
+      "ground": "rgb(0, 0, 0)",
+      "pixel": [64, 0, 0, 255]
+    },
+    {
+      "src": "rgba(26, 115, 232, 0.1)",
+      "ground": "rgb(0, 0, 0)",
+      "pixel": [3, 12, 24, 255]
+    },
+    {
+      "src": "rgba(200, 100, 50, 0.75)",
+      "ground": "rgb(0, 0, 0)",
+      "pixel": [150, 75, 37, 255]
+    },
+    {
+      "src": "rgba(12, 200, 99, 0.333)",
+      "ground": "rgb(0, 0, 0)",
+      "pixel": [4, 67, 33, 255]
+    },
+    {
+      "src": "color(srgb 2 0 0)",
+      "ground": "rgb(0, 0, 0)",
+      "pixel": [255, 0, 0, 255]
+    },
+    {
+      "src": "color(srgb -1 0 0)",
+      "ground": "rgb(0, 0, 0)",
+      "pixel": [0, 0, 0, 255]
+    },
+    {
+      "src": "rgba(0, 0, 0, 0.5)",
+      "ground": "rgb(119, 119, 119)",
+      "pixel": [59, 59, 59, 255]
+    },
+    {
+      "src": "rgba(0, 0, 0, 0.6)",
+      "ground": "rgb(119, 119, 119)",
+      "pixel": [47, 47, 47, 255]
+    },
+    {
+      "src": "rgba(255, 0, 0, 0.25)",
+      "ground": "rgb(119, 119, 119)",
+      "pixel": [153, 89, 89, 255]
+    },
+    {
+      "src": "rgba(26, 115, 232, 0.1)",
+      "ground": "rgb(119, 119, 119)",
+      "pixel": [109, 118, 130, 255]
+    },
+    {
+      "src": "rgba(200, 100, 50, 0.75)",
+      "ground": "rgb(119, 119, 119)",
+      "pixel": [180, 105, 67, 255]
+    },
+    {
+      "src": "rgba(12, 200, 99, 0.333)",
+      "ground": "rgb(119, 119, 119)",
+      "pixel": [83, 146, 112, 255]
+    },
+    {
+      "src": "color(srgb 2 0 0)",
+      "ground": "rgb(119, 119, 119)",
+      "pixel": [255, 0, 0, 255]
+    },
+    {
+      "src": "color(srgb -1 0 0)",
+      "ground": "rgb(119, 119, 119)",
+      "pixel": [0, 0, 0, 255]
+    },
+    {
+      "src": "rgba(0, 0, 0, 0.5)",
+      "ground": "rgb(240, 224, 208)",
+      "pixel": [120, 112, 104, 255]
+    },
+    {
+      "src": "rgba(0, 0, 0, 0.6)",
+      "ground": "rgb(240, 224, 208)",
+      "pixel": [96, 90, 83, 255]
+    },
+    {
+      "src": "rgba(255, 0, 0, 0.25)",
+      "ground": "rgb(240, 224, 208)",
+      "pixel": [244, 168, 156, 255]
+    },
+    {
+      "src": "rgba(26, 115, 232, 0.1)",
+      "ground": "rgb(240, 224, 208)",
+      "pixel": [218, 213, 210, 255]
+    },
+    {
+      "src": "rgba(200, 100, 50, 0.75)",
+      "ground": "rgb(240, 224, 208)",
+      "pixel": [210, 131, 89, 255]
+    },
+    {
+      "src": "rgba(12, 200, 99, 0.333)",
+      "ground": "rgb(240, 224, 208)",
+      "pixel": [164, 216, 171, 255]
+    },
+    {
+      "src": "color(srgb 2 0 0)",
+      "ground": "rgb(240, 224, 208)",
+      "pixel": [255, 0, 0, 255]
+    },
+    {
+      "src": "color(srgb -1 0 0)",
+      "ground": "rgb(240, 224, 208)",
+      "pixel": [0, 0, 0, 255]
+    }
+  ]
+}

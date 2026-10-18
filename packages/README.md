@@ -61,6 +61,8 @@ Developed here, in this repository:
 - `packages/ts/frontmatter-lossless` (`@osdlc/frontmatter-lossless` on npm,
   the TypeScript twin of the `frontmatter-lossless` crate, which has not moved
   here yet)
+- `packages/ts/color` (`@osdlc/color` on npm, sRGB colour arithmetic for
+  contrast checks)
 
 The development repository will take each TypeScript library from npm, like
 any other consumer. Today it still keeps its own copies. Open issues and pull
