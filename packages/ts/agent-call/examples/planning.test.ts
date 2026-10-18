@@ -1,0 +1,144 @@
+/**
+ * Planning: one spec, four built-in adapters, every approximation recorded.
+ * Nothing here starts an agent CLI.
+ */
+
+import { describe, expect, test } from 'vitest'
+
+import {
+  adapterFor,
+  antigravityAdapter,
+  BUILTIN_AGENTS,
+  claudeAdapter,
+  codexAdapter,
+  EFFORT_LEVELS,
+  opencodeAdapter,
+  planCall,
+  TMP_TOKEN,
+  type AgentAdapter,
+  type AgentCallSpec,
+  type AgentName,
+  type AntigravityAdapterOptions,
+  type CapabilityNote,
+  type ClaudeAdapterOptions,
+  type CodexAdapterOptions,
+  type ContextSpec,
+  type EffortLevel,
+  type McpSpec,
+  type OpencodeAdapterOptions,
+  type OutputFormat,
+  type OutputSpec,
+  type PermissionMode,
+  type PermissionSpec,
+  type PlannedCall,
+  type PluginSpec,
+  type SessionSpec,
+  type Support,
+  type TempFile,
+} from '@osdlc/agent-call'
+import { EFFORT_LEVELS as MODELS_EFFORT_LEVELS } from '@osdlc/agent-call/models'
+
+const mode: PermissionMode = 'edits'
+const permissions: PermissionSpec = { mode, allowTools: ['Edit'], denyTools: ['Bash'] }
+const context: ContextSpec = { files: ['README.md'], dirs: ['../shared'], text: 'Background.' }
+const format: OutputFormat = 'json'
+const output: OutputSpec = { format, schema: { type: 'object' } }
+const session: SessionSpec = { resume: 'abc123', persist: false }
+const mcp: McpSpec = { servers: { docs: { command: 'docs-server', args: ['--stdio'] } } }
+const plugins: PluginSpec = { dirs: ['./my-plugin'], disable: ['noisy@market'] }
+const effort: EffortLevel = 'high'
+
+const spec: AgentCallSpec = {
+  prompt: 'Review the change.',
+  model: 'some-model',
+  effort,
+  systemPrompt: 'Be terse.',
+  permissions,
+  context,
+  output,
+  session,
+  mcp,
+  plugins,
+  budgetUsd: 1,
+  cwd: '/work',
+  env: { REVIEW: '1' },
+  timeoutMs: 60_000,
+  extraArgs: ['--verbose'],
+}
+
+describe('the built-in adapters', () => {
+  test('adapterFor builds each of them by name', () => {
+    const names: readonly AgentName[] = BUILTIN_AGENTS
+    expect(names.map((name) => adapterFor(name).name)).toEqual([
+      'claude',
+      'codex',
+      'antigravity',
+      'opencode',
+    ])
+  })
+
+  test('each adapter factory takes a binary path', () => {
+    const claudeOptions: ClaudeAdapterOptions = { binary: '/opt/claude/claude' }
+    const codexOptions: CodexAdapterOptions = { binary: '/opt/codex/codex' }
+    const agyOptions: AntigravityAdapterOptions = { binary: '/opt/agy/agy' }
+    const opencodeOptions: OpencodeAdapterOptions = { binary: '/opt/oc/opencode' }
+    const adapters: AgentAdapter[] = [
+      claudeAdapter(claudeOptions),
+      codexAdapter(codexOptions),
+      antigravityAdapter(agyOptions),
+      opencodeAdapter(opencodeOptions),
+    ]
+    expect(adapters.map((a) => a.binary)).toEqual([
+      '/opt/claude/claude',
+      '/opt/codex/codex',
+      '/opt/agy/agy',
+      '/opt/oc/opencode',
+    ])
+  })
+
+  test('the effort vocabulary is a frozen list', () => {
+    expect([...EFFORT_LEVELS]).toEqual(['low', 'medium', 'high', 'xhigh', 'max'])
+    // The Node-free entry point exports the same list.
+    expect(MODELS_EFFORT_LEVELS).toBe(EFFORT_LEVELS)
+  })
+})
+
+describe('planCall', () => {
+  test('the same spec plans on every agent, and notes say what changed', () => {
+    for (const name of BUILTIN_AGENTS) {
+      const planned: PlannedCall = planCall(adapterFor(name), spec)
+      expect(planned.agent).toBe(name)
+      expect(planned.spec).toBe(spec)
+      expect(planned.cwd).toBe('/work')
+      expect(planned.env['REVIEW']).toBe('1')
+      expect(planned.argv).toContain('--verbose')
+    }
+  })
+
+  test('a note has a field, a support level and a detail', () => {
+    const planned = planCall(adapterFor('antigravity'), spec)
+    const dropped: CapabilityNote[] = planned.notes.filter((n) => n.support === 'dropped')
+    const levels: Support[] = ['native', 'approximated', 'emulated', 'dropped']
+    expect(dropped.map((n) => n.field)).toContain('mcp.servers')
+    for (const n of planned.notes) {
+      expect(levels).toContain(n.support)
+      expect(n.detail).not.toBe('')
+    }
+  })
+
+  test('codex keeps its schema in a temp file named by TMP_TOKEN', () => {
+    const planned = planCall(adapterFor('codex'), { prompt: 'x', output: { schema: { a: 1 } } })
+    const files: TempFile[] = planned.tempFiles
+    const schemaFile = files.find((f) => f.name === 'output-schema.json')
+    expect(schemaFile?.content).toBe('{"a":1}')
+    expect(planned.argv).toContain(`${TMP_TOKEN}/output-schema.json`)
+  })
+
+  test('the prompt travels on stdin for claude and in argv for antigravity', () => {
+    expect(planCall(adapterFor('claude'), { prompt: 'p' }).stdin).toBe('p')
+    const agy = planCall(adapterFor('antigravity'), { prompt: 'p' })
+    expect(agy.stdin).toBeUndefined()
+    expect(agy.prompt).toBe('p')
+    expect(agy.argv.slice(-2)).toEqual(['-p', 'p'])
+  })
+})

@@ -1,0 +1,74 @@
+{
+  "name": "@osdlc/agent-call",
+  "version": "0.3.0",
+  "description": "One canonical call spec for headless coding-agent CLIs. Declare prompt, permissions, context, output shape once; best-effort translate to claude/codex/antigravity/opencode invocations; normalize results and conversations for post-facto analysis.",
+  "license": "MIT OR Apache-2.0",
+  "author": "sksizer",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/osdlc/osdlc.git",
+    "directory": "packages/ts/agent-call"
+  },
+  "homepage": "https://github.com/osdlc/osdlc/tree/main/packages/ts/agent-call#readme",
+  "bugs": "https://github.com/osdlc/osdlc/issues",
+  "keywords": [
+    "coding-agent",
+    "claude-code",
+    "codex",
+    "antigravity",
+    "opencode",
+    "headless",
+    "cli-adapter",
+    "agent-harness"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./models": {
+      "types": "./dist/models.d.ts",
+      "default": "./dist/models.js"
+    }
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE-MIT",
+    "LICENSE-APACHE",
+    "SECURITY.md",
+    "CONTRIBUTING.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "test": "vitest run",
+    "test:live": "AGENT_CALL_LIVE=1 vitest run tests/live.test.ts",
+    "coverage": "vitest run --coverage",
+    "smoke": "node tests/smoke.mjs",
+    "prepublishOnly": "npm run clean && npm run build",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "oxlint .",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit"
+  },
+  "devDependencies": {
+    "@osdlc/prettier-config": "workspace:^",
+    "@osdlc/tsconfig": "workspace:^",
+    "@types/node": "^26.1.0",
+    "@vitest/coverage-v8": "^5.0.5",
+    "oxlint": "^1.65.0",
+    "prettier": "3.9.6",
+    "typescript": "~6.0.3",
+    "vitest": "^5.0.5"
+  }
+}
