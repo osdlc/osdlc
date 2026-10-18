@@ -66,7 +66,8 @@ static KEYS: &[KeySpec] = &[KeySpec {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let scratch = tempfile::tempdir()?;
 
-    // In a real tool: TieredDirs::from_env("com.example", &tiered_dirs::env_vars!("MYTOOL")).
+    // In a real tool: TieredDirs::from_env("com.example", &ENV, ResolveOptions::new()),
+    // with ENV = tiered_dirs::env_vars!("MYTOOL").
     let dirs = TieredDirs::with_base_dirs("com.example", BaseDirs::rooted(scratch.path()))?;
     let machine = MachineConfigFile::<Machine>::new("mytool", &dirs)?;
     assert_eq!(machine.env(), "MYTOOL_MACHINE_CONFIG");
@@ -192,8 +193,8 @@ items are:
   `expand_tokens`, `expand_tokens_with_hint`
 - `value`: `value_at`, `value_is_set`
 
-The re-export `tiered_dirs` follows `tiered-dirs` 0.2: a move to its 0.3
-would be a 0.6 release of this crate.
+The re-export `tiered_dirs` follows `tiered-dirs` 0.3: a move to its 0.4
+would be a 0.7 release of this crate.
 
 `tests/stability.rs` checks that every item carries the marker and that this
 list names it. `file::FileProblem` and

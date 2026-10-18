@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.0](https://github.com/osdlc/osdlc/compare/cli-tool-config/v0.5.0...cli-tool-config/v0.6.0) - 2026-10-17
+
+### Changed
+
+- **Breaking:** built on `tiered-dirs` 0.3. The re-exported `tiered_dirs`
+  and the `TieredDirs` that `MachineConfigFile::new` takes are 0.3's. Build
+  it with `TieredDirs::from_env(vendor, &vars, ResolveOptions::new())`; see
+  the `tiered-dirs` 0.3.0 changelog for the other constructors.
+
 ## [0.5.0](https://github.com/osdlc/osdlc/releases/tag/cli-tool-config/v0.5.0) - 2026-10-17
 
 The first release on crates.io.
