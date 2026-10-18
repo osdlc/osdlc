@@ -16,6 +16,8 @@ import {
   get,
   modelFlag,
   tryParseJson,
+  commandPrefix,
+  type CommandOptions,
 } from './shared.js'
 import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './types.js'
 
@@ -25,9 +27,7 @@ const MCP_CONFIG_FILE = 'mcp.json'
 const PLUGIN_NAME = 'agent-call'
 
 /** Options for {@link cursorAdapter}. */
-export interface CursorAdapterOptions {
-  /** Binary to spawn. Default: the CLI's own name. */
-  binary?: string
+export interface CursorAdapterOptions extends CommandOptions {
   /**
    * Pass `--trust`, which permanently marks the working directory (and each
    * `context.dirs` entry) trusted under `~/.cursor/projects/`, for later
@@ -49,12 +49,14 @@ export interface CursorAdapterOptions {
  * driven by a fake Cursor backend (`--endpoint`), not a live account.
  */
 export function cursorAdapter(options: CursorAdapterOptions = {}): AgentAdapter {
-  const binary = options.binary ?? 'agent'
+  const command = commandPrefix(options, 'agent')
+  const binary = command[0]!
   return {
     name: 'cursor',
     binary,
+    command,
     plan(spec) {
-      return planCursor(binary, options.trustWorkspace === true, spec)
+      return planCursor(command, options.trustWorkspace === true, spec)
     },
     parseResult(planned, raw) {
       return parseCursor(planned, raw)
@@ -65,14 +67,14 @@ export function cursorAdapter(options: CursorAdapterOptions = {}): AgentAdapter 
   }
 }
 
-function planCursor(binary: string, trust: boolean, spec: AgentCallSpec): PlannedCall {
+function planCursor(command: readonly string[], trust: boolean, spec: AgentCallSpec): PlannedCall {
   const notes: CapabilityNote[] = []
   const tempFiles: TempFile[] = []
   // --trust marks the workspace trusted (a lasting marker under
   // ~/.cursor/projects/) instead of exiting with "Workspace Trust Required".
   // It approves nothing else: commands and MCP servers keep their own gates.
   // Opt-in, since the trust outlives the call.
-  const argv = [binary, '-p']
+  const argv = [...command, '-p']
   if (trust) argv.push('--trust')
 
   // Explicit even for text: the documented default has changed between releases.

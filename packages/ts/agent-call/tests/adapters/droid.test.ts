@@ -42,6 +42,19 @@ describe('droid plan', () => {
     expect(planned.argv.join(' ')).toContain('--model custom:my-model')
   })
 
+  test('a command prefix comes before exec', () => {
+    const planned = droidAdapter({ command: ['npx', '-y', 'droid-wrapper'] }).plan({ prompt: 'x' })
+    expect(planned.argv.slice(0, 4)).toEqual(['npx', '-y', 'droid-wrapper', 'exec'])
+  })
+
+  test('none and minimal are raised to low, and noted as approximated', () => {
+    for (const effort of ['none', 'minimal'] as const) {
+      const planned = adapter.plan({ prompt: 'x', effort })
+      expect(planned.argv.join(' ')).toContain('--reasoning-effort low')
+      expect(noteFor(planned, 'effort')?.support).toBe('approximated')
+    }
+  })
+
   test('effort passes through natively, xhigh and max included', () => {
     for (const effort of ['low', 'medium', 'high', 'xhigh', 'max'] as const) {
       const planned = adapter.plan({ prompt: 'x', effort })

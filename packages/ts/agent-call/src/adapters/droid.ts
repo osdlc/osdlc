@@ -4,6 +4,7 @@ import {
   type ConversationMessage,
   type Part,
 } from '../conversation.js'
+import { isBelowLow } from '../models.js'
 import { note, TMP_TOKEN, type CapabilityNote, type PlannedCall, type TempFile } from '../plan.js'
 import type { AgentCallSpec, OutputFormat } from '../spec.js'
 import { claudeStyleConversation, claudeStyleUsage, parseClaudeStyle } from './claude-style.js'
@@ -16,16 +17,15 @@ import {
   modelFlag,
   parseJsonLines,
   tryParseJson,
+  commandPrefix,
+  type CommandOptions,
 } from './shared.js'
 import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './types.js'
 
 const APPEND_SYSTEM_PROMPT_FILE = 'append-system-prompt.md'
 
 /** Options for {@link droidAdapter}. */
-export interface DroidAdapterOptions {
-  /** Binary to spawn. Default: the CLI's own name. */
-  binary?: string
-}
+export interface DroidAdapterOptions extends CommandOptions {}
 
 /**
  * Factory Droid (`droid exec`). The prompt travels on stdin. Runs are
@@ -38,12 +38,14 @@ export interface DroidAdapterOptions {
  * BYOK models are addressed as `custom:<id>`; `model` passes through as given.
  */
 export function droidAdapter(options: DroidAdapterOptions = {}): AgentAdapter {
-  const binary = options.binary ?? 'droid'
+  const command = commandPrefix(options, 'droid')
+  const binary = command[0]!
   return {
     name: 'droid',
     binary,
+    command,
     plan(spec) {
-      return planDroid(binary, spec)
+      return planDroid(command, spec)
     },
     parseResult(planned, raw) {
       return parseDroid(planned, raw)
@@ -54,10 +56,10 @@ export function droidAdapter(options: DroidAdapterOptions = {}): AgentAdapter {
   }
 }
 
-function planDroid(binary: string, spec: AgentCallSpec): PlannedCall {
+function planDroid(command: readonly string[], spec: AgentCallSpec): PlannedCall {
   const notes: CapabilityNote[] = []
   const tempFiles: TempFile[] = []
-  const argv = [binary, 'exec']
+  const argv = [...command, 'exec']
 
   // The json envelope carries usage and the session id; text is the CLI's
   // own default, so it is passed explicitly for every format.
@@ -69,8 +71,13 @@ function planDroid(binary: string, spec: AgentCallSpec): PlannedCall {
   if (spec.effort !== undefined) {
     // droid takes low..max; which levels a model accepts is per model
     // (`droid exec --help` lists them).
-    argv.push('--reasoning-effort', spec.effort)
-    note(notes, 'effort', 'native', '--reasoning-effort')
+    if (isBelowLow(spec.effort)) {
+      argv.push('--reasoning-effort', 'low')
+      note(notes, 'effort', 'approximated', '--reasoning-effort low (droid has no level below low)')
+    } else {
+      argv.push('--reasoning-effort', spec.effort)
+      note(notes, 'effort', 'native', '--reasoning-effort')
+    }
   }
 
   if (spec.mcp?.servers !== undefined) {

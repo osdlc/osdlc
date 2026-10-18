@@ -21,7 +21,6 @@ import {
 import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './types.js'
 
 /** Options for {@link codexAdapter}. */
-/** Options for `codexAdapter`: `binary`, or a `command` prefix. */
 export interface CodexAdapterOptions extends CommandOptions {}
 
 const LAST_MESSAGE_FILE = 'last-message.txt'

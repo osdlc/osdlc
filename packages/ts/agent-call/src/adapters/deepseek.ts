@@ -14,14 +14,13 @@ import {
   get,
   parseJsonLines,
   withStructured,
+  commandPrefix,
+  type CommandOptions,
 } from './shared.js'
 import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './types.js'
 
 /** Options for {@link deepseekAdapter}. */
-export interface DeepseekAdapterOptions {
-  /** Binary to spawn. Default: the CLI's own name. */
-  binary?: string
-}
+export interface DeepseekAdapterOptions extends CommandOptions {}
 
 const PATCH_FILE = 'dsh-patch.yml'
 
@@ -50,12 +49,14 @@ const PERMISSION_ENV: Record<Exclude<PermissionMode, 'default'>, string> = {
  * approval (there is no approval channel), so no posture can hang a run.
  */
 export function deepseekAdapter(options: DeepseekAdapterOptions = {}): AgentAdapter {
-  const binary = options.binary ?? 'dsh'
+  const command = commandPrefix(options, 'dsh')
+  const binary = command[0]!
   return {
     name: 'deepseek',
     binary,
+    command,
     plan(spec) {
-      return planDeepseek(binary, spec)
+      return planDeepseek(command, spec)
     },
     parseResult(planned, raw) {
       return parseDeepseek(planned, raw)
@@ -67,21 +68,24 @@ export function deepseekAdapter(options: DeepseekAdapterOptions = {}): AgentAdap
 }
 
 /**
- * dsh's reasoning efforts are `off | low | high | max`. `medium` rounds up to
- * dsh's own default `high`, and `xhigh` to `max`.
+ * dsh's reasoning efforts are `off | low | high | max`. `none` is dsh's `off`,
+ * `minimal` rounds up to `low`, `medium` rounds up to dsh's own default `high`,
+ * and `xhigh` to `max`.
  */
 function dshEffort(effort: string): { value: string; clamped: boolean } {
+  if (effort === 'none') return { value: 'off', clamped: true }
+  if (effort === 'minimal') return { value: 'low', clamped: true }
   if (effort === 'medium') return { value: 'high', clamped: true }
   if (effort === 'xhigh') return { value: 'max', clamped: true }
   return { value: effort, clamped: false }
 }
 
-function planDeepseek(binary: string, spec: AgentCallSpec): PlannedCall {
+function planDeepseek(command: readonly string[], spec: AgentCallSpec): PlannedCall {
   const notes: CapabilityNote[] = []
   const tempFiles: TempFile[] = []
   const env: Record<string, string> = { ...spec.env }
   // Launcher flags (`--patch`) must precede the app's own flags.
-  const argv = [binary, '--profile', 'headless']
+  const argv = [...command, '--profile', 'headless']
   // Rows of the --patch overlay. A row's `config` replaces the profile's whole
   // config for that row id, so each row restates every field it keeps.
   const patch: Record<string, unknown>[] = []

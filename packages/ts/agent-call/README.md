@@ -317,7 +317,7 @@ The same rows for the agents added in 0.5.0:
 |---|---|---|---|---| --- |---|
 | `prompt` | stdin | stdin | stdin | stdin | stdin | stdin (`-`) |
 | `model` | `--model` | `--model` (provider/model) | `--model` | `--model` (`custom:<id>` for BYOK) | `--model` | `--patch` model row (approximated) |
-| `effort` (`low` to `max`, `xhigh` included) | `--reasoning-effort` | `--thinking` | `QWEN_CODE_SYSTEM_DEFAULTS_PATH` file (approximated) | `--reasoning-effort` | dropped (some model slugs take `[effort=…]`) | `--patch` model row (approximated; `medium` → `high`, `xhigh` → `max`) |
+| `effort` (`none` to `max`, least to most reasoning) | `--reasoning-effort` (`none`, `minimal` → `low`) | `--thinking` (`none` → `off`) | `QWEN_CODE_SYSTEM_DEFAULTS_PATH` file (approximated; `none`, `minimal` → `low`) | `--reasoning-effort` (`none`, `minimal` → `low`) | dropped (some model slugs take `[effort=…]`) | `--patch` model row (approximated; `none` → `off`, `minimal` → `low`, `medium` → `high`, `xhigh` → `max`) |
 | `systemPrompt` | prompt-emulated | `--system-prompt` (temp file) | `--system-prompt` | prompt-emulated | prompt-emulated | `--patch` persona prefix (approximated) |
 | `appendSystemPrompt` | `COPILOT_CUSTOM_INSTRUCTIONS_DIRS` file (approximated) | `--append-system-prompt` (temp file) | `--append-system-prompt` | `--append-system-prompt-file` (temp file) | prompt-emulated | `--patch` persona suffix |
 | `permissions.mode: read-only` | `--deny-tool=write` (approximated) | `--tools read,grep,find,ls` (approximated) | `--approval-mode plan` (approximated) | no flag (`droid exec` is read-only) | `--mode ask` (approximated) | `DSH_PERMISSION_MODE` `read-only` |
@@ -338,6 +338,7 @@ The same rows for the agents added in 0.5.0:
 | `mcp.servers` | `--additional-mcp-config` | dropped | `--mcp-config` | dropped | `--plugin-dir` temp plugin (approximated) | `--patch` mcp-client rows (approximated) |
 | `budgetUsd` | dropped | dropped | dropped | dropped | dropped | dropped |
 | `timeoutMs` | library-level (SIGTERM → SIGKILL) on all agents | | | | | |
+| `maxOutputBytes` | library-level per-stream cap (SIGTERM → SIGKILL, reason `output-limit`) on all agents | | | | | |
 | `extraArgs` | appended verbatim on all agents | | | | | |
 
 `deepseek` is the DeepSeek Harness (`dsh --profile headless`). It has no flags

@@ -73,6 +73,17 @@ describe('qwen plan', () => {
     }
   })
 
+  test('none and minimal are written as low, the lowest level qwen has', () => {
+    for (const effort of ['none', 'minimal'] as const) {
+      const planned = adapter.plan({ prompt: 'x', effort })
+      expect(planned.tempFiles[0]?.content).toBe(
+        JSON.stringify({ model: { reasoningEffort: 'low' } }),
+      )
+      expect(supportOf(planned.notes, 'effort')).toBe('approximated')
+      expect(planned.notes.find((n) => n.field === 'effort')?.detail).toContain('become low')
+    }
+  })
+
   test('permission modes map to --approval-mode', () => {
     expect(adapter.plan({ prompt: 'x', permissions: { mode: 'default' } }).argv).toEqual([
       'qwen',

@@ -62,6 +62,18 @@ describe('deepseek plan', () => {
     expect(noteFor(planned, 'model')?.support).toBe('approximated')
   })
 
+  test('a command prefix comes before the headless profile flags', () => {
+    const planned = deepseekAdapter({ command: ['env', 'X=1', 'dsh'] }).plan({ prompt: 'x' })
+    expect(planned.argv.slice(0, 6)).toEqual([
+      'env',
+      'X=1',
+      'dsh',
+      '--profile',
+      'headless',
+      '--json',
+    ])
+  })
+
   test('effort restates the default model; medium and xhigh clamp to dsh levels', () => {
     const high = adapter.plan({ prompt: 'x', effort: 'high' })
     expect(patchRows(high)).toEqual([
@@ -74,6 +86,8 @@ describe('deepseek plan', () => {
     expect(noteFor(high, 'model')).toBeUndefined()
 
     const cases = [
+      ['none', 'off'],
+      ['minimal', 'low'],
       ['low', 'low'],
       ['medium', 'high'],
       ['xhigh', 'max'],

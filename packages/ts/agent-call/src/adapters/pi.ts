@@ -16,14 +16,13 @@ import {
   modelFlag,
   parseJsonLines,
   tryParseJson,
+  commandPrefix,
+  type CommandOptions,
 } from './shared.js'
 import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './types.js'
 
 /** Options for {@link piAdapter}. */
-export interface PiAdapterOptions {
-  /** Binary to spawn. Default: the CLI's own name. */
-  binary?: string
-}
+export interface PiAdapterOptions extends CommandOptions {}
 
 const SYSTEM_PROMPT_FILE = 'system-prompt.md'
 const APPEND_SYSTEM_PROMPT_FILE = 'append-system-prompt.md'
@@ -42,12 +41,14 @@ const ALL_TOOLS = ['read', 'bash', 'edit', 'write', 'grep', 'find', 'ls'].map((t
  * asks for approval: the permission posture is the set of enabled tools.
  */
 export function piAdapter(options: PiAdapterOptions = {}): AgentAdapter {
-  const binary = options.binary ?? 'pi'
+  const command = commandPrefix(options, 'pi')
+  const binary = command[0]!
   return {
     name: 'pi',
     binary,
+    command,
     plan(spec) {
-      return planPi(binary, spec)
+      return planPi(command, spec)
     },
     parseResult(planned, raw) {
       return parsePi(planned, raw)
@@ -63,10 +64,10 @@ export function piThinkingArgv(effort: string): string[] {
   return ['--thinking', effort === 'none' ? 'off' : effort]
 }
 
-function planPi(binary: string, spec: AgentCallSpec): PlannedCall {
+function planPi(command: readonly string[], spec: AgentCallSpec): PlannedCall {
   const notes: CapabilityNote[] = []
   const tempFiles: TempFile[] = []
-  const argv = [binary]
+  const argv = [...command]
 
   // `--mode json` runs once and exits; `-p` prints the final answer as text.
   const format: OutputFormat = spec.output?.format ?? 'json'

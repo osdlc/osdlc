@@ -1,18 +1,22 @@
 import type { Conversation } from '../conversation.js'
+import { isBelowLow } from '../models.js'
 import { note, TMP_TOKEN, type CapabilityNote, type PlannedCall, type TempFile } from '../plan.js'
 import type { AgentCallSpec, OutputFormat } from '../spec.js'
 import { claudeStyleConversation, parseClaudeStyle } from './claude-style.js'
-import { applyPermissionMode, buildEffectivePrompt, modelFlag } from './shared.js'
+import {
+  applyPermissionMode,
+  buildEffectivePrompt,
+  modelFlag,
+  commandPrefix,
+  type CommandOptions,
+} from './shared.js'
 import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './types.js'
 
 const MCP_CONFIG_FILE = 'mcp.json'
 const SETTINGS_DEFAULTS_FILE = 'qwen-system-defaults.json'
 
 /** Options for {@link qwenAdapter}. */
-export interface QwenAdapterOptions {
-  /** Binary to spawn. Default: the CLI's own name. */
-  binary?: string
-}
+export interface QwenAdapterOptions extends CommandOptions {}
 
 /**
  * Qwen Code (`qwen`). Headless whenever a prompt arrives, here on stdin, with
@@ -24,12 +28,14 @@ export interface QwenAdapterOptions {
  * the process.
  */
 export function qwenAdapter(options: QwenAdapterOptions = {}): AgentAdapter {
-  const binary = options.binary ?? 'qwen'
+  const command = commandPrefix(options, 'qwen')
+  const binary = command[0]!
   return {
     name: 'qwen',
     binary,
+    command,
     plan(spec) {
-      return planQwen(binary, spec)
+      return planQwen(command, spec)
     },
     parseResult(planned, raw) {
       return parseQwen(planned, raw)
@@ -40,11 +46,11 @@ export function qwenAdapter(options: QwenAdapterOptions = {}): AgentAdapter {
   }
 }
 
-function planQwen(binary: string, spec: AgentCallSpec): PlannedCall {
+function planQwen(command: readonly string[], spec: AgentCallSpec): PlannedCall {
   const notes: CapabilityNote[] = []
   const tempFiles: TempFile[] = []
   const env: Record<string, string> = { ...spec.env }
-  const argv = [binary]
+  const argv = [...command]
 
   // `json` is the run's event array, so it carries usage and the session id.
   const format: OutputFormat = spec.output?.format ?? 'json'
@@ -58,14 +64,17 @@ function planQwen(binary: string, spec: AgentCallSpec): PlannedCall {
     // var can point at. It sits below user and project settings.
     tempFiles.push({
       name: SETTINGS_DEFAULTS_FILE,
-      content: JSON.stringify({ model: { reasoningEffort: spec.effort } }),
+      content: JSON.stringify({
+        model: { reasoningEffort: isBelowLow(spec.effort) ? 'low' : spec.effort },
+      }),
     })
     env['QWEN_CODE_SYSTEM_DEFAULTS_PATH'] = `${TMP_TOKEN}/${SETTINGS_DEFAULTS_FILE}`
     note(
       notes,
       'effort',
       'approximated',
-      'model.reasoningEffort via QWEN_CODE_SYSTEM_DEFAULTS_PATH (no flag; a reasoningEffort in user or project settings wins, and any system-defaults file is replaced for this run)',
+      'model.reasoningEffort via QWEN_CODE_SYSTEM_DEFAULTS_PATH (no flag; a reasoningEffort in user or project settings wins, and any system-defaults file is replaced for this run)' +
+        (isBelowLow(spec.effort) ? '; none and minimal become low, the lowest level qwen has' : ''),
     )
   }
 

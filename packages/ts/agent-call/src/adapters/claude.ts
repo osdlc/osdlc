@@ -15,7 +15,6 @@ import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './types.js'
 const MCP_CONFIG_FILE = 'mcp.json'
 
 /** Options for {@link claudeAdapter}. */
-/** Options for `claudeAdapter`: `binary`, or a `command` prefix. */
 export interface ClaudeAdapterOptions extends CommandOptions {}
 
 /**

@@ -4,6 +4,7 @@ import {
   type ConversationMessage,
   type Usage,
 } from '../conversation.js'
+import { isBelowLow } from '../models.js'
 import { note, TMP_TOKEN, type CapabilityNote, type PlannedCall, type TempFile } from '../plan.js'
 import type { AgentCallSpec, OutputFormat } from '../spec.js'
 import {
@@ -16,14 +17,13 @@ import {
   parseJsonLines,
   tryParseJson,
   withStructured,
+  commandPrefix,
+  type CommandOptions,
 } from './shared.js'
 import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './types.js'
 
 /** Options for {@link copilotAdapter}. */
-export interface CopilotAdapterOptions {
-  /** Binary to spawn. Default: the CLI's own name. */
-  binary?: string
-}
+export interface CopilotAdapterOptions extends CommandOptions {}
 
 const USAGE_FILE = 'usage.json'
 const MCP_CONFIG_FILE = 'mcp.json'
@@ -41,12 +41,14 @@ const INSTRUCTIONS_ENV = 'COPILOT_CUSTOM_INSTRUCTIONS_DIRS'
  * that needs approval is denied headless rather than prompting.
  */
 export function copilotAdapter(options: CopilotAdapterOptions = {}): AgentAdapter {
-  const binary = options.binary ?? 'copilot'
+  const command = commandPrefix(options, 'copilot')
+  const binary = command[0]!
   return {
     name: 'copilot',
     binary,
+    command,
     plan(spec) {
-      return planCopilot(binary, spec)
+      return planCopilot(command, spec)
     },
     parseResult(planned, raw) {
       return parseCopilot(planned, raw)
@@ -57,11 +59,11 @@ export function copilotAdapter(options: CopilotAdapterOptions = {}): AgentAdapte
   }
 }
 
-function planCopilot(binary: string, spec: AgentCallSpec): PlannedCall {
+function planCopilot(command: readonly string[], spec: AgentCallSpec): PlannedCall {
   const notes: CapabilityNote[] = []
   const tempFiles: TempFile[] = []
   const env: Record<string, string> = { ...spec.env }
-  const argv = [binary]
+  const argv = [...command]
 
   // `--output-format json` is a JSONL event stream, so it backs both "json"
   // (we aggregate) and "stream-json" (events exposed). Text needs `-s`, or the
@@ -88,8 +90,18 @@ function planCopilot(binary: string, spec: AgentCallSpec): PlannedCall {
   if (spec.model !== undefined) argv.push(...modelFlag(spec.model))
 
   if (spec.effort !== undefined) {
-    argv.push('--reasoning-effort', spec.effort)
-    note(notes, 'effort', 'native', '--reasoning-effort')
+    if (isBelowLow(spec.effort)) {
+      argv.push('--reasoning-effort', 'low')
+      note(
+        notes,
+        'effort',
+        'approximated',
+        '--reasoning-effort low (copilot has no level below low)',
+      )
+    } else {
+      argv.push('--reasoning-effort', spec.effort)
+      note(notes, 'effort', 'native', '--reasoning-effort')
+    }
   }
 
   if (spec.mcp?.servers !== undefined) {

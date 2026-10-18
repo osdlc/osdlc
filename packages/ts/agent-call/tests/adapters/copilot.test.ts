@@ -57,6 +57,15 @@ describe('copilot plan', () => {
     }
   })
 
+  test('none and minimal are raised to low, and noted as approximated', () => {
+    for (const effort of ['none', 'minimal'] as const) {
+      const planned = adapter.plan({ prompt: 'x', effort })
+      expect(planned.argv.join(' ')).toContain('--reasoning-effort low')
+      expect(planned.argv.join(' ')).not.toContain(effort)
+      expect(noteFor(planned, 'effort')?.support).toBe('approximated')
+    }
+  })
+
   test('system prompt is folded into the prompt', () => {
     const planned = adapter.plan({ prompt: 'q', systemPrompt: 'be terse' })
     expect(planned.stdin).toContain('<system>\nbe terse\n</system>')

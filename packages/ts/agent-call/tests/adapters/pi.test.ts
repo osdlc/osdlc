@@ -49,6 +49,15 @@ describe('pi plan', () => {
     }
   })
 
+  test("none is pi's off; minimal passes through", () => {
+    const none = adapter.plan({ prompt: 'x', effort: 'none' })
+    expect(none.argv.join(' ')).toContain('--thinking off')
+    expect(noteFor(none, 'effort')?.support).toBe('native')
+    expect(adapter.plan({ prompt: 'x', effort: 'minimal' }).argv.join(' ')).toContain(
+      '--thinking minimal',
+    )
+  })
+
   test('system prompts travel in temp files, not argv or the prompt', () => {
     const planned = adapter.plan({
       prompt: 'q',

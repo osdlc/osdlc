@@ -22,7 +22,6 @@ import {
 import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './types.js'
 
 /** Options for {@link antigravityAdapter}. */
-/** Options for `antigravityAdapter`: `binary`, or a `command` prefix. */
 export interface AntigravityAdapterOptions extends CommandOptions {}
 
 /**

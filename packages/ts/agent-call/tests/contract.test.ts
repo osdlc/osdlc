@@ -614,7 +614,7 @@ describe('capability map: the other rows', () => {
       expect(planned.argv.join(' ')).not.toContain('4321')
       expect(planned.notes.find((n) => n.field === 'maxOutputBytes')).toBeUndefined()
     }
-    expect(tableRow('maxOutputBytes')[0]).toContain('library-level')
+    expect(tableRow('maxOutputBytes')['claude']).toContain('library-level')
   })
 
   test('extraArgs are appended verbatim on every agent', () => {

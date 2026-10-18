@@ -18,7 +18,6 @@ import {
 import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './types.js'
 
 /** Options for {@link opencodeAdapter}. */
-/** Options for `opencodeAdapter`: `binary`, or a `command` prefix. */
 export interface OpencodeAdapterOptions extends CommandOptions {}
 
 /**
