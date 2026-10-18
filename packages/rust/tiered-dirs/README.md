@@ -43,13 +43,13 @@ cargo add tiered-dirs
 ## Quick start
 
 ```rust
-use tiered_dirs::{EnvVars, TieredDirs, env_vars};
+use tiered_dirs::{EnvVars, ResolveOptions, TieredDirs, env_vars};
 
 // Names the override variables: EXAMPLE_ROOT, EXAMPLE_CACHE_DIR and so on.
 const ENV: EnvVars = env_vars!("EXAMPLE");
 
 fn main() -> Result<(), tiered_dirs::Error> {
-    let dirs = TieredDirs::from_env("com.example", &ENV)?;
+    let dirs = TieredDirs::from_env("com.example", &ENV, ResolveOptions::new())?;
     let index = dirs
         .suite("notes")?
         .cache()
@@ -137,16 +137,17 @@ come from the `dirs` crate. Three rules of this crate apply to every cell:
 - A file that two programs read is resolved in one place, by the program that
   owns it, under that program's convention.
 
-`BaseDirs::from_env` and `TieredDirs::from_env` mean `Native`.
-`from_env_opts` takes a `ResolveOptions`; set `Xdg` on it with
+`BaseDirs::from_env` and `TieredDirs::from_env` take a `ResolveOptions`.
+`ResolveOptions::new()` and `default()` mean `Native`; set `Xdg` with
 `with_convention`. `<P>_CONVENTION=native` or `xdg` overrides the caller's
 choice; any other value is `Error::InvalidConvention`. The value is trimmed,
 then must match exactly, in lower case. `Convention` also implements
 `FromStr`, which takes `native` or `xdg` exactly, for a command-line flag.
 
-`BaseDirs` and `TieredDirs` each read the environment through four
-constructors: `from_env`, `from_env_with`, `from_env_opts` and
-`from_env_opts_with`. A later knob goes on `ResolveOptions`, not on a new
+`BaseDirs` and `TieredDirs` each read the environment through two
+constructors: `from_env` reads the process environment, and `from_env_with`
+reads the variables through a caller's function. Both take a
+`ResolveOptions`. A later knob goes on `ResolveOptions`, not on a new
 constructor.
 
 ```rust
@@ -156,7 +157,7 @@ const ENV: EnvVars = env_vars!("DEVTOOL");
 const OPTS: ResolveOptions = ResolveOptions::new().with_convention(Convention::Xdg);
 
 fn main() -> Result<(), tiered_dirs::Error> {
-    let dirs = TieredDirs::from_env_opts("com.example", &ENV, OPTS)?;
+    let dirs = TieredDirs::from_env("com.example", &ENV, OPTS)?;
     // ~/.config/devtool on Linux and macOS, %APPDATA%\devtool on Windows.
     println!("{}", dirs.standalone("devtool")?.config().path().display());
     Ok(())
@@ -168,7 +169,7 @@ fn main() -> Result<(), tiered_dirs::Error> {
 Every base directory can be moved by an environment variable, on every OS, so
 a test or harness can run a whole program inside one scratch root. The caller
 names the variables with `EnvVars`, through `env_vars!("<P>")`. Every name
-shares that one prefix. In 0.2 there is no public way to pick unrelated names.
+shares that one prefix. There is no public way to pick unrelated names.
 For each base directory, the first answer wins:
 
 | order | source | effect |
@@ -183,29 +184,32 @@ A relative path is `Error::RelativeOverride`. On Windows an absolute path has a
 drive or a UNC prefix (`C:\state`, `\\server\share`); `\state` alone is
 relative to the current drive and is refused.
 
-`BaseDirs::from_env_with` (and `from_env_opts_with`) reads the variables through
-a caller's own function, `XDG_*` included, so a test can try every case
+`BaseDirs::from_env_with` reads the variables through a caller's own
+function, `XDG_*` included, so a test can try every case
 without changing the process environment. `BaseDirs::xdg(home, var)` builds
 the XDG table under any home, on any OS.
 `EnvVars::is_overridden` reports whether any override variable is set.
 
 ## Tests never resolve a real home
 
-`from_env` and `from_env_opts`, on `BaseDirs` and on `TieredDirs`, apply two
-rules before that order:
+`from_env`, on `BaseDirs` and on `TieredDirs`, applies two rules before that
+order:
 
 - In a test binary that cargo or nextest runs (one in
   `<target>/<profile>/deps/`, run with `CARGO` or `NEXTEST` set), an unset
   `<P>_ROOT` reads as `<temp>/tiered-dirs-test-<pid>-<start nanos>`. Plain
   `cargo test` needs no setup. `test_root()` returns that root. A doc-test,
-  or a test binary started directly, gets no such default.
+  or a test binary started directly, gets no such default. To resolve the
+  OS defaults even under cargo, pass
+  `ResolveOptions::new().with_test_root(false)`; `<P>_ROOT` and
+  `<P>_REQUIRE_OVERRIDE` still apply.
 - With `<P>_REQUIRE_OVERRIDE` set, a home that would fall back to the OS
   default is `Error::OverrideRequired`, whose message names the fix. Child
   processes inherit the variable, so a program a test starts fails loudly
   instead of writing to the real home.
 
-`from_env_with` and `from_env_opts_with` apply neither rule, so a test that
-means to read the OS defaults calls one of them.
+`from_env_with` applies neither rule, so a test that means to read the OS
+defaults calls it.
 
 ## Scratch
 
@@ -280,14 +284,15 @@ Coverage is not measured.
 
 ## Stability
 
-0.2 is the first published release. The crate stays on 0.x for now. Every public item is
+The crate stays on 0.x for now. Every public item is
 marked "stable in 0.x" in its docs: `BaseDirs`, `Convention`, `Dir`, `EnvVars`,
 `env_vars!`, `Error`, `Home`, `ResolveOptions`, `Tier`, `TierKind`,
 `TieredDirs`, `assert_vendor_bundle_id`, `is_valid_segment`,
 `is_vendor_bundle_id` and `test_root`.
 
-- `Error` and `Convention` are `#[non_exhaustive]`, so a later release can add
-  a variant without a breaking change.
+- `Error`, `Convention` and `TierKind` are `#[non_exhaustive]`, so a later
+  release can add a variant without a breaking change. A `match` on one
+  needs a `_` arm.
 - `EnvVars` and `ResolveOptions` are `#[non_exhaustive]` too, so a later
   release can add a field. Build `EnvVars` with `env_vars!` and
   `ResolveOptions` with `new()` or `default()`.

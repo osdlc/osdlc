@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/osdlc/osdlc/compare/tiered-dirs/v0.2.0...tiered-dirs/v0.3.0) - 2026-10-17
+
+### Changed
+
+- **Breaking:** `BaseDirs` and `TieredDirs` each have two environment
+  constructors instead of four, and both take a `ResolveOptions`.
+  `from_env` reads the process environment and applies the test rules;
+  `from_env_with` reads through a caller's function and applies neither.
+  `from_env_opts` and `from_env_opts_with` are removed. Migrate:
+  `from_env(v, vars)` → `from_env(v, vars, ResolveOptions::new())`;
+  `from_env_opts(v, vars, o)` → `from_env(v, vars, o)`;
+  `from_env_with(v, vars, f)` → `from_env_with(v, vars, ResolveOptions::new(), f)`;
+  `from_env_opts_with(v, vars, o, f)` → `from_env_with(v, vars, o, f)`.
+  `BaseDirs` is the same, without the vendor argument.
+- **Breaking:** `TierKind` is `#[non_exhaustive]`. A `match` on it outside
+  this crate needs a `_` arm. `TierKind::ALL` is unchanged.
+
+### Added
+
+- `ResolveOptions::test_root` and `ResolveOptions::with_test_root`. On by
+  default. Off, `from_env` does not read an unset root variable as
+  `test_root()` in a cargo test binary; `<P>_ROOT` and `<P>_REQUIRE_OVERRIDE`
+  still apply.
+
 ## [0.2.0](https://github.com/osdlc/osdlc/releases/tag/tiered-dirs/v0.2.0) - 2026-10-17
 
 The first release on crates.io.
