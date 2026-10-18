@@ -24,6 +24,8 @@ export type DefaultedOptions<O, K extends keyof O> = Omit<O, K> & Partial<Pick<O
  * @experimental
  */
 export interface DefaultedRunner<Rn extends AnyRunner, K extends keyof RunOptions<Rn> = never> {
+  /** The wrapped runner's `binary`, when it has one. */
+  readonly binary?: string | undefined
   run(
     arg: Parameters<Rn['run']>[0],
     ...opts: {} extends DefaultedOptions<RunOptions<Rn>, K>
@@ -62,8 +64,12 @@ export function withDefaults<Rn extends AnyRunner, K extends keyof RunOptions<Rn
   defaults: Pick<RunOptions<Rn>, K> & Partial<RunOptions<Rn>>,
 ): DefaultedRunner<Rn, K> {
   const bound: Record<string, unknown> = { ...defaults }
-  const target = runner as unknown as { run(arg: unknown, opts: unknown): ReturnType<Rn['run']> }
+  const target = runner as unknown as {
+    binary?: unknown
+    run(arg: unknown, opts: unknown): ReturnType<Rn['run']>
+  }
   return {
+    ...(typeof target.binary === 'string' ? { binary: target.binary } : {}),
     run(arg: unknown, opts?: object) {
       const merged = { ...bound }
       for (const [key, value] of Object.entries(opts ?? {})) {

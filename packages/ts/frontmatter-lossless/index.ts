@@ -49,9 +49,10 @@ export type CloseEol = '' | '\n' | '\r\n'
  * file whose fences were `---\r\n`, and now every line of the note shows as
  * changed in git. The fences are data too.
  *
- * Take it from {@link split} and pass it back to {@link compose}; do not build
- * one by hand. A minor release may add a field, which would break an object
- * literal typed as `NoteShape`.
+ * Take it from {@link split} and pass it back to {@link compose}, or, for a
+ * new note with no source text, from {@link newShape}. Do not build one by
+ * hand: a minor release may add a field, which would break an object literal
+ * typed as `NoteShape`.
  */
 export interface NoteShape {
   /** The byte-order mark, if the file had one. */
@@ -96,6 +97,23 @@ export interface Split {
   readonly bodyStart: number
   /** The framing to restore when writing this note back. */
   readonly shape: NoteShape
+  /** `true` when the note opens a frontmatter block that never closes: it
+   *  starts with a valid opening fence (`---` and a line break, after an
+   *  optional BOM) and no closing `---` line follows. `yaml` is still `null`
+   *  and `body` the whole text, as for a note with no block, so a projection
+   *  keeps going; a caller that holds authored notes to a contract can read
+   *  this to report the note as malformed instead. `false` otherwise.
+   *  Optional so a `Split` built by hand, such as a test fake, still type-checks;
+   *  {@link split} always sets it. */
+  readonly unterminated?: boolean | undefined
+}
+
+/** Options for {@link newShape}. */
+export interface NewShapeOptions {
+  /** Line ending of both fences. Default `'\n'`. */
+  readonly eol?: OpenEol | undefined
+  /** Whether the note starts with a byte-order mark. Default `false`. */
+  readonly bom?: boolean | undefined
 }
 
 /** The result of a tolerant read-only split: see {@link splitLenient}. */
@@ -114,7 +132,8 @@ const BOM = '\uFEFF'
  *
  * Frontmatter is recognised only when the document begins with `---\n` (or
  * `---\r\n`, or either after a BOM) and is closed by `---` alone on a line.
- * Anything else — including a missing terminator — is body. A leading BOM is
+ * Anything else — including a missing terminator — is body; a missing
+ * terminator also sets {@link Split.unterminated}. A leading BOM is
  * framing: it is recorded in {@link Split.shape} and excluded from both
  * `yaml` and `body`, never duplicated into the content.
  */
@@ -123,12 +142,13 @@ export function split(src: string): Split {
   const rest = bom ? src.slice(BOM.length) : src
   const offset = bom ? BOM.length : 0
 
-  const noFrontmatter = (): Split => ({
+  const noFrontmatter = (unterminated: boolean): Split => ({
     yaml: null,
     yamlRange: { start: 0, end: 0 },
     body: rest,
     bodyStart: offset,
     shape: { bom, openEol: '\n', closeEol: '\n', closeSep: true },
+    unterminated,
   })
 
   let afterMarker: string
@@ -143,7 +163,7 @@ export function split(src: string): Split {
     markerLen = 5
     openEol = '\r\n'
   } else {
-    return noFrontmatter()
+    return noFrontmatter(false)
   }
   const yamlStart = offset + markerLen
 
@@ -159,6 +179,7 @@ export function split(src: string): Split {
         body: afterMarker.slice(len),
         bodyStart: yamlStart + len,
         shape: { bom, openEol, closeEol, closeSep: false },
+        unterminated: false,
       }
     }
   }
@@ -169,13 +190,15 @@ export function split(src: string): Split {
       body: '',
       bodyStart: src.length,
       shape: { bom, openEol, closeEol: '', closeSep: false },
+      unterminated: false,
     }
   }
 
   let searchStart = 0
   for (;;) {
     const found = afterMarker.indexOf('\n---', searchStart)
-    if (found === -1) return noFrontmatter()
+    // An opening fence with no closing one.
+    if (found === -1) return noFrontmatter(true)
     const dashesStart = found + 1
     const afterDashes = dashesStart + 3
     const yamlLen = found
@@ -201,6 +224,7 @@ export function split(src: string): Split {
       body: afterMarker.slice(bodyRel),
       bodyStart: yamlStart + bodyRel,
       shape: { bom, openEol, closeEol, closeSep: true },
+      unterminated: false,
     }
   }
 }
@@ -235,6 +259,34 @@ export function compose(frontmatter: string | null, body: string, shape: NoteSha
   // there; a new body still needs one, so borrow the opening fence's.
   out += '---' + (shape.closeEol === '' && body !== '' ? shape.openEol : shape.closeEol) + body
   return out
+}
+
+/**
+ * The shape for a new note, one with no source text to {@link split}: both
+ * fences end in `eol` and the closing fence has its line ending. It stays
+ * valid when {@link NoteShape} gains fields, which an object literal would
+ * not.
+ *
+ * `compose(yaml, body, newShape())` gives `---\n<yaml>\n---\n<body>`. The
+ * `yaml` argument is the text between the fences as {@link split} returns
+ * it: without the line break before the closing fence. A YAML serializer's
+ * output usually ends in one, so drop it first, or the block ends in a
+ * blank line. With `eol: '\r\n'`, `compose` writes the fences as CRLF and
+ * the yaml text keeps its own line endings, so end its lines in `\r\n` and
+ * the text itself in `\r`, as {@link split} returns a CRLF block.
+ *
+ * An empty `yaml` gives `---\n\n---\n`: since the closing fence keeps its
+ * line break, the block holds one blank line. It round-trips through
+ * {@link split}.
+ *
+ * @example
+ * ```ts
+ * compose('title: A', '# A\n', newShape()) // '---\ntitle: A\n---\n# A\n'
+ * ```
+ */
+export function newShape(opts: NewShapeOptions = {}): NoteShape {
+  const eol = opts.eol ?? '\n'
+  return { bom: opts.bom ?? false, openEol: eol, closeEol: eol, closeSep: true }
 }
 
 /**

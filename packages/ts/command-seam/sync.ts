@@ -12,20 +12,13 @@
  */
 
 import { spawnSync } from 'node:child_process'
-import {
-  accessSync,
-  constants,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-} from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { delimiter, join, resolve } from 'node:path'
+import { join } from 'node:path'
 
 import { shellJoin } from './quote.ts'
 import { failureText, stderrOrError } from './result.ts'
+import { which } from './which.ts'
 
 /** Result of running an external command through a `CommandRunner`. */
 export interface CommandResult {
@@ -64,15 +57,34 @@ export interface CommandResult {
    */
   signal?: NodeJS.Signals | undefined
   /**
+   * `true` when the child exited but the runner stopped reading its output
+   * early, so `stdout` and `stderr` may be cut short. `exitCode` is the
+   * child's own, `neverExited` and `reason` are absent, and `error` says why.
+   * Absent otherwise. Two cases, both on the sync capture runner:
+   *
+   * - The child exited, but a process it started (`cmd &`, a daemon, a
+   *   postinstall script) still held stdout or stderr open when `timeoutMs`
+   *   ran out. Anything that process wrote after the deadline is lost, and it
+   *   keeps running. Without `timeoutMs` the run waits for it to exit.
+   * - The child passed the 256 MB output cap but exited before the runner's
+   *   kill landed, on Node or Bun.
+   *
+   * The `bun test` capture path writes output to files and never waits on a
+   * held pipe, so it never sets this flag.
+   *
+   * `ran` and `runChecked` go by the exit code alone, so they still count
+   * such a run as a success. Check this flag when the output must be whole.
+   */
+  outputIncomplete?: boolean | undefined
+  /**
    * The runner's own message, when it has one: a failed spawn, a timeout, an
    * abort, an `onSpawn` that threw, a refused `processGroup` run, the output
    * cap, or a failed write to the child's stdin. It is never copied into
    * `stderr`. Absent otherwise.
    *
    * It can also be set when the child did exit: a failed stdin write (Bun's
-   * `spawnSync` does not report one), or, under Bun, a child that exits right
-   * at the output cap. `exitCode` is then the child's own and `reason` is
-   * absent.
+   * `spawnSync` does not report one), or a run with `outputIncomplete` set.
+   * `exitCode` is then the child's own and `reason` is absent.
    */
   error?: string | undefined
 }
@@ -146,6 +158,12 @@ export type EnvOverrides = Record<string, string | undefined>
  * ```
  */
 export interface CommandRunner {
+  /**
+   * The binary this runner runs, when it has one. `runChecked` puts it in
+   * `CommandFailed`, so the message names the program. `spawnRunner` sets
+   * it; a fake may leave it out.
+   */
+  readonly binary?: string | undefined
   /**
    * Run the binary with `argv` (the arguments, without the binary name) and
    * wait for it to exit. Never throws for a failed command: a non-zero exit,
@@ -295,17 +313,20 @@ export function syncStop(proc: { error?: Error | undefined; signal: NodeJS.Signa
 
 /**
  * Thrown by {@link runChecked} and `runCheckedAsync` on a non-zero exit.
- * Carries the argv and the full {@link CommandResult}, so a caller can report
- * the output without running the command again.
+ * Carries the binary, the argv and the full {@link CommandResult}, so a
+ * caller can report the output without running the command again.
  *
- * `message` is `command failed (exit N): <argv>`, with argv quoted by
+ * `message` is `command failed (exit N): <binary> <argv>`, quoted by
  * `shellJoin`, followed on a new line by the trimmed stderr, or the trimmed
  * `error` when stderr is empty. Nothing follows when both are empty. The argv
  * appears in full, so error logs and reports carry it: pass secrets through
  * `env` or `input`, not argv. Use `detail` to show a person
- * why it failed.
+ * why it failed. The binary is left out when it is not known, as for a fake
+ * runner without `binary`.
  */
 export class CommandFailed extends Error {
+  /** The binary that ran, when the runner reports one (see `CommandRunner.binary`). */
+  readonly binary: string | undefined
   /** The arguments the command ran with, without the binary name. */
   readonly argv: string[]
   /** The full result of the failed run. */
@@ -334,14 +355,17 @@ export class CommandFailed extends Error {
   /**
    * @param argv - The arguments the command ran with.
    * @param result - The result of the failed run.
+   * @param binary - The binary that ran, when known.
    */
-  constructor(argv: string[], result: CommandResult) {
+  constructor(argv: string[], result: CommandResult, binary?: string | undefined) {
     const stderr = stderrOrError(result)
+    const command = binary === undefined ? argv : [binary, ...argv]
     super(
-      `command failed (exit ${result.exitCode}): ${shellJoin(argv)}` +
+      `command failed (exit ${result.exitCode}): ${shellJoin(command)}` +
         (stderr ? `\n${stderr}` : ''),
     )
     this.name = 'CommandFailed'
+    this.binary = binary
     this.argv = argv
     this.result = result
   }
@@ -375,17 +399,20 @@ export function runChecked(
   opts: CommandRunOptions,
 ): CommandResult
 export function runChecked<P extends unknown[]>(
-  runner: { run(argv: string[], ...opts: P): CommandResult },
+  runner: { readonly binary?: string | undefined; run(argv: string[], ...opts: P): CommandResult },
   argv: string[],
   ...opts: NoInfer<P>
 ): CommandResult
 export function runChecked(
-  runner: { run(argv: string[], ...opts: unknown[]): CommandResult },
+  runner: {
+    readonly binary?: string | undefined
+    run(argv: string[], ...opts: unknown[]): CommandResult
+  },
   argv: string[],
   ...opts: unknown[]
 ): CommandResult {
   const result = runner.run(argv, ...opts)
-  if (result.exitCode !== 0) throw new CommandFailed(argv, result)
+  if (result.exitCode !== 0) throw new CommandFailed(argv, result, runner.binary)
   return result
 }
 
@@ -442,41 +469,30 @@ const CHILD_STDIO_CORRUPTED =
   process.versions['bun'] !== undefined && process.env['NODE_ENV'] === 'test'
 
 /**
- * Whether `binary` resolves to an executable file the way a spawn would find
- * it: a name with a `/` is taken relative to `cwd`; a bare name is looked up
- * on the child's `PATH`.
+ * Folds a finished `spawnSync` into a {@link CommandResult}. Exported for
+ * tests.
  */
-function findsExecutable(binary: string, cwd: string, path: string | undefined): boolean {
-  const isExecutable = (p: string): boolean => {
-    try {
-      accessSync(p, constants.X_OK)
-      return statSync(p).isFile()
-    } catch {
-      return false
-    }
-  }
-  if (binary === '') return false
-  if (binary.includes('/')) return isExecutable(resolve(cwd, binary))
-  return (path ?? '/usr/bin:/bin')
-    .split(delimiter)
-    .some((dir) => isExecutable(resolve(cwd, dir, binary)))
-}
-
-/** Folds a finished `spawnSync` into a {@link CommandResult}. */
-function fromSpawnSync(
+export function fromSpawnSync(
   proc: { status: number | null; signal: NodeJS.Signals | null; error?: Error | undefined },
   stdout: string,
   stderr: string,
 ): CommandResult {
+  const code = (proc.error as NodeJS.ErrnoException | undefined)?.code
   return {
     exitCode: proc.status ?? 1,
     // Bun reports a failed spawn with `status` undefined, not null.
     ...(proc.status == null ? { neverExited: true as const, ...syncStop(proc) } : {}),
+    // A real status with a timeout: the child exited, but a process it started
+    // held the pipes until the deadline. With the cap: the child passed it and
+    // exited before the kill landed.
+    ...(proc.status != null && (code === 'ETIMEDOUT' || code === 'ENOBUFS')
+      ? { outputIncomplete: true as const }
+      : {}),
     stdout,
     stderr,
     // `proc.error` is set for a failed spawn, a timeout, the output cap, or a
-    // failed stdin write; only the first three leave `status` null (and under
-    // Bun the cap can come with a real status too). A stdin write error can
+    // failed stdin write. The first three usually leave `status` null; when
+    // they do not, `outputIncomplete` is set above. A stdin write error can
     // come with a child that did exit, so it is kept either way.
     ...(proc.error ? { error: proc.error.message } : {}),
   }
@@ -502,7 +518,7 @@ function runViaChildRedirect(
   // the same stand-in the pipe path reports for a failed spawn. This also
   // keeps a binary named like an option (`-a`) from reaching `exec` as one,
   // unless an executable named `-a` is on PATH.
-  if (!findsExecutable(binary, opts.cwd, env['PATH'])) {
+  if (which(binary, { cwd: opts.cwd, env: { PATH: env['PATH'] } }) === undefined) {
     return spawnFailure(`spawnSync ${binary} ENOENT`)
   }
   const dir = mkdtempSync(join(tmpdir(), 'command-seam-'))
@@ -584,6 +600,7 @@ export function resolveRunner(binary: string, injected?: CommandRunner | undefin
  */
 export function spawnRunner(binary: string): CommandRunner {
   return {
+    binary,
     run(argv: string[], opts: CommandRunOptions): CommandResult {
       const timeoutMs = normalizeTimeout(opts.timeoutMs)
       const cwdMessage = cwdError(`spawnSync ${binary}`, binary, argv, opts)

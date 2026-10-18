@@ -17,7 +17,7 @@ import {
   streamRunner,
   type StreamResult,
 } from '../index.ts'
-import { syncStop } from '../sync.ts'
+import { fromSpawnSync, syncStop } from '../sync.ts'
 
 const CWD = process.cwd()
 const MISSING = 'definitely-not-a-real-binary-reason'
@@ -91,6 +91,39 @@ describe('syncStop (the spawnSync mapping)', () => {
 
   test('an error with no signal is spawn', () => {
     expect(syncStop({ error: err('EACCES'), signal: null })).toEqual({ reason: 'spawn' })
+  })
+})
+
+describe('fromSpawnSync: a real exit with a timeout or cap error', () => {
+  const err = (code: string) => Object.assign(new Error(`spawnSync sh ${code}`), { code })
+
+  test('ETIMEDOUT with a status is outputIncomplete, not neverExited', () => {
+    const r = fromSpawnSync({ status: 0, signal: null, error: err('ETIMEDOUT') }, 'hi\n', '')
+    expect(r).toEqual({
+      exitCode: 0,
+      outputIncomplete: true,
+      stdout: 'hi\n',
+      stderr: '',
+      error: 'spawnSync sh ETIMEDOUT',
+    })
+  })
+
+  test('ENOBUFS with a status (Bun, at the cap) is outputIncomplete', () => {
+    const r = fromSpawnSync({ status: 0, signal: null, error: err('ENOBUFS') }, '', '')
+    expect(r.outputIncomplete).toBe(true)
+    expect(r.reason).toBeUndefined()
+  })
+
+  test('a timeout that killed the child is neverExited only', () => {
+    const r = fromSpawnSync({ status: null, signal: 'SIGKILL', error: err('ETIMEDOUT') }, '', '')
+    expect(r).toMatchObject({ neverExited: true, reason: 'timeout' })
+    expect(r.outputIncomplete).toBeUndefined()
+  })
+
+  test('a failed stdin write keeps the exit and is not outputIncomplete', () => {
+    const r = fromSpawnSync({ status: 0, signal: null, error: err('EPIPE') }, '', '')
+    expect(r.outputIncomplete).toBeUndefined()
+    expect(r.error).toBe('spawnSync sh EPIPE')
   })
 })
 

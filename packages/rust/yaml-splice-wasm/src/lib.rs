@@ -13,6 +13,10 @@
 //! - Success is an `EditResult` class carrying `{ bytes: Uint8Array, changed }`.
 //! - A typed `EditError` becomes a thrown JS `Error` whose `.name` is the
 //!   variant and whose `.span` is `{ start, end }` (or absent).
+//! - An `edits` string that does not decode to a list of edits (not JSON,
+//!   an unknown tag, a missing field, or a value nested past serde_json's
+//!   recursion limit) is thrown as an `Error` named `InvalidEdit`: the
+//!   caller's input is bad, not the document.
 
 #![forbid(unsafe_code)]
 
@@ -54,7 +58,11 @@ impl EditResult {
 /// `[{"Remove":{"key":"draft"}}]`, `[{"Rename":{"from":"a","to":"b"}}]`.
 #[wasm_bindgen(js_name = editYaml)]
 pub fn edit_yaml_wasm(source: &[u8], edits_json: &str) -> Result<EditResult, JsValue> {
-    let edits = parse_edits(edits_json).map_err(|msg| JsValue::from(js_sys::Error::new(&msg)))?;
+    let edits = parse_edits(edits_json).map_err(|msg| {
+        let err = js_sys::Error::new(&msg);
+        err.set_name(INVALID_EDIT);
+        JsValue::from(err)
+    })?;
     match edit_yaml(source, &edits) {
         Ok(outcome) => Ok(EditResult {
             bytes: outcome.bytes,
@@ -65,6 +73,11 @@ pub fn edit_yaml_wasm(source: &[u8], edits_json: &str) -> Result<EditResult, JsV
 }
 
 // --- edits JSON -> Vec<FieldEdit> ------------------------------------------
+
+/// The `.name` of the error thrown for an `edits` string that does not decode.
+/// Not an `EditError` variant: the crate's typed `FieldEdit` cannot be
+/// malformed, so only this boundary can refuse one.
+const INVALID_EDIT: &str = "InvalidEdit";
 
 fn parse_edits(edits_json: &str) -> Result<Vec<FieldEdit>, String> {
     let json: JsonValue =

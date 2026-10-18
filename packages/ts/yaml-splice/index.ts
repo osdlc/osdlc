@@ -45,11 +45,13 @@ export interface EditOutcome {
 }
 
 /**
- * Why an edit was refused: one code per variant of the crate's `EditError`.
- * A minor release may add a code, so a `switch` over it needs a `default`
- * branch.
+ * Why an edit was refused: one code per variant of the crate's `EditError`,
+ * plus `InvalidEdit` for an edit the editor could not read: a missing `value`,
+ * an unknown tag, or a `Set` value nested more than 124 levels deep. A minor
+ * release may add a code, so a `switch` over it needs a `default` branch.
  */
 export type EditErrorCode =
+  | 'InvalidEdit'
   | 'InvalidUtf8'
   | 'MalformedYaml'
   | 'UnsupportedDocument'
@@ -94,6 +96,7 @@ export class EditError extends Error {
 
 // Every code, so the type check fails when a code is missing here.
 const ERROR_CODE_TABLE = {
+  InvalidEdit: true,
   InvalidUtf8: true,
   MalformedYaml: true,
   UnsupportedDocument: true,
@@ -129,7 +132,7 @@ export function editYaml(source: Uint8Array, edits: readonly FieldEdit[]): EditO
   try {
     result = editYamlWasm(source, editsJson)
   } catch (raw) {
-    throw toEditError(raw)
+    throw isRefusal(raw) ? toEditError(raw) : raw
   }
 
   // Read both fields into a plain object, THEN free the handle. The glue's
@@ -171,16 +174,27 @@ function assertFiniteValue(value: EditValue, key: string): void {
   }
 }
 
-/** Map a thrown bindgen `Error` (`.name` = variant, `.span`) to `EditError`. */
-function toEditError(raw: unknown): EditError {
-  if (raw instanceof Error) {
-    const code: EditErrorCode = ERROR_CODES.has(raw.name)
-      ? (raw.name as EditErrorCode)
-      : 'InvalidResult'
-    const span = readSpan((raw as { span?: unknown }).span)
-    return new EditError(code, raw.message, span)
-  }
-  return new EditError('InvalidResult', String(raw))
+/**
+ * The `.name` the wasm gives a crate `EditError` variant it has no name for
+ * (the crate's enum is `#[non_exhaustive]`). Still a refusal: reported as
+ * `InvalidResult`, as before 0.2.0.
+ */
+const UNNAMED_REFUSAL = 'EditError'
+
+/**
+ * Whether a thrown value is one of the wasm side's refusals: an `Error` whose
+ * `name` is a known code, or {@link UNNAMED_REFUSAL}. Anything else, such as a
+ * Rust panic (`RuntimeError: unreachable`), is rethrown as is: it means the
+ * module is broken, not that the edit was refused.
+ */
+function isRefusal(raw: unknown): raw is Error {
+  return raw instanceof Error && (ERROR_CODES.has(raw.name) || raw.name === UNNAMED_REFUSAL)
+}
+
+/** Map a bindgen refusal (`.name` = code, `.span`) to `EditError`. */
+function toEditError(raw: Error): EditError {
+  const code = ERROR_CODES.has(raw.name) ? (raw.name as EditErrorCode) : 'InvalidResult'
+  return new EditError(code, raw.message, readSpan((raw as { span?: unknown }).span))
 }
 
 function readSpan(span: unknown): EditSpan | undefined {

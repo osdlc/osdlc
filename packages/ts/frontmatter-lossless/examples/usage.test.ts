@@ -7,10 +7,12 @@ import { describe, expect, test } from 'bun:test'
 
 import {
   compose,
+  newShape,
   split,
   splitLenient,
   type CloseEol,
   type LenientSplit,
+  type NewShapeOptions,
   type NoteShape,
   type OpenEol,
   type SourceRange,
@@ -55,8 +57,26 @@ describe('split and compose', () => {
     expect(compose('title: Added', body, shape)).toBe('---\ntitle: Added\n---\njust text\n')
   })
 
-  test('an unclosed block is body, not an error', () => {
-    expect(split('---\ntitle: A\nno closing fence\n').yaml).toBeNull()
+  test('an unclosed block is body, not an error, and is flagged', () => {
+    const unclosed = split('---\ntitle: A\nno closing fence\n')
+    expect(unclosed.yaml).toBeNull()
+    expect(unclosed.unterminated).toBe(true)
+    expect(split('just text\n').unterminated).toBe(false)
+  })
+})
+
+describe('newShape', () => {
+  test('writes a new note with LF fences', () => {
+    const note = compose('title: New', '# New\n', newShape())
+    expect(note).toBe('---\ntitle: New\n---\n# New\n')
+    expect(split(note).yaml).toBe('title: New')
+  })
+
+  test('takes the line ending and the BOM', () => {
+    const opts: NewShapeOptions = { eol: '\r\n', bom: true }
+    expect(compose('title: New\r', 'body\r\n', newShape(opts))).toBe(
+      '\uFEFF---\r\ntitle: New\r\n---\r\nbody\r\n',
+    )
   })
 })
 

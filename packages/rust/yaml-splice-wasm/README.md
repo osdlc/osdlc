@@ -7,6 +7,22 @@ JavaScript and TypeScript: the WebAssembly half of the
 It is not published to crates.io (`publish = false`), and release-plz skips
 it.
 
+## Errors
+
+`editYaml` throws a JavaScript `Error` for every refusal:
+
+- A refusal from `yaml-splice` has the `EditError` variant as its `name`
+  (`MissingKey`, `InvalidResult`, …) and, where known, a `span` of
+  `{ start, end }`.
+- An `edits` string that does not decode has the name `InvalidEdit`: it is
+  not JSON, not a list of objects with one `Set`, `Remove` or `Rename` tag,
+  or is missing a field. A `Set` value can nest at most 124 levels deep:
+  serde_json stops at 128, and the edit list, the edit and its body take
+  the other levels.
+
+Anything else, such as a `RuntimeError` from a Rust panic, is not a refusal.
+The npm package passes it through unchanged.
+
 ## Building
 
 `build.sh` builds the crate for `wasm32-unknown-unknown`, runs `wasm-bindgen

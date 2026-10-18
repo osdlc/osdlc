@@ -12,7 +12,13 @@ import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { editYaml, EditError, type EditErrorCode, type FieldEdit } from '../index.ts'
+import {
+  editYaml,
+  EditError,
+  type EditErrorCode,
+  type EditValue,
+  type FieldEdit,
+} from '../index.ts'
 // The corpus is the crate's; this suite reads it in place.
 import corpus from '../../../rust/yaml-splice/tests/fixtures/conformance.json'
 
@@ -63,6 +69,54 @@ describe('a non-finite number in a Set value', () => {
   test('a finite number still round-trips', () => {
     const out = editYaml(source, [{ Set: { key: 'a', value: 2 } }])
     expect(bytesToString(out.bytes)).toBe('a: 2\n')
+  })
+})
+
+describe('an edit the editor cannot read', () => {
+  const source = enc('a: 1\n')
+  /** `depth` lists, one inside the next, around a scalar. */
+  const nested = (depth: number): EditValue => {
+    let value: EditValue = 1
+    for (let i = 0; i < depth; i++) value = [value]
+    return value
+  }
+
+  test('a Set value nested 124 levels deep is written', () => {
+    expect(editYaml(source, [{ Set: { key: 'a', value: nested(124) } }]).changed).toBe(true)
+  })
+
+  test('a Set value nested 125 levels deep is refused as InvalidEdit', () => {
+    expect(() => editYaml(source, [{ Set: { key: 'a', value: nested(125) } }])).toThrow(
+      expect.objectContaining({ name: 'InvalidEdit', code: 'InvalidEdit' }),
+    )
+  })
+
+  // The types rule these out; a plain-JavaScript caller can still send them.
+  for (const [what, edit] of [
+    ['a Set with no value', { Set: { key: 'a' } }],
+    ['a Set whose value is undefined', { Set: { key: 'a', value: undefined } }],
+    ['an unknown tag', { Replace: { key: 'a', value: 2 } }],
+  ] as const) {
+    test(`${what} is refused as InvalidEdit`, () => {
+      expect(() => editYaml(source, [edit as unknown as FieldEdit])).toThrow(
+        expect.objectContaining({ name: 'InvalidEdit' }),
+      )
+    })
+  }
+})
+
+describe('an error that is not a refusal', () => {
+  test('is rethrown as is, not wrapped in an EditError', () => {
+    let thrown: unknown
+    try {
+      // The glue reads `source.length`, so this throws a TypeError before the
+      // wasm runs, the same path a Rust panic's `RuntimeError` takes.
+      editYaml(null as unknown as Uint8Array, [])
+    } catch (err) {
+      thrown = err
+    }
+    expect(thrown).toBeInstanceOf(TypeError)
+    expect(thrown).not.toBeInstanceOf(EditError)
   })
 })
 
@@ -205,6 +259,7 @@ function splitLines(bytes: Uint8Array): Uint8Array[] {
 describe('EditErrorCode', () => {
   // A Record over the union fails to typecheck when a code is missing or extra.
   const CODES: Record<EditErrorCode, true> = {
+    InvalidEdit: true,
     InvalidUtf8: true,
     MalformedYaml: true,
     UnsupportedDocument: true,
@@ -216,7 +271,10 @@ describe('EditErrorCode', () => {
     InvalidResult: true,
   }
 
-  test("lists exactly the variants of the crate's EditError", () => {
+  // Raised by the wasm wrapper itself, for edits JSON it cannot decode.
+  const WRAPPER_CODES = ['InvalidEdit']
+
+  test("lists exactly the variants of the crate's EditError, plus InvalidEdit", () => {
     const source = readFileSync(
       join(import.meta.dir, '../../../rust/yaml-splice/src/edit.rs'),
       'utf-8',
@@ -225,6 +283,14 @@ describe('EditErrorCode', () => {
     expect(body).toBeDefined()
     const variants = [...body!.matchAll(/^    ([A-Z][A-Za-z0-9]*)\b/gm)].map((m) => m[1]!)
     expect(variants.length).toBeGreaterThan(0)
-    expect([...variants].sort()).toEqual(Object.keys(CODES).sort())
+    expect([...variants, ...WRAPPER_CODES].sort()).toEqual(Object.keys(CODES).sort())
+    const wrapper = readFileSync(
+      join(import.meta.dir, '../../../rust/yaml-splice-wasm/src/lib.rs'),
+      'utf-8',
+    )
+    for (const code of WRAPPER_CODES) expect(wrapper).toContain(`"${code}"`)
+    // A variant missing from the wrapper's `variant_name` would reach JS under
+    // the catch-all name `EditError` and be reported as `InvalidResult`.
+    for (const v of variants) expect(wrapper).toContain(`EditError::${v} { .. } => "${v}"`)
   })
 })

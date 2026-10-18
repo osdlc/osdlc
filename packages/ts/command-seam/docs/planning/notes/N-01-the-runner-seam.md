@@ -22,7 +22,7 @@ Every capture runner shares one vocabulary:
 
 - `CommandRunOptions`: `cwd` (required), `timeoutMs`, `input` and `env`;
 - `CommandResult`: `exitCode`, `stdout`, `stderr`, `neverExited`, `reason`,
-  `signal` and `error`;
+  `signal`, `outputIncomplete` and `error`;
 - `CommandFailed`: the error that the checked calls throw.
 
 A caller can move between runners without learning a new contract.
