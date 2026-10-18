@@ -120,6 +120,7 @@ jobs:
         run: |
           cargo clippy -p yaml-splice --no-default-features --all-targets --locked -- -D warnings
           cargo test -p yaml-splice --no-default-features --locked
+          RUSTDOCFLAGS='-D warnings' cargo doc --no-deps -p yaml-splice --no-default-features --locked
 
       # Builds each crate from its packaged files only, so a file missing from
       # a crate's `include` list fails here and not on crates.io.
