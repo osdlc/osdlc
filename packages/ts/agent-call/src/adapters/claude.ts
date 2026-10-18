@@ -5,6 +5,7 @@ import {
   type Part,
   type Usage,
 } from '../conversation.js'
+import { isBelowLow } from '../models.js'
 import { note, TMP_TOKEN, type CapabilityNote, type PlannedCall, type TempFile } from '../plan.js'
 import type { AgentCallSpec, OutputFormat, PluginSpec } from '../spec.js'
 import {
@@ -16,28 +17,30 @@ import {
   modelFlag,
   parseJsonLines,
   tryParseJson,
+  commandPrefix,
+  type CommandOptions,
 } from './shared.js'
 import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './types.js'
 
 const MCP_CONFIG_FILE = 'mcp.json'
 
 /** Options for {@link claudeAdapter}. */
-export interface ClaudeAdapterOptions {
-  /** Binary to spawn. Default: the CLI's own name. */
-  binary?: string
-}
+/** Options for `claudeAdapter`: `binary`, or a `command` prefix. */
+export interface ClaudeAdapterOptions extends CommandOptions {}
 
 /**
  * Claude Code (`claude -p`). The richest surface: permissions, tool rules,
  * system prompts, structured output, sessions, and budget are all native.
  */
 export function claudeAdapter(options: ClaudeAdapterOptions = {}): AgentAdapter {
-  const binary = options.binary ?? 'claude'
+  const command = commandPrefix(options, 'claude')
+  const binary = command[0]!
   return {
     name: 'claude',
     binary,
+    command,
     plan(spec) {
-      return planClaude(binary, spec)
+      return planClaude(command, spec)
     },
     parseResult(planned, raw) {
       return parseClaude(planned, raw)
@@ -58,9 +61,9 @@ export function claudeResumeFlag(id: string): string {
   return `--resume=${id}`
 }
 
-/** `--effort <level>`: passed through as given, so a level the CLI adds later needs no change here. */
+/** `--effort <level>`: levels below `low` become `low`; anything else passes through, so a new CLI level needs no change. */
 export function claudeEffortArgv(effort: string): string[] {
-  return ['--effort', effort]
+  return ['--effort', isBelowLow(effort) ? 'low' : effort]
 }
 
 /**
@@ -79,10 +82,10 @@ export function claudePluginArgv(plugins: PluginSpec): string[] {
   return argv
 }
 
-function planClaude(binary: string, spec: AgentCallSpec): PlannedCall {
+function planClaude(command: readonly string[], spec: AgentCallSpec): PlannedCall {
   const notes: CapabilityNote[] = []
   const tempFiles: TempFile[] = []
-  const argv = [binary, '-p']
+  const argv = [...command, '-p']
 
   // Prefer the JSON envelope when the caller didn't ask for a specific
   // format: same answer, plus usage/cost/session metadata.
@@ -103,7 +106,11 @@ function planClaude(binary: string, spec: AgentCallSpec): PlannedCall {
 
   if (spec.effort !== undefined) {
     argv.push(...claudeEffortArgv(spec.effort))
-    note(notes, 'effort', 'native', '--effort')
+    if (isBelowLow(spec.effort)) {
+      note(notes, 'effort', 'approximated', '--effort low (claude has no level below low)')
+    } else {
+      note(notes, 'effort', 'native', '--effort')
+    }
   }
 
   if (spec.mcp?.servers !== undefined) {

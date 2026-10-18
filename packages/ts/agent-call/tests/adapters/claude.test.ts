@@ -66,6 +66,11 @@ describe('claude plan', () => {
     expect(adapter.plan({ prompt: 'x', effort: 'xhigh' }).argv.join(' ')).toContain(
       '--effort xhigh',
     )
+    for (const effort of ['none', 'minimal'] as const) {
+      const low = adapter.plan({ prompt: 'x', effort })
+      expect(low.argv.join(' ')).toContain('--effort low')
+      expect(low.notes.find((n) => n.field === 'effort')?.support).toBe('approximated')
+    }
     expect(joined).toContain('--system-prompt you are terse')
     expect(joined).toContain('--append-system-prompt always cite files')
     expect(joined).toContain('--permission-mode acceptEdits')

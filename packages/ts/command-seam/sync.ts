@@ -52,22 +52,25 @@ export interface CommandResult {
   /**
    * The signal that ended the child, when the runner knows it: always for
    * `reason: 'signal'`, and for a sync `'timeout'` or `'output'` (`SIGKILL`).
-   * The async runner settles a timeout or abort before the child is gone, so
-   * it leaves this unset there.
+   * The async runner settles a timeout, an abort or the output cap before the
+   * child is gone, so it leaves this unset there.
    */
   signal?: NodeJS.Signals | undefined
   /**
    * `true` when the child exited but the runner stopped reading its output
    * early, so `stdout` and `stderr` may be cut short. `exitCode` is the
    * child's own, `neverExited` and `reason` are absent, and `error` says why.
-   * Absent otherwise. Two cases, both on the sync capture runner:
+   * Absent otherwise. Two cases:
    *
-   * - The child exited, but a process it started (`cmd &`, a daemon, a
-   *   postinstall script) still held stdout or stderr open when `timeoutMs`
-   *   ran out. Anything that process wrote after the deadline is lost, and it
-   *   keeps running. Without `timeoutMs` the run waits for it to exit.
-   * - The child passed the 256 MB output cap but exited before the runner's
-   *   kill landed, on Node or Bun.
+   * - Sync capture runner: the child exited, but a process it started (`cmd
+   *   &`, a daemon, a postinstall script) still held stdout or stderr open
+   *   when `timeoutMs` ran out. Anything that process wrote after the
+   *   deadline is lost, and it keeps running. Without `timeoutMs` the run
+   *   waits for it to exit.
+   * - Either capture runner: output passed the cap (`maxOutputBytes`, or the
+   *   sync runner's default of 256 MB) after the child had exited, or before
+   *   the runner's kill landed. On the async runner this is a process the
+   *   child started, still writing during the exit grace.
    *
    * The `bun test` capture path writes output to files and never waits on a
    * held pipe, so it never sets this flag.
@@ -100,10 +103,11 @@ export interface CommandResult {
  *   `processGroup` run was refused because signal forwarding is stopping the
  *   host; it never started, and `error` carries the refusal message.
  * - `signal`: a signal from elsewhere ended it.
- * - `output`: the sync runner killed it for passing its 256 MB output cap
- *   (`spawnSync`'s `ENOBUFS`). The same run will fail the same way. The async
- *   runner has no cap, and the `bun test` capture path writes to files, so
- *   neither reports this.
+ * - `output`: the runner killed it for passing the output cap: `maxOutputBytes`,
+ *   or the sync runner's default of 256 MB. The same run will fail the same
+ *   way. The async runner has no default cap, and the `bun test` capture path
+ *   writes to files, so neither reports this unless `maxOutputBytes` is set
+ *   (the `bun test` path never does).
  */
 export type NeverExitedReason = 'spawn' | 'timeout' | 'abort' | 'signal' | 'output'
 
@@ -136,6 +140,24 @@ export interface CommandRunOptions {
   timeoutMs?: number | undefined
   /** Text written to the child's stdin. Stdin is closed after it, or at once when omitted. */
   input?: string | undefined
+  /**
+   * The most bytes to read from each of stdout and stderr. A child that
+   * writes more to either stream is killed with `SIGKILL` (its whole group
+   * with `processGroup`), and the result has `neverExited: true`,
+   * `reason: 'output'`, and that stream cut to the cap on a character
+   * boundary. The cap counts the bytes the child wrote, not the decoded text:
+   * bytes that are not valid UTF-8 decode to U+FFFD, which is 3 bytes, so the
+   * string can be longer than the cap in UTF-8. A child that exits before the
+   * kill lands keeps its exit code and gets `outputIncomplete: true` instead.
+   *
+   * The sync runners default to 256 MB per stream; the async runners have no
+   * default cap. `undefined` keeps the default and `Infinity` means no cap. A
+   * fraction rounds up. `0`, a negative value and `NaN` are a `RangeError`,
+   * and a value that is not a number is a `TypeError`, thrown or rejected as
+   * for `timeoutMs`. The `bun test` capture path writes output to files and
+   * ignores this option.
+   */
+  maxOutputBytes?: number | undefined
   /**
    * Variables merged over the parent's environment. An `undefined` value
    * removes that variable from the child's environment.
@@ -210,6 +232,49 @@ const MAX_TIMER_MS = 2 ** 31 - 1
 export function normalizeTimeout(timeoutMs: number | undefined): number | undefined {
   if (timeoutMs === undefined) return undefined
   return timerMs('timeoutMs', timeoutMs, 'positive')
+}
+
+/** The sync runners' cap on each output stream when `maxOutputBytes` is not given. */
+const DEFAULT_SYNC_OUTPUT_CAP = 256 * 1024 * 1024
+
+/**
+ * `maxOutputBytes` as every runner applies it: `undefined` when not given,
+ * `Infinity` for no cap, else a whole number of bytes. See
+ * {@link CommandRunOptions.maxOutputBytes}.
+ *
+ * @throws `TypeError` for a value that is not a number.
+ * @throws `RangeError` for `0`, a negative value or `NaN`.
+ */
+export function normalizeOutputCap(maxOutputBytes: number | undefined): number | undefined {
+  if (maxOutputBytes === undefined || maxOutputBytes === Infinity) return maxOutputBytes
+  if (typeof maxOutputBytes !== 'number') {
+    throw new TypeError(`maxOutputBytes must be a number, got ${typeof maxOutputBytes}`)
+  }
+  if (!(maxOutputBytes > 0)) {
+    throw new RangeError(
+      `maxOutputBytes must be a positive number or Infinity, got ${maxOutputBytes}`,
+    )
+  }
+  return Math.ceil(maxOutputBytes)
+}
+
+/**
+ * The longest prefix of `buf`, at most `max` bytes, that does not end inside
+ * a UTF-8 sequence. Bytes that are not UTF-8 at all are kept as they are.
+ */
+export function utf8Prefix(buf: Buffer, max: number): Buffer {
+  if (buf.length <= max) return buf
+  let end = max
+  // Back up over continuation bytes (10xxxxxx) to the lead byte of the
+  // sequence the cut falls in, then keep that sequence only if it is whole.
+  let lead = end
+  while (lead > 0 && lead > end - 4 && (buf[lead - 1]! & 0xc0) === 0x80) lead--
+  if (lead > 0) {
+    const b = buf[lead - 1]!
+    const len = b >= 0xf0 ? 4 : b >= 0xe0 ? 3 : b >= 0xc0 ? 2 : 1
+    if (len > 1 && lead - 1 + len > end) end = lead - 1
+  }
+  return buf.subarray(0, end)
 }
 
 /**
@@ -583,8 +648,11 @@ export function resolveRunner(binary: string, injected?: CommandRunner | undefin
 
 /**
  * The default {@link CommandRunner}: runs `binary` with `spawnSync`, so each
- * call blocks until the child exits. On timeout the child gets `SIGKILL`.
- * Captured output is capped at 256 MB per stream. Under `bun test` (the Bun
+ * call blocks until the child exits. On timeout the child gets `SIGKILL`;
+ * processes it started keep running, so a run that may start background work
+ * (an install with postinstall scripts, a daemon) belongs on
+ * `spawnRunnerAsync` with `processGroup: true`. Captured output is capped at
+ * 256 MB per stream, or `maxOutputBytes`. Under `bun test` (the Bun
  * runtime with `NODE_ENV=test`) it captures through `/bin/sh` and temp files
  * instead of pipes (see `runViaChildRedirect`).
  *
@@ -603,19 +671,28 @@ export function spawnRunner(binary: string): CommandRunner {
     binary,
     run(argv: string[], opts: CommandRunOptions): CommandResult {
       const timeoutMs = normalizeTimeout(opts.timeoutMs)
+      const cap = normalizeOutputCap(opts.maxOutputBytes) ?? DEFAULT_SYNC_OUTPUT_CAP
       const cwdMessage = cwdError(`spawnSync ${binary}`, binary, argv, opts)
       if (cwdMessage !== undefined) return spawnFailure(cwdMessage)
       if (CHILD_STDIO_CORRUPTED) return runViaChildRedirect(binary, argv, opts, timeoutMs)
       const proc = spawnSync(binary, argv, {
         cwd: opts.cwd,
-        maxBuffer: 256 * 1024 * 1024,
+        maxBuffer: cap,
         timeout: timeoutMs,
         // See `runViaChildRedirect`: the default SIGTERM is not a hard cap.
         killSignal: 'SIGKILL',
         input: opts.input,
         ...mergedEnv(opts),
       })
-      return fromSpawnSync(proc, proc.stdout?.toString() ?? '', proc.stderr?.toString() ?? '')
+      // Past the cap, a stream can end mid-character; cut it back to a whole one.
+      const text = (b: Buffer | null | undefined) =>
+        b == null ? '' : (b.length > cap ? utf8Prefix(b, cap) : b).toString()
+      const capped = (proc.error as NodeJS.ErrnoException | undefined)?.code === 'ENOBUFS'
+      return fromSpawnSync(
+        proc,
+        capped ? text(proc.stdout) : (proc.stdout?.toString() ?? ''),
+        capped ? text(proc.stderr) : (proc.stderr?.toString() ?? ''),
+      )
     },
   }
 }

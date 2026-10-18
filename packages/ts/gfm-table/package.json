@@ -1,7 +1,7 @@
 {
   "name": "@osdlc/gfm-table",
-  "version": "0.2.0",
-  "description": "GFM pipe tables as strings and offsets: row splitting with the backslash-escape rule, cell text and escaping, row splices, reading and rendering whole tables, and grid clipboard formats (TSV, CSV, HTML). No dependencies.",
+  "version": "0.3.0",
+  "description": "GFM pipe tables as strings and offsets: row splitting with the backslash-escape rule, cell text and escaping, row splices, reading and rendering whole tables, column padding that lines up the pipes, and grid clipboard formats (TSV, CSV, HTML). No dependencies.",
   "license": "MIT OR Apache-2.0",
   "author": "SK Sizer",
   "repository": {

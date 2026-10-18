@@ -12,6 +12,7 @@
 import { strict as assert } from 'node:assert'
 import {
   gridFromCsv,
+  padTable,
   readDelimited,
   readTable,
   renderTable,
@@ -27,6 +28,7 @@ assert.equal(markdown, '| Name | Value |\n| --- | --- |\n| a\\|b | 1 |')
 assert.equal(readTable(markdown.split('\n'))?.rows[0]?.[0]?.text, 'a|b')
 
 assert.equal(splitRow('| a |', 10).cells[0]?.content.from, 12)
+assert.equal(padTable('| a |\n|-|\n| 東京 |'), '| a    |\n| ---- |\n| 東京 |')
 
 const grid = [
   ['a', 'b'],

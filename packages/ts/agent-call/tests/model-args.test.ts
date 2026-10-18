@@ -31,6 +31,12 @@ describe('modelArgs', () => {
     expect(modelArgs('codex', { effort: 'max' })).toEqual(['-c', 'model_reasoning_effort="max"'])
   })
 
+  test('codex passes none and minimal through', () => {
+    for (const effort of ['none', 'minimal']) {
+      expect(modelArgs('codex', { effort })).toEqual(['-c', `model_reasoning_effort="${effort}"`])
+    }
+  })
+
   test('codex: a launch mode goes before the model (a local Ollama model)', () => {
     expect(
       modelArgs('codex', {
@@ -52,6 +58,16 @@ describe('modelArgs', () => {
   test('a tool with no flags wired refuses a launch mode too', () => {
     expect(modelArgsRefusal('cursor', { via: ['--oss'] })).toContain(`launch mode '--oss'`)
     expect(modelArgsRefusal('cursor', { via: [] })).toBeNull()
+  })
+
+  test('claude raises none and minimal to low', () => {
+    expect(modelArgs('claude', { effort: 'none' })).toEqual(['--effort', 'low'])
+    expect(modelArgs('claude', { effort: 'minimal' })).toEqual(['--effort', 'low'])
+  })
+
+  test('pi spells none as off', () => {
+    expect(modelArgs('pi', { effort: 'none' })).toEqual(['--thinking', 'off'])
+    expect(modelArgs('pi', { effort: 'minimal' })).toEqual(['--thinking', 'minimal'])
   })
 
   test('claude and pi pass xhigh through', () => {

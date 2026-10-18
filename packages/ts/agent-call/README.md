@@ -26,9 +26,9 @@ When not to use it:
 
 - For a conversation. A call is one prompt and one answer. It can resume a
   session by id, but it holds no session open.
-- For a run you want to steer or watch live. Output is collected, not
-  streamed to your code as it arrives (`stream-json` returns the events after
-  the run).
+- For a run you want to steer. A call takes no input once it starts. You can
+  watch it: the `onOutput` option hands you the output as it arrives, but the
+  result, parsed events included, comes after the run.
 - For an agent that has no one-shot CLI mode.
 - For an exact, identical result on every agent. Where a CLI cannot express a
   field, the adapter approximates it, folds it into the prompt, or drops it,
@@ -93,6 +93,19 @@ resolves to an `AgentResult`: `ok`, `text`, `structured`, `sessionId`, `usage`,
 `costUsd`, `exitCode`, `durationMs`, the `planned` call that ran, and the `raw`
 output.
 
+Each built-in adapter takes a `binary` option, or a `command` for an agent
+that runs through a launcher or needs arguments before its own, such as
+`npx -y @anthropic-ai/claude-code` or `codex --profile work`. `command`
+replaces `binary` when it has at least one element:
+
+```ts
+const codex = codexAdapter({ command: ['codex', '--profile', 'work'] })
+const planned = planCall(codex, { prompt: 'Review the change.' })
+// planned.argv is ['codex', '--profile', 'work', 'exec', ...]
+```
+
+`detectAgents` runs the whole command with `--version` appended.
+
 Any one-shot CLI runs through `customAdapter`. This one needs only `node`:
 
 ```ts
@@ -109,20 +122,51 @@ const result = await callAgent(shout, { prompt: 'hello' })
 Every example in this README is in `examples/`, which runs as part of the test
 suite.
 
+### Watching a run
+
+Output is collected and returned after the run. To show it while a person
+waits, pass `onOutput`: it gets each chunk of decoded text as it arrives,
+tagged `stdout` or `stderr`, and the output is still collected and parsed.
+
+```ts
+const result = await callAgent(adapter, spec, {
+  onOutput: (chunk, stream) => (stream === 'stdout' ? process.stdout : process.stderr).write(chunk),
+})
+```
+
+A throw from `onOutput` is swallowed and stops later calls; the run carries
+on. Nothing is delivered past `maxOutputBytes`.
+
+### Capping output
+
+`maxOutputBytes` on the spec keeps a runaway agent from filling the host's
+memory before `timeoutMs` fires. It caps stdout and stderr separately, in
+bytes the agent wrote. When a stream passes the cap, the run is stopped the way
+a timeout stops it (SIGTERM, then SIGKILL after 5 s) and `callAgent` resolves
+`ok: false` with the reason `output-limit`. The output read so far stays in
+`raw`, cut to the cap on a character boundary, and `raw.outputLimit` names the
+stream. `Infinity` means no cap.
+
+`@osdlc/command-seam` has the same option on its capture runners, with the
+reason `output` and an immediate SIGKILL. Each package matches its own timeout
+handling.
+
 ### Failures
 
 `callAgent` does not throw when the agent fails. It resolves with `ok: false`
 and an `error`: `{ reason, detail }`. The reasons today are `spawn-failed`,
-`timeout`, `nonzero-exit` and `agent-error`. **The set of reasons is open.** A
+`timeout`, `nonzero-exit`, `agent-error` and `output-limit`. **The set of reasons is open.** A
 minor release may add one, so handle the reasons you know and keep a default
 branch.
 
-It does reject, with an `Error`, when planning throws: `templateAdapter`
-throws for a model or effort that does not fit its template, and
-`customAdapter` passes on whatever your `args` function throws. It also rejects
-when a plan's `TempFile.name` is not a plain file name (empty, or holding `/`,
-`\` or `..`), or when the temp directory for the plan's temp files cannot be
-created or written.
+It rejects with a `RangeError` when `maxOutputBytes` is `0`, negative or `NaN`,
+and a `TypeError` when it is not a number; a fraction rounds up. It also
+rejects, with an `Error`, when planning throws: `templateAdapter` throws for a
+model or effort that does not fit its template, and `customAdapter` passes on
+whatever your `args` function throws. It also rejects when a plan's
+`TempFile.name` is not a plain file name (empty, or holding `/`, `\` or `..`),
+or when the temp directory for the plan's temp files cannot be created or
+written.
 A parser that throws on the output does not reject: the result is `ok: false`
 with reason `agent-error`. `planCall` throws the same way as planning. The
 `callAgent` TSDoc is the full list.
@@ -216,7 +260,7 @@ that did not map one to one:
 |---|---|---|---|---|
 | `prompt` | stdin | stdin (`-`) | `-p <prompt>` | positional |
 | `model` | `--model` | `--model` | `--model` | `--model` (provider/model) |
-| `effort` (`low` to `max`, `xhigh` included) | `--effort` | `model_reasoning_effort` | `--effort` (`xhigh`, `max` → `high`) | `--variant` |
+| `effort` (`none` to `max`, least to most reasoning) | `--effort` (`none`, `minimal` → `low`) | `model_reasoning_effort` | `--effort` (`none`, `minimal` → `low`; `xhigh`, `max` → `high`) | `--variant` |
 | `systemPrompt` | `--system-prompt` | prompt-emulated | prompt-emulated | prompt-emulated |
 | `appendSystemPrompt` | `--append-system-prompt` | prompt-emulated | prompt-emulated | prompt-emulated |
 | `permissions.mode: read-only` | `--permission-mode plan` | `--sandbox read-only` | `--sandbox` (approximated) | `OPENCODE_PERMISSION` deny map |
@@ -237,6 +281,7 @@ that did not map one to one:
 | `mcp.servers` | `--mcp-config` | `-c mcp_servers.*` | dropped | dropped |
 | `budgetUsd` | `--max-budget-usd` | dropped | dropped | dropped |
 | `timeoutMs` | library-level (SIGTERM → SIGKILL) on all agents | | | |
+| `maxOutputBytes` | library-level per-stream cap (SIGTERM → SIGKILL, reason `output-limit`) on all agents | | | |
 | `extraArgs` | appended verbatim on all agents | | | |
 
 `tests/contract.test.ts` plans one spec per row on each adapter and checks the

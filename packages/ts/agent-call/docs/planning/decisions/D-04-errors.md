@@ -7,6 +7,13 @@ created: 2026-10-18
 
 # D-04: Errors
 
+## Update (October 2026)
+
+[#272](https://github.com/osdlc/osdlc/issues/272) added the reason
+`output-limit`, for a stream that passed `maxOutputBytes`. `callAgent` also
+rejects, before spawning, for an invalid `maxOutputBytes`: a `RangeError` for
+`0`, a negative value or `NaN`, a `TypeError` for a value that is not a number.
+
 ## Decision
 
 - `callAgent` does not throw when the agent fails. It resolves with

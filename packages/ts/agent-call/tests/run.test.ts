@@ -179,7 +179,7 @@ describe('child stdin', () => {
   test('a child that exits without draining stdin does not crash the host', async () => {
     // Stands in for an agent CLI that rejects its flags, is unauthenticated,
     // or prints usage and exits: it never reads stdin, so a prompt larger
-    // than the pipe buffer makes the write fail with EPIPE.
+    // than the pipe buffer makes the write fail (EPIPE, or ENOTCONN under some timings).
     const deaf = customAdapter({
       name: 'deaf',
       binary: '/bin/sh',
@@ -203,7 +203,8 @@ describe('child stdin', () => {
     })
     const result = await callAgent(partial, { prompt: 'x'.repeat(1_000_000) })
     expect(result.exitCode).toBe(0)
-    expect(result.raw.stdinError).toContain('EPIPE')
+    // EPIPE, or ENOTCONN under some timings.
+    expect(result.raw.stdinError).toMatch(/EPIPE|ENOTCONN/)
   })
 
   test('a prompt the child read in full leaves no stdin error', async () => {
