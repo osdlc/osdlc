@@ -24,12 +24,7 @@ import {
  * the TOP-LEVEL key being edited is addressed by `key`, never rebuilt.
  */
 export type EditValue =
-  | null
-  | boolean
-  | number
-  | string
-  | readonly EditValue[]
-  | { readonly [key: string]: EditValue }
+  null | boolean | number | string | readonly EditValue[] | { readonly [key: string]: EditValue }
 
 /**
  * One top-level field edit, externally tagged to match the crate's `FieldEdit`
