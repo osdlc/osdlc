@@ -150,7 +150,8 @@ jobs:
 
   # Builds and tests on the workspace `rust-version` with a lockfile resolved
   # fresh on that toolchain. resolver 3 then picks dependency versions that
-  # support it, as a consumer on that toolchain would get.
+  # support it, as a consumer on that toolchain would get. config-layers is
+  # tested on its own `rust-version`.
   msrv:
     needs: changes
     if: needs.changes.outputs.rust == 'true'
@@ -181,8 +182,25 @@ jobs:
           rm -f Cargo.lock
           cargo generate-lockfile
 
+      # config-layers sets its own, higher rust-version (serde-saphyr needs
+      # 1.89), so the workspace MSRV cannot build it. It has its own step.
       - name: Test
-        run: cargo test --workspace --locked
+        run: cargo test --workspace --exclude config-layers --locked
+
+      - name: Read the config-layers rust-version
+        id: config-layers
+        run: |
+          set -euo pipefail
+          v="$(sed -n 's/^rust-version = "\(.*\)"$/\1/p' config-layers/Cargo.toml)"
+          test -n "$v"
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+      - uses: ./.github/actions/rust-toolchain
+        with:
+          toolchain: ${{ steps.config-layers.outputs.version }}
+
+      - name: Test config-layers
+        run: cargo test -p config-layers --locked
 
   # Resolves each crate's direct dependencies to the lowest versions its
   # manifest allows, then tests. Catches a version requirement that is lower
