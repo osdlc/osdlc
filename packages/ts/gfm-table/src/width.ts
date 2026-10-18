@@ -30,8 +30,9 @@ function charWidth(cp: number): number {
  * The display width of `text`: the sum of its characters' widths, except
  * for two kinds of emoji sequence, which count 2 each: an emoji shown as
  * text followed by U+FE0F, and an emoji followed by a skin-tone modifier.
- * Other ligatures, such as Arabic lam-alef, and U+FE0E after an emoji count
- * as the sum of their characters.
+ * Other ligatures, such as Arabic lam-alef, U+FE0E after an emoji, and
+ * emoji ZWJ sequences (which padTable does not measure) count as the sum of
+ * their characters.
  */
 export function displayWidth(text: string): number {
   let width = 0

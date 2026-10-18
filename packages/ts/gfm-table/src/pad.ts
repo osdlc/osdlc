@@ -25,8 +25,11 @@ const UNMEASURED = /\u200b|\u200c|\u200d|\u2060/
 
 const LINE_BREAK = /(\r\n|\n|\r)/
 
-/** The 0-3 spaces before the header's opening pipe, as `rowFromPipes` reads them. */
-const OPENING_INDENT = /^( {0,3})\|/
+/** The header's leading spaces, which every row takes. */
+const INDENT = /^ {0,3}/
+
+/** A line indented 4 or more columns, an indented code block in GFM. */
+const CODE_INDENT = /^ {0,3}\t|^ {4}/
 
 /** The minimum column width: a delimiter cell needs 3 dashes. */
 const MIN_WIDTH = 3
@@ -60,9 +63,10 @@ function paddedCell(raw: string, rawWidth: number, align: ColumnAlign, width: nu
  * `table` is only the table's lines: header, delimiter row and body rows,
  * with no container prefix (`> `, list indent), as for {@link readTable}. It
  * may end in a line break. padTable does not find where a table ends. It
- * stops at a blank line, keeping that line and the ones after it as they
- * are, but a heading or fence right after the last row would be read as a
- * row, so the caller passes the table alone.
+ * stops at a blank line or a line indented 4 or more columns, which GFM
+ * reads as a code block, and keeps that line and the ones after it as they
+ * are. A heading or fence right after the last row would be read as a row,
+ * so the caller passes the table alone.
  *
  * Each row is written `| a | b |`, its cells padded to the column width:
  * the display width of the column's widest cell, and at least 3 plus the
@@ -71,14 +75,14 @@ function paddedCell(raw: string, rawWidth: number, align: ColumnAlign, width: nu
  * one on the left, and a centered one on both sides, the odd space on the
  * right. The delimiter row is dashes the width of the column, alignment
  * colons kept. Cell text is kept as written, escapes included. A row keeps
- * its number of cells, and every row takes the 0-3 spaces before the
- * header's opening pipe.
+ * its number of cells, and every row takes the header's 0-3 leading
+ * spaces.
  *
  * The output matches rumdl's MD060 rule in its "aligned" style, except:
  *
  * - A cell wider than `maxColumnWidth` does not widen its column.
  * - A table already aligned with extra padding is narrowed. MD060 keeps it.
- * - The spaces before the header's opening pipe are kept. MD060 drops them.
+ * - The header's leading spaces are kept. MD060 drops them.
  * - An unescaped pipe in a code span ends the cell, by the GFM rule. MD060
  *   leaves such a table as is.
  *
@@ -104,7 +108,9 @@ export function padTable(table: string, options: PadTableOptions = {}): string {
   const max = cap ?? Infinity
   // Lines at even indexes, the line breaks between them at odd ones.
   const parts = table.split(LINE_BREAK)
-  let end = parts.findIndex((part, i) => i % 2 === 0 && part.trim() === '')
+  let end = parts.findIndex(
+    (part, i) => i % 2 === 0 && (part.trim() === '' || CODE_INDENT.test(part)),
+  )
   if (end === -1) end = parts.length
   const lines = parts.slice(0, end).filter((_, i) => i % 2 === 0)
   if (UNMEASURED.test(lines.join(''))) return table
@@ -125,7 +131,7 @@ export function padTable(table: string, options: PadTableOptions = {}): string {
   })
 
   const alignOf = (i: number) => data.align[i] ?? 'none'
-  const indent = OPENING_INDENT.exec(lines[0]!)?.[1] ?? ''
+  const indent = INDENT.exec(lines[0]!)![0]
   rows.forEach((row, r) => {
     const cells = row
       ? row.map((cell, i) => paddedCell(cell.raw, cellWidths[r]![i]!, alignOf(i), widths[i]!))

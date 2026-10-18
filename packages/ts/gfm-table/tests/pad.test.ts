@@ -111,6 +111,25 @@ describe('padTable', () => {
     )
   })
 
+  test("every row takes the header's leading spaces when it has no opening pipe", () => {
+    expect(padTable(lines('  a | b', '  -|-', '  x | y'))).toBe(
+      lines('  | a   | b   |', '  | --- | --- |', '  | x   | y   |'),
+    )
+  })
+
+  test('a line indented 4 or more columns ends the table; it and the lines after it are kept', () => {
+    const after = '\n    | bcde | f |\n| g |'
+    expect(padTable(lines('| a | b |', '|-|-|') + after)).toBe(
+      lines('| a   | b   |', '| --- | --- |') + after,
+    )
+    const tab = '\n\t| bcde | f |'
+    expect(padTable(lines('| a | b |', '|-|-|') + tab)).toBe(
+      lines('| a   | b   |', '| --- | --- |') + tab,
+    )
+    const indented = lines('    | a |', '    | - |')
+    expect(padTable(indented)).toBe(indented)
+  })
+
   test('keeps each line break, and a final one', () => {
     expect(padTable('| a |\r\n| - |\r\n| b |\r\n')).toBe('| a   |\r\n| --- |\r\n| b   |\r\n')
     expect(padTable('| a |\n| - |\r\n| b |')).toBe('| a   |\n| --- |\r\n| b   |')
