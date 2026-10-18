@@ -284,11 +284,12 @@ Coverage is not measured.
 
 ## Stability
 
-The crate stays on 0.x for now. Every public item is
-marked "stable in 0.x" in its docs: `BaseDirs`, `Convention`, `Dir`, `EnvVars`,
-`env_vars!`, `Error`, `Home`, `ResolveOptions`, `Tier`, `TierKind`,
-`TieredDirs`, `assert_vendor_bundle_id`, `is_valid_segment`,
-`is_vendor_bundle_id` and `test_root`.
+The crate stays on 0.x for now. Every public item is marked "stable in 0.x"
+in its docs: `BaseDirs`, `Convention`, `Dir`, `EnvVars`, `env_vars!`,
+`Error`, `Home`, `ResolveOptions`, `Tier`, `TierKind`, `TieredDirs`,
+`assert_vendor_bundle_id`, `is_valid_segment`, `is_vendor_bundle_id` and
+`test_root`. A breaking change to one of them ships only in a new 0.x minor
+release, with a CHANGELOG entry.
 
 - `Error`, `Convention` and `TierKind` are `#[non_exhaustive]`, so a later
   release can add a variant without a breaking change. A `match` on one

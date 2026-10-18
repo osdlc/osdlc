@@ -167,8 +167,8 @@
 //!
 //! # Stability
 //!
-//! Each public item's docs say "stable in 0.x": it is not expected to change
-//! in a breaking way before 1.0. [`Error`], [`Convention`] and [`TierKind`]
+//! Each public item's docs say "stable in 0.x": a breaking change to it ships
+//! only in a new 0.x minor release, with a CHANGELOG entry. [`Error`], [`Convention`] and [`TierKind`]
 //! are `#[non_exhaustive]`, so a later release can add a variant without a
 //! breaking change. [`EnvVars`] and [`ResolveOptions`] are too, so a later
 //! release can add a field. [`Home`] is exhaustive: adding a home changes
@@ -357,11 +357,12 @@ const RESERVED_SEGMENTS: [&str; 3] = ["state", "logs", RUNTIME_FALLBACK_SEGMENT]
 
 /// Everything this crate can fail with.
 ///
-/// New variants may be added in a compatible release (0.2.z), so a `match`
+/// New variants may be added in a compatible release (0.3.z), so a `match`
 /// needs a wildcard arm.
 ///
-/// **Stability:** stable in 0.x. The five variants and their fields are not
-/// expected to change; new variants may be added.
+/// **Stability:** stable in 0.x. A change to the five variants or their fields
+/// ships only in a new 0.x minor release; new variants may be added in any
+/// release.
 #[derive(Debug, thiserror::Error, PartialEq, Eq, Clone)]
 #[non_exhaustive]
 pub enum Error {
@@ -608,10 +609,10 @@ pub struct ResolveOptions {
     /// The per-OS table for the OS defaults. [`EnvVars::convention`] beats it
     /// when set.
     pub convention: Convention,
-    /// Whether [`BaseDirs::from_env`] reads an unset root variable as
-    /// [`test_root`] in a cargo test binary. On by default. Off, it resolves
-    /// as it would outside cargo; [`EnvVars::root`] and
-    /// [`EnvVars::require_override`] still apply.
+    /// Whether [`BaseDirs::from_env`] and [`TieredDirs::from_env`] read an
+    /// unset root variable as [`test_root`] in a cargo test binary. On by
+    /// default. Off, they resolve as they would outside cargo;
+    /// [`EnvVars::root`] and [`EnvVars::require_override`] still apply.
     pub test_root: bool,
 }
 
@@ -1789,6 +1790,9 @@ mod tests {
         assert!(opts.test_root);
         assert!(!opts.with_test_root(false).test_root);
         assert!(opts.with_test_root(false).with_test_root(true).test_root);
+        let xdg = opts.with_convention(Convention::Xdg);
+        assert_eq!(xdg.convention, Convention::Xdg);
+        assert!(xdg.test_root);
     }
 
     #[test]
@@ -1824,6 +1828,7 @@ mod tests {
     /// environment resolves as `from_env_with` over the same environment.
     #[test]
     fn from_env_with_the_test_root_off_skips_the_scratch_root() {
+        assert!(test_root().is_some(), "cargo test should have a test root");
         if [ENV.root, ENV.require_override]
             .iter()
             .any(|name| std::env::var_os(name).is_some_and(|v| !v.is_empty()))
@@ -2113,14 +2118,6 @@ mod tests {
                 })
             );
         }
-    }
-
-    #[test]
-    fn resolve_options_default_to_native() {
-        assert_eq!(ResolveOptions::new(), ResolveOptions::default());
-        assert_eq!(ResolveOptions::new().convention, Convention::Native);
-        let xdg = ResolveOptions::new().with_convention(Convention::Xdg);
-        assert_eq!(xdg.convention, Convention::Xdg);
     }
 
     #[test]
