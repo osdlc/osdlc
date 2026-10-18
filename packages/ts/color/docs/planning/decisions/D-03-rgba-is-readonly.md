@@ -11,7 +11,7 @@ created: 2026-10-18
 
 The fields `r`, `g`, `b` and `a` of `Rgba` are `readonly`. No function changes
 its arguments. Each returns a new plain object, except that `compositeOver`
-returns an opaque `src` as is.
+returns `src` itself only when its alpha is exactly 1.
 
 ## Why
 

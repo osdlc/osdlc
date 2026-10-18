@@ -241,7 +241,7 @@ describe('fromPixel', () => {
 })
 
 describe('compositeOver', () => {
-  test('an opaque source is returned as is', () => {
+  test('a source with alpha exactly 1 is returned as is', () => {
     expect(compositeOver(BLACK, WHITE)).toBe(BLACK)
     expect(compositeOver(WHITE, BLACK)).toBe(WHITE)
   })

@@ -207,6 +207,7 @@ describe('independence from any host project', () => {
       'tool-' + 'router',
       'cata' + 'logue',
       'docs/' + 'planning',
+      'sks' + 'izer/',
       'mono' + 'repo',
       '\\b[TDBSMN]-[0-9A-Z]{4}\\b',
     ].join('|'),
@@ -246,6 +247,5 @@ describe('independence from any host project', () => {
   test('the changelog links no pull request and names no repository', () => {
     expect(CHANGELOG).not.toMatch(/#\d{2,}\b/)
     expect(CHANGELOG).not.toMatch(/github\.com/)
-    expect(CHANGELOG).not.toMatch(/sksizer\//)
   })
 })

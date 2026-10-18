@@ -15,7 +15,8 @@ created: 2026-10-18
 - `mixColors` throws a `RangeError` when `amount` is `NaN` or infinite, and
   `withAlpha` does the same for `alpha`. A finite value outside 0-1 is
   clamped.
-- `compositeOver` throws a `RangeError` when `ground.a` is below 1.
+- `compositeOver` throws a `RangeError` when `ground.a` is below 1, or when
+  `src.a` is `NaN` or infinite. A finite `src.a` outside 0-1 is clamped.
 - Each function's TSDoc says when it throws, with `@throws`.
 
 ## Why

@@ -15,8 +15,8 @@
  *
  * The fields are read-only, so a frozen object or an `as const` literal can be
  * passed in. Every function returns a new plain object, except that
- * {@link compositeOver} returns `src` itself when its alpha is exactly 1; none changes its
- * arguments.
+ * {@link compositeOver} returns `src` itself when its alpha is exactly 1.
+ * None changes its arguments.
  */
 export interface Rgba {
   readonly r: number
@@ -238,9 +238,8 @@ export function fromPixel(px: ArrayLike<number>): Rgba {
  * browser paints it. A Chromium 2D canvas gives the same pixel to within one
  * step per channel, because it also rounds the alpha to 8 bits and blends in
  * integers. A `src` whose alpha is exactly 1 is returned as is. A finite alpha
- * outside 0-1 is clamped first, as {@link mixColors} and {@link withAlpha}
- * clamp it, so 2 gives a new object with `a: 1` and -1 gives the ground's
- * channels.
+ * outside 0-1 is clamped first, as {@link withAlpha} clamps it, so 2 gives a
+ * new object with `a: 1` and -1 gives the ground's channels.
  *
  * @throws RangeError when `ground.a` is below 1 or `NaN`. A translucent ground
  * shows what is under it, which this function does not know. Composite the
