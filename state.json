@@ -1,12 +1,145 @@
 {
   "schema": 1,
   "pr": 286,
-  "head": null,
-  "base": null,
-  "round": 0,
+  "head": "416b0346625a7b06c4a8e7ef3ec4384463203523",
+  "base": "847e036896fbdb499fd90a3cfd96c963d3b0b1ad",
+  "round": 1,
   "claim": {
     "owner": "KellyMBP.local:claude-zrkvml",
     "at": "2026-10-18T14:04:42.993Z"
   },
-  "findings": []
+  "findings": [
+    {
+      "id": "r1-1",
+      "round": 1,
+      "path": "packages/rust/config-layers/src/file.rs",
+      "line": 80,
+      "title": "Non-finite floats (.inf, .nan, 1e999) now make the whole file Malformed",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-2",
+      "round": 1,
+      "path": "packages/rust/config-layers/src/file.rs",
+      "line": 79,
+      "title": "YAML merge keys (<<) are now expanded; undocumented behaviour change",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-3",
+      "round": 1,
+      "path": "packages/rust/config-layers/CHANGELOG.md",
+      "line": 47,
+      "title": "Error text is now a multi-line snippet that echoes file content; 'Display keeps the same shape' is false",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-4",
+      "round": 1,
+      "path": "packages/rust/config-layers/src/file.rs",
+      "line": 34,
+      "title": "FileProblem Display embeds its source, so error-chain reporters print the cause twice",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-5",
+      "round": 1,
+      "path": "packages/rust/config-layers/Cargo.toml",
+      "line": 32,
+      "title": "preserve_order is unified into every serde_json user in the build, against the yaml-splice rationale",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-6",
+      "round": 1,
+      "path": "packages/rust/config-layers/src/machine.rs",
+      "line": 52,
+      "title": "parse_typed doc describes materialize's empty-mapping fallback, which parse_typed does not do",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-7",
+      "round": 1,
+      "path": "packages/rust/config-layers/README.md",
+      "line": 137,
+      "title": "'Downcast it' cannot reach the not-a-mapping source: NotAMapping is pub(crate)",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-8",
+      "round": 1,
+      "path": "packages/rust/config-layers/src/paths.rs",
+      "line": 115,
+      "title": "Doc says 'being expanded' after the rename to substitute",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-9",
+      "round": 1,
+      "path": "packages/rust/config-layers/src/machine.rs",
+      "line": 58,
+      "title": "parse_typed rebinds and re-wraps the result for no reason",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-10",
+      "round": 1,
+      "path": null,
+      "line": null,
+      "title": "packages/rust/Cargo.toml:16 says CI builds every member on 1.85; config-layers is now excluded",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-11",
+      "round": 1,
+      "path": null,
+      "line": null,
+      "title": "packages/README.md:223 says every crate takes the shared MSRV; config-layers sets its own",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-12",
+      "round": 1,
+      "path": null,
+      "line": null,
+      "title": ".github/workflows/rust-ci.yml:12-15 header lists toolchain exceptions without the config-layers step",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    }
+  ]
 }
