@@ -93,6 +93,19 @@ resolves to an `AgentResult`: `ok`, `text`, `structured`, `sessionId`, `usage`,
 `costUsd`, `exitCode`, `durationMs`, the `planned` call that ran, and the `raw`
 output.
 
+Each built-in adapter takes a `binary` option, or a `command` for an agent
+that runs through a launcher or needs arguments before its own, such as
+`npx -y @anthropic-ai/claude-code` or `codex --profile work`. `command`
+replaces `binary` when it has at least one element:
+
+```ts
+const codex = codexAdapter({ command: ['codex', '--profile', 'work'] })
+const planned = planCall(codex, { prompt: 'Review the change.' })
+// planned.argv is ['codex', '--profile', 'work', 'exec', ...]
+```
+
+`detectAgents` runs the whole command with `--version` appended.
+
 Any one-shot CLI runs through `customAdapter`. This one needs only `node`:
 
 ```ts

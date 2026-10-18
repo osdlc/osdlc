@@ -15,6 +15,7 @@ import {
   modelFlag,
   parseJsonLines,
   tryParseJson,
+  commandPrefix,
 } from './shared.js'
 import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './types.js'
 
@@ -22,6 +23,14 @@ import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './types.js'
 export interface AntigravityAdapterOptions {
   /** Binary to spawn. Default: the CLI's own name. */
   binary?: string
+  /**
+   * The command to run, as argv: the binary and any arguments that must come
+   * before the adapter's own, such as `['npx', '-y', '@anthropic-ai/claude-code']`
+   * or `['codex', '--profile', 'work']`. It replaces `binary` when it has at
+   * least one element; an empty array is ignored. `planned.argv` starts with
+   * it, and `detectAgents` runs it with `--version` appended.
+   */
+  command?: readonly string[] | undefined
 }
 
 /**
@@ -33,12 +42,14 @@ export interface AntigravityAdapterOptions {
  * lists them), so `model` passes through as given.
  */
 export function antigravityAdapter(options: AntigravityAdapterOptions = {}): AgentAdapter {
-  const binary = options.binary ?? 'agy'
+  const command = commandPrefix(options, 'agy')
+  const binary = command[0]!
   return {
     name: 'antigravity',
     binary,
+    command,
     plan(spec) {
-      return planAntigravity(binary, spec)
+      return planAntigravity(command, spec)
     },
     parseResult(planned, raw) {
       return parseAntigravity(planned, raw)
@@ -49,10 +60,10 @@ export function antigravityAdapter(options: AntigravityAdapterOptions = {}): Age
   }
 }
 
-function planAntigravity(binary: string, spec: AgentCallSpec): PlannedCall {
+function planAntigravity(command: readonly string[], spec: AgentCallSpec): PlannedCall {
   const notes: CapabilityNote[] = []
   const env: Record<string, string> = { ...spec.env }
-  const argv = [binary]
+  const argv = [...command]
 
   const format: OutputFormat = spec.output?.format ?? 'json'
   if (format !== 'text') argv.push('--output-format', format)

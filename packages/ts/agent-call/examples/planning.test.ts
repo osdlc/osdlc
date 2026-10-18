@@ -96,6 +96,23 @@ describe('the built-in adapters', () => {
     ])
   })
 
+  test('an agent can run through a command prefix', () => {
+    // Arguments that must come before the adapter's own, or a launcher such as npx.
+    const codex = codexAdapter({ command: ['codex', '--profile', 'work'] })
+    const planned = planCall(codex, { prompt: 'Review the change.' })
+    // planned.argv is ['codex', '--profile', 'work', 'exec', ...]
+
+    expect(planned.argv.slice(0, 4)).toEqual(['codex', '--profile', 'work', 'exec'])
+    expect(codex.binary).toBe('codex')
+    const viaNpx = adapterFor('claude', { command: ['npx', '-y', '@anthropic-ai/claude-code'] })
+    expect(planCall(viaNpx, { prompt: 'x' }).argv.slice(0, 4)).toEqual([
+      'npx',
+      '-y',
+      '@anthropic-ai/claude-code',
+      '-p',
+    ])
+  })
+
   test('the effort vocabulary is a frozen list', () => {
     expect([...EFFORT_LEVELS]).toEqual(['low', 'medium', 'high', 'xhigh', 'max'])
     // The Node-free entry point exports the same list.

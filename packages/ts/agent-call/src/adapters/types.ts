@@ -51,6 +51,13 @@ export interface AgentAdapter {
   name: string
   /** Binary to spawn; override via each adapter factory's `binary` option. */
   binary: string
+  /**
+   * The full command prefix when it is more than the binary, such as
+   * `['npx', '-y', '@anthropic-ai/claude-code']`; `binary` is its first
+   * element. The built-in adapters always set it. `detectAgents` probes it,
+   * or `binary` when it is absent.
+   */
+  command?: readonly string[] | undefined
   plan(spec: AgentCallSpec): PlannedCall
   parseResult(planned: PlannedCall, raw: RawProcessOutput): ParsedOutput
   /** Optional supplemental layer: lift the raw transcript into the normalized model. */
