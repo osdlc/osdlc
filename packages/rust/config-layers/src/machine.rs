@@ -49,13 +49,10 @@ pub fn env_stem(tool: &str) -> String {
     out
 }
 
-/// Read the document into `T`. A document with nothing in it (empty, only
-/// comments, or `null`) reads as an empty mapping, so a `T` whose fields all
-/// have `#[serde(default)]` gets its field defaults. `Ok(None)` says the
-/// document was empty and `T` was not built from it.
+/// Read the document into `T`. `Ok(None)` means the document is empty (no
+/// content, only comments, or `null`).
 fn parse_typed<T: DeserializeOwned>(text: &str) -> Result<Option<T>, serde_saphyr::Error> {
-    let parsed: Option<T> = serde_saphyr::from_str_with_options(text, yaml_options())?;
-    Ok(parsed)
+    serde_saphyr::from_str_with_options(text, yaml_options())
 }
 
 /// A tool's machine file: `<config>/<tool>/config.yaml` in the standalone
@@ -476,8 +473,10 @@ mod tests {
             let p = tmp.path().join("empty.yaml");
             fs::write(&p, "").unwrap();
             let err = read_strict_at::<TestMachineConfig>(&p).unwrap_err();
-            assert!(err.to_string().contains("found an empty document"), "{err}");
-            assert!(std::error::Error::source(&err).is_some());
+            let source = std::error::Error::source(&err)
+                .expect("a source")
+                .to_string();
+            assert!(source.contains("found an empty document"), "{source}");
 
             fs::write(&p, "nope: 1\n").unwrap();
             let err = read_strict_at::<TestMachineConfig>(&p).unwrap_err();

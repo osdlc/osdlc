@@ -38,7 +38,8 @@ which resolves the per-OS config home and its override variables. You build a
 crate re-exports `tiered_dirs` so you can name the same version.
 
 The settings read from a file are a generic tree of `serde_json::Value` and
-`serde_json::Map`, which keeps keys in file order. The crate re-exports
+`serde_json::Map`, which iterates in sorted key order unless your build turns
+on `serde_json`'s `preserve_order` feature. The crate re-exports
 `serde_json` too. YAML is read with
 [`serde-saphyr`](https://crates.io/crates/serde-saphyr), which no public
 signature names.
@@ -134,7 +135,14 @@ need. Run it with `cargo run --example two_files`.
 - **Errors carry their cause.** `FileProblem` has a `source`: an
   `std::io::Error` for `Unreadable`, and the YAML error (or a plain message
   for an empty document or a top level that is not a mapping) for
-  `Malformed`. Downcast it to look closer.
+  `Malformed`. The `Display` text names the file only, so a reporter that
+  walks the chain prints the cause once. No file contents are quoted in an
+  error. Downcast the source to `std::io::Error` or `serde_saphyr::Error` to
+  look closer (the latter makes your crate depend on `serde-saphyr`); the
+  empty and not-a-mapping cases carry only a message.
+- **Non-finite numbers and merge keys.** `.inf`, `-.inf`, `.nan` and numbers
+  that overflow, such as `1e999`, read as strings, since JSON cannot hold
+  them. `<<` is an ordinary key and is not merged, as in `serde_yaml`.
 - **Parser limits stay at the library defaults.** `serde-saphyr` caps events,
   aliases and anchors far above any real config file, which also stops an
   alias bomb in a file you did not write.
@@ -160,8 +168,10 @@ need. Run it with `cargo run --example two_files`.
 | An unknown `{name}` is an error naming the setting, the fix and what exists | `an_unknown_name_is_an_error_naming_the_setting_the_fix_and_what_exists`, `omits_the_parenthetical_when_no_tokens_are_known`, `the_tool_names_its_own_files_in_the_hint` |
 | What counts as set | `missing_null_empty_string_empty_list_and_empty_map_are_unset` (includes a whitespace-only string), `a_non_empty_string_list_or_map_is_set`, `false_and_zero_are_set` |
 | Project over machine, one level deep; the machine fills only missing or unset keys | `project_wins_on_an_overlapping_key`, `a_set_project_value_is_kept_even_when_falsy`, `every_unset_project_value_falls_back_to_machine`, `a_project_null_falls_back_to_machine`, `nested_mappings_are_not_merged`, `a_machine_only_key_is_added` |
-| Only `true` and `false` are booleans; keys keep file order; tags are dropped | `only_true_and_false_are_booleans`, `keys_keep_the_order_of_the_file`, `a_tag_is_dropped_and_its_value_kept`, `scalar_keys_read_as_strings_and_a_collection_key_is_malformed` |
+| Only `true` and `false` are booleans; tags are dropped | `only_true_and_false_are_booleans`, `a_tag_is_dropped_and_its_value_kept`, `scalar_keys_read_as_strings_and_a_collection_key_is_malformed` |
+| Non-finite numbers read as strings; `<<` is an ordinary key | `a_non_finite_float_reads_as_a_string_and_the_file_loads`, `a_merge_key_stays_an_ordinary_key` |
 | A problem carries its source | `the_problem_carries_its_source_for_a_caller_to_downcast`, `read_strict_reports_an_empty_file_and_carries_its_source` |
+| An error quotes no file contents and does not repeat its source | `an_error_does_not_quote_the_files_lines`, `display_does_not_repeat_the_source` |
 | An empty machine file gives the serde field defaults | `an_empty_or_comment_only_file_gives_the_field_defaults` |
 | The need message names the command, key, purpose, flag and file | `names_the_command_the_key_its_purpose_the_stand_in_and_the_project_file`, `a_camel_case_stand_in_renders_as_a_kebab_case_flag_no_command_is_this_command`, `a_key_both_files_carry_the_file_you_stand_in_leads_the_other_follows` |
 
@@ -174,7 +184,8 @@ The code uses only the standard library, `serde`, `serde_json`, `serde-saphyr`,
 Linux, macOS and Windows. CI runs the tests on all three. Where the config home
 is on each OS is `tiered-dirs`' table.
 
-Minimum supported Rust version: 1.89, the version `serde-saphyr` needs.
+Minimum supported Rust version: 1.89, the version `serde-saphyr` needs. It is
+the MSRV of the whole workspace.
 
 ## When not to use it
 

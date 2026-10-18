@@ -157,7 +157,7 @@ and `tiered-dirs`, has no platform-specific code of its own, and is written for
 Linux, macOS and Windows. CI runs the tests on all three. Where the config home
 is on each OS is `tiered-dirs`' table.
 
-Minimum supported Rust version: 1.85, checked by running the tests on 1.85.
+Minimum supported Rust version: 1.89, checked by running the tests on 1.89.
 
 ## When not to use it
 

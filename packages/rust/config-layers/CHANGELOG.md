@@ -26,8 +26,9 @@ code. Every change below is breaking against `cli-tool-config` 0.5.1.
   `serde_json::Value` and `serde_json::Map<String, Value>`, in place of
   `serde_yaml::Value` and `serde_yaml::Mapping`. It affects
   `file::read_mapping`, `file::overlay_top_level`, `file::resolve_paths_at`,
-  `value::value_at`, `value::value_is_set` and `needs::Needs::met`. Keys keep
-  their order in the file. `serde_json` is re-exported as
+  `value::value_at`, `value::value_is_set` and `needs::Needs::met`. The map
+  iterates in sorted key order, unless a consumer turns on `serde_json`'s
+  `preserve_order` feature. `serde_json` is re-exported as
   `config_layers::serde_json`.
 - **Breaking:** YAML reading changes. Only `true` and `false` are booleans
   (`strict_booleans`), so `yes`, `no`, `on` and `off` stay strings, as in
@@ -36,6 +37,10 @@ code. Every change below is breaking against `cli-tool-config` 0.5.1.
     `value_is_set` and in the error text is gone.
   - Keys are strings. A scalar key such as `1` or `true` reads as the string
     `"1"` or `"true"`. A list or mapping as a key is a `Malformed` error.
+  - `.inf`, `-.inf`, `.nan` and numbers that overflow, such as `1e999`, read
+    as strings and the file still loads. In 0.5.1 they were numbers, which
+    `serde_json` cannot hold.
+  - `<<` is an ordinary key and is not merged, as in 0.5.1.
   - Duplicate keys are still an error. The parser limits (`Budget`) are the
     `serde-saphyr` defaults: they cap events, aliases and anchors far above
     any real config file.
@@ -44,7 +49,13 @@ code. Every change below is breaking against `cli-tool-config` 0.5.1.
   `Malformed { path, source }` holds the YAML error, or a plain message for an
   empty document or a top level that is not a mapping. The `source` is a
   `Box<dyn std::error::Error + Send + Sync>` that names no YAML crate type;
-  downcast it to look closer. The `Display` text keeps the same shape.
+  downcast it to `std::io::Error` or `serde_saphyr::Error` to look closer. The
+  empty and not-a-mapping cases carry only a message.
+- **Breaking:** the `Display` text of `FileProblem` names the file and no
+  longer ends with `: <cause>`; the cause is the `source`, so a reporter that
+  walks the chain prints it once. The YAML error text is also different from
+  `serde_yaml`'s, for example `unclosed bracket '[' at line 1, column 6`. An
+  error quotes no lines of the file, since a machine file can hold secrets.
   `detail` is gone because the `source` text is the same text.
 - **Breaking:** `paths::expand_tokens` is `paths::substitute_path_names` and
   `paths::expand_tokens_with_hint` is `paths::substitute_path_names_with_hint`.
@@ -62,7 +73,8 @@ code. Every change below is breaking against `cli-tool-config` 0.5.1.
   `from_env_with`), and `TierKind` is `#[non_exhaustive]`. Callers update
   their `tiered-dirs` code to match.
 - **Breaking:** the minimum supported Rust version is 1.89, up from 1.85,
-  because `serde-saphyr` needs it.
+  because `serde-saphyr` needs it. The other crates in the workspace moved to
+  1.89 with it.
 
 ### Added
 

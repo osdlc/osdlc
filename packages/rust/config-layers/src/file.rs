@@ -2,7 +2,8 @@
 //! pair, built on [`resolve_config_path`] and [`value_is_set`].
 //!
 //! A config file here is a YAML mapping read into a
-//! [`serde_json::Map`]. Keys keep the order they have in the file.
+//! [`serde_json::Map`]. The map iterates in sorted key order, unless a
+//! consumer turns on `serde_json`'s `preserve_order` feature.
 
 use std::path::{Path, PathBuf};
 
@@ -21,7 +22,7 @@ use crate::value::value_is_set;
 #[non_exhaustive]
 pub enum FileProblem {
     /// The file could not be read at all (missing, permission denied, …).
-    #[error("cannot read {}: {source}", path.display())]
+    #[error("cannot read {}", path.display())]
     Unreadable {
         /// The path that was read.
         path: PathBuf,
@@ -31,7 +32,11 @@ pub enum FileProblem {
     },
     /// The file was read but is not a YAML mapping at the top level, or does
     /// not deserialize as the caller's type.
-    #[error("{} is not a valid config file: {source}", path.display())]
+    ///
+    /// The `Display` text names the file only. The cause, with its line and
+    /// column, is the [`source`](std::error::Error::source). No file contents
+    /// are quoted, since a machine file can hold secrets.
+    #[error("{} is not a valid config file", path.display())]
     Malformed {
         /// The path that was read.
         path: PathBuf,
@@ -69,8 +74,14 @@ impl FileProblem {
 }
 
 /// The YAML options every read in this crate uses: the library defaults,
-/// except that only `true` and `false` are booleans (`yes`, `no`, `on` and
-/// `off` stay strings).
+/// except that
+///
+/// - only `true` and `false` are booleans (`yes`, `no`, `on` and `off` stay
+///   strings),
+/// - `.inf`, `.nan` and overflowing numbers such as `1e999` read as strings,
+///   since a JSON number cannot hold them,
+/// - `<<` is an ordinary key and not a merge key, and
+/// - an error does not quote the file's lines.
 ///
 /// The default `budget` is kept. It caps the parser's events, aliases and
 /// anchors far above any real config file, and it stops an alias bomb in a
@@ -78,6 +89,9 @@ impl FileProblem {
 pub(crate) fn yaml_options() -> serde_saphyr::Options {
     let mut options = serde_saphyr::Options::default();
     options.strict_booleans = true;
+    options.non_finite_float_policy = serde_saphyr::NonFiniteFloatPolicy::AsString;
+    options.merge_keys = serde_saphyr::MergeKeyPolicy::AsOrdinary;
+    options.with_snippet = false;
     options
 }
 
@@ -236,7 +250,8 @@ mod tests {
             let path = dir.path().join("empty.yaml");
             fs::write(&path, "").unwrap();
             let err = read_mapping(&path).unwrap_err();
-            assert!(err.to_string().contains("found an empty document"), "{err}");
+            let source = std::error::Error::source(&err).unwrap().to_string();
+            assert!(source.contains("found an empty document"), "{source}");
         }
 
         #[test]
@@ -280,13 +295,50 @@ mod tests {
         }
 
         #[test]
-        fn keys_keep_the_order_of_the_file() {
+        fn a_non_finite_float_reads_as_a_string_and_the_file_loads() {
             let dir = tempfile::tempdir().unwrap();
-            let path = dir.path().join("order.yaml");
-            fs::write(&path, "zebra: 1\napple: 2\nmango: 3\n").unwrap();
+            let path = dir.path().join("inf.yaml");
+            fs::write(&path, "a: .inf\nb: -.inf\nc: .nan\nd: 1e999\ne: 1.5\n").unwrap();
             let map = read_mapping(&path).unwrap();
-            let keys: Vec<&str> = map.keys().map(String::as_str).collect();
-            assert_eq!(keys, ["zebra", "apple", "mango"]);
+            for key in ["a", "b", "c", "d"] {
+                assert!(map[key].is_string(), "{key} is {:?}", map[key]);
+            }
+            assert_eq!(map["a"], Value::String(".inf".to_string()));
+            assert_eq!(map["e"], Value::from(1.5));
+        }
+
+        #[test]
+        fn a_merge_key_stays_an_ordinary_key() {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("merge.yaml");
+            fs::write(&path, "base: &base\n  x: 1\nm:\n  <<: *base\n  y: 2\n").unwrap();
+            let map = read_mapping(&path).unwrap();
+            assert_eq!(map["m"], serde_json::json!({ "<<": { "x": 1 }, "y": 2 }));
+        }
+
+        #[test]
+        fn an_error_does_not_quote_the_files_lines() {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("secret.yaml");
+            fs::write(&path, "token: [hunter2-secret\n").unwrap();
+            let err = read_mapping(&path).unwrap_err();
+            let mut chain = err.to_string();
+            let mut cause = std::error::Error::source(&err);
+            while let Some(c) = cause {
+                chain.push_str(&c.to_string());
+                cause = c.source();
+            }
+            assert!(!chain.contains("hunter2-secret"), "{chain}");
+        }
+
+        #[test]
+        fn display_does_not_repeat_the_source() {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("bad.yaml");
+            fs::write(&path, "key: [unclosed").unwrap();
+            let err = read_mapping(&path).unwrap_err();
+            let source = std::error::Error::source(&err).unwrap().to_string();
+            assert!(!err.to_string().contains(&source), "{err}");
         }
 
         #[test]

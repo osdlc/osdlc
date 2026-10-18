@@ -7,8 +7,7 @@ version = "0.6.0"
 # After 0.5.2 is out, a pull request removes this line.
 publish = false
 edition.workspace = true
-# serde-saphyr needs 1.89. The workspace rust-version is 1.85.
-rust-version = "1.89"
+rust-version.workspace = true
 description = "Layered config files: a committed project file and a per-machine file read as YAML, merged by key, with named-directory substitution, dotted-key lookup and the check a program runs for the settings it needs."
 license.workspace = true
 repository.workspace = true
@@ -27,9 +26,7 @@ include = [
 [dependencies]
 # 1.0.220 to match the dev-dependency below.
 serde = "1.0.220"
-# preserve_order keeps a mapping's keys in file order. It is on for every
-# user of this crate, since `serde_json::Map` is in the public API.
-serde_json = { workspace = true, features = ["preserve_order"] }
+serde_json = { workspace = true }
 # Only the deserializer: this crate reads YAML and never writes it.
 serde-saphyr = { version = "2.0.0", default-features = false, features = ["deserialize"] }
 thiserror = { workspace = true }

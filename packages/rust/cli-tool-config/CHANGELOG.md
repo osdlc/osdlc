@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- The minimum supported Rust version is 1.89, up from 1.85. The whole workspace
+  moved together because `config-layers` needs `serde-saphyr`, which needs 1.89.
+
 ## [0.5.3](https://github.com/osdlc/osdlc/compare/cli-tool-config/v0.5.2...cli-tool-config/v0.5.3) - 2026-10-18
 
 The last release. The crate continues as
