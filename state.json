@@ -1,12 +1,90 @@
 {
   "schema": 1,
   "pr": 276,
-  "head": null,
-  "base": null,
-  "round": 0,
+  "head": "35b3eaf312f67b1133119e5d498eaad34a9697e8",
+  "base": "2f3fc7ce5c391e9ae38735bff1ee392217f8d4a0",
+  "round": 1,
   "claim": {
     "owner": "Mac.local:claude-0kuju3",
     "at": "2026-10-18T07:12:58.064Z"
   },
-  "findings": []
+  "findings": [
+    {
+      "id": "r1-1",
+      "round": 1,
+      "path": "packages/ts/agent-call/tests/exports.test.ts",
+      "line": 249,
+      "title": "private-repo guard covers only the CHANGELOG; belongs in HOST_TERMS",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-2",
+      "round": 1,
+      "path": "packages/ts/color/index.ts",
+      "line": 241,
+      "title": "TSDoc says mixColors clamps alpha; it clamps amount only",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-3",
+      "round": 1,
+      "path": ".changeset/color-compositeover-clamp.md",
+      "line": 5,
+      "title": "release note repeats the mixColors alpha-clamp claim",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-4",
+      "round": 1,
+      "path": "packages/ts/color/docs/planning/decisions/D-03-rgba-is-readonly.md",
+      "line": null,
+      "title": "D-03 still says compositeOver returns an opaque src as is",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-5",
+      "round": 1,
+      "path": "packages/ts/color/docs/planning/decisions/D-05-errors.md",
+      "line": null,
+      "title": "D-05 does not record compositeOver's new alpha clamp",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-6",
+      "round": 1,
+      "path": "packages/ts/color/tests/index.test.ts",
+      "line": null,
+      "title": "test name 'an opaque source is returned as is' now contradicts the 1.5/2 cases",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-7",
+      "round": 1,
+      "path": ".github/workflows/packages-ci.yml",
+      "line": 8,
+      "title": "header comment: unreflowed paragraph and change-history 'still'",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    }
+  ]
 }
