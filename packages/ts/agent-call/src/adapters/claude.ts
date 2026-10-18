@@ -16,28 +16,30 @@ import {
   modelFlag,
   parseJsonLines,
   tryParseJson,
+  commandPrefix,
+  type CommandOptions,
 } from './shared.js'
 import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './types.js'
 
 const MCP_CONFIG_FILE = 'mcp.json'
 
 /** Options for {@link claudeAdapter}. */
-export interface ClaudeAdapterOptions {
-  /** Binary to spawn. Default: the CLI's own name. */
-  binary?: string
-}
+/** Options for `claudeAdapter`: `binary`, or a `command` prefix. */
+export interface ClaudeAdapterOptions extends CommandOptions {}
 
 /**
  * Claude Code (`claude -p`). The richest surface: permissions, tool rules,
  * system prompts, structured output, sessions, and budget are all native.
  */
 export function claudeAdapter(options: ClaudeAdapterOptions = {}): AgentAdapter {
-  const binary = options.binary ?? 'claude'
+  const command = commandPrefix(options, 'claude')
+  const binary = command[0]!
   return {
     name: 'claude',
     binary,
+    command,
     plan(spec) {
-      return planClaude(binary, spec)
+      return planClaude(command, spec)
     },
     parseResult(planned, raw) {
       return parseClaude(planned, raw)
@@ -79,10 +81,10 @@ export function claudePluginArgv(plugins: PluginSpec): string[] {
   return argv
 }
 
-function planClaude(binary: string, spec: AgentCallSpec): PlannedCall {
+function planClaude(command: readonly string[], spec: AgentCallSpec): PlannedCall {
   const notes: CapabilityNote[] = []
   const tempFiles: TempFile[] = []
-  const argv = [binary, '-p']
+  const argv = [...command, '-p']
 
   // Prefer the JSON envelope when the caller didn't ask for a specific
   // format: same answer, plus usage/cost/session metadata.

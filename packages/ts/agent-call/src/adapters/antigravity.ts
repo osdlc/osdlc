@@ -15,14 +15,14 @@ import {
   modelFlag,
   parseJsonLines,
   tryParseJson,
+  commandPrefix,
+  type CommandOptions,
 } from './shared.js'
 import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './types.js'
 
 /** Options for {@link antigravityAdapter}. */
-export interface AntigravityAdapterOptions {
-  /** Binary to spawn. Default: the CLI's own name. */
-  binary?: string
-}
+/** Options for `antigravityAdapter`: `binary`, or a `command` prefix. */
+export interface AntigravityAdapterOptions extends CommandOptions {}
 
 /**
  * Google Antigravity CLI (`agy`). Headless via `-p <prompt>` with
@@ -33,12 +33,14 @@ export interface AntigravityAdapterOptions {
  * lists them), so `model` passes through as given.
  */
 export function antigravityAdapter(options: AntigravityAdapterOptions = {}): AgentAdapter {
-  const binary = options.binary ?? 'agy'
+  const command = commandPrefix(options, 'agy')
+  const binary = command[0]!
   return {
     name: 'antigravity',
     binary,
+    command,
     plan(spec) {
-      return planAntigravity(binary, spec)
+      return planAntigravity(command, spec)
     },
     parseResult(planned, raw) {
       return parseAntigravity(planned, raw)
@@ -49,10 +51,10 @@ export function antigravityAdapter(options: AntigravityAdapterOptions = {}): Age
   }
 }
 
-function planAntigravity(binary: string, spec: AgentCallSpec): PlannedCall {
+function planAntigravity(command: readonly string[], spec: AgentCallSpec): PlannedCall {
   const notes: CapabilityNote[] = []
   const env: Record<string, string> = { ...spec.env }
-  const argv = [binary]
+  const argv = [...command]
 
   const format: OutputFormat = spec.output?.format ?? 'json'
   if (format !== 'text') argv.push('--output-format', format)

@@ -15,14 +15,14 @@ import {
   modelFlag,
   parseJsonLines,
   tryParseJson,
+  commandPrefix,
+  type CommandOptions,
 } from './shared.js'
 import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './types.js'
 
 /** Options for {@link codexAdapter}. */
-export interface CodexAdapterOptions {
-  /** Binary to spawn. Default: the CLI's own name. */
-  binary?: string
-}
+/** Options for `codexAdapter`: `binary`, or a `command` prefix. */
+export interface CodexAdapterOptions extends CommandOptions {}
 
 const LAST_MESSAGE_FILE = 'last-message.txt'
 const SCHEMA_FILE = 'output-schema.json'
@@ -33,12 +33,14 @@ const SCHEMA_FILE = 'output-schema.json'
  * `--output-schema`; tool-level rules are not expressible.
  */
 export function codexAdapter(options: CodexAdapterOptions = {}): AgentAdapter {
-  const binary = options.binary ?? 'codex'
+  const command = commandPrefix(options, 'codex')
+  const binary = command[0]!
   return {
     name: 'codex',
     binary,
+    command,
     plan(spec) {
-      return planCodex(binary, spec)
+      return planCodex(command, spec)
     },
     parseResult(planned, raw) {
       return parseCodex(planned, raw)
@@ -58,10 +60,10 @@ export function codexEffortArgv(effort: string): string[] {
   return ['-c', `model_reasoning_effort="${effort}"`]
 }
 
-function planCodex(binary: string, spec: AgentCallSpec): PlannedCall {
+function planCodex(command: readonly string[], spec: AgentCallSpec): PlannedCall {
   const notes: CapabilityNote[] = []
   const tempFiles: TempFile[] = []
-  const argv = [binary, 'exec']
+  const argv = [...command, 'exec']
 
   const session = spec.session
   const resuming = session?.resume !== undefined || session?.continueLast === true

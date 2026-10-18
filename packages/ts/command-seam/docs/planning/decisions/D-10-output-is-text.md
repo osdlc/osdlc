@@ -17,6 +17,14 @@ created: 2026-10-13
   ([T-03](../tasks/T-03-bounded-and-binary-output.md)). The owner first chose to
   add both now, then deferred them. The deferral is the decision.
 
+## Update (October 2026)
+
+[#233](https://github.com/osdlc/osdlc/issues/233) brought the cap forward: the
+capture runners take `maxOutputBytes`, a per-stream cap that also replaces the
+sync default of 256 MB, and report a kill at it as `reason: 'output'`. The
+async runner still has no default cap, and the `bun test` capture path still
+has none. The byte mode stays deferred.
+
 ## Why
 
 The users of this package run tools that print text. execa already offers
