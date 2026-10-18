@@ -83,7 +83,8 @@ No function changes its arguments.
 - `fromPixel(px)` reads an `[r, g, b, a]` pixel from `ImageData.data`, where
   alpha is 0-255.
 - `compositeOver(src, ground)` paints `src` over an opaque `ground` and
-  rounds each channel to 8 bits.
+  rounds each channel to 8 bits. A `src` alpha outside 0-1 is clamped. A `src`
+  with alpha exactly 1 is returned as is.
 - `relativeLuminance(color)` is the WCAG 2 relative luminance, 0-1.
 - `contrastRatio(a, b)` is the WCAG 2 contrast ratio, 1-21. Each side is an
   `Rgba` or a CSS string.

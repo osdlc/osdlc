@@ -15,8 +15,8 @@
  *
  * The fields are read-only, so a frozen object or an `as const` literal can be
  * passed in. Every function returns a new plain object, except that
- * {@link compositeOver} returns an opaque `src` as is; none changes its
- * arguments.
+ * {@link compositeOver} returns `src` itself when its alpha is exactly 1.
+ * None changes its arguments.
  */
 export interface Rgba {
   readonly r: number
@@ -237,7 +237,9 @@ export function fromPixel(px: ArrayLike<number>): Rgba {
  * paints its own channels. Each mixed channel is rounded to 8 bits, as a
  * browser paints it. A Chromium 2D canvas gives the same pixel to within one
  * step per channel, because it also rounds the alpha to 8 bits and blends in
- * integers. An opaque `src` is returned as is.
+ * integers. A `src` whose alpha is exactly 1 is returned as is. A finite alpha
+ * outside 0-1 is clamped first, as {@link withAlpha} clamps it, so 2 gives a
+ * new object with `a: 1` and -1 gives the ground's channels.
  *
  * @throws RangeError when `ground.a` is below 1 or `NaN`. A translucent ground
  * shows what is under it, which this function does not know. Composite the
@@ -251,8 +253,10 @@ export function compositeOver(src: Rgba, ground: Rgba): Rgba {
   if (!Number.isFinite(src.a)) {
     throw new RangeError(`color: compositeOver needs a finite source alpha, got ${src.a}`)
   }
-  if (src.a >= 1) return src
-  const mix = (s: number, g: number) => Math.round(s * src.a + g * (1 - src.a))
+  if (src.a === 1) return src
+  const a = clamp(src.a, 1)
+  if (a === 1) return { r: src.r, g: src.g, b: src.b, a: 1 }
+  const mix = (s: number, g: number) => Math.round(s * a + g * (1 - a))
   return { r: mix(src.r, ground.r), g: mix(src.g, ground.g), b: mix(src.b, ground.b), a: 1 }
 }
 

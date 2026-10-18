@@ -207,6 +207,7 @@ describe('independence from any host project', () => {
       'tool-' + 'router',
       'cata' + 'logue',
       'docs/' + 'planning',
+      'sks' + 'izer/',
       'mono' + 'repo',
       '\\b[TDBSMN]-[0-9A-Z]{4}\\b',
     ].join('|'),

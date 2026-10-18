@@ -5,9 +5,9 @@
 # Build runs before test: the examples import each package by its own name,
 # and under Node that name resolves through `exports` to dist/.
 #
-# Bun is installed because the tests use `bun:test` today. Node runs the build,
-# the smoke checks and the packed-tarball checks, so the Node matrix is what
-# a consumer sees.
+# Bun is installed because some packages test with `bun:test`; others use
+# Vitest, which runs on Node. Node runs the build, the smoke checks and the
+# packed-tarball checks, so the Node matrix is what a consumer sees.
 #
 # Every action is pinned to a commit SHA; the comment names its release.
 name: packages
