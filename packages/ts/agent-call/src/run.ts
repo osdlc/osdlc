@@ -24,8 +24,10 @@ export interface CallError {
    *   names the signal.
    * - `agent-error` — the process exited 0 but the agent reported failure, or
    *   the adapter's parser threw on the output.
+   * - `output-limit` — stdout or stderr passed `maxOutputBytes`, and the run
+   *   was stopped; `detail` names the stream.
    */
-  reason: 'spawn-failed' | 'timeout' | 'nonzero-exit' | 'agent-error'
+  reason: 'spawn-failed' | 'timeout' | 'nonzero-exit' | 'agent-error' | 'output-limit'
   /** A human-readable explanation, taken from the agent's output where there is one. */
   detail: string
 }
@@ -78,7 +80,8 @@ export function planCall(adapter: AgentAdapter, spec: AgentCallSpec): PlannedCal
  * handler. The runner installs no exit handlers.
  *
  * @throws The returned promise rejects, rather than resolving `ok: false`,
- * when planning throws (see {@link planCall}), when a `TempFile.name` is not a
+ * with a `RangeError` when `spec.maxOutputBytes` is not a positive integer or
+ * `Infinity`; when planning throws (see {@link planCall}); when a `TempFile.name` is not a
  * plain file name (empty, or holding `/`, `\` or `..`), or when the per-call
  * temp directory cannot be created or written. A directory that was made is
  * removed. A parser that throws on the output does not reject: the result is
@@ -89,11 +92,17 @@ export async function callAgent(
   spec: AgentCallSpec,
   options: CallOptions = {},
 ): Promise<AgentResult> {
+  const maxOutputBytes = outputCap(spec.maxOutputBytes)
   const planned = adapter.plan(spec)
-  const raw = await execute(planned, spec, options.signal)
+  const raw = await execute(planned, spec, maxOutputBytes, options.signal)
 
   let error: CallError | undefined
-  if (raw.exitCode === null && !raw.timedOut) {
+  if (raw.outputLimit !== undefined) {
+    error = {
+      reason: 'output-limit',
+      detail: `${raw.outputLimit} passed maxOutputBytes (${maxOutputBytes} bytes); the run was stopped and its output truncated`,
+    }
+  } else if (raw.exitCode === null && !raw.timedOut) {
     error =
       raw.signal === undefined
         ? { reason: 'spawn-failed', detail: raw.stderr.trim() }
@@ -166,6 +175,15 @@ export async function callAgent(
   return result
 }
 
+/** `maxOutputBytes` as the runner applies it: `undefined` for no cap. */
+function outputCap(value: number | undefined): number | undefined {
+  if (value === undefined || value === Infinity) return undefined
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new RangeError(`maxOutputBytes must be a positive integer or Infinity, got ${value}`)
+  }
+  return value
+}
+
 function isPlainFileName(name: string): boolean {
   return name !== '' && !name.includes('/') && !name.includes('\\') && !name.includes('..')
 }
@@ -177,6 +195,7 @@ function errorMessage(err: unknown): string {
 async function execute(
   planned: PlannedCall,
   spec: AgentCallSpec,
+  maxOutputBytes: number | undefined,
   signal?: AbortSignal,
 ): Promise<RawProcessOutput> {
   for (const file of planned.tempFiles) {
@@ -210,6 +229,7 @@ async function execute(
       env,
       timeoutMs: spec.timeoutMs,
       signal,
+      maxOutputBytes,
     })
     raw.durationMs = Date.now() - startedAt
 

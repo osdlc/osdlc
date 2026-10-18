@@ -12,6 +12,12 @@ export interface RawProcessOutput {
   timedOut: boolean
   /** Which came first when the run was cut short: the timeout or a caller abort. */
   cutShortBy?: 'timeout' | 'abort' | undefined
+  /**
+   * The stream that passed `maxOutputBytes`, when the cap stopped the run.
+   * Both streams are then truncated at the cap on a character boundary, and
+   * `timedOut` is `false` unless a timeout or abort came first.
+   */
+  outputLimit?: 'stdout' | 'stderr' | undefined
   /** The signal that ended the child, when it died on one (for example `SIGKILL`). */
   signal?: string | undefined
   /**

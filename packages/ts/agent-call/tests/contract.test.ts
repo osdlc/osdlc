@@ -418,6 +418,15 @@ describe('capability map: the other rows', () => {
     expect(tableRow('timeoutMs')[0]).toContain('library-level')
   })
 
+  test('maxOutputBytes is library-level: no flag, no note, on every agent', () => {
+    for (const agent of AGENTS) {
+      const planned = planCall(adapterFor(agent), { prompt: 'x', maxOutputBytes: 4321 })
+      expect(planned.argv.join(' ')).not.toContain('4321')
+      expect(planned.notes.find((n) => n.field === 'maxOutputBytes')).toBeUndefined()
+    }
+    expect(tableRow('maxOutputBytes')[0]).toContain('library-level')
+  })
+
   test('extraArgs are appended verbatim on every agent', () => {
     for (const agent of AGENTS) {
       const planned = planCall(adapterFor(agent), {
@@ -437,6 +446,7 @@ describe('capability map: the other rows', () => {
       'effort',
       'output.format',
       'timeoutMs',
+      'maxOutputBytes',
       'extraArgs',
     ])
     const uncovered = [...TABLE.keys()].filter(

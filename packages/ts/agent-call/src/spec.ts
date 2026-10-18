@@ -138,6 +138,15 @@ export interface AgentCallSpec {
   env?: Record<string, string> | undefined
   /** Kill the process after this long (SIGTERM, then SIGKILL after 5s). */
   timeoutMs?: number | undefined
+  /**
+   * Cap each output stream, stdout and stderr, at this many bytes. A stream
+   * that passes it stops the process group as a timeout does (SIGTERM, then
+   * SIGKILL after 5s), and the result is `ok: false` with reason
+   * `output-limit`. The output read so far is kept in `raw`, truncated to the
+   * cap on a UTF-8 character boundary. A positive integer, or `Infinity` for
+   * no cap; anything else makes `callAgent` reject with a `RangeError`.
+   */
+  maxOutputBytes?: number | undefined
   /** Escape hatch: appended verbatim to the built argv, after everything. */
   extraArgs?: string[] | undefined
 }

@@ -126,11 +126,12 @@ suite.
 
 `callAgent` does not throw when the agent fails. It resolves with `ok: false`
 and an `error`: `{ reason, detail }`. The reasons today are `spawn-failed`,
-`timeout`, `nonzero-exit` and `agent-error`. **The set of reasons is open.** A
+`timeout`, `nonzero-exit`, `agent-error` and `output-limit`. **The set of reasons is open.** A
 minor release may add one, so handle the reasons you know and keep a default
 branch.
 
-It does reject, with an `Error`, when planning throws: `templateAdapter`
+It rejects with a `RangeError` when `maxOutputBytes` is not a positive integer
+or `Infinity`. It also rejects, with an `Error`, when planning throws: `templateAdapter`
 throws for a model or effort that does not fit its template, and
 `customAdapter` passes on whatever your `args` function throws. It also rejects
 when a plan's `TempFile.name` is not a plain file name (empty, or holding `/`,
@@ -250,6 +251,7 @@ that did not map one to one:
 | `mcp.servers` | `--mcp-config` | `-c mcp_servers.*` | dropped | dropped |
 | `budgetUsd` | `--max-budget-usd` | dropped | dropped | dropped |
 | `timeoutMs` | library-level (SIGTERM → SIGKILL) on all agents | | | |
+| `maxOutputBytes` | library-level per-stream cap (SIGTERM → SIGKILL, reason `output-limit`) on all agents | | | |
 | `extraArgs` | appended verbatim on all agents | | | |
 
 `tests/contract.test.ts` plans one spec per row on each adapter and checks the
