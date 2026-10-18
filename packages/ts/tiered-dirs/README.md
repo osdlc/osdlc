@@ -91,6 +91,11 @@ The vendor is the one segment the caller fixes up front. The suite segment is
 composed from it. `suiteKey` is a caller-supplied constant, not derived from a
 bundle identifier. `Tier.kind` reports which constructor produced a tier.
 
+`Tier` and `Dir` are exported as types only. Their constructors are not part
+of the package, so a value always comes from a checked method:
+`TieredDirs.vendor()`, `suite()`, `standalone()` and `scratch()`, `Tier.home()`
+and the home methods, and `Dir.scoped()` and `Dir.app()`.
+
 The product tier, one product's own directory keyed by bundle identifier, is
 not here. An app framework usually resolves it, and this package takes no
 framework dependency. `TieredDirs.isVendorBundleId(bundleId)` lets a layer
@@ -196,7 +201,8 @@ first:
 - In a test runner process where `<P>_ROOT` is unset and `HOME` is not moved,
   `<P>_ROOT` reads as `<tmp>/tiered-dirs-test-<pid>-<start ms>`. "HOME moved"
   means `HOME` differs from the passwd home. The Rust twin has no such
-  condition. A CI job that sets `HOME` itself, such as a GitHub Actions
+  condition. This rule is kept deliberately, and `{ testRoot: false }` is the
+  explicit switch that turns it off. A CI job that sets `HOME` itself, such as a GitHub Actions
   container job (`HOME=/github/home`, passwd home `/root`), therefore gets no
   test-root default: set `<P>_ROOT` there. A test runner
   process is one with a test file as its entry point that runs with
@@ -250,6 +256,9 @@ dirs.vendor().cache().path
 // /srv/cache/com.example
 ```
 
+Every `BaseDirs` field is `readonly`. To change a root, build a new object, for
+example `{ ...bases, cache: '/srv/other' }`.
+
 Tests use the same seam to assert exact paths without touching a real home
 directory.
 
@@ -298,7 +307,15 @@ const CONVENTIONS: readonly Convention[]
 function parseConvention(value: string): Convention
 type TierKind = 'vendor' | 'suite' | 'standalone'
 const TIER_KINDS: readonly TierKind[]
-interface BaseDirs { durable; config; cache; state; logs; runtime; scratch: string }
+interface BaseDirs {
+  readonly durable: string
+  readonly config: string
+  readonly cache: string
+  readonly state: string
+  readonly logs: string
+  readonly runtime: string
+  readonly scratch: string
+}
 interface ResolveOptions {
   platform?: string
   convention?: Convention
@@ -325,6 +342,7 @@ class TieredDirs {
 }
 function isVendorBundleId(vendor: string, bundleId: string): boolean
 
+// Tier and Dir are exported as types only. Get one from the methods above.
 class Tier {
   readonly segment: string
   readonly kind: TierKind
@@ -370,11 +388,11 @@ Neither twin may add a path shape the other lacks.
 
 ## Stability
 
-Every export is stable in 0.x, and its TSDoc says so: `TieredDirs`, `Tier`,
-`Dir`, `TieredDirsError`, `envVars`, `overrideVars`, `isOverridden`,
+Every export is stable in 0.x, and its TSDoc says so: `TieredDirs`,
+`TieredDirsError`, `envVars`, `overrideVars`, `isOverridden`,
 `systemBaseDirs`, `testRoot`, `rootedBaseDirs`, `xdgBaseDirs`,
 `parseConvention`, `isValidSegment`, `isVendorBundleId`, `HOMES`,
-`CONVENTIONS`, `TIER_KINDS` and the types `BaseDirs`, `EnvVars`, `Home`,
+`CONVENTIONS`, `TIER_KINDS` and the types `Tier`, `Dir`, `BaseDirs`, `EnvVars`, `Home`,
 `Convention`, `TierKind`, `ResolveOptions` and `TieredDirsErrorCode`. A
 breaking change to one of them ships only in a new 0.x minor release, with a
 CHANGELOG entry that starts with `Breaking:`.

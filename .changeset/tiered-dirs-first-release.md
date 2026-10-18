@@ -44,4 +44,8 @@ The additions:
 
 Changes:
 
+- `Dir` and `Tier` are exported as types only. A caller gets a value from the checked methods
+  (`TieredDirs.vendor()`, `suite()`, `standalone()`, `scratch()`, `Tier.home()` and `Dir.scoped()`
+  or `app()`), never from a constructor.
+- Every `BaseDirs` field is `readonly`.
 - Aligned with the Rust crate tiered-dirs 0.3.0.

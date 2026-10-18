@@ -44,6 +44,9 @@ export function isVendorBundleId(vendor: string, bundleId: string): boolean {
  * any scope and app segments below it. Immutable: every builder method returns
  * a new value.
  *
+ * Exported from the package as a type only. Get one from `Tier.home`,
+ * `TieredDirs.scratch()`, `Dir.scoped` or `Dir.app`, which check their input.
+ *
  * Stable in 0.x.
  */
 export class Dir {
@@ -106,6 +109,9 @@ export class Dir {
  * reader does deliberately, per file, at its own call site — never a per-key
  * cascade baked in here, which starts as two lines and ends as deep-merge
  * with array-override rules nobody can predict.
+ *
+ * Exported from the package as a type only. Get one from `TieredDirs.vendor()`,
+ * `suite(key)` or `standalone(tool)`, which check their input.
  *
  * Stable in 0.x.
  */

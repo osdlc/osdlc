@@ -35,5 +35,8 @@ export {
   xdgBaseDirs,
 } from './base-dirs.ts'
 export type { BaseDirs, Convention, EnvVars, Home, ResolveOptions } from './base-dirs.ts'
-export { TIER_KINDS, Dir, Tier, TieredDirs, isVendorBundleId } from './tiered-dirs.ts'
-export type { TierKind } from './tiered-dirs.ts'
+export { TIER_KINDS, TieredDirs, isVendorBundleId } from './tiered-dirs.ts'
+// `Dir` and `Tier` are types only: a caller gets one from the checked methods
+// (`TieredDirs.vendor/suite/standalone/scratch`, `Tier.home`, `Dir.scoped/app`),
+// never from a constructor.
+export type { Dir, Tier, TierKind } from './tiered-dirs.ts'

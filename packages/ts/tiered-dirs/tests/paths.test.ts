@@ -240,7 +240,7 @@ describe('immutability', () => {
   })
 
   test('bases are frozen against a caller mutating them after construction', () => {
-    const mutable = rootedBaseDirs('/b')
+    const mutable: { -readonly [K in keyof BaseDirs]: string } = { ...rootedBaseDirs('/b') }
     const own = new TieredDirs(VENDOR, mutable)
     mutable.cache = '/hijacked'
     expect(normalize(own.suite('notes').cache().path)).toBe(normalize('/b/cache/com.example.notes'))

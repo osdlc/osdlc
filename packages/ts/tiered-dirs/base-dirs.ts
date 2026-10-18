@@ -76,28 +76,34 @@ export function parseConvention(value: string): Convention {
  * environment hand in roots from its own configuration, while a command-line
  * program builds them from the environment.
  *
+ * Every field is `readonly`: build a new value to change a root, as
+ * {@link rootedBaseDirs} and the `overrides` option do.
+ *
  * Stable in 0.x.
  */
 export interface BaseDirs {
   /** Long-lived state that must survive a cache purge. */
-  durable: string
+  readonly durable: string
   /** User-editable configuration. */
-  config: string
+  readonly config: string
   /** Regenerable data. The OS may delete this at any time. */
-  cache: string
+  readonly cache: string
   /** State that should outlive a restart but is not user data: history, trust markers. */
-  state: string
+  readonly state: string
   /** Log files. Never folded into `cache` — the OS purges cache. */
-  logs: string
+  readonly logs: string
   /** Pidfiles, sockets, locks. Never under `cache`; see {@link systemBaseDirs}. */
-  runtime: string
+  readonly runtime: string
   /**
    * The platform temp directory. Not a {@link Home}: nothing here outlives the
    * call that wrote it, so it is untiered and reached through `TieredDirs.scratch()`
    * rather than through a tier.
    */
-  scratch: string
+  readonly scratch: string
 }
+
+/** `T` with its `readonly` modifiers removed, for building a value before returning it. */
+type Mutable<T> = { -readonly [K in keyof T]: T[K] }
 
 /** Every key of {@link BaseDirs}: the six homes plus `scratch`. */
 const BASE_DIR_KEYS: readonly (keyof BaseDirs)[] = [...HOMES, 'scratch']
@@ -354,7 +360,15 @@ export function systemBaseDirs(vars: EnvVars, opts: ResolveOptions = {}): BaseDi
   const convention = envConvention(vars, env) ?? opts.convention ?? 'native'
   const fromEnv = envOverrides(vars, env, platform)
   const table = platformTable(platform, convention, env, home)
-  const roots = {} as BaseDirs
+  const roots: Mutable<BaseDirs> = {
+    durable: '',
+    config: '',
+    cache: '',
+    state: '',
+    logs: '',
+    runtime: '',
+    scratch: '',
+  }
   for (const key of BASE_DIR_KEYS) {
     roots[key] = over[key] ?? fromEnv[key] ?? table[key]()
   }
@@ -501,7 +515,7 @@ function envOverrides(
   }
   const rootValue = read(vars.root)
   const rooted = rootValue === undefined ? undefined : rootedBaseDirs(rootValue)
-  const out: Partial<BaseDirs> = {}
+  const out: Mutable<Partial<BaseDirs>> = {}
   for (const key of BASE_DIR_KEYS) {
     if (key === 'runtime') continue
     const value = read(vars.dirs[key]) ?? rooted?.[key]
@@ -527,9 +541,15 @@ function envOverrides(
  */
 export function xdgBaseDirs(home: string, env: Record<string, string | undefined>): BaseDirs {
   const table = xdgTable(env, () => home, 'linux')
-  const roots = {} as BaseDirs
-  for (const key of BASE_DIR_KEYS) roots[key] = table[key]()
-  return roots
+  return {
+    durable: table.durable(),
+    config: table.config(),
+    cache: table.cache(),
+    state: table.state(),
+    logs: table.logs(),
+    runtime: table.runtime(),
+    scratch: table.scratch(),
+  }
 }
 
 type Table = Record<keyof BaseDirs, () => string>
@@ -670,7 +690,7 @@ function isAbsolutePath(value: string, platform: string): boolean {
 
 /** Drop explicit `undefined` entries so an override cannot blank out a root. */
 function stripUndefined(overrides: Partial<BaseDirs>): Partial<BaseDirs> {
-  const out: Partial<BaseDirs> = {}
+  const out: Mutable<Partial<BaseDirs>> = {}
   for (const key of BASE_DIR_KEYS) {
     const value = overrides[key]
     if (value !== undefined) out[key] = value
