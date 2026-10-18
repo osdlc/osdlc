@@ -72,10 +72,13 @@ handling refusals.
 - `EditError` is the refusal. Its `code` (an `EditErrorCode`) says why, and
   `name` is the same code. `span`, an `EditSpan`, is the byte range
   `[start, end)` in the input that the refusal is about, when there is one.
-- `EditErrorCode` is one of `InvalidUtf8`, `MalformedYaml`,
+- `EditErrorCode` is one of `InvalidEdit`, `InvalidUtf8`, `MalformedYaml`,
   `UnsupportedDocument`, `RootNotMapping`, `AmbiguousKey`, `MissingKey`,
   `KeyConflict`, `UnrenderableValue` and `InvalidResult`. A minor release may
   add a code, so give a `switch` over it a `default` branch.
+- Any other error `editYaml` throws is not a refusal and is passed through
+  as is. A `RuntimeError` from the WebAssembly module means it crashed; do
+  not keep calling it as if the edit had been refused.
 - `EditSpan` is `{ start, end }`, in bytes. `RootNotMapping`, `AmbiguousKey`
   and `KeyConflict` always carry one; `MalformedYaml` and
   `UnsupportedDocument` carry one when the parser knows the location.
@@ -96,6 +99,11 @@ Each export has TSDoc in the source. Your editor shows it.
   byte zero.
 - `NaN` and `±Infinity` anywhere in a `Set` value are refused as
   `UnrenderableValue` before any byte is written.
+- An edit the editor cannot read is refused as `InvalidEdit`: a `Set` with
+  no `value` (or `value: undefined`), an unknown tag, or a `Set` value
+  nested more than 124 levels deep. The last is the JSON decoder's recursion
+  limit (serde_json's 128 levels, less the levels the edit list itself
+  takes).
 - Each edit is checked against what it asked for: the addressed key must read
   back as set, removed or renamed, and no other key may change value or
   order. If not, the batch is refused as `InvalidResult` instead of returning
@@ -140,6 +148,8 @@ The experimental exports:
 | An edit that changes no value returns the input bytes | `tests/index.test.ts`, "a semantic no-op …" |
 | Non-finite numbers are refused before any write | `tests/index.test.ts`, "a non-finite number in a Set value" |
 | `EditErrorCode` lists every refusal the crate has | `tests/index.test.ts`, "EditErrorCode" |
+| A malformed or too-deeply nested edit is `InvalidEdit` | `tests/index.test.ts`, "an edit the editor cannot read" |
+| An error that is not a refusal is passed through | `tests/index.test.ts`, "an error that is not a refusal" |
 
 ## Runtimes and platforms
 
