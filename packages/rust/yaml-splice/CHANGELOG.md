@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-18
+
+### Changed
+
+- `serde_json` is now an optional dependency, behind the `serde_json` feature.
+  The feature is on by default and gates `impl From<&serde_json::Value> for
+  Value`, the only code that uses it. A build with `default-features = false`
+  no longer has that impl. This is why the version is 0.3.0.
+
+### Fixed
+
+- The `EditError::UnrenderableValue` docs no longer give a folded block scalar
+  as an example cause. The edit functions render at `line_width` 0, where the
+  emitter cannot fail, so this release never returns the variant. The docs now
+  say so.
+
 ## [0.2.2](https://github.com/osdlc/osdlc/compare/yaml-splice/v0.2.1...yaml-splice/v0.2.2) - 2026-10-17
 
 ### Other

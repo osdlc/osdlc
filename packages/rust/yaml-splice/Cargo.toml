@@ -1,6 +1,6 @@
 [package]
 name = "yaml-splice"
-version = "0.2.2"
+version = "0.3.0"
 edition.workspace = true
 rust-version.workspace = true
 description = "Edit top-level fields of a YAML mapping in place: set, remove and rename a key while every other byte, comments, key order and quoting included, stays as it was."
@@ -22,8 +22,18 @@ include = [
 
 [dependencies]
 saphyr-parser = { workspace = true }
-serde_json = { workspace = true }
+serde_json = { workspace = true, optional = true }
 thiserror = { workspace = true }
+
+[features]
+default = ["serde_json"]
+# `impl From<&serde_json::Value> for Value`. Nothing else uses serde_json.
+serde_json = ["dep:serde_json"]
+
+# Loads its JSON fixtures and builds `Set` values with the serde_json bridge.
+[[test]]
+name = "conformance"
+required-features = ["serde_json"]
 
 [lints]
 workspace = true

@@ -185,8 +185,14 @@ pub enum EditError {
         at: Range<usize>,
     },
 
-    /// A value could not be rendered as YAML, for example because it would
-    /// need a folded block scalar, which the emitter does not write.
+    /// The emitter refused to render a `Set` value, or a key a `Set` adds or
+    /// a `Rename` writes.
+    ///
+    /// The edit functions render at `line_width` 0. The only emitter error,
+    /// [`RenderError::FoldedBlockUnsupported`](crate::render::RenderError::FoldedBlockUnsupported),
+    /// needs a `line_width` above 0, so this release never returns this
+    /// variant. It is kept so a new emitter error can be reported without a
+    /// breaking change.
     #[error("value for key {key:?} cannot be rendered: {message}")]
     UnrenderableValue {
         /// The key whose value failed.

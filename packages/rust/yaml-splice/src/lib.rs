@@ -41,6 +41,12 @@
 //! [`value::js_float_to_string`] are marked "unstable": they may change in any
 //! 0.x minor release.
 //!
+//! # Cargo features
+//!
+//! - `serde_json` (on by default): `impl From<&serde_json::Value> for Value`.
+//!   It is the only use of `serde_json`. Parsing, rendering and the edit
+//!   functions do not need it. Turn it off with `default-features = false`.
+//!
 //! # The modules
 //!
 //! | module | what it holds |

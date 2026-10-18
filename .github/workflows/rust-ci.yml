@@ -115,6 +115,12 @@ jobs:
           RUSTDOCFLAGS: -D warnings
         run: cargo doc --workspace --no-deps --locked
 
+      # The other steps build with default features only.
+      - name: yaml-splice without default features
+        run: |
+          cargo clippy -p yaml-splice --no-default-features --all-targets --locked -- -D warnings
+          cargo test -p yaml-splice --no-default-features --locked
+
       # Builds each crate from its packaged files only, so a file missing from
       # a crate's `include` list fails here and not on crates.io.
       - name: Package
