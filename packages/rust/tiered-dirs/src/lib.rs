@@ -126,27 +126,28 @@
 //! Per base directory, the first answer wins: the per-home variable, then the
 //! root variable laid out as [`BaseDirs::rooted`], then the OS default for the
 //! convention. `<P>_CONVENTION` picks that convention over the caller's. See
-//! [`BaseDirs::from_env_opts`]. The TS twin's `systemBaseDirs` resolves the same
+//! [`BaseDirs::from_env`]. The TS twin's `systemBaseDirs` resolves the same
 //! order, held to it by the `env_cases` in the parity fixture.
 //!
 //! # Tests never resolve a real home
 //!
-//! Two rules sit in [`BaseDirs::from_env`] and [`BaseDirs::from_env_opts`],
-//! and so in the [`TieredDirs`] constructors of the same names, above that
-//! order:
+//! Two rules sit in [`BaseDirs::from_env`], and so in [`TieredDirs::from_env`],
+//! above that order:
 //!
 //! - **A cargo test binary defaults to a scratch root.** When the root
 //!   variable is unset in a test binary that cargo or nextest runs, it reads
 //!   as [`test_root`]: `<temp>/tiered-dirs-test-<pid>-<start nanos>`, unique
 //!   per process. Plain `cargo test` needs no setup, and a killed run leaves
 //!   its debris in temp, not in the real homes. A test binary run directly,
-//!   as an IDE debugger does, has no `CARGO` set and gets none.
+//!   as an IDE debugger does, has no `CARGO` set and gets none. A caller
+//!   that wants the OS defaults even under cargo turns this rule off with
+//!   [`ResolveOptions::with_test_root`].
 //! - **[`EnvVars::require_override`] turns the OS fallback into an error.** A
 //!   test runner sets it. Child processes inherit it, so a binary a test
 //!   spawns without a scratch root fails loudly instead of writing to the
 //!   real home.
 //!
-//! [`BaseDirs::from_env_with`] and [`BaseDirs::from_env_opts_with`] apply
+//! [`BaseDirs::from_env_with`] and [`TieredDirs::from_env_with`] apply
 //! neither rule. A test that means to read the OS defaults calls one of them.
 //!
 //! # Windows
@@ -166,9 +167,9 @@
 //!
 //! # Stability
 //!
-//! Each public item's docs say "stable in 0.x": it is not expected to change
-//! in a breaking way before 1.0. [`Error`] and [`Convention`] are
-//! `#[non_exhaustive]`, so a later release can add a variant without a
+//! Each public item's docs say "stable in 0.x": a breaking change to it ships
+//! only in a new 0.x minor release, with a CHANGELOG entry. [`Error`], [`Convention`] and [`TierKind`]
+//! are `#[non_exhaustive]`, so a later release can add a variant without a
 //! breaking change. [`EnvVars`] and [`ResolveOptions`] are too, so a later
 //! release can add a field. [`Home`] is exhaustive: adding a home changes
 //! every caller's layout, so it is a breaking (0.x minor) release.
@@ -356,11 +357,12 @@ const RESERVED_SEGMENTS: [&str; 3] = ["state", "logs", RUNTIME_FALLBACK_SEGMENT]
 
 /// Everything this crate can fail with.
 ///
-/// New variants may be added in a compatible release (0.2.z), so a `match`
+/// New variants may be added in a compatible release (0.3.z), so a `match`
 /// needs a wildcard arm.
 ///
-/// **Stability:** stable in 0.x. The five variants and their fields are not
-/// expected to change; new variants may be added.
+/// **Stability:** stable in 0.x. A change to the five variants or their fields
+/// ships only in a new 0.x minor release; new variants may be added in any
+/// release.
 #[derive(Debug, thiserror::Error, PartialEq, Eq, Clone)]
 #[non_exhaustive]
 pub enum Error {
@@ -583,7 +585,8 @@ impl std::str::FromStr for Convention {
     }
 }
 
-/// How [`BaseDirs::from_env_opts`] and [`TieredDirs::from_env_opts`] resolve.
+/// How [`BaseDirs::from_env`] and [`TieredDirs::from_env`] resolve, and their
+/// `_with` forms.
 ///
 /// One value for every knob, so a new knob is a new field here rather than a
 /// new constructor. Build it with [`ResolveOptions::new`] or `default()`, then
@@ -594,24 +597,31 @@ impl std::str::FromStr for Convention {
 ///
 /// const CLI: ResolveOptions = ResolveOptions::new().with_convention(Convention::Xdg);
 /// assert_eq!(CLI.convention, Convention::Xdg);
-/// assert_eq!(ResolveOptions::default().convention, Convention::Native);
+/// assert!(CLI.test_root);
+/// assert_eq!(ResolveOptions::default(), ResolveOptions::new());
 /// ```
 ///
 /// **Stability:** stable in 0.x. `#[non_exhaustive]`, so a later release can
 /// add a field without a breaking change.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub struct ResolveOptions {
     /// The per-OS table for the OS defaults. [`EnvVars::convention`] beats it
     /// when set.
     pub convention: Convention,
+    /// Whether [`BaseDirs::from_env`] and [`TieredDirs::from_env`] read an
+    /// unset root variable as [`test_root`] in a cargo test binary. On by
+    /// default. Off, they resolve as they would outside cargo;
+    /// [`EnvVars::root`] and [`EnvVars::require_override`] still apply.
+    pub test_root: bool,
 }
 
 impl ResolveOptions {
-    /// The defaults: [`Convention::Native`].
+    /// The defaults: [`Convention::Native`], with test-root detection on.
     pub const fn new() -> Self {
         Self {
             convention: Convention::Native,
+            test_root: true,
         }
     }
 
@@ -621,14 +631,29 @@ impl ResolveOptions {
         self.convention = convention;
         self
     }
+
+    /// These options with test-root detection on or off. See
+    /// [`ResolveOptions::test_root`].
+    #[must_use]
+    pub const fn with_test_root(mut self, on: bool) -> Self {
+        self.test_root = on;
+        self
+    }
+}
+
+/// [`ResolveOptions::new`].
+impl Default for ResolveOptions {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// The platform base directories, resolved once: the six homes plus
 /// `scratch`.
 ///
-/// Construct with [`BaseDirs::from_env`] or [`BaseDirs::from_env_opts`] in
-/// production and [`BaseDirs::rooted`], [`BaseDirs::xdg`] or
-/// [`BaseDirs::from_env_with`] in tests. Once built, nothing in this crate
+/// Construct with [`BaseDirs::from_env`] in production and
+/// [`BaseDirs::rooted`], [`BaseDirs::xdg`] or [`BaseDirs::from_env_with`] in
+/// tests. Once built, nothing in this crate
 /// consults the environment again — path resolution below this type is pure.
 ///
 /// **Stability:** stable in 0.x.
@@ -644,16 +669,6 @@ pub struct BaseDirs {
 }
 
 impl BaseDirs {
-    /// [`BaseDirs::from_env_opts`] with the default [`ResolveOptions`]
-    /// ([`Convention::Native`]).
-    ///
-    /// # Errors
-    ///
-    /// The errors of [`BaseDirs::from_env_opts`].
-    pub fn from_env(vars: &EnvVars) -> Result<Self, Error> {
-        Self::from_env_opts(vars, ResolveOptions::new())
-    }
-
     /// Resolve from the environment and the platform, once.
     ///
     /// Each base directory takes the first answer in this order:
@@ -683,8 +698,9 @@ impl BaseDirs {
     ///
     /// Two test rules run first (see "Tests never resolve a real home" in the
     /// crate docs): in a cargo test binary an unset root variable reads as
-    /// [`test_root`], and with [`EnvVars::require_override`] set an OS
-    /// fallback is [`Error::OverrideRequired`].
+    /// [`test_root`], unless [`ResolveOptions::test_root`] is off, and with
+    /// [`EnvVars::require_override`] set an OS fallback is
+    /// [`Error::OverrideRequired`].
     ///
     /// A later knob goes on [`ResolveOptions`], not on a new constructor.
     ///
@@ -696,11 +712,11 @@ impl BaseDirs {
     /// [`EnvVars::require_override`] is set and a base directory would fall
     /// back to the OS default, and [`Error::MissingBaseDir`] when the platform
     /// has no such directory.
-    pub fn from_env_opts(vars: &EnvVars, opts: ResolveOptions) -> Result<Self, Error> {
+    pub fn from_env(vars: &EnvVars, opts: ResolveOptions) -> Result<Self, Error> {
         Self::from_env_guarded(vars, opts, |name| std::env::var_os(name), test_root())
     }
 
-    /// [`BaseDirs::from_env_opts`] with the environment and the test root
+    /// [`BaseDirs::from_env`] with the environment and the test root
     /// injected, so the test rules are testable without the process env.
     fn from_env_guarded(
         vars: &EnvVars,
@@ -710,10 +726,10 @@ impl BaseDirs {
     ) -> Result<Self, Error> {
         let var = |name: &str| var(name).filter(|value| !value.is_empty());
         if var(vars.root).is_some() {
-            return Self::from_env_opts_with(vars, opts, var);
+            return Self::from_env_with(vars, opts, var);
         }
-        if let Some(root) = test_root {
-            return Self::from_env_opts_with(vars, opts, |name| {
+        if let Some(root) = test_root.filter(|_| opts.test_root) {
+            return Self::from_env_with(vars, opts, |name| {
                 if name == vars.root {
                     Some(root.as_os_str().to_owned())
                 } else {
@@ -739,27 +755,16 @@ impl BaseDirs {
                 });
             }
         }
-        Self::from_env_opts_with(vars, opts, var)
+        Self::from_env_with(vars, opts, var)
     }
 
-    /// [`BaseDirs::from_env_opts_with`] with the default [`ResolveOptions`].
-    ///
-    /// # Errors
-    ///
-    /// The errors of [`BaseDirs::from_env_opts_with`].
-    pub fn from_env_with(
-        vars: &EnvVars,
-        var: impl Fn(&str) -> Option<OsString>,
-    ) -> Result<Self, Error> {
-        Self::from_env_opts_with(vars, ResolveOptions::new(), var)
-    }
-
-    /// [`BaseDirs::from_env_opts`] with every variable read through `var`
+    /// [`BaseDirs::from_env`] with every variable read through `var`
     /// instead of the process environment: the override variables, the
     /// convention variable and `XDG_*`. The home directory and the macOS
     /// Native and Windows cells still come from the platform. The seam that
     /// lets a test exercise every precedence case without mutating the
-    /// process env. Applies neither test rule.
+    /// process env. Applies neither test rule, so
+    /// [`ResolveOptions::test_root`] has no effect here.
     ///
     /// # Errors
     ///
@@ -767,7 +772,7 @@ impl BaseDirs {
     /// [`Error::InvalidConvention`] when [`EnvVars::convention`] names no
     /// convention, and [`Error::MissingBaseDir`] when the platform has no such
     /// directory.
-    pub fn from_env_opts_with(
+    pub fn from_env_with(
         vars: &EnvVars,
         opts: ResolveOptions,
         var: impl Fn(&str) -> Option<OsString>,
@@ -1089,8 +1094,9 @@ pub struct TieredDirs {
 }
 
 impl TieredDirs {
-    /// Resolve the platform base directories once, reading the override
-    /// variables `vars` names, and build a `TieredDirs` for `vendor`.
+    /// Resolve the platform base directories once with
+    /// [`BaseDirs::from_env`], reading the override variables `vars` names
+    /// and resolving with `opts`, and build a `TieredDirs` for `vendor`.
     ///
     /// `vendor` is validated as a single path segment, e.g. `com.example`.
     ///
@@ -1098,23 +1104,8 @@ impl TieredDirs {
     ///
     /// The errors of [`BaseDirs::from_env`], and [`Error::InvalidKey`] when
     /// `vendor` is not a valid segment.
-    pub fn from_env(vendor: &str, vars: &EnvVars) -> Result<Self, Error> {
-        Self::with_base_dirs(vendor, BaseDirs::from_env(vars)?)
-    }
-
-    /// [`TieredDirs::from_env`] resolved with `opts`, such as another
-    /// [`Convention`]; see [`BaseDirs::from_env_opts`].
-    ///
-    /// # Errors
-    ///
-    /// The errors of [`BaseDirs::from_env_opts`], and [`Error::InvalidKey`]
-    /// when `vendor` is not a valid segment.
-    pub fn from_env_opts(
-        vendor: &str,
-        vars: &EnvVars,
-        opts: ResolveOptions,
-    ) -> Result<Self, Error> {
-        Self::with_base_dirs(vendor, BaseDirs::from_env_opts(vars, opts)?)
+    pub fn from_env(vendor: &str, vars: &EnvVars, opts: ResolveOptions) -> Result<Self, Error> {
+        Self::with_base_dirs(vendor, BaseDirs::from_env(vars, opts)?)
     }
 
     /// [`TieredDirs::from_env`] with the variables read through `var`; see
@@ -1127,25 +1118,10 @@ impl TieredDirs {
     pub fn from_env_with(
         vendor: &str,
         vars: &EnvVars,
-        var: impl Fn(&str) -> Option<OsString>,
-    ) -> Result<Self, Error> {
-        Self::with_base_dirs(vendor, BaseDirs::from_env_with(vars, var)?)
-    }
-
-    /// [`TieredDirs::from_env_opts`] with the variables read through `var`;
-    /// see [`BaseDirs::from_env_opts_with`].
-    ///
-    /// # Errors
-    ///
-    /// The errors of [`BaseDirs::from_env_opts_with`], and
-    /// [`Error::InvalidKey`] when `vendor` is not a valid segment.
-    pub fn from_env_opts_with(
-        vendor: &str,
-        vars: &EnvVars,
         opts: ResolveOptions,
         var: impl Fn(&str) -> Option<OsString>,
     ) -> Result<Self, Error> {
-        Self::with_base_dirs(vendor, BaseDirs::from_env_opts_with(vars, opts, var)?)
+        Self::with_base_dirs(vendor, BaseDirs::from_env_with(vars, opts, var)?)
     }
 
     /// Build from injected base directories. The testable constructor.
@@ -1265,8 +1241,11 @@ impl TieredDirs {
 /// Exposed so a caller — or a gate run over a third party's install — can tell
 /// a suite address from a standalone one without parsing the segment string.
 ///
-/// **Stability:** stable in 0.x.
+/// **Stability:** stable in 0.x. `#[non_exhaustive]`, so a later release can
+/// add a kind without a breaking change; a `match` outside this crate needs a
+/// `_` arm.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum TierKind {
     /// [`TieredDirs::vendor`]: `<vendor>`.
     Vendor,
@@ -1704,7 +1683,7 @@ mod tests {
     #[test]
     fn from_env_resolves_or_errors_without_panicking() {
         // Whichever way this machine answers, it must not unwrap.
-        match BaseDirs::from_env(&ENV) {
+        match BaseDirs::from_env(&ENV, ResolveOptions::new()) {
             Ok(base) => {
                 for home in Home::ALL {
                     assert!(base.get(home).is_absolute(), "{}", home.as_str());
@@ -1737,7 +1716,7 @@ mod tests {
             name.len() > prefix.len() && name.starts_with(&prefix),
             "{name}"
         );
-        let dirs = TieredDirs::from_env(VENDOR, &ENV).unwrap();
+        let dirs = TieredDirs::from_env(VENDOR, &ENV, ResolveOptions::new()).unwrap();
         for home in Home::ALL {
             assert!(dirs.base_dirs().get(home).starts_with(root), "{home:?}");
         }
@@ -1761,10 +1740,18 @@ mod tests {
     }
 
     fn guarded(vars: &[(&str, &str)], test_root: Option<&str>) -> Result<BaseDirs, Error> {
+        guarded_opts(ResolveOptions::new(), vars, test_root)
+    }
+
+    fn guarded_opts(
+        opts: ResolveOptions,
+        vars: &[(&str, &str)],
+        test_root: Option<&str>,
+    ) -> Result<BaseDirs, Error> {
         let test_root = test_root.map(abs);
         BaseDirs::from_env_guarded(
             &ENV,
-            ResolveOptions::new(),
+            opts,
             |name| {
                 vars.iter()
                     .find(|(key, _)| *key == name)
@@ -1792,6 +1779,66 @@ mod tests {
             )
             .unwrap(),
             BaseDirs::rooted(abs("/r")),
+        );
+    }
+
+    #[test]
+    fn resolve_options_default_to_native_with_the_test_root_on() {
+        let opts = ResolveOptions::default();
+        assert_eq!(opts, ResolveOptions::new());
+        assert_eq!(opts.convention, Convention::Native);
+        assert!(opts.test_root);
+        assert!(!opts.with_test_root(false).test_root);
+        assert!(opts.with_test_root(false).with_test_root(true).test_root);
+        let xdg = opts.with_convention(Convention::Xdg);
+        assert_eq!(xdg.convention, Convention::Xdg);
+        assert!(xdg.test_root);
+    }
+
+    #[test]
+    fn with_the_test_root_off_a_test_binary_resolves_as_outside_cargo() {
+        let off = ResolveOptions::new().with_test_root(false);
+        // The OS and env values, not the fake test root.
+        assert_eq!(guarded_opts(off, &[], Some("/t")), from_vars(&[]));
+        let cache = [("EXAMPLE_CACHE_DIR", "/c")];
+        assert_eq!(guarded_opts(off, &cache, Some("/t")), from_vars(&cache));
+        // The root variable still wins.
+        assert_eq!(
+            guarded_opts(off, &[("EXAMPLE_ROOT", "/r")], Some("/t")).unwrap(),
+            BaseDirs::rooted(abs("/r")),
+        );
+        // The guard still refuses an OS fallback.
+        assert!(matches!(
+            guarded_opts(off, &[(ENV.require_override, "1")], Some("/t")),
+            Err(Error::OverrideRequired { .. })
+        ));
+        // On, the fake test root stands in as before.
+        let on = ResolveOptions::new().with_test_root(true);
+        assert_eq!(
+            guarded_opts(on, &[], Some("/t")).unwrap(),
+            BaseDirs::rooted(abs("/t"))
+        );
+        assert_eq!(
+            guarded_opts(on, &[(ENV.require_override, "1")], Some("/t")).unwrap(),
+            BaseDirs::rooted(abs("/t"))
+        );
+    }
+
+    /// This binary runs under cargo, yet with the switch off the real
+    /// environment resolves as `from_env_with` over the same environment.
+    #[test]
+    fn from_env_with_the_test_root_off_skips_the_scratch_root() {
+        assert!(test_root().is_some(), "cargo test should have a test root");
+        if [ENV.root, ENV.require_override]
+            .iter()
+            .any(|name| std::env::var_os(name).is_some_and(|v| !v.is_empty()))
+        {
+            return; // The other rules decide; nothing to prove here.
+        }
+        let off = ResolveOptions::new().with_test_root(false);
+        assert_eq!(
+            BaseDirs::from_env(&ENV, off),
+            BaseDirs::from_env_with(&ENV, off, |name| std::env::var_os(name)),
         );
     }
 
@@ -1842,7 +1889,7 @@ mod tests {
 
     /// `from_env_with` over a fixed map, so no test touches the process env.
     fn from_vars(vars: &[(&str, &str)]) -> Result<BaseDirs, Error> {
-        BaseDirs::from_env_with(&ENV, |name| {
+        BaseDirs::from_env_with(&ENV, ResolveOptions::new(), |name| {
             vars.iter()
                 .find(|(key, _)| *key == name)
                 .map(|(_, value)| OsString::from(host_value(value)))
@@ -1944,10 +1991,10 @@ mod tests {
         assert_eq!(base.get(Home::Runtime), support.join("run"));
     }
 
-    /// `from_env_opts_with` over a fixed map, under one convention.
+    /// `from_env_with` over a fixed map, under one convention.
     fn from_vars_in(convention: Convention, vars: &[(&str, &str)]) -> Result<BaseDirs, Error> {
         let opts = ResolveOptions::new().with_convention(convention);
-        BaseDirs::from_env_opts_with(&ENV, opts, |name| {
+        BaseDirs::from_env_with(&ENV, opts, |name| {
             vars.iter()
                 .find(|(key, _)| *key == name)
                 .map(|(_, value)| OsString::from(host_value(value)))
@@ -2074,14 +2121,6 @@ mod tests {
     }
 
     #[test]
-    fn resolve_options_default_to_native() {
-        assert_eq!(ResolveOptions::new(), ResolveOptions::default());
-        assert_eq!(ResolveOptions::new().convention, Convention::Native);
-        let xdg = ResolveOptions::new().with_convention(Convention::Xdg);
-        assert_eq!(xdg.convention, Convention::Xdg);
-    }
-
-    #[test]
     fn a_relative_override_is_refused() {
         assert_eq!(
             from_vars(&[("EXAMPLE_ROOT", "scratch")]).unwrap_err(),
@@ -2101,7 +2140,7 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn a_path_with_no_drive_is_relative_on_windows() {
-        let err = BaseDirs::from_env_with(&ENV, |name| {
+        let err = BaseDirs::from_env_with(&ENV, ResolveOptions::new(), |name| {
             (name == "EXAMPLE_ROOT").then(|| OsString::from("\\state"))
         })
         .unwrap_err();
@@ -2117,7 +2156,7 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn a_unc_path_is_absolute_on_windows() {
-        let base = BaseDirs::from_env_with(&ENV, |name| {
+        let base = BaseDirs::from_env_with(&ENV, ResolveOptions::new(), |name| {
             (name == "EXAMPLE_ROOT").then(|| OsString::from(r"\\server\share\state"))
         })
         .unwrap();

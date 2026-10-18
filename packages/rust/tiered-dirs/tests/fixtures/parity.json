@@ -35,7 +35,7 @@
     "scratch root.",
     "",
     "`env_cases` drive base-directory resolution from the override variables:",
-    "`BaseDirs::from_env_opts_with` in Rust, `systemBaseDirs(vars, { env,",
+    "`BaseDirs::from_env_with` in Rust, `systemBaseDirs(vars, { env,",
     "convention })` in TS. `convention` is the constructor's convention, `native`",
     "when omitted. `env` is the variables set: the override variables,",
     "`<prefix>_CONVENTION` and `XDG_*`. `expected` pins absolute paths, which must",

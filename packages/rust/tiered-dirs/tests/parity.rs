@@ -341,7 +341,7 @@ fn host_var(env: &Env, name: &str) -> Option<std::ffi::OsString> {
 }
 
 fn from_vars(opts: ResolveOptions, env: &Env) -> BaseDirs {
-    BaseDirs::from_env_opts_with(&ENV, opts, |name| host_var(env, name))
+    BaseDirs::from_env_with(&ENV, opts, |name| host_var(env, name))
         .unwrap_or_else(|err| panic!("{env:?}: {err}"))
 }
 
@@ -361,7 +361,7 @@ fn base_names() -> impl Iterator<Item = &'static str> {
 #[test]
 fn every_env_case_resolves_to_its_fixture_paths() {
     // A machine with no home directory has no OS default to compare with.
-    if BaseDirs::from_env_with(&ENV, |_| None).is_err() {
+    if BaseDirs::from_env_with(&ENV, ResolveOptions::new(), |_| None).is_err() {
         return;
     }
     for case in fixture().env_cases {
@@ -431,7 +431,7 @@ fn every_convention_case_resolves_to_its_fixture_paths() {
 #[test]
 fn every_rejected_convention_is_refused() {
     for Rejected { name, value } in fixture().rejected_conventions {
-        let err = BaseDirs::from_env_with(&ENV, |var| {
+        let err = BaseDirs::from_env_with(&ENV, ResolveOptions::new(), |var| {
             (var == ENV.convention).then(|| value.clone().into())
         })
         .unwrap_err();

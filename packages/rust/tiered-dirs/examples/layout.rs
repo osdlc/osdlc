@@ -27,7 +27,7 @@ fn main() -> Result<(), Error> {
     // Set only when this runs as a cargo test binary, so `None` here.
     println!("test root: {:?}", test_root());
 
-    let dirs = match TieredDirs::from_env(VENDOR, &ENV) {
+    let dirs = match TieredDirs::from_env(VENDOR, &ENV, ResolveOptions::new()) {
         Ok(dirs) => dirs,
         // No home directory on this machine: show the layout under a stub root.
         Err(Error::MissingBaseDir { home }) => {
@@ -95,7 +95,7 @@ fn main() -> Result<(), Error> {
 
     // A CLI tool picks the XDG table: `~/.config/devtool` on macOS too.
     let opts = ResolveOptions::new().with_convention("xdg".parse()?);
-    let cli = TieredDirs::from_env_opts(VENDOR, &ENV, opts)?;
+    let cli = TieredDirs::from_env(VENDOR, &ENV, opts)?;
     println!(
         "\nunder {}: devtool config is {}",
         opts.convention.as_str(),
@@ -107,7 +107,7 @@ fn main() -> Result<(), Error> {
 
     // A test resolves from its own map of variables, never the process env.
     let fake = |name: &str| (name == ENV.root).then(|| OsString::from(std::env::temp_dir()));
-    let moved = TieredDirs::from_env_with(VENDOR, &ENV, fake)?;
+    let moved = TieredDirs::from_env_with(VENDOR, &ENV, ResolveOptions::new(), fake)?;
     println!(
         "\nwith EXAMPLE_ROOT = temp: config is {}",
         show(moved.vendor().config().path())

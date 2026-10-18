@@ -43,7 +43,7 @@ dependencies = [
  "serde_yaml",
  "tempfile",
  "thiserror",
- "tiered-dirs",
+ "tiered-dirs 0.2.0",
 ]
 
 [[package]]
@@ -450,6 +450,16 @@ dependencies = [
 [[package]]
 name = "tiered-dirs"
 version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1aa498acb757c138da383f7e0cb836333d592511e092569c566560174de798ee"
+dependencies = [
+ "dirs",
+ "thiserror",
+]
+
+[[package]]
+name = "tiered-dirs"
+version = "0.3.0"
 dependencies = [
  "dirs",
  "serde",
