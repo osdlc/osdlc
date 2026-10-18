@@ -1,0 +1,296 @@
+{
+  "validate_relative": [
+    { "name": "plain file", "input": "Notes/a.md", "ok": "Notes/a.md" },
+    { "name": "single segment", "input": "a.md", "ok": "a.md" },
+    { "name": "trailing slash dropped", "input": "a/b/", "ok": "a/b" },
+    { "name": "several trailing slashes dropped", "input": "a/b///", "ok": "a/b" },
+    { "name": "backslashes fold to slashes", "input": "Notes\\a.md", "ok": "Notes/a.md" },
+    {
+      "name": "dots inside a name",
+      "input": "My ..dotfiles note.md",
+      "ok": "My ..dotfiles note.md"
+    },
+    {
+      "name": "double dot inside a segment",
+      "input": "Notes/v1..2 comparison.md",
+      "ok": "Notes/v1..2 comparison.md"
+    },
+    { "name": "leading dot name", "input": ".hidden/a.md", "ok": ".hidden/a.md" },
+    { "name": "three dots is a name", "input": "a/.../b", "ok": "a/.../b" },
+    { "name": "tilde not at the start", "input": "a/~b", "ok": "a/~b" },
+    { "name": "colon not in drive position", "input": "ab:c", "ok": "ab:c" },
+    { "name": "unicode name", "input": "Notes/café.md", "ok": "Notes/café.md" },
+
+    { "name": "empty", "input": "", "error": "empty" },
+    { "name": "bare slash", "input": "/", "error": "absolute" },
+    { "name": "NUL byte", "input": "a\u0000b", "error": "nul" },
+    { "name": "NUL wins over traversal", "input": "../a\u0000", "error": "nul" },
+    { "name": "home tilde", "input": "~/.ssh/id_rsa", "error": "tilde" },
+    { "name": "bare tilde", "input": "~", "error": "tilde" },
+    { "name": "drive with backslash", "input": "C:\\Windows", "error": "windows_path" },
+    { "name": "drive with slash", "input": "C:/Windows", "error": "windows_path" },
+    { "name": "lower-case drive", "input": "c:x", "error": "windows_path" },
+    { "name": "UNC share", "input": "\\\\srv\\share", "error": "windows_path" },
+    { "name": "absolute", "input": "/etc/passwd", "error": "absolute" },
+    { "name": "absolute with backslash", "input": "\\etc\\passwd", "error": "absolute" },
+    { "name": "leading parent", "input": "../etc/passwd", "error": "parent_segment" },
+    { "name": "parent after a name", "input": "Notes/../../etc/passwd", "error": "parent_segment" },
+    {
+      "name": "parent spelled with backslashes",
+      "input": "Notes\\..\\..\\etc",
+      "error": "parent_segment"
+    },
+    { "name": "bare parent", "input": "..", "error": "parent_segment" },
+    { "name": "trailing parent", "input": "a/..", "error": "parent_segment" },
+    { "name": "empty segment", "input": "a//b", "error": "degenerate_segment" },
+    { "name": "leading dot segment", "input": "./a", "error": "degenerate_segment" },
+    { "name": "inner dot segment", "input": "a/./b", "error": "degenerate_segment" },
+    { "name": "bare dot", "input": ".", "error": "degenerate_segment" },
+    { "name": "dot segment before a parent", "input": "./../a", "error": "degenerate_segment" }
+  ],
+  "resolve": [
+    { "name": "joins under the root", "root": "/v", "input": "Notes/a.md", "ok": "/v/Notes/a.md" },
+    { "name": "trailing slash dropped", "root": "/v", "input": "Notes/", "ok": "/v/Notes" },
+    { "name": "backslashes fold", "root": "/v", "input": "Notes\\a.md", "ok": "/v/Notes/a.md" },
+    {
+      "name": "lexical refusal comes first",
+      "root": "/v",
+      "input": "../v/a.md",
+      "error": "parent_segment"
+    },
+    { "name": "absolute refused", "root": "/v", "input": "/v/a.md", "error": "absolute" },
+    { "name": "an empty root contains nothing", "root": "", "input": "a.md", "error": "escapes" },
+    {
+      "name": "a root that folds to nothing contains nothing",
+      "root": "missing/..",
+      "input": "a.md",
+      "error": "escapes"
+    }
+  ],
+  "contains": [
+    { "name": "a root contains itself", "outer": "/v", "inner": "/v", "expected": true },
+    { "name": "a child", "outer": "/v", "inner": "/v/a/b", "expected": true },
+    {
+      "name": "a name prefix is not a parent",
+      "outer": "/v",
+      "inner": "/vee/a",
+      "expected": false
+    },
+    { "name": "a sibling", "outer": "/v", "inner": "/w/a", "expected": false },
+    { "name": "the parent of the root", "outer": "/v/a", "inner": "/v", "expected": false },
+    { "name": "dots fold back inside", "outer": "/v", "inner": "/x/../v/out", "expected": true },
+    { "name": "dots fold outside", "outer": "/v", "inner": "/v/../w/out", "expected": false },
+    { "name": "dot segments dropped", "outer": "/v", "inner": "/v/./a/./b", "expected": true },
+    { "name": "dots in the root fold too", "outer": "/x/../v", "inner": "/v/a", "expected": true },
+    {
+      "name": "an empty outer holds no absolute path",
+      "outer": "",
+      "inner": "/v/a",
+      "expected": false
+    },
+    {
+      "name": "an empty outer holds no relative path",
+      "outer": "",
+      "inner": "a",
+      "expected": false
+    },
+    {
+      "name": "an outer that folds to nothing holds nothing",
+      "outer": "missing/..",
+      "inner": "/v",
+      "expected": false
+    }
+  ],
+  "resolve_on_disk": [
+    {
+      "name": "a dangling link to a missing file outside",
+      "dirs": ["root", "outside"],
+      "links": { "root/x.json": "/outside/planted.json" },
+      "root": "root",
+      "input": "x.json",
+      "error": "escapes"
+    },
+    {
+      "name": "a dangling relative link to a missing file outside",
+      "dirs": ["root", "outside"],
+      "links": { "root/x.json": "../outside/planted.json" },
+      "root": "root",
+      "input": "x.json",
+      "error": "escapes"
+    },
+    {
+      "name": "a dangling link to a missing file inside",
+      "dirs": ["root"],
+      "links": { "root/x.json": "/root/new.json" },
+      "root": "root",
+      "input": "x.json",
+      "ok": "root/x.json"
+    },
+    {
+      "name": "a relative target resolves against the link's directory",
+      "dirs": ["root/sub"],
+      "links": { "root/sub/x.json": "../new.json" },
+      "root": "root",
+      "input": "sub/x.json",
+      "ok": "root/sub/x.json"
+    },
+    {
+      "name": "a relative target that climbs out of the link's directory",
+      "dirs": ["root/sub"],
+      "links": { "root/sub/x.json": "../../planted.json" },
+      "root": "root",
+      "input": "sub/x.json",
+      "error": "escapes"
+    },
+    {
+      "name": "a chain of dangling links that ends outside",
+      "dirs": ["root", "outside"],
+      "links": { "root/a.json": "b.json", "root/b.json": "/outside/planted.json" },
+      "root": "root",
+      "input": "a.json",
+      "error": "escapes"
+    },
+    {
+      "name": "a chain of dangling links that ends inside",
+      "dirs": ["root"],
+      "links": { "root/a.json": "b.json", "root/b.json": "c.json" },
+      "root": "root",
+      "input": "a.json",
+      "ok": "root/a.json"
+    },
+    {
+      "name": "a dangling link as a directory",
+      "dirs": ["root", "outside"],
+      "links": { "root/d": "/outside/missing" },
+      "root": "root",
+      "input": "d/x.json",
+      "error": "escapes"
+    },
+    {
+      "name": "a dangling link to a missing directory inside",
+      "dirs": ["root"],
+      "links": { "root/d": "later" },
+      "root": "root",
+      "input": "d/x.json",
+      "ok": "root/d/x.json"
+    },
+    {
+      "name": "a dangling link whose target sits under a link out",
+      "dirs": ["root", "outside"],
+      "links": { "root/x.json": "out/planted.json", "root/out": "/outside" },
+      "root": "root",
+      "input": "x.json",
+      "error": "escapes"
+    },
+    {
+      "name": "a dangling link reached through a link that stays inside",
+      "dirs": ["root/real", "outside"],
+      "links": { "root/alias": "real", "root/real/x.json": "/outside/planted.json" },
+      "root": "root",
+      "input": "alias/x.json",
+      "error": "escapes"
+    },
+    {
+      "name": "a link loop",
+      "dirs": ["root"],
+      "links": { "root/a": "b", "root/b": "a" },
+      "root": "root",
+      "input": "a",
+      "error": "escapes"
+    },
+    {
+      "name": "a link to itself",
+      "dirs": ["root"],
+      "links": { "root/a": "a" },
+      "root": "root",
+      "input": "a/x.json",
+      "error": "escapes"
+    },
+    {
+      "name": "a link out to a directory that exists",
+      "dirs": ["root", "outside"],
+      "links": { "root/escape": "/outside" },
+      "root": "root",
+      "input": "escape/new.md",
+      "error": "escapes"
+    },
+    {
+      "name": "a link to a file that exists inside",
+      "dirs": ["root"],
+      "files": ["root/a.md"],
+      "links": { "root/alias.md": "a.md" },
+      "root": "root",
+      "input": "alias.md",
+      "ok": "root/alias.md"
+    },
+    {
+      "name": "a root that does not exist yet under a symlinked parent",
+      "dirs": ["real"],
+      "links": { "sym": "/real" },
+      "root": "sym/vault/Workflows",
+      "input": "a.md",
+      "ok": "sym/vault/Workflows/a.md"
+    },
+    {
+      "name": "a dangling link whose target climbs back out of a link behind a missing name",
+      "dirs": ["root/a", "outside/deep/deeper"],
+      "links": {
+        "root/a/link": "/outside/deep/deeper",
+        "root/x.json": "a/link/missing/../../planted.json"
+      },
+      "root": "root",
+      "input": "x.json",
+      "error": "escapes"
+    }
+  ],
+  "contains_on_disk": [
+    {
+      "name": "one `..` after a missing name behind a link out",
+      "dirs": ["root/a", "outside/deep/deeper"],
+      "links": { "root/a/link": "/outside/deep/deeper" },
+      "outer": "root",
+      "inner": "root/a/link/missing/..",
+      "expected": false
+    },
+    {
+      "name": "two `..` after a missing name behind a link out",
+      "dirs": ["root/a", "outside/deep/deeper"],
+      "links": { "root/a/link": "/outside/deep/deeper" },
+      "outer": "root",
+      "inner": "root/a/link/missing/../..",
+      "expected": false
+    },
+    {
+      "name": "three `..` climbing past the link",
+      "dirs": ["root/a", "outside/deep/deeper"],
+      "links": { "root/a/link": "/outside/deep/deeper" },
+      "outer": "root",
+      "inner": "root/a/link/missing/../../..",
+      "expected": false
+    },
+    {
+      "name": "two `..` behind a link in from outside land inside",
+      "dirs": ["root/deep/deeper", "elsewhere"],
+      "links": { "elsewhere/link": "/root/deep/deeper" },
+      "outer": "root",
+      "inner": "elsewhere/link/missing/../..",
+      "expected": true
+    },
+    {
+      "name": "a `..` behind a link that lands outside the root",
+      "dirs": ["root/a/b", "root/x"],
+      "links": { "root/a/b/link": "/root/x" },
+      "outer": "root",
+      "inner": "root/a/b/link/missing/../../..",
+      "expected": false
+    },
+    {
+      "name": "a link reached after a missing name folds away",
+      "dirs": ["root", "outside/deep"],
+      "links": { "root/link": "/outside/deep" },
+      "outer": "root",
+      "inner": "root/missing/../link/../y",
+      "expected": false
+    }
+  ]
+}
