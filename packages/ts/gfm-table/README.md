@@ -66,6 +66,12 @@ larger document and use the result against the document.
 - Whole tables: `readTable`, `rowCellTexts`, `renderTable` and `tableGrid`,
   with the types `TableData`, `TableCell`, `TableInput`, `RenderTableOptions`
   and `TableGrid`.
+- Padding: `padTable` pads a table's cells so its pipes line up in the
+  source, with the option type `PadTableOptions`. Its output is the
+  "aligned" style of [rumdl](https://github.com/rvben/rumdl)'s MD060 rule.
+  It counts display width, so East Asian wide characters and emoji take 2
+  columns. `maxColumnWidth` caps the width a cell can widen its column to.
+  Padding a padded table changes nothing.
 - Cell text: `cellTextFromSource`, `sourceOffset`, `textOffset`,
   `escapeCell` (a cell written at once), `escapeCellInsert` (text typed into
   a cell), `escapeCodeCell` (a cell inside a backtick code span),
@@ -85,6 +91,15 @@ larger document and use the result against the document.
   strict, for the clipboard.
 
 Each export has TSDoc in the source. Your editor shows it.
+
+```ts
+import { padTable } from '@osdlc/gfm-table'
+
+padTable('| a | b |\n|:-|--:|\n| long cell | 1 |')
+// | a         |    b |
+// | :-------- | ---: |
+// | long cell |    1 |
+```
 
 ```ts
 import { readDelimited } from '@osdlc/gfm-table'
