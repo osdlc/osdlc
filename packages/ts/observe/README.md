@@ -330,7 +330,8 @@ const result = await runHeadlessSession(ports, async (onSpawn) => {
 - Linux and macOS are supported: the process scan reads `/proc` on Linux and
   `ps -E` on macOS.
 - On Windows the record, the log and the machine id work, and the process scan
-  reports that it cannot tell (`null`), so reconcile never ends a record there.
+  reports that it cannot tell (`null`), so with the default live-id source reconcile never ends a record there
+  (reconcile takes the live ids as an input).
 
 ## Security
 
