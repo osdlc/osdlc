@@ -37,6 +37,7 @@ created: 2026-10-18
 
 ## Consequences
 
-- Writing both tag names is temporary. Dropping the `SDLC_*` names, or the
-  old record keys, is a breaking change.
+- Writers keep writing both tag names until a release drops the `SDLC_*`
+  names. That release is a breaking change, as is dropping the old record
+  keys.
 - The `sdlc` names that remain are the format's names, not the package's.

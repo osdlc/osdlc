@@ -16,8 +16,9 @@ created: 2026-10-18
 - The schemas are part of the public surface. `defineSessionModel` takes the
   caller's own zod schemas for harness, host and launch flags, and
   `LogEnvelopeSchema` is extended by the caller.
-- Two copies of zod do not work together, so both sides must use one copy.
-  A peer dependency makes the caller's copy the only one.
+- Zod schemas and types cross the package boundary. The caller's zod and
+  this package's zod must be the same copy, so the types and `instanceof`-style
+  checks match. A peer dependency makes the caller's copy the only one.
 
 ## Consequences
 

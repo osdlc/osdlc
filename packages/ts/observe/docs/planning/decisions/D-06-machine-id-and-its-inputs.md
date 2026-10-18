@@ -29,3 +29,6 @@ created: 2026-10-18
 - The README and the TSDoc list the side effects.
 - The default stays the same. A caller that passes nothing gets the machine
   id from `machineId()`.
+- `machineId()` is also how callers fill `LogEnvelope.writer` and a record's
+  `machine`. Those callers pass their own value. The probe and the cache file
+  are avoided only if the caller supplies a value everywhere.

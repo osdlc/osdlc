@@ -13,9 +13,9 @@ created: 2026-10-18
   `packages/ts/observe`.
 - It has two entry points. `@osdlc/observe` holds the core: the log envelope,
   correlation ids and their env tags, sortable ids, the JSONL writer and
-  readers, and the machine id. `@osdlc/observe/session` holds the session
-  record, its state machine, the process scan, hook status, reconcile and the
-  lifecycle runner.
+  readers, the machine id and the originator. `@osdlc/observe/session` holds
+  the session record, its state machine, the session env tags, the process
+  scan, hook status, reconcile and the lifecycle runner.
 
 ## Why
 

@@ -28,6 +28,6 @@ created: 2026-10-18
 ## Consequences
 
 - Removing or renaming a stable export, or changing its shape so callers
-  break, is listed under "Breaking" in the CHANGELOG.
+  break, is marked with a `Breaking:` prefix in the CHANGELOG.
 - Moving an item out of the experimental list is not a breaking change.
 - A 1.0.0 release is a later decision.

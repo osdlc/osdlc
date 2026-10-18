@@ -23,5 +23,4 @@ has no field that exists only to carry types.
 
 ## Consequences
 
-- Code that used a type-carrier field changes to the helper types.
 - Adding a model type means adding a helper, not a field.
