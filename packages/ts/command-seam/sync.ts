@@ -12,20 +12,13 @@
  */
 
 import { spawnSync } from 'node:child_process'
-import {
-  accessSync,
-  constants,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-} from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { delimiter, join, resolve } from 'node:path'
+import { join } from 'node:path'
 
 import { shellJoin } from './quote.ts'
 import { failureText, stderrOrError } from './result.ts'
+import { which } from './which.ts'
 
 /** Result of running an external command through a `CommandRunner`. */
 export interface CommandResult {
@@ -472,27 +465,6 @@ const CHILD_STDIO_CORRUPTED =
   process.versions['bun'] !== undefined && process.env['NODE_ENV'] === 'test'
 
 /**
- * Whether `binary` resolves to an executable file the way a spawn would find
- * it: a name with a `/` is taken relative to `cwd`; a bare name is looked up
- * on the child's `PATH`.
- */
-function findsExecutable(binary: string, cwd: string, path: string | undefined): boolean {
-  const isExecutable = (p: string): boolean => {
-    try {
-      accessSync(p, constants.X_OK)
-      return statSync(p).isFile()
-    } catch {
-      return false
-    }
-  }
-  if (binary === '') return false
-  if (binary.includes('/')) return isExecutable(resolve(cwd, binary))
-  return (path ?? '/usr/bin:/bin')
-    .split(delimiter)
-    .some((dir) => isExecutable(resolve(cwd, dir, binary)))
-}
-
-/**
  * Folds a finished `spawnSync` into a {@link CommandResult}. Exported for
  * tests.
  */
@@ -541,7 +513,7 @@ function runViaChildRedirect(
   // the same stand-in the pipe path reports for a failed spawn. This also
   // keeps a binary named like an option (`-a`) from reaching `exec` as one,
   // unless an executable named `-a` is on PATH.
-  if (!findsExecutable(binary, opts.cwd, env['PATH'])) {
+  if (which(binary, { cwd: opts.cwd, env: { PATH: env['PATH'] } }) === undefined) {
     return spawnFailure(`spawnSync ${binary} ENOENT`)
   }
   const dir = mkdtempSync(join(tmpdir(), 'command-seam-'))

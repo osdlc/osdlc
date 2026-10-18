@@ -13,6 +13,7 @@
  *   without waiting for it to finish. `stopProcess` stops it with a grace
  *   period.
  * - `withDefaults` binds default options to any of them.
+ * - `which` finds a binary on `PATH` without running it.
  *
  * The capture runners share {@link CommandResult}, {@link CommandRunOptions}
  * and {@link CommandFailed}, so one `instanceof CommandFailed` check covers
@@ -96,3 +97,5 @@ export {
 } from './groups.ts'
 
 export { withDefaults, type DefaultedRunner } from './defaults.ts'
+
+export { which, type WhichOptions } from './which.ts'

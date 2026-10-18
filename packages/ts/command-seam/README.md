@@ -349,6 +349,24 @@ const user = runJson<{ login: string }>(gh, ['api', 'user'], { env: { GH_HOST: '
 console.log(head, user.ok && user.value.login)
 ```
 
+## Finding a binary
+
+`which(binary, opts?)` returns the absolute path a spawn of `binary` would
+run, or `undefined`, without running anything. Use it to pick a tool by what
+is installed, where probing with `--version` is slow or has side effects.
+
+```ts
+import { which } from '@osdlc/command-seam'
+
+const harnesses = ['codex', 'claude', 'cursor-agent'].filter((b) => which(b) !== undefined)
+```
+
+It looks a binary up the way the runners' spawn does: a name with a `/` is
+resolved against `cwd`, a bare name is searched on `PATH`, and a match must
+be an executable file. `opts` takes `cwd` (default `process.cwd()`) and
+`env`, merged over the parent's as the runners take it, so
+`which('tool', { env: { PATH: binDir } })` checks a test's own `PATH`.
+
 ## Reading results
 
 Small helpers that never throw for a failed command (a programmer error,
@@ -681,6 +699,7 @@ The experimental exports:
 - `firstLine`, `stderrOrError`
 - `runJson`, `runJsonAsync`, `parseJsonResult`, `JsonRun`, `RunJsonOptions`
 - `withDefaults`, `DefaultedRunner`
+- `which`, `WhichOptions`
 - `stopProcess`
 - `installGroupSignalForwarding`, `GroupSignalForwardingOptions`
 - `liveProcessGroups`, `forwardedSignal`, `forwardedExitCode`
@@ -727,6 +746,8 @@ are settled, and Windows support has landed, if that is feasible.
 | `GroupSignalForwardingOptions`                                  | interface | `signals`, `graceMs`, `exit`                                   |
 | `withDefaults`                                                  | function  | Bind default options to any runner                             |
 | `DefaultedRunner`                                               | interface | The runner `withDefaults` returns                              |
+| `which`                                                         | function  | The path a spawn of a binary would run, without running it     |
+| `WhichOptions`                                                  | interface | `cwd`, `env`                                                   |
 | `fakeRunner`                                                    | function  | `/testing`: a `CommandRunner` that answers from a table        |
 | `fakeNeverExited`                                               | function  | `/testing`: a fake answer for a run that never exited          |
 | `fakeProcess`                                                   | function  | `/testing`: a `ManagedProcessHandle` the test ends by hand     |

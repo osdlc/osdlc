@@ -59,6 +59,7 @@
     "quote.ts",
     "shell.ts",
     "defaults.ts",
+    "which.ts",
     "testing.ts",
     "README.md",
     "CHANGELOG.md",
