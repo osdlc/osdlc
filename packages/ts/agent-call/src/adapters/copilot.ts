@@ -4,7 +4,6 @@ import {
   type ConversationMessage,
   type Usage,
 } from '../conversation.js'
-import { isBelowLow } from '../models.js'
 import { note, TMP_TOKEN, type CapabilityNote, type PlannedCall, type TempFile } from '../plan.js'
 import type { AgentCallSpec, OutputFormat } from '../spec.js'
 import {
@@ -90,18 +89,9 @@ function planCopilot(command: readonly string[], spec: AgentCallSpec): PlannedCa
   if (spec.model !== undefined) argv.push(...modelFlag(spec.model))
 
   if (spec.effort !== undefined) {
-    if (isBelowLow(spec.effort)) {
-      argv.push('--reasoning-effort', 'low')
-      note(
-        notes,
-        'effort',
-        'approximated',
-        '--reasoning-effort low (copilot has no level below low)',
-      )
-    } else {
-      argv.push('--reasoning-effort', spec.effort)
-      note(notes, 'effort', 'native', '--reasoning-effort')
-    }
+    // copilot takes none, minimal and low..max, so every level passes through.
+    argv.push('--reasoning-effort', spec.effort)
+    note(notes, 'effort', 'native', '--reasoning-effort')
   }
 
   if (spec.mcp?.servers !== undefined) {

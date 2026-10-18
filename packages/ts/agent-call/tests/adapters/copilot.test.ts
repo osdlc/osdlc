@@ -57,12 +57,11 @@ describe('copilot plan', () => {
     }
   })
 
-  test('none and minimal are raised to low, and noted as approximated', () => {
+  test('none and minimal pass through: copilot 1.0.98 takes both', () => {
     for (const effort of ['none', 'minimal'] as const) {
       const planned = adapter.plan({ prompt: 'x', effort })
-      expect(planned.argv.join(' ')).toContain('--reasoning-effort low')
-      expect(planned.argv.join(' ')).not.toContain(effort)
-      expect(noteFor(planned, 'effort')?.support).toBe('approximated')
+      expect(planned.argv.join(' ')).toContain(`--reasoning-effort ${effort}`)
+      expect(noteFor(planned, 'effort')?.support).toBe('native')
     }
   })
 
