@@ -119,7 +119,8 @@ The tests compare the package with values recorded in headless Chromium:
 `getComputedStyle` for each syntax `parseColor` reads, and for inputs the
 browser rejects; `color-mix(in srgb, …)` for `mixColors`; and canvas pixels
 for `compositeOver`. `compositeOver` matches the canvas to within one step per
-channel, because Chromium also rounds the alpha to 8 bits before it blends.
+channel. The step comes from Chromium rounding the alpha to 8 bits before it
+blends; this package blends with the alpha as given.
 
 ## How it compares
 
@@ -166,8 +167,8 @@ The experimental exports:
 
 Node.js 22 or later, ESM only. The built package is tested on Node.js 22 and
 24. The code is plain ES2022 arithmetic with no imports and no DOM, but other
-runtimes, such as Bun, Deno or a browser, are not tested. It has no file system or platform code, so it runs
-on any operating system. Its tests run on Linux and macOS.
+runtimes, such as Bun, Deno or a browser, are not tested. It has no file system
+or platform code, so it runs on any operating system. Its tests run on Linux and macOS.
 
 ## License
 

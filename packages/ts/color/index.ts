@@ -239,13 +239,17 @@ export function fromPixel(px: ArrayLike<number>): Rgba {
  * step per channel, because it also rounds the alpha to 8 bits and blends in
  * integers. An opaque `src` is returned as is.
  *
- * @throws RangeError when `ground.a` is below 1. A translucent ground shows
- * what is under it, which this function does not know. Composite the ground
- * over its own background first.
+ * @throws RangeError when `ground.a` is below 1 or `NaN`. A translucent ground
+ * shows what is under it, which this function does not know. Composite the
+ * ground over its own background first.
+ * @throws RangeError when `src.a` is `NaN` or infinite.
  */
 export function compositeOver(src: Rgba, ground: Rgba): Rgba {
-  if (ground.a < 1) {
+  if (!(ground.a >= 1)) {
     throw new RangeError(`color: compositeOver needs an opaque ground, got alpha ${ground.a}`)
+  }
+  if (!Number.isFinite(src.a)) {
+    throw new RangeError(`color: compositeOver needs a finite source alpha, got ${src.a}`)
   }
   if (src.a >= 1) return src
   const mix = (s: number, g: number) => Math.round(s * src.a + g * (1 - src.a))

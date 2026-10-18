@@ -2,10 +2,9 @@
 // tests/browser-contract.test.ts reads the file; nothing runs this script in
 // the test suite. Run it by hand to re-record, from this package's directory:
 //
-//   npx -y -p playwright@1.61.1 node tests/fixtures/record-browser.mjs
+//   pnpm exec playwright install chromium
+//   pnpm record:browser
 //
-// (or plain `node tests/fixtures/record-browser.mjs` where `playwright` already
-// resolves). It needs Playwright's Chromium: `npx playwright install chromium`.
 // Re-recording overwrites browser.json. Run prettier on it, then review the
 // diff before committing it.
 

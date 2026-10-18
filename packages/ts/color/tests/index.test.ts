@@ -275,6 +275,16 @@ describe('compositeOver', () => {
       'color: compositeOver needs an opaque ground, got alpha 0',
     )
     expect(() => compositeOver(BLACK, { ...WHITE, a: 0.99 })).toThrow(RangeError)
+    expect(() => compositeOver(BLACK, { ...WHITE, a: NaN })).toThrow(
+      'color: compositeOver needs an opaque ground, got alpha NaN',
+    )
+  })
+
+  test('a source alpha that is NaN or infinite throws a RangeError', () => {
+    expect(() => compositeOver({ ...BLACK, a: NaN }, WHITE)).toThrow(
+      'color: compositeOver needs a finite source alpha, got NaN',
+    )
+    expect(() => compositeOver({ ...BLACK, a: Infinity }, WHITE)).toThrow(RangeError)
   })
 })
 

@@ -20,7 +20,7 @@ there.
 
 The repository is a pnpm workspace. Install from the repository root, then
 work in the package directory. The tests run on [Vitest](https://vitest.dev)
-under Node 22 or later.
+under Node 22.12 or later.
 
 ```sh
 pnpm install
