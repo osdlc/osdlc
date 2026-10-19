@@ -1,8 +1,7 @@
 # path-guard planning
 
-The words `@osdlc/path-guard` uses with a fixed meaning. The
-[README](../../README.md) says how to use the package. This folder says what
-the terms mean.
+The words `@osdlc/path-guard` uses with a fixed meaning, and the work still
+open. The [README](../../README.md) says how to use the package.
 
 These files are maintained here, in
 [osdlc/osdlc](https://github.com/osdlc/osdlc). Open an issue or a pull request
@@ -13,13 +12,19 @@ shares them.
 
 | Folder             | Holds                                   | Ids     |
 | ------------------ | --------------------------------------- | ------- |
+| [`tasks/`](tasks/) | Work still open                         | `T-nn`  |
 | [`terms/`](terms/) | Words the docs use with a fixed meaning | `TM-nn` |
 
 Ids are numbers in order of writing, zero-padded to two digits so they sort.
 They are never reused. Entries link to each other with relative links.
 
-Each entry has a `state`. A term is `accepted`, or `superseded` once it no
-longer describes the package.
+Each entry has a `state`. A task is `open` or `done`. A term is `accepted`,
+or `superseded` once it no longer describes the package.
+
+## Tasks
+
+- [T-01](tasks/T-01-browser-safe-lexical-entry.md): A browser-safe
+  `./lexical` entry point
 
 ## Terms
 
