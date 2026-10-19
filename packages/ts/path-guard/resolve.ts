@@ -1,8 +1,7 @@
 import { readlinkSync, realpathSync, statSync } from 'node:fs'
 import { dirname, isAbsolute, resolve } from 'node:path'
 
-import { PathError, validateRelative } from './lexical.ts'
-import { components, startsWith } from './text.ts'
+import { PathError, components, startsWith, validateRelative } from './lexical.ts'
 
 /**
  * How the containment layer canonicalises a path. POSIX paths only. Pass your

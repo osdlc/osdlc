@@ -1,4 +1,3 @@
-// The `@osdlc/path-guard/lexical` entry: the text-only checks. Nothing here
-// loads `node:*`, so it is safe in a browser bundle.
-export { PathError, validateRelative, type PathErrorKind } from './lexical.ts'
-export { isUnder, toRelative } from './text.ts'
+// The `@osdlc/path-guard/lexical` entry. Nothing it loads may import `node:*`;
+// tests/lexical-entry.test.ts checks the built graph.
+export { PathError, isUnder, toRelative, validateRelative, type PathErrorKind } from './lexical.ts'

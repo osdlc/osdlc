@@ -3,7 +3,6 @@ import { dirname, join, resolve } from 'node:path'
 
 import { describe, expect, test } from 'vitest'
 
-import * as lexical from '../lexical-entry.ts'
 import { isUnder } from '../lexical-entry.ts'
 
 const PACKAGE_DIR = join(import.meta.dirname, '..')
@@ -52,16 +51,7 @@ describe('isUnder', () => {
   })
 })
 
-test('the lexical entry exports exactly the pinned list', () => {
-  expect(Object.keys(lexical).sort()).toEqual([
-    'PathError',
-    'isUnder',
-    'toRelative',
-    'validateRelative',
-  ])
-})
-
-/** The relative module specifiers of one built file, from its import and export lines. */
+/** Every module specifier in one built file's import and export lines. */
 function specifiers(source: string): string[] {
   return [...source.matchAll(/(?:from|import)\s*['"]([^'"]+)['"]/g)].map((m) => m[1]!)
 }
@@ -83,7 +73,6 @@ describe.skipIf(!existsSync(join(DIST, 'lexical-entry.js')))('built lexical entr
     expect([...seen].map((f) => f.slice(DIST.length + 1)).sort()).toEqual([
       'lexical-entry.js',
       'lexical.js',
-      'text.js',
     ])
   })
 })

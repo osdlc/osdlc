@@ -8,5 +8,5 @@
     // The sources are not published, so a declaration map would point at nothing.
     "declarationMap": false
   },
-  "include": ["index.ts", "lexical.ts", "lexical-entry.ts", "text.ts", "resolve.ts", "contained.ts"]
+  "include": ["index.ts", "lexical.ts", "lexical-entry.ts", "resolve.ts", "contained.ts"]
 }
