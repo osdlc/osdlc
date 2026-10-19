@@ -5,10 +5,11 @@
  * Use it for a command whose output a person must see live: a build, a test
  * run, or an interactive program. The capture runners would hold all output
  * until the child exited. Options are {@link CommandRunOptions} without
- * `input`, since stdin is inherited, not piped. Code takes a `StreamRunner`
- * the same way it takes a `CommandRunner`, and tests pass a fake. Mixed stdio
- * (say, a child's stdout sent to the parent's stderr) is out of scope; call
- * `child_process` directly for that.
+ * `input`, since stdin is inherited, not piped, plus `stdio` and `quiet`.
+ * Code takes a `StreamRunner` the same way it takes a `CommandRunner`, and
+ * tests pass a fake. `stdio` can send stdout and stderr to file descriptors
+ * the caller opened; a pipe from one child to another is out of scope, so
+ * call `child_process` directly for that.
  *
  * There is no async version: `run` blocks until the child exits, as
  * `spawnRunner` does.
@@ -17,21 +18,38 @@
 import { spawnSync } from 'node:child_process'
 
 import {
+  childStdio,
   cwdError,
   mergedEnv,
   normalizeTimeout,
   syncStop,
   type CommandRunOptions,
   type NeverExitedReason,
+  type StdioOption,
 } from './sync.ts'
 
 /**
  * Per-call options for a {@link StreamRunner}. Same as {@link
- * CommandRunOptions} minus `input` and `maxOutputBytes`: stdio is inherited
- * from the parent process, so there is nothing to write to and no output to
- * cap.
+ * CommandRunOptions} minus `input` and `maxOutputBytes`: stdio is not piped,
+ * so there is nothing to write to and no output to cap. Adds `stdio` and
+ * `quiet`.
  */
-export type StreamRunOptions = Omit<CommandRunOptions, 'input' | 'maxOutputBytes'>
+export interface StreamRunOptions extends Omit<CommandRunOptions, 'input' | 'maxOutputBytes'> {
+  /**
+   * Where the child's stdio goes: `'inherit'` (the default), `'ignore'`, or
+   * `{ stdout, stderr }` file descriptors, with stdin from `/dev/null`. See
+   * {@link StdioOption}. The runner's own failure line still goes to the
+   * parent's stderr, unless `quiet` is set.
+   */
+  stdio?: StdioOption | undefined
+  /**
+   * Do not write the runner's own line to the parent's stderr when the spawn
+   * fails, the timeout fires or a signal ends the child. For a caller that
+   * reports the failure itself from the result's `reason`, `signal` and
+   * `error`, which are set either way.
+   */
+  quiet?: boolean | undefined
+}
 
 /**
  * Result of a streamed run. There is no output to report, since it went
@@ -44,7 +62,7 @@ export interface StreamResult {
    * The child never reported an exit status: the spawn failed, the timeout
    * killed it, or a signal took it down. Same meaning as
    * `CommandResult.neverExited`. A message is also written to the parent's
-   * stderr.
+   * stderr, unless `quiet` is set.
    */
   neverExited?: boolean | undefined
   /**
@@ -62,7 +80,7 @@ export interface StreamResult {
   /**
    * The runner's error message when the spawn failed or the timeout fired,
    * such as `spawnSync npm ENOENT`. The same text is written to the parent's
-   * stderr.
+   * stderr, unless `quiet` is set.
    */
   error?: string | undefined
 }
@@ -72,8 +90,8 @@ export interface StreamRunner {
   /**
    * Run the binary with `argv` (without the binary name) and wait for it to
    * exit. Never throws for a failed command. Programmer errors throw: an
-   * invalid `timeoutMs` (see `CommandRunOptions.timeoutMs`) or a NUL byte in
-   * argv or env.
+   * invalid `timeoutMs` (see `CommandRunOptions.timeoutMs`) or `stdio`, or a
+   * NUL byte in argv or env.
    */
   run(argv: string[], opts: StreamRunOptions): StreamResult
 }
@@ -90,8 +108,11 @@ export interface StreamRunner {
  *
  * When the spawn fails, the timeout fires or a signal ends the child, a
  * message is written to the parent's stderr, since there is no captured
- * stderr to carry it. The result says why in `reason`, and carries the spawn
- * or timeout message in `error`.
+ * stderr to carry it; `quiet` turns it off. The result says why in `reason`,
+ * and carries the spawn or timeout message in `error`.
+ *
+ * `stdio` sends the child's output elsewhere: `'ignore'` drops it, and
+ * `{ stdout, stderr }` writes it to file descriptors the caller opened.
  *
  * @param binary - A name looked up on `PATH`, or a path.
  * @returns A runner for that binary.
@@ -101,20 +122,29 @@ export interface StreamRunner {
  * const npm = streamRunner('npm')
  * const { exitCode } = npm.run(['run', 'build'], { cwd: '.' })
  * process.exitCode = exitCode
+ *
+ * // Both streams into one log, in the order npm wrote them.
+ * const log = openSync('build.log', 'w')
+ * npm.run(['run', 'build'], { cwd: '.', stdio: { stdout: log, stderr: log }, quiet: true })
+ * closeSync(log)
  * ```
  */
 export function streamRunner(binary: string): StreamRunner {
   return {
     run(argv: string[], opts: StreamRunOptions): StreamResult {
       const timeout = normalizeTimeout(opts.timeoutMs)
+      const stdio = childStdio(opts.stdio)
+      const say = (line: string) => {
+        if (opts.quiet !== true) process.stderr.write(`${line}\n`)
+      }
       const cwdMessage = cwdError(`spawnSync ${binary}`, binary, argv, opts)
       if (cwdMessage !== undefined) {
-        process.stderr.write(`${cwdMessage}\n`)
+        say(cwdMessage)
         return { exitCode: 1, neverExited: true, reason: 'spawn', error: cwdMessage }
       }
       const proc = spawnSync(binary, argv, {
         cwd: opts.cwd,
-        stdio: 'inherit',
+        stdio,
         timeout,
         // See `sync.ts`'s `runViaChildRedirect`: the default SIGTERM is not a
         // hard cap.
@@ -127,10 +157,10 @@ export function streamRunner(binary: string): StreamRunner {
       // Output is inherited, not buffered, so the output cap cannot apply.
       const stop = syncStop(proc) as Pick<StreamResult, 'reason' | 'signal'>
       if (proc.error !== undefined) {
-        process.stderr.write(`${proc.error.message}\n`)
+        say(proc.error.message)
         return { exitCode: 1, neverExited: true, ...stop, error: proc.error.message }
       }
-      process.stderr.write(`${binary} was killed by ${proc.signal}\n`)
+      say(`${binary} was killed by ${proc.signal}`)
       return { exitCode: 1, neverExited: true, ...stop }
     },
   }

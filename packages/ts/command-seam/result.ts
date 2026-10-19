@@ -64,17 +64,19 @@ export interface FailureTextOptions {
  * explain a failure there), else `exit N`. With `both: true` it
  * joins both streams (see {@link FailureTextOptions.both}).
  *
+ * A bytes runner's stdout is decoded as UTF-8 here.
+ *
  * @param result - The result of a failed run.
  * @param opts - `both: true` to join both streams.
  * @returns The message. Non-empty unless `both` is set and there is no text
  * at all.
  */
 export function failureText(
-  result: Pick<CommandResult, 'exitCode' | 'stdout' | 'stderr' | 'error'>,
+  result: Pick<CommandResult<string | Buffer>, 'exitCode' | 'stdout' | 'stderr' | 'error'>,
   opts: FailureTextOptions = {},
 ): string {
   const stderr = stderrOrError(result)
-  const stdout = result.stdout.trim()
+  const stdout = result.stdout.toString().trim()
   if (opts.both === true) return [stderr, stdout].filter(Boolean).join('\n')
   return stderr || stdout || `exit ${result.exitCode}`
 }

@@ -25,6 +25,27 @@ sync default of 256 MB, and report a kill at it as `reason: 'output'`. The
 async runner still has no default cap, and the `bun test` capture path still
 has none. The byte mode stays deferred.
 
+## Update (October 2026): bytes
+
+[#234](https://github.com/osdlc/osdlc/issues/234) brought a user for the byte
+mode: a tool that hashes image blobs from `git cat-file blob` before it checks
+whether they are UTF-8. Decoding first would replace invalid bytes with U+FFFD
+and change the hash.
+
+- `spawnRunnerBytes` and `spawnRunnerBytesAsync` return stdout as a `Buffer`,
+  typed `CommandResult<Buffer>`. `CommandResult` takes the stdout type as a
+  parameter that defaults to `string`, so the text path is unchanged.
+- They are separate factories with their own interfaces,
+  `BytesCommandRunner` and `AsyncBytesCommandRunner`, not an `encoding`
+  option. An option would add an overload to `CommandRunner.run`, and every
+  hand-written fake would have to answer it.
+- Stderr stays text. It is diagnostics, and the message helpers read it.
+- `CommandFailed` stays one class for every runner. A failed bytes run is
+  thrown with stdout decoded as UTF-8. A type parameter on the class would
+  make `e instanceof CommandFailed` give `CommandFailed<any>`, which would
+  quietly loosen `e.result.stdout` in existing catch blocks.
+- `maxOutputBytes` cuts bytes stdout at exactly the cap.
+
 ## Why
 
 The users of this package run tools that print text. execa already offers
