@@ -41,6 +41,25 @@ The libraries change together: the shared TypeScript and Prettier configs set
 the rules for the others. `command-seam` links both through this workspace,
 so a config change here runs against its build in CI.
 
+## Twin libraries
+
+A twin is one library written in two languages, such as the `tiered-dirs`
+crate and `@osdlc/tiered-dirs`. Twins keep semantic parity, not literal
+parity.
+
+- **Same behaviour.** For the same input, both twins return the same result
+  or refuse it with the same error kind. One shared fixture of cases proves
+  it, and both twins' tests run every case.
+- **Each language's idiom.** A twin does not copy the other's names or
+  signatures when that breaks its own language's habits. Rust uses
+  snake_case, `Result`, traits and the standard library's words. TypeScript
+  uses camelCase, thrown errors, classes and subpath exports. Values the
+  fixture compares, such as error kind strings, keep one spelling.
+- **One-sided features are allowed.** A twin may have an export the other
+  language has no use for. Its README lists such exports.
+- **Versions.** Twins share the major and minor version. Patch releases are
+  independent.
+
 ## Where changes are made
 
 Developed here, in this repository:
