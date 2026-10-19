@@ -1,7 +1,7 @@
 //! A tool reads its committed project file and its machine file together,
 //! substitutes `{name}` path names, and checks a need before it runs.
 //!
-//! Run it with `cargo run --example two_files`. It works in a scratch
+//! Run it with `cargo run --example layered_files`. It works in a scratch
 //! directory and prints what it found.
 
 use std::collections::BTreeMap;

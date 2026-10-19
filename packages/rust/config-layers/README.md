@@ -102,9 +102,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ```
 
 The example uses the `tempfile` crate for a scratch directory and `serde` with
-the `derive` feature. It runs as a doc-test. `examples/two_files.rs` reads a
+the `derive` feature. It runs as a doc-test. `examples/layered_files.rs` reads a
 project file and a machine file together, substitutes `{name}` path names and checks a
-need. Run it with `cargo run --example two_files`.
+need. Run it with `cargo run --example layered_files`.
 
 ## Behaviour to know
 
