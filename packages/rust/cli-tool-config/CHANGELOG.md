@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.3] - Unreleased
+
+The last release. The crate continues as
+[`config-layers`](https://crates.io/crates/config-layers) 0.6.0.
+
+### Changed
+
+- The README and the crate description point to `config-layers`. The public
+  API is unchanged.
+- The minimum supported Rust version is 1.89, up from 1.85. The whole workspace
+  moved together because `config-layers` needs `serde-saphyr`, which needs 1.89.
+
 ## [0.5.2](https://github.com/osdlc/osdlc/compare/cli-tool-config/v0.5.1...cli-tool-config/v0.5.2) - 2026-10-19
 
 ### Added

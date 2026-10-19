@@ -233,7 +233,7 @@ Two Windows limits: segments such as `con` or `nul`, which Windows reserves
 as device names, are not rejected, and neither is a segment that ends in `.`,
 which Windows drops from a file name.
 
-Minimum supported Rust version: 1.85.
+Minimum supported Rust version: 1.89.
 
 ## Compared with other crates
 

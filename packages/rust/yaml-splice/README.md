@@ -188,8 +188,8 @@ The crate is pure Rust with no platform-specific code and no I/O. It runs
 wherever its dependencies (`saphyr-parser`, `serde_json`, `thiserror`) build.
 CI runs the tests on Linux, macOS and Windows.
 
-Minimum supported Rust version: 1.85, checked in CI by running the tests on
-1.85.
+Minimum supported Rust version: 1.89, checked in CI by running the tests on
+1.89.
 
 ## Stability
 

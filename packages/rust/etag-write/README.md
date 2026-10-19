@@ -144,7 +144,7 @@ for Linux, macOS and Windows. CI runs the tests on all three. The directory
 fsync is skipped where a directory cannot be opened as a file, which is the case
 on Windows.
 
-Minimum supported Rust version: 1.85, checked by running the tests on 1.85.
+Minimum supported Rust version: 1.89, checked by running the tests on 1.89.
 
 ## When not to use it
 
