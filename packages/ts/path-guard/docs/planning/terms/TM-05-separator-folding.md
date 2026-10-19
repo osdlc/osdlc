@@ -22,5 +22,5 @@ refuses those.
 
 ## Notes
 
-After folding, `a\..\b` reads as `a/../b` and is refused as `parent_segment`.
+After folding, `a\..\b` reads as `a/../b` and is refused as `parent_segment` (Rust: `PathError::ParentSegment`).
 Without it, the backslashes would hide the `..` from the split.

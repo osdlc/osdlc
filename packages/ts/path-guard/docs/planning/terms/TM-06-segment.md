@@ -14,12 +14,14 @@ The part of a path between slashes. An empty or `.` segment is degenerate.
 
 ## Contrast
 
-Not a character. A segment is the whole run between two slashes. In `a//b` the
-middle segment is empty.
+Not a Rust `Component`. A segment is the text between two slashes, so `a//b`
+has an empty middle segment. `Path::components` skips empty segments and also
+yields root and prefix components, so the two do not line up.
 
 ## Notes
 
 The [lexical](TM-02-lexical.md) check refuses both kinds, as error kinds
-`degenerate_segment` and `parent_segment`. It splits on `/` only after
+`degenerate_segment` and `parent_segment` (Rust: `PathError::DegenerateSegment`
+and `PathError::ParentSegment`). It splits on `/` only after
 [separator folding](TM-05-separator-folding.md). A trailing slash is trimmed
 before the split, so `a/` is accepted and has one segment.

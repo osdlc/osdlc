@@ -15,12 +15,9 @@ the `Resolver` trait in Rust, whose methods are `canonicalize` and `read_link`.
 
 ## Contrast
 
-Not a [lexical](TM-02-lexical.md) step. The lexical check never calls a
-resolver.
+Not a [lexical](TM-02-lexical.md) step.
 
 ## Notes
-
-Also called Resolver.
 
 `nodeResolver` is the real-filesystem one and the default for `resolveInside`
 and `contains`. In Rust it is `StdResolver`, used by `resolve` and `contains`,

@@ -15,7 +15,7 @@ of kind `escapes` (Rust: `PathError::Escapes`).
 ## Contrast
 
 Not a [lexical](TM-02-lexical.md) fault. A `..` [segment](TM-06-segment.md) is
-refused earlier, as `parent_segment`, even when it would stay inside the root.
+refused earlier, as `parent_segment` (Rust: `PathError::ParentSegment`), even when it would stay inside the root.
 An escape is found only after symlinks are resolved: `link/file` escapes when
 `link` points out of the root.
 
@@ -31,5 +31,5 @@ The `escapes` kind also covers cases where no answer can be trusted: an empty
 root, more than `MAX_LINK_HOPS` links, or a spent resolver-call budget.
 
 One exception to "only after symlinks are resolved": `toRelative`
-(`to_relative`) reads no filesystem and throws `escapes` when the path does
-not start with the root as text.
+(`to_relative`) reads no filesystem and throws `escapes` when the path is not
+under the root by whole components.

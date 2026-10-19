@@ -24,4 +24,5 @@ symlink can still lead out.
 Not a weaker form of containment. The two catch different faults. The lexical
 check refuses an empty path, a NUL byte, `~`, a drive or UNC prefix, an
 absolute path, and degenerate or parent [segments](TM-06-segment.md). It does
-so the same way on every machine.
+so the same way on every machine. `isInside` uses `node:path` `relative` and
+`sep`, so it depends on the platform.
