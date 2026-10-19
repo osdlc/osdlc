@@ -248,6 +248,13 @@ pnpm run test
 
 The root scripts run each library's script of the same name.
 
+`.github/workflows/packages-ci.yml` runs these, the smoke checks and
+`pnpm run check:packages` on Linux and macOS, on Node 22 and 24. On a pull
+request it checks only the libraries the pull request changed and the ones
+that depend on them. `.github/scripts/affected-packages.mjs` picks them, and
+says which shared files make it check every library. path-guard also runs on
+Windows. The `verify` jobs always report, so they are the checks to require.
+
 A library can have a smoke check: `tests/smoke.mjs`. It runs the built package
 under Node. It imports the package by name, so Node resolves it through
 `exports` as a consumer would. The library needs an `exports` field for this:

@@ -19,8 +19,8 @@
 # Vitest, which runs on Node. Node runs the build, the smoke checks and the
 # packed-tarball checks, so the Node matrix is what a consumer sees.
 #
-# `windows` runs path-guard alone on Windows, when path-guard is picked. No
-# other package claims Windows support yet.
+# `windows` runs path-guard on Windows, when path-guard is picked. It is the
+# only library tested there.
 #
 # Every action is pinned to a commit SHA; the comment names its release.
 name: packages
