@@ -22,8 +22,9 @@ created: 2026-10-18
   through a symlink, such as the one npm makes in `node_modules/.bin`.
 - `zod` is a peer dependency (`^4`). The package uses zod's own `ZodType`.
 - Internal functions and types are not exported. `VERSION` is not exported.
-- The API was first signed off before the review of #289. Ten more changes
-  were made in review and accepted when #289 was merged:
+- The API was first signed off before the review of
+  [#289](https://github.com/osdlc/osdlc/pull/289). Ten more changes were made
+  in review and accepted when that pull request was merged:
   1. `BlockNode` has no `typed()`, `typedItem()`, `setTyped()` or
      `setTypedItem()`. Parsed cell and item values belong to one `validate()`
      call and are read from the typed model, so contracts that share a parse
@@ -64,8 +65,6 @@ created: 2026-10-18
 
 ## Consequences
 
-- From 0.3.0 on, a breaking change to a stable export goes in a minor release
-  and is marked `Breaking` in the CHANGELOG (see
-  [D-03](D-03-stability-tiers.md)).
+- From 0.3.0 on, breaking changes follow [D-03](D-03-stability-tiers.md).
 - Adding an export means adding TSDoc, an example and a README entry. A test
   fails when one is missing.

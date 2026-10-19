@@ -195,7 +195,7 @@ Each command takes only its own flags; a flag from another command, or a second
 writes it. A file that version 2 cannot load is reported and left alone, and
 the exit code is 2. With several files and no `--write`, each document follows
 a `---` line and a `# <file>` line. A file that is already version 2 is noted
-on stderr and does not change the exit code. `validate` and the runner do not
+on stderr and does not change the exit code. `validate`, `init` and the runner do not
 enter `.git` or `node_modules` folders.
 
 Without `--config <file>` or `--contract <file>`, `validate` looks in the

@@ -16,12 +16,15 @@ created: 2026-10-18
 - `migrate` ships in the package. It rewrites a version 1 contract as version
   2, loads the result before it prints or writes it, and skips a file that is
   already version 2.
-- `compileContractObject` has no `mcVersion` argument.
+- `compileContractObject` compiles version 2 only. It rejects an object whose
+  `mcVersion` is not 2 (see [D-02](D-02-api-sign-off-0.3.0.md) item 6).
 
 ## Why
 
-- Version 2 changed how typed table and list values work. Keeping both
-  versions would mean two readers with different results for one file.
+- Version 2 changed the frontmatter schema. A field is optional unless it is
+  listed in `required`, and `min`, `max` and `pattern` beside a `format` now
+  apply. Keeping both versions would mean two readers with different results
+  for one file.
 - A loader that guesses the version hides the difference. An error that names
   the migration command tells the user what to do.
 - A test migrates every version 1 fixture and checks that it gives the same

@@ -66,6 +66,15 @@ describe('inferConfig — single-contract mode shape', () => {
     expect(r.warnings).toEqual([])
   })
 
+  it('does not read .git or node_modules folders', () => {
+    file('top.md', '## Summary\n\nx\n')
+    file('node_modules/pkg/readme.md', '## Vendored\n\nx\n')
+    file('.git/notes.md', '## Git\n\nx\n')
+    file('sub/node_modules/deep.md', '## Nested\n\nx\n')
+    const sections = def(inferConfig(root).contracts[0]!).body?.sections
+    expect(sections).toEqual([{ section: 'Summary' }])
+  })
+
   it('recurses into subdirectories (single mode is the whole subtree)', () => {
     file('top.md', '## Summary\n\nx\n')
     file('nested/deep.md', '## Summary\n\ny\n')

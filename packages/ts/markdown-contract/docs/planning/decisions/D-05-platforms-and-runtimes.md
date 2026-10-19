@@ -20,14 +20,13 @@ created: 2026-10-18
   entry includes the folder runner, so browser code imports `./core`.
 - Linux and macOS are supported and tested in CI. Windows is expected to work
   but is untested.
-- `zod` 4 is a peer dependency.
 
 ## Why
 
 - Node refuses to run `.ts` files under `node_modules`, so the package ships
   JavaScript.
-- Splitting `./core` from the rest gives browser and edge code a
-  dependency-free entry without a second package.
+- Splitting `./core` from the rest gives browser and edge code an
+  entry with no Node imports, without a second package.
 - Node 22 is the oldest supported LTS line.
 - A claim for a platform or runtime needs a test that runs on it. Windows and
   browsers have none yet.

@@ -18,7 +18,8 @@ created: 2026-10-18
 - The name says what the package does: it checks a markdown document against a
   contract for its structure.
 - It lives under the `@osdlc` scope with the other libraries in this
-  repository, so one trusted-publishing setup and one release flow cover it.
+  repository, so one publish workflow and one release flow cover it. Trusted
+  publishing is set up for each package on npm.
 
 ## Consequences
 
