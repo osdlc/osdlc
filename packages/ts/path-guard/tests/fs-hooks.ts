@@ -63,5 +63,3 @@ vi.mock('node:fs/promises', async (importOriginal) => {
     },
   }
 })
-
-// Probe: a path-guard-only change, to check that packages CI narrows.
