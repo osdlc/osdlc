@@ -7,6 +7,7 @@
 import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 import { describe, expect, test } from 'vitest'
 import ts from 'typescript'
@@ -154,7 +155,7 @@ test('every README ts block runs against the package', async () => {
     for (const [i, block] of blocks.entries()) {
       const file = join(dir, `block-${i}.ts`)
       writeFileSync(file, block)
-      await import(file)
+      await import(pathToFileURL(file).href)
     }
   } finally {
     rmSync(dir, { recursive: true, force: true })

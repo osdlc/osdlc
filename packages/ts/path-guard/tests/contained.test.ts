@@ -169,17 +169,24 @@ describe('openContainedFile', () => {
     }
   })
 
-  it('refuses a FIFO inside the root without blocking', async () => {
-    execFileSync('mkfifo', [join(contentDir, 'pipe')])
-    await expect(readContainedFile(realContentDir, join(contentDir, 'pipe'))).resolves.toBeNull()
-  })
+  // Windows has no FIFOs in the file system.
+  it.skipIf(process.platform === 'win32')(
+    'refuses a FIFO inside the root without blocking',
+    async () => {
+      execFileSync('mkfifo', [join(contentDir, 'pipe')])
+      await expect(readContainedFile(realContentDir, join(contentDir, 'pipe'))).resolves.toBeNull()
+    },
+  )
 
-  it('does not open an outside target, so a FIFO there cannot block', async () => {
-    const fifo = join(root, 'outside.fifo')
-    execFileSync('mkfifo', [fifo])
-    await symlink(fifo, join(contentDir, 'fifo-link'))
-    await expect(
-      openContainedFile(realContentDir, join(contentDir, 'fifo-link')),
-    ).resolves.toBeNull()
-  })
+  it.skipIf(process.platform === 'win32')(
+    'does not open an outside target, so a FIFO there cannot block',
+    async () => {
+      const fifo = join(root, 'outside.fifo')
+      execFileSync('mkfifo', [fifo])
+      await symlink(fifo, join(contentDir, 'fifo-link'))
+      await expect(
+        openContainedFile(realContentDir, join(contentDir, 'fifo-link')),
+      ).resolves.toBeNull()
+    },
+  )
 })
