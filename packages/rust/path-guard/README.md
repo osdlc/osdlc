@@ -93,6 +93,8 @@ breaking callers.
 `@osdlc/path-guard` is the TypeScript twin. Both read one conformance fixture,
 so they agree on every case.
 
+The [planning folder](https://github.com/osdlc/osdlc/blob/main/packages/rust/path-guard/docs/planning/README.md) defines the terms both twins share.
+
 ## License
 
 MIT OR Apache-2.0.

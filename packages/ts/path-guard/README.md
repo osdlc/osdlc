@@ -172,6 +172,8 @@ the lexical check alone.
 The TSDoc in the package has the details, and `examples/usage.test.ts` uses each
 export. The [CHANGELOG](./CHANGELOG.md) lists the changes.
 
+The [planning folder](https://github.com/osdlc/osdlc/blob/main/packages/ts/path-guard/docs/planning/README.md) defines the terms the docs use.
+
 ## Twin
 
 The Rust crate [`path-guard`](https://crates.io/crates/path-guard) has the same
