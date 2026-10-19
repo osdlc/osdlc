@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.3](https://github.com/osdlc/osdlc/compare/path-guard/v0.2.2...path-guard/v0.2.3) - 2026-10-19
+
+### Added
+
+- *(path-guard)* add lexical_absolute ([#304](https://github.com/osdlc/osdlc/pull/304))
+
 ### Added
 
 - `lexical_absolute`, a cwd-anchored lexical fold: `.` dropped, `..` folded, no

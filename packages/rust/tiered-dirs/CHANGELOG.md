@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.2](https://github.com/osdlc/osdlc/compare/tiered-dirs/v0.3.1...tiered-dirs/v0.3.2) - 2026-10-19
+
+### Added
+
+- *(config-layers)* add config-layers 0.6.0, replacing cli-tool-config ([#286](https://github.com/osdlc/osdlc/pull/286))
+
+### Other
+
+- add planning notes with the decisions behind the 0.3.0 API ([#299](https://github.com/osdlc/osdlc/pull/299))
+
 ### Changed
 
 - The minimum supported Rust version is 1.89, up from 1.85. The whole workspace
