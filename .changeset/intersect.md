@@ -26,4 +26,4 @@ disk only through the optional `./fs` entry point.
 - `Options`: `caseInsensitive`, `dot` and `globstarMatchesZero`, accepted by every function.
 - Compiled ES modules with type declarations.
 
-Matches the Rust peer port at 0.2.0. Both run the same conformance cases.
+A Rust peer crate, `intersect`, lives in sksizer/dev. Both run the same conformance cases.

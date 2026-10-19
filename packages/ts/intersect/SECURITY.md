@@ -23,7 +23,7 @@ linearly with pattern size. Measured on Bun 1.4.2:
 
 - `*a` repeated 2,048 times against `*b` repeated 2,048 times took 15.8 s and
   3.1 GB.
-- An unclosed `{` repeated 28 times took over 20 s. This is being fixed.
+- An unclosed `{` repeated 28 times took over 20 s.
 
 Patterns of a few segments finish in a few milliseconds.
 

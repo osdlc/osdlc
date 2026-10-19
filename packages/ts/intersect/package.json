@@ -19,8 +19,7 @@
     "pattern-matching"
   ],
   "publishConfig": {
-    "access": "public",
-    "provenance": true
+    "access": "public"
   },
   "type": "module",
   "sideEffects": false,
