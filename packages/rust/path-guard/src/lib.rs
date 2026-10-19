@@ -375,18 +375,17 @@ fn walk<R: Resolver + ?Sized>(calls: &mut Calls<R>, p: &Path, hops: usize) -> Op
         // workspace MSRV (1.85); `let`-chains need 1.88. The `?` still runs only
         // once `real` holds and the component is `Normal`, so the resolver-call
         // budget is spent exactly as the single condition would spend it.
-        if real {
-            if let Some(Component::Normal(name)) = parts.get(i) {
-                if let Ok(target) = calls.read_link(&base.join(name))? {
-                    if hops == MAX_LINK_HOPS {
-                        return None;
-                    }
-                    // `join` with an absolute target replaces `base`, as the kernel does.
-                    let mut next = base.join(target);
-                    next.extend(&parts[i + 1..]);
-                    return walk(calls, &next, hops + 1);
-                }
+        if real
+            && let Some(Component::Normal(name)) = parts.get(i)
+            && let Ok(target) = calls.read_link(&base.join(name))?
+        {
+            if hops == MAX_LINK_HOPS {
+                return None;
             }
+            // `join` with an absolute target replaces `base`, as the kernel does.
+            let mut next = base.join(target);
+            next.extend(&parts[i + 1..]);
+            return walk(calls, &next, hops + 1);
         }
         if last_dotdot.is_none_or(|d| d < i) {
             base.extend(&parts[i..]);
@@ -440,10 +439,8 @@ fn deepest_existing<R: Resolver + ?Sized>(
         calls.canonicalize(&q)
     };
     // Nested `if let` rather than a `let`-chain (MSRV 1.85; see `walk`).
-    if whole {
-        if let Ok(r) = probe(rest.len())? {
-            return Some((rest.len(), Some(r)));
-        }
+    if whole && let Ok(r) = probe(rest.len())? {
+        return Some((rest.len(), Some(r)));
     }
     // Invariant: `rest[..found]` canonicalises (to `real` once `found > 0`);
     // `rest[..missing]` does not, or lies past the end.
