@@ -1,12 +1,101 @@
 {
   "schema": 1,
   "pr": 321,
-  "head": null,
-  "base": null,
-  "round": 0,
+  "head": "817dfb717489eb9c970733a83bf2e82fcd4e69b6",
+  "base": "4fee4643ab0bde505ed17f0ba5b6f84857a8d1fa",
+  "round": 1,
   "claim": {
     "owner": "KellyMBP.local:claude-r7m2qd",
     "at": "2026-10-19T20:55:47.934Z"
   },
-  "findings": []
+  "findings": [
+    {
+      "id": "r1-1",
+      "round": 1,
+      "path": "packages/ts/path-guard/tests/lexical-entry.test.ts",
+      "line": 55,
+      "title": "./lexical entry skips the export contract CONTRIBUTING.md states; isUnder has no example and the pinned list misses types",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-2",
+      "round": 1,
+      "path": "packages/ts/path-guard/README.md",
+      "line": 143,
+      "title": "Mode table lists isUnder as a main-entry export; The API table has no isUnder row",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-3",
+      "round": 1,
+      "path": "packages/ts/path-guard/tests/lexical-entry.test.ts",
+      "line": 64,
+      "title": "specifiers doc says 'relative' but returns every specifier",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-4",
+      "round": 1,
+      "path": "packages/ts/path-guard/text.ts",
+      "line": 1,
+      "title": "text.ts header restates lexical-entry.ts and lists an importer",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-5",
+      "round": 1,
+      "path": "packages/ts/path-guard/vitest.config.ts",
+      "line": 9,
+      "title": "Alias order is load-bearing and uncommented",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-6",
+      "round": 1,
+      "path": "packages/ts/path-guard/lexical-entry.ts",
+      "line": 4,
+      "title": "text.ts is a second pure module beside lexical.ts under a second word for TM-02 lexical",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-7",
+      "round": 1,
+      "path": null,
+      "line": null,
+      "title": "README Runtimes section still says Node only (README.md:208)",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-8",
+      "round": 1,
+      "path": null,
+      "line": null,
+      "title": "README Twin section does not list isUnder as a TypeScript-only export (README.md:197)",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    }
+  ]
 }
