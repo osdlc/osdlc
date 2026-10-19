@@ -127,7 +127,7 @@ need. Run it with `cargo run --example two_files`.
   every value the project file sets. The machine value fills only a
   top-level key that is missing or unset in the project file. It does not
   merge nested mappings. The `paths:` map is the exception the tool handles
-  with `paths::path_tokens`, which merges by name.
+  with `paths::path_names`, which merges by name.
 - **What counts as set.** Missing, `null`, an empty or whitespace-only string,
   an empty list and an empty mapping are unset. `false` and `0` are set.
 - **Only `true` and `false` are booleans.** `yes`, `no`, `on` and `off` read as
@@ -166,9 +166,9 @@ need. Run it with `cargo run --example two_files`.
 | `load` is memoised per path until `clear_cache` | `the_value_is_memoised_per_path_until_clear_cache`, `a_valid_file_is_read_and_re_read_when_the_path_changes` |
 | `read_strict` reports what `load` hides | `read_strict_reports_what_load_hides` |
 | An invalid tool name is an error | `an_invalid_tool_name_is_an_error` |
-| The machine's `paths:` entry wins per name, and every token is absolute | `the_machine_entry_wins_per_name_and_every_value_is_absolute` |
+| The machine's `paths:` entry wins per name, and every name is absolute | `the_machine_entry_wins_per_name_and_every_value_is_absolute` |
 | `~` and relative paths resolve without touching the file system; URLs and bare words pass through | `expands_tilde_and_resolves_a_relative_path_against_the_base`, `leaves_alone_what_is_not_a_path_a_url_a_bare_word`, `normalizes_dot_dot_without_touching_the_filesystem` |
-| An unknown `{name}` is an error naming the setting, the fix and what exists | `an_unknown_name_is_an_error_naming_the_setting_the_fix_and_what_exists`, `omits_the_parenthetical_when_no_tokens_are_known`, `the_tool_names_its_own_files_in_the_hint` |
+| An unknown `{name}` is an error naming the setting, the fix and what exists | `an_unknown_name_is_an_error_naming_the_setting_the_fix_and_what_exists`, `omits_the_parenthetical_when_no_names_are_known`, `the_tool_names_its_own_files_in_the_hint` |
 | What counts as set | `missing_null_empty_string_empty_list_and_empty_map_are_unset` (includes a whitespace-only string), `a_non_empty_string_list_or_map_is_set`, `false_and_zero_are_set` |
 | Project over machine, one level deep; the machine fills only missing or unset keys | `project_wins_on_an_overlapping_key`, `a_set_project_value_is_kept_even_when_falsy`, `every_unset_project_value_falls_back_to_machine`, `a_project_null_falls_back_to_machine`, `nested_mappings_are_not_merged`, `a_machine_only_key_is_added` |
 | Only `true` and `false` are booleans; tags are dropped | `only_true_and_false_are_booleans`, `a_tag_is_dropped_and_its_value_kept`, `scalar_keys_read_as_strings_and_a_collection_key_is_malformed` |
@@ -206,7 +206,7 @@ the MSRV of the whole workspace.
 | Project file plus per-machine file | yes | build it from sources | build it from providers | one file |
 | Machine file location per OS | yes, through `tiered-dirs` | no | no | yes |
 | Loading never fails, falls back to defaults | yes, plus a strict read | no | no | no |
-| `{name}` path tokens | yes | no | no | no |
+| `{name}` path names | yes | no | no | no |
 | "Command needs this setting" check and message | yes | no | no | no |
 | Formats | YAML | many | many | TOML, YAML and more |
 | Writes files | no | no | no | yes |
@@ -220,8 +220,8 @@ wants the project and machine split and the messages that go with it.
 The crate stays on 0.x for now. Every public item is marked "stable in 0.x"
 in its docs: `FileProblem`, `read_mapping`, `find_up`, `overlay_top_level`,
 `resolve_paths_at`, `env_stem`, `MachineConfigFile`, `Scope`, `KeySpec`,
-`Need`, `KeyScopes`, `Needs`, `resolve_config_path`, `PathTokens`,
-`path_tokens`, `TokenError`, `substitute_path_names`,
+`Need`, `KeyScopes`, `Needs`, `resolve_config_path`, `PathNames`,
+`path_names`, `PathNameError`, `substitute_path_names`,
 `substitute_path_names_with_hint`, `value_at`, `value_is_set`, and the
 re-exports `tiered_dirs` and `serde_json`. A breaking change to one of them
 ships only in a new 0.x minor release, with a CHANGELOG entry.

@@ -62,8 +62,9 @@ code. Every change below is breaking against `cli-tool-config` 0.5.1.
 - **Breaking:** `paths::expand_tokens` is `paths::substitute_path_names` and
   `paths::expand_tokens_with_hint` is `paths::substitute_path_names_with_hint`.
   They replace each `{name}` in a value with the directory `paths:` holds under
-  that name. The behaviour and the error text are unchanged.
-  `PathTokens`, `path_tokens` and `TokenError` keep their names.
+  that name. `PathTokens` is `PathNames`, `path_tokens` is `path_names` and
+  `TokenError` is `PathNameError`. The error text says "unknown path name"
+  where it said "unknown token".
 - **Breaking:** `MachineConfigFile<T>` reads the file straight into `T`. A
   file that is not a mapping, or does not match `T`, still gives
   `T::default()` from `load`. `read_strict` reports an empty file as

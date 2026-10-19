@@ -1,5 +1,5 @@
 //! A tool reads its committed project file and its machine file together,
-//! expands `{name}` tokens, and checks a need before it runs.
+//! substitutes `{name}` path names, and checks a need before it runs.
 //!
 //! Run it with `cargo run --example two_files`. It works in a scratch
 //! directory and prints what it found.
@@ -65,12 +65,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let machine_raw = file::read_mapping(&machine_path)?;
 
     // `{dev}` comes from the machine's `paths:` map.
-    let tokens = paths::path_tokens(&project_root, &home, &typed.paths, &BTreeMap::new());
+    let names = paths::path_names(&project_root, &home, &typed.paths, &BTreeMap::new());
     let project_value = serde_json::Value::Object(project.clone());
     let checkout = value::value_at(&project_value, "checkout")
         .and_then(serde_json::Value::as_str)
         .unwrap_or_default();
-    let checkout = paths::substitute_path_names(checkout, &tokens, "checkout:")?;
+    let checkout = paths::substitute_path_names(checkout, &names, "checkout:")?;
     println!("checkout: {checkout}");
 
     // The project leaves `remote` blank, so the machine's value fills it.

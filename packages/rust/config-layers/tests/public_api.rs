@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use config_layers::file::{self, FileProblem};
 use config_layers::machine::{MachineConfigFile, env_stem};
 use config_layers::needs::{KeyScopes, KeySpec, Need, Needs, Scope};
-use config_layers::paths::{self, PathTokens, TokenError};
+use config_layers::paths::{self, PathNameError, PathNames};
 use config_layers::serde_json;
 use config_layers::tiered_dirs::{BaseDirs, TieredDirs};
 use config_layers::value;
@@ -112,7 +112,7 @@ fn files_are_found_read_overlaid_and_resolved() {
 }
 
 #[test]
-fn values_paths_and_tokens() {
+fn values_paths_and_names() {
     let doc: serde_json::Value = serde_saphyr::from_str("a:\n  b: ''\n  c: 0\n").unwrap();
     assert!(!value::value_is_set(value::value_at(&doc, "a.b")));
     assert!(value::value_is_set(value::value_at(&doc, "a.c")));
@@ -126,18 +126,14 @@ fn values_paths_and_tokens() {
     );
 
     let machine = BTreeMap::from([("dev".to_string(), "~/dev".to_string())]);
-    let tokens: PathTokens = paths::path_tokens(base, home, &machine, &BTreeMap::new());
+    let names: PathNames = paths::path_names(base, home, &machine, &BTreeMap::new());
     assert_eq!(
-        PathBuf::from(paths::substitute_path_names("{dev}", &tokens, "repos:").unwrap()),
+        PathBuf::from(paths::substitute_path_names("{dev}", &names, "repos:").unwrap()),
         home.join("dev")
     );
-    let err: TokenError = paths::substitute_path_names_with_hint(
-        "{nope}",
-        &tokens,
-        "repos:",
-        "add it to mytool.yaml",
-    )
-    .unwrap_err();
+    let err: PathNameError =
+        paths::substitute_path_names_with_hint("{nope}", &names, "repos:", "add it to mytool.yaml")
+            .unwrap_err();
     assert!(
         err.to_string()
             .ends_with("add it to mytool.yaml (available: {dev})")
