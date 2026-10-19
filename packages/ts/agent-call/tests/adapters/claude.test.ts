@@ -310,3 +310,21 @@ describe('claude mcp secrets', () => {
     expect(planned.tempFiles[0]?.content).toContain('sekrit-value')
   })
 })
+
+describe('claude output that is not an envelope', () => {
+  test('json that is not an object is an error result, not an empty answer', () => {
+    const adapter = claudeAdapter()
+    const planned = adapter.plan({ prompt: 'hi' })
+    for (const stdout of ['42', 'null', '"text"']) {
+      const parsed = adapter.parseResult(planned, {
+        stdout,
+        stderr: '',
+        exitCode: 0,
+        durationMs: 1,
+        timedOut: false,
+      })
+      expect(parsed.isError).toBe(true)
+      expect(parsed.errorDetail).toContain('no parseable envelope')
+    }
+  })
+})

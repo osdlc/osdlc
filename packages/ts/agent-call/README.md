@@ -115,7 +115,18 @@ const planned = planCall(codex, { prompt: 'Review the change.' })
 // planned.argv is ['codex', '--profile', 'work', 'exec', ...]
 ```
 
-`detectAgents` runs the whole command with `--version` appended.
+`detectAgents` runs the whole command with `--version` appended, and each
+result's `command` says what answered. The Cursor CLI installs as both
+`agent`, the default cursor adapter's binary, and `cursor-agent`. `agent` is a
+generic name, so `detectAgents` counts it as Cursor only when it prints a
+date-stamped version such as `2026.10.01-abc123`, and otherwise tries
+`cursor-agent`:
+
+```ts
+const [cursor] = await detectAgents([cursorAdapter()])
+// cursor.command is ['agent'] or ['cursor-agent'] when available, else undefined.
+const adapter = cursorAdapter({ command: cursor?.command })
+```
 
 Any one-shot CLI runs through `customAdapter`. This one needs only `node`:
 
@@ -128,6 +139,19 @@ const shout = customAdapter({
 
 const result = await callAgent(shout, { prompt: 'hello' })
 // result.ok is true and result.text is 'HELLO'
+```
+
+`customAdapter` takes the same `command` option as the built-in adapters.
+`args` builds what follows it, and `binary` (which defaults to `name`) is
+then its first element:
+
+```ts
+const viaNpx = customAdapter({
+  name: 'my-cli',
+  command: ['npx', '-y', 'my-cli'],
+  args: (_spec, prompt) => ['--message', prompt],
+})
+// planCall(viaNpx, spec).argv starts ['npx', '-y', 'my-cli', '--message', ...]
 ```
 
 A CLI with an argument template, such as Aider, fits `templateAdapter`
@@ -410,9 +434,10 @@ format (a JSON envelope or an event stream), so metadata is captured.
   `~/.cursor/projects/` for good, interactive sessions included. Do not use it
   on a checkout you would not open in Cursor yourself.
 - cursor's default binary is `agent`, and deepseek's is `dsh`. Both names are
-  generic, and `detectAgents` only checks that `<binary> --version` exits 0,
-  so an unrelated program with that name reads as installed. Pass `binary`
-  with a full path to be sure.
+  generic. `detectAgents` counts `agent` as Cursor only when it prints a
+  date-stamped version, but for `dsh` it only checks that `dsh --version`
+  exits 0, so an unrelated program with that name reads as installed. Pass
+  `binary` with a full path to be sure.
 
 ## Development
 

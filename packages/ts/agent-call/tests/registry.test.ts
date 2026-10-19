@@ -113,7 +113,12 @@ describe('detectAgents', () => {
   test('reports the first line of --version for an installed CLI', async () => {
     const binary = fakeCli('good', 'echo "fake 1.2.3"; echo "second line"')
     const [result] = await detectAgents([customAdapter({ name: 'good', binary, args: () => [] })])
-    expect(result).toEqual({ name: 'good', available: true, version: 'fake 1.2.3' })
+    expect(result).toEqual({
+      name: 'good',
+      available: true,
+      version: 'fake 1.2.3',
+      command: [binary],
+    })
   })
 
   test('a binary that is not installed is unavailable', async () => {
@@ -144,6 +149,7 @@ describe('detectAgents', () => {
       name: 'codex',
       available: true,
       version: 'args: --profile work --version',
+      command: [binary, '--profile', 'work'],
     })
   })
 
@@ -172,19 +178,138 @@ describe('detectAgents', () => {
     try {
       const results = await detectAgents()
       expect(results).toEqual([
-        { name: 'claude', available: true, version: 'claude 9.9' },
+        { name: 'claude', available: true, version: 'claude 9.9', command: ['claude'] },
         { name: 'codex', available: false, version: undefined },
-        { name: 'antigravity', available: true, version: 'agy 9.9' },
+        { name: 'antigravity', available: true, version: 'agy 9.9', command: ['agy'] },
         { name: 'opencode', available: false, version: undefined },
         { name: 'copilot', available: false, version: undefined },
         { name: 'pi', available: false, version: undefined },
         { name: 'qwen', available: false, version: undefined },
         { name: 'droid', available: false, version: undefined },
         { name: 'cursor', available: false, version: undefined },
-        { name: 'deepseek', available: true, version: 'dsh 9.9' },
+        { name: 'deepseek', available: true, version: 'dsh 9.9', command: ['dsh'] },
       ])
     } finally {
       process.env['PATH'] = original
     }
+  })
+
+  describe('cursor, whose default binary agent is a generic name', () => {
+    /** Runs `detectAgents` with only the given fake CLIs, each printing its version, on PATH. */
+    async function detectWith(clis: Record<string, string>, adapters = [adapterFor('cursor')]) {
+      const bin = mkdtempSync(join(dir, 'cursor-bin-'))
+      for (const [name, version] of Object.entries(clis)) {
+        const path = join(bin, name)
+        writeFileSync(path, `#!/bin/sh\necho "${version}"\n`)
+        chmodSync(path, 0o755)
+      }
+      const original = process.env['PATH']
+      process.env['PATH'] = bin
+      try {
+        return await detectAgents(adapters)
+      } finally {
+        process.env['PATH'] = original
+      }
+    }
+
+    test('agent with a date-stamped version is the Cursor CLI', async () => {
+      const [result] = await detectWith({
+        agent: '2026.10.14-0f9edde',
+        'cursor-agent': '2026.10.14-0f9edde',
+      })
+      expect(result).toEqual({
+        name: 'cursor',
+        available: true,
+        version: '2026.10.14-0f9edde',
+        command: ['agent'],
+      })
+    })
+
+    test('agent with any other version is some other program; cursor-agent stands in', async () => {
+      const [result] = await detectWith({ agent: 'agent 1.2.3', 'cursor-agent': '2026.10.01-abc' })
+      expect(result).toEqual({
+        name: 'cursor',
+        available: true,
+        version: '2026.10.01-abc',
+        command: ['cursor-agent'],
+      })
+      expect(Object.isFrozen(result?.command)).toBe(true)
+    })
+
+    test('cursor-agent stands in when agent is missing', async () => {
+      const [result] = await detectWith({ 'cursor-agent': '2026.10.01-abc' })
+      expect(result?.command).toEqual(['cursor-agent'])
+    })
+
+    test('an agent that is not Cursor, and no cursor-agent, is unavailable', async () => {
+      const [result] = await detectWith({ agent: 'agent 1.2.3' })
+      expect(result).toEqual({ name: 'cursor', available: false, version: undefined })
+    })
+
+    test('a cursor adapter given its own binary or command is probed as given', async () => {
+      const results = await detectWith({ agent: 'agent 1.2.3', 'cursor-agent': '2026.10.01-abc' }, [
+        adapterFor('cursor', { binary: 'agent', command: ['agent', '--flag'] }),
+        adapterFor('cursor', { binary: join(dir, 'missing-agent') }),
+      ])
+      expect(results.map((r) => [r.available, r.version])).toEqual([
+        [true, 'agent 1.2.3'],
+        [false, undefined],
+      ])
+    })
+
+    test('only an adapter named cursor gets the check', async () => {
+      const [result] = await detectWith({ agent: 'agent 1.2.3' }, [
+        customAdapter({ name: 'other', binary: 'agent', args: () => [] }),
+      ])
+      expect(result).toMatchObject({ available: true, version: 'agent 1.2.3' })
+    })
+  })
+})
+
+describe('customAdapter command option', () => {
+  test('a command prefix starts the argv, and binary is its first element', () => {
+    const adapter = customAdapter({
+      name: 'tool',
+      command: ['npx', '-y', 'tool-cli'],
+      args: (_spec, prompt) => ['--message', prompt],
+    })
+    expect(adapter.binary).toBe('npx')
+    expect(adapter.command).toEqual(['npx', '-y', 'tool-cli'])
+    expect(adapter.plan({ prompt: 'hi', extraArgs: ['--x'] }).argv).toEqual([
+      'npx',
+      '-y',
+      'tool-cli',
+      '--message',
+      'hi',
+      '--x',
+    ])
+  })
+
+  test('command wins over binary; an empty command is ignored', () => {
+    const args = () => ['a']
+    expect(customAdapter({ name: 't', binary: '/x', command: ['/y'], args }).binary).toBe('/y')
+    const empty = customAdapter({ name: 't', binary: '/x', command: [], args })
+    expect(empty.command).toEqual(['/x'])
+    expect(empty.plan({ prompt: 'p' }).argv).toEqual(['/x', 'a'])
+  })
+
+  test('the stored command is a frozen copy', () => {
+    const command = ['tool', '--profile', 'work']
+    const adapter = customAdapter({ name: 'tool', command, args: () => [] })
+    command[1] = '--changed'
+    expect(adapter.command).toEqual(['tool', '--profile', 'work'])
+    expect(Object.isFrozen(adapter.command)).toBe(true)
+  })
+
+  test('with neither, the binary is the name', () => {
+    const adapter = customAdapter({ name: 'goose', args: () => [] })
+    expect(adapter.binary).toBe('goose')
+    expect(adapter.command).toEqual(['goose'])
+  })
+
+  test('detectAgents probes the whole command', async () => {
+    const command = ['/bin/sh', '-c', 'echo "probe $1"', 'sh']
+    const [result] = await detectAgents([customAdapter({ name: 'sh', command, args: () => [] })])
+    expect(result).toEqual({ name: 'sh', available: true, version: 'probe --version', command })
   })
 })

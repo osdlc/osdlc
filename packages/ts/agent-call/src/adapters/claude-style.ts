@@ -67,7 +67,7 @@ export function parseClaudeStyle(
         events: envelope,
       }
     }
-  } else if (envelope !== undefined) {
+  } else if (envelope !== null && typeof envelope === 'object') {
     return claudeStyleFields(envelope, planned)
   }
   return {
