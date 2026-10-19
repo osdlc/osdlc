@@ -52,6 +52,7 @@ Developed here, in this repository:
 - `packages/rust/cli-tool-config` (`cli-tool-config` on crates.io, last release 0.5.3; replaced by `config-layers`)
 - `packages/rust/config-layers` (`config-layers` on crates.io)
 - `packages/rust/etag-write` (`etag-write` on crates.io)
+- `packages/rust/path-guard` (`path-guard` on crates.io)
 - `packages/rust/tiered-dirs` (`tiered-dirs` on crates.io)
 - `packages/rust/yaml-splice` (`yaml-splice` on crates.io)
 - `packages/rust/yaml-splice-wasm`, the WebAssembly build of `yaml-splice`
@@ -73,6 +74,9 @@ Developed here, in this repository:
 - `packages/ts/markdown-contract` (`@osdlc/markdown-contract` on npm,
   contracts for markdown documents: one parse gives findings with lines and a
   typed model; contracts in TypeScript or YAML, a folder runner and a CLI)
+- `packages/ts/path-guard` (`@osdlc/path-guard` on npm, a path containment
+  guard: lexical validation, then a symlink-aware proof that a path stays
+  inside its root; the TypeScript twin of the `path-guard` crate)
 
 The development repository will take each TypeScript library from npm, like
 any other consumer. Today it still keeps its own copies. Open issues and pull
