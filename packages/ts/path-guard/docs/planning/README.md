@@ -13,14 +13,16 @@ shares them.
 | Folder                     | Holds                                         | Ids     |
 | -------------------------- | --------------------------------------------- | ------- |
 | [`decisions/`](decisions/) | Choices that shape the package, one per topic | `D-nn`  |
+| [`tasks/`](tasks/)         | Work still open                               | `T-nn`  |
 | [`terms/`](terms/)         | Words the docs use with a fixed meaning       | `TM-nn` |
 
 Ids are numbers in order of writing, zero-padded to two digits so they sort.
 They are never reused. Entries link to each other with relative links.
 
 Each entry has a `state`. A decision is `accepted` or `superseded`, and a
-superseded decision names the one that replaces it. A term is `accepted`, or
-`superseded` once it no longer describes the package.
+superseded decision names the one that replaces it. A task is `open` or
+`done`. A term is `accepted`, or `superseded` once it no longer describes the
+package.
 
 ## Decisions
 
@@ -31,6 +33,11 @@ superseded decision names the one that replaces it. A term is `accepted`, or
 - [D-04](decisions/D-04-error-kind-growth.md): How `PathErrorKind` grows
 - [D-05](decisions/D-05-kept-names-for-0-2.md): `isInside` and
   `realpathOrSelf` keep their names for 0.2.x
+
+## Open tasks
+
+- [T-02](tasks/T-02-rust-windows-dot-dot-fold.md): The Rust crate folds `..`
+  as text on Windows
 
 ## Terms
 

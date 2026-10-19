@@ -20,7 +20,9 @@
 # packed-tarball checks, so the Node matrix is what a consumer sees.
 #
 # `windows` runs path-guard on Windows, when path-guard is picked. It is the
-# only library tested there.
+# only library tested there. A run that is not a pull request picks every
+# package, so packages-publish.yml waits for the Windows jobs too, and a
+# Windows failure blocks a release.
 #
 # Every action is pinned to a commit SHA; the comment names its release.
 name: packages
@@ -48,6 +50,10 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 2
+
+      # The runner's own Node, since the script needs nothing installed.
+      - name: Test the package pick
+        run: node --test .github/scripts/affected-packages.test.mjs
 
       - name: Pick the packages to check
         id: pick

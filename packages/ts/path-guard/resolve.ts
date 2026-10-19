@@ -4,9 +4,8 @@ import { posix, win32 } from 'node:path'
 import { PathError, components, validateRelative } from './lexical.ts'
 
 /**
- * Windows paths: `\` separates too, a drive or UNC share is a root, and `..`
- * folds as text before any link is followed, as Node and Windows do there.
- * Read once, at load.
+ * Read once, at load, as Node's `path` does: a test reloads the module to switch
+ * platform. The Windows rules are in docs/planning/decisions/D-03-platforms.md.
  */
 const WINDOWS = process.platform === 'win32'
 const platformPath = WINDOWS ? win32 : posix
@@ -427,8 +426,8 @@ function under(path: string, base: string): boolean {
 
 /**
  * `path` with `.` dropped and each `..` removed with the name before it, as
- * Windows reads a path. A `..` at a root stays there; a leading `..` of a
- * relative path is kept.
+ * Windows reads a path. A `..` at a root stays there. A leading `..` is kept in
+ * a relative path and after a bare drive, which is a working directory too.
  */
 function foldText(path: string): string {
   const { root, segs } = split(path)
@@ -438,7 +437,7 @@ function foldText(path: string): string {
     if (seg !== '..') out.push(seg)
     else if (last === '.') out[out.length - 1] = '..'
     else if (last !== undefined && last !== '..') out.pop()
-    else if (root === '') out.push('..')
+    else if (root === '' || BARE_DRIVE.test(root)) out.push('..')
   }
   return format(root, out)
 }

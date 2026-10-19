@@ -40,3 +40,8 @@ created: 2026-10-19
   of the fixture's answer.
 - Refusing device names or alternate data streams would change the lexical
   layer of both twins. It needs its own decision.
+- The Rust crate does not follow the Windows rule yet. Its walk folds a `..`
+  behind a missing name against the real path, as on POSIX, so on Windows it
+  can accept a path that Windows opens outside the root. Until
+  [T-02](../tasks/T-02-rust-windows-dot-dot-fold.md) lands, the twins do not
+  give the same answer on Windows, which the twin rule asks for.

@@ -103,3 +103,19 @@ describe('canonicalExistingPrefix on Windows', () => {
     expect(canonicalExistingPrefix('C:\\v\\x\\..\\a.md', fs)).toBe('C:\\real\\v\\a.md')
   })
 })
+
+// `C:` with no separator is the working directory on drive C, so `C:..` is its parent.
+describe('a bare drive on Windows', () => {
+  const fs = table({ 'C:': 'C:\\work', 'C:/work': 'C:\\work', 'C:..': 'C:\\' })
+
+  test('keeps a `..` after a bare drive, so it climbs out of the working directory', () => {
+    expect(contains('C:\\work', 'C:..\\secret', fs)).toBe(false)
+    expect(canonicalExistingPrefix('C:..\\secret', fs)).toBe('C:\\secret')
+    expect(canonicalExistingPrefix('C:a\\..\\..\\secret', fs)).toBe('C:\\secret')
+  })
+
+  test('joins a name onto a bare drive with no separator', () => {
+    expect(canonicalExistingPrefix('C:new\\a.md', fs)).toBe('C:\\work\\new\\a.md')
+    expect(contains('C:\\work', 'C:new\\a.md', fs)).toBe(true)
+  })
+})
