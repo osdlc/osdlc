@@ -1,0 +1,68 @@
+{
+  "name": "@osdlc/path-guard",
+  "version": "0.2.1",
+  "description": "Path containment guard: lexical validation of a root-relative path, then symlink-aware proof that it stays inside its root, plus open-then-verify reads. Twin of the Rust `path-guard` crate.",
+  "license": "MIT OR Apache-2.0",
+  "author": "sksizer",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/osdlc/osdlc.git",
+    "directory": "packages/ts/path-guard"
+  },
+  "homepage": "https://github.com/osdlc/osdlc/tree/main/packages/ts/path-guard#readme",
+  "bugs": "https://github.com/osdlc/osdlc/issues",
+  "keywords": [
+    "path",
+    "path-traversal",
+    "containment",
+    "symlink",
+    "security",
+    "sandbox",
+    "typescript"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE-MIT",
+    "LICENSE-APACHE",
+    "SECURITY.md",
+    "CONTRIBUTING.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "test": "vitest run",
+    "coverage": "vitest run --coverage",
+    "smoke": "node tests/smoke.mjs",
+    "prepublishOnly": "npm run clean && npm run build",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "oxlint .",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit"
+  },
+  "devDependencies": {
+    "@osdlc/prettier-config": "workspace:^",
+    "@osdlc/tsconfig": "workspace:^",
+    "@types/node": "^26.1.0",
+    "@vitest/coverage-v8": "^5.0.5",
+    "oxlint": "^1.65.0",
+    "prettier": "3.9.6",
+    "typescript": "~6.0.3",
+    "vitest": "^5.0.5"
+  }
+}

@@ -22,8 +22,8 @@ include = [
 thiserror = { workspace = true }
 
 # tests/parity.rs only: it reads tests/fixtures/parity.json, the conformance
-# fixture the TypeScript twin carries a copy of. The crate parses no JSON at
-# runtime.
+# fixture the TypeScript twin (packages/ts/path-guard) reads in place. The
+# crate parses no JSON at runtime.
 [dev-dependencies]
 # 1.0.220 is the first serde that pins its own serde_derive, so the
 # minimal-versions job does not resolve a newer serde_derive that fails to

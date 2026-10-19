@@ -1,13 +1,15 @@
 //! The shared conformance fixture, `tests/fixtures/parity.json`.
 //!
-//! This file is the contract between this crate and its TypeScript twin, which
-//! carries a byte-identical copy and a test that fails when the copies differ:
-//! same input, same result. A case added on either side goes in the fixture,
-//! never in one twin's own suite.
+//! This file is the contract between this crate and its TypeScript twin in
+//! `packages/ts/path-guard`, which reads it in place: same input, same result.
+//! A case added on either side goes in the fixture, never in one twin's own
+//! suite.
 //!
 //! The `resolve` and `contains` cases run under a resolver for which no path
 //! exists, so they pin the lexical fold and the component-wise comparison
-//! without touching the filesystem. The `resolve_on_disk` and
+//! without touching the filesystem. The `lexical_absolute` and `to_relative`
+//! cases are pure too: every `lexical_absolute` input is absolute, so the
+//! current directory never enters. The `resolve_on_disk` and
 //! `contains_on_disk` cases build a tree of directories, files and symlinks in
 //! a scratch directory and run [`path_guard::resolve`] or
 //! [`path_guard::contains`] against it.
@@ -25,7 +27,8 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use path_guard::{
-    PathError, Resolver, contains, contains_with, resolve, resolve_with, validate_relative,
+    PathError, Resolver, contains, contains_with, lexical_absolute, resolve, resolve_with,
+    to_relative, validate_relative,
 };
 use serde::Deserialize;
 
@@ -34,6 +37,8 @@ struct Fixture {
     validate_relative: Vec<LexicalCase>,
     resolve: Vec<ResolveCase>,
     contains: Vec<ContainsCase>,
+    lexical_absolute: Vec<LexicalCase>,
+    to_relative: Vec<ResolveCase>,
     resolve_on_disk: Vec<OnDiskCase>,
     contains_on_disk: Vec<ContainsOnDiskCase>,
 }
@@ -216,6 +221,8 @@ fn shared_fixture() {
         !fixture.validate_relative.is_empty()
             && !fixture.resolve.is_empty()
             && !fixture.contains.is_empty()
+            && !fixture.lexical_absolute.is_empty()
+            && !fixture.to_relative.is_empty()
             && !fixture.resolve_on_disk.is_empty()
             && !fixture.contains_on_disk.is_empty(),
         "every section of the fixture has cases"
@@ -252,6 +259,31 @@ fn shared_fixture() {
             failures.push(format!(
                 "contains [{}] {:?} in {:?}: got {got}, want {}",
                 c.name, c.inner, c.outer, c.expected
+            ));
+        }
+    }
+
+    for c in &fixture.lexical_absolute {
+        let want = expected(&c.name, &c.ok, &c.error);
+        let got = lexical_absolute(Path::new(&c.input))
+            .map(|p| p.to_string_lossy().into_owned())
+            .map_err(|e| e.to_string());
+        if got != want {
+            failures.push(format!(
+                "lexical_absolute [{}] {:?}: got {got:?}, want {want:?}",
+                c.name, c.input
+            ));
+        }
+    }
+
+    for c in &fixture.to_relative {
+        let want = expected(&c.name, &c.ok, &c.error);
+        let got =
+            to_relative(Path::new(&c.root), Path::new(&c.input)).map_err(|e| kind(&e).to_string());
+        if got != want {
+            failures.push(format!(
+                "to_relative [{}] {:?} under {:?}: got {got:?}, want {want:?}",
+                c.name, c.input, c.root
             ));
         }
     }

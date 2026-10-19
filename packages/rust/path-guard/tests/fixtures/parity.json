@@ -101,6 +101,76 @@
       "expected": false
     }
   ],
+  "lexical_absolute": [
+    { "name": "already folded", "input": "/a/b", "ok": "/a/b" },
+    { "name": "trailing slash dropped", "input": "/a/b/", "ok": "/a/b" },
+    { "name": "empty segments collapse", "input": "//a///b", "ok": "/a/b" },
+    { "name": "dot segments dropped", "input": "/a/./b/.", "ok": "/a/b" },
+    { "name": "a parent removes the component before it", "input": "/a/b/../c", "ok": "/a/c" },
+    { "name": "a run of parents", "input": "/a/b/c/../../d", "ok": "/a/d" },
+    { "name": "a parent that folds to the root", "input": "/a/..", "ok": "/" },
+    { "name": "the root alone", "input": "/", "ok": "/" },
+    { "name": "a parent at the root stays at the root", "input": "/../a", "ok": "/a" },
+    { "name": "several parents past the root", "input": "/a/../../../b", "ok": "/b" },
+    { "name": "names made of dots are names", "input": "/a/.../..b/c", "ok": "/a/.../..b/c" }
+  ],
+  "to_relative": [
+    { "name": "a nested file", "root": "/v", "input": "/v/Notes/a.md", "ok": "Notes/a.md" },
+    { "name": "a file in the root", "root": "/v", "input": "/v/a.md", "ok": "a.md" },
+    { "name": "the root itself is the empty path", "root": "/v", "input": "/v", "ok": "" },
+    { "name": "a trailing slash on the path", "root": "/v", "input": "/v/Notes/", "ok": "Notes" },
+    { "name": "a trailing slash on the root", "root": "/v/", "input": "/v/a.md", "ok": "a.md" },
+    { "name": "a trailing slash on the root, path is the root", "root": "/v/", "input": "/v", "ok": "" },
+    { "name": "a relative root and path", "root": ".", "input": "./a/b", "ok": "a/b" },
+    {
+      "name": "empty segments and a trailing slash dropped",
+      "root": "/v",
+      "input": "/v//Notes///a.md/",
+      "ok": "Notes/a.md"
+    },
+    {
+      "name": "dot and empty segments dropped",
+      "root": "/v",
+      "input": "/v/./Notes//./a.md",
+      "ok": "Notes/a.md"
+    },
+    { "name": "the filesystem root as the root", "root": "/", "input": "/a/b", "ok": "a/b" },
+    { "name": "dots inside a name", "root": "/v", "input": "/v/..a/b..md", "ok": "..a/b..md" },
+    { "name": "outside the root", "root": "/v", "input": "/other/a.md", "error": "escapes" },
+    {
+      "name": "a name prefix is not under the root",
+      "root": "/vault",
+      "input": "/vault2/a.md",
+      "error": "escapes"
+    },
+    { "name": "the parent of the root", "root": "/v/a", "input": "/v", "error": "escapes" },
+    { "name": "the filesystem root", "root": "/v", "input": "/", "error": "escapes" },
+    {
+      "name": "a relative path is not under an absolute root",
+      "root": "/v",
+      "input": "v/a.md",
+      "error": "escapes"
+    },
+    {
+      "name": "a parent leaving the root",
+      "root": "/v",
+      "input": "/v/../w",
+      "error": "parent_segment"
+    },
+    {
+      "name": "a parent inside the path",
+      "root": "/v",
+      "input": "/v/a/../b",
+      "error": "parent_segment"
+    },
+    { "name": "a trailing parent", "root": "/v", "input": "/v/a/..", "error": "parent_segment" },
+    {
+      "name": "an empty root with an absolute path",
+      "root": "",
+      "input": "/a",
+      "error": "parent_segment"
+    }
+  ],
   "resolve_on_disk": [
     {
       "name": "a dangling link to a missing file outside",
