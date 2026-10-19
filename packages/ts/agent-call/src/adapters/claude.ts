@@ -1,43 +1,35 @@
-import {
-  CONVERSATION_SCHEMA,
-  type Conversation,
-  type ConversationMessage,
-  type Part,
-  type Usage,
-} from '../conversation.js'
+import type { Conversation } from '../conversation.js'
+import { isBelowLow } from '../models.js'
 import { note, TMP_TOKEN, type CapabilityNote, type PlannedCall, type TempFile } from '../plan.js'
 import type { AgentCallSpec, OutputFormat, PluginSpec } from '../spec.js'
+import { claudeStyleConversation, parseClaudeStyle } from './claude-style.js'
 import {
   applyPermissionMode,
-  asNumber,
-  asString,
   buildEffectivePrompt,
-  get,
+  commandPrefix,
   modelFlag,
-  parseJsonLines,
-  tryParseJson,
+  type CommandOptions,
 } from './shared.js'
 import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './types.js'
 
 const MCP_CONFIG_FILE = 'mcp.json'
 
 /** Options for {@link claudeAdapter}. */
-export interface ClaudeAdapterOptions {
-  /** Binary to spawn. Default: the CLI's own name. */
-  binary?: string
-}
+export interface ClaudeAdapterOptions extends CommandOptions {}
 
 /**
  * Claude Code (`claude -p`). The richest surface: permissions, tool rules,
  * system prompts, structured output, sessions, and budget are all native.
  */
 export function claudeAdapter(options: ClaudeAdapterOptions = {}): AgentAdapter {
-  const binary = options.binary ?? 'claude'
+  const command = commandPrefix(options, 'claude')
+  const binary = command[0]!
   return {
     name: 'claude',
     binary,
+    command,
     plan(spec) {
-      return planClaude(binary, spec)
+      return planClaude(command, spec)
     },
     parseResult(planned, raw) {
       return parseClaude(planned, raw)
@@ -58,9 +50,9 @@ export function claudeResumeFlag(id: string): string {
   return `--resume=${id}`
 }
 
-/** `--effort <level>`: passed through as given, so a level the CLI adds later needs no change here. */
+/** `--effort <level>`: levels below `low` become `low`; anything else passes through, so a new CLI level needs no change. */
 export function claudeEffortArgv(effort: string): string[] {
-  return ['--effort', effort]
+  return ['--effort', isBelowLow(effort) ? 'low' : effort]
 }
 
 /**
@@ -79,10 +71,10 @@ export function claudePluginArgv(plugins: PluginSpec): string[] {
   return argv
 }
 
-function planClaude(binary: string, spec: AgentCallSpec): PlannedCall {
+function planClaude(command: readonly string[], spec: AgentCallSpec): PlannedCall {
   const notes: CapabilityNote[] = []
   const tempFiles: TempFile[] = []
-  const argv = [binary, '-p']
+  const argv = [...command, '-p']
 
   // Prefer the JSON envelope when the caller didn't ask for a specific
   // format: same answer, plus usage/cost/session metadata.
@@ -103,7 +95,11 @@ function planClaude(binary: string, spec: AgentCallSpec): PlannedCall {
 
   if (spec.effort !== undefined) {
     argv.push(...claudeEffortArgv(spec.effort))
-    note(notes, 'effort', 'native', '--effort')
+    if (isBelowLow(spec.effort)) {
+      note(notes, 'effort', 'approximated', '--effort low (claude has no level below low)')
+    } else {
+      note(notes, 'effort', 'native', '--effort')
+    }
   }
 
   if (spec.mcp?.servers !== undefined) {
@@ -213,150 +209,9 @@ function planClaude(binary: string, spec: AgentCallSpec): PlannedCall {
 }
 
 function parseClaude(planned: PlannedCall, raw: RawProcessOutput): ParsedOutput {
-  if (planned.outputFormat === 'text') {
-    return { text: raw.stdout.trim() }
-  }
-
-  if (planned.outputFormat === 'stream-json') {
-    const events = parseJsonLines(raw.stdout)
-    const result = events.find((e) => get(e, 'type') === 'result')
-    if (result === undefined) {
-      // The stream ended without its terminal envelope (crash, kill, truncated
-      // output). Mirrors the `json` arm's missing-envelope guard below; the
-      // events are still returned so callers can mine them, and the exit code
-      // and stderr stay on the AgentResult.
-      return {
-        text: '',
-        isError: true,
-        errorDetail: 'claude --output-format stream-json produced no result event',
-        events,
-      }
-    }
-    return {
-      ...envelopeFields(result, planned),
-      events,
-    }
-  }
-
-  const envelope = tryParseJson(raw.stdout)
-  if (envelope === undefined) {
-    return {
-      text: raw.stdout.trim(),
-      isError: true,
-      errorDetail: 'claude --output-format json produced no parseable envelope',
-    }
-  }
-  return envelopeFields(envelope, planned)
-}
-
-/** Shared between the `json` envelope and the `stream-json` result event. */
-function envelopeFields(envelope: unknown, planned: PlannedCall): ParsedOutput {
-  const text = asString(get(envelope, 'result')) ?? ''
-  const subtype = asString(get(envelope, 'subtype'))
-  const isError = get(envelope, 'is_error') === true || subtype === 'error'
-  const parsed: ParsedOutput = {
-    text,
-    sessionId: asString(get(envelope, 'session_id')),
-    costUsd: asNumber(get(envelope, 'total_cost_usd')),
-    usage: claudeUsage(get(envelope, 'usage')),
-    stopReason: subtype,
-    isError,
-    errorDetail: isError ? text || subtype : undefined,
-  }
-  if (planned.spec.output?.schema !== undefined) {
-    parsed.structured = get(envelope, 'structured_output') ?? tryParseJson(text)
-  }
-  return parsed
-}
-
-function claudeUsage(usage: unknown): Usage | undefined {
-  if (usage === null || typeof usage !== 'object') return undefined
-  return {
-    inputTokens: asNumber(get(usage, 'input_tokens')),
-    outputTokens: asNumber(get(usage, 'output_tokens')),
-    cacheReadTokens: asNumber(get(usage, 'cache_read_input_tokens')),
-    cacheWriteTokens: asNumber(get(usage, 'cache_creation_input_tokens')),
-  }
+  return parseClaudeStyle(planned, raw, { label: 'claude --output-format' })
 }
 
 function claudeConversation(planned: PlannedCall, raw: RawProcessOutput): Conversation | undefined {
-  const parsed = parseClaude(planned, raw)
-  const messages: ConversationMessage[] = [
-    { role: 'user', parts: [{ type: 'text', text: planned.stdin ?? '' }] },
-  ]
-
-  if (planned.outputFormat === 'stream-json') {
-    for (const event of parsed.events ?? []) {
-      const type = get(event, 'type')
-      if (type !== 'assistant' && type !== 'user') continue
-      const content = get(event, 'message', 'content')
-      const parts = anthropicContentParts(content)
-      if (parts.length > 0) {
-        messages.push({ role: type === 'assistant' ? 'assistant' : 'tool', parts })
-      }
-    }
-  } else if (parsed.text !== '') {
-    messages.push({
-      role: 'assistant',
-      parts: [{ type: 'text', text: parsed.text }],
-    })
-  }
-
-  const model = firstAssistantModel(parsed.events ?? [])
-  return {
-    schema: CONVERSATION_SCHEMA,
-    agent: 'claude',
-    model,
-    sessionId: parsed.sessionId,
-    messages,
-    usage: parsed.usage,
-    costUsd: parsed.costUsd,
-    stopReason: parsed.stopReason,
-    raw: {
-      format: `claude/${planned.outputFormat}`,
-      data:
-        planned.outputFormat === 'stream-json'
-          ? parsed.events
-          : (tryParseJson(raw.stdout) ?? raw.stdout),
-    },
-  }
-}
-
-/** Anthropic message content blocks → normalized parts. */
-function anthropicContentParts(content: unknown): Part[] {
-  if (!Array.isArray(content)) return []
-  const parts: Part[] = []
-  for (const block of content) {
-    const type = get(block, 'type')
-    if (type === 'text') {
-      const text = asString(get(block, 'text'))
-      if (text !== undefined && text !== '') parts.push({ type: 'text', text })
-    } else if (type === 'thinking') {
-      const text = asString(get(block, 'thinking'))
-      if (text !== undefined) parts.push({ type: 'reasoning', text })
-    } else if (type === 'tool_use') {
-      parts.push({
-        type: 'tool-call',
-        callId: asString(get(block, 'id')),
-        name: asString(get(block, 'name')) ?? 'unknown',
-        input: get(block, 'input'),
-      })
-    } else if (type === 'tool_result') {
-      parts.push({
-        type: 'tool-result',
-        callId: asString(get(block, 'tool_use_id')),
-        output: get(block, 'content'),
-        isError: get(block, 'is_error') === true,
-      })
-    }
-  }
-  return parts
-}
-
-function firstAssistantModel(events: unknown[]): string | undefined {
-  for (const event of events) {
-    const model = asString(get(event, 'message', 'model'))
-    if (model !== undefined) return model
-  }
-  return undefined
+  return claudeStyleConversation('claude', planned, raw, parseClaude(planned, raw))
 }

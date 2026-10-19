@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.3.5
+
+### Patch Changes
+
+- Updated dependencies [778129e]
+  - @osdlc/command-seam@0.6.0
+
+## 0.3.4
+
+### Patch Changes
+
+- 4f3fb00: README: clarify reconcile on Windows.
+
 ## 0.3.3
 
 ### Patch Changes

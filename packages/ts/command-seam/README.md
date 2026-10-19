@@ -96,15 +96,15 @@ try {
   `neverExited`, `reason`, `signal`, `outputIncomplete` and `error`.
 - **`neverExited`**: `true` when the command never reported an exit status.
   The spawn failed, a timeout or abort killed it, a signal ended it, or the
-  sync runner killed it at the output cap.
+  runner killed it at the output cap.
   `exitCode` is then a stand-in `1`. Check it before you treat an exit code as
   an answer: `grep` exits 1 for "no matches", and a missing `grep` must not
   look the same.
 - **`reason`**: which of those causes it was, set whenever `neverExited` is:
   `'spawn'` (it never started), `'timeout'`, `'abort'` (the caller stopped
-  it), `'signal'` (a signal from elsewhere ended it) or `'output'` (the sync
-  runner's 256 MB output cap). `signal` names the signal when the runner
-  knows it. A timeout may pass on a retry; a spawn failure or the output cap
+  it), `'signal'` (a signal from elsewhere ended it) or `'output'` (the
+  output cap: `maxOutputBytes`, or the sync runner's default of 256 MB).
+  `signal` names the signal when the runner knows it. A timeout may pass on a retry; a spawn failure or the output cap
   will not.
 - **`outputIncomplete`**: `true` when the child exited but the runner stopped
   reading its output early, so `stdout` and `stderr` may be cut short. The
@@ -131,6 +131,12 @@ try {
 Use the sync runner for short commands run one after another. Blocking costs
 them nothing and keeps your code synchronous. Use the async runner for
 long-running commands, or to run several commands at once.
+
+On timeout, the sync and streaming runners kill only the direct child, and
+anything it started keeps running. A command that may start background work,
+such as an install whose postinstall scripts spawn processes, belongs on
+`spawnRunnerAsync` (or `managedProcessRunner`) with `processGroup: true`,
+which kills the whole group.
 
 ### Capture, sync
 
@@ -187,9 +193,11 @@ const sh = shellRunner(spawnRunner('sh'))
 console.log(lines.stdout, same.stdout, later.stdout, sh.run('echo hi', { cwd }).stdout)
 ```
 
-`runShell` takes the capture options (`timeoutMs`, `env`, `input`) and returns a `CommandResult`. A
-fake passed to `shellRunner` receives `['-c', '--', verb]`, then `scriptName` and `args` when given.
-`shellJoin(argv)` quotes a whole command line, for printing one a person can paste.
+`runShell` takes the capture options (`timeoutMs`, `env`, `input`,
+`maxOutputBytes`) and returns a `CommandResult`. A fake passed to `shellRunner`
+receives `['-c', '--', verb]`, then `scriptName` and `args` when given.
+`shellJoin(argv)` quotes a whole command line, for printing one a person can
+paste.
 
 ### Streaming
 
@@ -665,12 +673,21 @@ console.log(await server.exited) // { exitCode: 0, signal: null }
 
   `ran` and `runChecked` go by the exit code, so they treat the last two as
   success. Check `outputIncomplete` when the output must be whole.
-- **Output is text.** Captured output is decoded as UTF-8. The sync pipe
-  path caps each stream at 256 MB and usually kills a child that passes it,
-  with `reason: 'output'`. A child that passes the cap but exits before the
-  kill lands keeps its exit code and gets `outputIncomplete: true` and
-  `error`. The `bun test` capture path and
-  the async runner have no cap.
+- **Output is text.** Captured output is decoded as UTF-8.
+- **Output is capped per stream.** `maxOutputBytes` caps each of stdout and
+  stderr on the capture runners. The sync pipe path defaults to 256 MB; the
+  async runner has no default cap. The cap counts the bytes the child wrote,
+  not the decoded text: bytes that are not valid UTF-8 decode to U+FFFD, which
+  is 3 bytes, so a stream can be longer than the cap once decoded. A child
+  that passes the cap is killed with `SIGKILL` (its group, with
+  `processGroup`), with `reason: 'output'`, the runner's message in `error`,
+  and that stream cut to the cap on a character boundary. A child that passes
+  the cap but exits before the kill lands keeps its exit code and gets
+  `outputIncomplete: true` and `error`. The `bun test` capture path writes to
+  files and has no cap. `@osdlc/agent-call` has the same option on its call
+  spec, with the reason `output-limit`; it stops the agent the way its timeout
+  does (`SIGTERM`, then `SIGKILL` after 5 s), where this runner sends
+  `SIGKILL` at once.
 
 ## Known issue: `bun test`
 
@@ -732,7 +749,7 @@ are settled, and Windows support has landed, if that is feasible.
 | `CommandRunner`, `AsyncCommandRunner`                           | interface | Capture runner contracts; `binary` names the program          |
 | `CommandResult`                                                 | interface | `exitCode`, `stdout`, `stderr`, `neverExited`, `reason`, `signal`, `outputIncomplete`, `error` |
 | `NeverExitedReason`                                             | type      | `'spawn' \| 'timeout' \| 'abort' \| 'signal' \| 'output'`       |
-| `CommandRunOptions`, `AsyncCommandRunOptions`                   | interface | `cwd`, `timeoutMs`, `input`, `env`; async adds `signal`, `onSpawn`, `processGroup` |
+| `CommandRunOptions`, `AsyncCommandRunOptions`                   | interface | `cwd`, `timeoutMs`, `input`, `env`, `maxOutputBytes`; async adds `signal`, `onSpawn`, `processGroup` |
 | `EnvOverrides`                                                  | type      | `Record<string, string \| undefined>`                          |
 | `ran`, `failureText`, `firstLine`, `stderrOrError`              | function  | Read a result                                                  |
 | `FailureTextOptions`                                            | interface | `both`: join both streams in `failureText`                     |

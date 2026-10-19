@@ -1,6 +1,35 @@
 import type { CapabilityNote, Support } from '../plan.js'
 import { note } from '../plan.js'
 import type { AgentCallSpec, PermissionMode } from '../spec.js'
+import type { PlannedCall } from '../plan.js'
+import type { ParsedOutput } from './types.js'
+
+/** The `binary` and `command` options every built-in adapter takes. */
+/** The command a built-in adapter runs, as each adapter factory and `adapterFor` take it. */
+export interface CommandOptions {
+  /** Binary to spawn. Default: the CLI's own name. */
+  binary?: string
+  /**
+   * The command to run, as argv: the binary and any arguments that must come
+   * before the adapter's own, such as a launcher (`['npx', '-y', '<package>']`)
+   * or a global flag (`['<cli>', '--profile', 'work']`). It replaces `binary`
+   * when it has at least one element; an empty array is ignored.
+   * `planned.argv` starts with it, and `detectAgents` runs it with `--version`
+   * appended.
+   */
+  command?: readonly string[] | undefined
+}
+
+/**
+ * The command prefix a built-in adapter runs: `command` when it has at least
+ * one element, else `[binary]`, else `[fallback]`.
+ */
+export function commandPrefix(options: CommandOptions, fallback: string): readonly string[] {
+  if (options.command !== undefined && options.command.length > 0) {
+    return Object.freeze([...options.command])
+  }
+  return Object.freeze([options.binary ?? fallback])
+}
 
 /** `--model <model>`: the flag claude, codex, antigravity and pi all take. */
 export function modelFlag(model: string): string[] {
@@ -108,6 +137,14 @@ export function buildEffectivePrompt(
   }
 
   return sections.join('\n\n')
+}
+
+/** Parse the final text as the schema answer when the call asked for one. */
+export function withStructured(planned: PlannedCall, parsed: ParsedOutput): ParsedOutput {
+  if (planned.spec.output?.schema !== undefined && parsed.text !== '') {
+    parsed.structured = tryParseJson(parsed.text)
+  }
+  return parsed
 }
 
 /** Strip one surrounding markdown code fence, if present. */

@@ -6,14 +6,19 @@ import {
 } from '../conversation.js'
 import { note, type CapabilityNote, type PlannedCall } from '../plan.js'
 import type { AgentCallSpec, OutputFormat, PermissionMode } from '../spec.js'
-import { asString, buildEffectivePrompt, get, parseJsonLines, tryParseJson } from './shared.js'
+import {
+  asString,
+  buildEffectivePrompt,
+  commandPrefix,
+  type CommandOptions,
+  get,
+  parseJsonLines,
+  tryParseJson,
+} from './shared.js'
 import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './types.js'
 
 /** Options for {@link opencodeAdapter}. */
-export interface OpencodeAdapterOptions {
-  /** Binary to spawn. Default: the CLI's own name. */
-  binary?: string
-}
+export interface OpencodeAdapterOptions extends CommandOptions {}
 
 /**
  * opencode (`opencode run`). Context files attach natively (`-f`);
@@ -21,12 +26,14 @@ export interface OpencodeAdapterOptions {
  * is a raw event stream backing both json and stream-json requests.
  */
 export function opencodeAdapter(options: OpencodeAdapterOptions = {}): AgentAdapter {
-  const binary = options.binary ?? 'opencode'
+  const command = commandPrefix(options, 'opencode')
+  const binary = command[0]!
   return {
     name: 'opencode',
     binary,
+    command,
     plan(spec) {
-      return planOpencode(binary, spec)
+      return planOpencode(command, spec)
     },
     parseResult(planned, raw) {
       return parseOpencode(planned, raw)
@@ -44,10 +51,10 @@ const PERMISSION_ENV: Record<Exclude<PermissionMode, 'default'>, Record<string, 
   bypass: { edit: 'allow', bash: 'allow', webfetch: 'allow' },
 }
 
-function planOpencode(binary: string, spec: AgentCallSpec): PlannedCall {
+function planOpencode(command: readonly string[], spec: AgentCallSpec): PlannedCall {
   const notes: CapabilityNote[] = []
   const env: Record<string, string> = { ...spec.env }
-  const argv = [binary, 'run']
+  const argv = [...command, 'run']
 
   const format: OutputFormat = spec.output?.format ?? 'json'
   if (format !== 'text') {
@@ -149,7 +156,7 @@ function planOpencode(binary: string, spec: AgentCallSpec): PlannedCall {
     note(notes, 'session.persist', 'dropped', 'opencode always persists sessions')
   }
   if (spec.plugins !== undefined) {
-    note(notes, 'plugins', 'dropped', 'session-only plugins are claude only')
+    note(notes, 'plugins', 'dropped', 'opencode has no session-only plugin flag')
   }
   if (spec.budgetUsd !== undefined) {
     note(notes, 'budgetUsd', 'dropped', 'opencode has no budget cap flag')

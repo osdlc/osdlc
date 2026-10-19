@@ -12,7 +12,17 @@
 import type { EffortLevel } from './models.js'
 
 /** Adapters shipped with this package. Custom adapters may use any name. */
-export type AgentName = 'claude' | 'codex' | 'antigravity' | 'opencode'
+export type AgentName =
+  | 'claude'
+  | 'codex'
+  | 'antigravity'
+  | 'opencode'
+  | 'copilot'
+  | 'pi'
+  | 'qwen'
+  | 'droid'
+  | 'cursor'
+  | 'deepseek'
 
 /**
  * Canonical permission posture, ordered from most to least restricted.
@@ -33,8 +43,10 @@ export interface PermissionSpec {
   mode?: PermissionMode | undefined
   /**
    * Tool patterns to pre-approve. Passed through verbatim where the agent
-   * supports tool rules (claude's `--allowedTools "Bash(git *) Edit"`);
-   * recorded as dropped by the other built-in adapters.
+   * supports tool rules (claude's `--allowedTools "Bash(git *) Edit"`,
+   * copilot's `--allow-tool`, qwen's `--allowed-tools`; pi and droid take tool
+   * names); recorded as dropped by the other built-in adapters. Each agent
+   * has its own tool names.
    */
   allowTools?: string[] | undefined
   /** Tool patterns to deny. Same passthrough semantics as `allowTools`. */
@@ -81,7 +93,7 @@ export interface OutputSpec {
 
 /** Session behaviour: pin an id, resume, continue the last session, or keep the run off disk. */
 export interface SessionSpec {
-  /** Pin the new session's id (claude only). */
+  /** Pin the new session's id (claude, copilot, pi, qwen; droid approximates it). */
   id?: string | undefined
   /** Resume an existing session/thread by id. */
   resume?: string | undefined
@@ -96,18 +108,22 @@ export interface McpSpec {
   /**
    * MCP servers to expose to the agent, in the common `mcpServers` config
    * shape: name → `{command, args?, env?}` or `{url}`. Native on claude
-   * (`--mcp-config`), rendered to `-c mcp_servers.*` overrides on codex,
-   * config-file-only (dropped, with a note) on antigravity/opencode.
+   * (`--mcp-config`), qwen and copilot (both from a temp file), rendered to
+   * `-c mcp_servers.*` overrides on codex and to a `--patch` overlay on
+   * deepseek, config-file-only (dropped, with a note) on the others.
    */
   servers?: Record<string, Record<string, unknown>> | undefined
-  /** Use ONLY these servers, ignoring user/project config (claude only). */
+  /**
+   * Use ONLY these servers, ignoring user/project config (claude, qwen;
+   * copilot approximates it).
+   */
   strict?: boolean | undefined
 }
 
 /**
- * Plugins for this session only (claude only). `dirs` load with
- * `--plugin-dir`; `disable` lists installed plugin ids (`name@marketplace`)
- * turned off through `--settings`.
+ * Plugins for this session only (claude; copilot and cursor load `dirs` only). `dirs`
+ * load with `--plugin-dir`; `disable` lists installed plugin ids
+ * (`name@marketplace`) turned off through `--settings`.
  */
 export interface PluginSpec {
   dirs: string[]
@@ -138,6 +154,19 @@ export interface AgentCallSpec {
   env?: Record<string, string> | undefined
   /** Kill the process after this long (SIGTERM, then SIGKILL after 5s). */
   timeoutMs?: number | undefined
+  /**
+   * Cap each output stream, stdout and stderr, at this many bytes read. A
+   * stream that passes it stops the process group as a timeout does (SIGTERM,
+   * then SIGKILL after 5s), and the result is `ok: false` with reason
+   * `output-limit`. The output read so far is kept in `raw`, cut to the cap on
+   * a UTF-8 character boundary. The cap counts the bytes the agent wrote, not
+   * the decoded text: bytes that are not valid UTF-8 decode to U+FFFD, which
+   * is 3 bytes, so a string can be longer than the cap in UTF-8. `Infinity`
+   * means no cap, and a fraction rounds up. `0`, a negative value or `NaN` makes `callAgent`
+   * reject with a `RangeError`, and a value that is not a number with a
+   * `TypeError`.
+   */
+  maxOutputBytes?: number | undefined
   /** Escape hatch: appended verbatim to the built argv, after everything. */
   extraArgs?: string[] | undefined
 }

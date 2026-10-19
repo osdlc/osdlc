@@ -372,6 +372,13 @@ fn read_existing(path: &Path) -> Result<Option<Vec<u8>>, WriteError> {
 ///
 /// **Stability:** stable in 0.x, including the rules in the crate docs.
 ///
+/// # Not atomic with the check
+///
+/// The etag check and the write are not one step. This function reads the
+/// file, compares the etag and then renames. Another writer that changes the
+/// file between the check and the rename is not detected, and its change is
+/// lost. This narrows the race but does not close it. It is not a lock.
+///
 /// # Errors
 ///
 /// - [`WriteError::Conflict`] when the file exists and its etag is not

@@ -7,9 +7,15 @@
 // shipped: it is copied into the consumer project and imports the package by
 // name, so it runs against the installed tarball.
 //
+// Every packages/ts/* package is packed first. The consumer maps each other
+// workspace package to its local tarball with npm `overrides`, so siblings
+// resolve from local tarballs, not npm. A release bumps a library and its
+// dependents together, and the new library version is not on npm yet.
+//
 //   node .github/scripts/check-packages.mjs [packages/ts/<name> ...]
 //
-// With no package arguments it checks every packages/ts/* package. The
+// With no package arguments it checks every packages/ts/* package; with
+// arguments, only those are checked, but all are still packed. The
 // tarballs go to a temporary directory. Run `pnpm run build` first: the
 // tarball must contain dist/.
 import { execFileSync } from 'node:child_process'
@@ -23,17 +29,17 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { basename, join, resolve } from 'node:path'
+import { basename, join, relative, resolve } from 'node:path'
 
 const root = process.cwd()
 
-const dirs = process.argv.slice(2)
-if (dirs.length === 0) {
-  const ts = join(root, 'packages', 'ts')
-  for (const name of existsSync(ts) ? readdirSync(ts).sort() : []) {
-    if (existsSync(join(ts, name, 'package.json'))) dirs.push(join('packages', 'ts', name))
-  }
+const allDirs = []
+const ts = join(root, 'packages', 'ts')
+for (const name of existsSync(ts) ? readdirSync(ts).sort() : []) {
+  if (existsSync(join(ts, name, 'package.json'))) allDirs.push(join(ts, name))
 }
+const args = process.argv.slice(2)
+const dirs = args.length === 0 ? allDirs : [...new Set(args.map((d) => resolve(root, d)))]
 const out = mkdtempSync(join(tmpdir(), 'check-packages-'))
 
 const bin = (name) => join(root, 'node_modules', '.bin', name)
@@ -63,12 +69,16 @@ function entryPoints(pkg) {
  * preset, possibly with comments) is resolved and read, since its consumer
  * is a tool rather than Node. Then copies in the package's smoke check, if
  * it has one, and runs it there. */
-function cleanConsumer(pkg, pkgDir, tarball) {
+function cleanConsumer(pkg, pkgDir, tarball, packed) {
   const consumer = mkdtempSync(join(tmpdir(), 'check-packages-consumer-'))
   try {
+    const overrides = {}
+    for (const [dir, p] of packed) {
+      if (dir !== pkgDir && p.tarball) overrides[p.pkg.name] = `file:${p.tarball}`
+    }
     writeFileSync(
       join(consumer, 'package.json'),
-      JSON.stringify({ name: 'consumer', private: true, type: 'module' }),
+      JSON.stringify({ name: 'consumer', private: true, type: 'module', overrides }),
     )
     run('npm', ['install', '--no-audit', '--no-fund', '--ignore-scripts', tarball], consumer)
     const specs = entryPoints(pkg)
@@ -104,14 +114,23 @@ function shipsTypes(pkg) {
   return JSON.stringify(pkg.exports ?? {}).includes('"types"')
 }
 
-let failed = 0
-for (const dir of dirs) {
-  const pkgDir = resolve(root, dir)
-  const pkg = JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf8'))
-  console.log(`\n== ${pkg.name}@${pkg.version} (${dir})`)
+const packed = new Map()
+for (const pkgDir of new Set([...allDirs, ...dirs])) {
   try {
-    const packed = run('pnpm', ['pack', '--pack-destination', out], pkgDir).trim().split('\n').pop()
-    const tarball = join(out, basename(packed))
+    const pkg = JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf8'))
+    const packedName = run('pnpm', ['pack', '--pack-destination', out], pkgDir).trim().split('\n').pop()
+    packed.set(pkgDir, { pkg, tarball: join(out, basename(packedName)) })
+  } catch (error) {
+    packed.set(pkgDir, { pkg: { name: basename(pkgDir) }, error })
+  }
+}
+
+let failed = 0
+for (const pkgDir of dirs) {
+  const { pkg, tarball, error } = packed.get(pkgDir)
+  console.log(`\n== ${pkg.name}@${pkg.version} (${relative(root, pkgDir)})`)
+  try {
+    if (error) throw error
     console.log(`packed ${tarball}`)
     process.stdout.write(run(bin('publint'), ['run', tarball, '--strict'], root))
     if (shipsTypes(pkg)) {
@@ -121,7 +140,7 @@ for (const dir of dirs) {
     } else {
       console.log('attw: skipped, the package ships no types')
     }
-    cleanConsumer(pkg, pkgDir, tarball)
+    cleanConsumer(pkg, pkgDir, tarball, packed)
   } catch (err) {
     failed++
     console.error(`FAILED: ${pkg.name}: ${err.message.split('\n')[0]}`)

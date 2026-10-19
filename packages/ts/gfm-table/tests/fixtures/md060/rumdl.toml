@@ -1,0 +1,9 @@
+[global]
+enable = ["MD060"]
+
+[MD013]
+enabled = false
+
+[MD060]
+enabled = true
+style = "aligned"

@@ -16,9 +16,11 @@ instead of text. This waits until a user needs it
 ## Today
 
 - Output is decoded as UTF-8 text.
-- The sync pipe path caps each stream at 256 MB and reports a kill at the cap
-  as `reason: 'output'`.
-- The async runner and the `bun test` capture path have no cap.
+- The sync pipe path caps each stream at 256 MB, or `maxOutputBytes`, and
+  reports a kill at the cap as `reason: 'output'`.
+- The async runner takes the same `maxOutputBytes` cap
+  ([#233](https://github.com/osdlc/osdlc/issues/233)) but has no default.
+- The `bun test` capture path has no cap.
 
 ## Approach
 

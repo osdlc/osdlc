@@ -9,7 +9,18 @@ import { adapterFor, BUILTIN_AGENTS, detectAgents, probeVersion } from '../src/r
 
 describe('adapterFor', () => {
   test('returns the adapter named, with its default binary', () => {
-    const binaries = { claude: 'claude', codex: 'codex', antigravity: 'agy', opencode: 'opencode' }
+    const binaries = {
+      claude: 'claude',
+      codex: 'codex',
+      antigravity: 'agy',
+      opencode: 'opencode',
+      copilot: 'copilot',
+      pi: 'pi',
+      qwen: 'qwen',
+      droid: 'droid',
+      cursor: 'agent',
+      deepseek: 'dsh',
+    }
     for (const name of BUILTIN_AGENTS) {
       const adapter = adapterFor(name)
       expect(adapter.name).toBe(name)
@@ -26,9 +37,51 @@ describe('adapterFor', () => {
   })
 })
 
+describe('command option', () => {
+  test('a command prefix starts the argv for every built-in, and binary is its first element', () => {
+    for (const name of BUILTIN_AGENTS) {
+      const adapter = adapterFor(name, { command: ['npx', '-y', 'some-cli'] })
+      expect(adapter.binary).toBe('npx')
+      expect(adapter.command).toEqual(['npx', '-y', 'some-cli'])
+      const argv = adapter.plan({ prompt: 'hi' }).argv
+      expect(argv.slice(0, 3)).toEqual(['npx', '-y', 'some-cli'])
+      // The adapter's own argv follows the prefix unchanged.
+      expect(argv.slice(3)).toEqual(adapterFor(name).plan({ prompt: 'hi' }).argv.slice(1))
+    }
+  })
+
+  test('command wins over binary; an empty command is ignored', () => {
+    for (const name of BUILTIN_AGENTS) {
+      expect(adapterFor(name, { binary: '/x', command: ['/y', '--flag'] }).binary).toBe('/y')
+      const empty = adapterFor(name, { binary: '/x', command: [] })
+      expect(empty.binary).toBe('/x')
+      expect(empty.command).toEqual(['/x'])
+    }
+  })
+
+  test('the stored command is a frozen copy', () => {
+    const command = ['codex', '--profile', 'work']
+    const adapter = adapterFor('codex', { command })
+    command[1] = '--changed'
+    expect(adapter.command).toEqual(['codex', '--profile', 'work'])
+    expect(Object.isFrozen(adapter.command)).toBe(true)
+  })
+})
+
 describe('BUILTIN_AGENTS', () => {
-  test('lists the four built-in agents in a fixed order', () => {
-    expect([...BUILTIN_AGENTS]).toEqual(['claude', 'codex', 'antigravity', 'opencode'])
+  test('lists the built-in agents in a fixed order', () => {
+    expect([...BUILTIN_AGENTS]).toEqual([
+      'claude',
+      'codex',
+      'antigravity',
+      'opencode',
+      'copilot',
+      'pi',
+      'qwen',
+      'droid',
+      'cursor',
+      'deepseek',
+    ])
   })
 
   test('is frozen at run time', () => {
@@ -37,7 +90,7 @@ describe('BUILTIN_AGENTS', () => {
     expect(() => {
       ;(BUILTIN_AGENTS as unknown as string[])[0] = 'x'
     }).toThrow(TypeError)
-    expect(BUILTIN_AGENTS).toHaveLength(4)
+    expect(BUILTIN_AGENTS).toHaveLength(10)
   })
 
   test('every name has an adapter', () => {
@@ -79,7 +132,19 @@ describe('detectAgents', () => {
 
   test('a probe still running at the timeout is unavailable', async () => {
     const binary = fakeCli('forking', '(sleep 5) &\necho "fork 1.0"')
-    expect(await probeVersion(binary, 300)).toBeUndefined()
+    expect(await probeVersion([binary], 300)).toBeUndefined()
+  })
+
+  test('a command prefix is probed whole, with --version appended', async () => {
+    const binary = fakeCli('wrapped', 'echo "args: $*"')
+    const [result] = await detectAgents([
+      adapterFor('codex', { command: [binary, '--profile', 'work'] }),
+    ])
+    expect(result).toEqual({
+      name: 'codex',
+      available: true,
+      version: 'args: --profile work --version',
+    })
   })
 
   test('probes every adapter given, in order', async () => {
@@ -95,9 +160,9 @@ describe('detectAgents', () => {
   })
 
   test('with no argument it probes the built-in binaries on PATH', async () => {
-    // Fake CLIs on a private PATH: `claude` and `agy` exist, `codex` and `opencode` do not.
+    // Fake CLIs on a private PATH: `claude`, `agy` and `dsh` exist, the others do not.
     const bin = mkdtempSync(join(dir, 'bin-'))
-    for (const name of ['claude', 'agy']) {
+    for (const name of ['claude', 'agy', 'dsh']) {
       const path = join(bin, name)
       writeFileSync(path, `#!/bin/sh\necho "${name} 9.9"\n`)
       chmodSync(path, 0o755)
@@ -111,6 +176,12 @@ describe('detectAgents', () => {
         { name: 'codex', available: false, version: undefined },
         { name: 'antigravity', available: true, version: 'agy 9.9' },
         { name: 'opencode', available: false, version: undefined },
+        { name: 'copilot', available: false, version: undefined },
+        { name: 'pi', available: false, version: undefined },
+        { name: 'qwen', available: false, version: undefined },
+        { name: 'droid', available: false, version: undefined },
+        { name: 'cursor', available: false, version: undefined },
+        { name: 'deepseek', available: true, version: 'dsh 9.9' },
       ])
     } finally {
       process.env['PATH'] = original

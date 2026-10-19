@@ -81,6 +81,11 @@ try {
     const r = sh.run(['-c', 'exec cat /dev/zero'], { cwd: CWD })
     return { ...r, stdout: r.stdout.length }
   })()
+  // A 100-byte cap over 3-byte characters: at most 33 whole ones survive.
+  results['outputCapSet'] = sh.run(
+    ['-c', `i=0; while [ $i -lt 2000 ]; do printf '€'; i=$((i+1)); done; exec sleep 10`],
+    { cwd: CWD, maxOutputBytes: 100 },
+  )
   results['signalDeath'] = sh.run(['-c', 'kill -9 $$'], { cwd: CWD })
   results['genuineExit1'] = sh.run(['-c', 'exit 1'], { cwd: CWD })
   results['badCwd'] = sh.run(['-c', 'true'], { cwd: join(dir, 'no-such-dir') })

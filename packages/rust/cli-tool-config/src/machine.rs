@@ -162,11 +162,10 @@ impl<T: DeserializeOwned + Default> MachineConfigFile<T> {
     }
 
     fn load_at(&self, path: PathBuf) -> T {
-        // No let chain: they need Rust 1.88, and the floor is 1.85.
-        if let Some((cached_path, cached)) = self.cache.borrow().as_ref() {
-            if *cached_path == path {
-                return materialize::<T>(cached);
-            }
+        if let Some((cached_path, cached)) = self.cache.borrow().as_ref()
+            && *cached_path == path
+        {
+            return materialize::<T>(cached);
         }
         let cached = load_uncached(&path);
         let value = materialize::<T>(&cached);

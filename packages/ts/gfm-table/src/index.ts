@@ -7,6 +7,7 @@
 export * from './cell-text.ts'
 export * from './delimited.ts'
 export * from './grid.ts'
+export * from './pad.ts'
 export * from './row.ts'
 export * from './splices.ts'
 export * from './table.ts'

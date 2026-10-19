@@ -38,6 +38,14 @@ describe('antigravity plan', () => {
     expect(bypass.notes.find((n) => n.field === 'permissions.mode')?.support).toBe('native')
   })
 
+  test('none and minimal rise to low', () => {
+    for (const effort of ['none', 'minimal'] as const) {
+      const planned = adapter.plan({ prompt: 'x', effort })
+      expect(planned.argv.join(' ')).toContain('--effort low')
+      expect(planned.notes.find((n) => n.field === 'effort')?.support).toBe('approximated')
+    }
+  })
+
   test('effort is native; xhigh and max clamp to high', () => {
     const med = adapter.plan({ prompt: 'x', effort: 'medium' })
     expect(med.argv.join(' ')).toContain('--effort medium')

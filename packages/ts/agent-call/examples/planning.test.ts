@@ -1,5 +1,5 @@
 /**
- * Planning: one spec, four built-in adapters, every approximation recorded.
+ * Planning: one spec, every built-in adapter, every approximation recorded.
  * Nothing here starts an agent CLI.
  */
 
@@ -11,9 +11,15 @@ import {
   BUILTIN_AGENTS,
   claudeAdapter,
   codexAdapter,
+  copilotAdapter,
+  cursorAdapter,
+  deepseekAdapter,
+  droidAdapter,
   EFFORT_LEVELS,
   opencodeAdapter,
+  piAdapter,
   planCall,
+  qwenAdapter,
   TMP_TOKEN,
   type AgentAdapter,
   type AgentCallSpec,
@@ -22,10 +28,16 @@ import {
   type CapabilityNote,
   type ClaudeAdapterOptions,
   type CodexAdapterOptions,
+  type CopilotAdapterOptions,
+  type CursorAdapterOptions,
+  type DeepseekAdapterOptions,
+  type DroidAdapterOptions,
   type ContextSpec,
   type EffortLevel,
   type McpSpec,
   type OpencodeAdapterOptions,
+  type PiAdapterOptions,
+  type QwenAdapterOptions,
   type OutputFormat,
   type OutputSpec,
   type PermissionMode,
@@ -74,6 +86,12 @@ describe('the built-in adapters', () => {
       'codex',
       'antigravity',
       'opencode',
+      'copilot',
+      'pi',
+      'qwen',
+      'droid',
+      'cursor',
+      'deepseek',
     ])
   })
 
@@ -82,22 +100,57 @@ describe('the built-in adapters', () => {
     const codexOptions: CodexAdapterOptions = { binary: '/opt/codex/codex' }
     const agyOptions: AntigravityAdapterOptions = { binary: '/opt/agy/agy' }
     const opencodeOptions: OpencodeAdapterOptions = { binary: '/opt/oc/opencode' }
+    const copilotOptions: CopilotAdapterOptions = { binary: '/opt/gh/copilot' }
+    const piOptions: PiAdapterOptions = { binary: '/opt/pi/pi' }
+    const qwenOptions: QwenAdapterOptions = { binary: '/opt/qwen/qwen' }
+    const droidOptions: DroidAdapterOptions = { binary: '/opt/factory/droid' }
+    const cursorOptions: CursorAdapterOptions = { binary: '/opt/cursor/agent' }
+    const deepseekOptions: DeepseekAdapterOptions = { binary: '/opt/dsh/dsh' }
     const adapters: AgentAdapter[] = [
       claudeAdapter(claudeOptions),
       codexAdapter(codexOptions),
       antigravityAdapter(agyOptions),
       opencodeAdapter(opencodeOptions),
+      copilotAdapter(copilotOptions),
+      piAdapter(piOptions),
+      qwenAdapter(qwenOptions),
+      droidAdapter(droidOptions),
+      cursorAdapter(cursorOptions),
+      deepseekAdapter(deepseekOptions),
     ]
     expect(adapters.map((a) => a.binary)).toEqual([
       '/opt/claude/claude',
       '/opt/codex/codex',
       '/opt/agy/agy',
       '/opt/oc/opencode',
+      '/opt/gh/copilot',
+      '/opt/pi/pi',
+      '/opt/qwen/qwen',
+      '/opt/factory/droid',
+      '/opt/cursor/agent',
+      '/opt/dsh/dsh',
+    ])
+  })
+
+  test('an agent can run through a command prefix', () => {
+    // Arguments that must come before the adapter's own, or a launcher such as npx.
+    const codex = codexAdapter({ command: ['codex', '--profile', 'work'] })
+    const planned = planCall(codex, { prompt: 'Review the change.' })
+    // planned.argv is ['codex', '--profile', 'work', 'exec', ...]
+
+    expect(planned.argv.slice(0, 4)).toEqual(['codex', '--profile', 'work', 'exec'])
+    expect(codex.binary).toBe('codex')
+    const viaNpx = adapterFor('claude', { command: ['npx', '-y', '@anthropic-ai/claude-code'] })
+    expect(planCall(viaNpx, { prompt: 'x' }).argv.slice(0, 4)).toEqual([
+      'npx',
+      '-y',
+      '@anthropic-ai/claude-code',
+      '-p',
     ])
   })
 
   test('the effort vocabulary is a frozen list', () => {
-    expect([...EFFORT_LEVELS]).toEqual(['low', 'medium', 'high', 'xhigh', 'max'])
+    expect([...EFFORT_LEVELS]).toEqual(['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'])
     // The Node-free entry point exports the same list.
     expect(MODELS_EFFORT_LEVELS).toBe(EFFORT_LEVELS)
   })
