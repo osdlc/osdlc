@@ -113,8 +113,8 @@ pub struct TokenError {
 /// such as `{dev}/checkouts` then refers to it.
 ///
 /// `setting` names the setting the value comes from (for example `repos:`),
-/// for the error message. When a name is not in `tokens`, the error says to define it
-/// "under paths:". See [`substitute_path_names_with_hint`] to name your own
+/// for the error message. When a name is not in `tokens`, the error says to
+/// define it "under paths:". See [`substitute_path_names_with_hint`] to name your own
 /// files in that hint.
 ///
 /// ```

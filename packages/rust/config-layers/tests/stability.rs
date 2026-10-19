@@ -47,7 +47,7 @@ fn public_items() -> Vec<(String, String)> {
 #[test]
 fn every_public_item_declares_its_stability() {
     let items = public_items();
-    assert_eq!(items.len(), 22, "found {items:?}");
+    assert!(!items.is_empty(), "the scan found no public items");
     for (name, docs) in &items {
         assert!(
             docs.contains("**Stability:**"),

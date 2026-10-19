@@ -103,7 +103,8 @@ pub(crate) fn yaml_options() -> serde_saphyr::Options {
 /// list, a scalar, `null`, an empty document), is [`FileProblem::Malformed`].
 ///
 /// Only `true` and `false` are booleans. Keys are strings: a scalar key such
-/// as `1` reads as `"1"`, and a list or mapping as a key is an error. YAML
+/// as `1` reads as `"1"`, and a list, a mapping or a null key (`~: x`) is an
+/// error. Integers beyond `u64` read as lossy floats, with no error. YAML
 /// tags are not kept.
 ///
 /// # Errors

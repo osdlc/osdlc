@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [0.6.0](https://github.com/osdlc/osdlc/releases/tag/config-layers/v0.6.0) - 2026-10-18
+## [0.6.0] - Unreleased
 
 The first release as `config-layers`.
 
@@ -41,6 +41,8 @@ code. Every change below is breaking against `cli-tool-config` 0.5.1.
     as strings and the file still loads. In 0.5.1 they were numbers, which
     `serde_json` cannot hold.
   - `<<` is an ordinary key and is not merged, as in 0.5.1.
+  - A null key (`~: x`) is an error. Integers beyond `u64` read as lossy
+    floats, with no error.
   - Duplicate keys are still an error. The parser limits (`Budget`) are the
     `serde-saphyr` defaults: they cap events, aliases and anchors far above
     any real config file.

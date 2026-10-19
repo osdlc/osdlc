@@ -115,9 +115,10 @@ need. Run it with `cargo run --example two_files`.
 - **An empty machine file is empty.** `load` treats an empty document as an
   empty mapping. `read_strict` and `file::read_mapping` report it as
   malformed ("found an empty document"), so a tool can tell the two apart.
-- **`load` is memoised** per resolved path. A changed env var gives a new
-  path and a fresh read. A file rewritten in place is not re-read until
-  `clear_cache`. The memo uses a `RefCell`, so a `MachineConfigFile` is not
+- **`load` remembers the file's text** per resolved path, and parses it on
+  every call. A changed env var gives a new path and a fresh read. A file
+  rewritten in place is not re-read until `clear_cache`. The cache uses a
+  `RefCell`, so a `MachineConfigFile` is not
   `Sync`.
 - **The env var wins verbatim.** When the variable (default
   `<TOOL>_MACHINE_CONFIG`, from `machine::env_stem`) holds a non-blank path,
@@ -140,6 +141,8 @@ need. Run it with `cargo run --example two_files`.
   error. Downcast the source to `std::io::Error` or `serde_saphyr::Error` to
   look closer (the latter makes your crate depend on `serde-saphyr`); the
   empty and not-a-mapping cases carry only a message.
+- **Numbers and keys.** An integer beyond `u64` reads as a lossy float, with
+  no error. A null key (`~: x`) is an error.
 - **Non-finite numbers and merge keys.** `.inf`, `-.inf`, `.nan` and numbers
   that overflow, such as `1e999`, read as strings, since JSON cannot hold
   them. `<<` is an ordinary key and is not merged, as in `serde_yaml`.

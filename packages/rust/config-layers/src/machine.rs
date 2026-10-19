@@ -102,7 +102,7 @@ fn parse_typed<T: DeserializeOwned>(text: &str) -> Result<Option<T>, serde_saphy
 /// std::fs::create_dir_all(path.parent().expect("a file has a parent"))?;
 /// std::fs::write(&path, "repos:\n  - ~/Developer\n")?;
 ///
-/// // `load` remembers its result per path; `clear_cache` makes it read again.
+/// // `load` remembers the file's text per path; `clear_cache` makes it read again.
 /// machine.clear_cache();
 /// assert_eq!(machine.load().repos, vec!["~/Developer".to_string()]);
 /// assert_eq!(machine.load().editor, None);
@@ -110,7 +110,7 @@ fn parse_typed<T: DeserializeOwned>(text: &str) -> Result<Option<T>, serde_saphy
 /// # }
 /// ```
 ///
-/// The cache uses a [`RefCell`], so a `MachineConfigFile` is not `Sync`.
+/// The text cache uses a [`RefCell`], so a `MachineConfigFile` is not `Sync`.
 /// Build one per thread, or wrap it in a lock.
 ///
 /// **Stability:** stable in 0.x.
@@ -187,8 +187,9 @@ impl<T: DeserializeOwned + Default> MachineConfigFile<T> {
     /// not match `T` all give `T::default()`. Use
     /// [`read_strict`](MachineConfigFile::read_strict) to see which.
     ///
-    /// The result is remembered per resolved path, so a second call does not
-    /// read the file again. See [`clear_cache`](MachineConfigFile::clear_cache).
+    /// The file's text is remembered per resolved path, so a second call does
+    /// not read the file again. The text is parsed on every call. See
+    /// [`clear_cache`](MachineConfigFile::clear_cache).
     pub fn load(&self) -> T {
         self.load_at(self.path())
     }
@@ -211,7 +212,7 @@ impl<T: DeserializeOwned + Default> MachineConfigFile<T> {
 
     /// Read the machine file like [`load`](MachineConfigFile::load), but
     /// report what is wrong instead of falling back to the defaults. For a
-    /// `doctor` or `config check` command. Not remembered.
+    /// `doctor` or `config check` command. Always reads the file.
     ///
     /// `Ok(None)` means there is no file. An empty file is a problem, not
     /// `Ok(None)`: `load` reads it as an empty mapping, and this reports it
@@ -226,7 +227,7 @@ impl<T: DeserializeOwned + Default> MachineConfigFile<T> {
         read_strict_at(&self.path())
     }
 
-    /// Forget what [`load`](MachineConfigFile::load) remembered, so the next
+    /// Forget the file text [`load`](MachineConfigFile::load) remembered, so the next
     /// call reads the file again. Call it between test runs, or after the
     /// file is rewritten while the program is running.
     pub fn clear_cache(&self) {
@@ -242,7 +243,8 @@ fn materialize<T: DeserializeOwned + Default>(text: Option<&str>) -> T {
     match parse_typed::<T>(text) {
         Ok(Some(value)) => value,
         // An empty document is an empty mapping: field defaults apply.
-        Ok(None) => parse_typed::<T>("{}").ok().flatten().unwrap_or_default(),
+        Ok(None) => serde_json::from_value(serde_json::Value::Object(serde_json::Map::new()))
+            .unwrap_or_default(),
         Err(_) => T::default(),
     }
 }
@@ -379,7 +381,7 @@ mod tests {
         }
 
         #[test]
-        fn the_value_is_memoised_per_path_until_clear_cache() {
+        fn the_text_is_remembered_per_path_until_clear_cache() {
             let tmp = tempfile::tempdir().unwrap();
             let m = file(tmp.path());
 
@@ -392,6 +394,28 @@ mod tests {
 
             m.clear_cache();
             assert_eq!(m.load_at(p).repos, vec!["/two".to_string()]);
+        }
+
+        #[test]
+        fn an_empty_file_gives_defaults_for_a_type_with_required_fields() {
+            #[derive(Debug, Default, PartialEq, serde::Deserialize)]
+            struct Strict {
+                name: String,
+            }
+            let tmp = tempfile::tempdir().unwrap();
+            let p = tmp.path().join("empty.yaml");
+            fs::write(&p, "# nothing\n").unwrap();
+            // `{}` cannot fill the required field, so `load` falls back to
+            // `Default`, and `read_strict` reports the empty file.
+            assert_eq!(
+                materialize::<Strict>(Some("# nothing\n")),
+                Strict::default()
+            );
+            let err = read_strict_at::<Strict>(&p).unwrap_err();
+            let cause = std::error::Error::source(&err)
+                .expect("a cause")
+                .to_string();
+            assert!(cause.contains("empty document"), "{cause}");
         }
 
         #[test]
