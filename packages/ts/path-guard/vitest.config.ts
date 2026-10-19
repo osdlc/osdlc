@@ -6,6 +6,7 @@ export default defineConfig({
   resolve: {
     // The examples import the package by name; run them on the source.
     alias: {
+      '@osdlc/path-guard/lexical': fileURLToPath(new URL('./lexical-entry.ts', import.meta.url)),
       '@osdlc/path-guard': fileURLToPath(new URL('./index.ts', import.meta.url)),
     },
   },

@@ -140,9 +140,29 @@ the lexical check alone.
 
 | Mode | Exports |
 |---|---|
-| Lexical: no filesystem | `validateRelative`, `toRelative`, `lexicalAbsolute`, `isInside`. `lexicalAbsolute` and `isInside` read the working directory for a relative input. |
+| Lexical: no filesystem | `validateRelative`, `toRelative`, `isUnder`, `lexicalAbsolute`, `isInside`. `lexicalAbsolute` and `isInside` read the working directory for a relative input. |
 | `Resolver`: injectable, the real disk by default | `resolveInside`, `tryResolveInside`, `contains`, `canonicalExistingPrefix` |
 | Real disk only: Node `fs`, not injectable | `realpathOrSelf`, `realPathInside`, `existingPathInside`, `openContainedFile`, `readContainedFile` |
+
+## Browser-safe entry
+
+`@osdlc/path-guard/lexical` holds the text-only checks: `validateRelative`,
+`PathError`, `PathErrorKind`, `toRelative` and `isUnder`. Nothing it loads
+imports `node:*`, so a browser bundle or a pure package can use it. The main
+entry exports the same `validateRelative`, `PathError` and `toRelative`.
+
+`isUnder(root, path)` is a text containment check. Both paths must be absolute
+and POSIX. `..` is folded as text, whole components are compared, and a relative
+input gives false. It follows no symlink, so it cannot see a link that leads out
+of `root`.
+
+```ts
+import { isUnder, validateRelative } from '@osdlc/path-guard/lexical'
+
+isUnder('/vault', '/vault/a.md') // true
+isUnder('/vault', '/vault2/a.md') // false
+validateRelative('notes/a.md') // 'notes/a.md'
+```
 
 ## The API
 

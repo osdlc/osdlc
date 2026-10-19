@@ -7,10 +7,10 @@ export {
   nodeResolver,
   realpathOrSelf,
   resolveInside,
-  toRelative,
   tryResolveInside,
   type Resolver,
 } from './resolve.ts'
+export { toRelative } from './text.ts'
 export {
   existingPathInside,
   isInside,
