@@ -18,12 +18,14 @@ import {
   contains,
   existingPathInside,
   isInside,
+  lexicalAbsolute,
   nodeResolver,
   openContainedFile,
   readContainedFile,
   realPathInside,
   realpathOrSelf,
   resolveInside,
+  toRelative,
   tryResolveInside,
   validateRelative,
   type ContainedFile,
@@ -127,6 +129,27 @@ describe('ask about paths you already hold', () => {
 
   test('realpathOrSelf is the same for an absolute path on the real filesystem', () => {
     expect(realpathOrSelf(join(vault, 'leak.txt'))).toBe(join(root, 'secret.txt'))
+  })
+})
+
+describe('fold a path as text, and shorten it against a root', () => {
+  test('lexicalAbsolute folds `.` and `..` and touches no filesystem', () => {
+    expect(lexicalAbsolute('/srv/data/a/./b/../c/')).toBe('/srv/data/a/c')
+    expect(lexicalAbsolute('/srv/../../etc')).toBe('/etc')
+    // A relative path is anchored at the working directory first.
+    expect(lexicalAbsolute('notes/../a.md')).toBe(join(process.cwd(), 'a.md'))
+    // No symlink is followed. The filesystem refuses `leak.txt/..`, as `leak.txt` is a file.
+    expect(lexicalAbsolute(`${vault}/leak.txt/../x`)).toBe(join(vault, 'x'))
+  })
+
+  test('toRelative gives the root-relative path, or throws a PathError', () => {
+    expect(toRelative(vault, join(vault, 'notes', 'a.md'))).toBe('notes/a.md')
+    expect(thrown(() => toRelative(vault, join(root, 'secret.txt')))).toMatchObject({
+      kind: 'escapes',
+    })
+    expect(thrown(() => toRelative(vault, `${vault}/notes/../a.md`))).toMatchObject({
+      kind: 'parent_segment',
+    })
   })
 })
 

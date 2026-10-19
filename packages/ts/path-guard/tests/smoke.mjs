@@ -20,12 +20,14 @@ import {
   contains,
   existingPathInside,
   isInside,
+  lexicalAbsolute,
   nodeResolver,
   openContainedFile,
   readContainedFile,
   realPathInside,
   realpathOrSelf,
   resolveInside,
+  toRelative,
   tryResolveInside,
   validateRelative,
 } from '@osdlc/path-guard'
@@ -43,6 +45,14 @@ const missing = () => {
   throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' })
 }
 assert.equal(resolveInside('/v', 'a.md', { realpath: missing, readlink: missing }), '/v/a.md')
+
+// The text helpers touch no filesystem.
+assert.equal(lexicalAbsolute('/a/./b/../c/'), '/a/c')
+assert.equal(toRelative('/v', '/v/Notes/a.md'), 'Notes/a.md')
+assert.throws(
+  () => toRelative('/v', '/other/a.md'),
+  (e) => e instanceof PathError && e.kind === 'escapes',
+)
 
 // The real filesystem. The root is real, so `tmpdir()` being a symlink (as on
 // macOS) does not change the paths below.

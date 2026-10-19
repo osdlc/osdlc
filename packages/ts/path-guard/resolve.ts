@@ -128,6 +128,70 @@ export function contains(outer: string, inner: string, resolver: Resolver = node
 }
 
 /**
+ * `path` made absolute against the working directory and folded as text: `.`
+ * dropped, `..` removed with the component before it, no trailing slash.
+ *
+ * Touches no filesystem and follows no symlink, so it cannot tell whether the
+ * result stays inside any root. Use {@link resolveInside} for that. A `..` at the
+ * root stays at the root, and a leading `..` in a relative path pops the last
+ * component of the working directory. An absolute `path` never reads the working
+ * directory. Port of the Rust `lexical_absolute`.
+ *
+ * @throws {Error} What `process.cwd()` throws, when `path` is relative and the
+ * working directory cannot be read.
+ * @example
+ * ```ts
+ * lexicalAbsolute('/srv/data/a/./b/../c/') // '/srv/data/a/c'
+ * lexicalAbsolute('/srv/../../etc') // '/etc'
+ * lexicalAbsolute('a/../b') // '/work/b', when the working directory is '/work'
+ * ```
+ */
+export function lexicalAbsolute(path: string): string {
+  // Rust takes a `Path` and returns `io::Result<PathBuf>`. Here a string goes in
+  // and out, and the cwd failure is thrown.
+  // `resolve` gives the same fold as the Rust component walk on POSIX for every
+  // case in the parity fixture and the tests. The join is explicit, as in Rust,
+  // so only a relative path reads the working directory.
+  return resolve(isAbsolute(path) ? path : joinPath(process.cwd(), path))
+}
+
+/**
+ * Turn an absolute path back into a root-relative one with `/` separators:
+ * `/v/Notes/a.md` under `/v` becomes `Notes/a.md`, and the root itself becomes
+ * `''`. `abs` is under `root` by whole components, so `/vault2` is not under
+ * `/vault`. A `.` component is dropped. Touches no filesystem. POSIX paths only.
+ * Port of the Rust `to_relative`.
+ *
+ * @throws {PathError} Kind `escapes` if `abs` is not under `root`, and kind
+ * `parent_segment` if the relative part holds a `..`.
+ * @example
+ * ```ts
+ * toRelative('/v', '/v/Notes/a.md') // 'Notes/a.md'
+ * toRelative('/v', '/other/a.md') // throws PathError, kind 'escapes'
+ * ```
+ */
+export function toRelative(root: string, abs: string): string {
+  // Rust also throws `NotUtf8` for a component that is not valid UTF-8. A
+  // TypeScript path is a string, so that case does not exist here.
+  if (!startsWith(abs, root)) {
+    throw new PathError(
+      'escapes',
+      `path escapes the root: ${JSON.stringify(abs)} resolves outside ${JSON.stringify(root)}`,
+    )
+  }
+  const rel = components(abs).segs.slice(components(root).segs.length)
+  if (rel.includes('..')) {
+    throw new PathError(
+      'parent_segment',
+      `path contains a parent-directory segment: ${JSON.stringify(rel.join('/'))}`,
+    )
+  }
+  // As Rust skips `Component::CurDir`. `components` leaves a `.` only at the
+  // start of a relative path, which lands here when `root` is empty.
+  return rel.filter((seg) => seg !== '.').join('/')
+}
+
+/**
  * Canonicalise as much of `path` as exists and keep the rest lexically. Port of
  * the Rust `canonical_existing_prefix`, which documents the rule: a `..` is
  * resolved physically where the filesystem can, and behind a missing name it is

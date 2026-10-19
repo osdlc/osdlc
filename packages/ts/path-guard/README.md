@@ -106,6 +106,14 @@ and keeps the rest as written, with any `..` folded against the real path.
 `realpathOrSelf` is the same for the real filesystem, after it makes the path
 absolute against the working directory.
 
+Two helpers work on text alone and touch no filesystem. `lexicalAbsolute` makes a
+path absolute against the working directory, then drops `.` and removes each `..`
+with the component before it. It follows no symlink, so it says nothing about
+containment. `toRelative(root, abs)` turns an absolute path under `root` back into
+a root-relative one with `/` separators. It throws a `PathError` of kind `escapes`
+when `abs` is not under `root`, and `parent_segment` when the relative part holds
+a `..`.
+
 ## Reading a file inside a root
 
 A check followed by a read leaves a window: the file or a parent directory can
@@ -135,6 +143,8 @@ the lexical check alone.
 | `contains` | function | Is `inner` the same as `outer`, or beneath it, once both are resolved? |
 | `canonicalExistingPrefix` | function | The real path of the part that exists, plus the rest as written. |
 | `realpathOrSelf` | function | `canonicalExistingPrefix` of an absolute path, on the real filesystem. |
+| `lexicalAbsolute` | function | A path made absolute against the working directory and folded as text. Follows no symlink. |
+| `toRelative` | function | An absolute path under a root, as a root-relative path with `/` separators, or throws `PathError`. |
 | `Resolver` | type | `realpath` and `readlink`: how the containment layer reads a filesystem. |
 | `nodeResolver` | object | The real filesystem, with `..` resolved physically. |
 | `MAX_LINK_HOPS` | constant | The number of dangling symlinks one check follows: 40. |

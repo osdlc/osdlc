@@ -8,18 +8,20 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 
-import { afterEach, beforeEach, describe, expect, test } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import {
   PathError,
   canonicalExistingPrefix,
   contains,
+  lexicalAbsolute,
   MAX_LINK_HOPS,
   nodeResolver,
   realpathOrSelf,
   resolveInside,
+  toRelative,
   tryResolveInside,
   validateRelative,
   type Resolver,
@@ -444,6 +446,122 @@ describe('relative paths', () => {
     // change: this guards the join, not the output.
     process.chdir('/')
     expect(realpathOrSelf('no-such-entry')).toBe('/no-such-entry')
+  })
+})
+
+// These mirror the Rust tests `lexical_absolute_*`. POSIX only: the paths use `/`.
+describe('lexicalAbsolute', () => {
+  test('folds dots and anchors at the cwd', () => {
+    const cwd = process.cwd()
+    expect(lexicalAbsolute('/a/./b/../c/')).toBe('/a/c')
+    // `..` at the root stays at the root.
+    expect(lexicalAbsolute('/../a')).toBe('/a')
+    expect(lexicalAbsolute('x/./y')).toBe(join(cwd, 'x/y'))
+    // A relative path folds after it is anchored.
+    expect(lexicalAbsolute('x/../y')).toBe(join(cwd, 'y'))
+  })
+
+  test('pops the cwd for a leading `..`', () => {
+    const cwd = process.cwd()
+    expect(lexicalAbsolute('../x')).toBe(join(dirname(cwd), 'x'))
+    // Above the root there is nothing left to pop.
+    const deep = '../'.repeat(cwd.split('/').length + 2)
+    expect(lexicalAbsolute(`${deep}x`)).toBe('/x')
+  })
+
+  test('gives the cwd for an empty path or `.`', () => {
+    expect(lexicalAbsolute('')).toBe(process.cwd())
+    expect(lexicalAbsolute('.')).toBe(process.cwd())
+  })
+
+  test('leaves no trailing slash, and the root stays `/`', () => {
+    expect(lexicalAbsolute('/a/b/')).toBe('/a/b')
+    expect(lexicalAbsolute('//a///b')).toBe('/a/b')
+    expect(lexicalAbsolute('/')).toBe('/')
+    expect(lexicalAbsolute('/a/..')).toBe('/')
+    expect(lexicalAbsolute('/a/../../../b')).toBe('/b')
+  })
+
+  test('treats a name made of dots as a name', () => {
+    expect(lexicalAbsolute('/a/.../..b/c')).toBe('/a/.../..b/c')
+  })
+
+  test('folds as text: no symlink is followed and nothing has to exist', () => {
+    mkdirSync(join(tmp, 'a/b'), { recursive: true })
+    symlinkSync(join(tmp, 'a/b'), join(tmp, 'link'))
+    // The filesystem would put `link/..` at `tmp/a`.
+    expect(lexicalAbsolute(`${tmp}/link/../x`)).toBe(join(tmp, 'x'))
+    expect(lexicalAbsolute(`${tmp}/missing/../x`)).toBe(join(tmp, 'x'))
+  })
+
+  test('reads the cwd only for a relative path, and throws what cwd throws', () => {
+    const failure = new Error('cwd is unreadable')
+    const cwd = vi.spyOn(process, 'cwd').mockImplementation(() => {
+      throw failure
+    })
+    try {
+      expect(lexicalAbsolute('/a/./b')).toBe('/a/b')
+      expect(cwd).not.toHaveBeenCalled()
+      expect(thrown(() => lexicalAbsolute('a/b'))).toBe(failure)
+    } finally {
+      cwd.mockRestore()
+    }
+  })
+})
+
+// These mirror the Rust test `to_relative_uses_forward_slashes`, plus the edges.
+describe('toRelative', () => {
+  test('uses forward slashes', () => {
+    expect(toRelative('/v', '/v/Notes/a.md')).toBe('Notes/a.md')
+    expect(kindOf(() => toRelative('/v', '/other/a.md'))).toBe('escapes')
+  })
+
+  test('is component-wise, so a name prefix is not under the root', () => {
+    expect(kindOf(() => toRelative('/vault', '/vault2/a.md'))).toBe('escapes')
+    expect(toRelative('/vault', '/vault/a.md')).toBe('a.md')
+  })
+
+  test('gives the empty string for the root itself', () => {
+    expect(toRelative('/v', '/v')).toBe('')
+    expect(toRelative('/v/', '/v')).toBe('')
+  })
+
+  test('drops `.` components, empty segments and trailing slashes', () => {
+    expect(toRelative('/v', '/v/./Notes/./a.md')).toBe('Notes/a.md')
+    expect(toRelative('/v', '/v//Notes///a.md/')).toBe('Notes/a.md')
+    expect(toRelative('/v/', '/v/a.md')).toBe('a.md')
+    expect(toRelative('.', './a/b')).toBe('a/b')
+  })
+
+  test('takes `/` as a root, and keeps a name made of dots', () => {
+    expect(toRelative('/', '/a/b')).toBe('a/b')
+    expect(toRelative('/v', '/v/..a/b..md')).toBe('..a/b..md')
+  })
+
+  test('throws escapes for a path that is not under the root', () => {
+    expect(kindOf(() => toRelative('/v/a', '/v'))).toBe('escapes')
+    expect(kindOf(() => toRelative('/v', '/'))).toBe('escapes')
+    // A relative path is not under an absolute root.
+    expect(kindOf(() => toRelative('/v', 'v/a.md'))).toBe('escapes')
+  })
+
+  test('throws parent_segment for a `..` in the relative part', () => {
+    expect(kindOf(() => toRelative('/v', '/v/../w'))).toBe('parent_segment')
+    expect(kindOf(() => toRelative('/v', '/v/a/../b'))).toBe('parent_segment')
+    expect(kindOf(() => toRelative('/v', '/v/a/..'))).toBe('parent_segment')
+  })
+
+  test('throws a PathError that names the paths', () => {
+    expect(thrown(() => toRelative('/v', '/other/a.md'))).toMatchObject({
+      kind: 'escapes',
+      message: 'path escapes the root: "/other/a.md" resolves outside "/v"',
+    })
+    const error = thrown(() => toRelative('/v', '/v/a/../b'))
+    expect(error).toBeInstanceOf(PathError)
+    expect(error).toMatchObject({
+      kind: 'parent_segment',
+      message: 'path contains a parent-directory segment: "a/../b"',
+    })
   })
 })
 
