@@ -9,12 +9,13 @@
 [workspace]
 # resolver 3 picks dependency versions that support `rust-version` (the MSRV).
 resolver = "3"
-members = ["cli-tool-config", "etag-write", "path-guard", "slug-collate", "tiered-dirs", "yaml-splice", "yaml-splice-wasm"]
+members = ["cli-tool-config", "config-layers", "etag-write", "path-guard", "slug-collate", "tiered-dirs", "yaml-splice", "yaml-splice-wasm"]
 
 [workspace.package]
 edition = "2024"
-# The MSRV. Edition 2024 needs 1.85, but slug-collate's let-chain needs 1.88,
-# so the floor is 1.89. CI builds every member on it.
+# The MSRV. Edition 2024 needs 1.85, but slug-collate's let-chain needs 1.88
+# and serde-saphyr (config-layers) needs 1.89, so the floor is 1.89. CI builds
+# every member on it.
 rust-version = "1.89"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/osdlc/osdlc"

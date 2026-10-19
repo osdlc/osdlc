@@ -1,9 +1,9 @@
 [package]
 name = "cli-tool-config"
-version = "0.5.2"
+version = "0.5.3"
 edition.workspace = true
 rust-version.workspace = true
-description = "Config files for a command-line tool: a committed project file and a per-machine file, named-path tokens, dotted-key lookup, and the check a command runs for the settings it needs."
+description = "Moved to config-layers; this is the last release. Config files for a command-line tool: a committed project file and a per-machine file, named-path tokens, dotted-key lookup, and the check a command runs for the settings it needs."
 license.workspace = true
 repository.workspace = true
 readme = "README.md"
@@ -25,7 +25,8 @@ include = [
 serde = "1.0.220"
 serde_yaml = "0.9.34"
 thiserror = { workspace = true }
-# Stays on crates.io tiered-dirs 0.2 until its 0.6.0 moves it to 0.3.
+# Stays on crates.io tiered-dirs 0.2: 0.5.3 is the last release and has no
+# code change. config-layers is on tiered-dirs 0.3.
 tiered-dirs = "0.2"
 
 [dev-dependencies]

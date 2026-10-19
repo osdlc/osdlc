@@ -201,8 +201,8 @@ wherever its dependencies (`saphyr-parser`, `thiserror`, and `serde_json`
 with the default feature) build.
 CI runs the tests on Linux, macOS and Windows.
 
-Minimum supported Rust version: 1.85, checked in CI by running the tests on
-1.85.
+Minimum supported Rust version: 1.89, checked in CI by running the tests on
+1.89.
 
 ## Stability
 
