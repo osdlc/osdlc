@@ -26,7 +26,7 @@
  */
 import { join } from 'node:path'
 import { glob } from 'tinyglobby'
-import { matches, type Options, type Patterns } from './index.ts'
+import { compile, type Matcher, type Options, type Patterns } from './index.ts'
 
 /** Options for the filesystem layer — matching semantics plus on-disk resolution controls. */
 export interface FsOptions extends Options {
@@ -64,7 +64,11 @@ function literal(rel: string): string {
  * `Options`, and the path API reads only the matching keys, ignoring the
  * fs-only ones (`cwd`, `ignore`, …).
  */
-async function filesMatching(patterns: Patterns, opts: FsOptions | undefined): Promise<string[]> {
+async function filesMatching(
+  patterns: Patterns,
+  opts: FsOptions | undefined,
+  also?: Matcher,
+): Promise<string[]> {
   const cwd = opts?.cwd ?? process.cwd()
   const found = await glob('**/*', {
     cwd,
@@ -76,11 +80,14 @@ async function filesMatching(patterns: Patterns, opts: FsOptions | undefined): P
   // dialect, with a trailing separator (`src/api/`). Strip it at the boundary:
   // a path this layer returns is a plain path, never a globber-shaped one.
   const entries = found.map((rel) => (rel.endsWith('/') ? rel.slice(0, -1) : rel))
-  const ignore = opts?.ignore ?? []
+  // Compile once per call, not once per file.
+  const include = compile(patterns, opts)
+  const ignore = opts?.ignore?.length ? compile(opts.ignore, opts) : null
   const survivors = entries.filter((rel) => {
     const name = literal(rel)
-    if (!matches(name, patterns, opts)) return false
-    return ignore.length === 0 || !matches(name, ignore, opts)
+    if (!include.matches(name)) return false
+    if (also && !also.matches(name)) return false
+    return ignore === null || !ignore.matches(name)
   })
   return survivors.sort()
 }
@@ -134,9 +141,8 @@ export async function resolveIntersection(
   b: Patterns,
   opts?: FsOptions,
 ): Promise<string[]> {
-  // Resolve `a` in relative space (regardless of `opts.absolute`) so `b`'s
-  // relative patterns match, then absolutize once at the boundary.
-  const rel = await filesMatching(a, opts)
-  const both = rel.filter((r) => matches(literal(r), b, opts))
-  return absolutize(both, opts)
+  // Resolve in relative space (regardless of `opts.absolute`) so the relative
+  // patterns match, then absolutize once at the boundary.
+  const rel = await filesMatching(a, opts, compile(b, opts))
+  return absolutize(rel, opts)
 }
