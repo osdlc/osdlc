@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.0
+
+### Minor Changes
+
+- ce3bf64: Add a `stdio` option to `managedProcessRunner` and `streamRunner`: `'inherit'` (the default, as before), `'ignore'` (stdin, stdout and stderr all `/dev/null`), or `{ stdout, stderr }`, file descriptors the caller opened, with stdin from `/dev/null`. Pass the same fd for both to get one log in the order the child wrote it. The child gets its own copy of each fd when it starts, so the caller may close its fd once `run` returns; the runner never closes it. An fd that is not open is a failed spawn (`reason: 'spawn'`, `EBADF` in `error`), and an fd that is not a whole number, 0 or more, or an unknown mode, throws before spawning. `stdio: 'ignore'` with `unref` and `processGroup` on the managed runner is a fire-and-forget launch: the child outlives the parent, does not keep it running, and does not write to its terminal. The new `StdioOption` type names the option. A pipe from one child into another is out of scope. ([#235](https://github.com/osdlc/osdlc/issues/235))
+  
+  Add `quiet` to `streamRunner`'s options: it stops the runner writing its own line to the parent's stderr when the spawn fails, the timeout fires or a signal ends the child. The result's `reason`, `signal` and `error` are set either way. `StreamRunOptions` is now an interface with the same fields plus `stdio` and `quiet`. ([#235](https://github.com/osdlc/osdlc/issues/235))
+  
+  Add `spawnRunnerBytes` and `spawnRunnerBytesAsync`, experimental: capture runners that return stdout as the `Buffer` the child wrote, never decoded, typed by the new `BytesCommandRunner` and `AsyncBytesCommandRunner` interfaces. `CommandResult` takes the stdout type as a parameter, `CommandResult<Buffer>`, which defaults to `string`, so existing code is unchanged. Stderr is still decoded as UTF-8. `maxOutputBytes` cuts bytes stdout at exactly the cap. `runChecked` and `runCheckedAsync` return `CommandResult<Buffer>` for a bytes runner, and a failure throws the usual `CommandFailed` with stdout decoded as UTF-8 in `result`, so its `message` and `detail` read as for text. `failureText` decodes a `Buffer` stdout, and `asAsync` wraps a bytes runner as an async bytes runner. `fakeRunner` returns `bytesRunner` and `asyncBytesRunner` too, and an answer's `stdout` may be a string or a `Buffer`; each form converts it to its own type. ([#234](https://github.com/osdlc/osdlc/issues/234))
+
 ## 0.6.0
 
 ### Minor Changes
