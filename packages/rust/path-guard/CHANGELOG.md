@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `lexical_absolute`, a cwd-anchored lexical fold: `.` dropped, `..` folded, no
+  filesystem access. It returns an error when the current directory cannot be
+  read.
+
 ## [0.2.2] - 2026-10-18
 
 First public release. Shares one conformance fixture with the TypeScript twin

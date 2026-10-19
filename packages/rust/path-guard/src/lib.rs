@@ -506,6 +506,39 @@ pub fn contains_with<R: Resolver + ?Sized>(resolver: &R, outer: &Path, inner: &P
     }
 }
 
+/// `path` made absolute against the process's current directory and folded
+/// textually: `.` dropped, `..` removed together with the component before it,
+/// no trailing slash. Like Node's `path.resolve`.
+///
+/// This is a lexical fold, not a containment check. It touches no filesystem,
+/// follows no symlink, and so cannot tell whether the result stays inside any
+/// root. Use [`resolve`] for that. A `..` at the root stays at the root, and a
+/// leading `..` in a relative path pops the last component of the current
+/// directory.
+///
+/// # Errors
+///
+/// The current directory cannot be read and `path` is relative. An absolute
+/// `path` never fails.
+pub fn lexical_absolute(path: &Path) -> io::Result<PathBuf> {
+    let joined = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir()?.join(path)
+    };
+    let mut out = PathBuf::new();
+    for part in joined.components() {
+        match part {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                out.pop();
+            }
+            other => out.push(other.as_os_str()),
+        }
+    }
+    Ok(out)
+}
+
 /// Turn an absolute path back into a root-relative one (`/v/Notes/a.md` ->
 /// `Notes/a.md`), with `/` separators regardless of platform.
 ///

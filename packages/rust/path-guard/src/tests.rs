@@ -545,3 +545,32 @@ fn a_dangling_link_through_dotdot_pairs_costs_calls_in_proportion_to_its_target(
     assert!(got.is_ok(), "{got:?}");
     assert!(fs.0.get() < 2 * 160 + 64, "{} resolver calls", fs.0.get());
 }
+
+#[test]
+fn lexical_absolute_folds_dots_and_anchors_at_the_cwd() {
+    let fold = |p: &str| lexical_absolute(Path::new(p)).unwrap();
+    assert_eq!(fold("/a/./b/../c/"), PathBuf::from("/a/c"));
+    // `..` at the root stays at the root.
+    assert_eq!(fold("/../a"), PathBuf::from("/a"));
+    let cwd = std::env::current_dir().unwrap();
+    assert_eq!(fold("x/./y"), cwd.join("x/y"));
+    assert_eq!(
+        fold("x/../y"),
+        cwd.join("y"),
+        "a relative path folds after it is anchored"
+    );
+}
+
+#[test]
+fn lexical_absolute_pops_the_cwd_for_a_leading_dotdot() {
+    let cwd = std::env::current_dir().unwrap();
+    let mut up = cwd.clone();
+    up.pop();
+    assert_eq!(lexical_absolute(Path::new("../x")).unwrap(), up.join("x"));
+    // Above the root there is nothing left to pop.
+    let deep = "../".repeat(cwd.components().count() + 2);
+    assert_eq!(
+        lexical_absolute(Path::new(&format!("{deep}x"))).unwrap(),
+        PathBuf::from(std::path::MAIN_SEPARATOR_STR).join("x")
+    );
+}
