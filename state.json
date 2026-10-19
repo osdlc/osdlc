@@ -1,12 +1,145 @@
 {
   "schema": 1,
   "pr": 313,
-  "head": null,
-  "base": null,
-  "round": 0,
+  "head": "4dcf0b579fbcb4eac08292fbaa381871eb409681",
+  "base": "760d623856d5d881a0d76b307532259c3c751ba4",
+  "round": 1,
   "claim": {
     "owner": "KellyMBP.local:claude-p7g2wq",
     "at": "2026-10-19T20:02:40.392Z"
   },
-  "findings": []
+  "findings": [
+    {
+      "id": "r1-1",
+      "round": 1,
+      "path": "packages/ts/path-guard/resolve.ts",
+      "line": 227,
+      "title": "toRelative with an empty root diverges from Rust to_relative (escapes vs parent_segment); fixture lacks the case",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-2",
+      "round": 1,
+      "path": "packages/ts/path-guard/contained.ts",
+      "line": 89,
+      "title": "No test for the close-and-rethrow path in openContainedFile",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-3",
+      "round": 1,
+      "path": "packages/ts/path-guard/tests/resolve.test.ts",
+      "line": 513,
+      "title": "toRelative suite repeats parity fixture cases, against the fixture rule",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-4",
+      "round": 1,
+      "path": "packages/ts/path-guard/tests/resolve.test.ts",
+      "line": 477,
+      "title": "lexicalAbsolute suite repeats parity fixture cases, against the fixture rule",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-5",
+      "round": 1,
+      "path": "packages/ts/path-guard/resolve.ts",
+      "line": 206,
+      "title": "lexicalAbsolute: resolve(path) alone does the same; drop the join and its comment",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-6",
+      "round": 1,
+      "path": "packages/ts/path-guard/lexical.ts",
+      "line": 45,
+      "title": "validateRelative doc: segment checks are left to right, not degenerate-before-parent",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-7",
+      "round": 1,
+      "path": "packages/ts/path-guard/lexical.ts",
+      "line": 3,
+      "title": "PathErrorKind doc says the same thing twice and omits NotUtf8",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-8",
+      "round": 1,
+      "path": "packages/ts/path-guard/contained.ts",
+      "line": 60,
+      "title": "openContainedFile/readContainedFile @throws omit lstat, stat and readFile",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-9",
+      "round": 1,
+      "path": "packages/ts/path-guard/README.md",
+      "line": 145,
+      "title": "README realpathOrSelf row: takes relative paths and differs in fallback",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-10",
+      "round": 1,
+      "path": "packages/ts/path-guard/README.md",
+      "line": 140,
+      "title": "README pins a count of PathErrorKind values",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-11",
+      "round": 1,
+      "path": ".changeset/path-guard-first-release.md",
+      "line": 19,
+      "title": "Changeset 'Changes:' section holds no change",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-12",
+      "round": 1,
+      "path": null,
+      "line": null,
+      "title": "PR description is stale against the branch",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    }
+  ]
 }
