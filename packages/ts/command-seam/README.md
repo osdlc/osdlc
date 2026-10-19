@@ -124,6 +124,7 @@ try {
 | -------------------------------------------- | ---------------------------------------- | ---------------------------- |
 | Run a command and read its output            | `spawnRunner(binary)`                    | `CommandResult`              |
 | The same, without blocking the event loop    | `spawnRunnerAsync(binary)`               | `Promise<CommandResult>`     |
+| Read output that is not text, as bytes       | `spawnBytesRunner(binary)` / `spawnBytesRunnerAsync(binary)` | `CommandResult<Buffer>` |
 | Run a shell string (`a && b`, pipes)         | `runShell(verb, opts)` / `shellRunner()` | `CommandResult`              |
 | Show output live (builds, interactive tools) | `streamRunner(binary)`                   | `StreamResult` (exit only)   |
 | Start a long-running process and keep going  | `managedProcessRunner(binary)`           | `ManagedProcessHandle`       |
@@ -164,6 +165,25 @@ const [log, branch] = await Promise.all([
   git.run(['branch', '--show-current'], { cwd: process.cwd(), timeoutMs: 5_000 }),
 ])
 console.log(log.stdout.trim(), branch.stdout.trim())
+```
+
+### Capture, bytes
+
+`spawnBytesRunner` and `spawnBytesRunnerAsync` are the capture runners with
+stdout and stderr as a `Buffer` each, exactly as the child wrote them. Use
+them for output that is not text, or that must be hashed or checked before it
+is decoded: decoding first turns each invalid sequence into U+FFFD.
+`runChecked`, `runCheckedAsync`, `failureText` and `CommandFailed` take their
+results and decode stderr for their messages. `input` takes bytes on every
+capture runner.
+
+```ts
+import { createHash } from 'node:crypto'
+import { runChecked, spawnBytesRunner } from '@osdlc/command-seam'
+
+const git = spawnBytesRunner('git')
+const blob = runChecked(git, ['cat-file', 'blob', 'HEAD:logo.png'], { cwd: process.cwd() }).stdout
+console.log(createHash('sha256').update(blob).digest('hex'))
 ```
 
 ### Shell strings
@@ -533,8 +553,9 @@ through a fake `CommandRunner`.
 
 `@osdlc/command-seam/testing` has the fakes, in their own entry point so
 production code does not import them. It also exports their types:
-`FakeRunner` (what `fakeRunner` returns), `FakeCall` (one recorded call),
-`FakeProcess` and `FakeProcessOptions`.
+`FakeRunner` (what `fakeRunner` returns), `FakeBytesRunner` (what
+`fakeBytesRunner` returns), `FakeCall` (one recorded call), `FakeProcess` and
+`FakeProcessOptions`.
 
 - `fakeRunner(answers)` returns `{ runner, asyncRunner, calls }`. `runner`
   is a `CommandRunner` that answers from a table keyed by the argv, each
@@ -549,6 +570,10 @@ production code does not import them. It also exports their types:
   assert on `calls`, which records each call's argv and options. `asyncRunner`
   is the same fake as an `AsyncCommandRunner`, for async code; the async
   options are recorded, and `onSpawn` is never called.
+- `fakeBytesRunner(answers)` is `fakeRunner` for the bytes runners: answers
+  hold `stdout` and `stderr` as a `Buffer`, over empty buffers, and `runner`
+  and `asyncRunner` are a `BytesCommandRunner` and an
+  `AsyncBytesCommandRunner`.
 - `fakeNeverExited(reason, fields?)` builds an answer for a run that never
   exited: `exitCode: 1`, `neverExited: true`, `reason`,
   `error: 'fake: <reason>'` (none for `'signal'`), and `signal` where the
@@ -673,7 +698,10 @@ console.log(await server.exited) // { exitCode: 0, signal: null }
 
   `ran` and `runChecked` go by the exit code, so they treat the last two as
   success. Check `outputIncomplete` when the output must be whole.
-- **Output is text.** Captured output is decoded as UTF-8.
+- **Output is text, unless you ask for bytes.** Captured output is decoded
+  as UTF-8. The bytes runners (`spawnBytesRunner`, `spawnBytesRunnerAsync`)
+  return it as a `Buffer` instead, and cut it at the cap exactly rather than
+  on a character boundary.
 - **Output is capped per stream.** `maxOutputBytes` caps each of stdout and
   stderr on the capture runners. The sync pipe path defaults to 256 MB; the
   async runner has no default cap. The cap counts the bytes the child wrote,
@@ -727,8 +755,10 @@ The experimental exports:
 - `stopProcess`
 - `installGroupSignalForwarding`, `GroupSignalForwardingOptions`
 - `liveProcessGroups`, `forwardedSignal`, `forwardedExitCode`
-- `fakeRunner`, `fakeNeverExited`, `fakeProcess` (from `@osdlc/command-seam/testing`)
-- `FakeRunner`, `FakeCall`, `FakeProcess`, `FakeProcessOptions` (from `/testing`)
+- `spawnBytesRunner`, `spawnBytesRunnerAsync`, `CommandOutput`
+- `BytesCommandRunner`, `AsyncBytesCommandRunner`
+- `fakeRunner`, `fakeBytesRunner`, `fakeNeverExited`, `fakeProcess` (from `@osdlc/command-seam/testing`)
+- `FakeRunner`, `FakeBytesRunner`, `FakeCall`, `FakeProcess`, `FakeProcessOptions` (from `/testing`)
 
 Every other export is stable. 1.0 comes once the experimental exports have
 gone 60 to 90 days without a breaking change, the open API-change questions
@@ -740,6 +770,7 @@ are settled, and Windows support has landed, if that is feasible.
 | --------------------------------------------------------------- | --------- | -------------------------------------------------------------- |
 | `spawnRunner`                                                   | function  | Default sync capture runner (`spawnSync`)                      |
 | `spawnRunnerAsync`                                              | function  | Default async capture runner (`spawn`)                         |
+| `spawnBytesRunner`, `spawnBytesRunnerAsync`                     | function  | Capture runners with stdout and stderr as a `Buffer`           |
 | `resolveRunner`, `resolveRunnerAsync`                           | function  | An injected runner, else the default                           |
 | `runChecked`, `runCheckedAsync`                                 | function  | Run and throw `CommandFailed` on a non-zero exit               |
 | `mapFailed`, `mapFailedAsync`                                   | function  | Rethrow a `CommandFailed` as another error                     |
@@ -747,7 +778,9 @@ are settled, and Windows support has landed, if that is feasible.
 | `asAsync`                                                       | function  | Wrap a sync runner as an async one                             |
 | `CommandFailed`                                                 | class     | Error with `binary`, `argv`, `result` and `detail`; `message` shows the command |
 | `CommandRunner`, `AsyncCommandRunner`                           | interface | Capture runner contracts; `binary` names the program          |
-| `CommandResult`                                                 | interface | `exitCode`, `stdout`, `stderr`, `neverExited`, `reason`, `signal`, `outputIncomplete`, `error` |
+| `BytesCommandRunner`, `AsyncBytesCommandRunner`                 | interface | The same, with results of `CommandResult<Buffer>`              |
+| `CommandResult`                                                 | interface | `exitCode`, `stdout`, `stderr`, `neverExited`, `reason`, `signal`, `outputIncomplete`, `error`; `CommandResult<Buffer>` for bytes |
+| `CommandOutput`                                                 | type      | `string \| Buffer`: what a result's `stdout` and `stderr` can be |
 | `NeverExitedReason`                                             | type      | `'spawn' \| 'timeout' \| 'abort' \| 'signal' \| 'output'`       |
 | `CommandRunOptions`, `AsyncCommandRunOptions`                   | interface | `cwd`, `timeoutMs`, `input`, `env`, `maxOutputBytes`; async adds `signal`, `onSpawn`, `processGroup` |
 | `EnvOverrides`                                                  | type      | `Record<string, string \| undefined>`                          |
@@ -773,9 +806,10 @@ are settled, and Windows support has landed, if that is feasible.
 | `which`                                                         | function  | The path a spawn of a binary would run, without running it     |
 | `WhichOptions`                                                  | interface | `cwd`, `env`                                                   |
 | `fakeRunner`                                                    | function  | `/testing`: a `CommandRunner` that answers from a table        |
+| `fakeBytesRunner`                                               | function  | `/testing`: the same, as a `BytesCommandRunner`                |
 | `fakeNeverExited`                                               | function  | `/testing`: a fake answer for a run that never exited          |
 | `fakeProcess`                                                   | function  | `/testing`: a `ManagedProcessHandle` the test ends by hand     |
-| `FakeRunner`, `FakeCall`, `FakeProcess`, `FakeProcessOptions`  | interface | `/testing`: the fakes' return, call and option types           |
+| `FakeRunner`, `FakeBytesRunner`, `FakeCall`, `FakeProcess`, `FakeProcessOptions` | interface | `/testing`: the fakes' return, call and option types           |
 
 `/testing` marks an export of `@osdlc/command-seam/testing`; every other
 export is from `@osdlc/command-seam`. Every export has TSDoc in the source.

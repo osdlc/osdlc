@@ -13,7 +13,7 @@ import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from '
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { runJson, runShell, shellRunner, spawnRunner } from '../../index.ts'
+import { runJson, runShell, shellRunner, spawnBytesRunner, spawnRunner } from '../../index.ts'
 
 const out = process.argv[2]
 if (out === undefined) throw new Error('usage: pipe-probe.ts <result-file>')
@@ -121,6 +121,19 @@ try {
   results['shellMissingSh'] = shellRunner(spawnRunner('definitely-not-a-real-sh')).run('true', {
     cwd: CWD,
   })
+  // Buffers go through JSON as `{ type: 'Buffer', data }`.
+  const bytesSh = spawnBytesRunner('sh')
+  results['bytes'] = bytesSh.run(['-c', "printf '\\377\\376\\000\\200'; printf '\\377' >&2"], {
+    cwd: CWD,
+  })
+  results['bytesInput'] = spawnBytesRunner('cat').run([], {
+    cwd: CWD,
+    input: Buffer.from([0xff, 0x00, 0x80]),
+  })
+  results['bytesCap'] = bytesSh.run(
+    ['-c', `i=0; while [ $i -lt 2000 ]; do printf '€'; i=$((i+1)); done; exec sleep 10`],
+    { cwd: CWD, maxOutputBytes: 100 },
+  )
   results['runJson'] = runJson(sh, ['-c', 'echo "[INFO] starting"; echo "{\\"a\\": 1}"'], {
     cwd: CWD,
     tolerateLeadingLog: true,

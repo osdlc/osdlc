@@ -8,7 +8,7 @@
  */
 
 import type { AsyncCommandRunner, AsyncCommandRunOptions } from './async.ts'
-import type { CommandResult, CommandRunner, CommandRunOptions } from './sync.ts'
+import type { CommandOutput, CommandResult, CommandRunner, CommandRunOptions } from './sync.ts'
 
 /**
  * Whether the process started and exited 0. `exitCode` alone is not enough:
@@ -28,7 +28,8 @@ export function ran(result: { exitCode: number; neverExited?: boolean | undefine
  * The child's trimmed stderr, else the runner's trimmed `error` (a failed
  * spawn, a timeout, an abort), else `''`. Use it where a failure message reads
  * stderr: since the runner's message is only in `error`, reading `stderr`
- * alone shows nothing when the command never ran.
+ * alone shows nothing when the command never ran. A bytes runner's stderr is
+ * decoded as UTF-8.
  *
  * @param result - A run's result.
  * @returns The text, trimmed; `''` when both are empty.
@@ -40,8 +41,15 @@ export function ran(result: { exitCode: number; neverExited?: boolean | undefine
  * if (!ran(r)) console.error(`fetch failed: ${stderrOrError(r)}`)
  * ```
  */
-export function stderrOrError(result: Pick<CommandResult, 'stderr' | 'error'>): string {
-  return result.stderr.trim() || (result.error?.trim() ?? '')
+export function stderrOrError(
+  result: Pick<CommandResult<CommandOutput>, 'stderr' | 'error'>,
+): string {
+  return asText(result.stderr).trim() || (result.error?.trim() ?? '')
+}
+
+/** Output as text: a bytes runner's output decoded as UTF-8. */
+function asText(output: CommandOutput): string {
+  return typeof output === 'string' ? output : output.toString()
 }
 
 /** Options for {@link failureText}. */
@@ -62,7 +70,8 @@ export interface FailureTextOptions {
  * suits a one-line message: trimmed stderr, else the runner's trimmed
  * `error` (a failed spawn, a timeout), else trimmed stdout (some commands
  * explain a failure there), else `exit N`. With `both: true` it
- * joins both streams (see {@link FailureTextOptions.both}).
+ * joins both streams (see {@link FailureTextOptions.both}). A bytes runner's
+ * output is decoded as UTF-8.
  *
  * @param result - The result of a failed run.
  * @param opts - `both: true` to join both streams.
@@ -70,11 +79,11 @@ export interface FailureTextOptions {
  * at all.
  */
 export function failureText(
-  result: Pick<CommandResult, 'exitCode' | 'stdout' | 'stderr' | 'error'>,
+  result: Pick<CommandResult<CommandOutput>, 'exitCode' | 'stdout' | 'stderr' | 'error'>,
   opts: FailureTextOptions = {},
 ): string {
   const stderr = stderrOrError(result)
-  const stdout = result.stdout.trim()
+  const stdout = asText(result.stdout).trim()
   if (opts.both === true) return [stderr, stdout].filter(Boolean).join('\n')
   return stderr || stdout || `exit ${result.exitCode}`
 }

@@ -4,6 +4,9 @@
  * takes a `CommandRunner`; tests pass a fake. Live output and long-lived
  * processes have their own runners (`stream.ts`, `process.ts`).
  *
+ * {@link spawnBytesRunner} is the same runner with stdout and stderr as
+ * bytes, for output that is not text.
+ *
  * Two ways to call it, like zod's `safeParse` and `parse`:
  *   - `runner.run(...)` never throws for a failed command; the caller reads
  *     `exitCode`.
@@ -15,23 +18,39 @@ import { spawnSync } from 'node:child_process'
 import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { StringDecoder } from 'node:string_decoder'
 
 import { shellJoin } from './quote.ts'
 import { failureText, stderrOrError } from './result.ts'
 import { which } from './which.ts'
 
-/** Result of running an external command through a `CommandRunner`. */
-export interface CommandResult {
+/**
+ * What a capture runner's `stdout` and `stderr` are: `string`, decoded as
+ * UTF-8, or `Buffer`, the bytes as the child wrote them (the bytes runners).
+ *
+ * @experimental
+ */
+export type CommandOutput = string | Buffer
+
+/**
+ * Result of running an external command through a `CommandRunner`. `O` is
+ * the type of `stdout` and `stderr`: `string` by default, `Buffer` from a
+ * bytes runner (`spawnBytesRunner`, `spawnBytesRunnerAsync`).
+ */
+export interface CommandResult<O extends CommandOutput = string> {
   /** The child's exit code, or `1` when it never reported one (see `neverExited`). */
   exitCode: number
-  /** Everything the child wrote to stdout, decoded as UTF-8. */
-  stdout: string
   /**
-   * Everything the child wrote to stderr, decoded as UTF-8. Only the child's
-   * output: the runner's own message, such as a failed spawn or a timeout, is
-   * in `error`. `failureText` reads both.
+   * Everything the child wrote to stdout: decoded as UTF-8, or the bytes
+   * themselves from a bytes runner.
    */
-  stderr: string
+  stdout: O
+  /**
+   * Everything the child wrote to stderr, decoded as UTF-8 or as bytes, like
+   * `stdout`. Only the child's output: the runner's own message, such as a
+   * failed spawn or a timeout, is in `error`. `failureText` reads both.
+   */
+  stderr: O
   /**
    * `true` when the child never reported an exit status: the spawn failed, a
    * timeout or an abort killed it, a signal took it down, or the sync runner
@@ -138,16 +157,20 @@ export interface CommandRunOptions {
    * `processGroup`.
    */
   timeoutMs?: number | undefined
-  /** Text written to the child's stdin. Stdin is closed after it, or at once when omitted. */
-  input?: string | undefined
+  /**
+   * Text or bytes written to the child's stdin. Stdin is closed after it, or
+   * at once when omitted.
+   */
+  input?: string | Uint8Array | undefined
   /**
    * The most bytes to read from each of stdout and stderr. A child that
    * writes more to either stream is killed with `SIGKILL` (its whole group
    * with `processGroup`), and the result has `neverExited: true`,
    * `reason: 'output'`, and that stream cut to the cap on a character
-   * boundary. The cap counts the bytes the child wrote, not the decoded text:
-   * bytes that are not valid UTF-8 decode to U+FFFD, which is 3 bytes, so the
-   * string can be longer than the cap in UTF-8. A child that exits before the
+   * boundary (a bytes runner cuts at the cap exactly). The cap counts the
+   * bytes the child wrote, not the decoded text: bytes that are not valid
+   * UTF-8 decode to U+FFFD, which is 3 bytes, so the string can be longer
+   * than the cap in UTF-8. A child that exits before the
    * kill lands keeps its exit code and gets `outputIncomplete: true` instead.
    *
    * The sync runners default to 256 MB per stream; the async runners have no
@@ -194,6 +217,20 @@ export interface CommandRunner {
    * byte in argv or env.
    */
   run(argv: string[], opts: CommandRunOptions): CommandResult
+}
+
+/**
+ * A {@link CommandRunner} whose results hold stdout and stderr as bytes, for
+ * output that is not text, such as `git cat-file blob` of an image.
+ * `spawnBytesRunner` is the default one.
+ *
+ * @experimental
+ */
+export interface BytesCommandRunner {
+  /** The binary this runner runs, when it has one. See `CommandRunner.binary`. */
+  readonly binary?: string | undefined
+  /** Run the binary as `CommandRunner.run` does, with the output as bytes. */
+  run(argv: string[], opts: CommandRunOptions): CommandResult<Buffer>
 }
 
 /**
@@ -346,14 +383,90 @@ function assertNoNulByte(
   }
 }
 
+/**
+ * How a capture runner turns the bytes the child wrote into a result's
+ * `stdout` and `stderr`: {@link TEXT} or {@link BYTES}.
+ */
+export interface OutputMode<O extends CommandOutput> {
+  /** A stream the child wrote nothing to. */
+  readonly empty: O
+  /**
+   * A stream read whole, as the sync runners read it. Bytes past `cap` are
+   * dropped; text drops a character the cut splits too.
+   */
+  whole(buf: Buffer | null | undefined, cap: number): O
+  /** A collector for a stream read in chunks, as the async runner reads it. */
+  collector(): OutputCollector<O>
+}
+
+/** One stream's output, read in chunks. */
+export interface OutputCollector<O extends CommandOutput> {
+  write(chunk: Buffer): void
+  /**
+   * The output collected. `cut` says the cap cut the stream, so a partial
+   * character at the end is the cut, not output, and text drops it.
+   */
+  done(cut: boolean): O
+}
+
+/** Output decoded as UTF-8. */
+export const TEXT: OutputMode<string> = {
+  empty: '',
+  // Past the cap, a stream can end mid-character; cut it back to a whole one.
+  whole: (buf, cap) =>
+    buf == null ? '' : (buf.length > cap ? utf8Prefix(buf, cap) : buf).toString(),
+  collector() {
+    // A StringDecoder rather than per-chunk `toString()`: a multi-byte
+    // character straddling a chunk boundary would otherwise be decoded as two
+    // partial sequences and each half replaced with U+FFFD. The decoder holds
+    // the partial sequence back until the rest of it arrives.
+    const decoder = new StringDecoder('utf8')
+    let text = ''
+    return {
+      write: (chunk) => {
+        text += decoder.write(chunk)
+      },
+      // `end()` surfaces a sequence the decoder still holds back when the
+      // output ends mid-character, as bytes that were never UTF-8 can. Left
+      // unflushed, those bytes would be dropped, and the result would be
+      // shorter than what the child wrote and disagree with the sync runner.
+      done: (cut) => (cut ? text : text + decoder.end()),
+    }
+  },
+}
+
+/** Output as the bytes the child wrote. */
+export const BYTES: OutputMode<Buffer> = {
+  empty: Buffer.alloc(0),
+  whole: (buf, cap) =>
+    buf == null ? Buffer.alloc(0) : buf.length > cap ? buf.subarray(0, cap) : buf,
+  collector() {
+    const chunks: Buffer[] = []
+    return {
+      write: (chunk) => {
+        chunks.push(chunk)
+      },
+      done: () => Buffer.concat(chunks),
+    }
+  },
+}
+
 /** The stand-in result for a child that never started. */
-export function spawnFailure(message: string): CommandResult {
+export function spawnFailure(message: string): CommandResult
+export function spawnFailure<O extends CommandOutput>(
+  message: string,
+  mode: OutputMode<O>,
+): CommandResult<O>
+export function spawnFailure(
+  message: string,
+  mode: OutputMode<CommandOutput> = TEXT,
+): CommandResult<CommandOutput> {
   return {
     exitCode: 1,
     neverExited: true,
     reason: 'spawn',
-    stdout: '',
-    stderr: '',
+    stdout: mode.empty,
+    stderr: mode.empty,
     error: message,
   }
 }
@@ -388,14 +501,20 @@ export function syncStop(proc: { error?: Error | undefined; signal: NodeJS.Signa
  * `env` or `input`, not argv. Use `detail` to show a person
  * why it failed. The binary is left out when it is not known, as for a fake
  * runner without `binary`.
+ *
+ * `O` is the result's output type. A bytes runner's failure carries its
+ * output as bytes, and `message` and `detail` decode it as UTF-8. A `catch`
+ * block, `catchFailed` and `mapFailed` cannot know which runner threw, and
+ * type the failure as text: where a bytes runner may have thrown it, check
+ * `Buffer.isBuffer(e.result.stdout)` before reading the output.
  */
-export class CommandFailed extends Error {
+export class CommandFailed<O extends CommandOutput = string> extends Error {
   /** The binary that ran, when the runner reports one (see `CommandRunner.binary`). */
   readonly binary: string | undefined
   /** The arguments the command ran with, without the binary name. */
   readonly argv: string[]
   /** The full result of the failed run. */
-  readonly result: CommandResult
+  readonly result: CommandResult<O>
 
   /**
    * The failure text to show a human: both streams, trimmed, newline-joined,
@@ -422,7 +541,7 @@ export class CommandFailed extends Error {
    * @param result - The result of the failed run.
    * @param binary - The binary that ran, when known.
    */
-  constructor(argv: string[], result: CommandResult, binary?: string | undefined) {
+  constructor(argv: string[], result: CommandResult<O>, binary?: string | undefined) {
     const stderr = stderrOrError(result)
     const command = binary === undefined ? argv : [binary, ...argv]
     super(
@@ -443,7 +562,7 @@ export class CommandFailed extends Error {
  *
  * Takes any runner whose `run` returns a {@link CommandResult}, with that
  * runner's own options: a `withDefaults` runner needs only the options it
- * did not bind.
+ * did not bind. A bytes runner's result comes back with its bytes.
  *
  * @param runner - Runs the command; pass a fake in tests.
  * @param argv - Arguments, without the binary name.
@@ -463,19 +582,22 @@ export function runChecked(
   argv: string[],
   opts: CommandRunOptions,
 ): CommandResult
-export function runChecked<P extends unknown[]>(
-  runner: { readonly binary?: string | undefined; run(argv: string[], ...opts: P): CommandResult },
+export function runChecked<P extends unknown[], O extends CommandOutput = string>(
+  runner: {
+    readonly binary?: string | undefined
+    run(argv: string[], ...opts: P): CommandResult<O>
+  },
   argv: string[],
   ...opts: NoInfer<P>
-): CommandResult
+): CommandResult<O>
 export function runChecked(
   runner: {
     readonly binary?: string | undefined
-    run(argv: string[], ...opts: unknown[]): CommandResult
+    run(argv: string[], ...opts: unknown[]): CommandResult<CommandOutput>
   },
   argv: string[],
   ...opts: unknown[]
-): CommandResult {
+): CommandResult<CommandOutput> {
   const result = runner.run(argv, ...opts)
   if (result.exitCode !== 0) throw new CommandFailed(argv, result, runner.binary)
   return result
@@ -537,11 +659,11 @@ const CHILD_STDIO_CORRUPTED =
  * Folds a finished `spawnSync` into a {@link CommandResult}. Exported for
  * tests.
  */
-export function fromSpawnSync(
+export function fromSpawnSync<O extends CommandOutput>(
   proc: { status: number | null; signal: NodeJS.Signals | null; error?: Error | undefined },
-  stdout: string,
-  stderr: string,
-): CommandResult {
+  stdout: O,
+  stderr: O,
+): CommandResult<O> {
   const code = (proc.error as NodeJS.ErrnoException | undefined)?.code
   return {
     exitCode: proc.status ?? 1,
@@ -571,12 +693,13 @@ export function fromSpawnSync(
  * replaces `sh`, so the reported exit status (and the cwd/env/timeout) all
  * belong to the child, matching the pipe path's contract.
  */
-function runViaChildRedirect(
+function runViaChildRedirect<O extends CommandOutput>(
   binary: string,
   argv: string[],
   opts: CommandRunOptions,
   timeoutMs: number | undefined,
-): CommandResult {
+  mode: OutputMode<O>,
+): CommandResult<O> {
   const { env } = mergedEnv(opts)
   // A binary that cannot be found would make `exec` fail and `sh` exit 127,
   // which reads as the command's own answer. Check first, so the result is
@@ -584,7 +707,7 @@ function runViaChildRedirect(
   // keeps a binary named like an option (`-a`) from reaching `exec` as one,
   // unless an executable named `-a` is on PATH.
   if (which(binary, { cwd: opts.cwd, env: { PATH: env['PATH'] } }) === undefined) {
-    return spawnFailure(`spawnSync ${binary} ENOENT`)
+    return spawnFailure(`spawnSync ${binary} ENOENT`, mode)
   }
   const dir = mkdtempSync(join(tmpdir(), 'command-seam-'))
   try {
@@ -621,11 +744,11 @@ function runViaChildRedirect(
     // a saturated process table is the case that matters, and it must not turn
     // into an ENOENT thrown from the capture layer. Missing reads as empty,
     // matching what the pipe path reports for a child that produced nothing.
-    const readOrEmpty = (p: string): string => {
+    const readOrEmpty = (p: string): O => {
       try {
-        return readFileSync(p, 'utf-8')
+        return mode.whole(readFileSync(p), Infinity)
       } catch {
-        return ''
+        return mode.empty
       }
     }
     // Output goes to a file, so there is no maxBuffer: it is bounded only by
@@ -667,32 +790,56 @@ export function resolveRunner(binary: string, injected?: CommandRunner | undefin
  * ```
  */
 export function spawnRunner(binary: string): CommandRunner {
-  return {
-    binary,
-    run(argv: string[], opts: CommandRunOptions): CommandResult {
-      const timeoutMs = normalizeTimeout(opts.timeoutMs)
-      const cap = normalizeOutputCap(opts.maxOutputBytes) ?? DEFAULT_SYNC_OUTPUT_CAP
-      const cwdMessage = cwdError(`spawnSync ${binary}`, binary, argv, opts)
-      if (cwdMessage !== undefined) return spawnFailure(cwdMessage)
-      if (CHILD_STDIO_CORRUPTED) return runViaChildRedirect(binary, argv, opts, timeoutMs)
-      const proc = spawnSync(binary, argv, {
-        cwd: opts.cwd,
-        maxBuffer: cap,
-        timeout: timeoutMs,
-        // See `runViaChildRedirect`: the default SIGTERM is not a hard cap.
-        killSignal: 'SIGKILL',
-        input: opts.input,
-        ...mergedEnv(opts),
-      })
-      // Past the cap, a stream can end mid-character; cut it back to a whole one.
-      const text = (b: Buffer | null | undefined) =>
-        b == null ? '' : (b.length > cap ? utf8Prefix(b, cap) : b).toString()
-      const capped = (proc.error as NodeJS.ErrnoException | undefined)?.code === 'ENOBUFS'
-      return fromSpawnSync(
-        proc,
-        capped ? text(proc.stdout) : (proc.stdout?.toString() ?? ''),
-        capped ? text(proc.stderr) : (proc.stderr?.toString() ?? ''),
-      )
-    },
-  }
+  return { binary, run: (argv, opts) => runSync(binary, argv, opts, TEXT) }
+}
+
+/**
+ * {@link spawnRunner} with stdout and stderr as bytes: a `Buffer` each,
+ * exactly as the child wrote them. Use it for output that is not text, or
+ * that must be hashed or checked before it is decoded: decoding first turns
+ * each invalid sequence into U+FFFD. The cap cuts a stream at
+ * `maxOutputBytes` exactly. Everything else, including the default cap of
+ * 256 MB and the `bun test` capture path, is as for `spawnRunner`.
+ *
+ * `runChecked`, `failureText` and `CommandFailed` take its results, and
+ * decode stderr for their messages.
+ *
+ * @param binary - A name looked up on `PATH`, or a path.
+ * @returns A runner for that binary.
+ *
+ * @example
+ * ```ts
+ * const git = spawnBytesRunner('git')
+ * const blob = runChecked(git, ['cat-file', 'blob', sha], { cwd: repo }).stdout
+ * const digest = createHash('sha256').update(blob).digest('hex')
+ * ```
+ *
+ * @experimental
+ */
+export function spawnBytesRunner(binary: string): BytesCommandRunner {
+  return { binary, run: (argv, opts) => runSync(binary, argv, opts, BYTES) }
+}
+
+/** The sync capture runners' `run`, with the output as `mode` makes it. */
+function runSync<O extends CommandOutput>(
+  binary: string,
+  argv: string[],
+  opts: CommandRunOptions,
+  mode: OutputMode<O>,
+): CommandResult<O> {
+  const timeoutMs = normalizeTimeout(opts.timeoutMs)
+  const cap = normalizeOutputCap(opts.maxOutputBytes) ?? DEFAULT_SYNC_OUTPUT_CAP
+  const cwdMessage = cwdError(`spawnSync ${binary}`, binary, argv, opts)
+  if (cwdMessage !== undefined) return spawnFailure(cwdMessage, mode)
+  if (CHILD_STDIO_CORRUPTED) return runViaChildRedirect(binary, argv, opts, timeoutMs, mode)
+  const proc = spawnSync(binary, argv, {
+    cwd: opts.cwd,
+    maxBuffer: cap,
+    timeout: timeoutMs,
+    // See `runViaChildRedirect`: the default SIGTERM is not a hard cap.
+    killSignal: 'SIGKILL',
+    input: opts.input,
+    ...mergedEnv(opts),
+  })
+  return fromSpawnSync(proc, mode.whole(proc.stdout, cap), mode.whole(proc.stderr, cap))
 }

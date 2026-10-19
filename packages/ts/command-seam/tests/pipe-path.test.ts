@@ -47,6 +47,14 @@ type Probe = {
   shellTimeout: CommandResult
   shellMissingSh: CommandResult
   runJson: JsonRun<{ a: number }>
+  bytes: JsonBytesResult
+  bytesInput: JsonBytesResult
+  bytesCap: JsonBytesResult
+}
+/** A bytes runner's result after a trip through JSON, which writes a Buffer as `{ type, data }`. */
+type JsonBytesResult = Omit<CommandResult, 'stdout' | 'stderr'> & {
+  stdout: { type: 'Buffer'; data: number[] }
+  stderr: { type: 'Buffer'; data: number[] }
 }
 
 let probe: Probe
@@ -211,5 +219,20 @@ describe('spawnRunner — production pipe path (NODE_ENV unset)', () => {
 
   test('a fractional timeoutMs is a cap, not an error', () => {
     expect(probe.timeoutFraction.reason).toBe('timeout')
+  })
+
+  test('spawnBytesRunner returns the bytes the child wrote', () => {
+    expect(probe.bytes.exitCode).toBe(0)
+    expect(probe.bytes.stdout.data).toEqual([0xff, 0xfe, 0x00, 0x80])
+    expect(probe.bytes.stderr.data).toEqual([0xff])
+  })
+
+  test('spawnBytesRunner writes bytes to stdin', () => {
+    expect(probe.bytesInput.stdout.data).toEqual([0xff, 0x00, 0x80])
+  })
+
+  test('spawnBytesRunner cuts at maxOutputBytes exactly', () => {
+    expect(probe.bytesCap.reason).toBe('output')
+    expect(probe.bytesCap.stdout.data).toEqual([...Buffer.from('€'.repeat(34)).subarray(0, 100)])
   })
 })

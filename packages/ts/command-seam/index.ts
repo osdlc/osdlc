@@ -6,7 +6,8 @@
  * a runner as a parameter. Production passes a real one; tests pass a fake.
  *
  * - `spawnRunner` / `spawnRunnerAsync` capture a finished run's output
- *   ({@link CommandResult}).
+ *   ({@link CommandResult}). `spawnBytesRunner` / `spawnBytesRunnerAsync`
+ *   capture it as bytes.
  * - `runShell` / `shellRunner` run a shell string through `sh -c --`.
  * - `streamRunner` runs with inherited stdio, so output appears live.
  * - `managedProcessRunner` starts a process and returns a handle to it
@@ -26,7 +27,10 @@ export {
   mapFailed,
   resolveRunner,
   runChecked,
+  spawnBytesRunner,
   spawnRunner,
+  type BytesCommandRunner,
+  type CommandOutput,
   type CommandResult,
   type CommandRunner,
   type CommandRunOptions,
@@ -40,7 +44,9 @@ export {
   mapFailedAsync,
   resolveRunnerAsync,
   runCheckedAsync,
+  spawnBytesRunnerAsync,
   spawnRunnerAsync,
+  type AsyncBytesCommandRunner,
   type AsyncCommandRunner,
   type AsyncCommandRunOptions,
 } from './async.ts'

@@ -25,6 +25,26 @@ sync default of 256 MB, and report a kill at it as `reason: 'output'`. The
 async runner still has no default cap, and the `bun test` capture path still
 has none. The byte mode stays deferred.
 
+## Update: byte mode (October 2026)
+
+[#234](https://github.com/osdlc/osdlc/issues/234) was the user the byte mode
+waited for: hashing `git cat-file blob` output before checking it is UTF-8,
+which decoding first makes impossible. `spawnBytesRunner` and
+`spawnBytesRunnerAsync` return stdout and stderr as a `Buffer`, typed
+`CommandResult<Buffer>`, and cut at `maxOutputBytes` exactly. `input` takes
+bytes on every capture runner.
+
+- They are separate runners, not an `encoding` option on the text runners. An
+  option that changes the result type would need an overloaded `run` on
+  `CommandRunner`, and every fake would have to implement both forms.
+- `CommandResult` takes the output type as a parameter, `string` by default,
+  so text code is unchanged. `failureText`, `stderrOrError`, `runChecked` and
+  `CommandFailed` take either kind and decode for their messages.
+- `runJson` and the shell runners stay text-only until a user needs bytes
+  there.
+
+Text remains the default.
+
 ## Why
 
 The users of this package run tools that print text. execa already offers

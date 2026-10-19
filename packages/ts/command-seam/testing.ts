@@ -3,6 +3,7 @@
  * entry so production code never imports them.
  *
  * - `fakeRunner` answers capture-runner calls from a table and records them.
+ * - `fakeBytesRunner` does the same for the bytes runners.
  * - `fakeNeverExited` builds the result of a run that never exited.
  * - `fakeProcess` is a managed-process handle the test ends by hand.
  */
@@ -14,9 +15,20 @@ import {
   type ManagedProcessRunner,
   type ManagedProcessRunOptions,
 } from './process.ts'
-import { asAsync, type AsyncCommandRunner, type AsyncCommandRunOptions } from './async.ts'
+import {
+  asAsync,
+  type AsyncBytesCommandRunner,
+  type AsyncCommandRunner,
+  type AsyncCommandRunOptions,
+} from './async.ts'
 import { shellQuote } from './quote.ts'
-import type { CommandResult, CommandRunner, NeverExitedReason } from './sync.ts'
+import type {
+  BytesCommandRunner,
+  CommandOutput,
+  CommandResult,
+  CommandRunner,
+  NeverExitedReason,
+} from './sync.ts'
 
 /**
  * One call a fake received.
@@ -29,7 +41,12 @@ export interface FakeCall<O> {
 }
 
 /** What a fake answers: fields over `{ exitCode: 0, stdout: '', stderr: '' }`. */
-type FakeAnswer = Partial<CommandResult>
+type FakeAnswer<O extends CommandOutput = string> = Partial<CommandResult<O>>
+
+/** A fake's answer table, or a function that picks an answer. */
+type FakeAnswers<O extends CommandOutput> =
+  | Readonly<Record<string, FakeAnswer<O>>>
+  | ((argv: string[], opts: AsyncCommandRunOptions) => FakeAnswer<O> | undefined)
 
 /**
  * What `fakeRunner` returns.
@@ -87,12 +104,59 @@ export interface FakeRunner {
  *
  * @experimental
  */
-export function fakeRunner(
-  answers:
-    | Readonly<Record<string, FakeAnswer>>
-    | ((argv: string[], opts: AsyncCommandRunOptions) => FakeAnswer | undefined),
-): FakeRunner {
+export function fakeRunner(answers: FakeAnswers<string>): FakeRunner {
   const calls: FakeCall<AsyncCommandRunOptions>[] = []
+  const runner: CommandRunner = { run: fakeRun('fakeRunner', answers, '', calls) }
+  return { runner, asyncRunner: asAsync(runner), calls }
+}
+
+/**
+ * What `fakeBytesRunner` returns.
+ *
+ * @experimental
+ */
+export interface FakeBytesRunner {
+  /** Pass this to the code under test. */
+  runner: BytesCommandRunner
+  /** The same fake as an {@link AsyncBytesCommandRunner}. It shares the answers and `calls`. */
+  asyncRunner: AsyncBytesCommandRunner
+  /** Every call, in order, as for `fakeRunner`. */
+  calls: FakeCall<AsyncCommandRunOptions>[]
+}
+
+/**
+ * {@link fakeRunner} for the bytes runners: answers hold `stdout` and
+ * `stderr` as a `Buffer`, over an empty run whose streams are empty buffers.
+ * Keys, the no-answer result and `calls` are as for `fakeRunner`.
+ *
+ * @param answers - Results by argv, or a function that picks one.
+ * @returns The runner, the same fake as an async runner, and the list of
+ * calls they received.
+ *
+ * @example
+ * ```ts
+ * const png = Buffer.from([0x89, 0x50, 0x4e, 0x47])
+ * const { runner } = fakeBytesRunner({ 'cat-file blob abc': { stdout: png } })
+ * runner.run(['cat-file', 'blob', 'abc'], { cwd: '/repo' }).stdout // png
+ * ```
+ *
+ * @experimental
+ */
+export function fakeBytesRunner(answers: FakeAnswers<Buffer>): FakeBytesRunner {
+  const calls: FakeCall<AsyncCommandRunOptions>[] = []
+  const runner: BytesCommandRunner = {
+    run: fakeRun('fakeBytesRunner', answers, Buffer.alloc(0), calls),
+  }
+  return { runner, asyncRunner: asAsync(runner), calls }
+}
+
+/** A fake's `run`: record the call, then answer it from `answers`. */
+function fakeRun<O extends CommandOutput>(
+  name: string,
+  answers: FakeAnswers<O>,
+  empty: O,
+  calls: FakeCall<AsyncCommandRunOptions>[],
+): (argv: string[], opts: AsyncCommandRunOptions) => CommandResult<O> {
   const lookup =
     typeof answers === 'function'
       ? answers
@@ -100,16 +164,13 @@ export function fakeRunner(
           const key = keyOf(argv)
           return Object.hasOwn(answers, key) ? answers[key] : undefined
         }
-  const runner: CommandRunner = {
-    run(argv, opts: AsyncCommandRunOptions) {
-      calls.push({ argv: [...argv], opts: { ...opts } })
-      const answer = lookup(argv, opts)
-      if (answer !== undefined) return { exitCode: 0, stdout: '', stderr: '', ...answer }
-      const error = `fakeRunner: no answer for: ${keyOf(argv)}`
-      return { exitCode: 1, stdout: '', stderr: '', neverExited: true, reason: 'spawn', error }
-    },
+  return (argv, opts) => {
+    calls.push({ argv: [...argv], opts: { ...opts } })
+    const answer = lookup(argv, opts)
+    if (answer !== undefined) return { exitCode: 0, stdout: empty, stderr: empty, ...answer }
+    const error = `${name}: no answer for: ${keyOf(argv)}`
+    return { exitCode: 1, stdout: empty, stderr: empty, neverExited: true, reason: 'spawn', error }
   }
-  return { runner, asyncRunner: asAsync(runner), calls }
 }
 
 /**
@@ -128,6 +189,7 @@ function keyOf(argv: readonly string[]): string {
  * sets one (`SIGKILL` for `timeout` and `output`, `SIGTERM` for `signal`).
  * A death by a signal from elsewhere has no `error`, as on the real runners.
  * `fields` override any of these, such as the `signal` or the `error`.
+ * It serves `fakeBytesRunner` too: `O` is inferred from where it is used.
  *
  * @param reason - Why the run never exited.
  * @param fields - Fields to set over the defaults.
@@ -141,10 +203,10 @@ function keyOf(argv: readonly string[]): string {
  *
  * @experimental
  */
-export function fakeNeverExited(
+export function fakeNeverExited<O extends CommandOutput = string>(
   reason: NeverExitedReason,
-  fields: Partial<CommandResult> = {},
-): Partial<CommandResult> {
+  fields: Partial<CommandResult<O>> = {},
+): Partial<CommandResult<O>> {
   const signal = NEVER_EXITED_SIGNAL[reason]
   return {
     exitCode: 1,

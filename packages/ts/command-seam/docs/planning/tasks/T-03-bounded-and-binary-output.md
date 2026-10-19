@@ -21,6 +21,9 @@ instead of text. This waits until a user needs it
 - The async runner takes the same `maxOutputBytes` cap
   ([#233](https://github.com/osdlc/osdlc/issues/233)) but has no default.
 - The `bun test` capture path has no cap.
+- The bytes runners, `spawnBytesRunner` and `spawnBytesRunnerAsync`, return
+  stdout and stderr as bytes
+  ([#234](https://github.com/osdlc/osdlc/issues/234)).
 
 ## Approach
 
@@ -33,4 +36,4 @@ instead of text. This waits until a user needs it
 
 - [ ] Every capture runner enforces one documented cap and reports
       `reason: 'output'` when output passes it.
-- [ ] A caller can get stdout and stderr as bytes.
+- [x] A caller can get stdout and stderr as bytes.
