@@ -1,12 +1,46 @@
 {
   "schema": 1,
   "pr": 325,
-  "head": null,
-  "base": null,
-  "round": 0,
+  "head": "03b877a852fa9e5d88586ad2204d380572c06fd0",
+  "base": "6f5dc05aaa76113e41db2a7e9af77e552ffeffed",
+  "round": 1,
   "claim": {
     "owner": "Mac.local:claude-w9p5ce",
     "at": "2026-10-19T23:43:05.881Z"
   },
-  "findings": []
+  "findings": [
+    {
+      "id": "r1-1",
+      "round": 1,
+      "path": "packages/ts/path-guard/resolve.ts",
+      "line": 441,
+      "title": "foldText drops a .. after a bare drive (C:..), so contains/canonicalExistingPrefix judge the wrong path on Windows",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-2",
+      "round": 1,
+      "path": "packages/ts/path-guard/docs/planning/decisions/D-03-platforms.md",
+      "line": 32,
+      "title": "Rust twin keeps the physical .. fold on Windows; twins now differ there and D-03 / Rust README do not say so",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-3",
+      "round": 1,
+      "path": "packages/ts/path-guard/resolve.ts",
+      "line": 7,
+      "title": "WINDOWS doc block restates the Windows rules that D-03 and the README own",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    }
+  ]
 }
