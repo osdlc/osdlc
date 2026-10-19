@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.2](https://github.com/osdlc/osdlc/compare/cli-tool-config/v0.5.1...cli-tool-config/v0.5.2) - 2026-10-19
+
+### Added
+
+- *(slug-collate)* add slug-collate 0.1.1 for its first crates.io release ([#294](https://github.com/osdlc/osdlc/pull/294))
+
 ## [0.5.1](https://github.com/osdlc/osdlc/compare/cli-tool-config/v0.5.0...cli-tool-config/v0.5.1) - 2026-10-18
 
 ### Added

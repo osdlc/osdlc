@@ -1,8 +1,8 @@
 //! The shared parity fixture, driven from this side.
 //!
 //! `tests/fixtures/parity.json` is the contract between this crate and its
-//! TypeScript twin, which carries a byte-identical copy and a test that fails
-//! when the copies differ: same input, same `relative`, byte for byte. Base
+//! TypeScript twin, which reads the same file from the repository: same input,
+//! same `relative`, byte for byte. Base
 //! directories are stubbed so the comparison is about path shape; `env_cases`
 //! pin the absolute base directories the override variables resolve to, and
 //! `convention_cases` pin the XDG layout under one home. The TS

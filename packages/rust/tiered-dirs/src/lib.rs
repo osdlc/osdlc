@@ -159,7 +159,7 @@
 //!
 //! # The TypeScript twin
 //!
-//! A TypeScript twin is developed alongside it and will be published later.
+//! A TypeScript twin is published as `@osdlc/tiered-dirs` on npm.
 //! Both are checked against `tests/fixtures/parity.json`. The two must agree
 //! on the path produced for a given (tier, home, scope, app), or a Rust
 //! program and a TypeScript program over the same state split it. Neither

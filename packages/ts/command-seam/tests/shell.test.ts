@@ -37,15 +37,22 @@ describe('runShell', () => {
   })
 
   // Without `--`, sh reads a verb that starts with `-` or `+` as an option.
-  test('a verb that starts with - or + runs as a command, not an option', async () => {
-    for (const verb of ['-x', '+x']) {
-      for (const r of [runShell(verb, { cwd: CWD }), await runShellAsync(verb, { cwd: CWD })]) {
-        expect(r.exitCode).toBe(127)
+  // One test per verb and runner, each run capped below the test timeout, so a
+  // run that does not finish fails under its own name with its result.
+  const runners = {
+    sync: async (verb: string) => runShell(verb, { cwd: CWD, timeoutMs: 4000 }),
+    async: (verb: string) => runShellAsync(verb, { cwd: CWD, timeoutMs: 4000 }),
+  }
+  for (const verb of ['-x', '+x']) {
+    for (const [name, run] of Object.entries(runners)) {
+      test(`a verb that starts with ${verb[0]} runs as a command, not an option (${name})`, async () => {
+        const r = await run(verb)
+        expect(r).toMatchObject({ exitCode: 127 })
         expect(r.stderr).toContain(`${verb}: `)
         expect(r.stderr).not.toContain('option')
-      }
+      })
     }
-  })
+  }
 
   test('a shellQuote-d value is data, not syntax', () => {
     const word = "x; echo pwned '$(id)'"

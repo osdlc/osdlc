@@ -311,7 +311,7 @@ that did not map one to one:
 | `maxOutputBytes` | library-level per-stream cap (SIGTERM → SIGKILL, reason `output-limit`) on all agents | | | |
 | `extraArgs` | appended verbatim on all agents | | | |
 
-The same rows for the agents added in 0.5.0:
+The same rows for the six agents added after those four:
 
 | Spec field | copilot | pi | qwen | droid | cursor | deepseek |
 |---|---|---|---|---| --- |---|

@@ -1,0 +1,25 @@
+[package]
+name = "slug-collate"
+version = "0.1.1"
+edition.workspace = true
+rust-version.workspace = true
+description = "Slugify plus deterministic, portable, non-locale string and path collation: NFKD-normalise and drop combining marks for filename-safe slugs, and a total, case- and accent-insensitive order as a substitute for localeCompare."
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
+keywords = ["slug", "slugify", "collation", "sort", "unicode"]
+categories = ["text-processing", "value-formatting"]
+include = [
+  "src/**/*.rs",
+  "examples/**/*.rs",
+  "README.md",
+  "CHANGELOG.md",
+  "LICENSE-MIT",
+  "LICENSE-APACHE",
+]
+
+[dependencies]
+unicode-normalization = { workspace = true }
+
+[lints]
+workspace = true
