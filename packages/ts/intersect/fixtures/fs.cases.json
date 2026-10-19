@@ -1,0 +1,59 @@
+{
+  "op": "fs.filesInScope",
+  "cases": [
+    {
+      "name": "filesInScope: concrete on-disk files under the scope",
+      "tree": [
+        "src/api/user.ts",
+        "src/api/routes/list.ts",
+        "src/db/pool.ts",
+        "src/web/app.ts",
+        "README.md"
+      ],
+      "patterns": ["src/api/**", "src/db/**"],
+      "expect": ["src/api/routes/list.ts", "src/api/user.ts", "src/db/pool.ts"]
+    },
+    {
+      "name": "filesInScope: ignore excludes matching files",
+      "tree": ["src/api/user.ts", "src/api/routes/list.ts", "src/api/user.test.ts"],
+      "patterns": ["src/api/**"],
+      "opts": { "ignore": ["**/*.test.ts"] },
+      "expect": ["src/api/routes/list.ts", "src/api/user.ts"]
+    },
+    {
+      "name": "resolveIntersection: files that fall in BOTH sets",
+      "op": "fs.resolveIntersection",
+      "tree": ["src/api/user.ts", "src/api/routes/list.ts", "src/api/README.md", "src/db/pool.ts"],
+      "a": ["src/**/*.ts"],
+      "b": ["src/api/**"],
+      "expect": ["src/api/routes/list.ts", "src/api/user.ts"]
+    },
+    {
+      "name": "filesInScope: an on-disk name carrying glob metacharacters is matched literally",
+      "tree": ["pages/[id].vue", "pages/i.vue", "pages/other.vue"],
+      "patterns": ["pages/d.vue"],
+      "expect": []
+    },
+    {
+      "name": "filesInScope: an escaped pattern reaches a name carrying glob metacharacters",
+      "tree": ["pages/[id].vue", "pages/i.vue", "pages/other.vue"],
+      "patterns": ["pages/\\[id\\].vue"],
+      "expect": ["pages/[id].vue"]
+    },
+    {
+      "name": "filesInScope: onlyFiles:false returns directories as plain paths",
+      "tree": ["src/api/user.ts"],
+      "patterns": ["src/**"],
+      "opts": { "onlyFiles": false },
+      "expect": ["src", "src/api", "src/api/user.ts"]
+    },
+    {
+      "name": "resolveIntersection: an on-disk name carrying glob metacharacters is matched literally",
+      "op": "fs.resolveIntersection",
+      "tree": ["pages/[id].vue", "pages/i.vue"],
+      "a": ["pages/**"],
+      "b": ["pages/d.vue"],
+      "expect": []
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  // Emit config for the published dist/; the dev tsconfig.json stays noEmit.
+  // The source only, with Node types: fs.ts uses node:path and process.
+  "extends": ["./tsconfig.json", "@osdlc/tsconfig/build"],
+  "compilerOptions": {
+    "rootDir": ".",
+    "types": ["node"],
+    // The sources are not published, so a declaration map would point at nothing.
+    "declarationMap": false
+  },
+  "include": [
+    "index.ts",
+    "parse.ts",
+    "registry.ts",
+    "fs.ts",
+    "segments/index.ts",
+    "segments/automaton.ts",
+    "segments/product.ts"
+  ]
+}

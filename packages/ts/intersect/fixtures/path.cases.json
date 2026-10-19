@@ -1,0 +1,163 @@
+{
+  "op": "intersects",
+  "cases": [
+    {
+      "name": "exact match: identical no-wildcard paths overlap",
+      "a": "src/siteA/components",
+      "b": "src/siteA/components",
+      "expect": true,
+      "pending": false
+    },
+    {
+      "name": "exact match: a bare path does not match a child (no dir inference)",
+      "a": "src/siteA/components",
+      "b": "src/siteA/components/Button.vue",
+      "expect": false,
+      "pending": false
+    },
+    {
+      "name": "subtree **: an explicit subtree matches a file beneath it",
+      "a": "src/siteA/components/**",
+      "b": "src/siteA/components/Button.vue",
+      "expect": true,
+      "pending": false
+    },
+    {
+      "name": "subtree **: glob overlaps a concrete file inside it",
+      "a": "src/**/*.ts",
+      "b": "src/api/handler.ts",
+      "expect": true,
+      "pending": false
+    },
+    {
+      "name": "star *: single-star matches within one segment",
+      "a": "src/*.ts",
+      "b": "src/index.ts",
+      "expect": true,
+      "pending": false
+    },
+    {
+      "name": "star *: single-star does not cross a separator",
+      "a": "src/*.ts",
+      "b": "src/api/index.ts",
+      "expect": false,
+      "pending": false
+    },
+    {
+      "name": "question ?: matches exactly one character",
+      "a": "file?.ts",
+      "b": "file1.ts",
+      "expect": true,
+      "pending": false
+    },
+    {
+      "name": "question ?: does not match two characters",
+      "a": "file?.ts",
+      "b": "file10.ts",
+      "expect": false,
+      "pending": false
+    },
+    {
+      "name": "braces {a,b}: an alternative matches",
+      "a": "**/*.{vue,html}",
+      "b": "src/siteA/Button.vue",
+      "expect": true,
+      "pending": false
+    },
+    {
+      "name": "braces {a,b}: a non-listed extension does not match",
+      "a": "**/*.{vue,html}",
+      "b": "src/siteA/app.css",
+      "expect": false,
+      "pending": false
+    },
+    {
+      "name": "character class [...]: an in-range character matches",
+      "a": "file[0-9].ts",
+      "b": "file3.ts",
+      "expect": true,
+      "pending": false
+    },
+    {
+      "name": "character class [...]: an out-of-range character does not match",
+      "a": "file[0-9].ts",
+      "b": "fileA.ts",
+      "expect": false,
+      "pending": false
+    },
+    {
+      "name": "negated class [!...]: excludes the listed characters",
+      "a": "file[!0-9].ts",
+      "b": "fileA.ts",
+      "expect": true,
+      "pending": false
+    },
+    {
+      "name": "disjoint: non-overlapping subtrees are false",
+      "a": "src/api/**",
+      "b": "src/web/**",
+      "expect": false,
+      "pending": false
+    },
+    {
+      "name": "set input: an array is the union of its patterns",
+      "a": ["src/api/**", "src/db/**"],
+      "b": "src/db/pool.ts",
+      "expect": true,
+      "pending": false
+    },
+    {
+      "name": "set input: disjoint sets do not overlap",
+      "a": ["a/**"],
+      "b": ["b/**", "c/**"],
+      "expect": false,
+      "pending": false
+    },
+    {
+      "name": "matches: path is inside the first pattern of the set",
+      "op": "matches",
+      "path": "src/api/user.ts",
+      "patterns": ["src/api/**", "**/*.test.ts"],
+      "expect": true,
+      "pending": false
+    },
+    {
+      "name": "matches: path matches none of the set",
+      "op": "matches",
+      "path": "README.md",
+      "patterns": ["src/api/**", "**/*.test.ts"],
+      "expect": false,
+      "pending": false
+    },
+    {
+      "name": "whichMatch: returns every matching pattern in registration order",
+      "op": "whichMatch",
+      "path": "src/api/user.test.ts",
+      "patterns": ["src/api/**", "**/*.test.ts", "docs/**"],
+      "expect": ["src/api/**", "**/*.test.ts"],
+      "pending": false
+    },
+    {
+      "name": "whichMatch: empty when nothing matches",
+      "op": "whichMatch",
+      "path": "README.md",
+      "patterns": ["src/api/**", "**/*.test.ts"],
+      "expect": [],
+      "pending": false
+    },
+    {
+      "name": "unicode: ? spans one astral character, not one code unit",
+      "op": "matches",
+      "path": "a😀b.ts",
+      "patterns": ["a?b.ts"],
+      "expect": true
+    },
+    {
+      "name": "unicode: a character class holds an astral character as one member",
+      "op": "matches",
+      "path": "😀.ts",
+      "patterns": ["[😀x].ts"],
+      "expect": true
+    }
+  ]
+}
