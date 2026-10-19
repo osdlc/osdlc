@@ -163,7 +163,7 @@ need. Run it with `cargo run --example layered_files`.
 |---|---|
 | The machine file lives under the standalone config home; a non-blank env var wins | `lives_under_the_standalone_config_home_and_a_non_blank_override_wins`, `the_env_var_relocates_the_file` |
 | `load` gives defaults for a missing file and for every bad document | `missing_file_returns_defaults`, `an_invalid_document_degrades_to_defaults_rather_than_throwing` |
-| `load` is memoised per path until `clear_cache` | `the_value_is_memoised_per_path_until_clear_cache`, `a_valid_file_is_read_and_re_read_when_the_path_changes` |
+| `load` is memoised per path until `clear_cache` | `the_text_is_remembered_per_path_until_clear_cache`, `a_valid_file_is_read_and_re_read_when_the_path_changes` |
 | `read_strict` reports what `load` hides | `read_strict_reports_what_load_hides` |
 | An invalid tool name is an error | `an_invalid_tool_name_is_an_error` |
 | The machine's `paths:` entry wins per name, and every name is absolute | `the_machine_entry_wins_per_name_and_every_value_is_absolute` |
