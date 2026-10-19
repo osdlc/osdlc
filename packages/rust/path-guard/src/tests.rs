@@ -546,16 +546,23 @@ fn a_dangling_link_through_dotdot_pairs_costs_calls_in_proportion_to_its_target(
     assert!(fs.0.get() < 2 * 160 + 64, "{} resolver calls", fs.0.get());
 }
 
+/// The root of the current directory: `/` on Unix, `C:\` on Windows.
+fn cwd_root() -> PathBuf {
+    let cwd = std::env::current_dir().unwrap();
+    cwd.ancestors().last().unwrap().to_path_buf()
+}
+
 #[test]
 fn lexical_absolute_folds_dots_and_anchors_at_the_cwd() {
-    let fold = |p: &str| lexical_absolute(Path::new(p)).unwrap();
-    assert_eq!(fold("/a/./b/../c/"), PathBuf::from("/a/c"));
+    let root = cwd_root();
+    let fold = |p: &Path| lexical_absolute(p).unwrap();
+    assert_eq!(fold(&root.join("a/./b/../c/")), root.join("a/c"));
     // `..` at the root stays at the root.
-    assert_eq!(fold("/../a"), PathBuf::from("/a"));
+    assert_eq!(fold(&root.join("../a")), root.join("a"));
     let cwd = std::env::current_dir().unwrap();
-    assert_eq!(fold("x/./y"), cwd.join("x/y"));
+    assert_eq!(fold(Path::new("x/./y")), cwd.join("x/y"));
     assert_eq!(
-        fold("x/../y"),
+        fold(Path::new("x/../y")),
         cwd.join("y"),
         "a relative path folds after it is anchored"
     );
@@ -571,6 +578,16 @@ fn lexical_absolute_pops_the_cwd_for_a_leading_dotdot() {
     let deep = "../".repeat(cwd.components().count() + 2);
     assert_eq!(
         lexical_absolute(Path::new(&format!("{deep}x"))).unwrap(),
-        PathBuf::from(std::path::MAIN_SEPARATOR_STR).join("x")
+        cwd_root().join("x")
+    );
+}
+
+#[cfg(windows)]
+#[test]
+fn lexical_absolute_keeps_the_drive_for_a_rooted_path_without_one() {
+    let root = cwd_root();
+    assert_eq!(
+        lexical_absolute(Path::new(r"\a\.\b\..\c")).unwrap(),
+        root.join("a/c")
     );
 }

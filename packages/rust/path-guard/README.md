@@ -76,7 +76,9 @@ If you need only one of these halves, a smaller crate may fit better.
 
 ## Platforms
 
-The lexical layer is platform-independent. The containment layer is tested
+The lexical layer (`validate_relative`) is platform-independent. `lexical_absolute`
+follows the platform's meaning of an absolute path: on Windows a path with a
+root but no drive is anchored at the current directory. The containment layer is tested
 fully on Unix. On Windows the lexical checks still apply, and symlink
 resolution follows whatever `std::fs::canonicalize` does there.
 
