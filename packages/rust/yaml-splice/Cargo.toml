@@ -1,6 +1,6 @@
 [package]
 name = "yaml-splice"
-version = "0.2.2"
+version = "0.2.3"
 edition.workspace = true
 rust-version.workspace = true
 description = "Edit top-level fields of a YAML mapping in place: set, remove and rename a key while every other byte, comments, key order and quoting included, stays as it was."

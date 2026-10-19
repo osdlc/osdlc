@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.3](https://github.com/osdlc/osdlc/compare/yaml-splice/v0.2.2...yaml-splice/v0.2.3) - 2026-10-19
+
+### Added
+
+- *(slug-collate)* add slug-collate 0.1.1 for its first crates.io release ([#294](https://github.com/osdlc/osdlc/pull/294))
+
 ## [0.2.2](https://github.com/osdlc/osdlc/compare/yaml-splice/v0.2.1...yaml-splice/v0.2.2) - 2026-10-17
 
 ### Other
