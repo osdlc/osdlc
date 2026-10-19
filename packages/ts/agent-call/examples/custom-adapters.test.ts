@@ -11,6 +11,7 @@ import {
   callAgent,
   claudePluginArgv,
   claudeResumeFlag,
+  cursorAdapter,
   customAdapter,
   detectAgents,
   modelArgs,
@@ -103,6 +104,34 @@ describe('customAdapter', () => {
     expect(found[0]).toMatchObject({ name: 'node', available: true })
     expect(found[0]?.version).toMatch(/^v\d+/)
     expect(found[1]).toEqual({ name: 'missing', available: false, version: undefined })
+  })
+
+  test('command takes a launcher or leading arguments, as on the built-in adapters', () => {
+    const spec = { prompt: 'Fix the test.' }
+    const viaNpx = customAdapter({
+      name: 'my-cli',
+      command: ['npx', '-y', 'my-cli'],
+      args: (_spec, prompt) => ['--message', prompt],
+    })
+    // planCall(viaNpx, spec).argv starts ['npx', '-y', 'my-cli', '--message', ...]
+
+    expect(planCall(viaNpx, spec).argv).toEqual([
+      'npx',
+      '-y',
+      'my-cli',
+      '--message',
+      'Fix the test.',
+    ])
+    expect(viaNpx.binary).toBe('npx')
+  })
+
+  test('detectAgents says which command answered, for cursor and its two install names', async () => {
+    const [cursor] = await detectAgents([cursorAdapter()])
+    // cursor.command is ['agent'] or ['cursor-agent'] when available, else undefined.
+    const adapter = cursorAdapter({ command: cursor?.command })
+
+    expect(['agent', 'cursor-agent']).toContain(adapter.binary)
+    expect(cursor?.command).toEqual(cursor?.available === true ? adapter.command : undefined)
   })
 })
 
