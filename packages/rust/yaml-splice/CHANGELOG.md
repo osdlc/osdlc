@@ -12,6 +12,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - The minimum supported Rust version is 1.89, up from 1.85. The whole workspace
   moved together because `config-layers` needs `serde-saphyr`, which needs 1.89.
 
+## [0.3.0] - 2026-10-18
+
+### Changed
+
+- `serde_json` is now an optional dependency, behind the `serde_json` feature.
+  The feature is on by default and gates `impl From<&serde_json::Value> for
+  Value`, the only code that uses it. A build with `default-features = false`
+  no longer has that impl. This is why the version is 0.3.0.
+
+### Fixed
+
+- The `EditError::UnrenderableValue` docs no longer give a folded block scalar
+  as an example cause. The edit functions render at `line_width` 0, where the
+  emitter cannot fail, so this release never returns the variant. The docs now
+  say so.
+
 ## [0.2.3](https://github.com/osdlc/osdlc/compare/yaml-splice/v0.2.2...yaml-splice/v0.2.3) - 2026-10-19
 
 ### Added

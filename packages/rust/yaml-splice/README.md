@@ -30,6 +30,16 @@ frontmatter in notes and static sites, config files, manifests.
 cargo add yaml-splice
 ```
 
+### Cargo features
+
+- `serde_json` (on by default): `impl From<&serde_json::Value> for Value`,
+  for a program that gets its values as JSON. Nothing else in the crate uses
+  `serde_json`. To build without it:
+
+  ```toml
+  yaml-splice = { version = "0.3", default-features = false }
+  ```
+
 ## Quick start
 
 ```rust
@@ -104,7 +114,9 @@ byte span.
 - A key that matches more than one existing key (`AmbiguousKey`), a `Rename`
   whose source is missing (`MissingKey`) or whose destination exists
   (`KeyConflict`).
-- A value the emitter cannot write (`UnrenderableValue`).
+- A value or key the emitter cannot write (`UnrenderableValue`). The edit
+  functions render at line width 0, where the emitter has no error, so this
+  release does not return it.
 - An edit whose result would not parse, would change a key the edit does not
   address, or would not read back as the edit asked (`InvalidResult`). Each
   edit is checked by parsing its result. These shapes are refused:
@@ -185,7 +197,8 @@ the same cases. Coverage is not measured.
 ## Platforms
 
 The crate is pure Rust with no platform-specific code and no I/O. It runs
-wherever its dependencies (`saphyr-parser`, `serde_json`, `thiserror`) build.
+wherever its dependencies (`saphyr-parser`, `thiserror`, and `serde_json`
+with the default feature) build.
 CI runs the tests on Linux, macOS and Windows.
 
 Minimum supported Rust version: 1.89, checked in CI by running the tests on

@@ -226,6 +226,9 @@ impl From<Mapping> for Value {
 /// iterates them. That is sorted order unless the build turns on
 /// `serde_json`'s `preserve_order` feature. To control the order of a
 /// mapping you write, build it with [`Mapping::insert`].
+///
+/// Needs the `serde_json` feature, which is on by default.
+#[cfg(feature = "serde_json")]
 impl From<&serde_json::Value> for Value {
     fn from(v: &serde_json::Value) -> Self {
         match v {
@@ -369,6 +372,7 @@ mod tests {
         assert_eq!(js_float_to_string(f64::NEG_INFINITY), "-.inf");
     }
 
+    #[cfg(feature = "serde_json")]
     #[test]
     fn json_bridge_preserves_scalars() {
         let j: serde_json::Value = serde_json::json!({"a": 1, "b": [true, null, "x"]});
