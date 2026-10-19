@@ -8,6 +8,8 @@ type FsPromises = typeof import('node:fs/promises')
 const hooks = vi.hoisted(() => ({
   /** Runs once, between the containment check and the real open. */
   beforeOpen: null as null | (() => Promise<void>),
+  /** The handle the last `open` returned, so a test can check that it was closed. */
+  lastHandle: null as null | Awaited<ReturnType<FsPromises['open']>>,
   /** Runs around the next `realpath` call only. */
   aroundNextRealpath: null as null | { before: () => Promise<void>; after: () => Promise<void> },
   /** When set, path-based `lstat` reports this inode, as when the path now resolves to another file. */
@@ -25,6 +27,7 @@ export const hook = hooks
 
 export function resetHooks(): void {
   hook.beforeOpen = null
+  hook.lastHandle = null
   hook.aroundNextRealpath = null
   hook.lstatIno = null
   hook.lstatDev = null
@@ -38,7 +41,8 @@ vi.mock('node:fs/promises', async (importOriginal) => {
       const beforeOpen = hooks.beforeOpen
       hooks.beforeOpen = null
       await beforeOpen?.()
-      return actual.open(...args)
+      hooks.lastHandle = await actual.open(...args)
+      return hooks.lastHandle
     },
     realpath: async (...args: Parameters<FsPromises['realpath']>) => {
       const around = hooks.aroundNextRealpath

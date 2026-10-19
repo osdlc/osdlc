@@ -132,6 +132,21 @@ describe('readContainedFile', () => {
 })
 
 describe('openContainedFile', () => {
+  it('closes the handle and rethrows when the file vanishes after the open', async () => {
+    const note = join(contentDir, 'sub', 'target.md')
+    hook.beforeOpen = async () => {
+      hook.aroundNextRealpath = {
+        before: async () => {
+          await rm(note)
+        },
+        after: async () => {},
+      }
+    }
+    await expect(openContainedFile(realContentDir, note)).rejects.toMatchObject({ code: 'ENOENT' })
+    // A closed handle reports fd -1.
+    expect(hook.lastHandle?.fd).toBe(-1)
+  })
+
   it('opens a symlink that stays inside the root, as the file it points to', async () => {
     const file = await openContainedFile(realContentDir, join(contentDir, 'inside-link.md'))
     if (file === null) throw new Error('expected a handle')

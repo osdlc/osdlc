@@ -120,6 +120,14 @@
     { "name": "the root itself is the empty path", "root": "/v", "input": "/v", "ok": "" },
     { "name": "a trailing slash on the path", "root": "/v", "input": "/v/Notes/", "ok": "Notes" },
     { "name": "a trailing slash on the root", "root": "/v/", "input": "/v/a.md", "ok": "a.md" },
+    { "name": "a trailing slash on the root, path is the root", "root": "/v/", "input": "/v", "ok": "" },
+    { "name": "a relative root and path", "root": ".", "input": "./a/b", "ok": "a/b" },
+    {
+      "name": "empty segments and a trailing slash dropped",
+      "root": "/v",
+      "input": "/v//Notes///a.md/",
+      "ok": "Notes/a.md"
+    },
     {
       "name": "dot and empty segments dropped",
       "root": "/v",
@@ -155,7 +163,13 @@
       "input": "/v/a/../b",
       "error": "parent_segment"
     },
-    { "name": "a trailing parent", "root": "/v", "input": "/v/a/..", "error": "parent_segment" }
+    { "name": "a trailing parent", "root": "/v", "input": "/v/a/..", "error": "parent_segment" },
+    {
+      "name": "an empty root with an absolute path",
+      "root": "",
+      "input": "/a",
+      "error": "parent_segment"
+    }
   ],
   "resolve_on_disk": [
     {

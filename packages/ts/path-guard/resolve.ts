@@ -107,7 +107,9 @@ export function realpathOrSelf(path: string): string {
  * Returns the joined path (not its realpath).
  *
  * @throws {PathError} Any kind {@link validateRelative} throws for `raw`, and
- * kind `escapes` when the result resolves outside `root`.
+ * kind `escapes` when the result resolves outside `root`, or when the check
+ * cannot prove it stays inside: an empty `root`, more than {@link MAX_LINK_HOPS}
+ * links, or a spent resolver-call budget.
  * @example
  * ```ts
  * resolveInside('/vault', 'notes/a.md') // '/vault/notes/a.md'
@@ -200,10 +202,7 @@ export function contains(outer: string, inner: string, resolver: Resolver = node
 export function lexicalAbsolute(path: string): string {
   // Rust takes a `Path` and returns `io::Result<PathBuf>`. Here a string goes in
   // and out, and the cwd failure is thrown.
-  // `resolve` gives the same fold as the Rust component walk on POSIX for every
-  // case in the parity fixture and the tests. The join is explicit, as in Rust,
-  // so only a relative path reads the working directory.
-  return resolve(isAbsolute(path) ? path : joinPath(process.cwd(), path))
+  return resolve(path)
 }
 
 /**
@@ -214,7 +213,8 @@ export function lexicalAbsolute(path: string): string {
  * Port of the Rust `to_relative`.
  *
  * @throws {PathError} Kind `escapes` if `abs` is not under `root`, and kind
- * `parent_segment` if the relative part holds a `..`.
+ * `parent_segment` if the relative part holds a `..`, or if `root` is empty and
+ * `abs` is absolute.
  * @example
  * ```ts
  * toRelative('/v', '/v/Notes/a.md') // 'Notes/a.md'
@@ -224,6 +224,15 @@ export function lexicalAbsolute(path: string): string {
 export function toRelative(root: string, abs: string): string {
   // Rust also throws `NotUtf8` for a component that is not valid UTF-8. A
   // TypeScript path is a string, so that case does not exist here.
+  // An empty root is a prefix of every path in Rust, so an absolute `abs` leaves
+  // the root component in the relative part, which Rust reports as a parent
+  // segment. Match it. A later release gives this case its own kind.
+  if (components(root).segs.length === 0 && !components(root).absolute && abs.startsWith('/')) {
+    throw new PathError(
+      'parent_segment',
+      `path contains a parent-directory segment: ${JSON.stringify(abs)}`,
+    )
+  }
   if (!startsWith(abs, root)) {
     throw new PathError(
       'escapes',
