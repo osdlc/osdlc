@@ -1,9 +1,9 @@
 //! The shared conformance fixture, `tests/fixtures/parity.json`.
 //!
-//! This file is the contract between this crate and its TypeScript twin, which
-//! carries a byte-identical copy and a test that fails when the copies differ:
-//! same input, same result. A case added on either side goes in the fixture,
-//! never in one twin's own suite.
+//! This file is the contract between this crate and its TypeScript twin in
+//! `packages/ts/path-guard`, which reads it in place: same input, same result.
+//! A case added on either side goes in the fixture, never in one twin's own
+//! suite.
 //!
 //! The `resolve` and `contains` cases run under a resolver for which no path
 //! exists, so they pin the lexical fold and the component-wise comparison
