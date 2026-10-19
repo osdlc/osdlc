@@ -158,6 +158,34 @@
       "path": "😀.ts",
       "patterns": ["[😀x].ts"],
       "expect": true
+    },
+    {
+      "name": "negated class: excluding the whole fallback alphabet still meets ?",
+      "op": "intersects",
+      "a": "[^a-zA-Z0-9._-]",
+      "b": "?",
+      "expect": true
+    },
+    {
+      "name": "negated class: excluding the whole fallback alphabet still meets another negated class",
+      "op": "intersects",
+      "a": "[^a-zA-Z0-9._-]",
+      "b": "[^b]",
+      "expect": true
+    },
+    {
+      "name": "negated class: two classes that together exclude the fallback alphabet still overlap",
+      "op": "intersects",
+      "a": "[^a-zA-Z]",
+      "b": "[^0-9._-]",
+      "expect": true
+    },
+    {
+      "name": "negated class: a negated class and the class it negates do not overlap",
+      "op": "intersects",
+      "a": "[^a-z]",
+      "b": "[a-z]",
+      "expect": false
     }
   ]
 }

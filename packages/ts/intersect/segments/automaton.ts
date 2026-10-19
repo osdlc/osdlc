@@ -422,11 +422,9 @@ function firstOwnChar(pred: CharPred, ok: (c: string) => boolean): string | null
  * de-duplicating `Set` the eager version built — 65 fallback insertions on every
  * edge pair, on the engine's hottest path — buys nothing.
  *
- * KNOWN LIMITATION (pathological, does not occur for real path globs): the
- * fallback alphabet is finite, so two negated classes that between them exclude
- * every fallback character (e.g. `[!` + all fallback chars + `]` intersected
- * with `*`) can report a false `null` even though some other character would
- * satisfy both. Real path-glob segments never negate the entire alphabet.
+ * If all of that fails, the characters just outside each class range are tried
+ * ({@link boundaryChars}). A negated class can then still meet `?` or another
+ * negated class when the fallback alphabet is excluded in full.
  */
 function commonChar(p1: CharPred, p2: CharPred, ci: boolean, disallowDot: boolean): string | null {
   const ok = (c: string): boolean =>
@@ -438,7 +436,38 @@ function commonChar(p1: CharPred, p2: CharPred, ci: boolean, disallowDot: boolea
   for (const c of FALLBACK) {
     if (ok(c)) return c
   }
+  for (const c of boundaryChars(p1, p2)) {
+    if (ok(c)) return c
+  }
   return null
+}
+
+/** Characters that cannot appear in a returned segment, or would be read back as glob syntax. */
+const GLOB_SPECIAL = new Set(['/', '*', '?', '[', ']', '{', '}', ',', '\\'])
+
+/**
+ * The characters just below and above each class range of either predicate.
+ * A set of intervals that has a common point has one at such a boundary or at
+ * an endpoint, so these decide the cases the fixed alphabet cannot. Plain
+ * characters come first, so a witness avoids glob syntax when it can.
+ */
+function boundaryChars(p1: CharPred, p2: CharPred): string[] {
+  const plain: string[] = []
+  const special: string[] = []
+  const add = (cp: number): void => {
+    // Skip out-of-range code points and lone surrogates.
+    if (cp < 0 || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) return
+    const c = String.fromCodePoint(cp)
+    ;(GLOB_SPECIAL.has(c) ? special : plain).push(c)
+  }
+  for (const p of [p1, p2]) {
+    if (p.kind !== 'class') continue
+    for (const r of p.ranges) {
+      add(r.hi.codePointAt(0)! + 1)
+      add(r.lo.codePointAt(0)! - 1)
+    }
+  }
+  return [...plain, ...special.filter((c) => c !== '/')]
 }
 
 // --- Segment-matcher intersection -----------------------------------------

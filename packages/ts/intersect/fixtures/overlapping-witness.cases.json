@@ -58,6 +58,13 @@
       "a": "*/*",
       "b": "*/{,.a}",
       "expect": null
+    },
+    {
+      "name": "witness: a negated class that excludes the fallback alphabet still has a one-character witness",
+      "op": "witness",
+      "a": "[^a-zA-Z0-9._-]",
+      "b": "?",
+      "expect": "`"
     }
   ]
 }
