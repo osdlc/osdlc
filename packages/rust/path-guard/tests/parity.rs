@@ -278,8 +278,8 @@ fn shared_fixture() {
 
     for c in &fixture.to_relative {
         let want = expected(&c.name, &c.ok, &c.error);
-        let got = to_relative(Path::new(&c.root), Path::new(&c.input))
-            .map_err(|e| kind(&e).to_string());
+        let got =
+            to_relative(Path::new(&c.root), Path::new(&c.input)).map_err(|e| kind(&e).to_string());
         if got != want {
             failures.push(format!(
                 "to_relative [{}] {:?} under {:?}: got {got:?}, want {want:?}",
