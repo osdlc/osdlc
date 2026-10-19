@@ -1,6 +1,6 @@
 {
   "name": "@osdlc/path-guard",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Path containment guard: lexical validation of a root-relative path, then symlink-aware proof that it stays inside its root, plus open-then-verify reads. Twin of the Rust `path-guard` crate.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",

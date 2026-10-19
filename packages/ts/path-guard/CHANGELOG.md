@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.3
+
+### Patch Changes
+
+- 9c1261e: Add a `@osdlc/path-guard/lexical` entry for code that cannot load Node. It holds `validateRelative`, `PathError`, `PathErrorKind`, `toRelative` and a new text-only check, `isUnder(root, path)`. Nothing it loads imports `node:*`. The main entry exports what it did before.
+
 ## 0.2.2
 
 ### Patch Changes
