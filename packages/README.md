@@ -114,6 +114,9 @@ Developed here, in this repository:
 - `packages/ts/path-guard` (`@osdlc/path-guard` on npm, a path containment
   guard: lexical validation, then a symlink-aware proof that a path stays
   inside its root; the TypeScript twin of the `path-guard` crate)
+- `packages/ts/intersect` (`@osdlc/intersect` on npm, a path-pattern overlap
+  engine: do two globs share a path, with a witness path, a registry and an
+  optional filesystem layer)
 
 The development repository will take each TypeScript library from npm, like
 any other consumer. Today it still keeps its own copies. Open issues and pull
