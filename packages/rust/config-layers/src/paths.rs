@@ -127,7 +127,8 @@ pub struct TokenError {
 /// let tokens = path_tokens(Path::new("/work"), Path::new("/home/me"), &machine, &BTreeMap::new());
 ///
 /// let checkouts = substitute_path_names("{dev}/checkouts", &tokens, "checkout:").unwrap();
-/// assert_eq!(checkouts, "/home/me/Developer/checkouts");
+/// // Compared as paths: Windows normalizes the separators.
+/// assert_eq!(Path::new(&checkouts), Path::new("/home/me/Developer").join("checkouts"));
 ///
 /// let err = substitute_path_names("{nope}/x", &tokens, "checkout:").unwrap_err();
 /// assert!(err.to_string().contains("unknown token '{nope}'"));
