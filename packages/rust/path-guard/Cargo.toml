@@ -1,7 +1,6 @@
 [package]
 name = "path-guard"
 version = "0.2.2"
-publish = false # held back so its first release runs on its own credential; remove in a separate PR
 edition.workspace = true
 rust-version.workspace = true
 description = "Path containment guard: reject hostile relative paths lexically, then prove the resolved path stays inside its root, following symlinks of whatever part of the path exists. Pluggable resolver for non-std filesystems."
