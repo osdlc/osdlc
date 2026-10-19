@@ -32,6 +32,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./lexical": {
+      "types": "./dist/lexical-entry.d.ts",
+      "default": "./dist/lexical-entry.js"
     }
   },
   "files": [

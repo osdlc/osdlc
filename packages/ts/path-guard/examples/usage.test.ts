@@ -9,7 +9,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { afterEach, beforeEach, describe, expect, test } from 'vitest'
+import { afterEach, beforeEach, describe, expect, expectTypeOf, test } from 'vitest'
 
 import {
   MAX_LINK_HOPS,
@@ -33,6 +33,7 @@ import {
   type PathErrorKind,
   type Resolver,
 } from '@osdlc/path-guard'
+import { isUnder, type PathErrorKind as LexicalErrorKind } from '@osdlc/path-guard/lexical'
 
 /** What a call throws, or null when it returns. */
 function thrown(run: () => unknown): unknown {
@@ -150,6 +151,21 @@ describe('fold a path as text, and shorten it against a root', () => {
     expect(thrown(() => toRelative(vault, `${vault}/notes/../a.md`))).toMatchObject({
       kind: 'parent_segment',
     })
+  })
+})
+
+describe('check containment as text, from the browser-safe entry', () => {
+  test('isUnder compares whole components, folds `..` and follows no symlink', () => {
+    expect(isUnder('/vault', '/vault/a/b.md')).toBe(true)
+    expect(isUnder('/vault', '/vault2/a.md')).toBe(false)
+    expect(isUnder('/vault', '/vault/../etc')).toBe(false)
+    expect(isUnder('/vault', 'a.md')).toBe(false)
+    // The text says `leak.txt` is under the vault, though the link leaves it.
+    expect(isUnder(vault, join(vault, 'leak.txt'))).toBe(true)
+  })
+
+  test('the lexical entry exports the same PathErrorKind type', () => {
+    expectTypeOf<LexicalErrorKind>().toEqualTypeOf<PathErrorKind>()
   })
 })
 

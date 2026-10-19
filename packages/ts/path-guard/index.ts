@@ -1,4 +1,4 @@
-export { PathError, validateRelative, type PathErrorKind } from './lexical.ts'
+export { PathError, toRelative, validateRelative, type PathErrorKind } from './lexical.ts'
 export {
   canonicalExistingPrefix,
   contains,
@@ -7,7 +7,6 @@ export {
   nodeResolver,
   realpathOrSelf,
   resolveInside,
-  toRelative,
   tryResolveInside,
   type Resolver,
 } from './resolve.ts'

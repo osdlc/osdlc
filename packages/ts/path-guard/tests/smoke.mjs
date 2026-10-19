@@ -31,6 +31,7 @@ import {
   tryResolveInside,
   validateRelative,
 } from '@osdlc/path-guard'
+import * as lexical from '@osdlc/path-guard/lexical'
 
 // Plain Node loads the built package and the lexical layer works.
 assert.equal(validateRelative('notes\\a.md/'), 'notes/a.md')
@@ -53,6 +54,13 @@ assert.throws(
   () => toRelative('/v', '/other/a.md'),
   (e) => e instanceof PathError && e.kind === 'escapes',
 )
+
+// The `./lexical` entry resolves through `exports` and shares the same classes.
+assert.equal(lexical.PathError, PathError)
+assert.equal(lexical.validateRelative('a/b/'), 'a/b')
+assert.equal(lexical.toRelative('/v', '/v/a.md'), 'a.md')
+assert.equal(lexical.isUnder('/vault', '/vault/a.md'), true)
+assert.equal(lexical.isUnder('/vault', '/vault2/a.md'), false)
 
 // The real filesystem. The root is real, so `tmpdir()` being a symlink (as on
 // macOS) does not change the paths below.

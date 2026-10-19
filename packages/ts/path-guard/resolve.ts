@@ -1,7 +1,7 @@
 import { readlinkSync, realpathSync, statSync } from 'node:fs'
 import { dirname, isAbsolute, resolve } from 'node:path'
 
-import { PathError, validateRelative } from './lexical.ts'
+import { PathError, components, startsWith, validateRelative } from './lexical.ts'
 
 /**
  * How the containment layer canonicalises a path. POSIX paths only. Pass your
@@ -206,52 +206,6 @@ export function lexicalAbsolute(path: string): string {
 }
 
 /**
- * Turn an absolute path back into a root-relative one with `/` separators:
- * `/v/Notes/a.md` under `/v` becomes `Notes/a.md`, and the root itself becomes
- * `''`. `abs` is under `root` by whole components, so `/vault2` is not under
- * `/vault`. A `.` component is dropped. Touches no filesystem. POSIX paths only.
- * Port of the Rust `to_relative`.
- *
- * @throws {PathError} Kind `escapes` if `abs` is not under `root`, and kind
- * `parent_segment` if the relative part holds a `..`, or if `root` is empty and
- * `abs` is absolute.
- * @example
- * ```ts
- * toRelative('/v', '/v/Notes/a.md') // 'Notes/a.md'
- * toRelative('/v', '/other/a.md') // throws PathError, kind 'escapes'
- * ```
- */
-export function toRelative(root: string, abs: string): string {
-  // Rust also throws `NotUtf8` for a component that is not valid UTF-8. A
-  // TypeScript path is a string, so that case does not exist here.
-  // An empty root is a prefix of every path in Rust, so an absolute `abs` leaves
-  // the root component in the relative part, which Rust reports as a parent
-  // segment. Match it. A later release gives this case its own kind.
-  if (components(root).segs.length === 0 && !components(root).absolute && abs.startsWith('/')) {
-    throw new PathError(
-      'parent_segment',
-      `path contains a parent-directory segment: ${JSON.stringify(abs)}`,
-    )
-  }
-  if (!startsWith(abs, root)) {
-    throw new PathError(
-      'escapes',
-      `path escapes the root: ${JSON.stringify(abs)} resolves outside ${JSON.stringify(root)}`,
-    )
-  }
-  const rel = components(abs).segs.slice(components(root).segs.length)
-  if (rel.includes('..')) {
-    throw new PathError(
-      'parent_segment',
-      `path contains a parent-directory segment: ${JSON.stringify(rel.join('/'))}`,
-    )
-  }
-  // As Rust skips `Component::CurDir`. `components` leaves a `.` only at the
-  // start of a relative path, which lands here when `root` is empty.
-  return rel.filter((seg) => seg !== '.').join('/')
-}
-
-/**
  * Canonicalise as much of `path` as exists and keep the rest lexically. Port of
  * the Rust `canonical_existing_prefix`, which documents the rule: a `..` is
  * resolved physically where the filesystem can, and behind a missing name it is
@@ -404,29 +358,6 @@ function deepestExisting(
     else [found, real] = [mid, r]
   }
   return [found, real]
-}
-
-/** Whole-component prefix test, as Rust's `Path::starts_with`. */
-function startsWith(path: string, base: string): boolean {
-  const p = components(path)
-  const b = components(base)
-  return (
-    p.absolute === b.absolute &&
-    b.segs.length <= p.segs.length &&
-    b.segs.every((seg, i) => p.segs[i] === seg)
-  )
-}
-
-/**
- * Rust's `Path::components` for a POSIX path: empty segments and `.` are
- * dropped, except a `.` that starts a relative path.
- */
-function components(path: string): { absolute: boolean; segs: string[] } {
-  const absolute = path.startsWith('/')
-  const segs = path
-    .split('/')
-    .filter((seg, i) => seg !== '' && (seg !== '.' || (i === 0 && !absolute)))
-  return { absolute, segs }
 }
 
 /** {@link components} as Rust lists them: `/` first for an absolute path. */

@@ -6,6 +6,8 @@ export default defineConfig({
   resolve: {
     // The examples import the package by name; run them on the source.
     alias: {
+      // The subpath first: a key also matches its subpaths, and the first match wins.
+      '@osdlc/path-guard/lexical': fileURLToPath(new URL('./lexical-entry.ts', import.meta.url)),
       '@osdlc/path-guard': fileURLToPath(new URL('./index.ts', import.meta.url)),
     },
   },

@@ -7,7 +7,8 @@
     // (in vitest.config.ts) for the tests, so examples/ and the README blocks
     // run before a build.
     "paths": {
-      "@osdlc/path-guard": ["./index.ts"]
+      "@osdlc/path-guard": ["./index.ts"],
+      "@osdlc/path-guard/lexical": ["./lexical-entry.ts"]
     }
   },
   "include": ["*.ts", "tests/*.ts", "examples/*.ts", "vitest.config.ts"]

@@ -140,9 +140,29 @@ the lexical check alone.
 
 | Mode | Exports |
 |---|---|
-| Lexical: no filesystem | `validateRelative`, `toRelative`, `lexicalAbsolute`, `isInside`. `lexicalAbsolute` and `isInside` read the working directory for a relative input. |
+| Lexical: no filesystem | `validateRelative`, `toRelative`, `isUnder` (`@osdlc/path-guard/lexical` only), `lexicalAbsolute`, `isInside`. `lexicalAbsolute` and `isInside` read the working directory for a relative input. |
 | `Resolver`: injectable, the real disk by default | `resolveInside`, `tryResolveInside`, `contains`, `canonicalExistingPrefix` |
 | Real disk only: Node `fs`, not injectable | `realpathOrSelf`, `realPathInside`, `existingPathInside`, `openContainedFile`, `readContainedFile` |
+
+## Browser-safe entry
+
+`@osdlc/path-guard/lexical` holds the text-only checks: `validateRelative`,
+`PathError`, `PathErrorKind`, `toRelative` and `isUnder`. Nothing it loads
+imports `node:*`, so a browser bundle or a pure package can use it. The main
+entry exports the same `validateRelative`, `PathError` and `toRelative`.
+
+`isUnder(root, path)` is a text containment check. Both paths must be absolute
+and POSIX. `..` is folded as text, whole components are compared, and a relative
+input gives false. It follows no symlink, so it cannot see a link that leads out
+of `root`.
+
+```ts
+import { isUnder, validateRelative } from '@osdlc/path-guard/lexical'
+
+isUnder('/vault', '/vault/a.md') // true
+isUnder('/vault', '/vault2/a.md') // false
+validateRelative('notes/a.md') // 'notes/a.md'
+```
 
 ## The API
 
@@ -162,6 +182,7 @@ the lexical check alone.
 | `nodeResolver` | object | The real filesystem, with `..` resolved physically. |
 | `MAX_LINK_HOPS` | constant | The number of dangling symlinks one check follows: 40. |
 | `isInside` | function | Lexical containment. Follows no symlink. |
+| `isUnder` | function | From `@osdlc/path-guard/lexical` only. Text containment of two absolute POSIX paths, `..` folded. Follows no symlink. |
 | `realPathInside` | function | The real path of an existing path when it lies under a real root, else null. |
 | `existingPathInside` | function | An existing path inside `root` both as written and after symlinks, as a `ContainedPath`, else null. |
 | `openContainedFile` | function | Opens a path inside a real root and verifies the handle. Returns a `ContainedFile` or null. |
@@ -181,11 +202,13 @@ two layers. Its source is in
 [`packages/rust/path-guard`](https://github.com/osdlc/osdlc/tree/main/packages/rust/path-guard).
 Both read one conformance fixture,
 `packages/rust/path-guard/tests/fixtures/parity.json` in the repository, so
-they agree on every case in it.
+they agree on every case in it. `isUnder`, the `@osdlc/path-guard/lexical`
+entry and the `PathErrorKind` type exist only in TypeScript.
 
 ## Runtimes and platforms
 
-Node.js 22 or later, ESM only. Linux and macOS are tested.
+Node.js 22 or later, ESM only. Linux and macOS are tested. The
+`@osdlc/path-guard/lexical` entry also runs in browsers, as it loads no Node modules.
 
 ## Security
 
