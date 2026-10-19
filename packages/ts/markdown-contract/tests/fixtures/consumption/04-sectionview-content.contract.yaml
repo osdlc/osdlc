@@ -1,0 +1,12 @@
+mcVersion: 2
+kind: contract
+# fixture: c04 — SectionView content  (TS fixture: 04-sectionview-content.ts)
+
+body:
+  order: none
+  additionalSections: false
+  sections:
+    - section: Summary
+      anchor: summary
+      content:
+        maxWords: 120

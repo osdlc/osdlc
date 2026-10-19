@@ -1,0 +1,12 @@
+mcVersion: 2
+kind: contract
+# fixture: v06a — No alias spelling present  (TS fixture: 06a-oneof-none-present.ts)
+
+body:
+  order: none
+  additionalSections: true
+  sections:
+    - oneOf:
+        - Goal
+        - Goal / Problem statement
+        - Objective statement

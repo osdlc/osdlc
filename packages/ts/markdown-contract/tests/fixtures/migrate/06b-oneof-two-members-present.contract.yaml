@@ -1,0 +1,10 @@
+mcVersion: 1
+kind: contract
+# fixture: v06b — Two alias members both present  (TS fixture: 06b-oneof-two-members-present.ts)
+body:
+  order: recognized-relative
+  allowUnknown: true
+  sections:
+    - oneOf:
+        - Goal
+        - Goal / Problem statement

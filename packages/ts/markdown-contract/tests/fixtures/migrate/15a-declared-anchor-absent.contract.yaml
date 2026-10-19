@@ -1,0 +1,23 @@
+mcVersion: 1
+kind: contract
+# fixture: v15a — Declared anchor absent in document  (TS fixture: 15a-declared-anchor-absent.ts)
+
+body:
+  order: none
+  allowUnknown: false
+  sections:
+    - section: Decision
+      content:
+        components:
+          table:
+            columns:
+              - "#"
+              - Component
+              - Resolution
+            anchor: components
+        risks:
+          table:
+            columns:
+              - Risk
+              - Mitigation
+            anchor: risks

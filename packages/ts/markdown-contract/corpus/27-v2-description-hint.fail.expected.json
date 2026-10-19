@@ -1,0 +1,14 @@
+[
+  {
+    "id": "structure/section-missing",
+    "level": "error",
+    "line": 1,
+    "hint": "One paragraph naming the outcome."
+  },
+  {
+    "id": "structure/section-missing",
+    "level": "error",
+    "line": 1,
+    "hint": "A decision record needs its core sections."
+  }
+]

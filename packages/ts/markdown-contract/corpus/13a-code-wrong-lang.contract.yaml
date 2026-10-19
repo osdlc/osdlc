@@ -1,0 +1,12 @@
+mcVersion: 2
+kind: contract
+# fixture: v13a — Code block wrong/absent language  (TS fixture: 13a-code-wrong-lang.ts)
+
+body:
+  order: none
+  additionalSections: false
+  sections:
+    - section: Example
+      content:
+        code:
+          lang: ts

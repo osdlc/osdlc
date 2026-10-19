@@ -1,0 +1,9 @@
+mcVersion: 2
+kind: contract
+# fixture: v01a — Required section absent  (TS fixture: 01a-single-section-missing.ts)
+
+body:
+  order: none
+  additionalSections: true
+  sections:
+    - section: Overview

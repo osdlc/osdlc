@@ -1,0 +1,12 @@
+mcVersion: 1
+kind: contract
+# fixture: v03 — Optional sections  (TS fixture: 03-optional-sections.ts)
+
+body:
+  order: none
+  allowUnknown: true
+  sections:
+    - section: Title
+    - section: Overview
+    - section: Notes
+      optional: true

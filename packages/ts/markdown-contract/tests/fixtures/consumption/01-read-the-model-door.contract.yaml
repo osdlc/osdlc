@@ -1,0 +1,9 @@
+mcVersion: 2
+kind: contract
+# fixture: c01 — The read() door  (TS fixture: 01-read-the-model-door.ts)
+
+body:
+  order: none
+  additionalSections: true
+  sections:
+    - section: Overview

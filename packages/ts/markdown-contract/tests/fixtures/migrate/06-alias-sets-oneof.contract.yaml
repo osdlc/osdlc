@@ -1,0 +1,11 @@
+mcVersion: 1
+kind: contract
+# fixture: v06 — Alias sets via oneOf  (TS fixture: 06-alias-sets-oneof.ts)
+
+body:
+  order: none
+  allowUnknown: true
+  sections:
+    - oneOf: ["Goal", "Goal / Problem statement"]
+    - section: Notes
+      optional: true

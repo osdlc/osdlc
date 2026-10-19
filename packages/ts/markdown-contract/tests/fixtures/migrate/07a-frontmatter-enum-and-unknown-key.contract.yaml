@@ -1,0 +1,18 @@
+mcVersion: 1
+kind: contract
+# fixture: v07a — Frontmatter enum violation + extra key  (TS fixture: 07a-frontmatter-enum-and-unknown-key.ts)
+
+frontmatter:
+  strict: true
+  fields:
+    id:
+      type: string
+      pattern: '^D-[0-9A-Z]{4}$'
+    status:
+      enum:
+        - open/proposed
+        - open/accepted
+        - closed/superseded
+    title:
+      type: string
+      min: 1

@@ -1,0 +1,12 @@
+mcVersion: 1
+kind: contract
+# fixture: v09b — Required ^anchor absent  (TS fixture: 09b-anchor-missing.ts)
+
+body:
+  order: none
+  allowUnknown: false
+  sections:
+    - section: Summary
+      anchor: summary
+      content:
+        maxWords: 120

@@ -1,0 +1,21 @@
+mcVersion: 1
+kind: contract
+# fixture: v14b — Content before the first sub-heading  (TS fixture: 14b-content-before-first-subheading.ts)
+
+body:
+  order: recognized-relative
+  allowUnknown: true
+  sections:
+    - section: Decision
+      children:
+        order: strict
+        allowUnknown: true
+        sections:
+          - section: Components
+            content:
+              table:
+                columns:
+                  - "#"
+                  - Component
+                  - Resolution
+                minRows: 1

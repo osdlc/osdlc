@@ -1,0 +1,18 @@
+mcVersion: 2
+kind: contract
+# fixture: v15b — Undeclared anchor reachable only dynamically  (TS fixture: 15b-undeclared-anchor-dynamic-access.ts)
+
+body:
+  order: none
+  additionalSections: false
+  sections:
+    - section: Decision
+      content:
+        components:
+          table:
+            columns: [ "#", Component, Resolution ]
+            anchor: components
+        risks:
+          table:
+            columns: [ Risk, Mitigation ]
+            anchor: risks

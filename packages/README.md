@@ -49,7 +49,8 @@ Developed here, in this repository:
 - `packages/ts/prettier-config` (`@osdlc/prettier-config`)
 - `packages/ts/command-seam` (`@osdlc/command-seam`)
 - `packages/ts/gfm-table` (`@osdlc/gfm-table`)
-- `packages/rust/cli-tool-config` (`cli-tool-config` on crates.io)
+- `packages/rust/cli-tool-config` (`cli-tool-config` on crates.io, last release 0.5.3; replaced by `config-layers`)
+- `packages/rust/config-layers` (`config-layers` on crates.io)
 - `packages/rust/etag-write` (`etag-write` on crates.io)
 - `packages/rust/tiered-dirs` (`tiered-dirs` on crates.io)
 - `packages/rust/yaml-splice` (`yaml-splice` on crates.io)
@@ -69,6 +70,9 @@ Developed here, in this repository:
   correlation ids, agent session records, a process scan and reconcile)
 - `packages/ts/tiered-dirs` (`@osdlc/tiered-dirs` on npm, machine-local
   directories by tier and home, the TypeScript twin of the `tiered-dirs` crate)
+- `packages/ts/markdown-contract` (`@osdlc/markdown-contract` on npm,
+  contracts for markdown documents: one parse gives findings with lines and a
+  typed model; contracts in TypeScript or YAML, a folder runner and a CLI)
 
 The development repository will take each TypeScript library from npm, like
 any other consumer. Today it still keeps its own copies. Open issues and pull

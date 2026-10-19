@@ -1,0 +1,33 @@
+mcVersion: 1
+kind: contract
+# fixture: v18b — read() throws on error-level findings  (TS fixture: 18b-read-throws-on-error.ts)
+
+frontmatter:
+  strict: true
+  fields:
+    id:
+      type: string
+      pattern: '^D-[0-9A-Z]{4}$'
+    status:
+      enum: ["open/proposed", "open/accepted", "closed/superseded"]
+    title:
+      type: string
+      min: 1
+    related:
+      type: array
+      of:
+        type: string
+      default: []
+
+body:
+  order: recognized-relative
+  allowUnknown: true
+  sections:
+    - section: Summary
+      anchor: summary
+      content:
+        maxWords: 120
+    - section: Context
+    - section: Decision
+    - section: Notes
+      optional: true

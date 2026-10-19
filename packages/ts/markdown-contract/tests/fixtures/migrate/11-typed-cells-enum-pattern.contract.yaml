@@ -1,0 +1,24 @@
+mcVersion: 1
+kind: contract
+# fixture: v11 — Typed cells: enum / pattern  (TS fixture: 11-typed-cells-enum-pattern.ts)
+
+body:
+  order: none
+  allowUnknown: false
+  sections:
+    - section: Files
+      content:
+        table:
+          columns:
+            - File
+            - Kind
+            - Location
+          cells:
+            Kind:
+              enum:
+                - add
+                - modify
+                - delete
+            Location:
+              type: string
+              pattern: '^[A-Za-z0-9._\/-]+\/$'

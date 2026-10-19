@@ -1,5 +1,11 @@
 # cli-tool-config
 
+> **This crate has moved.** Its successor is
+> [`config-layers`](https://crates.io/crates/config-layers), which carries on
+> from 0.5 as 0.6.0, reads YAML with `serde-saphyr`, and is not limited to
+> command-line tools. `cli-tool-config` 0.5.3 is the last release here and gets
+> no further changes. New code should depend on `config-layers`.
+
 Config files for a command-line tool, in Rust: a committed project file and a
 per-machine file, read as YAML.
 
@@ -151,7 +157,7 @@ and `tiered-dirs`, has no platform-specific code of its own, and is written for
 Linux, macOS and Windows. CI runs the tests on all three. Where the config home
 is on each OS is `tiered-dirs`' table.
 
-Minimum supported Rust version: 1.85, checked by running the tests on 1.85.
+Minimum supported Rust version: 1.89, checked by running the tests on 1.89.
 
 ## When not to use it
 

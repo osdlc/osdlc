@@ -1,0 +1,11 @@
+mcVersion: 2
+kind: contract
+# fixture: v02 — Multiple required sections  (TS fixture: 02-multiple-required-sequence.ts)
+
+body:
+  order: none
+  additionalSections: true
+  sections:
+    - section: Title
+    - section: Overview
+    - section: Status

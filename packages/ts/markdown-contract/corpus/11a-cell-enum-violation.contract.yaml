@@ -1,0 +1,21 @@
+mcVersion: 2
+kind: contract
+# fixture: v11a — Cell enum violation  (TS fixture: 11a-cell-enum-violation.ts)
+
+body:
+  order: none
+  additionalSections: false
+  sections:
+    - section: Files to touch
+      content:
+        table:
+          columns:
+            - Location
+            - Kind
+            - Change
+          cells:
+            Kind:
+              enum:
+                - add
+                - modify
+                - delete

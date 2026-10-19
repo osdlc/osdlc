@@ -1,0 +1,10 @@
+mcVersion: 2
+kind: contract
+# fixture: v17a — Node rule violation localizes to the node  (TS fixture: 17a-node-rule-violation-with-pos.ts)
+
+body:
+  order: none
+  additionalSections: false
+  sections:
+    - section: Summary
+      # GAP: rule("summary/names-contract", fn) — node-level rule with custom finding/pos/level is not expressible in YAML (rule()/docRule() are deferred)
