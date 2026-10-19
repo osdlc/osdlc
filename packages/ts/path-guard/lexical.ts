@@ -133,7 +133,7 @@ export function toRelative(root: string, abs: string): string {
 }
 
 /** Whole-component prefix test, as Rust's `Path::starts_with`. */
-export function startsWith(path: string, base: string): boolean {
+function startsWith(path: string, base: string): boolean {
   const p = components(path)
   const b = components(base)
   return (

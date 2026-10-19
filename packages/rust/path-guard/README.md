@@ -85,8 +85,10 @@ resolution follows whatever `std::fs::canonicalize` does there.
 ## Stability
 
 Every public item is stable in 0.x. There are no experimental items.
-`PathError` is `#[non_exhaustive]`, so a later release may add a variant without
-breaking callers.
+`PathError` is `#[non_exhaustive]`, so match it with a `_` arm that refuses the
+path. A new variant comes only in a new minor version, such as 0.3.0, together
+with the TypeScript twin's new error kind, and the CHANGELOG names it. Every
+variant, present and future, means the path was refused.
 
 ## Twin
 

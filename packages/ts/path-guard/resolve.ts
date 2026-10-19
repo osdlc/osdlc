@@ -5,8 +5,8 @@ import { PathError, components, validateRelative } from './lexical.ts'
 
 /**
  * Windows paths: `\` separates too, a drive or UNC share is a root, and `..`
- * folds as text before any link is followed, as Windows itself does. Read once,
- * at load.
+ * folds as text before any link is followed, as Node and Windows do there.
+ * Read once, at load.
  */
 const WINDOWS = process.platform === 'win32'
 const platformPath = WINDOWS ? win32 : posix
@@ -142,7 +142,7 @@ export function resolveInside(
   if (real === null || realRoot === '' || !under(real, realRoot)) {
     throw new PathError(
       'escapes',
-      `path escapes the root: ${JSON.stringify(raw)} resolves outside ${JSON.stringify(realRoot)}`,
+      `path escapes the root: ${JSON.stringify(raw)} resolves outside ${JSON.stringify(native(realRoot))}`,
     )
   }
   return joined
@@ -224,10 +224,10 @@ export function lexicalAbsolute(path: string): string {
  * resolved physically where the filesystem can, and behind a missing name it is
  * folded against the real path of the existing part, never against the
  * spelling. On Windows every `..` folds as text first, as Windows does, and the
- * answer has `\` separators. A dangling symlink is followed to its target; a chain of more than
- * {@link MAX_LINK_HOPS} links, such as a loop, leaves `path` as written, as does
- * a walk that would spend more resolver calls than a fixed allowance per link
- * plus a few per segment of `path`.
+ * answer has `\` separators. A dangling symlink is followed to its target; a
+ * chain of more than {@link MAX_LINK_HOPS} links, such as a loop, leaves `path`
+ * as written, as does a walk that would spend more resolver calls than a fixed
+ * allowance per link plus a few per segment of `path`.
  *
  * Does not throw for a missing path.
  * @example
