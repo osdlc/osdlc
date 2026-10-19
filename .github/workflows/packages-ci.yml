@@ -2,12 +2,25 @@
 # main, packages-publish.yml calls this workflow and releases only if it
 # passes. The "Protect main" ruleset requires each `verify` job.
 #
+# A pull request checks only the packages it changed and the packages that
+# depend on them. The `changes` job picks them with
+# .github/scripts/affected-packages.mjs, which says what counts as a change.
+# A change to a shared input (this file, the lockfile, the root package.json)
+# checks every package, and so does every run that is not a pull request,
+# including the call from packages-publish.yml. The `verify` jobs always run
+# and report, since the ruleset requires them; only their steps narrow. When
+# no package is picked, they install and stop.
+#
 # Build runs before test: the examples import each package by its own name,
-# and under Node that name resolves through `exports` to dist/.
+# and under Node that name resolves through `exports` to dist/. A build also
+# builds the workspace packages the picked ones depend on.
 #
 # Bun is installed because some packages test with `bun:test`; others use
 # Vitest, which runs on Node. Node runs the build, the smoke checks and the
 # packed-tarball checks, so the Node matrix is what a consumer sees.
+#
+# `windows` runs path-guard alone on Windows, when path-guard is picked. No
+# other package claims Windows support yet.
 #
 # Every action is pinned to a commit SHA; the comment names its release.
 name: packages
@@ -21,15 +34,51 @@ permissions:
   contents: read
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      packages: ${{ steps.pick.outputs.packages }}
+      filter: ${{ steps.pick.outputs.filter }}
+      build: ${{ steps.pick.outputs.build }}
+      dirs: ${{ steps.pick.outputs.dirs }}
+    steps:
+      # A pull request checks out its merge commit. Depth 2 brings in its
+      # first parent, the base branch, which the script diffs against.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+
+      - name: Pick the packages to check
+        id: pick
+        env:
+          EVENT: ${{ github.event_name }}
+        run: node .github/scripts/affected-packages.mjs
+
   verify:
     name: verify (${{ matrix.os }}, node ${{ matrix.node }})
+    needs: changes
+    # Runs even when `changes` failed, so the required check fails instead of
+    # being skipped.
+    if: ${{ !cancelled() }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
         node: ['22', '24']
+    env:
+      FILTER: ${{ needs.changes.outputs.filter }}
+      BUILD: ${{ needs.changes.outputs.build }}
+      DIRS: ${{ needs.changes.outputs.dirs }}
+      PICKED: ${{ needs.changes.outputs.packages != '[]' }}
     steps:
+      - name: The package pick ran
+        if: needs.changes.result != 'success'
+        run: |
+          echo "::error::the changes job ended with: ${{ needs.changes.result }}"
+          exit 1
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -43,29 +92,83 @@ jobs:
           cache: pnpm
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        if: env.PICKED == 'true'
         with:
           bun-version: '1.4.2'
 
+      # Not narrowed: a frozen install checks the lockfile for the whole
+      # workspace.
       - name: Install
         run: pnpm install --frozen-lockfile
 
+      # $FILTER and $BUILD are several flags, so they are left unquoted.
       - name: Typecheck
-        run: pnpm run typecheck
+        if: env.PICKED == 'true'
+        run: pnpm $FILTER --if-present run typecheck
 
       - name: Build
-        run: pnpm run build
+        if: env.PICKED == 'true'
+        run: pnpm $BUILD --if-present run build
 
       - name: Test
-        run: pnpm run test
+        if: env.PICKED == 'true'
+        run: pnpm $FILTER --if-present run test
 
       - name: Smoke the built packages under Node
-        run: pnpm run smoke
+        if: env.PICKED == 'true'
+        run: pnpm $FILTER --if-present run smoke
 
       - name: Lint
-        run: pnpm run lint
+        if: env.PICKED == 'true'
+        run: pnpm $FILTER --if-present run lint
 
       - name: Format check
-        run: pnpm run format:check
+        if: env.PICKED == 'true'
+        run: pnpm $FILTER --if-present run format:check
 
+      # Packs every package, so a picked one can install its siblings from
+      # local tarballs, but checks only the picked ones.
       - name: Pack, publint, attw
-        run: pnpm run check:packages
+        if: env.PICKED == 'true'
+        run: node .github/scripts/check-packages.mjs $DIRS
+
+  # Not required by the ruleset. Lint, format and the tarball checks read text
+  # and tarballs the same on every OS, so they run in `verify` only.
+  windows:
+    name: path-guard (windows-latest, node ${{ matrix.node }})
+    needs: changes
+    if: contains(fromJSON(needs.changes.outputs.packages), 'packages/ts/path-guard')
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['22', '24']
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile --filter './packages/ts/path-guard...'
+
+      - name: Typecheck
+        run: pnpm --filter ./packages/ts/path-guard run typecheck
+
+      - name: Build
+        run: pnpm --filter './packages/ts/path-guard...' --if-present run build
+
+      - name: Test
+        run: pnpm --filter ./packages/ts/path-guard run test
+
+      - name: Smoke the built package under Node
+        run: pnpm --filter ./packages/ts/path-guard run smoke
