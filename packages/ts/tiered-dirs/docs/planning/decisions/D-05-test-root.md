@@ -25,7 +25,8 @@ created: 2026-10-18
   Vitest 3 and earlier.
 - A child process a test spawns gets no default. It inherits the Vitest
   variables, but its entry point is neither a test file nor a Vitest worker.
-- "HOME moved" means `HOME` differs from the passwd home. In that case the
+- "HOME moved" means `HOME` differs from the passwd home. Under Bun the
+  comparison is with the `HOME` the process started with. In that case the
   test-root default does not apply. The Rust crate has no such condition.
 - `{ testRoot: false }` turns the first rule off. `<P>_ROOT` and
   `<P>_REQUIRE_OVERRIDE` still apply.
@@ -35,9 +36,10 @@ created: 2026-10-18
 
 ## Why
 
-- Vitest workers do not have a test file as their entry point. Without the
-  Vitest rule the default never fired under Vitest, and a test that forgot to
-  set `<P>_ROOT` resolved the real home.
+- Vitest workers do not have a test file as their entry point. The test-file
+  check alone does not match a worker, so a Vitest rule is needed for the
+  default to apply there. Without it, a test that forgot to set `<P>_ROOT`
+  would resolve the real home.
 - TypeScript test runners commonly point `HOME` at a fixture to move the
   home. The test must keep that fixture, so the rule yields to a moved
   `HOME`. A Rust test cannot move the home through `dirs`, and Rust detects a

@@ -9,7 +9,8 @@ created: 2026-10-18
 
 ## Decision
 
-- The first published version is `0.3.0`, on the 0.x line.
+- The first release is `0.3.0`, on the 0.x line. npm holds two placeholder
+  versions before it, `0.0.0-stage` and `0.0.1-stage`. They are not releases.
 - The twin rule requires the same major and minor version as the Rust crate.
   The crate was at 0.3 when this package was first released, so this
   package starts at 0.3.
@@ -18,7 +19,9 @@ created: 2026-10-18
   CHANGELOG entry that starts with `Breaking:`.
 - A minor release may add a member to `TierKind` or `Convention`, a code to
   `TieredDirsErrorCode`, or a name to `EnvVars`. The README says so, and a
-  `switch` over one of these unions needs a `default` arm. `Home` is
+  `switch` over one of these unions needs a `default` arm. This list covers
+  the unions and `EnvVars`. `ResolveOptions` is an interface of optional
+  fields, so a new option does not break a caller. `Home` is
   exhaustive: adding a home changes every caller's layout, so it is a breaking
   release.
 - Versions 0.1.0 and 0.2.0 were used during development and never published.

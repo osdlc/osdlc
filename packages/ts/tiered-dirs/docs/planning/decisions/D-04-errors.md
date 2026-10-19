@@ -28,9 +28,19 @@ created: 2026-10-18
   branch on `code` without matching the message.
 - The Rust `Error` is `#[non_exhaustive]`, so the code union follows the same
   growth rule.
-- `code` carries no other fields. The Rust variants also carry the variable,
-  key or value. Those are in the message here. A field can be added later
-  without a break.
+- `code` carries no other fields. The Rust variants carry `home`, `var`,
+  `root_var`, `require_var`, `value`, `kind` and `key`. Here the message holds
+  the detail, and it differs by code:
+  - `RELATIVE_OVERRIDE` names the variable.
+  - `OVERRIDE_REQUIRED` names the require variable, the root variable and the
+    first unset per-directory variable.
+  - `INVALID_CONVENTION` names the variable, or `convention` for
+    `parseConvention`, and the value given.
+  - `INVALID_KEY` carries the offending key and the segment rule.
+  - `MISSING_BASE_DIR` does not name the home. Its message says that no home
+    directory can be found, or that the home passed in is empty.
+
+  A field can be added later without a break.
 
 ## Consequences
 
