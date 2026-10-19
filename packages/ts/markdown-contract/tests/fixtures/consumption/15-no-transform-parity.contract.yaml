@@ -1,0 +1,21 @@
+mcVersion: 2
+kind: contract
+# fixture: c15 — No-transform contract reads back byte-identical rows  (TS fixture: 15-no-transform-parity.ts)
+
+body:
+  order: none
+  additionalSections: false
+  sections:
+    - section: Files
+      content:
+        table:
+          columns:
+            - Location
+            - Kind
+            - Change
+          cells:
+            Kind:
+              enum: [ modify, delete ]
+            Location:
+              type: string
+              pattern: '^[A-Za-z0-9._/-]+$'

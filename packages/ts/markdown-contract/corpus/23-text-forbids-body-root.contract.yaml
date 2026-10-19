@@ -1,0 +1,13 @@
+mcVersion: 2
+kind: contract
+# fixture: v23 — Body-root forbids  (TS fixture: 23-text-forbids-body-root.ts)
+
+body:
+  order: recognized-relative
+  additionalSections: true
+  sections:
+    - section: Summary
+  forbids:
+    - pattern: "}scripts/"
+      normalize: false
+      note: route through the op substrate (sdlc <noun> <verb>)

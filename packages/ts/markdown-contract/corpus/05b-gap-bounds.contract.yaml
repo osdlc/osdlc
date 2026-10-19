@@ -1,0 +1,14 @@
+mcVersion: 2
+kind: contract
+# fixture: v05b — gap({min,max}) bounds the window  (TS fixture: 05b-gap-bounds.ts)
+
+body:
+  order: strict
+  additionalSections: false
+  sections:
+    - section: Summary
+    - section: Highlights
+    - gap:
+        min: 1
+        max: 2
+    - section: Sign-off

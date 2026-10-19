@@ -1,0 +1,44 @@
+mcVersion: 1
+kind: contract
+# fixture: v16a — docRule violation fires  (TS fixture: 16a-docrule-violation.ts)
+
+frontmatter:
+  strict: true
+  fields:
+    id:
+      type: string
+      pattern: '^T-[0-9A-Z]{4}$'
+    status:
+      enum:
+        - open/ready
+        - in-progress/active
+        - closed/done
+        - closed/dropped
+    title:
+      type: string
+      min: 1
+
+body:
+  order: recognized-relative
+  allowUnknown: true
+  sections:
+    - oneOf:
+        - Goal
+        - Goal / Problem statement
+    - section: Acceptance criteria
+      content:
+        list:
+          ordered: false
+          everyItem: checkbox
+          minItems: 1
+    - section: Post-mortem
+      optional: true
+      children:
+        order: strict
+        allowUnknown: false
+        sections:
+          - section: Acceptance criteria coverage
+          - section: What worked
+          - section: Friction and automation gaps
+
+# GAP: docRule("task/post-mortem-when-worked") — cross-plane rule with custom function; not expressible in v1 (rule()/docRule() with fn are deferred)

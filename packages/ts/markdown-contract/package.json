@@ -1,0 +1,109 @@
+{
+  "name": "@osdlc/markdown-contract",
+  "version": "0.2.5",
+  "description": "Contracts for markdown documents: state what a document type must hold (frontmatter checked by a Zod schema, a grammar over its heading sections, typed tables, lists and code blocks), check it with one parse, and read a passing document back as a typed model. Contracts in TypeScript or YAML, a folder runner and a CLI.",
+  "license": "MIT OR Apache-2.0",
+  "author": "sksizer",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/osdlc/osdlc.git",
+    "directory": "packages/ts/markdown-contract"
+  },
+  "homepage": "https://github.com/osdlc/osdlc/tree/main/packages/ts/markdown-contract#readme",
+  "bugs": "https://github.com/osdlc/osdlc/issues",
+  "keywords": [
+    "markdown",
+    "contract",
+    "schema",
+    "validation",
+    "lint",
+    "frontmatter",
+    "sections",
+    "tables",
+    "typed-model",
+    "markdown-as-data",
+    "remark",
+    "mdast",
+    "zod",
+    "yaml",
+    "cli",
+    "typescript"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./core": {
+      "types": "./dist/core/index.d.ts",
+      "default": "./dist/core/index.js"
+    },
+    "./declarative": {
+      "types": "./dist/declarative/index.d.ts",
+      "default": "./dist/declarative/index.js"
+    },
+    "./cli": {
+      "types": "./dist/cli/index.d.ts",
+      "default": "./dist/cli/index.js"
+    }
+  },
+  "bin": {
+    "markdown-contract": "./dist/cli/bin.js"
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE-MIT",
+    "LICENSE-APACHE",
+    "SECURITY.md",
+    "CONTRIBUTING.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "test": "vitest run",
+    "coverage": "vitest run --coverage",
+    "smoke": "node tests/smoke.mjs",
+    "prepublishOnly": "npm run clean && npm run build",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "oxlint .",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit"
+  },
+  "dependencies": {
+    "@osdlc/gfm-table": "workspace:^",
+    "@types/mdast": "^4.0.4",
+    "micromark-util-types": "^2.0.2",
+    "picomatch": "^4.0.4",
+    "remark-frontmatter": "^5.0.0",
+    "remark-gfm": "^4.0.1",
+    "remark-parse": "^11.0.0",
+    "unified": "^11.0.5",
+    "yaml": "^2.9.0"
+  },
+  "devDependencies": {
+    "@osdlc/prettier-config": "workspace:^",
+    "@osdlc/tsconfig": "workspace:^",
+    "@types/node": "^26.1.0",
+    "@types/picomatch": "4.0.3",
+    "@vitest/coverage-v8": "^5.0.5",
+    "oxlint": "^1.65.0",
+    "prettier": "3.9.6",
+    "remark-stringify": "11.0.0",
+    "typescript": "~6.0.3",
+    "vitest": "^5.0.5",
+    "zod": "4.4.3"
+  },
+  "peerDependencies": {
+    "zod": "^4"
+  }
+}

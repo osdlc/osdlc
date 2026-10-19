@@ -1,0 +1,4 @@
+[
+  { "id": "content/table/min-rows", "level": "error", "line": 20 },
+  { "id": "content/list/item-kind", "level": "error", "line": 25 }
+]

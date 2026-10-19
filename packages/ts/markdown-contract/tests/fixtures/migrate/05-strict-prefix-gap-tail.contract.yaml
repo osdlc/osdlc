@@ -1,0 +1,14 @@
+mcVersion: 1
+kind: contract
+# fixture: v05 — Strict order + gap window  (TS fixture: 05-strict-prefix-gap-tail.ts)
+
+body:
+  order: strict
+  allowUnknown: false
+  sections:
+    - section: Title
+    - section: Overview
+    - section: Status
+    - gap: {}
+    - section: Appendix
+      optional: true

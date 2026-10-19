@@ -1,0 +1,13 @@
+mcVersion: 2
+kind: contract
+# fixture: v03 — Optional sections  (TS fixture: 03-optional-sections.ts)
+
+body:
+  order: none
+  additionalSections: true
+  sections:
+    - section: Title
+    - section: Overview
+    - section: Notes
+      minContains: 0
+      maxContains: 1

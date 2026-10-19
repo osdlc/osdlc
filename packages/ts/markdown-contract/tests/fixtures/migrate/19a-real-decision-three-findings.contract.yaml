@@ -1,0 +1,55 @@
+mcVersion: 1
+kind: contract
+# fixture: v19a — Real Decision with the three-finding failure  (TS fixture: 19a-real-decision-three-findings.ts)
+
+frontmatter:
+  strict: true
+  fields:
+    id:
+      type: string
+      pattern: '^D-[0-9A-Z]{4}$'
+    status:
+      enum: [open/proposed, open/accepted, closed/superseded]
+    title:
+      type: string
+      min: 1
+    related:
+      type: array
+      of:
+        type: string
+      default: []
+
+body:
+  order: recognized-relative
+  allowUnknown: true
+  sections:
+    - section: Summary
+      anchor: summary
+      content:
+        maxWords: 120
+    - section: Context
+    - section: Decision
+      children:
+        order: strict
+        allowUnknown: true
+        sections:
+          - section: Components
+            content:
+              table:
+                columns: ['#', Component, Resolution]
+                minRows: 1
+    - section: Why
+      optional: true
+    - section: Options considered
+      optional: true
+      children:
+        order: none
+        allowUnknown: true
+        sections:
+          - gap: {}
+    - section: Consequences
+      optional: true
+    - section: Out of scope
+      optional: true
+    - section: Notes
+      optional: true

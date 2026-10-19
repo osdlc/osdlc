@@ -1,0 +1,12 @@
+mcVersion: 2
+kind: contract
+# fixture: v13 — Code leaf: language  (TS fixture: 13-code-leaf-lang.ts)
+
+body:
+  order: none
+  additionalSections: false
+  sections:
+    - section: Example
+      content:
+        code:
+          lang: ts

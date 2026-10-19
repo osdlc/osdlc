@@ -1,0 +1,15 @@
+mcVersion: 2
+kind: contract
+# fixture: c09 — Unknown sections  (TS fixture: 09-unknown-sections.ts)
+
+body:
+  order: strict
+  additionalSections: false
+  sections:
+    - section: Title
+    - section: Overview
+    - section: Status
+    - gap: {}
+    - section: Appendix
+      minContains: 0
+      maxContains: 1

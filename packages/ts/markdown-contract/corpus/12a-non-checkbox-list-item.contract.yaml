@@ -1,0 +1,13 @@
+mcVersion: 2
+kind: contract
+# fixture: v12a — Non-checkbox AC item  (TS fixture: 12a-non-checkbox-list-item.ts)
+
+body:
+  order: none
+  additionalSections: true
+  sections:
+    - section: Acceptance criteria
+      content:
+        list:
+          items: checkbox
+          minItems: 1

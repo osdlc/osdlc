@@ -1,0 +1,14 @@
+mcVersion: 1
+kind: contract
+# fixture: v05a — Unknown inside the strict prefix  (TS fixture: 05a-strict-prefix-violated.ts)
+
+body:
+  order: strict
+  allowUnknown: false
+  sections:
+    - section: Title
+    - section: Overview
+    - section: Status
+    - gap: {}
+    - section: Appendix
+      optional: true

@@ -1,0 +1,16 @@
+mcVersion: 1
+kind: contract
+# fixture: v10 — Table leaf: columns + minRows  (TS fixture: 10-table-leaf-columns-minrows.ts)
+
+body:
+  order: none
+  allowUnknown: false
+  sections:
+    - section: Files
+      content:
+        table:
+          columns:
+            - Location
+            - Kind
+            - Change
+          minRows: 1

@@ -1,0 +1,18 @@
+mcVersion: 1
+kind: contract
+# fixture: v15 — Multiple anchored tables in one section  (TS fixture: 15-multiple-anchored-tables-one-section.ts)
+
+body:
+  order: none
+  allowUnknown: false
+  sections:
+    - section: Decision
+      content:
+        components:
+          table:
+            columns: ["#", Component, Resolution]
+            anchor: components
+        risks:
+          table:
+            columns: [Risk, Mitigation]
+            anchor: risks

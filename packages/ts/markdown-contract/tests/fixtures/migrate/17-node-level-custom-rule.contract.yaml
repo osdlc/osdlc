@@ -1,0 +1,10 @@
+mcVersion: 1
+kind: contract
+# fixture: v17 — Node-level custom rule  (TS fixture: 17-node-level-custom-rule.ts)
+
+body:
+  order: recognized-relative
+  allowUnknown: true
+  sections:
+    - section: Summary
+      # GAP: rule("summary/mentions-outcome", fn) — node-level custom rule (rule(id, fn)) is not expressible in v1; checked behavior (Summary prose must contain "outcome") is dropped
