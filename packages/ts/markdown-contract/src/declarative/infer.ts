@@ -43,7 +43,7 @@
  * mcVersion 2 vocabulary — and a consumer of its own output (the self-check loads the
  * scaffold back and runs it); it adds no format and no engine surface.
  */
-import { readdirSync, readFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { basename, resolve, sep } from 'node:path'
 
 import picomatch from 'picomatch'
@@ -53,6 +53,7 @@ import { type DocTree, parse } from '../core/index.js'
 import { frontmatterYamlErrors } from '../core/projection.js'
 import { DEFAULT_MAX_CONST_STRING_LENGTH, DEFAULT_MIN_CONST_EXAMPLES } from './constants.js'
 import { DeclarativeError } from './errors.js'
+import { walkSync } from '../runner/corpus.js'
 import { compileSchemaV2 } from './schema-v2.js'
 
 /**
@@ -175,16 +176,12 @@ function toPosix(p: string): string {
 /** picomatch options — `dot` so dotfiles match like any other file (mirrors the runner). */
 const PICOMATCH_OPTS = { dot: true } as const
 
-/** Deterministic directory-entry order: sort by name so an unchanged corpus walks identically. */
-function byName(a: { name: string }, b: { name: string }): number {
-  return a.name < b.name ? -1 : a.name > b.name ? 1 : 0
-}
-
 /**
  * Recursively collect every `*.md` under `root`, returned as paths relative to `root`
  * (POSIX-separated), in a deterministic order: directory entries are sorted before
- * recursion, so re-running over an unchanged corpus walks the files identically. It mirrors the
- * runner's own `walkSync`, so inference sees exactly the file set the self-check will route.
+ * recursion, so re-running over an unchanged corpus walks the files identically. It uses the
+ * runner's own `walkSync`, so inference sees exactly the file set the self-check will route,
+ * and skips `.git` and `node_modules` folders as it does.
  *
  * An optional `include` / `exclude` glob pre-filter (relative to `root`) narrows which files feed
  * inference. It uses the same `picomatch` options and AND-narrowing as `validate`'s `--glob`,
@@ -205,21 +202,7 @@ function discover(root: string, scope?: { include?: string[]; exclude?: string[]
     return true
   }
 
-  const out: string[] = []
-  const recur = (absDir: string, relDir: string): void => {
-    const entries = readdirSync(absDir, { withFileTypes: true })
-    entries.sort(byName)
-    for (const entry of entries) {
-      const rel = relDir === '' ? entry.name : `${relDir}/${entry.name}`
-      if (entry.isDirectory()) {
-        recur(resolve(absDir, entry.name), rel)
-      } else if (entry.isFile() && entry.name.endsWith('.md') && keep(rel)) {
-        out.push(rel)
-      }
-    }
-  }
-  recur(root, '')
-  return out
+  return walkSync(root).filter((rel) => rel.endsWith('.md') && keep(rel))
 }
 
 /** Whether a parsed frontmatter value is a usable key→value map (the only inference-relevant shape). */

@@ -100,7 +100,7 @@ const SKIPPED_DIRS = new Set(['.git', 'node_modules'])
  * before recursion, so the order is stable. Symbolic links are neither files nor directories to
  * `Dirent`, so they are skipped, and so are `.git` and `node_modules` directories.
  */
-function walkSync(root: string): string[] {
+export function walkSync(root: string): string[] {
   const out: string[] = []
   const recur = (absDir: string, relDir: string): void => {
     const entries = readdirSync(absDir, { withFileTypes: true })
