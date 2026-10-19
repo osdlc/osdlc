@@ -1,6 +1,7 @@
 /**
  * Why a path was refused. The names match the shared fixture and the Rust
  * crate's `PathError` variants.
+ * The kind strings are snake_case and match the Rust enum variants.
  */
 export type PathErrorKind =
   | 'empty'
@@ -12,6 +13,18 @@ export type PathErrorKind =
   | 'degenerate_segment'
   | 'escapes'
 
+/**
+ * The error every refused path throws. Read `kind` to tell the reasons apart.
+ *
+ * @example
+ * ```ts
+ * try {
+ *   validateRelative('../x')
+ * } catch (error) {
+ *   if (error instanceof PathError) console.log(error.kind) // 'parent_segment'
+ * }
+ * ```
+ */
 export class PathError extends Error {
   override readonly name = 'PathError'
   readonly kind: PathErrorKind
@@ -23,13 +36,21 @@ export class PathError extends Error {
 }
 
 /**
- * Layer 1: lexical validation of a root-relative path. Port of the Rust
- * `validate_relative`.
+ * Layer 1: lexical validation of a relative path. The caller joins it onto a
+ * root. Port of the Rust `validate_relative`.
  *
  * Returns the normalised form (backslashes folded to `/`, no trailing slash).
- * Touches no filesystem. Throws a {@link PathError} for an empty path, a NUL
- * byte, a leading `~`, a Windows drive or UNC prefix, an absolute path, and an
- * empty, `.` or `..` segment, checked in that order.
+ * Touches no filesystem. Refuses an empty path, a NUL byte, a leading `~`, a
+ * Windows drive or UNC prefix, an absolute path, and an empty, `.` or `..`
+ * segment, checked in that order.
+ *
+ * @throws {PathError} Kind `empty`, `nul`, `tilde`, `windows_path`, `absolute`,
+ * `degenerate_segment` or `parent_segment`, by the order above.
+ * @example
+ * ```ts
+ * validateRelative('notes\\a.md/') // 'notes/a.md'
+ * validateRelative('a//b') // throws PathError, kind 'degenerate_segment'
+ * ```
  */
 export function validateRelative(raw: string): string {
   const shown = JSON.stringify(raw)

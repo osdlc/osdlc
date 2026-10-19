@@ -3,7 +3,19 @@ import { dirname, isAbsolute, resolve } from 'node:path'
 
 import { PathError, validateRelative } from './lexical.ts'
 
-/** How the containment layer canonicalises a path. POSIX paths only. */
+/**
+ * How the containment layer canonicalises a path. POSIX paths only. Pass your
+ * own to test against a fake filesystem.
+ *
+ * @example
+ * ```ts
+ * const fake: Resolver = {
+ *   realpath: (p) => { if (p === '/' || p === '/root') return p; throw new Error('ENOENT') },
+ *   readlink: () => { throw new Error('EINVAL') },
+ * }
+ * contains('/root', '/root/new.txt', fake) // true
+ * ```
+ */
 export interface Resolver {
   /**
    * `path` with every symlink resolved. Must throw when `path` does not exist.
@@ -23,6 +35,11 @@ export interface Resolver {
  * The real filesystem. A `..` is resolved physically, as the OS `realpath`
  * does: `link/..` is the parent of the link's target. `realpathSync` alone
  * cannot be trusted with that: it folds `..` textually first.
+ *
+ * @example
+ * ```ts
+ * nodeResolver.realpath('/tmp') // '/private/tmp' on macOS, '/tmp' on Linux
+ * ```
  */
 export const nodeResolver: Resolver = {
   realpath(path) {
@@ -44,6 +61,11 @@ export const nodeResolver: Resolver = {
 /**
  * How many dangling symlinks one check follows before it refuses the path, as
  * Linux's `MAXSYMLINKS`. A loop of links never reaches a target.
+ *
+ * @example
+ * ```ts
+ * MAX_LINK_HOPS // 40
+ * ```
  */
 export const MAX_LINK_HOPS = 40
 
@@ -58,6 +80,14 @@ function fsError(code: string, path: string): Error {
  * folded against that real path. Where that walk gives up (more than
  * {@link MAX_LINK_HOPS} links, or too many resolver calls), returns the
  * absolute path with `..` folded as text, so the answer never holds a `..`.
+ *
+ * @throws {Error} What `process.cwd()` throws, when `path` is relative and the
+ * working directory cannot be read.
+ * @example
+ * ```ts
+ * realpathOrSelf('/tmp/does-not-exist/x') // '/private/tmp/does-not-exist/x' on macOS
+ * realpathOrSelf('/no/such/dir/../x') // '/no/such/x'
+ * ```
  */
 export function realpathOrSelf(path: string): string {
   const abs = isAbsolute(path) ? path : joinPath(process.cwd(), path)
@@ -74,7 +104,15 @@ export function realpathOrSelf(path: string): string {
  * land. A chain of more than {@link MAX_LINK_HOPS} links is refused, as is a root
  * that reduces to the empty path (`''`, or a relative `missing/..`) and a path
  * whose check would spend more resolver calls than its length allows.
- * Returns the joined path (not its realpath). Throws a {@link PathError}.
+ * Returns the joined path (not its realpath).
+ *
+ * @throws {PathError} Any kind {@link validateRelative} throws for `raw`, and
+ * kind `escapes` when the result resolves outside `root`.
+ * @example
+ * ```ts
+ * resolveInside('/vault', 'notes/a.md') // '/vault/notes/a.md'
+ * resolveInside('/vault', '../etc') // throws PathError, kind 'parent_segment'
+ * ```
  */
 export function resolveInside(
   root: string,
@@ -97,7 +135,13 @@ export function resolveInside(
 
 /**
  * Like {@link resolveInside}, but returns null instead of throwing a
- * {@link PathError}.
+ * {@link PathError}. Errors that are not a {@link PathError} still propagate.
+ *
+ * @example
+ * ```ts
+ * tryResolveInside('/vault', 'notes/a.md') // '/vault/notes/a.md'
+ * tryResolveInside('/vault', '../etc') // null
+ * ```
  */
 export function tryResolveInside(
   root: string,
@@ -118,6 +162,13 @@ export function tryResolveInside(
  * `/vault-bee` is not inside `/vault-b`. False when either passes through more
  * than {@link MAX_LINK_HOPS} symlinks or spends its resolver calls, and when
  * `outer` reduces to the empty path. Port of the Rust `contains`.
+ *
+ * Does not throw for a missing path; it compares what exists and keeps the rest as written.
+ * @example
+ * ```ts
+ * contains('/vault', '/vault/notes/new.md') // true, when /vault exists and holds no escaping link
+ * contains('/vault-b', '/vault-bee') // false
+ * ```
  */
 export function contains(outer: string, inner: string, resolver: Resolver = nodeResolver): boolean {
   const realInner = existingPrefix(resolver, inner)
@@ -200,6 +251,12 @@ export function toRelative(root: string, abs: string): string {
  * {@link MAX_LINK_HOPS} links, such as a loop, leaves `path` as written, as does
  * a walk that would spend more resolver calls than a fixed allowance per link
  * plus a few per segment of `path`.
+ *
+ * Does not throw for a missing path.
+ * @example
+ * ```ts
+ * canonicalExistingPrefix('/no/such/dir/../x') // '/no/such/x'
+ * ```
  */
 export function canonicalExistingPrefix(path: string, resolver: Resolver = nodeResolver): string {
   return existingPrefix(resolver, path) ?? path

@@ -2,18 +2,43 @@ import { constants, type Stats } from 'node:fs'
 import { lstat, open, realpath, type FileHandle } from 'node:fs/promises'
 import { isAbsolute, relative, sep } from 'node:path'
 
-/** Lexical check: `path` is `root` or lies under it once both are normalized. */
+// These helpers call Node `fs` directly and take no `Resolver`.
+
+/**
+ * Lexical check: `path` is `root` or lies under it once both are normalized.
+ * Touches no filesystem and does not throw.
+ *
+ * @example
+ * ```ts
+ * isInside('/vault', '/vault/a/b.md') // true
+ * isInside('/vault', '/vault/../etc') // false
+ * ```
+ */
 export function isInside(root: string, path: string): boolean {
   const rel = relative(root, path)
   return rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel)
 }
 
-/** Real path of `path` when it lies under the already-resolved `realRoot`; otherwise null. Throws when `path` is missing. */
+/**
+ * Real path of `path` when it lies under the already-resolved `realRoot`; otherwise null.
+ *
+ * @throws {Error} What `fs.realpath` throws, such as `ENOENT`, when `path` does not exist.
+ * @example
+ * ```ts
+ * await realPathInside('/vault', '/vault/link-to-outside') // null
+ * await realPathInside('/vault', '/vault/a.md') // '/vault/a.md'
+ * ```
+ */
 export async function realPathInside(realRoot: string, path: string): Promise<string | null> {
   const realTarget = await realpath(path)
   return isInside(realRoot, realTarget) ? realTarget : null
 }
 
+/**
+ * An open file that passed the containment checks of {@link openContainedFile}.
+ * `handle` is read-only and non-blocking. `stats` came from that handle.
+ * The caller must close `handle`.
+ */
 export interface ContainedFile {
   handle: FileHandle
   stats: Stats
@@ -29,8 +54,22 @@ export interface ContainedFile {
  * The open is non-blocking, so a FIFO cannot hang the call, but it also succeeds for a directory
  * and for any other non-regular file: the handle can be one. The caller checks `stats.isFile()`
  * before it reads.
- * Returns null when a check fails. The caller closes the handle.
- * Throws when `path` does not exist.
+ * Returns null when a check fails. On a failed check or a throw, this function closes the
+ * handle. On success it does not: the caller closes `handle`.
+ *
+ * @throws {Error} What `fs.realpath` or `fs.open` throws, such as `ENOENT`, when `path`
+ * does not exist.
+ * @example
+ * ```ts
+ * const file = await openContainedFile(realRoot, '/vault/a.md')
+ * if (file !== null) {
+ *   try {
+ *     if (file.stats.isFile()) console.log(await file.handle.readFile('utf8'))
+ *   } finally {
+ *     await file.handle.close()
+ *   }
+ * }
+ * ```
  */
 export async function openContainedFile(
   realRoot: string,
@@ -58,7 +97,14 @@ export async function openContainedFile(
 /**
  * Reads `path` through `openContainedFile`. Returns null when the file is not inside `realRoot`
  * or is not a regular file.
- * Throws when `path` no longer exists.
+ * Closes the handle itself.
+ *
+ * @throws {Error} What `fs.realpath` or `fs.open` throws, such as `ENOENT`, when `path`
+ * does not exist.
+ * @example
+ * ```ts
+ * const bytes = await readContainedFile(realRoot, '/vault/a.md') // Buffer, or null
+ * ```
  */
 export async function readContainedFile(realRoot: string, path: string): Promise<Buffer | null> {
   const file = await openContainedFile(realRoot, path)
@@ -70,6 +116,7 @@ export async function readContainedFile(realRoot: string, path: string): Promise
   }
 }
 
+/** A path that passed {@link existingPathInside}. */
 export interface ContainedPath {
   /** Checked real path, the one to read. */
   realPath: string
@@ -77,7 +124,16 @@ export interface ContainedPath {
   relativePath: string
 }
 
-/** Resolves an existing `path` that stays inside `root` both as written and after symlinks; otherwise null. */
+/**
+ * Resolves an existing `path` that stays inside `root` both as written and after symlinks;
+ * otherwise null. Returns null, and does not throw, when `path` does not exist.
+ *
+ * @example
+ * ```ts
+ * await existingPathInside('/vault', '/vault', '/vault/notes/a.md')
+ * // { realPath: '/vault/notes/a.md', relativePath: 'notes/a.md' }
+ * ```
+ */
 export async function existingPathInside(
   root: string,
   realRoot: string,
