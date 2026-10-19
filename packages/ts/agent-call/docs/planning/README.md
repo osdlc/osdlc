@@ -14,8 +14,9 @@ there.
 | [`decisions/`](decisions/) | Choices that shape the package, one per topic | `D-nn` |
 
 Ids are numbers in order of writing, zero-padded to two digits so they sort.
-They are never reused. Each decision has a `state`: `accepted` or
-`superseded`. A superseded decision names the one that replaces it.
+They are never reused. Each decision has a `state`: `proposed` (under review,
+not built yet), `accepted` or `superseded`. A superseded decision names the one
+that replaces it.
 
 ## Decisions
 
@@ -31,3 +32,5 @@ They are never reused. Each decision has a `state`: `accepted` or
   Platforms, runtimes and package contents
 - [D-08](decisions/D-08-licence.md): Licence
 - [D-09](decisions/D-09-more-built-in-agents.md): More built-in agents
+- [D-10](decisions/D-10-native-transcripts.md): Reading an agent's own
+  transcript (proposed)
