@@ -106,7 +106,7 @@ const context = await filesInScope(["src/api/**", "src/db/**"], { cwd: repoRoot 
 
 ## Syntax
 
-Supported: `*`, `**`, `?`, `[abc]`, `[a-z]`, `[!abc]`, `{a,b}` and `\` to
+Supported: `*`, `**`, `?`, `[abc]`, `[a-z]`, `[!abc]`, `[^abc]`, `{a,b}` and `\` to
 escape.
 
 ## Status

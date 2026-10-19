@@ -422,9 +422,9 @@ function firstOwnChar(pred: CharPred, ok: (c: string) => boolean): string | null
  * de-duplicating `Set` the eager version built — 65 fallback insertions on every
  * edge pair, on the engine's hottest path — buys nothing.
  *
- * If all of that fails, the characters just outside each class range are tried
- * ({@link boundaryChars}). A negated class can then still meet `?` or another
- * negated class when the fallback alphabet is excluded in full.
+ * If none is accepted, the characters just outside each class range are tried
+ * ({@link boundaryChars}). That finds a common character for negated classes
+ * that exclude the whole fallback alphabet.
  */
 function commonChar(p1: CharPred, p2: CharPred, ci: boolean, disallowDot: boolean): string | null {
   const ok = (c: string): boolean =>
