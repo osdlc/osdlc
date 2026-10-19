@@ -41,7 +41,8 @@ export async function openContainedFile(
   try {
     const stats = await handle.stat()
     const realPath = await realPathInside(realRoot, path)
-    // lstat: a final component swapped for a symlink reports the link's inode, not its target's.
+    // lstat, not stat: a final component swapped for a symlink after the re-resolve reports the
+    // link's inode, so the handle no longer matches.
     const resolved = realPath === null ? null : await lstat(realPath)
     if (resolved !== null && resolved.dev === stats.dev && resolved.ino === stats.ino) {
       return { handle, stats }
