@@ -59,6 +59,8 @@ once it no longer describes the package.
   `child_process`
 - [T-06](tasks/T-06-group-kill-on-sync-and-stream-runners.md): Group kill on
   the sync and stream runners
+- [T-07](tasks/T-07-flaky-tests-block-releases.md): Flaky tests that block
+  releases
 
 ## Notes
 
