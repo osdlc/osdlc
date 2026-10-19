@@ -74,7 +74,7 @@ fn normalize_path(path: &Path) -> PathBuf {
 /// Name -> absolute directory.
 ///
 /// **Stability:** stable in 0.x.
-pub type PathTokens = BTreeMap<String, PathBuf>;
+pub type PathNames = BTreeMap<String, PathBuf>;
 
 /// The effective `paths:` map: the project's entries under the machine's,
 /// each expanded and made absolute against `base_dir`.
@@ -83,13 +83,13 @@ pub type PathTokens = BTreeMap<String, PathBuf>;
 /// the user's home directory, which `~` expands to.
 ///
 /// **Stability:** stable in 0.x.
-pub fn path_tokens(
+pub fn path_names(
     base_dir: &Path,
     home: &Path,
     machine: &BTreeMap<String, String>,
     project: &BTreeMap<String, String>,
-) -> PathTokens {
-    let mut out = PathTokens::new();
+) -> PathNames {
+    let mut out = PathNames::new();
     for (name, raw) in project.iter().chain(machine.iter()) {
         let resolved = resolve_config_path(raw, base_dir, home);
         let absolute = normalize_path(&base_dir.join(&resolved));
@@ -104,69 +104,69 @@ pub fn path_tokens(
 /// **Stability:** stable in 0.x.
 #[derive(Debug, thiserror::Error)]
 #[error("{message}")]
-pub struct TokenError {
+pub struct PathNameError {
     message: String,
 }
 
-/// Replace each `{name}` in `value` with the directory that `tokens` holds
+/// Replace each `{name}` in `value` with the directory that `names` holds
 /// under that name. `~/Developer` is written once in `paths:`, and a setting
 /// such as `{dev}/checkouts` then refers to it.
 ///
 /// `setting` names the setting the value comes from (for example `repos:`),
-/// for the error message. When a name is not in `tokens`, the error says to
+/// for the error message. When a name is not in `names`, the error says to
 /// define it "under paths:". See [`substitute_path_names_with_hint`] to name your own
 /// files in that hint.
 ///
 /// ```
 /// use std::collections::BTreeMap;
 /// use std::path::Path;
-/// use config_layers::paths::{path_tokens, substitute_path_names};
+/// use config_layers::paths::{path_names, substitute_path_names};
 ///
 /// // `dev` is defined once, in the machine file's `paths:` map.
 /// let machine = BTreeMap::from([("dev".to_string(), "/home/me/Developer".to_string())]);
-/// let tokens = path_tokens(Path::new("/work"), Path::new("/home/me"), &machine, &BTreeMap::new());
+/// let names = path_names(Path::new("/work"), Path::new("/home/me"), &machine, &BTreeMap::new());
 ///
-/// let checkouts = substitute_path_names("{dev}/checkouts", &tokens, "checkout:").unwrap();
+/// let checkouts = substitute_path_names("{dev}/checkouts", &names, "checkout:").unwrap();
 /// // Compared as paths: Windows normalizes the separators.
 /// assert_eq!(Path::new(&checkouts), Path::new("/home/me/Developer").join("checkouts"));
 ///
-/// let err = substitute_path_names("{nope}/x", &tokens, "checkout:").unwrap_err();
-/// assert!(err.to_string().contains("unknown token '{nope}'"));
+/// let err = substitute_path_names("{nope}/x", &names, "checkout:").unwrap_err();
+/// assert!(err.to_string().contains("unknown path name '{nope}'"));
 /// ```
 ///
 /// # Errors
 ///
-/// [`TokenError`] for a `{name}` that `tokens` does not define.
+/// [`PathNameError`] for a `{name}` that `names` does not define.
 ///
 /// **Stability:** stable in 0.x.
 pub fn substitute_path_names(
     value: &str,
-    tokens: &PathTokens,
+    names: &PathNames,
     setting: &str,
-) -> Result<String, TokenError> {
-    substitute_path_names_with_hint(value, tokens, setting, DEFAULT_DEFINE_HINT)
+) -> Result<String, PathNameError> {
+    substitute_path_names_with_hint(value, names, setting, DEFAULT_DEFINE_HINT)
 }
 
-/// Replace each `{name}` in `value` with the directory that `tokens` holds
+/// Replace each `{name}` in `value` with the directory that `names` holds
 /// under that name, and say in the error where to define a missing one.
 ///
-/// A name nothing defines is a [`TokenError`] rather than an empty string: a
+/// A name nothing defines is a [`PathNameError`] rather than an empty string: a
 /// setting that silently expands to `/repo` instead of `/Users/me/dev/repo`
-/// fails somewhere far from the typo. The message says where the token was
+/// fails somewhere far from the typo. The message says where the name was
 /// found (`setting`, e.g. `repos:`), how to define it (`define_hint`), and
 /// what is available. A `{` with no closing `}` is kept as written.
 ///
 /// # Errors
 ///
-/// [`TokenError`] for a `{name}` that `tokens` does not define.
+/// [`PathNameError`] for a `{name}` that `names` does not define.
 ///
 /// **Stability:** stable in 0.x.
 pub fn substitute_path_names_with_hint(
     value: &str,
-    tokens: &PathTokens,
+    names: &PathNames,
     setting: &str,
     define_hint: &str,
-) -> Result<String, TokenError> {
+) -> Result<String, PathNameError> {
     let mut out = String::with_capacity(value.len());
     let mut rest = value;
     loop {
@@ -177,21 +177,21 @@ pub fn substitute_path_names_with_hint(
         out.push_str(&rest[..start]);
         let after_open = &rest[start + 1..];
         let Some(end) = after_open.find('}') else {
-            // No closing brace: the rest has no further token, emit it as-is.
+            // No closing brace: the rest has no further name, emit it as-is.
             out.push_str(&rest[start..]);
             break;
         };
         let name = &after_open[..end];
-        match tokens.get(name) {
+        match names.get(name) {
             Some(path) => out.push_str(&path.to_string_lossy()),
             None => {
-                let known: Vec<String> = tokens.keys().map(|n| format!("{{{n}}}")).collect();
+                let known: Vec<String> = names.keys().map(|n| format!("{{{n}}}")).collect();
                 let mut message =
-                    format!("unknown token '{{{name}}}' in {setting} '{value}'; {define_hint}");
+                    format!("unknown path name '{{{name}}}' in {setting} '{value}'; {define_hint}");
                 if !known.is_empty() {
                     message.push_str(&format!(" (available: {})", known.join(", ")));
                 }
-                return Err(TokenError { message });
+                return Err(PathNameError { message });
             }
         }
         rest = &after_open[end + 1..];
@@ -241,7 +241,7 @@ mod tests {
         }
     }
 
-    mod path_tokens_tests {
+    mod path_names_tests {
         use super::*;
 
         #[test]
@@ -251,9 +251,9 @@ mod tests {
                 ("dev".to_string(), "./Project".to_string()),
                 ("work".to_string(), "./w".to_string()),
             ]);
-            let tokens = path_tokens(&root(), &home(), &machine, &project);
-            assert_eq!(tokens["dev"], home().join("Machine"));
-            assert_eq!(tokens["work"], root().join("w"));
+            let names = path_names(&root(), &home(), &machine, &project);
+            assert_eq!(names["dev"], home().join("Machine"));
+            assert_eq!(names["work"], root().join("w"));
         }
     }
 
@@ -262,36 +262,36 @@ mod tests {
 
         #[test]
         fn an_unclosed_brace_is_kept_as_written() {
-            let tokens = PathTokens::from([("dev".to_string(), PathBuf::from("/d"))]);
+            let names = PathNames::from([("dev".to_string(), PathBuf::from("/d"))]);
             assert_eq!(
-                substitute_path_names("{dev}/{oops", &tokens, "repos:").unwrap(),
+                substitute_path_names("{dev}/{oops", &names, "repos:").unwrap(),
                 "/d/{oops"
             );
         }
 
         #[test]
         fn replaces_every_name_it_knows() {
-            let tokens = PathTokens::from([
+            let names = PathNames::from([
                 ("dev".to_string(), PathBuf::from("/d")),
                 ("owner".to_string(), PathBuf::from("acme")),
             ]);
             assert_eq!(
-                substitute_path_names("{dev}/{owner}", &tokens, "repos:").unwrap(),
+                substitute_path_names("{dev}/{owner}", &names, "repos:").unwrap(),
                 "/d/acme"
             );
         }
 
         #[test]
         fn an_unknown_name_is_an_error_naming_the_setting_the_fix_and_what_exists() {
-            let tokens = PathTokens::from([
+            let names = PathNames::from([
                 ("dev".to_string(), PathBuf::from("/d")),
                 ("home".to_string(), PathBuf::from("/h")),
             ]);
-            let err = substitute_path_names("foo/{nope}", &tokens, "repos:").unwrap_err();
+            let err = substitute_path_names("foo/{nope}", &names, "repos:").unwrap_err();
             let message = err.to_string();
             assert_eq!(
                 message,
-                "unknown token '{nope}' in repos: 'foo/{nope}'; define it under paths: (available: {dev}, {home})"
+                "unknown path name '{nope}' in repos: 'foo/{nope}'; define it under paths: (available: {dev}, {home})"
             );
             assert!(message.contains("'{nope}'"));
             assert!(message.contains("repos:"));
@@ -300,23 +300,23 @@ mod tests {
         }
 
         #[test]
-        fn omits_the_parenthetical_when_no_tokens_are_known() {
-            let tokens = PathTokens::new();
-            let err = substitute_path_names("{nope}", &tokens, "config:").unwrap_err();
+        fn omits_the_parenthetical_when_no_names_are_known() {
+            let names = PathNames::new();
+            let err = substitute_path_names("{nope}", &names, "config:").unwrap_err();
             let message = err.to_string();
             assert_eq!(
                 message,
-                "unknown token '{nope}' in config: '{nope}'; define it under paths:"
+                "unknown path name '{nope}' in config: '{nope}'; define it under paths:"
             );
             assert!(!message.contains("(available:"));
         }
 
         #[test]
         fn the_tool_names_its_own_files_in_the_hint() {
-            let tokens = PathTokens::new();
+            let names = PathNames::new();
             let err = substitute_path_names_with_hint(
                 "{nope}",
-                &tokens,
+                &names,
                 "repos:",
                 "define it in tooly.yaml",
             )
