@@ -29,6 +29,26 @@ export const SCHEMA_VERSION = '2'
 /** Standard-shaped wikilink (slug optional). */
 export const STANDARD_WIKILINK_PATTERN = entityWikilinkPattern('S')
 
+/** How hard `verify changes` enforces a standard; shared with the verify provider that reads it raw. */
+export const EnforcementField = z
+  .enum(['advise', 'block'])
+  .optional()
+  .describe(
+    "How hard `verify changes` enforces this standard. 'advise': its findings never " +
+      "block, even when the project is blocking. 'block': they block at this standard's " +
+      'own floor, even when the project is advisory. Absent: the project-wide ' +
+      '`verify.blocking` and `verify.severity_floor` apply.',
+  )
+
+/** A standard's own blocking floor; only meaningful with `enforcement: block`. */
+export const SeverityFloorField = z
+  .enum(['violation', 'tension', 'drift'])
+  .optional()
+  .describe(
+    "Lowest severity of this standard's findings that blocks. Only with " +
+      "`enforcement: block`; when absent the project's `verify.severity_floor` applies.",
+  )
+
 export const StandardSchema = CommonFrontmatter.extend({
   type: z.literal('standard').describe('Dispatch tag for the validator framework.'),
   id: z
@@ -79,6 +99,8 @@ export const StandardSchema = CommonFrontmatter.extend({
         'state is closed/superseded. Slug is optional per ' +
         '[[D-0002-entity-identifier-shape]].',
     ),
+  enforcement: EnforcementField,
+  severity_floor: SeverityFloorField,
   related: z
     .array(z.string().regex(DOC_WIKILINK_PATTERN))
     .default([])
@@ -102,6 +124,14 @@ export const StandardSchema = CommonFrontmatter.extend({
     const fields = fm as Record<string, unknown>
     for (const rule of SUPERSESSION_RULES) {
       requiredWhen(ctx, fm.state === rule.state && fields[rule.field] === undefined, rule.field)
+    }
+    // A floor only means something on a blocking standard.
+    if (fm.severity_floor !== undefined && fm.enforcement !== 'block') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['severity_floor'],
+        message: "severity_floor requires enforcement: 'block'",
+      })
     }
   })
 

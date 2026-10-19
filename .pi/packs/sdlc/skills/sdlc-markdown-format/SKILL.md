@@ -72,12 +72,16 @@ report `MARKDOWN-FORMAT-CLEAN`, and stop.
 
 ### 3. Assess the diff (safety gate)
 
-From the worktree root, run the reflow-safety gate. It asserts the diff reflows prose only, with
-wikilinks, embeds, tables, and frontmatter keys untouched, and exits non-zero with diagnostics
-when it does not:
+From the worktree root, verify the reflow against the base commit. The verb compares each changed
+file's frontmatter keys and values, wikilinks and embeds (target, heading, alias), tables, fenced
+code, list nesting and blockquote levels, and compares prose with whitespace collapsed (list
+markers, ordered-list numbers and emphasis markers are normalised, since `fmt` rewrites them). It
+names the first element that differs per path, reports a path with no base copy as `new` and one
+deleted from the working tree as `deleted` (neither fails), and exits `36` (`REFLOW_CHANGED`) when
+any path differs:
 
 ```text
-${CLAUDE_PLUGIN_ROOT}/skills/sdlc-markdown-format/assess_reflow_safety.sh
+scripts/sdlc markdown verify-reflow $(git diff --name-only -- '*.md')
 ```
 
 A non-zero exit is a rumdl regression. Surface the diagnostics, leave the worktree in place for
@@ -131,7 +135,7 @@ the branch persists to back the PR.
 
 ## Notes
 
-- **Reflow-safety gate.** `assess_reflow_safety.sh` sits beside this skill. It compares the
-  working tree against `HEAD`: the wikilink and embed multiset must be unchanged, no diff line may
-  start with a table pipe (`|`), and no frontmatter key line (`type`, `schema_version`, `id`,
-  `status`) may change. Extend it with a check that exits non-zero on a new unsafe diff shape.
+- **Reflow-safety gate.** `sdlc markdown verify-reflow` is the one structural check. It supersedes
+  the diff-text script this skill used to run, which only matched the wikilink and embed multiset,
+  table pipe lines and frontmatter key lines. To guard a new unsafe shape, extend the verb's
+  fingerprint in `lib/services/markdown/reflow.ts`.

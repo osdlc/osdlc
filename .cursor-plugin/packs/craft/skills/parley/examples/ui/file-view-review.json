@@ -18,7 +18,7 @@
       "id": "today",
       "title": "Today",
       "caption": "The file view as it ships",
-      "stories": [{ "id": "explore-file-view--today", "label": "Today", "height": 420 }],
+      "stories": [{ "id": "explore-file-view--today", "title": "Today", "height": 420 }],
       "detail": "The tree on the left, the note on the right, and the shell's tabs drawn over both."
     },
     {
@@ -32,7 +32,7 @@
           "prompt": "Should the file view show window tabs?",
           "status": "closed",
           "resolution": "No tabs. Open in Notes hands the file off.",
-          "options": [{ "id": "none", "label": "No tabs; hand off to Notes" }]
+          "options": [{ "id": "none", "title": "No tabs; hand off to Notes" }]
         },
         {
           "id": "selection",
@@ -43,18 +43,18 @@
           "options": [
             {
               "id": "file",
-              "label": "The file",
+              "title": "The file",
               "detail": "One row is on at a time. Esc returns to the check.",
               "stories": ["explore-file-view--selection-file-clicked"]
             },
             {
               "id": "check",
-              "label": "The check stays selected",
+              "title": "The check stays selected",
               "detail": "Today's behaviour, with a wash on the file.",
               "stories": [
                 {
                   "id": "explore-file-view--today-image-on-check",
-                  "label": "Today",
+                  "title": "Today",
                   "globals": "theme:dark"
                 }
               ]

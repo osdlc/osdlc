@@ -7,6 +7,349 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-10-19
+
+The sdlc 1.0 work ships as 0.15.0, a pre-1.0 release: starting-rules kits, scheduled runs, a
+hardened unattended orchestrator, the contract inventory and compatibility promise, and the `craft`
+skill `parley` at alpha. `craft` ships as 0.7.0. Breaking changes are marked below.
+
+### Added
+
+- The `craft` skill `parley` is the alpha release. A parley document is JSON: typed blocks and the
+  questions the agent needs answered. `parley serve` shows it as one review page and
+  `parley answers --wait` hands the reviewer's comments, answers and verdict back to the agent. New
+  in this release: a first-visit orientation and one progress control, an unread-replies count,
+  keyboard use and WCAG AA basics, a chosen-editor link on file pages, and a `schema --md` command
+  that prints the block reference. `parley serve` exits 1 when it cannot listen. The bundled
+  `parley.mjs` still runs under node 22+, bun and deno with no dependencies
+  ([#3302](https://github.com/sksizer/dev/pull/3302)).
+- The `parley` skill is split into short files read as needed: `SKILL.md`, `loop.md`, `writing.md`,
+  `answers.md` and `glossary.md`, with new and updated `examples/`. `blocks.md` is gone; run
+  `parley.mjs schema --md` for the block reference
+  ([#3302](https://github.com/sksizer/dev/pull/3302)).
+- The `craft` skill `pr-mermaid-comment` moves into `craft` from the `dev-agent` plugin. It posts or
+  updates a PR comment with Mermaid diagrams and checks that they render first
+  ([#3172](https://github.com/sksizer/dev/pull/3172)).
+- craft `lib-publish-ready` (prototype): audits one library package for a first public release
+  against a language-neutral quality bar, with check files for crates.io and npm and the end-to-end
+  release process. Reads the package only ([#3253](https://github.com/sksizer/dev/pull/3253)).
+- `sdlc schedule` has ops to list, show status of, add, edit and remove scheduled entries, to run,
+  pause and resume them, to show run history, and to promote an entry to the project
+  ([#3234](https://github.com/sksizer/dev/pull/3234),
+  [#3254](https://github.com/sksizer/dev/pull/3254),
+  [#3236](https://github.com/sksizer/dev/pull/3236),
+  [#3240](https://github.com/sksizer/dev/pull/3240),
+  [#3291](https://github.com/sksizer/dev/pull/3291)). `project doctor` gains a `schedules` check.
+- `sdlc.yaml` keys and commands can carry a deprecation warning, so a rename warns before it breaks
+  ([#3231](https://github.com/sksizer/dev/pull/3231)).
+- `sdlc markdown verify-reflow <paths...> [--base <ref>]` checks that a reflow changed only prose
+  wrapping and names the first element that differs. The `markdown-format` skill runs it after
+  `fmt`, and its `assess_reflow_safety.sh` script is removed
+  ([#3232](https://github.com/sksizer/dev/pull/3232)).
+- Every task, operation and slot lease change is written to the project journal as a `lease.*`
+  event with the holder, actor and reason ([#3258](https://github.com/sksizer/dev/pull/3258)).
+- Orchestrator dev mode: `orchestrate status` names each loop's mode and, in dev mode, the
+  checkout it runs from. A new `orchestrator-install` doctor check compares live loops with the
+  hooks. See `docs/orchestrator-running.md` ([#3237](https://github.com/sksizer/dev/pull/3237)).
+- `sdlc lib history` lists the release units of a library's version history, follows the package
+  across directory moves and names each unit's PR. `lib.boilerplate` in `sdlc.yaml` adds file names
+  to ignore ([#3328](https://github.com/sksizer/dev/pull/3328)).
+- Starting-rules kits: a kit is a directory with a strict `kit.yaml` manifest listing principles,
+  standards, terms and other items, each validated under its real entity contract. Four kits ship
+  (`base`, `rust`, `ts` and `sdlc-terms`), `sdlc setup` scaffolds the chosen kits' real items, and
+  the wizard's starting-rules screen shows them ([#3021](https://github.com/sksizer/dev/pull/3021),
+  [#3026](https://github.com/sksizer/dev/pull/3026),
+  [#3031](https://github.com/sksizer/dev/pull/3031),
+  [#3039](https://github.com/sksizer/dev/pull/3039),
+  [#3060](https://github.com/sksizer/dev/pull/3060),
+  [#3022](https://github.com/sksizer/dev/pull/3022),
+  [#3074](https://github.com/sksizer/dev/pull/3074)).
+- Task work has a configurable target branch (`sdlc orchestrate target`): the task branch is cut
+  from it, its PR opens against it and quality is baselined on its tip. Unset, it is the
+  repository's default branch. A gated PR merge step lands task PRs into an integration branch
+  ([#3038](https://github.com/sksizer/dev/pull/3038),
+  [#3053](https://github.com/sksizer/dev/pull/3053)).
+- `sdlc task next` follows the roadmap's release order and takes a goal scope
+  ([#3034](https://github.com/sksizer/dev/pull/3034)).
+- Schedules: `schedules:` entries in `sdlc.yaml` run a workflow on a five-field cron expression. The
+  `orchestrate run` schedule loop starts each due run as a detached `sdlc schedule run`, records
+  last-run state and a run lock, and journals a run identity. Each run gets its own worktree on
+  `schedule/<entry>/<slot>`, and a per-schedule `output` (`none`, `pr`, `branch`) decides what
+  becomes of its changes; output never lands on `main`
+  ([#3116](https://github.com/sksizer/dev/pull/3116),
+  [#3132](https://github.com/sksizer/dev/pull/3132),
+  [#3157](https://github.com/sksizer/dev/pull/3157),
+  [#3213](https://github.com/sksizer/dev/pull/3213),
+  [#3215](https://github.com/sksizer/dev/pull/3215),
+  [#3277](https://github.com/sksizer/dev/pull/3277),
+  [#3283](https://github.com/sksizer/dev/pull/3283)).
+- `runner: {kind: launchd|systemd|none}` in `sdlc.local.yaml` and the `schedule-runner` applier
+  install a user-level launchd job or systemd unit so scheduled runs fire with no terminal open. It
+  starts every orchestrate loop, the schedule loop included
+  ([#3222](https://github.com/sksizer/dev/pull/3222),
+  [#3401](https://github.com/sksizer/dev/pull/3401)).
+- `sdlc run --visible`, and `session: interactive` on a scheduled run, run agent steps in a
+  watchable tmux session. A host that cannot wait (Orca) is refused for a visible run
+  ([#3292](https://github.com/sksizer/dev/pull/3292)).
+- tmux is a second session host, next to Orca ([#3100](https://github.com/sksizer/dev/pull/3100)).
+- A per-run time limit bounds an agent step; a hung work run is stopped when declared stale
+  ([#3118](https://github.com/sksizer/dev/pull/3118),
+  [#3162](https://github.com/sksizer/dev/pull/3162)).
+- `sdlc.yaml` is split into one config section module per key. A JSON Schema for it is committed at
+  `docs/schema/sdlc.schema.json`, `config scaffold` and `sdlc init` point editors at it, and
+  `sdlc config validate [--file <path>]` checks a file without running an op (exit 14 on any
+  problem). A `secret` flag on a key keeps its value out of output
+  ([#3127](https://github.com/sksizer/dev/pull/3127),
+  [#3209](https://github.com/sksizer/dev/pull/3209),
+  [#3204](https://github.com/sksizer/dev/pull/3204),
+  [#3227](https://github.com/sksizer/dev/pull/3227),
+  [#3224](https://github.com/sksizer/dev/pull/3224)).
+- Config changes are picked up without a restart: `loadConfig` notices an edited `sdlc.yaml` or
+  `sdlc.local.yaml`, and the orchestrate loop reloads at the start of each pass. An invalid edit is
+  logged and skipped ([#3086](https://github.com/sksizer/dev/pull/3086)).
+- The config machinery is shared as `@sksizer/cli-tool/config` with an `SDLC_CONFIG` override
+  ([#3153](https://github.com/sksizer/dev/pull/3153)).
+- `orchestrator.limits` is a hierarchy: a machine-wide `total`, an `executor` pool with a cap per
+  operation, and a `schedule` pool ([#3205](https://github.com/sksizer/dev/pull/3205)).
+- Each orchestrate loop records which sdlc code it runs and whether that code has moved on
+  (`restart_needed`), and a second process cannot run a loop already running for the repository on
+  the machine ([#3225](https://github.com/sksizer/dev/pull/3225)).
+- `sdlc tui` gets full-screen layout, scrolling panes and key hints; a detail modal on Enter for
+  task, PR and work-run rows; a Processes pane to start, stop and pause loops and work-runs; a
+  Settings page (key `4`) that edits only `sdlc.local.yaml`; and a Schedules page with add, edit,
+  remove, promote and loop status ([#3128](https://github.com/sksizer/dev/pull/3128),
+  [#3140](https://github.com/sksizer/dev/pull/3140),
+  [#3208](https://github.com/sksizer/dev/pull/3208),
+  [#3218](https://github.com/sksizer/dev/pull/3218),
+  [#3278](https://github.com/sksizer/dev/pull/3278),
+  [#3295](https://github.com/sksizer/dev/pull/3295),
+  [#3296](https://github.com/sksizer/dev/pull/3296)).
+- `sdlc lease task release <task>` hands a task back at once after a work run dies, instead of
+  waiting out the lease (exit 24 while the holder looks alive; `--force` overrides). It also frees
+  the run's op and slot leases ([#3114](https://github.com/sksizer/dev/pull/3114),
+  [#3135](https://github.com/sksizer/dev/pull/3135),
+  [#3113](https://github.com/sksizer/dev/pull/3113)).
+- Standards can say how hard they are enforced: `enforcement` (`advise` or `block`) and
+  `severity_floor`. The wizard's review-strictness choice writes real config
+  ([#3139](https://github.com/sksizer/dev/pull/3139)).
+- A configured set of `orchestrator.base_health.commands` gates the `work` tick: nothing is
+  dispatched while the target branch's tip is red or unverified
+  ([#3189](https://github.com/sksizer/dev/pull/3189)).
+- Configured gates block merge: the merges loop refuses a PR whose `check` gate steps did not run
+  or failed (`gate-not-run`, `gate-failed`) ([#3167](https://github.com/sksizer/dev/pull/3167)).
+- The merge gate requires a `/sdlc:pr-review` verdict recorded for the PR's current head
+  (`sdlc pr review-verdict`, refusing with `verdict-missing` or `verdict-blocking`) when
+  `verify.blocking` is on ([#3248](https://github.com/sksizer/dev/pull/3248)).
+- Task PRs open as drafts and only `sdlc pr ready` marks one ready, after the local checks pass for
+  the head (`sdlc pr record-check`). A push to a ready task PR returns it to draft until checks pass
+  again. When a work run ends, the PR is marked ready or returned to draft with one failure comment
+  ([#3188](https://github.com/sksizer/dev/pull/3188),
+  [#3317](https://github.com/sksizer/dev/pull/3317),
+  [#3366](https://github.com/sksizer/dev/pull/3366)).
+- `sdlc pr create` opens a PR through the code-host port, and the skills that ran `gh pr create`
+  call it ([#3169](https://github.com/sksizer/dev/pull/3169)).
+- Setup: `sdlc setup apply` delivers as a PR on `sdlc/setup` instead of writing into the working
+  tree (new exit codes 30 and 31). It writes the starter milestone and task as real planning
+  entities, and checks GitHub sign-in through `project doctor`
+  ([#3206](https://github.com/sksizer/dev/pull/3206),
+  [#3346](https://github.com/sksizer/dev/pull/3346),
+  [#3168](https://github.com/sksizer/dev/pull/3168)).
+- Doctor checks are pluggable, and the lefthook check warns when hooks are silently skipped
+  ([#3190](https://github.com/sksizer/dev/pull/3190)).
+- A work dry run predicts the real tick ([#3147](https://github.com/sksizer/dev/pull/3147)).
+- A work run's lifecycle is journalled under a run id, and its redacted, size-capped output is
+  published under `runs/<run-id>/output.log` in the log root
+  ([#3300](https://github.com/sksizer/dev/pull/3300),
+  [#3336](https://github.com/sksizer/dev/pull/3336)). `log.store.tracked` commits the log under
+  `sdlc/log` ([#3214](https://github.com/sksizer/dev/pull/3214)).
+- `sdlc task set-section <task> <Section> (--from <path> | --text <text|->)` replaces one section of
+  a task, and `sdlc task create` takes `--body-file` or `--body-text`. The work tick's define guard
+  stops a run that edits a task's Goal or acceptance criteria outside a `planning/*` state
+  (`TASK_INTENT_LOCKED`, 50; `TASK_BODY_GAPS`, 51)
+  ([#3458](https://github.com/sksizer/dev/pull/3458)).
+- `task-work` runs a project-defined `generate` workflow after implementing and before `check`, so
+  committed generated files are rebuilt. sdlc ships no default
+  ([#3201](https://github.com/sksizer/dev/pull/3201)).
+- A configured lease authority creates its control-plane ref. A live run without one exits 49
+  ([#3391](https://github.com/sksizer/dev/pull/3391)).
+- `docs/contract-inventory.md` lists the stable surfaces, `docs/compatibility.md` states the 1.x
+  promise, and a snapshot test guards removals. Surfaces marked experimental (config keys
+  `schedules`, `runner`, `router`, `usage`, `harness`; commands `trace`, `route`, `models`, `okf`,
+  `tui`, `report`, `friction`; the `friction` entity) are outside that promise
+  ([#3192](https://github.com/sksizer/dev/pull/3192),
+  [#3400](https://github.com/sksizer/dev/pull/3400)).
+- `just acceptance -- --repo <owner/name>` runs the acceptance script: it resets a test repository,
+  runs setup, seeds a milestone, a task and a scheduled job, runs the orchestrator, and reports
+  dispatch, PR, review, merge, close-out and the scheduled run. `just release-smoke` installs from
+  npm on a clean machine, and a generator builds the test repositories
+  ([#3313](https://github.com/sksizer/dev/pull/3313),
+  [#3193](https://github.com/sksizer/dev/pull/3193),
+  [#3381](https://github.com/sksizer/dev/pull/3381)).
+- A guide takes a new user from install to a first task
+  ([#3210](https://github.com/sksizer/dev/pull/3210)).
+- Project-only skills are generated from a vault, with a drift gate
+  ([#3229](https://github.com/sksizer/dev/pull/3229)).
+- Usage cooldowns expire on read and show in `doctor`, `status` and the TUI
+  ([#3228](https://github.com/sksizer/dev/pull/3228)).
+- Plugin install tests for Claude and Codex, and a guard against plugins sharing an invocation
+  prefix ([#3245](https://github.com/sksizer/dev/pull/3245),
+  [#3173](https://github.com/sksizer/dev/pull/3173)).
+- The sdlc wizard in the desktop app gains the adopt flow: connect and rules sections, routing,
+  steering and alerts, an apply section with a drift report and preview tabs, navigation hints, and
+  a Polish skin ([#3255](https://github.com/sksizer/dev/pull/3255),
+  [#3281](https://github.com/sksizer/dev/pull/3281),
+  [#3305](https://github.com/sksizer/dev/pull/3305),
+  [#3309](https://github.com/sksizer/dev/pull/3309),
+  [#3316](https://github.com/sksizer/dev/pull/3316),
+  [#3353](https://github.com/sksizer/dev/pull/3353),
+  [#3238](https://github.com/sksizer/dev/pull/3238)).
+
+### Changed
+
+- **Breaking:** the `craft` skill `collaborate-in-markdown` is renamed `collaborate`. Invoke it as
+  `/craft:collaborate`; the old name no longer resolves
+  ([#3256](https://github.com/sksizer/dev/pull/3256)).
+- The `craft` skill `propose-solution` is renamed `discuss`; invoke it as `/craft:discuss`. The old
+  name no longer resolves ([#3174](https://github.com/sksizer/dev/pull/3174)).
+- Depends on `@osdlc/color` `^1.0.1` from npm instead of `@sksizer/color`
+  ([#3419](https://github.com/sksizer/dev/pull/3419)).
+- The `craft` skill `sks-code-review` is renamed `pr-review`; invoke it as `/craft:pr-review`. Its
+  behaviour is unchanged ([#3259](https://github.com/sksizer/dev/pull/3259)).
+- Skill reference pages on the docs site move to `reference/skills/<plugin>-<skill>` (for example
+  `reference/skills/sdlc-task-work`), so two plugins can ship a skill of the same name. The old
+  `reference/skills/<skill>` URLs no longer exist
+  ([#3259](https://github.com/sksizer/dev/pull/3259)).
+- Depends on `@osdlc/agent-call` `^0.4.1` from npm instead of the in-repo `@sksizer/agent-call`.
+  `sdlc verify`'s error for a tool with no adapter now names `@osdlc/agent-call`. The error `detail`
+  of a failed headless run changes: a nonzero exit joins the parser's text and the stderr tail, and
+  a caller abort reads `aborted by the caller` ([#3424](https://github.com/sksizer/dev/pull/3424)).
+- **Breaking:** the marketplace is now named `osdlc` and lives at `osdlc/osdlc`. The plugins keep
+  their names, so their ids become `sdlc@osdlc` and `craft@osdlc`. An existing install from the
+  old `sdlc` marketplace does not update. Remove it with `/plugin marketplace remove sdlc`, then
+  add the new one:
+
+  ```text
+  /plugin marketplace add osdlc/osdlc
+  /plugin install sdlc@osdlc
+  ```
+
+  Add `craft@osdlc` the same way if you use it. `sdlc harness install claude` registers the
+  `osdlc` marketplace but leaves an old `sdlc` registration in place. Delete the `sdlc` key under
+  `extraKnownMarketplaces` and `sdlc@sdlc` under `enabledPlugins` in `.claude/settings.json` or
+  `.claude/settings.local.json` by hand ([#3252](https://github.com/sksizer/dev/pull/3252)).
+- Workflow script steps and hook steps now run in their own process group and session by default, so
+  a kill or a signal to sdlc reaches every process a step started, and a Ctrl-C of the loop stops
+  the step without parking the task. The step has no controlling terminal: a prompt on `/dev/tty`
+  fails. Set `process_group: false` on a step to opt out
+  ([#3200](https://github.com/sksizer/dev/pull/3200)). A signal to the loop does not stop detached
+  work-runs (use `sdlc orchestrate work-stop <basename>`); an interrupted run frees its task for
+  retry.
+- `sdlc orchestrate run` now works in the repository's main checkout by default, wherever it is
+  launched, so config, tasks and git all come from one root; `--root launch` or
+  `SDLC_LOOP_ROOT=launch` keeps the launch folder. A detached task run is handed the loop's root
+  with `--project-root`. The `define` workflow runs in a scratch worktree, so the main checkout is
+  not edited or committed to ([#3203](https://github.com/sksizer/dev/pull/3203)).
+- **Breaking:** `workflows.<name>.session: interactive | headless` replaces the boolean
+  `workflows.<name>.headless`, and `headless` is now refused as an unknown key. A new
+  `host.session` sets a per-machine default (in `sdlc.local.yaml`). The order is run flag, task,
+  workflow, machine, then headless ([#3251](https://github.com/sksizer/dev/pull/3251)).
+- **Breaking:** the `sksizer` marketplace is deleted from this repo; `osdlc` is the only
+  marketplace. Remove it with `/plugin marketplace remove sksizer`
+  ([#3239](https://github.com/sksizer/dev/pull/3239)).
+- **Breaking:** sdlc no longer reads or cleans up the old `sdlc` names.
+  `sdlc harness install claude` ignores `sdlc@sdlc`, and `--session-skills` disables only
+  `sdlc@osdlc`. Remove old registrations by hand
+  ([#3252](https://github.com/sksizer/dev/pull/3252)).
+- Unknown keys in `sdlc.yaml` and `sdlc.local.yaml` warn once on stderr and are ignored instead of
+  failing to load, so an older sdlc can read a repository that a newer one wrote. Invalid values for
+  known keys, and strict sections, still refuse ([#3436](https://github.com/sksizer/dev/pull/3436),
+  [#3453](https://github.com/sksizer/dev/pull/3453)).
+- A review comment resumes the task-work session, and a PR is reviewed again when its head moves
+  ([#3159](https://github.com/sksizer/dev/pull/3159),
+  [#3163](https://github.com/sksizer/dev/pull/3163)).
+- Review proceeds when CI cannot run ([#3160](https://github.com/sksizer/dev/pull/3160)).
+- Task close-out releases a merged task's lease and deletes through the safe delete op, and tasks
+  whose PR merged outside the loop are closed out
+  ([#3158](https://github.com/sksizer/dev/pull/3158),
+  [#3170](https://github.com/sksizer/dev/pull/3170),
+  [#3191](https://github.com/sksizer/dev/pull/3191)).
+- The merges loop's `pr-update` applies the update
+  ([#3130](https://github.com/sksizer/dev/pull/3130)).
+- Manual task dispatch is tracked and its PR reviewed
+  ([#3133](https://github.com/sksizer/dev/pull/3133)).
+- `sdlc quality run` resolves `--name` from the project's `sdlc.yaml` by default
+  ([#3220](https://github.com/sksizer/dev/pull/3220)).
+- The skill extension fills are retired; the rebuild commands live in the plugin's `CLAUDE.md`
+  ([#3207](https://github.com/sksizer/dev/pull/3207)).
+- **Breaking:** `log.store.scope` is removed; `log.store.tracked` replaces it
+  ([#3214](https://github.com/sksizer/dev/pull/3214)).
+- Standards for ops, config, hosts, sessions and logs are adopted
+  ([#3441](https://github.com/sksizer/dev/pull/3441)).
+
+### Fixed
+
+- `parley serve` refuses a request with a duplicate or missing `Host` header with a 400, and its
+  "server stopped" line now shows promptly
+  ([#3473](https://github.com/sksizer/dev/pull/3473)).
+- The `judge` workflow diffs against the task's target branch, not `main`, so a task for an
+  integration branch is no longer judged on the whole branch
+  ([#3247](https://github.com/sksizer/dev/pull/3247)).
+- A detached task run now starts in its own session and process group and is re-parented away from
+  the loop, so stopping the `work` loop (or its shell) no longer kills running tasks
+  ([#3088](https://github.com/sksizer/dev/pull/3088)).
+- The `work` tick no longer redispatches a task whose `task/<basename>` branch has an open PR
+  (`in-review`), or whose branch is left by an earlier run (`needs-resume`: a person resumes it with
+  `/sdlc:task-work`). A dead run's log now says so
+  ([#3088](https://github.com/sksizer/dev/pull/3088)).
+- The `work` tick skips a task whose task lease is held and unexpired on the lease authority, so a
+  second loop process cannot start a task another run is still working (it used to rely on the
+  operation lease and the local worktree roster). A failed, parked or dead run's task lease is not
+  released, so that task waits out the lease (up to an hour) before it is started again, by the
+  loop or by `sdlc task dispatch` ([#3084](https://github.com/sksizer/dev/pull/3084)).
+- The `work` tick no longer waits for a task: it starts each task's sequence as a detached run and
+  returns, up to `limits.implement` at once, so the `prs`/`merges`/`issues` ticks are not held up. A
+  run that dies without an outcome is reported as stale
+  ([#3080](https://github.com/sksizer/dev/pull/3080)).
+- A PR on the `task/<basename>` branch of a task the loop ran is in scope for the PR ticks without
+  the `pr_filters.include_labels` label; human PRs still need it
+  ([#3080](https://github.com/sksizer/dev/pull/3080)).
+- `sdlc setup plan` and `apply` act on their own project: the nearest `sdlc.yaml` from the cwd,
+  never past the git top level, so a repository nested under an adopted directory is set up as its
+  own project and the plan notes the enclosing one.
+- `orchestrate run`, `start` and `work-start` refuse a repository never trusted with
+  `sdlc repo trust`, with `UNTRUSTED` (exit 21), before any tick, claim or spawn
+  ([#3422](https://github.com/sksizer/dev/pull/3422),
+  [#3433](https://github.com/sksizer/dev/pull/3433)).
+- A work run that delivers nothing is held, not recorded `ok`: after `implement` and its checks, the
+  run must have closed the task, moved or created the remote `task/<basename>` branch, or opened a
+  PR. Otherwise it is blocked as `no-deliverable`, and `sdlc task retry` returns it to the queue
+  ([#3443](https://github.com/sksizer/dev/pull/3443)).
+- Spec edits travel in the task PR: `task-work` no longer pushes body edits to the target branch
+  ([#3445](https://github.com/sksizer/dev/pull/3445)).
+- `task-work` close-out arms from the branch config and accepts `open/ready` and lease-less closes
+  ([#3076](https://github.com/sksizer/dev/pull/3076)).
+- A failed work run names the failing step, its exit code and output; dispatch runs are honest and
+  the check baseline is green ([#3096](https://github.com/sksizer/dev/pull/3096),
+  [#3112](https://github.com/sksizer/dev/pull/3112)).
+- `pr-review` launches once per PR head across loop processes, and the orchestrator log's tick
+  counter is serialised across processes ([#3202](https://github.com/sksizer/dev/pull/3202),
+  [#3166](https://github.com/sksizer/dev/pull/3166)).
+- The Orchestrator page shows real loop state and live claims only
+  ([#3145](https://github.com/sksizer/dev/pull/3145)).
+- The router lock key survives a non-GitHub origin, and the lease ref mirror stays current after
+  compare-and-swap writes, retrying on a local ref lock
+  ([#3164](https://github.com/sksizer/dev/pull/3164),
+  [#3134](https://github.com/sksizer/dev/pull/3134),
+  [#3151](https://github.com/sksizer/dev/pull/3151)).
+- Orca comment delivery uses a unique harness terminal
+  ([#3161](https://github.com/sksizer/dev/pull/3161)).
+- The `lint-state-origin` task check treats shared remote branches as bases
+  ([#3040](https://github.com/sksizer/dev/pull/3040)).
+- Loop runtime state and task worktrees are anchored at the main checkout
+  ([#3101](https://github.com/sksizer/dev/pull/3101)).
+- Setup resolves its own project root, not an ancestor's `sdlc.yaml`
+  ([#3393](https://github.com/sksizer/dev/pull/3393)).
+
 ## [0.14.0] - 2026-10-12
 
 Sessions you can watch and drive, agent logging, `review-pr` state on a git ref, and the
@@ -21,6 +364,16 @@ Windows and Linux groundwork.
 
 ### Added
 
+- `sdlc tui` has an Orchestrator page (key `3`, or `O` on the Tasks page): pause state per
+  loop, goal and target, the tick log, in-flight tasks, open PRs with verdict, review rounds
+  and merge-gate refusals, and the work waiting on a person. Read-only; it refreshes without
+  blocking keys. `w` on the Tasks page is still a stub.
+- `sdlc orchestrate prs`: a read-only list of the open PRs the loop handles, with each one's
+  last verdict, review rounds and what the merge gate would refuse on now
+  ([#3057](https://github.com/sksizer/dev/pull/3057)).
+- craft `lib-publish-ready` (prototype): audits one library package for a first public release
+  against a language-neutral quality bar, with check files for crates.io and npm and the
+  end-to-end release process. Reads the package only.
 - `review-pr` and `check-pr` keep review state on one git ref per PR on origin,
   `refs/review-pr/<number>`, written by the new `review-state.mjs` beside `review-pr` (node 22+ and
   git only, compare-and-swap with `--force-with-lease`). Each commit holds a `state.json` (claim,
@@ -303,19 +656,58 @@ Windows and Linux groundwork.
 - `sdlc orchestrate` can run a task's agent sessions in a host pane you can watch and type into.
   Choose it per run (`--interactive`), per task (`session: interactive`) or per workflow
   (`workflows.<name>.headless: false`). ([#3095](https://github.com/sksizer/dev/pull/3095))
-- sdlc sends a notification when a session starts waiting for input (`session.waiting`) and when
-  it says it is done (`session.done`). `sdlc session focus` also takes a session id. ([#3092](https://github.com/sksizer/dev/pull/3092))
-- An agent can end its session with `sdlc session done --outcome ok|failed`. On a hands-off host
-  the harness runs under `sdlc session run`, which records its real exit code. ([#3075](https://github.com/sksizer/dev/pull/3075))
+- sdlc sends a notification when a session starts waiting for input (`session.waiting`) and when it
+  says it is done (`session.done`). `sdlc session focus` also takes a session id.
+  ([#3092](https://github.com/sksizer/dev/pull/3092))
+- An agent can end its session with `sdlc session done --outcome ok|failed`. On a hands-off host the
+  harness runs under `sdlc session run`, which records its real exit code.
+  ([#3075](https://github.com/sksizer/dev/pull/3075))
 - Each host binds the pane it opens to the sdlc session id, so two sessions in one worktree are
   told apart. `host.close_pane` in `sdlc.yaml` says when sdlc closes a session's pane.
   ([#3082](https://github.com/sksizer/dev/pull/3082))
-- The `parley` page reconnects after a dropped connection and keeps unsent answers in the
-  browser. A missing document returns 404. ([#3058](https://github.com/sksizer/dev/pull/3058), [#3063](https://github.com/sksizer/dev/pull/3063))
-- `parley` markdown output starts with OKF frontmatter. ([#3081](https://github.com/sksizer/dev/pull/3081))
+- The `parley` page reconnects after a dropped connection and keeps unsent answers in the browser. A
+  missing document returns 404. ([#3058](https://github.com/sksizer/dev/pull/3058),
+  [#3063](https://github.com/sksizer/dev/pull/3063))
+- `parley` markdown output starts with OKF frontmatter.
+  ([#3081](https://github.com/sksizer/dev/pull/3081))
 
 ### Changed
 
+- Depends on `@osdlc/color` `^1.0.1` from npm instead of `@sksizer/color`.
+- The `craft` skill `sks-code-review` is renamed `pr-review`; invoke it as `/craft:pr-review`. Its
+  behaviour is unchanged.
+- Skill reference pages on the docs site move to `reference/skills/<plugin>-<skill>` (for example
+  `reference/skills/sdlc-task-work`), so two plugins can ship a skill of the same name. The old
+  `reference/skills/<skill>` URLs no longer exist.
+- Depends on `@osdlc/agent-call` `^0.4.1` from npm instead of the in-repo `@sksizer/agent-call`.
+  `sdlc verify`'s error for a tool with no adapter now names `@osdlc/agent-call`. The error `detail`
+  of a failed headless run changes: a nonzero exit joins the parser's text and the stderr tail, and
+  a caller abort reads `aborted by the caller`.
+- **Breaking:** the marketplace is now named `osdlc` and lives at `osdlc/osdlc`. The plugins keep
+  their names, so their ids become `sdlc@osdlc` and `craft@osdlc`. An existing install from the
+  old `sdlc` marketplace does not update. Remove it with `/plugin marketplace remove sdlc`, then
+  add the new one:
+
+  ```text
+  /plugin marketplace add osdlc/osdlc
+  /plugin install sdlc@osdlc
+  ```
+
+  Add `craft@osdlc` the same way if you use it. `sdlc harness install claude` registers the
+  `osdlc` marketplace but leaves an old `sdlc` registration in place. Delete the `sdlc` key under
+  `extraKnownMarketplaces` and `sdlc@sdlc` under `enabledPlugins` in `.claude/settings.json` or
+  `.claude/settings.local.json` by hand.
+- Workflow script steps and hook steps now run in their own process group and session by default, so
+  a kill or a signal to sdlc reaches every process a step started, and a Ctrl-C of the loop stops
+  the step without parking the task. The step has no controlling terminal: a prompt on `/dev/tty`
+  fails. Set `process_group: false` on a step to opt out. A signal to the loop does not stop
+  detached work-runs (use `sdlc orchestrate work-stop <basename>`); an interrupted run frees its
+  task for retry.
+- `sdlc orchestrate run` now works in the repository's main checkout by default, wherever it is
+  launched, so config, tasks and git all come from one root; `--root launch` or
+  `SDLC_LOOP_ROOT=launch` keeps the launch folder. A detached task run is handed the loop's root
+  with `--project-root`. The `define` workflow runs in a scratch worktree, so the main checkout is
+  not edited or committed to.
 - `review-state.mjs archive` on a PR with no live ref now exits 0 with
   `{"archived":false,"reason":"no live state"}` instead of 1. `review-pr` reports a merged or closed
   PR as `REVIEW=closed`, says so when the person named it, falls back to a generated session id when
@@ -436,13 +828,28 @@ Windows and Linux groundwork.
   the skill ships it as one bundled `parley.mjs` that runs under bun, node 22+ and deno.
   `answers --wait --timeout` now exits `10` when nothing arrives (it was `3`), and the env vars
   are `PARLEY_DOC`, `PARLEY_DIR` and `PARLEY_MODEL`.
-- `/sdlc:backlog-triage` checks each item against `origin/main` before deciding. It leaves an
-  item alone when an open PR already addresses it. ([#3067](https://github.com/sksizer/dev/pull/3067))
+- `/sdlc:backlog-triage` checks each item against `origin/main` before deciding. It leaves an item
+  alone when an open PR already addresses it. ([#3067](https://github.com/sksizer/dev/pull/3067))
 - The `sdlc.yaml` schema accepts `orchestrator.target_branch`, `orchestrator.merge` and
   `orchestrator.goal`. They have no effect yet. ([#3042](https://github.com/sksizer/dev/pull/3042))
 
 ### Fixed
 
+- A detached task run now starts in its own session and process group and is re-parented away from
+  the loop, so stopping the `work` loop (or its shell) no longer kills running tasks.
+- The `work` tick no longer redispatches a task whose `task/<basename>` branch has an open PR
+  (`in-review`), or whose branch is left by an earlier run (`needs-resume`: a person resumes it with
+  `/sdlc:task-work`). A dead run's log now says so.
+- The `work` tick skips a task whose task lease is held and unexpired on the lease authority, so a
+  second loop process cannot start a task another run is still working (it used to rely on the
+  operation lease and the local worktree roster). A failed, parked or dead run's task lease is not
+  released, so that task waits out the lease (up to an hour) before it is started again, by the
+  loop or by `sdlc task dispatch`.
+- The `work` tick no longer waits for a task: it starts each task's sequence as a detached run and
+  returns, up to `limits.implement` at once, so the `prs`/`merges`/`issues` ticks are not held up.
+  A run that dies without an outcome is reported as stale.
+- A PR on the `task/<basename>` branch of a task the loop ran is in scope for the PR ticks without
+  the `pr_filters.include_labels` label; human PRs still need it.
 - A codex reference to a local model (`codex/ollama/qwen3:4b`, or a tier that resolves to one)
   launched codex without `--oss --local-provider <provider>`, so the run went to OpenAI. Every
   codex launch (headless, interactive, `sdlc verify changes`, a step of `sdlc run`, and a
@@ -499,11 +906,14 @@ Windows and Linux groundwork.
   (`sdlc_dashboard_token_<port>`).
 - Friction promote and dismiss report a closed friction as `CAS_FAILED` (CLI exit 10, HTTP 409) and
   a missing one as `REF_NOT_FOUND` (HTTP 404).
-- The path guard no longer lets a dangling symlink or a `..` after a missing name escape the
-  root, and more path checks use it. ([#2999](https://github.com/sksizer/dev/pull/2999), [#3024](https://github.com/sksizer/dev/pull/3024), [#2997](https://github.com/sksizer/dev/pull/2997))
+- The path guard no longer lets a dangling symlink or a `..` after a missing name escape the root,
+  and more path checks use it. ([#2999](https://github.com/sksizer/dev/pull/2999),
+  [#3024](https://github.com/sksizer/dev/pull/3024),
+  [#2997](https://github.com/sksizer/dev/pull/2997))
 - On a `parley` choice question, words typed with no option ticked become a question for the
   agent instead of a note marked answered. ([#3011](https://github.com/sksizer/dev/pull/3011))
-- Resuming a session from the dashboard keeps it in the session log. ([#3069](https://github.com/sksizer/dev/pull/3069))
+- Resuming a session from the dashboard keeps it in the session log.
+  ([#3069](https://github.com/sksizer/dev/pull/3069))
 
 ## [0.13.0] - 2026-10-10
 

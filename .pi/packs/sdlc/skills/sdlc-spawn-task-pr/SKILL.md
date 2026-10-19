@@ -89,7 +89,7 @@ Where `MARKER` is one of:
   commits, and PR are left untouched. The caller should treat this
   as success and reuse the URL.
 - `ERROR reason="<one-line reason>"` — could not proceed (target repo
-  missing, push rejected, `gh pr create` failed, etc.). Side effects
+  missing, push rejected, `sdlc pr create` failed, etc.). Side effects
   may be partial; the message names the failing step. `ERROR` is the
   one un-prefixed marker (shared by convention across all skills).
 
@@ -139,9 +139,9 @@ Resolve the target repo:
 - Read the target's `origin` URL (`git remote get-url <target-remote>`,
   default `origin`); if absent, emit
   `ERROR reason="target has no <remote> remote"` and exit 1.
-- Derive the `<owner>/<name>` for `gh pr create --repo` from the
-  origin URL (strip `.git`; handle both SSH `git@github.com:o/n.git`
-  and HTTPS `https://github.com/o/n.git` shapes).
+- `sdlc pr create --project-root <target-worktree>` resolves the code
+  host from that checkout's own `origin`, so nothing else is derived
+  from the URL.
 
 ### 2. Ensure a clean worktree on the target
 
@@ -388,11 +388,8 @@ Then decide create-vs-append:
   classification so the reviewer sees the right framing:
 
   ```text
-  gh pr create --repo <owner/name> \
-    --base <target-base> \
-    --head <branch> \
-    --title "<pr-title>" \
-    --body "$(cat <<'EOF'
+  body=$(mktemp)
+  cat > "$body" <<'EOF'
   ## Summary
   - Follow-up(s) spawned from a /skill:sdlc-task-work post-mortem.
   - Originating task: [[<originating-basename>]] in <originating-repo-url>.
@@ -418,10 +415,14 @@ Then decide create-vs-append:
   - <Tagged `<classification-tag>` so this repo's task review can filter
     for inbound cross-repo asks.>     <!-- include this bullet only when --tag was supplied -->
   EOF
-  )"
+  scripts/sdlc pr create --project-root <target-worktree> \
+    --base <target-base> \
+    --head <branch> \
+    --title "<pr-title>" \
+    --body-file "$body"
   ```
 
-  Capture the URL `gh pr create` prints on stdout.
+  Capture the URL `sdlc pr create` prints on stdout.
 
 ### 8. Report
 
@@ -461,10 +462,10 @@ Capture context, do not silently abandon:
   the ERROR reason; do not invent fallback content.
 - **Validator failure.** Surface the first failing field; do not
   attempt to auto-fix frontmatter on the target.
-- **`gh pr create` rate-limited or auth-denied.** Surface as ERROR;
+- **`sdlc pr create` rate-limited or auth-denied.** Surface as ERROR;
   the branch IS pushed at that point. Idempotency in step 3 means a
   manual re-invocation will find no open PR (push without PR is fine)
-  and proceed to a second `gh pr create` call.
+  and proceed to a second `sdlc pr create` call.
 - **Readiness drive fails (Step 6a).** Never an ERROR — the Step 6
   commit already landed a valid draft. The drive is best-effort: on
   INSUFFICIENT or a sub-agent error the task keeps the fallback status;

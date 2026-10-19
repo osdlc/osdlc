@@ -29,6 +29,8 @@ import { defineOp } from '@lib/registry'
 import type { OpIo } from '@lib/registry'
 import { listWorktreeBasenames, worktreeDir, worktreeRoot } from '@lib/util/git'
 import { realResolve } from '@lib/util/paths'
+import { pidAlive } from '@lib/util/process'
+import { readWorkRun, RunOutputSchema, workRunIdentity } from '@lib/services/orchestrator/work-runs'
 
 import {
   frontmatterString,
@@ -61,7 +63,10 @@ const CATEGORY_OTHER = 'other'
  *    outlives any run, so a closed task whose worktree/branch/lease survive is
  *    exactly the leftover this category names — the lease cannot argue.
  * 2. The lease phase, when the mirror carries one. `claimed`/`working` hold an
- *    implementation slot; `awaiting-review`/`responding` hold a review slot.
+ *    implementation slot only while the run is live (`runLive`: lease not
+ *    expired and any work-run pid answering); a dead one is `stale`, so a
+ *    crashed run cannot hold a slot until the sweep reaps it.
+ *    `awaiting-review`/`responding` hold a review slot.
  *    Phase beats an open PR: the PR appears a moment before the transition to
  *    `awaiting-review` lands, and the lease is the authority on which slot the
  *    run occupies.
@@ -72,22 +77,25 @@ const CATEGORY_OTHER = 'other'
  * 3. `blocked` → `other`, matching the frontmatter rule it replaces
  *    (`in-progress/blocked` has always landed in `other`). `closing` also falls
  *    through: a run in close-out is neither implementing nor awaiting review.
- * 4. No lease → the pre-split frontmatter rule, unchanged.
+ * 4. No lease → the pre-split frontmatter rule: `in-progress` with an open PR
+ *    is awaiting review; without one it is implementing only while a run is
+ *    live, else `stale` (nothing holds it).
  *
- * `leasePhase` defaults to null so a caller that has not gone lease-aware yet
- * (the dashboard's local-worktree panel, [[D-S30G-task-state-plane-split]]
- * stage 6) keeps today's frontmatter behavior rather than silently
- * misclassifying.
+ * `leasePhase` defaults to null and `runLive` to true so a caller that has not
+ * gone lease-aware yet (the dashboard's local-worktree panel,
+ * [[D-S30G-task-state-plane-split]] stage 6) keeps today's frontmatter
+ * behavior rather than silently misclassifying.
  */
 function classify(
   taskState: string | null,
   openPrNumber: number | null,
   leasePhase: string | null = null,
+  runLive = true,
 ): string {
   if (taskState && taskState.startsWith('closed/')) return CATEGORY_STALE
 
   if (leasePhase === 'claimed' || leasePhase === 'working') {
-    return CATEGORY_IMPLEMENTING
+    return runLive ? CATEGORY_IMPLEMENTING : CATEGORY_STALE
   }
   if (leasePhase === 'awaiting-review' || leasePhase === 'responding') {
     return CATEGORY_AWAITING_REVIEW
@@ -95,9 +103,29 @@ function classify(
   if (leasePhase !== null) return CATEGORY_OTHER
 
   if (taskState === 'in-progress') {
-    return openPrNumber === null ? CATEGORY_IMPLEMENTING : CATEGORY_AWAITING_REVIEW
+    if (openPrNumber !== null) return CATEGORY_AWAITING_REVIEW
+    return runLive ? CATEGORY_IMPLEMENTING : CATEGORY_STALE
   }
   return CATEGORY_OTHER
+}
+
+/**
+ * Whether a run still plausibly holds the task: its work-run record has not
+ * ended and any recorded pid answers a signal-0 probe, and (with a lease) the
+ * lease has not expired. With no lease, only a live work-run record counts.
+ * Network-free: a local file read, a clock compare and a pid probe.
+ */
+function runIsLive(
+  lease: { expiresAt: string | null } | null,
+  workRun: { pid: number | null; endedAt: string | null } | null,
+  now: Date,
+): boolean {
+  const runDead =
+    workRun !== null &&
+    (workRun.endedAt !== null || (workRun.pid !== null && !pidAlive(workRun.pid)))
+  if (runDead) return false
+  if (lease === null) return workRun !== null
+  return lease.expiresAt === null || Date.parse(lease.expiresAt) > now.getTime()
 }
 
 // ── output schema ─────────────────────────────────────────────────────────────
@@ -110,12 +138,21 @@ const InflightTask = z.object({
   open_pr_number: z.number().int().nullable(),
   /** Execution phase off the local lease mirror, or null when no lease. */
   lease_phase: z.string().nullable(),
+  /** PR number the local lease mirror records, or null when no lease or none recorded. */
+  lease_pr_number: z.number().int().nullable(),
   /** Who holds the lease (`human` for a person driving the task), or null when no lease. */
   lease_owner_kind: z.string().nullable(),
+  /** The task's work run (`sdlc log search --run <id>` reads its events), or null when it has no record. */
+  runId: z.string().nullable(),
+  /** True when a person started that run with `task dispatch`; null when there is no record. */
+  manual: z.boolean().nullable(),
+  /** Where that run's output is (scratch while it runs, the published `runs/<run-id>/output.log` after, none for a foreground manual run); null when there is no record. */
+  output: RunOutputSchema.nullable(),
   category: z.string(),
 })
 
-const output = z.object({
+/** Exported so the TUI's Orchestrator source validates the child's `--json` against it. */
+export const output = z.object({
   limits: z.object({
     implement: z.number(),
     max_awaiting_review: z.number(),
@@ -165,7 +202,8 @@ export default defineOp({
     const projectRoot = realResolve(ctx.projectRoot)
 
     // ctx.sdlcConfig is hydrated by createCtx; degrade-to-defaults on any error.
-    const maxImpl = ctx.sdlcConfig.orchestrator?.limits?.implement ?? DEFAULT_IMPLEMENT_LIMIT
+    const maxImpl =
+      ctx.sdlcConfig.orchestrator?.limits?.executor?.implement ?? DEFAULT_IMPLEMENT_LIMIT
     const maxRev = ctx.sdlcConfig.orchestrator?.max_awaiting_review ?? DEFAULT_MAX_AWAITING_REVIEW
 
     const branches = listLocalBranches(projectRoot, ctx)
@@ -192,8 +230,10 @@ export default defineOp({
       // must stay network-free.
       const lease = readLocalLease(basename, projectRoot, ctx)
       const leasePhase = lease?.phase ?? null
+      const workRun = readWorkRun(projectRoot, basename)
+      const runLive = runIsLive(lease, workRun, new Date())
 
-      const category = classify(taskState, openPrNumber, leasePhase)
+      const category = classify(taskState, openPrNumber, leasePhase, runLive)
       tasks.push({
         basename,
         worktree_path: worktreeDir(wtBase, basename),
@@ -201,7 +241,11 @@ export default defineOp({
         task_state: taskState,
         open_pr_number: openPrNumber,
         lease_phase: leasePhase,
+        lease_pr_number: lease?.prNumber ?? null,
         lease_owner_kind: lease?.ownerKind ?? null,
+        ...(workRun !== null
+          ? workRunIdentity(projectRoot, workRun)
+          : { runId: null, manual: null, output: null }),
         category,
       })
     }

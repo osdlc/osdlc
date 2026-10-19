@@ -44,14 +44,12 @@ flowchart TD
   S2 --> S3[3 · compare the set]
   S3 --> S4[4 · write the report]
   S4 --> S5{5 · --fix?}
-  S5 -- yes --> A["$craft:skill-author per marked skill"] --> S6
-  S5 -- no --> S6[6 · after fill]
+  S5 -- yes --> A["$craft:skill-author per marked skill"] --> D([done])
+  S5 -- no --> D
 ```
 
 ## Steps
 
-0. Read this skill's fills from `sdlc/extend/skills/skill-review.lifecycle` if it exists; apply
-   `before` and `rules` now, and the other points where they are named.
 1. List the skills in scope: `<plugin>/skills/<name>/<name>.md`, or the one path given.
 2. Read each skill and grade it against the checks above. Record every failed check as a
    finding with its line.
@@ -61,7 +59,6 @@ flowchart TD
    split, retire or document. A skill with no finding is listed as clean.
 5. With `--fix`, run `$craft:skill-author <path>` for each skill marked tighten or map, then grade
    it again and update its section.
-6. Run the `after` fill, if any.
 
 ## Report
 
@@ -73,11 +70,6 @@ flowchart TD
 - merge: <a> + <b> — <one process they share>
 - retire: <c> — nothing calls it
 ```
-
-## Extension points
-
-- `rules`: checks added to every skill, for example a house vocabulary.
-- `after`: runs after step 5, for example opening a PR with the report or the fixes.
 
 ## Grading
 

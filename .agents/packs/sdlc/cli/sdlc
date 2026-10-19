@@ -71,17 +71,18 @@ need_deps() {
 
 home=""
 via=""
+layer="local"
 
 # ── env: SDLC_HOME ───────────────────────────────────────────────
 if is_checkout "${SDLC_HOME:-}"; then
-  home="${SDLC_HOME}"; via="SDLC_HOME"
+  home="${SDLC_HOME}"; via="SDLC_HOME"; layer="env"
 fi
 
 # ── cwd: a checkout above $PWD ──────────────────────────────────────────
 if [ -z "$home" ] && [ -z "${CLAUDE_PLUGIN_ROOT+x}" ] && [ "${SDLC_CWD_DEV:-1}" != "0" ]; then
   probe="$PWD"
   while :; do
-    if is_checkout "$probe"; then home="$probe"; via="dev checkout above cwd"; break; fi
+    if is_checkout "$probe"; then home="$probe"; via="dev checkout above cwd"; layer="cwd"; break; fi
     parent="$(dirname "$probe")"
     [ "$parent" = "$probe" ] && break
     probe="$parent"
@@ -89,7 +90,7 @@ if [ -z "$home" ] && [ -z "${CLAUDE_PLUGIN_ROOT+x}" ] && [ "${SDLC_CWD_DEV:-1}" 
 fi
 
 # ── link: `<config>/sdlc/home`, written by `sdlc dev link|use` ─────
-# Mirrors @sksizer/tiered-dirs standalone("sdlc").config(): the launcher runs
+# Mirrors @osdlc/tiered-dirs standalone("sdlc").config(): the launcher runs
 # before a runtime exists, so it cannot call the SDK.
 if [ -z "$home" ] && [ -z "${CLAUDE_PLUGIN_ROOT+x}" ]; then
   case "$(uname -s)" in
@@ -97,7 +98,7 @@ if [ -z "$home" ] && [ -z "${CLAUDE_PLUGIN_ROOT+x}" ]; then
     *)      cfg="${XDG_CONFIG_HOME:-$HOME/.config}/sdlc" ;;
   esac
   linked="$(cat "$cfg/home" 2>/dev/null || true)"
-  if is_checkout "$linked"; then home="$linked"; via="linked checkout: $cfg/home"; fi
+  if is_checkout "$linked"; then home="$linked"; via="linked checkout: $cfg/home"; layer="link"; fi
 fi
 
 # ── a selected checkout other than this one runs its source under Bun ──
@@ -111,8 +112,11 @@ if [ -n "$home" ]; then
     fi
     need_deps "$home_real" "$home_real/solutions/ontological/cli/sdlc.ts"
     announce "$home_real/solutions/ontological/cli/sdlc.ts" "$via"
+    export SDLC_LAUNCH_LAYER="$layer"
     exec bun run "$home_real/solutions/ontological/cli/sdlc.ts" "$@"
   fi
+  # The selected checkout is this launcher's own: it reads as the install, not as a dev selection.
+  layer="local"
 fi
 
 # ── local: what sits beside this launcher ───────────────────────────────
@@ -127,6 +131,7 @@ if [ "$dev_checkout" = "0" ] && [ -f "$here/sdlc.js" ]; then
     exit 1
   fi
   announce "$here/sdlc.js" "local, node"
+  export SDLC_LAUNCH_LAYER="$layer"
   exec node "$here/sdlc.js" "$@"
 fi
 if ! command -v bun >/dev/null 2>&1; then
@@ -135,4 +140,5 @@ if ! command -v bun >/dev/null 2>&1; then
 fi
 need_deps "$self" "$self/solutions/ontological/cli/sdlc.ts"
 announce "$self/solutions/ontological/cli/sdlc.ts" "local, bun"
+export SDLC_LAUNCH_LAYER="$layer"
 exec bun run "$self/solutions/ontological/cli/sdlc.ts" "$@"

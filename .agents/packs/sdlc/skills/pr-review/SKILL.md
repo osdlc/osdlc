@@ -82,7 +82,7 @@ ERROR reason="<one-line description>"
 ## 1. Fetch the PR's diff and context
 
 ```bash
-gh pr view <pr-number> --json title,url,author,baseRefName,headRefName,state,isCrossRepository
+gh pr view <pr-number> --json title,url,author,baseRefName,headRefName,headRefOid,state,isCrossRepository
 gh pr diff <pr-number>
 ```
 
@@ -92,6 +92,9 @@ gh pr diff <pr-number>
   reviewed retroactively when invoked directly); note the state in the
   posted comment. The orchestrator only ever dispatches this skill for open
   PRs.
+- Keep `headRefOid`: Step 5 records the verdict against this head, the
+  commit the diff was fetched for, even if the PR is pushed to while the
+  review runs.
 - Empty diff (no changed lines) → skip straight to Step 3 with zero
   findings — there is nothing to judge.
 
@@ -149,6 +152,8 @@ project rubric was read, or `generic` when none was configured:
   - *Tests* — `lib/foo.test.ts`: the new error branch has no test
     exercising it.
   ```
+
+Keep the per-severity counts (`violation`, `tension`, `drift`) for Step 5.
 
 Keep the comment to the findings themselves — this skill posts a report, it
 does not open a discussion thread per finding (that granularity is
@@ -212,7 +217,22 @@ Non-zero exit → surface the wrapper's stderr and exit with
 `ERROR reason="post_self_comment.sh: <stderr>"`; do not silently drop the
 review.
 
-## 5. Emit the terminal marker
+## 5. Record the verdict and emit the terminal marker
+
+Record the verdict for the head fetched in Step 1. The op applies the
+project's review strictness (`verify.blocking`, `verify.severity_floor`)
+and writes the `pr-review` entry the merge gate reads; the skill does not
+compute pass or fail itself:
+
+```bash
+scripts/sdlc pr review-verdict --pr <pr-number> --head <headRefOid> \
+  --violations <a> --tensions <b> --drifts <c>
+```
+
+Non-zero exit → `ERROR reason="pr review-verdict: <stderr>"`; a review that
+recorded no verdict is not reported complete.
+
+Then emit:
 
 ```text
 PR-REVIEW-COMPLETE: pr=<pr-number> findings=<n>
@@ -231,6 +251,9 @@ posting anything.
 If `post_self_comment.sh` fails (network, `gh` auth, cursor-write
 permissions), the review was computed but never posted — surface the error
 rather than emitting `PR-REVIEW-COMPLETE:` for a comment that never landed.
+If `pr review-verdict` fails, report the `ERROR` rather than the marker. When
+`verify.blocking` is on, the merge gate sees no verdict for the head and refuses
+with `verdict-missing` (exit 42), and the `prs` loop reviews that head again.
 
 A diff too large to review in one pass is not specially handled by this
 skill (unlike `sdlc verify changes`, which shards by file count) — judge

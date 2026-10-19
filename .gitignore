@@ -1,1 +1,4 @@
+# Written by the sdlc product release from sksizer/dev (scripts/sdlc-mirror/templates/product/gitignore).
+# An edit made here is replaced by the next release; edit it in sksizer/dev.
+# Put package ignores in packages/.gitignore, which osdlc/osdlc owns.
 node_modules/

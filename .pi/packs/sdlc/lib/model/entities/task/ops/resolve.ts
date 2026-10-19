@@ -45,7 +45,7 @@
 import { readdirSync } from 'node:fs'
 import { basename as pathBasename, isAbsolute, join, resolve, sep } from 'node:path'
 
-import { checkoutRoot } from '@sksizer/easy-git'
+import { checkoutRoot } from '@osdlc/typed-git'
 import { z } from 'zod'
 
 import { defineOp } from '@lib/registry'

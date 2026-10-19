@@ -8,9 +8,9 @@
   const floorRank = order.indexOf(it.severityFloor);
   const atOrAboveFloor = it.findings.filter(f => order.indexOf(f.severity) <= floorRank).length;
 
-  // `resolvedBase` differs from `base` when a branch name resolved to its
-  // remote copy or was kept local ahead of/diverged from it (T-PEUC).
-  const baseLabel = it.resolvedBase === it.base ? it.base : `${it.base} (resolved to ${it.resolvedBase})`;
+  // `baseLabel` is built by the op (`baseLabelOf`): the base, what it resolved to
+  // when that differs (T-PEUC), and where the base came from.
+  const baseLabel = it.baseLabel;
 
   const sourceOrder = [];
   const bySource = new Map();

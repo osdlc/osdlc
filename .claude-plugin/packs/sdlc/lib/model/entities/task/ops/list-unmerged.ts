@@ -27,8 +27,8 @@
 
 import { z } from 'zod'
 
-import { Gh, PR_REF_FIELDS } from '@sksizer/easy-gh'
-import { Git } from '@sksizer/easy-git'
+import { Gh, PR_REF_FIELDS } from '@osdlc/typed-gh'
+import { Git } from '@osdlc/typed-git'
 
 import { defineOp } from '@lib/registry'
 import type { OpCtx, OpIo } from '@lib/registry'

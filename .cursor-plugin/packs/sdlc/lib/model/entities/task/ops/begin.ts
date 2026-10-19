@@ -9,21 +9,27 @@
  * parsing, unchanged) is the escape hatch — see its doc comment on `CliHints`
  * in `lib/registry.ts`.
  *
- * Starting a task writes NOTHING to main ([[D-S30G-task-state-plane-split]]).
+ * Starting a task writes NOTHING to the target branch ([[D-S30G-task-state-plane-split]]).
  * Acquiring the work IS the lease transition: this checks the task is eligible
- * off origin/main's copy, CAS-REPLACEs the lease ref from `claimed` to
- * `working`, and resets the named feature branch (inside the worktree) onto the
- * current origin/main tip. Frontmatter `state` stays `open/ready` for the
+ * off origin/<target>'s copy (task state lives on the branch the work targets:
+ * a task readied or created only on an integration branch exists nowhere else),
+ * CAS-REPLACEs the lease ref from `claimed` to `working`, and
+ * resets the named feature branch (inside the worktree) onto the current tip
+ * of the TARGET branch ([[T-NB98]]: `--target`, else
+ * `orchestrator.target_branch`, else the repository default branch). Frontmatter `state` stays `open/ready` for the
  * task's whole in-flight life; the `## Post-mortem` stub the old start-commit
  * planted is planted at close time instead.
  *
  * Usage:
  *   sdlc task begin <task-path> --worktree <worktree-path> --branch <branch-name>
+ *                   [--target <branch>]
  *
  * Exit codes:
  *   0  the lease transitioned to `working` and the feature branch was reset to
- *      the origin/main tip successfully.
+ *      the origin/<target> tip successfully.
  *   1  a precondition failed.
+ *   23 (`UNMERGED_COMMITS`) the feature branch holds commits not on
+ *      origin/<target>; the reset would discard them, so start refuses first.
  *   2  bad arguments.
  *   12 (`LEASE_CONFLICT`) the CAS-REPLACE on the lease ref failed. Surfaced as
  *      `LEASE-TRANSITION-FAILED ref=<ref>` on stderr.
@@ -38,7 +44,7 @@ import { basename as pathBasename, dirname, join, relative, resolve } from 'node
 import { z } from 'zod'
 
 import { defineCli, EXIT, type CliContext, type CliIo } from '@sksizer/cli-tool'
-import { Git } from '@sksizer/easy-git'
+import { Git } from '@osdlc/typed-git'
 import { isInside } from '@sksizer/path-guard'
 
 import { defineOp, exitCodeFor, type OpCtx } from '@lib/registry'
@@ -48,6 +54,13 @@ import { fetchLease, transitionLease } from '@lib/services/lease/index'
 import { todayUtc } from '@lib/util/date'
 import { spawnRunner, type CommandRunner } from '@lib/util/command'
 import { repr } from '@lib/util/diagnostics'
+
+import { clearWorkRunFailures } from '@lib/services/orchestrator/work-runs'
+import {
+  assertBranchName,
+  repoDefaultBranch,
+  stateBranch,
+} from '@lib/services/orchestrator/target-branch'
 
 import { readTask, type TaskReadResult } from '../read.ts'
 import { legacyCliContext } from '@lib/util/legacy-cli.ts'
@@ -99,12 +112,12 @@ function resolveMainRepo(worktree: string, override: string | null, runner: Comm
 
 /**
  * Refuse to start a task whose state is not a pre-implementation one, off
- * origin/main's copy as returned by the entity read layer
- * (`readTask(..., { at: "origin/main" })`).
+ * origin/<target>'s copy as returned by the entity read layer
+ * (`readTask(..., { at: "origin/<target>" })`).
  *
  * There is no state flip to plan ([[D-S30G-task-state-plane-split]]) — only
  * this precondition. It reads the wrapper's raw `fm` (present on both arms),
- * so a schema-drifted copy at origin/main still gates off its raw state.
+ * so a schema-drifted copy at origin/<target> still gates off its raw state.
  */
 function assertStartEligible(res: TaskReadResult): void {
   if (res.fm === null) {
@@ -148,6 +161,7 @@ function transitionLeaseToWorking(opts: {
   transitionLease(opts.taskId, 'working', {
     cwd: opts.worktree,
     authority: opts.authority,
+    actor: 'op:task start',
   })
 }
 
@@ -159,6 +173,8 @@ export interface StartTaskOptions {
   mainRepoOverride: string | null
   today: string | null
   leaseAuthority?: string | null
+  /** The branch to reset the feature branch onto (`origin/<target>`); `main` when omitted. */
+  target?: string
 }
 
 export function startTask(opts: StartTaskOptions): number {
@@ -199,7 +215,7 @@ export function startTask(opts: StartTaskOptions): number {
   // may be this checkout's copy or the worktree's, so take its path relative to
   // ITS OWN checkout root and re-anchor that on `mainRepo` (a git root: the
   // `.git` check above). Every checkout of the repo shares one layout, so the
-  // result is the same file's path on origin/main, read from the main
+  // result is the same file's path on origin/<target>, read from the main
   // checkout's git root — never this checkout's own copy.
   const basename = pathBasename(taskPath).replace(/\.md$/, '')
   const taskCheckout = new Git(dirname(taskPath), { runner }).topLevel()
@@ -216,28 +232,67 @@ export function startTask(opts: StartTaskOptions): number {
   }
   const taskRel = relative(realCheckout, realTask)
 
-  // Source of truth is origin/main, NOT the (possibly stale or dirty) primary
-  // checkout. Read origin/main's copy through the typed entity read layer to
+  // Source of truth is origin/<target>, NOT the (possibly stale or dirty) primary
+  // checkout. Task state lives on the target branch, the one the work branches
+  // from and PRs against ([[T-NB98]]); `main` only when nothing sets a target.
+  // Read origin/<target>'s copy through the typed entity read layer to
   // check eligibility. Nothing is written back: the start transition is a lease
   // write, and frontmatter `state` stays `open/ready` for the task's whole
   // in-flight life ([[D-S30G-task-state-plane-split]]).
-  const fetchMain = new Git(mainRepo, { runner }).try.fetch('origin', 'main', {
+  const target = opts.target ?? 'main'
+  assertBranchName(target)
+  const fetchState = new Git(mainRepo, { runner }).try.fetch('origin', target, {
     quiet: true,
   })
-  if (!fetchMain.ok) {
-    opts.io.stdout(fetchMain.error.result.stdout)
-    opts.io.stderr(fetchMain.error.result.stderr)
-    throw new StartTaskError(`git fetch origin main failed in ${mainRepo}`, EXIT.error)
+  if (!fetchState.ok) {
+    opts.io.stdout(fetchState.error.result.stdout)
+    opts.io.stderr(fetchState.error.result.stderr || (fetchState.error.result.error ?? ''))
+    throw new StartTaskError(`git fetch origin ${target} failed in ${mainRepo}`, EXIT.error)
   }
   const originRead = readTask(taskRel, {
     projectRoot: mainRepo,
-    at: 'origin/main',
+    at: `origin/${target}`,
     git: runner,
   })
   if (originRead === null) {
-    throw new StartTaskError(`task file not found on origin/main: ${taskRel}`, EXIT.error)
+    throw new StartTaskError(`task file not found on origin/${target}: ${taskRel}`, EXIT.error)
   }
   assertStartEligible(originRead)
+
+  // The feature branch must already be checked out in the worktree, and must
+  // carry nothing the reset below would throw away: checked BEFORE the lease
+  // moves, so a refusal leaves the lease at `claimed`.
+  const wt = new Git(worktree, { runner })
+  const currentBranch = wt.headRef() ?? ''
+  if (currentBranch !== opts.branch) {
+    throw new StartTaskError(
+      `worktree ${worktree} is on branch ${JSON.stringify(currentBranch)}, ` +
+        `expected ${JSON.stringify(opts.branch)}`,
+      EXIT.error,
+    )
+  }
+  const fetchTip = wt.try.fetch('origin', target, { quiet: true })
+  if (!fetchTip.ok) {
+    opts.io.stdout(fetchTip.error.result.stdout)
+    opts.io.stderr(fetchTip.error.result.stderr || (fetchTip.error.result.error ?? ''))
+    throw new StartTaskError(`git fetch origin ${target} failed in ${worktree}`, EXIT.error)
+  }
+  // Only commits on neither origin/<target> nor origin/<default branch> are at
+  // risk: a worktree cut from main or an older tip of a diverged integration
+  // branch carries nothing the reset would lose. Refs that do not resolve are
+  // skipped.
+  const safeRefs = [...new Set([target, repoDefaultBranch(wt)])]
+    .map((b) => `origin/${b}`)
+    .filter((ref) => wt.resolveRef(ref) !== null)
+  const unmerged = wt.logLines({ rev: 'HEAD', notRefs: safeRefs, format: '%H' })
+  if (unmerged.length > 0) {
+    throw new StartTaskError(
+      `branch ${JSON.stringify(opts.branch)} has ${unmerged.length} commit(s) on neither ` +
+        `origin/${target} nor the default branch; resetting it onto origin/${target} would ` +
+        `discard them. Land them on ${target}, or move them to another branch, first.`,
+      exitCodeFor('UNMERGED_COMMITS'),
+    )
+  }
 
   // Lease phase transition: claimed -> working.
   if (opts.leaseAuthority !== undefined && opts.leaseAuthority !== null) {
@@ -263,33 +318,21 @@ export function startTask(opts: StartTaskOptions): number {
     }
   }
 
-  // Reset the feature branch (inside the worktree) to the new origin/main tip.
-  const wt = new Git(worktree, { runner })
+  // `task begin` lifts the orchestrator's hold on the task (three not-clean runs
+  // in a row) when a person's session reaches it; a run the loop itself has in
+  // flight is untouched.
+  clearWorkRunFailures(mainRepo, basename)
 
-  const currentBranch = wt.headRef() ?? ''
-  if (currentBranch !== opts.branch) {
-    throw new StartTaskError(
-      `worktree ${worktree} is on branch ${JSON.stringify(currentBranch)}, ` +
-        `expected ${JSON.stringify(opts.branch)}`,
-      EXIT.error,
-    )
-  }
-
-  // Fetch so the worktree's origin/main ref reflects any sibling worker's
-  // commits, then hard-reset the feature branch onto that tip — no local
-  // `main` involved. `try` on both so failure surfaces as this script's own
-  // exit 1 with git's output relayed, not a bare `CommandFailed`.
-  const fetchTip = wt.try.fetch('origin', 'main', { quiet: true })
-  if (!fetchTip.ok) {
-    opts.io.stdout(fetchTip.error.result.stdout)
-    opts.io.stderr(fetchTip.error.result.stderr)
-    throw new StartTaskError(`git fetch origin main failed in ${worktree}`, EXIT.error)
-  }
-  const reset = wt.try.resetHard('origin/main')
+  // Hard-reset the feature branch (inside the worktree) onto the origin/<target>
+  // tip fetched above — no local branch involved. `try` so failure surfaces as
+  // this script's own exit 1 with git's output relayed, not a bare
+  // `CommandFailed`. A target missing on the remote failed the fetch earlier:
+  // no fallback to another branch.
+  const reset = wt.try.resetHard(`origin/${target}`)
   if (!reset.ok) {
     opts.io.stdout(reset.error.result.stdout)
-    opts.io.stderr(reset.error.result.stderr)
-    throw new StartTaskError(`git reset --hard origin/main failed in ${worktree}`, EXIT.error)
+    opts.io.stderr(reset.error.result.stderr || (reset.error.result.error ?? ''))
+    throw new StartTaskError(`git reset --hard origin/${target} failed in ${worktree}`, EXIT.error)
   }
 
   // Emit a deterministic marker so callers can grep for success.
@@ -312,7 +355,7 @@ function reprError(exc: unknown): string {
 
 const cli = defineCli({
   name: 'sdlc task begin',
-  summary: 'Promote a task on origin/main and reset its worktree onto the new tip.',
+  summary: "Start a task's lease and reset its worktree onto the target branch tip.",
   flags: {
     worktree: {
       kind: 'string',
@@ -341,11 +384,16 @@ const cli = defineCli({
       valueName: 'remote',
       help: 'Transition the task lease claimed -> working against this authority.',
     },
+    target: {
+      kind: 'string',
+      valueName: 'branch',
+      help: 'The branch to reset onto (origin/<branch>). Default: orchestrator.target_branch, else the repository default branch.',
+    },
   },
   positionals: [{ name: 'task-file', required: true, help: 'The task markdown to start.' }],
 })
 
-export function main(argv: readonly string[], ctx: CliContext): number {
+export function main(argv: readonly string[], ctx: CliContext, defaultTarget = 'main'): number {
   const parsed = cli.parse(argv, ctx.io)
   if (parsed.status === 'help') return EXIT.ok
   if (parsed.status === 'error') {
@@ -362,6 +410,7 @@ export function main(argv: readonly string[], ctx: CliContext): number {
       mainRepoOverride: args.mainRepo ?? null,
       today: args.today ?? null,
       leaseAuthority: args.leaseAuthority ?? null,
+      target: args.target ?? defaultTarget,
     })
   } catch (exc) {
     if (exc instanceof StartTaskError) {
@@ -383,10 +432,12 @@ const output = z.object({ exitCode: z.number().int() })
 
 export default defineOp({
   path: ['task', 'begin'],
-  summary: 'Promote a task on origin/main and reset its worktree onto the new tip.',
+  summary: "Start a task's lease and reset its worktree onto the target branch tip.",
   hidden: true,
   input,
   output,
   cli: { rawArgv: true },
-  handler: ({ argv }, ctx: OpCtx) => ({ exitCode: main(argv, legacyCliContext(ctx)) }),
+  handler: ({ argv }, ctx: OpCtx) => ({
+    exitCode: main(argv, legacyCliContext(ctx), stateBranch(ctx)),
+  }),
 })

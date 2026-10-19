@@ -1,11 +1,12 @@
 /**
  * `sdlc task check-ancestry` — classify a `/sdlc:task-work` feature branch's
- * ancestry against `origin/main` for contamination from parallel task-work
+ * ancestry against `--base-ref` (default `origin/<target>`: `orchestrator.target_branch`,
+ * else `origin/main`; [[T-NB98]]) for contamination from parallel task-work
  * sessions OR a stale base.
  *
  * Ported off `bun run ${CLAUDE_PLUGIN_ROOT}/skills/task-work/check_ancestry.ts`
  * ([[T-VAW3]] AC-2: a skill script invoked by file path resolves its
- * `@sksizer/cli-tool` / `@sksizer/easy-git` imports by accident of the
+ * `@sksizer/cli-tool` / `@osdlc/typed-git` imports by accident of the
  * in-repo `node_modules`, which is absent from a plugin copied outside this
  * monorepo — no `bun install` ever runs there). CLI parsing, stdout/stderr
  * shape and exit codes are unchanged from the retired script — only the
@@ -16,7 +17,7 @@
  * Stdout verdicts:
  *   - `clean`
  *   - `contaminated: [<basename-1>, <basename-2>, ...] last_sha=<sha>`
- *   - `stale-base: <N> upstream-drift files; rebase onto origin/main`
+ *   - `stale-base: <N> upstream-drift files; rebase onto <base-ref>`
  * and the exit codes (0 classification produced, 1 precondition failed,
  * 2 the command was typed wrong).
  *
@@ -59,10 +60,11 @@
 import { z } from 'zod'
 
 import { defineCli, EXIT, type CliContext } from '@sksizer/cli-tool'
-import { CommandFailed, Git } from '@sksizer/easy-git'
+import { CommandFailed, Git } from '@osdlc/typed-git'
 
 import { defineOp, type OpCtx } from '@lib/registry'
 import { legacyCliContext } from '@lib/util/legacy-cli.ts'
+import { stateBranch } from '@lib/services/orchestrator/target-branch'
 
 const START_COMMIT_SUBJECT_RE = /^chore\(tasks\): start ([\w\-./]+)\s*$/
 
@@ -179,7 +181,7 @@ export function classify(
   return { verdict: 'clean', contaminants: [], driftFiles: [] }
 }
 
-export function formatVerdict(result: ClassifyResult): string {
+export function formatVerdict(result: ClassifyResult, baseRef = 'origin/main'): string {
   switch (result.verdict) {
     case 'clean':
       return 'clean'
@@ -192,14 +194,14 @@ export function formatVerdict(result: ClassifyResult): string {
     case 'stale-base': {
       const n = result.driftFiles.length
       const noun = n === 1 ? 'file' : 'files'
-      return `stale-base: ${n} upstream-drift ${noun}; rebase onto origin/main`
+      return `stale-base: ${n} upstream-drift ${noun}; rebase onto ${baseRef}`
     }
   }
 }
 
 const cli = defineCli({
   name: 'sdlc task check-ancestry',
-  summary: "Classify a feature branch's ancestry against origin/main.",
+  summary: "Classify a feature branch's ancestry against origin/<target> (default origin/main).",
   flags: {
     thisBasename: {
       kind: 'string',
@@ -210,8 +212,7 @@ const cli = defineCli({
     baseRef: {
       kind: 'string',
       valueName: 'ref',
-      default: 'origin/main',
-      help: 'The upstream tip to classify against.',
+      help: 'The upstream tip to classify against. Default: origin/<target branch>.',
     },
     cwd: {
       kind: 'string',
@@ -221,7 +222,7 @@ const cli = defineCli({
   },
 })
 
-export function main(argv: readonly string[], ctx: CliContext): number {
+export function main(argv: readonly string[], ctx: CliContext, defaultTarget = 'main'): number {
   const parsed = cli.parse(argv, ctx.io)
   if (parsed.status === 'help') return EXIT.ok
   if (parsed.status === 'error') {
@@ -230,9 +231,10 @@ export function main(argv: readonly string[], ctx: CliContext): number {
   }
   const { thisBasename, baseRef, cwd } = parsed.values
 
+  const base = baseRef ?? `origin/${defaultTarget}`
   let result: ClassifyResult
   try {
-    result = classify(thisBasename, baseRef, cwd ?? ctx.cwd)
+    result = classify(thisBasename, base, cwd ?? ctx.cwd)
   } catch (exc) {
     if (exc instanceof CommandFailed) {
       ctx.io.stderr(`error: git invocation failed: ${exc.detail || exc.message}\n`)
@@ -241,7 +243,7 @@ export function main(argv: readonly string[], ctx: CliContext): number {
     throw exc
   }
 
-  ctx.io.stdout(formatVerdict(result) + '\n')
+  ctx.io.stdout(formatVerdict(result, base) + '\n')
   return EXIT.ok
 }
 
@@ -257,10 +259,12 @@ const output = z.object({ exitCode: z.number().int() })
 
 export default defineOp({
   path: ['task', 'check-ancestry'],
-  summary: "Classify a feature branch's ancestry against origin/main.",
+  summary: "Classify a feature branch's ancestry against origin/<target> (default origin/main).",
   hidden: true,
   input,
   output,
   cli: { rawArgv: true },
-  handler: ({ argv }, ctx: OpCtx) => ({ exitCode: main(argv, legacyCliContext(ctx)) }),
+  handler: ({ argv }, ctx: OpCtx) => ({
+    exitCode: main(argv, legacyCliContext(ctx), stateBranch(ctx)),
+  }),
 })

@@ -6,13 +6,30 @@ choices for the sdlc plugin's skills. It is operational config, not a
 planning artifact — it does not live under `docs/planning/` and is not
 managed by `/sdlc:setup`'s entity-schema machinery.
 
+## Where the file lives
+
+By default `sdlc.yaml` sits at the project root and `sdlc.local.yaml` beside it.
+`SDLC_CONFIG=<path>` points every tool built on the library at another file of
+the same shape and REPLACES that pair: while it is set, neither root file is
+read, a relative path resolves against the working directory at startup, and
+the overlay is `<dir>/<name without its last extension>.local.<ext>`
+(`tools/sdlc.yaml` pairs with `tools/sdlc.local.yaml`, `cfg.yml` with
+`cfg.local.yml`). A path that names a missing file is an error (exit 14) naming
+it; `sdlc config explain <key>` prints the absolute paths it read, and `sdlc
+config set --layer project|local` writes the pointed file and its overlay. A
+file named this way is project-sourced for the repository-trust gate exactly
+like `sdlc.yaml`, so it does not bypass exit 21. The machine file
+(`SDLC_MACHINE_CONFIG`) and the trust store are not affected.
+
 ## Where the shape lives
 
 The **authoritative source of truth** for `sdlc.yaml` is the Zod schema
-`SdlcConfigSchema` in `solutions/ontological/lib/config/load.ts`. Every supported
-top-level key, its type, its default, and its description live there as
-`.describe()` and `.default()` annotations, and every top-level key also
-carries a `.meta()` block (see [Key meta](#key-meta)). This prose doc covers
+`SdlcConfigSchema`, which `solutions/ontological/lib/config/load.ts` assembles
+from one section module per top-level key under `lib/config/sections/` (the
+assembly, loader and file resolver are `@osdlc/config-layers`'s). Every
+supported top-level key, its type, its default, and its description live in
+its section as `.describe()` and `.default()` annotations, and every top-level
+key also carries a `.meta()` block (see [Key meta](#key-meta)). This prose doc covers
 the "why" (what each key is for, which skills consume it, when to set it) but
 does not re-state the field list.
 
@@ -33,14 +50,16 @@ fields; `lib/config/reference.ts`), and `sdlc docs generate --check` fails when
 the committed copy drifts from the schema. From inside a project,
 `sdlc config list` shows every key's effective value and the layer it comes
 from, and `sdlc config explain <key>` (dotted paths such as
-`orchestrator.limits.implement` work) prints one key's reference entry
+`orchestrator.limits.executor.implement` work) prints one key's reference entry
 alongside its value here.
 
 ## Key meta
 
-Every top-level key of `SdlcConfigSchema` ends its schema chain with
-`.meta(keyMeta({...}))`, typed by `ConfigKeyMeta` in
-`solutions/ontological/lib/config/meta.ts`:
+Every top-level key of `SdlcConfigSchema` carries a meta block, set through
+`defineSdlcSection`. The meta structure is `ConfigKeyMeta` in
+`packages/ts/config-layers/meta.ts`; sdlc's terms (categories, appliers,
+layers, run contexts, enforcement levels) live in
+`solutions/ontological/lib/config/vocabulary.ts`:
 
 | Field | Values | Meaning |
 |---|---|---|
@@ -55,8 +74,9 @@ Meta is required on top-level keys only; a nested field carries a
 on the chain, because `.default()`/`.prefault()`/`.optional()` each wrap the
 schema in a new instance and the registry is keyed by instance.
 `checkConfigMeta(shape)` reports every key with missing or malformed meta, and
-`lib/config/meta.test.ts` fails on any report. The same test checks the claims
-the code can confirm: every `<path>#<symbol>` consumer exists and mentions the
+`lib/config/meta.test.ts` fails on any report. The same test runs the
+completeness kit (`packages/ts/config-layers/meta-kit.ts`), which checks the
+claims the code can confirm: every `<path>#<symbol>` consumer exists and mentions the
 symbol, the `machine` layer is claimed by exactly the keys
 `MachineConfigSchema` declares, and no trust key appears in `SdlcConfigSchema`
 (trust is machine-local; see [Trust](#trust)).
@@ -80,8 +100,13 @@ first read of `ctx.sdlcConfig` (once per ctx). Handlers read config via `ctx.sdl
   ops that read, explain, edit or diagnose the config (`sdlc config
   get|list|explain|set|unset|scaffold`, `sdlc project doctor`) run against an
   invalid file, reporting the problem rather than refusing.
-- Memoized per resolved absolute path. Call `clearConfigCache()` between
-  tests.
+- Memoized per resolved absolute path, successes only, and invalidated when
+  `sdlc.yaml` or `sdlc.local.yaml` changes on disk (stat signature: mtime,
+  ctime, size, inode, or absence), so a long-running host sees an edit at its
+  next load. There is no fallback to the last good config: after an invalid
+  edit every load throws until the files are valid again; `orchestrate run`
+  holds its previous config itself and skips the pass. Call `clearConfigCache()`
+  between tests.
 
 For the strict surface (schema validation / error reporting to humans),
 use `validateFile` from `@lib/config` — it validates via `SdlcConfigSchema`
@@ -155,13 +180,16 @@ pr_review:                  # sdlc pr review
   not_the_author: true      # the author rule — see profiles: below
 
 orchestrator:
-  limits:                  # per-operation concurrency caps — see below
-    implement: 5           # cap on concurrent /sdlc:task-work sub-agents
-    pr_review: 2
-    pr_respond: 3
-    pr_update: 5
-    close_out: 5
-    issues: 2
+  limits:                  # concurrency caps in two pools — see below
+    executor:              # task execution
+      implement: 5         # cap on concurrent /sdlc:task-work sub-agents
+      pr_review: 2
+      pr_respond: 3
+      pr_update: 5
+      close_out: 5
+      issues: 2
+    schedule:              # scheduled runs
+      total: 1
   max_awaiting_review: 20   # informational ceiling on open PRs awaiting review
   review:
     max_rounds: 3           # review/respond round-trips per PR before it stops
@@ -263,6 +291,13 @@ dispatched by the orchestrate loop and `sdlc session launch` alike. `profile`
 names a `profiles:` entry; `tool` is a reference (`codex`, `claude/opus@high`).
 `engine` and `model` were removed: each is an unrecognized key.
 
+`generate` is an optional project-defined name for the committed files a
+change must rebuild before `check` (bundles, copied packs, generated docs,
+goldens). sdlc ships no default list and knows nothing about what it builds;
+`/sdlc:task-work` (after implementing and after a base rebase) and
+`/sdlc:pr-respond` run it with `sdlc quality run --name generate
+--allow-empty`, so a project that omits it no-ops.
+
 Execution semantics:
 
 - A `script`/bare-string step is invoked through a shell. Multi-word
@@ -275,6 +310,19 @@ Execution semantics:
 - Empty list (`workflows.check: []`) and missing name both mean "nothing" for
   baseline verbs, with one exception: `setup-hooks` absent falls back to
   `setup` (same cascade logic as below); explicit `[]` means no fallback.
+- Under the orchestrator (`orchestrate run` and its ticks), a `script` step
+  runs in its own process group and session. A kill, or a Ctrl-C to sdlc,
+  then reaches every process the step started. The step has no controlling
+  terminal, so a prompt on `/dev/tty` fails: an ssh passphrase on
+  `git push`, a credential prompt, `pinentry-curses`. Set
+  `process_group: false` on a `{script}` step that must prompt. A `SIGKILL`
+  sent to the caller's process group (for example `timeout -s KILL`), or a
+  `SIGKILL` of sdlc itself, does not reach a step in its own group and leaves
+  its tree running. Once the step's `sh` exits, a process it left in the
+  background that still holds the step's output is killed 250 ms later.
+  Redirect its output (`cmd >/dev/null 2>&1 &`) to let it outlive the step.
+  `sdlc run <workflow>` streams its steps with inherited stdio and keeps the
+  terminal either way.
 
 Examples:
 
@@ -508,7 +556,7 @@ repository must not be able to grant itself trust. The policy engine itself —
 the glob matcher and its dialect, the `origin`-owner lookup, and the
 marker → path → owner precedence — lives in
 [`@sksizer/sdlc-tool`](../../../packages/ts/sdlc-tool/README.md), the
-repo-aware substrate downstream of cli-tool/easy-git/easy-gh that sdlc
+repo-aware substrate downstream of cli-tool/typed-git/typed-gh that sdlc
 mounts; see that package's README for the glob dialect and the
 origin-remote threat model. What follows here is sdlc's own adapter: the
 machine-file keys, `~`/`{name}` token expansion, and how `sdlc repo trust
@@ -574,24 +622,33 @@ shape.
 
 The `orchestrator:` block configures the categorized in-flight limits
 that `/sdlc:orchestrate` enforces during its dispatch step, plus the
-per-operation dispatch caps the `work`/`prs`/`merges`/`issues` ticks
-gate every session-starting dispatch against:
+concurrency caps the `work`/`prs`/`merges`/`issues` ticks gate every
+dispatch against, in two pools under one optional overall `total`. A
+start is allowed only when its own cap, its pool's `total` and the overall
+`total` all have room. The `executor` pool covers task execution; the
+`schedule` pool covers scheduled runs, enforced by the schedule loop
+(T-URC0):
 
 ```yaml
 orchestrator:
   limits:
-    implement: 5      # default
-    pr_review: 2      # default
-    pr_respond: 3     # default
-    pr_update: 5      # default
-    close_out: 5      # default
-    issues: 2         # default
+    executor:          # task execution pool
+      implement: 5     # default
+      pr_review: 2     # default
+      pr_respond: 3    # default
+      pr_update: 5     # default
+      pr_merge: 3      # default
+      close_out: 5     # default
+      issues: 2        # default
+      # total: unset — no executor-pool cap by default
+    schedule:          # scheduled-run pool
+      total: 1         # default
     session_ttl_minutes: 180   # default
-    # total: unset — no cross-operation cap by default
+    # total: unset — no overall cap across both pools by default
   max_awaiting_review: 20   # default
 ```
 
-- **`limits.implement:`** — hard cap on concurrent `implement`
+- **`limits.executor.implement:`** — hard cap on concurrent `implement`
   dispatches: tasks currently in the `implementing` category (state
   `in-progress`, no open PR), read via `sdlc task inflight`. Counts
   sessions already running from earlier passes plus this pass's own
@@ -603,14 +660,11 @@ orchestrator:
   run first in the pass (`--loop issues` alone), the `issues` tick
   seeds the same `task inflight` count itself, so it can never push
   past the cap while tasks are already implementing. Default: `5`.
-  This replaces the old top-level `orchestrator.max_implementations`
-  key (same default, same semantics) now that every dispatching
-  operation has its own cap.
-- **`limits.pr_review:`** — cap on concurrent `pr-review` dispatches
+- **`limits.executor.pr_review:`** — cap on concurrent `pr-review` dispatches
   (the `prs` tick's new-PR path). Counted from live `.sdlc/log/sessions/`
   records plus this pass's own dispatches (see
   `limits.session_ttl_minutes` for what "live" means). Default: `2`.
-- **`limits.pr_respond:`** — cap on concurrent `pr-respond`
+- **`limits.executor.pr_respond:`** — cap on concurrent `pr-respond`
   dispatches (the `prs` tick's NEEDS-RESPONSE/CI-FAILED path,
   `merges`' CONFLICTS path, and a `respond` chain-stage advance from
   the `issues` tick). Durable for fresh dispatches, per-pass for
@@ -622,33 +676,45 @@ orchestrator:
   within the pass that started it; a `live` delivery into an
   already-running session starts no new session and never counts at
   all. Default: `3`.
-- **`limits.pr_update:`** — cap on concurrent `pr-update` dispatches
+- **`limits.executor.pr_update:`** — cap on concurrent `pr-update` dispatches
   (the `merges` tick's stale-branch fan-out). Counted per pass only:
   it is a deterministic script step, not an agent session, so no
   session record exists to scan on a later pass. Every attempt counts,
-  whether the script exits clean or not. Today the built-in
-  `pr-update` workflow runs `sdlc pr update --pr {pr}` without
-  `--apply`, so it writes nothing: this cap throttles those read-only
-  measurements, and only starts bounding real rebase/merge work once a
-  workflow applies updates. Default: `5`.
-- **`limits.close_out:`** — cap on concurrent `close-out` dispatches
+  whether the script exits clean or not. The built-in
+  `pr-update` workflow runs `sdlc pr update --pr {pr} --apply`, so each
+  dispatch can push a rebased or merged head: this cap bounds that
+  rebase/merge work. Default: `5`.
+- **`limits.executor.close_out:`** — cap on concurrent `close-out` dispatches
   (the `merges` tick's MERGED-verdict path, and a `close-out`
   chain-stage advance from the `issues` tick). Counted from live
   `.sdlc/log/sessions/` records plus this pass's own dispatches. A merged
   PR leaves the open-PR listing, so a close-out a cap (or a pause)
   holds back is recorded in `.sdlc/orchestrator-pending-close-outs.json`
   and retried first on the next pass. Default: `5`.
-- **`limits.issues:`** — cap on concurrent chain-stage advances
+- **`limits.executor.issues:`** — cap on concurrent chain-stage advances
   dispatched by the `issues` tick, enforced IN ADDITION to whichever
   of the caps above the advanced stage's own workflow counts against.
   Counted per pass only (the underlying stage's own cap carries the
   durable count). Default: `2`.
-- **`limits.total:`** — optional cap across ALL of the operations
-  above combined, checked in addition to each one's own limit. Unset
-  by default: no cross-operation cap.
+- **`limits.executor.pr_merge:`** — cap on PR merges the `merges` tick
+  performs in one pass. Counted per pass only: a merge is a deterministic
+  op call, not an agent session. Default: `3`.
+- **`limits.executor.total:`** — optional cap across ALL of the executor
+  operations above combined, checked in addition to each one's own
+  limit. Reported as `limit executor <n>/<cap>`. Unset by default: no
+  executor-pool cap. Schedules do not count here.
+- **`limits.schedule.total:`** — cap on schedule entries running at once.
+  Counted from the schedule run lock and state file, not from session
+  records, so a script-only run counts too. The schedule loop (T-URC0)
+  enforces this pool; the orchestrate ticks do not yet. There is no
+  per-entry cap: an entry never overlaps itself. Default: `1`.
+- **`limits.total:`** — optional machine-wide cap across BOTH pools:
+  every executor operation plus every running schedule entry, checked in
+  addition to each one's own cap and its pool total. Reported as
+  `limit total <n>/<cap>`. Unset by default: no overall cap.
 - **`limits.session_ttl_minutes:`** — how long a session record with
   no recorded `pid` still counts as running toward the session-counted
-  caps (`pr_review`, `pr_respond`, `close_out`). A headless launch
+  caps (`executor.pr_review`, `executor.pr_respond`, `executor.close_out`). A headless launch
   stamps the spawned engine's pid on its record, and a record with a
   pid counts only while that process is alive, so a session orphaned
   by a killed orchestrator stops blocking once its process is gone; a
@@ -692,16 +758,17 @@ task file's frontmatter is already `closed/...`; the close-out
 teardown missed something and the digest is the surface for the
 human (or a follow-up tick) to clean it up.
 
-The counter behind `limits.implement`'s durable share is `sdlc task
+The counter behind `limits.executor.implement`'s durable share is `sdlc task
 inflight` — see its `--help` for the schema of its JSON output. The
 orchestrator shells out to it once per tick.
 
-Missing block or missing keys default to `limits.implement: 5` (and
+Missing block or missing keys default to `limits.executor.implement: 5` (and
 the rest of `limits`' own defaults) and `max_awaiting_review: 20`. An
 empty `orchestrator: {}` block is treated the same as missing. The
 retired top-level `orchestrator.max_implementations` key is now an
 unrecognized key — a leftover copy of it fails validation the same
-way any other typo would, rather than being silently accepted. A
+way any other typo would, rather than being silently accepted.
+A
 config that fails validation stops every sdlc command (see "Single
 hydration point"), `orchestrate run` included, `--dry-run` too.
 
@@ -864,13 +931,14 @@ every tick. Default: `900`.
 
 ##### Pausing the orchestrator
 
-`sdlc orchestrate pause [--loop work|prs|merges|issues]...` /
+`sdlc orchestrate pause [--loop work|prs|merges|issues|schedule]...` /
 `sdlc orchestrate resume [--loop ...]` / `sdlc orchestrate status` are
 runtime switches, not `sdlc.yaml` config — they persist to
-`.sdlc/pause.json` (gitignored, `lib/services/dispatch/pause.ts`), so a
+`.sdlc/pause.json` in the main checkout (gitignored, shared by every worktree,
+`lib/services/dispatch/pause.ts`), so a
 running `sdlc orchestrate run --loop ... --interval ...` foreground
 loop picks up a pause on its very next tick without a restart. No
-`--loop` means all four loops; repeating the flag composes (two
+`--loop` means all five loops; repeating the flag composes (two
 separate `pause --loop prs` / `pause --loop work` calls both end up
 paused, not the second replacing the first). Both `pause` and `resume`
 accept `--dry-run` to preview the resulting state without writing it.
@@ -1220,17 +1288,19 @@ Missing block or missing keys default to `enabled: true`,
 
 ### `log.store:` — where the agent log lives
 
-`log.store.path` (default `.sdlc/log`, gitignored) is the log root. A relative path is relative to
-the checkout `log.store.scope` names: `repo` (the default) is the repository's **main checkout**,
-found from the git common dir, so every worktree of a repo shares one log and the session hooks and
-the op journal cannot disagree; `worktree` is each worktree's own project root, and everything a
-session does (its hook command's `--project-root`, `SDLC_PROJECT_ROOT`, the launch records) goes to
-the worktree it works in. Absolute, `~` and `{token}` paths and `layout: by-project` ignore the
-scope. Outside git (or in a bare repo) the project root is used. A committed store, normally
-`scope: worktree` with a path like `sdlc/log`, needs `sdlc log setup` (the `.gitattributes`
-union-merge rule for the append-only journal) and `sdlc log stage` as a `hooks: pre-commit` step;
-see `docs/logging.md` ("Where the log lives"). The change of default is a hard cutover: a
-`.sdlc/log` left inside a worktree is not read.
+`log.store.tracked` (default `false`) picks the log root. `false`: `.sdlc/log`, gitignored, in the
+repository's **main checkout** (found from the git common dir), so every worktree of a repo shares
+one log and the session hooks and the op journal cannot disagree; outside git (or in a bare repo)
+the project root is used. `true`: `sdlc/log` in the writing process's own project root, so the log
+is committed with the branch that wrote it, and everything a session does (its hook command's
+`--project-root`, `SDLC_PROJECT_ROOT`, the launch records) goes to the worktree it works in.
+`tracked` is accepted only in `sdlc.local.yaml` (a committed `true` would make every clone commit
+its hostname and user name), and it needs `sdlc log setup` (the `.gitattributes` union-merge rule
+for the append-only journal) and `sdlc log stage` as a `hooks: pre-commit` step; `sdlc project
+doctor` fails when `sdlc/log` is gitignored or the rule is missing. `log.store.path` now names a
+root OUTSIDE the project only (with `layout: by-project`, `sdlc.local.yaml` only) and cannot be
+combined with `tracked: true`; `log.store.scope` and in-project relative paths are gone. See
+`docs/logging.md` ("Where it lives"). A hard cutover: a store at the old location is not read.
 
 ### `paths:` — named directories the other path settings refer to
 
@@ -1496,7 +1566,7 @@ other name fails validation. Each value is an ordered list of hook steps: a
 `run:` (a workflow name, resolved through `lib/config/hooks.ts`'s
 `resolveHook` — the same shared layered-resolution primitive `workflows:`
 uses, with no `env` layer and an empty default, since hooks have no built-in
-step list) or `script:` (a command line) step, plus three optional fields. A
+step list) or `script:` (a command line) step, plus four optional fields. A
 `run:` target's own steps splice in via `resolveWorkflow` exactly like a
 workflow's own `run:` composition (see "Composing a workflow from named
 leaves" above) — a spliced-in `skill:`/`prompt:` step fails resolution with
@@ -1514,6 +1584,9 @@ hooks:
   commit-msg:
     - script: scripts/lint-msg.sh "$1"
       on_fail: warn
+  pre-push:
+    - script: scripts/sign-release.sh
+      process_group: false    # prompts for a passphrase on the terminal
 ```
 
 - **`when`**: `always` (default), or `deps-missing`, which runs the step only
@@ -1535,8 +1608,23 @@ hooks:
   directly, through the same `notify:` section.
 - **`name`**: the label hook output, markers and notifications use. It
   defaults to the verb or script text.
+- **`process_group`**: `true` (default) runs the step in its own process
+  group and session. A kill, or a Ctrl-C to sdlc, then reaches every process
+  the step started. A step in its own session has no controlling terminal, so
+  a prompt on `/dev/tty` fails: a git credential prompt, an ssh passphrase,
+  `pinentry-curses`. Set `false` for a step that must prompt; a kill then
+  reaches only its `sh`. A `SIGKILL` sent to git's process group (for example
+  `timeout -s KILL git commit`), or a `SIGKILL` of sdlc itself, does not
+  reach a step in its own group and leaves its tree running. Once the step's
+  `sh` exits, a process it left in the
+  background that still holds the step's output is killed 250 ms later.
+  Redirect its output (`cmd >/dev/null 2>&1 &`) to let it outlive the step.
 
-Each step runs as `sh -c <text> <hook> <args...>` in the checkout root, so
+A Ctrl-C, `SIGTERM` or `SIGHUP` to sdlc stops the hook. The step running
+fails as `interrupted`, no later step runs, and nothing is parked or notified,
+whatever `on_fail` says. sdlc exits with `128 + signal number`.
+
+Each step runs as `sh -c -- <text> <hook> <args...>` in the checkout root, so
 the hook's own arguments are `$1`, `$2`, and so on. No `{placeholder}`
 templating happens. The steps come from the repository, so a hook with a
 step to run needs the repo trusted (`sdlc repo trust`) and exits 21 without
@@ -1726,7 +1814,7 @@ root). Keep the committed `sdlc.yaml` for entries that hold on every clone
 and put personal directories in the machine file.
 
 Shape and loader: `MachineConfigSchema` in
-`solutions/ontological/lib/config/machine.ts`, read by `@sksizer/cli-tool/config`'s
+`solutions/ontological/lib/config/machine-schema.ts`, read by `@osdlc/config-layers`'s
 `machineConfigFile` with the same never-throws, defaults-on-failure contract
 as `loadConfig`. The merge rules live where each
 key is consumed — `repoContainers` (`repos`), `pathTokens` (`paths`),
@@ -1759,7 +1847,7 @@ there too. The list below is the narrative companion.
   hydrated once per CLI invocation by `createCtx` via `loadConfig`. Every
   op handler reads config from here.
 - **`solutions/ontological/lib/model/entities/task/ops/inflight.ts`** — reads
-  `ctx.sdlcConfig.orchestrator.limits.implement` and
+  `ctx.sdlcConfig.orchestrator.limits.executor.implement` and
   `ctx.sdlcConfig.orchestrator.max_awaiting_review` for the dispatch caps.
 - **`solutions/ontological/lib/services/orchestrator/ticks/_limits.ts`** —
   reads the whole `ctx.sdlcConfig.orchestrator.limits` block; the one shared
@@ -1829,7 +1917,14 @@ there too. The list below is the narrative companion.
   path.
 - **`sdlc quality run`** (`solutions/ontological/lib/services/quality/ops/run.ts`) — executor.
   Resolves a verb name via `resolveWorkflowCommands(name, projectRoot)` where
-  name defaults to `check`, and runs each verb. Also accepts `--baseline-dir
+  name defaults to `check`, and runs each verb. The project root is
+  `--project-root` or the nearest `sdlc.yaml`, so a bare `--name generate`
+  reads that project's `sdlc.yaml`; `--config <path>` names another
+  `sdlc.yaml` (its directory is the root) and `--verbs` runs a positional list
+  instead (the two are mutually exclusive). Project-sourced lists are
+  trust-gated either way. `--dry-run` resolves and gates as normal, then lists
+  the commands without running them. An unconfigured name warns naming the
+  project root it looked in (exit non-zero unless `--allow-empty`). Also accepts `--baseline-dir
   <path>` and `--diff-against-baseline <sha>`.
 - **`solutions/ontological/lib/services/git/arm-worktree.ts`** — resolves
   `setup-hooks` for ephemeral commit-worktrees via `resolveWorkflowCommands`,

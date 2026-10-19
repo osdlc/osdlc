@@ -22,7 +22,7 @@
 import { parse as parseYaml } from '@lib/util/yaml'
 import { splitFrontmatter as utilSplitFrontmatter } from '@lib/util/frontmatter'
 import { sourceAtRev } from '@lib/model/read'
-import { Git } from '@sksizer/easy-git'
+import { Git } from '@osdlc/typed-git'
 import { mapFailed, type CommandRunner } from '@lib/util/command'
 import { repr } from '@lib/util/diagnostics'
 
@@ -100,23 +100,15 @@ function resolveBaseRefs(g: Git, candidate: string): string[] {
 // branch. An integration branch such as `sdlc-1.0` collects reviewed task PRs
 // and the state commits that ready them; a task branch cut from it inherits
 // those commits, which are not exclusive to the task branch. The branch is the
-// `orchestrator.target_branch` in the task branch's own `sdlc.yaml`, so only a
-// branch the project names counts: a wip push to some other remote branch
-// still leaves a state-only commit flagged. Returns `origin/<target>` (else the
-// local `<target>`) when it resolves, otherwise nothing.
+// `orchestrator.target_branch` in the task branch's own `sdlc.yaml`, else (for
+// a branch cut before the project named one) in the `sdlc.yaml` of the checkout
+// running the lint. Either way only a branch the project names counts: a wip
+// push to some other remote branch still leaves a state-only commit flagged.
+// Returns `origin/<target>` (else the local `<target>`) when it resolves,
+// otherwise nothing.
 function integrationBase(g: Git, runner: CommandRunner, branch: string): string[] {
-  const raw = fileAtRev(runner, g.cwd, branch, 'sdlc.yaml')
-  if (raw === null) {
-    return []
-  }
-  let target: unknown
-  try {
-    target = (parseYaml(raw) as { orchestrator?: { target_branch?: unknown } } | null)?.orchestrator
-      ?.target_branch
-  } catch {
-    return []
-  }
-  if (typeof target !== 'string' || target.length === 0) {
+  const target = targetBranchAt(runner, g.cwd, branch) ?? targetBranchAt(runner, g.cwd, 'HEAD')
+  if (target === null) {
     return []
   }
   for (const ref of [`origin/${target}`, target]) {
@@ -125,6 +117,22 @@ function integrationBase(g: Git, runner: CommandRunner, branch: string): string[
     }
   }
   return []
+}
+
+/** `orchestrator.target_branch` in the `sdlc.yaml` at `rev`, or null when unset/unreadable. */
+function targetBranchAt(runner: CommandRunner, repo: string, rev: string): string | null {
+  const raw = fileAtRev(runner, repo, rev, 'sdlc.yaml')
+  if (raw === null) {
+    return null
+  }
+  let target: unknown
+  try {
+    target = (parseYaml(raw) as { orchestrator?: { target_branch?: unknown } } | null)?.orchestrator
+      ?.target_branch
+  } catch {
+    return null
+  }
+  return typeof target === 'string' && target.length > 0 ? target : null
 }
 
 function listTaskBranches(g: Git): string[] {

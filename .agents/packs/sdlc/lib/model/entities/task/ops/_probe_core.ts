@@ -16,8 +16,8 @@ import { resolve } from 'node:path'
 
 import type { OpCtx } from '@lib/registry'
 import { readRawFrontmatter } from '@lib/model/read'
-import { Git } from '@sksizer/easy-git'
-import { openPrsForBranch, pickPrForBranch } from '@sksizer/easy-gh'
+import { Git } from '@osdlc/typed-git'
+import { openPrsForBranch, pickPrForBranch } from '@osdlc/typed-gh'
 import { worktreeDirFor } from '@lib/util/git'
 import { TaskLifecycleLeaseSchema, validateDict } from '@lib/services/lease'
 
@@ -67,7 +67,7 @@ export function branchExists(basename: string, projectRoot: string, ctx: OpCtx):
 
 /**
  * The open-PR number for a branch, or null when none / unreachable — a thin
- * view over the shared easyGh pures (`@sksizer/easy-gh`), exact-headRefName
+ * view over the shared typed-gh pures (`@osdlc/typed-gh`), exact-headRefName
  * matched (the gh search is a prefix match, so a non-exact hit is discarded).
  */
 export function openPrForBranch(branch: string, projectRoot: string, ctx: OpCtx): number | null {
@@ -101,6 +101,17 @@ export interface LocalLeaseSnapshot {
   ownerKind: string
   /** The in-flight PR binding carried on the lease, or null. */
   prNumber: number | null
+  /** Who holds the lease and since when ([[T-HBNN]]: the TUI detail modal shows it). */
+  holder: {
+    ownerKind: string
+    hostname: string
+    claimedAt: string
+    expiresAt: string | null
+    /** `tool` / `model` of the run's author, when the lease records one. */
+    author: string | null
+  }
+  /** ISO expiry of the lease, or null when it never lapses (awaiting-review, blocked). */
+  expiresAt: string | null
   /** Per-run gate stamps (payload v2), or null on a v1 payload. */
   gates: {
     readiness_verified_at: string | null
@@ -119,7 +130,10 @@ export interface LocalLeaseSnapshot {
  * round-trip, so this reads refs a prior `git fetch` mirrored rather than
  * calling `fetchRef`/`fetchNamespace`. A stale mirror degrades safely — a
  * stale-missing ref under-reports in-flight state, and `cas_create` at claim
- * time remains the hard backstop against double dispatch.
+ * time remains the hard backstop against double dispatch. A lease write made
+ * on THIS machine keeps the mirror current (the CAS primitives update the local
+ * ref after the authority accepts); only another machine's write waits for a
+ * fetch.
  */
 export function readLocalLease(
   basename: string,
@@ -162,6 +176,17 @@ export function readLocalLease(
     phase: lease.phase,
     ownerKind: lease.owner_kind,
     prNumber: lease.pr_number,
+    holder: {
+      ownerKind: lease.owner_kind,
+      hostname: lease.prepared_on_hostname,
+      claimedAt: lease.claimed_at,
+      expiresAt: lease.expires_at,
+      author:
+        lease.author === undefined
+          ? null
+          : [lease.author.tool, lease.author.model].filter((x) => x !== undefined).join(' '),
+    },
+    expiresAt: lease.expires_at,
     gates:
       lease.gates === undefined
         ? null

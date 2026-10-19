@@ -222,6 +222,11 @@ Reached only when Step 3 evaluated to **fail**. Read the task's
      `TASK-AUTO-DEFINE-NO-CHANGES:` / `TASK-AUTO-DEFINE-INSUFFICIENT:`
      (or the shared `ERROR reason=...`) — all slug-namespaced, so do
      not mistake them for this skill's own `ENSURE-READY-` verdict.
+     Auto-define writes sections with `sdlc task set-section` and must
+     leave Goal and Acceptance criteria as the author wrote them (the
+     op refuses to change them once the task is `open/ready`). If you
+     fill a section yourself, use `sdlc task set-section` too, never a
+     hand-edit, and never reword those two.
   2. **Re-run Step 3's evaluation** against the (possibly edited) task
      file: re-read it, re-run `task gap-report` (the single
      deterministic composite), re-apply the interpretation layer, and
@@ -277,9 +282,9 @@ stamp, and the commit is frontmatter-only as intended. A
 frontmatter-only uncommitted edit (e.g. a hand-bumped `impact:`) does
 NOT trip the precondition; only body edits are refused.
 
-The precondition does NOT apply to the `--commit-on main` path: that
-path lands the stamp on `origin/main` through an EPHEMERAL worktree off
-`origin/main` — never the author's checkout
+The precondition does NOT apply to the `--commit-on "$TARGET"` path: that
+path lands the stamp on `origin/$TARGET` through an EPHEMERAL worktree off
+`origin/$TARGET` — never the author's checkout
 (D-WK7T-agent-git-writes-worktree-isolated) — so the tree it stages
 is always clean and the author's uncommitted body edits can never be
 bundled. Nor to the no-flag (in-place-edit) path: there the caller owns
@@ -309,8 +314,7 @@ semantic transitions — the only ones that commit to main.
 "was this ready when it was PROMOTED", which does not change on
 re-verification. A per-run answer is what the lease's `gates` is for.
 
-1. Apply the pass mutation by shelling out to the op. Two invocation
-   shapes:
+1. Apply the pass mutation by shelling out to the op. Two invocation shapes:
 
    **Standalone (default) — commit on the current branch:**
 
@@ -319,39 +323,35 @@ re-verification. A per-run answer is what the lease's `gates` is for.
        <path> --mode pass --commit
    ```
 
-   Refuses when an active lease holds the task (Step 3b) — a run in
-   flight owns the file.
+   Refuses when an active lease holds the task (Step 3b) — a run in flight owns the file.
 
-   **Invoked by `$sdlc:task-work` from a worktree — commit on origin/main:**
+   **Invoked by `$sdlc:task-work` from a worktree — commit on origin/$TARGET**
+   (`TARGET=$(sdlc orchestrate target)`)**:**
 
    ```text
    scripts/sdlc task ensure-ready-mutate \
-       <path-inside-the-worktree> --mode pass --commit-on main
+       <path-inside-the-worktree> --mode pass --commit-on "$TARGET"
    ```
 
-   When `--commit-on main` is passed and a commit is actually due, the
-   script lands it on `origin/main` through an EPHEMERAL worktree off
-   `origin/main` — NEVER the author's checkout
-   (D-WK7T-agent-git-writes-worktree-isolated). It fetches
-   `origin/main`, applies the mutation against a throwaway worktree off
-   that tip, validates, regenerates the derived docs there, commits, and
-   pushes `HEAD:main` (re-applying onto the fresh tip on a push race —
-   never rebasing). The author's checkout and the calling worktree are
-   left untouched. This keeps task-state frontmatter commits on `main`;
-   see
+   When `--commit-on "$TARGET"` is passed and a commit is actually due, the script lands it on
+   `origin/$TARGET` through an EPHEMERAL worktree off `origin/$TARGET` — NEVER the author's checkout
+   (D-WK7T-agent-git-writes-worktree-isolated). It fetches `origin/$TARGET`, applies the
+   mutation against a throwaway worktree off that tip, validates, regenerates the derived docs
+   there, commits, and pushes `HEAD:$TARGET` (re-applying onto the fresh tip on a push race — never
+   rebasing). The author's checkout and the calling worktree are left untouched. This keeps
+   task-state frontmatter commits on the target branch (`$TARGET`, from `sdlc orchestrate target`;
+   `main` when nothing sets one); see
    T-SIHV-task-state-frontmatter-commits-on-main-not-worktree-branch.
 
-   In the task-work case a lease is normally held, so this path usually
-   writes the lease `gates` and no commit is due at all.
+   In the task-work case a lease is normally held, so this path usually writes the lease `gates` and
+   no commit is due at all.
 
-   `--commit` and `--commit-on` are mutually exclusive. Without
-   either, the script edits the file in place but does not stage or
-   commit — the caller owns the commit. The mutation logic lives in
+   `--commit` and `--commit-on` are mutually exclusive. Without either, the script edits the file in
+   place but does not stage or commit — the caller owns the commit. The mutation logic lives in
    exactly that one place — do not re-encode it here.
 
-   The script emits the PASS marker block on stdout. Relay whatever it
-   wrote; do NOT re-print the marker on top of it (re-printing drifted
-   under parallel dispatch).
+   The script emits the PASS marker block on stdout. Relay whatever it wrote; do NOT re-print the
+   marker on top of it (re-printing drifted under parallel dispatch).
 2. Validation and the staged-then-committed step happen inside the
    script when `--commit` or `--commit-on` is passed. If you invoked
    without either flag, run the validator manually:
@@ -388,8 +388,8 @@ If the evaluation failed:
    description that names each missing/thin section and each triggered
    disqualifier in plain language. Be specific enough that a reader
    knows exactly what to fix.
-2. Apply the fail mutation by shelling out to the op. Two invocation
-   shapes (same convention as Step 4):
+2. Apply the fail mutation by shelling out to the op. Two invocation shapes (same convention as Step
+   4):
 
    **Standalone (default) — commit on the current branch:**
 
@@ -398,39 +398,33 @@ If the evaluation failed:
        <path> --mode fail --gap "<one-paragraph gap description>" --commit
    ```
 
-   **Invoked by `$sdlc:task-work` from a worktree — commit on origin/main:**
+   **Invoked by `$sdlc:task-work` from a worktree — commit on origin/$TARGET**
+   (`TARGET=$(sdlc orchestrate target)`)**:**
 
    ```text
    scripts/sdlc task ensure-ready-mutate \
-       <path-inside-the-worktree> --mode fail --gap "<gap>" --commit-on main
+       <path-inside-the-worktree> --mode fail --gap "<gap>" --commit-on "$TARGET"
    ```
 
-   A readiness FAIL is semantic — it changes what work the document
-   needs — so it keeps its commit. The script handles the carve-out
-   automatically: state is preserved when the task holds an ACTIVE
-   LEASE, or when its `state:` is the legacy `in-progress` /
-   `in-progress/blocked`. Both mean a run is mid-flight and
-   downshifting would corrupt it; the lease arm is the one that
-   matters post-split, since a task in flight now reads `open/ready`
-   and the old state-only carve-out would have downshifted live work.
-   Otherwise state is set to `planning/needs-definition`. The script
-   also clears `readiness_verified_at:` and leaves `last_reviewed:`
-   unchanged. The mutation logic lives in exactly that one place — do
-   not re-encode it here.
+   A readiness FAIL is semantic — it changes what work the document needs — so it keeps its commit.
+   The script handles the carve-out automatically: state is preserved when the task holds an ACTIVE
+   LEASE, or when its `state:` is the legacy `in-progress` / `in-progress/blocked`. Both mean a run
+   is mid-flight and downshifting would corrupt it; the lease arm is the one that matters
+   post-split, since a task in flight now reads `open/ready` and the old state-only carve-out would
+   have downshifted live work. Otherwise state is set to `planning/needs-definition`. The script
+   also clears `readiness_verified_at:` and leaves `last_reviewed:` unchanged. The mutation logic
+   lives in exactly that one place — do not re-encode it here.
 
-   When `--commit-on main` is used (the task-work-invoked path), the
-   downshift lands on `origin/main` through an EPHEMERAL worktree off
-   `origin/main` — never the author's checkout — so `origin/main`
-   holds the canonical state. The accompanying `--cleanup-on-fail` flag
-   (see "When called by `$sdlc:task-work`" below) then tears down the
-   abandoned worktree + branch + lease deterministically. See
-   T-SIHV-task-state-frontmatter-commits-on-main-not-worktree-branch.
+   When `--commit-on "$TARGET"` is used (the task-work-invoked path), the downshift lands on
+   `origin/$TARGET` through an EPHEMERAL worktree off `origin/$TARGET` — never the author's checkout
+   — so `origin/$TARGET` holds the canonical state. The accompanying `--cleanup-on-fail` flag (see
+   "When called by `$sdlc:task-work`" below) then tears down the abandoned worktree + branch + lease
+   deterministically. See T-SIHV-task-state-frontmatter-commits-on-main-not-worktree-branch.
 
-   When `--commit` or `--commit-on` is passed, the script ALSO emits
-   the two-line FAIL marker block on stdout — `ENSURE-READY-NEEDS-
-   DEFINITION: <basename>` followed by `definition_gap: <one-line>`.
-   Relay whatever the script wrote; do NOT re-print the marker on
-   top of it.
+   When `--commit` or `--commit-on` is passed, the script ALSO emits the two-line FAIL marker block
+   on stdout — `ENSURE-READY-NEEDS- DEFINITION: <basename>` followed by
+   `definition_gap: <one-line>`. Relay whatever the script wrote; do NOT re-print the marker on top
+   of it.
 3. (Skip if `--commit` / `--commit-on` was used.) Run the validator:
 
    ```text
@@ -466,13 +460,13 @@ If the evaluation failed:
 ### When called by `$sdlc:task-work` — the `--cleanup-on-fail` contract
 
 `$sdlc:task-work`'s Step 5a invokes this skill from a worktree with
-`--commit-on main --cleanup-on-fail`. The two flags are paired:
-`--commit-on main` lands the downshift commit on `origin/main` through an
-ephemeral worktree off `origin/main` (never the author's checkout), and
+`--commit-on "$TARGET" --cleanup-on-fail`. The two flags are paired:
+`--commit-on "$TARGET"` lands the downshift commit on `origin/$TARGET` through an
+ephemeral worktree off `origin/$TARGET` (never the author's checkout), and
 `--cleanup-on-fail` extends the fail path so the script ALSO tears down the
 abandoned task-work scaffolding before exiting.
 
-After the downshift commit lands on `origin/main`, the script:
+After the downshift commit lands on `origin/$TARGET`, the script:
 
 1. Removes the worktree at `<main-repo>/.sdlc/worktrees/<basename>`
    via `git worktree remove --force` (no-op if absent).

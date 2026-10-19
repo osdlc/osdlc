@@ -47,6 +47,46 @@ The op reads `orchestrator:` config (`loops`, `interval_seconds`,
 the top-level `notify:` section from the project's `sdlc.yaml` — see
 `${CLAUDE_PLUGIN_ROOT}/conventions/sdlc-yaml.md`.
 
+## The loop's project root
+
+`orchestrate run` works in ONE root: the repository's main checkout by default,
+wherever it was launched, so `sdlc.yaml`, `sdlc.local.yaml`, tasks and git all
+come from there and the main checkout is never written to (workflows that edit
+files run in a worktree). `--root launch` (or `SDLC_LOOP_ROOT=launch`) uses the
+folder it was launched in instead; `--root` beats the variable, and an explicit
+`--project-root` is used as given in either mode. Any other value exits
+`INVALID_INPUT`. Each detached task run receives the loop's root as
+`--project-root`.
+
+## Task runs and the loop's own PRs
+
+The `work` tick does not wait for a task. It claims the task's leases, starts
+its define/implement/check/judge sequence as a detached run
+(`sdlc orchestrate work-run`, recorded under
+`.sdlc/orchestrate/work-runs/`) and returns, so up to `limits.executor.implement`
+tasks work at once and the `prs`/`merges`/`issues` ticks in the same pass are
+not held up. Later ticks read the record: a finished run is reported once, a
+run whose process vanished without an outcome is reported as stale
+(`stale-slugs=` in the digest, plus a `task.parked` notification) and its
+leases are released. With `--once` the runs outlive the invocation.
+
+A run that died leaves its task lease claimed on purpose (the cooldown: a failing
+task is not redispatched at once), so the task waits out the lease TTL, up to an
+hour. To end that wait, run `sdlc lease task release <task>`: it archives the
+lease and drops the ended run's record, so the next tick may claim the task. It
+refuses (exit 24) while the run's process or a fresh heartbeat says the holder is
+alive; `--force` releases anyway (the process is not stopped, and the forcing is
+logged as an `ANOMALY` line; the run then has no claim on its slot or task). Either
+way it also clears the dead run's operation and slot leases (never another run's),
+and it can be re-run if it stops partway (exit 26) or after an earlier release left
+them behind.
+
+A PR on the `task/<basename>` branch of a task the loop ran is always in
+scope for the `prs`/`merges`/`issues` ticks, even when
+`orchestrator.pr_filters.include_labels` is set and the PR carries none of
+those labels; the exclude lists and the draft rule still apply to it. A
+human's PR still needs the label.
+
 ## Pausing, and acting on one item
 
 `sdlc orchestrate pause|resume|status` is a runtime switch this skill's
@@ -84,7 +124,7 @@ this skill's own logic.
   scope reduction from this skill's own retired prose, which used to fire
   "only when genuinely stuck" (routine blockers did NOT notify). Today
   `notify('task.parked', …)` fires once for EVERY failing step in the `work`
-  tick's dispatched-task workflow sequence (`check`/`judge`/`implement`/…) —
+  tick's detached task run (`check`/`judge`/`implement`/…, reported by the run itself) —
   whether a blocking hook parked the branch or the step itself failed — and
   `notify('pr.ci_failed'|'pr.needs_response', …)` fires once a PR's
   `review.max_rounds` cap trips, then REPEATS every subsequent tick for as

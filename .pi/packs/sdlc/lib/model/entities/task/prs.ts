@@ -5,7 +5,7 @@
  * (`entities/task/schema.ts`) — so these helpers are task domain logic, not
  * generic frontmatter machinery, and they live here rather than in `lib/util`,
  * which carries only entity-agnostic pieces. Genuinely generic PR helpers
- * belong to the gh client (`@sksizer/easy-gh`).
+ * belong to the gh client (`@osdlc/typed-gh`).
  *
  * `prs:` is written ONCE, in the terminal close commit
  * ([[T-IVEJ-prs-once-at-close]]): `sdlc task close-commit` folds every PR URL

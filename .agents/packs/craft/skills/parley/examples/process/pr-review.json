@@ -10,16 +10,16 @@
       "title": "Pull request review",
       "trigger": "a pull request is opened against main",
       "lanes": [
-        { "id": "author", "label": "Author", "detail": "Whoever opened the PR, human or agent." },
-        { "id": "ci", "label": "CI", "detail": "The affected-checks workflow and the gates." },
+        { "id": "author", "title": "Author", "detail": "Whoever opened the PR, human or agent." },
+        { "id": "ci", "title": "CI", "detail": "The affected-checks workflow and the gates." },
         {
           "id": "reviewer",
-          "label": "Reviewer",
+          "title": "Reviewer",
           "detail": "A fresh-context reviewer; never the author's own model family."
         },
         {
           "id": "merger",
-          "label": "Merger",
+          "title": "Merger",
           "detail": "The owner, or the auto-merge bot once enabled."
         }
       ],

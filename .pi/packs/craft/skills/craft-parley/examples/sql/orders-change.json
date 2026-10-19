@@ -184,12 +184,12 @@
       "options": [
         {
           "id": "enum",
-          "label": "Postgres enum",
+          "title": "Postgres enum",
           "detail": "Compact, typed, no join. Values cannot be removed."
         },
         {
           "id": "table",
-          "label": "Lookup table with FK",
+          "title": "Lookup table with FK",
           "detail": "Values editable at runtime; one more join on hot paths."
         }
       ]
@@ -203,12 +203,12 @@
       "options": [
         {
           "id": "10k",
-          "label": "10k rows, 100ms sleep",
+          "title": "10k rows, 100ms sleep",
           "detail": "~5 minutes total."
         },
         {
           "id": "50k",
-          "label": "50k rows, 250ms sleep",
+          "title": "50k rows, 250ms sleep",
           "detail": "~2 minutes; longer row-lock windows."
         }
       ]
@@ -222,7 +222,6 @@
   ],
   "repo": {
     "remote": "https://github.com/sksizer/dev",
-    "commit": "de9a5c420a3b7f1c9d2e8a4b6c0d1e2f3a4b5c6d",
-    "root": "/path/to/repo"
+    "commit": "de9a5c420a3b7f1c9d2e8a4b6c0d1e2f3a4b5c6d"
   }
 }

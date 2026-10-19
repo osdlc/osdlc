@@ -221,14 +221,14 @@ decision:
 
 ```text
 git -C <worktree> push -u origin chore/consolidate-task-prs-<today-UTC>
-gh pr create --repo <owner/name> --base main \
+scripts/sdlc pr create --project-root <worktree> --base main \
   --head chore/consolidate-task-prs-<today-UTC> \
   --title "docs(tasks): consolidate <N> single-task PRs" \
-  --body "<enumerated body>"
+  --body-file <enumerated-body-file>
 ```
 
 Capture the consolidation PR number and URL. If the push or
-`gh pr create` fails, stop and surface the error — **do not** proceed to
+`sdlc pr create` fails, stop and surface the error — **do not** proceed to
 Step 7. No original PR has been closed at this point, so the repo is
 recoverable.
 

@@ -3,11 +3,12 @@ name: task-close-out
 description: |
   Close the loop on a task whose PR has merged: flip the task file to
   state: closed/done on main with a completion_note citing the merged
-  PR, tear down the worktree at .sdlc/worktrees/<basename>, and
-  delete the task/<basename> branch locally and on origin. Detects
-  the merged PR automatically from the branch name (override with
-  --pr <N>). Emits a deterministic stdout marker so /sdlc:orchestrate
-  can dispatch on the result.
+  PR, then tear down the task's worktree and its task/<basename> branch
+  (local and origin) through the safe cleanup ops (`sdlc project cleanup`
+  and `apply-cleanup`), which leave a receipt. Detects the merged PR
+  automatically from the branch name (override with --pr <N>). Emits a
+  deterministic stdout marker so /sdlc:orchestrate can dispatch on the
+  result.
 allowed-tools: Bash Read Edit
 ---
 
@@ -31,10 +32,11 @@ Usage:
   side effects. Steps 1–3 run unchanged (resolve the task, gate on
   state, detect the merged PR); Steps 4–6 print every side effect
   they *would* perform — the unified diff for the frontmatter edit,
-  the exact `git commit` / `git push` / `git worktree remove` /
-  `git branch -d` / `git push origin --delete` commands — and the
+  the exact `git commit` / `git push` commands, and the output of
+  `apply-cleanup --dry-run` for the teardown — and the
   skill exits with a `DRY-RUN ok pr=#<N>` marker instead of `DONE`.
-  No file is modified, no commit is created, no branch is touched.
+  Apart from the cleanup plan file Step 5 writes, no file is modified,
+  no commit is created, no branch is touched.
 
 Perform the close-out and report the outcome; acting on the result is
 the caller's job.
@@ -49,10 +51,10 @@ Exactly one line on stdout, of the form:
 
 Where `MARKER` is one of:
 
-- `TASK-CLOSE-OUT-DONE pr=#<N> worktree=<removed|absent> branch=<deleted|kept>` —
+- `TASK-CLOSE-OUT-DONE pr=#<N> worktree=<removed|absent> branch=deleted receipt=<path>` —
   task is now `closed/done` on main with a completion_note citing the
-  merged PR; worktree and task branch torn down (or noted as absent /
-  intentionally kept).
+  merged PR; worktree and task branches torn down (or noted as absent)
+  and the cleanup receipt written at `<path>`.
 - `DRY-RUN ok pr=#<N>` — `--dry-run` was supplied; Steps 1–3 ran
   unchanged, Steps 4–6 printed each side effect without executing
   them, and no state was mutated.
@@ -65,15 +67,17 @@ Where `MARKER` is one of:
   worktrees`), which scans for the leftover worktree/branch and
   proposes the teardown for approval.
 - `NOT-IN-PROGRESS reason="state is <current>; task hasn't started"`
-  — state is in the `planning/*` or `open/*` family. Close-out is
-  not applicable.
+  — state is in the `planning/*` family, or an `open/*` state other
+  than `open/ready`. Close-out is not applicable. `open/ready` is the
+  in-flight state and never produces this marker.
 - `NO-MERGED-PR reason="no merged PR found for head task/<basename>"`
   — could not auto-detect a merged PR and `--pr` was not provided.
   No file edits, no commits, no teardown.
 - `STALE-PR pr=#<N> reason="mergeCommit not reachable from
-  origin/main"` — a candidate PR was found (via auto-detection or
+  origin/<base>"` — a candidate PR was found (via auto-detection or
   `--pr <N>`), GitHub reports it as `MERGED`, but its `mergeCommit`
-  is not an ancestor of the current `origin/main`. The match is
+  is not an ancestor of the current `origin/<base>` (the PR's own base
+  branch, usually `main`; an integration branch for an omnibus run). The match is
   treated as stale (branch reuse, retargeted PR, reverted merge).
   No file edits, no commits, no teardown.
 - `LEASE-CONFLICT ref=refs/sdlc/tasks/<basename> owner=<other-host-id>`
@@ -82,15 +86,10 @@ Where `MARKER` is one of:
   is already operating on this task. No file edits, no commits, no
   teardown — the caller decides whether to retry or surface the
   conflict to the operator.
-- `LEASE-MISSING ref=refs/sdlc/tasks/<basename>` — the lease ref does
-  not exist on the authority. The task was never claimed under the
-  protocol (pre-cutover task) or has already been archived. No file
-  edits, no commits, no teardown — the operator either runs
-  `/sdlc:task-work` first or accepts the close-out as already done.
-- `PARTIAL pr=#<N> failed=<which-step>: <reason>` — some side effects
-  ran but a later teardown step failed (e.g. remote branch protected,
-  push race lost). The task file is still closed on main; the caller
-  surfaces the partial state for human follow-up.
+- `PARTIAL pr=#<N> failed=<which-step>: <reason>` — some side effects ran but a later teardown step
+  failed or was refused (e.g. branch head moved after the merge, remote branch protected, push race
+  lost). The task file is still closed on main; the caller surfaces the partial state for human
+  follow-up.
 - `ERROR reason="<diagnostic>"` — could not resolve the task file,
   `gh` is unavailable, frontmatter validation failed, etc. No state
   changes were applied.
@@ -135,14 +134,31 @@ Read the resolved file's frontmatter. Apply these checks in order:
    Reclaiming orphans is deliberately NOT this skill's job: close-out
    only tears down the scaffolding it created on a live in-progress
    task, so an already-closed task is a no-op here by design.
-2. `state` is `in-progress` or `in-progress/blocked` → continue.
-3. Otherwise (any `planning/*` or `open/*` value) → emit
+2. `state` is `open/ready`, `in-progress` or `in-progress/blocked` →
+   continue. Frontmatter stays `open/ready` for the whole in-flight
+   life of a task: progress lives in the lease, not in `state`
+   (D-S30G), so `open/ready` is the normal state of a task whose PR
+   just merged. `in-progress*` is still accepted for tasks started
+   under the older split.
+3. Otherwise (any `planning/*` value, or an `open/*` value other than
+   `open/ready`) → emit
    `NOT-IN-PROGRESS reason="state is <current>; task hasn't started"`
    and exit. Close-out is not applicable.
 
+The state check is deliberately permissive: the real safety gate is
+Step 3, which refuses (`NO-MERGED-PR`, `STALE-PR`) unless a merged PR
+reachable from its base exists. A task that never ran has no such PR,
+so it is refused there with no state changed. `--pr` is held to the same
+bar: its head branch must be `task/<basename>`.
+
 ## 3. Detect the merged PR
 
-If `--pr <N>` was supplied, accept the value and skip auto-detection.
+If `--pr <N>` was supplied, skip auto-detection but still require
+`gh pr view <N> --json headRefName -q .headRefName` to equal
+`task/<basename>`; otherwise emit
+`ERROR reason="PR #<N> head is <head>, not task/<basename>"` and exit.
+A PR from another branch is not evidence this task shipped. (A task whose
+work landed through a differently named branch is closed by hand.)
 
 Otherwise, query GitHub for the most recent merged PR whose head
 branch matches `task/<basename>`:
@@ -172,18 +188,21 @@ reachable merge is out of scope (see Notes).
 
 Before any file edit, commit, branch deletion, or worktree teardown,
 verify the candidate `mergeCommit` is actually an ancestor of the
-current `origin/main`:
+current `origin/<base>`, where `<base>` is the branch the PR merged INTO
+(`gh pr view <N> --json baseRefName -q .baseRefName`; `main` unless the
+project merges task PRs into an integration branch,
+`orchestrator.merge.allowed_targets`):
 
 ```text
-git -C <main-repo> fetch origin main --quiet
-git -C <main-repo> merge-base --is-ancestor <mergeCommit> origin/main
+git -C <main-repo> fetch origin <base> --quiet
+git -C <main-repo> merge-base --is-ancestor <mergeCommit> origin/<base>
 ```
 
 `git merge-base --is-ancestor` exits `0` if reachable, `1` if not
 (other exit codes are real errors). If exit code is `1`, emit:
 
 ```text
-STALE-PR pr=#<N> reason="mergeCommit not reachable from origin/main"
+STALE-PR pr=#<N> reason="mergeCommit not reachable from origin/<base>"
 ```
 
 and exit. This check runs before Step 4, so no file edits, no
@@ -208,8 +227,9 @@ state. Specifically:
   WITHOUT committing or pushing — the shared checkout and `origin` are
   untouched. Relay the op's diff. The op owns the dry-run diff; the
   skill no longer renders it by hand.
-- Steps 5–6 (`git worktree remove`, `git branch -d` / `git branch -D`,
-  `git push origin --delete`): do NOT run them; print each verbatim.
+- Steps 5–6 (teardown): run the plan (read-only apart from the plan
+  file), then run `apply-cleanup` WITH `--dry-run` and print its output.
+  No worktree or branch is touched and no receipt is written.
 
 Make no `Edit` tool calls against the task file. The reachability
 check above still runs in `--dry-run` mode (it's read-only). If it
@@ -259,21 +279,25 @@ Branch on exit code:
   intact. The caller decides whether to retry or surface the
   conflict.
 - **Exit 5** — `REF-NOT-FOUND ref=refs/sdlc/tasks/<basename>` on
-  stderr. The lease ref does not exist (the task was never claimed
-  under the protocol, or it was already archived). Exit cleanly with
-  `LEASE-MISSING ref=refs/sdlc/tasks/<basename>` on stderr and STOP.
-  The operator either runs `/sdlc:task-work` to claim the lease
-  first or accepts the close-out as already done.
+  stderr. The lease ref does not exist: the work was done outside the
+  loop (a manual PR), or the lease was already archived. This is NOT a
+  refusal. Step 3 already proved a merged PR reachable from its base,
+  which is the evidence the close needs. Note `lease=absent` for the
+  digest log, skip Step 7a (there is nothing to archive), and continue
+  to Step 4. There is no lease to hold, so there is no `LEASE-CONFLICT`
+  race to lose either.
 - **Exit 1 / other** — surface the CLI's stderr to the operator and
   STOP.
 
-The re-acquire is the entry gate; there is no path that skips it.
+The re-acquire runs on every close-out; a missing lease (exit 5) is
+the one outcome that continues without it.
 
 ## 4. Mark the task closed on main
 
-Land the closing state on `main` through a single op that performs the
+Land the closing state on the target branch (`orchestrator.target_branch`
+in `sdlc.yaml`, else `main`) through a single op that performs the
 whole mutation + commit inside an EPHEMERAL WORKTREE created off
-`origin/main`. The shared primary checkout is never read or written,
+`origin/<target>`. The shared primary checkout is never read or written,
 so a parallel session's uncommitted edits cannot contaminate the close
 commit and no `--autostash` whole-tree sweep occurs
 (B-P502-commit-task-state-and-planning-docs-via-ephemeral-worktrees).
@@ -299,7 +323,7 @@ ${CLAUDE_PLUGIN_ROOT}/cli/sdlc task close-commit <basename> \
   --project-root <main-repo>
 ```
 
-Inside the ephemeral worktree off `origin/main`, the op:
+Inside the ephemeral worktree off `origin/<target>`, the op:
 
 - verifies/appends `<pr-url>` into `prs:` — each `--pr-url` in the order
   given, idempotent against URLs already listed, so a re-run adds
@@ -315,8 +339,8 @@ Inside the ephemeral worktree off `origin/main`, the op:
   and stages exactly the task file + the regenerated artifacts
   (T-PA51-task-state-commits-regen-site-page);
 - commits via the `task-lifecycle` `close-done` kind and pushes
-  `HEAD:main`, retrying by re-applying onto the fresh tip if `main`
-  advanced under a parallel push (deterministic regen off the new tip,
+  `HEAD:<target>`, retrying by re-applying onto the fresh tip if the
+  target advanced under a parallel push (deterministic regen off the new tip,
   so the retry never conflicts on the union artifacts).
 
 The op prints
@@ -327,7 +351,7 @@ length of `prs:`. Both are for the digest log only — the
 actions.
 
 On non-zero exit the close did NOT land: the worktree push is atomic,
-so `origin/main` is unchanged and the shared checkout was never
+so `origin/<target>` is unchanged and the shared checkout was never
 touched. Surface the op's stderr, emit
 `PARTIAL pr=#<N> failed=close-commit: <reason>`, and STOP without
 teardown so the caller can retry from a known state.
@@ -338,73 +362,61 @@ stub from `close-commit` (above) — that stub is the ONLY body write the
 close makes. Any other post-merge body addendum belongs on its own
 commit to `main`, not in the close-commit.
 
-Note: `close-commit` pushes only the close commit to `origin/main`; it
-does not flush unrelated state commits piled on the local `main`
+Note: `close-commit` pushes only the close commit to `origin/<target>`; it
+does not flush unrelated state commits piled on the local `<target>`
 checkout (start/verify commits land there until the rest of
 B-P502-commit-task-state-and-planning-docs-via-ephemeral-worktrees
-moves them onto the same path). Local `main` trailing `origin/main`
+moves them onto the same path). Local `<target>` trailing `origin/<target>`
 after close-out is expected and benign — the task-state-origin lint
 tolerates it
 (T-6R73-pre-commit-drift-hooks-gate-unconditionally-forcing-no).
 
-## 5. Tear down the worktree
+## 5. Plan the teardown
 
-If `.sdlc/worktrees/<basename>` exists:
-
-```text
-git -C <main-repo> worktree remove --force .sdlc/worktrees/<basename>
-git -C <main-repo> worktree prune
-```
-
-If the worktree directory is absent, skip silently (a task closed
-manually with its worktree forgotten is a valid reconciliation case,
-not an error) and mark `worktree=absent` in the final marker;
-otherwise mark `worktree=removed`.
-
-## 6. Delete the merged branches
-
-Local branch:
+Delete through the safe ops, never with git directly. From the main checkout
+(`<main-repo>`):
 
 ```text
-git -C <main-repo> branch -d task/<basename>
+cd <main-repo> && ${CLAUDE_PLUGIN_ROOT}/cli/sdlc project cleanup \
+  --branch task/<basename> --write-plan --json
 ```
 
-`-d` (lowercase) refuses if the branch isn't merged. That happens when
-the PR was squash-merged (the original branch tip is not in main's
-history). Before reaching for `-D`, prove the merged PR captured this
-exact tip:
+The op finds the task's worktree from `git worktree list` and returns at most three rows in
+`items` (`worktree`, `local_branch`, `remote_branch`), the plan file in `planPath`, and the
+main checkout in `repo.root`. It judges a squash-merged branch landed only when the merged PR's
+head sha equals the branch tip (`facts.evidence: exact-head`).
+
+- No rows: nothing is left to remove. Record `worktree=absent branch=deleted` and go to Step 7.
+- A `worktree` row with a non-empty `facts.blockers`, or any row with `deletable: false`: emit
+  `PARTIAL pr=#<N> failed=<category>: <row reason>` and skip Step 6.
+- A row with a non-empty `requires` is not applied. Close-out never abandons work: keep every
+  such row and emit the marker for its `requires` (one line, for the first kept row). Step 6
+  still applies the other rows, but the run ends in `PARTIAL`, never `TASK-CLOSE-OUT-DONE`:
+
+  | `requires` holds | Marker |
+  |---|---|
+  | `abandon-unmerged` | `PARTIAL pr=#<N> failed=branch: head-moved` |
+  | `discard-changes` | `PARTIAL pr=#<N> failed=worktree: dirty` |
+  | `confirm-open-pr` | `PARTIAL pr=#<N> failed=branch: open-pr` |
+
+## 6. Apply the teardown
+
+When Step 5 left rows to apply, run once, from the main checkout:
 
 ```text
-gh pr view <N> --json headRefOid,isCrossRepository,baseRefName
-git -C <main-repo> rev-parse task/<basename>
+cd <main-repo> && ${CLAUDE_PLUGIN_ROOT}/cli/sdlc project apply-cleanup --plan <planPath> \
+  --row <category>:<id> [--row ...] [--dry-run]
 ```
 
-Use `-D` only when `isCrossRepository` is `false`, `baseRefName` is
-the default branch, and `headRefOid` equals the `rev-parse` sha. On
-any mismatch, do not delete: keep the branch, record `branch=kept`,
-and report `PARTIAL pr=#<N> failed=branch: <reason>`, where the reason
-is `head-moved` (commits after the merge), `fork` or `other-base`.
+Pass one `--row` per row from Step 5 and `--dry-run` only under the skill's `--dry-run`. The
+op re-sweeps, drops any row whose facts moved since the plan, removes the worktree, deletes
+the branches compare-and-swap on the sha the plan judged, prunes, and writes a receipt under
+`<main-repo>/.sdlc/cleanup/receipts/`. Print its output.
 
-Remote branch: GitHub's "auto-delete head branches on merge" setting
-usually handles this. If `git -C <main-repo> ls-remote origin
-'task/<basename>'` still has output, its sha is the remote tip. Delete
-the remote branch only when that sha equals the PR's `headRefOid`
-(from `gh pr view <N> --json headRefOid`):
-
-```text
-git -C <main-repo> push origin --delete task/<basename>
-```
-
-On a mismatch, commits were pushed after the merge. Do not delete:
-keep the remote branch, record `branch=kept`, and report
-`PARTIAL pr=#<N> failed=branch: head-moved`.
-
-Follow with `git -C <main-repo> fetch --prune` to clear the local
-remote-tracking ref.
-
-Record `branch=deleted` on the final marker if both the local and
-remote branches were removed (or never existed). Record `branch=kept`
-and surface as `PARTIAL` if either deletion failed.
+A dropped row or a failed step (exit 22) is `PARTIAL pr=#<N> failed=<step>: <reason>`, where
+`<step>` is the failed step's `action` or the dropped row's `category:id`. Do not retry by
+hand. Otherwise record `worktree=removed` (or `absent` when Step 5 had no `worktree` row),
+`branch=deleted`, and the receipt path.
 
 ## 7. Verify and emit
 
@@ -413,37 +425,38 @@ with `DRY-RUN ok pr=#<N>` and never reaches this verification step.
 
 Before exiting, confirm:
 
-- `git -C <main-repo> log origin/main --oneline -1` shows the
+- `git -C <main-repo> fetch origin <target>` then
+  `git -C <main-repo> log origin/<target> --oneline -1` shows the
   `docs(tasks): mark <basename> closed/done` commit at the tip.
-- `git -C <main-repo> worktree list` does not include `<basename>`.
-- `git -C <main-repo> branch --list '<prefix>/<basename>'` is empty.
-- `git -C <main-repo> ls-remote origin '<prefix>/<basename>'` is empty.
+- The receipt from Step 6 exists and its final `status` is `complete`. It records each
+  teardown step, so no separate git check of the worktree or branches is needed.
 
 If every check passes, emit:
 
 ```text
-TASK-CLOSE-OUT-DONE pr=#<N> worktree=<removed|absent> branch=deleted
+TASK-CLOSE-OUT-DONE pr=#<N> worktree=<removed|absent> branch=deleted receipt=<path>
 ```
 
-If one or more teardown checks failed (but the task file is closed
+If the receipt's status is not `complete` (but the task file is closed
 on main), emit:
 
 ```text
 PARTIAL pr=#<N> failed=<step>: <reason>
 ```
 
-A branch Step 6 kept on a head mismatch fails the branch checks by
-design; its marker carries Step 6's reason, `failed=branch: <reason>`.
+A row Step 5 kept because it `requires` an authorization takes precedence: emit
+`PARTIAL` with Step 5's reason even when the receipt for the applied rows is `complete`,
+and never `TASK-CLOSE-OUT-DONE`.
 
 Exit code is `0` for every defined marker — including `ALREADY-CLOSED`,
-`NOT-IN-PROGRESS`, `NO-MERGED-PR`, `PARTIAL`, `LEASE-CONFLICT`,
-`LEASE-MISSING`, and `ERROR`. Non-zero exit is reserved for
+`NOT-IN-PROGRESS`, `NO-MERGED-PR`, `PARTIAL`, `LEASE-CONFLICT`, and
+`ERROR`. Non-zero exit is reserved for
 catastrophic failures (the `sdlc` CLI itself unavailable, etc.).
 
 ## 7a. Archive the lease (terminal step)
 
 After every close-out side effect has completed (worktree torn down
-in Step 5, branches deleted in Step 6, frontmatter flipped to
+and branches deleted in Steps 5–6, frontmatter flipped to
 `closed/done` and pushed in Step 4, verification passed in Step 7),
 archive the task-lifecycle lease as the protocol's terminal step.
 This transitions the lease ref from active at
@@ -474,7 +487,8 @@ Branch on exit code:
   the operator and stop.
 - **Exit 1 / other** — surface the CLI's stderr and stop.
 
-Archive is the last protocol-level step.
+Archive is the last protocol-level step. Skip it when Step 3a found no
+lease (exit 5): there is no active ref to archive.
 
 ## Failure modes
 
@@ -482,15 +496,19 @@ If `gh` is unavailable or the user is unauthenticated, Step 3 will
 fail; emit `ERROR reason="gh: <stderr>"` and exit without any state
 changes.
 
+If `apply-cleanup` (Step 6) exits 22 or drops a row, the task file is
+already closed on main; emit `PARTIAL` as Step 6 says and leave the
+leftovers for `/sdlc:project-cleanup`.
+
 If `task close-commit` (Step 4) rejects the closing frontmatter at the
 schema gate, the op writes nothing to `origin` and exits non-zero;
 surface its stderr and emit
 `PARTIAL pr=#<N> failed=close-commit: <reason>`. Nothing landed — the
 commit happens in an ephemeral worktree, so a gate failure leaves
-`origin/main` and the shared checkout untouched.
+`origin/<target>` and the shared checkout untouched.
 
 `task close-commit` commits + pushes from an ephemeral worktree off
-`origin/main`, so a concurrent close-out that advances `main` only
+`origin/<target>`, so a concurrent close-out that advances `<target>` only
 yields a non-fast-forward push reject — the op recovers by re-applying
 onto the fresh tip (no `--autostash`, no shared-tree rebase, so no
 task-file conflict). If it still cannot land after its bounded retries
@@ -501,10 +519,12 @@ it exits non-zero; emit
 
 - This skill hand-edits no files: `task close-commit` (Step 4) does the
   task-file mutation AND the derived generated-docs regeneration inside
-  an ephemeral worktree, then commits + pushes to `origin/main`
+  an ephemeral worktree, then commits + pushes to `origin/<target>`
   (T-PA51-task-state-commits-regen-site-page,
   B-P502-commit-task-state-and-planning-docs-via-ephemeral-worktrees).
-  Everything else is `git`/`gh` state management.
+  Teardown is `sdlc project cleanup` + `apply-cleanup`, which hold the
+  safety checks; this skill passes them no authorization, so it never
+  deletes unlanded work. The rest is `git`/`gh` state management.
 - A reverted-but-still-reachable merge passes the Step 3 reachability
   check (the revert leaves `mergeCommit` reachable) and is out of
   scope for `STALE-PR` detection.

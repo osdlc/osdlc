@@ -2,7 +2,7 @@
 name: craft-skill-author
 description: |
   Write or tighten a minimal skill: one process, a scope line, inputs and outputs, numbered
-  steps, and optionally a map, extension points, grading checks and a test environment.
+  steps, and optionally a map, grading checks and a test environment.
   Short, lists over prose, other skills called by wikilink. Script-free unless a step is
   deterministic and repeated. Use it for every new skill in craft or sdlc.
 allowed-tools: Read Write Edit Glob Grep
@@ -33,14 +33,15 @@ a wrapper). Output: `<name>/<name>.md` in the vault, graded against the checks b
   background; link instead.
 - **Short.** A list wherever a paragraph would do. A step is one or two sentences. A sentence
   that explains is cut or becomes a link.
+- **Progressive disclosure.** The main file says what the skill does and the order of its
+  steps. Detail that only some steps need goes in sibling reference files in the skill folder.
+  A step links the file it needs, and the agent reads it only then. The skill file or a
+  reference file over 200 lines opens with a contents list right after its title: one line per
+  section, saying what that section covers.
 - **Calls, not names.** Another skill is always `/[[name]]`; agent-pants renders the harness's
   own spelling (see the rules below).
 - **A map** (only when the flow branches or loops). One mermaid flowchart whose nodes carry the
   step numbers, so a reader can see the shape and jump to a step. A linear skill has no map.
-- **Extension points** (optional). The named points a project fills through
-  `sdlc/extend/skills/<skill>.lifecycle`, read before step 1 (see the package note): `before`,
-  `rules`, `after`, and `after-<step>` for a step a project is likely to change. A fill adds to
-  the skill; it cannot remove a step or skip a check.
 - **Grading** (optional). Checks answerable yes or no that separate a good result from a bad
   one.
 - **Test environment** (optional). How to set up a scratch target to run the skill against,
@@ -95,8 +96,6 @@ flowchart TD
 
 ## Steps
 
-0. Read this skill's fills from `sdlc/extend/skills/skill-author.lifecycle` if it exists; apply
-   `before` and `rules` now, and the other points where they are named.
 1. Read the process sentence. Rewrite it until it names one process and one outcome.
 2. Search the vault for a skill that already covers it. If one does, tighten or extend that
    skill instead and stop here.
@@ -106,17 +105,12 @@ flowchart TD
 5. Write the steps as a numbered list, one or two sentences each. Cut every sentence that
    explains rather than instructs. Write every other skill as `/[[name]]`.
 6. If a step branches, loops or calls another skill, draw the map. Otherwise write none.
-7. Add extension points only for steps a project is likely to change. Name each one and say
-   where it runs.
+7. Move detail that only some steps need into a reference file in the skill folder, and link it from
+   each step that needs it. When the skill file or a reference file is over 200 lines, write its
+   contents list right after its title.
 8. Write the grading checks. Add the test environment if the skill changes files or calls
    tools.
 9. Grade the draft against the checks below. Tighten until every check passes.
-10. Run the `after` fill, if any.
-
-## Extension points
-
-- `rules`: constraints applied to every step, for example a house style for skill prose.
-- `after`: runs after step 9, for example rebuilding the harness packs and opening a PR.
 
 ## Grading
 
@@ -128,9 +122,10 @@ flowchart TD
   text appears.
 - A skill with a branch, loop or call has a map; every map node names a step or a call; a
   linear skill has none.
+- Every file over 200 lines, the skill file or a reference file, has a contents list right after its
+  title.
+- Every reference file in the skill folder is linked from a step or from the main file.
 - `allowed-tools` lists nothing a step does not use.
-- Each extension point is named and has a stated position, and a skill that declares any
-  carries the step 0 line that reads its fills.
 - Each grading check is answerable yes or no.
 - If agent-pants is installed, `agent-pants check` passes with no `implicit-skill-call` or
   `literal-skill-call` warning for the skill.

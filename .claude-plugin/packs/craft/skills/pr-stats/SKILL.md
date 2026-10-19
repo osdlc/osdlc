@@ -33,8 +33,6 @@ for a PR. Output: a markdown block between `<!-- sdlc-pr-stats:start -->` and
 
 ## Steps
 
-0. Read this skill's fills from `sdlc/extend/skills/pr-stats.lifecycle` if it exists; apply
-   `before` and `rules` now, and the other points where they are named.
 1. Run the script that ships beside this note, from inside the repository:
 
    ```text

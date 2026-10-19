@@ -1,0 +1,187 @@
+{
+  "id": "checkout-perf-review",
+  "title": "Checkout API: what the new index changed, and where to keep sessions",
+  "summary": "Two blocks that show numbers: the measures before and after the change, and a weighted comparison of the session store options. Example data for a performance review.",
+  "created": "2026-10-17",
+  "blocks": [
+    {
+      "id": "why",
+      "type": "prose",
+      "title": "Why",
+      "text": "The checkout endpoint scanned the whole `orders` table on every call. This change adds a partial index on open orders and moves session reads off the database. The first block shows the numbers from the benchmark run on `main` and on this branch. The second compares the places sessions could live, so the store can be decided before the PR merges."
+    },
+    {
+      "id": "perf",
+      "type": "metrics",
+      "title": "Checkout API, main vs this PR",
+      "columns": [
+        { "id": "base", "title": "main" },
+        { "id": "head", "title": "PR" }
+      ],
+      "compare": ["base", "head"],
+      "measures": [
+        {
+          "id": "m-p95",
+          "title": "p95 latency",
+          "unit": "ms",
+          "better": "lower",
+          "values": { "base": 212, "head": 148 },
+          "threshold": { "warn": 5, "bad": 10 },
+          "trend": [231, 224, 219, 212, 151, 148],
+          "detail": "The partial index on `orders(status) WHERE status = 'open'` replaces the sequential scan. The trend is the last six nightly runs; the drop is this branch.",
+          "source": { "uri": "bench/checkout.ts" }
+        },
+        {
+          "id": "m-rps",
+          "title": "Throughput",
+          "unit": "req/s",
+          "better": "higher",
+          "values": { "base": 1180, "head": 1415 },
+          "trend": [1160, 1175, 1172, 1180, 1402, 1415]
+        },
+        {
+          "id": "m-bundle",
+          "title": "Client bundle",
+          "unit": "KB",
+          "better": "lower",
+          "values": { "base": 402.0, "head": 406.1 },
+          "threshold": { "warn": 0.5, "bad": 2 },
+          "detail": "The session client adds 4.1 KB. Under the 2% budget, over the 0.5% warning line."
+        },
+        {
+          "id": "m-mem",
+          "title": "Peak memory",
+          "unit": "MB",
+          "better": "lower",
+          "values": { "base": 310, "head": 352 },
+          "threshold": { "warn": 5, "bad": 10 },
+          "detail": "The session cache holds up to 40 MB. It is bounded, and the pod limit is 1 GB, so this is accepted for now. The store question below decides whether it stays."
+        },
+        {
+          "id": "m-tests",
+          "title": "Tests",
+          "better": "higher",
+          "values": { "base": 1204, "head": 1231 }
+        }
+      ]
+    },
+    {
+      "id": "bench",
+      "type": "metrics",
+      "title": "Query cost per case",
+      "layout": "table",
+      "columns": [
+        { "id": "base", "title": "main" },
+        { "id": "idx", "title": "index only" },
+        { "id": "head", "title": "PR" }
+      ],
+      "compare": ["base", "head"],
+      "measures": [
+        {
+          "id": "q-open",
+          "title": "Open orders for a user",
+          "unit": "ms",
+          "better": "lower",
+          "values": { "base": 48.2, "idx": 3.1, "head": 2.9 }
+        },
+        {
+          "id": "q-cart",
+          "title": "Cart totals",
+          "unit": "ms",
+          "better": "lower",
+          "values": { "base": 12.4, "idx": 12.1, "head": 4.0 },
+          "detail": "Sessions no longer join through `orders`, so this case gains from the store change, not the index."
+        },
+        {
+          "id": "q-hist",
+          "title": "Order history page",
+          "unit": "ms",
+          "better": "lower",
+          "values": { "base": 30.5, "idx": 30.9, "head": 30.7 },
+          "threshold": { "warn": 3, "bad": 10 }
+        }
+      ]
+    },
+    {
+      "id": "store-choice",
+      "type": "tradeoffs",
+      "title": "Where to keep sessions",
+      "question": "q-store",
+      "scale": { "min": 1, "max": 5, "better": "higher" },
+      "criteria": [
+        {
+          "id": "c-ops",
+          "title": "Operational cost",
+          "weight": 3,
+          "detail": "What the team has to run, watch and upgrade. Weighted highest: the team is three people."
+        },
+        { "id": "c-lat", "title": "Read latency", "weight": 2 },
+        {
+          "id": "c-mig",
+          "title": "Migration risk",
+          "weight": 3,
+          "detail": "How much can go wrong moving the 2 million live sessions."
+        },
+        { "id": "c-scale", "title": "Headroom", "weight": 1 }
+      ],
+      "scores": [
+        {
+          "criterion": "c-ops",
+          "option": "opt-pg",
+          "score": 5,
+          "reason": "Postgres already runs here."
+        },
+        {
+          "criterion": "c-ops",
+          "option": "opt-redis",
+          "score": 2,
+          "reason": "A new cluster to run and page on."
+        },
+        { "criterion": "c-ops", "option": "opt-mem", "score": 4 },
+        { "criterion": "c-lat", "option": "opt-pg", "score": 3 },
+        { "criterion": "c-lat", "option": "opt-redis", "score": 5, "reason": "Sub-millisecond." },
+        { "criterion": "c-lat", "option": "opt-mem", "score": 5 },
+        { "criterion": "c-mig", "option": "opt-pg", "score": 4 },
+        { "criterion": "c-mig", "option": "opt-redis", "score": 3 },
+        {
+          "criterion": "c-mig",
+          "option": "opt-mem",
+          "score": 1,
+          "reason": "Sessions are lost on every deploy."
+        },
+        { "criterion": "c-scale", "option": "opt-pg", "score": 3 },
+        { "criterion": "c-scale", "option": "opt-redis", "score": 5 },
+        { "criterion": "c-scale", "option": "opt-mem", "score": 2 }
+      ]
+    },
+    {
+      "id": "decide",
+      "type": "question",
+      "questions": [
+        {
+          "id": "q-store",
+          "prompt": "Where should sessions live after this change?",
+          "kind": "single",
+          "options": [
+            {
+              "id": "opt-pg",
+              "title": "A Postgres table",
+              "detail": "Same database, an unlogged table with a TTL sweep."
+            },
+            {
+              "id": "opt-redis",
+              "title": "Redis",
+              "detail": "Fastest reads, but a new service to run."
+            },
+            {
+              "id": "opt-mem",
+              "title": "In process memory",
+              "detail": "No new parts; sessions do not survive a deploy."
+            }
+          ],
+          "recommended": "opt-pg"
+        }
+      ]
+    }
+  ]
+}

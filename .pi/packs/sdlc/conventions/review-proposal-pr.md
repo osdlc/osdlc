@@ -57,7 +57,8 @@ with the task id from **Tracked by** when one exists.
 
    ```text
    git push -u origin chore/<slug>-<date>
-   gh pr create --title "docs(<plural>): <slug> proposals <date>" --body-file <tmpfile>
+   sdlc pr create --base main --head chore/<slug>-<date> \
+     --title "docs(<plural>): <slug> proposals <date>" --body-file <tmpfile>
    ```
 
    PR body:

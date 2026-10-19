@@ -205,7 +205,7 @@ function canonicalSectionName(heading: string): string {
  * the output schema) and the Acceptance-criteria list-shape findings
  * (non-checkbox / empty, which DO gate readiness).
  */
-function readyContractContentGaps(
+export function readyContractContentGaps(
   text: string,
   path: string,
 ): { columnMissing: ContentGap[]; acShape: ContentGap[] } {

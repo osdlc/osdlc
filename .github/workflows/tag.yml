@@ -6,7 +6,9 @@
 # manifest. If CHANGELOG.md has a section for it and `v<version>` does not
 # exist yet, it creates an annotated tag on the pushed commit. Any other push
 # to main leaves the tags alone. Uses the built-in GITHUB_TOKEN: tags are not
-# covered by the "Protect main" ruleset, and no workflow here runs on tags.
+# covered by the "Protect main" ruleset. Its tags start no other workflow: a
+# GITHUB_TOKEN push triggers none. packages-publish.yml runs on pushes to main,
+# not on tags.
 name: tag
 
 on:

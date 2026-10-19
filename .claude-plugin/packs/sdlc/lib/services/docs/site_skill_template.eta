@@ -1,6 +1,6 @@
 <%
 /*
- * Eta template for site reference/skills/<name>.md — one page per skill.
+ * Eta template for site reference/skills/<plugin>-<name>.md — one page per skill.
  *
  * Fed by regenSkills in site.ts via renderSiteTemplate("site_skill_template", data).
  * Data shape (it.*):

@@ -29,8 +29,6 @@ the rejected shapes with reasons), plus a decision ready to record.
 
 ## Steps
 
-0. Read this skill's fills from `sdlc/extend/skills/capability-groom.lifecycle` if it exists; apply
-   `before` and `rules` now, and the other points where they are named.
 1. **Define.** Write the capability in one sentence as something the product can do. Name the
    product, the drivers it serves, and what it explicitly is not. If a sibling capability
    already covers it, stop and extend that one.
@@ -50,14 +48,6 @@ the rejected shapes with reasons), plus a decision ready to record.
    selected shape and its architecture), and set `state`. Send the rejected shapes and their
    reasons to the decision's Options considered, and draft the decision with
    `$craft:decision-make` in the same terms: context, options, choice, consequences.
-
-## Extension points
-
-- `rules`: constraints applied to every step, for example a project's own vocabulary for
-  owners and surfaces, or "every shape names a Rust and a TypeScript implementation".
-- `after-research`: runs after step 3, for example checking a project's own research notes.
-- `after-propose`: runs after step 4, for example a review before selection.
-- `after`: runs after step 6, for example opening a PR with the entry and the decision.
 
 ## Grading
 

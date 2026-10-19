@@ -28,6 +28,10 @@
  * | Pass, active lease | CAS-write the lease `gates` only. Zero commits on main, no frontmatter write. |
  * | Fail | Downshift to `planning/needs-definition` + `definition_gap` — except the carve-out, which preserves state when the input is `in-progress*` OR an active lease exists (post-split a leased task reads `open/ready`, and downshifting it would corrupt live work). |
  *
+ * Under `--commit-on` the commit is built from `origin/<target>`'s copy of the file: it carries
+ * frontmatter state only. A task-body edit in the caller's worktree is neither read nor written
+ * here; it travels in the task branch's PR, and nothing asks the caller to push it to the target.
+ *
  * Terminal markers (slug-namespaced per skills/CLAUDE.md):
  *
  *     ENSURE-READY-OK: <basename>
@@ -56,7 +60,7 @@ import { z } from 'zod'
 
 import { defineCli, EXIT, type CliContext, type CliIo } from '@sksizer/cli-tool'
 import type { FieldEdit } from '@sksizer/yaml-splice'
-import { CommandFailed, Git, type GitOutcome } from '@sksizer/easy-git'
+import { CommandFailed, Git, type GitOutcome } from '@osdlc/typed-git'
 
 import { editFrontmatterFields, parseFrontmatterResult } from '@lib/util/frontmatter'
 import { isFile } from '@lib/util/fs'
@@ -65,6 +69,7 @@ import { isGeneratedDocsPath } from '@lib/util/generated-docs'
 import { callSync, createCtx, defineOp, exitCodeFor, OpError, type OpCtx } from '@lib/registry'
 import { repr } from '@lib/util/diagnostics'
 import { regenerateAndListChanged } from '@lib/services/docs/generate'
+import { stateBranch } from '@lib/services/orchestrator/target-branch'
 import { CommitToMainError, commitToMainViaWorktree } from '@lib/services/git/commit-to-main'
 import {
   LeaseError,
@@ -710,7 +715,7 @@ const cli = defineCli({
     commitOn: {
       kind: 'string',
       valueName: 'branch',
-      help: "Commit to main through a worktree off that branch's tip.",
+      help: 'Commit to this branch (pass the state branch: `sdlc orchestrate target`) through a worktree off its tip.',
     },
     cleanupOnFail: {
       kind: 'boolean',
@@ -805,7 +810,7 @@ function applyLeasedPass(
 }
 
 /**
- * Unleased pass: decide off origin/main's copy — the tree the commit will be
+ * Unleased pass: decide off origin/<target>'s copy — the tree the commit will be
  * built on — so the no-op case never spins up a worktree at all. An `exit` in
  * the result means the whole command is already resolved (not-found, or the
  * already-`open/ready`-and-clean no-op); otherwise `stamp` is what the
@@ -817,19 +822,20 @@ async function planUnleasedPass(
   projectRoot: string,
   basename: string,
   now: string,
+  target: string,
 ): Promise<{ exit: number } | { stamp: string | null }> {
   // Best-effort: an offline or misconfigured remote leaves the local
-  // `origin/main` where it was, and the `readTask` below then decides off
+  // `origin/<target>` where it was, and the `readTask` below then decides off
   // that ref — a stale read is recoverable, a crashed gate is not.
-  new Git(projectRoot, { runner: git }).try.fetch('origin', 'main', { quiet: true })
-  const originRead = readTask(basename, { projectRoot, at: 'origin/main', git })
+  new Git(projectRoot, { runner: git }).try.fetch('origin', target, { quiet: true })
+  const originRead = readTask(basename, { projectRoot, at: `origin/${target}`, git })
   if (originRead === null || originRead.fm === null) {
-    io.stderr(`task file not found on origin/main: ${basename}.md\n`)
+    io.stderr(`task file not found on origin/${target}: ${basename}.md\n`)
     return { exit: EXIT.error }
   }
   const plan = planPassEdits(originRead.fm, now)
   if (plan.edits.length === 0) {
-    // Already `open/ready` and clean: the readiness claim is already on main
+    // Already `open/ready` and clean: the readiness claim is already on the target
     // and the stamp is never refreshed. No commit, no write.
     emitPassMarker(io, basename, null, 'none')
     return { exit: EXIT.ok }
@@ -839,7 +845,7 @@ async function planUnleasedPass(
 
 /**
  * Build and land the promotion / needs-definition commit through an
- * ephemeral worktree off origin/main, then emit the terminal marker (and, on
+ * ephemeral worktree off origin/<target>, then emit the terminal marker (and, on
  * a `--cleanup-on-fail` downshift, tear down the worktree/branch/lease).
  */
 async function commitVerdictToMain(
@@ -851,6 +857,7 @@ async function commitVerdictToMain(
   now: string,
   held: ActiveLease | null,
   passStamp: string | null,
+  target: string,
 ): Promise<number> {
   let result
   try {
@@ -858,10 +865,11 @@ async function commitVerdictToMain(
       projectRoot: start,
       git,
       label: basename,
+      branch: target,
       mutate: (wt) => {
         const wtTaskPath = resolve(join(wt, 'docs', 'planning', 'tasks', `${basename}.md`))
         if (!isFile(wtTaskPath)) {
-          io.stderr(`task file not found on origin/main: ${basename}.md\n`)
+          io.stderr(`task file not found on origin/${target}: ${basename}.md\n`)
           throw new ExitError(EXIT.error)
         }
         // Re-plan against the clean off-origin tree so a push-race retry
@@ -871,12 +879,12 @@ async function commitVerdictToMain(
           leased: held !== null,
         })
         // The pass arm decided up front (off this same tree) that an edit was
-        // due, so "no change" here means origin/main moved underneath. The
+        // due, so "no change" here means origin/<target> moved underneath. The
         // fail arm always has a gap to write, so a re-fail with an
         // identical gap still surfaces as the empty commit git refuses.
         if (args.mode === 'pass' && !outcome.changed) {
           io.stderr(
-            `nothing to commit for ${basename}: origin/main moved under the ` +
+            `nothing to commit for ${basename}: origin/${target} moved under the ` +
               `readiness gate. Re-run.\n`,
           )
           throw new ExitError(EXIT_WRITE_REFUSED)
@@ -917,7 +925,7 @@ async function commitVerdictToMain(
 
 /**
  * The `--commit-on` branch: the promotion / needs-definition commit lands on
- * origin/main through an ephemeral worktree off origin/main — NEVER the
+ * origin/<target> through an ephemeral worktree off origin/<target> — NEVER the
  * primary checkout ([[D-WK7T-agent-git-writes-worktree-isolated]]). The
  * off-origin tree is clean, so the body-edit precondition does not apply: the
  * author's body edits stay in their own task worktree, untouched.
@@ -930,6 +938,7 @@ async function applyVerdictOnMain(
   projectRoot: string,
   now: string,
   activeLease: () => ActiveLease | null,
+  target: string,
 ): Promise<number> {
   // The runner both the entity read layer's `at:` seam and the
   // commit-to-main worktree primitive take.
@@ -945,17 +954,17 @@ async function applyVerdictOnMain(
 
   let passStamp: string | null = null
   if (args.mode === 'pass') {
-    const outcome = await planUnleasedPass(io, git, projectRoot, basename, now)
+    const outcome = await planUnleasedPass(io, git, projectRoot, basename, now, target)
     if ('exit' in outcome) return outcome.exit
     passStamp = outcome.stamp
   }
 
-  return await commitVerdictToMain(io, git, start, basename, args, now, held, passStamp)
+  return await commitVerdictToMain(io, git, start, basename, args, now, held, passStamp, target)
 }
 
 /**
  * Default / `--commit` path: act on the file as-given (the current checkout
- * and branch), rather than routing through a worktree off origin/main.
+ * and branch), rather than routing through a worktree off origin/<target>.
  */
 function applyVerdictOnCurrentCheckout(
   io: CliIo,
@@ -1023,7 +1032,11 @@ function applyVerdictOnCurrentCheckout(
   return EXIT.ok
 }
 
-async function applyVerdict(argv: readonly string[], ctx: CliContext): Promise<number> {
+async function applyVerdict(
+  argv: readonly string[],
+  ctx: CliContext,
+  target: string,
+): Promise<number> {
   const io = ctx.io
   const parsed = parseVerdictArgs(argv, io)
   if ('exit' in parsed) return parsed.exit
@@ -1049,7 +1062,19 @@ async function applyVerdict(argv: readonly string[], ctx: CliContext): Promise<n
   }
 
   if (args.commitOn) {
-    return await applyVerdictOnMain(io, args, basename, start, projectRoot, now, activeLease)
+    // An explicit `--commit-on <branch>` wins; the resolved state branch is only
+    // the fallback for an empty value.
+    const commitTarget = args.commitOn.trim() === '' ? target : args.commitOn
+    return await applyVerdictOnMain(
+      io,
+      args,
+      basename,
+      start,
+      projectRoot,
+      now,
+      activeLease,
+      commitTarget,
+    )
   }
 
   return applyVerdictOnCurrentCheckout(io, args, path, basename, now, activeLease)
@@ -1069,9 +1094,13 @@ function pathStem(path: string): string {
  * is caught here so `main` still only ever returns — [[S-0015-standalone-cli-shape]]
  * rule 1.
  */
-export async function main(argv: readonly string[], ctx: CliContext): Promise<number> {
+export async function main(
+  argv: readonly string[],
+  ctx: CliContext,
+  target = 'main',
+): Promise<number> {
   try {
-    return await applyVerdict(argv, ctx)
+    return await applyVerdict(argv, ctx, target)
   } catch (err) {
     if (err instanceof ExitError) return err.code
     throw err
@@ -1096,5 +1125,7 @@ export default defineOp({
   input,
   output,
   cli: { rawArgv: true },
-  handler: async ({ argv }, ctx: OpCtx) => ({ exitCode: await main(argv, legacyCliContext(ctx)) }),
+  handler: async ({ argv }, ctx: OpCtx) => ({
+    exitCode: await main(argv, legacyCliContext(ctx), stateBranch(ctx)),
+  }),
 })

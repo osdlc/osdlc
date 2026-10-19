@@ -25,8 +25,6 @@ question, the sources, the findings, the open points, and one recommendation.
 
 ## Steps
 
-0. Read this skill's fills from `sdlc/extend/skills/research.lifecycle` if it exists; apply
-   `before` and `rules` now, and the other points where they are named.
 1. Rewrite the question until it has one answerable subject. Write down what would count as
    answered.
 2. Search the repo first: decisions, standards, references, notes, and code. Record each hit as
@@ -38,12 +36,6 @@ question, the sources, the findings, the open points, and one recommendation.
 5. List what stays open and what it would take to close it.
 6. Give one recommendation in two sentences, and stop when the time box ends even if points
    stay open.
-
-## Extension points
-
-- `rules`: constraints on every step, for example a list of trusted sources.
-- `after-repo-search`: runs after step 2, for example checking a project's own research notes.
-- `after`: runs after step 6, for example recording the note.
 
 ## Grading
 

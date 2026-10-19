@@ -32,3 +32,39 @@ export function unwrapWikilink(value: string): string | null {
 export function isWikilink(value: string): boolean {
   return WIKILINK_RE.test(value)
 }
+
+/**
+ * One wikilink or embed found inside prose: `[[target]]`, `[[target#heading]]`,
+ * `[[target|alias]]`, `[[target#heading|alias]]`, each optionally prefixed
+ * `!` for an embed. Fields are verbatim (untrimmed); `heading` and `alias` are
+ * undefined when absent.
+ */
+export interface WikilinkMatch {
+  embed: boolean
+  target: string
+  heading: string | undefined
+  alias: string | undefined
+}
+
+/**
+ * Wikilinks and embeds in prose. Groups: 1 the `!` of an embed (or empty), 2
+ * the target, 3 the `#heading` including its `#` (or undefined), 4 the alias
+ * (or undefined). `matchAll` copies the regex, so its `lastIndex` is never
+ * shared between calls.
+ */
+const WIKILINK_IN_PROSE_RE = /(!?)\[\[([^\]|#]+)(#[^\]|]*)?(?:\|([^\]]+))?\]\]/g
+
+/**
+ * Find every wikilink and embed in `text`, in order. Unlike
+ * {@link unwrapWikilink} this scans prose. A link may span a line break (the
+ * target and alias classes admit newlines), so a caller comparing wrapped text
+ * collapses whitespace first or accepts the newline inside a field.
+ */
+export function findWikilinks(text: string): WikilinkMatch[] {
+  return [...text.matchAll(WIKILINK_IN_PROSE_RE)].map((m) => ({
+    embed: m[1] === '!',
+    target: m[2]!,
+    heading: m[3]?.slice(1),
+    alias: m[4],
+  }))
+}
