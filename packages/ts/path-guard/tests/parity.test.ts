@@ -1,6 +1,14 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, sep } from 'node:path'
 
 import { describe, expect, test } from 'vitest'
 
@@ -10,6 +18,7 @@ import {
   lexicalAbsolute,
   resolveInside,
   toRelative,
+  tryResolveInside,
   validateRelative,
   type Resolver,
 } from '../index.ts'
@@ -120,9 +129,38 @@ function resolveOnDisk(c: OnDiskCase): { ok: string } | { error: string } {
   })
 }
 
-/** Answers `contains` in `c`'s tree with the default resolver. Concatenated, not `join`ed, which would fold the `..`. */
-function containsOnDisk(c: ContainsOnDiskCase): boolean {
-  return inScratch(c, (scratch) => contains(`${scratch}/${c.outer}`, `${scratch}/${c.inner}`))
+/** Is the real path of `path` the real path of `root`, or beneath it? Both must exist. */
+function landsIn(root: string, path: string): boolean {
+  const [r, p] = [realpathSync.native(root), realpathSync.native(path)]
+  return p === r || p.startsWith(r.endsWith(sep) ? r : r + sep)
+}
+
+/**
+ * Answers `contains` in `c`'s tree with the default resolver, then creates
+ * `c.inner` and says whether the filesystem put it inside `c.outer`, as the Rust
+ * side checks. Concatenated, not `join`ed, which would fold the `..`.
+ */
+function containsOnDisk(c: ContainsOnDiskCase): { got: boolean; landed: boolean } {
+  return inScratch(c, (scratch) => {
+    const [outer, inner] = [`${scratch}/${c.outer}`, `${scratch}/${c.inner}`]
+    const got = contains(outer, inner)
+    mkdirSync(inner, { recursive: true })
+    return { got, landed: landsIn(outer, inner) }
+  })
+}
+
+/**
+ * Asks `resolveInside` about `c.input` in `c`'s tree, then writes a file there
+ * and says whether the filesystem put it inside `c.root`.
+ */
+function resolveAndWrite(c: OnDiskCase): { inside: boolean; landed: boolean } {
+  return inScratch(c, (scratch) => {
+    const root = join(scratch, c.root)
+    const inside = tryResolveInside(root, c.input) !== null
+    const path = join(root, c.input)
+    writeFileSync(path, '')
+    return { inside, landed: landsIn(root, path) }
+  })
 }
 
 describe('shared parity fixture', () => {
@@ -181,22 +219,27 @@ describe('shared parity fixture', () => {
   })
 
   // A case with a `..` pins the POSIX rule, where `link/..` is the parent of the
-  // link's target. Windows folds `..` as text first, so those run on POSIX only,
-  // as the Rust suite does.
-  const posixDotDot = (_c: object) => false
+  // link's target. Node on Windows folds `..` as text first, so there the guard
+  // must agree with where the filesystem puts the path instead.
+  const windowsDotDot = (c: object) => WINDOWS && JSON.stringify(c).includes('..')
 
   describe('resolveInside on disk', () => {
     for (const c of f.resolve_on_disk) {
-      test.skipIf(posixDotDot(c))(c.name, () => {
-        expect(resolveOnDisk(c)).toEqual(expected(c))
+      test(c.name, () => {
+        if (windowsDotDot(c)) {
+          const { inside, landed } = resolveAndWrite(c)
+          expect(inside).toBe(landed)
+        } else expect(resolveOnDisk(c)).toEqual(expected(c))
       })
     }
   })
 
   describe('contains on disk', () => {
     for (const c of f.contains_on_disk) {
-      test.skipIf(posixDotDot(c))(c.name, () => {
-        expect(containsOnDisk(c)).toBe(c.expected)
+      test(c.name, () => {
+        const { got, landed } = containsOnDisk(c)
+        expect(got).toBe(landed)
+        if (!windowsDotDot(c)) expect(got).toBe(c.expected)
       })
     }
   })

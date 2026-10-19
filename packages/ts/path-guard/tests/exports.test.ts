@@ -16,7 +16,8 @@ import * as main from '../index.ts'
 import * as lexicalEntry from '../lexical-entry.ts'
 
 const PACKAGE_DIR = join(import.meta.dirname, '..')
-const README = readFileSync(join(PACKAGE_DIR, 'README.md'), 'utf-8')
+// A Windows checkout may have CRLF line ends.
+const README = readFileSync(join(PACKAGE_DIR, 'README.md'), 'utf-8').replaceAll('\r\n', '\n')
 const MANIFEST: { name: string; [field: string]: unknown } = JSON.parse(
   readFileSync(join(PACKAGE_DIR, 'package.json'), 'utf-8'),
 )
