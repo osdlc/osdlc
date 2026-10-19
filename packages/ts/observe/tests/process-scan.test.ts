@@ -117,12 +117,28 @@ test('only linux and darwin can be scanned', () => {
   expect(processScanSupported('win32')).toBe(false)
 })
 
+/** Resolves once `pid` is gone (`kill(pid, 0)` fails with ESRCH); rejects after 10 s. */
+async function exited(pid: number): Promise<void> {
+  const deadline = Date.now() + 10_000
+  for (;;) {
+    try {
+      process.kill(pid, 0)
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === 'ESRCH') return
+      throw e
+    }
+    if (Date.now() > deadline) throw new Error(`pid ${pid} still running after 10 s`)
+    await new Promise((resolve) => setTimeout(resolve, 20))
+  }
+}
+
 describe('liveSessionIds', () => {
   test.skipIf(!processScanSupported())(
     'finds a running process launched with sessionEnv',
     async () => {
       const id = crypto.randomUUID()
       const abort = new AbortController()
+      let pid = 0
       let spawned!: () => void
       const started = new Promise<void>((resolve) => (spawned = resolve))
       const child = spawnRunnerAsync(process.execPath).run(['-e', 'setTimeout(() => {}, 20000)'], {
@@ -130,7 +146,10 @@ describe('liveSessionIds', () => {
         env: sessionEnv({ id, machine: 'm-0123456789abcdef' }),
         timeoutMs: 30_000,
         signal: abort.signal,
-        onSpawn: () => spawned(),
+        onSpawn: (p) => {
+          pid = p
+          spawned()
+        },
       })
       try {
         await started
@@ -139,6 +158,8 @@ describe('liveSessionIds', () => {
         abort.abort()
         await child
       }
+      // An abort settles the run at once, before the child has exited.
+      await exited(pid)
       expect(liveSessionIds()?.has(id)).toBe(false)
     },
     30_000,
