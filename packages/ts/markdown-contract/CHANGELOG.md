@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.1
+
+### Patch Changes
+
+- 4fee464: `inferConfig` and `markdown-contract init` skip `.git` and `node_modules` folders, as `runCorpus` and `validate` already do. Before, they read `.md` files under those folders and inferred contracts from them.
+
 ## 0.3.0
 
 ### Minor Changes
