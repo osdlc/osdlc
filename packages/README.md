@@ -54,7 +54,8 @@ that half moves here. Twins keep semantic parity, not literal parity.
 - **Same behaviour.** For the same input, both twins return the same result
   or refuse it with the same error kind. A shared fixture of cases checks
   it: `packages/rust/<name>/tests/fixtures/parity.json`, run by both twins'
-  tests. `tiered-dirs` has one. `etag-write` does not have one yet.
+  tests. `tiered-dirs` and `path-guard` have one. `etag-write` does not
+  have one yet.
 - **Each language's idiom.** A twin does not copy the other's names or
   signatures when that breaks its own language's habits. Rust uses
   snake_case, `Result`, traits and the standard library's words. TypeScript
