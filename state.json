@@ -1,12 +1,57 @@
 {
   "schema": 1,
   "pr": 317,
-  "head": null,
-  "base": null,
-  "round": 0,
+  "head": "f9c4a89cb1207beef3581b9449c3588e2a8fed26",
+  "base": "383f22820af8c411cc8bc241023842a01872c34b",
+  "round": 1,
   "claim": {
     "owner": "KellyMBP.local:claude-x7k2qa",
     "at": "2026-10-19T19:53:40.548Z"
   },
-  "findings": []
+  "findings": [
+    {
+      "id": "r1-1",
+      "round": 1,
+      "path": "packages/README.md",
+      "line": 65,
+      "title": "Skip-versions rule conflicts with the Changesets release steps",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-2",
+      "round": 1,
+      "path": "packages/README.md",
+      "line": 47,
+      "title": "Twin definition does not say how wasm bindings and one-sided twins fit the version rule",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-3",
+      "round": 1,
+      "path": "packages/README.md",
+      "line": 52,
+      "title": "Shared-fixture rule is not met by etag-write, which the PR says follows it",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-4",
+      "round": 1,
+      "path": null,
+      "line": null,
+      "title": "Twin rule now lives in two places (packages/README.md and tiered-dirs D-02)",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    }
+  ]
 }
