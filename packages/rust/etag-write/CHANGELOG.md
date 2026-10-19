@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.1](https://github.com/osdlc/osdlc/compare/etag-write/v0.2.0...etag-write/v0.2.1) - 2026-10-19
+
+### Added
+
+- *(config-layers)* add config-layers 0.6.0, replacing cli-tool-config ([#286](https://github.com/osdlc/osdlc/pull/286))
+
+### Other
+
+- *(etag-write)* say that write_cas is not atomic with its etag check ([#280](https://github.com/osdlc/osdlc/pull/280))
+
 ### Changed
 
 - The minimum supported Rust version is 1.89, up from 1.85. The whole workspace

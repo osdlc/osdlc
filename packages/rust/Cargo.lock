@@ -78,7 +78,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "thiserror",
- "tiered-dirs 0.3.1",
+ "tiered-dirs 0.3.2",
 ]
 
 [[package]]
@@ -178,7 +178,7 @@ dependencies = [
 
 [[package]]
 name = "etag-write"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "sha2",
  "tempfile",
@@ -335,7 +335,7 @@ checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 
 [[package]]
 name = "path-guard"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "serde",
  "serde_json",
@@ -597,7 +597,7 @@ dependencies = [
 
 [[package]]
 name = "tiered-dirs"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "dirs",
  "serde",
