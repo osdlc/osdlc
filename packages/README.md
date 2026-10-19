@@ -59,6 +59,10 @@ parity.
   language has no use for. Its README lists such exports.
 - **Versions.** Twins share the major and minor version. Patch releases are
   independent.
+- **Skipping versions to catch up.** When one twin moves ahead for a while,
+  the other may skip one or more versions to return to the shared major and
+  minor. For example, if the crate is at 0.3 while the TypeScript package is
+  at 0.1, the package's next release is 0.3.0, with no 0.2.
 
 ## Where changes are made
 
