@@ -506,6 +506,54 @@ pub fn contains_with<R: Resolver + ?Sized>(resolver: &R, outer: &Path, inner: &P
     }
 }
 
+/// `path` made absolute against the process's current directory and folded
+/// textually: `.` dropped, `..` removed together with the component before it,
+/// no trailing slash.
+///
+/// This is a lexical fold, not a containment check. It touches no filesystem,
+/// follows no symlink, and so cannot tell whether the result stays inside any
+/// root. Use [`resolve`] for that. A `..` at the root stays at the root, and a
+/// leading `..` in a relative path pops the last component of the current
+/// directory.
+///
+/// "Absolute" is the platform's meaning. On Windows a path with a root but no
+/// drive, such as `\a`, is not absolute: it is anchored at the current
+/// directory and keeps its drive.
+///
+/// # Errors
+///
+/// The current directory cannot be read and `path` is not absolute. An
+/// absolute `path` never fails.
+///
+/// # Examples
+///
+/// ```
+/// use std::path::Path;
+/// use path_guard::lexical_absolute;
+///
+/// let cwd = std::env::current_dir().unwrap();
+/// let got = lexical_absolute(Path::new("a/./b/../c")).unwrap();
+/// assert_eq!(got, cwd.join("a/c"));
+/// ```
+pub fn lexical_absolute(path: &Path) -> io::Result<PathBuf> {
+    let joined = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir()?.join(path)
+    };
+    let mut out = PathBuf::new();
+    for part in joined.components() {
+        match part {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                out.pop();
+            }
+            other => out.push(other.as_os_str()),
+        }
+    }
+    Ok(out)
+}
+
 /// Turn an absolute path back into a root-relative one (`/v/Notes/a.md` ->
 /// `Notes/a.md`), with `/` separators regardless of platform.
 ///
