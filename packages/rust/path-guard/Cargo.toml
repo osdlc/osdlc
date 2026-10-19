@@ -9,6 +9,10 @@ repository.workspace = true
 readme = "README.md"
 keywords = ["path", "security", "traversal", "symlink", "sandbox"]
 categories = ["filesystem"]
+# Held back for one release so the pending OIDC version-bumps publish on their
+# own run; the follow-up PR removes this and release-plz makes the first release
+# with the shared token. See packages/README.md, "Releasing a Rust crate".
+publish = false
 include = [
   "src/**/*.rs",
   "examples/**/*.rs",
