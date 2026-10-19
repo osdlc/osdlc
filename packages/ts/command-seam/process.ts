@@ -12,7 +12,15 @@ import { spawn } from 'node:child_process'
 import { constants } from 'node:os'
 
 import { groupStartRefusal, releaseWhenEmpty, settleGroup, spawnTrackedGroup } from './groups.ts'
-import { cwdError, mergedEnv, timerMs, type EnvOverrides, type NeverExitedReason } from './sync.ts'
+import {
+  childStdio,
+  cwdError,
+  mergedEnv,
+  timerMs,
+  type EnvOverrides,
+  type NeverExitedReason,
+  type StdioOption,
+} from './sync.ts'
 
 /** Per-call options for a {@link ManagedProcessRunner}. */
 export interface ManagedProcessRunOptions {
@@ -41,8 +49,20 @@ export interface ManagedProcessRunOptions {
    * settles while the parent is still alive. An `unref`'d group is not tracked
    * by `installGroupSignalForwarding`: a signal to the parent does not reach it,
    * and the parent's exit does not `SIGKILL` it.
+   *
+   * For a fire-and-forget launch (an editor, a browser) that must outlive
+   * the parent, add `processGroup: true` so the terminal's signals do not
+   * reach it, and `stdio: 'ignore'` so it does not write to the parent's
+   * terminal after the parent exits.
    */
   unref?: boolean | undefined
+  /**
+   * Where the child's stdio goes: `'inherit'` (the default), `'ignore'`, or
+   * `{ stdout, stderr }` file descriptors, with stdin from `/dev/null`. See
+   * {@link StdioOption}. An fd that is not open settles `exited` with
+   * `reason: 'spawn'`.
+   */
+  stdio?: StdioOption | undefined
 }
 
 /** How a managed process ended. */
@@ -98,15 +118,17 @@ export interface ManagedProcessRunner {
   /**
    * Start the binary with `argv` (without the binary name) and return at
    * once. A failed spawn is reported through `exited`, not thrown. A NUL
-   * byte in argv or env is a programmer error and throws.
+   * byte in argv or env, or an invalid `stdio`, is a programmer error and
+   * throws.
    */
   run(argv: string[], opts: ManagedProcessRunOptions): ManagedProcessHandle
 }
 
 /**
  * The default {@link ManagedProcessRunner}: starts `binary` with `spawn`.
- * Stdio is always inherited, so the child's output reaches the terminal. It
- * does not capture output and has no timeout of its own.
+ * Stdio is inherited unless `stdio` says otherwise, so by default the
+ * child's output reaches the terminal. It does not capture output and has
+ * no timeout of its own.
  *
  * @param binary - A name looked up on `PATH`, or a path.
  * @returns A runner for that binary.
@@ -119,11 +141,20 @@ export interface ManagedProcessRunner {
  * })
  * setTimeout(() => server.kill(), 5_000)
  * const { exitCode, signal } = await server.exited
+ *
+ * // Fire and forget: the editor outlives this process and stays off its terminal.
+ * managedProcessRunner('code').run(['.'], {
+ *   cwd: '.',
+ *   processGroup: true,
+ *   unref: true,
+ *   stdio: 'ignore',
+ * })
  * ```
  */
 export function managedProcessRunner(binary: string): ManagedProcessRunner {
   return {
     run(argv: string[], opts: ManagedProcessRunOptions): ManagedProcessHandle {
+      const stdio = childStdio(opts.stdio)
       const cwdMessage = cwdError(`spawn ${binary}`, binary, argv, opts)
       if (cwdMessage !== undefined) {
         return { pid: -1, kill: () => {}, exited: Promise.resolve(spawnExit(cwdMessage)) }
@@ -137,14 +168,25 @@ export function managedProcessRunner(binary: string): ManagedProcessRunner {
         spawn(binary, argv, {
           cwd: opts.cwd,
           detached: group,
-          stdio: 'inherit',
+          stdio,
           ...mergedEnv(opts),
         })
-      // An `unref`'d group is meant to outlive the host, so forwarding must not reap it.
-      const { child, untrack: untrackGroup } =
-        group && opts.unref !== true
-          ? spawnTrackedGroup(start)
-          : { child: start(), untrack: undefined }
+      let spawned: { child: ReturnType<typeof start>; untrack: (() => void) | undefined }
+      try {
+        // An `unref`'d group is meant to outlive the host, so forwarding must not reap it.
+        spawned =
+          group && opts.unref !== true
+            ? spawnTrackedGroup(start)
+            : { child: start(), untrack: undefined }
+      } catch (e) {
+        // `spawn` throws, rather than emitting `error`, for some failures,
+        // such as an fd in `stdio` that is not open (EBADF). A system error
+        // has an `errno`; a programmer error, such as a NUL byte, does not.
+        if (typeof (e as NodeJS.ErrnoException).errno !== 'number') throw e
+        const exit = spawnExit((e as Error).message)
+        return { pid: -1, kill: () => {}, exited: Promise.resolve(exit) }
+      }
+      const { child, untrack: untrackGroup } = spawned
       const pid = child.pid ?? -1
       if (opts.unref === true) child.unref()
       // The signals `kill()` has sent. A death by one of them is the caller's

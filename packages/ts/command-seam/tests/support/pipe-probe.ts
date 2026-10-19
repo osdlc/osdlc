@@ -13,7 +13,14 @@ import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from '
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { runJson, runShell, shellRunner, spawnRunner } from '../../index.ts'
+import {
+  runJson,
+  runShell,
+  shellRunner,
+  spawnRunner,
+  spawnRunnerBytes,
+  type CommandResult,
+} from '../../index.ts'
 
 const out = process.argv[2]
 if (out === undefined) throw new Error('usage: pipe-probe.ts <result-file>')
@@ -85,6 +92,18 @@ try {
   results['outputCapSet'] = sh.run(
     ['-c', `i=0; while [ $i -lt 2000 ]; do printf '€'; i=$((i+1)); done; exec sleep 10`],
     { cwd: CWD, maxOutputBytes: 100 },
+  )
+  // Stdout as bytes, sent as base64 so the JSON carries them unchanged.
+  const base64 = (r: CommandResult<Buffer>) => ({ ...r, stdout: r.stdout.toString('base64') })
+  const shBytes = spawnRunnerBytes('sh')
+  results['bytes'] = base64(
+    shBytes.run(['-c', `printf '\\377\\376\\000\\200abc'; echo 'warn €' >&2`], { cwd: CWD }),
+  )
+  results['bytesCap'] = base64(
+    shBytes.run(
+      ['-c', `i=0; while [ $i -lt 2000 ]; do printf '€'; i=$((i+1)); done; exec sleep 10`],
+      { cwd: CWD, maxOutputBytes: 100 },
+    ),
   )
   results['signalDeath'] = sh.run(['-c', 'kill -9 $$'], { cwd: CWD })
   results['genuineExit1'] = sh.run(['-c', 'exit 1'], { cwd: CWD })

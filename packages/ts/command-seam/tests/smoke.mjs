@@ -11,7 +11,18 @@
 // not a test-runner suite and is not in `files`.
 
 import { strict as assert } from 'node:assert'
-import { spawnRunner, runChecked, CommandFailed, asAsync, withDefaults } from '@osdlc/command-seam'
+import { closeSync, mkdtempSync, openSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import {
+  spawnRunner,
+  spawnRunnerBytes,
+  runChecked,
+  CommandFailed,
+  asAsync,
+  managedProcessRunner,
+  withDefaults,
+} from '@osdlc/command-seam'
 import { fakeProcess, fakeRunner } from '@osdlc/command-seam/testing'
 
 const runner = spawnRunner('node')
@@ -53,6 +64,29 @@ assert.throws(() => runner.run(['-e', ''], { cwd: process.cwd(), timeoutMs: 0 })
 
 const bound = withDefaults(runner, { cwd: process.cwd() })
 assert.equal(bound.run(['-e', "process.stdout.write('bound')"]).stdout, 'bound')
+
+// Bytes: stdout as written, never decoded.
+const bytes = spawnRunnerBytes('node').run(
+  ['-e', 'process.stdout.write(Buffer.from([0xff, 0x00, 0x80]))'],
+  { cwd: process.cwd() },
+)
+assert.deepEqual([...bytes.stdout], [0xff, 0x00, 0x80])
+
+// stdio: both streams to one fd, in the order the child wrote them.
+const dir = mkdtempSync(join(tmpdir(), 'command-seam-smoke-'))
+try {
+  const log = join(dir, 'log')
+  const fd = openSync(log, 'w')
+  const handle = managedProcessRunner('sh').run(['-c', 'echo a; echo b >&2; echo c'], {
+    cwd: process.cwd(),
+    stdio: { stdout: fd, stderr: fd },
+  })
+  closeSync(fd)
+  assert.equal((await handle.exited).exitCode, 0)
+  assert.equal(readFileSync(log, 'utf8'), 'a\nb\nc\n')
+} finally {
+  rmSync(dir, { recursive: true, force: true })
+}
 
 // The /testing entry point, built.
 const fake = fakeRunner({ 'rev-parse HEAD': { stdout: 'abc\n' } })

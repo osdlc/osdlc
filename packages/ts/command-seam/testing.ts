@@ -2,7 +2,8 @@
  * `@osdlc/command-seam/testing`: fakes for tests, kept out of the main
  * entry so production code never imports them.
  *
- * - `fakeRunner` answers capture-runner calls from a table and records them.
+ * - `fakeRunner` answers capture-runner calls (text or bytes) from a table
+ *   and records them.
  * - `fakeNeverExited` builds the result of a run that never exited.
  * - `fakeProcess` is a managed-process handle the test ends by hand.
  */
@@ -14,9 +15,14 @@ import {
   type ManagedProcessRunner,
   type ManagedProcessRunOptions,
 } from './process.ts'
-import { asAsync, type AsyncCommandRunner, type AsyncCommandRunOptions } from './async.ts'
+import {
+  asAsync,
+  type AsyncBytesCommandRunner,
+  type AsyncCommandRunner,
+  type AsyncCommandRunOptions,
+} from './async.ts'
 import { shellQuote } from './quote.ts'
-import type { CommandResult, CommandRunner, NeverExitedReason } from './sync.ts'
+import type { BytesCommandRunner, CommandResult, CommandRunner, NeverExitedReason } from './sync.ts'
 
 /**
  * One call a fake received.
@@ -28,8 +34,12 @@ export interface FakeCall<O> {
   opts: O
 }
 
-/** What a fake answers: fields over `{ exitCode: 0, stdout: '', stderr: '' }`. */
-type FakeAnswer = Partial<CommandResult>
+/**
+ * What a fake answers: fields over `{ exitCode: 0, stdout: '', stderr: '' }`.
+ * `stdout` may be a string or a `Buffer`; each runner converts it to its own
+ * type.
+ */
+type FakeAnswer = Partial<CommandResult<string | Buffer>>
 
 /**
  * What `fakeRunner` returns.
@@ -44,6 +54,14 @@ export interface FakeRunner {
    * the answers and `calls`.
    */
   asyncRunner: AsyncCommandRunner
+  /**
+   * The same fake as a {@link BytesCommandRunner}, for code that reads stdout
+   * as bytes. A string `stdout` in an answer is encoded as UTF-8; a `Buffer`
+   * is returned as it is. It shares the answers and `calls`.
+   */
+  bytesRunner: BytesCommandRunner
+  /** `bytesRunner` as an {@link AsyncBytesCommandRunner}. */
+  asyncBytesRunner: AsyncBytesCommandRunner
   /**
    * Every call, in order: a copy of its argv and a shallow copy of its
    * options. Typed with the async options, so a call made through
@@ -74,9 +92,13 @@ export interface FakeRunner {
  * Through `asyncRunner`, `signal` and `processGroup` are recorded but do
  * nothing, and `onSpawn` is never called.
  *
+ * An answer's `stdout` may be a string or a `Buffer`. `runner` and
+ * `asyncRunner` decode a `Buffer` as UTF-8; `bytesRunner` and
+ * `asyncBytesRunner` encode a string as UTF-8.
+ *
  * @param answers - Results by argv, or a function that picks one.
- * @returns The runner, the same fake as an async runner, and the list of
- * calls they received.
+ * @returns The runner, the same fake as an async runner and as a bytes
+ * runner, and the list of calls they received.
  *
  * @example
  * ```ts
@@ -100,16 +122,32 @@ export function fakeRunner(
           const key = keyOf(argv)
           return Object.hasOwn(answers, key) ? answers[key] : undefined
         }
+  const answer = (argv: string[], opts: AsyncCommandRunOptions): CommandResult<string | Buffer> => {
+    calls.push({ argv: [...argv], opts: { ...opts } })
+    const found = lookup(argv, opts)
+    if (found !== undefined) return { exitCode: 0, stdout: '', stderr: '', ...found }
+    const error = `fakeRunner: no answer for: ${keyOf(argv)}`
+    return { exitCode: 1, stdout: '', stderr: '', neverExited: true, reason: 'spawn', error }
+  }
   const runner: CommandRunner = {
     run(argv, opts: AsyncCommandRunOptions) {
-      calls.push({ argv: [...argv], opts: { ...opts } })
-      const answer = lookup(argv, opts)
-      if (answer !== undefined) return { exitCode: 0, stdout: '', stderr: '', ...answer }
-      const error = `fakeRunner: no answer for: ${keyOf(argv)}`
-      return { exitCode: 1, stdout: '', stderr: '', neverExited: true, reason: 'spawn', error }
+      const r = answer(argv, opts)
+      return { ...r, stdout: r.stdout.toString() }
     },
   }
-  return { runner, asyncRunner: asAsync(runner), calls }
+  const bytesRunner: BytesCommandRunner = {
+    run(argv, opts: AsyncCommandRunOptions) {
+      const r = answer(argv, opts)
+      return { ...r, stdout: Buffer.from(r.stdout) }
+    },
+  }
+  return {
+    runner,
+    asyncRunner: asAsync(runner),
+    bytesRunner,
+    asyncBytesRunner: asAsync(bytesRunner),
+    calls,
+  }
 }
 
 /**

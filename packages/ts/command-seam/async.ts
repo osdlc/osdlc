@@ -21,10 +21,12 @@ import {
 import {
   CommandFailed,
   cwdError,
+  emptyStdout,
   mergedEnv,
   normalizeOutputCap,
   normalizeTimeout,
   spawnFailure,
+  type BytesCommandRunner,
   type CommandResult,
   type CommandRunner,
   type CommandRunOptions,
@@ -78,6 +80,19 @@ export interface AsyncCommandRunner {
    * argv or env.
    */
   run(argv: string[], opts: AsyncCommandRunOptions): Promise<CommandResult>
+}
+
+/**
+ * The async form of `BytesCommandRunner`: `run` resolves to a result whose
+ * stdout is a `Buffer`. `runCheckedAsync` takes it too.
+ *
+ * @experimental
+ */
+export interface AsyncBytesCommandRunner {
+  /** The binary this runner runs, when it has one. See `CommandRunner.binary`. */
+  readonly binary?: string | undefined
+  /** As `AsyncCommandRunner.run`, with stdout as a `Buffer`. */
+  run(argv: string[], opts: AsyncCommandRunOptions): Promise<CommandResult<Buffer>>
 }
 
 /**
@@ -146,276 +161,330 @@ const ABORT_KILL_GRACE_MS = 1000
 export function spawnRunnerAsync(binary: string): AsyncCommandRunner {
   return {
     binary,
-    run(argv: string[], opts: AsyncCommandRunOptions): Promise<CommandResult> {
-      return new Promise((resolve) => {
-        // Inside the executor, so an invalid timeoutMs (or a throw from spawn)
-        // rejects and nothing is spawned.
-        const timeoutMs = normalizeTimeout(opts.timeoutMs)
-        const cap = normalizeOutputCap(opts.maxOutputBytes) ?? Infinity
-        const cwdMessage = cwdError(`spawn ${binary}`, binary, argv, opts)
-        if (cwdMessage !== undefined) {
-          resolve(spawnFailure(cwdMessage))
-          return
-        }
-        const group = opts.processGroup === true
-        const refusal = group ? groupStartRefusal() : undefined
-        if (refusal !== undefined) {
-          resolve({
-            exitCode: 1,
-            neverExited: true,
-            reason: 'abort',
-            stdout: '',
-            stderr: '',
-            error: refusal,
-          })
-          return
-        }
-        // Abort is handled below rather than through spawn's `signal` option,
-        // which sends one SIGTERM to the direct child only: no SIGKILL
-        // follow-up and no group.
-        const start = () =>
-          spawn(binary, argv, {
-            cwd: opts.cwd,
-            detached: group,
-            ...mergedEnv(opts),
-          })
-        const { child, untrack: untrackGroup } = group
-          ? spawnTrackedGroup(start)
-          : { child: start(), untrack: undefined }
-        // Set once this runner signals the child: a group it is stopping stays
-        // in flight for the host's exit handler.
-        let stopping = false
-        const signalChild = (sig: NodeJS.Signals) => {
-          stopping = true
-          if (group && child.pid !== undefined) {
-            try {
-              process.kill(-child.pid, sig)
-              return
-            } catch {
-              // The group is already gone; fall through to the direct child.
-            }
-          }
-          child.kill(sig)
-        }
-        const hardKill = () => signalChild('SIGKILL')
-        const groupGone = () => child.pid === undefined || !groupExists(child.pid)
-        let stdout = ''
-        let stderr = ''
-        let stdinError: Error | undefined
-        let settled = false
-        let timer: ReturnType<typeof setTimeout> | undefined
-        let graceTimer: ReturnType<typeof setTimeout> | undefined
-        let abortKillTimer: ReturnType<typeof setTimeout> | undefined
-        // Set once the child exits; a later timeout or abort reports this
-        // rather than a stand-in, since the command did answer.
-        let exited: Omit<CommandResult, 'stdout' | 'stderr'> | undefined
-        const onAbort = () => {
-          signalChild('SIGTERM')
-          // Outlives the settle on purpose. Not unref'd: an unref'd timer
-          // does not reliably fire on every Bun version. Cleared when the
-          // child exits, or in group mode when the group is already gone by
-          // then.
-          if (exited === undefined || (group && !groupGone())) {
-            abortKillTimer = setTimeout(hardKill, ABORT_KILL_GRACE_MS)
-          }
-          if (exited !== undefined) finish(exited, stdinError?.message)
-          else
-            finish({ exitCode: 1, neverExited: true, reason: 'abort' }, 'The operation was aborted')
-        }
-        // Decoded through a StringDecoder rather than per-chunk `toString()`:
-        // a multi-byte character straddling a chunk boundary would otherwise
-        // be decoded as two partial sequences and each half replaced with
-        // U+FFFD. The decoder holds the partial sequence back until the rest
-        // of it arrives. (Both sync paths decode the whole buffer, or the
-        // whole file, at once, so they do not need this.)
-        const outDecoder = new StringDecoder('utf8')
-        const errDecoder = new StringDecoder('utf8')
-        // Bytes captured per stream, for `maxOutputBytes`.
-        let outBytes = 0
-        let errBytes = 0
-        let capped: 'stdout' | 'stderr' | undefined
-        /**
-         * Settle once, with the streams flushed. `end()` is what surfaces a
-         * sequence the decoder is still holding back when the output ends
-         * mid-character — truncated capture, or bytes that were never UTF-8:
-         * unflushed those bytes are dropped, so the result is shorter than
-         * what the child wrote and disagrees with the sync runner. Every settle
-         * path routes through here, so one flush covers every path.
-         */
-        const finish = (result: Omit<CommandResult, 'stdout' | 'stderr'>, error?: string) => {
-          if (settled) return
-          settled = true
-          // The group can outlive the settle: a background member, or an aborted
-          // group waiting for its SIGKILL. It stays registered until it is empty,
-          // so a signal to the host still reaches the rest. Unless this runner
-          // is stopping it, the host's exit leaves it running.
-          if (untrackGroup !== undefined && child.pid !== undefined) {
-            if (!stopping) settleGroup(child.pid)
-            releaseWhenEmpty(child.pid, untrackGroup)
-          }
-          if (timer !== undefined) clearTimeout(timer)
-          if (graceTimer !== undefined) clearTimeout(graceTimer)
-          opts.signal?.removeEventListener('abort', onAbort)
-          // Past the cap, a held-back partial character is the cut, not output.
-          if (capped !== 'stdout') stdout += outDecoder.end()
-          if (capped !== 'stderr') stderr += errDecoder.end()
-          // Close the read ends. On `close` this is a no-op. On the other
-          // paths a surviving grandchild may still hold the write ends and
-          // keep writing. Handlers left installed would go on appending to
-          // `stdout` / `stderr` after this promise resolved: an unbounded
-          // heap leak in a long-lived host, which also keeps the grandchild
-          // alive by draining what it writes.
-          child.stdout?.destroy()
-          child.stderr?.destroy()
-          resolve({
-            ...result,
-            stdout,
-            stderr,
-            ...(error ? { error } : {}),
-          })
-        }
-        /**
-         * Stop at the cap: keep what fits, kill the child (or its group) and
-         * settle as the sync runner does. The decoder holds back a character
-         * the cut splits, and `finish` does not flush it, so the stream ends
-         * on a character boundary.
-         */
-        const overCap = (name: 'stdout' | 'stderr', fits: Buffer) => {
-          capped = name
-          if (name === 'stdout') stdout += outDecoder.write(fits)
-          else stderr += errDecoder.write(fits)
-          hardKill()
-          const message = `${name} passed maxOutputBytes (${cap} bytes)`
-          // A child that exited keeps its answer; one that died by a signal
-          // keeps `reason: 'signal'`, since `outputIncomplete` means it exited.
-          if (exited !== undefined && exited.neverExited !== true) {
-            finish({ ...exited, outputIncomplete: true }, message)
-          } else if (exited !== undefined) finish(exited, message)
-          else finish({ exitCode: 1, neverExited: true, reason: 'output' }, message)
-        }
-        child.stdout?.on('data', (d: Buffer) => {
-          if (settled) return
-          if (outBytes + d.length > cap) return overCap('stdout', d.subarray(0, cap - outBytes))
-          outBytes += d.length
-          stdout += outDecoder.write(d)
-        })
-        child.stderr?.on('data', (d: Buffer) => {
-          if (settled) return
-          if (errBytes + d.length > cap) return overCap('stderr', d.subarray(0, cap - errBytes))
-          errBytes += d.length
-          stderr += errDecoder.write(d)
-        })
-        child.on('error', (err) => {
-          // A spawn failure: no exit code was ever reported, so the 1 is a
-          // stand-in and the result says so.
-          finish({ exitCode: 1, neverExited: true, reason: 'spawn' }, err.message)
-        })
-        const fromExit = (
-          code: number | null,
-          signal: NodeJS.Signals | null,
-        ): Omit<CommandResult, 'stdout' | 'stderr'> => ({
-          exitCode: code ?? 1,
-          ...(code === null
-            ? {
-                neverExited: true as const,
-                reason: 'signal' as const,
-                ...(signal === null ? {} : { signal }),
-              }
-            : {}),
-        })
-        child.on('exit', (code, signal) => {
-          exited = fromExit(code, signal)
-          // A group can outlive its leader; keep the follow-up while it does.
-          if (abortKillTimer !== undefined && (!group || groupGone())) {
-            clearTimeout(abortKillTimer)
-          }
-          if (settled) return
-          const result = exited
-          // `close` normally follows at once. If it does not, a process the
-          // child started still holds the pipes. The immediate lets output
-          // already in the pipes be read before settling.
-          graceTimer = setTimeout(
-            () =>
-              setImmediate(() => {
-                // A group member holds the pipes. Without a group there is no
-                // handle on it: the direct child is gone, and only `finish`
-                // closing the pipes reaches the background process.
-                if (group && !settled) hardKill()
-                finish(result, stdinError?.message)
-              }),
-            EXIT_GRACE_MS,
-          )
-        })
-        child.on('close', (code, signal) => {
-          finish(fromExit(code, signal), stdinError?.message)
-        })
-        // `child.stdin` is its own emitter — an `error` on it never reaches the
-        // `child.on("error")` handler above, and an unhandled `error` on an
-        // emitter is rethrown as an uncaught exception that takes the host
-        // process down. A child that closes its read end before `input` drains
-        // (it exits, or closes fd 0) fails the write (EPIPE, or ENOTCONN under
-        // some timings). That is not a command failure: the child ran, and its
-        // own exit code is the result.
-        // But it does mean the child read only part of `input`, so the message
-        // rides out in `error`, the way a spawn error already does. (A write
-        // error that lands after the promise settles is only swallowed —
-        // nothing left to report it on.)
-        child.stdin?.on('error', (err) => {
-          stdinError = err
-        })
-        if (child.pid !== undefined && opts.onSpawn !== undefined) {
-          try {
-            opts.onSpawn(child.pid)
-          } catch (err) {
-            // Called once every handler is installed, so a throw here can
-            // still kill the child and settle rather than reject and leave
-            // it running untracked.
-            hardKill()
-            const message = err instanceof Error ? err.message : String(err)
-            finish({ exitCode: 1, neverExited: true, reason: 'abort' }, `onSpawn threw: ${message}`)
-          }
-        }
-        if (!settled) {
-          if (opts.signal?.aborted === true) onAbort()
-          else opts.signal?.addEventListener('abort', onAbort, { once: true })
-        }
-        if (!settled && timeoutMs !== undefined) {
-          // The timeout is enforced here rather than handed to spawn's own
-          // `timeout` option, which is a no-op on some Bun versions. Not
-          // unref'd: an unref'd timer does not reliably fire on every Bun
-          // version, and `finish` clears it, so it never outlives the call.
-          timer = setTimeout(() => {
-            // SIGKILL, not the default SIGTERM: the contract is a hard cap and
-            // the child is by assumption already hung, so a signal it may trap
-            // or ignore is no cap at all. This matches the sync and streaming
-            // runners, which cannot escalate. An abort, by contrast, is a
-            // request to stop and sends SIGTERM first.
-            hardKill()
-            if (exited !== undefined) {
-              finish(exited, stdinError?.message)
-              return
-            }
-            // Settle here rather than leaving it to `close`. `close` waits for
-            // the stdio pipes to hit EOF, and a forked grandchild survives the
-            // kill still holding the write ends. So resolve on the deadline
-            // with the output captured so far.
-            finish(
-              { exitCode: 1, neverExited: true, reason: 'timeout' },
-              `timed out after ${timeoutMs}ms`,
-            )
-          }, timeoutMs)
-        }
-        if (opts.input !== undefined) child.stdin?.end(opts.input)
-        else child.stdin?.end()
-      })
+    run: (argv, opts) => runAsync(binary, argv, opts, false) as Promise<CommandResult>,
+  }
+}
+
+/**
+ * An {@link AsyncBytesCommandRunner}: {@link spawnRunnerAsync} with stdout
+ * returned as the bytes the child wrote, never decoded. Stderr is decoded as
+ * UTF-8, so `failureText` and `CommandFailed` read as they do for text.
+ * `maxOutputBytes` cuts stdout at exactly the cap. Everything else is as for
+ * `spawnRunnerAsync`. The sync form is `spawnRunnerBytes`.
+ *
+ * @param binary - A name looked up on `PATH`, or a path.
+ * @returns A runner for that binary.
+ *
+ * @example
+ * ```ts
+ * const git = spawnRunnerBytesAsync('git')
+ * const r = await runCheckedAsync(git, ['cat-file', 'blob', sha], { cwd: '.' })
+ * const digest = createHash('sha256').update(r.stdout).digest('hex')
+ * ```
+ *
+ * @experimental
+ */
+export function spawnRunnerBytesAsync(binary: string): AsyncBytesCommandRunner {
+  return {
+    binary,
+    run: (argv, opts) => runAsync(binary, argv, opts, true) as Promise<CommandResult<Buffer>>,
+  }
+}
+
+/**
+ * One captured stream: decoded text, or the raw chunks when `bytes`.
+ * Decoded through a StringDecoder rather than per-chunk `toString()`: a
+ * multi-byte character straddling a chunk boundary would otherwise be
+ * decoded as two partial sequences and each half replaced with U+FFFD. The
+ * decoder holds the partial sequence back until the rest of it arrives.
+ * (Both sync paths decode the whole buffer, or the whole file, at once, so
+ * they do not need this.)
+ */
+function capture(bytes: boolean) {
+  const decoder = new StringDecoder('utf8')
+  const chunks: Buffer[] = []
+  let text = ''
+  return {
+    write(d: Buffer): void {
+      if (bytes) chunks.push(d)
+      else text += decoder.write(d)
+    },
+    /**
+     * The whole stream. `flush` surfaces a sequence the decoder is still
+     * holding back when the output ends mid-character: truncated capture, or
+     * bytes that were never UTF-8. Unflushed, those bytes would be dropped.
+     * Past the cap, a held-back partial character is the cut, not output.
+     */
+    end(flush: boolean): string | Buffer {
+      if (bytes) return Buffer.concat(chunks)
+      return flush ? text + decoder.end() : text
     },
   }
+}
+
+/** The async capture runners' `run`; `bytes` keeps stdout as a `Buffer`. */
+function runAsync(
+  binary: string,
+  argv: string[],
+  opts: AsyncCommandRunOptions,
+  bytes: boolean,
+): Promise<CommandResult<string | Buffer>> {
+  return new Promise((resolve) => {
+    // Inside the executor, so an invalid timeoutMs (or a throw from spawn)
+    // rejects and nothing is spawned.
+    const timeoutMs = normalizeTimeout(opts.timeoutMs)
+    const cap = normalizeOutputCap(opts.maxOutputBytes) ?? Infinity
+    const cwdMessage = cwdError(`spawn ${binary}`, binary, argv, opts)
+    if (cwdMessage !== undefined) {
+      resolve(emptyStdout(spawnFailure(cwdMessage), bytes))
+      return
+    }
+    const group = opts.processGroup === true
+    const refusal = group ? groupStartRefusal() : undefined
+    if (refusal !== undefined) {
+      const refused: CommandResult = {
+        exitCode: 1,
+        neverExited: true,
+        reason: 'abort',
+        stdout: '',
+        stderr: '',
+        error: refusal,
+      }
+      resolve(emptyStdout(refused, bytes))
+      return
+    }
+    // Abort is handled below rather than through spawn's `signal` option,
+    // which sends one SIGTERM to the direct child only: no SIGKILL
+    // follow-up and no group.
+    const start = () =>
+      spawn(binary, argv, {
+        cwd: opts.cwd,
+        detached: group,
+        ...mergedEnv(opts),
+      })
+    const { child, untrack: untrackGroup } = group
+      ? spawnTrackedGroup(start)
+      : { child: start(), untrack: undefined }
+    // Set once this runner signals the child: a group it is stopping stays
+    // in flight for the host's exit handler.
+    let stopping = false
+    const signalChild = (sig: NodeJS.Signals) => {
+      stopping = true
+      if (group && child.pid !== undefined) {
+        try {
+          process.kill(-child.pid, sig)
+          return
+        } catch {
+          // The group is already gone; fall through to the direct child.
+        }
+      }
+      child.kill(sig)
+    }
+    const hardKill = () => signalChild('SIGKILL')
+    const groupGone = () => child.pid === undefined || !groupExists(child.pid)
+    let stdinError: Error | undefined
+    let settled = false
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let graceTimer: ReturnType<typeof setTimeout> | undefined
+    let abortKillTimer: ReturnType<typeof setTimeout> | undefined
+    // Set once the child exits; a later timeout or abort reports this
+    // rather than a stand-in, since the command did answer.
+    let exited: Omit<CommandResult, 'stdout' | 'stderr'> | undefined
+    const onAbort = () => {
+      signalChild('SIGTERM')
+      // Outlives the settle on purpose. Not unref'd: an unref'd timer
+      // does not reliably fire on every Bun version. Cleared when the
+      // child exits, or in group mode when the group is already gone by
+      // then.
+      if (exited === undefined || (group && !groupGone())) {
+        abortKillTimer = setTimeout(hardKill, ABORT_KILL_GRACE_MS)
+      }
+      if (exited !== undefined) finish(exited, stdinError?.message)
+      else finish({ exitCode: 1, neverExited: true, reason: 'abort' }, 'The operation was aborted')
+    }
+    const out = capture(bytes)
+    const err = capture(false)
+    // Bytes captured per stream, for `maxOutputBytes`.
+    let outBytes = 0
+    let errBytes = 0
+    let capped: 'stdout' | 'stderr' | undefined
+    /**
+     * Settle once, with the streams flushed (see `capture`). Every settle
+     * path routes through here, so one flush covers every path.
+     */
+    const finish = (result: Omit<CommandResult, 'stdout' | 'stderr'>, error?: string) => {
+      if (settled) return
+      settled = true
+      // The group can outlive the settle: a background member, or an aborted
+      // group waiting for its SIGKILL. It stays registered until it is empty,
+      // so a signal to the host still reaches the rest. Unless this runner
+      // is stopping it, the host's exit leaves it running.
+      if (untrackGroup !== undefined && child.pid !== undefined) {
+        if (!stopping) settleGroup(child.pid)
+        releaseWhenEmpty(child.pid, untrackGroup)
+      }
+      if (timer !== undefined) clearTimeout(timer)
+      if (graceTimer !== undefined) clearTimeout(graceTimer)
+      opts.signal?.removeEventListener('abort', onAbort)
+      const stdout = out.end(capped !== 'stdout')
+      const stderr = err.end(capped !== 'stderr') as string
+      // Close the read ends. On `close` this is a no-op. On the other
+      // paths a surviving grandchild may still hold the write ends and
+      // keep writing. Handlers left installed would go on appending to
+      // `stdout` / `stderr` after this promise resolved: an unbounded
+      // heap leak in a long-lived host, which also keeps the grandchild
+      // alive by draining what it writes.
+      child.stdout?.destroy()
+      child.stderr?.destroy()
+      resolve({
+        ...result,
+        stdout,
+        stderr,
+        ...(error ? { error } : {}),
+      })
+    }
+    /**
+     * Stop at the cap: keep what fits, kill the child (or its group) and
+     * settle as the sync runner does. The decoder holds back a character
+     * the cut splits, and `finish` does not flush it, so a decoded stream
+     * ends on a character boundary. Raw bytes end at the cap.
+     */
+    const overCap = (name: 'stdout' | 'stderr', fits: Buffer) => {
+      capped = name
+      if (name === 'stdout') out.write(fits)
+      else err.write(fits)
+      hardKill()
+      const message = `${name} passed maxOutputBytes (${cap} bytes)`
+      // A child that exited keeps its answer; one that died by a signal
+      // keeps `reason: 'signal'`, since `outputIncomplete` means it exited.
+      if (exited !== undefined && exited.neverExited !== true) {
+        finish({ ...exited, outputIncomplete: true }, message)
+      } else if (exited !== undefined) finish(exited, message)
+      else finish({ exitCode: 1, neverExited: true, reason: 'output' }, message)
+    }
+    child.stdout?.on('data', (d: Buffer) => {
+      if (settled) return
+      if (outBytes + d.length > cap) return overCap('stdout', d.subarray(0, cap - outBytes))
+      outBytes += d.length
+      out.write(d)
+    })
+    child.stderr?.on('data', (d: Buffer) => {
+      if (settled) return
+      if (errBytes + d.length > cap) return overCap('stderr', d.subarray(0, cap - errBytes))
+      errBytes += d.length
+      err.write(d)
+    })
+    child.on('error', (err) => {
+      // A spawn failure: no exit code was ever reported, so the 1 is a
+      // stand-in and the result says so.
+      finish({ exitCode: 1, neverExited: true, reason: 'spawn' }, err.message)
+    })
+    const fromExit = (
+      code: number | null,
+      signal: NodeJS.Signals | null,
+    ): Omit<CommandResult, 'stdout' | 'stderr'> => ({
+      exitCode: code ?? 1,
+      ...(code === null
+        ? {
+            neverExited: true as const,
+            reason: 'signal' as const,
+            ...(signal === null ? {} : { signal }),
+          }
+        : {}),
+    })
+    child.on('exit', (code, signal) => {
+      exited = fromExit(code, signal)
+      // A group can outlive its leader; keep the follow-up while it does.
+      if (abortKillTimer !== undefined && (!group || groupGone())) {
+        clearTimeout(abortKillTimer)
+      }
+      if (settled) return
+      const result = exited
+      // `close` normally follows at once. If it does not, a process the
+      // child started still holds the pipes. The immediate lets output
+      // already in the pipes be read before settling.
+      graceTimer = setTimeout(
+        () =>
+          setImmediate(() => {
+            // A group member holds the pipes. Without a group there is no
+            // handle on it: the direct child is gone, and only `finish`
+            // closing the pipes reaches the background process.
+            if (group && !settled) hardKill()
+            finish(result, stdinError?.message)
+          }),
+        EXIT_GRACE_MS,
+      )
+    })
+    child.on('close', (code, signal) => {
+      finish(fromExit(code, signal), stdinError?.message)
+    })
+    // `child.stdin` is its own emitter — an `error` on it never reaches the
+    // `child.on("error")` handler above, and an unhandled `error` on an
+    // emitter is rethrown as an uncaught exception that takes the host
+    // process down. A child that closes its read end before `input` drains
+    // (it exits, or closes fd 0) fails the write (EPIPE, or ENOTCONN under
+    // some timings). That is not a command failure: the child ran, and its
+    // own exit code is the result.
+    // But it does mean the child read only part of `input`, so the message
+    // rides out in `error`, the way a spawn error already does. (A write
+    // error that lands after the promise settles is only swallowed —
+    // nothing left to report it on.)
+    child.stdin?.on('error', (err) => {
+      stdinError = err
+    })
+    if (child.pid !== undefined && opts.onSpawn !== undefined) {
+      try {
+        opts.onSpawn(child.pid)
+      } catch (err) {
+        // Called once every handler is installed, so a throw here can
+        // still kill the child and settle rather than reject and leave
+        // it running untracked.
+        hardKill()
+        const message = err instanceof Error ? err.message : String(err)
+        finish({ exitCode: 1, neverExited: true, reason: 'abort' }, `onSpawn threw: ${message}`)
+      }
+    }
+    if (!settled) {
+      if (opts.signal?.aborted === true) onAbort()
+      else opts.signal?.addEventListener('abort', onAbort, { once: true })
+    }
+    if (!settled && timeoutMs !== undefined) {
+      // The timeout is enforced here rather than handed to spawn's own
+      // `timeout` option, which is a no-op on some Bun versions. Not
+      // unref'd: an unref'd timer does not reliably fire on every Bun
+      // version, and `finish` clears it, so it never outlives the call.
+      timer = setTimeout(() => {
+        // SIGKILL, not the default SIGTERM: the contract is a hard cap and
+        // the child is by assumption already hung, so a signal it may trap
+        // or ignore is no cap at all. This matches the sync and streaming
+        // runners, which cannot escalate. An abort, by contrast, is a
+        // request to stop and sends SIGTERM first.
+        hardKill()
+        if (exited !== undefined) {
+          finish(exited, stdinError?.message)
+          return
+        }
+        // Settle here rather than leaving it to `close`. `close` waits for
+        // the stdio pipes to hit EOF, and a forked grandchild survives the
+        // kill still holding the write ends. So resolve on the deadline
+        // with the output captured so far.
+        finish(
+          { exitCode: 1, neverExited: true, reason: 'timeout' },
+          `timed out after ${timeoutMs}ms`,
+        )
+      }, timeoutMs)
+    }
+    if (opts.input !== undefined) child.stdin?.end(opts.input)
+    else child.stdin?.end()
+  })
 }
 
 /**
  * The async version of `runChecked`: run a command and reject if it fails.
  * Like `runChecked`, it takes the runner's own options, so a `withDefaults`
- * runner needs only the options it did not bind.
+ * runner needs only the options it did not bind. An
+ * {@link AsyncBytesCommandRunner} resolves to `CommandResult<Buffer>`; its
+ * `CommandFailed` carries stdout decoded as UTF-8.
  *
  * @param argv - Arguments, without the binary name.
  * @returns The result, when `exitCode` is 0.
@@ -426,22 +495,27 @@ export async function runCheckedAsync(
   argv: string[],
   opts: AsyncCommandRunOptions,
 ): Promise<CommandResult>
-export async function runCheckedAsync<P extends unknown[]>(
+export async function runCheckedAsync(
+  runner: AsyncBytesCommandRunner,
+  argv: string[],
+  opts: AsyncCommandRunOptions,
+): Promise<CommandResult<Buffer>>
+export async function runCheckedAsync<P extends unknown[], S extends string | Buffer = string>(
   runner: {
     readonly binary?: string | undefined
-    run(argv: string[], ...opts: P): Promise<CommandResult>
+    run(argv: string[], ...opts: P): Promise<CommandResult<S>>
   },
   argv: string[],
   ...opts: NoInfer<P>
-): Promise<CommandResult>
+): Promise<CommandResult<S>>
 export async function runCheckedAsync(
   runner: {
     readonly binary?: string | undefined
-    run(argv: string[], ...opts: unknown[]): Promise<CommandResult>
+    run(argv: string[], ...opts: unknown[]): Promise<CommandResult<string | Buffer>>
   },
   argv: string[],
   ...opts: unknown[]
-): Promise<CommandResult> {
+): Promise<CommandResult<string | Buffer>> {
   const result = await runner.run(argv, ...opts)
   if (result.exitCode !== 0) throw new CommandFailed(argv, result, runner.binary)
   return result
@@ -451,16 +525,21 @@ export async function runCheckedAsync(
  * Wrap a sync runner as an async one, so one test fake serves both forms.
  * `signal`, `onSpawn` and `processGroup` are ignored: a sync runner cannot be
  * cancelled mid-flight and reports no pid. A throw from the sync runner
- * becomes a rejection.
+ * becomes a rejection. A `BytesCommandRunner` becomes an
+ * {@link AsyncBytesCommandRunner}.
  *
  * @param runner - The sync runner to wrap.
  * @returns An async runner that calls `runner`.
  */
-export function asAsync(runner: CommandRunner): AsyncCommandRunner {
+export function asAsync(runner: CommandRunner): AsyncCommandRunner
+export function asAsync(runner: BytesCommandRunner): AsyncBytesCommandRunner
+export function asAsync(
+  runner: CommandRunner | BytesCommandRunner,
+): AsyncCommandRunner | AsyncBytesCommandRunner {
   return {
     ...(runner.binary === undefined ? {} : { binary: runner.binary }),
-    run: async (argv, opts) => runner.run(argv, opts),
-  }
+    run: async (argv: string[], opts: CommandRunOptions) => runner.run(argv, opts),
+  } as AsyncCommandRunner | AsyncBytesCommandRunner
 }
 
 /**

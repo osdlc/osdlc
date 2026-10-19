@@ -34,6 +34,9 @@ type Probe = {
   missingBinary: CommandResult
   outputCap: Omit<CommandResult, 'stdout'> & { stdout: number }
   outputCapSet: CommandResult
+  /** `spawnRunnerBytes` results, stdout as base64. */
+  bytes: CommandResult
+  bytesCap: CommandResult
   signalDeath: CommandResult
   genuineExit1: CommandResult
   badCwd: CommandResult
@@ -145,6 +148,21 @@ describe('spawnRunner — production pipe path (NODE_ENV unset)', () => {
   test('maxOutputBytes replaces the default cap and cuts on a character boundary', () => {
     const r = probe.outputCapSet
     expect(r.stdout).toBe('€'.repeat(33))
+    expect(r.reason === 'output' || r.outputIncomplete === true).toBe(true)
+    expect(r.error).toContain('ENOBUFS')
+  })
+
+  test('spawnRunnerBytes returns the bytes the child wrote, and decodes stderr', () => {
+    expect(probe.bytes).toEqual({
+      exitCode: 0,
+      stdout: Buffer.from([0xff, 0xfe, 0x00, 0x80, 0x61, 0x62, 0x63]).toString('base64'),
+      stderr: 'warn €\n',
+    })
+  })
+
+  test('spawnRunnerBytes cuts stdout at exactly maxOutputBytes', () => {
+    const r = probe.bytesCap
+    expect(r.stdout).toBe(Buffer.from('€'.repeat(34)).subarray(0, 100).toString('base64'))
     expect(r.reason === 'output' || r.outputIncomplete === true).toBe(true)
     expect(r.error).toContain('ENOBUFS')
   })

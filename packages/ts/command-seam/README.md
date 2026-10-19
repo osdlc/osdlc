@@ -93,7 +93,8 @@ try {
   of arguments, without the binary name. The binary is fixed when you create
   the runner.
 - **Result**: what a capture runner returns: `exitCode`, `stdout`, `stderr`,
-  `neverExited`, `reason`, `signal`, `outputIncomplete` and `error`.
+  `neverExited`, `reason`, `signal`, `outputIncomplete` and `error`. `stdout`
+  is a string, or a `Buffer` from the bytes runners (`CommandResult<Buffer>`).
 - **`neverExited`**: `true` when the command never reported an exit status.
   The spawn failed, a timeout or abort killed it, a signal ended it, or the
   runner killed it at the output cap.
@@ -124,9 +125,11 @@ try {
 | -------------------------------------------- | ---------------------------------------- | ---------------------------- |
 | Run a command and read its output            | `spawnRunner(binary)`                    | `CommandResult`              |
 | The same, without blocking the event loop    | `spawnRunnerAsync(binary)`               | `Promise<CommandResult>`     |
+| Read stdout as raw bytes (images, archives)  | `spawnRunnerBytes(binary)` / `spawnRunnerBytesAsync(binary)` | `CommandResult<Buffer>` |
 | Run a shell string (`a && b`, pipes)         | `runShell(verb, opts)` / `shellRunner()` | `CommandResult`              |
 | Show output live (builds, interactive tools) | `streamRunner(binary)`                   | `StreamResult` (exit only)   |
 | Start a long-running process and keep going  | `managedProcessRunner(binary)`           | `ManagedProcessHandle`       |
+| Launch a program and forget it (an editor)   | `managedProcessRunner(binary)` with `stdio: 'ignore'`, `unref` | `ManagedProcessHandle` |
 
 Use the sync runner for short commands run one after another. Blocking costs
 them nothing and keeps your code synchronous. Use the async runner for
@@ -165,6 +168,34 @@ const [log, branch] = await Promise.all([
 ])
 console.log(log.stdout.trim(), branch.stdout.trim())
 ```
+
+### Capture, as bytes
+
+The capture runners decode stdout as UTF-8, and decoding replaces bytes that
+are not UTF-8 with U+FFFD. For output that is not text, or that must not
+change before you hash it, `spawnRunnerBytes` and `spawnRunnerBytesAsync`
+return stdout as the `Buffer` the child wrote. Their result type is
+`CommandResult<Buffer>`, so the compiler knows `stdout` is a `Buffer`. Stderr
+is still decoded as UTF-8: it is diagnostics, and `failureText`,
+`runChecked` and `CommandFailed` read it as they do for text. They take the
+same options as their text forms. `maxOutputBytes` cuts stdout at exactly the
+cap, since there is no character to keep whole.
+
+```ts
+import { createHash } from 'node:crypto'
+import { runChecked, spawnRunnerBytes } from '@osdlc/command-seam'
+
+const git = spawnRunnerBytes('git')
+const blob = runChecked(git, ['cat-file', 'blob', 'HEAD:logo.png'], { cwd: process.cwd() }).stdout
+console.log(createHash('sha256').update(blob).digest('hex'))
+```
+
+`runChecked` and `runCheckedAsync` return `CommandResult<Buffer>` for a bytes
+runner. A failure throws the same `CommandFailed` as any other run, with
+stdout decoded into `e.result.stdout`. To keep the raw bytes of a failed run,
+call `run` and check `ran(result)` yourself. Code takes a `BytesCommandRunner`
+or an `AsyncBytesCommandRunner`, and tests pass `fakeRunner`'s `bytesRunner`
+(see Ready-made fakes). `asAsync` wraps a sync bytes runner as an async one.
 
 ### Shell strings
 
@@ -206,7 +237,8 @@ appears as it runs. The result has no output, only how the child ended:
 `exitCode`, `neverExited`, `reason` (`'spawn'`, `'timeout'` or `'signal'`),
 `signal`, and `error`, the runner's message when the spawn failed or the
 timeout fired. That message, or `<binary> was killed by <signal>`, is also
-written to the parent's stderr.
+written to the parent's stderr. Pass `quiet: true` to turn that line off
+when you report the failure yourself; the result's fields are set either way.
 
 ```ts
 import { ran, streamRunner } from '@osdlc/command-seam'
@@ -219,12 +251,47 @@ process.exitCode = r.reason === 'timeout' ? 124 : ran(r) ? 0 : 1
 
 `run` blocks until the child exits. There is no async version.
 
+### Where stdio goes
+
+`streamRunner` and `managedProcessRunner` take a `stdio` option
+(`StdioOption`):
+
+- `'inherit'`, the default: the child uses the parent's stdin, stdout and
+  stderr.
+- `'ignore'`: all three are `/dev/null`. The child cannot read from or
+  write to the terminal.
+- `{ stdout, stderr }`: file descriptors you opened, such as one from
+  `fs.openSync`. Stdin is `/dev/null`. Pass the same fd for both to get one
+  log in the order the child wrote it, which joining two pipes afterwards
+  cannot give. `1` and `2` are the parent's own stdout and stderr.
+
+The child gets its own copy of each fd when it starts, so you can close yours
+once `run` returns. The runner never closes it. An fd that is not open is a
+failed spawn (`reason: 'spawn'`, with `EBADF` in `error`). An fd that is not a
+whole number, 0 or more, throws before anything starts. A pipe from one child
+into another (`git archive | tar -x`) is out of scope; use `runShell` or
+`child_process` for that.
+
+```ts
+import { closeSync, openSync } from 'node:fs'
+import { streamRunner } from '@osdlc/command-seam'
+
+const log = openSync('build.log', 'w')
+const r = streamRunner('npm').run(['run', 'build'], {
+  cwd: process.cwd(),
+  stdio: { stdout: log, stderr: log },
+  quiet: true,
+})
+closeSync(log)
+if (r.reason === 'spawn') throw new Error(`npm failed to start: ${r.error}`)
+```
+
 ### Managed process
 
 `managedProcessRunner` starts a process and returns a handle at once. It does
 not wait for the process to finish, capture output or apply a timeout. Its
-options are `ManagedProcessRunOptions`: `cwd` (required), `env` and
-`processGroup`.
+options are `ManagedProcessRunOptions`: `cwd` (required), `env`,
+`processGroup`, `unref` and `stdio`.
 
 ```ts
 import { managedProcessRunner } from '@osdlc/command-seam'
@@ -244,6 +311,26 @@ else console.log(exit.exitCode, exit.signal)
 
 `processGroup: true` makes the child the leader of its own process group, so
 `kill()` also stops any processes it started.
+
+`unref: true` lets the parent exit while the child runs. With
+`processGroup: true` and `stdio: 'ignore'` it starts a program and forgets
+it, such as an editor or `open <url>`: the program outlives the parent, does
+not keep it running, gets none of the terminal's signals, and does not write
+to the terminal after the parent has gone.
+
+```ts
+import { managedProcessRunner } from '@osdlc/command-seam'
+
+managedProcessRunner('code').run(['.'], {
+  cwd: process.cwd(),
+  processGroup: true,
+  unref: true,
+  stdio: 'ignore',
+})
+```
+
+`exited` still settles while the parent is alive. An `unref`'d group is not
+tracked by `installGroupSignalForwarding` (below).
 
 A group leader no longer gets the terminal's Ctrl-C, and a host killed by a
 signal would leave the group behind. Call `installGroupSignalForwarding()` once
@@ -315,7 +402,7 @@ console.log(exit.signal)
 ```
 
 The runner cannot tell you when the process is ready from its output: stdio
-is inherited, not piped. Poll from outside instead: try the port or an HTTP
+is never piped. Poll from outside instead: try the port or an HTTP
 endpoint, or wait for a file the process writes, in a loop with a deadline.
 Check `exited` after each try, so a process that died early is reported
 rather than waited on.
@@ -548,7 +635,10 @@ production code does not import them. It also exports their types:
   the table. Code that reads a failed run as an answer can still go on, so
   assert on `calls`, which records each call's argv and options. `asyncRunner`
   is the same fake as an `AsyncCommandRunner`, for async code; the async
-  options are recorded, and `onSpawn` is never called.
+  options are recorded, and `onSpawn` is never called. `bytesRunner` and
+  `asyncBytesRunner` are the same fake as bytes runners. An answer's `stdout`
+  may be a string or a `Buffer`: the bytes forms encode a string as UTF-8, and
+  the text forms decode a `Buffer`.
 - `fakeNeverExited(reason, fields?)` builds an answer for a run that never
   exited: `exitCode: 1`, `neverExited: true`, `reason`,
   `error: 'fake: <reason>'` (none for `'signal'`), and `signal` where the
@@ -563,7 +653,8 @@ production code does not import them. It also exports their types:
   and a list such as `exitOnKill: ['SIGKILL']` makes it die only of those,
   as a process that traps `SIGTERM` would. `runner` is a
   `ManagedProcessRunner` that returns the handle, and `calls` records what it
-  was given. `pid` defaults to `4242`.
+  was given, `stdio` and `unref` included, so a test asserts on them there.
+  `pid` defaults to `4242`.
 
 ```ts
 import { runChecked, stopProcess } from '@osdlc/command-seam'
@@ -621,12 +712,16 @@ console.log(await server.exited) // { exitCode: 0, signal: null }
   through temp files instead of pipes (see Known issue: `bun test`), so it
   returns as soon as the child exits: later output is lost without
   `outputIncomplete` or `error`, and a test there never sees the flag.
-- The sync runners (`spawnRunner`, `runShell`, `shellRunner`) and
-  `streamRunner` kill only the direct child on timeout. Processes it started
-  keep running, and these runners have no option to change that. The async
-  runners (`spawnRunnerAsync`, `runShellAsync`, `shellRunnerAsync`) take
-  `processGroup: true` to kill the child's whole process group on timeout or
-  abort. `managedProcessRunner` takes it too, so `kill()` signals the group.
+- The sync runners (`spawnRunner`, `spawnRunnerBytes`, `runShell`,
+  `shellRunner`) and `streamRunner` kill only the direct child on timeout.
+  Processes it started keep running, and these runners have no option to
+  change that. The async runners (`spawnRunnerAsync`, `spawnRunnerBytesAsync`,
+  `runShellAsync`, `shellRunnerAsync`) take `processGroup: true` to kill the
+  child's whole process group on timeout or abort. `managedProcessRunner`
+  takes it too, so `kill()` signals the group.
+- A `streamRunner` timeout prints its line to the parent's stderr, as a failed
+  spawn or a signal does, unless `quiet` is set. With `stdio` set to an fd, the
+  line still goes to the parent's stderr, not to the fd.
 - A process group does not receive the terminal's Ctrl-C. To stop it on
   Ctrl-C, call `installGroupSignalForwarding()` once at startup, or listen
   for `SIGINT` and abort through `signal`.
@@ -646,11 +741,13 @@ console.log(await server.exited) // { exitCode: 0, signal: null }
 - **Capture runners always report something.** When the runner has its own
   message (spawn failure, timeout, abort, output cap), it is in `error`.
   `stderr` holds only what the child wrote.
-- **The streaming and managed-process runners capture no output.** On a
-  failed spawn they return `exitCode: 1`, `neverExited: true`,
-  `reason: 'spawn'` and the message in `error`. The streaming runner also
+- **The streaming and managed-process runners capture no output.** Their
+  stdio is inherited by default, or `/dev/null` or file descriptors you
+  pass through `stdio`. On a failed spawn they return `exitCode: 1`,
+  `neverExited: true`, `reason: 'spawn'` and the message in `error`; an fd in
+  `stdio` that is not open is a failed spawn too. The streaming runner also
   prints the error to the parent's stderr, and prints a line when a signal or
-  the timeout ends the child.
+  the timeout ends the child, unless `quiet` is set.
 - **`cwd` is required** on every call, on every runner. There is no
   default. Bind it once with `withDefaults`. A `cwd` that is missing or not a
   directory is a failed spawn (`reason: 'spawn'`) whose message names the
@@ -673,7 +770,11 @@ console.log(await server.exited) // { exitCode: 0, signal: null }
 
   `ran` and `runChecked` go by the exit code, so they treat the last two as
   success. Check `outputIncomplete` when the output must be whole.
-- **Output is text.** Captured output is decoded as UTF-8.
+- **Output is text, unless you ask for bytes.** Captured output is decoded as
+  UTF-8. The bytes runners (`spawnRunnerBytes`, `spawnRunnerBytesAsync`)
+  return stdout as the `Buffer` the child wrote and decode only stderr. A
+  message built from a bytes result (`failureText`, `CommandFailed`) decodes
+  stdout as UTF-8.
 - **Output is capped per stream.** `maxOutputBytes` caps each of stdout and
   stderr on the capture runners. The sync pipe path defaults to 256 MB; the
   async runner has no default cap. The cap counts the bytes the child wrote,
@@ -681,7 +782,8 @@ console.log(await server.exited) // { exitCode: 0, signal: null }
   is 3 bytes, so a stream can be longer than the cap once decoded. A child
   that passes the cap is killed with `SIGKILL` (its group, with
   `processGroup`), with `reason: 'output'`, the runner's message in `error`,
-  and that stream cut to the cap on a character boundary. A child that passes
+  and that stream cut to the cap on a character boundary (a bytes runner's
+  stdout at exactly the cap). A child that passes
   the cap but exits before the kill lands keeps its exit code and gets
   `outputIncomplete: true` and `error`. The `bun test` capture path writes to
   files and has no cap. `@osdlc/agent-call` has the same option on its call
@@ -694,7 +796,7 @@ console.log(await server.exited) // { exitCode: 0, signal: null }
 Under `bun test`, once a large module graph is loaded, Bun can hand child
 processes stdio that the parent reads back as empty. The upstream report is
 [oven-sh/bun#24690](https://github.com/oven-sh/bun/issues/24690). To work
-around this, `spawnRunner` checks for the Bun runtime with `NODE_ENV=test`.
+around this, `spawnRunner` (and `spawnRunnerBytes`) checks for the Bun runtime with `NODE_ENV=test`.
 When both are true, it runs the command through `/bin/sh` with stdin, stdout
 and stderr redirected to temp files, then reads the files back. Arguments are
 still not parsed by the shell.
@@ -719,6 +821,7 @@ The package is at 0.x. Each export is stable or experimental.
 The experimental exports:
 
 - `shellRunnerAsync`, `AsyncShellRunner`
+- `spawnRunnerBytes`, `spawnRunnerBytesAsync`, `BytesCommandRunner`, `AsyncBytesCommandRunner`
 - `catchFailedAsync`, `mapFailedAsync`
 - `firstLine`, `stderrOrError`
 - `runJson`, `runJsonAsync`, `parseJsonResult`, `JsonRun`, `RunJsonOptions`
@@ -740,14 +843,16 @@ are settled, and Windows support has landed, if that is feasible.
 | --------------------------------------------------------------- | --------- | -------------------------------------------------------------- |
 | `spawnRunner`                                                   | function  | Default sync capture runner (`spawnSync`)                      |
 | `spawnRunnerAsync`                                              | function  | Default async capture runner (`spawn`)                         |
+| `spawnRunnerBytes`, `spawnRunnerBytesAsync`                     | function  | Capture runners with stdout as raw bytes (`CommandResult<Buffer>`) |
 | `resolveRunner`, `resolveRunnerAsync`                           | function  | An injected runner, else the default                           |
 | `runChecked`, `runCheckedAsync`                                 | function  | Run and throw `CommandFailed` on a non-zero exit               |
 | `mapFailed`, `mapFailedAsync`                                   | function  | Rethrow a `CommandFailed` as another error                     |
 | `catchFailed`, `catchFailedAsync`                               | function  | Turn a `CommandFailed` into a value                            |
-| `asAsync`                                                       | function  | Wrap a sync runner as an async one                             |
+| `asAsync`                                                       | function  | Wrap a sync runner (text or bytes) as an async one             |
 | `CommandFailed`                                                 | class     | Error with `binary`, `argv`, `result` and `detail`; `message` shows the command |
 | `CommandRunner`, `AsyncCommandRunner`                           | interface | Capture runner contracts; `binary` names the program          |
-| `CommandResult`                                                 | interface | `exitCode`, `stdout`, `stderr`, `neverExited`, `reason`, `signal`, `outputIncomplete`, `error` |
+| `BytesCommandRunner`, `AsyncBytesCommandRunner`                 | interface | The same, with stdout as a `Buffer`                            |
+| `CommandResult`                                                 | interface | `exitCode`, `stdout`, `stderr`, `neverExited`, `reason`, `signal`, `outputIncomplete`, `error`; `CommandResult<Buffer>` for bytes |
 | `NeverExitedReason`                                             | type      | `'spawn' \| 'timeout' \| 'abort' \| 'signal' \| 'output'`       |
 | `CommandRunOptions`, `AsyncCommandRunOptions`                   | interface | `cwd`, `timeoutMs`, `input`, `env`, `maxOutputBytes`; async adds `signal`, `onSpawn`, `processGroup` |
 | `EnvOverrides`                                                  | type      | `Record<string, string \| undefined>`                          |
@@ -761,10 +866,11 @@ are settled, and Windows support has landed, if that is feasible.
 | `ShellRunOptions`, `AsyncShellRunOptions`, `ShellPositionals`   | interface | Capture options plus `scriptName` (`$0`) and `args` (`$1`…)    |
 | `shellQuote`, `shellJoin`                                       | function  | POSIX quoting for one word or a command line                   |
 | `streamRunner`                                                  | function  | Default streaming runner (inherited stdio)                     |
-| `StreamRunner`, `StreamRunOptions`, `StreamResult`              | type      | Streaming runner contract; the result adds `reason`, `signal`, `error` |
+| `StreamRunner`, `StreamRunOptions`, `StreamResult`              | type      | Streaming runner contract; options add `stdio` and `quiet`; the result adds `reason`, `signal`, `error` |
+| `StdioOption`                                                   | type      | `'inherit' \| 'ignore' \| { stdout, stderr }` file descriptors   |
 | `managedProcessRunner`                                          | function  | Default managed-process runner                                 |
 | `stopProcess`                                                   | function  | `SIGTERM`, then `SIGKILL` after a grace period                 |
-| `ManagedProcessRunner`, `ManagedProcessRunOptions`              | interface | Managed-process runner contract and options (`cwd` required)   |
+| `ManagedProcessRunner`, `ManagedProcessRunOptions`              | interface | Managed-process runner contract and options (`cwd` required; `env`, `processGroup`, `unref`, `stdio`) |
 | `ManagedProcessHandle`, `ManagedProcessExit`                    | interface | `pid`, `kill()`, `exited`; how the process ended, with `reason` and `error` |
 | `installGroupSignalForwarding`, `liveProcessGroups`, `forwardedSignal`, `forwardedExitCode` | function | Kill live process groups on `SIGINT`/`SIGTERM`/`SIGHUP`; list them; the signal forwarded and its exit code |
 | `GroupSignalForwardingOptions`                                  | interface | `signals`, `graceMs`, `exit`                                   |
@@ -772,7 +878,7 @@ are settled, and Windows support has landed, if that is feasible.
 | `DefaultedRunner`                                               | interface | The runner `withDefaults` returns                              |
 | `which`                                                         | function  | The path a spawn of a binary would run, without running it     |
 | `WhichOptions`                                                  | interface | `cwd`, `env`                                                   |
-| `fakeRunner`                                                    | function  | `/testing`: a `CommandRunner` that answers from a table        |
+| `fakeRunner`                                                    | function  | `/testing`: a `CommandRunner` that answers from a table, with async and bytes forms |
 | `fakeNeverExited`                                               | function  | `/testing`: a fake answer for a run that never exited          |
 | `fakeProcess`                                                   | function  | `/testing`: a `ManagedProcessHandle` the test ends by hand     |
 | `FakeRunner`, `FakeCall`, `FakeProcess`, `FakeProcessOptions`  | interface | `/testing`: the fakes' return, call and option types           |
