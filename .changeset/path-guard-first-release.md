@@ -2,7 +2,7 @@
 "@osdlc/path-guard": patch
 ---
 
-First public release. A path containment guard in two layers. `validateRelative` refuses a hostile relative path (empty, NUL byte, leading `~`, Windows drive or UNC prefix, absolute, or a `.`, `..` or empty segment) without touching the filesystem. `resolveInside`, `contains` and `canonicalExistingPrefix` then prove that a path stays inside its root, resolving symlinks in the part of the path that exists, so a path that does not exist yet can be checked too.
+First public release. A path containment guard in two layers, the same design as the Rust crate path-guard 0.2.3. `validateRelative` refuses a hostile relative path (empty, NUL byte, leading `~`, Windows drive or UNC prefix, absolute, or a `.`, `..` or empty segment) without touching the filesystem. `resolveInside`, `contains` and `canonicalExistingPrefix` then prove that a path stays inside its root, resolving symlinks in the part of the path that exists, so a path that does not exist yet can be checked too.
 
 Containment checks are tested on Linux and macOS.
 
@@ -15,7 +15,3 @@ The additions:
 - `Resolver`, with `realpath` and `readlink`, and `nodeResolver`, the real filesystem. Every containment function takes a `Resolver` as its last argument.
 - `MAX_LINK_HOPS`, the number of dangling symlinks one check follows (40). A longer chain is refused. A check that would spend too many resolver calls is refused: `resolveInside` throws, `contains` answers false, and `canonicalExistingPrefix` returns the path as written.
 - `openContainedFile` and `readContainedFile`: the open is non-blocking, so a FIFO cannot hang the call, and the handle is accepted only when it is the file found at the path's real path (same device and inode). `realPathInside`, `existingPathInside` and `isInside`, with the types `ContainedFile` and `ContainedPath`.
-
-Changes:
-
-- Same two-layer design as the Rust crate path-guard 0.2.3.

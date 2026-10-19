@@ -1,7 +1,8 @@
 /**
- * Why a path was refused. The names match the shared fixture and the Rust
- * crate's `PathError` variants.
- * The kind strings are snake_case and match the Rust enum variants.
+ * Why a path was refused. The kinds are the snake_case names of the Rust
+ * `PathError` variants, except Rust `NotUtf8`, which has no kind here.
+ * `escapes` also covers a path the check cannot prove stays inside: an empty
+ * root, more than `MAX_LINK_HOPS` links, or a spent resolver-call budget.
  */
 export type PathErrorKind =
   | 'empty'
@@ -42,7 +43,7 @@ export class PathError extends Error {
  * Returns the normalised form (backslashes folded to `/`, no trailing slash).
  * Touches no filesystem. Refuses an empty path, a NUL byte, a leading `~`, a
  * Windows drive or UNC prefix, an absolute path, and an empty, `.` or `..`
- * segment, checked in that order.
+ * segment. The checks run in that order, and segments are checked left to right.
  *
  * @throws {PathError} Kind `empty`, `nul`, `tilde`, `windows_path`, `absolute`,
  * `degenerate_segment` or `parent_segment`, by the order above.

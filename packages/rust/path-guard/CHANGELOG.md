@@ -12,12 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Added
 
 - *(path-guard)* add lexical_absolute ([#304](https://github.com/osdlc/osdlc/pull/304))
-
-### Added
-
 - `lexical_absolute`, a cwd-anchored lexical fold: `.` dropped, `..` folded, no
   filesystem access. It returns an error when the current directory cannot be
   read.
+- The TypeScript twin `@osdlc/path-guard` has the same two layers and reads the
+  same conformance fixture.
 
 ## [0.2.2] - 2026-10-18
 

@@ -371,10 +371,9 @@ fn walk<R: Resolver + ?Sized>(calls: &mut Calls<R>, p: &Path, hops: usize) -> Op
             (base, real) = (found, true);
         }
         i += n;
-        // Nested `if let` rather than a `let`-chain, so the crate builds on the
-        // workspace MSRV (1.85); `let`-chains need 1.88. The `?` still runs only
-        // once `real` holds and the component is `Normal`, so the resolver-call
-        // budget is spent exactly as the single condition would spend it.
+        // A `let`-chain: the `?` runs only once `real` holds and the component
+        // is `Normal`, so the resolver-call budget is spent exactly as the
+        // single condition would spend it.
         if real
             && let Some(Component::Normal(name)) = parts.get(i)
             && let Ok(target) = calls.read_link(&base.join(name))?
@@ -438,7 +437,7 @@ fn deepest_existing<R: Resolver + ?Sized>(
         q.extend(&rest[..n]);
         calls.canonicalize(&q)
     };
-    // Nested `if let` rather than a `let`-chain (MSRV 1.85; see `walk`).
+    // A `let`-chain, as in `walk`.
     if whole && let Ok(r) = probe(rest.len())? {
         return Some((rest.len(), Some(r)));
     }

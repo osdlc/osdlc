@@ -86,7 +86,9 @@ Two layers, both mandatory:
 
 A refusal throws a `PathError`. Its `kind` is one of `empty`, `nul`, `tilde`,
 `windows_path`, `absolute`, `parent_segment`, `degenerate_segment` or
-`escapes`, and `PathErrorKind` is that union.
+`escapes`, and `PathErrorKind` is that union. `escapes` also means the check
+cannot prove the path stays inside: an empty root, more than `MAX_LINK_HOPS`
+links, or a spent resolver-call budget.
 
 The check is a snapshot. A symlink planted or changed after `resolveInside`
 returns is not seen. To create a file, open it with `fs.open(path, 'wx')`. That
@@ -103,8 +105,11 @@ wrong answers with no error.
 
 `canonicalExistingPrefix` gives the real path of the part of a path that exists
 and keeps the rest as written, with any `..` folded against the real path.
-`realpathOrSelf` is the same for the real filesystem, after it makes the path
-absolute against the working directory.
+`realpathOrSelf` is the same for the real filesystem. It takes a relative path
+too, joined to the working directory. The two give up differently. When the walk
+gives up (a link loop, too many links, a spent budget),
+`canonicalExistingPrefix` returns the path as written, and `realpathOrSelf`
+returns an absolute path with `..` folded as text.
 
 Two helpers work on text alone and touch no filesystem. `lexicalAbsolute` makes a
 path absolute against the working directory, then drops `.` and removes each `..`
@@ -131,18 +136,26 @@ null for anything that is not a regular file.
 resolve an existing path and check it against a root. `isInside(root, path)` is
 the lexical check alone.
 
+## Which exports touch the filesystem
+
+| Mode | Exports |
+|---|---|
+| Lexical: no filesystem | `validateRelative`, `toRelative`, `lexicalAbsolute`, `isInside`. `lexicalAbsolute` and `isInside` read the working directory for a relative input. |
+| `Resolver`: injectable, the real disk by default | `resolveInside`, `tryResolveInside`, `contains`, `canonicalExistingPrefix` |
+| Real disk only: Node `fs`, not injectable | `realpathOrSelf`, `realPathInside`, `existingPathInside`, `openContainedFile`, `readContainedFile` |
+
 ## The API
 
 | Export | Kind | What it is |
 |---|---|---|
 | `validateRelative` | function | Layer 1. Returns the normalised form of a root-relative path, or throws `PathError`. |
 | `PathError` | class | The error every refusal throws. Its `kind` says why. |
-| `PathErrorKind` | type | The eight values `kind` takes. |
+| `PathErrorKind` | type | The values `kind` takes. |
 | `resolveInside` | function | Layers 1 and 2. Returns the joined path or throws `PathError`. |
 | `tryResolveInside` | function | `resolveInside` that returns null instead of throwing. |
 | `contains` | function | Is `inner` the same as `outer`, or beneath it, once both are resolved? |
 | `canonicalExistingPrefix` | function | The real path of the part that exists, plus the rest as written. |
-| `realpathOrSelf` | function | `canonicalExistingPrefix` of an absolute path, on the real filesystem. |
+| `realpathOrSelf` | function | `canonicalExistingPrefix` on the real filesystem. Takes a relative path too, joined to the working directory. When the walk gives up, it folds `..` as text. |
 | `lexicalAbsolute` | function | A path made absolute against the working directory and folded as text. Follows no symlink. |
 | `toRelative` | function | An absolute path under a root, as a root-relative path with `/` separators, or throws `PathError`. |
 | `Resolver` | type | `realpath` and `readlink`: how the containment layer reads a filesystem. |

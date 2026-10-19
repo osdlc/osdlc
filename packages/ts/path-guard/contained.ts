@@ -57,8 +57,8 @@ export interface ContainedFile {
  * Returns null when a check fails. On a failed check or a throw, this function closes the
  * handle. On success it does not: the caller closes `handle`.
  *
- * @throws {Error} What `fs.realpath` or `fs.open` throws, such as `ENOENT`, when `path`
- * does not exist.
+ * @throws {Error} What `fs.realpath`, `fs.open`, `FileHandle.stat` or `fs.lstat` throws, such as
+ * `ENOENT`, when `path` does not exist or vanishes during the check.
  * @example
  * ```ts
  * const file = await openContainedFile(realRoot, '/vault/a.md')
@@ -99,8 +99,8 @@ export async function openContainedFile(
  * or is not a regular file.
  * Closes the handle itself.
  *
- * @throws {Error} What `fs.realpath` or `fs.open` throws, such as `ENOENT`, when `path`
- * does not exist.
+ * @throws {Error} What `fs.realpath`, `fs.open`, `FileHandle.stat`, `fs.lstat` or
+ * `FileHandle.readFile` throws, such as `ENOENT`, when `path` does not exist.
  * @example
  * ```ts
  * const bytes = await readContainedFile(realRoot, '/vault/a.md') // Buffer, or null
