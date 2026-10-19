@@ -4,7 +4,15 @@ import { join } from 'node:path'
 
 import { describe, expect, test } from 'vitest'
 
-import { PathError, contains, resolveInside, validateRelative, type Resolver } from '../index.ts'
+import {
+  PathError,
+  contains,
+  lexicalAbsolute,
+  resolveInside,
+  toRelative,
+  validateRelative,
+  type Resolver,
+} from '../index.ts'
 
 interface LexicalCase {
   name: string
@@ -42,6 +50,9 @@ interface Fixture {
   validate_relative: LexicalCase[]
   resolve: ResolveCase[]
   contains: ContainsCase[]
+  /** Absolute inputs only, so the answer does not depend on the working directory. */
+  lexical_absolute: LexicalCase[]
+  to_relative: ResolveCase[]
   resolve_on_disk: OnDiskCase[]
   contains_on_disk: ContainsOnDiskCase[]
 }
@@ -114,6 +125,8 @@ describe('shared parity fixture', () => {
     expect(f.validate_relative.length).toBeGreaterThan(0)
     expect(f.resolve.length).toBeGreaterThan(0)
     expect(f.contains.length).toBeGreaterThan(0)
+    expect(f.lexical_absolute.length).toBeGreaterThan(0)
+    expect(f.to_relative.length).toBeGreaterThan(0)
     expect(f.resolve_on_disk.length).toBeGreaterThan(0)
     expect(f.contains_on_disk.length).toBeGreaterThan(0)
   })
@@ -138,6 +151,23 @@ describe('shared parity fixture', () => {
     for (const c of f.contains) {
       test(c.name, () => {
         expect(contains(c.outer, c.inner, nothing)).toBe(c.expected)
+      })
+    }
+  })
+
+  describe('lexicalAbsolute', () => {
+    for (const c of f.lexical_absolute) {
+      test(c.name, () => {
+        expect(outcome(() => lexicalAbsolute(c.input))).toEqual(expected(c))
+      })
+    }
+  })
+
+  // `input` is the absolute path and `root` the root, as the Rust side's `to_relative`.
+  describe('toRelative', () => {
+    for (const c of f.to_relative) {
+      test(c.name, () => {
+        expect(outcome(() => toRelative(c.root, c.input))).toEqual(expected(c))
       })
     }
   })
