@@ -43,13 +43,18 @@ so a config change here runs against its build in CI.
 
 ## Twin libraries
 
-A twin is one library written in two languages, such as the `tiered-dirs`
-crate and `@osdlc/tiered-dirs`. Twins keep semantic parity, not literal
-parity.
+A twin is two separate implementations of one library, one in Rust and one
+in TypeScript, such as the `tiered-dirs` crate and `@osdlc/tiered-dirs`. A
+build of one implementation for another runtime, such as `@osdlc/yaml-splice`
+(the crate built to WebAssembly), is not a twin and keeps its own version.
+The rules below apply when both halves are hosted here. A twin whose other
+half lives elsewhere, such as `@osdlc/frontmatter-lossless`, adopts them when
+that half moves here. Twins keep semantic parity, not literal parity.
 
 - **Same behaviour.** For the same input, both twins return the same result
-  or refuse it with the same error kind. One shared fixture of cases proves
-  it, and both twins' tests run every case.
+  or refuse it with the same error kind. A shared fixture of cases checks
+  it: `packages/rust/<name>/tests/fixtures/parity.json`, run by both twins'
+  tests. `tiered-dirs` has one. `etag-write` does not have one yet.
 - **Each language's idiom.** A twin does not copy the other's names or
   signatures when that breaks its own language's habits. Rust uses
   snake_case, `Result`, traits and the standard library's words. TypeScript
@@ -58,11 +63,19 @@ parity.
 - **One-sided features are allowed.** A twin may have an export the other
   language has no use for. Its README lists such exports.
 - **Versions.** Twins share the major and minor version. Patch releases are
-  independent.
-- **Skipping versions to catch up.** When one twin moves ahead for a while,
-  the other may skip one or more versions to return to the shared major and
-  minor. For example, if the crate is at 0.3 while the TypeScript package is
-  at 0.1, the package's next release is 0.3.0, with no 0.2.
+  independent. `tiered-dirs`'
+  [D-02](ts/tiered-dirs/docs/planning/decisions/D-02-version-line-and-stability.md)
+  applies this rule to one twin.
+- **Skipping versions to catch up.** One twin may release a breaking change
+  before the other is ready. The other then skips one or more versions to
+  return to the shared major and minor. For example, if the crate is at 0.3
+  while the TypeScript package is at 0.1, the package's next release is
+  0.3.0, with no 0.2. A changeset cannot jump versions, so the pull request
+  that catches up sets `version` in `package.json` by hand. This is the one
+  case where that is allowed.
+  `@osdlc/tiered-dirs` did this: its first release was 0.3.0, as its
+  [D-02](ts/tiered-dirs/docs/planning/decisions/D-02-version-line-and-stability.md)
+  records.
 
 ## Where changes are made
 
@@ -107,7 +120,8 @@ requests here.
    run `pnpm changeset` at the repository root, pick the libraries and the
    bump, and write the summary. It lands in `.changeset/` and becomes the
    CHANGELOG entry. Start a breaking change's summary with `**Breaking:**`.
-   Do not edit `version` or `CHANGELOG.md` by hand.
+   Do not edit `version` or `CHANGELOG.md` by hand, except when a twin
+   skips versions to catch up (see [Twin libraries](#twin-libraries)).
 2. When the pull request merges, `packages-publish.yml` opens or updates one
    "Version Packages" pull request. It bumps each library's version and
    writes its CHANGELOG from the pending changesets.
