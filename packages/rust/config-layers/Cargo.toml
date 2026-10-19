@@ -1,11 +1,6 @@
 [package]
 name = "config-layers"
 version = "0.6.0"
-# Held back for the first release. One release-plz run uses one crates.io
-# credential, and this crate's first release needs the token while
-# cli-tool-config's last release needs trusted publishing, so they go in
-# separate runs. After that release is out, a pull request removes this line.
-publish = false
 edition.workspace = true
 rust-version.workspace = true
 description = "Layered config files: a committed project file and a per-machine file read as YAML, merged by key, with named-directory substitution, dotted-key lookup and the check a program runs for the settings it needs."
