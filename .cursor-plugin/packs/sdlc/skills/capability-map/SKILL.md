@@ -101,8 +101,10 @@ If the list is empty, print `CAPABILITY-MAP-NOOP scope=<scope>` and stop.
 Skip under `--dry-run`. Otherwise:
 
 ```text
-git worktree add .sdlc/worktrees/capability-map-<stem> -b chore/capability-map-<stem> main
+scripts/sdlc project create-worktree capability-map-<stem> --branch chore/capability-map-<stem> --start-point main
 ```
+
+The op prints the worktree's absolute path, under the main checkout; use that path.
 
 Use absolute paths under the worktree for every write from here on. Do not `cd` the parent
 session into it.
@@ -335,7 +337,8 @@ Enriched:
 - C-NNNN — <fields set>
 EOF
 git push -u origin chore/capability-map-<stem>
-gh pr create --title "Capability map: <scope>" --body "<see below>"
+scripts/sdlc pr create --base main --head chore/capability-map-<stem> \
+  --title "Capability map: <scope>" --body-file <body-file>
 ```
 
 The message reaches git through the op's temp file (the `-` sentinel). See

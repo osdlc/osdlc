@@ -240,7 +240,7 @@ suffixed.
 
 The script maintains a per-PR cursor at
 `<cursor-dir>/<pr-number>.json` (where `<cursor-dir>` is
-`.sdlc/pr-cursors/` by default, or the path passed via
+`.sdlc/pr-cursors/` in the main checkout by default, or the path passed via
 `--cursor-dir`) with this shape:
 
 ```json

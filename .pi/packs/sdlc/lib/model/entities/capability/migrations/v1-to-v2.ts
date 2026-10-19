@@ -37,7 +37,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 
-import { split } from '@sksizer/frontmatter-lossless'
+import { split } from '@osdlc/frontmatter-lossless'
 
 import { cmpStr } from '@lib/util/strings'
 import { isRecord } from '@lib/util/guards'
@@ -74,7 +74,7 @@ function capabilityIdOf(value: unknown): string | null {
  * Scan the sibling `.md` files of `filePath` (the corpus dir) and derive the
  * children of `selfId`: every sibling whose `parent_key` targets `selfId`.
  * Line-scans the frontmatter block for `id:` / `parent_key:` — deliberately
- * YAML-free (the framing comes from `@sksizer/frontmatter-lossless`, values from a
+ * YAML-free (the framing comes from `@osdlc/frontmatter-lossless`, values from a
  * line scan), sufficient for the flat key: value shapes those two fields take
  * in capability instances.
  */

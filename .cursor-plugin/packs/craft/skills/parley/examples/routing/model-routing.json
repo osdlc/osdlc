@@ -14,90 +14,90 @@
       "id": "compat",
       "type": "matrix",
       "title": "Allowed combinations",
-      "rowLabel": "tool",
-      "colLabel": "model family",
+      "rowsTitle": "tool",
+      "columnsTitle": "model family",
       "rows": [
         {
           "id": "codex",
-          "label": "codex",
+          "title": "codex",
           "detail": "OpenAI's CLI agent. Runs its own models only."
         },
         {
           "id": "claude",
-          "label": "claude",
+          "title": "claude",
           "detail": "Claude Code. Runs the Claude families and nothing else."
         },
         {
           "id": "opencode",
-          "label": "opencode",
+          "title": "opencode",
           "detail": "Provider-neutral; any family with an API key, including the corporate gateway."
         },
         {
           "id": "pi",
-          "label": "pi",
+          "title": "pi",
           "detail": "Provider-neutral, but the corporate gateway is untested."
         }
       ],
-      "cols": [
-        { "id": "sonnet", "label": "sonnet" },
-        { "id": "opus", "label": "opus" },
-        { "id": "haiku", "label": "haiku" },
-        { "id": "gpt", "label": "gpt" },
-        { "id": "corp", "label": "corp/*", "detail": "Models behind the corporate gateway." }
+      "columns": [
+        { "id": "sonnet", "title": "sonnet" },
+        { "id": "opus", "title": "opus" },
+        { "id": "haiku", "title": "haiku" },
+        { "id": "gpt", "title": "gpt" },
+        { "id": "corp", "title": "corp/*", "detail": "Models behind the corporate gateway." }
       ],
       "cells": [
         {
           "row": "codex",
-          "col": "sonnet",
+          "column": "sonnet",
           "state": "error",
-          "note": "codex cannot run Claude families",
+          "reason": "codex cannot run Claude families",
           "hint": "use claude/sonnet"
         },
         {
           "row": "codex",
-          "col": "opus",
+          "column": "opus",
           "state": "error",
-          "note": "codex cannot run Claude families",
+          "reason": "codex cannot run Claude families",
           "hint": "use claude/opus"
         },
         {
           "row": "codex",
-          "col": "haiku",
+          "column": "haiku",
           "state": "error",
-          "note": "codex cannot run Claude families",
+          "reason": "codex cannot run Claude families",
           "hint": "use claude/haiku"
         },
-        { "row": "codex", "col": "gpt", "state": "valid" },
-        { "row": "claude", "col": "sonnet", "state": "valid" },
-        { "row": "claude", "col": "opus", "state": "valid" },
-        { "row": "claude", "col": "haiku", "state": "valid" },
+        { "row": "codex", "column": "gpt", "state": "valid" },
+        { "row": "claude", "column": "sonnet", "state": "valid" },
+        { "row": "claude", "column": "opus", "state": "valid" },
+        { "row": "claude", "column": "haiku", "state": "valid" },
         {
           "row": "claude",
-          "col": "gpt",
+          "column": "gpt",
           "state": "error",
-          "note": "claude runs Claude families only",
+          "reason": "claude runs Claude families only",
           "hint": "use codex/gpt or opencode/gpt"
         },
-        { "row": "opencode", "col": "sonnet", "state": "valid" },
-        { "row": "opencode", "col": "opus", "state": "valid" },
-        { "row": "opencode", "col": "haiku", "state": "valid" },
-        { "row": "opencode", "col": "gpt", "state": "valid" },
-        { "row": "opencode", "col": "corp", "state": "valid" },
-        { "row": "pi", "col": "sonnet", "state": "valid" },
-        { "row": "pi", "col": "opus", "state": "valid" },
-        { "row": "pi", "col": "haiku", "state": "valid" },
+        { "row": "opencode", "column": "sonnet", "state": "valid" },
+        { "row": "opencode", "column": "opus", "state": "valid" },
+        { "row": "opencode", "column": "haiku", "state": "valid" },
+        { "row": "opencode", "column": "gpt", "state": "valid" },
+        { "row": "opencode", "column": "corp", "state": "valid" },
+        { "row": "pi", "column": "sonnet", "state": "valid" },
+        { "row": "pi", "column": "opus", "state": "valid" },
+        { "row": "pi", "column": "haiku", "state": "valid" },
         {
           "row": "pi",
-          "col": "gpt",
+          "column": "gpt",
           "state": "warn",
-          "note": "works, but pi's gpt adapter has no streaming",
+          "reason": "works, but pi's gpt adapter has no streaming",
           "hint": "prefer opencode/gpt for long runs"
         },
         {
           "row": "pi",
-          "col": "corp",
+          "column": "corp",
           "state": "warn",
-          "note": "untested against the gateway",
+          "reason": "untested against the gateway",
           "hint": "run the smoke test before relying on it"
         }
       ]
@@ -110,35 +110,35 @@
       "steps": [
         {
           "id": "t-flag",
-          "label": "--model flag",
+          "title": "--model flag",
           "outcome": "skip",
           "reason": "No flag on this run.",
           "detail": "A flag wins outright and is never validated against the matrix; that is the first question below."
         },
         {
           "id": "t-rule",
-          "label": "Routing rule: reviewer profile",
+          "title": "Routing rule: reviewer profile",
           "outcome": "author",
           "reason": "The rule names codex/gpt, but the change was authored by claude, and a reviewer must differ from the author's family.",
           "detail": "The author check is a rule-level constraint, so it fires here rather than at the end."
         },
         {
           "id": "t-cooling",
-          "label": "Fallback 1: codex/gpt",
+          "title": "Fallback 1: codex/gpt",
           "outcome": "cooling",
           "reason": "codex returned 429 four minutes ago; the cooling window is ten.",
           "detail": "Cooling is per tool, not per model. Every codex candidate is skipped while it lasts."
         },
         {
           "id": "t-chosen",
-          "label": "Fallback 2: opencode/gpt",
+          "title": "Fallback 2: opencode/gpt",
           "outcome": "chosen",
           "reason": "Valid in the matrix, a different family from the author, not cooling.",
           "detail": "The walk ends here. The result carries the reason chain so the run log can show why the model differs from the rule's first choice."
         },
         {
           "id": "t-default",
-          "label": "Default profile",
+          "title": "Default profile",
           "outcome": "skip",
           "reason": "Not reached."
         }
@@ -151,44 +151,44 @@
       "rungs": [
         {
           "id": "r-flag",
-          "label": "--model flag",
+          "title": "--model flag",
           "detail": "Explicit beats everything. Validated against the matrix only if the question below says so."
         },
         {
           "id": "r-rule",
-          "label": "Routing rule for the profile",
+          "title": "Routing rule for the profile",
           "detail": "From the project's routing file, matched on profile and tags."
         },
         {
           "id": "r-workflow",
-          "label": "Workflow default",
+          "title": "Workflow default",
           "detail": "The workflow that launched the run may name a model."
         },
         {
           "id": "r-profile",
-          "label": "Default profile",
+          "title": "Default profile",
           "detail": "The profile's own default, usually a cheap family."
         },
         {
           "id": "r-builtin",
-          "label": "Built-in chain",
+          "title": "Built-in chain",
           "detail": "claude/sonnet, then opencode/sonnet. Never cooling-aware."
         }
       ],
       "examples": [
         {
           "id": "e-flag",
-          "label": "run --model claude/opus",
+          "title": "run --model claude/opus",
           "matches": "r-flag",
-          "note": "Even when the matrix says the tool cannot run it."
+          "reason": "Even when the matrix says the tool cannot run it."
         },
         {
           "id": "e-ci",
-          "label": "CI review of a docs change",
+          "title": "CI review of a docs change",
           "matches": "r-rule",
-          "note": "The docs tag matches the reviewer rule."
+          "reason": "The docs tag matches the reviewer rule."
         },
-        { "id": "e-adhoc", "label": "ad hoc run, no rule, no workflow", "matches": "r-profile" }
+        { "id": "e-adhoc", "title": "ad hoc run, no rule, no workflow", "matches": "r-profile" }
       ]
     },
     {
@@ -198,7 +198,7 @@
       "phases": [
         {
           "id": "p1",
-          "label": "Phase 1 · matrix and resolver",
+          "title": "Phase 1 · matrix and resolver",
           "status": "doing",
           "gate": "Q7 answered",
           "milestone": "M-EG9L",
@@ -206,17 +206,17 @@
           "workstreams": [
             {
               "id": "ws-data",
-              "label": "Matrix as data",
+              "title": "Matrix as data",
               "tasks": [
                 {
                   "id": "k-matrix",
-                  "label": "Move the allowed combinations into routing.yaml",
+                  "title": "Move the allowed combinations into routing.yaml",
                   "status": "done",
                   "milestone": "M-EG9L"
                 },
                 {
                   "id": "k-validate",
-                  "label": "Validate routing.yaml on load; refuse an unknown family",
+                  "title": "Validate routing.yaml on load; refuse an unknown family",
                   "status": "doing",
                   "milestone": "M-EG9L"
                 }
@@ -224,17 +224,17 @@
             },
             {
               "id": "ws-resolver",
-              "label": "Resolver",
+              "title": "Resolver",
               "tasks": [
                 {
                   "id": "k-walk",
-                  "label": "Resolver returns the reason chain, not just the model",
+                  "title": "Resolver returns the reason chain, not just the model",
                   "status": "doing",
                   "gate": "k-validate"
                 },
                 {
                   "id": "k-log",
-                  "label": "Run log prints the chain when the result differs from the rule",
+                  "title": "Run log prints the chain when the result differs from the rule",
                   "status": "todo"
                 }
               ]
@@ -243,19 +243,19 @@
         },
         {
           "id": "p2",
-          "label": "Phase 2 · cooling and the author rule",
+          "title": "Phase 2 · cooling and the author rule",
           "status": "todo",
           "gate": "Q56 answered",
           "milestone": "M-Q5GI",
           "workstreams": [
             {
               "id": "ws-cooling",
-              "label": "Cooling",
+              "title": "Cooling",
               "tasks": [
-                { "id": "k-cool", "label": "Per-tool cooling window from 429s", "status": "todo" },
+                { "id": "k-cool", "title": "Per-tool cooling window from 429s", "status": "todo" },
                 {
                   "id": "k-cool-ui",
-                  "label": "Show cooling state in the orchestrate page",
+                  "title": "Show cooling state in the orchestrate page",
                   "status": "blocked",
                   "gate": "k-cool",
                   "detail": "Blocked on the page's status model."
@@ -264,11 +264,11 @@
             },
             {
               "id": "ws-author",
-              "label": "Author rule",
+              "title": "Author rule",
               "tasks": [
                 {
                   "id": "k-author",
-                  "label": "Reviewer must differ from the author's family",
+                  "title": "Reviewer must differ from the author's family",
                   "status": "todo",
                   "milestone": "M-Q5GI"
                 }
@@ -278,18 +278,18 @@
         },
         {
           "id": "p3",
-          "label": "Phase 3 · corp gateway",
+          "title": "Phase 3 · corp gateway",
           "status": "todo",
           "milestone": "M-1AZF",
           "workstreams": [
             {
               "id": "ws-corp",
-              "label": "Gateway",
+              "title": "Gateway",
               "tasks": [
-                { "id": "k-corp-smoke", "label": "Smoke test pi against corp/*", "status": "todo" },
+                { "id": "k-corp-smoke", "title": "Smoke test pi against corp/*", "status": "todo" },
                 {
                   "id": "k-corp-matrix",
-                  "label": "Flip pi × corp/* to valid or error from the result",
+                  "title": "Flip pi × corp/* to valid or error from the result",
                   "status": "todo",
                   "gate": "k-corp-smoke"
                 }
@@ -310,12 +310,12 @@
       "options": [
         {
           "id": "validate",
-          "label": "Validate: refuse an error cell with the hint",
+          "title": "Validate: refuse an error cell with the hint",
           "detail": "Fails fast with the fix in the message."
         },
         {
           "id": "trust",
-          "label": "Trust the flag",
+          "title": "Trust the flag",
           "detail": "Lets a developer try an unlisted combination."
         }
       ]
@@ -329,12 +329,12 @@
       "options": [
         {
           "id": "tool",
-          "label": "Per tool",
+          "title": "Per tool",
           "detail": "A 429 from codex/gpt cools every codex candidate. Simple, slightly over-cautious."
         },
         {
           "id": "pair",
-          "label": "Per tool and family",
+          "title": "Per tool and family",
           "detail": "Finer, but most 429s are account-wide anyway."
         }
       ]

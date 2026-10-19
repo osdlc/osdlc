@@ -22,6 +22,8 @@
 
 import { z } from 'zod'
 
+import type { Stability } from '@osdlc/config-layers'
+
 import { extractDefault, unwrapToInner, unwrapToObject } from '@lib/util/zod_introspect'
 
 import { BacklogSchema, SCHEMA_VERSION as BACKLOG_VERSION } from './backlog/schema.ts'
@@ -67,6 +69,13 @@ export interface EntitySchemaEntry {
    * files when migrate next runs. See `keyOrderFor`.
    */
   keyOrder: string[]
+  /**
+   * Whether the type is covered by the 1.x compatibility promise
+   * (`docs/compatibility.md`). Absent means `stable`; an `experimental` type
+   * is listed apart in the contract inventory, and the generated verbs of its
+   * noun (`<type> create|list|…`) carry the same marking.
+   */
+  stability?: Stability
 }
 
 /** The underlying object's `.shape` key order for a schema. */
@@ -175,8 +184,18 @@ function keyOrderFor(type: string, schema: ZodEntitySchema): string[] {
  * the Zod schema by the path's parent-directory basename (see
  * `entryForSchemaPath`).
  */
-function entry(type: string, schema: ZodEntitySchema, version: string): EntitySchemaEntry {
-  return { schema, version, keyOrder: keyOrderFor(type, schema) }
+function entry(
+  type: string,
+  schema: ZodEntitySchema,
+  version: string,
+  stability?: Stability,
+): EntitySchemaEntry {
+  return {
+    schema,
+    version,
+    keyOrder: keyOrderFor(type, schema),
+    ...(stability !== undefined ? { stability } : {}),
+  }
 }
 
 export const ENTITY_SCHEMAS: Record<string, EntitySchemaEntry> = {
@@ -184,7 +203,7 @@ export const ENTITY_SCHEMAS: Record<string, EntitySchemaEntry> = {
   capability: entry('capability', CapabilitySchema, CAPABILITY_VERSION),
   decision: entry('decision', DecisionSchema, DECISION_VERSION),
   driver: entry('driver', DriverSchema, DRIVER_VERSION),
-  friction: entry('friction', FrictionSchema, FRICTION_VERSION),
+  friction: entry('friction', FrictionSchema, FRICTION_VERSION, 'experimental'),
   milestone: entry('milestone', MilestoneSchema, MILESTONE_VERSION),
   note: entry('note', NoteSchema, NOTE_VERSION),
   principle: entry('principle', PrincipleSchema, PRINCIPLE_VERSION),
@@ -224,6 +243,11 @@ export function entryForSchemaPath(
   const entry = ENTITY_SCHEMAS[parentDir]
   if (entry === undefined) return undefined
   return { type: parentDir, entry }
+}
+
+/** The type's compatibility stability (`stable` unless its entry says otherwise). */
+export function entityStability(type: string): Stability {
+  return ENTITY_SCHEMAS[type]?.stability ?? 'stable'
 }
 
 /** Every registered entity type name, sorted. */

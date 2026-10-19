@@ -300,8 +300,14 @@ just walked in to the PR:
 - Tell it to triage every comment using the policy resolved in Step
   6, verbatim — quote or attach that text in the brief rather than
   re-deriving it.
-- Tell it to run the project's quality checks after substantive
-  changes (via `${CLAUDE_PLUGIN_ROOT}/cli/sdlc quality run
+- Tell it, after substantive changes, to run the project's `generate`
+  workflow (`${CLAUDE_PLUGIN_ROOT}/cli/sdlc quality run
+  --config <project-root>/sdlc.yaml --name generate --log --allow-empty`;
+  a no-op when `workflows.generate:` is not configured) and commit what
+  it changed, so the committed generated files match the edited sources.
+  Never hand-edit a generated file.
+- Tell it to run the project's quality checks after that (via
+  `${CLAUDE_PLUGIN_ROOT}/cli/sdlc quality run
   --config <project-root>/sdlc.yaml --line`) and to fix issues before
   reporting done.
 - Pick subagent_type appropriately: `general-purpose` for mixed work.
@@ -365,8 +371,10 @@ canonical shape):
   a single `none` bullet) — do not omit the flag.
 
 The files-changed table needs no tempfile: pass
-`--handoff-files-changed-from-diff origin/main` instead of
-`--handoff-files-changed <path>`. See the `lease task transition` op
+`--handoff-files-changed-from-diff "origin/<base>"` instead of
+`--handoff-files-changed <path>`, where `<base>` is the PR's own base
+branch (`gh pr view <pr-number> --json baseRefName -q .baseRefName`),
+not necessarily `main`. See the `lease task transition` op
 doc-comment + `sdlc lease task transition --help`.
 
 Then transition with the handoff embedded:
@@ -377,7 +385,7 @@ ${CLAUDE_PLUGIN_ROOT}/cli/sdlc lease task transition <task_id> \
     --handoff-summary "<summary>" \
     --handoff-pr-url "<pr-url>" \
     --handoff-quality-status "<quality-status>" \
-    --handoff-files-changed-from-diff origin/main \
+    --handoff-files-changed-from-diff "origin/<base>" \
     --handoff-followups <followups-path>
 ```
 

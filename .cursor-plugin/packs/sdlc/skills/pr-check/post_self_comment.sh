@@ -19,7 +19,10 @@
 #
 # Optional environment overrides (for tests):
 #   PR_CHECK_CURSOR_DIR    Override the cursor directory.
-#                          Default: <project-root>/.sdlc/pr-cursors/
+#                          Default: <main-checkout>/.sdlc/pr-cursors/ — the
+#                          MAIN checkout (the parent of `git rev-parse
+#                          --git-common-dir`), whichever worktree runs this,
+#                          because `sdlc pr classify` reads cursors there.
 #   PR_CHECK_PROJECT_ROOT  Override the project root.
 #                          Default: $(git rev-parse --show-toplevel)
 #                          or $PWD if not in a git repo.
@@ -67,7 +70,21 @@ if [ -z "$project_root" ]; then
     project_root="$PWD"
   fi
 fi
-cursor_dir="${PR_CHECK_CURSOR_DIR:-$project_root/.sdlc/pr-cursors}"
+
+# The runtime state lives in the main checkout's .sdlc/ (runtimeStateDir in
+# lib/util/git.ts): from a linked worktree the git common dir is the main
+# checkout's .git, so its parent is the main checkout. Outside a git repo, or
+# when the common dir is not a plain `.git` (bare repo, submodule), fall back
+# to the project root.
+state_root="$project_root"
+if common_dir="$(git -C "$project_root" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" \
+  && top_dir="$(git -C "$project_root" rev-parse --show-toplevel 2>/dev/null)" \
+  && [ "$(basename "$common_dir")" = ".git" ]; then
+  top_real="$(cd "$top_dir" && pwd -P)"
+  root_real="$(cd "$project_root" && pwd -P)"
+  state_root="$(dirname "$common_dir")${root_real#"$top_real"}"
+fi
+cursor_dir="${PR_CHECK_CURSOR_DIR:-$state_root/.sdlc/pr-cursors}"
 cursor_path="$cursor_dir/$pr_number.json"
 
 # Tool availability.

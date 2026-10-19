@@ -60,8 +60,8 @@ is narrow enough for the distinction to matter.
 
 3. **Dispatch the survey — one subagent per section.** Fan out a read-only agent
    per section (via the Agent tool; send independent sections concurrently in one
-   message). Each agent scans only its section and returns a **structured
-   summary** in a fixed shape so the results compose:
+   message). Each agent reads the project's `CLAUDE.md` and `AGENTS.md` first, scans only
+   its section and returns a **structured summary** in a fixed shape so the results compose:
    - `section` — the path or subsystem surveyed.
    - `callSites` — a list of `{ path:line, symbol, glue }`, where `glue` names
      the surrounding workaround: setup, argument-massaging, post-processing, a

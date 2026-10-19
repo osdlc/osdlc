@@ -47,7 +47,7 @@
 import { parse, sectionsAt, blocksOfKind } from 'markdown-contract'
 import type { SectionNode } from 'markdown-contract'
 import { z } from 'zod'
-import { rowCellTexts } from '@sksizer/gfm-table'
+import { rowCellTexts } from '@osdlc/gfm-table'
 
 import { defineOp } from '@lib/registry'
 import { repr } from '@lib/util/diagnostics'

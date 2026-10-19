@@ -9,20 +9,30 @@
  * `--explain`).
  *
  * Default sort chain (highest weight first):
- *   1. priority (true above false)
- *   2. impact   (high > medium > low > missing)
- *   3. complexity (small > medium > large > missing)
- *   4. created  (oldest first)
- *   5. basename (final tiebreak)
+ *   1. milestone (the task's milestone, ranked by its place in the roadmap's
+ *      release order; a task in no milestone sorts last — see
+ *      `../milestone-walk.ts`, [[T-JSJJ]])
+ *   2. priority (true above false)
+ *   3. impact   (high > medium > low > missing)
+ *   4. complexity (small > medium > large > missing)
+ *   5. created  (oldest first)
+ *   6. basename (final tiebreak)
+ *
+ * The milestone rank leads the chain, so within one milestone the chain is
+ * unchanged and across milestones the release order wins over priority.
  *
  * Dependency handling has two distinct passes:
- *   - **Lift** (ordering): a dependent's lead sort-tuple propagates to its
- *     `depends_on` targets so a low-impact blocker of high-impact work sorts
- *     first. Runs to a fixed point.
+ *   - **Lift** (ordering): a dependent's lead sort-tuple (milestone rank
+ *     included, so lift crosses milestones) propagates to its `depends_on`
+ *     targets so a low-impact blocker of high-impact work sorts first. Runs to
+ *     a fixed point.
  *   - **Dispatchability filter** (selection, default on): a candidate with any
  *     `depends_on` target not satisfied per the per-entity-type band in
  *     `@lib/model/corpus` (`SATISFIED_BY_TYPE`/`isSatisfied`) is dropped and
- *     recorded in `skipped_blocked`. An unresolved target (no such entity) is
+ *     recorded in `skipped_blocked`. The task's milestone `depends_on` gates
+ *     it the same way, by the same rule; such a target is reported as
+ *     `<target> (milestone <M-XXXX>)`. A task in several milestones is gated by all of
+ *     them, and a milestone `depends_on` cycle is reported like a task cycle. An unresolved target (no such entity) is
  *     treated as unsatisfied (fail-safe). `--include-blocked` disables this pass.
  *     {@link checkDependsOn} applies the same rule to one named task at launch.
  *
@@ -39,9 +49,15 @@
  *     `--kind` is repeatable and defaults to `implementation`, so `planning` /
  *     `research` leaves stay human-driven until their runners exist. Dropped
  *     candidates land in `skipped_kind`.
- * Both run over the SORTED list, after the lift pass, so an excluded task still
- * lifts the blockers it depends on — the same staging the dispatchability
- * filter uses.
+ * A goal scope (`--milestone`, `--until-version`) is a third cut of the same
+ * kind ({@link inScope}): a task whose milestone is not among the named
+ * milestones, or is released after the version ceiling, is dropped into
+ * `skipped_scope`; with either flag set, a task in no milestone is dropped
+ * too. A task that transitively blocks an in-scope task is admitted whatever
+ * its own milestone: dependency lift crosses milestones, so it is ranked at
+ * its dependent's rank rather than cut. The three predicates run over the SORTED list,
+ * after the lift pass, so an excluded task still lifts the blockers it
+ * depends on — the same staging the dispatchability filter uses.
  *
  * A lease predicate keeps the pool free of work a person has taken: a candidate
  * whose local lease mirror names a `human` owner (`sdlc task start`) is dropped
@@ -61,7 +77,7 @@ import { join, resolve } from 'node:path'
 
 import { z } from 'zod'
 
-import { defineOp } from '@lib/registry'
+import { defineOp, OpError } from '@lib/registry'
 import { isDir } from '@lib/util/fs'
 import { mainCheckoutFrom } from '@lib/util/git'
 import { unwrapWikilink } from '@lib/util/wikilinks'
@@ -72,6 +88,14 @@ import { isNonExpiringOwner } from '@lib/services/lease/index'
 import { isSatisfied, CLOSED_PREFIX } from '@lib/model/corpus/satisfied'
 import { buildEdges, findCycles } from '@lib/model/corpus/graph'
 import { readTask } from '../read.ts'
+import {
+  buildMilestoneWalk,
+  canonicalVersion,
+  compareVersions,
+  UNPOSITIONED_RANK,
+  type MilestonePosition,
+  type MilestoneWalk,
+} from '../milestone-walk.ts'
 import { readLocalLease } from './_probe_core.ts'
 
 // ---------------------------------------------------------------------------
@@ -85,6 +109,7 @@ const COMPLEXITY_MISSING = 99
 const CYCLE_MARKER_PREFIX = 'CYCLE basenames='
 
 interface SortKey {
+  milestoneRank: number
   priorityRank: number
   impactRank: number
   complexityRank: number
@@ -106,10 +131,15 @@ function complexityRank(value: unknown): number {
   return COMPLEXITY_RANK[value]!
 }
 
-function sortKeyFromFm(basename: string, fm: Record<string, unknown>): SortKey {
+function sortKeyFromFm(
+  basename: string,
+  fm: Record<string, unknown>,
+  milestoneRank: number,
+): SortKey {
   let created = fm['created']
   if (typeof created !== 'string') created = '9999-12-31'
   return {
+    milestoneRank,
     priorityRank: priorityRank(fm['priority']),
     impactRank: impactRank(fm['impact']),
     complexityRank: complexityRank(fm['complexity']),
@@ -119,6 +149,7 @@ function sortKeyFromFm(basename: string, fm: Record<string, unknown>): SortKey {
 }
 
 function compareSortKeys(a: SortKey, b: SortKey): number {
+  if (a.milestoneRank !== b.milestoneRank) return a.milestoneRank - b.milestoneRank
   if (a.priorityRank !== b.priorityRank) return a.priorityRank - b.priorityRank
   if (a.impactRank !== b.impactRank) return a.impactRank - b.impactRank
   if (a.complexityRank !== b.complexityRank) return a.complexityRank - b.complexityRank
@@ -128,6 +159,7 @@ function compareSortKeys(a: SortKey, b: SortKey): number {
 }
 
 function compareLeadTuples(a: SortKey, b: SortKey): number {
+  if (a.milestoneRank !== b.milestoneRank) return a.milestoneRank - b.milestoneRank
   if (a.priorityRank !== b.priorityRank) return a.priorityRank - b.priorityRank
   if (a.impactRank !== b.impactRank) return a.impactRank - b.impactRank
   if (a.complexityRank !== b.complexityRank) return a.complexityRank - b.complexityRank
@@ -228,11 +260,76 @@ function passesKind(fm: Record<string, unknown>, kinds: readonly string[]): bool
   return kinds.includes(effectiveKind(fm))
 }
 
+/** The goal scope `--milestone` / `--until-version` cut the frontier to. */
+interface GoalScope {
+  /** Resolved milestone basenames; empty means "any milestone". */
+  milestones: ReadonlySet<string>
+  /** Release-version ceiling, canonical; `null` means no ceiling. */
+  untilVersion: string | null
+}
+
+function scopeIsActive(scope: GoalScope): boolean {
+  return scope.milestones.size > 0 || scope.untilVersion !== null
+}
+
+/**
+ * True when a task lies inside the goal scope, through any one of its
+ * milestones (`positions` maps each to its release version). With no scope set
+ * everything is in scope. With one set, a task in no milestone is out, and so
+ * is a milestone with no release version when a version ceiling is set (it is
+ * not known to ship by then).
+ */
+function inScope(
+  milestones: readonly string[],
+  positions: ReadonlyMap<string, MilestonePosition>,
+  scope: GoalScope,
+): boolean {
+  if (!scopeIsActive(scope)) return true
+  return milestones.some((m) => {
+    if (scope.milestones.size > 0 && !scope.milestones.has(m)) return false
+    if (scope.untilVersion === null) return true
+    const version = positions.get(m)?.version ?? null
+    return version !== null && compareVersions(version, scope.untilVersion) <= 0
+  })
+}
+
+/**
+ * Parse a caller-supplied release-version ceiling to its canonical spelling.
+ * Throws when it is not a full `X.Y.Z[-pre]` semver: `1.0` would otherwise
+ * compare as a ceiling nothing meets and silently cut the whole frontier.
+ */
+export function parseUntilVersion(raw: string): string {
+  const v = canonicalVersion(raw)
+  if (v === null) {
+    throw new OpError('INVALID_INPUT', `--until-version is not a full semver (X.Y.Z): ${raw}`)
+  }
+  return v
+}
+
+/**
+ * The `<target> (milestone <M-XXXX>)` entries for every unsatisfied
+ * `depends_on` of the given milestones. A task in several milestones is gated
+ * by all of them.
+ */
+function milestoneGate(
+  milestones: readonly string[],
+  walk: MilestoneWalk,
+  corpus: Map<string, CorpusEntry>,
+  corpusBasenames: Set<string>,
+): string[] {
+  return milestones.flatMap((m) =>
+    unsatisfiedTargets(walk.frontmatter.get(m)!, corpus, corpusBasenames).map(
+      (target) => `${target} (milestone ${m})`,
+    ),
+  )
+}
+
 // ---------------------------------------------------------------------------
 // Dispatchability ([[T-0015]]) — the cross-entity corpus loader, target
 // resolver, and satisfied-band predicate now live in `@lib/model/corpus`
-// ([[T-7EJO]]); this op imports them above and keeps only the task-local
-// dispatch + sort/lift wiring below.
+// ([[T-7EJO]]), and the task-to-milestone walk in `../milestone-walk.ts`
+// ([[T-JSJJ]]); this op imports them above and keeps only the dispatch +
+// sort/lift wiring below.
 // ---------------------------------------------------------------------------
 
 /**
@@ -261,9 +358,9 @@ function unsatisfiedTargets(
 export type DependsOnCheck = { ok: true } | { ok: false; unsatisfied: string[] }
 
 /**
- * Re-read one task's `depends_on` against the current corpus, by the same
- * rule the dispatchability filter uses. Throws when the task or its
- * frontmatter cannot be read.
+ * Re-read one task's `depends_on`, and its milestone's, against the current
+ * corpus, by the same rule the dispatchability filter uses. Throws when the
+ * task or its frontmatter cannot be read.
  */
 export function checkDependsOn(projectRoot: string, basename: string): DependsOnCheck {
   const task = readTask(basename, { projectRoot })
@@ -271,7 +368,12 @@ export function checkDependsOn(projectRoot: string, basename: string): DependsOn
   const fm = task.fm
   if (fm === null) throw new Error(`cannot read frontmatter for task ${basename}`)
   const corpus = loadCorpus(join(projectRoot, 'docs', 'planning'))
-  const unsatisfied = unsatisfiedTargets(fm, corpus, new Set(corpus.keys()))
+  const names = new Set(corpus.keys())
+  const unsatisfied = unsatisfiedTargets(fm, corpus, names)
+  const taskFm = new Map<string, Record<string, unknown>>()
+  for (const row of scanEntities('task', projectRoot)) taskFm.set(row.basename, row.fm ?? {})
+  const walk = buildMilestoneWalk(projectRoot, corpus, taskFm)
+  unsatisfied.push(...milestoneGate(walk.milestonesOf(basename, fm), walk, corpus, names))
   return unsatisfied.length === 0 ? { ok: true } : { ok: false, unsatisfied }
 }
 
@@ -295,6 +397,7 @@ function liftSortKeys(
         const depKey = lifted.get(dependent)!
         if (compareLeadTuples(depKey, targetKey) < 0) {
           const newKey: SortKey = {
+            milestoneRank: depKey.milestoneRank,
             priorityRank: depKey.priorityRank,
             impactRank: depKey.impactRank,
             complexityRank: depKey.complexityRank,
@@ -317,6 +420,8 @@ function liftSortKeys(
 
 const input = z.object({
   projectRoot: z.string().default(''),
+  milestone: z.array(z.string()).default([]),
+  untilVersion: z.string().nullable().default(null),
   state: z.array(z.string()).default([]),
   kind: z.array(z.string()).default([]),
   excludeAutonomy: z.array(z.string()).default([]),
@@ -333,6 +438,12 @@ const sortedEntrySchema = z.object({
   complexity: z.union([z.string(), z.null()]),
   created: z.union([z.string(), z.null()]),
   lifted_from: z.union([z.string(), z.null()]),
+  /** The milestone the task belongs to; `null` when it belongs to none. */
+  milestone: z.union([z.string(), z.null()]),
+  /** The task's own milestone rank (its earliest milestone's place in the release order). */
+  milestone_rank: z.number(),
+  /** The rank it sorts at when dependency lift moved it; `null` when lift left it alone. */
+  lifted_rank: z.union([z.number(), z.null()]),
   /** Lifted sort-tuple fields (always present; used by `--explain` render). */
   priority_rank: z.number(),
   impact_rank: z.number(),
@@ -362,6 +473,13 @@ const skippedKindSchema = z.object({
   kind: z.string(),
 })
 
+/** A candidate removed by the goal scope, with the milestone that put it
+ *  outside (`null` when it belongs to none). */
+const skippedScopeSchema = z.object({
+  basename: z.string(),
+  milestone: z.union([z.string(), z.null()]),
+})
+
 /** A candidate removed because a person holds its lease (`sdlc task start`), with the lease's phase. */
 const skippedHumanSchema = z.object({
   basename: z.string(),
@@ -387,6 +505,8 @@ const output = z.object({
   skipped_parent: z.array(skippedParentSchema),
   /** Candidates dropped by the kind predicate. */
   skipped_kind: z.array(skippedKindSchema),
+  /** Candidates dropped by the goal scope (`--milestone` / `--until-version`). */
+  skipped_scope: z.array(skippedScopeSchema),
   /** Candidates dropped because a person holds the task lease (read off the local ref mirror). */
   skipped_human: z.array(skippedHumanSchema),
 })
@@ -394,7 +514,7 @@ const output = z.object({
 export default defineOp({
   path: ['task', 'next'],
   summary:
-    'Select the next dispatchable tasks: pickup-order sort (priority > impact > complexity > created > basename, with dependency lift), keeping only leaves (a task with children is a rollup) of kind implementation (absent kind counts as implementation), and filtering out tasks whose depends_on is unsatisfied (use --include-blocked to keep them).',
+    'Select the next dispatchable tasks: pickup-order sort (milestone release order > priority > impact > complexity > created > basename, with dependency lift), keeping only leaves (a task with children is a rollup) of kind implementation (absent kind counts as implementation), and filtering out tasks whose own or milestone depends_on is unsatisfied (use --include-blocked to keep them). --milestone / --until-version cut the frontier to a goal scope.',
   // Read-only: scans task/corpus frontmatter and reports a sort order; never
   // writes.
   mutating: false,
@@ -402,6 +522,15 @@ export default defineOp({
   output,
   cli: {
     flags: {
+      milestone: {
+        repeatable: true,
+        valueName: 'id',
+        help: 'Goal scope: keep only tasks in this milestone (repeatable; an id or basename), plus any task that blocks one of them. Other tasks in no milestone are dropped.',
+      },
+      untilVersion: {
+        valueName: 'version',
+        help: "Goal scope: keep only tasks whose milestone's release version is at or before this one (e.g. 1.0.0). Tasks in no milestone are dropped.",
+      },
       state: {
         repeatable: true,
         valueName: 'state',
@@ -434,6 +563,9 @@ export default defineOp({
       for (const s of out.skipped_kind) {
         io.stderr(`skipped-kind: ${s.basename} (kind: ${s.kind})\n`)
       }
+      for (const s of out.skipped_scope) {
+        io.stderr(`skipped-scope: ${s.basename} (milestone: ${s.milestone ?? 'none'})\n`)
+      }
       for (const s of out.skipped_human) {
         io.stderr(`skipped-human: ${s.basename} (held by a person, lease phase: ${s.phase})\n`)
       }
@@ -449,7 +581,9 @@ export default defineOp({
             `${e.basename}  priority_rank=${e.priority_rank} ` +
               `impact_rank=${e.impact_rank} ` +
               `complexity_rank=${e.complexity_rank} ` +
-              `created=${e.created_rank}${liftedStr}\n`,
+              `created=${e.created_rank} milestone=${e.milestone ?? 'none'} ` +
+              `milestone_rank=${e.milestone_rank}` +
+              `${e.lifted_rank === null ? '' : ` lifted_rank=${e.lifted_rank}`}${liftedStr}\n`,
           )
         }
       } else {
@@ -493,6 +627,55 @@ export default defineOp({
     // filtering: a parent whose only child is closed/done is still a parent.
     const children = childrenByParent(taskFm)
 
+    // Milestone walk: each task's milestone and that milestone's place in the
+    // release order. Built over the full corpus, like the leaf facts above.
+    const walk = buildMilestoneWalk(projectRoot, corpus, taskFm)
+    const milestonesOf = new Map<string, string[]>()
+    for (const [b, fm] of taskFm) milestonesOf.set(b, walk.milestonesOf(b, fm))
+    /** A task's own rank: that of its earliest milestone. */
+    const rankOf = (b: string): number => {
+      const first = milestonesOf.get(b)?.[0]
+      return first === undefined ? UNPOSITIONED_RANK : walk.positions.get(first)!.rank
+    }
+
+    // Milestone `depends_on` cycles are reported like task cycles, whatever
+    // the candidates: they would otherwise read as "blocked forever".
+    const milestoneEdges = buildEdges({
+      nodes: new Set(walk.frontmatter.keys()),
+      targetsOf: (m) => dependsOnTargets(walk.frontmatter.get(m) ?? {}),
+      resolve: (raw) => resolveTarget(raw, corpusBasenames),
+      skip: (target) => !walk.frontmatter.has(target),
+    })
+    const milestoneCycles = findCycles(
+      new Set(walk.frontmatter.keys()),
+      milestoneEdges.forwardEdges,
+    )
+    if (milestoneCycles.length > 0) {
+      return {
+        ordered: [],
+        cycle: [...new Set(milestoneCycles[0]!)].sort(),
+        explain: false,
+        skipped_blocked: [],
+        skipped_parent: [],
+        skipped_kind: [],
+        skipped_scope: [],
+        skipped_human: [],
+      }
+    }
+
+    const scopeMilestones = new Set<string>()
+    for (const raw of args.milestone) {
+      const target = resolveTarget(unwrapWikilink(raw) ?? raw, corpusBasenames)
+      if (target === null || !walk.frontmatter.has(target)) {
+        throw new OpError('INVALID_INPUT', `--milestone does not name a milestone: ${raw}`)
+      }
+      scopeMilestones.add(target)
+    }
+    const scope: GoalScope = {
+      milestones: scopeMilestones,
+      untilVersion: args.untilVersion === null ? null : parseUntilVersion(args.untilVersion),
+    }
+
     const candidates = new Set<string>()
     for (const [b, fm] of taskFm.entries()) {
       if (passesFilters(fm, { states, excludeAutonomy })) candidates.add(b)
@@ -506,6 +689,7 @@ export default defineOp({
         skipped_blocked: [],
         skipped_parent: [],
         skipped_kind: [],
+        skipped_scope: [],
         skipped_human: [],
       }
     }
@@ -530,25 +714,43 @@ export default defineOp({
         skipped_blocked: [],
         skipped_parent: [],
         skipped_kind: [],
+        skipped_scope: [],
         skipped_human: [],
       }
     }
 
     const baseKeys = new Map<string, SortKey>()
-    for (const b of candidates) baseKeys.set(b, sortKeyFromFm(b, taskFm.get(b)!))
+    for (const b of candidates) baseKeys.set(b, sortKeyFromFm(b, taskFm.get(b)!, rankOf(b)))
     const { lifted, liftedFrom } = liftSortKeys(candidates, baseKeys, reverseEdges)
 
     let orderedBasenames = [...candidates].sort((a, b) =>
       compareSortKeys(lifted.get(a)!, lifted.get(b)!),
     )
 
+    // Goal scope: the tasks whose own milestone is in scope, plus every
+    // candidate that transitively blocks one of them. A blocker is pulled in
+    // at its dependent's lifted rank (dependency lift crosses milestones)
+    // rather than cut, or the in-scope task would never unblock.
+    const admitted = new Set<string>()
+    const pending: string[] = []
+    for (const b of candidates) {
+      if (inScope(milestonesOf.get(b) ?? [], walk.positions, scope)) pending.push(b)
+    }
+    while (pending.length > 0) {
+      const b = pending.pop()!
+      if (admitted.has(b)) continue
+      admitted.add(b)
+      pending.push(...(forwardEdges.get(b) ?? []))
+    }
+
     // Selection predicates, applied to the sorted list so the lift pass above
-    // still saw every candidate. Order is leaf > kind > dispatchability: a
-    // rollup is reported as a rollup even when its kind or deps would also
+    // still saw every candidate. Order is leaf > kind > scope > dispatchability:
+    // a rollup is reported as a rollup even when its kind or deps would also
     // exclude it. `--include-blocked` opts out of the last one only.
     const skippedParent: Array<{ basename: string; children: string[] }> = []
     const skippedKind: Array<{ basename: string; kind: string }> = []
     const skippedBlocked: Array<{ basename: string; unsatisfied: string[] }> = []
+    const skippedScope: Array<{ basename: string; milestone: string | null }> = []
     const skippedHuman: Array<{ basename: string; phase: string }> = []
     const kept: string[] = []
     for (const b of orderedBasenames) {
@@ -561,8 +763,14 @@ export default defineOp({
         skippedKind.push({ basename: b, kind: effectiveKind(fm) })
         continue
       }
+      const milestones = milestonesOf.get(b) ?? []
+      if (!admitted.has(b)) {
+        skippedScope.push({ basename: b, milestone: milestones[0] ?? null })
+        continue
+      }
       if (!args.includeBlocked) {
         const unsat = unsatisfiedTargets(fm, corpus, corpusBasenames)
+        unsat.push(...milestoneGate(milestones, walk, corpus, corpusBasenames))
         if (unsat.length > 0) {
           skippedBlocked.push({ basename: b, unsatisfied: unsat })
           continue
@@ -592,6 +800,9 @@ export default defineOp({
         complexity: (fm['complexity'] as string | null | undefined) ?? null,
         created: (fm['created'] as string | null | undefined) ?? null,
         lifted_from: liftedFrom.get(b) ?? null,
+        milestone: milestonesOf.get(b)?.[0] ?? null,
+        milestone_rank: rankOf(b),
+        lifted_rank: liftedKey.milestoneRank === rankOf(b) ? null : liftedKey.milestoneRank,
         priority_rank: liftedKey.priorityRank,
         impact_rank: liftedKey.impactRank,
         complexity_rank: liftedKey.complexityRank,
@@ -606,6 +817,7 @@ export default defineOp({
       skipped_blocked: skippedBlocked,
       skipped_parent: skippedParent,
       skipped_kind: skippedKind,
+      skipped_scope: skippedScope,
       skipped_human: skippedHuman,
     }
   },

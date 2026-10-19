@@ -288,7 +288,7 @@ resolve to the first task's values, so prefer run-level tokens there.
 **4b. Dispatch the task via the sub-skill.**
 
 Defer all PR creation to the dedicated sub-skill — do NOT run
-`sdlc task create`, `git commit`, `git push`, or `gh pr create` from
+`sdlc task create`, `git commit`, `git push`, or `sdlc pr create` from
 inside this sub-agent for any classification. The sub-skill owns
 worktree creation, branch/commit/PR shape so the dispatch stays consistent.
 
@@ -517,7 +517,7 @@ AMBIGUOUS-BULLETS:
   push, or open PRs from inside this sub-agent. All PR creation
   goes through `/sdlc:spawn-task-pr` — that's the boundary that
   owns target-repo state (worktree creation, branch naming, push,
-  `gh pr create`). This sub-agent's job is to classify, prepare
+  `sdlc pr create`). This sub-agent's job is to classify, prepare
   the inputs, call the sub-skill, and reconcile the result.
 - Do not push the originating repo's PR, do not open the originating
   PR — that belongs to the parent skill.

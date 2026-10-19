@@ -19,6 +19,7 @@
  * (see the JSON schema's own note).
  */
 
+import { SESSION_MODES } from '@lib/services/session/mode-values'
 import { contract, lenientBody, list, optional, section, table } from 'markdown-contract'
 import { z } from 'zod'
 
@@ -41,7 +42,7 @@ export const SCHEMA_VERSION = '9'
  * exactly one repo (the one `ctx.gh` is rooted at), so a repo-qualified
  * reference would carry information nothing reads; the bare number is what
  * `gh issue view <number>` and `Gh.issueView(number)`
- * ([[T-3YQO]], `@sksizer/easy-gh`) already take verbatim.
+ * ([[T-3YQO]], `@osdlc/typed-gh`) already take verbatim.
  */
 export const ISSUE_REF_PATTERN = /^\d+$/
 
@@ -70,7 +71,7 @@ export const TASK_STATE = z.enum([
 
 /**
  * The task triage vocabularies. Exported so a consumer that matches on them
- * (`routing:` rules, `lib/config/load.ts`) validates against these sets
+ * (`routing:` rules, `ROUTING_VOCABULARY` in `lib/config/sections/index.ts`) validates against these sets
  * instead of re-declaring the strings.
  */
 export const TASK_IMPACT = z.enum(['high', 'medium', 'low'])
@@ -128,14 +129,14 @@ export const TaskSchema = CommonFrontmatter.extend({
       '(downstream pickup skills decide policy).',
   ),
   session: z
-    .enum(['interactive', 'headless'])
+    .enum(SESSION_MODES)
     .optional()
     .describe(
       "How an orchestrated run starts this task's work chain (define, implement, check); PR " +
         'review and respond follow only the `--interactive` run flag. `interactive`: in a host ' +
         'pane you can watch and type into (the tick launches it and moves on). `headless`: detached. ' +
-        "Absent: the workflow's `headless` setting decides, then headless. Overridden by the " +
-        '`--interactive` run flag.',
+        'Absent: `workflows.<name>.session` decides, then `host.session`, then headless. ' +
+        'Overridden by the `--interactive` run flag.',
     ),
   kind: z
     .enum(['implementation', 'planning', 'research'])

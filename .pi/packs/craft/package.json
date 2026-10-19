@@ -1,9 +1,9 @@
 {
   "name": "craft",
-  "version": "0.6.0",
-  "description": "Script-free skills for the software development lifecycle: each one a terse description of one process, done the way we want it done, with extension points a project fills through files. Portable to any harness and any repo; sdlc links them in and adds the deterministic tail.",
+  "version": "0.7.0",
+  "description": "Script-free skills for the software development lifecycle: each one a terse description of one process, done the way we want it done. Portable to any harness and any repo; sdlc links them in and adds the deterministic tail.",
   "author": {
-    "name": "sksizer"
+    "name": "osdlc"
   },
   "license": "SEE LICENSE IN LICENSE",
   "pi": {

@@ -17,6 +17,8 @@
  *   - lease_present    — `refs/sdlc/tasks/<basename>` is in the local mirror.
  *   - lease_phase      — that lease's execution phase, or null.
  *   - lease_pr_number  — that lease's PR binding, or null.
+ *   - lease_holder     — who holds that lease (owner kind, host, claim time,
+ *     expiry, author), or null ([[T-HBNN]]).
  *   - readiness_verified_at — LEGACY: the promotion stamp on frontmatter.
  *   - main_head_subject     — subject of main's HEAD commit.
  *   - main_head_is_verify_stamp — LEGACY: main's HEAD subject equals the literal
@@ -86,7 +88,8 @@ const RESUMABLE_LEASE_PHASES = new Set(['claimed', 'working'])
 
 // ── output schema ───────────────────────────────────────────────────────────
 
-const output = z.object({
+/** Exported so the TUI's detail modal validates the child's `--json` against the op's own shape ([[T-HBNN]]). */
+export const probeStateOutput = z.object({
   basename: z.string(),
   /** Absolute worktree path probed. */
   worktree_path: z.string(),
@@ -130,6 +133,16 @@ const output = z.object({
     .int()
     .nullable()
     .describe('PR number bound to the lease, or null when unbound / no lease.'),
+  /** Who holds the lease, off the same mirrored payload; null when no lease. */
+  lease_holder: z
+    .object({
+      owner_kind: z.string(),
+      hostname: z.string(),
+      claimed_at: z.string(),
+      expires_at: z.string().nullable(),
+      author: z.string().nullable(),
+    })
+    .nullable(),
   /** Subject of `main`'s HEAD commit, or null when unreadable. */
   main_head_subject: z.string().nullable(),
   /** main's HEAD subject equals the verify-stamp for this basename. */
@@ -145,7 +158,8 @@ const output = z.object({
   resume_candidate: z.boolean(),
 })
 
-type Output = z.infer<typeof output>
+export type ProbeState = z.infer<typeof probeStateOutput>
+type Output = ProbeState
 
 // ── render hook ─────────────────────────────────────────────────────────────
 
@@ -192,7 +206,7 @@ export default defineOp({
   // mutates project state.
   mutating: false,
   input,
-  output,
+  output: probeStateOutput,
   cli: {
     positionals: ['basename'],
     flags: { noGh: { help: 'Skip gh pr list queries (hermetic/offline mode).' } },
@@ -258,6 +272,16 @@ export default defineOp({
       lease_present: lease !== null,
       lease_phase: lease?.phase ?? null,
       lease_pr_number: lease?.prNumber ?? null,
+      lease_holder:
+        lease === null
+          ? null
+          : {
+              owner_kind: lease.holder.ownerKind,
+              hostname: lease.holder.hostname,
+              claimed_at: lease.holder.claimedAt,
+              expires_at: lease.holder.expiresAt,
+              author: lease.holder.author,
+            },
       main_head_subject: headSubject,
       main_head_is_verify_stamp: mainHeadIsVerifyStamp,
       blocked_preflight: blockedPreflight,

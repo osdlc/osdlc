@@ -46,6 +46,8 @@ A Standard is *not*:
 | `applies_to.paths` | required | list of glob patterns |  | Where the rule binds. Authoritative scope |
 | `supersedes` | optional | wikilink to a Standard |  | Legacy — no longer written; supersession deletes the predecessor and the deletion commit records the succession |
 | `superseded_by` | conditional | wikilink to a Standard |  | Required when `state: closed/superseded` (legacy tombstones only — new supersessions delete the predecessor) |
+| `enforcement` | optional | enum `advise` \| `block` |  | How hard `verify changes` enforces the standard: `advise` never blocks, `block` blocks at this standard's own floor. Absent: the project-wide `verify.blocking` and `verify.severity_floor` apply |
+| `severity_floor` | conditional | enum `violation` \| `tension` \| `drift` |  | Lowest finding severity that blocks; only with `enforcement: block`. Absent: the project's `verify.severity_floor` |
 | `related` | optional | list of wikilinks | `[]` | Other standards, decisions, principles, milestones |
 | `tags` | optional | list of strings | `[]` | Free-form labels |
 | `deprecation_note` | conditional | string |  | Required when `state: closed/deprecated` |
@@ -140,6 +142,7 @@ than distinct verbs. `validate` is the generic `entities validate` op
 - A `closed/superseded` Standard MUST carry `superseded_by:` pointing at a
   Standard.
 - A `closed/deprecated` Standard MUST carry `deprecation_note:`.
+- A Standard carrying `severity_floor:` MUST declare `enforcement: block`.
 - A Standard's body MUST contain a Rule-section (under that name or
   one of its aliases), a Why-section, and a How-to-apply-section.
 - `superseded_by:` MUST point at a Standard that exists. `supersedes:` is

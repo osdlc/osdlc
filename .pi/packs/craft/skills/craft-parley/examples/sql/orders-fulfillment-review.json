@@ -305,7 +305,7 @@
           ],
           "cost": {
             "rows": 410000,
-            "note": "About 13% of orders fall in a 90-day window."
+            "detail": "About 13% of orders fall in a 90-day window."
           },
           "source": {
             "uri": "reports/vip.sql",
@@ -379,12 +379,12 @@
       "options": [
         {
           "id": "enum",
-          "label": "Postgres enum",
+          "title": "Postgres enum",
           "detail": "Compact, typed, no join. Values cannot be removed."
         },
         {
           "id": "table",
-          "label": "Lookup table with FK",
+          "title": "Lookup table with FK",
           "detail": "Values editable at runtime; one more join on hot paths."
         }
       ]
@@ -398,17 +398,17 @@
       "options": [
         {
           "id": "view",
-          "label": "Derive it in a view over order_items plus refunds",
+          "title": "Derive it in a view over order_items plus refunds",
           "detail": "No write path to keep in sync; a little slower on the account page."
         },
         {
           "id": "trigger",
-          "label": "Keep the column, maintain it with a trigger on refunds",
+          "title": "Keep the column, maintain it with a trigger on refunds",
           "detail": "Fast reads; one more trigger to reason about."
         },
         {
           "id": "leave",
-          "label": "Leave as is and document the drift",
+          "title": "Leave as is and document the drift",
           "detail": "Zero work now; reporting keeps special-casing it."
         }
       ]
@@ -416,7 +416,6 @@
   ],
   "repo": {
     "remote": "https://github.com/sksizer/dev",
-    "commit": "de9a5c420a3b7f1c9d2e8a4b6c0d1e2f3a4b5c6d",
-    "root": "/path/to/repo"
+    "commit": "de9a5c420a3b7f1c9d2e8a4b6c0d1e2f3a4b5c6d"
   }
 }

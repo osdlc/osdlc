@@ -65,7 +65,8 @@ renamed file whose history you wanted.
 
 Reading many files pollutes your main context. Push broad investigations into a read-only subagent,
 where the harness offers one, and keep only the summary. Scope each one narrowly — open-ended
-"investigate the codebase" burns context for little return.
+"investigate the codebase" burns context for little return. Tell each one to read the project's
+`CLAUDE.md` and `AGENTS.md` first.
 
 ## Answering codebase questions
 

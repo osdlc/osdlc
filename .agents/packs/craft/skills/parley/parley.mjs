@@ -1845,6 +1845,19 @@ Expecting one of '${allowedValues.join("', '")}'`);
   }
   exports.Command = Command;
 });
+
+// ../cli-tool/io.ts
+var processIo = {
+  stdout: (text) => {
+    process.stdout.write(text);
+  },
+  stderr: (text) => {
+    process.stderr.write(text);
+  }
+};
+function processContext() {
+  return { io: processIo, cwd: process.cwd(), env: process.env };
+}
 // ../cli-tool/exit.ts
 var EXIT = {
   ok: 0,
@@ -2030,19 +2043,6 @@ ${epilogue}`);
     }
   };
 }
-// ../cli-tool/io.ts
-var processIo = {
-  stdout: (text) => {
-    process.stdout.write(text);
-  },
-  stderr: (text) => {
-    process.stderr.write(text);
-  }
-};
-function processContext() {
-  return { io: processIo, cwd: process.cwd(), env: process.env };
-}
-
 // ../cli-tool/run-main.ts
 async function runMain(main, options) {
   const ctx = options.context ?? processContext();
@@ -2056,15 +2056,26 @@ async function runMain(main, options) {
     process.exitCode = EXIT.error;
   }
 }
-// src/commands/answers.ts
-import { existsSync as existsSync2, readFileSync as readFileSync2, watch as watch2, writeFileSync as writeFileSync2 } from "node:fs";
-import { join as join3, resolve } from "node:path";
+// src/cli.ts
+import { readFileSync as readFileSync9 } from "node:fs";
 
-// ../command-seam/sync.ts
+// src/commands/answers.ts
+import { existsSync as existsSync3, readFileSync as readFileSync5 } from "node:fs";
+import { join as join6, resolve as resolve3 } from "node:path";
+
+// ../../../node_modules/.bun/@osdlc+command-seam@0.4.0+e154a6929a67600d/node_modules/@osdlc/command-seam/sync.ts
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  accessSync,
+  constants,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join, resolve } from "node:path";
 function mergedEnv(opts) {
   const env = { ...process.env, ...opts.env };
   for (const [key, value] of Object.entries(env))
@@ -2072,15 +2083,114 @@ function mergedEnv(opts) {
       delete env[key];
   return { env };
 }
-var CHILD_STDIO_CORRUPTED = process.env["NODE_ENV"] === "test";
-function runViaChildRedirect(binary, argv, opts) {
+var MAX_TIMER_MS = 2 ** 31 - 1;
+function normalizeTimeout(timeoutMs) {
+  if (timeoutMs === undefined)
+    return;
+  return timerMs("timeoutMs", timeoutMs, "positive");
+}
+function timerMs(name, ms, min) {
+  if (ms === Infinity)
+    return;
+  if (typeof ms !== "number")
+    throw new TypeError(`${name} must be a number, got ${typeof ms}`);
+  if (min === "positive" ? !(ms > 0) : !(ms >= 0)) {
+    const allowed = min === "positive" ? "a positive number" : "0 or more";
+    throw new RangeError(`${name} must be ${allowed} or Infinity, got ${ms}`);
+  }
+  return Math.min(Math.ceil(ms), MAX_TIMER_MS);
+}
+function cwdError(spawnName, binary, argv, opts) {
+  let problem;
+  try {
+    if (statSync(opts.cwd).isDirectory())
+      return;
+    problem = "ENOTDIR: cwd %s is not a directory";
+  } catch (e) {
+    const code = e.code;
+    if (code !== "ENOENT" && code !== "ENOTDIR")
+      return;
+    problem = "ENOENT: cwd %s does not exist";
+  }
+  assertNoNulByte(binary, argv, opts.env);
+  return `${spawnName} ${problem.replace("%s", JSON.stringify(opts.cwd))}`;
+}
+function assertNoNulByte(binary, argv, env) {
+  const values = [
+    ["binary", binary],
+    ...argv.map((a, i) => [`argv[${i}]`, a]),
+    ...Object.entries(env ?? {}).flatMap(([k, v]) => [
+      [`env key ${JSON.stringify(k)}`, k],
+      [`env.${k}`, v ?? ""]
+    ])
+  ];
+  for (const [name, value] of values) {
+    if (typeof value !== "string" || !value.includes("\x00"))
+      continue;
+    const e = new TypeError(`${name} must not contain a NUL byte`);
+    e.code = "ERR_INVALID_ARG_VALUE";
+    throw e;
+  }
+}
+function spawnFailure(message) {
+  return {
+    exitCode: 1,
+    neverExited: true,
+    reason: "spawn",
+    stdout: "",
+    stderr: "",
+    error: message
+  };
+}
+function syncStop(proc) {
+  const signal = proc.signal ?? undefined;
+  const sig = signal === undefined ? {} : { signal };
+  const code = proc.error?.code;
+  if (code === "ETIMEDOUT")
+    return { reason: "timeout", ...sig };
+  if (code === "ENOBUFS")
+    return { reason: "output", ...sig };
+  if (signal !== undefined)
+    return { reason: "signal", signal };
+  return { reason: "spawn" };
+}
+var CHILD_STDIO_CORRUPTED = process.versions["bun"] !== undefined && process.env["NODE_ENV"] === "test";
+function findsExecutable(binary, cwd, path) {
+  const isExecutable = (p) => {
+    try {
+      accessSync(p, constants.X_OK);
+      return statSync(p).isFile();
+    } catch {
+      return false;
+    }
+  };
+  if (binary === "")
+    return false;
+  if (binary.includes("/"))
+    return isExecutable(resolve(cwd, binary));
+  return (path ?? "/usr/bin:/bin").split(delimiter).some((dir) => isExecutable(resolve(cwd, dir, binary)));
+}
+function fromSpawnSync(proc, stdout, stderr) {
+  return {
+    exitCode: proc.status ?? 1,
+    ...proc.status == null ? { neverExited: true, ...syncStop(proc) } : {},
+    stdout,
+    stderr,
+    ...proc.error ? { error: proc.error.message } : {}
+  };
+}
+function runViaChildRedirect(binary, argv, opts, timeoutMs) {
+  const { env } = mergedEnv(opts);
+  if (!findsExecutable(binary, opts.cwd, env["PATH"])) {
+    return spawnFailure(`spawnSync ${binary} ENOENT`);
+  }
   const dir = mkdtempSync(join(tmpdir(), "command-seam-"));
   try {
     const inFile = join(dir, "in");
     const outFile = join(dir, "out");
     const errFile = join(dir, "err");
     writeFileSync(inFile, opts.input ?? "");
-    const proc = spawnSync("sh", [
+    const proc = spawnSync("/bin/sh", [
       "-c",
       'i="$1"; o="$2"; e="$3"; shift 3; exec "$@" <"$i" >"$o" 2>"$e"',
       "sh",
@@ -2091,9 +2201,9 @@ function runViaChildRedirect(binary, argv, opts) {
       ...argv
     ], {
       cwd: opts.cwd,
-      timeout: opts.timeoutMs,
+      timeout: timeoutMs,
       killSignal: "SIGKILL",
-      ...mergedEnv(opts)
+      env
     });
     const readOrEmpty = (p) => {
       try {
@@ -2102,14 +2212,7 @@ function runViaChildRedirect(binary, argv, opts) {
         return "";
       }
     };
-    const stdout = readOrEmpty(outFile);
-    const stderr = readOrEmpty(errFile);
-    return {
-      exitCode: proc.status ?? 1,
-      ...proc.status == null ? { neverExited: true } : {},
-      stdout,
-      stderr: proc.error ? stderr || proc.error.message : stderr
-    };
+    return fromSpawnSync(proc, readOrEmpty(outFile), readOrEmpty(errFile));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -2117,87 +2220,266 @@ function runViaChildRedirect(binary, argv, opts) {
 function spawnRunner(binary) {
   return {
     run(argv, opts) {
+      const timeoutMs = normalizeTimeout(opts.timeoutMs);
+      const cwdMessage = cwdError(`spawnSync ${binary}`, binary, argv, opts);
+      if (cwdMessage !== undefined)
+        return spawnFailure(cwdMessage);
       if (CHILD_STDIO_CORRUPTED)
-        return runViaChildRedirect(binary, argv, opts);
+        return runViaChildRedirect(binary, argv, opts, timeoutMs);
       const proc = spawnSync(binary, argv, {
         cwd: opts.cwd,
         maxBuffer: 256 * 1024 * 1024,
-        timeout: opts.timeoutMs,
+        timeout: timeoutMs,
         killSignal: "SIGKILL",
         input: opts.input,
         ...mergedEnv(opts)
       });
-      const stderr = proc.stderr?.toString() ?? "";
-      return {
-        exitCode: proc.status ?? 1,
-        ...proc.status == null ? { neverExited: true } : {},
-        stdout: proc.stdout?.toString() ?? "",
-        stderr: proc.error ? stderr || proc.error.message : stderr
-      };
+      return fromSpawnSync(proc, proc.stdout?.toString() ?? "", proc.stderr?.toString() ?? "");
     }
   };
 }
-// ../command-seam/async.ts
+// ../../../node_modules/.bun/@osdlc+command-seam@0.4.0+e154a6929a67600d/node_modules/@osdlc/command-seam/async.ts
 import { spawn } from "node:child_process";
 import { StringDecoder } from "node:string_decoder";
+
+// ../../../node_modules/.bun/@osdlc+command-seam@0.4.0+e154a6929a67600d/node_modules/@osdlc/command-seam/groups.ts
+import { constants as constants2 } from "node:os";
+var osSignals = constants2.signals;
+var live = new Map;
+var spawning = 0;
+var POLL_MS = 25;
+var config;
+var armed;
+var forwarded;
+var killing = false;
+var escalated = false;
+function trackGroup(pid) {
+  live.set(pid, { settled: false });
+  arm();
+  return () => {
+    live.delete(pid);
+    disarmIfIdle();
+  };
+}
+function spawnTrackedGroup(start) {
+  spawning += 1;
+  arm();
+  try {
+    const child = start();
+    return { child, untrack: child.pid === undefined ? undefined : trackGroup(child.pid) };
+  } finally {
+    spawning -= 1;
+    disarmIfIdle();
+  }
+}
+function settleGroup(pid) {
+  const entry = live.get(pid);
+  if (entry !== undefined)
+    entry.settled = true;
+}
+function groupStartRefusal() {
+  if (forwarded === undefined)
+    return;
+  return `not started: the host got ${forwarded} and is stopping`;
+}
+function releaseWhenEmpty(pid, release) {
+  if (!groupExists(pid)) {
+    release();
+    return;
+  }
+  const timer = setInterval(() => {
+    if (groupExists(pid))
+      return;
+    clearInterval(timer);
+    release();
+  }, 250);
+  timer.unref();
+}
+function groupExists(pid) {
+  try {
+    process.kill(-pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+function signalGroup(pid, sig) {
+  if (!live.has(pid))
+    return;
+  try {
+    process.kill(-pid, sig);
+  } catch {}
+}
+function liveProcessGroups() {
+  return [...live.keys()];
+}
+function arm() {
+  if (config === undefined || armed !== undefined || live.size === 0 && spawning === 0)
+    return;
+  const { signals, graceMs, exit } = config;
+  const onExit = () => {
+    for (const [pid, { settled }] of live)
+      if (!settled)
+        signalGroup(pid, "SIGKILL");
+  };
+  const handlers = signals.map((sig) => {
+    const handler = () => {
+      const code = 128 + signalNumber(sig);
+      if (forwarded !== undefined || killing) {
+        escalated = true;
+        for (const pid of live.keys())
+          signalGroup(pid, "SIGKILL");
+        if (!othersListen(sig))
+          exit(code);
+        return;
+      }
+      const othersOwnExit = othersListen(sig);
+      if (!othersOwnExit)
+        forwarded = sig;
+      killing = true;
+      escalated = false;
+      killAll(graceMs).then(() => {
+        killing = false;
+        if (!escalated && !othersOwnExit)
+          exit(code);
+      });
+    };
+    process.prependListener(sig, handler);
+    return [sig, handler];
+  });
+  process.on("exit", onExit);
+  armed = {
+    off: () => {
+      for (const [sig, handler] of handlers)
+        process.off(sig, handler);
+      process.off("exit", onExit);
+    }
+  };
+}
+function disarm() {
+  armed?.off();
+  armed = undefined;
+}
+function disarmIfIdle() {
+  if (live.size === 0 && spawning === 0)
+    disarm();
+}
+function othersListen(sig) {
+  return process.listenerCount(sig) > 1;
+}
+async function killAll(graceMs) {
+  for (const pid of liveProcessGroups())
+    if (!groupExists(pid))
+      live.delete(pid);
+  for (const pid of liveProcessGroups())
+    signalGroup(pid, "SIGTERM");
+  const deadline = performance.now() + graceMs;
+  while (!escalated && performance.now() < deadline) {
+    if (!liveProcessGroups().some(groupExists))
+      return;
+    await new Promise((res) => setTimeout(res, POLL_MS));
+  }
+  if (escalated)
+    return;
+  for (const pid of liveProcessGroups())
+    if (groupExists(pid))
+      signalGroup(pid, "SIGKILL");
+}
+function signalNumber(sig) {
+  const n = osSignals[sig];
+  return typeof n === "number" ? n : 15;
+}
+
+// ../../../node_modules/.bun/@osdlc+command-seam@0.4.0+e154a6929a67600d/node_modules/@osdlc/command-seam/async.ts
+var EXIT_GRACE_MS = 250;
+var ABORT_KILL_GRACE_MS = 1000;
 function spawnRunnerAsync(binary) {
   return {
     run(argv, opts) {
       return new Promise((resolve) => {
+        const timeoutMs = normalizeTimeout(opts.timeoutMs);
+        const cwdMessage = cwdError(`spawn ${binary}`, binary, argv, opts);
+        if (cwdMessage !== undefined) {
+          resolve(spawnFailure(cwdMessage));
+          return;
+        }
         const group = opts.processGroup === true;
-        const child = spawn(binary, argv, {
+        const refusal = group ? groupStartRefusal() : undefined;
+        if (refusal !== undefined) {
+          resolve({
+            exitCode: 1,
+            neverExited: true,
+            reason: "abort",
+            stdout: "",
+            stderr: "",
+            error: refusal
+          });
+          return;
+        }
+        const start = () => spawn(binary, argv, {
           cwd: opts.cwd,
-          signal: group ? undefined : opts.signal,
           detached: group,
           ...mergedEnv(opts)
         });
-        if (child.pid !== undefined)
-          opts.onSpawn?.(child.pid);
-        const hardKill = () => {
+        const { child, untrack: untrackGroup } = group ? spawnTrackedGroup(start) : { child: start(), untrack: undefined };
+        let stopping = false;
+        const signalChild = (sig) => {
+          stopping = true;
           if (group && child.pid !== undefined) {
             try {
-              process.kill(-child.pid, "SIGKILL");
+              process.kill(-child.pid, sig);
               return;
             } catch {}
           }
-          child.kill("SIGKILL");
+          child.kill(sig);
         };
-        const onAbort = () => {
-          hardKill();
-          finish({ exitCode: 1, neverExited: true }, "The operation was aborted");
-        };
+        const hardKill = () => signalChild("SIGKILL");
+        const groupGone = () => child.pid === undefined || !groupExists(child.pid);
         let stdout = "";
         let stderr = "";
         let stdinError;
         let settled = false;
         let timer;
+        let graceTimer;
+        let abortKillTimer;
+        let exited;
+        const onAbort = () => {
+          signalChild("SIGTERM");
+          if (exited === undefined || group && !groupGone()) {
+            abortKillTimer = setTimeout(hardKill, ABORT_KILL_GRACE_MS);
+          }
+          if (exited !== undefined)
+            finish(exited, stdinError?.message);
+          else
+            finish({ exitCode: 1, neverExited: true, reason: "abort" }, "The operation was aborted");
+        };
         const outDecoder = new StringDecoder("utf8");
         const errDecoder = new StringDecoder("utf8");
-        const finish = (result, stderrFallback) => {
+        const finish = (result, error) => {
           if (settled)
             return;
           settled = true;
+          if (untrackGroup !== undefined && child.pid !== undefined) {
+            if (!stopping)
+              settleGroup(child.pid);
+            releaseWhenEmpty(child.pid, untrackGroup);
+          }
           if (timer !== undefined)
             clearTimeout(timer);
+          if (graceTimer !== undefined)
+            clearTimeout(graceTimer);
           opts.signal?.removeEventListener("abort", onAbort);
           stdout += outDecoder.end();
           stderr += errDecoder.end();
           child.stdout?.destroy();
           child.stderr?.destroy();
-          resolve({ ...result, stdout, stderr: stderr || stderrFallback || "" });
+          resolve({
+            ...result,
+            stdout,
+            stderr,
+            ...error ? { error } : {}
+          });
         };
-        if (group) {
-          if (opts.signal?.aborted === true)
-            onAbort();
-          else
-            opts.signal?.addEventListener("abort", onAbort, { once: true });
-        }
-        if (opts.timeoutMs !== undefined) {
-          timer = setTimeout(() => {
-            hardKill();
-            finish({ exitCode: 1, neverExited: true });
-          }, opts.timeoutMs);
-        }
         child.stdout?.on("data", (d) => {
           stdout += outDecoder.write(d);
         });
@@ -2205,17 +2487,61 @@ function spawnRunnerAsync(binary) {
           stderr += errDecoder.write(d);
         });
         child.on("error", (err) => {
-          finish({ exitCode: 1, neverExited: true }, err.message);
+          finish({ exitCode: 1, neverExited: true, reason: "spawn" }, err.message);
         });
-        child.on("close", (code) => {
-          finish({
-            exitCode: code ?? 1,
-            ...code === null ? { neverExited: true } : {}
-          }, stdinError?.message);
+        const fromExit = (code, signal) => ({
+          exitCode: code ?? 1,
+          ...code === null ? {
+            neverExited: true,
+            reason: "signal",
+            ...signal === null ? {} : { signal }
+          } : {}
+        });
+        child.on("exit", (code, signal) => {
+          exited = fromExit(code, signal);
+          if (abortKillTimer !== undefined && (!group || groupGone())) {
+            clearTimeout(abortKillTimer);
+          }
+          if (settled)
+            return;
+          const result = exited;
+          graceTimer = setTimeout(() => setImmediate(() => {
+            if (group && !settled)
+              hardKill();
+            finish(result, stdinError?.message);
+          }), EXIT_GRACE_MS);
+        });
+        child.on("close", (code, signal) => {
+          finish(fromExit(code, signal), stdinError?.message);
         });
         child.stdin?.on("error", (err) => {
           stdinError = err;
         });
+        if (child.pid !== undefined && opts.onSpawn !== undefined) {
+          try {
+            opts.onSpawn(child.pid);
+          } catch (err) {
+            hardKill();
+            const message = err instanceof Error ? err.message : String(err);
+            finish({ exitCode: 1, neverExited: true, reason: "abort" }, `onSpawn threw: ${message}`);
+          }
+        }
+        if (!settled) {
+          if (opts.signal?.aborted === true)
+            onAbort();
+          else
+            opts.signal?.addEventListener("abort", onAbort, { once: true });
+        }
+        if (!settled && timeoutMs !== undefined) {
+          timer = setTimeout(() => {
+            hardKill();
+            if (exited !== undefined) {
+              finish(exited, stdinError?.message);
+              return;
+            }
+            finish({ exitCode: 1, neverExited: true, reason: "timeout" }, `timed out after ${timeoutMs}ms`);
+          }, timeoutMs);
+        }
         if (opts.input !== undefined)
           child.stdin?.end(opts.input);
         else
@@ -2225,340 +2551,76 @@ function spawnRunnerAsync(binary) {
   };
 }
 
-// ../command-seam/shell.ts
-function shellArgv(verb, name, args) {
+// ../../../node_modules/.bun/@osdlc+command-seam@0.4.0+e154a6929a67600d/node_modules/@osdlc/command-seam/shell.ts
+function shellArgv(verb, scriptName, args) {
   const rest = args ?? [];
-  if (name === undefined && rest.length === 0)
-    return ["-c", verb];
-  return ["-c", verb, name ?? "sh", ...rest];
+  if (scriptName === undefined && rest.length === 0)
+    return ["-c", "--", verb];
+  return ["-c", "--", verb, scriptName ?? "sh", ...rest];
 }
 function shellRunnerAsync(sh = spawnRunnerAsync("sh")) {
   return {
-    run: (verb, { name, args, ...opts }) => sh.run(shellArgv(verb, name, args), opts)
+    run: async (verb, { scriptName, args, ...opts }) => {
+      normalizeTimeout(opts.timeoutMs);
+      return sh.run(shellArgv(verb, scriptName, args), opts);
+    }
   };
 }
 function runShellAsync(verb, opts) {
   return shellRunnerAsync().run(verb, opts);
 }
-// src/lib/lifecycle.ts
-import { createHash } from "node:crypto";
-var COALESCE_MS = 15 * 60 * 1000;
-function questionHash(q) {
-  const { status: _s, resolution: _r, group: _g, about: _a, source: _src, ...seen } = q;
-  return createHash("sha256").update(JSON.stringify(seen)).digest("hex").slice(0, 12);
+// src/lib/cli-path.ts
+import { relative } from "node:path";
+function shellArg(p) {
+  if (p.startsWith("-"))
+    p = `./${p}`;
+  return /^[A-Za-z0-9_/.,:=@%+-]+$/.test(p) ? p : `'${p.replace(/'/g, `'\\''`)}'`;
 }
-var content = (c) => JSON.stringify([c?.selected ?? [], c?.note ?? "", c?.ask ?? ""]);
-function hasContent(c) {
-  return !!c && (c.selected.length > 0 || !!c.note?.trim() || !!c.ask?.trim());
-}
-function reopenHolds(c, docRevision) {
-  const r = c?.reopened;
-  if (!r)
-    return false;
-  const reply = (c.replies ?? []).find((m) => m.from === "agent" && m.at > r.at);
-  if (!reply)
-    return true;
-  if (docRevision > (reply.revision ?? r.revision ?? 1))
-    return false;
-  return !!r.closed || !(hasContent(c) && c.at > r.at);
-}
-function isClosed(q, c, docRevision) {
-  return q.status === "closed" && !(c?.reopened?.closed && reopenHolds(c, docRevision));
-}
-function isAnswered(q, c, docRevision) {
-  if (isClosed(q, c, docRevision))
-    return true;
-  if (!c || c.ask)
-    return false;
-  return c.selected.length > 0 || q.kind === "text" && !!c.note?.trim();
-}
-var recent = (at, revision, docRevision, now) => now.getTime() - Date.parse(at) < COALESCE_MS && (revision ?? 1) === docRevision;
-function recordAnswers(prev, next, questions, docRevision, now = new Date) {
-  const byId = new Map(questions.map((q) => [q.id, q]));
-  const choices = {};
-  for (const [qid, n] of Object.entries(next.choices ?? {})) {
-    const p = prev.choices?.[qid];
-    const history = [...p?.history ?? n.history ?? []];
-    const changed = content(p) !== content(n);
-    const reopening = !!n.reopened && n.reopened.at > (p?.reopened?.at ?? "") && n.reopened.at > (p?.at ?? "");
-    const c = { ...n };
-    const reopen = [p?.reopened, n.reopened].filter((r) => !!r).reduce((x, r) => !x || r.at > x.at ? r : x, undefined);
-    if (reopen)
-      c.reopened = reopen;
-    if (reopening)
-      c.reopened = { ...n.reopened, revision: docRevision };
-    if (changed) {
-      if (p && hasContent(p) && reopening)
-        c.reopened = { ...c.reopened, cleared: p.at };
-      if (p && hasContent(p) && (reopening || !recent(p.at, p.revision, docRevision, now)))
-        history.push({
-          selected: p.selected,
-          note: p.note,
-          ask: p.ask,
-          at: p.at,
-          revision: p.revision
-        });
-      const q = byId.get(qid);
-      if (q)
-        c.hash = n.hash ?? questionHash(q);
-      c.revision = n.revision ?? docRevision;
-    } else {
-      if (p?.hash)
-        c.hash = p.hash;
-      if (p?.revision !== undefined)
-        c.revision = p.revision;
-    }
-    if (history.length)
-      c.history = history;
-    else
-      delete c.history;
-    const replies = keepAgentReplies(p?.replies, n.replies);
-    if (replies)
-      c.replies = replies;
-    if (!reopenHolds(c, docRevision))
-      delete c.reopened;
-    choices[qid] = c;
-  }
-  const prevComments = new Map((prev.comments ?? []).map((c) => [c.id, c]));
-  const comments = (next.comments ?? []).map((n) => {
-    const replies = keepAgentReplies(prevComments.get(n.id)?.replies, n.replies);
-    return replies ? { ...n, replies } : n;
-  });
-  const out = { ...next, comments, choices };
-  const notes = recordNotes(prev.notes, next.notes, docRevision, now);
-  if (notes)
-    out.notes = notes;
-  else
-    delete out.notes;
-  const read = latest(prev.agentReadAt, next.agentReadAt);
-  if (read)
-    out.agentReadAt = read;
-  if (prev.seen || next.seen)
-    out.seen = { ...prev.seen, ...next.seen };
-  const reopened = latest(prev.reopenedAt, next.reopenedAt);
-  if (reopened) {
-    out.reopenedAt = reopened;
-    if (out.status !== "reviewing" && (!out.finished || out.finished <= reopened)) {
-      out.status = "reviewing";
-      delete out.finished;
-      delete out.summary;
-    }
-  }
-  return out;
-}
-var latest = (...xs) => xs.filter((x) => !!x).sort().pop();
-function keepAgentReplies(prev, next) {
-  const have = new Set((next ?? []).map((m) => m.at));
-  const missing = (prev ?? []).filter((m) => m.from === "agent" && !have.has(m.at));
-  if (!missing.length)
-    return next;
-  return [...next ?? [], ...missing].sort((x, y) => x.at.localeCompare(y.at));
-}
-function recordNotes(prev, next, docRevision, now) {
-  if (!next)
-    return prev;
-  if ((prev?.text ?? "") === next.text)
-    return prev ?? next;
-  const history = [...prev?.history ?? []];
-  if (prev?.text.trim() && !recent(prev.at, prev.revision, docRevision, now))
-    history.push({ text: prev.text, at: prev.at, revision: prev.revision });
-  return {
-    text: next.text,
-    at: next.at,
-    revision: docRevision,
-    ...history.length ? { history } : {}
-  };
-}
-function questionState(q, a, docRevision) {
-  const c = a.choices[q.id];
-  const hash = questionHash(q);
-  const seen = a.seen?.[q.id];
-  const status = isClosed(q, c, docRevision) ? "closed" : seen && seen !== hash ? "changed" : c?.ask ? "asked" : hasContent(c) ? "answered" : "open";
-  return {
-    status,
-    newSinceRead: hasContent(c) && (!a.agentReadAt || c.at > a.agentReadAt),
-    staleAnswer: hasContent(c) && !!c.hash && c.hash !== hash,
-    earlierAnswers: c?.history?.length ?? 0,
-    reopened: reopenHolds(c, docRevision) ? c.reopened.at : undefined
-  };
-}
-function notesState(a) {
-  const n = a.notes;
-  if (!n?.text.trim())
-    return;
-  return {
-    text: n.text,
-    newSinceRead: !a.agentReadAt || n.at > a.agentReadAt,
-    at: n.at,
-    earlier: n.history?.length ?? 0
-  };
+function shortArg(p, cwd) {
+  const rel = cwd === undefined ? "" : relative(cwd, p);
+  return shellArg(rel && rel.length < p.length ? rel : p);
 }
 
-// src/lib/answers.ts
-function allQuestions(doc) {
-  if (!doc)
-    return [];
-  return [
-    ...doc.questions ?? [],
-    ...(doc.blocks ?? []).flatMap((b) => b.type === "question" ? b.questions : [])
-  ];
-}
-function latest2(root, replies = []) {
-  const last = replies[replies.length - 1];
-  const mine = [...replies].reverse().find((m) => m.from === "reviewer");
-  return {
-    text: mine?.text ?? root.text,
-    sent: mine?.sent ?? root.sent,
-    replied: !!last && last.from === "agent",
-    followUpTo: mine ? root.text : undefined
-  };
-}
-function sentItems(a, questions, docRevision) {
-  const qs = new Map(questions.map((q) => [q.id, q]));
-  const out = [];
-  for (const c of a.comments)
-    if (c.sent)
-      out.push({
-        kind: "comment",
-        id: c.id,
-        node: c.node,
-        quote: c.selector?.type === "FragmentSelector" ? `region ${c.selector.value}` : c.selector?.exact,
-        ...latest2(c, c.replies)
-      });
-  for (const [qid, ch] of Object.entries(a.choices)) {
-    if (!ch.sent || !(ch.ask || ch.note))
-      continue;
-    const q = qs.get(qid);
-    const picked = ch.selected.map((s) => q?.options?.find((o) => o.id === s)?.label ?? s).join(", ");
-    const text = ch.ask ?? `chose ${picked || "(nothing)"} · ${ch.note}`;
-    out.push({
-      kind: ch.ask ? "ask" : "note",
-      id: qid,
-      node: qid,
-      quote: q?.prompt,
-      ...latest2({ text, sent: ch.sent }, ch.replies)
-    });
-  }
-  for (const [qid, ch] of Object.entries(a.choices)) {
-    const r = ch.reopened;
-    if (!r)
-      continue;
-    const q = qs.get(qid);
-    const since = latest2({ text: reopenText(ch, q), sent: r.at }, (ch.replies ?? []).filter((m) => m.at > r.at));
-    out.push({
-      kind: "reopen",
-      id: qid,
-      node: qid,
-      quote: q?.prompt,
-      ...since,
-      replied: since.replied || !reopenHolds(ch, docRevision)
-    });
-  }
-  if (a.finished && a.status !== "reviewing")
-    out.push({
-      kind: "verdict",
-      id: "verdict",
-      node: a.status,
-      text: a.summary ?? "(no summary)",
-      sent: a.finished,
-      replied: false
-    });
-  return out.sort((x, y) => (x.sent ?? "").localeCompare(y.sent ?? ""));
-}
-function reopenText(ch, q) {
-  const r = ch.reopened;
-  const was = r.cleared ? ch.history?.find((h) => h.at === r.cleared) : undefined;
-  const parts = ["the reviewer reopened this question"];
-  if (r.closed)
-    parts.push(`it was closed${r.resolution ? `: ${r.resolution}` : ""}`);
-  if (was)
-    parts.push(`the answer it cleared: ${pastText(was, q)}`);
-  return parts.join("; ");
-}
-function pastText(h, q) {
-  const picked = h.selected.map((s) => q?.options?.find((o) => o.id === s)?.label ?? s).join(", ");
-  return [picked, h.ask ? `asked: ${h.ask}` : h.note].filter(Boolean).join(" · ") || "(empty)";
-}
-function itemLine(i, pad = "") {
-  if (i.kind === "verdict")
-    return `${pad}[verdict] ${i.node} at ${i.sent}
-${pad}  ${i.text}`;
-  const head = `${pad}[${i.kind}] ${i.id} on ${i.node}${i.quote ? ` “${i.quote.slice(0, 80)}”` : ""}`;
-  const follow = i.followUpTo ? `${pad}  follow-up to “${i.followUpTo.slice(0, 80)}”
-` : "";
-  return `${head}
-${follow}${pad}  ${i.text}`;
-}
-function digest(id, a, qs, revision) {
-  const lines = [
-    `${id} (revision ${revision}): status ${a.status}${a.finished && a.status !== "reviewing" ? ` (finished ${a.finished}${a.summary ? `: ${a.summary}` : ""})` : ""}, updated ${a.updated}${a.agentReadAt ? `, last read ${a.agentReadAt}` : ""}`
-  ];
-  const notes = notesState(a);
-  if (notes)
-    lines.push(`notes${notes.newSinceRead ? " (new)" : ""}${notes.earlier ? ` (${notes.earlier} earlier)` : ""}:`, ...notes.text.split(`
-`).map((l) => `  ${l}`));
-  if (qs.length) {
-    lines.push("questions:");
-    for (const q of qs) {
-      const ch = a.choices[q.id];
-      const st = questionState(q, a, revision);
-      const flags = [
-        st.status === "changed" ? "changed since the reviewer looked" : "",
-        st.staleAnswer ? "answer predates an edit" : "",
-        st.newSinceRead ? "new" : "",
-        st.earlierAnswers ? `${st.earlierAnswers} earlier` : "",
-        st.reopened ? `reopened by the reviewer ${st.reopened}` : ""
-      ].filter(Boolean);
-      const tail = flags.length ? ` [${flags.join(", ")}]` : "";
-      if (isClosed(q, ch, revision)) {
-        lines.push(`  ${q.id} · ${q.prompt}
-    closed${q.resolution ? `: ${q.resolution}` : ""}`);
-        continue;
-      }
-      const noteTail = !ch?.note ? "" : !ch.sent ? " (note not sent)" : latest2({ text: ch.note, sent: ch.sent }, ch.replies).replied ? " (replied)" : "";
-      const state = !ch ? "open" : ch.ask ? `ASKED${ch.sent ? "" : " (not sent)"}${latest2({ text: ch.ask, sent: ch.sent }, ch.replies).replied ? ", replied" : ""}: ${ch.ask}` : ch.selected.length || ch.note && q.kind === "text" ? `answered: ${ch.selected.map((s) => q.options?.find((o) => o.id === s)?.label ?? s).join(", ")}${ch.note ? ` · ${ch.note}${noteTail}` : ""}` : ch.note ? `open, note with no pick: ${ch.note}${noteTail}` : "open";
-      lines.push(`  ${q.id} · ${q.prompt}
-    ${state}${tail}`);
-    }
-  }
-  const pending = sentItems(a, qs, revision).filter((i) => !i.replied && i.kind !== "verdict");
-  lines.push(`sent, awaiting reply: ${pending.length}`);
-  for (const i of pending)
-    lines.push(itemLine(i, "  "));
-  const drafts = a.comments.filter((c) => !c.sent);
-  if (drafts.length)
-    lines.push(`unsent comments (still being written): ${drafts.length}`);
-  return lines.join(`
-`);
-}
-function addReply(a, target, reply) {
-  const t = a.comments.find((c) => c.id === target) ?? a.choices[target];
-  if (!t)
-    return false;
-  (t.replies ??= []).push(reply);
-  return true;
-}
-function guessHarness(env) {
-  if (env.CLAUDECODE)
-    return "claude-code";
-  if (env.CODEX_SANDBOX)
-    return "codex";
-  if (env.CURSOR_TRACE_ID)
-    return "cursor";
-  return;
-}
+// src/lib/agent-change.ts
+import { randomUUID } from "node:crypto";
 
 // src/lib/doc.ts
 import { posix } from "node:path";
+var VERDICTS = ["reviewing", "changes-requested", "approved"];
+function isVerdict(v) {
+  return VERDICTS.includes(v);
+}
+var DOC_ID = /^[a-z0-9][a-z0-9-]*$/;
+function isDocFile(name) {
+  return name.endsWith(".json") && !name.endsWith(".answers.json") && DOC_ID.test(name.slice(0, -5));
+}
 function emptyAnswers(doc) {
-  return { doc, updated: new Date(0).toISOString(), status: "reviewing", comments: [], choices: {} };
+  return {
+    doc,
+    updated: new Date(0).toISOString(),
+    verdict: "reviewing",
+    comments: [],
+    choices: {}
+  };
+}
+function entry(map, key) {
+  return map && Object.hasOwn(map, key) ? map[key] : undefined;
 }
 function escapeHtml(text) {
-  return text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
+  return String(text ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
+}
+function webUrl(url) {
+  return typeof url === "string" && /^https?:\/\/[^\s]/i.test(url) ? url : undefined;
+}
+function oneOf(value, allowed, fallback) {
+  return allowed.includes(value) ? value : fallback;
+}
+function numberText(n) {
+  return typeof n === "number" && Number.isFinite(n) ? n.toLocaleString() : escapeHtml(n);
 }
 function wikilinkHtml(name) {
   const [target, label] = name.split("|").map((s) => s.trim());
-  return `<a class="wikilink" data-wikilink="${target}" href="/w/${encodeURIComponent(target)}">${label ?? target}</a>`;
+  return `<a class="wikilink" data-wikilink="${target}" href="/w/${encodeURIComponent(unescapeHtml(target))}">${label ?? target}</a>`;
 }
 function encodePath(path) {
   return path.split("/").map(encodeURIComponent).join("/");
@@ -2611,50 +2673,1004 @@ function prose(text) {
     return `<p>${inline(lines.join(" "))}</p>`;
   }).join("");
 }
-function sourcePaths(src, repo) {
-  let p = src.uri;
-  if (p.startsWith("file://"))
-    p = decodeURIComponent(p.slice("file://".length));
-  if (p.startsWith("/")) {
-    const root = repo?.root?.replace(/\/$/, "");
-    return { abs: p, rel: root && p.startsWith(root + "/") ? p.slice(root.length + 1) : undefined };
-  }
-  return { rel: p, abs: repo?.root ? `${repo.root.replace(/\/$/, "")}/${p}` : undefined };
+function repoPath(uri) {
+  if (/^[/\\~]/.test(uri) || /^[a-z][a-z0-9+.-]*:/i.test(uri) || /[/\\]$/.test(uri))
+    return;
+  const rel = posix.normalize(uri.replace(/^\.\//, ""));
+  return rel && rel !== "." && !rel.split("/").includes("..") ? rel : undefined;
+}
+function localPath(uri) {
+  let path;
+  const file = /^file:\/\/(?:localhost)?(\/.*)$/i.exec(uri);
+  if (file) {
+    try {
+      path = decodeURIComponent(file[1]);
+    } catch {
+      return;
+    }
+  } else if (/^[a-z]:[\\/]/i.test(uri))
+    path = `/${uri}`;
+  else if (uri.startsWith("/"))
+    path = uri;
+  else
+    return;
+  path = path.replaceAll("\\", "/");
+  return path.startsWith("//") || path.endsWith("/") ? undefined : path;
+}
+function sourceLines(range) {
+  if (!range || !wholeRange(range))
+    return { lines: "", hash: "" };
+  const l1 = range.start.line + 1;
+  const l2 = Math.max(l1, range.end.line + (range.end.character > 0 ? 1 : 0));
+  return {
+    lines: `:${l1}${l2 !== l1 ? `-${l2}` : ""}`,
+    first: l1,
+    hash: `#L${l1}${l2 !== l1 ? `-L${l2}` : ""}`
+  };
 }
 function sourceLinks(source, repo) {
   if (!source)
     return "";
   const list = Array.isArray(source) ? source : [source];
   const items = list.map((src) => {
-    const { rel, abs } = sourcePaths(src, repo);
-    const l1 = src.range ? src.range.start.line + 1 : undefined;
-    const l2 = src.range ? Math.max(src.range.start.line + 1, src.range.end.line + (src.range.end.character > 0 ? 1 : 0)) : undefined;
-    const label = `${escapeHtml(rel ?? abs ?? src.uri)}${l1 ? `:${l1}${l2 && l2 !== l1 ? `-${l2}` : ""}` : ""}`;
-    const local = abs ? `<a class="src-local" data-path="${escapeHtml(abs)}" data-line="${l1 ?? 1}" href="#">${label}</a>` : `<span class="src-path">${label}</span>`;
-    const gh = repo && rel && /^https:\/\/github\.com\//.test(repo.remote) ? ` <a class="src-gh" href="${escapeHtml(`${repo.remote.replace(/\/$/, "")}/blob/${repo.commit}/${rel}`)}${l1 ? `#L${l1}${l2 && l2 !== l1 ? `-L${l2}` : ""}` : ""}" target="_blank" rel="noopener">GitHub</a>` : "";
-    const view = rel ? ` <a class="src-view" href="/f/${escapeHtml(encodePath(rel))}${l1 ? `#L${l1}${l2 && l2 !== l1 ? `-L${l2}` : ""}` : ""}">View</a>` : "";
+    const uri = typeof src.uri === "string" ? src.uri : "";
+    const rel = repoPath(uri);
+    const { lines, first, hash } = sourceLines(src.range);
+    if (!rel) {
+      const abs = localPath(uri);
+      const name = `${escapeHtml((abs ?? uri).split(/[\\/]/).filter(Boolean).pop() || uri)}${lines}`;
+      return abs ? `<span class="src"><a class="src-abs" data-path="${escapeHtml(abs)}" data-line="${first ?? 1}">${name}</a></span>` : `<span class="src"><span class="src-path">${name}</span></span>`;
+    }
+    const local = `<a class="src-local" data-rel="${escapeHtml(rel)}" data-line="${first ?? 1}">${escapeHtml(rel)}${lines}</a>`;
+    const gh = repo && repo.remote.startsWith("https://github.com/") ? ` <a class="src-gh" href="${escapeHtml(`${repo.remote.replace(/\/$/, "")}/blob/${repo.commit}/${rel}`)}${hash}" target="_blank" rel="noopener">GitHub</a>` : "";
+    const view = ` <a class="src-view" href="/f/${escapeHtml(encodePath(rel))}${hash}">View</a>`;
     return `<span class="src">${local}${view}${gh}</span>`;
   });
   return `<div class="sources"><span class="src-label">Source</span>${items.join("")}</div>`;
+}
+function wholeRange(r) {
+  return [r.start?.line, r.start?.character, r.end?.line, r.end?.character].every((n) => Number.isInteger(n) && n >= 0);
+}
+function repoKey(remote) {
+  return remote.trim().replace(/^[a-z][a-z0-9+.-]*:\/\//i, "").replace(/^[^@/]+@([^:/]+):/, "$1/").replace(/^[^@/]+@/, "").replace(/\/+$/, "").replace(/\.git$/, "").toLowerCase();
 }
 function embedJson(value) {
   return JSON.stringify(value).replaceAll("<", "\\u003c").replaceAll("\u2028", "\\u2028").replaceAll("\u2029", "\\u2029");
 }
 
+// src/lib/lifecycle.ts
+import { createHash } from "node:crypto";
+var COALESCE_MS = 15 * 60 * 1000;
+function questionHash(q) {
+  const { status: _s, resolution: _r, group: _g, about: _a, source: _src, ...seen } = q;
+  return createHash("sha256").update(JSON.stringify(seen)).digest("hex").slice(0, 12);
+}
+var content = (c) => JSON.stringify([c?.selected ?? [], c?.note ?? "", c?.ask ?? ""]);
+function hasContent(c) {
+  return !!c && (c.selected.length > 0 || !!c.note?.trim() || !!c.ask?.trim());
+}
+function reopenHolds(c, docRevision) {
+  const r = c?.reopened;
+  if (!r)
+    return false;
+  const reply = (c.replies ?? []).find((m) => m.from === "agent" && m.at > r.at);
+  if (!reply)
+    return true;
+  if (docRevision > (reply.revision ?? r.revision ?? 1))
+    return false;
+  return !!r.closed || !(hasContent(c) && c.at > r.at);
+}
+function isClosed(q, c, docRevision) {
+  return q.status === "closed" && !(c?.reopened?.closed && reopenHolds(c, docRevision));
+}
+function isOutOfDate(q, c, docRevision) {
+  if (!c || c.ask || isClosed(q, c, docRevision))
+    return false;
+  const answer = c.selected.length > 0 || q.kind === "text" && !!c.note?.trim();
+  return answer && !!c.hash && c.hash !== questionHash(q);
+}
+function isAnswered(q, c, docRevision) {
+  if (isClosed(q, c, docRevision))
+    return true;
+  if (!c || c.ask || isOutOfDate(q, c, docRevision))
+    return false;
+  return c.selected.length > 0 || q.kind === "text" && !!c.note?.trim();
+}
+var keeps = (q, hash) => !!q && hash === questionHash(q);
+var recent = (at, revision, docRevision, now) => now.getTime() - Date.parse(at) < COALESCE_MS && (revision ?? 1) === docRevision;
+function recordAnswers(prev, next, questions, docRevision, now = new Date) {
+  const stamp = now.toISOString();
+  const byId = new Map(questions.map((q) => [q.id, q]));
+  const choices = Object.create(null);
+  for (const [qid, n] of Object.entries(next.choices ?? {})) {
+    const p = entry(prev.choices, qid);
+    const history = [...p?.history ?? n.history ?? []];
+    const changed = content(p) !== content(n);
+    const reopening = !!n.reopened && n.reopened.at !== p?.reopened?.at;
+    const c = { ...n, at: changed || !p ? stamp : p.at };
+    if (n.sent)
+      c.sent = n.sent === p?.sent ? p.sent : stamp;
+    const reopen = reopening ? { ...n.reopened, at: stamp, revision: docRevision } : p?.reopened;
+    if (reopen)
+      c.reopened = reopen;
+    else
+      delete c.reopened;
+    if (changed) {
+      if (p && hasContent(p) && reopening)
+        c.reopened = { ...c.reopened, cleared: p.at };
+      const otherTab = p?.tab !== n.tab;
+      if (p && hasContent(p) && (reopening || otherTab || !recent(p.at, p.revision, docRevision, now)))
+        history.push({
+          selected: p.selected,
+          note: p.note,
+          ask: p.ask,
+          at: p.at,
+          revision: p.revision
+        });
+      const q = byId.get(qid);
+      if (q)
+        c.hash = n.hash ?? questionHash(q);
+      c.revision = n.revision ?? docRevision;
+    } else if (n.hash && p?.hash && n.hash !== p.hash && keeps(byId.get(qid), n.hash)) {
+      c.at = stamp;
+      c.revision = n.revision ?? docRevision;
+    } else {
+      if (p?.hash)
+        c.hash = p.hash;
+      if (p?.revision !== undefined)
+        c.revision = p.revision;
+    }
+    if (history.length)
+      c.history = history;
+    else
+      delete c.history;
+    const replies = mergeThread(p?.replies, n.replies, stamp);
+    if (replies)
+      c.replies = replies;
+    else
+      delete c.replies;
+    if (!reopenHolds(c, docRevision))
+      delete c.reopened;
+    choices[qid] = c;
+  }
+  const prevComments = new Map((prev.comments ?? []).map((c) => [c.id, c]));
+  const comments = (next.comments ?? []).map((n) => {
+    const p = prevComments.get(n.id);
+    const c = { ...n, at: p ? p.at : stamp };
+    const sent = n.sent ? p?.sent ?? stamp : p?.sent;
+    if (sent)
+      c.sent = sent;
+    const replies = mergeThread(p?.replies, n.replies, stamp);
+    if (replies)
+      c.replies = replies;
+    else
+      delete c.replies;
+    return c;
+  });
+  const out = { ...next, updated: stamp, comments, choices };
+  if (next.finished)
+    out.finished = next.finished === prev.finished ? prev.finished : stamp;
+  const read = latest(prev.agentReadAt, next.agentReadAt);
+  if (read)
+    out.agentReadAt = read;
+  if (prev.seen || next.seen)
+    out.seen = { ...prev.seen, ...next.seen };
+  const seenReplies = mergeSeenReplies(prev.seenReplies, next.seenReplies, stamp);
+  if (seenReplies)
+    out.seenReplies = seenReplies;
+  else
+    delete out.seenReplies;
+  const roundStarted = latest(prev.roundStartedAt, next.roundStartedAt);
+  if (roundStarted) {
+    out.roundStartedAt = roundStarted;
+    if (out.verdict !== "reviewing" && (!out.finished || out.finished <= roundStarted)) {
+      out.verdict = "reviewing";
+      delete out.finished;
+      delete out.summary;
+    }
+  }
+  return out;
+}
+var latest = (...xs) => xs.filter((x) => !!x).sort().pop();
+function mergeSeenReplies(prev, next, stamp) {
+  const out = Object.create(null);
+  for (const [id, at] of Object.entries(prev ?? {}))
+    out[id] = at;
+  for (const id of Object.keys(next ?? {}))
+    if (!Object.hasOwn(out, id))
+      out[id] = stamp;
+  return Object.keys(out).length ? out : undefined;
+}
+function mergeThread(prev, next, stamp) {
+  const stored = prev ?? [];
+  const have = new Set(stored.map((m) => m.id));
+  const added = (next ?? []).filter((m) => m.from === "reviewer" && !have.has(m.id)).map((m) => ({ ...m, at: stamp, ...m.sent ? { sent: stamp } : {} }));
+  const out = [...stored, ...added];
+  return out.length ? out : undefined;
+}
+function questionState(q, a, docRevision) {
+  const c = entry(a.choices, q.id);
+  const hash = questionHash(q);
+  const seen = entry(a.seen, q.id);
+  const status = isClosed(q, c, docRevision) ? "closed" : isOutOfDate(q, c, docRevision) ? "out-of-date" : seen && seen !== hash ? "changed" : c?.ask ? "asked" : hasContent(c) ? "answered" : "open";
+  return {
+    status,
+    newSinceRead: hasContent(c) && (!a.agentReadAt || c.at > a.agentReadAt),
+    outOfDate: isOutOfDate(q, c, docRevision),
+    earlierAnswers: c?.history?.length ?? 0,
+    reopened: reopenHolds(c, docRevision) ? c.reopened.at : undefined
+  };
+}
+
+// src/lib/answers.ts
+function allQuestions(doc) {
+  const objects = (v) => (Array.isArray(v) ? v : []).filter((x) => !!x && typeof x === "object" && !Array.isArray(x));
+  if (!doc)
+    return [];
+  return [
+    ...objects(doc.questions),
+    ...objects(doc.blocks).flatMap((b) => b.type === "question" ? objects(b.questions) : [])
+  ];
+}
+function latest2(root, replies = []) {
+  const last = replies[replies.length - 1];
+  const mine = [...replies].reverse().find((m) => m.from === "reviewer");
+  return {
+    text: mine?.text ?? root.text,
+    sent: mine?.sent ?? root.sent,
+    replied: !!last && last.from === "agent",
+    replyTo: mine ? root.text : undefined
+  };
+}
+function sentItems(a, questions, docRevision) {
+  const qs = new Map(questions.map((q) => [q.id, q]));
+  const out = [];
+  for (const c of a.comments)
+    if (c.sent)
+      out.push({
+        kind: "comment",
+        id: c.id,
+        item: c.node,
+        quote: c.selector?.type === "FragmentSelector" ? `region ${c.selector.value}` : c.selector?.exact,
+        ...latest2(c, c.replies)
+      });
+  for (const [qid, ch] of Object.entries(a.choices)) {
+    const q = qs.get(qid);
+    if (!ch.sent || !(ch.ask || ch.note && q?.kind !== "text"))
+      continue;
+    const picked = ch.selected.map((s) => q?.options?.find((o) => o.id === s)?.title ?? s).join(", ");
+    const text = ch.ask ?? `chose ${picked || "(nothing)"} · ${ch.note}`;
+    out.push({
+      kind: ch.ask ? "ask" : "note",
+      id: qid,
+      item: qid,
+      quote: q?.prompt,
+      ...latest2({ text, sent: ch.sent }, ch.replies)
+    });
+  }
+  for (const [qid, ch] of Object.entries(a.choices)) {
+    const r = ch.reopened;
+    if (!r)
+      continue;
+    const q = qs.get(qid);
+    const since = latest2({ text: reopenText(ch, q), sent: r.at }, (ch.replies ?? []).filter((m) => m.at > r.at));
+    out.push({
+      kind: "reopen",
+      id: qid,
+      item: qid,
+      quote: q?.prompt,
+      ...since,
+      replied: since.replied || !reopenHolds(ch, docRevision)
+    });
+  }
+  if (a.finished && a.verdict !== "reviewing")
+    out.push({
+      kind: "verdict",
+      id: "verdict",
+      item: a.verdict,
+      text: a.summary ?? "(no summary)",
+      sent: a.finished,
+      replied: false
+    });
+  return out.sort((x, y) => (x.sent ?? "").localeCompare(y.sent ?? ""));
+}
+function reopenText(ch, q) {
+  const r = ch.reopened;
+  const was = r.cleared ? ch.history?.find((h) => h.at === r.cleared) : undefined;
+  const parts = ["the reviewer reopened this question"];
+  if (r.closed)
+    parts.push(`it was closed${r.resolution ? `: ${r.resolution}` : ""}`);
+  if (was)
+    parts.push(`the answer it cleared: ${pastText(was, q)}`);
+  return parts.join("; ");
+}
+function pastText(h, q) {
+  const picked = h.selected.map((s) => q?.options?.find((o) => o.id === s)?.title ?? s).join(", ");
+  return [picked, h.ask ? `asked: ${h.ask}` : h.note].filter(Boolean).join(" · ") || "(empty)";
+}
+function itemLine(i, pad = "") {
+  if (i.kind === "verdict")
+    return `${pad}[verdict] ${i.item} at ${i.sent}
+${pad}  ${i.text}`;
+  const head = `${pad}[${i.kind}] ${i.id} on ${i.item}${i.quote ? ` “${i.quote.slice(0, 80)}”` : ""}`;
+  const reply = i.replyTo ? `${pad}  reply to “${i.replyTo.slice(0, 80)}”
+` : "";
+  return `${head}
+${reply}${pad}  ${i.text}`;
+}
+function digest(id, a, qs, revision) {
+  const lines = [
+    `${id} (revision ${revision}): verdict ${a.verdict}${a.finished && a.verdict !== "reviewing" ? ` (finished ${a.finished}${a.summary ? `: ${a.summary}` : ""})` : ""}, updated ${a.updated}${a.agentReadAt ? `, last read ${a.agentReadAt}` : ""}`
+  ];
+  if (qs.length) {
+    lines.push("questions:");
+    for (const q of qs) {
+      const ch = entry(a.choices, q.id);
+      const st = questionState(q, a, revision);
+      const flags = [
+        st.status === "changed" ? "changed since the reviewer looked" : "",
+        st.outOfDate ? "answer out of date" : "",
+        st.newSinceRead ? "new" : "",
+        st.earlierAnswers ? `${st.earlierAnswers} earlier` : "",
+        st.reopened ? `reopened by the reviewer ${st.reopened}` : ""
+      ].filter(Boolean);
+      const tail = flags.length ? ` [${flags.join(", ")}]` : "";
+      if (isClosed(q, ch, revision)) {
+        lines.push(`  ${q.id} · ${q.prompt}
+    closed${q.resolution ? `: ${q.resolution}` : ""}`);
+        continue;
+      }
+      const picked = ch?.selected.map((s) => q.options?.find((o) => o.id === s)?.title ?? s).join(", ");
+      const noteTail = !ch?.note || q.kind === "text" ? "" : !ch.sent ? " (note not sent)" : latest2({ text: ch.note, sent: ch.sent }, ch.replies).replied ? " (replied)" : "";
+      const state = !ch ? "open" : ch.ask ? `asked back${ch.sent ? "" : " (not sent)"}${latest2({ text: ch.ask, sent: ch.sent }, ch.replies).replied ? ", replied" : ""}: ${ch.ask}` : isOutOfDate(q, ch, revision) ? `out of date: ${[picked, q.kind === "text" ? `"${ch.note}"` : ch.note].filter(Boolean).join(" · ")}` : q.kind === "text" && ch.note ? `answered: "${ch.note}"` : ch.selected.length ? `answered: ${picked}${ch.note ? ` · ${ch.note}${noteTail}` : ""}` : ch.note ? `open, note with no option chosen: ${ch.note}${noteTail}` : "open";
+      lines.push(`  ${q.id} · ${q.prompt}
+    ${state}${tail}`);
+    }
+  }
+  const pending = sentItems(a, qs, revision).filter((i) => !i.replied && i.kind !== "verdict");
+  lines.push(`waiting for a reply: ${pending.length}`);
+  for (const i of pending)
+    lines.push(itemLine(i, "  "));
+  const drafts = a.comments.filter((c) => !c.sent);
+  if (drafts.length)
+    lines.push(`unsent comments (still being written): ${drafts.length}`);
+  return lines.join(`
+`);
+}
+function replyThread(a, target) {
+  return a.comments.find((c) => c.id === target) ?? entry(a.choices, target);
+}
+function guessHarness(env) {
+  if (env.CLAUDECODE)
+    return "claude-code";
+  if (env.CODEX_SANDBOX)
+    return "codex";
+  if (env.CURSOR_TRACE_ID)
+    return "cursor";
+  return;
+}
+
+// src/lib/answers-file.ts
+import { createHash as createHash3, randomBytes as randomBytes2 } from "node:crypto";
+import {
+  chmodSync,
+  closeSync as closeSync2,
+  existsSync,
+  linkSync,
+  mkdirSync as mkdirSync2,
+  openSync as openSync2,
+  readdirSync,
+  readFileSync as readFileSync3,
+  realpathSync,
+  rmSync as rmSync3,
+  statSync as statSync3,
+  writeSync as writeSync2
+} from "node:fs";
+import { homedir, hostname } from "node:os";
+import { basename as basename2, dirname as dirname2, isAbsolute, join as join3, resolve as resolve2 } from "node:path";
+
+// ../../../node_modules/.bun/@osdlc+etag-write@0.2.0/node_modules/@osdlc/etag-write/index.ts
+import { createHash as createHash2, randomBytes } from "node:crypto";
+import {
+  closeSync,
+  fchmodSync,
+  fsyncSync,
+  mkdirSync,
+  openSync,
+  readFileSync as readFileSync2,
+  renameSync,
+  rmSync as rmSync2,
+  statSync as statSync2,
+  writeSync
+} from "node:fs";
+import { basename, dirname, join as join2 } from "node:path";
+var toBytes = (data) => typeof data === "string" ? Buffer.from(data, "utf8") : Buffer.from(data.buffer, data.byteOffset, data.byteLength);
+function etag(data) {
+  return createHash2("sha256").update(toBytes(data)).digest("hex");
+}
+function tempPath(path) {
+  return join2(dirname(path), `.${basename(path)}.${randomBytes(6).toString("hex")}.tmp`);
+}
+function keptMode(path, mode) {
+  if (mode !== undefined)
+    return mode;
+  try {
+    const st = statSync2(path);
+    return st.isFile() ? st.mode & 511 : undefined;
+  } catch {
+    return;
+  }
+}
+function syncDir(dir) {
+  let fd;
+  try {
+    fd = openSync(dir, "r");
+    fsyncSync(fd);
+  } catch {} finally {
+    if (fd !== undefined)
+      closeSync(fd);
+  }
+}
+function atomicWrite(path, data, opts = {}) {
+  const dir = dirname(path);
+  mkdirSync(dir, { recursive: true });
+  const bytes = toBytes(data);
+  const mode = keptMode(path, opts.mode);
+  const tmp = tempPath(path);
+  try {
+    const fd = openSync(tmp, "wx", mode ?? 438);
+    try {
+      if (mode !== undefined)
+        fchmodSync(fd, mode);
+      for (let off = 0;off < bytes.length; )
+        off += writeSync(fd, bytes, off);
+      fsyncSync(fd);
+    } finally {
+      closeSync(fd);
+    }
+    renameSync(tmp, path);
+  } catch (err) {
+    rmSync2(tmp, { force: true });
+    throw err;
+  }
+  syncDir(dir);
+}
+
+// src/lib/answers-file.ts
+function answersPath(dir, id) {
+  return join3(dir, `${id}.answers.json`);
+}
+function readAnswersText(file, id) {
+  try {
+    return readFileSync3(file, "utf8");
+  } catch (e) {
+    if (e.code === "ENOENT")
+      return JSON.stringify(emptyAnswers(id));
+    throw e;
+  }
+}
+var isObj = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+function answersEtag(text) {
+  return `"${etag(text)}"`;
+}
+function answersJson(a) {
+  return JSON.stringify(a, null, 2) + `
+`;
+}
+function writeAnswersFile(file, text) {
+  atomicWrite(file, text);
+}
+
+class BrokenAnswersError extends Error {
+  constructor(what) {
+    super(`the answers file is broken: ${what}`);
+    this.name = "BrokenAnswersError";
+  }
+}
+function parseAnswers(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new BrokenAnswersError("it is not JSON");
+  }
+}
+function checkAnswersShape(a, threads = true) {
+  if (!isObj(a))
+    throw new BrokenAnswersError("it is not an object");
+  const { comments, choices } = a;
+  if (comments !== undefined && !(Array.isArray(comments) && comments.every(isObj)))
+    throw new BrokenAnswersError('"comments" must be a list of objects');
+  if (choices !== undefined && !(isObj(choices) && Object.values(choices).every(isObj)))
+    throw new BrokenAnswersError('"choices" must be an object of objects');
+  if (!threads)
+    return;
+  const lists = [
+    ...(comments ?? []).map((c) => [
+      String(c["id"]),
+      c["replies"]
+    ]),
+    ...Object.entries(choices ?? {}).map(([q, c]) => [q, c["replies"]])
+  ];
+  for (const [id, replies] of lists) {
+    if (replies !== undefined && !(Array.isArray(replies) && replies.every(isObj)))
+      throw new BrokenAnswersError(`the replies of "${id}" must be a list of objects`);
+    for (const [i, m] of (replies ?? []).entries())
+      if (typeof m["id"] !== "string" || m["id"] === "")
+        throw new BrokenAnswersError(`message ${i + 1} in the replies of "${id}" needs an "id" (a non-empty string)`);
+  }
+  for (const [q, c] of Object.entries(choices ?? {})) {
+    const selected = c["selected"];
+    if (!(Array.isArray(selected) && selected.every((s) => typeof s === "string")))
+      throw new BrokenAnswersError(`the answer to "${q}" must have "selected", a list of strings`);
+  }
+}
+
+class LockTimeoutError extends Error {
+  blocker;
+  constructor(blocker, timeoutMs) {
+    super(`waited ${timeoutMs / 1000} s for the lock: ${blocker}`);
+    this.name = "LockTimeoutError";
+    this.blocker = blocker;
+  }
+}
+var SERVER_LOCK_MS = 250;
+var FOREIGN_LOCK_MS = 10 * 60000;
+var UNREADABLE_LOCK_MS = 5000;
+var STALE_TEMP_MS = 60000;
+var HOST = hostname();
+function alive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return e.code === "EPERM";
+  }
+}
+var pause = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+function createWith(path, text) {
+  const tmp = join3(dirname2(path), `.${basename2(path)}.${randomBytes2(6).toString("hex")}.tmp`);
+  try {
+    const fd = openSync2(tmp, "wx");
+    try {
+      writeSync2(fd, text);
+    } finally {
+      closeSync2(fd);
+    }
+    linkSync(tmp, path);
+    return true;
+  } catch (e) {
+    const code = e.code;
+    if (code === "EEXIST" || code === "ENOENT" && existsSync(dirname2(path)))
+      return false;
+    throw e;
+  } finally {
+    rmSync3(tmp, { force: true });
+  }
+}
+function readHeld(path) {
+  try {
+    return { text: readFileSync3(path, "utf8"), age: Date.now() - statSync3(path).mtimeMs };
+  } catch {
+    return;
+  }
+}
+function owner(text) {
+  try {
+    const o = JSON.parse(text);
+    return Number.isInteger(o.pid) && typeof o.host === "string" && typeof o.token === "string" ? o : undefined;
+  } catch {
+    return;
+  }
+}
+function stale(held) {
+  const o = owner(held.text);
+  if (!o)
+    return held.age > UNREADABLE_LOCK_MS;
+  if (o.host !== HOST)
+    return held.age > FOREIGN_LOCK_MS;
+  return !alive(o.pid);
+}
+var staleGuard = (g) => g.age > FOREIGN_LOCK_MS || stale(g);
+function blocker(lock, held) {
+  const path = `${lock}.takeover`;
+  const guard = held && stale(held) ? readHeld(path) : undefined;
+  const [file, h] = guard ? [path, guard] : [lock, held];
+  const o = h && owner(h.text);
+  const holder = o ? `pid ${o.pid} on ${o.host}` : "an unknown process";
+  return `${file} is held by ${holder}; remove it only if that process is not a parley writer (it has hung, or its pid now names another program)`;
+}
+function removeIf(path, text) {
+  try {
+    if (readFileSync3(path, "utf8") === text)
+      rmSync3(path);
+  } catch {}
+}
+function takeOver(lock, text, me) {
+  const guard = `${lock}.takeover`;
+  if (!createWith(guard, me)) {
+    const g = readHeld(guard);
+    if (g && staleGuard(g))
+      removeIf(guard, g.text);
+    return false;
+  }
+  try {
+    if (readHeld(lock)?.text !== text)
+      return false;
+    rmSync3(lock, { force: true });
+    return true;
+  } finally {
+    removeIf(guard, me);
+  }
+}
+var escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function sweepTemps(file, all, held) {
+  const dir = dirname2(file);
+  const name = escape(basename2(file));
+  const write = new RegExp(`^\\.${name}\\.[0-9a-f]{12}\\.tmp$`);
+  const lock = new RegExp(`^\\.${name}\\.lock(\\.takeover)?\\.[0-9a-f]{12}\\.tmp$`);
+  let names;
+  try {
+    names = readdirSync(dir);
+  } catch {
+    return;
+  }
+  for (const n of names) {
+    const isWrite = write.test(n);
+    if (!isWrite && !lock.test(n))
+      continue;
+    const p = join3(dir, n);
+    try {
+      if ((isWrite ? all : held) || Date.now() - statSync3(p).mtimeMs > STALE_TEMP_MS)
+        rmSync3(p);
+    } catch {}
+  }
+}
+function sweepAnswersTemps(dir) {
+  let names;
+  try {
+    names = readdirSync(dir);
+  } catch {
+    return;
+  }
+  for (const n of names)
+    if (n.endsWith(".answers.json"))
+      sweepTemps(join3(dir, n), false, false);
+}
+function withAnswersLock(file, fn, timeoutMs = 1e4) {
+  const lock = `${file}.lock`;
+  const me = JSON.stringify({ pid: process.pid, host: HOST, token: randomBytes2(8).toString("hex") }) + `
+`;
+  const end = Date.now() + timeoutMs;
+  let tookOver = false;
+  for (;; ) {
+    if (createWith(lock, me))
+      break;
+    const held = readHeld(lock);
+    if (Date.now() > end)
+      throw new LockTimeoutError(blocker(lock, held), timeoutMs);
+    if (!held)
+      continue;
+    if (stale(held)) {
+      if (takeOver(lock, held.text, me))
+        tookOver = true;
+      else
+        pause(1 + Math.random() * 4);
+      continue;
+    }
+    pause(Math.min(5 + Math.random() * 15, Math.max(1, end - Date.now())));
+  }
+  try {
+    sweepTemps(file, tookOver, true);
+    return fn();
+  } finally {
+    removeIf(lock, me);
+  }
+}
+function updateAnswersFile(file, id, change, timeoutMs) {
+  return withAnswersLock(file, () => {
+    const before = readAnswersText(file, id);
+    const a = parseAnswers(before);
+    if (!change(a))
+      return { text: before, changed: false };
+    const text = answersJson(a);
+    writeAnswersFile(file, text);
+    return { text, changed: true };
+  }, timeoutMs);
+}
+function serversDir() {
+  const xdg = process.env["XDG_STATE_HOME"];
+  const base = xdg && isAbsolute(xdg) ? xdg : join3(homedir(), ".local", "state");
+  return join3(base, "parley", "servers");
+}
+function realDir(dir) {
+  try {
+    return realpathSync(dir);
+  } catch {
+    return resolve2(dir);
+  }
+}
+function folderKey(dir) {
+  return createHash3("sha256").update(realDir(dir)).digest("hex").slice(0, 16);
+}
+function serverFile(dir) {
+  return join3(serversDir(), `${folderKey(dir)}.json`);
+}
+function writeServerInfo(dir, info) {
+  const at = serversDir();
+  mkdirSync2(at, { recursive: true, mode: 448 });
+  chmodSync(at, 448);
+  const record = { ...info, dir: realDir(dir) };
+  atomicWrite(serverFile(dir), JSON.stringify(record) + `
+`, { mode: 384 });
+  for (const name of readdirSync(at)) {
+    const file = join3(at, name);
+    const other = name.endsWith(".json") ? readRecord(file) : undefined;
+    if (other && !alive(other.pid))
+      removeIfStill(file, other);
+  }
+}
+function removeServerInfo(dir, info) {
+  removeIfStill(serverFile(dir), info);
+}
+function removeIfStill(file, info) {
+  const now = readRecord(file);
+  if (now && now.pid === info.pid && now.port === info.port)
+    rmSync3(file, { force: true });
+}
+function readRecord(file) {
+  try {
+    const v = JSON.parse(readFileSync3(file, "utf8"));
+    return Number.isInteger(v.pid) && Number.isInteger(v.port) && typeof v.host === "string" && typeof v.dir === "string" ? v : undefined;
+  } catch {
+    return;
+  }
+}
+function runningServer(dir) {
+  const file = serverFile(dir);
+  const info = readRecord(file);
+  if (!info || info.dir !== realDir(dir))
+    return;
+  if (alive(info.pid))
+    return info;
+  removeIfStill(file, info);
+  return;
+}
+
+// src/lib/agent-change.ts
+var ACTIONS = ["answered", "revised", "declined"];
+var MESSAGE_ID = /^[A-Za-z0-9_-]{1,64}$/;
+var isMessageId = (v) => typeof v === "string" && MESSAGE_ID.test(v);
+var optStr = (v) => v === undefined || typeof v === "string";
+function agentChangeProblem(body) {
+  if (typeof body !== "object" || body === null)
+    return "must be an object";
+  const b = body;
+  if (b.op === "new-round")
+    return;
+  if (b.op === "mark-read")
+    return typeof b.at === "string" && !Number.isNaN(Date.parse(b.at)) ? undefined : '"at" must be a time';
+  if (b.op !== "reply")
+    return '"op" must be reply, new-round or mark-read';
+  if (typeof b.to !== "string" || typeof b.text !== "string")
+    return 'a reply needs "to" and "text"';
+  if (b.id !== undefined && !isMessageId(b.id))
+    return '"id" must be 1 to 64 letters, digits, "-" or "_"';
+  if (b.action !== undefined && !ACTIONS.includes(b.action))
+    return `"action" must be one of ${ACTIONS.join(", ")}`;
+  if (!optStr(b.model) || !optStr(b.harness))
+    return '"model" and "harness" must be strings';
+  return;
+}
+function applyAgentChange(a, change, revision, now) {
+  checkAnswersShape(a, change.op === "reply");
+  if (change.op === "new-round") {
+    if (a.verdict === "reviewing" && !a.finished)
+      return "kept";
+    a.verdict = "reviewing";
+    delete a.finished;
+    delete a.summary;
+    a.updated = a.roundStartedAt = now;
+    return "changed";
+  }
+  if (change.op === "mark-read") {
+    if (!a.agentReadAt || change.at > a.agentReadAt)
+      a.agentReadAt = change.at;
+    return "changed";
+  }
+  a.comments ??= [];
+  a.choices ??= {};
+  const thread = replyThread(a, change.to);
+  if (!thread)
+    return "missing";
+  const same = change.id ? thread.replies?.find((m) => m.id === change.id) : undefined;
+  if (same)
+    return same.from !== "agent" ? "taken" : same.text === change.text ? "kept" : "differs";
+  const { model, harness } = change;
+  const reply = {
+    id: change.id || randomUUID(),
+    from: "agent",
+    text: change.text,
+    at: now,
+    revision,
+    action: change.action,
+    by: model || harness ? { model, harness } : undefined
+  };
+  (thread.replies ??= []).push(reply);
+  a.updated = now;
+  return "changed";
+}
+var CHANGED_HEADER = "parley-changed";
+var SERVER_ANSWER_MS = 5000;
+var RETRY_MS = 250;
+var POST_MS = SERVER_LOCK_MS + 1000;
+var RETRY_LEFT_MS = RETRY_MS + SERVER_LOCK_MS + 250;
+async function sendAgentChange(dir, id, change, revision, timeoutMs = SERVER_ANSWER_MS) {
+  if (change.op === "reply" && !change.id)
+    change = { ...change, id: randomUUID() };
+  const server = runningServer(dir);
+  const start = Date.now();
+  const end = start + timeoutMs;
+  const wait = () => Math.max(end - Date.now(), POST_MS);
+  let waited = wait();
+  let r = server ? await post(server, id, change, waited) : undefined;
+  while (r instanceof Response && r.status === 503 && end - Date.now() > RETRY_LEFT_MS) {
+    await new Promise((done) => setTimeout(done, RETRY_MS));
+    r = await post(server, id, change, waited = wait());
+  }
+  if (r === "timeout")
+    return {
+      ok: false,
+      missing: false,
+      message: `the server (pid ${server.pid}, port ${server.port}) did not answer in ${secs(waited)} s; the change may still land, so read the answers before sending it again${change.op === "reply" ? ` (resend the same text with --id ${change.id} and it is stored once)` : ""}`
+    };
+  if (r) {
+    if (r.ok)
+      return { ok: true, changed: changedBy(r) };
+    const body = (await r.text().catch(() => "")).trim() || `the server answered ${r.status}`;
+    const message = r.status === 503 ? `the server could not take the lock in ${secs(Date.now() - start)} s of tries, so the change was not applied: ${body}` : body;
+    return { ok: false, missing: r.status === 404, message };
+  }
+  let applied = "missing";
+  updateAnswersFile(answersPath(dir, id), id, (a) => (applied = applyAgentChange(a, change, revision(), new Date().toISOString())) === "changed");
+  if (applied === "changed" || applied === "kept")
+    return { ok: true, changed: applied === "changed" };
+  const to = change.to;
+  return applied === "missing" ? { ok: false, missing: true, message: `no comment or question with id "${to}"` } : { ok: false, missing: false, message: takenMessage(change.id, applied) };
+}
+var changedBy = (r) => {
+  const v = r.headers.get(CHANGED_HEADER);
+  return v === "true" ? true : v === "false" ? false : undefined;
+};
+var takenMessage = (id, why) => why === "differs" ? `id "${id}" already holds a different agent reply in this thread` : `id "${id}" already holds another message in this thread`;
+var secs = (ms) => String(Math.round(ms / 100) / 10);
+async function post(s, id, change, timeoutMs) {
+  const host = s.host.includes(":") ? `[${s.host}]` : s.host;
+  const query = s.token ? `?t=${encodeURIComponent(s.token)}` : "";
+  const signal = AbortSignal.timeout(timeoutMs);
+  try {
+    const r = await fetch(`http://${host}:${s.port}/a/${id}${query}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(change),
+      signal
+    });
+    return new Response(await r.text(), { status: r.status, headers: r.headers });
+  } catch {
+    return signal.aborted ? "timeout" : undefined;
+  }
+}
+
+// src/lib/listener.ts
+import {
+  closeSync as closeSync3,
+  mkdirSync as mkdirSync3,
+  openSync as openSync3,
+  readdirSync as readdirSync2,
+  readFileSync as readFileSync4,
+  rmSync as rmSync4,
+  statSync as statSync4,
+  writeSync as writeSync3
+} from "node:fs";
+import { hostname as hostname2 } from "node:os";
+import { dirname as dirname3, join as join4 } from "node:path";
+var HEARTBEAT_MS = 5000;
+var FRESH_MS = 3 * HEARTBEAT_MS;
+var GRACE_MS = 60000;
+var FORGOTTEN_MS = 24 * 3600000;
+var HOST2 = hostname2();
+var NAME = /^[0-9a-f]{16}\.([a-z0-9-]+)\.(\d+)\.json$/;
+function listenersDir() {
+  return join4(dirname3(serversDir()), "listeners");
+}
+function put(file, text) {
+  const fd = openSync3(file, "w");
+  try {
+    writeSync3(fd, text);
+  } finally {
+    closeSync3(fd);
+  }
+}
+function startHeartbeat(dir, id) {
+  const file = join4(listenersDir(), `${folderKey(dir)}.${id}.${process.pid}.json`);
+  const beat = (exited = false) => {
+    try {
+      mkdirSync3(listenersDir(), { recursive: true, mode: 448 });
+      put(file, JSON.stringify({ host: HOST2, ...exited ? { exited: true } : {} }) + `
+`);
+    } catch {}
+  };
+  beat();
+  const timer = setInterval(beat, HEARTBEAT_MS);
+  timer.unref();
+  return {
+    stop(grace = false) {
+      clearInterval(timer);
+      if (grace)
+        beat(true);
+      else
+        rmSync4(file, { force: true });
+    }
+  };
+}
+function listeningDocs(dir) {
+  const prefix = `${folderKey(dir)}.`;
+  const out = new Set;
+  let names;
+  try {
+    names = readdirSync2(listenersDir());
+  } catch {
+    return out;
+  }
+  for (const name of names) {
+    const m = NAME.exec(name);
+    if (!m)
+      continue;
+    const file = join4(listenersDir(), name);
+    try {
+      const age = Date.now() - statSync4(file).mtimeMs;
+      let info = {};
+      try {
+        info = JSON.parse(readFileSync4(file, "utf8"));
+      } catch {}
+      const here = info.host === HOST2;
+      const live = info.exited ? age < GRACE_MS : age < FRESH_MS && (!here || alive(Number(m[2])));
+      if (live) {
+        if (name.startsWith(prefix))
+          out.add(m[1]);
+      } else if (info.exited || here || age > FORGOTTEN_MS)
+        rmSync4(file, { force: true });
+    } catch {}
+  }
+  return out;
+}
+
 // src/lib/watch.ts
-import { existsSync, readdirSync, statSync, watch } from "node:fs";
-import { join as join2 } from "node:path";
+import { existsSync as existsSync2, readdirSync as readdirSync3, statSync as statSync5, watch } from "node:fs";
+import { join as join5 } from "node:path";
+function safeWatch(path, listener, onError = () => {}, watchFn = watch) {
+  let w;
+  try {
+    w = watchFn(path, (_e, f) => listener(f === null ? null : String(f)));
+  } catch {
+    return;
+  }
+  w.on("error", () => {
+    w.close();
+    onError();
+  });
+  return w;
+}
 function watchFolder(dir, match, onChange, opts = {}) {
   const stamps = new Map;
   const scan = (report) => {
     let names;
     try {
-      names = readdirSync(dir).filter(match);
+      names = readdirSync3(dir).filter(match);
     } catch {
       names = [];
     }
     for (const f of names) {
-      const s = stamp(join2(dir, f));
+      const s = stamp(join5(dir, f));
       if (stamps.get(f) === s)
         continue;
       stamps.set(f, s);
@@ -2669,12 +3685,21 @@ function watchFolder(dir, match, onChange, opts = {}) {
         onChange(f);
     }
   };
+  let watcher;
+  const arm = () => {
+    if (watcher || opts.fsWatch === false || !existsSync2(dir))
+      return;
+    watcher = safeWatch(dir, (f) => {
+      if (f && match(f))
+        onChange(f);
+    }, () => watcher = undefined, opts.watch);
+  };
   scan(false);
-  const watcher = opts.fsWatch !== false && existsSync(dir) ? watch(dir, (_e, f) => {
-    if (f && match(String(f)))
-      onChange(String(f));
-  }) : undefined;
-  const timer = setInterval(() => scan(true), opts.pollMs ?? 1000);
+  arm();
+  const timer = setInterval(() => {
+    scan(true);
+    arm();
+  }, opts.pollMs ?? 1000);
   return {
     close() {
       watcher?.close();
@@ -2684,7 +3709,7 @@ function watchFolder(dir, match, onChange, opts = {}) {
 }
 function stamp(path) {
   try {
-    const s = statSync(path);
+    const s = statSync5(path);
     return `${s.mtimeMs}:${s.size}`;
   } catch {
     return "-1";
@@ -2693,6 +3718,7 @@ function stamp(path) {
 
 // src/commands/answers.ts
 var EXIT_TIMEOUT = 10;
+var MAX_TIMEOUT = 2147483;
 var cli = defineCli({
   name: "parley answers",
   summary: "Read the reviewer's answers, wait for the next send, or reply into a thread.",
@@ -2706,54 +3732,98 @@ var cli = defineCli({
       help: "keep running; run this shell line on every send, with the lines on stdin"
     },
     timeout: { kind: "string", valueName: "s", help: "give up after this many seconds (exit 10)" },
-    reopen: { kind: "boolean", help: "status back to reviewing, verdict cleared, answers kept" },
+    newRound: {
+      kind: "boolean",
+      help: "start a new round: verdict back to reviewing, answers kept; with no verdict, nothing changes"
+    },
     markRead: {
       kind: "boolean",
       help: "print the digest, then mark it read so later answers show as new"
     },
-    reply: { kind: "string", valueName: "id", help: "the comment or question to reply to" },
+    reply: { kind: "string", valueName: "thread id", help: "the thread to reply to" },
     text: { kind: "string", help: "the reply" },
     action: {
       kind: "enum",
-      choices: ["answered", "changed", "declined"],
+      choices: ["answered", "revised", "declined"],
       help: "what the agent did about it"
     },
     model: { kind: "string", help: "the model that answered" },
-    harness: { kind: "string", help: "the harness it ran in (guessed when absent)" }
+    harness: { kind: "string", help: "the harness it ran in (guessed when absent)" },
+    id: {
+      kind: "string",
+      help: "the reply's message id (made when absent); a reply resent with it is stored once"
+    }
   },
   positionals: [
     { name: "id", required: true, help: "the document id" },
     { name: "dir", help: "folder of documents (default docs/parley)" }
   ]
 });
+var REPLY_ONLY = ["text", "id", "action", "model", "harness"];
+var REMOVED = { "--reopen": "--new-round" };
 async function main(argv, ctx) {
   const parsed = cli.parse(argv, ctx.io);
   if (parsed.status === "help")
     return EXIT.ok;
   if (parsed.status === "error") {
+    const gone = Object.keys(REMOVED).find((f) => parsed.message.includes(`'${f}'`));
+    if (gone) {
+      ctx.io.stderr(`parley answers: ${gone} is gone; use ${REMOVED[gone]}
+`);
+      return EXIT.usage;
+    }
     ctx.io.stderr(`parley answers: ${parsed.message}
 `);
     return EXIT.usage;
   }
   const { values, positionals } = parsed;
   const id = positionals[0];
-  const dir = resolve(ctx.cwd, positionals[1] ?? "docs/parley");
-  const file = join3(dir, `${id}.answers.json`);
-  const docFile = join3(dir, `${id}.json`);
-  const read = () => existsSync2(file) ? JSON.parse(readFileSync2(file, "utf8")) : emptyAnswers(id);
-  const write = (a) => writeFileSync2(file, JSON.stringify(a, null, 2) + `
+  if (!DOC_ID.test(id)) {
+    ctx.io.stderr(`parley answers: "${id}" is not a document id (lowercase letters, digits, -)
 `);
-  const readDoc = () => existsSync2(docFile) ? JSON.parse(readFileSync2(docFile, "utf8")) : undefined;
+    return EXIT.usage;
+  }
+  if (values.timeout !== undefined) {
+    const t = Number(values.timeout);
+    if (values.timeout.trim() === "" || !(t >= 1 && t <= MAX_TIMEOUT)) {
+      ctx.io.stderr(`parley answers: --timeout must be 1 to ${MAX_TIMEOUT} seconds, not "${values.timeout}"
+`);
+      return EXIT.usage;
+    }
+  }
+  if (values.reply === undefined) {
+    const stray = REPLY_ONLY.filter((k) => values[k] !== undefined);
+    if (stray.length) {
+      const flags = stray.map((k) => `--${k}`);
+      const list = flags.length > 1 ? `${flags.slice(0, -1).join(", ")} and ${flags.at(-1)}` : flags[0];
+      ctx.io.stderr(`parley answers: ${list} only go${flags.length > 1 ? "" : "es"} with --reply
+`);
+      return EXIT.usage;
+    }
+  }
+  const dir = resolve3(ctx.cwd, positionals[1] ?? "docs/parley");
+  const answersCmd = dir === resolve3(ctx.cwd, "docs/parley") ? `parley answers ${id}` : `parley answers ${id} ${shellArg(positionals[1])}`;
+  const file = join6(dir, `${id}.answers.json`);
+  const docFile = join6(dir, `${id}.json`);
+  if (!existsSync3(docFile)) {
+    ctx.io.stderr(`parley answers: no document ${id} in ${dir}
+`);
+    return EXIT.error;
+  }
+  const read = () => existsSync3(file) ? JSON.parse(readFileSync5(file, "utf8")) : emptyAnswers(id);
+  const readDoc = () => existsSync3(docFile) ? JSON.parse(readFileSync5(docFile, "utf8")) : undefined;
   const questions = () => allQuestions(readDoc());
   const revision = () => readDoc()?.revision ?? 1;
-  if (values.reopen) {
-    const a = read();
-    a.status = "reviewing";
-    delete a.finished;
-    delete a.summary;
-    a.updated = a.reopenedAt = new Date().toISOString();
-    write(a);
-    ctx.io.stdout(`reopened ${id}
+  if (values.newRound) {
+    const r = await sendAgentChange(dir, id, { op: "new-round" }, revision);
+    if (!r.ok) {
+      ctx.io.stderr(`parley answers: ${r.message}
+`);
+      return EXIT.error;
+    }
+    ctx.io.stdout(r.changed === undefined ? `sent new round for ${id}
+` : r.changed ? `new round ${id}
+` : `no verdict to clear: ${id} is still in its round; wait for the reviewer to finish
 `);
     return EXIT.ok;
   }
@@ -2763,24 +3833,26 @@ async function main(argv, ctx) {
 `);
       return EXIT.usage;
     }
-    const a = read();
-    const harness = values.harness ?? guessHarness(ctx.env);
-    const model = values.model ?? ctx.env.PARLEY_MODEL;
-    const reply = {
-      from: "agent",
+    if (values.id !== undefined && !isMessageId(values.id)) {
+      ctx.io.stderr(`parley answers: --id must be 1 to 64 letters, digits, "-" or "_"
+`);
+      return EXIT.usage;
+    }
+    const r = await sendAgentChange(dir, id, {
+      op: "reply",
+      to: values.reply,
       text: values.text,
-      at: new Date().toISOString(),
-      revision: revision(),
+      id: values.id,
       action: values.action,
-      by: model || harness ? { model, harness } : undefined
-    };
-    if (!addReply(a, values.reply, reply)) {
-      ctx.io.stderr(`no comment or question with id "${values.reply}"
+      model: values.model ?? ctx.env.PARLEY_MODEL,
+      harness: values.harness ?? guessHarness(ctx.env)
+    }, revision);
+    if (!r.ok) {
+      ctx.io.stderr(r.missing ? `${r.message}
+${pendingHint(values.reply, answersCmd, read(), questions(), revision())}` : `parley answers: ${r.message}
 `);
       return EXIT.error;
     }
-    a.updated = new Date().toISOString();
-    write(a);
     ctx.io.stdout(`replied to ${values.reply}
 `);
     return EXIT.ok;
@@ -2794,7 +3866,18 @@ async function main(argv, ctx) {
     return watchSends(ctx, { id, dir, file, read, questions, revision, values });
   }
   const readAt = new Date().toISOString();
-  const a = read();
+  let a;
+  try {
+    a = read();
+    checkAnswersShape(a, false);
+  } catch (e) {
+    if (!(e instanceof SyntaxError || e instanceof BrokenAnswersError))
+      throw e;
+    const why = e instanceof SyntaxError ? "the answers file is broken: it is not JSON" : e.message;
+    ctx.io.stderr(`parley answers: ${why}
+`);
+    return EXIT.error;
+  }
   const doc = readDoc();
   const qs = allQuestions(doc);
   const json = values.json || values.output === "json";
@@ -2802,16 +3885,45 @@ async function main(argv, ctx) {
     ...a,
     revision: doc?.revision ?? 1,
     pending: sentItems(a, qs, doc?.revision ?? 1).filter((i) => !i.replied),
-    questions: Object.fromEntries(qs.map((q) => [q.id, questionState(q, a, doc?.revision ?? 1)])),
-    notesState: notesState(a)
+    questions: Object.fromEntries(qs.map((q) => [q.id, questionState(q, a, doc?.revision ?? 1)]))
   }, null, 2) : digest(id, a, qs, doc?.revision ?? 1)) + `
 `);
   if (values.markRead) {
-    const now = read();
-    now.agentReadAt = readAt;
-    write(now);
+    const r = await sendAgentChange(dir, id, { op: "mark-read", at: readAt }, revision);
+    if (!r.ok) {
+      ctx.io.stderr(`parley answers: ${r.message}
+`);
+      return EXIT.error;
+    }
   }
   return EXIT.ok;
+}
+var HINT_LIMIT = 20;
+var ESC = String.fromCharCode(27);
+function plainLine(text, max) {
+  const noEscapes = text.replace(new RegExp(`${ESC}\\[[0-9;?]*[ -/]*[@-~]`, "g"), "");
+  let flat = "";
+  for (const ch of noEscapes) {
+    const c = ch.codePointAt(0);
+    flat += /\s/.test(ch) ? " " : c < 32 || c >= 127 && c <= 159 ? "" : ch;
+  }
+  flat = flat.replace(/ +/g, " ").trim();
+  return flat.length > max ? `${flat.slice(0, max)}…` : flat;
+}
+function pendingHint(to, cmd, a, qs, rev) {
+  const pending = sentItems(a, qs, rev).filter((i) => !i.replied && i.kind !== "verdict");
+  if (!pending.length)
+    return `Nothing is waiting for a reply; run \`${cmd}\` to read the review.
+`;
+  const onItem = pending.some((i) => i.item === to && i.id !== to) ? `"${plainLine(to, 40)}" is an item id; reply to the thread id before "on".
+` : "";
+  const lines = pending.slice(0, HINT_LIMIT).map((i) => `  [${i.kind}] ${plainLine(i.id, 40)} on ${plainLine(i.item, 40)}: ${plainLine(i.text, 80)}`);
+  if (pending.length > HINT_LIMIT)
+    lines.push(`  ... and ${pending.length - HINT_LIMIT} more; run \`${cmd}\` to see all`);
+  return `${onItem}Reply to one of these ids with --reply <id>:
+${lines.join(`
+`)}
+`;
 }
 function watchSends(ctx, w) {
   const { id, dir, file, read, questions, revision, values } = w;
@@ -2822,6 +3934,7 @@ function watchSends(ctx, w) {
     let over = false;
     const finish = (code) => {
       over = true;
+      heartbeat.stop(code === EXIT.ok);
       for (const x of watchers)
         x.close();
       clearTimeout(timer);
@@ -2853,13 +3966,16 @@ function watchSends(ctx, w) {
       }).then((r) => {
         if (r.stdout)
           ctx.io.stdout(r.stdout);
-        if (r.stderr)
-          ctx.io.stderr(r.stderr);
+        const err = r.stderr || r.error;
+        if (err)
+          ctx.io.stderr(err);
       });
     };
     watchers.push(watchFolder(dir, (f) => f === `${id}.answers.json`, () => setTimeout(check, 50)));
-    if (existsSync2(file))
-      watchers.push(watch2(file, () => setTimeout(check, 50)));
+    const own = existsSync3(file) ? safeWatch(file, () => setTimeout(check, 50)) : undefined;
+    if (own)
+      watchers.push(own);
+    const heartbeat = startHeartbeat(dir, id);
     ctx.io.stderr(values.notify ? `watching ${id}; each send runs: ${values.notify}
 ` : `waiting for the reviewer to send something on ${id}…
 `);
@@ -2875,39 +3991,276 @@ function watchSends(ctx, w) {
 }
 
 // src/commands/check.ts
-import { readFileSync as readFileSync3 } from "node:fs";
-import { basename, dirname as dirname2, resolve as resolve3 } from "node:path";
+import { readFileSync as readFileSync6 } from "node:fs";
+import { basename as basename3, dirname as dirname5, resolve as resolve5 } from "node:path";
 
 // src/blocks/annotated-text.ts
 var exports_annotated_text = {};
 __export(exports_annotated_text, {
+  REF: () => REF,
   anchoredText: () => anchoredText,
   check: () => check,
   markdown: () => markdown,
   render: () => render,
   resolveAnchors: () => resolveAnchors,
   resolveSelector: () => resolveSelector,
+  shape: () => shape,
   tint: () => tint
 });
 
+// src/lib/guard.ts
+var RENAMED = Symbol("renamed");
+function renamed(shape, from) {
+  return Object.assign({ ...shape }, { [RENAMED]: from });
+}
+var renamesOf = (shape) => shape[RENAMED] ?? {};
+var SYNONYMS = {
+  body: ["text", "detail"],
+  content: ["text", "detail"],
+  description: ["detail", "summary", "purpose"],
+  desc: ["detail", "summary"],
+  operations: ["ops"],
+  cols: ["columns"],
+  col: ["column"],
+  label: ["title"],
+  name: ["title"],
+  steps: ["rungs"],
+  question: ["prompt"],
+  text: ["prompt", "detail"],
+  choices: ["options"],
+  image: ["src"],
+  url: ["href", "src"],
+  path: ["src"]
+};
+function distance(a, b) {
+  const row = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1;i <= a.length; i++) {
+    let prev = row[0];
+    row[0] = i;
+    for (let j = 1;j <= b.length; j++) {
+      const here = row[j];
+      row[j] = Math.min(row[j] + 1, row[j - 1] + 1, prev + (a[i - 1] === b[j - 1] ? 0 : 1));
+      prev = here;
+    }
+  }
+  return row[b.length];
+}
+function didYouMean2(key, known) {
+  const k = key.toLowerCase();
+  const hit = (Object.hasOwn(SYNONYMS, k) ? SYNONYMS[k] : []).find((s) => known.includes(s));
+  if (hit)
+    return hit;
+  let best;
+  for (const c of known) {
+    const l = c.toLowerCase();
+    const d = distance(k, l);
+    const close = Math.min(k.length, l.length) >= 3 && (k.startsWith(l) || l.startsWith(k)) || d <= (Math.max(k.length, l.length) >= 5 ? 2 : 1);
+    if (close && (!best || d < best.d))
+      best = { key: c, d };
+  }
+  return best?.key;
+}
+var isObject = (v) => !!v && typeof v === "object" && !Array.isArray(v);
+function name(v) {
+  return typeof v === "string" && v ? v : "?";
+}
+function itemAt(base, field, i, v) {
+  const id = isObject(v) && typeof v.id === "string" && v.id ? ` (id ${v.id})` : "";
+  return `${base ? `${base}.` : ""}${field}[${i}]${id}`;
+}
+function blockAt(i, b) {
+  const o = isObject(b) ? b : {};
+  return `blocks[${i}] (${name(o.type)} ${name(o.id)})`;
+}
+var fieldAt = (base, field) => base ? `${base}.${field}` : field;
+function describe(spec, finite = false) {
+  const number = finite ? "finite number" : "number";
+  if (typeof spec === "string")
+    return {
+      string: "a string",
+      number: `a ${number}`,
+      boolean: "true or false",
+      scalar: `a string, ${number} or boolean`,
+      object: "an object",
+      any: "any value"
+    }[spec];
+  if ("list" in spec)
+    return "a list";
+  if ("either" in spec)
+    return `${describe(spec.either[0], finite)} or ${describe(spec.either[1], finite)}`;
+  return "an object";
+}
+function matches(v, spec) {
+  if (spec === "any")
+    return true;
+  if (spec === "string")
+    return typeof v === "string";
+  if (spec === "number")
+    return typeof v === "number" && Number.isFinite(v);
+  if (spec === "boolean")
+    return typeof v === "boolean";
+  if (spec === "scalar")
+    return typeof v === "string" || typeof v === "boolean" || typeof v === "number" && Number.isFinite(v);
+  if (spec === "object")
+    return isObject(v);
+  if ("list" in spec)
+    return Array.isArray(v);
+  if ("either" in spec)
+    return spec.either.some((s) => matches(v, s));
+  return isObject(v);
+}
+function checkShape(value, shape, at) {
+  const out = { errors: [], warnings: [] };
+  walkShape(value, shape, at, out);
+  return out;
+}
+var prefix = (at) => at ? `${at}: ` : "";
+function walkShape(value, shape, at, out) {
+  if (!isObject(value)) {
+    out.errors.push(`${prefix(at)}must be an object`);
+    return;
+  }
+  const known = Object.keys(shape).map((k) => k.replace(/\?$/, ""));
+  const missing = [];
+  for (const [key, spec] of Object.entries(shape)) {
+    const field = key.replace(/\?$/, "");
+    const v = Object.hasOwn(value, field) ? value[field] : undefined;
+    if (v === undefined) {
+      if (!key.endsWith("?"))
+        missing.push(field);
+      continue;
+    }
+    walkValue(v, spec, at, field, !key.endsWith("?"), out);
+  }
+  const renames = renamesOf(shape);
+  for (const key of Object.keys(value)) {
+    if (known.includes(key) || !Object.hasOwn(renames, key))
+      continue;
+    const to = renames[key];
+    if (typeof to !== "string") {
+      out.errors.push(`${prefix(at)}\`${key}\` is gone; ${to.gone}`);
+      continue;
+    }
+    if (Object.hasOwn(value, to)) {
+      out.errors.push(`${prefix(at)}\`${key}\` is now \`${to}\`; remove \`${key}\`, \`${to}\` is already set`);
+      continue;
+    }
+    out.errors.push(`${prefix(at)}\`${key}\` is now \`${to}\`; rename it to \`${to}\``);
+    if (missing.includes(to))
+      missing.splice(missing.indexOf(to), 1);
+  }
+  const misspelt = new Map;
+  for (const key of Object.keys(value)) {
+    if (known.includes(key) || Object.hasOwn(renames, key))
+      continue;
+    const guess = didYouMean2(key, known);
+    if (guess && missing.includes(guess) && !misspelt.has(guess)) {
+      misspelt.set(guess, key);
+      continue;
+    }
+    out.warnings.push(`${prefix(at)}unknown field \`${key}\`; ${guess ? `did you mean \`${guess}\`?` : `known fields: ${known.join(", ")}`}`);
+  }
+  for (const field of missing) {
+    const found = misspelt.get(field);
+    out.errors.push(`${prefix(at)}\`${field}\` is required${found ? `; found \`${found}\`, rename it to \`${field}\`` : ""}`);
+  }
+}
+function shapeOf(v, spec) {
+  if (typeof spec !== "object")
+    return;
+  if ("shape" in spec)
+    return spec.shape;
+  if ("either" in spec) {
+    const s = spec.either.find((x) => matches(v, x));
+    return s ? shapeOf(v, s) : undefined;
+  }
+  return;
+}
+function walkValue(v, spec, at, field, required, out) {
+  if (!matches(v, spec)) {
+    const nonFinite = typeof v === "number" && !Number.isFinite(v);
+    out.errors.push(`${prefix(at)}\`${field}\` must be ${describe(spec, nonFinite)}`);
+    return;
+  }
+  if (spec === "string") {
+    if (required && !v.trim())
+      out.errors.push(`${prefix(at)}\`${field}\` is required`);
+    return;
+  }
+  if (typeof spec === "string")
+    return;
+  if ("list" in spec) {
+    v.forEach((x, i) => {
+      const shape = isObject(x) ? shapeOf(x, spec.list) : undefined;
+      if (shape)
+        walkShape(x, shape, itemAt(at, field, i, x), out);
+      else
+        walkValue(x, spec.list, at, `${field}[${i}]`, true, out);
+    });
+    return;
+  }
+  if ("either" in spec) {
+    const s = spec.either.find((x) => matches(v, x));
+    const shape = shapeOf(v, s);
+    if (shape)
+      walkShape(v, shape, fieldAt(at, field), out);
+    else
+      walkValue(v, s, at, field, required, out);
+    return;
+  }
+  if ("record" in spec) {
+    for (const [k, x] of Object.entries(v))
+      walkValue(x, spec.record, at, `${field}.${k}`, true, out);
+    return;
+  }
+  if ("tagged" in spec) {
+    const o = v;
+    const tag = o[spec.tagged];
+    const cases = Object.keys(spec.cases);
+    const shape = typeof tag === "string" && Object.hasOwn(spec.cases, tag) ? spec.cases[tag] : undefined;
+    if (!shape) {
+      out.errors.push(`${prefix(fieldAt(at, field))}\`${spec.tagged}\` must be one of ${cases.join(", ")}`);
+      return;
+    }
+    walkShape(v, { [spec.tagged]: "string", ...shape }, fieldAt(at, field), out);
+    return;
+  }
+  walkShape(v, spec.shape, fieldAt(at, field), out);
+}
+var listOf = (shape) => ({ list: { shape } });
+var NODE = { id: "string", "source?": "any" };
+
 // src/lib/media.ts
-import { existsSync as existsSync3 } from "node:fs";
-import { join as join4, posix as posix2 } from "node:path";
+import { existsSync as existsSync4 } from "node:fs";
+import { join as join7, posix as posix2 } from "node:path";
 var DEFAULT_STORY_WIDTH = 1440;
 var DEFAULT_STORY_HEIGHT = 480;
 var STORY_ID = /^[a-z0-9][a-z0-9-]*--[a-z0-9][a-z0-9-]*$/;
 var VIDEO = /\.(webm|mp4)$/i;
+var STORY_REF = renamed({
+  id: "string",
+  "title?": "string",
+  "globals?": "string",
+  "height?": "number",
+  "width?": "number",
+  "storybook?": "string"
+}, { label: "title" });
+var SHOT = { path: "string", "caption?": "string" };
+var MEDIA = {
+  "stories?": { list: { either: ["string", { shape: STORY_REF }] } },
+  "shots?": { list: { either: ["string", { shape: SHOT }] } }
+};
 function stories(m) {
-  return (m?.stories ?? []).map((s) => typeof s === "string" ? { id: s } : s);
+  return (Array.isArray(m?.stories) ? m.stories : []).map((s) => typeof s === "string" ? { id: s } : s);
 }
 function shots(m) {
-  return (m?.shots ?? []).map((s) => typeof s === "string" ? { path: s } : s);
+  return (Array.isArray(m?.shots) ? m.shots : []).map((s) => typeof s === "string" ? { path: s } : s);
 }
 function hasMedia(m) {
   return !!(m?.stories?.length || m?.shots?.length);
 }
 function storyBase(ref, doc) {
-  return (ref.storybook ?? doc.storybook)?.replace(/\/+$/, "") || undefined;
+  return webUrl(ref.storybook ?? doc.storybook)?.replace(/\/+$/, "") || undefined;
 }
 function storyUrls(ref, base) {
   const q = new URLSearchParams({ id: ref.id, viewMode: "story" });
@@ -2923,19 +4276,20 @@ function storyUrls(ref, base) {
   };
 }
 function shotSrc(path) {
-  return path.startsWith("x/") ? path : `/f/${encodePath(path)}`;
+  return path.startsWith("x/") ? `x/${encodePath(path.slice(2))}` : `/f/${encodePath(path)}`;
 }
+var pixels = (n, dflt) => Number.isInteger(n) && n > 0 ? n : dflt;
 function storyHtml(ref, base) {
-  const name = `${escapeHtml(ref.label ?? ref.id)}${ref.globals ? ` · ${escapeHtml(ref.globals)}` : ""}`;
+  const name = `${escapeHtml(ref.title ?? ref.id)}${ref.globals ? ` · ${escapeHtml(ref.globals)}` : ""}`;
   if (!base)
     return `<div class="frame"><div class="frame-bar"><span class="name">${name}</span></div><div class="frame-missing">No Storybook URL for <code>${escapeHtml(ref.id)}</code>. Set <code>storybook</code> on the document.</div></div>`;
   const u = storyUrls(ref, base);
-  const w = ref.width ?? DEFAULT_STORY_WIDTH;
-  const h = ref.height ?? DEFAULT_STORY_HEIGHT;
-  return `<div class="frame story" data-story-base="${escapeHtml(base)}"><div class="frame-bar"><span class="name">${name}</span><a href="${escapeHtml(u.open)}" target="_blank" rel="noopener">Storybook</a><a href="${escapeHtml(u.full)}" target="_blank" rel="noopener">Frame</a><button type="button" class="frame-expand" title="Expand">Expand</button></div><div class="stage-fit" data-w="${w}" data-h="${h}" style="aspect-ratio: ${w} / ${h}"><iframe data-src="${escapeHtml(u.frame)}" title="${escapeHtml(ref.label ?? ref.id)}" loading="lazy"></iframe></div></div>`;
+  const w = pixels(ref.width, DEFAULT_STORY_WIDTH);
+  const h = pixels(ref.height, DEFAULT_STORY_HEIGHT);
+  return `<div class="frame story" data-story-base="${escapeHtml(base)}"><div class="frame-bar"><span class="name">${name}</span><a href="${escapeHtml(u.open)}" target="_blank" rel="noopener">Storybook</a><a href="${escapeHtml(u.full)}" target="_blank" rel="noopener">Frame</a><button type="button" class="frame-expand" title="Expand">Expand</button></div><div class="stage-fit" data-w="${w}" data-h="${h}" style="aspect-ratio: ${w} / ${h}"><iframe data-src="${escapeHtml(u.frame)}" title="${escapeHtml(ref.title ?? ref.id)}" loading="lazy"></iframe></div></div>`;
 }
 function shotHtml(shot) {
-  const src = escapeHtml(shotSrc(shot.path));
+  const src = escapeHtml(shotSrc(String(shot.path ?? "")));
   const cap = shot.caption ? `<div class="frame-bar"><span class="name">${escapeHtml(shot.caption)}</span></div>` : "";
   const body = VIDEO.test(shot.path) ? `<video src="${src}" controls muted></video>` : `<figure class="fig shot"><img src="${src}" alt="${escapeHtml(shot.caption ?? shot.path)}" loading="lazy"></figure>`;
   return `<div class="frame shot">${cap}${body}</div>`;
@@ -2953,7 +4307,7 @@ function mediaMarkdown(m, doc, pad = "") {
   const out = [];
   for (const s of stories(m)) {
     const base = storyBase(s, doc);
-    out.push(`${pad}- Story: ${base ? `[${s.label ?? s.id}](${storyUrls(s, base).open})` : `\`${s.id}\``}`);
+    out.push(`${pad}- Story: ${base ? `[${s.title ?? s.id}](${storyUrls(s, base).open})` : `\`${s.id}\``}`);
   }
   for (const s of shots(m))
     out.push(`${pad}- ![${s.caption ?? s.path}](${s.path})`);
@@ -2962,53 +4316,69 @@ function mediaMarkdown(m, doc, pad = "") {
 function checkMedia(m, where) {
   const errors = [];
   if (m?.stories !== undefined && !Array.isArray(m.stories))
-    errors.push(`${where}: stories must be a list`);
+    errors.push(`${where}: \`stories\` must be a list`);
   if (m?.shots !== undefined && !Array.isArray(m.shots))
-    errors.push(`${where}: shots must be a list`);
+    errors.push(`${where}: \`shots\` must be a list`);
   if (errors.length)
     return errors;
   for (const [i, s] of stories(m).entries()) {
-    const at = `${where} story ${i + 1}`;
+    const at = itemAt(where, "stories", i, s);
     if (!s || typeof s.id !== "string" || !STORY_ID.test(s.id))
-      errors.push(`${at}: id must be a story id such as "explore-file-view--tabs-today"`);
+      errors.push(`${at}: \`id\` must be a story id such as "explore-file-view--tabs-today"`);
     for (const k of ["width", "height"])
       if (s?.[k] !== undefined && !(Number.isInteger(s[k]) && s[k] > 0))
-        errors.push(`${at}: ${k} must be a positive number of pixels`);
-    if (s?.storybook !== undefined && !/^https?:\/\//.test(s.storybook))
-      errors.push(`${at}: storybook must be an http(s) URL`);
+        errors.push(`${at}: \`${k}\` must be a positive number of pixels`);
+    if (s?.storybook !== undefined && !webUrl(s.storybook))
+      errors.push(`${at}: \`storybook\` must be an http(s) URL`);
   }
   for (const [i, s] of shots(m).entries()) {
-    const at = `${where} shot ${i + 1}`;
-    if (!s || typeof s.path !== "string" || !safePath(s.path))
-      errors.push(`${at}: path must be a relative path from the repository root, or x/<file>`);
+    if (!s || !safePath(s.path))
+      errors.push(`${itemAt(where, "shots", i, s)}: \`path\` must be a relative path from the repository root, or x/<file>`);
   }
   return errors;
 }
 function safePath(p) {
-  return !!p && !/^[a-z][a-z0-9+.-]*:/i.test(p) && !p.startsWith("/") && !posix2.normalize(p).split("/").includes("..");
+  return typeof p === "string" && !!p && !/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/.test(p) && !/^[a-z][a-z0-9+.-]*:/i.test(p) && !p.startsWith("/") && !posix2.normalize(p).split("/").includes("..");
 }
 function allMedia(doc, questions) {
   const out = [];
-  for (const b of doc.blocks ?? [])
-    if (b.type === "story")
-      out.push({ where: `story ${b.id}`, m: b });
-  for (const q of questions) {
-    out.push({ where: `question ${q.id}`, m: q });
-    for (const o of q.options ?? [])
-      out.push({ where: `question ${q.id} option ${o.id}`, m: o });
+  (Array.isArray(doc.blocks) ? doc.blocks : []).forEach((b, i) => {
+    if (isObject(b) && b.type === "story")
+      out.push({ where: blockAt(i, b), m: b });
+  });
+  for (const { q, at } of questions) {
+    out.push({ where: at, m: q });
+    (Array.isArray(q.options) ? q.options : []).forEach((o, i) => {
+      if (isObject(o))
+        out.push({ where: itemAt(at, "options", i, o), m: o });
+    });
   }
   return out;
+}
+function mediaFile(path, docDir, root) {
+  return path.startsWith("x/") ? join7(docDir, path) : join7(root, path);
 }
 function missingShots(lists, docDir, root) {
   const errors = [];
   for (const { where, m } of lists)
-    for (const s of shots(m)) {
-      if (!s?.path || !safePath(s.path))
-        continue;
-      const file = s.path.startsWith("x/") ? join4(docDir, s.path) : join4(root, s.path);
-      if (!existsSync3(file))
-        errors.push(`${where}: shot ${s.path} does not exist`);
-    }
+    shots(m).forEach((s, i) => {
+      if (!isObject(s) || !safePath(s.path))
+        return;
+      if (!existsSync4(mediaFile(s.path, docDir, root)))
+        errors.push(`${itemAt(where, "shots", i, s)}: ${s.path} does not exist`);
+    });
+  return errors;
+}
+function missingFigures(blocks, docDir, root) {
+  const errors = [];
+  blocks.forEach((b, i) => {
+    if (!isObject(b) || b.type !== "figure" || !safePath(b.src))
+      return;
+    if (existsSync4(mediaFile(b.src, docDir, root)))
+      return;
+    const beside = !b.src.startsWith("x/") && existsSync4(join7(docDir, "x", b.src));
+    errors.push(`${blockAt(i, b)}: \`src\` ${b.src} does not exist${beside ? `; it is in x/ beside the document, so write x/${b.src}` : ""}`);
+  });
   return errors;
 }
 
@@ -3017,12 +4387,25 @@ function loc(source) {
   if (!source)
     return "";
   const list = Array.isArray(source) ? source : [source];
-  return list.map((s) => `\`${s.uri}${s.range ? `:L${s.range.start.line + 1}` : ""}\``).join(", ");
+  return list.map((s) => {
+    const uri = typeof s.uri === "string" ? s.uri : "";
+    const path = repoPath(uri) ?? (localPath(uri) ?? uri).split(/[\\/]/).filter(Boolean).pop() ?? "";
+    const line = Number.isInteger(s.range?.start?.line) ? `:L${s.range.start.line + 1}` : "";
+    return path ? codeSpan(`${path}${line}`) : "";
+  }).filter(Boolean).join(", ");
+}
+function codeSpan(text) {
+  const line = text.replace(/\r\n?|\n/g, " ");
+  const longest = Math.max(0, ...(line.match(/`+/g) ?? []).map((run) => run.length));
+  const ticks = "`".repeat(longest + 1);
+  const pad = /^[ `]|[ `]$/.test(line) && line.trim() ? " " : "";
+  return `${ticks}${pad}${line}${pad}${ticks}`;
 }
 function fence(code, lang = "") {
   if (!code)
     return "";
-  const ticks = code.includes("```") ? "````" : "```";
+  const longest = Math.max(0, ...(code.match(/`+/g) ?? []).map((run) => run.length));
+  const ticks = "`".repeat(Math.max(3, longest + 1));
   return `${ticks}${lang}
 ${code.replace(/\n$/, "")}
 ${ticks}`;
@@ -3061,7 +4444,7 @@ function questionMarkdown(q, n, doc = {}) {
     return [head, ...closed, ...media, "   - _free text_"].join(`
 `);
   const opts = (q.options ?? []).flatMap((o) => [
-    `   - [ ] ${o.label}${o.id === q.recommended && q.status !== "closed" ? " **(recommended)**" : ""}${o.detail ? ` — ${o.detail}` : ""}`,
+    `   - [ ] ${o.title}${o.id === q.recommended && q.status !== "closed" ? " **(recommended)**" : ""}${o.detail ? ` — ${o.detail}` : ""}`,
     ...mediaMarkdown(o, doc, "     ")
   ]);
   return [head, ...closed, ...media, q.kind === "multi" ? "   _choose any_" : "", ...opts].filter(Boolean).join(`
@@ -3108,6 +4491,33 @@ function renderMarkdown(doc) {
 }
 
 // src/blocks/annotated-text.ts
+var REF = { table: "string", column: "string" };
+var shape = {
+  "language?": "string",
+  text: "string",
+  steps: listOf({
+    ...NODE,
+    title: "string",
+    anchor: {
+      tagged: "type",
+      cases: {
+        TextQuoteSelector: {
+          exact: "string",
+          "prefix?": "string",
+          "suffix?": "string"
+        },
+        TextPositionSelector: { start: "number", end: "number" }
+      }
+    },
+    summary: "string",
+    detail: "string",
+    "touches?": { list: { either: ["string", { shape: REF }] } },
+    "cost?": {
+      shape: renamed({ "rows?": "number", "detail?": "string" }, { note: "detail" })
+    },
+    "warnings?": { list: "string" }
+  })
+};
 var SQL_KEYWORDS = /\b(WITH|RECURSIVE|SELECT|DISTINCT|FROM|WHERE|GROUP BY|HAVING|ORDER BY|LIMIT|OFFSET|JOIN|LEFT|RIGHT|INNER|OUTER|FULL|CROSS|ON|AS|AND|OR|NOT|IN|IS|NULL|CASE|WHEN|THEN|ELSE|END|OVER|PARTITION BY|ROWS|BETWEEN|UNBOUNDED|PRECEDING|CURRENT ROW|UNION|ALL|EXISTS|INSERT|INTO|VALUES|UPDATE|SET|DELETE|CREATE|ALTER|DROP|TABLE|TYPE|ENUM|INDEX|COLUMN|ADD|CONSTRAINT|REFERENCES|PRIMARY KEY|FOREIGN KEY|DEFAULT|CONCURRENTLY|CHECK|VALIDATE|RETURNING|ASC|DESC|NULLS|FIRST|LAST|COALESCE|COUNT|SUM|AVG|MIN|MAX|ROW_NUMBER|RANK|LAG|LEAD|DATE_TRUNC|INTERVAL|TRUE|FALSE)\b/g;
 var CODE_KEYWORDS = /\b(import|export|from|const|let|var|function|return|if|else|for|while|switch|case|break|continue|new|class|extends|interface|type|async|await|try|catch|finally|throw|typeof|instanceof|in|of|null|undefined|true|false|this|default|def|elif|lambda|with|as|pass|yield|raise|except|not|and|or|is|None|True|False|fn|pub|struct|enum|impl|match|mut|use|mod)\b/g;
 function tint(escaped, language) {
@@ -3118,6 +4528,11 @@ function tint(escaped, language) {
   return escaped;
 }
 var ref = (r) => typeof r === "string" ? r : `${r.table}.${r.column}`;
+function splitsPair(text, at) {
+  const before = text.charCodeAt(at - 1);
+  const after = text.charCodeAt(at);
+  return before >= 55296 && before <= 56319 && after >= 56320 && after <= 57343;
+}
 function occurrences(text, needle) {
   const out = [];
   let from = 0;
@@ -3131,9 +4546,12 @@ function occurrences(text, needle) {
 }
 function resolveSelector(text, sel, who) {
   if (sel.type === "TextPositionSelector") {
-    if (!(sel.start >= 0 && sel.end > sel.start && sel.end <= text.length)) {
+    if (!(Number.isInteger(sel.start) && Number.isInteger(sel.end) && sel.start >= 0 && sel.end > sel.start && sel.end <= text.length)) {
       throw new Error(`${who}: TextPositionSelector ${sel.start}-${sel.end} is outside the text (length ${text.length})`);
     }
+    for (const at of [sel.start, sel.end])
+      if (splitsPair(text, at))
+        throw new Error(`${who}: TextPositionSelector ${sel.start}-${sel.end} splits a character at ${at}; offsets count UTF-16 units, so an emoji takes two`);
     return { start: sel.start, end: sel.end };
   }
   if (sel.type !== "TextQuoteSelector")
@@ -3189,8 +4607,8 @@ function stepHtml(step, n) {
   return `<h2>${n}. ${escapeHtml(step.title)}</h2>
 <div class="kicker">anchored to <code>${escapeHtml(anchor)}</code></div>
 ${prose(step.detail)}
-${touches ? `<section><h4>Touches</h4><p>${touches}</p></section>` : ""}
-${step.cost ? `<section><h4>Cost</h4><dl class="dl">${step.cost.rows != null ? `<dt>Rows</dt><dd>${step.cost.rows.toLocaleString()}</dd>` : ""}${step.cost.note ? `<dt>Note</dt><dd>${escapeHtml(step.cost.note)}</dd>` : ""}</dl></section>` : ""}
+${touches ? `<section><h3 class="sub">Touches</h3><p>${touches}</p></section>` : ""}
+${step.cost ? `<section><h3 class="sub">Cost</h3><dl class="dl">${step.cost.rows != null ? `<dt>Rows</dt><dd>${numberText(step.cost.rows)}</dd>` : ""}${step.cost.detail ? `<dt>Detail</dt><dd>${escapeHtml(step.cost.detail)}</dd>` : ""}</dl></section>` : ""}
 ${step.warnings?.map((w) => `<div class="warn">${escapeHtml(w)}</div>`).join("") ?? ""}`;
 }
 function render(b) {
@@ -3206,28 +4624,17 @@ function render(b) {
   const left = `<pre class="sql">${anchoredText(b.text, ranges, b.language)}</pre>`;
   return { left, sections };
 }
-function check(b) {
+function check(b, at) {
   const errors = [];
-  if (!b.text?.trim())
-    errors.push(`annotated-text ${b.id}: text is required`);
-  if (!b.steps?.length)
-    errors.push(`annotated-text ${b.id}: needs at least one step`);
-  for (const s of b.steps ?? []) {
-    for (const k of ["title", "summary", "detail"])
-      if (!s[k])
-        errors.push(`step ${s.id}: ${k} is required`);
-    if (!s.anchor?.type)
-      errors.push(`step ${s.id}: anchor must be a TextQuoteSelector or TextPositionSelector`);
-  }
-  for (const s of b.steps ?? []) {
-    if (!b.text || !s.anchor?.type)
-      continue;
+  if (!b.steps.length)
+    errors.push(`${at}: needs at least one step`);
+  b.steps.forEach((s, i) => {
     try {
-      resolveSelector(b.text, s.anchor, `step ${s.id}`);
+      resolveSelector(b.text, s.anchor, `${itemAt(at, "steps", i, s)}.anchor`);
     } catch (e) {
       errors.push(String(e instanceof Error ? e.message : e));
     }
-  }
+  });
   return errors;
 }
 function markdown(b) {
@@ -3236,7 +4643,7 @@ function markdown(b) {
     const extra = [
       s.touches?.length ? `touches ${s.touches.map((t) => typeof t === "string" ? t : `${t.table}.${t.column}`).join(", ")}` : "",
       s.cost?.rows != null ? `~${s.cost.rows} rows` : "",
-      s.cost?.note ?? ""
+      s.cost?.detail ?? ""
     ].filter(Boolean).join(" · ");
     return parts(`${i + 1}. **${s.title}**${quote}: ${s.summary}${extra ? ` _(${extra})_` : ""}${s.source ? ` ${loc(s.source)}` : ""}`, s.detail ? indent(s.detail) : "", ...(s.warnings ?? []).map((w) => `   - ⚠ ${w}`));
   });
@@ -3246,11 +4653,14 @@ function markdown(b) {
 // src/blocks/code-flow.ts
 var exports_code_flow = {};
 __export(exports_code_flow, {
+  EDGE: () => EDGE,
+  KINDS: () => KINDS,
   check: () => check2,
   edges: () => edges,
   markdown: () => markdown2,
   mermaidSource: () => mermaidSource,
-  render: () => render2
+  render: () => render2,
+  shape: () => shape2
 });
 
 // src/lib/diagram.ts
@@ -3258,7 +4668,7 @@ var ell = (s, max) => s.length > max ? s.slice(0, max - 1) + "…" : s;
 function svgText(x, y, text, cls, anchor = "middle", title) {
   return `<text x="${x}" y="${y}" class="${cls}" text-anchor="${anchor}">${title ? `<title>${escapeHtml(title)}</title>` : ""}${escapeHtml(text)}</text>`;
 }
-function sequenceSvg(participants, messages) {
+function sequenceSvg(participants, messages, label = "Sequence diagram") {
   const colW = Math.max(170, ...participants.map((p) => p.label.length * 7 + 40));
   const left = 30;
   const headH = 30;
@@ -3291,9 +4701,9 @@ function sequenceSvg(participants, messages) {
     const marker = m.kind === "return" || m.kind === "emit" ? "open" : m.kind === "error" ? "cross" : "head";
     return `<g class="seq-msg ${m.kind}" data-node="${escapeHtml(m.id)}">${band}<line x1="${x1}" y1="${y}" x2="${x2 - dir * 6}" y2="${y}" class="arrow ${m.kind}" marker-end="url(#${marker})"/>${svgText(mid, y - 6, ell(label, Math.floor(Math.abs(x2 - x1) / 6.4)), "msg", "middle", label)}</g>`;
   }).join("");
-  return `<svg class="diagram seq" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" role="img">${DEFS}${parts}${msgs}</svg>`;
+  return `<svg class="diagram seq" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" role="group" aria-label="${escapeHtml(label)}">${DEFS}${parts}${msgs}</svg>`;
 }
-function flowchartSvg(nodes, edges) {
+function flowchartSvg(nodes, edges, label = "Flow diagram") {
   const w = 260;
   const h = 46;
   const rowH = 78;
@@ -3344,7 +4754,7 @@ function flowchartSvg(nodes, edges) {
       labels.push(labelAt(e.label, xr, (ya + yb) / 2, "middle"));
     return `<g class="fc-edge ${forward ? "skip" : "loop"}"><path d="${d}" class="edge" marker-end="url(#fhead)"/></g>`;
   }).join("");
-  return `<svg class="diagram fc" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" role="img">${DEFS}${lines}${labels.join("")}${shapes}</svg>`;
+  return `<svg class="diagram fc" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" role="group" aria-label="${escapeHtml(label)}">${DEFS}${lines}${labels.join("")}${shapes}</svg>`;
 }
 function labelAt(text, x, y, anchor) {
   const tw = text.length * 6.2 + 10;
@@ -3358,13 +4768,42 @@ var DEFS = `<defs>
 <marker id="fhead" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="mk"/></marker>
 </defs>`;
 function diagramBlock(svg, mermaid, id) {
-  return `<div class="diagram-wrap">${svg}</div><details class="mermaid-src"><summary>Mermaid source <button type="button" class="quiet copy" data-copy="mm-${escapeHtml(id)}">Copy</button></summary><pre id="mm-${escapeHtml(id)}">${escapeHtml(mermaid)}</pre></details>`;
+  return `<div class="diagram-wrap">${svg}</div><details class="mermaid-src"><summary>Mermaid source</summary><button type="button" class="quiet copy" data-copy="mm-${escapeHtml(id)}">Copy</button><pre id="mm-${escapeHtml(id)}">${escapeHtml(mermaid)}</pre></details>`;
 }
-var mmId = (s) => s.replace(/[^A-Za-z0-9_]/g, "_");
-var mmText = (s) => s.replace(/"/g, "#quot;");
+function mmIds(prefix) {
+  const ids = new Map;
+  return (key) => {
+    if (!ids.has(key))
+      ids.set(key, `${prefix}${ids.size}`);
+    return ids.get(key);
+  };
+}
+var MM_ENTITY = { "#": "#35;", '"': "#quot;", ";": "#59;", "]": "#93;" };
+var mmText = (s) => s.replace(/[#";\]]/g, (c) => MM_ENTITY[c]);
 
 // src/blocks/code-flow.ts
 var KINDS = ["call", "branch", "loop", "await", "return", "emit", "error"];
+var EDGE = { to: "string", "when?": "string" };
+var shape2 = {
+  "language?": "string",
+  "entry?": "string",
+  steps: listOf({
+    ...NODE,
+    title: "string",
+    "symbol?": "string",
+    "kind?": "string",
+    "depth?": "number",
+    "code?": "string",
+    summary: "string",
+    "detail?": "string",
+    "next?": listOf(EDGE),
+    "warnings?": { list: "string" }
+  })
+};
+function kindChip(kind) {
+  const k = oneOf(kind, KINDS, "");
+  return k ? `<span class="chip kind-${k}">${k}</span> ` : "";
+}
 function participantOf(s, fallback) {
   const src = Array.isArray(s.source) ? s.source[0] : s.source;
   return s.symbol ?? src?.uri.split("/").pop() ?? fallback;
@@ -3390,7 +4829,7 @@ function build(b) {
   const stack = [caller.id];
   const messages = b.steps.map((s, i) => {
     const me = pid(participantOf(s, b.title ?? b.id));
-    const depth = Math.max(0, s.depth ?? 0);
+    const depth = Number.isInteger(s.depth) ? Math.max(0, s.depth) : 0;
     stack.length = Math.min(stack.length, depth + 1);
     const from = stack[stack.length - 1] ?? caller.id;
     stack[depth + 1] = me;
@@ -3411,7 +4850,7 @@ function build(b) {
   return { participants, messages };
 }
 function mermaid(participants, messages) {
-  const name = new Map(participants.map((p) => [p.id, mmId(p.label)]));
+  const name = new Map(participants.map((p, i) => [p.id, `p${i}`]));
   const lines = [
     "sequenceDiagram",
     ...participants.map((p) => `  participant ${name.get(p.id)} as ${mmText(p.label)}`)
@@ -3439,37 +4878,35 @@ function render2(b) {
   const number = new Map(b.steps.map((s, i) => [s.id, i + 1]));
   const titles = new Map(b.steps.map((s) => [s.id, s.title]));
   const code = (s) => s ? `<pre class="code">${tint(escapeHtml(s), b.language)}</pre>` : "";
-  const left = `<div class="flow">${b.entry ? `<div class="trace-input"><span class="eyebrow">Entry</span> ${escapeHtml(b.entry)}</div>` : ""}${diagramBlock(sequenceSvg(participants, messages), mermaid(participants, messages), b.id)}</div>`;
+  const left = `<div class="flow">${b.entry ? `<div class="trace-input"><span class="eyebrow">Entry</span> ${escapeHtml(b.entry)}</div>` : ""}${diagramBlock(sequenceSvg(participants, messages, b.title ? `Sequence diagram: ${b.title}` : undefined), mermaid(participants, messages), b.id)}</div>`;
   const sections = b.steps.map((s, i) => ({
     id: s.id,
     n: i + 1,
     title: s.title,
     source: s.source,
-    html: `<h2>${i + 1}. ${escapeHtml(s.title)}</h2><div class="kicker">${s.kind ? `<span class="chip kind-${s.kind}">${s.kind}</span> ` : ""}${s.symbol ? `<code>${escapeHtml(s.symbol)}</code> · ` : ""}${escapeHtml(s.summary)}</div>${code(s.code)}${prose(s.detail)}${edges(s, number, titles)}${s.warnings?.map((w) => `<div class="warn">${escapeHtml(w)}</div>`).join("") ?? ""}`
+    html: `<h2>${i + 1}. ${escapeHtml(s.title)}</h2><div class="kicker">${kindChip(s.kind)}${s.symbol ? `<code>${escapeHtml(s.symbol)}</code> · ` : ""}${escapeHtml(s.summary)}</div>${code(s.code)}${prose(s.detail)}${edges(s, number, titles)}${s.warnings?.map((w) => `<div class="warn">${escapeHtml(w)}</div>`).join("") ?? ""}`
   }));
   return { left, sections };
 }
-function check2(b) {
+function check2(b, at) {
   const errors = [];
-  if ((b.steps?.length ?? 0) < 2)
-    errors.push(`code-flow ${b.id}: needs at least two steps`);
-  const ids = new Set((b.steps ?? []).map((s) => s.id));
-  for (const s of b.steps ?? []) {
-    for (const k of ["title", "summary"])
-      if (!s[k])
-        errors.push(`code-flow step ${s.id}: ${k} is required`);
+  if (b.steps.length < 2)
+    errors.push(`${at}: needs at least two steps`);
+  const ids = new Set(b.steps.map((s) => s.id));
+  b.steps.forEach((s, i) => {
+    const where = itemAt(at, "steps", i, s);
     if (s.kind && !KINDS.includes(s.kind))
-      errors.push(`code-flow step ${s.id}: kind must be one of ${KINDS.join(", ")}`);
+      errors.push(`${where}: \`kind\` must be one of ${KINDS.join(", ")}`);
     if (s.depth != null && (!Number.isInteger(s.depth) || s.depth < 0))
-      errors.push(`code-flow step ${s.id}: depth must be a whole number`);
+      errors.push(`${where}: \`depth\` must be a whole number`);
     if (s.code && !s.source)
-      errors.push(`code-flow step ${s.id}: code without source; say where the lines live`);
+      errors.push(`${where}: \`code\` without \`source\`; say where the lines live`);
     if (!s.symbol && !s.source)
-      errors.push(`code-flow step ${s.id}: needs a symbol or a source so the diagram knows where it runs`);
+      errors.push(`${where}: needs a \`symbol\` or a \`source\` so the diagram knows where it runs`);
     for (const e of s.next ?? [])
       if (!ids.has(e.to))
-        errors.push(`code-flow step ${s.id}: next "${e.to}" is not a step`);
-  }
+        errors.push(`${where}: \`next\` "${e.to}" is not a step id`);
+  });
   return errors;
 }
 function mermaidSource(b) {
@@ -3493,9 +4930,12 @@ function markdown2(b) {
 // src/blocks/diff.ts
 var exports_diff = {};
 __export(exports_diff, {
+  SIDES: () => SIDES,
+  TONES: () => TONES,
   check: () => check3,
   markdown: () => markdown3,
-  render: () => render3
+  render: () => render3,
+  shape: () => shape3
 });
 
 // src/lib/highlight.ts
@@ -3509,6 +4949,7 @@ var HASH_COMMENT = [/#.*/y, "cm"];
 var TYPE = [/[A-Z][A-Za-z0-9_]*\b/y, "ty"];
 var CALL = [/[A-Za-z_$][\w$]*(?=\s*\()/y, "fn"];
 var WORD = [/[A-Za-z_$][\w$]*/y, ""];
+var SPACE = /\s+/y;
 var REGEX = [
   /(?<=(?:^|[(,=:[!&|?{};+\-*%<>~^]|\breturn|\btypeof)\s*)\/(?![/*])(?:\\.|\[(?:\\.|[^\]\\\n])*\]|[^/\\\n[])+\/[dgimsuyv]*/my,
   "str"
@@ -3686,7 +5127,8 @@ var BY_NAME = {
 };
 function highlightLines(text, rel) {
   const name = rel.split("/").pop();
-  const rules = BY_NAME[name] ?? BY_EXT[name.split(".").pop().toLowerCase()];
+  const ext = name.split(".").pop().toLowerCase();
+  const rules = Object.hasOwn(BY_NAME, name) ? BY_NAME[name] : Object.hasOwn(BY_EXT, ext) ? BY_EXT[ext] : undefined;
   const lines = [""];
   const emit = (s, cls) => {
     s.split(`
@@ -3705,6 +5147,13 @@ function highlightLines(text, rel) {
   let plain = "";
   outer:
     while (i < text.length) {
+      SPACE.lastIndex = i;
+      const space = SPACE.exec(text);
+      if (space) {
+        plain += space[0];
+        i += space[0].length;
+        continue;
+      }
       for (const [re, cls] of rules) {
         re.lastIndex = i;
         const m = re.exec(text);
@@ -3902,13 +5351,36 @@ function countLines(file) {
 }
 
 // src/blocks/diff.ts
+var TONES = ["ok", "warn", "bad", "skip"];
+var SIDES = ["new", "old"];
+var shape3 = {
+  diff: "string",
+  "base?": "string",
+  "head?": "string",
+  findings: listOf({
+    ...NODE,
+    title: "string",
+    file: "string",
+    line: "number",
+    "endLine?": "number",
+    "side?": "string",
+    "severity?": "string",
+    "category?": "string",
+    summary: "string",
+    "detail?": "string",
+    "suggestion?": "string",
+    "warnings?": { list: "string" }
+  }),
+  "severities?": { record: "string" }
+};
 var CONTEXT = 3;
 function tone(severity, map) {
   if (!severity)
     return "skip";
-  if (map && Object.hasOwn(map, severity))
-    return map[severity];
-  const s = severity.toLowerCase();
+  const mapped = map && Object.hasOwn(map, severity) ? oneOf(map[severity], TONES, undefined) : undefined;
+  if (mapped)
+    return mapped;
+  const s = String(severity).toLowerCase();
   if (/^(violation|blocker|critical|high|error)$/.test(s))
     return "bad";
   if (/^(tension|major|medium|warning)$/.test(s))
@@ -3941,7 +5413,7 @@ function hunkRows(file, h, marks, hit) {
     return `<tr class="dr ${l.kind}${hit(i) ? " hit" : ""}"><td class="dn">${l.oldNo ?? ""}</td><td class="dn">${l.newNo ?? ""}</td><td class="dm">${MARK[l.kind]}</td><td class="db">${marks(i)}</td><td class="dc"><code>${html}</code></td></tr>`;
   });
 }
-var table2 = (rows) => `<div class="dscroll"><table class="dtable"><tbody>${rows.join("")}</tbody></table></div>`;
+var table2 = (rows) => `<div class="dscroll" tabindex="0"><table class="dtable"><tbody>${rows.join("")}</tbody></table></div>`;
 function anchored(file, f) {
   const at = lineInHunk(file, sideOf(f), f.line);
   const hunk = file.hunks[at];
@@ -4039,38 +5511,33 @@ function render3(b) {
   return { left, sections };
 }
 var isLine = (n) => Number.isInteger(n) && n > 0;
-function check3(b) {
+function check3(b, at) {
   const errors = [];
-  const files = b.diff?.trim() ? parseUnifiedDiff(b.diff) : [];
-  if (!b.diff?.trim())
-    errors.push(`diff ${b.id}: diff is required`);
-  else if (!files.length)
-    errors.push(`diff ${b.id}: diff has no files; paste unified diff text`);
+  const files = parseUnifiedDiff(b.diff);
+  if (!files.length)
+    errors.push(`${at}: \`diff\` has no files; paste unified diff text`);
   for (const f of files)
     for (const p of f.problems)
-      errors.push(`diff ${b.id}: ${filePath(f) || "?"}: ${p}`);
+      errors.push(`${at}: \`diff\` ${filePath(f) || "?"}: ${p}`);
   for (const [k, v] of Object.entries(b.severities ?? {}))
-    if (!["ok", "warn", "bad", "skip"].includes(v))
-      errors.push(`diff ${b.id}: severity "${k}" must map to ok, warn, bad or skip`);
-  for (const f of b.findings ?? []) {
-    const bad = (msg) => errors.push(`diff finding ${f.id}: ${msg}`);
-    for (const k of ["title", "summary"])
-      if (!f[k])
-        bad(`${k} is required`);
-    if (f.side && f.side !== "new" && f.side !== "old")
-      bad("side must be new or old");
+    if (!oneOf(v, TONES, undefined))
+      errors.push(`${at}: \`severities.${k}\` must be ok, warn, bad or skip`);
+  for (const [i, f] of b.findings.entries()) {
+    const bad = (msg) => errors.push(`${itemAt(at, "findings", i, f)}: ${msg}`);
+    if (f.side && !oneOf(f.side, SIDES, undefined))
+      bad("`side` must be new or old");
     if (!isLine(f.line))
-      bad("line must be a positive whole number");
+      bad("`line` must be a positive whole number");
     if (f.endLine !== undefined && (!isLine(f.endLine) || isLine(f.line) && f.endLine < f.line))
-      bad("endLine must be a whole number no smaller than line");
+      bad("`endLine` must be a whole number no smaller than `line`");
     const file = fileOf(files, f);
     if (!file) {
       if (files.length)
-        bad(`file "${f.file}" is not in the diff (${files.map(filePath).join(", ")})`);
+        bad(`\`file\` "${f.file}" is not in the diff (${files.map(filePath).join(", ")})`);
       continue;
     }
     if (file.binary) {
-      bad(`file "${f.file}" is binary; a finding needs lines to anchor to`);
+      bad(`\`file\` "${f.file}" is binary; a finding needs lines to anchor to`);
       continue;
     }
     if (!isLine(f.line) || f.endLine !== undefined && !isLine(f.endLine))
@@ -4117,13 +5584,18 @@ __export(exports_figure, {
   check: () => check4,
   markdown: () => markdown4,
   render: () => render4,
-  safeSrc: () => safeSrc
+  shape: () => shape4
 });
-function safeSrc(src) {
-  return !!src && !/^[a-z]+:/i.test(src) && !src.startsWith("/") && !src.split("/").includes("..");
-}
+var shape4 = {
+  src: "string",
+  alt: "string",
+  "caption?": "string",
+  "detail?": "string",
+  "href?": "string"
+};
 function render4(b) {
-  const left = `<figure class="fig" data-node="${escapeHtml(b.id)}"><img src="x/${escapeHtml(b.src)}" alt="${escapeHtml(b.alt)}" loading="lazy">${b.caption || b.href ? `<figcaption>${escapeHtml(b.caption ?? "")}${b.href ? ` <a href="${escapeHtml(b.href)}" target="_blank" rel="noopener">Open the live version ↗</a>` : ""}</figcaption>` : ""}</figure>`;
+  const href = webUrl(b.href);
+  const left = `<figure class="fig" data-node="${escapeHtml(b.id)}"><img src="${escapeHtml(shotSrc(String(b.src ?? "")))}" alt="${escapeHtml(b.alt)}" loading="lazy">${b.caption || href ? `<figcaption>${escapeHtml(b.caption ?? "")}${href ? ` <a href="${escapeHtml(href)}" target="_blank" rel="noopener">Open the live version ↗</a>` : ""}</figcaption>` : ""}</figure>`;
   const title = b.title ?? b.caption ?? b.alt;
   const detail = prose(b.detail);
   return {
@@ -4138,12 +5610,12 @@ function render4(b) {
     ]
   };
 }
-function check4(b) {
+function check4(b, at) {
   const errors = [];
-  if (!safeSrc(b.src))
-    errors.push(`figure ${b.id}: src must be a relative path inside the document's folder`);
-  if (!b.alt)
-    errors.push(`figure ${b.id}: alt is required`);
+  if (!safePath(b.src))
+    errors.push(`${at}: \`src\` must be x/<file> beside the document or a path from the repository root`);
+  if (b.href !== undefined && !webUrl(b.href))
+    errors.push(`${at}: \`href\` must be an http(s) URL`);
   return errors;
 }
 function markdown4(b) {
@@ -4153,115 +5625,445 @@ function markdown4(b) {
 // src/blocks/matrix.ts
 var exports_matrix = {};
 __export(exports_matrix, {
+  STATES: () => STATES,
   check: () => check5,
   markdown: () => markdown5,
   nodeIds: () => nodeIds,
-  render: () => render5
+  render: () => render5,
+  shape: () => shape5
 });
+var AXIS = renamed({ ...NODE, title: "string", "detail?": "string" }, { label: "title" });
+var shape5 = renamed({
+  "rowsTitle?": "string",
+  "columnsTitle?": "string",
+  rows: listOf(AXIS),
+  columns: listOf(AXIS),
+  "cells?": listOf(renamed({
+    row: "string",
+    column: "string",
+    state: "string",
+    "reason?": "string",
+    "hint?": "string"
+  }, { col: "column", note: "reason" })),
+  "default?": "string"
+}, { cols: "columns", rowLabel: "rowsTitle", colLabel: "columnsTitle" });
 var STATES = ["valid", "warn", "error", "skip"];
 var GLYPH = { valid: "✓", warn: "!", error: "✕", skip: "–" };
 function cellMap(b) {
   const m = new Map;
-  for (const c of b.cells)
-    m.set(`${c.row}\x00${c.col}`, c);
+  for (const c of b.cells ?? [])
+    m.set(`${c.row}\x00${c.column}`, c);
   return m;
 }
 function render5(b) {
   const cells = cellMap(b);
-  const dflt = b.default ?? "skip";
-  const at = (r, c) => cells.get(`${r}\x00${c}`) ?? { row: r, col: c, state: dflt };
-  const head = `<tr><th class="corner">${b.rowLabel || b.colLabel ? `${escapeHtml(b.rowLabel ?? "")}${b.rowLabel && b.colLabel ? " \\ " : ""}${escapeHtml(b.colLabel ?? "")}` : ""}</th>${b.cols.map((c) => `<th class="ch" data-node="${escapeHtml(c.id)}" title="${escapeHtml(c.detail ?? "")}">${escapeHtml(c.label)}</th>`).join("")}</tr>`;
-  const body = b.rows.map((r) => `<tr data-node="${escapeHtml(r.id)}"><th class="rh">${escapeHtml(r.label)}</th>${b.cols.map((c) => {
+  const dflt = oneOf(b.default, STATES, "skip");
+  const at = (r, c) => {
+    const cell = cells.get(`${r}\x00${c}`) ?? { row: r, column: c, state: dflt };
+    return { ...cell, state: oneOf(cell.state, STATES, dflt) };
+  };
+  const head = `<tr><th class="corner">${b.rowsTitle || b.columnsTitle ? `${escapeHtml(b.rowsTitle ?? "")}${b.rowsTitle && b.columnsTitle ? " \\ " : ""}${escapeHtml(b.columnsTitle ?? "")}` : ""}</th>${b.columns.map((c) => `<th class="ch" data-node="${escapeHtml(c.id)}" title="${escapeHtml(c.detail ?? "")}">${escapeHtml(c.title)}</th>`).join("")}</tr>`;
+  const body = b.rows.map((r) => `<tr data-node="${escapeHtml(r.id)}"><th class="rh">${escapeHtml(r.title)}</th>${b.columns.map((c) => {
     const cell = at(r.id, c.id);
-    const tip = [cell.note, cell.hint ? `→ ${cell.hint}` : ""].filter(Boolean).join(" ");
-    return `<td class="cell ${cell.state}" title="${escapeHtml(`${r.label} × ${c.label}: ${cell.state}${tip ? ". " + tip : ""}`)}">${GLYPH[cell.state]}</td>`;
+    const tip = [cell.reason, cell.hint ? `→ ${cell.hint}` : ""].filter(Boolean).join(" ");
+    return `<td class="cell ${cell.state}" title="${escapeHtml(`${r.title} × ${c.title}: ${cell.state}${tip ? ". " + tip : ""}`)}">${GLYPH[cell.state]}</td>`;
   }).join("")}</tr>`).join("");
   const legend = `<div class="legend">${STATES.map((s) => `<span class="chip st-${s}">${GLYPH[s]} ${s}</span>`).join("")}</div>`;
   const left = `<div class="matrix-wrap"><table class="matrix">${head}${body}</table>${legend}</div>`;
   const sections = b.rows.map((r, i) => ({
     id: r.id,
     n: i + 1,
-    title: r.label,
+    title: r.title,
     source: r.source,
-    html: `<h2>${i + 1}. ${escapeHtml(r.label)}</h2>${prose(r.detail)}<ul class="cells">${b.cols.map((c) => {
+    html: `<h2>${i + 1}. ${escapeHtml(r.title)}</h2>${prose(r.detail)}<ul class="cells">${b.columns.map((c) => {
       const cell = at(r.id, c.id);
-      return `<li><span class="chip st-${cell.state}">${GLYPH[cell.state]} ${cell.state}</span> <b>${escapeHtml(c.label)}</b>${cell.note ? ` · ${escapeHtml(cell.note)}` : ""}${cell.hint ? `<div class="hint-line">${escapeHtml(cell.hint)}</div>` : ""}</li>`;
+      return `<li><span class="chip st-${cell.state}">${GLYPH[cell.state]} ${cell.state}</span> <b>${escapeHtml(c.title)}</b>${cell.reason ? ` · ${escapeHtml(cell.reason)}` : ""}${cell.hint ? `<div class="hint-line">${escapeHtml(cell.hint)}</div>` : ""}</li>`;
     }).join("")}</ul>`
   }));
-  const titles = Object.fromEntries(b.cols.map((c) => [c.id, c.label]));
+  const titles = Object.fromEntries(b.columns.map((c) => [c.id, c.title]));
   return { left, sections, titles };
 }
-function check5(b) {
+function check5(b, at) {
   const errors = [];
-  if (!b.rows?.length)
-    errors.push(`matrix ${b.id}: needs at least one row`);
-  if (!b.cols?.length)
-    errors.push(`matrix ${b.id}: needs at least one column`);
-  const rows = new Set((b.rows ?? []).map((r) => r.id));
-  const cols = new Set((b.cols ?? []).map((c) => c.id));
-  for (const a of [...b.rows ?? [], ...b.cols ?? []])
-    if (!a.label)
-      errors.push(`matrix ${b.id}: axis ${a.id} needs a label`);
+  if (!b.rows.length)
+    errors.push(`${at}: needs at least one row`);
+  if (!b.columns.length)
+    errors.push(`${at}: needs at least one column`);
+  const rows = new Set(b.rows.map((r) => r.id));
+  const cols = new Set(b.columns.map((c) => c.id));
   const seen = new Set;
-  for (const c of b.cells ?? []) {
+  (b.cells ?? []).forEach((c, i) => {
+    const where = itemAt(at, "cells", i, c);
     if (!rows.has(c.row))
-      errors.push(`matrix ${b.id}: cell row "${c.row}" does not exist`);
-    if (!cols.has(c.col))
-      errors.push(`matrix ${b.id}: cell column "${c.col}" does not exist`);
+      errors.push(`${where}: \`row\` "${c.row}" is not a row id`);
+    if (!cols.has(c.column))
+      errors.push(`${where}: \`column\` "${c.column}" is not a column id`);
     if (!STATES.includes(c.state))
-      errors.push(`matrix ${b.id}: cell ${c.row}×${c.col} state must be valid, warn, error or skip`);
-    const k = `${c.row}×${c.col}`;
+      errors.push(`${where}: \`state\` must be valid, warn, error or skip`);
+    const k = `${c.row}×${c.column}`;
     if (seen.has(k))
-      errors.push(`matrix ${b.id}: cell ${k} listed twice`);
+      errors.push(`${where}: cell ${k} is listed twice`);
     seen.add(k);
-    if ((c.state === "warn" || c.state === "error") && !c.note)
-      errors.push(`matrix ${b.id}: cell ${k} is ${c.state}, so say why in note`);
-  }
+    if ((c.state === "warn" || c.state === "error") && !c.reason)
+      errors.push(`${where}: the cell is ${c.state}, so say why in \`reason\``);
+  });
   if (b.default && !STATES.includes(b.default))
-    errors.push(`matrix ${b.id}: default must be valid, warn, error or skip`);
+    errors.push(`${at}: \`default\` must be valid, warn, error or skip`);
   return errors;
 }
 function nodeIds(b) {
-  return (b.cols ?? []).map((c) => c.id);
+  return (b.columns ?? []).map((c) => c.id);
 }
 var MARK2 = { valid: "✓", warn: "⚠", error: "✗", skip: "–" };
 function markdown5(b) {
   const cells = cellMap(b);
   const rows = b.rows.map((r) => [
-    r.label,
-    ...b.cols.map((c) => MARK2[cells.get(`${r.id}\x00${c.id}`)?.state ?? b.default ?? "skip"])
+    r.title,
+    ...b.columns.map((c) => MARK2[cells.get(`${r.id}\x00${c.id}`)?.state ?? b.default ?? "skip"])
   ]);
-  const notes = b.cells.filter((c) => c.note || c.hint).map((c) => `- **${b.rows.find((r) => r.id === c.row)?.label ?? c.row} × ${b.cols.find((x) => x.id === c.col)?.label ?? c.col}** ${MARK2[c.state]}${c.note ? ` ${c.note}` : ""}${c.hint ? ` _${c.hint}_` : ""}`);
-  return parts(table([`${b.rowLabel ?? ""} \\ ${b.colLabel ?? ""}`.trim(), ...b.cols.map((c) => c.label)], rows), "✓ valid · ⚠ warn · ✗ error · – skip", notes.join(`
+  const notes = (b.cells ?? []).filter((c) => c.reason || c.hint).map((c) => `- **${b.rows.find((r) => r.id === c.row)?.title ?? c.row} × ${b.columns.find((x) => x.id === c.column)?.title ?? c.column}** ${MARK2[c.state]}${c.reason ? ` ${c.reason}` : ""}${c.hint ? ` _${c.hint}_` : ""}`);
+  return parts(table([`${b.rowsTitle ?? ""} \\ ${b.columnsTitle ?? ""}`.trim(), ...b.columns.map((c) => c.title)], rows), "✓ valid · ⚠ warn · ✗ error · – skip", notes.join(`
+`));
+}
+
+// src/blocks/metrics.ts
+var exports_metrics = {};
+__export(exports_metrics, {
+  BETTER: () => BETTER,
+  LAYOUTS: () => LAYOUTS,
+  change: () => change,
+  check: () => check6,
+  markdown: () => markdown6,
+  numberShown: () => numberShown,
+  render: () => render6,
+  shape: () => shape6
+});
+var shape6 = {
+  columns: listOf(renamed({ id: "string", title: "string" }, { label: "title" })),
+  "compare?": { list: "string" },
+  measures: listOf(renamed({
+    ...NODE,
+    title: "string",
+    "unit?": "string",
+    "better?": "string",
+    values: { record: "number" },
+    "threshold?": {
+      shape: { "warn?": "number", "bad?": "number" }
+    },
+    "trend?": { list: "number" },
+    "detail?": "string"
+  }, { label: "title" })),
+  "layout?": "string"
+};
+var BETTER = ["lower", "higher", "none"];
+var LAYOUTS = ["auto", "tiles", "table"];
+var MAX_TILES = 6;
+var finite = (n) => typeof n === "number" && Number.isFinite(n);
+var MAX_PLACES = 100;
+function decimals(n) {
+  if (n === 0 || !Number.isFinite(n))
+    return 0;
+  const [mantissa, exp] = n.toExponential().split("e");
+  const digits = mantissa.split(".")[1]?.length ?? 0;
+  return Math.max(digits - Number(exp), 0);
+}
+var EXP_BELOW = 0.000001;
+var EXP_FROM = 1000000000000000000000;
+function numberShown(n, places) {
+  const size = Math.abs(n);
+  const mantissa = places === undefined ? n : Number(n.toPrecision(15));
+  const text = size !== 0 && (size < EXP_BELOW || size >= EXP_FROM) ? mantissa.toExponential().replace("e+", "e") : n.toLocaleString("en-US", {
+    maximumFractionDigits: Math.min(places ?? decimals(n), MAX_PLACES)
+  });
+  return text.replace(/^-/, "−");
+}
+var signed = (n, places) => `${n > 0 ? "+" : ""}${numberShown(n, places)}`.replace(/^\+?−?0$/, "0");
+var withUnit = (text, unit) => !unit ? text : unit === "%" ? `${text}%` : `${text} ${unit}`;
+var diffUnit = (unit) => unit === "%" ? "pp" : unit;
+var pctPlaces = (p) => Math.abs(p) >= 1 || p === 0 ? 1 : Math.min(1 - Math.floor(Math.log10(Math.abs(p))), MAX_PLACES);
+function valueIn(m, col) {
+  if (col === undefined || !isObject(m.values) || !Object.hasOwn(m.values, col))
+    return;
+  const v = m.values[col];
+  return finite(v) ? v : undefined;
+}
+function compared(b) {
+  if (Array.isArray(b.compare) && b.compare.length === 2)
+    return [b.compare[0], b.compare[1]];
+  const cols = Array.isArray(b.columns) ? b.columns : [];
+  return cols.length >= 2 ? [cols[0].id, cols.at(-1).id] : undefined;
+}
+function change(m, pair) {
+  const from = valueIn(m, pair?.[0]);
+  const to = valueIn(m, pair?.[1]);
+  if (from === undefined || to === undefined)
+    return;
+  const places = Math.max(decimals(from), decimals(to));
+  const raw = to - from;
+  const diff = places > MAX_PLACES ? Number(raw.toPrecision(15)) : Number(raw.toFixed(places));
+  const pct = from === 0 ? undefined : diff / Math.abs(from) * 100;
+  if (!Number.isFinite(diff) || pct !== undefined && !Number.isFinite(pct))
+    return;
+  const better = oneOf(m.better, BETTER, "none");
+  const up = diff > 0;
+  const way = diff === 0 || better === "none" ? "none" : better === "higher" === up ? "better" : "worse";
+  return { diff, pct, way, tone: tone2(m, way, pct) };
+}
+function tone2(m, way, pct) {
+  if (way === "better")
+    return "ok";
+  if (way === "none")
+    return "skip";
+  const t = isObject(m.threshold) ? m.threshold : undefined;
+  if (!t || !finite(t.warn) && !finite(t.bad))
+    return "warn";
+  const amount = pct === undefined ? Infinity : Math.abs(pct);
+  if (finite(t.bad) && amount > t.bad)
+    return "bad";
+  if (finite(t.warn) && amount > t.warn)
+    return "warn";
+  return "skip";
+}
+var arrow = (c) => c.diff > 0 ? "▲" : c.diff < 0 ? "▼" : "";
+function changeValue(c, unit) {
+  if (c.diff === 0)
+    return "no change";
+  const pct = c.pct === undefined ? "" : ` (${signed(c.pct, pctPlaces(c.pct))}%)`;
+  return `${withUnit(signed(c.diff), diffUnit(unit))}${pct}`;
+}
+var spokenChange = (c, unit) => unit === "%" ? changeValue(c, Math.abs(c.diff) === 1 ? "point" : "points") : changeValue(c, unit);
+function changeText(c, unit) {
+  return c.diff === 0 ? "no change" : `${arrow(c)} ${changeValue(c, unit)}`;
+}
+function chip(c, unit) {
+  if (!c)
+    return '<span class="chip tone-skip">–</span>';
+  const word = c.way === "none" ? "" : ` <span class="sr-only">${c.way}</span>`;
+  if (c.diff === 0)
+    return `<span class="chip mt-delta tone-${c.tone}">no change</span>`;
+  const pct = c.pct === undefined ? "" : ` <span class="mt-p">(${escapeHtml(signed(c.pct, pctPlaces(c.pct)))}%)</span>`;
+  return `<span class="chip mt-delta tone-${c.tone}"><span aria-hidden="true">${arrow(c)}</span> <span class="mt-d">${escapeHtml(withUnit(signed(c.diff), diffUnit(unit)))}</span>${pct}${word}</span>`;
+}
+function trendOf(m) {
+  return Array.isArray(m.trend) ? m.trend.filter(finite) : [];
+}
+function spark(m, hidden = false) {
+  const v = trendOf(m);
+  if (v.length < 2)
+    return "";
+  const w = 96;
+  const h = 24;
+  const pad = 3;
+  const min = Math.min(...v);
+  const span = Math.max(...v) - min || 1;
+  const pts = v.map((y, i) => [
+    pad + i * (w - 2 * pad) / (v.length - 1),
+    h - pad - (y - min) / span * (h - 2 * pad)
+  ]);
+  const [lx, ly] = pts.at(-1);
+  const text = `Trend of ${m.title}: ${v.map((n) => withUnit(numberShown(n), m.unit)).join(", ")}`;
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" ${hidden ? 'aria-hidden="true"' : `role="img" aria-label="${escapeHtml(text)}"`}><title>${escapeHtml(text)}</title><polyline points="${pts.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ")}"/><circle cx="${lx.toFixed(1)}" cy="${ly.toFixed(1)}" r="2.2"/></svg>`;
+}
+var shown = (m, col) => {
+  const v = valueIn(m, col);
+  return v === undefined ? "–" : withUnit(numberShown(v), m.unit);
+};
+function layoutOf(b, columns) {
+  const l = oneOf(b.layout, LAYOUTS, "auto");
+  if (l !== "auto")
+    return l;
+  return b.measures.length <= MAX_TILES && columns.length === 2 ? "tiles" : "table";
+}
+function render6(b) {
+  const columns = Array.isArray(b.columns) ? b.columns : [];
+  const label = new Map(columns.map((c) => [c.id, c.title]));
+  const pair = compared(b);
+  const name = (id) => escapeHtml(label.get(id) ?? id);
+  const head = pair ? `<p class="mt-cmp">Change from <b>${name(pair[0])}</b> to <b>${name(pair[1])}</b></p>` : "";
+  let left;
+  if (layoutOf(b, columns) === "tiles") {
+    const tiles = b.measures.map((m) => {
+      const c = change(m, pair);
+      const at = pair?.[1] ?? columns[0]?.id;
+      const from = pair ? `<span class="mt-from">from ${escapeHtml(shown(m, pair[0]))} on ${name(pair[0])}</span>` : "";
+      const spoken = [
+        `${m.title}: ${shown(m, at)}`,
+        c ? `${spokenChange(c, m.unit)}${c.way === "none" ? "" : ` ${c.way}`}` : ""
+      ].filter(Boolean);
+      return `<button type="button" class="mt-tile" data-node="${escapeHtml(m.id)}" aria-label="${escapeHtml(spoken.join(", "))}"><span class="mt-label">${escapeHtml(m.title)}</span><span class="mt-value">${escapeHtml(shown(m, at))}</span>${from}<span class="mt-foot">${pair ? chip(c, m.unit) : ""}${spark(m, true)}</span></button>`;
+    });
+    left = `<div class="metrics">${head}<div class="mt-tiles">${tiles.join("")}</div></div>`;
+  } else {
+    const trend = b.measures.some((m) => trendOf(m).length >= 2);
+    const rows = b.measures.map((m) => `<tr data-node="${escapeHtml(m.id)}"><th scope="row"><button type="button" class="node-btn">${escapeHtml(m.title)}</button></th>${columns.map((c) => `<td class="num">${escapeHtml(shown(m, c.id))}</td>`).join("")}${pair ? `<td>${chip(change(m, pair), m.unit)}</td>` : ""}${trend ? `<td>${spark(m)}</td>` : ""}</tr>`);
+    left = `<div class="metrics">${head}<div class="mt-wrap"><table class="mt-table"><thead><tr><th scope="col">Measure</th>${columns.map((c) => `<th scope="col" class="num">${escapeHtml(c.title)}</th>`).join("")}${pair ? '<th scope="col">Change</th>' : ""}${trend ? '<th scope="col">Trend</th>' : ""}</tr></thead><tbody>${rows.join("")}</tbody></table></div></div>`;
+  }
+  const sections = b.measures.map((m, i) => {
+    const better = oneOf(m.better, BETTER, "none");
+    const t = isObject(m.threshold) ? m.threshold : {};
+    const kicker = [
+      better === "none" ? "" : `${better === "lower" ? "Lower" : "Higher"} is better`,
+      finite(t.warn) ? `warn past ${numberShown(t.warn)}%` : "",
+      finite(t.bad) ? `bad past ${numberShown(t.bad)}%` : ""
+    ].filter(Boolean);
+    const v = trendOf(m);
+    return {
+      id: m.id,
+      n: i + 1,
+      title: m.title,
+      source: m.source,
+      html: `<h2>${i + 1}. ${escapeHtml(m.title)}</h2>${kicker.length ? `<div class="kicker">${escapeHtml(kicker.join(" · "))}</div>` : ""}${prose(m.detail)}<table><thead><tr><th>Column</th><th>Value</th></tr></thead><tbody>${columns.map((c) => `<tr><td>${escapeHtml(c.title)}</td><td class="mono">${escapeHtml(shown(m, c.id))}</td></tr>`).join("")}</tbody></table>${pair ? `<p>Change: ${chip(change(m, pair), m.unit)}</p>` : ""}${v.length >= 2 ? `<p class="muted">Trend, oldest first: ${escapeHtml(v.map((n) => numberShown(n)).join(", "))}</p>` : ""}`
+    };
+  });
+  return { left, sections };
+}
+function check6(b, at) {
+  const errors = [];
+  if (!b.columns.length)
+    errors.push(`${at}: needs at least one column`);
+  if (!b.measures.length)
+    errors.push(`${at}: needs at least one measure`);
+  const cols = new Set;
+  b.columns.forEach((c, i) => {
+    if (cols.has(c.id))
+      errors.push(`${itemAt(at, "columns", i, c)}: column id "${c.id}" is used twice`);
+    cols.add(c.id);
+  });
+  const known = [...cols].join(", ");
+  if (b.compare) {
+    if (b.compare.length !== 2 || b.compare[0] === b.compare[1])
+      errors.push(`${at}: \`compare\` must name two different columns, from and to`);
+    for (const id of b.compare)
+      if (!cols.has(id))
+        errors.push(`${at}: \`compare\` names "${id}", which is not a column; use one of: ${known}`);
+  }
+  if (b.layout !== undefined && !oneOf(b.layout, LAYOUTS, undefined))
+    errors.push(`${at}: \`layout\` must be auto, tiles or table`);
+  const pair = compared(b);
+  b.measures.forEach((m, i) => {
+    const where = itemAt(at, "measures", i, m);
+    const keys = Object.keys(m.values);
+    if (!keys.length)
+      errors.push(`${where}: \`values\` needs at least one column`);
+    for (const k of keys)
+      if (!cols.has(k))
+        errors.push(`${where}: \`values.${k}\` names no column; use one of: ${known}`);
+    if (m.better !== undefined && !oneOf(m.better, BETTER, undefined))
+      errors.push(`${where}: \`better\` must be lower, higher or none`);
+    if (m.trend && m.trend.length < 2)
+      errors.push(`${where}: \`trend\` needs at least 2 numbers`);
+    const from = valueIn(m, pair?.[0]);
+    const to = valueIn(m, pair?.[1]);
+    if (pair && from !== undefined && to !== undefined && !change(m, pair)) {
+      const span = `${where}: the change from \`values.${pair[0]}\` to \`values.${pair[1]}\``;
+      errors.push(Number.isFinite(to - from) ? `${span}: the percent change is too large to compute` : `${span} is too large to compute; scale the values to another unit`);
+    }
+    const t = m.threshold;
+    if (!t)
+      return;
+    if (m.better !== "lower" && m.better !== "higher")
+      errors.push(`${where}: a \`threshold\` needs \`better\` lower or higher`);
+    if (t.warn === undefined && t.bad === undefined)
+      errors.push(`${where}: \`threshold\` needs \`warn\`, \`bad\` or both`);
+    for (const k of ["warn", "bad"])
+      if (t[k] !== undefined && t[k] < 0)
+        errors.push(`${where}: \`threshold.${k}\` must be 0 or more`);
+    if (t.warn !== undefined && t.bad !== undefined && t.warn > t.bad)
+      errors.push(`${where}: \`threshold.warn\` must not be above \`threshold.bad\``);
+    const c = change(m, pair);
+    if (c?.tone === "bad" && t.bad !== undefined && !m.detail?.trim())
+      errors.push(`${where}: the change ${c.pct === undefined ? "from 0" : `of ${signed(c.pct, pctPlaces(c.pct))}%`} is past \`threshold.bad\` the wrong way, so say why in \`detail\``);
+  });
+  return errors;
+}
+function sparkText(v) {
+  if (v.length < 2)
+    return "";
+  const bars = "▁▂▃▄▅▆▇█";
+  const min = Math.min(...v);
+  const span = Math.max(...v) - min || 1;
+  return v.map((n) => bars[Math.round((n - min) / span * (bars.length - 1))]).join("");
+}
+function markdown6(b) {
+  const pair = compared(b);
+  const trend = b.measures.some((m) => trendOf(m).length >= 2);
+  const rows = b.measures.map((m) => {
+    const c = change(m, pair);
+    const word = c && c.way !== "none" ? `, ${c.way}` : "";
+    return [
+      `${m.title}${m.unit ? ` (${m.unit})` : ""}`,
+      ...b.columns.map((col) => {
+        const v = valueIn(m, col.id);
+        return v === undefined ? "–" : numberShown(v);
+      }),
+      ...pair ? [c ? `${changeText(c, m.unit)}${word}` : "–"] : [],
+      ...trend ? [sparkText(trendOf(m))] : []
+    ];
+  });
+  const notes = b.measures.filter((m) => m.detail).map((m) => `- **${m.title}**: ${m.detail.trim().replace(/\n+/g, " ")}`);
+  return parts(table([
+    "Measure",
+    ...b.columns.map((c) => c.title),
+    ...pair ? ["Δ"] : [],
+    ...trend ? ["Trend"] : []
+  ], rows), notes.join(`
 `));
 }
 
 // src/blocks/operations.ts
 var exports_operations = {};
 __export(exports_operations, {
-  check: () => check6,
-  markdown: () => markdown6,
+  RISKS: () => RISKS,
+  check: () => check7,
+  markdown: () => markdown7,
   nodeIds: () => nodeIds2,
-  render: () => render6
+  render: () => render7,
+  shape: () => shape7
 });
+var RISKS = ["low", "medium", "high"];
+var OPERATION = {
+  ...NODE,
+  kind: "string",
+  "target?": "string",
+  title: "string",
+  "code?": "string",
+  "before?": "string",
+  "after?": "string",
+  detail: "string",
+  risk: "string",
+  "locks?": "string",
+  reversible: "boolean",
+  "rollback?": "string",
+  "warnings?": { list: "string" }
+};
+var shape7 = {
+  "language?": "string",
+  operations: listOf(OPERATION),
+  "phases?": listOf({
+    ...NODE,
+    title: "string",
+    "detail?": "string",
+    ops: { list: "string" }
+  })
+};
 function opHtml(op, n, language) {
   const code = (s) => `<pre class="code">${tint(escapeHtml(s), language)}</pre>`;
   return `<h2>${n}. ${escapeHtml(op.title)}</h2>
-<div class="kicker"><span class="chips"><span class="chip">${escapeHtml(op.kind)}</span><span class="chip ${op.risk}">${op.risk} risk</span><span class="chip">${op.reversible ? "reversible" : "not reversible"}</span></span>${op.target ? ` · <code>${escapeHtml(op.target)}</code>` : ""}</div>
+<div class="kicker"><span class="chips"><span class="chip">${escapeHtml(op.kind)}</span><span class="chip ${oneOf(op.risk, RISKS, "")}">${escapeHtml(op.risk)} risk</span><span class="chip">${op.reversible ? "reversible" : "not reversible"}</span></span>${op.target ? ` · <code>${escapeHtml(op.target)}</code>` : ""}</div>
 ${prose(op.detail)}
-${op.code ? `<section><h4>Code</h4>${code(op.code)}</section>` : ""}
-${op.before || op.after ? `<section><div class="diff"><div><h4>Before</h4>${code(op.before ?? "—")}</div><div><h4>After</h4>${code(op.after ?? "—")}</div></div></section>` : ""}
-${op.locks ? `<section><h4>Locks</h4><p>${escapeHtml(op.locks)}</p></section>` : ""}
-${op.rollback ? `<section><h4>Rollback</h4>${code(op.rollback)}</section>` : ""}
+${op.code ? `<section><h3 class="sub">Code</h3>${code(op.code)}</section>` : ""}
+${op.before || op.after ? `<section><div class="diff"><div><h3 class="sub">Before</h3>${code(op.before ?? "—")}</div><div><h3 class="sub">After</h3>${code(op.after ?? "—")}</div></div></section>` : ""}
+${op.locks ? `<section><h3 class="sub">Locks</h3><p>${escapeHtml(op.locks)}</p></section>` : ""}
+${op.rollback ? `<section><h3 class="sub">Rollback</h3>${code(op.rollback)}</section>` : ""}
 ${op.warnings?.map((w) => `<div class="warn">${escapeHtml(w)}</div>`).join("") ?? ""}`;
 }
-function render6(b) {
+function render7(b) {
   const byId = new Map(b.operations.map((op) => [op.id, op]));
   const number = new Map(b.operations.map((op, i) => [op.id, i + 1]));
   const phases = b.phases ?? [
     { id: `${b.id}-all`, title: "Operations", ops: b.operations.map((o) => o.id) }
   ];
-  const row = (op) => `<li class="row" data-node="${escapeHtml(op.id)}"><span class="badge">${number.get(op.id)}</span><div><div class="title">${escapeHtml(op.title)}</div><div class="sub"><span class="chips"><span class="chip">${escapeHtml(op.kind)}</span><span class="chip ${op.risk}">${op.risk}</span></span>${op.target ? ` <code>${escapeHtml(op.target)}</code>` : ""}</div></div></li>`;
+  const row = (op) => `<li class="row" data-node="${escapeHtml(op.id)}"><span class="badge">${number.get(op.id)}</span><div><div class="title">${escapeHtml(op.title)}</div><div class="sub"><span class="chips"><span class="chip">${escapeHtml(op.kind)}</span><span class="chip ${oneOf(op.risk, RISKS, "")}">${escapeHtml(op.risk)}</span></span>${op.target ? ` <code>${escapeHtml(op.target)}</code>` : ""}</div></div></li>`;
   const left = phases.map((p) => `<div class="group"><h2>${escapeHtml(p.title)}</h2>${prose(p.detail)}<ol class="rows">${p.ops.map((id) => byId.get(id)).filter((o) => !!o).map(row).join("")}</ol></div>`).join("");
   const sections = b.operations.map((op, i) => ({
     id: op.id,
@@ -4272,35 +6074,31 @@ function render6(b) {
   }));
   return { left, sections };
 }
-function check6(b) {
+function check7(b, at) {
   const errors = [];
-  if (!b.operations?.length)
-    errors.push(`operations ${b.id}: needs at least one operation`);
-  const ops = new Set;
-  for (const op of b.operations ?? []) {
-    ops.add(op.id);
-    for (const k of ["kind", "title", "detail", "risk"])
-      if (!op[k])
-        errors.push(`operation ${op.id}: ${k} is required`);
-    if (!["low", "medium", "high"].includes(op.risk))
-      errors.push(`operation ${op.id}: risk must be low, medium or high`);
-    if (typeof op.reversible !== "boolean")
-      errors.push(`operation ${op.id}: reversible must be true or false`);
+  if (!b.operations.length)
+    errors.push(`${at}: needs at least one operation`);
+  const ops = new Map;
+  b.operations.forEach((op, i) => {
+    const where = itemAt(at, "operations", i, op);
+    ops.set(op.id, where);
+    if (!oneOf(op.risk, RISKS, undefined))
+      errors.push(`${where}: \`risk\` must be low, medium or high`);
     if (op.reversible === false && !op.rollback)
-      errors.push(`operation ${op.id}: not reversible, so say what the rollback would take`);
-  }
+      errors.push(`${where}: not reversible, so say in \`rollback\` what undoing it would take`);
+  });
   const placed = new Set;
-  for (const ph of b.phases ?? []) {
+  (b.phases ?? []).forEach((ph, i) => {
     for (const id of ph.ops) {
       if (!ops.has(id))
-        errors.push(`phase ${ph.id}: operation "${id}" does not exist`);
+        errors.push(`${itemAt(at, "phases", i, ph)}: \`ops\` names "${id}", which is not an operation id`);
       placed.add(id);
     }
-  }
+  });
   if (b.phases) {
-    for (const id of ops)
+    for (const [id, where] of ops)
       if (!placed.has(id))
-        errors.push(`operation ${id} is in no phase`);
+        errors.push(`${where}: is in no phase's \`ops\``);
   }
   return errors;
 }
@@ -4312,7 +6110,7 @@ function opMarkdown(op, n, language) {
   const body = parts(fence(op.code, language ?? ""), op.detail, op.locks ? `Locks: ${op.locks}` : "", op.rollback ? `Rollback: ${op.rollback}` : "", op.before || op.after ? `Before: \`${op.before ?? "—"}\` · After: \`${op.after ?? "—"}\`` : "", ...(op.warnings ?? []).map((w) => `⚠ ${w}`));
   return parts(head, body ? indent(body) : "");
 }
-function markdown6(b) {
+function markdown7(b) {
   const byId = new Map(b.operations.map((o, i) => [o.id, { o, n: i + 1 }]));
   if (!b.phases?.length)
     return items(b.operations.map((o, i) => opMarkdown(o, i + 1, b.language)));
@@ -4324,79 +6122,100 @@ function markdown6(b) {
 // src/blocks/plan.ts
 var exports_plan = {};
 __export(exports_plan, {
-  check: () => check7,
-  markdown: () => markdown7,
-  render: () => render7
+  STATUSES: () => STATUSES,
+  check: () => check8,
+  markdown: () => markdown8,
+  render: () => render8,
+  shape: () => shape8
 });
 var STATUSES = ["todo", "doing", "done", "blocked"];
+var TASK = renamed({
+  ...NODE,
+  title: "string",
+  "status?": "string",
+  "milestone?": "string",
+  "gate?": "string",
+  "detail?": "string"
+}, { label: "title" });
+var shape8 = {
+  phases: listOf(renamed({
+    ...NODE,
+    title: "string",
+    "detail?": "string",
+    "gate?": "string",
+    "milestone?": "string",
+    "status?": "string",
+    workstreams: listOf(renamed({
+      ...NODE,
+      title: "string",
+      "detail?": "string",
+      tasks: listOf(TASK)
+    }, { label: "title" }))
+  }, { label: "title" }))
+};
 function meta(x) {
+  const status = oneOf(x.status, STATUSES, undefined);
   const parts = [
-    x.status ? `<span class="chip st-${x.status}">${x.status}</span>` : "",
+    status ? `<span class="chip st-${status}">${status}</span>` : "",
     x.milestone ? `<span class="chip">${escapeHtml(x.milestone)}</span>` : "",
     x.gate ? `<span class="gate" title="gate">⚑ ${escapeHtml(x.gate)}</span>` : ""
   ].filter(Boolean);
   return parts.length ? `<span class="chips">${parts.join("")}</span>` : "";
 }
-function render7(b) {
+function render8(b) {
   let n = 0;
   const sections = [];
   const left = b.phases.map((ph) => {
     sections.push({
       id: ph.id,
-      title: ph.label,
+      title: ph.title,
       source: ph.source,
       html: ""
     });
     const streams = ph.workstreams.map((ws) => {
       sections.push({
         id: ws.id,
-        title: ws.label,
+        title: ws.title,
         source: ws.source,
-        html: ws.detail ? `<h2>${escapeHtml(ws.label)}</h2>${prose(ws.detail)}` : ""
+        html: ws.detail ? `<h2>${escapeHtml(ws.title)}</h2>${prose(ws.detail)}` : ""
       });
       const tasks = ws.tasks.map((t) => {
         n += 1;
         sections.push({
           id: t.id,
           n,
-          title: t.label,
+          title: t.title,
           source: t.source,
-          html: t.detail ? `<h2>${n}. ${escapeHtml(t.label)}</h2>${prose(t.detail)}` : ""
+          html: t.detail ? `<h2>${n}. ${escapeHtml(t.title)}</h2>${prose(t.detail)}` : ""
         });
-        return `<li class="row task ${t.status ?? ""}" data-node="${escapeHtml(t.id)}"><span class="badge">${n}</span><div><div class="title">${escapeHtml(t.label)}</div><div class="sub">${meta(t)}</div></div></li>`;
+        return `<li class="row task ${oneOf(t.status, STATUSES, "")}" data-node="${escapeHtml(t.id)}"><span class="badge">${n}</span><div><div class="title">${escapeHtml(t.title)}</div><div class="sub">${meta(t)}</div></div></li>`;
       }).join("");
-      return `<div class="ws"><div class="ws-title" data-node="${escapeHtml(ws.id)}">${escapeHtml(ws.label)}</div><ol class="rows">${tasks}</ol></div>`;
+      return `<div class="ws"><div class="ws-title" data-node="${escapeHtml(ws.id)}">${escapeHtml(ws.title)}</div><ol class="rows">${tasks}</ol></div>`;
     }).join("");
-    return `<div class="group phase"><h2 data-node="${escapeHtml(ph.id)}">${escapeHtml(ph.label)} ${meta(ph)}</h2>${prose(ph.detail)}${streams}</div>`;
+    return `<div class="group phase"><h2 data-node="${escapeHtml(ph.id)}">${escapeHtml(ph.title)} ${meta(ph)}</h2>${prose(ph.detail)}${streams}</div>`;
   }).join("");
   return { left: `<div class="plan">${left}</div>`, sections };
 }
-function check7(b) {
+function check8(b, at) {
   const errors = [];
-  if (!b.phases?.length)
-    errors.push(`plan ${b.id}: needs at least one phase`);
+  if (!b.phases.length)
+    errors.push(`${at}: needs at least one phase`);
   const status = (s, where) => {
     if (s && !STATUSES.includes(s))
-      errors.push(`plan ${b.id}: ${where} status must be todo, doing, done or blocked`);
+      errors.push(`${where}: \`status\` must be todo, doing, done or blocked`);
   };
-  for (const ph of b.phases ?? []) {
-    if (!ph.label)
-      errors.push(`plan ${b.id}: phase ${ph.id} needs a label`);
-    status(ph.status, `phase ${ph.id}`);
-    if (!ph.workstreams?.length)
-      errors.push(`plan ${b.id}: phase ${ph.id} needs at least one workstream`);
-    for (const ws of ph.workstreams ?? []) {
-      if (!ws.label)
-        errors.push(`plan ${b.id}: workstream ${ws.id} needs a label`);
-      if (!ws.tasks?.length)
-        errors.push(`plan ${b.id}: workstream ${ws.id} needs at least one task`);
-      for (const t of ws.tasks ?? []) {
-        if (!t.label)
-          errors.push(`plan ${b.id}: task ${t.id} needs a label`);
-        status(t.status, `task ${t.id}`);
-      }
-    }
-  }
+  b.phases.forEach((ph, i) => {
+    const phase = itemAt(at, "phases", i, ph);
+    status(ph.status, phase);
+    if (!ph.workstreams.length)
+      errors.push(`${phase}: needs at least one workstream`);
+    ph.workstreams.forEach((ws, j) => {
+      const stream = itemAt(phase, "workstreams", j, ws);
+      if (!ws.tasks.length)
+        errors.push(`${stream}: needs at least one task`);
+      ws.tasks.forEach((t, k) => status(t.status, itemAt(stream, "tasks", k, t)));
+    });
+  });
   return errors;
 }
 function tag(x) {
@@ -4406,8 +6225,8 @@ function tag(x) {
     x.gate ? `gate: ${x.gate}` : ""
   ].filter(Boolean).join(" · ");
 }
-function markdown7(b) {
-  return b.phases.map((p) => parts(`### ${p.label}${tag(p) ? ` _(${tag(p)})_` : ""}`, p.detail, ...p.workstreams.map((w) => parts(`**${w.label}**${w.detail ? ` — ${w.detail}` : ""}`, w.tasks.map((t) => `- [${t.status === "done" ? "x" : " "}] ${t.label}${tag(t) ? ` _(${tag(t)})_` : ""}${t.detail ? ` — ${t.detail}` : ""}`).join(`
+function markdown8(b) {
+  return b.phases.map((p) => parts(`### ${p.title}${tag(p) ? ` _(${tag(p)})_` : ""}`, p.detail, ...p.workstreams.map((w) => parts(`**${w.title}**${w.detail ? ` — ${w.detail}` : ""}`, w.tasks.map((t) => `- [${t.status === "done" ? "x" : " "}] ${t.title}${tag(t) ? ` _(${tag(t)})_` : ""}${t.detail ? ` — ${t.detail}` : ""}`).join(`
 `))))).join(`
 
 `);
@@ -4416,21 +6235,33 @@ function markdown7(b) {
 // src/blocks/precedence.ts
 var exports_precedence = {};
 __export(exports_precedence, {
-  check: () => check8,
-  markdown: () => markdown8,
-  render: () => render8
+  check: () => check9,
+  markdown: () => markdown9,
+  render: () => render9,
+  shape: () => shape9
 });
-function render8(b) {
+var shape9 = {
+  rungs: listOf(renamed({ ...NODE, title: "string", "detail?": "string" }, {
+    label: "title"
+  })),
+  "examples?": listOf(renamed({
+    ...NODE,
+    title: "string",
+    matches: "string",
+    "reason?": "string"
+  }, { label: "title", note: "reason" }))
+};
+function render9(b) {
   const number = new Map(b.rungs.map((r, i) => [r.id, i + 1]));
-  const rungs = b.rungs.map((r, i) => `<li class="row" data-node="${escapeHtml(r.id)}"><span class="badge">${i + 1}</span><div><div class="title">${escapeHtml(r.label)}</div>${r.detail ? `<div class="sub">${escapeHtml(r.detail)}</div>` : ""}</div><span class="first">${i === 0 ? "checked first" : i === b.rungs.length - 1 ? "last resort" : ""}</span></li>`).join("");
-  const examples = b.examples?.length ? `<div class="examples"><span class="eyebrow">Examples</span>${b.examples.map((e) => `<span class="example" data-node="${escapeHtml(e.id)}" title="${escapeHtml(e.note ?? "")}">${escapeHtml(e.label)} <span class="arrow">→</span> <span class="badge">${number.get(e.matches) ?? "?"}</span></span>`).join("")}</div>` : "";
+  const rungs = b.rungs.map((r, i) => `<li class="row" data-node="${escapeHtml(r.id)}"><span class="badge">${i + 1}</span><div><div class="title">${escapeHtml(r.title)}</div>${r.detail ? `<div class="sub">${escapeHtml(r.detail)}</div>` : ""}</div><span class="first">${i === 0 ? "checked first" : i === b.rungs.length - 1 ? "last resort" : ""}</span></li>`).join("");
+  const examples = b.examples?.length ? `<div class="examples"><span class="eyebrow">Examples</span>${b.examples.map((e) => `<span class="example" data-node="${escapeHtml(e.id)}" title="${escapeHtml(e.reason ?? "")}">${escapeHtml(e.title)} <span class="arrow">→</span> <span class="badge">${number.get(e.matches) ?? "?"}</span></span>`).join("")}</div>` : "";
   const left = `<div class="ladder"><ol class="rows">${rungs}</ol>${examples}</div>`;
   const byId = new Map(b.rungs.map((r) => [r.id, r]));
   const sections = [
     ...b.rungs.map((r, i) => ({
       id: r.id,
       n: i + 1,
-      title: r.label,
+      title: r.title,
       source: r.source,
       html: ""
     })),
@@ -4438,34 +6269,29 @@ function render8(b) {
       const rung = byId.get(e.matches);
       return {
         id: e.id,
-        title: e.label,
-        html: e.note ? `<h2>${escapeHtml(e.label)}</h2><p class="muted">Stops at <a href="#" data-select="${escapeHtml(e.matches)}">${number.get(e.matches) ?? "?"}. ${escapeHtml(rung?.label ?? e.matches)}</a>.</p>${prose(e.note)}` : ""
+        title: e.title,
+        html: e.reason ? `<h2>${escapeHtml(e.title)}</h2><p class="muted">Stops at <a href="#" data-select="${escapeHtml(e.matches)}">${number.get(e.matches) ?? "?"}. ${escapeHtml(rung?.title ?? e.matches)}</a>.</p>${prose(e.reason)}` : ""
       };
     })
   ];
   return { left, sections };
 }
-function check8(b) {
+function check9(b, at) {
   const errors = [];
-  if ((b.rungs?.length ?? 0) < 2)
-    errors.push(`precedence ${b.id}: needs at least two rungs`);
-  const ids = new Set((b.rungs ?? []).map((r) => r.id));
-  for (const r of b.rungs ?? [])
-    if (!r.label)
-      errors.push(`precedence ${b.id}: rung ${r.id} needs a label`);
-  for (const e of b.examples ?? []) {
-    if (!e.label)
-      errors.push(`precedence ${b.id}: example ${e.id} needs a label`);
+  if (b.rungs.length < 2)
+    errors.push(`${at}: needs at least two rungs`);
+  const ids = new Set(b.rungs.map((r) => r.id));
+  (b.examples ?? []).forEach((e, i) => {
     if (!ids.has(e.matches))
-      errors.push(`precedence ${b.id}: example ${e.id} matches rung "${e.matches}", which does not exist`);
-  }
+      errors.push(`${itemAt(at, "examples", i, e)}: \`matches\` "${e.matches}" is not a rung id`);
+  });
   return errors;
 }
-function markdown8(b) {
+function markdown9(b) {
   const n = new Map(b.rungs.map((r, i) => [r.id, i + 1]));
-  const rungs = b.rungs.map((r, i) => `${i + 1}. **${r.label}**${r.detail ? ` — ${r.detail}` : ""}`).join(`
+  const rungs = b.rungs.map((r, i) => `${i + 1}. **${r.title}**${r.detail ? ` — ${r.detail}` : ""}`).join(`
 `);
-  const examples = b.examples?.length ? parts("Examples:", b.examples.map((e) => `- ${e.label} → ${n.get(e.matches) ?? "?"}. ${b.rungs.find((r) => r.id === e.matches)?.label ?? e.matches}${e.note ? ` — ${e.note}` : ""}`).join(`
+  const examples = b.examples?.length ? parts("Examples:", b.examples.map((e) => `- ${e.title} → ${n.get(e.matches) ?? "?"}. ${b.rungs.find((r) => r.id === e.matches)?.title ?? e.matches}${e.reason ? ` — ${e.reason}` : ""}`).join(`
 `)) : "";
   return parts("First match wins.", rungs, examples);
 }
@@ -4473,11 +6299,13 @@ function markdown8(b) {
 // src/blocks/prose.ts
 var exports_prose = {};
 __export(exports_prose, {
-  check: () => check9,
-  markdown: () => markdown9,
-  render: () => render9
+  check: () => check10,
+  markdown: () => markdown10,
+  render: () => render10,
+  shape: () => shape10
 });
-function render9(b) {
+var shape10 = { text: "string" };
+function render10(b) {
   const left = `<div class="prose-block" data-node="${escapeHtml(b.id)}">${prose(b.text)}</div>`;
   const title = b.title ?? b.text.split(/\s+/).slice(0, 6).join(" ");
   return {
@@ -4485,23 +6313,43 @@ function render9(b) {
     sections: [{ id: b.id, title, html: "", source: b.source }]
   };
 }
-function check9(b) {
-  return b.text?.trim() ? [] : [`prose ${b.id}: text is required`];
+function check10(_b) {
+  return [];
 }
-function markdown9(b) {
+function markdown10(b) {
   return para(b.text);
 }
 
 // src/blocks/question.ts
 var exports_question = {};
 __export(exports_question, {
-  check: () => check10,
-  markdown: () => markdown10,
+  check: () => check11,
+  markdown: () => markdown11,
   questions: () => questions,
-  render: () => render10
+  render: () => render11,
+  shape: () => shape11
 });
 
 // src/lib/question.ts
+var ASK_VALUE = "__ask";
+var OPTION = renamed({
+  ...NODE,
+  ...MEDIA,
+  title: "string",
+  "detail?": "string"
+}, { label: "title" });
+var QUESTION = {
+  ...NODE,
+  ...MEDIA,
+  prompt: "string",
+  kind: "string",
+  "options?": { list: "object" },
+  "recommended?": "string",
+  "about?": "string",
+  "group?": "string",
+  "status?": "string",
+  "resolution?": "string"
+};
 function renderQuestion(q, inline = false, doc = {}) {
   const id = escapeHtml(q.id);
   const closed = q.status === "closed";
@@ -4512,40 +6360,41 @@ function renderQuestion(q, inline = false, doc = {}) {
   const dis = closed ? " disabled" : "";
   const optionHtml = (o) => {
     const pick = `<input type="${type}" name="q-${id}" value="${escapeHtml(o.id)}" data-question="${id}"${dis}>
-      <span><span class="opt-label">${escapeHtml(o.label)}${o.id === q.recommended && !closed ? ' <em class="rec">recommended</em>' : ""}</span>${o.detail ? `<span class="opt-detail">${escapeHtml(o.detail)}</span>` : ""}</span>`;
+      <span><span class="opt-label">${escapeHtml(o.title)}${o.id === q.recommended && !closed ? ' <em class="rec">recommended</em>' : ""}</span>${o.detail ? `<span class="opt-detail">${escapeHtml(o.detail)}</span>` : ""}</span>`;
     return side ? `<div class="opt-card" data-option="${escapeHtml(o.id)}"><label class="opt">${pick}</label>${mediaHtml(o, doc)}</div>` : `<label class="opt" data-option="${escapeHtml(o.id)}">${pick}</label>`;
   };
   const inputs = q.kind === "text" ? "" : side ? `<div class="opts-side">${ordered.map(optionHtml).join("")}</div>` : ordered.map(optionHtml).join("");
-  const ask = q.kind === "text" ? "" : `<label class="opt ask"><input type="${type === "checkbox" ? "checkbox" : "radio"}" name="q-${id}" value="__ask" data-question="${id}" data-ask${dis}>
+  const ask = q.kind === "text" ? "" : `<label class="opt ask"><input type="${type === "checkbox" ? "checkbox" : "radio"}" name="q-${id}" value="${ASK_VALUE}" data-question="${id}" data-ask${dis}>
       <span><span class="opt-label">None of these, or I have a question</span><span class="opt-detail">Say what is missing or unclear; the agent replies here and you choose after.</span></span></label>`;
-  const only = closed && options.length === 1 ? options[0].label : "";
+  const only = closed && options.length === 1 ? options[0].title : "";
   const body = `${mediaHtml(q, doc)}${inputs}${ask}
   <textarea rows="2" data-question-note="${id}" placeholder="${q.kind === "text" ? "Your answer" : "Optional note"}"${dis}></textarea>`;
   return `<article class="question${closed ? " closed" : ""}${side ? " wide" : ""}" id="q-${id}" data-question="${id}">
   ${q.group ? `<span class="q-group">${escapeHtml(q.group)}</span>` : ""}<span class="state"></span><span class="q-flags"></span><p class="prompt">${prose(q.prompt).replace(/^<p>|<\/p>$/g, "")}${q.about && !inline ? ` <a href="#" class="about" data-select="${escapeHtml(q.about)}">↗ see</a>` : ""}</p>
-  ${closed ? `<div class="resolution">${prose(q.resolution) || "<p>Closed.</p>"}</div><p class="decided" data-decided="${id}"${only ? "" : " hidden"}>Decided: <b>${escapeHtml(only)}</b></p>
+  ${closed ? `<div class="resolution">${prose(q.resolution) || "<p>Closed.</p>"}</div><p class="decided" data-decided="${id}"${only ? "" : " hidden"}>Chosen: <b>${escapeHtml(only)}</b></p>
   <details class="closed-body"><summary>Options and media</summary>${body}</details>` : body}
   <details class="q-history" hidden><summary></summary><ul></ul></details>
-  <div class="q-foot"><button type="button" class="quiet send" data-send-question="${id}" hidden>Send to agent</button><span class="sent-mark" hidden></span><button type="button" class="quiet reopen-q" data-reopen-question="${id}" title="Clear the answer and tell the agent this question is open again" hidden>Reopen</button></div>
+  <div class="q-foot"><button type="button" class="quiet send" data-send-question="${id}" hidden>Send to agent</button><span class="sent-mark" hidden></span><button type="button" class="quiet keep-q" data-keep-answer="${id}" title="The question changed after you answered; keep your answer for the new wording" hidden>Keep answer</button><button type="button" class="quiet reopen-q" data-reopen-question="${id}" title="Clear the answer and tell the agent this question is open again" hidden>Reopen question</button></div>
   <div class="thread q-thread" hidden></div>
 </article>`;
 }
 
 // src/blocks/question.ts
-function render10(b, ctx) {
+var shape11 = { questions: { list: "object" } };
+function render11(b, ctx) {
   const title = b.title ?? (b.questions[0]?.prompt ?? b.id).split(/\s+/).slice(0, 6).join(" ");
   return {
     left: `<div class="ask-block">${b.questions.map((q) => renderQuestion(q, true, ctx.doc)).join("")}</div>`,
     sections: [{ id: b.id, title, html: "" }]
   };
 }
-function check10(b) {
-  return b.questions?.length ? [] : [`question ${b.id}: needs at least one question`];
+function check11(b, at) {
+  return b.questions.length ? [] : [`${at}: needs at least one question`];
 }
 function questions(b) {
   return b.questions;
 }
-function markdown10(b, ctx) {
+function markdown11(b, ctx) {
   return b.questions.map((q, i) => questionMarkdown(q, i + 1, ctx?.doc)).join(`
 `);
 }
@@ -4553,12 +6402,62 @@ function markdown10(b, ctx) {
 // src/blocks/schema.ts
 var exports_schema = {};
 __export(exports_schema, {
-  check: () => check11,
-  markdown: () => markdown11,
+  CARDINALITIES: () => CARDINALITIES,
+  check: () => check12,
+  markdown: () => markdown12,
   nodeIds: () => nodeIds3,
-  render: () => render11
+  render: () => render12,
+  shape: () => shape12
 });
+var COLUMN = {
+  "id?": "string",
+  "source?": "any",
+  name: "string",
+  type: "string",
+  "nullable?": "boolean",
+  "default?": "scalar",
+  "pk?": "boolean",
+  "references?": { shape: REF },
+  "flags?": { list: "string" },
+  "purpose?": "string"
+};
+var INDEX = {
+  "id?": "string",
+  "source?": "any",
+  name: "string",
+  columns: { list: "string" },
+  "unique?": "boolean",
+  "where?": "string",
+  "purpose?": "string"
+};
+var shape12 = {
+  "dialect?": "string",
+  tables: listOf({
+    ...NODE,
+    name: "string",
+    "schema?": "string",
+    purpose: "string",
+    columns: listOf(COLUMN),
+    "primaryKey?": { list: "string" },
+    "indexes?": listOf(INDEX),
+    "rows?": "number",
+    "notes?": { list: "string" }
+  }),
+  "relations?": listOf(renamed({
+    ...NODE,
+    from: { shape: REF },
+    to: { shape: REF },
+    cardinality: "string",
+    "detail?": "string"
+  }, { note: "detail" })),
+  "groups?": listOf({
+    ...NODE,
+    title: "string",
+    tables: { list: "string" }
+  })
+};
 var ref2 = (r) => `${r.table}.${r.column}`;
+var CARDINALITIES = ["1-1", "1-n", "n-n"];
 var colId = (t, c) => c.id || `${t.id}.${c.name}`;
 function derivedRelations(b) {
   if (b.relations)
@@ -4585,21 +6484,21 @@ function columnRow(t, c) {
     c.nullable === false || c.pk ? "not null" : "null",
     ...c.flags ?? []
   ].filter(Boolean);
-  return `<tr data-node="${escapeHtml(colId(t, c))}"><td class="mono">${escapeHtml(c.name)}</td><td class="mono">${escapeHtml(c.type)}${c.default != null ? `<br><span class="muted">= ${escapeHtml(c.default)}</span>` : ""}</td><td><span class="chips">${flags.map((f) => `<span class="chip">${escapeHtml(f)}</span>`).join("")}</span></td><td>${c.references ? `<span class="xref" data-select="${escapeHtml(c.references.table)}">${escapeHtml(ref2(c.references))}</span>` : ""}${c.purpose ? `<div class="muted">${escapeHtml(c.purpose)}</div>` : ""}</td></tr>`;
+  return `<tr data-node="${escapeHtml(colId(t, c))}"><td class="mono">${escapeHtml(c.name)}</td><td class="mono">${escapeHtml(c.type)}${c.default != null ? `<br><span class="muted">= ${escapeHtml(String(c.default))}</span>` : ""}</td><td><span class="chips">${flags.map((f) => `<span class="chip">${escapeHtml(f)}</span>`).join("")}</span></td><td>${c.references ? `<span class="xref" data-select="${escapeHtml(c.references.table)}">${escapeHtml(ref2(c.references))}</span>` : ""}${c.purpose ? `<div class="muted">${escapeHtml(c.purpose)}</div>` : ""}</td></tr>`;
 }
 function tableHtml(t, rels) {
   const out = rels.filter((r) => r.from.table === t.name);
   const inc = rels.filter((r) => r.to.table === t.name);
-  const relLine = (r, other, mine) => `<li><code>${escapeHtml(mine.column)}</code> <span class="arrow">${r.cardinality}</span> <span class="xref" data-select="${escapeHtml(other.table)}">${escapeHtml(ref2(other))}</span>${r.note ? ` <span class="muted">— ${escapeHtml(r.note)}</span>` : ""}</li>`;
+  const relLine = (r, other, mine) => `<li><code>${escapeHtml(mine.column)}</code> <span class="arrow">${escapeHtml(r.cardinality)}</span> <span class="xref" data-select="${escapeHtml(other.table)}">${escapeHtml(ref2(other))}</span>${r.detail ? ` <span class="muted">— ${escapeHtml(r.detail)}</span>` : ""}</li>`;
   return `<h2 class="mono">${escapeHtml(t.schema ? `${t.schema}.${t.name}` : t.name)}</h2>
-<div class="kicker">${t.rows != null ? `~${t.rows.toLocaleString()} rows · ` : ""}${t.columns.length} columns${t.primaryKey ? ` · pk (${escapeHtml(t.primaryKey.join(", "))})` : ""}</div>
+<div class="kicker">${t.rows != null ? `~${numberText(t.rows)} rows · ` : ""}${t.columns.length} columns${t.primaryKey ? ` · pk (${escapeHtml(t.primaryKey.join(", "))})` : ""}</div>
 ${prose(t.purpose)}
-<section><h4>Columns</h4><table><thead><tr><th>Name</th><th>Type</th><th>Flags</th><th>References · purpose</th></tr></thead><tbody>${t.columns.map((c) => columnRow(t, c)).join("")}</tbody></table></section>
-${t.indexes?.length ? `<section><h4>Indexes</h4><table><thead><tr><th>Name</th><th>Columns</th><th>Purpose</th></tr></thead><tbody>${t.indexes.map((i) => `<tr><td class="mono">${escapeHtml(i.name)}${i.unique ? ' <span class="chip">unique</span>' : ""}</td><td class="mono">(${escapeHtml(i.columns.join(", "))})${i.where ? `<br><span class="muted">where ${escapeHtml(i.where)}</span>` : ""}</td><td>${escapeHtml(i.purpose ?? "")}</td></tr>`).join("")}</tbody></table></section>` : ""}
-${out.length || inc.length ? `<section><h4>Relations</h4><ul>${out.map((r) => relLine(r, r.to, r.from)).join("")}${inc.map((r) => relLine(r, r.from, r.to)).join("")}</ul></section>` : ""}
+<section><h3 class="sub">Columns</h3><table><thead><tr><th>Name</th><th>Type</th><th>Flags</th><th>References · purpose</th></tr></thead><tbody>${t.columns.map((c) => columnRow(t, c)).join("")}</tbody></table></section>
+${t.indexes?.length ? `<section><h3 class="sub">Indexes</h3><table><thead><tr><th>Name</th><th>Columns</th><th>Purpose</th></tr></thead><tbody>${t.indexes.map((i) => `<tr><td class="mono">${escapeHtml(i.name)}${i.unique ? ' <span class="chip">unique</span>' : ""}</td><td class="mono">(${escapeHtml(i.columns.join(", "))})${i.where ? `<br><span class="muted">where ${escapeHtml(i.where)}</span>` : ""}</td><td>${escapeHtml(i.purpose ?? "")}</td></tr>`).join("")}</tbody></table></section>` : ""}
+${out.length || inc.length ? `<section><h3 class="sub">Relations</h3><ul>${out.map((r) => relLine(r, r.to, r.from)).join("")}${inc.map((r) => relLine(r, r.from, r.to)).join("")}</ul></section>` : ""}
 ${t.notes?.map((n) => `<div class="warn">${escapeHtml(n)}</div>`).join("") ?? ""}`;
 }
-function render11(b) {
+function render12(b) {
   const rels = derivedRelations(b);
   const byName = new Map(b.tables.map((t) => [t.name, t]));
   const groups = [...b.groups ?? []];
@@ -4607,10 +6506,10 @@ function render11(b) {
   const rest = b.tables.filter((t) => !grouped.has(t.name)).map((t) => t.name);
   if (rest.length)
     groups.push({ id: `${b.id}-other`, title: groups.length ? "Other" : "Tables", tables: rest });
-  const card = (t) => `<div class="card" data-node="${escapeHtml(t.id)}"><div class="name">${escapeHtml(t.name)}</div><div class="purpose">${prose(t.purpose.split(/\n/)[0]).replace(/^<p>|<\/p>$/g, "")}</div><div class="meta">${t.columns.length} cols${t.rows != null ? ` · ~${t.rows.toLocaleString()} rows` : ""}${t.columns.some((c) => c.references) ? ` · ${t.columns.filter((c) => c.references).length} fk` : ""}</div></div>`;
+  const card = (t) => `<div class="card" data-node="${escapeHtml(t.id)}"><div class="name">${escapeHtml(t.name)}</div><div class="purpose">${prose(t.purpose.split(/\n/)[0]).replace(/^<p>|<\/p>$/g, "")}</div><div class="meta">${t.columns.length} cols${t.rows != null ? ` · ~${numberText(t.rows)} rows` : ""}${t.columns.some((c) => c.references) ? ` · ${t.columns.filter((c) => c.references).length} fk` : ""}</div></div>`;
   const left = `
 ${groups.map((g) => `<div class="group"><h2>${escapeHtml(g.title)}</h2><div class="cards">${g.tables.map((n) => byName.get(n)).filter((t) => !!t).map(card).join("")}</div></div>`).join("")}
-${rels.length ? `<div class="group"><h2>Relations</h2><div class="rels">${rels.map((r) => `<div class="rel" data-select="${escapeHtml(r.from.table)}"><span>${escapeHtml(ref2(r.from))}</span> <span class="arrow">${r.cardinality === "1-n" ? "»" : r.cardinality === "n-n" ? "«»" : "="}</span> <span>${escapeHtml(ref2(r.to))}</span></div>`).join("")}</div></div>` : ""}`;
+${rels.length ? `<div class="group"><h2>Relations</h2><div class="rels">${rels.map((r) => `<div class="rel" data-select="${escapeHtml(r.from.table)}"><span>${escapeHtml(ref2(r.from))}</span> <span class="arrow">${{ "1-1": "=", "1-n": "»", "n-n": "«»" }[oneOf(r.cardinality, CARDINALITIES, "1-1")]}</span> <span>${escapeHtml(ref2(r.to))}</span></div>`).join("")}</div></div>` : ""}`;
   const sections = b.tables.map((t) => ({
     id: t.id,
     title: t.name,
@@ -4619,38 +6518,47 @@ ${rels.length ? `<div class="group"><h2>Relations</h2><div class="rels">${rels.m
     source: t.source
   }));
   const titles = Object.fromEntries(b.tables.flatMap((t) => t.columns.map((c) => [colId(t, c), `${t.name}.${c.name}`])));
-  return { left, sections, titles };
+  const within = Object.fromEntries(b.tables.flatMap((t) => t.columns.map((c) => [colId(t, c), t.id])));
+  return { left, sections, titles, within };
 }
-function check11(b) {
+function check12(b, at) {
   const errors = [];
-  if (!b.tables?.length)
-    errors.push(`schema ${b.id}: needs at least one table`);
-  const tables = new Map(b.tables?.map((t) => [t.name, t]) ?? []);
-  for (const t of b.tables ?? []) {
-    if (!t.purpose)
-      errors.push(`table ${t.name}: purpose is required`);
-    const cols = new Set(t.columns?.map((c) => c.name));
-    for (const c of t.columns ?? []) {
+  if (!b.tables.length)
+    errors.push(`${at}: needs at least one table`);
+  const tables = new Map(b.tables.map((t) => [t.name, t]));
+  b.tables.forEach((t, i) => {
+    const table = itemAt(at, "tables", i, t);
+    const cols = new Set(t.columns.map((c) => c.name));
+    t.columns.forEach((c, j) => {
       const target = c.references && tables.get(c.references.table);
       if (c.references && target && !target.columns.some((x) => x.name === c.references.column))
-        errors.push(`column ${t.name}.${c.name}: references ${ref2(c.references)}, which does not exist`);
-    }
+        errors.push(`${itemAt(table, "columns", j, c)}: \`references\` ${ref2(c.references)}, which does not exist`);
+    });
     for (const k of t.primaryKey ?? [])
       if (!cols.has(k))
-        errors.push(`table ${t.name}: primary key column "${k}" does not exist`);
-    for (const i of t.indexes ?? [])
-      for (const k of i.columns)
+        errors.push(`${table}: \`primaryKey\` names "${k}", which is not a column`);
+    (t.indexes ?? []).forEach((ix, j) => {
+      for (const k of ix.columns)
         if (!cols.has(k))
-          errors.push(`index ${i.name}: column "${k}" does not exist`);
-  }
-  for (const g of b.groups ?? [])
+          errors.push(`${itemAt(table, "indexes", j, ix)}: \`columns\` names "${k}", which is not a column`);
+    });
+  });
+  (b.groups ?? []).forEach((g, i) => {
     for (const n of g.tables)
       if (!tables.has(n))
-        errors.push(`group ${g.id}: table "${n}" does not exist`);
-  for (const r of b.relations ?? [])
-    for (const end of [r.from, r.to])
+        errors.push(`${itemAt(at, "groups", i, g)}: \`tables\` names "${n}", which is not a table`);
+  });
+  (b.relations ?? []).forEach((r, i) => {
+    const where = itemAt(at, "relations", i, r);
+    if (!oneOf(r.cardinality, CARDINALITIES, undefined))
+      errors.push(`${where}: \`cardinality\` must be 1-1, 1-n or n-n`);
+    for (const [k, end] of [
+      ["from", r.from],
+      ["to", r.to]
+    ])
       if (!tables.get(end.table)?.columns.some((c) => c.name === end.column))
-        errors.push(`relation ${r.id}: ${ref2(end)} does not exist`);
+        errors.push(`${where}: \`${k}\` ${ref2(end)} does not exist`);
+  });
   return errors;
 }
 function nodeIds3(b) {
@@ -4660,14 +6568,14 @@ function nodeIds3(b) {
     ...(b.groups ?? []).map((g) => g.id)
   ];
 }
-function markdown11(b) {
+function markdown12(b) {
   const rels = derivedRelations(b);
   const tables = b.tables.map((t) => {
     const rows = t.columns.map((c) => [
       `\`${c.name}\``,
       c.type,
       c.nullable ? "null" : "not null",
-      c.default ?? "",
+      c.default == null ? "" : String(c.default),
       [
         c.pk || t.primaryKey?.includes(c.name) ? "PK" : "",
         c.references ? `→ ${c.references.table}.${c.references.column}` : "",
@@ -4681,7 +6589,7 @@ function markdown11(b) {
 ${idx.join(`
 `)}` : "", ...(t.notes ?? []).map((n) => `> ${n}`));
   });
-  const relations = rels.length ? parts("### Relations", rels.map((r) => `- ${r.from.table}.${r.from.column} → ${r.to.table}.${r.to.column} (${r.cardinality})${r.note ? ` — ${r.note}` : ""}`).join(`
+  const relations = rels.length ? parts("### Relations", rels.map((r) => `- ${r.from.table}.${r.from.column} → ${r.to.table}.${r.to.column} (${r.cardinality})${r.detail ? ` — ${r.detail}` : ""}`).join(`
 `)) : "";
   return parts(...tables, relations);
 }
@@ -4689,11 +6597,17 @@ ${idx.join(`
 // src/blocks/story.ts
 var exports_story = {};
 __export(exports_story, {
-  check: () => check12,
-  markdown: () => markdown12,
-  render: () => render12
+  check: () => check13,
+  markdown: () => markdown13,
+  render: () => render13,
+  shape: () => shape13
 });
-function render12(b, ctx) {
+var shape13 = {
+  ...MEDIA,
+  "caption?": "string",
+  "detail?": "string"
+};
+function render13(b, ctx) {
   const left = `<div class="story-block" data-node="${escapeHtml(b.id)}">${mediaHtml(b, ctx.doc)}${b.caption ? `<p class="story-cap">${escapeHtml(b.caption)}</p>` : ""}</div>`;
   const title = b.title ?? b.caption ?? b.id;
   const detail = prose(b.detail);
@@ -4709,13 +6623,13 @@ function render12(b, ctx) {
     ]
   };
 }
-function check12(b) {
-  const errors = checkMedia(b, `story ${b.id}`);
+function check13(b, at) {
+  const errors = checkMedia(b, at);
   if (!errors.length && !hasMedia(b))
-    errors.push(`story ${b.id}: needs at least one story or shot`);
+    errors.push(`${at}: needs at least one story or shot`);
   return errors;
 }
-function markdown12(b, ctx) {
+function markdown13(b, ctx) {
   return parts(mediaMarkdown(b, ctx?.doc ?? {}).join(`
 `), b.caption ? `*${b.caption}*` : "", b.detail);
 }
@@ -4723,14 +6637,29 @@ function markdown12(b, ctx) {
 // src/blocks/trace.ts
 var exports_trace = {};
 __export(exports_trace, {
-  check: () => check13,
-  markdown: () => markdown13,
-  render: () => render13
+  TONES: () => TONES2,
+  check: () => check14,
+  markdown: () => markdown14,
+  render: () => render14,
+  shape: () => shape14
 });
-function tone2(outcome, map) {
-  if (map?.[outcome])
-    return map[outcome];
-  const o = outcome.toLowerCase();
+var shape14 = {
+  "input?": "string",
+  steps: listOf(renamed({
+    ...NODE,
+    title: "string",
+    outcome: "string",
+    reason: "string",
+    "detail?": "string"
+  }, { label: "title" })),
+  "outcomes?": { record: "string" }
+};
+var TONES2 = ["ok", "warn", "bad", "skip"];
+function tone3(outcome, map) {
+  const mapped = map && Object.hasOwn(map, outcome) ? oneOf(map[outcome], TONES2, undefined) : undefined;
+  if (mapped)
+    return mapped;
+  const o = String(outcome).toLowerCase();
   if (/^(chosen|ok|match|selected|hit)$/.test(o))
     return "ok";
   if (/^(error|fail|failed|refused)$/.test(o))
@@ -4739,65 +6668,299 @@ function tone2(outcome, map) {
     return "warn";
   return "skip";
 }
-function render13(b) {
+function render14(b) {
   const rows = b.steps.map((s, i) => {
-    const t = tone2(s.outcome, b.outcomes);
-    return `<li class="row trace-step ${t}" data-node="${escapeHtml(s.id)}"><span class="badge">${i + 1}</span><div><div class="title">${escapeHtml(s.label)} <span class="chip tone-${t}">${escapeHtml(s.outcome)}</span></div><div class="sub">${escapeHtml(s.reason)}</div></div></li>`;
+    const t = tone3(s.outcome, b.outcomes);
+    return `<li class="row trace-step ${t}" data-node="${escapeHtml(s.id)}"><span class="badge">${i + 1}</span><div><div class="title">${escapeHtml(s.title)} <span class="chip tone-${t}">${escapeHtml(s.outcome)}</span></div><div class="sub">${escapeHtml(s.reason)}</div></div></li>`;
   }).join("");
   const left = `<div class="trace">${b.input ? `<div class="trace-input"><span class="eyebrow">Request</span> ${escapeHtml(b.input)}</div>` : ""}<ol class="rows">${rows}</ol></div>`;
   const sections = b.steps.map((s, i) => {
     return {
       id: s.id,
       n: i + 1,
-      title: s.label,
+      title: s.title,
       source: s.source,
-      html: s.detail ? `<h2>${i + 1}. ${escapeHtml(s.label)}</h2>${prose(s.detail)}` : ""
+      html: s.detail ? `<h2>${i + 1}. ${escapeHtml(s.title)}</h2>${prose(s.detail)}` : ""
     };
   });
   return { left, sections };
 }
-function check13(b) {
+function check14(b, at) {
   const errors = [];
-  if (!b.steps?.length)
-    errors.push(`trace ${b.id}: needs at least one step`);
-  for (const s of b.steps ?? [])
-    for (const k of ["label", "outcome", "reason"])
-      if (!s[k])
-        errors.push(`trace step ${s.id}: ${k} is required`);
+  if (!b.steps.length)
+    errors.push(`${at}: needs at least one step`);
   for (const [k, v] of Object.entries(b.outcomes ?? {}))
-    if (!["ok", "warn", "bad", "skip"].includes(v))
-      errors.push(`trace ${b.id}: outcome "${k}" must map to ok, warn, bad or skip`);
-  const ends = (b.steps ?? []).filter((s) => tone2(s.outcome, b.outcomes) === "ok").length;
+    if (!oneOf(v, TONES2, undefined))
+      errors.push(`${at}: \`outcomes.${k}\` must be ok, warn, bad or skip`);
+  const ends = b.steps.filter((s) => tone3(s.outcome, b.outcomes) === "ok").length;
   if (ends > 1)
-    errors.push(`trace ${b.id}: more than one step ends the walk (${ends} with a good outcome)`);
+    errors.push(`${at}: more than one step ends the walk (${ends} with a good outcome)`);
   return errors;
 }
-function markdown13(b) {
-  return parts(b.input ? `Input: ${b.input}` : "", b.steps.map((s, i) => `${i + 1}. **${s.label}** — ${s.outcome}: ${s.reason}${s.detail ? `
+function markdown14(b) {
+  return parts(b.input ? `Input: ${b.input}` : "", b.steps.map((s, i) => `${i + 1}. **${s.title}** — ${s.outcome}: ${s.reason}${s.detail ? `
 ${indent(s.detail)}` : ""}`).join(`
+`));
+}
+
+// src/blocks/tradeoffs.ts
+var exports_tradeoffs = {};
+__export(exports_tradeoffs, {
+  SCALE_BETTER: () => SCALE_BETTER,
+  check: () => check15,
+  columnId: () => columnId,
+  markdown: () => markdown15,
+  render: () => render15,
+  shape: () => shape15,
+  warn: () => warn
+});
+var SCALE = {
+  min: "number",
+  max: "number",
+  "better?": "string"
+};
+var shape15 = {
+  question: "string",
+  "scale?": { shape: SCALE },
+  criteria: listOf(renamed({
+    ...NODE,
+    title: "string",
+    "weight?": "number",
+    "detail?": "string"
+  }, { label: "title" })),
+  scores: listOf(renamed({
+    criterion: "string",
+    option: "string",
+    score: "number",
+    "reason?": "string"
+  }, { note: "reason" }))
+};
+var SCALE_BETTER = ["higher", "lower"];
+var finite2 = (n) => typeof n === "number" && Number.isFinite(n);
+var key = (criterion, option) => `${criterion}\x00${option}`;
+function findQuestion(doc, id) {
+  if (!isObject(doc))
+    return;
+  const list = (v) => Array.isArray(v) ? v : [];
+  const all = [
+    ...list(doc.questions),
+    ...list(doc.blocks).flatMap((b) => isObject(b) && b.type === "question" ? list(b.questions) : [])
+  ];
+  return all.find((q) => isObject(q) && q.id === id);
+}
+function questionsReadable(doc) {
+  if (!isObject(doc))
+    return false;
+  const named = (v) => isObject(v) && typeof v.id === "string" && v.id !== "";
+  const fine = (qs) => Array.isArray(qs) && qs.every((q) => named(q) && (q.options === undefined || Array.isArray(q.options) && q.options.every(named)));
+  if (doc.questions !== undefined && !fine(doc.questions))
+    return false;
+  return (Array.isArray(doc.blocks) ? doc.blocks : []).every((b) => !isObject(b) || b.type !== "question" || fine(b.questions));
+}
+var columnId = (b, option) => `${b.id}.${option}`;
+function columns(b, q) {
+  const opts = (Array.isArray(q?.options) ? q.options : []).filter((o) => isObject(o) && typeof o.id === "string");
+  if (opts.length)
+    return opts.map((o) => ({ id: o.id, title: typeof o.title === "string" ? o.title : o.id }));
+  return [...new Set(b.scores.map((s) => s.option))].map((id) => ({ id, title: id }));
+}
+function scaleOf(b) {
+  const s = isObject(b.scale) ? b.scale : undefined;
+  const min = finite2(s?.min) ? s.min : 1;
+  const max = finite2(s?.max) && s.max > min ? s.max : min + 4;
+  return { min, max, better: oneOf(s?.better, SCALE_BETTER, "higher") };
+}
+var weightOf = (c) => finite2(c.weight) ? c.weight : 1;
+function tally(b, ctx) {
+  const question = findQuestion(ctx.doc, b.question);
+  const cols = columns(b, question);
+  const scores = new Map(b.scores.map((s) => [key(s.criterion, s.option), s]));
+  const totals = cols.map((o) => b.criteria.reduce((sum, c) => {
+    const s = scores.get(key(c.id, o.id))?.score;
+    return finite2(s) ? sum + weightOf(c) * s : sum;
+  }, 0));
+  const lower = scaleOf(b).better === "lower";
+  const top = totals.length ? lower ? Math.min(...totals) : Math.max(...totals) : 0;
+  const best = b.scores.length ? totals.flatMap((t, i) => t === top ? [i] : []) : [];
+  return { cols, scores, totals, best, question };
+}
+function level(score, b) {
+  const { min, max, better } = scaleOf(b);
+  const t = Math.min(1, Math.max(0, (score - min) / (max - min)));
+  return Math.round((better === "lower" ? 1 - t : t) * 4);
+}
+var scaleLine = (b) => {
+  const { min, max, better } = scaleOf(b);
+  return `Scores from ${numberShown(min)} to ${numberShown(max)}, ${better} is better. The total is the sum of weight × score.`;
+};
+function render15(b, ctx) {
+  const { cols, scores, totals, best, question } = tally(b, ctx);
+  const rec = question?.recommended;
+  const { max } = scaleOf(b);
+  const head = `<tr><th scope="col">Criterion</th><th scope="col" class="num">Weight</th>${cols.map((o) => `<th scope="col" class="to-opt${o.id === rec ? " to-rec" : ""}" data-node="${escapeHtml(columnId(b, o.id))}"><button type="button" class="node-btn">${escapeHtml(o.title)}</button>${o.id === rec ? ' <span class="chip tone-ok">recommended</span>' : ""}</th>`).join("")}</tr>`;
+  const body = b.criteria.map((c) => `<tr data-node="${escapeHtml(c.id)}"><th scope="row"><button type="button" class="node-btn">${escapeHtml(c.title)}</button></th><td class="num">×${escapeHtml(numberShown(weightOf(c)))}</td>${cols.map((o) => {
+    const s = scores.get(key(c.id, o.id));
+    if (!s || !finite2(s.score))
+      return '<td class="num to-cell">–</td>';
+    const tip = `${c.title} × ${o.title}: ${numberShown(s.score)} of ${numberShown(max)}${s.reason ? `. ${s.reason}` : ""}`;
+    return `<td class="num to-cell lv-${level(s.score, b)}" title="${escapeHtml(tip)}">${escapeHtml(numberShown(s.score))}${s.reason ? '<span class="to-note" aria-hidden="true">*</span>' : ""}</td>`;
+  }).join("")}</tr>`).join("");
+  const foot = `<tr class="to-total"><th scope="row">Weighted total</th><td></td>${totals.map((t, i) => `<td class="num${best.includes(i) ? " to-best" : ""}">${escapeHtml(numberShown(t, 2))}${best.includes(i) ? ' <span class="sr-only">best total</span>' : ""}</td>`).join("")}</tr>`;
+  const left = `<div class="to-wrap"><table class="to-table"><thead>${head}</thead><tbody>${body}</tbody><tfoot>${foot}</tfoot></table></div><p class="to-scale">${escapeHtml(scaleLine(b))}</p>`;
+  const sections = b.criteria.map((c, i) => ({
+    id: c.id,
+    n: i + 1,
+    title: c.title,
+    source: c.source,
+    html: `<h2>${i + 1}. ${escapeHtml(c.title)}</h2><div class="kicker">Weight ${escapeHtml(numberShown(weightOf(c)))}</div>${prose(c.detail)}<ul class="cells">${cols.map((o) => {
+      const s = scores.get(key(c.id, o.id));
+      const score = s && finite2(s.score) ? `<span class="chip">${escapeHtml(numberShown(s.score))} of ${escapeHtml(numberShown(max))}</span>` : '<span class="chip">not scored</span>';
+      return `<li>${score} <b>${escapeHtml(o.title)}</b>${s?.reason ? ` · ${escapeHtml(s.reason)}` : ""}</li>`;
+    }).join("")}</ul>`
+  }));
+  const options = cols.map((o, j) => {
+    const marks = [best.includes(j) ? "best total" : "", o.id === rec ? "recommended" : ""].filter(Boolean);
+    return {
+      id: columnId(b, o.id),
+      title: o.title,
+      html: `<h2>${escapeHtml(o.title)}</h2><div class="kicker">${escapeHtml([`Weighted total ${numberShown(totals[j], 2)}`, ...marks].join(" · "))}</div><ul class="cells">${b.criteria.map((c) => {
+        const s = scores.get(key(c.id, o.id));
+        const score = s && finite2(s.score) ? `<span class="chip">${escapeHtml(numberShown(s.score))} of ${escapeHtml(numberShown(max))}</span>` : '<span class="chip">not scored</span>';
+        return `<li>${score} <b>${escapeHtml(c.title)}</b> ×${escapeHtml(numberShown(weightOf(c)))}${s?.reason ? ` · ${escapeHtml(s.reason)}` : ""}</li>`;
+      }).join("")}</ul>`
+    };
+  });
+  return { left, sections: [...sections, ...options] };
+}
+function check15(b, at, ctx) {
+  const errors = [];
+  if (b.scale) {
+    if (b.scale.min >= b.scale.max)
+      errors.push(`${at}: \`scale.min\` must be below \`scale.max\``);
+    if (b.scale.better !== undefined && !oneOf(b.scale.better, SCALE_BETTER, undefined))
+      errors.push(`${at}: \`scale.better\` must be higher or lower`);
+  }
+  const q = questionsReadable(ctx.doc) ? findQuestion(ctx.doc, b.question) : undefined;
+  let options;
+  if (questionsReadable(ctx.doc) && !q)
+    errors.push(`${at}: \`question\` "${b.question}" names no question; put it in the document \`questions\` or in a \`question\` block`);
+  else if (q?.kind === "text")
+    errors.push(`${at}: \`question\` "${b.question}" must be a single or multi question`);
+  else if (q && (q.kind === "single" || q.kind === "multi") && q.options?.length)
+    options = new Set(columns(b, q).map((o) => o.id));
+  if (!b.criteria.length)
+    errors.push(`${at}: needs at least one criterion`);
+  b.criteria.forEach((c, i) => {
+    if (c.weight !== undefined && !(c.weight > 0))
+      errors.push(`${itemAt(at, "criteria", i, c)}: \`weight\` must be above 0`);
+  });
+  const criteria = new Set(b.criteria.map((c) => c.id));
+  const { min, max } = scaleOf(b);
+  const seen = new Set;
+  b.scores.forEach((s, i) => {
+    const where = itemAt(at, "scores", i, s);
+    if (!criteria.has(s.criterion))
+      errors.push(`${where}: \`criterion\` "${s.criterion}" is not a criterion id`);
+    if (options && !options.has(s.option))
+      errors.push(`${where}: \`option\` "${s.option}" is not an option of question ${b.question}; use one of: ${[...options].join(", ")}`);
+    if (s.score < min || s.score > max)
+      errors.push(`${where}: \`score\` ${numberShown(s.score)} is outside the scale, ${numberShown(min)} to ${numberShown(max)}`);
+    const k = key(s.criterion, s.option);
+    if (seen.has(k))
+      errors.push(`${where}: ${s.criterion} × ${s.option} is scored twice`);
+    seen.add(k);
+  });
+  if (options)
+    b.criteria.forEach((c, i) => {
+      const missing = [...options].filter((o) => !seen.has(key(c.id, o)));
+      if (missing.length)
+        errors.push(`${itemAt(at, "criteria", i, c)}: no score for option${missing.length > 1 ? "s" : ""} ${missing.join(", ")}`);
+    });
+  return errors;
+}
+function warn(b, at, ctx) {
+  const { cols, totals, best, question } = tally(b, ctx);
+  const rec = question?.recommended;
+  const r = cols.findIndex((o) => o.id === rec);
+  if (r < 0 || !best.length || best.includes(r))
+    return [];
+  const top = best[0];
+  return [
+    `${at}: option "${cols[top].id}" has the best total (${numberShown(totals[top], 2)}), but question ${question.id} recommends "${rec}" (${numberShown(totals[r], 2)}); say why in the question or in a criterion's \`detail\``
+  ];
+}
+function markdown15(b, ctx) {
+  const { cols, scores, totals, question } = tally(b, ctx);
+  const rec = question?.recommended;
+  const rows = b.criteria.map((c) => [
+    c.title,
+    `×${numberShown(weightOf(c))}`,
+    ...cols.map((o) => {
+      const s = scores.get(key(c.id, o.id))?.score;
+      return finite2(s) ? numberShown(s) : "–";
+    })
+  ]);
+  const total = ["**Weighted total**", "", ...totals.map((t) => `**${numberShown(t, 2)}**`)];
+  const notes = [
+    ...b.criteria.filter((c) => c.detail).map((c) => `- **${c.title}**: ${c.detail.trim().replace(/\n+/g, " ")}`),
+    ...b.scores.filter((s) => s.reason).map((s) => {
+      const c = b.criteria.find((x) => x.id === s.criterion)?.title ?? s.criterion;
+      const o = cols.find((x) => x.id === s.option)?.title ?? s.option;
+      return `- **${c} × ${o}**: ${s.reason.trim().replace(/\n+/g, " ")}`;
+    })
+  ];
+  return parts(table([
+    "Criterion",
+    "Weight",
+    ...cols.map((o) => o.id === rec ? `**${o.title}** (recommended)` : o.title)
+  ], [...rows, total]), scaleLine(b), notes.join(`
 `));
 }
 
 // src/blocks/workflow.ts
 var exports_workflow = {};
 __export(exports_workflow, {
-  check: () => check14,
-  markdown: () => markdown14,
+  KINDS: () => KINDS2,
+  check: () => check16,
+  markdown: () => markdown16,
   mermaidSource: () => mermaidSource2,
-  render: () => render14
+  render: () => render16,
+  shape: () => shape16
 });
 var KINDS2 = ["start", "action", "decision", "wait", "handoff", "end"];
-function shapeOf(kind) {
+var shape16 = {
+  "trigger?": "string",
+  lanes: listOf(renamed({ ...NODE, title: "string", "detail?": "string" }, {
+    label: "title"
+  })),
+  steps: listOf({
+    ...NODE,
+    title: "string",
+    lane: "string",
+    "kind?": "string",
+    summary: "string",
+    "detail?": "string",
+    "next?": listOf(EDGE),
+    "duration?": "string",
+    "artifacts?": { list: "string" },
+    "warnings?": { list: "string" }
+  })
+};
+function kindChip2(kind) {
+  const k = oneOf(kind, KINDS2, "");
+  return k ? `<span class="chip kind-${k}">${k}</span> ` : "";
+}
+function shapeOf2(kind) {
   return kind === "decision" ? "diamond" : kind === "start" || kind === "end" ? "stadium" : kind === "wait" ? "wait" : "rect";
 }
 function graph(b) {
-  const laneTitle = new Map(b.lanes.map((l) => [l.id, l.label]));
+  const laneTitle = new Map(b.lanes.map((l) => [l.id, l.title]));
   const nodes = b.steps.map((s, i) => ({
     id: s.id,
     n: i + 1,
     label: s.title,
     sub: laneTitle.get(s.lane) ?? s.lane,
-    shape: shapeOf(s.kind)
+    shape: shapeOf2(s.kind)
   }));
   const out = [];
   b.steps.forEach((s, i) => {
@@ -4812,6 +6975,8 @@ function graph(b) {
 }
 function mermaid2(b, nodes, out) {
   const lines = ["flowchart TD"];
+  const mmId = mmIds("n");
+  const laneId = mmIds("l");
   for (const n of nodes) {
     const t = mmText(`${n.n}. ${n.label}`);
     const open = n.shape === "diamond" ? '{"' : n.shape === "stadium" ? '(["' : n.shape === "wait" ? '[["' : '["';
@@ -4825,72 +6990,67 @@ function mermaid2(b, nodes, out) {
     byLane.set(s.lane, [...byLane.get(s.lane) ?? [], mmId(s.id)]);
   for (const l of b.lanes)
     if (byLane.get(l.id)?.length)
-      lines.push(`  subgraph ${mmId(l.id)} [${mmText(l.label)}]`, `    ${byLane.get(l.id).join(" & ")}`, "  end");
+      lines.push(`  subgraph ${laneId(l.id)} [${mmText(l.title)}]`, `    ${byLane.get(l.id).join(" & ")}`, "  end");
   return lines.join(`
 `);
 }
-function render14(b) {
+function render16(b) {
   const laneIndex = new Map(b.lanes.map((l, i) => [l.id, i % 6]));
-  const laneTitle = new Map(b.lanes.map((l) => [l.id, l.label]));
+  const laneTitle = new Map(b.lanes.map((l) => [l.id, l.title]));
   const number = new Map(b.steps.map((s, i) => [s.id, i + 1]));
   const titles = new Map(b.steps.map((s) => [s.id, s.title]));
   const laneChip = (id) => `<span class="chip lane-${laneIndex.get(id) ?? 0}">${escapeHtml(laneTitle.get(id) ?? id)}</span>`;
-  const legend = `<div class="legend lanes">${b.lanes.map((l) => `<span class="chip lane-${laneIndex.get(l.id)}" data-node="${escapeHtml(l.id)}" title="${escapeHtml(l.detail ?? "")}">${escapeHtml(l.label)}</span>`).join("")}</div>`;
+  const legend = `<div class="legend lanes">${b.lanes.map((l) => `<span class="chip lane-${laneIndex.get(l.id)}" data-node="${escapeHtml(l.id)}" title="${escapeHtml(l.detail ?? "")}">${escapeHtml(l.title)}</span>`).join("")}</div>`;
   const g = graph(b);
-  const left = `<div class="workflow">${b.trigger ? `<div class="trace-input"><span class="eyebrow">Trigger</span> ${escapeHtml(b.trigger)}</div>` : ""}${legend}${diagramBlock(flowchartSvg(g.nodes, g.edges), mermaid2(b, g.nodes, g.edges), b.id)}</div>`;
+  const left = `<div class="workflow">${b.trigger ? `<div class="trace-input"><span class="eyebrow">Trigger</span> ${escapeHtml(b.trigger)}</div>` : ""}${legend}${diagramBlock(flowchartSvg(g.nodes, g.edges, b.title ? `Flow diagram: ${b.title}` : undefined), mermaid2(b, g.nodes, g.edges), b.id)}</div>`;
   const sections = [
     ...b.steps.map((s, i) => ({
       id: s.id,
       n: i + 1,
       title: s.title,
       source: s.source,
-      html: `<h2>${i + 1}. ${escapeHtml(s.title)}</h2><div class="kicker">${laneChip(s.lane)} ${s.kind ? `<span class="chip kind-${s.kind}">${s.kind}</span> ` : ""}${s.duration ? `<span class="dur">${escapeHtml(s.duration)}</span> ` : ""}${escapeHtml(s.summary)}</div>${prose(s.detail)}${s.artifacts?.length ? `<section><h4>Produces</h4><p>${s.artifacts.map((a) => `<code>${escapeHtml(a)}</code>`).join(", ")}</p></section>` : ""}${edges(s, number, titles)}${s.warnings?.map((w) => `<div class="warn">${escapeHtml(w)}</div>`).join("") ?? ""}`
+      html: `<h2>${i + 1}. ${escapeHtml(s.title)}</h2><div class="kicker">${laneChip(s.lane)} ${kindChip2(s.kind)}${s.duration ? `<span class="dur">${escapeHtml(s.duration)}</span> ` : ""}${escapeHtml(s.summary)}</div>${prose(s.detail)}${s.artifacts?.length ? `<section><h3 class="sub">Produces</h3><p>${s.artifacts.map((a) => `<code>${escapeHtml(a)}</code>`).join(", ")}</p></section>` : ""}${edges(s, number, titles)}${s.warnings?.map((w) => `<div class="warn">${escapeHtml(w)}</div>`).join("") ?? ""}`
     })),
     ...b.lanes.map((l) => ({
       id: l.id,
-      title: l.label,
+      title: l.title,
       source: l.source,
-      html: `<h2>${escapeHtml(l.label)}</h2>${prose(l.detail)}<p class="muted">Steps: ${b.steps.filter((s) => s.lane === l.id).map((s) => `<a href="#" data-select="${escapeHtml(s.id)}">${number.get(s.id)}. ${escapeHtml(s.title)}</a>`).join(", ") || "none"}</p>`
+      html: `<h2>${escapeHtml(l.title)}</h2>${prose(l.detail)}<p class="muted">Steps: ${b.steps.filter((s) => s.lane === l.id).map((s) => `<a href="#" data-select="${escapeHtml(s.id)}">${number.get(s.id)}. ${escapeHtml(s.title)}</a>`).join(", ") || "none"}</p>`
     }))
   ];
   return { left, sections };
 }
-function check14(b) {
+function check16(b, at) {
   const errors = [];
-  if (!b.lanes?.length)
-    errors.push(`workflow ${b.id}: needs at least one lane`);
-  if ((b.steps?.length ?? 0) < 2)
-    errors.push(`workflow ${b.id}: needs at least two steps`);
-  const lanes = new Set((b.lanes ?? []).map((l) => l.id));
-  const ids = new Set((b.steps ?? []).map((s) => s.id));
-  for (const l of b.lanes ?? [])
-    if (!l.label)
-      errors.push(`workflow ${b.id}: lane ${l.id} needs a label`);
-  for (const s of b.steps ?? []) {
-    for (const k of ["title", "summary"])
-      if (!s[k])
-        errors.push(`workflow step ${s.id}: ${k} is required`);
+  if (!b.lanes.length)
+    errors.push(`${at}: needs at least one lane`);
+  if (b.steps.length < 2)
+    errors.push(`${at}: needs at least two steps`);
+  const lanes = new Set(b.lanes.map((l) => l.id));
+  const ids = new Set(b.steps.map((s) => s.id));
+  b.steps.forEach((s, i) => {
+    const where = itemAt(at, "steps", i, s);
     if (!lanes.has(s.lane))
-      errors.push(`workflow step ${s.id}: lane "${s.lane}" does not exist`);
+      errors.push(`${where}: \`lane\` "${s.lane}" is not a lane id`);
     if (s.kind && !KINDS2.includes(s.kind))
-      errors.push(`workflow step ${s.id}: kind must be one of ${KINDS2.join(", ")}`);
+      errors.push(`${where}: \`kind\` must be one of ${KINDS2.join(", ")}`);
     if (s.kind === "decision" && (s.next?.length ?? 0) < 2)
-      errors.push(`workflow step ${s.id}: a decision names at least two next steps`);
+      errors.push(`${where}: a decision names at least two steps in \`next\``);
     for (const e of s.next ?? [])
       if (!ids.has(e.to))
-        errors.push(`workflow step ${s.id}: next "${e.to}" is not a step`);
-  }
+        errors.push(`${where}: \`next\` "${e.to}" is not a step id`);
+  });
   return errors;
 }
 function mermaidSource2(b) {
   const g = graph(b);
   return mermaid2(b, g.nodes, g.edges);
 }
-function markdown14(b) {
-  const laneTitle = new Map(b.lanes.map((l) => [l.id, l.label]));
+function markdown16(b) {
+  const laneTitle = new Map(b.lanes.map((l) => [l.id, l.title]));
   const number = new Map(b.steps.map((s, i) => [s.id, i + 1]));
   const titles = new Map(b.steps.map((s) => [s.id, s.title]));
-  const lanes = b.lanes.map((l) => `- **${l.label}**${l.detail ? ` — ${l.detail}` : ""}`).join(`
+  const lanes = b.lanes.map((l) => `- **${l.title}**${l.detail ? ` — ${l.detail}` : ""}`).join(`
 `);
   const steps = b.steps.map((s, i) => {
     const head = `${i + 1}. **${s.title}** · ${laneTitle.get(s.lane) ?? s.lane}${s.kind ? ` · ${s.kind}` : ""}${s.duration ? ` · ${s.duration}` : ""}${s.source ? ` ${loc(s.source)}` : ""} — ${s.summary}`;
@@ -4917,1382 +7077,34 @@ var BLOCKS = {
   plan: exports_plan,
   "code-flow": exports_code_flow,
   workflow: exports_workflow,
-  diff: exports_diff
+  diff: exports_diff,
+  metrics: exports_metrics,
+  tradeoffs: exports_tradeoffs
 };
 function blockModule(type) {
-  return BLOCKS[type];
+  return typeof type === "string" && Object.hasOwn(BLOCKS, type) ? BLOCKS[type] : undefined;
 }
+var BLOCK_TYPES = Object.keys(BLOCKS);
 
 // src/lib/shell.ts
-import { createHash as createHash2 } from "node:crypto";
+import { createHash as createHash4 } from "node:crypto";
 
-// src/lib/file-view.ts
-function inline(s, fromRel) {
-  const codes = [];
-  let t = s.replace(/`([^`]+)`/g, (_m, c) => {
-    codes.push(`<code>${escapeHtml(c)}</code>`);
-    return `${codes.length - 1}`;
-  });
-  t = escapeHtml(t).replace(/\[\[([^\]]+)\]\]/g, (_m, n) => wikilinkHtml(n)).replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (_m, alt, src) => {
-    const t = linkTarget(src, fromRel);
-    return t?.kind === "web" || t?.kind === "repo" ? `<img src="${t.href}" alt="${alt}">` : alt;
-  }).replace(/\[([^\]]*)\]\(([^)\s]+)\)/g, (_m, label, href) => {
-    const t = linkTarget(href, fromRel);
-    if (!t)
-      return label || href;
-    return `<a href="${t.href}"${t.kind === "web" ? ' target="_blank" rel="noopener"' : ""}>${label || href}</a>`;
-  }).replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>").replace(/(^|[^\w*])\*([^*\s][^*]*)\*/g, "$1<em>$2</em>").replace(/(^|[^\w])_([^_\s][^_]*)_(?!\w)/g, "$1<em>$2</em>");
-  return t.replace(/\uE000(\d+)\uE000/g, (_m, i) => codes[Number(i)]);
-}
-function table3(rows, fromRel) {
-  const cells = (r) => r.trim().replace(/^\||\|$/g, "").split(/(?<!\\)\|/).map((c) => inline(c.trim().replace(/\\\|/g, "|"), fromRel));
-  const [head, , ...body] = rows;
-  return `<table><thead><tr>${cells(head).map((c) => `<th>${c}</th>`).join("")}</tr></thead><tbody>${body.map((r) => `<tr>${cells(r).map((c) => `<td>${c}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
-}
-function renderMarkdownFile(text, fromRel) {
-  const lines = text.replace(/\r\n/g, `
-`).split(`
-`);
-  const out = [];
-  let i = 0;
-  if (lines[0] === "---") {
-    const end = lines.indexOf("---", 1);
-    if (end > 0) {
-      const fm = escapeHtml(lines.slice(1, end).join(`
-`)).replace(/\[\[([^\]]+)\]\]/g, (_m, n) => wikilinkHtml(n));
-      out.push(`<pre class="frontmatter">${fm}</pre>`);
-      i = end + 1;
-    }
-  }
-  const isBlockStart = (l) => /^(#{1,6}\s|```|~~~|>\s?|\s*[-*+]\s|\s*\d+[.)]\s|\|)/.test(l) || /^(-{3,}|\*{3,})\s*$/.test(l);
-  while (i < lines.length) {
-    const l = lines[i];
-    if (!l.trim()) {
-      i++;
-      continue;
-    }
-    const h = /^(#{1,6})\s+(.*)$/.exec(l);
-    if (h) {
-      const slug = h[2].toLowerCase().replace(/[^\w\s-]/g, "").trim().replace(/\s+/g, "-");
-      out.push(`<h${h[1].length} id="${slug}">${inline(h[2], fromRel)}</h${h[1].length}>`);
-      i++;
-      continue;
-    }
-    const fence = /^(```+|~~~+)\s*(\S*)/.exec(l);
-    if (fence) {
-      const body = [];
-      i++;
-      while (i < lines.length && !lines[i].startsWith(fence[1]))
-        body.push(lines[i++]);
-      i++;
-      out.push(`<pre${fence[2] ? ` data-lang="${escapeHtml(fence[2])}"` : ""}><code>${escapeHtml(body.join(`
-`))}</code></pre>`);
-      continue;
-    }
-    if (/^(-{3,}|\*{3,})\s*$/.test(l)) {
-      out.push("<hr>");
-      i++;
-      continue;
-    }
-    if (l.startsWith("|")) {
-      const rows = [];
-      while (i < lines.length && lines[i].startsWith("|"))
-        rows.push(lines[i++]);
-      out.push(rows.length > 1 ? table3(rows, fromRel) : `<p>${inline(rows[0], fromRel)}</p>`);
-      continue;
-    }
-    if (/^>\s?/.test(l)) {
-      const body = [];
-      while (i < lines.length && /^>\s?/.test(lines[i]))
-        body.push(lines[i++].replace(/^>\s?/, ""));
-      out.push(`<blockquote>${renderMarkdownFile(body.join(`
-`), fromRel)}</blockquote>`);
-      continue;
-    }
-    const li = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/.exec(l);
-    if (li) {
-      const ordered = /\d/.test(li[2]);
-      const items = [];
-      while (i < lines.length) {
-        const m = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/.exec(lines[i]);
-        if (m) {
-          const depth = m[1].length >= 2 ? ' class="nested"' : "";
-          const task = /^\[([ xX])\]\s+(.*)$/.exec(m[3]);
-          const body = task ? `<input type="checkbox" disabled${task[1] !== " " ? " checked" : ""}> ${inline(task[2], fromRel)}` : inline(m[3], fromRel);
-          items.push(`<li${depth}>${body}</li>`);
-          i++;
-        } else if (lines[i].trim() && /^\s+/.test(lines[i]) && items.length) {
-          items[items.length - 1] = items[items.length - 1].replace(/<\/li>$/, ` ${inline(lines[i].trim(), fromRel)}</li>`);
-          i++;
-        } else
-          break;
-      }
-      out.push(ordered ? `<ol>${items.join("")}</ol>` : `<ul>${items.join("")}</ul>`);
-      continue;
-    }
-    const para = [];
-    while (i < lines.length && lines[i].trim() && !(para.length && isBlockStart(lines[i])))
-      para.push(lines[i++].trim());
-    out.push(`<p>${inline(para.join(" "), fromRel)}</p>`);
-  }
-  return out.join(`
-`);
-}
-function codeView(text, rel) {
-  const rows = highlightLines(text.replace(/\r\n/g, `
-`).replace(/\n$/, ""), rel).map((l, i) => `<tr id="L${i + 1}"><td class="ln"><a href="#L${i + 1}">${i + 1}</a></td><td class="lc">${l || " "}</td></tr>`);
-  return `<table class="code"><tbody>${rows.join("")}</tbody></table>`;
-}
-var FILE_CSS = `
-.fileview { overflow-wrap: anywhere; }
-.fileview h1 { font-size: 22px; letter-spacing: -.01em; } .fileview h2 { font-size: 17px; margin-top: 1.6em; } .fileview h3 { font-size: 15px; }
-.fileview a { color: var(--accent); }
-.fileview a.wikilink { text-decoration: none; border-bottom: 1px solid currentColor; }
-.fileview a.wikilink.missing { color: var(--muted); border-bottom-style: dotted; cursor: default; }
-.fileview code { font: 0.9em var(--mono); background: var(--code-bg); padding: 1px 4px; border-radius: 4px; }
-.fileview pre { background: var(--code-bg); padding: 10px 12px; border-radius: 6px; overflow-x: auto; font: 12.5px/1.5 var(--mono); }
-.fileview pre code { background: none; padding: 0; }
-.fileview pre.frontmatter { color: var(--muted); border: 1px dashed var(--line-strong); background: transparent; }
-.fileview blockquote { margin: 0; padding: 0 14px; border-left: 3px solid var(--line-strong); color: var(--muted); }
-.fileview.md table { border-collapse: collapse; display: block; overflow-x: auto; margin: 12px 0; font-size: 13px; }
-.fileview.md th, .fileview.md td { border: 1px solid var(--line-strong); padding: 5px 9px; text-align: left; vertical-align: top; }
-.fileview.md th { background: var(--code-bg); }
-.fileview li.nested { margin-left: 22px; }
-.fileview img { max-width: 100%; }
-.fileview hr { border: 0; border-top: 1px solid var(--line-strong); margin: 22px 0; }
-.fileview.source { overflow-x: auto; overflow-wrap: normal; }
-.fileview table.code { border-collapse: collapse; font: 12.5px/1.55 var(--mono); width: 100%; }
-.fileview table.code td { padding: 0 14px 0 0; vertical-align: top; white-space: pre; }
-.fileview table.code td.ln { width: 1%; padding: 0 12px 0 16px; text-align: right; user-select: none; }
-.fileview table.code td.ln a { color: var(--muted); text-decoration: none; }
-.fileview table.code tr.hl { background: var(--hl); }
-.fileview table.code tr.hl td.ln a { color: var(--fg); }
-.fileview, .udiff { --tk-cm: #6e7781; --tk-str: #0a7a3e; --tk-num: #b35900; --tk-kw: #8a2be2; --tk-ty: #0b7285; --tk-fn: #0550ae; --tk-key: #a3313a; --tk-var: #8a5a00; --tk-tag: #116329; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .fileview, :root:not([data-theme="light"]) .udiff { --tk-cm: #8b949e; --tk-str: #7ee2a8; --tk-num: #ffb86b; --tk-kw: #d2a8ff; --tk-ty: #66d9e8; --tk-fn: #79c0ff; --tk-key: #ff9492; --tk-var: #e3b341; --tk-tag: #7ee787; } }
-:root[data-theme="dark"] .fileview, :root[data-theme="dark"] .udiff { --tk-cm: #8b949e; --tk-str: #7ee2a8; --tk-num: #ffb86b; --tk-kw: #d2a8ff; --tk-ty: #66d9e8; --tk-fn: #79c0ff; --tk-key: #ff9492; --tk-var: #e3b341; --tk-tag: #7ee787; }
-.fileview .tk-cm, .udiff .tk-cm { color: var(--tk-cm); font-style: italic; }
-.fileview .tk-str, .udiff .tk-str { color: var(--tk-str); }
-.fileview .tk-num, .udiff .tk-num { color: var(--tk-num); }
-.fileview .tk-kw, .udiff .tk-kw { color: var(--tk-kw); font-weight: 600; }
-.fileview .tk-ty, .udiff .tk-ty { color: var(--tk-ty); }
-.fileview .tk-fn, .udiff .tk-fn { color: var(--tk-fn); }
-.fileview .tk-key, .udiff .tk-key { color: var(--tk-key); }
-.fileview .tk-var, .udiff .tk-var { color: var(--tk-var); }
-.fileview .tk-tag, .udiff .tk-tag { color: var(--tk-tag); }
-`;
-function fileBody(rel, text, view) {
-  return rel.endsWith(".md") && view !== "source" ? `<div class="fileview md">${renderMarkdownFile(text, rel)}</div>` : `<div class="fileview source">${codeView(text, rel)}</div>`;
-}
-function filePage(rel, text, view) {
-  const md = rel.endsWith(".md");
-  const rendered = md && view !== "source";
-  const title = md && /^#\s+(.*)$/m.exec(text)?.[1] || rel.split("/").pop();
-  const toggle = md ? rendered ? '<a href="?view=source">Source</a>' : '<a href="?">Rendered</a>' : "";
-  return `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${escapeHtml(title)} · parley</title>
-<style>
-:root { --bg: #f5f5f7; --pane: #fff; --fg: #1d1d1f; --muted: #6e6e73; --line: rgba(0,0,0,.08); --line-strong: rgba(0,0,0,.14); --accent: #0a7aff; --danger: #c7282f; --code-bg: #f2f2f4; --kw: #9b2fb5; --hl: rgba(255,204,0,.22); --radius: 8px; --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif; --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #1c1c1e; --pane: #242426; --fg: #f2f2f7; --muted: #98989f; --line: rgba(255,255,255,.09); --line-strong: rgba(255,255,255,.16); --accent: #409cff; --danger: #ff6961; --code-bg: #2c2c2e; --kw: #d48cf0; --hl: rgba(255,214,10,.18); } }
-:root[data-theme="dark"] { --bg: #1c1c1e; --pane: #242426; --fg: #f2f2f7; --muted: #98989f; --line: rgba(255,255,255,.09); --line-strong: rgba(255,255,255,.16); --accent: #409cff; --danger: #ff6961; --code-bg: #2c2c2e; --kw: #d48cf0; --hl: rgba(255,214,10,.18); }
-* { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.6 var(--sans); -webkit-font-smoothing: antialiased; }
-.wrap { max-width: ${rendered ? "860px" : "1100px"}; margin: 0 auto; padding: 28px 16px 60px; }
-.crumbs { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline; font-size: 12.5px; margin-bottom: 14px; }
-.crumbs a { color: var(--accent); text-decoration: none; }
-.path { font: 12px var(--mono); color: var(--muted); word-break: break-all; }
-article { background: var(--pane); border: 1px solid var(--line); border-radius: var(--radius); padding: ${rendered ? "20px 26px" : "8px 0"}; }
-${FILE_CSS}
-</style>
-</head>
-<body>
-<div class="wrap">
-  <nav class="crumbs"><a href="/">All documents</a><a href="javascript:history.back()">Back</a>${toggle}<span class="path">${escapeHtml(rel)}</span></nav>
-  <article>${fileBody(rel, text, view)}</article>
-</div>
-<script>${WIKILINK_SCRIPT}
-resolveWikilinks(document, location.pathname.startsWith('/f/') ? decodeURIComponent(location.pathname.slice(3)).replace(/[^/]*$/, '') : '');
-(() => {
-  const m = /^#L(\\d+)(?:-L(\\d+))?$/.exec(location.hash);
-  if (!m) return;
-  if (${rendered}) return location.replace('?view=source' + location.hash);
-  const a = Number(m[1]), b = Number(m[2] || m[1]);
-  for (let n = a; n <= b; n++) document.getElementById('L' + n)?.classList.add('hl');
-  document.getElementById('L' + a)?.scrollIntoView({ block: 'center' });
-})();
-try { const t = localStorage.getItem('parley:theme'); if (t && t !== 'system') document.documentElement.dataset.theme = t; } catch {}
-</script>
-</body>
-</html>
-`;
-}
-var WIKILINK_SCRIPT = `
-function encPath(p) { return p.split('/').map(encodeURIComponent).join('/'); }
-async function resolveWikilinks(root, from) {
-  const links = [...root.querySelectorAll('a.wikilink:not([data-resolved])')];
-  if (!links.length) return;
-  const miss = (a) => { a.classList.add('missing'); a.removeAttribute('href'); a.title = 'no such file in this project'; };
-  links.forEach((a) => a.setAttribute('data-resolved', ''));
-  if (!/^https?:$/.test(location.protocol)) return links.forEach(miss);
-  const names = [...new Set(links.map((a) => a.dataset.wikilink))];
-  try {
-    const r = await fetch('/resolve?from=' + encodeURIComponent(from || '') + '&' + names.map((n) => 'n=' + encodeURIComponent(n)).join('&'));
-    const found = await r.json();
-    for (const a of links) { const p = found[a.dataset.wikilink]; if (p) { a.href = '/f/' + encPath(p); a.title = p; } else miss(a); }
-  } catch { links.forEach(miss); }
-}`;
-
-// src/lib/shell.ts
-function sectionIndex(page) {
-  const out = {};
-  for (const e of page.nav) {
-    out[e.id] = e.id;
-    if (e.blockId)
-      out[e.blockId] ??= e.id;
-    for (const m of e.html.matchAll(/data-node="([^"]+)"/g))
-      if (m[1])
-        out[m[1]] ??= e.id;
-  }
-  return out;
-}
-function blockTitles(page) {
-  const out = {};
-  for (const e of page.nav)
-    if (e.blockId)
-      out[e.blockId] ??= e.block ?? e.blockId;
-  return out;
-}
-function renderPage(page) {
-  const version = createHash2("sha256").update(renderPageWith(page, "")).digest("hex").slice(0, 16);
-  return renderPageWith(page, version);
-}
-function renderPageWith(page, version) {
-  const { meta } = page;
-  const questions = page.questions.map((p) => p.q);
-  const ending = page.questions.filter((p) => p.place === "end").map((p) => p.q);
-  const inSection = (id) => page.questions.filter((p) => p.place === "section" && p.section === id).map((p) => renderQuestion(p.q, true, meta)).join("");
-  const data = {
-    doc: meta.id,
-    nav: page.nav,
-    questions: questions.map((q) => ({ ...q, hash: questionHash(q) })),
-    revision: meta.revision ?? 1,
-    version,
-    storybookStart: meta.storybookStart,
-    nodeTitles: {
-      ...page.titles,
-      ...Object.fromEntries(page.nav.map((e) => [e.id, e.title])),
-      ...blockTitles(page),
-      [meta.id]: "General notes"
-    },
-    sectionOf: { ...sectionIndex(page), [meta.id]: meta.id }
-  };
-  return `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${escapeHtml(meta.title)}</title>
-<style>${CSS2}</style>
-</head>
-<body>
-<script>try{for(const k of ['nav','right'])if(localStorage.getItem('parley:pin:'+k)==='1')document.body.classList.add(k+'-pinned')}catch{}</script>
-<header class="top">
-  <div class="top-title">
-    <span class="kind">${escapeHtml(page.kindLabel)}${meta.revision ? ` · <span class="rev">revision ${meta.revision}</span>` : ""}</span>
-    <h1>${escapeHtml(meta.title)}</h1>
-    ${meta.summary ? `<p class="summary">${escapeHtml(meta.summary)}</p>` : ""}
-  </div>
-  <div class="top-tools">
-    ${page.links?.length ? `<select id="docs" class="quiet" title="Other documents in this folder; this page's structure is in the contents on the left">
-      <option value="">Documents…</option>${page.links.map((l) => `<option value="${escapeHtml(l.href)}">${escapeHtml(l.label)}</option>`).join("")}
-    </select>` : ""}
-    <div class="segmented" id="theme" role="radiogroup" aria-label="Appearance">
-      <button type="button" data-theme-choice="system" aria-checked="true">System</button><button type="button" data-theme-choice="light">Light</button><button type="button" data-theme-choice="dark">Dark</button>
-    </div>
-    ${meta.repo ? `<select id="editor" class="quiet" title="Where source links open">
-      <option value="vscode">VS Code</option>
-      <option value="cursor">Cursor</option>
-      <option value="zed">Zed</option>
-      <option value="idea">IntelliJ</option>
-      <option value="copy">Copy path</option>
-    </select>` : ""}
-    <button id="top-comment" type="button" class="quiet" title="A comment on the whole document">${COMMENT_ICON}<span>Comment</span></button>
-    <div class="review-state"><span id="review-progress" class="progress" hidden></span><button type="button" class="quiet send-all" id="send-all" title="Send every unsent comment, note and question to the agent" hidden></button><button id="finish" type="button" class="primary">Finish review</button><span id="verdict-chip" class="verdict-chip" hidden><span class="vc-label"></span><button type="button" id="reopen" class="link">Reopen</button></span></div>
-    <span class="split-btn"><button id="export" type="button" class="quiet" title="Show the answers JSON">Export</button><button id="export-download" type="button" class="quiet" title="Download ${escapeHtml(meta.id)}.answers.json" aria-label="Download answers JSON">↓</button></span>
-    <span id="persist" class="pill" title="Where answers are saved">…</span>
-  </div>
-  ${renderQuestionBar(questions)}
-  <div id="sb-banner" class="sb-banner" role="status" hidden></div>
-</header>
-<div id="finish-sheet" class="sheet" hidden><div class="sheet-body" role="dialog" aria-modal="true" aria-labelledby="finish-title">
-  <h3 id="finish-title">Finish review</h3>
-  <p class="sheet-lead">The verdict goes to the agent with everything you have answered and sent. <b>Request changes</b>: rewrite and come back. <b>Approve</b>: build it.</p>
-  <h4 id="finish-open-head"></h4><ul id="finish-open" class="finish-open"></ul>
-  <textarea id="finish-summary" rows="3" placeholder="A summary for the agent (optional)"></textarea>
-  <div class="form-row"><button type="button" id="finish-cancel" class="quiet">Cancel</button><span class="spacer"></span><button type="button" id="finish-changes" class="quiet">Request changes</button><button type="button" id="finish-approve" class="primary">Approve</button></div>
-</div></div>
-<div class="lightbox" id="lightbox" hidden><button type="button" class="lb-close" title="Close (Esc)">×</button><div class="lb-body"></div></div>
-<div id="viewer" class="viewer" hidden><div class="viewer-frame" role="dialog" aria-modal="true" aria-labelledby="viewer-path">
-  <div class="viewer-head"><span class="eyebrow">File</span><span id="viewer-path" class="path"></span><span class="spacer"></span><button type="button" id="viewer-toggle" class="quiet" hidden>Source</button><a id="viewer-tab" href="#" target="_blank" rel="noopener">Open in tab</a><button type="button" id="viewer-close" class="viewer-x" title="Close (Esc)">×</button></div>
-  <div class="viewer-main">
-    <div id="viewer-doc" class="viewer-doc"></div>
-    <aside class="viewer-side">
-      <div class="pane-head"><span class="eyebrow">Comments on this file <span id="viewer-count" class="viewer-count"></span></span></div>
-      <p class="hint" id="viewer-note"></p>
-      <div class="comments" id="viewer-comments"><ul class="comment-list"></ul></div>
-      <p class="muted" id="viewer-empty">No comments on this file yet.</p>
-      <form id="viewer-form" class="viewer-form"><textarea rows="3" placeholder="A comment on the whole file…" aria-label="Comment on the whole file"></textarea><div class="form-row"><span class="spacer"></span><button type="submit" class="quiet" value="draft">Save draft</button><button type="submit" class="primary" value="send">Send to agent</button></div></form>
-    </aside>
-  </div>
-</div></div>
-<div id="export-sheet" class="sheet" hidden><div class="sheet-body export-body" role="dialog" aria-modal="true" aria-labelledby="export-title">
-  <h3 id="export-title">Export answers</h3>
-  <p class="sheet-lead" id="export-note"></p>
-  <textarea id="export-text" rows="16" readonly></textarea>
-  <div class="form-row"><button type="button" id="export-close" class="quiet">Close</button><span class="spacer"></span><button type="button" id="export-copy" class="quiet">Copy</button><button type="button" id="export-save" class="primary">Download</button></div>
-</div></div>
-<main class="split">
-  <div class="dock dock-l" id="dock-l">
-    <div class="rail rail-l">
-      <button type="button" class="rail-btn" data-pin="nav" title="Pin the contents open" aria-pressed="false">${ICON_SIDEBAR_L}</button>
-      <span class="rail-badge rail-q" hidden title="questions still open"></span>
-      <span class="rail-badge rail-c" hidden title="comments">${COMMENT_ICON}<b></b></span>
-    </div>
-    <nav class="pane nav" id="nav" aria-label="Contents">
-      <div class="pane-head"><span class="eyebrow">Contents</span><button type="button" class="pin" data-pin="nav" title="Keep open" aria-pressed="false">${ICON_PIN}</button></div>
-      ${renderNav(page.nav)}<div class="nav-block">Notes</div>${navItem(meta.id, "General notes")}${renderQuestionNav(questions)}
-    </nav>
-  </div>
-  <section class="pane left" id="left"><div class="left-inner">${page.left}</div></section>
-  <div class="dock dock-r" id="dock-r">
-    <div class="rail rail-r">
-      <button type="button" class="rail-btn" data-open-right title="Open the walkthrough">${ICON_SIDEBAR_R}</button>
-      <span class="rail-badge rail-q" hidden title="questions still open"></span>
-      <span class="rail-badge rail-c" hidden title="comments">${COMMENT_ICON}<b></b></span>
-    </div>
-  <aside class="pane right" id="right">
-    <div class="pane-head"><span class="eyebrow">Walkthrough</span><span class="hint" title="Click a section to highlight it. j / k step sections, n / p step questions (shift: open ones only), Esc clears. Select any words to comment on them.">j k · n p · Esc</span><span class="head-btns"><button type="button" class="pin" data-pin="right" title="Keep open" aria-pressed="false">${ICON_PIN}</button><button type="button" class="pin" data-close-right title="Close">×</button></span></div>
-    ${page.nav.map((e) => sectionHtml(e.id, e.html.trim() ? `${e.html}${sourceLinks(e.source, meta.repo)}` : "", "", `${e.n != null ? `${e.n}. ` : ""}${escapeHtml(e.title)}`, inSection(e.id))).join(`
-`)}
-    ${sectionHtml(meta.id, '<h2>General notes</h2><p class="muted">Anything that is not about one node. Your notes on the whole document go to the agent with your answers.</p><textarea id="doc-notes" rows="3" placeholder="Notes on the whole document"></textarea><p class="hint" id="doc-notes-history" hidden></p>', "general")}
-    ${ending.length ? `<section class="questions" id="questions"><div class="pane-head"><span class="eyebrow">${ending.length === questions.length ? "Questions for you" : "Remaining questions"}</span><span class="hint" id="q-tally"></span></div>${ending.map((q) => renderQuestion(q, false, meta)).join("")}</section>` : questions.length ? `<div class="questions tally-only"><span class="hint" id="q-tally"></span></div>` : ""}
-  </aside>
-  </div>
-</main>
-<div id="notice" class="notice" role="status" hidden></div>
-<div id="anno" class="anno" hidden>
+// src/lib/page/annotations.ts
+var ANNO_HTML = `<div id="anno" class="anno" hidden>
   <button type="button" id="anno-start"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z" stroke-linejoin="round"/></svg>Comment</button>
-  <form id="anno-form" hidden><div class="anno-quote" id="anno-quote"></div><textarea id="anno-text" rows="3" placeholder="About these words…"></textarea><div class="anno-row"><button type="button" id="anno-cancel" class="quiet">Cancel</button><button type="submit" class="quiet" value="draft" title="Keep it to yourself for now; Send it later">Save draft</button><button type="submit" class="primary" value="send">Send to agent</button></div></form>
-</div>
-<script id="parley-data" type="application/json">${embedJson(data)}</script>
-<script>${CLIENT}</script>
-</body>
-</html>
-`;
-}
-var ICON_SIDEBAR_L = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="2"/><path d="M5.5 2.5v11"/></svg>';
-var ICON_SIDEBAR_R = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="2"/><path d="M10.5 2.5v11"/></svg>';
-var ICON_PIN = '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M6 2.5h4l-.5 4 2.5 2.5v1.5H4V9L6.5 6.5z" stroke-linejoin="round"/><path d="M8 10.5V14"/></svg>';
-var COMMENT_ICON = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z" stroke-linejoin="round"/></svg>';
-function sectionHtml(id, body, extraClass = "", heading = "", questions = "") {
-  const i = escapeHtml(id);
-  const compact = !body.trim() && !questions;
-  return `<section class="node ${extraClass}${compact ? " compact" : ""}" data-node="${i}" id="node-${i}">
-      <div class="node-actions"><button type="button" class="comment-btn" data-comment-on="${i}" title="Comment on this">${COMMENT_ICON}<span class="label">Comment</span><span class="count" hidden></span></button></div>
-      <div class="node-body">${compact ? `<h2 class="compact-title">${heading}</h2>` : body || `<h2 class="compact-title">${heading}</h2>`}</div>
-      ${questions ? `<div class="node-questions">${questions}</div>` : ""}
-      <div class="comments" data-comments="${i}">
-        <ul class="comment-list"></ul>
-        <form class="comment-form" hidden><textarea rows="3" placeholder="Leave a note for the agent…"></textarea><div class="form-row"><button type="button" class="quiet cancel">Cancel</button><button type="submit" class="quiet" value="draft" title="Keep it to yourself for now; Send it later">Save draft</button><button type="submit" class="primary" value="send">Send to agent</button></div></form>
-      </div>
-    </section>`;
-}
-function renderNav(sections) {
-  const out = [];
-  let block;
-  for (const sec of sections) {
-    if (sec.block !== block) {
-      block = sec.block;
-      out.push(`<div class="nav-block">${escapeHtml(block ?? "")}</div>`);
-    }
-    out.push(navItem(sec.id, sec.title, sec.n));
-  }
-  return out.join("");
-}
-function navItem(id, title, n, extra = "") {
-  const i = escapeHtml(id);
-  return `<a class="nav-item" href="#${i}" data-node="${i}">${n != null ? `<span class="nav-n">${n}</span>` : ""}<span class="nav-title">${escapeHtml(title)}</span><span class="nav-c" data-nav-count="${i}" hidden title="comments"></span>${extra}</a>`;
-}
-function renderQuestionBar(questions) {
-  if (!questions.length)
-    return "";
-  return `<div class="qbar" id="qbar" aria-label="Questions to answer"><span class="qbar-tally" id="qbar-tally"></span><span class="qbar-arrows"><button type="button" class="qbar-btn" data-q-step="-1" title="Previous question (p); shift for previous open">‹</button><button type="button" class="qbar-btn" data-q-step="1" title="Next question (n); shift for next open">›</button></span><div class="qbar-track">${questions.map((q, i) => `<a class="qseg" href="#q-${escapeHtml(q.id)}" data-nav-question="${escapeHtml(q.id)}" title="${escapeHtml(q.prompt)}"><span class="qseg-n">${i + 1}</span><span class="qseg-t">${escapeHtml(q.prompt.replace(/`/g, ""))}</span></a>`).join("")}</div></div>`;
-}
-function renderQuestionNav(questions) {
-  if (!questions.length)
-    return "";
-  let group;
-  return `<div class="nav-block nav-block-q">Questions <span class="nav-tally" id="nav-tally"></span></div>${questions.map((q) => {
-    const head = q.group && q.group !== group ? `<div class="nav-group">${escapeHtml(q.group)}</div>` : "";
-    group = q.group ?? group;
-    return `${head}<a class="nav-item nav-q" href="#q-${escapeHtml(q.id)}" data-nav-question="${escapeHtml(q.id)}"><span class="dot"></span><span class="nav-title">${escapeHtml(q.prompt.replace(/`/g, ""))}</span></a>`;
-  }).join("")}`;
-}
-var CSS2 = `
-/* Tokens. Light first; the two dark blocks only redefine. Neutral greys lean warm in light and
-   cool in dark, like macOS. */
-:root {
-  --bg: #f5f5f7; --pane: #ffffff; --fg: #1d1d1f; --muted: #6e6e73; --line: rgba(0,0,0,.08); --line-strong: rgba(0,0,0,.14);
-  --accent: #0a7aff; --accent-soft: rgba(10,122,255,.10); --warn: #b25d00; --warn-soft: rgba(255,159,10,.16);
-  --danger: #c7282f; --danger-soft: rgba(255,59,48,.12); --code-bg: #f2f2f4; --hi: rgba(255,214,10,.38); --hi-strong: rgba(255,204,0,.62);
-  --ok: #1f8a3b; --ok-soft: rgba(52,199,89,.16); --kw: #7c3aed; --badge: #1d1d1f; --glass: rgba(245,245,247,.78);
-  --radius: 8px; --radius-sm: 6px;
-  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
-  --shadow: 0 1px 2px rgba(0,0,0,.05), 0 8px 24px rgba(0,0,0,.08);
-}
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
-  --bg: #1c1c1e; --pane: #242426; --fg: #f2f2f7; --muted: #98989f; --line: rgba(255,255,255,.09); --line-strong: rgba(255,255,255,.16);
-  --accent: #409cff; --accent-soft: rgba(64,156,255,.16); --warn: #ffb340; --warn-soft: rgba(255,179,64,.16);
-  --danger: #ff6961; --danger-soft: rgba(255,105,97,.16); --code-bg: #1a1a1c; --hi: rgba(255,214,10,.22); --hi-strong: rgba(255,214,10,.42);
-  --ok: #30d158; --ok-soft: rgba(48,209,88,.18); --kw: #c4a4ff; --badge: #e5e5ea; --glass: rgba(28,28,30,.72); --shadow: 0 1px 2px rgba(0,0,0,.4), 0 12px 32px rgba(0,0,0,.45);
-  color-scheme: dark;
-} }
-:root[data-theme="dark"] {
-  --bg: #1c1c1e; --pane: #242426; --fg: #f2f2f7; --muted: #98989f; --line: rgba(255,255,255,.09); --line-strong: rgba(255,255,255,.16);
-  --accent: #409cff; --accent-soft: rgba(64,156,255,.16); --warn: #ffb340; --warn-soft: rgba(255,179,64,.16);
-  --danger: #ff6961; --danger-soft: rgba(255,105,97,.16); --code-bg: #1a1a1c; --hi: rgba(255,214,10,.22); --hi-strong: rgba(255,214,10,.42);
-  --ok: #30d158; --ok-soft: rgba(48,209,88,.18); --kw: #c4a4ff; --badge: #e5e5ea; --glass: rgba(28,28,30,.72); --shadow: 0 1px 2px rgba(0,0,0,.4), 0 12px 32px rgba(0,0,0,.45);
-  color-scheme: dark;
-}
-* { box-sizing: border-box; }
-[hidden] { display: none !important; }
-html, body { margin: 0; }
-html { height: 100%; }
-body { background: var(--bg); color: var(--fg); font: 14px/1.55 var(--sans); -webkit-font-smoothing: antialiased; height: 100%; display: flex; flex-direction: column; overflow: hidden; }
-h1, h2, h3, h4 { margin: 0; line-height: 1.25; letter-spacing: -.01em; }
-h1 { font-size: 19px; font-weight: 600; } h2 { font-size: 15px; font-weight: 600; } h3 { font-size: 13px; font-weight: 600; }
-h4 { font-size: 11px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
-p { margin: 0 0 .6em; } ul { margin: 0 0 .6em; padding-left: 1.2em; }
-code { font: 12.5px var(--mono); background: var(--code-bg); padding: 1px 5px; border-radius: 5px; }
-pre { margin: 0; }
-a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: underline; }
-.muted { color: var(--muted); }
-button, select, textarea { font: inherit; color: var(--fg); }
-button.quiet, select.quiet, .comments button, .anno button, .top-tools button { padding: 5px 10px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--pane); cursor: pointer; font-size: 13px; }
-button.quiet:hover, .top-tools button:hover, .comments button:hover { background: var(--code-bg); }
-button.primary { background: var(--accent); color: #fff; border-color: transparent; }
-select.quiet { appearance: none; -webkit-appearance: none; padding-right: 22px; background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%); background-position: calc(100% - 12px) 55%, calc(100% - 8px) 55%; background-size: 4px 4px; background-repeat: no-repeat; }
-:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-
-/* Header */
-.top { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px 16px; align-items: flex-start; padding: 14px 20px 12px; border-bottom: 1px solid var(--line); background: var(--glass); backdrop-filter: saturate(180%) blur(18px); -webkit-backdrop-filter: saturate(180%) blur(18px); position: sticky; top: env(safe-area-inset-top, 0px); z-index: 2; }
-.kind { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
-.summary { color: var(--muted); margin: 3px 0 0; max-width: 70ch; font-size: 13px; }
-.top-tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end; font-size: 13px; }
-.top-tools #docs { max-width: 220px; }
-/* question progress meter: one segment per question, red open, amber asked, green answered; click jumps to it */
-.qbar { width: 100%; flex: 0 0 auto; min-width: 0; display: flex; align-items: center; gap: 10px; }
-.qbar-tally { flex: none; font: 600 11px/1 var(--sans); padding: 4px 8px; border-radius: 999px; background: var(--danger-soft); color: var(--danger); white-space: nowrap; }
-.qbar-tally.done { background: var(--ok-soft); color: var(--ok); }
-.qbar-arrows { flex: none; display: inline-flex; gap: 2px; }
-.qbar-btn { width: 24px; height: 22px; padding: 0; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--pane); color: var(--fg); font: 15px/1 var(--sans); cursor: pointer; }
-.qbar-btn:hover { background: var(--code-bg); }
-.qseg.current { border-color: currentColor; box-shadow: inset 0 0 0 1px currentColor; }
-.qbar-track { flex: 1; min-width: 0; display: flex; gap: 4px; overflow-x: auto; scrollbar-width: thin; padding-bottom: 2px; }
-.qseg { flex: 1 1 0; min-width: 32px; max-width: 240px; display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; border-radius: 6px; font-size: 11.5px; line-height: 1.3; background: var(--danger-soft); color: var(--danger); text-decoration: none; white-space: nowrap; overflow: hidden; border: 1px solid transparent; }
-.qseg:hover { border-color: currentColor; text-decoration: none; }
-.qseg-n { font-weight: 700; flex: none; }
-.qseg-t { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-.qseg.asked { background: var(--warn-soft); color: var(--warn); }
-.qseg.answered { background: var(--ok-soft); color: var(--ok); }
-.qseg.answered .qseg-t { text-decoration: line-through; opacity: .8; }
-body.narrow .qseg { flex: 0 0 auto; }
-body.narrow .qseg-t { display: none; }
-.segmented { display: inline-flex; padding: 2px; border-radius: 8px; background: var(--code-bg); border: 1px solid var(--line); }
-.segmented button { padding: 3px 10px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); font-size: 12px; cursor: pointer; }
-.segmented button[aria-checked="true"] { background: var(--pane); color: var(--fg); box-shadow: 0 1px 2px rgba(0,0,0,.12); }
-.pill { font-size: 11px; padding: 3px 9px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); }
-.pill.local { background: var(--warn-soft); color: var(--warn); }
-
-/* Panes */
-.split { display: grid; grid-template-columns: var(--col-l, 44px) minmax(0, 1fr) var(--col-r, 44px); gap: 0; flex: 1; min-height: 0; }
-body.nav-pinned { --col-l: 230px; }
-body.nav-pinned.narrow { --col-l: 44px; }
-body.right-pinned, body.right-open { --col-r: clamp(320px, 38vw, 560px); }
-.dock { min-height: 0; height: 100%; }
-.rail { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 12px 0; width: 44px; height: 100%; }
-.rail-l { border-right: 1px solid var(--line); } .rail-r { border-left: 1px solid var(--line); }
-.rail-btn { width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 8px; background: transparent; color: var(--muted); cursor: pointer; }
-.rail-btn:hover { background: var(--code-bg); color: var(--fg); }
-.rail-badge { cursor: pointer; display: inline-flex; align-items: center; gap: 3px; font: 600 10.5px/1 var(--sans); min-width: 22px; height: 20px; padding: 0 5px; border-radius: 999px; justify-content: center; }
-.rail-c { background: var(--accent-soft); color: var(--accent); }
-.rail-c svg { width: 11px; height: 11px; }
-.rail-q { background: var(--danger-soft); color: var(--danger); }
-.rail-q.done { background: var(--ok-soft); color: var(--ok); }
-body.nav-pinned:not(.narrow) .rail-l, body.right-pinned .rail-r, body.right-open .rail-r { display: none; }
-.pin { width: 24px; height: 22px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; font-size: 14px; line-height: 1; }
-.pin:hover { background: var(--code-bg); color: var(--fg); }
-.pin[aria-pressed="true"] { color: var(--accent); background: var(--accent-soft); }
-.head-btns { display: inline-flex; gap: 2px; margin-left: 8px; }
-.nav .pane-head { margin: 0 8px 6px; }
-/* Unpinned: the pane slides in beside its rail and floats over the page. */
-body:not(.nav-pinned) .nav, body.narrow .nav { position: fixed; top: var(--top-h, 70px); bottom: 0; height: auto; left: 44px; width: min(300px, calc(100vw - 88px)); background: var(--pane); box-shadow: var(--shadow); z-index: 4; opacity: 0; visibility: hidden; transform: translateX(-12px); transition: transform .16s ease, opacity .16s ease, visibility 0s linear .16s; }
-body:not(.nav-pinned) .dock-l.hover .nav, body.narrow .dock-l.hover .nav { opacity: 1; visibility: visible; transform: none; transition-delay: 0s; }
-body:not(.right-pinned):not(.right-open) .right { position: fixed; right: 44px; top: var(--top-h, 70px); bottom: 0; width: min(420px, calc(100vw - 88px)); height: auto; box-shadow: var(--shadow); z-index: 4; opacity: 0; visibility: hidden; transform: translateX(12px); transition: transform .16s ease, opacity .16s ease, visibility 0s linear .16s; }
-body:not(.right-pinned):not(.right-open) .dock-r.hover .right { opacity: 1; visibility: visible; transform: none; transition-delay: 0s; }
-.pane { padding: 18px 20px; min-width: 0; }
-.nav { border-right: 1px solid var(--line); overflow: auto; height: 100%; padding: 14px 10px; font-size: 13px; }
-.nav-block { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin: 14px 8px 4px; }
-.nav-block:first-child { margin-top: 2px; }
-.nav-item { display: flex; gap: 8px; align-items: baseline; padding: 4px 8px; border-radius: var(--radius-sm); color: var(--fg); text-decoration: none; }
-.nav-item:hover { background: var(--code-bg); text-decoration: none; }
-.nav-item.on { background: var(--accent-soft); color: var(--accent); }
-.nav-n { font: 600 10.5px/1 var(--sans); min-width: 16px; height: 16px; padding: 0 4px; border-radius: 999px; background: var(--badge); color: var(--pane); display: inline-flex; align-items: center; justify-content: center; flex: none; }
-.nav-item.on .nav-n { background: var(--accent); color: #fff; }
-.nav-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
-.nav-c { flex: none; font: 600 10.5px/1 var(--sans); min-width: 18px; height: 16px; padding: 0 5px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); display: inline-flex; align-items: center; justify-content: center; gap: 3px; }
-.nav-c::before { content: ''; width: 7px; height: 7px; border-radius: 2px 2px 2px 0; background: currentColor; }
-.nav-item.on .nav-c { background: var(--accent); color: #fff; }
-.nav-block-q { display: flex; align-items: center; gap: 6px; }
-.nav-tally { font-weight: 500; text-transform: none; letter-spacing: 0; padding: 1px 7px; border-radius: 999px; background: var(--danger-soft); color: var(--danger); }
-.nav-tally.done { background: var(--ok-soft); color: var(--ok); }
-.nav-q { align-items: center; }
-.nav-q .dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--danger); box-shadow: 0 0 0 3px var(--danger-soft); }
-.nav-q.answered .dot { background: var(--ok); box-shadow: 0 0 0 3px var(--ok-soft); }
-.nav-q.answered .nav-title { color: var(--muted); }
-.left { overflow: auto; height: 100%; }
-.left-inner { max-width: 980px; margin: 0 auto; }
-.right { background: var(--pane); border-left: 1px solid var(--line); overflow: auto; height: 100%; }
-body.right-pinned .right .pin[data-close-right] { display: none; }
-.pane-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
-/* the walkthrough's and the contents' head rows stay put while the pane scrolls, so pin and close are always at hand */
-.right > .pane-head, .nav > .pane-head { position: sticky; z-index: 3; background: var(--pane); }
-.right > .pane-head { top: -18px; margin: -18px -20px 8px; padding: 14px 20px 8px; border-bottom: 1px solid var(--line); }
-.nav > .pane-head { top: -14px; margin: -14px -10px 6px; padding: 10px 18px 6px; }
-.pane-head .hint { margin-left: auto; }
-.eyebrow { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
-.hint { font-size: 11.5px; color: var(--muted); }
-@media (max-width: 1100px) { body.right-pinned, body.right-open { --col-r: clamp(300px, 44vw, 460px); } .pane { padding: 14px 16px; } }
-@media (max-width: 860px) {
-  .split { grid-template-columns: 44px minmax(0, 1fr) 0; }
-  .rail-r, .pin[data-pin] { display: none; }
-  body.right-open .right, body.right-pinned .right { position: fixed; left: 0; right: 0; top: var(--top-h, 70px); bottom: 0; width: auto; height: auto; max-height: none; z-index: 5; border-left: 0; box-shadow: var(--shadow); }
-  body.right-pinned .right { visibility: visible; }
-  body.right-pinned .right .pin[data-close-right] { display: inline-flex; }
-  body.narrow .nav { width: min(320px, 86vw); }
-  .top { flex-direction: column; gap: 8px; padding: 10px 14px 8px; }
-  .top-tools { justify-content: flex-start; }
-  .top-title .summary { display: none; }
-  .pane { padding: 12px 12px; }
-  .left-inner { padding-right: 0; }
-  .node-body { padding-right: 0; }
-  .node-actions { position: static; margin-bottom: 6px; }
-  .right > .pane-head { position: sticky; top: 0; z-index: 1; background: var(--pane); padding: 6px 0; margin: -12px 0 6px; }
-}
-
-/* Blocks in the centre */
-.block + .block { margin-top: 26px; padding-top: 22px; border-top: 1px solid var(--line); }
-.block-title { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px; }
-.prose-block { max-width: 70ch; cursor: pointer; padding: 8px 12px; margin-left: -12px; border-radius: var(--radius-sm); border: 1px solid transparent; }
-.prose-block:hover { background: var(--code-bg); }
-.prose-block.on { border-color: var(--accent); background: var(--accent-soft); }
-
-/* Annotated text */
-.sql { font: 12.5px/1.65 var(--mono); background: var(--pane); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; overflow-x: auto; white-space: pre; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
-.sql .seg { border-radius: 3px; transition: background .12s; }
-.sql .seg.peek { background: var(--hi); }
-.sql .seg.on { background: var(--hi); box-shadow: 0 0 0 1.5px var(--accent); }
-.sql .seg.on.inner { background: var(--hi-strong); }
-.sql .kw { color: var(--kw); font-weight: 600; }
-.badge { display: inline-flex; align-items: center; justify-content: center; min-width: 17px; height: 17px; padding: 0 5px; margin: 0 5px 0 0; border: 0; border-radius: 999px; background: var(--badge); color: var(--pane); font: 600 10.5px/1 var(--sans); cursor: pointer; vertical-align: text-bottom; }
-.badge.on { background: var(--accent); color: #fff; outline: 2px solid var(--accent-soft); }
-
-/* Rows: operations */
-.rows { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; }
-.row { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: start; padding: 9px 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--pane); cursor: pointer; }
-.row:hover { border-color: var(--line-strong); }
-.row.on { border-color: var(--accent); background: var(--accent-soft); }
-.row .title { font-weight: 600; }
-.row .sub { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
-.chips { display: inline-flex; gap: 5px; flex-wrap: wrap; }
-.chip { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: var(--code-bg); color: var(--muted); }
-.chip.low { background: rgba(52,199,89,.14); color: #1f8a3d; }
-.chip.medium { background: var(--warn-soft); color: var(--warn); }
-.chip.high { background: var(--danger-soft); color: var(--danger); }
-.chip.tone-ok, .chip.st-valid, .chip.st-done { background: var(--ok-soft); color: var(--ok); }
-.chip.tone-warn, .chip.st-warn { background: var(--warn-soft); color: var(--warn); }
-.chip.st-doing { background: var(--accent-soft); color: var(--accent); }
-.chip.tone-bad, .chip.st-error, .chip.st-blocked { background: var(--danger-soft); color: var(--danger); }
-.chip.tone-skip, .chip.st-skip, .chip.st-todo { background: var(--code-bg); color: var(--muted); }
-/* matrix */
-.matrix-wrap { overflow-x: auto; }
-.code { overflow-x: auto; }
-.matrix { border-collapse: separate; border-spacing: 3px; font-size: 12.5px; margin: 4px 0 0 -3px; }
-.matrix th { font-weight: 600; color: var(--muted); font-size: 11.5px; text-align: left; padding: 4px 8px; white-space: nowrap; border-radius: 6px; }
-.matrix th.ch, .matrix th.rh { cursor: pointer; }
-.matrix th.ch { text-align: center; }
-.matrix th[data-node]:hover, .matrix th[data-node].on { background: var(--accent-soft); color: var(--accent); }
-.matrix td.cell { width: 34px; height: 30px; border-radius: 7px; text-align: center; font-weight: 700; font-size: 12px; cursor: pointer; }
-.matrix td.valid { background: var(--ok-soft); color: var(--ok); }
-.matrix td.warn { background: var(--warn-soft); color: var(--warn); }
-.matrix td.error { background: var(--danger-soft); color: var(--danger); }
-.matrix td.skip { background: var(--code-bg); color: var(--muted); }
-.matrix tr[data-node]:hover th.rh { background: var(--code-bg); }
-.matrix tr[data-node].on th.rh { background: var(--accent-soft); color: var(--accent); }
-.matrix tr[data-node].on td.cell { box-shadow: 0 0 0 1.5px var(--accent); }
-.legend { display: flex; gap: 6px; margin-top: 8px; }
-.cells { list-style: none; padding: 0; margin: 6px 0 0; display: grid; gap: 6px; font-size: 13px; }
-.cells .hint-line { color: var(--muted); font-size: 12.5px; margin: 2px 0 0 4px; }
-/* finishing a review: progress while reviewing, one sheet to give the verdict, a chip after */
-.review-state { display: inline-flex; align-items: center; gap: 10px; }
-.review-state .progress { font-size: 12.5px; color: var(--muted); white-space: nowrap; }
-#finish { border-radius: 999px; font-weight: 600; }
-.verdict-chip { display: inline-flex; align-items: center; gap: 8px; padding: 3px 5px 3px 11px; border-radius: 999px; font-size: 12.5px; font-weight: 600; white-space: nowrap; }
-.verdict-chip.v-ok { background: var(--ok-soft); color: var(--ok); }
-.verdict-chip.v-warn { background: var(--warn-soft); color: var(--warn); }
-.verdict-chip .link { border: 0; background: var(--pane); color: var(--fg); font: 500 11.5px var(--sans); padding: 3px 9px; border-radius: 999px; cursor: pointer; }
-.sheet { position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,.35); display: flex; align-items: center; justify-content: center; padding: 24px; }
-.sheet-body { width: 480px; max-width: 100%; background: var(--pane); border-radius: 12px; box-shadow: var(--shadow); padding: 18px 20px; display: grid; gap: 10px; }
-.sheet-body h3 { font-size: 16px; }
-.sheet-lead { margin: 0; color: var(--muted); font-size: 13px; }
-.sheet-body h4 { margin-top: 4px; }
-.finish-open { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 13px; }
-.finish-open:empty { display: none; }
-.finish-open li.q::before { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--danger); margin-right: 8px; vertical-align: 1px; }
-.finish-open li a { color: var(--fg); } .finish-open li a:hover { color: var(--accent); }
-.sheet-body .form-row .spacer { flex: 1; }
-.sheet-body button:disabled { opacity: .5; cursor: not-allowed; }
-/* expand: a button that appears over a figure or a diagram and opens it in a lightbox */
-.fig, .diagram-wrap { position: relative; }
-.expand { position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--pane); color: var(--muted); cursor: pointer; opacity: 0; transition: opacity .12s; display: inline-flex; align-items: center; justify-content: center; z-index: 1; }
-.fig:hover .expand, .diagram-wrap:hover .expand, .expand:focus-visible { opacity: 1; }
-.expand:hover { color: var(--fg); background: var(--code-bg); }
-.lightbox { position: fixed; inset: 0; z-index: 50; background: rgba(0,0,0,.72); display: flex; align-items: center; justify-content: center; padding: 32px; cursor: zoom-out; }
-.lightbox[hidden] { display: none; }
-.lightbox .lb-body { max-width: 100%; max-height: 100%; overflow: auto; background: var(--pane); border-radius: var(--radius); padding: 12px; box-shadow: var(--shadow); cursor: default; }
-.lightbox img { display: block; max-width: none; width: auto; height: auto; }
-.lightbox svg.diagram { max-width: none; }
-.lightbox .lb-cap { font-size: 12.5px; color: var(--muted); padding: 8px 2px 0; }
-.lightbox .lb-close { position: fixed; top: 16px; right: 16px; width: 34px; height: 34px; border: 0; border-radius: 50%; background: var(--pane); color: var(--fg); font-size: 20px; cursor: pointer; }
-/* figure */
-.fig { margin: 0; padding: 8px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--pane); cursor: pointer; }
-.fig:hover { border-color: var(--line-strong); }
-.fig.on { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
-.fig img { display: block; max-width: 100%; height: auto; border-radius: var(--radius-sm); }
-.fig figcaption { font-size: 12px; color: var(--muted); padding: 8px 4px 2px; }
-.fig figcaption a { margin-left: 6px; }
-/* diagrams: sequence and flowchart, inline SVG, selection and hover through data-node */
-.diagram-wrap { overflow-x: auto; padding: 6px 0 2px; display: flex; justify-content: center; }
-.diagram { display: block; font: 12px var(--sans); max-width: 100%; height: auto; }
-.diagram .part { fill: var(--pane); stroke: var(--line-strong); }
-.diagram .part-label { fill: var(--fg); font-weight: 600; font-family: var(--mono); font-size: 11.5px; }
-.diagram .lifeline { stroke: var(--line-strong); stroke-dasharray: 4 4; }
-.diagram .band { fill: transparent; cursor: pointer; }
-.diagram .seq-msg:hover .band { fill: var(--code-bg); }
-.diagram .seq-msg.on .band { fill: var(--accent-soft); }
-.diagram .arrow { stroke: var(--fg); stroke-width: 1.4; fill: none; }
-.diagram .arrow.return { stroke-dasharray: 5 4; stroke: var(--muted); }
-.diagram .arrow.emit { stroke: var(--ok); }
-.diagram .arrow.error { stroke: var(--danger); stroke-dasharray: 5 4; }
-.diagram .arrow.await { stroke: var(--accent); }
-.diagram .msg { fill: var(--fg); font-size: 11.5px; }
-.diagram .alt { fill: var(--warn-soft); stroke: var(--warn); stroke-dasharray: 3 3; }
-.diagram .alt-tag { fill: var(--warn); font: 700 9.5px var(--sans); text-transform: uppercase; }
-.diagram .alt-text { fill: var(--fg); font-size: 11px; }
-.diagram .mk { fill: var(--fg); } .diagram .mk-open { fill: none; stroke: var(--fg); stroke-width: 1.3; } .diagram .mk-cross { fill: none; stroke: var(--danger); stroke-width: 1.5; }
-.diagram .seq-msg.emit .mk-open { stroke: var(--ok); } .diagram .seq-msg.return .mk-open { stroke: var(--muted); }
-.diagram .shape { fill: var(--pane); stroke: var(--line-strong); stroke-width: 1.2; }
-.diagram .shape-line { stroke: var(--line-strong); }
-.diagram .fc-node { cursor: pointer; }
-.diagram .fc-node:hover .shape { stroke: var(--fg); }
-.diagram .fc-node.on .shape { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.6; }
-.diagram .fc-node.diamond .shape { fill: var(--warn-soft); stroke: var(--warn); }
-.diagram .fc-node.diamond.on .shape { fill: var(--accent-soft); stroke: var(--accent); }
-.diagram .fc-node.stadium .shape { fill: var(--ok-soft); stroke: var(--ok); }
-.diagram .node-label { fill: var(--fg); font-size: 12px; font-weight: 600; }
-.diagram .node-sub { fill: var(--muted); font-size: 10.5px; }
-.diagram .edge { stroke: var(--line-strong); stroke-width: 1.3; fill: none; }
-.diagram .fc-edge.loop .edge { stroke: var(--warn); } .diagram .fc-edge.skip .edge { stroke: var(--muted); }
-.diagram .label-bg { fill: var(--pane); stroke: var(--line); }
-.diagram .edge-text { fill: var(--muted); font-size: 10.5px; font-family: var(--mono); }
-.mermaid-src { margin-top: 6px; font-size: 12px; color: var(--muted); }
-.mermaid-src summary { cursor: pointer; display: flex; align-items: center; gap: 8px; }
-.mermaid-src summary .copy { padding: 1px 8px; font-size: 11px; border-radius: 999px; }
-.mermaid-src pre { margin-top: 6px; font: 11.5px/1.5 var(--mono); background: var(--code-bg); padding: 8px 10px; border-radius: var(--radius-sm); overflow-x: auto; }
-/* code-flow and workflow walkthrough chips */
-
-.chip.kind-branch { background: var(--warn-soft); color: var(--warn); }
-.chip.kind-error { background: var(--danger-soft); color: var(--danger); }
-.chip.kind-return, .chip.kind-emit { background: var(--ok-soft); color: var(--ok); }
-.chip.kind-await, .chip.kind-loop, .chip.kind-call { background: var(--accent-soft); color: var(--accent); }
-.edges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-.edge { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; padding: 2px 8px; border: 1px dashed var(--line-strong); border-radius: 999px; color: var(--fg); }
-.edge:hover { border-style: solid; text-decoration: none; }
-.edge .when { font: 11.5px var(--mono); color: var(--muted); }
-.edge .badge { margin: 0; }
-/* workflow */
-.lanes { margin: 0 0 10px; flex-wrap: wrap; }
-.lanes .chip { cursor: pointer; padding: 3px 10px; font-size: 12px; }
-.lanes .chip.on { outline: 2px solid var(--accent); }
-.chip.lane-0 { background: var(--accent-soft); color: var(--accent); }
-.chip.lane-1 { background: rgba(175,82,222,.14); color: #8e3fc9; }
-.chip.lane-2 { background: var(--ok-soft); color: var(--ok); }
-.chip.lane-3 { background: var(--warn-soft); color: var(--warn); }
-.chip.lane-4 { background: rgba(90,200,250,.18); color: #0b7fae; }
-.chip.lane-5 { background: rgba(255,45,85,.12); color: #c81e4a; }
-
-.chip.kind-decision { background: var(--warn-soft); color: var(--warn); }
-.chip.kind-start, .chip.kind-end { background: var(--ok-soft); color: var(--ok); }
-.chip.kind-wait, .chip.kind-handoff { background: var(--code-bg); color: var(--muted); }
-.dur { font-size: 11.5px; color: var(--muted); margin-left: 4px; }
-/* trace */
-.trace-input { font-size: 13px; margin-bottom: 8px; padding: 8px 12px; background: var(--code-bg); border-radius: var(--radius-sm); }
-.trace-input .eyebrow { margin-right: 6px; }
-
-.row.trace-step.skip { opacity: .75; }
-/* precedence */
-.ladder .row { grid-template-columns: auto 1fr auto; }
-.ladder .first { font-size: 11px; color: var(--muted); white-space: nowrap; }
-.examples { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 12px; }
-.examples .eyebrow { margin-right: 4px; }
-.example { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border: 1px solid var(--line); border-radius: 999px; font-size: 12.5px; cursor: pointer; background: var(--pane); }
-.example .arrow { color: var(--muted); }
-.example .badge { margin: 0; }
-.example:hover { border-color: var(--line-strong); }
-.example.on { border-color: var(--accent); background: var(--accent-soft); }
-/* plan */
-.plan .phase > h2 { cursor: pointer; padding: 4px 8px; margin-left: -8px; border-radius: var(--radius-sm); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.plan .phase > h2:hover { background: var(--code-bg); }
-.plan .phase > h2.on { background: var(--accent-soft); color: var(--accent); }
-.plan .ws { margin: 10px 0 10px 14px; }
-.plan .ws-title { font-weight: 600; font-size: 13px; cursor: pointer; padding: 3px 8px; margin-left: -8px; border-radius: var(--radius-sm); display: inline-block; }
-.plan .ws-title:hover { background: var(--code-bg); }
-.plan .ws-title.on { background: var(--accent-soft); color: var(--accent); }
-.plan .task.done .title { color: var(--muted); text-decoration: line-through; }
-
-.gate { font-size: 11px; color: var(--warn); }
-
-/* Schema cards */
-.group { margin: 0 0 18px; }
-.group h2 { margin-bottom: 8px; }
-.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; }
-.card { padding: 11px 13px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--pane); cursor: pointer; }
-.card:hover { border-color: var(--line-strong); }
-.card.on { border-color: var(--accent); background: var(--accent-soft); }
-.card .name { font: 600 13.5px var(--mono); }
-.card .purpose { font-size: 12.5px; color: var(--muted); margin: 3px 0 6px; }
-.card .meta { font-size: 11.5px; color: var(--muted); }
-.rels { margin-top: 8px; font: 12.5px var(--mono); display: grid; gap: 2px; }
-.rels .rel { cursor: pointer; padding: 3px 8px; border-radius: var(--radius-sm); }
-.rels .rel:hover, .rels .rel.on { background: var(--accent-soft); }
-.arrow { color: var(--muted); }
-
-/* Walkthrough sections */
-.node { padding: 16px 14px; margin: 0 -14px; border-top: 1px solid var(--line); cursor: pointer; scroll-margin-top: 44px; }
-.node:first-of-type { border-top: 0; }
-.node.on { background: var(--accent-soft); cursor: default; }
-.node.general { border-top: 1px solid var(--line); margin-top: 8px; }
-.node.compact { padding: 9px 14px; }
-.node.compact .node-actions { top: 6px; }
-.node.compact .compact-title { font-size: 13px; font-weight: 500; color: var(--muted); margin: 0; line-height: 24px; }
-.node.compact.on .compact-title { color: var(--fg); }
-.node.compact .comments { margin-top: 8px; }
-.node.compact .comments:not(.has) { margin-top: 0; }
-.node.compact .comment-btn { padding: 3px 9px; }
-.node-body h2 { margin-bottom: 4px; }
-.node-body .kicker { font-size: 11.5px; color: var(--muted); margin-bottom: 8px; }
-.node-body section { margin: 12px 0 0; }
-.node-body table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
-.node-body th, .node-body td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
-.node-body th { font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 600; }
-.node-body tr[data-node] { cursor: pointer; }
-.node-body tr[data-node]:hover, .node-body tr[data-node].on { background: var(--accent-soft); }
-.node-body .mono { font: 12.5px var(--mono); }
-.node-body pre.code { font: 12px/1.5 var(--mono); background: var(--code-bg); border-radius: var(--radius-sm); padding: 10px 12px; overflow-x: auto; white-space: pre-wrap; word-break: break-word; }
-.diff { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.diff h4 { margin-bottom: 4px; }
-.warn { background: var(--warn-soft); color: inherit; padding: 6px 10px 6px 28px; border-radius: var(--radius-sm); margin: 8px 0; font-size: 12.5px; position: relative; }
-.warn::before { content: '!'; position: absolute; left: 9px; top: 6px; width: 14px; height: 14px; border-radius: 50%; background: var(--warn); color: #fff; font: 700 10px/14px var(--sans); text-align: center; }
-/* diff block: a unified diff, rows tinted by kind, findings marked by numbered badges; token colours are FILE_CSS's */
-.udiff { --df-add: rgba(46,160,67,.14); --df-del: rgba(248,81,73,.14); --df-add-n: rgba(46,160,67,.26); --df-del-n: rgba(248,81,73,.26); }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .udiff { --df-add: rgba(48,209,88,.14); --df-del: rgba(255,105,97,.15); --df-add-n: rgba(48,209,88,.28); --df-del-n: rgba(255,105,97,.28); } }
-:root[data-theme="dark"] .udiff { --df-add: rgba(48,209,88,.14); --df-del: rgba(255,105,97,.15); --df-add-n: rgba(48,209,88,.28); --df-del-n: rgba(255,105,97,.28); }
-.dsum { font-size: 12.5px; color: var(--muted); margin-bottom: 10px; }
-.plus { color: var(--ok); } .minus { color: var(--danger); }
-.dfile { border: 1px solid var(--line-strong); border-radius: var(--radius-sm); margin-bottom: 14px; overflow: hidden; }
-.dfile-head { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: var(--code-bg); font-size: 12.5px; }
-.dfile-head code { background: none; padding: 0; word-break: break-all; }
-.dcount { margin-left: auto; font: 12px var(--mono); white-space: nowrap; }
-.chip.st-added { background: var(--ok-soft); color: var(--ok); }
-.chip.st-deleted { background: var(--danger-soft); color: var(--danger); }
-.chip.st-modified { background: var(--code-bg); color: var(--muted); }
-.chip.st-renamed { background: var(--accent-soft); color: var(--accent); }
-.dhunk { padding: 3px 10px; font: 11.5px var(--mono); color: var(--muted); background: var(--accent-soft); white-space: pre; overflow-x: auto; }
-.dnote { padding: 8px 10px; font-size: 12.5px; color: var(--muted); }
-.dscroll { overflow-x: auto; }
-.dtable { border-collapse: collapse; width: 100%; font: 12px/1.5 var(--mono); }
-.dtable td { padding: 0 6px; vertical-align: top; }
-.dtable .dn { width: 1%; min-width: 34px; text-align: right; color: var(--muted); user-select: none; white-space: nowrap; }
-.dtable .dm { width: 1%; color: var(--muted); user-select: none; }
-.dtable .dc { white-space: pre; }
-.dtable .dc code { font: inherit; background: none; padding: 0; }
-.dtable .db { width: 1%; padding: 0 2px; white-space: nowrap; user-select: none; }
-.dtable .db .badge + .badge { margin-left: 2px; }
-.dtable tr.add { background: var(--df-add); } .dtable tr.add .dn { background: var(--df-add-n); }
-.dtable tr.del { background: var(--df-del); } .dtable tr.del .dn { background: var(--df-del-n); }
-.dtable tr.meta .dc { color: var(--muted); }
-.dtable tr.hit { box-shadow: inset 3px 0 0 var(--accent); background-image: linear-gradient(var(--accent-soft), var(--accent-soft)); }
-.dl { display: grid; grid-template-columns: max-content 1fr; gap: 3px 12px; font-size: 12.5px; }
-.dl dt { color: var(--muted); } .dl dd { margin: 0; }
-.xref { color: var(--accent); cursor: pointer; }
-.xref:hover { text-decoration: underline; }
-.node { position: relative; }
-.node-actions { position: absolute; top: 14px; right: 14px; z-index: 1; }
-.node-body { padding-right: 112px; }
-.comment-btn { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--pane); color: var(--muted); font-size: 12px; font-weight: 500; cursor: pointer; }
-.comment-btn:hover { color: var(--fg); border-color: var(--fg); }
-.comment-btn.has { color: var(--accent); border-color: var(--accent); }
-.comment-btn .count { min-width: 18px; height: 18px; padding: 0 6px; border-radius: 999px; background: var(--accent); color: #fff; font-size: 11px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; }
-.comment-btn.open { background: var(--fg); color: var(--pane); border-color: var(--fg); }
-.node .comments { margin-top: 12px; }
-.node .comments:not(.has) .comment-list { display: none; }
-.comment-list { list-style: none; padding: 0; margin: 0 0 8px; display: grid; gap: 10px; }
-.thread { position: relative; padding: 10px 12px; border-radius: 10px; background: var(--pane); border: 1px solid var(--line-strong); box-shadow: 0 1px 2px rgba(0,0,0,.04); font-size: 13px; }
-.msg { position: relative; display: grid; grid-template-columns: 22px 1fr; column-gap: 10px; align-items: start; }
-.msg + .msg, .thread .reply-form { margin-top: 10px; }
-.msg:has(+ .msg)::before, .msg:has(+ .reply-form)::before { content: ''; position: absolute; left: 10px; top: 25px; bottom: -11px; width: 2px; border-radius: 1px; background: var(--line-strong); }
-.avatar { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: #fff; font: 600 11px/1 var(--sans); flex: none; }
-.avatar.agent { background: var(--fg); color: var(--pane); cursor: help; }
-.avatar svg { display: block; width: 12px; height: 12px; }
-.msg .meta { display: flex; align-items: center; gap: 8px; min-height: 22px; font-size: 11.5px; color: var(--muted); }
-.msg .meta .who { font-weight: 600; color: var(--fg); font-size: 12.5px; }
-.msg .meta .for { margin-left: auto; font-size: 11px; }
-.msg .meta .state, .msg .action { font-size: 10.5px; font-weight: 600; letter-spacing: .02em; padding: 0 7px; line-height: 18px; border-radius: 999px; background: var(--warn-soft); color: var(--warn); white-space: nowrap; }
-.msg .meta .state.draft { background: var(--code-bg); color: var(--muted); }
-.msg .action { background: var(--ok-soft); color: var(--ok); }
-.msg .action.changed { background: var(--accent-soft); color: var(--accent); }
-.msg .action.declined { background: var(--danger-soft); color: var(--danger); }
-.msg .text { white-space: pre-wrap; line-height: 1.5; color: var(--fg); }
-.msg .quote { display: block; font: 11.5px var(--mono); color: var(--muted); background: var(--hi); padding: 2px 8px; border-radius: 4px; margin: 2px 0 6px; cursor: pointer; white-space: pre-wrap; }
-.msg .quote.orphan { background: var(--danger-soft); text-decoration: line-through; }
-.thread .remove { position: absolute; top: 6px; right: 6px; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--muted); font-size: 14px; line-height: 20px; cursor: pointer; opacity: 0; }
-.thread:hover .remove, .thread:focus-within .remove { opacity: 1; }
-.thread .remove:hover { background: var(--code-bg); color: var(--fg); }
-.thread .foot { display: flex; justify-content: flex-end; margin-top: 8px; }
-.thread .foot .send { padding: 3px 10px; }
-.reply-form { display: grid; grid-template-columns: 22px 1fr auto; column-gap: 10px; align-items: center; }
-.reply-form textarea { min-height: 30px; padding: 5px 11px; border-radius: 15px; resize: none; line-height: 18px; font-size: 13px; overflow: hidden; }
-.reply-form button { height: 30px; padding: 0 12px; border-radius: 15px; }
-.question .q-thread { margin-top: 10px; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--pane); font-size: 13px; }
-.qpop { position: fixed; z-index: 46; width: 360px; max-width: calc(100vw - 24px); max-height: 60vh; overflow: auto; background: var(--pane); border: 1px solid var(--line-strong); border-radius: 10px; box-shadow: var(--shadow); padding: 10px 12px; font-size: 12.5px; }
-.qpop .msg .text { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
-.qpop .qpop-thread + .qpop-thread { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
-.qpop .qpop-foot { display: flex; justify-content: flex-end; margin-top: 8px; }
-.qpop .qpop-foot button { font-size: 12px; padding: 3px 10px; border-radius: 999px; }
-body.over-quote { cursor: pointer; }
-.msg.pending .typing { display: inline-flex; gap: 4px; align-items: center; }
-.typing i { width: 5px; height: 5px; border-radius: 50%; background: var(--muted); animation: typing 1.2s ease-in-out infinite; }
-.typing i:nth-child(2) { animation-delay: .15s; }
-.typing i:nth-child(3) { animation-delay: .3s; }
-@keyframes typing { 0%, 70%, 100% { opacity: .3; transform: none; } 35% { opacity: 1; transform: translateY(-2px); } }
-.msg.arrived { animation: msg-in .35s ease-out; }
-@keyframes msg-in { from { opacity: 0; transform: translateY(4px); } }
-.thread.flash { animation: thread-flash 1.6s ease-out; }
-@keyframes thread-flash { 0%, 40% { box-shadow: 0 0 0 3px var(--accent-soft), 0 0 0 1px var(--accent); } 100% { box-shadow: 0 1px 2px rgba(0,0,0,.04); } }
-.comment-form { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--pane); }
-.comment-form textarea { border: 0; padding: 2px 4px; background: transparent; }
-.comment-form textarea:focus-visible { outline: none; }
-.form-row { display: flex; justify-content: flex-end; gap: 6px; }
-textarea { width: 100%; font: inherit; font-size: 13px; padding: 7px 9px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--pane); color: var(--fg); resize: vertical; }
-
-/* Source links */
-.sources { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; margin: 8px 0 4px; font: 11.5px var(--mono); }
-.src-label { font: 600 10.5px var(--sans); color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
-.src-local, .src-path { color: var(--fg); text-decoration: none; border-bottom: 1px dotted var(--muted); }
-.src-local:hover { color: var(--accent); border-bottom-color: var(--accent); text-decoration: none; }
-.src-gh, .src-view { font: 11px var(--sans); color: var(--accent); margin-left: 4px; }
-a.wikilink { color: var(--accent); text-decoration: none; border-bottom: 1px solid currentColor; }
-a.wikilink.missing { color: inherit; border-bottom: 1px dotted var(--muted); cursor: default; }
-.block > .sources { margin: -4px 0 10px; }
-
-/* File viewer: the file on the left, its comments on the right */
-.viewer { position: fixed; inset: 0; z-index: 40; background: rgba(0,0,0,.45); display: flex; padding: 24px; }
-.viewer[hidden] { display: none; }
-body.viewing { overflow: hidden; }
-.viewer-frame { flex: 1; display: flex; flex-direction: column; min-width: 0; background: var(--pane); border-radius: 12px; box-shadow: var(--shadow); overflow: hidden; }
-.viewer-head { display: flex; align-items: center; gap: 12px; padding: 10px 12px 10px 18px; border-bottom: 1px solid var(--line); }
-.viewer-head .path { font: 12px var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-.viewer-head .spacer { flex: 1; }
-.viewer-head a { font-size: 12.5px; white-space: nowrap; }
-.viewer-x { width: 30px; height: 30px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); font-size: 20px; line-height: 1; cursor: pointer; }
-.viewer-x:hover { background: var(--code-bg); color: var(--fg); }
-.viewer-main { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) clamp(300px, 30vw, 420px); }
-.viewer-doc { overflow: auto; padding: 20px 28px 40px; }
-.viewer-doc .viewer-text { max-width: 900px; margin: 0 auto; }
-.viewer-doc .fileview.source { margin: 0 -28px; }
-.viewer-doc.media, .viewer-doc.pdf { background: var(--code-bg); }
-.viewer-side { border-left: 1px solid var(--line); overflow: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
-.viewer-side .hint { margin: 0; }
-.viewer-count { font-weight: 600; color: var(--accent); }
-.viewer-form textarea { width: 100%; }
-.viewer-form .form-row { display: flex; gap: 6px; margin-top: 6px; }
-.viewer-form .spacer { flex: 1; }
-.fileview { --hl: var(--hi); }
-.stage { position: relative; width: fit-content; max-width: 100%; margin: 0 auto 18px; user-select: none; cursor: crosshair; background: var(--pane); box-shadow: 0 0 0 1px var(--line-strong); }
-.pdf .stage { width: 100%; }
-.stage img, .stage canvas { display: block; max-width: 100%; }
-.pdf .stage canvas { width: 100%; height: auto; }
-.regions { position: absolute; inset: 0; }
-.region { position: absolute; border: 2px solid var(--accent); background: var(--accent-soft); border-radius: 3px; cursor: pointer; }
-.region.draft { border-style: dashed; pointer-events: none; }
-.region.hot, .region.flash { background: var(--hi); border-color: var(--warn); }
-.page-n { position: absolute; top: 6px; right: 8px; font: 11px var(--mono); color: var(--muted); background: var(--pane); padding: 0 5px; border-radius: 4px; }
-.pdf-frame { display: block; width: 100%; height: 100%; min-height: 70vh; border: 0; }
-.quote.region-chip { cursor: pointer; font-family: var(--sans); }
-@media (max-width: 860px) {
-  .viewer { padding: 0; }
-  .viewer-main { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) auto; }
-  .viewer-side { border-left: 0; border-top: 1px solid var(--line); max-height: 45vh; }
-}
-${FILE_CSS}
-
-#top-comment { display: inline-flex; align-items: center; gap: 6px; }
-#top-comment svg { width: 13px; height: 13px; }
-
-/* Export: a split button; the sheet shows the JSON */
-.split-btn { display: inline-flex; }
-.split-btn button:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; }
-.split-btn button:last-child { border-top-left-radius: 0; border-bottom-left-radius: 0; border-left: 0; padding: 5px 8px; }
-.export-body { width: 640px; }
-.export-body textarea { font: 12px var(--mono); }
-
-/* Inline annotations on selected text */
+  <form id="anno-form" hidden><div class="anno-quote" id="anno-quote"></div><textarea id="anno-text" rows="3" placeholder="About these words…"></textarea><div class="anno-row"><button type="button" id="anno-cancel" class="quiet">Cancel</button><button type="submit" class="quiet" value="draft" title="Keep it to yourself for now; Send it later">Save draft</button><button type="submit" class="primary" value="send"><span class="if-served">Send to agent</span><span class="if-static">Add comment</span></button></div></form>
+</div>`;
+var ANNO_CSS = `/* Inline annotations on selected text */
 ::highlight(parley-anno) { background: color-mix(in srgb, var(--warn) 26%, transparent); text-decoration: underline wavy var(--warn); }
 ::highlight(parley-anno-hot) { background: color-mix(in srgb, var(--warn) 52%, transparent); }
-.notice { position: fixed; z-index: 46; left: 50%; bottom: 24px; transform: translateX(-50%); padding: 9px 14px; border-radius: 999px; background: var(--fg); color: var(--pane); font-size: 13px; box-shadow: var(--shadow); }
 .anno { position: fixed; z-index: 46; background: var(--pane); border: 1px solid var(--line-strong); border-radius: 999px; box-shadow: var(--shadow); padding: 3px; font-size: 13px; }
 .anno:has(#anno-form:not([hidden])) { border-radius: var(--radius); padding: 10px; max-width: 380px; }
 #anno-start { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px 5px 10px; border: 0; border-radius: 999px; background: var(--fg); color: var(--pane); font-weight: 600; cursor: pointer; }
 .anno-quote { font: 11.5px var(--mono); color: var(--muted); background: var(--hi); border-radius: 4px; padding: 2px 8px; margin: 0 0 8px; max-height: 60px; overflow: hidden; white-space: pre-wrap; }
 .anno-row { display: flex; gap: 6px; justify-content: flex-end; margin-top: 8px; }
 .anno textarea { width: 340px; }
-
-/* Questions */
-.questions { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
-.questions.tally-only { font-size: 12px; color: var(--muted); text-align: right; }
-.node-questions { margin-top: 12px; }
-.node-questions .question { margin-bottom: 8px; }
-.node-questions .question:last-child { margin-bottom: 0; }
-/* question block: the form in the centre column, at the point in the reading it belongs to */
-.ask-block { display: grid; gap: 10px; max-width: 72ch; }
-.ask-block .question { background: var(--pane); margin: 0; }
-.question { padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius); margin-bottom: 10px; background: var(--bg); }
-.question.answered { border-color: var(--line); }
-.question .state { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; color: var(--danger); margin-bottom: 4px; }
-.question .state::after { content: ''; order: -1; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
-.question.answered .state { color: var(--ok); }
-.question.answered .state::before, .question .state::before { content: 'Needs an answer'; }
-.question.answered .state::before { content: 'Answered'; }
-.question .prompt { font-weight: 600; margin-bottom: 8px; }
-.question .about { font-weight: 400; font-size: 12px; margin-left: 6px; }
-.opt { display: grid; grid-template-columns: auto 1fr; gap: 8px; align-items: start; padding: 4px 0; font-size: 13px; cursor: pointer; }
-.opt input { margin-top: 3px; accent-color: var(--accent); }
-.opt-label { display: block; } .opt-detail { display: block; color: var(--muted); font-size: 12px; }
-.rec { font-style: normal; font-size: 11px; color: var(--accent); margin-left: 4px; }
-.question textarea { margin-top: 6px; }
-.question.flash { box-shadow: 0 0 0 3px var(--accent-soft); }
-
-.question.asked .state { color: var(--warn); }
-.question.closed .state { color: var(--muted); }
-.question.closed .state::before { content: 'Closed'; }
-.question.closed { background: var(--pane); }
-.question.reopened .resolution { opacity: .7; }
-.question.reopened .closed-body > summary { display: none; }
-.question.wide { max-width: none; }
-.q-group { display: block; font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 2px; }
-.q-flags { display: inline-flex; gap: 6px; flex-wrap: wrap; margin-bottom: 4px; }
-.q-flags:empty { display: none; }
-.q-pill { font-size: 11px; padding: 1px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); }
-.q-pill.stale { background: var(--warn-soft); color: var(--warn); }
-.resolution { font-size: 13px; padding: 6px 10px; border-left: 3px solid var(--ok); background: var(--ok-soft); border-radius: var(--radius-sm); margin-bottom: 6px; }
-.resolution p:last-child { margin-bottom: 0; }
-.decided { font-size: 13px; margin: 0 0 6px; }
-.closed-body > summary, .q-history > summary { font-size: 12px; color: var(--muted); cursor: pointer; }
-.q-history { margin-top: 6px; font-size: 12px; }
-.q-history ul { margin: 4px 0 0; color: var(--muted); }
-.nav-group { padding: 6px 12px 2px; font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
-.nav-q.changed .dot, .qseg.changed { outline: 2px solid var(--accent); outline-offset: 1px; }
-.rev { text-transform: none; letter-spacing: 0; }
-#doc-notes { width: 100%; margin-top: 4px; }
-/* media: Storybook frames and screenshots on a question, an option or a story block */
-.media { display: flex; flex-wrap: wrap; gap: 10px; margin: 6px 0 8px; }
-.media > .frame { flex: 1 1 280px; min-width: 0; }
-.frame { border: 1px solid var(--line); border-radius: var(--radius); background: var(--pane); overflow: hidden; }
-.frame-bar { display: flex; align-items: center; gap: 8px; padding: 4px 8px; font-size: 11.5px; color: var(--muted); border-bottom: 1px solid var(--line); }
-.frame-bar .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.frame-bar button { padding: 1px 6px; font-size: 11px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--pane); cursor: pointer; }
-.stage-fit { position: relative; width: 100%; overflow: hidden; background: var(--bg); }
-.stage-fit iframe { position: absolute; top: 0; left: 0; border: 0; transform-origin: 0 0; background: #fff; }
-.stage-fit .frame-wait { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 12px; color: var(--muted); }
-.frame-missing { padding: 12px; font-size: 12px; color: var(--muted); }
-.frame.shot .fig { border: 0; border-radius: 0; position: relative; }
-.frame video { display: block; width: 100%; }
-.opts-side { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
-.opt-card { border: 1px solid var(--line); border-radius: var(--radius); padding: 6px 10px; background: var(--pane); }
-.opt-card:has(input:checked) { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
-.story-cap { font-size: 12.5px; color: var(--muted); }
-.sb-banner { width: 100%; font-size: 12.5px; padding: 6px 10px; border-radius: var(--radius-sm); background: var(--warn-soft); color: var(--warn); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.sb-banner code { background: transparent; }
-.lightbox iframe.lb-frame { display: block; border: 0; background: #fff; width: min(1440px, calc(100vw - 100px)); height: calc(100vh - 120px); }
-.question.asked .state::before { content: 'Asked the agent'; }
-.question.asked.replied .state::before { content: 'Agent replied · choose or ask again'; }
-.opt.ask { margin-top: 4px; padding-top: 8px; border-top: 1px dashed var(--line); }
-.q-foot { display: flex; align-items: center; gap: 8px; margin-top: 6px; min-height: 0; }
-.q-foot:empty { display: none; }
-.sent-mark { font-size: 11.5px; color: var(--muted); }
-.q-foot .reopen-q { margin-left: auto; }
-.send, .send-all { font-size: 12px; padding: 3px 9px; border-radius: 999px; }
-.send-all { margin-right: 4px; }
-.nav-q.asked .dot { background: var(--warn); box-shadow: 0 0 0 3px var(--warn-soft); }
-@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; transition: none !important; } .typing i, .msg.arrived { animation: none; } .typing i { opacity: .6; } }
 `;
-var CLIENT = `
-(() => {
-  const DATA = JSON.parse(document.getElementById('parley-data').textContent);
-  const KEY = 'parley:answers:' + DATA.doc;
-  const ORDER = DATA.nav.map((e) => e.id);
-  let answers = { doc: DATA.doc, updated: new Date(0).toISOString(), status: 'reviewing', comments: [], choices: {} };
-  // hosted: the page came from a servlet. server: the last write reached it. While false, answers
-  // are kept in this browser and this page retries the servlet; a tab closed meanwhile leaves them
-  // in this browser only (a later load reads the servlet's copy).
-  let hosted = false;
-  let server = false;
-  let selected = null;
-  let quietUntil = 0;
-  let savedAt = 0;
-  // Agent messages already on screen, so one that arrives later fades in rather than popping.
-  // Seeded on the first render (nothing animates on load) and carried across a document reload.
-  const seen = new Map(); let primed = false;
-  const $ = (s, el = document) => el.querySelector(s);
-  const $$ = (s, el = document) => Array.from(el.querySelectorAll(s));
-  const right = $('#right');
-  const left = $('#left');
-
-  // ---- docks: each side pane collapses to a rail; hover peeks, a click on a node opens the
-  // walkthrough, and a pin keeps a pane in the page flow. Pins are remembered per browser.
-  const body = document.body;
-  const topEl = $('.top');
-  const setTop = () => document.documentElement.style.setProperty('--top-h', topEl.offsetHeight + 'px');
-  setTop(); new ResizeObserver(setTop).observe(topEl);
-  const narrowMq = matchMedia('(max-width: 1100px)');
-  const setNarrow = () => body.classList.toggle('narrow', narrowMq.matches);
-  setNarrow(); narrowMq.addEventListener('change', setNarrow);
-  function openRight(on) { body.classList.toggle('right-open', on); }
-  function setPin(k, on) {
-    body.classList.toggle(k + '-pinned', on);
-    try { localStorage.setItem('parley:pin:' + k, on ? '1' : '0'); } catch {}
-    $$('[data-pin="' + k + '"]').forEach((b) => b.setAttribute('aria-pressed', String(on)));
-    if (k === 'right' && on) openRight(false);
-  }
-  ['nav', 'right'].forEach((k) => setPin(k, body.classList.contains(k + '-pinned')));
-  const hoverTimers = new Map();
-  // Both docks peek on hover. A peek stays while focus is inside it (a comment being typed) and
-  // closes once both the pointer and the focus have left.
-  for (const dock of $$('.dock-l, .dock-r')) {
-    const close = () => { clearTimeout(hoverTimers.get(dock)); hoverTimers.set(dock, setTimeout(() => { if (!dock.classList.contains('open-tap') && !dock.matches(':hover, :focus-within')) dock.classList.remove('hover'); }, 220)); };
-    dock.addEventListener('mouseenter', () => { clearTimeout(hoverTimers.get(dock)); dock.classList.add('hover'); });
-    dock.addEventListener('mouseleave', close);
-    dock.addEventListener('focusout', close);
-  }
-  document.addEventListener('click', (e) => {
-    const pin = e.target.closest('[data-pin]');
-    if (pin) {
-      if (pin.dataset.pin === 'nav' && narrowMq.matches) { const d = $('#dock-l'); clearTimeout(hoverTimers.get(d)); d.classList.toggle('hover', !d.classList.contains('open-tap')); d.classList.toggle('open-tap'); return; }
-      setPin(pin.dataset.pin, !body.classList.contains(pin.dataset.pin + '-pinned')); return;
-    }
-    if (e.target.closest('[data-close-right]')) { openRight(false); $('#dock-r').classList.remove('hover'); }
-    if (e.target.closest('[data-open-right]')) openRight(true);
-    const railQ = e.target.closest('.rail-q, .rail-c');
-    if (railQ) { openRight(true); const target = railQ.classList.contains('rail-q') ? $('#questions') : $('.comments.has'); if (target) right.scrollTo({ top: target.getBoundingClientRect().top - right.getBoundingClientRect().top + right.scrollTop - 8 }); }
-  });
-
-  // ---- persistence: servlet first, browser storage second
-  async function load() {
-    try {
-      const r = await fetch('/a/' + DATA.doc, { headers: { accept: 'application/json' } });
-      if (r.ok) { answers = await r.json(); hosted = server = true; }
-    } catch {}
-    if (!server) { try { const s = localStorage.getItem(KEY); if (s) answers = JSON.parse(s); } catch {} }
-    setPersist(server);
-    if (server) listen();
-  }
-  function setPersist(on) {
-    server = on;
-    const pill = $('#persist');
-    pill.textContent = on ? 'saved to server' : 'saved in this browser';
-    pill.classList.toggle('local', !on);
-  }
-  // PUT the page's answers. The servlet merges in what the agent added meanwhile (its replies, a
-  // reopen, a read mark), so the reviewer's edits and the agent's both survive.
-  // The push in flight, so a reload waits for it rather than cancelling it.
-  let pushing = null;
-  function push() {
-    const p = sendAnswers();
-    pushing = p;
-    p.finally(() => { if (pushing === p) pushing = null; });
-    return p;
-  }
-  async function sendAnswers() {
-    dirty = false;
-    $('#persist').dataset.started = String(++started);
-    try {
-      savedAt = Date.now();
-      const body = JSON.stringify(answers);
-      // keepalive lets the PUT outlive a navigation. Browsers share a 64 KB keepalive quota across
-      // requests in flight and refuse one over it, so keepalive is used only for a body under 32 KB
-      // in bytes, and a refused one is sent again without it.
-      const put = (keepalive) => fetch('/a/' + DATA.doc, { method: 'PUT', headers: { 'content-type': 'application/json' }, body, keepalive });
-      const small = new Blob([body]).size < 32768;
-      const r = small ? await put(true).catch(() => put(false)) : await put(false);
-      savedAt = Date.now();
-      if (!r.ok) throw new Error(String(r.status));
-      if (!server) { setPersist(true); try { localStorage.removeItem(KEY); } catch {} }
-      retryDelay = RETRY_BASE;
-      // A save got through before the pending retry: catch up now.
-      if (retryTimer) { clearTimeout(retryTimer); retryTimer = 0; catchUp(); }
-      countPush();
-      return true;
-    } catch {
-      if (server) setPersist(false);
-      try { localStorage.setItem(KEY, JSON.stringify(answers)); } catch {}
-      // Retry without waiting for the reviewer to type or the stream to drop again.
-      if (!retryTimer) retryTimer = setTimeout(catchUp, retryDelay);
-      countPush();
-      return false;
-    }
-  }
-  // Pushes the page has started and finished handling, for tests that wait on them rather than on wall time.
-  let started = 0, pushes = 0;
-  const countPush = () => { $('#persist').dataset.pushes = String(++pushes); };
-  // Events fired while the page could not reach the servlet are lost, so catch up: push answers
-  // edited meanwhile, then reload if the document was rewritten (the served page carries a
-  // different version), else re-read the answers. A failed push schedules a retry; each retry that
-  // fails doubles the delay, up to 30s, and a push that gets through resets it.
-  const RETRY_BASE = 2000, RETRY_MAX = 30000;
-  let retryTimer = 0, retryDelay = RETRY_BASE;
-  async function catchUp() {
-    clearTimeout(retryTimer); retryTimer = 0;
-    if (!server) {
-      clearTimeout(timer);
-      if (!(await push())) { clearTimeout(retryTimer); retryDelay = Math.min(retryDelay * 2, RETRY_MAX); retryTimer = setTimeout(catchUp, retryDelay); return; }
-    }
-    try {
-      const r = await fetch('/d/' + DATA.doc, { cache: 'no-store' });
-      if (r.ok) {
-        const el = new DOMParser().parseFromString(await r.text(), 'text/html').getElementById('parley-data');
-        if (el && JSON.parse(el.textContent).version !== DATA.version) { reloadPage(); return; }
-      }
-    } catch {}
-    reread();
-  }
-  // Reload for a rewritten document. A save still in its debounce, or one the servlet has not
-  // taken, is sent first; if that fails the page stays, and the retry reloads once it gets through.
-  async function reloadPage() {
-    if (hosted && (pushing || dirty || !server) && !(await flushSave())) return;
-    try { sessionStorage.setItem('parley:scroll:' + DATA.doc, JSON.stringify({ ...scrollState(), seen: [...seen.keys()] })); } catch {}
-    location.reload();
-  }
-  // ---- live reload: the servlet announces file changes; a rewritten document reloads the
-  // page (scroll kept), rewritten answers are re-read unless this page just wrote them.
-  function listen() {
-    let es;
-    try { es = new EventSource('/events'); } catch { return; }
-    es.onmessage = async (e) => {
-      let msg; try { msg = JSON.parse(e.data); } catch { return; }
-      if (msg.id !== DATA.doc) return;
-      if (msg.kind === 'doc') {
-        reloadPage();
-      } else if (msg.kind === 'answers') {
-        // Inside 1.5s of this page's own write the change is likely its echo; re-read once the
-        // window passes instead of dropping it, or an agent reply landing then would never show.
-        const wait = 1500 - (Date.now() - savedAt);
-        clearTimeout(rereadTimer); rereadTimer = setTimeout(reread, Math.max(0, wait));
-      }
-    };
-    // No close on error: EventSource reconnects by itself, and the first open after an error catches up.
-    let dropped = false;
-    es.onerror = () => { dropped = true; };
-    es.onopen = () => {
-      if (!dropped) return;
-      dropped = false;
-      catchUp();
-    };
-  }
-  let rereadTimer;
-  async function reread() {
-    if (Date.now() - savedAt < 1500) { rereadTimer = setTimeout(reread, 1500 - (Date.now() - savedAt)); return; }
-    const before = savedAt;
-    try {
-      // Answers not yet on the servlet would be overwritten by its copy.
-      if (!server) return;
-      const r = await fetch('/a/' + DATA.doc); if (!r.ok) return;
-      const next = await r.json();
-      // A change made while the fetch was out is newer than what came back; wait for its save.
-      if (savedAt !== before || !server) { rereadTimer = setTimeout(reread, 1500); return; }
-      answers = next; hydrateChoices(); renderComments();
-    } catch {}
-  }
-  // Where the reviewer is: both scroll positions and whether the right panel is open.
-  function scrollState() { return { right: right.scrollTop, top: left.scrollTop, open: body.classList.contains('right-open') }; }
-  function applyScroll(s) { quietUntil = Date.now() + 700; right.scrollTop = s.right; left.scrollTop = s.top; openRight(!!s.open); }
-  function restoreScroll() {
-    try {
-      const s = JSON.parse(sessionStorage.getItem('parley:scroll:' + DATA.doc) || 'null');
-      sessionStorage.removeItem('parley:scroll:' + DATA.doc);
-      if (s) { applyScroll(s); return true; }
-    } catch {}
-    return false;
-  }
-  let timer;
-  function save() {
-    dirty = true;
-    answers.updated = new Date().toISOString();
-    savedAt = Date.now();
-    clearTimeout(timer);
-    timer = setTimeout(() => {
-      if (hosted) { push(); return; }
-      try { localStorage.setItem(KEY, JSON.stringify(answers)); } catch {}
-    }, 150);
-  }
-  /**
-   * Send the answers now, without the debounce, after any push already in flight. True once the
-   * servlet has them; false when the push failed (push() keeps them in this browser and retries) or
-   * all of it took over 2s (a late success catches up). Concurrent callers share one flush.
-   */
-  let dirty = false;
-  let flushing = null;
-  function flushSave() {
-    if (!flushing) {
-      clearTimeout(timer);
-      const work = (async () => {
-        if (pushing) await pushing;
-        return dirty || !server ? push() : true;
-      })();
-      flushing = Promise.race([work, new Promise((r) => setTimeout(() => r(null), 2000))])
-        .then((ok) => { if (ok === null) { work.then((done) => { if (done) catchUp(); }); return false; } return ok; })
-        .finally(() => { flushing = null; });
-    }
-    return flushing;
-  }
-
-  // ---- selection: one node is current; its section and its left-pane marks light up
-  function select(id, opts = {}) {
-    selected = id;
-    const wasOpen = body.classList.contains('right-open') || body.classList.contains('right-pinned');
-    if (!id) openRight(false);
-    else if (opts.from !== 'right' && opts.from !== 'none' && opts.open !== false) openRight(true);
-    const section = id && DATA.sectionOf[id];
-    const anchorEl = opts.from === 'right' && section ? $('#node-' + CSS.escape(section)) : null;
-    const anchorTop = anchorEl ? anchorEl.getBoundingClientRect().top : 0;
-    $$('[data-node]').forEach((el) => el.classList.toggle('on', el.dataset.node === id || (el.classList.contains('node') && el.dataset.node === section)));
-    $$('.sql .seg').forEach((el) => {
-      const steps = (el.dataset.steps || '').split(' ').filter(Boolean);
-      el.classList.toggle('on', !!id && steps.includes(id));
-      el.classList.toggle('inner', !!id && steps[steps.length - 1] === id);
-      el.classList.remove('peek');
-    });
-    if (anchorEl) { const d = anchorEl.getBoundingClientRect().top - anchorTop; if (d) right.scrollTop += d; }
-    if (!id) return;
-    if (opts.from === 'none') return;
-    if (opts.from !== 'right') {
-      const sec = $('#node-' + CSS.escape(section));
-      if (sec) {
-        // Scroll the pane itself; scrollIntoView would also scroll the document.
-        quietUntil = Date.now() + 700;
-        const top = sec.getBoundingClientRect().top - right.getBoundingClientRect().top + right.scrollTop - 8;
-        // Glide when the pane was already open and the move is short; otherwise jump.
-        right.scrollTo({ top, behavior: wasOpen && Math.abs(top - right.scrollTop) < 1500 ? 'smooth' : 'auto' });
-      }
-    }
-    if (opts.from !== 'left') {
-      const target = $$('#left [data-node="' + CSS.escape(id) + '"]')[0];
-      if (target) target.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-    }
-    const navItem = $('#nav [data-node="' + CSS.escape(section) + '"]');
-    if (navItem) navItem.scrollIntoView({ block: 'nearest' });
-    try { history.replaceState(null, '', '#' + id); } catch {}
-  }
-  function peek(id, on) {
-    $$('.sql .seg').forEach((el) => {
-      const steps = (el.dataset.steps || '').split(' ');
-      if (steps.includes(id) && !el.classList.contains('on')) el.classList.toggle('peek', on);
-    });
-  }
-  document.addEventListener('click', (e) => {
-    if (e.target.closest('#viewer, button[type=submit], textarea, input, select, a:not([data-select]):not(.nav-item)')) return;
-    const sel = e.target.closest('[data-select]');
-    if (sel) { e.preventDefault(); select(sel.dataset.select); return; }
-    const node = e.target.closest('[data-node]');
-    if (!node) { if (e.target.closest('#left') && !String(getSelection()).trim()) { select(null); const d = $('#dock-l'); d.classList.remove('hover', 'open-tap'); } return; }
-    if (node.closest('#nav')) { e.preventDefault(); if (narrowMq.matches) $('#dock-l').classList.remove('hover', 'open-tap'); }
-    const from = node.closest('#right') ? 'right' : node.closest('#nav') ? 'nav' : 'left';
-    select(node.dataset.node, { from });
-  });
-  // Hovering a step on either side gives the SQL it explains a faint wash.
-  const hoverable = (e) => e.target.closest('#left [data-node], #nav [data-node], #right .node[data-node]');
-  document.addEventListener('mouseover', (e) => { const n = hoverable(e); if (n) peek(n.dataset.node, true); });
-  document.addEventListener('mouseout', (e) => { const n = hoverable(e); if (n) peek(n.dataset.node, false); });
-  window.addEventListener('hashchange', () => { const id = location.hash.slice(1); if (id && id !== selected && (DATA.sectionOf[id] || id === DATA.doc)) select(id); });
-  document.addEventListener('keydown', (e) => {
-    if (e.metaKey || e.ctrlKey || e.altKey || body.classList.contains('viewing')) return;
-    const typing = e.target.matches('textarea, input:not([type=radio]):not([type=checkbox]), select');
-    if (!typing && (e.key === 'n' || e.key === 'p' || e.key === 'N' || e.key === 'P')) { e.preventDefault(); stepQuestion(e.key.toLowerCase() === 'n' ? 1 : -1, e.shiftKey); return; }
-    if (e.target.matches('textarea, input, select')) return;
-    if (e.key === 'Escape') select(null);
-    if (e.key === 'j' || e.key === 'k') {
-      const i = ORDER.indexOf(DATA.sectionOf[selected] || selected);
-      const next = e.key === 'j' ? Math.min(ORDER.length - 1, i + 1) : Math.max(0, i - 1);
-      select(ORDER[next]);
-    }
-  });
-
-  // ---- scroll-spy: as the walkthrough scrolls, the SQL highlight follows the top section
-  let spyTimer;
-  right.addEventListener('scroll', () => {
-    if (Date.now() < quietUntil) return;
-    clearTimeout(spyTimer);
-    spyTimer = setTimeout(() => {
-      const top = right.getBoundingClientRect().top + 60;
-      const sections = $$('.node', right);
-      let best = sections[0];
-      for (const s of sections) { if (s.getBoundingClientRect().top <= top) best = s; else break; }
-      if (best && DATA.sectionOf[selected] !== best.dataset.node) select(best.dataset.node, { from: 'right' });
-    }, 80);
-  }, { passive: true });
-
-  // ---- comments: each section lists comments on itself and on nodes inside it
-  function renderComments() {
-    $$('[data-comments]').forEach((box) => {
-      const sec = box.dataset.comments;
-      const mine = answers.comments.filter((c) => (DATA.sectionOf[c.node] || c.node) === sec);
-      box.classList.toggle('has', mine.length > 0);
-      const btn = $('.comment-btn', box.closest('.node')); const count = $('.count', btn);
-      btn.classList.toggle('has', mine.length > 0); count.hidden = mine.length === 0; count.textContent = String(mine.length);
-      const navCount = $('[data-nav-count="' + CSS.escape(sec) + '"]'); if (navCount) { navCount.hidden = mine.length === 0; navCount.textContent = String(mine.length); }
-      redraw(box, () => { $('.comment-list', box).innerHTML = mine.map((c) => threadHtml(c, sec)).join(''); });
-    });
-    const total = answers.comments.length;
-    $$('.rail-c').forEach((b) => { b.hidden = total === 0; $('b', b).textContent = String(total); });
-    updateSendAll(); renderReviewState();
-    renderViewer();
-    paintQuotes();
-  }
-
-  // ---- inline annotations: a comment on selected words, stored as a W3C TextQuoteSelector on its node
+var ANNOTATIONS_JS = `  // ---- inline annotations: a comment on selected words, stored as a W3C TextQuoteSelector on its node
   const SUPPORTS_HL = 'highlights' in CSS && typeof Highlight === 'function';
   /**
    * The places that show a node, each as {root, pred}. A step's text inside a <pre> is several
@@ -6427,11 +7239,15 @@ var CLIENT = `
   $('#anno-form').addEventListener('submit', (e) => {
     e.preventDefault(); const text = $('#anno-text').value.trim(); if (!text || !pendingSel) return;
     const now = new Date().toISOString(); const draft = e.submitter && e.submitter.value === 'draft';
-    answers.comments.push({ id: 'c' + Date.now().toString(36), node: pendingSel.node, selector: pendingSel.selector, text, at: now, ...(draft ? {} : { sent: now }) });
+    answers.comments.push({ id: 'c' + rid(), node: pendingSel.node, selector: pendingSel.selector, text, at: now, ...(draft ? {} : { sent: now }) });
     const node = pendingSel.node; hideAnno(); document.getSelection()?.removeAllRanges();
-    renderComments(); DATA.questions.forEach((q) => markAnswered(q.id)); save(); if (!node.startsWith('f:')) select(node, { from: 'left' }); if (!draft) notice('Sent to the agent');
+    renderComments(); DATA.questions.forEach((q) => markAnswered(q.id)); save(); if (!node.startsWith('f:')) select(node, { from: 'left' }); if (!draft) notice(sentNote());
   });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !anno.hidden) hideAnno(); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !anno.hidden) hideAnno();
+    // c: the keyboard way to comment on the selected words.
+    if (e.key === 'c' && !e.metaKey && !e.ctrlKey && !e.altKey && pendingSel && pendingSel.selector.exact && $('#anno-form').hidden && !e.target.matches('textarea, input, select')) { e.preventDefault(); showAnnoForm('“' + pendingSel.selector.exact + '”'); }
+  });
   document.addEventListener('click', (e) => {
     const j = e.target.closest('[data-jump]'); if (!j) return;
     e.stopPropagation();
@@ -6442,7 +7258,187 @@ var CLIENT = `
   }, true);
   document.addEventListener('mouseover', (e) => { const li = e.target.closest('li[data-comment]'); if (li) paintQuotes(li.dataset.comment); });
   document.addEventListener('mouseout', (e) => { const li = e.target.closest('li[data-comment]'); if (li) paintQuotes(); });
+`;
+var QUOTED_WORDS_JS = `  // ---- quoted words: hover shows the chain under them, a click goes to the thread in the details pane
+  const qpop = document.createElement('div'); qpop.className = 'qpop'; qpop.hidden = true; document.body.appendChild(qpop);
+  let qpopFor = null, qpopHideT = 0, qpopRaf = 0;
+  function quoteAt(x, y) {
+    for (const p of painted) for (const r of p.ranges) for (const b of r.getClientRects()) if (x >= b.left && x <= b.right && y >= b.top && y <= b.bottom) return { id: p.id, rect: b };
+    return null;
+  }
+  function clip(t) { return t.length > 220 ? t.slice(0, 217) + '…' : t; }
+  function showQpop(hit) {
+    const c = answers.comments.find((x) => x.id === hit.id); if (!c) return;
+    const sameWords = answers.comments.filter((x) => x.selector && x.node === c.node && x.selector.exact === c.selector.exact);
+    qpop.innerHTML = sameWords.map((t) => '<div class="qpop-thread" data-thread="' + esc(t.id) + '">' + [{ from: 'reviewer', text: t.text, at: t.at }].concat(t.replies || []).map((m, _, all) => msgHtml({ ...m, text: clip(m.text) }, undefined, all)).join('') + '<div class="qpop-foot"><button type="button" class="quiet" data-open-thread="' + esc(t.id) + '">Open thread</button></div></div>').join('');
+    qpop.hidden = false; qpopFor = hit.id; paintQuotes(hit.id);
+    const w = qpop.offsetWidth, h = qpop.offsetHeight;
+    let left = Math.min(Math.max(12, hit.rect.left), window.innerWidth - w - 12);
+    let top = hit.rect.bottom + 8; if (top + h > window.innerHeight - 12) top = Math.max(12, hit.rect.top - h - 8);
+    qpop.style.left = left + 'px'; qpop.style.top = top + 'px';
+  }
+  function hideQpop() { if (qpop.hidden) return; qpop.hidden = true; qpopFor = null; body.classList.remove('over-quote'); paintQuotes(); }
+  function goToThread(id) {
+    const c = answers.comments.find((x) => x.id === id); if (!c) return;
+    if (c.node.startsWith('f:')) { hideQpop(); flashThread(id); return; }
+    hideQpop(); openRight(true); select(c.node, { from: 'left' });
+    const li = $('li[data-comment="' + CSS.escape(id) + '"]'); if (!li) return;
+    li.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    li.classList.remove('flash'); void li.offsetWidth; li.classList.add('flash');
+    const ta = $('.reply-form textarea', li); if (ta) setTimeout(() => ta.focus({ preventScroll: true }), 500);
+  }
+  document.addEventListener('mousemove', (e) => {
+    if (!painted.length && qpop.hidden) return;
+    if (qpopRaf) return; qpopRaf = requestAnimationFrame(() => {
+      qpopRaf = 0;
+      if (qpop.contains(e.target)) { clearTimeout(qpopHideT); return; }
+      const hit = quoteAt(e.clientX, e.clientY);
+      body.classList.toggle('over-quote', !!hit);
+      if (hit) { clearTimeout(qpopHideT); if (qpopFor !== hit.id) showQpop(hit); }
+      else if (!qpop.hidden) { clearTimeout(qpopHideT); qpopHideT = setTimeout(hideQpop, 250); }
+    });
+  });
   document.addEventListener('click', (e) => {
+    const open = e.target.closest('[data-open-thread]'); if (open) { goToThread(open.dataset.openThread); return; }
+    if (qpop.contains(e.target)) return;
+    if (!painted.length || !document.getSelection().isCollapsed || e.target.closest('a, button, input, textarea, label, .comments')) return;
+    const hit = quoteAt(e.clientX, e.clientY); if (hit) { e.preventDefault(); e.stopPropagation(); goToThread(hit.id); }
+  }, true); // capture: the panes' own click handlers select the node and stop there
+  document.addEventListener('scroll', () => hideQpop(), true);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideQpop(); });
+`;
+
+// src/lib/page/icons.ts
+var ICON_SIDEBAR_L = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="2"/><path d="M5.5 2.5v11"/></svg>';
+var ICON_SIDEBAR_R = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="2"/><path d="M10.5 2.5v11"/></svg>';
+var ICON_PIN = '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M6 2.5h4l-.5 4 2.5 2.5v1.5H4V9L6.5 6.5z" stroke-linejoin="round"/><path d="M8 10.5V14"/></svg>';
+var COMMENT_ICON = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z" stroke-linejoin="round"/></svg>';
+var ICON_MORE = '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="3.5" cy="8" r="1.4"/><circle cx="8" cy="8" r="1.4"/><circle cx="12.5" cy="8" r="1.4"/></svg>';
+
+// src/lib/page/comments.ts
+function sectionHtml(id, body, extraClass = "", heading = "", questions = "") {
+  const i = escapeHtml(id);
+  const compact = !body.trim() && !questions;
+  return `<section class="node ${extraClass}${compact ? " compact" : ""}" data-node="${i}" id="node-${i}">
+      <div class="node-actions"><button type="button" class="comment-btn" data-comment-on="${i}" title="Comment on this">${COMMENT_ICON}<span class="label">Comment</span><span class="count" hidden></span></button></div>
+      <div class="node-body">${compact ? `<h2 class="compact-title">${heading}</h2>` : body || `<h2 class="compact-title">${heading}</h2>`}</div>
+      ${questions ? `<div class="node-questions">${questions}</div>` : ""}
+      <div class="comments" data-comments="${i}">
+        <ul class="comment-list"></ul>
+        <form class="comment-form" hidden><textarea rows="3" placeholder="Comment for the agent…"></textarea><div class="form-row"><button type="button" class="quiet cancel">Cancel</button><button type="submit" class="quiet" value="draft" title="Keep it to yourself for now; Send it later">Save draft</button><button type="submit" class="primary" value="send"><span class="if-served">Send to agent</span><span class="if-static">Add comment</span></button></div></form>
+      </div>
+    </section>`;
+}
+var DETAILS_CSS = `/* Details sections */
+.node { padding: 16px 14px; margin: 0 -14px; border-top: 1px solid var(--line); cursor: pointer; scroll-margin-top: 44px; }
+.node:first-of-type { border-top: 0; }
+.node.on { background: var(--sel-bg); box-shadow: inset 3px 0 0 var(--accent); cursor: default; }
+.node.general { border-top: 1px solid var(--line); margin-top: 8px; }
+.node.compact { padding: 9px 14px; }
+.node.compact .node-actions { top: 6px; }
+.node.compact .compact-title { font-size: 13px; font-weight: 500; color: var(--muted); margin: 0; line-height: 24px; }
+.node.compact.on .compact-title { color: var(--fg); }
+.node.compact .comments { margin-top: 8px; }
+.node.compact .comments:not(.has) { margin-top: 0; }
+.node.compact .comment-btn { padding: 3px 9px; }
+.node-body h2 { margin-bottom: 4px; }
+.node-body .kicker { font-size: 11.5px; color: var(--muted); margin-bottom: 8px; }
+.node-body section { margin: 12px 0 0; }
+.node-body table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+.node-body th, .node-body td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.node-body th { font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 600; }
+.node-body tr[data-node] { cursor: pointer; }
+.node-body tr[data-node]:hover, .node-body tr[data-node].on { background: var(--accent-soft); }
+.node-body .mono { font: 12.5px var(--mono); }
+.node-body pre.code { font: 12px/1.5 var(--mono); background: var(--code-bg); border-radius: var(--radius-sm); padding: 10px 12px; overflow-x: auto; white-space: pre-wrap; word-break: break-word; }
+.diff { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.diff h3.sub { margin-bottom: 4px; }
+.warn { background: var(--warn-soft); color: inherit; padding: 6px 10px 6px 28px; border-radius: var(--radius-sm); margin: 8px 0; font-size: 12.5px; position: relative; }
+.warn::before { content: '!'; position: absolute; left: 9px; top: 6px; width: 14px; height: 14px; border-radius: 50%; background: var(--warn); color: #fff; font: 700 10px/14px var(--sans); text-align: center; }
+`;
+var THREAD_CSS = `.node { position: relative; }
+.node-actions { position: absolute; top: 14px; right: 14px; z-index: 1; }
+.node-body { padding-right: 112px; }
+/* Narrow: the Comment button takes its own line, so it covers neither the text nor the pane's head. */
+@media (max-width: 860px) { .node-actions { position: static; margin-bottom: 6px; } .node-body { padding-right: 0; } }
+.comment-btn { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--pane); color: var(--muted); font-size: 12px; font-weight: 500; cursor: pointer; }
+.comment-btn:hover { color: var(--fg); border-color: var(--fg); }
+.comment-btn.has { color: var(--accent); border-color: var(--accent); }
+.comment-btn .count { min-width: 18px; height: 18px; padding: 0 6px; border-radius: 999px; background: var(--accent-fill); color: #fff; font-size: 11px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; }
+.comment-btn.open { background: var(--fg); color: var(--pane); border-color: var(--fg); }
+.node .comments { margin-top: 12px; }
+.node .comments:not(.has) .comment-list { display: none; }
+.comment-list { list-style: none; padding: 0; margin: 0 0 8px; display: grid; gap: 10px; }
+.thread { position: relative; padding: 10px 12px; border-radius: 10px; background: var(--pane); border: 1px solid var(--line-strong); box-shadow: 0 1px 2px rgba(0,0,0,.04); font-size: 13px; }
+.msg { position: relative; display: grid; grid-template-columns: 22px 1fr; column-gap: 10px; align-items: start; }
+.msg + .msg, .thread .reply-form { margin-top: 10px; }
+.msg:has(+ .msg)::before, .msg:has(+ .reply-form)::before { content: ''; position: absolute; left: 10px; top: 25px; bottom: -11px; width: 2px; border-radius: 1px; background: var(--line-strong); }
+.avatar { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: var(--accent-fill); color: #fff; font: 600 11px/1 var(--sans); flex: none; }
+.avatar.agent { background: var(--fg); color: var(--pane); cursor: help; }
+.avatar svg { display: block; width: 12px; height: 12px; }
+.msg .meta { display: flex; align-items: center; gap: 8px; min-height: 22px; font-size: 11.5px; color: var(--muted); }
+.msg .meta .who { font-weight: 600; color: var(--fg); font-size: 12.5px; }
+.msg .meta .for { margin-left: auto; font-size: 11px; }
+.msg .meta .state, .msg .action { font-size: 10.5px; font-weight: 600; letter-spacing: .02em; padding: 0 7px; line-height: 18px; border-radius: 999px; background: var(--warn-soft); color: var(--warn-text); white-space: nowrap; }
+.msg .meta .state.draft { background: var(--code-bg); color: var(--muted); }
+.msg .action { background: var(--ok-soft); color: var(--ok-text); }
+.msg .action.changed { background: var(--accent-soft); color: var(--accent); }
+.msg .action.declined { background: var(--danger-soft); color: var(--danger-text); }
+.msg .text { white-space: pre-wrap; line-height: 1.5; color: var(--fg); }
+.msg .quote { display: block; font: 11.5px var(--mono); color: var(--muted); background: var(--hi); padding: 2px 8px; border-radius: 4px; margin: 2px 0 6px; cursor: pointer; white-space: pre-wrap; }
+.msg .quote.orphan { background: var(--danger-soft); text-decoration: line-through; }
+.thread .remove { position: absolute; top: 6px; right: 6px; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--muted); font-size: 14px; line-height: 20px; cursor: pointer; opacity: 0; }
+.thread:hover .remove, .thread:focus-within .remove { opacity: 1; }
+.thread .remove:hover { background: var(--code-bg); color: var(--fg); }
+.thread .foot { display: flex; justify-content: flex-end; margin-top: 8px; }
+.thread .foot .send { padding: 3px 10px; }
+.reply-form { display: grid; grid-template-columns: 22px 1fr auto; column-gap: 10px; align-items: center; }
+.reply-form textarea { min-height: 30px; padding: 5px 11px; border-radius: 15px; resize: none; line-height: 18px; font-size: 13px; overflow: hidden; }
+.reply-form button { height: 30px; padding: 0 12px; border-radius: 15px; }
+.question .q-thread { margin-top: 10px; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--pane); font-size: 13px; }
+.qpop { position: fixed; z-index: 46; width: 360px; max-width: calc(100vw - 24px); max-height: 60vh; overflow: auto; background: var(--pane); border: 1px solid var(--line-strong); border-radius: 10px; box-shadow: var(--shadow); padding: 10px 12px; font-size: 12.5px; }
+.qpop .msg .text { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.qpop .qpop-thread + .qpop-thread { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.qpop .qpop-foot { display: flex; justify-content: flex-end; margin-top: 8px; }
+.qpop .qpop-foot button { font-size: 12px; padding: 3px 10px; border-radius: 999px; }
+body.over-quote { cursor: pointer; }
+.msg.pending { display: block; padding-left: 32px; font-size: 12px; color: var(--muted); }
+.msg.arrived { animation: msg-in .35s ease-out; }
+@keyframes msg-in { from { opacity: 0; transform: translateY(4px); } }
+.thread.flash { animation: thread-flash 1.6s ease-out; }
+@keyframes thread-flash { 0%, 40% { box-shadow: 0 0 0 3px var(--accent-soft), 0 0 0 1px var(--accent); } 100% { box-shadow: 0 1px 2px rgba(0,0,0,.04); } }
+.comment-form { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--pane); }
+.comment-form textarea { border: 0; padding: 2px 4px; background: transparent; }
+.comment-form textarea:focus-visible { outline: none; }
+.form-row { display: flex; justify-content: flex-end; gap: 6px; }
+textarea { width: 100%; font: inherit; font-size: 13px; padding: 7px 9px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--pane); color: var(--fg); resize: vertical; }
+
+`;
+var TOP_COMMENT_CSS = `#top-comment { display: inline-flex; align-items: center; gap: 6px; }
+#top-comment svg { width: 13px; height: 13px; }
+
+`;
+var COMMENTS_JS = `  // ---- comments: each section lists comments on itself and on nodes inside it
+  function renderComments() {
+    $$('[data-comments]').forEach((box) => {
+      const sec = box.dataset.comments;
+      const mine = answers.comments.filter((c) => (DATA.sectionOf[c.node] || c.node) === sec);
+      box.classList.toggle('has', mine.length > 0);
+      const btn = $('.comment-btn', box.closest('.node')); const count = $('.count', btn);
+      btn.classList.toggle('has', mine.length > 0); count.hidden = mine.length === 0; count.textContent = String(mine.length);
+      const navCount = $('[data-nav-count="' + CSS.escape(sec) + '"]'); if (navCount) { navCount.hidden = mine.length === 0; navCount.textContent = String(mine.length); }
+      redraw(box, () => { $('.comment-list', box).innerHTML = mine.map((c) => threadHtml(c, sec)).join(''); });
+    });
+    const total = answers.comments.length;
+    $$('.rail-c').forEach((b) => { b.hidden = total === 0; $('b', b).textContent = String(total); });
+    updateSendAll(); renderReviewState();
+    renderViewer();
+    paintQuotes();
+    scheduleUnread();
+  }
+
+`;
+var COMMENT_FORMS_JS = `  document.addEventListener('click', (e) => {
     const btn = e.target.closest('[data-comment-on]');
     const cancel = e.target.closest('.comment-form .cancel');
     if (!btn && !cancel) return;
@@ -6463,9 +7459,9 @@ var CLIENT = `
     const node = selected && DATA.sectionOf[selected] === box.dataset.comments ? selected : box.dataset.comments;
     // Send is the default: a comment goes to the agent as it is added. Save draft keeps it private.
     const now = new Date().toISOString(); const draft = e.submitter && e.submitter.value === 'draft';
-    answers.comments.push({ id: 'c' + Date.now().toString(36), node, text, at: now, ...(draft ? {} : { sent: now }) });
+    answers.comments.push({ id: 'c' + rid(), node, text, at: now, ...(draft ? {} : { sent: now }) });
     ta.value = ''; form.hidden = true; $('.comment-btn', box.closest('.node')).classList.remove('open');
-    renderComments(); DATA.questions.forEach((q) => markAnswered(q.id)); save(); if (!draft) notice('Sent to the agent');
+    renderComments(); DATA.questions.forEach((q) => markAnswered(q.id)); save(); if (!draft) notice(sentNote());
   });
   document.addEventListener('click', (e) => {
     const b = e.target.closest('[data-remove]'); if (!b) return;
@@ -6473,19 +7469,716 @@ var CLIENT = `
     renderComments(); save();
   });
 
-  // ---- choices
+`;
+var TOP_COMMENT_JS = `  // ---- top-bar Comment: the comment form under About the whole document, in the details pane
+  $('#top-comment').addEventListener('click', () => {
+    const sec = $('#node-' + CSS.escape(DATA.doc)); if (!sec) return;
+    openRight(true); select(DATA.doc, { from: 'left' });
+    const form = $('.comment-form', sec); if (form && form.hidden) $('[data-comment-on]', sec).click(); else if (form) $('textarea', form).focus();
+  });
+
+`;
+var THREADS_JS = `  const AGENT_ICON = '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 1l1.6 4.4L14 7l-4.4 1.6L8 13l-1.6-4.4L2 7l4.4-1.6z"/></svg>';
+  /**
+   * Rebuild the reply forms inside el without losing what the reviewer is typing: each form's
+   * draft comes back, and so do the focus and caret of the one being typed in.
+   */
+  function redraw(el, build) {
+    const key = (f) => f.dataset.replyComment ? 'c:' + f.dataset.replyComment : 'q:' + f.dataset.replyAsk;
+    const drafts = new Map(); $$('.reply-form', el).forEach((f) => { const v = $('textarea', f).value; if (v) drafts.set(key(f), v); });
+    const af = document.activeElement && el.contains(document.activeElement) ? document.activeElement.closest('.reply-form') : null;
+    const at = af ? key(af) : null; const caret = af ? $('textarea', af).selectionStart : 0;
+    build();
+    $$('.reply-form', el).forEach((f) => {
+      const ta = $('textarea', f); const k = key(f);
+      if (drafts.has(k)) ta.value = drafts.get(k);
+      if (k === at) { ta.focus({ preventScroll: true }); ta.setSelectionRange(caret, caret); }
+    });
+  }
+  // ---- threads: a comment, an ask or a note is the root; the agent's answers and the reviewer's replies sit under it
+  /** An answers file timestamp as "YYYY-MM-DD HH:MM", escaped: the answers file is input, not markup. */
+  // An answers file timestamp as YYYY-MM-DD HH:MM, from any value.
+  function clock(at) { return String(at || '').slice(0, 16).replace('T', ' '); }
+  function timeText(at) { return esc(clock(at)); }
+  function threadState(root) { const r = root.replies || []; const last = r[r.length - 1]; const replied = !!last && last.from === 'agent'; return { replied, awaiting: !!root.sent && !replied }; }
+  function msgHtml(m, key, thread) {
+    const agent = m.from === 'agent'; const by = m.by || {}; const who = [by.model, by.harness].filter(Boolean).join(' on ');
+    const tip = agent ? 'Answered by ' + (who || 'an agent') : 'You';
+    // An agent message carries its id, so the page can mark it seen and step to it with u.
+    const attrs = agent && m.id ? ' data-msg="' + esc(m.id) + '" tabindex="-1"' : '';
+    const cls = 'msg ' + (agent ? 'agent' : 'reviewer') + (key && agent && arrived(key) ? ' arrived' : '') + (isUnread(m, thread) ? ' unread' : '');
+    return '<div class="' + cls + '"' + attrs + '>' + (agent ? '<span class="avatar agent" title="' + esc(tip) + '">' + AGENT_ICON + '</span>' : '<span class="avatar">Y</span>') + '<div class="msg-body"><div class="meta"><span class="who" title="' + esc(tip) + '">' + (agent ? 'Agent' : 'You') + '</span><time>' + timeText(m.at) + '</time>' + (m.action ? '<span class="action ' + esc(m.action) + '">' + esc(m.action) + '</span>' : '') + '</div><div class="text">' + esc(m.text) + '</div></div></div>';
+  }
+  /**
+   * Whether the agent message at key just arrived. A thread can be redrawn more than once in one
+   * update (hydrateChoices marks each question twice), so "just" is a short window from the first
+   * sight, not a single render, or the second redraw would strip the fade-in.
+   */
+  function arrived(key) { if (!seen.has(key)) seen.set(key, primed ? Date.now() : 0); return Date.now() - seen.get(key) < 400; }
+  /** Where the agent's reply will land while a sent thread waits on it. Plain text: no agent may be listening. */
+  function pendingHtml() { return '<div class="msg pending"><span class="pending-text">Waiting for a reply</span></div>'; }
+  function repliesHtml(id, root) { const r = root.replies || []; return r.map((m, i) => msgHtml(m, id + ':' + i + ':' + (m.at || ''), r)).join('') + (root.sent && threadState(root).awaiting ? pendingHtml() : ''); }
+  function replyFormHtml(attr) { return '<form class="reply-form" ' + attr + '><span class="avatar">Y</span><textarea rows="1" placeholder="Reply…" aria-label="Reply"></textarea><button type="submit" class="primary">Reply</button></form>'; }
+  function threadHtml(c, sec) {
+    const who = String(c.by || 'You');
+    const quote = c.selector && c.selector.type === 'FragmentSelector' ? '<span class="quote region-chip" data-region-of="' + esc(c.id) + '" title="show the region">▭ ' + regionLabel(c) + '</span>' : c.selector ? '<span class="quote' + (resolveQuote(c).length ? '' : ' orphan') + '" data-jump="' + esc(c.id) + '" title="jump to the words">“' + esc(c.selector.exact.length > 120 ? c.selector.exact.slice(0, 117) + '…' : c.selector.exact) + '”</span>' : '';
+    const state = !c.sent ? '<span class="state draft">Draft</span>' : '';
+    const root = '<div class="msg reviewer root"><span class="avatar" title="' + esc(who) + '">' + esc(who.slice(0, 1).toUpperCase()) + '</span><div class="msg-body"><div class="meta"><span class="who">' + esc(who) + '</span><time>' + timeText(c.at) + '</time>' + state + (c.node !== sec ? '<span class="for">on ' + esc(DATA.nodeTitles[c.node] || c.node) + '</span>' : '') + '</div>' + quote + '<div class="text">' + esc(c.text) + '</div></div></div>';
+    const tail = c.sent ? replyFormHtml('data-reply-comment="' + esc(c.id) + '"') : '<div class="foot"><button type="button" class="quiet send" data-send-comment="' + esc(c.id) + '">Send to agent</button></div>';
+    return '<li class="thread" data-comment="' + esc(c.id) + '">' + root + repliesHtml(c.id, c) + tail + '<button type="button" class="remove" data-remove="' + esc(c.id) + '" title="Remove this thread">×</button></li>';
+  }
+  // A reply is sent as it is added; Enter sends, Shift+Enter breaks a line.
+  document.addEventListener('submit', (e) => {
+    const form = e.target.closest('.reply-form'); if (!form) return;
+    e.preventDefault(); const ta = $('textarea', form); const text = ta.value.trim(); if (!text) return;
+    const now = new Date().toISOString(); const m = { id: rid(), from: 'reviewer', text, at: now, sent: now };
+    if (form.dataset.replyComment) { const c = answers.comments.find((x) => x.id === form.dataset.replyComment); if (!c) return; (c.replies = c.replies || []).push(m); ta.value = ''; renderComments(); }
+    else { const a = answers.choices[form.dataset.replyAsk]; if (!a) return; (a.replies = a.replies || []).push(m); ta.value = ''; markAnswered(form.dataset.replyAsk); }
+    save(); notice(sentNote());
+  });
+  document.addEventListener('keydown', (e) => { const ta = e.target.closest('.reply-form textarea'); if (ta && e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ta.form.requestSubmit(); } });
+  document.addEventListener('input', (e) => { const ta = e.target.closest('.reply-form textarea'); if (ta) { ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; } });
+`;
+
+// src/lib/page/export-sheet.ts
+var EXPORT_SHEET_HTML = `<div id="export-sheet" class="sheet" hidden><div class="sheet-body export-body" role="dialog" aria-modal="true" aria-labelledby="export-title">
+  <h3 id="export-title">Export answers</h3>
+  <p class="sheet-lead" id="export-note"></p>
+  <textarea id="export-text" rows="16" readonly></textarea>
+  <div class="form-row"><button type="button" id="export-close" class="quiet">Close</button><span class="spacer"></span><button type="button" id="export-copy" class="quiet">Copy</button><button type="button" id="export-save" class="primary">Download</button></div>
+</div></div>`;
+var EXPORT_CSS = `/* Export: a split button; the sheet shows the JSON */
+.split-btn { display: inline-flex; }
+.split-btn button:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.split-btn button:last-child { border-top-left-radius: 0; border-bottom-left-radius: 0; border-left: 0; padding: 5px 8px; }
+.export-body { width: 640px; }
+.export-body textarea { font: 12px var(--mono); }
+
+`;
+var EXPORT_JS = `  // ---- export: the split button's main half opens a sheet with the JSON to copy or save; ↓ downloads at once
+  const exportSheet = $('#export-sheet');
+  const exportName = () => DATA.doc + '.answers.json';
+  /**
+   * The answers as a file. A static page has no Send: the file is how everything reaches the
+   * agent, so exporting it sends every unsent comment, ask and note, as Finish review does.
+   */
+  function exportJson() {
+    if (!hosted) {
+      const u = unsent();
+      if (u.comments.length + u.choices.length) { u.comments.forEach((c) => sendComment(c.id)); u.choices.forEach(sendChoice); renderComments(); DATA.questions.forEach((q) => markAnswered(q.id)); save(); }
+    }
+    return JSON.stringify(answers, null, 2);
+  }
+  /** Some hosts block downloads; the sheet's text stays the fallback. */
+  function download() {
+    try {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([exportJson()], { type: 'application/json' })); a.download = exportName(); a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    } catch {}
+  }
+  $('#export').addEventListener('click', () => {
+    $('#export-text').value = exportJson();
+    $('#export-note').textContent = 'Copy it, or save it as ' + exportName() + '.';
+    exportSheet.hidden = false; $('#export-text').select();
+  });
+  $('#export-download').addEventListener('click', download);
+  $('#export-save').addEventListener('click', download);
+  $('#export-copy').addEventListener('click', async (e) => {
+    try { await navigator.clipboard.writeText(exportJson()); e.target.textContent = 'Copied'; setTimeout(() => (e.target.textContent = 'Copy'), 1200); } catch { $('#export-text').select(); }
+  });
+  $('#export-close').addEventListener('click', () => (exportSheet.hidden = true));
+  exportSheet.addEventListener('click', (e) => { if (e.target === exportSheet) exportSheet.hidden = true; });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !exportSheet.hidden) exportSheet.hidden = true; });
+
+`;
+
+// src/lib/page/finish.ts
+var REVIEW_PROGRESS_HTML = `<span id="review-progress" class="progress" hidden></span>`;
+var REVIEW_STATE_HTML = `<div class="review-state"><button id="finish" type="button" class="primary">Finish review</button><span id="verdict-chip" class="verdict-chip" hidden><span class="vc-label"></span><button type="button" id="change-verdict" class="link">Change verdict</button></span></div>`;
+var FINISH_SHEET_HTML = `<div id="finish-sheet" class="sheet" hidden><div class="sheet-body" role="dialog" aria-modal="true" aria-labelledby="finish-title">
+  <h3 id="finish-title">Finish review</h3>
+  <p class="sheet-lead"><span id="finish-how">The verdict goes to the agent with everything you have answered and sent.</span> <b>Request changes</b>: revise and come back. <b>Approve</b>: build it.</p>
+  <h4 id="finish-open-head"></h4><ul id="finish-open" class="finish-open"></ul>
+  <label class="finish-label" for="finish-summary">About the whole document</label>
+  <textarea id="finish-summary" rows="3" placeholder="Anything for the agent about the document as a whole (optional)"></textarea>
+  <div class="form-row"><button type="button" id="finish-cancel" class="quiet">Cancel</button><span class="spacer"></span><button type="button" id="finish-changes" class="quiet">Request changes</button><button type="button" id="finish-approve" class="primary">Approve</button></div>
+</div></div>`;
+var FINISH_CSS = `/* finishing a review: one sheet to give the verdict, a chip after */
+.review-state { display: inline-flex; align-items: center; gap: 10px; }
+.top-status .progress { font-size: 12.5px; color: var(--muted); white-space: nowrap; }
+#finish { border-radius: 999px; font-weight: 600; }
+.verdict-chip { display: inline-flex; align-items: center; gap: 8px; padding: 3px 5px 3px 11px; border-radius: 999px; font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+.verdict-chip.v-ok { background: var(--ok-soft); color: var(--ok-text); }
+.verdict-chip.v-warn { background: var(--warn-soft); color: var(--warn-text); }
+.verdict-chip .link { border: 0; background: var(--pane); color: var(--fg); font: 500 11.5px var(--sans); padding: 3px 9px; border-radius: 999px; cursor: pointer; }
+.sheet { position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,.35); display: flex; align-items: center; justify-content: center; padding: 24px; }
+.sheet-body { width: 480px; max-width: 100%; background: var(--pane); border-radius: 12px; box-shadow: var(--shadow); padding: 18px 20px; display: grid; gap: 10px; }
+.sheet-body h3 { font-size: 16px; }
+.sheet-lead { margin: 0; color: var(--muted); font-size: 13px; }
+.sheet-body h4 { margin-top: 4px; }
+.finish-open { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 13px; }
+.finish-open:empty { display: none; }
+.finish-open li.q::before { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--danger); margin-right: 8px; vertical-align: 1px; }
+.finish-open li.q.out-of-date::before { background: var(--warn); }
+.finish-open .why { color: var(--warn-text); font-size: 12px; margin-left: 6px; }
+.finish-label { font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: -6px; }
+.finish-open li a { color: var(--fg); } .finish-open li a:hover { color: var(--accent); }
+.sheet-body .form-row .spacer { flex: 1; }
+.sheet-body button:disabled { opacity: .5; cursor: not-allowed; }
+`;
+var FINISH_JS = `  // ---- finishing: the verdict is given once, at the end of a round, with the answers in hand
+  /** What is left: open questions, out-of-date answers, threads waiting on the agent, and drafts. */
+  function openItems() {
+    const outOfDate = DATA.questions.filter((q) => isOutOfDate(q.id));
+    const questions = DATA.questions.filter((q) => !isAnswered(q.id) && !isOutOfDate(q.id));
+    const awaiting = answers.comments.filter((c) => c.sent && threadState(c).awaiting).length + DATA.questions.filter((q) => hasMessage(q.id) && answers.choices[q.id].sent && threadState(answers.choices[q.id]).awaiting).length;
+    const u = unsent();
+    return { questions, outOfDate, awaiting, unsent: u.comments.length + u.choices.length };
+  }
+  /**
+   * Before a verdict is cleared, stamp sent on the bare picks and text answers it carried, so
+   * Reopen question stays on them. Answers finished before finishing stamped them carry no sent of their own.
+   */
+  function keepVerdictSends() {
+    const at = answers.finished; if (!at) return;
+    for (const q of DATA.questions) { const a = answers.choices[q.id]; if (hasContent(a) && !a.ask && !hasMessage(q.id) && !a.sent && a.at <= at) a.sent = a.at; }
+  }
+  function renderReviewState() {
+    const btn = $('#finish'); if (!btn) return;
+    const o = openItems();
+    // An approval given while a question was open (one was reopened under it) falls back to reviewing.
+    // An out-of-date answer does not: the agent edited the question after the verdict.
+    if (answers.verdict === 'approved' && o.questions.length) { answers.verdict = 'reviewing'; keepVerdictSends(); delete answers.finished; save(); notice(o.questions.length + ' question' + (o.questions.length === 1 ? '' : 's') + ' reopened; back to reviewing'); }
+    const finished = answers.verdict !== 'reviewing' && answers.finished;
+    const prog = $('#review-progress'); prog.textContent = o.awaiting ? o.awaiting + ' waiting for a reply' : ''; prog.dataset.short = o.awaiting + ' waiting'; prog.hidden = !o.awaiting || !!finished;
+    btn.hidden = !!finished;
+    const chip = $('#verdict-chip'); chip.hidden = !finished;
+    if (finished) { chip.className = 'verdict-chip ' + (answers.verdict === 'approved' ? 'v-ok' : 'v-warn'); $('.vc-label', chip).textContent = answers.verdict === 'approved' ? 'Approved' : 'Changes requested'; chip.title = 'Finished ' + clock(answers.finished) + (answers.summary ? '\\n' + answers.summary : ''); }
+  }
+  const sheet = $('#finish-sheet');
+  /** The sheet's list of open items and the Approve state; rerun when a revision lands while it is open. */
+  function renderSheet() {
+    const o = openItems(); const rows = [];
+    const row = (q, cls, why) => '<li class="' + cls + '"><a href="#" data-go-question="' + esc(q.id) + '">' + esc(q.prompt.length > 90 ? q.prompt.slice(0, 87) + '…' : q.prompt) + '</a>' + why + '</li>';
+    for (const q of o.questions.slice(0, 6)) rows.push(row(q, 'q', ''));
+    if (o.questions.length > 6) rows.push('<li class="q">… and ' + (o.questions.length - 6) + ' more</li>');
+    for (const q of o.outOfDate.slice(0, 6)) rows.push(row(q, 'q out-of-date', '<span class="why">out of date</span>'));
+    if (o.outOfDate.length > 6) rows.push('<li class="q out-of-date">… and ' + (o.outOfDate.length - 6) + ' more out of date</li>');
+    if (o.awaiting) rows.push('<li>' + o.awaiting + ' thread' + (o.awaiting === 1 ? '' : 's') + ' waiting for a reply</li>');
+    if (o.unsent) rows.push('<li>' + o.unsent + ' draft' + (o.unsent === 1 ? '' : 's') + ' not yet sent; finishing sends them</li>');
+    const plural = (n, one, many) => n + ' ' + (n === 1 ? one : many);
+    const head = [o.questions.length ? plural(o.questions.length, 'question', 'questions') + ' still open' : '', o.outOfDate.length ? plural(o.outOfDate.length, 'answer needs', 'answers need') + ' a look' : ''].filter(Boolean).join(' · ');
+    $('#finish-open-head').textContent = head || (DATA.questions.length ? 'Every question is answered' : rows.length ? 'Still open' : '');
+    $('#finish-open').innerHTML = rows.join('');
+    const blocked = o.questions.length + o.outOfDate.length;
+    const approve = $('#finish-approve'); approve.disabled = blocked > 0; approve.title = o.questions.length ? 'Answer every question to approve' : o.outOfDate.length ? 'Answer again or keep each out-of-date answer to approve' : 'The agent builds it';
+  }
+  function openSheet() {
+    renderSheet();
+    // A static page has no server: the answers reach the agent as a file. While the server is away they wait in this browser.
+    $('#finish-how').textContent = !hosted ? 'Download your answers and give the file to the agent.' : away ? 'The server is away: the verdict is kept in this browser and goes to the agent when it is back.' : 'The verdict goes to the agent with everything you have answered and sent.';
+    $('#finish-summary').value = answers.summary || '';
+    sheet.hidden = false; $('#finish-summary').focus();
+  }
+  function closeSheet() { sheet.hidden = true; }
+  function finish(verdict) {
+    const u = unsent(); u.comments.forEach((c) => sendComment(c.id)); u.choices.forEach(sendChoice);
+    const summary = $('#finish-summary').value.trim(); const now = new Date().toISOString();
+    // Answers go with the verdict: each one not sent before is stamped sent now.
+    for (const q of DATA.questions) { const a = answers.choices[q.id]; if (hasContent(a) && !a.ask && !a.sent) a.sent = now; }
+    answers.verdict = verdict; answers.finished = now; if (summary) answers.summary = summary; else delete answers.summary;
+    closeSheet(); renderComments(); DATA.questions.forEach((q) => markAnswered(q.id)); save();
+    if (!hosted) { download(); notice('Downloaded ' + exportName() + '. Give the file to the agent.'); return; }
+    notice((verdict === 'approved' ? 'Approved. The agent builds it.' : 'Changes requested. The agent revises and starts a new round.') + (away ? ' It goes when the server is back.' : ''));
+  }
+  function changeVerdict() { answers.verdict = 'reviewing'; keepVerdictSends(); delete answers.finished; save(); renderReviewState(); notice('Verdict cleared'); }
+  if ($('#finish')) {
+    $('#finish').addEventListener('click', openSheet);
+    $('#finish-cancel').addEventListener('click', closeSheet);
+    $('#finish-changes').addEventListener('click', () => finish('changes-requested'));
+    $('#finish-approve').addEventListener('click', () => { if (!$('#finish-approve').disabled) finish('approved'); });
+    $('#change-verdict').addEventListener('click', changeVerdict);
+    sheet.addEventListener('click', (e) => { if (e.target === sheet) closeSheet(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !sheet.hidden) closeSheet(); });
+    document.addEventListener('click', (e) => { const g = e.target.closest('[data-go-question]'); if (!g) return; e.preventDefault(); closeSheet(); showQuestion(g.dataset.goQuestion); });
+  }
+`;
+
+// src/lib/page/lightbox.ts
+var LIGHTBOX_HTML = `<div class="lightbox" id="lightbox" hidden><button type="button" class="lb-close" title="Close (Esc)">×</button><div class="lb-body"></div></div>`;
+var LIGHTBOX_CSS = `/* expand: a button that appears over a figure or a diagram and opens it in a lightbox */
+.fig, .diagram-wrap { position: relative; }
+.expand { position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--pane); color: var(--muted); cursor: pointer; opacity: 0; transition: opacity .12s; display: inline-flex; align-items: center; justify-content: center; z-index: 1; }
+.fig:hover .expand, .diagram-wrap:hover .expand, .expand:focus-visible { opacity: 1; }
+.expand:hover { color: var(--fg); background: var(--code-bg); }
+.lightbox { position: fixed; inset: 0; z-index: 50; background: rgba(0,0,0,.72); display: flex; align-items: center; justify-content: center; padding: 32px; cursor: zoom-out; }
+.lightbox[hidden] { display: none; }
+.lightbox .lb-body { max-width: 100%; max-height: 100%; overflow: auto; background: var(--pane); border-radius: var(--radius); padding: 12px; box-shadow: var(--shadow); cursor: default; }
+.lightbox img { display: block; max-width: none; width: auto; height: auto; }
+.lightbox svg.diagram { max-width: none; }
+.lightbox .lb-cap { font-size: 12.5px; color: var(--muted); padding: 8px 2px 0; }
+.lightbox .lb-close { position: fixed; top: 16px; right: 16px; width: 34px; height: 34px; border: 0; border-radius: 50%; background: var(--pane); color: var(--fg); font-size: 20px; cursor: pointer; }
+`;
+var LIGHTBOX_JS = `  // ---- lightbox: every figure and diagram gets an expand button on hover; the copy opens at full size
+  const EXPAND = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 2.5h4v4M13.5 2.5 9 7M6.5 13.5h-4v-4M2.5 13.5 7 9"/></svg>';
+  function addExpand() { $$('.fig, .diagram-wrap').forEach((w) => { if ($(':scope > .expand', w)) return; const b = document.createElement('button'); b.type = 'button'; b.className = 'expand'; b.title = 'Expand'; b.innerHTML = EXPAND; w.appendChild(b); }); }
+  addExpand();
+  const lightbox = $('#lightbox'); const lbBody = $('.lb-body', lightbox);
+  function openLightbox(w) {
+    lbBody.innerHTML = '';
+    const img = w.querySelector('img'); const svg = w.querySelector('svg');
+    if (img) { const big = document.createElement('img'); big.src = img.src; big.alt = img.alt; lbBody.appendChild(big); const cap = w.querySelector('figcaption'); if (cap) { const c = document.createElement('div'); c.className = 'lb-cap'; c.textContent = cap.textContent; lbBody.appendChild(c); } }
+    else if (svg) { const big = svg.cloneNode(true); const vb = svg.viewBox.baseVal; const scale = Math.max(1, Math.min((innerWidth - 100) / vb.width, (innerHeight - 100) / vb.height, 2.5)); big.setAttribute('width', String(vb.width * scale)); big.setAttribute('height', String(vb.height * scale)); big.querySelectorAll('[data-node]').forEach((n) => n.removeAttribute('data-node')); lbBody.appendChild(big); }
+    lightbox.hidden = false; $('.lb-close', lightbox).focus();
+  }
+  function closeLightbox() { lightbox.hidden = true; lbBody.innerHTML = ''; }
+  document.addEventListener('click', (e) => {
+    const x = e.target.closest('.expand'); if (x) { e.preventDefault(); e.stopPropagation(); openLightbox(x.closest('.fig, .diagram-wrap')); return; }
+    const fx = e.target.closest('.frame-expand');
+    if (fx) { e.preventDefault(); e.stopPropagation(); const f = $('iframe', fx.closest('.frame')); lbBody.innerHTML = ''; const big = document.createElement('iframe'); big.className = 'lb-frame'; big.src = f.src || f.dataset.src; big.title = f.title; lbBody.appendChild(big); lightbox.hidden = false; $('.lb-close', lightbox).focus(); return; }
+    if (e.target.closest('.lb-close') || (e.target === lightbox)) closeLightbox();
+  }, true);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !lightbox.hidden) { e.stopPropagation(); closeLightbox(); } }, true);
+  document.addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-copy]'); if (!b) return;
+    e.preventDefault(); e.stopPropagation();
+    const pre = document.getElementById(b.dataset.copy); if (!pre) return;
+    try { await navigator.clipboard.writeText(pre.textContent); b.textContent = 'Copied'; setTimeout(() => { b.textContent = 'Copy'; }, 900); } catch {}
+  }, true);
+`;
+
+// src/lib/page/navigation.ts
+function renderNav(sections) {
+  const out = [];
+  let block;
+  for (const sec of sections) {
+    if (sec.block !== block) {
+      block = sec.block;
+      out.push(`<div class="nav-block">${escapeHtml(block ?? "")}</div>`);
+    }
+    out.push(navItem(sec.id, sec.title, sec.n));
+  }
+  return out.join("");
+}
+function navItem(id, title, n, extra = "") {
+  const i = escapeHtml(id);
+  return `<a class="nav-item" href="#${i}" data-node="${i}">${n != null ? `<span class="nav-n">${n}</span>` : ""}<span class="nav-title">${escapeHtml(title)}</span><span class="nav-c" data-nav-count="${i}" hidden title="comments"></span>${extra}</a>`;
+}
+var DOCKS_JS = `  // ---- docks: each side pane collapses to a rail; hover peeks, a click on a node opens the
+  // details pane, and a pin keeps a pane in the page flow. Pins are remembered per browser.
+  const body = document.body;
+  // A floating pane starts under the header and the first-visit line, where the panes begin.
+  const topEl = $('.top'); const splitEl = $('main.split');
+  const setTop = () => document.documentElement.style.setProperty('--top-h', splitEl.getBoundingClientRect().top + 'px');
+  setTop(); const topRo = new ResizeObserver(setTop); topRo.observe(topEl); topRo.observe($('#intro'));
+  const narrowMq = matchMedia('(max-width: 1100px)');
+  const setNarrow = () => body.classList.toggle('narrow', narrowMq.matches);
+  setNarrow(); narrowMq.addEventListener('change', setNarrow);
+  function openRight(on) { body.classList.toggle('right-open', on); }
+  function setPin(k, on) {
+    body.classList.toggle(k + '-pinned', on);
+    try { localStorage.setItem('parley:pin:' + k, on ? '1' : '0'); } catch {}
+    $$('[data-pin="' + k + '"]').forEach((b) => b.setAttribute('aria-pressed', String(on)));
+    if (k === 'right' && on) openRight(false);
+  }
+  ['nav', 'right'].forEach((k) => setPin(k, body.classList.contains(k + '-pinned')));
+  // A wide screen opens the details pane when there is something in it to act on: questions or findings.
+  if (DATA.details && !narrowMq.matches && !body.classList.contains('right-pinned')) openRight(true);
+  const hoverTimers = new Map();
+  // Both docks peek on hover. A peek stays while focus is inside it (a comment being typed) and
+  // closes once both the pointer and the focus have left.
+  for (const dock of $$('.dock-l, .dock-r')) {
+    const close = () => { clearTimeout(hoverTimers.get(dock)); hoverTimers.set(dock, setTimeout(() => { if (!dock.classList.contains('open-tap') && !dock.matches(':hover, :focus-within')) dock.classList.remove('hover'); }, 220)); };
+    dock.addEventListener('mouseenter', () => { clearTimeout(hoverTimers.get(dock)); dock.classList.add('hover'); });
+    dock.addEventListener('mouseleave', close);
+    dock.addEventListener('focusout', close);
+  }
+  document.addEventListener('click', (e) => {
+    const pin = e.target.closest('[data-pin]');
+    if (pin) {
+      if (pin.dataset.pin === 'nav' && narrowMq.matches) { const d = $('#dock-l'); clearTimeout(hoverTimers.get(d)); d.classList.toggle('hover', !d.classList.contains('open-tap')); d.classList.toggle('open-tap'); return; }
+      setPin(pin.dataset.pin, !body.classList.contains(pin.dataset.pin + '-pinned')); return;
+    }
+    if (e.target.closest('[data-close-right]')) { openRight(false); $('#dock-r').classList.remove('hover'); }
+    if (e.target.closest('[data-open-right]')) openRight(true);
+    const railQ = e.target.closest('.rail-q, .rail-c');
+    if (railQ) { openRight(true); const target = railQ.classList.contains('rail-q') ? $('#questions') : $('.comments.has'); if (target) right.scrollTo({ top: target.getBoundingClientRect().top - right.getBoundingClientRect().top + right.scrollTop - 8 }); }
+  });
+
+`;
+var SELECTION_JS = `  // ---- selection: one node is current; its section and its left-pane marks light up
+  function select(id, opts = {}) {
+    selected = id;
+    const wasOpen = body.classList.contains('right-open') || body.classList.contains('right-pinned');
+    if (!id) openRight(false);
+    else if (opts.from !== 'right' && opts.from !== 'none' && opts.open !== false) openRight(true);
+    const section = id && DATA.sectionOf[id];
+    const anchorEl = opts.from === 'right' && section ? $('#node-' + CSS.escape(section)) : null;
+    const anchorTop = anchorEl ? anchorEl.getBoundingClientRect().top : 0;
+    $$('[data-node]').forEach((el) => el.classList.toggle('on', el.dataset.node === id || (el.classList.contains('node') && el.dataset.node === section)));
+    $$('.sql .seg').forEach((el) => {
+      const steps = (el.dataset.steps || '').split(' ').filter(Boolean);
+      el.classList.toggle('on', !!id && steps.includes(id));
+      el.classList.toggle('inner', !!id && steps[steps.length - 1] === id);
+      el.classList.remove('peek');
+    });
+    if (anchorEl) { const d = anchorEl.getBoundingClientRect().top - anchorTop; if (d) right.scrollTop += d; }
+    if (!id) return;
+    if (opts.from === 'none') return;
+    if (opts.from !== 'right') {
+      const sec = $('#node-' + CSS.escape(section));
+      if (sec) {
+        // Scroll the pane itself; scrollIntoView would also scroll the document.
+        quietUntil = Date.now() + 700;
+        const top = sec.getBoundingClientRect().top - right.getBoundingClientRect().top + right.scrollTop - 8;
+        // Glide when the pane was already open and the move is short; otherwise jump.
+        right.scrollTo({ top, behavior: wasOpen && Math.abs(top - right.scrollTop) < 1500 ? 'smooth' : 'auto' });
+      }
+    }
+    if (opts.from !== 'left') {
+      const target = $$('#left [data-node="' + CSS.escape(id) + '"]')[0];
+      if (target) target.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+    const navItem = $('#nav [data-node="' + CSS.escape(section) + '"]');
+    if (navItem) navItem.scrollIntoView({ block: 'nearest' });
+    try { history.replaceState(null, '', '#' + id); } catch {}
+  }
+  // ---- item keys: every item in the reading column takes Tab. One that is not a button or link,
+  // and holds no button of its own, gets tabindex 0 (a diagram step also the button role); Enter
+  // or Space selects it. j and k move the focus with the selection.
+  // A diagram step's name starts with its visible number ("2. Load the order"), so speech input can say "click 2".
+  function stepName(el) {
+    const e = DATA.nav.find((x) => x.id === el.dataset.node); const title = DATA.nodeTitles[el.dataset.node] || el.textContent.trim();
+    return e && e.n != null ? e.n + '. ' + title : title;
+  }
+  function itemKeys() {
+    $$('#left [data-node]').forEach((el) => {
+      if (el.hasAttribute('tabindex') || el.matches('button, a[href]') || el.querySelector('.node-btn')) return;
+      el.tabIndex = 0;
+      // A step is a button. Any other item keeps its own role, so a row stays a row; one shared hint says Enter does something.
+      if (el instanceof SVGElement) { el.setAttribute('role', 'button'); el.setAttribute('aria-label', stepName(el)); }
+      else el.setAttribute('aria-describedby', 'item-hint');
+    });
+  }
+  itemKeys();
+  /** The control that stands for an item: itself, its own button, a button that selects it, else its details section. */
+  function itemControl(id) {
+    const q = CSS.escape(id);
+    const el = $$('#left [data-node="' + q + '"]').map((x) => (x.tabIndex >= 0 ? x : $('.node-btn', x))).find((x) => x && x.getClientRects().length)
+      || $$('#left [data-select="' + q + '"]').find((x) => x.tabIndex >= 0 && x.getClientRects().length);
+    if (el) return el;
+    const sec = $('#node-' + CSS.escape(DATA.sectionOf[id] || id));
+    if (sec && !sec.hasAttribute('tabindex')) sec.tabIndex = -1;
+    return sec;
+  }
+  function peek(id, on) {
+    $$('.sql .seg').forEach((el) => {
+      const steps = (el.dataset.steps || '').split(' ');
+      if (steps.includes(id) && !el.classList.contains('on')) el.classList.toggle('peek', on);
+    });
+  }
+  document.addEventListener('click', (e) => {
+    if (e.target.closest('#viewer, button[type=submit], textarea, input, select, a:not([data-select]):not(.nav-item)')) return;
+    const sel = e.target.closest('[data-select]');
+    if (sel) { e.preventDefault(); select(sel.dataset.select); return; }
+    const node = e.target.closest('[data-node]');
+    if (!node) { if (e.target.closest('#left') && !String(getSelection()).trim()) { select(null); const d = $('#dock-l'); d.classList.remove('hover', 'open-tap'); } return; }
+    if (node.closest('#nav')) { e.preventDefault(); if (narrowMq.matches) $('#dock-l').classList.remove('hover', 'open-tap'); }
+    const from = node.closest('#right') ? 'right' : node.closest('#nav') ? 'nav' : 'left';
+    select(node.dataset.node, { from });
+  });
+  // Hovering a step on either side gives the SQL it explains a faint wash.
+  const hoverable = (e) => e.target.closest('#left [data-node], #nav [data-node], #right .node[data-node]');
+  document.addEventListener('mouseover', (e) => { const n = hoverable(e); if (n) peek(n.dataset.node, true); });
+  document.addEventListener('mouseout', (e) => { const n = hoverable(e); if (n) peek(n.dataset.node, false); });
+  window.addEventListener('hashchange', () => { const id = location.hash.slice(1); if (id && id !== selected && (DATA.sectionOf[id] || id === DATA.doc)) select(id); });
+  document.addEventListener('keydown', (e) => {
+    if (e.metaKey || e.ctrlKey || e.altKey || body.classList.contains('viewing')) return;
+    const typing = e.target.matches('textarea, input:not([type=radio]):not([type=checkbox]), select');
+    if (!typing && (e.key === 'n' || e.key === 'p' || e.key === 'N' || e.key === 'P')) { e.preventDefault(); stepQuestion(e.key.toLowerCase() === 'n' ? 1 : -1, e.shiftKey); return; }
+    if (e.target.matches('textarea, input, select')) return;
+    if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('#left [data-node][tabindex]')) { e.preventDefault(); select(e.target.dataset.node, { from: 'left' }); return; }
+    if (e.key === 'Escape') select(null);
+    if (e.key === 'j' || e.key === 'k') {
+      const i = ORDER.indexOf(DATA.sectionOf[selected] || selected);
+      const next = e.key === 'j' ? Math.min(ORDER.length - 1, i + 1) : Math.max(0, i - 1);
+      select(ORDER[next]);
+      const c = itemControl(ORDER[next]); if (c) c.focus({ preventScroll: true });
+    }
+  });
+
+  // ---- scroll-spy: as the details pane scrolls, the SQL highlight follows the top section
+  let spyTimer;
+  right.addEventListener('scroll', () => {
+    if (Date.now() < quietUntil) return;
+    clearTimeout(spyTimer);
+    spyTimer = setTimeout(() => {
+      const top = right.getBoundingClientRect().top + 60;
+      const sections = $$('.node', right);
+      let best = sections[0];
+      for (const s of sections) { if (s.getBoundingClientRect().top <= top) best = s; else break; }
+      if (best && DATA.sectionOf[selected] !== best.dataset.node) select(best.dataset.node, { from: 'right' });
+    }, 80);
+  }, { passive: true });
+
+`;
+var DOCS_MENU_JS = `  document.addEventListener('change', (e) => { if (e.target.id === 'docs' && e.target.value) location.href = e.target.value; });
+`;
+
+// src/lib/page/source-urls.ts
+var SOURCE_URLS_JS = `  // A path's segments percent-encoded, a drive letter's colon kept: /C:/a b → /C:/a%20b.
+  function urlPath(p) { return p.split('/').map((s, i) => (i === 1 && /^[A-Za-z]:$/.test(s) ? s : encodeURIComponent(s))).join('/'); }
+  // The path as the reader's system writes it: /C:/x → C:/x.
+  function nativePath(p) { return p.replace(/^\\/([A-Za-z]:)/, '$1'); }
+  // The checkout folder (absolute: / or a drive, as saveRoot checks) joined with a repo path.
+  function joinPath(root, rel) { const r = root.trim().replaceAll('\\\\', '/').replace(/\\/+$/, ''); return (/^[A-Za-z]:/.test(r) ? '/' : '') + r + '/' + rel; }
+  function fileUrl(p) { return 'file://' + urlPath(p); }
+  function jetbrains(scheme, p, l) { return scheme + '://open?file=' + encodeURIComponent(nativePath(p)) + '&line=' + l; }
+  const EDITORS = {
+    vscode: (p, l) => 'vscode://file' + urlPath(p) + ':' + l,
+    cursor: (p, l) => 'cursor://file' + urlPath(p) + ':' + l,
+    zed: (p, l) => 'zed://file' + urlPath(p) + ':' + l,
+    idea: (p, l) => jetbrains('idea', p, l),
+    webstorm: (p, l) => jetbrains('webstorm', p, l),
+    pycharm: (p, l) => jetbrains('pycharm', p, l),
+    rustrover: (p, l) => jetbrains('rustrover', p, l),
+    file: (p) => fileUrl(p),
+  };
+  // The link for an absolute path and a line in the chosen editor; VS Code for an unknown one.
+  function editorUrl(editor, p, line) { const l = Number.parseInt(line, 10) > 0 ? Number.parseInt(line, 10) : 1; return (Object.hasOwn(EDITORS, editor) ? EDITORS[editor] : EDITORS.vscode)(p, l); }
+`;
+
+// src/lib/page/preferences.ts
+var PREFERENCES_JS = `  // ---- appearance: System follows the OS; Light and Dark pin the page. Stored per browser.
+  const themeCtl = $('#theme');
+  function applyTheme(choice) {
+    if (choice === 'system') delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = choice;
+    // A radio group: the checked one takes Tab, the arrow keys move the choice.
+    $$('button', themeCtl).forEach((b) => { const on = b.dataset.themeChoice === choice; b.setAttribute('aria-checked', String(on)); b.tabIndex = on ? 0 : -1; });
+  }
+  try { applyTheme(localStorage.getItem('parley:theme') || 'system'); } catch { applyTheme('system'); }
+  function pickTheme(b) { applyTheme(b.dataset.themeChoice); try { localStorage.setItem('parley:theme', b.dataset.themeChoice); } catch {} }
+  themeCtl.addEventListener('click', (e) => { const b = e.target.closest('[data-theme-choice]'); if (b) pickTheme(b); });
+  themeCtl.addEventListener('keydown', (e) => {
+    const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1, Home: 'first', End: 'last' }[e.key]; if (!step) return;
+    e.preventDefault(); const bs = $$('button', themeCtl); const b = step === 'first' ? bs[0] : step === 'last' ? bs[bs.length - 1] : bs[(bs.indexOf(e.target) + step + bs.length) % bs.length];
+    pickTheme(b); b.focus();
+  });
+
+  // ---- source links: the page holds repo paths, and absolute paths only in data-path. Each
+  // browser keeps its own checkout folder per repository and its editor choice. A page opened as a
+  // file links an absolute path as file:// unless the reader chose an editor, which then wins; a
+  // served page cannot open file:// (browsers block it from http), so there it opens in the
+  // editor. With no folder set a repo source shows its path and GitHub link.
+${SOURCE_URLS_JS}
+  const LOCAL = location.protocol === 'file:';
+  const editorSel = $('#editor');
+  const setRoot = $('#set-root'), rootForm = $('#root-form'), rootInput = $('#root-input');
+  const rootKey = editorSel && editorSel.dataset.repoKey ? 'parley:root:' + editorSel.dataset.repoKey : '';
+  // A checkout folder is an absolute path: /… or a Windows drive. Anything else keeps the field
+  // open with a message, since it would make a wrong link (or one to a network host).
+  const absRoot = (v) => /^(\\/(?![\\\\/])|[A-Za-z]:[\\\\/])/.test(v);
+  let checkout = '';
+  try { checkout = (rootKey && localStorage.getItem(rootKey)) || ''; } catch {}
+  // A stored folder gets the same check as a typed one; an invalid one is dropped.
+  if (checkout && !absRoot(checkout)) checkout = '';
+  let scheme = 'vscode';
+  // The absolute path a link opens, or '' for a repo path with no folder set.
+  const fullPath = (a) => a.dataset.path || (checkout ? joinPath(checkout, a.dataset.rel) : '');
+  const EDITOR_NAMES = { vscode: 'VS Code', cursor: 'Cursor', zed: 'Zed', idea: 'IntelliJ IDEA', webstorm: 'WebStorm', pycharm: 'PyCharm', rustrover: 'RustRover' };
+  // Whether the reader picked an editor (stored, or chosen in the menu), not the VS Code default.
+  let chosen = false;
+  // Whether a link opens as file:// rather than in the editor: always for File link, and for an
+  // absolute path on a page opened as a file unless the reader chose an editor.
+  const asFile = (a) => scheme === 'file' || (LOCAL && !!a.dataset.path && !chosen);
+  function applyEditor() {
+    const copy = scheme === 'copy';
+    $$('.src-local, .src-abs').forEach((a) => {
+      const p = fullPath(a);
+      if (p && !copy) a.href = asFile(a) ? fileUrl(p) : editorUrl(scheme, p, a.dataset.line); else a.removeAttribute('href');
+      a.classList.toggle('src-on', !!p || copy);
+      // Copy path has no href, so the link takes focus as a button instead.
+      if (copy) { a.tabIndex = 0; a.setAttribute('role', 'button'); } else { a.removeAttribute('tabindex'); a.removeAttribute('role'); }
+      const title = copy ? (p ? 'copy the full path' : 'copy the repo path')
+        : p ? (asFile(a) ? 'open the local file' : 'open in ' + EDITOR_NAMES[scheme])
+        // With no document repo there is no folder to set, so no hint.
+        : rootKey ? 'set your checkout folder to open this in an editor' : '';
+      if (title) a.title = title; else a.removeAttribute('title');
+    });
+    if (editorSel) editorSel.hidden = editorSel.closest('.menu-row').hidden = !$('.src-local, .src-abs');
+    if (setRoot) setRoot.hidden = !!checkout || !$('.src-local');
+  }
+  function saveRoot(v) {
+    v = v.trim();
+    if (v && !absRoot(v)) {
+      if (rootForm) { rootForm.hidden = false; rootInput.value = v; $('#root-msg').textContent = 'Give the full path, starting with / or a drive like C:\\\\'; rootInput.focus(); }
+      return;
+    }
+    checkout = v;
+    if (rootForm) $('#root-msg').textContent = '';
+    try { if (checkout) localStorage.setItem(rootKey, checkout); else localStorage.removeItem(rootKey); } catch {}
+    if (rootForm) rootForm.hidden = true;
+    applyEditor();
+  }
+  function askRoot() {
+    const v = prompt('The folder of your checkout of ' + editorSel.dataset.remote, checkout);
+    if (v !== null) return saveRoot(v);
+    // Cancelled, or a browser that shows no dialogs: offer the field on the page instead.
+    if (rootForm) { rootForm.hidden = false; rootInput.value = checkout; rootInput.focus(); }
+  }
+  if (editorSel) {
+    try { const s = localStorage.getItem('parley:editor'); if (s) { scheme = s; chosen = true; } } catch {}
+    // A stored choice this page does not offer (or no longer offers) falls back to VS Code.
+    if (scheme === 'root' || !$('option[value="' + CSS.escape(scheme) + '"]', editorSel)) { scheme = 'vscode'; chosen = false; }
+    editorSel.value = scheme;
+    editorSel.addEventListener('change', () => {
+      if (editorSel.value === 'root') {
+        editorSel.value = scheme;
+        askRoot();
+        return;
+      }
+      scheme = editorSel.value; chosen = true;
+      try { localStorage.setItem('parley:editor', scheme); } catch {}
+      applyEditor();
+    });
+    if (setRoot) setRoot.addEventListener('click', askRoot);
+    if (rootForm) {
+      $('#root-save').addEventListener('click', () => saveRoot(rootInput.value));
+      rootInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') saveRoot(rootInput.value); else if (e.key === 'Escape') rootForm.hidden = true; });
+    }
+    applyEditor();
+  }
+  document.addEventListener('click', async (e) => {
+    const a = e.target.closest('.src-local, .src-abs'); if (!a) return;
+    e.stopPropagation();
+    if (scheme === 'copy') {
+      e.preventDefault();
+      const p = fullPath(a);
+      try { await navigator.clipboard.writeText((p ? nativePath(p) : a.dataset.rel) + ':' + a.dataset.line); a.classList.add('copied'); setTimeout(() => a.classList.remove('copied'), 800); } catch {}
+      return;
+    }
+    if (!a.hasAttribute('href')) e.preventDefault();
+  }, true);
+  document.addEventListener('keydown', (e) => {
+    const a = e.target.closest && e.target.closest('.src-local[role="button"], .src-abs[role="button"]');
+    if (a && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); a.click(); }
+  });
+
+`;
+
+// src/lib/page/questions.ts
+var SEND_RULE = "Comments and asks go to the agent now. Answers go when you finish.";
+var STATIC_RULE = "Nothing is sent from this page. Export your answers and give the file to the agent.";
+function renderQuestionBar(questions) {
+  if (!questions.length)
+    return "";
+  return `<div class="qbar" id="qbar" aria-label="Questions to answer"><span class="qbar-tally" id="qbar-tally"></span><span class="qbar-arrows"><button type="button" class="qbar-btn" data-q-step="-1" title="Previous question (p); shift for previous open">‹</button><button type="button" class="qbar-btn" data-q-step="1" title="Next question (n); shift for next open">›</button></span><div class="qbar-track">${questions.map((q, i) => `<a class="qseg" href="#q-${escapeHtml(q.id)}" data-nav-question="${escapeHtml(q.id)}" title="${escapeHtml(q.prompt)}"><span class="qseg-n">${i + 1}</span><span class="qseg-t">${escapeHtml(q.prompt.replace(/`/g, ""))}</span></a>`).join("")}</div><p class="send-rule"><span class="if-served">${SEND_RULE}</span><span class="if-static">${STATIC_RULE}</span></p></div>`;
+}
+function renderQuestionNav(questions) {
+  if (!questions.length)
+    return "";
+  let group;
+  return `<div class="nav-block nav-block-q">Questions</div>${questions.map((q) => {
+    const head = q.group && q.group !== group ? `<div class="nav-group">${escapeHtml(q.group)}</div>` : "";
+    group = q.group ?? group;
+    return `${head}<a class="nav-item nav-q" href="#q-${escapeHtml(q.id)}" data-nav-question="${escapeHtml(q.id)}"><span class="dot"></span><span class="nav-title">${escapeHtml(q.prompt.replace(/`/g, ""))}</span></a>`;
+  }).join("")}`;
+}
+var QBAR_CSS = `/* question progress meter: one segment per question, red open, amber asked or out of date, green and ticked answered; click jumps to it */
+.qbar { width: 100%; flex: 0 0 auto; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.qbar-tally { flex: none; font: 600 11px/1 var(--sans); padding: 4px 8px; border-radius: 999px; background: var(--danger-soft); color: var(--danger-text); white-space: nowrap; }
+.qbar-tally.done { background: var(--ok-soft); color: var(--ok-text); }
+.qbar-arrows { flex: none; display: inline-flex; gap: 2px; }
+.qbar-btn { width: 24px; height: 22px; padding: 0; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--pane); color: var(--fg); font: 15px/1 var(--sans); cursor: pointer; }
+.qbar-btn:hover { background: var(--code-bg); }
+.qseg.current { border-color: currentColor; box-shadow: inset 0 0 0 1px currentColor; }
+.qbar-track { flex: 1; min-width: 0; display: flex; gap: 4px; overflow-x: auto; scrollbar-width: thin; padding-bottom: 2px; }
+.qseg { flex: 1 1 0; min-width: 32px; max-width: 240px; display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; border-radius: 6px; font-size: 11.5px; line-height: 1.3; background: var(--danger-soft); color: var(--danger-text); text-decoration: none; white-space: nowrap; overflow: hidden; border: 1px solid transparent; }
+.qseg:hover { border-color: currentColor; text-decoration: none; }
+.qseg-n { font-weight: 700; flex: none; }
+.qseg-t { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.qseg.asked { background: var(--warn-soft); color: var(--warn-text); }
+.qseg.answered { background: var(--ok-soft); color: var(--ok-text); }
+.qseg.answered .qseg-n::before { content: '✓ '; }
+.qseg.out-of-date { background: var(--warn-soft); color: var(--warn-text); }
+.send-rule { flex: 1 0 100%; margin: 0; font-size: 11.5px; color: var(--muted); }
+body.narrow .qseg { flex: 0 0 auto; }
+body.narrow .qseg-t { display: none; }
+`;
+var QUESTION_CSS = `/* Questions */
+.questions { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
+.node-questions { margin-top: 12px; }
+.node-questions .question { margin-bottom: 8px; }
+.node-questions .question:last-child { margin-bottom: 0; }
+/* question block: the form in the centre column, at the point in the reading it belongs to */
+.ask-block { display: grid; gap: 10px; max-width: 72ch; }
+.ask-block .question { background: var(--pane); margin: 0; }
+.question { padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius); margin-bottom: 10px; background: var(--bg); }
+.question.answered { border-color: var(--line); }
+.question .state { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; color: var(--danger-text); margin-bottom: 4px; }
+.question .state::after { content: ''; order: -1; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.question.answered .state { color: var(--ok-text); }
+.question.answered .state::before, .question .state::before { content: 'Needs an answer'; }
+.question.answered .state::before { content: 'Answered'; }
+.question.out-of-date .state { color: var(--warn-text); }
+.question.out-of-date .state::before { content: 'Out of date: answer again or keep it'; }
+.question .prompt { font-weight: 600; margin-bottom: 8px; }
+.question .about { font-weight: 400; font-size: 12px; margin-left: 6px; }
+.opt { display: grid; grid-template-columns: auto 1fr; gap: 8px; align-items: start; padding: 4px 0; font-size: 13px; cursor: pointer; }
+.opt input { margin-top: 3px; accent-color: var(--accent); }
+.opt-label { display: block; } .opt-detail { display: block; color: var(--muted); font-size: 12px; }
+.rec { font-style: normal; font-size: 11px; color: var(--accent); margin-left: 4px; }
+.question textarea { margin-top: 6px; }
+.question.flash { box-shadow: 0 0 0 3px var(--accent-soft); }
+
+.question.asked .state { color: var(--warn-text); }
+.question.closed .state { color: var(--muted); }
+.question.closed .state::before { content: 'Closed'; }
+.question.closed { background: var(--pane); }
+.question.reopened .resolution { opacity: .7; }
+.question.reopened .closed-body > summary { display: none; }
+.question.wide { max-width: none; }
+.q-group { display: block; font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 2px; }
+.q-flags { display: inline-flex; gap: 6px; flex-wrap: wrap; margin-bottom: 4px; }
+.q-flags:empty { display: none; }
+.q-pill { font-size: 11px; padding: 1px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); }
+.q-pill.out-of-date { background: var(--warn-soft); color: var(--warn-text); }
+.resolution { font-size: 13px; padding: 6px 10px; border-left: 3px solid var(--ok); background: var(--ok-soft); border-radius: var(--radius-sm); margin-bottom: 6px; }
+.resolution p:last-child { margin-bottom: 0; }
+.decided { font-size: 13px; margin: 0 0 6px; }
+.closed-body > summary, .q-history > summary { font-size: 12px; color: var(--muted); cursor: pointer; }
+.q-history { margin-top: 6px; font-size: 12px; }
+.q-history ul { margin: 4px 0 0; color: var(--muted); }
+.nav-group { padding: 6px 12px 2px; font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.nav-q.changed .dot, .qseg.changed { outline: 2px solid var(--accent); outline-offset: 1px; }
+.nav-q.out-of-date .dot { background: var(--warn); box-shadow: 0 0 0 3px var(--warn-soft); }
+`;
+var ASK_CSS = `.question.asked .state::before { content: 'Asked back'; }
+.question.asked.replied .state::before { content: 'Agent replied · choose or ask again'; }
+.opt.ask { margin-top: 4px; padding-top: 8px; border-top: 1px dashed var(--line); }
+.q-foot { display: flex; align-items: center; gap: 8px; margin-top: 6px; min-height: 0; }
+.q-foot:empty { display: none; }
+.sent-mark { font-size: 11.5px; color: var(--muted); }
+.q-foot .reopen-q, .q-foot .keep-q { margin-left: auto; }
+.send, .send-all { font-size: 12px; padding: 3px 9px; border-radius: 999px; }
+.send-all { margin-right: 4px; }
+.nav-q.asked .dot { background: var(--warn); box-shadow: 0 0 0 3px var(--warn-soft); }
+`;
+var CHOICES_JS = `  // ---- choices
   function hydrateChoices() {
+    // A question with no saved answer is cleared: another writer removed it, or the browser kept
+    // the form across a reload. A focused note is never rewritten.
     for (const q of DATA.questions) {
-      const a = answers.choices[q.id]; if (!a) continue;
-      $$('input[data-question="' + CSS.escape(q.id) + '"]').forEach((i) => { i.checked = i.value === '__ask' ? typeof a.ask === 'string' : a.selected.includes(i.value); });
-      const note = $('[data-question-note="' + CSS.escape(q.id) + '"]'); if (note) note.value = a.ask || a.note || '';
+      const a = answers.choices[q.id];
+      $$('input[data-question="' + CSS.escape(q.id) + '"]').forEach((i) => { i.checked = !!a && (i.value === DATA.ask ? typeof a.ask === 'string' : a.selected.includes(i.value)); });
+      const note = $('[data-question-note="' + CSS.escape(q.id) + '"]'); if (note && document.activeElement !== note) note.value = a ? a.ask || a.note || '' : '';
       markAnswered(q.id);
     }
     renderReviewState();
     DATA.questions.forEach((q) => markAnswered(q.id));
-    hydrateNotes();
   }
-  const QBY = Object.fromEntries(DATA.questions.map((q) => [q.id, q]));
+  let QBY = dict(Object.fromEntries(DATA.questions.map((q) => [q.id, q])));
   /** Whether the reviewer's reopen still holds: the same rule as reopenHolds in lifecycle.ts. */
   function reopenHolds(a) {
     const r = a && a.reopened; if (!r) return false;
@@ -6496,44 +8189,28 @@ var CLIENT = `
   }
   /** Closed by the agent and not reopened since: the same rule as isClosed in lifecycle.ts. */
   function isClosed(qid) { const a = answers.choices[qid]; return (QBY[qid] || {}).status === 'closed' && !(a && a.reopened && a.reopened.closed && reopenHolds(a)); }
-  /** A closed question counts as answered: the agent settled it. */
-  // The same rule as isAnswered in lifecycle.ts, which the index uses.
-  // A choice question is answered by a pick; words alone answer only a text question. A note
-  // left after the last pick is unticked keeps the question open.
-  function isAnswered(qid) { if (isClosed(qid)) return true; const a = answers.choices[qid]; return !!a && !a.ask && (a.selected.length > 0 || (!!a.note && (QBY[qid] || {}).kind === 'text')); }
-  function hasContent(a) { return !!a && (a.selected.length > 0 || !!a.note || !!a.ask); }
-  function isAsked(qid) { const a = answers.choices[qid]; return !!a && !!a.ask; }
-  /** A choice carries words for the agent: an ask, or a note beside the chosen option. Only those are sent; a bare pick goes with Finish review. */
-  function hasMessage(a) { return !!a && !!(a.ask || a.note); }
-  function unsent() {
-    const comments = answers.comments.filter((c) => !c.sent);
-    const choices = DATA.questions.filter((q) => hasMessage(answers.choices[q.id]) && !answers.choices[q.id].sent).map((q) => q.id);
-    return { comments, choices };
-  }
-  function updateSendAll() {
-    const u = unsent(); const n = u.comments.length + u.choices.length;
-    const b = $('#send-all'); if (b) { b.hidden = n === 0; b.textContent = 'Send ' + n + ' to agent'; }
-  }
-  function sendComment(id) { const c = answers.comments.find((c) => c.id === id); if (c && !c.sent) { c.sent = new Date().toISOString(); } }
+  /** An answer given to an earlier wording of the question: the same rule as isOutOfDate in lifecycle.ts. */
+  function isOutOfDate(qid) { const a = answers.choices[qid]; const q = QBY[qid] || {}; return !isClosed(qid) && !!a && !a.ask && (a.selected.length > 0 || (!!a.note && q.kind === 'text')) && !!a.hash && a.hash !== q.hash; }
   /**
-   * Send a choice's ask or note. One that already has a thread goes as a follow-up in it, so an
-   * edit after the agent replied keeps that reply and still reaches the agent as a new message.
+   * The same rule as isAnswered in lifecycle.ts, which the index uses. A closed question counts:
+   * the agent settled it. A pick answers a choice question; words alone answer only a text
+   * question. An out-of-date answer does not count.
    */
-  function sendChoice(qid) {
-    const a = answers.choices[qid]; if (!hasMessage(a) || a.sent) return;
-    const now = new Date().toISOString(); a.sent = now;
-    if (a.replies && a.replies.length) a.replies.push({ from: 'reviewer', text: a.ask || a.note, at: now, sent: now });
-  }
-  document.addEventListener('click', (e) => {
-    const sc = e.target.closest('[data-send-comment]'); const sq = e.target.closest('[data-send-question]'); const all = e.target.closest('#send-all');
-    if (!sc && !sq && !all) return;
-    if (sc) sendComment(sc.dataset.sendComment);
-    if (sq) sendChoice(sq.dataset.sendQuestion);
-    if (all) { const u = unsent(); u.comments.forEach((c) => sendComment(c.id)); u.choices.forEach(sendChoice); }
-    renderComments(); DATA.questions.forEach((q) => markAnswered(q.id)); save();
-    notice(all ? 'Sent to the agent' : 'Sent');
-  });
-  function markAnswered(qid) {
+  function isAnswered(qid) { if (isClosed(qid)) return true; if (isOutOfDate(qid)) return false; const a = answers.choices[qid]; return !!a && !a.ask && (a.selected.length > 0 || (!!a.note && (QBY[qid] || {}).kind === 'text')); }
+  function hasContent(a) { return !!a && (a.selected.length > 0 || !!a.note || !!a.ask); }
+  /**
+   * The answer went to the agent: it was sent, or given before a verdict or a new round. Answers
+   * finished before finishing stamped them have no sent of their own.
+   */
+  function reachedAgent(a) { return !!a && (!!a.sent || (!!answers.finished && a.at <= answers.finished) || (!!answers.roundStartedAt && a.at <= answers.roundStartedAt)); }
+  function isAsked(qid) { const a = answers.choices[qid]; return !!a && !!a.ask; }
+  /**
+   * The question carries words for the agent now: an ask, or a note beside the chosen option. Only
+   * those are sent. A bare pick and a text answer are answers: they go with Finish review.
+   */
+  function hasMessage(qid) { const a = answers.choices[qid]; return !!a && !!(a.ask || (a.note && (QBY[qid] || {}).kind !== 'text')); }
+`;
+var QUESTIONS_JS = `  function markAnswered(qid) {
     const on = isAnswered(qid); const asked = isAsked(qid); const a = answers.choices[qid];
     const art = $('.question[data-question="' + CSS.escape(qid) + '"]');
     art.classList.toggle('answered', on); art.classList.toggle('asked', asked); art.classList.toggle('replied', asked && threadState(a).replied);
@@ -6541,9 +8218,9 @@ var CLIENT = `
     if (note) note.placeholder = asked ? 'What is missing, or what do you need to know?' : note.dataset.placeholder || note.placeholder;
     if (note && !note.dataset.placeholder) note.dataset.placeholder = note.placeholder;
     const sendBtn = $('[data-send-question="' + CSS.escape(qid) + '"]', art); const mark = $('.sent-mark', art);
-    const msg = hasMessage(a);
+    const msg = hasMessage(qid);
     sendBtn.hidden = !(msg && !a.sent); mark.hidden = !(msg && a.sent); mark.textContent = a && threadState(a).replied ? 'replied' : 'sent';
-    // The thread opens with the send: the agent's typing row, then its replies. The ask or note
+    // The thread opens with the send: Waiting for a reply, then its replies. The ask or note
     // itself stays in the field above, so the thread holds only what came after it.
     // A reopen is sent as it is made, so its thread opens with it, as does any earlier thread.
     const th = $('.q-thread', art); const replies = (a && a.replies) || [];
@@ -6552,10 +8229,10 @@ var CLIENT = `
     if (!th.hidden) redraw(th, () => { th.innerHTML = repliesHtml('q:' + qid, root) + replyFormHtml('data-reply-ask="' + esc(qid) + '"'); });
     const q = QBY[qid] || {}; const closed = isClosed(qid); const reopened = reopenHolds(a);
     const changed = !closed && !!answers.seen && !!answers.seen[qid] && answers.seen[qid] !== q.hash;
-    const stale = !closed && hasContent(a) && !!a.hash && a.hash !== q.hash;
+    const outOfDate = isOutOfDate(qid);
     const flags = $('.q-flags', art);
-    if (flags) flags.innerHTML = (reopened ? '<span class="q-pill" title="You reopened this question; the agent was told">Reopened</span>' : '') + (changed ? '<span class="q-pill" title="The agent edited this question after you last looked at it">Changed since you last looked</span>' : '') + (stale ? '<span class="q-pill stale" title="Your answer was given to an earlier version of this question">Answered before the change</span>' : '');
-    art.classList.toggle('changed', changed);
+    if (flags) flags.innerHTML = (reopened ? '<span class="q-pill" title="You reopened this question; the agent was told">Reopened</span>' : '') + (changed ? '<span class="q-pill" title="The agent edited this question after you last looked at it">Changed since you last looked</span>' : '') + (outOfDate ? '<span class="q-pill out-of-date" title="Your answer was given to an earlier version of this question">Out of date</span>' : '') + (replies.some((m) => isUnread(m, replies)) ? '<span class="q-pill unread" title="The agent replied and you have not seen it yet">New reply</span>' : '');
+    art.classList.toggle('changed', changed); art.classList.toggle('out-of-date', outOfDate);
     // A reopened closed question takes answers again: its form comes out from under the disclosure.
     art.classList.toggle('closed', closed); art.classList.toggle('reopened', reopened);
     if (q.status === 'closed') {
@@ -6563,30 +8240,34 @@ var CLIENT = `
       const body = $('.closed-body', art); if (body && !closed) body.open = true;
       const d = $('[data-decided]', art); if (d && !closed) d.hidden = true;
     }
-    const rb = $('[data-reopen-question]', art); if (rb) rb.hidden = !on;
+    // Reopen question only on what reached the agent: a closed question, or an answer sent or given with a verdict.
+    const rb = $('[data-reopen-question]', art); if (rb) rb.hidden = !(closed || (on && reachedAgent(a)));
+    const kb = $('[data-keep-answer]', art); if (kb) kb.hidden = !outOfDate;
     if (closed) {
       const d = $('[data-decided]', art); const opts = q.options || [];
       const picked = a && a.selected.length ? opts.filter((o) => a.selected.includes(o.id)) : opts.length === 1 ? opts : [];
-      if (d) { d.hidden = !picked.length; $('b', d).textContent = picked.map((o) => o.label).join(', '); }
+      if (d) { d.hidden = !picked.length; $('b', d).textContent = picked.map((o) => o.title).join(', '); }
     }
     const hist = $('.q-history', art); const past = (a && a.history) || [];
     if (hist) {
       hist.hidden = !past.length;
       if (past.length) {
-        const label = (h) => { const names = (h.selected || []).map((id) => { const o = (q.options || []).find((x) => x.id === id); return o ? o.label : id; }); return [names.join(', '), h.ask ? 'asked: ' + h.ask : h.note].filter(Boolean).join(' · ') || '(empty)'; };
+        const label = (h) => { const names = (h.selected || []).map((id) => { const o = (q.options || []).find((x) => x.id === id); return o ? o.title : id; }); return [names.join(', '), h.ask ? 'asked: ' + h.ask : h.note].filter(Boolean).join(' · ') || '(empty)'; };
         $('summary', hist).textContent = past.length + ' earlier answer' + (past.length === 1 ? '' : 's');
-        $('ul', hist).innerHTML = past.slice().reverse().map((h) => '<li>' + esc(label(h)) + ' <span class="muted">' + esc((h.at || '').slice(0, 16).replace('T', ' ')) + (h.revision ? ' · revision ' + h.revision : '') + '</span></li>').join('');
+        $('ul', hist).innerHTML = past.slice().reverse().map((h) => '<li>' + esc(label(h)) + ' <span class="muted">' + timeText(h.at) + (h.revision ? ' · revision ' + esc(h.revision) : '') + '</span></li>').join('');
       }
     }
-    $$('[data-nav-question="' + CSS.escape(qid) + '"]').forEach((nav) => { nav.classList.toggle('answered', on); nav.classList.toggle('asked', asked); nav.classList.toggle('changed', changed); });
+    // A question link's name carries its state: the colour and the tick say it only to the eye.
+    const stateWord = outOfDate ? 'out of date' : on ? 'answered' : asked ? 'asked' : 'open';
+    const qn = DATA.questions.findIndex((x) => x.id === qid) + 1; const prompt = String(q.prompt || '').replace(/\\x60/g, '');
+    $$('[data-nav-question="' + CSS.escape(qid) + '"]').forEach((nav) => { nav.setAttribute('aria-label', 'Question ' + qn + ', ' + stateWord + ': ' + prompt); nav.classList.toggle('answered', on); nav.classList.toggle('asked', asked); nav.classList.toggle('changed', changed); nav.classList.toggle('out-of-date', outOfDate); });
     updateSendAll();
+    // The bar's tally is the one count of answered questions; a rail badge says how many are open.
     const done = DATA.questions.filter((q) => isAnswered(q.id)).length; const total = DATA.questions.length;
-    const text = done + ' of ' + total + ' answered';
-    const tally = $('#nav-tally'); if (tally) { tally.textContent = done === total ? 'all answered' : (total - done) + ' open'; tally.classList.toggle('done', done === total); }
-    const hint = $('#q-tally'); if (hint) hint.textContent = text;
-    const bar = $('#qbar-tally'); if (bar) { bar.textContent = done === total ? 'All ' + total + ' answered' : done + ' / ' + total; bar.classList.toggle('done', done === total); }
-    $$('.rail-q').forEach((b) => { b.hidden = total === 0; b.textContent = done === total ? '✓' : String(total - done); b.classList.toggle('done', done === total); b.title = text; });
+    const bar = $('#qbar-tally'); if (bar) { bar.textContent = done === total ? 'All ' + total + ' answered' : done + ' of ' + total + ' answered'; bar.classList.toggle('done', done === total); }
+    $$('.rail-q').forEach((b) => { b.hidden = total === 0; b.textContent = done === total ? '✓' : (total - done) + ' open'; b.classList.toggle('done', done === total); b.title = done === total ? 'Every question is answered' : 'Questions still open'; });
     renderReviewState();
+    scheduleUnread();
   }
   // ---- moving between questions: meter segments, the arrows beside them, n / p keys
   let currentQ = null;
@@ -6626,136 +8307,1423 @@ var CLIENT = `
     // "None of these" and the options exclude each other, whoever ticked it: ticking an option
     // unticks it, ticking it unticks every option, and clearing the words unticks it. Ticking it
     // by hand with no words stays.
-    const askBox = $('input[data-question="' + CSS.escape(qid) + '"][value="__ask"]');
+    const askBox = $('input[data-question="' + CSS.escape(qid) + '"][data-ask]');
     if (askBox) {
       const isNote = !!(target && target.dataset.questionNote);
       if (target && target !== askBox && !isNote && target.checked) askBox.checked = false;
-      if (target === askBox && askBox.checked) $$('input[data-question="' + CSS.escape(qid) + '"]:checked:not([value="__ask"])').forEach((i) => { i.checked = false; });
+      if (target === askBox && askBox.checked) $$('input[data-question="' + CSS.escape(qid) + '"]:checked:not([data-ask])').forEach((i) => { i.checked = false; });
       if (isNote && !note.trim() && askBox.checked) askBox.checked = false;
-      const picked = $('input[data-question="' + CSS.escape(qid) + '"]:checked:not([value="__ask"])');
+      const picked = $('input[data-question="' + CSS.escape(qid) + '"]:checked:not([data-ask])');
       if (isNote && note.trim() && !askBox.checked && !picked) askBox.checked = true;
     }
     const checked = $$('input[data-question="' + CSS.escape(qid) + '"]:checked').map((i) => i.value);
-    const asking = checked.includes('__ask');
-    const selectedOpts = checked.filter((v) => v !== '__ask');
+    const asking = checked.includes(DATA.ask);
+    const selectedOpts = checked.filter((v) => v !== DATA.ask);
     const prev = answers.choices[qid] || {};
     // A sent ask or note keeps its sent mark until the reviewer changes what was sent: the ask's
-    // words, or the note or the chosen options. A change is a new message to send; the thread stays.
+    // words, or the note or the chosen options. A change is a new message to send. The thread
+    // always stays, with any reply not yet saved.
     const same = asking ? prev.ask === note.trim() : !prev.ask && (prev.note || '') === note.trim() && String(prev.selected || []) === String(selectedOpts);
-    const kept = same ? { sent: prev.sent, replies: prev.replies } : { replies: prev.replies };
-    const stamp = { hash: (QBY[qid] || {}).hash, revision: DATA.revision, history: prev.history, reopened: prev.reopened };
+    const kept = { replies: prev.replies, ...(same && (asking || note.trim()) ? { sent: prev.sent } : {}) };
+    const stamp = { hash: (QBY[qid] || {}).hash, revision: DATA.revision, history: prev.history, reopened: prev.reopened, tab: TAB };
     answers.choices[qid] = asking
       ? { selected: [], ask: note.trim(), at: new Date().toISOString(), ...kept, ...stamp }
-      : { selected: selectedOpts, note: note.trim() || undefined, at: new Date().toISOString(), ...(note.trim() ? kept : {}), ...stamp };
+      : { selected: selectedOpts, note: note.trim() || undefined, at: new Date().toISOString(), ...kept, ...stamp };
     markSeen(qid); markAnswered(qid); save();
   }
   /**
-   * Clear a closed or answered question back to open and tell the agent. The servlet keeps the
+   * Clear a closed or answered question back to open and tell the agent. The server keeps the
    * cleared answer in history; the thread stays.
    */
   function reopenQuestion(qid) {
     const q = QBY[qid] || {}; const prev = answers.choices[qid] || {}; const now = new Date().toISOString();
     const reopened = Object.assign({ at: now, revision: DATA.revision }, q.status === 'closed' ? { closed: true, resolution: q.resolution } : {});
-    answers.choices[qid] = { selected: [], at: now, hash: q.hash, revision: DATA.revision, history: prev.history, replies: prev.replies, reopened };
+    answers.choices[qid] = { selected: [], at: now, hash: q.hash, revision: DATA.revision, history: prev.history, replies: prev.replies, reopened, tab: TAB };
     $$('input[data-question="' + CSS.escape(qid) + '"]').forEach((i) => { i.checked = false; delete i.dataset.auto; });
     const note = $('[data-question-note="' + CSS.escape(qid) + '"]'); if (note) note.value = '';
     markSeen(qid); markAnswered(qid); save(); notice('Reopened; the agent is told');
   }
   document.addEventListener('click', (e) => { const b = e.target.closest('[data-reopen-question]'); if (b) reopenQuestion(b.dataset.reopenQuestion); });
+  /** Keep an out-of-date answer: stamp it with the question's current wording. */
+  function keepAnswer(qid) {
+    const a = answers.choices[qid]; if (!a) return;
+    // An answer that went with an earlier verdict stays sent, so Reopen question stays.
+    if (!a.sent && reachedAgent(a)) a.sent = a.at;
+    a.hash = (QBY[qid] || {}).hash; a.revision = DATA.revision;
+    markSeen(qid); markAnswered(qid); save(); notice('Kept your answer');
+  }
+  document.addEventListener('click', (e) => { const b = e.target.closest('[data-keep-answer]'); if (b) keepAnswer(b.dataset.keepAnswer); });
   document.addEventListener('change', (e) => {
+    // Removing a focused, edited note fires its change; swapDoc has already kept what it holds.
+    if (swapping) return;
     const q = e.target.dataset.question || e.target.dataset.questionNote;
     if (q) readChoice(q, e.target);
   });
   document.addEventListener('input', (e) => { if (e.target.dataset.questionNote) readChoice(e.target.dataset.questionNote, e.target); });
-  const docsSel = $('#docs');
-  if (docsSel) docsSel.addEventListener('change', (e) => { if (e.target.value) location.href = e.target.value; });
-  // ---- finishing: the verdict is given once, at the end of a round, with the answers in hand
-  function openItems() {
-    const questions = DATA.questions.filter((q) => !isAnswered(q.id));
-    const awaiting = answers.comments.filter((c) => c.sent && threadState(c).awaiting).length + DATA.questions.filter((q) => hasMessage(answers.choices[q.id]) && answers.choices[q.id].sent && threadState(answers.choices[q.id]).awaiting).length;
-    const u = unsent();
-    return { questions, awaiting, unsent: u.comments.length + u.choices.length };
+`;
+
+// src/lib/page/seen.ts
+var SEEN_JS = `  // ---- seen: a question in view for a moment counts as looked at, so a later edit shows as changed
+  function markSeen(qid) {
+    const q = QBY[qid]; if (!q || !q.hash) return false;
+    answers.seen = answers.seen || dict();
+    if (answers.seen[qid] === q.hash) return false;
+    answers.seen[qid] = q.hash; return true;
   }
-  function renderReviewState() {
-    const btn = $('#finish'); if (!btn) return;
-    const o = openItems(); const total = DATA.questions.length; const done = total - o.questions.length;
-    // An approval given while a question was open (one was reopened under it) falls back to reviewing.
-    if (answers.status === 'approved' && o.questions.length) { answers.status = 'reviewing'; delete answers.finished; save(); notice(o.questions.length + ' question' + (o.questions.length === 1 ? '' : 's') + ' reopened; back to reviewing'); }
-    const finished = answers.status !== 'reviewing' && answers.finished;
-    const parts = []; if (total) parts.push(done + ' of ' + total + ' answered'); if (o.awaiting) parts.push(o.awaiting + ' awaiting the agent');
-    const prog = $('#review-progress'); prog.textContent = parts.join(' · '); prog.hidden = !parts.length || !!finished;
-    btn.hidden = !!finished;
-    const chip = $('#verdict-chip'); chip.hidden = !finished;
-    if (finished) { chip.className = 'verdict-chip ' + (answers.status === 'approved' ? 'v-ok' : 'v-warn'); $('.vc-label', chip).textContent = answers.status === 'approved' ? 'Approved' : 'Changes requested'; chip.title = 'Finished ' + answers.finished.slice(0, 16).replace('T', ' ') + (answers.summary ? '\\n' + answers.summary : ''); }
+  // seenTimers is cleared on a swap, so a timer started on the old text cannot mark the new one seen.
+  let seenIo = null; const seenTimers = new Map();
+  if ('IntersectionObserver' in window) {
+    const timers = seenTimers;
+    const io = seenIo = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        const qid = e.target.dataset.question;
+        clearTimeout(timers.get(qid));
+        if (e.isIntersecting) timers.set(qid, setTimeout(() => { if (markSeen(qid)) { markAnswered(qid); save(); } }, 1500));
+      }
+    }, { threshold: 0.5 });
+    $$('article.question').forEach((el) => io.observe(el));
   }
-  const sheet = $('#finish-sheet');
-  function openSheet() {
-    const o = openItems(); const rows = [];
-    for (const q of o.questions.slice(0, 6)) rows.push('<li class="q"><a href="#" data-go-question="' + esc(q.id) + '">' + esc(q.prompt.length > 90 ? q.prompt.slice(0, 87) + '…' : q.prompt) + '</a></li>');
-    if (o.questions.length > 6) rows.push('<li class="q">… and ' + (o.questions.length - 6) + ' more</li>');
-    if (o.awaiting) rows.push('<li>' + o.awaiting + ' thread' + (o.awaiting === 1 ? '' : 's') + ' awaiting a reply from the agent</li>');
-    if (o.unsent) rows.push('<li>' + o.unsent + ' draft' + (o.unsent === 1 ? '' : 's') + ' not yet sent; finishing sends them</li>');
-    $('#finish-open-head').textContent = o.questions.length ? o.questions.length + ' question' + (o.questions.length === 1 ? '' : 's') + ' still open' : DATA.questions.length ? 'Every question is answered' : rows.length ? 'Still open' : '';
-    $('#finish-open').innerHTML = rows.join('');
-    const approve = $('#finish-approve'); approve.disabled = o.questions.length > 0; approve.title = o.questions.length ? 'Answer every question to approve' : 'The agent builds it';
-    $('#finish-summary').value = answers.summary || '';
-    sheet.hidden = false; $('#finish-summary').focus();
+
+`;
+
+// src/lib/page/send.ts
+var SEND_ALL_HTML = `<button type="button" class="quiet send-all" id="send-all" title="Send every unsent comment, note and question to the agent" hidden></button>`;
+var SEND_JS = `  function unsent() {
+    const comments = answers.comments.filter((c) => !c.sent);
+    const choices = DATA.questions.filter((q) => hasMessage(q.id) && !answers.choices[q.id].sent).map((q) => q.id);
+    return { comments, choices };
   }
-  function closeSheet() { sheet.hidden = true; }
-  function finish(status) {
-    const u = unsent(); u.comments.forEach((c) => sendComment(c.id)); u.choices.forEach(sendChoice);
-    const summary = $('#finish-summary').value.trim();
-    answers.status = status; answers.finished = new Date().toISOString(); if (summary) answers.summary = summary; else delete answers.summary;
-    closeSheet(); renderComments(); DATA.questions.forEach((q) => markAnswered(q.id)); save();
-    notice(status === 'approved' ? 'Approved. The agent builds it.' : 'Changes requested. The agent rewrites and comes back.');
+  function updateSendAll() {
+    const u = unsent(); const n = u.comments.length + u.choices.length;
+    // While the server is away a send is kept in this browser and goes when it is back.
+    const b = $('#send-all'); if (b) { b.hidden = n === 0; const v = away ? 'Queue ' + n : 'Send ' + n; b.textContent = v + ' to agent'; b.dataset.short = v; }
   }
-  function reopen() { answers.status = 'reviewing'; delete answers.finished; save(); renderReviewState(); notice('Review reopened'); }
-  if ($('#finish')) {
-    $('#finish').addEventListener('click', openSheet);
-    $('#finish-cancel').addEventListener('click', closeSheet);
-    $('#finish-changes').addEventListener('click', () => finish('changes-requested'));
-    $('#finish-approve').addEventListener('click', () => { if (!$('#finish-approve').disabled) finish('approved'); });
-    $('#reopen').addEventListener('click', reopen);
-    sheet.addEventListener('click', (e) => { if (e.target === sheet) closeSheet(); });
-    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !sheet.hidden) closeSheet(); });
-    document.addEventListener('click', (e) => { const g = e.target.closest('[data-go-question]'); if (!g) return; e.preventDefault(); closeSheet(); showQuestion(g.dataset.goQuestion); });
+  function sendComment(id) { const c = answers.comments.find((c) => c.id === id); if (c && !c.sent) { c.sent = new Date().toISOString(); } }
+  /**
+   * Send a question's ask, or the note beside its pick. One that already has a thread goes as a reply in it, so an
+   * edit after the agent replied keeps that reply and still reaches the agent as a new message.
+   */
+  function sendChoice(qid) {
+    const a = answers.choices[qid]; if (!hasMessage(qid) || a.sent) return;
+    const now = new Date().toISOString(); a.sent = now;
+    if (a.replies && a.replies.length) a.replies.push({ id: rid(), from: 'reviewer', text: a.ask || a.note, at: now, sent: now });
   }
-  let noticeTimer;
-  function notice(text) {
-    const n = $('#notice'); n.textContent = text; n.hidden = false;
+  document.addEventListener('click', (e) => {
+    const sc = e.target.closest('[data-send-comment]'); const sq = e.target.closest('[data-send-question]'); const all = e.target.closest('#send-all');
+    if (!sc && !sq && !all) return;
+    if (sc) sendComment(sc.dataset.sendComment);
+    if (sq) sendChoice(sq.dataset.sendQuestion);
+    if (all) { const u = unsent(); u.comments.forEach((c) => sendComment(c.id)); u.choices.forEach(sendChoice); }
+    renderComments(); DATA.questions.forEach((q) => markAnswered(q.id)); save();
+    notice(away ? sentNote() : all ? 'Sent to the agent' : 'Sent');
+  });
+`;
+
+// src/lib/page/orientation.ts
+var INTRO_HTML = `<section id="intro" class="intro" aria-label="How to review" hidden><span id="intro-text"></span><button type="button" id="intro-close" class="quiet">Got it</button></section>`;
+var ORIENTATION_CSS = `.intro { display: flex; gap: 12px; align-items: center; padding: 8px 20px; font-size: 13px; background: var(--accent-soft); border-bottom: 1px solid var(--line); }
+.intro #intro-text { flex: 1; }
+.intro button { flex: none; font-size: 12.5px; padding: 3px 10px; }
+.menu-wrap { position: relative; display: inline-flex; }
+.top-tools .more { display: inline-flex; align-items: center; padding: 5px 8px; }
+.more[aria-expanded="true"] { background: var(--code-bg); }
+.menu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 7; width: 330px; max-width: calc(100vw - 28px); display: grid; gap: 10px; padding: 12px; background: var(--pane); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
+.menu-item, .menu #set-root, .menu .root-form { justify-self: start; }
+.menu-item { display: inline-flex; align-items: center; gap: 8px; }
+.menu-item svg { width: 13px; height: 13px; }
+.menu-row { display: grid; gap: 4px; justify-items: start; }
+.menu-label { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.menu #docs, .menu #editor { width: 100%; }
+.menu-keys { margin: 0; font-size: 12px; color: var(--muted); }
+@media (max-width: 860px) { .intro { padding: 8px 14px; } }
+
+`;
+var ORIENTATION_JS = `  // ---- the header menu: opens under its button; a click outside, Esc, or an action in it closes it
+  const more = $('#more'); const menu = $('#menu');
+  function setMenu(on) { menu.hidden = !on; more.setAttribute('aria-expanded', String(on)); }
+  more.addEventListener('click', () => setMenu(menu.hidden));
+  document.addEventListener('click', (e) => {
+    if (menu.hidden) return;
+    if (!e.target.closest('#menu, #more') || e.target.closest('#top-comment, #export, #export-download')) setMenu(false);
+  });
+  // Focus moving out of the menu to somewhere else closes it.
+  $('.menu-wrap').addEventListener('focusout', (e) => { if (!menu.hidden && e.relatedTarget && !e.relatedTarget.closest('.menu-wrap')) setMenu(false); });
+  // Esc closes the menu only, not the selection too: this runs first and stops the event. In the
+  // checkout-folder field Esc closes that form alone, which its own handler does.
+  window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !menu.hidden && !e.target.closest('.root-form')) { e.stopPropagation(); setMenu(false); more.focus(); } }, true);
+  // The update time arrives as an ISO stamp; show it in the reader's time zone.
+  function localTimes() {
+    $$('time[data-local-time]').forEach((t) => {
+      const d = new Date(t.dateTime); if (isNaN(d)) return;
+      t.textContent = d.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' });
+    });
+  }
+  localTimes();
+  const exportBtns = $('#export').parentElement; const exportRow = $('#export-row');
+  function placeExport() {
+    const inBar = body.classList.contains('static');
+    if (inBar) $('.top-tools').insertBefore(exportBtns, $('.review-state')); else exportRow.appendChild(exportBtns);
+    exportRow.hidden = inBar;
+  }
+  placeExport();
+
+  // ---- the first-visit line: shown until dismissed in this browser
+  const intro = $('#intro');
+  let introOn = true;
+  try { introOn = localStorage.getItem('parley:intro') !== 'dismissed'; } catch {}
+  function renderIntro() {
+    intro.hidden = !introOn; if (!introOn) return;
+    const n = DATA.questions.length; const done = body.classList.contains('static') ? 'Finish review, then Export your answers' : 'Finish review';
+    $('#intro-text').textContent = 'Read down the page. Click a numbered item for details and to comment. ' + (n ? 'Answer the ' + (n === 1 ? 'question' : n + ' questions') + ', then press ' + done + '.' : 'Then press ' + done + '.');
+  }
+  renderIntro();
+  $('#intro-close').addEventListener('click', () => {
+    introOn = false; intro.hidden = true;
+    try { localStorage.setItem('parley:intro', 'dismissed'); } catch {}
+  });
+
+`;
+
+// src/lib/page/status.ts
+var NOTICE_HTML = `<div id="notice" class="notice" role="status" hidden></div>
+<p id="item-hint" hidden>Press Enter for details and comments</p>`;
+var LISTENER_HTML = `<span id="listener" class="listener" title="Whether the agent runs parley answers --wait or --notify on this document" hidden></span>`;
+var STALE_HTML = `<div id="stale" class="banner" role="status" hidden></div>
+  <div id="away" class="banner" role="status" hidden></div>
+  <div id="changes" class="banner changes" role="status" hidden><span class="changes-text"></span><button type="button" class="changes-close" title="Dismiss" aria-label="Dismiss">×</button></div>`;
+var NOTICE_CSS = `.banner { width: 100%; font-size: 12.5px; padding: 6px 10px; border-radius: var(--radius-sm); background: var(--warn-soft); color: var(--warn-text); }
+.banner.changes { display: flex; gap: 8px; align-items: baseline; background: var(--accent-soft); color: var(--fg); }
+.banner.changes[hidden] { display: none; }
+.banner.changes .changes-text { flex: 1; }
+.banner.changes a { color: var(--accent); }
+.banner.changes .changes-close { border: 0; background: transparent; padding: 0 4px; color: var(--muted); font-size: 15px; line-height: 1; cursor: pointer; }
+.notice { position: fixed; z-index: 46; left: 50%; bottom: 24px; transform: translateX(-50%); padding: 9px 14px; border-radius: 999px; background: var(--fg); color: var(--pane); font-size: 13px; box-shadow: var(--shadow); }
+.listener { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.listener::before { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--line-strong); margin-right: 6px; vertical-align: 0; }
+.listener.on { color: var(--ok-text); }
+.listener.on::before { background: var(--ok); }
+
+`;
+var NOTICE_JS = `  let noticeTimer;
+  // keepTimer: update a notice already showing without extending how long it stays.
+  function notice(text, keepTimer) {
+    const n = $('#notice'); const showing = !n.hidden; n.textContent = text; n.hidden = false;
+    if (keepTimer && showing) return;
     clearTimeout(noticeTimer); noticeTimer = setTimeout(() => { n.hidden = true; }, 3500);
   }
-
-  // ---- appearance: System follows the OS; Light and Dark pin the page. Stored per browser.
-  const themeCtl = $('#theme');
-  function applyTheme(choice) {
-    if (choice === 'system') delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = choice;
-    $$('button', themeCtl).forEach((b) => b.setAttribute('aria-checked', String(b.dataset.themeChoice === choice)));
+  function setStale(on) {
+    const s = $('#stale'); if (s.hidden === !on) return;
+    // The server's error page for the document gives the reason.
+    s.innerHTML = on ? 'Can&#39;t load the latest version of this document. Showing the last one, retrying. <a href="/d/' + encodeURIComponent(DATA.doc) + '" target="_blank" rel="noopener">Why?</a>' : '';
+    s.hidden = !on;
   }
-  try { applyTheme(localStorage.getItem('parley:theme') || 'system'); } catch { applyTheme('system'); }
-  themeCtl.addEventListener('click', (e) => { const b = e.target.closest('[data-theme-choice]'); if (!b) return; applyTheme(b.dataset.themeChoice); try { localStorage.setItem('parley:theme', b.dataset.themeChoice); } catch {} });
-
-  // ---- source links: the editor scheme is a per-browser choice; "copy path" copies instead of opening
-  const SCHEMES = { vscode: (p, l) => 'vscode://file/' + p + ':' + l, cursor: (p, l) => 'cursor://file/' + p + ':' + l, zed: (p, l) => 'zed://file/' + p + ':' + l, idea: (p, l) => 'idea://open?file=' + encodeURIComponent(p) + '&line=' + l };
-  const editorSel = $('#editor');
-  function applyEditor() {
-    const scheme = editorSel ? editorSel.value : 'vscode';
-    $$('.src-local').forEach((a) => { const f = SCHEMES[scheme]; a.href = f ? f(a.dataset.path, a.dataset.line) : '#'; a.title = scheme === 'copy' ? 'copy path' : 'open in editor'; });
+  // away: the page cannot reach the server. Sends and the verdict are kept in this browser and go when it is back.
+  let away = false, awayTimer = 0;
+  /** The stream dropped (on) or opened (off). The line waits AWAY_MS, so a blip the stream recovers from shows nothing. */
+  const AWAY_MS = 2500;
+  function streamDown(on) {
+    // A failed reconnect inside the wait keeps the first drop's timer.
+    if (on) { if (!away && !awayTimer) awayTimer = setTimeout(() => { awayTimer = 0; setAway(true); }, AWAY_MS); return; }
+    clearTimeout(awayTimer); awayTimer = 0; setAway(false);
   }
-  if (editorSel) {
-    try { editorSel.value = localStorage.getItem('parley:editor') || 'vscode'; } catch {}
-    editorSel.addEventListener('change', () => { try { localStorage.setItem('parley:editor', editorSel.value); } catch {} applyEditor(); });
-    applyEditor();
+  function setAway(on) {
+    if (away === on) return;
+    away = on;
+    const s = $('#away');
+    s.textContent = on ? "Can't reach the server. Your answers are kept in this browser. Send and Finish review queue until it is back." : '';
+    s.hidden = !on;
+    // Whether an agent listens is not known while the server is away.
+    if (hosted) $('#listener').hidden = on;
+    updateSendAll();
   }
-  document.addEventListener('click', async (e) => {
-    const a = e.target.closest('.src-local'); if (!a) return;
-    e.stopPropagation();
-    if (!editorSel || editorSel.value !== 'copy') return;
-    e.preventDefault();
-    try { await navigator.clipboard.writeText(a.dataset.path + ':' + a.dataset.line); a.classList.add('copied'); setTimeout(() => a.classList.remove('copied'), 800); } catch {}
-  }, true);
+  function setListening(on) {
+    const l = $('#listener'); if (!hosted) return;
+    l.hidden = false; l.classList.toggle('on', on);
+    l.textContent = on ? 'Agent listening' : 'No agent listening'; l.dataset.short = on ? 'Listening' : 'Not listening';
+  }
+  /** What a send says it did: sent, queued while the server is away, or, on a static page, kept for the export. */
+  function sentNote() {
+    return !hosted ? 'Added. Export your answers to give them to the agent' : away ? 'Queued. It goes to the agent when the server is back' : 'Sent to the agent';
+  }
+  /** Name what an update changed: questions changed, new and removed, each one a link where it still is. */
+  function showChanges(before, after) {
+    const was = new Map(before.questions.map((q) => [q.id, q.hash])); const now = new Set(after.questions.map((q) => q.id));
+    const changed = after.questions.filter((q) => was.has(q.id) && was.get(q.id) !== q.hash);
+    const added = after.questions.filter((q) => !was.has(q.id));
+    const removed = before.questions.filter((q) => !now.has(q.id)).length;
+    const n = (k, one, many) => k + ' ' + (k === 1 ? one : many);
+    // The first part names the noun; the rest lean on it: "1 question changed, 1 new, 2 removed".
+    const parts = [];
+    if (changed.length) parts.push(n(changed.length, 'question changed', 'questions changed'));
+    if (added.length) parts.push(parts.length ? added.length + ' new' : n(added.length, 'new question', 'new questions'));
+    if (removed) parts.push(parts.length ? removed + ' removed' : n(removed, 'question removed', 'questions removed'));
+    const link = (q) => '<a href="#" data-go-question="' + esc(q.id) + '">' + esc(q.prompt.length > 60 ? q.prompt.slice(0, 57) + '…' : q.prompt) + '</a>';
+    const links = [...changed, ...added].slice(0, 5).map(link).join(' · ');
+    $('.changes-text', $('#changes')).innerHTML = 'Updated by the agent' + (parts.length ? ': ' + esc(parts.join(', ')) + '.' : '.') + (links ? ' ' + links : '');
+    $('#changes').hidden = false;
+  }
+  $('.changes-close').addEventListener('click', () => { $('#changes').hidden = true; });
 
-  // ---- markdown links: a .md source's View and a [[wikilink]] open the file through the servlet; off it, neither can
+`;
+
+// src/lib/page/storybook.ts
+var STORYBOOK_CSS = `/* media: Storybook frames and screenshots on a question, an option or a story block */
+.media { display: flex; flex-wrap: wrap; gap: 10px; margin: 6px 0 8px; }
+.media > .frame { flex: 1 1 280px; min-width: 0; }
+.frame { border: 1px solid var(--line); border-radius: var(--radius); background: var(--pane); overflow: hidden; }
+.frame-bar { display: flex; align-items: center; gap: 8px; padding: 4px 8px; font-size: 11.5px; color: var(--muted); border-bottom: 1px solid var(--line); }
+.frame-bar .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.frame-bar button { padding: 1px 6px; font-size: 11px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--pane); cursor: pointer; }
+.stage-fit { position: relative; width: 100%; overflow: hidden; background: var(--bg); }
+.stage-fit iframe { position: absolute; top: 0; left: 0; border: 0; transform-origin: 0 0; background: #fff; }
+.stage-fit .frame-wait { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 12px; color: var(--muted); }
+.frame-missing { padding: 12px; font-size: 12px; color: var(--muted); }
+.frame.shot .fig { border: 0; border-radius: 0; position: relative; }
+.frame video { display: block; width: 100%; }
+.opts-side { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
+.opt-card { border: 1px solid var(--line); border-radius: var(--radius); padding: 6px 10px; background: var(--pane); }
+.opt-card:has(input:checked) { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.story-cap { font-size: 12.5px; color: var(--muted); }
+.sb-banner { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.sb-banner code { background: transparent; }
+.lightbox iframe.lb-frame { display: block; border: 0; background: #fff; width: min(1440px, calc(100vw - 100px)); height: calc(100vh - 120px); }
+`;
+var STORYBOOK_JS = `  // ---- Storybook frames: probe each Storybook once, then load frames one at a time. A dev server
+  // serves each story as hundreds of modules; several frames at once exhaust the request pool.
+  function fit(stage) {
+    const f = $('iframe', stage); if (!f) return;
+    const w = Number(stage.dataset.w) || 1440; const h = Number(stage.dataset.h) || 480;
+    const scale = Math.min(1, stage.clientWidth / w);
+    f.style.width = w + 'px'; f.style.height = h + 'px'; f.style.transform = 'scale(' + scale + ')';
+  }
+  const fitter = 'ResizeObserver' in window ? new ResizeObserver((es) => es.forEach((e) => fit(e.target))) : null;
+  $$('.stage-fit').forEach((s) => { fit(s); if (fitter) fitter.observe(s); });
+  const down = new Set();
+  const queue = [];
+  let loading = null; // the frame loading now
+  function enqueue(f) { if (f.dataset.queued || f.src) return; f.dataset.queued = '1'; queue.push(f); pump(); }
+  function pump() {
+    if (loading) return;
+    const f = queue.shift(); if (!f) return;
+    if (!f.isConnected) { pump(); return; }
+    const base = f.closest('[data-story-base]').dataset.storyBase;
+    if (down.has(base)) { delete f.dataset.queued; pump(); return; }
+    loading = f;
+    const done = () => { if (loading !== f) return; loading = null; f.onload = null; pump(); };
+    f.onload = done; setTimeout(done, 15000);
+    f.src = f.dataset.src;
+  }
+  /** Forget frames a swap removed: a detached frame never fires load, so it would hold the queue. */
+  function dropDetachedFrames() {
+    for (let i = queue.length - 1; i >= 0; i--) if (!queue[i].isConnected) queue.splice(i, 1);
+    if (loading && !loading.isConnected) { loading.onload = null; loading = null; }
+  }
+  /** Frames to load: those not tucked inside a closed disclosure. A disclosure loads its own on open. */
+  function queueVisible(root) { $$('.stage-fit iframe[data-src]', root).forEach((f) => { const d = f.closest('details'); if (!d || d.open) enqueue(f); }); }
+  document.addEventListener('toggle', (e) => { if (e.target.tagName === 'DETAILS' && e.target.open) { queueVisible(e.target); $$('.stage-fit', e.target).forEach(fit); } }, true);
+  function showDown() {
+    const b = $('#sb-banner'); if (!b) return;
+    b.hidden = !down.size; if (!down.size) return;
+    const hint = DATA.storybookStart ? ' Start it with <code>' + esc(DATA.storybookStart) + '</code>, then' : ' Start it, then';
+    b.innerHTML = 'Storybook is not answering at ' + [...down].map((u) => '<code>' + esc(u) + '</code>').join(', ') + '.' + hint + ' <button type="button" class="quiet" id="sb-retry">Retry</button>';
+  }
+  async function probe() {
+    const bases = [...new Set($$('[data-story-base]').map((el) => el.dataset.storyBase))];
+    for (const base of bases) {
+      let ok = true;
+      if (server) { try { const r = await fetch('/storybook?url=' + encodeURIComponent(base)); const j = await r.json(); ok = j.ok || j.local === false; } catch {} }
+      if (ok) down.delete(base); else down.add(base);
+    }
+    showDown(); queueVisible(document);
+  }
+  document.addEventListener('click', (e) => { if (e.target.closest('#sb-retry')) probe(); });
+
+`;
+
+// src/lib/page/sync.ts
+var SYNC_JS = `  // ---- persistence: server first, browser storage second
+  /** Answers as read: maps without a prototype, and the fields the page reads filled in. */
+  function adopt(a) {
+    a.choices = dict(a.choices);
+    if (!Array.isArray(a.comments)) a.comments = [];
+    const stamp = (x) => { if (x && typeof x === 'object') { if (typeof x.at !== 'string') x.at = ''; for (const m of Array.isArray(x.replies) ? x.replies : []) if (m && typeof m.at !== 'string') m.at = ''; } };
+    for (const c of Object.values(a.choices)) { stamp(c); if (c && !Array.isArray(c.selected)) c.selected = []; }
+    a.comments.forEach(stamp);
+    if (a.seen) a.seen = dict(a.seen);
+    if (a.seenReplies) a.seenReplies = dict(a.seenReplies);
+    return a;
+  }
+  // ---- the copy in this browser: kept when a save fails or the page is left with a save unsent,
+  // one per page load so two tabs never write over each other's. base is what the answers were
+  // based on, version its ETag when it is the server's copy, folder the server's folder, kept
+  // when it was written, and left marks a copy made on leaving while the server was up, whose
+  // keepalive save most likely landed.
+  const MINE = KEY + ':' + TAB;
+  const COPY_MAX_AGE = 7 * 864e5;
+  let inFlight = null, folder = null;
+  /** Keep the answers in this browser; false when the browser refuses (storage full or blocked). */
+  function keepLocal(left = false) {
+    try { localStorage.setItem(MINE, JSON.stringify({ answers, base: inFlight || serverCopy, version: inFlight ? null : serverVersion, folder, left, kept: Date.now() })); return true; } catch { return false; }
+  }
+  function dropLocal() { try { localStorage.removeItem(MINE); } catch {} }
+  /**
+   * The copies earlier page loads kept for this document, oldest first, and their keys. Any
+   * document's copy older than COPY_MAX_AGE is removed, and so is one from before copies had a
+   * kept time (the old bare key among them). A copy without a base is dropped.
+   */
+  function localCopies() {
+    const copies = [], keys = [], old = [];
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith(KEY + ':') && k !== MINE) keys.push(k);
+        else if (k && k.startsWith('parley:answers:') && k !== MINE) try { const c = JSON.parse(localStorage.getItem(k)); if (!(Date.now() - c.kept < COPY_MAX_AGE)) old.push(k); } catch { old.push(k); }
+      }
+      for (const k of keys) try { const c = JSON.parse(localStorage.getItem(k)); if (c && c.answers && c.base && Date.now() - c.kept < COPY_MAX_AGE) copies.push({ ...c, key: k }); } catch {}
+    } catch {}
+    forget(old);
+    copies.sort((a, b) => String(a.answers.updated).localeCompare(String(b.answers.updated)));
+    return { copies, keys };
+  }
+  function forget(keys) { for (const k of keys) try { localStorage.removeItem(k); } catch {} }
+  async function load() {
+    const start = cloneJson(answers);
+    let { copies, keys } = localCopies();
+    try {
+      const r = await fetch('/a/' + DATA.doc, { headers: { accept: 'application/json' } });
+      // An answers file that does not parse, or that a save would be refused for, is still the
+      // server's: keep the answers in this browser and retry until it is repaired.
+      if (r.ok) {
+        hosted = true; folder = r.headers.get('parley-folder'); fileName = header(r, 'parley-file') || fileName;
+        setListening(r.headers.get('parley-listening') === '1');
+        try { answers = adopt(await readAnswers(r)); took(r, cloneJson(answers)); server = !broken; } catch {}
+        if (!server) retryLater();
+      }
+    } catch {}
+    body.classList.toggle('static', !hosted); placeExport();
+    // A server on the same port may serve another folder with a document of the same id: its copies are left alone.
+    const other = new Set(copies.filter((c) => c.folder && folder && c.folder !== folder).map((c) => c.key));
+    copies = copies.filter((c) => !other.has(c.key)); keys = keys.filter((k) => !other.has(k));
+    if (server) { replay(copies); forget(keys); }
+    else {
+      // No server copy to check them against: this page's answers are the copies, newest last.
+      for (const c of copies) try { answers = mergeAnswers(adopt(cloneJson(c.base)), adopt(c.answers), answers); } catch {}
+      serverCopy = adopt(cloneJson(copies.length ? copies[copies.length - 1].base : start));
+      if (!copies.length || keepLocal()) forget(keys);
+    }
+    setPersist(server);
+    if (hosted) listen();
+  }
+  /**
+   * Lay the edits other page loads kept over the server's answers and save. An edit is sent only
+   * where the server's answer, comment or field still has the content the copy was based on; one
+   * the server has since changed is dropped. A copy left while the server was up is used only
+   * when the server's answers are still the version it was based on: otherwise its keepalive save
+   * landed, or something newer did. The notice says whether edits were sent, dropped, or both.
+   */
+  function replay(copies) {
+    const before = answers;
+    let dropped = false;
+    for (const c of copies) {
+      try {
+        if (c.left && c.version !== serverVersion) continue;
+        const base = adopt(cloneJson(c.base)), mine = adopt(c.answers);
+        const next = mergeAnswers(base, unmoved(base, mine, answers), answers);
+        if (!sameContent(next, mergeAnswers(base, mine, answers), false)) dropped = true;
+        answers = next;
+      } catch {}
+    }
+    const sent = !sameContent(answers, before, false);
+    if (sameContent(answers, before)) answers = before; else save();
+    const kept = 'edits this browser kept from your last visit';
+    if (sent) notice('Sent ' + kept + (dropped ? ', except where the answer has changed since' : ''));
+    else if (dropped) notice('Did not send ' + kept + ': those answers have changed since');
+  }
+  // What the reviewer gave, without what the server stamps: times, the tab, history, revision.
+  // A thread is its message ids. Two answers or comments with the same content are the same.
+  const STAMPS = new Set(['at', 'updated', 'tab', 'history', 'revision', 'replies']);
+  const FLAGS = new Set(['sent', 'finished', 'reopened', 'roundStartedAt', 'agentReadAt']);
+  const field = (k, v) => (FLAGS.has(k) ? !!v : v);
+  function itemContent(x, thread = true) {
+    if (!x || typeof x !== 'object') return x;
+    const out = {}; for (const [k, v] of Object.entries(x)) if (!STAMPS.has(k)) out[k] = field(k, v);
+    if (thread) out.replies = (x.replies || []).map((m) => m.id);
+    return out;
+  }
+  // A new message does not move an item: threads merge by id, so it never conflicts with an edit.
+  const sameItem = (x, y) => sameJson(itemContent(x, false), itemContent(y, false));
+  /** Same content, seen marks (of questions and of replies) included unless withSeen is false. */
+  function sameContent(x, y, withSeen = true) {
+    const whole = (a) => { const out = {}; for (const [k, v] of Object.entries(a)) if (k !== 'updated' && (withSeen || (k !== 'seen' && k !== 'seenReplies'))) out[k] = k === 'choices' ? Object.fromEntries(Object.entries(v).map(([q, c]) => [q, itemContent(c)])) : k === 'comments' ? v.map((c) => itemContent(c)) : field(k, v); return out; };
+    return sameJson(whole(x), whole(y));
+  }
+  // The verdict moves as one: a new round elsewhere since base resets all of it.
+  const VERDICT = ['verdict', 'finished', 'summary', 'roundStartedAt'];
+  /**
+   * mine, with each edit reset to base where theirs changed since base. Messages mine added stay,
+   * merged by id, except on an answer or comment base did not have: that is dropped whole.
+   */
+  function unmoved(b, m, t) {
+    const out = cloneJson(m); out.choices = dict(out.choices);
+    const reset = (bi, mi, ti) => { if (!bi) return undefined; const x = cloneJson(bi); if (ti && mi && mi.replies) x.replies = mi.replies; return x; };
+    // roundStartedAt is a time, compared raw; the booleans are compared as set or unset.
+    const verdictMoved = VERDICT.some((k) => (k === 'roundStartedAt' ? !sameJson(own(t, k), own(b, k)) : !sameJson(field(k, own(t, k)), field(k, own(b, k)))));
+    for (const k of new Set([...Object.keys(m), ...Object.keys(b), ...VERDICT])) {
+      // Seen-reply marks are only added, so this page's never need a reset.
+      if (k === 'choices' || k === 'comments' || k === 'seen' || k === 'seenReplies' || k === 'updated') continue;
+      if (VERDICT.includes(k) ? !verdictMoved : sameJson(field(k, own(t, k)), field(k, own(b, k)))) continue;
+      if (own(b, k) === undefined) delete out[k]; else out[k] = cloneJson(b[k]);
+    }
+    for (const q of new Set([...Object.keys(m.choices), ...Object.keys(b.choices)])) {
+      if (sameItem(own(t.choices, q), own(b.choices, q))) continue;
+      const x = reset(own(b.choices, q), own(m.choices, q), own(t.choices, q));
+      if (x) out.choices[q] = x; else delete out.choices[q];
+    }
+    const byId = (list) => new Map(list.map((c) => [c.id, c]));
+    const bc = byId(b.comments), mc = byId(m.comments), tc = byId(t.comments);
+    const moved = (id) => !sameItem(tc.get(id), bc.get(id));
+    out.comments = [...m.comments.map((c) => (moved(c.id) ? reset(bc.get(c.id), c, tc.get(c.id)) : c)), ...b.comments.filter((c) => !mc.has(c.id) && moved(c.id))].filter(Boolean);
+    const seen = dict(m.seen);
+    for (const q of new Set([...Object.keys(m.seen || {}), ...Object.keys(b.seen || {})])) if (own(t.seen, q) !== own(b.seen, q)) { if (own(b.seen, q) === undefined) delete seen[q]; else seen[q] = b.seen[q]; }
+    if (m.seen || b.seen) out.seen = seen;
+    return out;
+  }
+  // ---- a broken answers file: the server refuses every save until it is fixed. broken is its
+  // reason (what is wrong with the file), fileName the file to fix, both from the server.
+  let broken = null, fileName = DATA.doc + '.answers.json';
+  const BROKEN = 'the answers file is broken: ';
+  const header = (r, k) => { try { return decodeURIComponent(r.headers.get(k) || ''); } catch { return ''; } };
+  /** The answers in a response from GET /a; sets broken when the server says a save would be refused, or the text is not JSON. */
+  async function readAnswers(r) {
+    const why = header(r, 'parley-broken');
+    broken = why.startsWith(BROKEN) ? why.slice(BROKEN.length) : null;
+    try { return await r.json(); } catch (e) { broken = 'it is not JSON'; throw e; }
+  }
+  /** The persistence pill. kept: the browser took the copy; when it did not, the edit is in this page only. */
+  function setPersist(on, kept = true) {
+    server = on;
+    if (on) broken = null;
+    const pill = $('#persist');
+    pill.textContent = on ? 'saved to server' : broken ? (kept ? 'Saved in this browser only. ' : 'Not saved. ') + 'The answers file ' + fileName + ' is broken: ' + broken + '. Fix it and the page saves again.' : kept ? 'saved in this browser' : 'not saved';
+    pill.title = 'Where answers are saved: ' + pill.textContent;
+    pill.classList.toggle('local', !on && kept);
+    pill.classList.toggle('lost', !on && !kept);
+    pill.classList.toggle('broken', !on && !!broken);
+  }
+  /** The browser refused the copy while the server cannot take the answers. */
+  function notKept() {
+    if (!$('#persist').classList.contains('lost')) notice('Not saved: the server is away and this browser has no room for the copy');
+    setPersist(false, false);
+  }
+  // ---- one writer: the server stores every save. A save names the version of the answers it is
+  // based on (the ETag of serverCopy); a stale one is refused with the current answers, which the
+  // page merges its edits into and sends again, so another tab's answers and the agent's replies
+  // are never written over.
+  let serverCopy = null, serverVersion = null;
+  const cloneJson = (v) => JSON.parse(JSON.stringify(v));
+  // heard: an answers event came since the last read, so a keepalive save based on it may be refused.
+  let heard = false;
+  function took(r, copy) { serverCopy = copy; serverVersion = r.headers.get('etag'); heard = false; }
+  // Key order does not make two values differ.
+  const canonJson = (v) => JSON.stringify(v, (k, x) => x && typeof x === 'object' && !Array.isArray(x) ? Object.fromEntries(Object.keys(x).sort().map((f) => [f, x[f]])) : x);
+  const sameJson = (a, b) => canonJson(a) === canonJson(b);
+  // What this page changed since base, laid over theirs: each answer, comment, seen mark and other
+  // field on its own, and within an answer or comment each field on its own, so the later save
+  // wins on one field (the server keeps another tab's replaced answer in history). A thread is
+  // theirs plus the reviewer messages this page added, matched by id. The rest is theirs.
+  // mergeAnswers returns adopted answers. Every lookup is an own-key read and every map a dict(): a key such as constructor or
+  // __proto__ is a question or field id like any other.
+  const own = (o, k) => (o && Object.hasOwn(o, k) ? o[k] : undefined);
+  function mergeAnswers(base, mine, theirs) {
+    base = base || {};
+    const out = dict(cloneJson(theirs));
+    for (const k of new Set([...Object.keys(mine), ...Object.keys(base)])) {
+      if (k === 'choices' || k === 'comments' || k === 'seen' || k === 'seenReplies' || sameJson(own(mine, k), own(base, k))) continue;
+      if (own(mine, k) === undefined) delete out[k]; else out[k] = cloneJson(mine[k]);
+    }
+    const seenMarks = dict(theirs.seen);
+    for (const [q, h] of Object.entries(mine.seen || {})) if (!sameJson(h, own(base.seen, q))) seenMarks[q] = h;
+    if (Object.keys(seenMarks).length) out.seen = seenMarks;
+    // A reply seen in either copy stays seen.
+    const replyMarks = dict(theirs.seenReplies);
+    for (const [id, at] of Object.entries(mine.seenReplies || {})) if (!Object.hasOwn(replyMarks, id)) replyMarks[id] = at;
+    if (Object.keys(replyMarks).length) out.seenReplies = replyMarks;
+    const choices = dict();
+    for (const q of new Set([...Object.keys(theirs.choices || {}), ...Object.keys(mine.choices || {})])) {
+      const c = mergeItem(own(base.choices, q), own(mine.choices, q), own(theirs.choices, q));
+      if (c) choices[q] = c;
+    }
+    out.choices = choices;
+    const byId = (list) => new Map((list || []).map((c) => [c.id, c]));
+    const bc = byId(base.comments), mc = byId(mine.comments), tc = byId(theirs.comments);
+    out.comments = [...(theirs.comments || []).map((t) => mergeItem(bc.get(t.id), mc.get(t.id), t)), ...(mine.comments || []).filter((m) => !tc.has(m.id)).map((m) => mergeItem(bc.get(m.id), m, undefined))].filter(Boolean);
+    return adopt(cloneJson(out));
+  }
+  /** One answer or comment: base, mine and theirs, any of them absent. */
+  function mergeItem(b, m, t) {
+    if (sameJson(m, b)) return t;
+    const ids = (x) => new Set(((x && x.replies) || []).map((r) => r.id));
+    // Removed here, but its thread got messages this page never showed (an agent reply): keep it,
+    // so the reply is not lost unread. The reviewer can remove it again once they have seen it.
+    if (!m && t) { const had = ids(b); if ((t.replies || []).some((r) => !had.has(r.id))) return t; }
+    // Removed here, or edited here and removed elsewhere: this page's version.
+    if (!m || !t) return m;
+    const out = dict(t);
+    let edited = false;
+    for (const f of new Set([...Object.keys(m), ...Object.keys(b || {})])) {
+      if (f === 'replies' || f === 'tab' || sameJson(own(m, f), own(b, f))) continue;
+      edited = true;
+      if (own(m, f) === undefined) delete out[f]; else out[f] = m[f];
+    }
+    // An answer this page edited is this tab's, even when the tab is the one base had: the server
+    // then keeps the other tab's answer it replaces in history.
+    if (edited && m.tab !== undefined) out.tab = m.tab;
+    // Matched by id, not by count: a save whose answer was lost and is sent again adds nothing twice.
+    const have = ids(t);
+    const thread = [...(t.replies || []), ...(m.replies || []).filter((r) => r.from === 'reviewer' && !have.has(r.id))];
+    if (thread.length) out.replies = thread; else delete out.replies;
+    return out;
+  }
+  // PUT the page's answers with If-Match. A 409 brings back the current answers; the page merges
+  // its edits into them and sends again at once. A 409 does not touch the backoff or the status
+  // line; a ninth one in a row fails the save like an error, and retryLater takes over.
+  // The push in flight, so a document update waits for it rather than cancelling it. Pushes run
+  // one after another, each based on the version the one before it got back.
+  let pushing = null;
+  function push() {
+    const p = (pushing ? pushing.then(() => {}, () => {}) : Promise.resolve()).then(sendAnswers);
+    pushing = p;
+    p.finally(() => { if (pushing === p) pushing = null; });
+    return p;
+  }
+  async function sendAnswers() {
+    dirty = false;
+    $('#persist').dataset.started = String(++started);
+    try {
+      // Never read from the server (loaded while it was down): read it first, to have a version.
+      if (!serverVersion) {
+        const g = await fetch('/a/' + DATA.doc, { headers: { accept: 'application/json' } });
+        if (!g.ok) throw new Error(String(g.status));
+        const theirs = adopt(await readAnswers(g)); answers = mergeAnswers(serverCopy, answers, theirs); took(g, theirs);
+      }
+      for (let tries = 0; ; tries++) {
+        savedAt = Date.now();
+        const sent = inFlight = cloneJson(answers);
+        const body = JSON.stringify(sent);
+        // keepalive lets the PUT outlive a navigation. Browsers share a 64 KB keepalive quota across
+        // requests in flight and refuse one over it, so keepalive is used only for a body under 32 KB
+        // in bytes, and a refused one is sent again without it.
+        const put = (keepalive) => fetch('/a/' + DATA.doc, { method: 'PUT', headers: { 'content-type': 'application/json', 'if-match': serverVersion }, body, keepalive });
+        const small = new Blob([body]).size < 32768;
+        const r = small ? await put(true).catch(() => put(false)) : await put(false);
+        savedAt = Date.now(); inFlight = null;
+        // Written since this page last read: merge into the current answers and send again.
+        if (r.status === 409 && tries < 8) { const theirs = adopt(await r.json()); answers = mergeAnswers(serverCopy, answers, theirs); took(r, theirs); continue; }
+        if (!r.ok) {
+          // The server's reason, when it is the answers file that stops the save.
+          const why = r.status === 500 ? await r.text().catch(() => '') : '';
+          broken = why.startsWith(BROKEN) ? why.slice(BROKEN.length) : null;
+          if (broken) fileName = header(r, 'parley-file') || fileName;
+          throw new Error(String(r.status));
+        }
+        // Edits made while the save was out stay; the rest is the stored copy, with the server's stamps.
+        const stored = adopt(await r.json()); answers = mergeAnswers(sent, answers, stored); took(r, stored);
+        break;
+      }
+      // Everything kept in this browser is on the server now.
+      dropLocal();
+      if (!server) setPersist(true);
+      // A save got through before a pending retry for a failed save: catch up now. While the
+      // document is broken (the line shows) saves keep the backoff, or it would reset on every save.
+      if ($('#stale').hidden) {
+        retryDelay = RETRY_BASE;
+        if (retryTimer) { clearTimeout(retryTimer); retryTimer = 0; catchUp(); }
+      }
+      countPush();
+      return true;
+    } catch {
+      inFlight = null;
+      if (keepLocal()) setPersist(false); else notKept();
+      // Retry without waiting for the reviewer to type or the stream to drop again.
+      retryLater();
+      countPush();
+      return false;
+    }
+  }
+  // Pushes the page has started and finished handling, for tests that wait on them rather than on wall time.
+  let started = 0, pushes = 0;
+  const countPush = () => { $('#persist').dataset.pushes = String(++pushes); };
+  // Events fired while the page could not reach the server are lost, so catch up: push answers
+  // edited meanwhile, then refresh the document (a no-op when the served version is the same) and
+  // re-read the answers. A failed push, or a catch-up the server answers with an error, schedules
+  // a retry (retryLater); each retry that fails doubles the delay, up to 30s, and a push or a
+  // catch-up that gets through resets it.
+  const RETRY_BASE = 2000, RETRY_MAX = 30000;
+  let retryTimer = 0, retryDelay = RETRY_BASE;
+  /** Catch up after the current delay, then double it for the next failure. No-op while one is pending. */
+  function retryLater() {
+    if (retryTimer) return;
+    retryTimer = setTimeout(catchUp, retryDelay);
+    retryDelay = Math.min(retryDelay * 2, RETRY_MAX);
+  }
+  async function catchUp() {
+    clearTimeout(retryTimer); retryTimer = 0;
+    if (!server) {
+      clearTimeout(timer);
+      // A failed push has scheduled the next try.
+      if (!(await push())) return;
+    }
+    refreshDoc(true);
+  }
+  // A rewritten document. A save still in its debounce, or one the server has not taken, is sent
+  // first, stamped with the revision it was given at; if that fails the page stays, and the retry
+  // catches up once it gets through. The served page is then swapped in place (swapDoc) unless its
+  // version is the current one, and a line says what the update changed. A document the server
+  // cannot render keeps the page (the 5xx below); a changed shell or an error reloads instead.
+  // Rewrites close together run in turn; a queued run is a catch-up only if every request was one.
+  // A failed run drops a queued catch-up, which the retry covers, but not a queued doc event.
+  let refreshing = null, refreshAgain = false, againCatchUp = false;
+  function refreshDoc(catchingUp = false) {
+    if (refreshing) { againCatchUp = refreshAgain ? againCatchUp && catchingUp : catchingUp; refreshAgain = true; return refreshing; }
+    refreshing = (async () => {
+      let c = catchingUp;
+      do {
+        refreshAgain = false; const ok = await refreshOnce(c); c = againCatchUp;
+        if (!ok && !(refreshAgain && !c)) break;
+      } while (refreshAgain);
+    })().finally(() => { refreshing = null; });
+    return refreshing;
+  }
+  async function refreshOnce(catchingUp) {
+    // A save the server refuses keeps the page as it is, but the page still says when the document
+    // cannot be loaded: a save fails while the server cannot read the document.
+    const flushed = !(hosted && (pushing || dirty || !server)) || (await flushSave());
+    // Unreachable: the stream drops too, and its reconnect catches up.
+    let r; try { r = await fetch('/d/' + DATA.doc, { cache: 'no-store' }); } catch { return false; }
+    // A document the server cannot render answers 500: one the agent is half-way through writing,
+    // one left not JSON, or one that broke while the page was away. Keep the page and its unsent
+    // text: re-read the answers, say the page is behind, and try again later; the next doc event
+    // or retry that renders swaps it in. A 404 (the document was deleted) reloads: there is
+    // nothing left to swap in or save to.
+    if (r.status >= 500) {
+      setStale(true);
+      reread(); retryLater();
+      return false;
+    }
+    if (!flushed) return false;
+    try {
+      if (!r.ok || !swapDoc(new DOMParser().parseFromString(await r.text(), 'text/html'))) { fullReload(); return false; }
+    } catch (e) { console.error(e); fullReload(); return false; }
+    setStale(false);
+    if (catchingUp) retryDelay = RETRY_BASE;
+    reread();
+    return true;
+  }
+  function fullReload() {
+    try { sessionStorage.setItem('parley:scroll:' + DATA.doc, JSON.stringify({ ...scrollState(), seen: [...seen.keys()] })); } catch {}
+    location.reload();
+  }
+  // ---- live updates: the server announces file changes; a rewritten document is swapped into
+  // the page, rewritten answers are re-read unless this page just wrote them. Browsers open six
+  // connections per host, so the tabs of one browser share one stream: the tab holding the lock
+  // opens it and passes each event to the others. A hidden tab holds none and catches up when shown.
+  const STREAM = 'parley:events';
+  let peers = null, stream = null, streamTimer = 0, streamDelay = RETRY_BASE, lockWait = null, release = null;
+  function listen() {
+    try { if (navigator.locks) peers = new BroadcastChannel(STREAM); } catch {}
+    // 'open': the stream opened after a gap, so events may have been missed.
+    if (peers) peers.onmessage = (e) => { if (e.data === 'open') { streamDown(false); if (document.visibilityState !== 'hidden') catchUp(); } else if (e.data === 'away') streamDown(true); else onEvent(e.data); };
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') stopStream(); else { startStream(); catchUp(); } });
+    addEventListener('pageshow', (e) => { if (e.persisted) { startStream(); catchUp(); } });
+    if (document.visibilityState !== 'hidden') startStream();
+  }
+  function onEvent(msg) {
+    if (msg && msg.kind === 'listeners' && Array.isArray(msg.on)) { setListening(msg.on.includes(DATA.doc)); return; }
+    if (!msg || msg.id !== DATA.doc) return;
+    if (msg.kind === 'doc') {
+      refreshDoc();
+    } else if (msg.kind === 'answers') {
+      heard = true;
+      // Inside 1.5s of this page's own write the change is likely its echo; re-read once the
+      // window passes instead of dropping it, or an agent reply landing then would never show.
+      const wait = 1500 - (Date.now() - savedAt);
+      clearTimeout(rereadTimer); rereadTimer = setTimeout(reread, Math.max(0, wait));
+    }
+  }
+  /** Open the stream, or wait for the tab that has it to let go. Every open catches up once it connects. */
+  function startStream() {
+    if (stream || streamTimer || lockWait || release) return;
+    if (!peers) { openStream(); return; }
+    const wait = lockWait = new AbortController();
+    const lead = () => new Promise((done) => { lockWait = null; release = done; openStream(); });
+    let queued = false;
+    // Hidden again before the lock answered (lockWait reset): let the lock go unused.
+    navigator.locks.request(STREAM, { ifAvailable: true }, (lock) => { if (!lock) queued = true; else if (lockWait === wait) return lead(); })
+      .then(() => { if (queued && lockWait === wait) return navigator.locks.request(STREAM, { signal: wait.signal }, () => lead()); })
+      .catch(() => {});
+  }
+  function stopStream() {
+    clearTimeout(streamTimer); streamTimer = 0;
+    if (lockWait) { lockWait.abort(); lockWait = null; }
+    if (stream) { stream.close(); stream = null; }
+    if (release) { release(); release = null; }
+  }
+  function openStream() {
+    let es; try { es = new EventSource('/events'); } catch { return; }
+    stream = es;
+    // The page was read before the stream connected, so the first open is behind too: an event in that gap is lost.
+    let dropped = true;
+    es.onmessage = (e) => {
+      let msg; try { msg = JSON.parse(e.data); } catch { return; }
+      if (peers) peers.postMessage(msg);
+      onEvent(msg);
+    };
+    // EventSource reconnects by itself after a dropped connection, but stops for good after a
+    // response that is not a stream (a 503 from a restarting server): reopen it with the backoff.
+    es.onerror = () => {
+      dropped = true;
+      if (stream === es) { streamDown(true); if (peers) peers.postMessage('away'); }
+      if (es.readyState !== EventSource.CLOSED || stream !== es) return;
+      stream = null;
+      streamTimer = setTimeout(() => { streamTimer = 0; openStream(); }, streamDelay);
+      streamDelay = Math.min(streamDelay * 2, RETRY_MAX);
+    };
+    // The first open after a gap catches up, here and in the other tabs.
+    es.onopen = () => {
+      streamDelay = RETRY_BASE;
+      streamDown(false);
+      if (!dropped) return;
+      dropped = false;
+      catchUp();
+      if (peers) peers.postMessage('open');
+    };
+  }
+  /**
+   * Leaving the page: an edit still in the save delay is sent now, with keepalive so the request
+   * outlives the page, and kept in this browser for the next load in case the server refuses it.
+   * The copy is left, used next load only if the server's answers are still the version it was
+   * based on, when the server is up, no push is out and no answers event came since the last
+   * read. Otherwise the keepalive may be refused, and the next load sends what the server lacks.
+   */
+  addEventListener('pagehide', () => {
+    stopStream();
+    if (!dirty && !pushing) return;
+    clearTimeout(timer);
+    keepLocal(server && !pushing && !heard);
+    if (!hosted || !serverVersion) return;
+    const body = JSON.stringify(answers);
+    if (new Blob([body]).size < 32768) fetch('/a/' + DATA.doc, { method: 'PUT', headers: { 'content-type': 'application/json', 'if-match': serverVersion }, body, keepalive: true }).catch(() => {});
+  });
+  let rereadTimer;
+  async function reread() {
+    if (Date.now() - savedAt < 1500) { rereadTimer = setTimeout(reread, 1500 - (Date.now() - savedAt)); return; }
+    const before = savedAt;
+    try {
+      // Answers not yet on the server would be overwritten by its copy.
+      if (!server) return;
+      const r = await fetch('/a/' + DATA.doc); if (!r.ok) return;
+      const next = adopt(await r.json());
+      // A change made while the fetch was out is newer than what came back; wait for its save.
+      if (savedAt !== before || !server) { rereadTimer = setTimeout(reread, 1500); return; }
+      // Edits not yet saved stay over what came back.
+      answers = mergeAnswers(serverCopy, answers, next); took(r, next); hydrateChoices(); renderComments();
+    } catch {}
+  }
+  // Where the reviewer is: both scroll positions and whether the right panel is open.
+  function scrollState() { return { right: right.scrollTop, top: left.scrollTop, open: body.classList.contains('right-open') }; }
+  function applyScroll(s) { quietUntil = Date.now() + 700; right.scrollTop = s.right; left.scrollTop = s.top; openRight(!!s.open); }
+  function restoreScroll() {
+    try {
+      const s = JSON.parse(sessionStorage.getItem('parley:scroll:' + DATA.doc) || 'null');
+      sessionStorage.removeItem('parley:scroll:' + DATA.doc);
+      if (s) { applyScroll(s); return true; }
+    } catch {}
+    return false;
+  }
+  let timer;
+  function save() {
+    dirty = true;
+    answers.updated = new Date().toISOString();
+    savedAt = Date.now();
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      if (hosted) push(); else if (!keepLocal()) notKept();
+    }, 150);
+  }
+  /**
+   * Send the answers now, without the debounce, after any push already in flight. True once the
+   * server has them; false when the push failed (push() keeps them in this browser and retries) or
+   * all of it took over 2s (a late success catches up). Concurrent callers share one flush.
+   */
+  let dirty = false;
+  let flushing = null;
+  function flushSave() {
+    if (!flushing) {
+      clearTimeout(timer);
+      const work = (async () => {
+        if (pushing) await pushing;
+        return dirty || !server ? push() : true;
+      })();
+      flushing = Promise.race([work, new Promise((r) => setTimeout(() => r(null), 2000))])
+        .then((ok) => { if (ok === null) { work.then((done) => { if (done) catchUp(); }); return false; } return ok; })
+        .finally(() => { flushing = null; });
+    }
+    return flushing;
+  }
+
+`;
+var SWAP_JS = `  // ---- in-place update: each data-live region is replaced by the served page's, keeping what the
+  // reviewer has in hand: scroll (anchored to what was at the top of each pane), the selected node,
+  // unsent text, focus and caret, open comment forms and disclosures. False when the two pages
+  // differ outside those regions, which only a reload applies.
+  let swapping = false;
+  function swapDoc(next) {
+    const el = next.getElementById('parley-data'); if (!el) return false;
+    const nd = JSON.parse(el.textContent);
+    if (nd.doc === DATA.doc && nd.version === DATA.version) return true;
+    if (nd.doc !== DATA.doc || !nd.shell || nd.shell !== DATA.shell) return false;
+    const olds = $$('[data-live]'); const news = new Map([...next.querySelectorAll('[data-live]')].map((e) => [e.dataset.live, e]));
+    if (olds.length !== news.size || olds.some((e) => !news.has(e.dataset.live))) return false;
+    const ui = captureUi();
+    // A focused item is replaced by the swap; its new copy takes the focus.
+    const focusedItem = document.activeElement && document.activeElement.closest('#left [data-node]');
+    showChanges(DATA, nd);
+    DATA = readData(nd); ORDER = DATA.nav.map((e) => e.id); QBY = dict(Object.fromEntries(DATA.questions.map((q) => [q.id, q])));
+    document.getElementById('parley-data').textContent = el.textContent;
+    document.title = next.title;
+    swapping = true;
+    try { for (const e of olds) e.innerHTML = news.get(e.dataset.live).innerHTML; } finally { swapping = false; }
+    if ($('#anno-form').hidden) hideAnno(); hideQpop();
+    $$('[data-pin]').forEach((b) => b.setAttribute('aria-pressed', String(body.classList.contains(b.dataset.pin + '-pinned'))));
+    resolveWikilinks(document, ''); if (editorSel) applyEditor(); addExpand(); localTimes(); itemKeys();
+    if (fitter) fitter.disconnect();
+    $$('.stage-fit').forEach((s) => { fit(s); if (fitter) fitter.observe(s); });
+    seenTimers.forEach(clearTimeout); seenTimers.clear();
+    if (seenIo) { seenIo.disconnect(); $$('article.question').forEach((q) => seenIo.observe(q)); }
+    restoreUi(ui);
+    if (focusedItem && !focusedItem.isConnected) { const c = itemControl(focusedItem.dataset.node); if (c) c.focus({ preventScroll: true }); }
+    renderIntro();
+    if (!sheet.hidden) renderSheet();
+    dropDetachedFrames(); probe();
+    return true;
+  }
+  /** Which field this is, stable across a swap: the thread, section or question it belongs to. */
+  function fieldKey(f) {
+    const rf = f.closest('.reply-form'); if (rf) return 'r:' + (rf.dataset.replyComment || '') + ':' + (rf.dataset.replyAsk || '');
+    const cf = f.closest('.comment-form'); if (cf) return 'c:' + cf.closest('[data-comments]').dataset.comments;
+    if (f.dataset.questionNote) return 'n:' + f.dataset.questionNote;
+    if (f.dataset.question) return 'o:' + f.dataset.question + ':' + f.value;
+    return f.id ? '#' + f.id : null;
+  }
+  const liveFields = () => $$('[data-live] textarea, [data-live] input');
+  const isText = (f) => f.tagName === 'TEXTAREA' || !/^(radio|checkbox)$/.test(f.type);
+  /** A disclosure's key: the nearest ancestor with an id, its class, and its place among its kind there. */
+  function detailsKey(d) { const host = d.parentElement.closest('[id]'); return (host ? host.id : '') + '|' + d.className + '|' + (host ? $$('details', host).filter((x) => x.className === d.className).indexOf(d) : 0); }
+  /**
+   * What to hold still in a pane, and how far below its top edge it starts: the field being typed
+   * in when it is in view, else the innermost element crossing the top edge.
+   */
+  function anchorOf(pane) {
+    const box = pane.getBoundingClientRect(); const top = box.top; let best = null;
+    const a = document.activeElement;
+    if (a && pane.contains(a) && a.matches('textarea, input') && fieldKey(a)) {
+      const r = a.getBoundingClientRect();
+      if (r.height && r.bottom > top && r.top < box.bottom) return { key: fieldKey(a), off: r.top - top };
+    }
+    const attrs = ['data-node', 'data-block', 'data-comments', 'data-comment'];
+    for (const e of $$('[id], ' + attrs.map((a) => '[' + a + ']').join(', '), pane)) {
+      const at = attrs.find((a) => e.hasAttribute(a));
+      const sel = e.id ? '#' + CSS.escape(e.id) : '[' + at + '="' + CSS.escape(e.getAttribute(at)) + '"]';
+      const r = e.getBoundingClientRect();
+      if (r.height && r.top <= top + 4 && r.bottom > top && (!best || r.top >= best.at) && $(sel, pane) === e) best = { sel, at: r.top };
+    }
+    return best && { sel: best.sel, off: best.at - top };
+  }
+  function captureUi() {
+    const panes = [left, right, $('#nav')].map((p) => ({ p, top: p.scrollTop, anchor: anchorOf(p) }));
+    const values = new Map(); liveFields().forEach((f) => { const k = fieldKey(f); if (k && isText(f) && f.value && !k.startsWith('n:')) values.set(k, f.value); });
+    const forms = $$('.comment-form:not([hidden])').map((f) => f.closest('[data-comments]').dataset.comments);
+    const open = new Map($$('[data-live] details').map((d) => [detailsKey(d), d.open]));
+    const a = document.activeElement; const inLive = a && a.closest && a.closest('[data-live]');
+    // The focused field's raw value: a question note's saved copy is trimmed, which would drop a
+    // trailing space and join the next word typed to the last.
+    const focus = inLive && a.matches('textarea, input') ? { key: fieldKey(a), value: isText(a) ? a.value : null, start: isText(a) ? a.selectionStart : null, end: isText(a) ? a.selectionEnd : null } : null;
+    // What each comment and reply draft was on, named from the old page, for a draft whose place the rewrite removes.
+    const labels = new Map(); values.forEach((_, k) => { const l = draftLabel(k); if (l) labels.set(k, l); });
+    return { panes, y: window.scrollY, values, forms, open, focus, labels };
+  }
+  /** A comment or reply draft's place: its id, and in words the section, the comment's section, or the question. */
+  function draftLabel(k) {
+    const at = (id) => ({ id, text: '“' + (DATA.nodeTitles[id] || id) + '”' });
+    if (k.startsWith('c:')) return at(k.slice(2));
+    if (!k.startsWith('r:')) return null;
+    const [cid, ask] = k.slice(2).split(':');
+    const c = cid && answers.comments.find((x) => x.id === cid);
+    if (c) return at(DATA.sectionOf[c.node] || c.node);
+    if (!ask) return null;
+    const p = QBY[ask] ? QBY[ask].prompt : ask;
+    return { id: ask, text: 'the question “' + (p.length > 60 ? p.slice(0, 57) + '…' : p) + '”' };
+  }
+  /**
+   * Comment and reply drafts whose section, thread or question the rewrite removed: each joins the
+   * whole-document comment draft under the name of its old place, the form opens, and a notice says so.
+   */
+  function rehome(ui, fields) {
+    // Blank text is not a draft: a comment form will not send it.
+    const lost = [...ui.values].filter(([k, v]) => ui.labels.has(k) && !fields.has(k) && v.trim());
+    const box = $('[data-comments="' + CSS.escape(DATA.doc) + '"]'); const f = fields.get('c:' + DATA.doc);
+    if (!lost.length || !box || !f) return null;
+    // Two places with the same name are told apart by id.
+    const ids = new Map(); lost.forEach(([k]) => { const l = ui.labels.get(k); ids.set(l.text, (ids.get(l.text) || new Set()).add(l.id)); });
+    const name = (k) => { const l = ui.labels.get(k); return ids.get(l.text).size > 1 ? l.text + ' (' + l.id + ')' : l.text; };
+    f.value = [f.value, ...lost.map(([k, v]) => 'On ' + name(k) + ':\\n' + v)].filter(Boolean).join('\\n\\n');
+    $('.comment-form', box).hidden = false; const b = $('.comment-btn', box.closest('.node')); if (b) b.classList.add('open');
+    const where = [...new Set(lost.map(([k]) => name(k)))].join(', ');
+    notice('The rewrite removed ' + where + '. Your unsent text moved to the comment on the whole document.');
+    return f;
+  }
+  function restoreUi(ui) {
+    $$('[data-live] details').forEach((d) => { const k = detailsKey(d); if (ui.open.has(k)) d.open = ui.open.get(k); });
+    hydrateChoices(); renderComments();
+    for (const sec of ui.forms) {
+      const box = $('[data-comments="' + CSS.escape(sec) + '"]'); if (!box) continue;
+      $('.comment-form', box).hidden = false; const b = $('.comment-btn', box.closest('.node')); if (b) b.classList.add('open');
+    }
+    const fields = new Map(); liveFields().forEach((f) => { const k = fieldKey(f); if (k && !fields.has(k)) fields.set(k, f); });
+    ui.values.forEach((v, k) => { const f = fields.get(k); if (!f) return; f.value = v; if (f.closest('.reply-form')) { f.style.height = 'auto'; f.style.height = f.scrollHeight + 'px'; } });
+    const moved = rehome(ui, fields);
+    if (selected && DATA.sectionOf[selected]) select(selected, { from: 'none' }); else selected = null;
+    setCurrentQ(currentQ && QBY[currentQ] ? currentQ : null);
+    quietUntil = Date.now() + 700;
+    window.scrollTo(0, ui.y);
+    for (const { p, top, anchor } of ui.panes) {
+      p.scrollTop = top;
+      const e = anchor && (anchor.key ? fields.get(anchor.key) : $(anchor.sel, p));
+      if (e) p.scrollTop += e.getBoundingClientRect().top - p.getBoundingClientRect().top - anchor.off;
+    }
+    const f = ui.focus && fields.get(ui.focus.key);
+    // The raw value would undo the drafts just moved into this field; its old text is kept first, so the caret holds.
+    if (f) { if (ui.focus.value != null && f !== moved) f.value = ui.focus.value; f.focus({ preventScroll: true }); if (ui.focus.start != null) f.setSelectionRange(ui.focus.start, ui.focus.end); }
+    // The field being typed in is gone: carry on in the draft it moved to, caret at the end.
+    else if (ui.focus && moved && ui.values.has(ui.focus.key)) { moved.focus({ preventScroll: true }); moved.setSelectionRange(moved.value.length, moved.value.length); }
+  }
+`;
+
+// src/lib/page/unread.ts
+var UNREAD_HTML = `<button type="button" id="unread" class="quiet unread-count" title="Go to the next reply you have not seen (u)" hidden></button>`;
+var UNREAD_CSS = `/* new replies: an accent dot on the message, its item and its contents entry */
+.unread-count { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; white-space: nowrap; }
+.unread-count::before, .msg.unread .who::after, .nav-item.unread::after, .node.unread > .node-actions .comment-btn::after { content: ''; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+.msg.unread .who::after { display: inline-block; margin-left: 6px; vertical-align: 1px; }
+.nav-item.unread::after { align-self: center; margin-left: auto; }
+.comment-btn { position: relative; }
+.node.unread > .node-actions .comment-btn::after { position: absolute; top: -3px; right: -3px; box-shadow: 0 0 0 2px var(--pane); }
+.q-pill.unread::before { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: currentColor; margin-right: 5px; vertical-align: 0; }
+
+`;
+var UNREAD_JS = `  // ---- new replies: agent replies the reviewer has not seen yet
+  // thread is the messages of m's thread in order: a reviewer message after m means m was read.
+  function isUnread(m, thread) {
+    if (!m || m.from !== 'agent' || !m.id || (answers.seenReplies && Object.hasOwn(answers.seenReplies, m.id))) return false;
+    const at = (thread || []).findIndex((x) => x && x.id === m.id);
+    return !(at >= 0 && thread.slice(at + 1).some((x) => x && x.from !== 'agent'));
+  }
+  /** Each new reply on the page once, in page order. A hover popover's copy does not count. */
+  function unreadReplies() {
+    const ids = new Set();
+    return $$('.msg.unread[data-msg]').filter((m) => !m.closest('.qpop') && !ids.has(m.dataset.msg) && ids.add(m.dataset.msg));
+  }
+  // Threads redraw many times in one update; the marks and the count are redone once after it.
+  let unreadQueued = false;
+  function scheduleUnread() { if (!unreadQueued) { unreadQueued = true; queueMicrotask(() => { unreadQueued = false; renderUnread(); }); } }
+  // The new replies the last render counted; null until the first, which announces nothing.
+  let unreadIds = null;
+  let saidText = '', saidCount = 0;
+  function renderUnread() {
+    const list = unreadReplies(); const qs = new Set(), secs = new Set();
+    // A reply that arrives is said in the notice, the page's one live region, after what it already says.
+    const ids = new Set(list.map((m) => m.dataset.msg)); const fresh = unreadIds ? [...ids].filter((id) => !unreadIds.has(id)).length : 0; unreadIds = ids;
+    // While that notice is up, further replies change its count; the text never repeats and the timer is not extended.
+    if (fresh) { const n = $('#notice'); const total = (!n.hidden && n.textContent === saidText ? saidCount : 0) + fresh; saidCount = total; saidText = total === 1 ? 'New reply from the agent' : total + ' new replies from the agent'; notice(saidText, true); }
+    for (const m of list) { const q = m.closest('.question'); if (q) qs.add(q.dataset.question); else { const box = m.closest('[data-comments]'); if (box) secs.add(box.dataset.comments); } }
+    $$('.question[data-question]').forEach((q) => q.classList.toggle('unread', qs.has(q.dataset.question)));
+    $$('#nav [data-nav-question]').forEach((n) => n.classList.toggle('unread', qs.has(n.dataset.navQuestion)));
+    $$('#nav .nav-item[data-node]').forEach((n) => n.classList.toggle('unread', secs.has(n.dataset.node)));
+    $$('.node[data-node]').forEach((n) => n.classList.toggle('unread', secs.has(n.dataset.node)));
+    const b = $('#unread'); b.hidden = !list.length; b.textContent = list.length + (list.length === 1 ? ' new reply' : ' new replies'); b.dataset.short = list.length + ' new';
+    watchUnread(list);
+  }
+  // A new reply shown for a second is seen. The observer finds the ones at least partly on screen; a closed pane is
+  // on screen too, only hidden, so one shared timer checks them every quarter second. It runs only
+  // while some reply is partly on screen, and each reply needs a whole second of being shown. Replies are
+  // kept by message id, so a redraw that replaces the element keeps the time already spent looking.
+  let unreadIo = null; const looking = new Map(), lookSince = new Map(); let lookTimer = 0;
+  const shown = (m) => document.visibilityState !== 'hidden' && (!m.checkVisibility || m.checkVisibility({ opacityProperty: true, visibilityProperty: true }));
+  // Half the reply, or, when it is taller than the root, half a root of it. Measured from the
+  // rects, clipped to the scroll root, so a tall reply scrolled in by hand counts; the observer
+  // fires too rarely for that, so it only says which replies are at least partly on screen.
+  function inView(m) {
+    const root = m.closest('#left, #right'); const r = root ? root.getBoundingClientRect() : { top: 0, bottom: innerHeight };
+    const b = m.getBoundingClientRect(); const top = Math.max(b.top, r.top, 0), bottom = Math.min(b.bottom, r.bottom, innerHeight);
+    const vis = Math.max(0, bottom - top);
+    return vis > 0 && (vis >= 0.5 * b.height || vis >= 0.5 * (Math.min(r.bottom, innerHeight) - Math.max(r.top, 0)));
+  }
+  function stopLooking(id) { looking.delete(id); lookSince.delete(id); if (!looking.size) { clearInterval(lookTimer); lookTimer = 0; } }
+  function lookTick() {
+    for (const [id, el] of [...looking]) {
+      const m = el.isConnected ? el : unreadReplies().find((x) => x.dataset.msg === id);
+      if (!m) { stopLooking(id); continue; }
+      looking.set(id, m);
+      if (!shown(m) || !inView(m)) { lookSince.delete(id); continue; }
+      if (!lookSince.has(id)) lookSince.set(id, Date.now());
+      if (Date.now() - lookSince.get(id) >= 1000) { stopLooking(id); markReplySeen(id); }
+    }
+  }
+  if ('IntersectionObserver' in window) unreadIo = new IntersectionObserver((entries) => {
+    for (const e of entries) {
+      const id = e.target.dataset.msg;
+      if (!e.isIntersecting || !(e.intersectionRatio > 0)) { stopLooking(id); continue; }
+      looking.set(id, e.target);
+      if (!lookTimer) lookTimer = setInterval(lookTick, 250);
+    }
+  }, { threshold: [0, 0.5, 1] });
+  function watchUnread(list) { if (!unreadIo) return; unreadIo.disconnect(); if (document.visibilityState !== 'hidden') list.forEach((m) => unreadIo.observe(m)); }
+  // A hidden tab sees nothing; shown again, what is in view starts its second afresh.
+  document.addEventListener('visibilitychange', () => { [...looking.keys()].forEach(stopLooking); watchUnread(unreadReplies()); });
+  function markReplySeen(id) {
+    if (answers.seenReplies && Object.hasOwn(answers.seenReplies, id)) return;
+    const els = $$('.msg[data-msg="' + CSS.escape(id) + '"]'); if (!els.length) return;
+    answers.seenReplies = answers.seenReplies || dict(); answers.seenReplies[id] = new Date().toISOString();
+    els.forEach((m) => m.classList.remove('unread'));
+    const q = els.map((m) => m.closest('.question')).find(Boolean); if (q) markAnswered(q.dataset.question);
+    scheduleUnread(); save();
+  }
+  // u and the header count step through the new replies in page order, back to the first after the last.
+  let unreadAt = null;
+  function nextUnread() {
+    const list = unreadReplies();
+    if (!list.length) { notice('No new replies'); return; }
+    const from = unreadAt && $$('.msg[data-msg="' + CSS.escape(unreadAt) + '"]').find((m) => !m.closest('.qpop'));
+    const next = from && list.find((m) => m !== from && from.compareDocumentPosition(m) & Node.DOCUMENT_POSITION_FOLLOWING);
+    if (from && !next) notice('Back to the first new reply');
+    showReply(next || list[0]);
+  }
+  function showReply(m) {
+    for (let d = m.closest('details'); d; d = d.parentElement && d.parentElement.closest('details')) d.open = true;
+    const inLeft = !!m.closest('#left'); const pane = inLeft ? left : right;
+    if (!inLeft) openRight(true); if (narrowMq.matches) $('#dock-l').classList.remove('hover', 'open-tap');
+    // The whole question or thread when it fits, else the reply itself.
+    const box = m.closest('.question') || m.closest('.thread') || m;
+    const at = box.getBoundingClientRect().height < pane.clientHeight - 40 ? box : m;
+    quietUntil = Date.now() + 700;
+    pane.scrollTo({ top: at.getBoundingClientRect().top - pane.getBoundingClientRect().top + pane.scrollTop - 8 });
+    box.classList.add('flash'); setTimeout(() => box.classList.remove('flash'), 1600);
+    m.focus({ preventScroll: true });
+    unreadAt = m.dataset.msg;
+  }
+  $('#unread').addEventListener('click', nextUnread);
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'u' || e.metaKey || e.ctrlKey || e.altKey || body.classList.contains('viewing') || e.target.matches('textarea, input:not([type=radio]):not([type=checkbox]), select')) return;
+    e.preventDefault(); nextUnread();
+  });
+
+`;
+
+// src/lib/file-view.ts
+function inline(s, fromRel) {
+  const held = [];
+  const hold = (html) => {
+    held.push(html);
+    return `${held.length - 1}`;
+  };
+  let t = s.replace(/`([^`]+)`/g, (_m, c) => hold(`<code>${escapeHtml(c)}</code>`));
+  t = escapeHtml(t).replace(/\[\[([^\]]+)\]\]/g, (_m, n) => hold(wikilinkHtml(n))).replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (_m, alt, src) => {
+    const t = linkTarget(src, fromRel);
+    return t?.kind === "web" || t?.kind === "repo" ? hold(`<img src="${t.href}" alt="${alt}">`) : emphasis(alt);
+  }).replace(/\[([^\]]*)\]\(([^)\s]+)\)/g, (_m, label, href) => {
+    const t = linkTarget(href, fromRel);
+    const text = label ? emphasis(label) : href;
+    if (!t)
+      return hold(text);
+    return hold(`<a href="${t.href}"${t.kind === "web" ? ' target="_blank" rel="noopener"' : ""}>${text}</a>`);
+  });
+  return emphasis(t).replace(/\uE000(\d+)\uE000/g, (_m, i) => held[Number(i)]);
+}
+function emphasis(t) {
+  return t.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>").replace(/(^|[^\w*])\*([^*\s][^*]*)\*/g, "$1<em>$2</em>").replace(/(^|[^\w])_([^_\s][^_]*)_(?!\w)/g, "$1<em>$2</em>");
+}
+function table3(rows, fromRel) {
+  const cells = (r) => r.trim().replace(/^\||\|$/g, "").split(/(?<!\\)\|/).map((c) => inline(c.trim().replace(/\\\|/g, "|"), fromRel));
+  const [head, , ...body] = rows;
+  return `<table><thead><tr>${cells(head).map((c) => `<th>${c}</th>`).join("")}</tr></thead><tbody>${body.map((r) => `<tr>${cells(r).map((c) => `<td>${c}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+}
+function renderMarkdownFile(text, fromRel) {
+  const lines = text.replace(/\r\n/g, `
+`).split(`
+`);
+  const out = [];
+  let i = 0;
+  if (lines[0] === "---") {
+    const end = lines.indexOf("---", 1);
+    if (end > 0) {
+      const fm = escapeHtml(lines.slice(1, end).join(`
+`)).replace(/\[\[([^\]]+)\]\]/g, (_m, n) => wikilinkHtml(n));
+      out.push(`<pre class="frontmatter">${fm}</pre>`);
+      i = end + 1;
+    }
+  }
+  const isBlockStart = (l) => /^(#{1,6}\s|```|~~~|>\s?|\s*[-*+]\s|\s*\d+[.)]\s|\|)/.test(l) || /^(-{3,}|\*{3,})\s*$/.test(l);
+  while (i < lines.length) {
+    const l = lines[i];
+    if (!l.trim()) {
+      i++;
+      continue;
+    }
+    const h = /^(#{1,6})\s+(.*)$/.exec(l);
+    if (h) {
+      const slug = h[2].toLowerCase().replace(/[^\w\s-]/g, "").trim().replace(/\s+/g, "-");
+      out.push(`<h${h[1].length} id="${slug}">${inline(h[2], fromRel)}</h${h[1].length}>`);
+      i++;
+      continue;
+    }
+    const fence = /^(```+|~~~+)\s*(\S*)/.exec(l);
+    if (fence) {
+      const body = [];
+      i++;
+      while (i < lines.length && !lines[i].startsWith(fence[1]))
+        body.push(lines[i++]);
+      i++;
+      out.push(`<pre${fence[2] ? ` data-lang="${escapeHtml(fence[2])}"` : ""}><code>${escapeHtml(body.join(`
+`))}</code></pre>`);
+      continue;
+    }
+    if (/^(-{3,}|\*{3,})\s*$/.test(l)) {
+      out.push("<hr>");
+      i++;
+      continue;
+    }
+    if (l.startsWith("|")) {
+      const rows = [];
+      while (i < lines.length && lines[i].startsWith("|"))
+        rows.push(lines[i++]);
+      out.push(rows.length > 1 ? table3(rows, fromRel) : `<p>${inline(rows[0], fromRel)}</p>`);
+      continue;
+    }
+    if (/^>\s?/.test(l)) {
+      const body = [];
+      while (i < lines.length && /^>\s?/.test(lines[i]))
+        body.push(lines[i++].replace(/^>\s?/, ""));
+      out.push(`<blockquote>${renderMarkdownFile(body.join(`
+`), fromRel)}</blockquote>`);
+      continue;
+    }
+    const li = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/.exec(l);
+    if (li) {
+      const ordered = /\d/.test(li[2]);
+      const items = [];
+      while (i < lines.length) {
+        const m = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/.exec(lines[i]);
+        if (m) {
+          const depth = m[1].length >= 2 ? ' class="nested"' : "";
+          const task = /^\[([ xX])\]\s+(.*)$/.exec(m[3]);
+          const body = task ? `<input type="checkbox" disabled${task[1] !== " " ? " checked" : ""}> ${inline(task[2], fromRel)}` : inline(m[3], fromRel);
+          items.push(`<li${depth}>${body}</li>`);
+          i++;
+        } else if (lines[i].trim() && /^\s+/.test(lines[i]) && items.length) {
+          items[items.length - 1] = items[items.length - 1].replace(/<\/li>$/, ` ${inline(lines[i].trim(), fromRel)}</li>`);
+          i++;
+        } else
+          break;
+      }
+      out.push(ordered ? `<ol>${items.join("")}</ol>` : `<ul>${items.join("")}</ul>`);
+      continue;
+    }
+    const para = [];
+    while (i < lines.length && lines[i].trim() && !(para.length && isBlockStart(lines[i])))
+      para.push(lines[i++].trim());
+    out.push(`<p>${inline(para.join(" "), fromRel)}</p>`);
+  }
+  return out.join(`
+`);
+}
+function codeView(text, rel) {
+  const rows = highlightLines(text.replace(/\r\n/g, `
+`).replace(/\n$/, ""), rel).map((l, i) => `<tr id="L${i + 1}"><td class="ln"><a href="#L${i + 1}">${i + 1}</a></td><td class="lc">${l || " "}</td></tr>`);
+  return `<table class="code"><tbody>${rows.join("")}</tbody></table>`;
+}
+var FILE_CSS = `
+.fileview { overflow-wrap: anywhere; }
+.fileview h1 { font-size: 22px; letter-spacing: -.01em; } .fileview h2 { font-size: 17px; margin-top: 1.6em; } .fileview h3 { font-size: 15px; }
+.fileview a { color: var(--accent); }
+.fileview a.wikilink { text-decoration: none; border-bottom: 1px solid currentColor; }
+.fileview a.wikilink.missing { color: var(--muted); border-bottom-style: dotted; cursor: default; }
+.fileview code { font: 0.9em var(--mono); background: var(--code-bg); padding: 1px 4px; border-radius: 4px; }
+.fileview pre { background: var(--code-bg); padding: 10px 12px; border-radius: 6px; overflow-x: auto; font: 12.5px/1.5 var(--mono); }
+.fileview pre code { background: none; padding: 0; }
+.fileview pre.frontmatter { color: var(--muted); border: 1px dashed var(--line-strong); background: transparent; }
+.fileview blockquote { margin: 0; padding: 0 14px; border-left: 3px solid var(--line-strong); color: var(--muted); }
+.fileview.md table { border-collapse: collapse; display: block; overflow-x: auto; margin: 12px 0; font-size: 13px; }
+.fileview.md th, .fileview.md td { border: 1px solid var(--line-strong); padding: 5px 9px; text-align: left; vertical-align: top; }
+.fileview.md th { background: var(--code-bg); }
+.fileview li.nested { margin-left: 22px; }
+.fileview img { max-width: 100%; }
+.fileview hr { border: 0; border-top: 1px solid var(--line-strong); margin: 22px 0; }
+.fileview.source { overflow-x: auto; overflow-wrap: normal; }
+.fileview table.code { border-collapse: collapse; font: 12.5px/1.55 var(--mono); width: 100%; }
+.fileview table.code td { padding: 0 14px 0 0; vertical-align: top; white-space: pre; }
+.fileview table.code td.ln { width: 1%; padding: 0 12px 0 16px; text-align: right; user-select: none; }
+.fileview table.code td.ln a { color: var(--muted); text-decoration: none; }
+.fileview table.code tr.hl { background: var(--hl); }
+.fileview table.code tr.hl td.ln a { color: var(--fg); }
+.fileview, .udiff { --tk-cm: #5b636d; --tk-str: #086a35; --tk-num: #9a4c00; --tk-kw: #7a25c9; --tk-ty: #0a6170; --tk-fn: #0550ae; --tk-key: #a3313a; --tk-var: #7a5000; --tk-tag: #116329; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .fileview, :root:not([data-theme="light"]) .udiff { --tk-cm: #9da5af; --tk-str: #7ee2a8; --tk-num: #ffb86b; --tk-kw: #d2a8ff; --tk-ty: #66d9e8; --tk-fn: #79c0ff; --tk-key: #ff9492; --tk-var: #e3b341; --tk-tag: #7ee787; } }
+:root[data-theme="dark"] .fileview, :root[data-theme="dark"] .udiff { --tk-cm: #9da5af; --tk-str: #7ee2a8; --tk-num: #ffb86b; --tk-kw: #d2a8ff; --tk-ty: #66d9e8; --tk-fn: #79c0ff; --tk-key: #ff9492; --tk-var: #e3b341; --tk-tag: #7ee787; }
+.fileview .tk-cm, .udiff .tk-cm { color: var(--tk-cm); font-style: italic; }
+.fileview .tk-str, .udiff .tk-str { color: var(--tk-str); }
+.fileview .tk-num, .udiff .tk-num { color: var(--tk-num); }
+.fileview .tk-kw, .udiff .tk-kw { color: var(--tk-kw); font-weight: 600; }
+.fileview .tk-ty, .udiff .tk-ty { color: var(--tk-ty); }
+.fileview .tk-fn, .udiff .tk-fn { color: var(--tk-fn); }
+.fileview .tk-key, .udiff .tk-key { color: var(--tk-key); }
+.fileview .tk-var, .udiff .tk-var { color: var(--tk-var); }
+.fileview .tk-tag, .udiff .tk-tag { color: var(--tk-tag); }
+`;
+function fileBody(rel, text, view) {
+  return rel.endsWith(".md") && view !== "source" ? `<div class="fileview md">${renderMarkdownFile(text, rel)}</div>` : `<div class="fileview source">${codeView(text, rel)}</div>`;
+}
+function filePage(rel, text, view) {
+  const md = rel.endsWith(".md");
+  const rendered = md && view !== "source";
+  const title = md && /^#\s+(.*)$/m.exec(text)?.[1] || rel.split("/").pop();
+  const toggle = md ? rendered ? '<a href="?view=source">Source</a>' : '<a href="?">Rendered</a>' : "";
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${escapeHtml(title)} · parley</title>
+<style>
+:root { --bg: #f5f5f7; --pane: #fff; --fg: #1d1d1f; --muted: #6e6e73; --line: rgba(0,0,0,.08); --line-strong: rgba(0,0,0,.14); --accent: #005ec8; --danger: #c7282f; --code-bg: #f2f2f4; --kw: #9b2fb5; --hl: rgba(255,204,0,.22); --radius: 8px; --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif; --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #1c1c1e; --pane: #242426; --fg: #f2f2f7; --muted: #98989f; --line: rgba(255,255,255,.09); --line-strong: rgba(255,255,255,.16); --accent: #6cb4ff; --danger: #ff6961; --code-bg: #2c2c2e; --kw: #d48cf0; --hl: rgba(255,214,10,.18); } }
+:root[data-theme="dark"] { --bg: #1c1c1e; --pane: #242426; --fg: #f2f2f7; --muted: #98989f; --line: rgba(255,255,255,.09); --line-strong: rgba(255,255,255,.16); --accent: #6cb4ff; --danger: #ff6961; --code-bg: #2c2c2e; --kw: #d48cf0; --hl: rgba(255,214,10,.18); }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.6 var(--sans); -webkit-font-smoothing: antialiased; }
+.wrap { max-width: ${rendered ? "860px" : "1100px"}; margin: 0 auto; padding: 28px 16px 60px; }
+.crumbs { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline; font-size: 12.5px; margin-bottom: 14px; }
+.crumbs a { color: var(--accent); text-decoration: none; }
+.path { font: 12px var(--mono); color: var(--muted); word-break: break-all; }
+article { background: var(--pane); border: 1px solid var(--line); border-radius: var(--radius); padding: ${rendered ? "20px 26px" : "8px 0"}; }
+${FILE_CSS}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <nav class="crumbs"><a href="/">All documents</a><a href="/" id="back">Back</a>${toggle}<span class="path">${escapeHtml(rel)}</span></nav>
+  <article>${fileBody(rel, text, view)}</article>
+</div>
+<script>${WIKILINK_SCRIPT}
+// Back returns to the server page that opened this file; otherwise, or on a modified or middle
+// click, the link opens the index as any link would.
+document.getElementById('back').addEventListener('click', (e) => {
+  if (e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+  let ours = false; try { ours = new URL(document.referrer).origin === location.origin; } catch {}
+  if (ours && history.length > 1) { e.preventDefault(); history.back(); }
+});
+resolveWikilinks(document, location.pathname.startsWith('/f/') ? decodeURIComponent(location.pathname.slice(3)).replace(/[^/]*$/, '') : '');
+(() => {
+  const m = /^#L(\\d+)(?:-L(\\d+))?$/.exec(location.hash);
+  if (!m) return;
+  if (${rendered}) return location.replace('?view=source' + location.hash);
+  const a = Number(m[1]), b = Number(m[2] || m[1]);
+  for (let n = a; n <= b; n++) document.getElementById('L' + n)?.classList.add('hl');
+  document.getElementById('L' + a)?.scrollIntoView({ block: 'center' });
+})();
+try { const t = localStorage.getItem('parley:theme'); if (t && t !== 'system') document.documentElement.dataset.theme = t; } catch {}
+</script>
+</body>
+</html>
+`;
+}
+var WIKILINK_SCRIPT = `
+function encPath(p) { return p.split('/').map(encodeURIComponent).join('/'); }
+async function resolveWikilinks(root, from) {
+  const links = [...root.querySelectorAll('a.wikilink:not([data-resolved])')];
+  if (!links.length) return;
+  const miss = (a) => { a.classList.add('missing'); a.removeAttribute('href'); a.title = 'no such file in this project'; };
+  links.forEach((a) => a.setAttribute('data-resolved', ''));
+  if (!/^https?:$/.test(location.protocol)) return links.forEach(miss);
+  const names = [...new Set(links.map((a) => a.dataset.wikilink))];
+  try {
+    const r = await fetch('/resolve?from=' + encodeURIComponent(from || '') + '&' + names.map((n) => 'n=' + encodeURIComponent(n)).join('&'));
+    const found = await r.json();
+    for (const a of links) { const p = found[a.dataset.wikilink]; if (p) { a.href = '/f/' + encPath(p); a.title = p; } else miss(a); }
+  } catch { links.forEach(miss); }
+}`;
+
+// src/lib/page/viewer.ts
+var VIEWER_HTML = `<div id="viewer" class="viewer" hidden><div class="viewer-frame" role="dialog" aria-modal="true" aria-labelledby="viewer-path">
+  <div class="viewer-head"><span class="eyebrow">File</span><span id="viewer-path" class="path"></span><span class="spacer"></span><button type="button" id="viewer-toggle" class="quiet" hidden>Source</button><a id="viewer-tab" href="#" target="_blank" rel="noopener">Open in tab</a><button type="button" id="viewer-close" class="viewer-x" title="Close (Esc)">×</button></div>
+  <div class="viewer-main">
+    <div id="viewer-doc" class="viewer-doc"></div>
+    <aside class="viewer-side">
+      <div class="pane-head"><span class="eyebrow">Comments on this file <span id="viewer-count" class="viewer-count"></span></span></div>
+      <p class="hint" id="viewer-note"></p>
+      <div class="comments" id="viewer-comments"><ul class="comment-list"></ul></div>
+      <p class="muted" id="viewer-empty">No comments on this file yet.</p>
+      <form id="viewer-form" class="viewer-form"><textarea rows="3" placeholder="A comment on the whole file…" aria-label="Comment on the whole file"></textarea><div class="form-row"><span class="spacer"></span><button type="submit" class="quiet" value="draft">Save draft</button><button type="submit" class="primary" value="send"><span class="if-served">Send to agent</span><span class="if-static">Add comment</span></button></div></form>
+    </aside>
+  </div>
+</div></div>`;
+var VIEWER_CSS = `/* File viewer: the file on the left, its comments on the right */
+.viewer { position: fixed; inset: 0; z-index: 40; background: rgba(0,0,0,.45); display: flex; padding: 24px; }
+.viewer[hidden] { display: none; }
+body.viewing { overflow: hidden; }
+.viewer-frame { flex: 1; display: flex; flex-direction: column; min-width: 0; background: var(--pane); border-radius: 12px; box-shadow: var(--shadow); overflow: hidden; }
+.viewer-head { display: flex; align-items: center; gap: 12px; padding: 10px 12px 10px 18px; border-bottom: 1px solid var(--line); }
+.viewer-head .path { font: 12px var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.viewer-head .spacer { flex: 1; }
+.viewer-head a { font-size: 12.5px; white-space: nowrap; }
+.viewer-x { width: 30px; height: 30px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); font-size: 20px; line-height: 1; cursor: pointer; }
+.viewer-x:hover { background: var(--code-bg); color: var(--fg); }
+.viewer-main { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) clamp(300px, 30vw, 420px); }
+.viewer-doc { overflow: auto; padding: 20px 28px 40px; }
+.viewer-doc .viewer-text { max-width: 900px; margin: 0 auto; }
+.viewer-doc .fileview.source { margin: 0 -28px; }
+.viewer-doc.media, .viewer-doc.pdf { background: var(--code-bg); }
+.viewer-side { border-left: 1px solid var(--line); overflow: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
+.viewer-side .hint { margin: 0; }
+.viewer-count { font-weight: 600; color: var(--accent); }
+.viewer-form textarea { width: 100%; }
+.viewer-form .form-row { display: flex; gap: 6px; margin-top: 6px; }
+.viewer-form .spacer { flex: 1; }
+.fileview { --hl: var(--hi); }
+.stage { position: relative; width: fit-content; max-width: 100%; margin: 0 auto 18px; user-select: none; cursor: crosshair; background: var(--pane); box-shadow: 0 0 0 1px var(--line-strong); }
+.pdf .stage { width: 100%; }
+.stage img, .stage canvas { display: block; max-width: 100%; }
+.pdf .stage canvas { width: 100%; height: auto; }
+.regions { position: absolute; inset: 0; }
+.region { position: absolute; border: 2px solid var(--accent); background: var(--accent-soft); border-radius: 3px; cursor: pointer; }
+.region.draft { border-style: dashed; pointer-events: none; }
+.region.hot, .region.flash { background: var(--hi); border-color: var(--warn); }
+.page-n { position: absolute; top: 6px; right: 8px; font: 11px var(--mono); color: var(--muted); background: var(--pane); padding: 0 5px; border-radius: 4px; }
+.pdf-frame { display: block; width: 100%; height: 100%; min-height: 70vh; border: 0; }
+.quote.region-chip { cursor: pointer; font-family: var(--sans); }
+@media (max-width: 860px) {
+  .viewer { padding: 0; }
+  .viewer-main { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) auto; }
+  .viewer-side { border-left: 0; border-top: 1px solid var(--line); max-height: 45vh; }
+}
+${FILE_CSS}
+
+`;
+var PDFJS_BASE = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/";
+var PDFJS_LIB = `${PDFJS_BASE}pdf.min.mjs`;
+var PDFJS_WORKER = `${PDFJS_BASE}pdf.worker.min.mjs`;
+var PDFJS_SRI = {
+  lib: "sha384-+0ti2moQlmLN7WZHE2RHIf5lV8hHxhxEalN0il3YZceG26fUPyOkR0hp9daxk1i7",
+  worker: "sha384-ToeVvShCxKc6CEvhHeMt0Q8A06pSPDbAlngO9nokrDmh914gk/pYd0N7D0a4Lz2o"
+};
+var VIEWER_JS = `  // ---- markdown links: a .md source's View and a [[wikilink]] open the file through the server; off it, neither can
   if (!/^https?:$/.test(location.protocol)) { $$('.src-view').forEach((a) => a.remove()); $$('a.file-link').forEach((a) => a.replaceWith(a.textContent)); }
   ${WIKILINK_SCRIPT}
   // ---- file viewer: View and every /f/ link open the file in a modal over the page, its comments
@@ -6766,7 +9734,7 @@ var CLIENT = `
   resolveWikilinks(document, '');
   const viewer = $('#viewer'); const vdoc = $('#viewer-doc');
   const MEDIA = /[.](png|jpe?g|gif|webp|avif|svg)$/i;
-  const PDFJS = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
+  const PDFJS = ${JSON.stringify({ lib: PDFJS_LIB, worker: PDFJS_WORKER, sri: PDFJS_SRI })};
   let vpath = null, vview = '';
   let beforeViewer = null; // scroll, right panel, selected node and focus as they were when the viewer opened
   const fileNode = (p) => 'f:' + p;
@@ -6833,26 +9801,37 @@ var CLIENT = `
     applyScroll(before);
     try { if (before.focus && before.focus.isConnected) before.focus.focus({ preventScroll: true }); else if (document.activeElement) document.activeElement.blur(); } catch {}
   }
-  // pdf.js comes from a CDN on first use; when it cannot load, the browser's own viewer shows the
-  // PDF in a frame and only general comments are possible.
+  // pdf.js comes from a CDN on first use, each file checked against its pinned hash: the library is
+  // a module script with an integrity attribute, and the worker is fetched with one and started
+  // from a blob. When either cannot load, the browser's own viewer shows the PDF in a frame and only
+  // general comments are possible.
+  // One load runs at a time: a timeout stops the wait, not the load, and a retry joins it, so
+  // only one worker is ever started. A load that fails is dropped so the next open tries again.
+  let pdfjs = null;
   function loadPdfJs() {
-    if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
-    return new Promise((res, rej) => {
-      // The script is pinned by hash. The worker is fetched by pdf.js itself from workerSrc, which cannot carry one.
-      const s = document.createElement('script'); s.src = PDFJS + 'pdf.min.js';
-      s.integrity = 'sha384-/1qUCSGwTur9vjf/z9lmu/eCUYbpOTgSjmpbMQZ1/CtX2v/WcAIKqRv+U1DUCG6e'; s.crossOrigin = 'anonymous';
-      const t = setTimeout(() => rej(new Error('timed out')), 8000);
-      s.onload = () => { clearTimeout(t); const lib = window.pdfjsLib; if (!lib) return rej(new Error('no pdfjsLib')); lib.GlobalWorkerOptions.workerSrc = PDFJS + 'pdf.worker.min.js'; res(lib); };
-      s.onerror = () => { clearTimeout(t); rej(new Error('blocked')); };
+    if (!pdfjs) { pdfjs = pdfJsLoad(); pdfjs.catch(() => { pdfjs = null; }); }
+    return Promise.race([pdfjs, new Promise((_, rej) => setTimeout(() => rej(new Error('timed out')), 8000))]);
+  }
+  async function pdfJsLoad() {
+    const lib = window.pdfjsLib || await new Promise((res, rej) => {
+      const s = document.createElement('script'); s.type = 'module'; s.src = PDFJS.lib; s.integrity = PDFJS.sri.lib; s.crossOrigin = 'anonymous';
+      s.onload = () => window.pdfjsLib ? res(window.pdfjsLib) : rej(new Error('no pdfjsLib'));
+      s.onerror = () => rej(new Error('blocked'));
       document.head.appendChild(s);
     });
+    const r = await fetch(PDFJS.worker, { integrity: PDFJS.sri.worker });
+    if (!r.ok) throw new Error('worker: ' + r.status);
+    const src = URL.createObjectURL(new Blob([await r.text()], { type: 'text/javascript' }));
+    lib.GlobalWorkerOptions.workerPort = new Worker(src, { type: 'module' });
+    return lib;
   }
   async function showPdf(path) {
     const url = '/f/' + encPath(path);
     vdoc.classList.add('pdf');
     try {
       const lib = await loadPdfJs();
-      const pdf = await lib.getDocument(url).promise;
+      // No eval: pdf.js would otherwise compile parts of the PDF into JavaScript, the path CVE-2024-4367 used.
+      const pdf = await lib.getDocument({ url, isEvalSupported: false }).promise;
       if (vpath !== path) return;
       vdoc.innerHTML = '';
       const n = Math.min(pdf.numPages, 150); const width = Math.max(320, vdoc.clientWidth - 48); const dpr = window.devicePixelRatio || 1;
@@ -6881,7 +9860,7 @@ var CLIENT = `
     if (!vpath) return;
     const node = fileNode(vpath); const mine = answers.comments.filter((c) => c.node === node);
     const box = $('#viewer-comments');
-    const drafts = {}; $$('.reply-form[data-reply-comment]', box).forEach((f) => { const v = $('textarea', f).value; if (v) drafts[f.dataset.replyComment] = v; });
+    const drafts = dict(); $$('.reply-form[data-reply-comment]', box).forEach((f) => { const v = $('textarea', f).value; if (v) drafts[f.dataset.replyComment] = v; });
     $('.comment-list', box).innerHTML = mine.map((c) => threadHtml(c, node)).join('');
     Object.entries(drafts).forEach(([id, v]) => { const f = $('.reply-form[data-reply-comment="' + CSS.escape(id) + '"]', box); if (f) $('textarea', f).value = v; });
     $('#viewer-empty').hidden = mine.length > 0;
@@ -6931,8 +9910,8 @@ var CLIENT = `
   $('#viewer-form').addEventListener('submit', (e) => {
     e.preventDefault(); const ta = $('textarea', e.target); const text = ta.value.trim(); if (!text || !vpath) return;
     const now = new Date().toISOString(); const draft = e.submitter && e.submitter.value === 'draft';
-    answers.comments.push({ id: 'c' + Date.now().toString(36), node: fileNode(vpath), text, at: now, ...(draft ? {} : { sent: now }) });
-    ta.value = ''; renderComments(); save(); if (!draft) notice('Sent to the agent');
+    answers.comments.push({ id: 'c' + rid(), node: fileNode(vpath), text, at: now, ...(draft ? {} : { sent: now }) });
+    ta.value = ''; renderComments(); save(); if (!draft) notice(sentNote());
   });
   $('#viewer-close').addEventListener('click', closeViewer);
   $('#viewer-toggle').addEventListener('click', () => { if (vpath) openViewer(vpath, '', vview === 'source' ? '' : 'source'); });
@@ -6940,242 +9919,46 @@ var CLIENT = `
   // Capture, so an open comment form closes first and the viewer on the next Escape. The event stops here so the page's own Escape (deselect) does not also run.
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !viewer.hidden && anno.hidden && lightbox.hidden && !e.target.closest('textarea')) { e.stopPropagation(); closeViewer(); } }, true);
 
-  // ---- top-bar Comment: the General notes form in the walkthrough, for a comment on the whole document
-  $('#top-comment').addEventListener('click', () => {
-    const sec = $('#node-' + CSS.escape(DATA.doc)); if (!sec) return;
-    openRight(true); select(DATA.doc, { from: 'left' });
-    const form = $('.comment-form', sec); if (form && form.hidden) $('[data-comment-on]', sec).click(); else if (form) $('textarea', form).focus();
-  });
+`;
 
-  // ---- export: the split button's main half opens a sheet with the JSON to copy or save; ↓ downloads at once
-  const exportSheet = $('#export-sheet');
-  const exportName = () => DATA.doc + '.answers.json';
-  const exportJson = () => JSON.stringify(answers, null, 2);
-  /** Some hosts block downloads; the sheet's text stays the fallback. */
-  function download() {
-    try {
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(new Blob([exportJson()], { type: 'application/json' })); a.download = exportName(); a.click();
-      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-    } catch {}
-  }
-  $('#export').addEventListener('click', () => {
-    $('#export-text').value = exportJson();
-    $('#export-note').textContent = 'Copy it, or save it as ' + exportName() + '.';
-    exportSheet.hidden = false; $('#export-text').select();
-  });
-  $('#export-download').addEventListener('click', download);
-  $('#export-save').addEventListener('click', download);
-  $('#export-copy').addEventListener('click', async (e) => {
-    try { await navigator.clipboard.writeText(exportJson()); e.target.textContent = 'Copied'; setTimeout(() => (e.target.textContent = 'Copy'), 1200); } catch { $('#export-text').select(); }
-  });
-  $('#export-close').addEventListener('click', () => (exportSheet.hidden = true));
-  exportSheet.addEventListener('click', (e) => { if (e.target === exportSheet) exportSheet.hidden = true; });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !exportSheet.hidden) exportSheet.hidden = true; });
+// src/lib/page/client.ts
+var STATE_JS = `  // DATA, ORDER and QBY are replaced when a rewritten document is swapped in (swapDoc).
+  // Maps keyed by an id (or by one from the answers file) have no prototype, so constructor and
+  // __proto__ read and write like any other id.
+  function dict(o) { return Object.assign(Object.create(null), o); }
+  function readData(d) { d.sectionOf = dict(d.sectionOf || {}); d.nodeTitles = dict(d.nodeTitles || {}); return d; }
+  let DATA = readData(JSON.parse(document.getElementById('parley-data').textContent));
+  const KEY = 'parley:answers:' + DATA.doc;
+  let ORDER = DATA.nav.map((e) => e.id);
+  let answers = { doc: DATA.doc, updated: new Date(0).toISOString(), verdict: 'reviewing', comments: [], choices: dict() };
+  // \`hosted\`: the page came from a server. \`server\`: the last write reached it. While false, answers
+  // are kept in this browser and this page retries the server; a tab closed meanwhile leaves them
+  // in this browser only (a later load reads the server's copy).
+  let hosted = false;
+  let server = false;
+  let selected = null;
+  let quietUntil = 0;
+  let savedAt = 0;
+  // A random id for a comment or message. getRandomValues, not randomUUID: a LAN server serves
+  // plain http, where randomUUID is missing.
+  const rid = () => Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => b.toString(16).padStart(2, '0')).join('');
+  // This page load, stamped on each answer it gives, so the server keeps another tab's answer it replaces.
+  const TAB = rid();
+  // Agent messages already on screen, so one that arrives later fades in rather than popping.
+  // Seeded on the first render (nothing animates on load) and carried across a full reload.
+  const seen = new Map(); let primed = false;
+  const $ = (s, el = document) => el.querySelector(s);
+  const $$ = (s, el = document) => Array.from(el.querySelectorAll(s));
+  const right = $('#right');
+  const left = $('#left');
+  // A page opened from a file has no server; load() settles it for any other.
+  document.body.classList.toggle('static', location.protocol === 'file:');
 
-  const AGENT_ICON = '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 1l1.6 4.4L14 7l-4.4 1.6L8 13l-1.6-4.4L2 7l4.4-1.6z"/></svg>';
-  /**
-   * Rebuild the reply forms inside el without losing what the reviewer is typing: each form's
-   * draft comes back, and so do the focus and caret of the one being typed in.
-   */
-  function redraw(el, build) {
-    const key = (f) => f.dataset.replyComment ? 'c:' + f.dataset.replyComment : 'q:' + f.dataset.replyAsk;
-    const drafts = new Map(); $$('.reply-form', el).forEach((f) => { const v = $('textarea', f).value; if (v) drafts.set(key(f), v); });
-    const af = document.activeElement && el.contains(document.activeElement) ? document.activeElement.closest('.reply-form') : null;
-    const at = af ? key(af) : null; const caret = af ? $('textarea', af).selectionStart : 0;
-    build();
-    $$('.reply-form', el).forEach((f) => {
-      const ta = $('textarea', f); const k = key(f);
-      if (drafts.has(k)) ta.value = drafts.get(k);
-      if (k === at) { ta.focus({ preventScroll: true }); ta.setSelectionRange(caret, caret); }
-    });
-  }
-  // ---- threads: a comment, an ask or a note is the root; the agent's answers and the reviewer's follow-ups sit under it
-  function threadState(root) { const r = root.replies || []; const last = r[r.length - 1]; const replied = !!last && last.from === 'agent'; return { replied, awaiting: !!root.sent && !replied }; }
-  function msgHtml(m, key) {
-    const agent = m.from === 'agent'; const by = m.by || {}; const who = [by.model, by.harness].filter(Boolean).join(' on ');
-    const tip = agent ? 'Answered by ' + (who || 'an agent') : 'You';
-    return '<div class="msg ' + (agent ? 'agent' : 'reviewer') + (key && agent && arrived(key) ? ' arrived' : '') + '">' + (agent ? '<span class="avatar agent" title="' + esc(tip) + '">' + AGENT_ICON + '</span>' : '<span class="avatar">Y</span>') + '<div class="msg-body"><div class="meta"><span class="who" title="' + esc(tip) + '">' + (agent ? 'Agent' : 'You') + '</span><time>' + (m.at || '').slice(0, 16).replace('T', ' ') + '</time>' + (m.action ? '<span class="action ' + esc(m.action) + '">' + esc(m.action) + '</span>' : '') + '</div><div class="text">' + esc(m.text) + '</div></div></div>';
-  }
-  /**
-   * Whether the agent message at key just arrived. A thread can be redrawn more than once in one
-   * update (hydrateChoices marks each question twice), so "just" is a short window from the first
-   * sight, not a single render, or the second redraw would strip the fade-in.
-   */
-  function arrived(key) { if (!seen.has(key)) seen.set(key, primed ? Date.now() : 0); return Date.now() - seen.get(key) < 400; }
-  /** The agent's turn while a sent thread waits on it: a typing row where its reply will land. */
-  function pendingHtml() { return '<div class="msg agent pending" role="status" aria-label="Waiting for the agent to reply"><span class="avatar agent">' + AGENT_ICON + '</span><div class="msg-body"><div class="meta"><span class="who">Agent</span><span class="typing" aria-hidden="true"><i></i><i></i><i></i></span></div></div></div>'; }
-  function repliesHtml(id, root) { const r = root.replies || []; return r.map((m, i) => msgHtml(m, id + ':' + i + ':' + (m.at || ''))).join('') + (root.sent && threadState(root).awaiting ? pendingHtml() : ''); }
-  function replyFormHtml(attr) { return '<form class="reply-form" ' + attr + '><span class="avatar">Y</span><textarea rows="1" placeholder="Reply…" aria-label="Reply"></textarea><button type="submit" class="primary">Reply</button></form>'; }
-  function threadHtml(c, sec) {
-    const who = c.by || 'You';
-    const quote = c.selector && c.selector.type === 'FragmentSelector' ? '<span class="quote region-chip" data-region-of="' + esc(c.id) + '" title="show the region">▭ ' + regionLabel(c) + '</span>' : c.selector ? '<span class="quote' + (resolveQuote(c).length ? '' : ' orphan') + '" data-jump="' + c.id + '" title="jump to the words">“' + esc(c.selector.exact.length > 120 ? c.selector.exact.slice(0, 117) + '…' : c.selector.exact) + '”</span>' : '';
-    const state = !c.sent ? '<span class="state draft">Draft</span>' : '';
-    const root = '<div class="msg reviewer root"><span class="avatar" title="' + esc(who) + '">' + esc(who.slice(0, 1).toUpperCase()) + '</span><div class="msg-body"><div class="meta"><span class="who">' + esc(who) + '</span><time>' + c.at.slice(0, 16).replace('T', ' ') + '</time>' + state + (c.node !== sec ? '<span class="for">on ' + esc(DATA.nodeTitles[c.node] || c.node) + '</span>' : '') + '</div>' + quote + '<div class="text">' + esc(c.text) + '</div></div></div>';
-    const tail = c.sent ? replyFormHtml('data-reply-comment="' + esc(c.id) + '"') : '<div class="foot"><button type="button" class="quiet send" data-send-comment="' + esc(c.id) + '">Send to agent</button></div>';
-    return '<li class="thread" data-comment="' + esc(c.id) + '">' + root + repliesHtml(c.id, c) + tail + '<button type="button" class="remove" data-remove="' + esc(c.id) + '" title="Remove this thread">×</button></li>';
-  }
-  // A follow-up is sent as it is added; Enter sends, Shift+Enter breaks a line.
-  document.addEventListener('submit', (e) => {
-    const form = e.target.closest('.reply-form'); if (!form) return;
-    e.preventDefault(); const ta = $('textarea', form); const text = ta.value.trim(); if (!text) return;
-    const now = new Date().toISOString(); const m = { from: 'reviewer', text, at: now, sent: now };
-    if (form.dataset.replyComment) { const c = answers.comments.find((x) => x.id === form.dataset.replyComment); if (!c) return; (c.replies = c.replies || []).push(m); ta.value = ''; renderComments(); }
-    else { const a = answers.choices[form.dataset.replyAsk]; if (!a) return; (a.replies = a.replies || []).push(m); ta.value = ''; markAnswered(form.dataset.replyAsk); }
-    save(); notice('Sent to the agent');
-  });
-  document.addEventListener('keydown', (e) => { const ta = e.target.closest('.reply-form textarea'); if (ta && e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ta.form.requestSubmit(); } });
-  document.addEventListener('input', (e) => { const ta = e.target.closest('.reply-form textarea'); if (ta) { ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; } });
-  // ---- quoted words: hover shows the chain under them, a click goes to the thread in the walkthrough
-  const qpop = document.createElement('div'); qpop.className = 'qpop'; qpop.hidden = true; document.body.appendChild(qpop);
-  let qpopFor = null, qpopHideT = 0, qpopRaf = 0;
-  function quoteAt(x, y) {
-    for (const p of painted) for (const r of p.ranges) for (const b of r.getClientRects()) if (x >= b.left && x <= b.right && y >= b.top && y <= b.bottom) return { id: p.id, rect: b };
-    return null;
-  }
-  function clip(t) { return t.length > 220 ? t.slice(0, 217) + '…' : t; }
-  function showQpop(hit) {
-    const c = answers.comments.find((x) => x.id === hit.id); if (!c) return;
-    const sameWords = answers.comments.filter((x) => x.selector && x.node === c.node && x.selector.exact === c.selector.exact);
-    qpop.innerHTML = sameWords.map((t) => '<div class="qpop-thread" data-thread="' + esc(t.id) + '">' + [{ from: 'reviewer', text: t.text, at: t.at }].concat(t.replies || []).map((m) => msgHtml({ ...m, text: clip(m.text) })).join('') + '<div class="qpop-foot"><button type="button" class="quiet" data-open-thread="' + esc(t.id) + '">Open thread</button></div></div>').join('');
-    qpop.hidden = false; qpopFor = hit.id; paintQuotes(hit.id);
-    const w = qpop.offsetWidth, h = qpop.offsetHeight;
-    let left = Math.min(Math.max(12, hit.rect.left), window.innerWidth - w - 12);
-    let top = hit.rect.bottom + 8; if (top + h > window.innerHeight - 12) top = Math.max(12, hit.rect.top - h - 8);
-    qpop.style.left = left + 'px'; qpop.style.top = top + 'px';
-  }
-  function hideQpop() { if (qpop.hidden) return; qpop.hidden = true; qpopFor = null; body.classList.remove('over-quote'); paintQuotes(); }
-  function goToThread(id) {
-    const c = answers.comments.find((x) => x.id === id); if (!c) return;
-    if (c.node.startsWith('f:')) { hideQpop(); flashThread(id); return; }
-    hideQpop(); openRight(true); select(c.node, { from: 'left' });
-    const li = $('li[data-comment="' + CSS.escape(id) + '"]'); if (!li) return;
-    li.scrollIntoView({ block: 'center', behavior: 'smooth' });
-    li.classList.remove('flash'); void li.offsetWidth; li.classList.add('flash');
-    const ta = $('.reply-form textarea', li); if (ta) setTimeout(() => ta.focus({ preventScroll: true }), 500);
-  }
-  document.addEventListener('mousemove', (e) => {
-    if (!painted.length && qpop.hidden) return;
-    if (qpopRaf) return; qpopRaf = requestAnimationFrame(() => {
-      qpopRaf = 0;
-      if (qpop.contains(e.target)) { clearTimeout(qpopHideT); return; }
-      const hit = quoteAt(e.clientX, e.clientY);
-      body.classList.toggle('over-quote', !!hit);
-      if (hit) { clearTimeout(qpopHideT); if (qpopFor !== hit.id) showQpop(hit); }
-      else if (!qpop.hidden) { clearTimeout(qpopHideT); qpopHideT = setTimeout(hideQpop, 250); }
-    });
-  });
-  document.addEventListener('click', (e) => {
-    const open = e.target.closest('[data-open-thread]'); if (open) { goToThread(open.dataset.openThread); return; }
-    if (qpop.contains(e.target)) return;
-    if (!painted.length || !document.getSelection().isCollapsed || e.target.closest('a, button, input, textarea, label, .comments')) return;
-    const hit = quoteAt(e.clientX, e.clientY); if (hit) { e.preventDefault(); e.stopPropagation(); goToThread(hit.id); }
-  }, true); // capture: the panes' own click handlers select the node and stop there
-  document.addEventListener('scroll', () => hideQpop(), true);
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideQpop(); });
-  // ---- document notes: one text for the whole document, saved with the answers
-  const notesBox = $('#doc-notes');
-  function hydrateNotes() {
-    if (!notesBox) return;
-    const n = answers.notes;
-    if (document.activeElement !== notesBox) notesBox.value = (n && n.text) || '';
-    const h = $('#doc-notes-history'); const earlier = (n && n.history) || [];
-    if (h) { h.hidden = !earlier.length; h.textContent = earlier.length + ' earlier version' + (earlier.length === 1 ? '' : 's') + ' kept'; }
-  }
-  if (notesBox) notesBox.addEventListener('input', () => { answers.notes = { ...(answers.notes || {}), text: notesBox.value, at: new Date().toISOString() }; save(); });
-
-  // ---- seen: a question in view for a moment counts as looked at, so a later edit shows as changed
-  function markSeen(qid) {
-    const q = QBY[qid]; if (!q || !q.hash) return false;
-    answers.seen = answers.seen || {};
-    if (answers.seen[qid] === q.hash) return false;
-    answers.seen[qid] = q.hash; return true;
-  }
-  if ('IntersectionObserver' in window) {
-    const timers = new Map();
-    const io = new IntersectionObserver((entries) => {
-      for (const e of entries) {
-        const qid = e.target.dataset.question;
-        clearTimeout(timers.get(qid));
-        if (e.isIntersecting) timers.set(qid, setTimeout(() => { if (markSeen(qid)) { markAnswered(qid); save(); } }, 1500));
-      }
-    }, { threshold: 0.5 });
-    $$('article.question').forEach((el) => io.observe(el));
-  }
-
-  // ---- Storybook frames: probe each Storybook once, then load frames one at a time. A dev server
-  // serves each story as hundreds of modules; several frames at once exhaust the request pool.
-  function fit(stage) {
-    const f = $('iframe', stage); if (!f) return;
-    const w = Number(stage.dataset.w) || 1440; const h = Number(stage.dataset.h) || 480;
-    const scale = Math.min(1, stage.clientWidth / w);
-    f.style.width = w + 'px'; f.style.height = h + 'px'; f.style.transform = 'scale(' + scale + ')';
-  }
-  const fitter = 'ResizeObserver' in window ? new ResizeObserver((es) => es.forEach((e) => fit(e.target))) : null;
-  $$('.stage-fit').forEach((s) => { fit(s); if (fitter) fitter.observe(s); });
-  const down = new Set();
-  const queue = [];
-  let loading = false;
-  function enqueue(f) { if (f.dataset.queued || f.src) return; f.dataset.queued = '1'; queue.push(f); pump(); }
-  function pump() {
-    if (loading) return;
-    const f = queue.shift(); if (!f) return;
-    const base = f.closest('[data-story-base]').dataset.storyBase;
-    if (down.has(base)) { delete f.dataset.queued; pump(); return; }
-    loading = true;
-    const done = () => { loading = false; f.onload = null; pump(); };
-    f.onload = done; setTimeout(() => { if (loading && f.onload) done(); }, 15000);
-    f.src = f.dataset.src;
-  }
-  /** Frames to load: those not tucked inside a closed disclosure. A disclosure loads its own on open. */
-  function queueVisible(root) { $$('.stage-fit iframe[data-src]', root).forEach((f) => { const d = f.closest('details'); if (!d || d.open) enqueue(f); }); }
-  document.addEventListener('toggle', (e) => { if (e.target.tagName === 'DETAILS' && e.target.open) { queueVisible(e.target); $$('.stage-fit', e.target).forEach(fit); } }, true);
-  function showDown() {
-    const b = $('#sb-banner'); if (!b) return;
-    b.hidden = !down.size; if (!down.size) return;
-    const hint = DATA.storybookStart ? ' Start it with <code>' + esc(DATA.storybookStart) + '</code>, then' : ' Start it, then';
-    b.innerHTML = 'Storybook is not answering at ' + [...down].map((u) => '<code>' + esc(u) + '</code>').join(', ') + '.' + hint + ' <button type="button" class="quiet" id="sb-retry">Retry</button>';
-  }
-  async function probe() {
-    const bases = [...new Set($$('[data-story-base]').map((el) => el.dataset.storyBase))];
-    for (const base of bases) {
-      let ok = true;
-      if (server) { try { const r = await fetch('/storybook?url=' + encodeURIComponent(base)); const j = await r.json(); ok = j.ok || j.local === false; } catch {} }
-      if (ok) down.delete(base); else down.add(base);
-    }
-    showDown(); queueVisible(document);
-  }
-  document.addEventListener('click', (e) => { if (e.target.closest('#sb-retry')) probe(); });
-
-  // ---- lightbox: every figure and diagram gets an expand button on hover; the copy opens at full size
-  const EXPAND = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 2.5h4v4M13.5 2.5 9 7M6.5 13.5h-4v-4M2.5 13.5 7 9"/></svg>';
-  $$('.fig, .diagram-wrap').forEach((w) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'expand'; b.title = 'Expand'; b.innerHTML = EXPAND; w.appendChild(b); });
-  const lightbox = $('#lightbox'); const lbBody = $('.lb-body', lightbox);
-  function openLightbox(w) {
-    lbBody.innerHTML = '';
-    const img = w.querySelector('img'); const svg = w.querySelector('svg');
-    if (img) { const big = document.createElement('img'); big.src = img.src; big.alt = img.alt; lbBody.appendChild(big); const cap = w.querySelector('figcaption'); if (cap) { const c = document.createElement('div'); c.className = 'lb-cap'; c.textContent = cap.textContent; lbBody.appendChild(c); } }
-    else if (svg) { const big = svg.cloneNode(true); const vb = svg.viewBox.baseVal; const scale = Math.max(1, Math.min((innerWidth - 100) / vb.width, (innerHeight - 100) / vb.height, 2.5)); big.setAttribute('width', String(vb.width * scale)); big.setAttribute('height', String(vb.height * scale)); big.querySelectorAll('[data-node]').forEach((n) => n.removeAttribute('data-node')); lbBody.appendChild(big); }
-    lightbox.hidden = false; $('.lb-close', lightbox).focus();
-  }
-  function closeLightbox() { lightbox.hidden = true; lbBody.innerHTML = ''; }
-  document.addEventListener('click', (e) => {
-    const x = e.target.closest('.expand'); if (x) { e.preventDefault(); e.stopPropagation(); openLightbox(x.closest('.fig, .diagram-wrap')); return; }
-    const fx = e.target.closest('.frame-expand');
-    if (fx) { e.preventDefault(); e.stopPropagation(); const f = $('iframe', fx.closest('.frame')); lbBody.innerHTML = ''; const big = document.createElement('iframe'); big.className = 'lb-frame'; big.src = f.src || f.dataset.src; big.title = f.title; lbBody.appendChild(big); lightbox.hidden = false; $('.lb-close', lightbox).focus(); return; }
-    if (e.target.closest('.lb-close') || (e.target === lightbox)) closeLightbox();
-  }, true);
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !lightbox.hidden) { e.stopPropagation(); closeLightbox(); } }, true);
-  document.addEventListener('click', async (e) => {
-    const b = e.target.closest('[data-copy]'); if (!b) return;
-    e.preventDefault(); e.stopPropagation();
-    const pre = document.getElementById(b.dataset.copy); if (!pre) return;
-    try { await navigator.clipboard.writeText(pre.textContent); b.textContent = 'Copied'; setTimeout(() => { b.textContent = 'Copy'; }, 900); } catch {}
-  }, true);
-  function esc(s) { return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]); }
+`;
+var BOOT_JS = `  function esc(s) { return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]); }
 
   load().then(() => {
-    // After a document reload, messages the page had already shown stay put and new ones fade in.
+    // After a full reload, messages the page had already shown stay put and new ones fade in.
     let carried = null; try { carried = (JSON.parse(sessionStorage.getItem('parley:scroll:' + DATA.doc) || 'null') || {}).seen; } catch {}
     if (Array.isArray(carried)) { carried.forEach((k) => seen.set(k, 0)); primed = true; }
     hydrateChoices(); renderComments(); primed = true;
@@ -7185,10 +9968,677 @@ var CLIENT = `
     quietUntil = Date.now() + 700;
     if (first) select(first, restored ? { from: 'none' } : {});
   });
-})();
+`;
+var PARTS = [
+  STATE_JS,
+  DOCKS_JS,
+  SYNC_JS,
+  SELECTION_JS,
+  COMMENTS_JS,
+  ANNOTATIONS_JS,
+  COMMENT_FORMS_JS,
+  CHOICES_JS,
+  SEND_JS,
+  QUESTIONS_JS,
+  DOCS_MENU_JS,
+  FINISH_JS,
+  NOTICE_JS,
+  PREFERENCES_JS,
+  ORIENTATION_JS,
+  VIEWER_JS,
+  TOP_COMMENT_JS,
+  EXPORT_JS,
+  THREADS_JS,
+  UNREAD_JS,
+  QUOTED_WORDS_JS,
+  SEEN_JS,
+  STORYBOOK_JS,
+  LIGHTBOX_JS,
+  SWAP_JS,
+  BOOT_JS
+];
+var CLIENT = `
+(() => {
+${PARTS.join("")}})();
 `;
 
+// src/lib/page/block-styles.ts
+var BLOCK_CSS = `/* Blocks in the centre */
+.block + .block { margin-top: 26px; padding-top: 22px; border-top: 1px solid var(--line); }
+.block-title { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px; }
+.prose-block { max-width: 70ch; cursor: pointer; padding: 8px 12px; margin-left: -12px; border-radius: var(--radius-sm); border: 1px solid transparent; }
+.prose-block:hover { background: var(--code-bg); }
+.prose-block.on { border-color: var(--accent); background: var(--accent-soft); }
+
+/* Annotated text */
+.sql { font: 12.5px/1.65 var(--mono); background: var(--pane); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; overflow-x: auto; white-space: pre; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+.sql .seg { border-radius: 3px; transition: background .12s; }
+.sql .seg.peek { background: var(--hi); }
+.sql .seg.on { background: var(--hi); box-shadow: 0 0 0 1.5px var(--accent); }
+.sql .seg.on.inner { background: var(--hi-strong); }
+.sql .kw { color: var(--kw); font-weight: 600; }
+.badge { display: inline-flex; align-items: center; justify-content: center; min-width: 17px; height: 17px; padding: 0 5px; margin: 0 5px 0 0; border: 0; border-radius: 999px; background: var(--badge); color: var(--pane); font: 600 10.5px/1 var(--sans); cursor: pointer; vertical-align: text-bottom; }
+.badge.on { background: var(--accent-fill); color: #fff; outline: 2px solid var(--accent-soft); }
+
+/* Rows: operations */
+.rows { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; }
+.row { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: start; padding: 9px 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--pane); cursor: pointer; }
+.row:hover { border-color: var(--line-strong); }
+.row.on { border-color: var(--accent); background: var(--sel-bg); }
+.row .title { font-weight: 600; }
+.row .sub { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+.chips { display: inline-flex; gap: 5px; flex-wrap: wrap; }
+.chip { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: var(--code-bg); color: var(--muted); }
+.chip.low { background: var(--ok-soft); color: var(--ok-text); }
+.chip.medium { background: var(--warn-soft); color: var(--warn-text); }
+.chip.high { background: var(--danger-soft); color: var(--danger-text); }
+.chip.tone-ok, .chip.st-valid, .chip.st-done { background: var(--ok-soft); color: var(--ok-text); }
+.chip.tone-warn, .chip.st-warn { background: var(--warn-soft); color: var(--warn-text); }
+.chip.st-doing { background: var(--accent-soft); color: var(--accent); }
+.chip.tone-bad, .chip.st-error, .chip.st-blocked { background: var(--danger-soft); color: var(--danger-text); }
+.chip.tone-skip, .chip.st-skip, .chip.st-todo { background: var(--code-bg); color: var(--muted); }
+/* matrix */
+.matrix-wrap { overflow-x: auto; }
+.code { overflow-x: auto; }
+.matrix { border-collapse: separate; border-spacing: 3px; font-size: 12.5px; margin: 4px 0 0 -3px; }
+.matrix th { font-weight: 600; color: var(--muted); font-size: 11.5px; text-align: left; padding: 4px 8px; white-space: nowrap; border-radius: 6px; }
+.matrix th.ch, .matrix th.rh { cursor: pointer; }
+.matrix th.ch { text-align: center; }
+.matrix th[data-node]:hover, .matrix th[data-node].on { background: var(--accent-soft); color: var(--accent); }
+.matrix td.cell { width: 34px; height: 30px; border-radius: 7px; text-align: center; font-weight: 700; font-size: 12px; cursor: pointer; }
+.matrix td.valid { background: var(--ok-soft); color: var(--ok-text); }
+.matrix td.warn { background: var(--warn-soft); color: var(--warn-text); }
+.matrix td.error { background: var(--danger-soft); color: var(--danger-text); }
+.matrix td.skip { background: var(--code-bg); color: var(--muted); }
+.matrix tr[data-node]:hover th.rh { background: var(--code-bg); }
+.matrix tr[data-node].on th.rh { background: var(--accent-soft); color: var(--accent); }
+.matrix tr[data-node].on td.cell { box-shadow: 0 0 0 1.5px var(--accent); }
+.legend { display: flex; gap: 6px; margin-top: 8px; }
+.cells { list-style: none; padding: 0; margin: 6px 0 0; display: grid; gap: 6px; font-size: 13px; }
+.cells .hint-line { color: var(--muted); font-size: 12.5px; margin: 2px 0 0 4px; }
+`;
+var FIGURE_CSS = `/* figure */
+.fig { margin: 0; padding: 8px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--pane); cursor: pointer; }
+.fig:hover { border-color: var(--line-strong); }
+.fig.on { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.fig img { display: block; max-width: 100%; height: auto; border-radius: var(--radius-sm); }
+.fig figcaption { font-size: 12px; color: var(--muted); padding: 8px 4px 2px; }
+.fig figcaption a { margin-left: 6px; }
+/* diagrams: sequence and flowchart, inline SVG, selection and hover through data-node */
+.diagram-wrap { overflow-x: auto; padding: 6px 0 2px; display: flex; justify-content: center; }
+.diagram { display: block; font: 12px var(--sans); max-width: 100%; height: auto; }
+.diagram .part { fill: var(--pane); stroke: var(--line-strong); }
+.diagram .part-label { fill: var(--fg); font-weight: 600; font-family: var(--mono); font-size: 11.5px; }
+.diagram .lifeline { stroke: var(--line-strong); stroke-dasharray: 4 4; }
+.diagram .band { fill: transparent; cursor: pointer; }
+.diagram .seq-msg:hover .band { fill: var(--code-bg); }
+.diagram .seq-msg.on .band { fill: var(--accent-soft); }
+.diagram .arrow { stroke: var(--fg); stroke-width: 1.4; fill: none; }
+.diagram .arrow.return { stroke-dasharray: 5 4; stroke: var(--muted); }
+.diagram .arrow.emit { stroke: var(--ok); }
+.diagram .arrow.error { stroke: var(--danger); stroke-dasharray: 5 4; }
+.diagram .arrow.await { stroke: var(--accent); }
+.diagram .msg { fill: var(--fg); font-size: 11.5px; }
+.diagram .alt { fill: var(--warn-soft); stroke: var(--warn); stroke-dasharray: 3 3; }
+.diagram .alt-tag { fill: var(--warn); font: 700 9.5px var(--sans); text-transform: uppercase; }
+.diagram .alt-text { fill: var(--fg); font-size: 11px; }
+.diagram .mk { fill: var(--fg); } .diagram .mk-open { fill: none; stroke: var(--fg); stroke-width: 1.3; } .diagram .mk-cross { fill: none; stroke: var(--danger); stroke-width: 1.5; }
+.diagram .seq-msg.emit .mk-open { stroke: var(--ok); } .diagram .seq-msg.return .mk-open { stroke: var(--muted); }
+.diagram .shape { fill: var(--pane); stroke: var(--line-strong); stroke-width: 1.2; }
+.diagram .shape-line { stroke: var(--line-strong); }
+.diagram .fc-node { cursor: pointer; }
+.diagram .fc-node:hover .shape { stroke: var(--fg); }
+.diagram .fc-node.on .shape { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.6; }
+.diagram .fc-node.diamond .shape { fill: var(--warn-soft); stroke: var(--warn); }
+.diagram .fc-node.diamond.on .shape { fill: var(--accent-soft); stroke: var(--accent); }
+.diagram .fc-node.stadium .shape { fill: var(--ok-soft); stroke: var(--ok); }
+.diagram .node-label { fill: var(--fg); font-size: 12px; font-weight: 600; }
+.diagram .node-sub { fill: var(--muted); font-size: 10.5px; }
+.diagram .edge { stroke: var(--line-strong); stroke-width: 1.3; fill: none; }
+.diagram .fc-edge.loop .edge { stroke: var(--warn); } .diagram .fc-edge.skip .edge { stroke: var(--muted); }
+.diagram .label-bg { fill: var(--pane); stroke: var(--line); }
+.diagram .edge-text { fill: var(--muted); font-size: 10.5px; font-family: var(--mono); }
+.mermaid-src { margin-top: 6px; font-size: 12px; color: var(--muted); }
+.mermaid-src summary { cursor: pointer; }
+.mermaid-src .copy { margin-top: 6px; padding: 1px 8px; font-size: 11px; border-radius: 999px; }
+.mermaid-src pre { margin-top: 6px; font: 11.5px/1.5 var(--mono); background: var(--code-bg); padding: 8px 10px; border-radius: var(--radius-sm); overflow-x: auto; }
+/* code-flow and workflow details chips */
+
+.chip.kind-branch { background: var(--warn-soft); color: var(--warn-text); }
+.chip.kind-error { background: var(--danger-soft); color: var(--danger-text); }
+.chip.kind-return, .chip.kind-emit { background: var(--ok-soft); color: var(--ok-text); }
+.chip.kind-await, .chip.kind-loop, .chip.kind-call { background: var(--accent-soft); color: var(--accent); }
+.edges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.edge { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; padding: 2px 8px; border: 1px dashed var(--line-strong); border-radius: 999px; color: var(--fg); }
+.edge:hover { border-style: solid; text-decoration: none; }
+.edge .when { font: 11.5px var(--mono); color: var(--muted); }
+.edge .badge { margin: 0; }
+/* workflow */
+.lanes { margin: 0 0 10px; flex-wrap: wrap; }
+.lanes .chip { cursor: pointer; padding: 3px 10px; font-size: 12px; }
+.lanes .chip.on { outline: 2px solid var(--accent); }
+.chip.lane-0 { background: var(--accent-soft); color: var(--accent); }
+.chip.lane-1 { background: rgba(175,82,222,.14); color: var(--lane-1); }
+.chip.lane-2 { background: var(--ok-soft); color: var(--ok-text); }
+.chip.lane-3 { background: var(--warn-soft); color: var(--warn-text); }
+.chip.lane-4 { background: rgba(90,200,250,.18); color: var(--lane-4); }
+.chip.lane-5 { background: rgba(255,45,85,.12); color: var(--lane-5); }
+
+.chip.kind-decision { background: var(--warn-soft); color: var(--warn-text); }
+.chip.kind-start, .chip.kind-end { background: var(--ok-soft); color: var(--ok-text); }
+.chip.kind-wait, .chip.kind-handoff { background: var(--code-bg); color: var(--muted); }
+.dur { font-size: 11.5px; color: var(--muted); margin-left: 4px; }
+/* trace */
+.trace-input { font-size: 13px; margin-bottom: 8px; padding: 8px 12px; background: var(--code-bg); border-radius: var(--radius-sm); }
+.trace-input .eyebrow { margin-right: 6px; }
+
+.row.trace-step.skip { border-style: dashed; }
+/* precedence */
+.ladder .row { grid-template-columns: auto 1fr auto; }
+.ladder .first { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.examples { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 12px; }
+.examples .eyebrow { margin-right: 4px; }
+.example { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border: 1px solid var(--line); border-radius: 999px; font-size: 12.5px; cursor: pointer; background: var(--pane); }
+.example .arrow { color: var(--muted); }
+.example .badge { margin: 0; }
+.example:hover { border-color: var(--line-strong); }
+.example.on { border-color: var(--accent); background: var(--accent-soft); }
+/* plan */
+.plan .phase > h2 { cursor: pointer; padding: 4px 8px; margin-left: -8px; border-radius: var(--radius-sm); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.plan .phase > h2:hover { background: var(--code-bg); }
+.plan .phase > h2.on { background: var(--accent-soft); color: var(--accent); }
+.plan .ws { margin: 10px 0 10px 14px; }
+.plan .ws-title { font-weight: 600; font-size: 13px; cursor: pointer; padding: 3px 8px; margin-left: -8px; border-radius: var(--radius-sm); display: inline-block; }
+.plan .ws-title:hover { background: var(--code-bg); }
+.plan .ws-title.on { background: var(--accent-soft); color: var(--accent); }
+.plan .task.done .title { color: var(--muted); text-decoration: line-through; }
+
+.gate { font-size: 11px; color: var(--warn-text); }
+
+/* Schema cards */
+.group { margin: 0 0 18px; }
+.group h2 { margin-bottom: 8px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; }
+.card { padding: 11px 13px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--pane); cursor: pointer; }
+.card:hover { border-color: var(--line-strong); }
+.card.on { border-color: var(--accent); background: var(--sel-bg); }
+.card .name { font: 600 13.5px var(--mono); }
+.card .purpose { font-size: 12.5px; color: var(--muted); margin: 3px 0 6px; }
+.card .meta { font-size: 11.5px; color: var(--muted); }
+.rels { margin-top: 8px; font: 12.5px var(--mono); display: grid; gap: 2px; }
+.rels .rel { cursor: pointer; padding: 3px 8px; border-radius: var(--radius-sm); }
+.rels .rel:hover, .rels .rel.on { background: var(--accent-soft); }
+.arrow { color: var(--muted); }
+
+`;
+var DIFF_CSS = `/* diff block: a unified diff, rows tinted by kind, findings marked by numbered badges; token colours are FILE_CSS's */
+.udiff { --df-add: rgba(46,160,67,.14); --df-del: rgba(248,81,73,.14); --df-add-n: rgba(46,160,67,.26); --df-del-n: rgba(248,81,73,.26); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .udiff { --df-add: rgba(48,209,88,.14); --df-del: rgba(255,105,97,.15); --df-add-n: rgba(48,209,88,.28); --df-del-n: rgba(255,105,97,.28); } }
+:root[data-theme="dark"] .udiff { --df-add: rgba(48,209,88,.14); --df-del: rgba(255,105,97,.15); --df-add-n: rgba(48,209,88,.28); --df-del-n: rgba(255,105,97,.28); }
+.dsum { font-size: 12.5px; color: var(--muted); margin-bottom: 10px; }
+.plus { color: var(--ok-text); } .minus { color: var(--danger-text); }
+.dfile { border: 1px solid var(--line-strong); border-radius: var(--radius-sm); margin-bottom: 14px; overflow: hidden; }
+.dfile-head { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: var(--code-bg); font-size: 12.5px; }
+.dfile-head code { background: none; padding: 0; word-break: break-all; }
+.dcount { margin-left: auto; font: 12px var(--mono); white-space: nowrap; }
+.chip.st-added { background: var(--ok-soft); color: var(--ok-text); }
+.chip.st-deleted { background: var(--danger-soft); color: var(--danger-text); }
+.chip.st-modified { background: var(--code-bg); color: var(--muted); }
+.chip.st-renamed { background: var(--accent-soft); color: var(--accent); }
+.dhunk { padding: 3px 10px; font: 11.5px var(--mono); color: var(--fg); background: var(--accent-soft); white-space: pre; overflow-x: auto; }
+.dnote { padding: 8px 10px; font-size: 12.5px; color: var(--muted); }
+.dscroll { overflow-x: auto; }
+.dtable { border-collapse: collapse; width: 100%; font: 12px/1.5 var(--mono); }
+.dtable td { padding: 0 6px; vertical-align: top; }
+.dtable .dn { width: 1%; min-width: 34px; text-align: right; color: var(--muted); user-select: none; white-space: nowrap; }
+.dtable .dm { width: 1%; color: var(--muted); user-select: none; }
+.dtable .dc { white-space: pre; }
+.dtable .dc code { font: inherit; background: none; padding: 0; }
+.dtable .db { width: 1%; padding: 0 2px; white-space: nowrap; user-select: none; }
+.dtable .db .badge + .badge { margin-left: 2px; }
+.dtable tr.add { background: var(--df-add); } .dtable tr.add .dn { background: var(--df-add-n); color: var(--fg); }
+.dtable tr.del { background: var(--df-del); } .dtable tr.del .dn { background: var(--df-del-n); color: var(--fg); }
+.dtable tr.meta .dc { color: var(--muted); }
+.dtable tr.hit .dn { color: var(--fg); }
+.dtable tr.hit { box-shadow: inset 3px 0 0 var(--accent); background-image: linear-gradient(var(--accent-soft), var(--accent-soft)); }
+.dl { display: grid; grid-template-columns: max-content 1fr; gap: 3px 12px; font-size: 12.5px; }
+.dl dt { color: var(--muted); } .dl dd { margin: 0; }
+.xref { color: var(--accent); cursor: pointer; }
+.xref:hover { text-decoration: underline; }
+`;
+var NUMBERS_CSS = `/* metrics */
+.mt-cmp { font-size: 12.5px; color: var(--muted); margin: 0 0 8px; }
+.mt-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+.mt-tile { position: relative; display: flex; flex-direction: column; gap: 3px; min-width: 0; padding: 11px 13px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--pane); color: var(--fg); font: inherit; text-align: left; cursor: pointer; }
+.mt-tile:hover { border-color: var(--line-strong); }
+.mt-tile.on { border-color: var(--accent); background: var(--accent-soft); }
+.mt-label { font-size: 12.5px; color: var(--muted); font-weight: 600; overflow-wrap: anywhere; }
+.mt-value { font-size: 22px; font-weight: 600; letter-spacing: -.01em; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.mt-from { font-size: 11.5px; color: var(--muted); overflow-wrap: anywhere; }
+.mt-foot { display: flex; align-items: center; justify-content: space-between; gap: 6px; flex-wrap: wrap; margin-top: 3px; }
+.mt-delta { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mt-tile .mt-delta { white-space: normal; border-radius: 6px; max-width: 100%; }
+.mt-d, .mt-p { white-space: nowrap; }
+.mt-tile .mt-d { white-space: normal; overflow-wrap: anywhere; }
+.chip.mt-delta.tone-ok { color: var(--ok-text); }
+.chip.mt-delta.tone-warn { color: var(--warn-text); }
+.chip.mt-delta.tone-bad { color: var(--danger-text); }
+.spark { display: block; overflow: visible; }
+.spark polyline { fill: none; stroke: var(--accent); stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; }
+.spark circle { fill: var(--accent); }
+.mt-wrap, .to-wrap { overflow-x: auto; position: relative; }
+.mt-table, .to-table { border-collapse: collapse; font-size: 12.5px; min-width: 100%; }
+.mt-table th, .mt-table td, .to-table th, .to-table td { padding: 6px 10px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; }
+.mt-table thead th, .to-table thead th { font-size: 11.5px; color: var(--muted); font-weight: 600; white-space: nowrap; }
+.mt-table .num, .to-table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mt-table tbody th, .to-table tbody th { font-weight: 600; }
+.mt-table tr[data-node], .to-table tr[data-node] { cursor: pointer; }
+.mt-table tr[data-node]:hover, .to-table tr[data-node]:hover { background: var(--code-bg); }
+.mt-table tr[data-node].on, .to-table tr[data-node].on { background: var(--accent-soft); }
+.mt-table tr[data-node].on th, .to-table tr[data-node].on th { color: var(--accent); }
+/* tradeoffs */
+.to-scale { font-size: 11.5px; color: var(--muted); margin: 8px 0 0; }
+.to-table th.to-opt { text-align: center; cursor: pointer; border-radius: 6px 6px 0 0; }
+.to-table th.to-opt .chip { display: block; width: max-content; margin: 3px auto 0; }
+.to-table th.to-opt .chip.tone-ok { color: var(--ok-text); }
+.to-table th.to-opt.to-rec { color: var(--fg); }
+.to-table th.to-opt:hover, .to-table th.to-opt.on { background: var(--accent-soft); color: var(--accent); }
+.to-table td.to-cell, .to-table .to-total td { text-align: center; }
+.to-cell { font-weight: 600; min-width: 44px; }
+.to-cell.lv-0 { background: var(--danger-soft); color: var(--danger-text); }
+.to-cell.lv-1 { background: var(--warn-soft); color: var(--warn-text); }
+.to-cell.lv-2 { background: var(--code-bg); color: var(--fg); }
+.to-cell.lv-3 { background: var(--ok-soft); color: var(--ok-text); }
+.to-cell.lv-4 { background: var(--ok-soft); color: var(--ok-text); box-shadow: inset 0 0 0 1.5px var(--ok); }
+.to-note { color: var(--muted); font-weight: 400; margin-left: 1px; }
+.to-total th, .to-total td { border-top: 1.5px solid var(--line-strong); border-bottom: 0; font-weight: 600; }
+.to-total td.to-best { color: var(--ok-text); }
+.to-total td.to-best::before { content: "★ "; }
+`;
+
+// src/lib/page/styles.ts
+var TOKENS_CSS = `/* Tokens. Light first; the two dark blocks only redefine. Neutral greys lean warm in light and
+   cool in dark, like macOS. */
+:root {
+  --bg: #f5f5f7; --pane: #ffffff; --fg: #1d1d1f; --muted: #6e6e73; --line: rgba(0,0,0,.08); --line-strong: rgba(0,0,0,.14);
+  --accent: #005ec8; --accent-soft: rgba(0,94,200,.10); --accent-fill: #005ec8; --warn: #b25d00; --warn-soft: rgba(255,159,10,.16);
+  --danger: #c7282f; --danger-soft: rgba(255,59,48,.12); --code-bg: #f2f2f4; --hi: rgba(255,214,10,.38); --hi-strong: rgba(255,204,0,.62);
+  --ok: #1f8a3b; --ok-soft: rgba(52,199,89,.16); --kw: #7c3aed; --badge: #1d1d1f; --glass: rgba(245,245,247,.78);
+  /* Text in the colour of ok, warn and danger: darker than the chip colours, so it reaches 4.5:1
+     in light mode on the page or on a -soft fill. --accent-fill is the fill under white text. */
+  --ok-text: #166b2b; --warn-text: #8f4a00; --danger-text: #b3242a;
+  /* Workflow lanes past the first four, as text on their own tint. */
+  --lane-1: #7d32b8; --lane-4: #08698f; --lane-5: #b81a43;
+  /* The selected item's fill: light enough that muted text and chips on it keep 4.5:1. */
+  --sel-bg: color-mix(in srgb, var(--accent) 6%, var(--pane));
+  --radius: 8px; --radius-sm: 6px;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  --shadow: 0 1px 2px rgba(0,0,0,.05), 0 8px 24px rgba(0,0,0,.08);
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #1c1c1e; --pane: #242426; --fg: #f2f2f7; --muted: #98989f; --line: rgba(255,255,255,.09); --line-strong: rgba(255,255,255,.16);
+  --accent: #6cb4ff; --accent-soft: rgba(64,156,255,.16); --accent-fill: #0a6cdf; --warn: #ffb340; --warn-soft: rgba(255,179,64,.16);
+  --danger: #ff6961; --danger-soft: rgba(255,105,97,.16); --code-bg: #1a1a1c; --hi: rgba(255,214,10,.22); --hi-strong: rgba(255,214,10,.42);
+  --ok: #30d158; --ok-soft: rgba(48,209,88,.18); --kw: #c4a4ff; --badge: #e5e5ea; --glass: rgba(28,28,30,.72); --shadow: 0 1px 2px rgba(0,0,0,.4), 0 12px 32px rgba(0,0,0,.45);
+  --ok-text: #30d158; --warn-text: #ffb340; --danger-text: #ff8a84;
+  --lane-1: #d4a8f7; --lane-4: #6fd2ff; --lane-5: #ff8aa5;
+  color-scheme: dark;
+} }
+:root[data-theme="dark"] {
+  --bg: #1c1c1e; --pane: #242426; --fg: #f2f2f7; --muted: #98989f; --line: rgba(255,255,255,.09); --line-strong: rgba(255,255,255,.16);
+  --accent: #6cb4ff; --accent-soft: rgba(64,156,255,.16); --accent-fill: #0a6cdf; --warn: #ffb340; --warn-soft: rgba(255,179,64,.16);
+  --danger: #ff6961; --danger-soft: rgba(255,105,97,.16); --code-bg: #1a1a1c; --hi: rgba(255,214,10,.22); --hi-strong: rgba(255,214,10,.42);
+  --ok: #30d158; --ok-soft: rgba(48,209,88,.18); --kw: #c4a4ff; --badge: #e5e5ea; --glass: rgba(28,28,30,.72); --shadow: 0 1px 2px rgba(0,0,0,.4), 0 12px 32px rgba(0,0,0,.45);
+  --ok-text: #30d158; --warn-text: #ffb340; --danger-text: #ff8a84;
+  --lane-1: #d4a8f7; --lane-4: #6fd2ff; --lane-5: #ff8aa5;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; }
+html { height: 100%; }
+body { background: var(--bg); color: var(--fg); font: 14px/1.55 var(--sans); -webkit-font-smoothing: antialiased; height: 100%; display: flex; flex-direction: column; overflow: hidden; }
+h1, h2, h3, h4 { margin: 0; line-height: 1.25; letter-spacing: -.01em; }
+h1 { font-size: 19px; font-weight: 600; } h2 { font-size: 15px; font-weight: 600; } h3 { font-size: 13px; font-weight: 600; }
+h4, h3.sub { font-size: 11px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+p { margin: 0 0 .6em; } ul { margin: 0 0 .6em; padding-left: 1.2em; }
+code { font: 12.5px var(--mono); background: var(--code-bg); padding: 1px 5px; border-radius: 5px; }
+pre { margin: 0; }
+a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: underline; }
+.muted { color: var(--muted); }
+button, select, textarea { font: inherit; color: var(--fg); }
+button.quiet, select.quiet, .comments button, .anno button, .top-tools button { padding: 5px 10px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--pane); cursor: pointer; font-size: 13px; }
+button.quiet:hover, .top-tools button:hover, .comments button:hover { background: var(--code-bg); }
+button.primary { background: var(--accent-fill); color: #fff; border-color: transparent; }
+select.quiet { appearance: none; -webkit-appearance: none; padding-right: 22px; background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%); background-position: calc(100% - 12px) 55%, calc(100% - 8px) 55%; background-size: 4px 4px; background-repeat: no-repeat; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.node-btn { all: unset; cursor: pointer; font: inherit; color: inherit; border-radius: 4px; }
+.node-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Header: the title, then status, Finish review and the menu; the question bar under them.
+   Above the panes, so the menu opens over a pane that floats. */
+.top { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; padding: 14px 20px 12px; border-bottom: 1px solid var(--line); background: var(--glass); backdrop-filter: saturate(180%) blur(18px); -webkit-backdrop-filter: saturate(180%) blur(18px); position: sticky; top: env(safe-area-inset-top, 0px); z-index: 6; }
+.top-title { flex: 1 1 320px; min-width: 0; align-self: flex-start; }
+.byline { margin: 0 0 2px; font-size: 11.5px; color: var(--muted); }
+.summary { color: var(--muted); margin: 3px 0 0; max-width: 70ch; font-size: 13px; }
+/* What is true right now: threads waiting, whether an agent listens, where answers are saved, what is unsent. */
+.top-status { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 13px; }
+.top-tools { display: flex; gap: 8px; align-items: center; font-size: 13px; }
+/* A live region's wrapper, so the header lays out its contents as if it were not there. */
+.slot { display: contents; }
+`;
+var CONTROLS_CSS = `.segmented { display: inline-flex; padding: 2px; border-radius: 8px; background: var(--code-bg); border: 1px solid var(--line); }
+.segmented button { padding: 3px 10px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); font-size: 12px; cursor: pointer; }
+.segmented button[aria-checked="true"] { background: var(--pane); color: var(--fg); box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+.pill { font-size: 11px; padding: 3px 9px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); }
+.pill.local { background: var(--warn-soft); color: var(--warn-text); }
+.pill.lost { background: var(--danger-soft); color: var(--danger-text); font-weight: 600; }
+.pill.broken { max-width: 52ch; padding: 4px 10px; border-radius: var(--radius-sm); line-height: 1.4; background: var(--danger-soft); color: var(--danger-text); }
+/* A static page sends nothing: Export is how the answers reach the agent. */
+body:not(.static) .if-static, body.static .if-served { display: none; }
+body.static #send-all, body.static [data-send-comment], body.static [data-send-question], body.static button[value="draft"] { display: none !important; }
+body.static .split-btn button { background: var(--accent-fill); color: #fff; border-color: transparent; }
+
+`;
+var PANES_CSS = `/* Panes */
+.split { display: grid; grid-template-columns: var(--col-l, 44px) minmax(0, 1fr) var(--col-r, 44px); gap: 0; flex: 1; min-height: 0; }
+body.nav-pinned { --col-l: 230px; }
+body.nav-pinned.narrow { --col-l: 44px; }
+body.right-pinned, body.right-open { --col-r: clamp(320px, 38vw, 560px); }
+.dock { min-height: 0; height: 100%; }
+.rail { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 12px 0; width: 44px; height: 100%; }
+.rail-l { border-right: 1px solid var(--line); } .rail-r { border-left: 1px solid var(--line); }
+.rail-btn { width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 8px; background: transparent; color: var(--muted); cursor: pointer; }
+.rail-btn:hover { background: var(--code-bg); color: var(--fg); }
+.rail-badge { cursor: pointer; display: inline-flex; align-items: center; gap: 3px; font: 600 10.5px/1 var(--sans); min-width: 22px; height: 20px; padding: 0 5px; border-radius: 999px; justify-content: center; }
+.rail-c { background: var(--accent-soft); color: var(--accent); }
+.rail-c svg { width: 11px; height: 11px; }
+.rail-q { background: var(--danger-soft); color: var(--danger-text); }
+/* "4 open" is wider than the rail: the word goes under the number. */
+.rail-badge.rail-q { height: auto; max-width: 36px; padding: 3px 4px; white-space: normal; text-align: center; line-height: 1.15; border-radius: 8px; }
+.rail-q.done { background: var(--ok-soft); color: var(--ok-text); }
+body.nav-pinned:not(.narrow) .rail-l, body.right-pinned .rail-r, body.right-open .rail-r { display: none; }
+.pin { width: 24px; height: 22px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; font-size: 14px; line-height: 1; }
+.pin:hover { background: var(--code-bg); color: var(--fg); }
+.pin[aria-pressed="true"] { color: var(--accent); background: var(--accent-soft); }
+.head-btns { display: inline-flex; gap: 2px; margin-left: 8px; }
+.nav .pane-head { margin: 0 8px 6px; }
+/* Unpinned: the pane slides in beside its rail and floats over the page. */
+body:not(.nav-pinned) .nav, body.narrow .nav { position: fixed; top: var(--top-h, 70px); bottom: 0; height: auto; left: 44px; width: min(300px, calc(100vw - 88px)); background: var(--pane); box-shadow: var(--shadow); z-index: 4; opacity: 0; visibility: hidden; transform: translateX(-12px); transition: transform .16s ease, opacity .16s ease, visibility 0s linear .16s; }
+body:not(.nav-pinned) .dock-l.hover .nav, body.narrow .dock-l.hover .nav { opacity: 1; visibility: visible; transform: none; transition-delay: 0s; }
+body:not(.right-pinned):not(.right-open) .right { position: fixed; right: 44px; top: var(--top-h, 70px); bottom: 0; width: min(420px, calc(100vw - 88px)); height: auto; box-shadow: var(--shadow); z-index: 4; opacity: 0; visibility: hidden; transform: translateX(12px); transition: transform .16s ease, opacity .16s ease, visibility 0s linear .16s; }
+body:not(.right-pinned):not(.right-open) .dock-r.hover .right { opacity: 1; visibility: visible; transform: none; transition-delay: 0s; }
+.pane { padding: 18px 20px; min-width: 0; }
+.nav { border-right: 1px solid var(--line); overflow: auto; height: 100%; padding: 14px 10px; font-size: 13px; }
+.nav-block { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin: 14px 8px 4px; }
+.nav-block:first-child { margin-top: 2px; }
+.nav-item { display: flex; gap: 8px; align-items: baseline; padding: 4px 8px; border-radius: var(--radius-sm); color: var(--fg); text-decoration: none; }
+.nav-item:hover { background: var(--code-bg); text-decoration: none; }
+.nav-item.on { background: var(--accent-soft); color: var(--accent); }
+.nav-n { font: 600 10.5px/1 var(--sans); min-width: 16px; height: 16px; padding: 0 4px; border-radius: 999px; background: var(--badge); color: var(--pane); display: inline-flex; align-items: center; justify-content: center; flex: none; }
+.nav-item.on .nav-n { background: var(--accent-fill); color: #fff; }
+.nav-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.nav-c { flex: none; font: 600 10.5px/1 var(--sans); min-width: 18px; height: 16px; padding: 0 5px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); display: inline-flex; align-items: center; justify-content: center; gap: 3px; }
+.nav-c::before { content: ''; width: 7px; height: 7px; border-radius: 2px 2px 2px 0; background: currentColor; }
+.nav-item.on .nav-c { background: var(--accent-fill); color: #fff; }
+.nav-q { align-items: center; }
+.nav-q .dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--danger); box-shadow: 0 0 0 3px var(--danger-soft); }
+.nav-q.answered .dot { background: var(--ok); box-shadow: 0 0 0 3px var(--ok-soft); }
+.nav-q.answered .nav-title { color: var(--muted); }
+.left { overflow: auto; height: 100%; }
+.left-inner { max-width: 980px; margin: 0 auto; }
+.right { background: var(--pane); border-left: 1px solid var(--line); overflow: auto; height: 100%; }
+body.right-pinned .right .pin[data-close-right] { display: none; }
+.pane-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+/* the details pane's and the contents' head rows stay put while the pane scrolls, so pin and close are always at hand */
+.right > .pane-head, .nav > .pane-head { position: sticky; z-index: 3; background: var(--pane); }
+.right > .pane-head { top: -18px; margin: -18px -20px 8px; padding: 14px 20px 8px; border-bottom: 1px solid var(--line); }
+.nav > .pane-head { top: -14px; margin: -14px -10px 6px; padding: 10px 18px 6px; }
+.pane-head .hint { margin-left: auto; }
+.eyebrow { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.hint { font-size: 11.5px; color: var(--muted); }
+@media (max-width: 1100px) { body.right-pinned, body.right-open { --col-r: clamp(300px, 44vw, 460px); } .pane { padding: 14px 16px; } }
+@media (max-width: 860px) {
+  .split { grid-template-columns: 44px minmax(0, 1fr) 0; }
+  .rail-r, .pin[data-pin] { display: none; }
+  body.right-open .right, body.right-pinned .right { position: fixed; left: 0; right: 0; top: var(--top-h, 70px); bottom: 0; width: auto; height: auto; max-height: none; z-index: 5; border-left: 0; box-shadow: var(--shadow); }
+  body.right-pinned .right { visibility: visible; }
+  body.right-pinned .right .pin[data-close-right] { display: inline-flex; }
+  body.narrow .nav { width: min(320px, 86vw); }
+  /* One row for the title, Finish review and the menu; status under the question bar. */
+  .top { gap: 6px 10px; padding: 8px 14px; }
+  .top-title { flex: 1 1 0; align-self: center; }
+  .top-title h1 { font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .top-title .summary, .top-title .byline { display: none; }
+  .top-status { order: 1; flex: 1 0 100%; min-width: 0; gap: 8px; }
+  /* Short labels so the status row stays on one line: the full text stays the accessible name and the tooltip. */
+  .top-status [data-short][data-short] { font-size: 0; }
+  /* The plain form first, for a browser without the alt-text form, which drops the whole line. */
+  .top-status [data-short]::after { content: attr(data-short); content: attr(data-short) / ""; font-size: 12px; }
+  .top-status .listener[data-short]::after { font-size: 11px; }
+  .top-status .pill:not(.lost):not(.broken) { font-size: 0; padding: 0; background: none; }
+  .top-status .pill:not(.lost):not(.broken)::before { content: ''; display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: currentColor; }
+  /* Saved in this browser: a diamond, not the server's dot, so colour is not the only difference. */
+  .top-status .pill.local:not(.lost):not(.broken)::before { width: 8px; height: 8px; border-radius: 1px; transform: rotate(45deg); }
+  /* A broken answers file: one line, cut short; the whole reason is the name and the tooltip. */
+  .top-status .pill.broken { flex: 1 1 0; min-width: 0; max-width: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 3px 9px; }
+  .pane { padding: 12px 12px; }
+  .left-inner { padding-right: 0; }
+  .right > .pane-head { position: sticky; top: 0; background: var(--pane); padding: 6px 0; margin: -12px 0 6px; }
+}
+
+`;
+var SOURCES_CSS = `/* Source links */
+.sources { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; margin: 8px 0 4px; font: 11.5px var(--mono); }
+.src-label { font: 600 10.5px var(--sans); color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.src-local, .src-abs, .src-path { color: var(--fg); text-decoration: none; border-bottom: 1px dotted var(--muted); }
+:is(.src-local, .src-abs):not(.src-on), :is(.src-local, .src-abs):not(.src-on):hover { border-bottom-color: transparent; cursor: text; text-decoration: none; }
+:is(.src-local, .src-abs).src-on { cursor: pointer; }
+:is(.src-local, .src-abs).src-on:hover { color: var(--accent); border-bottom-color: var(--accent); text-decoration: none; }
+.root-form { display: inline-flex; gap: 4px; align-items: center; }
+.root-form[hidden] { display: none; }
+.root-msg { font: 12px var(--sans); color: var(--danger-text); }
+.root-msg:empty { display: none; }
+.root-form input { font: 12px var(--mono); width: 16em; padding: 3px 6px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--pane); color: var(--fg); }
+.src-gh, .src-view { font: 11px var(--sans); color: var(--accent); margin-left: 4px; }
+/* A link inside running text is underlined: colour alone does not set it apart. */
+:where(p, li, dd) > a:not([class]), a.file-link { text-decoration: underline; text-underline-offset: 2px; }
+a.wikilink { color: var(--accent); text-decoration: none; border-bottom: 1px solid currentColor; }
+a.wikilink.missing { color: inherit; border-bottom: 1px dotted var(--muted); cursor: default; }
+.block > .sources { margin: -4px 0 10px; }
+
+`;
+var MOTION_CSS = `@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; transition: none !important; } .msg.arrived { animation: none; } }
+`;
+var PARTS2 = [
+  TOKENS_CSS,
+  QBAR_CSS,
+  CONTROLS_CSS,
+  ORIENTATION_CSS,
+  PANES_CSS,
+  BLOCK_CSS,
+  FINISH_CSS,
+  LIGHTBOX_CSS,
+  FIGURE_CSS,
+  DETAILS_CSS,
+  DIFF_CSS,
+  NUMBERS_CSS,
+  THREAD_CSS,
+  SOURCES_CSS,
+  VIEWER_CSS,
+  TOP_COMMENT_CSS,
+  EXPORT_CSS,
+  ANNO_CSS,
+  NOTICE_CSS,
+  QUESTION_CSS,
+  STORYBOOK_CSS,
+  ASK_CSS,
+  UNREAD_CSS,
+  MOTION_CSS
+];
+var CSS2 = `
+${PARTS2.join("")}`;
+
+// src/lib/shell.ts
+function sectionIndex(page) {
+  const out = Object.create(null);
+  for (const e of page.nav) {
+    out[e.id] = e.id;
+    if (e.blockId)
+      out[e.blockId] ??= e.id;
+    for (const m of e.html.matchAll(/data-node="([^"]+)"/g))
+      if (m[1])
+        out[m[1]] ??= e.id;
+  }
+  return out;
+}
+function blockTitles(page) {
+  const out = Object.create(null);
+  for (const e of page.nav)
+    if (e.blockId)
+      out[e.blockId] ??= e.block ?? e.blockId;
+  return out;
+}
+function byline(page) {
+  const { meta } = page;
+  return [
+    meta.author?.agent ? `By ${escapeHtml(meta.author.agent)}` : "",
+    meta.revision ? `Revision ${escapeHtml(meta.revision)}` : "",
+    page.updated ? `Updated <time${page.updatedIso ? ` datetime="${escapeHtml(page.updatedIso)}" data-local-time` : ""}>${escapeHtml(page.updated)}</time>` : meta.created ? `Created ${escapeHtml(meta.created)}` : ""
+  ].filter(Boolean).join(" · ");
+}
+var digest2 = (s) => createHash4("sha256").update(s).digest("hex").slice(0, 16);
+function renderPage(page) {
+  const { id, repo } = page.meta;
+  const bare = {
+    meta: { id, title: "", created: "", ...repo ? { repo } : {} },
+    left: "",
+    nav: [],
+    questions: []
+  };
+  const shell = digest2(renderPageWith(bare, "", ""));
+  const version = digest2(renderPageWith({ ...page, updated: undefined, updatedIso: undefined }, "", shell));
+  return renderPageWith(page, version, shell);
+}
+function renderPageWith(page, version, shell) {
+  const { meta } = page;
+  const questions = page.questions.map((p) => p.q);
+  const ending = page.questions.filter((p) => p.place === "end").map((p) => p.q);
+  const inSection = (id) => page.questions.filter((p) => p.place === "section" && p.section === id).map((p) => renderQuestion(p.q, true, meta)).join("");
+  const data = {
+    doc: meta.id,
+    nav: page.nav.map(({ source: _source, ...e }) => e),
+    questions: questions.map((q) => ({ ...q, hash: questionHash(q) })),
+    revision: meta.revision ?? 1,
+    ask: ASK_VALUE,
+    version,
+    shell,
+    storybookStart: meta.storybookStart,
+    details: !!page.details,
+    nodeTitles: {
+      ...page.titles,
+      ...Object.fromEntries(page.nav.map((e) => [e.id, e.title])),
+      ...blockTitles(page),
+      [meta.id]: "About the whole document"
+    },
+    sectionOf: { ...sectionIndex(page), [meta.id]: meta.id }
+  };
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${escapeHtml(meta.title)}</title>
+<style>${CSS2}</style>
+</head>
+<body>
+<script>try{for(const k of ['nav','right'])if(localStorage.getItem('parley:pin:'+k)==='1')document.body.classList.add(k+'-pinned')}catch{}</script>
+<header class="top">
+  <div class="top-title" data-live="title">
+    ${byline(page) ? `<p class="byline">${byline(page)}</p>` : ""}
+    <h1 title="${escapeHtml(meta.title)}">${escapeHtml(meta.title)}</h1>
+    ${meta.summary ? `<p class="summary">${escapeHtml(meta.summary)}</p>` : ""}
+  </div>
+  <div class="top-status">${REVIEW_PROGRESS_HTML}${LISTENER_HTML}<span id="persist" class="pill" title="Where answers are saved">…</span>${SEND_ALL_HTML}${UNREAD_HTML}</div>
+  <div class="top-tools">
+    ${REVIEW_STATE_HTML}
+    <span class="menu-wrap"><button id="more" type="button" class="quiet more" title="More: comment, documents, appearance, source links, export" aria-label="More" aria-expanded="false" aria-controls="menu">${ICON_MORE}</button>
+    <div id="menu" class="menu" hidden>
+      <button id="top-comment" type="button" class="menu-item" title="A comment on the whole document">${COMMENT_ICON}<span>Comment on the whole document</span></button>
+      <span class="slot" data-live="docs">${page.links?.length ? `<label class="menu-row"><span class="menu-label">Other documents</span><select id="docs" class="quiet">
+        <option value="">Choose…</option>${page.links.map((l) => `<option value="${escapeHtml(l.href)}">${escapeHtml(l.label)}</option>`).join("")}
+      </select></label>` : ""}</span>
+      <div class="menu-row"><span class="menu-label">Appearance</span><div class="segmented" id="theme" role="radiogroup" aria-label="Appearance">
+        <button type="button" role="radio" data-theme-choice="system" aria-checked="true">System</button><button type="button" role="radio" data-theme-choice="light" aria-checked="false" tabindex="-1">Light</button><button type="button" role="radio" data-theme-choice="dark" aria-checked="false" tabindex="-1">Dark</button>
+      </div></div>
+      <label class="menu-row" id="editor-row" hidden><span class="menu-label">Source links open in</span><select id="editor" class="quiet"${meta.repo ? ` data-remote="${escapeHtml(meta.repo.remote)}" data-repo-key="${escapeHtml(repoKey(meta.repo.remote))}"` : ""}>
+        <optgroup label="Open in">
+          <option value="vscode">VS Code</option>
+          <option value="cursor">Cursor</option>
+          <option value="zed">Zed</option>
+          <option value="idea">IntelliJ IDEA</option>
+          <option value="webstorm">WebStorm</option>
+          <option value="pycharm">PyCharm</option>
+          <option value="rustrover">RustRover</option>
+          <option value="file">File link</option>
+        </optgroup>
+        <option value="copy">Copy path</option>${meta.repo ? `
+        <option value="root">Set checkout folder…</option>` : ""}
+      </select></label>${meta.repo ? `<button id="set-root" type="button" class="quiet" title="Source links open in your editor once this browser knows where the repository is checked out" hidden>Set checkout folder</button><span id="root-form" class="root-form" hidden><input id="root-input" type="text" aria-label="Checkout folder" placeholder="Checkout folder"><button id="root-save" type="button" class="quiet">Save</button><span id="root-msg" class="root-msg" role="alert"></span></span>` : ""}
+      <div class="menu-row" id="export-row"><span class="menu-label">Your answers</span><span class="split-btn"><button id="export" type="button" class="quiet" title="Show the answers JSON">Export</button><button id="export-download" type="button" class="quiet" title="Download ${escapeHtml(meta.id)}.answers.json" aria-label="Download answers JSON">↓</button></span></div>
+      <p class="menu-keys">Keys: j and k step through items, Enter opens one, n and p step through questions, u to new replies, c comments on selected words, Esc clears.</p>
+    </div></span>
+  </div>
+  <div class="slot" data-live="qbar">${renderQuestionBar(questions)}</div>
+  <div id="sb-banner" class="banner sb-banner" role="status" hidden></div>
+  ${STALE_HTML}
+</header>
+${INTRO_HTML}
+${FINISH_SHEET_HTML}
+${LIGHTBOX_HTML}
+${VIEWER_HTML}
+${EXPORT_SHEET_HTML}
+<main class="split">
+  <div class="dock dock-l" id="dock-l">
+    <div class="rail rail-l">
+      <button type="button" class="rail-btn" data-pin="nav" title="Pin the contents open" aria-pressed="false">${ICON_SIDEBAR_L}</button>
+      <span class="rail-badge rail-q" hidden title="Questions still open"></span>
+      <span class="rail-badge rail-c" hidden title="comments">${COMMENT_ICON}<b></b></span>
+    </div>
+    <nav class="pane nav" id="nav" aria-label="Contents" data-live="nav">
+      <div class="pane-head"><span class="eyebrow">Contents</span><button type="button" class="pin" data-pin="nav" title="Keep open" aria-pressed="false">${ICON_PIN}</button></div>
+      ${renderNav(page.nav)}<div class="nav-block">Whole document</div>${navItem(meta.id, "About the whole document")}${renderQuestionNav(questions)}
+    </nav>
+  </div>
+  <section class="pane left" id="left" data-live="left"><div class="left-inner">${page.left}</div></section>
+  <div class="dock dock-r" id="dock-r">
+    <div class="rail rail-r">
+      <button type="button" class="rail-btn" data-open-right title="Open details">${ICON_SIDEBAR_R}</button>
+      <span class="rail-badge rail-q" hidden title="Questions still open"></span>
+      <span class="rail-badge rail-c" hidden title="comments">${COMMENT_ICON}<b></b></span>
+    </div>
+  <aside class="pane right" id="right" data-live="right">
+    <div class="pane-head"><span class="eyebrow">Details</span><span class="hint" title="Click an item to highlight it. j / k step items, n / p step questions (shift: open ones only), u steps to new replies, Esc clears. Select any words and press c to comment on them.">j k · n p · u · c · Esc</span><span class="head-btns"><button type="button" class="pin" data-pin="right" title="Keep open" aria-pressed="false">${ICON_PIN}</button><button type="button" class="pin" data-close-right title="Close">×</button></span></div>
+    ${page.nav.map((e) => sectionHtml(e.id, e.html.trim() ? `${e.html}${sourceLinks(e.source, meta.repo)}` : "", "", `${e.n != null ? `${e.n}. ` : ""}${escapeHtml(e.title)}`, inSection(e.id))).join(`
+`)}
+    ${sectionHtml(meta.id, '<h2>About the whole document</h2><p class="muted">Comments on the document as a whole. Anything for the verdict goes in Finish review.</p>', "general")}
+    ${ending.length ? `<section class="questions" id="questions"><div class="pane-head"><span class="eyebrow">${ending.length === questions.length ? "Questions for you" : "Remaining questions"}</span></div>${ending.map((q) => renderQuestion(q, false, meta)).join("")}</section>` : ""}
+  </aside>
+  </div>
+</main>
+${NOTICE_HTML}
+${ANNO_HTML}
+<script id="parley-data" type="application/json">${embedJson(data)}</script>
+<script>${CLIENT}</script>
+</body>
+</html>
+`;
+}
+
 // src/lib/compose.ts
+var CONTROL = /[\u0000-\u001f\u007f-\u009f\u061c\u200b-\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069\ufeff]/;
 function effective(doc, opts = {}) {
   return opts.storybook ? { ...doc, storybook: opts.storybook } : doc;
 }
@@ -7198,6 +10648,7 @@ function compose(source, links, opts = {}) {
   const lefts = [];
   const nav = [];
   let titles = {};
+  let within = {};
   for (const b of doc.blocks) {
     const mod = blockModule(b.type);
     if (!mod)
@@ -7207,28 +10658,26 @@ function compose(source, links, opts = {}) {
     const label = b.title ?? b.type;
     nav.push(...out.sections.map((sec) => ({ ...sec, block: label, blockId: b.id })));
     titles = { ...titles, ...out.titles };
+    within = { ...within, ...out.within };
   }
-  const kinds = [...new Set(doc.blocks.map((b) => b.type))].join(" · ");
+  const questions = placeQuestions(doc, nav, within);
   return {
     meta: doc,
-    kindLabel: `Parley · ${kinds}`,
+    updated: opts.updated ? when(opts.updated) : undefined,
+    updatedIso: opts.updated?.toISOString(),
+    details: questions.length > 0 || doc.blocks.some((b) => b.type === "diff" && (b.findings?.length ?? 0) > 0),
     left: lefts.join(`
 `),
     nav,
     titles,
     links,
-    questions: placeQuestions(doc, nav, titles)
+    questions
   };
 }
-function placeQuestions(doc, nav, titles) {
+var when = (d) => `${d.toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "UTC" })} UTC`;
+function placeQuestions(doc, nav, within = {}) {
   const sectionIds = new Set(nav.map((s) => s.id));
-  const sectionOf = new Map;
-  for (const s of nav)
-    sectionOf.set(s.id, s.id);
-  for (const s of nav)
-    for (const id of Object.keys(titles))
-      if (!sectionOf.has(id) && id.startsWith(s.id + "."))
-        sectionOf.set(id, s.id);
+  const sectionOf = (id) => sectionIds.has(id) ? id : Object.hasOwn(within, id) ? within[id] : undefined;
   const placed = [];
   for (const b of doc.blocks) {
     const mod = blockModule(b.type);
@@ -7236,7 +10685,7 @@ function placeQuestions(doc, nav, titles) {
       placed.push({ q, place: "center" });
   }
   for (const q of doc.questions ?? []) {
-    const section = q.about ? sectionIds.has(q.about) ? q.about : sectionOf.get(q.about) : undefined;
+    const section = q.about ? sectionOf(q.about) : undefined;
     placed.push(section ? { q, place: "section", section } : { q, place: "end" });
   }
   return placed;
@@ -7245,93 +10694,299 @@ function renderDoc(doc, links, opts = {}) {
   return renderPage(compose(doc, links, opts));
 }
 var ID = /^[a-z0-9][a-z0-9-]*$/;
-function checkDoc(doc, fileStem) {
-  const errors = [];
-  if (!ID.test(doc.id ?? ""))
-    errors.push(`id "${doc.id}" must be lowercase letters, digits and hyphens`);
-  if (fileStem && doc.id !== fileStem)
-    errors.push(`id "${doc.id}" must match the file name "${fileStem}"`);
-  if (!doc.title)
-    errors.push("title is required");
-  if (!doc.created)
-    errors.push("created is required");
-  if (!Array.isArray(doc.blocks) || !doc.blocks.length) {
-    errors.push("blocks must be a non-empty list");
-    return errors;
-  }
-  if (doc.revision !== undefined && !(Number.isInteger(doc.revision) && doc.revision >= 1))
-    errors.push("revision must be a positive integer");
-  if (doc.storybook !== undefined && !/^https?:\/\//.test(doc.storybook))
-    errors.push("storybook must be an http(s) URL");
-  if (doc.repo) {
-    if (!/^https?:\/\//.test(doc.repo.remote ?? ""))
-      errors.push("repo.remote must be an https URL");
-    if (!/^[0-9a-f]{7,40}$/.test(doc.repo.commit ?? ""))
-      errors.push("repo.commit must be a commit sha");
-  }
-  for (const b of doc.blocks)
-    errors.push(...checkSources(b, `block ${b.id}`));
-  const ids = new Map;
-  const node = (id, where) => {
-    if (!id)
-      return errors.push(`${where}: missing id`);
-    if (ids.has(id))
-      errors.push(`${where}: id "${id}" already used by ${ids.get(id)}`);
-    ids.set(id, where);
-  };
-  for (const b of doc.blocks) {
-    node(b.id, `block ${b.id ?? "?"}`);
-    const mod = blockModule(b.type);
-    if (!mod) {
-      errors.push(`block ${b.id}: unknown type "${b.type}"`);
-      continue;
-    }
-    errors.push(...mod.check(b));
-    for (const q of mod.questions?.(b) ?? [])
-      node(q.id, `question ${q.id ?? "?"} in block ${b.id}`);
-    const sections = safeSections(mod, b, doc);
-    for (const s of sections)
-      if (s.id !== b.id)
-        node(s.id, `${b.type} ${b.id} / ${s.title}`);
-    for (const id of mod.nodeIds?.(b) ?? [])
-      node(id, `${b.type} ${b.id} / ${id}`);
-  }
-  for (const q of doc.questions ?? []) {
-    node(q.id, `question ${q.id ?? "?"}`);
-    errors.push(...checkQuestion(q, ids));
-  }
-  for (const b of doc.blocks)
-    for (const q of blockModule(b.type)?.questions?.(b) ?? [])
-      errors.push(...checkQuestion(q, ids));
-  return errors;
+var QUESTION_KINDS = ["single", "multi", "text"];
+var QUESTION_STATUSES = ["open", "closed"];
+var DOC = {
+  id: "string",
+  title: "string",
+  "summary?": "string",
+  created: "string",
+  "author?": {
+    shape: { "agent?": "string", "session?": "string" }
+  },
+  "repo?": {
+    shape: renamed({ remote: "string", commit: "string" }, {
+      root: {
+        gone: "each reader sets their own checkout folder on the page. Remove it"
+      }
+    })
+  },
+  "questions?": { list: "object" },
+  "revision?": "number",
+  "storybook?": "string",
+  "storybookStart?": "string",
+  blocks: { list: "object" }
+};
+var BLOCK = {
+  id: "string",
+  type: "string",
+  "title?": "string",
+  "source?": "any"
+};
+var messageOf = (e) => e instanceof Error && /UTF-16/.test(e.message) ? "a string holds an unpaired UTF-16 surrogate" : e instanceof Error ? e.message : String(e);
+function questionsInvalid(b, at) {
+  const qs = b.questions;
+  return (Array.isArray(qs) ? qs : []).some((q, j) => !isObject(q) || checkShape(q, QUESTION, itemAt(at, "questions", j, q)).errors.length > 0 || (Array.isArray(q.options) ? q.options : []).some((o) => !isObject(o) || checkShape(o, OPTION, "").errors.length > 0));
 }
-function checkSources(value, where) {
-  const errors = [];
-  const visit = (v, w) => {
-    if (!v || typeof v !== "object")
+function idPaths(block, at) {
+  const out = new Map;
+  const visit = (o, path) => {
+    for (const [k, v] of Object.entries(o)) {
+      if (k === "questions")
+        continue;
+      if (Array.isArray(v))
+        v.forEach((x, i) => {
+          if (!isObject(x))
+            return;
+          const p = itemAt(path, k, i, x);
+          if (typeof x.id === "string")
+            out.set(x.id, [...out.get(x.id) ?? [], p]);
+          visit(x, p);
+        });
+      else if (isObject(v))
+        visit(v, fieldAt(path, k));
+    }
+  };
+  visit(block, at);
+  return out;
+}
+function checkBlock(b, doc = {}, at = `${name(b.type)} ${name(b.id)}`, draw = true) {
+  const mod = blockModule(b.type);
+  if (!mod)
+    return {
+      errors: [`${at}: unknown type "${name(b.type)}"; use one of: ${BLOCK_TYPES.join(", ")}`],
+      warnings: [],
+      shaped: false
+    };
+  const shape = checkShape(b, { ...BLOCK, ...mod.shape }, at);
+  if (shape.errors.length)
+    return { ...shape, shaped: false };
+  const errors = mod.check(b, at, { doc });
+  const warnings = [...shape.warnings, ...errors.length ? [] : mod.warn?.(b, at, { doc }) ?? []];
+  if (draw && !errors.length)
+    try {
+      mod.render(b, { doc });
+      mod.markdown(b, { doc });
+    } catch (e) {
+      errors.push(`${at}: cannot be drawn: ${messageOf(e)}`);
+    }
+  return { errors, warnings, shaped: true };
+}
+function locatedQuestions(doc) {
+  if (!isObject(doc))
+    return [];
+  const out = [];
+  const list = (v) => Array.isArray(v) ? v : [];
+  list(doc.questions).forEach((q, i) => {
+    if (isObject(q))
+      out.push({ q, at: itemAt("", "questions", i, q) });
+  });
+  list(doc.blocks).forEach((b, i) => {
+    if (!isObject(b) || b.type !== "question")
       return;
-    if (Array.isArray(v))
-      return v.forEach((x, i) => visit(x, `${w}[${i}]`));
-    const o = v;
-    if ("source" in o && o.source !== undefined) {
-      const list = Array.isArray(o.source) ? o.source : [o.source];
-      for (const src of list) {
-        const name = typeof o.id === "string" ? o.id : w;
-        if (!src || typeof src.uri !== "string" || !src.uri)
-          errors.push(`${name}: source.uri is required`);
-        const r = src.range;
-        if (r) {
-          const ok = (pos) => pos && Number.isInteger(pos.line) && pos.line >= 0 && Number.isInteger(pos.character) && pos.character >= 0;
-          if (!ok(r.start) || !ok(r.end))
-            errors.push(`${name}: source.range needs zero-based start and end {line, character}`);
-        }
+    list(b.questions).forEach((q, j) => {
+      if (isObject(q))
+        out.push({ q, at: itemAt(blockAt(i, b), "questions", j, q) });
+    });
+  });
+  return out;
+}
+function inspectDoc(doc, fileStem) {
+  if (!isObject(doc))
+    return {
+      errors: ["the document must be a JSON object with id, title, created and blocks"],
+      warnings: []
+    };
+  const d = doc;
+  const { errors, warnings } = checkShape(doc, DOC, "");
+  if (typeof d.id === "string" && d.id) {
+    if (!ID.test(d.id))
+      errors.push(`\`id\` "${d.id}" must be lowercase letters, digits and hyphens`);
+    if (fileStem && d.id !== fileStem)
+      errors.push(`\`id\` "${d.id}" must match the file name "${fileStem}"`);
+  }
+  if (Array.isArray(d.blocks) && !d.blocks.length)
+    errors.push("`blocks` must be a non-empty list");
+  if (typeof d.revision === "number" && !(Number.isInteger(d.revision) && d.revision >= 1))
+    errors.push("`revision` must be a positive integer");
+  if (typeof d.storybook === "string" && !webUrl(d.storybook))
+    errors.push("`storybook` must be an http(s) URL");
+  if (isObject(d.repo)) {
+    if (typeof d.repo.remote === "string" && !webUrl(d.repo.remote))
+      errors.push("`repo.remote` must be an http(s) URL");
+    if (typeof d.repo.commit === "string" && !/^[0-9a-f]{7,40}$/.test(d.repo.commit))
+      errors.push("`repo.commit` must be a commit sha");
+  }
+  const blocks = Array.isArray(d.blocks) ? d.blocks : [];
+  blocks.forEach((b, i) => {
+    if (isObject(b))
+      errors.push(...checkSources(b, blockAt(i, b)));
+  });
+  const ids = new Map;
+  const loose = new Set;
+  let unshaped = !Array.isArray(d.blocks);
+  let paths = new Map;
+  const taken = new Map;
+  const inBlock = (id, fallback) => {
+    const n = taken.get(id) ?? 0;
+    taken.set(id, n + 1);
+    return paths.get(id)?.[n] ?? fallback;
+  };
+  const node = (id, where) => {
+    if (typeof id !== "string" || !id)
+      return;
+    if (id in Object.prototype)
+      errors.push(`${where}: id "${id}" is reserved (it is a property of every object); pick another`);
+    const first = ids.get(id);
+    if (first !== undefined)
+      errors.push(`${where}: id "${id}" is already used at ${first}`);
+    else
+      ids.set(id, where);
+  };
+  const blockQuestions = new Set;
+  blocks.forEach((raw, i) => {
+    if (!isObject(raw))
+      return;
+    const b = raw;
+    const at = blockAt(i, b);
+    paths = idPaths(raw, at);
+    taken.clear();
+    node(b.id, at);
+    const draw = !checkSources(raw, at).length && !(b.type === "question" && questionsInvalid(b, at));
+    const r = checkBlock(b, d, at, draw);
+    errors.push(...r.errors);
+    warnings.push(...r.warnings);
+    const mod = blockModule(b.type);
+    if (!mod || !r.shaped) {
+      collectIds(b, loose);
+      unshaped = true;
+      return;
+    }
+    (mod.questions?.(b) ?? []).forEach((q, j) => {
+      node(q.id, itemAt(at, "questions", j, q));
+      blockQuestions.add(q);
+    });
+    for (const s of safeSections(mod, b, d))
+      if (s.id !== b.id)
+        node(s.id, inBlock(s.id, at));
+    for (const id of mod.nodeIds?.(b) ?? [])
+      node(id, inBlock(id, at));
+  });
+  const located = locatedQuestions(d);
+  for (const { q, at } of located)
+    if (!blockQuestions.has(q))
+      node(q.id, at);
+  for (const { q, at } of located) {
+    if (!blockQuestions.has(q) && at.startsWith("blocks["))
+      continue;
+    const top = checkShape(q, QUESTION, at);
+    const options = (Array.isArray(q.options) ? q.options : []).flatMap((o, k) => isObject(o) ? [checkShape(o, OPTION, itemAt(at, "options", k, o))] : []);
+    for (const r of [top, ...options]) {
+      errors.push(...r.errors);
+      warnings.push(...r.warnings);
+    }
+    if (!top.errors.length)
+      errors.push(...checkQuestion(q, at, ids, loose, unshaped, options.every((r) => !r.errors.length), (id) => columnsNamed(d, ids, id)));
+  }
+  warnings.push(...warnDoc(d));
+  if (!errors.length)
+    try {
+      const page = compose(d);
+      renderPage(page);
+      renderMarkdown(d);
+      warnings.push(...placementWarnings(d, page, located));
+    } catch (e) {
+      errors.push(`the page cannot be drawn: ${messageOf(e)}`);
+    }
+  return { errors, warnings };
+}
+function collectIds(value, into) {
+  if (Array.isArray(value))
+    return value.forEach((v) => collectIds(v, into));
+  if (!isObject(value))
+    return;
+  if (typeof value.id === "string")
+    into.add(value.id);
+  for (const v of Object.values(value))
+    collectIds(v, into);
+}
+function placementWarnings(doc, page, located = locatedQuestions(doc)) {
+  const where = new Map(located.map(({ q, at }) => [q, at]));
+  const out = [];
+  let owners;
+  const ownerOf = (id) => {
+    if (!owners) {
+      owners = new Map;
+      for (const b of doc.blocks) {
+        owners.set(b.id, b);
+        for (const x of ownedIds(b, doc))
+          if (!owners.has(x))
+            owners.set(x, b);
       }
     }
-    for (const [k, x] of Object.entries(o))
-      if (k !== "source")
-        visit(x, `${w}.${k}`);
+    return owners.get(id);
   };
-  visit(value, where);
+  for (const { q, place } of page.questions) {
+    if (place !== "end" || !q.about)
+      continue;
+    const owner = ownerOf(q.about);
+    if (!owner)
+      continue;
+    const ids = page.nav.filter((s) => s.blockId === owner.id).map((s) => s.id);
+    const what = owner.id === q.about ? `is a block${ids.length > 1 ? " with several sections" : ""}` : `is inside ${owner.type} ${owner.id} and has no section of its own`;
+    const names = ids.length > 8 ? [...ids.slice(0, 8), "…"] : ids;
+    out.push(`${where.get(q) ?? `question ${name(q.id)}`}: \`about\` "${q.about}" ${what}; the question will show at the end of the page. Name one of: ${names.join(", ")}`);
+  }
+  return out;
+}
+function ownedIds(b, doc) {
+  const mod = blockModule(b.type);
+  if (!mod)
+    return [];
+  return [
+    ...mod.nodeIds?.(b) ?? [],
+    ...Object.keys(mod.render(b, { doc }).titles ?? {}),
+    ...(mod.questions?.(b) ?? []).map((q) => q.id)
+  ];
+}
+function checkSources(value, at) {
+  const errors = [];
+  const position = (pos) => isObject(pos) && Number.isInteger(pos.line) && pos.line >= 0 && Number.isInteger(pos.character) && pos.character >= 0;
+  const visit = (o, at) => {
+    if (o.source !== undefined) {
+      const many = Array.isArray(o.source);
+      (many ? o.source : [o.source]).forEach((src, j) => {
+        const field = many ? `source[${j}]` : "source";
+        if (!isObject(src) || typeof src.uri !== "string" || !src.uri)
+          errors.push(`${at}: \`${field}.uri\` is required`);
+        else if (CONTROL.test(src.uri))
+          errors.push(`${at}: \`${field}.uri\` ${JSON.stringify(src.uri)} holds a control or text-direction character; write the path as plain text`);
+        else if (src.uri.startsWith("~"))
+          errors.push(`${at}: \`${field}.uri\` "${src.uri}" starts with \`~\`, which a link cannot resolve; write a path from the repository root, e.g. \`src/app.ts\`, or an absolute path`);
+        else if (/[/\\]$/.test(src.uri))
+          errors.push(`${at}: \`${field}.uri\` "${src.uri}" ends with \`/\`, so it names a folder; a source names a file, e.g. \`src/app.ts\``);
+        else if (/^(file:\/\/(?!\/|localhost\/)|[/\\]{2})/i.test(src.uri))
+          errors.push(`${at}: \`${field}.uri\` "${src.uri}" names a network host, which a link would reach over the network; write a path from the repository root or a local absolute path`);
+        else if (!repoPath(src.uri) && !localPath(src.uri))
+          errors.push(`${at}: \`${field}.uri\` "${src.uri}" must be a path from the repository root, e.g. \`src/app.ts\`, or an absolute path`);
+        if (!isObject(src) || src.range === undefined)
+          return;
+        const r = src.range;
+        if (!isObject(r) || !position(r.start) || !position(r.end))
+          errors.push(`${at}: \`${field}.range\` needs zero-based start and end {line, character}`);
+      });
+    }
+    for (const [k, x] of Object.entries(o)) {
+      if (k === "source")
+        continue;
+      if (Array.isArray(x))
+        x.forEach((y, i) => isObject(y) && visit(y, itemAt(at, k, i, y)));
+      else if (isObject(x))
+        visit(x, fieldAt(at, k));
+    }
+  };
+  if (isObject(value))
+    visit(value, at);
   return errors;
 }
 function safeSections(mod, b, doc) {
@@ -7343,73 +10998,86 @@ function safeSections(mod, b, doc) {
     return [];
   }
 }
-function checkQuestion(q, ids) {
+function columnsNamed(doc, ids, option) {
+  return (Array.isArray(doc.blocks) ? doc.blocks : []).flatMap((b) => isObject(b) && b.type === "tradeoffs" && typeof b.id === "string" && ids.has(`${b.id}.${option}`) ? [`${b.id}.${option}`] : []);
+}
+function checkQuestion(q, at, ids, loose, aboutUnknown, optionsOk, meant = () => []) {
   const errors = [];
-  const where = `question ${q.id}`;
-  if (!q.prompt)
-    errors.push(`${where}: prompt is required`);
-  if (!["single", "multi", "text"].includes(q.kind))
-    errors.push(`${where}: kind must be single, multi or text`);
-  if (q.kind === "text" && q.options?.length)
-    errors.push(`${where}: a text question has no options`);
-  if (q.kind !== "text" && !q.options?.length)
-    errors.push(`${where}: needs options`);
-  if (q.recommended && !q.options?.some((o) => o.id === q.recommended))
-    errors.push(`${where}: recommended "${q.recommended}" is not an option`);
-  if (q.about && !ids.has(q.about))
-    errors.push(`${where}: about "${q.about}" names no node`);
-  if (q.status !== undefined && q.status !== "open" && q.status !== "closed")
-    errors.push(`${where}: status must be open or closed`);
-  if (q.group !== undefined && (typeof q.group !== "string" || !q.group.trim()))
-    errors.push(`${where}: group must be a heading`);
-  const optionIds = new Set;
-  for (const o of q.options ?? []) {
-    if (optionIds.has(o.id))
-      errors.push(`${where}: option id "${o.id}" is used twice`);
-    optionIds.add(o.id);
+  const options = q.options ?? [];
+  if (!QUESTION_KINDS.includes(q.kind))
+    errors.push(`${at}: \`kind\` must be single, multi or text`);
+  if (q.kind === "text" && options.length)
+    errors.push(`${at}: a text question has no \`options\``);
+  if (q.kind !== "text" && !options.length)
+    errors.push(`${at}: needs \`options\``);
+  if (optionsOk && q.recommended && !options.some((o) => o.id === q.recommended))
+    errors.push(`${at}: \`recommended\` "${q.recommended}" is not an option id`);
+  if (q.about && !aboutUnknown && !ids.has(q.about) && !loose.has(q.about)) {
+    const near = meant(q.about);
+    errors.push(`${at}: \`about\` "${q.about}" names no node${near.length ? `; a tradeoffs option column is named \`<block id>.<option id>\`: ${near.join(" or ")}` : ""}`);
   }
-  errors.push(...checkMedia(q, where));
-  for (const o of q.options ?? [])
-    errors.push(...checkMedia(o, `${where} option ${o.id}`));
+  if (q.status !== undefined && !QUESTION_STATUSES.includes(q.status))
+    errors.push(`${at}: \`status\` must be open or closed`);
+  if (q.group !== undefined && !q.group.trim())
+    errors.push(`${at}: \`group\` must be a heading`);
+  errors.push(...checkMedia(q, at));
+  if (!optionsOk)
+    return errors;
+  const optionIds = new Set;
+  options.forEach((o, k) => {
+    const where = itemAt(at, "options", k, o);
+    if (o.id === ASK_VALUE)
+      errors.push(`${where}: id "${ASK_VALUE}" is reserved`);
+    if (optionIds.has(o.id))
+      errors.push(`${where}: id "${o.id}" is used twice in this question`);
+    optionIds.add(o.id);
+    errors.push(...checkMedia(o, where));
+  });
   return errors;
 }
 var VERDICT = /recommend/i;
+var says = (v) => typeof v === "string" && VERDICT.test(v);
 function warnDoc(doc) {
   const out = [];
   const labels = (m, where) => {
-    for (const s of stories(m))
-      if (s.label && VERDICT.test(s.label))
-        out.push(`${where}: story label "${s.label}" says "recommended"; use the question's \`recommended\``);
-    for (const s of shots(m))
-      if (s.caption && VERDICT.test(s.caption))
-        out.push(`${where}: shot caption "${s.caption}" says "recommended"; use the question's \`recommended\``);
+    stories(m).forEach((s, i) => {
+      if (says(s?.title))
+        out.push(`${itemAt(where, "stories", i, s)}: \`title\` "${s.title}" says "recommended"; use the question's \`recommended\``);
+    });
+    shots(m).forEach((s, i) => {
+      if (says(s?.caption))
+        out.push(`${itemAt(where, "shots", i, s)}: \`caption\` "${s.caption}" says "recommended"; use the question's \`recommended\``);
+    });
   };
-  for (const q of allQuestions(doc)) {
-    labels(q, `question ${q.id}`);
+  for (const { q, at } of locatedQuestions(doc)) {
+    labels(q, at);
     if (q.resolution && q.status !== "closed")
-      out.push(`question ${q.id}: has a resolution but is not closed`);
-    for (const o of q.options ?? []) {
-      if (VERDICT.test(o.label))
-        out.push(`question ${q.id} option ${o.id}: label "${o.label}" says "recommended"; use \`recommended\``);
-      labels(o, `question ${q.id} option ${o.id}`);
-    }
+      out.push(`${at}: has a \`resolution\` but is not closed`);
+    (Array.isArray(q.options) ? q.options : []).forEach((o, k) => {
+      if (!isObject(o))
+        return;
+      const where = itemAt(at, "options", k, o);
+      if (says(o.title))
+        out.push(`${where}: \`title\` "${o.title}" says "recommended"; use \`recommended\``);
+      labels(o, where);
+    });
   }
   return out;
 }
 
 // src/lib/files.ts
-import { closeSync, openSync, readSync, realpathSync, statSync as statSync2 } from "node:fs";
-import { dirname, join as join5, posix as posix3, resolve as resolve2, sep } from "node:path";
+import { closeSync as closeSync4, openSync as openSync4, readSync, realpathSync as realpathSync2, statSync as statSync6 } from "node:fs";
+import { dirname as dirname4, join as join8, posix as posix3, relative as relative2, resolve as resolve4, sep } from "node:path";
 function projectRoot(from) {
-  let d = resolve2(from);
+  let d = resolve4(from);
   for (;; ) {
     try {
-      statSync2(join5(d, ".git"));
+      statSync6(join8(d, ".git"));
       return d;
     } catch {}
-    const up = dirname(d);
+    const up = dirname4(d);
     if (up === d)
-      return resolve2(from);
+      return resolve4(from);
     d = up;
   }
 }
@@ -7437,12 +11105,12 @@ function listFiles(root, git) {
   return [...new Set(r.stdout.split("\x00").filter(Boolean))];
 }
 function looksBinary(file) {
-  const fd = openSync(file, "r");
+  const fd = openSync4(file, "r");
   try {
     const buf = Buffer.alloc(8192);
     return buf.subarray(0, readSync(fd, buf, 0, buf.length, 0)).includes(0);
   } finally {
-    closeSync(fd);
+    closeSync4(fd);
   }
 }
 
@@ -7490,13 +11158,16 @@ class ProjectFiles {
       return;
     if (!this.#withRetry(() => this.#all.has(norm) ? true : undefined))
       return;
-    const media = MEDIA_TYPES[norm.split(".").pop().toLowerCase()];
+    const ext = norm.split(".").pop().toLowerCase();
+    const media = Object.hasOwn(MEDIA_TYPES, ext) ? MEDIA_TYPES[ext] : undefined;
     try {
-      const realRoot = realpathSync(this.root);
-      const path = realpathSync(join5(this.root, norm));
+      const realRoot = realpathSync2(this.root);
+      const path = realpathSync2(join8(this.root, norm));
       if (!path.startsWith(realRoot + sep))
         return;
-      const size = statSync2(path).size;
+      if (!this.#all.has(relative2(realRoot, path).split(sep).join("/")))
+        return;
+      const size = statSync6(path).size;
       if (media)
         return size > MAX_MEDIA ? undefined : { path, media };
       if (size > MAX_TEXT || looksBinary(path))
@@ -7533,26 +11204,45 @@ class ProjectFiles {
 // src/commands/check.ts
 var cli2 = defineCli({
   name: "parley check",
-  summary: "Validate parley documents: ids, anchors, references and media.",
+  summary: "Validate parley documents: fields, ids, anchors, references and media.",
   flags: {},
   positionals: [{ name: "doc.json", variadic: true, required: true }]
 });
+var messageOf2 = (e) => e instanceof Error ? e.message : String(e);
+function read(path) {
+  try {
+    return { text: readFileSync6(path, "utf8") };
+  } catch (e) {
+    const code = e.code;
+    if (code === "ENOENT")
+      return { error: "file not found" };
+    if (code === "EISDIR")
+      return { error: "is a folder; name the document files" };
+    return { error: `cannot be read: ${messageOf2(e)}` };
+  }
+}
 function checkFile(path) {
+  const file = read(path);
+  if ("error" in file)
+    return { errors: [file.error], warnings: [] };
   let doc;
   try {
-    doc = JSON.parse(readFileSync3(path, "utf8"));
+    doc = JSON.parse(file.text);
   } catch (e) {
-    return {
-      errors: [`not valid JSON: ${e instanceof Error ? e.message : String(e)}`],
-      warnings: []
-    };
+    return { errors: [`not valid JSON: ${messageOf2(e)}`], warnings: [] };
   }
-  const errors = checkDoc(doc, basename(path).replace(/\.json$/, ""));
-  if (errors.length)
-    return { errors, warnings: [] };
-  const dir = dirname2(path);
-  errors.push(...missingShots(allMedia(doc, allQuestions(doc)), dir, projectRoot(dir)));
-  return { errors, warnings: warnDoc(doc) };
+  const { errors, warnings } = inspectDoc(doc, basename3(path).replace(/\.json$/, ""));
+  if (doc && typeof doc === "object" && !Array.isArray(doc))
+    try {
+      const d = doc;
+      const dir = dirname5(path);
+      const root = projectRoot(dir);
+      errors.push(...missingShots(allMedia(d, locatedQuestions(d)), dir, root));
+      errors.push(...missingFigures(Array.isArray(d.blocks) ? d.blocks : [], dir, root));
+    } catch (e) {
+      errors.push(`check failed: ${messageOf2(e)}`);
+    }
+  return { errors, warnings };
 }
 function main2(argv, ctx) {
   const parsed = cli2.parse(argv, ctx.io);
@@ -7571,7 +11261,7 @@ function main2(argv, ctx) {
   }
   let failed = false;
   for (const f of files) {
-    const { errors, warnings } = checkFile(resolve3(ctx.cwd, f));
+    const { errors, warnings } = checkFile(resolve5(ctx.cwd, f));
     if (errors.length) {
       failed = true;
       ctx.io.stdout(`${f}: ${errors.length} problem${errors.length === 1 ? "" : "s"}
@@ -7590,8 +11280,8 @@ function main2(argv, ctx) {
 }
 
 // src/commands/render.ts
-import { readFileSync as readFileSync4, writeFileSync as writeFileSync3 } from "node:fs";
-import { resolve as resolve4 } from "node:path";
+import { readFileSync as readFileSync7, writeFileSync as writeFileSync2 } from "node:fs";
+import { resolve as resolve6 } from "node:path";
 var cli3 = defineCli({
   name: "parley render",
   summary: "Write one document as a static HTML page or as markdown.",
@@ -7627,41 +11317,1207 @@ function main3(argv, ctx) {
     return EXIT.usage;
   }
   const { values, positionals } = parsed;
-  const doc = JSON.parse(readFileSync4(resolve4(ctx.cwd, positionals[0]), "utf8"));
-  const links = (values.link ?? []).map((l) => {
-    const [href = "", label] = l.split("=");
-    return { href, label: label ?? href };
-  });
+  const doc = JSON.parse(readFileSync7(resolve6(ctx.cwd, positionals[0]), "utf8"));
+  const links = [];
+  for (const l of values.link ?? []) {
+    const at = l.lastIndexOf("=");
+    const href = at < 0 ? l : l.slice(0, at);
+    const label = at < 0 ? l : l.slice(at + 1);
+    if (!href || !label) {
+      ctx.io.stderr(`parley render: --link "${l}" needs a URL and a label, as --link href=label (a URL that holds \`=\` needs a label too)
+`);
+      return EXIT.usage;
+    }
+    links.push({ href, label });
+  }
   const format = values.format ?? (values.out?.endsWith(".md") ? "markdown" : "html");
-  const text = format === "html" ? renderDoc(doc, links) : renderMarkdown(doc);
+  let text;
+  try {
+    text = format === "html" ? renderDoc(doc, links) : renderMarkdown(doc);
+  } catch (e) {
+    const { errors } = inspectDoc(doc);
+    const why = errors.length ? errors : [e instanceof Error ? e.message : String(e)];
+    ctx.io.stderr(`parley render: ${positionals[0]} cannot be drawn:
+${why.map((w) => `  - ${w}
+`).join("")}`);
+    return EXIT.error;
+  }
   if (values.out)
-    writeFileSync3(resolve4(ctx.cwd, values.out), text);
+    writeFileSync2(resolve6(ctx.cwd, values.out), text);
   else
     ctx.io.stdout(text);
   return EXIT.ok;
 }
 
+// src/lib/reference-notes.ts
+var or = (values) => {
+  const quoted = values.map((v) => `\`${v}\``);
+  return quoted.length < 2 ? quoted.join("") : `${quoted.slice(0, -1).join(", ")} or ${quoted.at(-1)}`;
+};
+var PART_NOTES = {
+  document: {
+    about: "The JSON file an agent writes, `<id>.json`. It holds the blocks in reading order and any questions that are not in a block.",
+    fields: {
+      id: "The file name without `.json`. Lowercase letters, digits and hyphens. Answers key on it.",
+      title: "The heading of the page.",
+      summary: "One or two lines under the title.",
+      created: "Required. The date, written `YYYY-MM-DD`. `check` fails when it is missing or empty. It does not read the format.",
+      author: "Who wrote the document.",
+      "author.agent": "The agent, for example its model id.",
+      "author.session": "The session it ran in.",
+      repo: "The repository that `source` paths point into. Needed for GitHub links.",
+      "repo.remote": "The http(s) address of the repository, for example `https://github.com/owner/name`.",
+      "repo.commit": "The commit the sources were read at, 7 to 40 hex characters. Links pin to it.",
+      questions: "Questions not placed in a block. One with `about` shows under that item; the rest show at the end of the page.",
+      revision: "A whole number from 1. Raise it each time you revise the questions. Answers record the revision they were given at.",
+      storybook: "The http(s) address stories load from, for example `http://localhost:6006`.",
+      storybookStart: "The command that starts Storybook. The page shows it when Storybook is down.",
+      blocks: "The blocks, in reading order. At least one. One `prose` block is a whole document."
+    }
+  },
+  block: {
+    about: "The fields every block has, beside the fields of its type.",
+    fields: {
+      id: "Unique id across the document. It must not be an `Object.prototype` property name such as `constructor`. Keep it when you revise: comments key on it.",
+      type: "The block type, for example `prose` or `matrix`.",
+      title: "A heading above the block.",
+      source: "Where the block lives in code. See {source}."
+    }
+  },
+  question: {
+    enums: { kind: QUESTION_KINDS, status: QUESTION_STATUSES },
+    about: "A decision the agent needs from the reviewer. It goes in the document `questions` or in a `question` block.",
+    fields: {
+      id: "Unique id across the document. Answers key on it, so never reuse or rename it.",
+      source: "Where the thing it asks about lives in code. See {source}.",
+      stories: "Live Storybook stories shown with the question. A string is a story id.",
+      shots: "Screenshots or short videos shown with the question. A string is a path.",
+      prompt: "The question, as the reviewer reads it.",
+      kind: "`single` (pick one option), `multi` (pick any) or `text` (free text, no options). A free-text answer goes to the agent with the verdict, like a chosen option.",
+      options: "The answers it offers. Required unless `kind` is `text`, and not allowed then.",
+      recommended: "The id of the option you suggest. It shows first and marked. Say why in its `detail`.",
+      about: 'The id of the item it is about. The question shows under that item, if the item has a details section of its own: a `prose` block, a matrix row, a table, an operation. If `about` names a block with several sections, or an item with no section, `check` warns and the question shows at the end of the page with a "see" link to the item. Without `about` the question shows at the end.',
+      group: "A heading the contents list the question under.",
+      status: `${or(QUESTION_STATUSES)}. Default \`open\`. A closed question shows its \`resolution\`.`,
+      resolution: "One line on how a closed question was settled."
+    }
+  },
+  option: {
+    about: "One answer a question offers.",
+    fields: {
+      id: "Unique within its question. The answers file records it when chosen. `__ask` is reserved.",
+      source: "Where this option lives in code. See {source}.",
+      stories: "Live Storybook stories for this option. Options with media show side by side.",
+      shots: "Screenshots or short videos for this option.",
+      title: "The option, in a few words.",
+      detail: "Why one would pick it, and what it costs."
+    }
+  },
+  story: {
+    about: 'A live Storybook story, written as an object. A plain string is the same as `{"id": "<string>"}`.',
+    fields: {
+      id: "The story id as `<storybook>/index.json` lists it, for example `explore-file-view--tabs-today`.",
+      title: "A caption for the frame.",
+      globals: "Storybook globals, for example `theme:dark`.",
+      height: "Frame height in pixels. Default 480.",
+      width: "The width the story lays out at, in pixels. Default 1440. The page scales it to fit.",
+      storybook: "This story's Storybook address, when it is not the document's `storybook`."
+    }
+  },
+  shot: {
+    about: 'A screenshot or a short video (`.webm`, `.mp4`), written as an object. A plain string is the same as `{"path": "<string>"}`.',
+    fields: {
+      path: "`x/<file>` in the `x/` folder beside the document, or a path from the repository root. The file must exist.",
+      caption: "A line under the image."
+    }
+  }
+};
+var BLOCK_NOTES = {
+  prose: {
+    about: "A few paragraphs of text. One item. A document can be a single long `prose` block. The page renders only this. A blank line starts a new paragraph. Inline code goes in backticks. Bold is `**bold**`. Links are `[label](link)`. Wikilinks are `[[wikilinks]]`. A bullet list is a paragraph where every line starts with `- `. A line of text above the dashes makes the whole paragraph plain text. Headings, `*italic*`, numbered lists, nested lists and tables show as typed. Code fences do not render: their backticks become empty code spans, so do not use them. Use the block `title` for a heading. A single line break inside a paragraph becomes a space. The markdown export (`render --out x.md`) pastes the text as written, so there headings and fences work.",
+    fields: {
+      text: "The text."
+    }
+  },
+  figure: {
+    about: "One image with a caption: a mockup, a screenshot, a chart. One item.",
+    fields: {
+      src: "`x/<file>` in the `x/` folder beside the document, or a path from the repository root. The file must exist.",
+      alt: "What the image shows, for someone who cannot see it.",
+      caption: "A line under the image.",
+      detail: "Text for the details pane: what to look at and why.",
+      href: "An http(s) page with the live version, for example the mockup the image came from."
+    }
+  },
+  story: {
+    about: "Live Storybook stories and screenshots side by side. One item. Needs at least one story or shot.",
+    fields: {
+      stories: "Live Storybook stories. A string is a story id.",
+      shots: "Screenshots or short videos. A string is a path.",
+      caption: "A line under the frames.",
+      detail: "Text for the details pane: what to look at."
+    }
+  },
+  question: {
+    about: "One or more questions placed in the reading column at this point, next to what they decide. One item.",
+    fields: {
+      questions: "The questions. At least one."
+    }
+  },
+  "annotated-text": {
+    about: "Any text with numbered steps anchored into it: a SQL query, a function, a config file. One item per step.",
+    fields: {
+      language: "The language of `text`. Only `sql` is coloured today.",
+      text: "The text the steps point into.",
+      steps: "The steps, in reading order. At least one.",
+      "steps[].title": "The step name.",
+      "steps[].anchor": "Where the step sits in `text`. Prefer `TextQuoteSelector`: quoting is easier than counting.",
+      "steps[].anchor.type": "Which kind of anchor.",
+      "steps[].anchor.exact": "With `TextQuoteSelector`: the exact words from `text`. They must appear in it as written.",
+      "steps[].anchor.prefix": "With `TextQuoteSelector`: the text just before the quote, when the quote appears more than once.",
+      "steps[].anchor.suffix": "With `TextQuoteSelector`: the text just after the quote, when the quote appears more than once.",
+      "steps[].anchor.start": "With `TextPositionSelector`: the first character, counted in UTF-16 units from 0. An emoji counts as two.",
+      "steps[].anchor.end": "With `TextPositionSelector`: the character after the last one.",
+      "steps[].summary": "One line for the step list.",
+      "steps[].detail": "Paragraphs for the details pane.",
+      "steps[].touches": "What the step reads or writes. A string, or a table and column.",
+      "steps[].touches[].table": "The table.",
+      "steps[].touches[].column": "The column.",
+      "steps[].cost": "What the step costs.",
+      "steps[].cost.rows": "About how many rows it reads.",
+      "steps[].cost.detail": "A line on the cost.",
+      "steps[].warnings": "Things to watch for, one per line."
+    }
+  },
+  schema: {
+    enums: { "relations[].cardinality": CARDINALITIES },
+    about: "Database tables with their columns, keys and indexes, grouped by domain. One item per table, and one per column for comments. There is no field for a check constraint. Write it in the table `notes` (one line each, shown as a highlighted note under the table), or as a column `flags` entry such as `check: qty > 0` (shown as a chip on the column).",
+    fields: {
+      dialect: "The database, for example `postgres`.",
+      tables: "The tables. At least one.",
+      "tables[].name": "The table name. Columns, keys, indexes and relations name tables by it.",
+      "tables[].schema": "The database schema it is in, for example `public`.",
+      "tables[].purpose": "What the table is for, in a line.",
+      "tables[].columns": "The columns.",
+      "tables[].columns[].id": "Optional. Defaults to `<table id>.<name>`.",
+      "tables[].columns[].name": "The column name.",
+      "tables[].columns[].type": "The column type, as the database writes it.",
+      "tables[].columns[].nullable": "Whether it can be null.",
+      "tables[].columns[].default": "The default value, shown as written.",
+      "tables[].columns[].pk": "Whether it is part of the primary key.",
+      "tables[].columns[].references": "The column it points to.",
+      "tables[].columns[].references.table": "That table, by `name`.",
+      "tables[].columns[].references.column": "That column, by `name`.",
+      "tables[].columns[].flags": "Labels shown as chips, for example `unique`, `indexed`, `generated` or `check: qty > 0`. `unique` also marks the column unique. `check` accepts any text.",
+      "tables[].columns[].purpose": "What the column is for.",
+      "tables[].primaryKey": "Column names in the primary key, when it has more than one.",
+      "tables[].indexes": "The indexes.",
+      "tables[].indexes[].id": "Optional.",
+      "tables[].indexes[].name": "The index name.",
+      "tables[].indexes[].columns": "Column names, in order. Each must be a column of this table.",
+      "tables[].indexes[].unique": "Whether it is unique.",
+      "tables[].indexes[].where": "The condition of a partial index.",
+      "tables[].indexes[].purpose": "What the index is for.",
+      "tables[].rows": "About how many rows the table holds.",
+      "tables[].notes": "Notes, one per line, each shown as a highlighted line under the table. This is the place for a check constraint or any rule the other fields have no slot for.",
+      relations: "Links between tables. Leave it out to draw them from the columns’ `references`.",
+      "relations[].from": "The column the link starts at.",
+      "relations[].from.table": "The table, by `name`.",
+      "relations[].from.column": "The column, by `name`.",
+      "relations[].to": "The column the link points to.",
+      "relations[].to.table": "The table, by `name`.",
+      "relations[].to.column": "The column, by `name`.",
+      "relations[].cardinality": `${or(CARDINALITIES)}.`,
+      "relations[].detail": "A line on the link.",
+      groups: "Groups of tables, by domain.",
+      "groups[].title": "The group heading.",
+      "groups[].tables": "Table names in the group."
+    }
+  },
+  operations: {
+    enums: { "operations[].risk": RISKS },
+    about: "Ordered operations, such as the steps of a migration or a deploy, with risk, locks and rollback. One item per operation. `reversible` is required on every operation. When it is `false`, `check` fails unless the operation has a `rollback` that says what undoing it would take.",
+    fields: {
+      language: "The language of `code`, for example `sql`.",
+      operations: "The operations, in order. At least one.",
+      "operations[].kind": "A short category, for example `add-column`, `backfill` or `deploy`.",
+      "operations[].target": "What it acts on, for example a table and column.",
+      "operations[].title": "The operation name.",
+      "operations[].code": "The statement or command.",
+      "operations[].before": "The state before it runs.",
+      "operations[].after": "The state after it runs.",
+      "operations[].detail": "Paragraphs for the details pane.",
+      "operations[].risk": `${or(RISKS)}.`,
+      "operations[].locks": "What it locks, and for how long.",
+      "operations[].reversible": "Required. Whether it can be undone. `false` needs `rollback`.",
+      "operations[].rollback": "How to undo it. Required when `reversible` is false.",
+      "operations[].warnings": "Things to watch for, one per line.",
+      phases: "Groups of operations. When given, every operation must be in a phase.",
+      "phases[].title": "The phase name.",
+      "phases[].detail": "A line on the phase.",
+      "phases[].ops": "Operation ids in the phase."
+    }
+  },
+  matrix: {
+    enums: { "cells[].state": STATES, default: STATES },
+    about: `A grid of rows by columns. Each cell is ${or(STATES)}. \`skip\` means not applicable or not used: it shows as a dash. \`valid\` means it works or is used as wanted. \`warn\` and \`error\` are problems and need a \`reason\`. One item per row. A question about a column shows at the end of the page, so put it on a row.`,
+    fields: {
+      rowsTitle: "What the rows are, for example `Tool`.",
+      columnsTitle: "What the columns are, for example `Model family`.",
+      rows: "The rows. At least one.",
+      "rows[].title": "The row name.",
+      "rows[].detail": "A line on the row.",
+      columns: "The columns. At least one.",
+      "columns[].title": "The column name.",
+      "columns[].detail": "A line on the column.",
+      cells: "The cells that are not `default`. Leave it out when every cell is `default`. List a cell as `skip` only when `default` is something else.",
+      "cells[].row": "The row id.",
+      "cells[].column": "The column id.",
+      "cells[].state": `${or(STATES)}.`,
+      "cells[].reason": "Why the cell has that state. Required for `warn` and `error`.",
+      "cells[].hint": "What to do instead, for `warn` or `error`.",
+      default: `The state of every cell not listed: ${or(STATES)}. Default \`skip\`, so a cell you do not list is "not applicable".`
+    }
+  },
+  trace: {
+    enums: { outcomes: TONES2 },
+    about: "One request walked through candidates in order, each with an outcome and a reason. One item per step.",
+    fields: {
+      input: "The request, in a line.",
+      steps: "The candidates, in the order they were tried. At least one.",
+      "steps[].title": "The candidate.",
+      "steps[].outcome": "What happened, for example `chosen`, `skip` or `error`. At most one step may have a good outcome.",
+      "steps[].reason": "Why, in a line.",
+      "steps[].detail": "Paragraphs for the details pane.",
+      outcomes: `Colours for outcome words: each word maps to ${or(TONES2)}. Words not listed: \`chosen\` and \`ok\` are good, \`error\` and \`fail\` bad, \`cooling\` and \`warn\` warn, the rest skip.`
+    }
+  },
+  precedence: {
+    about: "An ordered list where the first match wins, with examples that show which rung each one stops at. One item per rung and per example.",
+    fields: {
+      rungs: "The rungs, first match first. At least two.",
+      "rungs[].title": "The rule.",
+      "rungs[].detail": "A line on the rule.",
+      examples: "Examples that each stop at one rung.",
+      "examples[].title": "The example.",
+      "examples[].matches": "The id of the rung it stops at.",
+      "examples[].reason": "A line on why."
+    }
+  },
+  plan: {
+    enums: {
+      "phases[].status": STATUSES,
+      "phases[].workstreams[].tasks[].status": STATUSES
+    },
+    about: "Phases, workstreams and tasks, each with its gate, milestone and status. One item per phase, workstream and task.",
+    fields: {
+      phases: "The phases, in order. At least one.",
+      "phases[].title": "The phase name.",
+      "phases[].detail": "A line on the phase.",
+      "phases[].gate": "What must be true before it starts.",
+      "phases[].milestone": "The milestone it delivers.",
+      "phases[].status": `${or(STATUSES)}.`,
+      "phases[].workstreams": "The workstreams in the phase. At least one.",
+      "phases[].workstreams[].title": "The workstream name.",
+      "phases[].workstreams[].detail": "A line on the workstream.",
+      "phases[].workstreams[].tasks": "The tasks. At least one.",
+      "phases[].workstreams[].tasks[].title": "The task name.",
+      "phases[].workstreams[].tasks[].status": `${or(STATUSES)}.`,
+      "phases[].workstreams[].tasks[].milestone": "The milestone it delivers.",
+      "phases[].workstreams[].tasks[].gate": "What must be true before it starts.",
+      "phases[].workstreams[].tasks[].detail": "A line on the task."
+    }
+  },
+  "code-flow": {
+    enums: { "steps[].kind": KINDS },
+    about: "One path through code across functions and files, drawn as a sequence diagram. One item per step. Use `annotated-text` for one file.",
+    fields: {
+      language: "The language of the steps’ `code`.",
+      entry: "What starts the flow, for example `POST /orders/:id/ship`.",
+      steps: "The steps, in the order they run. At least two.",
+      "steps[].title": "The step name.",
+      "steps[].symbol": "The function or handler the step runs in. A step needs `symbol` or `source`.",
+      "steps[].kind": `${or(KINDS)}.`,
+      "steps[].depth": "Call depth: 0 at the entry, 1 inside what it called, and so on.",
+      "steps[].code": "The lines that matter at this step. Needs `source` to say where they live.",
+      "steps[].summary": "One line for the step list.",
+      "steps[].detail": "Paragraphs for the details pane.",
+      "steps[].next": "Where control goes next, when not simply the next step.",
+      "steps[].next[].to": "The id of the step it goes to.",
+      "steps[].next[].when": "The condition, for example `order is null`.",
+      "steps[].warnings": "Things to watch for, one per line."
+    }
+  },
+  workflow: {
+    enums: { "steps[].kind": KINDS2 },
+    about: "A process drawn as a flowchart: steps in order, each in a lane that says who does it, with decisions and hand-offs. One item per step and per lane.",
+    fields: {
+      trigger: "What starts it, for example `a PR is opened`.",
+      lanes: "Who or what does the steps: a role, a team, a system. At least one.",
+      "lanes[].title": "The lane name.",
+      "lanes[].detail": "A line on the lane.",
+      steps: "The steps, in order. At least two.",
+      "steps[].title": "The step name.",
+      "steps[].lane": "The id of the lane that does it.",
+      "steps[].kind": `${or(KINDS2)}. A \`decision\` names at least two steps in \`next\`.`,
+      "steps[].summary": "One line for the step list.",
+      "steps[].detail": "Paragraphs for the details pane.",
+      "steps[].next": "Where it goes next, when not simply the next step.",
+      "steps[].next[].to": "The id of the step it goes to.",
+      "steps[].next[].when": "The condition, for example `approved`.",
+      "steps[].duration": "How long it takes, for example `≤ 1 day`.",
+      "steps[].artifacts": "What the step produces, for example a PR or an approval.",
+      "steps[].warnings": "Things to watch for, one per line."
+    }
+  },
+  diff: {
+    enums: { "findings[].side": SIDES, severities: TONES },
+    about: "A unified diff with review findings anchored to its lines. One item per finding. A finding is a part of the diff, so a question about one names the finding id in `about`.",
+    fields: {
+      diff: "The diff text, as `git diff` or `gh pr diff` prints it. Every hunk needs its `@@ -a,b +c,d @@` header: `a` and `c` are the first line numbers on the old and new side, `b` and `d` count the lines that follow (context and `-` lines for `b`, context and `+` lines for `d`). Lines before a header do not show and a finding cannot anchor to them. If you have no real numbers, write `@@ -1,N +1,M @@` and count `line` from 1.",
+      base: "What the diff starts from, for example `main`.",
+      head: "What the diff ends at, for example a branch or commit.",
+      findings: "The findings. The key is required, but the list may be empty: the diff then shows with no findings.",
+      "findings[].title": "The finding, in a few words.",
+      "findings[].file": "The file path as the diff shows it: the new path, or the old path for a deleted file.",
+      "findings[].line": "The first line, counted from 1 on `side`. It must sit in a hunk of that file.",
+      "findings[].endLine": "The last line, for a range in the same hunk.",
+      "findings[].side": `${or(SIDES)}. Default \`new\`. Lines of a deleted file are \`old\`.`,
+      "findings[].severity": "Your scale, for example `blocker`, `major`, `minor` or `nit`.",
+      "findings[].category": "What it is about, for example `naming` or `tests`.",
+      "findings[].summary": "One line for the finding list.",
+      "findings[].detail": "Paragraphs for the details pane.",
+      "findings[].suggestion": "Replacement text for the anchored lines.",
+      "findings[].warnings": "Things to watch for, one per line.",
+      severities: `Colours for severity words: each word maps to ${or(TONES)}. Words not listed: \`violation\`, \`blocker\`, \`critical\`, \`high\` and \`error\` are bad; \`tension\`, \`major\`, \`medium\` and \`warning\` warn; \`praise\` and \`good\` are ok; the rest skip.`
+    }
+  },
+  metrics: {
+    enums: { "measures[].better": BETTER, layout: LAYOUTS },
+    about: "Named measures with a value per column and the change between two columns: latency, bundle size, query cost, test counts. One item per measure. Up to 6 measures over two columns draw as tiles, the rest as a table. A tile shows only the two `compare` columns, so a block with three columns in `layout: tiles` hides the middle one; use `table` to show every column. For a `%` measure the difference shows in percentage points (`+5 pp (+50%)`). A value or change below 1e-6 or at or above 1e21 in size shows in exponent form (`2e-25`, `1.2e21`); between those bounds it shows plain digits.",
+    fields: {
+      columns: "The columns of values, for example `main` and the PR. At least one.",
+      "columns[].id": "Unique within the block. `values` and `compare` name the column by it.",
+      "columns[].title": "The column name.",
+      compare: "Two column ids: the change runs from the first to the second. Default the first and the last column.",
+      measures: "The measures. At least one.",
+      "measures[].title": "The measure name, for example `p95 latency`.",
+      "measures[].unit": "The unit, for example `ms`, `KB` or `%`.",
+      "measures[].better": `Which way is better: ${or(BETTER)}. Default \`none\`.`,
+      "measures[].values": "Column id to number. Each key must be a column id. A column with no value shows a dash.",
+      "measures[].threshold": "How far the change may go the wrong way, in percent of the first compared value. Needs `better` lower or higher. The percent is always relative, also for a `%` measure: `bad: 10` on 20% → 23% means 10% of 20, not 10 points. With a negative first value the percent is of its size (−200 → −300 is −50%). When the first value is 0 there is no percent, so any wrong-way change passes the threshold: `warn` alone warns, and `bad` makes it bad. With no threshold, any wrong-way change warns; set one for a change to show as bad.",
+      "measures[].threshold.warn": "Past this percent the change shows as a warning.",
+      "measures[].threshold.bad": "Past this percent the change shows as bad, and the measure needs `detail` to say why.",
+      "measures[].trend": "Earlier values, oldest first, drawn as a sparkline. At least 2 numbers.",
+      "measures[].detail": "Paragraphs for the details pane: why it moved, how it was measured.",
+      layout: `${or(LAYOUTS)}. Default \`auto\`: tiles for up to 6 measures over two columns, else a table.`
+    }
+  },
+  tradeoffs: {
+    enums: { "scale.better": SCALE_BETTER },
+    about: "A weighted decision matrix: a question's options scored against criteria, with a weighted total per option. One item per criterion, and one per option column. An option column's id is `<block id>.<option id>` (`queue.pg`), so two tradeoffs blocks can weigh the same question and an option id may equal another item's id; a comment or a question's `about` names the column by that id. `check` warns when the best total is not the question's `recommended` option. Scores, weights and totals use the same rule: a number below 1e-6 or at or above 1e21 in size shows in exponent form.",
+    fields: {
+      question: 'The id of a `single` or `multi` question, in the document `questions` or a `question` block. Its options are the columns, with their titles. This question is the decision itself: do not add another one for the block. Put the question in a `question` block right after this block so the reviewer answers beside the table. An open question shows its options as choices. A closed question shows its `resolution` and the chosen option, with the options behind an "Options and media" disclosure; the table still draws.',
+      scale: "The range scores take. Default 1 to 5, higher is better.",
+      "scale.min": "The lowest score.",
+      "scale.max": "The highest score. Must be above `min`.",
+      "scale.better": `${or(SCALE_BETTER)}. Default \`higher\`. It also decides which total is best.`,
+      criteria: "What the options are judged on, as rows. At least one.",
+      "criteria[].title": "The criterion name, for example `Operational cost`.",
+      "criteria[].weight": "How much it counts in the total. Above 0. Default 1.",
+      "criteria[].detail": "Paragraphs for the details pane: what it means, and why this weight.",
+      scores: "One score per criterion and option. Every pair is scored once.",
+      "scores[].criterion": "The criterion id.",
+      "scores[].option": "The option id, from the question.",
+      "scores[].score": "The score, within `scale`.",
+      "scores[].reason": "Why this score, in a line."
+    }
+  }
+};
+
+// src/lib/reference.ts
+var SHARED = {
+  document: DOC,
+  block: BLOCK,
+  question: QUESTION,
+  option: OPTION,
+  story: STORY_REF,
+  shot: SHOT
+};
+var LISTS = {
+  "document:questions": "question",
+  "question:options": "option",
+  "document:blocks": "block",
+  "block:question:questions": "question"
+};
+var PART_TITLES = {
+  document: ["document", "documents", "Document"],
+  block: ["block", "blocks", "Block"],
+  question: ["question", "questions", "Question"],
+  option: ["option", "options", "Option"],
+  story: ["story", "stories", "Story"],
+  shot: ["shot", "shots", "Shot"]
+};
+var BLOCK_ORDER = Object.keys(BLOCKS);
+function sharedPart(spec) {
+  if (typeof spec !== "object" || !("shape" in spec))
+    return;
+  return Object.keys(SHARED).find((p) => SHARED[p] === spec.shape);
+}
+function typeText(spec, many = false) {
+  if (typeof spec === "string") {
+    const one = {
+      string: "string",
+      number: "number",
+      boolean: "boolean",
+      scalar: "string, number or boolean",
+      object: "object",
+      any: "any"
+    }[spec];
+    return many ? spec === "scalar" ? "strings, numbers or booleans" : `${one}s` : one;
+  }
+  if ("list" in spec)
+    return `list of ${typeText(spec.list, true)}`;
+  if ("either" in spec)
+    return `${typeText(spec.either[0], many)} or ${typeText(spec.either[1], many)}`;
+  if ("record" in spec)
+    return `object of ${typeText(spec.record, true)}`;
+  const part = sharedPart(spec);
+  if (part)
+    return PART_TITLES[part][many ? 1 : 0];
+  return many ? "objects" : "object";
+}
+function inner(spec) {
+  if (typeof spec === "string" || "record" in spec || sharedPart(spec))
+    return [];
+  if ("shape" in spec)
+    return [spec.shape];
+  if ("list" in spec)
+    return inner(spec.list);
+  if ("either" in spec)
+    return [...inner(spec.either[0]), ...inner(spec.either[1])];
+  return [];
+}
+function walk(shape, base, scope, out) {
+  for (const [key, spec] of Object.entries(shape)) {
+    const path = `${base}${key.replace(/\?$/, "")}`;
+    const listed = LISTS[`${scope}:${path}`];
+    const part = listed ?? sharedPart(spec) ?? fromEither(spec);
+    out.push({
+      path,
+      type: listed ? `list of ${PART_TITLES[listed][1]}` : (path === "source" || path.endsWith(".source")) && spec === "any" ? "source or list of sources" : typeText(spec),
+      required: !key.endsWith("?"),
+      part
+    });
+    if (typeof spec === "object" && "tagged" in spec) {
+      const cases = Object.keys(spec.cases);
+      out.push({
+        path: `${path}.${spec.tagged}`,
+        type: cases.map((c) => `\`${c}\``).join(" or "),
+        required: true
+      });
+      const seen = new Set(out.map((f) => f.path));
+      for (const c of cases) {
+        const fields = [];
+        walk(spec.cases[c], `${path}.`, scope, fields);
+        for (const f of fields) {
+          if (seen.has(f.path))
+            continue;
+          seen.add(f.path);
+          out.push(f.required ? { ...f, required: false, when: c } : f);
+        }
+      }
+      continue;
+    }
+    const sep = typeof spec === "object" && "list" in spec ? "[]." : ".";
+    for (const s of inner(spec))
+      walk(s, `${path}${sep}`, scope, out);
+  }
+}
+function fromEither(spec) {
+  if (typeof spec !== "object")
+    return;
+  if ("list" in spec)
+    return fromEither(spec.list);
+  if ("either" in spec)
+    return sharedPart(spec.either[0]) ?? sharedPart(spec.either[1]);
+  return;
+}
+function partFields(part) {
+  const out = [];
+  walk(SHARED[part], "", part, out);
+  return out;
+}
+function blockFields(type) {
+  const out = [];
+  walk(BLOCKS[type].shape, "", `block:${type}`, out);
+  return out;
+}
+function fallback(path) {
+  if (path.endsWith(".id"))
+    return "Unique id across the document. Keep it when you revise.";
+  if (path.endsWith(".source"))
+    return "Where this lives in code. See {source}.";
+  return;
+}
+function note(scope, path, isBlock) {
+  const notes = (isBlock ? BLOCK_NOTES[scope] : PART_NOTES[scope]).fields;
+  return (Object.hasOwn(notes, path) ? notes[path] : fallback(path)) ?? "";
+}
+function enumsOf(scope, isBlock) {
+  return (isBlock ? BLOCK_NOTES[scope] : PART_NOTES[scope]).enums ?? {};
+}
+function about(scope, isBlock) {
+  return (isBlock ? BLOCK_NOTES[scope] : PART_NOTES[scope]).about;
+}
+var ref3 = (name) => ({ $ref: `#/$defs/${name}` });
+var blockDef = (type) => `${type}-block`;
+var plain = (s) => s.replace(/ See \[[^\]]+\]\(#[^)]*\)\./g, "").replace(/ See \{source\}\./g, "").replaceAll("`", "");
+function byTag(tag, cases) {
+  return {
+    properties: { [tag]: { enum: Object.keys(cases) } },
+    required: [tag],
+    allOf: Object.entries(cases).map(([name, schema]) => ({
+      if: { properties: { [tag]: { const: name } }, required: [tag] },
+      then: schema
+    }))
+  };
+}
+function listed(scope) {
+  const out = {};
+  for (const [key, part] of Object.entries(LISTS)) {
+    if (!key.startsWith(`${scope}:`))
+      continue;
+    const items = part === "block" ? {
+      type: "object",
+      ...byTag("type", Object.fromEntries(BLOCK_ORDER.map((t) => [t, ref3(blockDef(t))])))
+    } : ref3(part);
+    out[key.slice(scope.length + 1)] = { type: "array", minItems: part === "block" ? 1 : 0, items };
+  }
+  return out;
+}
+function specSchema(spec, required, ctx, base) {
+  if (spec === "string")
+    return required ? { type: "string", minLength: 1 } : { type: "string" };
+  if (spec === "number" || spec === "boolean")
+    return { type: spec };
+  if (spec === "scalar")
+    return { type: ["string", "number", "boolean"] };
+  if (spec === "object")
+    return { type: "object" };
+  if (spec === "any")
+    return {};
+  if ("list" in spec)
+    return { type: "array", items: specSchema(spec.list, true, ctx, base) };
+  if ("either" in spec)
+    return { anyOf: spec.either.map((s) => specSchema(s, required, ctx, base)) };
+  if ("record" in spec)
+    return { type: "object", additionalProperties: specSchema(spec.record, true, ctx, base) };
+  if ("tagged" in spec)
+    return {
+      type: "object",
+      ...byTag(spec.tagged, Object.fromEntries(Object.entries(spec.cases).map(([tag, shape]) => [
+        tag,
+        objectSchema({ [spec.tagged]: "string", ...shape }, ctx, base, {
+          [spec.tagged]: { const: tag }
+        })
+      ])))
+    };
+  const part = sharedPart(spec);
+  return part ? ref3(part) : objectSchema(spec.shape, ctx, base);
+}
+function objectSchema(shape, ctx, base, fixed = {}) {
+  const properties = {};
+  const required = [];
+  for (const [key, spec] of Object.entries(shape)) {
+    const name = key.replace(/\?$/, "");
+    const path = `${base}${name}`;
+    const req = !key.endsWith("?");
+    if (req)
+      required.push(name);
+    const sep = typeof spec === "object" && "list" in spec ? "[]." : ".";
+    const values = Object.hasOwn(ctx.enums, path) ? { enum: [...ctx.enums[path]] } : {};
+    const isRecord = typeof spec === "object" && "record" in spec;
+    const s = fixed[name] ?? (name === "source" && spec === "any" ? ref3("source") : isRecord && values.enum ? {
+      type: "object",
+      additionalProperties: { type: "string", ...values }
+    } : { ...specSchema(spec, req, ctx, `${path}${sep}`), ...values });
+    const text = ctx.describe(path);
+    properties[name] = text ? { description: plain(text), ...s } : s;
+  }
+  return { type: "object", properties, required };
+}
+function partSchema(part) {
+  const ctx = { describe: (p) => note(part, p, false), enums: enumsOf(part, false) };
+  const s = objectSchema(SHARED[part], ctx, "", listed(part));
+  return { description: plain(about(part, false)), ...s };
+}
+function blockSchema(type) {
+  const ctx = {
+    describe: (p) => note(type, p, true) || note("block", p, false),
+    enums: enumsOf(type, true)
+  };
+  const s = objectSchema({ ...BLOCK, ...BLOCKS[type].shape }, ctx, "", {
+    ...listed(`block:${type}`),
+    type: { const: type }
+  });
+  return { title: `${type} block`, description: plain(about(type, true)), ...s };
+}
+var POSITION = {
+  type: "object",
+  properties: { line: { type: "integer", minimum: 0 }, character: { type: "integer", minimum: 0 } },
+  required: ["line", "character"]
+};
+var LOCATION = {
+  type: "object",
+  properties: {
+    uri: {
+      description: "A path from the repository root, or a file:// URI.",
+      type: "string",
+      minLength: 1
+    },
+    range: {
+      description: "Zero-based lines and characters, end exclusive.",
+      type: "object",
+      properties: { start: POSITION, end: POSITION },
+      required: ["start", "end"]
+    }
+  },
+  required: ["uri"]
+};
+function defs() {
+  return {
+    question: partSchema("question"),
+    option: partSchema("option"),
+    story: partSchema("story"),
+    shot: partSchema("shot"),
+    source: {
+      description: "Where a thing lives in code: one location or a list of them.",
+      anyOf: [LOCATION, { type: "array", items: LOCATION }]
+    }
+  };
+}
+var DIALECT = "https://json-schema.org/draft/2020-12/schema";
+function documentSchema() {
+  return {
+    $schema: DIALECT,
+    title: "parley document",
+    ...partSchema("document"),
+    $defs: {
+      ...defs(),
+      ...Object.fromEntries(BLOCK_ORDER.map((t) => [blockDef(t), blockSchema(t)]))
+    }
+  };
+}
+function blockTypeSchema(type) {
+  return { $schema: DIALECT, ...blockSchema(type), $defs: defs() };
+}
+
+// src/lib/reference-md.ts
+var STORE_QUESTION = {
+  id: "q-store",
+  prompt: "Where should drafts be stored?",
+  kind: "single",
+  options: [
+    { id: "db", title: "In the database" },
+    { id: "local", title: "In the browser" }
+  ]
+};
+var EXAMPLES = {
+  prose: {
+    id: "intro",
+    type: "prose",
+    text: `We plan to split the orders table.
+
+This page explains why.`
+  },
+  figure: {
+    id: "mockup",
+    type: "figure",
+    src: "x/mockup.png",
+    alt: "The new checkout form, with the address fields on one row"
+  },
+  story: {
+    id: "states",
+    type: "story",
+    shots: ["x/empty-state.png"]
+  },
+  question: {
+    id: "decide",
+    type: "question",
+    questions: [STORE_QUESTION]
+  },
+  "annotated-text": {
+    id: "query",
+    type: "annotated-text",
+    language: "sql",
+    text: "SELECT id FROM orders WHERE status = $1",
+    steps: [
+      {
+        id: "filter",
+        title: "Filter by status",
+        anchor: { type: "TextQuoteSelector", exact: "WHERE status = $1" },
+        summary: "Keeps only orders in one status.",
+        detail: "The index on status makes this cheap."
+      }
+    ]
+  },
+  schema: {
+    id: "tables",
+    type: "schema",
+    tables: [
+      {
+        id: "orders",
+        name: "orders",
+        purpose: "One row per order.",
+        columns: [{ name: "id", type: "bigint", pk: true }]
+      }
+    ]
+  },
+  operations: {
+    id: "migration",
+    type: "operations",
+    operations: [
+      {
+        id: "add-col",
+        kind: "add-column",
+        title: "Add orders.status",
+        detail: "A nullable column, so no rewrite.",
+        risk: "low",
+        reversible: true
+      }
+    ]
+  },
+  matrix: {
+    id: "support",
+    type: "matrix",
+    rows: [{ id: "search", title: "search" }],
+    columns: [{ id: "small", title: "Small model" }],
+    cells: [{ row: "search", column: "small", state: "valid" }]
+  },
+  trace: {
+    id: "routing",
+    type: "trace",
+    steps: [
+      { id: "try-cache", title: "cache", outcome: "skip", reason: "No entry for this key." },
+      { id: "try-db", title: "database", outcome: "chosen", reason: "Found the row." }
+    ]
+  },
+  precedence: {
+    id: "config-order",
+    type: "precedence",
+    rungs: [
+      { id: "flag", title: "Command-line flag" },
+      { id: "file", title: "Config file" }
+    ]
+  },
+  plan: {
+    id: "rollout",
+    type: "plan",
+    phases: [
+      {
+        id: "p1",
+        title: "Build",
+        workstreams: [
+          { id: "ws-api", title: "API", tasks: [{ id: "t-endpoint", title: "Add the endpoint" }] }
+        ]
+      }
+    ]
+  },
+  "code-flow": {
+    id: "ship",
+    type: "code-flow",
+    steps: [
+      {
+        id: "handler",
+        title: "Handle the request",
+        symbol: "shipOrder",
+        summary: "Reads the order id."
+      },
+      {
+        id: "save",
+        title: "Save the order",
+        symbol: "OrderRepo.save",
+        kind: "call",
+        summary: "Writes the new status."
+      }
+    ]
+  },
+  workflow: {
+    id: "review",
+    type: "workflow",
+    lanes: [{ id: "author", title: "Author" }],
+    steps: [
+      { id: "open", title: "Open a PR", lane: "author", kind: "start", summary: "Push a branch." },
+      { id: "merge", title: "Merge", lane: "author", kind: "end", summary: "Merge when green." }
+    ]
+  },
+  diff: {
+    id: "change",
+    type: "diff",
+    diff: `diff --git a/a.ts b/a.ts
+--- a/a.ts
++++ b/a.ts
+@@ -1 +1 @@
+-const a = 1
++const a = 2
+`,
+    findings: [
+      { id: "f1", title: "Magic number", file: "a.ts", line: 1, summary: "Name the constant." }
+    ]
+  },
+  metrics: {
+    id: "perf",
+    type: "metrics",
+    columns: [
+      { id: "base", title: "main" },
+      { id: "head", title: "PR" }
+    ],
+    measures: [
+      {
+        id: "p95",
+        title: "p95 latency",
+        unit: "ms",
+        better: "lower",
+        values: { base: 212, head: 148 },
+        threshold: { warn: 5, bad: 10 }
+      }
+    ]
+  },
+  tradeoffs: {
+    id: "store-choice",
+    type: "tradeoffs",
+    question: "q-store",
+    criteria: [
+      { id: "c-ops", title: "Operational cost", weight: 2 },
+      { id: "c-speed", title: "Read speed" }
+    ],
+    scores: [
+      { criterion: "c-ops", option: "db", score: 4 },
+      { criterion: "c-ops", option: "local", score: 5, reason: "Nothing to run." },
+      { criterion: "c-speed", option: "db", score: 3 },
+      { criterion: "c-speed", option: "local", score: 5 }
+    ]
+  }
+};
+var EXAMPLE_QUESTIONS = {
+  tradeoffs: [{ ...STORE_QUESTION, recommended: "local" }]
+};
+var SMALLEST = {
+  id: "why-split-orders",
+  title: "Why we split the orders table",
+  created: "2026-10-17",
+  blocks: [
+    {
+      id: "body",
+      type: "prose",
+      text: `The orders table holds two kinds of row.
+
+This page explains the split.`
+    }
+  ]
+};
+var json = (v) => "```json\n" + JSON.stringify(v, null, 2) + "\n```";
+var cell = (s) => s.replaceAll("|", "\\|").replaceAll(`
+`, " ");
+var anchorLink = (part) => part === "source" ? "[Source](#source)" : `[${title(part)}](#${part})`;
+var commandLink = (part) => `\`parley schema ${part === "source" ? "source" : SECTION_OF[part]} --md\``;
+var required = (f) => f.when ? `with \`${f.when}\`` : f.required ? "yes" : "";
+function table4(fields, link, line) {
+  const rows = fields.map((f) => {
+    const see = f.part && f.part !== "block" ? ` See ${link(f.part)}.` : "";
+    return `| \`${f.path}\` | ${cell(f.type)} | ${required(f)} | ${cell(line(f).replaceAll("{source}", link("source")) + see)} |`;
+  });
+  return ["| Field | Type | Required | Meaning |", "| --- | --- | --- | --- |", ...rows].join(`
+`);
+}
+var title = (part) => PART_TITLES[part][2];
+function partSection(part, link) {
+  return [
+    `## ${title(part)}`,
+    about(part, false),
+    table4(partFields(part), link, (f) => note(part, f.path, false))
+  ].join(`
+
+`);
+}
+function blockSection(type, link) {
+  return [
+    `### ${type} block`,
+    about(type, true),
+    table4(blockFields(type), link, (f) => note(type, f.path, true)),
+    json(EXAMPLES[type]),
+    ...EXAMPLE_QUESTIONS[type] ? ["It names a question in the document `questions`:", json(EXAMPLE_QUESTIONS[type])] : []
+  ].join(`
+
+`);
+}
+var SOURCE = "Any block, and any item with an `id`, may carry `source`: where it lives in code. It is one location or a list of them. `uri` is a path from the repository root (preferred), or an absolute path or `file://` URI with no network host, which the page shows as the file name linked to the local file or to the editor the reader picks. A `uri` ending in `/` names a folder and fails `check`. `range` is optional. Its lines and characters count from 0, and the end is exclusive. Set the document `repo` to get the editor link and the checkout folder: the page then links the path to the reader's editor once they set their checkout folder. GitHub links need both `repo.remote` (an `https://github.com/` address) and `repo.commit`. With no `repo`, write the bare path. The page shows the path, with no editor link and no way to set a checkout folder, and a View link when the page is served and the file is not git-ignored. There is no GitHub link.";
+var BLOCKS_ABOUT = "Every block has these fields, beside the fields of its type.";
+var PARTS3 = {
+  document: (link) => [
+    "## The smallest document",
+    "One `prose` block is a whole document.",
+    json(SMALLEST),
+    partSection("document", link)
+  ],
+  blocks: (link) => [
+    "## Blocks",
+    BLOCKS_ABOUT,
+    table4(partFields("block"), link, (f) => note("block", f.path, false))
+  ],
+  questions: (link) => [partSection("question", link)],
+  options: (link) => [partSection("option", link)],
+  stories: (link) => [partSection("story", link)],
+  shots: (link) => [partSection("shot", link)],
+  source: () => [
+    "## Source",
+    SOURCE,
+    json({
+      uri: "src/orders/ship.ts",
+      range: { start: { line: 10, character: 0 }, end: { line: 14, character: 0 } }
+    })
+  ]
+};
+var PART_SECTIONS = Object.keys(PARTS3);
+var SECTION_NAMES = [...PART_SECTIONS, ...BLOCK_ORDER];
+var SECTION_OF = {
+  document: "document",
+  block: "blocks",
+  question: "questions",
+  option: "options",
+  story: "stories",
+  shot: "shots"
+};
+var isPart = (name) => Object.hasOwn(PARTS3, name);
+var REQUIRED = "**Required** means `check` fails without the field. A required string must not be empty. `with X` means the field is required only for that kind. A field this page does not list is a warning, not an error: `check` names the field it thinks you meant.";
+function sectionMarkdown(name, inPage = false) {
+  const link = inPage ? anchorLink : commandLink;
+  if (isPart(name))
+    return wrapProse(PARTS3[name](link));
+  if (BLOCK_ORDER.includes(name))
+    return wrapProse([blockSection(name, link)]);
+  return;
+}
+var firstSentence = (text) => /^.*?\.(?=\s|$)/s.exec(text)?.[0] ?? text;
+var PART_INDEX = {
+  document: () => ["Document", about("document", false)],
+  blocks: () => ["Blocks", BLOCKS_ABOUT],
+  questions: () => [title("question"), about("question", false)],
+  options: () => [title("option"), about("option", false)],
+  stories: () => [title("story"), about("story", false)],
+  shots: () => [title("shot"), about("shot", false)],
+  source: () => ["Source", SOURCE]
+};
+function indexMarkdown() {
+  const parts = PART_SECTIONS.map((p) => {
+    const [heading, what] = PART_INDEX[p]();
+    return listItem(`\`${p}\` (${heading}): ${firstSentence(what)}`, 0);
+  });
+  const blocks = BLOCK_ORDER.map((t) => listItem(`\`${t}\`: ${firstSentence(about(t, true))}`, 0));
+  return wrapProse([
+    "# Parley field reference",
+    "Run `node parley.mjs schema <name> --md` to print one section: its fields, what the page shows and an example.",
+    REQUIRED,
+    "## Parts",
+    parts.join(`
+`),
+    "## Block types",
+    blocks.join(`
+`)
+  ]);
+}
+function listItem(text, indent) {
+  const pad = " ".repeat(indent + 2);
+  return wrap(text, 100 - pad.length).split(`
+`).map((l, i) => i === 0 ? `${" ".repeat(indent)}- ${l}` : pad + l).join(`
+`);
+}
+var OPENS_BLOCK = /^([-+*>#]|\d+[.)])$/;
+function wrap(text, width = 100) {
+  const lines = [];
+  let line = "";
+  for (const word of text.match(/(?:`[^`]*`|[^ ])+/g) ?? []) {
+    if (line && line.length + 1 + word.length > width && !OPENS_BLOCK.test(word)) {
+      lines.push(line);
+      line = word;
+    } else
+      line = line ? `${line} ${word}` : word;
+  }
+  return [...lines, line].join(`
+`);
+}
+function wrapProse(chunks) {
+  const kept = /^(\||```|#|- |<!--)/;
+  const blocks = chunks.join(`
+
+`).split(`
+
+`);
+  return `${blocks.map((c) => kept.test(c) ? c : wrap(c)).join(`
+
+`)}
+`;
+}
+
+// src/commands/schema.ts
+var cli4 = defineCli({
+  name: "parley schema",
+  summary: "Print the JSON Schema of a document, or of one block type. With --md, print the field reference as markdown: no name prints the index of parts and block types, a name prints its section.",
+  flags: {
+    md: { kind: "boolean", help: "print markdown: the index, or one part or block type" }
+  },
+  positionals: [{ name: "block type or part" }]
+});
+async function main4(argv, ctx) {
+  const parsed = cli4.parse(argv, ctx.io);
+  if (parsed.status === "help")
+    return EXIT.ok;
+  if (parsed.status === "error") {
+    ctx.io.stderr(`parley schema: ${parsed.message}
+`);
+    return EXIT.usage;
+  }
+  const name = parsed.positionals[0];
+  if (parsed.values.md) {
+    const text = name === undefined ? indexMarkdown() : sectionMarkdown(name);
+    if (text === undefined) {
+      ctx.io.stderr(`parley schema: unknown name "${name}"; use one of: ${SECTION_NAMES.join(", ")}
+`);
+      return EXIT.usage;
+    }
+    ctx.io.stdout(text);
+    return EXIT.ok;
+  }
+  if (name !== undefined && !BLOCK_ORDER.includes(name)) {
+    ctx.io.stderr(`parley schema: unknown block type "${name}"; use one of: ${BLOCK_ORDER.join(", ")}. Parts such as \`document\` print with --md.
+`);
+    return EXIT.usage;
+  }
+  const schema = name ? blockTypeSchema(name) : documentSchema();
+  ctx.io.stdout(`${JSON.stringify(schema, null, 2)}
+`);
+  return EXIT.ok;
+}
+
 // src/commands/serve.ts
-import { createHash as createHash3 } from "node:crypto";
-import { existsSync as existsSync4, readdirSync as readdirSync2, readFileSync as readFileSync5, writeFileSync as writeFileSync4 } from "node:fs";
-import { createServer } from "node:http";
-import { join as join6, resolve as resolve5, sep as sep2 } from "node:path";
+import { createHash as createHash5, randomBytes as randomBytes3, timingSafeEqual } from "node:crypto";
+import { existsSync as existsSync5, readdirSync as readdirSync4, readFileSync as readFileSync8, realpathSync as realpathSync3, statSync as statSync7 } from "node:fs";
+import {
+  createServer
+} from "node:http";
+import { isAbsolute as isAbsolute2, join as join10, relative as relative3, resolve as resolve7, sep as sep2 } from "node:path";
+
+// src/lib/answers-shape.ts
+var isObj2 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+var str = (v) => typeof v === "string" ? undefined : "must be a string";
+var num = (v) => typeof v === "number" ? undefined : "must be a number";
+var bool = (v) => typeof v === "boolean" ? undefined : "must be true or false";
+var strings = (v) => Array.isArray(v) && v.every((s) => typeof s === "string") ? undefined : "must be an array of strings";
+function shape17(required, optional = {}) {
+  return (v) => {
+    if (!isObj2(v))
+      return "must be an object";
+    for (const [k, check] of Object.entries(required)) {
+      if (!Object.hasOwn(v, k))
+        return `needs "${k}"`;
+      const p = check(v[k]);
+      if (p)
+        return `"${k}" ${p}`;
+    }
+    for (const [k, check] of Object.entries(optional)) {
+      if (v[k] === undefined || v[k] === null)
+        continue;
+      const p = check(v[k]);
+      if (p)
+        return `"${k}" ${p}`;
+    }
+    return;
+  };
+}
+var list = (item) => (v) => {
+  if (!Array.isArray(v))
+    return "must be an array";
+  for (const [i, x] of v.entries()) {
+    const p = item(x);
+    if (p)
+      return `[${i}] ${p}`;
+  }
+  return;
+};
+var record = (item) => (v) => {
+  if (!isObj2(v))
+    return "must be an object";
+  for (const [k, x] of Object.entries(v)) {
+    const p = item(x);
+    if (p)
+      return `"${k}" ${p}`;
+  }
+  return;
+};
+var message = shape17({
+  id: str,
+  from: (v) => v === "agent" || v === "reviewer" ? undefined : "must be agent or reviewer",
+  text: str,
+  at: str
+}, { sent: str, revision: num, action: str });
+var pastChoice = shape17({ selected: strings, at: str }, { note: str, ask: str, revision: num });
+var choice = shape17({ selected: strings, at: str }, {
+  note: str,
+  hash: str,
+  revision: num,
+  history: list(pastChoice),
+  ask: str,
+  sent: str,
+  tab: str,
+  replies: list(message),
+  reopened: shape17({ at: str }, { revision: num, closed: bool, resolution: str, cleared: str })
+});
+var comment = shape17({ id: str, node: str, text: str, at: str }, { by: str, resolved: bool, sent: str, replies: list(message), selector: shape17({ type: str }) });
+var answers = shape17({
+  doc: str,
+  updated: str,
+  verdict: (v) => isVerdict(v) ? undefined : "is not a known verdict",
+  comments: list(comment),
+  choices: record(choice)
+}, {
+  finished: str,
+  summary: str,
+  seen: record(str),
+  seenReplies: record(str),
+  agentReadAt: str,
+  roundStartedAt: str
+});
+function answersProblem(body) {
+  return answers(body);
+}
 
 // src/lib/index-page.ts
-var STATUS = {
+import { join as join9 } from "node:path";
+var VERDICT2 = {
   reviewing: ["Reviewing", "st-reviewing"],
   "changes-requested": ["Changes requested", "st-changes"],
   approved: ["Approved", "st-approved"]
 };
-function indexPage(dir, entries) {
-  const rows = entries.sort((a, b) => (b.updated ?? b.created).localeCompare(a.updated ?? a.created)).map((e) => {
-    const [label, cls] = STATUS[e.status] ?? [e.status, "st-reviewing"];
+function nestedMessage(dir, n, cwd) {
+  const count = `${n.atLeast ? "at least " : ""}${n.count}`;
+  const serve = n.names.map((name) => `parley serve ${shortArg(join9(dir, name), cwd)}`).join(" or ");
+  return `${count} ${n.count === 1 && !n.atLeast ? "is" : "are"} in subfolders. Serve one: ${serve}`;
+}
+function emptyMessage(dir, nested) {
+  if (!nested?.count)
+    return "No documents in this folder yet.";
+  return `No documents in this folder, but ${nestedMessage(dir, nested)}`;
+}
+function indexPage(dir, entries, nested) {
+  const rows = entries.sort((a, b) => String(b.updated ?? b.created).localeCompare(String(a.updated ?? a.created))).map((e) => {
+    const [label, cls] = VERDICT2[e.verdict];
     const explanatory = e.questions === 0;
-    const progress = explanatory ? '<span class="chip">explanatory</span>' : `<span class="chip ${e.answered === e.questions ? "q-done" : "q-open"}">${e.answered} / ${e.questions} answered</span>`;
-    return `<a class="card" href="/d/${escapeHtml(e.id)}">
-  <div class="card-head"><h2>${escapeHtml(e.title)}</h2>${explanatory ? "" : `<span class="chip ${cls}">${label}</span>`}</div>
+    const progress = explanatory ? '<span class="chip">explanatory</span>' : `<span class="chip ${e.answered === e.questions ? "q-done" : "q-open"}">${escapeHtml(e.answered)} / ${escapeHtml(e.questions)} answered</span>`;
+    return `<a class="card" href="/d/${escapeHtml(encodeURIComponent(e.id))}">
+  <div class="card-head"><h2>${escapeHtml(e.title)}</h2>${explanatory ? "" : `<span class="chip ${cls}">${escapeHtml(label)}</span>`}</div>
   ${e.summary ? `<p>${escapeHtml(e.summary)}</p>` : ""}
-  <div class="meta">${e.kinds.map((k) => `<span class="kind">${escapeHtml(k)}</span>`).join("")}<span class="spacer"></span>${progress}${e.comments ? `<span class="chip">${e.comments} comment${e.comments === 1 ? "" : "s"}</span>` : ""}<span class="when">${escapeHtml((e.updated ?? e.created).slice(0, 16).replace("T", " "))}</span></div>
+  <div class="meta">${e.blockTypes.map((k) => `<span class="kind">${escapeHtml(k)}</span>`).join("")}<span class="spacer"></span>${progress}${e.comments ? `<span class="chip">${escapeHtml(e.comments)} comment${e.comments === 1 ? "" : "s"}</span>` : ""}<span class="when">${escapeHtml(String(e.updated ?? e.created).slice(0, 16).replace("T", " "))}</span></div>
 </a>`;
   }).join(`
 `);
@@ -7672,8 +12528,8 @@ function indexPage(dir, entries) {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Documents · parley</title>
 <style>
-:root { --bg: #f5f5f7; --pane: #fff; --fg: #1d1d1f; --muted: #6e6e73; --line: rgba(0,0,0,.08); --line-strong: rgba(0,0,0,.14); --accent: #0a7aff; --accent-soft: rgba(10,122,255,.10); --warn: #b25d00; --warn-soft: rgba(255,159,10,.16); --danger: #c7282f; --danger-soft: rgba(255,59,48,.12); --ok: #1f8a3b; --ok-soft: rgba(52,199,89,.16); --code-bg: #f2f2f4; --radius: 8px; --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif; --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
-@media (prefers-color-scheme: dark) { :root { --bg: #1c1c1e; --pane: #242426; --fg: #f2f2f7; --muted: #98989f; --line: rgba(255,255,255,.09); --line-strong: rgba(255,255,255,.16); --accent: #409cff; --accent-soft: rgba(64,156,255,.16); --warn: #ffb340; --warn-soft: rgba(255,179,64,.16); --danger: #ff6961; --danger-soft: rgba(255,105,97,.16); --ok: #30d158; --ok-soft: rgba(48,209,88,.16); --code-bg: #2c2c2e; } }
+:root { --bg: #f5f5f7; --pane: #fff; --fg: #1d1d1f; --muted: #6e6e73; --line: rgba(0,0,0,.08); --line-strong: rgba(0,0,0,.14); --accent: #005ec8; --accent-soft: rgba(0,94,200,.10); --warn: #b25d00; --warn-soft: rgba(255,159,10,.16); --danger: #c7282f; --danger-soft: rgba(255,59,48,.12); --ok: #1f8a3b; --ok-soft: rgba(52,199,89,.16); --ok-text: #166b2b; --warn-text: #8f4a00; --danger-text: #b3242a; --code-bg: #f2f2f4; --radius: 8px; --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif; --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+@media (prefers-color-scheme: dark) { :root { --bg: #1c1c1e; --pane: #242426; --fg: #f2f2f7; --muted: #98989f; --line: rgba(255,255,255,.09); --line-strong: rgba(255,255,255,.16); --accent: #6cb4ff; --accent-soft: rgba(64,156,255,.16); --warn: #ffb340; --warn-soft: rgba(255,179,64,.16); --danger: #ff6961; --danger-soft: rgba(255,105,97,.16); --ok: #30d158; --ok-soft: rgba(48,209,88,.16); --ok-text: #30d158; --warn-text: #ffb340; --danger-text: #ff8a84; --code-bg: #2c2c2e; } }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--fg); font: 13px/1.5 var(--sans); -webkit-font-smoothing: antialiased; }
 .wrap { max-width: 880px; margin: 0 auto; padding: 36px 20px 60px; }
@@ -7691,21 +12547,21 @@ h1 { font-size: 20px; margin: 2px 0 4px; letter-spacing: -.01em; }
 .spacer { flex: 1; }
 .chip { font-size: 11px; padding: 1px 8px; border-radius: 999px; background: var(--code-bg); color: var(--muted); white-space: nowrap; }
 .chip.st-reviewing { background: var(--accent-soft); color: var(--accent); }
-.chip.st-changes { background: var(--warn-soft); color: var(--warn); }
-.chip.st-approved { background: var(--ok-soft); color: var(--ok); }
-.chip.q-open { background: var(--danger-soft); color: var(--danger); }
-.chip.q-done { background: var(--ok-soft); color: var(--ok); }
+.chip.st-changes { background: var(--warn-soft); color: var(--warn-text); }
+.chip.st-approved { background: var(--ok-soft); color: var(--ok-text); }
+.chip.q-open { background: var(--danger-soft); color: var(--danger-text); }
+.chip.q-done { background: var(--ok-soft); color: var(--ok-text); }
 .when { font: 11px var(--mono); color: var(--muted); margin-left: 4px; }
 .empty { color: var(--muted); }
 </style>
 </head>
 <body>
-<div class="wrap">
+<main class="wrap">
   <div class="kind-eyebrow">Parley</div>
   <h1>Documents</h1>
   <p class="folder">${escapeHtml(dir)}</p>
-  <div class="cards">${rows || '<p class="empty">No documents in this folder yet.</p>'}</div>
-</div>
+  <div class="cards">${rows || `<p class="empty">${escapeHtml(emptyMessage(dir, nested))}</p>`}</div>
+</main>
 </body>
 </html>
 `;
@@ -7713,7 +12569,9 @@ h1 { font-size: 20px; margin: 2px 0 4px; letter-spacing: -.01em; }
 
 // src/commands/serve.ts
 var DEFAULT_PORT = 4321;
-var cli4 = defineCli({
+var UNREADABLE_MS = 1500;
+var LISTENER_POLL_MS = 1000;
+var cli5 = defineCli({
   name: "parley serve",
   summary: "Serve every document in a folder, watch it, and save answers beside each one.",
   flags: {
@@ -7722,7 +12580,7 @@ var cli4 = defineCli({
       kind: "string",
       valueName: "addr",
       default: "127.0.0.1",
-      help: "address to bind; 0.0.0.0 opens it to the LAN with no auth"
+      help: "address to bind; 0.0.0.0 opens it to the LAN, behind a token printed in the link"
     },
     root: {
       kind: "string",
@@ -7737,7 +12595,6 @@ var cli4 = defineCli({
   },
   positionals: [{ name: "dir", help: "folder of documents (default docs/parley)" }]
 });
-var ID2 = /^[a-z0-9][a-z0-9-]*$/;
 var EVENT_FILE = /^([a-z0-9][a-z0-9-]*?)(\.answers)?\.json$/;
 var IMAGE_TYPES = {
   png: "image/png",
@@ -7750,41 +12607,67 @@ var IMAGE_TYPES = {
   mp4: "video/mp4"
 };
 var LOCAL_STORYBOOK = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/;
+function isLoopback(host) {
+  const h = host.replace(/^\[(.*)\]$/, "$1").toLowerCase();
+  return h === "localhost" || h === "::1" || /^127\.\d+\.\d+\.\d+$/.test(h);
+}
 function startServer(opts) {
-  const dir = resolve5(opts.dir);
+  const dir = resolve7(opts.dir);
+  sweepAnswersTemps(dir);
   const host = opts.host ?? "127.0.0.1";
-  const root = resolve5(opts.root ?? projectRoot(dir));
+  const root = resolve7(opts.root ?? projectRoot(dir));
   const files = new ProjectFiles(root);
+  const token = opts.token ?? (isLoopback(host) ? undefined : randomBytes3(18).toString("base64url"));
+  const folderId = hash(dir).slice(0, 12);
   const LOCAL_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]", host, `[${host}]`]);
   const ANY_HOST = host === "0.0.0.0" || host === "::";
   function hostAllowed(header) {
     if (ANY_HOST)
       return true;
-    if (!header)
-      return false;
     const name = header.startsWith("[") ? header.slice(0, header.indexOf("]") + 1) : header.split(":")[0];
     return LOCAL_HOSTS.has(name.toLowerCase());
   }
   function docIds() {
-    return readdirSync2(dir).filter((f) => f.endsWith(".json") && !f.endsWith(".answers.json")).map((f) => f.slice(0, -5)).filter((id) => ID2.test(id)).sort();
+    return readdirSync4(dir).filter(isDocFile).map((f) => f.slice(0, -5)).sort();
+  }
+  function indexArgs() {
+    const entries = docIds().map(readEntry);
+    return [entries, entries.length ? undefined : nestedDocs(dir)];
   }
   function readDoc(id) {
-    return JSON.parse(readFileSync5(join6(dir, `${id}.json`), "utf8"));
+    return JSON.parse(readFileSync8(join10(dir, `${id}.json`), "utf8"));
   }
-  function answersPath(id) {
-    return join6(dir, `${id}.answers.json`);
-  }
+  const answersPath2 = (id) => answersPath(dir, id);
+  const now = opts.now ?? (() => new Date);
   function readEntry(id) {
+    try {
+      return entryOf(id);
+    } catch (e) {
+      return {
+        id,
+        title: `${id} (cannot be read)`,
+        summary: String(e instanceof Error ? e.message : e),
+        blockTypes: [],
+        verdict: "reviewing",
+        questions: 0,
+        answered: 0,
+        comments: 0,
+        created: ""
+      };
+    }
+  }
+  function entryOf(id) {
     const doc = readDoc(id);
-    const a = existsSync4(answersPath(id)) ? JSON.parse(readFileSync5(answersPath(id), "utf8")) : emptyAnswers(id);
+    const a = JSON.parse(readAnswersText(answersPath2(id), id));
     const qs = allQuestions(doc);
-    const answered = qs.filter((q) => isAnswered(q, a.choices?.[q.id], doc.revision ?? 1)).length;
+    const choice = (q) => entry(a.choices, q);
+    const answered = qs.filter((q) => isAnswered(q, choice(q.id), doc.revision ?? 1)).length;
     return {
       id,
       title: doc.title,
       summary: doc.summary,
-      kinds: [...new Set(doc.blocks.map((b) => b.type))],
-      status: a.status ?? "reviewing",
+      blockTypes: [...new Set(doc.blocks.map((b) => b.type))],
+      verdict: isVerdict(a.verdict) ? a.verdict : "reviewing",
       questions: qs.length,
       answered,
       comments: (a.comments ?? []).length,
@@ -7795,22 +12678,22 @@ function startServer(opts) {
   const clients = new Set;
   const pending = new Map;
   const hashes = new Map;
-  const hashFile = (file) => {
+  const hashFile = (file, raw = false) => {
     let text;
     try {
-      text = readFileSync5(join6(dir, file), "utf8");
+      text = readFileSync8(join10(dir, file), "utf8");
     } catch (e) {
       return e.code === "ENOENT" ? "-1" : undefined;
     }
     try {
       JSON.parse(text);
     } catch {
-      return;
+      return raw ? hash(text) : undefined;
     }
     return hash(text);
   };
-  if (existsSync4(dir))
-    for (const f of readdirSync2(dir)) {
+  if (existsSync5(dir))
+    for (const f of readdirSync4(dir)) {
       const h = EVENT_FILE.test(f) ? hashFile(f) : undefined;
       if (h !== undefined)
         hashes.set(f, h);
@@ -7828,27 +12711,105 @@ function startServer(opts) {
     pending.set(file, setTimeout(() => {
       pending.delete(file);
       const now = hashFile(file);
-      if (now === undefined || (hashes.get(file) ?? "-1") === now)
+      if (now === undefined)
+        return void stuck(file);
+      if ((hashes.get(file) ?? "-1") === now)
         return;
       hashes.set(file, now);
       broadcast(file);
     }, 120));
   }
+  function stuck(file) {
+    if (EVENT_FILE.exec(file)[2])
+      return;
+    pending.set(file, setTimeout(() => {
+      pending.delete(file);
+      const now = hashFile(file, true);
+      if (now === undefined || (hashes.get(file) ?? "-1") === now)
+        return;
+      hashes.set(file, now);
+      broadcast(file);
+    }, UNREADABLE_MS));
+  }
   const watcher = watchFolder(dir, (f) => EVENT_FILE.test(f), notify, opts.watch);
+  let listeningOn = listeningDocs(dir);
+  const keyOf = (on) => [...on].sort().join(" ");
+  let listening = keyOf(listeningOn);
+  const listeningEvent = (on) => `data: ${JSON.stringify({ kind: "listeners", on: [...on].sort() })}
+
+`;
+  const listenerPoll = setInterval(() => {
+    const on = listeningDocs(dir);
+    const key = keyOf(on);
+    if (key === listening)
+      return;
+    listening = key;
+    listeningOn = on;
+    for (const c of clients)
+      c.write(listeningEvent(on));
+  }, LISTENER_POLL_MS);
+  listenerPoll.unref();
+  const answersName = (id) => {
+    const rel = relative3(root, answersPath2(id));
+    return encodeURIComponent(rel && !rel.startsWith("..") && !isAbsolute2(rel) ? rel : `${id}.answers.json`);
+  };
+  function tokenOk(req, res, url) {
+    if (!token)
+      return true;
+    const name = `parley-${req.socket.localPort}`;
+    const cookie = (req.headers.cookie ?? "").split(";").map((c) => c.trim().split("=")).find(([k]) => k === name)?.[1];
+    if (cookie !== undefined && same(cookie, token))
+      return true;
+    const given = url.searchParams.get("t");
+    if (given !== null && same(given, token)) {
+      if (req.method !== "GET")
+        return true;
+      url.searchParams.delete("t");
+      res.writeHead(302, {
+        "set-cookie": `${name}=${token}; Path=/; HttpOnly; SameSite=Lax`,
+        location: `/${url.pathname.replace(/^\/+/, "")}${url.search}`,
+        "cache-control": "no-store"
+      });
+      res.end();
+      return false;
+    }
+    res.writeHead(401, { "content-type": "text/plain", "cache-control": "no-store" });
+    res.end("this server needs its token: open the link `parley serve` printed\n");
+    return false;
+  }
+  const sockets = new Set;
   const server = createServer((req, res) => {
+    const hosts = req.rawHeaders.filter((h, i) => i % 2 === 0 && h.toLowerCase() === "host");
+    if (hosts.length > 1 || req.headers.host?.includes(",")) {
+      res.writeHead(400, { "content-type": "text/plain" });
+      return res.end("more than one Host header");
+    }
+    if (!req.headers.host) {
+      res.writeHead(400, { "content-type": "text/plain" });
+      return res.end("no Host header");
+    }
     if (!hostAllowed(req.headers.host)) {
       res.writeHead(403, { "content-type": "text/plain" });
       return res.end("forbidden host");
     }
-    const url = new URL(req.url ?? "/", `http://${req.headers.host}`);
-    const [, area, id] = url.pathname.split("/");
-    const send = (code, body, type = "text/html; charset=utf-8") => {
-      res.writeHead(code, { "content-type": type, "cache-control": "no-store" });
+    const send = (code, body, type = "text/html; charset=utf-8", headers = {}) => {
+      res.writeHead(code, { "content-type": type, "cache-control": "no-store", ...headers });
       res.end(body);
     };
+    let url;
     try {
+      url = new URL(req.url ?? "/", "http://localhost");
+    } catch {
+      return send(400, "malformed request", "text/plain");
+    }
+    const [, area, id] = url.pathname.split("/");
+    try {
+      if (!tokenOk(req, res, url))
+        return;
       if (url.pathname === "/")
-        return send(200, indexPage(dir, docIds().map(readEntry)));
+        return send(200, indexPage(dir, ...indexArgs()), undefined, {
+          "content-security-policy": NO_SCRIPT_CSP
+        });
       if (url.pathname === "/events") {
         res.writeHead(200, {
           "content-type": "text/event-stream",
@@ -7859,23 +12820,26 @@ function startServer(opts) {
 : connected
 
 `);
+        res.write(listeningEvent(listeningOn));
         clients.add(res);
         req.on("close", () => clients.delete(res));
         return;
       }
       const xAt = url.pathname.startsWith("/x/") ? 3 : url.pathname.startsWith("/d/x/") ? 5 : 0;
       if (xAt && req.method === "GET") {
+        res.setHeader("x-content-type-options", "nosniff");
         const rel = decodePath(url.pathname.slice(xAt));
         if (rel === undefined)
           return send(400, "malformed path", "text/plain");
         const ext = rel.split(".").pop()?.toLowerCase() ?? "";
-        const type = IMAGE_TYPES[ext];
-        const file = resolve5(dir, "x", rel);
-        if (!type || rel.split("/").includes("..") || !file.startsWith(join6(dir, "x") + sep2) || !existsSync4(file))
+        const type = Object.hasOwn(IMAGE_TYPES, ext) ? IMAGE_TYPES[ext] : undefined;
+        const file = mediaFile2(join10(dir, "x"), rel);
+        if (!type || !file)
           return send(404, "not found", "text/plain");
-        return sendMedia(req.headers.range, res, readFileSync5(file), {
+        return sendMedia(req.headers.range, res, readFileSync8(file), {
           "content-type": type,
-          "cache-control": "no-store"
+          "cache-control": "no-store",
+          "content-security-policy": "sandbox"
         });
       }
       if (url.pathname === "/storybook") {
@@ -7909,20 +12873,22 @@ function startServer(opts) {
         if (!file)
           return send(404, "not served: missing, ignored by git, binary (images and PDFs excepted) or too large", "text/plain");
         if (file.media) {
-          return sendMedia(req.headers.range, res, readFileSync5(file.path), {
+          return sendMedia(req.headers.range, res, readFileSync8(file.path), {
             "content-type": file.media,
             "cache-control": "no-store",
             "content-security-policy": "sandbox"
           });
         }
-        const text = readFileSync5(file.path, "utf8");
+        const text = readFileSync8(file.path, "utf8");
         const view = url.searchParams.get("view") ?? undefined;
-        return send(200, url.searchParams.get("part") === "body" ? fileBody(rel, text, view) : filePage(rel, text, view));
+        return send(200, url.searchParams.get("part") === "body" ? fileBody(rel, text, view) : filePage(rel, text, view), undefined, {
+          "content-security-policy": url.searchParams.get("part") === "body" ? NO_SCRIPT_CSP : fileCsp()
+        });
       }
-      if (!id || !ID2.test(id))
+      if (!id || !DOC_ID.test(id))
         return send(404, "not found", "text/plain");
       if (area === "d" && req.method === "GET") {
-        if (!existsSync4(join6(dir, `${id}.json`)))
+        if (!existsSync5(join10(dir, `${id}.json`)))
           return send(404, "not found", "text/plain");
         const title = (d) => {
           try {
@@ -7933,36 +12899,94 @@ function startServer(opts) {
         };
         const links = docIds().filter((d) => d !== id).map((d) => ({ href: `/d/${d}`, label: title(d) }));
         return send(200, renderDoc(readDoc(id), [{ href: "/", label: "All documents" }, ...links], {
-          storybook: opts.storybook
-        }));
+          storybook: opts.storybook,
+          updated: statSync7(join10(dir, `${id}.json`)).mtime
+        }), undefined, { "content-security-policy": pageCsp(opts.storybook) });
       }
       if (area === "a" && req.method === "GET") {
-        const p = answersPath(id);
-        return send(200, existsSync4(p) ? readFileSync5(p, "utf8") : JSON.stringify(emptyAnswers(id)), "application/json");
+        const text = readAnswersText(answersPath2(id), id);
+        let broken;
+        try {
+          checkAnswersShape(parseAnswers(text));
+        } catch (e) {
+          if (!(e instanceof BrokenAnswersError))
+            throw e;
+          broken = encodeURIComponent(e.message);
+        }
+        return send(200, text, "application/json", {
+          etag: answersEtag(text),
+          "parley-folder": folderId,
+          "parley-file": answersName(id),
+          "parley-listening": listeningDocs(dir).has(id) ? "1" : "0",
+          ...broken ? { "parley-broken": broken } : {}
+        });
       }
-      if (area === "a" && req.method === "PUT") {
-        let body = "";
-        req.on("data", (c) => body += c);
+      if (area === "a" && (req.method === "PUT" || req.method === "POST")) {
+        if (req.method === "POST" && !/^application\/json\b/.test(req.headers["content-type"] ?? ""))
+          return send(415, "an agent change is sent as application/json", "text/plain");
+        const version = req.headers["if-match"];
+        if (req.method === "PUT" && !version)
+          return send(428, "send If-Match with the ETag of the answers this save is based on (from GET /a/<id>)", "text/plain");
+        const chunks = [];
+        req.on("data", (c) => chunks.push(c));
         req.on("end", () => {
           try {
-            const parsed = JSON.parse(body);
-            if (parsed.doc !== id)
-              return send(400, "doc id mismatch", "text/plain");
-            const p = answersPath(id);
-            const prev = existsSync4(p) ? JSON.parse(readFileSync5(p, "utf8")) : emptyAnswers(id);
-            const doc = readDoc(id);
-            const merged = recordAnswers(prev, parsed, allQuestions(doc), doc.revision ?? 1);
-            const text = JSON.stringify(merged, null, 2) + `
-`;
-            writeFileSync4(p, text);
-            send(204, "");
+            const parsed = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+            if (!existsSync5(join10(dir, `${id}.json`)))
+              return send(404, "not found", "text/plain");
+            let doc;
+            try {
+              doc = readDoc(id);
+            } catch (e) {
+              if (req.method !== "PUT")
+                throw e;
+              return send(503, `the document ${id}.json cannot be read: ${e instanceof Error ? e.message : String(e)}`, "text/plain", { "retry-after": "2" });
+            }
+            const p = answersPath2(id);
+            let result;
+            if (req.method === "POST") {
+              const problem = agentChangeProblem(parsed);
+              if (problem)
+                return send(400, `not an agent change: ${problem}`, "text/plain");
+              const change = parsed;
+              let applied = "missing";
+              const r = updateAnswersFile(p, id, (a) => (applied = applyAgentChange(a, change, doc.revision ?? 1, now().toISOString())) === "changed", SERVER_LOCK_MS);
+              if (applied === "missing" && change.op === "reply")
+                return send(404, `no comment or question with id "${change.to}"`, "text/plain");
+              if ((applied === "taken" || applied === "differs") && change.op === "reply")
+                return send(409, takenMessage(change.id, applied), "text/plain");
+              result = { status: 200, text: r.text, changed: applied === "changed" };
+            } else {
+              const problem = answersProblem(parsed);
+              if (problem)
+                return send(400, `not an answers file: ${problem}`, "text/plain");
+              if (parsed.doc !== id)
+                return send(400, "doc id mismatch", "text/plain");
+              result = withAnswersLock(p, () => {
+                const current = readAnswersText(p, id);
+                const stored = parseAnswers(current);
+                checkAnswersShape(stored);
+                if (version !== answersEtag(current))
+                  return { status: 409, text: current };
+                const merged = recordAnswers(stored, parsed, allQuestions(doc), doc.revision ?? 1, now());
+                const text = answersJson(merged);
+                writeAnswersFile(p, text);
+                return { status: 200, text };
+              }, SERVER_LOCK_MS);
+            }
+            send(result.status, result.text, "application/json", {
+              etag: answersEtag(result.text),
+              ...result.changed === undefined ? {} : { [CHANGED_HEADER]: String(result.changed) }
+            });
+            if (result.status !== 200)
+              return;
             const file = `${id}.answers.json`;
-            if (hashes.get(file) !== hash(text)) {
-              hashes.set(file, hash(text));
+            if (hashes.get(file) !== hash(result.text)) {
+              hashes.set(file, hash(result.text));
               broadcast(file);
             }
           } catch (e) {
-            send(400, String(e instanceof Error ? e.message : e), "text/plain");
+            send(e instanceof LockTimeoutError ? 503 : e instanceof BrokenAnswersError ? 500 : 400, e instanceof LockTimeoutError ? e.blocker : String(e instanceof Error ? e.message : e), "text/plain", e instanceof BrokenAnswersError ? { "parley-file": answersName(id) } : {});
           }
         });
         return;
@@ -7970,16 +12994,32 @@ function startServer(opts) {
       send(404, "not found", "text/plain");
     } catch (e) {
       const message = String(e instanceof Error ? e.message : e);
-      if (area === "d" && id && ID2.test(id) && req.method === "GET")
-        return send(500, brokenDocPage(id, message));
+      if (area === "d" && id && DOC_ID.test(id) && req.method === "GET") {
+        const nonce = randomBytes3(16).toString("base64");
+        return send(500, brokenDocPage(id, message, nonce), undefined, {
+          "content-security-policy": `script-src 'nonce-${nonce}'; ${LOCKED}`
+        });
+      }
       send(500, message, "text/plain");
     }
   });
+  server.on("connection", (s) => {
+    sockets.add(s);
+    s.once("close", () => sockets.delete(s));
+  });
+  let info;
   const ready = new Promise((done, fail) => {
     server.once("error", fail);
     server.listen(opts.port ?? DEFAULT_PORT, host, () => {
       const addr = server.address();
-      done(typeof addr === "object" && addr ? addr.port : opts.port ?? DEFAULT_PORT);
+      const port = typeof addr === "object" && addr ? addr.port : opts.port ?? DEFAULT_PORT;
+      const at = host === "0.0.0.0" ? "127.0.0.1" : host === "::" ? "::1" : host;
+      try {
+        writeServerInfo(dir, info = { pid: process.pid, port, host: at, token });
+      } catch {
+        info = undefined;
+      }
+      done(port);
     });
   });
   return {
@@ -7989,14 +13029,21 @@ function startServer(opts) {
     get listed() {
       return files.listed;
     },
+    token,
     ready,
     close: () => new Promise((done) => {
+      if (info)
+        removeServerInfo(dir, info);
       watcher.close();
+      clearInterval(listenerPoll);
       for (const t of pending.values())
         clearTimeout(t);
       for (const c of clients)
         c.end();
       server.close(() => done());
+      server.closeAllConnections();
+      for (const s of sockets)
+        s.destroy();
     })
   };
 }
@@ -8022,20 +13069,81 @@ function sendMedia(range, res, body, headers) {
   });
   res.end(body.subarray(start, end + 1));
 }
-function brokenDocPage(id, message) {
+function mediaFile2(folder, rel) {
+  if (rel.split("/").includes(".."))
+    return;
+  try {
+    const real = realpathSync3(resolve7(folder, rel));
+    if (!real.startsWith(realpathSync3(folder) + sep2) || !statSync7(real).isFile())
+      return;
+    return real;
+  } catch {
+    return;
+  }
+}
+var INLINE_SCRIPT = /<script(\s[^>]*)?>([\s\S]*?)<\/script>/gi;
+var policies = new Map;
+var LOCKED = "object-src 'none'; base-uri 'none'";
+var NO_SCRIPT_CSP = `script-src 'none'; ${LOCKED}`;
+function scriptHashes(html) {
+  const hashes = new Set;
+  for (const [, attrs = "", body = ""] of html.matchAll(INLINE_SCRIPT)) {
+    if (/\ssrc=/i.test(attrs))
+      continue;
+    const type = /\stype=["']?([^"'\s>]+)/i.exec(attrs)?.[1]?.toLowerCase();
+    if (type && type !== "module" && !type.includes("javascript"))
+      continue;
+    hashes.add(`'sha256-${createHash5("sha256").update(body).digest("base64")}'`);
+  }
+  return [...hashes];
+}
+function fileCsp() {
+  let policy = policies.get("/f/");
+  if (policy)
+    return policy;
+  const hashes = [filePage("probe.md", ""), filePage("probe.txt", "")].flatMap(scriptHashes);
+  policy = `script-src ${[...new Set(hashes)].join(" ")}; ${LOCKED}`;
+  policies.set("/f/", policy);
+  return policy;
+}
+function pageCsp(storybook) {
+  const key = `/d/ ${storybook ?? ""}`;
+  let policy = policies.get(key);
+  if (policy)
+    return policy;
+  const probe = renderDoc({ id: "probe", title: "probe", created: "", blocks: [] }, [], {
+    storybook
+  });
+  policy = [
+    `script-src ${scriptHashes(probe).join(" ")} 'wasm-unsafe-eval' ${PDFJS_LIB}`,
+    "worker-src blob:",
+    LOCKED
+  ].join("; ");
+  policies.set(key, policy);
+  return policy;
+}
+function same(a, b) {
+  const x = Buffer.from(a);
+  const y = Buffer.from(b);
+  return x.length === y.length && timingSafeEqual(x, y);
+}
+function brokenDocPage(id, message, nonce) {
   const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
   return `<!doctype html><meta charset="utf-8"><title>${esc(id)}: not readable</title>
 <body style="font: 15px/1.5 system-ui, sans-serif; margin: 2rem; color-scheme: light dark">
 <h1 style="font-size: 1.2rem">${esc(id)} cannot be shown yet</h1>
 <p>${esc(message)}</p><p>This page reloads once the document is readable.</p>
-<script>
+<script nonce="${nonce}">
   const id = ${JSON.stringify(id)};
-  try { new EventSource('/events').onmessage = (e) => { try { const m = JSON.parse(e.data); if (m.id === id && m.kind === 'doc') location.reload(); } catch {} }; } catch {}
-  setInterval(async () => { try { if ((await fetch(location.href, { cache: 'no-store' })).ok) location.reload(); } catch {} }, 3000);
+  let es = null;
+  const open = () => { if (es || document.hidden) return; try { es = new EventSource('/events'); es.onmessage = (e) => { try { const m = JSON.parse(e.data); if (m.id === id && m.kind === 'doc') location.reload(); } catch {} }; } catch {} };
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) return open(); if (es) es.close(); es = null; });
+  open();
+  setInterval(async () => { if (document.hidden) return; try { if ((await fetch(location.href, { cache: 'no-store' })).ok) location.reload(); } catch {} }, 3000);
 </script>`;
 }
 function hash(data) {
-  return createHash3("sha1").update(data).digest("hex");
+  return createHash5("sha1").update(data).digest("hex");
 }
 function decodePath(raw) {
   try {
@@ -8044,8 +13152,20 @@ function decodePath(raw) {
     return;
   }
 }
-async function main4(argv, ctx) {
-  const parsed = cli4.parse(argv, ctx.io);
+function isHttpUrl(s) {
+  try {
+    const u = new URL(s);
+    return u.protocol === "http:" || u.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+function servedLink(host, port, token) {
+  const name = host === "0.0.0.0" || host === "::" ? "<this machine>" : host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
+  return `http://${name}:${port}/${token ? `?t=${token}` : ""}`;
+}
+async function main5(argv, ctx) {
+  const parsed = cli5.parse(argv, ctx.io);
   if (parsed.status === "help")
     return EXIT.ok;
   if (parsed.status === "error") {
@@ -8055,39 +13175,102 @@ async function main4(argv, ctx) {
   }
   const { values, positionals } = parsed;
   const port = Number(values.port);
-  if (!Number.isInteger(port) || port < 0 || port > 65535) {
+  if (values.port.trim() === "" || !Number.isInteger(port) || port < 0 || port > 65535) {
     ctx.io.stderr(`parley serve: --port must be a port number, not "${values.port}"
 `);
     return EXIT.usage;
   }
+  if (values.storybook !== undefined && !isHttpUrl(values.storybook)) {
+    ctx.io.stderr(`parley serve: --storybook must be an http(s) URL, not "${values.storybook}"
+`);
+    return EXIT.usage;
+  }
   const s = startServer({
-    dir: resolve5(ctx.cwd, positionals[0] ?? "docs/parley"),
+    dir: resolve7(ctx.cwd, positionals[0] ?? "docs/parley"),
     port,
     host: values.host,
-    root: values.root === undefined ? undefined : resolve5(ctx.cwd, values.root),
+    root: values.root === undefined ? undefined : resolve7(ctx.cwd, values.root),
     storybook: values.storybook
   });
   if (!s.listed)
     ctx.io.stderr(`parley: ${s.root} is not a git checkout, so no project files are served (pass --root)
 `);
-  const bound = await s.ready;
-  announce(ctx.io, values.host, bound, s);
+  let bound;
+  try {
+    bound = await s.ready;
+  } catch (err) {
+    await s.close();
+    const code = err.code;
+    ctx.io.stderr(code === "EADDRINUSE" ? `parley serve: ${values.host}:${port} is already in use (try --port)
+` : `parley serve: cannot listen on ${values.host}:${port}: ${err.message}
+`);
+    return EXIT.error;
+  }
+  announce(ctx.io, values.host, bound, s, ctx.cwd);
+  for (const [signal, code] of [
+    ["SIGINT", 130],
+    ["SIGTERM", 143],
+    ["SIGHUP", 129]
+  ])
+    process.once(signal, () => void s.close().finally(() => process.exit(code)));
   await new Promise((done) => s.server.once("close", () => done()));
   return EXIT.ok;
 }
-function announce(io, host, port, s) {
-  io.stdout(`parley: http://${host === "0.0.0.0" ? "<this machine>" : host}:${port}/  (${s.dir}; files from ${s.root})
+var NESTED_DEPTH = 4;
+function nestedDocs(dir) {
+  const out = { count: 0, atLeast: false, names: [] };
+  const found = [];
+  const walk = (from, rel, depth) => {
+    let entries;
+    try {
+      entries = readdirSync4(from, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    if (rel) {
+      const n = entries.filter((e) => isDocFile(e.name)).length;
+      out.count += n;
+      if (n)
+        found.push([rel, n]);
+    }
+    for (const e of entries) {
+      if (e.name.startsWith(".") || e.name === "node_modules" || !e.isDirectory())
+        continue;
+      if (depth >= NESTED_DEPTH)
+        out.atLeast = true;
+      else
+        walk(join10(from, e.name), rel ? `${rel}/${e.name}` : e.name, depth + 1);
+    }
+  };
+  walk(dir, "", 0);
+  out.names = found.sort((x, y) => y[1] - x[1] || x[0].localeCompare(y[0])).slice(0, 3).map(([name]) => name);
+  return out;
+}
+function announce(io, host, port, s, cwd) {
+  io.stdout(`parley: ${servedLink(host, port, s.token)}  (${s.dir}; files from ${s.root})
 `);
-  io.stdout(`parley: before giving a link, listen in the background: parley answers <id> ${s.dir} --wait
+  const docs = existsSync5(s.dir) ? readdirSync4(s.dir).some(isDocFile) : false;
+  const nested = docs ? undefined : nestedDocs(s.dir);
+  if (nested?.count)
+    io.stdout(`parley: no documents in ${s.dir}; ${nestedMessage(s.dir, nested, cwd)}
+`);
+  io.stdout(`parley: before giving a link, listen in the background: parley answers <id> ${shortArg(s.dir, cwd)} --wait
 `);
 }
 
 // src/cli.ts
+function version() {
+  if (true)
+    return "0.1.0";
+  const pkg = new URL("../package.json", import.meta.url);
+  return JSON.parse(readFileSync9(pkg, "utf8")).version;
+}
 var COMMANDS = {
   check: { main: main2, about: "validate documents" },
-  serve: { main: main4, about: "serve a folder of documents and collect answers" },
+  serve: { main: main5, about: "serve a folder of documents and collect answers" },
   render: { main: main3, about: "write a static page or markdown" },
-  answers: { main, about: "read, wait for or reply to the reviewer" }
+  answers: { main, about: "read, wait for or reply to the reviewer" },
+  schema: { main: main4, about: "print the JSON Schema, or with --md the field reference" }
 };
 function usage() {
   const rows = Object.entries(COMMANDS).map(([name, c]) => `  ${name.padEnd(8)} ${c.about}`);
@@ -8096,14 +13279,30 @@ function usage() {
 ${rows.join(`
 `)}
 
-'parley <command> --help' lists a command's flags.
+'parley <command> --help' lists a command's flags; 'parley --version' prints the version.
 `;
 }
-async function main5(argv, ctx) {
+var epipeHandled = false;
+function ignoreClosedPipe(ctx) {
+  if (epipeHandled || ctx.io.stdout !== processIo.stdout)
+    return;
+  epipeHandled = true;
+  process.stdout.on("error", (e) => {
+    if (e.code !== "EPIPE")
+      throw e;
+  });
+}
+async function main6(argv, ctx) {
+  ignoreClosedPipe(ctx);
   const [name, ...rest] = argv;
   if (name === undefined || name === "--help" || name === "-h" || name === "help") {
     ctx.io.stdout(usage());
     return name === undefined ? EXIT.usage : EXIT.ok;
+  }
+  if (name === "--version" || name === "-V") {
+    ctx.io.stdout(`${version()}
+`);
+    return EXIT.ok;
   }
   const command = COMMANDS[name];
   if (!command) {
@@ -8115,4 +13314,4 @@ ${usage()}`);
 }
 
 // scripts/bundle-entry.ts
-await runMain(main5, { name: "parley" });
+await runMain(main6, { name: "parley" });

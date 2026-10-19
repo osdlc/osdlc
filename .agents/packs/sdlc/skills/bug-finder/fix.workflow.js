@@ -239,7 +239,7 @@ function landPrompt(t, findings, verify) {
     '     MSG',
     `4. Push once: \`git -C ${t.worktree} push -u origin ${t.branch}\`.`,
     '   ONE push. Every extra push is another full CI run — batch everything into this one.',
-    `5. Open the PR with \`gh pr create --base ${BASE} --head ${t.branch}\` from ${t.worktree}.`,
+    `5. Open the PR with \`sdlc pr create --base ${BASE} --head ${t.branch} --title <title> --body-file <file>\` from ${t.worktree}.`,
     '',
     'PR body shape:',
     '  ## Summary — the territory, and the class of bugs fixed.',

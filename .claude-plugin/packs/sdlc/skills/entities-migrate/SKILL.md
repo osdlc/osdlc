@@ -198,9 +198,9 @@ Files left for manual review (auto_fixable=false drift):
 
 ```text
 git push -u origin chore/entities-migrate
-gh pr create \
+${CLAUDE_PLUGIN_ROOT}/cli/sdlc pr create --base main --head chore/entities-migrate \
   --title "chore(entities): apply auto-fixable schema drift" \
-  --body "<see below>"
+  --body-file <body-file>
 ```
 
 PR body shape:

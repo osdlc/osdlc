@@ -1,14 +1,15 @@
 /**
- * `sdlc task close-commit` — land a task's CLOSING state on `main` via an
- * ephemeral worktree off `origin/main`, never touching the shared checkout.
+ * `sdlc task close-commit` — land a task's CLOSING state on the target branch
+ * (`--target`-less: `orchestrator.target_branch`, else `main`) via an
+ * ephemeral worktree off `origin/<target>`, never touching the shared checkout.
  *
  * Mutating the shared primary checkout directly is unsafe under parallel
  * `/sdlc:*` sessions
  * ([[B-P502-commit-task-state-and-planning-docs-via-ephemeral-worktrees]]).
  *
  * This op applies the `prs:` fold + the `## Post-mortem` stub + the closing
- * frontmatter inside a throwaway worktree off `origin/main` and pushes
- * `HEAD:main`, via the shared `commitToMainViaWorktree` isolation primitive
+ * frontmatter inside a throwaway worktree off `origin/<target>` and pushes
+ * `HEAD:<target>`, via the shared `commitToMainViaWorktree` isolation primitive
  * ([[D-WK7T-agent-git-writes-worktree-isolated]]) — the close mutation is the
  * `mutate` callback; the helper owns the worktree lifecycle + push-retry.
  *
@@ -20,6 +21,11 @@
  *   not this field.
  * - the `## Post-mortem` stub is planted here when the body carries none
  *   ([[T-5LP4]]).
+ *
+ * - the task's lease is released once the close lands, so a merged task never
+ *   keeps an `awaiting-review` lease that only `--force` could remove
+ *   ([[T-VXQ9]]). Best-effort: no lease or no authority configured is not an
+ *   error, and the skill's own `lease task archive` step stays idempotent.
  *
  * Hidden plumbing ([[D-H7FS-op-substrate-surface]] §2): absent from default
  * `--help`, revealed by `--advanced`. Driven by the task-close-out skill.
@@ -35,6 +41,9 @@ import { applyFrontmatterUpdates, readInstanceDoc } from '@lib/model/ops/_update
 import { entityFromDir, type Entity } from '@lib/model/entity'
 import { pluginLibDir } from '@lib/util/plugin-root'
 import { renderTaskLifecycleCommit } from '@lib/model/entities/task/commits/lifecycle/schema'
+import { resolveAuthority } from '@lib/config'
+import { LeaseError, releaseToArchive } from '@lib/services/lease'
+import { stateBranch } from '@lib/services/orchestrator/target-branch'
 import { closePanesForCloseOut } from '@lib/services/session/close'
 import { CommitToMainError, commitToMainViaWorktree } from '@lib/services/git/commit-to-main'
 import { DATE_PATTERN } from '@lib/model/entities/_common'
@@ -45,6 +54,24 @@ let taskEntity: Entity | null = null
 function getTaskEntity(): Entity {
   taskEntity ??= entityFromDir(join(pluginLibDir(), 'model', 'entities', 'task'))
   return taskEntity
+}
+
+/** Archive the closed task's lease; a failure only warns, the close already landed. */
+function releaseLease(projectRoot: string, basename: string, warn: (line: string) => void): void {
+  const authority = resolveAuthority(null, projectRoot)
+  if (!authority) return
+  try {
+    releaseToArchive(basename, {
+      cwd: projectRoot,
+      authority,
+      projectRoot,
+      actor: 'op:task close-commit',
+      reason: 'close-out',
+    })
+  } catch (e) {
+    if (!(e instanceof LeaseError)) throw e
+    warn(`warning: could not release the lease of ${basename}: ${e.message}\n`)
+  }
 }
 
 const input = z.object({
@@ -105,7 +132,7 @@ export default defineOp({
   noun: 'task',
   verb: 'close-commit',
   summary:
-    "Commit a task's closing state to main via an ephemeral worktree off origin/main (no shared-checkout contamination).",
+    "Commit a task's closing state to the target branch (default main) via an ephemeral worktree off origin/<target> (no shared-checkout contamination).",
   hidden: true,
   input,
   output,
@@ -136,6 +163,7 @@ export default defineOp({
         projectRoot: args.projectRoot,
         git: ctx.git,
         label: args.basename,
+        branch: stateBranch(ctx),
         dryRun: ctx.dryRun,
         mutate: (wt) => {
           const { path: wtTaskPath } = readInstanceDoc('task', wt, args.basename)
@@ -204,6 +232,7 @@ export default defineOp({
       throw e
     }
 
+    if (!result.dryRun) releaseLease(args.projectRoot, args.basename, ctx.io.stderr)
     // The worktree is torn down after this op (the task-close-out skill removes the worktree), so the panes of
     // the task branch's sessions close now. Not under --dry-run; best effort.
     if (!ctx.dryRun) {

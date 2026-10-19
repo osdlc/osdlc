@@ -200,8 +200,10 @@ and no branch. From the project root, sequentially (concurrent
 
 ```text
 ${CLAUDE_PLUGIN_ROOT}/cli/sdlc project preflight-worktree bug-finder-<id> --branch chore/bug-finder-<id>
-git worktree add .sdlc/worktrees/bug-finder-<id> -b chore/bug-finder-<id> main
+${CLAUDE_PLUGIN_ROOT}/cli/sdlc project create-worktree bug-finder-<id> --branch chore/bug-finder-<id> --start-point main
 ```
+
+The op prints the worktree's absolute path, under the main checkout; use that path.
 
 If preflight reports a branch or worktree collision, an earlier run left state
 behind — ask the user before touching it.

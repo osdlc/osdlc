@@ -1,7 +1,7 @@
 {
-  "name": "sdlc",
+  "name": "osdlc",
   "interface": {
-    "displayName": "sdlc"
+    "displayName": "osdlc"
   },
   "plugins": [
     {

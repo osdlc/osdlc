@@ -37,7 +37,7 @@ Project context (don't re-derive every run):
   `last_reviewed`, `relevance_note`, `completion_note`. Full schema in
   `docs/planning/tasks/README.md`.
 - Frontmatter is validated by the sdlc plugin's schema. After any edit that touches frontmatter
-  (Step 5 ensure-ready / start-commit), run:
+  (Step 5 ensure-ready), run:
 
   ```text
   scripts/sdlc entities validate <path-to-task-file>
@@ -58,13 +58,17 @@ Project context (don't re-derive every run):
     `closed/partially-superseded`, `closed/obsoleted`, `closed/relocated`, `closed/no-repro`,
     `closed/wontdo`
   - Closed tasks must include a `completion_note:` body field.
-- Worktrees: `.sdlc/worktrees/<task-basename>` (basename = filename without `.md`).
+- Worktrees: `<main-checkout>/.sdlc/worktrees/<task-basename>`, created by
+  `project create-worktree` (basename = filename without `.md`).
 - Branch: `task/<task-basename>` (see `${CLAUDE_PLUGIN_ROOT}/conventions/branch-naming.md`).
 - Quality checks: declared per-project in `<project-root>/sdlc.yaml` under the `workflows.check:`
   key (a list of shell verbs). See `${CLAUDE_PLUGIN_ROOT}/conventions/sdlc-yaml.md` for the shape.
   Step 7 invokes `scripts/sdlc quality run --name check` against that file rather
   than hard-coding any specific runner. Absent file or empty list emits a visible warning and skips
   the gate (no silent fallback).
+- Generated files: the optional `generate` workflow (`workflows.generate:` in `sdlc.yaml`) rebuilds
+  the project's committed generated files. Step 7 runs it after implementation and before the
+  quality checks, and Step 9 runs it after a rebase; a project that does not configure it no-ops.
 - Worktree initialisation: the `setup` verb, resolved through the cascade in
   D-LSLH-collapse-verbs-workflows-chain-hooks (env → `sdlc.local.yaml` → `sdlc.yaml`
   `workflows.setup:` → a default detected from the repo's own task runner or lockfile). Step 4
@@ -174,7 +178,7 @@ Block and report (do not proceed) when `blocked_preflight` is `true` — it is
 - State starts with `closed/` (any reason — `closed/done`, `closed/obsoleted`, etc.).
 - State is the legacy `in-progress` or `in-progress/blocked` (a file no run has healed yet).
 - An active lease already holds the task and it is not the resume shape below.
-- A worktree already exists at `.sdlc/worktrees/<basename>` (`worktree_exists`).
+- A worktree already exists at `<main-checkout>/.sdlc/worktrees/<basename>` (`worktree_exists`).
 - A branch already exists named `task/<basename>` (`branch_exists`).
 - A PR is already open referencing this task (`open_pr_number` non-null).
 
@@ -212,7 +216,7 @@ rather than a fresh pickup exactly when `resume_candidate` is `true`:
   flip it to `in-progress`.
 - The probe's `lease_phase` is `claimed` or `working` — a lease exists,
   and it has not yet reached review. This is the resume signal.
-- A worktree exists at `.sdlc/worktrees/<basename>`.
+- A worktree exists at `<main-checkout>/.sdlc/worktrees/<basename>`.
 - A branch `task/<basename>` exists.
 - No PR is open referencing this task (`open_pr_number` is `null`).
 
@@ -244,13 +248,13 @@ options:
 1. **Resume at Step 5b** — keep the existing worktree and task
    branch; skip Step 4 (worktree create) and Step 5a (ensure-ready);
    jump directly to Step 5b (lease transition + reset the task branch
-   onto the current origin/main tip). The lease already carries this
+   onto the current `origin/$TARGET` tip). The lease already carries this
    run's readiness gate in its `gates` object, so re-running the gate
    would be a no-op anyway.
 2. **Start over** — stop here. Do NOT auto-clean — removing a worktree
    without explicit consent is the kind of destructive default to avoid.
    The user manually removes the worktree (`git worktree remove --force
-   .sdlc/worktrees/<basename>`) and deletes the branch (`git branch
+   <main-checkout>/.sdlc/worktrees/<basename>`) and deletes the branch (`git branch
    -D task/<basename>`) before re-invoking `/task-work`.
 
 Default: stop. The user picks resume explicitly. If the user
@@ -260,6 +264,16 @@ jumps to Step 5b. Steps 4 and 5a are skipped. The baseline captured
 here is the one Step 7 will gate against on the resumed run; if a
 stale baseline already exists for the same SHA, capture overwrites
 it (the cache is keyed on SHA, not on session).
+
+### Fix attempt — `--fix-attempt`
+
+The orchestrator passes `--fix-attempt` as the second argument when the task's PR is already open
+as a draft and its last local check failed (T-I3LS). This is not a fresh pickup and not a resume
+choice: the worktree, the branch `task/<basename>` and the PR exist on purpose, so the blockers
+above and the AskUserQuestion do not apply. Work in the existing worktree: rerun the failing check
+to see why it failed, fix it, commit, and push to the same branch. Do NOT open a PR, change draft
+state or call `sdlc pr ready`; the orchestrator reruns `check` and `judge` on the new head and marks
+the PR ready itself. Stop after the push.
 
 ### Relevance check (the important one)
 
@@ -355,28 +369,44 @@ and no env-var bypass.
 
 ## 3. Pre-flight on main — do NOT commit yet
 
-Stay on main. Do NOT modify the task file here. Do NOT commit anything yet — the
+Stay on the main checkout. Do NOT modify the task file here. Do NOT commit anything yet — the
 `chore(tasks): start <basename>` commit is deferred to Step 5's success path, after
 `/task-ensure-ready` confirms the spec is implementation-ready.
 
 Confirm via `git status` that the working tree on main is clean enough to branch from. If the user
 has unrelated uncommitted changes on main, note them but proceed — Step 4 branches a worktree from
-main without touching the index.
+`origin/$TARGET` without touching the index.
 
 If a relevance-check finding from Step 2 needs to be recorded in the task body (e.g. a note that a
-referenced file has moved), defer that edit to Step 5 as well; bundle it with the start-commit on
-main so the task file only changes once on main per run.
+referenced file has moved), do not edit the task file now. Write the note into the brief you keep
+for Step 6 (or a scratch file outside the repository) and apply it in the task worktree after Step
+5b, committed on the task branch so it ships in the task PR. Never land it on `$TARGET`.
 
 ### 3a. Capture the quality-check baseline
 
 `sdlc quality run --name check` (Step 7) gates the PR on the project's declared
 `workflows.check:` verbs. Some verbs (notably `sdlc entities audit`)
-emit pre-existing drift already broken on `origin/main`. Capturing a
+emit pre-existing drift already broken on the target branch. Capturing a
 baseline now lets Step 7 gate only on drift this branch introduced,
 not pre-existing findings (see
 T-H69K-run-quality-checks-isolates-pre-existing-drift).
 
-Capture a baseline NOW, against the current `origin/main` SHA, while
+**The target branch.** Everything below that used to say `origin/main`
+(the branch point, the baseline, the PR base, the rebase) reads the
+project's TARGET branch: `orchestrator.target_branch` in `sdlc.yaml`,
+else the repository default branch (T-NB98). Resolve it once, here,
+and keep it as a local shell variable for the whole run:
+
+```text
+TARGET=$(scripts/sdlc orchestrate target)
+```
+
+The command verifies the branch on the remote and fetches
+`origin/$TARGET`. If it exits non-zero (a configured target that does
+not exist on the remote is the usual cause) stop and surface its
+stderr; never fall back to `main` or to any other branch.
+
+Capture a baseline NOW, against the current `origin/$TARGET` SHA, while
 we're still on main and before any work has landed. The baseline is
 stored locally at `<project-root>/.sdlc/quality-baselines/<sha>.json`
 (the directory is gitignored). Step 7 will diff HEAD's findings
@@ -385,17 +415,17 @@ introduced.
 
 Procedure:
 
-1. Resolve the current `origin/main` SHA:
+1. Resolve the current `origin/$TARGET` SHA (`orchestrate target`
+   above already fetched it):
 
    ```text
-   git fetch -q origin main
-   ORIGIN_MAIN_SHA=$(git rev-parse origin/main)
+   TARGET_SHA=$(git rev-parse "origin/$TARGET")
    ```
 
-   Record `ORIGIN_MAIN_SHA` — you will pass it to Step 7. Keep it as
+   Record `TARGET_SHA` — you will pass it to Step 7. Keep it as
    a local shell variable for the duration of the run; do not
    re-resolve at Step 7 (the SHA must match the baseline that
-   captured pre-existing drift, not whatever `origin/main` happens
+   captured pre-existing drift, not whatever `origin/$TARGET` happens
    to be later).
 
 2. Invoke the capture helper from the project root (the script runs
@@ -403,7 +433,7 @@ Procedure:
    from `<project-root>`):
 
    ```text
-   scripts/sdlc quality baseline capture "$ORIGIN_MAIN_SHA" \
+   scripts/sdlc quality baseline capture "$TARGET_SHA" \
        --config <project-root>/sdlc.yaml \
        --baseline-dir <project-root>/.sdlc/quality-baselines
    ```
@@ -418,7 +448,7 @@ Procedure:
    written JSON and report:
 
    ```text
-   Baseline captured at $ORIGIN_MAIN_SHA: N pre-existing findings
+   Baseline captured at $TARGET_SHA: N pre-existing findings
    ```
 
    where `N` is the total number of finding lines across all verbs in
@@ -429,7 +459,7 @@ Procedure:
 4. If `<project-root>/sdlc.yaml` is absent OR declares no
    `workflows.check:` verbs, the capture is a no-op: emit
    `Baseline skipped: no workflows.check configured` and proceed
-   without setting `ORIGIN_MAIN_SHA`. Step 7 will surface the same
+   without setting `TARGET_SHA`. Step 7 will surface the same
    missing-config warning it surfaces today; nothing else changes.
 
 The baseline is cheap (one extra full run of the gate, sequenced
@@ -454,7 +484,7 @@ Before creating the worktree, confirm the operator's resolved Claude Code sandbo
 Non-package-manager families (`node`, `npx`, `pytest`) keep their body-text-driven hard-gap
 behavior. The same probe ALSO checks the two file-mutation tools the implementer always needs —
 `Write` and `Edit` — against the worktree path Step 4 will create
-(`<repo-root>/.sdlc/worktrees/<basename>/`). Catching gaps here heads off a sandbox denial
+(`<main-checkout>/.sdlc/worktrees/<basename>/`). Catching gaps here heads off a sandbox denial
 mid-implementation in Step 6 and its BLOCK/unblock churn.
 
 Shell out to the op:
@@ -492,8 +522,15 @@ is covered, and that `Write`/`Edit` cover the worktree path.
 ## 4. Create the worktree
 
 ```text
-git worktree add .sdlc/worktrees/<basename> -b task/<basename> main
+scripts/sdlc project create-worktree <basename> --start-point "origin/$TARGET"
 ```
+
+The op creates `<main-checkout>/.sdlc/worktrees/<basename>` on a new `task/<basename>` branch from
+the start point, wherever this session runs (the main checkout or a linked worktree), and prints
+that **absolute path** alone on one line. Capture it: it is the **worktree path** for the rest of
+this skill. Never run a bare `git worktree add .sdlc/worktrees/...` here — from a linked worktree
+it would land under that worktree, where `sdlc task inflight` and the loop's caps cannot see it.
+It exits non-zero, creating nothing, when a worktree already exists at that path.
 
 The `task/<basename>` prefix is the canonical convention (see
 `${CLAUDE_PLUGIN_ROOT}/conventions/branch-naming.md`).
@@ -518,7 +555,8 @@ warning — do NOT invent verbs yourself. `sdlc quality run --name setup` is tru
 `UNTRUSTED` naming the fix (`sdlc repo trust`); run that once per repo before Step 4, or pass
 `--trust` to this one invocation.
 
-Procedure (in the worktree, immediately after `git worktree add`, before any other commit attempt):
+Procedure (in the worktree, immediately after `project create-worktree`, before any other commit
+attempt):
 
 1. If `<project-root>/sdlc.yaml` does not exist, skip — no init needed. (For brand-new projects,
    `/setup` will create the file later; until then there's nothing to read.)
@@ -527,7 +565,7 @@ Procedure (in the worktree, immediately after `git worktree add`, before any oth
    ```text
    scripts/sdlc quality run \
        --config <project-root>/sdlc.yaml --name setup \
-       --project-root <worktree-root> --log --allow-empty
+       --project-root <worktree path> --log --allow-empty
    ```
 
    `--allow-empty` turns an empty resolution (`workflows.setup: []`, or nothing declared and nothing
@@ -554,40 +592,59 @@ The one commit Step 5 can still land is a PROMOTION — state flip plus readines
 commit — and only when the task entered at a `planning/*` state. A task picked up at `open/ready`
 passes the gate with no commit at all.
 
-**Land any task-body edits on `origin/main` before the gate runs.**
-Under `--commit-on main` (the shape Step 5 uses), the readiness gate
-reads the task file from `origin/main` and lands any commit through an
-ephemeral worktree off `origin/main` — it neither inspects nor touches
-the author's checkout or this worktree
-(D-WK7T-agent-git-writes-worktree-isolated). So a promotion commit
-builds on whatever `origin/main` carries, NOT on uncommitted worktree
-edits. If Step 2's relevance check produced a task-body edit that must
-persist (a moved-file note, a clarified AC), land it on `origin/main`
-**before** invoking 5a; an edit left only in this worktree is discarded
-by Step 5b's `reset --hard origin/main`. (The body-edits precondition
-that exits 19 on the standalone `--commit` path does NOT fire under
-`--commit-on main` — the off-origin worktree is always clean. See
-T-XBJY-ensure-ready-refuses-with-unstaged-body-edits.)
+**Task state lives on `$TARGET`.** Task files and their state are read from, and committed to,
+`origin/$TARGET` (the same branch the work branches from and opens its PR against; the repository
+default branch when nothing sets a target, D-S30G-task-state-plane-split). `origin/$TARGET`
+below means that branch.
+
+**Task-body edits never go to `origin/$TARGET`.** State and body travel separately. The state the
+gate writes (`state:`, `readiness_verified_at`, `definition_gap`, the lease) lands on
+`origin/$TARGET` through `sdlc task ensure-ready-mutate --commit-on "$TARGET"`, which fetches,
+commits in an ephemeral worktree off `origin/$TARGET` and pushes from inside sdlc's own
+deterministic op (D-WK7T-agent-git-writes-worktree-isolated), so every machine sees state
+without waiting for a PR merge (D-S30G-task-state-plane-split). The commit carries frontmatter
+only: the op edits the frontmatter of `origin/$TARGET`'s copy and never reads or writes the body
+from this worktree.
+
+Spec edits to the task BODY (a moved-file note from Step 2, a clarified acceptance criterion, ticked
+ACs, the post-mortem) are different: they are part of the change and are reviewed with the code, so
+they travel in the task branch and its PR. **Never `git push` to `$TARGET` (or any default branch)
+yourself, for any reason.** An unattended run that does so is refused by the agent harness as an
+unreviewed merge and dead-ends. Consequences for the order of work:
+
+- The gate in 5a verifies the task file at the path inside this worktree, so a body edit made before
+  5a is judged, but it stays uncommitted and Step 5b's `reset --hard origin/$TARGET` discards it.
+  Make such edits, or re-make them, AFTER Step 5b and commit them on the task branch (a
+  `docs(tasks)` commit or folded into the implementation commit).
+- Do not commit body edits on the task branch BEFORE 5b: the branch would then hold commits not on
+  `origin/$TARGET` and `sdlc task begin` refuses with exit 23 (`UNMERGED_COMMITS`).
+- The readiness stamp attests `origin/$TARGET`'s body, not the edits that ride in the PR. After
+  committing body edits on the task branch, re-check the edited file before opening the PR:
+  `sdlc task gap-report <basename>` from the task worktree must report no gaps. A gap is a blocker:
+  fix the edit, or stop and surface it; never open the PR over it.
+- The body-edits precondition that exits 19 on the standalone `--commit` path does NOT fire under
+  `--commit-on "$TARGET"`: the off-origin worktree is always clean. See
+  T-XBJY-ensure-ready-refuses-with-unstaged-body-edits.
 
 ### 5a. Run the readiness gate
 
 Invoke `/task-ensure-ready` against the absolute path to the task
-file **inside the worktree**, passing both `--commit-on main` and
+file **inside the worktree**, passing both `--commit-on "$TARGET"` and
 `--cleanup-on-fail`. The first flag lands the readiness-stamp (PASS)
-or downshift (NEEDS-DEFINITION) commit on `origin/main` through an
-ephemeral worktree off `origin/main` — never this checkout
+or downshift (NEEDS-DEFINITION) commit on `origin/$TARGET` through an
+ephemeral worktree off `origin/$TARGET` — never this checkout
 (D-WK7T-agent-git-writes-worktree-isolated) — so the worktree's
 task file is left untouched and the task branch carries implementation
 diff only. The second flag extends the FAIL path so the script ALSO
 tears down the abandoned worktree + branch + lease before exiting.
-(Task-state lands on `origin/main`, not the task branch, so Step 5b's
+(Task-state lands on `origin/$TARGET`, not the task branch, so Step 5b's
 reset onto the new tip has no frontmatter to rebase — see
 T-SIHV-task-state-frontmatter-commits-on-main-not-worktree-branch,
 T-XM0B-ensure-ready-script-emits-markers-and-cleanup.)
 
 The sub-skill's marker on stdout will be `ENSURE-READY-OK: <basename>`
 or `ENSURE-READY-NEEDS-DEFINITION: <basename>`. The skill itself
-shells `sdlc task ensure-ready-mutate` with `--commit-on main
+shells `sdlc task ensure-ready-mutate` with `--commit-on "$TARGET"
 --cleanup-on-fail`; you do not invoke that op directly here — the
 canonical entry point is the `/task-ensure-ready` skill. It emits
 the marker on its own; do not re-print it.
@@ -616,7 +673,7 @@ T-ICA5-task-work-sub-agent-verdict-contract-clarity).
 
 If `/task-ensure-ready` returned `ENSURE-READY-NEEDS-DEFINITION:
 <basename>`, the downshift commit has ALREADY landed on `main` (via
-`--commit-on main`), AND the worktree + branch + lease have ALREADY
+`--commit-on "$TARGET"`), AND the worktree + branch + lease have ALREADY
 been torn down (via `--cleanup-on-fail`). The script's third stdout
 line carries the cleanup state — `cleaned-up: worktree=<state>
 branch=<state> lease=<state>` — for diagnostic relay. Main correctly
@@ -668,7 +725,7 @@ whichever plane it chose; do not commit them again here.
 
 Only reached when 5a returned `ENSURE-READY-OK:`. Starting a run writes nothing to `main`: it moves
 the lease from `claimed` to `working` and resets the task branch (in the worktree) onto the current
-`origin/main` tip.
+`origin/$TARGET` tip.
 
 Shell out to `scripts/sdlc task begin`:
 
@@ -677,14 +734,16 @@ scripts/sdlc task begin \
     <absolute path to task file in the worktree> \
     --worktree <absolute worktree path> \
     --branch task/<basename> \
+    --target "$TARGET" \
     --lease-authority <authority resolved from sdlc.yaml or env>
 ```
 
-The script reads `origin/main`'s copy of `docs/planning/tasks/<basename>.md` and refuses a task that
-is not eligible to start (a `closed/*` state). It then CAS-REPLACEs the lease ref from `claimed` to
-`working` (owner-preserving — `lease_token` does not rotate), and finally `git reset --hard
-origin/main` inside the worktree so the task branch fast-forwards to the current `origin/main` tip.
-It emits `STARTED: <basename>`.
+The script reads `origin/$TARGET`'s copy of `docs/planning/tasks/<basename>.md` (task state lives on
+the target branch the work builds against) and refuses a task that is not eligible to start (a
+`closed/*` state). It then CAS-REPLACEs the lease ref from `claimed` to `working` (owner-preserving
+— `lease_token` does not rotate), and finally `git reset --hard origin/$TARGET` inside the worktree
+so the task branch fast-forwards to the current `origin/$TARGET` tip. It emits
+`STARTED: <basename>`.
 
 **What it no longer does, and why.** It used to commit `state: in-progress` + `last_reviewed` + a
 `## Post-mortem` stub to `main` — the same fact the lease transition on the next line already
@@ -700,19 +759,22 @@ targets the same authority that holds the `claimed` ref.
 
 Exit codes the caller must dispatch on:
 
-- `0` — lease transitioned to `working` and the task branch reset onto the current `origin/main`
+- `0` — lease transitioned to `working` and the task branch reset onto the current `origin/$TARGET`
   tip. Proceed to Step 6.
-- `1` — a precondition failed (task not eligible on `origin/main` — e.g. already `closed/*` — the
-  task file is absent on `origin/main`, lease library unimportable, the active lease ref is in an
-  unexpected phase for a start transition, or the worktree `fetch`/`reset --hard origin/main` step
-  failed). The error message names the precondition; surface to the user and stop.
+- `1` — a precondition failed (task not eligible on `origin/$TARGET` — e.g. already `closed/*` — the
+  task file is absent on `origin/$TARGET`, lease library unimportable, the active lease ref is in an
+  unexpected phase for a start transition, or the worktree `fetch`/`reset --hard origin/$TARGET`
+  step failed). The error message names the precondition; surface to the user and stop.
 - `2` — bad arguments. Almost always a caller bug; fix the invocation.
 - `12` (`LEASE-CONFLICT`) — `LEASE-TRANSITION-FAILED ref=<ref>` on stderr. The CAS-REPLACE was
   rejected (another worker moved the ref between fetch and push, or schema validation failed). Stop
   and surface to the user — do not retry blindly; the conflicting transition needs human triage.
+- `23` (`UNMERGED_COMMITS`) — the task branch holds commits not on `origin/$TARGET` (for example a
+  body edit committed before this step). Stop and surface it; on a resumed run, follow the resume
+  path rather than resetting the branch yourself.
 
 The script never touches this checkout's working tree, index, or HEAD. Uncommitted edits in the
-*task worktree*, however, are discarded by the `reset --hard origin/main`; Step 5 runs before
+*task worktree*, however, are discarded by the `reset --hard origin/$TARGET`; Step 5 runs before
 implementation work, so the worktree is expected clean here.
 
 Idempotency: a lease already at `working` transitions as a no-op, so a resumed session that
@@ -729,7 +791,8 @@ Launch a sub-agent with the Agent tool. Brief it like a colleague who just walke
 - Tell it the acceptance criteria are the contract — every AC must be satisfied.
 - Tell it to run the project's quality checks after substantive changes (via
   `scripts/sdlc quality run --config <project-root>/sdlc.yaml --line`)
-  and to fix issues before reporting done.
+  and to fix issues before reporting done. The generated files are Step 7's job (the `generate`
+  workflow); the sub-agent need not rebuild them, and must not hand-edit them.
 - Pick subagent_type appropriately: `general-purpose` for mixed work, `Plan` first if the approach
   is still vague.
 
@@ -834,17 +897,33 @@ each verb in order.
 
 In the worktree:
 
+0. **Generate.** Implementation edits source; the project's committed generated files (bundles,
+   copied packs, generated docs, goldens) go stale until rebuilt, and the quality checks fail on
+   them. Run the project's `generate` workflow first, through the same executor:
+
+   ```text
+   scripts/sdlc quality run \
+       --config <project-root>/sdlc.yaml --name generate \
+       --project-root <worktree path> --log --allow-empty
+   ```
+
+   `generate` is whatever `workflows.generate:` lists in `sdlc.yaml` (or `sdlc.local.yaml`); sdlc
+   ships no default and knows nothing about what it builds. `--allow-empty` makes an unconfigured
+   project a no-op (exit 0 and one stderr warning). A non-zero exit means a generate command
+   failed: fix the cause and re-run, do not proceed to the checks. When it succeeds, commit
+   whatever it changed (`git status --porcelain`; a clean tree means nothing to commit) as
+   `chore: regenerate generated files`, then continue. Never hand-edit a generated file.
 1. Invoke the executor, passing the SHA captured in Step 3a so the
    gate only fails on drift this branch introduced:
 
    ```text
    scripts/sdlc quality run \
        --config <project-root>/sdlc.yaml \
-       --diff-against-baseline "$ORIGIN_MAIN_SHA" \
+       --diff-against-baseline "$TARGET_SHA" \
        --line
    ```
 
-   (`$ORIGIN_MAIN_SHA` is the local shell variable set in Step 3a.
+   (`$TARGET_SHA` is the local shell variable set in Step 3a, the tip of `origin/$TARGET`.
    `--line` is the default; `--log` is incompatible with
    `--diff-against-baseline` because the gate needs to capture each
    verb's stdout to compute the per-verb finding diff — the executor
@@ -885,6 +964,12 @@ In the worktree:
      output, fix, and re-invoke. Do not proceed to the PR until the
      executor reports `OK`.
 
+When the executor reports `OK`, that pass covers the commit checked out now. Steps 8 and 9
+may add commits after it (the post-mortem commit, a sync merge); Step 10.6 records a pass only
+for a commit the checks ran on, so it re-runs this gate when any commit landed after the last
+`OK`. Until Step 10.6 the PR is a draft; do not mark it ready any other way, and do not call
+`gh` to change draft state.
+
 ### Pre-PR dogfood (when verb authoring is in scope)
 
 This subsection applies **only** to tasks whose `## Areas`
@@ -896,20 +981,20 @@ a gate verb.
 The formal gate (sub-step 1) runs only against the worktree's modified
 tree, so a verb with the wrong stdout shape (too eager → false
 `new-drift:`; too chatty → a flood of `pre-existing:` lines) passes it
-while still miscalibrated. Dogfood the verb against `origin/main`'s
+while still miscalibrated. Dogfood the verb against `origin/$TARGET`'s
 tree before the PR is open: capture a baseline at the merge-base SHA
 and diff HEAD against it.
 
 ```text
-scripts/sdlc quality baseline capture "$ORIGIN_MAIN_SHA" \
+scripts/sdlc quality baseline capture "$TARGET_SHA" \
     --config <project-root>/sdlc.yaml \
     --baseline-dir <project-root>/.sdlc/quality-baselines
 scripts/sdlc quality run \
     --config <project-root>/sdlc.yaml \
-    --diff-against-baseline "$ORIGIN_MAIN_SHA" --line
+    --diff-against-baseline "$TARGET_SHA" --line
 ```
 
-The diff splits findings into `pre-existing:` (already on `origin/main`)
+The diff splits findings into `pre-existing:` (already on `origin/$TARGET`)
 and `new-drift:` (introduced by HEAD). A clean dogfood is zero new drift
 and a pre-existing count low enough to gate on usefully; any `new-drift:`
 line means the verb is too eager and miscalibrated. When it surfaces new
@@ -935,11 +1020,11 @@ scripts/sdlc lease task transition <basename> --phase blocked
 
 ## 8. Post-mortem — capture AC coverage and automation gaps
 
-Before opening the PR, while the implementation context is still fresh, fill the `## Post-mortem`
-stub that Step 5b already appended to the end of the task file in the worktree. The section's
-placement (end of body) and structure (the H2, the caption, and the three H3 subsections) are
-already materialized by `sdlc task begin` — you replace each subsection's
-`_TBD — filled at Step 8._` placeholder with the real content below. Write it through one lens:
+Before opening the PR, while the implementation context is still fresh, write the `## Post-mortem`
+section at the end of the task file in the worktree and commit it on the task branch, so it ships in
+the task PR with the code. `sdlc task begin` plants no stub (`close-commit` plants one at closure
+only when the body lacks a section), so add the H2, the caption and the three H3 subsections below
+yourself, or fill the placeholders in place if a stub is already there. Write it through one lens:
 **automate as much as possible** — record where this run needed a human.
 
 Do not skip this step even on smooth runs — a clean post-mortem is still data ("nothing got in the
@@ -947,8 +1032,8 @@ way, fully auto-verified").
 
 ### What to record
 
-The stub already carries this exact structure — fill each subsection in place. The headings below
-are the source of truth for the stub's content:
+Use exactly this structure (a stub `close-commit` planted has the same headings — fill it in place).
+The headings below are the source of truth:
 
 ```text
 ## Post-mortem
@@ -999,7 +1084,7 @@ EOF
 ```
 
 Keep this as its own commit — it's reflective, not part of the implementation. The next step (sync)
-will rebase it onto `origin/main` along with the rest of the feat branch.
+will rebase it onto `origin/$TARGET` along with the rest of the feat branch.
 
 ### Spawn follow-up tasks from the friction list
 
@@ -1118,78 +1203,90 @@ step 7 — surfaced inline to the runner's own stdout, not returned through a su
 After the inlined procedure finishes, treat its report exactly the same way the post-sub-agent
 branch above treats the sub-agent's report (zero/non-zero/ERROR cases), then proceed to Step 9.
 
-## 9. Sync with `origin/main` before opening the PR
+## 9. Sync with `origin/$TARGET` before opening the PR
 
-Multiple `/task-work` sessions can run in parallel, each landing a
-`chore(tasks): start <other-basename>` commit on local `main` (and a
-`docs(tasks): verify <other-basename> implementation-ready` commit ahead of it via the same path).
-Because Step 5b commits on `main` and Step 4 branched from `main` (with Step 5b's reset pulling the
-new tip back into the task branch), your task branch may now have unrelated start-commits /
-verify-commits as ancestors that landed on main between Step 4 and Step 5b. If you push as-is, those
-commits show up in your PR diff and couple this PR to other in-flight tasks.
+Multiple `/task-work` sessions can run in parallel, and sdlc's own ops land frontmatter-only
+commits on `$TARGET` for them (a readiness promotion through `--commit-on`, a closure). Step 5b's
+reset pulls the `$TARGET` tip into the task branch, so `$TARGET` may have moved again by the time
+you push, and the branch may carry unrelated commits that landed there between Step 4 and now. If
+you push as-is, those commits show up in your PR diff and couple this PR to other in-flight tasks.
 
 Always run this step before pushing. Even if no parallel work happened, this is a cheap no-op.
 
-1. `git fetch origin main`.
-2. Classify task-branch ancestry against `origin/main` via the CLI:
+First, if this branch carries any task-body edit (a moved-file note, a clarified AC, ticked ACs, the
+post-mortem), re-check the edited file from the task worktree: `sdlc task gap-report <basename>`
+must report no gaps. The readiness stamp on `$TARGET` attests that branch's body, not these edits. A
+gap is a blocker: fix the edit, or stop and surface it; never push or open the PR over it.
+
+1. `git fetch origin "$TARGET"`.
+2. Classify task-branch ancestry against `origin/$TARGET` via the CLI:
 
    ```text
-   scripts/sdlc task check-ancestry --this-basename <basename>
+   scripts/sdlc task check-ancestry --this-basename <basename> \
+       --base-ref "origin/$TARGET"
    ```
 
    It prints one of:
-   - `clean` — every commit in `origin/main..HEAD` either belongs to this task (its start-commit,
+   - `clean` — every commit in `origin/$TARGET..HEAD` either belongs to this task (its start-commit,
      verify-commit, work commits) or isn't a `chore(tasks): start <other>` commit at all, AND the
-     branch's two-dot diff against `origin/main` introduces no files the branch didn't author. Push
-     as-is.
+     branch's two-dot diff against `origin/$TARGET` introduces no files the branch didn't author.
+     Push as-is.
    - `contaminated: [<other-basename-1>, ...] last_sha=<sha>` — one or more foreign start-commits
-     from parallel sessions sit between `origin/main` and your own start-commit. `<sha>` is the most
-     recent contaminating commit, suitable for the `git rebase --onto` call below.
-   - `stale-base: <N> upstream-drift files; rebase onto origin/main` — no foreign start-commits ride
-     along (the parallel-task walk is clean), BUT local `main` was fast-forwarded by an
+     from parallel sessions sit between `origin/$TARGET` and your own start-commit. `<sha>` is the
+     most recent contaminating commit, suitable for the `git rebase --onto` call below.
+   - `stale-base: <N> upstream-drift files; rebase onto origin/<target>` — no foreign start-commits
+     ride along (the parallel-task walk is clean), BUT the target branch was fast-forwarded by an
      externally-merged PR after this branch was cut, so the branch is rooted off a stale commit and
-     its two-dot diff against `origin/main` carries `<N>` restructured upstream files the branch
+     its two-dot diff against `origin/$TARGET` carries `<N>` restructured upstream files the branch
      never touched. Pushing as-is would couple the PR to those unrelated upstream changes. The
      remedy is the plain rebase in step 3b — there is no `last_sha` to `--onto` here, because the
      contamination is a stale fork-point, not foreign commits in the history.
 
-The helper turns Step 9's prior "eyeball the log" judgment call into a deterministic check. Its
+sdlc no longer writes `chore(tasks): start` commits (the lease holds that state,
+D-S30G-task-state-plane-split), so `contaminated:` appears only on a branch cut before that
+change; `stale-base:` is the case a current run meets. The helper turns Step 9's prior "eyeball the
+log" judgment call into a deterministic check. Its
 docstring covers both heuristics — the parallel-task walk (matches only
 `chore(tasks): start <basename>` subjects) and the stale-base diff-scope check (two-dot minus
-three-dot diff against `origin/main`) — and their scope limits. 3a. If the helper reported
+three-dot diff against `origin/$TARGET`) — and their scope limits. 3a. If the helper reported
 `contaminated:`, rebase to drop the foreign commits:
 
    ```text
-   git rebase --onto origin/main <last_sha> task/<basename>
+   git rebase --onto "origin/$TARGET" <last_sha> task/<basename>
    ```
 
 `<last_sha>` is the value the helper printed. `git rebase --onto X Y branch` replays `Y..branch`
-onto `X` — so the commits you want to keep (your start-commit + work) land on top of `origin/main`,
-and everything reachable from `Y` (the foreign start-commits) is dropped. 3b. If the helper reported
-`stale-base:`, re-root the branch onto the current `origin/main` tip so the stale upstream files
-drop out of the diff:
+onto `X` — so the commits you want to keep (your start-commit + work) land on top of
+`origin/$TARGET`, and everything reachable from `Y` (the foreign start-commits) is dropped. 3b. If
+the helper reported `stale-base:`, re-root the branch onto the current `origin/$TARGET` tip so the
+stale upstream files drop out of the diff:
 
    ```text
-   git rebase origin/main task/<basename>
+   git rebase "origin/$TARGET" task/<basename>
    ```
 
-A plain `git rebase origin/main` replays your own commits onto the fresh `origin/main` tip; once
-your branch shares that base, the restructured upstream files are already present in the base and no
-longer appear as branch-introduced diff. (Use `git rebase --onto origin/main <last_sha>` only for
-the `contaminated:` case — there a specific foreign-commit span must be excised; the stale-base case
-has no foreign commits, only a stale fork-point.)
+A plain `git rebase origin/$TARGET` replays your own commits onto the fresh `origin/$TARGET` tip;
+once your branch shares that base, the restructured upstream files are already present in the base
+and no longer appear as branch-introduced diff. (Use `git rebase --onto origin/$TARGET <last_sha>`
+only for the `contaminated:` case — there a specific foreign-commit span must be excised; the
+stale-base case has no foreign commits, only a stale fork-point.)
 
-4. If `origin/main` itself has moved forward since you branched (someone merged a PR), the rebase
+4. If `origin/$TARGET` itself has moved forward since you branched (someone merged a PR), the rebase
    may surface conflicts. Resolve them like any rebase conflict; do **not** `--skip` your own
    commits. If the conflicts are non-trivial, stop and ask the user.
+   A conflict in a file the project's `generate` workflow produces (a bundle, a copied pack, a
+   generated doc, a golden) is never resolved by hand: take either side, finish the rebase, then
+   run `generate` (Step 7, item 0) so the file is rebuilt from the merged sources, and commit the
+   result.
 5. After the rebase, re-run the helper to confirm it now reports `clean`.
-6. Re-run the project's quality checks
+6. Re-run the project's `generate` workflow (Step 7, item 0), commit any change, and re-run the
+   project's quality checks
 
    ```text
-   scripts/sdlc quality run --config <project-root>/sdlc.yaml --diff-against-baseline "$ORIGIN_MAIN_SHA" --line
+   scripts/sdlc quality run --config <project-root>/sdlc.yaml --diff-against-baseline "$TARGET_SHA" --line
    ```
 
-   — origin/main may have moved. The same baseline-gated invocation as Step 7; pre-existing drift
+   — origin/$TARGET may have moved. The same baseline-gated invocation as Step 7; pre-existing drift
    stays informational, only new drift gates.
 7. The task branch is now ready to push. The push will be a fresh branch (first push) or a
    force-push if you had previously pushed pre-rebase (use `git push --force-with-lease`, never
@@ -1210,9 +1307,10 @@ The lease ref is at `phase: working` at this point.
 1. `git push -u origin task/<basename>` (or `git push --force-with-lease` if re-pushing after
    rebase).
 
-2. `gh pr create` with:
+2. `sdlc pr create --draft --base "$TARGET" --head task/<basename>` with (the PR opens as a draft,
+   against the target branch, never a hardcoded `main`; only Step 10.6 marks it ready):
    - Title: `<task headline>` (truncate to under 70 chars).
-   - Body composed via `mktemp` + quoted-heredoc + `gh pr create --body-file <tmp>` so the lease
+   - Body composed via `mktemp` + quoted-heredoc + `sdlc pr create --body-file <tmp>` so the lease
      footer's HTML comment survives shell quoting:
 
      ```text
@@ -1243,7 +1341,7 @@ The lease ref is at `phase: working` at this point.
      ```
 
    The footer is the **last line** of the body, immediately before EOF. No surrounding whitespace,
-   no trailing newline beyond the standard one `gh pr create` appends. Do not type it: print the
+   no trailing newline beyond the one the heredoc writes. Do not type it: print the
    exact line with `scripts/sdlc lease task footer <basename>` and paste it.
    Format is exact, on one line:
    `<!-- sdlc-lease: task=<basename> lease=<lease_id> author=<tool>/<model>@<effort>
@@ -1255,7 +1353,8 @@ The lease ref is at `phase: working` at this point.
    `gh pr view --json body`. `/pr-respond` reads this footer to verify the right task on resume,
    and `sdlc pr review` reads the author from it so the reviewer can be a different model.
 
-3. Capture the PR number from the `gh pr create` output (the URL ends in `/pull/<N>`).
+3. Capture the PR number from the `sdlc pr create` output (its `pr=#<N>` line; `--json` carries
+   `number` and `url`).
 
    Then add the change statistics to the PR body, best-effort:
 
@@ -1279,7 +1378,7 @@ The lease ref is at `phase: working` at this point.
    PR the task produced and passes each through `close-commit`'s
    repeatable `--pr-url`. Go straight to Step 10.5.
 
-   The crash window between `gh pr create` and the lease transition is
+   The crash window between `sdlc pr create` and the lease transition is
    accepted: an unbound PR is discoverable by branch name, which the
    probe's open-PR lookup already does, and `sdlc lease reconcile` reports
    it under `pr-footer-missing-or-mismatched`.
@@ -1295,10 +1394,10 @@ The lease ref is at `phase: working` at this point.
 
    - `<summary>` — a single-line description of what was implemented (from the implementation
      sub-agent's return value).
-   - `<pr-url>` — the URL returned by `gh pr create` in Step 10.2.
+   - `<pr-url>` — the URL printed by `sdlc pr create` in Step 10.2.
    - `<quality-status>` — the result of Step 7's quality checks (e.g. `OK 12/12` or
      `1 FAIL: foo.py`).
-   - The files-changed table — pass `--handoff-files-changed-from-diff origin/main` in the call
+   - The files-changed table — pass `--handoff-files-changed-from-diff "origin/$TARGET"` in the call
      below so the op derives it. (The legacy `--handoff-files-changed <path>` flag still reads a
      caller-written manifest; the two are mutually exclusive — passing both errors with
      `HANDOFF-FILES-SOURCE-CONFLICT`.)
@@ -1314,7 +1413,7 @@ The lease ref is at `phase: working` at this point.
        --handoff-summary "<summary>" \
        --handoff-pr-url "<pr-url>" \
        --handoff-quality-status "<quality-status>" \
-       --handoff-files-changed-from-diff origin/main \
+       --handoff-files-changed-from-diff "origin/$TARGET" \
        --handoff-followups <followups-path>
    ```
 
@@ -1336,7 +1435,38 @@ review can take days) and records `pr_number`; the `lease_token` is preserved on
   heartbeat should have prevented this; if it fires, something interrupted the heartbeat loop.
   Surface and stop.
 
-6. Return the PR URL to the user.
+6. Mark the PR ready, or leave it a draft. This is the only place the skill changes draft state, and
+   it does so through `sdlc pr ready`, never by calling `gh`.
+
+   First make sure the last `OK` from Step 7 covers the commit that was just pushed. If any
+   commit landed after it (the Step 8 post-mortem commit, Step 9's sync merge), re-run the Step 7
+   gate on the current HEAD and push anything it changed. Then:
+
+   ```text
+   scripts/sdlc pr record-check <N>
+   scripts/sdlc pr ready <N>
+   ```
+
+   Run both from the task worktree. `record-check` stores "the local checks passed" against the
+   commit checked out there and refuses (exit 28, `CHECKED_HEAD_MISMATCH`) when that commit is
+   not the PR's head on the host, so push first. `ready` flips the draft to ready for review only
+   when a passing record exists for the PR's current head. When Step 7 skipped the gate (no
+   `sdlc.yaml`, or no `workflows.check:`), do not record: the PR stays a draft, and the final
+   report says why.
+
+   The skill does not need to know whether the orchestrator is running it. When it is, the
+   orchestrator's own `check` workflow runs after this skill and is authoritative: on a pass it
+   records the checked commit and marks the PR ready (the same path as `sdlc pr ready`); on a
+   failure it records the failure and returns a ready PR to draft. That result overrides
+   anything recorded here for the same head.
+
+   - **Exit 0** from `ready` — the PR is ready for review.
+   - **Exit 27** (`NO_PASSING_CHECK`) — no passing record exists for the head. Leave the PR a
+     draft, state that in the final report, and do not work around it.
+   - **Exit 29** (`HOST_UNSUPPORTED`) — the code host has no draft toggle; say so in the
+     final report.
+
+7. Return the PR URL to the user.
 
 ### Final marker — required terminal stdout line
 
@@ -1348,7 +1478,7 @@ TASK-WORK-COMPLETE: <basename> PR=<pr-url>
 ```
 
 `<basename>` is the task filename without `.md`. `<pr-url>` is the
-full `https://github.com/...` URL returned by `gh pr create`. This is
+full `https://github.com/...` URL printed by `sdlc pr create`. This is
 the only marker that signals the entire `/task-work` flow
 finished successfully. Its absence is unambiguous evidence the
 sub-agent stopped early (typically by mistaking the intermediate
@@ -1398,7 +1528,7 @@ markers, and nothing else:
   the operator something to grep against the dispatcher's logs.
 - `ERROR reason="<why>"` — task-work itself failed before reaching
   any other verdict (e.g. worktree creation failed, validator
-  missing, start-commit script returned an unexpected non-zero
+  missing, `sdlc task begin` returned an unexpected non-zero
   exit). Distinct from `TASK-WORK-BLOCKED`: `TASK-WORK-BLOCKED` means
   the task ran and hit a definable wall; `ERROR` means task-work's
   own machinery broke before it could even classify. `ERROR` is the
@@ -1460,9 +1590,9 @@ silently abandon. Edit the task file in the worktree:
   (D-S30G-task-state-plane-split). Only the task file is staged; never sweep in unrelated
   working-tree edits. The matching close-out commit is owned by `/task-close-out`, not this
   skill.
-- This project runs many `/task-work` sessions in parallel, so `origin/main` moves under a
+- This project runs many `/task-work` sessions in parallel, so `origin/$TARGET` moves under a
   running session. The rebase in Step 9 is non-negotiable — never push a
-  feat branch without confirming clean ancestry against `origin/main` first.
+  feat branch without confirming clean ancestry against `origin/$TARGET` first.
 - When in doubt at any step, ask the user via AskUserQuestion rather than guessing.
 - **Committing model-generated messages.** See
   `${CLAUDE_PLUGIN_ROOT}/conventions/commit-messages.md` — `mktemp` + quoted-heredoc +

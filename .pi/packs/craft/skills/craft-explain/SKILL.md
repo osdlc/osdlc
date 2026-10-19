@@ -20,7 +20,7 @@ Usage:
 - `/skill:craft-explain sql <ddl, migrations dir or dump>` describes the database it defines.
 
 Scope: one subject to one document with no questions. Not in scope: proposing a change
-(`/skill:craft-propose-solution`), running the thing explained, or serving the page (`/skill:craft-parley`).
+(`/skill:craft-discuss`), running the thing explained, or serving the page (`/skill:craft-parley`).
 
 Inputs: the domain, the subject, and the domain note `domains/<domain>.md` beside this skill.
 Output: `docs/parley/<id>.json`, checked and served, with no `questions`.
@@ -34,7 +34,7 @@ Output: `docs/parley/<id>.json`, checked and served, with no `questions`.
 - `summary` in one line and `detail` in two to four short paragraphs per node.
 - A `warning` for every silent-failure case the reader could miss.
 - No questions. Where the subject embeds a choice, say so in the node's detail; a decision is
-  `/skill:craft-propose-solution`.
+  `/skill:craft-discuss`.
 
 ## Steps
 

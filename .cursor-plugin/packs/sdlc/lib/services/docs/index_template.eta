@@ -68,6 +68,10 @@ okf_version: "0.2"
 | [[D-VSLI-distributed-work-runner-architecture]] | The system architecture                        |
 | [[glossary]]                  | Vocabulary — every architecture term, defined once |
 | [[references]]                | External documentation, research, and artifacts SDLC leans on |
+| [Getting started](guide/getting-started.md) | Install to a first merged task, with companion pages on the orchestrator, checks and schedules |
+| [Running the orchestrator](orchestrator-running.md) | Code, root, state, one-loop lock and hooks: where each comes from and what reports it |
+| [Compatibility promise](compatibility.md) | What stays stable within 1.x, and how breaking changes are handled |
+| [Contract inventory](contract-inventory.md) | Every `sdlc.yaml` key, command, exit code, output shape, entity field and skill the promise covers |
 
 ## Products
 

@@ -177,8 +177,18 @@ For each gap, synthesize content from two sources, in priority order:
    - For `## Out of scope`, enumerate obvious near-misses, or a single
      `- none` bullet if nothing is excluded.
 
-Apply each fill with Edit, preserving section headers; only the body between
-headers changes.
+Write each fill with `sdlc task set-section <task> "<Section>" --text -` (the
+section text on stdin), which replaces one `## Section`, leaves every other
+byte alone and refuses a result that still has a placeholder or lacks a
+required section. Do not hand-edit a section the op can write.
+
+**Goal and Acceptance criteria are locked once the task is `open/ready` or
+later.** They say what the task asks for; definition fills gaps around them and
+never rewrites them. Do not reword, reorder, add or drop either, even to
+"improve" them: `set-section` refuses with `TASK_INTENT_LOCKED`, and the
+orchestrator holds a task whose Goal or criteria changed during `define`. If a
+criterion looks wrong, report `TASK-AUTO-DEFINE-INSUFFICIENT` naming it and
+leave it alone. Ticking a criterion's checkbox is not a change.
 
 Do NOT touch the task-state frontmatter fields owned elsewhere:
 `readiness_verified_at:`, `touchpoints_verified_at:`, `definition_gap:`,
@@ -266,7 +276,7 @@ Skip when the flag is absent or the run made no commits (then no branch was
 created either). Otherwise:
 
 1. `git push -u origin <branch>`.
-2. `gh pr create` against `main`. Title: the single commit's subject, or
+2. `sdlc pr create` against `main`. Title: the single commit's subject, or
    `docs(tasks): auto-define <N> tasks` for a multi-task run. Body: the
    per-task marker lines plus a pointer to review the `AUTO-DEFINED:` notes
    before trusting the specs.

@@ -13,6 +13,9 @@
  * repository state.
  */
 
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+
 import { OpError } from '@lib/registry'
 import { resolveInstanceDocPath } from '@lib/model/read'
 
@@ -40,4 +43,22 @@ export function readTaskDoc(
     )
   }
   return { path: res.path, text: res.text, fm: res.fm }
+}
+
+/** Read the file a `--from` / `--body-file` flag names. Stdin never comes through here: the adapter delivers it (`stdinKey`). */
+export function readTextSource(source: string, flag: string): string {
+  if (source === '-') {
+    throw new OpError(
+      'INVALID_INPUT',
+      `${flag} -: a file path is required, not stdin; pass the body with --body-text - to read stdin.`,
+    )
+  }
+  try {
+    return readFileSync(resolve(source), 'utf-8')
+  } catch (err) {
+    throw new OpError(
+      'INVALID_INPUT',
+      `${flag} ${source}: cannot read (${err instanceof Error ? err.message : String(err)})`,
+    )
+  }
 }

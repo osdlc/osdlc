@@ -136,6 +136,17 @@ the user explicitly skips it. Headers (`## Rule`, etc.) stay; only the placehold
 
 If "later": don't touch the body.
 
+## 6a. Optional: enforcement
+
+`sdlc verify changes` follows the project's `verify.blocking` and `verify.severity_floor` unless the
+standard overrides them. Ask only if the user raised it. The create command has no flag for these,
+so add them to the new file's frontmatter with Edit:
+
+- `enforcement: advise` — this standard's findings never block, even when the project is blocking.
+- `enforcement: block` — they block at the standard's own floor even when the project is advisory;
+  add `severity_floor: violation|tension|drift` to set that floor (default: the project's).
+- Neither — the project settings apply. `severity_floor` without `enforcement: block` is invalid.
+
 ## 7. Validate
 
 ```text

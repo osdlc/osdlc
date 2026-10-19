@@ -261,7 +261,8 @@ git -C <worktree-absolute-path> push -u origin chore/milestones-from-<stem>
 ```
 
 ```text
-gh pr create --title "Import milestones from <source-stem>" --body "$(cat <<'EOF'
+body=$(mktemp)
+cat > "$body" <<'EOF'
 ## Summary
 
 Best-effort extraction of milestone entities from <source-file-path>.
@@ -285,7 +286,8 @@ Body sections were best-effort distilled from the source; any remaining
 Reviewers should refine titles, fill in remaining placeholders, and adjust
 state before merging if any candidate isn't actually a milestone.
 EOF
-)"
+scripts/sdlc pr create --base main --head chore/milestones-from-<stem> \
+  --title "Import milestones from <source-stem>" --body-file "$body"
 ```
 
 Capture and return the PR URL.

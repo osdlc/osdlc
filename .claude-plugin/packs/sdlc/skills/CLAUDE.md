@@ -35,6 +35,18 @@ When authoring a skill note (per [[S-0006-skill-md-is-direct-instruction]]):
   body is refused; escape one meant literally as `\/sdlc:skill`, `\$sdlc:skill`
   or `\/skill`.
 
+## Rebuild after editing a skill
+
+Rebuild and check the harness packs, then run the skill-prose gate for an `sdlc` skill:
+
+```sh
+cargo run -q -p agent-pants -- build --config solutions/ontological/agent-pants.yaml --yes
+cargo run -q -p agent-pants -- check --config solutions/ontological/agent-pants.yaml
+solutions/ontological/cli/sdlc gate skill-prose
+```
+
+Commit the rendered packs with the skill.
+
 ## Namespace every terminal stdout marker with the skill's slug
 
 **Status: live today; retires at the engine cutover.** This section is the

@@ -94,8 +94,10 @@ If the list is empty, print `CAPABILITY-REVIEW-NOOP scope=<scope>` and stop.
 Skip in report mode. Otherwise:
 
 ```text
-git worktree add .sdlc/worktrees/capability-review-<stem> -b chore/capability-review-<stem> main
+scripts/sdlc project create-worktree capability-review-<stem> --branch chore/capability-review-<stem> --start-point main
 ```
+
+The op prints the worktree's absolute path, under the main checkout; use that path.
 
 Use absolute paths under the worktree for every write from here on. Do not `cd` the parent
 session into it.
@@ -318,7 +320,8 @@ Rewritten:
 - C-NNNN — <sections>
 EOF
 git push -u origin chore/capability-review-<stem>
-gh pr create --title "Capability review: <scope>" --body "<see below>"
+scripts/sdlc pr create --base main --head chore/capability-review-<stem> \
+  --title "Capability review: <scope>" --body-file <body-file>
 ```
 
 The message reaches git through the op's temp file (the `-` sentinel). See

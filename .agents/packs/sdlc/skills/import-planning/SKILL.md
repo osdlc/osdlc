@@ -67,12 +67,13 @@ scripts/sdlc project preflight-worktree import-planning \
   --project-root .
 ```
 
-The op probes `.sdlc/worktrees/import-planning` for a worktree collision, `chore/import-planning`
-for a branch collision, and `gh pr list --head chore/import-planning` for an open PR. It is
-**report-only**: it surfaces the signals (`dirty` + the raw `porcelain` lines, `worktreeCollision`,
-`branchCollision`, `openPrs`, and the convenience `anyCollision`) and never decides stop/proceed,
-never aborts, and never cleans up state. The stop/proceed and consent decisions below are this
-skill's, not the op's. Parse the JSON (the adapter defaults to `--output json`).
+The op probes `<main-checkout>/.sdlc/worktrees/import-planning` for a worktree collision,
+`chore/import-planning` for a branch collision, and `gh pr list --head chore/import-planning` for an
+open PR. It is **report-only**: it surfaces the signals (`dirty` + the raw `porcelain` lines,
+`worktreeCollision`, `branchCollision`, `openPrs`, and the convenience `anyCollision`) and never
+decides stop/proceed, never aborts, and never cleans up state. The stop/proceed and consent
+decisions below are this skill's, not the op's. Parse the JSON (the adapter defaults to
+`--output json`).
 
 If `dirty` is true and the changes would interfere with branching from main, surface this to the
 user via AskUserQuestion: "Main has uncommitted changes. Proceed (worktree branches from current
@@ -108,8 +109,10 @@ touch the filesystem."
 Otherwise:
 
 ```text
-git worktree add .sdlc/worktrees/import-planning -b chore/import-planning main
+scripts/sdlc project create-worktree import-planning --branch chore/import-planning --start-point main
 ```
+
+The op prints the worktree's absolute path, under the main checkout; use that path.
 
 From here on, use absolute paths under the worktree for every file operation. Do not `cd` the parent
 session into the worktree.
@@ -261,10 +264,10 @@ Otherwise, ask the user via AskUserQuestion with these options:
     --project-root <worktree-parent-repo-root>
   ```
 
-  The op removes only the named `.sdlc/worktrees/import-planning` worktree and deletes only
-  `chore/import-planning` — it never sweeps unrelated state, and it is idempotent (a missing
-  worktree or branch is reported, not an error). It honors the global `--dry-run` flag: under
-  `--dry-run` it probes and reports intent only, making no git/filesystem writes.
+  The op removes only the named `<main-checkout>/.sdlc/worktrees/import-planning` worktree and
+  deletes only `chore/import-planning` — it never sweeps unrelated state, and it is idempotent (a
+  missing worktree or branch is reported, not an error). It honors the global `--dry-run` flag:
+  under `--dry-run` it probes and reports intent only, making no git/filesystem writes.
 
 ## 7. Create entities and fill bodies
 
@@ -376,7 +379,8 @@ are both non-zero and the diff reads more naturally that way.
 
 ```text
 git push -u origin chore/import-planning
-gh pr create --title "Import planning content as tasks/milestones" --body "<see below>"
+scripts/sdlc pr create --base main --head chore/import-planning \
+  --title "Import planning content as tasks/milestones" --body-file <body-file>
 ```
 
 PR body shape:
@@ -433,8 +437,8 @@ Tell the user:
 
 ## Acceptance criteria
 
-- Worktree exists at `.sdlc/worktrees/import-planning`, branch `chore/import-planning` (skipped
-  under `--dry-run`).
+- Worktree exists at `<main-checkout>/.sdlc/worktrees/import-planning`, branch
+  `chore/import-planning` (skipped under `--dry-run`).
 - T+M entity files exist under the worktree at `docs/planning/tasks/` and
   `docs/planning/milestones/`, all passing `sdlc entities validate`.
 - For each created file, every body section the source supported has been filled in. A file whose

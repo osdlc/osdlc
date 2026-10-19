@@ -27,8 +27,6 @@ and reopen conditions, ready to record.
 
 ## Steps
 
-0. Read this skill's fills from `sdlc/extend/skills/decision-make.lifecycle` if it exists; apply
-   `before` and `rules` now, and the other points where they are named.
 1. Write the question as a choice between concrete alternatives. Name the drivers that force
    it now and the standards or principles that bound it.
 2. Check the recorded decisions for one that already answers it. If one does, stop and point
@@ -52,14 +50,6 @@ and reopen conditions, ready to record.
    choice.
 7. Write the consequences: what changes now, what work it creates, and which entities it
    supersedes or amends.
-
-## Extension points
-
-- `rules`: constraints on every step, for example "every option names its owner".
-- `after-research`: runs after step 3, for example checking a project's list of trusted
-  sources or its own research notes.
-- `after-options`: runs after step 5, for example a review before the choice.
-- `after`: runs after step 7, for example recording the decision and opening a PR.
 
 ## Grading
 
