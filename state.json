@@ -1,12 +1,79 @@
 {
   "schema": 1,
   "pr": 324,
-  "head": null,
-  "base": null,
-  "round": 0,
+  "head": "6ab95c6dfa35e9f6f3cb4b517001d0a07873ee65",
+  "base": "af683f8053b1703d7847506c37e3f51fe28759b5",
+  "round": 1,
   "claim": {
     "owner": "KellyMBP.local:claude-q7m2xz",
     "at": "2026-10-19T21:55:28.009Z"
   },
-  "findings": []
+  "findings": [
+    {
+      "id": "r1-1",
+      "round": 1,
+      "path": "packages/ts/command-seam/docs/planning/tasks/T-07-flaky-tests-block-releases.md",
+      "line": 18,
+      "title": "List of five omits other flaky command-seam tests",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-2",
+      "round": 1,
+      "path": "packages/ts/command-seam/docs/planning/tasks/T-07-flaky-tests-block-releases.md",
+      "line": 26,
+      "title": "No run evidence found for the reason.test and output-cap rows; add run links",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-3",
+      "round": 1,
+      "path": "packages/ts/command-seam/docs/planning/tasks/T-07-flaky-tests-block-releases.md",
+      "line": 20,
+      "title": "Publish failures understated (twice)",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-4",
+      "round": 1,
+      "path": "packages/ts/command-seam/docs/planning/tasks/T-07-flaky-tests-block-releases.md",
+      "line": 37,
+      "title": "--repeat is not a bun test flag; Node axis is not what varies",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-5",
+      "round": 1,
+      "path": "packages/ts/command-seam/docs/planning/tasks/T-07-flaky-tests-block-releases.md",
+      "line": 42,
+      "title": "No Acceptance criteria section, unlike T-01 to T-06",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-6",
+      "round": 1,
+      "path": "packages/ts/command-seam/docs/planning/tasks/T-07-flaky-tests-block-releases.md",
+      "line": 29,
+      "title": "Test title in table differs from the real title (apostrophe)",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    }
+  ]
 }
