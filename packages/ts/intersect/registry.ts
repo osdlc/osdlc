@@ -2,11 +2,10 @@
  * Intersect L1 — registry over labeled pattern-sets (`index`).
  *
  * A reverse index over *labeled* pattern-sets — artifacts that declare the
- * paths they govern (a UI guideline, an SDLC `standard`'s `applies_to.paths`).
- * Given a scope it answers which artifacts apply ([[DR-0014]]). Pure; targets
- * need not exist. Registration order is significant and preserved; a duplicate
- * `id` throws at construction. See
- * `docs/planning/decisions/D-4FRD-intersect-api/layered-api.md`.
+ * paths they govern (a UI guideline, a coding standard's list of paths).
+ * Given a scope it answers which artifacts apply. Pure; targets need not
+ * exist. Registration order is significant and preserved; a duplicate `id`
+ * throws at construction.
  *
  * Builds only on the path API (`./index`) — it compiles each entry via
  * `compile` and never reaches the filesystem layer.

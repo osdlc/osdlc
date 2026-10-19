@@ -4,10 +4,8 @@ Data-driven spec for the Intersect library. Each `*.cases.json` file specifies
 one area's intended behavior as a list of cases. The harness
 (`../tests/fixtures.test.ts`) loads every file via `../fixtures.ts` and runs each
 case against the public API. Cases marked `"pending": true` register as
-`test.todo`; the rest run and assert. The corpus is authored **spec-first** —
-the `expect` values are the intended semantics from
-`docs/planning/decisions/D-4FRD-intersect-api`, written before the engine
-exists.
+`test.todo`; the rest run and assert. The `expect` values state the intended
+semantics.
 
 ## File schema
 

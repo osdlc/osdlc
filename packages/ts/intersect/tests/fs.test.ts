@@ -71,7 +71,7 @@ for (const cf of loadCaseFiles()) {
 }
 
 /**
- * Dependency-isolation (AC-3). Statically resolve the transitive import graph of
+ * Dependency isolation. Statically resolve the transitive import graph of
  * each package entry by reading the source files this package owns, and collect
  * every bare (non-relative) module specifier. The core entries must NOT reach
  * `tinyglobby`; the fs entry MUST — that positive assertion proves the walker

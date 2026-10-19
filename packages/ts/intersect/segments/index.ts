@@ -3,8 +3,7 @@
  *
  * The pure, primitive engine. It reasons over patterns already split into
  * path segments (`SegmentPattern`); it never parses strings and never touches
- * the filesystem. Pairwise and minimal. See
- * `docs/planning/decisions/D-4FRD-intersect-api/layered-api.md`.
+ * the filesystem. Pairwise and minimal.
  *
  * The type surface is the contract the fixture corpus specifies. The engine is
  * a synchronized product of two per-pattern sequence automata plus reachability

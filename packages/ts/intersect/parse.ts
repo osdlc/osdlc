@@ -4,7 +4,6 @@
  * The seam between path strings and the segment core: it splits a path-like
  * glob on the separator into segments, each of which is a glob token taken
  * verbatim. No inference — there is NO directory/file/ambiguity classification.
- * See `docs/planning/decisions/D-4FRD-intersect-api/layered-api.md`.
  */
 import type { SegmentPattern } from './segments/index.ts'
 

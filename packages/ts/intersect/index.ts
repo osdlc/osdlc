@@ -4,8 +4,7 @@
  * Parses path-like glob strings into `SegmentPattern`s (via `./parse`), adds
  * set-awareness (`string | string[]`), and exposes the registry. Pure — no
  * filesystem. Each primitive coerces `Patterns` to a set of `SegmentPattern`s,
- * then defers to the segment core (`./segments`). See
- * `docs/planning/decisions/D-4FRD-intersect-api/layered-api.md`.
+ * then defers to the segment core (`./segments`).
  *
  * No inference: a path-like string is the glob it literally is. A pattern with
  * NO wildcards is an exact-path match (`src/siteA/components` matches only that

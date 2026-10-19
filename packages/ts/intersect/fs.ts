@@ -4,8 +4,7 @@
  * The only layer that reads disk and the only one carrying a runtime
  * dependency (a globber, `tinyglobby`). It enumerates real files with the
  * globber, then filters via the pure path API (L1/L0) — it does not
- * re-implement matching; L0/L1 stay pure questions about patterns. See
- * `docs/planning/decisions/D-4FRD-intersect-api/layered-api.md`.
+ * re-implement matching; L0/L1 stay pure questions about patterns.
  *
  * Semantics are IDENTICAL to the pure layer: a bare path is an exact match and
  * a subtree needs `**`, exactly as at L1 — the globber's own dialect never
@@ -20,7 +19,7 @@
  *
  * `tinyglobby` is imported ONLY here; the core entries (`./index`,
  * `./segments`, `./parse`, `./registry`) never reference it, keeping them
- * zero-dependency per [[D-4FRD-intersect-api]] Option C.
+ * zero-dependency.
  *
  * @module fs
  */
@@ -100,8 +99,7 @@ function absolutize(rel: readonly string[], opts: FsOptions | undefined): string
 }
 
 /**
- * The concrete on-disk files matching `patterns` — a scope's context slice
- * (DR-0011: build a headless-script's working set).
+ * The concrete on-disk files matching `patterns` — a scope's context slice.
  *
  * @param patterns - The scope to resolve ({@link Patterns}).
  * @param opts - {@link FsOptions}: matching semantics plus `cwd` / `ignore` /
