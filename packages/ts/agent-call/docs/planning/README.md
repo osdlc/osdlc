@@ -30,3 +30,4 @@ They are never reused. Each decision has a `state`: `accepted` or
 - [D-07](decisions/D-07-platforms-runtimes-and-package-contents.md):
   Platforms, runtimes and package contents
 - [D-08](decisions/D-08-licence.md): Licence
+- [D-09](decisions/D-09-more-built-in-agents.md): More built-in agents

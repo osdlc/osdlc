@@ -1,5 +1,6 @@
 import { claudeEffortArgv } from './adapters/claude.js'
 import { codexEffortArgv } from './adapters/codex.js'
+import { piThinkingArgv } from './adapters/pi.js'
 import { modelFlag } from './adapters/shared.js'
 
 /**
@@ -27,7 +28,7 @@ export interface ModelChoice {
 const EFFORT_ARGV: Record<string, (effort: string) => string[]> = {
   claude: claudeEffortArgv,
   codex: codexEffortArgv,
-  pi: (effort) => ['--thinking', effort === 'none' ? 'off' : effort],
+  pi: piThinkingArgv,
 }
 
 /**

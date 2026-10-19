@@ -18,7 +18,6 @@ import {
 import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './types.js'
 
 /** Options for {@link opencodeAdapter}. */
-/** Options for `opencodeAdapter`: `binary`, or a `command` prefix. */
 export interface OpencodeAdapterOptions extends CommandOptions {}
 
 /**
@@ -157,7 +156,7 @@ function planOpencode(command: readonly string[], spec: AgentCallSpec): PlannedC
     note(notes, 'session.persist', 'dropped', 'opencode always persists sessions')
   }
   if (spec.plugins !== undefined) {
-    note(notes, 'plugins', 'dropped', 'session-only plugins are claude only')
+    note(notes, 'plugins', 'dropped', 'opencode has no session-only plugin flag')
   }
   if (spec.budgetUsd !== undefined) {
     note(notes, 'budgetUsd', 'dropped', 'opencode has no budget cap flag')

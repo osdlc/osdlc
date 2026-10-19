@@ -1,7 +1,7 @@
 {
   "name": "@osdlc/agent-call",
   "version": "0.5.0",
-  "description": "One canonical call spec for headless coding-agent CLIs. Declare prompt, permissions, context, output shape once; best-effort translate to claude/codex/antigravity/opencode invocations; normalize results and conversations for post-facto analysis.",
+  "description": "One canonical call spec for headless coding-agent CLIs. Declare prompt, permissions, context, output shape once; best-effort translate to claude/codex/antigravity/opencode/copilot/pi/qwen/droid/cursor/deepseek invocations; normalize results and conversations for post-facto analysis.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",
   "repository": {
@@ -17,6 +17,12 @@
     "codex",
     "antigravity",
     "opencode",
+    "copilot",
+    "pi",
+    "qwen-code",
+    "factory-droid",
+    "cursor",
+    "deepseek",
     "headless",
     "cli-adapter",
     "agent-harness"

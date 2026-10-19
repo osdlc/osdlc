@@ -126,6 +126,25 @@ describe('templateAdapter (experimental)', () => {
     expect(templateRefusal(['{prompt}'], choice)).toContain('no {model} slot')
   })
 
+  test('an agent with no built-in adapter, such as Aider', () => {
+    const aider = templateAdapter({
+      name: 'aider',
+      binary: 'aider',
+      args: ['--message', '{prompt}', '--model', '{model}', '--yes-always', '--no-auto-commits'],
+      promptVia: 'argv',
+    })
+    const planned = planCall(aider, { prompt: 'Fix the typo.', model: 'deepseek/deepseek-chat' })
+    expect(planned.argv).toEqual([
+      'aider',
+      '--message',
+      'Fix the typo.',
+      '--model',
+      'deepseek/deepseek-chat',
+      '--yes-always',
+      '--no-auto-commits',
+    ])
+  })
+
   test('planning throws when the spec does not fit the template', () => {
     expect(() => planCall(templateAdapter(options), { prompt: 'hi' })).toThrow(
       /templated: .*\{model\}/,

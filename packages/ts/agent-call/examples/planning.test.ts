@@ -1,5 +1,5 @@
 /**
- * Planning: one spec, four built-in adapters, every approximation recorded.
+ * Planning: one spec, every built-in adapter, every approximation recorded.
  * Nothing here starts an agent CLI.
  */
 
@@ -11,9 +11,15 @@ import {
   BUILTIN_AGENTS,
   claudeAdapter,
   codexAdapter,
+  copilotAdapter,
+  cursorAdapter,
+  deepseekAdapter,
+  droidAdapter,
   EFFORT_LEVELS,
   opencodeAdapter,
+  piAdapter,
   planCall,
+  qwenAdapter,
   TMP_TOKEN,
   type AgentAdapter,
   type AgentCallSpec,
@@ -22,10 +28,16 @@ import {
   type CapabilityNote,
   type ClaudeAdapterOptions,
   type CodexAdapterOptions,
+  type CopilotAdapterOptions,
+  type CursorAdapterOptions,
+  type DeepseekAdapterOptions,
+  type DroidAdapterOptions,
   type ContextSpec,
   type EffortLevel,
   type McpSpec,
   type OpencodeAdapterOptions,
+  type PiAdapterOptions,
+  type QwenAdapterOptions,
   type OutputFormat,
   type OutputSpec,
   type PermissionMode,
@@ -74,6 +86,12 @@ describe('the built-in adapters', () => {
       'codex',
       'antigravity',
       'opencode',
+      'copilot',
+      'pi',
+      'qwen',
+      'droid',
+      'cursor',
+      'deepseek',
     ])
   })
 
@@ -82,17 +100,35 @@ describe('the built-in adapters', () => {
     const codexOptions: CodexAdapterOptions = { binary: '/opt/codex/codex' }
     const agyOptions: AntigravityAdapterOptions = { binary: '/opt/agy/agy' }
     const opencodeOptions: OpencodeAdapterOptions = { binary: '/opt/oc/opencode' }
+    const copilotOptions: CopilotAdapterOptions = { binary: '/opt/gh/copilot' }
+    const piOptions: PiAdapterOptions = { binary: '/opt/pi/pi' }
+    const qwenOptions: QwenAdapterOptions = { binary: '/opt/qwen/qwen' }
+    const droidOptions: DroidAdapterOptions = { binary: '/opt/factory/droid' }
+    const cursorOptions: CursorAdapterOptions = { binary: '/opt/cursor/agent' }
+    const deepseekOptions: DeepseekAdapterOptions = { binary: '/opt/dsh/dsh' }
     const adapters: AgentAdapter[] = [
       claudeAdapter(claudeOptions),
       codexAdapter(codexOptions),
       antigravityAdapter(agyOptions),
       opencodeAdapter(opencodeOptions),
+      copilotAdapter(copilotOptions),
+      piAdapter(piOptions),
+      qwenAdapter(qwenOptions),
+      droidAdapter(droidOptions),
+      cursorAdapter(cursorOptions),
+      deepseekAdapter(deepseekOptions),
     ]
     expect(adapters.map((a) => a.binary)).toEqual([
       '/opt/claude/claude',
       '/opt/codex/codex',
       '/opt/agy/agy',
       '/opt/oc/opencode',
+      '/opt/gh/copilot',
+      '/opt/pi/pi',
+      '/opt/qwen/qwen',
+      '/opt/factory/droid',
+      '/opt/cursor/agent',
+      '/opt/dsh/dsh',
     ])
   })
 

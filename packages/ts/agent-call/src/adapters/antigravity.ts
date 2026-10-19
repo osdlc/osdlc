@@ -22,7 +22,6 @@ import {
 import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './types.js'
 
 /** Options for {@link antigravityAdapter}. */
-/** Options for `antigravityAdapter`: `binary`, or a `command` prefix. */
 export interface AntigravityAdapterOptions extends CommandOptions {}
 
 /**
@@ -154,7 +153,7 @@ function planAntigravity(command: readonly string[], spec: AgentCallSpec): Plann
     note(notes, 'session.persist', 'dropped', 'antigravity always persists conversations')
   }
   if (spec.plugins !== undefined) {
-    note(notes, 'plugins', 'dropped', 'session-only plugins are claude only')
+    note(notes, 'plugins', 'dropped', 'antigravity has no session-only plugin flag')
   }
   if (spec.budgetUsd !== undefined) {
     note(notes, 'budgetUsd', 'dropped', 'antigravity has no budget cap flag')
