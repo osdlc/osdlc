@@ -14,7 +14,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
 import * as fs from '../fs.ts'
-import { matches, witness, type Options } from '../index.ts'
+import { intersects, matches, witness, type Options } from '../index.ts'
 
 /** Materialize `tree` (empty files) under a fresh temp dir, run `body`, then remove it. */
 async function withTree(
@@ -80,5 +80,31 @@ describe('witness: the returned path matches both sides', () => {
       }
     }
     expect(lies).toEqual([])
+  })
+})
+
+describe('unclosed `{` and `[` finish fast', () => {
+  // Each unclosed `{` used to re-parse everything after it, so time doubled per
+  // brace (about 20 s at 28). Unclosed `[` scanned to the end every time.
+  test('28 unclosed `{` against themselves finishes under 1s', () => {
+    const p = '{'.repeat(28)
+    const t0 = performance.now()
+    expect(intersects(p, p)).toBe(true)
+    expect(witness(p, p)).toBe(p)
+    expect(performance.now() - t0).toBeLessThan(1000)
+  })
+
+  test('`{a,` repeated and 20,000 unclosed `[` finish under 1s', () => {
+    const t0 = performance.now()
+    expect(intersects('{a,'.repeat(28), '{a,'.repeat(28))).toBe(true)
+    expect(intersects('['.repeat(20_000), '['.repeat(20_000))).toBe(true)
+    expect(performance.now() - t0).toBeLessThan(1000)
+  })
+
+  test('unclosed `{` and `[` stay literal', () => {
+    expect(matches('{{a', '{{a')).toBe(true)
+    expect(matches('[[a', '[[a')).toBe(true)
+    expect(matches('{a,b', '{a,b')).toBe(true)
+    expect(matches('a', '{a,b')).toBe(false)
   })
 })

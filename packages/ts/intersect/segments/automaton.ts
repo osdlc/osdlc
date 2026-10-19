@@ -85,8 +85,23 @@ type Token =
 
 /** Parse a glob segment into tokens. Unterminated `[`/`{` degrade to literals. */
 function tokenize(glob: string): Token[] {
-  const [tokens] = parseSeq(glob, 0, false)
+  const [tokens] = parseSeq(new Scan(glob), 0, false)
   return tokens
+}
+
+/**
+ * The glob plus per-call memo tables. `parseAlt(i)` depends only on the string
+ * and `i`, so each `{` is parsed once; without that, unclosed `{` nest the work
+ * exponentially. `lastClose` lets an unclosed `[` fail without a scan.
+ */
+class Scan {
+  readonly s: string
+  readonly lastClose: number
+  readonly alts = new Map<number, { token: Token; next: number } | null>()
+  constructor(s: string) {
+    this.s = s
+    this.lastClose = s.lastIndexOf(']')
+  }
 }
 
 /**
@@ -103,7 +118,8 @@ function charAt(s: string, i: number): string {
  * `,` or `}` (the delimiter is left for the caller). Returns the tokens and the
  * index of the stop character (or the string length).
  */
-function parseSeq(s: string, start: number, insideBrace: boolean): [Token[], number] {
+function parseSeq(sc: Scan, start: number, insideBrace: boolean): [Token[], number] {
+  const s = sc.s
   const tokens: Token[] = []
   let i = start
   while (i < s.length) {
@@ -126,7 +142,7 @@ function parseSeq(s: string, start: number, insideBrace: boolean): [Token[], num
         i++
       }
     } else if (ch === '[') {
-      const parsed = parseClass(s, i)
+      const parsed = parseClass(sc, i)
       if (parsed) {
         tokens.push(parsed.token)
         i = parsed.next
@@ -135,7 +151,7 @@ function parseSeq(s: string, start: number, insideBrace: boolean): [Token[], num
         i++
       }
     } else if (ch === '{') {
-      const parsed = parseAlt(s, i)
+      const parsed = parseAlt(sc, i)
       if (parsed) {
         tokens.push(parsed.token)
         i = parsed.next
@@ -152,13 +168,17 @@ function parseSeq(s: string, start: number, insideBrace: boolean): [Token[], num
 }
 
 /** Parse a `[...]` class starting at `i` (`s[i] === "["`), or `null` if unterminated. */
-function parseClass(s: string, i: number): { token: Token; next: number } | null {
+function parseClass(sc: Scan, i: number): { token: Token; next: number } | null {
+  const s = sc.s
   let j = i + 1
   let negated = false
   if (s[j] === '!' || s[j] === '^') {
     negated = true
     j++
   }
+  // A closing `]` is never the first class character, and the scan below always
+  // reaches any later `]`, so no `]` after `j` means unterminated.
+  if (sc.lastClose <= j) return null
   const ranges: ClassRange[] = []
   let first = true
   while (j < s.length) {
@@ -182,11 +202,19 @@ function parseClass(s: string, i: number): { token: Token; next: number } | null
 }
 
 /** Parse a `{a,b,...}` alternation starting at `i` (`s[i] === "{"`), or `null` if unterminated. */
-function parseAlt(s: string, i: number): { token: Token; next: number } | null {
+function parseAlt(sc: Scan, i: number): { token: Token; next: number } | null {
+  if (sc.alts.has(i)) return sc.alts.get(i)!
+  const result = parseAltUncached(sc, i)
+  sc.alts.set(i, result)
+  return result
+}
+
+function parseAltUncached(sc: Scan, i: number): { token: Token; next: number } | null {
+  const s = sc.s
   let j = i + 1
   const alts: Token[][] = []
   for (;;) {
-    const [toks, next] = parseSeq(s, j, true)
+    const [toks, next] = parseSeq(sc, j, true)
     alts.push(toks)
     if (next >= s.length) return null // unterminated
     if (s[next] === ',') {
