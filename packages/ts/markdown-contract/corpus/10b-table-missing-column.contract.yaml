@@ -1,0 +1,16 @@
+mcVersion: 2
+kind: contract
+# fixture: v10b — Table missing a declared column  (TS fixture: 10b-table-missing-column.ts)
+
+body:
+  order: none
+  additionalSections: false
+  sections:
+    - section: Files
+      content:
+        table:
+          columns:
+            - Location
+            - Kind
+            - Change
+          minRows: 1

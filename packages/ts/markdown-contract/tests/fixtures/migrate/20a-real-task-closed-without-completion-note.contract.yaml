@@ -1,0 +1,89 @@
+mcVersion: 1
+kind: contract
+# fixture: v20a — Closed task missing Completion note  (TS fixture: 20a-real-task-closed-without-completion-note.ts)
+
+frontmatter:
+  strict: true
+  fields:
+    id:
+      type: string
+      pattern: '^T-[0-9A-Z]{4}$'
+    status:
+      enum:
+        - planning/draft
+        - open/ready
+        - in-progress/active
+        - closed/done
+        - closed/superseded
+    completion_note:
+      type: string
+      min: 1
+      optional: true
+    title:
+      type: string
+      min: 1
+      optional: true
+    type:
+      const: task
+      optional: true
+    schema_version:
+      type: string
+      optional: true
+    # GAP: z.unknown() has no v1 equivalent (no "any" type); under `strict` the keys must still be
+    # declared or they read as unknown-key, so they are approximated as optional strings.
+    created:
+      type: string
+      optional: true
+    last_reviewed:
+      type: string
+      optional: true
+    impact:
+      enum:
+        - low
+        - medium
+        - high
+      optional: true
+    complexity:
+      enum:
+        - small
+        - medium
+        - large
+      optional: true
+    tags:
+      type: array
+      of:
+        type: string
+      optional: true
+    prs:
+      type: array
+      of:
+        type: string
+      optional: true
+# GAP: .refine() on frontmatter object — "a closed task must record a completion_note" (closed/* ⇒ completion_note present); not expressible in v1
+
+body:
+  order: recognized-relative
+  allowUnknown: true
+  sections:
+    - oneOf:
+        - Goal
+        - Goal / Problem statement
+    - section: Files to touch
+      optional: true
+      content:
+        table:
+          columns:
+            - Location
+            - Kind
+            - Change
+          cells:
+            Kind:
+              enum:
+                - add
+                - modify
+                - delete
+    - section: Acceptance criteria
+      content:
+        list:
+          everyItem: checkbox
+          minItems: 1

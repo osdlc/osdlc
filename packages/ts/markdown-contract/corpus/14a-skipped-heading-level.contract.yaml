@@ -1,0 +1,20 @@
+mcVersion: 2
+kind: contract
+# fixture: v14a — Skipped heading level (H2 to H4)  (TS fixture: 14a-skipped-heading-level.ts)
+
+body:
+  order: recognized-relative
+  additionalSections: true
+  sections:
+    - section: Decision
+      order: strict
+      additionalSections: true
+      sections:
+        - section: Components
+          content:
+            table:
+              columns:
+                - "#"
+                - Component
+                - Resolution
+              minRows: 1

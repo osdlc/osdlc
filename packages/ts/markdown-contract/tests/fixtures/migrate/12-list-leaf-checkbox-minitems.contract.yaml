@@ -1,0 +1,14 @@
+mcVersion: 1
+kind: contract
+# fixture: v12 — List leaf: checkbox items + minItems  (TS fixture: 12-list-leaf-checkbox-minitems.ts)
+
+body:
+  order: none
+  allowUnknown: false
+  sections:
+    - section: Acceptance criteria
+      content:
+        list:
+          ordered: false
+          minItems: 1
+          everyItem: checkbox

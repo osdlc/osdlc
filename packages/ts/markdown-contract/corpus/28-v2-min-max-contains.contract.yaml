@@ -1,0 +1,11 @@
+mcVersion: 2
+kind: contract
+# fixture: v28 — v2 counted slots: minContains / maxContains  (TS fixture: 28-v2-min-max-contains.ts)
+
+body:
+  order: none
+  additionalSections: false
+  sections:
+    - section: Entry
+      minContains: 2
+      maxContains: 3

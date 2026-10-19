@@ -1,0 +1,33 @@
+mcVersion: 1
+kind: contract
+# fixture: v18 — Object-model consumption: typed rows, byAnchor, dual-key  (TS fixture: 18-oom-consumption-typed-views.ts)
+
+frontmatter:
+  strict: true
+  fields:
+    id:
+      type: string
+      pattern: '^T-[0-9A-Z]{4}$'
+    status:
+      enum:
+        - open/ready
+        - in-progress/active
+        - closed/done
+
+body:
+  order: recognized-relative
+  allowUnknown: true
+  sections:
+    - section: Files to touch
+      content:
+        table:
+          columns:
+            - Location
+            - Kind
+            - Change
+          cells:
+            Kind:
+              enum:
+                - new
+                - modify
+                - delete

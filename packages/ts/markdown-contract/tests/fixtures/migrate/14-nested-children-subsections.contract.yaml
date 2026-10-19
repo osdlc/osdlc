@@ -1,0 +1,15 @@
+mcVersion: 1
+kind: contract
+# fixture: v14 — Nested children (subsections)  (TS fixture: 14-nested-children-subsections.ts)
+
+body:
+  order: recognized-relative
+  allowUnknown: true
+  sections:
+    - section: Decision
+      children:
+        order: strict
+        allowUnknown: true
+        sections:
+          - section: Components
+          - section: Resolution

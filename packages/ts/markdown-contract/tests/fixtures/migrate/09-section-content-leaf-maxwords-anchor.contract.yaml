@@ -1,0 +1,12 @@
+mcVersion: 1
+kind: contract
+# fixture: v09 — Section content leaf: maxWords + required anchor  (TS fixture: 09-section-content-leaf-maxwords-anchor.ts)
+
+body:
+  order: none
+  allowUnknown: false
+  sections:
+    - section: Summary
+      anchor: summary
+      content:
+        maxWords: 120

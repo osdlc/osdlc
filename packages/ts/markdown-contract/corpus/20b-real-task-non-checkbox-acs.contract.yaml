@@ -1,0 +1,69 @@
+mcVersion: 2
+kind: contract
+# fixture: v20b — Real task with non-checkbox acceptance criteria  (TS fixture: 20b-real-task-non-checkbox-acs.ts)
+
+frontmatter:
+  type: object
+  required: [ id, status ]
+  additionalProperties: false
+  properties:
+    id:
+      type: string
+      pattern: '^T-[0-9A-Z]{4}$'
+    type:
+      const: task
+    status:
+      enum:
+        - planning/backlog
+        - open/ready
+        - in-progress/active
+        - closed/done
+        - closed/superseded
+    impact:
+      enum:
+        - low
+        - medium
+        - high
+    complexity:
+      enum:
+        - small
+        - medium
+        - large
+
+body:
+  order: recognized-relative
+  additionalSections: true
+  sections:
+    - oneOf:
+        - Goal
+        - Goal / Problem statement
+    - oneOf:
+        - Today
+        - Current state
+      minContains: 0
+      maxContains: 1
+    - section: Files to touch
+      minContains: 0
+      maxContains: 1
+      content:
+        table:
+          columns:
+            - Location
+            - Kind
+            - Change
+          cells:
+            Kind:
+              enum:
+                - add
+                - modify
+                - delete
+    - section: Acceptance criteria
+      content:
+        list:
+          items: checkbox
+          minItems: 1
+    - section: Completion note
+      minContains: 0
+      maxContains: 1
+
+# GAP: docRule("task/completion-note-when-closed") — runtime cross-field rule (closed status requires Completion note section); not expressible in YAML (docRule/custom-fn)

@@ -1,0 +1,8 @@
+node_modules/
+dist/
+coverage/
+# The shared validation corpus is byte-exact test data, read by more than one engine.
+corpus/
+# Fixture documents and contracts are test data; their bytes and line numbers are asserted.
+tests/fixtures/**/*.md
+tests/fixtures/**/*.yaml

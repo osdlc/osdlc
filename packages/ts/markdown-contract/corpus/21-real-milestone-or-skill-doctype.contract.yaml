@@ -1,0 +1,46 @@
+mcVersion: 2
+kind: contract
+# fixture: v21 — Real Milestone / SKILL.md doc-type  (TS fixture: 21-real-milestone-or-skill-doctype.ts)
+
+frontmatter:
+  type: object
+  required: [ id, status, title, related ]
+  additionalProperties: false
+  properties:
+    id:
+      type: string
+      pattern: '^M-[0-9A-Z]{4}$'
+    status:
+      enum:
+        - open/draft
+        - open/active
+        - closed/done
+        - closed/abandoned
+    title:
+      type: string
+      minLength: 1
+    related:
+      type: array
+      items:
+        type: string
+      default: []
+
+body:
+  order: none
+  additionalSections: true
+  sections:
+    - section: Goal
+    - section: Success criteria
+    - oneOf:
+        - Deliverables
+        - Tasks
+      order: none
+      additionalSections: true
+      sections:
+        - gap: {}
+    - section: Out of scope
+      minContains: 0
+      maxContains: 1
+    - section: Risks / open questions
+      minContains: 0
+      maxContains: 1

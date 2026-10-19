@@ -1,0 +1,11 @@
+mcVersion: 1
+kind: contract
+# fixture: v04 — Ordering: recognized-relative  (TS fixture: 04-recognized-relative-order.ts)
+
+body:
+  order: recognized-relative
+  allowUnknown: true
+  sections:
+    - section: Title
+    - section: Overview
+    - section: Status

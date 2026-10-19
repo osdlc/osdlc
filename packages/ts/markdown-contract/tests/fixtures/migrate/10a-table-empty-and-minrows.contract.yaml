@@ -1,0 +1,16 @@
+mcVersion: 1
+kind: contract
+# fixture: v10a — Empty table / below minRows  (TS fixture: 10a-table-empty-and-minrows.ts)
+
+body:
+  order: none
+  allowUnknown: false
+  sections:
+    - section: Files
+      content:
+        table:
+          columns:
+            - Location
+            - Kind
+            - Change
+          minRows: 1

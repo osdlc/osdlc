@@ -1,0 +1,18 @@
+mcVersion: 1
+kind: contract
+# fixture: v07 — Frontmatter only (Zod)  (TS fixture: 07-frontmatter-only-zod.ts)
+
+frontmatter:
+  strict: true
+  fields:
+    id:
+      type: string
+      pattern: '^D-[0-9A-Z]{4}$'
+    status:
+      enum:
+        - open/proposed
+        - open/accepted
+        - closed/superseded
+    title:
+      type: string
+      min: 1

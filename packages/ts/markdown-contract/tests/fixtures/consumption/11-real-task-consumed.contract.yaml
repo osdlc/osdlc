@@ -1,0 +1,62 @@
+mcVersion: 2
+kind: contract
+# fixture: c11 — Real Task consumed end-to-end  (TS fixture: 11-real-task-consumed.ts)
+
+frontmatter:
+  type: object
+  required: [ id, type, status, title, tags, impact, complexity ]
+  additionalProperties: false
+  properties:
+    id:
+      type: string
+      pattern: '^T-[0-9A-Z]{4}$'
+    type:
+      const: task
+    status:
+      enum: [ open/ready, in-progress/active, closed/done ]
+    title:
+      type: string
+      minLength: 1
+    tags:
+      type: array
+      items:
+        type: string
+      default: []
+    impact:
+      enum: [ low, medium, high ]
+    complexity:
+      enum: [ small, medium, large ]
+
+body:
+  order: recognized-relative
+  additionalSections: true
+  sections:
+    - oneOf: [ Goal, Goal / Problem statement ]
+    - section: Today
+      minContains: 0
+      maxContains: 1
+    - section: Files to touch
+      minContains: 0
+      maxContains: 1
+      content:
+        table:
+          columns: [ Location, Kind, Change ]
+          cells:
+            Kind:
+              enum: [ new, modify, delete ]
+    - section: Acceptance criteria
+      content:
+        list:
+          items: checkbox
+          minItems: 1
+    - section: Post-mortem
+      minContains: 0
+      maxContains: 1
+      order: strict
+      additionalSections: false
+      sections:
+        - section: Acceptance criteria coverage
+        - section: What worked
+        - section: Friction and automation gaps
+
+# GAP: docRule("task/post-mortem-when-worked") — cross-plane doc rule (custom function) is not expressible in v1; rule() and docRule() are deferred
