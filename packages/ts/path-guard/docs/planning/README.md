@@ -38,6 +38,8 @@ package.
 
 - [T-02](tasks/T-02-rust-windows-dot-dot-fold.md): The Rust crate folds `..`
   as text on Windows
+- [T-03](tasks/T-03-is-inside-sibling-prefix-test.md): Test that `isInside`
+  rejects a sibling-prefix directory
 
 ## Done tasks
 
