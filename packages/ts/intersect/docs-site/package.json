@@ -9,10 +9,7 @@
     "build": "astro build",
     "clean": "rm -rf dist .astro",
     "preview": "astro preview",
-    "astro": "astro",
-    "format": "prettier --write .",
-    "format:check": "prettier --check .",
-    "lint": "oxlint ."
+    "astro": "astro"
   },
   "devDependencies": {
     "@astrojs/starlight": "^0.39.2",
