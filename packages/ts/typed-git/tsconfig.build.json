@@ -4,6 +4,7 @@
   "compilerOptions": {
     "rootDir": "."
   },
-  // The examples are tests of the published package; they do not ship.
-  "exclude": ["examples"]
+  // Tests and examples check the published package; they do not ship.
+  "include": ["*.ts"],
+  "exclude": ["tests", "examples"]
 }

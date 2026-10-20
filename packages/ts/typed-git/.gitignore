@@ -1,4 +1,4 @@
-# Dependencies installed for the extracted package.
+# Dependencies.
 node_modules/
 
 # Build output (`npm run build`).

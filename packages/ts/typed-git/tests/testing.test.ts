@@ -56,7 +56,7 @@ describe('@osdlc/typed-git/testing', () => {
     try {
       fx.commit('first', { 'a.md': 'x\n' })
       // A call the fixture never makes for you, run through the same client.
-      expect(fx.git.log({ format: '%an', maxCount: 1 }).trim()).toBe(IDENTITY['GIT_AUTHOR_NAME'])
+      expect(fx.git.log({ format: '%an', maxCount: 1 }).trim()).toBe(IDENTITY['GIT_AUTHOR_NAME']!)
       expect(fx.git.log({ format: '%aI', maxCount: 1 }).trim()).toBe('2020-01-01T00:00:00Z')
     } finally {
       fx.cleanup()

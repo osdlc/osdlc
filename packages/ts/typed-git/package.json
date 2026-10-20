@@ -79,6 +79,7 @@
   "devDependencies": {
     "@osdlc/prettier-config": "workspace:^",
     "@osdlc/tsconfig": "workspace:^",
+    "@types/bun": "^1.1.14",
     "@types/node": "^26.1.0",
     "oxlint": "^1.65.0",
     "prettier": "3.9.6",

@@ -362,6 +362,9 @@ importers:
       '@osdlc/tsconfig':
         specifier: workspace:^
         version: link:../tsconfig
+      '@types/bun':
+        specifier: ^1.1.14
+        version: 1.4.3
       '@types/node':
         specifier: ^26.1.0
         version: 26.6.5

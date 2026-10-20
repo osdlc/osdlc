@@ -8,6 +8,7 @@
 // The ambient declaration must travel with this file: a consumer that pulls
 // git-url.ts in transitively compiles it under its tsconfig, which does not
 // list our sibling .d.ts, and the module resolves to untyped JS (TS7016).
+// oxlint-disable-next-line typescript/triple-slash-reference
 /// <reference path="./hosted-git-info.d.ts" />
 
 import hostedGitInfo from 'hosted-git-info'
