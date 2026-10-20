@@ -1,12 +1,167 @@
 {
   "schema": 1,
   "pr": 331,
-  "head": null,
-  "base": null,
-  "round": 0,
+  "head": "88907b602a9a8d26d662fc0a5e066624faa5df67",
+  "base": "4d3e654d26d1ccd399d166fd0216fdc9df661b0c",
+  "round": 1,
   "claim": {
     "owner": "Mac.local:claude-l81ul8",
     "at": "2026-10-20T01:58:51.118Z"
   },
-  "findings": []
+  "findings": [
+    {
+      "id": "r1-1",
+      "round": 1,
+      "path": "packages/ts/detect-harness/read/artifacts.ts",
+      "line": 91,
+      "title": "Symlink cycle in a rules folder repeats entries and can hang detect()",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-2",
+      "round": 1,
+      "path": "packages/ts/detect-harness/read/artifacts.ts",
+      "line": 72,
+      "title": "Same symlink cycle in the recursive command scan",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-3",
+      "round": 1,
+      "path": "packages/ts/detect-harness/docs/planning/decisions/D-01-name.md",
+      "line": 16,
+      "title": "D-01 says the agent-plugin placeholder is deprecated; it is not",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-4",
+      "round": 1,
+      "path": "packages/ts/detect-harness/providers/claude.ts",
+      "line": 316,
+      "title": "Plugin enabled is never null, contrary to PluginSchema doc",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-5",
+      "round": 1,
+      "path": "packages/ts/detect-harness/which.ts",
+      "line": 40,
+      "title": "Relative PATH entry yields a relative install.path; duplicates command-seam which",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-6",
+      "round": 1,
+      "path": "packages/ts/detect-harness/context.ts",
+      "line": 23,
+      "title": "Hand-rolled path containment where @osdlc/path-guard exists",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-7",
+      "round": 1,
+      "path": "packages/ts/detect-harness/detect.ts",
+      "line": 13,
+      "title": "Dead oxlint directive and internal fleet note",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-8",
+      "round": 1,
+      "path": "packages/ts/detect-harness/contract.ts",
+      "line": 82,
+      "title": "Internal tool names left in comments and a test name",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-9",
+      "round": 1,
+      "path": "packages/ts/detect-harness/providers/cursor.ts",
+      "line": 6,
+      "title": "sdlc test-seam aside in a published module doc",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-10",
+      "round": 1,
+      "path": "packages/ts/detect-harness/contract.ts",
+      "line": 129,
+      "title": "includeValues docs omit secret-looking args",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-11",
+      "round": 1,
+      "path": "packages/ts/detect-harness/locations.ts",
+      "line": 19,
+      "title": "Comment points at README sources the README no longer names",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-12",
+      "round": 1,
+      "path": "packages/ts/detect-harness/locations.ts",
+      "line": 378,
+      "title": "Throwing exports lack @throws",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-13",
+      "round": 1,
+      "path": "packages/ts/detect-harness/frontmatter.ts",
+      "line": 48,
+      "title": "parseFrontmatterResult layer whose errors are discarded",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-14",
+      "round": 1,
+      "path": "packages/ts/detect-harness/context.ts",
+      "line": 36,
+      "title": "Error-message helper written three times; inline asObject copy",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    }
+  ]
 }
