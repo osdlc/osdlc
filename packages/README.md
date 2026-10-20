@@ -151,6 +151,23 @@ requests here.
    `publish` fails on the npm side, fix the trusted publisher setting on
    npmjs.com and re-run the failed jobs.
 
+### Withdrawing a release
+
+Prefer `npm deprecate` to unpublishing. A deprecated version still installs,
+and the message tells users what to do.
+
+```sh
+npm deprecate @osdlc/<name>@<version> "Broken: use <fixed version>"
+```
+
+Then release a fixed version through the normal flow.
+
+npm refuses `npm unpublish` once another public package depends on the
+package. Even without dependents, npm allows an unpublish after 72 hours only
+for a package with few downloads and one owner. A version number that has been
+published cannot be used again, even after an unpublish. Unpublishing is for a
+mistake caught within hours, such as a leaked secret, and the owner does it.
+
 ### Publishing a new library for the first time
 
 npm can only set up trusted publishing on a package that already exists, so
