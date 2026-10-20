@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.0
+
+### Minor Changes
+
+- ac5f0d1: The licence is now `MIT OR Apache-2.0`, with `LICENSE-MIT` and `LICENSE-APACHE`. It was `MIT`.
+
 ## 0.7.0
 
 ### Minor Changes

@@ -1,6 +1,6 @@
 {
   "name": "@osdlc/tsconfig",
-  "version": "0.3.3",
+  "version": "0.4.0",
   "description": "Strict TypeScript compiler presets: a shared bar plus node, bun, vue and build shapes. Consumed through `extends`; ships no code.",
   "license": "MIT OR Apache-2.0",
   "author": "SK Sizer",
