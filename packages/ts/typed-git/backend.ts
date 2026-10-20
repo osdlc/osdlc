@@ -11,6 +11,11 @@
  * It also means a request can be logged, queued, or replayed as data. The one
  * request that cannot cross that line is `raw`, which is argv by definition; a
  * non-CLI backend rejects it with {@link UnsupportedRequest}.
+ *
+ * The seam is experimental: `GitBackend`, `GitRequest`, `GitResults` and
+ * `partialBackend`. Each new verb adds a request kind, which breaks a backend
+ * written as an exhaustive switch. Such a change can land in a minor release.
+ * `cliBackend` and `AsyncGit` are stable.
  */
 
 import {
@@ -36,6 +41,7 @@ import {
   type DiffNameOnlyOptions,
   type DiffStatOptions,
   type DiffNameStatusOptions,
+  type DiffTextOptions,
   type DiffTreeOptions,
   type FetchOptions,
   type ForEachRefOptions,
@@ -95,6 +101,8 @@ export interface GitCallOptions {
  * is normally built by spreading a caller's options, and under
  * `exactOptionalPropertyTypes` a present-but-undefined property is not the
  * same as an absent one. Both mean "not given" here.
+ *
+ * @experimental Each new verb adds a kind, in a minor release.
  */
 export type GitRequest =
   | { kind: 'showAtRev'; rev: string; relPath: string }
@@ -136,12 +144,7 @@ export type GitRequest =
   | ({ kind: 'diffTree'; rev: string } & DiffTreeOptions)
   | ({ kind: 'diffTreeNumstat'; rev: string } & DiffTreeOptions)
   | ({ kind: 'grep'; pattern: string } & GrepOptions)
-  | {
-      kind: 'diffText'
-      rev?: string | undefined
-      staged?: boolean | undefined
-      paths?: string[] | undefined
-    }
+  | ({ kind: 'diffText'; rev?: string | undefined } & DiffTextOptions)
   | { kind: 'diffAddedFile'; relPath: string }
   | ({
       kind: 'fetch'
@@ -188,7 +191,11 @@ export type GitRequest =
   | { kind: 'remoteAdd'; name: string; url: string }
   | { kind: 'raw'; argv: string[]; input?: string | undefined; checked?: boolean | undefined }
 
-/** The result type each request kind resolves to. */
+/**
+ * The result type each request kind resolves to.
+ *
+ * @experimental It grows with {@link GitRequest}.
+ */
 export interface GitResults {
   showAtRev: string | null
   revParse: string | null
@@ -267,6 +274,9 @@ export type GitRequestKind = GitRequest['kind']
  * `[]`, `false`) for a state the verb declares absent, such as an unset
  * config key. It rejects with `CommandFailed` — or whatever error the backend
  * considers equivalent — when git failed rather than answered.
+ *
+ * @experimental New request kinds land in minor releases. Use
+ * {@link partialBackend} rather than an exhaustive switch.
  */
 export interface GitBackend {
   execute<R extends GitRequest>(
@@ -356,7 +366,7 @@ function toVerb(request: GitRequest): GitVerb<unknown> {
     case 'grep':
       return v.grep(request.pattern, request)
     case 'diffText':
-      return v.diffText(request.rev, { staged: request.staged, paths: request.paths })
+      return v.diffText(request.rev, request)
     case 'diffAddedFile':
       return v.diffAddedFile(request.relPath)
     case 'fetch':
@@ -473,6 +483,8 @@ export function cliBackend(
       const env = mergeEnv(opts.env, callOpts.env)
       if (env !== undefined) runOpts.env = env
       if (verb.input !== undefined) runOpts.input = verb.input
+      // The verb's own entries (the C locale) win over the backend's and the call's.
+      if (verb.env !== undefined) runOpts.env = { ...runOpts.env, ...verb.env }
       const argv = prefix.length === 0 ? verb.argv : [...prefix, ...verb.argv]
       const result = await runner.run(argv, runOpts)
       // Unchecked `raw` is the one door outside the gate: it hands back
@@ -494,6 +506,8 @@ export function cliBackend(
  * rejects with {@link UnsupportedRequest} instead of failing as `undefined`.
  * The way to ship a backend that covers the operations it can and says so
  * about the rest.
+ *
+ * @experimental Part of the backend seam; see {@link GitBackend}.
  */
 export function partialBackend(
   name: string,

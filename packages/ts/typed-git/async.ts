@@ -25,6 +25,7 @@ import { SOFT_TABLE } from './soft.ts'
 import {
   parseRefRows,
   splitLines,
+  splitTrailingOptions,
   type AddOptions,
   type AheadBehind,
   type CommitOptions,
@@ -44,6 +45,7 @@ import {
   type DiffNameOnlyOptions,
   type DiffStatOptions,
   type DiffNameStatusOptions,
+  type DiffTextOptions,
   type DiffTreeOptions,
   type FetchOptions,
   type ForEachRefOptions,
@@ -172,9 +174,13 @@ export class AsyncGit {
     return this.backend.execute(this.cwd, { kind: 'showAtRev', rev, relPath }, opts)
   }
 
-  /** See {@link Git.revParse}. For a ref, prefer {@link AsyncGit.resolveRef}. */
-  revParse(...args: string[]): Promise<string | null> {
-    return this.backend.execute(this.cwd, { kind: 'revParse', args })
+  /**
+   * See {@link Git.revParse}. Call options go last, as an object. For a ref,
+   * prefer {@link AsyncGit.resolveRef}.
+   */
+  revParse(...args: string[] | [...string[], GitCallOptions]): Promise<string | null> {
+    const [argv, opts] = splitTrailingOptions<GitCallOptions>(args)
+    return this.backend.execute(this.cwd, { kind: 'revParse', args: argv }, opts)
   }
 
   /** The sha `ref` resolves to, or null. See {@link Git.resolveRef}. */
@@ -326,19 +332,25 @@ export class AsyncGit {
     return this.backend.execute(this.cwd, { kind: 'lsFilesTagged' }, opts)
   }
 
-  /** The unified diff itself; empty string on failure. */
-  diffText(rev?: string, opts: { staged?: boolean; paths?: string[] } = {}): Promise<string> {
-    return this.backend.execute(this.cwd, {
-      kind: 'diffText',
-      rev,
-      staged: opts.staged,
-      paths: opts.paths,
-    })
+  /**
+   * The unified diff; `""` when nothing differs. A bad rev, or a cwd outside a
+   * repository, rejects. See {@link Git.diffText}.
+   */
+  diffText(rev?: string | undefined, opts: GitCallOptions & DiffTextOptions = {}): Promise<string> {
+    const [call, req] = splitCallOptions(opts)
+    return this.backend.execute(
+      this.cwd,
+      { kind: 'diffText', rev, staged: req.staged, paths: req.paths },
+      call,
+    )
   }
 
-  /** One untracked file rendered as an all-added diff. */
-  diffAddedFile(relPath: string): Promise<string> {
-    return this.backend.execute(this.cwd, { kind: 'diffAddedFile', relPath })
+  /**
+   * One untracked file rendered as an all-added diff. A path git cannot read
+   * rejects. See {@link Git.diffAddedFile}.
+   */
+  diffAddedFile(relPath: string, opts: GitCallOptions = {}): Promise<string> {
+    return this.backend.execute(this.cwd, { kind: 'diffAddedFile', relPath }, opts)
   }
 
   /** `for-each-ref` rows, one line each, in the caller's format. */
@@ -441,8 +453,18 @@ export class AsyncGit {
   }
 
   /** Configured remote names (`git remote`); `[]` when there are none. */
-  remote(opts: GitCallOptions = {}): Promise<string[]> {
+  remotes(opts: GitCallOptions = {}): Promise<string[]> {
     return this.backend.execute(this.cwd, { kind: 'remote' }, opts)
+  }
+
+  /**
+   * The same as {@link AsyncGit.remotes}.
+   *
+   * @deprecated Use `remotes()`. The name `remote()` reads as one remote, but
+   * it returns every remote name. It will be removed at 1.0.
+   */
+  remote(opts: GitCallOptions = {}): Promise<string[]> {
+    return this.remotes(opts)
   }
 
   /** A remote's fetch URL, or null when no remote by that name exists. */
@@ -514,11 +536,9 @@ export class AsyncGit {
   }
 
   /**
-   * Push a refspec. `{forceWithLease: true}` adds a bare `--force-with-lease`;
-   * a {@link ForceLease} pins it, which is the form that means "nobody has
-   * touched this since I looked" — the bare one compares against the
-   * remote-tracking ref, which a fetch in this same process may have just
-   * updated.
+   * Push a refspec. A {@link ForceLease} pins `--force-with-lease`.
+   * `{forceWithLease: true}` adds the bare flag, which is the unsafe form. See
+   * {@link Git.push}.
    */
   push(
     remote: string,
@@ -551,7 +571,10 @@ export class AsyncGit {
     return this.backend.execute(this.cwd, { kind: 'deleteBranch', name, force: opts.force }, opts)
   }
 
-  /** Remove config section `name`; false when it was absent. See {@link v.configRemoveSection}. */
+  /**
+   * Remove config section `name`; false when it was absent. See
+   * `configRemoveSection` in `verbs.ts`.
+   */
   configRemoveSection(name: string, opts: GitCallOptions = {}): Promise<boolean> {
     return this.backend.execute(this.cwd, { kind: 'configRemoveSection', name }, opts)
   }
@@ -663,8 +686,12 @@ export class AsyncGit {
     return this.backend.execute(this.cwd, { kind: 'lsFilesUnmerged' }, opts)
   }
 
-  /** Resolve conflicted `paths` to one side wholesale. */
+  /**
+   * Resolve conflicted `paths` to one side wholesale. An empty list resolves
+   * without calling the backend. See {@link Git.checkoutSide}.
+   */
   checkoutSide(side: ConflictSide, paths: string[], opts: GitCallOptions = {}): Promise<void> {
+    if (paths.length === 0) return Promise.resolve()
     return this.backend.execute(this.cwd, { kind: 'checkoutSide', side, paths }, opts)
   }
 

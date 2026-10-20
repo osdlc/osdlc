@@ -939,12 +939,12 @@ describe('Git — argv construction (fake runner)', () => {
     expect(out).toContain('+++ b/src/new.ts')
   })
 
-  test('diffText returns the diff, and empty string on failure', () => {
+  test('diffText returns the diff, and throws on a failure', () => {
     const { runner: ok } = recorder(OK('@@ -1 +1 @@\n'))
     expect(new Git('/repo', { runner: ok }).diffText('HEAD')).toContain('@@')
 
     const { runner: bad } = recorder({ exitCode: 128, stdout: '', stderr: 'boom' })
-    expect(new Git('/repo', { runner: bad }).diffText('HEAD')).toBe('')
+    expect(() => new Git('/repo', { runner: bad }).diffText('HEAD')).toThrow(CommandFailed)
   })
 
   test('at() re-roots the cwd, keeping the runner', () => {

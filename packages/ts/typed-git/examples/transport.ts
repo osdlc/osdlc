@@ -29,6 +29,14 @@ export function run(): void {
 
     copy.fetch('origin', undefined, { quiet: true })
     assert.equal(copy.resolveRef('origin/main'), second)
+
+    // Pin the lease to the sha you expect. `forceWithLease: true` is the bare,
+    // unsafe form: it trusts the local remote-tracking ref.
+    const third = fx.commit('third', { 'c.md': 'three\n' })
+    fx.git.push('store', 'HEAD:refs/heads/main', {
+      forceWithLease: { ref: 'refs/heads/main', expect: second },
+    })
+    assert.equal(new Git(store).resolveRef('main'), third)
   } finally {
     rmSync(scratch, { recursive: true, force: true })
     fx.cleanup()

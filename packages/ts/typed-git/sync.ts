@@ -36,6 +36,7 @@ import {
   parseRefRows,
   repoPrefix,
   splitLines,
+  splitTrailingOptions,
   type AddOptions,
   type AheadBehind,
   type CommitOptions,
@@ -55,6 +56,7 @@ import {
   type DiffNameOnlyOptions,
   type DiffStatOptions,
   type DiffNameStatusOptions,
+  type DiffTextOptions,
   type DiffTreeOptions,
   type FetchOptions,
   type ForEachRefOptions,
@@ -229,6 +231,8 @@ export class Git {
   private exec<T>(verb: GitVerb<T>, opts: GitSyncCallOptions = {}): T {
     const run = this.runOpts(opts)
     if (verb.input !== undefined) run.input = verb.input
+    // The verb's own entries (the C locale) win over the client's and the call's.
+    if (verb.env !== undefined) run.env = { ...run.env, ...verb.env }
     // The prefixed argv is what ran, so it is what a `CommandFailed` reports.
     const argv = this.argv(verb.argv)
     return gate(verb, this.runner.run(argv, run), argv)
@@ -244,10 +248,15 @@ export class Git {
   /**
    * Trimmed `git rev-parse <args>` output — the escape hatch for a query no
    * dedicated verb covers. See `revParse` in `verbs.ts`; for a ref, prefer
-   * {@link Git.resolveRef}. Variadic, so it takes no call options.
+   * {@link Git.resolveRef}.
+   *
+   * Variadic. Call options go last, as an object:
+   * `revParse('--show-toplevel', { timeoutMs: 5000 })`. The args are flags by
+   * design, so a value that starts with `-` is not refused here.
    */
-  revParse(...args: string[]): string | null {
-    return this.exec(v.revParse(...args))
+  revParse(...args: string[] | [...string[], GitSyncCallOptions]): string | null {
+    const [argv, opts] = splitTrailingOptions<GitSyncCallOptions>(args)
+    return this.exec(v.revParse(...argv), opts)
   }
 
   /**
@@ -414,14 +423,20 @@ export class Git {
     return this.exec(v.lsFilesTagged(), opts)
   }
 
-  /** The unified diff itself; empty string on failure. */
-  diffText(rev?: string, opts: { staged?: boolean; paths?: string[] } = {}): string {
-    return this.exec(v.diffText(rev, opts))
+  /**
+   * The unified diff; `""` when nothing differs. A bad rev, or a cwd outside a
+   * repository, throws. See `diffText` in `verbs.ts`.
+   */
+  diffText(rev?: string | undefined, opts: GitSyncCallOptions & DiffTextOptions = {}): string {
+    return this.exec(v.diffText(rev, opts), opts)
   }
 
-  /** One untracked file rendered as an all-added diff. */
-  diffAddedFile(relPath: string): string {
-    return this.exec(v.diffAddedFile(relPath))
+  /**
+   * One untracked file rendered as an all-added diff. A path git cannot read
+   * throws. See `diffAddedFile` in `verbs.ts`.
+   */
+  diffAddedFile(relPath: string, opts: GitSyncCallOptions = {}): string {
+    return this.exec(v.diffAddedFile(relPath), opts)
   }
 
   /** `for-each-ref` rows, one line each, in the caller's format. */
@@ -523,8 +538,18 @@ export class Git {
   }
 
   /** Configured remote names (`git remote`); `[]` when there are none. */
-  remote(opts: GitSyncCallOptions = {}): string[] {
+  remotes(opts: GitSyncCallOptions = {}): string[] {
     return this.exec(v.remote(), opts)
+  }
+
+  /**
+   * The same as {@link Git.remotes}.
+   *
+   * @deprecated Use `remotes()`. The name `remote()` reads as one remote, but
+   * it returns every remote name. It will be removed at 1.0.
+   */
+  remote(opts: GitSyncCallOptions = {}): string[] {
+    return this.remotes(opts)
   }
 
   /** A remote's fetch URL, or null when no remote by that name exists. */
@@ -595,11 +620,11 @@ export class Git {
   }
 
   /**
-   * Push a refspec. `{forceWithLease: true}` adds a bare `--force-with-lease`;
-   * a {@link ForceLease} pins it, which is the form that means "nobody has
-   * touched this since I looked" — the bare one compares against the
+   * Push a refspec. A {@link ForceLease} pins `--force-with-lease`, which means
+   * "nobody has touched this since I looked". `{forceWithLease: true}` adds the
+   * bare flag, which is the unsafe form: it compares against the
    * remote-tracking ref, which a fetch in this same process may have just
-   * updated.
+   * updated. See `push` in `verbs.ts`.
    */
   push(
     remote: string,
@@ -627,7 +652,10 @@ export class Git {
     this.exec(v.deleteBranch(name, opts), opts)
   }
 
-  /** Remove config section `name`; false when it was absent. See {@link v.configRemoveSection}. */
+  /**
+   * Remove config section `name`; false when it was absent. See
+   * `configRemoveSection` in `verbs.ts`.
+   */
   configRemoveSection(name: string, opts: GitSyncCallOptions = {}): boolean {
     return this.exec(v.configRemoveSection(name), opts)
   }
@@ -730,10 +758,12 @@ export class Git {
   }
 
   /**
-   * Resolve conflicted `paths` to one side wholesale. Silently does nothing
-   * for a path that is not conflicted — see {@link v.checkoutSide}.
+   * Resolve conflicted `paths` to one side wholesale. An empty list returns
+   * without running git. Silently does nothing for a path that is not
+   * conflicted — see `checkoutSide` in `verbs.ts`.
    */
   checkoutSide(side: ConflictSide, paths: string[], opts: GitSyncCallOptions = {}): void {
+    if (paths.length === 0) return
     this.exec(v.checkoutSide(side, paths), opts)
   }
 

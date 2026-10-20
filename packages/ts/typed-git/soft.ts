@@ -5,6 +5,7 @@
  * Typed against `Git` and `AsyncGit` both, so adding a list-, nullable- or
  * boolean-returning verb to either client is a compile error here until it
  * is declared, and the two clients cannot grow different soft doors.
+ * Mutations have no soft form, so `configRemoveSection` is not here.
  */
 
 import type { AsyncGit } from './async.ts'
@@ -45,10 +46,10 @@ export const SOFT_TABLE = {
   diffTreeNumstat: 'empty',
   grep: 'empty',
   isAncestor: 'false',
+  remotes: 'empty',
   remote: 'empty',
   remoteGetUrl: 'null',
   remoteOwnerRepo: 'null',
-  configRemoveSection: 'false',
   lsFilesUnmerged: 'empty',
   checkIgnoreVerbose: 'empty',
 } as const satisfies SoftTableFor<Git> & SoftTableFor<AsyncGit>

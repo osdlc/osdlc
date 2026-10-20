@@ -27,8 +27,8 @@
  * `parseRemoteUrl` written in each client.
  *
  * Subpath exports: `./client` is everything here except the git-reference
- * parsers (and so without `hosted-git-info` on the module graph); `./testing`
- * is the temp-repo fixture builder.
+ * parsers and the checkout walks (and so without `hosted-git-info` on the
+ * module graph); `./testing` is the temp-repo fixture builder.
  */
 
 export * from './client.ts'

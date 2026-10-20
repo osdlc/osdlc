@@ -1,12 +1,15 @@
 /**
  * `@osdlc/typed-git/client` — the git clients and their seams, without the
- * git-reference parser.
+ * git-reference parsers and the checkout walks.
  *
- * Identical to the package entry minus `parseGitUrl` / `gitSshUrl`, which
- * pull in `hosted-git-info`. A consumer that only drives git — a runner
- * discovery pass, a guard script — imports from here and keeps that off its
- * module graph. It stays in `dependencies` either way, so this is a bundle
- * saving, not an install one.
+ * The package entry minus two groups. The first is `parseGitUrl`,
+ * `gitSshUrl`, `parseRepoRef` and their types, which pull in
+ * `hosted-git-info`. The second is the checkout walks: `checkoutRoot`,
+ * `discoverCheckouts`, `scanForCheckouts`, their types and their defaults. A
+ * consumer that only drives git — a runner discovery pass, a guard script —
+ * imports from here and keeps `hosted-git-info` off its module graph. It stays
+ * in `dependencies` either way, so this is a bundle saving, not an install
+ * one.
  *
  * The package entry is defined as this module plus the URL exports, so there
  * is one definition of the surface rather than two lists to keep in step.
@@ -31,25 +34,28 @@ export { type GitOutcome, type Soft, type TriedAsync, type TriedSync } from './o
 
 export {
   forceWithLeaseArg,
-  gate,
   parseRefRows,
   REF_FORMAT,
   type AddOptions,
   type AheadBehind,
   type CheckoutOptions,
+  type CleanOptions,
   type CloneOptions,
+  type CommitFlags,
   type CommitOptions,
   type ConfigSetOptions,
   type ConflictSide,
+  type DiffCheckOptions,
+  type DiffCheckResult,
   type DiffEntry,
   type DiffNameOnlyOptions,
   type DiffNameStatusOptions,
   type DiffStatOptions,
+  type DiffTextOptions,
   type DiffTreeOptions,
   type FetchOptions,
   type ForEachRefOptions,
   type ForceLease,
-  type GitVerb,
   type GrepOptions,
   type InitOptions,
   type IntegrationOutcome,
@@ -66,6 +72,7 @@ export {
   type RebaseOptions,
   type RebaseOutcome,
   type RemoteRef,
+  type StatusEntry,
   type StatusPorcelainOptions,
   type TaggedFile,
   type TreeEntry,
