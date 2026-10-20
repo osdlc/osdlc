@@ -1,0 +1,15 @@
+{
+  // Emit config for the published dist/; the dev tsconfig.json stays noEmit.
+  // The source only, with Node types: the package uses node:fs, node:os and process.
+  "extends": ["./tsconfig.json", "@osdlc/tsconfig/build"],
+  "compilerOptions": {
+    "rootDir": ".",
+    // The built sibling, not its source: the source is outside rootDir.
+    "paths": {},
+    "types": ["node"],
+    // The sources are not published, so a declaration map would point at nothing.
+    "declarationMap": false
+  },
+  "include": ["index.ts", "locations.ts", "model/index.ts"],
+  "exclude": []
+}

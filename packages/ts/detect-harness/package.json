@@ -1,0 +1,89 @@
+{
+  "name": "@osdlc/detect-harness",
+  "version": "0.3.1",
+  "description": "Find the coding-agent harnesses (Claude Code, Codex, Cursor, opencode, pi, Antigravity) on a machine and in a project, and read what each has configured: plugins, skills, hooks, MCP servers, permissions, instructions and sign-in evidence. Read-only; MCP env and header values, URL credentials and secret-looking MCP args are redacted by default.",
+  "license": "MIT OR Apache-2.0",
+  "author": "sksizer",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/osdlc/osdlc.git",
+    "directory": "packages/ts/detect-harness"
+  },
+  "homepage": "https://github.com/osdlc/osdlc/tree/main/packages/ts/detect-harness#readme",
+  "bugs": "https://github.com/osdlc/osdlc/issues",
+  "keywords": [
+    "agent",
+    "harness",
+    "detect",
+    "claude-code",
+    "codex",
+    "cursor",
+    "plugin",
+    "mcp",
+    "hooks",
+    "zod"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./locations": {
+      "types": "./dist/locations.d.ts",
+      "default": "./dist/locations.js"
+    },
+    "./model": {
+      "types": "./dist/model/index.d.ts",
+      "default": "./dist/model/index.js"
+    }
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE-MIT",
+    "LICENSE-APACHE",
+    "SECURITY.md",
+    "CONTRIBUTING.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "test": "vitest run",
+    "coverage": "vitest run --coverage",
+    "smoke": "node tests/smoke.mjs",
+    "prepublishOnly": "npm run clean && npm run build",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "oxlint .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@osdlc/command-seam": "workspace:^",
+    "@osdlc/frontmatter-lossless": "workspace:^",
+    "smol-toml": "^1.7.0",
+    "yaml": "^2.9.0"
+  },
+  "peerDependencies": {
+    "zod": "^4"
+  },
+  "devDependencies": {
+    "@osdlc/prettier-config": "workspace:^",
+    "@osdlc/tsconfig": "workspace:^",
+    "@types/node": "^26.1.0",
+    "@vitest/coverage-v8": "^5.0.5",
+    "oxlint": "^1.65.0",
+    "prettier": "3.9.6",
+    "typescript": "~6.0.3",
+    "vitest": "^5.0.5",
+    "zod": "4.4.3"
+  }
+}
