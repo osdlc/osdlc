@@ -1,0 +1,87 @@
+{
+  "name": "@osdlc/typed-git",
+  "version": "0.5.0",
+  "description": "A typed git client for TypeScript, sync and awaitable. Each verb declares what absence means for it; every other failure throws. git.try.* inspects, raw() bypasses — over an injectable backend that drives the git CLI or any other implementation.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/osdlc/osdlc.git",
+    "directory": "packages/ts/typed-git"
+  },
+  "homepage": "https://github.com/osdlc/osdlc/tree/main/packages/ts/typed-git#readme",
+  "bugs": "https://github.com/osdlc/osdlc/issues",
+  "keywords": [
+    "git",
+    "git-client",
+    "worktree",
+    "typescript",
+    "cli-wrapper",
+    "dependency-injection"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "bun": "./index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./client": {
+      "bun": "./client.ts",
+      "types": "./dist/client.d.ts",
+      "default": "./dist/client.js"
+    },
+    "./testing": {
+      "bun": "./testing.ts",
+      "types": "./dist/testing.d.ts",
+      "default": "./dist/testing.js"
+    }
+  },
+  "files": [
+    "dist/",
+    "index.ts",
+    "client.ts",
+    "testing.ts",
+    "outcome.ts",
+    "soft.ts",
+    "sync.ts",
+    "async.ts",
+    "backend.ts",
+    "verbs.ts",
+    "git-url.ts",
+    "remote-url.ts",
+    "checkout-root.ts",
+    "hosted-git-info.d.ts",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "SECURITY.md",
+    "CONTRIBUTING.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "test": "bun test",
+    "smoke": "node tests/smoke.mjs",
+    "prepublishOnly": "npm run clean && npm run build",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "oxlint .",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit"
+  },
+  "dependencies": {
+    "@osdlc/command-seam": "workspace:^",
+    "hosted-git-info": "^10.1.1"
+  },
+  "devDependencies": {
+    "@osdlc/prettier-config": "workspace:^",
+    "@osdlc/tsconfig": "workspace:^",
+    "@types/node": "^26.1.0",
+    "oxlint": "^1.65.0",
+    "prettier": "3.9.6",
+    "typescript": "~6.0.3"
+  }
+}

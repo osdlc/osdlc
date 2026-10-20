@@ -1,0 +1,23 @@
+{
+  "extends": "@osdlc/tsconfig/node-lib",
+  "compilerOptions": {
+    // Resolve workspace siblings through their "bun" export condition, i.e. to
+    // TypeScript source, so a typecheck needs no sibling `dist/` to exist.
+    // Orthogonal to the node-lib/bun-lib split — this package wants source
+    // resolution but not bun's globals — so it is stated here, not inherited.
+    "customConditions": ["bun"]
+  },
+  "include": [
+    "index.ts",
+    "client.ts",
+    "testing.ts",
+    "outcome.ts",
+    "sync.ts",
+    "async.ts",
+    "backend.ts",
+    "verbs.ts",
+    "git-url.ts",
+    "hosted-git-info.d.ts",
+    "examples/*.ts"
+  ]
+}

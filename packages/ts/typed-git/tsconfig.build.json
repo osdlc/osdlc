@@ -1,0 +1,9 @@
+{
+  // Emit config for the published dist/ — the dev tsconfig.json stays noEmit.
+  "extends": ["./tsconfig.json", "@osdlc/tsconfig/build"],
+  "compilerOptions": {
+    "rootDir": "."
+  },
+  // The examples are tests of the published package; they do not ship.
+  "exclude": ["examples"]
+}
