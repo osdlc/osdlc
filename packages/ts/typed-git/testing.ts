@@ -17,10 +17,15 @@ import { Git } from './sync.ts'
 
 /**
  * A fixed author and committer identity, supplied through the environment
- * rather than written into the repo config: a fixture then cannot depend on
- * the developer's global config, and cannot leak into it either. The dates are
- * pinned because they are the two inputs to a commit object that would
- * otherwise move every run.
+ * rather than written into the repo config. The dates are pinned because they
+ * are the two inputs to a commit object that would otherwise move every run.
+ *
+ * Only identity is isolated. A fixture also turns off `commit.gpgsign` in its
+ * own repo config. The rest of the developer's global and system config still
+ * applies: `core.hooksPath`, `commit.template`, `init.templateDir`,
+ * `core.autocrlf` and the like. A suite that must not see them sets
+ * `GIT_CONFIG_GLOBAL` and `GIT_CONFIG_NOSYSTEM` itself, for example through
+ * the `identity` option.
  */
 export const IDENTITY: Readonly<Record<string, string>> = Object.freeze({
   GIT_AUTHOR_NAME: 'Fixture',
@@ -158,6 +163,29 @@ export function makeGitFixture(opts: MakeGitFixtureOptions = {}): GitFixture {
   return fixtureAt(dir, at)
 }
 
+/** Options for {@link makeOriginAndCheckout}. */
+export interface MakeOriginAndCheckoutOptions {
+  /** Initial branch name; `main` when omitted. */
+  initialBranch?: string | undefined
+  /** Files in the origin's first commit; a `README.md` when omitted. */
+  files?: Record<string, string> | undefined
+  /**
+   * Make both repositories under this parent instead of `os.tmpdir()`.
+   * `cleanup()` removes the two repositories, not `parent`.
+   */
+  parent?: string | undefined
+  /** Override the pinned {@link IDENTITY} wholesale. */
+  identity?: Record<string, string> | undefined
+}
+
+/** What {@link makeOriginAndCheckout} returns. */
+export interface OriginAndCheckout {
+  origin: GitFixture
+  checkout: GitFixture
+  /** Remove the checkout and the origin. */
+  cleanup(): void
+}
+
 /**
  * An origin repository with one commit, plus a clone of it — the shape a test
  * of fetch/push/worktree behaviour needs.
@@ -165,14 +193,7 @@ export function makeGitFixture(opts: MakeGitFixtureOptions = {}): GitFixture {
  * Reach for {@link makeBareAndWorker} instead when the second repo must have
  * its own history rather than the origin's.
  */
-export function makeOriginAndCheckout(
-  opts: {
-    initialBranch?: string | undefined
-    files?: Record<string, string> | undefined
-    parent?: string | undefined
-    identity?: Record<string, string> | undefined
-  } = {},
-): { origin: GitFixture; checkout: GitFixture; cleanup(): void } {
+export function makeOriginAndCheckout(opts: MakeOriginAndCheckoutOptions = {}): OriginAndCheckout {
   const branch = opts.initialBranch ?? 'main'
   const origin = makeGitFixture({
     prefix: 'typed-git-origin-',
@@ -197,6 +218,34 @@ export function makeOriginAndCheckout(
   }
 }
 
+/** Options for {@link makeBareAndWorker}. */
+export interface MakeBareAndWorkerOptions {
+  /** Name the worker knows the store by; `origin` when omitted. */
+  remoteName?: string | undefined
+  /**
+   * Shared parent for both; a fresh temp directory when omitted.
+   *
+   * Warning: `cleanup()` removes this whole directory, also when you pass it,
+   * with everything else in it. Do not point it at anything you want to keep.
+   */
+  parent?: string | undefined
+  /** Initial branch name; `main` when omitted. */
+  initialBranch?: string | undefined
+  /** Override the pinned {@link IDENTITY} wholesale. */
+  identity?: Record<string, string> | undefined
+}
+
+/** What {@link makeBareAndWorker} returns. */
+export interface BareAndWorker {
+  bare: GitFixture
+  worker: GitFixture
+  remoteName: string
+  /** The directory both repositories live in. */
+  parent: string
+  /** Remove `parent` and everything in it, also a `parent` the caller passed. */
+  cleanup(): void
+}
+
 /**
  * A bare store plus an independently-inited worker that names it as a remote.
  *
@@ -205,27 +254,10 @@ export function makeOriginAndCheckout(
  * genuine publish into an empty store.
  *
  * Both repositories land under one parent, so a suite deletes one directory.
+ * `cleanup()` deletes that whole parent, also one the caller passed in; see
+ * {@link MakeBareAndWorkerOptions.parent}.
  */
-export function makeBareAndWorker(
-  opts: {
-    /** Name the worker knows the store by; `origin` when omitted. */
-    remoteName?: string | undefined
-    /**
-     * Shared parent for both; a fresh temp directory when omitted. `cleanup()`
-     * removes this whole directory, so do not point it at anything you want to
-     * keep.
-     */
-    parent?: string | undefined
-    initialBranch?: string | undefined
-    identity?: Record<string, string> | undefined
-  } = {},
-): {
-  bare: GitFixture
-  worker: GitFixture
-  remoteName: string
-  parent: string
-  cleanup(): void
-} {
+export function makeBareAndWorker(opts: MakeBareAndWorkerOptions = {}): BareAndWorker {
   const parent =
     opts.parent === undefined
       ? mkdtempSync(join(tmpdir(), 'typed-git-pair-'))

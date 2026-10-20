@@ -24,6 +24,9 @@ export interface RemoteCoordinate {
  * are the owner and repo, so a nested group (`group/sub/repo`) answers
  * `owner: "sub"`. Returns null for anything else (a local path, a single
  * path segment).
+ *
+ * Only an `http(s)://` port is read. An `ssh://` port is dropped, so `port` is
+ * null for `ssh://git@host:2222/owner/repo.git`.
  */
 export function parseRemoteUrl(url: string): RemoteCoordinate | null {
   const trimmed = url.trim()

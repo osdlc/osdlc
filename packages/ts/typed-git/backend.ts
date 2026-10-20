@@ -11,6 +11,11 @@
  * It also means a request can be logged, queued, or replayed as data. The one
  * request that cannot cross that line is `raw`, which is argv by definition; a
  * non-CLI backend rejects it with {@link UnsupportedRequest}.
+ *
+ * The seam is experimental: `GitBackend`, `GitRequest`, `GitResults` and
+ * `partialBackend`. Each new verb adds a request kind, which breaks a backend
+ * written as an exhaustive switch. Such a change can land in a minor release.
+ * `cliBackend` and `AsyncGit` are stable.
  */
 
 import {
@@ -30,12 +35,14 @@ import {
   type CheckoutOptions,
   type CloneOptions,
   type CommitOptions,
+  type ConfigGetOptions,
   type ConfigSetOptions,
   type ConflictSide,
   type DiffEntry,
   type DiffNameOnlyOptions,
   type DiffStatOptions,
   type DiffNameStatusOptions,
+  type DiffTextOptions,
   type DiffTreeOptions,
   type FetchOptions,
   type ForEachRefOptions,
@@ -55,6 +62,7 @@ import {
   type NumstatEntry,
   type RebaseOptions,
   type RebaseOutcome,
+  type RemoteGetUrlOptions,
   type RemoteRef,
   type CleanOptions,
   type DiffCheckOptions,
@@ -86,6 +94,14 @@ export interface GitCallOptions {
    * invocation runs, not what operation was asked for.
    */
   env?: Record<string, string> | undefined
+  /**
+   * Cap on each output stream, in bytes. Past it the runner kills the child
+   * and the call throws (sync) or rejects (async) with `CommandFailed`, so
+   * cut-short output is never read as an answer. A backend that cannot
+   * enforce it may ignore it. Without it the async runner has no cap and the
+   * sync runner caps at 256 MB.
+   */
+  maxOutputBytes?: number | undefined
 }
 
 /**
@@ -95,6 +111,8 @@ export interface GitCallOptions {
  * is normally built by spreading a caller's options, and under
  * `exactOptionalPropertyTypes` a present-but-undefined property is not the
  * same as an absent one. Both mean "not given" here.
+ *
+ * @experimental Each new verb adds a kind, in a minor release.
  */
 export type GitRequest =
   | { kind: 'showAtRev'; rev: string; relPath: string }
@@ -106,6 +124,7 @@ export type GitRequest =
   // non-repository is an answer (`null`), and for `revParse` it is a failure.
   | { kind: 'topLevel' }
   | { kind: 'gitCommonDir' }
+  | { kind: 'gitDir' }
   | { kind: 'symbolicRef'; ref: string }
   | { kind: 'currentBranch' }
   | ({ kind: 'statusPorcelain' } & StatusPorcelainOptions)
@@ -114,7 +133,9 @@ export type GitRequest =
   | { kind: 'worktrees' }
   | { kind: 'mergeBase'; a: string; b: string }
   | { kind: 'logSubject'; ref: string }
-  | { kind: 'configGet'; key: string }
+  | ({ kind: 'configGet'; key: string } & ConfigGetOptions)
+  | ({ kind: 'configGetAll'; key: string } & ConfigGetOptions)
+  | ({ kind: 'configGetBool'; key: string } & ConfigGetOptions)
   | { kind: 'objectExists'; rev: string }
   | ({ kind: 'lsRemote'; remote: string; pattern?: string | undefined } & LsRemoteOptions)
   | { kind: 'checkIgnore'; relPaths: string[] }
@@ -136,12 +157,7 @@ export type GitRequest =
   | ({ kind: 'diffTree'; rev: string } & DiffTreeOptions)
   | ({ kind: 'diffTreeNumstat'; rev: string } & DiffTreeOptions)
   | ({ kind: 'grep'; pattern: string } & GrepOptions)
-  | {
-      kind: 'diffText'
-      rev?: string | undefined
-      staged?: boolean | undefined
-      paths?: string[] | undefined
-    }
+  | ({ kind: 'diffText'; rev?: string | undefined } & DiffTextOptions)
   | { kind: 'diffAddedFile'; relPath: string }
   | ({
       kind: 'fetch'
@@ -184,11 +200,17 @@ export type GitRequest =
   | { kind: 'checkoutSide'; side: ConflictSide; paths: string[] }
   | ({ kind: 'checkout'; ref: string } & CheckoutOptions)
   | { kind: 'remote' }
-  | { kind: 'remoteGetUrl'; name: string }
+  | ({ kind: 'remoteGetUrl'; name: string } & RemoteGetUrlOptions)
+  | ({ kind: 'remoteGetUrls'; name: string } & RemoteGetUrlOptions)
+  | { kind: 'remoteHead'; remote: string }
   | { kind: 'remoteAdd'; name: string; url: string }
   | { kind: 'raw'; argv: string[]; input?: string | undefined; checked?: boolean | undefined }
 
-/** The result type each request kind resolves to. */
+/**
+ * The result type each request kind resolves to.
+ *
+ * @experimental It grows with {@link GitRequest}.
+ */
 export interface GitResults {
   showAtRev: string | null
   revParse: string | null
@@ -196,6 +218,7 @@ export interface GitResults {
   headRef: string | null
   topLevel: string | null
   gitCommonDir: string | null
+  gitDir: string | null
   symbolicRef: string | null
   currentBranch: string | null
   statusPorcelain: string[]
@@ -205,6 +228,8 @@ export interface GitResults {
   mergeBase: string | null
   logSubject: string | null
   configGet: string | null
+  configGetAll: string[]
+  configGetBool: boolean | null
   objectExists: boolean
   lsRemote: RemoteRef[]
   checkIgnore: Set<string>
@@ -252,6 +277,8 @@ export interface GitResults {
   checkout: void
   remote: string[]
   remoteGetUrl: string | null
+  remoteGetUrls: string[]
+  remoteHead: string | null
   remoteAdd: void
   raw: CommandResult
 }
@@ -267,6 +294,9 @@ export type GitRequestKind = GitRequest['kind']
  * `[]`, `false`) for a state the verb declares absent, such as an unset
  * config key. It rejects with `CommandFailed` — or whatever error the backend
  * considers equivalent — when git failed rather than answered.
+ *
+ * @experimental New request kinds land in minor releases. Use
+ * {@link partialBackend} rather than an exhaustive switch.
  */
 export interface GitBackend {
   execute<R extends GitRequest>(
@@ -301,6 +331,8 @@ function toVerb(request: GitRequest): GitVerb<unknown> {
       return v.topLevel()
     case 'gitCommonDir':
       return v.gitCommonDir()
+    case 'gitDir':
+      return v.gitDir()
     case 'symbolicRef':
       return v.symbolicRef(request.ref)
     case 'currentBranch':
@@ -318,7 +350,11 @@ function toVerb(request: GitRequest): GitVerb<unknown> {
     case 'logSubject':
       return v.logSubject(request.ref)
     case 'configGet':
-      return v.configGet(request.key)
+      return v.configGet(request.key, request)
+    case 'configGetAll':
+      return v.configGetAll(request.key, request)
+    case 'configGetBool':
+      return v.configGetBool(request.key, request)
     case 'objectExists':
       return v.objectExists(request.rev)
     case 'lsRemote':
@@ -356,7 +392,7 @@ function toVerb(request: GitRequest): GitVerb<unknown> {
     case 'grep':
       return v.grep(request.pattern, request)
     case 'diffText':
-      return v.diffText(request.rev, { staged: request.staged, paths: request.paths })
+      return v.diffText(request.rev, request)
     case 'diffAddedFile':
       return v.diffAddedFile(request.relPath)
     case 'fetch':
@@ -414,7 +450,11 @@ function toVerb(request: GitRequest): GitVerb<unknown> {
     case 'remote':
       return v.remote()
     case 'remoteGetUrl':
-      return v.remoteGetUrl(request.name)
+      return v.remoteGetUrl(request.name, request)
+    case 'remoteGetUrls':
+      return v.remoteGetUrls(request.name, request)
+    case 'remoteHead':
+      return v.remoteHead(request.remote)
     case 'remoteAdd':
       return v.remoteAdd(request.name, request.url)
     case 'raw': {
@@ -469,10 +509,13 @@ export function cliBackend(
       const runOpts: AsyncCommandRunOptions = { cwd }
       if (callOpts.timeoutMs !== undefined) runOpts.timeoutMs = callOpts.timeoutMs
       if (callOpts.signal !== undefined) runOpts.signal = callOpts.signal
+      if (callOpts.maxOutputBytes !== undefined) runOpts.maxOutputBytes = callOpts.maxOutputBytes
       // Per-call entries win over the backend's, matching `Git`.
       const env = mergeEnv(opts.env, callOpts.env)
       if (env !== undefined) runOpts.env = env
       if (verb.input !== undefined) runOpts.input = verb.input
+      // The verb's own entries (the C locale) win over the backend's and the call's.
+      if (verb.env !== undefined) runOpts.env = { ...runOpts.env, ...verb.env }
       const argv = prefix.length === 0 ? verb.argv : [...prefix, ...verb.argv]
       const result = await runner.run(argv, runOpts)
       // Unchecked `raw` is the one door outside the gate: it hands back
@@ -494,6 +537,8 @@ export function cliBackend(
  * rejects with {@link UnsupportedRequest} instead of failing as `undefined`.
  * The way to ship a backend that covers the operations it can and says so
  * about the rest.
+ *
+ * @experimental Part of the backend seam; see {@link GitBackend}.
  */
 export function partialBackend(
   name: string,

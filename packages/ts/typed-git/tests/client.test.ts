@@ -415,8 +415,17 @@ describe('Git — argv construction (fake runner)', () => {
       noColor: true,
       paths: ['docs'],
     })
-    expect(calls[0]!.argv).toEqual(['grep', 'TODO'])
-    expect(calls[1]!.argv).toEqual(['grep', '-n', '-E', '--no-color', 'TODO|FIXME', '--', 'docs'])
+    expect(calls[0]!.argv).toEqual(['grep', '-e', 'TODO'])
+    expect(calls[1]!.argv).toEqual([
+      'grep',
+      '-n',
+      '-E',
+      '--no-color',
+      '-e',
+      'TODO|FIXME',
+      '--',
+      'docs',
+    ])
   })
 
   test('isAncestor and aheadBehind build their argv and read the answer', () => {
@@ -529,8 +538,7 @@ describe('Git — argv construction (fake runner)', () => {
     expect(calls[1]!.argv).toEqual([
       'clone',
       '--quiet',
-      '--depth',
-      '1',
+      '--depth=1',
       '--branch',
       'v2.1',
       'https://example.invalid/r.git',
@@ -939,12 +947,12 @@ describe('Git — argv construction (fake runner)', () => {
     expect(out).toContain('+++ b/src/new.ts')
   })
 
-  test('diffText returns the diff, and empty string on failure', () => {
+  test('diffText returns the diff, and throws on a failure', () => {
     const { runner: ok } = recorder(OK('@@ -1 +1 @@\n'))
     expect(new Git('/repo', { runner: ok }).diffText('HEAD')).toContain('@@')
 
     const { runner: bad } = recorder({ exitCode: 128, stdout: '', stderr: 'boom' })
-    expect(new Git('/repo', { runner: bad }).diffText('HEAD')).toBe('')
+    expect(() => new Git('/repo', { runner: bad }).diffText('HEAD')).toThrow(CommandFailed)
   })
 
   test('at() re-roots the cwd, keeping the runner', () => {

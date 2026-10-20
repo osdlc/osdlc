@@ -15,8 +15,40 @@ it does not fit a browser, and it is not an implementation of git.
 npm install @osdlc/typed-git
 ```
 
-The package is ESM only. It needs a `git` executable on `PATH`. Its types use
-the global `AbortSignal`, so a project needs `@types/node` or the DOM lib.
+The package is ESM only. It needs Node `^22.22.2 || ^24.15.0 || >=26.0.0`, the
+range its dependency `hosted-git-info` needs, and a `git` executable on
+`PATH`. Its types use the global `AbortSignal`, so a project needs
+`@types/node` or the DOM lib.
+
+## Runtimes and platforms
+
+Node.js, on macOS, Linux and Windows. CI runs the tests and the built package
+on Linux and macOS, on Node 22 and 24. Windows is supported but not tested in
+CI yet.
+
+The minimum git version is the oldest one CI tests. CI uses the git that the
+GitHub-hosted runners ship. On 2026-10-20 that was git 2.55.0 on
+`ubuntu-latest` (Ubuntu 24.04) and git 2.56.0 on `macos-latest` (macOS 26), as
+the checkout step logs it. So the tested minimum is git 2.55.0. Older git may
+work, but no test shows it. The behaviour tables below were measured against
+git 2.50.1. A verb that needs a newer git than you have fails with git's own
+error and throws `CommandFailed`. `mergeTree` needs git 2.38 or later.
+
+Bun runs the tests. It is not a tested runtime for consumers.
+
+## Stability
+
+The package is on the 0.x line. A breaking change ships only in a new minor
+release, with a CHANGELOG entry that starts with `Breaking:`.
+
+- `Git`, `AsyncGit`, `cliBackend`, the verbs, `git.try`, `git.soft`, the
+  URL and checkout helpers, and `./testing` are stable in 0.x.
+- `GitBackend`, `GitRequest`, `GitResults` and `partialBackend` are
+  experimental. Each new verb adds a request kind, so a minor release can
+  break a backend written as an exhaustive `switch`. Use `partialBackend`
+  rather than an exhaustive switch. Their TSDoc carries `@experimental`.
+- `remote()` is deprecated. Use `remotes()`. `remote()` will be removed at
+  1.0.
 
 ## Similar packages
 
@@ -26,6 +58,14 @@ the global `AbortSignal`, so a project needs `@types/node` or the DOM lib.
   pure JavaScript. It needs no `git` binary and runs in browsers.
 - [nodegit](https://www.npmjs.com/package/nodegit) binds libgit2 and needs a
   native build.
+- [@effected/git](https://www.npmjs.com/package/@effected/git) wraps the CLI
+  for programs built on Effect.
+
+This package exists for plain TypeScript callers that want a synchronous form,
+typed results and a declared absence value per verb.
+
+The Rust crate `typed-git` is this package's twin. The two keep the same major
+and minor version. Their APIs differ. The crate is not on crates.io yet.
 
 ## Quick look
 
@@ -111,8 +151,9 @@ const dirty = git.soft.statusPorcelain();   // string[] — [] on a broken repo 
 ```
 
 It is the one-liner for `const r = git.try.resolveRef(x); return r.ok ? r.value : null`.
-Verbs with no absence value (`diffText`, `merge`, `aheadBehind`, `checkIgnore`,
-every mutation) have no soft form; reach for `try`. Boolean verbs fall back to
+Verbs whose absence is not `null`, `[]` or `false` have no soft form: the
+outcome verbs such as `merge`, and `checkIgnore`, `aheadBehind` and `diffText`,
+plus every mutation. Reach for `try`. Boolean verbs fall back to
 `false`, which also means "could not ask": `soft.isDirty` reads a broken repo
 as clean, so do not gate a destructive action on it. `soft`
 catches `CommandFailed` only, exactly like `try`, and one table
@@ -128,8 +169,7 @@ breakage remain indistinguishable — they keep exactly the weakness this
 contract removes elsewhere.
 
 Eight verbs declare 128 as absence: `showAtRev`, `topLevel`, `gitCommonDir`,
-`symbolicRef`, `logSubject`, `objectExists`, `configRemoveSection` and
-`diffText`. `try` and `soft` inherit it, because 128 is a declared absence
+`gitDir`, `symbolicRef`, `logSubject`, `objectExists` and `configRemoveSection`. `try` and `soft` inherit it, because 128 is a declared absence
 there: `git.try.logSubject("HEAD")` outside a repository is `{ ok: true,
 value: null }`, not a failure. The contract narrows the failure surface; it
 does not eliminate it.
@@ -273,10 +313,14 @@ all of 1/2/3 is both-modified, 1+3 is we-deleted, 1+2 is they-deleted, 2+3
 with no base is add/add. A resolver that assumes both-modified deletes files.
 For the paths alone, `diffNameOnly({ diffFilter: "U" })` is cheaper.
 
+`merge`, `rebase` and `rebaseContinue` run with `LC_ALL=C`, over the client,
+backend and call `env`, so `fastForward`, `alreadyUpToDate` and `conflicts` do
+not change with the caller's locale. Other verbs keep the caller's locale.
+
 One sharp edge git leaves in `checkoutSide`: on a path that is *not*
 conflicted it exits 0 and does nothing. There is no error to catch, so take
 the path list from `lsFilesUnmerged()` in the same breath, not from an
-earlier one.
+earlier one. An empty path list returns without running git.
 
 ## Asking without checking out
 
@@ -331,8 +375,10 @@ git.resolveRef("refs/heads/main");  // sha, or null when the ref does not resolv
 git.hasHistory();                   // resolveRef("HEAD") !== null
 git.headRef();                      // "main", or the literal "HEAD" when detached
 git.currentBranch();                // "main", or null when detached
-git.remote();                       // ["origin", …]; [] when there are none
+git.remotes();                      // ["origin", …]; [] when there are none
 git.remoteGetUrl("origin");         // URL, or null — git exits 2 for an unknown remote
+git.remoteGetUrls("origin");        // every URL; [] for an unknown remote
+git.remoteHead("origin");           // "refs/heads/main", asked over the network
 git.remoteOwnerRepo();              // { owner, repo, host, port } for origin, or null
 git.remoteOwnerRepo("upstream");    // …for any remote; AsyncGit awaits the same
 git.remoteAdd("origin", url);
@@ -341,7 +387,10 @@ git.remoteAdd("origin", url);
 `remoteOwnerRepo(remote = "origin")` is `remoteGetUrl` plus a parse: `null`
 when there is no such remote or its URL names no project. The parse is
 host-agnostic (`parseRemoteUrl`: scp-style and `scheme://[user@]host[:port]/…`),
-so a self-hosted Forgejo or Gitea answers, which `parseGitUrl` would not. It
+so a self-hosted Forgejo or Gitea answers, which `parseGitUrl` would not. Two
+limits: a path with groups, `group/sub/repo`, gives owner `sub` and repo
+`repo`; and a port is read only from an `http(s)://` URL. The port of an
+`ssh://` URL is dropped (`port: null`). It
 throws outside a repository like `remoteGetUrl`; use `git.try.remoteOwnerRepo()`
 to fold that into a failed outcome.
 
@@ -358,8 +407,31 @@ needs to print.
 Every method exists on both `Git` and `AsyncGit` with the same name and
 arguments; the async one returns a promise. Each also mirrors onto
 `git.try.*`, which returns `{ ok, value } | { ok, error }` instead of throwing.
-Every method takes call options (`timeoutMs`, `env`, and `signal` on the async
-side) as its last argument — except `revParse`, which is variadic.
+Every method takes call options (`timeoutMs`, `env`, `maxOutputBytes`, and
+`signal` on the async side) as its last argument. `revParse` is variadic, so its options are the
+trailing argument that is not a string.
+
+### Arguments that start with `-`
+
+A ref, remote, URL, path, ref pattern or config key argument that starts with
+`-` could be read by git as an option, for example `--upload-pack=...` or
+`--output=<file>`. Forty-two verbs refuse it: they throw a `TypeError`
+before git runs. In `log` this covers `rev`, `range` and each `notRefs` entry.
+In `diffNameOnly` and `diffStat` it covers each `rangeArgs` token. The message is
+`typed-git: <verb>: <param> must not start with "-" (got "...")`. `try` and
+`soft` do not catch it, because it is a `TypeError`. On `AsyncGit` with
+`cliBackend` it is a rejection. A backend that is not the CLI gets the request
+unchecked. `revParse` is not guarded, because it passes flags on by design.
+Paths after `--` are not affected. `grep` passes its pattern with `-e`, so a
+pattern that starts with `-` is searched for, not refused.
+
+To pass a path that starts with `-`, write `./-name`. For the previous branch,
+write `@{-1}` instead of `-` in `checkout` and `merge`.
+
+The three config reads also refuse a key with no section or no name: no `.`,
+or a leading or trailing `.`. git exits 1 for such a key, the code the reads
+take as unset. `clone` and `fetch` refuse a `depth` that is not a positive
+integer. Both checks throw a `TypeError` before git runs.
 
 ### Queries
 
@@ -375,6 +447,7 @@ exit throws `CommandFailed`.
 | `headRef()` | `rev-parse --abbrev-ref HEAD` | none — literal `"HEAD"` when detached |
 | `topLevel()` | `rev-parse --show-toplevel` | `128` → `null` (not a repository) |
 | `gitCommonDir()` | `rev-parse --path-format=absolute --git-common-dir` | `128` → `null` |
+| `gitDir()` | `rev-parse --absolute-git-dir` | `128` → `null` — this worktree's own dir, `<common>/worktrees/<name>` in a linked worktree |
 | `mainCheckout()` | the parent of `gitCommonDir()` | `null` outside a repository |
 | `symbolicRef(ref)` | `symbolic-ref <ref>` | `128` → `null` |
 | `currentBranch()` | `branch --show-current` | none — `null` when detached |
@@ -386,7 +459,9 @@ exit throws `CommandFailed`.
 | `worktrees()` | `worktree list --porcelain` | none — rows carry `locked` and `lockReason` |
 | `mergeBase(a, b)` | `merge-base <a> <b>` | `1` → `null` (unrelated histories) |
 | `logSubject(ref)` | `log -1 --format=%s <ref>` | `128` → `null` |
-| `configGet(key)` | `config --get <key>` | `1` → `null` (unset) |
+| `configGet(key, { scope })` | `config [--local\|--global\|--system] --get <key>` | `1` → `null` (unset) |
+| `configGetAll(key, { scope })` | `config --get-all -z <key>` | `1` → `[]` (unset) — every value, verbatim |
+| `configGetBool(key, { scope })` | `config --type=bool --get <key>` | `1` → `null` (unset) — a value git cannot read as a boolean throws |
 | `objectExists(rev)` | `cat-file -e <rev>` | `1`, `128` → `false` — see the caveat below |
 | `lsRemote(remote, pattern, { heads, tags })` | `ls-remote` | none |
 | `checkIgnore(paths)` | `check-ignore --stdin -z` | `1` → empty set (none ignored) |
@@ -399,6 +474,8 @@ exit throws `CommandFailed`.
 | `diffNameStatus({ cached, range, noRenames, paths })` | `diff --name-status -z` | none |
 | `diffStat({ rangeArgs, paths })` | `diff --stat` | none — raw stdout |
 | `diffCheck({ paths })` | `diff --check` | `1`, `2` → `{ ok: false, output }` |
+| `diffText(rev?, { staged, paths })` | `diff [--cached] [rev]` | none — empty string only when nothing differs; a bad rev or a non-repository throws |
+| `diffAddedFile(relPath)` | `diff --no-index -- /dev/null <path>` | none — exit 1 with output is success; exit 1 with no output, or exit 2, throws |
 | `log(opts)` | `log` | none — raw stdout, unsplit |
 | `logLines(opts)` | `log`, split and filtered | none |
 | `lsTree(rev, { recursive, long, paths })` | `ls-tree -z` | none |
@@ -407,8 +484,11 @@ exit throws `CommandFailed`.
 | `grep(pattern, { extendedRegexp, lineNumber, noColor, paths })` | `grep` | `1` → `[]` (no match) |
 | `isAncestor(a, b)` | `merge-base --is-ancestor` | `1` → `false` |
 | `aheadBehind(base, tip)` | `rev-list --left-right --count <base>...<tip>` | none |
-| `remote()` | `remote` | none |
-| `remoteGetUrl(name)` | `remote get-url <name>` | `2` → `null` (unknown remote) |
+| `remotes()` | `remote` | none — names, not remotes |
+| `remote()` | `remote` | none — deprecated alias of `remotes()` |
+| `remoteGetUrl(name, { push })` | `remote get-url [--push] <name>` | `2` → `null` (unknown remote) — the first URL |
+| `remoteGetUrls(name, { push })` | `remote get-url --all [--push] <name>` | `2` → `[]` (unknown remote) |
+| `remoteHead(remote)` | `ls-remote --symref <remote> HEAD` | none — the full refname, or `null` when the remote names no default branch; an unreachable remote throws |
 | `remoteOwnerRepo(remote = "origin")` | `remote get-url <remote>`, parsed | `2` or an unparseable URL → `null` |
 
 `objectExists` declares both `1` and `128` absent, so `false` cannot tell an
@@ -417,18 +497,21 @@ empty repository from a dangling HEAD or a missing object store. Use
 
 ### Mutations
 
-Every mutation declares no absence: a non-zero exit throws `CommandFailed`,
-because the only sane handling of "the write did not happen" is to surface it.
+Every mutation except `configRemoveSection` declares no absence: a non-zero
+exit throws `CommandFailed`, because the only sane handling of "the write did
+not happen" is to surface it. `configRemoveSection` declares 128 absent and
+returns `false` when there is no such section.
 
 | Method | git |
 | --- | --- |
-| `fetch(remote, refspec, { prune, quiet, noWriteFetchHead })` | `fetch` |
+| `fetch(remote, refspec, { prune, quiet, noWriteFetchHead, depth, noTags })` | `fetch` |
 | `add(paths, { all, update, intentToAdd })` | `add` (paths go after `--`) |
 | `commit({ message, body } \| { messageFile } \| { messageStdin }, { allowEmpty, amend, noVerify, signoff })` | `commit` — one message source, enforced by the types; `messageStdin` is `-F -` with the string on stdin, no temp file |
-| `push(remote, refspec, { forceWithLease })` | `push` — `forceWithLease` takes `true` or a pinned `{ ref, expect }` (`expect: null` = ref must be absent); `forceWithLeaseArg(lease)` is the pure formatter |
+| `push(remote, refspec, { forceWithLease })` | `push` — `forceWithLease` takes `true` or a pinned `{ ref, expect }` (`expect: null` = ref must be absent); `forceWithLeaseArg(lease)` is the pure formatter. `true` is the bare form: it overwrites whatever is on the remote, so prefer the pinned form |
 | `configSet(key, value, { scope })` | `config` |
+| `configRemoveSection(name)` | `config --remove-section` — `false` when there is no such section |
 | `init(path, { bare, initialBranch, quiet })` | `init` |
-| `clone(url, dest, { depth, branch, bare, quiet })` | `clone` — a relative `dest` resolves in the client's working directory; `branch` takes a branch or a tag, not a sha |
+| `clone(url, dest, { depth, branch, bare, mirror, singleBranch, noTags, quiet })` | `clone` — a relative `dest` resolves in the client's working directory; `branch` takes a branch or a tag, not a sha; with `mirror`, `noTags` has no effect and `singleBranch` holds for the clone only |
 | `resetHard(rev)` | `reset --hard` |
 | `clean({ directories })` | `clean -f`, or `-fd` — ignored files are kept |
 | `deleteBranch(name, { force })` | `branch -d` / `-D` |
@@ -460,7 +543,7 @@ throws.
 | Method | What |
 | --- | --- |
 | `raw(argv, opts)` | Run anything. Returns `CommandResult`; you read `exitCode`. |
-| `rawChecked(argv, opts)` | Same, but throws `CommandFailed` on a non-zero exit. |
+| `rawChecked(argv, opts)` | Same, but throws `CommandFailed` on a non-zero exit or on output cut short at a cap or a timeout. |
 | `at(cwd)` | The same client rooted elsewhere, reusing the runner or backend. |
 | `try.*` | The whole surface again, returning `GitOutcome<T>` instead of throwing. |
 | `soft.*` | Every verb with an absence value, returning it instead of throwing. |
@@ -570,10 +653,12 @@ parseRepoRef("./a/local/path"); // null — the input names no repository
 
 ## Subpath exports
 
-`@osdlc/typed-git/client` is everything above except `parseGitUrl` /
-`gitSshUrl` / `parseRepoRef`, and so without `hosted-git-info` on your module
-graph. It stays in `dependencies` either way — a bundle saving, not an install
-one.
+`@osdlc/typed-git/client` is everything above except the URL parsers
+(`parseGitUrl`, `gitSshUrl`, `parseRepoRef` and their types) and the checkout
+walks (`checkoutRoot`, `discoverCheckouts`, `scanForCheckouts`, their types,
+`DEFAULT_MAX_DEPTH` and `DEFAULT_WARN_AFTER`). It has no `hosted-git-info` on
+your module graph. That package stays in `dependencies` either way — a bundle
+saving, not an install one.
 
 `@osdlc/typed-git/testing` builds throwaway repositories:
 
@@ -588,10 +673,16 @@ one.
   genuine publish into an empty store.
 
 `cleanup()` is manual. Nothing removes a fixture when the process exits, so
-call it in a `finally` block or an `afterEach`.
+call it in a `finally` block or an `afterEach`. The helpers have named option
+and result types: `MakeOriginAndCheckoutOptions`, `OriginAndCheckout`,
+`MakeBareAndWorkerOptions` and `BareAndWorker`.
 
 All of them pin an identity and the commit dates through the environment, so a
-suite that asserts on a sha gets the same sha every run. The identity is bound
+suite that asserts on a sha gets the same sha every run. Only the identity
+(and `commit.gpgsign=false` in the fixture repository) is isolated.
+`core.hooksPath`, `commit.template`, `init.templateDir`, `core.autocrlf` and
+other global or system git config still apply. To isolate them, set
+`GIT_CONFIG_GLOBAL` and `GIT_CONFIG_NOSYSTEM` through `identity`. The identity is bound
 as the fixture client's **client-level `env`**, so every call through
 `fixture.git` carries it — the suite's own calls included, not just the ones
 the fixture makes. `IDENTITY` is exported and frozen, so a suite asserting on
@@ -601,8 +692,9 @@ files, { date, env })` overrides them for one commit.
 Pass `parent` to put two related repos under one directory (and `dir` to name
 one exactly) — the way to have a suite delete a single tree at the end, or
 assert on relative paths between two repositories. `cleanup()` removes the
-`dir` you named. The one from `makeBareAndWorker` removes its whole `parent`.
-Do not point either at anything you want to keep.
+`dir` you named. The one from `makeBareAndWorker` removes its whole `parent`,
+including a `parent` you passed in. `makeOriginAndCheckout` removes only its
+two repositories. Do not point either at anything you want to keep.
 
 ```ts
 import { makeGitFixture } from "@osdlc/typed-git/testing";
@@ -655,14 +747,25 @@ de-duplicate.
 - No call has a default timeout. Pass `timeoutMs` where a hung `git` would
   hurt.
 - `Git` kills a child that writes more than 256 MB to one stream and throws
-  `CommandFailed`. `AsyncGit` has no such cap.
+  `CommandFailed`. `AsyncGit` has no such cap. The `maxOutputBytes` call
+  option sets the cap for one call on either client. Output cut short at a
+  cap or a timeout is a failure, never an answer.
+- stdout is text. There is no verb or call option that returns raw bytes,
+  such as a binary blob. Use command-seam's `spawnRunnerBytes` for that.
+  `raw` and `rawChecked` take `input` as a string, so binary stdin, such as
+  `hash-object --stdin` on a binary file, needs that runner too.
+- Output is captured, never streamed. For live progress from `clone` or
+  `fetch`, run git through command-seam's `streamRunner`.
 - `Git` cannot cancel a call. `AsyncGit` takes a `signal`.
 - A `CommandFailed` carries `argv`, `result` and `detail`. Read `detail` for
   the message, because git writes some failure text to stdout.
 - `UnsupportedRequest` is not a `CommandFailed`, so `try` and `soft` let it
   through.
+- `merge`, `rebase` and `rebaseContinue` run with `LC_ALL=C`. Any other verb
+  that reads git's messages assumes English output, so a localized git can
+  change what it returns.
 - Test fixtures need a manual `cleanup()`.
 
 ## License
 
-MIT
+`MIT OR Apache-2.0`, at your option.

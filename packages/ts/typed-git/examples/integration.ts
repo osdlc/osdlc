@@ -34,6 +34,10 @@ export function run(): void {
         ['a.md', 3],
       ],
     )
+    // `checkoutSide` takes one side for the listed paths. An empty list does nothing.
+    git.checkoutSide('theirs', [])
+    git.checkoutSide('theirs', ['a.md'])
+    assert.equal(readFileSync(join(fx.dir, 'a.md'), 'utf8'), 'topic\n')
     git.mergeAbort()
     assert.deepEqual(git.statusPorcelain(), [])
 

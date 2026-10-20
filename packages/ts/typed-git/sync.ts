@@ -19,7 +19,6 @@
 import { dirname } from 'node:path'
 
 import {
-  runChecked,
   resolveRunner,
   type CommandResult,
   type CommandRunner,
@@ -36,10 +35,12 @@ import {
   parseRefRows,
   repoPrefix,
   splitLines,
+  splitTrailingOptions,
   type AddOptions,
   type AheadBehind,
   type CommitOptions,
   type CheckoutOptions,
+  type ConfigGetOptions,
   type CloneOptions,
   type ConflictSide,
   type MergeOptions,
@@ -48,6 +49,7 @@ import {
   type MergeTreeOutcome,
   type RebaseOptions,
   type RebaseOutcome,
+  type RemoteGetUrlOptions,
   type TaggedFile,
   type UnmergedEntry,
   type ConfigSetOptions,
@@ -55,6 +57,7 @@ import {
   type DiffNameOnlyOptions,
   type DiffStatOptions,
   type DiffNameStatusOptions,
+  type DiffTextOptions,
   type DiffTreeOptions,
   type FetchOptions,
   type ForEachRefOptions,
@@ -95,13 +98,20 @@ export interface GitSyncCallOptions {
   timeoutMs?: number | undefined
   /** Entries merged over the parent environment for this call only. */
   env?: Record<string, string> | undefined
+  /**
+   * Cap on each output stream, in bytes; 256 MB when omitted. Past it the
+   * runner kills the child and the call throws `CommandFailed`. command-seam's
+   * Bun test capture path (the Bun runtime with `NODE_ENV=test`) does not
+   * apply it.
+   */
+  maxOutputBytes?: number | undefined
 }
 
 /** A typed git client bound to one working directory. */
 export class Git {
   readonly cwd: string
   private readonly runner: CommandRunner
-  private readonly gitDir: string | undefined
+  private readonly boundGitDir: string | undefined
   private readonly workTree: string | undefined
   private readonly env: Record<string, string> | undefined
   private tried: TriedSync<Git> | undefined
@@ -126,7 +136,8 @@ export class Git {
    * default runner spawns `git`; tests pass a fake `CommandRunner`.
    *
    * Neither client has a default timeout. This client kills a child whose
-   * output on one stream passes 256 MB; `AsyncGit` has no output cap.
+   * output on one stream passes 256 MB; `AsyncGit` has no output cap. The
+   * `maxOutputBytes` call option sets the cap per call on both.
    */
   constructor(
     cwd: string,
@@ -139,7 +150,7 @@ export class Git {
   ) {
     this.cwd = cwd
     this.runner = resolveRunner('git', opts.runner)
-    this.gitDir = opts.gitDir
+    this.boundGitDir = opts.gitDir
     this.workTree = opts.workTree
     this.env = opts.env
   }
@@ -151,7 +162,7 @@ export class Git {
   at(cwd: string): Git {
     return new Git(cwd, {
       runner: this.runner,
-      gitDir: this.gitDir,
+      gitDir: this.boundGitDir,
       workTree: this.workTree,
       env: this.env,
     })
@@ -195,7 +206,8 @@ export class Git {
   }
 
   /**
-   * Checked passthrough — throws `CommandFailed` on a non-zero exit.
+   * Checked passthrough — throws `CommandFailed` on a non-zero exit, and on
+   * output cut short at the output cap or a timeout, as every verb does.
    *
    * `CommandFailed.message` interpolates stderr only, and several git commands
    * write the sentence that explains the failure to stdout instead — a
@@ -206,18 +218,23 @@ export class Git {
     argv: string[],
     opts: GitSyncCallOptions & { input?: string | undefined } = {},
   ): CommandResult {
-    return runChecked(this.runner, this.argv(argv), this.runOpts(opts))
+    // Through the gate, like `AsyncGit.rawChecked`: the seam's `runChecked`
+    // checks the exit code only, so it would pass cut-short output.
+    const verb: GitVerb<CommandResult> = { argv, absent: [], parse: (r) => r }
+    if (opts.input !== undefined) verb.input = opts.input
+    return this.exec(verb, opts)
   }
 
   /** The verb's argv behind this client's repository binding. */
   private argv(argv: string[]): string[] {
-    const prefix = repoPrefix(this.gitDir, this.workTree)
+    const prefix = repoPrefix(this.boundGitDir, this.workTree)
     return prefix.length === 0 ? argv : [...prefix, ...argv]
   }
 
   private runOpts(opts: GitSyncCallOptions & { input?: string | undefined }): CommandRunOptions {
     const run: CommandRunOptions = { cwd: this.cwd }
     if (opts.timeoutMs !== undefined) run.timeoutMs = opts.timeoutMs
+    if (opts.maxOutputBytes !== undefined) run.maxOutputBytes = opts.maxOutputBytes
     // Per-call entries win over the client's.
     const env = mergeEnv(this.env, opts.env)
     if (env !== undefined) run.env = env
@@ -229,6 +246,8 @@ export class Git {
   private exec<T>(verb: GitVerb<T>, opts: GitSyncCallOptions = {}): T {
     const run = this.runOpts(opts)
     if (verb.input !== undefined) run.input = verb.input
+    // The verb's own entries (the C locale) win over the client's and the call's.
+    if (verb.env !== undefined) run.env = { ...run.env, ...verb.env }
     // The prefixed argv is what ran, so it is what a `CommandFailed` reports.
     const argv = this.argv(verb.argv)
     return gate(verb, this.runner.run(argv, run), argv)
@@ -244,10 +263,15 @@ export class Git {
   /**
    * Trimmed `git rev-parse <args>` output — the escape hatch for a query no
    * dedicated verb covers. See `revParse` in `verbs.ts`; for a ref, prefer
-   * {@link Git.resolveRef}. Variadic, so it takes no call options.
+   * {@link Git.resolveRef}.
+   *
+   * Variadic. Call options go last, as an object:
+   * `revParse('--show-toplevel', { timeoutMs: 5000 })`. The args are flags by
+   * design, so a value that starts with `-` is not refused here.
    */
-  revParse(...args: string[]): string | null {
-    return this.exec(v.revParse(...args))
+  revParse(...args: string[] | [...string[], GitSyncCallOptions]): string | null {
+    const [argv, opts] = splitTrailingOptions<GitSyncCallOptions>(args)
+    return this.exec(v.revParse(...argv), opts)
   }
 
   /**
@@ -289,6 +313,15 @@ export class Git {
    */
   gitCommonDir(opts: GitSyncCallOptions = {}): string | null {
     return this.exec(v.gitCommonDir(), opts)
+  }
+
+  /**
+   * This worktree's own `.git` dir as an absolute path, or null outside a repo
+   * — see `gitDir` in `verbs.ts`. Not the constructor's `gitDir` option, which
+   * binds the client to a repository.
+   */
+  gitDir(opts: GitSyncCallOptions = {}): string | null {
+    return this.exec(v.gitDir(), opts)
   }
 
   /**
@@ -360,9 +393,22 @@ export class Git {
     return this.exec(v.logSubject(ref), opts)
   }
 
-  /** `git config --get <key>`, or null when unset. */
-  configGet(key: string, opts: GitSyncCallOptions = {}): string | null {
-    return this.exec(v.configGet(key), opts)
+  /** `git config --get <key>`, or null when unset. `scope` reads one file only. */
+  configGet(key: string, opts: GitSyncCallOptions & ConfigGetOptions = {}): string | null {
+    return this.exec(v.configGet(key, opts), opts)
+  }
+
+  /** Every value of a multi-valued key, verbatim; `[]` when unset. */
+  configGetAll(key: string, opts: GitSyncCallOptions & ConfigGetOptions = {}): string[] {
+    return this.exec(v.configGetAll(key, opts), opts)
+  }
+
+  /**
+   * A key read as a boolean by git, or null when unset. A value git cannot
+   * read as a boolean throws.
+   */
+  configGetBool(key: string, opts: GitSyncCallOptions & ConfigGetOptions = {}): boolean | null {
+    return this.exec(v.configGetBool(key, opts), opts)
   }
 
   /** True iff `rev` resolves to an object (`cat-file -e`). */
@@ -414,14 +460,20 @@ export class Git {
     return this.exec(v.lsFilesTagged(), opts)
   }
 
-  /** The unified diff itself; empty string on failure. */
-  diffText(rev?: string, opts: { staged?: boolean; paths?: string[] } = {}): string {
-    return this.exec(v.diffText(rev, opts))
+  /**
+   * The unified diff; `""` when nothing differs. A bad rev, or a cwd outside a
+   * repository, throws. See `diffText` in `verbs.ts`.
+   */
+  diffText(rev?: string | undefined, opts: GitSyncCallOptions & DiffTextOptions = {}): string {
+    return this.exec(v.diffText(rev, opts), opts)
   }
 
-  /** One untracked file rendered as an all-added diff. */
-  diffAddedFile(relPath: string): string {
-    return this.exec(v.diffAddedFile(relPath))
+  /**
+   * One untracked file rendered as an all-added diff. A path git cannot read
+   * throws. See `diffAddedFile` in `verbs.ts`.
+   */
+  diffAddedFile(relPath: string, opts: GitSyncCallOptions = {}): string {
+    return this.exec(v.diffAddedFile(relPath), opts)
   }
 
   /** `for-each-ref` rows, one line each, in the caller's format. */
@@ -523,13 +575,39 @@ export class Git {
   }
 
   /** Configured remote names (`git remote`); `[]` when there are none. */
-  remote(opts: GitSyncCallOptions = {}): string[] {
+  remotes(opts: GitSyncCallOptions = {}): string[] {
     return this.exec(v.remote(), opts)
   }
 
-  /** A remote's fetch URL, or null when no remote by that name exists. */
-  remoteGetUrl(name: string, opts: GitSyncCallOptions = {}): string | null {
-    return this.exec(v.remoteGetUrl(name), opts)
+  /**
+   * The same as {@link Git.remotes}.
+   *
+   * @deprecated Use `remotes()`. The name `remote()` reads as one remote, but
+   * it returns every remote name. It will be removed at 1.0.
+   */
+  remote(opts: GitSyncCallOptions = {}): string[] {
+    return this.remotes(opts)
+  }
+
+  /**
+   * A remote's fetch URL (push URL with `push`), or null when no remote by
+   * that name exists.
+   */
+  remoteGetUrl(name: string, opts: GitSyncCallOptions & RemoteGetUrlOptions = {}): string | null {
+    return this.exec(v.remoteGetUrl(name, opts), opts)
+  }
+
+  /** Every URL a remote has (push URLs with `push`); `[]` for an unknown remote. */
+  remoteGetUrls(name: string, opts: GitSyncCallOptions & RemoteGetUrlOptions = {}): string[] {
+    return this.exec(v.remoteGetUrls(name, opts), opts)
+  }
+
+  /**
+   * The full refname the remote's HEAD points at, asked over the network; null
+   * when the remote names none. See `remoteHead` in `verbs.ts`.
+   */
+  remoteHead(remote: string, opts: GitSyncCallOptions = {}): string | null {
+    return this.exec(v.remoteHead(remote), opts)
   }
 
   /**
@@ -595,11 +673,11 @@ export class Git {
   }
 
   /**
-   * Push a refspec. `{forceWithLease: true}` adds a bare `--force-with-lease`;
-   * a {@link ForceLease} pins it, which is the form that means "nobody has
-   * touched this since I looked" — the bare one compares against the
+   * Push a refspec. A {@link ForceLease} pins `--force-with-lease`, which means
+   * "nobody has touched this since I looked". `{forceWithLease: true}` adds the
+   * bare flag, which is the unsafe form: it compares against the
    * remote-tracking ref, which a fetch in this same process may have just
-   * updated.
+   * updated. See `push` in `verbs.ts`.
    */
   push(
     remote: string,
@@ -627,7 +705,10 @@ export class Git {
     this.exec(v.deleteBranch(name, opts), opts)
   }
 
-  /** Remove config section `name`; false when it was absent. See {@link v.configRemoveSection}. */
+  /**
+   * Remove config section `name`; false when it was absent. See
+   * `configRemoveSection` in `verbs.ts`.
+   */
   configRemoveSection(name: string, opts: GitSyncCallOptions = {}): boolean {
     return this.exec(v.configRemoveSection(name), opts)
   }
@@ -730,10 +811,12 @@ export class Git {
   }
 
   /**
-   * Resolve conflicted `paths` to one side wholesale. Silently does nothing
-   * for a path that is not conflicted — see {@link v.checkoutSide}.
+   * Resolve conflicted `paths` to one side wholesale. An empty list returns
+   * without running git. Silently does nothing for a path that is not
+   * conflicted — see `checkoutSide` in `verbs.ts`.
    */
   checkoutSide(side: ConflictSide, paths: string[], opts: GitSyncCallOptions = {}): void {
+    if (paths.length === 0) return
     this.exec(v.checkoutSide(side, paths), opts)
   }
 
