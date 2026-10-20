@@ -6,10 +6,8 @@ package wraps `gh` in typed calls. They return a complete model and tell "we cou
 from "there is nothing".
 
 It is for TypeScript code that runs where `gh` is installed and signed in: developer tools, CI
-scripts, release bots and coding agents.
-
-A typed GitHub client for TypeScript, over the `gh` CLI. The GitHub-side companion
-of [`@osdlc/typed-git`](https://github.com/osdlc/osdlc/tree/main/packages/ts/typed-git).
+scripts, release bots and coding agents. It is the GitHub-side companion of
+[`@osdlc/typed-git`](https://github.com/osdlc/osdlc/tree/main/packages/ts/typed-git).
 
 ## Install
 
@@ -78,41 +76,42 @@ pr?.reviewDecision // null
 pr?.checks // []
 ```
 
-Absent and unknowable are the same answer to a caller, so they get one
-representation. This is what stops a consumer reading a field it never
-requested as a fact.
+A caller cannot tell "absent" from "unknowable", so both get one value. A
+field you never requested is never read as a fact.
 
-Most enums are open — unions ending in `(string & {})` — because GitHub adds
-members, and a client that crashes on an unrecognized one is worse than a
-client that carries it through. Two are closed: `MergeableState`
-(`MERGEABLE`, `CONFLICTING`, `UNKNOWN`) and `ReviewDecision` (`APPROVED`,
-`CHANGES_REQUESTED`, `REVIEW_REQUIRED`, `null`). A value GitHub adds to either
-reads as `UNKNOWN` or `null`, so a check that decides whether to merge can
-match every member.
+Most enums are open. They are unions ending in `(string & {})`. GitHub adds
+members over time. A client that crashes on a new one is worse than a client
+that passes it through.
+
+Two enums are closed: `MergeableState` (`MERGEABLE`, `CONFLICTING`, `UNKNOWN`)
+and `ReviewDecision` (`APPROVED`, `CHANGES_REQUESTED`, `REVIEW_REQUIRED`,
+`null`). A value GitHub adds to either reads as `UNKNOWN` or `null`. A check
+that decides whether to merge can then match every member.
 
 ## Three modes, so failure is never ambiguous
 
 | | on failure |
 | --- | --- |
-| **queries** | return the absence value — `null`. Never throw. |
+| **queries** | return the absence value, `null`. Never throw. |
 | **mutations** | throw `CommandFailed`, carrying argv and the full result. |
 | **`raw(argv)`** | hand back the raw `CommandResult`; you decide. |
 
-A query returns `null`, never `[]`. `prList()` returning `[]` means *this
-repository has no open PRs*; `null` means *we could not ask*. Collapsing those
-turns an expired credential into "nothing to do".
+A query returns `null`, never `[]` on failure. `prList()` returning `[]` means
+*this repository has no open PRs*. `null` means *we could not ask*. If the two
+were the same, an expired credential would read as "nothing to do".
 
 ## Two shape hazards it absorbs
 
 **Author logins differ by transport.** GraphQL (`gh pr view --json`) returns a
-suffix-less login (`github-actions`); REST (`gh api`) returns the suffixed one
-(`github-actions[bot]`). Comparing one against the other silently never
-matches — which is how bot noise gets treated as human review feedback.
-Logins are normalized to the suffix-less form once, when a payload is parsed.
+login without a suffix (`github-actions`). REST (`gh api`) returns the suffixed
+one (`github-actions[bot]`). Comparing one with the other never matches, and
+no error shows it. That is how bot noise gets treated as human review
+feedback. Logins are cut to the suffix-less form once, when a payload is
+parsed.
 
 **`statusCheckRollup` holds two node types.** A modern `CheckRun` carries
-`name`/`status`/`conclusion`; a legacy `StatusContext` carries
-`context`/`state`. Both are folded onto one `verdict` axis:
+`name`/`status`/`conclusion`. A legacy `StatusContext` carries
+`context`/`state`. Both map onto one `verdict` axis:
 
 ```ts
 const checks: CheckRun[] = parsePullRequest(payload)?.checks ?? []
@@ -121,8 +120,8 @@ checks.every((c) => c.verdict === 'success')
 anyCheckFailed(checks)
 ```
 
-A check still running is `pending`, never `success`. Reading "no failure yet"
-as green is how a red build merges.
+A check still running is `pending`, never `success`. If "no failure yet" read
+as green, a red build could merge.
 
 ## The merge state is not stable on a cold query
 

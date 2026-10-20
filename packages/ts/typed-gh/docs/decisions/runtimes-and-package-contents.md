@@ -19,7 +19,7 @@ created: 2026-10-20
 ## Why
 
 - Node 20 is past end of life. Node 22 and 24 are the supported lines.
-- The `bun` condition lets Bun users, and the maintainer's own packages, load
+- The `bun` condition lets Bun users load
   the source without a build step. Dropping it would make each of them build
   first, for a small gain to other users.
 - `@osdlc/typed-git` and `@osdlc/command-seam` use the same floor. This

@@ -8,7 +8,7 @@ created: 2026-10-20
 
 ## Decision
 
-- The owner reviewed the public API on the review page and signed it off.
+- The owner reviewed the public API in review of the public API and signed it off.
 - The first version on npm is `0.5.0`. It is released through a `minor`
   changeset on the current `0.4.1`.
 - The package stays at `0.x`. A stable item changes only with a minor
