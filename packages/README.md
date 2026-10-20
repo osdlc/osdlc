@@ -29,8 +29,8 @@ of them.
 ## Licenses
 
 Each library carries its own license, named in its manifest and kept as
-license files in its directory. `command-seam`, `typed-git`, `typed-gh`, `tsconfig` and
-`prettier-config` are MIT. The Rust crates and the other TypeScript
+license files in its directory. `command-seam`, `typed-git`, `tsconfig` and
+`prettier-config` are MIT. The Rust crates, `typed-gh` and the other TypeScript
 libraries are `MIT OR Apache-2.0`. The root `LICENSE` of this repository
 applies to everything outside `packages/`.
 
