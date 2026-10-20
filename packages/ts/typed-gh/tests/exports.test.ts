@@ -36,6 +36,7 @@ const FUNCTIONS = [
   'openPrsForBranch',
   'ownerRepoSlug',
   'parseOwnerRepo',
+  'parsePrRef',
   'parsePrUrl',
   'parsePullRequest',
   'pickPrForBranch',

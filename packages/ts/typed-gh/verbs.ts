@@ -15,6 +15,7 @@
 import { stderrOrError, type CommandResult } from '@osdlc/command-seam'
 
 import { parseLabels, parsePullRequest } from './parse.ts'
+import { isRepoSlug, parsePrUrl } from './repo.ts'
 import type { IssueRow, Label, PullRequest } from './types.ts'
 
 /** One `gh` invocation: what to run, and how to read what came back. */
@@ -48,7 +49,6 @@ export interface GhTarget {
   hostname?: string | undefined
 }
 
-const REPO_SLUG = /^[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9_.][A-Za-z0-9_.-]*$/
 const HOSTNAME = /^[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?(?::\d+)?$/
 
 /**
@@ -57,7 +57,7 @@ const HOSTNAME = /^[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?(?::\d+)?$/
  * no text can reach gh as a flag or change the endpoint a call hits.
  */
 export function checkTarget(target: GhTarget | undefined): void {
-  if (target?.repo !== undefined && !REPO_SLUG.test(target.repo)) {
+  if (target?.repo !== undefined && !isRepoSlug(target.repo)) {
     throw new RangeError(`repo must be owner/name, got ${JSON.stringify(target.repo)}`)
   }
   if (target?.hostname !== undefined && !HOSTNAME.test(target.hostname)) {
@@ -257,8 +257,10 @@ export interface PrListOptions {
   /** Exact base branch filter (gh-side). */
   base?: string | undefined
   /**
-   * Head branch filter. gh matches this as a prefix, so a caller needing an
-   * exact match filters the rows itself — {@link pickPrForBranch} does.
+   * Head branch filter, exact: `task/foo` does not match `task/foo-2`. Passed
+   * as gh's `--head`, and the rows are filtered again on `headRefName`. Two
+   * forks can share a branch name; ask for `headRepositoryOwner` to tell them
+   * apart.
    */
   head?: string | undefined
   /** Raw `--search` query, for anything the flags do not cover. */
@@ -273,36 +275,80 @@ export interface PrListOptions {
 export function prList(opts: PrListOptions = {}, target?: GhTarget): GhVerb<PullRequest[] | null> {
   const argv = ['pr', 'list', '--state', opts.state ?? 'open', ...repoArgs(target, opts.repo)]
   if (opts.base !== undefined) argv.push('--base', opts.base)
-  if (opts.head !== undefined) argv.push('--search', `head:${opts.head}`)
+  if (opts.head !== undefined) argv.push('--head', opts.head)
   if (opts.search !== undefined) argv.push('--search', opts.search)
   if (opts.author !== undefined) argv.push('--author', opts.author)
-  argv.push('--json', (opts.fields ?? PR_LIST_FIELDS).join(','))
+  // The exact-head filter below reads `headRefName`, so ask for it.
+  const fields = opts.fields ?? PR_LIST_FIELDS
+  const asked = opts.head === undefined ? fields : withFields(fields, ['headRefName'])
+  argv.push('--json', asked.join(','))
   argv.push('--limit', String(opts.limit ?? 100))
-  return { argv, checked: false, parse: manyOrNull }
+  const head = opts.head
+  return {
+    argv,
+    checked: false,
+    parse(r) {
+      const rows = manyOrNull(r)
+      return rows === null || head === undefined
+        ? rows
+        : rows.filter((pr) => pr.headRefName === head)
+    },
+  }
 }
 
-/** `gh pr view <n> --json …` — one PR, with the heavy fields by default. */
+/** `fields` with each of `required` added once, ahead of the rest. */
+function withFields(fields: readonly string[], required: readonly string[]): string[] {
+  return [...new Set([...required.filter((f) => !fields.includes(f)), ...fields])]
+}
+
+/**
+ * Throw `RangeError` when a string bound for gh's argv as a positional
+ * argument would read as a flag.
+ */
+function notAFlag(what: string, value: string): void {
+  if (value.startsWith('-')) {
+    throw new RangeError(`${what} must not start with "-", got ${JSON.stringify(value)}`)
+  }
+}
+
+/**
+ * `gh pr view <number|branch|url> --json …` — one PR, with the heavy fields
+ * by default.
+ *
+ * A branch is the PR whose head is that branch, as gh picks it. A URL names
+ * its own repository and host, so the target is not passed with one. A
+ * string that starts with `-` throws `RangeError`.
+ */
 export function prView(
-  number: number,
+  ref: number | string,
   fields: readonly string[] = PR_VIEW_FIELDS,
   target?: GhTarget,
 ): GhVerb<PullRequest | null> {
+  if (typeof ref === 'string') notAFlag('prView ref', ref)
   // `parsePullRequest` yields null without a `number`, so a field subset that
   // omits it would read as "no such PR". Always ask for it, and each field once.
-  const asked = [...new Set(fields.includes('number') ? fields : ['number', ...fields])]
+  const asked = withFields(fields, ['number'])
+  const isUrl = typeof ref === 'string' && parsePrUrl(ref) !== null
   return {
-    argv: ['pr', 'view', String(number), ...repoArgs(target), '--json', asked.join(',')],
+    argv: [
+      'pr',
+      'view',
+      String(ref),
+      ...(isUrl ? [] : repoArgs(target)),
+      '--json',
+      asked.join(','),
+    ],
     checked: false,
     parse: oneOrNull,
   }
 }
 
 /**
- * Open PRs whose head *starts with* `branch` — gh's own search semantics.
+ * Open PRs whose head is exactly `branch`.
  *
  * The common shape behind "which PR is this branch?", bundling the cheap
- * field set with a small limit. Pair it with {@link pickPrForBranch}, which
- * is what turns the prefix match into an exact one.
+ * field set with a small limit. More than one row comes back only when forks
+ * share the branch name.
  */
 export function openPrsForBranch(
   branch: string,
@@ -881,14 +927,30 @@ export function createReview(
 // ── helpers over the parsed rows ────────────────────────────────────────────
 
 /**
- * The row whose `headRefName` exactly equals `branch`, or null.
+ * The first row whose `headRefName` exactly equals `branch`, or null.
  *
- * gh's `head:` search is a prefix match, so `task/foo` also returns
- * `task/foo-2`. Every caller that means one branch needs this filter.
+ * `prList({ head })` already filters exactly. This is for rows from anywhere
+ * else, such as a `search` query with gh's `head:` qualifier, which matches
+ * `task/foo-2` for `task/foo`.
  */
 export function pickPrForBranch(rows: PullRequest[] | null, branch: string): PullRequest | null {
   if (rows === null) return null
   return rows.find((r) => r.headRefName === branch) ?? null
+}
+
+/**
+ * The PR a branch names, from `prList({ head, state: 'all' })` rows: the open
+ * one, or else the first row (gh lists newest first). Null when there are no
+ * rows or the call failed.
+ */
+export function branchPr(rows: PullRequest[] | null): PullRequest | null {
+  if (rows === null) return null
+  return rows.find((r) => r.state === 'OPEN') ?? rows[0] ?? null
+}
+
+/** The field set {@link branchPr} needs, ahead of `fields`. */
+export function branchPrFields(fields: readonly string[]): string[] {
+  return withFields(fields, ['number', 'state', 'headRefName'])
 }
 
 /**

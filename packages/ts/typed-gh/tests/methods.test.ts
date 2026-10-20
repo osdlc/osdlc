@@ -155,14 +155,14 @@ describe('openPrsForBranch and PR_REF_FIELDS', () => {
     expect([...PR_REF_FIELDS]).toEqual(['number', 'state', 'headRefName', 'url'])
   })
 
-  test('openPrsForBranch searches the head prefix with the identity fields and a small limit', () => {
+  test('openPrsForBranch filters on the exact head with the identity fields and a small limit', () => {
     expect(openPrsForBranch('feature/foo').argv).toEqual([
       'pr',
       'list',
       '--state',
       'open',
-      '--search',
-      'head:feature/foo',
+      '--head',
+      'feature/foo',
       '--json',
       PR_REF_FIELDS.join(','),
       '--limit',
@@ -263,8 +263,8 @@ describe('AsyncGh forms agree with Gh', () => {
           'list',
           '--state',
           'open',
-          '--search',
-          'head:feature/foo',
+          '--head',
+          'feature/foo',
           '--json',
           'number,headRefName',
           '--limit',
@@ -283,8 +283,8 @@ describe('AsyncGh forms agree with Gh', () => {
           'list',
           '--state',
           'open',
-          '--search',
-          'head:feature/foo',
+          '--head',
+          'feature/foo',
           '--json',
           PR_REF_FIELDS.join(','),
           '--limit',

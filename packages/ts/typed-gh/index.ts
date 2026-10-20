@@ -67,7 +67,14 @@ export {
 
 export { anyCheckFailed, normalizeAuthorLogin, parsePullRequest } from './parse.ts'
 
-export { ownerRepoSlug, parseOwnerRepo, parsePrUrl, type PullRequestRef } from './repo.ts'
+export {
+  ownerRepoSlug,
+  parseOwnerRepo,
+  parsePrRef,
+  parsePrUrl,
+  type PrRef,
+  type PullRequestRef,
+} from './repo.ts'
 
 export type {
   Actor,

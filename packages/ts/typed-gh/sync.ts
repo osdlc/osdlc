@@ -31,7 +31,7 @@ import type {
   IssueListOptions,
   PrListOptions,
 } from './verbs.ts'
-import { parseOwnerRepo } from './repo.ts'
+import { ownerRepoSlug, parseOwnerRepo, parsePrRef } from './repo.ts'
 import type { IssueRow, Label, OwnerRepo, PullRequest } from './types.ts'
 
 /**
@@ -123,12 +123,39 @@ export class Gh {
     return this.exec(v.prList(opts, this.target), opts.timeoutMs)
   }
 
-  /** One PR with the heavy fields, or null when gh failed. */
+  /**
+   * One PR by number, branch or URL, with the heavy fields; null when gh
+   * failed or there is no such PR.
+   */
   prView(
-    number: number,
+    ref: number | string,
     opts: { fields?: readonly string[] | undefined; timeoutMs?: number | undefined } = {},
   ): PullRequest | null {
-    return this.exec(v.prView(number, opts.fields ?? v.PR_VIEW_FIELDS, this.target), opts.timeoutMs)
+    return this.exec(v.prView(ref, opts.fields ?? v.PR_VIEW_FIELDS, this.target), opts.timeoutMs)
+  }
+
+  /**
+   * The one PR that `input` names, or null: what a person typed, such as `42`,
+   * `#42`, `owner/name#42`, a URL or a branch (read by `parsePrRef`).
+   *
+   * Digits are a PR number first; when no such PR comes back, they are tried
+   * as a branch. A branch gives its open PR, or else its newest closed or
+   * merged one, so a tool run after the merge still finds it. Fields default
+   * to {@link PR_LIST_FIELDS}.
+   */
+  prFind(
+    input: string,
+    opts: { fields?: readonly string[] | undefined; timeoutMs?: number | undefined } = {},
+  ): PullRequest | null {
+    const ref = parsePrRef(input)
+    if (ref === null) return null
+    const fields = opts.fields ?? v.PR_LIST_FIELDS
+    const call = { fields, timeoutMs: opts.timeoutMs }
+    if (ref.kind === 'url') return this.prView(ref.url, call)
+    if (ref.kind === 'branch') return prForBranchOn(this, ref.name, call)
+    const client = ref.repo === null ? this : this.withRepo(ownerRepoSlug(ref.repo))
+    const pr = client.prView(ref.number, call)
+    return pr !== null || ref.orBranch === null ? pr : prForBranchOn(this, ref.orBranch, call)
   }
 
   /**
@@ -340,6 +367,22 @@ export class Gh {
   setIssueLabel(number: number, currentLabel: string | null, newLabel: string): void {
     this.exec(v.setIssueLabel(number, currentLabel, newLabel, this.target))
   }
+}
+
+/** The open PR for `branch`, else its newest closed or merged one. */
+function prForBranchOn(
+  gh: Gh,
+  branch: string,
+  call: { fields: readonly string[]; timeoutMs?: number | undefined },
+): PullRequest | null {
+  const rows = gh.prList({
+    head: branch,
+    state: 'all',
+    limit: 20,
+    fields: v.branchPrFields(call.fields),
+    timeoutMs: call.timeoutMs,
+  })
+  return v.branchPr(rows)
 }
 
 /**

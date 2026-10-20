@@ -16,7 +16,7 @@ import {
   type CommandResult,
 } from '@osdlc/command-seam'
 
-import { parseOwnerRepo } from './repo.ts'
+import { ownerRepoSlug, parseOwnerRepo, parsePrRef } from './repo.ts'
 import type { IssueRow, Label, OwnerRepo, PullRequest } from './types.ts'
 import * as v from './verbs.ts'
 import type {
@@ -115,12 +115,27 @@ export class AsyncGh {
     return this.exec(v.prList(opts, this.target), opts)
   }
 
-  /** One PR with the heavy fields, or null when gh failed. */
+  /** One PR by number, branch or URL, with the heavy fields, or null. See `Gh.prView`. */
   prView(
-    number: number,
+    ref: number | string,
     opts: { fields?: readonly string[] | undefined } & AsyncCallOptions = {},
   ): Promise<PullRequest | null> {
-    return this.exec(v.prView(number, opts.fields ?? v.PR_VIEW_FIELDS, this.target), opts)
+    return this.exec(v.prView(ref, opts.fields ?? v.PR_VIEW_FIELDS, this.target), opts)
+  }
+
+  /** The one PR that `input` names, or null. See `Gh.prFind`. */
+  async prFind(
+    input: string,
+    opts: { fields?: readonly string[] | undefined } & AsyncCallOptions = {},
+  ): Promise<PullRequest | null> {
+    const ref = parsePrRef(input)
+    if (ref === null) return null
+    const call = { ...opts, fields: opts.fields ?? v.PR_LIST_FIELDS }
+    if (ref.kind === 'url') return this.prView(ref.url, call)
+    if (ref.kind === 'branch') return prForBranchOn(this, ref.name, call)
+    const client = ref.repo === null ? this : this.withRepo(ownerRepoSlug(ref.repo))
+    const pr = await client.prView(ref.number, call)
+    return pr !== null || ref.orBranch === null ? pr : prForBranchOn(this, ref.orBranch, call)
   }
 
   /** The open PR whose head exactly equals `branch`, or null. See `Gh.openPrFor`. */
@@ -300,6 +315,23 @@ export class AsyncGh {
   setIssueLabel(number: number, currentLabel: string | null, newLabel: string): Promise<void> {
     return this.exec(v.setIssueLabel(number, currentLabel, newLabel, this.target))
   }
+}
+
+/** The open PR for `branch`, else its newest closed or merged one. */
+async function prForBranchOn(
+  gh: AsyncGh,
+  branch: string,
+  call: { fields: readonly string[] } & AsyncCallOptions,
+): Promise<PullRequest | null> {
+  const rows = await gh.prList({
+    head: branch,
+    state: 'all',
+    limit: 20,
+    fields: v.branchPrFields(call.fields),
+    timeoutMs: call.timeoutMs,
+    signal: call.signal,
+  })
+  return v.branchPr(rows)
 }
 
 function sleepAsync(ms: number): Promise<void> {

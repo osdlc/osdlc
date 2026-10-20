@@ -140,7 +140,7 @@ describe('Gh — argv', () => {
     ])
   })
 
-  test("a head filter becomes gh's prefix search, base becomes an exact flag", () => {
+  test("a head filter becomes gh's exact --head, base becomes an exact flag", () => {
     const { runner, calls } = recorder([json([])])
     new Gh('/repo', { runner }).prList({ head: 'feature/x', base: 'main', limit: 5 })
     expect(calls[0]).toEqual([
@@ -150,8 +150,8 @@ describe('Gh — argv', () => {
       'open',
       '--base',
       'main',
-      '--search',
-      'head:feature/x',
+      '--head',
+      'feature/x',
       '--json',
       PR_LIST_FIELDS.join(','),
       '--limit',

@@ -16,8 +16,7 @@ import {
 test('find the open pull request for each branch at once', async () => {
   const runner: AsyncCommandRunner = {
     run: async (argv) => {
-      // gh's head: search is a prefix match; openPrFor keeps the exact branch.
-      const head = argv[argv.indexOf('--search') + 1]!.slice('head:'.length)
+      const head = argv[argv.indexOf('--head') + 1]
       const rows = head === 'feature/a' ? [{ number: 1, headRefName: 'feature/a' }] : []
       return { exitCode: 0, stdout: JSON.stringify(rows), stderr: '' }
     },

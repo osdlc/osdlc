@@ -65,3 +65,69 @@ export function parsePrUrl(url: string): PullRequestRef | null {
     number,
   }
 }
+
+/**
+ * What a person typed to name a pull request, read by {@link parsePrRef}.
+ *
+ * - `number`: `42`, `#42`, or `owner/name#42` (then `repo` is set). For bare
+ *   digits, `orBranch` holds the same text, since a branch can be named `42`.
+ * - `url`: a pull request URL, with what {@link parsePrUrl} read from it.
+ * - `branch`: any other text that is a valid branch name.
+ */
+export type PrRef =
+  | { kind: 'number'; number: number; repo: OwnerRepo | null; orBranch: string | null }
+  | ({ kind: 'url'; url: string } & PullRequestRef)
+  | { kind: 'branch'; name: string }
+
+/**
+ * Read what a person typed to name a pull request: a number, `#42`,
+ * `owner/name#42`, a URL, or a branch name. Null when it is none of these.
+ *
+ * Pure: it starts no process. Digits are read as a number first, the way
+ * `gh pr view 42` reads them; `orBranch` keeps the branch reading. The
+ * clients' `prFind` tries both.
+ */
+export function parsePrRef(input: string): PrRef | null {
+  const text = input.trim()
+  const digits = /^(#?)(\d+)$/.exec(text)
+  if (digits !== null) {
+    const number = Number(digits[2])
+    if (Number.isSafeInteger(number) && number > 0) {
+      return { kind: 'number', number, repo: null, orBranch: digits[1] === '' ? text : null }
+    }
+  }
+  const qualified = /^([^/\s#]+)\/([^/\s#]+)#(\d+)$/.exec(text)
+  if (qualified !== null) {
+    const number = Number(qualified[3])
+    if (!Number.isSafeInteger(number) || number <= 0) return null
+    if (!isRepoSlug(`${qualified[1]}/${qualified[2]}`)) return null
+    return {
+      kind: 'number',
+      number,
+      repo: { owner: qualified[1]!, repo: qualified[2]! },
+      orBranch: null,
+    }
+  }
+  const url = parsePrUrl(text)
+  if (url !== null) return { kind: 'url', url: text, ...url }
+  return isBranchName(text) ? { kind: 'branch', name: text } : null
+}
+
+/** True for `owner/name` as GitHub spells it. */
+export function isRepoSlug(text: string): boolean {
+  return /^[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9_.][A-Za-z0-9_.-]*$/.test(text)
+}
+
+/**
+ * True when `name` is a branch name git would accept (`git check-ref-format
+ * --branch`), and does not start with `-`, so it cannot read as a flag.
+ */
+function isBranchName(name: string): boolean {
+  if (name === '' || name === '@' || name.startsWith('-') || name.startsWith('/')) return false
+  if (name.endsWith('/') || name.endsWith('.')) return false
+  // Control characters, space, and the characters git reserves.
+  // oxlint-disable-next-line no-control-regex
+  if (/[\x00-\x20\x7f~^:?*[\\]/.test(name)) return false
+  if (name.includes('..') || name.includes('@{') || name.includes('//')) return false
+  return name.split('/').every((part) => !part.startsWith('.') && !part.endsWith('.lock'))
+}
