@@ -8,7 +8,7 @@ from "there is nothing".
 It is for TypeScript code that runs where `gh` is installed and signed in: developer tools, CI
 scripts, release bots and coding agents.
 
-A typed GitHub client for TypeScript, over the `gh` CLI. The GitHub-side twin
+A typed GitHub client for TypeScript, over the `gh` CLI. The GitHub-side companion
 of [`@osdlc/typed-git`](https://github.com/osdlc/osdlc/tree/main/packages/ts/typed-git).
 
 ## Install
@@ -28,8 +28,7 @@ const filter: PrListOptions = { state: 'open', base: 'main' }
 const prs: PullRequest[] = gh.prList(filter) ?? []
 ```
 
-The `examples` folder in the repository runs the same calls as tests. The `AsyncGh` snippet is
-the one without an example.
+The `examples` folder in the repository runs the same calls as tests.
 
 ## When not to use it
 
@@ -103,7 +102,7 @@ turns an expired credential into "nothing to do".
 suffix-less login (`github-actions`); REST (`gh api`) returns the suffixed one
 (`github-actions[bot]`). Comparing one against the other silently never
 matches — which is how bot noise gets treated as human review feedback.
-Logins are normalized to the suffix-less form once, in `parseActor`.
+Logins are normalized to the suffix-less form once, when a payload is parsed.
 
 **`statusCheckRollup` holds two node types.** A modern `CheckRun` carries
 `name`/`status`/`conclusion`; a legacy `StatusContext` carries
@@ -175,6 +174,45 @@ const threads: ReviewThread[] | null = gh.prReviewThreads(9)
 threads?.filter((t) => !t.isResolved)
 ```
 
+## Issues and labels
+
+```ts
+const issue: IssueRow | null = gh.issueView(7)
+const triage: IssueRow[] | null = gh.issueList({ label: 'status:triage', limit: 50 })
+gh.setIssueLabel(7, 'status:triage', 'status:define')
+
+const labels: Label[] | null = gh.labelList({ limit: 100 })
+gh.createLabel({ name: 'status:triage', color: '1f6feb', description: 'Triage stage' })
+gh.editLabel('status:triage', { description: 'Waiting for triage' })
+```
+
+`issueList` returns open issues, up to `limit` (default 200). `labelList` returns up to `limit`
+labels (default 1000; `gh`'s own default is 30). `setIssueLabel` removes one label and adds
+another in one `gh issue edit` call. `createLabel` passes `--force`, so it is safe to repeat: an
+existing label gets the color and description you pass.
+
+## Diffs, reviews and comments
+
+```ts
+const diff = gh.prDiff(9)
+const review = gh.createReview(9, {
+  commitId: 'abc1234',
+  body: 'One question.',
+  comments: [{ path: 'src/fetch.ts', line: 12, body: 'Retry here too?' }],
+})
+gh.issueCommentEdit('4204154439', 'Updated: CI is green.')
+```
+
+`prDiff` returns the unified diff and throws `CommandFailed` when `gh` cannot produce it.
+
+`createReview` is experimental. It posts a review of kind `COMMENT`: it cannot approve or request
+changes. Each inline comment sits on one line of the new side of the diff. It returns the review's
+URL.
+
+`issueCommentEdit` is experimental. It takes the comment's numeric REST id, as text: the `id` from
+`gh api repos/{owner}/{repo}/issues/<n>/comments`. The `Comment.id` that `prView` returns is a
+GraphQL node id, which this REST path does not accept.
+
 ## Pure halves, for an async fan-out
 
 The verb table and every parser are side-effect free, so concurrent callers
@@ -191,7 +229,7 @@ const prs = verb.parse(result)
 
 ## `AsyncGh`
 
-The awaitable twin of `Gh`, for a fan-out that must not block the event loop.
+The awaitable form of `Gh`, with the same methods, for a fan-out that must not block the event loop.
 Same tri-modal contract (queries resolve to a value or `null` and never
 reject, mutations reject with `CommandFailed`, `raw`/`rawChecked` are the
 hatches), driven by the same verb table, so the two cannot drift. It takes an
@@ -207,6 +245,10 @@ await gh.editPrBody(42, `${body}\n\nfooter`)
 await gh.prComment(42, 'rebased') // the comment's URL, or ''
 await gh.prUpdateBranch(42, 'rebase')
 ```
+
+The queries `raw`, `rawChecked`, `prList`, `prView`, `openPrFor`, `prViewSettled`, `prBody`, `api`,
+`labelList`, `issueList` and `issueView` also take `AsyncCallOptions`: `timeoutMs` and an
+`AbortSignal` in `signal`.
 
 `api(endpoint, opts)` (on `Gh` and `AsyncGh`) is a REST GET through `gh api`.
 It never throws; the result is `{ ok, status, etag, body, malformed, stderr, error? }`.
@@ -227,6 +269,11 @@ const empty: CommandRunner = { run: () => ({ exitCode: 0, stdout: '[]', stderr: 
 
 new Gh('/repo', { runner: empty }).prList() // []
 ```
+
+This package re-exports `CommandFailed` and the runner and result types (`CommandRunner`,
+`AsyncCommandRunner`, `CommandResult`, `CommandRunOptions`), since they appear in its signatures.
+Import the runners themselves, such as `spawnRunner` and `spawnRunnerAsync`, from
+`@osdlc/command-seam`.
 
 ## What is not here
 

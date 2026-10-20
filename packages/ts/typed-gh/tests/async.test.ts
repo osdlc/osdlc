@@ -12,11 +12,11 @@ import {
   CommandFailed,
   Gh,
   api,
-  asAsync,
   type AsyncCommandRunner,
   type CommandResult,
   type CommandRunner,
 } from '../index.ts'
+import { asAsync } from '@osdlc/command-seam'
 
 function recorder(results: CommandResult[] = [{ exitCode: 0, stdout: '', stderr: '' }]) {
   const calls: string[][] = []
@@ -97,7 +97,7 @@ describe('AsyncGh — tri-modal contract', () => {
 })
 
 describe('Gh and AsyncGh share one verb table', () => {
-  test('AsyncGh has a twin for every Gh method', () => {
+  test('AsyncGh has every Gh method', () => {
     const methods = (c: { prototype: object }) =>
       Object.getOwnPropertyNames(c.prototype)
         .filter((n) => n !== 'constructor')

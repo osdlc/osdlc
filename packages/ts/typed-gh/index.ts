@@ -1,6 +1,6 @@
 /**
  * `@osdlc/typed-gh` — a typed GitHub client for TypeScript, over the `gh`
- * CLI. The GitHub-side twin of `@osdlc/typed-git`.
+ * CLI. The GitHub-side companion of `@osdlc/typed-git`.
  *
  * Three things it is:
  *
@@ -17,7 +17,7 @@
  * Authentication is `gh`'s. No token is read, stored, or forwarded.
  */
 
-export { AsyncGh } from './async.ts'
+export { AsyncGh, type AsyncCallOptions } from './async.ts'
 
 export { Gh, defaultRunnerFactory, type RunnerFactory } from './sync.ts'
 
@@ -27,12 +27,13 @@ export {
   createPr,
   editPr,
   editPrBody,
+  createLabel,
+  createReview,
+  editLabel,
+  installed,
   issueList,
   issueView,
-  labelCreate,
-  labelEdit,
   labelList,
-  needsMergeStateRetry,
   openPrsForBranch,
   pickPrForBranch,
   prBody,
@@ -45,9 +46,7 @@ export {
   prReviewThreads,
   prUpdateBranch,
   prView,
-  reviewCreate,
   setIssueLabel,
-  version,
   PR_LIST_FIELDS,
   PR_REF_FIELDS,
   PR_VIEW_FIELDS,
@@ -65,14 +64,7 @@ export {
   type ReviewThread,
 } from './verbs.ts'
 
-export {
-  anyCheckFailed,
-  normalizeAuthorLogin,
-  parseActor,
-  parseCheckRun,
-  parsePullRequest,
-  type PullRequestJson,
-} from './parse.ts'
+export { anyCheckFailed, normalizeAuthorLogin, parsePullRequest } from './parse.ts'
 
 export { ownerRepoSlug, parseOwnerRepo, parsePrUrl, type PullRequestRef } from './repo.ts'
 
@@ -93,15 +85,11 @@ export type {
   ReviewState,
 } from './types.ts'
 
-// The subprocess seam is re-exported so a caller wiring a runner or catching a
-// failure needs one import, not two.
+// The seam's error and runner types appear in this package's signatures, so
+// they are re-exported. Its functions are not: import them from
+// `@osdlc/command-seam`.
 export {
   CommandFailed,
-  asAsync,
-  runChecked,
-  runCheckedAsync,
-  spawnRunner,
-  spawnRunnerAsync,
   type AsyncCommandRunner,
   type CommandResult,
   type CommandRunner,

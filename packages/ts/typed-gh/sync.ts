@@ -1,5 +1,5 @@
 /**
- * `Gh` — the synchronous GitHub client, the twin of `@osdlc/typed-git`'s
+ * `Gh` — the synchronous GitHub client, the companion of `@osdlc/typed-git`'s
  * `Git`, bound to one working directory and one {@link CommandRunner}.
  *
  * Authentication is `gh`'s, not ours: no token is read, stored, or passed.
@@ -117,7 +117,7 @@ export class Gh {
    */
   openPrFor(
     branch: string,
-    opts: { limit?: number; fields?: readonly string[] } = {},
+    opts: { limit?: number | undefined; fields?: readonly string[] | undefined } = {},
   ): PullRequest | null {
     const rows = this.prList({
       head: branch,
@@ -172,12 +172,14 @@ export class Gh {
     return this.exec(v.api(endpoint, opts), opts.timeoutMs)
   }
 
-  /** Every label on the repository, or null when gh failed. */
-  labelList(opts: { timeoutMs?: number | undefined } = {}): Label[] | null {
-    return this.exec(v.labelList(), opts.timeoutMs)
+  /** Every label on the repository (up to `opts.limit`, default 1000), or null when gh failed. */
+  labelList(
+    opts: { limit?: number | undefined; timeoutMs?: number | undefined } = {},
+  ): Label[] | null {
+    return this.exec(v.labelList(opts), opts.timeoutMs)
   }
 
-  /** Issues matching `opts` (open by default, per `gh issue list`), or null when gh failed. */
+  /** Issues matching `opts` (open by default, up to 200), or null when gh failed. */
   issueList(opts: IssueListOptions & { timeoutMs?: number | undefined } = {}): IssueRow[] | null {
     return this.exec(v.issueList(opts), opts.timeoutMs)
   }
@@ -189,7 +191,7 @@ export class Gh {
 
   /** True iff the `gh` binary is on PATH and runs. */
   installed(): boolean {
-    return this.exec(v.version())
+    return this.exec(v.installed())
   }
 
   /**
@@ -250,7 +252,7 @@ export class Gh {
 
   /** Create a `COMMENT` review with inline comments; returns the review's URL ('' if none came back). */
   createReview(number: number, opts: v.CreateReviewOptions): string {
-    return this.exec(v.reviewCreate(number, opts))
+    return this.exec(v.createReview(number, opts))
   }
 
   /** Rewrite just a PR's body. */
@@ -268,7 +270,7 @@ export class Gh {
     this.exec(v.prSetDraft(number, draft))
   }
 
-  /** Rewrite one PR conversation comment's body. */
+  /** Rewrite one PR conversation comment's body. `commentId` is the numeric REST id; see the verb. */
   issueCommentEdit(commentId: string, body: string): void {
     this.exec(v.issueCommentEdit(commentId, body))
   }
@@ -285,7 +287,7 @@ export class Gh {
 
   /** Create a label (or force it to `opts`'s color/description if it already exists). */
   createLabel(opts: v.CreateLabelOptions): void {
-    this.exec(v.labelCreate(opts))
+    this.exec(v.createLabel(opts))
   }
 
   /** Recolor and/or redescribe an existing label. */
@@ -293,7 +295,7 @@ export class Gh {
     name: string,
     opts: { color?: string | undefined; description?: string | undefined },
   ): void {
-    this.exec(v.labelEdit(name, opts))
+    this.exec(v.editLabel(name, opts))
   }
 
   /**

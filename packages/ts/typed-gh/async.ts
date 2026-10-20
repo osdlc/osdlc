@@ -1,5 +1,5 @@
 /**
- * `AsyncGh` — the awaitable GitHub client, the twin of {@link Gh}.
+ * `AsyncGh` — the awaitable GitHub client, with the same methods as {@link Gh}.
  *
  * Same tri-modal contract, promised: queries resolve to parsed values and
  * never reject on a gh failure, mutations reject with `CommandFailed`, and
@@ -29,16 +29,18 @@ import type {
 } from './verbs.ts'
 
 /**
- * Per-call options. Eleven methods accept them: `raw`, `rawChecked`, `prList`, `prView`,
- * `openPrFor`, `prViewSettled`, `prBody`, `api`, `labelList`, `issueList` and `issueView`.
+ * Per-call options for {@link AsyncGh}. Eleven methods accept them: `raw`, `rawChecked`,
+ * `prList`, `prView`, `openPrFor`, `prViewSettled`, `prBody`, `api`, `labelList`,
+ * `issueList` and `issueView`.
  */
-interface CallOptions {
+export interface AsyncCallOptions {
   /**
    * Hard cap on the call. An invalid value rejects, as in command-seam:
    * `RangeError` for 0, a negative value or `NaN`; `TypeError` for a
    * non-number.
    */
   timeoutMs?: number | undefined
+  /** Aborts the call; the runner stops the child. */
   signal?: AbortSignal | undefined
 }
 
@@ -63,17 +65,17 @@ export class AsyncGh {
   // ── escape hatches ────────────────────────────────────────────────────────
 
   /** Unchecked passthrough for verbs not yet lifted into the API. */
-  raw(argv: string[], opts: CallOptions = {}): Promise<CommandResult> {
+  raw(argv: string[], opts: AsyncCallOptions = {}): Promise<CommandResult> {
     return this.runner.run(argv, { cwd: this.cwd, ...opts })
   }
 
   /** Checked passthrough — rejects with `CommandFailed` on a non-zero exit. */
-  rawChecked(argv: string[], opts: CallOptions = {}): Promise<CommandResult> {
+  rawChecked(argv: string[], opts: AsyncCallOptions = {}): Promise<CommandResult> {
     return runCheckedAsync(this.runner, argv, { cwd: this.cwd, ...opts })
   }
 
   /** Run one verb from the table, honouring its checked/unchecked contract. */
-  private async exec<T>(verb: GhVerb<T>, call: CallOptions = {}): Promise<T> {
+  private async exec<T>(verb: GhVerb<T>, call: AsyncCallOptions = {}): Promise<T> {
     const opts: AsyncCommandRunOptions = { cwd: this.cwd }
     if (verb.input !== undefined) opts.input = verb.input
     if (call.timeoutMs !== undefined) opts.timeoutMs = call.timeoutMs
@@ -87,14 +89,14 @@ export class AsyncGh {
   // ── queries ───────────────────────────────────────────────────────────────
 
   /** Pull requests matching `opts`, or null when gh failed. */
-  prList(opts: PrListOptions & CallOptions = {}): Promise<PullRequest[] | null> {
+  prList(opts: PrListOptions & AsyncCallOptions = {}): Promise<PullRequest[] | null> {
     return this.exec(v.prList(opts), opts)
   }
 
   /** One PR with the heavy fields, or null when gh failed. */
   prView(
     number: number,
-    opts: { fields?: readonly string[] | undefined } & CallOptions = {},
+    opts: { fields?: readonly string[] | undefined } & AsyncCallOptions = {},
   ): Promise<PullRequest | null> {
     return this.exec(v.prView(number, opts.fields ?? v.PR_VIEW_FIELDS), opts)
   }
@@ -102,7 +104,10 @@ export class AsyncGh {
   /** The open PR whose head exactly equals `branch`, or null. See `Gh.openPrFor`. */
   async openPrFor(
     branch: string,
-    opts: { limit?: number; fields?: readonly string[] } & CallOptions = {},
+    opts: {
+      limit?: number | undefined
+      fields?: readonly string[] | undefined
+    } & AsyncCallOptions = {},
   ): Promise<PullRequest | null> {
     const rows = await this.prList({
       head: branch,
@@ -121,7 +126,7 @@ export class AsyncGh {
       attempts?: number | undefined
       fields?: readonly string[] | undefined
       sleep?: ((ms: number) => Promise<void>) | undefined
-    } & CallOptions = {},
+    } & AsyncCallOptions = {},
   ): Promise<PullRequest | null> {
     const attempts = Math.max(1, opts.attempts ?? 3)
     const sleep = opts.sleep ?? sleepAsync
@@ -135,33 +140,33 @@ export class AsyncGh {
   }
 
   /** A PR's body text, or null when gh failed. */
-  prBody(number: number, opts: CallOptions = {}): Promise<string | null> {
+  prBody(number: number, opts: AsyncCallOptions = {}): Promise<string | null> {
     return this.exec(v.prBody(number), opts)
   }
 
   /** A REST GET through `gh api`; failure is `ok: false`, never a rejection. */
-  api(endpoint: string, opts: ApiOptions & CallOptions = {}): Promise<ApiResponse> {
+  api(endpoint: string, opts: ApiOptions & AsyncCallOptions = {}): Promise<ApiResponse> {
     return this.exec(v.api(endpoint, opts), opts)
   }
 
-  /** Every label on the repository, or null when gh failed. */
-  labelList(opts: CallOptions = {}): Promise<Label[] | null> {
-    return this.exec(v.labelList(), opts)
+  /** Every label on the repository (up to `opts.limit`, default 1000), or null when gh failed. */
+  labelList(opts: { limit?: number | undefined } & AsyncCallOptions = {}): Promise<Label[] | null> {
+    return this.exec(v.labelList(opts), opts)
   }
 
   /** Issues matching `opts`, or null when gh failed. */
-  issueList(opts: IssueListOptions & CallOptions = {}): Promise<IssueRow[] | null> {
+  issueList(opts: IssueListOptions & AsyncCallOptions = {}): Promise<IssueRow[] | null> {
     return this.exec(v.issueList(opts), opts)
   }
 
   /** One issue with its labels, or null when gh failed. */
-  issueView(number: number, opts: CallOptions = {}): Promise<IssueRow | null> {
+  issueView(number: number, opts: AsyncCallOptions = {}): Promise<IssueRow | null> {
     return this.exec(v.issueView(number), opts)
   }
 
   /** True iff the `gh` binary is on PATH and runs. */
   installed(): Promise<boolean> {
-    return this.exec(v.version())
+    return this.exec(v.installed())
   }
 
   /** True iff `gh` holds credentials. */
@@ -219,7 +224,7 @@ export class AsyncGh {
 
   /** Create a `COMMENT` review with inline comments; resolves to the review's URL ('' if none came back). */
   createReview(number: number, opts: v.CreateReviewOptions): Promise<string> {
-    return this.exec(v.reviewCreate(number, opts))
+    return this.exec(v.createReview(number, opts))
   }
 
   /** Bring a PR's head branch up to date with its base. */
@@ -232,7 +237,7 @@ export class AsyncGh {
     return this.exec(v.prSetDraft(number, draft))
   }
 
-  /** Rewrite one PR conversation comment's body. */
+  /** Rewrite one PR conversation comment's body. `commentId` is the numeric REST id; see the verb. */
   issueCommentEdit(commentId: string, body: string): Promise<void> {
     return this.exec(v.issueCommentEdit(commentId, body))
   }
@@ -249,7 +254,7 @@ export class AsyncGh {
 
   /** Create a label (or force it to `opts`'s color/description if it exists). */
   createLabel(opts: v.CreateLabelOptions): Promise<void> {
-    return this.exec(v.labelCreate(opts))
+    return this.exec(v.createLabel(opts))
   }
 
   /** Recolor and/or redescribe an existing label. */
@@ -257,7 +262,7 @@ export class AsyncGh {
     name: string,
     opts: { color?: string | undefined; description?: string | undefined },
   ): Promise<void> {
-    return this.exec(v.labelEdit(name, opts))
+    return this.exec(v.editLabel(name, opts))
   }
 
   /** Swap an issue's label in a single `gh issue edit` call. */

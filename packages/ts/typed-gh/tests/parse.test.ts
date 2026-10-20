@@ -10,14 +10,8 @@
 
 import { describe, expect, test } from 'bun:test'
 
-import {
-  anyCheckFailed,
-  normalizeAuthorLogin,
-  parseActor,
-  parseCheckRun,
-  parsePullRequest,
-  parsePrUrl,
-} from '../index.ts'
+import { anyCheckFailed, normalizeAuthorLogin, parsePullRequest, parsePrUrl } from '../index.ts'
+import { parseActor, parseCheckRun } from '../parse.ts'
 
 /** A real `gh pr view --json` payload, trimmed to the fields under test. */
 const LIVE_PR = {

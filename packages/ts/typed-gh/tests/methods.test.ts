@@ -16,6 +16,7 @@ import {
   PR_REF_FIELDS,
   defaultRunnerFactory,
   openPrsForBranch,
+  parsePullRequest,
   prReviewThreads,
   type AsyncCommandRunner,
   type CommandResult,
@@ -189,6 +190,7 @@ describe('openPrsForBranch and PR_REF_FIELDS', () => {
 
 describe('AsyncGh forms agree with Gh', () => {
   const issue = { number: 7, title: 't', body: 'b', labels: [], state: 'OPEN' }
+  const label = { name: 'bug', color: 'd73a4a', description: 'Something is wrong' }
   const threads = {
     data: {
       repository: {
@@ -244,6 +246,131 @@ describe('AsyncGh forms agree with Gh', () => {
       [json(threads)],
       [prReviewThreads(5).argv],
       [{ isResolved: false, isOutdated: false, lastCommentAuthor: null }],
+    ],
+    [
+      'openPrFor',
+      (c) => c.openPrFor('feature/foo', { limit: 2, fields: ['number', 'headRefName'] }),
+      [
+        json([
+          { number: 4, headRefName: 'feature/foo-2' },
+          { number: 3, headRefName: 'feature/foo' },
+        ]),
+      ],
+      [
+        [
+          'pr',
+          'list',
+          '--state',
+          'open',
+          '--search',
+          'head:feature/foo',
+          '--json',
+          'number,headRefName',
+          '--limit',
+          '2',
+        ],
+      ],
+      parsePullRequest({ number: 3, headRefName: 'feature/foo' }),
+    ],
+    [
+      'openPrFor with undefined options',
+      (c) => c.openPrFor('feature/foo', { limit: undefined, fields: undefined }),
+      [json([])],
+      [
+        [
+          'pr',
+          'list',
+          '--state',
+          'open',
+          '--search',
+          'head:feature/foo',
+          '--json',
+          PR_REF_FIELDS.join(','),
+          '--limit',
+          '5',
+        ],
+      ],
+      null,
+    ],
+    [
+      'issueList',
+      (c) => c.issueList({ label: 'bug' }),
+      [json([issue])],
+      [
+        [
+          'issue',
+          'list',
+          '--label',
+          'bug',
+          '--json',
+          'number,title,body,labels,state',
+          '--limit',
+          '200',
+        ],
+      ],
+      [issue],
+    ],
+    [
+      'issueList with a limit',
+      (c) => c.issueList({ limit: 20 }),
+      [json([])],
+      [['issue', 'list', '--json', 'number,title,body,labels,state', '--limit', '20']],
+      [],
+    ],
+    [
+      'labelList',
+      (c) => c.labelList(),
+      [json([label])],
+      [['label', 'list', '--json', 'name,color,description', '--limit', '1000']],
+      [label],
+    ],
+    [
+      'labelList with a limit',
+      (c) => c.labelList({ limit: 50 }),
+      [json([])],
+      [['label', 'list', '--json', 'name,color,description', '--limit', '50']],
+      [],
+    ],
+    [
+      'createLabel',
+      (c) => c.createLabel(label),
+      [ok()],
+      [
+        [
+          'label',
+          'create',
+          'bug',
+          '--color',
+          'd73a4a',
+          '--description',
+          'Something is wrong',
+          '--force',
+        ],
+      ],
+      undefined,
+    ],
+    [
+      'editLabel',
+      (c) => c.editLabel('bug', { color: 'ffffff' }),
+      [ok()],
+      [['label', 'edit', 'bug', '--color', 'ffffff']],
+      undefined,
+    ],
+    [
+      'issueCommentEdit',
+      (c) => c.issueCommentEdit('4204154439', 'new text'),
+      [ok()],
+      [
+        [
+          'api',
+          '-X',
+          'PATCH',
+          'repos/{owner}/{repo}/issues/comments/4204154439',
+          '-f',
+          'body=new text',
+        ],
+      ],
+      undefined,
     ],
     [
       'setIssueLabel',

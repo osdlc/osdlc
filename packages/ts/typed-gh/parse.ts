@@ -214,7 +214,7 @@ function parseReviewDecision(x: unknown): ReviewDecision {
  * known" value rather than `undefined`, so the result is safe to build from
  * any field subset.
  */
-export function parsePullRequest(raw: PullRequestJson | unknown): PullRequest | null {
+export function parsePullRequest(raw: unknown): PullRequest | null {
   if (!isRecord(raw)) return null
   const number = raw['number']
   if (typeof number !== 'number' || !Number.isInteger(number)) return null

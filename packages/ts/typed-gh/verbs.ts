@@ -43,7 +43,7 @@ export const PR_REF_FIELDS = ['number', 'state', 'headRefName', 'url'] as const
  *
  * `mergeable` and `mergeStateStatus` are the expensive pair — GitHub computes
  * them lazily and answers `UNKNOWN` until it has, so a cold query over many
- * PRs commonly needs a retry. See {@link needsMergeStateRetry}.
+ * PRs commonly needs a retry. `prViewSettled` on the clients does it.
  */
 export const PR_LIST_FIELDS = [
   'number',
@@ -336,8 +336,8 @@ function parseApi(r: CommandResult, withHeaders: boolean): ApiResponse {
   }
 }
 
-/** `gh --version` — the install probe. */
-export function version(): GhVerb<boolean> {
+/** `gh --version` — the install probe. True when `gh` runs. */
+export function installed(): GhVerb<boolean> {
   return { argv: ['--version'], checked: false, parse: (r) => r.exitCode === 0 }
 }
 
@@ -361,15 +361,19 @@ export function authStatus(): GhVerb<AuthStatus> {
 
 /**
  * `gh label list --json name,color,description` — every label on the repo.
- * `--limit` is explicit and generous (1000): `gh`'s own default page size is
- * 30, well under this repo's own label vocabulary (the 22 `sdlc:stage/*` /
- * `sdlc:auto/*` chain labels plus every other label the repo carries), so an
- * unset limit would silently truncate the very listing a labels-vocabulary
- * caller (`apply/labels.ts`) needs to see in full.
+ * `limit` defaults to 1000. `gh`'s own default is 30, which would cut off a
+ * repository with more labels than that without saying so.
  */
-export function labelList(): GhVerb<Label[] | null> {
+export function labelList(opts: { limit?: number | undefined } = {}): GhVerb<Label[] | null> {
   return {
-    argv: ['label', 'list', '--json', 'name,color,description', '--limit', '1000'],
+    argv: [
+      'label',
+      'list',
+      '--json',
+      'name,color,description',
+      '--limit',
+      String(opts.limit ?? 1000),
+    ],
     checked: false,
     parse: manyLabelsOrNull,
   }
@@ -377,15 +381,17 @@ export function labelList(): GhVerb<Label[] | null> {
 
 /** What to narrow an issue listing to. Every filter is optional. */
 export interface IssueListOptions {
-  /** Exact label filter (gh-side) — the common case is one `sdlc:stage/<x>` label. */
+  /** Exact label filter, applied by `gh`. */
   label?: string | undefined
+  /** The most issues to return. Defaults to 200. */
+  limit?: number | undefined
 }
 
 /** `gh issue list --json …` — open issues by default, optionally by label. */
 export function issueList(opts: IssueListOptions = {}): GhVerb<IssueRow[] | null> {
   const argv = ['issue', 'list']
   if (opts.label !== undefined) argv.push('--label', opts.label)
-  argv.push('--json', ISSUE_FIELDS, '--limit', '200')
+  argv.push('--json', ISSUE_FIELDS, '--limit', String(opts.limit ?? 200))
   return { argv, checked: false, parse: manyIssuesOrNull }
 }
 
@@ -462,7 +468,15 @@ export function prSetDraft(number: number, draft: boolean): GhVerb<void> {
   return { argv, checked: true, parse: nothing }
 }
 
-/** `gh api -X PATCH repos/{owner}/{repo}/issues/comments/<id> -f body=…` — rewrite one conversation comment. */
+/**
+ * `gh api -X PATCH repos/{owner}/{repo}/issues/comments/<id> -f body=…` — rewrite one
+ * conversation comment.
+ *
+ * `commentId` is the comment's numeric REST id, as text: the `id` that
+ * `gh api repos/{owner}/{repo}/issues/<n>/comments` returns. It is not the
+ * GraphQL node id (such as `IC_kw…`) that `gh pr view --json comments` gives
+ * in `Comment.id`; the REST path answers 404 for a node id.
+ */
 export function issueCommentEdit(commentId: string, body: string): GhVerb<void> {
   return {
     argv: [
@@ -583,11 +597,10 @@ export interface CreateLabelOptions {
 
 /**
  * `gh label create <name> --color <hex> --description <text> --force`.
- * `--force` makes this idempotent-safe on its own: a `create` `Change` from
- * an applier's `plan()` should still succeed even if the label already
- * exists by the time `apply()` actually runs.
+ * `--force` makes it safe to repeat: when the label already exists, its color
+ * and description are set to these instead of failing.
  */
-export function labelCreate(opts: CreateLabelOptions): GhVerb<void> {
+export function createLabel(opts: CreateLabelOptions): GhVerb<void> {
   const argv = [
     'label',
     'create',
@@ -602,7 +615,7 @@ export function labelCreate(opts: CreateLabelOptions): GhVerb<void> {
 }
 
 /** `gh label edit <name>` — recolor or redescribe; omits a flag not given. */
-export function labelEdit(
+export function editLabel(
   name: string,
   opts: { color?: string | undefined; description?: string | undefined },
 ): GhVerb<void> {
@@ -685,7 +698,7 @@ export interface CreateReviewOptions {
  * line-anchored comments; `{owner}`/`{repo}` are filled in by `gh` from the
  * client's working directory.
  */
-export function reviewCreate(number: number, opts: CreateReviewOptions): GhVerb<string> {
+export function createReview(number: number, opts: CreateReviewOptions): GhVerb<string> {
   const payload = {
     commit_id: opts.commitId,
     body: opts.body,

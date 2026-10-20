@@ -13,15 +13,14 @@ import {
   CommandFailed,
   Gh,
   anyCheckFailed,
-  needsMergeStateRetry,
-  parseActor,
-  parseCheckRun,
   parsePullRequest,
   prView,
   type AsyncCommandRunner,
   type CommandResult,
   type CommandRunner,
 } from '../index.ts'
+import { parseActor, parseCheckRun } from '../parse.ts'
+import { needsMergeStateRetry } from '../verbs.ts'
 
 /** A `Gh` and an `AsyncGh` on fake runners that replay `results` (the last one repeats). */
 function clients(results: CommandResult[]) {
@@ -158,7 +157,7 @@ describe('README: a total model', () => {
   })
 })
 
-describe('README: author logins are normalized to the suffix-less form, once, in parseActor', () => {
+describe('README: author logins are normalized to the suffix-less form, once, when a payload is parsed', () => {
   test('GraphQL and REST spellings of the same bot compare equal', () => {
     const graphql = parseActor({ login: 'github-actions' })
     const rest = parseActor({ login: 'github-actions[bot]' })

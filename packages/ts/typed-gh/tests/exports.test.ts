@@ -20,23 +20,21 @@ import * as pkg from '@osdlc/typed-gh'
 const FUNCTIONS = [
   'anyCheckFailed',
   'api',
-  'asAsync',
   'authStatus',
+  'createLabel',
   'createPr',
+  'createReview',
+  'editLabel',
   'editPr',
   'editPrBody',
+  'installed',
   'issueCommentEdit',
   'issueList',
   'issueView',
-  'labelCreate',
-  'labelEdit',
   'labelList',
-  'needsMergeStateRetry',
   'normalizeAuthorLogin',
   'openPrsForBranch',
   'ownerRepoSlug',
-  'parseActor',
-  'parseCheckRun',
   'parseOwnerRepo',
   'parsePrUrl',
   'parsePullRequest',
@@ -50,13 +48,7 @@ const FUNCTIONS = [
   'prSetDraft',
   'prUpdateBranch',
   'prView',
-  'reviewCreate',
-  'runChecked',
-  'runCheckedAsync',
   'setIssueLabel',
-  'spawnRunner',
-  'spawnRunnerAsync',
-  'version',
 ]
 
 const CLASSES = ['AsyncGh', 'CommandFailed', 'Gh']
@@ -100,28 +92,7 @@ describe('the package entry point', () => {
 // Exports with no example yet. Each waits on an open question in the audit
 // report, and a change there could rename or drop the item.
 const WAITING_FOR_THE_OWNER: ReadonlyArray<readonly [reason: string, names: readonly string[]]> = [
-  ['signature', ['AsyncGh', 'openPrFor', 'issueList', 'labelList', 'IssueListOptions']],
-  [
-    'experimental',
-    [
-      'issueCommentEdit',
-      'prDiff',
-      'createReview',
-      'reviewCreate',
-      'CreateReviewOptions',
-      'ReviewComment',
-    ],
-  ],
-  [
-    'name',
-    ['createLabel', 'editLabel', 'labelCreate', 'labelEdit', 'CreateLabelOptions', 'version'],
-  ],
-  ['internal', ['needsMergeStateRetry', 'parseActor', 'parseCheckRun', 'PullRequestJson']],
   ['open or closed enums', ['MergeableState', 'ReviewDecision']],
-  [
-    'keep the command-seam re-exports',
-    ['asAsync', 'runChecked', 'runCheckedAsync', 'spawnRunner', 'spawnRunnerAsync'],
-  ],
 ]
 
 const WAITING = new Set(WAITING_FOR_THE_OWNER.flatMap(([, names]) => names))
