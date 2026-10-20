@@ -738,7 +738,16 @@ fn a_share_root_follows_a_link_right_under_it() {
         ]
     };
     for root in [r"\\nas\vault", r"\\?\UNC\nas\vault"] {
-        let fs = Table(vec![(root, r"\\?\UNC\nas\vault")], links());
+        // A verbatim share with no trailing `\` has no root component, so the
+        // walk asks about it both with and without one, as the real
+        // filesystem answers either.
+        let fs = Table(
+            vec![
+                (root, r"\\?\UNC\nas\vault"),
+                (r"\\?\UNC\nas\vault\", r"\\?\UNC\nas\vault"),
+            ],
+            links(),
+        );
         let root = Path::new(root);
         assert!(
             matches!(
