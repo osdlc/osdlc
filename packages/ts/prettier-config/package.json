@@ -2,7 +2,7 @@
   "name": "@osdlc/prettier-config",
   "version": "0.2.3",
   "description": "A shared Prettier config: no semicolons, single quotes, trailing commas, 100 columns. Markdown is left alone.",
-  "license": "MIT",
+  "license": "MIT OR Apache-2.0",
   "author": "SK Sizer",
   "repository": {
     "type": "git",
@@ -23,7 +23,8 @@
     "index.json",
     "README.md",
     "CHANGELOG.md",
-    "LICENSE"
+    "LICENSE-MIT",
+    "LICENSE-APACHE"
   ],
   "scripts": {
     "format": "prettier --write .",

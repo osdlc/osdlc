@@ -2,7 +2,7 @@
   "name": "@osdlc/command-seam",
   "version": "0.7.0",
   "description": "Injectable subprocess runner for Node: capture, stream and managed-process runners, hard timeouts, failures as results.",
-  "license": "MIT",
+  "license": "MIT OR Apache-2.0",
   "author": "SK Sizer",
   "repository": {
     "type": "git",
@@ -63,7 +63,8 @@
     "testing.ts",
     "README.md",
     "CHANGELOG.md",
-    "LICENSE",
+    "LICENSE-MIT",
+    "LICENSE-APACHE",
     "SECURITY.md",
     "CONTRIBUTING.md"
   ],

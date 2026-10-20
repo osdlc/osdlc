@@ -28,8 +28,7 @@ of them.
 
 ## Licenses
 
-Every library is MIT, Apache-2.0, or `MIT OR Apache-2.0`. Use
-`MIT OR Apache-2.0` for a new library. A library names its license in its
+Every library is `MIT OR Apache-2.0`. A library names its license in its
 manifest and keeps the license files in its directory. `pnpm run
 check:packages` fails a library that declares any other license. The root
 `LICENSE` of this repository applies to everything outside `packages/`.

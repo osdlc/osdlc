@@ -914,4 +914,4 @@ Report security issues as described in
 
 ## License
 
-[MIT](https://github.com/osdlc/osdlc/blob/main/packages/ts/command-seam/LICENSE)
+[MIT](https://github.com/osdlc/osdlc/blob/main/packages/ts/command-seam/LICENSE-MIT) or [Apache-2.0](https://github.com/osdlc/osdlc/blob/main/packages/ts/command-seam/LICENSE-APACHE), at your option.
