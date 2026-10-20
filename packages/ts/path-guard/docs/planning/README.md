@@ -13,7 +13,7 @@ shares them.
 | Folder                     | Holds                                         | Ids     |
 | -------------------------- | --------------------------------------------- | ------- |
 | [`decisions/`](decisions/) | Choices that shape the package, one per topic | `D-nn`  |
-| [`tasks/`](tasks/)         | Work still open                               | `T-nn`  |
+| [`tasks/`](tasks/)         | Work, open or done                            | `T-nn`  |
 | [`terms/`](terms/)         | Words the docs use with a fixed meaning       | `TM-nn` |
 
 Ids are numbers in order of writing, zero-padded to two digits so they sort.
@@ -38,6 +38,11 @@ package.
 
 - [T-02](tasks/T-02-rust-windows-dot-dot-fold.md): The Rust crate folds `..`
   as text on Windows
+
+## Done tasks
+
+- [T-01](tasks/T-01-browser-safe-lexical-entry.md): A browser-safe
+  `./lexical` entry point
 
 ## Terms
 
