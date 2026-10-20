@@ -7,7 +7,7 @@
 
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, parse } from 'node:path'
 
 import { afterEach, beforeEach, describe, expect, expectTypeOf, test } from 'vitest'
 
@@ -50,9 +50,10 @@ let vault: string
 
 // The tree: `vault/notes/a.md` is a file inside the vault. `secret.txt` is
 // outside it, and `vault/leak.txt` is a symlink to it. The root is real, so
-// `tmpdir()` being a symlink (as on macOS) does not change the paths below.
+// `tmpdir()` being a symlink (as on macOS) or holding a short name (as on
+// Windows) does not change the paths below.
 beforeEach(() => {
-  root = realpathSync(mkdtempSync(join(tmpdir(), 'path-guard-example-')))
+  root = realpathSync.native(mkdtempSync(join(tmpdir(), 'path-guard-example-')))
   vault = join(root, 'vault')
   mkdirSync(join(vault, 'notes'), { recursive: true })
   writeFileSync(join(vault, 'notes', 'a.md'), 'hello')
@@ -106,7 +107,8 @@ describe('join a path under a root', () => {
   })
 
   test('the README quick start', () => {
-    expect(resolveInside('/srv/data', 'notes/a.md')).toBe('/srv/data/notes/a.md')
+    // `join` gives the platform's separators, as resolveInside does.
+    expect(resolveInside('/srv/data', 'notes/a.md')).toBe(join('/srv/data', 'notes/a.md'))
     expect(thrown(() => resolveInside('/srv/data', '../etc/passwd'))).toMatchObject({
       kind: 'parent_segment',
     })
@@ -135,20 +137,23 @@ describe('ask about paths you already hold', () => {
 
 describe('fold a path as text, and shorten it against a root', () => {
   test('lexicalAbsolute folds `.` and `..` and touches no filesystem', () => {
-    expect(lexicalAbsolute('/srv/data/a/./b/../c/')).toBe('/srv/data/a/c')
-    expect(lexicalAbsolute('/srv/../../etc')).toBe('/etc')
+    expect(lexicalAbsolute(`${vault}/a/./b/../c/`)).toBe(join(vault, 'a', 'c'))
+    // A `..` at the root stays there.
+    const top = parse(vault).root
+    expect(lexicalAbsolute(`${top}../../etc`)).toBe(join(top, 'etc'))
     // A relative path is anchored at the working directory first.
     expect(lexicalAbsolute('notes/../a.md')).toBe(join(process.cwd(), 'a.md'))
     // No symlink is followed. The filesystem refuses `leak.txt/..`, as `leak.txt` is a file.
     expect(lexicalAbsolute(`${vault}/leak.txt/../x`)).toBe(join(vault, 'x'))
   })
 
+  // POSIX paths only, on every OS: it is text, like the `./lexical` entry it ships in.
   test('toRelative gives the root-relative path, or throws a PathError', () => {
-    expect(toRelative(vault, join(vault, 'notes', 'a.md'))).toBe('notes/a.md')
-    expect(thrown(() => toRelative(vault, join(root, 'secret.txt')))).toMatchObject({
+    expect(toRelative('/vault', '/vault/notes/a.md')).toBe('notes/a.md')
+    expect(thrown(() => toRelative('/vault', '/secret.txt'))).toMatchObject({
       kind: 'escapes',
     })
-    expect(thrown(() => toRelative(vault, `${vault}/notes/../a.md`))).toMatchObject({
+    expect(thrown(() => toRelative('/vault', '/vault/notes/../a.md'))).toMatchObject({
       kind: 'parent_segment',
     })
   })
@@ -160,8 +165,8 @@ describe('check containment as text, from the browser-safe entry', () => {
     expect(isUnder('/vault', '/vault2/a.md')).toBe(false)
     expect(isUnder('/vault', '/vault/../etc')).toBe(false)
     expect(isUnder('/vault', 'a.md')).toBe(false)
-    // The text says `leak.txt` is under the vault, though the link leaves it.
-    expect(isUnder(vault, join(vault, 'leak.txt'))).toBe(true)
+    // The text says `leak.txt` is under the vault, even when it is a link that leaves it.
+    expect(isUnder('/vault', '/vault/leak.txt')).toBe(true)
   })
 
   test('the lexical entry exports the same PathErrorKind type', () => {
@@ -180,10 +185,10 @@ describe('give the guard another filesystem', () => {
   }
 
   test('a Resolver answers realpath and readlink', () => {
-    expect(resolveInside('/v', 'a.md', fs)).toBe('/v/a.md')
+    expect(resolveInside('/v', 'a.md', fs)).toBe(join('/v', 'a.md'))
     expect(tryResolveInside('/v', '../a.md', fs)).toBeNull()
     expect(contains('/v', '/v/new/deep.md', fs)).toBe(true)
-    expect(canonicalExistingPrefix('/v/new/deep.md', fs)).toBe('/v/new/deep.md')
+    expect(canonicalExistingPrefix('/v/new/deep.md', fs)).toBe(join('/v/new/deep.md'))
   })
 
   test('nodeResolver is the real filesystem', () => {

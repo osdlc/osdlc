@@ -21,7 +21,8 @@ there.
 The repository is a pnpm workspace. Install from the repository root, then
 work in the package directory. The tests run on [Vitest](https://vitest.dev)
 under Node 22.12 or later. Some of them make symlinks, which needs a platform
-and a user that may.
+and a user that may. On Windows that means Developer Mode or an administrator
+shell.
 
 ```sh
 pnpm install

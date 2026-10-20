@@ -45,10 +45,10 @@ assert.equal(MAX_LINK_HOPS, 40)
 const missing = () => {
   throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' })
 }
-assert.equal(resolveInside('/v', 'a.md', { realpath: missing, readlink: missing }), '/v/a.md')
+assert.equal(resolveInside('/v', 'a.md', { realpath: missing, readlink: missing }), join('/v/a.md'))
 
 // The text helpers touch no filesystem.
-assert.equal(lexicalAbsolute('/a/./b/../c/'), '/a/c')
+assert.equal(lexicalAbsolute(`${tmpdir()}/a/./b/../c/`), join(tmpdir(), 'a', 'c'))
 assert.equal(toRelative('/v', '/v/Notes/a.md'), 'Notes/a.md')
 assert.throws(
   () => toRelative('/v', '/other/a.md'),
@@ -63,8 +63,8 @@ assert.equal(lexical.isUnder('/vault', '/vault/a.md'), true)
 assert.equal(lexical.isUnder('/vault', '/vault2/a.md'), false)
 
 // The real filesystem. The root is real, so `tmpdir()` being a symlink (as on
-// macOS) does not change the paths below.
-const root = realpathSync(mkdtempSync(join(tmpdir(), 'path-guard-smoke-')))
+// macOS) or holding a short name (as on Windows) does not change the paths below.
+const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'path-guard-smoke-')))
 try {
   const vault = join(root, 'vault')
   mkdirSync(join(vault, 'notes'), { recursive: true })

@@ -61,6 +61,12 @@
     { "name": "absolute refused", "root": "/v", "input": "/v/a.md", "error": "absolute" },
     { "name": "an empty root contains nothing", "root": "", "input": "a.md", "error": "escapes" },
     {
+      "name": "a parent at the filesystem root stays there",
+      "root": "/../v",
+      "input": "a.md",
+      "ok": "/../v/a.md"
+    },
+    {
       "name": "a root that folds to nothing contains nothing",
       "root": "missing/..",
       "input": "a.md",
@@ -82,6 +88,12 @@
     { "name": "dots fold outside", "outer": "/v", "inner": "/v/../w/out", "expected": false },
     { "name": "dot segments dropped", "outer": "/v", "inner": "/v/./a/./b", "expected": true },
     { "name": "dots in the root fold too", "outer": "/x/../v", "inner": "/v/a", "expected": true },
+    {
+      "name": "a parent at the filesystem root stays there",
+      "outer": "/v",
+      "inner": "/../v/a",
+      "expected": true
+    },
     {
       "name": "an empty outer holds no absolute path",
       "outer": "",

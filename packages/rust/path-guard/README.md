@@ -82,11 +82,21 @@ root but no drive is anchored at the current directory. The containment layer is
 fully on Unix. On Windows the lexical checks still apply, and symlink
 resolution follows whatever `std::fs::canonicalize` does there.
 
+On Windows the containment layer has a known gap. Windows folds `..` as text
+before it follows a link, but the crate folds a `..` behind a missing name
+against the real path, as on POSIX. So for a path that does not exist yet, with
+a `..` after a symlink, the crate can judge a different path from the one
+Windows opens, and accept one that leaves the root. The TypeScript twin
+follows the Windows rule. The fix is tracked in
+[T-02](https://github.com/osdlc/osdlc/blob/main/packages/ts/path-guard/docs/planning/tasks/T-02-rust-windows-dot-dot-fold.md).
+
 ## Stability
 
 Every public item is stable in 0.x. There are no experimental items.
-`PathError` is `#[non_exhaustive]`, so a later release may add a variant without
-breaking callers.
+`PathError` is `#[non_exhaustive]`, so match it with a `_` arm that refuses the
+path. A new variant comes only in a new minor version, such as 0.3.0, together
+with the TypeScript twin's new error kind, and the CHANGELOG names it. Every
+variant, present and future, means the path was refused.
 
 ## Twin
 
