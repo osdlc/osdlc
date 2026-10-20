@@ -27,7 +27,8 @@
 //! final component is a symlink, dangling or not. A symlink swapped into a
 //! parent directory still needs a per-component no-follow open. A hard link to
 //! a file outside the root is out of reach of any path check. Symlink handling
-//! is tested on Unix only.
+//! is tested on Unix and Windows. On Windows a `..` folds as text before any
+//! link is followed, as Windows reads it.
 //!
 //! The containment layer reads the filesystem through a [`Resolver`]. The
 //! plain functions use [`StdResolver`]; [`resolve_with`] and [`contains_with`]
@@ -97,10 +98,9 @@ pub enum PathError {
 pub trait Resolver {
     /// `p` with every symlink resolved, as [`std::fs::canonicalize`] answers.
     /// Must fail when `p` does not exist. When `p` resolves, so must each of
-    /// its leading parts. [`StdResolver`] meets this on Unix. On Windows `..`
-    /// folds as text, so a path can resolve while a leading part does not;
-    /// the guard still answers correctly, because it folds any `..` the walk
-    /// leaves and walks again.
+    /// its leading parts. [`StdResolver`] meets this on Unix, and on Windows
+    /// for the paths the guard asks about: there it folds `..` as text before
+    /// it asks, as Windows does.
     ///
     /// # Errors
     ///
@@ -279,10 +279,13 @@ pub fn resolve_with<R: Resolver + ?Sized>(
 /// existing ancestor keeps the symlink resolution that matters (an attacker
 /// can only plant symlinks in directories that exist) without that failure.
 ///
-/// A `..` is resolved PHYSICALLY: it means the parent of the directory it
-/// sits in, as the kernel reads it, not the name written before it. With
-/// `x/link -> v/deep`, `x/link/../y` materialises at `v/y`, inside `v`, and a
-/// textual fold would answer `x/y`.
+/// On Unix a `..` is resolved PHYSICALLY: it means the parent of the
+/// directory it sits in, as the kernel reads it, not the name written before
+/// it. With `x/link -> v/deep`, `x/link/../y` materialises at `v/y`, inside
+/// `v`, and a textual fold would answer `x/y`. Windows folds `..` as text
+/// before it follows a link, so there the guard does the same: `p` is folded
+/// first, and again after each link the walk follows. A leading `..` that
+/// survives the fold is resolved as below.
 ///
 /// The filesystem resolves a `..` only while everything before it exists.
 /// Behind a missing name the walk stops, and the answer is the real path of
@@ -359,8 +362,14 @@ impl<R: Resolver + ?Sized> Calls<'_, R> {
     }
 }
 
-/// [`existing_prefix`] of `p`, reached after `hops` links.
+/// [`existing_prefix`] of `p`, reached after `hops` links. On Windows `p` is
+/// folded as text first, as Windows reads it, so a `..` is never resolved
+/// against a link's target there.
 fn walk<R: Resolver + ?Sized>(calls: &mut Calls<R>, p: &Path, hops: usize) -> Option<PathBuf> {
+    #[cfg(windows)]
+    let folded = fold_text(p);
+    #[cfg(windows)]
+    let p = folded.as_path();
     let parts: Vec<Component> = p.components().collect();
     let last_dotdot = parts.iter().rposition(|c| *c == Component::ParentDir);
     // `base` stands for `parts[..i]`: their real path once `real`, else as written.
@@ -416,6 +425,40 @@ fn walk<R: Resolver + ?Sized>(calls: &mut Calls<R>, p: &Path, hops: usize) -> Op
             }
         }
     }
+}
+
+/// `p` with `.` dropped and each `..` removed with the name before it, as
+/// Windows reads a path before it follows any link. A `..` at a root stays
+/// there. A leading `..` stays in a relative path and after a bare drive
+/// (`C:`), which is a working directory too. `foldText` in the TypeScript
+/// twin's `resolve.ts` is the same rule.
+///
+/// Only the walk on Windows calls it. It reads `p` with the platform's
+/// components, so the tests check the rule on every platform.
+#[cfg(any(windows, test))]
+fn fold_text(p: &Path) -> PathBuf {
+    let rooted = p.has_root();
+    let (mut root, mut out) = (Vec::new(), Vec::<Component>::new());
+    for c in p.components() {
+        match c {
+            Component::Prefix(_) | Component::RootDir => root.push(c),
+            Component::CurDir => {
+                if out.is_empty() && !rooted {
+                    out.push(c);
+                }
+            }
+            Component::ParentDir => match out.last() {
+                Some(Component::CurDir) => *out.last_mut().expect("not empty") = c,
+                Some(Component::Normal(_)) => {
+                    out.pop();
+                }
+                _ if !rooted => out.push(c),
+                _ => {}
+            },
+            Component::Normal(_) => out.push(c),
+        }
+    }
+    root.iter().chain(&out).collect()
 }
 
 /// How many leading `rest` canonicalise when joined to `base`, and the real

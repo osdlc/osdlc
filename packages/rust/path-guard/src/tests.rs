@@ -1,5 +1,85 @@
 use super::*;
 
+/// A symlink at `link` to `target`, as `ln -s` makes one. On Windows it is a
+/// directory link when the target is a directory that exists, else a file
+/// link, and `/` in the target becomes `\`, as Node's `symlinkSync` does there.
+fn symlink(target: impl AsRef<Path>, link: impl AsRef<Path>) {
+    let (target, link) = (target.as_ref(), link.as_ref());
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(target, link).unwrap();
+    #[cfg(windows)]
+    {
+        let target = PathBuf::from(target.to_str().unwrap().replace('/', "\\"));
+        if link.parent().unwrap().join(&target).is_dir() {
+            std::os::windows::fs::symlink_dir(&target, link).unwrap();
+        } else {
+            std::os::windows::fs::symlink_file(&target, link).unwrap();
+        }
+    }
+}
+
+#[test]
+fn fold_text_drops_dots_and_folds_each_dotdot_with_the_name_before_it() {
+    let fold = |p: &str| fold_text(Path::new(p));
+    assert_eq!(fold("a/./b/../c"), Path::new("a/c"));
+    assert_eq!(fold("/a/link/m/../../../x"), Path::new("/x"));
+    // A `..` at a root stays there.
+    assert_eq!(fold("/a/../../b"), Path::new("/b"));
+    assert_eq!(fold("/.."), Path::new("/"));
+    // A leading `..` stays in a relative path.
+    assert_eq!(fold("../a"), Path::new("../a"));
+    assert_eq!(fold("a/../../b"), Path::new("../b"));
+    assert_eq!(fold("./../x"), Path::new("../x"));
+    assert_eq!(fold("./x"), Path::new("./x"));
+    assert_eq!(fold("a/.."), Path::new(""));
+}
+
+#[cfg(windows)]
+#[test]
+fn fold_text_reads_drives_and_shares_as_roots() {
+    let fold = |p: &str| fold_text(Path::new(p));
+    assert_eq!(fold(r"C:\v\r\link\m\..\..\..\x"), Path::new(r"C:\v\x"));
+    assert_eq!(fold(r"C:\..\x"), Path::new(r"C:\x"));
+    assert_eq!(fold(r"\\srv\share\..\x"), Path::new(r"\\srv\share\x"));
+    // `C:` alone is the working directory on drive C, so `C:..` is its parent.
+    assert_eq!(fold(r"C:..\x"), Path::new(r"C:..\x"));
+    assert_eq!(fold(r"C:a\..\..\x"), Path::new(r"C:..\x"));
+}
+
+/// T-02's example. Windows folds `..` as text before it follows a link, so
+/// `link\m\..\..\..\x` is two levels above `link`'s directory, outside the
+/// root, although `link` points deeper into it.
+#[cfg(windows)]
+#[test]
+fn windows_folds_a_dotdot_as_text_before_it_follows_a_link() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join(r"v\r");
+    std::fs::create_dir_all(root.join(r"a\b\c")).unwrap();
+    symlink(root.join(r"a\b\c"), root.join("link"));
+    // A dangling link whose target takes the same route.
+    symlink(r"link\m\..\..\..\planted.json", root.join("x.json"));
+
+    let inner = root.join(r"link\m\..\..\..\x");
+    assert!(!contains(&root, &inner), "{}", inner.display());
+    assert!(matches!(
+        resolve(&root, "x.json"),
+        Err(PathError::Escapes(..))
+    ));
+
+    // Where Windows puts them, so the assertions above cannot drift into
+    // agreeing with a wrong expectation.
+    std::fs::create_dir_all(&inner).unwrap();
+    assert!(
+        tmp.path().join(r"v\x").is_dir(),
+        "the premise no longer holds"
+    );
+    std::fs::write(root.join("x.json"), b"{}").unwrap();
+    assert!(
+        tmp.path().join(r"v\planted.json").is_file(),
+        "the premise no longer holds"
+    );
+}
+
 #[test]
 fn accepts_ordinary_vault_paths() {
     assert_eq!(validate_relative("Notes/a.md").unwrap(), "Notes/a.md");
@@ -92,7 +172,6 @@ fn resolve_allows_paths_that_do_not_exist_yet() {
     assert!(resolve(dir.path(), "brand/new/note.md").is_ok());
 }
 
-#[cfg(unix)]
 #[test]
 fn resolve_catches_a_symlink_that_escapes_the_vault() {
     // The case the lexical check alone cannot see: no `..` anywhere in
@@ -100,7 +179,7 @@ fn resolve_catches_a_symlink_that_escapes_the_vault() {
     let outside = tempfile::tempdir().unwrap();
     std::fs::write(outside.path().join("secret.txt"), b"secret").unwrap();
     let vault = tempfile::tempdir().unwrap();
-    std::os::unix::fs::symlink(outside.path(), vault.path().join("escape")).unwrap();
+    symlink(outside.path(), vault.path().join("escape"));
 
     assert!(
         validate_relative("escape/secret.txt").is_ok(),
@@ -115,25 +194,23 @@ fn resolve_catches_a_symlink_that_escapes_the_vault() {
     );
 }
 
-#[cfg(unix)]
 #[test]
 fn a_symlink_that_stays_inside_the_vault_is_fine() {
     let vault = tempfile::tempdir().unwrap();
     std::fs::create_dir(vault.path().join("real")).unwrap();
     std::fs::write(vault.path().join("real/a.md"), b"x").unwrap();
-    std::os::unix::fs::symlink(vault.path().join("real"), vault.path().join("alias")).unwrap();
+    symlink(vault.path().join("real"), vault.path().join("alias"));
     assert!(resolve(vault.path(), "alias/a.md").is_ok());
 }
 
 /// `canonicalize` fails on a dangling link just as on a missing name, so the
 /// walk must read the link. A write through it lands at the target.
-#[cfg(unix)]
 #[test]
 fn resolve_refuses_a_dangling_symlink_whose_target_lands_outside() {
     let outside = tempfile::tempdir().unwrap();
     let vault = tempfile::tempdir().unwrap();
     let planted = outside.path().join("planted.json");
-    std::os::unix::fs::symlink(&planted, vault.path().join("x.json")).unwrap();
+    symlink(&planted, vault.path().join("x.json"));
 
     assert!(matches!(
         resolve(vault.path(), "x.json"),
@@ -144,14 +221,13 @@ fn resolve_refuses_a_dangling_symlink_whose_target_lands_outside() {
     assert!(planted.exists(), "the premise of this test no longer holds");
 }
 
-#[cfg(unix)]
 #[test]
 fn resolve_reads_a_relative_dangling_target_against_the_link_directory() {
     let tmp = tempfile::tempdir().unwrap();
     let vault = tmp.path().join("vault");
     std::fs::create_dir_all(vault.join("sub")).unwrap();
-    std::os::unix::fs::symlink("../new.json", vault.join("sub/in.json")).unwrap();
-    std::os::unix::fs::symlink("../../planted.json", vault.join("sub/out.json")).unwrap();
+    symlink("../new.json", vault.join("sub/in.json"));
+    symlink("../../planted.json", vault.join("sub/out.json"));
 
     assert_eq!(
         resolve(&vault, "sub/in.json").unwrap(),
@@ -163,12 +239,11 @@ fn resolve_reads_a_relative_dangling_target_against_the_link_directory() {
     ));
 }
 
-#[cfg(unix)]
 #[test]
 fn resolve_refuses_a_symlink_loop() {
     let vault = tempfile::tempdir().unwrap();
-    std::os::unix::fs::symlink("b", vault.path().join("a")).unwrap();
-    std::os::unix::fs::symlink("a", vault.path().join("b")).unwrap();
+    symlink("b", vault.path().join("a"));
+    symlink("a", vault.path().join("b"));
     assert!(matches!(
         resolve(vault.path(), "a"),
         Err(PathError::Escapes(..))
@@ -179,7 +254,6 @@ fn resolve_refuses_a_symlink_loop() {
 }
 
 /// A chain of `n` dangling links inside `vault`: `l0 -> l1 -> … -> end.json`.
-#[cfg(unix)]
 fn link_chain(vault: &Path, n: usize) {
     for i in 0..n {
         let target = if i + 1 == n {
@@ -187,11 +261,10 @@ fn link_chain(vault: &Path, n: usize) {
         } else {
             format!("l{}", i + 1)
         };
-        std::os::unix::fs::symlink(target, vault.join(format!("l{i}"))).unwrap();
+        symlink(target, vault.join(format!("l{i}")));
     }
 }
 
-#[cfg(unix)]
 #[test]
 fn resolve_follows_max_link_hops_links_and_refuses_one_more() {
     let ok = tempfile::tempdir().unwrap();
@@ -206,7 +279,6 @@ fn resolve_follows_max_link_hops_links_and_refuses_one_more() {
     ));
 }
 
-#[cfg(unix)]
 #[test]
 fn contains_follows_a_dangling_symlink_to_where_its_target_lands() {
     let tmp = tempfile::tempdir().unwrap();
@@ -214,7 +286,7 @@ fn contains_follows_a_dangling_symlink_to_where_its_target_lands() {
     let outside = tmp.path().join("outside");
     std::fs::create_dir_all(&vault).unwrap();
     std::fs::create_dir_all(&outside).unwrap();
-    std::os::unix::fs::symlink(outside.join("planted.json"), vault.join("x.json")).unwrap();
+    symlink(outside.join("planted.json"), vault.join("x.json"));
 
     assert!(!contains(&vault, &vault.join("x.json")));
     assert!(contains(&outside, &vault.join("x.json")));
@@ -265,14 +337,13 @@ fn contains_is_component_wise_so_a_name_prefix_is_not_a_parent() {
     assert!(!contains(&vault, &sibling.join("out")));
 }
 
-#[cfg(unix)]
 #[test]
 fn contains_resolves_a_root_reached_through_a_symlink() {
     let dir = tempfile::tempdir().unwrap();
     let vault = dir.path().join("vault-b");
     std::fs::create_dir_all(&vault).unwrap();
     let alias = dir.path().join("alias");
-    std::os::unix::fs::symlink(&vault, &alias).unwrap();
+    symlink(&vault, &alias);
 
     // Both sides resolve, so the two spellings of one directory agree.
     assert!(contains(&vault, &alias.join("out")));
@@ -292,7 +363,7 @@ fn a_dotdot_behind_a_symlink_resolves_the_way_the_filesystem_does() {
     std::fs::create_dir_all(vault.join("deep")).unwrap();
     std::fs::create_dir_all(tmp.path().join("x")).unwrap();
     let link = tmp.path().join("x").join("link");
-    std::os::unix::fs::symlink(vault.join("deep"), &link).unwrap();
+    symlink(vault.join("deep"), &link);
 
     let inner = link.join("..").join("y");
     assert!(
@@ -457,6 +528,8 @@ fn contains_with_folds_a_trailing_dotdot_behind_a_missing_component() {
     assert!(!contains_with(&fs, vault, Path::new("/tmp/nope/../w/out")));
 }
 
+/// The POSIX rule. Windows folds the `..` first; see the next test.
+#[cfg(unix)]
 #[test]
 fn contains_with_resolves_a_dotdot_behind_a_symlink_physically() {
     // `/x/link` -> `/v/deep`, so `/x/link/../y` is `/v/y`.
@@ -467,6 +540,28 @@ fn contains_with_resolves_a_dotdot_behind_a_symlink_physically() {
         ("/x/link/..", "/v"),
     ]);
     assert!(contains_with(
+        &fs,
+        Path::new("/v"),
+        Path::new("/x/link/../y")
+    ));
+}
+
+#[cfg(windows)]
+#[test]
+fn contains_with_folds_a_dotdot_as_text_before_it_follows_a_link() {
+    // On Unix `link/..` would be the parent of the link's target.
+    let fs = Table::new(vec![
+        ("/v", "/v"),
+        ("/v/link", "/out"),
+        ("/x", "/x"),
+        ("/x/link", "/v/deep"),
+    ]);
+    assert!(contains_with(
+        &fs,
+        Path::new("/v"),
+        Path::new("/v/link/../y")
+    ));
+    assert!(!contains_with(
         &fs,
         Path::new("/v"),
         Path::new("/x/link/../y")
@@ -515,16 +610,15 @@ fn contains_with_spends_few_resolver_calls_on_each_dotdot_behind_a_missing_name(
 
 /// A link target of `zz/..` pairs is walked again on every hop, so a loop of
 /// such links must be refused before the hops multiply the pairs.
-#[cfg(unix)]
 #[test]
 fn a_link_loop_through_dotdot_pairs_is_refused_within_a_fixed_number_of_calls() {
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path().join("root");
     std::fs::create_dir(&root).unwrap();
     let pairs = "zz/../".repeat(160);
-    std::os::unix::fs::symlink(format!("{pairs}l"), root.join("l")).unwrap();
-    std::os::unix::fs::symlink(format!("{pairs}b"), root.join("a")).unwrap();
-    std::os::unix::fs::symlink(format!("{pairs}a"), root.join("b")).unwrap();
+    symlink(format!("{pairs}l"), root.join("l"));
+    symlink(format!("{pairs}b"), root.join("a"));
+    symlink(format!("{pairs}a"), root.join("b"));
     for input in ["l/x.md", "a/x.md"] {
         let fs = Counting(std::cell::Cell::new(0));
         assert!(resolve_with(&fs, &root, input).is_err(), "{input}");
@@ -532,14 +626,13 @@ fn a_link_loop_through_dotdot_pairs_is_refused_within_a_fixed_number_of_calls() 
     }
 }
 
-#[cfg(unix)]
 #[test]
 fn a_dangling_link_through_dotdot_pairs_costs_calls_in_proportion_to_its_target() {
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path().join("root");
     std::fs::create_dir(&root).unwrap();
     let pairs = "zz/../".repeat(160);
-    std::os::unix::fs::symlink(format!("{pairs}new.md"), root.join("d")).unwrap();
+    symlink(format!("{pairs}new.md"), root.join("d"));
     let fs = Counting(std::cell::Cell::new(0));
     let got = resolve_with(&fs, &root, "d");
     assert!(got.is_ok(), "{got:?}");

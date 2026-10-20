@@ -1,7 +1,7 @@
 ---
 id: T-02
 type: task
-state: open
+state: done
 created: 2026-10-19
 ---
 
@@ -44,8 +44,8 @@ crate's 33 unit tests, so CI does not see this on `windows-latest`.
 
 ## Acceptance criteria
 
-- [ ] On Windows the crate folds `..` as text before it follows a link.
-- [ ] The parity suite runs on `windows-latest` in `rust-ci.yml`.
-- [ ] The example above is refused on Windows.
-- [ ] D-03 and the crate's README no longer list the gap.
-- [ ] A crate CHANGELOG entry names the fix.
+- [x] On Windows the crate folds `..` as text before it follows a link.
+- [x] The parity suite runs on `windows-latest` in `rust-ci.yml`.
+- [x] The example above is refused on Windows.
+- [x] D-03 and the crate's README no longer list the gap.
+- [x] A crate CHANGELOG entry names the fix.

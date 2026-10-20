@@ -39,8 +39,6 @@ package.
 
 ## Open tasks
 
-- [T-02](tasks/T-02-rust-windows-dot-dot-fold.md): The Rust crate folds `..`
-  as text on Windows
 - [T-04](tasks/T-04-rust-0-3-0-api.md): Rust 0.3.0 API
 - [T-05](tasks/T-05-ts-0-3-0-api.md): TypeScript 0.3.0 API
 - [T-06](tasks/T-06-parity-fixture-0-3-0.md): Parity fixture for 0.3.0
@@ -50,6 +48,8 @@ package.
 
 - [T-01](tasks/T-01-browser-safe-lexical-entry.md): A browser-safe
   `./lexical` entry point
+- [T-02](tasks/T-02-rust-windows-dot-dot-fold.md): The Rust crate folds `..`
+  as text on Windows
 - [T-03](tasks/T-03-is-inside-sibling-prefix-test.md): Test that `isInside`
   rejects a sibling-prefix directory
 
