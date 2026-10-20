@@ -1,6 +1,6 @@
 {
   "name": "@osdlc/intersect",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Path-pattern overlap engine: do two globs share a common matching path? A pure, zero-dependency core with an optional filesystem layer.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",
