@@ -114,10 +114,15 @@ const MORE_CASES: Array<[string, unknown[]]> = [
   ['forEachRef', [['refs/heads', '-x']]],
 ]
 
-/** The verb names passed to `positional` or `optionalPositional` in `verbs.ts`. */
+/**
+ * The verb names passed to `positional`, `optionalPositional` or `configKey`
+ * (which calls `positional`) in `verbs.ts`.
+ */
 function guardedVerbs(): Set<string> {
   const source = readFileSync(new URL('../verbs.ts', import.meta.url), 'utf8')
-  const names = [...source.matchAll(/\b(?:optionalP|p)ositional\(\s*'(\w+)'/g)].map((m) => m[1]!)
+  const names = [
+    ...source.matchAll(/\b(?:optionalP|p)ositional\(\s*'(\w+)'|\bconfigKey\(\s*'(\w+)'/g),
+  ].map((m) => (m[1] ?? m[2])!)
   return new Set(names)
 }
 

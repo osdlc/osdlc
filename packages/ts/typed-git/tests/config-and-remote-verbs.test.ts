@@ -104,7 +104,7 @@ describe('argv, the same on both clients', () => {
       ['ls-remote', '--symref', 'origin', 'HEAD'],
       ['rev-parse', '--absolute-git-dir'],
       ['clone', '--quiet', '--mirror', '/store.git', 'm.git'],
-      ['clone', '--single-branch', '--no-tags', '--depth', '1', '/store.git', 'c'],
+      ['clone', '--single-branch', '--no-tags', '--depth=1', '/store.git', 'c'],
       ['fetch', '--depth=1', '--no-tags', 'origin', 'main'],
     ])
     expect(a.calls).toEqual(s.calls)
@@ -166,6 +166,21 @@ describe('absence and parsing', () => {
       backend: cliBackend({ runner: { run: () => Promise.resolve(cut) } }),
     })
     await expect(asyncGit.configGetAll('a.b')).rejects.toBeInstanceOf(CommandFailed)
+    expect(() => sync.rawChecked(['cat-file', 'blob', 'HEAD:big'])).toThrow(CommandFailed)
+    await expect(asyncGit.rawChecked(['cat-file', 'blob', 'HEAD:big'])).rejects.toBeInstanceOf(
+      CommandFailed,
+    )
+    // Unchecked `raw` hands the result back as it is.
+    expect(sync.raw(['cat-file', 'blob', 'HEAD:big'])).toEqual(cut)
+  })
+
+  test('depth must be a positive integer', async () => {
+    const { sync, asyncGit } = clients()
+    for (const depth of [0, -1, 1.5, Number.NaN]) {
+      expect(() => sync.fetch('origin', undefined, { depth })).toThrow(TypeError)
+      expect(() => sync.clone('/store.git', 'c', { depth })).toThrow(TypeError)
+      await expect(asyncGit.fetch('origin', undefined, { depth })).rejects.toBeInstanceOf(TypeError)
+    }
   })
 
   test('soft gives the absence value on a failure', async () => {
@@ -215,6 +230,16 @@ describe('real git', () => {
       const asyncGit = new AsyncGit(fx.dir)
       expect(await asyncGit.configGet('x.k', { scope: 'global', env })).toBe('global')
       expect(await asyncGit.configGetAll('remote.o.url')).toHaveLength(2)
+
+      // git exits 1 for a key with no section or no name, the code read as
+      // unset. The reads refuse such a key before git runs.
+      for (const key of ['nodot', 'a.b.', '.a']) {
+        expect(git.raw(['config', '--get', key]).exitCode).toBe(1)
+        expect(() => git.configGet(key)).toThrow(TypeError)
+        expect(() => git.configGetAll(key)).toThrow(TypeError)
+        expect(() => git.configGetBool(key)).toThrow(TypeError)
+        await expect(asyncGit.configGet(key)).rejects.toBeInstanceOf(TypeError)
+      }
 
       const outside = new Git(home)
       expect(() => outside.configGet('x.k', { scope: 'local' })).toThrow(CommandFailed)
@@ -284,8 +309,18 @@ describe('real git', () => {
       expect(remoteRefs).not.toContain('refs/remotes/origin/other')
       expect(one.refs('refs/tags')).toEqual([])
 
-      one.fetch('origin', undefined, { depth: 1, noTags: true, quiet: true })
-      expect(one.refs('refs/tags')).toEqual([])
+      one.fetch('origin', undefined, { depth: 1, quiet: true })
+
+      // `noTags` on a fetch into a clone that does follow tags.
+      top.clone(origin.dir, 'two', { quiet: true })
+      top.clone(origin.dir, 'three', { quiet: true })
+      origin.git.raw(['tag', 'v2'])
+      const two = new Git(join(scratch, 'two'))
+      two.fetch('origin', undefined, { noTags: true, quiet: true })
+      expect(two.refs('refs/tags').map((r) => r.ref)).toEqual(['refs/tags/v1'])
+      const three = new Git(join(scratch, 'three'))
+      three.fetch('origin', undefined, { quiet: true })
+      expect(three.refs('refs/tags').map((r) => r.ref)).toEqual(['refs/tags/v1', 'refs/tags/v2'])
     } finally {
       cleanup()
       rmSync(scratch, { recursive: true, force: true })
@@ -294,7 +329,9 @@ describe('real git', () => {
 
   // Async only: under `bun test` the sync runner captures to files and does
   // not apply the cap. The sync option is checked with a fake runner above.
-  test('maxOutputBytes cuts a large answer into a failure', async () => {
+  // The runner kills the child here, so this covers the `neverExited` path.
+  // The `outputIncomplete` path is covered with a fake runner above.
+  test('maxOutputBytes kills a large answer and throws', async () => {
     const fx = makeGitFixture()
     try {
       fx.commit('first', { 'big.txt': 'x'.repeat(4096) })

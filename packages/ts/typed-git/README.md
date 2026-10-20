@@ -428,6 +428,11 @@ pattern that starts with `-` is searched for, not refused.
 To pass a path that starts with `-`, write `./-name`. For the previous branch,
 write `@{-1}` instead of `-` in `checkout` and `merge`.
 
+The three config reads also refuse a key with no section or no name: no `.`,
+or a leading or trailing `.`. git exits 1 for such a key, the code the reads
+take as unset. `clone` and `fetch` refuse a `depth` that is not a positive
+integer. Both checks throw a `TypeError` before git runs.
+
 ### Queries
 
 "Absence" is the exit code this verb declares as an answer. Any other non-zero
@@ -506,7 +511,7 @@ returns `false` when there is no such section.
 | `configSet(key, value, { scope })` | `config` |
 | `configRemoveSection(name)` | `config --remove-section` — `false` when there is no such section |
 | `init(path, { bare, initialBranch, quiet })` | `init` |
-| `clone(url, dest, { depth, branch, bare, mirror, singleBranch, noTags, quiet })` | `clone` — a relative `dest` resolves in the client's working directory; `branch` takes a branch or a tag, not a sha |
+| `clone(url, dest, { depth, branch, bare, mirror, singleBranch, noTags, quiet })` | `clone` — a relative `dest` resolves in the client's working directory; `branch` takes a branch or a tag, not a sha; with `mirror`, `noTags` has no effect and `singleBranch` holds for the clone only |
 | `resetHard(rev)` | `reset --hard` |
 | `clean({ directories })` | `clean -f`, or `-fd` — ignored files are kept |
 | `deleteBranch(name, { force })` | `branch -d` / `-D` |
@@ -538,7 +543,7 @@ throws.
 | Method | What |
 | --- | --- |
 | `raw(argv, opts)` | Run anything. Returns `CommandResult`; you read `exitCode`. |
-| `rawChecked(argv, opts)` | Same, but throws `CommandFailed` on a non-zero exit. |
+| `rawChecked(argv, opts)` | Same, but throws `CommandFailed` on a non-zero exit or on output cut short at a cap or a timeout. |
 | `at(cwd)` | The same client rooted elsewhere, reusing the runner or backend. |
 | `try.*` | The whole surface again, returning `GitOutcome<T>` instead of throwing. |
 | `soft.*` | Every verb with an absence value, returning it instead of throwing. |

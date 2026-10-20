@@ -19,15 +19,17 @@ The fixes from the first-release review. CI published 0.5.0 from the code as it 
 - Call options (`timeoutMs`, `env`, and `signal` on the async side) are now taken by every method: `diffText(rev?, opts)`, `diffAddedFile(relPath, opts)` and `revParse(...args, opts)`, where a trailing non-string argument is the options object.
 - New exported types from `.` and `./client`: `StatusEntry`, `CleanOptions`, `DiffCheckOptions`, `DiffCheckResult`, `CommitFlags` and `DiffTextOptions`.
 - `./testing` exports `MakeOriginAndCheckoutOptions`, `OriginAndCheckout`, `MakeBareAndWorkerOptions` and `BareAndWorker`.
-- `GitBackend`, `GitRequest`, `GitResults` and `partialBackend` are marked `@experimental`. They may change in a minor release, because each new verb adds a request kind.
+- `GitBackend`, `GitRequest`, `GitResults` and `partialBackend` are marked `@experimental`. They may change in a minor release, because each new verb adds a request kind. The `configGet` and `remoteGetUrl` requests now carry `scope` and `push`. A backend must honour them or reject.
 - The README is rewritten. It now says that `./client` leaves out the URL parsers and the checkout walks, and so does not load `hosted-git-info`.
 - `configGet` takes `{ scope }` (`'local'`, `'global'` or `'system'`), the same scope `configSet` takes. The new `ConfigScope` type names it.
+- Breaking: `configGet` throws a `TypeError` before git runs when the key has no section or no name: no `.`, or a leading or trailing `.`. git exits 1 for such a key, and 0.5.0 read that as unset and returned `null`. `configGetAll` and `configGetBool` check the same.
 - `configGetAll(key, { scope })` returns every value of a key, verbatim, and `[]` when the key is unset.
 - `configGetBool(key, { scope })` returns the key read as a boolean by git (`config --type=bool`), and `null` when it is unset. A value git cannot read as a boolean throws.
 - `remoteGetUrl` takes `{ push }` for the push URL. `remoteGetUrls(name, { push })` returns every URL of a remote, and `[]` for an unknown remote.
 - `remoteHead(remote)` asks the remote for the branch its HEAD points at (`ls-remote --symref`). It returns the full refname, or `null` when the remote names none.
 - `gitDir()` returns this worktree's own `.git` directory as an absolute path, or `null` outside a repository.
-- `clone` takes `mirror`, `singleBranch` and `noTags`. `fetch` takes `depth` and `noTags`.
+- `clone` takes `mirror`, `singleBranch` and `noTags`. `fetch` takes `depth` and `noTags`. With `mirror`, `noTags` has no effect and `singleBranch` holds for the clone only.
+- Breaking: `clone` and `fetch` throw a `TypeError` before git runs when `depth` is not a positive integer. Before, git refused it and the call threw `CommandFailed`.
 - Call options take `maxOutputBytes` on both clients, and `cliBackend` passes it to its runner.
-- A result whose output was cut short (`outputIncomplete`, at the output cap or a timeout) now throws `CommandFailed`. Before, the cut-short output was parsed as the answer.
+- Breaking: a result whose output was cut short (`outputIncomplete`, at the output cap or a timeout) now throws `CommandFailed`, from every verb and from `rawChecked` on both clients. Before, the cut-short output was parsed as the answer.
 - New exported types from `.` and `./client`: `ConfigScope`, `ConfigGetOptions` and `RemoteGetUrlOptions`.

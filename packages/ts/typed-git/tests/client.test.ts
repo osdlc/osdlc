@@ -538,8 +538,7 @@ describe('Git — argv construction (fake runner)', () => {
     expect(calls[1]!.argv).toEqual([
       'clone',
       '--quiet',
-      '--depth',
-      '1',
+      '--depth=1',
       '--branch',
       'v2.1',
       'https://example.invalid/r.git',

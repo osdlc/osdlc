@@ -271,6 +271,37 @@ function positional(verb: string, param: string, value: string): string {
   return value
 }
 
+/**
+ * A config key for the `config` reads: {@link positional}, plus a section and
+ * a name.
+ *
+ * git exits 1 for a key with no `.`, or one that starts or ends with `.`. That
+ * is the code the reads take as "unset", so a typo would read as no value. The
+ * check throws a `TypeError` instead, before anything spawns.
+ */
+function configKey(verb: string, key: string): string {
+  positional(verb, 'key', key)
+  if (!key.includes('.') || key.startsWith('.') || key.endsWith('.')) {
+    throw new TypeError(
+      `typed-git: ${verb}: key must be <section>.<name> (got ${JSON.stringify(key)})`,
+    )
+  }
+  return key
+}
+
+/**
+ * A `--depth` value, refused with a `TypeError` unless it is a positive safe
+ * integer. git rejects the others too, but only after it runs.
+ */
+function depthArg(verb: string, depth: number): string {
+  if (!Number.isSafeInteger(depth) || depth < 1) {
+    throw new TypeError(
+      `typed-git: ${verb}: depth must be a positive integer (got ${JSON.stringify(depth)})`,
+    )
+  }
+  return `--depth=${depth}`
+}
+
 /** {@link positional}, for an optional value. */
 function optionalPositional(
   verb: string,
@@ -599,7 +630,7 @@ function configRead(flags: string[], key: string, opts: ConfigGetOptions): strin
 /** `git config --get <key>`, or null when unset (exit 1). */
 export function configGet(key: string, opts: ConfigGetOptions = {}): GitVerb<string | null> {
   return {
-    argv: configRead(['--get'], positional('configGet', 'key', key), opts),
+    argv: configRead(['--get'], configKey('configGet', key), opts),
     absent: [1],
     parse: trimmedOrNull,
   }
@@ -614,7 +645,7 @@ export function configGet(key: string, opts: ConfigGetOptions = {}): GitVerb<str
  */
 export function configGetAll(key: string, opts: ConfigGetOptions = {}): GitVerb<string[]> {
   return {
-    argv: configRead(['--get-all', '-z'], positional('configGetAll', 'key', key), opts),
+    argv: configRead(['--get-all', '-z'], configKey('configGetAll', key), opts),
     absent: [1],
     parse(r) {
       if (r.exitCode !== 0) return []
@@ -633,7 +664,7 @@ export function configGetAll(key: string, opts: ConfigGetOptions = {}): GitVerb<
  */
 export function configGetBool(key: string, opts: ConfigGetOptions = {}): GitVerb<boolean | null> {
   return {
-    argv: configRead(['--type=bool', '--get'], positional('configGetBool', 'key', key), opts),
+    argv: configRead(['--type=bool', '--get'], configKey('configGetBool', key), opts),
     absent: [1],
     parse(r, ranArgv) {
       if (r.exitCode !== 0) return null
@@ -1477,7 +1508,10 @@ export interface FetchOptions {
    * and a caller that only wanted refs updated gets a corrupted one.
    */
   noWriteFetchHead?: boolean | undefined
-  /** `--depth=<n>` — limit the fetched history to `n` commits from each tip. */
+  /**
+   * `--depth=<n>` — limit the fetched history to `n` commits from each tip.
+   * Anything but a positive integer throws a `TypeError`.
+   */
   depth?: number | undefined
   /** `--no-tags` — fetch no tags beyond those the refspecs name. */
   noTags?: boolean | undefined
@@ -1500,7 +1534,7 @@ export function fetch(
   if (opts.quiet) argv.push('--quiet')
   if (opts.prune) argv.push('--prune')
   if (opts.noWriteFetchHead) argv.push('--no-write-fetch-head')
-  if (opts.depth !== undefined) argv.push(`--depth=${opts.depth}`)
+  if (opts.depth !== undefined) argv.push(depthArg('fetch', opts.depth))
   if (opts.noTags) argv.push('--no-tags')
   argv.push(positional('fetch', 'remote', remote))
   if (refspec !== undefined) {
@@ -1664,7 +1698,10 @@ export function init(path?: string | undefined, opts: InitOptions = {}): GitVerb
 
 /** Options for {@link clone}. */
 export interface CloneOptions {
-  /** `--depth <n>` — a shallow clone with that much history. */
+  /**
+   * `--depth=<n>` — a shallow clone with that much history. Anything but a
+   * positive integer throws a `TypeError`.
+   */
   depth?: number | undefined
   /**
    * `--branch <ref>` — the branch or tag to land on.
@@ -1678,6 +1715,11 @@ export interface CloneOptions {
   /**
    * `--mirror` — a bare store that copies every ref of the source, and whose
    * `fetch` overwrites them. Implies `bare`.
+   *
+   * Its refspec `+refs/*:refs/*` covers every ref, tags included. So with
+   * `mirror`, `noTags` has no effect, and `singleBranch` holds for the clone
+   * only: a later fetch gets every ref. git refuses `mirror` with `branch`
+   * (exit 128).
    */
   mirror?: boolean | undefined
   /** `--single-branch` — fetch only the branch the clone lands on. */
@@ -1689,7 +1731,7 @@ export interface CloneOptions {
 }
 
 /**
- * `git clone [--depth n] [--branch ref] [--bare|--mirror] <url> [dest]`.
+ * `git clone [--depth=n] [--branch ref] [--bare|--mirror] <url> [dest]`.
  *
  * The one verb in this table that does not run inside a repository — it
  * makes one. A client's `cwd` is where a relative `dest` resolves, and both
@@ -1706,7 +1748,7 @@ export function clone(
   if (opts.mirror) argv.push('--mirror')
   if (opts.singleBranch) argv.push('--single-branch')
   if (opts.noTags) argv.push('--no-tags')
-  if (opts.depth !== undefined) argv.push('--depth', String(opts.depth))
+  if (opts.depth !== undefined) argv.push(depthArg('clone', opts.depth))
   if (opts.branch !== undefined) argv.push('--branch', opts.branch)
   argv.push(positional('clone', 'url', url))
   const target = optionalPositional('clone', 'dest', dest)

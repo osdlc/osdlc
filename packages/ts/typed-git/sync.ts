@@ -19,7 +19,6 @@
 import { dirname } from 'node:path'
 
 import {
-  runChecked,
   resolveRunner,
   type CommandResult,
   type CommandRunner,
@@ -102,7 +101,8 @@ export interface GitSyncCallOptions {
   /**
    * Cap on each output stream, in bytes; 256 MB when omitted. Past it the
    * runner kills the child and the call throws `CommandFailed`. command-seam's
-   * `bun test` capture path does not apply it.
+   * Bun test capture path (the Bun runtime with `NODE_ENV=test`) does not
+   * apply it.
    */
   maxOutputBytes?: number | undefined
 }
@@ -206,7 +206,8 @@ export class Git {
   }
 
   /**
-   * Checked passthrough — throws `CommandFailed` on a non-zero exit.
+   * Checked passthrough — throws `CommandFailed` on a non-zero exit, and on
+   * output cut short at the output cap or a timeout, as every verb does.
    *
    * `CommandFailed.message` interpolates stderr only, and several git commands
    * write the sentence that explains the failure to stdout instead — a
@@ -217,7 +218,11 @@ export class Git {
     argv: string[],
     opts: GitSyncCallOptions & { input?: string | undefined } = {},
   ): CommandResult {
-    return runChecked(this.runner, this.argv(argv), this.runOpts(opts))
+    // Through the gate, like `AsyncGit.rawChecked`: the seam's `runChecked`
+    // checks the exit code only, so it would pass cut-short output.
+    const verb: GitVerb<CommandResult> = { argv, absent: [], parse: (r) => r }
+    if (opts.input !== undefined) verb.input = opts.input
+    return this.exec(verb, opts)
   }
 
   /** The verb's argv behind this client's repository binding. */

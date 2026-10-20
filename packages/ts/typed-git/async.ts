@@ -158,8 +158,8 @@ export class AsyncGit {
 
   /**
    * Checked argv passthrough — rejects with `CommandFailed` on a non-zero
-   * exit. Report `e.detail`, which joins both streams; see
-   * {@link Git.rawChecked}.
+   * exit, and on output cut short at the output cap or a timeout. Report
+   * `e.detail`, which joins both streams; see {@link Git.rawChecked}.
    */
   rawChecked(
     argv: string[],
