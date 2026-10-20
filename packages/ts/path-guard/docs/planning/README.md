@@ -19,7 +19,8 @@ shares them.
 Ids are numbers in order of writing, zero-padded to two digits so they sort.
 They are never reused. Entries link to each other with relative links.
 
-Each entry has a `state`. A decision is `accepted` or `superseded`, and a
+Each entry has a `state`. A decision is `proposed`, `accepted` or
+`superseded`. A proposed decision waits for the owner's sign-off, and a
 superseded decision names the one that replaces it. A task is `open` or
 `done`. A term is `accepted`, or `superseded` once it no longer describes the
 package.
@@ -33,11 +34,17 @@ package.
 - [D-04](decisions/D-04-error-kind-growth.md): How `PathErrorKind` grows
 - [D-05](decisions/D-05-kept-names-for-0-2.md): `isInside` and
   `realpathOrSelf` keep their names for 0.2.x
+- [D-06](decisions/D-06-api-makes-the-filesystem-visible.md): The 0.3.0 API
+  makes the filesystem visible (proposed)
 
 ## Open tasks
 
 - [T-02](tasks/T-02-rust-windows-dot-dot-fold.md): The Rust crate folds `..`
   as text on Windows
+- [T-04](tasks/T-04-rust-0-3-0-api.md): Rust 0.3.0 API
+- [T-05](tasks/T-05-ts-0-3-0-api.md): TypeScript 0.3.0 API
+- [T-06](tasks/T-06-parity-fixture-0-3-0.md): Parity fixture for 0.3.0
+- [T-07](tasks/T-07-terms-for-0-3-0.md): Terms for 0.3.0
 
 ## Done tasks
 
