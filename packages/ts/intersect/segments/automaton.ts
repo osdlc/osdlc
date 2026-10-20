@@ -17,6 +17,7 @@
  *
  * Zero runtime dependencies — standard library only.
  */
+import { IntersectError } from '../errors.ts'
 import type { Options } from './index.ts'
 
 /** One inclusive character range, e.g. `a-z` → `{ lo: "a", hi: "z" }`. */
@@ -83,9 +84,43 @@ type Token =
   | { readonly t: 'class'; readonly negated: boolean; readonly ranges: ClassRange[] }
   | { readonly t: 'alt'; readonly alts: Token[][] }
 
-/** Parse a glob segment into tokens. Unterminated `[`/`{` degrade to literals. */
-function tokenize(glob: string): Token[] {
-  const [tokens] = parseSeq(new Scan(glob), 0, false)
+/** The deepest `{` nesting the tokenizer accepts. One more throws `PATTERN_TOO_DEEP`. */
+export const MAX_BRACE_DEPTH = 64
+
+/** A `{a..b}` numeric range, which this package does not expand. */
+const NUMBER_RANGE = /^-?\d+\.\.-?\d+(\.\.-?\d+)?$/
+
+/**
+ * What earlier segments of one pattern left open: a `{` or `[` that found no
+ * closer in its own segment. A later segment that holds a stray closer then
+ * shows a group or class that spans a `/`.
+ */
+export class SyntaxState {
+  openBrace = false
+  openBracket = false
+}
+
+function unsupported(what: string, glob: string): IntersectError {
+  return new IntersectError('UNSUPPORTED_SYNTAX', `unsupported syntax in '${glob}': ${what}`)
+}
+
+/**
+ * Parse a glob segment into tokens. Unterminated `[`/`{` degrade to literals,
+ * except where that hides unsupported syntax: a `{a..b}` number range, an
+ * extglob such as `+(a|b)`, and (checked across the segments of one pattern via
+ * `state`) a `{...}` group or `[...]` class that holds a `/`.
+ */
+function tokenize(glob: string, state: SyntaxState): Token[] {
+  const sc = new Scan(glob)
+  const [tokens] = parseSeq(sc, 0, false, 0)
+  if (sc.strayBrace && state.openBrace) {
+    throw unsupported('a {...} group cannot contain "/"', glob)
+  }
+  if (sc.strayBracket && state.openBracket) {
+    throw unsupported('a [...] class cannot contain "/"', glob)
+  }
+  state.openBrace ||= sc.openBrace
+  state.openBracket ||= sc.openBracket
   return tokens
 }
 
@@ -98,6 +133,12 @@ class Scan {
   readonly s: string
   readonly lastClose: number
   readonly alts = new Map<number, { token: Token; next: number } | null>()
+  /** A `{` or `[` fell back to a literal. */
+  openBrace = false
+  openBracket = false
+  /** A `}` outside any group, or a `]` closing no class, was read as a literal. */
+  strayBrace = false
+  strayBracket = false
   constructor(s: string) {
     this.s = s
     this.lastClose = s.lastIndexOf(']')
@@ -113,18 +154,31 @@ function charAt(s: string, i: number): string {
   return String.fromCodePoint(s.codePointAt(i)!)
 }
 
+/** Is there an unescaped `)` at or after `from`? An extglob needs one. */
+function hasCloseParen(s: string, from: number): boolean {
+  for (let i = from; i < s.length; i++) {
+    if (s[i] === '\\') i++
+    else if (s[i] === ')') return true
+  }
+  return false
+}
+
 /**
  * Parse a token sequence from `start`. When `insideBrace`, stop at a top-level
  * `,` or `}` (the delimiter is left for the caller). Returns the tokens and the
- * index of the stop character (or the string length).
+ * index of the stop character (or the string length). `depth` counts the `{`
+ * groups being parsed around this sequence.
  */
-function parseSeq(sc: Scan, start: number, insideBrace: boolean): [Token[], number] {
+function parseSeq(sc: Scan, start: number, insideBrace: boolean, depth: number): [Token[], number] {
   const s = sc.s
   const tokens: Token[] = []
   let i = start
   while (i < s.length) {
     const ch = charAt(s, i)
     if (insideBrace && (ch === ',' || ch === '}')) break
+    if ('?*+@!'.includes(ch) && s[i + 1] === '(' && hasCloseParen(s, i + 2)) {
+      throw unsupported(`'${ch}(...)' is an extglob; escape the "(" to match it literally`, s)
+    }
     if (ch === '*') {
       tokens.push({ t: 'star' })
       i++
@@ -147,19 +201,23 @@ function parseSeq(sc: Scan, start: number, insideBrace: boolean): [Token[], numb
         tokens.push(parsed.token)
         i = parsed.next
       } else {
+        sc.openBracket = true
         tokens.push({ t: 'lit', ch: '[' })
         i++
       }
     } else if (ch === '{') {
-      const parsed = parseAlt(sc, i)
+      const parsed = parseAlt(sc, i, depth + 1)
       if (parsed) {
         tokens.push(parsed.token)
         i = parsed.next
       } else {
+        sc.openBrace = true
         tokens.push({ t: 'lit', ch: '{' })
         i++
       }
     } else {
+      if (ch === '}') sc.strayBrace = true
+      else if (ch === ']') sc.strayBracket = true
       tokens.push({ t: 'lit', ch })
       i += ch.length
     }
@@ -202,19 +260,29 @@ function parseClass(sc: Scan, i: number): { token: Token; next: number } | null 
 }
 
 /** Parse a `{a,b,...}` alternation starting at `i` (`s[i] === "{"`), or `null` if unterminated. */
-function parseAlt(sc: Scan, i: number): { token: Token; next: number } | null {
+function parseAlt(sc: Scan, i: number, depth: number): { token: Token; next: number } | null {
+  if (depth > MAX_BRACE_DEPTH) {
+    throw new IntersectError(
+      'PATTERN_TOO_DEEP',
+      `pattern nests {...} groups more than ${MAX_BRACE_DEPTH} deep`,
+    )
+  }
   if (sc.alts.has(i)) return sc.alts.get(i)!
-  const result = parseAltUncached(sc, i)
+  const result = parseAltUncached(sc, i, depth)
   sc.alts.set(i, result)
   return result
 }
 
-function parseAltUncached(sc: Scan, i: number): { token: Token; next: number } | null {
+function parseAltUncached(
+  sc: Scan,
+  i: number,
+  depth: number,
+): { token: Token; next: number } | null {
   const s = sc.s
   let j = i + 1
   const alts: Token[][] = []
   for (;;) {
-    const [toks, next] = parseSeq(sc, j, true)
+    const [toks, next] = parseSeq(sc, j, true, depth)
     alts.push(toks)
     if (next >= s.length) return null // unterminated
     if (s[next] === ',') {
@@ -222,6 +290,9 @@ function parseAltUncached(sc: Scan, i: number): { token: Token; next: number } |
       continue
     }
     // s[next] === "}"
+    if (alts.length === 1 && NUMBER_RANGE.test(s.slice(i + 1, next))) {
+      throw unsupported('a {a..b} number range is not expanded', s)
+    }
     return { token: { t: 'alt', alts }, next: next + 1 }
   }
 }
@@ -331,11 +402,21 @@ function buildToken(b: NfaBuilder, tok: Token, atStart: boolean, dot: boolean): 
   }
 }
 
-/** Compile one glob segment (e.g. `"*.vue"`, `"handler.ts"`, `"[!a-z]"`) into a matcher. */
-export function compileSegment(glob: string, opts: Options | undefined): SegmentMatcher {
+/**
+ * Compile one glob segment (e.g. `"*.vue"`, `"handler.ts"`, `"[!a-z]"`) into a
+ * matcher. Pass the same `state` for the segments of one pattern, in order, so
+ * a `{` or `[` group that spans a `/` is caught.
+ *
+ * @throws {@link IntersectError} `PATTERN_TOO_DEEP` or `UNSUPPORTED_SYNTAX`.
+ */
+export function compileSegment(
+  glob: string,
+  opts: Options | undefined,
+  state: SyntaxState = new SyntaxState(),
+): SegmentMatcher {
   const b = new NfaBuilder()
   const dot = opts?.dot ?? false
-  const tokens = tokenize(glob)
+  const tokens = tokenize(glob, state)
   const frag = buildFragment(b, tokens, true, dot)
   return {
     epsOut: b.epsOut,
@@ -345,17 +426,38 @@ export function compileSegment(glob: string, opts: Options | undefined): Segment
   }
 }
 
+/**
+ * Check every segment of `pattern` against the supported syntax without
+ * building matchers.
+ *
+ * @throws {@link IntersectError} `PATTERN_TOO_DEEP` or `UNSUPPORTED_SYNTAX`.
+ */
+export function assertSupported(pattern: readonly string[]): void {
+  const state = new SyntaxState()
+  for (const seg of pattern) {
+    if (seg !== '**') tokenize(seg, state)
+  }
+}
+
 // --- Character-set intersection -------------------------------------------
 
 const FALLBACK = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-'
 
-function charEq(a: string, b: string, ci: boolean): boolean {
-  return a === b || (ci && a.toLowerCase() === b.toLowerCase())
+/** Lower-case `A`-`Z` only. Every other character, including non-ASCII letters, is unchanged. */
+function asciiLower(ch: string): string {
+  return ch.length === 1 && ch >= 'A' && ch <= 'Z' ? String.fromCharCode(ch.charCodeAt(0) + 32) : ch
 }
 
+/** Case-insensitive means ASCII case-insensitive: `Ä` and `ä` are different characters. */
+function charEq(a: string, b: string, ci: boolean): boolean {
+  return a === b || (ci && asciiLower(a) === asciiLower(b))
+}
+
+/** The other case of an ASCII letter; any other character is returned unchanged. */
 function swapCase(ch: string): string {
-  const lower = ch.toLowerCase()
-  return ch === lower ? ch.toUpperCase() : lower
+  const lower = asciiLower(ch)
+  if (ch !== lower) return lower
+  return ch.length === 1 && ch >= 'a' && ch <= 'z' ? String.fromCharCode(ch.charCodeAt(0) - 32) : ch
 }
 
 function inRange(ch: string, lo: string, hi: string, ci: boolean): boolean {

@@ -5,6 +5,7 @@
  * glob on the separator into segments, each of which is a glob token taken
  * verbatim. No inference — there is NO directory/file/ambiguity classification.
  */
+import { IntersectError } from './errors.ts'
 import type { SegmentPattern } from './segments/index.ts'
 
 /**
@@ -14,12 +15,14 @@ import type { SegmentPattern } from './segments/index.ts'
  * Nothing else is collapsed or inferred.
  *
  * @param pathLike - A path-like glob string, e.g. `"src/api/**"`.
- * @param opts - Parsing options. `separator` overrides the split character (default `"/"`).
+ * @param opts - Parsing options. `separator` overrides the split character. The
+ * default is `"/"`, and an empty string means the default too.
  * @returns The {@link SegmentPattern} — the segments in order, the segment core's unit.
  * @remarks No inference: a pattern with no wildcards is an exact-path match
  * (`src/siteA/components` matches only that path, not files beneath it); opt
  * into a subtree explicitly with a trailing `**`. Only a single trailing
  * separator is normalized off.
+ * @throws {@link IntersectError} with code `INVALID_ARGUMENT` when `pathLike` is not a string.
  * @example
  * ```ts
  * parse("src/api/**");  // ["src", "api", "**"]
@@ -28,7 +31,14 @@ import type { SegmentPattern } from './segments/index.ts'
  * ```
  */
 export function parse(pathLike: string, opts?: { separator?: string }): SegmentPattern {
-  const separator = opts?.separator ?? '/'
+  if (typeof pathLike !== 'string') {
+    throw new IntersectError(
+      'INVALID_ARGUMENT',
+      `expected a pattern string, got ${describe(pathLike)}`,
+    )
+  }
+  // An empty separator would split into characters, which is no path reading.
+  const separator = opts?.separator || '/'
   const segments = pathLike.split(separator)
   // Normalize off a trailing separator: an empty final segment from a path that
   // ends with the separator. Only the one trailing empty is dropped.
@@ -36,4 +46,24 @@ export function parse(pathLike: string, opts?: { separator?: string }): SegmentP
     segments.pop()
   }
   return segments
+}
+
+/** The characters the segment tokenizer reads as glob syntax (and `(`, which opens an extglob). */
+const GLOB_META = /[\\*?[\]{}(]/g
+
+/**
+ * Quote a concrete path so the pattern parser reads it as the literal name it
+ * is. Callers that hold a real path (the root layer's `matches` family and
+ * `./fs`) run it through this before parsing, so `pages/[id].vue` is that name
+ * and not a character class.
+ */
+export function literal(path: string): string {
+  return path.replace(GLOB_META, '\\$&')
+}
+
+/** A short description of a bad argument for an error message. */
+export function describe(value: unknown): string {
+  if (value === null) return 'null'
+  if (Array.isArray(value)) return 'an array with a non-string element'
+  return typeof value
 }

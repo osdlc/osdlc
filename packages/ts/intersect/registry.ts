@@ -11,6 +11,7 @@
  * `compile` and never reaches the filesystem layer.
  */
 import { compile } from './index.ts'
+import { IntersectError } from './errors.ts'
 import type { Matcher, Options, Patterns } from './index.ts'
 
 /**
@@ -36,7 +37,7 @@ export interface Registry<T = string> {
   readonly entries: readonly Labeled<T>[]
   /** Ids whose set OVERLAPS the scope, in registry order. (A subtree scope is written `dir/**`.) */
   applicableTo(scope: Patterns): T[]
-  /** Ids whose set matches a CONCRETE path, in registry order. */
+  /** Ids whose set matches a CONCRETE path (read literally, not as a glob), in registry order. */
   matching(path: string): T[]
 }
 
@@ -48,8 +49,10 @@ export interface Registry<T = string> {
  * @param entries - The labeled pattern-sets to index, in significant order.
  * @param opts - Matching semantics ({@link Options}) applied to every entry.
  * @returns A {@link Registry} whose queries echo matching ids in registration order.
- * @throws Error `duplicate registry id '<id>'` if any `id` is supplied twice —
- * rejected at construction rather than silently keeping first or last.
+ * @throws {@link IntersectError} with code `DUPLICATE_REGISTRY_ID` if any `id` is
+ * supplied twice — rejected at construction rather than silently keeping first
+ * or last. Unsupported pattern syntax throws here too (`UNSUPPORTED_SYNTAX`,
+ * `PATTERN_TOO_DEEP`).
  * @remarks Registration order is significant and preserved: register
  * general-to-specific and read a query result as a prioritization (first =
  * most general, last = most specific). Intersect returns the order; the caller
@@ -70,7 +73,7 @@ export interface Registry<T = string> {
  *   { id: "a", patterns: ["src/**"] },
  *   { id: "a", patterns: ["docs/**"] }, // same id, registered twice
  * ]);
- * // → Error: duplicate registry id 'a'
+ * // → IntersectError (code DUPLICATE_REGISTRY_ID): duplicate registry id 'a'
  * ```
  */
 export function index<T = string>(entries: Iterable<Labeled<T>>, opts?: Options): Registry<T> {
@@ -80,7 +83,10 @@ export function index<T = string>(entries: Iterable<Labeled<T>>, opts?: Options)
 
   for (const entry of entries) {
     if (seen.has(entry.id)) {
-      throw new Error(`duplicate registry id '${String(entry.id)}'`)
+      throw new IntersectError(
+        'DUPLICATE_REGISTRY_ID',
+        `duplicate registry id '${String(entry.id)}'`,
+      )
     }
     seen.add(entry.id)
     ordered.push(entry)

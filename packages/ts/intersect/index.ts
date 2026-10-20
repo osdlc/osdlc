@@ -10,14 +10,29 @@
  * NO wildcards is an exact-path match (`src/siteA/components` matches only that
  * path); a subtree is written explicitly (`src/siteA/components/**`).
  *
+ * Patterns are globs; a concrete path you pass to `matches`, `whichMatch`,
+ * {@link Matcher.matches} or `Registry.matching` is read as the literal name it
+ * is, so `pages/[id].vue` is that file and not a character class.
+ *
+ * The functions here take path-like STRINGS. The `./segments` entry point has
+ * functions with the same names (`intersects`, `matches`, `witness`) that take
+ * pre-split segment arrays; the import path says which layer you call.
+ *
+ * Unsupported syntax and bad arguments throw {@link IntersectError}.
+ *
  * @module intersect
  */
 import * as segments from './segments/index.ts'
 import type { Options, SegmentPattern } from './segments/index.ts'
-import { parse } from './parse.ts'
+import { assertSupported } from './segments/automaton.ts'
+import { search } from './segments/product.ts'
+import { IntersectError } from './errors.ts'
+import { describe, literal, parse } from './parse.ts'
 
 // Re-export the shared core types and the registry surface from the package root.
 export type { Options, SegmentPattern } from './segments/index.ts'
+export { IntersectError } from './errors.ts'
+export type { IntersectErrorCode } from './errors.ts'
 export type { Labeled, Registry } from './registry.ts'
 export { index } from './registry.ts'
 export { parse } from './parse.ts'
@@ -33,16 +48,20 @@ export type Patterns = string | readonly string[]
  * Built by {@link compile}, which parses each pattern once; every method reuses
  * that parsed set. Its `overlapping` filters the ARGUMENT (contrast the free
  * {@link overlapping}, which filters its first argument).
+ *
+ * A `Matcher` passed as an argument is used for its pattern strings only. They
+ * are parsed again, and this matcher's options apply to the whole comparison;
+ * the argument's own options are ignored.
  */
 export interface Matcher {
   /** The source patterns, normalized to an array. */
   readonly patterns: readonly string[]
-  /** Does a concrete path match this set? */
+  /** Does a concrete path match this set? The path is read literally, not as a glob. */
   matches(path: string): boolean
   /** Does this set overlap another pattern-set or matcher? */
   intersects(other: Patterns | Matcher): boolean
   /** Which of `candidates` overlap this set, in the order given (filters the argument). */
-  overlapping(candidates: readonly string[]): string[]
+  overlapping(candidates: Patterns): string[]
   /** An example path common to this set and `other`, or `null`. */
   witness(other: Patterns | Matcher): string | null
 }
@@ -50,30 +69,46 @@ export interface Matcher {
 /** The separator used to stringify a witness back into a path. */
 const WITNESS_SEPARATOR = '/'
 
-/**
- * Can this segment vector be spelled as a path string? No, when it has more
- * than one segment and the last one is empty: joining puts a trailing separator
- * on the string, and {@link parse} normalizes exactly that back off — so the
- * round-trip loses the segment and the string matches neither side. A
- * non-trailing empty segment is spellable (`["a","","b"]` -> `"a//b"`).
- */
-function spellableAsPath(w: SegmentPattern): boolean {
-  return !(w.length > 1 && w[w.length - 1] === '')
+/** Check `patterns` is a string or an array of strings, and return it as an array. */
+function asList(patterns: unknown): readonly string[] {
+  if (typeof patterns === 'string') return [patterns]
+  if (Array.isArray(patterns) && patterns.every((p) => typeof p === 'string')) {
+    return patterns as readonly string[]
+  }
+  throw new IntersectError(
+    'INVALID_ARGUMENT',
+    `expected a pattern string or an array of pattern strings, got ${describe(patterns)}`,
+  )
 }
 
-/** Normalize `Patterns` to an array of pattern strings (a single string is a one-element set). */
-function asList(patterns: Patterns): readonly string[] {
-  return typeof patterns === 'string' ? [patterns] : patterns
-}
-
-/** A `Matcher` is a non-string, non-array object; everything else is `Patterns`. */
-function isMatcher(value: Patterns | Matcher): value is Matcher {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
+/** A `Matcher` is an object that carries a `patterns` array; everything else is `Patterns`. */
+function isMatcher(value: unknown): value is Matcher {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    !Array.isArray(value) &&
+    Array.isArray((value as { patterns?: unknown }).patterns)
+  )
 }
 
 /** The pattern strings behind `Patterns` or a `Matcher` — reused when the other side is compiled. */
-function patternStrings(value: Patterns | Matcher): readonly string[] {
-  return isMatcher(value) ? value.patterns : asList(value)
+function patternStrings(value: unknown): readonly string[] {
+  return isMatcher(value) ? asList(value.patterns) : asList(value)
+}
+
+/** Parse one pattern string and reject syntax this package does not support. */
+function parsePattern(pattern: string): SegmentPattern {
+  const parsed = parse(pattern)
+  assertSupported(parsed)
+  return parsed
+}
+
+/** Parse a concrete path as the literal name it is. */
+function parsePath(path: unknown): SegmentPattern {
+  if (typeof path !== 'string') {
+    throw new IntersectError('INVALID_ARGUMENT', `expected a path string, got ${describe(path)}`)
+  }
+  return parse(literal(path))
 }
 
 /**
@@ -84,6 +119,8 @@ function patternStrings(value: Patterns | Matcher): readonly string[] {
  * @param patterns - The pattern-set to compile ({@link Patterns}).
  * @param opts - Matching semantics ({@link Options}) baked into every query.
  * @returns A {@link Matcher} bound to `patterns` and `opts`.
+ * @throws {@link IntersectError} with code `UNSUPPORTED_SYNTAX`, `PATTERN_TOO_DEEP` or
+ * `INVALID_ARGUMENT`, raised here and not at the first query.
  * @example
  * ```ts
  * const scope = compile(["src/api/**", "src/db/**"]);
@@ -95,24 +132,25 @@ function patternStrings(value: Patterns | Matcher): readonly string[] {
  */
 export function compile(patterns: Patterns, opts?: Options): Matcher {
   const patternList: readonly string[] = [...asList(patterns)]
-  const parsed: SegmentPattern[] = patternList.map((p) => parse(p))
+  const parsed: SegmentPattern[] = patternList.map(parsePattern)
 
+  // An argument is parsed again from its strings, so the receiver's `opts` apply.
   const parseOther = (other: Patterns | Matcher): SegmentPattern[] =>
-    patternStrings(other).map((p) => parse(p))
+    patternStrings(other).map(parsePattern)
 
   return {
     patterns: patternList,
     matches(path: string): boolean {
-      const target = parse(path)
+      const target = parsePath(path)
       return parsed.some((pat) => segments.matches(target, pat, opts))
     },
     intersects(other: Patterns | Matcher): boolean {
       const others = parseOther(other)
       return parsed.some((a) => others.some((b) => segments.intersects(a, b, opts)))
     },
-    overlapping(candidates: readonly string[]): string[] {
-      return candidates.filter((c) => {
-        const cand = parse(c)
+    overlapping(candidates: Patterns): string[] {
+      return asList(candidates).filter((c) => {
+        const cand = parsePattern(c)
         return parsed.some((a) => segments.intersects(a, cand, opts))
       })
     },
@@ -120,8 +158,8 @@ export function compile(patterns: Patterns, opts?: Options): Matcher {
       const others = parseOther(other)
       for (const a of parsed) {
         for (const b of others) {
-          const w = segments.witness(a, b, opts)
-          if (w !== null && spellableAsPath(w)) return w.join(WITNESS_SEPARATOR)
+          const w = search(a, b, opts, true)
+          if (w !== null) return w.join(WITNESS_SEPARATOR)
         }
       }
       return null
@@ -136,7 +174,10 @@ export function compile(patterns: Patterns, opts?: Options): Matcher {
  * @param b - The second pattern-set ({@link Patterns}).
  * @param opts - Matching semantics ({@link Options}); defaults apply when omitted.
  * @returns `true` when some path matches both `a` and `b`, else `false`.
- * @remarks A pattern with no wildcards is an EXACT-path match, so
+ * @throws {@link IntersectError} for unsupported syntax or a bad argument.
+ * @remarks Takes path-like strings. The `./segments` function of the same name
+ * takes pre-split segment arrays.
+ * A pattern with no wildcards is an EXACT-path match, so
  * `src/x` and `src/x/y` are disjoint (a child is not the path); opt into a
  * subtree with a trailing `**`. Dotfiles are excluded unless `{ dot: true }`.
  * @example
@@ -160,10 +201,14 @@ export function intersects(a: Patterns, b: Patterns, opts?: Options): boolean {
 /**
  * Does a concrete path match any pattern in the set?
  *
- * @param path - The concrete path to test.
+ * @param path - The concrete path to test. It is read literally: `*`, `?`, `[`, `]`,
+ * `{`, `}` and `\` in it are ordinary characters, so `pages/[id].vue` is that
+ * file name. (The patterns are globs.)
  * @param patterns - The pattern-set to test against ({@link Patterns}).
  * @param opts - Matching semantics ({@link Options}); defaults apply when omitted.
  * @returns `true` when `path` matches at least one pattern, else `false`.
+ * @remarks The `./segments` function of the same name takes a pre-split path
+ * and reads it as a pattern.
  * @example
  * ```ts
  * matches("src/api/user.ts", ["src/api/**", "docs/**"]); // true  (first pattern)
@@ -177,7 +222,7 @@ export function matches(path: string, patterns: Patterns, opts?: Options): boole
 /**
  * Which patterns in the set match a concrete path, in the order given.
  *
- * @param path - The concrete path to test.
+ * @param path - The concrete path to test, read literally (see {@link matches}).
  * @param patterns - The pattern-set to filter ({@link Patterns}).
  * @param opts - Matching semantics ({@link Options}); defaults apply when omitted.
  * @returns The subset of `patterns` that match `path`, in input order.
@@ -188,8 +233,8 @@ export function matches(path: string, patterns: Patterns, opts?: Options): boole
  * ```
  */
 export function whichMatch(path: string, patterns: Patterns, opts?: Options): string[] {
-  const target = parse(path)
-  return asList(patterns).filter((p) => segments.matches(target, parse(p), opts))
+  const target = parsePath(path)
+  return asList(patterns).filter((p) => segments.matches(target, parsePattern(p), opts))
 }
 
 /**
@@ -197,9 +242,11 @@ export function whichMatch(path: string, patterns: Patterns, opts?: Options): st
  * the conflict-detection primitive.
  *
  * @param query - The pattern-set to filter and return a subset of ({@link Patterns}).
- * @param candidates - The patterns to test `query` against for overlap.
+ * @param candidates - The patterns to test `query` against for overlap
+ * ({@link Patterns}; a single string is a one-element set).
  * @param opts - Matching semantics ({@link Options}); defaults apply when omitted.
  * @returns The subset of `query` (in query order) that overlaps some candidate.
+ * @throws {@link IntersectError} for unsupported syntax or a bad argument.
  * @remarks Returns a subset of the FIRST argument, `query`. Contrast
  * {@link Matcher.overlapping}, which returns a subset of ITS argument — the two
  * conventions filter opposite sides.
@@ -210,16 +257,17 @@ export function whichMatch(path: string, patterns: Patterns, opts?: Options): st
  *
  * overlapping(taskA, taskB);        // ["src/api/**"]  — the overlapping claim → predicted conflict
  * overlapping(["docs/**"], taskA);  // []              — no overlap
+ *
+ * // The two directions, on the same data:
+ * overlapping(taskA, taskB);                // ["src/api/**"]            — a subset of taskA
+ * compile(taskA).overlapping(taskB);        // ["src/api/routes/*.ts"]   — a subset of taskB
  * ```
  */
-export function overlapping(
-  query: Patterns,
-  candidates: readonly string[],
-  opts?: Options,
-): string[] {
-  const parsedCandidates: SegmentPattern[] = candidates.map((c) => parse(c))
-  return asList(query).filter((q) => {
-    const qp = parse(q)
+export function overlapping(query: Patterns, candidates: Patterns, opts?: Options): string[] {
+  const queryList = asList(query)
+  const parsedCandidates: SegmentPattern[] = asList(candidates).map(parsePattern)
+  return queryList.filter((q) => {
+    const qp = parsePattern(q)
     return parsedCandidates.some((c) => segments.intersects(qp, c, opts))
   })
 }
@@ -232,11 +280,14 @@ export function overlapping(
  * @param b - The second pattern-set ({@link Patterns}).
  * @param opts - Matching semantics ({@link Options}); defaults apply when omitted.
  * @returns A concrete path matching both sets, or `null` if none exists.
- * @remarks The returned string always matches both sets. A segment-vector that
- * no path string can spell — one ending in an empty segment, which only a
- * degenerate pattern such as `{,x}` produces — is not reported; for such a pair
- * this returns `null` even though {@link intersects} (which answers over segment
- * vectors, not path strings) says `true`.
+ * @throws {@link IntersectError} for unsupported syntax or a bad argument.
+ * @remarks The returned string always matches both sets. The search skips a
+ * path that ends in an empty segment, because `parse` drops a trailing
+ * separator and no string spells it, and goes on to a longer path. So `null`
+ * means disjoint, with one exception: when the only common path ends in an
+ * empty segment (`a/{,x}` against `a/{,y}` has only `a/`), this returns `null`
+ * even though {@link intersects} says `true`. An empty segment before a `**` or
+ * inside a brace such as `{,x}` can produce such a pair.
  * @example
  * ```ts
  * witness("src/api/**", "src/api/handler.ts"); // "src/api/handler.ts" — a path both match
