@@ -11,9 +11,10 @@ created: 2026-10-19
 
 - The package is `@osdlc/detect-harness`, published to npm from this
   repository, `packages/ts/detect-harness`.
-- It replaces `@osdlc/agent-plugin`. That name was only a placeholder on npm
-  (version `0.0.1-stage`, not usable) and no release was made under it. The
-  placeholder is deprecated with a pointer to this package.
+- It replaces `@osdlc/agent-plugin`. That name is only a placeholder on npm
+  (versions `0.0.0-stage` and `0.0.1-stage`, not usable), and no release was
+  made under it. When this package is first published, the placeholder will be
+  deprecated, with a pointer to this package.
 - The first release is 0.4.0. The versions before it were used inside one
   project and were never published, so the changelog lists them as history.
 

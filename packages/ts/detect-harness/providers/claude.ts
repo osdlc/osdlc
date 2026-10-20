@@ -313,7 +313,7 @@ function collectClaude(ctx: ProviderContext): ProviderResult {
       installPath: str(rec['installPath']),
       gitCommitSha: str(rec['gitCommitSha']),
       installed: true,
-      enabled: on?.enabled ?? false,
+      enabled: on?.enabled ?? null,
       enabledSource: on?.source ?? null,
       source: registryLoc!.resolved,
     })

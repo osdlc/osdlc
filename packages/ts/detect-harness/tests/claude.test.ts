@@ -6,7 +6,8 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
-import { join } from 'node:path'
+import { mkdirSync, symlinkSync } from 'node:fs'
+import { basename, join } from 'node:path'
 
 import { REDACTED } from '../read/redact.ts'
 import { fixture, type Fixture } from './fixture.ts'
@@ -550,5 +551,37 @@ describe('sign-in evidence', () => {
       evidence: null,
       providers: null,
     })
+  })
+})
+
+describe('folder walks', () => {
+  test('a symbolic link back to its folder lists each rules file once', async () => {
+    f.write(f.project, { '.claude/rules/a.md': '# a' })
+    symlinkSync('.', join(f.project, '.claude', 'rules', 'self'))
+    const r = await f.report('claude', { mode: 'project' })
+    expect(r.instructions.map((i) => basename(i.path))).toEqual(['a.md'])
+  })
+
+  test('two links that lead to each other return promptly, each file once', async () => {
+    f.write(f.project, { '.claude/rules/a.md': '# a', '.claude/commands/c.md': '# c' })
+    for (const d of ['rules', 'commands']) {
+      symlinkSync('.', join(f.project, '.claude', d, 'self'))
+      symlinkSync('.', join(f.project, '.claude', d, 'also'))
+      mkdirSync(join(f.project, '.claude', d, 'x'))
+      symlinkSync('..', join(f.project, '.claude', d, 'x', 'up'))
+    }
+    const r = await f.report('claude', { mode: 'project' })
+    expect(r.instructions.map((i) => basename(i.path))).toEqual(['a.md'])
+    expect(r.commands.map((c) => c.name)).toEqual(['c'])
+  })
+
+  test('an installed plugin that no settings file names has enabled null', async () => {
+    f.write(f.home, {
+      '.claude/plugins/installed_plugins.json': {
+        plugins: { 'p@m': [{ scope: 'user', installPath: join(f.root, 'plug') }] },
+      },
+    })
+    const r = await f.report('claude')
+    expect(r.plugins.map((p) => [p.id, p.installed, p.enabled])).toEqual([['p@m', true, null]])
   })
 })

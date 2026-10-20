@@ -55,6 +55,18 @@ export function scanSkills(ctx: ProviderContext, dir: string, from: Provenance):
 }
 
 /**
+ * True the first time a folder is seen, by real path. A symbolic link back to a
+ * folder already walked (`self -> .`, or two links that lead to each other) would
+ * otherwise repeat its files, or never end.
+ */
+function firstVisit(ctx: ProviderContext, seen: Set<string>, dir: string): boolean {
+  const real = ctx.realpath(dir) ?? dir
+  if (seen.has(real)) return false
+  seen.add(real)
+  return true
+}
+
+/**
  * Every `*.md` under `dir`, named by its frontmatter `name`, else the file name
  * without `.md`. With `recursive`, sub-folders are walked too (Claude Code
  * namespaces commands by sub-folder but invokes them by file name).
@@ -66,7 +78,9 @@ export function scanMarkdown(
   options: { recursive?: boolean; useFrontmatterName?: boolean } = {},
 ): Artifact[] {
   const out: Artifact[] = []
+  const seen = new Set<string>()
   const walk = (d: string): void => {
+    if (!firstVisit(ctx, seen, d)) return
     for (const e of ctx.listDir(d)) {
       const abs = join(d, e.name)
       if (e.isDirectory && options.recursive) walk(abs)
@@ -85,7 +99,9 @@ export function scanMarkdown(
 /** Instruction files at `locs`: a file location when it exists, a folder's `.md`/`.mdc` files. */
 export function scanInstructions(ctx: ProviderContext, locs: readonly Located[]): Instruction[] {
   const out: Instruction[] = []
+  const seen = new Set<string>()
   const walk = (d: string, scope: Scope): void => {
+    if (!firstVisit(ctx, seen, d)) return
     for (const e of ctx.listDir(d)) {
       const abs = join(d, e.name)
       if (e.isDirectory) walk(abs, scope)

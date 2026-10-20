@@ -16,6 +16,7 @@ import { parseVersion } from '../detect.ts'
 import { BUILTIN_HARNESSES } from '../harnesses.ts'
 import { builtinProviders } from '../providers/index.ts'
 import { HarnessCatalogSchema } from '../report.ts'
+import { which } from '../which.ts'
 import { fixture, type Fixture } from './fixture.ts'
 
 let f: Fixture
@@ -332,5 +333,19 @@ describe('opencode, pi and antigravity', () => {
     f.binary('agy')
     const r = await f.report('antigravity')
     expect([r.install.found, r.auth.signedIn]).toEqual([true, 'unknown'])
+  })
+})
+
+describe('which', () => {
+  test('a relative PATH entry resolves against the given folder to an absolute path', () => {
+    const f = fixture()
+    try {
+      f.binary('tool')
+      const found = which('tool', { PATH: 'bin' }, 'linux', f.root)
+      expect(found).toBe(join(f.root, 'bin', 'tool'))
+      expect(which('tool', { PATH: 'bin' }, 'linux', f.project)).toBeNull()
+    } finally {
+      f.cleanup()
+    }
   })
 })

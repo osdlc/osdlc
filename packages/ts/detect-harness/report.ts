@@ -136,7 +136,7 @@ export const HookSchema = z.object({
 })
 export type Hook = z.infer<typeof HookSchema>
 
-/** An MCP server. `env` and `headers` values are redacted unless `includeValues`. */
+/** An MCP server. `env` and `headers` values, URL credentials and secret-looking `args` are redacted unless `includeValues`. */
 export const McpServerSchema = z.object({
   name: z.string(),
   transport: z.enum(['stdio', 'http', 'sse']),

@@ -16,8 +16,8 @@
  * An override names an environment variable; the first one that is set and not
  * empty wins, made absolute, with its `suffix` joined on.
  *
- * Vendor facts here were checked against the sources named in the README. They
- * change; a wrong entry is a bug in this table, not in a provider.
+ * Vendor facts here come from each harness's public documentation (see the
+ * README). They change; a wrong entry is a bug in this table, not in a provider.
  *
  * Runtime-agnostic: `node:path` only.
  */
@@ -82,7 +82,7 @@ export interface LocationPath {
 /** Everything this package knows about where one harness lives. */
 export interface HarnessLocations {
   label: string
-  /** The CLI binary, as the tool-router catalogue names it. */
+  /** The CLI binary looked for on `PATH`. */
   binary: string
   /** App bundles whose presence counts as an install (macOS). Templates. */
   appBundles: readonly string[]
@@ -375,7 +375,11 @@ function baseOf(
   return { name, path: expand(harness, template, ctx, seen), envVar: null }
 }
 
-/** One base folder of `harness`, resolved. Throws for a base the table does not name. */
+/**
+ * One base folder of `harness`, resolved.
+ *
+ * @throws {Error} For a base the table does not name, and for a base that refers to itself.
+ */
 export function resolveBase(
   harness: BuiltinHarnessId,
   name: string,
@@ -396,8 +400,10 @@ export function resolveConfigDir(harness: BuiltinHarnessId, ctx: LocationContext
 
 /**
  * Resolve a template (`{config}/x`, `~/x`, `{project}/x`, `{system}/x`). With
- * `harness` `null`, only `~`, `{project}` and `{system}` resolve, and a
- * `{<base>}` template throws.
+ * `harness` `null`, only `~`, `{project}` and `{system}` resolve.
+ *
+ * @throws {Error} For a `{<base>}` template when `harness` is `null`, for a base
+ * the table does not name, and for a cycle of bases.
  */
 export function resolveTemplate(
   harness: BuiltinHarnessId | null,

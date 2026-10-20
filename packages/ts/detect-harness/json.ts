@@ -6,6 +6,11 @@
 
 import { existsSync, readFileSync } from 'node:fs'
 
+/** The message of a thrown value. */
+export function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
+}
+
 /** A plain object, or null for anything else (an array, a scalar, null). */
 export function asObject(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value)

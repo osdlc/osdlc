@@ -18,7 +18,7 @@ import {
 const home = '/h'
 
 describe('LOCATIONS', () => {
-  test('covers the six harnesses with the tool-router binaries', () => {
+  test('covers the six harnesses with their binary names', () => {
     expect(Object.keys(LOCATIONS)).toEqual([...BUILTIN_HARNESSES])
     expect(BUILTIN_HARNESSES.map((h) => LOCATIONS[h].binary)).toEqual([
       'claude',

@@ -1,5 +1,5 @@
 /**
- * The provider contract: the extension point, shaped like `detect-runners`'.
+ * The provider contract: the extension point, a small object per harness.
  *
  * A provider reads one harness. The built-ins are ordinary providers, so a
  * caller can add a harness:
@@ -54,7 +54,7 @@ export interface ProviderContext {
   allowExec: boolean
   /** Return markdown bodies of skills, commands and agents. */
   readContents: boolean
-  /** Keep MCP `env`, header and URL credential values. */
+  /** Keep MCP values as written: `env` and header values, URL credentials and secret-looking `args`. */
   includeValues: boolean
   /** Read a text file. Memoized for one `detect()` call. */
   readText(path: string): TextRead
@@ -79,7 +79,7 @@ export type ProviderResult = Partial<
 >
 
 export interface HarnessProvider {
-  /** Stable id; becomes `HarnessReport.harness`. The built-ins use the tool-router ids. */
+  /** Stable id; becomes `HarnessReport.harness`. The built-ins use the ids in {@link BUILTIN_HARNESSES}. */
   id: string
   label: string
   kind: ProviderKind
@@ -117,7 +117,7 @@ export interface DetectOptions {
   only?: readonly string[] | undefined
   /** Skip these harness ids. */
   exclude?: readonly string[] | undefined
-  /** Binary names per harness id, replacing the provider's (for a router config that renames one). */
+  /** Binary names per harness id, replacing the provider's (for a setup that renames one). */
   binaries?: Readonly<Record<string, string>> | undefined
   /**
    * Permit subprocesses: `<binary> --version` for the install version. Default
@@ -126,7 +126,7 @@ export interface DetectOptions {
   allowExec?: boolean | undefined
   /** Return skill, command and agent bodies. Default `false`. */
   readContents?: boolean | undefined
-  /** Keep MCP `env`, header and URL credential values. Default `false`: they read `<redacted>`. */
+  /** Keep MCP values as written: `env` and header values, URL credentials and secret-looking `args`. Default `false`; see README, Secrets. */
   includeValues?: boolean | undefined
   /** `PATH` lookup. Default walks `env.PATH`. Tests inject this. */
   which?: ((binary: string) => string | null) | undefined

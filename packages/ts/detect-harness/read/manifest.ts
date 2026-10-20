@@ -7,7 +7,9 @@
  * Runtime-agnostic: `node:path` only.
  */
 
-import { isAbsolute, relative, resolve, sep } from 'node:path'
+import { resolve } from 'node:path'
+
+import { isInside } from '@osdlc/path-guard'
 
 import type { JsonRead } from '../contract.ts'
 import { asObject } from '../json.ts'
@@ -31,8 +33,7 @@ export function loadReferenced(reader: ManifestReader, root: string, ref: string
   const realRoot = reader.realpath(root)
   const target = reader.realpath(resolve(root, ref))
   if (realRoot === null || target === null) return null
-  const rel = relative(realRoot, target)
-  if (rel === '' || rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)) return null
+  if (target === realRoot || !isInside(realRoot, target)) return null
   const read = reader.readJson(target)
   return read.status === 'parsed' ? read.value : null
 }

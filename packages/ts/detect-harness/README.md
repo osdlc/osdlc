@@ -41,12 +41,12 @@ harness, in a fixed order. Options:
 | `env`           | `process.env`      | The environment: overrides such as `CLAUDE_CONFIG_DIR`, `PATH`, API keys. |
 | `mode`          | `full`             | `project` reads project files only; see below.                            |
 | `allowExec`     | `false`            | Run `<binary> --version` to fill `install.version`.                       |
-| `includeValues` | `false`            | Keep MCP `env`, header and URL credential values.                         |
+| `includeValues` | `false`            | Keep MCP `env` and header values, URL credentials and secret-looking `args`. |
 | `readContents`  | `false`            | Return the markdown body of each skill, command and agent.                |
 | `only`          | all                | Harness ids to read.                                                      |
 | `exclude`       | none               | Harness ids to skip.                                                      |
 | `providers`     | built-ins          | Replace or add providers.                                                 |
-| `binaries`      | the table's        | Binary name per harness id, for a router config that renames one.         |
+| `binaries`      | the table's        | Binary name per harness id, for a setup that renames one.                 |
 | `which`         | walks `env.PATH`   | `PATH` lookup. Tests inject this.                                         |
 | `makeRunner`    | command seam       | Builds the runner for `--version`. Tests inject this.                     |
 | `platform`      | `process.platform` | Chooses the managed-settings folder.                                      |

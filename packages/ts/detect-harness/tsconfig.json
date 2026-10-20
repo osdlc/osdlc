@@ -6,9 +6,12 @@
     // @osdlc/command-seam is a workspace sibling that ships a `bun` condition
     // pointing at its source, so a typecheck needs no `dist/` to exist.
     "customConditions": ["bun"],
-    // @osdlc/frontmatter-lossless has no `bun` condition. Map it to its source
+    // @osdlc/frontmatter-lossless and @osdlc/path-guard have no `bun` condition. Map them to their source
     // for the same reason. The build config clears this and uses its `dist/`.
-    "paths": { "@osdlc/frontmatter-lossless": ["../frontmatter-lossless/index.ts"] }
+    "paths": {
+      "@osdlc/frontmatter-lossless": ["../frontmatter-lossless/index.ts"],
+      "@osdlc/path-guard": ["../path-guard/index.ts"]
+    }
   },
   "include": ["**/*.ts"],
   "exclude": ["dist", "node_modules"]

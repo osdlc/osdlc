@@ -22,7 +22,7 @@ export const HARNESS_MODEL_VERSION = '2' as const
 
 /** Plugin identity, from the plugin manifest. */
 export const HarnessMetadataSchema = z.object({
-  /** Machine name / plugin id (kebab), e.g. `"sdlc"`. */
+  /** Machine name / plugin id (kebab), e.g. `"my-plugin"`. */
   name: z.string().min(1),
   /** Semver-ish version string, or `"unknown"`. */
   version: z.string().min(1),
@@ -108,8 +108,9 @@ export type McpTransport = z.infer<typeof McpTransportSchema>
  * `env`; `http`/`sse` servers carry `url` (+ optional `headers`). Nothing checks
  * that a server has the fields of its transport.
  *
- * The readers replace `env` and `headers` values, and the user part and query
- * values of `url`, with `"<redacted>"` unless asked to keep them.
+ * The readers replace `env` and `headers` values, the user part and query
+ * values of `url`, and secret-looking `args`, with `"<redacted>"` unless asked
+ * to keep them.
  */
 export const HarnessMcpServerSchema = z.object({
   /** Server id, unique within the harness. */

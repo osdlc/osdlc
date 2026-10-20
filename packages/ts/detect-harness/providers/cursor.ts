@@ -3,8 +3,7 @@
  * sign-in evidence.
  *
  * Cursor's user folder is `~/.cursor`; it has no environment override.
- * (`SDLC_CURSOR_HOME`, which sdlc's Cursor hook adapter reads, is sdlc's test
- * seam, not something Cursor reads.) MCP servers are the `mcpServers` of the
+ * MCP servers are the `mcpServers` of the
  * user and project `mcp.json`; a project server replaces a same-named user one.
  * Hooks are the flat `hooks.json` layout; Cursor has no approval step, so their
  * trust is `null`. Plugins, marketplaces and permissions are not read yet.

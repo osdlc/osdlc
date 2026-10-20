@@ -178,6 +178,10 @@ export interface ReadPluginOptions extends ControlPlaneOptions {
  *
  * A missing or unreadable `plugin.json` is not an error: the metadata then reads
  * `harness` and `unknown`.
+ *
+ * @throws {ZodError} When the derived model fails {@link HarnessModelSchema}.
+ * @throws {Error} What `readFileSync` or `readdirSync` throws for a folder or file
+ * that exists but cannot be read.
  */
 export function readPlugin(pluginRoot: string, options: ReadPluginOptions = {}): HarnessModel {
   const manifest = loadManifest(pluginRoot)

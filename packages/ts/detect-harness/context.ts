@@ -12,18 +12,14 @@
  */
 
 import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs'
-import { isAbsolute, relative, resolve, sep } from 'node:path'
+import { resolve } from 'node:path'
 
 import type { AsyncCommandRunner } from '@osdlc/command-seam'
+import { isInside } from '@osdlc/path-guard'
 
 import type { DirEntry, JsonRead, ProviderContext, TextRead } from './contract.ts'
+import { asObject, errorMessage } from './json.ts'
 import type { DetectMode } from './report.ts'
-
-/** Whether `path` is `root` or inside it, by text. */
-export function isInside(root: string, path: string): boolean {
-  const rel = relative(root, path)
-  return rel === '' || (rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel))
-}
 
 function safeRealpath(path: string): string | null {
   try {
@@ -31,10 +27,6 @@ function safeRealpath(path: string): string | null {
   } catch {
     return null
   }
-}
-
-function message(err: unknown): string {
-  return err instanceof Error ? err.message : String(err)
 }
 
 export interface ContextArgs {
@@ -81,7 +73,7 @@ export function createContext(args: ContextArgs): ProviderContext {
         read =
           code === 'ENOENT' || code === 'ENOTDIR'
             ? { status: 'absent' }
-            : { status: 'error', error: message(err) }
+            : { status: 'error', error: errorMessage(err) }
       }
     }
     texts.set(key, read)
@@ -98,13 +90,10 @@ export function createContext(args: ContextArgs): ProviderContext {
     if (text.status !== 'parsed') read = text
     else {
       try {
-        const value: unknown = JSON.parse(text.text)
-        read =
-          value !== null && typeof value === 'object' && !Array.isArray(value)
-            ? { status: 'parsed', value: value as Record<string, unknown> }
-            : { status: 'error', error: 'not a JSON object' }
+        const value = asObject(JSON.parse(text.text) as unknown)
+        read = value ? { status: 'parsed', value } : { status: 'error', error: 'not a JSON object' }
       } catch (err) {
-        read = { status: 'error', error: `not valid JSON (${message(err)})` }
+        read = { status: 'error', error: `not valid JSON (${errorMessage(err)})` }
       }
     }
     jsons.set(key, read)

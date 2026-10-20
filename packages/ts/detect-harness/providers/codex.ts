@@ -14,6 +14,7 @@
 import { parse as parseToml } from 'smol-toml'
 
 import type { HarnessProvider, ProviderContext, ProviderResult } from '../contract.ts'
+import { errorMessage } from '../json.ts'
 import { LOCATIONS, type Scope } from '../locations.ts'
 import type { Hook, McpServer } from '../report.ts'
 import { scanInstructions, scanSkills } from '../read/artifacts.ts'
@@ -46,7 +47,7 @@ function readToml(
     log.record(loc.resolved, loc.scope, 'config', read, SCOPE_RANK[loc.scope])
     return value
   } catch (err) {
-    const error = `not valid TOML (${err instanceof Error ? err.message : String(err)})`
+    const error = `not valid TOML (${errorMessage(err)})`
     log.record(loc.resolved, loc.scope, 'config', { status: 'error', error }, SCOPE_RANK[loc.scope])
     return null
   }

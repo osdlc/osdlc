@@ -10,8 +10,6 @@
  * with `allowExec` does it run `<binary> --version`, for at most 3 seconds.
  */
 
-// Not fleet: this reads other vendors' folders under the home, and places no state of its own.
-// oxlint-disable-next-line no-restricted-imports
 import { homedir } from 'node:os'
 import { resolve } from 'node:path'
 
@@ -20,6 +18,7 @@ import { ran, spawnRunnerAsync } from '@osdlc/command-seam'
 import { createContext, forHarness } from './context.ts'
 import type { DetectOptions, HarnessProvider, ProviderContext } from './contract.ts'
 import { harnessId } from './harnesses.ts'
+import { errorMessage } from './json.ts'
 import { defaultSystemRoot, resolveTemplate } from './locations.ts'
 import { builtinProviders } from './providers/index.ts'
 import { unknownAuth } from './read/auth.ts'
@@ -120,7 +119,7 @@ async function runProvider(
     install = { ...notProbed(binary), probed: true }
     probeNotes.push({
       severity: 'warning',
-      message: `install probe failed: ${describe(err)}`,
+      message: `install probe failed: ${errorMessage(err)}`,
       source: null,
     })
   }
@@ -162,7 +161,7 @@ async function runProvider(
     return {
       ...base,
       status: 'error',
-      diagnostics: [...probeNotes, { severity: 'error', message: describe(err), source: null }],
+      diagnostics: [...probeNotes, { severity: 'error', message: errorMessage(err), source: null }],
     }
   }
 }
@@ -171,7 +170,8 @@ async function runProvider(
  * Detect the harnesses on this machine and in this project.
  *
  * Read-only: nothing is written, and nothing is run unless `allowExec` is set.
- * MCP secret values are redacted unless `includeValues` is set.
+ * MCP secret values (`env`, headers, URL credentials, secret-looking `args`) are
+ * redacted unless `includeValues` is set.
  */
 export async function detect(options: DetectOptions = {}): Promise<HarnessCatalog> {
   const mode = options.mode ?? 'full'
@@ -191,7 +191,7 @@ export async function detect(options: DetectOptions = {}): Promise<HarnessCatalo
     allowExec,
     readContents: options.readContents ?? false,
     includeValues: options.includeValues ?? false,
-    which: options.which ?? ((binary) => whichOnPath(binary, env, platform)),
+    which: options.which ?? ((binary) => whichOnPath(binary, env, platform, projectRoot)),
     makeRunner: options.makeRunner ?? ((binary) => spawnRunnerAsync(binary)),
     signal: options.signal ?? new AbortController().signal,
   })
@@ -207,8 +207,4 @@ export async function detect(options: DetectOptions = {}): Promise<HarnessCatalo
     allowExec,
     reports,
   }
-}
-
-function describe(err: unknown): string {
-  return err instanceof Error ? err.message : String(err)
 }

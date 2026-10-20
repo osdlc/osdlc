@@ -40,8 +40,8 @@ export { REDACTED }
 /** Options shared by the control-plane readers. */
 export interface ControlPlaneOptions {
   /**
-   * Keep MCP `env` values, `headers` values and `url` credentials as written.
-   * Default `false`: every such value is replaced with {@link REDACTED}.
+   * Keep MCP values as written: `env` and header values, URL credentials and
+   * secret-looking `args`. Default `false`: they are replaced with {@link REDACTED}.
    */
   includeValues?: boolean
 }
