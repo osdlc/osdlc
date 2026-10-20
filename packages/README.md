@@ -29,7 +29,7 @@ of them.
 ## Licenses
 
 Each library carries its own license, named in its manifest and kept as
-license files in its directory. `command-seam`, `tsconfig` and
+license files in its directory. `command-seam`, `typed-git`, `tsconfig` and
 `prettier-config` are MIT. The Rust crates and the other TypeScript
 libraries are `MIT OR Apache-2.0`. The root `LICENSE` of this repository
 applies to everything outside `packages/`.
@@ -114,6 +114,9 @@ Developed here, in this repository:
 - `packages/ts/path-guard` (`@osdlc/path-guard` on npm, a path containment
   guard: lexical validation, then a symlink-aware proof that a path stays
   inside its root; the TypeScript twin of the `path-guard` crate)
+- `packages/ts/typed-git` (`@osdlc/typed-git` on npm, a typed git client for
+  TypeScript, in a synchronous and an awaitable form; each verb declares what
+  absence means for it and every other failure throws)
 - `packages/ts/intersect` (`@osdlc/intersect` on npm, a path-pattern overlap
   engine: do two globs share a path, with a witness path, a registry and an
   optional filesystem layer)

@@ -424,6 +424,37 @@ importers:
         specifier: ~6.0.3
         version: 6.0.3
 
+  packages/ts/typed-git:
+    dependencies:
+      '@osdlc/command-seam':
+        specifier: workspace:^
+        version: link:../command-seam
+      hosted-git-info:
+        specifier: ^10.1.1
+        version: 10.1.1
+    devDependencies:
+      '@osdlc/prettier-config':
+        specifier: workspace:^
+        version: link:../prettier-config
+      '@osdlc/tsconfig':
+        specifier: workspace:^
+        version: link:../tsconfig
+      '@types/bun':
+        specifier: ^1.1.14
+        version: 1.4.3
+      '@types/node':
+        specifier: ^26.1.0
+        version: 26.6.5
+      oxlint:
+        specifier: ^1.65.0
+        version: 1.88.0
+      prettier:
+        specifier: 3.9.6
+        version: 3.9.6
+      typescript:
+        specifier: ~6.0.3
+        version: 6.0.3
+
   packages/ts/yaml-splice:
     devDependencies:
       '@osdlc/prettier-config':
@@ -1053,6 +1084,10 @@ packages:
 
   highlight.js@10.7.3:
     resolution: {integrity: sha512-tzcUFauisWKNHaRkN4Wjl/ZA07gENAjFl3J/c480dprkGTg5EQstgaNFqBfUqCq54kZRIEcreTsAgF/m2quD7A==}
+
+  hosted-git-info@10.1.1:
+    resolution: {integrity: sha512-DeOnSPAvOndYKfw075gt8yZzQ7S2hNztw34zBTfhIzLhmBTswIBg5/y+pqu/VD5cYWm5goAFTusDmUEmKZ0PEQ==}
+    engines: {node: ^22.22.2 || ^24.15.0 || >=26.0.0}
 
   human-id@4.2.2:
     resolution: {integrity: sha512-Z+8unD6em/MJwyrkWQ2M3wygRGI1+MztbutiNwk1DCuEPXOZRWGjtcMPZYP1exY9iNZMhd7ZOSMQSo9WYtiQRw==}
@@ -2151,6 +2186,10 @@ snapshots:
   has-flag@4.0.0: {}
 
   highlight.js@10.7.3: {}
+
+  hosted-git-info@10.1.1:
+    dependencies:
+      lru-cache: 11.5.3
 
   human-id@4.2.2: {}
 
