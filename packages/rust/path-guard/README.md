@@ -81,10 +81,9 @@ follows the platform's meaning of an absolute path: on Windows a path with a
 root but no drive is anchored at the current directory. The containment layer
 is tested on Linux, macOS and Windows, symlinks included.
 
-On Windows the containment layer reads paths as Windows does. A `..` folds as
-text before any link is followed: on Unix `link/..` is the parent of the link's
-target, and on Windows it is the directory that holds the link. The TypeScript
-twin follows the same rule.
+On Windows a `..` folds as text before any link is followed, as Windows reads a
+path: on Unix `link/..` is the parent of the link's target, and on Windows it is
+the directory that holds the link. The TypeScript twin follows the same rule.
 
 ## Stability
 

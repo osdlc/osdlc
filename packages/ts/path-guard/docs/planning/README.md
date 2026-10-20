@@ -43,6 +43,8 @@ package.
 - [T-05](tasks/T-05-ts-0-3-0-api.md): TypeScript 0.3.0 API
 - [T-06](tasks/T-06-parity-fixture-0-3-0.md): Parity fixture for 0.3.0
 - [T-07](tasks/T-07-terms-for-0-3-0.md): Terms for 0.3.0
+- [T-08](tasks/T-08-windows-verbatim-and-device-roots.md): The twins agree on
+  verbatim UNC and device roots
 
 ## Done tasks
 

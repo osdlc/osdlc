@@ -14,21 +14,24 @@ TypeScript package does ([D-03](../decisions/D-03-platforms.md)). The twins
 then give the same answer there, as the
 [twin rule](../../../../../README.md#twin-libraries) asks.
 
-## Today
+## Before
 
-The crate's `walk` (`packages/rust/path-guard/src/lib.rs`) folds a `..` behind
+Done in [#350](https://github.com/osdlc/osdlc/pull/350). This section says how
+the crate was before it.
+
+The crate's `walk` (`packages/rust/path-guard/src/lib.rs`) folded a `..` behind
 a missing name against the real path of the part before it, on every platform.
 That is the POSIX rule. Windows folds `..` as text before it follows a link, so
-there the crate can judge a different path from the one Windows opens, and
+there the crate could judge a different path from the one Windows opens, and
 accept a path that leaves the root.
 
 An example. The root is `C:\v\r`, and `C:\v\r\link` is a link to
 `C:\v\r\a\b\c`. The path `C:\v\r\link\m\..\..\..\x` does not exist yet. The
-crate folds it against the link's target and gets `C:\v\r\a\x`, which is
+crate folded it against the link's target and got `C:\v\r\a\x`, which is
 inside. Windows folds it as text and creates `C:\v\x`, which is outside.
 
-The parity suite in `tests/parity.rs` is `#[cfg(unix)]`, as are 12 of the
-crate's 33 unit tests, so CI does not see this on `windows-latest`.
+The parity suite in `tests/parity.rs` was `#[cfg(unix)]`, as were 12 of the
+crate's 33 unit tests, so CI did not see this on `windows-latest`.
 
 ## Approach
 
