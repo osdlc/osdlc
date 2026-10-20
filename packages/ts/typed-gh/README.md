@@ -36,8 +36,8 @@ The `examples` folder in the repository runs the same calls as tests.
   Octokit.
 - **You sign in with a token, a GitHub App or OAuth.** This package reads no token.
 - **You make many calls or poll in a loop.** Each call starts a `gh` process.
-- **You need the whole API typed.** This package covers the calls listed below. `api()` is a GET.
-  Anything else goes through `raw`.
+- **You need the whole API typed.** This package covers the calls listed below. `api()` is a GET
+  and `graphql()` is a query. Anything else goes through `raw`.
 
 ## How it compares
 
@@ -96,9 +96,79 @@ that decides whether to merge can then match every member.
 | **mutations** | throw `CommandFailed`, carrying argv and the full result. |
 | **`raw(argv)`** | hand back the raw `CommandResult`; you decide. |
 
-A query returns `null`, never `[]` on failure. `prList()` returning `[]` means
-*this repository has no open PRs*. `null` means *we could not ask*. If the two
-were the same, an expired credential would read as "nothing to do".
+A query returns `null`, never an empty list on failure. `prList()` returning
+`{ rows: [], truncated: false }` means *this repository has no open PRs*.
+`null` means *we could not ask*. If the two were the same, an expired
+credential would read as "nothing to do".
+
+## A list says when its limit cut it short
+
+`gh --limit` cuts a list without saying so. Every list query here asks for
+one row more than `limit` and returns `{ rows, truncated }`: at most `limit`
+rows, and `truncated: true` when there were more.
+
+```ts
+const page: ListResult<PullRequest> | null = gh.prList({ limit: 50 })
+
+if (page?.truncated) console.warn('more than 50 open PRs; raise the limit')
+```
+
+`prList`, `issueList`, `labelList`, `repoList` and `searchPrs` all work this
+way. A `limit` that is not a positive integer throws `RangeError`.
+
+## A repository without a clone
+
+By default a client talks to the repository of the clone at its directory.
+Name a repository, a host, or both, and every call targets them instead, so
+no clone is needed:
+
+```ts
+const acme = new Gh(process.cwd(), { repo: 'acme/widgets', hostname: 'github.acme.com' })
+
+acme.prView(42)
+acme.withRepo('acme/gadgets').prList()
+acme.api('repos/{owner}/{repo}/branches')
+```
+
+The target goes into the argv, so a `CommandFailed` shows which repository a
+call hit: `pr`, `issue` and `label` calls get `--repo github.acme.com/acme/widgets`,
+`api` calls get `--hostname` and a filled `{owner}/{repo}`, and `authStatus`
+asks about that host. `repoList` and `searchPrs` have no host flag in gh, so
+they get `GH_HOST` in the environment. `withRepo` and `at` keep the runner and
+the rest of the target.
+
+`hostname` is any GitHub host: `github.com`, a GitHub Enterprise Server host,
+or a `<tenant>.ghe.com` host. gh speaks only GitHub's API, so Forgejo, Gitea
+and GitLab are out of reach. A `repo` that is not `owner/name`, or a
+`hostname` that is not a bare host, throws `RangeError`.
+
+## Finding a pull request
+
+`prView` takes a number, a branch or a URL. A URL names its own repository
+and host, so the client's target is not added to it.
+
+```ts
+gh.prView(42)
+gh.prView('feature/login')
+gh.prView('https://github.acme.com/acme/widgets/pull/42')
+```
+
+`prFind` takes what a person typed and runs the lookup it needs:
+
+```ts
+const pr: PullRequest | null = gh.prFind(process.argv[2] ?? '')
+```
+
+It reads the text with `parsePrRef`, which starts no process: `42` and `#42`
+are numbers, `owner/name#42` is a number in that repository, a URL is a URL,
+and any other valid branch name is a branch. Bare digits are tried as a PR
+number first and then as a branch, since a branch can be named `42`. A branch
+gives its open PR, or else its newest closed or merged one, so a tool run
+after the merge still finds it.
+
+`prList({ head })` matches the head branch exactly: `task/foo` never returns
+`task/foo-2`. Two forks can share a branch name; ask for
+`headRepositoryOwner` to tell them apart.
 
 ## Two shape hazards it absorbs
 
@@ -253,8 +323,9 @@ await gh.prComment(42, 'rebased') // the comment's URL, or ''
 await gh.prUpdateBranch(42, 'rebase')
 ```
 
-These methods take `AsyncCallOptions`: `raw`, `rawChecked`, `prList`, `prView`, `openPrFor`, `prViewSettled`, `prBody`, `api`,
-`labelList`, `issueList` and `issueView`. The options are `timeoutMs` and an `AbortSignal` in
+These methods take `AsyncCallOptions`: `raw`, `rawChecked`, `prList`, `prView`, `prFind`,
+`openPrFor`, `prViewSettled`, `prBody`, `api`, `graphql`, `labelList`, `issueList`, `issueView`,
+`repoList`, `repoView` and `searchPrs`. The options are `timeoutMs` and an `AbortSignal` in
 `signal`.
 
 `api(endpoint, opts)` (on `Gh` and `AsyncGh`) is a REST GET through `gh api`.
@@ -263,7 +334,50 @@ It never throws; the result is `{ ok, status, etag, body, malformed, stderr, err
 was stopped (a missing binary, a timeout).
 Pass `etag` for a conditional request (`If-None-Match`; a 304 comes back as
 `status: 304, body: null`), or `includeHeaders: true` to read status and ETag
-without one. If `gh` prints more than one header block, the last one is read. `{owner}` and `{repo}` in the endpoint are filled in by gh.
+without one. If `gh` prints more than one header block, the last one is read. `{owner}` and
+`{repo}` in the endpoint come from the client's repo, or are filled in by gh from the clone.
+
+## Reading every page
+
+`api` with `paginate: true` fetches every page and, when each page is an array, joins them into one
+`body`:
+
+```ts
+const branches = gh.api('repos/{owner}/{repo}/branches', { paginate: true }).body
+```
+
+`graphql` (experimental) runs a query and returns each page's `data`. It returns `null` when the
+call failed or any page has `errors` or no `data`: a partial answer is no answer. `nodesAt` joins
+one connection's `nodes` across the pages, and is `null` when any page lacks them.
+
+```ts
+const query = `query($owner: String!, $name: String!, $endCursor: String) {
+  repository(owner: $owner, name: $name) {
+    pullRequests(first: 100, after: $endCursor) {
+      pageInfo { hasNextPage endCursor }
+      nodes { number title }
+    }
+  }
+}`
+const pages = gh.graphql(query, { owner: '{owner}', name: '{repo}' }, { paginate: true })
+const prs = nodesAt(pages, ['repository', 'pullRequests'])
+```
+
+With `paginate`, the query must take `$endCursor` and page one connection; gh follows only that
+one. `graphql` refuses a mutation with `RangeError`; send one through `raw`.
+
+## Repositories and search
+
+```ts
+const repos: ListResult<Repository> | null = gh.repoList('acme', { archived: false, limit: 200 })
+const repo: Repository | null = gh.repoView('acme/widgets')
+const hits: ListResult<PrSearchHit> | null = gh.searchPrs('TICKET-123', { owner: 'acme' })
+```
+
+A `Repository` carries `nameWithOwner`, `owner`, `name`, `description`, `defaultBranch`,
+`visibility`, `isArchived` and `url`. `gh search prs` has its own field set: a `PrSearchHit` names
+its `repository` but has no head or base branch, so it is not a `PullRequest`. Its `state` is
+upper-cased to match. The query takes GitHub's search syntax and may start with `-`.
 
 ## Injecting the subprocess seam
 
@@ -289,42 +403,52 @@ experimental.
 
 ### Clients
 
-- `Gh`: the synchronous client, bound to one working directory.
+- `Gh`: the synchronous client, bound to one working directory, and optionally a repository and
+  host.
 - `AsyncGh`: the awaitable client, with the same methods.
-- `AsyncCallOptions`: `timeoutMs` and `signal`, accepted by eleven methods of `AsyncGh`.
+- `GhOptions` and `AsyncGhOptions`: the runner, `repo` and `hostname` a client is built with.
+- `AsyncCallOptions`: `timeoutMs` and `signal`, accepted by sixteen methods of `AsyncGh`.
 - `defaultRunnerFactory` and `RunnerFactory`: how a client makes its default runner for `gh`.
 
 Methods on both clients:
 
 - Escape hatches: `raw` runs any `gh` call and returns the result. `rawChecked` throws on a failed
-  exit. `at` returns the same client rooted at another directory.
-- Pull request queries: `prList`, `prView`, `openPrFor`, `prViewSettled`, `prBody` and
-  `prReviewThreads`.
+  exit. `at` returns the same client rooted at another directory, and `withRepo` the same client
+  aimed at another repository.
+- Pull request queries: `prList`, `prView`, `prFind`, `openPrFor`, `prViewSettled`, `prBody`,
+  `prReviewThreads` and `searchPrs`.
 - Pull request changes: `createPr`, `editPr`, `editPrBody`, `prComment`, `prUpdateBranch`,
   `prSetDraft`, `prMerge`, `prDiff` and `createReview`.
 - Issue and label queries: `issueList`, `issueView` and `labelList`.
+- Repository queries: `repoList` and `repoView`.
 - Issue and label changes: `setIssueLabel`, `createLabel`, `editLabel` and `issueCommentEdit`.
-- REST: `api` is a GET through `gh api` that never throws.
+- REST and GraphQL: `api` is a GET through `gh api` and `graphql` a query; neither throws.
 - Setup checks: `installed`, `authenticated`, `authStatus` and `ready`.
 - `ownerRepo` reads the owner and repository from a remote URL. It starts no process.
 
 ### Verbs
 
-A verb is plain data: argv, a `checked` flag, optional stdin and a `parse` function. Each client
-method has a verb of the same name, except the escape hatches, `at`, `prViewSettled`, `openPrFor`,
-`authenticated`, `ready` and `ownerRepo`. `openPrsForBranch` is a verb with no method.
+A verb is plain data: argv, a `checked` flag, a `readOnly` flag, optional stdin and environment,
+and a `parse` function. `readOnly` is true for every query and `prDiff`, and false for every
+mutation, so a caller that keeps an allowlist of safe calls can check a verb before running it.
+Each verb takes an optional `GhTarget` last. Each client method has a verb of the same name, except
+the escape hatches, `at`, `withRepo`, `prViewSettled`, `openPrFor`, `prFind`, `authenticated`,
+`ready` and `ownerRepo`. `openPrsForBranch` is a verb with no method.
 
-- `GhVerb`: the shape of a verb.
+- `GhVerb`: the shape of a verb. `GhTarget`: the `repo` and `hostname` a verb talks to.
 - Verb builders: `prList`, `prView`, `prBody`, `openPrsForBranch`, `prReviewThreads`, `prDiff`,
   `createPr`, `editPr`, `editPrBody`, `prComment`, `prUpdateBranch`, `prSetDraft`, `prMerge`,
   `createReview`, `issueList`, `issueView`, `labelList`, `setIssueLabel`, `createLabel`,
-  `editLabel`, `issueCommentEdit`, `api`, `installed` and `authStatus`.
-- `pickPrForBranch`: the row whose head branch is exactly the one you name. `gh` matches a head
-  filter as a prefix.
-- Field lists: `PR_REF_FIELDS` (enough to identify a PR), `PR_LIST_FIELDS` (for triage) and
-  `PR_VIEW_FIELDS` (the full set).
-- Option and result types: `PrListOptions`, `IssueListOptions`, `CreatePrOptions`,
-  `CreateReviewOptions`, `ReviewComment`, `CreateLabelOptions`, `ApiOptions`, `ApiResponse`,
+  `editLabel`, `issueCommentEdit`, `repoList`, `repoView`, `searchPrs`, `api`, `graphql`,
+  `installed` and `authStatus`.
+- `pickPrForBranch`: the first row whose head branch is exactly the one you name, for rows that
+  came from somewhere other than `prList({ head })`, such as a `head:` search.
+- `nodesAt`: one connection's nodes, joined across `graphql` pages.
+- Field lists: `PR_REF_FIELDS` (enough to identify a PR), `PR_LIST_FIELDS` (for triage),
+  `PR_VIEW_FIELDS` (the full set), `REPO_FIELDS` and `SEARCH_PR_FIELDS`.
+- Option and result types: `ListResult`, `PrListOptions`, `IssueListOptions`, `RepoListOptions`,
+  `SearchPrsOptions`, `CreatePrOptions`, `CreateReviewOptions`, `ReviewComment`,
+  `CreateLabelOptions`, `ApiOptions`, `ApiResponse`, `GraphqlOptions`, `GraphqlVariable`,
   `AuthStatus`, `PrMergeMethod` and `ReviewThread`.
 
 ### Parsers
@@ -334,14 +458,18 @@ method has a verb of the same name, except the escape hatches, `at`, `prViewSett
 - `normalizeAuthorLogin`: drops a `[bot]` suffix from a login.
 - `parseOwnerRepo`: reads a remote URL into `{ owner, repo }`, or `null`.
 - `ownerRepoSlug`: writes `{ owner, repo }` as `owner/repo`.
-- `parsePrUrl`: reads a pull request URL into its owner, repository and number, or `null`.
+- `parsePrUrl`: reads a pull request URL on any GitHub host into its host, owner, repository and
+  number, or `null`.
+- `parsePrRef`: reads what a person typed to name a pull request into a `PrRef`, or `null`.
 
 ### Types
 
-- Model: `PullRequest`, `Review`, `Comment`, `CheckRun`, `Actor`, `Label` and `IssueRow`.
-- Enums: `PullRequestState`, `MergeableState`, `MergeStateStatus`, `ReviewDecision`, `ReviewState`
-  and `CheckConclusion`.
-- `OwnerRepo` and `PullRequestRef`: a repository, and a pull request in one.
+- Model: `PullRequest`, `Review`, `Comment`, `CheckRun`, `Actor`, `Label`, `IssueRow`,
+  `Repository` and `PrSearchHit`.
+- Enums: `PullRequestState`, `MergeableState`, `MergeStateStatus`, `ReviewDecision`, `ReviewState`,
+  `CheckConclusion` and `RepositoryVisibility`.
+- `OwnerRepo`, `PullRequestRef` and `PrRef`: a repository, a pull request in one, and what a person
+  typed to name a pull request.
 
 ### From the command seam
 
@@ -380,8 +508,8 @@ shell, so nothing in it is specific to one shell.
 
 - **Closing a PR and deleting a branch.** `prMerge` merges and leaves the branch alone. Closing and
   deleting belong to a caller's own policy layer, where the audit trail lives.
-- **A full REST client.** `api()` is a GET; anything else goes through
-  `raw(["api", …])`.
+- **A full REST or GraphQL client.** `api()` is a GET and `graphql()` a query; anything else goes
+  through `raw(["api", …])`.
 - **Anything that reads a token.**
 
 ## Licence
