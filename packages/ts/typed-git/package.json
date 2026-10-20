@@ -2,7 +2,8 @@
   "name": "@osdlc/typed-git",
   "version": "0.5.0",
   "description": "A typed git client for TypeScript, sync and awaitable. Each verb declares what absence means for it; every other failure throws. git.try.* inspects, raw() bypasses — over an injectable backend that drives the git CLI or any other implementation.",
-  "license": "MIT",
+  "license": "MIT OR Apache-2.0",
+  "author": "sksizer",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/osdlc/osdlc.git",
@@ -23,6 +24,9 @@
   },
   "type": "module",
   "sideEffects": false,
+  "engines": {
+    "node": "^22.22.2 || ^24.15.0 || >=26.0.0"
+  },
   "exports": {
     ".": {
       "bun": "./index.ts",
@@ -57,7 +61,8 @@
     "hosted-git-info.d.ts",
     "README.md",
     "CHANGELOG.md",
-    "LICENSE",
+    "LICENSE-MIT",
+    "LICENSE-APACHE",
     "SECURITY.md",
     "CONTRIBUTING.md"
   ],

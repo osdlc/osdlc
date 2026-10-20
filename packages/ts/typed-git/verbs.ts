@@ -9,6 +9,8 @@
  *
  * {@link gate} is the single place a git result becomes either a value or a
  * `CommandFailed`. Both clients call it, so they cannot disagree.
+ *
+ * `GitVerb` and `gate` are internal: the package entries do not export them.
  */
 
 import { CommandFailed, type CommandResult } from '@osdlc/command-seam'
@@ -22,12 +24,19 @@ export interface GitVerb<T> {
   /** Written to the child's stdin when set. */
   input?: string | undefined
   /**
+   * Environment entries the verb needs, set over the client's and the call's
+   * `env`. The integration verbs set `LC_ALL=C` here so their parsers read
+   * English git output.
+   */
+  env?: Readonly<Record<string, string>> | undefined
+  /**
    * Exit codes that mean "asked and answered: not there" for this verb — not
    * "git failed". `config --get` exits 1 for an unset key, `cat-file -e` exits
    * 1 for a missing object. Those codes reach {@link GitVerb.parse}, which
    * turns them into the verb's absence value; any other non-zero exit throws.
    *
-   * A mutation declares `[]`: nothing about a failed `push` is an answer. That
+   * A mutation declares `[]`: nothing about a failed `push` is an answer
+   * (`configRemoveSection` is the one exception). That
    * is the whole checked/unchecked distinction, so there is no `checked` flag
    * to contradict it.
    */
@@ -61,9 +70,17 @@ export interface GitVerb<T> {
  * this table (`configGet`, `resolveRef`, `mergeBase`, `checkIgnore`,
  * `isAncestor`, `grep`, `revParse`). Read as an absence it would answer "no
  * such key / ref / match" for a git that never ran.
+ *
+ * A result flagged `outputIncomplete` is a failure too. The child exited, but
+ * the runner stopped reading at the output cap (`maxOutputBytes`) or at a
+ * timeout, so a parse would read cut-short output as the whole answer.
  */
 export function gate<T>(verb: GitVerb<T>, result: CommandResult, argv?: string[]): T {
-  if (result.neverExited || (result.exitCode !== 0 && !verb.absent.includes(result.exitCode))) {
+  if (
+    result.neverExited ||
+    result.outputIncomplete ||
+    (result.exitCode !== 0 && !verb.absent.includes(result.exitCode))
+  ) {
     throw new CommandFailed(argv ?? verb.argv, result)
   }
   return verb.parse(result, argv ?? verb.argv)
@@ -83,6 +100,20 @@ export function mergeEnv(
   if (base === undefined) return call
   if (call === undefined) return base
   return { ...base, ...call }
+}
+
+/**
+ * Split a variadic `revParse` call into its string args and a trailing
+ * options object, when there is one. Shared by `Git` and `AsyncGit`.
+ */
+export function splitTrailingOptions<O extends object>(
+  args: ReadonlyArray<string | O>,
+): [string[], O] {
+  const last = args[args.length - 1]
+  if (last !== undefined && typeof last !== 'string') {
+    return [args.slice(0, -1) as string[], last]
+  }
+  return [args as string[], {} as O]
 }
 
 /**
@@ -222,6 +253,67 @@ function nothing(): void {}
 /** No exit code is an answer here — the gate throws on any non-zero exit. */
 const NONE: readonly number[] = []
 
+/**
+ * Refuse a ref, remote, URL, path, pattern or config-key positional that
+ * starts with `-`.
+ *
+ * git reads such a value as an option. `--upload-pack=<cmd>` given as a remote
+ * runs `<cmd>`. The check throws a `TypeError` before anything spawns, so
+ * `try` and `soft` let it through. Write `./-name` for a path that starts with
+ * `-`, and `@{-1}` for the previous branch.
+ */
+function positional(verb: string, param: string, value: string): string {
+  if (value.startsWith('-')) {
+    throw new TypeError(
+      `typed-git: ${verb}: ${param} must not start with "-" (got ${JSON.stringify(value)})`,
+    )
+  }
+  return value
+}
+
+/**
+ * A config key for the `config` reads: {@link positional}, plus a section and
+ * a name.
+ *
+ * git exits 1 for a key with no `.`, or one that starts or ends with `.`. That
+ * is the code the reads take as "unset", so a typo would read as no value. The
+ * check throws a `TypeError` instead, before anything spawns.
+ */
+function configKey(verb: string, key: string): string {
+  positional(verb, 'key', key)
+  if (!key.includes('.') || key.startsWith('.') || key.endsWith('.')) {
+    throw new TypeError(
+      `typed-git: ${verb}: key must be <section>.<name> (got ${JSON.stringify(key)})`,
+    )
+  }
+  return key
+}
+
+/**
+ * A `--depth` value, refused with a `TypeError` unless it is a positive safe
+ * integer. git rejects the others too, but only after it runs.
+ */
+function depthArg(verb: string, depth: number): string {
+  if (!Number.isSafeInteger(depth) || depth < 1) {
+    throw new TypeError(
+      `typed-git: ${verb}: depth must be a positive integer (got ${JSON.stringify(depth)})`,
+    )
+  }
+  return `--depth=${depth}`
+}
+
+/** {@link positional}, for an optional value. */
+function optionalPositional(
+  verb: string,
+  param: string,
+  value: string | undefined,
+): string | undefined {
+  return value === undefined ? undefined : positional(verb, param, value)
+}
+
+/** The child env that makes git print English, whatever the caller's locale. */
+const C_LOCALE: Readonly<Record<string, string>> = Object.freeze({ LC_ALL: 'C' })
+
 // ── queries ─────────────────────────────────────────────────────────────────
 
 /**
@@ -233,7 +325,7 @@ const NONE: readonly number[] = []
  */
 export function showAtRev(rev: string, relPath: string): GitVerb<string | null> {
   return {
-    argv: ['show', `${rev}:${relPath}`],
+    argv: ['show', `${positional('showAtRev', 'rev', rev)}:${relPath}`],
     absent: [128],
     // NOT trimmedOrNull: file content is returned verbatim, trailing newline
     // included, because a caller round-tripping a blob must get its bytes.
@@ -270,7 +362,7 @@ export function revParse(...args: string[]): GitVerb<string | null> {
  */
 export function resolveRef(ref: string): GitVerb<string | null> {
   return {
-    argv: ['rev-parse', '--verify', '--quiet', ref],
+    argv: ['rev-parse', '--verify', '--quiet', positional('resolveRef', 'ref', ref)],
     absent: [1],
     parse: trimmedOrNull,
   }
@@ -325,6 +417,20 @@ export function gitCommonDir(): GitVerb<string | null> {
 }
 
 /**
+ * This worktree's own `.git` dir as an absolute path, or null outside a repo
+ * (`rev-parse --absolute-git-dir`).
+ *
+ * In a linked worktree it is `<common>/worktrees/<name>`, not the shared dir
+ * {@link gitCommonDir} gives. Per-worktree state lives here: a rebase in
+ * progress is a `rebase-merge` or `rebase-apply` directory in it.
+ *
+ * `absent: [128]`, as for {@link gitCommonDir}: "not a repository" is an answer.
+ */
+export function gitDir(): GitVerb<string | null> {
+  return { argv: ['rev-parse', '--absolute-git-dir'], absent: [128], parse: trimmedOrNull }
+}
+
+/**
  * The full refname a symbolic ref points at, or null when it is not one.
  *
  * `absent: [128]` because "not a symbolic ref" is the common, meaningful
@@ -337,7 +443,11 @@ export function gitCommonDir(): GitVerb<string | null> {
  * rather than taking the last segment: the name may contain slashes.
  */
 export function symbolicRef(ref: string): GitVerb<string | null> {
-  return { argv: ['symbolic-ref', ref], absent: [128], parse: trimmedOrNull }
+  return {
+    argv: ['symbolic-ref', positional('symbolicRef', 'ref', ref)],
+    absent: [128],
+    parse: trimmedOrNull,
+  }
 }
 
 /**
@@ -352,13 +462,7 @@ export function currentBranch(): GitVerb<string | null> {
   return { argv: ['branch', '--show-current'], absent: NONE, parse: trimmedOrNull }
 }
 
-/**
- * `git status --porcelain` lines; empty array on a clean tree, and a throw
- * outside a repository (exit 128).
- *
- * Verbatim: the first two columns are the status, so ` M f.ts` (unstaged
- * modification) must not be trimmed down to `M f.ts` (staged one).
- */
+/** Options for {@link statusPorcelain}. */
 export interface StatusPorcelainOptions {
   /**
    * Pathspecs, passed after `--`. Narrows the report to one subtree.
@@ -366,7 +470,13 @@ export interface StatusPorcelainOptions {
   paths?: string[] | undefined
 }
 
-/** `git status --porcelain` lines. See {@link StatusPorcelainOptions}. */
+/**
+ * `git status --porcelain` lines; empty array on a clean tree, and a throw
+ * outside a repository (exit 128).
+ *
+ * Verbatim: the first two columns are the status, so ` M f.ts` (unstaged
+ * modification) must not be trimmed down to `M f.ts` (staged one).
+ */
 export function statusPorcelain(opts: StatusPorcelainOptions = {}): GitVerb<string[]> {
   const argv = ['status', '--porcelain']
   if (opts.paths !== undefined && opts.paths.length > 0) argv.push('--', ...opts.paths)
@@ -417,7 +527,7 @@ export function statusEntries(): GitVerb<StatusEntry[]> {
 /** Local branch shortnames matching `pattern` (all when omitted). */
 export function branches(pattern?: string | undefined): GitVerb<string[]> {
   const argv = ['branch', '--list', '--format=%(refname:short)']
-  if (pattern !== undefined) argv.push(pattern)
+  if (pattern !== undefined) argv.push(positional('branches', 'pattern', pattern))
   return { argv, absent: NONE, parse: trimmedLines }
 }
 
@@ -470,7 +580,11 @@ export function worktrees(): GitVerb<Worktree[]> {
  * (exit 1). A rev that does not resolve exits 128 and throws.
  */
 export function mergeBase(a: string, b: string): GitVerb<string | null> {
-  return { argv: ['merge-base', a, b], absent: [1], parse: trimmedOrNull }
+  return {
+    argv: ['merge-base', positional('mergeBase', 'a', a), positional('mergeBase', 'b', b)],
+    absent: [1],
+    parse: trimmedOrNull,
+  }
 }
 
 /**
@@ -482,7 +596,7 @@ export function mergeBase(a: string, b: string): GitVerb<string | null> {
  */
 export function logSubject(ref: string): GitVerb<string | null> {
   return {
-    argv: ['log', '-1', '--format=%s', ref],
+    argv: ['log', '-1', '--format=%s', positional('logSubject', 'ref', ref)],
     absent: [128],
     parse(r) {
       if (r.exitCode !== 0) return null
@@ -493,9 +607,73 @@ export function logSubject(ref: string): GitVerb<string | null> {
   }
 }
 
+/** Which config file a `config` verb reads or writes. */
+export type ConfigScope = 'local' | 'global' | 'system'
+
+/** Options for {@link configGet}, {@link configGetAll} and {@link configGetBool}. */
+export interface ConfigGetOptions {
+  /**
+   * Read one file only. Omitted means every file git reads, the last value
+   * winning. `local` outside a repository exits 128 and throws.
+   */
+  scope?: ConfigScope | undefined
+}
+
+/** The `config` read argv: the scope flag when one is given, the flags, the checked key. */
+function configRead(flags: string[], key: string, opts: ConfigGetOptions): string[] {
+  const argv = ['config']
+  if (opts.scope !== undefined) argv.push(`--${opts.scope}`)
+  argv.push(...flags, key)
+  return argv
+}
+
 /** `git config --get <key>`, or null when unset (exit 1). */
-export function configGet(key: string): GitVerb<string | null> {
-  return { argv: ['config', '--get', key], absent: [1], parse: trimmedOrNull }
+export function configGet(key: string, opts: ConfigGetOptions = {}): GitVerb<string | null> {
+  return {
+    argv: configRead(['--get'], configKey('configGet', key), opts),
+    absent: [1],
+    parse: trimmedOrNull,
+  }
+}
+
+/**
+ * Every value of a multi-valued key (`git config --get-all -z <key>`), in the
+ * order git reads them. `[]` when the key is unset (exit 1).
+ *
+ * `-z` ends each value with NUL, so a value holding a newline stays whole and
+ * an empty value is kept as `""`. Values are verbatim, not trimmed.
+ */
+export function configGetAll(key: string, opts: ConfigGetOptions = {}): GitVerb<string[]> {
+  return {
+    argv: configRead(['--get-all', '-z'], configKey('configGetAll', key), opts),
+    absent: [1],
+    parse(r) {
+      if (r.exitCode !== 0) return []
+      // Each value ends with NUL, so the last field is always the empty tail.
+      return r.stdout.split('\x00').slice(0, -1)
+    },
+  }
+}
+
+/**
+ * A key read as a boolean (`git config --type=bool --get <key>`), or null when
+ * unset (exit 1).
+ *
+ * git does the reading: `yes`, `on`, `1` and a bare key are `true`. A value
+ * git cannot read as a boolean exits 128 and throws.
+ */
+export function configGetBool(key: string, opts: ConfigGetOptions = {}): GitVerb<boolean | null> {
+  return {
+    argv: configRead(['--type=bool', '--get'], configKey('configGetBool', key), opts),
+    absent: [1],
+    parse(r, ranArgv) {
+      if (r.exitCode !== 0) return null
+      const out = r.stdout.trim()
+      if (out === 'true') return true
+      if (out === 'false') return false
+      throw new CommandFailed(ranArgv, r)
+    },
+  }
 }
 
 /**
@@ -515,10 +693,18 @@ export function configGet(key: string): GitVerb<string | null> {
  */
 export function objectExists(rev: string): GitVerb<boolean> {
   return {
-    argv: ['cat-file', '-e', rev],
+    argv: ['cat-file', '-e', positional('objectExists', 'rev', rev)],
     absent: [1, 128],
     parse: (r) => r.exitCode === 0,
   }
+}
+
+/** Options for {@link lsRemote}. */
+export interface LsRemoteOptions {
+  /** `--heads` — branches only. */
+  heads?: boolean | undefined
+  /** `--tags` — tags only. Set with `heads` to ask for both. */
+  tags?: boolean | undefined
 }
 
 /**
@@ -527,14 +713,6 @@ export function objectExists(rev: string): GitVerb<boolean> {
  * `absent: []` — a remote with no matching refs answers with exit 0 and no
  * output, so `[]` means "no refs". An unreachable remote exits 128 and throws.
  */
-export interface LsRemoteOptions {
-  /** `--heads` — branches only. */
-  heads?: boolean | undefined
-  /** `--tags` — tags only. Set with `heads` to ask for both. */
-  tags?: boolean | undefined
-}
-
-/** Refs on a remote, optionally pattern-filtered. See {@link LsRemoteOptions}. */
 export function lsRemote(
   remote: string,
   pattern?: string | undefined,
@@ -543,8 +721,8 @@ export function lsRemote(
   const argv = ['ls-remote']
   if (opts.heads) argv.push('--heads')
   if (opts.tags) argv.push('--tags')
-  argv.push(remote)
-  if (pattern !== undefined) argv.push(pattern)
+  argv.push(positional('lsRemote', 'remote', remote))
+  if (pattern !== undefined) argv.push(positional('lsRemote', 'pattern', pattern))
   return {
     argv,
     absent: NONE,
@@ -715,7 +893,9 @@ export function forEachRef(
   const argv = ['for-each-ref', `--format=${opts.format ?? REF_FORMAT}`]
   if (opts.sort !== undefined) argv.push(`--sort=${opts.sort}`)
   if (opts.count !== undefined) argv.push(`--count=${opts.count}`)
-  argv.push(...(typeof pattern === 'string' ? [pattern] : pattern))
+  for (const p of typeof pattern === 'string' ? [pattern] : pattern) {
+    argv.push(positional('forEachRef', 'pattern', p))
+  }
   return { argv, absent: NONE, parse: lines }
 }
 
@@ -764,7 +944,8 @@ export function diffNameOnly(opts: DiffNameOnlyOptions = {}): GitVerb<string[]> 
   const argv = ['diff', '--name-only', '-z']
   if (opts.cached) argv.push('--cached')
   if (opts.diffFilter !== undefined) argv.push(`--diff-filter=${opts.diffFilter}`)
-  if (opts.rangeArgs !== undefined) argv.push(...opts.rangeArgs)
+  for (const token of opts.rangeArgs ?? [])
+    argv.push(positional('diffNameOnly', 'rangeArgs', token))
   if (opts.paths !== undefined && opts.paths.length > 0) argv.push('--', ...opts.paths)
   return { argv, absent: NONE, parse: nulFields }
 }
@@ -783,7 +964,7 @@ export interface DiffStatOptions {
  */
 export function diffStat(opts: DiffStatOptions = {}): GitVerb<string> {
   const argv = ['diff', '--stat']
-  if (opts.rangeArgs !== undefined) argv.push(...opts.rangeArgs)
+  for (const token of opts.rangeArgs ?? []) argv.push(positional('diffStat', 'rangeArgs', token))
   if (opts.paths !== undefined && opts.paths.length > 0) argv.push('--', ...opts.paths)
   return { argv, absent: NONE, parse: (r) => r.stdout }
 }
@@ -842,7 +1023,7 @@ export function diffNameStatus(opts: DiffNameStatusOptions = {}): GitVerb<DiffEn
   const argv = ['diff', '--name-status', '-z']
   if (opts.cached) argv.push('--cached')
   if (opts.noRenames) argv.push('--no-renames')
-  if (opts.range !== undefined) argv.push(opts.range)
+  if (opts.range !== undefined) argv.push(positional('diffNameStatus', 'range', opts.range))
   if (opts.paths !== undefined && opts.paths.length > 0) argv.push('--', ...opts.paths)
   return { argv, absent: NONE, parse: nameStatusEntries }
 }
@@ -909,11 +1090,11 @@ export function log(opts: LogOptions = {}): GitVerb<string> {
   if (opts.nameStatus) argv.push('--name-status')
   if (opts.numstat) argv.push('--numstat')
   if (opts.relative) argv.push('--relative')
-  if (opts.rev !== undefined) argv.push(opts.rev)
-  if (opts.range !== undefined) argv.push(opts.range)
+  if (opts.rev !== undefined) argv.push(positional('log', 'rev', opts.rev))
+  if (opts.range !== undefined) argv.push(positional('log', 'range', opts.range))
   // `--not` negates every rev after it, so the positive revs must precede it.
   if (opts.notRefs !== undefined && opts.notRefs.length > 0) {
-    argv.push('--not', ...opts.notRefs)
+    argv.push('--not', ...opts.notRefs.map((ref) => positional('log', 'notRefs', ref)))
   }
   if (opts.paths !== undefined && opts.paths.length > 0) argv.push('--', ...opts.paths)
   // Verbatim, trailing newline included: the caller's format decides where a
@@ -957,7 +1138,7 @@ export function lsTree(rev: string, opts: LsTreeOptions = {}): GitVerb<TreeEntry
   const argv = ['ls-tree', '-z']
   if (opts.recursive) argv.push('-r')
   if (opts.long) argv.push('--long')
-  argv.push(rev)
+  argv.push(positional('lsTree', 'rev', rev))
   if (opts.paths !== undefined && opts.paths.length > 0) argv.push('--', ...opts.paths)
   return {
     argv,
@@ -1012,46 +1193,53 @@ export interface DiffTreeOptions {
   paths?: string[] | undefined
 }
 
+/** Options for {@link diffText}. */
+export interface DiffTextOptions {
+  /** `--cached` — diff the index against `rev` (or HEAD) rather than the worktree. */
+  staged?: boolean | undefined
+  /** Pathspecs, passed after `--`. */
+  paths?: string[] | undefined
+}
+
 /**
- * The unified diff text itself, for the same rev/staged shape
- * {@link diffNameOnly} selects paths for. Empty string on failure or when
+ * The unified diff text (`git diff [--cached] [rev] [-- paths]`), for the same
+ * rev and staged shape {@link diffNameOnly} selects paths for. Empty when
  * nothing differs.
+ *
+ * `absent: []`. A rev that does not resolve exits 128, and outside a
+ * repository `git diff` exits 129. Both throw, so "git failed" never reads as
+ * "no diff". `git.try.diffText` reports them as `{ ok: false }`.
  */
-export function diffText(
-  rev?: string | undefined,
-  opts: { staged?: boolean | undefined; paths?: string[] | undefined } = {},
-): GitVerb<string> {
+export function diffText(rev?: string | undefined, opts: DiffTextOptions = {}): GitVerb<string> {
   const argv = ['diff']
   if (opts.staged === true) argv.push('--cached')
-  if (rev !== undefined) argv.push(rev)
+  const from = optionalPositional('diffText', 'rev', rev)
+  if (from !== undefined) argv.push(from)
   if (opts.paths !== undefined && opts.paths.length > 0) argv.push('--', ...opts.paths)
-  // Any non-zero exit is reported as "no diff" rather than thrown: a bad rev
-  // (128) and being outside a repository (129) both mean there is nothing to
-  // judge, which is what the caller acts on either way.
-  return { argv, absent: [1, 128, 129], parse: (r) => (r.exitCode === 0 ? r.stdout : '') }
+  return { argv, absent: NONE, parse: (r) => r.stdout }
 }
 
 /**
  * One untracked file rendered as an all-added diff
  * (`diff --no-index -- /dev/null <path>`), so a new file reaches a consumer in
- * the same shape as a modified one. Empty string when unreadable.
+ * the same shape as a modified one. An empty existing file still gives a diff
+ * header.
  *
  * `--no-index` exits 1 whenever the inputs differ, which for a real file is
- * always — so a non-zero exit here is the success case, and only empty output
- * means failure.
+ * always, so exit 1 is the success case. git also exits 1, with empty stdout,
+ * for a path it cannot read; that throws `CommandFailed`. Exit 2 (a usage or
+ * read error) throws too.
  */
 export function diffAddedFile(relPath: string): GitVerb<string> {
   return {
     argv: ['diff', '--no-index', '--', '/dev/null', relPath],
-    // 1 is the SUCCESS case here — `--no-index` returns it whenever the inputs
-    // differ, which for a real file is always. 2 is its usage/read error, and
-    // yields the empty stdout the parser already treats as failure.
-    absent: [1, 2],
-    parse: (r) => r.stdout,
+    absent: [1],
+    parse(r, ranArgv) {
+      if (r.exitCode !== 0 && r.stdout === '') throw new CommandFailed(ranArgv, r)
+      return r.stdout
+    },
   }
 }
-
-// ── mutations (checked — the caller throws CommandFailed on non-zero) ────────
 
 /**
  * The paths and statuses one commit changed (`git diff-tree --name-status -z`).
@@ -1071,7 +1259,7 @@ export function diffTree(rev: string, opts: DiffTreeOptions = {}): GitVerb<DiffE
   if (opts.root) argv.push('--root')
   if (opts.noRenames) argv.push('--no-renames')
   if (opts.findRenames) argv.push('-M')
-  argv.push('--name-status', '-z', rev)
+  argv.push('--name-status', '-z', positional('diffTree', 'rev', rev))
   if (opts.paths !== undefined && opts.paths.length > 0) argv.push('--', ...opts.paths)
   return { argv, absent: NONE, parse: nameStatusEntries }
 }
@@ -1097,7 +1285,7 @@ export function diffTreeNumstat(rev: string, opts: DiffTreeOptions = {}): GitVer
   const argv = ['diff-tree', '-r', '--no-commit-id']
   if (opts.root) argv.push('--root')
   if (opts.noRenames) argv.push('--no-renames')
-  argv.push('--numstat', '-z', rev)
+  argv.push('--numstat', '-z', positional('diffTreeNumstat', 'rev', rev))
   if (opts.paths !== undefined && opts.paths.length > 0) argv.push('--', ...opts.paths)
   return {
     argv,
@@ -1157,7 +1345,8 @@ export function grep(pattern: string, opts: GrepOptions = {}): GitVerb<string[]>
   if (opts.lineNumber) argv.push('-n')
   if (opts.extendedRegexp) argv.push('-E')
   if (opts.noColor) argv.push('--no-color')
-  argv.push(pattern)
+  // `-e` marks the pattern as a pattern, so one that starts with `-` is searched for.
+  argv.push('-e', pattern)
   if (opts.paths !== undefined && opts.paths.length > 0) argv.push('--', ...opts.paths)
   return { argv, absent: [1], parse: lines }
 }
@@ -1173,7 +1362,12 @@ export function grep(pattern: string, opts: GrepOptions = {}): GitVerb<string[]>
  */
 export function isAncestor(a: string, b: string): GitVerb<boolean> {
   return {
-    argv: ['merge-base', '--is-ancestor', a, b],
+    argv: [
+      'merge-base',
+      '--is-ancestor',
+      positional('isAncestor', 'a', a),
+      positional('isAncestor', 'b', b),
+    ],
     absent: [1],
     parse: (r) => r.exitCode === 0,
   }
@@ -1198,7 +1392,13 @@ export interface AheadBehind {
  * rev that does not resolve exits 128 and throws.
  */
 export function aheadBehind(base: string, tip: string): GitVerb<AheadBehind> {
-  const argv = ['rev-list', '--left-right', '--count', `${base}...${tip}`]
+  positional('aheadBehind', 'tip', tip)
+  const argv = [
+    'rev-list',
+    '--left-right',
+    '--count',
+    `${positional('aheadBehind', 'base', base)}...${tip}`,
+  ]
   return {
     argv,
     absent: NONE,
@@ -1214,7 +1414,7 @@ export function aheadBehind(base: string, tip: string): GitVerb<AheadBehind> {
 }
 
 /**
- * Configured remote names (`git remote`).
+ * Configured remote names (`git remote`). The clients call it as `remotes()`.
  *
  * `absent: []` — a repository with no remotes is exit 0 with empty stdout.
  * Outside a repository git exits 128 and this throws.
@@ -1223,18 +1423,76 @@ export function remote(): GitVerb<string[]> {
   return { argv: ['remote'], absent: NONE, parse: trimmedLines }
 }
 
+/** Options for {@link remoteGetUrl} and {@link remoteGetUrls}. */
+export interface RemoteGetUrlOptions {
+  /**
+   * `--push` — the push URL. git falls back to the fetch URL when the remote
+   * sets no `pushurl`.
+   */
+  push?: boolean | undefined
+}
+
 /**
  * A remote's fetch URL (`git remote get-url <name>`), or null when no remote
- * by that name is configured.
+ * by that name is configured. With `push`, its push URL. When a remote has
+ * several URLs this is the first; {@link remoteGetUrls} gives them all.
  *
  * `absent: [2]` — measured: git reports an unknown remote as exit 2, not 1 or
  * 128. Outside a repository it exits 128 and this throws.
  */
-export function remoteGetUrl(name: string): GitVerb<string | null> {
-  return { argv: ['remote', 'get-url', name], absent: [2], parse: trimmedOrNull }
+export function remoteGetUrl(name: string, opts: RemoteGetUrlOptions = {}): GitVerb<string | null> {
+  const argv = ['remote', 'get-url']
+  if (opts.push) argv.push('--push')
+  argv.push(positional('remoteGetUrl', 'name', name))
+  return { argv, absent: [2], parse: trimmedOrNull }
 }
 
-// ── mutations (absent: [] — any non-zero exit throws CommandFailed) ──────────
+/**
+ * Every URL a remote has (`git remote get-url --all <name>`), or `[]` when no
+ * remote by that name is configured (exit 2).
+ *
+ * A remote can carry several URLs (`remote set-url --add`). A caller that
+ * checks a remote before deleting something compares all of them, not the
+ * first.
+ */
+export function remoteGetUrls(name: string, opts: RemoteGetUrlOptions = {}): GitVerb<string[]> {
+  const argv = ['remote', 'get-url', '--all']
+  if (opts.push) argv.push('--push')
+  argv.push(positional('remoteGetUrls', 'name', name))
+  return { argv, absent: [2], parse: trimmedLines }
+}
+
+/**
+ * The branch a remote's HEAD points at, as a full refname such as
+ * `refs/heads/main` (`git ls-remote --symref <remote> HEAD`).
+ *
+ * It asks the remote over the network. {@link symbolicRef} on
+ * `refs/remotes/<remote>/HEAD` reads the local copy instead, which a clone
+ * may never have set.
+ *
+ * `absent: []`. null means the remote answered but names no default branch:
+ * an empty repository, or a detached HEAD. An unreachable remote exits 128
+ * and throws.
+ */
+export function remoteHead(remote: string): GitVerb<string | null> {
+  return {
+    argv: ['ls-remote', '--symref', positional('remoteHead', 'remote', remote), 'HEAD'],
+    absent: NONE,
+    parse(r) {
+      // `ref: refs/heads/main<TAB>HEAD`, then the `<sha><TAB>HEAD` row.
+      for (const line of splitLines(r.stdout)) {
+        const m = /^ref: (\S+)\tHEAD$/.exec(line)
+        if (m !== null) return m[1]!
+      }
+      return null
+    },
+  }
+}
+
+// ── mutations ───────────────────────────────────────────────────────────────
+//
+// absent: [], so any non-zero exit throws CommandFailed. `configRemoveSection`
+// is the one exception: it declares 128.
 
 /** Options for {@link fetch}. */
 export interface FetchOptions {
@@ -1250,6 +1508,13 @@ export interface FetchOptions {
    * and a caller that only wanted refs updated gets a corrupted one.
    */
   noWriteFetchHead?: boolean | undefined
+  /**
+   * `--depth=<n>` — limit the fetched history to `n` commits from each tip.
+   * Anything but a positive integer throws a `TypeError`.
+   */
+  depth?: number | undefined
+  /** `--no-tags` — fetch no tags beyond those the refspecs name. */
+  noTags?: boolean | undefined
 }
 
 /**
@@ -1269,8 +1534,14 @@ export function fetch(
   if (opts.quiet) argv.push('--quiet')
   if (opts.prune) argv.push('--prune')
   if (opts.noWriteFetchHead) argv.push('--no-write-fetch-head')
-  argv.push(remote)
-  if (refspec !== undefined) argv.push(...(typeof refspec === 'string' ? [refspec] : refspec))
+  if (opts.depth !== undefined) argv.push(depthArg('fetch', opts.depth))
+  if (opts.noTags) argv.push('--no-tags')
+  argv.push(positional('fetch', 'remote', remote))
+  if (refspec !== undefined) {
+    for (const spec of typeof refspec === 'string' ? [refspec] : refspec) {
+      argv.push(positional('fetch', 'refspec', spec))
+    }
+  }
   return { argv, absent: NONE, parse: nothing }
 }
 
@@ -1374,25 +1645,26 @@ export interface ConfigSetOptions {
    * Which file to write. Omitted means git's default: `--local` inside a
    * repository, something else outside one.
    */
-  scope?: 'local' | 'global' | 'system' | undefined
+  scope?: ConfigScope | undefined
 }
 
 /** `git config <key> <value>` — the write twin of {@link configGet}. */
 export function configSet(key: string, value: string, opts: ConfigSetOptions = {}): GitVerb<void> {
   const argv = ['config']
   if (opts.scope !== undefined) argv.push(`--${opts.scope}`)
-  argv.push(key, value)
+  argv.push(positional('configSet', 'key', key), value)
   return { argv, absent: NONE, parse: nothing }
 }
 
 /**
  * `git config --remove-section <name>`: true when removed, false when there was
  * no such section. `absent: [128]` also covers "not a repository", which git
- * spells the same way.
+ * spells the same way, so `false` can also mean git could not ask. It is a
+ * mutation, so it has no `soft` form.
  */
 export function configRemoveSection(name: string): GitVerb<boolean> {
   return {
-    argv: ['config', '--remove-section', name],
+    argv: ['config', '--remove-section', positional('configRemoveSection', 'name', name)],
     absent: [128],
     parse: (r) => r.exitCode === 0,
   }
@@ -1419,13 +1691,17 @@ export function init(path?: string | undefined, opts: InitOptions = {}): GitVerb
   if (opts.quiet) argv.push('--quiet')
   if (opts.bare) argv.push('--bare')
   if (opts.initialBranch !== undefined) argv.push('-b', opts.initialBranch)
-  if (path !== undefined) argv.push(path)
+  const target = optionalPositional('init', 'path', path)
+  if (target !== undefined) argv.push(target)
   return { argv, absent: NONE, parse: nothing }
 }
 
 /** Options for {@link clone}. */
 export interface CloneOptions {
-  /** `--depth <n>` — a shallow clone with that much history. */
+  /**
+   * `--depth=<n>` — a shallow clone with that much history. Anything but a
+   * positive integer throws a `TypeError`.
+   */
   depth?: number | undefined
   /**
    * `--branch <ref>` — the branch or tag to land on.
@@ -1436,12 +1712,26 @@ export interface CloneOptions {
   branch?: string | undefined
   /** `--bare` — a store with no working tree. */
   bare?: boolean | undefined
+  /**
+   * `--mirror` — a bare store that copies every ref of the source, and whose
+   * `fetch` overwrites them. Implies `bare`.
+   *
+   * Its refspec `+refs/*:refs/*` covers every ref, tags included. So with
+   * `mirror`, `noTags` has no effect, and `singleBranch` holds for the clone
+   * only: a later fetch gets every ref. git refuses `mirror` with `branch`
+   * (exit 128).
+   */
+  mirror?: boolean | undefined
+  /** `--single-branch` — fetch only the branch the clone lands on. */
+  singleBranch?: boolean | undefined
+  /** `--no-tags` — fetch no tags, now or on a later fetch. */
+  noTags?: boolean | undefined
   /** `--quiet` — suppress the progress lines. */
   quiet?: boolean | undefined
 }
 
 /**
- * `git clone [--depth n] [--branch ref] [--bare] <url> [dest]`.
+ * `git clone [--depth=n] [--branch ref] [--bare|--mirror] <url> [dest]`.
  *
  * The one verb in this table that does not run inside a repository — it
  * makes one. A client's `cwd` is where a relative `dest` resolves, and both
@@ -1455,10 +1745,14 @@ export function clone(
   const argv = ['clone']
   if (opts.quiet) argv.push('--quiet')
   if (opts.bare) argv.push('--bare')
-  if (opts.depth !== undefined) argv.push('--depth', String(opts.depth))
+  if (opts.mirror) argv.push('--mirror')
+  if (opts.singleBranch) argv.push('--single-branch')
+  if (opts.noTags) argv.push('--no-tags')
+  if (opts.depth !== undefined) argv.push(depthArg('clone', opts.depth))
   if (opts.branch !== undefined) argv.push('--branch', opts.branch)
-  argv.push(url)
-  if (dest !== undefined) argv.push(dest)
+  argv.push(positional('clone', 'url', url))
+  const target = optionalPositional('clone', 'dest', dest)
+  if (target !== undefined) argv.push(target)
   return { argv, absent: NONE, parse: nothing }
 }
 
@@ -1493,11 +1787,11 @@ export function forceWithLeaseArg(lease: ForceLease): string {
 /**
  * Push a refspec.
  *
- * `forceWithLease` takes `true` for the bare `--force-with-lease`, or a
- * {@link ForceLease} for the pinned form. Pin it whenever the expected remote
- * sha is known: the bare flag trusts whatever the local remote-tracking ref
- * happens to say, and a background fetch can quietly bring that up to date —
- * after which the lease vetoes nothing and a concurrent push is erased.
+ * `forceWithLease` takes a {@link ForceLease} for the pinned form, or `true`
+ * for the bare `--force-with-lease`. `true` is the unsafe form. It trusts
+ * whatever the local remote-tracking ref says, and a background fetch can
+ * bring that up to date. The lease then vetoes nothing, and a concurrent push
+ * is erased. Pin the lease whenever the expected remote sha is known.
  */
 export function push(
   remote: string,
@@ -1511,13 +1805,17 @@ export function push(
   else if (lease !== undefined && lease !== false) {
     throw new Error(`force-with-lease: unsupported value ${JSON.stringify(lease)}`)
   }
-  argv.push(remote, refspec)
+  argv.push(positional('push', 'remote', remote), positional('push', 'refspec', refspec))
   return { argv, absent: NONE, parse: nothing }
 }
 
 /** `git reset --hard <rev>`. */
 export function resetHard(rev: string): GitVerb<void> {
-  return { argv: ['reset', '--hard', rev], absent: NONE, parse: nothing }
+  return {
+    argv: ['reset', '--hard', positional('resetHard', 'rev', rev)],
+    absent: NONE,
+    parse: nothing,
+  }
 }
 
 /** Options for {@link clean}. */
@@ -1540,7 +1838,7 @@ export function deleteBranch(
   opts: { force?: boolean | undefined } = {},
 ): GitVerb<void> {
   return {
-    argv: ['branch', opts.force ? '-D' : '-d', name],
+    argv: ['branch', opts.force ? '-D' : '-d', positional('deleteBranch', 'name', name)],
     absent: NONE,
     parse: nothing,
   }
@@ -1554,7 +1852,16 @@ export function deleteBranch(
  * `branch.<name>.*` config section in place.
  */
 export function deleteRef(ref: string, opts: { expected: string }): GitVerb<void> {
-  return { argv: ['update-ref', '-d', ref, opts.expected], absent: NONE, parse: nothing }
+  return {
+    argv: [
+      'update-ref',
+      '-d',
+      positional('deleteRef', 'ref', ref),
+      positional('deleteRef', 'expected', opts.expected),
+    ],
+    absent: NONE,
+    parse: nothing,
+  }
 }
 
 /** `git worktree add [--detach] [-b branch] <path> [startPoint]`. */
@@ -1569,8 +1876,9 @@ export function worktreeAdd(
   const argv = ['worktree', 'add']
   if (opts.detach) argv.push('--detach')
   if (opts.branch !== undefined) argv.push('-b', opts.branch)
-  argv.push(path)
-  if (opts.startPoint !== undefined) argv.push(opts.startPoint)
+  argv.push(positional('worktreeAdd', 'path', path))
+  const start = optionalPositional('worktreeAdd', 'startPoint', opts.startPoint)
+  if (start !== undefined) argv.push(start)
   return { argv, absent: NONE, parse: nothing }
 }
 
@@ -1581,7 +1889,7 @@ export function worktreeRemove(
 ): GitVerb<void> {
   const argv = ['worktree', 'remove']
   if (opts.force) argv.push('--force')
-  argv.push(path)
+  argv.push(positional('worktreeRemove', 'path', path))
   return { argv, absent: NONE, parse: nothing }
 }
 
@@ -1599,7 +1907,7 @@ export function worktreeMove(
 ): GitVerb<void> {
   const argv = ['worktree', 'move']
   if (opts.force) argv.push('--force')
-  argv.push(from, to)
+  argv.push(positional('worktreeMove', 'from', from), positional('worktreeMove', 'to', to))
   return { argv, absent: NONE, parse: nothing }
 }
 
@@ -1610,7 +1918,16 @@ export function worktreePrune(): GitVerb<void> {
 
 /** `git remote add <name> <url>`. */
 export function remoteAdd(name: string, url: string): GitVerb<void> {
-  return { argv: ['remote', 'add', name, url], absent: NONE, parse: nothing }
+  return {
+    argv: [
+      'remote',
+      'add',
+      positional('remoteAdd', 'name', name),
+      positional('remoteAdd', 'url', url),
+    ],
+    absent: NONE,
+    parse: nothing,
+  }
 }
 
 // ── integration ─────────────────────────────────────────────────────────────
@@ -1636,16 +1953,19 @@ export function remoteAdd(name: string, url: string): GitVerb<void> {
 // An unknown ref exits 1 exactly like a conflict, so the exit code alone
 // cannot tell them apart. The discriminator is that a conflict always writes
 // its report to stdout and a refusal writes nothing there — a structural
-// signal rather than a string match, because git's messages are translatable
-// and a locale must not change what an outcome means.
+// signal rather than a string match.
+//
+// `fastForward`, `alreadyUpToDate` and the conflict list do read git's text.
+// That text is translatable, so `merge`, `rebase` and `rebaseContinue` run
+// with `LC_ALL=C`, and a caller's locale does not change an outcome.
 
 /** How an integration attempt ended. */
 export type IntegrationOutcome<Extra> =
   | ({ status: 'clean' } & Extra)
   /**
-   * Conflicted. `conflicts` is a best-effort read of git's own report — it
-   * has no parseable form for rename/rename or rename/delete, and it is
-   * translatable, so it can be empty on a real conflict. Ask
+   * Conflicted. `conflicts` is a best-effort read of git's own report. It has
+   * no parseable form for rename/rename or rename/delete, so it can be empty
+   * on a real conflict. Ask
    * {@link lsFilesUnmerged} or `diffNameOnly({ diffFilter: "U" })` for the
    * authoritative list.
    */
@@ -1716,9 +2036,10 @@ export function merge(ref: string, opts: MergeOptions = {}): GitVerb<MergeOutcom
   if (opts.noCommit) argv.push('--no-commit')
   if (opts.ffOnly) argv.push('--ff-only')
   if (opts.message !== undefined) argv.push('-m', opts.message)
-  argv.push(ref)
+  argv.push(positional('merge', 'ref', ref))
   const verb: GitVerb<MergeOutcome> = {
     argv,
+    env: C_LOCALE,
     absent: [1],
     parse(r, ranArgv) {
       if (r.exitCode !== 0) return conflictOrThrow(ranArgv, r)
@@ -1758,9 +2079,10 @@ export interface RebaseOptions {
 export function rebase(onto: string, opts: RebaseOptions = {}): GitVerb<RebaseOutcome> {
   const argv = ['rebase']
   if (opts.autostash) argv.push('--autostash')
-  argv.push(onto)
+  argv.push(positional('rebase', 'onto', onto))
   const verb: GitVerb<RebaseOutcome> = {
     argv,
+    env: C_LOCALE,
     absent: [1],
     parse(r, ranArgv) {
       if (r.exitCode !== 0) return conflictOrThrow(ranArgv, r)
@@ -1791,6 +2113,7 @@ export function rebaseAbort(): GitVerb<void> {
 export function rebaseContinue(): GitVerb<RebaseOutcome> {
   const verb: GitVerb<RebaseOutcome> = {
     argv: ['-c', 'core.editor=true', 'rebase', '--continue'],
+    env: C_LOCALE,
     absent: [1],
     parse(r, ranArgv) {
       if (r.exitCode !== 0) return conflictOrThrow(ranArgv, r)
@@ -1853,7 +2176,7 @@ export function mergeTree(
 ): GitVerb<MergeTreeOutcome> {
   const argv = ['merge-tree', '--write-tree', '--name-only', '-z']
   if (opts.mergeBase !== undefined) argv.push(`--merge-base=${opts.mergeBase}`)
-  argv.push(ours, theirs)
+  argv.push(positional('mergeTree', 'ours', ours), positional('mergeTree', 'theirs', theirs))
   return {
     argv,
     absent: [1],
@@ -1931,7 +2254,8 @@ export type ConflictSide = 'ours' | 'theirs'
 /**
  * `git checkout --ours|--theirs -- <paths>` — resolve paths to one side.
  *
- * `absent: []` — a checkout that did not happen is not an answer.
+ * `absent: []` — a checkout that did not happen is not an answer. Both
+ * clients return without running git when `paths` is empty.
  *
  * Note the sharp edge git leaves here: on a path that is not conflicted this
  * exits 0 and does nothing. There is no error to catch, so a caller working
@@ -1971,6 +2295,6 @@ export function checkout(ref: string, opts: CheckoutOptions = {}): GitVerb<void>
   const argv = ['checkout']
   if (opts.force) argv.push('--force')
   if (opts.branch !== undefined) argv.push(opts.resetBranch ? '-B' : '-b', opts.branch)
-  argv.push(ref)
+  argv.push(positional('checkout', 'ref', ref))
   return { argv, absent: NONE, parse: nothing }
 }

@@ -15,6 +15,8 @@ export function run(): void {
     assert.equal(git.resolveRef('HEAD'), second)
     assert.equal(git.resolveRef('no-such-ref'), null)
     assert.equal(git.revParse('HEAD~1'), first)
+    // Call options go last, as an object.
+    assert.equal(git.revParse('HEAD', { timeoutMs: 10_000 }), second)
     assert.equal(git.hasHistory(), true)
     assert.equal(git.headRef(), 'main')
     assert.equal(git.symbolicRef('HEAD'), 'refs/heads/main')

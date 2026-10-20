@@ -35,7 +35,7 @@ try {
   assert.equal(git.headRef(), 'main')
   assert.equal(git.hasHistory(), true)
   assert.deepEqual(git.lsFiles({ cached: true }).sort(), ['a.txt', 'b/c.txt'])
-  assert.deepEqual(git.remote(), [])
+  assert.deepEqual(git.remotes(), [])
   assert.equal(git.statusPorcelain().length, 0)
   assert.match(git.resolveRef('HEAD') ?? '', /^[0-9a-f]{40}$/)
 

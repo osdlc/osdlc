@@ -115,14 +115,22 @@ type SoftKind<R> = R extends readonly unknown[]
 
 type Unwrap<R> = R extends Promise<infer U> ? U : R
 
+/**
+ * Methods left out of the soft door although their return type has an absence
+ * value. `configRemoveSection` is a mutation, and no mutation has a soft form.
+ */
+type NoSoftForm = 'configRemoveSection'
+
 /** The client methods that have an absence value, each mapped to its {@link SoftKind}. */
 export type SoftKinds<C> = {
   [
-    K in keyof Triable<C> as Triable<C>[K] extends (...a: never[]) => infer R
-      ? [SoftKind<Unwrap<R>>] extends [never]
-        ? never
-        : K
-      : never
+    K in keyof Triable<C> as K extends NoSoftForm
+      ? never
+      : Triable<C>[K] extends (...a: never[]) => infer R
+        ? [SoftKind<Unwrap<R>>] extends [never]
+          ? never
+          : K
+        : never
   ]: Triable<C>[K] extends (...a: never[]) => infer R ? SoftKind<Unwrap<R>> : never
 }
 
