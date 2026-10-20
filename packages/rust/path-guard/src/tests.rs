@@ -684,3 +684,92 @@ fn lexical_absolute_keeps_the_drive_for_a_rooted_path_without_one() {
         root.join("a/c")
     );
 }
+
+/// The `\\?\` form `canonicalize` returns on Windows, given by the caller.
+#[cfg(windows)]
+#[test]
+fn a_link_right_under_a_verbatim_drive_root_is_followed() {
+    let fs = Table(
+        vec![(r"\\?\C:\", r"\\?\C:\")],
+        vec![(r"\\?\C:\link", r"\\?\D:\x")],
+    );
+    let root = Path::new(r"\\?\C:\");
+    assert!(!contains_with(&fs, root, Path::new(r"\\?\C:\link\y")));
+    assert!(matches!(
+        resolve_with(&fs, root, "link"),
+        Err(PathError::Escapes(..))
+    ));
+    assert!(contains_with(&fs, root, Path::new(r"\\?\C:\new\f")));
+    assert!(resolve_with(&fs, root, "new.md").is_ok());
+}
+
+#[cfg(windows)]
+#[test]
+fn a_chain_of_verbatim_links_is_followed_to_its_end() {
+    let fs = Table(
+        vec![
+            (r"\\?\C:\", r"\\?\C:\"),
+            (r"\\?\C:\v", r"\\?\C:\v"),
+            (r"\\?\C:\v\r", r"\\?\C:\v\r"),
+        ],
+        vec![
+            (r"\\?\C:\v\r\l0", r"\\?\C:\v\r\l1"),
+            (r"\\?\C:\v\r\l1", r"\\?\D:\out"),
+            (r"\\?\C:\v\r\l2", r"\\?\C:\v\r\l3"),
+            (r"\\?\C:\v\r\l3", "new.json"),
+        ],
+    );
+    let root = Path::new(r"\\?\C:\v\r");
+    assert!(matches!(
+        resolve_with(&fs, root, "l0"),
+        Err(PathError::Escapes(..))
+    ));
+    assert!(resolve_with(&fs, root, "l2").is_ok());
+}
+
+#[cfg(windows)]
+#[test]
+fn a_share_root_follows_a_link_right_under_it() {
+    // Links are keyed by the real path the walk reads them at.
+    let links = || {
+        vec![
+            (r"\\?\UNC\nas\vault\out.json", r"C:\Windows\x.json"),
+            (r"\\?\UNC\nas\vault\in.json", "new.json"),
+        ]
+    };
+    for root in [r"\\nas\vault", r"\\?\UNC\nas\vault"] {
+        let fs = Table(vec![(root, r"\\?\UNC\nas\vault")], links());
+        let root = Path::new(root);
+        assert!(
+            matches!(
+                resolve_with(&fs, root, "out.json"),
+                Err(PathError::Escapes(..))
+            ),
+            "{}",
+            root.display()
+        );
+        assert!(
+            resolve_with(&fs, root, "in.json").is_ok(),
+            "{}",
+            root.display()
+        );
+        assert!(
+            resolve_with(&fs, root, "new/a.md").is_ok(),
+            "{}",
+            root.display()
+        );
+    }
+}
+
+/// A new path under a drive root compares by the root's real path. Reads
+/// only; nothing is written at the drive root.
+#[cfg(windows)]
+#[test]
+fn a_new_path_under_a_drive_root_is_inside_it() {
+    let root = cwd_root();
+    let missing = root.join(format!("path-guard-no-such-dir-{}", std::process::id()));
+    assert!(!missing.exists());
+    assert!(contains(&root, &missing.join("x")));
+    let name = missing.file_name().unwrap().to_str().unwrap();
+    assert!(resolve(&root, &format!("{name}/x.md")).is_ok());
+}

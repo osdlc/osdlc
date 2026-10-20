@@ -384,6 +384,14 @@ fn walk<R: Resolver + ?Sized>(calls: &mut Calls<R>, p: &Path, hops: usize) -> Op
     let (mut base, mut real, mut i) = (parts[..lead].iter().collect::<PathBuf>(), false, lead);
     loop {
         let (n, found) = deepest_existing(calls, &base, &parts[i..], i == lead)?;
+        // The root kept as one part is probed last, when nothing past it
+        // resolves, so that a link right under it is followed and a new path
+        // under it compares by its real root. With nothing past it, the whole
+        // probe above was the root.
+        let found = match found {
+            None if lead > 0 && i == lead && parts.len() > lead => calls.canonicalize(&base)?.ok(),
+            found => found,
+        };
         if let Some(found) = found {
             (base, real) = (found, true);
         }
