@@ -1,27 +1,12 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
+## History before the first public release
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/),
-and this project adheres to [Semantic Versioning](https://semver.org/).
+These versions were never published. The package was first called `@sksizer/easy-git`.
 
-## [Unreleased]
+### [0.5.0] - 2026-10-10 (unpublished, in the dev repository)
 
-### Changed
-
-- **BREAKING: renamed** from `@sksizer/easy-git` to `@osdlc/typed-git`. The package was never
-  published under the old name.
-
-### Added
-
-- `checkIgnoreVerbose(paths)` (sync and async): the matching ignore rule for each path, as
-  `{ path, source, line, pattern }` (`git check-ignore -v --stdin -z`).
-- `diffTree` option `findRenames` (`-M`): report a move as one rename record with its source
-  path. Off by default, so existing calls are unchanged.
-
-## [0.5.0] - 2026-10-10
-
-### Changed
+#### Changed
 
 - **BREAKING:** `push` `forceWithLease` takes a structured `ForceLease` (`{ ref, expect }`,
   `expect: null` for "ref must be absent") instead of a pre-formatted
@@ -34,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `intentToAdd`. A caller that passed a flag in the list (`['-A', '.']`) must
   now use the `all` option instead.
 
-### Added
+#### Added
 
 `runner` on `Git` and `backend` on `AsyncGit` accept an explicit `undefined`
 (same as omitting), so an optional runner passes straight through.
@@ -83,9 +68,9 @@ back as `ok: false`; only a git failure throws.
 `diffStat({ rangeArgs, paths })` — the `git diff --stat` summary as raw
 stdout, on both clients.
 
-## [0.4.0] - 2026-09-12
+### [0.4.0] - 2026-09-12 (unpublished)
 
-### Added
+#### Added
 
 `mainCheckout()` — the primary checkout that owns this working directory, or
 null outside a repository. Correct from inside a linked worktree, which is
@@ -146,7 +131,7 @@ against real paths silently misses the files most worth attention.
 conflict and a name it cannot merge both exit 1, and only stdout separates
 them.
 
-### Changed
+#### Changed
 
 - `Git.push` / `AsyncGit.push` accept `forceWithLease: string`, matching the
   verb, which has taken the pinned `<ref>:<sha>` form since it was written.
@@ -155,7 +140,7 @@ them.
   `--force-with-lease` compares against the remote-tracking ref, which a fetch
   earlier in the same process may have just updated.
 
-### Fixed
+#### Fixed
 
 A git that never ran read as a declared absence. The subprocess seam reports
 `exitCode: 1` for a child that never gave one — `git` missing from PATH, a
@@ -182,9 +167,9 @@ verb's bare argv, dropping a repository-bound client's `--git-dir`/`--work-tree`
 prefix that every exit-code failure already reports. `GitVerb.parse` now takes
 the argv that ran as its second argument and those sites report it.
 
-## [0.3.0] - 2026-09-01
+### [0.3.0] - 2026-09-01 (unpublished)
 
-### Added — integration verbs, and a fourth thing an exit code can mean
+#### Added — integration verbs, and a fourth thing an exit code can mean
 
 `merge`, `mergeAbort`, `rebase`, `rebaseAbort`, `rebaseContinue`,
 `lsFilesUnmerged`, `checkout`, `checkoutSide`.
@@ -216,7 +201,7 @@ resolver that assumes both-modified deletes files.
 `checkoutSide` documents the edge git leaves: on a path that is not conflicted
 it exits 0 and does nothing, so there is no error to catch.
 
-### Changed
+#### Changed
 
 - **`push` accepts a pinned lease.** `forceWithLease` widened from `boolean`
   to `boolean | string`; a string becomes `--force-with-lease=<ref>:<sha>`.
@@ -224,9 +209,9 @@ it exits 0 and does nothing, so there is no error to catch.
   background fetch can quietly bring that up to date — after which the lease
   vetoes nothing and a concurrent push is erased.
 
-## [0.2.0] - 2026-09-01
+### [0.2.0] - 2026-09-01 (unpublished)
 
-### Breaking — queries now throw on failure
+#### Breaking — queries now throw on failure
 
 A query used to fold every non-zero exit into its absence value (`null`, `[]`,
 `false`). That made "git broke" indistinguishable from "nothing there", and
@@ -300,7 +285,7 @@ Specific behaviour changes to check for at your call sites:
   a failure for `revParse`. A `partialBackend` that answered `revParse` on
   their behalf must handle the new kinds.
 
-### Added
+#### Added
 
 - **Tier 1 verbs**, all declaring `absent: []` — no exit code is an answer, so
   a failure cannot read as an empty result:
@@ -424,7 +409,7 @@ Specific behaviour changes to check for at your call sites:
 - Subpath exports: `@sksizer/easy-git/client` (the clients without
   `hosted-git-info`) and `@sksizer/easy-git/testing` (a git fixture builder).
 
-### Known limits
+#### Known limits
 
 - **Exit 128 is overloaded.** For `showAtRev` and `logSubject`, git spells both "not there" and "not
   a repository" as 128, so those two verbs must declare it absent and cannot separate absence from
@@ -448,7 +433,7 @@ Specific behaviour changes to check for at your call sites:
   *where is the root?* but not *which files are here?* — but a null-check on
   the first does not make the second line safe.
 
-## [0.1.0] - 2026-08-29
+### [0.1.0] - 2026-08-29 (unpublished)
 
 Version 0.1.0 has never been published. Entries below are dated by commit.
 
@@ -456,7 +441,7 @@ The client and its subprocess seam were written in-place inside an
 application (`lib/services/git/easy.ts` and `lib/util/command.ts`) and
 promoted into a standalone package on 2026-07-20.
 
-### Added
+#### Added
 
 - **`AsyncGit`, the awaitable client.** Same surface as `Git`, promised.
   For callers that must not block — a server, or work that fans out
@@ -492,7 +477,7 @@ promoted into a standalone package on 2026-07-20.
   match, `""` for an absent committish) to `null`, matching the query
   contract (2026-08-26).
 
-### Changed
+#### Changed
 
 - **The subprocess seam moved to `@sksizer/command-seam`**, which this
   package now depends on and re-exports. The seam is not git-specific, and
@@ -510,7 +495,7 @@ promoted into a standalone package on 2026-07-20.
 - The package tsconfig now extends a shared base rather than standing
   alone, so its strictness matches its consumers (2026-08-23).
 
-### Fixed
+#### Fixed
 
 - **`timeoutMs` was plumbed in an `exactOptionalPropertyTypes`-unsafe way**
   through the client (2026-07-19).
@@ -519,7 +504,7 @@ The subprocess-level fixes — Bun's `bun test` stdio corruption, timeouts
 that never fired, a failed spawn reported as a silent exit 1 — moved with
 the seam and are recorded in `@sksizer/command-seam`'s changelog.
 
-### Known issues
+#### Known issues
 
 - `hosted-git-info` types are declared locally rather than taken from
   DefinitelyTyped, whose copy predates the current API.
