@@ -1,10 +1,6 @@
 [package]
 name = "config-layers"
 version = "0.6.0"
-# Held back so the other crates' trusted-publishing release runs alone (one
-# release-plz run uses one credential). A follow-up pull request removes this
-# line once they are on crates.io.
-publish = false
 edition.workspace = true
 rust-version.workspace = true
 description = "Layered config files: a committed project file and a per-machine file read as YAML, merged by key, with named-directory substitution, dotted-key lookup and the check a program runs for the settings it needs."
