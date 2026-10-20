@@ -30,9 +30,6 @@ import type {
   ReviewDecision,
 } from './types.ts'
 
-/** A raw `gh --json` object. Deliberately loose: the fields depend on the ask. */
-export type PullRequestJson = Record<string, unknown>
-
 // ── primitives ──────────────────────────────────────────────────────────────
 
 function isRecord(x: unknown): x is Record<string, unknown> {

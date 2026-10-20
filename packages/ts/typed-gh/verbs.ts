@@ -14,7 +14,7 @@
 
 import { stderrOrError, type CommandResult } from '@osdlc/command-seam'
 
-import { parseLabels, parsePullRequest, type PullRequestJson } from './parse.ts'
+import { parseLabels, parsePullRequest } from './parse.ts'
 import type { IssueRow, Label, PullRequest } from './types.ts'
 
 /** One `gh` invocation: what to run, and how to read what came back. */
@@ -83,7 +83,7 @@ function oneOrNull(r: CommandResult): PullRequest | null {
   } catch {
     return null
   }
-  return parsePullRequest(data as PullRequestJson)
+  return parsePullRequest(data)
 }
 
 /**
@@ -101,7 +101,7 @@ function manyOrNull(r: CommandResult): PullRequest[] | null {
   if (!Array.isArray(data)) return null
   const rows: PullRequest[] = []
   for (const item of data) {
-    const pr = parsePullRequest(item as PullRequestJson)
+    const pr = parsePullRequest(item)
     if (pr !== null) rows.push(pr)
   }
   return rows
@@ -313,8 +313,8 @@ const STATUS_LINE = /^HTTP\/[\d.]+\s+\d{3}/i
 
 /**
  * Split a `gh api -i` payload (status line + headers, blank line, body) and decode it.
- * When several header blocks are stacked, as after a redirect or a `100 Continue`,
- * the last one is the response: its status and ETag are read, and the body follows it.
+ * A real `gh` prints one block. As a guard, if several are stacked, the last one is read:
+ * its status and ETag, and the body that follows it.
  */
 function parseApi(r: CommandResult, withHeaders: boolean): ApiResponse {
   let status = r.exitCode === 0 ? 200 : 0
