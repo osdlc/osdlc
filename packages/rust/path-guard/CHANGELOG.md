@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.5](https://github.com/osdlc/osdlc/compare/path-guard/v0.2.4...path-guard/v0.2.5) - 2026-10-20
+
+### Fixed
+
+- *(path-guard)* fold `..` as text on Windows before following a link ([#350](https://github.com/osdlc/osdlc/pull/350))
+
 ### Fixed
 
 - On Windows the containment layer folds `..` as text before it follows a
