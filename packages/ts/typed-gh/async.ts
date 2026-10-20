@@ -26,6 +26,7 @@ import type {
   GhTarget,
   GhVerb,
   IssueListOptions,
+  ListResult,
   PrListOptions,
 } from './verbs.ts'
 
@@ -111,7 +112,7 @@ export class AsyncGh {
   // ── queries ───────────────────────────────────────────────────────────────
 
   /** Pull requests matching `opts`, or null when gh failed. */
-  prList(opts: PrListOptions & AsyncCallOptions = {}): Promise<PullRequest[] | null> {
+  prList(opts: PrListOptions & AsyncCallOptions = {}): Promise<ListResult<PullRequest> | null> {
     return this.exec(v.prList(opts, this.target), opts)
   }
 
@@ -153,7 +154,7 @@ export class AsyncGh {
       timeoutMs: opts.timeoutMs,
       signal: opts.signal,
     })
-    return v.pickPrForBranch(rows, branch)
+    return v.pickPrForBranch(rows?.rows ?? null, branch)
   }
 
   /** {@link prView}, re-asked until GitHub settles the merge state. See `Gh.prViewSettled`. */
@@ -187,12 +188,14 @@ export class AsyncGh {
   }
 
   /** Every label on the repository (up to `opts.limit`, default 1000), or null when gh failed. */
-  labelList(opts: { limit?: number | undefined } & AsyncCallOptions = {}): Promise<Label[] | null> {
+  labelList(
+    opts: { limit?: number | undefined } & AsyncCallOptions = {},
+  ): Promise<ListResult<Label> | null> {
     return this.exec(v.labelList(opts, this.target), opts)
   }
 
   /** Issues matching `opts`, or null when gh failed. */
-  issueList(opts: IssueListOptions & AsyncCallOptions = {}): Promise<IssueRow[] | null> {
+  issueList(opts: IssueListOptions & AsyncCallOptions = {}): Promise<ListResult<IssueRow> | null> {
     return this.exec(v.issueList(opts, this.target), opts)
   }
 

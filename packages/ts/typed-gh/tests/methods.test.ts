@@ -166,9 +166,9 @@ describe('openPrsForBranch and PR_REF_FIELDS', () => {
       '--json',
       PR_REF_FIELDS.join(','),
       '--limit',
-      '5',
+      '6',
     ])
-    expect(openPrsForBranch('feature/foo', 20).argv.slice(-2)).toEqual(['--limit', '20'])
+    expect(openPrsForBranch('feature/foo', 20).argv.slice(-2)).toEqual(['--limit', '21'])
   })
 
   test('openPrsForBranch parses rows, and is null when gh failed', () => {
@@ -176,7 +176,7 @@ describe('openPrsForBranch and PR_REF_FIELDS', () => {
     expect(verb.checked).toBe(false)
     expect(verb.parse(FAIL)).toBeNull()
     const rows = verb.parse(json([{ number: 3, state: 'OPEN', headRefName: 'feature/foo' }]))
-    expect(rows?.map((pr) => pr.number)).toEqual([3])
+    expect(rows?.rows.map((pr) => pr.number)).toEqual([3])
   })
 
   test('openPrFor asks for PR_REF_FIELDS unless told otherwise, on both clients', async () => {
@@ -268,7 +268,7 @@ describe('AsyncGh forms agree with Gh', () => {
           '--json',
           'number,headRefName',
           '--limit',
-          '2',
+          '3',
         ],
       ],
       parsePullRequest({ number: 3, headRefName: 'feature/foo' }),
@@ -288,7 +288,7 @@ describe('AsyncGh forms agree with Gh', () => {
           '--json',
           PR_REF_FIELDS.join(','),
           '--limit',
-          '5',
+          '6',
         ],
       ],
       null,
@@ -306,31 +306,31 @@ describe('AsyncGh forms agree with Gh', () => {
           '--json',
           'number,title,body,labels,state',
           '--limit',
-          '200',
+          '201',
         ],
       ],
-      [issue],
+      { rows: [issue], truncated: false },
     ],
     [
       'issueList with a limit',
       (c) => c.issueList({ limit: 20 }),
       [json([])],
-      [['issue', 'list', '--json', 'number,title,body,labels,state', '--limit', '20']],
-      [],
+      [['issue', 'list', '--json', 'number,title,body,labels,state', '--limit', '21']],
+      { rows: [], truncated: false },
     ],
     [
       'labelList',
       (c) => c.labelList(),
       [json([label])],
-      [['label', 'list', '--json', 'name,color,description', '--limit', '1000']],
-      [label],
+      [['label', 'list', '--json', 'name,color,description', '--limit', '1001']],
+      { rows: [label], truncated: false },
     ],
     [
       'labelList with a limit',
       (c) => c.labelList({ limit: 50 }),
       [json([])],
-      [['label', 'list', '--json', 'name,color,description', '--limit', '50']],
-      [],
+      [['label', 'list', '--json', 'name,color,description', '--limit', '51']],
+      { rows: [], truncated: false },
     ],
     [
       'createLabel',

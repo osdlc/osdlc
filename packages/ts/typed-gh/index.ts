@@ -59,6 +59,7 @@ export {
   type GhTarget,
   type GhVerb,
   type IssueListOptions,
+  type ListResult,
   type PrListOptions,
   type PrMergeMethod,
   type ReviewComment,

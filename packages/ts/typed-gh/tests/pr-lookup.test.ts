@@ -86,13 +86,13 @@ describe('prList with head', () => {
         { number: 2, headRefName: 'task/foo' },
       ]),
     )
-    expect(rows?.map((r) => r.number)).toEqual([2])
+    expect(rows?.rows.map((r) => r.number)).toEqual([2])
     expect(verb.parse(FAIL)).toBeNull()
   })
 
   test('without head, the rows are untouched', () => {
     const rows = prList().parse(ok([{ number: 1, headRefName: 'a' }]))
-    expect(rows?.length).toBe(1)
+    expect(rows?.rows.length).toBe(1)
   })
 })
 

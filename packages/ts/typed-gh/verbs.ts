@@ -171,6 +171,29 @@ function manyOrNull(r: CommandResult): PullRequest[] | null {
   return rows
 }
 
+/**
+ * A list query's answer: the rows, and whether `limit` cut the list short.
+ * The verb asks gh for one row more than `limit`; `truncated` is true when
+ * that row came back, and `rows` holds at most `limit`.
+ */
+export interface ListResult<T> {
+  rows: T[]
+  truncated: boolean
+}
+
+/** Throw `RangeError` unless `limit` is a positive integer. */
+function checkLimit(limit: number): void {
+  if (!Number.isSafeInteger(limit) || limit <= 0) {
+    throw new RangeError(`limit must be a positive integer, got ${limit}`)
+  }
+}
+
+/** `rows` cut to `limit`, with whether there were more. Null stays null. */
+function limited<T>(rows: T[] | null, limit: number): ListResult<T> | null {
+  if (rows === null) return null
+  return { rows: rows.slice(0, limit), truncated: rows.length > limit }
+}
+
 /** A mutation's result carries no value. */
 function nothing(): void {}
 
@@ -272,7 +295,12 @@ export interface PrListOptions {
 }
 
 /** `gh pr list …` — open PRs by default. `opts.repo` overrides the target's repo. */
-export function prList(opts: PrListOptions = {}, target?: GhTarget): GhVerb<PullRequest[] | null> {
+export function prList(
+  opts: PrListOptions = {},
+  target?: GhTarget,
+): GhVerb<ListResult<PullRequest> | null> {
+  const limit = opts.limit ?? 100
+  checkLimit(limit)
   const argv = ['pr', 'list', '--state', opts.state ?? 'open', ...repoArgs(target, opts.repo)]
   if (opts.base !== undefined) argv.push('--base', opts.base)
   if (opts.head !== undefined) argv.push('--head', opts.head)
@@ -282,16 +310,15 @@ export function prList(opts: PrListOptions = {}, target?: GhTarget): GhVerb<Pull
   const fields = opts.fields ?? PR_LIST_FIELDS
   const asked = opts.head === undefined ? fields : withFields(fields, ['headRefName'])
   argv.push('--json', asked.join(','))
-  argv.push('--limit', String(opts.limit ?? 100))
+  argv.push('--limit', String(limit + 1))
   const head = opts.head
   return {
     argv,
     checked: false,
     parse(r) {
-      const rows = manyOrNull(r)
-      return rows === null || head === undefined
-        ? rows
-        : rows.filter((pr) => pr.headRefName === head)
+      const result = limited(manyOrNull(r), limit)
+      if (result === null || head === undefined) return result
+      return { ...result, rows: result.rows.filter((pr) => pr.headRefName === head) }
     },
   }
 }
@@ -354,7 +381,7 @@ export function openPrsForBranch(
   branch: string,
   limit = 5,
   target?: GhTarget,
-): GhVerb<PullRequest[] | null> {
+): GhVerb<ListResult<PullRequest> | null> {
   return prList({ head: branch, limit, fields: PR_REF_FIELDS }, target)
 }
 
@@ -497,14 +524,15 @@ export function authStatus(target?: GhTarget): GhVerb<AuthStatus> {
 }
 
 /**
- * `gh label list --json name,color,description` — every label on the repo.
- * `limit` defaults to 1000. `gh`'s own default is 30, which would cut off a
- * repository with more labels than that without saying so.
+ * `gh label list --json name,color,description` — every label on the repo,
+ * up to `limit` (default 1000; `gh`'s own default is 30).
  */
 export function labelList(
   opts: { limit?: number | undefined } = {},
   target?: GhTarget,
-): GhVerb<Label[] | null> {
+): GhVerb<ListResult<Label> | null> {
+  const limit = opts.limit ?? 1000
+  checkLimit(limit)
   return {
     argv: [
       'label',
@@ -513,10 +541,10 @@ export function labelList(
       '--json',
       'name,color,description',
       '--limit',
-      String(opts.limit ?? 1000),
+      String(limit + 1),
     ],
     checked: false,
-    parse: manyLabelsOrNull,
+    parse: (r) => limited(manyLabelsOrNull(r), limit),
   }
 }
 
@@ -532,11 +560,13 @@ export interface IssueListOptions {
 export function issueList(
   opts: IssueListOptions = {},
   target?: GhTarget,
-): GhVerb<IssueRow[] | null> {
+): GhVerb<ListResult<IssueRow> | null> {
+  const limit = opts.limit ?? 200
+  checkLimit(limit)
   const argv = ['issue', 'list', ...repoArgs(target)]
   if (opts.label !== undefined) argv.push('--label', opts.label)
-  argv.push('--json', ISSUE_FIELDS, '--limit', String(opts.limit ?? 200))
-  return { argv, checked: false, parse: manyIssuesOrNull }
+  argv.push('--json', ISSUE_FIELDS, '--limit', String(limit + 1))
+  return { argv, checked: false, parse: (r) => limited(manyIssuesOrNull(r), limit) }
 }
 
 /** `gh issue view <n> --json …` — one issue, same field set as {@link issueList}. */
@@ -943,9 +973,9 @@ export function pickPrForBranch(rows: PullRequest[] | null, branch: string): Pul
  * one, or else the first row (gh lists newest first). Null when there are no
  * rows or the call failed.
  */
-export function branchPr(rows: PullRequest[] | null): PullRequest | null {
-  if (rows === null) return null
-  return rows.find((r) => r.state === 'OPEN') ?? rows[0] ?? null
+export function branchPr(result: ListResult<PullRequest> | null): PullRequest | null {
+  if (result === null) return null
+  return result.rows.find((r) => r.state === 'OPEN') ?? result.rows[0] ?? null
 }
 
 /** The field set {@link branchPr} needs, ahead of `fields`. */

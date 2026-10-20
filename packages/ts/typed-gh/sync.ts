@@ -29,6 +29,7 @@ import type {
   GhTarget,
   GhVerb,
   IssueListOptions,
+  ListResult,
   PrListOptions,
 } from './verbs.ts'
 import { ownerRepoSlug, parseOwnerRepo, parsePrRef } from './repo.ts'
@@ -119,7 +120,9 @@ export class Gh {
   // ── queries ───────────────────────────────────────────────────────────────
 
   /** Pull requests matching `opts`, or null when gh failed. */
-  prList(opts: PrListOptions & { timeoutMs?: number | undefined } = {}): PullRequest[] | null {
+  prList(
+    opts: PrListOptions & { timeoutMs?: number | undefined } = {},
+  ): ListResult<PullRequest> | null {
     return this.exec(v.prList(opts, this.target), opts.timeoutMs)
   }
 
@@ -177,7 +180,7 @@ export class Gh {
       limit: opts.limit ?? 5,
       fields: opts.fields ?? v.PR_REF_FIELDS,
     })
-    return v.pickPrForBranch(rows, branch)
+    return v.pickPrForBranch(rows?.rows ?? null, branch)
   }
 
   /**
@@ -228,12 +231,14 @@ export class Gh {
   /** Every label on the repository (up to `opts.limit`, default 1000), or null when gh failed. */
   labelList(
     opts: { limit?: number | undefined; timeoutMs?: number | undefined } = {},
-  ): Label[] | null {
+  ): ListResult<Label> | null {
     return this.exec(v.labelList(opts, this.target), opts.timeoutMs)
   }
 
   /** Issues matching `opts` (open by default, up to 200), or null when gh failed. */
-  issueList(opts: IssueListOptions & { timeoutMs?: number | undefined } = {}): IssueRow[] | null {
+  issueList(
+    opts: IssueListOptions & { timeoutMs?: number | undefined } = {},
+  ): ListResult<IssueRow> | null {
     return this.exec(v.issueList(opts, this.target), opts.timeoutMs)
   }
 

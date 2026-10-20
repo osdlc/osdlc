@@ -25,7 +25,7 @@ import { Gh, type PrListOptions, type PullRequest } from '@osdlc/typed-gh'
 const gh = new Gh(process.cwd())
 
 const filter: PrListOptions = { state: 'open', base: 'main' }
-const prs: PullRequest[] = gh.prList(filter) ?? []
+const prs: PullRequest[] = gh.prList(filter)?.rows ?? []
 ```
 
 The `examples` folder in the repository runs the same calls as tests.
@@ -184,10 +184,10 @@ threads?.filter((t) => !t.isResolved)
 
 ```ts
 const issue: IssueRow | null = gh.issueView(7)
-const triage: IssueRow[] | null = gh.issueList({ label: 'status:triage', limit: 50 })
+const triage: ListResult<IssueRow> | null = gh.issueList({ label: 'status:triage', limit: 50 })
 gh.setIssueLabel(7, 'status:triage', 'status:define')
 
-const labels: Label[] | null = gh.labelList({ limit: 100 })
+const labels: ListResult<Label> | null = gh.labelList({ limit: 100 })
 gh.createLabel({ name: 'status:triage', color: '1f6feb', description: 'Triage stage' })
 gh.editLabel('status:triage', { description: 'Waiting for triage' })
 ```
@@ -274,7 +274,7 @@ suite runs offline:
 ```ts
 const empty: CommandRunner = { run: () => ({ exitCode: 0, stdout: '[]', stderr: '' }) }
 
-new Gh('/repo', { runner: empty }).prList() // []
+new Gh('/repo', { runner: empty }).prList() // { rows: [], truncated: false }
 ```
 
 This package re-exports `CommandFailed` and the runner and result types (`CommandRunner`,
