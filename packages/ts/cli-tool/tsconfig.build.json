@@ -1,0 +1,10 @@
+{
+  // Emit config for the published dist/ — the dev tsconfig.json stays noEmit.
+  // `include` keeps tests/ out of dist/.
+  "extends": ["./tsconfig.json", "@osdlc/tsconfig/build"],
+  "compilerOptions": {
+    "rootDir": "."
+  },
+  "include": ["*.ts", "devlink/*.ts", "trust/*.ts"],
+  "exclude": ["vitest.config.ts"]
+}

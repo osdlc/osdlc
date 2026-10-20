@@ -126,6 +126,9 @@ Developed here, in this repository:
 - `packages/ts/detect-harness` (`@osdlc/detect-harness` on npm, finds the
   coding-agent harnesses on a machine and in a project and reads what each has
   configured; read-only, with secrets redacted)
+- `packages/ts/cli-tool` (`@osdlc/cli-tool` on npm, what a standalone CLI
+  needs first: an output seam, exit codes, flags declared once, running an
+  installed tool from a development checkout, and a per-repository trust store)
 
 The development repository will take each TypeScript library from npm, like
 any other consumer. Today it still keeps its own copies. Open issues and pull
