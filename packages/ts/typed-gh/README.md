@@ -254,9 +254,9 @@ await gh.prComment(42, 'rebased') // the comment's URL, or ''
 await gh.prUpdateBranch(42, 'rebase')
 ```
 
-The queries `raw`, `rawChecked`, `prList`, `prView`, `openPrFor`, `prViewSettled`, `prBody`, `api`,
-`labelList`, `issueList` and `issueView` also take `AsyncCallOptions`: `timeoutMs` and an
-`AbortSignal` in `signal`.
+These methods take `AsyncCallOptions`: `raw`, `rawChecked`, `prList`, `prView`, `openPrFor`, `prViewSettled`, `prBody`, `api`,
+`labelList`, `issueList` and `issueView`. The options are `timeoutMs` and an `AbortSignal` in
+`signal`.
 
 `api(endpoint, opts)` (on `Gh` and `AsyncGh`) is a REST GET through `gh api`.
 It never throws; the result is `{ ok, status, etag, body, malformed, stderr, error? }`.
@@ -264,8 +264,7 @@ It never throws; the result is `{ ok, status, etag, body, malformed, stderr, err
 was stopped (a missing binary, a timeout).
 Pass `etag` for a conditional request (`If-None-Match`; a 304 comes back as
 `status: 304, body: null`), or `includeHeaders: true` to read status and ETag
-without one. When `gh` prints more than one header block, as after a redirect, the last one is
-read. `{owner}` and `{repo}` in the endpoint are filled in by gh.
+without one. If `gh` prints more than one header block, the last one is read. `{owner}` and `{repo}` in the endpoint are filled in by gh.
 
 ## Injecting the subprocess seam
 
@@ -304,8 +303,7 @@ Every other export and method is stable, `prDiff` included.
 
 ## Platforms
 
-macOS and Linux are supported, and CI runs the tests on both. Windows is not supported yet. It will be
-added together with a Windows CI job. The package builds `gh` argv as arrays and starts `gh` with no
+Supported platforms are listed under [Install](#install). CI runs the tests on macOS and Linux. The package builds `gh` argv as arrays and starts `gh` with no
 shell, so nothing in it is specific to one shell.
 
 ## What is not here

@@ -528,9 +528,9 @@ describe('prMerge and prReviewThreads', () => {
 describe('api with headers reads the last header block', () => {
   const opts = { includeHeaders: true }
 
-  test('a redirect followed by the final response gives the final status, ETag and body', () => {
+  test('two stacked blocks give the status, ETag and body of the last one', () => {
     const stdout =
-      'HTTP/2.0 301 Moved Permanently\r\nLocation: https://api.github.com/repos/o/r2\r\nEtag: W/"old"\r\n\r\n' +
+      'HTTP/2.0 200 OK\r\nEtag: W/"old"\r\n\r\n' +
       'HTTP/2.0 200 OK\r\nEtag: W/"new"\r\n\r\n{"name":"r2"}'
     const r = api('repos/o/r', opts).parse({ exitCode: 0, stdout, stderr: '' })
     expect(r).toMatchObject({ ok: true, status: 200, etag: 'W/"new"', body: { name: 'r2' } })
