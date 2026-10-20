@@ -38,9 +38,10 @@ not intend are in scope.
 - **`gh` still parses its arguments.** A positional value that starts with `-`,
   such as a label name, can be read as a flag. Check untrusted input before you
   pass it.
-- **Endpoint strings are built from your input.** `api(endpoint)` and
-  `issueCommentEdit(commentId)` put the value into a REST path. Pass ids that
-  GitHub gave you, not text from a user.
+- **Endpoint strings are built from your input.** `api(endpoint)` puts the
+  value into a REST path. Pass endpoints you built, not text from a user.
+  `issueCommentEdit(commentId)` accepts only digits and throws `RangeError`
+  for anything else, so its id cannot change the path.
 - **`gh` chooses the repository.** It reads the working directory's git
   remotes, or `GH_REPO`. A checkout whose `.git/config` points `origin` at
   another repository sends mutations there. `ownerRepo` only parses a URL you

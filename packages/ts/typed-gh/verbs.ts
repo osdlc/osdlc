@@ -477,9 +477,17 @@ export function prSetDraft(number: number, draft: boolean): GhVerb<void> {
  * GraphQL node id (such as `IC_kw…`) that `gh pr view --json comments` gives
  * in `Comment.id`; the REST path answers 404 for a node id.
  *
+ * Throws `RangeError` when `commentId` is not all digits, so a node id fails
+ * at once and no text can change which endpoint the PATCH reaches.
+ *
  * @experimental
  */
 export function issueCommentEdit(commentId: string, body: string): GhVerb<void> {
+  if (!/^[0-9]+$/.test(commentId)) {
+    throw new RangeError(
+      `issueCommentEdit: commentId must be a numeric REST id, got ${JSON.stringify(commentId)}`,
+    )
+  }
   return {
     argv: [
       'api',

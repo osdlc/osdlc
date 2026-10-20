@@ -15,6 +15,7 @@ import {
   Gh,
   PR_REF_FIELDS,
   defaultRunnerFactory,
+  issueCommentEdit,
   openPrsForBranch,
   parsePullRequest,
   prReviewThreads,
@@ -406,5 +407,40 @@ describe('AsyncGh forms agree with Gh', () => {
       CommandFailed,
     )
     await expect(f.agh.setIssueLabel(7, null, 'x')).rejects.toBeInstanceOf(CommandFailed)
+  })
+})
+
+describe('issueCommentEdit takes only a numeric REST id', () => {
+  const BAD = ['abc', '', 'IC_kwDOR8X4fM76lk5H', '12/../../pulls/1', '12?x=1', ' 12', '-1', '1.5']
+
+  test.each(BAD)('the verb rejects %p', (id) => {
+    expect(() => issueCommentEdit(id, 'b')).toThrow(RangeError)
+  })
+
+  test('Gh throws a RangeError before any gh call', () => {
+    const f = clients([ok()])
+    for (const id of BAD) expect(() => f.gh.issueCommentEdit(id, 'b')).toThrow(RangeError)
+    expect(f.ghCalls).toEqual([])
+  })
+
+  test('AsyncGh returns a rejected Promise with the same RangeError, and does not throw', async () => {
+    const f = clients([ok()])
+    for (const id of BAD) {
+      let result: Promise<void> | undefined
+      expect(() => {
+        result = f.agh.issueCommentEdit(id, 'b')
+      }).not.toThrow()
+      await expect(result!).rejects.toBeInstanceOf(RangeError)
+    }
+    expect(f.aghCalls).toEqual([])
+  })
+
+  test('a numeric id still builds the REST path, on both clients', async () => {
+    const f = clients([ok()])
+    f.gh.issueCommentEdit('0042', 'b')
+    await f.agh.issueCommentEdit('0042', 'b')
+    const path = 'repos/{owner}/{repo}/issues/comments/0042'
+    expect(f.ghCalls[0]!.argv).toContain(path)
+    expect(f.aghCalls[0]!.argv).toContain(path)
   })
 })

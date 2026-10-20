@@ -217,7 +217,8 @@ URL.
 
 `issueCommentEdit` is experimental. It takes the comment's numeric REST id, as text: the `id` from
 `gh api repos/{owner}/{repo}/issues/<n>/comments`. The `Comment.id` that `prView` returns is a
-GraphQL node id, which this REST path does not accept.
+GraphQL node id, which this REST path does not accept. An id that is not all digits throws
+`RangeError` before `gh` runs (`AsyncGh` returns a rejected Promise).
 
 ## Pure halves, for an async fan-out
 

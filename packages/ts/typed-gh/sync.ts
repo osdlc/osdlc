@@ -275,7 +275,7 @@ export class Gh {
   }
 
   /**
-   * Rewrite one PR conversation comment's body. `commentId` is the numeric REST id; see the verb.
+   * Rewrite one PR conversation comment's body. `commentId` is the numeric REST id; anything else throws `RangeError`.
    *
    * @experimental
    */

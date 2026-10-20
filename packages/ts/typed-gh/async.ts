@@ -242,11 +242,12 @@ export class AsyncGh {
   }
 
   /**
-   * Rewrite one PR conversation comment's body. `commentId` is the numeric REST id; see the verb.
+   * Rewrite one PR conversation comment's body. `commentId` is the numeric REST id; anything else rejects with `RangeError`.
    *
    * @experimental
    */
-  issueCommentEdit(commentId: string, body: string): Promise<void> {
+  async issueCommentEdit(commentId: string, body: string): Promise<void> {
+    // async, so a bad id rejects the Promise instead of throwing at the call.
     return this.exec(v.issueCommentEdit(commentId, body))
   }
 
