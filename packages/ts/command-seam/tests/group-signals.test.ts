@@ -47,6 +47,11 @@ test.skipIf(!posix)(
     const run = spawnRunnerAsync('sh').run(['-c', 'sleep 0.3'], { cwd: CWD, processGroup: true })
     expect(liveProcessGroups().length).toBe(before + 1)
     await run
+    // Released once the group is empty, which may take a later poll.
+    const end = performance.now() + 3_000
+    while (liveProcessGroups().length > before && performance.now() < end) {
+      await new Promise((r) => setTimeout(r, 25))
+    }
     expect(liveProcessGroups().length).toBe(before)
   },
 )
@@ -92,6 +97,7 @@ test.skipIf(!posix)('the managed runner registers a group until the leader exits
   while (liveProcessGroups().includes(h.pid) && performance.now() < end) {
     await new Promise((r) => setTimeout(r, 25))
   }
+  expect(liveProcessGroups()).not.toContain(h.pid)
   expect(liveProcessGroups().length).toBe(before)
 })
 
