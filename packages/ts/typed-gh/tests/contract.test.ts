@@ -221,3 +221,25 @@ describe('README: the pure halves drive any runner', () => {
     expect(pr?.number).toBe(1491)
   })
 })
+
+describe('README: MergeableState and ReviewDecision are closed; the other enums are open', () => {
+  test('an unknown mergeable value reads as UNKNOWN, an unknown review decision as null', () => {
+    const pr = parsePullRequest({ number: 1, mergeable: 'NEW_VALUE', reviewDecision: 'NEW_VALUE' })
+    expect(pr?.mergeable).toBe('UNKNOWN')
+    expect(pr?.reviewDecision).toBeNull()
+  })
+
+  test('an unknown value of an open enum is carried through', () => {
+    const pr = parsePullRequest({
+      number: 1,
+      state: 'NEW_STATE',
+      mergeStateStatus: 'NEW_STATUS',
+      reviews: [{ state: 'NEW_REVIEW_STATE' }],
+      statusCheckRollup: [{ name: 'ci', status: 'COMPLETED', conclusion: 'NEW_CONCLUSION' }],
+    })
+    expect(pr?.state).toBe('NEW_STATE')
+    expect(pr?.mergeStateStatus).toBe('NEW_STATUS')
+    expect(pr?.reviews[0]?.state).toBe('NEW_REVIEW_STATE')
+    expect(pr?.checks[0]?.conclusion).toBe('NEW_CONCLUSION')
+  })
+})

@@ -7,13 +7,21 @@
  * them one representation is what keeps a consumer from reading a field it
  * never requested as a fact.
  *
- * The enums are open on purpose. GitHub adds members, and a client that
+ * Most enums are open on purpose. GitHub adds members, and a client that
  * crashes on an unrecognized one is worse than a client that carries it
  * through: unions end in `(string & {})` so a new value still types as the
  * enum while the known members keep their autocomplete.
+ *
+ * Two are closed: {@link MergeableState} and {@link ReviewDecision}. Callers
+ * compare them member by member to decide whether to merge, so the parser
+ * maps a value it does not know to `UNKNOWN` or `null` instead of passing it
+ * on.
  */
 
-/** Can this PR merge? `UNKNOWN` also covers "GitHub has not computed it yet". */
+/**
+ * Can this PR merge? `UNKNOWN` also covers "GitHub has not computed it yet".
+ * Closed: a value the parser does not know reads as `UNKNOWN`.
+ */
 export type MergeableState = 'MERGEABLE' | 'CONFLICTING' | 'UNKNOWN'
 
 /**
@@ -38,6 +46,11 @@ export type MergeStateStatus =
 /** Where a pull request is in its life: open, closed without a merge, or merged. */
 export type PullRequestState = 'OPEN' | 'CLOSED' | 'MERGED' | (string & {})
 
+/**
+ * The review state branch protection reads: approved, changes requested, or a
+ * review still required. `null` when there is no decision, or the repository
+ * requires no review. Closed: a value the parser does not know reads as `null`.
+ */
 export type ReviewDecision = 'APPROVED' | 'CHANGES_REQUESTED' | 'REVIEW_REQUIRED' | null
 
 /** The state of one review. `PENDING` is a review its author has not submitted yet. */

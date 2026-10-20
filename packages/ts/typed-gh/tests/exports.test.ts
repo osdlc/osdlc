@@ -89,11 +89,9 @@ describe('the package entry point', () => {
   })
 })
 
-// Exports with no example yet. Each waits on an open question in the audit
-// report, and a change there could rename or drop the item.
-const WAITING_FOR_THE_OWNER: ReadonlyArray<readonly [reason: string, names: readonly string[]]> = [
-  ['open or closed enums', ['MergeableState', 'ReviewDecision']],
-]
+// Exports with no example yet. Each waits on an open question, and a change
+// there could rename or drop the item. Empty today.
+const WAITING_FOR_THE_OWNER: ReadonlyArray<readonly [reason: string, names: readonly string[]]> = []
 
 const WAITING = new Set(WAITING_FOR_THE_OWNER.flatMap(([, names]) => names))
 

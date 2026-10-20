@@ -82,9 +82,13 @@ Absent and unknowable are the same answer to a caller, so they get one
 representation. This is what stops a consumer reading a field it never
 requested as a fact.
 
-The enums are open — unions ending in `(string & {})` — because GitHub adds
+Most enums are open — unions ending in `(string & {})` — because GitHub adds
 members, and a client that crashes on an unrecognized one is worse than a
-client that carries it through.
+client that carries it through. Two are closed: `MergeableState`
+(`MERGEABLE`, `CONFLICTING`, `UNKNOWN`) and `ReviewDecision` (`APPROVED`,
+`CHANGES_REQUESTED`, `REVIEW_REQUIRED`, `null`). A value GitHub adds to either
+reads as `UNKNOWN` or `null`, so a check that decides whether to merge can
+match every member.
 
 ## Three modes, so failure is never ambiguous
 

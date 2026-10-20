@@ -15,8 +15,10 @@ import {
   type CheckRun,
   type Comment,
   type Label,
+  type MergeableState,
   type PullRequestState,
   type Review,
+  type ReviewDecision,
   type ReviewState,
 } from '@osdlc/typed-gh'
 
@@ -78,4 +80,26 @@ test('checks fold onto one verdict, and a running check is never a pass', () => 
 
 test('logins from GraphQL and REST compare equal once normalized', () => {
   expect(normalizeAuthorLogin('github-actions[bot]')).toBe(normalizeAuthorLogin('github-actions'))
+})
+
+test('the two closed enums can be matched in full', () => {
+  // MergeableState and ReviewDecision are closed: a value GitHub adds reads as
+  // UNKNOWN or null. So a switch over them needs no default.
+  const pr = parsePullRequest({ number: 7, mergeable: 'CONFLICTING', reviewDecision: 'APPROVED' })
+  const mergeable: MergeableState = pr?.mergeable ?? 'UNKNOWN'
+  const decision: ReviewDecision = pr?.reviewDecision ?? null
+
+  const canMerge = (m: MergeableState): boolean | null => {
+    switch (m) {
+      case 'MERGEABLE':
+        return true
+      case 'CONFLICTING':
+        return false
+      case 'UNKNOWN':
+        return null
+    }
+  }
+
+  expect(canMerge(mergeable)).toBe(false)
+  expect(decision).toBe('APPROVED')
 })
