@@ -5,7 +5,13 @@
 
 import { expect, test } from 'bun:test'
 
-import { Gh, type CommandRunner, type CreateLabelOptions, type Label } from '@osdlc/typed-gh'
+import {
+  Gh,
+  type CommandRunner,
+  type CreateLabelOptions,
+  type Label,
+  type ListResult,
+} from '@osdlc/typed-gh'
 
 test('list, create and edit labels', () => {
   const calls: string[][] = []
@@ -21,7 +27,7 @@ test('list, create and edit labels', () => {
   }
   const gh = new Gh('/repo', { runner })
 
-  const labels: Label[] | null = gh.labelList({ limit: 100 })
+  const labels: ListResult<Label> | null = gh.labelList({ limit: 100 })
   const triage: CreateLabelOptions = {
     name: 'status:triage',
     color: '1f6feb',
@@ -30,9 +36,10 @@ test('list, create and edit labels', () => {
   gh.createLabel(triage)
   gh.editLabel('status:triage', { description: 'Waiting for triage' })
 
-  expect(labels?.map((l) => l.name)).toEqual(['bug'])
+  expect(labels?.rows.map((l) => l.name)).toEqual(['bug'])
+  expect(labels?.truncated).toBe(false)
   expect(calls).toEqual([
-    ['label', 'list', '--json', 'name,color,description', '--limit', '100'],
+    ['label', 'list', '--json', 'name,color,description', '--limit', '101'],
     [
       'label',
       'create',

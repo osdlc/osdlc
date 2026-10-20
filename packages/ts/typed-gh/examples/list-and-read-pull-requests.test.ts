@@ -34,7 +34,7 @@ test('list the open pull requests into the main branch', () => {
   const gh = new Gh('/repo', { runner })
 
   const filter: PrListOptions = { state: 'open', base: 'main' }
-  const prs: PullRequest[] = gh.prList(filter) ?? []
+  const prs: PullRequest[] = gh.prList(filter)?.rows ?? []
 
   expect(prs.map((pr) => [pr.number, pr.baseRefName, pr.mergeable])).toEqual([
     [7, 'main', 'MERGEABLE'],

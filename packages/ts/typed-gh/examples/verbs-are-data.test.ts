@@ -35,6 +35,7 @@ import {
   type AsyncCommandRunner,
   type CommandRunOptions,
   type GhVerb,
+  type ListResult,
   type PullRequest,
 } from '@osdlc/typed-gh'
 
@@ -44,7 +45,7 @@ test('run a verb on your own async runner', async () => {
   const runner: AsyncCommandRunner = {
     run: async () => ({ exitCode: 0, stdout: '[{"number":7}]', stderr: '' }),
   }
-  const verb: GhVerb<PullRequest[] | null> = prList({ state: 'open', limit: 10 })
+  const verb: GhVerb<ListResult<PullRequest> | null> = prList({ state: 'open', limit: 10 })
 
   const result = await runner.run(verb.argv, options)
 
@@ -56,9 +57,9 @@ test('run a verb on your own async runner', async () => {
     '--json',
     expect.stringContaining('number,'),
     '--limit',
-    '10',
+    '11',
   ])
-  expect(verb.parse(result)?.map((pr) => pr.number)).toEqual([7])
+  expect(verb.parse(result)?.rows.map((pr) => pr.number)).toEqual([7])
 })
 
 test('queries are unchecked and mutations are checked', () => {

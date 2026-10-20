@@ -136,11 +136,11 @@ describe('Gh — argv', () => {
       '--json',
       PR_LIST_FIELDS.join(','),
       '--limit',
-      '100',
+      '101',
     ])
   })
 
-  test("a head filter becomes gh's prefix search, base becomes an exact flag", () => {
+  test("a head filter becomes gh's exact --head, base becomes an exact flag", () => {
     const { runner, calls } = recorder([json([])])
     new Gh('/repo', { runner }).prList({ head: 'feature/x', base: 'main', limit: 5 })
     expect(calls[0]).toEqual([
@@ -150,12 +150,12 @@ describe('Gh — argv', () => {
       'open',
       '--base',
       'main',
-      '--search',
-      'head:feature/x',
+      '--head',
+      'feature/x',
       '--json',
       PR_LIST_FIELDS.join(','),
       '--limit',
-      '5',
+      '6',
     ])
   })
 
@@ -200,7 +200,7 @@ describe('Gh — argv', () => {
       '--json',
       'name,color,description',
       '--limit',
-      '1000',
+      '1001',
     ])
   })
 
@@ -239,7 +239,7 @@ describe('Gh — argv', () => {
       '--json',
       'number,title,body,labels,state',
       '--limit',
-      '200',
+      '201',
     ])
   })
 
@@ -254,7 +254,7 @@ describe('Gh — argv', () => {
       '--json',
       'number,title,body,labels,state',
       '--limit',
-      '200',
+      '201',
     ])
   })
 
@@ -327,7 +327,7 @@ describe('Gh — the tri-modal contract', () => {
     expect(new Gh('/repo', { runner: recorder([FAIL]).runner }).prView(1)).toBeNull()
 
     const empty = new Gh('/repo', { runner: recorder([json([])]).runner })
-    expect(empty.prList()).toEqual([])
+    expect(empty.prList()).toEqual({ rows: [], truncated: false })
   })
 
   test('malformed JSON degrades to null rather than throwing', () => {
@@ -342,14 +342,17 @@ describe('Gh — the tri-modal contract', () => {
 
   test('labelList is null on failure, [] on a genuinely empty repo', () => {
     expect(new Gh('/repo', { runner: recorder([FAIL]).runner }).labelList()).toBeNull()
-    expect(new Gh('/repo', { runner: recorder([json([])]).runner }).labelList()).toEqual([])
+    expect(new Gh('/repo', { runner: recorder([json([])]).runner }).labelList()).toEqual({
+      rows: [],
+      truncated: false,
+    })
   })
 
   test('labelList parses the full row and degrades to null on malformed JSON', () => {
     const runner = recorder([
       json([{ name: 'status:triage', color: '1f6feb', description: 'Triage stage' }]),
     ]).runner
-    expect(new Gh('/repo', { runner }).labelList()).toEqual([
+    expect(new Gh('/repo', { runner }).labelList()?.rows).toEqual([
       { name: 'status:triage', color: '1f6feb', description: 'Triage stage' },
     ])
 

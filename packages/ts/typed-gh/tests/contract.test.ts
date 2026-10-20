@@ -57,18 +57,18 @@ describe('README: queries return null on failure and never throw', () => {
 
     expect(failed.gh.prList()).toBeNull()
     expect(await failed.agh.prList()).toBeNull()
-    expect(empty.gh.prList()).toEqual([])
-    expect(await empty.agh.prList()).toEqual([])
+    expect(empty.gh.prList()).toEqual({ rows: [], truncated: false })
+    expect(await empty.agh.prList()).toEqual({ rows: [], truncated: false })
 
     expect(failed.gh.issueList()).toBeNull()
     expect(await failed.agh.issueList()).toBeNull()
-    expect(empty.gh.issueList()).toEqual([])
-    expect(await empty.agh.issueList()).toEqual([])
+    expect(empty.gh.issueList()).toEqual({ rows: [], truncated: false })
+    expect(await empty.agh.issueList()).toEqual({ rows: [], truncated: false })
 
     expect(failed.gh.labelList()).toBeNull()
     expect(await failed.agh.labelList()).toBeNull()
-    expect(empty.gh.labelList()).toEqual([])
-    expect(await empty.agh.labelList()).toEqual([])
+    expect(empty.gh.labelList()).toEqual({ rows: [], truncated: false })
+    expect(await empty.agh.labelList()).toEqual({ rows: [], truncated: false })
   })
 
   test('single-value queries are null on failure too', async () => {

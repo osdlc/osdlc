@@ -80,7 +80,16 @@ test('a method is tagged on both clients or on neither', () => {
 
 test('the owner-agreed items are experimental, and prDiff is stable', () => {
   expect(readmeExperimental().sort()).toEqual(
-    ['CreateReviewOptions', 'ReviewComment', 'createReview', 'issueCommentEdit'].sort(),
+    [
+      'CreateReviewOptions',
+      'ReviewComment',
+      'createReview',
+      'issueCommentEdit',
+      'graphql',
+      'nodesAt',
+      'GraphqlOptions',
+      'GraphqlVariable',
+    ].sort(),
   )
   expect(tagged().exports.get('prDiff')).toBe(false)
 })

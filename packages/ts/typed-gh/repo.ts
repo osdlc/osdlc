@@ -29,31 +29,105 @@ export function ownerRepoSlug(r: OwnerRepo): string {
   return `${r.owner}/${r.repo}`
 }
 
-/** A pull request coordinate: the repository and the PR's number within it. */
+/** A pull request coordinate: the host, the repository and the PR's number within it. */
 export interface PullRequestRef extends OwnerRepo {
+  /** The GitHub host, lower-cased: `github.com`, or an Enterprise host. */
+  hostname: string
   number: number
 }
 
 /**
- * The `{owner, repo, number}` a GitHub pull-request URL names, or null when
- * `url` is not one.
+ * The `{hostname, owner, repo, number}` a GitHub pull-request URL names, or
+ * null when `url` is not one.
  *
- * Accepts `https://github.com/<owner>/<repo>/pull/<n>` with or without a
- * scheme, a `www.` prefix, a trailing slash, a sub-page (`/files`,
- * `/commits`), a query string or a fragment — every shape a browser's address
- * bar hands over. `parseGitUrl` is the wrong tool here: it reads `/pull/<n>`
+ * Accepts `https://<host>/<owner>/<repo>/pull/<n>` with or without a scheme,
+ * a trailing slash, a sub-page (`/files`, `/commits`), a query string or a
+ * fragment — every shape a browser's address bar hands over. The host is
+ * `github.com` (a `www.` prefix is dropped) or a GitHub Enterprise host such
+ * as `github.acme.com` or `acme.ghe.com`; without a scheme the host must
+ * contain a dot. `parseGitUrl` is the wrong tool here: it reads `/pull/<n>`
  * as part of the project path.
- *
- * GitHub.com only. A GitHub Enterprise host is a different coordinate space
- * (the `gh` CLI needs `--hostname`), so it is not silently accepted.
  */
 export function parsePrUrl(url: string): PullRequestRef | null {
   const m =
-    /^(?:https?:\/\/)?(?:www\.)?github\.com\/([^/\s]+)\/([^/\s]+)\/pull\/(\d+)(?:[/?#].*)?$/i.exec(
+    /^(?:(https?:)\/\/)?([a-z0-9](?:[a-z0-9.-]*[a-z0-9])?(?::\d+)?)\/([^/\s]+)\/([^/\s]+)\/pull\/(\d+)(?:[/?#].*)?$/i.exec(
       url.trim(),
     )
   if (m === null) return null
-  const number = Number(m[3])
+  const host = m[2]!.toLowerCase()
+  if (m[1] === undefined && !host.includes('.')) return null
+  const number = Number(m[5])
   if (!Number.isSafeInteger(number) || number <= 0) return null
-  return { owner: m[1]!, repo: m[2]!.replace(/\.git$/, ''), number }
+  return {
+    hostname: host === 'www.github.com' ? 'github.com' : host,
+    owner: m[3]!,
+    repo: m[4]!.replace(/\.git$/, ''),
+    number,
+  }
+}
+
+/**
+ * What a person typed to name a pull request, read by {@link parsePrRef}.
+ *
+ * - `number`: `42`, `#42`, or `owner/name#42` (then `repo` is set). For bare
+ *   digits, `orBranch` holds the same text, since a branch can be named `42`.
+ * - `url`: a pull request URL, with what {@link parsePrUrl} read from it.
+ * - `branch`: any other text that is a valid branch name.
+ */
+export type PrRef =
+  | { kind: 'number'; number: number; repo: OwnerRepo | null; orBranch: string | null }
+  | ({ kind: 'url'; url: string } & PullRequestRef)
+  | { kind: 'branch'; name: string }
+
+/**
+ * Read what a person typed to name a pull request: a number, `#42`,
+ * `owner/name#42`, a URL, or a branch name. Null when it is none of these.
+ *
+ * Pure: it starts no process. Digits are read as a number first, the way
+ * `gh pr view 42` reads them; `orBranch` keeps the branch reading. The
+ * clients' `prFind` tries both.
+ */
+export function parsePrRef(input: string): PrRef | null {
+  const text = input.trim()
+  const digits = /^(#?)(\d+)$/.exec(text)
+  if (digits !== null) {
+    const number = Number(digits[2])
+    if (Number.isSafeInteger(number) && number > 0) {
+      return { kind: 'number', number, repo: null, orBranch: digits[1] === '' ? text : null }
+    }
+  }
+  const qualified = /^([^/\s#]+)\/([^/\s#]+)#(\d+)$/.exec(text)
+  if (qualified !== null) {
+    const number = Number(qualified[3])
+    if (!Number.isSafeInteger(number) || number <= 0) return null
+    if (!isRepoSlug(`${qualified[1]}/${qualified[2]}`)) return null
+    return {
+      kind: 'number',
+      number,
+      repo: { owner: qualified[1]!, repo: qualified[2]! },
+      orBranch: null,
+    }
+  }
+  const url = parsePrUrl(text)
+  if (url !== null) return { kind: 'url', url: text, ...url }
+  return isBranchName(text) ? { kind: 'branch', name: text } : null
+}
+
+/** True for `owner/name` as GitHub spells it. */
+export function isRepoSlug(text: string): boolean {
+  return /^[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9_.][A-Za-z0-9_.-]*$/.test(text)
+}
+
+/**
+ * True when `name` is a branch name git would accept (`git check-ref-format
+ * --branch`), and does not start with `-`, so it cannot read as a flag.
+ */
+function isBranchName(name: string): boolean {
+  if (name === '' || name === '@' || name.startsWith('-') || name.startsWith('/')) return false
+  if (name.endsWith('/') || name.endsWith('.')) return false
+  // Control characters, space, and the characters git reserves.
+  // oxlint-disable-next-line no-control-regex
+  if (/[\x00-\x20\x7f~^:?*[\\]/.test(name)) return false
+  if (name.includes('..') || name.includes('@{') || name.includes('//')) return false
+  return name.split('/').every((part) => !part.startsWith('.') && !part.endsWith('.lock'))
 }

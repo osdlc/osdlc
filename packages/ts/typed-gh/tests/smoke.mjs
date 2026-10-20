@@ -37,7 +37,7 @@ function fake(result) {
 
 // A query returns a parsed value.
 const ok = fake(answer('[{"number":7,"title":"Add retries"}]'))
-const prs = new Gh('/repo', { runner: ok.runner }).prList()
+const prs = new Gh('/repo', { runner: ok.runner }).prList()?.rows
 assert.equal(prs?.length, 1)
 assert.equal(prs?.[0]?.number, 7)
 assert.equal(
@@ -61,7 +61,7 @@ assert.throws(
 const asyncGh = new AsyncGh('/repo', {
   runner: { run: async () => answer('[]') },
 })
-assert.deepEqual(await asyncGh.prList(), [])
+assert.deepEqual(await asyncGh.prList(), { rows: [], truncated: false })
 
 // Parsers are pure.
 assert.equal(parsePullRequest({ number: 7 })?.reviewDecision, null)
