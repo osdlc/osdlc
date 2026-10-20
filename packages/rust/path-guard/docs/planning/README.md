@@ -7,8 +7,8 @@ The terms both twins share live in the TypeScript package's folder:
 [`packages/ts/path-guard/docs/planning`](../../../../ts/path-guard/docs/planning/README.md).
 Each names the Rust spelling next to the TypeScript one. The
 [decisions](../../../../ts/path-guard/docs/planning/README.md#decisions) there
-cover the crate too where they say so: the name, the shared version line, and
-how the error kinds grow.
+cover the crate too where they say so: the name, the shared version line, how
+the error kinds grow, and the 0.3.0 API.
 
 These files are maintained here, in
 [osdlc/osdlc](https://github.com/osdlc/osdlc). Open an issue or a pull request
