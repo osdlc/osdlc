@@ -283,6 +283,73 @@ This package re-exports `CommandFailed` and the runner and result types (`Comman
 Import the runners themselves, such as `spawnRunner` and `spawnRunnerAsync`, from
 `@osdlc/command-seam`.
 
+## API
+
+Everything below is exported from `@osdlc/typed-gh`. The Stability section says which items are
+experimental.
+
+### Clients
+
+- `Gh`: the synchronous client, bound to one working directory.
+- `AsyncGh`: the awaitable client, with the same methods.
+- `AsyncCallOptions`: `timeoutMs` and `signal`, accepted by eleven methods of `AsyncGh`.
+- `defaultRunnerFactory` and `RunnerFactory`: how a client makes its default runner for `gh`.
+
+Methods on both clients:
+
+- Escape hatches: `raw` runs any `gh` call and returns the result. `rawChecked` throws on a failed
+  exit. `at` returns the same client rooted at another directory.
+- Pull request queries: `prList`, `prView`, `openPrFor`, `prViewSettled`, `prBody` and
+  `prReviewThreads`.
+- Pull request changes: `createPr`, `editPr`, `editPrBody`, `prComment`, `prUpdateBranch`,
+  `prSetDraft`, `prMerge`, `prDiff` and `createReview`.
+- Issue and label queries: `issueList`, `issueView` and `labelList`.
+- Issue and label changes: `setIssueLabel`, `createLabel`, `editLabel` and `issueCommentEdit`.
+- REST: `api` is a GET through `gh api` that never throws.
+- Setup checks: `installed`, `authenticated`, `authStatus` and `ready`.
+- `ownerRepo` reads the owner and repository from a remote URL. It starts no process.
+
+### Verbs
+
+A verb is plain data: argv, a `checked` flag, optional stdin and a `parse` function. Each client
+method has a verb of the same name, except the escape hatches, `at`, `prViewSettled`, `openPrFor`,
+`authenticated`, `ready` and `ownerRepo`. `openPrsForBranch` is a verb with no method.
+
+- `GhVerb`: the shape of a verb.
+- Verb builders: `prList`, `prView`, `prBody`, `openPrsForBranch`, `prReviewThreads`, `prDiff`,
+  `createPr`, `editPr`, `editPrBody`, `prComment`, `prUpdateBranch`, `prSetDraft`, `prMerge`,
+  `createReview`, `issueList`, `issueView`, `labelList`, `setIssueLabel`, `createLabel`,
+  `editLabel`, `issueCommentEdit`, `api`, `installed` and `authStatus`.
+- `pickPrForBranch`: the row whose head branch is exactly the one you name. `gh` matches a head
+  filter as a prefix.
+- Field lists: `PR_REF_FIELDS` (enough to identify a PR), `PR_LIST_FIELDS` (for triage) and
+  `PR_VIEW_FIELDS` (the full set).
+- Option and result types: `PrListOptions`, `IssueListOptions`, `CreatePrOptions`,
+  `CreateReviewOptions`, `ReviewComment`, `CreateLabelOptions`, `ApiOptions`, `ApiResponse`,
+  `AuthStatus`, `PrMergeMethod` and `ReviewThread`.
+
+### Parsers
+
+- `parsePullRequest`: reads a `gh --json` payload into a `PullRequest`, or `null`.
+- `anyCheckFailed`: true if any check in a list failed.
+- `normalizeAuthorLogin`: drops a `[bot]` suffix from a login.
+- `parseOwnerRepo`: reads a remote URL into `{ owner, repo }`, or `null`.
+- `ownerRepoSlug`: writes `{ owner, repo }` as `owner/repo`.
+- `parsePrUrl`: reads a pull request URL into its owner, repository and number, or `null`.
+
+### Types
+
+- Model: `PullRequest`, `Review`, `Comment`, `CheckRun`, `Actor`, `Label` and `IssueRow`.
+- Enums: `PullRequestState`, `MergeableState`, `MergeStateStatus`, `ReviewDecision`, `ReviewState`
+  and `CheckConclusion`.
+- `OwnerRepo` and `PullRequestRef`: a repository, and a pull request in one.
+
+### From the command seam
+
+- `CommandFailed`: thrown by a mutation. It carries the argv and the result.
+- `CommandRunner`, `AsyncCommandRunner`, `CommandResult` and `CommandRunOptions`: the runner types
+  that appear in signatures.
+
 ## Stability
 
 The package is at 0.x. Each item is stable or experimental.

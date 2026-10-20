@@ -276,6 +276,10 @@ export interface ApiResponse {
   error?: string | undefined
 }
 
+/**
+ * Options for {@link api}. Both are optional; with neither, the call is a plain
+ * `gh api <endpoint>` and the response carries no status or ETag.
+ */
 export interface ApiOptions {
   /** Send `If-None-Match: <etag>` (implies `includeHeaders`). */
   etag?: string | null | undefined
