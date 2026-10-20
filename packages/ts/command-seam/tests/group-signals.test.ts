@@ -85,6 +85,13 @@ test.skipIf(!posix)('the managed runner registers a group until the leader exits
   expect(liveProcessGroups()).toContain(h.pid)
   h.kill('SIGKILL')
   await h.exited
+  // The group is released once it is empty. It can still answer
+  // `kill(-pid, 0)` for a moment after the leader's exit is reported, and the
+  // release then waits for the next poll. Wait for the release itself.
+  const end = performance.now() + 3_000
+  while (liveProcessGroups().includes(h.pid) && performance.now() < end) {
+    await new Promise((r) => setTimeout(r, 25))
+  }
   expect(liveProcessGroups().length).toBe(before)
 })
 
