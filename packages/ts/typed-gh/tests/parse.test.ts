@@ -133,6 +133,12 @@ describe('author logins — the two transports', () => {
     expect(parseActor(undefined)).toBeNull()
   })
 
+  test('a login that is only `[bot]` is no author, like an empty login', () => {
+    expect(parseActor({ login: '[bot]' })).toBeNull()
+    expect(parseActor({ login: '[bot]', is_bot: true })).toBeNull()
+    expect(parsePullRequest({ number: 1, author: { login: '[bot]' } })?.author).toBeNull()
+  })
+
   test("REST's `user` node is read as well as GraphQL's `author`", () => {
     const rest = parsePullRequest({
       number: 1,

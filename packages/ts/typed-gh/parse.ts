@@ -77,13 +77,17 @@ export function normalizeAuthorLogin(login: string): string {
   return login.endsWith('[bot]') ? login.slice(0, -'[bot]'.length) : login
 }
 
-/** Parse an author node from either transport (`author` or REST's `user`). */
+/**
+ * Parse an author node from either transport (`author` or REST's `user`).
+ * Null when there is no login, or the login is empty once `[bot]` is removed.
+ */
 export function parseActor(x: unknown): Actor | null {
   if (!isRecord(x)) return null
   const raw = str(x['login'])
-  if (raw === '') return null
+  const login = normalizeAuthorLogin(raw)
+  if (login === '') return null
   return {
-    login: normalizeAuthorLogin(raw),
+    login,
     // `is_bot` is REST/GraphQL-dependent; the suffix is the portable signal.
     isBot: bool(x['is_bot']) || raw.endsWith('[bot]'),
   }
