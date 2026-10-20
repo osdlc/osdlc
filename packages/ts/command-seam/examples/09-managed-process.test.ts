@@ -216,6 +216,11 @@ test('a host installs signal forwarding once; its live groups are listed until t
     expect(forwardedSignal()).toBeUndefined()
     expect(forwardedExitCode()).toBeUndefined()
     await stopProcess(server, { graceMs: 2_000 })
+    // A group is listed until it is empty, which may take a later poll.
+    const end = performance.now() + 3_000
+    while (liveProcessGroups().includes(server.pid) && performance.now() < end) {
+      await new Promise((r) => setTimeout(r, 25))
+    }
     expect(liveProcessGroups()).not.toContain(server.pid)
   } finally {
     uninstall()
