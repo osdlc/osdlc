@@ -250,7 +250,11 @@ export class Gh {
     return this.exec(v.prComment(number, body))
   }
 
-  /** Create a `COMMENT` review with inline comments; returns the review's URL ('' if none came back). */
+  /**
+   * Create a `COMMENT` review with inline comments; returns the review's URL ('' if none came back).
+   *
+   * @experimental
+   */
   createReview(number: number, opts: v.CreateReviewOptions): string {
     return this.exec(v.createReview(number, opts))
   }
@@ -270,7 +274,11 @@ export class Gh {
     this.exec(v.prSetDraft(number, draft))
   }
 
-  /** Rewrite one PR conversation comment's body. `commentId` is the numeric REST id; see the verb. */
+  /**
+   * Rewrite one PR conversation comment's body. `commentId` is the numeric REST id; see the verb.
+   *
+   * @experimental
+   */
   issueCommentEdit(commentId: string, body: string): void {
     this.exec(v.issueCommentEdit(commentId, body))
   }

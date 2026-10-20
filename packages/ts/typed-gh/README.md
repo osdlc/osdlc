@@ -18,6 +18,8 @@ npm install @osdlc/typed-gh
 ```
 
 It needs Node 22 or later (or Bun), and the `gh` CLI on `PATH`, signed in with `gh auth login`.
+It is supported on macOS and Linux. Windows is not supported yet; it will be once a Windows CI job
+runs the tests.
 
 ```ts
 import { Gh, type PrListOptions, type PullRequest } from '@osdlc/typed-gh'
@@ -274,6 +276,30 @@ This package re-exports `CommandFailed` and the runner and result types (`Comman
 `AsyncCommandRunner`, `CommandResult`, `CommandRunOptions`), since they appear in its signatures.
 Import the runners themselves, such as `spawnRunner` and `spawnRunnerAsync`, from
 `@osdlc/command-seam`.
+
+## Stability
+
+The package is at 0.x. Each item is stable or experimental.
+
+- **Stable** items change only with a minor release, and a breaking change is marked
+  **Breaking** in the CHANGELOG.
+- **Experimental** items may change or go in any release. Each has an `@experimental` tag in its
+  TSDoc.
+
+The experimental items:
+
+- `issueCommentEdit`, the verb and the method on both clients
+- `createReview`, the verb and the method on both clients
+- `CreateReviewOptions`
+- `ReviewComment`
+
+Every other export and method is stable, `prDiff` included.
+
+## Platforms
+
+macOS and Linux are supported, and CI runs the tests on both. Windows is not supported yet. It will be
+added together with a Windows CI job. The package builds `gh` argv as arrays and starts `gh` with no
+shell, so nothing in it is specific to one shell.
 
 ## What is not here
 

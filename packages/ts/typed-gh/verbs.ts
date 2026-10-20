@@ -476,6 +476,8 @@ export function prSetDraft(number: number, draft: boolean): GhVerb<void> {
  * `gh api repos/{owner}/{repo}/issues/<n>/comments` returns. It is not the
  * GraphQL node id (such as `IC_kw…`) that `gh pr view --json comments` gives
  * in `Comment.id`; the REST path answers 404 for a node id.
+ *
+ * @experimental
  */
 export function issueCommentEdit(commentId: string, body: string): GhVerb<void> {
   return {
@@ -674,7 +676,11 @@ export function prComment(number: number, body: string): GhVerb<string> {
   }
 }
 
-/** One inline comment of a review: a line on the right (new) side of the diff. */
+/**
+ * One inline comment of a review: a line on the right (new) side of the diff.
+ *
+ * @experimental
+ */
 export interface ReviewComment {
   path: string
   /** Line number in the new version of the file. */
@@ -682,6 +688,11 @@ export interface ReviewComment {
   body: string
 }
 
+/**
+ * What {@link createReview} posts: the commit, the summary and the inline comments.
+ *
+ * @experimental
+ */
 export interface CreateReviewOptions {
   /** The commit the review is anchored to; line numbers refer to the diff at this sha. */
   commitId: string
@@ -697,6 +708,8 @@ export interface CreateReviewOptions {
  * `gh api` with the payload on stdin, because `gh pr review` cannot attach
  * line-anchored comments; `{owner}`/`{repo}` are filled in by `gh` from the
  * client's working directory.
+ *
+ * @experimental
  */
 export function createReview(number: number, opts: CreateReviewOptions): GhVerb<string> {
   const payload = {

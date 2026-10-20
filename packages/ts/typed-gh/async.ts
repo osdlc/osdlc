@@ -222,7 +222,11 @@ export class AsyncGh {
     return this.exec(v.prComment(number, body))
   }
 
-  /** Create a `COMMENT` review with inline comments; resolves to the review's URL ('' if none came back). */
+  /**
+   * Create a `COMMENT` review with inline comments; resolves to the review's URL ('' if none came back).
+   *
+   * @experimental
+   */
   createReview(number: number, opts: v.CreateReviewOptions): Promise<string> {
     return this.exec(v.createReview(number, opts))
   }
@@ -237,7 +241,11 @@ export class AsyncGh {
     return this.exec(v.prSetDraft(number, draft))
   }
 
-  /** Rewrite one PR conversation comment's body. `commentId` is the numeric REST id; see the verb. */
+  /**
+   * Rewrite one PR conversation comment's body. `commentId` is the numeric REST id; see the verb.
+   *
+   * @experimental
+   */
   issueCommentEdit(commentId: string, body: string): Promise<void> {
     return this.exec(v.issueCommentEdit(commentId, body))
   }
