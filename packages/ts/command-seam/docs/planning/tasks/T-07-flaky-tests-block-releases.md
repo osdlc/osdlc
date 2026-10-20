@@ -17,13 +17,14 @@ request or a release never fails on it.
 `packages-ci.yml` and `packages-publish.yml` run every package's tests in
 `verify`. Some `command-seam` tests fail now and then on CI runners and pass
 on a later run. Each failure below is in a `verify` job, and a later run of the same
-branch or of `main` passed. No run was re-run on the same commit.
+branch or of `main` passed. Only run 39371522600 was re-run on the same
+commit; its sixth attempt passed.
 
 The tests run on Bun (`bun test`). The "job" column is the CI job label: the
 runner and the Node version set up beside Bun, which the tests do not use.
 
 This list comes from a sweep of the failed `packages-ci.yml` and
-`packages-publish.yml` runs from 2026-10-18 to 2026-10-19. It may not be
+`packages-publish.yml` runs from 2026-10-18 to 2026-10-20. It may not be
 complete.
 
 | Test | File | Failing job | Run |
@@ -31,6 +32,9 @@ complete.
 | the managed runner registers a group until the leader exits | `tests/group-signals.test.ts:82` | ubuntu, node 22 | [run](https://github.com/osdlc/osdlc/actions/runs/39309487282/job/118255066807) |
 | the managed runner registers a group until the leader exits | `tests/group-signals.test.ts:82` | ubuntu, node 24 | [run](https://github.com/osdlc/osdlc/actions/runs/39317594973/job/118285273854) |
 | the managed runner registers a group until the leader exits | `tests/group-signals.test.ts:82` | ubuntu, node 22 (publish) | [run](https://github.com/osdlc/osdlc/actions/runs/39322491374/job/118300259732) |
+| the managed runner registers a group until the leader exits | `tests/group-signals.test.ts:82` | ubuntu, node 22 (publish) | [run](https://github.com/osdlc/osdlc/actions/runs/39362624809/job/118432088230) |
+| the managed runner registers a group until the leader exits | `tests/group-signals.test.ts:82` | ubuntu, node 24 (publish) | [run](https://github.com/osdlc/osdlc/actions/runs/39362624809/job/118432088429) |
+| the managed runner registers a group until the leader exits | `tests/group-signals.test.ts:82` | ubuntu, node 22 (publish) | [run](https://github.com/osdlc/osdlc/actions/runs/39371522600/job/118460302535) |
 | a real step logs both streams in the order it wrote them | `examples/16-launch-and-log.test.ts:130` | macos, node 22 (5 s timeout) | [run](https://github.com/osdlc/osdlc/actions/runs/39315089525/job/118274350130) |
 | real git: the hash matches the file’s bytes, sync and async | `examples/17-binary-output.test.ts:118` | macos, node 22 (15 s timeout, publish) | [run](https://github.com/osdlc/osdlc/actions/runs/39307572221/job/118248514041) |
 | a verb that starts with ${verb[0]} runs as a command, not an option (${name}) | `tests/shell.test.ts:48` | macos, node 22 (4 s run cap) | [run](https://github.com/osdlc/osdlc/actions/runs/39190768936/job/117862829055) |
@@ -41,7 +45,7 @@ complete.
 The `shell.test.ts:48` title is a template. The older failing runs name it
 "a verb that starts with - or + runs as a command, not an option".
 
-The `group-signals.test.ts:82` test fails in 1.7 to 10 ms. That points at a
+The `group-signals.test.ts:82` test fails in 1.7 to 11 ms. That points at a
 race in what the test observes, not a slow runner. The group-gone test
 fails in 270 to 540 ms. The other rows hit a timeout.
 
@@ -50,7 +54,7 @@ Two more tests came up in review with no failing run in the sweep:
 keeps its exit code") and `tests/reason.test.ts:188`. Check them in the
 reproduction step. Add a run link if one shows up.
 
-Seven `packages-publish.yml` runs on `main` failed in `verify`, so
+Nine `packages-publish.yml` runs on `main` failed in `verify`, so
 `publish` did not run and the release waited for a later run:
 [39133129996](https://github.com/osdlc/osdlc/actions/runs/39133129996),
 [39179458575](https://github.com/osdlc/osdlc/actions/runs/39179458575),
@@ -58,8 +62,24 @@ Seven `packages-publish.yml` runs on `main` failed in `verify`, so
 [39193123342](https://github.com/osdlc/osdlc/actions/runs/39193123342),
 [39307572221](https://github.com/osdlc/osdlc/actions/runs/39307572221),
 [39322491374](https://github.com/osdlc/osdlc/actions/runs/39322491374),
-[39326048602](https://github.com/osdlc/osdlc/actions/runs/39326048602).
-All seven failed on a `command-seam` test.
+[39326048602](https://github.com/osdlc/osdlc/actions/runs/39326048602),
+[39362624809](https://github.com/osdlc/osdlc/actions/runs/39362624809),
+[39371522600](https://github.com/osdlc/osdlc/actions/runs/39371522600).
+All nine failed on a `command-seam` test.
+
+## Fixes
+
+- [x] `tests/group-signals.test.ts:82`. The test checked the registry right
+      after `exited`. The runner releases the group only once the group is
+      empty. On Linux the group can still answer `kill(-pid, 0)` for a
+      moment after the leader's exit is reported. The release then waits
+      for the next 250 ms poll. The test now polls the registry until the
+      group is released, with a 3 s cap. The runner is right: it keeps a
+      group registered until it is empty, as documented.
+- [ ] `examples/16-launch-and-log.test.ts:130`
+- [ ] `examples/17-binary-output.test.ts:118`
+- [ ] `tests/shell.test.ts:48`
+- [ ] `tests/contract.test.ts:531`
 
 ## Approach
 
