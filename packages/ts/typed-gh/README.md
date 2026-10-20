@@ -313,6 +313,6 @@ shell, so nothing in it is specific to one shell.
   `raw(["api", …])`.
 - **Anything that reads a token.**
 
-## License
+## Licence
 
-MIT
+`MIT OR Apache-2.0`, at your option. See `LICENSE-MIT` and `LICENSE-APACHE`.
