@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.3
+
+### Patch Changes
+
+- 4d13bd9: The Apache-2.0 licence file now names the same copyright holder as the MIT file: sksizer. It said "Sizer LLC".
+
 ## 0.5.2
 
 ### Patch Changes
