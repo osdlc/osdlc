@@ -33,7 +33,7 @@ import type {
   PrListOptions,
 } from './verbs.ts'
 import { ownerRepoSlug, parseOwnerRepo, parsePrRef } from './repo.ts'
-import type { IssueRow, Label, OwnerRepo, PullRequest } from './types.ts'
+import type { IssueRow, Label, OwnerRepo, PrSearchHit, PullRequest, Repository } from './types.ts'
 
 /**
  * Factory of per-binary runners — the injectable subprocess seam a CLI tail
@@ -259,6 +259,30 @@ export class Gh {
   /** One issue with its labels, or null when gh failed. */
   issueView(number: number, opts: { timeoutMs?: number | undefined } = {}): IssueRow | null {
     return this.exec(v.issueView(number, this.target), opts.timeoutMs)
+  }
+
+  /** An owner's repositories (up to `opts.limit`, default 100), or null when gh failed. */
+  repoList(
+    owner: string,
+    opts: v.RepoListOptions & { timeoutMs?: number | undefined } = {},
+  ): ListResult<Repository> | null {
+    return this.exec(v.repoList(owner, opts, this.target), opts.timeoutMs)
+  }
+
+  /** One repository: `repo`, else the client's repo, else the clone at `cwd`. Null when gh failed. */
+  repoView(
+    repo?: string | undefined,
+    opts: { fields?: readonly string[] | undefined; timeoutMs?: number | undefined } = {},
+  ): Repository | null {
+    return this.exec(v.repoView(repo, opts.fields ?? v.REPO_FIELDS, this.target), opts.timeoutMs)
+  }
+
+  /** Pull requests across repositories matching a search query, or null when gh failed. */
+  searchPrs(
+    query: string,
+    opts: v.SearchPrsOptions & { timeoutMs?: number | undefined } = {},
+  ): ListResult<PrSearchHit> | null {
+    return this.exec(v.searchPrs(query, opts, this.target), opts.timeoutMs)
   }
 
   /** True iff the `gh` binary is on PATH and runs. */

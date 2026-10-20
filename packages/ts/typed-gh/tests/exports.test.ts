@@ -51,12 +51,21 @@ const FUNCTIONS = [
   'prSetDraft',
   'prUpdateBranch',
   'prView',
+  'repoList',
+  'repoView',
+  'searchPrs',
   'setIssueLabel',
 ]
 
 const CLASSES = ['AsyncGh', 'CommandFailed', 'Gh']
 
-const FIELD_LISTS = ['PR_LIST_FIELDS', 'PR_REF_FIELDS', 'PR_VIEW_FIELDS']
+const FIELD_LISTS = [
+  'PR_LIST_FIELDS',
+  'PR_REF_FIELDS',
+  'PR_VIEW_FIELDS',
+  'REPO_FIELDS',
+  'SEARCH_PR_FIELDS',
+]
 
 describe('the package entry point', () => {
   test('exports exactly the documented runtime names', () => {

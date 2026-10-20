@@ -17,7 +17,7 @@ import {
 } from '@osdlc/command-seam'
 
 import { ownerRepoSlug, parseOwnerRepo, parsePrRef } from './repo.ts'
-import type { IssueRow, Label, OwnerRepo, PullRequest } from './types.ts'
+import type { IssueRow, Label, OwnerRepo, PrSearchHit, PullRequest, Repository } from './types.ts'
 import * as v from './verbs.ts'
 import type {
   ApiOptions,
@@ -215,6 +215,30 @@ export class AsyncGh {
   /** One issue with its labels, or null when gh failed. */
   issueView(number: number, opts: AsyncCallOptions = {}): Promise<IssueRow | null> {
     return this.exec(v.issueView(number, this.target), opts)
+  }
+
+  /** An owner's repositories, or null when gh failed. See `Gh.repoList`. */
+  repoList(
+    owner: string,
+    opts: v.RepoListOptions & AsyncCallOptions = {},
+  ): Promise<ListResult<Repository> | null> {
+    return this.exec(v.repoList(owner, opts, this.target), opts)
+  }
+
+  /** One repository, or null when gh failed. See `Gh.repoView`. */
+  repoView(
+    repo?: string | undefined,
+    opts: { fields?: readonly string[] | undefined } & AsyncCallOptions = {},
+  ): Promise<Repository | null> {
+    return this.exec(v.repoView(repo, opts.fields ?? v.REPO_FIELDS, this.target), opts)
+  }
+
+  /** Pull requests across repositories matching a search query, or null. See `Gh.searchPrs`. */
+  searchPrs(
+    query: string,
+    opts: v.SearchPrsOptions & AsyncCallOptions = {},
+  ): Promise<ListResult<PrSearchHit> | null> {
+    return this.exec(v.searchPrs(query, opts, this.target), opts)
   }
 
   /** True iff the `gh` binary is on PATH and runs. */

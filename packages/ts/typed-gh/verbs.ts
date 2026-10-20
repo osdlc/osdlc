@@ -14,9 +14,9 @@
 
 import { stderrOrError, type CommandResult } from '@osdlc/command-seam'
 
-import { parseLabels, parsePullRequest } from './parse.ts'
+import { parseLabels, parsePrSearchHit, parsePullRequest, parseRepository } from './parse.ts'
 import { isRepoSlug, parsePrUrl } from './repo.ts'
-import type { IssueRow, Label, PullRequest } from './types.ts'
+import type { IssueRow, Label, PrSearchHit, PullRequest, Repository } from './types.ts'
 
 /** One `gh` invocation: what to run, and how to read what came back. */
 export interface GhVerb<T> {
@@ -84,6 +84,12 @@ function repoArgs(target: GhTarget | undefined, repo?: string | undefined): stri
 function hostArgs(target: GhTarget | undefined): string[] {
   checkTarget(target)
   return target?.hostname === undefined ? [] : ['--hostname', target.hostname]
+}
+
+/** `GH_HOST` for the verbs gh gives no host flag. */
+function hostEnv(target: GhTarget | undefined): Record<string, string> | undefined {
+  checkTarget(target)
+  return target?.hostname === undefined ? undefined : { GH_HOST: target.hostname }
 }
 
 /**
@@ -733,6 +739,164 @@ export function issueView(number: number, target?: GhTarget): GhVerb<IssueRow | 
     checked: false,
     readOnly: true,
     parse: oneIssueOrNull,
+  }
+}
+
+/** The `gh repo list`/`view --json` fields a {@link Repository} reads. */
+export const REPO_FIELDS = [
+  'nameWithOwner',
+  'description',
+  'defaultBranchRef',
+  'visibility',
+  'isArchived',
+  'url',
+] as const
+
+/** The `gh search prs --json` fields a {@link PrSearchHit} reads. */
+export const SEARCH_PR_FIELDS = [
+  'number',
+  'title',
+  'state',
+  'url',
+  'isDraft',
+  'repository',
+  'author',
+  'labels',
+  'createdAt',
+  'updatedAt',
+  'closedAt',
+] as const
+
+/** Parse a `--json` array payload with `parse`, dropping rows it rejects. Null on failure. */
+function rowsOrNull<T>(r: CommandResult, parse: (raw: unknown) => T | null): T[] | null {
+  if (r.exitCode !== 0) return null
+  let data: unknown
+  try {
+    data = JSON.parse(r.stdout || '[]')
+  } catch {
+    return null
+  }
+  if (!Array.isArray(data)) return null
+  return data.map(parse).filter((row): row is T => row !== null)
+}
+
+/** What to narrow a repository listing to. Every filter is optional. */
+export interface RepoListOptions {
+  /** True for archived repositories only, false to leave them out; both when absent. */
+  archived?: boolean | undefined
+  visibility?: 'public' | 'private' | 'internal' | undefined
+  /** The most repositories to return. Defaults to 100. */
+  limit?: number | undefined
+  /** Field subset; defaults to {@link REPO_FIELDS}. `nameWithOwner` is always asked for. */
+  fields?: readonly string[] | undefined
+}
+
+/**
+ * `gh repo list <owner> --json …` — an owner's repositories. The host comes
+ * from the target (`GH_HOST`); the target's repo is not used.
+ */
+export function repoList(
+  owner: string,
+  opts: RepoListOptions = {},
+  target?: GhTarget,
+): GhVerb<ListResult<Repository> | null> {
+  notAFlag('repoList owner', owner)
+  const limit = opts.limit ?? 100
+  checkLimit(limit)
+  const argv = ['repo', 'list', owner]
+  if (opts.archived === true) argv.push('--archived')
+  if (opts.archived === false) argv.push('--no-archived')
+  if (opts.visibility !== undefined) argv.push('--visibility', opts.visibility)
+  argv.push('--json', withFields(opts.fields ?? REPO_FIELDS, ['nameWithOwner']).join(','))
+  argv.push('--limit', String(limit + 1))
+  return {
+    argv,
+    checked: false,
+    readOnly: true,
+    env: hostEnv(target),
+    parse: (r) => limited(rowsOrNull(r, parseRepository), limit),
+  }
+}
+
+/**
+ * `gh repo view [<[host/]owner/name>] --json …` — one repository: `repo`,
+ * else the target's repo, else the clone at the client's cwd.
+ */
+export function repoView(
+  repo?: string | undefined,
+  fields: readonly string[] = REPO_FIELDS,
+  target?: GhTarget,
+): GhVerb<Repository | null> {
+  checkTarget(target)
+  if (repo !== undefined) checkTarget({ repo })
+  const slug = repo ?? target?.repo
+  const argv = ['repo', 'view']
+  if (slug !== undefined) {
+    argv.push(target?.hostname === undefined ? slug : `${target.hostname}/${slug}`)
+  }
+  argv.push('--json', withFields(fields, ['nameWithOwner']).join(','))
+  return {
+    argv,
+    checked: false,
+    readOnly: true,
+    parse(r) {
+      if (r.exitCode !== 0) return null
+      try {
+        return parseRepository(JSON.parse(r.stdout))
+      } catch {
+        return null
+      }
+    },
+  }
+}
+
+/** What to narrow a pull request search to. Every filter is optional. */
+export interface SearchPrsOptions {
+  /** Only repositories this user or organization owns. */
+  owner?: string | undefined
+  /** Only this `owner/name` repository. */
+  repo?: string | undefined
+  /** `merged` is `--merged`; `open` and `closed` are `--state`. */
+  state?: 'open' | 'closed' | 'merged' | undefined
+  /** The most hits to return. Defaults to 100. */
+  limit?: number | undefined
+  /** Field subset; defaults to {@link SEARCH_PR_FIELDS}. `number` is always asked for. */
+  fields?: readonly string[] | undefined
+}
+
+/**
+ * `gh search prs [flags] -- <query>` — pull requests across repositories,
+ * with GitHub's search syntax in `query` (it may start with `-`, as in
+ * `-label:bug`). The host comes from the target (`GH_HOST`); the target's
+ * repo is not used, so pass `opts.repo` or `opts.owner` to narrow.
+ */
+export function searchPrs(
+  query: string,
+  opts: SearchPrsOptions = {},
+  target?: GhTarget,
+): GhVerb<ListResult<PrSearchHit> | null> {
+  const limit = opts.limit ?? 100
+  checkLimit(limit)
+  const argv = ['search', 'prs']
+  if (opts.owner !== undefined) {
+    notAFlag('searchPrs owner', opts.owner)
+    argv.push('--owner', opts.owner)
+  }
+  if (opts.repo !== undefined) {
+    checkTarget({ repo: opts.repo })
+    argv.push('--repo', opts.repo)
+  }
+  if (opts.state === 'merged') argv.push('--merged')
+  else if (opts.state !== undefined) argv.push('--state', opts.state)
+  argv.push('--json', withFields(opts.fields ?? SEARCH_PR_FIELDS, ['number']).join(','))
+  argv.push('--limit', String(limit + 1))
+  if (query !== '') argv.push('--', query)
+  return {
+    argv,
+    checked: false,
+    readOnly: true,
+    env: hostEnv(target),
+    parse: (r) => limited(rowsOrNull(r, parsePrSearchHit), limit),
   }
 }
 
