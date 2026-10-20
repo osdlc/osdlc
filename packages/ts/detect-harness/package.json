@@ -1,6 +1,6 @@
 {
   "name": "@osdlc/detect-harness",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Find the coding-agent harnesses (Claude Code, Codex, Cursor, opencode, pi, Antigravity) on a machine and in a project, and read what each has configured: plugins, skills, hooks, MCP servers, permissions, instructions and sign-in evidence. Read-only; MCP env and header values, URL credentials and secret-looking MCP args are redacted by default.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",
