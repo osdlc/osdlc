@@ -81,4 +81,4 @@ under `packages/ts/tsconfig`. Report issues at
 
 ## License
 
-[MIT](https://github.com/osdlc/osdlc/blob/main/packages/ts/tsconfig/LICENSE)
+[MIT](https://github.com/osdlc/osdlc/blob/main/packages/ts/tsconfig/LICENSE-MIT) or [Apache-2.0](https://github.com/osdlc/osdlc/blob/main/packages/ts/tsconfig/LICENSE-APACHE), at your option.

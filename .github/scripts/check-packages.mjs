@@ -108,6 +108,9 @@ function cleanConsumer(pkg, pkgDir, tarball, packed) {
   }
 }
 
+/** The one license every library declares. */
+const LICENSE = 'MIT OR Apache-2.0'
+
 /** True when the manifest names a `types` entry, top level or in `exports`. */
 function shipsTypes(pkg) {
   if (pkg.types || pkg.typings) return true
@@ -131,6 +134,9 @@ for (const pkgDir of dirs) {
   console.log(`\n== ${pkg.name}@${pkg.version} (${relative(root, pkgDir)})`)
   try {
     if (error) throw error
+    if (pkg.license !== LICENSE) {
+      throw new Error(`license is ${JSON.stringify(pkg.license)}, expected ${JSON.stringify(LICENSE)}`)
+    }
     console.log(`packed ${tarball}`)
     process.stdout.write(run(bin('publint'), ['run', tarball, '--strict'], root))
     if (shipsTypes(pkg)) {

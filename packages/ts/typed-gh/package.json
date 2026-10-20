@@ -1,0 +1,76 @@
+{
+  "name": "@osdlc/typed-gh",
+  "version": "0.4.1",
+  "description": "A typed GitHub client for TypeScript over the gh CLI. A total PullRequest/Review/CheckRun model, pure argv builders and parsers, and a tri-modal client \u2014 queries return parsed values, mutations throw, raw() is the escape hatch. Uses gh's own credentials; reads no token.",
+  "license": "MIT OR Apache-2.0",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "bun": "./index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist/",
+    "index.ts",
+    "sync.ts",
+    "async.ts",
+    "verbs.ts",
+    "parse.ts",
+    "repo.ts",
+    "types.ts",
+    "README.md",
+    "CHANGELOG.md",
+    "SECURITY.md",
+    "CONTRIBUTING.md",
+    "LICENSE-MIT",
+    "LICENSE-APACHE"
+  ],
+  "dependencies": {
+    "@osdlc/command-seam": "workspace:^",
+    "@osdlc/typed-git": "workspace:^"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "test": "bun test",
+    "smoke": "node tests/smoke.mjs",
+    "prepublishOnly": "npm run clean && npm run build",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "oxlint .",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/osdlc/osdlc.git",
+    "directory": "packages/ts/typed-gh"
+  },
+  "homepage": "https://github.com/osdlc/osdlc/tree/main/packages/ts/typed-gh#readme",
+  "bugs": "https://github.com/osdlc/osdlc/issues",
+  "keywords": [
+    "github",
+    "gh",
+    "pull-request",
+    "typescript",
+    "cli-wrapper",
+    "dependency-injection"
+  ],
+  "devDependencies": {
+    "@osdlc/prettier-config": "workspace:^",
+    "@osdlc/tsconfig": "workspace:^",
+    "@types/bun": "^1.1.14",
+    "@types/node": "^26.1.0",
+    "oxlint": "^1.65.0",
+    "prettier": "3.9.6",
+    "typescript": "~6.0.3"
+  }
+}

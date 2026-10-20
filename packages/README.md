@@ -28,11 +28,10 @@ of them.
 
 ## Licenses
 
-Each library carries its own license, named in its manifest and kept as
-license files in its directory. `command-seam`, `tsconfig` and
-`prettier-config` are MIT. The Rust crates and the other TypeScript
-libraries, `typed-git` among them, are `MIT OR Apache-2.0`. The root `LICENSE` of this repository
-applies to everything outside `packages/`.
+Every library is `MIT OR Apache-2.0`. A library names its license in its
+manifest and keeps the license files in its directory. `pnpm run
+check:packages` fails a library that declares any other license. The root
+`LICENSE` of this repository applies to everything outside `packages/`.
 
 ## Why one repository
 
@@ -117,6 +116,10 @@ Developed here, in this repository:
 - `packages/ts/typed-git` (`@osdlc/typed-git` on npm, a typed git client for
   TypeScript, in a synchronous and an awaitable form; each verb declares what
   absence means for it and every other failure throws)
+- `packages/ts/typed-gh` (`@osdlc/typed-gh` on npm, a typed GitHub client for
+  TypeScript over the gh CLI; a total PullRequest, Review and CheckRun model,
+  pure argv builders and parsers, and a client where queries return parsed
+  values and mutations throw)
 - `packages/ts/intersect` (`@osdlc/intersect` on npm, a path-pattern overlap
   engine: do two globs share a path, with a witness path, a registry and an
   optional filesystem layer)
@@ -146,6 +149,24 @@ requests here.
    already on npm is skipped, so re-running a failed run is safe. If
    `publish` fails on the npm side, fix the trusted publisher setting on
    npmjs.com and re-run the failed jobs.
+
+### Withdrawing a release
+
+Prefer `npm deprecate` to unpublishing. A deprecated version still installs,
+and the message tells users what to do.
+
+```sh
+npm deprecate @osdlc/<name>@<version> "Broken: use <fixed version>"
+```
+
+Then release a fixed version through the normal flow.
+
+npm refuses `npm unpublish` once another public package depends on the
+package. Even without dependents, npm allows an unpublish after 72 hours only
+for a package with fewer than 300 downloads in the last week and a single
+owner. A version number that has been
+published cannot be used again, even after an unpublish. Unpublishing is for a
+mistake caught within hours, such as a leaked secret, and the owner does it.
 
 ### Publishing a new library for the first time
 

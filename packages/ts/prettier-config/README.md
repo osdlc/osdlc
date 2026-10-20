@@ -57,4 +57,4 @@ under `packages/ts/prettier-config`. Report issues at
 
 ## License
 
-[MIT](https://github.com/osdlc/osdlc/blob/main/packages/ts/prettier-config/LICENSE)
+[MIT](https://github.com/osdlc/osdlc/blob/main/packages/ts/prettier-config/LICENSE-MIT) or [Apache-2.0](https://github.com/osdlc/osdlc/blob/main/packages/ts/prettier-config/LICENSE-APACHE), at your option.
