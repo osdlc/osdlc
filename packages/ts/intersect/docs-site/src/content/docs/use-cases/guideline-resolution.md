@@ -75,7 +75,7 @@ index([
 ]);
 ```
 
-Throws `Error: duplicate registry id 'guidelines/UI'`.
+Throws an `IntersectError` with code `DUPLICATE_REGISTRY_ID` (message `duplicate registry id 'guidelines/UI'`).
 
 ## SDLC tie-in
 

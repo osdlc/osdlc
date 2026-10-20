@@ -16,8 +16,9 @@ the result.
 
 ## filesInScope — the context slice
 
-`filesInScope` returns the on-disk files matching a scope, sorted and cwd-relative (absolute
-with `{ absolute: true }`).
+`filesInScope` returns the on-disk files matching a scope, sorted by code point and cwd-relative
+(absolute with `{ absolute: true }`). Symbolic links are skipped. A missing `cwd` or an unreadable
+directory throws an `IntersectError` with code `IO_ERROR`.
 
 ```ts
 import { filesInScope } from "@osdlc/intersect/fs";

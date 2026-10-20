@@ -114,3 +114,24 @@ describe('IntersectError', () => {
     }
   })
 })
+
+describe('./fs compiles the patterns before it walks', () => {
+  test('a bad pattern with a missing cwd reports the pattern, not IO_ERROR', async () => {
+    const { filesInScope, resolveIntersection } = await import('../fs.ts')
+    const cwd = '/definitely/not/a/directory'
+    await expect(filesInScope('a{1..3}', { cwd })).rejects.toMatchObject({
+      code: 'UNSUPPORTED_SYNTAX',
+    })
+    await expect(filesInScope(undefined as never, { cwd })).rejects.toMatchObject({
+      code: 'INVALID_ARGUMENT',
+    })
+    await expect(filesInScope('a', { cwd, ignore: ['+(a|b)'] })).rejects.toMatchObject({
+      code: 'UNSUPPORTED_SYNTAX',
+    })
+    await expect(resolveIntersection('a', '[a/b]', { cwd })).rejects.toMatchObject({
+      code: 'UNSUPPORTED_SYNTAX',
+    })
+    // A good pattern still reaches the walk and reports the bad cwd.
+    await expect(filesInScope('a', { cwd })).rejects.toMatchObject({ code: 'IO_ERROR' })
+  })
+})

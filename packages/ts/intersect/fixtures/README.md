@@ -83,6 +83,23 @@ result equals `expect` in order (results are sorted by code point; with
 the temp dir. Every
 fs case must declare a `tree`. Both harnesses still schema-lint `fs.cases.json`.
 
+### Skipped cases
+
+The fs harness skips a case, and reports it as skipped, when the platform cannot
+run it:
+
+- A case with `symlinks` is skipped on Windows, where creating a symbolic link
+  can fail with `EPERM`.
+- A case with `unreadable` is skipped on Windows and when running as root,
+  where mode 000 does not stop a read.
+
+### Witness results depend on search order
+
+`witness` expectations are exact strings. They come from a breadth-first search
+whose queue order is part of the result: segments are tried in pattern order,
+and among equal-length paths the first one found wins. A twin must copy that
+order, or its witnesses differ from the corpus even when they are valid.
+
 ## Corpus files
 
 | File | Area |

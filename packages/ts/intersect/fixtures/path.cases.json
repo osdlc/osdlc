@@ -402,6 +402,43 @@
       "path": "src//a.ts",
       "patterns": "src/*/a.ts",
       "expect": true
+    },
+    {
+      "name": "syntax: x}/{y is plain text, a stray } before an opening { in a later segment",
+      "op": "matches",
+      "path": "x}/{y",
+      "patterns": "x\\}/\\{y",
+      "expect": true
+    },
+    {
+      "name": "syntax: x}/{y as a pattern is plain text and matches itself",
+      "op": "intersects",
+      "a": "x}/{y",
+      "b": "x}/{y",
+      "expect": true
+    },
+    {
+      "name": "syntax: {a}/b} is plain text for the second segment",
+      "op": "intersects",
+      "a": "{a}/b}",
+      "b": "a/b}",
+      "expect": true
+    },
+    {
+      "name": "syntax: []/] throws UNSUPPORTED_SYNTAX",
+      "op": "intersects",
+      "a": "[]/]",
+      "b": "a",
+      "throws": true,
+      "code": "UNSUPPORTED_SYNTAX"
+    },
+    {
+      "name": "syntax: {[}/x] throws UNSUPPORTED_SYNTAX",
+      "op": "intersects",
+      "a": "{[}/x]",
+      "b": "a",
+      "throws": true,
+      "code": "UNSUPPORTED_SYNTAX"
     }
   ]
 }

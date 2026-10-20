@@ -84,6 +84,9 @@ async function filesMatching(
   also?: Matcher,
 ): Promise<string[]> {
   const cwd = opts?.cwd ?? process.cwd()
+  // Compile first: a bad pattern or argument must fail before the walk starts.
+  const include = compile(patterns, opts)
+  const ignore = opts?.ignore?.length ? compile(opts.ignore, opts) : null
   // The globber swallows read errors. Record them from its `readdir` and throw
   // once the walk is done.
   const failures: { path: string; error: NodeJS.ErrnoException }[] = []
@@ -114,9 +117,6 @@ async function filesMatching(
   // dialect, with a trailing separator (`src/api/`). Strip it at the boundary:
   // a path this layer returns is a plain path, never a globber-shaped one.
   const entries = found.map((rel) => (rel.endsWith('/') ? rel.slice(0, -1) : rel))
-  // Compile once per call, not once per file.
-  const include = compile(patterns, opts)
-  const ignore = opts?.ignore?.length ? compile(opts.ignore, opts) : null
   // `matches` reads each name literally, so a file called `[id].vue` is that name.
   const survivors = entries.filter((rel) => {
     if (!include.matches(rel)) return false

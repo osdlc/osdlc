@@ -84,12 +84,13 @@ witness("src/api/**", "src/web/**");
 | `src/api/**` | `src/web/**` | `null` | no common path |
 | `*/*` | `*/{,.a}` | `null` | the only common path has no spelling |
 
-The last row is the one edge: the witness is always a path that really matches both sides, so a
-common path that no *string* can spell is reported as `null`. That takes a segment the two sides
-share only when it is EMPTY (`*` will not match `.a`, so `{,.a}` is left with its empty branch),
-landing at the end of the path — and `parse` normalizes a trailing separator back off, so `"a/"`
-would come back as `["a"]` and match neither side. `intersects`, which answers over segment vectors
-rather than strings, still reports `true` for such a pair.
+The last row is the one edge: the witness is always a path that really matches both sides. When the
+first common path ends in an empty segment, no string spells it (`parse` normalizes a trailing
+separator off), so the search goes on to a longer path. `witness("a//**", "**")` is `"a//a"`. Only
+when no spellable common path exists does the witness stay `null`: in `*/{,.a}` against `*/*`, `*`
+will not match `.a`, so the empty branch is the only shared segment and it lands at the end.
+`intersects`, which answers over segment vectors rather than strings, still reports `true` for such
+a pair.
 
 ## compile — amortize a fixed scope
 

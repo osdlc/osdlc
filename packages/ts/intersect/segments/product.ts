@@ -55,7 +55,7 @@ function buildSeqNFA(pattern: SegmentPattern, opts: Options | undefined): SeqNFA
 
   const gsZero = opts?.globstarMatchesZero ?? true
   const star = starMatcher(opts)
-  const syntax = new SyntaxState()
+  const syntax = new SyntaxState(pattern.join('/'))
 
   for (let i = 0; i < n; i++) {
     const seg = pattern[i]!

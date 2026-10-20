@@ -96,6 +96,11 @@ const NUMBER_RANGE = /^-?\d+\.\.-?\d+(\.\.-?\d+)?$/
  * shows a group or class that spans a `/`.
  */
 export class SyntaxState {
+  /** The whole pattern, for error messages. */
+  readonly pattern: string
+  constructor(pattern: string = '') {
+    this.pattern = pattern
+  }
   openBrace = false
   openBracket = false
 }
@@ -114,10 +119,10 @@ function tokenize(glob: string, state: SyntaxState): Token[] {
   const sc = new Scan(glob)
   const [tokens] = parseSeq(sc, 0, false, 0)
   if (sc.strayBrace && state.openBrace) {
-    throw unsupported('a {...} group cannot contain "/"', glob)
+    throw unsupported('a {...} group cannot contain "/"', state.pattern || glob)
   }
   if (sc.strayBracket && state.openBracket) {
-    throw unsupported('a [...] class cannot contain "/"', glob)
+    throw unsupported('a [...] class cannot contain "/"', state.pattern || glob)
   }
   state.openBrace ||= sc.openBrace
   state.openBracket ||= sc.openBracket
@@ -433,7 +438,7 @@ export function compileSegment(
  * @throws {@link IntersectError} `PATTERN_TOO_DEEP` or `UNSUPPORTED_SYNTAX`.
  */
 export function assertSupported(pattern: readonly string[]): void {
-  const state = new SyntaxState()
+  const state = new SyntaxState(pattern.join('/'))
   for (const seg of pattern) {
     if (seg !== '**') tokenize(seg, state)
   }

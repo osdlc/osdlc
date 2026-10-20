@@ -10,7 +10,7 @@
  * directories unreadable, move or break `cwd`, or expect an `IntersectError`. It is the ONLY place fs cases run — the generic harness
  * (`fixtures.test.ts`) skips the `fs.*` namespace, so nothing is double-run.
  */
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, type TestContext } from 'vitest'
 import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative, resolve } from 'node:path'
@@ -70,12 +70,13 @@ for (const cf of loadCaseFiles()) {
     for (const c of fsCases) {
       const op = effectiveOp(cf, c)
       const tree = c.tree as string[] | undefined
-      const body = async (): Promise<void> => {
+      const body = async (ctx: TestContext): Promise<void> => {
         if (!Array.isArray(tree)) {
           throw new Error(`fs case "${c.name}" must declare a "tree" of file paths`)
         }
         const locked = (c.unreadable as string[] | undefined) ?? []
-        if (locked.length > 0 && !canLockDirectories()) return
+        if (locked.length > 0 && !canLockDirectories()) ctx.skip()
+        if (c.symlinks !== undefined && process.platform === 'win32') ctx.skip()
         const root = await mkdtemp(join(tmpdir(), 'intersect-fs-'))
         try {
           await materialize(root, tree)
