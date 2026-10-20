@@ -1,0 +1,183 @@
+{
+  "op": "intersects",
+  "cases": [
+    {
+      "name": "dot: a leading-dot segment is excluded by default",
+      "a": "*",
+      "b": ".env",
+      "expect": false,
+      "pending": false
+    },
+    {
+      "name": "dot: dot:true lets a star match a dotfile",
+      "a": "*",
+      "b": ".env",
+      "opts": { "dot": true },
+      "expect": true,
+      "pending": false
+    },
+    {
+      "name": "dot: matches op honors the dot option",
+      "op": "matches",
+      "path": ".env",
+      "patterns": ["*"],
+      "opts": { "dot": true },
+      "expect": true,
+      "pending": false
+    },
+    {
+      "name": "caseInsensitive: differing case overlaps when set",
+      "a": "SRC/**",
+      "b": "src/api.ts",
+      "opts": { "caseInsensitive": true },
+      "expect": true,
+      "pending": false
+    },
+    {
+      "name": "caseInsensitive: case matters by default",
+      "a": "SRC/**",
+      "b": "src/api.ts",
+      "expect": false,
+      "pending": false
+    },
+    {
+      "name": "globstarMatchesZero: globstar spans zero segments by default",
+      "a": "a/**/b",
+      "b": "a/b",
+      "expect": true,
+      "pending": false
+    },
+    {
+      "name": "globstarMatchesZero: disabled requires at least one segment",
+      "a": "a/**/b",
+      "b": "a/b",
+      "opts": { "globstarMatchesZero": false },
+      "expect": false,
+      "pending": false
+    },
+    {
+      "name": "globstarMatchesZero: still matches one intervening segment when disabled",
+      "a": "a/**/b",
+      "b": "a/x/b",
+      "opts": { "globstarMatchesZero": false },
+      "expect": true,
+      "pending": false
+    },
+    {
+      "name": "segments dot: a leading-dot segment is excluded by default",
+      "op": "segments.intersects",
+      "a": ["*"],
+      "b": [".env"],
+      "expect": false,
+      "pending": false
+    },
+    {
+      "name": "segments dot: dot:true lets a star match a dotfile",
+      "op": "segments.intersects",
+      "a": ["*"],
+      "b": [".env"],
+      "opts": { "dot": true },
+      "expect": true,
+      "pending": false
+    },
+    {
+      "name": "segments dot: matches op honors the dot option",
+      "op": "segments.matches",
+      "path": [".env"],
+      "pattern": ["*"],
+      "opts": { "dot": true },
+      "expect": true,
+      "pending": false
+    },
+    {
+      "name": "segments dot: globstar excludes a leading-dot segment by default",
+      "op": "segments.intersects",
+      "a": ["src", "**", "*.ts"],
+      "b": ["src", ".hidden", "x.ts"],
+      "expect": false,
+      "pending": false
+    },
+    {
+      "name": "segments dot: a trailing-literal star excludes a dotfile by default (*.env vs .env)",
+      "op": "segments.intersects",
+      "a": ["*.env"],
+      "b": [".env"],
+      "expect": false,
+      "pending": false
+    },
+    {
+      "name": "segments dot: dot:true lets a trailing-literal star match a dotfile (*.env vs .env)",
+      "op": "segments.intersects",
+      "a": ["*.env"],
+      "b": [".env"],
+      "opts": { "dot": true },
+      "expect": true,
+      "pending": false
+    },
+    {
+      "name": "segments caseInsensitive: differing case overlaps when set",
+      "op": "segments.intersects",
+      "a": ["SRC", "**"],
+      "b": ["src", "api.ts"],
+      "opts": { "caseInsensitive": true },
+      "expect": true,
+      "pending": false
+    },
+    {
+      "name": "segments caseInsensitive: case matters by default",
+      "op": "segments.intersects",
+      "a": ["SRC", "**"],
+      "b": ["src", "api.ts"],
+      "expect": false,
+      "pending": false
+    },
+    {
+      "name": "segments globstarMatchesZero: globstar spans zero segments by default",
+      "op": "segments.intersects",
+      "a": ["a", "**", "b"],
+      "b": ["a", "b"],
+      "expect": true,
+      "pending": false
+    },
+    {
+      "name": "segments globstarMatchesZero: disabled requires at least one segment",
+      "op": "segments.intersects",
+      "a": ["a", "**", "b"],
+      "b": ["a", "b"],
+      "opts": { "globstarMatchesZero": false },
+      "expect": false,
+      "pending": false
+    },
+    {
+      "name": "segments globstarMatchesZero: still matches one intervening segment when disabled",
+      "op": "segments.intersects",
+      "a": ["a", "**", "b"],
+      "b": ["a", "x", "b"],
+      "opts": { "globstarMatchesZero": false },
+      "expect": true,
+      "pending": false
+    },
+    {
+      "name": "segments dot: a dotted brace branch does not license its sibling branches",
+      "op": "matches",
+      "path": ".env",
+      "patterns": ["{*.env,.x}"],
+      "expect": false
+    },
+    {
+      "name": "segments dot: the dotted brace branch still matches its own dotfile",
+      "op": "matches",
+      "path": ".x",
+      "patterns": ["{*.env,.x}"],
+      "expect": true
+    },
+    {
+      "name": "segments dot: dot:true lets the starred brace branch match a dotfile",
+      "op": "matches",
+      "path": ".env",
+      "patterns": ["{*.env,.x}"],
+      "opts": { "dot": true },
+      "expect": true
+    }
+  ]
+}

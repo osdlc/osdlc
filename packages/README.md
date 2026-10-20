@@ -114,6 +114,9 @@ Developed here, in this repository:
 - `packages/ts/path-guard` (`@osdlc/path-guard` on npm, a path containment
   guard: lexical validation, then a symlink-aware proof that a path stays
   inside its root; the TypeScript twin of the `path-guard` crate)
+- `packages/ts/intersect` (`@osdlc/intersect` on npm, a path-pattern overlap
+  engine: do two globs share a path, with a witness path, a registry and an
+  optional filesystem layer)
 - `packages/ts/detect-harness` (`@osdlc/detect-harness` on npm, finds the
   coding-agent harnesses on a machine and in a project and reads what each has
   configured; read-only, with secrets redacted)
