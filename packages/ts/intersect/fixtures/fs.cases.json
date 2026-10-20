@@ -17,7 +17,9 @@
       "name": "filesInScope: ignore excludes matching files",
       "tree": ["src/api/user.ts", "src/api/routes/list.ts", "src/api/user.test.ts"],
       "patterns": ["src/api/**"],
-      "opts": { "ignore": ["**/*.test.ts"] },
+      "opts": {
+        "ignore": ["**/*.test.ts"]
+      },
       "expect": ["src/api/routes/list.ts", "src/api/user.ts"]
     },
     {
@@ -44,7 +46,9 @@
       "name": "filesInScope: onlyFiles:false returns directories as plain paths",
       "tree": ["src/api/user.ts"],
       "patterns": ["src/**"],
-      "opts": { "onlyFiles": false },
+      "opts": {
+        "onlyFiles": false
+      },
       "expect": ["src", "src/api", "src/api/user.ts"]
     },
     {
@@ -53,6 +57,131 @@
       "tree": ["pages/[id].vue", "pages/i.vue"],
       "a": ["pages/**"],
       "b": ["pages/d.vue"],
+      "expect": []
+    },
+    {
+      "name": "filesInScope: symbolic links are neither followed nor listed",
+      "tree": ["real/a.ts", "src/b.ts"],
+      "symlinks": {
+        "link-dir": "real",
+        "link-file": "src/b.ts",
+        "dangling": "nowhere",
+        "loop": "loop"
+      },
+      "patterns": ["**"],
+      "expect": ["real/a.ts", "src/b.ts"]
+    },
+    {
+      "name": "filesInScope: onlyFiles:false lists directories but not symbolic links",
+      "tree": ["real/a.ts"],
+      "symlinks": {
+        "link-dir": "real",
+        "link-file": "real/a.ts"
+      },
+      "patterns": ["**"],
+      "opts": {
+        "onlyFiles": false
+      },
+      "expect": ["real", "real/a.ts"]
+    },
+    {
+      "name": "resolveIntersection: symbolic links are not followed",
+      "op": "fs.resolveIntersection",
+      "tree": ["real/a.ts"],
+      "symlinks": {
+        "link-dir": "real"
+      },
+      "a": ["**"],
+      "b": ["link-dir/**"],
+      "expect": []
+    },
+    {
+      "name": "filesInScope: absolute with a relative cwd returns absolute paths",
+      "tree": ["src/a.ts", "src/b.ts"],
+      "cwdRelative": true,
+      "patterns": ["src/**"],
+      "opts": {
+        "absolute": true
+      },
+      "expect": ["src/a.ts", "src/b.ts"]
+    },
+    {
+      "name": "filesInScope: results sort by code point, not by UTF-16 unit",
+      "tree": ["～.ts", "😀.ts", "a.ts"],
+      "patterns": ["*.ts"],
+      "expect": ["a.ts", "～.ts", "😀.ts"]
+    },
+    {
+      "name": "filesInScope: a missing cwd throws IO_ERROR",
+      "tree": ["a.ts"],
+      "cwd": "missing",
+      "patterns": ["**"],
+      "throws": true,
+      "code": "IO_ERROR"
+    },
+    {
+      "name": "filesInScope: a cwd that is a file throws IO_ERROR",
+      "tree": ["a.ts"],
+      "cwd": "a.ts",
+      "patterns": ["**"],
+      "throws": true,
+      "code": "IO_ERROR"
+    },
+    {
+      "name": "filesInScope: an unreadable directory throws IO_ERROR",
+      "tree": ["ok/a.ts", "locked/b.ts"],
+      "unreadable": ["locked"],
+      "patterns": ["**"],
+      "throws": true,
+      "code": "IO_ERROR"
+    },
+    {
+      "name": "resolveIntersection: a missing cwd throws IO_ERROR",
+      "op": "fs.resolveIntersection",
+      "tree": ["a.ts"],
+      "cwd": "missing",
+      "a": ["**"],
+      "b": ["**"],
+      "throws": true,
+      "code": "IO_ERROR"
+    },
+    {
+      "name": "filesInScope: ignore with a bare directory name excludes only that exact path",
+      "tree": ["node_modules/x/index.js", "src/a.ts"],
+      "patterns": ["**"],
+      "opts": {
+        "ignore": ["node_modules"]
+      },
+      "expect": ["node_modules/x/index.js", "src/a.ts"]
+    },
+    {
+      "name": "filesInScope: ignore with a directory glob excludes its contents",
+      "tree": ["node_modules/x/index.js", "src/a.ts"],
+      "patterns": ["**"],
+      "opts": {
+        "ignore": ["node_modules/**"]
+      },
+      "expect": ["src/a.ts"]
+    },
+    {
+      "name": "filesInScope: a pattern with a leading ./ matches no file",
+      "tree": ["src/a.ts"],
+      "patterns": ["./src/a.ts"],
+      "expect": []
+    },
+    {
+      "name": "filesInScope: a pattern with a leading / matches no file",
+      "tree": ["src/a.ts"],
+      "patterns": ["/src/a.ts"],
+      "expect": []
+    },
+    {
+      "name": "filesInScope: ! is not negation in ignore",
+      "tree": ["src/a.ts", "src/b.ts"],
+      "patterns": ["src/**"],
+      "opts": {
+        "ignore": ["**", "!src/a.ts"]
+      },
       "expect": []
     }
   ]

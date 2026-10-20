@@ -65,6 +65,62 @@
       "a": "[^a-zA-Z0-9._-]",
       "b": "?",
       "expect": "`"
+    },
+    {
+      "name": "witness: keeps searching past an empty segment before a brace of nothing",
+      "op": "witness",
+      "a": "a/**/{,x}",
+      "b": "a/{,y}/**",
+      "expect": "a/y/x"
+    },
+    {
+      "name": "witness: keeps searching past an empty segment before **",
+      "op": "witness",
+      "a": "a//**",
+      "b": "**",
+      "expect": "a//a"
+    },
+    {
+      "name": "witness: two patterns with an empty segment before ** share a longer path",
+      "op": "witness",
+      "a": "a//**",
+      "b": "a//**",
+      "expect": "a//a"
+    },
+    {
+      "name": "witness: a leading empty segment before ** is searched past",
+      "op": "witness",
+      "a": "**",
+      "b": "//**",
+      "expect": "//a"
+    },
+    {
+      "name": "witness: a common path that only ends in an empty segment is still null",
+      "op": "witness",
+      "a": "a/{,x}",
+      "b": "a/{,y}",
+      "expect": null
+    },
+    {
+      "name": "witness: a path with glob characters is read back literally",
+      "op": "witness",
+      "a": "\\[a\\]",
+      "b": "\\[a\\]",
+      "expect": "[a]"
+    },
+    {
+      "name": "overlapping: a single string is a one-element candidate set",
+      "op": "overlapping",
+      "query": ["a/**", "b/**"],
+      "candidates": "a/x",
+      "expect": ["a/**"]
+    },
+    {
+      "name": "overlapping: filters the query, not the candidates",
+      "op": "overlapping",
+      "query": ["src/api/**", "src/db/schema.ts"],
+      "candidates": ["src/api/routes/*.ts", "docs/**"],
+      "expect": ["src/api/**"]
     }
   ]
 }

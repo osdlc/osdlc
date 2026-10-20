@@ -26,6 +26,15 @@ linearly with pattern size. Measured on Bun 1.4.2:
 
 Patterns of a few segments finish in a few milliseconds.
 
+Brace nesting is limited. A pattern with `{` groups nested more than 64 deep
+throws an `IntersectError` with code `PATTERN_TOO_DEEP`, so a hostile pattern
+cannot overflow the stack. This limit does not bound time or memory; the
+cost above still applies.
+
+`./fs` lists the whole tree under `cwd` before it filters, and does not follow
+symbolic links. Do not pass an untrusted `cwd`, and do not point it at a very
+large tree.
+
 If you pass patterns from untrusted input, cap them first. For example, allow
 at most 256 characters and 32 segments per pattern.
 

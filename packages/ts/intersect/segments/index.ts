@@ -9,9 +9,16 @@
  * a synchronized product of two per-pattern sequence automata plus reachability
  * (`./automaton.ts`, `./product.ts`); it has zero runtime dependencies.
  *
+ * `intersects`, `matches` and `witness` share their names with the path API in
+ * the package root. Here they take segment arrays, not strings, and `matches`
+ * reads its path as a pattern. The import path says which layer you call.
+ *
  * @module segments
  */
 import { search } from './product.ts'
+
+export { IntersectError } from '../errors.ts'
+export type { IntersectErrorCode } from '../errors.ts'
 
 /**
  * One pattern already split into path segments, e.g. `["src","**","*.vue"]`.
@@ -23,7 +30,7 @@ export type SegmentPattern = readonly string[]
 
 /** Matching semantics, shared by the segment core and the path API. */
 export interface Options {
-  /** Match paths ignoring ASCII case. Default `false`. */
+  /** Match paths ignoring ASCII case: only `A`-`Z` and `a`-`z` fold; `Ä` and `ä` differ. Default `false`. */
   caseInsensitive?: boolean
   /** Let `*`/`**` match a leading-dot segment. Default `false` (dotfiles are excluded). */
   dot?: boolean
@@ -39,7 +46,9 @@ export interface Options {
  * @param b - The second segment-pattern.
  * @param opts - Matching semantics ({@link Options}); defaults apply when omitted.
  * @returns `true` when some path matches both `a` and `b`, else `false`.
- * @remarks A pattern with no wildcards is an exact-path match, so two literal
+ * @throws {@link IntersectError} with code `UNSUPPORTED_SYNTAX` or `PATTERN_TOO_DEEP`.
+ * @remarks Takes segment arrays; the root `intersects` takes path-like strings.
+ * A pattern with no wildcards is an exact-path match, so two literal
  * segment arrays intersect only when equal. Subtrees are opted into with `**`.
  * @example
  * ```ts
@@ -60,6 +69,8 @@ export function intersects(a: SegmentPattern, b: SegmentPattern, opts?: Options)
  * @param pattern - The segment-pattern to test against.
  * @param opts - Matching semantics ({@link Options}); defaults apply when omitted.
  * @returns `true` when `path` falls within `pattern`, else `false`.
+ * @remarks Unlike the root `matches`, `path` is read as a pattern here, not as
+ * a literal name: escape glob characters in it yourself.
  * @example
  * ```ts
  * matches(["src", "api", "user.ts"], ["src", "**", "*.ts"]); // true
@@ -79,10 +90,11 @@ export function matches(path: SegmentPattern, pattern: SegmentPattern, opts?: Op
  * @param b - The second segment-pattern.
  * @param opts - Matching semantics ({@link Options}); defaults apply when omitted.
  * @returns A `SegmentPattern` both `a` and `b` match, or `null` if none exists.
- * @remarks A segment of the witness may be the empty string — legal here, since
+ * @remarks Takes segment arrays; the root `witness` takes path-like strings.
+ * A segment of the witness may be the empty string — legal here, since
  * this layer answers in segment vectors. The path API's `witness` stringifies,
- * and skips a vector whose LAST segment is empty: `parse` normalizes a trailing
- * separator back off, so no path string spells it.
+ * and searches on past a vector whose LAST segment is empty: `parse` normalizes
+ * a trailing separator back off, so no path string spells it.
  * @example
  * ```ts
  * witness(["src", "api", "**"], ["src", "**", "handler.ts"]); // ["src", "api", "handler.ts"]

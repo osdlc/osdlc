@@ -13,7 +13,7 @@
  * Zero runtime dependencies — standard library only.
  */
 import type { Options, SegmentPattern } from './index.ts'
-import { compileSegment, commonSegment, type SegmentMatcher } from './automaton.ts'
+import { compileSegment, commonSegment, SyntaxState, type SegmentMatcher } from './automaton.ts'
 
 interface ConsumeEdge {
   readonly matcher: SegmentMatcher
@@ -55,6 +55,7 @@ function buildSeqNFA(pattern: SegmentPattern, opts: Options | undefined): SeqNFA
 
   const gsZero = opts?.globstarMatchesZero ?? true
   const star = starMatcher(opts)
+  const syntax = new SyntaxState(pattern.join('/'))
 
   for (let i = 0; i < n; i++) {
     const seg = pattern[i]!
@@ -72,7 +73,7 @@ function buildSeqNFA(pattern: SegmentPattern, opts: Options | undefined): SeqNFA
         eps[mid]!.push(to)
       }
     } else {
-      consume[from]!.push({ matcher: compileSegment(seg, opts), to })
+      consume[from]!.push({ matcher: compileSegment(seg, opts, syntax), to })
     }
   }
 
@@ -102,25 +103,35 @@ function anyAccept(nfa: SeqNFA, states: Set<number>): boolean {
  * One concrete segment path that matches BOTH patterns, or `null` when they are
  * disjoint. This is the shared engine behind `intersects` (is it non-null?) and
  * `witness` (return it). BFS finds the fewest-segments common path.
+ *
+ * With `spellable`, a path of more than one segment whose last segment is empty
+ * does not count: no path string spells it. The search goes on past such a
+ * path, so the result is the fewest-segments path that CAN be spelled. The
+ * product state then carries a flag for "the last segment was empty", because
+ * the same pair of NFA states is accepting or not depending on it.
  */
 export function search(
   a: SegmentPattern,
   b: SegmentPattern,
   opts: Options | undefined,
+  spellable = false,
 ): SegmentPattern | null {
   const A = buildSeqNFA(a, opts)
   const B = buildSeqNFA(b, opts)
-  const stride = B.eps.length
-  const key = (sa: number, sb: number): number => sa * stride + sb
-  const start = key(A.start, B.start)
+  const stride = B.eps.length * 2
+  // A product state packs (state of A, state of B, last segment empty).
+  const key = (sa: number, sb: number, emptyLast: number): number =>
+    (sa * B.eps.length + sb) * 2 + emptyLast
+  const start = key(A.start, B.start, 0)
   const visited = new Set<number>([start])
   const queue: number[] = [start]
   const pred = new Map<number, { prev: number; seg: string }>()
 
   while (queue.length) {
     const st = queue.shift()!
+    const emptyLast = st % 2
     const sa = Math.floor(st / stride)
-    const sb = st % stride
+    const sb = Math.floor(st / 2) % B.eps.length
     const ca = seqClosure(A, sa)
     const cb = seqClosure(B, sb)
 
@@ -132,7 +143,8 @@ export function search(
         segs.push(p.seg)
         cur = p.prev
       }
-      return segs.reverse()
+      // Skip a path that ends in an empty segment (only when it has others).
+      if (!(spellable && emptyLast === 1 && segs.length > 1)) return segs.reverse()
     }
 
     for (const ua of ca) {
@@ -141,7 +153,7 @@ export function search(
           for (const eb of B.consume[ub]!) {
             const seg = commonSegment(ea.matcher, eb.matcher, opts)
             if (seg === null) continue
-            const nk = key(ea.to, eb.to)
+            const nk = key(ea.to, eb.to, spellable && seg === '' ? 1 : 0)
             if (!visited.has(nk)) {
               visited.add(nk)
               pred.set(nk, { prev: st, seg })

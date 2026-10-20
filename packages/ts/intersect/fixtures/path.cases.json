@@ -186,6 +186,259 @@
       "a": "[^a-z]",
       "b": "[a-z]",
       "expect": false
+    },
+    {
+      "name": "literal path: [id] in a path is a name, not a class",
+      "op": "matches",
+      "path": "pages/[id].vue",
+      "patterns": "pages/d.vue",
+      "expect": false
+    },
+    {
+      "name": "literal path: the escaped pattern matches the same name",
+      "op": "matches",
+      "path": "pages/[id].vue",
+      "patterns": "pages/\\[id\\].vue",
+      "expect": true
+    },
+    {
+      "name": "literal path: * in a path is a name, not a wildcard",
+      "op": "matches",
+      "path": "*",
+      "patterns": "a",
+      "expect": false
+    },
+    {
+      "name": "literal path: the escaped * pattern matches the name",
+      "op": "matches",
+      "path": "*",
+      "patterns": "\\*",
+      "expect": true
+    },
+    {
+      "name": "literal path: a pattern wildcard still matches a plain path",
+      "op": "matches",
+      "path": "a",
+      "patterns": "*",
+      "expect": true
+    },
+    {
+      "name": "literal path: whichMatch reads the path literally",
+      "op": "whichMatch",
+      "path": "src/[a].ts",
+      "patterns": ["src/a.ts", "src/\\[a\\].ts"],
+      "expect": ["src/\\[a\\].ts"]
+    },
+    {
+      "name": "literal path: a path with an extglob lookalike is a name",
+      "op": "matches",
+      "path": "+(a|b)",
+      "patterns": "+\\(a|b\\)",
+      "expect": true
+    },
+    {
+      "name": "depth: 64 nested brace groups are accepted",
+      "op": "intersects",
+      "a": "{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{a}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}",
+      "b": "a",
+      "expect": true
+    },
+    {
+      "name": "depth: 65 nested brace groups throw PATTERN_TOO_DEEP",
+      "op": "intersects",
+      "a": "{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{a}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}",
+      "b": "a",
+      "throws": true,
+      "code": "PATTERN_TOO_DEEP"
+    },
+    {
+      "name": "syntax: a number range {1..3} throws UNSUPPORTED_SYNTAX",
+      "op": "intersects",
+      "a": "a{1..3}",
+      "b": "a",
+      "throws": true,
+      "code": "UNSUPPORTED_SYNTAX"
+    },
+    {
+      "name": "syntax: a negative number range {-2..2} throws UNSUPPORTED_SYNTAX",
+      "op": "intersects",
+      "a": "a{-2..2}",
+      "b": "a",
+      "throws": true,
+      "code": "UNSUPPORTED_SYNTAX"
+    },
+    {
+      "name": "syntax: a number range with a step {1..9..2} throws UNSUPPORTED_SYNTAX",
+      "op": "intersects",
+      "a": "a{1..9..2}",
+      "b": "a",
+      "throws": true,
+      "code": "UNSUPPORTED_SYNTAX"
+    },
+    {
+      "name": "syntax: a brace group holding a slash throws UNSUPPORTED_SYNTAX",
+      "op": "intersects",
+      "a": "{x/y,z}",
+      "b": "a",
+      "throws": true,
+      "code": "UNSUPPORTED_SYNTAX"
+    },
+    {
+      "name": "syntax: a class holding a slash throws UNSUPPORTED_SYNTAX",
+      "op": "intersects",
+      "a": "[a/b]",
+      "b": "a",
+      "throws": true,
+      "code": "UNSUPPORTED_SYNTAX"
+    },
+    {
+      "name": "syntax: the extglob +(a|b) throws UNSUPPORTED_SYNTAX",
+      "op": "intersects",
+      "a": "+(a|b)",
+      "b": "a",
+      "throws": true,
+      "code": "UNSUPPORTED_SYNTAX"
+    },
+    {
+      "name": "syntax: the extglob @(a|b) throws UNSUPPORTED_SYNTAX",
+      "op": "intersects",
+      "a": "@(a|b)",
+      "b": "a",
+      "throws": true,
+      "code": "UNSUPPORTED_SYNTAX"
+    },
+    {
+      "name": "syntax: the extglob !(b) throws UNSUPPORTED_SYNTAX",
+      "op": "intersects",
+      "a": "!(b)",
+      "b": "a",
+      "throws": true,
+      "code": "UNSUPPORTED_SYNTAX"
+    },
+    {
+      "name": "syntax: the extglob ?(a) throws UNSUPPORTED_SYNTAX",
+      "op": "intersects",
+      "a": "?(a)",
+      "b": "a",
+      "throws": true,
+      "code": "UNSUPPORTED_SYNTAX"
+    },
+    {
+      "name": "syntax: the extglob *(a) throws UNSUPPORTED_SYNTAX",
+      "op": "intersects",
+      "a": "*(a)",
+      "b": "a",
+      "throws": true,
+      "code": "UNSUPPORTED_SYNTAX"
+    },
+    {
+      "name": "syntax: a brace group that holds a slash throws UNSUPPORTED_SYNTAX in matches",
+      "op": "matches",
+      "path": "x/y",
+      "patterns": "{x/y,z}",
+      "throws": true,
+      "code": "UNSUPPORTED_SYNTAX"
+    },
+    {
+      "name": "syntax: a class that holds a slash throws UNSUPPORTED_SYNTAX in matches",
+      "op": "matches",
+      "path": "a",
+      "patterns": "[a/b]",
+      "throws": true,
+      "code": "UNSUPPORTED_SYNTAX"
+    },
+    {
+      "name": "syntax: an unclosed { with no closer later is a literal",
+      "op": "matches",
+      "path": "a{1..3",
+      "patterns": "a{1..3",
+      "expect": true
+    },
+    {
+      "name": "syntax: a lone ( after + with no ) is a literal",
+      "op": "matches",
+      "path": "+(a",
+      "patterns": "+(a",
+      "expect": true
+    },
+    {
+      "name": "syntax: an escaped extglob is a literal",
+      "op": "matches",
+      "path": "+(a|b)",
+      "patterns": "+\\(a|b\\)",
+      "expect": true
+    },
+    {
+      "name": "syntax: a one-branch group {a} is the group, not literal text",
+      "op": "matches",
+      "path": "a",
+      "patterns": "{a}",
+      "expect": true
+    },
+    {
+      "name": "syntax: [[:alpha:]] is not a POSIX class",
+      "op": "matches",
+      "path": "a",
+      "patterns": "[[:alpha:]]",
+      "expect": false
+    },
+    {
+      "name": "syntax: a reversed range [c-a] matches nothing",
+      "op": "matches",
+      "path": "a",
+      "patterns": "[c-a]",
+      "expect": false
+    },
+    {
+      "name": "syntax: a backslash inside a class is literal",
+      "op": "matches",
+      "path": "]",
+      "patterns": "[\\]]",
+      "expect": false
+    },
+    {
+      "name": "syntax: * matches the empty segment",
+      "op": "matches",
+      "path": "src//a.ts",
+      "patterns": "src/*/a.ts",
+      "expect": true
+    },
+    {
+      "name": "syntax: x}/{y is plain text, a stray } before an opening { in a later segment",
+      "op": "matches",
+      "path": "x}/{y",
+      "patterns": "x\\}/\\{y",
+      "expect": true
+    },
+    {
+      "name": "syntax: x}/{y as a pattern is plain text and matches itself",
+      "op": "intersects",
+      "a": "x}/{y",
+      "b": "x}/{y",
+      "expect": true
+    },
+    {
+      "name": "syntax: {a}/b} is plain text for the second segment",
+      "op": "intersects",
+      "a": "{a}/b}",
+      "b": "a/b}",
+      "expect": true
+    },
+    {
+      "name": "syntax: []/] throws UNSUPPORTED_SYNTAX",
+      "op": "intersects",
+      "a": "[]/]",
+      "b": "a",
+      "throws": true,
+      "code": "UNSUPPORTED_SYNTAX"
+    },
+    {
+      "name": "syntax: {[}/x] throws UNSUPPORTED_SYNTAX",
+      "op": "intersects",
+      "a": "{[}/x]",
+      "b": "a",
+      "throws": true,
+      "code": "UNSUPPORTED_SYNTAX"
     }
   ]
 }
