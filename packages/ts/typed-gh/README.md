@@ -155,6 +155,7 @@ gh.prUpdateBranch(9, 'rebase')
 gh.prSetDraft(9, false)
 ```
 
+`createPr` and `prComment` return the URL `gh` printed, or `''` when it printed none.
 `prSetDraft(n, false)` marks a draft PR ready for review. `prSetDraft(n, true)` turns a PR back into
 a draft.
 

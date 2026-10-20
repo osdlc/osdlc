@@ -365,7 +365,7 @@ describe('Gh — the tri-modal contract', () => {
     expect(() => gh2.editLabel('x', { color: '000000' })).toThrow(CommandFailed)
   })
 
-  test('createPr returns the last non-empty line gh printed', () => {
+  test('createPr returns the URL line gh printed', () => {
     const runner = recorder([
       {
         exitCode: 0,
@@ -380,6 +380,22 @@ describe('Gh — the tri-modal contract', () => {
       body: 'b',
     })
     expect(url).toBe('https://github.com/o/r/pull/9')
+  })
+
+  test('createPr skips a trailing line that is not a URL, such as a tip', () => {
+    const runner = recorder([
+      { exitCode: 0, stdout: 'https://github.com/o/r/pull/9\n! a tip\n', stderr: '' },
+    ]).runner
+    const opts = { head: 'h', base: 'main', title: 't', body: 'b' }
+    expect(new Gh('/repo', { runner }).createPr(opts)).toBe('https://github.com/o/r/pull/9')
+  })
+
+  test("createPr returns '' when gh printed no URL, as prComment does", () => {
+    const opts = { head: 'h', base: 'main', title: 't', body: 'b' }
+    for (const stdout of ['', 'Creating pull request…\n', '\r\n! a tip\r\n']) {
+      const runner = recorder([{ exitCode: 0, stdout, stderr: '' }]).runner
+      expect(new Gh('/repo', { runner }).createPr(opts)).toBe('')
+    }
   })
 })
 

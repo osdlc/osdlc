@@ -418,7 +418,11 @@ export interface CreatePrOptions {
   draft?: boolean | undefined
 }
 
-/** `gh pr create …`, returning the URL gh prints (its last non-empty line). */
+/**
+ * `gh pr create …`, returning the new PR's URL: the last line gh printed that
+ * starts with `http://` or `https://`. `''` when it printed none, as
+ * {@link prComment} does. A line after the URL, such as a tip, is skipped.
+ */
 export function createPr(opts: CreatePrOptions): GhVerb<string> {
   const argv = ['pr', 'create', '--head', opts.head, '--base', opts.base]
   if (opts.draft) argv.push('--draft')
@@ -427,13 +431,11 @@ export function createPr(opts: CreatePrOptions): GhVerb<string> {
     argv,
     checked: true,
     parse(r) {
-      const lines = r.stdout
+      const urls = r.stdout
         .split('\n')
         .map((l) => l.trim())
-        .filter((l) => l !== '')
-      const url = lines[lines.length - 1]
-      if (url === undefined) throw new Error('gh pr create printed no URL')
-      return url
+        .filter((l) => /^https?:\/\//.test(l))
+      return urls[urls.length - 1] ?? ''
     },
   }
 }

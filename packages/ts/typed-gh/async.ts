@@ -194,7 +194,7 @@ export class AsyncGh {
 
   // ── mutations (checked) ───────────────────────────────────────────────────
 
-  /** Open a PR and return the URL gh prints. */
+  /** Open a PR and resolve to its URL ('' if gh printed none). */
   createPr(opts: v.CreatePrOptions): Promise<string> {
     return this.exec(v.createPr(opts))
   }
