@@ -1,11 +1,19 @@
 import { readlinkSync, realpathSync, statSync } from 'node:fs'
-import { dirname, isAbsolute, resolve } from 'node:path'
+import { posix, win32 } from 'node:path'
 
-import { PathError, components, startsWith, validateRelative } from './lexical.ts'
+import { PathError, components, validateRelative } from './lexical.ts'
 
 /**
- * How the containment layer canonicalises a path. POSIX paths only. Pass your
- * own to test against a fake filesystem.
+ * Read once, at load, as Node's `path` does: a test reloads the module to switch
+ * platform. The Windows rules are in docs/planning/decisions/D-03-platforms.md.
+ */
+const WINDOWS = process.platform === 'win32'
+const platformPath = WINDOWS ? win32 : posix
+
+/**
+ * How the containment layer canonicalises a path. Pass your own to test
+ * against a fake filesystem. The guard asks with `/` separators, on Windows
+ * too, and an answer may use either separator there.
  *
  * @example
  * ```ts
@@ -32,9 +40,11 @@ export interface Resolver {
 }
 
 /**
- * The real filesystem. A `..` is resolved physically, as the OS `realpath`
- * does: `link/..` is the parent of the link's target. `realpathSync` alone
- * cannot be trusted with that: it folds `..` textually first.
+ * The real filesystem. On POSIX a `..` is resolved physically, as the OS
+ * `realpath` does: `link/..` is the parent of the link's target.
+ * `realpathSync` alone cannot be trusted with that: it folds `..` textually
+ * first. On Windows, where `..` folds as text, it is `realpathSync.native`,
+ * which also expands short (8.3) names.
  *
  * @example
  * ```ts
@@ -44,13 +54,14 @@ export interface Resolver {
 export const nodeResolver: Resolver = {
   realpath(path) {
     if (path === '') throw fsError('ENOENT', path)
+    if (WINDOWS) return realpathSync.native(path)
     const { absolute, segs } = components(path)
     let current = absolute ? '/' : '.'
     for (const seg of segs) {
       if (seg === '..') {
         const real = realpathSync(current)
         if (!statSync(real).isDirectory()) throw fsError('ENOTDIR', current)
-        current = dirname(real)
+        current = posix.dirname(real)
       } else current = joinPath(current, seg)
     }
     return realpathSync(current)
@@ -90,8 +101,9 @@ function fsError(code: string, path: string): Error {
  * ```
  */
 export function realpathOrSelf(path: string): string {
-  const abs = isAbsolute(path) ? path : joinPath(process.cwd(), path)
-  return existingPrefix(nodeResolver, abs) ?? resolve(abs)
+  const abs = platformPath.isAbsolute(path) ? path : joinPath(slash(process.cwd()), path)
+  const found = existingPrefix(nodeResolver, abs)
+  return found === null ? platformPath.resolve(abs) : native(found)
 }
 
 /**
@@ -104,7 +116,7 @@ export function realpathOrSelf(path: string): string {
  * land. A chain of more than {@link MAX_LINK_HOPS} links is refused, as is a root
  * that reduces to the empty path (`''`, or a relative `missing/..`) and a path
  * whose check would spend more resolver calls than its length allows.
- * Returns the joined path (not its realpath).
+ * Returns the joined path (not its realpath), with `\` separators on Windows.
  *
  * @throws {PathError} Any kind {@link validateRelative} throws for `raw`, and
  * kind `escapes` when the result resolves outside `root`, or when the check
@@ -122,14 +134,14 @@ export function resolveInside(
   resolver: Resolver = nodeResolver,
 ): string {
   const rel = validateRelative(raw)
-  const joined = joinPath(root, rel)
-  const realRoot = existingPrefix(resolver, root) ?? root
+  const joined = native(joinPath(slash(root), rel))
+  const realRoot = existingPrefix(resolver, root) ?? slash(root)
   const real = existingPrefix(resolver, joined)
   // An empty root would hold every relative path.
-  if (real === null || realRoot === '' || !startsWith(real, realRoot)) {
+  if (real === null || realRoot === '' || !under(real, realRoot)) {
     throw new PathError(
       'escapes',
-      `path escapes the root: ${JSON.stringify(raw)} resolves outside ${JSON.stringify(realRoot)}`,
+      `path escapes the root: ${JSON.stringify(raw)} resolves outside ${JSON.stringify(native(realRoot))}`,
     )
   }
   return joined
@@ -175,9 +187,7 @@ export function tryResolveInside(
 export function contains(outer: string, inner: string, resolver: Resolver = nodeResolver): boolean {
   const realInner = existingPrefix(resolver, inner)
   const realOuter = existingPrefix(resolver, outer)
-  return (
-    realInner !== null && realOuter !== null && realOuter !== '' && startsWith(realInner, realOuter)
-  )
+  return realInner !== null && realOuter !== null && realOuter !== '' && under(realInner, realOuter)
 }
 
 /**
@@ -188,7 +198,9 @@ export function contains(outer: string, inner: string, resolver: Resolver = node
  * result stays inside any root. Use {@link resolveInside} for that. A `..` at the
  * root stays at the root, and a leading `..` in a relative path pops the last
  * component of the working directory. An absolute `path` never reads the working
- * directory. Port of the Rust `lexical_absolute`.
+ * directory. On Windows the answer has `\` separators, and a path with a root
+ * but no drive (`\a`) takes the drive of the working directory. Port of the Rust
+ * `lexical_absolute`.
  *
  * @throws {Error} What `process.cwd()` throws, when `path` is relative and the
  * working directory cannot be read.
@@ -202,7 +214,7 @@ export function contains(outer: string, inner: string, resolver: Resolver = node
 export function lexicalAbsolute(path: string): string {
   // Rust takes a `Path` and returns `io::Result<PathBuf>`. Here a string goes in
   // and out, and the cwd failure is thrown.
-  return resolve(path)
+  return platformPath.resolve(path)
 }
 
 /**
@@ -210,10 +222,11 @@ export function lexicalAbsolute(path: string): string {
  * the Rust `canonical_existing_prefix`, which documents the rule: a `..` is
  * resolved physically where the filesystem can, and behind a missing name it is
  * folded against the real path of the existing part, never against the
- * spelling. A dangling symlink is followed to its target; a chain of more than
- * {@link MAX_LINK_HOPS} links, such as a loop, leaves `path` as written, as does
- * a walk that would spend more resolver calls than a fixed allowance per link
- * plus a few per segment of `path`.
+ * spelling. On Windows every `..` folds as text first, as Windows does, and the
+ * answer has `\` separators. A dangling symlink is followed to its target; a
+ * chain of more than {@link MAX_LINK_HOPS} links, such as a loop, leaves `path`
+ * as written, as does a walk that would spend more resolver calls than a fixed
+ * allowance per link plus a few per segment of `path`.
  *
  * Does not throw for a missing path.
  * @example
@@ -222,7 +235,8 @@ export function lexicalAbsolute(path: string): string {
  * ```
  */
 export function canonicalExistingPrefix(path: string, resolver: Resolver = nodeResolver): string {
-  return existingPrefix(resolver, path) ?? path
+  const found = existingPrefix(resolver, path)
+  return found === null ? path : native(found)
 }
 
 // Resolver calls one check may spend: an allowance for each link it may follow,
@@ -270,7 +284,9 @@ function existingPrefix(resolver: Resolver, path: string): string | null {
 
 /** {@link existingPrefix} of `path`, reached after `hops` links. */
 function walk(calls: Calls, path: string, hops: number): string | null {
-  const all = parts(path)
+  const folded = WINDOWS ? foldText(path) : path
+  const all = parts(folded)
+  const rooted = split(folded).root !== ''
   const lastDotDot = all.lastIndexOf('..')
   // `base` stands for `all[0, i)`: their real path once `real`, else as written.
   let base = ''
@@ -288,7 +304,7 @@ function walk(calls: Calls, path: string, hops: number): string | null {
       const target = tryReadlink(calls, joinPath(base, name))
       if (target !== null) {
         if (hops === MAX_LINK_HOPS) return null
-        const start = isAbsolute(target) ? target : joinPath(base, target)
+        const start = split(target).root !== '' ? target : joinPath(base, target)
         return walk(calls, all.slice(i + 1).reduce(joinPath, start), hops + 1)
       }
     }
@@ -296,15 +312,15 @@ function walk(calls: Calls, path: string, hops: number): string | null {
     // Fold the rest against `base` up to the first `..` that lands on a directory
     // that exists, or that nothing is known to: a symlink may follow there, so the
     // walk resumes.
-    let absolute = base.startsWith('/')
-    const out = components(base).segs
+    let { root, segs: out } = split(base)
     let missing = 0
     for (;;) {
       const seg = all[i++]
-      if (seg === undefined) return format(absolute, out)
-      // `/` is only ever the first part. It reaches this loop when the resolver
-      // cannot resolve `/` itself, so `out` is empty and the answer is absolute.
-      if (seg === '/') absolute = true
+      if (seg === undefined) return format(root, out)
+      // The root is only ever the first part. It reaches this loop when the
+      // resolver cannot resolve the root itself, so `out` is empty and the answer
+      // starts at that root. A `..` there stays there.
+      if (rooted && i === 1) root = seg
       else if (seg === '..') {
         out.pop()
         missing = Math.max(missing - 1, 0)
@@ -314,7 +330,7 @@ function walk(calls: Calls, path: string, hops: number): string | null {
         out.push(seg)
       }
     }
-    base = format(absolute, out)
+    base = format(root, out)
   }
 }
 
@@ -360,20 +376,76 @@ function deepestExisting(
   return [found, real]
 }
 
-/** {@link components} as Rust lists them: `/` first for an absolute path. */
-function parts(path: string): string[] {
-  const { absolute, segs } = components(path)
-  return absolute ? ['/', ...segs] : segs
+/** `path` with `/` for `\` on Windows, where both separate. */
+function slash(path: string): string {
+  return WINDOWS ? path.replaceAll('\\', '/') : path
 }
 
-function format(absolute: boolean, segs: string[]): string {
-  return (absolute ? '/' : '') + segs.join('/')
+/** `path` with `\` for `/` on Windows, the separator Node's `path` returns there. */
+function native(path: string): string {
+  return WINDOWS ? path.replaceAll('/', '\\') : path
+}
+
+/** A Windows drive with no separator, `C:`, which is relative to that drive. */
+const BARE_DRIVE = /^[A-Za-z]:$/
+
+/**
+ * Rust's `Path::components` for this platform, in `/` form: the root, then the
+ * names. The root is `''` for a relative path and `/` on POSIX. On Windows it
+ * can also be a drive (`C:/`, or `C:` alone) or a UNC share (`//server/share/`).
+ */
+function split(path: string): { root: string; segs: string[] } {
+  if (!WINDOWS) {
+    const { absolute, segs } = components(path)
+    return { root: absolute ? '/' : '', segs }
+  }
+  const p = slash(path)
+  let root = win32.parse(p).root
+  if (root !== '' && !root.endsWith('/') && !BARE_DRIVE.test(root)) root += '/'
+  const { segs } = components(p.slice(root.length))
+  return { root, segs: root === '' ? segs : segs.filter((seg) => seg !== '.') }
+}
+
+/** {@link split} as Rust lists components: the root first, when there is one. */
+function parts(path: string): string[] {
+  const { root, segs } = split(path)
+  return root === '' ? segs : [root, ...segs]
+}
+
+function format(root: string, segs: string[]): string {
+  return root + segs.join('/')
+}
+
+/** Whole-component prefix test, as Rust's `Path::starts_with`. A Windows root matches in any case. */
+function under(path: string, base: string): boolean {
+  const p = split(path)
+  const b = split(base)
+  const sameRoot = WINDOWS ? p.root.toUpperCase() === b.root.toUpperCase() : p.root === b.root
+  return sameRoot && b.segs.length <= p.segs.length && b.segs.every((seg, i) => p.segs[i] === seg)
+}
+
+/**
+ * `path` with `.` dropped and each `..` removed with the name before it, as
+ * Windows reads a path. A `..` at a root stays there. A leading `..` is kept in
+ * a relative path and after a bare drive, which is a working directory too.
+ */
+function foldText(path: string): string {
+  const { root, segs } = split(path)
+  const out: string[] = []
+  for (const seg of segs) {
+    const last = out.at(-1)
+    if (seg !== '..') out.push(seg)
+    else if (last === '.') out[out.length - 1] = '..'
+    else if (last !== undefined && last !== '..') out.pop()
+    else if (root === '' || BARE_DRIVE.test(root)) out.push('..')
+  }
+  return format(root, out)
 }
 
 /** Rust's `Path::join` for a relative `rel`. */
 function joinPath(base: string, rel: string): string {
   if (base === '') return rel
-  return base.endsWith('/') ? base + rel : `${base}/${rel}`
+  return base.endsWith('/') || (WINDOWS && BARE_DRIVE.test(base)) ? base + rel : `${base}/${rel}`
 }
 
 /** Takes one of `calls`, or throws {@link OUT_OF_CALLS} when none are left. */
@@ -386,7 +458,7 @@ function spend(calls: Calls): Resolver {
 function tryReadlink(calls: Calls, path: string): string | null {
   const resolver = spend(calls)
   try {
-    return resolver.readlink(path)
+    return slash(resolver.readlink(path))
   } catch {
     return null
   }
@@ -396,7 +468,7 @@ function tryRealpath(calls: Calls, path: string): string | null {
   if (path === '') return null
   const resolver = spend(calls)
   try {
-    return resolver.realpath(path)
+    return slash(resolver.realpath(path))
   } catch {
     return null
   }

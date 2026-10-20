@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { hook, resetHooks } from './fs-hooks.ts'
 
 // After `fs-hooks.ts`, so the module under test loads the `node:fs/promises` mock.
-const { existingPathInside, openContainedFile, readContainedFile, realPathInside } =
+const { existingPathInside, isInside, openContainedFile, readContainedFile, realPathInside } =
   await import('../contained.ts')
 
 let root: string
@@ -29,6 +29,14 @@ beforeEach(async () => {
 afterEach(async () => {
   resetHooks()
   await rm(root, { recursive: true, force: true })
+})
+
+describe('isInside', () => {
+  it('refuses a sibling whose name starts with the root name', () => {
+    expect(isInside('/a/vault', '/a/vault/x')).toBe(true)
+    expect(isInside('/a/vault', '/a/vault-evil')).toBe(false)
+    expect(isInside('/a/vault', '/a/vault-evil/x')).toBe(false)
+  })
 })
 
 describe('realPathInside', () => {
@@ -169,17 +177,24 @@ describe('openContainedFile', () => {
     }
   })
 
-  it('refuses a FIFO inside the root without blocking', async () => {
-    execFileSync('mkfifo', [join(contentDir, 'pipe')])
-    await expect(readContainedFile(realContentDir, join(contentDir, 'pipe'))).resolves.toBeNull()
-  })
+  // Windows has no FIFOs in the file system.
+  it.skipIf(process.platform === 'win32')(
+    'refuses a FIFO inside the root without blocking',
+    async () => {
+      execFileSync('mkfifo', [join(contentDir, 'pipe')])
+      await expect(readContainedFile(realContentDir, join(contentDir, 'pipe'))).resolves.toBeNull()
+    },
+  )
 
-  it('does not open an outside target, so a FIFO there cannot block', async () => {
-    const fifo = join(root, 'outside.fifo')
-    execFileSync('mkfifo', [fifo])
-    await symlink(fifo, join(contentDir, 'fifo-link'))
-    await expect(
-      openContainedFile(realContentDir, join(contentDir, 'fifo-link')),
-    ).resolves.toBeNull()
-  })
+  it.skipIf(process.platform === 'win32')(
+    'does not open an outside target, so a FIFO there cannot block',
+    async () => {
+      const fifo = join(root, 'outside.fifo')
+      execFileSync('mkfifo', [fifo])
+      await symlink(fifo, join(contentDir, 'fifo-link'))
+      await expect(
+        openContainedFile(realContentDir, join(contentDir, 'fifo-link')),
+      ).resolves.toBeNull()
+    },
+  )
 })

@@ -1,6 +1,14 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, sep } from 'node:path'
 
 import { describe, expect, test } from 'vitest'
 
@@ -10,6 +18,7 @@ import {
   lexicalAbsolute,
   resolveInside,
   toRelative,
+  tryResolveInside,
   validateRelative,
   type Resolver,
 } from '../index.ts'
@@ -68,6 +77,11 @@ const FIXTURE_PATH = join(
 )
 const f = JSON.parse(readFileSync(FIXTURE_PATH, 'utf-8')) as Fixture
 
+const WINDOWS = process.platform === 'win32'
+
+/** A path the guard returned, in the fixture's `/` spelling. Windows answers with `\`. */
+const slashed = (path: string) => (WINDOWS ? path.replaceAll('\\', '/') : path)
+
 function enoent(): never {
   throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' })
 }
@@ -111,13 +125,42 @@ function inScratch<T>(tree: Tree, run: (scratch: string) => T): T {
 function resolveOnDisk(c: OnDiskCase): { ok: string } | { error: string } {
   return inScratch(c, (scratch) => {
     const got = outcome(() => resolveInside(join(scratch, c.root), c.input))
-    return 'ok' in got ? { ok: got.ok.slice(scratch.length + 1) } : got
+    return 'ok' in got ? { ok: slashed(got.ok.slice(scratch.length + 1)) } : got
   })
 }
 
-/** Answers `contains` in `c`'s tree with the default resolver. Concatenated, not `join`ed, which would fold the `..`. */
-function containsOnDisk(c: ContainsOnDiskCase): boolean {
-  return inScratch(c, (scratch) => contains(`${scratch}/${c.outer}`, `${scratch}/${c.inner}`))
+/** Is the real path of `path` the real path of `root`, or beneath it? Both must exist. */
+function landsIn(root: string, path: string): boolean {
+  const [r, p] = [realpathSync.native(root), realpathSync.native(path)]
+  return p === r || p.startsWith(r.endsWith(sep) ? r : r + sep)
+}
+
+/**
+ * Answers `contains` in `c`'s tree with the default resolver, then creates
+ * `c.inner` and says whether the filesystem put it inside `c.outer`, as the Rust
+ * side checks. Concatenated, not `join`ed, which would fold the `..`.
+ */
+function containsOnDisk(c: ContainsOnDiskCase): { got: boolean; landed: boolean } {
+  return inScratch(c, (scratch) => {
+    const [outer, inner] = [`${scratch}/${c.outer}`, `${scratch}/${c.inner}`]
+    const got = contains(outer, inner)
+    mkdirSync(inner, { recursive: true })
+    return { got, landed: landsIn(outer, inner) }
+  })
+}
+
+/**
+ * Asks `resolveInside` about `c.input` in `c`'s tree, then writes a file there
+ * and says whether the filesystem put it inside `c.root`.
+ */
+function resolveAndWrite(c: OnDiskCase): { inside: boolean; landed: boolean } {
+  return inScratch(c, (scratch) => {
+    const root = join(scratch, c.root)
+    const inside = tryResolveInside(root, c.input) !== null
+    const path = join(root, c.input)
+    writeFileSync(path, '')
+    return { inside, landed: landsIn(root, path) }
+  })
 }
 
 describe('shared parity fixture', () => {
@@ -142,7 +185,8 @@ describe('shared parity fixture', () => {
   describe('resolveInside', () => {
     for (const c of f.resolve) {
       test(c.name, () => {
-        expect(outcome(() => resolveInside(c.root, c.input, nothing))).toEqual(expected(c))
+        const got = outcome(() => resolveInside(c.root, c.input, nothing))
+        expect('ok' in got ? { ok: slashed(got.ok) } : got).toEqual(expected(c))
       })
     }
   })
@@ -155,7 +199,9 @@ describe('shared parity fixture', () => {
     }
   })
 
-  describe('lexicalAbsolute', () => {
+  // The inputs are POSIX absolute paths. On Windows they have no drive and take
+  // the working directory's.
+  describe.skipIf(WINDOWS)('lexicalAbsolute', () => {
     for (const c of f.lexical_absolute) {
       test(c.name, () => {
         expect(outcome(() => lexicalAbsolute(c.input))).toEqual(expected(c))
@@ -172,10 +218,18 @@ describe('shared parity fixture', () => {
     }
   })
 
+  // A case with a `..` pins the POSIX rule, where `link/..` is the parent of the
+  // link's target. Node on Windows folds `..` as text first, so there the guard
+  // must agree with where the filesystem puts the path instead.
+  const windowsDotDot = (c: object) => WINDOWS && JSON.stringify(c).includes('..')
+
   describe('resolveInside on disk', () => {
     for (const c of f.resolve_on_disk) {
       test(c.name, () => {
-        expect(resolveOnDisk(c)).toEqual(expected(c))
+        if (windowsDotDot(c)) {
+          const { inside, landed } = resolveAndWrite(c)
+          expect(inside).toBe(landed)
+        } else expect(resolveOnDisk(c)).toEqual(expected(c))
       })
     }
   })
@@ -183,7 +237,9 @@ describe('shared parity fixture', () => {
   describe('contains on disk', () => {
     for (const c of f.contains_on_disk) {
       test(c.name, () => {
-        expect(containsOnDisk(c)).toBe(c.expected)
+        const { got, landed } = containsOnDisk(c)
+        expect(got).toBe(landed)
+        if (!windowsDotDot(c)) expect(got).toBe(c.expected)
       })
     }
   })

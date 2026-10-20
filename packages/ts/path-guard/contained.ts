@@ -120,7 +120,7 @@ export async function readContainedFile(realRoot: string, path: string): Promise
 export interface ContainedPath {
   /** Checked real path, the one to read. */
   realPath: string
-  /** Lexical path relative to `root`, for URLs. */
+  /** Lexical path relative to `root`, for URLs: `/` separators on every OS. */
   relativePath: string
 }
 
@@ -142,7 +142,8 @@ export async function existingPathInside(
   if (!isInside(root, path)) return null
   try {
     const realPath = await realPathInside(realRoot, path)
-    return realPath === null ? null : { realPath, relativePath: relative(root, path) }
+    if (realPath === null) return null
+    return { realPath, relativePath: relative(root, path).split(sep).join('/') }
   } catch {
     return null
   }

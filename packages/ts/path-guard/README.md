@@ -193,7 +193,26 @@ validateRelative('notes/a.md') // 'notes/a.md'
 The TSDoc in the package has the details, and `examples/usage.test.ts` uses each
 export. The [CHANGELOG](./CHANGELOG.md) lists the changes.
 
-The [planning folder](https://github.com/osdlc/osdlc/blob/main/packages/ts/path-guard/docs/planning/README.md) defines the terms the docs use.
+The [planning folder](https://github.com/osdlc/osdlc/blob/main/packages/ts/path-guard/docs/planning/README.md) defines the terms the docs use and records the decisions behind the package.
+
+## Stability
+
+Every export is stable in 0.x. No export is experimental, beta or alpha.
+`tests/stability.test.ts` fails when an export is tagged `@experimental`,
+`@beta` or `@alpha` and is not listed in this section. A breaking change comes
+only in a new minor version, such as 0.3.0, and the CHANGELOG marks it.
+
+`PathErrorKind` grows only in a new minor version, in this package and the Rust
+twin together, and the CHANGELOG names the new kind. Every kind, present and
+future, means the path was refused. When you branch on `kind`, give the branch a
+default that refuses the path, so a kind added later is still a refusal. The
+Rust `PathError` is `#[non_exhaustive]` for the same reason.
+
+`isInside` and `realpathOrSelf` keep their names and signatures for 0.2.x. The
+API review planned for 0.3.0 revisits both.
+
+The [decisions](https://github.com/osdlc/osdlc/blob/main/packages/ts/path-guard/docs/planning/README.md#decisions)
+say why.
 
 ## Twin
 
@@ -207,8 +226,32 @@ entry and the `PathErrorKind` type exist only in TypeScript.
 
 ## Runtimes and platforms
 
-Node.js 22 or later, ESM only. Linux and macOS are tested. The
-`@osdlc/path-guard/lexical` entry also runs in browsers, as it loads no Node modules.
+Node.js 22 or later, ESM only. Linux, macOS and Windows are supported, and CI
+tests each on Node 22 and 24. The `@osdlc/path-guard/lexical` entry also runs in
+browsers, as it loads no Node modules.
+
+On Windows the containment layer reads Windows paths:
+
+- `\` and `/` both separate, and a drive (`C:\`) or a UNC share
+  (`\\server\share\`) is a root.
+- A `..` folds as text before any link is followed, as Windows does. On POSIX,
+  `link/..` is the parent of the link's target; on Windows it is the directory
+  that holds the link.
+- `resolveInside`, `canonicalExistingPrefix`, `realpathOrSelf` and
+  `lexicalAbsolute` return paths with `\` separators. A `Resolver` is asked with
+  `/` separators and may answer with either.
+- `nodeResolver` uses `realpathSync.native`, which also expands short (8.3)
+  names.
+
+Limits on Windows:
+
+- A drive letter matches in any case, but the names after it are compared as
+  written. A missing path spelled in another case than its root is refused.
+- `toRelative` and `isUnder` take POSIX paths only, on every platform. They are
+  text checks, and both ship in the browser-safe entry.
+- The lexical check accepts a device name such as `NUL` or `CON`, and a
+  `name:stream` alternate data stream. Both pass the check, and opening them
+  reaches a device or a stream, not a file in the root.
 
 ## Security
 

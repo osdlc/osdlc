@@ -8,7 +8,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, join, parse, sep } from 'node:path'
 
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
@@ -62,8 +62,13 @@ function kindOf(run: () => unknown): string | null {
 }
 
 // `tmpdir()` on macOS is under `/var`, a symlink to `/private/var`, so the raw
-// spelling exercises the canonical-root comparison.
+// spelling exercises the canonical-root comparison. On Windows it can hold a
+// short (8.3) name, which only `realpathSync.native` expands.
 let tmp: string
+
+const WINDOWS = process.platform === 'win32'
+/** A test of the POSIX `..` rule: `link/..` is the parent of the link's target. Windows folds `..` as text first. */
+const posixOnly = test.skipIf(WINDOWS)
 
 beforeEach(() => {
   tmp = mkdtempSync(join(tmpdir(), 'path-guard-'))
@@ -121,13 +126,13 @@ describe('resolveInside', () => {
     })
     expect(kindOf(() => resolveInside('/v', 'escape/secret.txt', fs))).toBe('escapes')
     expect(kindOf(() => resolveInside('/v', 'escape/new.md', fs))).toBe('escapes')
-    expect(resolveInside('/v', 'Notes/a.md', fs)).toBe('/v/Notes/a.md')
+    expect(resolveInside('/v', 'Notes/a.md', fs)).toBe(join('/v/Notes/a.md'))
   })
 
   test('finds a root one component under `/`, through a resolver', () => {
     const fs = table({ '/var': '/private/var' })
-    expect(resolveInside('/var', 'a.md', fs)).toBe('/var/a.md')
-    expect(canonicalExistingPrefix('/var/a.md', fs)).toBe('/private/var/a.md')
+    expect(resolveInside('/var', 'a.md', fs)).toBe(join('/var/a.md'))
+    expect(canonicalExistingPrefix('/var/a.md', fs)).toBe(join('/private/var/a.md'))
   })
 
   test('refuses a dangling symlink whose target would land outside', () => {
@@ -177,13 +182,13 @@ describe('resolveInside', () => {
   test('follows a dangling symlink, through a resolver', () => {
     const fs = table({ '/v': '/v' }, { '/v/out.json': '/outside/p.json', '/v/in.json': 'new.json' })
     expect(kindOf(() => resolveInside('/v', 'out.json', fs))).toBe('escapes')
-    expect(resolveInside('/v', 'in.json', fs)).toBe('/v/in.json')
-    expect(canonicalExistingPrefix('/v/in.json', fs)).toBe('/v/new.json')
+    expect(resolveInside('/v', 'in.json', fs)).toBe(join('/v/in.json'))
+    expect(canonicalExistingPrefix('/v/in.json', fs)).toBe(join('/v/new.json'))
   })
 
   test('measures against the canonical root and returns the joined spelling', () => {
     const fs = table({ '/var': '/private/var', '/var/v': '/private/var/v' })
-    expect(resolveInside('/var/v', 'a.md', fs)).toBe('/var/v/a.md')
+    expect(resolveInside('/var/v', 'a.md', fs)).toBe(join('/var/v/a.md'))
   })
 })
 
@@ -194,7 +199,7 @@ describe('contains', () => {
     const sneaky = join(tmp, 'nope') + '/../vault-b/out'
     expect(contains(vault, sneaky)).toBe(true)
     mkdirSync(sneaky, { recursive: true })
-    expect(realpathSync(sneaky).startsWith(realpathSync(vault) + '/')).toBe(true)
+    expect(realpathSync.native(sneaky).startsWith(realpathSync.native(vault) + sep)).toBe(true)
   })
 
   test('is component-wise, so a name prefix is not a parent', () => {
@@ -223,11 +228,14 @@ describe('contains', () => {
     symlinkSync(join(vault, 'deep'), link)
 
     const inner = `${link}/../y`
-    expect(contains(vault, inner)).toBe(true)
+    const inside = contains(vault, inner)
+    // POSIX puts `link/..` at the parent of the link's target. Windows folds the
+    // `..` as text, so it lands beside the link.
+    expect(inside).toBe(!WINDOWS)
     // The filesystem's own verdict on where it lands. Not `realpathSync`, which
     // folds the `..` textually.
     mkdirSync(inner, { recursive: true })
-    expect(existsSync(join(vault, 'y'))).toBe(true)
+    expect(existsSync(join(vault, 'y'))).toBe(inside)
   })
 
   test('follows a dangling symlink to where its target would land', () => {
@@ -338,14 +346,14 @@ describe('contains', () => {
     expect(large.calls).toBeLessThan(2 * 4 * n + 64)
   })
 
-  test('resolves a `..` behind a symlink physically, through a resolver', () => {
+  posixOnly('resolves a `..` behind a symlink physically, through a resolver', () => {
     const fs = table({ '/v': '/v', '/x': '/x', '/x/link': '/v/deep', '/x/link/..': '/v' })
     expect(contains('/v', '/x/link/../y', fs)).toBe(true)
   })
 })
 
 describe('nodeResolver', () => {
-  test('throws ENOTDIR for `..` after a file', () => {
+  posixOnly('throws ENOTDIR for `..` after a file', () => {
     writeFileSync(join(tmp, 'f'), '')
     expect(() => nodeResolver.realpath(`${join(tmp, 'f')}/..`)).toThrow(/ENOTDIR/)
   })
@@ -356,49 +364,57 @@ describe('nodeResolver', () => {
 })
 
 describe('realpathOrSelf', () => {
-  test('resolves `..` behind a symlink to the parent of its target', () => {
+  test('resolves `..` behind a symlink as the OS does', () => {
     mkdirSync(join(tmp, 'v/deep'), { recursive: true })
     mkdirSync(join(tmp, 'x'))
     symlinkSync(join(tmp, 'v/deep'), join(tmp, 'x/link'))
-    expect(realpathOrSelf(`${join(tmp, 'x/link')}/..`)).toBe(realpathSync(join(tmp, 'v')))
+    // POSIX: the parent of the link's target. Windows: the link's own directory.
+    expect(realpathOrSelf(`${join(tmp, 'x/link')}/..`)).toBe(
+      realpathSync.native(join(tmp, WINDOWS ? 'x' : 'v')),
+    )
   })
 
   test('folds `..` behind a missing name against the real path', () => {
-    expect(realpathOrSelf(`${tmp}/a/../missing`)).toBe(join(realpathSync(tmp), 'missing'))
+    expect(realpathOrSelf(`${tmp}/a/../missing`)).toBe(join(realpathSync.native(tmp), 'missing'))
   })
 
-  test('folds `..` after a link and a missing name against the link target', () => {
+  posixOnly('folds `..` after a link and a missing name against the link target', () => {
     mkdirSync(join(tmp, 'v/deep/deeper'), { recursive: true })
     mkdirSync(join(tmp, 'x'))
     symlinkSync(join(tmp, 'v/deep/deeper'), join(tmp, 'x/link'))
-    const real = realpathSync(tmp)
+    const real = realpathSync.native(tmp)
     expect(realpathOrSelf(`${tmp}/x/link/missing/..`)).toBe(join(real, 'v/deep/deeper'))
     expect(realpathOrSelf(`${tmp}/x/link/missing/../..`)).toBe(join(real, 'v/deep'))
     expect(realpathOrSelf(`${tmp}/x/link/missing/../../../y`)).toBe(join(real, 'v/y'))
   })
 
-  test('resolves a link reached again after a missing name folds away', () => {
+  posixOnly('resolves a link reached again after a missing name folds away', () => {
     mkdirSync(join(tmp, 'v/deep'), { recursive: true })
     symlinkSync(join(tmp, 'v/deep'), join(tmp, 'link'))
-    expect(realpathOrSelf(`${tmp}/missing/../link/../y`)).toBe(join(realpathSync(tmp), 'v/y'))
+    expect(realpathOrSelf(`${tmp}/missing/../link/../y`)).toBe(
+      join(realpathSync.native(tmp), 'v/y'),
+    )
   })
 
-  test('folds `..` as text when the walk gives up on a link loop', () => {
+  // On Windows the `..` folds away before the loop is reached.
+  posixOnly('folds `..` as text when the walk gives up on a link loop', () => {
     symlinkSync('loop', join(tmp, 'loop'))
     expect(realpathOrSelf(`${tmp}/loop/../x`)).toBe(join(tmp, 'x'))
   })
 
   test('resolves symlinks in a path that exists', () => {
     symlinkSync(tmp, join(tmp, 'self'))
-    expect(realpathOrSelf(join(tmp, 'self'))).toBe(realpathSync(tmp))
+    expect(realpathOrSelf(join(tmp, 'self'))).toBe(realpathSync.native(tmp))
   })
 
   test('returns the real path of the existing part when the path does not exist', () => {
-    expect(realpathOrSelf(join(tmp, 'missing'))).toBe(join(realpathSync(tmp), 'missing'))
+    expect(realpathOrSelf(join(tmp, 'missing'))).toBe(join(realpathSync.native(tmp), 'missing'))
   })
 
   test('makes a relative path absolute', () => {
-    expect(realpathOrSelf('no-such-entry')).toBe(join(realpathSync(process.cwd()), 'no-such-entry'))
+    expect(realpathOrSelf('no-such-entry')).toBe(
+      join(realpathSync.native(process.cwd()), 'no-such-entry'),
+    )
   })
 })
 
@@ -407,7 +423,7 @@ describe('relative paths', () => {
   let realTmp: string
 
   beforeEach(() => {
-    realTmp = realpathSync(tmp)
+    realTmp = realpathSync.native(tmp)
     mkdirSync(join(tmp, 'vault/sub'), { recursive: true })
     process.chdir(tmp)
   })
@@ -417,15 +433,15 @@ describe('relative paths', () => {
   })
 
   test('canonicalExistingPrefix resolves from the first segment', () => {
-    expect(canonicalExistingPrefix('vault/a.md')).toBe(`${realTmp}/vault/a.md`)
-    expect(canonicalExistingPrefix('./a.md')).toBe(`${realTmp}/a.md`)
-    expect(canonicalExistingPrefix('vault/sub/new/a.md')).toBe(`${realTmp}/vault/sub/new/a.md`)
-    expect(canonicalExistingPrefix('nope/a.md')).toBe('nope/a.md')
+    expect(canonicalExistingPrefix('vault/a.md')).toBe(join(realTmp, 'vault/a.md'))
+    expect(canonicalExistingPrefix('./a.md')).toBe(join(realTmp, 'a.md'))
+    expect(canonicalExistingPrefix('vault/sub/new/a.md')).toBe(join(realTmp, 'vault/sub/new/a.md'))
+    expect(canonicalExistingPrefix('nope/a.md')).toBe(join('nope/a.md'))
   })
 
   test('resolveInside joins under a relative root', () => {
-    expect(resolveInside('vault', 'a.md')).toBe('vault/a.md')
-    expect(resolveInside('vault', 'sub/new/a.md')).toBe('vault/sub/new/a.md')
+    expect(resolveInside('vault', 'a.md')).toBe(join('vault/a.md'))
+    expect(resolveInside('vault', 'sub/new/a.md')).toBe(join('vault/sub/new/a.md'))
   })
 
   test('contains sees a relative path inside a relative root', () => {
@@ -436,7 +452,7 @@ describe('relative paths', () => {
 
   test('works through a resolver', () => {
     const fs = table({ vault: '/abs/vault', 'vault/sub': '/abs/vault/sub' })
-    expect(canonicalExistingPrefix('vault/a.md', fs)).toBe('/abs/vault/a.md')
+    expect(canonicalExistingPrefix('vault/a.md', fs)).toBe(join('/abs/vault/a.md'))
     expect(contains('vault', 'vault/sub/new/a.md', fs)).toBe(true)
   })
 
@@ -445,7 +461,7 @@ describe('relative paths', () => {
     // would add one, and `components` would drop it again, so the answer does not
     // change: this guards the join, not the output.
     process.chdir('/')
-    expect(realpathOrSelf('no-such-entry')).toBe('/no-such-entry')
+    expect(realpathOrSelf('no-such-entry')).toBe(join(process.cwd(), 'no-such-entry'))
   })
 })
 
@@ -461,8 +477,8 @@ describe('lexicalAbsolute', () => {
     const cwd = process.cwd()
     expect(lexicalAbsolute('../x')).toBe(join(dirname(cwd), 'x'))
     // Above the root there is nothing left to pop.
-    const deep = '../'.repeat(cwd.split('/').length + 2)
-    expect(lexicalAbsolute(`${deep}x`)).toBe('/x')
+    const deep = '../'.repeat(cwd.split(sep).length + 2)
+    expect(lexicalAbsolute(`${deep}x`)).toBe(join(parse(cwd).root, 'x'))
   })
 
   test('gives the cwd for an empty path or `.`', () => {
@@ -484,7 +500,10 @@ describe('lexicalAbsolute', () => {
       throw failure
     })
     try {
-      expect(lexicalAbsolute('/a/./b')).toBe('/a/b')
+      // On Windows a path needs a drive not to read the working directory.
+      expect(lexicalAbsolute(WINDOWS ? 'C:\\a\\.\\b' : '/a/./b')).toBe(
+        WINDOWS ? 'C:\\a\\b' : '/a/b',
+      )
       expect(cwd).not.toHaveBeenCalled()
       expect(thrown(() => lexicalAbsolute('a/b'))).toBe(failure)
     } finally {
@@ -511,7 +530,7 @@ describe('toRelative', () => {
 
 describe('tryResolveInside', () => {
   test('returns the joined path when the path stays inside', () => {
-    expect(tryResolveInside('/v', 'a.md', table({ '/v': '/v' }))).toBe('/v/a.md')
+    expect(tryResolveInside('/v', 'a.md', table({ '/v': '/v' }))).toBe(join('/v/a.md'))
   })
 
   test('returns null for a lexical refusal instead of throwing', () => {

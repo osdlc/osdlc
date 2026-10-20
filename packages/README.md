@@ -87,7 +87,7 @@ Developed here, in this repository:
 - `packages/ts/command-seam` (`@osdlc/command-seam`)
 - `packages/ts/gfm-table` (`@osdlc/gfm-table`)
 - `packages/rust/cli-tool-config` (`cli-tool-config` on crates.io, last release 0.5.3; replaced by `config-layers`)
-- `packages/rust/config-layers` (`config-layers` on crates.io)
+- `packages/rust/config-layers` (`config-layers`, not yet on crates.io; its first release is held)
 - `packages/rust/etag-write` (`etag-write` on crates.io)
 - `packages/rust/path-guard` (`path-guard` on crates.io)
 - `packages/rust/tiered-dirs` (`tiered-dirs` on crates.io)
@@ -117,6 +117,9 @@ Developed here, in this repository:
 - `packages/ts/intersect` (`@osdlc/intersect` on npm, a path-pattern overlap
   engine: do two globs share a path, with a witness path, a registry and an
   optional filesystem layer)
+- `packages/ts/detect-harness` (`@osdlc/detect-harness` on npm, finds the
+  coding-agent harnesses on a machine and in a project and reads what each has
+  configured; read-only, with secrets redacted)
 
 The development repository will take each TypeScript library from npm, like
 any other consumer. Today it still keeps its own copies. Open issues and pull
@@ -250,6 +253,13 @@ pnpm run test
 ```
 
 The root scripts run each library's script of the same name.
+
+`.github/workflows/packages-ci.yml` runs these, the smoke checks and
+`pnpm run check:packages` on Linux and macOS, on Node 22 and 24. On a pull
+request it checks only the libraries the pull request changed and the ones
+that depend on them. `.github/scripts/affected-packages.mjs` picks them, and
+says which shared files make it check every library. path-guard also runs on
+Windows. The `verify` jobs always report, so they are the checks to require.
 
 A library can have a smoke check: `tests/smoke.mjs`. It runs the built package
 under Node. It imports the package by name, so Node resolves it through
