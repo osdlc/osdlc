@@ -35,8 +35,10 @@ complete.
 | the managed runner registers a group until the leader exits | `tests/group-signals.test.ts:82` | ubuntu, node 22 (publish) | [run](https://github.com/osdlc/osdlc/actions/runs/39362624809/job/118432088230) |
 | the managed runner registers a group until the leader exits | `tests/group-signals.test.ts:82` | ubuntu, node 24 (publish) | [run](https://github.com/osdlc/osdlc/actions/runs/39362624809/job/118432088429) |
 | the managed runner registers a group until the leader exits | `tests/group-signals.test.ts:82` | ubuntu, node 22 (publish) | [run](https://github.com/osdlc/osdlc/actions/runs/39371522600/job/118460302535) |
+| the managed runner registers a group until the leader exits | `tests/group-signals.test.ts:82` | ubuntu, node 22 (publish) | [run](https://github.com/osdlc/osdlc/actions/runs/39425734626/job/118637766499) |
 | a real step logs both streams in the order it wrote them | `examples/16-launch-and-log.test.ts:130` | macos, node 22 (5 s timeout) | [run](https://github.com/osdlc/osdlc/actions/runs/39315089525/job/118274350130) |
 | real git: the hash matches the file’s bytes, sync and async | `examples/17-binary-output.test.ts:118` | macos, node 22 (15 s timeout, publish) | [run](https://github.com/osdlc/osdlc/actions/runs/39307572221/job/118248514041) |
+| real git: the hash matches the file’s bytes, sync and async | `examples/17-binary-output.test.ts:118` | macos, node 24 (15 s timeout, publish) | [run](https://github.com/osdlc/osdlc/actions/runs/39423341879/job/118629624481) |
 | a verb that starts with ${verb[0]} runs as a command, not an option (${name}) | `tests/shell.test.ts:48` | macos, node 22 (4 s run cap) | [run](https://github.com/osdlc/osdlc/actions/runs/39190768936/job/117862829055) |
 | a verb that starts with ${verb[0]} runs as a command, not an option (${name}) | `tests/shell.test.ts:48` | macos, node 24 (5 s timeout, publish) | [run](https://github.com/osdlc/osdlc/actions/runs/39133129996/job/117692188844) |
 | a timeout after a group-gone child exited keeps the exit code | `tests/contract.test.ts:531` | ubuntu, node 22 (publish) | [run](https://github.com/osdlc/osdlc/actions/runs/39181794567/job/117835920355) |
@@ -45,7 +47,7 @@ complete.
 The `shell.test.ts:48` title is a template. The older failing runs name it
 "a verb that starts with - or + runs as a command, not an option".
 
-The `group-signals.test.ts:82` test fails in 1.7 to 11 ms. That points at a
+The `group-signals.test.ts:82` test fails in 1.7 to 12 ms. That points at a
 race in what the test observes, not a slow runner. The group-gone test
 fails in 270 to 540 ms. The other rows hit a timeout.
 
@@ -54,7 +56,7 @@ Two more tests came up in review with no failing run in the sweep:
 keeps its exit code") and `tests/reason.test.ts:188`. Check them in the
 reproduction step. Add a run link if one shows up.
 
-Nine `packages-publish.yml` runs on `main` failed in `verify`, so
+Eleven `packages-publish.yml` runs on `main` failed in `verify`, so
 `publish` did not run and the release waited for a later run:
 [39133129996](https://github.com/osdlc/osdlc/actions/runs/39133129996),
 [39179458575](https://github.com/osdlc/osdlc/actions/runs/39179458575),
@@ -64,18 +66,28 @@ Nine `packages-publish.yml` runs on `main` failed in `verify`, so
 [39322491374](https://github.com/osdlc/osdlc/actions/runs/39322491374),
 [39326048602](https://github.com/osdlc/osdlc/actions/runs/39326048602),
 [39362624809](https://github.com/osdlc/osdlc/actions/runs/39362624809),
-[39371522600](https://github.com/osdlc/osdlc/actions/runs/39371522600).
-All nine failed on a `command-seam` test.
+[39371522600](https://github.com/osdlc/osdlc/actions/runs/39371522600),
+[39423341879](https://github.com/osdlc/osdlc/actions/runs/39423341879),
+[39425734626](https://github.com/osdlc/osdlc/actions/runs/39425734626).
+All eleven failed on a `command-seam` test.
 
 ## Fixes
 
-- [x] `tests/group-signals.test.ts:82`. The test checked the registry right
+- [x] `tests/group-signals.test.ts:82` ("the managed runner registers a
+      group until the leader exits"). The test checked the registry right
       after `exited`. The runner releases the group only once the group is
-      empty. On Linux the group can still answer `kill(-pid, 0)` for a
-      moment after the leader's exit is reported. The release then waits
-      for the next 250 ms poll. The test now polls the registry until the
-      group is released, with a 3 s cap. The runner is right: it keeps a
-      group registered until it is empty, as documented.
+      empty. The group can still answer `kill(-pid, 0)` for a moment after
+      the leader's exit is reported, and the release then waits for the
+      next 250 ms poll. The likely cause is that the killed members
+      (`sleep` under `sh`) linger as zombies until they are reaped. This
+      was not reproduced. The test now polls the registry until the group
+      is released, with a 3 s cap. The runner is right: it keeps a group
+      registered until it is empty, as documented.
+- [x] `tests/group-signals.test.ts:43` ("the async runner registers a
+      group and unregisters it once the group is empty") and
+      `examples/09-managed-process.test.ts:205`. Both read the registry
+      right after the run settled, the same race. No failing run yet. Both
+      now poll until the group is released.
 - [ ] `examples/16-launch-and-log.test.ts:130`
 - [ ] `examples/17-binary-output.test.ts:118`
 - [ ] `tests/shell.test.ts:48`
