@@ -24,7 +24,71 @@ export interface GhVerb<T> {
   checked: boolean
   /** Written to the child's stdin, for a verb whose payload is too large or structured for argv. */
   input?: string | undefined
+  /**
+   * Variables to set on the child, for a target gh takes no flag for: `GH_HOST`
+   * on `gh search` and `gh repo list`.
+   */
+  env?: Record<string, string> | undefined
   parse(result: CommandResult): T
+}
+
+/**
+ * The repository and host a verb talks to. Both are optional: with no `repo`,
+ * gh uses the repository of the clone at the client's working directory, and
+ * with no `hostname`, gh's default host.
+ */
+export interface GhTarget {
+  /** `owner/name`. */
+  repo?: string | undefined
+  /**
+   * A GitHub host: `github.com`, a GitHub Enterprise Server host such as
+   * `github.acme.com`, or a `<tenant>.ghe.com` host. Other forges are out of
+   * reach: gh speaks only GitHub's API.
+   */
+  hostname?: string | undefined
+}
+
+const REPO_SLUG = /^[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9_.][A-Za-z0-9_.-]*$/
+const HOSTNAME = /^[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?(?::\d+)?$/
+
+/**
+ * Throw `RangeError` unless `target.repo` is `owner/name` and
+ * `target.hostname` is a bare host. Run by every verb that uses a target, so
+ * no text can reach gh as a flag or change the endpoint a call hits.
+ */
+export function checkTarget(target: GhTarget | undefined): void {
+  if (target?.repo !== undefined && !REPO_SLUG.test(target.repo)) {
+    throw new RangeError(`repo must be owner/name, got ${JSON.stringify(target.repo)}`)
+  }
+  if (target?.hostname !== undefined && !HOSTNAME.test(target.hostname)) {
+    throw new RangeError(`hostname must be a bare host, got ${JSON.stringify(target.hostname)}`)
+  }
+}
+
+/** `--repo [host/]owner/name` for `pr`, `issue` and `label` verbs; `repo` overrides the target's. */
+function repoArgs(target: GhTarget | undefined, repo?: string | undefined): string[] {
+  checkTarget(target)
+  const slug = repo ?? target?.repo
+  if (slug === undefined) return []
+  if (repo !== undefined) checkTarget({ repo })
+  return ['--repo', target?.hostname === undefined ? slug : `${target.hostname}/${slug}`]
+}
+
+/** `--hostname <host>` for `api` and `auth` verbs. */
+function hostArgs(target: GhTarget | undefined): string[] {
+  checkTarget(target)
+  return target?.hostname === undefined ? [] : ['--hostname', target.hostname]
+}
+
+/**
+ * `endpoint` with `{owner}` and `{repo}` filled from the target. With no
+ * target repo they are left for gh to fill from the clone.
+ */
+function fillRepo(endpoint: string, target: GhTarget | undefined): string {
+  checkTarget(target)
+  if (target?.repo === undefined) return endpoint
+  const [owner, name] = target.repo.split('/') as [string, string]
+  return endpoint.replaceAll('{owner}', owner).replaceAll('{repo}', name)
 }
 
 /**
@@ -205,10 +269,9 @@ export interface PrListOptions {
   fields?: readonly string[] | undefined
 }
 
-/** `gh pr list …` — open PRs by default. */
-export function prList(opts: PrListOptions = {}): GhVerb<PullRequest[] | null> {
-  const argv = ['pr', 'list', '--state', opts.state ?? 'open']
-  if (opts.repo !== undefined) argv.push('--repo', opts.repo)
+/** `gh pr list …` — open PRs by default. `opts.repo` overrides the target's repo. */
+export function prList(opts: PrListOptions = {}, target?: GhTarget): GhVerb<PullRequest[] | null> {
+  const argv = ['pr', 'list', '--state', opts.state ?? 'open', ...repoArgs(target, opts.repo)]
   if (opts.base !== undefined) argv.push('--base', opts.base)
   if (opts.head !== undefined) argv.push('--search', `head:${opts.head}`)
   if (opts.search !== undefined) argv.push('--search', opts.search)
@@ -222,12 +285,13 @@ export function prList(opts: PrListOptions = {}): GhVerb<PullRequest[] | null> {
 export function prView(
   number: number,
   fields: readonly string[] = PR_VIEW_FIELDS,
+  target?: GhTarget,
 ): GhVerb<PullRequest | null> {
   // `parsePullRequest` yields null without a `number`, so a field subset that
   // omits it would read as "no such PR". Always ask for it, and each field once.
   const asked = [...new Set(fields.includes('number') ? fields : ['number', ...fields])]
   return {
-    argv: ['pr', 'view', String(number), '--json', asked.join(',')],
+    argv: ['pr', 'view', String(number), ...repoArgs(target), '--json', asked.join(',')],
     checked: false,
     parse: oneOrNull,
   }
@@ -240,8 +304,12 @@ export function prView(
  * field set with a small limit. Pair it with {@link pickPrForBranch}, which
  * is what turns the prefix match into an exact one.
  */
-export function openPrsForBranch(branch: string, limit = 5): GhVerb<PullRequest[] | null> {
-  return prList({ head: branch, limit, fields: PR_REF_FIELDS })
+export function openPrsForBranch(
+  branch: string,
+  limit = 5,
+  target?: GhTarget,
+): GhVerb<PullRequest[] | null> {
+  return prList({ head: branch, limit, fields: PR_REF_FIELDS }, target)
 }
 
 /**
@@ -250,9 +318,9 @@ export function openPrsForBranch(branch: string, limit = 5): GhVerb<PullRequest[
  * so every trailing `\r` and `\n` is trimmed (including any that were part of
  * the body, such as the `\r\n` of a body saved with CRLF line endings).
  */
-export function prBody(number: number): GhVerb<string | null> {
+export function prBody(number: number, target?: GhTarget): GhVerb<string | null> {
   return {
-    argv: ['pr', 'view', String(number), '--json', 'body', '-q', '.body'],
+    argv: ['pr', 'view', String(number), ...repoArgs(target), '--json', 'body', '-q', '.body'],
     checked: false,
     parse: (r) => (r.exitCode === 0 ? r.stdout.replace(/[\r\n]+$/, '') : null),
   }
@@ -289,17 +357,22 @@ export interface ApiOptions {
 
 /**
  * `gh api [-i] [-H If-None-Match: …] <endpoint>` — a GET against the REST API. `{owner}` and
- * `{repo}` placeholders in the endpoint are filled by gh from the cwd's repo.
+ * `{repo}` placeholders in the endpoint are filled from the target's repo, or by gh from the
+ * cwd's repo when the target names none.
  * Unchecked: failure is a value (`ok: false`), so a caller can tell a 304
  * from an outage.
  */
-export function api(endpoint: string, opts: ApiOptions = {}): GhVerb<ApiResponse> {
+export function api(
+  endpoint: string,
+  opts: ApiOptions = {},
+  target?: GhTarget,
+): GhVerb<ApiResponse> {
   const conditional = opts.etag !== undefined && opts.etag !== null && opts.etag !== ''
   const withHeaders = conditional || opts.includeHeaders === true
-  const argv = ['api']
+  const argv = ['api', ...hostArgs(target)]
   if (withHeaders) argv.push('-i')
   if (conditional) argv.push('-H', `If-None-Match: ${opts.etag}`)
-  argv.push(endpoint)
+  argv.push(fillRepo(endpoint, target))
   return { argv, checked: false, parse: (r) => parseApi(r, withHeaders) }
 }
 
@@ -368,10 +441,10 @@ export interface AuthStatus {
   detail: string
 }
 
-/** `gh auth status` — the credential probe. */
-export function authStatus(): GhVerb<AuthStatus> {
+/** `gh auth status [--hostname <host>]` — the credential probe, for one host when the target names it. */
+export function authStatus(target?: GhTarget): GhVerb<AuthStatus> {
   return {
-    argv: ['auth', 'status'],
+    argv: ['auth', 'status', ...hostArgs(target)],
     checked: false,
     parse: (r) => ({ ok: r.exitCode === 0, detail: stderrOrError(r) || r.stdout.trim() }),
   }
@@ -382,11 +455,15 @@ export function authStatus(): GhVerb<AuthStatus> {
  * `limit` defaults to 1000. `gh`'s own default is 30, which would cut off a
  * repository with more labels than that without saying so.
  */
-export function labelList(opts: { limit?: number | undefined } = {}): GhVerb<Label[] | null> {
+export function labelList(
+  opts: { limit?: number | undefined } = {},
+  target?: GhTarget,
+): GhVerb<Label[] | null> {
   return {
     argv: [
       'label',
       'list',
+      ...repoArgs(target),
       '--json',
       'name,color,description',
       '--limit',
@@ -406,17 +483,20 @@ export interface IssueListOptions {
 }
 
 /** `gh issue list --json …` — open issues by default, optionally by label. */
-export function issueList(opts: IssueListOptions = {}): GhVerb<IssueRow[] | null> {
-  const argv = ['issue', 'list']
+export function issueList(
+  opts: IssueListOptions = {},
+  target?: GhTarget,
+): GhVerb<IssueRow[] | null> {
+  const argv = ['issue', 'list', ...repoArgs(target)]
   if (opts.label !== undefined) argv.push('--label', opts.label)
   argv.push('--json', ISSUE_FIELDS, '--limit', String(opts.limit ?? 200))
   return { argv, checked: false, parse: manyIssuesOrNull }
 }
 
 /** `gh issue view <n> --json …` — one issue, same field set as {@link issueList}. */
-export function issueView(number: number): GhVerb<IssueRow | null> {
+export function issueView(number: number, target?: GhTarget): GhVerb<IssueRow | null> {
   return {
-    argv: ['issue', 'view', String(number), '--json', ISSUE_FIELDS],
+    argv: ['issue', 'view', String(number), ...repoArgs(target), '--json', ISSUE_FIELDS],
     checked: false,
     parse: oneIssueOrNull,
   }
@@ -441,8 +521,8 @@ export interface CreatePrOptions {
  * starts with `http://` or `https://`. `''` when it printed none, as
  * {@link prComment} does. A line after the URL, such as a tip, is skipped.
  */
-export function createPr(opts: CreatePrOptions): GhVerb<string> {
-  const argv = ['pr', 'create', '--head', opts.head, '--base', opts.base]
+export function createPr(opts: CreatePrOptions, target?: GhTarget): GhVerb<string> {
+  const argv = ['pr', 'create', ...repoArgs(target), '--head', opts.head, '--base', opts.base]
   if (opts.draft) argv.push('--draft')
   argv.push('--title', opts.title, '--body', opts.body)
   return {
@@ -462,28 +542,33 @@ export function createPr(opts: CreatePrOptions): GhVerb<string> {
 export function editPr(
   number: number,
   opts: { title?: string | undefined; body?: string | undefined },
+  target?: GhTarget,
 ): GhVerb<void> {
-  const argv = ['pr', 'edit', String(number)]
+  const argv = ['pr', 'edit', String(number), ...repoArgs(target)]
   if (opts.title !== undefined) argv.push('--title', opts.title)
   if (opts.body !== undefined) argv.push('--body', opts.body)
   return { argv, checked: true, parse: nothing }
 }
 
 /** `gh pr edit <n> --body` — rewrite just the body. */
-export function editPrBody(number: number, body: string): GhVerb<void> {
-  return editPr(number, { body })
+export function editPrBody(number: number, body: string, target?: GhTarget): GhVerb<void> {
+  return editPr(number, { body }, target)
 }
 
 /** `gh pr update-branch <n> [--rebase]` — bring the head up to date with its base. */
-export function prUpdateBranch(number: number, style: 'merge' | 'rebase' = 'merge'): GhVerb<void> {
-  const argv = ['pr', 'update-branch', String(number)]
+export function prUpdateBranch(
+  number: number,
+  style: 'merge' | 'rebase' = 'merge',
+  target?: GhTarget,
+): GhVerb<void> {
+  const argv = ['pr', 'update-branch', String(number), ...repoArgs(target)]
   if (style === 'rebase') argv.push('--rebase')
   return { argv, checked: true, parse: nothing }
 }
 
 /** `gh pr ready <n> [--undo]` — mark a draft PR ready for review, or (with `draft`) convert it back to a draft. */
-export function prSetDraft(number: number, draft: boolean): GhVerb<void> {
-  const argv = ['pr', 'ready', String(number)]
+export function prSetDraft(number: number, draft: boolean, target?: GhTarget): GhVerb<void> {
+  const argv = ['pr', 'ready', String(number), ...repoArgs(target)]
   if (draft) argv.push('--undo')
   return { argv, checked: true, parse: nothing }
 }
@@ -502,7 +587,7 @@ export function prSetDraft(number: number, draft: boolean): GhVerb<void> {
  *
  * @experimental
  */
-export function issueCommentEdit(commentId: string, body: string): GhVerb<void> {
+export function issueCommentEdit(commentId: string, body: string, target?: GhTarget): GhVerb<void> {
   if (!/^[0-9]+$/.test(commentId)) {
     throw new RangeError(
       `issueCommentEdit: commentId must be a numeric REST id, got ${JSON.stringify(commentId)}`,
@@ -511,9 +596,10 @@ export function issueCommentEdit(commentId: string, body: string): GhVerb<void> 
   return {
     argv: [
       'api',
+      ...hostArgs(target),
       '-X',
       'PATCH',
-      `repos/{owner}/{repo}/issues/comments/${commentId}`,
+      fillRepo(`repos/{owner}/{repo}/issues/comments/${commentId}`, target),
       '-f',
       `body=${body}`,
     ],
@@ -535,11 +621,13 @@ export type PrMergeMethod = 'squash' | 'merge' | 'rebase'
 export function prMerge(
   number: number,
   opts: { method: PrMergeMethod; headSha: string },
+  target?: GhTarget,
 ): GhVerb<void> {
   const argv = [
     'pr',
     'merge',
     String(number),
+    ...repoArgs(target),
     `--${opts.method}`,
     '--match-head-commit',
     opts.headSha,
@@ -565,15 +653,20 @@ const REVIEW_THREADS_QUERY =
  * PR is clear to merge must read "could not tell" differently from "no
  * threads".
  */
-export function prReviewThreads(number: number): GhVerb<ReviewThread[] | null> {
+export function prReviewThreads(number: number, target?: GhTarget): GhVerb<ReviewThread[] | null> {
+  checkTarget(target)
+  // `-F` lets gh fill the placeholders from the clone; real values go as plain strings.
+  const [owner, name] = target?.repo?.split('/') ?? []
+  const repo =
+    owner === undefined || name === undefined
+      ? ['-F', 'owner={owner}', '-F', 'name={repo}']
+      : ['-f', `owner=${owner}`, '-f', `name=${name}`]
   return {
     argv: [
       'api',
       'graphql',
-      '-F',
-      'owner={owner}',
-      '-F',
-      'name={repo}',
+      ...hostArgs(target),
+      ...repo,
       '-F',
       `number=${number}`,
       '-f',
@@ -630,11 +723,12 @@ export interface CreateLabelOptions {
  * `--force` makes it safe to repeat: when the label already exists, its color
  * and description are set to these instead of failing.
  */
-export function createLabel(opts: CreateLabelOptions): GhVerb<void> {
+export function createLabel(opts: CreateLabelOptions, target?: GhTarget): GhVerb<void> {
   const argv = [
     'label',
     'create',
     opts.name,
+    ...repoArgs(target),
     '--color',
     opts.color,
     '--description',
@@ -648,8 +742,9 @@ export function createLabel(opts: CreateLabelOptions): GhVerb<void> {
 export function editLabel(
   name: string,
   opts: { color?: string | undefined; description?: string | undefined },
+  target?: GhTarget,
 ): GhVerb<void> {
-  const argv = ['label', 'edit', name]
+  const argv = ['label', 'edit', name, ...repoArgs(target)]
   if (opts.color !== undefined) argv.push('--color', opts.color)
   if (opts.description !== undefined) argv.push('--description', opts.description)
   return { argv, checked: true, parse: nothing }
@@ -676,22 +771,27 @@ export function setIssueLabel(
   number: number,
   currentLabel: string | null,
   newLabel: string,
+  target?: GhTarget,
 ): GhVerb<void> {
-  const argv = ['issue', 'edit', String(number)]
+  const argv = ['issue', 'edit', String(number), ...repoArgs(target)]
   if (currentLabel !== null) argv.push('--remove-label', currentLabel)
   argv.push('--add-label', newLabel)
   return { argv, checked: true, parse: nothing }
 }
 
 /** `gh pr diff <n>` — the PR's unified diff, as text. Checked: an empty diff is a value, a failed call is not. */
-export function prDiff(number: number): GhVerb<string> {
-  return { argv: ['pr', 'diff', String(number)], checked: true, parse: (r) => r.stdout }
+export function prDiff(number: number, target?: GhTarget): GhVerb<string> {
+  return {
+    argv: ['pr', 'diff', String(number), ...repoArgs(target)],
+    checked: true,
+    parse: (r) => r.stdout,
+  }
 }
 
 /** `gh pr comment <n> --body <body>` — post a conversation comment, returning the URL gh prints ('' if none). */
-export function prComment(number: number, body: string): GhVerb<string> {
+export function prComment(number: number, body: string, target?: GhTarget): GhVerb<string> {
   return {
-    argv: ['pr', 'comment', String(number), '--body', body],
+    argv: ['pr', 'comment', String(number), ...repoArgs(target), '--body', body],
     checked: true,
     parse(r) {
       const lines = r.stdout
@@ -734,12 +834,16 @@ export interface CreateReviewOptions {
  * when GitHub's reply carried none). The event is always `COMMENT`: this
  * library does not offer a way to approve or request changes. Goes through
  * `gh api` with the payload on stdin, because `gh pr review` cannot attach
- * line-anchored comments; `{owner}`/`{repo}` are filled in by `gh` from the
- * client's working directory.
+ * line-anchored comments; `{owner}`/`{repo}` come from the target's repo, or
+ * are filled in by `gh` from the client's working directory.
  *
  * @experimental
  */
-export function createReview(number: number, opts: CreateReviewOptions): GhVerb<string> {
+export function createReview(
+  number: number,
+  opts: CreateReviewOptions,
+  target?: GhTarget,
+): GhVerb<string> {
   const payload = {
     commit_id: opts.commitId,
     body: opts.body,
@@ -754,9 +858,10 @@ export function createReview(number: number, opts: CreateReviewOptions): GhVerb<
   return {
     argv: [
       'api',
+      ...hostArgs(target),
       '--method',
       'POST',
-      `repos/{owner}/{repo}/pulls/${number}/reviews`,
+      fillRepo(`repos/{owner}/{repo}/pulls/${number}/reviews`, target),
       '--input',
       '-',
     ],

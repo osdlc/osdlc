@@ -17,9 +17,9 @@
  * Authentication is `gh`'s. No token is read, stored, or forwarded.
  */
 
-export { AsyncGh, type AsyncCallOptions } from './async.ts'
+export { AsyncGh, type AsyncCallOptions, type AsyncGhOptions } from './async.ts'
 
-export { Gh, defaultRunnerFactory, type RunnerFactory } from './sync.ts'
+export { Gh, defaultRunnerFactory, type GhOptions, type RunnerFactory } from './sync.ts'
 
 export {
   api,
@@ -56,6 +56,7 @@ export {
   type CreateLabelOptions,
   type CreatePrOptions,
   type CreateReviewOptions,
+  type GhTarget,
   type GhVerb,
   type IssueListOptions,
   type PrListOptions,

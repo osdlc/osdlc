@@ -29,31 +29,39 @@ export function ownerRepoSlug(r: OwnerRepo): string {
   return `${r.owner}/${r.repo}`
 }
 
-/** A pull request coordinate: the repository and the PR's number within it. */
+/** A pull request coordinate: the host, the repository and the PR's number within it. */
 export interface PullRequestRef extends OwnerRepo {
+  /** The GitHub host, lower-cased: `github.com`, or an Enterprise host. */
+  hostname: string
   number: number
 }
 
 /**
- * The `{owner, repo, number}` a GitHub pull-request URL names, or null when
- * `url` is not one.
+ * The `{hostname, owner, repo, number}` a GitHub pull-request URL names, or
+ * null when `url` is not one.
  *
- * Accepts `https://github.com/<owner>/<repo>/pull/<n>` with or without a
- * scheme, a `www.` prefix, a trailing slash, a sub-page (`/files`,
- * `/commits`), a query string or a fragment — every shape a browser's address
- * bar hands over. `parseGitUrl` is the wrong tool here: it reads `/pull/<n>`
+ * Accepts `https://<host>/<owner>/<repo>/pull/<n>` with or without a scheme,
+ * a trailing slash, a sub-page (`/files`, `/commits`), a query string or a
+ * fragment — every shape a browser's address bar hands over. The host is
+ * `github.com` (a `www.` prefix is dropped) or a GitHub Enterprise host such
+ * as `github.acme.com` or `acme.ghe.com`; without a scheme the host must
+ * contain a dot. `parseGitUrl` is the wrong tool here: it reads `/pull/<n>`
  * as part of the project path.
- *
- * GitHub.com only. A GitHub Enterprise host is a different coordinate space
- * (the `gh` CLI needs `--hostname`), so it is not silently accepted.
  */
 export function parsePrUrl(url: string): PullRequestRef | null {
   const m =
-    /^(?:https?:\/\/)?(?:www\.)?github\.com\/([^/\s]+)\/([^/\s]+)\/pull\/(\d+)(?:[/?#].*)?$/i.exec(
+    /^(?:(https?:)\/\/)?([a-z0-9](?:[a-z0-9.-]*[a-z0-9])?(?::\d+)?)\/([^/\s]+)\/([^/\s]+)\/pull\/(\d+)(?:[/?#].*)?$/i.exec(
       url.trim(),
     )
   if (m === null) return null
-  const number = Number(m[3])
+  const host = m[2]!.toLowerCase()
+  if (m[1] === undefined && !host.includes('.')) return null
+  const number = Number(m[5])
   if (!Number.isSafeInteger(number) || number <= 0) return null
-  return { owner: m[1]!, repo: m[2]!.replace(/\.git$/, ''), number }
+  return {
+    hostname: host === 'www.github.com' ? 'github.com' : host,
+    owner: m[3]!,
+    repo: m[4]!.replace(/\.git$/, ''),
+    number,
+  }
 }

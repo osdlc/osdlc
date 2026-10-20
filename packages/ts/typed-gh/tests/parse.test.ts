@@ -219,7 +219,7 @@ describe('statusCheckRollup — two node types, one verdict axis', () => {
 })
 
 describe('parsePrUrl', () => {
-  const ref = { owner: 'acme', repo: 'widgets', number: 1937 }
+  const ref = { hostname: 'github.com', owner: 'acme', repo: 'widgets', number: 1937 }
 
   test('the canonical URL', () => {
     expect(parsePrUrl('https://github.com/acme/widgets/pull/1937')).toEqual(ref)
@@ -239,13 +239,24 @@ describe('parsePrUrl', () => {
     }
   })
 
+  test('a GitHub Enterprise host', () => {
+    expect(parsePrUrl('https://GHE.example.com/acme/widgets/pull/1937')).toEqual({
+      ...ref,
+      hostname: 'ghe.example.com',
+    })
+    expect(parsePrUrl('acme.ghe.com/acme/widgets/pull/1937')?.hostname).toBe('acme.ghe.com')
+    expect(parsePrUrl('http://localhost:8080/acme/widgets/pull/1937')?.hostname).toBe(
+      'localhost:8080',
+    )
+  })
+
   test('not a PR URL', () => {
     for (const url of [
       'https://github.com/acme/widgets',
       'https://github.com/acme/widgets/issues/1937',
       'https://github.com/acme/widgets/pull/',
       'https://github.com/acme/widgets/pull/abc',
-      'https://ghe.example.com/acme/widgets/pull/1',
+      'acme/widgets/pull/1937',
       'git@github.com:acme/widgets.git',
       '1937',
       '',
