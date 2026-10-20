@@ -160,7 +160,11 @@ function loadManifest(pluginRoot: string): Record<string, unknown> {
   )
 }
 
-/** Options for {@link readPlugin}. */
+/**
+ * Options for {@link readPlugin}.
+ *
+ * @experimental
+ */
 export interface ReadPluginOptions extends ControlPlaneOptions {
   /**
    * Folder under the plugin root whose `.md` files become the model's documents,
@@ -182,6 +186,8 @@ export interface ReadPluginOptions extends ControlPlaneOptions {
  * @throws {ZodError} When the derived model fails {@link HarnessModelSchema}.
  * @throws {Error} What `readFileSync` or `readdirSync` throws for a folder or file
  * that exists but cannot be read.
+ *
+ * @experimental
  */
 export function readPlugin(pluginRoot: string, options: ReadPluginOptions = {}): HarnessModel {
   const manifest = loadManifest(pluginRoot)

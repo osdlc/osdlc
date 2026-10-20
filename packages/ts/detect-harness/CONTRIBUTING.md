@@ -49,10 +49,11 @@ pnpm run format:check
 - Prettier formats the code and oxlint checks it. Run `pnpm run format` and
   `pnpm run lint` before you commit.
 - Add a test for each behaviour change or bug fix.
-- A new export gets TSDoc and `@throws` if it can throw. A test lists every
-  export of every entry point, so adding or removing one shows up in review.
-- An experimental export carries `@experimental` and is listed in the
-  README.
+- A new export gets TSDoc and `@throws` if it can throw. A stable export also
+  gets a use in `examples/`, which imports the package by name. An experimental
+  export carries `@experimental` and is listed in the README's "Experimental"
+  section. Tests fail on an export with no TSDoc, on tags and list that
+  disagree, and on a stable export no example imports.
 - Spawn processes only through `@osdlc/command-seam`, never `child_process`.
 - For a change users can see, add a changeset: run `pnpm changeset` at the
   repository root. Start a breaking change's summary with `**Breaking:**`.

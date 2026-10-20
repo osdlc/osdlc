@@ -37,7 +37,11 @@ import type { HarnessHook, HarnessMcpServer, HarnessPermissions } from './schema
 
 export { REDACTED }
 
-/** Options shared by the control-plane readers. */
+/**
+ * Options shared by the control-plane readers.
+ *
+ * @experimental
+ */
 export interface ControlPlaneOptions {
   /**
    * Keep MCP values as written: `env` and header values, URL credentials and
@@ -46,7 +50,11 @@ export interface ControlPlaneOptions {
   includeValues?: boolean
 }
 
-/** Parsed control-plane fields ready to fold into the model. */
+/**
+ * Parsed control-plane fields ready to fold into the model.
+ *
+ * @experimental
+ */
 export interface ClaudeControlPlane {
   hooks: HarnessHook[]
   mcpServers: HarnessMcpServer[]
@@ -125,6 +133,8 @@ function mergeRules(lists: string[][]): string[] {
  * and its permission rules and hooks add to the project's. A sibling `.mcp.json`
  * supplies servers that neither settings file names. Absent sources contribute
  * nothing.
+ *
+ * @experimental
  */
 export function readClaudeControlPlane(
   root: string,
@@ -168,6 +178,8 @@ export function readClaudeControlPlane(
  * sources replace same-named servers from the manifest.
  *
  * @param manifest The parsed `plugin.json`, or `{}` when the plugin has none.
+ *
+ * @experimental
  */
 export function readPluginControlPlane(
   root: string,

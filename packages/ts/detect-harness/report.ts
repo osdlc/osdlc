@@ -21,6 +21,7 @@ export const ScopeSchema = z.enum(SCOPES)
 
 /** How `detect()` ran: `full`, or `project` (project files only, never the home folder). */
 export const DetectModeSchema = z.enum(['full', 'project'])
+/** How `detect()` ran: `full`, or `project`. */
 export type DetectMode = z.infer<typeof DetectModeSchema>
 
 /** Whether the harness's program is on this machine. */
@@ -36,6 +37,7 @@ export const InstallSchema = z.object({
   /** From `<binary> --version`; only when `allowExec` is set. */
   version: z.string().nullable(),
 })
+/** Whether a harness is installed on this machine, and how it was found. */
 export type Install = z.infer<typeof InstallSchema>
 
 /** A folder the harness keeps its files in. */
@@ -47,6 +49,7 @@ export const ConfigDirSchema = z.object({
   envVar: z.string().nullable(),
   exists: z.boolean(),
 })
+/** One folder a harness keeps its files in, the variable that moved it, and whether it exists. */
 export type ConfigDir = z.infer<typeof ConfigDirSchema>
 
 /** A config file the provider looked at. */
@@ -60,6 +63,7 @@ export const SourceSchema = z.object({
   /** Precedence among sources of one kind; higher wins. `null` where nothing competes. */
   rank: z.number().int().nullable(),
 })
+/** One config file that was looked at: its path, scope, kind and read status. */
 export type Source = z.infer<typeof SourceSchema>
 
 /** An installed or enabled plugin. */
@@ -83,6 +87,7 @@ export const PluginSchema = z.object({
   /** The file this entry came from: the install registry or a settings file. */
   source: z.string(),
 })
+/** An installed or enabled plugin, with its scope, version and install path. */
 export type Plugin = z.infer<typeof PluginSchema>
 
 /** A known plugin marketplace. */
@@ -97,6 +102,7 @@ export const MarketplaceSchema = z.object({
   scope: ScopeSchema,
   source: z.string(),
 })
+/** A plugin marketplace the harness knows, and where it comes from. */
 export type Marketplace = z.infer<typeof MarketplaceSchema>
 
 /** A skill, command or agent definition. */
@@ -113,10 +119,12 @@ export const ArtifactSchema = z.object({
   /** The markdown body; only with `readContents`. */
   body: z.string().nullable(),
 })
+/** A skill, command or agent: its name, description, path and origin. */
 export type Artifact = z.infer<typeof ArtifactSchema>
 
 /** Whether the harness will run a hook. Only Codex records approval. */
 export const HookTrustSchema = z.enum(['trusted', 'modified', 'untrusted'])
+/** Whether the harness will run a hook; see {@link HookTrustSchema}. */
 export type HookTrust = z.infer<typeof HookTrustSchema>
 
 /** One hook handler. */
@@ -134,6 +142,7 @@ export const HookSchema = z.object({
   /** Codex's approval state; `null` for a harness with no approval step, or in `project` mode. */
   trust: HookTrustSchema.nullable(),
 })
+/** One hook handler: its event, matcher, command, source and trust. */
 export type Hook = z.infer<typeof HookSchema>
 
 /** An MCP server. `env` and `headers` values, URL credentials and secret-looking `args` are redacted unless `includeValues`. */
@@ -156,6 +165,7 @@ export const McpServerSchema = z.object({
    */
   active: z.boolean(),
 })
+/** One MCP server a harness is configured with. Secret values are redacted unless the caller asked for them. */
 export type McpServer = z.infer<typeof McpServerSchema>
 
 /** One permission rule, with the scope it came from. */
@@ -165,6 +175,7 @@ export const PermissionRuleSchema = z.object({
   scope: ScopeSchema,
   source: z.string(),
 })
+/** One allow, deny or ask rule, with its scope and source file. */
 export type PermissionRule = z.infer<typeof PermissionRuleSchema>
 
 /** The permission rules of every scope (they add up), and the winning default mode. */
@@ -173,6 +184,7 @@ export const PermissionsSchema = z.object({
   defaultMode: z.string().nullable(),
   defaultModeSource: z.string().nullable(),
 })
+/** The permission rules of a harness and its winning default mode. */
 export type Permissions = z.infer<typeof PermissionsSchema>
 
 /** An instruction file the harness loads (`CLAUDE.md`, `AGENTS.md`, a rules file). */
@@ -180,6 +192,7 @@ export const InstructionSchema = z.object({
   path: z.string(),
   scope: ScopeSchema,
 })
+/** An instruction file (`CLAUDE.md`, `AGENTS.md`, a rules file) and its scope. */
 export type Instruction = z.infer<typeof InstructionSchema>
 
 /**
@@ -193,13 +206,16 @@ export const AuthSchema = z.object({
   /** pi's configured providers (key names of its auth file); `null` elsewhere. */
   providers: z.array(z.string()).nullable(),
 })
+/** Offline evidence that the harness is signed in. */
 export type Auth = z.infer<typeof AuthSchema>
 
+/** Something worth a look in a report, such as an unreadable file. */
 export const DiagnosticSchema = z.object({
   severity: z.enum(['info', 'warning', 'error']),
   message: z.string(),
   source: z.string().nullable(),
 })
+/** Something worth a look in a report, such as an unreadable file. */
 export type Diagnostic = z.infer<typeof DiagnosticSchema>
 
 /** One harness's slice of a catalog. */
@@ -225,6 +241,7 @@ export const HarnessReportSchema = z.object({
   /** True when the provider needs to run a program and `allowExec` was off. */
   skippedForExec: z.boolean(),
 })
+/** What `detect()` found for one harness. Every field is always present. */
 export type HarnessReport = z.infer<typeof HarnessReportSchema>
 
 /** What `detect()` returns. */
@@ -237,4 +254,5 @@ export const HarnessCatalogSchema = z.object({
   allowExec: z.boolean(),
   reports: z.array(HarnessReportSchema),
 })
+/** What `detect()` returns: how it ran and one {@link HarnessReport} per harness. */
 export type HarnessCatalog = z.infer<typeof HarnessCatalogSchema>

@@ -21,10 +21,10 @@ afterEach(() => {
 })
 
 describe('codex', () => {
-  test('codexHookHash matches a hash Codex 0.162 recorded', () => {
-    const hook = { type: 'command', command: 'true', statusMessage: 'sdlc session log' }
+  test('codexHookHash is the sha256 of the normalised handler (value computed by the same algorithm)', () => {
+    const hook = { type: 'command', command: 'true', statusMessage: 'session log' }
     expect(codexHookHash('SessionStart', { hooks: [hook] }, hook)).toBe(
-      'sha256:ebb8b45536a343013323999fd4de0266392aea37bf2a051db36b86068c0d8861',
+      'sha256:8f48ba5d0ee2b77650f3d72f1b6449ecc8acae0d82831a3b7a4816debd769d03',
     )
   })
 

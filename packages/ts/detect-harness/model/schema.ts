@@ -17,10 +17,18 @@
 
 import { z } from 'zod'
 
-/** Schema version of the model. `HarnessModelSchema` accepts only this value. */
+/**
+ * Schema version of the model. `HarnessModelSchema` accepts only this value.
+ *
+ * @experimental
+ */
 export const HARNESS_MODEL_VERSION = '2' as const
 
-/** Plugin identity, from the plugin manifest. */
+/**
+ * Plugin identity, from the plugin manifest.
+ *
+ * @experimental
+ */
 export const HarnessMetadataSchema = z.object({
   /** Machine name / plugin id (kebab), e.g. `"my-plugin"`. */
   name: z.string().min(1),
@@ -33,12 +41,19 @@ export const HarnessMetadataSchema = z.object({
   /** Project homepage / repo URL, when declared. */
   homepage: z.string().optional(),
 })
+/**
+ * The plugin's name, version and descriptive fields.
+ *
+ * @experimental
+ */
 export type HarnessMetadata = z.infer<typeof HarnessMetadataSchema>
 
 /**
  * A file co-located with a capability (a helper script, a fixture). Contents are
  * carried as text — the surface is markdown + source scripts, never binary —
  * with the executable bit preserved so a launcher stays runnable.
+ *
+ * @experimental
  */
 export const HarnessResourceSchema = z.object({
   /** Path RELATIVE to the capability's own directory (e.g. `"start_task.ts"`). */
@@ -48,14 +63,26 @@ export const HarnessResourceSchema = z.object({
   /** True when the source file carried a user-executable bit. */
   executable: z.boolean().default(false),
 })
+/**
+ * A file that ships with a skill or command.
+ *
+ * @experimental
+ */
 export type HarnessResource = z.infer<typeof HarnessResourceSchema>
 
 /**
  * A capability's kind. `skill` is a model-invoked capability; `command` is a
  * user-invoked one (a `/name` slash command). Claude Code separates the two, so
  * the model keeps the distinction.
+ *
+ * @experimental
  */
 export const CapabilityKindSchema = z.enum(['skill', 'command'])
+/**
+ * Whether a capability is a `skill` or a `command`.
+ *
+ * @experimental
+ */
 export type CapabilityKind = z.infer<typeof CapabilityKindSchema>
 
 /**
@@ -63,6 +90,8 @@ export type CapabilityKind = z.infer<typeof CapabilityKindSchema>
  * `instructions` is the markdown the agent runs against, `allowedTools` the
  * permitted tools, `argumentHint` the CLI-style hint for commands that take
  * arguments. `annotations` holds the frontmatter keys the model has no field for.
+ *
+ * @experimental
  */
 export const HarnessCapabilitySchema = z.object({
   /** Kebab id, unique within the harness (`"task-work"`). */
@@ -82,12 +111,19 @@ export const HarnessCapabilitySchema = z.object({
   /** Frontmatter keys with no field of their own (e.g. `need_human_review`). */
   annotations: z.record(z.string(), z.unknown()).default({}),
 })
+/**
+ * A skill or command, with its instructions, resources and annotations.
+ *
+ * @experimental
+ */
 export type HarnessCapability = z.infer<typeof HarnessCapabilitySchema>
 
 /**
  * A lifecycle hook: a shell `action` fired on `event` (e.g. `PreToolUse`,
  * `Stop`, `SessionStart`), optionally gated by a `matcher` (a tool-name / event
  * pattern).
+ *
+ * @experimental
  */
 export const HarnessHookSchema = z.object({
   /** Lifecycle event name, in Claude Code's own spelling. */
@@ -97,10 +133,24 @@ export const HarnessHookSchema = z.object({
   /** The shell command to run. */
   action: z.string().min(1),
 })
+/**
+ * A hook declared by the plugin or its settings.
+ *
+ * @experimental
+ */
 export type HarnessHook = z.infer<typeof HarnessHookSchema>
 
-/** MCP transport kind. */
+/**
+ * MCP transport kind.
+ *
+ * @experimental
+ */
 export const McpTransportSchema = z.enum(['stdio', 'http', 'sse'])
+/**
+ * The transport of an MCP server: `stdio`, `http` or `sse`.
+ *
+ * @experimental
+ */
 export type McpTransport = z.infer<typeof McpTransportSchema>
 
 /**
@@ -111,6 +161,8 @@ export type McpTransport = z.infer<typeof McpTransportSchema>
  * The readers replace `env` and `headers` values, the user part and query
  * values of `url`, and secret-looking `args`, with `"<redacted>"` unless asked
  * to keep them.
+ *
+ * @experimental
  */
 export const HarnessMcpServerSchema = z.object({
   /** Server id, unique within the harness. */
@@ -127,23 +179,37 @@ export const HarnessMcpServerSchema = z.object({
   /** http/sse: request headers (values redacted by default). */
   headers: z.record(z.string(), z.string()).default({}),
 })
+/**
+ * An MCP server declared by the plugin or its settings.
+ *
+ * @experimental
+ */
 export type HarnessMcpServer = z.infer<typeof HarnessMcpServerSchema>
 
 /**
  * Tool permission rule sets: the `allow`/`deny`/`ask` lists of Claude settings.
  * Rules are tool patterns (`"Bash(git *)"`). Rules from every settings scope are
  * kept.
+ *
+ * @experimental
  */
 export const HarnessPermissionsSchema = z.object({
   allow: z.array(z.string()).default([]),
   deny: z.array(z.string()).default([]),
   ask: z.array(z.string()).default([]),
 })
+/**
+ * Allow, deny and ask rules, and the default mode.
+ *
+ * @experimental
+ */
 export type HarnessPermissions = z.infer<typeof HarnessPermissionsSchema>
 
 /**
  * A shared context document the capabilities draw on, read from a documents
  * folder (`conventions/` by default).
+ *
+ * @experimental
  */
 export const HarnessDocumentSchema = z.object({
   /** Path under the documents folder, without `.md` (`"commit-messages"`). */
@@ -151,11 +217,18 @@ export const HarnessDocumentSchema = z.object({
   /** Full markdown document, verbatim. */
   body: z.string().default(''),
 })
+/**
+ * A shared context document: a markdown file under the documents folder.
+ *
+ * @experimental
+ */
 export type HarnessDocument = z.infer<typeof HarnessDocumentSchema>
 
 /**
  * The whole model: what {@link readPlugin} produces from a Claude Code
  * plugin folder.
+ *
+ * @experimental
  */
 export const HarnessModelSchema = z.object({
   /** Model schema version — see {@link HARNESS_MODEL_VERSION}. */
@@ -172,14 +245,27 @@ export const HarnessModelSchema = z.object({
   /** Shared context documents, sorted by `name`. */
   documents: z.array(HarnessDocumentSchema).default([]),
 })
+/**
+ * The typed model of one plugin folder.
+ *
+ * @experimental
+ */
 export type HarnessModel = z.infer<typeof HarnessModelSchema>
 
-/** Total resource-file count across every capability — a cheap summary stat. */
+/**
+ * Total resource-file count across every capability — a cheap summary stat.
+ *
+ * @experimental
+ */
 export function countResources(model: HarnessModel): number {
   return model.capabilities.reduce((n, c) => n + c.resources.length, 0)
 }
 
-/** Capabilities of a given kind, in model order. */
+/**
+ * Capabilities of a given kind, in model order.
+ *
+ * @experimental
+ */
 export function capabilitiesOfKind(model: HarnessModel, kind: CapabilityKind): HarnessCapability[] {
   return model.capabilities.filter((c) => c.kind === kind)
 }

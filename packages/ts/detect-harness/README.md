@@ -8,6 +8,27 @@ The package only reads. It never writes a harness's files, and it runs a
 program only when you pass `allowExec: true`. Secret values in MCP settings
 are redacted by default; see [Secrets](#secrets) for the exact rule.
 
+## What it is for
+
+Tools that work with coding agents often need to know which agents are on a
+machine, and what each one is configured with: plugins, skills, hooks, MCP
+servers, permissions, instruction files and whether the user is signed in. Each
+agent keeps this in its own files, formats and scopes. This package reads them
+and returns one report shape for all six harnesses.
+
+It is for authors of developer tools, editor extensions, CI checks and agent
+wrappers that need that picture, and for anyone who wants to audit what an
+agent may do in a project.
+
+Do not use it to:
+
+- write or install harness files, or move configuration from one harness to
+  another;
+- run an agent;
+- only ask "is this process inside an agent?" when you need nothing else. Use
+  `current()` here, or one of the smaller packages below;
+- run in a browser. It reads files, so it needs Node.
+
 ## Install
 
 ```sh
@@ -50,6 +71,7 @@ harness, in a fixed order. Options:
 | `which`         | walks `env.PATH`   | `PATH` lookup. Tests inject this.                                         |
 | `makeRunner`    | command seam       | Builds the runner for `--version`. Tests inject this.                     |
 | `platform`      | `process.platform` | Chooses the managed-settings folder.                                      |
+| `signal`        | none               | An `AbortSignal` that stops the `--version` run; providers see it too.    |
 | `systemRoot`    | `/`                | Root for system paths (`/etc/claude-code`, `/Applications`).              |
 
 ### Project mode
@@ -259,6 +281,94 @@ It reads `.claude-plugin/plugin.json` (or `plugin.json`),
 The entry is experimental: a harness-neutral surface with provenance is
 planned, and its shape will change.
 
+## How it compares
+
+These packages are on npm. Each does a different job from this one.
+
+| Package                                                                    | What it does                                                                                           | What it does that this does not                                                  |
+| -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------- |
+| [`@vercel/detect-agent`](https://www.npmjs.com/package/@vercel/detect-agent) | Says whether code runs inside an AI agent, from environment variables, and names it.                 | Recognises more agents and hosts by environment. It does not read configuration. |
+| [`agent-cli-detector`](https://www.npmjs.com/package/agent-cli-detector)     | Says whether a CLI runs inside a coding agent, and gives a session id for some agents.               | Recognises more agents, and reads session ids. It does not read configuration.   |
+| [`agent-plugins`](https://www.npmjs.com/package/agent-plugins)               | Manages and syncs skills, commands, rules and MCP configs across several agents.                     | Writes and syncs agent files. This package never writes.                          |
+| [`agent-install`](https://www.npmjs.com/package/agent-install)               | Installs `SKILL.md` files, MCP servers and `AGENTS.md` guidance for coding agents, as an API and CLI. | Installs. This package only reads.                                                |
+
+This package's `current()` answers the same question as the first two for the
+six harnesses it knows. Its other work, reading what each harness has
+configured, is what those packages leave out.
+
+Libraries from the same author that detect other developer tools, run coding
+agent CLIs, or write harness files from a model are not published yet. They
+do other jobs: this package only reads, and returns a report.
+
+## Platforms
+
+- Linux and macOS are supported. CI tests them on Node 22 and 24.
+- Windows is handled in the code but is not tested. `PATH` lookup tries the
+  `PATHEXT` suffixes, and the system root is the system drive. On Windows the
+  execute bit does not exist, so an install is found by the file's name and
+  `PATHEXT`, not by a permission check. Paths use `\` there, as `node:path`
+  gives them. Do not rely on Windows until a CI job covers it.
+- Node 22 or newer. ESM only. No browser build.
+
+## Experimental
+
+These exports can change in a minor release. The same names carry the
+`@experimental` tag in the source, and a test checks that this list and the
+tags agree.
+
+The location table and its resolvers (also on `@osdlc/detect-harness/locations`):
+
+- `LOCATIONS`
+- `SCOPES`
+- `Scope`
+- `LocationRole`
+- `EnvOverride`
+- `PlatformTemplate`
+- `BaseDir`
+- `LocationPath`
+- `HarnessLocations`
+- `LocationContext`
+- `ResolvedDir`
+- `ResolvedLocation`
+- `defaultSystemRoot`
+- `resolveBase`
+- `resolveBases`
+- `resolveConfigDir`
+- `resolveLocations`
+- `resolveTemplate`
+
+The plugin reader, on `@osdlc/detect-harness/model` only:
+
+- `readPlugin`
+- `ReadPluginOptions`
+- `readClaudeControlPlane`
+- `readPluginControlPlane`
+- `ClaudeControlPlane`
+- `ControlPlaneOptions`
+- `countResources`
+- `capabilitiesOfKind`
+- `HARNESS_MODEL_VERSION`
+- `HarnessMetadataSchema`
+- `HarnessMetadata`
+- `HarnessResourceSchema`
+- `HarnessResource`
+- `CapabilityKindSchema`
+- `CapabilityKind`
+- `HarnessCapabilitySchema`
+- `HarnessCapability`
+- `HarnessHookSchema`
+- `HarnessHook`
+- `McpTransportSchema`
+- `McpTransport`
+- `HarnessMcpServerSchema`
+- `HarnessMcpServer`
+- `HarnessPermissionsSchema`
+- `HarnessPermissions`
+- `HarnessDocumentSchema`
+- `HarnessDocument`
+- `HarnessModelSchema`
+- `HarnessModel`
+
 ## Limits
 
 - Claude Code instruction files are looked for in the project root only, not
@@ -276,8 +386,8 @@ Cursor Agent 2026.08, opencode 1.18 and pi 0.99. A wrong entry is a bug in the t
 
 ## Stability
 
-`./locations` and `./model` are experimental and may change in a minor
-release. See the [decision notes](docs/planning/decisions/) for why the package
+The root entry is stable. The exports in [Experimental](#experimental) may change
+in a minor release. See the [decision notes](docs/planning/decisions/) for why the package
 has this shape.
 
 ## Licence

@@ -15,10 +15,13 @@ created: 2026-10-19
   has no `bun` condition.
 - The package reads files and may run a program, so it needs Node. It does
   not claim to run in a browser.
-- Linux and macOS are supported and tested in CI, on Node 22 and 24.
+- Linux and macOS are supported and tested in CI, on Node 22 and 24. The
+  README says so.
 - Windows is handled in the code but is not tested. The `PATH` lookup tries
   the `PATHEXT` suffixes. The default system root is the `SystemDrive`, not
-  `/`. The location table lets a path differ by platform.
+  `/`. The location table lets a path differ by platform. Windows has no
+  execute bit, so a binary there is found by name and `PATHEXT`, not by a
+  permission check, and paths use `\`.
 - macOS app bundles (`Cursor.app`, `Antigravity.app`) are checked in
   `/Applications` and `~/Applications`. The managed Claude Code settings
   folder differs by platform and is chosen by the `platform` option.

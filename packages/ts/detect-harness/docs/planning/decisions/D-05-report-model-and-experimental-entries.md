@@ -38,6 +38,12 @@ created: 2026-10-19
 - The location table and its resolvers are also exported from the root entry,
   and carry the same experimental status there. The plugin reader is on
   `./model` only.
+- **Tiers are tagged per export.** Each experimental export carries the
+  `@experimental` tag in its TSDoc, and the README's "Experimental" section
+  lists every one by name. Everything else on the root entry is stable. Only
+  `REDACTED`, which `./model` re-exports from the root, is stable on that
+  entry.
+- **Every export has TSDoc.**
 
 ## Why
 
@@ -49,7 +55,7 @@ created: 2026-10-19
 ## Consequences
 
 - A change to the stable report shape is breaking.
-- A change to `./locations` or `./model` is not breaking, but it is written
-  in the changelog.
-- An export marked `@experimental` in the source is listed in the README, and
-  a test lists every export of every entry point.
+- A change to an experimental export is not breaking, but it is written in the
+  changelog.
+- Tests fail when an export has no TSDoc, when the `@experimental` tags and the
+  README list disagree, and when a stable export is not used in an example.

@@ -6,6 +6,7 @@ import { claudeProvider } from './claude.ts'
 import { codexProvider } from './codex.ts'
 import { cursorProvider } from './cursor.ts'
 
+/** The providers `detect()` uses by default, one per built-in harness, in report order. */
 export const builtinProviders: readonly HarnessProvider[] = [
   claudeProvider,
   codexProvider,

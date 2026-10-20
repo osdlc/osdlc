@@ -39,6 +39,10 @@ export type JsonRead =
 export type TextRead =
   { status: 'absent' } | { status: 'parsed'; text: string } | { status: 'error'; error: string }
 
+/**
+ * Everything a provider may read: the paths, the environment and the file-reading
+ * functions. Reads go through here so that project mode and tests can control them.
+ */
 export interface ProviderContext {
   /** The provider's id. */
   harness: string
@@ -78,6 +82,10 @@ export type ProviderResult = Partial<
   Omit<HarnessReport, 'harness' | 'label' | 'install' | 'skippedForExec'>
 >
 
+/**
+ * A reader for one harness. Pass your own in `DetectOptions.providers` to add a
+ * harness or replace a built-in one.
+ */
 export interface HarnessProvider {
   /** Stable id; becomes `HarnessReport.harness`. The built-ins use the ids in {@link BUILTIN_HARNESSES}. */
   id: string
@@ -98,6 +106,7 @@ export interface HarnessProvider {
   collect(ctx: ProviderContext): ProviderResult | Promise<ProviderResult>
 }
 
+/** Options for `detect()`. Every option has a default. */
 export interface DetectOptions {
   /** Default `process.cwd()`. */
   projectRoot?: string | undefined
@@ -136,5 +145,6 @@ export interface DetectOptions {
   platform?: NodeJS.Platform | undefined
   /** The root for system paths (`/Library/…`, `/etc/…`). Default `/`. Tests point it at a temp folder. */
   systemRoot?: string | undefined
+  /** Aborts the `--version` run; providers see it as `ctx.signal`. Default: never aborted. */
   signal?: AbortSignal | undefined
 }

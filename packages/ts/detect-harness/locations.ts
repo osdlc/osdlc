@@ -26,13 +26,25 @@ import { join, resolve } from 'node:path'
 
 import type { BuiltinHarnessId } from './harnesses.ts'
 
-/** The settings scopes, in Claude Code's terms. Other harnesses use the subset they have. */
+/**
+ * The settings scopes, in Claude Code's terms. Other harnesses use the subset they have.
+ *
+ * @experimental
+ */
 export const SCOPES = ['managed', 'user', 'project', 'local'] as const
 
-/** A settings scope. */
+/**
+ * A settings scope.
+ *
+ * @experimental
+ */
 export type Scope = (typeof SCOPES)[number]
 
-/** What a location holds. */
+/**
+ * What a location holds.
+ *
+ * @experimental
+ */
 export type LocationRole =
   | 'settings'
   | 'config'
@@ -50,17 +62,29 @@ export type LocationRole =
   | 'sessions'
   | 'transcripts'
 
-/** An environment variable that overrides a path. */
+/**
+ * An environment variable that overrides a path.
+ *
+ * @experimental
+ */
 export interface EnvOverride {
   name: string
   /** Joined onto the variable's value (`XDG_CONFIG_HOME` + `opencode`). */
   suffix?: string
 }
 
-/** A per-platform template, for system paths that differ by OS. */
+/**
+ * A per-platform template, for system paths that differ by OS.
+ *
+ * @experimental
+ */
 export type PlatformTemplate = Readonly<Partial<Record<'darwin' | 'linux' | 'win32', string>>>
 
-/** A named base folder. */
+/**
+ * A named base folder.
+ *
+ * @experimental
+ */
 export interface BaseDir {
   /** Overrides, in order. */
   env: readonly EnvOverride[]
@@ -68,7 +92,11 @@ export interface BaseDir {
   default: string | PlatformTemplate
 }
 
-/** One file or folder a harness reads. */
+/**
+ * One file or folder a harness reads.
+ *
+ * @experimental
+ */
 export interface LocationPath {
   role: LocationRole
   scope: Scope
@@ -79,7 +107,11 @@ export interface LocationPath {
   env?: readonly EnvOverride[]
 }
 
-/** Everything this package knows about where one harness lives. */
+/**
+ * Everything this package knows about where one harness lives.
+ *
+ * @experimental
+ */
 export interface HarnessLocations {
   label: string
   /** The CLI binary looked for on `PATH`. */
@@ -107,9 +139,11 @@ const p = (
 ): LocationPath => (env ? { role, scope, kind, path, env } : { role, scope, kind, path })
 
 /**
- * The location table. `@experimental`: entries are added as harnesses change.
+ * The location table. Entries are added as harnesses change.
  * For opencode, pi and Antigravity, `detect()` reads only the base folders and
  * sign-in files; their other paths are listed here but not read yet.
+ *
+ * @experimental
  */
 export const LOCATIONS: Readonly<Record<BuiltinHarnessId, HarnessLocations>> = {
   claude: {
@@ -282,7 +316,11 @@ export const LOCATIONS: Readonly<Record<BuiltinHarnessId, HarnessLocations>> = {
   },
 }
 
-/** What a template is resolved against. */
+/**
+ * What a template is resolved against.
+ *
+ * @experimental
+ */
 export interface LocationContext {
   /** Home directory; `null` makes every home-based path unresolvable. */
   home: string | null
@@ -295,7 +333,11 @@ export interface LocationContext {
   projectRoot?: string | null | undefined
 }
 
-/** A base folder, resolved. */
+/**
+ * A base folder, resolved.
+ *
+ * @experimental
+ */
 export interface ResolvedDir {
   name: string
   /** Absolute path, or `null` when it rests on something unknown (a `null` home). */
@@ -304,13 +346,21 @@ export interface ResolvedDir {
   envVar: string | null
 }
 
-/** A location, resolved. */
+/**
+ * A location, resolved.
+ *
+ * @experimental
+ */
 export interface ResolvedLocation extends LocationPath {
   resolved: string | null
   envVar: string | null
 }
 
-/** The default `{system}` root for `platform`. */
+/**
+ * The default `{system}` root for `platform`.
+ *
+ * @experimental
+ */
 export function defaultSystemRoot(
   platform: NodeJS.Platform,
   env: Readonly<Record<string, string | undefined>>,
@@ -379,6 +429,8 @@ function baseOf(
  * One base folder of `harness`, resolved.
  *
  * @throws {Error} For a base the table does not name, and for a base that refers to itself.
+ *
+ * @experimental
  */
 export function resolveBase(
   harness: BuiltinHarnessId,
@@ -388,12 +440,20 @@ export function resolveBase(
   return baseOf(harness, name, ctx, new Set([name]))
 }
 
-/** Every base folder of `harness`, resolved, in table order. */
+/**
+ * Every base folder of `harness`, resolved, in table order.
+ *
+ * @experimental
+ */
 export function resolveBases(harness: BuiltinHarnessId, ctx: LocationContext): ResolvedDir[] {
   return Object.keys(LOCATIONS[harness].bases).map((name) => resolveBase(harness, name, ctx))
 }
 
-/** The `config` base of `harness`: its main folder, with the environment override applied. */
+/**
+ * The `config` base of `harness`: its main folder, with the environment override applied.
+ *
+ * @experimental
+ */
 export function resolveConfigDir(harness: BuiltinHarnessId, ctx: LocationContext): string | null {
   return resolveBase(harness, 'config', ctx).path
 }
@@ -404,6 +464,8 @@ export function resolveConfigDir(harness: BuiltinHarnessId, ctx: LocationContext
  *
  * @throws {Error} For a `{<base>}` template when `harness` is `null`, for a base
  * the table does not name, and for a cycle of bases.
+ *
+ * @experimental
  */
 export function resolveTemplate(
   harness: BuiltinHarnessId | null,
@@ -413,7 +475,11 @@ export function resolveTemplate(
   return expand(harness, template, ctx, new Set())
 }
 
-/** Every location of `harness`, resolved, in table order. */
+/**
+ * Every location of `harness`, resolved, in table order.
+ *
+ * @experimental
+ */
 export function resolveLocations(
   harness: BuiltinHarnessId,
   ctx: LocationContext,
