@@ -12,7 +12,9 @@
       "name": "dot: dot:true lets a star match a dotfile",
       "a": "*",
       "b": ".env",
-      "opts": { "dot": true },
+      "opts": {
+        "dot": true
+      },
       "expect": true,
       "pending": false
     },
@@ -21,7 +23,9 @@
       "op": "matches",
       "path": ".env",
       "patterns": ["*"],
-      "opts": { "dot": true },
+      "opts": {
+        "dot": true
+      },
       "expect": true,
       "pending": false
     },
@@ -29,7 +33,9 @@
       "name": "caseInsensitive: differing case overlaps when set",
       "a": "SRC/**",
       "b": "src/api.ts",
-      "opts": { "caseInsensitive": true },
+      "opts": {
+        "caseInsensitive": true
+      },
       "expect": true,
       "pending": false
     },
@@ -51,7 +57,9 @@
       "name": "globstarMatchesZero: disabled requires at least one segment",
       "a": "a/**/b",
       "b": "a/b",
-      "opts": { "globstarMatchesZero": false },
+      "opts": {
+        "globstarMatchesZero": false
+      },
       "expect": false,
       "pending": false
     },
@@ -59,7 +67,9 @@
       "name": "globstarMatchesZero: still matches one intervening segment when disabled",
       "a": "a/**/b",
       "b": "a/x/b",
-      "opts": { "globstarMatchesZero": false },
+      "opts": {
+        "globstarMatchesZero": false
+      },
       "expect": true,
       "pending": false
     },
@@ -76,7 +86,9 @@
       "op": "segments.intersects",
       "a": ["*"],
       "b": [".env"],
-      "opts": { "dot": true },
+      "opts": {
+        "dot": true
+      },
       "expect": true,
       "pending": false
     },
@@ -85,7 +97,9 @@
       "op": "segments.matches",
       "path": [".env"],
       "pattern": ["*"],
-      "opts": { "dot": true },
+      "opts": {
+        "dot": true
+      },
       "expect": true,
       "pending": false
     },
@@ -110,7 +124,9 @@
       "op": "segments.intersects",
       "a": ["*.env"],
       "b": [".env"],
-      "opts": { "dot": true },
+      "opts": {
+        "dot": true
+      },
       "expect": true,
       "pending": false
     },
@@ -119,7 +135,9 @@
       "op": "segments.intersects",
       "a": ["SRC", "**"],
       "b": ["src", "api.ts"],
-      "opts": { "caseInsensitive": true },
+      "opts": {
+        "caseInsensitive": true
+      },
       "expect": true,
       "pending": false
     },
@@ -144,7 +162,9 @@
       "op": "segments.intersects",
       "a": ["a", "**", "b"],
       "b": ["a", "b"],
-      "opts": { "globstarMatchesZero": false },
+      "opts": {
+        "globstarMatchesZero": false
+      },
       "expect": false,
       "pending": false
     },
@@ -153,7 +173,9 @@
       "op": "segments.intersects",
       "a": ["a", "**", "b"],
       "b": ["a", "x", "b"],
-      "opts": { "globstarMatchesZero": false },
+      "opts": {
+        "globstarMatchesZero": false
+      },
       "expect": true,
       "pending": false
     },
@@ -176,7 +198,147 @@
       "op": "matches",
       "path": ".env",
       "patterns": ["{*.env,.x}"],
-      "opts": { "dot": true },
+      "opts": {
+        "dot": true
+      },
+      "expect": true
+    },
+    {
+      "name": "caseInsensitive: ASCII letters fold",
+      "op": "matches",
+      "path": "A",
+      "patterns": "a",
+      "opts": {
+        "caseInsensitive": true
+      },
+      "expect": true
+    },
+    {
+      "name": "caseInsensitive: sharp s does not match [S]",
+      "op": "matches",
+      "path": "ß",
+      "patterns": "[S]",
+      "opts": {
+        "caseInsensitive": true
+      },
+      "expect": false
+    },
+    {
+      "name": "caseInsensitive: sharp s does not match SS",
+      "op": "matches",
+      "path": "ß",
+      "patterns": "SS",
+      "opts": {
+        "caseInsensitive": true
+      },
+      "expect": false
+    },
+    {
+      "name": "caseInsensitive: A-umlaut does not match a-umlaut",
+      "op": "matches",
+      "path": "Ä",
+      "patterns": "ä",
+      "opts": {
+        "caseInsensitive": true
+      },
+      "expect": false
+    },
+    {
+      "name": "caseInsensitive: the Kelvin sign does not match k",
+      "op": "matches",
+      "path": "K",
+      "patterns": "k",
+      "opts": {
+        "caseInsensitive": true
+      },
+      "expect": false
+    },
+    {
+      "name": "caseInsensitive: a class folds ASCII only",
+      "op": "matches",
+      "path": "Q",
+      "patterns": "[a-z]",
+      "opts": {
+        "caseInsensitive": true
+      },
+      "expect": true
+    },
+    {
+      "name": "caseInsensitive: intersects does not fold a-umlaut",
+      "op": "intersects",
+      "a": "Ä",
+      "b": "ä",
+      "opts": {
+        "caseInsensitive": true
+      },
+      "expect": false
+    },
+    {
+      "name": "caseInsensitive: intersects folds ASCII in a class",
+      "op": "intersects",
+      "a": "[A-Z]",
+      "b": "q",
+      "opts": {
+        "caseInsensitive": true
+      },
+      "expect": true
+    },
+    {
+      "name": "dot: * does not match .b before a brace of nothing",
+      "op": "matches",
+      "path": ".b",
+      "patterns": "{,}.b",
+      "expect": false
+    },
+    {
+      "name": "dot: a literal .b matches",
+      "op": "matches",
+      "path": ".b",
+      "patterns": ".b",
+      "expect": true
+    },
+    {
+      "name": "dot: a brace with a dot branch matches a dotfile",
+      "op": "matches",
+      "path": ".env",
+      "patterns": "{.env,a.env}",
+      "expect": true
+    },
+    {
+      "name": "dot: a brace of nothing before .env does not",
+      "op": "matches",
+      "path": ".env",
+      "patterns": "{,a}.env",
+      "expect": false
+    },
+    {
+      "name": "dot: dot true makes {,}.b match",
+      "op": "matches",
+      "path": ".b",
+      "patterns": "{,}.b",
+      "opts": {
+        "dot": true
+      },
+      "expect": true
+    },
+    {
+      "name": "dot: dot true makes {,a}.env match",
+      "op": "matches",
+      "path": ".env",
+      "patterns": "{,a}.env",
+      "opts": {
+        "dot": true
+      },
+      "expect": true
+    },
+    {
+      "name": "dot: with dot true * matches ..",
+      "op": "matches",
+      "path": "a/../b",
+      "patterns": "a/*/b",
+      "opts": {
+        "dot": true
+      },
       "expect": true
     }
   ]

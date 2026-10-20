@@ -33,6 +33,8 @@ import {
 function dispatch(op: OpName, c: Case): unknown {
   const opts = c.opts as path.Options | undefined
   switch (op) {
+    case 'parse':
+      return path.parse(c.path as string, c.opts as { separator?: string } | undefined)
     case 'segments.intersects':
       return segments.intersects(c.a as path.SegmentPattern, c.b as path.SegmentPattern, opts)
     case 'segments.matches':
@@ -78,13 +80,17 @@ for (const cf of loadCaseFiles()) {
       if (op.startsWith('fs.')) continue
       const body = async (): Promise<void> => {
         if (c.throws) {
-          let threw = false
+          let error: unknown
           try {
             await runCase(op, c)
-          } catch {
-            threw = true
+          } catch (e) {
+            error = e
           }
-          expect(threw).toBe(true)
+          expect(error, 'the call should throw').toBeDefined()
+          if (c.code !== undefined) {
+            expect(error).toBeInstanceOf(path.IntersectError)
+            expect((error as path.IntersectError).code).toBe(c.code)
+          }
         } else {
           expect(await runCase(op, c)).toEqual(c.expect)
         }

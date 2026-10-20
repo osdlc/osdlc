@@ -4,9 +4,18 @@
     {
       "name": "applicableTo: returns overlapping ids in registration order",
       "entries": [
-        { "id": "guidelines/UI", "patterns": ["**/*.{vue,html,jsx}"] },
-        { "id": "guidelines/UI/vue", "patterns": ["**/*.vue"] },
-        { "id": "guidelines/api", "patterns": ["src/api/**"] }
+        {
+          "id": "guidelines/UI",
+          "patterns": ["**/*.{vue,html,jsx}"]
+        },
+        {
+          "id": "guidelines/UI/vue",
+          "patterns": ["**/*.vue"]
+        },
+        {
+          "id": "guidelines/api",
+          "patterns": ["src/api/**"]
+        }
       ],
       "scope": "src/siteA/components/**",
       "expect": ["guidelines/UI", "guidelines/UI/vue"],
@@ -14,7 +23,12 @@
     },
     {
       "name": "applicableTo: a non-overlapping registry yields no ids",
-      "entries": [{ "id": "guidelines/api", "patterns": ["src/api/**"] }],
+      "entries": [
+        {
+          "id": "guidelines/api",
+          "patterns": ["src/api/**"]
+        }
+      ],
       "scope": "docs/**",
       "expect": [],
       "pending": false
@@ -22,9 +36,18 @@
     {
       "name": "applicableTo: a set scope works the same way",
       "entries": [
-        { "id": "guidelines/UI", "patterns": ["**/*.{vue,html,jsx}"] },
-        { "id": "guidelines/UI/vue", "patterns": ["**/*.vue"] },
-        { "id": "guidelines/api", "patterns": ["src/api/**"] }
+        {
+          "id": "guidelines/UI",
+          "patterns": ["**/*.{vue,html,jsx}"]
+        },
+        {
+          "id": "guidelines/UI/vue",
+          "patterns": ["**/*.vue"]
+        },
+        {
+          "id": "guidelines/api",
+          "patterns": ["src/api/**"]
+        }
       ],
       "scope": ["src/siteA/components/**", "src/siteA/pages/*.vue"],
       "expect": ["guidelines/UI", "guidelines/UI/vue"],
@@ -33,8 +56,14 @@
     {
       "name": "applicableTo: registration order is preserved general-to-specific",
       "entries": [
-        { "id": "general", "patterns": ["src/**"] },
-        { "id": "specific", "patterns": ["src/api/**"] }
+        {
+          "id": "general",
+          "patterns": ["src/**"]
+        },
+        {
+          "id": "specific",
+          "patterns": ["src/api/**"]
+        }
       ],
       "scope": "src/api/routes/**",
       "expect": ["general", "specific"],
@@ -44,9 +73,18 @@
       "name": "matching: a concrete file returns overlapping ids in registration order",
       "op": "registry.matching",
       "entries": [
-        { "id": "guidelines/UI", "patterns": ["**/*.{vue,html,jsx}"] },
-        { "id": "guidelines/UI/vue", "patterns": ["**/*.vue"] },
-        { "id": "guidelines/api", "patterns": ["src/api/**"] }
+        {
+          "id": "guidelines/UI",
+          "patterns": ["**/*.{vue,html,jsx}"]
+        },
+        {
+          "id": "guidelines/UI/vue",
+          "patterns": ["**/*.vue"]
+        },
+        {
+          "id": "guidelines/api",
+          "patterns": ["src/api/**"]
+        }
       ],
       "path": "src/siteA/components/Button.vue",
       "expect": ["guidelines/UI", "guidelines/UI/vue"],
@@ -55,8 +93,14 @@
     {
       "name": "index: a duplicate id throws at construction",
       "entries": [
-        { "id": "guidelines/UI", "patterns": ["**/*.vue"] },
-        { "id": "guidelines/UI", "patterns": ["**/*.html"] }
+        {
+          "id": "guidelines/UI",
+          "patterns": ["**/*.vue"]
+        },
+        {
+          "id": "guidelines/UI",
+          "patterns": ["**/*.html"]
+        }
       ],
       "scope": "**/*.vue",
       "throws": true,
@@ -65,12 +109,72 @@
     {
       "name": "applicableTo: registration order is preserved even against alphabetical order",
       "entries": [
-        { "id": "zzz", "patterns": ["**/*.ts"] },
-        { "id": "aaa", "patterns": ["**/*.ts"] }
+        {
+          "id": "zzz",
+          "patterns": ["**/*.ts"]
+        },
+        {
+          "id": "aaa",
+          "patterns": ["**/*.ts"]
+        }
       ],
       "scope": "src/x.ts",
       "expect": ["zzz", "aaa"],
       "pending": false
+    },
+    {
+      "name": "matching: a path with a glob character is read literally",
+      "op": "registry.matching",
+      "entries": [
+        {
+          "id": "x",
+          "patterns": "src/a.ts"
+        }
+      ],
+      "path": "src/*.ts",
+      "expect": []
+    },
+    {
+      "name": "matching: the escaped pattern matches the literal name",
+      "op": "registry.matching",
+      "entries": [
+        {
+          "id": "x",
+          "patterns": "src/\\*.ts"
+        }
+      ],
+      "path": "src/*.ts",
+      "expect": ["x"]
+    },
+    {
+      "name": "duplicate id throws DUPLICATE_REGISTRY_ID",
+      "op": "registry.applicableTo",
+      "entries": [
+        {
+          "id": "a",
+          "patterns": ["src/**"]
+        },
+        {
+          "id": "a",
+          "patterns": ["docs/**"]
+        }
+      ],
+      "scope": "src/**",
+      "throws": true,
+      "code": "DUPLICATE_REGISTRY_ID"
+    },
+    {
+      "name": "unsupported syntax in an entry throws at construction",
+      "op": "registry.applicableTo",
+      "entries": [
+        {
+          "id": "a",
+          "patterns": ["+(a|b)"]
+        }
+      ],
+      "scope": "a",
+      "throws": true,
+      "code": "UNSUPPORTED_SYNTAX"
     }
   ]
 }
