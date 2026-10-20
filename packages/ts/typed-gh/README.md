@@ -264,7 +264,8 @@ It never throws; the result is `{ ok, status, etag, body, malformed, stderr, err
 was stopped (a missing binary, a timeout).
 Pass `etag` for a conditional request (`If-None-Match`; a 304 comes back as
 `status: 304, body: null`), or `includeHeaders: true` to read status and ETag
-without one. `{owner}` and `{repo}` in the endpoint are filled in by gh.
+without one. When `gh` prints more than one header block, as after a redirect, the last one is
+read. `{owner}` and `{repo}` in the endpoint are filled in by gh.
 
 ## Injecting the subprocess seam
 

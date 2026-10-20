@@ -279,7 +279,7 @@ export interface ApiResponse {
 export interface ApiOptions {
   /** Send `If-None-Match: <etag>` (implies `includeHeaders`). */
   etag?: string | null | undefined
-  /** Pass `-i` and read status/ETag off the header block. */
+  /** Pass `-i` and read status/ETag off the header block (the last one, if several). */
   includeHeaders?: boolean | undefined
 }
 
@@ -299,17 +299,31 @@ export function api(endpoint: string, opts: ApiOptions = {}): GhVerb<ApiResponse
   return { argv, checked: false, parse: (r) => parseApi(r, withHeaders) }
 }
 
-/** Split a `gh api -i` payload (status line + headers, blank line, body) and decode it. */
+/** One header block off the front of `text`: the block, and what follows its blank line. */
+function takeHeaderBlock(text: string): { block: string; rest: string } {
+  const crlf = text.indexOf('\r\n\r\n')
+  const lf = text.indexOf('\n\n')
+  const useCrlf = crlf >= 0 && (lf < 0 || crlf < lf)
+  const sepIdx = useCrlf ? crlf : lf
+  if (sepIdx < 0) return { block: text, rest: '' }
+  return { block: text.slice(0, sepIdx), rest: text.slice(sepIdx + (useCrlf ? 4 : 2)) }
+}
+
+const STATUS_LINE = /^HTTP\/[\d.]+\s+\d{3}/i
+
+/**
+ * Split a `gh api -i` payload (status line + headers, blank line, body) and decode it.
+ * When several header blocks are stacked, as after a redirect or a `100 Continue`,
+ * the last one is the response: its status and ETag are read, and the body follows it.
+ */
 function parseApi(r: CommandResult, withHeaders: boolean): ApiResponse {
   let status = r.exitCode === 0 ? 200 : 0
   let etag: string | null = null
   let bodyText = r.stdout
   if (withHeaders) {
-    const raw = r.stdout
-    const crlf = raw.indexOf('\r\n\r\n')
-    const sepIdx = crlf >= 0 ? crlf : raw.indexOf('\n\n')
-    const headerBlock = sepIdx >= 0 ? raw.slice(0, sepIdx) : raw
-    bodyText = sepIdx >= 0 ? raw.slice(sepIdx).replace(/^[\r\n]+/, '') : ''
+    let { block: headerBlock, rest } = takeHeaderBlock(r.stdout)
+    while (STATUS_LINE.test(rest)) ({ block: headerBlock, rest } = takeHeaderBlock(rest))
+    bodyText = rest.replace(/^[\r\n]+/, '')
     const statusMatch = headerBlock.match(/HTTP\/[\d.]+\s+(\d{3})/i)
     if (statusMatch) status = Number(statusMatch[1])
     const etagMatch = headerBlock.match(/^etag:\s*(.+)$/im)

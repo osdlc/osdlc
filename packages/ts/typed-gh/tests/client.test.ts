@@ -12,6 +12,7 @@ import { describe, expect, test } from 'bun:test'
 import {
   CommandFailed,
   Gh,
+  api,
   ownerRepoSlug,
   parseOwnerRepo,
   pickPrForBranch,
@@ -521,5 +522,30 @@ describe('prMerge and prReviewThreads', () => {
       const { runner } = recorder([r])
       expect(new Gh('/repo', { runner }).prReviewThreads(5)).toBeNull()
     }
+  })
+})
+
+describe('api with headers reads the last header block', () => {
+  const opts = { includeHeaders: true }
+
+  test('a redirect followed by the final response gives the final status, ETag and body', () => {
+    const stdout =
+      'HTTP/2.0 301 Moved Permanently\r\nLocation: https://api.github.com/repos/o/r2\r\nEtag: W/"old"\r\n\r\n' +
+      'HTTP/2.0 200 OK\r\nEtag: W/"new"\r\n\r\n{"name":"r2"}'
+    const r = api('repos/o/r', opts).parse({ exitCode: 0, stdout, stderr: '' })
+    expect(r).toMatchObject({ ok: true, status: 200, etag: 'W/"new"', body: { name: 'r2' } })
+    expect(r.malformed).toBe(false)
+  })
+
+  test('the same with LF line ends, and a final block with no ETag', () => {
+    const stdout = 'HTTP/1.1 100 Continue\n\nHTTP/1.1 404 Not Found\n\n{"message":"Not Found"}'
+    const r = api('repos/o/r', opts).parse({ exitCode: 0, stdout, stderr: '' })
+    expect(r).toMatchObject({ ok: false, status: 404, etag: null, body: { message: 'Not Found' } })
+  })
+
+  test('one header block reads as before', () => {
+    const stdout = 'HTTP/2.0 200 OK\r\nEtag: W/"a"\r\n\r\n[1]'
+    const r = api('repos/o/r', opts).parse({ exitCode: 0, stdout, stderr: '' })
+    expect(r).toMatchObject({ ok: true, status: 200, etag: 'W/"a"', body: [1] })
   })
 })
