@@ -372,10 +372,18 @@ fn walk<R: Resolver + ?Sized>(calls: &mut Calls<R>, p: &Path, hops: usize) -> Op
     let p = folded.as_path();
     let parts: Vec<Component> = p.components().collect();
     let last_dotdot = parts.iter().rposition(|c| *c == Component::ParentDir);
+    // A Windows drive or share and the separator after it are one root. The
+    // prefix alone is never probed: `\\?\C:`, the form `canonicalize` returns
+    // and so the form a path takes after a link, names the volume and does
+    // not canonicalise. A bare drive `C:` is its working directory, so it is.
+    let lead = match parts.as_slice() {
+        [Component::Prefix(_), Component::RootDir, ..] => 2,
+        _ => 0,
+    };
     // `base` stands for `parts[..i]`: their real path once `real`, else as written.
-    let (mut base, mut real, mut i) = (PathBuf::new(), false, 0);
+    let (mut base, mut real, mut i) = (parts[..lead].iter().collect::<PathBuf>(), false, lead);
     loop {
-        let (n, found) = deepest_existing(calls, &base, &parts[i..], i == 0)?;
+        let (n, found) = deepest_existing(calls, &base, &parts[i..], i == lead)?;
         if let Some(found) = found {
             (base, real) = (found, true);
         }
