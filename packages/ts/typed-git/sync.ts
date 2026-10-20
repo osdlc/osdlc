@@ -41,6 +41,7 @@ import {
   type AheadBehind,
   type CommitOptions,
   type CheckoutOptions,
+  type ConfigGetOptions,
   type CloneOptions,
   type ConflictSide,
   type MergeOptions,
@@ -49,6 +50,7 @@ import {
   type MergeTreeOutcome,
   type RebaseOptions,
   type RebaseOutcome,
+  type RemoteGetUrlOptions,
   type TaggedFile,
   type UnmergedEntry,
   type ConfigSetOptions,
@@ -97,13 +99,19 @@ export interface GitSyncCallOptions {
   timeoutMs?: number | undefined
   /** Entries merged over the parent environment for this call only. */
   env?: Record<string, string> | undefined
+  /**
+   * Cap on each output stream, in bytes; 256 MB when omitted. Past it the
+   * runner kills the child and the call throws `CommandFailed`. command-seam's
+   * `bun test` capture path does not apply it.
+   */
+  maxOutputBytes?: number | undefined
 }
 
 /** A typed git client bound to one working directory. */
 export class Git {
   readonly cwd: string
   private readonly runner: CommandRunner
-  private readonly gitDir: string | undefined
+  private readonly boundGitDir: string | undefined
   private readonly workTree: string | undefined
   private readonly env: Record<string, string> | undefined
   private tried: TriedSync<Git> | undefined
@@ -128,7 +136,8 @@ export class Git {
    * default runner spawns `git`; tests pass a fake `CommandRunner`.
    *
    * Neither client has a default timeout. This client kills a child whose
-   * output on one stream passes 256 MB; `AsyncGit` has no output cap.
+   * output on one stream passes 256 MB; `AsyncGit` has no output cap. The
+   * `maxOutputBytes` call option sets the cap per call on both.
    */
   constructor(
     cwd: string,
@@ -141,7 +150,7 @@ export class Git {
   ) {
     this.cwd = cwd
     this.runner = resolveRunner('git', opts.runner)
-    this.gitDir = opts.gitDir
+    this.boundGitDir = opts.gitDir
     this.workTree = opts.workTree
     this.env = opts.env
   }
@@ -153,7 +162,7 @@ export class Git {
   at(cwd: string): Git {
     return new Git(cwd, {
       runner: this.runner,
-      gitDir: this.gitDir,
+      gitDir: this.boundGitDir,
       workTree: this.workTree,
       env: this.env,
     })
@@ -213,13 +222,14 @@ export class Git {
 
   /** The verb's argv behind this client's repository binding. */
   private argv(argv: string[]): string[] {
-    const prefix = repoPrefix(this.gitDir, this.workTree)
+    const prefix = repoPrefix(this.boundGitDir, this.workTree)
     return prefix.length === 0 ? argv : [...prefix, ...argv]
   }
 
   private runOpts(opts: GitSyncCallOptions & { input?: string | undefined }): CommandRunOptions {
     const run: CommandRunOptions = { cwd: this.cwd }
     if (opts.timeoutMs !== undefined) run.timeoutMs = opts.timeoutMs
+    if (opts.maxOutputBytes !== undefined) run.maxOutputBytes = opts.maxOutputBytes
     // Per-call entries win over the client's.
     const env = mergeEnv(this.env, opts.env)
     if (env !== undefined) run.env = env
@@ -301,6 +311,15 @@ export class Git {
   }
 
   /**
+   * This worktree's own `.git` dir as an absolute path, or null outside a repo
+   * — see `gitDir` in `verbs.ts`. Not the constructor's `gitDir` option, which
+   * binds the client to a repository.
+   */
+  gitDir(opts: GitSyncCallOptions = {}): string | null {
+    return this.exec(v.gitDir(), opts)
+  }
+
+  /**
    * What a symbolic ref points at (full refname), or null when it is not one —
    * see `symbolicRef` in `verbs.ts`.
    */
@@ -369,9 +388,22 @@ export class Git {
     return this.exec(v.logSubject(ref), opts)
   }
 
-  /** `git config --get <key>`, or null when unset. */
-  configGet(key: string, opts: GitSyncCallOptions = {}): string | null {
-    return this.exec(v.configGet(key), opts)
+  /** `git config --get <key>`, or null when unset. `scope` reads one file only. */
+  configGet(key: string, opts: GitSyncCallOptions & ConfigGetOptions = {}): string | null {
+    return this.exec(v.configGet(key, opts), opts)
+  }
+
+  /** Every value of a multi-valued key, verbatim; `[]` when unset. */
+  configGetAll(key: string, opts: GitSyncCallOptions & ConfigGetOptions = {}): string[] {
+    return this.exec(v.configGetAll(key, opts), opts)
+  }
+
+  /**
+   * A key read as a boolean by git, or null when unset. A value git cannot
+   * read as a boolean throws.
+   */
+  configGetBool(key: string, opts: GitSyncCallOptions & ConfigGetOptions = {}): boolean | null {
+    return this.exec(v.configGetBool(key, opts), opts)
   }
 
   /** True iff `rev` resolves to an object (`cat-file -e`). */
@@ -552,9 +584,25 @@ export class Git {
     return this.remotes(opts)
   }
 
-  /** A remote's fetch URL, or null when no remote by that name exists. */
-  remoteGetUrl(name: string, opts: GitSyncCallOptions = {}): string | null {
-    return this.exec(v.remoteGetUrl(name), opts)
+  /**
+   * A remote's fetch URL (push URL with `push`), or null when no remote by
+   * that name exists.
+   */
+  remoteGetUrl(name: string, opts: GitSyncCallOptions & RemoteGetUrlOptions = {}): string | null {
+    return this.exec(v.remoteGetUrl(name, opts), opts)
+  }
+
+  /** Every URL a remote has (push URLs with `push`); `[]` for an unknown remote. */
+  remoteGetUrls(name: string, opts: GitSyncCallOptions & RemoteGetUrlOptions = {}): string[] {
+    return this.exec(v.remoteGetUrls(name, opts), opts)
+  }
+
+  /**
+   * The full refname the remote's HEAD points at, asked over the network; null
+   * when the remote names none. See `remoteHead` in `verbs.ts`.
+   */
+  remoteHead(remote: string, opts: GitSyncCallOptions = {}): string | null {
+    return this.exec(v.remoteHead(remote), opts)
   }
 
   /**

@@ -84,6 +84,10 @@ const CASES: Array<[string, unknown[]]> = [
   ['forEachRef', ['--count=1']],
   ['init', ['--template=/tmp']],
   ['configGet', ['--file=/tmp/x']],
+  ['configGetAll', ['--file=/tmp/x']],
+  ['configGetBool', ['--file=/tmp/x']],
+  ['remoteGetUrls', ['-x']],
+  ['remoteHead', ['--upload-pack=touch FILE']],
   ['configSet', ['--file=/tmp/x', 'a.b']],
   ['configRemoveSection', ['--file=/tmp/x']],
 ]
@@ -121,7 +125,7 @@ describe('leading-dash positionals', () => {
   test('the cases cover every guarded verb in verbs.ts', () => {
     const cased = new Set(CASES.map(([name]) => name))
     expect([...cased].sort()).toEqual([...guardedVerbs()].sort())
-    expect(cased.size).toBe(38)
+    expect(cased.size).toBe(42)
   })
 
   test.each([...CASES, ...MORE_CASES])('Git.%s refuses before spawning', (name, args) => {

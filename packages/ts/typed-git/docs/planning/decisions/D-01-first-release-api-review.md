@@ -70,3 +70,41 @@ owner chose the safe behaviour and listed the callers to update.
 - Callers that read `""` from `diffText` or
   `diffAddedFile` as "no diff", and any `checkout('-')` or `merge('-')`, change
   with the release.
+
+## Enhancements requested after the review
+
+An adopter asked for seven additions before the first release. Each is
+additive, so the release stays a patch.
+
+1. Config reads: adopted. `configGet` takes `{ scope }`, typed as the new
+   `ConfigScope` that `configSet` now uses too. `configGetAll` returns every
+   value, `[]` when unset. `configGetBool` is its own verb rather than a
+   `bool` option: one option should not change the return type, and git
+   does the boolean reading.
+2. Remote URLs: adopted. `remoteGetUrl` takes `{ push }`. `remoteGetUrls`
+   is a separate verb for `--all`, for the same reason as `configGetBool`.
+3. Remote default branch: adopted as `remoteHead(remote)`. It returns the
+   full refname, as `symbolicRef` does. `null` means the remote named no
+   default branch.
+4. Clone and fetch flags: adopted. `clone` takes `mirror`, `singleBranch`
+   and `noTags`. `fetch` takes `depth` and `noTags`.
+5. Byte output: declined for now. The client takes one text runner. Bytes
+   need a second runner on `Git` and on `cliBackend`, and a request kind a
+   non-CLI backend would have to serve. command-seam's bytes runner is
+   experimental. Callers keep `spawnRunnerBytes`.
+6. Streamed output: declined. command-seam streams only through
+   `streamRunner`, which captures nothing. A streamed verb would have no
+   output to gate or parse, and the backend seam returns parsed values. Use
+   `streamRunner` directly.
+7. `gitDir()`: adopted, absent `128` like `gitCommonDir`. Per-call
+   `maxOutputBytes`: adopted on both clients. With it, the gate now treats
+   `outputIncomplete` as a failure, so cut-short output is never parsed.
+
+The adopter's other claims hold: `rawChecked` takes `input`, `deleteRef`
+takes `{ expected }`, `lsFilesTagged` exists, and per-call `env` carries
+`GIT_CONFIG_COUNT` entries. One limit: `input` is a string, so binary stdin
+such as `hash-object --stdin` on a binary file does not fit `rawChecked`.
+
+The new options on the `configGet` and `remoteGetUrl` request kinds are
+optional. A backend that ignores them answers for the default scope and the
+fetch URL. The seam is experimental, so this is allowed in a patch.

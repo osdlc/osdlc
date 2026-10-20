@@ -20,9 +20,12 @@ import {
   spawnRunnerAsync,
   type CleanOptions,
   type CommitFlags,
+  type ConfigGetOptions,
+  type ConfigScope,
   type DiffCheckOptions,
   type DiffCheckResult,
   type DiffTextOptions,
+  type RemoteGetUrlOptions,
   type StatusEntry,
 } from '../index.ts'
 import type {
@@ -112,7 +115,21 @@ describe('public surface', () => {
     const diff: DiffTextOptions = { staged: true }
     const fixture: MakeBareAndWorkerOptions & MakeOriginAndCheckoutOptions = {}
     const shapes: Array<keyof BareAndWorker | keyof OriginAndCheckout> = ['parent', 'origin']
-    expect([status, clean, check, result, flags, diff, fixture, shapes]).toHaveLength(8)
+    const scope: ConfigScope = 'global'
+    const configGet: ConfigGetOptions = { scope }
+    const remoteUrl: RemoteGetUrlOptions = { push: true }
+    expect([
+      status,
+      clean,
+      check,
+      result,
+      flags,
+      diff,
+      fixture,
+      shapes,
+      configGet,
+      remoteUrl,
+    ]).toHaveLength(10)
   })
 
   test('the backend seam is marked experimental', () => {

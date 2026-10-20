@@ -168,8 +168,8 @@ must therefore declare `absent: [128]`, and for those verbs absence and
 breakage remain indistinguishable — they keep exactly the weakness this
 contract removes elsewhere.
 
-Seven verbs declare 128 as absence: `showAtRev`, `topLevel`, `gitCommonDir`,
-`symbolicRef`, `logSubject`, `objectExists` and `configRemoveSection`. `try` and `soft` inherit it, because 128 is a declared absence
+Eight verbs declare 128 as absence: `showAtRev`, `topLevel`, `gitCommonDir`,
+`gitDir`, `symbolicRef`, `logSubject`, `objectExists` and `configRemoveSection`. `try` and `soft` inherit it, because 128 is a declared absence
 there: `git.try.logSubject("HEAD")` outside a repository is `{ ok: true,
 value: null }`, not a failure. The contract narrows the failure surface; it
 does not eliminate it.
@@ -377,6 +377,8 @@ git.headRef();                      // "main", or the literal "HEAD" when detach
 git.currentBranch();                // "main", or null when detached
 git.remotes();                      // ["origin", …]; [] when there are none
 git.remoteGetUrl("origin");         // URL, or null — git exits 2 for an unknown remote
+git.remoteGetUrls("origin");        // every URL; [] for an unknown remote
+git.remoteHead("origin");           // "refs/heads/main", asked over the network
 git.remoteOwnerRepo();              // { owner, repo, host, port } for origin, or null
 git.remoteOwnerRepo("upstream");    // …for any remote; AsyncGit awaits the same
 git.remoteAdd("origin", url);
@@ -405,15 +407,15 @@ needs to print.
 Every method exists on both `Git` and `AsyncGit` with the same name and
 arguments; the async one returns a promise. Each also mirrors onto
 `git.try.*`, which returns `{ ok, value } | { ok, error }` instead of throwing.
-Every method takes call options (`timeoutMs`, `env`, and `signal` on the async
-side) as its last argument. `revParse` is variadic, so its options are the
+Every method takes call options (`timeoutMs`, `env`, `maxOutputBytes`, and
+`signal` on the async side) as its last argument. `revParse` is variadic, so its options are the
 trailing argument that is not a string.
 
 ### Arguments that start with `-`
 
 A ref, remote, URL, path, ref pattern or config key argument that starts with
 `-` could be read by git as an option, for example `--upload-pack=...` or
-`--output=<file>`. Thirty-eight verbs refuse it: they throw a `TypeError`
+`--output=<file>`. Forty-two verbs refuse it: they throw a `TypeError`
 before git runs. In `log` this covers `rev`, `range` and each `notRefs` entry.
 In `diffNameOnly` and `diffStat` it covers each `rangeArgs` token. The message is
 `typed-git: <verb>: <param> must not start with "-" (got "...")`. `try` and
@@ -440,6 +442,7 @@ exit throws `CommandFailed`.
 | `headRef()` | `rev-parse --abbrev-ref HEAD` | none — literal `"HEAD"` when detached |
 | `topLevel()` | `rev-parse --show-toplevel` | `128` → `null` (not a repository) |
 | `gitCommonDir()` | `rev-parse --path-format=absolute --git-common-dir` | `128` → `null` |
+| `gitDir()` | `rev-parse --absolute-git-dir` | `128` → `null` — this worktree's own dir, `<common>/worktrees/<name>` in a linked worktree |
 | `mainCheckout()` | the parent of `gitCommonDir()` | `null` outside a repository |
 | `symbolicRef(ref)` | `symbolic-ref <ref>` | `128` → `null` |
 | `currentBranch()` | `branch --show-current` | none — `null` when detached |
@@ -451,7 +454,9 @@ exit throws `CommandFailed`.
 | `worktrees()` | `worktree list --porcelain` | none — rows carry `locked` and `lockReason` |
 | `mergeBase(a, b)` | `merge-base <a> <b>` | `1` → `null` (unrelated histories) |
 | `logSubject(ref)` | `log -1 --format=%s <ref>` | `128` → `null` |
-| `configGet(key)` | `config --get <key>` | `1` → `null` (unset) |
+| `configGet(key, { scope })` | `config [--local\|--global\|--system] --get <key>` | `1` → `null` (unset) |
+| `configGetAll(key, { scope })` | `config --get-all -z <key>` | `1` → `[]` (unset) — every value, verbatim |
+| `configGetBool(key, { scope })` | `config --type=bool --get <key>` | `1` → `null` (unset) — a value git cannot read as a boolean throws |
 | `objectExists(rev)` | `cat-file -e <rev>` | `1`, `128` → `false` — see the caveat below |
 | `lsRemote(remote, pattern, { heads, tags })` | `ls-remote` | none |
 | `checkIgnore(paths)` | `check-ignore --stdin -z` | `1` → empty set (none ignored) |
@@ -476,7 +481,9 @@ exit throws `CommandFailed`.
 | `aheadBehind(base, tip)` | `rev-list --left-right --count <base>...<tip>` | none |
 | `remotes()` | `remote` | none — names, not remotes |
 | `remote()` | `remote` | none — deprecated alias of `remotes()` |
-| `remoteGetUrl(name)` | `remote get-url <name>` | `2` → `null` (unknown remote) |
+| `remoteGetUrl(name, { push })` | `remote get-url [--push] <name>` | `2` → `null` (unknown remote) — the first URL |
+| `remoteGetUrls(name, { push })` | `remote get-url --all [--push] <name>` | `2` → `[]` (unknown remote) |
+| `remoteHead(remote)` | `ls-remote --symref <remote> HEAD` | none — the full refname, or `null` when the remote names no default branch; an unreachable remote throws |
 | `remoteOwnerRepo(remote = "origin")` | `remote get-url <remote>`, parsed | `2` or an unparseable URL → `null` |
 
 `objectExists` declares both `1` and `128` absent, so `false` cannot tell an
@@ -492,14 +499,14 @@ returns `false` when there is no such section.
 
 | Method | git |
 | --- | --- |
-| `fetch(remote, refspec, { prune, quiet, noWriteFetchHead })` | `fetch` |
+| `fetch(remote, refspec, { prune, quiet, noWriteFetchHead, depth, noTags })` | `fetch` |
 | `add(paths, { all, update, intentToAdd })` | `add` (paths go after `--`) |
 | `commit({ message, body } \| { messageFile } \| { messageStdin }, { allowEmpty, amend, noVerify, signoff })` | `commit` — one message source, enforced by the types; `messageStdin` is `-F -` with the string on stdin, no temp file |
 | `push(remote, refspec, { forceWithLease })` | `push` — `forceWithLease` takes `true` or a pinned `{ ref, expect }` (`expect: null` = ref must be absent); `forceWithLeaseArg(lease)` is the pure formatter. `true` is the bare form: it overwrites whatever is on the remote, so prefer the pinned form |
 | `configSet(key, value, { scope })` | `config` |
 | `configRemoveSection(name)` | `config --remove-section` — `false` when there is no such section |
 | `init(path, { bare, initialBranch, quiet })` | `init` |
-| `clone(url, dest, { depth, branch, bare, quiet })` | `clone` — a relative `dest` resolves in the client's working directory; `branch` takes a branch or a tag, not a sha |
+| `clone(url, dest, { depth, branch, bare, mirror, singleBranch, noTags, quiet })` | `clone` — a relative `dest` resolves in the client's working directory; `branch` takes a branch or a tag, not a sha |
 | `resetHard(rev)` | `reset --hard` |
 | `clean({ directories })` | `clean -f`, or `-fd` — ignored files are kept |
 | `deleteBranch(name, { force })` | `branch -d` / `-D` |
@@ -735,7 +742,15 @@ de-duplicate.
 - No call has a default timeout. Pass `timeoutMs` where a hung `git` would
   hurt.
 - `Git` kills a child that writes more than 256 MB to one stream and throws
-  `CommandFailed`. `AsyncGit` has no such cap.
+  `CommandFailed`. `AsyncGit` has no such cap. The `maxOutputBytes` call
+  option sets the cap for one call on either client. Output cut short at a
+  cap or a timeout is a failure, never an answer.
+- stdout is text. There is no verb or call option that returns raw bytes,
+  such as a binary blob. Use command-seam's `spawnRunnerBytes` for that.
+  `raw` and `rawChecked` take `input` as a string, so binary stdin, such as
+  `hash-object --stdin` on a binary file, needs that runner too.
+- Output is captured, never streamed. For live progress from `clone` or
+  `fetch`, run git through command-seam's `streamRunner`.
 - `Git` cannot cancel a call. `AsyncGit` takes a `signal`.
 - A `CommandFailed` carries `argv`, `result` and `detail`. Read `detail` for
   the message, because git writes some failure text to stdout.

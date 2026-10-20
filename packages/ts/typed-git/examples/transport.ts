@@ -1,4 +1,4 @@
-// Create a store, push to it, clone it, and fetch a later commit.
+// Create a store, push to it, clone and mirror it, and fetch a later commit.
 import assert from 'node:assert/strict'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -27,8 +27,12 @@ export function run(): void {
     fx.git.push('store', 'HEAD:refs/heads/main')
     assert.equal(copy.resolveRef('origin/main'), first)
 
-    copy.fetch('origin', undefined, { quiet: true })
+    copy.fetch('origin', undefined, { quiet: true, noTags: true })
     assert.equal(copy.resolveRef('origin/main'), second)
+
+    // A mirror is a bare copy of every ref.
+    new Git(scratch).clone(store, 'mirror.git', { mirror: true, quiet: true })
+    assert.equal(new Git(join(scratch, 'mirror.git')).resolveRef('main'), second)
 
     // Pin the lease to the sha you expect. `forceWithLease: true` is the bare,
     // unsafe form: it trusts the local remote-tracking ref.

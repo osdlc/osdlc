@@ -30,6 +30,7 @@ import {
   type AheadBehind,
   type CommitOptions,
   type CheckoutOptions,
+  type ConfigGetOptions,
   type CloneOptions,
   type ConflictSide,
   type MergeOptions,
@@ -38,6 +39,7 @@ import {
   type MergeTreeOutcome,
   type RebaseOptions,
   type RebaseOutcome,
+  type RemoteGetUrlOptions,
   type TaggedFile,
   type UnmergedEntry,
   type ConfigSetOptions,
@@ -80,8 +82,11 @@ type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K>
 function splitCallOptions<T extends GitCallOptions>(
   opts: T,
 ): [GitCallOptions, DistributiveOmit<T, keyof GitCallOptions>] {
-  const { timeoutMs, signal, env, ...rest } = opts
-  return [{ timeoutMs, signal, env }, rest as DistributiveOmit<T, keyof GitCallOptions>]
+  const { timeoutMs, signal, env, maxOutputBytes, ...rest } = opts
+  return [
+    { timeoutMs, signal, env, maxOutputBytes },
+    rest as DistributiveOmit<T, keyof GitCallOptions>,
+  ]
 }
 
 /** A typed, awaitable git client bound to one working directory. */
@@ -212,6 +217,14 @@ export class AsyncGit {
   }
 
   /**
+   * This worktree's own `.git` dir as an absolute path, or null outside a
+   * repo. See {@link Git.gitDir}.
+   */
+  gitDir(opts: GitCallOptions = {}): Promise<string | null> {
+    return this.backend.execute(this.cwd, { kind: 'gitDir' }, opts)
+  }
+
+  /**
    * What a symbolic ref points at (full refname), or null when it is not one.
    * See {@link Git.symbolicRef}.
    */
@@ -277,9 +290,25 @@ export class AsyncGit {
     return this.backend.execute(this.cwd, { kind: 'logSubject', ref }, opts)
   }
 
-  /** `git config --get <key>`, or null when unset. */
-  configGet(key: string, opts: GitCallOptions = {}): Promise<string | null> {
-    return this.backend.execute(this.cwd, { kind: 'configGet', key }, opts)
+  /** `git config --get <key>`, or null when unset. `scope` reads one file only. */
+  configGet(key: string, opts: GitCallOptions & ConfigGetOptions = {}): Promise<string | null> {
+    const [call, req] = splitCallOptions(opts)
+    return this.backend.execute(this.cwd, { kind: 'configGet', key, ...req }, call)
+  }
+
+  /** Every value of a multi-valued key, verbatim; `[]` when unset. */
+  configGetAll(key: string, opts: GitCallOptions & ConfigGetOptions = {}): Promise<string[]> {
+    const [call, req] = splitCallOptions(opts)
+    return this.backend.execute(this.cwd, { kind: 'configGetAll', key, ...req }, call)
+  }
+
+  /** A key read as a boolean by git, or null when unset. See {@link Git.configGetBool}. */
+  configGetBool(
+    key: string,
+    opts: GitCallOptions & ConfigGetOptions = {},
+  ): Promise<boolean | null> {
+    const [call, req] = splitCallOptions(opts)
+    return this.backend.execute(this.cwd, { kind: 'configGetBool', key, ...req }, call)
   }
 
   /** True iff `rev` resolves to an object. */
@@ -467,9 +496,30 @@ export class AsyncGit {
     return this.remotes(opts)
   }
 
-  /** A remote's fetch URL, or null when no remote by that name exists. */
-  remoteGetUrl(name: string, opts: GitCallOptions = {}): Promise<string | null> {
-    return this.backend.execute(this.cwd, { kind: 'remoteGetUrl', name }, opts)
+  /**
+   * A remote's fetch URL (push URL with `push`), or null when no remote by
+   * that name exists.
+   */
+  remoteGetUrl(
+    name: string,
+    opts: GitCallOptions & RemoteGetUrlOptions = {},
+  ): Promise<string | null> {
+    const [call, req] = splitCallOptions(opts)
+    return this.backend.execute(this.cwd, { kind: 'remoteGetUrl', name, ...req }, call)
+  }
+
+  /** Every URL a remote has (push URLs with `push`); `[]` for an unknown remote. */
+  remoteGetUrls(name: string, opts: GitCallOptions & RemoteGetUrlOptions = {}): Promise<string[]> {
+    const [call, req] = splitCallOptions(opts)
+    return this.backend.execute(this.cwd, { kind: 'remoteGetUrls', name, ...req }, call)
+  }
+
+  /**
+   * The full refname the remote's HEAD points at, asked over the network; null
+   * when the remote names none. See {@link Git.remoteHead}.
+   */
+  remoteHead(remote: string, opts: GitCallOptions = {}): Promise<string | null> {
+    return this.backend.execute(this.cwd, { kind: 'remoteHead', remote }, opts)
   }
 
   /** The coordinate a remote's URL names, or null. See {@link Git.remoteOwnerRepo}. */

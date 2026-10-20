@@ -70,9 +70,17 @@ export interface GitVerb<T> {
  * this table (`configGet`, `resolveRef`, `mergeBase`, `checkIgnore`,
  * `isAncestor`, `grep`, `revParse`). Read as an absence it would answer "no
  * such key / ref / match" for a git that never ran.
+ *
+ * A result flagged `outputIncomplete` is a failure too. The child exited, but
+ * the runner stopped reading at the output cap (`maxOutputBytes`) or at a
+ * timeout, so a parse would read cut-short output as the whole answer.
  */
 export function gate<T>(verb: GitVerb<T>, result: CommandResult, argv?: string[]): T {
-  if (result.neverExited || (result.exitCode !== 0 && !verb.absent.includes(result.exitCode))) {
+  if (
+    result.neverExited ||
+    result.outputIncomplete ||
+    (result.exitCode !== 0 && !verb.absent.includes(result.exitCode))
+  ) {
     throw new CommandFailed(argv ?? verb.argv, result)
   }
   return verb.parse(result, argv ?? verb.argv)
@@ -378,6 +386,20 @@ export function gitCommonDir(): GitVerb<string | null> {
 }
 
 /**
+ * This worktree's own `.git` dir as an absolute path, or null outside a repo
+ * (`rev-parse --absolute-git-dir`).
+ *
+ * In a linked worktree it is `<common>/worktrees/<name>`, not the shared dir
+ * {@link gitCommonDir} gives. Per-worktree state lives here: a rebase in
+ * progress is a `rebase-merge` or `rebase-apply` directory in it.
+ *
+ * `absent: [128]`, as for {@link gitCommonDir}: "not a repository" is an answer.
+ */
+export function gitDir(): GitVerb<string | null> {
+  return { argv: ['rev-parse', '--absolute-git-dir'], absent: [128], parse: trimmedOrNull }
+}
+
+/**
  * The full refname a symbolic ref points at, or null when it is not one.
  *
  * `absent: [128]` because "not a symbolic ref" is the common, meaningful
@@ -554,12 +576,72 @@ export function logSubject(ref: string): GitVerb<string | null> {
   }
 }
 
+/** Which config file a `config` verb reads or writes. */
+export type ConfigScope = 'local' | 'global' | 'system'
+
+/** Options for {@link configGet}, {@link configGetAll} and {@link configGetBool}. */
+export interface ConfigGetOptions {
+  /**
+   * Read one file only. Omitted means every file git reads, the last value
+   * winning. `local` outside a repository exits 128 and throws.
+   */
+  scope?: ConfigScope | undefined
+}
+
+/** The `config` read argv: the scope flag when one is given, the flags, the checked key. */
+function configRead(flags: string[], key: string, opts: ConfigGetOptions): string[] {
+  const argv = ['config']
+  if (opts.scope !== undefined) argv.push(`--${opts.scope}`)
+  argv.push(...flags, key)
+  return argv
+}
+
 /** `git config --get <key>`, or null when unset (exit 1). */
-export function configGet(key: string): GitVerb<string | null> {
+export function configGet(key: string, opts: ConfigGetOptions = {}): GitVerb<string | null> {
   return {
-    argv: ['config', '--get', positional('configGet', 'key', key)],
+    argv: configRead(['--get'], positional('configGet', 'key', key), opts),
     absent: [1],
     parse: trimmedOrNull,
+  }
+}
+
+/**
+ * Every value of a multi-valued key (`git config --get-all -z <key>`), in the
+ * order git reads them. `[]` when the key is unset (exit 1).
+ *
+ * `-z` ends each value with NUL, so a value holding a newline stays whole and
+ * an empty value is kept as `""`. Values are verbatim, not trimmed.
+ */
+export function configGetAll(key: string, opts: ConfigGetOptions = {}): GitVerb<string[]> {
+  return {
+    argv: configRead(['--get-all', '-z'], positional('configGetAll', 'key', key), opts),
+    absent: [1],
+    parse(r) {
+      if (r.exitCode !== 0) return []
+      // Each value ends with NUL, so the last field is always the empty tail.
+      return r.stdout.split('\x00').slice(0, -1)
+    },
+  }
+}
+
+/**
+ * A key read as a boolean (`git config --type=bool --get <key>`), or null when
+ * unset (exit 1).
+ *
+ * git does the reading: `yes`, `on`, `1` and a bare key are `true`. A value
+ * git cannot read as a boolean exits 128 and throws.
+ */
+export function configGetBool(key: string, opts: ConfigGetOptions = {}): GitVerb<boolean | null> {
+  return {
+    argv: configRead(['--type=bool', '--get'], positional('configGetBool', 'key', key), opts),
+    absent: [1],
+    parse(r, ranArgv) {
+      if (r.exitCode !== 0) return null
+      const out = r.stdout.trim()
+      if (out === 'true') return true
+      if (out === 'false') return false
+      throw new CommandFailed(ranArgv, r)
+    },
   }
 }
 
@@ -1310,18 +1392,69 @@ export function remote(): GitVerb<string[]> {
   return { argv: ['remote'], absent: NONE, parse: trimmedLines }
 }
 
+/** Options for {@link remoteGetUrl} and {@link remoteGetUrls}. */
+export interface RemoteGetUrlOptions {
+  /**
+   * `--push` — the push URL. git falls back to the fetch URL when the remote
+   * sets no `pushurl`.
+   */
+  push?: boolean | undefined
+}
+
 /**
  * A remote's fetch URL (`git remote get-url <name>`), or null when no remote
- * by that name is configured.
+ * by that name is configured. With `push`, its push URL. When a remote has
+ * several URLs this is the first; {@link remoteGetUrls} gives them all.
  *
  * `absent: [2]` — measured: git reports an unknown remote as exit 2, not 1 or
  * 128. Outside a repository it exits 128 and this throws.
  */
-export function remoteGetUrl(name: string): GitVerb<string | null> {
+export function remoteGetUrl(name: string, opts: RemoteGetUrlOptions = {}): GitVerb<string | null> {
+  const argv = ['remote', 'get-url']
+  if (opts.push) argv.push('--push')
+  argv.push(positional('remoteGetUrl', 'name', name))
+  return { argv, absent: [2], parse: trimmedOrNull }
+}
+
+/**
+ * Every URL a remote has (`git remote get-url --all <name>`), or `[]` when no
+ * remote by that name is configured (exit 2).
+ *
+ * A remote can carry several URLs (`remote set-url --add`). A caller that
+ * checks a remote before deleting something compares all of them, not the
+ * first.
+ */
+export function remoteGetUrls(name: string, opts: RemoteGetUrlOptions = {}): GitVerb<string[]> {
+  const argv = ['remote', 'get-url', '--all']
+  if (opts.push) argv.push('--push')
+  argv.push(positional('remoteGetUrls', 'name', name))
+  return { argv, absent: [2], parse: trimmedLines }
+}
+
+/**
+ * The branch a remote's HEAD points at, as a full refname such as
+ * `refs/heads/main` (`git ls-remote --symref <remote> HEAD`).
+ *
+ * It asks the remote over the network. {@link symbolicRef} on
+ * `refs/remotes/<remote>/HEAD` reads the local copy instead, which a clone
+ * may never have set.
+ *
+ * `absent: []`. null means the remote answered but names no default branch:
+ * an empty repository, or a detached HEAD. An unreachable remote exits 128
+ * and throws.
+ */
+export function remoteHead(remote: string): GitVerb<string | null> {
   return {
-    argv: ['remote', 'get-url', positional('remoteGetUrl', 'name', name)],
-    absent: [2],
-    parse: trimmedOrNull,
+    argv: ['ls-remote', '--symref', positional('remoteHead', 'remote', remote), 'HEAD'],
+    absent: NONE,
+    parse(r) {
+      // `ref: refs/heads/main<TAB>HEAD`, then the `<sha><TAB>HEAD` row.
+      for (const line of splitLines(r.stdout)) {
+        const m = /^ref: (\S+)\tHEAD$/.exec(line)
+        if (m !== null) return m[1]!
+      }
+      return null
+    },
   }
 }
 
@@ -1344,6 +1477,10 @@ export interface FetchOptions {
    * and a caller that only wanted refs updated gets a corrupted one.
    */
   noWriteFetchHead?: boolean | undefined
+  /** `--depth=<n>` — limit the fetched history to `n` commits from each tip. */
+  depth?: number | undefined
+  /** `--no-tags` — fetch no tags beyond those the refspecs name. */
+  noTags?: boolean | undefined
 }
 
 /**
@@ -1363,6 +1500,8 @@ export function fetch(
   if (opts.quiet) argv.push('--quiet')
   if (opts.prune) argv.push('--prune')
   if (opts.noWriteFetchHead) argv.push('--no-write-fetch-head')
+  if (opts.depth !== undefined) argv.push(`--depth=${opts.depth}`)
+  if (opts.noTags) argv.push('--no-tags')
   argv.push(positional('fetch', 'remote', remote))
   if (refspec !== undefined) {
     for (const spec of typeof refspec === 'string' ? [refspec] : refspec) {
@@ -1472,7 +1611,7 @@ export interface ConfigSetOptions {
    * Which file to write. Omitted means git's default: `--local` inside a
    * repository, something else outside one.
    */
-  scope?: 'local' | 'global' | 'system' | undefined
+  scope?: ConfigScope | undefined
 }
 
 /** `git config <key> <value>` — the write twin of {@link configGet}. */
@@ -1536,12 +1675,21 @@ export interface CloneOptions {
   branch?: string | undefined
   /** `--bare` — a store with no working tree. */
   bare?: boolean | undefined
+  /**
+   * `--mirror` — a bare store that copies every ref of the source, and whose
+   * `fetch` overwrites them. Implies `bare`.
+   */
+  mirror?: boolean | undefined
+  /** `--single-branch` — fetch only the branch the clone lands on. */
+  singleBranch?: boolean | undefined
+  /** `--no-tags` — fetch no tags, now or on a later fetch. */
+  noTags?: boolean | undefined
   /** `--quiet` — suppress the progress lines. */
   quiet?: boolean | undefined
 }
 
 /**
- * `git clone [--depth n] [--branch ref] [--bare] <url> [dest]`.
+ * `git clone [--depth n] [--branch ref] [--bare|--mirror] <url> [dest]`.
  *
  * The one verb in this table that does not run inside a repository — it
  * makes one. A client's `cwd` is where a relative `dest` resolves, and both
@@ -1555,6 +1703,9 @@ export function clone(
   const argv = ['clone']
   if (opts.quiet) argv.push('--quiet')
   if (opts.bare) argv.push('--bare')
+  if (opts.mirror) argv.push('--mirror')
+  if (opts.singleBranch) argv.push('--single-branch')
+  if (opts.noTags) argv.push('--no-tags')
   if (opts.depth !== undefined) argv.push('--depth', String(opts.depth))
   if (opts.branch !== undefined) argv.push('--branch', opts.branch)
   argv.push(positional('clone', 'url', url))
