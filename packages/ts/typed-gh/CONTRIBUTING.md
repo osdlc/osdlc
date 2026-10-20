@@ -12,32 +12,55 @@ problems privately. See [SECURITY.md](./SECURITY.md).
 
 ## Pull requests
 
-Open pull requests in the repository that holds this package. They are
-reviewed and merged there.
+Open pull requests in the repository that holds this package,
+[osdlc/osdlc](https://github.com/osdlc/osdlc). They are reviewed and merged
+there. The package lives in `packages/ts/typed-gh`.
+
+## Setting up
+
+The repository is a pnpm workspace. Install from the repository root:
+
+```sh
+pnpm install
+```
+
+Run the package's scripts with `pnpm --filter @osdlc/typed-gh`:
+
+```sh
+pnpm --filter @osdlc/typed-gh test
+pnpm --filter @osdlc/typed-gh typecheck
+pnpm --filter @osdlc/typed-gh lint
+pnpm --filter @osdlc/typed-gh format:check
+pnpm --filter @osdlc/typed-gh build
+pnpm --filter @osdlc/typed-gh smoke
+```
+
+`smoke` runs the built package under Node, so run `build` first.
 
 ## Running the tests
 
-The tests run on [Bun](https://bun.sh). They run offline: a fake runner stands
-in for `gh`, so the tests need no network, no login and no `gh` binary.
+[Bun](https://bun.sh) is only the test runner. pnpm installs and
+runs the scripts, and the `test` script runs `bun test`. The tests run offline: a fake
+runner stands in for `gh`, so they need no network, no login and no `gh`
+binary.
 
-```sh
-bun install
-bun test
-```
+## Changesets and the CHANGELOG
 
-Other checks:
+Add a changeset in the pull request that makes a change users can see. Run
+`pnpm changeset` at the repository root, pick `@osdlc/typed-gh` and the bump,
+and write the summary. Start a breaking change's summary with `**Breaking:**`.
 
-```sh
-bun run typecheck
-bun run lint
-bun run format:check
-```
+Do not edit `CHANGELOG.md` or `version` by hand. When the pull request merges,
+the release flow opens a "Version Packages" pull request that bumps the
+version and writes the CHANGELOG from the pending changesets. See
+[Releasing a TypeScript library](https://github.com/osdlc/osdlc/blob/main/packages/README.md#releasing-a-typescript-library).
 
 ## Code style
 
 - TypeScript, ES modules, and explicit `.ts` import paths.
-- Prettier formats the code and oxlint checks it. Run `bun run format` and
-  `bun run lint` before you commit.
+- Prettier formats the code and oxlint checks it. Run
+  `pnpm --filter @osdlc/typed-gh format` and `pnpm --filter @osdlc/typed-gh lint`
+  before you commit.
 - Add a test for each behaviour change or bug fix. Test through the fake
   runner and check the argv that would run.
 - A new export gets a doc comment and an example in `examples/`, which imports
@@ -46,6 +69,6 @@ bun run format:check
   the few exports that have no example yet.
 - Shell out only through the command seam, never with a raw `child_process`
   call.
-- Add a line to `CHANGELOG.md` under `[Unreleased]` for a change users can see.
+- Add a changeset for a change users can see. See above.
 - Record a design choice in
   [`docs/decisions/`](https://github.com/osdlc/osdlc/tree/main/packages/ts/typed-gh/docs/decisions).
