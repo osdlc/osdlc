@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.4](https://github.com/osdlc/osdlc/compare/path-guard/v0.2.3...path-guard/v0.2.4) - 2026-10-20
+
+### Other
+
+- propose the 0.3.0 API decision (D-06) ([#342](https://github.com/osdlc/osdlc/pull/342))
+
 ## [0.2.3](https://github.com/osdlc/osdlc/compare/path-guard/v0.2.2...path-guard/v0.2.3) - 2026-10-19
 
 ### Added
