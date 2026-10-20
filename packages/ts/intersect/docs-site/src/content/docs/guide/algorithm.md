@@ -23,9 +23,10 @@ prove the overlap.
 One asymmetry appears when the path API stringifies a witness. `search` answers in **segment
 vectors**; a path *string* cannot end in an empty segment, because `parse` normalizes one trailing
 separator back off (`"src/"` → `["src"]`). A vector like `["src", ""]` therefore spells no path, and
-the path-level `witness` skips it and reports `null` — while `intersects`, which answers over
-vectors, still says `true`. Only a degenerate pattern reaches this: the empty segment has to be the
-*only* one two segment-matchers share, which takes an empty brace branch (`*/{,.a}`).
+the path-level `witness` does not return it. It keeps searching for a longer common path whose last
+segment is not empty, and returns `null` only when no such path exists — while `intersects`, which
+answers over vectors, still says `true`. That last case needs the empty segment to be the *only*
+common path, which takes an empty brace branch (`a/{,x}` against `a/{,y}`).
 
 ## Two automata, two products
 

@@ -13,6 +13,8 @@ import { join } from 'node:path'
 
 /** Every operation a case may target, across all three layers plus the registry. */
 export const OP_NAMES = [
+  // L1 path parsing (string -> segment array)
+  'parse',
   // L0 segment core (array inputs)
   'segments.intersects',
   'segments.matches',
@@ -36,6 +38,7 @@ export type OpName = (typeof OP_NAMES)[number]
 
 /** The input fields each operation reads off a case. The shape guard requires them. */
 export const OP_INPUTS: Record<OpName, readonly string[]> = {
+  parse: ['path'],
   'segments.intersects': ['a', 'b'],
   'segments.matches': ['path', 'pattern'],
   'segments.witness': ['a', 'b'],
@@ -82,6 +85,27 @@ export interface Case {
   expect?: unknown
   /** The call is expected to throw (sync) or reject (async). */
   throws?: boolean
+  /** With `throws`: the `IntersectError` code the call must carry. Without it any error passes. */
+  code?: string
+  /**
+   * fs cases only: the directory to use as `cwd`, relative to the temp dir.
+   * Default: the temp dir itself. It need not exist (a missing-`cwd` case), and
+   * it may name a file of the `tree` (a non-directory case).
+   */
+  cwd?: string
+  /** fs cases only: pass `cwd` as a path relative to the process's working directory. */
+  cwdRelative?: boolean
+  /**
+   * fs cases only: symbolic links to create after the `tree`, as `{ link: target }`.
+   * Both are relative to the temp dir; the link points at the target as written.
+   */
+  symlinks?: unknown
+  /**
+   * fs cases only: directories of the `tree` to make unreadable (mode 000)
+   * before the op runs. POSIX only; the harness skips the case when it cannot
+   * make a directory unreadable (Windows, or running as root).
+   */
+  unreadable?: unknown
   /** Register as `test.todo` — unimplemented. */
   pending?: boolean
 }
@@ -145,10 +169,24 @@ export function assertCaseFile(value: unknown, file: string): asserts value is C
     if (c.op !== undefined && (typeof c.op !== 'string' || !OP_SET.has(c.op))) {
       throw new Error(`${at2}: "op" override must be a known op name (got ${JSON.stringify(c.op)})`)
     }
-    for (const flag of ['throws', 'pending'] as const) {
+    for (const flag of ['throws', 'pending', 'cwdRelative'] as const) {
       if (c[flag] !== undefined && typeof c[flag] !== 'boolean') {
         throw new Error(`${at2}: "${flag}" must be a boolean`)
       }
+    }
+    for (const field of ['code', 'cwd'] as const) {
+      if (c[field] !== undefined && typeof c[field] !== 'string') {
+        throw new Error(`${at2}: "${field}" must be a string`)
+      }
+    }
+    if (c.code !== undefined && c.throws !== true) {
+      throw new Error(`${at2}: "code" needs "throws": true`)
+    }
+    if (c.symlinks !== undefined && !isRecord(c.symlinks)) {
+      throw new Error(`${at2}: "symlinks" must be an object of link to target`)
+    }
+    if (c.unreadable !== undefined && !Array.isArray(c.unreadable)) {
+      throw new Error(`${at2}: "unreadable" must be an array of directory paths`)
     }
     if (!('expect' in c) && c.throws !== true) {
       throw new Error(`${at2}: needs an "expect" value or "throws": true`)

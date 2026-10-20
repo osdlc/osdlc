@@ -7,7 +7,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { index, intersects } from '@osdlc/intersect'
+import { IntersectError, index, intersects } from '@osdlc/intersect'
 import { filesInScope } from '@osdlc/intersect/fs'
 import { intersects as segmentsIntersect } from '@osdlc/intersect/segments'
 
@@ -18,6 +18,10 @@ assert.deepEqual(index([{ id: 'api', patterns: 'src/api/**' }]).applicableTo('sr
 ])
 
 assert.equal(segmentsIntersect(['a', '**'], ['a', 'b']), true)
+assert.throws(
+  () => intersects('a{1..3}', 'a1'),
+  (e) => e instanceof IntersectError,
+)
 
 const cwd = mkdtempSync(join(tmpdir(), 'intersect-smoke-'))
 try {

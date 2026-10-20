@@ -10,6 +10,7 @@
   },
   "include": [
     "index.ts",
+    "errors.ts",
     "parse.ts",
     "registry.ts",
     "fs.ts",
