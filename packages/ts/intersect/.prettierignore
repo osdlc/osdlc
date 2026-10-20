@@ -1,0 +1,5 @@
+node_modules/
+dist/
+coverage/
+# Separate private site; has its own config.
+docs-site/

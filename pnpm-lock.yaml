@@ -99,6 +99,52 @@ importers:
         specifier: ~6.0.3
         version: 6.0.3
 
+  packages/ts/detect-harness:
+    dependencies:
+      '@osdlc/command-seam':
+        specifier: workspace:^
+        version: link:../command-seam
+      '@osdlc/frontmatter-lossless':
+        specifier: workspace:^
+        version: link:../frontmatter-lossless
+      '@osdlc/path-guard':
+        specifier: workspace:^
+        version: link:../path-guard
+      smol-toml:
+        specifier: ^1.7.0
+        version: 1.9.1
+      yaml:
+        specifier: ^2.9.0
+        version: 2.9.1
+    devDependencies:
+      '@osdlc/prettier-config':
+        specifier: workspace:^
+        version: link:../prettier-config
+      '@osdlc/tsconfig':
+        specifier: workspace:^
+        version: link:../tsconfig
+      '@types/node':
+        specifier: ^26.1.0
+        version: 26.6.5
+      '@vitest/coverage-v8':
+        specifier: ^5.0.5
+        version: 5.0.5(vitest@5.0.5)
+      oxlint:
+        specifier: ^1.65.0
+        version: 1.88.0
+      prettier:
+        specifier: 3.9.6
+        version: 3.9.6
+      typescript:
+        specifier: ~6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: ^5.0.5
+        version: 5.0.5(@types/node@26.6.5)(@vitest/coverage-v8@5.0.5)(vite@8.3.4(@types/node@26.6.5)(yaml@2.9.1))
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
+
   packages/ts/etag-write:
     devDependencies:
       '@osdlc/prettier-config':
@@ -170,6 +216,37 @@ importers:
       typescript:
         specifier: ~6.0.3
         version: 6.0.3
+
+  packages/ts/intersect:
+    dependencies:
+      tinyglobby:
+        specifier: ^0.2.17
+        version: 0.2.17
+    devDependencies:
+      '@osdlc/prettier-config':
+        specifier: workspace:^
+        version: link:../prettier-config
+      '@osdlc/tsconfig':
+        specifier: workspace:^
+        version: link:../tsconfig
+      '@types/node':
+        specifier: ^26.1.0
+        version: 26.6.5
+      '@vitest/coverage-v8':
+        specifier: ^5.0.5
+        version: 5.0.5(vitest@5.0.5)
+      oxlint:
+        specifier: ^1.65.0
+        version: 1.88.0
+      prettier:
+        specifier: 3.9.6
+        version: 3.9.6
+      typescript:
+        specifier: ~6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: ^5.0.5
+        version: 5.0.5(@types/node@26.6.5)(@vitest/coverage-v8@5.0.5)(vite@8.3.4(@types/node@26.6.5)(yaml@2.9.1))
 
   packages/ts/markdown-contract:
     dependencies:
@@ -1385,6 +1462,10 @@ packages:
   skin-tone@2.0.0:
     resolution: {integrity: sha512-kUMbT1oBJCpgrnKoSr0o6wPtvRWT9W9UKvGLwfJYO2WuahZRHOpEyL1ckyMGgMWh0UdpmaoFqKKD29WTomNEGA==}
     engines: {node: '>=8'}
+
+  smol-toml@1.9.1:
+    resolution: {integrity: sha512-j7WyPdf0CJoutMzMoPLF/bVXHtKZIT9Rb4eGeEbWw8X2t5oirjPgpL+OpaENZrILYaXqYwnVH+qgUwVbl+pUJQ==}
+    engines: {node: '>= 18'}
 
   source-map-js@1.2.2:
     resolution: {integrity: sha512-KGj/8Y43x35aZVDtt+J4mK1hoLGHULMYfSkODJNQjNDC3oW1PqPoxMwo0pLUsWM/UEGzON/NxeHywEfNXNP3Vw==}
@@ -2679,6 +2760,8 @@ snapshots:
   skin-tone@2.0.0:
     dependencies:
       unicode-emoji-modifier-base: 1.0.0
+
+  smol-toml@1.9.1: {}
 
   source-map-js@1.2.2: {}
 

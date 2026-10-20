@@ -87,7 +87,7 @@ Developed here, in this repository:
 - `packages/ts/command-seam` (`@osdlc/command-seam`)
 - `packages/ts/gfm-table` (`@osdlc/gfm-table`)
 - `packages/rust/cli-tool-config` (`cli-tool-config` on crates.io, last release 0.5.3; replaced by `config-layers`)
-- `packages/rust/config-layers` (`config-layers` on crates.io)
+- `packages/rust/config-layers` (`config-layers`, not yet on crates.io; its first release is held)
 - `packages/rust/etag-write` (`etag-write` on crates.io)
 - `packages/rust/path-guard` (`path-guard` on crates.io)
 - `packages/rust/tiered-dirs` (`tiered-dirs` on crates.io)
@@ -117,6 +117,12 @@ Developed here, in this repository:
 - `packages/ts/typed-git` (`@osdlc/typed-git` on npm, a typed git client for
   TypeScript, in a synchronous and an awaitable form; each verb declares what
   absence means for it and every other failure throws)
+- `packages/ts/intersect` (`@osdlc/intersect` on npm, a path-pattern overlap
+  engine: do two globs share a path, with a witness path, a registry and an
+  optional filesystem layer)
+- `packages/ts/detect-harness` (`@osdlc/detect-harness` on npm, finds the
+  coding-agent harnesses on a machine and in a project and reads what each has
+  configured; read-only, with secrets redacted)
 
 The development repository will take each TypeScript library from npm, like
 any other consumer. Today it still keeps its own copies. Open issues and pull
