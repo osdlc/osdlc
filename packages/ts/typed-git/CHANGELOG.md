@@ -1,12 +1,21 @@
 # Changelog
 
-## History before the first public release
+## 0.5.0
 
-These versions were never published. The package was first called `@sksizer/easy-git`.
+Published to npm on 2026-10-20 by CI, from the code as it was moved into
+osdlc/osdlc. Licence `MIT`. It was the first npm release. The package was
+first called `easy-git` and was never published under that name.
 
-### [0.5.0] - 2026-10-10 (unpublished, in the dev repository)
+Two additions were made at the move:
 
-#### Changed
+- `checkIgnoreVerbose(paths)` (sync and async): the matching ignore rule for each path, as
+  `{ path, source, line, pattern }` (`git check-ignore -v --stdin -z`).
+- `diffTree` option `findRenames` (`-M`): report a move as one rename record with its source
+  path. Off by default, so existing calls are unchanged.
+
+The rest of 0.5.0 was made before the move:
+
+### Changed
 
 - **BREAKING:** `push` `forceWithLease` takes a structured `ForceLease` (`{ ref, expect }`,
   `expect: null` for "ref must be absent") instead of a pre-formatted
@@ -19,7 +28,7 @@ These versions were never published. The package was first called `@sksizer/easy
   `intentToAdd`. A caller that passed a flag in the list (`['-A', '.']`) must
   now use the `all` option instead.
 
-#### Added
+### Added
 
 `runner` on `Git` and `backend` on `AsyncGit` accept an explicit `undefined`
 (same as omitting), so an optional runner passes straight through.
@@ -67,6 +76,10 @@ back as `ok: false`; only a git failure throws.
 
 `diffStat({ rangeArgs, paths })` — the `git diff --stat` summary as raw
 stdout, on both clients.
+
+## History before the first npm release
+
+These versions were not published.
 
 ### [0.4.0] - 2026-09-12 (unpublished)
 
@@ -406,8 +419,8 @@ Specific behaviour changes to check for at your call sites:
     on a bare store, where nothing is ever signed.
 - Call options (`timeoutMs`, `signal`, `env`) on every client method, not just
   `lsRemote` / `fetch` / `push`.
-- Subpath exports: `@sksizer/easy-git/client` (the clients without
-  `hosted-git-info`) and `@sksizer/easy-git/testing` (a git fixture builder).
+- Subpath exports: `easy-git/client` (the clients without
+  `hosted-git-info`) and `easy-git/testing` (a git fixture builder).
 
 #### Known limits
 
@@ -479,18 +492,18 @@ promoted into a standalone package on 2026-07-20.
 
 #### Changed
 
-- **The subprocess seam moved to `@sksizer/command-seam`**, which this
+- **The subprocess seam moved to `command-seam` (now `@osdlc/command-seam`)**, which this
   package now depends on and re-exports. The seam is not git-specific, and
   the sync and async doors living in separate homes was an accident of
   extraction order. Callers importing `CommandRunner`, `spawnRunner`,
-  `runChecked`, or `CommandFailed` from `@sksizer/easy-git` are
+  `runChecked`, or `CommandFailed` from `easy-git` are
   unaffected — the re-export keeps one `CommandFailed` class end-to-end
   (2026-08-29).
 - Optional fields across the public API are spelled `?: T | undefined`
   rather than `?: T`, so options built by spreading a caller's own
   optionals typecheck under `exactOptionalPropertyTypes` (2026-08-29).
 - Promoted from application-internal modules into the standalone package
-  `@sksizer/easy-git`, with no re-export shim at the old paths
+  `easy-git`, with no re-export shim at the old paths
   (2026-07-20).
 - The package tsconfig now extends a shared base rather than standing
   alone, so its strictness matches its consumers (2026-08-23).
@@ -502,7 +515,7 @@ promoted into a standalone package on 2026-07-20.
 
 The subprocess-level fixes — Bun's `bun test` stdio corruption, timeouts
 that never fired, a failed spawn reported as a silent exit 1 — moved with
-the seam and are recorded in `@sksizer/command-seam`'s changelog.
+the seam and are recorded in `@osdlc/command-seam`'s changelog.
 
 #### Known issues
 

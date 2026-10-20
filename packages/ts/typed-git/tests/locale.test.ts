@@ -68,7 +68,11 @@ describe('integration verbs run in the C locale', () => {
   })
 })
 
-/** A git on this host that prints German under {@link GERMAN}, or undefined. */
+/**
+ * A git on this host that prints German under {@link GERMAN}, or undefined.
+ * The CI runners likely have no German locale, so there the test below skips
+ * and only the env-recorder tests above run.
+ */
 function localizedGit(): string | undefined {
   const dir = mkdtempSync(join(tmpdir(), 'typed-git-locale-probe-'))
   try {

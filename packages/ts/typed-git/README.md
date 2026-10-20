@@ -22,15 +22,17 @@ range its dependency `hosted-git-info` needs, and a `git` executable on
 
 ## Runtimes and platforms
 
-Node.js, on macOS, Linux and Windows. CI runs the built package on Linux and
-macOS, on Node 22 and 24. It does not run on Windows yet, so Windows support
-is a claim that no test backs.
+Node.js, on macOS, Linux and Windows. CI runs the tests and the built package
+on Linux and macOS, on Node 22 and 24. Windows is supported but not tested in
+CI yet.
 
-The package does not name a minimum git version. CI uses the git that the
-GitHub-hosted runners ship, and no older git is tested. The behaviour tables
-below were measured against git 2.50.1. A verb that needs a newer git than
-you have fails with git's own error and throws `CommandFailed`. `mergeTree`
-needs git 2.38 or later.
+The minimum git version is the oldest one CI tests. CI uses the git that the
+GitHub-hosted runners ship. On 2026-10-20 that was git 2.55.0 on
+`ubuntu-latest` (Ubuntu 24.04) and git 2.56.0 on `macos-latest` (macOS 26), as
+the checkout step logs it. So the tested minimum is git 2.55.0. Older git may
+work, but no test shows it. The behaviour tables below were measured against
+git 2.50.1. A verb that needs a newer git than you have fails with git's own
+error and throws `CommandFailed`. `mergeTree` needs git 2.38 or later.
 
 Bun runs the tests. It is not a tested runtime for consumers.
 
@@ -56,6 +58,14 @@ release, with a CHANGELOG entry that starts with `Breaking:`.
   pure JavaScript. It needs no `git` binary and runs in browsers.
 - [nodegit](https://www.npmjs.com/package/nodegit) binds libgit2 and needs a
   native build.
+- [@effected/git](https://www.npmjs.com/package/@effected/git) wraps the CLI
+  for programs built on Effect.
+
+This package exists for plain TypeScript callers that want a synchronous form,
+typed results and a declared absence value per verb.
+
+The Rust crate `typed-git` is this package's twin. The two keep the same major
+and minor version. Their APIs differ. The crate is not on crates.io yet.
 
 ## Quick look
 
@@ -401,14 +411,17 @@ trailing argument that is not a string.
 
 ### Arguments that start with `-`
 
-A ref, remote, URL or path argument that starts with `-` could be read by git
-as an option, for example `--upload-pack=...`. Twenty-nine verbs refuse it:
-they throw a `TypeError` before git runs. The message is
+A ref, remote, URL, path, ref pattern or config key argument that starts with
+`-` could be read by git as an option, for example `--upload-pack=...` or
+`--output=<file>`. Thirty-eight verbs refuse it: they throw a `TypeError`
+before git runs. In `log` this covers `rev`, `range` and each `notRefs` entry.
+In `diffNameOnly` and `diffStat` it covers each `rangeArgs` token. The message is
 `typed-git: <verb>: <param> must not start with "-" (got "...")`. `try` and
 `soft` do not catch it, because it is a `TypeError`. On `AsyncGit` with
 `cliBackend` it is a rejection. A backend that is not the CLI gets the request
 unchecked. `revParse` is not guarded, because it passes flags on by design.
-Paths after `--` are not affected.
+Paths after `--` are not affected. `grep` passes its pattern with `-e`, so a
+pattern that starts with `-` is searched for, not refused.
 
 To pass a path that starts with `-`, write `./-name`. For the previous branch,
 write `@{-1}` instead of `-` in `checkout` and `merge`.

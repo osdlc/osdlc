@@ -10,15 +10,16 @@ created: 2026-10-20
 ## Decision
 
 The owner answered 22 questions from the readiness review of the package,
-before its first release as `@osdlc/typed-git` 0.5.0.
+before its first release as `@osdlc/typed-git`. CI published 0.5.0 from the
+moved code before these answers were applied. They ship in 0.5.1.
 
-1. API gate: approved for 0.5.0.
+1. API gate: approved for 0.5.x.
 2. Name: `@osdlc/typed-git` is signed off.
 3. Versions: the TypeScript and Rust twins keep the same major and minor
-   version. The first release of both is 0.5.0.
+   version. Both are on 0.5.
 4. Licence: `MIT OR Apache-2.0`, with `LICENSE-MIT` and `LICENSE-APACHE`.
-5. Platforms: macOS, Linux and Windows. CI runs Linux and macOS. There is no
-   Windows job yet.
+5. Platforms: macOS, Linux and Windows. CI runs Linux and macOS. Windows is
+   not tested in CI yet.
 6. Internal exports: `gate` and `GitVerb` are no longer exported.
    `REF_FORMAT` and `parseRefRows` stay.
 7. Missing types: `StatusEntry`, `CleanOptions`, `DiffCheckOptions`,
@@ -28,8 +29,10 @@ before its first release as `@osdlc/typed-git` 0.5.0.
 9. `soft.configRemoveSection` is removed.
 10. The `./client` subpath stays. The README and its header list what it
     leaves out.
-11. A ref, remote, URL or path argument that starts with `-` is refused with a
-    `TypeError` before git runs.
+11. A ref, remote, URL, path, ref pattern or config key argument that starts
+    with `-` is refused with a `TypeError` before git runs. 38 verbs check it.
+    `grep` passes its pattern with `-e` instead, so such a pattern is searched
+    for.
 12. `@osdlc/command-seam` is a dependency at the current npm minor. The range
     is raised with each seam minor. Inside this repository it is
     `workspace:^`.
@@ -60,9 +63,10 @@ owner chose the safe behaviour and listed the callers to update.
 
 ## Consequences
 
-- CI does not pin a git version. The README states no minimum and says CI
-  uses the runner's git. A pinned oldest git in CI is still open.
+- CI does not pin a git version. The README names the runners' git as the
+  tested minimum: 2.55.0 on Ubuntu and 2.56.0 on macOS on 2026-10-20. The
+  minimum moves when the runners update git.
 - The Windows claim has no test behind it until a Windows CI job exists.
-- Callers in the dev repository that read `""` from `diffText` or
+- Callers that read `""` from `diffText` or
   `diffAddedFile` as "no diff", and any `checkout('-')` or `merge('-')`, change
   with the release.

@@ -129,4 +129,20 @@ describe('public surface', () => {
       expect(doc).toContain('@experimental')
     }
   })
+
+  test('the README lists the same experimental items as the TSDoc tags', () => {
+    const source = readFileSync(new URL('../backend.ts', import.meta.url), 'utf8')
+    const tagged = new Set<string>()
+    for (const m of source.matchAll(
+      /@experimental[\s\S]*?\*\/\s*export (?:type|interface|function) (\w+)/g,
+    )) {
+      tagged.add(m[1]!)
+    }
+    const readme = readFileSync(new URL('../README.md', import.meta.url), 'utf8')
+    const line = readme.split('\n- ').find((item) => item.includes('experimental.'))!
+    const listed = new Set(
+      [...line.split('experimental.')[0]!.matchAll(/`(\w+)`/g)].map((m) => m[1]!),
+    )
+    expect([...listed].sort()).toEqual([...tagged].sort())
+  })
 })

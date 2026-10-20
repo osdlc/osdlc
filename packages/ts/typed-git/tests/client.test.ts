@@ -415,8 +415,17 @@ describe('Git — argv construction (fake runner)', () => {
       noColor: true,
       paths: ['docs'],
     })
-    expect(calls[0]!.argv).toEqual(['grep', 'TODO'])
-    expect(calls[1]!.argv).toEqual(['grep', '-n', '-E', '--no-color', 'TODO|FIXME', '--', 'docs'])
+    expect(calls[0]!.argv).toEqual(['grep', '-e', 'TODO'])
+    expect(calls[1]!.argv).toEqual([
+      'grep',
+      '-n',
+      '-E',
+      '--no-color',
+      '-e',
+      'TODO|FIXME',
+      '--',
+      'docs',
+    ])
   })
 
   test('isAncestor and aheadBehind build their argv and read the answer', () => {

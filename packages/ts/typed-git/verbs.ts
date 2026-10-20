@@ -246,7 +246,8 @@ function nothing(): void {}
 const NONE: readonly number[] = []
 
 /**
- * Refuse a ref, remote, URL or path positional that starts with `-`.
+ * Refuse a ref, remote, URL, path, pattern or config-key positional that
+ * starts with `-`.
  *
  * git reads such a value as an option. `--upload-pack=<cmd>` given as a remote
  * runs `<cmd>`. The check throws a `TypeError` before anything spawns, so
@@ -555,7 +556,11 @@ export function logSubject(ref: string): GitVerb<string | null> {
 
 /** `git config --get <key>`, or null when unset (exit 1). */
 export function configGet(key: string): GitVerb<string | null> {
-  return { argv: ['config', '--get', key], absent: [1], parse: trimmedOrNull }
+  return {
+    argv: ['config', '--get', positional('configGet', 'key', key)],
+    absent: [1],
+    parse: trimmedOrNull,
+  }
 }
 
 /**
@@ -775,7 +780,9 @@ export function forEachRef(
   const argv = ['for-each-ref', `--format=${opts.format ?? REF_FORMAT}`]
   if (opts.sort !== undefined) argv.push(`--sort=${opts.sort}`)
   if (opts.count !== undefined) argv.push(`--count=${opts.count}`)
-  argv.push(...(typeof pattern === 'string' ? [pattern] : pattern))
+  for (const p of typeof pattern === 'string' ? [pattern] : pattern) {
+    argv.push(positional('forEachRef', 'pattern', p))
+  }
   return { argv, absent: NONE, parse: lines }
 }
 
@@ -824,7 +831,8 @@ export function diffNameOnly(opts: DiffNameOnlyOptions = {}): GitVerb<string[]> 
   const argv = ['diff', '--name-only', '-z']
   if (opts.cached) argv.push('--cached')
   if (opts.diffFilter !== undefined) argv.push(`--diff-filter=${opts.diffFilter}`)
-  if (opts.rangeArgs !== undefined) argv.push(...opts.rangeArgs)
+  for (const token of opts.rangeArgs ?? [])
+    argv.push(positional('diffNameOnly', 'rangeArgs', token))
   if (opts.paths !== undefined && opts.paths.length > 0) argv.push('--', ...opts.paths)
   return { argv, absent: NONE, parse: nulFields }
 }
@@ -843,7 +851,7 @@ export interface DiffStatOptions {
  */
 export function diffStat(opts: DiffStatOptions = {}): GitVerb<string> {
   const argv = ['diff', '--stat']
-  if (opts.rangeArgs !== undefined) argv.push(...opts.rangeArgs)
+  for (const token of opts.rangeArgs ?? []) argv.push(positional('diffStat', 'rangeArgs', token))
   if (opts.paths !== undefined && opts.paths.length > 0) argv.push('--', ...opts.paths)
   return { argv, absent: NONE, parse: (r) => r.stdout }
 }
@@ -902,7 +910,7 @@ export function diffNameStatus(opts: DiffNameStatusOptions = {}): GitVerb<DiffEn
   const argv = ['diff', '--name-status', '-z']
   if (opts.cached) argv.push('--cached')
   if (opts.noRenames) argv.push('--no-renames')
-  if (opts.range !== undefined) argv.push(opts.range)
+  if (opts.range !== undefined) argv.push(positional('diffNameStatus', 'range', opts.range))
   if (opts.paths !== undefined && opts.paths.length > 0) argv.push('--', ...opts.paths)
   return { argv, absent: NONE, parse: nameStatusEntries }
 }
@@ -969,11 +977,11 @@ export function log(opts: LogOptions = {}): GitVerb<string> {
   if (opts.nameStatus) argv.push('--name-status')
   if (opts.numstat) argv.push('--numstat')
   if (opts.relative) argv.push('--relative')
-  if (opts.rev !== undefined) argv.push(opts.rev)
-  if (opts.range !== undefined) argv.push(opts.range)
+  if (opts.rev !== undefined) argv.push(positional('log', 'rev', opts.rev))
+  if (opts.range !== undefined) argv.push(positional('log', 'range', opts.range))
   // `--not` negates every rev after it, so the positive revs must precede it.
   if (opts.notRefs !== undefined && opts.notRefs.length > 0) {
-    argv.push('--not', ...opts.notRefs)
+    argv.push('--not', ...opts.notRefs.map((ref) => positional('log', 'notRefs', ref)))
   }
   if (opts.paths !== undefined && opts.paths.length > 0) argv.push('--', ...opts.paths)
   // Verbatim, trailing newline included: the caller's format decides where a
@@ -1224,7 +1232,8 @@ export function grep(pattern: string, opts: GrepOptions = {}): GitVerb<string[]>
   if (opts.lineNumber) argv.push('-n')
   if (opts.extendedRegexp) argv.push('-E')
   if (opts.noColor) argv.push('--no-color')
-  argv.push(pattern)
+  // `-e` marks the pattern as a pattern, so one that starts with `-` is searched for.
+  argv.push('-e', pattern)
   if (opts.paths !== undefined && opts.paths.length > 0) argv.push('--', ...opts.paths)
   return { argv, absent: [1], parse: lines }
 }
@@ -1470,7 +1479,7 @@ export interface ConfigSetOptions {
 export function configSet(key: string, value: string, opts: ConfigSetOptions = {}): GitVerb<void> {
   const argv = ['config']
   if (opts.scope !== undefined) argv.push(`--${opts.scope}`)
-  argv.push(key, value)
+  argv.push(positional('configSet', 'key', key), value)
   return { argv, absent: NONE, parse: nothing }
 }
 
@@ -1482,7 +1491,7 @@ export function configSet(key: string, value: string, opts: ConfigSetOptions = {
  */
 export function configRemoveSection(name: string): GitVerb<boolean> {
   return {
-    argv: ['config', '--remove-section', name],
+    argv: ['config', '--remove-section', positional('configRemoveSection', 'name', name)],
     absent: [128],
     parse: (r) => r.exitCode === 0,
   }
@@ -1509,7 +1518,8 @@ export function init(path?: string | undefined, opts: InitOptions = {}): GitVerb
   if (opts.quiet) argv.push('--quiet')
   if (opts.bare) argv.push('--bare')
   if (opts.initialBranch !== undefined) argv.push('-b', opts.initialBranch)
-  if (path !== undefined) argv.push(path)
+  const target = optionalPositional('init', 'path', path)
+  if (target !== undefined) argv.push(target)
   return { argv, absent: NONE, parse: nothing }
 }
 
