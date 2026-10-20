@@ -78,17 +78,12 @@ If you need only one of these halves, a smaller crate may fit better.
 
 The lexical layer (`validate_relative`) is platform-independent. `lexical_absolute`
 follows the platform's meaning of an absolute path: on Windows a path with a
-root but no drive is anchored at the current directory. The containment layer is tested
-fully on Unix. On Windows the lexical checks still apply, and symlink
-resolution follows whatever `std::fs::canonicalize` does there.
+root but no drive is anchored at the current directory. The containment layer
+is tested on Linux, macOS and Windows, symlinks included.
 
-On Windows the containment layer has a known gap. Windows folds `..` as text
-before it follows a link, but the crate folds a `..` behind a missing name
-against the real path, as on POSIX. So for a path that does not exist yet, with
-a `..` after a symlink, the crate can judge a different path from the one
-Windows opens, and accept one that leaves the root. The TypeScript twin
-follows the Windows rule. The fix is tracked in
-[T-02](https://github.com/osdlc/osdlc/blob/main/packages/ts/path-guard/docs/planning/tasks/T-02-rust-windows-dot-dot-fold.md).
+On Windows a `..` folds as text before any link is followed, as Windows reads a
+path: on Unix `link/..` is the parent of the link's target, and on Windows it is
+the directory that holds the link. The TypeScript twin follows the same rule.
 
 ## Stability
 
