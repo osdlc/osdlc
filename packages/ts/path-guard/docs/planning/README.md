@@ -43,6 +43,8 @@ package.
 
 - [T-01](tasks/T-01-browser-safe-lexical-entry.md): A browser-safe
   `./lexical` entry point
+- [T-03](tasks/T-03-is-inside-sibling-prefix-test.md): Test that `isInside`
+  rejects a sibling-prefix directory
 
 ## Terms
 
