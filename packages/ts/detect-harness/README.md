@@ -296,9 +296,18 @@ This package's `current()` answers the same question as the first two for the
 six harnesses it knows. Its other work, reading what each harness has
 configured, is what those packages leave out.
 
-Libraries from the same author that detect other developer tools, run coding
-agent CLIs, or write harness files from a model are not published yet. They
-do other jobs: this package only reads, and returns a report.
+The author's own related libraries:
+
+- [`@osdlc/agent-call`](https://www.npmjs.com/package/@osdlc/agent-call): one
+  call spec for headless coding-agent CLIs. Its `detectAgents` checks that each
+  agent's command runs, by calling it with `--version`. It reads no
+  configuration. It also builds and runs agent calls, which this package never
+  does.
+- `@osdlc/detect-runners`: detects runners. It is not released yet; the name on
+  npm is only a placeholder.
+- [`agent-adapt`](https://crates.io/crates/agent-adapt), a Rust crate: authors
+  skills, agents, hooks and MCP servers once and writes them out for several
+  runtimes. It writes; this package only reads.
 
 ## Platforms
 
