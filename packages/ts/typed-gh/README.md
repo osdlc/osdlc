@@ -364,6 +364,10 @@ The experimental items:
 - `createReview`, the verb and the method on both clients
 - `CreateReviewOptions`
 - `ReviewComment`
+- `graphql`, the verb and the method on both clients
+- `nodesAt`
+- `GraphqlOptions`
+- `GraphqlVariable`
 
 Every other export and method is stable, `prDiff` included.
 

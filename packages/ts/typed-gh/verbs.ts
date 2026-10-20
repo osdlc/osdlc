@@ -23,6 +23,12 @@ export interface GhVerb<T> {
   argv: string[]
   /** True for every mutation and for `prDiff` — throw on a non-zero exit instead of parsing. */
   checked: boolean
+  /**
+   * True when the call only reads: it changes nothing on GitHub. Every query
+   * is read-only, and so is `prDiff`; every mutation is not. A caller that
+   * keeps an allowlist of safe calls can check this before running a verb.
+   */
+  readOnly: boolean
   /** Written to the child's stdin, for a verb whose payload is too large or structured for argv. */
   input?: string | undefined
   /**
@@ -315,6 +321,7 @@ export function prList(
   return {
     argv,
     checked: false,
+    readOnly: true,
     parse(r) {
       const result = limited(manyOrNull(r), limit)
       if (result === null || head === undefined) return result
@@ -366,6 +373,7 @@ export function prView(
       asked.join(','),
     ],
     checked: false,
+    readOnly: true,
     parse: oneOrNull,
   }
 }
@@ -395,6 +403,7 @@ export function prBody(number: number, target?: GhTarget): GhVerb<string | null>
   return {
     argv: ['pr', 'view', String(number), ...repoArgs(target), '--json', 'body', '-q', '.body'],
     checked: false,
+    readOnly: true,
     parse: (r) => (r.exitCode === 0 ? r.stdout.replace(/[\r\n]+$/, '') : null),
   }
 }
@@ -426,6 +435,13 @@ export interface ApiOptions {
   etag?: string | null | undefined
   /** Pass `-i` and read status/ETag off the header block (the last one, if several). */
   includeHeaders?: boolean | undefined
+  /**
+   * Fetch every page (`--paginate --slurp`). `body` is then the pages joined
+   * into one array when every page is an array, else the list of pages.
+   * Cannot be combined with `etag` or `includeHeaders`: with `-i` gh prints
+   * a header block per page. `status` is synthesized, as without `-i`.
+   */
+  paginate?: boolean | undefined
 }
 
 /**
@@ -440,13 +456,152 @@ export function api(
   opts: ApiOptions = {},
   target?: GhTarget,
 ): GhVerb<ApiResponse> {
+  notAFlag('api endpoint', endpoint)
   const conditional = opts.etag !== undefined && opts.etag !== null && opts.etag !== ''
   const withHeaders = conditional || opts.includeHeaders === true
+  const paginate = opts.paginate === true
+  if (paginate && withHeaders) {
+    throw new RangeError('api: paginate cannot be combined with etag or includeHeaders')
+  }
   const argv = ['api', ...hostArgs(target)]
   if (withHeaders) argv.push('-i')
   if (conditional) argv.push('-H', `If-None-Match: ${opts.etag}`)
+  if (paginate) argv.push('--paginate', '--slurp')
   argv.push(fillRepo(endpoint, target))
-  return { argv, checked: false, parse: (r) => parseApi(r, withHeaders) }
+  return {
+    argv,
+    checked: false,
+    readOnly: true,
+    parse(r) {
+      const response = parseApi(r, withHeaders)
+      return paginate ? { ...response, body: flattenPages(response.body) } : response
+    },
+  }
+}
+
+/** `--slurp` pages joined into one array when every page is an array. */
+function flattenPages(body: unknown): unknown {
+  if (!Array.isArray(body) || !body.every(Array.isArray)) return body
+  return (body as unknown[][]).flat()
+}
+
+/**
+ * A GraphQL variable: gh sends a string with `-f` and the rest with `-F`.
+ *
+ * @experimental
+ */
+export type GraphqlVariable = string | number | boolean | null
+
+/**
+ * Options for {@link graphql}.
+ *
+ * @experimental
+ */
+export interface GraphqlOptions {
+  /**
+   * Follow every page (`--paginate --slurp`). The query must take
+   * `$endCursor: String` and select `pageInfo { hasNextPage endCursor }` on
+   * the one connection it pages through; gh follows only that connection.
+   */
+  paginate?: boolean | undefined
+}
+
+/**
+ * `gh api graphql -f query=… [--paginate --slurp]` — a GraphQL query.
+ *
+ * Returns each page's `data`, one entry per page (one without `paginate`),
+ * or null when the call failed, the output did not parse, or any page
+ * carries `errors` or lacks `data`: a partial answer is no answer. Read one
+ * connection across the pages with {@link nodesAt}.
+ *
+ * A string variable of exactly `{owner}` or `{repo}` is filled from the
+ * target's repo, or by gh from the clone. A mutation document throws
+ * `RangeError`: this is a read, and changes go through `raw`.
+ *
+ * @experimental
+ */
+export function graphql(
+  query: string,
+  variables: Record<string, GraphqlVariable> = {},
+  opts: GraphqlOptions = {},
+  target?: GhTarget,
+): GhVerb<unknown[] | null> {
+  checkTarget(target)
+  const body = query.replace(/^(?:\s|#[^\n]*\n?)*/, '')
+  if (/^mutation\b/.test(body) || /^subscription\b/.test(body)) {
+    throw new RangeError('graphql: only queries are allowed; send a mutation through raw')
+  }
+  const paginate = opts.paginate === true
+  if (paginate && !query.includes('$endCursor')) {
+    throw new RangeError('graphql: paginate needs a query that takes $endCursor')
+  }
+  const argv = ['api', 'graphql', ...hostArgs(target)]
+  if (paginate) argv.push('--paginate', '--slurp')
+  const [owner, name] = target?.repo?.split('/') ?? []
+  for (const [key, value] of Object.entries(variables)) {
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
+      throw new RangeError(`graphql: bad variable name ${JSON.stringify(key)}`)
+    }
+    if (typeof value === 'string') {
+      const filled = value === '{owner}' ? owner : value === '{repo}' ? name : undefined
+      if (filled !== undefined) argv.push('-f', `${key}=${filled}`)
+      else if (value === '{owner}' || value === '{repo}') argv.push('-F', `${key}=${value}`)
+      else argv.push('-f', `${key}=${value}`)
+    } else {
+      argv.push('-F', `${key}=${value === null ? 'null' : String(value)}`)
+    }
+  }
+  argv.push('-f', `query=${query}`)
+  return {
+    argv,
+    checked: false,
+    readOnly: true,
+    parse(r) {
+      if (r.exitCode !== 0) return null
+      let data: unknown
+      try {
+        data = JSON.parse(r.stdout)
+      } catch {
+        return null
+      }
+      const pages = paginate ? data : [data]
+      if (!Array.isArray(pages)) return null
+      const out: unknown[] = []
+      for (const page of pages) {
+        if (page === null || typeof page !== 'object') return null
+        const rec = page as Record<string, unknown>
+        if (Array.isArray(rec['errors']) && rec['errors'].length > 0) return null
+        if (rec['data'] === null || typeof rec['data'] !== 'object') return null
+        out.push(rec['data'])
+      }
+      return out
+    },
+  }
+}
+
+/**
+ * The `nodes` of one connection, joined across {@link graphql} pages: walk
+ * `path` into each page and take its `nodes` array. Null when `pages` is
+ * null, or any page lacks the path or a `nodes` array, so a page that came
+ * back short is never read as fewer rows.
+ *
+ * @experimental
+ */
+export function nodesAt(pages: unknown[] | null, path: readonly string[]): unknown[] | null {
+  if (pages === null) return null
+  const out: unknown[] = []
+  for (const page of pages) {
+    let at: unknown = page
+    for (const key of path) {
+      if (at === null || typeof at !== 'object') return null
+      at = (at as Record<string, unknown>)[key]
+    }
+    if (at === null || typeof at !== 'object') return null
+    const nodes = (at as Record<string, unknown>)['nodes']
+    if (!Array.isArray(nodes)) return null
+    out.push(...nodes)
+  }
+  return out
 }
 
 /** One header block off the front of `text`: the block, and what follows its blank line. */
@@ -502,7 +657,7 @@ function parseApi(r: CommandResult, withHeaders: boolean): ApiResponse {
 
 /** `gh --version` — the install probe. True when `gh` runs. */
 export function installed(): GhVerb<boolean> {
-  return { argv: ['--version'], checked: false, parse: (r) => r.exitCode === 0 }
+  return { argv: ['--version'], checked: false, readOnly: true, parse: (r) => r.exitCode === 0 }
 }
 
 /**
@@ -519,6 +674,7 @@ export function authStatus(target?: GhTarget): GhVerb<AuthStatus> {
   return {
     argv: ['auth', 'status', ...hostArgs(target)],
     checked: false,
+    readOnly: true,
     parse: (r) => ({ ok: r.exitCode === 0, detail: stderrOrError(r) || r.stdout.trim() }),
   }
 }
@@ -544,6 +700,7 @@ export function labelList(
       String(limit + 1),
     ],
     checked: false,
+    readOnly: true,
     parse: (r) => limited(manyLabelsOrNull(r), limit),
   }
 }
@@ -566,7 +723,7 @@ export function issueList(
   const argv = ['issue', 'list', ...repoArgs(target)]
   if (opts.label !== undefined) argv.push('--label', opts.label)
   argv.push('--json', ISSUE_FIELDS, '--limit', String(limit + 1))
-  return { argv, checked: false, parse: (r) => limited(manyIssuesOrNull(r), limit) }
+  return { argv, checked: false, readOnly: true, parse: (r) => limited(manyIssuesOrNull(r), limit) }
 }
 
 /** `gh issue view <n> --json …` — one issue, same field set as {@link issueList}. */
@@ -574,6 +731,7 @@ export function issueView(number: number, target?: GhTarget): GhVerb<IssueRow | 
   return {
     argv: ['issue', 'view', String(number), ...repoArgs(target), '--json', ISSUE_FIELDS],
     checked: false,
+    readOnly: true,
     parse: oneIssueOrNull,
   }
 }
@@ -604,6 +762,7 @@ export function createPr(opts: CreatePrOptions, target?: GhTarget): GhVerb<strin
   return {
     argv,
     checked: true,
+    readOnly: false,
     parse(r) {
       const urls = r.stdout
         .split('\n')
@@ -623,7 +782,7 @@ export function editPr(
   const argv = ['pr', 'edit', String(number), ...repoArgs(target)]
   if (opts.title !== undefined) argv.push('--title', opts.title)
   if (opts.body !== undefined) argv.push('--body', opts.body)
-  return { argv, checked: true, parse: nothing }
+  return { argv, checked: true, readOnly: false, parse: nothing }
 }
 
 /** `gh pr edit <n> --body` — rewrite just the body. */
@@ -639,14 +798,14 @@ export function prUpdateBranch(
 ): GhVerb<void> {
   const argv = ['pr', 'update-branch', String(number), ...repoArgs(target)]
   if (style === 'rebase') argv.push('--rebase')
-  return { argv, checked: true, parse: nothing }
+  return { argv, checked: true, readOnly: false, parse: nothing }
 }
 
 /** `gh pr ready <n> [--undo]` — mark a draft PR ready for review, or (with `draft`) convert it back to a draft. */
 export function prSetDraft(number: number, draft: boolean, target?: GhTarget): GhVerb<void> {
   const argv = ['pr', 'ready', String(number), ...repoArgs(target)]
   if (draft) argv.push('--undo')
-  return { argv, checked: true, parse: nothing }
+  return { argv, checked: true, readOnly: false, parse: nothing }
 }
 
 /**
@@ -680,6 +839,7 @@ export function issueCommentEdit(commentId: string, body: string, target?: GhTar
       `body=${body}`,
     ],
     checked: true,
+    readOnly: false,
     parse: nothing,
   }
 }
@@ -708,7 +868,7 @@ export function prMerge(
     '--match-head-commit',
     opts.headSha,
   ]
-  return { argv, checked: true, parse: nothing }
+  return { argv, checked: true, readOnly: false, parse: nothing }
 }
 
 /** One review thread: whether it is resolved and who spoke last. */
@@ -749,6 +909,7 @@ export function prReviewThreads(number: number, target?: GhTarget): GhVerb<Revie
       `query=${REVIEW_THREADS_QUERY}`,
     ],
     checked: false,
+    readOnly: true,
     parse(r) {
       if (r.exitCode !== 0) return null
       let data: unknown
@@ -811,7 +972,7 @@ export function createLabel(opts: CreateLabelOptions, target?: GhTarget): GhVerb
     opts.description,
     '--force',
   ]
-  return { argv, checked: true, parse: nothing }
+  return { argv, checked: true, readOnly: false, parse: nothing }
 }
 
 /** `gh label edit <name>` — recolor or redescribe; omits a flag not given. */
@@ -823,7 +984,7 @@ export function editLabel(
   const argv = ['label', 'edit', name, ...repoArgs(target)]
   if (opts.color !== undefined) argv.push('--color', opts.color)
   if (opts.description !== undefined) argv.push('--description', opts.description)
-  return { argv, checked: true, parse: nothing }
+  return { argv, checked: true, readOnly: false, parse: nothing }
 }
 
 /**
@@ -852,7 +1013,7 @@ export function setIssueLabel(
   const argv = ['issue', 'edit', String(number), ...repoArgs(target)]
   if (currentLabel !== null) argv.push('--remove-label', currentLabel)
   argv.push('--add-label', newLabel)
-  return { argv, checked: true, parse: nothing }
+  return { argv, checked: true, readOnly: false, parse: nothing }
 }
 
 /** `gh pr diff <n>` — the PR's unified diff, as text. Checked: an empty diff is a value, a failed call is not. */
@@ -860,6 +1021,7 @@ export function prDiff(number: number, target?: GhTarget): GhVerb<string> {
   return {
     argv: ['pr', 'diff', String(number), ...repoArgs(target)],
     checked: true,
+    readOnly: true,
     parse: (r) => r.stdout,
   }
 }
@@ -869,6 +1031,7 @@ export function prComment(number: number, body: string, target?: GhTarget): GhVe
   return {
     argv: ['pr', 'comment', String(number), ...repoArgs(target), '--body', body],
     checked: true,
+    readOnly: false,
     parse(r) {
       const lines = r.stdout
         .split('\n')
@@ -942,6 +1105,7 @@ export function createReview(
       '-',
     ],
     checked: true,
+    readOnly: false,
     input: JSON.stringify(payload),
     parse(r) {
       try {

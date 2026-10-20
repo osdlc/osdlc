@@ -228,6 +228,20 @@ export class Gh {
     return this.exec(v.api(endpoint, opts, this.target), opts.timeoutMs)
   }
 
+  /**
+   * A GraphQL query; each page's `data`, or null on a failed or partial
+   * result. See the `graphql` verb.
+   *
+   * @experimental
+   */
+  graphql(
+    query: string,
+    variables: Record<string, v.GraphqlVariable> = {},
+    opts: v.GraphqlOptions & { timeoutMs?: number | undefined } = {},
+  ): unknown[] | null {
+    return this.exec(v.graphql(query, variables, opts, this.target), opts.timeoutMs)
+  }
+
   /** Every label on the repository (up to `opts.limit`, default 1000), or null when gh failed. */
   labelList(
     opts: { limit?: number | undefined; timeoutMs?: number | undefined } = {},

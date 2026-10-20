@@ -187,6 +187,19 @@ export class AsyncGh {
     return this.exec(v.api(endpoint, opts, this.target), opts)
   }
 
+  /**
+   * A GraphQL query; each page's `data`, or null. See `Gh.graphql`.
+   *
+   * @experimental
+   */
+  graphql(
+    query: string,
+    variables: Record<string, v.GraphqlVariable> = {},
+    opts: v.GraphqlOptions & AsyncCallOptions = {},
+  ): Promise<unknown[] | null> {
+    return this.exec(v.graphql(query, variables, opts, this.target), opts)
+  }
+
   /** Every label on the repository (up to `opts.limit`, default 1000), or null when gh failed. */
   labelList(
     opts: { limit?: number | undefined } & AsyncCallOptions = {},
