@@ -14,3 +14,13 @@ First public release. `@osdlc/typed-gh` is a typed GitHub client over the `gh` c
 - Parsers for repository and pull request URLs.
 - `issueCommentEdit` and `createReview`, with `CreateReviewOptions` and `ReviewComment`, are experimental (see the README's Stability section).
 - ESM with `.d.ts` types, for Node 22 or newer and Bun, on macOS and Linux. Licence `MIT OR Apache-2.0`.
+
+Changes since 0.4.1:
+
+- Breaking: four verbs are renamed. `labelCreate` is `createLabel`, `labelEdit` is `editLabel`, `reviewCreate` is `createReview`, and `version` is `installed`.
+- Breaking: these are no longer exported: `needsMergeStateRetry`, `parseActor`, `parseCheckRun` and `PullRequestJson`. The `asAsync` helper is gone too.
+- Breaking: the `command-seam` re-exports are removed: `runChecked`, `runCheckedAsync`, `spawnRunner` and `spawnRunnerAsync`. Import them from `@osdlc/command-seam`.
+- Changed: `createPr` returns the last URL line of `gh` output. It returns `''`, and does not throw, when `gh` printed no URL.
+- Changed: `issueCommentEdit` throws `RangeError` for a comment id that is not all digits. The async client rejects with it.
+- Fixed: a login that is only `[bot]` now reads as `null`.
+- Fixed: `api` with headers reads the last header block if `gh` prints more than one.
