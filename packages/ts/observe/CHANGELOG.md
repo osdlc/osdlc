@@ -1,4 +1,4 @@
-# Changelog
+# @osdlc/observe
 
 ## 0.3.7
 

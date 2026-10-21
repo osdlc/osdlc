@@ -32,6 +32,8 @@ When not to use it:
 npm install @osdlc/frontmatter-lossless
 ```
 
+`pnpm add @osdlc/frontmatter-lossless` and `yarn add @osdlc/frontmatter-lossless` work too.
+
 ESM only. Node.js 22 or later.
 
 ## Quick start
@@ -136,6 +138,6 @@ handling with no imports, but other runtimes, such as Deno or a browser, are
 not tested. It has no file system or platform code, so it runs on any
 operating system. Its tests run on Linux and macOS.
 
-## License
+## Licence
 
-`MIT OR Apache-2.0`, at your option.
+`MIT OR Apache-2.0`, at your option. See [LICENSE-MIT](./LICENSE-MIT) and [LICENSE-APACHE](./LICENSE-APACHE).

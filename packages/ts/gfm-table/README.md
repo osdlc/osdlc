@@ -35,6 +35,8 @@ When not to use it:
 npm install @osdlc/gfm-table
 ```
 
+`pnpm add @osdlc/gfm-table` and `yarn add @osdlc/gfm-table` work too.
+
 ESM only. Node.js 22 or later. Bun also works.
 
 ## Quick start
@@ -148,6 +150,6 @@ Node.js 22 or later, ESM only. Bun works too, through the compiled `dist/`. The 
 file system, process or platform code, so it runs on any operating system.
 Its tests run on Linux and macOS.
 
-## License
+## Licence
 
-`MIT OR Apache-2.0`, at your option.
+`MIT OR Apache-2.0`, at your option. See [LICENSE-MIT](./LICENSE-MIT) and [LICENSE-APACHE](./LICENSE-APACHE).

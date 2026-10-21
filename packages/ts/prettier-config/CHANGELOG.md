@@ -1,4 +1,4 @@
-# Changelog
+# @osdlc/prettier-config
 
 ## 0.3.0
 

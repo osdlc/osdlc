@@ -1,4 +1,4 @@
-# Changelog
+# @osdlc/intersect
 
 ## 0.3.0
 

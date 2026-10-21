@@ -1,4 +1,4 @@
-# Changelog
+# @osdlc/gfm-table
 
 ## 0.3.0
 

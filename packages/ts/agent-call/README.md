@@ -63,6 +63,8 @@ When not to use it:
 npm install @osdlc/agent-call
 ```
 
+`pnpm add @osdlc/agent-call` and `yarn add @osdlc/agent-call` work too.
+
 ESM only. Node.js 22 or later.
 
 The agent CLIs are not installed by this package. Install the ones you call
@@ -470,3 +472,7 @@ backend and was not exercised. The live suite has no case for these six yet.
   primitive such tools build on.
 - A trace backend. `agent-conversation/1` is meant to be stored or exported;
   bring your own sink.
+
+## Licence
+
+`MIT OR Apache-2.0`, at your option. See [LICENSE-MIT](./LICENSE-MIT) and [LICENSE-APACHE](./LICENSE-APACHE).

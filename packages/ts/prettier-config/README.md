@@ -4,9 +4,13 @@ A shared [Prettier](https://prettier.io) config: no semicolons, single quotes,
 trailing commas everywhere, 100 columns, two-space indent. Markdown is left
 alone (see below).
 
+## Install
+
 ```sh
 npm install --save-dev @osdlc/prettier-config prettier
 ```
+
+`pnpm add -D @osdlc/prettier-config prettier` and `yarn add -D @osdlc/prettier-config prettier` work too.
 
 ## Use
 
@@ -55,6 +59,6 @@ Developed and released in
 under `packages/ts/prettier-config`. Report issues at
 [osdlc/osdlc/issues](https://github.com/osdlc/osdlc/issues).
 
-## License
+## Licence
 
-[MIT](https://github.com/osdlc/osdlc/blob/main/packages/ts/prettier-config/LICENSE-MIT) or [Apache-2.0](https://github.com/osdlc/osdlc/blob/main/packages/ts/prettier-config/LICENSE-APACHE), at your option.
+`MIT OR Apache-2.0`, at your option. See [LICENSE-MIT](./LICENSE-MIT) and [LICENSE-APACHE](./LICENSE-APACHE).

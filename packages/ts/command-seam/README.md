@@ -911,6 +911,6 @@ See
 Report security issues as described in
 [SECURITY.md](https://github.com/osdlc/osdlc/blob/main/packages/ts/command-seam/SECURITY.md).
 
-## License
+## Licence
 
-[MIT](https://github.com/osdlc/osdlc/blob/main/packages/ts/command-seam/LICENSE-MIT) or [Apache-2.0](https://github.com/osdlc/osdlc/blob/main/packages/ts/command-seam/LICENSE-APACHE), at your option.
+`MIT OR Apache-2.0`, at your option. See [LICENSE-MIT](./LICENSE-MIT) and [LICENSE-APACHE](./LICENSE-APACHE).

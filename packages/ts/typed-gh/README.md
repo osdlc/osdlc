@@ -15,7 +15,9 @@ scripts, release bots and coding agents. It is the GitHub-side companion of
 npm install @osdlc/typed-gh
 ```
 
-It needs Node 22 or later (Bun also works, through the compiled `dist/`), and the `gh` CLI on `PATH`, signed in with `gh auth login`.
+`pnpm add @osdlc/typed-gh` and `yarn add @osdlc/typed-gh` work too.
+
+It needs Node `^22.22.2 || ^24.15.0 || >=26.0.0`, the range of its dependency `@osdlc/typed-git` (Bun also works, through the compiled `dist/`), and the `gh` CLI on `PATH`, signed in with `gh auth login`.
 It is supported on macOS and Linux. Windows is not supported yet; it will be once a Windows CI job
 runs the tests.
 
@@ -514,4 +516,4 @@ shell, so nothing in it is specific to one shell.
 
 ## Licence
 
-`MIT OR Apache-2.0`, at your option. See `LICENSE-MIT` and `LICENSE-APACHE`.
+`MIT OR Apache-2.0`, at your option. See [LICENSE-MIT](./LICENSE-MIT) and [LICENSE-APACHE](./LICENSE-APACHE).

@@ -1,4 +1,4 @@
-# Changelog
+# @osdlc/typed-gh
 
 ## 0.6.0
 

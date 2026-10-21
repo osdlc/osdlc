@@ -1,4 +1,4 @@
-# Changelog
+# @osdlc/command-seam
 
 ## 0.8.0
 

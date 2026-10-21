@@ -1,4 +1,4 @@
-# Changelog
+# @osdlc/frontmatter-lossless
 
 ## 1.1.0
 

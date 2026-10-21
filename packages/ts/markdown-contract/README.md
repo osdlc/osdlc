@@ -37,6 +37,8 @@ never changes the documents it checks. Only `markdown-contract init` and
 npm install @osdlc/markdown-contract zod
 ```
 
+`pnpm add @osdlc/markdown-contract` and `yarn add @osdlc/markdown-contract` work too.
+
 ESM only. Node.js 22 or later. `zod` 4 is a peer dependency, so your schemas
 and the package use the same copy.
 
@@ -308,7 +310,6 @@ contracts, documents and expected findings that any engine for these
 contracts can run. See [corpus/README.md](./corpus/README.md) and
 [CONTRIBUTING.md](./CONTRIBUTING.md).
 
-## License
+## Licence
 
-MIT OR Apache-2.0, at your option. See [LICENSE-MIT](./LICENSE-MIT) and
-[LICENSE-APACHE](./LICENSE-APACHE).
+`MIT OR Apache-2.0`, at your option. See [LICENSE-MIT](./LICENSE-MIT) and [LICENSE-APACHE](./LICENSE-APACHE).

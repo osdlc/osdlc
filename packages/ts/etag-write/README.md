@@ -29,6 +29,8 @@ When not to use it:
 npm install @osdlc/etag-write
 ```
 
+`pnpm add @osdlc/etag-write` and `yarn add @osdlc/etag-write` work too.
+
 ESM only. Node.js 22 or later. Bun also works.
 
 ## Quick start
@@ -157,6 +159,6 @@ is not tested: the code has no Windows-specific path, the permission tests are
 skipped there, and a rename over a file that another process holds open can
 fail on Windows.
 
-## License
+## Licence
 
-`MIT OR Apache-2.0`, at your option.
+`MIT OR Apache-2.0`, at your option. See [LICENSE-MIT](./LICENSE-MIT) and [LICENSE-APACHE](./LICENSE-APACHE).

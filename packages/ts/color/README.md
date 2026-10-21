@@ -40,6 +40,8 @@ When not to use it:
 npm install @osdlc/color
 ```
 
+`pnpm add @osdlc/color` and `yarn add @osdlc/color` work too.
+
 ESM only. Node.js 22 or later.
 
 ## Quick start
@@ -171,6 +173,6 @@ Node.js 22 or later, ESM only. The built package is tested on Node.js 22 and
 runtimes, such as Bun, Deno or a browser, are not tested. It has no file system
 or platform code, so it runs on any operating system. Its tests run on Linux and macOS.
 
-## License
+## Licence
 
-`MIT OR Apache-2.0`, at your option.
+`MIT OR Apache-2.0`, at your option. See [LICENSE-MIT](./LICENSE-MIT) and [LICENSE-APACHE](./LICENSE-APACHE).

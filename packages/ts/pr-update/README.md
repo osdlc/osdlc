@@ -21,8 +21,7 @@ const report = runSurvey(
 );
 ```
 
-Or from a shell (`npx @osdlc/pr-update …`, or install it with
-`npm install @osdlc/pr-update`; ESM only, Node.js 22.18 or later):
+Or from a shell (`npx @osdlc/pr-update …`, or after installing the package):
 
 ```sh
 pr-update survey --output json
@@ -30,6 +29,16 @@ pr-update update --apply --strategy rebase     # every open PR, parent first
 pr-update update --branch --apply              # the PR of the branch you are on
 pr-update update --pr 12 --apply --report out.json
 ```
+
+## Install
+
+```sh
+npm install @osdlc/pr-update
+```
+
+ESM only. Node.js `^22.22.2 || ^24.15.0 || >=26.0.0`, the range of its
+dependency `@osdlc/typed-git`. `pnpm add @osdlc/pr-update` and
+`yarn add @osdlc/pr-update` work too.
 
 ## Why this exists as its own package
 
@@ -346,6 +355,6 @@ full table.
 - Graphite `gt restack` and git-town `sync` restack a branch stack parent
   first. The stack order and blocked children follow the same idea.
 
-## License
+## Licence
 
-MIT OR Apache-2.0
+`MIT OR Apache-2.0`, at your option. See [LICENSE-MIT](./LICENSE-MIT) and [LICENSE-APACHE](./LICENSE-APACHE).

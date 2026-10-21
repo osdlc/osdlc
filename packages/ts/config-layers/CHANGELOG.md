@@ -1,4 +1,4 @@
-# Changelog
+# @osdlc/config-layers
 
 ## 0.6.0
 

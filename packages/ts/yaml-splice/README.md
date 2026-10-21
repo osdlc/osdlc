@@ -35,6 +35,8 @@ When not to use it:
 npm install @osdlc/yaml-splice
 ```
 
+`pnpm add @osdlc/yaml-splice` and `yarn add @osdlc/yaml-splice` work too.
+
 ESM only. Node.js 22 or later, or Bun.
 
 ## Quick start
@@ -161,6 +163,6 @@ suite runs on Vitest under Node. It has no native code and no platform-specific
 code, so it runs on any operating system Node.js runs on. Its tests run on
 Linux and macOS.
 
-## License
+## Licence
 
-`MIT OR Apache-2.0`, at your option.
+`MIT OR Apache-2.0`, at your option. See [LICENSE-MIT](./LICENSE-MIT) and [LICENSE-APACHE](./LICENSE-APACHE).

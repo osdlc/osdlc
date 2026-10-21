@@ -15,6 +15,8 @@ it does not fit a browser, and it is not an implementation of git.
 npm install @osdlc/typed-git
 ```
 
+`pnpm add @osdlc/typed-git` and `yarn add @osdlc/typed-git` work too.
+
 The package is ESM only. It needs Node `^22.22.2 || ^24.15.0 || >=26.0.0`, the
 range its dependency `hosted-git-info` needs, and a `git` executable on
 `PATH`. Its types use the global `AbortSignal`, so a project needs
@@ -766,6 +768,6 @@ de-duplicate.
   change what it returns.
 - Test fixtures need a manual `cleanup()`.
 
-## License
+## Licence
 
-`MIT OR Apache-2.0`, at your option.
+`MIT OR Apache-2.0`, at your option. See [LICENSE-MIT](./LICENSE-MIT) and [LICENSE-APACHE](./LICENSE-APACHE).

@@ -3,9 +3,13 @@
 Strict TypeScript compiler presets: one shared bar, plus the package shapes
 that recur on top of it. Consumed through `extends`; ships no code.
 
+## Install
+
 ```sh
 npm install --save-dev @osdlc/tsconfig typescript
 ```
+
+`pnpm add -D @osdlc/tsconfig typescript` and `yarn add -D @osdlc/tsconfig typescript` work too.
 
 Requires TypeScript 5.7 or later (`build` uses `rewriteRelativeImportExtensions`
 and the `${configDir}` template).
@@ -79,6 +83,6 @@ Developed and released in
 under `packages/ts/tsconfig`. Report issues at
 [osdlc/osdlc/issues](https://github.com/osdlc/osdlc/issues).
 
-## License
+## Licence
 
-[MIT](https://github.com/osdlc/osdlc/blob/main/packages/ts/tsconfig/LICENSE-MIT) or [Apache-2.0](https://github.com/osdlc/osdlc/blob/main/packages/ts/tsconfig/LICENSE-APACHE), at your option.
+`MIT OR Apache-2.0`, at your option. See [LICENSE-MIT](./LICENSE-MIT) and [LICENSE-APACHE](./LICENSE-APACHE).

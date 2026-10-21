@@ -13,6 +13,11 @@ a new adapter and not a rewrite of every caller.
 npm install @osdlc/code-host
 ```
 
+ESM only. Node.js `^22.22.2 || ^24.15.0 || >=26.0.0`, the range of its
+dependency `@osdlc/typed-git` (which takes it from `hosted-git-info`).
+
+`pnpm add @osdlc/code-host` and `yarn add @osdlc/code-host` work too.
+
 ## Quick start
 
 ```ts
@@ -29,7 +34,7 @@ Tests pass a fake `CommandRunner` instead, so nothing touches the network.
 
 ## Runtime and platform
 
-Node.js 22.18 or later, ESM only; Bun also runs it, through the compiled `dist/`. No `Bun.*` API
+Node.js `^22.22.2 || ^24.15.0 || >=26.0.0`, ESM only; Bun also runs it, through the compiled `dist/`. No `Bun.*` API
 is used. The GitHub adapter needs the `gh` CLI on `PATH`, signed
 in; the Forgejo adapter needs `curl` and a personal access token in `FORGEJO_TOKEN` (or the variable
 named by the `forgejoTokenEnv` option). Both need `git` for drift counts. Linux and macOS are the
@@ -81,6 +86,6 @@ adapters, so a caller written against `CodeHost` does not change when the host
 does. It reads no token for GitHub (`gh` finds its own) and runs every
 subprocess through an injected runner, which makes callers testable offline.
 
-## License
+## Licence
 
-MIT OR Apache-2.0
+`MIT OR Apache-2.0`, at your option. See [LICENSE-MIT](./LICENSE-MIT) and [LICENSE-APACHE](./LICENSE-APACHE).

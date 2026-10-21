@@ -1,4 +1,4 @@
-# Changelog
+# @osdlc/detect-harness
 
 ## 0.4.2
 

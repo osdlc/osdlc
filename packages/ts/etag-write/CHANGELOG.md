@@ -1,4 +1,4 @@
-# Changelog
+# @osdlc/etag-write
 
 ## 0.2.0
 
