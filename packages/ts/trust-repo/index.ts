@@ -1,5 +1,5 @@
 /**
- * `@osdlc/cli-tool/trust` — per-repository consent to run a repository's
+ * `@osdlc/trust-repo` — per-repository consent to run a repository's
  * own scripts, so a tool can ask "has a person consented to running this
  * repository's scripts?" once and remember the answer.
  *

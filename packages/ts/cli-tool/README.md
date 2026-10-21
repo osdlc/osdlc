@@ -4,9 +4,8 @@ What a standalone CLI needs before it does anything of its own.
 
 A command-line tool written in TypeScript tends to repeat the same groundwork:
 a way to write output that a test can capture, one rule for exit codes, flags
-and help text that agree with each other, a launcher that can run the tool from
-a development checkout, and a decision about whether to run scripts that a
-repository supplies. This package holds that groundwork so each tool does not
+and help text that agree with each other, and a launcher that can run the tool from
+a development checkout. This package holds that groundwork so each tool does not
 write it again. It is a library of parts. A tool's own `main` stays its own.
 
 It is for CLIs that other people run on their machines and that you want to test
@@ -67,13 +66,12 @@ import { main } from '../dist/cli.js'
 await runMain(main, { name: 'sweep' })
 ```
 
-## Three entries
+## Two entries
 
 | Import | What it holds |
 |---|---|
 | `@osdlc/cli-tool` | The substrate below — output seam, context, exit codes, flag declaration, bin shim |
 | [`@osdlc/cli-tool/devlink`](./devlink/README.md) | Running a system-installed tool from a development checkout, with link history |
-| [`@osdlc/cli-tool/trust`](./trust/README.md) | Per-repository consent to run a repository's own scripts, remembered across runs, and the standing policy over it |
 
 The tool's project and machine config files are a separate package,
 `@osdlc/config-layers`. The root re-exports
@@ -81,7 +79,7 @@ its directory and did-you-mean helpers (`systemDirs`, `TieredDirs`,
 `envVars`, `closestMatches`, `didYouMean`) and their types.
 
 A bin shim asks devlink which checkout should answer and then hands control to
-`main`; `main` reads its config, gates project-sourced behaviour on trust, and
+`main`; `main` reads its config and
 writes through the io seam.
 
 ## The substrate
@@ -277,12 +275,10 @@ experimental export.
 Stable: the substrate in the root entry, which is the output seam, the context,
 the exit codes, `defineCli` and its types, `runMain` and the yes/no prompt.
 
-Experimental: the whole `devlink` entry, the whole `trust` entry, and
+Experimental: the whole `devlink` entry, and
 `systemDirs`, `VendorDirs`, `closestMatches` and `didYouMean`, which the root
 re-exports from `@osdlc/config-layers`. `TieredDirs`, `envVars` and their types
-follow `@osdlc/tiered-dirs`. The trust entry decides whether
-a repository's own scripts may run, and its policy layer is new. Its shape stays
-open until it has had a security review.
+follow `@osdlc/tiered-dirs`.
 
 The experimental exports of `@osdlc/cli-tool`:
 
@@ -302,20 +298,12 @@ The experimental exports of `@osdlc/cli-tool/devlink`:
 `runDevCli`, `samePath`, `stateDir`, `status`, `suppressed`, `usage`, `use`, `validateSpec`,
 `writeActive`
 
-The experimental exports of `@osdlc/cli-tool/trust`:
-
-`ExecGate`, `PolicyBy`, `PolicyDecision`, `PolicyDecisionOptions`, `ResolveExecGateArgs`,
-`TRUST_MARKER_DIR`, `TrustBy`, `TrustDecision`, `TrustPolicy`, `TrustResult`, `TrustStore`,
-`TrustStoreOptions`, `pathGlobToRegExp`, `policyDecision`, `policyExecGate`, `resolveExecGate`,
-`resolveTrustRoot`, `trustDecision`, `trustStore`, `trustStoreDir`, `withheldHint`, `xdgHome`
-
 A test compares each list with the `@experimental` tags in the source.
 
 ## Platforms and runtimes
 
 Linux and macOS for the 0.x line. Windows support is planned before 1.0. The
-devlink launcher is a POSIX shell script and the trust store uses XDG state
-paths on every platform, so neither runs on Windows today.
+devlink launcher is a POSIX shell script, so it does not run on Windows today.
 
 Node.js 22.18 or later, ESM only. Bun also runs it and loads the TypeScript source
 through the `bun` export condition. The tests run on Vitest under Node.

@@ -1,10 +1,20 @@
-# `@osdlc/cli-tool/trust`
+# @osdlc/trust-repo
 
 Per-repository consent to run a repository's own scripts, remembered across
 runs.
 
+## Install
+
+```sh
+npm install @osdlc/trust-repo
+```
+
+ESM only. Node.js 22.18 or later. Bun also works.
+
+## Quick start
+
 ```ts
-import { resolveExecGate, trustStore, withheldHint } from '@osdlc/cli-tool/trust'
+import { resolveExecGate, trustStore, withheldHint } from '@osdlc/trust-repo'
 
 const trust = trustStore({ tool: 'tooly' })
 
@@ -29,7 +39,7 @@ setting a repository can write is a setting a repository can grant itself.
 So the tool asks a person once, per repository, and remembers the answer
 here.
 
-Any tool of the `@osdlc/cli-tool` shape gets its own store by name.
+Any CLI tool gets its own store by name.
 
 ## The store
 
@@ -128,7 +138,7 @@ carries a `trust:` block (`paths` globs and `owners`, in the tool's own
 `@osdlc/config-layers` machine schema) layers that policy over the store:
 
 ```ts
-import { policyExecGate, trustDecision } from '@osdlc/cli-tool/trust'
+import { policyExecGate, trustDecision } from '@osdlc/trust-repo'
 
 const policy = { paths: ['~/work/**'], owners: ['my-org'] }
 const decision = await trustDecision(trust, root, policy, { expandPath, ownerOf })
@@ -152,5 +162,34 @@ override differently (`--trust`) does not have to write its own copy.
 
 ## Runtime
 
-`node:fs/promises`, `node:path`, `node:crypto`, `node:os` only; no
-`child_process`. Runs under Bun and Node.
+Runs under Bun and Node. It uses `node:fs/promises`, `node:path`, `node:crypto`,
+`node:os`, `@osdlc/etag-write` and `@osdlc/path-guard`; no `child_process`.
+
+## Stability
+
+The package is 0.x, so any minor release may break the API. Every export is
+experimental. The package decides whether a repository's own scripts may run,
+and its policy layer is new. Its shape stays open until it has had a security
+review. Any release may change or remove an experimental export.
+
+The experimental exports of `@osdlc/trust-repo`:
+
+`ExecGate`, `PolicyBy`, `PolicyDecision`, `PolicyDecisionOptions`, `ResolveExecGateArgs`,
+`TRUST_MARKER_DIR`, `TrustBy`, `TrustDecision`, `TrustPolicy`, `TrustResult`, `TrustStore`,
+`TrustStoreOptions`, `pathGlobToRegExp`, `policyDecision`, `policyExecGate`, `resolveExecGate`,
+`resolveTrustRoot`, `trustDecision`, `trustStore`, `trustStoreDir`, `withheldHint`, `xdgHome`
+
+A test compares this list with the `@experimental` tags in the source.
+
+## Platforms and runtimes
+
+Linux and macOS for the 0.x line. Windows support is planned before 1.0. The
+store uses XDG state paths on every platform, so it does not run on Windows
+today.
+
+Node.js 22.18 or later, ESM only. Bun also runs it and loads the TypeScript source
+through the `bun` export condition. The tests run on Vitest under Node.
+
+## License
+
+`MIT OR Apache-2.0`. See [LICENSE-MIT](./LICENSE-MIT) and [LICENSE-APACHE](./LICENSE-APACHE).

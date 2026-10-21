@@ -2,8 +2,7 @@
  * Per-repository consent to run a repository's own scripts.
  *
  * {@link trustStore} answers "has a person consented to running THIS
- * repository's scripts?" for any tool of the `@osdlc/cli-tool` shape, one store per
- * tool name.
+ * repository's scripts?" for any CLI tool, one store per tool name.
  *
  * Why it exists at all: some things a tool does to a repository it did not
  * write are code execution in disguise — running that repository's own

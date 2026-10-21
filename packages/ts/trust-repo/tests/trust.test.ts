@@ -27,7 +27,7 @@ afterAll(async () => {
 })
 
 async function root(): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), 'cli-tool-trust-'))
+  const dir = await mkdtemp(join(tmpdir(), 'trust-repo-'))
   roots.push(dir)
   return dir
 }
