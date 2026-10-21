@@ -9,7 +9,10 @@
 //
 // Each package must also keep the shared shape (package-shape.mjs): dist-only
 // ESM, no `bun` export condition, no TypeScript source in the tarball, no bun in
-// its scripts, and no tsconfig `customConditions` or sibling `paths`.
+// its scripts, and no tsconfig `customConditions` or sibling `paths`; and the
+// conventions in conventionProblems (author, engines, scripts, layout, docs,
+// README sections, .gitignore, the pnpm catalog), plus no `catalog:` or
+// `workspace:` range left in the packed package.json.
 //
 // Every packages/ts/* package is packed first. The consumer maps each other
 // workspace package to its local tarball with npm `overrides`, so siblings
@@ -35,7 +38,13 @@ import {
 import { tmpdir } from 'node:os'
 import { basename, join, relative, resolve } from 'node:path'
 
-import { parseJsonc, shapeProblems } from './package-shape.mjs'
+import {
+  conventionProblems,
+  packedManifestProblems,
+  parseCatalog,
+  parseJsonc,
+  shapeProblems,
+} from './package-shape.mjs'
 
 const root = process.cwd()
 
@@ -135,6 +144,29 @@ function tsconfigs(pkgDir) {
   return out
 }
 
+/** The package's files relative to it, skipping what a build or install leaves behind. */
+function packageFiles(pkgDir, rel = '') {
+  const out = []
+  for (const entry of readdirSync(join(pkgDir, rel), { withFileTypes: true })) {
+    if (['node_modules', 'dist', 'coverage', '.git'].includes(entry.name)) continue
+    if (entry.name.startsWith('.readme-')) continue
+    const path = rel === '' ? entry.name : `${rel}/${entry.name}`
+    if (entry.isDirectory()) out.push(...packageFiles(pkgDir, path))
+    else out.push(path)
+  }
+  return out
+}
+
+/** The file's text, or null when it does not exist. */
+function textOrNull(file) {
+  return existsSync(file) ? readFileSync(file, 'utf8') : null
+}
+
+/** The manifest `pnpm pack` wrote into the tarball. */
+function packedManifest(tarball) {
+  return JSON.parse(run('tar', ['-xzOf', tarball, 'package/package.json'], root))
+}
+
 /** True when the manifest names a `types` entry, top level or in `exports`. */
 function shipsTypes(pkg) {
   if (pkg.types || pkg.typings) return true
@@ -152,7 +184,18 @@ for (const pkgDir of new Set([...allDirs, ...dirs])) {
   }
 }
 
+// The pnpm catalog, and every workspace package's `engines.node` by name.
+const catalog = parseCatalog(readFileSync(join(root, 'pnpm-workspace.yaml'), 'utf8'))
+const engines = {}
+for (const { pkg } of packed.values()) {
+  if (pkg.engines?.node !== undefined) engines[pkg.name] = pkg.engines.node
+}
+
 let failed = 0
+if (!existsSync(join(root, '.oxlintrc.json'))) {
+  failed++
+  console.error('FAILED: .oxlintrc.json is missing at the repository root; every package lints with it')
+}
 for (const pkgDir of dirs) {
   const { pkg, tarball, error } = packed.get(pkgDir)
   console.log(`\n== ${pkg.name}@${pkg.version} (${relative(root, pkgDir)})`)
@@ -162,11 +205,25 @@ for (const pkgDir of dirs) {
       throw new Error(`license is ${JSON.stringify(pkg.license)}, expected ${JSON.stringify(LICENSE)}`)
     }
     console.log(`packed ${tarball}`)
-    const shape = shapeProblems({
-      pkg,
-      packedFiles: packedFiles(tarball),
-      tsconfigs: tsconfigs(pkgDir),
-    })
+    const shape = [
+      ...shapeProblems({
+        pkg,
+        packedFiles: packedFiles(tarball),
+        tsconfigs: tsconfigs(pkgDir),
+      }),
+      ...conventionProblems({
+        dir: basename(pkgDir),
+        pkg,
+        files: packageFiles(pkgDir),
+        tsconfigs: tsconfigs(pkgDir),
+        readme: textOrNull(join(pkgDir, 'README.md')) ?? '',
+        changelog: textOrNull(join(pkgDir, 'CHANGELOG.md')),
+        gitignore: textOrNull(join(pkgDir, '.gitignore')),
+        catalog,
+        engines,
+      }),
+      ...packedManifestProblems(packedManifest(tarball)),
+    ]
     if (shape.length > 0) {
       throw Object.assign(
         new Error(`the package is not in the shared shape:\n  ${shape.join('\n  ')}`),

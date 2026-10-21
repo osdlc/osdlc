@@ -28,6 +28,7 @@ const SHARED = [
   /^\.github\/workflows\/packages-ci\.yml$/,
   /^\.github\/scripts\/(affected-packages|check-packages|package-shape)\.mjs$/,
   /^package\.json$/,
+  /^\.oxlintrc\.json$/,
   /^pnpm-lock\.yaml$/,
   /^pnpm-workspace\.yaml$/,
   /^\.npmrc$/,
