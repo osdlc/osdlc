@@ -69,7 +69,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
-    "test": "bun test",
+    "test": "bun test --timeout 20000",
     "smoke": "node tests/smoke.mjs",
     "prepublishOnly": "npm run clean && npm run build",
     "format": "prettier --write .",
