@@ -73,7 +73,19 @@ lexical code and on the guard. The caller joins cwd itself, for example with
 `lexical.validateRelative(raw)` takes a relative path, as today.
 
 An empty root is refused as `empty_root`. Any other relative argument is
-refused as `not_absolute`. The root is checked before the other arguments.
+refused as `not_absolute`, an empty one included: `empty_root` is for roots
+only, so an empty `cwd`, `inner`, path or `realPath` argument is
+`not_absolute`. The root is checked before the other arguments.
+
+What counts as absolute depends on the code:
+
+- `lexical` reads POSIX strings on every host. A path is absolute when it
+  starts with `/`.
+- The guard uses the platform's rule, as Rust's `Path::is_absolute` does. On
+  POSIX a path is absolute when it starts with `/`. On Windows it needs a
+  drive or UNC prefix and a root, such as `C:\v` or `\\server\share\v`. A
+  rooted path with no drive, such as `\v` or `/v`, is `not_absolute` there.
+  TS uses the same rule, not `win32.isAbsolute`, which accepts `\v`.
 The race-checked helpers in `./node` call the real disk directly and keep
 their 0.2 contract.
 
@@ -110,9 +122,9 @@ refuses: `empty_root` or `not_absolute`. `guard.tryResolve` returns null where
 | ------------------ | -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
 | `escapes`          | Proved outside the root                                                                      | same                                                             |
 | `unresolvable`     | More than `MAX_LINK_HOPS` links, or the call budget spent                                    | `escapes`                                                        |
-| `empty_root`       | The root is the empty path. Used by every function that takes a root, `toRelative` included. | `escapes`; `parent_segment` in `toRelative`; false in `contains` |
+| `empty_root`       | The root is the empty path. Used by every function that takes a root, `toRelative` included. Roots only. | `escapes`; `parent_segment` in `toRelative`; false in `contains` |
 | `not_under_root`   | `toRelative`: the path does not start with the root as text                                  | `escapes`                                                        |
-| `not_absolute`     | An argument listed under Absolute input is relative                                          | resolved against cwd; false in `isUnder` and `contains`          |
+| `not_absolute`     | An argument listed under Absolute input is relative. An empty argument that is not a root, such as `cwd`, `inner`, a path or the `realPath` input, is this kind. | resolved against cwd; false in `isUnder` and `contains`          |
 | `reserved_name`    | On Windows, a segment is a reserved device name. The guard refuses it.                       | accepted                                                         |
 | `alternate_stream` | On Windows, a segment has a `name:stream` alternate data stream. The guard refuses it.       | accepted                                                         |
 
@@ -126,7 +138,7 @@ matching `PathError` variants (`ReservedName`, `AlternateStream`). `PathError` s
 | Language   | Shape                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | TypeScript | `package.json` `exports` has `.`, `./lexical` and `./node`. `.` exports `lexical`, `PathGuard`, `Resolver`, `PathError`, `PathWarning` and `MAX_LINK_HOPS`. It imports no `node:fs`; it may import `node:path`, which `PathGuard` uses for the platform's path rules. `./lexical` exports the `lexical` functions, `PathError` and `PathWarning`, imports no `node:` module, and stays browser-safe. `./node` adds `nodeGuard`, `nodeResolver` and the race-checked file helpers. |
-| Rust       | A `lexical` module, a `guard` module with `Guard<R: Resolver>`, and the error type, `PathWarning` and `PathWarningKind` at the crate root. `lexical::windows_names` is in the `lexical` module. `Resolver`, `StdResolver` and `MAX_LINK_HOPS` stay at the root.                                                                                                                                                                                                                   |
+| Rust       | A `lexical` module, and `Guard<R: Resolver>` exported at the crate root from a private `guard` module, with the error type, `PathWarning` and `PathWarningKind` at the crate root. `lexical::windows_names` is in the `lexical` module. `Resolver`, `StdResolver` and `MAX_LINK_HOPS` stay at the root.                                                                                                                                                                                                                   |
 
 ### Windows names
 
@@ -144,8 +156,10 @@ error first and `windows_names` returns nothing.
 
 The guard knows its platform: `PathGuard` through `node:path`, `Guard` through
 `cfg!(windows)`. On Windows the guard refuses the first match, in `resolve`
-and `tryResolve` before it reads the filesystem. On other platforms the guard
-accepts the path and calls its warning handler once per match. The handler is
+and `tryResolve` before it reads the filesystem. It does not call the
+warning handler there; the error carries the kind. On other platforms the
+guard accepts the path and calls its warning handler once per match. The
+handler fires only where the path is accepted. The handler is
 silent by default, and the library never writes to the console.
 
 A match is one of two kinds. The check runs on every segment, not only the
@@ -165,7 +179,9 @@ platform, so it never reaches this check.
   `NUL`, `nul.txt`, `NUL .txt`, `CON.` and `CON:` all match. `CLOCK$` is not
   in the list: Windows NT has no such device.
 - `alternate_stream`: the segment has a `:` and the base name is not a
-  reserved name. `a:b` and `file.txt:stream` match. `reserved_name` wins when
+  reserved name. `ab:c` and `file.txt:stream` match. `a:b` does not reach
+  the check: a single letter then `:` at the start is a drive, refused as
+  `windows_path`. `reserved_name` wins when
   both could apply, so `CON:` and `NUL:x` are `reserved_name`.
 
 The kinds are separate because a caller may react differently. A device name
@@ -271,6 +287,9 @@ review.
   warns on every host.
 - A Windows caller of `isInside` moves to `guard.contains`. `lexical.isUnder`
   does not read `\` or drive letters.
+- Rust `to_relative` read Windows paths in 0.2. `lexical::to_relative` is
+  POSIX, so a Windows path is `not_absolute`; a Windows caller uses
+  `Path::strip_prefix` on paths from `Guard::real_path`.
 - Every consumer that adopted 0.2.x migrates.
 
 ## Migration

@@ -9,15 +9,18 @@ created: 2026-10-19
 
 ## Definition
 
-A path that resolves outside its root. path-guard reports it as a `PathError`
-of kind `escapes` (Rust: `PathError::Escapes`).
+A path proved to resolve outside its root. path-guard reports it as a
+`PathError` of kind `escapes` (Rust: `PathError::Escapes`).
 
 ## Contrast
 
 Not a [lexical](TM-02-lexical.md) fault. A `..` [segment](TM-06-segment.md) is
-refused earlier, as `parent_segment` (Rust: `PathError::ParentSegment`), even when it would stay inside the root.
-An escape is found only after symlinks are resolved: `link/file` escapes when
-`link` points out of the root.
+refused earlier, as `parent_segment` (Rust: `PathError::ParentSegment`), even
+when it would stay inside the root. An escape is found only after symlinks are
+resolved: `link/file` escapes when `link` points out of the root.
+
+Not an [unresolvable path](TM-09-unresolvable-path.md). When the guard cannot
+prove where a path lands, the kind is `unresolvable`, not `escapes`.
 
 Not character escaping, such as a backslash or quote escape in a string.
 
@@ -27,9 +30,10 @@ An escape is a failure of [path containment](TM-03-path-containment.md). The
 test compares the [real path](TM-07-real-path.md) of the joined path with the
 real path of the root.
 
-The `escapes` kind also covers cases where no answer can be trusted: an empty
-root, more than `MAX_LINK_HOPS` links, or a spent resolver-call budget.
-
-One exception to "only after symlinks are resolved": `toRelative`
-(`to_relative`) reads no filesystem and throws `escapes` when the path is not
-under the root by whole components.
+Other refusals have their own kinds: `empty_root` for an empty root,
+`not_absolute` for a relative argument, and `not_under_root` when
+`toRelative` gets a path that is not under the root as text. In 0.2 most of
+these were `escapes`, but not all: a relative argument was resolved against
+cwd or answered false, and an empty root was false in `contains` and
+`parent_segment` in `toRelative`. See
+[D-06](../decisions/D-06-api-makes-the-filesystem-visible.md).

@@ -233,9 +233,6 @@ importers:
       '@osdlc/frontmatter-lossless':
         specifier: workspace:^
         version: link:../frontmatter-lossless
-      '@osdlc/path-guard':
-        specifier: workspace:^
-        version: link:../path-guard
       smol-toml:
         specifier: ^1.7.0
         version: 1.9.1

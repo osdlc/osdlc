@@ -7,6 +7,97 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-20
+
+A breaking release. A call site now shows which filesystem it works against:
+text checks live in the `lexical` module and take no filesystem, and every
+filesystem check runs on a `Guard` bound to one `Resolver`. The 0.2 root
+functions are removed, with no deprecated wrappers. The TypeScript twin
+`@osdlc/path-guard` 0.3.0 makes the same change, and both read the same
+conformance fixture. See
+[D-06](https://github.com/osdlc/osdlc/blob/main/packages/ts/path-guard/docs/planning/decisions/D-06-api-makes-the-filesystem-visible.md).
+
+### Removed
+
+Each 0.2 root function and what replaces it:
+
+| Removed (0.2)                                | Replacement (0.3.0)                                         |
+| -------------------------------------------- | ----------------------------------------------------------- |
+| `validate_relative(raw)`                     | `lexical::validate_relative(raw)`                           |
+| `to_relative(root, abs)`                     | `lexical::to_relative(root, abs)`                           |
+| `lexical_absolute(path)`                     | `lexical::absolute(path, cwd)`, with `cwd` passed in        |
+| `resolve(root, raw)`                         | `Guard::std().resolve(root, raw)`                           |
+| `resolve_with(&resolver, root, raw)`         | `Guard::new(&resolver).resolve(root, raw)`                  |
+| `contains(outer, inner)`                     | `Guard::std().contains(outer, inner)`, now a `Result`       |
+| `contains_with(&resolver, outer, inner)`     | `Guard::new(&resolver).contains(outer, inner)`, a `Result`  |
+| `canonical_existing_prefix(p)`               | `Guard::std().real_path(p)`, now a `Result`                 |
+
+`PathError`, `Resolver`, `StdResolver` and `MAX_LINK_HOPS` stay at the crate
+root.
+
+### Added
+
+- `lexical` module: `validate_relative`, `windows_names`, `is_under`,
+  `absolute` and `to_relative`. It reads no filesystem, current directory or
+  platform.
+- `lexical::is_under(root, path) -> Result<bool, PathError>`: text
+  containment of two absolute POSIX paths, after `.` and `..` fold. The crate
+  had no such function.
+- `lexical::windows_names(raw) -> Vec<PathWarning>`: the segments that are a
+  device name or an alternate data stream on Windows, in order, on every
+  platform.
+- `Guard<R: Resolver>` with `Guard::std()`, `Guard::new(resolver)`,
+  `with_warning_handler`, `resolve`, `contains` and `real_path`. `Guard` is
+  `Clone`, `Send` and `Sync` when its resolver is.
+- `PathWarning { kind, segment }` and `PathWarningKind` (`ReservedName`,
+  `AlternateStream`; `#[non_exhaustive]`).
+- `PathError` variants `Unresolvable`, `EmptyRoot { argument }`,
+  `NotUnderRoot`, `NotAbsolute { argument, path }`, `ReservedName` and
+  `AlternateStream`. `argument` names the parameter refused: `root` or
+  `outer` for `EmptyRoot`, and `root`, `outer`, `inner`, `path` or `cwd` for
+  `NotAbsolute`. `PathError` stays `#[non_exhaustive]`.
+- `Resolver` is implemented for `&R` and `Arc<R>`, so a guard can borrow or
+  share a resolver.
+
+### Changed
+
+- Every path argument of a guard, and the root, `cwd` and path of
+  `lexical::is_under`, `lexical::absolute` and `lexical::to_relative`, must
+  be absolute. An empty root is `EmptyRoot`. Any other relative or empty
+  argument is `NotAbsolute`. The root is checked first. Before, a relative
+  root or path was resolved against the current directory.
+- A guard reads "absolute" as the platform does: on Windows a drive or share
+  and a root. `lexical::is_under`, `lexical::absolute` and
+  `lexical::to_relative` read POSIX paths on every platform, so `\` is part of
+  a name. `lexical_absolute` and `to_relative` used the platform's paths.
+  On Windows, `lexical::to_relative` now returns `NotAbsolute` for a Windows
+  path such as `C:\v\a`. To turn a guarded path back into a relative one
+  there, use `Path::strip_prefix` on two paths from `Guard::real_path`.
+- A link loop, more than `MAX_LINK_HOPS` links, or a spent call budget is
+  `Unresolvable`, no longer `Escapes`. `Escapes` now means a proved escape.
+- An empty root is `EmptyRoot` in `resolve` (was `Escapes`), `contains` (was
+  `false`) and `to_relative` (was `ParentSegment`).
+- `to_relative` returns `NotUnderRoot` for a path not under the root (was
+  `Escapes`). It compares the paths as text, dropping `.` and empty segments.
+- `contains` returns `Result<bool, PathError>`. `Ok(false)` also means
+  "cannot prove". `Err` is only for a refused argument.
+- `real_path` folds `..` as text where the walk gives up. Its answer is
+  always absolute and never holds a `..`. `canonical_existing_prefix`
+  returned the path as written.
+- A guard refuses a root whose real path is not absolute, such as the empty
+  path a broken `Resolver` may answer: `resolve` returns `Escapes` and
+  `contains` returns `Ok(false)`, as 0.2.5 did for an empty real root.
+- A guard trusts no `Resolver` answer that is not absolute and canonical,
+  such as one holding a `.` or `..` component, for the root or any part of
+  the path: `resolve` returns `Escapes`, `contains` returns `Ok(false)` and
+  `real_path` folds the input as text. The `Resolver` docs say so.
+- On Windows a guard refuses a segment that is a reserved device name (`NUL`,
+  `com1.txt` and the rest of Microsoft's list, plus `COM0`, `LPT0`,
+  `CONIN$` and `CONOUT$`) as `ReservedName`, and one with a `name:stream` as
+  `AlternateStream`, before it reads the filesystem. Elsewhere it accepts them
+  and, for a path it accepts, sends each to its warning handler. Before, every
+  platform accepted them. The crate never writes to the console.
+
 ## [0.2.5](https://github.com/osdlc/osdlc/compare/path-guard/v0.2.4...path-guard/v0.2.5) - 2026-10-20
 
 ### Fixed

@@ -1,11 +1,15 @@
 ---
 id: D-05
 type: decision
-state: accepted
+state: superseded
 created: 2026-10-19
 ---
 
 # D-05: `isInside` and `realpathOrSelf` keep their names for 0.2.x
+
+Superseded by [D-06](D-06-api-makes-the-filesystem-visible.md). 0.3.0 removes
+both: `lexical.isUnder` replaces `isInside`, and `guard.realPath` replaces
+`realpathOrSelf`.
 
 ## Decision
 

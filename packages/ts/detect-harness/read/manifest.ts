@@ -9,9 +9,8 @@
 
 import { resolve } from 'node:path'
 
-import { isInside } from '@osdlc/path-guard'
-
 import type { JsonRead } from '../contract.ts'
+import { isInside } from '../inside.ts'
 import { asObject } from '../json.ts'
 
 type Json = Record<string, unknown>

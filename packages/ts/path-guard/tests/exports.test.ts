@@ -14,6 +14,7 @@ import ts from 'typescript'
 
 import * as main from '../index.ts'
 import * as lexicalEntry from '../lexical-entry.ts'
+import * as nodeEntry from '../node.ts'
 
 const PACKAGE_DIR = join(import.meta.dirname, '..')
 // A Windows checkout may have CRLF line ends.
@@ -38,34 +39,44 @@ const ENTRIES: Entry[] = [
     specifier: PACKAGE_NAME,
     file: join(PACKAGE_DIR, 'index.ts'),
     runtime: main,
-    values: [
-      'MAX_LINK_HOPS',
-      'PathError',
-      'canonicalExistingPrefix',
-      'contains',
-      'existingPathInside',
-      'isInside',
-      'lexicalAbsolute',
-      'nodeResolver',
-      'openContainedFile',
-      'readContainedFile',
-      'realPathInside',
-      'realpathOrSelf',
-      'resolveInside',
-      'toRelative',
-      'tryResolveInside',
-      'validateRelative',
-    ],
-    types: ['ContainedFile', 'ContainedPath', 'PathErrorKind', 'Resolver'],
+    values: ['MAX_LINK_HOPS', 'PathError', 'PathGuard', 'lexical'],
+    types: ['PathErrorKind', 'PathWarning', 'Resolver'],
   },
   {
     specifier: `${PACKAGE_NAME}/lexical`,
     file: join(PACKAGE_DIR, 'lexical-entry.ts'),
     runtime: lexicalEntry,
-    values: ['PathError', 'isUnder', 'toRelative', 'validateRelative'],
-    types: ['PathErrorKind'],
+    values: ['PathError', 'absolute', 'isUnder', 'toRelative', 'validateRelative'],
+    types: ['PathErrorKind', 'PathWarning'],
+  },
+  {
+    specifier: `${PACKAGE_NAME}/node`,
+    file: join(PACKAGE_DIR, 'node.ts'),
+    runtime: nodeEntry,
+    values: [
+      'existingPathInside',
+      'nodeGuard',
+      'nodeResolver',
+      'openContainedFile',
+      'readContainedFile',
+      'realPathInside',
+    ],
+    types: ['ContainedFile', 'ContainedPath'],
   },
 ]
+
+/** The members of the `lexical` namespace are the functions of the `./lexical` entry. */
+test('lexical holds the functions of the ./lexical entry', () => {
+  expect(Object.keys(main.lexical).sort()).toEqual(
+    Object.keys(lexicalEntry)
+      .filter((name) => name !== 'PathError')
+      .sort(),
+  )
+  for (const name of Object.keys(main.lexical) as (keyof typeof main.lexical)[]) {
+    expect(main.lexical[name]).toBe(lexicalEntry[name])
+  }
+  expect(lexicalEntry.PathError).toBe(main.PathError)
+})
 
 /** Every export of one entry point, values and types. */
 function exportNames(file: string): string[] {

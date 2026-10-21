@@ -17,12 +17,15 @@ the `Resolver` trait in Rust, whose methods are `canonicalize` and `read_link`.
 
 Not a [lexical](TM-02-lexical.md) step.
 
+Not a [guard](TM-10-guard.md). The resolver only answers filesystem
+questions. The guard holds one resolver and runs the checks.
+
 ## Notes
 
-`nodeResolver` is the real-filesystem one and the default for `resolveInside`
-and `contains`. In Rust it is `StdResolver`, used by `resolve` and `contains`,
-and `resolve_with` and `contains_with` take any other. A caller can pass an
-in-memory table to run the same
+`nodeResolver`, from `@osdlc/path-guard/node`, is the real-filesystem one. In
+Rust it is `StdResolver`. No function takes a resolver as an optional
+argument. A caller binds one to a guard: `new PathGuard(resolver)` or
+`Guard::new(resolver)`. An in-memory resolver runs the same
 [path containment](TM-03-path-containment.md) algorithm over a different
-filesystem. The [real path](TM-07-real-path.md) it returns is what containment
-compares.
+filesystem. The [real path](TM-07-real-path.md) it returns is what
+containment compares.

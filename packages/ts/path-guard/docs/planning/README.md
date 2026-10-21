@@ -33,7 +33,7 @@ package.
 - [D-03](decisions/D-03-platforms.md): Platforms
 - [D-04](decisions/D-04-error-kind-growth.md): How `PathErrorKind` grows
 - [D-05](decisions/D-05-kept-names-for-0-2.md): `isInside` and
-  `realpathOrSelf` keep their names for 0.2.x
+  `realpathOrSelf` keep their names for 0.2.x (superseded by D-06)
 - [D-06](decisions/D-06-api-makes-the-filesystem-visible.md): The 0.3.0 API
   makes the filesystem visible
 
@@ -65,3 +65,8 @@ package.
 - [TM-06](terms/TM-06-segment.md): Segment
 - [TM-07](terms/TM-07-real-path.md): Real path
 - [TM-08](terms/TM-08-path-resolver.md): Path resolver
+- [TM-09](terms/TM-09-unresolvable-path.md): Unresolvable path
+- [TM-10](terms/TM-10-guard.md): Guard
+- [TM-11](terms/TM-11-reserved-name.md): Reserved name
+- [TM-12](terms/TM-12-path-warning.md): Path warning
+- [TM-13](terms/TM-13-alternate-data-stream.md): Alternate data stream

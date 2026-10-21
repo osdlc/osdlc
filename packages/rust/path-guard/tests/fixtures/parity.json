@@ -1,4 +1,18 @@
 {
+  "_about": {
+    "fixture": "Shared by the Rust crate and the TypeScript package. A case sets one outcome: `ok`, `error` (a PathError kind) or `expected` (a boolean). Keys that start with `_` are notes, not sections.",
+    "windows": "The guard's absolute needs a drive or UNC prefix and a root on Windows, so a `/v`-style root is `not_absolute` there. On Windows the runner maps the `/v`-style roots and paths of the guard sections (`resolve`, `resolve_windows_names`, `contains`) onto a real absolute root. Lexical sections (`validate_relative`, `windows_names`, `absolute`, `is_under`, `to_relative`) are POSIX strings on every host.",
+    "windows_names": "lexical: the warnings `lexical.validateRelative` sends to `onWarning` (Rust: `lexical::windows_names` returns), in order, on every host. `error` is the kind `validate_relative` refuses the input with. Such input gives no warning.",
+    "resolve": "`guard.resolve(root, input)` under a resolver for which no path exists.",
+    "resolve_windows_names": "`guard.resolve(root, input)` under an absolute root the runner picks for its host, with a resolver for which no path exists. The runner checks the column for its host: `windows`, or `other` for every other platform. `ok` is the joined path below the root, with `/` separators. `warnings` are the calls to the guard's warning handler, in order. On Windows the guard calls no handler.",
+    "contains": "`guard.contains(outer, inner)` under a resolver for which no path exists. `expected`, or `error` for a refused argument.",
+    "absolute": "`lexical.absolute(input, cwd)`. POSIX paths on every host.",
+    "is_under": "`lexical.isUnder(root, input)`. POSIX paths on every host.",
+    "to_relative": "`lexical.toRelative(root, input)`. POSIX paths on every host.",
+    "on_disk": "`resolve_on_disk`, `contains_on_disk` and `real_path` build `dirs`, `files` and `links` in a scratch directory. A link target that starts with `/` is rooted at the scratch directory. `root`, `outer` and `inner` are relative to it. The guard is the real-disk guard.",
+    "budget": "The `resolve_on_disk` case \"a chain of links with long targets spends the call budget\" is pinned on POSIX hosts only. Its link targets hold `..`, and Windows folds `zz/..` as text before it follows a link, so there the chain is cheap and the case is checked against where the filesystem puts the path instead.",
+    "real_path": "`guard.realPath(input)`. An `input` or `ok` that starts with `/` is rooted at the real path of the scratch directory. Any other `input` is passed as written."
+  },
   "validate_relative": [
     { "name": "plain file", "input": "Notes/a.md", "ok": "Notes/a.md" },
     { "name": "single segment", "input": "a.md", "ok": "a.md" },
@@ -48,6 +62,132 @@
     { "name": "bare dot", "input": ".", "error": "degenerate_segment" },
     { "name": "dot segment before a parent", "input": "./../a", "error": "degenerate_segment" }
   ],
+  "windows_names": [
+    {
+      "name": "a device name",
+      "input": "NUL",
+      "warnings": [{ "kind": "reserved_name", "segment": "NUL" }]
+    },
+    {
+      "name": "a device name in lower case",
+      "input": "nul",
+      "warnings": [{ "kind": "reserved_name", "segment": "nul" }]
+    },
+    {
+      "name": "a device name with an extension",
+      "input": "NUL.txt",
+      "warnings": [{ "kind": "reserved_name", "segment": "NUL.txt" }]
+    },
+    {
+      "name": "a device name with a space before the extension",
+      "input": "NUL .txt",
+      "warnings": [{ "kind": "reserved_name", "segment": "NUL .txt" }]
+    },
+    {
+      "name": "a device name with two extensions",
+      "input": "com1.tar.gz",
+      "warnings": [{ "kind": "reserved_name", "segment": "com1.tar.gz" }]
+    },
+    {
+      "name": "COM0 is added to the list",
+      "input": "COM0",
+      "warnings": [{ "kind": "reserved_name", "segment": "COM0" }]
+    },
+    {
+      "name": "the last printer port",
+      "input": "LPT9",
+      "warnings": [{ "kind": "reserved_name", "segment": "LPT9" }]
+    },
+    {
+      "name": "a superscript port number",
+      "input": "COM¹",
+      "warnings": [{ "kind": "reserved_name", "segment": "COM¹" }]
+    },
+    {
+      "name": "the console input device",
+      "input": "CONIN$",
+      "warnings": [{ "kind": "reserved_name", "segment": "CONIN$" }]
+    },
+    {
+      "name": "the console output device",
+      "input": "CONOUT$",
+      "warnings": [{ "kind": "reserved_name", "segment": "CONOUT$" }]
+    },
+    {
+      "name": "a device name with a trailing dot",
+      "input": "CON.",
+      "warnings": [{ "kind": "reserved_name", "segment": "CON." }]
+    },
+    {
+      "name": "a device name with a trailing space",
+      "input": "CON ",
+      "warnings": [{ "kind": "reserved_name", "segment": "CON " }]
+    },
+    {
+      "name": "a device name after a directory",
+      "input": "a/aux",
+      "warnings": [{ "kind": "reserved_name", "segment": "aux" }]
+    },
+    {
+      "name": "a device name after a backslash",
+      "input": "a\\NUL",
+      "warnings": [{ "kind": "reserved_name", "segment": "NUL" }]
+    },
+    {
+      "name": "a stream on a name",
+      "input": "ab:c",
+      "warnings": [{ "kind": "alternate_stream", "segment": "ab:c" }]
+    },
+    {
+      "name": "a stream on a file",
+      "input": "file.txt:stream",
+      "warnings": [{ "kind": "alternate_stream", "segment": "file.txt:stream" }]
+    },
+    {
+      "name": "a stream after a directory",
+      "input": "a/b:c.txt",
+      "warnings": [{ "kind": "alternate_stream", "segment": "b:c.txt" }]
+    },
+    {
+      "name": "a device name with a colon is a device name",
+      "input": "CON:",
+      "warnings": [{ "kind": "reserved_name", "segment": "CON:" }]
+    },
+    {
+      "name": "a device name with a stream is a device name",
+      "input": "NUL:x",
+      "warnings": [{ "kind": "reserved_name", "segment": "NUL:x" }]
+    },
+    {
+      "name": "a device name, then a stream",
+      "input": "NUL/a:b",
+      "warnings": [
+        { "kind": "reserved_name", "segment": "NUL" },
+        { "kind": "alternate_stream", "segment": "a:b" }
+      ]
+    },
+    { "name": "a name that starts with a device name", "input": "console", "warnings": [] },
+    { "name": "a device name followed by more text", "input": "nul-x", "warnings": [] },
+    { "name": "CLOCK$ is not a device", "input": "CLOCK$", "warnings": [] },
+    { "name": "COM10 is not a device", "input": "COM10", "warnings": [] },
+    {
+      "name": "a dotless i does not fold to I: case folding is ASCII only",
+      "input": "conın$",
+      "warnings": []
+    },
+    {
+      "name": "a drive is refused before the check",
+      "input": "C:x",
+      "error": "windows_path",
+      "warnings": []
+    },
+    {
+      "name": "a parent is refused before the check",
+      "input": "../NUL",
+      "error": "parent_segment",
+      "warnings": []
+    }
+  ],
   "resolve": [
     { "name": "joins under the root", "root": "/v", "input": "Notes/a.md", "ok": "/v/Notes/a.md" },
     { "name": "trailing slash dropped", "root": "/v", "input": "Notes/", "ok": "/v/Notes" },
@@ -59,7 +199,12 @@
       "error": "parent_segment"
     },
     { "name": "absolute refused", "root": "/v", "input": "/v/a.md", "error": "absolute" },
-    { "name": "an empty root contains nothing", "root": "", "input": "a.md", "error": "escapes" },
+    {
+      "name": "an empty root contains nothing",
+      "root": "",
+      "input": "a.md",
+      "error": "empty_root"
+    },
     {
       "name": "a parent at the filesystem root stays there",
       "root": "/../v",
@@ -70,7 +215,205 @@
       "name": "a root that folds to nothing contains nothing",
       "root": "missing/..",
       "input": "a.md",
-      "error": "escapes"
+      "error": "not_absolute"
+    },
+    { "name": "a relative root is refused", "root": "v", "input": "a.md", "error": "not_absolute" },
+    {
+      "name": "an empty root is refused before the path is checked",
+      "root": "",
+      "input": "../a.md",
+      "error": "empty_root"
+    },
+    {
+      "name": "a relative root is refused before the path is checked",
+      "root": "v",
+      "input": "../a.md",
+      "error": "not_absolute"
+    }
+  ],
+  "resolve_windows_names": [
+    {
+      "name": "a device name",
+      "input": "NUL",
+      "windows": { "error": "reserved_name" },
+      "other": { "ok": "NUL", "warnings": [{ "kind": "reserved_name", "segment": "NUL" }] }
+    },
+    {
+      "name": "a device name in lower case",
+      "input": "nul",
+      "windows": { "error": "reserved_name" },
+      "other": { "ok": "nul", "warnings": [{ "kind": "reserved_name", "segment": "nul" }] }
+    },
+    {
+      "name": "a device name with an extension",
+      "input": "NUL.txt",
+      "windows": { "error": "reserved_name" },
+      "other": {
+        "ok": "NUL.txt",
+        "warnings": [{ "kind": "reserved_name", "segment": "NUL.txt" }]
+      }
+    },
+    {
+      "name": "a device name with a space before the extension",
+      "input": "NUL .txt",
+      "windows": { "error": "reserved_name" },
+      "other": {
+        "ok": "NUL .txt",
+        "warnings": [{ "kind": "reserved_name", "segment": "NUL .txt" }]
+      }
+    },
+    {
+      "name": "a device name with two extensions",
+      "input": "com1.tar.gz",
+      "windows": { "error": "reserved_name" },
+      "other": {
+        "ok": "com1.tar.gz",
+        "warnings": [{ "kind": "reserved_name", "segment": "com1.tar.gz" }]
+      }
+    },
+    {
+      "name": "COM0 is added to the list",
+      "input": "COM0",
+      "windows": { "error": "reserved_name" },
+      "other": { "ok": "COM0", "warnings": [{ "kind": "reserved_name", "segment": "COM0" }] }
+    },
+    {
+      "name": "the last printer port",
+      "input": "LPT9",
+      "windows": { "error": "reserved_name" },
+      "other": { "ok": "LPT9", "warnings": [{ "kind": "reserved_name", "segment": "LPT9" }] }
+    },
+    {
+      "name": "a superscript port number",
+      "input": "COM¹",
+      "windows": { "error": "reserved_name" },
+      "other": { "ok": "COM¹", "warnings": [{ "kind": "reserved_name", "segment": "COM¹" }] }
+    },
+    {
+      "name": "the console input device",
+      "input": "CONIN$",
+      "windows": { "error": "reserved_name" },
+      "other": {
+        "ok": "CONIN$",
+        "warnings": [{ "kind": "reserved_name", "segment": "CONIN$" }]
+      }
+    },
+    {
+      "name": "the console output device",
+      "input": "CONOUT$",
+      "windows": { "error": "reserved_name" },
+      "other": {
+        "ok": "CONOUT$",
+        "warnings": [{ "kind": "reserved_name", "segment": "CONOUT$" }]
+      }
+    },
+    {
+      "name": "a device name with a trailing dot",
+      "input": "CON.",
+      "windows": { "error": "reserved_name" },
+      "other": { "ok": "CON.", "warnings": [{ "kind": "reserved_name", "segment": "CON." }] }
+    },
+    {
+      "name": "a device name with a trailing space",
+      "input": "CON ",
+      "windows": { "error": "reserved_name" },
+      "other": { "ok": "CON ", "warnings": [{ "kind": "reserved_name", "segment": "CON " }] }
+    },
+    {
+      "name": "a device name after a directory",
+      "input": "a/aux",
+      "windows": { "error": "reserved_name" },
+      "other": { "ok": "a/aux", "warnings": [{ "kind": "reserved_name", "segment": "aux" }] }
+    },
+    {
+      "name": "a device name after a backslash",
+      "input": "a\\NUL",
+      "windows": { "error": "reserved_name" },
+      "other": { "ok": "a/NUL", "warnings": [{ "kind": "reserved_name", "segment": "NUL" }] }
+    },
+    {
+      "name": "a stream on a name",
+      "input": "ab:c",
+      "windows": { "error": "alternate_stream" },
+      "other": { "ok": "ab:c", "warnings": [{ "kind": "alternate_stream", "segment": "ab:c" }] }
+    },
+    {
+      "name": "a stream on a file",
+      "input": "file.txt:stream",
+      "windows": { "error": "alternate_stream" },
+      "other": {
+        "ok": "file.txt:stream",
+        "warnings": [{ "kind": "alternate_stream", "segment": "file.txt:stream" }]
+      }
+    },
+    {
+      "name": "a stream after a directory",
+      "input": "a/b:c.txt",
+      "windows": { "error": "alternate_stream" },
+      "other": {
+        "ok": "a/b:c.txt",
+        "warnings": [{ "kind": "alternate_stream", "segment": "b:c.txt" }]
+      }
+    },
+    {
+      "name": "a device name with a colon is a device name",
+      "input": "CON:",
+      "windows": { "error": "reserved_name" },
+      "other": { "ok": "CON:", "warnings": [{ "kind": "reserved_name", "segment": "CON:" }] }
+    },
+    {
+      "name": "a device name with a stream is a device name",
+      "input": "NUL:x",
+      "windows": { "error": "reserved_name" },
+      "other": { "ok": "NUL:x", "warnings": [{ "kind": "reserved_name", "segment": "NUL:x" }] }
+    },
+    {
+      "name": "a device name, then a stream: the first match is refused",
+      "input": "NUL/a:b",
+      "windows": { "error": "reserved_name" },
+      "other": {
+        "ok": "NUL/a:b",
+        "warnings": [
+          { "kind": "reserved_name", "segment": "NUL" },
+          { "kind": "alternate_stream", "segment": "a:b" }
+        ]
+      }
+    },
+    {
+      "name": "a name that starts with a device name",
+      "input": "console",
+      "windows": { "ok": "console" },
+      "other": { "ok": "console", "warnings": [] }
+    },
+    {
+      "name": "a device name followed by more text",
+      "input": "nul-x",
+      "windows": { "ok": "nul-x" },
+      "other": { "ok": "nul-x", "warnings": [] }
+    },
+    {
+      "name": "CLOCK$ is not a device",
+      "input": "CLOCK$",
+      "windows": { "ok": "CLOCK$" },
+      "other": { "ok": "CLOCK$", "warnings": [] }
+    },
+    {
+      "name": "COM10 is not a device",
+      "input": "COM10",
+      "windows": { "ok": "COM10" },
+      "other": { "ok": "COM10", "warnings": [] }
+    },
+    {
+      "name": "a drive is refused before the check",
+      "input": "C:x",
+      "windows": { "error": "windows_path" },
+      "other": { "error": "windows_path", "warnings": [] }
+    },
+    {
+      "name": "a parent is refused before the check",
+      "input": "../NUL",
+      "windows": { "error": "parent_segment" },
+      "other": { "error": "parent_segment", "warnings": [] }
     }
   ],
   "contains": [
@@ -98,33 +441,164 @@
       "name": "an empty outer holds no absolute path",
       "outer": "",
       "inner": "/v/a",
-      "expected": false
+      "error": "empty_root"
     },
     {
       "name": "an empty outer holds no relative path",
       "outer": "",
       "inner": "a",
-      "expected": false
+      "error": "empty_root"
     },
     {
       "name": "an outer that folds to nothing holds nothing",
       "outer": "missing/..",
       "inner": "/v",
-      "expected": false
-    }
+      "error": "not_absolute"
+    },
+    {
+      "name": "a relative outer is refused",
+      "outer": "v",
+      "inner": "/v/a",
+      "error": "not_absolute"
+    },
+    {
+      "name": "a relative inner is refused",
+      "outer": "/v",
+      "inner": "v/a",
+      "error": "not_absolute"
+    },
+    { "name": "an empty inner is refused", "outer": "/v", "inner": "", "error": "not_absolute" }
   ],
-  "lexical_absolute": [
-    { "name": "already folded", "input": "/a/b", "ok": "/a/b" },
-    { "name": "trailing slash dropped", "input": "/a/b/", "ok": "/a/b" },
-    { "name": "empty segments collapse", "input": "//a///b", "ok": "/a/b" },
-    { "name": "dot segments dropped", "input": "/a/./b/.", "ok": "/a/b" },
-    { "name": "a parent removes the component before it", "input": "/a/b/../c", "ok": "/a/c" },
-    { "name": "a run of parents", "input": "/a/b/c/../../d", "ok": "/a/d" },
-    { "name": "a parent that folds to the root", "input": "/a/..", "ok": "/" },
-    { "name": "the root alone", "input": "/", "ok": "/" },
-    { "name": "a parent at the root stays at the root", "input": "/../a", "ok": "/a" },
-    { "name": "several parents past the root", "input": "/a/../../../b", "ok": "/b" },
-    { "name": "names made of dots are names", "input": "/a/.../..b/c", "ok": "/a/.../..b/c" }
+  "absolute": [
+    { "name": "already folded", "input": "/a/b", "cwd": "/w", "ok": "/a/b" },
+    { "name": "trailing slash dropped", "input": "/a/b/", "cwd": "/w", "ok": "/a/b" },
+    { "name": "empty segments collapse", "input": "//a///b", "cwd": "/w", "ok": "/a/b" },
+    { "name": "dot segments dropped", "input": "/a/./b/.", "cwd": "/w", "ok": "/a/b" },
+    {
+      "name": "a parent removes the component before it",
+      "input": "/a/b/../c",
+      "cwd": "/w",
+      "ok": "/a/c"
+    },
+    { "name": "a run of parents", "input": "/a/b/c/../../d", "cwd": "/w", "ok": "/a/d" },
+    { "name": "a parent that folds to the root", "input": "/a/..", "cwd": "/w", "ok": "/" },
+    { "name": "the root alone", "input": "/", "cwd": "/w", "ok": "/" },
+    { "name": "a parent at the root stays at the root", "input": "/../a", "cwd": "/w", "ok": "/a" },
+    { "name": "several parents past the root", "input": "/a/../../../b", "cwd": "/w", "ok": "/b" },
+    {
+      "name": "names made of dots are names",
+      "input": "/a/.../..b/c",
+      "cwd": "/w",
+      "ok": "/a/.../..b/c"
+    },
+    { "name": "a relative path joins onto cwd", "input": "a/b", "cwd": "/w", "ok": "/w/a/b" },
+    {
+      "name": "a relative path folds after the join",
+      "input": "a/../b",
+      "cwd": "/w",
+      "ok": "/w/b"
+    },
+    { "name": "a leading parent leaves cwd", "input": "../a", "cwd": "/w/x", "ok": "/w/a" },
+    { "name": "parents past the root stop there", "input": "../../a", "cwd": "/w", "ok": "/a" },
+    { "name": "cwd is folded too", "input": "a", "cwd": "/w/./x/../y/", "ok": "/w/y/a" },
+    { "name": "a backslash is part of a name", "input": "a\\b", "cwd": "/w", "ok": "/w/a\\b" },
+    { "name": "a relative cwd is refused", "input": "a", "cwd": "w", "error": "not_absolute" },
+    {
+      "name": "a relative cwd is refused for an absolute path too",
+      "input": "/a",
+      "cwd": "w",
+      "error": "not_absolute"
+    },
+    { "name": "an empty cwd is refused", "input": "a", "cwd": "", "error": "not_absolute" },
+    { "name": "an empty path is the folded cwd", "input": "", "cwd": "/w/./x", "ok": "/w/x" }
+  ],
+  "is_under": [
+    { "name": "a root is under itself", "root": "/vault", "input": "/vault", "expected": true },
+    { "name": "the filesystem root is under itself", "root": "/", "input": "/", "expected": true },
+    { "name": "a child", "root": "/vault", "input": "/vault/a.md", "expected": true },
+    {
+      "name": "a deeper descendant",
+      "root": "/vault",
+      "input": "/vault/a/b/c.md",
+      "expected": true
+    },
+    { "name": "a child of the filesystem root", "root": "/", "input": "/etc", "expected": true },
+    {
+      "name": "a sibling with a name prefix",
+      "root": "/vault",
+      "input": "/vault2",
+      "expected": false
+    },
+    {
+      "name": "a file in a sibling with a name prefix",
+      "root": "/vault",
+      "input": "/vault2/a.md",
+      "expected": false
+    },
+    {
+      "name": "a prefix of the root's name",
+      "root": "/vault",
+      "input": "/vaul",
+      "expected": false
+    },
+    { "name": "the parent of the root", "root": "/vault/a", "input": "/vault", "expected": false },
+    { "name": "dots fold outside", "root": "/vault", "input": "/vault/../etc", "expected": false },
+    {
+      "name": "dots fold back inside",
+      "root": "/vault",
+      "input": "/vault/a/../b.md",
+      "expected": true
+    },
+    {
+      "name": "dots in the root fold too",
+      "root": "/vault/a/..",
+      "input": "/vault/b",
+      "expected": true
+    },
+    {
+      "name": "a parent at the filesystem root stays there",
+      "root": "/vault",
+      "input": "/../vault/a",
+      "expected": true
+    },
+    {
+      "name": "a trailing slash on the root",
+      "root": "/vault/",
+      "input": "/vault/a.md",
+      "expected": true
+    },
+    {
+      "name": "a trailing slash on the path",
+      "root": "/vault",
+      "input": "/vault/a/",
+      "expected": true
+    },
+    {
+      "name": "empty and dot segments dropped",
+      "root": "/vault",
+      "input": "/vault//./a",
+      "expected": true
+    },
+    {
+      "name": "a relative path is refused",
+      "root": "/vault",
+      "input": "a.md",
+      "error": "not_absolute"
+    },
+    {
+      "name": "a relative root is refused",
+      "root": "vault",
+      "input": "/vault/a.md",
+      "error": "not_absolute"
+    },
+    { "name": "an empty root is refused", "root": "", "input": "/vault", "error": "empty_root" },
+    {
+      "name": "an empty root is refused before the path is checked",
+      "root": "",
+      "input": "a.md",
+      "error": "empty_root"
+    },
+    { "name": "an empty path is refused", "root": "/vault", "input": "", "error": "not_absolute" }
   ],
   "to_relative": [
     { "name": "a nested file", "root": "/v", "input": "/v/Notes/a.md", "ok": "Notes/a.md" },
@@ -132,8 +606,13 @@
     { "name": "the root itself is the empty path", "root": "/v", "input": "/v", "ok": "" },
     { "name": "a trailing slash on the path", "root": "/v", "input": "/v/Notes/", "ok": "Notes" },
     { "name": "a trailing slash on the root", "root": "/v/", "input": "/v/a.md", "ok": "a.md" },
-    { "name": "a trailing slash on the root, path is the root", "root": "/v/", "input": "/v", "ok": "" },
-    { "name": "a relative root and path", "root": ".", "input": "./a/b", "ok": "a/b" },
+    {
+      "name": "a trailing slash on the root, path is the root",
+      "root": "/v/",
+      "input": "/v",
+      "ok": ""
+    },
+    { "name": "a relative root and path", "root": ".", "input": "./a/b", "error": "not_absolute" },
     {
       "name": "empty segments and a trailing slash dropped",
       "root": "/v",
@@ -148,20 +627,20 @@
     },
     { "name": "the filesystem root as the root", "root": "/", "input": "/a/b", "ok": "a/b" },
     { "name": "dots inside a name", "root": "/v", "input": "/v/..a/b..md", "ok": "..a/b..md" },
-    { "name": "outside the root", "root": "/v", "input": "/other/a.md", "error": "escapes" },
+    { "name": "outside the root", "root": "/v", "input": "/other/a.md", "error": "not_under_root" },
     {
       "name": "a name prefix is not under the root",
       "root": "/vault",
       "input": "/vault2/a.md",
-      "error": "escapes"
+      "error": "not_under_root"
     },
-    { "name": "the parent of the root", "root": "/v/a", "input": "/v", "error": "escapes" },
-    { "name": "the filesystem root", "root": "/v", "input": "/", "error": "escapes" },
+    { "name": "the parent of the root", "root": "/v/a", "input": "/v", "error": "not_under_root" },
+    { "name": "the filesystem root", "root": "/v", "input": "/", "error": "not_under_root" },
     {
       "name": "a relative path is not under an absolute root",
       "root": "/v",
       "input": "v/a.md",
-      "error": "escapes"
+      "error": "not_absolute"
     },
     {
       "name": "a parent leaving the root",
@@ -180,7 +659,7 @@
       "name": "an empty root with an absolute path",
       "root": "",
       "input": "/a",
-      "error": "parent_segment"
+      "error": "empty_root"
     }
   ],
   "resolve_on_disk": [
@@ -278,7 +757,15 @@
       "links": { "root/a": "b", "root/b": "a" },
       "root": "root",
       "input": "a",
-      "error": "escapes"
+      "error": "unresolvable"
+    },
+    {
+      "name": "a root whose walk gives up is unresolvable",
+      "dirs": ["root"],
+      "links": { "root/loop": "loop" },
+      "root": "root/loop",
+      "input": "a",
+      "error": "unresolvable"
     },
     {
       "name": "a link to itself",
@@ -286,7 +773,7 @@
       "links": { "root/a": "a" },
       "root": "root",
       "input": "a/x.json",
-      "error": "escapes"
+      "error": "unresolvable"
     },
     {
       "name": "a link out to a directory that exists",
@@ -323,6 +810,23 @@
       "root": "root",
       "input": "x.json",
       "error": "escapes"
+    },
+    {
+      "name": "a chain of links with long targets spends the call budget",
+      "dirs": ["root"],
+      "links": {
+        "root/l0": "zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../l1",
+        "root/l1": "zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../l2",
+        "root/l2": "zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../l3",
+        "root/l3": "zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../l4",
+        "root/l4": "zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../l5",
+        "root/l5": "zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../l6",
+        "root/l6": "zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../l7",
+        "root/l7": "zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../new.json"
+      },
+      "root": "root",
+      "input": "l0",
+      "error": "unresolvable"
     }
   ],
   "contains_on_disk": [
@@ -374,5 +878,64 @@
       "inner": "root/missing/../link/../y",
       "expected": false
     }
+  ],
+  "real_path": [
+    {
+      "name": "a path that exists",
+      "dirs": ["root"],
+      "files": ["root/a.md"],
+      "input": "/root/a.md",
+      "ok": "/root/a.md"
+    },
+    {
+      "name": "a link to a file that exists",
+      "dirs": ["root"],
+      "files": ["root/a.md"],
+      "links": { "root/alias.md": "a.md" },
+      "input": "/root/alias.md",
+      "ok": "/root/a.md"
+    },
+    {
+      "name": "a link to a directory, then a missing name",
+      "dirs": ["real"],
+      "links": { "alias": "/real" },
+      "input": "/alias/new.md",
+      "ok": "/real/new.md"
+    },
+    {
+      "name": "a dangling link is followed",
+      "dirs": ["root"],
+      "links": { "root/x.json": "new.json" },
+      "input": "/root/x.json",
+      "ok": "/root/new.json"
+    },
+    {
+      "name": "a missing path is not an error",
+      "dirs": ["root"],
+      "input": "/root/missing/a.md",
+      "ok": "/root/missing/a.md"
+    },
+    {
+      "name": "a parent behind a missing name folds against the real path",
+      "dirs": ["root"],
+      "input": "/root/missing/../a.md",
+      "ok": "/root/a.md"
+    },
+    {
+      "name": "a walk that gives up on a link loop keeps the path",
+      "dirs": ["root"],
+      "links": { "root/loop": "loop" },
+      "input": "/root/loop/x",
+      "ok": "/root/loop/x"
+    },
+    {
+      "name": "a walk that gives up folds a parent as text",
+      "dirs": ["root"],
+      "links": { "root/loop": "loop" },
+      "input": "/root/loop/../x",
+      "ok": "/root/x"
+    },
+    { "name": "a relative path is refused", "input": "root/a.md", "error": "not_absolute" },
+    { "name": "an empty path is refused", "input": "", "error": "not_absolute" }
   ]
 }
