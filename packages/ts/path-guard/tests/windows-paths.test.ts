@@ -1,18 +1,22 @@
 /**
- * The containment layer's Windows path rules, through a fake filesystem, so
- * they run on every OS. `resolve.ts` reads `process.platform` once, at load, so
- * it is loaded again here as on Windows.
+ * The guard's Windows path rules, through a fake filesystem, so they run on
+ * every OS. `resolve.ts` reads `process.platform` once, at load, so the guard
+ * is loaded again here as on Windows.
  */
+
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 import { describe, expect, test, vi } from 'vitest'
 
+import type { PathWarning } from '../errors.ts'
 import type { Resolver } from '../resolve.ts'
 
 const platform = Object.getOwnPropertyDescriptor(process, 'platform')!
 Object.defineProperty(process, 'platform', { value: 'win32' })
 vi.resetModules()
-const { canonicalExistingPrefix, contains, resolveInside, tryResolveInside } =
-  await import('../resolve.ts')
+const { PathGuard } = await import('../guard.ts')
+const { PathError } = await import('../errors.ts')
 Object.defineProperty(process, 'platform', platform)
 
 function enoent(): never {
@@ -20,7 +24,7 @@ function enoent(): never {
 }
 
 /**
- * A resolver over a fixed table, as `tests/resolve.test.ts` has, keyed by the
+ * A resolver over a fixed table, as `tests/guard.test.ts` has, keyed by the
  * `/` form the guard asks in. Answers use `\`, as Windows gives them. Each
  * drive root exists.
  */
@@ -34,88 +38,168 @@ function table(entries: Record<string, string>, links: Record<string, string> = 
 
 const nothing: Resolver = { realpath: enoent, readlink: enoent }
 
-describe('resolveInside on Windows', () => {
+function thrownBy(run: () => unknown): unknown {
+  try {
+    run()
+  } catch (e) {
+    return e
+  }
+  return null
+}
+
+/** The kind of the `PathError` `run` throws, or null when it returns. */
+function kindOf(run: () => unknown): string | null {
+  const e = thrownBy(run)
+  if (e === null) return null
+  if (e instanceof PathError) return e.kind
+  throw e
+}
+
+describe('guard.resolve on Windows', () => {
   const fs = table(
     { 'C:/v': 'C:\\v', 'C:/v/escape': 'D:\\outside', 'C:/v/alias': 'C:\\v\\real' },
     { 'C:/v/out.json': '..\\outside\\p.json', 'C:/v/in.json': 'sub\\new.json' },
   )
 
   test('returns the joined path with `\\` separators', () => {
-    expect(resolveInside('C:\\v', 'Notes/a.md', fs)).toBe('C:\\v\\Notes\\a.md')
-    expect(resolveInside('C:/v', 'Notes\\a.md', fs)).toBe('C:\\v\\Notes\\a.md')
-    expect(resolveInside('C:\\v\\', 'a.md', fs)).toBe('C:\\v\\a.md')
+    expect(new PathGuard(fs).resolve('C:\\v', 'Notes/a.md')).toBe('C:\\v\\Notes\\a.md')
+    expect(new PathGuard(fs).resolve('C:/v', 'Notes\\a.md')).toBe('C:\\v\\Notes\\a.md')
+    expect(new PathGuard(fs).resolve('C:\\v\\', 'a.md')).toBe('C:\\v\\a.md')
   })
 
   test('refuses a link to another drive', () => {
-    expect(tryResolveInside('C:\\v', 'escape/secret.txt', fs)).toBeNull()
-    expect(tryResolveInside('C:\\v', 'escape', fs)).toBeNull()
+    expect(new PathGuard(fs).tryResolve('C:\\v', 'escape/secret.txt')).toBeNull()
+    expect(new PathGuard(fs).tryResolve('C:\\v', 'escape')).toBeNull()
   })
 
   test('accepts a link that stays inside', () => {
-    expect(resolveInside('C:\\v', 'alias/a.md', fs)).toBe('C:\\v\\alias\\a.md')
+    expect(new PathGuard(fs).resolve('C:\\v', 'alias/a.md')).toBe('C:\\v\\alias\\a.md')
   })
 
   test('follows a dangling link with a `\\` target', () => {
-    expect(tryResolveInside('C:\\v', 'out.json', fs)).toBeNull()
-    expect(resolveInside('C:\\v', 'in.json', fs)).toBe('C:\\v\\in.json')
+    expect(new PathGuard(fs).tryResolve('C:\\v', 'out.json')).toBeNull()
+    expect(new PathGuard(fs).resolve('C:\\v', 'in.json')).toBe('C:\\v\\in.json')
   })
 
-  test('refuses an empty root, as on POSIX', () => {
-    expect(tryResolveInside('', 'a.md', nothing)).toBeNull()
-    expect(tryResolveInside('missing\\..', 'a.md', nothing)).toBeNull()
+  test('refuses an empty or relative root, as on POSIX', () => {
+    expect(kindOf(() => new PathGuard(nothing).resolve('', 'a.md'))).toBe('empty_root')
+    expect(kindOf(() => new PathGuard(nothing).resolve('missing\\..', 'a.md'))).toBe('not_absolute')
+  })
+
+  test('takes a root as absolute only with a drive and a root, or a UNC share', () => {
+    const guard = new PathGuard(nothing)
+    expect(guard.resolve('\\\\srv\\share', 'a.md')).toBe('\\\\srv\\share\\a.md')
+    for (const root of ['/v', '\\v', 'C:v', 'C:', 'v']) {
+      expect(kindOf(() => guard.resolve(root, 'a.md'))).toBe('not_absolute')
+    }
   })
 })
 
-describe('contains on Windows', () => {
+describe('guard.contains on Windows', () => {
   test('folds `..` as text before it follows a link, as Windows does', () => {
     const fs = table({ 'C:/v': 'C:\\v', 'C:/v/link': 'D:\\out' })
     // On POSIX `link/..` would be the parent of the link's target, `D:\`.
-    expect(contains('C:\\v', 'C:\\v\\link\\..\\x', fs)).toBe(true)
-    expect(contains('C:\\v', 'C:\\v\\..\\w', fs)).toBe(false)
+    expect(new PathGuard(fs).contains('C:\\v', 'C:\\v\\link\\..\\x')).toBe(true)
+    expect(new PathGuard(fs).contains('C:\\v', 'C:\\v\\..\\w')).toBe(false)
   })
 
   test('matches a drive in any case', () => {
-    expect(contains('c:\\v', 'C:\\v\\a', nothing)).toBe(true)
+    expect(new PathGuard(nothing).contains('c:\\v', 'C:\\v\\a')).toBe(true)
   })
 
   test('compares the names after the root as written', () => {
-    expect(contains('C:\\v', 'C:\\V\\a', nothing)).toBe(false)
+    expect(new PathGuard(nothing).contains('C:\\v', 'C:\\V\\a')).toBe(false)
   })
 
   test('tells drives and shares apart', () => {
-    expect(contains('C:\\v', 'D:\\v\\a', nothing)).toBe(false)
-    expect(contains('C:\\v', '\\v\\a', nothing)).toBe(false)
-    expect(contains('\\\\srv\\share\\v', '\\\\srv\\share\\v\\a', nothing)).toBe(true)
-    expect(contains('\\\\srv\\share\\v', '\\\\srv\\other\\v\\a', nothing)).toBe(false)
-    expect(contains('\\\\srv\\share', '\\\\srv\\share\\a', nothing)).toBe(true)
+    expect(new PathGuard(nothing).contains('C:\\v', 'D:\\v\\a')).toBe(false)
+    expect(new PathGuard(nothing).contains('\\\\srv\\share\\v', '\\\\srv\\share\\v\\a')).toBe(true)
+    expect(new PathGuard(nothing).contains('\\\\srv\\share\\v', '\\\\srv\\other\\v\\a')).toBe(false)
+    expect(new PathGuard(nothing).contains('\\\\srv\\share', '\\\\srv\\share\\a')).toBe(true)
   })
 
-  test('takes POSIX-style paths as rooted on the current drive', () => {
-    expect(contains('/v', '/x/../v/out', nothing)).toBe(true)
-    expect(contains('/v', '/v/../w', nothing)).toBe(false)
+  test('refuses a path with a root but no drive, which reads the current drive', () => {
+    expect(kindOf(() => new PathGuard(nothing).contains('/v', 'C:\\v'))).toBe('not_absolute')
+    expect(kindOf(() => new PathGuard(nothing).contains('C:\\v', '\\v\\a'))).toBe('not_absolute')
   })
 })
 
-describe('canonicalExistingPrefix on Windows', () => {
+describe('guard.realPath on Windows', () => {
   test('gives the real path of the existing part with `\\` separators', () => {
     const fs = table({ 'C:/v': 'C:\\real\\v' })
-    expect(canonicalExistingPrefix('C:/v/new/a.md', fs)).toBe('C:\\real\\v\\new\\a.md')
-    expect(canonicalExistingPrefix('C:\\v\\x\\..\\a.md', fs)).toBe('C:\\real\\v\\a.md')
+    expect(new PathGuard(fs).realPath('C:/v/new/a.md')).toBe('C:\\real\\v\\new\\a.md')
+    expect(new PathGuard(fs).realPath('C:\\v\\x\\..\\a.md')).toBe('C:\\real\\v\\a.md')
   })
 })
 
-// `C:` with no separator is the working directory on drive C, so `C:..` is its parent.
-describe('a bare drive on Windows', () => {
-  const fs = table({ 'C:': 'C:\\work', 'C:/work': 'C:\\work', 'C:..': 'C:\\' })
+// `C:` with no separator is the working directory on drive C, so `C:..` is its
+// parent. The guard takes no such path as input, but a link target can be one.
+describe('a link to a bare drive on Windows', () => {
+  const fs = table(
+    { 'C:': 'C:\\work', 'C:/work': 'C:\\work', 'C:..': 'C:\\' },
+    {
+      'C:/work/up': 'C:..\\secret',
+      'C:/work/twice': 'C:a\\..\\..\\secret',
+      'C:/work/in': 'C:new\\a.md',
+    },
+  )
 
   test('keeps a `..` after a bare drive, so it climbs out of the working directory', () => {
-    expect(contains('C:\\work', 'C:..\\secret', fs)).toBe(false)
-    expect(canonicalExistingPrefix('C:..\\secret', fs)).toBe('C:\\secret')
-    expect(canonicalExistingPrefix('C:a\\..\\..\\secret', fs)).toBe('C:\\secret')
+    expect(new PathGuard(fs).contains('C:\\work', 'C:\\work\\up')).toBe(false)
+    expect(new PathGuard(fs).realPath('C:\\work\\up')).toBe('C:\\secret')
+    expect(new PathGuard(fs).realPath('C:\\work\\twice')).toBe('C:\\secret')
   })
 
   test('joins a name onto a bare drive with no separator', () => {
-    expect(canonicalExistingPrefix('C:new\\a.md', fs)).toBe('C:\\work\\new\\a.md')
-    expect(contains('C:\\work', 'C:new\\a.md', fs)).toBe(true)
+    expect(new PathGuard(fs).realPath('C:\\work\\in')).toBe('C:\\work\\new\\a.md')
+    expect(new PathGuard(fs).contains('C:\\work', 'C:\\work\\in')).toBe(true)
+  })
+})
+
+interface PerHostCase {
+  name: string
+  input: string
+  windows: { ok?: string; error?: string }
+}
+
+const FIXTURE = JSON.parse(
+  readFileSync(
+    join(import.meta.dirname, '../../../rust/path-guard/tests/fixtures/parity.json'),
+    'utf-8',
+  ),
+) as { resolve_windows_names: PerHostCase[] }
+
+// The fixture's `windows` column, on every host. tests/parity.test.ts runs the
+// column for the host it runs on.
+describe('Windows names', () => {
+  for (const c of FIXTURE.resolve_windows_names) {
+    test(c.name, () => {
+      const warnings: PathWarning[] = []
+      const guard = new PathGuard(nothing, { onWarning: (w) => warnings.push(w) })
+      const kind = kindOf(() => guard.resolve('C:\\v', c.input))
+      if (c.windows.error !== undefined) expect(kind).toBe(c.windows.error)
+      else expect(guard.resolve('C:\\v', c.input)).toBe(`C:\\v\\${c.windows.ok}`)
+      // On Windows the guard refuses instead of warning.
+      expect(warnings).toEqual([])
+    })
+  }
+
+  test('the refusal names the segment', () => {
+    expect(
+      thrownBy(() => new PathGuard(nothing).resolve('C:\\v', 'logs/aux.txt/a:b')),
+    ).toMatchObject({
+      kind: 'reserved_name',
+      message: 'path names a reserved device name on Windows: "aux.txt" in "logs/aux.txt/a:b"',
+    })
+  })
+
+  test('the refusal comes before the filesystem is read', () => {
+    let calls = 0
+    const counting: Resolver = {
+      realpath: () => (calls++, enoent()),
+      readlink: () => (calls++, enoent()),
+    }
+    expect(new PathGuard(counting).tryResolve('C:\\v', 'a/NUL')).toBeNull()
+    expect(calls).toBe(0)
   })
 })

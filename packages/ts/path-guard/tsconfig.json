@@ -8,7 +8,8 @@
     // run before a build.
     "paths": {
       "@osdlc/path-guard": ["./index.ts"],
-      "@osdlc/path-guard/lexical": ["./lexical-entry.ts"]
+      "@osdlc/path-guard/lexical": ["./lexical-entry.ts"],
+      "@osdlc/path-guard/node": ["./node.ts"]
     }
   },
   "include": ["*.ts", "tests/*.ts", "examples/*.ts", "vitest.config.ts"]

@@ -10,7 +10,7 @@
     // path-guard has no `bun` condition, so it is mapped to its source too.
     // The build config clears this and uses its `dist/`.
     "paths": {
-      "@osdlc/path-guard": ["../path-guard/index.ts"],
+      "@osdlc/path-guard/node": ["../path-guard/node.ts"],
       "@osdlc/trust-repo": ["./index.ts"]
     }
   },

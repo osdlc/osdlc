@@ -1,3 +1,4 @@
 // The `@osdlc/path-guard/lexical` entry. Nothing it loads may import `node:*`;
-// tests/lexical-entry.test.ts checks the built graph.
-export { PathError, isUnder, toRelative, validateRelative, type PathErrorKind } from './lexical.ts'
+// tests/entry-imports.test.ts checks the import graph.
+export { absolute, isUnder, toRelative, validateRelative } from './lexical.ts'
+export { PathError, type PathErrorKind, type PathWarning } from './errors.ts'

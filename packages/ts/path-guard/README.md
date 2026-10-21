@@ -18,9 +18,10 @@ onto a root. It has no dependencies. The
 
 ## When not to use it
 
-- To check a path that may pass through a symlink with `isInside`. It compares
-  text only and follows no symlink, so a link inside the root that points out of
-  it passes. Use `resolveInside`, or `realPathInside` for a path that exists.
+- To check a path that may pass through a symlink with `lexical.isUnder`. It
+  compares text only and follows no symlink, so a link inside the root that
+  points out of it passes. Use `nodeGuard.resolve`, or `realPathInside` for a
+  path that exists.
 - As a sandbox or a lock. The check is a snapshot (see
   [How it works](#how-it-works)), and it does not restrict what your own
   process may open.
@@ -50,13 +51,17 @@ npm install @osdlc/path-guard
 ## Quick start
 
 ```ts
-import { PathError, resolveInside } from '@osdlc/path-guard'
+import { PathError } from '@osdlc/path-guard'
+import { nodeGuard } from '@osdlc/path-guard/node'
 
-resolveInside('/srv/data', 'notes/a.md')
+// The root must be absolute.
+const root = process.platform === 'win32' ? 'C:\\srv\\data' : '/srv/data'
+
+nodeGuard.resolve(root, 'notes/a.md')
 // /srv/data/notes/a.md
 
 try {
-  resolveInside('/srv/data', '../etc/passwd')
+  nodeGuard.resolve(root, '../etc/passwd')
 } catch (e) {
   if (e instanceof PathError) e.kind
   // parent_segment
@@ -65,133 +70,198 @@ try {
 
 `examples/usage.test.ts` runs every export of this package.
 
+## Three entry points
+
+The import path says which filesystem a call uses.
+
+| Entry | Exports | Filesystem |
+|---|---|---|
+| `@osdlc/path-guard` | `lexical`, `PathGuard`, `Resolver`, `PathError`, `PathErrorKind`, `PathWarning`, `MAX_LINK_HOPS` | None of its own. A `PathGuard` uses the `Resolver` it is given. Loads `node:path`, not `node:fs`. |
+| `@osdlc/path-guard/lexical` | `validateRelative`, `isUnder`, `absolute`, `toRelative`, `PathError`, `PathErrorKind`, `PathWarning` | None. Loads no `node:` module, so a browser bundle can use it. |
+| `@osdlc/path-guard/node` | `nodeGuard`, `nodeResolver`, `openContainedFile`, `readContainedFile`, `realPathInside`, `existingPathInside`, `ContainedFile`, `ContainedPath` | The real disk, through Node `fs`. |
+
+The `lexical` namespace of the main entry holds the same four functions as
+`@osdlc/path-guard/lexical`.
+
+Every argument that names a place on the filesystem must be absolute: the root,
+`outer` and `inner`, the path given to `realPath`, and the `cwd` given to
+`lexical.absolute`. No function reads the working directory. A caller with a
+relative path joins it first, for example with
+`lexical.absolute(p, process.cwd())` on POSIX or `path.resolve(p)` on any
+platform. An empty root is refused with kind `empty_root`, and any other
+relative argument with kind `not_absolute`.
+
 ## How it works
 
 Two layers, both mandatory:
 
-1. **Lexical**: `validateRelative` rejects empty paths, NUL bytes, a leading
-   `~`, Windows drive and UNC prefixes, absolute paths, and `.`, `..` or empty
-   segments, without touching the filesystem. It returns the normalised form:
-   backslashes folded to `/`, no trailing slash. A name that only contains dots
+1. **Lexical**: `lexical.validateRelative` rejects empty paths, NUL bytes, a
+   leading `~`, Windows drive and UNC prefixes (a single letter then `:`
+   included), absolute paths, and `.`, `..` or empty segments, without
+   touching the filesystem. It returns the normalised form: backslashes folded
+   to `/`, no trailing slash. A name that only contains dots
    (`My ..dotfiles note.md`) is accepted.
-2. **Containment**: `resolveInside` joins a validated path onto a root and
-   proves the result stays inside it. It resolves symlinks in whatever part of
-   the path exists, so a symlink out of the root is refused, and a path that does
-   not exist yet can still be checked. The root need not exist either. A
-   dangling symlink is followed to where its target would be created, so a link
-   to a missing file outside the root is refused too. A chain of more than
-   `MAX_LINK_HOPS` (40) links is refused. `tryResolveInside` is the same check
-   returning null instead of throwing. `contains` answers the same question for
-   two absolute paths.
+2. **Containment**: `guard.resolve(root, raw)` validates `raw`, joins it onto
+   the root and proves the result stays inside it. It resolves symlinks in
+   whatever part of the path exists, so a symlink out of the root is refused,
+   and a path that does not exist yet can still be checked. The root need not
+   exist either. A dangling symlink is followed to where its target would be
+   created, so a link to a missing file outside the root is refused too.
+   `guard.tryResolve` is the same check returning null instead of throwing.
+   `guard.contains(outer, inner)` answers the same question for two absolute
+   paths, and returns false when it cannot prove the answer.
 
-A refusal throws a `PathError`. Its `kind` is one of `empty`, `nul`, `tilde`,
-`windows_path`, `absolute`, `parent_segment`, `degenerate_segment` or
-`escapes`, and `PathErrorKind` is that union. `escapes` also means the check
-cannot prove the path stays inside: an empty root, more than `MAX_LINK_HOPS`
-links, or a spent resolver-call budget.
+A guard is bound to one filesystem: `new PathGuard(resolver)`. A `Resolver`
+answers `realpath` and `readlink`. `nodeGuard` is the guard over the real disk,
+`nodeResolver`. Any other `Resolver`, such as an in-memory table, drives every
+filesystem case with no disk access. A table must also hold every ancestor of
+each entry, as the `Resolver` TSDoc requires. A table of leaf entries gives
+wrong answers with no error.
 
-The check is a snapshot. A symlink planted or changed after `resolveInside`
+```ts
+import { PathGuard, type Resolver } from '@osdlc/path-guard'
+
+const missing = () => {
+  throw new Error('ENOENT')
+}
+// A filesystem of one directory, `/v`, and nothing in it.
+const fs: Resolver = {
+  realpath: (p) => (p === '/' || p === '/v' ? p : missing()),
+  readlink: missing,
+}
+const guard = new PathGuard(fs)
+if (process.platform !== 'win32') {
+  guard.contains('/v', '/v/new/deep.md') // true
+  guard.tryResolve('/v', '../a.md') // null
+}
+```
+
+`guard.realPath(absPath)` gives the real path of the part of a path that exists
+and keeps the rest as written, with any `..` folded against the real path. When
+the walk gives up (a link loop, too many links, a spent budget), it returns the
+path with `..` folded as text. The answer never holds a `..`, and a missing path
+is not an error.
+
+A refusal throws a `PathError`. Its `kind` is one of these, and
+`PathErrorKind` is that union:
+
+| Kind | Meaning |
+|---|---|
+| `empty`, `nul`, `tilde`, `windows_path`, `absolute`, `parent_segment`, `degenerate_segment` | `lexical.validateRelative` refused the relative path. |
+| `escapes` | The path is proved to lie outside the root. |
+| `unresolvable` | The walk followed more than `MAX_LINK_HOPS` (40) links, as in a loop, or spent its resolver calls. The guard cannot prove where the path lands. |
+| `empty_root` | The root is the empty path. |
+| `not_under_root` | `lexical.toRelative`: the path does not start with the root. |
+| `not_absolute` | An argument that must be absolute is relative or empty. |
+| `reserved_name`, `alternate_stream` | On Windows, a segment is a device name or names an alternate data stream. See [Windows names](#windows-names). |
+
+The check is a snapshot. A symlink planted or changed after `guard.resolve`
 returns is not seen. To create a file, open it with `fs.open(path, 'wx')`. That
 open fails when the final component is a symlink, dangling or not. A symlink
 swapped into a parent directory still needs a per-component no-follow open,
 which Node does not have.
 
-The containment layer reads the filesystem through a `Resolver`, which answers
-`realpath` and `readlink`. `nodeResolver` is the default. Pass another, such as
-an in-memory table, as the last argument of `resolveInside`, `tryResolveInside`,
-`contains` or `canonicalExistingPrefix`. A table must also hold every ancestor
-of each entry, as the `Resolver` TSDoc requires. A table of leaf entries gives
-wrong answers with no error.
+## Text only: the lexical functions
 
-`canonicalExistingPrefix` gives the real path of the part of a path that exists
-and keeps the rest as written, with any `..` folded against the real path.
-`realpathOrSelf` is the same for the real filesystem. It takes a relative path
-too, joined to the working directory. The two give up differently. When the walk
-gives up (a link loop, too many links, a spent budget),
-`canonicalExistingPrefix` returns the path as written, and `realpathOrSelf`
-returns an absolute path with `..` folded as text.
+The four `lexical` functions touch no filesystem, read no working directory and
+take POSIX paths on every platform. They ship in the browser-safe
+`@osdlc/path-guard/lexical` entry too.
 
-Two helpers work on text alone and touch no filesystem. `lexicalAbsolute` makes a
-path absolute against the working directory, then drops `.` and removes each `..`
-with the component before it. It follows no symlink, so it says nothing about
-containment. `toRelative(root, abs)` turns an absolute path under `root` back into
-a root-relative one with `/` separators. It throws a `PathError` of kind `escapes`
-when `abs` is not under `root`, and `parent_segment` when the relative part holds
-a `..`.
+- `validateRelative(raw, { onWarning })`: layer 1, above.
+- `isUnder(root, path)`: is `path` the root or beneath it, by text? `..` is
+  folded, whole components are compared. It follows no symlink, so it cannot
+  see a link that leads out of the root. A Windows caller uses
+  `guard.contains`, which reads Windows paths.
+- `absolute(path, cwd)`: `path` joined onto `cwd` when relative, then folded:
+  `.` dropped, each `..` removed with the component before it.
+- `toRelative(root, abs)`: an absolute path under `root` as a root-relative one
+  with `/` separators. It throws `not_under_root` when `abs` is not under
+  `root`, and `parent_segment` when the relative part holds a `..`.
+
+```ts
+import { absolute, isUnder, toRelative, validateRelative } from '@osdlc/path-guard/lexical'
+
+isUnder('/vault', '/vault/a.md') // true
+isUnder('/vault', '/vault2/a.md') // false
+absolute('notes/../a.md', '/vault') // '/vault/a.md'
+toRelative('/vault', '/vault/notes/a.md') // 'notes/a.md'
+validateRelative('notes/a.md') // 'notes/a.md'
+```
+
+## Windows names
+
+Some names mean a device or a stream on Windows and an ordinary file elsewhere:
+a reserved device name such as `NUL`, `con.txt` or `COM1`, and a `name:stream`
+alternate data stream. The check runs on every segment. A `PathWarning` names
+the kind and the segment.
+
+- `lexical.validateRelative` never refuses these names. With `onWarning`, it
+  calls the handler once per match, in order, on every platform.
+- `PathGuard` knows its platform. On Windows, `resolve` and `tryResolve` refuse
+  the first match with kind `reserved_name` or `alternate_stream`, before they
+  read the filesystem, and call no handler. On other platforms the guard
+  accepts the path, and when it returns the path it calls the `onWarning` given
+  to `new PathGuard(resolver, { onWarning })` once per match.
+
+With no `onWarning`, nothing is reported. The package never writes to the
+console.
+
+```ts
+import { lexical, type PathWarning } from '@osdlc/path-guard'
+
+const warnings: PathWarning[] = []
+lexical.validateRelative('logs/NUL', { onWarning: (w) => warnings.push(w) }) // 'logs/NUL'
+warnings // [{ kind: 'reserved_name', segment: 'NUL' }]
+```
 
 ## Reading a file inside a root
 
 A check followed by a read leaves a window: the file or a parent directory can
-be swapped for a symlink in between. `openContainedFile(realRoot, path)` checks,
-opens, then resolves the path again. It accepts the handle only when it is the
-file found at that real path, with the same device and inode. The open is
-non-blocking, so a FIFO cannot hang the call. The handle can still be a
-directory or another file that is not a regular file, so check `stats.isFile()`
-before you read. The caller closes the handle.
+be swapped for a symlink in between. The helpers in `@osdlc/path-guard/node`
+call the real disk directly and take no `Resolver`. Unlike the guard, they
+accept a relative path, resolved against the working directory.
+
+`openContainedFile(realRoot, path)` checks, opens, then resolves the path
+again. It accepts the handle only when it is the file found at that real path,
+with the same device and inode. The open is non-blocking, so a FIFO cannot hang
+the call. The handle can still be a directory or another file that is not a
+regular file, so check `stats.isFile()` before you read. The caller closes the
+handle. It returns a `ContainedFile`, or null.
 
 `readContainedFile` does that: it reads through `openContainedFile` and returns
 null for anything that is not a regular file.
 
 `realPathInside(realRoot, path)` and `existingPathInside(root, realRoot, path)`
-resolve an existing path and check it against a root. `isInside(root, path)` is
-the lexical check alone.
-
-## Which exports touch the filesystem
-
-| Mode | Exports |
-|---|---|
-| Lexical: no filesystem | `validateRelative`, `toRelative`, `isUnder` (`@osdlc/path-guard/lexical` only), `lexicalAbsolute`, `isInside`. `lexicalAbsolute` and `isInside` read the working directory for a relative input. |
-| `Resolver`: injectable, the real disk by default | `resolveInside`, `tryResolveInside`, `contains`, `canonicalExistingPrefix` |
-| Real disk only: Node `fs`, not injectable | `realpathOrSelf`, `realPathInside`, `existingPathInside`, `openContainedFile`, `readContainedFile` |
-
-## Browser-safe entry
-
-`@osdlc/path-guard/lexical` holds the text-only checks: `validateRelative`,
-`PathError`, `PathErrorKind`, `toRelative` and `isUnder`. Nothing it loads
-imports `node:*`, so a browser bundle or a pure package can use it. The main
-entry exports the same `validateRelative`, `PathError` and `toRelative`.
-
-`isUnder(root, path)` is a text containment check. Both paths must be absolute
-and POSIX. `..` is folded as text, whole components are compared, and a relative
-input gives false. It follows no symlink, so it cannot see a link that leads out
-of `root`.
-
-```ts
-import { isUnder, validateRelative } from '@osdlc/path-guard/lexical'
-
-isUnder('/vault', '/vault/a.md') // true
-isUnder('/vault', '/vault2/a.md') // false
-validateRelative('notes/a.md') // 'notes/a.md'
-```
+resolve an existing path and check it against a root. `existingPathInside`
+returns a `ContainedPath`.
 
 ## The API
 
-| Export | Kind | What it is |
-|---|---|---|
-| `validateRelative` | function | Layer 1. Returns the normalised form of a root-relative path, or throws `PathError`. |
-| `PathError` | class | The error every refusal throws. Its `kind` says why. |
-| `PathErrorKind` | type | The values `kind` takes. |
-| `resolveInside` | function | Layers 1 and 2. Returns the joined path or throws `PathError`. |
-| `tryResolveInside` | function | `resolveInside` that returns null instead of throwing. |
-| `contains` | function | Is `inner` the same as `outer`, or beneath it, once both are resolved? |
-| `canonicalExistingPrefix` | function | The real path of the part that exists, plus the rest as written. |
-| `realpathOrSelf` | function | `canonicalExistingPrefix` on the real filesystem. Takes a relative path too, joined to the working directory. When the walk gives up, it folds `..` as text. |
-| `lexicalAbsolute` | function | A path made absolute against the working directory and folded as text. Follows no symlink. |
-| `toRelative` | function | An absolute path under a root, as a root-relative path with `/` separators, or throws `PathError`. |
-| `Resolver` | type | `realpath` and `readlink`: how the containment layer reads a filesystem. |
-| `nodeResolver` | object | The real filesystem, with `..` resolved physically. |
-| `MAX_LINK_HOPS` | constant | The number of dangling symlinks one check follows: 40. |
-| `isInside` | function | Lexical containment. Follows no symlink. |
-| `isUnder` | function | From `@osdlc/path-guard/lexical` only. Text containment of two absolute POSIX paths, `..` folded. Follows no symlink. |
-| `realPathInside` | function | The real path of an existing path when it lies under a real root, else null. |
-| `existingPathInside` | function | An existing path inside `root` both as written and after symlinks, as a `ContainedPath`, else null. |
-| `openContainedFile` | function | Opens a path inside a real root and verifies the handle. Returns a `ContainedFile` or null. |
-| `readContainedFile` | function | Reads a regular file inside a real root, else null. |
-| `ContainedFile` | type | `{ handle, stats }`, as `openContainedFile` returns it. |
-| `ContainedPath` | type | `{ realPath, relativePath }`, as `existingPathInside` returns it. |
+| Export | Entry | Kind | What it is |
+|---|---|---|---|
+| `lexical` | `.` | namespace | `validateRelative`, `isUnder`, `absolute` and `toRelative`. |
+| `validateRelative` | `./lexical` | function | Layer 1. Returns the normalised form of a root-relative path, or throws `PathError`. Reports Windows names to `onWarning`. |
+| `isUnder` | `./lexical` | function | Text containment of two absolute POSIX paths, `..` folded. Follows no symlink. |
+| `absolute` | `./lexical` | function | A path joined onto an absolute `cwd` and folded as text. |
+| `toRelative` | `./lexical` | function | An absolute path under a root, as a root-relative path with `/` separators, or throws `PathError`. |
+| `PathGuard` | `.` | class | `resolve`, `tryResolve`, `contains` and `realPath`, bound to one `Resolver`. |
+| `Resolver` | `.` | type | `realpath` and `readlink`: how a guard reads a filesystem. |
+| `PathError` | `.`, `./lexical` | class | The error every refusal throws. Its `kind` says why. |
+| `PathErrorKind` | `.`, `./lexical` | type | The values `kind` takes. |
+| `PathWarning` | `.`, `./lexical` | type | `{ kind, segment }`: a Windows device name or stream. |
+| `MAX_LINK_HOPS` | `.` | constant | The number of dangling symlinks one check follows: 40. |
+| `nodeGuard` | `./node` | object | A `PathGuard` over the real disk. |
+| `nodeResolver` | `./node` | object | The real filesystem, with `..` resolved physically on POSIX. |
+| `realPathInside` | `./node` | function | The real path of an existing path when it lies under a real root, else null. |
+| `existingPathInside` | `./node` | function | An existing path inside `root` both as written and after symlinks, as a `ContainedPath`, else null. |
+| `openContainedFile` | `./node` | function | Opens a path inside a real root and verifies the handle. Returns a `ContainedFile` or null. |
+| `readContainedFile` | `./node` | function | Reads a regular file inside a real root, else null. |
+| `ContainedFile` | `./node` | type | `{ handle, stats }`, as `openContainedFile` returns it. |
+| `ContainedPath` | `./node` | type | `{ realPath, relativePath }`, as `existingPathInside` returns it. |
 
 The TSDoc in the package has the details, and `examples/usage.test.ts` uses each
-export. The [CHANGELOG](./CHANGELOG.md) lists the changes.
+export. The [CHANGELOG](./CHANGELOG.md) lists the changes, and its 0.3.0 entry
+maps each 0.2 export to its replacement.
 
 The [planning folder](https://github.com/osdlc/osdlc/blob/main/packages/ts/path-guard/docs/planning/README.md) defines the terms the docs use and records the decisions behind the package.
 
@@ -200,7 +270,8 @@ The [planning folder](https://github.com/osdlc/osdlc/blob/main/packages/ts/path-
 Every export is stable in 0.x. No export is experimental, beta or alpha.
 `tests/stability.test.ts` fails when an export is tagged `@experimental`,
 `@beta` or `@alpha` and is not listed in this section. A breaking change comes
-only in a new minor version, such as 0.3.0, and the CHANGELOG marks it.
+only in a new minor version, such as 0.3.0, and the CHANGELOG marks it. A
+breaking release removes the old API; it keeps no deprecated aliases.
 
 `PathErrorKind` grows only in a new minor version, in this package and the Rust
 twin together, and the CHANGELOG names the new kind. Every kind, present and
@@ -208,21 +279,20 @@ future, means the path was refused. When you branch on `kind`, give the branch a
 default that refuses the path, so a kind added later is still a refusal. The
 Rust `PathError` is `#[non_exhaustive]` for the same reason.
 
-`isInside` and `realpathOrSelf` keep their names and signatures for 0.2.x. The
-API review planned for 0.3.0 revisits both.
-
 The [decisions](https://github.com/osdlc/osdlc/blob/main/packages/ts/path-guard/docs/planning/README.md#decisions)
 say why.
 
 ## Twin
 
-The Rust crate [`path-guard`](https://crates.io/crates/path-guard) has the same
-two layers. Its source is in
+The Rust crate [`path-guard`](https://crates.io/crates/path-guard) 0.3.0 has the
+same shape: a `lexical` module and a `Guard` bound to one `Resolver`. Its source
+is in
 [`packages/rust/path-guard`](https://github.com/osdlc/osdlc/tree/main/packages/rust/path-guard).
 Both read one conformance fixture,
 `packages/rust/path-guard/tests/fixtures/parity.json` in the repository, so
-they agree on every case in it. `isUnder`, the `@osdlc/path-guard/lexical`
-entry and the `PathErrorKind` type exist only in TypeScript.
+they agree on every case in it. `tryResolve`, the `@osdlc/path-guard/lexical`
+entry, the race-checked helpers of `@osdlc/path-guard/node` and the
+`PathErrorKind` type exist only in TypeScript.
 
 ## Runtimes and platforms
 
@@ -230,28 +300,27 @@ Node.js 22 or later, ESM only. Linux, macOS and Windows are supported, and CI
 tests each on Node 22 and 24. The `@osdlc/path-guard/lexical` entry also runs in
 browsers, as it loads no Node modules.
 
-On Windows the containment layer reads Windows paths:
+On Windows the guard reads Windows paths:
 
-- `\` and `/` both separate, and a drive (`C:\`) or a UNC share
-  (`\\server\share\`) is a root.
+- `\` and `/` both separate. A drive with a root (`C:\`) or a UNC share
+  (`\\server\share\`) is absolute. A root with no drive (`\x`) and a bare
+  drive (`C:x`) are relative, so the guard refuses them as `not_absolute`.
 - A `..` folds as text before any link is followed, as Windows does. On POSIX,
   `link/..` is the parent of the link's target; on Windows it is the directory
   that holds the link.
-- `resolveInside`, `canonicalExistingPrefix`, `realpathOrSelf` and
-  `lexicalAbsolute` return paths with `\` separators. A `Resolver` is asked with
-  `/` separators and may answer with either.
+- `guard.resolve` and `guard.realPath` return paths with `\` separators. A
+  `Resolver` is asked with `/` separators and may answer with either.
 - `nodeResolver` uses `realpathSync.native`, which also expands short (8.3)
   names.
+- The guard refuses device names and alternate data streams, as
+  [Windows names](#windows-names) says.
 
 Limits on Windows:
 
 - A drive letter matches in any case, but the names after it are compared as
   written. A missing path spelled in another case than its root is refused.
-- `toRelative` and `isUnder` take POSIX paths only, on every platform. They are
-  text checks, and both ship in the browser-safe entry.
-- The lexical check accepts a device name such as `NUL` or `CON`, and a
-  `name:stream` alternate data stream. Both pass the check, and opening them
-  reaches a device or a stream, not a file in the root.
+- The `lexical` functions take POSIX paths only, on every platform. They are
+  text checks, and they ship in the browser-safe entry.
 
 ## Security
 

@@ -67,7 +67,7 @@ import { homedir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
 
 import { atomicWriteAsync } from '@osdlc/etag-write'
-import { canonicalExistingPrefix } from '@osdlc/path-guard'
+import { nodeGuard } from '@osdlc/path-guard/node'
 
 import { xdgHome } from './xdg.ts'
 
@@ -109,7 +109,7 @@ export function trustStoreDir(
  * @experimental
  */
 export async function resolveTrustRoot(root: string): Promise<string> {
-  return canonicalExistingPrefix(resolve(root))
+  return nodeGuard.realPath(resolve(root))
 }
 
 /** The marker filename for an already-resolved root. */

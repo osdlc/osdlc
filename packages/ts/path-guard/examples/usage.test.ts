@@ -7,33 +7,39 @@
 
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join, parse } from 'node:path'
+import { join } from 'node:path'
 
 import { afterEach, beforeEach, describe, expect, expectTypeOf, test } from 'vitest'
 
 import {
   MAX_LINK_HOPS,
   PathError,
-  canonicalExistingPrefix,
-  contains,
+  PathGuard,
+  lexical,
+  type PathErrorKind,
+  type PathWarning,
+  type Resolver,
+} from '@osdlc/path-guard'
+import {
+  absolute,
+  isUnder,
+  toRelative,
+  validateRelative,
+  type PathErrorKind as LexicalErrorKind,
+  type PathWarning as LexicalWarning,
+} from '@osdlc/path-guard/lexical'
+import {
   existingPathInside,
-  isInside,
-  lexicalAbsolute,
+  nodeGuard,
   nodeResolver,
   openContainedFile,
   readContainedFile,
   realPathInside,
-  realpathOrSelf,
-  resolveInside,
-  toRelative,
-  tryResolveInside,
-  validateRelative,
   type ContainedFile,
   type ContainedPath,
-  type PathErrorKind,
-  type Resolver,
-} from '@osdlc/path-guard'
-import { isUnder, type PathErrorKind as LexicalErrorKind } from '@osdlc/path-guard/lexical'
+} from '@osdlc/path-guard/node'
+
+const WINDOWS = process.platform === 'win32'
 
 /** What a call throws, or null when it returns. */
 function thrown(run: () => unknown): unknown {
@@ -66,14 +72,14 @@ afterEach(() => {
 })
 
 describe('check a path a user typed', () => {
-  test('validateRelative returns the normalised form', () => {
-    expect(validateRelative('notes\\a.md/')).toBe('notes/a.md')
+  test('lexical.validateRelative returns the normalised form', () => {
+    expect(lexical.validateRelative('notes\\a.md/')).toBe('notes/a.md')
   })
 
   test('PathError names why a path was refused', () => {
     const kinds: PathErrorKind[] = []
     for (const raw of ['', 'a\0b', '~/x', 'C:\\x', '/etc', '../x', 'a//b']) {
-      const error = thrown(() => validateRelative(raw))
+      const error = thrown(() => lexical.validateRelative(raw))
       if (error instanceof PathError) kinds.push(error.kind)
     }
     expect(kinds).toEqual([
@@ -86,91 +92,111 @@ describe('check a path a user typed', () => {
       'degenerate_segment',
     ])
   })
+
+  test('onWarning hears about Windows device names and streams, on every platform', () => {
+    const warnings: PathWarning[] = []
+    expect(lexical.validateRelative('logs/NUL.txt', { onWarning: (w) => warnings.push(w) })).toBe(
+      'logs/NUL.txt',
+    )
+    expect(warnings).toEqual([{ kind: 'reserved_name', segment: 'NUL.txt' }])
+  })
 })
 
-describe('join a path under a root', () => {
-  test('resolveInside returns the joined path, also for a path that does not exist yet', () => {
-    expect(resolveInside(vault, 'notes/a.md')).toBe(join(vault, 'notes/a.md'))
-    expect(resolveInside(vault, 'notes/new/b.md')).toBe(join(vault, 'notes/new/b.md'))
+describe('join a path under a root, on the real disk', () => {
+  test('nodeGuard.resolve returns the joined path, also for a path that does not exist yet', () => {
+    expect(nodeGuard.resolve(vault, 'notes/a.md')).toBe(join(vault, 'notes/a.md'))
+    expect(nodeGuard.resolve(vault, 'notes/new/b.md')).toBe(join(vault, 'notes/new/b.md'))
   })
 
-  test('resolveInside refuses a symlink that leaves the root', () => {
-    const error = thrown(() => resolveInside(vault, 'leak.txt'))
+  test('nodeGuard.resolve refuses a symlink that leaves the root', () => {
+    const error = thrown(() => nodeGuard.resolve(vault, 'leak.txt'))
     expect(error).toBeInstanceOf(PathError)
     expect(error).toMatchObject({ kind: 'escapes' })
   })
 
-  test('tryResolveInside returns null instead of throwing', () => {
-    expect(tryResolveInside(vault, 'notes/a.md')).toBe(join(vault, 'notes/a.md'))
-    expect(tryResolveInside(vault, 'leak.txt')).toBeNull()
-    expect(tryResolveInside(vault, '../secret.txt')).toBeNull()
+  test('nodeGuard.tryResolve returns null instead of throwing', () => {
+    expect(nodeGuard.tryResolve(vault, 'notes/a.md')).toBe(join(vault, 'notes/a.md'))
+    expect(nodeGuard.tryResolve(vault, 'leak.txt')).toBeNull()
+    expect(nodeGuard.tryResolve(vault, '../secret.txt')).toBeNull()
+  })
+
+  test('the root must be absolute; join the working directory yourself', () => {
+    expect(thrown(() => nodeGuard.resolve('vault', 'a.md'))).toMatchObject({
+      kind: 'not_absolute',
+    })
+    expect(thrown(() => nodeGuard.resolve('', 'a.md'))).toMatchObject({ kind: 'empty_root' })
   })
 
   test('the README quick start', () => {
-    // `join` gives the platform's separators, as resolveInside does.
-    expect(resolveInside('/srv/data', 'notes/a.md')).toBe(join('/srv/data', 'notes/a.md'))
-    expect(thrown(() => resolveInside('/srv/data', '../etc/passwd'))).toMatchObject({
+    const srv = join(root, 'srv-data')
+    expect(nodeGuard.resolve(srv, 'notes/a.md')).toBe(join(srv, 'notes', 'a.md'))
+    expect(thrown(() => nodeGuard.resolve(srv, '../etc/passwd'))).toMatchObject({
       kind: 'parent_segment',
     })
   })
 })
 
 describe('ask about paths you already hold', () => {
-  test('contains compares whole components, after symlinks are resolved', () => {
-    expect(contains(vault, join(vault, 'notes', 'new.md'))).toBe(true)
-    expect(contains(vault, join(root, 'secret.txt'))).toBe(false)
-    expect(contains(vault, `${vault}-bee/x`)).toBe(false)
-    expect(contains(vault, join(vault, 'leak.txt'))).toBe(false)
+  test('nodeGuard.contains compares whole components, after symlinks are resolved', () => {
+    expect(nodeGuard.contains(vault, join(vault, 'notes', 'new.md'))).toBe(true)
+    expect(nodeGuard.contains(vault, join(root, 'secret.txt'))).toBe(false)
+    expect(nodeGuard.contains(vault, `${vault}-bee/x`)).toBe(false)
+    expect(nodeGuard.contains(vault, join(vault, 'leak.txt'))).toBe(false)
   })
 
-  test('canonicalExistingPrefix keeps the part that does not exist as written', () => {
-    expect(canonicalExistingPrefix(join(vault, 'leak.txt'))).toBe(join(root, 'secret.txt'))
-    expect(canonicalExistingPrefix(join(vault, 'notes', 'new', 'b.md'))).toBe(
+  test('nodeGuard.realPath resolves what exists and keeps the rest as written', () => {
+    expect(nodeGuard.realPath(join(vault, 'leak.txt'))).toBe(join(root, 'secret.txt'))
+    expect(nodeGuard.realPath(join(vault, 'notes', 'new', 'b.md'))).toBe(
       join(vault, 'notes', 'new', 'b.md'),
     )
-  })
-
-  test('realpathOrSelf is the same for an absolute path on the real filesystem', () => {
-    expect(realpathOrSelf(join(vault, 'leak.txt'))).toBe(join(root, 'secret.txt'))
   })
 })
 
 describe('fold a path as text, and shorten it against a root', () => {
-  test('lexicalAbsolute folds `.` and `..` and touches no filesystem', () => {
-    expect(lexicalAbsolute(`${vault}/a/./b/../c/`)).toBe(join(vault, 'a', 'c'))
+  test('lexical.absolute joins a relative path onto cwd and folds `.` and `..`', () => {
+    expect(lexical.absolute('/srv/data/a/./b/../c/', '/w')).toBe('/srv/data/a/c')
     // A `..` at the root stays there.
-    const top = parse(vault).root
-    expect(lexicalAbsolute(`${top}../../etc`)).toBe(join(top, 'etc'))
-    // A relative path is anchored at the working directory first.
-    expect(lexicalAbsolute('notes/../a.md')).toBe(join(process.cwd(), 'a.md'))
-    // No symlink is followed. The filesystem refuses `leak.txt/..`, as `leak.txt` is a file.
-    expect(lexicalAbsolute(`${vault}/leak.txt/../x`)).toBe(join(vault, 'x'))
+    expect(lexical.absolute('/../../etc', '/w')).toBe('/etc')
+    // A relative path is joined onto `cwd`, which the caller passes.
+    expect(lexical.absolute('notes/../a.md', '/work')).toBe('/work/a.md')
+    expect(thrown(() => lexical.absolute('a.md', 'work'))).toMatchObject({ kind: 'not_absolute' })
   })
 
   // POSIX paths only, on every OS: it is text, like the `./lexical` entry it ships in.
-  test('toRelative gives the root-relative path, or throws a PathError', () => {
-    expect(toRelative('/vault', '/vault/notes/a.md')).toBe('notes/a.md')
-    expect(thrown(() => toRelative('/vault', '/secret.txt'))).toMatchObject({
-      kind: 'escapes',
+  test('lexical.toRelative gives the root-relative path, or throws a PathError', () => {
+    expect(lexical.toRelative('/vault', '/vault/notes/a.md')).toBe('notes/a.md')
+    expect(thrown(() => lexical.toRelative('/vault', '/secret.txt'))).toMatchObject({
+      kind: 'not_under_root',
     })
-    expect(thrown(() => toRelative('/vault', '/vault/notes/../a.md'))).toMatchObject({
+    expect(thrown(() => lexical.toRelative('/vault', '/vault/notes/../a.md'))).toMatchObject({
       kind: 'parent_segment',
+    })
+  })
+
+  test('lexical.isUnder compares whole components, folds `..` and follows no symlink', () => {
+    expect(lexical.isUnder('/vault', '/vault/a/b.md')).toBe(true)
+    expect(lexical.isUnder('/vault', '/vault2/a.md')).toBe(false)
+    expect(lexical.isUnder('/vault', '/vault/../etc')).toBe(false)
+    // The text says `leak.txt` is under the vault, even when it is a link that leaves it.
+    expect(lexical.isUnder('/vault', '/vault/leak.txt')).toBe(true)
+    // A relative path is refused, not joined onto the working directory.
+    expect(thrown(() => lexical.isUnder('/vault', 'a.md'))).toMatchObject({
+      kind: 'not_absolute',
     })
   })
 })
 
-describe('check containment as text, from the browser-safe entry', () => {
-  test('isUnder compares whole components, folds `..` and follows no symlink', () => {
-    expect(isUnder('/vault', '/vault/a/b.md')).toBe(true)
-    expect(isUnder('/vault', '/vault2/a.md')).toBe(false)
-    expect(isUnder('/vault', '/vault/../etc')).toBe(false)
-    expect(isUnder('/vault', 'a.md')).toBe(false)
-    // The text says `leak.txt` is under the vault, even when it is a link that leaves it.
-    expect(isUnder('/vault', '/vault/leak.txt')).toBe(true)
+describe('the browser-safe entry', () => {
+  test('holds the same functions as the lexical namespace', () => {
+    expect(validateRelative).toBe(lexical.validateRelative)
+    expect(isUnder('/vault', '/vault/a.md')).toBe(true)
+    expect(absolute('a', '/w')).toBe('/w/a')
+    expect(toRelative('/v', '/v/a.md')).toBe('a.md')
   })
 
-  test('the lexical entry exports the same PathErrorKind type', () => {
+  test('exports the same PathErrorKind and PathWarning types', () => {
     expectTypeOf<LexicalErrorKind>().toEqualTypeOf<PathErrorKind>()
+    expectTypeOf<LexicalWarning>().toEqualTypeOf<PathWarning>()
   })
 })
 
@@ -184,11 +210,24 @@ describe('give the guard another filesystem', () => {
     readlink: missing,
   }
 
-  test('a Resolver answers realpath and readlink', () => {
-    expect(resolveInside('/v', 'a.md', fs)).toBe(join('/v', 'a.md'))
-    expect(tryResolveInside('/v', '../a.md', fs)).toBeNull()
-    expect(contains('/v', '/v/new/deep.md', fs)).toBe(true)
-    expect(canonicalExistingPrefix('/v/new/deep.md', fs)).toBe(join('/v/new/deep.md'))
+  // The fake paths are POSIX paths, which are not absolute on Windows.
+  test.skipIf(WINDOWS)('a PathGuard over a Resolver reads no disk', () => {
+    const guard = new PathGuard(fs)
+    expect(guard.resolve('/v', 'a.md')).toBe('/v/a.md')
+    expect(guard.tryResolve('/v', '../a.md')).toBeNull()
+    expect(guard.contains('/v', '/v/new/deep.md')).toBe(true)
+    expect(guard.realPath('/v/new/deep.md')).toBe('/v/new/deep.md')
+  })
+
+  test.skipIf(WINDOWS)('a PathGuard hands Windows names to onWarning off Windows', () => {
+    const warnings: PathWarning[] = []
+    const guard = new PathGuard(fs, { onWarning: (w) => warnings.push(w) })
+    expect(guard.resolve('/v', 'CON')).toBe('/v/CON')
+    expect(warnings).toEqual([{ kind: 'reserved_name', segment: 'CON' }])
+  })
+
+  test.runIf(WINDOWS)('a PathGuard refuses Windows names on Windows', () => {
+    expect(thrown(() => nodeGuard.resolve(vault, 'CON'))).toMatchObject({ kind: 'reserved_name' })
   })
 
   test('nodeResolver is the real filesystem', () => {
@@ -196,7 +235,7 @@ describe('give the guard another filesystem', () => {
     expect(nodeResolver.readlink(join(vault, 'leak.txt'))).toBe(join(root, 'secret.txt'))
   })
 
-  test('a chain of more than MAX_LINK_HOPS dangling links is refused', () => {
+  test('a chain of more than MAX_LINK_HOPS dangling links is unresolvable', () => {
     const dir = join(root, 'chain')
     mkdirSync(dir)
     const links = MAX_LINK_HOPS + 1
@@ -204,17 +243,11 @@ describe('give the guard another filesystem', () => {
       symlinkSync(i + 1 === links ? 'end.json' : `l${i + 1}`, join(dir, `l${i}`))
     }
     expect(MAX_LINK_HOPS).toBe(40)
-    expect(tryResolveInside(dir, 'l0')).toBeNull()
+    expect(thrown(() => nodeGuard.resolve(dir, 'l0'))).toMatchObject({ kind: 'unresolvable' })
   })
 })
 
 describe('read a file only when it is inside the root', () => {
-  test('isInside compares text and follows no symlink', () => {
-    expect(isInside(vault, join(vault, 'notes'))).toBe(true)
-    expect(isInside(vault, join(vault, '..', 'secret.txt'))).toBe(false)
-    expect(isInside(vault, join(vault, 'leak.txt'))).toBe(true)
-  })
-
   test('realPathInside returns the real path, or null when it leaves the root', async () => {
     await expect(realPathInside(vault, join(vault, 'notes', 'a.md'))).resolves.toBe(
       join(vault, 'notes', 'a.md'),
