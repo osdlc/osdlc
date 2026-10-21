@@ -56,24 +56,24 @@ budget, an empty root and a `to_relative` miss. The crate has no `is_under`.
 
 ## Acceptance criteria
 
-- [ ] The crate version is 0.3.0.
-- [ ] The `lexical` module and `Guard` exist as D-06's target table shows.
-- [ ] `PathError` has the six new variants (`Unresolvable`, `EmptyRoot`,
+- [x] The crate version is 0.3.0.
+- [x] The `lexical` module and `Guard` exist as D-06's target table shows.
+- [x] `PathError` has the six new variants (`Unresolvable`, `EmptyRoot`,
       `NotUnderRoot`, `NotAbsolute`, `ReservedName`, `AlternateStream`) and
       stays `#[non_exhaustive]`.
-- [ ] Every 0.2 root function is removed, and no `#[deprecated]` item
+- [x] Every 0.2 root function is removed, and no `#[deprecated]` item
       remains in the crate.
-- [ ] `lexical::windows_names` returns a warning for each reserved name and
+- [x] `lexical::windows_names` returns a warning for each reserved name and
       stream, on every host. `lexical::validate_relative` is unchanged.
-- [ ] On Windows, `Guard::resolve` refuses a reserved name as `ReservedName`
+- [x] On Windows, `Guard::resolve` refuses a reserved name as `ReservedName`
       and a stream as `AlternateStream`. On other platforms it accepts them
       and calls the warning handler. On Windows the handler is not called.
       A test shows `resolve` fires the handler.
-- [ ] With no handler set, nothing is printed.
-- [ ] The parity suite passes against the 0.3.0 fixture
+- [x] With no handler set, nothing is printed.
+- [x] The parity suite passes against the 0.3.0 fixture
       ([T-06](T-06-parity-fixture-0-3-0.md)).
-- [ ] `cargo semver-checks` expects the 0.3.0 bump.
-- [ ] The README and CHANGELOG describe the new shape, each moved item and
+- [x] `cargo semver-checks` expects the 0.3.0 bump.
+- [x] The README and CHANGELOG describe the new shape, each moved item and
       its replacement, and name the TS twin version.
 - [ ] The PR links the TS PR ([T-05](T-05-ts-0-3-0-api.md)), as the
       [twin rule](../../../../../README.md#twin-libraries) asks.
