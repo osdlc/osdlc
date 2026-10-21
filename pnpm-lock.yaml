@@ -99,6 +99,52 @@ importers:
         specifier: ~6.0.3
         version: 6.0.3
 
+  packages/ts/config-layers:
+    dependencies:
+      '@osdlc/etag-write':
+        specifier: ^0.2.0
+        version: 0.2.0
+      '@osdlc/gfm-table':
+        specifier: ^0.3.0
+        version: 0.3.0
+      '@osdlc/tiered-dirs':
+        specifier: ^0.3.0
+        version: 0.3.0
+      '@osdlc/yaml-splice':
+        specifier: ^0.2.0
+        version: 0.2.0
+      yaml:
+        specifier: ^2.6.1
+        version: 2.9.1
+    devDependencies:
+      '@osdlc/prettier-config':
+        specifier: workspace:^
+        version: link:../prettier-config
+      '@osdlc/tsconfig':
+        specifier: workspace:^
+        version: link:../tsconfig
+      '@types/node':
+        specifier: ^26.1.0
+        version: 26.6.5
+      '@vitest/coverage-v8':
+        specifier: ^5.0.5
+        version: 5.0.5(vitest@5.0.5)
+      oxlint:
+        specifier: ^1.65.0
+        version: 1.88.0
+      prettier:
+        specifier: 3.9.6
+        version: 3.9.6
+      typescript:
+        specifier: ~6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: ^5.0.5
+        version: 5.0.5(@types/node@26.6.5)(@vitest/coverage-v8@5.0.5)(vite@8.3.4(@types/node@26.6.5)(yaml@2.9.1))
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
+
   packages/ts/detect-harness:
     dependencies:
       '@osdlc/command-seam':
@@ -645,6 +691,22 @@ packages:
   '@manypkg/tools@2.1.2':
     resolution: {integrity: sha512-6QEf6yqFbETdwGITKq57aYoPfX/3K8XFNwsAlx0C1M7o8cb79sv1M3w+tWuWvIcSbNqrLF7OD7YpZMVVz335hQ==}
     engines: {node: '>=20.0.0'}
+
+  '@osdlc/etag-write@0.2.0':
+    resolution: {integrity: sha512-TXsybAPhZPVNDyeqZDaTHdu9jzpLroZEh45+0M0jdBeCvAPHAAnElqtEVjRcRmfVRDrBPyYpYULiAxlG3fmnbQ==}
+    engines: {node: '>=22'}
+
+  '@osdlc/gfm-table@0.3.0':
+    resolution: {integrity: sha512-TDtWuuKk6d/4vWvtTt+iYtcCYDAhdacXObPBvwr89wb/GOD1GdlFftSNCBa8QGh/NfAWelgeXMPNLA9pDh+D2Q==}
+    engines: {node: '>=22'}
+
+  '@osdlc/tiered-dirs@0.3.0':
+    resolution: {integrity: sha512-ou0WYjD1d2xMfheHP5eI1rjn+RGHuAFI3cIPR2Dqx2yFHNo2MhmayPFxMv0c5MQheEG2Wz+gdKkNG5VPLCiwjg==}
+    engines: {node: '>=22'}
+
+  '@osdlc/yaml-splice@0.2.0':
+    resolution: {integrity: sha512-YuWVMHNDxxI99qhfcRaFslUcoqTGGCvKUCxhj3ZZjH1aOueW2l8q2bGXbmcilcicTDsukHSlHeEJ+MtTY1AbUg==}
+    engines: {node: '>=22'}
 
   '@oxc-project/types@0.154.0':
     resolution: {integrity: sha512-KYOUGQFlLWR+s4QMV2Q9ko38TZm7EdO87Qm7rvZLqk/webse/cDjtyxKhg/47l0byCbs/k46LT8qc4PKjAikzA==}
@@ -1896,6 +1958,14 @@ snapshots:
       jju: 1.4.0
       tinyglobby: 0.2.17
       yaml: 2.9.1
+
+  '@osdlc/etag-write@0.2.0': {}
+
+  '@osdlc/gfm-table@0.3.0': {}
+
+  '@osdlc/tiered-dirs@0.3.0': {}
+
+  '@osdlc/yaml-splice@0.2.0': {}
 
   '@oxc-project/types@0.154.0': {}
 
