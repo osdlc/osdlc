@@ -37,6 +37,6 @@
     "format:check": "prettier --check ."
   },
   "devDependencies": {
-    "prettier": "3.9.6"
+    "prettier": "catalog:"
   }
 }

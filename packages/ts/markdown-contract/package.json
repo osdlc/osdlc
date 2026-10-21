@@ -88,20 +88,20 @@
     "remark-gfm": "^4.0.1",
     "remark-parse": "^11.0.0",
     "unified": "^11.0.5",
-    "yaml": "^2.9.0"
+    "yaml": "catalog:"
   },
   "devDependencies": {
     "@osdlc/prettier-config": "workspace:^",
     "@osdlc/tsconfig": "workspace:^",
-    "@types/node": "^26.1.0",
+    "@types/node": "catalog:",
     "@types/picomatch": "4.0.3",
-    "@vitest/coverage-v8": "^5.0.5",
-    "oxlint": "^1.65.0",
-    "prettier": "3.9.6",
+    "@vitest/coverage-v8": "catalog:",
+    "oxlint": "catalog:",
+    "prettier": "catalog:",
     "remark-stringify": "11.0.0",
-    "typescript": "~6.0.3",
-    "vitest": "^5.0.5",
-    "zod": "4.4.3"
+    "typescript": "catalog:",
+    "vitest": "catalog:",
+    "zod": "catalog:"
   },
   "peerDependencies": {
     "zod": "^4"

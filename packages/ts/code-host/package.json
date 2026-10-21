@@ -58,16 +58,16 @@
     "@osdlc/config-layers": "workspace:^",
     "@osdlc/typed-gh": "workspace:^",
     "@osdlc/typed-git": "workspace:^",
-    "zod": "4.4.3"
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@osdlc/prettier-config": "workspace:^",
     "@osdlc/tsconfig": "workspace:^",
-    "@types/node": "^26.1.0",
-    "@vitest/coverage-v8": "^5.0.5",
-    "oxlint": "^1.65.0",
-    "prettier": "3.9.6",
-    "typescript": "~6.0.3",
-    "vitest": "^5.0.5"
+    "@types/node": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
+    "oxlint": "catalog:",
+    "prettier": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   }
 }
