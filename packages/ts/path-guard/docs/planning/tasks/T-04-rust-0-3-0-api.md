@@ -12,8 +12,7 @@ created: 2026-10-20
 The Rust crate `path-guard` ships the 0.3.0 shape that
 [D-06](../decisions/D-06-api-makes-the-filesystem-visible.md) sets: a
 `lexical` module, a `Guard` bound to one `Resolver`, absolute input, and the
-split error kinds. The 0.2 root functions stay as deprecated wrappers that
-keep their 0.2 results.
+split error kinds. The 0.2 root functions are removed.
 
 ## Today
 
@@ -37,22 +36,33 @@ budget, an empty root and a `to_relative` miss. The crate has no `is_under`.
    root is `EmptyRoot`, any other relative argument is `NotAbsolute`.
 5. Add the `PathError` variants `Unresolvable`, `EmptyRoot`, `NotUnderRoot`
    and `NotAbsolute`. Return each where D-06 says.
-6. Keep `validate_relative`, `to_relative`, `lexical_absolute`,
+6. Remove `validate_relative`, `to_relative`, `lexical_absolute`,
    `canonical_existing_prefix`, `resolve`, `contains`, `resolve_with` and
-   `contains_with` at the root as `#[deprecated]` wrappers. Each keeps its 0.2
-   result exactly, as D-06's Migration table says. They may keep the 0.2 code
-   path, or call the new item and map the new kinds back to `Escapes`.
-7. Apply the owner's answers to D-06's open questions.
+   `contains_with` from the crate root. Add no `#[deprecated]` wrapper, alias
+   or re-export for them, as the
+   [no-legacy-APIs principle](../../../../../README.md#breaking-changes)
+   requires.
+7. Refuse Windows names as D-06's Windows names section says. Add the
+   `PathError` variants `ReservedName` and `AlternateStream`, the
+   `PathWarning` and `PathWarningKind` types, `Guard::with_warning_handler`,
+   `lexical::validate_relative_warn` and `lexical::validate_relative_for`. The
+   default platform is `cfg!(windows)`. The crate writes nothing to the
+   console.
 
 ## Acceptance criteria
 
 - [ ] The crate version is 0.3.0.
 - [ ] The `lexical` module and `Guard` exist as D-06's target table shows.
 - [ ] `PathError` has the four new variants and stays `#[non_exhaustive]`.
-- [ ] Every 0.2 root function is a `#[deprecated]` wrapper whose note names
-      its replacement.
-- [ ] A test pins each wrapper to its 0.2 result, including `Escapes` from
-      `resolve` and the path as written from `canonical_existing_prefix`.
+- [ ] Every 0.2 root function is removed, and no `#[deprecated]` item
+      remains in the crate.
+- [ ] On Windows, `validate_relative` refuses reserved device names (case
+      insensitive, with or without an extension, with trailing dots or
+      spaces) as `ReservedName` and `name:stream` segments as
+      `AlternateStream`. On other platforms it accepts them and calls the
+      warning handler. Tests cover both platforms through
+      `validate_relative_for`.
+- [ ] With no handler set, nothing is printed.
 - [ ] The parity suite passes against the 0.3.0 fixture
       ([T-06](T-06-parity-fixture-0-3-0.md)).
 - [ ] `cargo semver-checks` expects the 0.3.0 bump.
