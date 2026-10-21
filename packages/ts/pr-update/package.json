@@ -1,0 +1,85 @@
+{
+  "name": "@osdlc/pr-update",
+  "version": "0.5.0",
+  "description": "Survey and update out-of-date, stacked pull requests against their base: drift measured locally, conflicts predicted with merge-tree, PRs read through the @osdlc/code-host port.",
+  "license": "MIT OR Apache-2.0",
+  "author": "sksizer",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/osdlc/osdlc.git",
+    "directory": "packages/ts/pr-update"
+  },
+  "homepage": "https://github.com/osdlc/osdlc/tree/main/packages/ts/pr-update#readme",
+  "bugs": "https://github.com/osdlc/osdlc/issues",
+  "keywords": [
+    "pull-request",
+    "github",
+    "rebase",
+    "stacked-prs",
+    "cli"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "pr-update": "./bin/pr-update.js"
+  },
+  "files": [
+    "dist/",
+    "bin/",
+    "src",
+    "!src/**/*.test.ts",
+    "docs/",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE-MIT",
+    "LICENSE-APACHE",
+    "SECURITY.md",
+    "CONTRIBUTING.md"
+  ],
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "test": "vitest run",
+    "coverage": "vitest run --coverage",
+    "prepublishOnly": "npm run clean && npm run build",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "oxlint .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@osdlc/agent-call": "workspace:^",
+    "@osdlc/cli-tool": "workspace:^",
+    "@osdlc/code-host": "workspace:^",
+    "@osdlc/command-seam": "workspace:^",
+    "@osdlc/config-layers": "workspace:^",
+    "@osdlc/etag-write": "workspace:^",
+    "@osdlc/trust-repo": "workspace:^",
+    "@osdlc/typed-git": "workspace:^",
+    "yaml": "^2.6.1",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@osdlc/prettier-config": "workspace:^",
+    "@osdlc/tsconfig": "workspace:^",
+    "@types/node": "^26.1.0",
+    "@vitest/coverage-v8": "^5.0.5",
+    "oxlint": "^1.65.0",
+    "prettier": "3.9.6",
+    "typescript": "~6.0.3",
+    "vitest": "^5.0.5"
+  }
+}

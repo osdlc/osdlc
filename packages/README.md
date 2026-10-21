@@ -149,6 +149,9 @@ Developed here, in this repository:
 - `packages/ts/code-host` (`@osdlc/code-host` on npm, the `CodeHost` port for
   pull requests with GitHub and Forgejo adapters, a host selector and auth
   checks)
+- `packages/ts/pr-update` (`@osdlc/pr-update` on npm, a tool and library that
+  brings pull-request branches up to date: survey, rebase with a merge
+  fallback, a conflict ladder and a repair port)
 
 The development repository will take each TypeScript library from npm, like
 any other consumer. Today it still keeps its own copies. Open issues and pull
