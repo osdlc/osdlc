@@ -324,27 +324,28 @@ describe('contains', () => {
     expect(fs.calls).toBeLessThan(2 * 160 + 64)
   })
 
-  // A ratio, not a wall-clock bound, so a busy machine slows both runs alike. Four times the
-  // pairs costs about four times the time when linear, and sixteen times when quadratic. The
-  // bound sits between the two, with room for CI noise; the call count is the exact check.
+  // A ratio, not a wall-clock bound, so a busy machine slows both runs alike. Eight times the
+  // pairs costs about 8 times the time when linear and 64 times when quadratic. The bound of 24
+  // leaves about 3 times room on each side. The call count only sees resolver calls, so the
+  // time ratio is what catches quadratic string work.
   test('folds `zz/..` pairs in linear calls and time', { timeout: 120_000 }, () => {
-    /** Fastest of five runs over `pairs` pairs, and the calls one run spends. */
+    /** Fastest of three runs over `pairs` pairs, and the calls one run spends. */
     const fold = (pairs: number) => {
       const fs = counting()
       const inner = `${tmp}/${'zz/../'.repeat(pairs)}out`
       let best = Infinity
-      for (let run = 0; run < 5; run++) {
+      for (let run = 0; run < 3; run++) {
         const started = performance.now()
         expect(contains(tmp, inner, fs)).toBe(true)
         best = Math.min(best, performance.now() - started)
       }
-      return { ms: best, calls: fs.calls / 5 }
+      return { ms: best, calls: fs.calls / 3 }
     }
-    fold(500)
     const n = 2500
-    const [small, large] = [fold(n), fold(4 * n)]
-    expect(large.ms / small.ms).toBeLessThan(12)
-    expect(large.calls).toBeLessThan(2 * 4 * n + 64)
+    fold(n)
+    const [small, large] = [fold(n), fold(8 * n)]
+    expect(large.ms / small.ms).toBeLessThan(24)
+    expect(large.calls).toBeLessThan(2 * 8 * n + 64)
   })
 
   posixOnly('resolves a `..` behind a symlink physically, through a resolver', () => {
