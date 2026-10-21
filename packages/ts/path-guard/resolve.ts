@@ -14,8 +14,9 @@ export const platformPath = WINDOWS ? win32 : posix
 
 /**
  * How a {@link PathGuard} reads a filesystem. Pass your own to test against a
- * fake filesystem; `nodeResolver` in `@osdlc/path-guard/node` is the real one. The guard asks with `/` separators, on Windows
- * too, and an answer may use either separator there.
+ * fake filesystem; `nodeResolver` in `@osdlc/path-guard/node` is the real one.
+ * The guard asks with `/` separators, on Windows too, and an answer may use
+ * either separator there.
  *
  * @example
  * ```ts
@@ -206,13 +207,16 @@ export function native(path: string): string {
 
 /**
  * Absolute as Rust's `Path::is_absolute`: a leading `/` on POSIX. On Windows, a
- * drive with a root (`C:\`) or a UNC share (`\\server\share`). A root with
- * no drive (`\x`) and a bare drive (`C:x`) are relative there.
+ * drive with a root (`C:\`) or a UNC share with a server and a share
+ * (`\\server\share`). A root with no drive (`\x`), a bare drive (`C:x`) and a
+ * server with no share (`\\server`) are relative there.
  */
 export function isAbsolutePath(path: string): boolean {
   if (!WINDOWS) return path.startsWith('/')
   const { root } = win32.parse(path)
-  return /^[A-Za-z]:[\\/]$/.test(root) || /^[\\/]{2}[^\\/]/.test(root)
+  // A UNC root needs a server and a share, as Rust's prefix parser does. A
+  // verbatim (`\\?\`) or device (`\\.\`) root counts too.
+  return /^[A-Za-z]:[\\/]$/.test(root) || /^[\\/]{2}[^\\/]+[\\/][^\\/]/.test(root)
 }
 
 /** A Windows drive with no separator, `C:`, which is relative to that drive. */

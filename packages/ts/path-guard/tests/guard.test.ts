@@ -29,15 +29,27 @@ import { nodeGuard, nodeResolver } from '../node.ts'
  * value; list a link in `entries` too when its target exists.
  */
 function table(entries: Record<string, string>, links: Record<string, string> = {}): Resolver {
+  const onHost = (map: Record<string, string>) =>
+    Object.fromEntries(Object.entries(map).map(([key, to]) => [at(key), at(to)]))
+  const [real, link] = [onHost(entries), onHost(links)]
   const lookup = (map: Record<string, string>, path: string) => {
     const to = map[path]
     if (to === undefined) throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' })
     return to
   }
   return {
-    realpath: (path) => (path === '/' ? '/' : lookup(entries, path)),
-    readlink: (path) => lookup(links, path),
+    realpath: (path) => (path === at('/') ? path : lookup(real, path)),
+    readlink: (path) => lookup(link, path),
   }
+}
+
+/**
+ * A POSIX-style absolute path on this host. The guard takes `/v` as absolute
+ * on POSIX only, so on Windows the path goes on drive `C:`. A relative path is
+ * left as it is.
+ */
+function at(path: string): string {
+  return WINDOWS && path.startsWith('/') ? `C:${path}` : path
 }
 
 function thrown(run: () => unknown): unknown {
@@ -119,15 +131,15 @@ describe('guard.resolve', () => {
       '/v/escape': '/outside',
       '/v/escape/secret.txt': '/outside/secret.txt',
     })
-    expect(kindOf(() => new PathGuard(fs).resolve('/v', 'escape/secret.txt'))).toBe('escapes')
-    expect(kindOf(() => new PathGuard(fs).resolve('/v', 'escape/new.md'))).toBe('escapes')
-    expect(new PathGuard(fs).resolve('/v', 'Notes/a.md')).toBe(join('/v/Notes/a.md'))
+    expect(kindOf(() => new PathGuard(fs).resolve(at('/v'), 'escape/secret.txt'))).toBe('escapes')
+    expect(kindOf(() => new PathGuard(fs).resolve(at('/v'), 'escape/new.md'))).toBe('escapes')
+    expect(new PathGuard(fs).resolve(at('/v'), 'Notes/a.md')).toBe(join(at('/v/Notes/a.md')))
   })
 
   test('finds a root one component under `/`, through a resolver', () => {
     const fs = table({ '/var': '/private/var' })
-    expect(new PathGuard(fs).resolve('/var', 'a.md')).toBe(join('/var/a.md'))
-    expect(new PathGuard(fs).realPath('/var/a.md')).toBe(join('/private/var/a.md'))
+    expect(new PathGuard(fs).resolve(at('/var'), 'a.md')).toBe(join(at('/var/a.md')))
+    expect(new PathGuard(fs).realPath(at('/var/a.md'))).toBe(join(at('/private/var/a.md')))
   })
 
   test('refuses a dangling symlink whose target would land outside', () => {
@@ -176,14 +188,14 @@ describe('guard.resolve', () => {
 
   test('follows a dangling symlink, through a resolver', () => {
     const fs = table({ '/v': '/v' }, { '/v/out.json': '/outside/p.json', '/v/in.json': 'new.json' })
-    expect(kindOf(() => new PathGuard(fs).resolve('/v', 'out.json'))).toBe('escapes')
-    expect(new PathGuard(fs).resolve('/v', 'in.json')).toBe(join('/v/in.json'))
-    expect(new PathGuard(fs).realPath('/v/in.json')).toBe(join('/v/new.json'))
+    expect(kindOf(() => new PathGuard(fs).resolve(at('/v'), 'out.json'))).toBe('escapes')
+    expect(new PathGuard(fs).resolve(at('/v'), 'in.json')).toBe(join(at('/v/in.json')))
+    expect(new PathGuard(fs).realPath(at('/v/in.json'))).toBe(join(at('/v/new.json')))
   })
 
   test('measures against the canonical root and returns the joined spelling', () => {
     const fs = table({ '/var': '/private/var', '/var/v': '/private/var/v' })
-    expect(new PathGuard(fs).resolve('/var/v', 'a.md')).toBe(join('/var/v/a.md'))
+    expect(new PathGuard(fs).resolve(at('/var/v'), 'a.md')).toBe(join(at('/var/v/a.md')))
   })
 })
 
@@ -244,8 +256,8 @@ describe('guard.contains', () => {
 
   test('folds a trailing `..` behind a missing component, through a resolver', () => {
     const fs = table({ '/tmp': '/private/tmp', '/tmp/v': '/private/tmp/v' })
-    expect(new PathGuard(fs).contains('/tmp/v', '/tmp/nope/../v/out')).toBe(true)
-    expect(new PathGuard(fs).contains('/tmp/v', '/tmp/nope/../w/out')).toBe(false)
+    expect(new PathGuard(fs).contains(at('/tmp/v'), at('/tmp/nope/../v/out'))).toBe(true)
+    expect(new PathGuard(fs).contains(at('/tmp/v'), at('/tmp/nope/../w/out'))).toBe(false)
   })
 
   test('bounds the resolver calls, however long the missing tail', () => {
@@ -429,14 +441,14 @@ describe('relative input', () => {
   test('the guard refuses a relative root, outer or inner, and an empty root', () => {
     expect(kindOf(() => guard.resolve('v', 'a.md'))).toBe('not_absolute')
     expect(kindOf(() => guard.resolve('', 'a.md'))).toBe('empty_root')
-    expect(kindOf(() => guard.contains('v', '/v/a'))).toBe('not_absolute')
-    expect(kindOf(() => guard.contains('/v', 'v/a'))).toBe('not_absolute')
-    expect(kindOf(() => guard.contains('', '/v/a'))).toBe('empty_root')
+    expect(kindOf(() => guard.contains('v', at('/v/a')))).toBe('not_absolute')
+    expect(kindOf(() => guard.contains(at('/v'), 'v/a'))).toBe('not_absolute')
+    expect(kindOf(() => guard.contains('', at('/v/a')))).toBe('empty_root')
     expect(guard.tryResolve('v', 'a.md')).toBeNull()
   })
 
   test('the message names the argument', () => {
-    expect(thrown(() => guard.contains('/v', 'v/a'))).toMatchObject({
+    expect(thrown(() => guard.contains(at('/v'), 'v/a'))).toMatchObject({
       kind: 'not_absolute',
       message: 'inner must be absolute, got "v/a"',
     })
@@ -450,9 +462,9 @@ describe('relative input', () => {
     const cwd = vi.spyOn(process, 'cwd')
     try {
       guard.tryResolve('v', 'a.md')
-      guard.resolve('/v', 'a.md')
+      guard.resolve(at('/v'), 'a.md')
       thrown(() => guard.contains('v', 'v/a'))
-      guard.contains('/v', '/v/a')
+      guard.contains(at('/v'), at('/v/a'))
       expect(cwd).not.toHaveBeenCalled()
     } finally {
       cwd.mockRestore()
@@ -493,12 +505,12 @@ describe('guard.tryResolve', () => {
   const fs = table({ '/v': '/v' })
 
   test('returns the joined path when the path stays inside', () => {
-    expect(new PathGuard(fs).tryResolve('/v', 'a.md')).toBe(join('/v/a.md'))
+    expect(new PathGuard(fs).tryResolve(at('/v'), 'a.md')).toBe(join(at('/v/a.md')))
   })
 
   test('returns null for a lexical refusal instead of throwing', () => {
-    expect(new PathGuard(fs).tryResolve('/v', '../a.md')).toBeNull()
-    expect(new PathGuard(fs).tryResolve('/v', '/etc/passwd')).toBeNull()
+    expect(new PathGuard(fs).tryResolve(at('/v'), '../a.md')).toBeNull()
+    expect(new PathGuard(fs).tryResolve(at('/v'), '/etc/passwd')).toBeNull()
   })
 
   test('lets an error that is not a PathError through', () => {
@@ -513,7 +525,7 @@ describe('guard.tryResolve', () => {
     }
     // The walk treats a throw as "does not exist", so a failing resolver gives
     // the joined path. A throw from the warning handler is not caught.
-    expect(new PathGuard(broken).tryResolve('/v', 'a.md')).toBe(join('/v/a.md'))
+    expect(new PathGuard(broken).tryResolve(at('/v'), 'a.md')).toBe(join(at('/v/a.md')))
     const loud = new PathGuard(fs, {
       onWarning: () => {
         throw failure

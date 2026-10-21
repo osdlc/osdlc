@@ -47,15 +47,21 @@ const RESERVED = new Set([
 /**
  * The Windows device names and alternate data streams in `rel`, a path that
  * `validateRelative` returned, in segment order. The base name of a segment
- * is its text up to the first `.` or `:`, with trailing spaces removed. A
- * reserved base name wins over a `:`.
+ * is its text up to the first `.` or `:`, with trailing spaces removed, and
+ * is compared with ASCII letters folded only, as the Rust twin does. A reserved
+ * base name wins over a `:`.
  */
 export function windowsNames(rel: string): PathWarning[] {
   const found: PathWarning[] = []
   for (const segment of rel.split('/')) {
     const base = segment.split(/[.:]/, 1)[0]!.replace(/ +$/, '')
-    if (RESERVED.has(base.toUpperCase())) found.push({ kind: 'reserved_name', segment })
+    if (RESERVED.has(asciiUpper(base))) found.push({ kind: 'reserved_name', segment })
     else if (segment.includes(':')) found.push({ kind: 'alternate_stream', segment })
   }
   return found
+}
+
+/** `text` with `a` to `z` made upper case and every other character kept, so `ı` stays `ı`. */
+function asciiUpper(text: string): string {
+  return text.replace(/[a-z]/g, (c) => c.toUpperCase())
 }
