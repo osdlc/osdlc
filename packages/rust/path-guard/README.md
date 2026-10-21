@@ -76,7 +76,10 @@ let guard = Guard::std();
 
 // An empty root and a relative root are refused before the path is read.
 assert_eq!(guard.resolve(Path::new(""), "a.md"), Err(PathError::EmptyRoot));
-assert!(matches!(guard.resolve(Path::new("data"), "a.md"), Err(PathError::NotAbsolute(_))));
+assert!(matches!(
+    guard.resolve(Path::new("data"), "a.md"),
+    Err(PathError::NotAbsolute { argument: "root", .. })
+));
 
 // Text checks read POSIX paths and take what they need, such as the
 // directory to join onto, as arguments.
@@ -97,9 +100,9 @@ assert_eq!(lexical::to_relative(root, &abs).unwrap(), "a.md");
 | `Unresolvable`    | More than `MAX_LINK_HOPS` (40) links, such as a loop, or the call budget spent  |
 | `EmptyRoot`       | The root is the empty path                                                      |
 | `NotUnderRoot`    | `lexical::to_relative`: the path does not start with the root                   |
-| `NotAbsolute`     | A path argument is relative or empty                                            |
+| `NotAbsolute`     | A path argument is relative or empty. `argument` names which one.               |
 | `ReservedName`    | On Windows, a segment is a device name such as `NUL`. The guard refuses it.     |
-| `AlternateStream` | On Windows, a segment names a stream such as `a:b`. The guard refuses it.       |
+| `AlternateStream` | On Windows, a segment names a stream such as `ab:c`. The guard refuses it.       |
 | `NotUtf8`         | A path is not valid UTF-8. Rust only: the TypeScript twin has no such kind.     |
 
 `guard.contains` returns `Ok(false)` where it cannot prove containment, and
@@ -157,7 +160,10 @@ The `lexical` module reads no platform. `validate_relative` and
 `windows_names` fold `\` to `/` in a client's relative path. `is_under`,
 `absolute` and `to_relative` read POSIX paths on every platform: only `/`
 separates, so a `\` is part of a name, and `C:\v` is not absolute to them.
-Use a guard for Windows paths.
+Use a guard for Windows paths. A Windows path given to
+`lexical::to_relative` is `NotAbsolute`. To turn a path the guard returned
+back into a relative one on Windows, use `Path::strip_prefix` on two paths
+from `Guard::real_path`, so both are spelled the same way.
 
 A guard reads paths as the platform does. On Windows "absolute" means a drive
 or share and a root, such as `C:\v` or `\\server\share\v`, so `\v` is refused

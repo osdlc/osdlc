@@ -12,8 +12,8 @@ created: 2026-10-19
 Judged from the spelling alone, with no filesystem call, no symlink read and
 no ambient state such as cwd. The `lexical` namespace (Rust: the `lexical`
 module) holds these checks: `validateRelative`, `isUnder`, `absolute` and
-`toRelative` (Rust: `validate_relative`, `is_under`, `absolute` and
-`to_relative`).
+`toRelative` (Rust: `validate_relative`, `windows_names`, `is_under`,
+`absolute` and `to_relative`).
 
 ## Contrast
 
@@ -29,8 +29,9 @@ absolute path, and degenerate or parent [segments](TM-06-segment.md).
 
 ## Notes
 
-The lexical code reads no platform. It takes POSIX paths and reads `/` only,
-on every host. It never refuses a [reserved name](TM-11-reserved-name.md) or
+The lexical code reads no platform. `isUnder`, `absolute` and `toRelative`
+read POSIX paths and `/` only, on every host. `validateRelative` (Rust: also
+`windows_names`) folds `\` to `/` first. It never refuses a [reserved name](TM-11-reserved-name.md) or
 an [alternate data stream](TM-13-alternate-data-stream.md). It reports each
 as a [path warning](TM-12-path-warning.md).
 

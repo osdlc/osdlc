@@ -22,7 +22,7 @@ use crate::{PathError, PathWarning, PathWarningKind};
 /// every element of a large request.
 ///
 /// It accepts names that are devices or streams on Windows, such as `NUL` or
-/// `a:b`. [`windows_names`] lists them, and a [`Guard`](crate::Guard) refuses
+/// `ab:c`. [`windows_names`] lists them, and a [`Guard`](crate::Guard) refuses
 /// them on Windows.
 ///
 /// # Errors
@@ -153,16 +153,20 @@ fn absolute_root(root: &Path) -> Result<&str, PathError> {
     if root.as_os_str().is_empty() {
         return Err(PathError::EmptyRoot);
     }
-    absolute_text(root)
+    absolute_text(root, "root")
 }
 
 /// An absolute POSIX path as text, or [`PathError::NotAbsolute`].
-fn absolute_text(p: &Path) -> Result<&str, PathError> {
+/// `argument` names the parameter in the error.
+fn absolute_text<'p>(p: &'p Path, argument: &'static str) -> Result<&'p str, PathError> {
     let s = text(p)?;
     if s.starts_with('/') {
         Ok(s)
     } else {
-        Err(PathError::NotAbsolute(p.to_path_buf()))
+        Err(PathError::NotAbsolute {
+            argument,
+            path: p.to_path_buf(),
+        })
     }
 }
 
@@ -208,7 +212,7 @@ fn fold(abs: &str) -> Vec<&str> {
 /// ```
 pub fn is_under(root: &Path, path: &Path) -> Result<bool, PathError> {
     let root = fold(absolute_root(root)?);
-    let path = fold(absolute_text(path)?);
+    let path = fold(absolute_text(path, "path")?);
     Ok(path.starts_with(&root))
 }
 
@@ -237,7 +241,7 @@ pub fn is_under(root: &Path, path: &Path) -> Result<bool, PathError> {
 /// assert_eq!(absolute(Path::new("/a/.."), cwd).unwrap(), Path::new("/"));
 /// ```
 pub fn absolute(path: &Path, cwd: &Path) -> Result<PathBuf, PathError> {
-    let cwd = absolute_text(cwd)?;
+    let cwd = absolute_text(cwd, "cwd")?;
     let path = text(path)?;
     let joined = if path.starts_with('/') {
         path.to_string()
@@ -275,7 +279,7 @@ pub fn absolute(path: &Path, cwd: &Path) -> Result<PathBuf, PathError> {
 /// ```
 pub fn to_relative(root: &Path, abs: &Path) -> Result<String, PathError> {
     let root_names = names(absolute_root(root)?);
-    let abs_names = names(absolute_text(abs)?);
+    let abs_names = names(absolute_text(abs, "path")?);
     let Some(rest) = abs_names.strip_prefix(root_names.as_slice()) else {
         return Err(PathError::NotUnderRoot(
             abs.to_path_buf(),

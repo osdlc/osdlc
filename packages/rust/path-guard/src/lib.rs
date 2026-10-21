@@ -35,7 +35,7 @@
 //! link is followed, as Windows reads it.
 //!
 //! Some names mean a device or a stream on Windows and an ordinary file
-//! elsewhere, such as `NUL` or `a:b`. On Windows a guard refuses them. On
+//! elsewhere, such as `NUL` or `ab:c`. On Windows a guard refuses them. On
 //! other platforms it accepts them and reports each one as a [`PathWarning`]
 //! to the handler set with [`Guard::with_warning_handler`].
 //! [`lexical::windows_names`] lists them on every platform. The crate never
@@ -117,9 +117,15 @@ pub enum PathError {
     #[error("path {0:?} is not under the root {1:?}")]
     NotUnderRoot(PathBuf, PathBuf),
     /// An argument that names a place on the filesystem was relative or
-    /// empty. Every such argument must be absolute. Holds the argument.
-    #[error("path must be absolute, got {0:?}")]
-    NotAbsolute(PathBuf),
+    /// empty. Every such argument must be absolute.
+    #[error("{argument} must be absolute, got {path:?}")]
+    NotAbsolute {
+        /// The parameter that was refused, as the function names it: `root`,
+        /// `outer`, `inner`, `path` or `cwd`.
+        argument: &'static str,
+        /// The value it was given.
+        path: PathBuf,
+    },
     /// On Windows, a segment is a reserved device name, such as `NUL` or
     /// `com1.txt`. A [`Guard`] refuses it there. Holds the segment.
     #[error("path segment {0:?} is a reserved device name on Windows")]

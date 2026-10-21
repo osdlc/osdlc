@@ -278,11 +278,27 @@ fn the_guard_refuses_relative_and_empty_arguments() {
     let g = disk();
     let rel = Path::new("v");
     assert_eq!(g.resolve(Path::new(""), "a"), Err(PathError::EmptyRoot));
-    assert_eq!(g.resolve(rel, "a"), Err(PathError::NotAbsolute(rel.into())));
+    assert_eq!(
+        g.resolve(rel, "a"),
+        Err(PathError::NotAbsolute {
+            argument: "root",
+            path: rel.into()
+        })
+    );
+    assert!(matches!(
+        g.contains(&std::env::temp_dir(), rel),
+        Err(PathError::NotAbsolute {
+            argument: "inner",
+            ..
+        })
+    ));
     assert_eq!(g.contains(Path::new(""), rel), Err(PathError::EmptyRoot));
     assert_eq!(
         g.real_path(Path::new("")),
-        Err(PathError::NotAbsolute(PathBuf::new()))
+        Err(PathError::NotAbsolute {
+            argument: "path",
+            path: PathBuf::new()
+        })
     );
 }
 
@@ -692,6 +708,80 @@ fn contains_folds_a_dotdot_as_text_before_it_follows_a_link() {
     );
 }
 
+/// A resolver that breaks the [`Resolver`] contract: it answers the empty
+/// path for the root and its parents, and `/etc` for a link out of the root.
+/// An empty real root would hold every path, so the guard must refuse.
+struct EmptyRealRoot;
+
+impl Resolver for EmptyRealRoot {
+    fn canonicalize(&self, p: &Path) -> io::Result<PathBuf> {
+        let root = std::env::temp_dir();
+        if root.starts_with(p) {
+            Ok(PathBuf::new())
+        } else if p.starts_with(root.join("out")) {
+            let rest = p.strip_prefix(root.join("out")).unwrap();
+            Ok(cwd_root().join("etc").join(rest))
+        } else {
+            Err(io::Error::from(io::ErrorKind::NotFound))
+        }
+    }
+
+    fn read_link(&self, _: &Path) -> io::Result<PathBuf> {
+        Err(io::Error::from(io::ErrorKind::NotFound))
+    }
+}
+
+#[test]
+fn a_root_whose_real_path_is_not_absolute_holds_nothing() {
+    let guard = Guard::new(EmptyRealRoot);
+    let root = std::env::temp_dir();
+    assert!(matches!(
+        guard.resolve(&root, "out/passwd"),
+        Err(PathError::Escapes(..))
+    ));
+    assert!(matches!(
+        guard.resolve(&root, "new.md"),
+        Err(PathError::Escapes(..))
+    ));
+    assert_eq!(guard.contains(&root, &root.join("out/passwd")), Ok(false));
+    // The answer is always absolute: a real path that is not falls back to
+    // the text fold.
+    assert_eq!(guard.real_path(&root).unwrap(), root);
+}
+
+/// `/v` and `\v` have a root but no drive, so a guard on Windows reads them
+/// as relative.
+#[cfg(windows)]
+#[test]
+fn a_rooted_path_without_a_drive_is_not_absolute_on_windows() {
+    struct Nothing;
+    impl Resolver for Nothing {
+        fn canonicalize(&self, _: &Path) -> io::Result<PathBuf> {
+            Err(io::Error::from(io::ErrorKind::NotFound))
+        }
+        fn read_link(&self, _: &Path) -> io::Result<PathBuf> {
+            Err(io::Error::from(io::ErrorKind::NotFound))
+        }
+    }
+    let guard = Guard::new(Nothing);
+    for p in ["/v", r"\v"] {
+        let p = Path::new(p);
+        let refused = |r: Result<(), PathError>| matches!(r, Err(PathError::NotAbsolute { .. }));
+        assert!(refused(guard.resolve(p, "a").map(drop)), "{}", p.display());
+        assert!(
+            refused(guard.contains(p, Path::new(r"C:\v")).map(drop)),
+            "{}",
+            p.display()
+        );
+        assert!(
+            refused(guard.contains(Path::new(r"C:\v"), p).map(drop)),
+            "{}",
+            p.display()
+        );
+        assert!(refused(guard.real_path(p).map(drop)), "{}", p.display());
+    }
+}
+
 /// Counts calls to the real filesystem.
 struct Counting(std::cell::Cell<usize>);
 
@@ -751,7 +841,13 @@ fn a_link_loop_through_dotdot_pairs_is_refused_within_a_fixed_number_of_calls() 
     symlink(format!("{pairs}a"), root.join("b"));
     for input in ["l/x.md", "a/x.md"] {
         let fs = Counting::new();
-        assert!(Guard::new(&fs).resolve(&root, input).is_err(), "{input}");
+        assert!(
+            matches!(
+                Guard::new(&fs).resolve(&root, input),
+                Err(PathError::Unresolvable(_))
+            ),
+            "{input}"
+        );
         assert!(fs.0.get() < 2000, "{input}: {} resolver calls", fs.0.get());
     }
 }
@@ -769,8 +865,8 @@ fn a_dangling_link_through_dotdot_pairs_costs_calls_in_proportion_to_its_target(
     assert!(fs.0.get() < 2 * 160 + 64, "{} resolver calls", fs.0.get());
 }
 
-/// The root of the current directory's drive, such as `C:\`.
-#[cfg(windows)]
+/// The root of the current directory: `/` on Unix, the drive root, such as
+/// `C:\`, on Windows.
 fn cwd_root() -> PathBuf {
     let cwd = std::env::current_dir().unwrap();
     cwd.ancestors().last().unwrap().to_path_buf()

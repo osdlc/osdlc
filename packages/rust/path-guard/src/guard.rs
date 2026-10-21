@@ -147,17 +147,22 @@ impl<R: Resolver> Guard<R> {
     /// let root = std::env::temp_dir();
     /// assert_eq!(guard.resolve(&root, "notes/a.md").unwrap(), root.join("notes/a.md"));
     /// assert!(matches!(guard.resolve(&root, "../escape"), Err(PathError::ParentSegment(_))));
-    /// assert_eq!(guard.resolve(Path::new("srv"), "a.md"), Err(PathError::NotAbsolute("srv".into())));
+    /// assert!(matches!(
+    ///     guard.resolve(Path::new("srv"), "a.md"),
+    ///     Err(PathError::NotAbsolute { argument: "root", .. })
+    /// ));
     /// ```
     pub fn resolve(&self, root: &Path, raw: &str) -> Result<PathBuf, PathError> {
-        check_root(root)?;
+        check_root(root, "root")?;
         let rel = lexical::validate_relative(raw)?;
         let warnings = refuse_windows_names(&rel, cfg!(windows))?;
         let joined = root.join(&rel);
         let unresolvable = || PathError::Unresolvable(raw.to_string());
         let real_root = existing_prefix(&self.resolver, root).ok_or_else(unresolvable)?;
         let real = existing_prefix(&self.resolver, &joined).ok_or_else(unresolvable)?;
-        if !real.starts_with(&real_root) {
+        // A real root that is not absolute, such as the empty path a broken
+        // resolver may answer, would hold every path.
+        if !real_root.is_absolute() || !real.starts_with(&real_root) {
             return Err(PathError::Escapes(raw.to_string(), real_root));
         }
         if let Some(handler) = &self.on_warning {
@@ -194,14 +199,16 @@ impl<R: Resolver> Guard<R> {
     /// assert_eq!(guard.contains(&root, &root.with_file_name("other")), Ok(false));
     /// ```
     pub fn contains(&self, outer: &Path, inner: &Path) -> Result<bool, PathError> {
-        check_root(outer)?;
-        check_absolute(inner)?;
+        check_root(outer, "outer")?;
+        check_absolute(inner, "inner")?;
         Ok(
             match (
                 existing_prefix(&self.resolver, outer),
                 existing_prefix(&self.resolver, inner),
             ) {
-                (Some(outer), Some(inner)) => inner.starts_with(&outer),
+                // As in `resolve`, a real `outer` that is not absolute holds
+                // nothing.
+                (Some(outer), Some(inner)) => outer.is_absolute() && inner.starts_with(&outer),
                 _ => false,
             },
         )
@@ -242,26 +249,32 @@ impl<R: Resolver> Guard<R> {
     /// assert!(p.ends_with("notes/a.md"));
     /// ```
     pub fn real_path(&self, path: &Path) -> Result<PathBuf, PathError> {
-        check_absolute(path)?;
-        Ok(existing_prefix(&self.resolver, path).unwrap_or_else(|| fold_text(path)))
+        check_absolute(path, "path")?;
+        Ok(existing_prefix(&self.resolver, path)
+            .filter(|real| real.is_absolute())
+            .unwrap_or_else(|| fold_text(path)))
     }
 }
 
 /// [`PathError::EmptyRoot`] for an empty root, [`PathError::NotAbsolute`] for
 /// a relative one.
-fn check_root(root: &Path) -> Result<(), PathError> {
+/// `argument` names the parameter in the error.
+fn check_root(root: &Path, argument: &'static str) -> Result<(), PathError> {
     if root.as_os_str().is_empty() {
         return Err(PathError::EmptyRoot);
     }
-    check_absolute(root)
+    check_absolute(root, argument)
 }
 
 /// [`PathError::NotAbsolute`] unless `p` is absolute.
-fn check_absolute(p: &Path) -> Result<(), PathError> {
+fn check_absolute(p: &Path, argument: &'static str) -> Result<(), PathError> {
     if p.is_absolute() {
         Ok(())
     } else {
-        Err(PathError::NotAbsolute(p.to_path_buf()))
+        Err(PathError::NotAbsolute {
+            argument,
+            path: p.to_path_buf(),
+        })
     }
 }
 

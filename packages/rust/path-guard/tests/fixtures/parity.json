@@ -10,6 +10,7 @@
     "is_under": "`lexical.isUnder(root, input)`. POSIX paths on every host.",
     "to_relative": "`lexical.toRelative(root, input)`. POSIX paths on every host.",
     "on_disk": "`resolve_on_disk`, `contains_on_disk` and `real_path` build `dirs`, `files` and `links` in a scratch directory. A link target that starts with `/` is rooted at the scratch directory. `root`, `outer` and `inner` are relative to it. The guard is the real-disk guard.",
+    "budget": "The `resolve_on_disk` case \"a chain of links with long targets spends the call budget\" is pinned on POSIX hosts only. Its link targets hold `..`, and Windows folds `zz/..` as text before it follows a link, so there the chain is cheap and the case is checked against where the filesystem puts the path instead.",
     "real_path": "`guard.realPath(input)`. An `input` or `ok` that starts with `/` is rooted at the real path of the scratch directory. Any other `input` is passed as written."
   },
   "validate_relative": [
@@ -169,6 +170,11 @@
     { "name": "a device name followed by more text", "input": "nul-x", "warnings": [] },
     { "name": "CLOCK$ is not a device", "input": "CLOCK$", "warnings": [] },
     { "name": "COM10 is not a device", "input": "COM10", "warnings": [] },
+    {
+      "name": "a dotless i does not fold to I: case folding is ASCII only",
+      "input": "conın$",
+      "warnings": []
+    },
     {
       "name": "a drive is refused before the check",
       "input": "C:x",
@@ -503,7 +509,8 @@
       "cwd": "w",
       "error": "not_absolute"
     },
-    { "name": "an empty cwd is refused", "input": "a", "cwd": "", "error": "not_absolute" }
+    { "name": "an empty cwd is refused", "input": "a", "cwd": "", "error": "not_absolute" },
+    { "name": "an empty path is the folded cwd", "input": "", "cwd": "/w/./x", "ok": "/w/x" }
   ],
   "is_under": [
     { "name": "a root is under itself", "root": "/vault", "input": "/vault", "expected": true },
@@ -749,6 +756,14 @@
       "dirs": ["root"],
       "links": { "root/a": "b", "root/b": "a" },
       "root": "root",
+      "input": "a",
+      "error": "unresolvable"
+    },
+    {
+      "name": "a root whose walk gives up is unresolvable",
+      "dirs": ["root"],
+      "links": { "root/loop": "loop" },
+      "root": "root/loop",
       "input": "a",
       "error": "unresolvable"
     },
