@@ -45,9 +45,9 @@ budget, an empty root and a `to_relative` miss. The crate has no `is_under`.
 7. Refuse Windows names as D-06's Windows names section says. Add the
    `PathError` variants `ReservedName` and `AlternateStream`, the
    `PathWarning` and `PathWarningKind` types, `lexical::windows_names` and
-   `Guard::with_warning_handler`. The handler is `Fn(&PathWarning) + Send +
-Sync + 'static`, stored in an `Arc`, so `Guard` stays `Clone`, `Send` and
-   `Sync`. `lexical` reads no platform. `Guard` refuses on `cfg!(windows)`.
+   `Guard::with_warning_handler`. The handler is
+   `Fn(&PathWarning) + Send + Sync + 'static`, stored in an `Arc`, so `Guard`
+   stays `Clone`, `Send` and `Sync`. `lexical` reads no platform. `Guard` refuses on `cfg!(windows)`.
    The crate writes nothing to the console. Use Microsoft's reserved-name list
    as D-06 gives it.
 
@@ -55,7 +55,9 @@ Sync + 'static`, stored in an `Arc`, so `Guard` stays `Clone`, `Send` and
 
 - [ ] The crate version is 0.3.0.
 - [ ] The `lexical` module and `Guard` exist as D-06's target table shows.
-- [ ] `PathError` has the six new variants (`Unresolvable`, `EmptyRoot`, `NotUnderRoot`, `NotAbsolute`, `ReservedName`, `AlternateStream`) and stays `#[non_exhaustive]`.
+- [ ] `PathError` has the six new variants (`Unresolvable`, `EmptyRoot`,
+      `NotUnderRoot`, `NotAbsolute`, `ReservedName`, `AlternateStream`) and
+      stays `#[non_exhaustive]`.
 - [ ] Every 0.2 root function is removed, and no `#[deprecated]` item
       remains in the crate.
 - [ ] `lexical::windows_names` returns a warning for each reserved name and
