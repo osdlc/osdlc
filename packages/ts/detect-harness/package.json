@@ -69,7 +69,6 @@
   "dependencies": {
     "@osdlc/command-seam": "workspace:^",
     "@osdlc/frontmatter-lossless": "workspace:^",
-    "@osdlc/path-guard": "workspace:^",
     "smol-toml": "^1.7.0",
     "yaml": "^2.9.0"
   },

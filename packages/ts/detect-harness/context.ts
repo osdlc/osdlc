@@ -15,9 +15,9 @@ import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from 'n
 import { resolve } from 'node:path'
 
 import type { AsyncCommandRunner } from '@osdlc/command-seam'
-import { isInside } from '@osdlc/path-guard'
 
 import type { DirEntry, JsonRead, ProviderContext, TextRead } from './contract.ts'
+import { isInside } from './inside.ts'
 import { asObject, errorMessage } from './json.ts'
 import type { DetectMode } from './report.ts'
 

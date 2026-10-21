@@ -8,24 +8,19 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join, parse, sep } from 'node:path'
+import { join, sep } from 'node:path'
 
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import {
-  PathError,
-  canonicalExistingPrefix,
-  contains,
-  lexicalAbsolute,
   MAX_LINK_HOPS,
-  nodeResolver,
-  realpathOrSelf,
-  resolveInside,
-  toRelative,
-  tryResolveInside,
-  validateRelative,
+  PathError,
+  PathGuard,
+  lexical,
+  type PathWarning,
   type Resolver,
 } from '../index.ts'
+import { nodeGuard, nodeResolver } from '../node.ts'
 
 /**
  * A resolver over a fixed table: `/` and each key of `entries` exist, and a key
@@ -78,9 +73,9 @@ afterEach(() => {
   rmSync(tmp, { recursive: true, force: true })
 })
 
-describe('validateRelative', () => {
+describe('lexical.validateRelative', () => {
   test('throws a PathError naming the input', () => {
-    const error = thrown(() => validateRelative('../etc/passwd'))
+    const error = thrown(() => lexical.validateRelative('../etc/passwd'))
     expect(error).toBeInstanceOf(PathError)
     expect(error).toMatchObject({
       kind: 'parent_segment',
@@ -89,13 +84,13 @@ describe('validateRelative', () => {
   })
 })
 
-describe('resolveInside', () => {
+describe('guard.resolve', () => {
   test('joins under the root', () => {
-    expect(resolveInside(tmp, 'Notes/a.md')).toBe(join(tmp, 'Notes/a.md'))
+    expect(nodeGuard.resolve(tmp, 'Notes/a.md')).toBe(join(tmp, 'Notes/a.md'))
   })
 
   test('allows a path that does not exist yet', () => {
-    expect(resolveInside(tmp, 'brand/new/note.md')).toBe(join(tmp, 'brand/new/note.md'))
+    expect(nodeGuard.resolve(tmp, 'brand/new/note.md')).toBe(join(tmp, 'brand/new/note.md'))
   })
 
   test('refuses a symlink that escapes the root', () => {
@@ -106,16 +101,16 @@ describe('resolveInside', () => {
     writeFileSync(join(outside, 'secret.txt'), 'secret')
     symlinkSync(outside, join(vault, 'escape'))
 
-    expect(validateRelative('escape/secret.txt')).toBe('escape/secret.txt')
-    expect(kindOf(() => resolveInside(vault, 'escape/secret.txt'))).toBe('escapes')
-    expect(kindOf(() => resolveInside(vault, 'escape/new.md'))).toBe('escapes')
+    expect(lexical.validateRelative('escape/secret.txt')).toBe('escape/secret.txt')
+    expect(kindOf(() => nodeGuard.resolve(vault, 'escape/secret.txt'))).toBe('escapes')
+    expect(kindOf(() => nodeGuard.resolve(vault, 'escape/new.md'))).toBe('escapes')
   })
 
   test('accepts a symlink that stays inside', () => {
     mkdirSync(join(tmp, 'real'))
     writeFileSync(join(tmp, 'real', 'a.md'), 'x')
     symlinkSync(join(tmp, 'real'), join(tmp, 'alias'))
-    expect(resolveInside(tmp, 'alias/a.md')).toBe(join(tmp, 'alias/a.md'))
+    expect(nodeGuard.resolve(tmp, 'alias/a.md')).toBe(join(tmp, 'alias/a.md'))
   })
 
   test('refuses a symlink that leaves the root, through a resolver', () => {
@@ -124,15 +119,15 @@ describe('resolveInside', () => {
       '/v/escape': '/outside',
       '/v/escape/secret.txt': '/outside/secret.txt',
     })
-    expect(kindOf(() => resolveInside('/v', 'escape/secret.txt', fs))).toBe('escapes')
-    expect(kindOf(() => resolveInside('/v', 'escape/new.md', fs))).toBe('escapes')
-    expect(resolveInside('/v', 'Notes/a.md', fs)).toBe(join('/v/Notes/a.md'))
+    expect(kindOf(() => new PathGuard(fs).resolve('/v', 'escape/secret.txt'))).toBe('escapes')
+    expect(kindOf(() => new PathGuard(fs).resolve('/v', 'escape/new.md'))).toBe('escapes')
+    expect(new PathGuard(fs).resolve('/v', 'Notes/a.md')).toBe(join('/v/Notes/a.md'))
   })
 
   test('finds a root one component under `/`, through a resolver', () => {
     const fs = table({ '/var': '/private/var' })
-    expect(resolveInside('/var', 'a.md', fs)).toBe(join('/var/a.md'))
-    expect(canonicalExistingPrefix('/var/a.md', fs)).toBe(join('/private/var/a.md'))
+    expect(new PathGuard(fs).resolve('/var', 'a.md')).toBe(join('/var/a.md'))
+    expect(new PathGuard(fs).realPath('/var/a.md')).toBe(join('/private/var/a.md'))
   })
 
   test('refuses a dangling symlink whose target would land outside', () => {
@@ -142,7 +137,7 @@ describe('resolveInside', () => {
     mkdirSync(vault)
     symlinkSync(join(outside, 'planted.json'), join(vault, 'x.json'))
 
-    expect(kindOf(() => resolveInside(vault, 'x.json'))).toBe('escapes')
+    expect(kindOf(() => nodeGuard.resolve(vault, 'x.json'))).toBe('escapes')
     // The premise: a write through the link creates the file outside.
     writeFileSync(join(vault, 'x.json'), '{}')
     expect(existsSync(join(outside, 'planted.json'))).toBe(true)
@@ -153,16 +148,16 @@ describe('resolveInside', () => {
     symlinkSync('../new.json', join(tmp, 'vault/sub/in.json'))
     symlinkSync('../../planted.json', join(tmp, 'vault/sub/out.json'))
     const vault = join(tmp, 'vault')
-    expect(resolveInside(vault, 'sub/in.json')).toBe(join(vault, 'sub/in.json'))
-    expect(kindOf(() => resolveInside(vault, 'sub/out.json'))).toBe('escapes')
+    expect(nodeGuard.resolve(vault, 'sub/in.json')).toBe(join(vault, 'sub/in.json'))
+    expect(kindOf(() => nodeGuard.resolve(vault, 'sub/out.json'))).toBe('escapes')
   })
 
   test('refuses a symlink loop', () => {
     symlinkSync('b', join(tmp, 'a'))
     symlinkSync('a', join(tmp, 'b'))
-    expect(kindOf(() => resolveInside(tmp, 'a'))).toBe('escapes')
-    expect(contains(tmp, join(tmp, 'a'))).toBe(false)
-    expect(canonicalExistingPrefix(join(tmp, 'a/x.md'))).toBe(join(tmp, 'a/x.md'))
+    expect(kindOf(() => nodeGuard.resolve(tmp, 'a'))).toBe('unresolvable')
+    expect(nodeGuard.contains(tmp, join(tmp, 'a'))).toBe(false)
+    expect(nodeGuard.realPath(join(tmp, 'a/x.md'))).toBe(join(tmp, 'a/x.md'))
   })
 
   test('follows MAX_LINK_HOPS links and refuses one more', () => {
@@ -175,29 +170,29 @@ describe('resolveInside', () => {
     }
     chain(join(tmp, 'ok'), MAX_LINK_HOPS)
     chain(join(tmp, 'over'), MAX_LINK_HOPS + 1)
-    expect(resolveInside(join(tmp, 'ok'), 'l0')).toBe(join(tmp, 'ok/l0'))
-    expect(kindOf(() => resolveInside(join(tmp, 'over'), 'l0'))).toBe('escapes')
+    expect(nodeGuard.resolve(join(tmp, 'ok'), 'l0')).toBe(join(tmp, 'ok/l0'))
+    expect(kindOf(() => nodeGuard.resolve(join(tmp, 'over'), 'l0'))).toBe('unresolvable')
   })
 
   test('follows a dangling symlink, through a resolver', () => {
     const fs = table({ '/v': '/v' }, { '/v/out.json': '/outside/p.json', '/v/in.json': 'new.json' })
-    expect(kindOf(() => resolveInside('/v', 'out.json', fs))).toBe('escapes')
-    expect(resolveInside('/v', 'in.json', fs)).toBe(join('/v/in.json'))
-    expect(canonicalExistingPrefix('/v/in.json', fs)).toBe(join('/v/new.json'))
+    expect(kindOf(() => new PathGuard(fs).resolve('/v', 'out.json'))).toBe('escapes')
+    expect(new PathGuard(fs).resolve('/v', 'in.json')).toBe(join('/v/in.json'))
+    expect(new PathGuard(fs).realPath('/v/in.json')).toBe(join('/v/new.json'))
   })
 
   test('measures against the canonical root and returns the joined spelling', () => {
     const fs = table({ '/var': '/private/var', '/var/v': '/private/var/v' })
-    expect(resolveInside('/var/v', 'a.md', fs)).toBe(join('/var/v/a.md'))
+    expect(new PathGuard(fs).resolve('/var/v', 'a.md')).toBe(join('/var/v/a.md'))
   })
 })
 
-describe('contains', () => {
+describe('guard.contains', () => {
   test('sees a path that only lands inside after dots fold', () => {
     const vault = join(tmp, 'vault-b')
     mkdirSync(vault)
     const sneaky = join(tmp, 'nope') + '/../vault-b/out'
-    expect(contains(vault, sneaky)).toBe(true)
+    expect(nodeGuard.contains(vault, sneaky)).toBe(true)
     mkdirSync(sneaky, { recursive: true })
     expect(realpathSync.native(sneaky).startsWith(realpathSync.native(vault) + sep)).toBe(true)
   })
@@ -206,9 +201,9 @@ describe('contains', () => {
     const vault = join(tmp, 'vault-b')
     mkdirSync(vault)
     mkdirSync(join(tmp, 'vault-bee'))
-    expect(contains(vault, vault)).toBe(true)
-    expect(contains(vault, join(vault, 'out/deep'))).toBe(true)
-    expect(contains(vault, join(tmp, 'vault-bee', 'out'))).toBe(false)
+    expect(nodeGuard.contains(vault, vault)).toBe(true)
+    expect(nodeGuard.contains(vault, join(vault, 'out/deep'))).toBe(true)
+    expect(nodeGuard.contains(vault, join(tmp, 'vault-bee', 'out'))).toBe(false)
   })
 
   test('resolves a root reached through a symlink', () => {
@@ -216,8 +211,8 @@ describe('contains', () => {
     mkdirSync(vault)
     const alias = join(tmp, 'alias')
     symlinkSync(vault, alias)
-    expect(contains(vault, join(alias, 'out'))).toBe(true)
-    expect(contains(alias, join(vault, 'out'))).toBe(true)
+    expect(nodeGuard.contains(vault, join(alias, 'out'))).toBe(true)
+    expect(nodeGuard.contains(alias, join(vault, 'out'))).toBe(true)
   })
 
   test('resolves a `..` behind a symlink the way the filesystem does', () => {
@@ -228,7 +223,7 @@ describe('contains', () => {
     symlinkSync(join(vault, 'deep'), link)
 
     const inner = `${link}/../y`
-    const inside = contains(vault, inner)
+    const inside = nodeGuard.contains(vault, inner)
     // POSIX puts `link/..` at the parent of the link's target. Windows folds the
     // `..` as text, so it lands beside the link.
     expect(inside).toBe(!WINDOWS)
@@ -243,14 +238,14 @@ describe('contains', () => {
     mkdirSync(vault)
     mkdirSync(join(tmp, 'outside'))
     symlinkSync(join(tmp, 'outside/planted.json'), join(vault, 'x.json'))
-    expect(contains(vault, join(vault, 'x.json'))).toBe(false)
-    expect(contains(join(tmp, 'outside'), join(vault, 'x.json'))).toBe(true)
+    expect(nodeGuard.contains(vault, join(vault, 'x.json'))).toBe(false)
+    expect(nodeGuard.contains(join(tmp, 'outside'), join(vault, 'x.json'))).toBe(true)
   })
 
   test('folds a trailing `..` behind a missing component, through a resolver', () => {
     const fs = table({ '/tmp': '/private/tmp', '/tmp/v': '/private/tmp/v' })
-    expect(contains('/tmp/v', '/tmp/nope/../v/out', fs)).toBe(true)
-    expect(contains('/tmp/v', '/tmp/nope/../w/out', fs)).toBe(false)
+    expect(new PathGuard(fs).contains('/tmp/v', '/tmp/nope/../v/out')).toBe(true)
+    expect(new PathGuard(fs).contains('/tmp/v', '/tmp/nope/../w/out')).toBe(false)
   })
 
   test('bounds the resolver calls, however long the missing tail', () => {
@@ -264,7 +259,7 @@ describe('contains', () => {
       readlink: (path) => nodeResolver.readlink(path),
     }
     const inner = `${tmp}/${'docs/../'.repeat(500)}${'zz/'.repeat(300)}`
-    expect(contains(tmp, inner, counting)).toBe(true)
+    expect(new PathGuard(counting).contains(tmp, inner)).toBe(true)
     expect(calls.length).toBeLessThan(40)
   })
 
@@ -279,7 +274,7 @@ describe('contains', () => {
     }
     // Each `zz/..` folds back onto the root, so the walk resumes there.
     const inner = `${tmp}/${'zz/../'.repeat(40)}${'zz/'.repeat(200)}`
-    expect(contains(tmp, inner, counting)).toBe(true)
+    expect(new PathGuard(counting).contains(tmp, inner)).toBe(true)
     expect(calls).toBeLessThan(3 * 40)
   })
 
@@ -310,7 +305,7 @@ describe('contains', () => {
     symlinkSync(`${pairs}a`, join(root, 'b'))
     for (const input of ['l/x.md', 'a/x.md']) {
       const fs = counting()
-      expect(tryResolveInside(root, input, fs)).toBeNull()
+      expect(new PathGuard(fs).tryResolve(root, input)).toBeNull()
       expect(fs.calls).toBeLessThan(2000)
     }
   })
@@ -320,7 +315,7 @@ describe('contains', () => {
     mkdirSync(root)
     symlinkSync(`${'zz/../'.repeat(160)}new.md`, join(root, 'd'))
     const fs = counting()
-    expect(resolveInside(root, 'd', fs)).toBe(join(root, 'd'))
+    expect(new PathGuard(fs).resolve(root, 'd')).toBe(join(root, 'd'))
     expect(fs.calls).toBeLessThan(2 * 160 + 64)
   })
 
@@ -336,7 +331,7 @@ describe('contains', () => {
       let best = Infinity
       for (let run = 0; run < 3; run++) {
         const started = performance.now()
-        expect(contains(tmp, inner, fs)).toBe(true)
+        expect(new PathGuard(fs).contains(tmp, inner)).toBe(true)
         best = Math.min(best, performance.now() - started)
       }
       return { ms: best, calls: fs.calls / 3 }
@@ -350,7 +345,7 @@ describe('contains', () => {
 
   posixOnly('resolves a `..` behind a symlink physically, through a resolver', () => {
     const fs = table({ '/v': '/v', '/x': '/x', '/x/link': '/v/deep', '/x/link/..': '/v' })
-    expect(contains('/v', '/x/link/../y', fs)).toBe(true)
+    expect(new PathGuard(fs).contains('/v', '/x/link/../y')).toBe(true)
   })
 })
 
@@ -365,19 +360,21 @@ describe('nodeResolver', () => {
   })
 })
 
-describe('realpathOrSelf', () => {
+describe('guard.realPath', () => {
   test('resolves `..` behind a symlink as the OS does', () => {
     mkdirSync(join(tmp, 'v/deep'), { recursive: true })
     mkdirSync(join(tmp, 'x'))
     symlinkSync(join(tmp, 'v/deep'), join(tmp, 'x/link'))
     // POSIX: the parent of the link's target. Windows: the link's own directory.
-    expect(realpathOrSelf(`${join(tmp, 'x/link')}/..`)).toBe(
+    expect(nodeGuard.realPath(`${join(tmp, 'x/link')}/..`)).toBe(
       realpathSync.native(join(tmp, WINDOWS ? 'x' : 'v')),
     )
   })
 
   test('folds `..` behind a missing name against the real path', () => {
-    expect(realpathOrSelf(`${tmp}/a/../missing`)).toBe(join(realpathSync.native(tmp), 'missing'))
+    expect(nodeGuard.realPath(`${tmp}/a/../missing`)).toBe(
+      join(realpathSync.native(tmp), 'missing'),
+    )
   })
 
   posixOnly('folds `..` after a link and a missing name against the link target', () => {
@@ -385,15 +382,15 @@ describe('realpathOrSelf', () => {
     mkdirSync(join(tmp, 'x'))
     symlinkSync(join(tmp, 'v/deep/deeper'), join(tmp, 'x/link'))
     const real = realpathSync.native(tmp)
-    expect(realpathOrSelf(`${tmp}/x/link/missing/..`)).toBe(join(real, 'v/deep/deeper'))
-    expect(realpathOrSelf(`${tmp}/x/link/missing/../..`)).toBe(join(real, 'v/deep'))
-    expect(realpathOrSelf(`${tmp}/x/link/missing/../../../y`)).toBe(join(real, 'v/y'))
+    expect(nodeGuard.realPath(`${tmp}/x/link/missing/..`)).toBe(join(real, 'v/deep/deeper'))
+    expect(nodeGuard.realPath(`${tmp}/x/link/missing/../..`)).toBe(join(real, 'v/deep'))
+    expect(nodeGuard.realPath(`${tmp}/x/link/missing/../../../y`)).toBe(join(real, 'v/y'))
   })
 
   posixOnly('resolves a link reached again after a missing name folds away', () => {
     mkdirSync(join(tmp, 'v/deep'), { recursive: true })
     symlinkSync(join(tmp, 'v/deep'), join(tmp, 'link'))
-    expect(realpathOrSelf(`${tmp}/missing/../link/../y`)).toBe(
+    expect(nodeGuard.realPath(`${tmp}/missing/../link/../y`)).toBe(
       join(realpathSync.native(tmp), 'v/y'),
     )
   })
@@ -401,113 +398,75 @@ describe('realpathOrSelf', () => {
   // On Windows the `..` folds away before the loop is reached.
   posixOnly('folds `..` as text when the walk gives up on a link loop', () => {
     symlinkSync('loop', join(tmp, 'loop'))
-    expect(realpathOrSelf(`${tmp}/loop/../x`)).toBe(join(tmp, 'x'))
+    expect(nodeGuard.realPath(`${tmp}/loop/../x`)).toBe(join(tmp, 'x'))
   })
 
   test('resolves symlinks in a path that exists', () => {
     symlinkSync(tmp, join(tmp, 'self'))
-    expect(realpathOrSelf(join(tmp, 'self'))).toBe(realpathSync.native(tmp))
+    expect(nodeGuard.realPath(join(tmp, 'self'))).toBe(realpathSync.native(tmp))
   })
 
   test('returns the real path of the existing part when the path does not exist', () => {
-    expect(realpathOrSelf(join(tmp, 'missing'))).toBe(join(realpathSync.native(tmp), 'missing'))
+    expect(nodeGuard.realPath(join(tmp, 'missing'))).toBe(join(realpathSync.native(tmp), 'missing'))
   })
 
-  test('makes a relative path absolute', () => {
-    expect(realpathOrSelf('no-such-entry')).toBe(
-      join(realpathSync.native(process.cwd()), 'no-such-entry'),
-    )
-  })
-})
-
-describe('relative paths', () => {
-  const cwd = process.cwd()
-  let realTmp: string
-
-  beforeEach(() => {
-    realTmp = realpathSync.native(tmp)
-    mkdirSync(join(tmp, 'vault/sub'), { recursive: true })
-    process.chdir(tmp)
-  })
-
-  afterEach(() => {
-    process.chdir(cwd)
-  })
-
-  test('canonicalExistingPrefix resolves from the first segment', () => {
-    expect(canonicalExistingPrefix('vault/a.md')).toBe(join(realTmp, 'vault/a.md'))
-    expect(canonicalExistingPrefix('./a.md')).toBe(join(realTmp, 'a.md'))
-    expect(canonicalExistingPrefix('vault/sub/new/a.md')).toBe(join(realTmp, 'vault/sub/new/a.md'))
-    expect(canonicalExistingPrefix('nope/a.md')).toBe(join('nope/a.md'))
-  })
-
-  test('resolveInside joins under a relative root', () => {
-    expect(resolveInside('vault', 'a.md')).toBe(join('vault/a.md'))
-    expect(resolveInside('vault', 'sub/new/a.md')).toBe(join('vault/sub/new/a.md'))
-  })
-
-  test('contains sees a relative path inside a relative root', () => {
-    expect(contains('vault', 'vault/new.md')).toBe(true)
-    expect(contains('vault', 'vault/sub/new/a.md')).toBe(true)
-    expect(contains('vault', 'other/a.md')).toBe(false)
-  })
-
-  test('works through a resolver', () => {
-    const fs = table({ vault: '/abs/vault', 'vault/sub': '/abs/vault/sub' })
-    expect(canonicalExistingPrefix('vault/a.md', fs)).toBe(join('/abs/vault/a.md'))
-    expect(contains('vault', 'vault/sub/new/a.md', fs)).toBe(true)
-  })
-
-  test('realpathOrSelf joins a relative path onto a working directory of `/`', () => {
-    // `/` already ends in a separator, and `joinPath` adds none. A template string
-    // would add one, and `components` would drop it again, so the answer does not
-    // change: this guards the join, not the output.
-    process.chdir('/')
-    expect(realpathOrSelf('no-such-entry')).toBe(join(process.cwd(), 'no-such-entry'))
-  })
-})
-
-// Pure cases are in the parity fixture. These need the working directory or the filesystem.
-describe('lexicalAbsolute', () => {
-  test('anchors a relative path at the cwd and folds after', () => {
-    const cwd = process.cwd()
-    expect(lexicalAbsolute('x/./y')).toBe(join(cwd, 'x/y'))
-    expect(lexicalAbsolute('x/../y')).toBe(join(cwd, 'y'))
-  })
-
-  test('pops the cwd for a leading `..`', () => {
-    const cwd = process.cwd()
-    expect(lexicalAbsolute('../x')).toBe(join(dirname(cwd), 'x'))
-    // Above the root there is nothing left to pop.
-    const deep = '../'.repeat(cwd.split(sep).length + 2)
-    expect(lexicalAbsolute(`${deep}x`)).toBe(join(parse(cwd).root, 'x'))
-  })
-
-  test('gives the cwd for an empty path or `.`', () => {
-    expect(lexicalAbsolute('')).toBe(process.cwd())
-    expect(lexicalAbsolute('.')).toBe(process.cwd())
-  })
-
-  test('folds as text: no symlink is followed and nothing has to exist', () => {
-    mkdirSync(join(tmp, 'a/b'), { recursive: true })
-    symlinkSync(join(tmp, 'a/b'), join(tmp, 'link'))
-    // The filesystem would put `link/..` at `tmp/a`.
-    expect(lexicalAbsolute(`${tmp}/link/../x`)).toBe(join(tmp, 'x'))
-    expect(lexicalAbsolute(`${tmp}/missing/../x`)).toBe(join(tmp, 'x'))
-  })
-
-  test('reads the cwd only for a relative path, and throws what cwd throws', () => {
-    const failure = new Error('cwd is unreadable')
-    const cwd = vi.spyOn(process, 'cwd').mockImplementation(() => {
-      throw failure
-    })
+  test('refuses a relative or empty path, and reads no working directory', () => {
+    const cwd = vi.spyOn(process, 'cwd')
     try {
-      // On Windows a path needs a drive not to read the working directory.
-      expect(lexicalAbsolute(WINDOWS ? 'C:\\a\\.\\b' : '/a/./b')).toBe(
-        WINDOWS ? 'C:\\a\\b' : '/a/b',
-      )
+      expect(kindOf(() => nodeGuard.realPath('no-such-entry'))).toBe('not_absolute')
+      expect(kindOf(() => nodeGuard.realPath(''))).toBe('not_absolute')
       expect(cwd).not.toHaveBeenCalled()
-      expect(thrown(() => lexicalAbsolute('a/b'))).toBe(failure)
+    } finally {
+      cwd.mockRestore()
+    }
+  })
+})
+
+describe('relative input', () => {
+  const fs = table({ '/v': '/v' })
+  const guard = new PathGuard(fs)
+
+  test('the guard refuses a relative root, outer or inner, and an empty root', () => {
+    expect(kindOf(() => guard.resolve('v', 'a.md'))).toBe('not_absolute')
+    expect(kindOf(() => guard.resolve('', 'a.md'))).toBe('empty_root')
+    expect(kindOf(() => guard.contains('v', '/v/a'))).toBe('not_absolute')
+    expect(kindOf(() => guard.contains('/v', 'v/a'))).toBe('not_absolute')
+    expect(kindOf(() => guard.contains('', '/v/a'))).toBe('empty_root')
+    expect(guard.tryResolve('v', 'a.md')).toBeNull()
+  })
+
+  test('the message names the argument', () => {
+    expect(thrown(() => guard.contains('/v', 'v/a'))).toMatchObject({
+      kind: 'not_absolute',
+      message: 'inner must be absolute, got "v/a"',
+    })
+    expect(thrown(() => guard.resolve('', 'a.md'))).toMatchObject({
+      kind: 'empty_root',
+      message: 'root is empty',
+    })
+  })
+
+  test('never reads the working directory', () => {
+    const cwd = vi.spyOn(process, 'cwd')
+    try {
+      guard.tryResolve('v', 'a.md')
+      guard.resolve('/v', 'a.md')
+      thrown(() => guard.contains('v', 'v/a'))
+      guard.contains('/v', '/v/a')
+      expect(cwd).not.toHaveBeenCalled()
+    } finally {
+      cwd.mockRestore()
+    }
+  })
+})
+
+describe('lexical.absolute', () => {
+  test('reads no working directory and follows no symlink', () => {
+    const cwd = vi.spyOn(process, 'cwd')
+    try {
+      expect(lexical.absolute('a/../b', '/w')).toBe('/w/b')
+      expect(lexical.absolute('/srv/link/../x', '/w')).toBe('/srv/x')
+      expect(cwd).not.toHaveBeenCalled()
     } finally {
       cwd.mockRestore()
     }
@@ -515,13 +474,13 @@ describe('lexicalAbsolute', () => {
 })
 
 // Outcomes are in the parity fixture. This checks the error message, which it does not hold.
-describe('toRelative', () => {
+describe('lexical.toRelative', () => {
   test('throws a PathError that names the paths', () => {
-    expect(thrown(() => toRelative('/v', '/other/a.md'))).toMatchObject({
-      kind: 'escapes',
-      message: 'path escapes the root: "/other/a.md" resolves outside "/v"',
+    expect(thrown(() => lexical.toRelative('/v', '/other/a.md'))).toMatchObject({
+      kind: 'not_under_root',
+      message: 'path is not under the root: "/other/a.md" does not start with "/v"',
     })
-    const error = thrown(() => toRelative('/v', '/v/a/../b'))
+    const error = thrown(() => lexical.toRelative('/v', '/v/a/../b'))
     expect(error).toBeInstanceOf(PathError)
     expect(error).toMatchObject({
       kind: 'parent_segment',
@@ -530,13 +489,84 @@ describe('toRelative', () => {
   })
 })
 
-describe('tryResolveInside', () => {
+describe('guard.tryResolve', () => {
+  const fs = table({ '/v': '/v' })
+
   test('returns the joined path when the path stays inside', () => {
-    expect(tryResolveInside('/v', 'a.md', table({ '/v': '/v' }))).toBe(join('/v/a.md'))
+    expect(new PathGuard(fs).tryResolve('/v', 'a.md')).toBe(join('/v/a.md'))
   })
 
   test('returns null for a lexical refusal instead of throwing', () => {
-    expect(tryResolveInside('/v', '../a.md', table({ '/v': '/v' }))).toBeNull()
-    expect(tryResolveInside('/v', '/etc/passwd', table({ '/v': '/v' }))).toBeNull()
+    expect(new PathGuard(fs).tryResolve('/v', '../a.md')).toBeNull()
+    expect(new PathGuard(fs).tryResolve('/v', '/etc/passwd')).toBeNull()
+  })
+
+  test('lets an error that is not a PathError through', () => {
+    const failure = new Error('disk on fire')
+    const broken: Resolver = {
+      realpath: () => {
+        throw failure
+      },
+      readlink: () => {
+        throw failure
+      },
+    }
+    // The walk treats a throw as "does not exist", so a failing resolver gives
+    // the joined path. A throw from the warning handler is not caught.
+    expect(new PathGuard(broken).tryResolve('/v', 'a.md')).toBe(join('/v/a.md'))
+    const loud = new PathGuard(fs, {
+      onWarning: () => {
+        throw failure
+      },
+    })
+    if (!WINDOWS) expect(thrown(() => loud.tryResolve('/v', 'NUL'))).toBe(failure)
+  })
+})
+
+// The Windows refusals are in tests/windows-paths.test.ts and the parity fixture.
+describe.skipIf(WINDOWS)('Windows names, on other platforms', () => {
+  const fs = table({ '/v': '/v' })
+
+  test('resolve accepts the path and calls onWarning once per match, in order', () => {
+    const warnings: PathWarning[] = []
+    const guard = new PathGuard(fs, { onWarning: (w) => warnings.push(w) })
+    expect(guard.resolve('/v', 'NUL/a:b')).toBe('/v/NUL/a:b')
+    expect(warnings).toEqual([
+      { kind: 'reserved_name', segment: 'NUL' },
+      { kind: 'alternate_stream', segment: 'a:b' },
+    ])
+  })
+
+  test('onWarning is not called for a path the guard refuses', () => {
+    const warnings: PathWarning[] = []
+    const guard = new PathGuard(table({ '/v': '/v', '/v/out': '/outside' }), {
+      onWarning: (w) => warnings.push(w),
+    })
+    expect(kindOf(() => guard.resolve('/v', 'out/NUL'))).toBe('escapes')
+    expect(guard.tryResolve('/v', '../NUL')).toBeNull()
+    expect(warnings).toEqual([])
+  })
+
+  test('with no onWarning, nothing is printed', () => {
+    const spies = (['log', 'warn', 'error', 'info', 'debug'] as const).map((name) =>
+      vi.spyOn(console, name).mockImplementation(() => {}),
+    )
+    const writes = [vi.spyOn(process.stdout, 'write'), vi.spyOn(process.stderr, 'write')]
+    try {
+      expect(new PathGuard(fs).resolve('/v', 'CON')).toBe('/v/CON')
+      expect(nodeGuard.tryResolve('/v', 'ab:c')).toBe('/v/ab:c')
+      expect(lexical.validateRelative('NUL')).toBe('NUL')
+      for (const spy of [...spies, ...writes]) expect(spy).not.toHaveBeenCalled()
+    } finally {
+      for (const spy of [...spies, ...writes]) spy.mockRestore()
+    }
+  })
+
+  test('contains and realPath do not check the names', () => {
+    const warnings: PathWarning[] = []
+    const guard = new PathGuard(fs, { onWarning: (w) => warnings.push(w) })
+    expect(guard.contains('/v', '/v/NUL')).toBe(true)
+    expect(guard.realPath('/v/a:b')).toBe('/v/a:b')
+    expect(warnings).toEqual([])
   })
 })

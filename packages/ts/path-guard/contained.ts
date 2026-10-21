@@ -2,19 +2,15 @@ import { constants, type Stats } from 'node:fs'
 import { lstat, open, realpath, type FileHandle } from 'node:fs/promises'
 import { isAbsolute, relative, sep } from 'node:path'
 
-// These helpers call Node `fs` directly and take no `Resolver`.
+// The race-checked helpers of the `./node` entry. They call Node `fs` directly
+// and take no `Resolver`, so they cannot be faked. Unlike `PathGuard`, they keep
+// the 0.2 contract: a relative path is resolved against the working directory.
 
 /**
- * Lexical check: `path` is `root` or lies under it once both are normalized.
- * Touches no filesystem and does not throw.
- *
- * @example
- * ```ts
- * isInside('/vault', '/vault/a/b.md') // true
- * isInside('/vault', '/vault/../etc') // false
- * ```
+ * `path` is `root` or lies under it once both are normalized by `node:path`.
+ * Text only: touches no filesystem and follows no symlink.
  */
-export function isInside(root: string, path: string): boolean {
+function isInside(root: string, path: string): boolean {
   const rel = relative(root, path)
   return rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel)
 }

@@ -69,28 +69,28 @@ relative argument.
 ## Acceptance criteria
 
 - [ ] The package version is 0.3.0.
-- [ ] `exports` has `.`, `./lexical` and `./node`.
-- [ ] A test fails on any `node:fs` import reachable from `.`, and on any
+- [x] `exports` has `.`, `./lexical` and `./node`.
+- [x] A test fails on any `node:fs` import reachable from `.`, and on any
       `node:` import reachable from `./lexical`.
-- [ ] `PathGuard` driven by an in-memory `Resolver` passes the filesystem
+- [x] `PathGuard` driven by an in-memory `Resolver` passes the filesystem
       cases with no disk access.
-- [ ] The parity test passes against the 0.3.0 fixture
+- [x] The parity test passes against the 0.3.0 fixture
       ([T-06](T-06-parity-fixture-0-3-0.md)).
-- [ ] The smoke test imports every entry from the packed tarball.
-- [ ] The README, TSDoc and CHANGELOG describe the new shape, each removed or
+- [x] The smoke test imports every entry from the packed tarball.
+- [x] The README, TSDoc and CHANGELOG describe the new shape, each removed or
       moved export and its replacement, and name the Rust twin version.
-- [ ] `lexical.validateRelative` calls `onWarning` for each reserved name and
+- [x] `lexical.validateRelative` calls `onWarning` for each reserved name and
       stream, on every host, and never throws for them.
-- [ ] On Windows, `PathGuard.resolve` throws `reserved_name` or
+- [x] On Windows, `PathGuard.resolve` throws `reserved_name` or
       `alternate_stream` and does not call `onWarning`. On other platforms it
       accepts them and calls `onWarning`. A test shows `resolve` fires the callback.
-- [ ] With no `onWarning`, nothing is printed.
-- [ ] No `@deprecated` export remains in the package.
-- [ ] The CHANGELOG names each behaviour change for a kept name: `isUnder`
+- [x] With no `onWarning`, nothing is printed.
+- [x] No `@deprecated` export remains in the package.
+- [x] The CHANGELOG names each behaviour change for a kept name: `isUnder`
       throws `not_absolute` for a relative argument instead of returning
       false, and `toRelative` throws `empty_root`, `not_under_root` and
       `not_absolute` where it threw `parent_segment` or `escapes`.
-- [ ] [D-05](../decisions/D-05-kept-names-for-0-2.md) is marked
+- [x] [D-05](../decisions/D-05-kept-names-for-0-2.md) is marked
       `superseded` by D-06.
 - [ ] The PR links the Rust PR ([T-04](T-04-rust-0-3-0-api.md)), as the
       [twin rule](../../../../../README.md#twin-libraries) asks.

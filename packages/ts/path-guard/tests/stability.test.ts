@@ -1,17 +1,18 @@
 /**
  * Every export is stable in 0.x. An export tagged `@experimental`, `@beta` or
  * `@alpha` in its TSDoc must be listed in the README's Stability section, and
- * a listed export must carry one of those tags.
+ * a listed export must carry one of those tags. Nothing is `@deprecated`: a
+ * breaking release removes the old API.
  */
 
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { expect, test } from 'vitest'
 import ts from 'typescript'
 
 const PACKAGE_DIR = join(import.meta.dirname, '..')
-const ENTRIES = ['index.ts', 'lexical-entry.ts'].map((file) => join(PACKAGE_DIR, file))
+const ENTRIES = ['index.ts', 'lexical-entry.ts', 'node.ts'].map((file) => join(PACKAGE_DIR, file))
 const TIERS = new Set(['experimental', 'beta', 'alpha'])
 
 /** The exports of every entry point whose TSDoc names a tier other than stable. */
@@ -52,4 +53,10 @@ function readmeListed(): string[] {
 
 test('the README lists exactly the exports tagged @experimental, @beta or @alpha', () => {
   expect(readmeListed()).toEqual(taggedExports())
+})
+
+test('no source file tags anything @deprecated', () => {
+  for (const file of readdirSync(PACKAGE_DIR).filter((f) => f.endsWith('.ts'))) {
+    expect(readFileSync(join(PACKAGE_DIR, file), 'utf-8'), file).not.toContain('@deprecated')
+  }
 })
