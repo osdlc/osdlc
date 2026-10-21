@@ -794,6 +794,57 @@ fn a_real_path_with_a_dotdot_is_not_trusted() {
     assert_eq!(guard.real_path(&root.join("x")).unwrap(), root.join("x"));
 }
 
+/// A resolver that answers `<tmp>/v/y` as `<tmp>/v/./y`. `Path::components`
+/// drops that `.`, so the guard must read the text.
+struct DotAnswer;
+
+impl Resolver for DotAnswer {
+    fn canonicalize(&self, p: &Path) -> io::Result<PathBuf> {
+        let root = std::env::temp_dir().join("v");
+        if root.starts_with(p) {
+            Ok(p.to_path_buf())
+        } else if p == root.join("y") {
+            let mut dotted = root.into_os_string();
+            dotted.push("/./y");
+            Ok(dotted.into())
+        } else {
+            Err(io::Error::from(io::ErrorKind::NotFound))
+        }
+    }
+
+    fn read_link(&self, _: &Path) -> io::Result<PathBuf> {
+        Err(io::Error::from(io::ErrorKind::NotFound))
+    }
+}
+
+#[test]
+fn a_real_path_with_a_dot_is_not_trusted() {
+    let guard = Guard::new(DotAnswer);
+    let root = std::env::temp_dir().join("v");
+    assert!(matches!(
+        guard.resolve(&root, "y"),
+        Err(PathError::Escapes(..))
+    ));
+    assert_eq!(guard.contains(&root, &root.join("y")), Ok(false));
+    assert_eq!(guard.real_path(&root.join("y")).unwrap(), root.join("y"));
+}
+
+#[cfg(windows)]
+#[test]
+fn a_device_or_verbatim_prefix_is_canonical() {
+    for p in [
+        r"\\.\COM1",
+        r"\\?\C:\",
+        r"\\?\C:\v",
+        r"\\?\UNC\nas\vault",
+        r"C:\v",
+    ] {
+        assert!(super::guard::canonical(Path::new(p)), "{p}");
+    }
+    assert!(!super::guard::canonical(Path::new(r"C:\v\.\x")));
+    assert!(!super::guard::canonical(Path::new(r"\\?\C:\v\..\x")));
+}
+
 /// `/v` and `\v` have a root but no drive, so a guard on Windows reads them
 /// as relative.
 #[cfg(windows)]

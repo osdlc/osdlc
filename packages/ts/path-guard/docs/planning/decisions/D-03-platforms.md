@@ -42,6 +42,9 @@ created: 2026-10-19
   exactly and matches only a drive letter in any case, so Rust refuses that
   path. Rust is the stricter side. The fixture has no case for it, and
   `tests/windows-paths.test.ts` pins the TypeScript behaviour.
+- A known twin difference: when a resolver answers a real path that is not
+  canonical on a walk that also loops, Rust reports `Unresolvable` and
+  TypeScript `escapes`. Both refuse the path.
 - The parity fixture pins the POSIX rule. On Windows, a fixture case with a
   `..` on disk is checked against where the file system puts the path instead
   of the fixture's answer, in both twins' suites.

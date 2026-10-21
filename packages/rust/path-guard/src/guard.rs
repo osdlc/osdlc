@@ -336,10 +336,21 @@ pub(crate) fn existing_prefix<R: Resolver + ?Sized>(resolver: &R, p: &Path) -> O
 
 /// Is `p` a real path as [`Resolver::canonicalize`] must answer one: absolute,
 /// with no `.` or `..` component?
-fn canonical(p: &Path) -> bool {
-    p.is_absolute()
-        && p.components()
-            .all(|c| !matches!(c, Component::CurDir | Component::ParentDir))
+///
+/// Read from the text: `Path::components` drops a `.` in the middle of a path,
+/// so `/v/./x` would pass. A Windows prefix is skipped, so `\\.\COM1` and
+/// `\\?\C:\` still pass.
+pub(crate) fn canonical(p: &Path) -> bool {
+    if !p.is_absolute() {
+        return false;
+    }
+    let text = p.as_os_str().as_encoded_bytes();
+    let rest = match p.components().next() {
+        Some(Component::Prefix(prefix)) => &text[prefix.as_os_str().len()..],
+        _ => text,
+    };
+    rest.split(|&b| b == b'/' || (cfg!(windows) && b == b'\\'))
+        .all(|seg| seg != b"." && seg != b"..")
 }
 
 /// A [`Resolver`] with a number of calls left. Each method answers `None`
