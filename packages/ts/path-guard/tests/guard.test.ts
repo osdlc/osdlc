@@ -434,6 +434,37 @@ describe('guard.realPath', () => {
   })
 })
 
+// A resolver may answer the empty path, or another relative path, for a root.
+// Such a real root shares its empty root with every relative path, so it would
+// hold a link out that the walk joins onto it.
+describe('a real root that is not absolute', () => {
+  const fs: Resolver = {
+    realpath: (path) => {
+      if (path === at('/')) return path
+      if (path === at('/v')) return ''
+      throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' })
+    },
+    readlink: (path) => {
+      if (path === at('/v/x')) return '../outside/secret'
+      throw Object.assign(new Error('EINVAL'), { code: 'EINVAL' })
+    },
+  }
+  const guard = new PathGuard(fs)
+
+  test('resolve refuses it as escapes', () => {
+    expect(kindOf(() => guard.resolve(at('/v'), 'x'))).toBe('escapes')
+    expect(kindOf(() => guard.resolve(at('/v'), 'a.md'))).toBe('escapes')
+  })
+
+  test('contains answers false', () => {
+    expect(guard.contains(at('/v'), at('/v/x'))).toBe(false)
+  })
+
+  test('realPath falls back to the path folded as text', () => {
+    expect(guard.realPath(at('/v/x'))).toBe(join(at('/v/x')))
+  })
+})
+
 describe('relative input', () => {
   const fs = table({ '/v': '/v' })
   const guard = new PathGuard(fs)

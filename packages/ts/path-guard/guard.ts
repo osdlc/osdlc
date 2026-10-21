@@ -61,9 +61,10 @@ export class PathGuard {
    * @throws {PathError} Kind `empty_root` for an empty `root` and `not_absolute`
    * for a relative one, checked first. Then any kind `lexical.validateRelative`
    * throws for `raw`, and on Windows `reserved_name` or `alternate_stream`.
-   * Then kind `unresolvable` when the walk follows more than
-   * {@link MAX_LINK_HOPS} links or spends its resolver calls, and `escapes` when
-   * the result lies outside `root`.
+   * Then kind `unresolvable` when the walk of `root` or of the result follows
+   * more than {@link MAX_LINK_HOPS} links or spends its resolver calls, and
+   * `escapes` when the result lies outside `root` or the resolver gives a real
+   * path for `root` that is not absolute.
    * @example
    * ```ts
    * guard.resolve('/vault', 'notes/a.md') // '/vault/notes/a.md'
@@ -92,7 +93,9 @@ export class PathGuard {
         `cannot resolve ${JSON.stringify(raw)} under ${JSON.stringify(root)}: more than ${MAX_LINK_HOPS} links, or too many resolver calls`,
       )
     }
-    if (!under(real, realRoot)) {
+    // A real root that is not absolute, such as the empty path a broken
+    // resolver may answer, would hold every relative path.
+    if (!isAbsolutePath(realRoot) || !under(real, realRoot)) {
       throw new PathError(
         'escapes',
         `path escapes the root: ${JSON.stringify(raw)} resolves outside ${JSON.stringify(native(realRoot))}`,
@@ -126,7 +129,8 @@ export class PathGuard {
    * reduced to the real path of what exists? Compared by whole components, so
    * `/vault-bee` is not inside `/vault-b`. False when the answer cannot be
    * proved: either walk follows more than {@link MAX_LINK_HOPS} links or spends
-   * its resolver calls. Port of the Rust `Guard::contains`.
+   * its resolver calls, or the real path of `outer` is not absolute. Port of
+   * the Rust `Guard::contains`.
    *
    * Does not throw for a missing path; it compares what exists and keeps the
    * rest as written.
@@ -145,14 +149,20 @@ export class PathGuard {
     checkAbsolute(inner, 'inner')
     const realOuter = existingPrefix(this.#resolver, outer)
     const realInner = existingPrefix(this.#resolver, inner)
-    return realOuter !== null && realInner !== null && under(realInner, realOuter)
+    return (
+      realOuter !== null &&
+      realInner !== null &&
+      isAbsolutePath(realOuter) &&
+      under(realInner, realOuter)
+    )
   }
 
   /**
    * The real path of as much of `absPath` as exists, with the rest re-attached
    * and any `..` in it folded against that real path. A dangling symlink is
    * followed to its target. Where the walk gives up (more than
-   * {@link MAX_LINK_HOPS} links, or too many resolver calls), returns `absPath`
+   * {@link MAX_LINK_HOPS} links, or too many resolver calls), or the resolver
+   * gives a real path that is not absolute, returns `absPath`
    * with `..` folded as text, so the answer never holds a `..`. A missing path
    * is not an error. On Windows the answer has `\` separators. Port of the Rust
    * `Guard::real_path`.
@@ -166,7 +176,7 @@ export class PathGuard {
   realPath(absPath: string): string {
     checkAbsolute(absPath, 'path')
     const found = existingPrefix(this.#resolver, absPath)
-    return found === null ? platformPath.resolve(absPath) : native(found)
+    return found !== null && isAbsolutePath(found) ? native(found) : platformPath.resolve(absPath)
   }
 }
 
