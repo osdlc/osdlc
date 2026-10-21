@@ -1,0 +1,13 @@
+{
+  // Emit config for the published dist/ — the dev tsconfig.json stays noEmit.
+  // `include` keeps tests out of dist/.
+  "extends": ["./tsconfig.json", "@osdlc/tsconfig/build"],
+  "compilerOptions": {
+    "rootDir": "src",
+    // The built siblings, not their source: the source is outside rootDir.
+    "customConditions": [],
+    "paths": {}
+  },
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts"]
+}

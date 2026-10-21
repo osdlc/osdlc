@@ -146,6 +146,9 @@ Developed here, in this repository:
 - `packages/ts/trust-repo` (`@osdlc/trust-repo` on npm, per-repository consent
   to run a repository's own scripts: a marker store, an exec gate and a path
   and owner policy over it)
+- `packages/ts/code-host` (`@osdlc/code-host` on npm, the `CodeHost` port for
+  pull requests with GitHub and Forgejo adapters, a host selector and auth
+  checks)
 
 The development repository will take each TypeScript library from npm, like
 any other consumer. Today it still keeps its own copies. Open issues and pull
