@@ -11,13 +11,11 @@
 # and report, since the ruleset requires them; only their steps narrow. When
 # no package is picked, they install and stop.
 #
-# Build runs before test: the examples import each package by its own name,
-# and under Node that name resolves through `exports` to dist/. A build also
-# builds the workspace packages the picked ones depend on.
-#
-# Bun is installed because some packages test with `bun:test`; others use
-# Vitest, which runs on Node. Node runs the build, the smoke checks and the
-# packed-tarball checks, so the Node matrix is what a consumer sees.
+# Build runs first, before typecheck and test. Packages resolve each other
+# (and their own name, in examples) through `exports`, which points at dist/,
+# so a typecheck and a test need the build. A build also builds the workspace
+# packages the picked ones depend on. Every package tests with Vitest on Node,
+# so the Node matrix is what a consumer sees.
 #
 # `windows` runs path-guard on Windows, when path-guard is picked. It is the
 # only library tested there. A run that is not a pull request picks every
@@ -54,6 +52,9 @@ jobs:
       # The runner's own Node, since the script needs nothing installed.
       - name: Test the package pick
         run: node --test .github/scripts/affected-packages.test.mjs
+
+      - name: Test the package shape rules
+        run: node --test .github/scripts/package-shape.test.mjs
 
       - name: Pick the packages to check
         id: pick
@@ -97,24 +98,21 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: pnpm
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        if: env.PICKED == 'true'
-        with:
-          bun-version: '1.4.2'
-
       # Not narrowed: a frozen install checks the lockfile for the whole
       # workspace.
       - name: Install
         run: pnpm install --frozen-lockfile
 
       # $FILTER and $BUILD are several flags, so they are left unquoted.
-      - name: Typecheck
-        if: env.PICKED == 'true'
-        run: pnpm $FILTER --if-present run typecheck
-
+      # Build first: typecheck and test resolve the workspace packages through
+      # their dist/.
       - name: Build
         if: env.PICKED == 'true'
         run: pnpm $BUILD --if-present run build
+
+      - name: Typecheck
+        if: env.PICKED == 'true'
+        run: pnpm $FILTER --if-present run typecheck
 
       - name: Test
         if: env.PICKED == 'true'
@@ -167,11 +165,11 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile --filter './packages/ts/path-guard...'
 
-      - name: Typecheck
-        run: pnpm --filter ./packages/ts/path-guard run typecheck
-
       - name: Build
         run: pnpm --filter './packages/ts/path-guard...' --if-present run build
+
+      - name: Typecheck
+        run: pnpm --filter ./packages/ts/path-guard run typecheck
 
       - name: Test
         run: pnpm --filter ./packages/ts/path-guard run test

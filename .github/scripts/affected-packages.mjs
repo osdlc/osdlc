@@ -26,7 +26,7 @@ import { pathToFileURL } from 'node:url'
 /** Files every package reads, or that decide how they are checked. */
 const SHARED = [
   /^\.github\/workflows\/packages-ci\.yml$/,
-  /^\.github\/scripts\/(affected-packages|check-packages)\.mjs$/,
+  /^\.github\/scripts\/(affected-packages|check-packages|package-shape)\.mjs$/,
   /^package\.json$/,
   /^pnpm-lock\.yaml$/,
   /^pnpm-workspace\.yaml$/,
