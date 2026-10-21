@@ -275,7 +275,9 @@ describe('writeCas follows the contract table', () => {
 test('writeIfChanged skips identical content and leaves mtime alone', () => {
   const p = join(root, 'x.md')
   expect(writeIfChanged(p, 'same')).toBe(true)
-  const past = new Date(Date.now() - 60_000)
+  // Whole seconds: a millisecond time can come back from stat as a float a
+  // hair off (…829.999 for …830), since Node converts through seconds.
+  const past = new Date(Math.floor((Date.now() - 60_000) / 1000) * 1000)
   utimesSync(p, past, past)
   expect(writeIfChanged(p, 'same')).toBe(false)
   expect(statSync(p).mtimeMs).toBe(past.getTime())
