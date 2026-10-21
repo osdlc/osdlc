@@ -39,18 +39,19 @@
     "CONTRIBUTING.md"
   ],
   "engines": {
-    "node": ">=22.18"
+    "node": "^22.22.2 || ^24.15.0 || >=26.0.0"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "test": "vitest run",
+    "smoke": "node tests/smoke.mjs",
     "coverage": "vitest run --coverage",
     "prepublishOnly": "npm run clean && npm run build",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "oxlint .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit"
   },
   "dependencies": {
     "@osdlc/command-seam": "workspace:^",

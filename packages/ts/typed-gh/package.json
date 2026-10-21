@@ -3,6 +3,7 @@
   "version": "0.6.0",
   "description": "A typed GitHub client for TypeScript over the gh CLI. A total PullRequest/Review/CheckRun model, pure argv builders and parsers, and a tri-modal client — queries return parsed values, mutations throw, raw() is the escape hatch. Uses gh's own credentials; reads no token.",
   "license": "MIT OR Apache-2.0",
+  "author": "sksizer",
   "type": "module",
   "sideEffects": false,
   "exports": {
@@ -37,7 +38,7 @@
     "coverage": "vitest run --coverage"
   },
   "engines": {
-    "node": ">=22"
+    "node": "^22.22.2 || ^24.15.0 || >=26.0.0"
   },
   "publishConfig": {
     "access": "public"

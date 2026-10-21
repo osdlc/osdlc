@@ -9,3 +9,6 @@ dist/
 
 # wasm/ is committed on purpose: it is the built WebAssembly and its glue, so
 # building or testing the package needs no Rust toolchain. Do not add it here.
+
+# Test coverage (`npm run coverage`).
+coverage/

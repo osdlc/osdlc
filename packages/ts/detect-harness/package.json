@@ -64,7 +64,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "oxlint .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit"
   },
   "dependencies": {
     "@osdlc/command-seam": "workspace:^",
