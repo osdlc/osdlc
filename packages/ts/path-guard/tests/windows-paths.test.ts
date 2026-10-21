@@ -93,6 +93,31 @@ describe('guard.resolve on Windows', () => {
       expect(kindOf(() => guard.resolve(root, 'a.md'))).toBe('not_absolute')
     }
   })
+
+  // As Rust's prefix parser: a UNC root needs a server and a share.
+  test('takes a UNC, verbatim or device root as absolute as Rust does', () => {
+    const guard = new PathGuard(nothing)
+    const absolute = [
+      '\\\\srv\\x',
+      '\\\\srv\\share',
+      '//srv/share',
+      '\\\\?\\C:\\x',
+      '\\\\?\\UNC\\srv\\share',
+      '\\\\.\\COM1',
+    ]
+    for (const path of absolute)
+      expect(
+        kindOf(() => guard.realPath(path)),
+        path,
+      ).toBeNull()
+    // A server with an empty share, and a server alone.
+    for (const path of ['\\\\srv\\\\x', '\\\\srv', '//srv']) {
+      expect(
+        kindOf(() => guard.realPath(path)),
+        path,
+      ).toBe('not_absolute')
+    }
+  })
 })
 
 describe('guard.contains on Windows', () => {
@@ -105,6 +130,12 @@ describe('guard.contains on Windows', () => {
 
   test('matches a drive in any case', () => {
     expect(new PathGuard(nothing).contains('c:\\v', 'C:\\v\\a')).toBe(true)
+  })
+
+  // A known twin difference, recorded in D-03: Rust compares a UNC server and
+  // share exactly, and matches only a drive letter in any case.
+  test('matches a UNC server and share in any case, as Windows does', () => {
+    expect(new PathGuard(nothing).contains('\\\\srv\\share\\v', '\\\\SRV\\Share\\v\\a')).toBe(true)
   })
 
   test('compares the names after the root as written', () => {

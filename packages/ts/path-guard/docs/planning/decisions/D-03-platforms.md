@@ -36,6 +36,12 @@ created: 2026-10-19
 
 ## Consequences
 
+- A known twin difference: the TypeScript guard matches a UNC server and
+  share in any case, as Windows does, so `\\SRV\share\v\a` is under
+  `\\srv\share\v`. Rust's `Path::starts_with` compares the server and share
+  exactly and matches only a drive letter in any case, so Rust refuses that
+  path. Rust is the stricter side. The fixture has no case for it, and
+  `tests/windows-paths.test.ts` pins the TypeScript behaviour.
 - The parity fixture pins the POSIX rule. On Windows, a fixture case with a
   `..` on disk is checked against where the file system puts the path instead
   of the fixture's answer, in both twins' suites.
