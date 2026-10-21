@@ -4,6 +4,7 @@
 //   - `exports` has no `bun` condition. Every entry is `types` and `default`,
 //     both under dist/.
 //   - The tarball ships no TypeScript source. A hand-written `.d.ts` is fine.
+//   - The tarball ships no source maps: they would point at the unshipped source.
 //   - No script invokes bun, and `@types/bun` is not a dependency.
 //   - tsconfig.json and tsconfig.build.json set no `customConditions`, map no
 //     `paths` entry to a file outside the package, and do not add bun types.
@@ -46,6 +47,11 @@ export function bunConditions(exportsField, path = 'exports') {
     found.push(...bunConditions(value, `${path}[${JSON.stringify(key)}]`))
   }
   return found
+}
+
+/** The packed files that are source maps (`.js.map`, `.d.ts.map`), which would point at unshipped source. */
+export function shippedSourceMaps(packedFiles) {
+  return packedFiles.filter((f) => f.endsWith('.map'))
 }
 
 /** The packed files that are TypeScript source: `.ts`, `.mts`, `.cts`, `.tsx`, but not `.d.ts`. */
@@ -92,6 +98,9 @@ export function shapeProblems({ pkg, packedFiles, tsconfigs }) {
     problems.push(`${path}: remove the bun condition; exports is { types, default } under dist/`)
   }
   for (const f of shippedSource(packedFiles)) problems.push(`the tarball ships TypeScript source: ${f}`)
+  for (const f of shippedSourceMaps(packedFiles)) {
+    problems.push(`the tarball ships a source map for unshipped source: ${f}; set declarationMap false`)
+  }
   for (const s of bunScripts(pkg.scripts)) problems.push(`script invokes bun, use Node: ${s}`)
   if (pkg.devDependencies?.['@types/bun'] !== undefined) {
     problems.push('@types/bun is a devDependency; tests run on Vitest under Node')

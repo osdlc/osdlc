@@ -10,6 +10,7 @@ import {
   parseJsonc,
   shapeProblems,
   shippedSource,
+  shippedSourceMaps,
   tsconfigProblems,
 } from './package-shape.mjs'
 
@@ -43,6 +44,13 @@ test('shipped TypeScript source fails, a .d.ts does not', () => {
     'x.tsx',
   ])
   assert.equal(shapeProblems({ ...good, packedFiles: [...good.packedFiles, 'src/index.ts'] }).length, 1)
+})
+
+test('a shipped source map fails', () => {
+  assert.deepEqual(shippedSourceMaps(['dist/a.js', 'dist/a.d.ts', 'dist/a.d.ts.map', 'dist/a.js.map']), [
+    'dist/a.d.ts.map',
+    'dist/a.js.map',
+  ])
 })
 
 test('a script that invokes bun fails', () => {

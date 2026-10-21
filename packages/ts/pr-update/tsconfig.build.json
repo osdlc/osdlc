@@ -5,7 +5,9 @@
   "compilerOptions": {
     // rootDir is src/, so dist/ keeps its flat shape and the export map's paths
     // are unchanged by the move.
-    "rootDir": "src"
+    "rootDir": "src",
+    // The sources are not published, so a declaration map would point at nothing.
+    "declarationMap": false
   },
   "include": ["src"],
   "exclude": ["src/**/*.test.ts"]

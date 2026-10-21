@@ -4,6 +4,8 @@
   "extends": ["./tsconfig.json", "@osdlc/tsconfig/build"],
   "compilerOptions": {
     "rootDir": ".",
+    // The sources are not published, so a declaration map would point at nothing.
+    "declarationMap": false,
     "types": ["node"]
   },
   "include": ["index.ts"]
