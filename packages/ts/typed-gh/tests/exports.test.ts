@@ -2,8 +2,8 @@
  * The public surface. Imports the package by its own name, so a build that
  * drops or renames an export fails here and not in a consumer.
  *
- * Under Bun the name resolves to the source through the `bun` export
- * condition. Anywhere else it resolves to the built `dist/`.
+ * Vitest aliases the name to the source (vitest.config.ts); outside it the
+ * name resolves to the built `dist/`.
  *
  * It also checks that `examples/` shows each export, except those on the
  * waiting list below.
@@ -13,7 +13,7 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'vitest'
 
 import * as pkg from '@osdlc/typed-gh'
 

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import {
   chmodSync,
   lstatSync,
@@ -78,7 +78,7 @@ describe.each([
     const dir = join(root, 'occupied')
     mkdirSync(dir)
     writeFileSync(join(dir, 'child'), 'in the way')
-    await expect(async () => write(dir, 'y')).toThrow()
+    await expect((async () => write(dir, 'y'))()).rejects.toThrow()
     expect(readdirSync(root)).toEqual(['occupied'])
     expect(readFileSync(join(dir, 'child'), 'utf8')).toBe('in the way')
   })
@@ -92,7 +92,7 @@ describe.each([
       writeFileSync(p, 'old')
       chmodSync(dir, 0o555)
       try {
-        await expect(async () => write(p, 'new')).toThrow()
+        await expect((async () => write(p, 'new'))()).rejects.toThrow()
       } finally {
         chmodSync(dir, 0o755)
       }
@@ -157,7 +157,7 @@ describe.each([
       const dir = join(root, 'dir')
       mkdirSync(dir)
       const before = readdirSync(root).sort()
-      await expect(async () => write(dir, 'y')).toThrow()
+      await expect((async () => write(dir, 'y'))()).rejects.toThrow()
       expect(statSync(dir).isDirectory()).toBe(true)
       expect(readdirSync(dir)).toEqual([])
       expect(readdirSync(root).sort()).toEqual(before)

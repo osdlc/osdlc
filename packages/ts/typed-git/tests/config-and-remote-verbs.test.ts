@@ -5,7 +5,7 @@
  * new `clone` and `fetch` flags, and the `maxOutputBytes` call option.
  */
 
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'vitest'
 
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -327,8 +327,7 @@ describe('real git', () => {
     }
   })
 
-  // Async only: under `bun test` the sync runner captures to files and does
-  // not apply the cap. The sync option is checked with a fake runner above.
+  // Async only: the sync option is checked with a fake runner above.
   // The runner kills the child here, so this covers the `neverExited` path.
   // The `outputIncomplete` path is covered with a fake runner above.
   test('maxOutputBytes kills a large answer and throws', async () => {

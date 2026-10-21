@@ -22,10 +22,10 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'vitest'
 import { padTable } from '../src/index.ts'
 
-const FIXTURES = join(import.meta.dir, 'fixtures', 'md060')
+const FIXTURES = join(import.meta.dirname, 'fixtures', 'md060')
 
 /** The fixture's tables: its blank-line separated blocks after the heading. */
 function tables(name: string): string[] {

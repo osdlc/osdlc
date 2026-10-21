@@ -3,7 +3,7 @@
  * shows, so a README snippet taken from an example stays true.
  */
 
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'vitest'
 
 import { readdirSync } from 'node:fs'
 

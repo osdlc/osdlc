@@ -14,7 +14,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { beforeAll, describe, expect, test } from 'bun:test'
+import { beforeAll, describe, expect, test } from 'vitest'
 
 import type { CommandResult, JsonRun } from '../index.ts'
 import { alive, reap } from './support/procs.ts'
@@ -62,7 +62,7 @@ beforeAll(() => {
     delete env['NODE_ENV']
     const proc = spawnSync(
       process.execPath,
-      ['run', join(import.meta.dir, 'support/pipe-probe.ts'), outFile],
+      ['--no-warnings', join(import.meta.dirname, 'support/pipe-probe.ts'), outFile],
       { cwd: process.cwd(), env, encoding: 'utf-8', timeout: 30_000 },
     )
     if (proc.status !== 0) throw new Error(`pipe probe failed: ${proc.stderr}`)

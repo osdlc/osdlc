@@ -5,9 +5,9 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { expect, test } from 'bun:test'
+import { expect, test } from 'vitest'
 
-const ROOT = join(import.meta.dir, '..')
+const ROOT = join(import.meta.dirname, '..')
 const manifest = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')) as {
   license: string
   files: string[]

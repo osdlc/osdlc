@@ -5,7 +5,7 @@
  * `pipe-path.test.ts`; here the sync runner takes the `bun test` path.
  */
 
-import { describe, expect, spyOn, test } from 'bun:test'
+import { describe, expect, test, vi } from 'vitest'
 
 import {
   managedProcessRunner,
@@ -25,7 +25,7 @@ const MISSING = 'definitely-not-a-real-binary-reason'
 /** Run `fn` with the parent's stderr silenced, returning what it wrote too. */
 function quietly<T>(fn: () => T): { value: T; written: string[] } {
   const written: string[] = []
-  const spy = spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+  const spy = vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
     written.push(String(chunk))
     return true
   })
@@ -317,7 +317,7 @@ describe('a bad cwd', () => {
   // Without a check, a missing cwd fails the spawn as `spawn sh ENOENT`, which
   // reads as a missing `sh`, and Node's async `spawn` throws for a file.
   const MISSING_DIR = `${CWD}/no-such-dir-reason`
-  const FILE = import.meta.path
+  const FILE = import.meta.filename
   const cases: [string, string, string][] = [
     ['missing', MISSING_DIR, `ENOENT: cwd ${JSON.stringify(MISSING_DIR)} does not exist`],
     ['a file', FILE, `ENOTDIR: cwd ${JSON.stringify(FILE)} is not a directory`],
@@ -351,7 +351,7 @@ describe('a bad cwd', () => {
         ]
         for (const r of results) {
           expect(r).toMatchObject({ exitCode: 1, neverExited: true, reason: 'spawn', stdout: '' })
-          expect(r.error).toEndWith(message)
+          expect(r.error!.endsWith(message)).toBe(true)
           expect(r.stderr).toBe('')
         }
         expect(results[0]!.error).toBe(`spawnSync sh ${message}`)

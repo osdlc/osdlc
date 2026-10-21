@@ -1,4 +1,4 @@
-import { describe, expect, spyOn, test } from 'bun:test'
+import { describe, expect, test, vi } from 'vitest'
 
 import {
   asAsync,
@@ -177,7 +177,7 @@ describe('runJson', () => {
     // trying every candidate was quadratic in the number of such lines.
     const json = JSON.stringify({ items: [[1], { s: '"[{\\' }], more: '}]' })
     const stdout = '[\n{\n[INFO] x\n'.repeat(500) + json + '\n'
-    const parse = spyOn(JSON, 'parse')
+    const parse = vi.spyOn(JSON, 'parse')
     try {
       const r = runJson(fake(res({ stdout })), [], { ...opts, tolerateLeadingLog: true })
       expect(r.ok && r.value).toEqual(JSON.parse(json))

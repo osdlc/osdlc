@@ -21,14 +21,14 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { afterAll, describe, expect, spyOn, test } from 'bun:test'
+import { afterAll, describe, expect, test, vi } from 'vitest'
 
 import { managedProcessRunner, streamRunner, type StdioOption } from '../index.ts'
 import { alive, reap } from './support/procs.ts'
+import { BUN, NODE } from './support/runtimes.ts'
 
 const CWD = process.cwd()
-const INDEX = join(import.meta.dir, '../index.ts')
-const NODE = Bun.which('node')
+const INDEX = join(import.meta.dirname, '../index.ts')
 
 const scratch = mkdtempSync(join(tmpdir(), 'seam-stdio-'))
 afterAll(() => rmSync(scratch, { recursive: true, force: true }))
@@ -58,7 +58,7 @@ function closedFd(): number {
 /** Run `fn` with `process.stderr.write` captured; returns what was written. */
 function stderrOf(fn: () => void): string[] {
   const written: string[] = []
-  const spy = spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+  const spy = vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
     written.push(String(chunk))
     return true
   })
@@ -185,8 +185,8 @@ const FIRE_AND_FORGET = `{ cwd: process.cwd(), processGroup: true, unref: true, 
 
 describe("a fire-and-forget launch: stdio 'ignore', unref and processGroup", () => {
   const runtimes: [string, string[] | undefined][] = [
-    ['Bun', [process.execPath, 'run']],
-    ['Node', NODE === null ? undefined : [NODE, '--no-warnings']],
+    ['Bun', BUN === undefined ? undefined : [BUN, 'run']],
+    ['Node', [NODE, '--no-warnings']],
   ]
   for (const [name, runtime] of runtimes) {
     test.skipIf(runtime === undefined)(

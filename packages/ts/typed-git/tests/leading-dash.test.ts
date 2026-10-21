@@ -4,7 +4,7 @@
  * `--upload-pack=<cmd>` as a remote runs `<cmd>`.
  */
 
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'vitest'
 
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'

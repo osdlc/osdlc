@@ -3,7 +3,7 @@
  * `readOnly` flag every verb carries.
  */
 
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'vitest'
 
 import * as pkg from '../index.ts'
 import { api, graphql, nodesAt, type CommandResult, type GhVerb } from '../index.ts'

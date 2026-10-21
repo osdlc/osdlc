@@ -7,7 +7,7 @@
  * Offline: both clients run on fake runners that record each call.
  */
 
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'vitest'
 
 import {
   AsyncGh,

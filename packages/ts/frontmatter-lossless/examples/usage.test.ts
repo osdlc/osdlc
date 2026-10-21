@@ -3,7 +3,7 @@
  * export appears here at least once; `tests/exports.test.ts` checks that.
  */
 
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'vitest'
 
 import {
   compose,

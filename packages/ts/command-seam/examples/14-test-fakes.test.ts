@@ -9,7 +9,7 @@
  * `fakeProcess` is a managed-process handle the test ends by hand.
  */
 
-import { expect, test } from 'bun:test'
+import { expect, test } from 'vitest'
 
 import {
   resolveRunner,

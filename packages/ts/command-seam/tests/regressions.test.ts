@@ -9,7 +9,7 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'n
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { describe, expect, spyOn, test } from 'bun:test'
+import { describe, expect, test, vi } from 'vitest'
 
 import {
   asAsync,
@@ -22,10 +22,10 @@ import {
   type CommandRunner,
 } from '../index.ts'
 import { gone, reap } from './support/procs.ts'
+import { NODE } from './support/runtimes.ts'
 
 const CWD = process.cwd()
-const INDEX = join(import.meta.dir, '../index.ts')
-const NODE = Bun.which('node')
+const INDEX = join(import.meta.dirname, '../index.ts')
 
 function withTempDir<T>(fn: (dir: string) => T): T {
   const dir = mkdtempSync(join(tmpdir(), 'seam-regression-'))
@@ -45,9 +45,8 @@ async function withTempDirAsync<T>(fn: (dir: string) => Promise<T>): Promise<T> 
   }
 }
 
-/** Node with warnings off, and Bun, as `[binary, ...flags]` for {@link runProbe}. */
-const ON_NODE = [NODE as string, '--no-warnings']
-const ON_BUN = [process.execPath, 'run']
+/** Node with warnings off, as `[binary, ...flags]` for {@link runProbe}. */
+const ON_NODE = [NODE, '--no-warnings']
 
 /**
  * Run `code` as a script under `runtime`, with the package entry imported as
@@ -94,25 +93,21 @@ function withoutNodeEnv(): NodeJS.ProcessEnv {
 }
 
 describe('the bun-test capture path is gated on the Bun runtime', () => {
-  test.skipIf(NODE === null)(
-    'Node with NODE_ENV=test keeps the pipe path',
-    () => {
-      // The redirect path makes a temp dir. With TMPDIR pointing nowhere, that
-      // path throws; the pipe path never touches TMPDIR. So a clean result
-      // under Node proves the pipe path ran.
-      withTempDir((dir) => {
-        const env = { ...process.env, NODE_ENV: 'test', TMPDIR: join(dir, 'missing') }
-        const { result } = runProbe(
-          dir,
-          ON_NODE,
-          ['report(seam.spawnRunner("sh").run(["-c", "echo hi"], { cwd: process.cwd() }));'],
-          env,
-        )
-        expect(result).toEqual({ exitCode: 0, stdout: 'hi\n', stderr: '' })
-      })
-    },
-    20_000,
-  )
+  test('Node with NODE_ENV=test keeps the pipe path', () => {
+    // The redirect path makes a temp dir. With TMPDIR pointing nowhere, that
+    // path throws; the pipe path never touches TMPDIR. So a clean result
+    // under Node proves the pipe path ran.
+    withTempDir((dir) => {
+      const env = { ...process.env, NODE_ENV: 'test', TMPDIR: join(dir, 'missing') }
+      const { result } = runProbe(
+        dir,
+        ON_NODE,
+        ['report(seam.spawnRunner("sh").run(["-c", "echo hi"], { cwd: process.cwd() }));'],
+        env,
+      )
+      expect(result).toEqual({ exitCode: 0, stdout: 'hi\n', stderr: '' })
+    })
+  }, 20_000)
 })
 
 describe('the bun-test capture path removes its temp dir', () => {
@@ -135,25 +130,21 @@ describe('the bun-test capture path removes its temp dir', () => {
 })
 
 describe('a child that closes stdin early', () => {
-  test.skipIf(NODE === null)(
-    "Node's sync pipe path reports the failed write and keeps the exit code",
-    () => {
-      // Bun's `spawnSync` does not report it (a README known limit), so this
-      // runs under Node.
-      withTempDir((dir) => {
-        const res = runProbe(dir, ON_NODE, [
-          'const input = "x".repeat(4 * 1024 * 1024);',
-          'report(seam.spawnRunner("sh").run(["-c", "exec 0<&-; sleep 0.3"], { cwd: process.cwd(), input }));',
-        ]).result as CommandResult
-        expect(res.exitCode).toBe(0)
-        expect(res.reason).toBeUndefined()
-        // EPIPE, or ENOTCONN under some timings: both are a write to a closed peer.
-        expect(res.error).toMatch(/EPIPE|ENOTCONN/)
-        expect(res.stderr).toBe('')
-      })
-    },
-    20_000,
-  )
+  test("Node's sync pipe path reports the failed write and keeps the exit code", () => {
+    // Bun's `spawnSync` does not report it (a README known limit), so this
+    // runs under Node.
+    withTempDir((dir) => {
+      const res = runProbe(dir, ON_NODE, [
+        'const input = "x".repeat(4 * 1024 * 1024);',
+        'report(seam.spawnRunner("sh").run(["-c", "exec 0<&-; sleep 0.3"], { cwd: process.cwd(), input }));',
+      ]).result as CommandResult
+      expect(res.exitCode).toBe(0)
+      expect(res.reason).toBeUndefined()
+      // EPIPE, or ENOTCONN under some timings: both are a write to a closed peer.
+      expect(res.error).toMatch(/EPIPE|ENOTCONN/)
+      expect(res.stderr).toBe('')
+    })
+  }, 20_000)
 })
 
 describe('a missing binary gives the same result on both sync paths', () => {
@@ -168,7 +159,7 @@ describe('a missing binary gives the same result on both sync paths', () => {
 
   test('the production pipe path agrees', () => {
     withTempDir((dir) => {
-      const res = runProbe(dir, ON_BUN, [
+      const res = runProbe(dir, ON_NODE, [
         'report(seam.spawnRunner("definitely-not-a-real-binary-h1").run(["a"], { cwd: process.cwd() }));',
       ]).result as CommandResult
       expect(res.exitCode).toBe(1)
@@ -341,7 +332,7 @@ describe('a timeout that fires after the child exited', () => {
 describe('the stream runner reports a failed spawn', () => {
   test("the spawn error reaches the parent's stderr", () => {
     withTempDir((dir) => {
-      const { result, stderr } = runProbe(dir, ON_BUN, [
+      const { result, stderr } = runProbe(dir, ON_NODE, [
         'report(seam.streamRunner("definitely-not-a-real-binary-c7").run([], { cwd: process.cwd() }));',
       ])
       expect(result).toEqual({
@@ -359,7 +350,7 @@ describe('managed kill() after exit', () => {
   test('does not signal the old pid', async () => {
     const h = managedProcessRunner('sh').run(['-c', 'exit 0'], { cwd: CWD })
     await h.exited
-    const spy = spyOn(process, 'kill')
+    const spy = vi.spyOn(process, 'kill')
     try {
       h.kill()
       expect(spy).not.toHaveBeenCalled()

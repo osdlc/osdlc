@@ -4,7 +4,7 @@
  * can drive the same verbs with your own runner, sync or async.
  */
 
-import { expect, test } from 'bun:test'
+import { expect, test } from 'vitest'
 
 import {
   PR_REF_FIELDS,

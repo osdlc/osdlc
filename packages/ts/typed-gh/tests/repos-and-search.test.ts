@@ -3,7 +3,7 @@
  * gh gives them no flag for, and how their rows parse.
  */
 
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'vitest'
 
 import {
   AsyncGh,

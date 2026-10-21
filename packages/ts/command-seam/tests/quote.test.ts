@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'vitest'
 
 import { spawnRunner } from '../sync.ts'
 import { shellJoin, shellQuote } from '../quote.ts'

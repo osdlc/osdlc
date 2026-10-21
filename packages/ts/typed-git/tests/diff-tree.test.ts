@@ -2,7 +2,7 @@
 
 import { mkdirSync, renameSync } from 'node:fs'
 import { join } from 'node:path'
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
+import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 
 import { makeGitFixture, type GitFixture } from '../testing.ts'
 

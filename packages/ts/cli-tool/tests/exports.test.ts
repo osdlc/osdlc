@@ -25,7 +25,6 @@ const COMPILER_OPTIONS: ts.CompilerOptions = {
   allowImportingTsExtensions: true,
   noEmit: true,
   types: [],
-  customConditions: ['bun'],
   moduleResolution: ts.ModuleResolutionKind.Bundler,
   module: ts.ModuleKind.ESNext,
 }

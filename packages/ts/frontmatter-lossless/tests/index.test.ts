@@ -19,7 +19,7 @@
 import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 
-import { test, expect, describe } from 'bun:test'
+import { test, expect, describe } from 'vitest'
 import { split, compose, newShape, splitLenient, type CloseEol, type OpenEol } from '../index.ts'
 import corpus from './fixtures/conformance.json'
 

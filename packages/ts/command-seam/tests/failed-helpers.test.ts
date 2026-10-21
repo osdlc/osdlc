@@ -3,7 +3,7 @@
  * intercepted; the return value and every other error pass through untouched.
  */
 
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'vitest'
 
 import {
   catchFailed,

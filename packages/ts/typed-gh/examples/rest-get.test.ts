@@ -3,7 +3,7 @@
  * worked. Pass an `etag` to make the request conditional.
  */
 
-import { expect, test } from 'bun:test'
+import { expect, test } from 'vitest'
 
 import { Gh, type ApiOptions, type ApiResponse, type CommandRunner } from '@osdlc/typed-gh'
 

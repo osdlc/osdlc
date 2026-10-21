@@ -8,7 +8,7 @@
  * the other, two node types in one array.
  */
 
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'vitest'
 
 import { anyCheckFailed, normalizeAuthorLogin, parsePullRequest, parsePrUrl } from '../index.ts'
 import { parseActor, parseCheckRun } from '../parse.ts'

@@ -8,7 +8,7 @@ import { join } from 'node:path'
 
 import ts from 'typescript'
 
-export const EXAMPLES_DIR = join(import.meta.dir, '..')
+export const EXAMPLES_DIR = join(import.meta.dirname, '..')
 export const PACKAGE_DIR = join(EXAMPLES_DIR, '..')
 
 /** Compiler options from the package tsconfig, adjusted for consumer code. */

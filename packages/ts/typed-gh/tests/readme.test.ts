@@ -9,10 +9,10 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { expect, test } from 'bun:test'
+import { expect, test } from 'vitest'
 import ts from 'typescript'
 
-const PACKAGE_DIR = join(import.meta.dir, '..')
+const PACKAGE_DIR = join(import.meta.dirname, '..')
 const README = readFileSync(join(PACKAGE_DIR, 'README.md'), 'utf-8')
 
 interface Block {

@@ -3,7 +3,7 @@
  * `head` filter on `prList`, `parsePrRef`, and `prFind` on both clients.
  */
 
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'vitest'
 
 import {
   AsyncGh,

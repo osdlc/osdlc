@@ -7,10 +7,10 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { expect, test } from 'bun:test'
+import { expect, test } from 'vitest'
 import ts from 'typescript'
 
-const PACKAGE_DIR = join(import.meta.dir, '..')
+const PACKAGE_DIR = join(import.meta.dirname, '..')
 const ENTRY = join(PACKAGE_DIR, 'index.ts')
 
 function isExperimental(declarations: readonly ts.Declaration[] | undefined): boolean {

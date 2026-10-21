@@ -7,7 +7,7 @@
  * variable; `undefined` removes one the parent has.
  */
 
-import { expect, test } from 'bun:test'
+import { expect, test } from 'vitest'
 
 import { ran, spawnRunner, type CommandRunner, type EnvOverrides } from '@osdlc/command-seam'
 import { fakeRunner } from '@osdlc/command-seam/testing'

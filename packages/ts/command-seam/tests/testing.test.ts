@@ -1,6 +1,6 @@
 /** `@osdlc/command-seam/testing`: the fakes' edge cases. Scenario 14 shows the main use. */
 
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'vitest'
 
 import { asAsync, ran, runJson, shellRunnerAsync, stopProcess } from '../index.ts'
 import { fakeNeverExited, fakeProcess, fakeRunner } from '../testing.ts'

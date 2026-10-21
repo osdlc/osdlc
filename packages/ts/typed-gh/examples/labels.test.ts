@@ -3,7 +3,7 @@
  * safe to repeat: when the label exists, its color and description are set.
  */
 
-import { expect, test } from 'bun:test'
+import { expect, test } from 'vitest'
 
 import {
   Gh,

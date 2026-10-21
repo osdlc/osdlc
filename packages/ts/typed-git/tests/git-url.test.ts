@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'vitest'
 
 import { gitSshUrl, parseGitUrl, parseRemoteUrl, parseRepoRef } from '../index.ts'
 

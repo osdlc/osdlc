@@ -5,7 +5,8 @@
  * takes is usable with no real process at all.
  */
 
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'vitest'
+import { spawnSync } from 'node:child_process'
 import { mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -48,9 +49,8 @@ describe('managedProcessRunner', () => {
     })
     await handle.exited
     const child = readFileSync(out, 'utf-8').trim().split(' ')
-    const parent = Bun.spawnSync(['sh', '-c', ids(String(process.pid))])
-      .stdout.toString()
-      .trim()
+    const parent = spawnSync('sh', ['-c', ids(String(process.pid))], { encoding: 'utf-8' })
+      .stdout.trim()
       .split(' ')
     expect(child[0]).not.toBe(parent[0])
     expect(child[0]).toBe(String(handle.pid))

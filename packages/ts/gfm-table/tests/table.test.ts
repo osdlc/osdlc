@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'vitest'
 import { readTable, renderTable, rowCellTexts, tableGrid } from '../src/index.ts'
 
 describe('readTable', () => {

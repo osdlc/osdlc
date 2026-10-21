@@ -1,7 +1,7 @@
-// Runs the BUILT package under Node, which no other check does: `bun test`
-// resolves the `bun` export condition to the TypeScript sources, so dist/ is
-// compiled and never executed. A broken emit passes every other gate and
-// fails on the consumer's machine.
+// Runs the BUILT package under Node, which no other check does: the unit tests
+// run the TypeScript source (vitest.config.ts aliases the package name to it),
+// so dist/ is compiled and never executed. A broken emit passes every other
+// gate and fails on the consumer's machine.
 //
 // It imports the package by name, so Node resolves it through `exports` as a
 // consumer would. `pnpm run smoke` runs it here, where the name resolves to

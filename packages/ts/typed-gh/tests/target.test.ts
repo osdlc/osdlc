@@ -5,7 +5,7 @@
  * target, the argv is what it was before targets existed.
  */
 
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'vitest'
 
 import {
   AsyncGh,

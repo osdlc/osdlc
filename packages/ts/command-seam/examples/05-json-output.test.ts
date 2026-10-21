@@ -10,7 +10,7 @@
  * for a result already in hand.
  */
 
-import { expect, test } from 'bun:test'
+import { expect, test } from 'vitest'
 
 import {
   parseJsonResult,

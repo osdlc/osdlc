@@ -3,7 +3,7 @@
  * `LC_ALL=C`. Their outcomes must not change under a caller's locale.
  */
 
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'vitest'
 
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'

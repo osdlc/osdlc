@@ -7,7 +7,7 @@
  * result and decides. `ran(r)` is the check: the process started and exited 0.
  */
 
-import { expect, test } from 'bun:test'
+import { expect, test } from 'vitest'
 
 import { firstLine, ran, spawnRunner, stderrOrError, type CommandRunner } from '@osdlc/command-seam'
 import { fakeRunner } from '@osdlc/command-seam/testing'

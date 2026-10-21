@@ -1,49 +1,61 @@
-// Runs the conformance corpus against the BUILT package under Node's own test
-// runner. `bun test` covers the TypeScript source; this covers dist/, the code
-// npm users get, on each Node line CI runs. It imports the package by name, so
-// Node resolves it through `exports` to dist/, which the `test:node` script
-// builds first.
-// The name has no `.test.` part, so `bun test` does not pick it up.
+// Runs the conformance corpus against the BUILT package. The other tests run
+// the TypeScript source; this one runs dist/, the code npm users get. It
+// imports `../dist/index.js`, so it needs the build, which the workspace runs
+// before the tests (`pnpm -r build`, then `pnpm test`).
 
-import { strict as assert } from 'node:assert'
 import { readFileSync } from 'node:fs'
-import { test } from 'node:test'
 
-import { compose, split, splitLenient } from '@osdlc/frontmatter-lossless'
+import { describe, expect, test } from 'vitest'
+
+import { compose, split, splitLenient } from '../dist/index.js'
+
+interface Fixture {
+  name: string
+  source: string
+  split: {
+    yaml: string | null
+    body: string
+    bom: boolean
+    openEol: string
+    closeEol: string
+    closeSep: string
+  }
+  lenient: unknown
+  edit?: { yaml: string; body: string; out: string }
+}
 
 const fixtures = JSON.parse(
   readFileSync(new URL('./fixtures/conformance.json', import.meta.url), 'utf8'),
-)
+) as Fixture[]
 
-test('the corpus is non-empty', () => {
-  assert.ok(fixtures.length > 0)
-})
+describe('the built package against the corpus', () => {
+  test('the corpus is non-empty', () => {
+    expect(fixtures.length).toBeGreaterThan(0)
+  })
 
-for (const fx of fixtures) {
-  test(`[${fx.name}] split, round trip, offsets, lenient and edit`, () => {
-    const s = split(fx.source)
-    assert.equal(s.yaml, fx.split.yaml)
-    assert.equal(s.body, fx.split.body)
-    assert.deepEqual(
-      { ...s.shape },
-      {
+  for (const fx of fixtures) {
+    test(`[${fx.name}] split, round trip, offsets, lenient and edit`, () => {
+      const s = split(fx.source)
+      expect(s.yaml).toBe(fx.split.yaml)
+      expect(s.body).toBe(fx.split.body)
+      expect({ ...s.shape }).toEqual({
         bom: fx.split.bom,
         openEol: fx.split.openEol,
         closeEol: fx.split.closeEol,
         closeSep: fx.split.closeSep,
-      },
-    )
-    assert.equal(compose(s.yaml, s.body, s.shape), fx.source)
-    if (s.yaml !== null) {
-      assert.equal(fx.source.slice(s.yamlRange.start, s.yamlRange.end), s.yaml)
-    }
-    assert.equal(fx.source.slice(s.bodyStart), s.body)
-    assert.deepEqual(splitLenient(fx.source), fx.lenient)
-    if (fx.edit) {
-      const out = compose(fx.edit.yaml, fx.edit.body, s.shape)
-      assert.equal(out, fx.edit.out)
-      const back = split(out)
-      assert.deepEqual([back.yaml, back.body], [fx.edit.yaml, fx.edit.body])
-    }
-  })
-}
+      })
+      expect(compose(s.yaml, s.body, s.shape)).toBe(fx.source)
+      if (s.yaml !== null) {
+        expect(fx.source.slice(s.yamlRange.start, s.yamlRange.end)).toBe(s.yaml)
+      }
+      expect(fx.source.slice(s.bodyStart)).toBe(s.body)
+      expect(splitLenient(fx.source)).toEqual(fx.lenient)
+      if (fx.edit) {
+        const out = compose(fx.edit.yaml, fx.edit.body, s.shape)
+        expect(out).toBe(fx.edit.out)
+        const back = split(out)
+        expect([back.yaml, back.body]).toEqual([fx.edit.yaml, fx.edit.body])
+      }
+    })
+  }
+})

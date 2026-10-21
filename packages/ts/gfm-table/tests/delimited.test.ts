@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'vitest'
 import { looksLikeHeader, parseDelimited, readDelimited, sniffDelimiter } from '../src/index.ts'
 
 const fields = (text: string, delim = ',') =>

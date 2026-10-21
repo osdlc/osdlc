@@ -12,7 +12,7 @@
 
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
+import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 
 import { CommandFailed, Git, type CommandResult, type CommandRunner } from '../index.ts'
 import { makeGitFixture, type GitFixture } from '../testing.ts'

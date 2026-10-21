@@ -8,7 +8,7 @@ import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { expect, test } from 'bun:test'
+import { expect, test } from 'vitest'
 
 import {
   forwardedExitCode,
@@ -22,8 +22,8 @@ import { alive, gone, reap } from './support/procs.ts'
 
 const CWD = process.cwd()
 const posix = process.platform !== 'win32'
-const HOST = join(import.meta.dir, 'support', 'forwarding-host.ts')
-const SEQUENCE_HOST = join(import.meta.dir, 'support', 'sequence-host.ts')
+const HOST = join(import.meta.dirname, 'support', 'forwarding-host.ts')
+const SEQUENCE_HOST = join(import.meta.dirname, 'support', 'sequence-host.ts')
 
 /** Spawn the host script under bun; resolves with the pids it prints once ready. */
 async function startHost(extra: string[] = []) {

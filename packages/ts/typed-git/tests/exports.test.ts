@@ -4,7 +4,7 @@
  * public surface.
  */
 
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'vitest'
 
 import { readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -51,13 +51,13 @@ describe('re-exported runners', () => {
   test('spawnRunner runs a real binary', () => {
     const r = spawnRunner('git').run(['--version'], { cwd: CWD })
     expect(r.exitCode).toBe(0)
-    expect(r.stdout).toStartWith('git version')
+    expect(r.stdout.startsWith('git version')).toBe(true)
   })
 
   test('spawnRunnerAsync runs a real binary', async () => {
     const r = await spawnRunnerAsync('git').run(['--version'], { cwd: CWD })
     expect(r.exitCode).toBe(0)
-    expect(r.stdout).toStartWith('git version')
+    expect(r.stdout.startsWith('git version')).toBe(true)
   })
 
   test('runChecked returns the result on exit 0 and throws CommandFailed otherwise', () => {

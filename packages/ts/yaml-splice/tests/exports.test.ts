@@ -7,10 +7,10 @@
 import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { expect, test } from 'bun:test'
+import { expect, test } from 'vitest'
 import ts from 'typescript'
 
-const PACKAGE_DIR = join(import.meta.dir, '..')
+const PACKAGE_DIR = join(import.meta.dirname, '..')
 const ENTRY = join(PACKAGE_DIR, 'index.ts')
 const README = readFileSync(join(PACKAGE_DIR, 'README.md'), 'utf-8')
 const PACKAGE_NAME = (
@@ -63,7 +63,7 @@ test('every export is used by examples/, which imports the package name only', (
         imported.add((element.propertyName ?? element.name).text)
     }
   }
-  expect([...specifiers].filter((s) => s !== PACKAGE_NAME && s !== 'bun:test')).toEqual([])
+  expect([...specifiers].filter((s) => s !== PACKAGE_NAME && s !== 'vitest')).toEqual([])
   expect([...EXPORTS.keys()].filter((name) => !imported.has(name))).toEqual([])
 })
 
