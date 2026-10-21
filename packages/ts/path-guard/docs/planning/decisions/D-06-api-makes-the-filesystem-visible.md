@@ -138,7 +138,9 @@ these names. It reports each one as a warning, on every host.
 `lexical.validateRelative(raw, { onWarning })` calls `onWarning` once per
 match, in segment order. In Rust, `lexical::windows_names(raw)` returns the
 matches as `Vec<PathWarning>`, and `lexical::validate_relative(raw)` is
-unchanged.
+unchanged. Both report only for input that `validateRelative` accepts. For
+input it refuses, such as `../NUL` or `C:x`, `validateRelative` throws its own
+error first and `windows_names` returns nothing.
 
 The guard knows its platform: `PathGuard` through `node:path`, `Guard` through
 `cfg!(windows)`. On Windows the guard refuses the first match, in `resolve`
@@ -154,10 +156,12 @@ platform, so it never reaches this check.
 
 - `reserved_name`: the base name is a reserved device name, compared case
   insensitive. The names are Microsoft's documented list: `CON`, `PRN`,
-  `AUX`, `NUL`, `COM0` to `COM9`, `LPT0` to `LPT9`, the superscript forms
-  `COM¹`, `COM²`, `COM³`, `LPT¹`, `LPT²`, `LPT³`, and `CONIN$` and
-  `CONOUT$`. See
+  `AUX`, `NUL`, `COM1` to `COM9`, `LPT1` to `LPT9` and the superscript forms
+  `COM¹`, `COM²`, `COM³`, `LPT¹`, `LPT²`, `LPT³`. See
   [Naming Files, Paths, and Namespaces](https://learn.microsoft.com/en-us/windows/win32/fileio/naming-a-file).
+  We add three kinds of name beyond that list, because refusing them costs
+  little: `COM0` and `LPT0`, which some Windows versions treat as devices,
+  and the console devices `CONIN$` and `CONOUT$`, which `CreateFile` opens.
   `NUL`, `nul.txt`, `NUL .txt`, `CON.` and `CON:` all match. `CLOCK$` is not
   in the list: Windows NT has no such device.
 - `alternate_stream`: the segment has a `:` and the base name is not a
