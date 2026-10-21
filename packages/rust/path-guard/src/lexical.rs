@@ -151,7 +151,7 @@ fn text(p: &Path) -> Result<&str, PathError> {
 /// An empty root is [`PathError::EmptyRoot`].
 fn absolute_root(root: &Path) -> Result<&str, PathError> {
     if root.as_os_str().is_empty() {
-        return Err(PathError::EmptyRoot);
+        return Err(PathError::EmptyRoot { argument: "root" });
     }
     absolute_text(root, "root")
 }

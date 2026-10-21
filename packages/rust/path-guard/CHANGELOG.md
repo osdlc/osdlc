@@ -51,10 +51,11 @@ root.
   `Clone`, `Send` and `Sync` when its resolver is.
 - `PathWarning { kind, segment }` and `PathWarningKind` (`ReservedName`,
   `AlternateStream`; `#[non_exhaustive]`).
-- `PathError` variants `Unresolvable`, `EmptyRoot`, `NotUnderRoot`,
-  `NotAbsolute { argument, path }`, `ReservedName` and `AlternateStream`.
-  `NotAbsolute`'s `argument` names the parameter refused (`root`, `outer`,
-  `inner`, `path` or `cwd`). `PathError` stays `#[non_exhaustive]`.
+- `PathError` variants `Unresolvable`, `EmptyRoot { argument }`,
+  `NotUnderRoot`, `NotAbsolute { argument, path }`, `ReservedName` and
+  `AlternateStream`. `argument` names the parameter refused: `root` or
+  `outer` for `EmptyRoot`, and `root`, `outer`, `inner`, `path` or `cwd` for
+  `NotAbsolute`. `PathError` stays `#[non_exhaustive]`.
 - `Resolver` is implemented for `&R` and `Arc<R>`, so a guard can borrow or
   share a resolver.
 

@@ -277,7 +277,10 @@ fn a_guard_is_clone_send_and_sync() {
 fn the_guard_refuses_relative_and_empty_arguments() {
     let g = disk();
     let rel = Path::new("v");
-    assert_eq!(g.resolve(Path::new(""), "a"), Err(PathError::EmptyRoot));
+    assert_eq!(
+        g.resolve(Path::new(""), "a"),
+        Err(PathError::EmptyRoot { argument: "root" })
+    );
     assert_eq!(
         g.resolve(rel, "a"),
         Err(PathError::NotAbsolute {
@@ -292,7 +295,10 @@ fn the_guard_refuses_relative_and_empty_arguments() {
             ..
         })
     ));
-    assert_eq!(g.contains(Path::new(""), rel), Err(PathError::EmptyRoot));
+    assert_eq!(
+        g.contains(Path::new(""), rel),
+        Err(PathError::EmptyRoot { argument: "outer" })
+    );
     assert_eq!(
         g.real_path(Path::new("")),
         Err(PathError::NotAbsolute {

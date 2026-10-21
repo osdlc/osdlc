@@ -261,7 +261,7 @@ impl<R: Resolver> Guard<R> {
 /// `argument` names the parameter in the error.
 fn check_root(root: &Path, argument: &'static str) -> Result<(), PathError> {
     if root.as_os_str().is_empty() {
-        return Err(PathError::EmptyRoot);
+        return Err(PathError::EmptyRoot { argument });
     }
     check_absolute(root, argument)
 }
