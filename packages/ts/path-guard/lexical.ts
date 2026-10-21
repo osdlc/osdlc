@@ -16,7 +16,7 @@ import { components, foldPosix, windowsNames } from './text.ts'
  * segments are checked left to right.
  *
  * A segment that is a Windows device name (`NUL`, `com1.txt`) or names an
- * alternate data stream (`a:b`) is accepted, on every platform. When the path
+ * alternate data stream (`ab:c`) is accepted, on every platform. When the path
  * is accepted, `onWarning` is called once for each such segment, in order.
  * `PathGuard` refuses these segments on Windows.
  *
