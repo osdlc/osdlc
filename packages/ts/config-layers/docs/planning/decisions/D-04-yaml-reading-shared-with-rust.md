@@ -18,7 +18,7 @@ same thing. These rules hold in both:
   an error.
 - `.inf`, `-.inf` and `.nan` read as strings, because JSON cannot hold them.
 - `<<` is an ordinary key, not a merge.
-- A tag is dropped and its value kept.
+- A tag on a string or an integer (`!!str 5`, `!!int "7"`) is dropped and its value kept.
 - A duplicate key is an error.
 
 `packages/rust/config-layers/tests/fixtures/parity.json` holds cases for these
@@ -35,6 +35,7 @@ rules. Both test suites read it.
 ## Consequences
 
 - Some behaviour is not shared and stays out of the fixture. The README's
-  "Rust twin" table lists it: integers beyond 2^53, `1e999`, empty documents,
-  unknown tags and `~user/x`.
+  "Rust twin" table lists it: integers beyond 2^53, `1e999`, `1_000`, `0b11`,
+  empty documents, `!!float` and unknown tags (text in TypeScript, numbers in
+  Rust), an empty home and `~user/x`.
 - A rule added to one side goes into the fixture first.

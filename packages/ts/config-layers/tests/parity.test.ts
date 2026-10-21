@@ -8,21 +8,20 @@
  * differently is listed in the README, not here.
  */
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { readFileSync } from 'node:fs'
 
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 import { z } from 'zod'
 
+import { envVars } from '../dirs.ts'
 import { readMappingFile } from '../loader.ts'
 import { machineConfigFile } from '../machine.ts'
 import { configNeeds } from '../needs.ts'
 import { resolveConfigPath, substitutePathNames } from '../paths.ts'
 import { valueAt, valueIsSet } from '../value.ts'
-import { envVars } from '../dirs.ts'
 
 interface Fixture {
   value_is_set: { name: string; missing?: boolean; value?: unknown; expected: boolean }[]

@@ -193,7 +193,7 @@ const repo = substitutePathNames('{dev}/work', names, 'repos:')
 | `pathsSchema({ reserved })` | the map as a schema: a name (letters, digits, `_`, starting with a letter) → a directory, refusing any `reserved` name a consuming setting defines itself |
 | `pathNames(baseDir, machine, project, opts?)` | the effective map: machine entries over project ones, each `~`-expanded and absolute; `opts.home` is what `~` expands to |
 | `substitutePathNames(value, names, where, opts?)` | `value` with every `{name}` replaced; `PathNameError` for one nothing defines, naming `where` it appeared, what is available, and `opts.defineHint` |
-| `resolveConfigPath(value, baseDir, opts?)` | the one `~` and relative expansion every config path value goes through; `opts.home` defaults to `$HOME`, or `os.homedir()` when `HOME` is unset or empty; only `~` and `~/…` expand |
+| `resolveConfigPath(value, baseDir, opts?)` | the one `~` and relative expansion every config path value goes through; `opts.home` defaults to `$HOME`, or `os.homedir()` when `HOME` is unset; an empty home leaves `~` unexpanded; only `~` and `~/…` expand |
 
 An unknown path name is an error rather than an empty string: a setting that
 quietly becomes `/repo` instead of `/Users/me/dev/repo` fails somewhere far
@@ -302,7 +302,7 @@ The general machinery a `config` command is built from, none of it naming a tool
 ## Runtime
 
 `node:` APIs only. Dependencies: `@osdlc/tiered-dirs`,
-`@osdlc/etag-write`, `@osdlc/gfm-table`, `@osdlc/yaml-splice`, `yaml`, `zod`.
+`@osdlc/etag-write`, `@osdlc/gfm-table`, `@osdlc/yaml-splice`, `yaml`. Peer dependency: `zod` `^4`.
 
 ## Rust twin
 
@@ -314,8 +314,9 @@ package. It is developed in [osdlc/osdlc](https://github.com/osdlc/osdlc) under
   `~` and `~/…`;
 - what counts as set (`valueIsSet` and `value_is_set`) and dotted-key lookup;
 - how a YAML file is read: only `true` and `false` are booleans, a scalar key such as `1` is the
-  string `"1"`, `.inf`, `.nan` and `1e999` read as strings, a tag is dropped with its value kept,
-  `<<` is an ordinary key, and a collection or null key is an error;
+  string `"1"`, `.inf`, `-.inf` and `.nan` read as strings, a tag on a string or an integer is dropped with its
+  value kept, `<<` is an ordinary key, and a collection or null key is an error (the table below
+  lists the tags and numbers that differ);
 - the message for an unmet need, down to "this command" when no command is named.
 
 The crate has no zod to read, so a Rust tool lists its keys in a static `KeySpec` table and uses
@@ -336,6 +337,8 @@ share is left out of the fixture and listed in this table.
 | Finding the project file | the caller passes the project root (`resolveConfigFile(projectRoot, ...)`); there is no `findUp` | `find_up(cwd, file_name)` |
 | `substitutePathNames` | `substitutePathNames(value, names, where, { defineHint })`: one function, with the hint in an options object | `substitute_path_names(value, names, setting)` and `substitute_path_names_with_hint(value, names, setting, define_hint)` |
 | Home for `~` | `home` option, default `$HOME`, else `os.homedir()` (unset or empty) | `home` argument, required |
+| An empty home | `~/x` is left unexpanded and resolves as a relative path | `~/x` becomes `/x` |
+| `1_000` and `0b11` | read as the strings `1_000` and `0b11` | read as the numbers 1000 and 3 |
 | Integers beyond 2^53 | read as a number and lose precision | read as `u64`, then as a lossy float |
 | Empty file | `readParsedFile` gives `null`; `readMappingFile` gives `{}` | `read_mapping` is an error ("found an empty document"); `load` treats it as an empty mapping |
 | Looking up a list index (`list.0`) | `valueAt` finds the item | `value_at` gives `None` |
@@ -348,6 +351,8 @@ share is left out of the fixture and listed in this table.
 | Platforms | Linux and macOS | Linux, macOS and Windows |
 
 ## How it compares
+
+`conf` is a Node library that keeps one per-user config store in a JSON file; it has no project file.
 
 `cosmiconfig`, `c12` and `rc` find config. They search several locations and
 formats, merge layers, and hand back an object. This package does not search:

@@ -29,7 +29,7 @@ export const PATH_NAME = /^[A-Za-z][A-Za-z0-9_]*$/
  * @experimental
  */
 export interface ResolveConfigPathOptions {
-  /** What a leading `~` expands to. Defaults to `$HOME`, or `os.homedir()` when `HOME` is unset or empty. */
+  /** What a leading `~` expands to. Defaults to `$HOME`, or `os.homedir()` when `HOME` is unset or empty. An empty home leaves `~` unexpanded. */
   home?: string | undefined
 }
 
@@ -38,7 +38,7 @@ export interface ResolveConfigPathOptions {
  *
  * URLs (`scheme://…`) and bare words that do not look like paths pass
  * through untouched — a value may legitimately be a name rather than a
- * place. A leading `~` expands to `opts.home` (default `$HOME`, else `os.homedir()`). Only `~` and
+ * place. A leading `~` expands to `opts.home` (default `$HOME`, else `os.homedir()`; if that is empty, `~` is left as written). Only `~` and
  * `~/…` expand; a `~user/…` form is not expanded and resolves as a relative
  * path. A relative path resolves against `baseDir`, which is the project root for a project file
  * and, for a machine file, whatever the reading tool considers its working
@@ -55,7 +55,9 @@ export function resolveConfigPath(
   if (!looksLikePath) return value
   let p = value
   if (p === '~' || p.startsWith('~/')) {
-    p = `${opts.home ?? (process.env['HOME'] || homedir())}${p.slice(1)}`
+    // An empty home leaves `~` as it is: expanding it would give the filesystem root.
+    const home = opts.home ?? (process.env['HOME'] || homedir())
+    if (home !== '') p = `${home}${p.slice(1)}`
   }
   if (!isAbsolute(p)) p = resolve(baseDir, p)
   return p

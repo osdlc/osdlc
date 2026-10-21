@@ -5,7 +5,7 @@
 The first release of `@osdlc/config-layers` on npm. A CLI tool's project and machine config files, and the check a command runs before it starts. It is the TypeScript twin of the Rust crate `config-layers`.
 
 - The package depends on `@osdlc/etag-write`, `@osdlc/gfm-table`, `@osdlc/tiered-dirs` and `@osdlc/yaml-splice`. `zod` `^4` is a peer dependency. ESM only, compiled JavaScript with `.d.ts`, Node 22 or newer. Licence `MIT OR Apache-2.0`.
-- Read like the Rust twin: YAML files read with only `true` and `false` as booleans, `.inf`, `-.inf` and `.nan` as strings, and a collection or null key as an error. `substitutePathNames` gives the same error text. The unmet-need message says "this command" when no command is named. `resolveConfigPath` and `pathNames` take an optional `home`; without it, `~` follows `$HOME`, else `os.homedir()`.
+- Read like the Rust twin: YAML files read with only `true` and `false` as booleans, `.inf`, `-.inf` and `.nan` as strings, and a collection or null key as an error. `substitutePathNames` gives the same error text. The unmet-need message says "this command" when no command is named. `resolveConfigPath` and `pathNames` take an optional `home`; without it, `~` follows `$HOME`, else `os.homedir()`; an empty home leaves `~` unexpanded.
 - **Project config built from sections.** `defineConfigSection` (with `fileSchema` and `layerCheck`
   hooks) and `assembleConfig`, which turns a section list into a memoized loader. The overlay file
   is deep-merged over the committed file before validation (`deepMergeConfig`).

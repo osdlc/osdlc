@@ -80,7 +80,8 @@ export type ParsedFileRead =
  *   scalar; a collection key or a null key (also an empty one) is an error;
  * - `.inf`, `-.inf`, `.nan` and a number that overflows, such as `1e999`, read
  *   as their source text, a string, because JSON cannot hold them;
- * - a tag is dropped and its value kept, with no process warning;
+ * - a tag on a string or an integer (`!!str 5`, `!!int "7"`) is dropped and its value kept, with no
+ *   process warning (`!!float` and unknown tags differ from the crate, below);
  * - `<<` is an ordinary key, not a merge;
  * - a duplicate key is an error.
  *

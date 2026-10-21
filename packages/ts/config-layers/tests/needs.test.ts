@@ -95,10 +95,8 @@ describe('message', () => {
     })
     const dir = sb.project('bare')
     writeFileSync(join(dir, PROJECT_FILE), '')
-    expect(
-      bare
-        .message({ config: 'authority' }, { projectRoot: dir })
-        .endsWith(`Set it in ${join(dir, PROJECT_FILE)}.`),
-    ).toBe(true)
+    const suffix = `Set it in ${join(dir, PROJECT_FILE)}.`
+    const message = bare.message({ config: 'authority' }, { projectRoot: dir })
+    expect(message.slice(-suffix.length)).toBe(suffix)
   })
 })

@@ -35,8 +35,9 @@ describe('resolveConfigPath', () => {
       delete process.env['HOME']
       expect(resolveConfigPath('~/x', ROOT)).toBe(join(homedir(), 'x'))
       process.env['HOME'] = ''
-      // Under Node, os.homedir() reads the empty HOME too, so compare with whatever it returns.
-      expect(resolveConfigPath('~/x', ROOT)).toBe(resolve(ROOT, `${homedir()}/x`))
+      // Under Node, os.homedir() reads the empty HOME too and returns ''. `~` stays unexpanded.
+      expect(resolveConfigPath('~/x', ROOT)).toBe(resolve(ROOT, '~/x'))
+      expect(resolveConfigPath('~/x', ROOT, { home: '' })).toBe(resolve(ROOT, '~/x'))
     } finally {
       if (prev === undefined) delete process.env['HOME']
       else process.env['HOME'] = prev
