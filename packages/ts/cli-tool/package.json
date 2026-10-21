@@ -16,8 +16,7 @@
     "argv",
     "commander",
     "dev-link",
-    "launcher",
-    "trust"
+    "launcher"
   ],
   "publishConfig": {
     "access": "public"
@@ -34,11 +33,6 @@
       "bun": "./devlink/index.ts",
       "types": "./dist/devlink/index.d.ts",
       "default": "./dist/devlink/index.js"
-    },
-    "./trust": {
-      "bun": "./trust/index.ts",
-      "types": "./dist/trust/index.d.ts",
-      "default": "./dist/trust/index.js"
     }
   },
   "files": [
@@ -47,8 +41,6 @@
     "!vitest.config.ts",
     "devlink/*.ts",
     "devlink/README.md",
-    "trust/*.ts",
-    "trust/README.md",
     "README.md",
     "CHANGELOG.md",
     "LICENSE-MIT",
@@ -73,7 +65,6 @@
   "dependencies": {
     "@osdlc/config-layers": "workspace:^",
     "@osdlc/etag-write": "workspace:^",
-    "@osdlc/path-guard": "workspace:^",
     "commander": "^12.1.0"
   },
   "devDependencies": {

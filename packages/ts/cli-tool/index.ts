@@ -2,15 +2,14 @@
  * `@osdlc/cli-tool` — what a standalone CLI needs before it does anything
  * of its own.
  *
- * Three entries, because a tool reaches for all three at once and splitting
- * them bought three manifests rather than three ideas:
+ * Two entries, because a tool reaches for both at once and splitting
+ * them bought two manifests rather than two ideas:
  *
  *   - this one, the CLI substrate: the {@link CliIo} output seam, the
  *     {@link CliContext} a `main` is handed, the exit-code rule, the
  *     {@link defineCli} flag declaration, and {@link runMain} for the shim.
  *   - `@osdlc/cli-tool/devlink` — running a system-installed tool from a
  *     development checkout.
- *   - `@osdlc/cli-tool/trust` — the trust policy and the exec gate.
  *
  * A tool's config files live in `@osdlc/config-layers`. The directory and
  * did-you-mean helpers it shares with this package are re-exported below.

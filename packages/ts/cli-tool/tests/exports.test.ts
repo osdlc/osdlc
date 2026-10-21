@@ -1,5 +1,5 @@
 /**
- * Checks on the public surface as a whole, for each of the three entries:
+ * Checks on the public surface as a whole, for each of the two entries:
  * every export has a documentation comment, every export is used in examples/, and the README's experimental list for
  * the entry matches the `@experimental` tags.
  */
@@ -19,7 +19,6 @@ const PACKAGE_NAME = (
 const ENTRIES = [
   { specifier: PACKAGE_NAME, entry: 'index.ts' },
   { specifier: `${PACKAGE_NAME}/devlink`, entry: 'devlink/index.ts' },
-  { specifier: `${PACKAGE_NAME}/trust`, entry: 'trust/index.ts' },
 ] as const
 
 const COMPILER_OPTIONS: ts.CompilerOptions = {

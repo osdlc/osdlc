@@ -142,7 +142,10 @@ Developed here, in this repository:
   starts; the TypeScript twin of the `config-layers` crate)
 - `packages/ts/cli-tool` (`@osdlc/cli-tool` on npm, what a standalone CLI
   needs first: an output seam, exit codes, flags declared once, running an
-  installed tool from a development checkout, and a per-repository trust store)
+  installed tool from a development checkout)
+- `packages/ts/trust-repo` (`@osdlc/trust-repo` on npm, per-repository consent
+  to run a repository's own scripts: a marker store, an exec gate and a path
+  and owner policy over it)
 
 The development repository will take each TypeScript library from npm, like
 any other consumer. Today it still keeps its own copies. Open issues and pull

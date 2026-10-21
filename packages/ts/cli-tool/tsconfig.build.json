@@ -8,6 +8,6 @@
     "customConditions": [],
     "paths": {}
   },
-  "include": ["*.ts", "devlink/*.ts", "trust/*.ts"],
+  "include": ["*.ts", "devlink/*.ts"],
   "exclude": ["vitest.config.ts"]
 }

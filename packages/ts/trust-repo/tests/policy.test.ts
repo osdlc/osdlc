@@ -14,7 +14,7 @@ import { trustStore } from '../store.ts'
 
 const dirs: string[] = []
 function tmp(): string {
-  const d = realpathSync(mkdtempSync(join(tmpdir(), 'cli-tool-policy-')))
+  const d = realpathSync(mkdtempSync(join(tmpdir(), 'trust-repo-policy-')))
   dirs.push(d)
   return d
 }

@@ -7,26 +7,16 @@
     "customConditions": ["bun"],
     // The package maps its own name to the source, for tsc and (in
     // vitest.config.ts) for the tests, so examples/ run before a build.
-    // config-layers and path-guard have no `bun` condition, so they are mapped
-    // to their source too. The build config clears this and uses their `dist/`.
+    // config-layers has no `bun` condition, so it is mapped to its source
+    // too. The build config clears this and uses their `dist/`.
     "paths": {
       "@osdlc/config-layers": ["../config-layers/index.ts"],
-      "@osdlc/path-guard": ["../path-guard/index.ts"],
       // Sources that config-layers imports and that ship no `bun` condition.
       "@osdlc/tiered-dirs": ["../tiered-dirs/index.ts"],
       "@osdlc/yaml-splice": ["../yaml-splice/index.ts"],
       "@osdlc/cli-tool": ["./index.ts"],
-      "@osdlc/cli-tool/devlink": ["./devlink/index.ts"],
-      "@osdlc/cli-tool/trust": ["./trust/index.ts"]
+      "@osdlc/cli-tool/devlink": ["./devlink/index.ts"]
     }
   },
-  "include": [
-    "*.ts",
-    "devlink/*.ts",
-    "trust/*.ts",
-    "tests/*.ts",
-    "devlink/tests/*.ts",
-    "trust/tests/*.ts",
-    "examples/*.ts"
-  ]
+  "include": ["*.ts", "devlink/*.ts", "tests/*.ts", "devlink/tests/*.ts", "examples/*.ts"]
 }
