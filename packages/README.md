@@ -85,8 +85,7 @@ Developed here, in this repository:
 - `packages/ts/prettier-config` (`@osdlc/prettier-config`)
 - `packages/ts/command-seam` (`@osdlc/command-seam`)
 - `packages/ts/gfm-table` (`@osdlc/gfm-table`)
-- `packages/rust/config-layers` (`config-layers` on crates.io; continues `cli-tool-config`,
-  whose last release is 0.5.3)
+- `packages/rust/config-layers` (`config-layers` on crates.io)
 - `packages/rust/etag-write` (`etag-write` on crates.io)
 - `packages/rust/path-guard` (`path-guard` on crates.io)
 - `packages/rust/tiered-dirs` (`tiered-dirs` on crates.io)
