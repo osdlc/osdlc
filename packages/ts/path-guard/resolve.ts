@@ -16,7 +16,9 @@ export const platformPath = WINDOWS ? win32 : posix
  * How a {@link PathGuard} reads a filesystem. Pass your own to test against a
  * fake filesystem; `nodeResolver` in `@osdlc/path-guard/node` is the real one.
  * The guard asks with `/` separators, on Windows too, and an answer may use
- * either separator there.
+ * either separator there. An answer must be absolute and canonical: a guard
+ * that gets a relative answer, or one with a `.` or `..` segment, trusts
+ * nothing under it (see {@link PathGuard}).
  *
  * @example
  * ```ts
@@ -29,8 +31,9 @@ export const platformPath = WINDOWS ? win32 : posix
  */
 export interface Resolver {
   /**
-   * `path` with every symlink resolved. Must throw when `path` does not exist.
-   * When `path` resolves, so must each of its leading parts.
+   * `path` with every symlink resolved: absolute, with no `.` or `..` segment.
+   * Must throw when `path` does not exist. When `path` resolves, so must each
+   * of its leading parts.
    */
   realpath(path: string): string
   /**
@@ -72,6 +75,9 @@ const CALLS_PER_PART = 4
 /** Thrown inside a walk once its {@link Calls} are spent. */
 const OUT_OF_CALLS = Symbol('out of resolver calls')
 
+/** Thrown inside a walk when the resolver gives an answer that is not canonical. */
+const NOT_CANONICAL = Symbol('resolver answer is not canonical')
+
 /** A {@link Resolver} with a number of calls left. */
 interface Calls {
   resolver: Resolver
@@ -85,8 +91,10 @@ interface Calls {
  * against the spelling. On Windows every `..` folds as text first, as Windows
  * does. A dangling symlink is followed to its target. Null when the walk follows
  * more than {@link MAX_LINK_HOPS} links or would spend more resolver calls than
- * a fixed allowance per link plus a few per segment of `path`. The answer holds
- * no `..`.
+ * a fixed allowance per link plus a few per segment of `path`. The empty path,
+ * which no caller takes as absolute, when the resolver gives an answer that is
+ * not canonical: relative, or with a `.` or `..` segment. The answer holds no
+ * `..`.
  */
 export function existingPrefix(resolver: Resolver, path: string): string | null {
   const calls = {
@@ -97,6 +105,7 @@ export function existingPrefix(resolver: Resolver, path: string): string | null 
     return walk(calls, path, 0)
   } catch (error) {
     if (error === OUT_OF_CALLS) return null
+    if (error === NOT_CANONICAL) return ''
     throw error
   }
 }
@@ -300,9 +309,19 @@ function tryReadlink(calls: Calls, path: string): string | null {
 function tryRealpath(calls: Calls, path: string): string | null {
   if (path === '') return null
   const resolver = spend(calls)
+  let real: string
   try {
-    return slash(resolver.realpath(path))
+    real = slash(resolver.realpath(path))
   } catch {
     return null
   }
+  if (!canonical(real)) throw NOT_CANONICAL
+  return real
+}
+
+/** Absolute, with no `.` or `..` segment after the root, in `/` form. */
+function canonical(path: string): boolean {
+  if (!isAbsolutePath(path)) return false
+  const rest = path.slice(split(path).root.length).split('/')
+  return !rest.some((seg) => seg === '.' || seg === '..')
 }

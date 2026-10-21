@@ -63,8 +63,9 @@ export class PathGuard {
    * throws for `raw`, and on Windows `reserved_name` or `alternate_stream`.
    * Then kind `unresolvable` when the walk of `root` or of the result follows
    * more than {@link MAX_LINK_HOPS} links or spends its resolver calls, and
-   * `escapes` when the result lies outside `root` or the resolver gives a real
-   * path for `root` that is not absolute.
+   * `escapes` when the result lies outside `root`, or when the resolver answers
+   * a real path that is not canonical (relative, or with a `.` or `..`
+   * segment) for `root` or for a part of the result.
    * @example
    * ```ts
    * guard.resolve('/vault', 'notes/a.md') // '/vault/notes/a.md'
@@ -129,8 +130,9 @@ export class PathGuard {
    * reduced to the real path of what exists? Compared by whole components, so
    * `/vault-bee` is not inside `/vault-b`. False when the answer cannot be
    * proved: either walk follows more than {@link MAX_LINK_HOPS} links or spends
-   * its resolver calls, or the real path of `outer` is not absolute. Port of
-   * the Rust `Guard::contains`.
+   * its resolver calls, or the resolver answers a real path that is not
+   * canonical (relative, or with a `.` or `..` segment). Port of the Rust
+   * `Guard::contains`.
    *
    * Does not throw for a missing path; it compares what exists and keeps the
    * rest as written.
@@ -162,7 +164,7 @@ export class PathGuard {
    * and any `..` in it folded against that real path. A dangling symlink is
    * followed to its target. Where the walk gives up (more than
    * {@link MAX_LINK_HOPS} links, or too many resolver calls), or the resolver
-   * gives a real path that is not absolute, returns `absPath`
+   * answers a real path that is not canonical, returns `absPath`
    * with `..` folded as text, so the answer never holds a `..`. A missing path
    * is not an error. On Windows the answer has `\` separators. Port of the Rust
    * `Guard::real_path`.

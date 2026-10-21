@@ -465,6 +465,48 @@ describe('a real root that is not absolute', () => {
   })
 })
 
+// A resolver answer must be canonical. One with a `.` or `..` segment could say
+// a path lies under the root while the filesystem puts it elsewhere.
+describe('a resolver answer with a `.` or `..` segment', () => {
+  const answering = (answers: Record<string, string>): Resolver => ({
+    realpath: (path) => {
+      if (path === at('/')) return path
+      const real = answers[path]
+      if (real === undefined) throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' })
+      return at(real)
+    },
+    readlink: () => {
+      throw Object.assign(new Error('EINVAL'), { code: 'EINVAL' })
+    },
+  })
+  const walked = new PathGuard(answering({ [at('/v')]: '/v', [at('/v/x')]: '/v/../etc' }))
+  const dotted = new PathGuard(answering({ [at('/v')]: '/v', [at('/v/x')]: '/v/./x' }))
+  const root = new PathGuard(answering({ [at('/v')]: '/w/../v' }))
+
+  test('resolve refuses it as escapes, for a walked part or the root', () => {
+    expect(kindOf(() => walked.resolve(at('/v'), 'x'))).toBe('escapes')
+    expect(kindOf(() => dotted.resolve(at('/v'), 'x'))).toBe('escapes')
+    expect(kindOf(() => root.resolve(at('/v'), 'a.md'))).toBe('escapes')
+  })
+
+  test('contains answers false', () => {
+    expect(walked.contains(at('/v'), at('/v/x'))).toBe(false)
+    expect(dotted.contains(at('/v'), at('/v/x'))).toBe(false)
+    expect(root.contains(at('/v'), at('/v/a.md'))).toBe(false)
+  })
+
+  test('realPath falls back to the path folded as text', () => {
+    expect(walked.realPath(at('/v/x'))).toBe(join(at('/v/x')))
+    expect(root.realPath(at('/v/a.md'))).toBe(join(at('/v/a.md')))
+  })
+
+  test('a canonical answer is still trusted', () => {
+    const fine = new PathGuard(answering({ [at('/v')]: '/v', [at('/v/x')]: '/v/y' }))
+    expect(fine.resolve(at('/v'), 'x')).toBe(join(at('/v/x')))
+    expect(fine.realPath(at('/v/x'))).toBe(join(at('/v/y')))
+  })
+})
+
 describe('relative input', () => {
   const fs = table({ '/v': '/v' })
   const guard = new PathGuard(fs)
