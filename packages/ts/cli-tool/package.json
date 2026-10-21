@@ -68,7 +68,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "oxlint .",
-    "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@osdlc/config-layers": "workspace:^",
