@@ -15,7 +15,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -1378,10 +1378,17 @@ describe('Git — real git outside a repository', () => {
 // `resolveRef("HEAD")` can.
 describe("Git — probing 'does this repo have history?'", () => {
   let scratch: string
+  let prevCeiling: string | undefined
   const at = (name: string) => new Git(join(scratch, name))
 
   beforeAll(() => {
-    scratch = mkdtempSync(join(tmpdir(), 'typedgit-head-probe-'))
+    scratch = realpathSync(mkdtempSync(join(tmpdir(), 'typedgit-head-probe-')))
+    // Without its object store, `noobjects` is no longer a repository to git,
+    // which then searches the parent directories. If the temp dir sits inside
+    // another repository (as on some CI runners), git answers for that one.
+    // The ceiling stops the search at the scratch dir.
+    prevCeiling = process.env['GIT_CEILING_DIRECTORIES']
+    process.env['GIT_CEILING_DIRECTORIES'] = scratch
     for (const name of ['empty', 'dangling', 'noobjects']) {
       const dir = join(scratch, name)
       mkdirSync(dir)
@@ -1400,7 +1407,11 @@ describe("Git — probing 'does this repo have history?'", () => {
     rmSync(join(scratch, 'noobjects', '.git', 'objects'), { recursive: true, force: true })
   })
 
-  afterAll(() => rmSync(scratch, { recursive: true, force: true }))
+  afterAll(() => {
+    if (prevCeiling === undefined) delete process.env['GIT_CEILING_DIRECTORIES']
+    else process.env['GIT_CEILING_DIRECTORIES'] = prevCeiling
+    rmSync(scratch, { recursive: true, force: true })
+  })
 
   test("objectExists('HEAD') answers false for all three — empty AND corrupt", () => {
     expect(at('empty').objectExists('HEAD')).toBe(false)
