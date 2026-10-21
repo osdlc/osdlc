@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.1.0](https://github.com/osdlc/osdlc/releases/tag/frontmatter-lossless/v1.1.0) - 2026-10-21
+
+### Added
+
+- *(frontmatter-lossless)* add the crate for its 1.1.0 release ([#397](https://github.com/osdlc/osdlc/pull/397))
+
 First public release, aligned with @osdlc/frontmatter-lossless 1.1.0 — its
 TypeScript twin, the same algorithm and the same conformance corpus. Pure,
 byte-exact Markdown frontmatter framing: split a note into verbatim YAML and
