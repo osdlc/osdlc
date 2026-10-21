@@ -1,0 +1,16 @@
+{
+  // Emit config for the published dist/; the dev tsconfig.json stays noEmit.
+  // The source only, with Node types: the package uses node:fs, node:os and process.
+  "extends": ["./tsconfig.json", "@osdlc/tsconfig/build"],
+  "compilerOptions": {
+    "rootDir": ".",
+    "types": ["node"],
+    // The build resolves the siblings through their built `dist/`, as a consumer does.
+    "customConditions": null,
+    "paths": null,
+    // The sources are not published, so a declaration map would point at nothing.
+    "declarationMap": false
+  },
+  "include": ["*.ts"],
+  "exclude": ["vitest.config.ts"]
+}

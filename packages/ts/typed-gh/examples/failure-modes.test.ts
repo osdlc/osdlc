@@ -13,7 +13,7 @@ const empty: CommandRunner = { run: () => ({ exitCode: 0, stdout: '[]', stderr: 
 
 test('a failed query is null, so it is not mistaken for "no results"', () => {
   expect(new Gh('/repo', { runner: failing }).prList()).toBeNull()
-  expect(new Gh('/repo', { runner: empty }).prList()).toEqual([])
+  expect(new Gh('/repo', { runner: empty }).prList()).toEqual({ rows: [], truncated: false })
 })
 
 test('a failed mutation throws CommandFailed, carrying the argv and the result', () => {

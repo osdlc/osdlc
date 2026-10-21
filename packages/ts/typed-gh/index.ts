@@ -17,9 +17,9 @@
  * Authentication is `gh`'s. No token is read, stored, or forwarded.
  */
 
-export { AsyncGh, type AsyncCallOptions } from './async.ts'
+export { AsyncGh, type AsyncCallOptions, type AsyncGhOptions } from './async.ts'
 
-export { Gh, defaultRunnerFactory, type RunnerFactory } from './sync.ts'
+export { Gh, defaultRunnerFactory, type GhOptions, type RunnerFactory } from './sync.ts'
 
 export {
   api,
@@ -27,6 +27,7 @@ export {
   createPr,
   editPr,
   editPrBody,
+  graphql,
   createLabel,
   createReview,
   editLabel,
@@ -34,6 +35,7 @@ export {
   issueList,
   issueView,
   labelList,
+  nodesAt,
   openPrsForBranch,
   pickPrForBranch,
   prBody,
@@ -46,27 +48,45 @@ export {
   prReviewThreads,
   prUpdateBranch,
   prView,
+  repoList,
+  repoView,
+  searchPrs,
   setIssueLabel,
   PR_LIST_FIELDS,
   PR_REF_FIELDS,
   PR_VIEW_FIELDS,
+  REPO_FIELDS,
+  SEARCH_PR_FIELDS,
   type ApiOptions,
   type ApiResponse,
   type AuthStatus,
   type CreateLabelOptions,
   type CreatePrOptions,
   type CreateReviewOptions,
+  type GhTarget,
+  type GraphqlOptions,
+  type GraphqlVariable,
   type GhVerb,
   type IssueListOptions,
+  type ListResult,
   type PrListOptions,
   type PrMergeMethod,
+  type RepoListOptions,
   type ReviewComment,
   type ReviewThread,
+  type SearchPrsOptions,
 } from './verbs.ts'
 
 export { anyCheckFailed, normalizeAuthorLogin, parsePullRequest } from './parse.ts'
 
-export { ownerRepoSlug, parseOwnerRepo, parsePrUrl, type PullRequestRef } from './repo.ts'
+export {
+  ownerRepoSlug,
+  parseOwnerRepo,
+  parsePrRef,
+  parsePrUrl,
+  type PrRef,
+  type PullRequestRef,
+} from './repo.ts'
 
 export type {
   Actor,
@@ -79,7 +99,10 @@ export type {
   MergeStateStatus,
   OwnerRepo,
   PullRequest,
+  PrSearchHit,
   PullRequestState,
+  Repository,
+  RepositoryVisibility,
   Review,
   ReviewDecision,
   ReviewState,

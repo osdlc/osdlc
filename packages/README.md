@@ -126,6 +126,9 @@ Developed here, in this repository:
 - `packages/ts/detect-harness` (`@osdlc/detect-harness` on npm, finds the
   coding-agent harnesses on a machine and in a project and reads what each has
   configured; read-only, with secrets redacted)
+- `packages/ts/config-layers` (`@osdlc/config-layers` on npm, a CLI tool's
+  project and machine config files and the check a command runs before it
+  starts; the TypeScript twin of the `config-layers` crate)
 - `packages/ts/cli-tool` (`@osdlc/cli-tool` on npm, what a standalone CLI
   needs first: an output seam, exit codes, flags declared once, running an
   installed tool from a development checkout, and a per-repository trust store)

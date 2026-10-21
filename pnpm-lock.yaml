@@ -45,6 +45,46 @@ importers:
         specifier: ^5.0.5
         version: 5.0.5(@types/node@26.6.5)(@vitest/coverage-v8@5.0.5)(vite@8.3.4(@types/node@26.6.5)(yaml@2.9.1))
 
+  packages/ts/cli-tool:
+    dependencies:
+      '@osdlc/config-layers':
+        specifier: workspace:^
+        version: link:../config-layers
+      '@osdlc/etag-write':
+        specifier: workspace:^
+        version: link:../etag-write
+      '@osdlc/path-guard':
+        specifier: workspace:^
+        version: link:../path-guard
+      commander:
+        specifier: ^12.1.0
+        version: 12.1.0
+    devDependencies:
+      '@osdlc/prettier-config':
+        specifier: workspace:^
+        version: link:../prettier-config
+      '@osdlc/tsconfig':
+        specifier: workspace:^
+        version: link:../tsconfig
+      '@types/node':
+        specifier: ^26.1.0
+        version: 26.6.5
+      '@vitest/coverage-v8':
+        specifier: ^5.0.5
+        version: 5.0.5(vitest@5.0.5)
+      oxlint:
+        specifier: ^1.65.0
+        version: 1.88.0
+      prettier:
+        specifier: 3.9.6
+        version: 3.9.6
+      typescript:
+        specifier: ~6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: ^5.0.5
+        version: 5.0.5(@types/node@26.6.5)(@vitest/coverage-v8@5.0.5)(vite@8.3.4(@types/node@26.6.5)(yaml@2.9.1))
+
   packages/ts/color:
     devDependencies:
       '@osdlc/prettier-config':
@@ -98,6 +138,52 @@ importers:
       typescript:
         specifier: ~6.0.3
         version: 6.0.3
+
+  packages/ts/config-layers:
+    dependencies:
+      '@osdlc/etag-write':
+        specifier: workspace:^
+        version: link:../etag-write
+      '@osdlc/gfm-table':
+        specifier: workspace:^
+        version: link:../gfm-table
+      '@osdlc/tiered-dirs':
+        specifier: workspace:^
+        version: link:../tiered-dirs
+      '@osdlc/yaml-splice':
+        specifier: workspace:^
+        version: link:../yaml-splice
+      yaml:
+        specifier: ^2.6.1
+        version: 2.9.1
+    devDependencies:
+      '@osdlc/prettier-config':
+        specifier: workspace:^
+        version: link:../prettier-config
+      '@osdlc/tsconfig':
+        specifier: workspace:^
+        version: link:../tsconfig
+      '@types/node':
+        specifier: ^26.1.0
+        version: 26.6.5
+      '@vitest/coverage-v8':
+        specifier: ^5.0.5
+        version: 5.0.5(vitest@5.0.5)
+      oxlint:
+        specifier: ^1.65.0
+        version: 1.88.0
+      prettier:
+        specifier: 3.9.6
+        version: 3.9.6
+      typescript:
+        specifier: ~6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: ^5.0.5
+        version: 5.0.5(@types/node@26.6.5)(@vitest/coverage-v8@5.0.5)(vite@8.3.4(@types/node@26.6.5)(yaml@2.9.1))
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
 
   packages/ts/detect-harness:
     dependencies:
@@ -1012,6 +1098,10 @@ packages:
   commander@10.0.1:
     resolution: {integrity: sha512-y4Mg2tXshplEbSGzx7amzPwKKOCGuoSRP/CjEdwwk0FOGlUbq6lKuoyDZTNZkmxHdJtp54hdfY/JUrdL7Xfdug==}
     engines: {node: '>=14'}
+
+  commander@12.1.0:
+    resolution: {integrity: sha512-Vw8qHK3bZM9y/P10u3Vib8o/DdkvA2OtPtZvD871QKjy74Wj1WSKFILMPRPSdUSx5RFK1arlJzEtA4PkFgnbuA==}
+    engines: {node: '>=18'}
 
   debug@4.4.3:
     resolution: {integrity: sha512-RGwwWnwQvkVfavKVt22FGLw+xYSdzARwm0ru6DhTVA3umU5hZc28V3kO4stgYryrTlLpuvgI9GiijltAjNbcqA==}
@@ -2147,6 +2237,8 @@ snapshots:
   color-name@1.1.4: {}
 
   commander@10.0.1: {}
+
+  commander@12.1.0: {}
 
   debug@4.4.3:
     dependencies:

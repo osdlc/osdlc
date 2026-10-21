@@ -25,7 +25,9 @@ import type {
   Comment,
   Label,
   MergeableState,
+  PrSearchHit,
   PullRequest,
+  Repository,
   Review,
   ReviewDecision,
 } from './types.ts'
@@ -248,5 +250,53 @@ export function parsePullRequest(raw: unknown): PullRequest | null {
     mergedAt: strOrNull(raw['mergedAt'] ?? raw['merged_at']),
     createdAt: strOrNull(raw['createdAt'] ?? raw['created_at']),
     updatedAt: strOrNull(raw['updatedAt'] ?? raw['updated_at']),
+  }
+}
+
+// ── repositories and search ─────────────────────────────────────────────────
+
+/** A `gh repo list`/`view --json` row as a {@link Repository}, or null without `nameWithOwner`. */
+export function parseRepository(raw: unknown): Repository | null {
+  if (!isRecord(raw)) return null
+  const nameWithOwner = str(raw['nameWithOwner'])
+  const slash = nameWithOwner.indexOf('/')
+  if (slash <= 0 || slash === nameWithOwner.length - 1) return null
+  const branch = raw['defaultBranchRef']
+  return {
+    nameWithOwner,
+    owner: nameWithOwner.slice(0, slash),
+    name: nameWithOwner.slice(slash + 1),
+    description: str(raw['description']),
+    defaultBranch: isRecord(branch) ? strOrNull(branch['name']) : null,
+    visibility: strOrNull(raw['visibility']),
+    isArchived: bool(raw['isArchived']),
+    url: str(raw['url']),
+  }
+}
+
+/** A `gh search prs --json` row as a {@link PrSearchHit}, or null without a `number`. */
+export function parsePrSearchHit(raw: unknown): PrSearchHit | null {
+  if (!isRecord(raw)) return null
+  const number = raw['number']
+  if (typeof number !== 'number') return null
+  const repo = raw['repository']
+  const slug = isRecord(repo) ? str(repo['nameWithOwner']) : ''
+  const slash = slug.indexOf('/')
+  return {
+    number,
+    title: str(raw['title']),
+    // Search answers in lower case; `PullRequest.state` is upper case.
+    state: str(raw['state']).toUpperCase(),
+    url: str(raw['url']),
+    isDraft: bool(raw['isDraft']),
+    repository:
+      slash > 0 && slash < slug.length - 1
+        ? { owner: slug.slice(0, slash), repo: slug.slice(slash + 1) }
+        : null,
+    author: parseActor(raw['author']),
+    labels: parseLabels(raw['labels']),
+    createdAt: strOrNull(raw['createdAt']),
+    updatedAt: strOrNull(raw['updatedAt']),
+    closedAt: strOrNull(raw['closedAt']),
   }
 }

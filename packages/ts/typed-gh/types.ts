@@ -184,3 +184,43 @@ export interface OwnerRepo {
   owner: string
   repo: string
 }
+
+/** Who can see a repository. */
+export type RepositoryVisibility = 'PUBLIC' | 'PRIVATE' | 'INTERNAL' | (string & {})
+
+/**
+ * A repository, off `gh repo list`/`gh repo view --json`. A field not asked
+ * for comes back at its "not known" value. `nameWithOwner` is the only field
+ * without one: a row without it is dropped.
+ */
+export interface Repository {
+  /** `owner/name`. */
+  nameWithOwner: string
+  owner: string
+  name: string
+  description: string
+  /** The default branch; null when not asked for, or the repository is empty. */
+  defaultBranch: string | null
+  visibility: RepositoryVisibility | null
+  isArchived: boolean
+  url: string
+}
+
+/**
+ * One pull request found by `gh search prs`. Search has its own field set:
+ * it names the repository but carries no head or base branch, so this is not
+ * a {@link PullRequest}. `state` is upper-cased to match `PullRequest`.
+ */
+export interface PrSearchHit {
+  number: number
+  title: string
+  state: PullRequestState
+  url: string
+  isDraft: boolean
+  repository: OwnerRepo | null
+  author: Actor | null
+  labels: Label[]
+  createdAt: string | null
+  updatedAt: string | null
+  closedAt: string | null
+}

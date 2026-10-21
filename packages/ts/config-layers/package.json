@@ -1,0 +1,78 @@
+{
+  "name": "@osdlc/config-layers",
+  "version": "0.6.0",
+  "description": "A CLI tool's project and machine config files: the sections the project file is built from, the loader that reads them, the per-OS config directories, the `paths:` map, and the check a command runs before it starts.",
+  "license": "MIT OR Apache-2.0",
+  "author": "sksizer",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/osdlc/osdlc.git",
+    "directory": "packages/ts/config-layers"
+  },
+  "homepage": "https://github.com/osdlc/osdlc/tree/main/packages/ts/config-layers#readme",
+  "bugs": "https://github.com/osdlc/osdlc/issues",
+  "keywords": [
+    "cli",
+    "config",
+    "yaml",
+    "zod",
+    "xdg",
+    "paths"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE-MIT",
+    "LICENSE-APACHE",
+    "SECURITY.md",
+    "CONTRIBUTING.md"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "test": "vitest run",
+    "coverage": "vitest run --coverage",
+    "smoke": "node tests/smoke.mjs",
+    "prepublishOnly": "npm run clean && npm run build",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "oxlint .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@osdlc/etag-write": "workspace:^",
+    "@osdlc/gfm-table": "workspace:^",
+    "@osdlc/tiered-dirs": "workspace:^",
+    "@osdlc/yaml-splice": "workspace:^",
+    "yaml": "^2.6.1"
+  },
+  "devDependencies": {
+    "@osdlc/prettier-config": "workspace:^",
+    "@osdlc/tsconfig": "workspace:^",
+    "@types/node": "^26.1.0",
+    "@vitest/coverage-v8": "^5.0.5",
+    "oxlint": "^1.65.0",
+    "prettier": "3.9.6",
+    "typescript": "~6.0.3",
+    "vitest": "^5.0.5",
+    "zod": "4.4.3"
+  },
+  "peerDependencies": {
+    "zod": "^4"
+  }
+}

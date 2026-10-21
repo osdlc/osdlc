@@ -16,7 +16,7 @@ created: 2026-10-19
 - On Windows the containment layer reads `\` as a separator, a drive or UNC
   share as a root, and folds `..` as text before it follows a link, as Node
   and Windows do. The paths it returns use `\`. `nodeResolver` uses
-  `realpathSync.native`.
+  `realpathSync.native`. The Rust crate folds `..` the same way on Windows.
 - `toRelative` and `isUnder` take POSIX paths on every platform.
 - The README lists the Windows limits: names after the root are compared as
   written, and the lexical check does not refuse device names or alternate
@@ -37,11 +37,6 @@ created: 2026-10-19
 
 - The parity fixture pins the POSIX rule. On Windows, a fixture case with a
   `..` on disk is checked against where the file system puts the path instead
-  of the fixture's answer.
+  of the fixture's answer, in both twins' suites.
 - Refusing device names or alternate data streams would change the lexical
   layer of both twins. It needs its own decision.
-- The Rust crate does not follow the Windows rule yet. Its walk folds a `..`
-  behind a missing name against the real path, as on POSIX, so on Windows it
-  can accept a path that Windows opens outside the root. Until
-  [T-02](../tasks/T-02-rust-windows-dot-dot-fold.md) lands, the twins do not
-  give the same answer on Windows, which the twin rule asks for.

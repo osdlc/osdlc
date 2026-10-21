@@ -71,9 +71,9 @@
     "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit"
   },
   "dependencies": {
-    "@osdlc/config-layers": "^0.6.0",
-    "@osdlc/etag-write": "^0.2.0",
-    "@osdlc/path-guard": "^0.2.4",
+    "@osdlc/config-layers": "workspace:^",
+    "@osdlc/etag-write": "workspace:^",
+    "@osdlc/path-guard": "workspace:^",
     "commander": "^12.1.0"
   },
   "devDependencies": {

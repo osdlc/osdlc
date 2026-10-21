@@ -14,17 +14,93 @@
 
 import { stderrOrError, type CommandResult } from '@osdlc/command-seam'
 
-import { parseLabels, parsePullRequest } from './parse.ts'
-import type { IssueRow, Label, PullRequest } from './types.ts'
+import { parseLabels, parsePrSearchHit, parsePullRequest, parseRepository } from './parse.ts'
+import { isRepoSlug, parsePrUrl } from './repo.ts'
+import type { IssueRow, Label, PrSearchHit, PullRequest, Repository } from './types.ts'
 
 /** One `gh` invocation: what to run, and how to read what came back. */
 export interface GhVerb<T> {
   argv: string[]
   /** True for every mutation and for `prDiff` — throw on a non-zero exit instead of parsing. */
   checked: boolean
+  /**
+   * True when the call only reads: it changes nothing on GitHub. Every query
+   * is read-only, and so is `prDiff`; every mutation is not. A caller that
+   * keeps an allowlist of safe calls can check this before running a verb.
+   */
+  readOnly: boolean
   /** Written to the child's stdin, for a verb whose payload is too large or structured for argv. */
   input?: string | undefined
+  /**
+   * Variables to set on the child, for a target gh takes no flag for: `GH_HOST`
+   * on `gh search` and `gh repo list`.
+   */
+  env?: Record<string, string> | undefined
   parse(result: CommandResult): T
+}
+
+/**
+ * The repository and host a verb talks to. Both are optional: with no `repo`,
+ * gh uses the repository of the clone at the client's working directory, and
+ * with no `hostname`, gh's default host.
+ */
+export interface GhTarget {
+  /** `owner/name`. */
+  repo?: string | undefined
+  /**
+   * A GitHub host: `github.com`, a GitHub Enterprise Server host such as
+   * `github.acme.com`, or a `<tenant>.ghe.com` host. Other forges are out of
+   * reach: gh speaks only GitHub's API.
+   */
+  hostname?: string | undefined
+}
+
+const HOSTNAME = /^[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?(?::\d+)?$/
+
+/**
+ * Throw `RangeError` unless `target.repo` is `owner/name` and
+ * `target.hostname` is a bare host. Run by every verb that uses a target, so
+ * no text can reach gh as a flag or change the endpoint a call hits.
+ */
+export function checkTarget(target: GhTarget | undefined): void {
+  if (target?.repo !== undefined && !isRepoSlug(target.repo)) {
+    throw new RangeError(`repo must be owner/name, got ${JSON.stringify(target.repo)}`)
+  }
+  if (target?.hostname !== undefined && !HOSTNAME.test(target.hostname)) {
+    throw new RangeError(`hostname must be a bare host, got ${JSON.stringify(target.hostname)}`)
+  }
+}
+
+/** `--repo [host/]owner/name` for `pr`, `issue` and `label` verbs; `repo` overrides the target's. */
+function repoArgs(target: GhTarget | undefined, repo?: string | undefined): string[] {
+  checkTarget(target)
+  const slug = repo ?? target?.repo
+  if (slug === undefined) return []
+  if (repo !== undefined) checkTarget({ repo })
+  return ['--repo', target?.hostname === undefined ? slug : `${target.hostname}/${slug}`]
+}
+
+/** `--hostname <host>` for `api` and `auth` verbs. */
+function hostArgs(target: GhTarget | undefined): string[] {
+  checkTarget(target)
+  return target?.hostname === undefined ? [] : ['--hostname', target.hostname]
+}
+
+/** `GH_HOST` for the verbs gh gives no host flag. */
+function hostEnv(target: GhTarget | undefined): Record<string, string> | undefined {
+  checkTarget(target)
+  return target?.hostname === undefined ? undefined : { GH_HOST: target.hostname }
+}
+
+/**
+ * `endpoint` with `{owner}` and `{repo}` filled from the target. With no
+ * target repo they are left for gh to fill from the clone.
+ */
+function fillRepo(endpoint: string, target: GhTarget | undefined): string {
+  checkTarget(target)
+  if (target?.repo === undefined) return endpoint
+  const [owner, name] = target.repo.split('/') as [string, string]
+  return endpoint.replaceAll('{owner}', owner).replaceAll('{repo}', name)
 }
 
 /**
@@ -105,6 +181,29 @@ function manyOrNull(r: CommandResult): PullRequest[] | null {
     if (pr !== null) rows.push(pr)
   }
   return rows
+}
+
+/**
+ * A list query's answer: the rows, and whether `limit` cut the list short.
+ * The verb asks gh for one row more than `limit`; `truncated` is true when
+ * that row came back, and `rows` holds at most `limit`.
+ */
+export interface ListResult<T> {
+  rows: T[]
+  truncated: boolean
+}
+
+/** Throw `RangeError` unless `limit` is a positive integer. */
+function checkLimit(limit: number): void {
+  if (!Number.isSafeInteger(limit) || limit <= 0) {
+    throw new RangeError(`limit must be a positive integer, got ${limit}`)
+  }
+}
+
+/** `rows` cut to `limit`, with whether there were more. Null stays null. */
+function limited<T>(rows: T[] | null, limit: number): ListResult<T> | null {
+  if (rows === null) return null
+  return { rows: rows.slice(0, limit), truncated: rows.length > limit }
 }
 
 /** A mutation's result carries no value. */
@@ -193,8 +292,10 @@ export interface PrListOptions {
   /** Exact base branch filter (gh-side). */
   base?: string | undefined
   /**
-   * Head branch filter. gh matches this as a prefix, so a caller needing an
-   * exact match filters the rows itself — {@link pickPrForBranch} does.
+   * Head branch filter, exact: `task/foo` does not match `task/foo-2`. Passed
+   * as gh's `--head`, and the rows are filtered again on `headRefName`. Two
+   * forks can share a branch name; ask for `headRepositoryOwner` to tell them
+   * apart.
    */
   head?: string | undefined
   /** Raw `--search` query, for anything the flags do not cover. */
@@ -205,43 +306,97 @@ export interface PrListOptions {
   fields?: readonly string[] | undefined
 }
 
-/** `gh pr list …` — open PRs by default. */
-export function prList(opts: PrListOptions = {}): GhVerb<PullRequest[] | null> {
-  const argv = ['pr', 'list', '--state', opts.state ?? 'open']
-  if (opts.repo !== undefined) argv.push('--repo', opts.repo)
+/** `gh pr list …` — open PRs by default. `opts.repo` overrides the target's repo. */
+export function prList(
+  opts: PrListOptions = {},
+  target?: GhTarget,
+): GhVerb<ListResult<PullRequest> | null> {
+  const limit = opts.limit ?? 100
+  checkLimit(limit)
+  const argv = ['pr', 'list', '--state', opts.state ?? 'open', ...repoArgs(target, opts.repo)]
   if (opts.base !== undefined) argv.push('--base', opts.base)
-  if (opts.head !== undefined) argv.push('--search', `head:${opts.head}`)
+  if (opts.head !== undefined) argv.push('--head', opts.head)
   if (opts.search !== undefined) argv.push('--search', opts.search)
   if (opts.author !== undefined) argv.push('--author', opts.author)
-  argv.push('--json', (opts.fields ?? PR_LIST_FIELDS).join(','))
-  argv.push('--limit', String(opts.limit ?? 100))
-  return { argv, checked: false, parse: manyOrNull }
+  // The exact-head filter below reads `headRefName`, so ask for it.
+  const fields = opts.fields ?? PR_LIST_FIELDS
+  const asked = opts.head === undefined ? fields : withFields(fields, ['headRefName'])
+  argv.push('--json', asked.join(','))
+  argv.push('--limit', String(limit + 1))
+  const head = opts.head
+  return {
+    argv,
+    checked: false,
+    readOnly: true,
+    parse(r) {
+      const result = limited(manyOrNull(r), limit)
+      if (result === null || head === undefined) return result
+      return { ...result, rows: result.rows.filter((pr) => pr.headRefName === head) }
+    },
+  }
 }
 
-/** `gh pr view <n> --json …` — one PR, with the heavy fields by default. */
+/** `fields` with each of `required` added once, ahead of the rest. */
+function withFields(fields: readonly string[], required: readonly string[]): string[] {
+  return [...new Set([...required.filter((f) => !fields.includes(f)), ...fields])]
+}
+
+/**
+ * Throw `RangeError` when a string bound for gh's argv as a positional
+ * argument would read as a flag.
+ */
+function notAFlag(what: string, value: string): void {
+  if (value.startsWith('-')) {
+    throw new RangeError(`${what} must not start with "-", got ${JSON.stringify(value)}`)
+  }
+}
+
+/**
+ * `gh pr view <number|branch|url> --json …` — one PR, with the heavy fields
+ * by default.
+ *
+ * A branch is the PR whose head is that branch, as gh picks it. A URL names
+ * its own repository and host, so the target is not passed with one. A
+ * string that starts with `-` throws `RangeError`.
+ */
 export function prView(
-  number: number,
+  ref: number | string,
   fields: readonly string[] = PR_VIEW_FIELDS,
+  target?: GhTarget,
 ): GhVerb<PullRequest | null> {
+  if (typeof ref === 'string') notAFlag('prView ref', ref)
   // `parsePullRequest` yields null without a `number`, so a field subset that
   // omits it would read as "no such PR". Always ask for it, and each field once.
-  const asked = [...new Set(fields.includes('number') ? fields : ['number', ...fields])]
+  const asked = withFields(fields, ['number'])
+  const isUrl = typeof ref === 'string' && parsePrUrl(ref) !== null
   return {
-    argv: ['pr', 'view', String(number), '--json', asked.join(',')],
+    argv: [
+      'pr',
+      'view',
+      String(ref),
+      ...(isUrl ? [] : repoArgs(target)),
+      '--json',
+      asked.join(','),
+    ],
     checked: false,
+    readOnly: true,
     parse: oneOrNull,
   }
 }
 
 /**
- * Open PRs whose head *starts with* `branch` — gh's own search semantics.
+ * Open PRs whose head is exactly `branch`.
  *
  * The common shape behind "which PR is this branch?", bundling the cheap
- * field set with a small limit. Pair it with {@link pickPrForBranch}, which
- * is what turns the prefix match into an exact one.
+ * field set with a small limit. More than one row comes back only when forks
+ * share the branch name.
  */
-export function openPrsForBranch(branch: string, limit = 5): GhVerb<PullRequest[] | null> {
-  return prList({ head: branch, limit, fields: PR_REF_FIELDS })
+export function openPrsForBranch(
+  branch: string,
+  limit = 5,
+  target?: GhTarget,
+): GhVerb<ListResult<PullRequest> | null> {
+  return prList({ head: branch, limit, fields: PR_REF_FIELDS }, target)
 }
 
 /**
@@ -250,10 +405,11 @@ export function openPrsForBranch(branch: string, limit = 5): GhVerb<PullRequest[
  * so every trailing `\r` and `\n` is trimmed (including any that were part of
  * the body, such as the `\r\n` of a body saved with CRLF line endings).
  */
-export function prBody(number: number): GhVerb<string | null> {
+export function prBody(number: number, target?: GhTarget): GhVerb<string | null> {
   return {
-    argv: ['pr', 'view', String(number), '--json', 'body', '-q', '.body'],
+    argv: ['pr', 'view', String(number), ...repoArgs(target), '--json', 'body', '-q', '.body'],
     checked: false,
+    readOnly: true,
     parse: (r) => (r.exitCode === 0 ? r.stdout.replace(/[\r\n]+$/, '') : null),
   }
 }
@@ -285,22 +441,173 @@ export interface ApiOptions {
   etag?: string | null | undefined
   /** Pass `-i` and read status/ETag off the header block (the last one, if several). */
   includeHeaders?: boolean | undefined
+  /**
+   * Fetch every page (`--paginate --slurp`). `body` is then the pages joined
+   * into one array when every page is an array, else the list of pages.
+   * Cannot be combined with `etag` or `includeHeaders`: with `-i` gh prints
+   * a header block per page. `status` is synthesized, as without `-i`.
+   */
+  paginate?: boolean | undefined
 }
 
 /**
  * `gh api [-i] [-H If-None-Match: …] <endpoint>` — a GET against the REST API. `{owner}` and
- * `{repo}` placeholders in the endpoint are filled by gh from the cwd's repo.
+ * `{repo}` placeholders in the endpoint are filled from the target's repo, or by gh from the
+ * cwd's repo when the target names none.
  * Unchecked: failure is a value (`ok: false`), so a caller can tell a 304
  * from an outage.
  */
-export function api(endpoint: string, opts: ApiOptions = {}): GhVerb<ApiResponse> {
+export function api(
+  endpoint: string,
+  opts: ApiOptions = {},
+  target?: GhTarget,
+): GhVerb<ApiResponse> {
+  notAFlag('api endpoint', endpoint)
   const conditional = opts.etag !== undefined && opts.etag !== null && opts.etag !== ''
   const withHeaders = conditional || opts.includeHeaders === true
-  const argv = ['api']
+  const paginate = opts.paginate === true
+  if (paginate && withHeaders) {
+    throw new RangeError('api: paginate cannot be combined with etag or includeHeaders')
+  }
+  const argv = ['api', ...hostArgs(target)]
   if (withHeaders) argv.push('-i')
   if (conditional) argv.push('-H', `If-None-Match: ${opts.etag}`)
-  argv.push(endpoint)
-  return { argv, checked: false, parse: (r) => parseApi(r, withHeaders) }
+  if (paginate) argv.push('--paginate', '--slurp')
+  argv.push(fillRepo(endpoint, target))
+  return {
+    argv,
+    checked: false,
+    readOnly: true,
+    parse(r) {
+      const response = parseApi(r, withHeaders)
+      return paginate ? { ...response, body: flattenPages(response.body) } : response
+    },
+  }
+}
+
+/** `--slurp` pages joined into one array when every page is an array. */
+function flattenPages(body: unknown): unknown {
+  if (!Array.isArray(body) || !body.every(Array.isArray)) return body
+  return (body as unknown[][]).flat()
+}
+
+/**
+ * A GraphQL variable: gh sends a string with `-f` and the rest with `-F`.
+ *
+ * @experimental
+ */
+export type GraphqlVariable = string | number | boolean | null
+
+/**
+ * Options for {@link graphql}.
+ *
+ * @experimental
+ */
+export interface GraphqlOptions {
+  /**
+   * Follow every page (`--paginate --slurp`). The query must take
+   * `$endCursor: String` and select `pageInfo { hasNextPage endCursor }` on
+   * the one connection it pages through; gh follows only that connection.
+   */
+  paginate?: boolean | undefined
+}
+
+/**
+ * `gh api graphql -f query=… [--paginate --slurp]` — a GraphQL query.
+ *
+ * Returns each page's `data`, one entry per page (one without `paginate`),
+ * or null when the call failed, the output did not parse, or any page
+ * carries `errors` or lacks `data`: a partial answer is no answer. Read one
+ * connection across the pages with {@link nodesAt}.
+ *
+ * A string variable of exactly `{owner}` or `{repo}` is filled from the
+ * target's repo, or by gh from the clone. A mutation document throws
+ * `RangeError`: this is a read, and changes go through `raw`.
+ *
+ * @experimental
+ */
+export function graphql(
+  query: string,
+  variables: Record<string, GraphqlVariable> = {},
+  opts: GraphqlOptions = {},
+  target?: GhTarget,
+): GhVerb<unknown[] | null> {
+  checkTarget(target)
+  const body = query.replace(/^(?:\s|#[^\n]*\n?)*/, '')
+  if (/^mutation\b/.test(body) || /^subscription\b/.test(body)) {
+    throw new RangeError('graphql: only queries are allowed; send a mutation through raw')
+  }
+  const paginate = opts.paginate === true
+  if (paginate && !query.includes('$endCursor')) {
+    throw new RangeError('graphql: paginate needs a query that takes $endCursor')
+  }
+  const argv = ['api', 'graphql', ...hostArgs(target)]
+  if (paginate) argv.push('--paginate', '--slurp')
+  const [owner, name] = target?.repo?.split('/') ?? []
+  for (const [key, value] of Object.entries(variables)) {
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
+      throw new RangeError(`graphql: bad variable name ${JSON.stringify(key)}`)
+    }
+    if (typeof value === 'string') {
+      const filled = value === '{owner}' ? owner : value === '{repo}' ? name : undefined
+      if (filled !== undefined) argv.push('-f', `${key}=${filled}`)
+      else if (value === '{owner}' || value === '{repo}') argv.push('-F', `${key}=${value}`)
+      else argv.push('-f', `${key}=${value}`)
+    } else {
+      argv.push('-F', `${key}=${value === null ? 'null' : String(value)}`)
+    }
+  }
+  argv.push('-f', `query=${query}`)
+  return {
+    argv,
+    checked: false,
+    readOnly: true,
+    parse(r) {
+      if (r.exitCode !== 0) return null
+      let data: unknown
+      try {
+        data = JSON.parse(r.stdout)
+      } catch {
+        return null
+      }
+      const pages = paginate ? data : [data]
+      if (!Array.isArray(pages)) return null
+      const out: unknown[] = []
+      for (const page of pages) {
+        if (page === null || typeof page !== 'object') return null
+        const rec = page as Record<string, unknown>
+        if (Array.isArray(rec['errors']) && rec['errors'].length > 0) return null
+        if (rec['data'] === null || typeof rec['data'] !== 'object') return null
+        out.push(rec['data'])
+      }
+      return out
+    },
+  }
+}
+
+/**
+ * The `nodes` of one connection, joined across {@link graphql} pages: walk
+ * `path` into each page and take its `nodes` array. Null when `pages` is
+ * null, or any page lacks the path or a `nodes` array, so a page that came
+ * back short is never read as fewer rows.
+ *
+ * @experimental
+ */
+export function nodesAt(pages: unknown[] | null, path: readonly string[]): unknown[] | null {
+  if (pages === null) return null
+  const out: unknown[] = []
+  for (const page of pages) {
+    let at: unknown = page
+    for (const key of path) {
+      if (at === null || typeof at !== 'object') return null
+      at = (at as Record<string, unknown>)[key]
+    }
+    if (at === null || typeof at !== 'object') return null
+    const nodes = (at as Record<string, unknown>)['nodes']
+    if (!Array.isArray(nodes)) return null
+    out.push(...nodes)
+  }
+  return out
 }
 
 /** One header block off the front of `text`: the block, and what follows its blank line. */
@@ -356,7 +663,7 @@ function parseApi(r: CommandResult, withHeaders: boolean): ApiResponse {
 
 /** `gh --version` — the install probe. True when `gh` runs. */
 export function installed(): GhVerb<boolean> {
-  return { argv: ['--version'], checked: false, parse: (r) => r.exitCode === 0 }
+  return { argv: ['--version'], checked: false, readOnly: true, parse: (r) => r.exitCode === 0 }
 }
 
 /**
@@ -368,32 +675,39 @@ export interface AuthStatus {
   detail: string
 }
 
-/** `gh auth status` — the credential probe. */
-export function authStatus(): GhVerb<AuthStatus> {
+/** `gh auth status [--hostname <host>]` — the credential probe, for one host when the target names it. */
+export function authStatus(target?: GhTarget): GhVerb<AuthStatus> {
   return {
-    argv: ['auth', 'status'],
+    argv: ['auth', 'status', ...hostArgs(target)],
     checked: false,
+    readOnly: true,
     parse: (r) => ({ ok: r.exitCode === 0, detail: stderrOrError(r) || r.stdout.trim() }),
   }
 }
 
 /**
- * `gh label list --json name,color,description` — every label on the repo.
- * `limit` defaults to 1000. `gh`'s own default is 30, which would cut off a
- * repository with more labels than that without saying so.
+ * `gh label list --json name,color,description` — every label on the repo,
+ * up to `limit` (default 1000; `gh`'s own default is 30).
  */
-export function labelList(opts: { limit?: number | undefined } = {}): GhVerb<Label[] | null> {
+export function labelList(
+  opts: { limit?: number | undefined } = {},
+  target?: GhTarget,
+): GhVerb<ListResult<Label> | null> {
+  const limit = opts.limit ?? 1000
+  checkLimit(limit)
   return {
     argv: [
       'label',
       'list',
+      ...repoArgs(target),
       '--json',
       'name,color,description',
       '--limit',
-      String(opts.limit ?? 1000),
+      String(limit + 1),
     ],
     checked: false,
-    parse: manyLabelsOrNull,
+    readOnly: true,
+    parse: (r) => limited(manyLabelsOrNull(r), limit),
   }
 }
 
@@ -406,19 +720,183 @@ export interface IssueListOptions {
 }
 
 /** `gh issue list --json …` — open issues by default, optionally by label. */
-export function issueList(opts: IssueListOptions = {}): GhVerb<IssueRow[] | null> {
-  const argv = ['issue', 'list']
+export function issueList(
+  opts: IssueListOptions = {},
+  target?: GhTarget,
+): GhVerb<ListResult<IssueRow> | null> {
+  const limit = opts.limit ?? 200
+  checkLimit(limit)
+  const argv = ['issue', 'list', ...repoArgs(target)]
   if (opts.label !== undefined) argv.push('--label', opts.label)
-  argv.push('--json', ISSUE_FIELDS, '--limit', String(opts.limit ?? 200))
-  return { argv, checked: false, parse: manyIssuesOrNull }
+  argv.push('--json', ISSUE_FIELDS, '--limit', String(limit + 1))
+  return { argv, checked: false, readOnly: true, parse: (r) => limited(manyIssuesOrNull(r), limit) }
 }
 
 /** `gh issue view <n> --json …` — one issue, same field set as {@link issueList}. */
-export function issueView(number: number): GhVerb<IssueRow | null> {
+export function issueView(number: number, target?: GhTarget): GhVerb<IssueRow | null> {
   return {
-    argv: ['issue', 'view', String(number), '--json', ISSUE_FIELDS],
+    argv: ['issue', 'view', String(number), ...repoArgs(target), '--json', ISSUE_FIELDS],
     checked: false,
+    readOnly: true,
     parse: oneIssueOrNull,
+  }
+}
+
+/** The `gh repo list`/`view --json` fields a {@link Repository} reads. */
+export const REPO_FIELDS = [
+  'nameWithOwner',
+  'description',
+  'defaultBranchRef',
+  'visibility',
+  'isArchived',
+  'url',
+] as const
+
+/** The `gh search prs --json` fields a {@link PrSearchHit} reads. */
+export const SEARCH_PR_FIELDS = [
+  'number',
+  'title',
+  'state',
+  'url',
+  'isDraft',
+  'repository',
+  'author',
+  'labels',
+  'createdAt',
+  'updatedAt',
+  'closedAt',
+] as const
+
+/** Parse a `--json` array payload with `parse`, dropping rows it rejects. Null on failure. */
+function rowsOrNull<T>(r: CommandResult, parse: (raw: unknown) => T | null): T[] | null {
+  if (r.exitCode !== 0) return null
+  let data: unknown
+  try {
+    data = JSON.parse(r.stdout || '[]')
+  } catch {
+    return null
+  }
+  if (!Array.isArray(data)) return null
+  return data.map(parse).filter((row): row is T => row !== null)
+}
+
+/** What to narrow a repository listing to. Every filter is optional. */
+export interface RepoListOptions {
+  /** True for archived repositories only, false to leave them out; both when absent. */
+  archived?: boolean | undefined
+  visibility?: 'public' | 'private' | 'internal' | undefined
+  /** The most repositories to return. Defaults to 100. */
+  limit?: number | undefined
+  /** Field subset; defaults to {@link REPO_FIELDS}. `nameWithOwner` is always asked for. */
+  fields?: readonly string[] | undefined
+}
+
+/**
+ * `gh repo list <owner> --json …` — an owner's repositories. The host comes
+ * from the target (`GH_HOST`); the target's repo is not used.
+ */
+export function repoList(
+  owner: string,
+  opts: RepoListOptions = {},
+  target?: GhTarget,
+): GhVerb<ListResult<Repository> | null> {
+  notAFlag('repoList owner', owner)
+  const limit = opts.limit ?? 100
+  checkLimit(limit)
+  const argv = ['repo', 'list', owner]
+  if (opts.archived === true) argv.push('--archived')
+  if (opts.archived === false) argv.push('--no-archived')
+  if (opts.visibility !== undefined) argv.push('--visibility', opts.visibility)
+  argv.push('--json', withFields(opts.fields ?? REPO_FIELDS, ['nameWithOwner']).join(','))
+  argv.push('--limit', String(limit + 1))
+  return {
+    argv,
+    checked: false,
+    readOnly: true,
+    env: hostEnv(target),
+    parse: (r) => limited(rowsOrNull(r, parseRepository), limit),
+  }
+}
+
+/**
+ * `gh repo view [<[host/]owner/name>] --json …` — one repository: `repo`,
+ * else the target's repo, else the clone at the client's cwd.
+ */
+export function repoView(
+  repo?: string | undefined,
+  fields: readonly string[] = REPO_FIELDS,
+  target?: GhTarget,
+): GhVerb<Repository | null> {
+  checkTarget(target)
+  if (repo !== undefined) checkTarget({ repo })
+  const slug = repo ?? target?.repo
+  const argv = ['repo', 'view']
+  if (slug !== undefined) {
+    argv.push(target?.hostname === undefined ? slug : `${target.hostname}/${slug}`)
+  }
+  argv.push('--json', withFields(fields, ['nameWithOwner']).join(','))
+  return {
+    argv,
+    checked: false,
+    readOnly: true,
+    parse(r) {
+      if (r.exitCode !== 0) return null
+      try {
+        return parseRepository(JSON.parse(r.stdout))
+      } catch {
+        return null
+      }
+    },
+  }
+}
+
+/** What to narrow a pull request search to. Every filter is optional. */
+export interface SearchPrsOptions {
+  /** Only repositories this user or organization owns. */
+  owner?: string | undefined
+  /** Only this `owner/name` repository. */
+  repo?: string | undefined
+  /** `merged` is `--merged`; `open` and `closed` are `--state`. */
+  state?: 'open' | 'closed' | 'merged' | undefined
+  /** The most hits to return. Defaults to 100. */
+  limit?: number | undefined
+  /** Field subset; defaults to {@link SEARCH_PR_FIELDS}. `number` is always asked for. */
+  fields?: readonly string[] | undefined
+}
+
+/**
+ * `gh search prs [flags] -- <query>` — pull requests across repositories,
+ * with GitHub's search syntax in `query` (it may start with `-`, as in
+ * `-label:bug`). The host comes from the target (`GH_HOST`); the target's
+ * repo is not used, so pass `opts.repo` or `opts.owner` to narrow.
+ */
+export function searchPrs(
+  query: string,
+  opts: SearchPrsOptions = {},
+  target?: GhTarget,
+): GhVerb<ListResult<PrSearchHit> | null> {
+  const limit = opts.limit ?? 100
+  checkLimit(limit)
+  const argv = ['search', 'prs']
+  if (opts.owner !== undefined) {
+    notAFlag('searchPrs owner', opts.owner)
+    argv.push('--owner', opts.owner)
+  }
+  if (opts.repo !== undefined) {
+    checkTarget({ repo: opts.repo })
+    argv.push('--repo', opts.repo)
+  }
+  if (opts.state === 'merged') argv.push('--merged')
+  else if (opts.state !== undefined) argv.push('--state', opts.state)
+  argv.push('--json', withFields(opts.fields ?? SEARCH_PR_FIELDS, ['number']).join(','))
+  argv.push('--limit', String(limit + 1))
+  if (query !== '') argv.push('--', query)
+  return {
+    argv,
+    checked: false,
+    readOnly: true,
+    env: hostEnv(target),
+    parse: (r) => limited(rowsOrNull(r, parsePrSearchHit), limit),
   }
 }
 
@@ -441,13 +919,14 @@ export interface CreatePrOptions {
  * starts with `http://` or `https://`. `''` when it printed none, as
  * {@link prComment} does. A line after the URL, such as a tip, is skipped.
  */
-export function createPr(opts: CreatePrOptions): GhVerb<string> {
-  const argv = ['pr', 'create', '--head', opts.head, '--base', opts.base]
+export function createPr(opts: CreatePrOptions, target?: GhTarget): GhVerb<string> {
+  const argv = ['pr', 'create', ...repoArgs(target), '--head', opts.head, '--base', opts.base]
   if (opts.draft) argv.push('--draft')
   argv.push('--title', opts.title, '--body', opts.body)
   return {
     argv,
     checked: true,
+    readOnly: false,
     parse(r) {
       const urls = r.stdout
         .split('\n')
@@ -462,30 +941,35 @@ export function createPr(opts: CreatePrOptions): GhVerb<string> {
 export function editPr(
   number: number,
   opts: { title?: string | undefined; body?: string | undefined },
+  target?: GhTarget,
 ): GhVerb<void> {
-  const argv = ['pr', 'edit', String(number)]
+  const argv = ['pr', 'edit', String(number), ...repoArgs(target)]
   if (opts.title !== undefined) argv.push('--title', opts.title)
   if (opts.body !== undefined) argv.push('--body', opts.body)
-  return { argv, checked: true, parse: nothing }
+  return { argv, checked: true, readOnly: false, parse: nothing }
 }
 
 /** `gh pr edit <n> --body` — rewrite just the body. */
-export function editPrBody(number: number, body: string): GhVerb<void> {
-  return editPr(number, { body })
+export function editPrBody(number: number, body: string, target?: GhTarget): GhVerb<void> {
+  return editPr(number, { body }, target)
 }
 
 /** `gh pr update-branch <n> [--rebase]` — bring the head up to date with its base. */
-export function prUpdateBranch(number: number, style: 'merge' | 'rebase' = 'merge'): GhVerb<void> {
-  const argv = ['pr', 'update-branch', String(number)]
+export function prUpdateBranch(
+  number: number,
+  style: 'merge' | 'rebase' = 'merge',
+  target?: GhTarget,
+): GhVerb<void> {
+  const argv = ['pr', 'update-branch', String(number), ...repoArgs(target)]
   if (style === 'rebase') argv.push('--rebase')
-  return { argv, checked: true, parse: nothing }
+  return { argv, checked: true, readOnly: false, parse: nothing }
 }
 
 /** `gh pr ready <n> [--undo]` — mark a draft PR ready for review, or (with `draft`) convert it back to a draft. */
-export function prSetDraft(number: number, draft: boolean): GhVerb<void> {
-  const argv = ['pr', 'ready', String(number)]
+export function prSetDraft(number: number, draft: boolean, target?: GhTarget): GhVerb<void> {
+  const argv = ['pr', 'ready', String(number), ...repoArgs(target)]
   if (draft) argv.push('--undo')
-  return { argv, checked: true, parse: nothing }
+  return { argv, checked: true, readOnly: false, parse: nothing }
 }
 
 /**
@@ -502,7 +986,7 @@ export function prSetDraft(number: number, draft: boolean): GhVerb<void> {
  *
  * @experimental
  */
-export function issueCommentEdit(commentId: string, body: string): GhVerb<void> {
+export function issueCommentEdit(commentId: string, body: string, target?: GhTarget): GhVerb<void> {
   if (!/^[0-9]+$/.test(commentId)) {
     throw new RangeError(
       `issueCommentEdit: commentId must be a numeric REST id, got ${JSON.stringify(commentId)}`,
@@ -511,13 +995,15 @@ export function issueCommentEdit(commentId: string, body: string): GhVerb<void> 
   return {
     argv: [
       'api',
+      ...hostArgs(target),
       '-X',
       'PATCH',
-      `repos/{owner}/{repo}/issues/comments/${commentId}`,
+      fillRepo(`repos/{owner}/{repo}/issues/comments/${commentId}`, target),
       '-f',
       `body=${body}`,
     ],
     checked: true,
+    readOnly: false,
     parse: nothing,
   }
 }
@@ -535,16 +1021,18 @@ export type PrMergeMethod = 'squash' | 'merge' | 'rebase'
 export function prMerge(
   number: number,
   opts: { method: PrMergeMethod; headSha: string },
+  target?: GhTarget,
 ): GhVerb<void> {
   const argv = [
     'pr',
     'merge',
     String(number),
+    ...repoArgs(target),
     `--${opts.method}`,
     '--match-head-commit',
     opts.headSha,
   ]
-  return { argv, checked: true, parse: nothing }
+  return { argv, checked: true, readOnly: false, parse: nothing }
 }
 
 /** One review thread: whether it is resolved and who spoke last. */
@@ -565,21 +1053,27 @@ const REVIEW_THREADS_QUERY =
  * PR is clear to merge must read "could not tell" differently from "no
  * threads".
  */
-export function prReviewThreads(number: number): GhVerb<ReviewThread[] | null> {
+export function prReviewThreads(number: number, target?: GhTarget): GhVerb<ReviewThread[] | null> {
+  checkTarget(target)
+  // `-F` lets gh fill the placeholders from the clone; real values go as plain strings.
+  const [owner, name] = target?.repo?.split('/') ?? []
+  const repo =
+    owner === undefined || name === undefined
+      ? ['-F', 'owner={owner}', '-F', 'name={repo}']
+      : ['-f', `owner=${owner}`, '-f', `name=${name}`]
   return {
     argv: [
       'api',
       'graphql',
-      '-F',
-      'owner={owner}',
-      '-F',
-      'name={repo}',
+      ...hostArgs(target),
+      ...repo,
       '-F',
       `number=${number}`,
       '-f',
       `query=${REVIEW_THREADS_QUERY}`,
     ],
     checked: false,
+    readOnly: true,
     parse(r) {
       if (r.exitCode !== 0) return null
       let data: unknown
@@ -630,29 +1124,31 @@ export interface CreateLabelOptions {
  * `--force` makes it safe to repeat: when the label already exists, its color
  * and description are set to these instead of failing.
  */
-export function createLabel(opts: CreateLabelOptions): GhVerb<void> {
+export function createLabel(opts: CreateLabelOptions, target?: GhTarget): GhVerb<void> {
   const argv = [
     'label',
     'create',
     opts.name,
+    ...repoArgs(target),
     '--color',
     opts.color,
     '--description',
     opts.description,
     '--force',
   ]
-  return { argv, checked: true, parse: nothing }
+  return { argv, checked: true, readOnly: false, parse: nothing }
 }
 
 /** `gh label edit <name>` — recolor or redescribe; omits a flag not given. */
 export function editLabel(
   name: string,
   opts: { color?: string | undefined; description?: string | undefined },
+  target?: GhTarget,
 ): GhVerb<void> {
-  const argv = ['label', 'edit', name]
+  const argv = ['label', 'edit', name, ...repoArgs(target)]
   if (opts.color !== undefined) argv.push('--color', opts.color)
   if (opts.description !== undefined) argv.push('--description', opts.description)
-  return { argv, checked: true, parse: nothing }
+  return { argv, checked: true, readOnly: false, parse: nothing }
 }
 
 /**
@@ -676,23 +1172,30 @@ export function setIssueLabel(
   number: number,
   currentLabel: string | null,
   newLabel: string,
+  target?: GhTarget,
 ): GhVerb<void> {
-  const argv = ['issue', 'edit', String(number)]
+  const argv = ['issue', 'edit', String(number), ...repoArgs(target)]
   if (currentLabel !== null) argv.push('--remove-label', currentLabel)
   argv.push('--add-label', newLabel)
-  return { argv, checked: true, parse: nothing }
+  return { argv, checked: true, readOnly: false, parse: nothing }
 }
 
 /** `gh pr diff <n>` — the PR's unified diff, as text. Checked: an empty diff is a value, a failed call is not. */
-export function prDiff(number: number): GhVerb<string> {
-  return { argv: ['pr', 'diff', String(number)], checked: true, parse: (r) => r.stdout }
+export function prDiff(number: number, target?: GhTarget): GhVerb<string> {
+  return {
+    argv: ['pr', 'diff', String(number), ...repoArgs(target)],
+    checked: true,
+    readOnly: true,
+    parse: (r) => r.stdout,
+  }
 }
 
 /** `gh pr comment <n> --body <body>` — post a conversation comment, returning the URL gh prints ('' if none). */
-export function prComment(number: number, body: string): GhVerb<string> {
+export function prComment(number: number, body: string, target?: GhTarget): GhVerb<string> {
   return {
-    argv: ['pr', 'comment', String(number), '--body', body],
+    argv: ['pr', 'comment', String(number), ...repoArgs(target), '--body', body],
     checked: true,
+    readOnly: false,
     parse(r) {
       const lines = r.stdout
         .split('\n')
@@ -734,12 +1237,16 @@ export interface CreateReviewOptions {
  * when GitHub's reply carried none). The event is always `COMMENT`: this
  * library does not offer a way to approve or request changes. Goes through
  * `gh api` with the payload on stdin, because `gh pr review` cannot attach
- * line-anchored comments; `{owner}`/`{repo}` are filled in by `gh` from the
- * client's working directory.
+ * line-anchored comments; `{owner}`/`{repo}` come from the target's repo, or
+ * are filled in by `gh` from the client's working directory.
  *
  * @experimental
  */
-export function createReview(number: number, opts: CreateReviewOptions): GhVerb<string> {
+export function createReview(
+  number: number,
+  opts: CreateReviewOptions,
+  target?: GhTarget,
+): GhVerb<string> {
   const payload = {
     commit_id: opts.commitId,
     body: opts.body,
@@ -754,13 +1261,15 @@ export function createReview(number: number, opts: CreateReviewOptions): GhVerb<
   return {
     argv: [
       'api',
+      ...hostArgs(target),
       '--method',
       'POST',
-      `repos/{owner}/{repo}/pulls/${number}/reviews`,
+      fillRepo(`repos/{owner}/{repo}/pulls/${number}/reviews`, target),
       '--input',
       '-',
     ],
     checked: true,
+    readOnly: false,
     input: JSON.stringify(payload),
     parse(r) {
       try {
@@ -776,14 +1285,30 @@ export function createReview(number: number, opts: CreateReviewOptions): GhVerb<
 // ── helpers over the parsed rows ────────────────────────────────────────────
 
 /**
- * The row whose `headRefName` exactly equals `branch`, or null.
+ * The first row whose `headRefName` exactly equals `branch`, or null.
  *
- * gh's `head:` search is a prefix match, so `task/foo` also returns
- * `task/foo-2`. Every caller that means one branch needs this filter.
+ * `prList({ head })` already filters exactly. This is for rows from anywhere
+ * else, such as a `search` query with gh's `head:` qualifier, which matches
+ * `task/foo-2` for `task/foo`.
  */
 export function pickPrForBranch(rows: PullRequest[] | null, branch: string): PullRequest | null {
   if (rows === null) return null
   return rows.find((r) => r.headRefName === branch) ?? null
+}
+
+/**
+ * The PR a branch names, from `prList({ head, state: 'all' })` rows: the open
+ * one, or else the first row (gh lists newest first). Null when there are no
+ * rows or the call failed.
+ */
+export function branchPr(result: ListResult<PullRequest> | null): PullRequest | null {
+  if (result === null) return null
+  return result.rows.find((r) => r.state === 'OPEN') ?? result.rows[0] ?? null
+}
+
+/** The field set {@link branchPr} needs, ahead of `fields`. */
+export function branchPrFields(fields: readonly string[]): string[] {
+  return withFields(fields, ['number', 'state', 'headRefName'])
 }
 
 /**

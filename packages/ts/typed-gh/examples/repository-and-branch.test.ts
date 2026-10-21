@@ -6,13 +6,17 @@
 import { expect, test } from 'bun:test'
 
 import {
+  AsyncGh,
   Gh,
   ownerRepoSlug,
   parseOwnerRepo,
   parsePrUrl,
   parsePullRequest,
   pickPrForBranch,
+  type AsyncGhOptions,
   type CommandRunner,
+  type GhOptions,
+  type GhTarget,
   type OwnerRepo,
   type PullRequestRef,
 } from '@osdlc/typed-gh'
@@ -33,7 +37,10 @@ test('owner and repo from any remote URL shape', () => {
 test('owner, repo and number from a pull request URL', () => {
   const ref: PullRequestRef | null = parsePrUrl('https://github.com/acme/widgets/pull/9')
 
-  expect(ref).toEqual({ owner: 'acme', repo: 'widgets', number: 9 })
+  expect(ref).toEqual({ hostname: 'github.com', owner: 'acme', repo: 'widgets', number: 9 })
+  expect(parsePrUrl('https://github.acme.com/acme/widgets/pull/9')?.hostname).toBe(
+    'github.acme.com',
+  )
   expect(parsePrUrl('https://github.com/acme/widgets')).toBeNull()
 })
 
@@ -46,6 +53,38 @@ test("pick the exact branch from gh's prefix search", () => {
   expect(pickPrForBranch(rows, 'feature/foo')?.number).toBe(2)
   expect(pickPrForBranch(rows, 'feature/missing')).toBeNull()
   expect(pickPrForBranch(null, 'feature/foo')).toBeNull()
+})
+
+test('a client aimed at a repository, with no clone', () => {
+  const calls: string[][] = []
+  const runner: CommandRunner = {
+    run(argv) {
+      calls.push([...argv])
+      return { exitCode: 0, stdout: '{"number":9}', stderr: '' }
+    },
+  }
+  const target: GhTarget = { repo: 'acme/widgets', hostname: 'github.acme.com' }
+  const options: GhOptions = { runner, ...target }
+  const gh = new Gh(process.cwd(), options)
+
+  gh.prView(9, { fields: ['number'] })
+  gh.withRepo('acme/gadgets').prBody(9)
+  gh.api('repos/{owner}/{repo}/branches')
+
+  expect(calls).toEqual([
+    ['pr', 'view', '9', '--repo', 'github.acme.com/acme/widgets', '--json', 'number'],
+    ['pr', 'view', '9', '--repo', 'github.acme.com/acme/gadgets', '--json', 'body', '-q', '.body'],
+    ['api', '--hostname', 'github.acme.com', 'repos/acme/widgets/branches'],
+  ])
+  expect(() => new Gh('/repo', { repo: 'not a slug' })).toThrow(RangeError)
+})
+
+test('the async client takes the same target', () => {
+  const options: AsyncGhOptions = { repo: 'acme/widgets' }
+  const gh = new AsyncGh(process.cwd(), options).withRepo('acme/gadgets')
+
+  expect(gh.repo).toBe('acme/gadgets')
+  expect(gh.hostname).toBeUndefined()
 })
 
 test('the same client, rooted at another directory', () => {

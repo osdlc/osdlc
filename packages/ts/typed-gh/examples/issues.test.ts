@@ -10,6 +10,7 @@ import {
   type IssueListOptions,
   type IssueRow,
   type Label,
+  type ListResult,
 } from '@osdlc/typed-gh'
 
 test('read an issue and its labels', () => {
@@ -60,10 +61,10 @@ test('list the open issues with one label', () => {
   }
 
   const filter: IssueListOptions = { label: 'status:triage', limit: 50 }
-  const issues: IssueRow[] | null = new Gh('/repo', { runner }).issueList(filter)
+  const issues: ListResult<IssueRow> | null = new Gh('/repo', { runner }).issueList(filter)
 
-  // `[]` is "no such issues"; `null` would mean gh could not answer.
-  expect(issues).toEqual([])
+  // No rows is "no such issues"; `null` would mean gh could not answer.
+  expect(issues).toEqual({ rows: [], truncated: false })
   expect(calls).toEqual([
     [
       'issue',
@@ -73,7 +74,7 @@ test('list the open issues with one label', () => {
       '--json',
       'number,title,body,labels,state',
       '--limit',
-      '50',
+      '51',
     ],
   ])
 })

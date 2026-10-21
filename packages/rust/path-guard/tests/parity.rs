@@ -14,13 +14,16 @@
 //! a scratch directory and run [`path_guard::resolve`] or
 //! [`path_guard::contains`] against it.
 //!
+//! The fixture pins the POSIX rule, where `link/..` is the parent of the
+//! link's target. Windows folds `..` as text before it follows a link, so
+//! there an on-disk case with a `..` is checked against where the filesystem
+//! puts the path instead of the fixture's answer, as the TypeScript suite
+//! does. The `lexical_absolute` cases are POSIX absolute paths, which take
+//! the working directory's drive on Windows, so they run on Unix only.
+//!
 //! Compiled in with `include_str!` rather than read at run time, so the test
 //! binary carries the fixture and a moved or deleted fixture is a build error,
 //! not a late panic.
-
-// The suite is `#[cfg(unix)]`; its helpers and imports are then unused on
-// other platforms.
-#![cfg_attr(not(unix), allow(dead_code, unused_imports))]
 
 use std::collections::BTreeMap;
 use std::io;
@@ -144,8 +147,60 @@ fn expected(name: &str, ok: &Option<String>, error: &Option<String>) -> Result<S
     }
 }
 
+/// Does the case spell a `..` anywhere: in a path, a link or a link's target?
+/// Such a case pins the POSIX rule, which Windows does not follow.
+fn has_dotdot(tree: &Tree, paths: &[&str]) -> bool {
+    let dotdot = |s: &String| s.contains("..");
+    paths.iter().any(|p| p.contains(".."))
+        || tree.dirs.iter().any(dotdot)
+        || tree.files.iter().any(dotdot)
+        || tree.links.iter().any(|(l, t)| dotdot(l) || dotdot(t))
+}
+
+/// Does the fixture's answer for a case with these paths hold on this
+/// platform? On Windows a case with a `..` is checked against the filesystem
+/// instead.
+fn pins_this_platform(tree: &Tree, paths: &[&str]) -> bool {
+    !(cfg!(windows) && has_dotdot(tree, paths))
+}
+
+/// A path the guard returned, in the fixture's `/` spelling. Windows answers
+/// with `\`.
+fn slashed(p: &Path) -> String {
+    let s = p.to_string_lossy();
+    if cfg!(windows) {
+        s.replace('\\', "/")
+    } else {
+        s.into_owned()
+    }
+}
+
+/// A symlink at `link` to `target`, as `ln -s` makes one. On Windows it is a
+/// directory link when the target is a directory that exists, else a file
+/// link, and `/` in the target becomes `\`, as Node's `symlinkSync` does there.
+fn symlink(target: &Path, link: &Path) {
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(target, link).unwrap();
+    #[cfg(windows)]
+    {
+        let target = PathBuf::from(target.to_str().unwrap().replace('/', "\\"));
+        if link.parent().unwrap().join(&target).is_dir() {
+            std::os::windows::fs::symlink_dir(&target, link).unwrap();
+        } else {
+            std::os::windows::fs::symlink_file(&target, link).unwrap();
+        }
+    }
+}
+
+/// Is the real path of `path` the real path of `root`, or beneath it? Both
+/// must exist.
+fn lands_in(root: &Path, path: &Path) -> bool {
+    std::fs::canonicalize(path)
+        .unwrap()
+        .starts_with(std::fs::canonicalize(root).unwrap())
+}
+
 /// Builds `tree` under `base`.
-#[cfg(unix)]
 fn build(base: &Path, tree: &Tree) {
     for dir in &tree.dirs {
         std::fs::create_dir_all(base.join(dir)).unwrap();
@@ -158,47 +213,54 @@ fn build(base: &Path, tree: &Tree) {
             Some(rooted) => base.join(rooted),
             None => PathBuf::from(target),
         };
-        std::os::unix::fs::symlink(target, base.join(link)).unwrap();
+        symlink(&target, &base.join(link));
     }
 }
 
 /// Builds `c`'s tree under a fresh scratch directory and resolves `c.input`
 /// on the real filesystem. An `Ok` path is given relative to the scratch
 /// directory, as the fixture spells it.
-#[cfg(unix)]
 fn resolve_on_disk(c: &OnDiskCase) -> Result<String, String> {
     let scratch = tempfile::tempdir().unwrap();
     let base = scratch.path();
     build(base, &c.tree);
     resolve(&base.join(&c.root), &c.input)
         .map(|p| {
-            p.strip_prefix(base)
-                .expect("the joined path starts with the scratch directory")
-                .to_string_lossy()
-                .into_owned()
+            slashed(
+                p.strip_prefix(base)
+                    .expect("the joined path starts with the scratch directory"),
+            )
         })
         .map_err(|e| kind(&e).to_string())
 }
 
+/// Builds `c`'s tree under a fresh scratch directory and asks
+/// [`path_guard::resolve`] about `c.input`. Then writes a file there. Returns
+/// whether the guard accepted it and whether the filesystem put it inside
+/// `c.root`.
+fn resolve_and_write(c: &OnDiskCase) -> (bool, bool) {
+    let scratch = tempfile::tempdir().unwrap();
+    let base = scratch.path();
+    build(base, &c.tree);
+    let root = base.join(&c.root);
+    let inside = resolve(&root, &c.input).is_ok();
+    let path = root.join(&c.input);
+    std::fs::write(&path, b"").unwrap();
+    (inside, lands_in(&root, &path))
+}
+
 /// Builds `c`'s tree under a fresh scratch directory and answers `contains`
-/// on the real filesystem. Then creates `c.inner` and checks that where the
-/// filesystem put it agrees with `c.expected`, so a case cannot pin a wrong
-/// answer.
-#[cfg(unix)]
-fn contains_on_disk(c: &ContainsOnDiskCase) -> Result<bool, String> {
+/// on the real filesystem. Then creates `c.inner`. Returns the answer and
+/// whether the filesystem put `c.inner` inside `c.outer`, so a case cannot
+/// pin a wrong answer.
+fn contains_on_disk(c: &ContainsOnDiskCase) -> (bool, bool) {
     let scratch = tempfile::tempdir().unwrap();
     let base = scratch.path();
     build(base, &c.tree);
     let (outer, inner) = (base.join(&c.outer), base.join(&c.inner));
     let got = contains(&outer, &inner);
     std::fs::create_dir_all(&inner).unwrap();
-    let landed = std::fs::canonicalize(&inner)
-        .unwrap()
-        .starts_with(std::fs::canonicalize(&outer).unwrap());
-    if landed != c.expected {
-        return Err(format!("the filesystem puts it inside: {landed}"));
-    }
-    Ok(got)
+    (got, lands_in(&outer, &inner))
 }
 
 /// Compiled in rather than read at runtime: the test binary then carries the
@@ -209,12 +271,7 @@ fn load() -> Fixture {
     serde_json::from_str(FIXTURE_JSON).expect("parity.json is valid")
 }
 
-// The suite builds symlink trees and pins symlink-resolution semantics, so it
-// runs on Unix only — the platform the crate's containment layer is tested on.
-// On other platforms the helpers above are unused; allow that rather than
-// duplicate the gate on each one.
 #[test]
-#[cfg(unix)]
 fn shared_fixture() {
     let fixture = load();
     assert!(
@@ -243,7 +300,7 @@ fn shared_fixture() {
     for c in &fixture.resolve {
         let want = expected(&c.name, &c.ok, &c.error);
         let got = resolve_with(&Nothing, Path::new(&c.root), &c.input)
-            .map(|p| p.to_string_lossy().into_owned())
+            .map(|p| slashed(&p))
             .map_err(|e| kind(&e).to_string());
         if got != want {
             failures.push(format!(
@@ -263,7 +320,7 @@ fn shared_fixture() {
         }
     }
 
-    for c in &fixture.lexical_absolute {
+    for c in fixture.lexical_absolute.iter().filter(|_| cfg!(unix)) {
         let want = expected(&c.name, &c.ok, &c.error);
         let got = lexical_absolute(Path::new(&c.input))
             .map(|p| p.to_string_lossy().into_owned())
@@ -289,6 +346,16 @@ fn shared_fixture() {
     }
 
     for c in &fixture.resolve_on_disk {
+        if !pins_this_platform(&c.tree, &[&c.root, &c.input]) {
+            let (inside, landed) = resolve_and_write(c);
+            if inside != landed {
+                failures.push(format!(
+                    "resolve_on_disk [{}] {:?} under {:?}: accepted {inside}, the filesystem puts it inside: {landed}",
+                    c.name, c.input, c.root
+                ));
+            }
+            continue;
+        }
         let want = expected(&c.name, &c.ok, &c.error);
         let got = resolve_on_disk(c);
         if got != want {
@@ -300,10 +367,16 @@ fn shared_fixture() {
     }
 
     for c in &fixture.contains_on_disk {
-        let got = contains_on_disk(c);
-        if got != Ok(c.expected) {
+        let (got, landed) = contains_on_disk(c);
+        if got != landed {
             failures.push(format!(
-                "contains_on_disk [{}] {:?} in {:?}: got {got:?}, want {}",
+                "contains_on_disk [{}] {:?} in {:?}: got {got}, the filesystem puts it inside: {landed}",
+                c.name, c.inner, c.outer
+            ));
+        }
+        if pins_this_platform(&c.tree, &[&c.outer, &c.inner]) && got != c.expected {
+            failures.push(format!(
+                "contains_on_disk [{}] {:?} in {:?}: got {got}, want {}",
                 c.name, c.inner, c.outer, c.expected
             ));
         }

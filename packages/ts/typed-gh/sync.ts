@@ -26,12 +26,14 @@ import type {
   ApiOptions,
   ApiResponse,
   AuthStatus,
+  GhTarget,
   GhVerb,
   IssueListOptions,
+  ListResult,
   PrListOptions,
 } from './verbs.ts'
-import { parseOwnerRepo } from './repo.ts'
-import type { IssueRow, Label, OwnerRepo, PullRequest } from './types.ts'
+import { ownerRepoSlug, parseOwnerRepo, parsePrRef } from './repo.ts'
+import type { IssueRow, Label, OwnerRepo, PrSearchHit, PullRequest, Repository } from './types.ts'
 
 /**
  * Factory of per-binary runners — the injectable subprocess seam a CLI tail
@@ -46,8 +48,20 @@ export const defaultRunnerFactory: RunnerFactory = spawnRunner
 /** How long to wait between merge-state retries, in milliseconds. */
 const MERGE_STATE_RETRY_DELAY_MS = 1_500
 
+/** What a client is built with: the runner, and the repository and host it talks to. */
+export interface GhOptions extends GhTarget {
+  runner?: CommandRunner | undefined
+}
+
 /**
- * A typed gh client bound to one working directory.
+ * A typed gh client bound to one working directory, and optionally to one
+ * repository and host.
+ *
+ * With `repo`, every call names that repository (`--repo`, or the
+ * `{owner}/{repo}` of an `api` endpoint), so no clone is needed. Without it,
+ * gh uses the repository of the clone at `cwd`. With `hostname`, every call
+ * goes to that GitHub host. An invalid `repo` or `hostname` throws
+ * `RangeError`.
  *
  * Every `timeoutMs` option is a hard cap on the call. An invalid value
  * throws, as in command-seam: `RangeError` for 0, a negative value or `NaN`;
@@ -55,16 +69,28 @@ const MERGE_STATE_RETRY_DELAY_MS = 1_500
  */
 export class Gh {
   readonly cwd: string
+  readonly repo: string | undefined
+  readonly hostname: string | undefined
+  private readonly target: GhTarget
   private readonly runner: CommandRunner
 
-  constructor(cwd: string, opts: { runner?: CommandRunner | undefined } = {}) {
+  constructor(cwd: string, opts: GhOptions = {}) {
+    v.checkTarget(opts)
     this.cwd = cwd
+    this.repo = opts.repo
+    this.hostname = opts.hostname
+    this.target = { repo: opts.repo, hostname: opts.hostname }
     this.runner = resolveRunner('gh', opts.runner)
   }
 
-  /** The same client rooted at a different directory (same runner). */
+  /** The same client rooted at a different directory (same runner, repo and host). */
   at(cwd: string): Gh {
-    return new Gh(cwd, { runner: this.runner })
+    return new Gh(cwd, { runner: this.runner, repo: this.repo, hostname: this.hostname })
+  }
+
+  /** The same client aimed at another repository (same runner, directory and host). */
+  withRepo(repo: string): Gh {
+    return new Gh(this.cwd, { runner: this.runner, repo, hostname: this.hostname })
   }
 
   // ── escape hatches ────────────────────────────────────────────────────────
@@ -83,6 +109,7 @@ export class Gh {
   private exec<T>(verb: GhVerb<T>, timeoutMs?: number | undefined): T {
     const opts: CommandRunOptions = { cwd: this.cwd }
     if (verb.input !== undefined) opts.input = verb.input
+    if (verb.env !== undefined) opts.env = verb.env
     if (timeoutMs !== undefined) opts.timeoutMs = timeoutMs
     const result = verb.checked
       ? runChecked(this.runner, verb.argv, opts)
@@ -93,16 +120,45 @@ export class Gh {
   // ── queries ───────────────────────────────────────────────────────────────
 
   /** Pull requests matching `opts`, or null when gh failed. */
-  prList(opts: PrListOptions & { timeoutMs?: number | undefined } = {}): PullRequest[] | null {
-    return this.exec(v.prList(opts), opts.timeoutMs)
+  prList(
+    opts: PrListOptions & { timeoutMs?: number | undefined } = {},
+  ): ListResult<PullRequest> | null {
+    return this.exec(v.prList(opts, this.target), opts.timeoutMs)
   }
 
-  /** One PR with the heavy fields, or null when gh failed. */
+  /**
+   * One PR by number, branch or URL, with the heavy fields; null when gh
+   * failed or there is no such PR.
+   */
   prView(
-    number: number,
+    ref: number | string,
     opts: { fields?: readonly string[] | undefined; timeoutMs?: number | undefined } = {},
   ): PullRequest | null {
-    return this.exec(v.prView(number, opts.fields ?? v.PR_VIEW_FIELDS), opts.timeoutMs)
+    return this.exec(v.prView(ref, opts.fields ?? v.PR_VIEW_FIELDS, this.target), opts.timeoutMs)
+  }
+
+  /**
+   * The one PR that `input` names, or null: what a person typed, such as `42`,
+   * `#42`, `owner/name#42`, a URL or a branch (read by `parsePrRef`).
+   *
+   * Digits are a PR number first; when no such PR comes back, they are tried
+   * as a branch. A branch gives its open PR, or else its newest closed or
+   * merged one, so a tool run after the merge still finds it. Fields default
+   * to {@link PR_LIST_FIELDS}.
+   */
+  prFind(
+    input: string,
+    opts: { fields?: readonly string[] | undefined; timeoutMs?: number | undefined } = {},
+  ): PullRequest | null {
+    const ref = parsePrRef(input)
+    if (ref === null) return null
+    const fields = opts.fields ?? v.PR_LIST_FIELDS
+    const call = { fields, timeoutMs: opts.timeoutMs }
+    if (ref.kind === 'url') return this.prView(ref.url, call)
+    if (ref.kind === 'branch') return prForBranchOn(this, ref.name, call)
+    const client = ref.repo === null ? this : this.withRepo(ownerRepoSlug(ref.repo))
+    const pr = client.prView(ref.number, call)
+    return pr !== null || ref.orBranch === null ? pr : prForBranchOn(this, ref.orBranch, call)
   }
 
   /**
@@ -124,7 +180,7 @@ export class Gh {
       limit: opts.limit ?? 5,
       fields: opts.fields ?? v.PR_REF_FIELDS,
     })
-    return v.pickPrForBranch(rows, branch)
+    return v.pickPrForBranch(rows?.rows ?? null, branch)
   }
 
   /**
@@ -161,7 +217,7 @@ export class Gh {
 
   /** A PR's body text, or null when gh failed. */
   prBody(number: number, opts: { timeoutMs?: number | undefined } = {}): string | null {
-    return this.exec(v.prBody(number), opts.timeoutMs)
+    return this.exec(v.prBody(number, this.target), opts.timeoutMs)
   }
 
   /**
@@ -169,24 +225,64 @@ export class Gh {
    * returned {@link ApiResponse}.
    */
   api(endpoint: string, opts: ApiOptions & { timeoutMs?: number | undefined } = {}): ApiResponse {
-    return this.exec(v.api(endpoint, opts), opts.timeoutMs)
+    return this.exec(v.api(endpoint, opts, this.target), opts.timeoutMs)
+  }
+
+  /**
+   * A GraphQL query; each page's `data`, or null on a failed or partial
+   * result. See the `graphql` verb.
+   *
+   * @experimental
+   */
+  graphql(
+    query: string,
+    variables: Record<string, v.GraphqlVariable> = {},
+    opts: v.GraphqlOptions & { timeoutMs?: number | undefined } = {},
+  ): unknown[] | null {
+    return this.exec(v.graphql(query, variables, opts, this.target), opts.timeoutMs)
   }
 
   /** Every label on the repository (up to `opts.limit`, default 1000), or null when gh failed. */
   labelList(
     opts: { limit?: number | undefined; timeoutMs?: number | undefined } = {},
-  ): Label[] | null {
-    return this.exec(v.labelList(opts), opts.timeoutMs)
+  ): ListResult<Label> | null {
+    return this.exec(v.labelList(opts, this.target), opts.timeoutMs)
   }
 
   /** Issues matching `opts` (open by default, up to 200), or null when gh failed. */
-  issueList(opts: IssueListOptions & { timeoutMs?: number | undefined } = {}): IssueRow[] | null {
-    return this.exec(v.issueList(opts), opts.timeoutMs)
+  issueList(
+    opts: IssueListOptions & { timeoutMs?: number | undefined } = {},
+  ): ListResult<IssueRow> | null {
+    return this.exec(v.issueList(opts, this.target), opts.timeoutMs)
   }
 
   /** One issue with its labels, or null when gh failed. */
   issueView(number: number, opts: { timeoutMs?: number | undefined } = {}): IssueRow | null {
-    return this.exec(v.issueView(number), opts.timeoutMs)
+    return this.exec(v.issueView(number, this.target), opts.timeoutMs)
+  }
+
+  /** An owner's repositories (up to `opts.limit`, default 100), or null when gh failed. */
+  repoList(
+    owner: string,
+    opts: v.RepoListOptions & { timeoutMs?: number | undefined } = {},
+  ): ListResult<Repository> | null {
+    return this.exec(v.repoList(owner, opts, this.target), opts.timeoutMs)
+  }
+
+  /** One repository: `repo`, else the client's repo, else the clone at `cwd`. Null when gh failed. */
+  repoView(
+    repo?: string | undefined,
+    opts: { fields?: readonly string[] | undefined; timeoutMs?: number | undefined } = {},
+  ): Repository | null {
+    return this.exec(v.repoView(repo, opts.fields ?? v.REPO_FIELDS, this.target), opts.timeoutMs)
+  }
+
+  /** Pull requests across repositories matching a search query, or null when gh failed. */
+  searchPrs(
+    query: string,
+    opts: v.SearchPrsOptions & { timeoutMs?: number | undefined } = {},
+  ): ListResult<PrSearchHit> | null {
+    return this.exec(v.searchPrs(query, opts, this.target), opts.timeoutMs)
   }
 
   /** True iff the `gh` binary is on PATH and runs. */
@@ -206,7 +302,7 @@ export class Gh {
 
   /** Login state and what `gh auth status` printed; `authenticated()` is its `ok`. */
   authStatus(): AuthStatus {
-    return this.exec(v.authStatus())
+    return this.exec(v.authStatus(this.target))
   }
 
   /**
@@ -232,22 +328,22 @@ export class Gh {
 
   /** Open a PR and return its URL ('' if gh printed none). */
   createPr(opts: v.CreatePrOptions): string {
-    return this.exec(v.createPr(opts))
+    return this.exec(v.createPr(opts, this.target))
   }
 
   /** Retitle or rewrite a PR body. */
   editPr(number: number, opts: { title?: string | undefined; body?: string | undefined }): void {
-    this.exec(v.editPr(number, opts))
+    this.exec(v.editPr(number, opts, this.target))
   }
 
   /** The PR's unified diff; throws `CommandFailed` when gh cannot produce it. */
   prDiff(number: number): string {
-    return this.exec(v.prDiff(number))
+    return this.exec(v.prDiff(number, this.target))
   }
 
   /** Post one conversation comment on a PR; returns its URL ('' if gh printed none). */
   prComment(number: number, body: string): string {
-    return this.exec(v.prComment(number, body))
+    return this.exec(v.prComment(number, body, this.target))
   }
 
   /**
@@ -256,22 +352,22 @@ export class Gh {
    * @experimental
    */
   createReview(number: number, opts: v.CreateReviewOptions): string {
-    return this.exec(v.createReview(number, opts))
+    return this.exec(v.createReview(number, opts, this.target))
   }
 
   /** Rewrite just a PR's body. */
   editPrBody(number: number, body: string): void {
-    this.exec(v.editPrBody(number, body))
+    this.exec(v.editPrBody(number, body, this.target))
   }
 
   /** Bring a PR's head branch up to date with its base. */
   prUpdateBranch(number: number, style: 'merge' | 'rebase' = 'merge'): void {
-    this.exec(v.prUpdateBranch(number, style))
+    this.exec(v.prUpdateBranch(number, style, this.target))
   }
 
   /** Mark a PR ready for review (`draft: false`) or convert it to a draft (`draft: true`). */
   prSetDraft(number: number, draft: boolean): void {
-    this.exec(v.prSetDraft(number, draft))
+    this.exec(v.prSetDraft(number, draft, this.target))
   }
 
   /**
@@ -280,22 +376,22 @@ export class Gh {
    * @experimental
    */
   issueCommentEdit(commentId: string, body: string): void {
-    this.exec(v.issueCommentEdit(commentId, body))
+    this.exec(v.issueCommentEdit(commentId, body, this.target))
   }
 
   /** Merge a PR; GitHub refuses when its head is no longer `opts.headSha`. */
   prMerge(number: number, opts: { method: v.PrMergeMethod; headSha: string }): void {
-    this.exec(v.prMerge(number, opts))
+    this.exec(v.prMerge(number, opts, this.target))
   }
 
   /** A PR's review threads, or null when they could not be read completely. */
   prReviewThreads(number: number): v.ReviewThread[] | null {
-    return this.exec(v.prReviewThreads(number))
+    return this.exec(v.prReviewThreads(number, this.target))
   }
 
   /** Create a label (or force it to `opts`'s color/description if it already exists). */
   createLabel(opts: v.CreateLabelOptions): void {
-    this.exec(v.createLabel(opts))
+    this.exec(v.createLabel(opts, this.target))
   }
 
   /** Recolor and/or redescribe an existing label. */
@@ -303,7 +399,7 @@ export class Gh {
     name: string,
     opts: { color?: string | undefined; description?: string | undefined },
   ): void {
-    this.exec(v.editLabel(name, opts))
+    this.exec(v.editLabel(name, opts, this.target))
   }
 
   /**
@@ -312,8 +408,24 @@ export class Gh {
    * or briefly-double-labeled intermediate state.
    */
   setIssueLabel(number: number, currentLabel: string | null, newLabel: string): void {
-    this.exec(v.setIssueLabel(number, currentLabel, newLabel))
+    this.exec(v.setIssueLabel(number, currentLabel, newLabel, this.target))
   }
+}
+
+/** The open PR for `branch`, else its newest closed or merged one. */
+function prForBranchOn(
+  gh: Gh,
+  branch: string,
+  call: { fields: readonly string[]; timeoutMs?: number | undefined },
+): PullRequest | null {
+  const rows = gh.prList({
+    head: branch,
+    state: 'all',
+    limit: 20,
+    fields: v.branchPrFields(call.fields),
+    timeoutMs: call.timeoutMs,
+  })
+  return v.branchPr(rows)
 }
 
 /**

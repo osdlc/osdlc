@@ -13,6 +13,7 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs'
+import { spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -223,20 +224,26 @@ test('the bash launcher is rendered from the spec and checked for drift', () => 
   expect(launcherCheckout(SPEC, join(a, SPEC.launcher))).toBe(a)
 })
 
-test('a JavaScript shim hands off to the selected checkout, or runs its own code', () => {
-  const a = checkout('a')
-  writeFileSync(join(a, SPEC.marker), 'process.exit(7)\n')
-  const lines: string[] = []
-  const exec: ExecOptions = {
-    env: { ...process.env },
-    announce: (l) => lines.push(l),
-    bun: process.execPath,
-  }
-  expect(execSelection(SPEC, resolve(SPEC, opts), [], exec)).toBeNull()
-  const selection = resolve(SPEC, { ...opts, env: { TOOLY_HOME: a } })
-  expect(execSelection(SPEC, selection, [], exec)).toBe(7)
-  expect(lines[0]).toContain('running')
-})
+// The shim runs `bun run <marker>`, so this one needs a real bun on PATH.
+const hasBun = spawnSync('bun', ['--version']).status === 0
+
+test.skipIf(!hasBun)(
+  'a JavaScript shim hands off to the selected checkout, or runs its own code',
+  () => {
+    const a = checkout('a')
+    writeFileSync(join(a, SPEC.marker), 'process.exit(7)\n')
+    const lines: string[] = []
+    const exec: ExecOptions = {
+      env: { ...process.env },
+      announce: (l) => lines.push(l),
+      bun: 'bun',
+    }
+    expect(execSelection(SPEC, resolve(SPEC, opts), [], exec)).toBeNull()
+    const selection = resolve(SPEC, { ...opts, env: { TOOLY_HOME: a } })
+    expect(execSelection(SPEC, selection, [], exec)).toBe(7)
+    expect(lines[0]).toContain('running')
+  },
+)
 
 test('the dev verbs mounted for a tool with no CLI framework', () => {
   const a = checkout('a')
