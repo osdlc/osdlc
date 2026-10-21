@@ -47,8 +47,8 @@ The terms name 0.2 exports and the 0.2 meaning of `escapes`:
 
 ## Acceptance criteria
 
-- [ ] No term names a removed 0.2 export except as history.
-- [ ] TM-04 covers only a proved escape and points to the new kinds.
-- [ ] Terms exist for an unresolvable path, a guard, a reserved name, an
+- [x] No term names a removed 0.2 export except as history.
+- [x] TM-04 covers only a proved escape and points to the new kinds.
+- [x] Terms exist for an unresolvable path, a guard, a reserved name, an
       alternate data stream and a path warning.
-- [ ] The planning README lists the new terms.
+- [x] The planning README lists the new terms.

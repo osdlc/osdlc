@@ -22,8 +22,14 @@ Not an absolute path. An absolute path can still pass through symlinks.
 
 ## Notes
 
-For a path that does not exist, path-guard uses the real path of its deepest
-existing ancestor and appends the rest. It folds any `..` in the rest against
-that real path. This is `canonicalExistingPrefix` (Rust:
-`canonical_existing_prefix`). A dangling symlink is followed.
+`guard.realPath` (Rust: `Guard::real_path`) returns a partial real path. For
+a path that does not exist, it takes the real path of the deepest existing
+ancestor and appends the rest. It folds any `..` in the rest against that
+real path. A dangling symlink is followed. A missing path is not an error.
+
+When the walk gives up, after more than `MAX_LINK_HOPS` links or a spent
+call budget, `realPath` returns the path with `..` folded as text. The answer
+never holds a `..`. The argument must be absolute; its only error is
+`not_absolute`.
+
 [Path containment](TM-03-path-containment.md) compares real paths.

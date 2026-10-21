@@ -65,3 +65,8 @@ package.
 - [TM-06](terms/TM-06-segment.md): Segment
 - [TM-07](terms/TM-07-real-path.md): Real path
 - [TM-08](terms/TM-08-path-resolver.md): Path resolver
+- [TM-09](terms/TM-09-unresolvable-path.md): Unresolvable path
+- [TM-10](terms/TM-10-guard.md): Guard
+- [TM-11](terms/TM-11-reserved-name.md): Reserved name
+- [TM-12](terms/TM-12-path-warning.md): Path warning
+- [TM-13](terms/TM-13-alternate-data-stream.md): Alternate data stream
