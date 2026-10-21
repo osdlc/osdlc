@@ -11,7 +11,7 @@
     "paths": {
       "@osdlc/agent-call": ["../agent-call/src/index.ts"],
       "@osdlc/config-layers": ["../config-layers/index.ts"],
-      "@osdlc/path-guard": ["../path-guard/index.ts"],
+      "@osdlc/path-guard/node": ["../path-guard/node.ts"],
       "@osdlc/tiered-dirs": ["../tiered-dirs/index.ts"],
       "@osdlc/yaml-splice": ["../yaml-splice/index.ts"]
     }
