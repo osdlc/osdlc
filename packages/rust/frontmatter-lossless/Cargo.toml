@@ -1,0 +1,31 @@
+[package]
+name = "frontmatter-lossless"
+version = "1.1.0"
+edition.workspace = true
+rust-version.workspace = true
+description = "Pure, byte-exact Markdown frontmatter framing: split a note into verbatim YAML and body with source byte offsets, and recompose it losslessly. BOM, CRLF, and fence bytes are preserved; a malformed or unterminated block degrades to body-only. No dependencies beyond std."
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
+keywords = ["markdown", "frontmatter", "yaml", "obsidian", "parser"]
+categories = ["parser-implementations", "text-processing"]
+include = [
+  "src/**/*.rs",
+  "examples/**/*.rs",
+  "README.md",
+  "CHANGELOG.md",
+  "LICENSE-MIT",
+  "LICENSE-APACHE",
+]
+
+[lib]
+name = "frontmatter_lossless"
+
+# tests/conformance.rs only: it reads tests/fixtures/conformance.json, the
+# corpus the TypeScript twin (packages/ts/frontmatter-lossless) also tests
+# against. The crate parses no JSON at runtime.
+[dev-dependencies]
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

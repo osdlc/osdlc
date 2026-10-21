@@ -1,0 +1,388 @@
+[
+  {
+    "name": "plain",
+    "source": "---\ntitle: Plain\n---\nbody\n",
+    "split": {
+      "yaml": "title: Plain",
+      "body": "body\n",
+      "bom": false,
+      "openEol": "\n",
+      "closeEol": "\n",
+      "closeSep": true
+    },
+    "lenient": {
+      "yaml": "title: Plain",
+      "body": "body\n"
+    }
+  },
+  {
+    "name": "no_frontmatter",
+    "source": "just prose, no fence\n",
+    "split": {
+      "yaml": null,
+      "body": "just prose, no fence\n",
+      "bom": false,
+      "openEol": "\n",
+      "closeEol": "\n",
+      "closeSep": true
+    },
+    "lenient": null
+  },
+  {
+    "name": "bom",
+    "source": "\ufeff---\ntitle: BOM\n---\nbody\n",
+    "split": {
+      "yaml": "title: BOM",
+      "body": "body\n",
+      "bom": true,
+      "openEol": "\n",
+      "closeEol": "\n",
+      "closeSep": true
+    },
+    "lenient": {
+      "yaml": "title: BOM",
+      "body": "body\n"
+    }
+  },
+  {
+    "name": "bom_no_frontmatter",
+    "source": "\ufeffjust prose\n",
+    "split": {
+      "yaml": null,
+      "body": "just prose\n",
+      "bom": true,
+      "openEol": "\n",
+      "closeEol": "\n",
+      "closeSep": true
+    },
+    "lenient": null
+  },
+  {
+    "name": "crlf",
+    "source": "---\r\ntitle: CRLF\r\n---\r\nbody\r\n",
+    "split": {
+      "yaml": "title: CRLF\r",
+      "body": "body\r\n",
+      "bom": false,
+      "openEol": "\r\n",
+      "closeEol": "\r\n",
+      "closeSep": true
+    },
+    "lenient": {
+      "yaml": "title: CRLF",
+      "body": "body\r\n"
+    }
+  },
+  {
+    "name": "bom_and_crlf",
+    "source": "\ufeff---\r\ntitle: both\r\n---\r\nbody\r\n",
+    "split": {
+      "yaml": "title: both\r",
+      "body": "body\r\n",
+      "bom": true,
+      "openEol": "\r\n",
+      "closeEol": "\r\n",
+      "closeSep": true
+    },
+    "lenient": {
+      "yaml": "title: both",
+      "body": "body\r\n"
+    }
+  },
+  {
+    "name": "empty_frontmatter",
+    "source": "---\n---\nbody\n",
+    "split": {
+      "yaml": "",
+      "body": "body\n",
+      "bom": false,
+      "openEol": "\n",
+      "closeEol": "\n",
+      "closeSep": false
+    },
+    "lenient": {
+      "yaml": "",
+      "body": "body\n"
+    },
+    "edit": {
+      "yaml": "title: x",
+      "body": "body\n",
+      "out": "---\ntitle: x\n---\nbody\n"
+    }
+  },
+  {
+    "name": "empty_frontmatter_crlf",
+    "source": "---\r\n---\r\nbody\r\n",
+    "split": {
+      "yaml": "",
+      "body": "body\r\n",
+      "bom": false,
+      "openEol": "\r\n",
+      "closeEol": "\r\n",
+      "closeSep": false
+    },
+    "lenient": {
+      "yaml": "",
+      "body": "body\r\n"
+    },
+    "edit": {
+      "yaml": "title: x\r",
+      "body": "body\r\n",
+      "out": "---\r\ntitle: x\r\n---\r\nbody\r\n"
+    }
+  },
+  {
+    "name": "no_trailing_newline",
+    "source": "---\ntitle: Terse\n---\nbody",
+    "split": {
+      "yaml": "title: Terse",
+      "body": "body",
+      "bom": false,
+      "openEol": "\n",
+      "closeEol": "\n",
+      "closeSep": true
+    },
+    "lenient": {
+      "yaml": "title: Terse",
+      "body": "body"
+    }
+  },
+  {
+    "name": "file_ends_at_closing_fence",
+    "source": "---\na: 1\n---",
+    "split": {
+      "yaml": "a: 1",
+      "body": "",
+      "bom": false,
+      "openEol": "\n",
+      "closeEol": "",
+      "closeSep": true
+    },
+    "lenient": {
+      "yaml": "a: 1",
+      "body": ""
+    },
+    "edit": {
+      "yaml": "a: 1",
+      "body": "new\n",
+      "out": "---\na: 1\n---\nnew\n"
+    }
+  },
+  {
+    "name": "file_ends_at_closing_fence_plus_newline",
+    "source": "---\na: 1\n---\n",
+    "split": {
+      "yaml": "a: 1",
+      "body": "",
+      "bom": false,
+      "openEol": "\n",
+      "closeEol": "\n",
+      "closeSep": true
+    },
+    "lenient": {
+      "yaml": "a: 1",
+      "body": ""
+    }
+  },
+  {
+    "name": "crlf_ends_at_closing_fence",
+    "source": "---\r\na: 1\r\n---",
+    "split": {
+      "yaml": "a: 1\r",
+      "body": "",
+      "bom": false,
+      "openEol": "\r\n",
+      "closeEol": "",
+      "closeSep": true
+    },
+    "lenient": {
+      "yaml": "a: 1",
+      "body": ""
+    },
+    "edit": {
+      "yaml": "a: 1\r",
+      "body": "new\r\n",
+      "out": "---\r\na: 1\r\n---\r\nnew\r\n"
+    }
+  },
+  {
+    "name": "body_contains_a_fence",
+    "source": "---\na: 1\n---\nintro\n\n---\n\noutro\n",
+    "split": {
+      "yaml": "a: 1",
+      "body": "intro\n\n---\n\noutro\n",
+      "bom": false,
+      "openEol": "\n",
+      "closeEol": "\n",
+      "closeSep": true
+    },
+    "lenient": {
+      "yaml": "a: 1",
+      "body": "intro\n\n---\n\noutro\n"
+    }
+  },
+  {
+    "name": "unterminated_block",
+    "source": "---\ntitle: hi\nstill going\n",
+    "split": {
+      "yaml": null,
+      "body": "---\ntitle: hi\nstill going\n",
+      "bom": false,
+      "openEol": "\n",
+      "closeEol": "\n",
+      "closeSep": true
+    },
+    "lenient": null
+  },
+  {
+    "name": "comments_and_blank_lines",
+    "source": "---\n# top\ntitle: x   # inline\n\nk: v\n---\n\nBody.\n",
+    "split": {
+      "yaml": "# top\ntitle: x   # inline\n\nk: v",
+      "body": "\nBody.\n",
+      "bom": false,
+      "openEol": "\n",
+      "closeEol": "\n",
+      "closeSep": true
+    },
+    "lenient": {
+      "yaml": "# top\ntitle: x   # inline\n\nk: v",
+      "body": "\nBody.\n"
+    }
+  },
+  {
+    "name": "empty_file",
+    "source": "",
+    "split": {
+      "yaml": null,
+      "body": "",
+      "bom": false,
+      "openEol": "\n",
+      "closeEol": "\n",
+      "closeSep": true
+    },
+    "lenient": null
+  },
+  {
+    "name": "opener_only",
+    "source": "---\n",
+    "split": {
+      "yaml": null,
+      "body": "---\n",
+      "bom": false,
+      "openEol": "\n",
+      "closeEol": "\n",
+      "closeSep": true
+    },
+    "lenient": null
+  },
+  {
+    "name": "bare_dashes",
+    "source": "---",
+    "split": {
+      "yaml": null,
+      "body": "---",
+      "bom": false,
+      "openEol": "\n",
+      "closeEol": "\n",
+      "closeSep": true
+    },
+    "lenient": null
+  },
+  {
+    "name": "padded_fences_are_lenient_only",
+    "source": "--- \ntitle: x\n--- \nbody\n",
+    "split": {
+      "yaml": null,
+      "body": "--- \ntitle: x\n--- \nbody\n",
+      "bom": false,
+      "openEol": "\n",
+      "closeEol": "\n",
+      "closeSep": true
+    },
+    "lenient": {
+      "yaml": "title: x",
+      "body": "body\n"
+    }
+  },
+  {
+    "name": "leading_blank_lines_are_lenient_only",
+    "source": "\n\n---\na: 1\n---\nbody\n",
+    "split": {
+      "yaml": null,
+      "body": "\n\n---\na: 1\n---\nbody\n",
+      "bom": false,
+      "openEol": "\n",
+      "closeEol": "\n",
+      "closeSep": true
+    },
+    "lenient": {
+      "yaml": "a: 1",
+      "body": "body\n"
+    }
+  },
+  {
+    "name": "bom_and_blank_lines_are_lenient_only",
+    "source": "\ufeff\n\n---\na: 1\n---\n",
+    "split": {
+      "yaml": null,
+      "body": "\n\n---\na: 1\n---\n",
+      "bom": true,
+      "openEol": "\n",
+      "closeEol": "\n",
+      "closeSep": true
+    },
+    "lenient": {
+      "yaml": "a: 1",
+      "body": ""
+    }
+  },
+  {
+    "name": "blank_line_only_frontmatter",
+    "source": "---\n\n---\nbody\n",
+    "split": {
+      "yaml": "",
+      "body": "body\n",
+      "bom": false,
+      "openEol": "\n",
+      "closeEol": "\n",
+      "closeSep": true
+    },
+    "lenient": {
+      "yaml": "",
+      "body": "body\n"
+    }
+  },
+  {
+    "name": "yaml_is_itself_a_blank_line",
+    "source": "---\n\n\n---\nbody\n",
+    "split": {
+      "yaml": "\n",
+      "body": "body\n",
+      "bom": false,
+      "openEol": "\n",
+      "closeEol": "\n",
+      "closeSep": true
+    },
+    "lenient": {
+      "yaml": "\n",
+      "body": "body\n"
+    }
+  },
+  {
+    "name": "yaml_ending_in_a_blank_line",
+    "source": "---\na: 1\n\n---\nbody\n",
+    "split": {
+      "yaml": "a: 1\n",
+      "body": "body\n",
+      "bom": false,
+      "openEol": "\n",
+      "closeEol": "\n",
+      "closeSep": true
+    },
+    "lenient": {
+      "yaml": "a: 1\n",
+      "body": "body\n"
+    }
+  }
+]
