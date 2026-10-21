@@ -84,10 +84,10 @@ No case covers a spent call budget. The fixture has no `is_under` or
 
 ## Acceptance criteria
 
-- [ ] The 14 cases carry their 0.3.0 results.
-- [ ] The fixture has `windows_names` and per-platform guard cases for
+- [x] The 14 cases carry their 0.3.0 results.
+- [x] The fixture has `windows_names` and per-platform guard cases for
       reserved names and alternate streams, with the expected warnings.
-- [ ] The fixture has `absolute`, `is_under` and `real_path` sections, and a
+- [x] The fixture has `absolute`, `is_under` and `real_path` sections, and a
       spent-budget case.
 - [ ] `tests/parity.rs` and `tests/parity.test.ts` read every section and
       pass against it.

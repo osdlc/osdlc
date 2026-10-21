@@ -3,53 +3,10 @@ import { dirname, join, resolve } from 'node:path'
 
 import { describe, expect, test } from 'vitest'
 
-import { isUnder } from '../lexical-entry.ts'
-
 const PACKAGE_DIR = join(import.meta.dirname, '..')
 const DIST = join(PACKAGE_DIR, 'dist')
 
-describe('isUnder', () => {
-  test('the same path is under itself', () => {
-    expect(isUnder('/vault', '/vault')).toBe(true)
-    expect(isUnder('/', '/')).toBe(true)
-  })
-
-  test('a child and a deeper descendant are under the root', () => {
-    expect(isUnder('/vault', '/vault/a.md')).toBe(true)
-    expect(isUnder('/vault', '/vault/a/b/c.md')).toBe(true)
-    expect(isUnder('/', '/etc')).toBe(true)
-  })
-
-  test('a sibling that shares a name prefix is not under the root', () => {
-    expect(isUnder('/vault', '/vault2')).toBe(false)
-    expect(isUnder('/vault', '/vault2/a.md')).toBe(false)
-    expect(isUnder('/vault', '/vaul')).toBe(false)
-  })
-
-  test('the parent of the root is not under it', () => {
-    expect(isUnder('/vault/a', '/vault')).toBe(false)
-  })
-
-  test('a .. in either input is folded as text', () => {
-    expect(isUnder('/vault', '/vault/../etc')).toBe(false)
-    expect(isUnder('/vault', '/vault/a/../b.md')).toBe(true)
-    expect(isUnder('/vault/a/..', '/vault/b')).toBe(true)
-    expect(isUnder('/vault', '/../vault/a')).toBe(true)
-  })
-
-  test('. and repeated or trailing slashes are ignored', () => {
-    expect(isUnder('/vault/', '/vault/a.md')).toBe(true)
-    expect(isUnder('/vault', '/vault/a/')).toBe(true)
-    expect(isUnder('/vault', '/vault//./a')).toBe(true)
-  })
-
-  test('a relative input gives false and does not throw', () => {
-    expect(isUnder('/vault', 'a.md')).toBe(false)
-    expect(isUnder('vault', '/vault/a.md')).toBe(false)
-    expect(isUnder('', '/vault')).toBe(false)
-    expect(isUnder('/vault', '')).toBe(false)
-  })
-})
+// The `isUnder` cases live in the shared parity fixture's `is_under` section.
 
 /** Every module specifier in one built file's import and export lines. */
 function specifiers(source: string): string[] {
