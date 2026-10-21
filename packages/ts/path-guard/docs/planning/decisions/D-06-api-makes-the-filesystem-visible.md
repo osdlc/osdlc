@@ -79,19 +79,20 @@ their 0.2 contract.
 
 ### Target shape
 
-| Concept               | TypeScript 0.3.0                                                                               | Rust 0.3.0                                              | Replaces                                                                 |
-| --------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------------ |
-| Relative-path check   | `lexical.validateRelative(raw)`                                                                | `lexical::validate_relative`                            | `validateRelative`, `validate_relative`                                  |
-| Text containment      | `lexical.isUnder(root, path)`                                                                  | `lexical::is_under`, returns `Result<bool, PathError>`  | `isInside`                                                               |
-| Make absolute         | `lexical.absolute(path, cwd)`                                                                  | `lexical::absolute(path, cwd)`                          | `lexicalAbsolute`, `lexical_absolute`                                    |
-| Back to relative      | `lexical.toRelative(root, abs)`                                                                | `lexical::to_relative`                                  | `toRelative`, `to_relative`                                              |
-| Filesystem port       | `Resolver { realpath, readlink }`                                                              | `trait Resolver { canonicalize, read_link }`            | same                                                                     |
-| Bound guard           | `new PathGuard(resolver)`                                                                      | `Guard::new(resolver)`, `Guard::std()`                  | optional `Resolver` arguments, `_with` functions                         |
-| Join and check        | `guard.resolve(root, raw)`, `guard.tryResolve(root, raw)`                                      | `guard.resolve(root, raw)`                              | `resolveInside`, `tryResolveInside`, `resolve`, `resolve_with`           |
-| Resolved containment  | `guard.contains(outer, inner)`                                                                 | `guard.contains`, returns `Result<bool, PathError>`     | `contains`, `contains_with`                                              |
-| Partial real path     | `guard.realPath(absPath)`                                                                      | `guard.real_path`, returns `Result<PathBuf, PathError>` | `realpathOrSelf`, `canonicalExistingPrefix`, `canonical_existing_prefix` |
-| Real-disk guard       | `nodeGuard` from `./node`                                                                      | `Guard::std()`                                          | `nodeResolver` and `StdResolver` as hidden defaults                      |
-| Race-checked file I/O | `openContainedFile`, `readContainedFile`, `realPathInside`, `existingPathInside` from `./node` | none                                                    | same names, moved to `./node`                                            |
+| Concept               | TypeScript 0.3.0                                                                               | Rust 0.3.0                                                        | Replaces                                                                 |
+| --------------------- | ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Relative-path check   | `lexical.validateRelative(raw)`                                                                | `lexical::validate_relative`                                      | `validateRelative`, `validate_relative`                                  |
+| Windows names         | `lexical.validateRelative(raw, { onWarning })` reports; `PathGuard` refuses on Windows         | `lexical::windows_names(raw)` reports; `Guard` refuses on Windows | accepted before 0.3.0                                                    |
+| Text containment      | `lexical.isUnder(root, path)`                                                                  | `lexical::is_under`, returns `Result<bool, PathError>`            | `isInside`                                                               |
+| Make absolute         | `lexical.absolute(path, cwd)`                                                                  | `lexical::absolute(path, cwd)`                                    | `lexicalAbsolute`, `lexical_absolute`                                    |
+| Back to relative      | `lexical.toRelative(root, abs)`                                                                | `lexical::to_relative`                                            | `toRelative`, `to_relative`                                              |
+| Filesystem port       | `Resolver { realpath, readlink }`                                                              | `trait Resolver { canonicalize, read_link }`                      | same                                                                     |
+| Bound guard           | `new PathGuard(resolver)`                                                                      | `Guard::new(resolver)`, `Guard::std()`                            | optional `Resolver` arguments, `_with` functions                         |
+| Join and check        | `guard.resolve(root, raw)`, `guard.tryResolve(root, raw)`                                      | `guard.resolve(root, raw)`                                        | `resolveInside`, `tryResolveInside`, `resolve`, `resolve_with`           |
+| Resolved containment  | `guard.contains(outer, inner)`                                                                 | `guard.contains`, returns `Result<bool, PathError>`               | `contains`, `contains_with`                                              |
+| Partial real path     | `guard.realPath(absPath)`                                                                      | `guard.real_path`, returns `Result<PathBuf, PathError>`           | `realpathOrSelf`, `canonicalExistingPrefix`, `canonical_existing_prefix` |
+| Real-disk guard       | `nodeGuard` from `./node`                                                                      | `Guard::std()`                                                    | `nodeResolver` and `StdResolver` as hidden defaults                      |
+| Race-checked file I/O | `openContainedFile`, `readContainedFile`, `realPathInside`, `existingPathInside` from `./node` | none                                                              | same names, moved to `./node`                                            |
 
 The twins keep the same behaviour, the same error kinds and the same cases,
 proved by the shared parity fixture. Each twin uses its own language's
@@ -112,8 +113,8 @@ refuses: `empty_root` or `not_absolute`. `guard.tryResolve` returns null where
 | `empty_root`       | The root is the empty path. Used by every function that takes a root, `toRelative` included. | `escapes`; `parent_segment` in `toRelative`; false in `contains` |
 | `not_under_root`   | `toRelative`: the path does not start with the root as text                                  | `escapes`                                                        |
 | `not_absolute`     | An argument listed under Absolute input is relative                                          | resolved against cwd; false in `isUnder` and `contains`          |
-| `reserved_name`    | On Windows, a segment is a reserved device name                                              | accepted                                                         |
-| `alternate_stream` | On Windows, a segment has a `name:stream` alternate data stream                              | accepted                                                         |
+| `reserved_name`    | On Windows, a segment is a reserved device name. The guard refuses it.                       | accepted                                                         |
+| `alternate_stream` | On Windows, a segment has a `name:stream` alternate data stream. The guard refuses it.       | accepted                                                         |
 
 Both Windows kinds are described under Windows names below. Rust gains the
 matching `PathError` variants (`ReservedName`, `AlternateStream`). `PathError` stays
@@ -122,63 +123,71 @@ matching `PathError` variants (`ReservedName`, `AlternateStream`). `PathError` s
 
 ### Packaging
 
-| Language   | Shape                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| TypeScript | `package.json` `exports` has `.`, `./lexical` and `./node`. `.` exports `lexical`, `PathGuard`, `Resolver`, `PathError` and `MAX_LINK_HOPS`. It imports no `node:fs`; it may import `node:path`, which `PathGuard` uses for the platform's path rules. `./lexical` exports the `lexical` functions and `PathError`, imports no `node:` module, and stays browser-safe. `./node` adds `nodeGuard`, `nodeResolver` and the race-checked file helpers. |
-| Rust       | A `lexical` module, a `guard` module with `Guard<R: Resolver>`, and the error type at the crate root. `Resolver`, `StdResolver` and `MAX_LINK_HOPS` stay at the root.                                                                                                                                                                                                                                                                               |
+| Language   | Shape                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| TypeScript | `package.json` `exports` has `.`, `./lexical` and `./node`. `.` exports `lexical`, `PathGuard`, `Resolver`, `PathError`, `PathWarning` and `MAX_LINK_HOPS`. It imports no `node:fs`; it may import `node:path`, which `PathGuard` uses for the platform's path rules. `./lexical` exports the `lexical` functions, `PathError` and `PathWarning`, imports no `node:` module, and stays browser-safe. `./node` adds `nodeGuard`, `nodeResolver` and the race-checked file helpers. |
+| Rust       | A `lexical` module, a `guard` module with `Guard<R: Resolver>`, and the error type, `PathWarning` and `PathWarningKind` at the crate root. `lexical::windows_names` is in the `lexical` module. `Resolver`, `StdResolver` and `MAX_LINK_HOPS` stay at the root.                                                                                                                                                                                                                   |
 
 ### Windows names
 
-On Windows, `validateRelative` (Rust: `validate_relative`) refuses two more
-shapes, in both twins:
+Some names mean a device or a stream on Windows and an ordinary file elsewhere.
+Both twins handle them in two steps.
 
-- A reserved device name, as `reserved_name`. The names are `NUL`, `CON`,
-  `PRN`, `AUX`, `COM1` to `COM9` and `LPT1` to `LPT9`. The match is case
-  insensitive. A segment matches when the text before its first `.` is one of
-  the names. So `nul`, `NUL.txt` and `com1.tar.gz` match. Windows also drops
-  trailing spaces and dots from a name, so `CON.`, `CON ` and `NUL .txt`
-  match too: the check trims trailing spaces and dots from that text first.
-  `CONIN$`, `CONOUT$` and the superscript digit forms of `COM` and `LPT` are
-  not in the list.
-- A `name:stream` alternate data stream, as `alternate_stream`. A segment
-  with a `:` matches. A drive letter is not a segment of a relative path, so
-  it is not affected.
+`lexical` reads no platform and takes no platform argument. It never refuses
+these names. It reports each one as a warning, on every host.
+`lexical.validateRelative(raw, { onWarning })` calls `onWarning` once per
+match, in segment order. In Rust, `lexical::windows_names(raw)` returns the
+matches as `Vec<PathWarning>`, and `lexical::validate_relative(raw)` is
+unchanged.
+
+The guard knows its platform: `PathGuard` through `node:path`, `Guard` through
+`cfg!(windows)`. On Windows the guard refuses the first match, in `resolve`
+and `tryResolve` before it reads the filesystem. On other platforms the guard
+accepts the path and calls its warning handler once per match. The handler is
+silent by default, and the library never writes to the console.
+
+A match is one of two kinds. The check runs on every segment, not only the
+last, after `\` has become `/`. The base name of a segment is its text up to
+the first `.` or `:`, with trailing spaces removed. Input that starts with a
+drive letter, `C:x` included, is refused earlier as `windows_path` on every
+platform, so it never reaches this check.
+
+- `reserved_name`: the base name is a reserved device name, compared case
+  insensitive. The names are Microsoft's documented list: `CON`, `PRN`,
+  `AUX`, `NUL`, `COM0` to `COM9`, `LPT0` to `LPT9`, the superscript forms
+  `COM¹`, `COM²`, `COM³`, `LPT¹`, `LPT²`, `LPT³`, and `CONIN$` and
+  `CONOUT$`. See
+  [Naming Files, Paths, and Namespaces](https://learn.microsoft.com/en-us/windows/win32/fileio/naming-a-file).
+  `NUL`, `nul.txt`, `NUL .txt`, `CON.` and `CON:` all match. `CLOCK$` is not
+  in the list: Windows NT has no such device.
+- `alternate_stream`: the segment has a `:` and the base name is not a
+  reserved name. `a:b` and `file.txt:stream` match. `reserved_name` wins when
+  both could apply, so `CON:` and `NUL:x` are `reserved_name`.
 
 The kinds are separate because a caller may react differently. A device name
 can be renamed, while a stream is a different file attribute. Two small kinds
 cost no more than one, under [D-04](D-04-error-kind-growth.md).
 
-On other platforms these segments are ordinary names and are accepted. The
-caller is warned that the path means something else on Windows. The warning
-goes through an optional `onWarning` callback. It is silent by default. The
-library never writes to the console.
-
 A warning has a kind and the segment that caused it. Its kinds are the same
 strings as the error kinds.
 
-| Language   | Shape                                                                                                                                                                                           |
-| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| TypeScript | `PathWarning { kind: 'reserved_name' \| 'alternate_stream'; segment: string }`. `lexical.validateRelative(raw, { onWarning })` and `new PathGuard(resolver, { onWarning })`.                    |
-| Rust       | `PathWarning { kind: PathWarningKind, segment: String }`, with `PathWarningKind` `#[non_exhaustive]`. `Guard::with_warning_handler(f)` and `lexical::validate_relative_warn(raw, &on_warning)`. |
+| Item           | TypeScript                                                                     | Rust                                                                                                |
+| -------------- | ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------- |
+| Warning type   | `PathWarning { kind: 'reserved_name' \| 'alternate_stream'; segment: string }` | `PathWarning { kind: PathWarningKind, segment: String }`; `PathWarningKind` is `#[non_exhaustive]`  |
+| Lexical report | `lexical.validateRelative(raw, { onWarning })`                                 | `lexical::windows_names(raw) -> Vec<PathWarning>`                                                   |
+| Guard handler  | `new PathGuard(resolver, { onWarning })`                                       | `Guard::with_warning_handler(f)`, `f: Fn(&PathWarning) + Send + Sync + 'static`, stored in an `Arc` |
+| Guard refusal  | `PathError` of kind `reserved_name` or `alternate_stream`, on Windows          | `PathError::ReservedName` or `PathError::AlternateStream`, on Windows                               |
 
-The guard runs `validateRelative` in `resolve` and `tryResolve`, so its
-callback sees the same warnings.
-
-The check needs the platform. `validateRelative` takes a `windows` option
-(Rust: `lexical::validate_relative_for(raw, Platform, &on_warning)`). Its
-default is the host platform: `globalThis.process?.platform === 'win32'` in
-TS, which reads no `node:` module and is false where `process` is absent, and
-`cfg!(windows)` in Rust. A fixture case names the platform it expects, so both
-platforms are tested on any host.
+The `Arc` keeps `Guard` `Clone`, `Send` and `Sync`.
 
 ### Windows paths in the text check
 
-`lexical` stays POSIX on every platform and takes no platform argument for
-containment. `lexical.isUnder` and `lexical.absolute` read `/` only. A Windows
-caller of `isInside` moves to `guard.contains`, which reads Windows paths
-through `node:path`.
+`lexical` stays POSIX on every platform. It reads no platform and takes no
+platform argument. `lexical.isUnder` and `lexical.absolute` read `/` only. A
+Windows caller of `isInside` moves to `guard.contains`, which reads Windows
+paths through `node:path`.
 
-### Names decided in this proposal
+### Names
 
 - The text containment check is `isUnder` (Rust: `is_under`), not
   `lexical.contains`. `guard.contains` follows symlinks and the text check
@@ -252,9 +261,10 @@ review.
   Rust caller moves to the new items in one pass and sees the new kinds.
   `canonical_existing_prefix` callers that move to `Guard::real_path` get `..`
   folded as text where the walk gives up, instead of the path as written.
-- A path with a device name or a stream is accepted today. On Windows it is
-  refused in 0.3.0. On other platforms it is accepted, and a caller that sets
-  `onWarning` hears about it.
+- A path with a device name or a stream is accepted today. In 0.3.0 the guard
+  refuses it on Windows. On other platforms the guard accepts it, and a
+  caller that sets `onWarning` hears about it. `lexical` never refuses it and
+  warns on every host.
 - A Windows caller of `isInside` moves to `guard.contains`. `lexical.isUnder`
   does not read `\` or drive letters.
 - Every consumer that adopted 0.2.x migrates.

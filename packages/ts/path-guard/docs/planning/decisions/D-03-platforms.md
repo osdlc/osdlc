@@ -19,8 +19,9 @@ created: 2026-10-19
   `realpathSync.native`. The Rust crate folds `..` the same way on Windows.
 - `toRelative` and `isUnder` take POSIX paths on every platform.
 - The README lists the Windows limits: names after the root are compared as
-  written, and the lexical check does not refuse device names or alternate
-  data streams.
+  written, and, in 0.2.x, the lexical check does not refuse device names or
+  alternate data streams. [D-06](D-06-api-makes-the-filesystem-visible.md)
+  changes that for the guard in 0.3.0.
 
 ## Why
 

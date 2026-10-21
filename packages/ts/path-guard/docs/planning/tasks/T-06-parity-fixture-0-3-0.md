@@ -59,13 +59,20 @@ No case covers a spent call budget. The fixture has no `is_under` or
    (`not_absolute`).
 6. Add a `resolve_on_disk` case for a spent call budget, with the result
    `unresolvable`.
-7. Add `validate_relative` cases for the Windows names in D-06. Each case
-   gives the expected result per platform: `windows` and `other`. On
-   `windows` the result is `reserved_name` or `alternate_stream`. On `other`
-   the result is ok with a warning of the same kind and the segment. Cover
-   `NUL`, `nul`, `NUL.txt`, `com1.tar.gz`, `LPT9`, `CON.`, `CON ` and `a/aux`;
-   `COM0`, `console` and `nul-x` (not reserved); and `a:b`, `a/b:c.txt`. Both
-   runners pass the platform explicitly and compare the warnings.
+7. Add Windows-name cases for D-06. A `windows_names` section gives, for
+   each input, the warnings `lexical` reports in order (kind and segment).
+   The same input appears in a guard section with the result per platform:
+   `windows` refuses with the first warning's kind, `other` accepts and
+   warns. Cover:
+   - `reserved_name`: `NUL`, `nul`, `NUL.txt`, `NUL .txt`, `com1.tar.gz`,
+     `COM0`, `LPT9`, `COM¹`, `CONIN$`, `CONOUT$`, `CON.`, `CON ` and `a/aux`
+     and `a\NUL`.
+   - `alternate_stream`: `a:b` and `a/b:c.txt`.
+   - Both rules: `CON:` and `NUL:x` are `reserved_name`. `NUL/a:b` gives two
+     warnings, `reserved_name` then `alternate_stream`.
+   - Not matched: `console`, `nul-x`, `CLOCK$` and `COM10`.
+   - `C:x` stays `windows_path` on every platform, with no warning.
+     Both runners compare the warnings and the per-platform result.
 8. Update both runners for the new and renamed sections in the same PR.
 9. Land the fixture change with [T-04](T-04-rust-0-3-0-api.md) and
    [T-05](T-05-ts-0-3-0-api.md), so neither twin's suite fails on main.
@@ -73,8 +80,8 @@ No case covers a spent call budget. The fixture has no `is_under` or
 ## Acceptance criteria
 
 - [ ] The 14 cases carry their 0.3.0 results.
-- [ ] The fixture has per-platform `validate_relative` cases for reserved
-      names and alternate streams, with the expected warnings.
+- [ ] The fixture has `windows_names` and per-platform guard cases for
+      reserved names and alternate streams, with the expected warnings.
 - [ ] The fixture has `absolute`, `is_under` and `real_path` sections, and a
       spent-budget case.
 - [ ] `tests/parity.rs` and `tests/parity.test.ts` read every section and
