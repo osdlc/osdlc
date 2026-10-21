@@ -1,5 +1,5 @@
 /**
- * Runs every file in `examples/`. Each one exports `run()` and asserts what it
+ * Runs every example module in this folder. Each one exports `run()` and asserts what it
  * shows, so a README snippet taken from an example stays true.
  */
 
@@ -7,9 +7,9 @@ import { describe, expect, test } from 'vitest'
 
 import { readdirSync } from 'node:fs'
 
-const dir = new URL('../examples/', import.meta.url)
+const dir = new URL('./', import.meta.url)
 const files = readdirSync(dir)
-  .filter((f) => f.endsWith('.ts'))
+  .filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts'))
   .sort()
 
 describe('examples', () => {
