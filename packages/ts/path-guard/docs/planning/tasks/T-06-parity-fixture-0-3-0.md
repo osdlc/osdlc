@@ -62,14 +62,15 @@ No case covers a spent call budget. The fixture has no `is_under` or
 7. Add Windows-name cases for D-06. A `windows_names` section gives, for
    each input, the warnings `lexical` reports in order (kind and segment).
    The same input appears in a guard section with the result per platform:
-   `windows` refuses with the first warning's kind, `other` accepts and
-   warns. The guard takes its platform from the host, so each runner checks
+   `windows` refuses with the first warning's kind and calls no handler,
+   `other` accepts and warns. The guard takes its platform from the host, so each runner checks
    the column for its own host, and the Windows CI jobs of both twins cover
    `windows`. The `windows_names` section runs in full on every host. Cover:
    - `reserved_name`: `NUL`, `nul`, `NUL.txt`, `NUL .txt`, `com1.tar.gz`,
      `COM0`, `LPT9`, `COM¹`, `CONIN$`, `CONOUT$`, `CON.`, `CON ` and `a/aux`
      and `a\NUL`.
-   - `alternate_stream`: `a:b` and `a/b:c.txt`.
+   - `alternate_stream`: `ab:c`, `file.txt:stream` and `a/b:c.txt`. `a:b`
+     at the start is a drive, refused as `windows_path`.
    - Both rules: `CON:` and `NUL:x` are `reserved_name`. `NUL/a:b` gives two
      warnings, `reserved_name` then `alternate_stream`.
    - Not matched: `console`, `nul-x`, `CLOCK$` and `COM10`.
@@ -78,8 +79,12 @@ No case covers a spent call budget. The fixture has no `is_under` or
 
    Both runners compare the warnings and the result for their host.
 
-8. Update both runners for the new and renamed sections in the same PR.
-9. Land the fixture change with [T-04](T-04-rust-0-3-0-api.md) and
+8. Guard and on-disk sections with a `/v`-style root are not absolute on
+   Windows. There the runner maps them onto a real absolute root, as for
+   `resolve_windows_names`. Lexical sections run as POSIX strings on every
+   host.
+9. Update both runners for the new and renamed sections in the same PR.
+10. Land the fixture change with [T-04](T-04-rust-0-3-0-api.md) and
    [T-05](T-05-ts-0-3-0-api.md), so neither twin's suite fails on main.
 
 ## Acceptance criteria
