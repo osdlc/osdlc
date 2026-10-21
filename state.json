@@ -1,12 +1,79 @@
 {
   "schema": 1,
   "pr": 356,
-  "head": null,
-  "base": null,
-  "round": 0,
+  "head": "0654b6798ee81c7cd47d57adbbd7fad0a78e9f2e",
+  "base": "24a7ec23ce7dd115087fda1858969fd1948c1a4f",
+  "round": 1,
   "claim": {
     "owner": "Mac.local:claude-r7q2ke",
     "at": "2026-10-21T00:09:18.892Z"
   },
-  "findings": []
+  "findings": [
+    {
+      "id": "r1-1",
+      "round": 1,
+      "path": "packages/ts/config-layers/paths.ts",
+      "line": 58,
+      "title": "Empty HOME expands ~ to the filesystem root under Node",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-2",
+      "round": 1,
+      "path": "packages/ts/config-layers/package.json",
+      "line": 58,
+      "title": "In-repo sibling dependencies use npm ranges, not workspace:^",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-3",
+      "round": 1,
+      "path": "packages/ts/config-layers/README.md",
+      "line": 317,
+      "title": "README and D-04 list a shared tag rule that the Rust twin table contradicts",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-4",
+      "round": 1,
+      "path": "packages/ts/config-layers/tests/parity.test.ts",
+      "line": 15,
+      "title": "Duplicate node:fs import and import order",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-5",
+      "round": 1,
+      "path": "packages/ts/config-layers/README.md",
+      "line": 304,
+      "title": "Runtime section lists zod as a dependency",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-6",
+      "round": 1,
+      "path": "packages/ts/config-layers/tests/needs.test.ts",
+      "line": 101,
+      "title": "endsWith plus toBe(true) loses the failure message",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    }
+  ]
 }
