@@ -41,11 +41,14 @@ The standards are delivered three ways:
 |---|---|
 | [verbs.md](./verbs.md) | The standard task names, what each may do, and the default command per ecosystem |
 | [sdlc-yaml.md](./sdlc-yaml.md) | `sdlc.yaml` as a structured README: which questions it answers and where |
+| [doc-locations.md](./doc-locations.md) | Where each kind of document lives: root files, the `docs/` tree, decision records |
+| [review.md](./review.md) | How changes are reviewed: risk tiers, review layers, findings, responses, merging |
 
 ## Where these come from
 
 The verb rules generalize `S-0013-baseline-task-vocabulary` from the
 development repository, with its monorepo details (moon, Tauri, file counts)
-removed. The `sdlc.yaml` schema itself is documented in the `sdlc` plugin at
+removed. The review standard builds on that repository's
+`S-0017-code-review-rubric` and `S-0018-review-response-policy`. The `sdlc.yaml` schema itself is documented in the `sdlc` plugin at
 `conventions/sdlc-yaml.md`. These standards say what the file should hold;
 that document says how the current CLI reads it.
