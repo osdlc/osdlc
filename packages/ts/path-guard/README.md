@@ -174,6 +174,7 @@ take POSIX paths on every platform. They ship in the browser-safe
   `guard.contains`, which reads Windows paths.
 - `absolute(path, cwd)`: `path` joined onto `cwd` when relative, then folded:
   `.` dropped, each `..` removed with the component before it.
+- In all four, `/` is the only separator and `\` is part of a name.
 - `toRelative(root, abs)`: an absolute path under `root` as a root-relative one
   with `/` separators. It throws `not_under_root` when `abs` is not under
   `root`, and `parent_segment` when the relative part holds a `..`.
@@ -320,7 +321,10 @@ Limits on Windows:
 - A drive letter matches in any case, but the names after it are compared as
   written. A missing path spelled in another case than its root is refused.
 - The `lexical` functions take POSIX paths only, on every platform. They are
-  text checks, and they ship in the browser-safe entry.
+  text checks, and they ship in the browser-safe entry. In them `\` is part of
+  a name, not a separator, so `lexical.isUnder('/v', '/v/..\\..\\etc')` is
+  `true`, while Windows reads that path as outside `/v`. Windows callers use
+  the guard, such as `nodeGuard.contains`, which reads Windows paths.
 
 ## Security
 
