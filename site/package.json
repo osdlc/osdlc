@@ -1,0 +1,22 @@
+{
+  "name": "osdlc-site",
+  "private": true,
+  "description": "The osdlc documentation site and blog, published to GitHub Pages.",
+  "type": "module",
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "sync": "node scripts/sync-standards.mjs",
+    "dev": "pnpm run sync && astro dev",
+    "build": "pnpm run sync && astro build",
+    "preview": "astro preview",
+    "check": "pnpm run sync && astro check"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "0.42.5",
+    "astro": "7.3.5",
+    "starlight-blog": "0.30.0"
+  }
+}
