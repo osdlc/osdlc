@@ -1,0 +1,22 @@
+{
+  // Typechecks the source, tests/ and examples/. The build has its own include.
+  "extends": "@osdlc/tsconfig/node-lib",
+  "compilerOptions": {
+    // The package maps its own name to the source, for tsc and (in
+    // vitest.config.ts) for the tests, so examples/ run before a build.
+    "paths": {
+      "@osdlc/cli-tool": ["./index.ts"],
+      "@osdlc/cli-tool/devlink": ["./devlink/index.ts"],
+      "@osdlc/cli-tool/trust": ["./trust/index.ts"]
+    }
+  },
+  "include": [
+    "*.ts",
+    "devlink/*.ts",
+    "trust/*.ts",
+    "tests/*.ts",
+    "devlink/tests/*.ts",
+    "trust/tests/*.ts",
+    "examples/*.ts"
+  ]
+}

@@ -1,0 +1,89 @@
+{
+  "name": "@osdlc/cli-tool",
+  "version": "0.3.0",
+  "description": "What a standalone CLI needs before it does anything of its own: an injectable stdout/stderr seam, one exit-code rule, flags declared once so the parser and the help text cannot disagree, and running an installed tool from a development checkout.",
+  "license": "MIT OR Apache-2.0",
+  "author": "sksizer",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/osdlc/osdlc.git",
+    "directory": "packages/ts/cli-tool"
+  },
+  "homepage": "https://github.com/osdlc/osdlc/tree/main/packages/ts/cli-tool#readme",
+  "bugs": "https://github.com/osdlc/osdlc/issues",
+  "keywords": [
+    "cli",
+    "argv",
+    "commander",
+    "dev-link",
+    "launcher",
+    "trust"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "bun": "./index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./devlink": {
+      "bun": "./devlink/index.ts",
+      "types": "./dist/devlink/index.d.ts",
+      "default": "./dist/devlink/index.js"
+    },
+    "./trust": {
+      "bun": "./trust/index.ts",
+      "types": "./dist/trust/index.d.ts",
+      "default": "./dist/trust/index.js"
+    }
+  },
+  "files": [
+    "dist/",
+    "*.ts",
+    "!vitest.config.ts",
+    "devlink/*.ts",
+    "devlink/README.md",
+    "trust/*.ts",
+    "trust/README.md",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE-MIT",
+    "LICENSE-APACHE",
+    "SECURITY.md",
+    "CONTRIBUTING.md"
+  ],
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "test": "vitest run",
+    "coverage": "vitest run --coverage",
+    "prepublishOnly": "npm run clean && npm run build",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "oxlint .",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit"
+  },
+  "dependencies": {
+    "@osdlc/config-layers": "workspace:^",
+    "@osdlc/etag-write": "workspace:^",
+    "@osdlc/path-guard": "workspace:^",
+    "commander": "^12.1.0"
+  },
+  "devDependencies": {
+    "@osdlc/prettier-config": "workspace:^",
+    "@osdlc/tsconfig": "workspace:^",
+    "@types/node": "^26.1.0",
+    "@vitest/coverage-v8": "^5.0.5",
+    "oxlint": "^1.65.0",
+    "prettier": "3.9.6",
+    "typescript": "~6.0.3",
+    "vitest": "^5.0.5"
+  }
+}
