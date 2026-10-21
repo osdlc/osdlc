@@ -44,24 +44,25 @@ budget, an empty root and a `to_relative` miss. The crate has no `is_under`.
    requires.
 7. Refuse Windows names as D-06's Windows names section says. Add the
    `PathError` variants `ReservedName` and `AlternateStream`, the
-   `PathWarning` and `PathWarningKind` types, `Guard::with_warning_handler`,
-   `lexical::validate_relative_warn` and `lexical::validate_relative_for`. The
-   default platform is `cfg!(windows)`. The crate writes nothing to the
-   console.
+   `PathWarning` and `PathWarningKind` types, `lexical::windows_names` and
+   `Guard::with_warning_handler`. The handler is `Fn(&PathWarning) + Send +
+Sync + 'static`, stored in an `Arc`, so `Guard` stays `Clone`, `Send` and
+   `Sync`. `lexical` reads no platform. `Guard` refuses on `cfg!(windows)`.
+   The crate writes nothing to the console. Use Microsoft's reserved-name list
+   as D-06 gives it.
 
 ## Acceptance criteria
 
 - [ ] The crate version is 0.3.0.
 - [ ] The `lexical` module and `Guard` exist as D-06's target table shows.
-- [ ] `PathError` has the four new variants and stays `#[non_exhaustive]`.
+- [ ] `PathError` has the six new variants (`Unresolvable`, `EmptyRoot`, `NotUnderRoot`, `NotAbsolute`, `ReservedName`, `AlternateStream`) and stays `#[non_exhaustive]`.
 - [ ] Every 0.2 root function is removed, and no `#[deprecated]` item
       remains in the crate.
-- [ ] On Windows, `validate_relative` refuses reserved device names (case
-      insensitive, with or without an extension, with trailing dots or
-      spaces) as `ReservedName` and `name:stream` segments as
-      `AlternateStream`. On other platforms it accepts them and calls the
-      warning handler. Tests cover both platforms through
-      `validate_relative_for`.
+- [ ] `lexical::windows_names` returns a warning for each reserved name and
+      stream, on every host. `lexical::validate_relative` is unchanged.
+- [ ] On Windows, `Guard::resolve` refuses a reserved name as `ReservedName`
+      and a stream as `AlternateStream`. On other platforms it accepts them
+      and calls the warning handler. A test shows `resolve` fires the handler.
 - [ ] With no handler set, nothing is printed.
 - [ ] The parity suite passes against the 0.3.0 fixture
       ([T-06](T-06-parity-fixture-0-3-0.md)).

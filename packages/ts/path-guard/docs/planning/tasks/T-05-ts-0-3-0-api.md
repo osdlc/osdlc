@@ -54,12 +54,13 @@ relative argument.
    the
    [no-legacy-APIs principle](../../../../../README.md#breaking-changes)
    requires.
-8. Refuse Windows names as D-06's Windows names section says. Add the kinds
+8. Handle Windows names as D-06's Windows names section says. Add the kinds
    `reserved_name` and `alternate_stream`, the `PathWarning` type, and an
-   `onWarning` option on `lexical.validateRelative` and on `PathGuard`. The
-   `windows` option defaults to `globalThis.process?.platform === 'win32'`,
-   so `./lexical` still imports no `node:` module. The package writes nothing
-   to the console.
+   `onWarning` option on `lexical.validateRelative` and on `PathGuard`.
+   `lexical` reads no platform and never refuses these names. `PathGuard`
+   refuses them on Windows, using `node:path` for the platform. The package
+   writes nothing to the console. Use Microsoft's reserved-name list as D-06
+   gives it.
 
 ## Acceptance criteria
 
@@ -74,11 +75,11 @@ relative argument.
 - [ ] The smoke test imports every entry from the packed tarball.
 - [ ] The README, TSDoc and CHANGELOG describe the new shape, each removed or
       moved export and its replacement, and name the Rust twin version.
-- [ ] On Windows, `validateRelative` throws `reserved_name` for a reserved
-      device name (case insensitive, with or without an extension, with
-      trailing dots or spaces) and `alternate_stream` for a `name:stream`
-      segment. On other platforms it accepts them and calls `onWarning`.
-      Tests cover both platforms through the `windows` option.
+- [ ] `lexical.validateRelative` calls `onWarning` for each reserved name and
+      stream, on every host, and never throws for them.
+- [ ] On Windows, `PathGuard.resolve` throws `reserved_name` or
+      `alternate_stream`. On other platforms it accepts them and calls
+      `onWarning`. A test shows `resolve` fires the callback.
 - [ ] With no `onWarning`, nothing is printed.
 - [ ] No `@deprecated` export remains in the package.
 - [ ] The CHANGELOG names each behaviour change for a kept name: `isUnder`

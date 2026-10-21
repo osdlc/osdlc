@@ -33,3 +33,9 @@ Declined or deferred for now. Each names the decision that says why.
   [D-01](decisions/D-01-first-release-api-review.md).
 - Binary `input` for `raw` and `rawChecked`: command-seam takes `input` as a
   string. See [D-01](decisions/D-01-first-release-api-review.md).
+- Remove the deprecated `remote()` alias in the next minor release. The
+  [no-legacy-APIs rule](../../../../README.md#breaking-changes) allows no
+  deprecated alias across a breaking version, and the README's "removed at 1.0"
+  line must change with it. Unless the owner records an override that says why
+  and when it goes, the change lists `remote()` and its replacement `remotes()`
+  in the release notes.
