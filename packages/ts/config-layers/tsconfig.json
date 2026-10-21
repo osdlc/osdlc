@@ -6,8 +6,14 @@
     // condition. Map the package's own name to the source instead, for tsc and
     // (in vitest.config.ts) for the tests, so examples/ and the README blocks
     // run before a build.
+    "customConditions": ["bun"],
+    // The sibling packages are in this workspace. etag-write and gfm-table
+    // export their source under `bun`; tiered-dirs and yaml-splice do not, so
+    // they are mapped here. A typecheck then needs no sibling `dist/`.
     "paths": {
-      "@osdlc/config-layers": ["./index.ts"]
+      "@osdlc/config-layers": ["./index.ts"],
+      "@osdlc/tiered-dirs": ["../tiered-dirs/index.ts"],
+      "@osdlc/yaml-splice": ["../yaml-splice/index.ts"]
     }
   },
   "include": ["*.ts", "tests/*.ts", "examples/*.ts", "vitest.config.ts"]

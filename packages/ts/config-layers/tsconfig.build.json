@@ -5,6 +5,9 @@
   "compilerOptions": {
     "rootDir": ".",
     "types": ["node"],
+    // The build resolves the siblings through their built `dist/`, as a consumer does.
+    "customConditions": null,
+    "paths": null,
     // The sources are not published, so a declaration map would point at nothing.
     "declarationMap": false
   },
