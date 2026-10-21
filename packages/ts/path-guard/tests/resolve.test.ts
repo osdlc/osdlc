@@ -325,24 +325,25 @@ describe('contains', () => {
   })
 
   // A ratio, not a wall-clock bound, so a busy machine slows both runs alike. Four times the
-  // pairs costs about four times the time when linear, and sixteen times when quadratic.
+  // pairs costs about four times the time when linear, and sixteen times when quadratic. The
+  // bound sits between the two, with room for CI noise; the call count is the exact check.
   test('folds `zz/..` pairs in linear calls and time', { timeout: 120_000 }, () => {
-    /** Fastest of three runs over `pairs` pairs, and the calls one run spends. */
+    /** Fastest of five runs over `pairs` pairs, and the calls one run spends. */
     const fold = (pairs: number) => {
       const fs = counting()
       const inner = `${tmp}/${'zz/../'.repeat(pairs)}out`
       let best = Infinity
-      for (let run = 0; run < 3; run++) {
+      for (let run = 0; run < 5; run++) {
         const started = performance.now()
         expect(contains(tmp, inner, fs)).toBe(true)
         best = Math.min(best, performance.now() - started)
       }
-      return { ms: best, calls: fs.calls / 3 }
+      return { ms: best, calls: fs.calls / 5 }
     }
     fold(500)
     const n = 2500
     const [small, large] = [fold(n), fold(4 * n)]
-    expect(large.ms / small.ms).toBeLessThan(8)
+    expect(large.ms / small.ms).toBeLessThan(12)
     expect(large.calls).toBeLessThan(2 * 4 * n + 64)
   })
 
