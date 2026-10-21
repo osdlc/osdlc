@@ -41,8 +41,12 @@ relative argument.
    `realPath`. The walk in `resolve.ts` keeps its logic and moves behind the
    guard. It still uses `node:path` for the platform's path rules.
 3. Refuse relative input as D-06's Absolute input section lists: an empty
-   root throws `empty_root`, any other relative argument throws
-   `not_absolute`.
+   root throws `empty_root`, any other relative argument, an empty one
+   included, throws `not_absolute`. The guard judges absolute as Rust's
+   `Path::is_absolute` does: on Windows a path needs a drive or UNC prefix and
+   a root, so `/v` and `\v` are `not_absolute`. Do not use
+   `win32.isAbsolute`, which accepts them. `lexical` reads POSIX strings on
+   every host.
 4. Add `node.ts` with `nodeResolver`, `nodeGuard` and the race-checked file
    helpers from `contained.ts`. Add `./node` to `exports`.
 5. Make `.` import no `node:fs`. It may import `node:path`.
@@ -78,8 +82,8 @@ relative argument.
 - [ ] `lexical.validateRelative` calls `onWarning` for each reserved name and
       stream, on every host, and never throws for them.
 - [ ] On Windows, `PathGuard.resolve` throws `reserved_name` or
-      `alternate_stream`. On other platforms it accepts them and calls
-      `onWarning`. A test shows `resolve` fires the callback.
+      `alternate_stream` and does not call `onWarning`. On other platforms it
+      accepts them and calls `onWarning`. A test shows `resolve` fires the callback.
 - [ ] With no `onWarning`, nothing is printed.
 - [ ] No `@deprecated` export remains in the package.
 - [ ] The CHANGELOG names each behaviour change for a kept name: `isUnder`

@@ -1,9 +1,10 @@
 {
   "_about": {
     "fixture": "Shared by the Rust crate and the TypeScript package. A case sets one outcome: `ok`, `error` (a PathError kind) or `expected` (a boolean). Keys that start with `_` are notes, not sections.",
+    "windows": "The guard's absolute needs a drive or UNC prefix and a root on Windows, so a `/v`-style root is `not_absolute` there. On Windows the runner maps the `/v`-style roots and paths of the guard sections (`resolve`, `resolve_windows_names`, `contains`) onto a real absolute root. Lexical sections (`validate_relative`, `windows_names`, `absolute`, `is_under`, `to_relative`) are POSIX strings on every host.",
     "windows_names": "lexical: the warnings `lexical.validateRelative` sends to `onWarning` (Rust: `lexical::windows_names` returns), in order, on every host. `error` is the kind `validate_relative` refuses the input with. Such input gives no warning.",
     "resolve": "`guard.resolve(root, input)` under a resolver for which no path exists.",
-    "resolve_windows_names": "`guard.resolve(root, input)` under an absolute root the runner picks for its host, with a resolver for which no path exists. The runner checks the column for its host: `windows`, or `other` for every other platform. `ok` is the joined path below the root, with `/` separators. `warnings` are the calls to the guard's warning handler, in order.",
+    "resolve_windows_names": "`guard.resolve(root, input)` under an absolute root the runner picks for its host, with a resolver for which no path exists. The runner checks the column for its host: `windows`, or `other` for every other platform. `ok` is the joined path below the root, with `/` separators. `warnings` are the calls to the guard's warning handler, in order. On Windows the guard calls no handler.",
     "contains": "`guard.contains(outer, inner)` under a resolver for which no path exists. `expected`, or `error` for a refused argument.",
     "absolute": "`lexical.absolute(input, cwd)`. POSIX paths on every host.",
     "is_under": "`lexical.isUnder(root, input)`. POSIX paths on every host.",

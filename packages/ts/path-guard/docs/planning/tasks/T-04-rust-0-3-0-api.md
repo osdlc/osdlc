@@ -33,7 +33,10 @@ budget, an empty root and a `to_relative` miss. The crate has no `is_under`.
    `resolve`, `contains` (returns `Result<bool, PathError>`) and `real_path`
    (returns `Result<PathBuf, PathError>`).
 4. Refuse relative input as D-06's Absolute input section lists: an empty
-   root is `EmptyRoot`, any other relative argument is `NotAbsolute`.
+   root is `EmptyRoot`, any other relative argument, an empty one included,
+   is `NotAbsolute`. `lexical` judges absolute as a POSIX string (a leading
+   `/`) on every host, not with `Path::is_absolute`. The guard uses
+   `Path::is_absolute`, so `/v` is `NotAbsolute` on Windows.
 5. Add the `PathError` variants `Unresolvable`, `EmptyRoot`, `NotUnderRoot`
    and `NotAbsolute`. Return each where D-06 says.
 6. Remove `validate_relative`, `to_relative`, `lexical_absolute`,
@@ -64,7 +67,8 @@ budget, an empty root and a `to_relative` miss. The crate has no `is_under`.
       stream, on every host. `lexical::validate_relative` is unchanged.
 - [ ] On Windows, `Guard::resolve` refuses a reserved name as `ReservedName`
       and a stream as `AlternateStream`. On other platforms it accepts them
-      and calls the warning handler. A test shows `resolve` fires the handler.
+      and calls the warning handler. On Windows the handler is not called.
+      A test shows `resolve` fires the handler.
 - [ ] With no handler set, nothing is printed.
 - [ ] The parity suite passes against the 0.3.0 fixture
       ([T-06](T-06-parity-fixture-0-3-0.md)).
