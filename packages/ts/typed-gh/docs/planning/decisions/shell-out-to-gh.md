@@ -35,4 +35,4 @@ created: 2026-10-19
 - The package depends on `gh`'s flags and JSON field names, not on a stable
   HTTP API. A new `gh` can change them.
 - The repository a call acts on is the one `gh` resolves from the working
-  directory. See [SECURITY.md](../../SECURITY.md).
+  directory. See [SECURITY.md](../../../SECURITY.md).

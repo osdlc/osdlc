@@ -330,7 +330,7 @@ GitHub default.
 
 From the author's knowledge, read on 2026-10-20 and not re-checked against
 current docs. The design record,
-[D-0001](docs/decisions/D-0001-engine-hosts-and-one-judgement-seam.md), has the
+[D-0001](docs/planning/decisions/D-0001-engine-hosts-and-one-judgement-seam.md), has the
 full table.
 
 - GitHub "Update branch" merges or rebases the base into one PR from the web

@@ -72,4 +72,4 @@ version and writes the CHANGELOG from the pending changesets. See
   call.
 - Add a changeset for a change users can see. See above.
 - Record a design choice in
-  [`docs/decisions/`](https://github.com/osdlc/osdlc/tree/main/packages/ts/typed-gh/docs/decisions).
+  [`docs/planning/decisions/`](https://github.com/osdlc/osdlc/tree/main/packages/ts/typed-gh/docs/planning/decisions).

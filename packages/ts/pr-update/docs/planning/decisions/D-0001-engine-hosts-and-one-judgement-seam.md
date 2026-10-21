@@ -200,7 +200,7 @@ explain.
   supports (`opencode`, `copilot`, `qwen`, `droid`, `agy`, `dsh`) costs an
   enum value. Gemini CLI first needs an adapter in agent-call.
 - Choosing the agent, model and effort through routing profiles rather than
-  a fixed preset: backlog B-0001 (`docs/backlog/`).
+  a fixed preset: backlog B-0001 (`docs/planning/backlog/`).
 - Reading a shared project config file. The owner expects one
   such file to become a standard place for tools to hang their config off
   (2026-10-20). The binary would then read its `pr_update:` block from it
