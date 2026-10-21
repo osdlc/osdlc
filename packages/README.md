@@ -83,9 +83,11 @@ that half moves here. Twins keep semantic parity, not literal parity.
 version to the next, a breaking release removes the old API. It keeps no
 deprecated wrappers, aliases or re-exports for the old names. This holds for
 TypeScript and Rust. Callers move once, in the release that breaks them. The
-CHANGELOG lists each removed or renamed item and what replaces it. A library
-keeps a legacy API only when the owner decides so for that release, and that
-decision says why and when the legacy API goes.
+release notes list each removed or renamed item and what replaces it. In
+TypeScript the release notes are the changeset summary, which becomes the
+CHANGELOG. In Rust they are the hand-written CHANGELOG section for the
+version. A library keeps a legacy API only when the owner decides so for that
+release, and that decision says why and when the legacy API goes.
 
 ## Where changes are made
 

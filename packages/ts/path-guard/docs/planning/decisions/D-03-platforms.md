@@ -19,8 +19,9 @@ created: 2026-10-19
   `realpathSync.native`. The Rust crate folds `..` the same way on Windows.
 - `toRelative` and `isUnder` take POSIX paths on every platform.
 - The README lists the Windows limits: names after the root are compared as
-  written, and the lexical check does not refuse device names or alternate
-  data streams.
+  written, and, in 0.2.x, the lexical check does not refuse device names or
+  alternate data streams. [D-06](D-06-api-makes-the-filesystem-visible.md)
+  changes that for the guard in 0.3.0.
 
 ## Why
 
@@ -38,6 +39,6 @@ created: 2026-10-19
 - The parity fixture pins the POSIX rule. On Windows, a fixture case with a
   `..` on disk is checked against where the file system puts the path instead
   of the fixture's answer, in both twins' suites.
-- Refusing device names or alternate data streams changes the lexical layer
-  of both twins. [D-06](D-06-api-makes-the-filesystem-visible.md) decides it
-  for 0.3.0: both twins refuse them on Windows and warn elsewhere.
+- Device names and alternate data streams are decided in
+  [D-06](D-06-api-makes-the-filesystem-visible.md) for 0.3.0: the guard
+  refuses them on Windows and warns elsewhere. `lexical` only warns.
