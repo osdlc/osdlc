@@ -194,30 +194,20 @@ review.
   on false must catch the error or pass absolute paths.
 - A caller that passes a relative root to `resolveInside` or `contains` today
   gets an answer based on cwd. In 0.3.0 the guard refuses it.
-- The deprecated Rust wrappers keep their 0.2 results, so a Rust caller sees
-  no change until it moves to the new items. It then sees the new kinds, and
+- The Rust free functions are removed in 0.3.0, as the TS flat exports are. A
+  Rust caller moves to the new items in one pass and sees the new kinds.
   `canonical_existing_prefix` callers that move to `Guard::real_path` get `..`
   folded as text where the walk gives up, instead of the path as written.
 - Every consumer that adopted 0.2.x migrates.
 
 ## Migration
 
-The Rust crate keeps its 0.2 root functions in 0.3.0 as `#[deprecated]`
-wrappers. Each keeps its 0.2 result exactly. All are removed in 0.4.0.
-
-| Wrapper                     | 0.3.0 behaviour                                                                                                            |
-| --------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `validate_relative`         | Same as `lexical::validate_relative`. The results did not change.                                                          |
-| `to_relative`               | Keeps 0.2: `Escapes` where the path is not under the root, `ParentSegment` for an empty root, and relative input accepted. |
-| `lexical_absolute`          | Keeps 0.2: reads cwd for a relative path.                                                                                  |
-| `canonical_existing_prefix` | Keeps 0.2: returns the path as written when the walk gives up, and accepts a relative path.                                |
-| `resolve`, `resolve_with`   | Keep 0.2: return `Escapes` where 0.3.0 says `Unresolvable` or `EmptyRoot`, and accept a relative root.                     |
-| `contains`, `contains_with` | Keep 0.2: return false for an empty or relative argument, and never return an error.                                       |
-
-The TS package drops the flat exports in 0.3.0 unless the open question below
-decides otherwise. Each CHANGELOG lists every removed or moved export and its
-replacement. After both twins publish, the dev monorepo moves its TS and Rust
-callers.
+Both twins drop the 0.2 API in 0.3.0. They keep no deprecated wrappers or
+flat exports, as the
+[no-legacy-APIs principle](../../../../../README.md#breaking-changes) requires.
+Each CHANGELOG lists every removed or moved item and its replacement. After
+both twins publish, the dev monorepo moves its TS and Rust callers in one
+pass.
 
 Tasks:
 
@@ -236,15 +226,7 @@ The owner answers these before code starts.
    streams? If yes, both twins refuse them in `validateRelative`, with a new
    error kind and fixture cases. [D-03](D-03-platforms.md) says this needs its
    own decision. A breaking release is the cheapest place for it.
-2. **Deprecated flat exports in TS.** Does the TS package keep the 0.2 flat
-   exports for one minor version, marked `@deprecated`, as the Rust crate
-   does? If yes, the ones that use `node:fs` live in `./node`:
-   `realpathOrSelf`, `resolveInside`, `tryResolveInside`, `contains`,
-   `canonicalExistingPrefix` and `nodeResolver`. The rest stay in `.`:
-   `validateRelative`, `toRelative`, `isInside` and `lexicalAbsolute`. A caller
-   of a moved export then changes one import path. Dropping them all is
-   simpler and makes callers move once.
-3. **Windows paths in the text check.** `isInside` reads `\` and drive letters
+2. **Windows paths in the text check.** `isInside` reads `\` and drive letters
    on Windows through `node:path`. `isUnder` and `lexical.absolute` take POSIX
    paths on every platform, because `./lexical` cannot ask which platform it
    runs on. Does the `lexical` namespace take a platform argument, or do

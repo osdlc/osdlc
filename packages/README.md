@@ -77,6 +77,16 @@ that half moves here. Twins keep semantic parity, not literal parity.
   [D-02](ts/tiered-dirs/docs/planning/decisions/D-02-version-line-and-stability.md)
   records.
 
+## Breaking changes
+
+**No legacy APIs across breaking versions.** Before 1.0, and from one major
+version to the next, a breaking release removes the old API. It keeps no
+deprecated wrappers, aliases or re-exports for the old names. This holds for
+TypeScript and Rust. Callers move once, in the release that breaks them. The
+CHANGELOG lists each removed or renamed item and what replaces it. A library
+keeps a legacy API only when the owner decides so for that release, and that
+decision says why and when the legacy API goes.
+
 ## Where changes are made
 
 Developed here, in this repository:

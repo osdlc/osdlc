@@ -50,7 +50,10 @@ relative argument.
    `not_absolute` to `PathErrorKind`. Throw each where D-06 says.
 7. Remove `isInside`, `realpathOrSelf`, `canonicalExistingPrefix`,
    `lexicalAbsolute`, `resolveInside`, `tryResolveInside` and the flat
-   `contains`, unless the owner keeps them as deprecated exports.
+   `contains`. Add no `@deprecated` export, alias or re-export for them, as
+   the
+   [no-legacy-APIs principle](../../../../../README.md#breaking-changes)
+   requires.
 8. Apply the owner's answers to D-06's open questions.
 
 ## Acceptance criteria
@@ -66,6 +69,7 @@ relative argument.
 - [ ] The smoke test imports every entry from the packed tarball.
 - [ ] The README, TSDoc and CHANGELOG describe the new shape, each removed or
       moved export and its replacement, and name the Rust twin version.
+- [ ] No `@deprecated` export remains in the package.
 - [ ] The CHANGELOG names each behaviour change for a kept name: `isUnder`
       throws `not_absolute` for a relative argument instead of returning
       false, and `toRelative` throws `empty_root`, `not_under_root` and
