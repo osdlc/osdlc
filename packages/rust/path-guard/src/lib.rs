@@ -110,8 +110,12 @@ pub enum PathError {
     #[error("path cannot be resolved: {0:?} follows too many links or spends the call budget")]
     Unresolvable(String),
     /// The root was the empty path, which would hold every path.
-    #[error("root is empty")]
-    EmptyRoot,
+    #[error("{argument} is empty")]
+    EmptyRoot {
+        /// The parameter that was empty: `root`, or `outer` for
+        /// [`Guard::contains`].
+        argument: &'static str,
+    },
     /// [`lexical::to_relative`]: the path does not start with the root, read
     /// as text. Holds the path and the root.
     #[error("path {0:?} is not under the root {1:?}")]

@@ -75,7 +75,10 @@ use std::path::Path;
 let guard = Guard::std();
 
 // An empty root and a relative root are refused before the path is read.
-assert_eq!(guard.resolve(Path::new(""), "a.md"), Err(PathError::EmptyRoot));
+assert_eq!(
+    guard.resolve(Path::new(""), "a.md"),
+    Err(PathError::EmptyRoot { argument: "root" })
+);
 assert!(matches!(
     guard.resolve(Path::new("data"), "a.md"),
     Err(PathError::NotAbsolute { argument: "root", .. })
@@ -98,7 +101,7 @@ assert_eq!(lexical::to_relative(root, &abs).unwrap(), "a.md");
 | ----------------- | ------------------------------------------------------------------------------- |
 | `Escapes`         | Proved outside the root                                                         |
 | `Unresolvable`    | More than `MAX_LINK_HOPS` (40) links, such as a loop, or the call budget spent  |
-| `EmptyRoot`       | The root is the empty path                                                      |
+| `EmptyRoot`       | The root is the empty path. `argument` names which one.                         |
 | `NotUnderRoot`    | `lexical::to_relative`: the path does not start with the root                   |
 | `NotAbsolute`     | A path argument is relative or empty. `argument` names which one.               |
 | `ReservedName`    | On Windows, a segment is a device name such as `NUL`. The guard refuses it.     |
