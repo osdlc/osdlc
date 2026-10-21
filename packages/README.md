@@ -126,6 +126,9 @@ Developed here, in this repository:
 - `packages/ts/detect-harness` (`@osdlc/detect-harness` on npm, finds the
   coding-agent harnesses on a machine and in a project and reads what each has
   configured; read-only, with secrets redacted)
+- `packages/ts/config-layers` (`@osdlc/config-layers` on npm, a CLI tool's
+  project and machine config files and the check a command runs before it
+  starts; the TypeScript twin of the `config-layers` crate)
 
 The development repository will take each TypeScript library from npm, like
 any other consumer. Today it still keeps its own copies. Open issues and pull

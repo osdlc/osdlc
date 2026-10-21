@@ -1,0 +1,356 @@
+/**
+ * Schema-side introspection of a tool's config keys: the read model behind a
+ * `config list|explain` command and the generated reference.
+ *
+ * Everything is derived from the tool's config schema and its per-key
+ * `.meta()` ({@link readConfigMeta}) at call time; nothing here names a key, so
+ * a new or changed key flows into every surface that reads it without an edit.
+ * Functions take the schema's top-level `shape` as an argument; the tool binds
+ * its own schema.
+ *
+ *   - {@link resolveKeyPath} walks a dotted path (`server.limits.timeout`,
+ *     `hooks.build`) through object fields and record values to the field's
+ *     schema, returning it with its own description and its top-level
+ *     section's meta (nested fields inherit their section's).
+ *   - {@link describeShape} renders a field's value shape as a short type string
+ *     (`map<string, list<string>>`, `integer >= 0`, `'rebase' | 'merge'`)
+ *     from its JSON Schema (Zod 4's `z.toJSONSchema`).
+ *   - {@link defaultOf} is the value a field takes when unset: the schema's
+ *     own parse of `undefined`, so `.default()`, `.prefault()` and
+ *     `.optional()` all answer the same way the loader would.
+ *   - {@link nestedFields} lists an object field's children.
+ *   - {@link getIn} and {@link omitPath} read and prune a plain value by dotted
+ *     path, the pieces a value-source lookup is built from.
+ */
+
+import { z } from 'zod'
+
+import { closestMatches, didYouMean } from './did-you-mean.ts'
+import {
+  readConfigMeta,
+  type MetaTerms,
+  type MetaValidator,
+  type RegisteredKeyMeta,
+} from './meta.ts'
+import { kindOf, recordValueType, shapeOf, unwrapSchema } from './schema.ts'
+
+/**
+ * The parsed meta of every top-level key of `shape`, in declaration order,
+ * checked against `vocabulary` when one is given (`./vocabulary.ts`).
+ * @experimental
+ */
+export function topLevelKeys<T extends MetaTerms = MetaTerms>(
+  shape: Record<string, z.ZodType>,
+  vocabulary?: MetaValidator<T>,
+): Record<string, RegisteredKeyMeta<T>> {
+  return readConfigMeta(shape, vocabulary)
+}
+
+/**
+ * A resolved dotted key path.
+ *
+ * @experimental
+ */
+export interface ResolvedKey<T extends MetaTerms = MetaTerms> {
+  /** The path segments, e.g. `['server', 'limits', 'timeout']`. */
+  path: string[]
+  /** The top-level section the path starts in. */
+  section: string
+  /** The field's own schema (wrappers intact, so defaults resolve). */
+  schema: z.ZodType
+  /** The field's own `.describe()` text; empty when it carries none. */
+  description: string
+  /** The section's meta — a nested field inherits it. */
+  meta: RegisteredKeyMeta<T>
+}
+
+/**
+ * Split `a.b.c` into segments; rejects empty segments.
+ *
+ * @experimental
+ */
+export function splitKeyPath(key: string): string[] {
+  const path = key.trim().split('.')
+  if (path.length === 0 || path.some((s) => s === '')) {
+    throw new Error(`invalid key path '${key}': use dotted segments like 'server.limits.timeout'`)
+  }
+  return path
+}
+
+/**
+ * Options for resolving a dotted key path against a section schema.
+ * @experimental
+ */
+export interface ResolveKeyPathOptions<T extends MetaTerms = MetaTerms> {
+  /** The config file's name, used in {@link resolveKeyPath}'s messages, e.g. `tooly.yaml`. */
+  file?: string
+  /** The vocabulary the section meta is checked against and typed by. */
+  vocabulary?: MetaValidator<T>
+}
+
+/**
+ * Walk `path` through the config `shape`: object fields by name, record
+ * (`z.record`) values by any key. Throws an `Error` naming the first segment
+ * that does not resolve, with the closest keys when any are close and the
+ * keys that would have resolved otherwise.
+ * @experimental
+ */
+export function resolveKeyPath<T extends MetaTerms = MetaTerms>(
+  shape: Record<string, z.ZodType>,
+  path: readonly string[],
+  opts: ResolveKeyPathOptions<T> = {},
+): ResolvedKey<T> {
+  const metas = topLevelKeys(shape, opts.vocabulary)
+  const [section, ...rest] = path as [string, ...string[]]
+  const top = shape[section]
+  if (top === undefined) {
+    const hint = didYouMean(section, Object.keys(metas))
+    throw new Error(
+      `unknown ${opts.file ?? 'config'} key '${section}'` +
+        (hint !== null ? `; ${hint}` : ` (known: ${Object.keys(metas).join(', ')})`),
+    )
+  }
+  let schema: z.ZodType = top
+  const walked = [section]
+  for (const seg of rest) {
+    const kind = kindOf(schema as z.ZodTypeAny)
+    if (kind === 'object') {
+      const fields = shapeOf(unwrapSchema(schema as z.ZodTypeAny))
+      const child = fields[seg]
+      if (child === undefined) {
+        const known = Object.keys(fields)
+        const bad = [...walked, seg].join('.')
+        const prefix = `${walked.join('.')}.`
+        const close = closestMatches(seg, known)
+        const hint =
+          close.length > 0 ? `did you mean: ${close.map((k) => prefix + k).join(', ')}?` : null
+        throw new Error(
+          `unknown key '${bad}'` +
+            (hint !== null
+              ? `; ${hint}`
+              : known.length > 0
+                ? ` (known under ${walked.join('.')}: ${known.join(', ')})`
+                : ` (${walked.join('.')} defines no fields)`),
+        )
+      }
+      schema = child
+    } else if (kind === 'record') {
+      schema = recordValueType(schema as z.ZodTypeAny) as z.ZodType
+    } else {
+      throw new Error(`'${walked.join('.')}' is not a mapping, so '${seg}' cannot be under it`)
+    }
+    walked.push(seg)
+  }
+  return {
+    path: [...path],
+    section,
+    schema,
+    description: descriptionOf(schema),
+    meta: metas[section]!,
+  }
+}
+
+/**
+ * A schema's `.describe()` text, trimmed; empty when absent.
+ *
+ * @experimental
+ */
+export function descriptionOf(schema: z.ZodType): string {
+  return String(schema.description ?? '').trim()
+}
+
+/**
+ * The value a field takes when unset (`undefined` when it has none).
+ *
+ * @experimental
+ */
+export function defaultOf(schema: z.ZodType): unknown {
+  const r = schema.safeParse(undefined)
+  return r.success ? r.data : undefined
+}
+
+/**
+ * One child of an object-valued field.
+ *
+ * @experimental
+ */
+export interface NestedField {
+  name: string
+  description: string
+  shape: string
+  default: unknown
+}
+
+/**
+ * The children of an object-valued field; empty for any other shape.
+ *
+ * @experimental
+ */
+export function nestedFields(schema: z.ZodType): NestedField[] {
+  if (kindOf(schema as z.ZodTypeAny) !== 'object') return []
+  return Object.entries(shapeOf(unwrapSchema(schema as z.ZodTypeAny))).map(([name, child]) => ({
+    name,
+    description: descriptionOf(child),
+    shape: describeShape(child),
+    default: defaultOf(child),
+  }))
+}
+
+/** Keys `z.toJSONSchema` emits that describe prose/meta, not shape. */
+const NON_SHAPE_KEYS = new Set([
+  '$schema',
+  'description',
+  'default',
+  'category',
+  'consumers',
+  'layers',
+  'applies_via',
+  'runs_in',
+])
+
+/**
+ * The field's JSON Schema (input side, so defaults read as optional), with
+ * prose and meta stripped at every level so only the shape remains.
+ * @experimental
+ */
+export function jsonSchemaOf(schema: z.ZodType): Record<string, unknown> {
+  const raw = z.toJSONSchema(schema, { unrepresentable: 'any', io: 'input' }) as Record<
+    string,
+    unknown
+  >
+  return stripNonShape(raw) as Record<string, unknown>
+}
+
+function stripNonShape(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(stripNonShape)
+  if (v === null || typeof v !== 'object') return v
+  const out: Record<string, unknown> = {}
+  for (const [k, child] of Object.entries(v as Record<string, unknown>)) {
+    if (NON_SHAPE_KEYS.has(k)) continue
+    // `properties` maps field NAMES to schemas; never strip a name.
+    if (k === 'properties' && child !== null && typeof child === 'object') {
+      out[k] = Object.fromEntries(
+        Object.entries(child as Record<string, unknown>).map(([name, s]) => [
+          name,
+          stripNonShape(s),
+        ]),
+      )
+      continue
+    }
+    out[k] = stripNonShape(child)
+  }
+  return out
+}
+
+/**
+ * A short, human-readable type string for a field's value.
+ *
+ * @experimental
+ */
+export function describeShape(schema: z.ZodType): string {
+  return renderShape(jsonSchemaOf(schema))
+}
+
+function renderShape(s: Record<string, unknown>): string {
+  if (Array.isArray(s['enum'])) return (s['enum'] as unknown[]).map(literal).join(' | ')
+  if ('const' in s) return literal(s['const'])
+  const alts = (s['anyOf'] ?? s['oneOf']) as Record<string, unknown>[] | undefined
+  if (Array.isArray(alts)) {
+    const parts = [...new Set(alts.map(renderShape))]
+    return parts.join(' | ')
+  }
+  if (Array.isArray(s['allOf']))
+    return (s['allOf'] as Record<string, unknown>[]).map(renderShape).join(' & ')
+  const type = s['type']
+  if (Array.isArray(type)) return type.map((t) => renderShape({ ...s, type: t })).join(' | ')
+  switch (type) {
+    case 'string': {
+      if (typeof s['pattern'] === 'string') return `string /${s['pattern']}/`
+      if (typeof s['format'] === 'string') return `string (${s['format']})`
+      return 'string'
+    }
+    case 'integer':
+    case 'number':
+      return `${type}${bounds(s)}`
+    case 'boolean':
+    case 'null':
+      return type
+    case 'array': {
+      const items = s['items']
+      return items !== null && typeof items === 'object' && !Array.isArray(items)
+        ? `list<${renderShape(items as Record<string, unknown>)}>`
+        : 'list'
+    }
+    case 'object': {
+      const props = s['properties'] as Record<string, unknown> | undefined
+      const extra = s['additionalProperties']
+      if (props !== undefined && Object.keys(props).length > 0) return 'object'
+      const names = s['propertyNames'] as Record<string, unknown> | undefined
+      const keyShape = names !== undefined ? renderShape(names) : 'string'
+      if (extra !== null && typeof extra === 'object') {
+        return `map<${keyShape}, ${renderShape(extra as Record<string, unknown>)}>`
+      }
+      if (extra === false) return 'object (no fields)'
+      return `map<${keyShape}, any>`
+    }
+    default:
+      return 'any'
+  }
+}
+
+/** `.int()` alone emits the safe-integer range as bounds; that is not a constraint worth printing. */
+function bounds(s: Record<string, unknown>): string {
+  const parts: string[] = []
+  const min = s['minimum']
+  const max = s['maximum']
+  if (typeof min === 'number' && min !== Number.MIN_SAFE_INTEGER) parts.push(`>= ${min}`)
+  if (typeof s['exclusiveMinimum'] === 'number') parts.push(`> ${s['exclusiveMinimum']}`)
+  if (typeof max === 'number' && max !== Number.MAX_SAFE_INTEGER) parts.push(`<= ${max}`)
+  if (typeof s['exclusiveMaximum'] === 'number') parts.push(`< ${s['exclusiveMaximum']}`)
+  return parts.length > 0 ? ` ${parts.join(', ')}` : ''
+}
+
+function literal(v: unknown): string {
+  return typeof v === 'string' ? `'${v}'` : JSON.stringify(v)
+}
+
+/**
+ * Read a dotted path out of a plain value.
+ *
+ * @experimental
+ */
+export function getIn(value: unknown, path: readonly string[]): { found: boolean; value: unknown } {
+  let cur: unknown = value
+  for (const seg of path) {
+    if (cur === null || typeof cur !== 'object' || Array.isArray(cur) || !(seg in cur)) {
+      return { found: false, value: undefined }
+    }
+    cur = (cur as Record<string, unknown>)[seg]
+  }
+  return { found: true, value: cur }
+}
+
+/**
+ * A copy of `obj` with `path` removed, leaving every sibling key's data
+ * completely untouched (only the objects ON the path down to the removed key
+ * are shallow-copied). Used to exclude ONE key's value from a layer's raw
+ * data before that layer feeds an effective-config computation — the layer's
+ * other keys still need their full document. A no-op (returns `obj` as-is)
+ * when `path` does not resolve inside `obj`.
+ * @experimental
+ */
+export function omitPath(
+  obj: Record<string, unknown>,
+  path: readonly string[],
+): Record<string, unknown> {
+  const [head, ...rest] = path
+  if (head === undefined || !(head in obj)) return obj
+  if (rest.length === 0) {
+    const next = { ...obj }
+    delete next[head]
+    return next
+  }
+  const child = obj[head]
+  if (child === null || typeof child !== 'object' || Array.isArray(child)) return obj
+  return { ...obj, [head]: omitPath(child as Record<string, unknown>, rest) }
+}
