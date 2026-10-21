@@ -755,6 +755,45 @@ fn a_root_whose_real_path_is_not_absolute_holds_nothing() {
     assert_eq!(guard.real_path(&root).unwrap(), root);
 }
 
+/// A resolver that answers a real path with a `..` in it: `<tmp>/v/x` is
+/// `<tmp>/v/../etc`. The guard must not trust it.
+struct DotDotAnswer;
+
+impl Resolver for DotDotAnswer {
+    fn canonicalize(&self, p: &Path) -> io::Result<PathBuf> {
+        let root = std::env::temp_dir().join("v");
+        if root.starts_with(p) {
+            Ok(p.to_path_buf())
+        } else if p.starts_with(root.join("x")) {
+            let rest = p.strip_prefix(root.join("x")).unwrap();
+            Ok(root.join("../etc").join(rest))
+        } else {
+            Err(io::Error::from(io::ErrorKind::NotFound))
+        }
+    }
+
+    fn read_link(&self, _: &Path) -> io::Result<PathBuf> {
+        Err(io::Error::from(io::ErrorKind::NotFound))
+    }
+}
+
+#[test]
+fn a_real_path_with_a_dotdot_is_not_trusted() {
+    let guard = Guard::new(DotDotAnswer);
+    let root = std::env::temp_dir().join("v");
+    assert!(matches!(
+        guard.resolve(&root, "x"),
+        Err(PathError::Escapes(..))
+    ));
+    assert!(matches!(
+        guard.resolve(&root, "x/passwd"),
+        Err(PathError::Escapes(..))
+    ));
+    assert_eq!(guard.contains(&root, &root.join("x")), Ok(false));
+    // The text fold, never the resolver's `..`.
+    assert_eq!(guard.real_path(&root.join("x")).unwrap(), root.join("x"));
+}
+
 /// `/v` and `\v` have a root but no drive, so a guard on Windows reads them
 /// as relative.
 #[cfg(windows)]
