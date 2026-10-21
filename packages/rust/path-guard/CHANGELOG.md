@@ -149,4 +149,4 @@ First public release. Shares one conformance fixture with the TypeScript twin
 
 - `PathError` is `#[non_exhaustive]`, so a later release may add a variant
   without breaking callers.
-- Minimum supported Rust version 1.85, edition 2024.
+- Minimum supported Rust version 1.89, edition 2024.
