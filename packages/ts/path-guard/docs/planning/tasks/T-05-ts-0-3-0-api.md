@@ -54,7 +54,12 @@ relative argument.
    the
    [no-legacy-APIs principle](../../../../../README.md#breaking-changes)
    requires.
-8. Apply the owner's answers to D-06's open questions.
+8. Refuse Windows names as D-06's Windows names section says. Add the kinds
+   `reserved_name` and `alternate_stream`, the `PathWarning` type, and an
+   `onWarning` option on `lexical.validateRelative` and on `PathGuard`. The
+   `windows` option defaults to `globalThis.process?.platform === 'win32'`,
+   so `./lexical` still imports no `node:` module. The package writes nothing
+   to the console.
 
 ## Acceptance criteria
 
@@ -69,6 +74,12 @@ relative argument.
 - [ ] The smoke test imports every entry from the packed tarball.
 - [ ] The README, TSDoc and CHANGELOG describe the new shape, each removed or
       moved export and its replacement, and name the Rust twin version.
+- [ ] On Windows, `validateRelative` throws `reserved_name` for a reserved
+      device name (case insensitive, with or without an extension, with
+      trailing dots or spaces) and `alternate_stream` for a `name:stream`
+      segment. On other platforms it accepts them and calls `onWarning`.
+      Tests cover both platforms through the `windows` option.
+- [ ] With no `onWarning`, nothing is printed.
 - [ ] No `@deprecated` export remains in the package.
 - [ ] The CHANGELOG names each behaviour change for a kept name: `isUnder`
       throws `not_absolute` for a relative argument instead of returning

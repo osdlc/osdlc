@@ -42,7 +42,12 @@ budget, an empty root and a `to_relative` miss. The crate has no `is_under`.
    or re-export for them, as the
    [no-legacy-APIs principle](../../../../../README.md#breaking-changes)
    requires.
-7. Apply the owner's answers to D-06's open questions.
+7. Refuse Windows names as D-06's Windows names section says. Add the
+   `PathError` variants `ReservedName` and `AlternateStream`, the
+   `PathWarning` and `PathWarningKind` types, `Guard::with_warning_handler`,
+   `lexical::validate_relative_warn` and `lexical::validate_relative_for`. The
+   default platform is `cfg!(windows)`. The crate writes nothing to the
+   console.
 
 ## Acceptance criteria
 
@@ -51,6 +56,13 @@ budget, an empty root and a `to_relative` miss. The crate has no `is_under`.
 - [ ] `PathError` has the four new variants and stays `#[non_exhaustive]`.
 - [ ] Every 0.2 root function is removed, and no `#[deprecated]` item
       remains in the crate.
+- [ ] On Windows, `validate_relative` refuses reserved device names (case
+      insensitive, with or without an extension, with trailing dots or
+      spaces) as `ReservedName` and `name:stream` segments as
+      `AlternateStream`. On other platforms it accepts them and calls the
+      warning handler. Tests cover both platforms through
+      `validate_relative_for`.
+- [ ] With no handler set, nothing is printed.
 - [ ] The parity suite passes against the 0.3.0 fixture
       ([T-06](T-06-parity-fixture-0-3-0.md)).
 - [ ] `cargo semver-checks` expects the 0.3.0 bump.

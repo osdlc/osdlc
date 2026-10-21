@@ -38,5 +38,6 @@ created: 2026-10-19
 - The parity fixture pins the POSIX rule. On Windows, a fixture case with a
   `..` on disk is checked against where the file system puts the path instead
   of the fixture's answer, in both twins' suites.
-- Refusing device names or alternate data streams would change the lexical
-  layer of both twins. It needs its own decision.
+- Refusing device names or alternate data streams changes the lexical layer
+  of both twins. [D-06](D-06-api-makes-the-filesystem-visible.md) decides it
+  for 0.3.0: both twins refuse them on Windows and warn elsewhere.

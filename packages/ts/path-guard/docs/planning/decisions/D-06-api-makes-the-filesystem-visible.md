@@ -1,7 +1,7 @@
 ---
 id: D-06
 type: decision
-state: proposed
+state: accepted
 created: 2026-10-20
 ---
 
@@ -105,15 +105,18 @@ refuses: `empty_root` or `not_absolute`. `guard.tryResolve` returns null where
 
 ### Error kinds
 
-| Kind             | Meaning                                                                                      | In 0.2                                                           |
-| ---------------- | -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| `escapes`        | Proved outside the root                                                                      | same                                                             |
-| `unresolvable`   | More than `MAX_LINK_HOPS` links, or the call budget spent                                    | `escapes`                                                        |
-| `empty_root`     | The root is the empty path. Used by every function that takes a root, `toRelative` included. | `escapes`; `parent_segment` in `toRelative`; false in `contains` |
-| `not_under_root` | `toRelative`: the path does not start with the root as text                                  | `escapes`                                                        |
-| `not_absolute`   | An argument listed under Absolute input is relative                                          | resolved against cwd; false in `isUnder` and `contains`          |
+| Kind               | Meaning                                                                                      | In 0.2                                                           |
+| ------------------ | -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `escapes`          | Proved outside the root                                                                      | same                                                             |
+| `unresolvable`     | More than `MAX_LINK_HOPS` links, or the call budget spent                                    | `escapes`                                                        |
+| `empty_root`       | The root is the empty path. Used by every function that takes a root, `toRelative` included. | `escapes`; `parent_segment` in `toRelative`; false in `contains` |
+| `not_under_root`   | `toRelative`: the path does not start with the root as text                                  | `escapes`                                                        |
+| `not_absolute`     | An argument listed under Absolute input is relative                                          | resolved against cwd; false in `isUnder` and `contains`          |
+| `reserved_name`    | On Windows, a segment is a reserved device name                                              | accepted                                                         |
+| `alternate_stream` | On Windows, a segment has a `name:stream` alternate data stream                              | accepted                                                         |
 
-Rust gains the matching `PathError` variants. `PathError` stays
+Both Windows kinds are described under Windows names below. Rust gains the
+matching `PathError` variants (`ReservedName`, `AlternateStream`). `PathError` stays
 `#[non_exhaustive]`. The kinds arrive in both twins in 0.3.0, as
 [D-04](D-04-error-kind-growth.md) requires.
 
@@ -123,6 +126,57 @@ Rust gains the matching `PathError` variants. `PathError` stays
 | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | TypeScript | `package.json` `exports` has `.`, `./lexical` and `./node`. `.` exports `lexical`, `PathGuard`, `Resolver`, `PathError` and `MAX_LINK_HOPS`. It imports no `node:fs`; it may import `node:path`, which `PathGuard` uses for the platform's path rules. `./lexical` exports the `lexical` functions and `PathError`, imports no `node:` module, and stays browser-safe. `./node` adds `nodeGuard`, `nodeResolver` and the race-checked file helpers. |
 | Rust       | A `lexical` module, a `guard` module with `Guard<R: Resolver>`, and the error type at the crate root. `Resolver`, `StdResolver` and `MAX_LINK_HOPS` stay at the root.                                                                                                                                                                                                                                                                               |
+
+### Windows names
+
+On Windows, `validateRelative` (Rust: `validate_relative`) refuses two more
+shapes, in both twins:
+
+- A reserved device name, as `reserved_name`. The names are `NUL`, `CON`,
+  `PRN`, `AUX`, `COM1` to `COM9` and `LPT1` to `LPT9`. The match is case
+  insensitive. A segment matches when the text before its first `.` is one of
+  the names. So `nul`, `NUL.txt` and `com1.tar.gz` match. Windows also drops
+  trailing spaces and dots from a name, so `CON.`, `CON ` and `NUL .txt`
+  match too: the check trims trailing spaces and dots from that text first.
+  `CONIN$`, `CONOUT$` and the superscript digit forms of `COM` and `LPT` are
+  not in the list.
+- A `name:stream` alternate data stream, as `alternate_stream`. A segment
+  with a `:` matches. A drive letter is not a segment of a relative path, so
+  it is not affected.
+
+The kinds are separate because a caller may react differently. A device name
+can be renamed, while a stream is a different file attribute. Two small kinds
+cost no more than one, under [D-04](D-04-error-kind-growth.md).
+
+On other platforms these segments are ordinary names and are accepted. The
+caller is warned that the path means something else on Windows. The warning
+goes through an optional `onWarning` callback. It is silent by default. The
+library never writes to the console.
+
+A warning has a kind and the segment that caused it. Its kinds are the same
+strings as the error kinds.
+
+| Language   | Shape                                                                                                                                                                                           |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| TypeScript | `PathWarning { kind: 'reserved_name' \| 'alternate_stream'; segment: string }`. `lexical.validateRelative(raw, { onWarning })` and `new PathGuard(resolver, { onWarning })`.                    |
+| Rust       | `PathWarning { kind: PathWarningKind, segment: String }`, with `PathWarningKind` `#[non_exhaustive]`. `Guard::with_warning_handler(f)` and `lexical::validate_relative_warn(raw, &on_warning)`. |
+
+The guard runs `validateRelative` in `resolve` and `tryResolve`, so its
+callback sees the same warnings.
+
+The check needs the platform. `validateRelative` takes a `windows` option
+(Rust: `lexical::validate_relative_for(raw, Platform, &on_warning)`). Its
+default is the host platform: `globalThis.process?.platform === 'win32'` in
+TS, which reads no `node:` module and is false where `process` is absent, and
+`cfg!(windows)` in Rust. A fixture case names the platform it expects, so both
+platforms are tested on any host.
+
+### Windows paths in the text check
+
+`lexical` stays POSIX on every platform and takes no platform argument for
+containment. `lexical.isUnder` and `lexical.absolute` read `/` only. A Windows
+caller of `isInside` moves to `guard.contains`, which reads Windows paths
+through `node:path`.
 
 ### Names decided in this proposal
 
@@ -198,6 +252,11 @@ review.
   Rust caller moves to the new items in one pass and sees the new kinds.
   `canonical_existing_prefix` callers that move to `Guard::real_path` get `..`
   folded as text where the walk gives up, instead of the path as written.
+- A path with a device name or a stream is accepted today. On Windows it is
+  refused in 0.3.0. On other platforms it is accepted, and a caller that sets
+  `onWarning` hears about it.
+- A Windows caller of `isInside` moves to `guard.contains`. `lexical.isUnder`
+  does not read `\` or drive letters.
 - Every consumer that adopted 0.2.x migrates.
 
 ## Migration
@@ -215,19 +274,3 @@ Tasks:
 - [T-05](../tasks/T-05-ts-0-3-0-api.md): TypeScript 0.3.0 API
 - [T-06](../tasks/T-06-parity-fixture-0-3-0.md): Parity fixture for 0.3.0
 - [T-07](../tasks/T-07-terms-for-0-3-0.md): Terms for 0.3.0
-
-## Open questions
-
-The owner answers these before code starts.
-
-1. **Windows device names and streams.** Does 0.3.0 refuse Windows reserved
-   device names (`NUL`, `CON`, `PRN`, `AUX`, `COM1` to `COM9`, `LPT1` to
-   `LPT9`, with or without an extension) and `name:stream` alternate data
-   streams? If yes, both twins refuse them in `validateRelative`, with a new
-   error kind and fixture cases. [D-03](D-03-platforms.md) says this needs its
-   own decision. A breaking release is the cheapest place for it.
-2. **Windows paths in the text check.** `isInside` reads `\` and drive letters
-   on Windows through `node:path`. `isUnder` and `lexical.absolute` take POSIX
-   paths on every platform, because `./lexical` cannot ask which platform it
-   runs on. Does the `lexical` namespace take a platform argument, or do
-   Windows callers of `isInside` move to `guard.contains`?

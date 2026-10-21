@@ -35,7 +35,7 @@ package.
 - [D-05](decisions/D-05-kept-names-for-0-2.md): `isInside` and
   `realpathOrSelf` keep their names for 0.2.x
 - [D-06](decisions/D-06-api-makes-the-filesystem-visible.md): The 0.3.0 API
-  makes the filesystem visible (proposed)
+  makes the filesystem visible
 
 ## Open tasks
 

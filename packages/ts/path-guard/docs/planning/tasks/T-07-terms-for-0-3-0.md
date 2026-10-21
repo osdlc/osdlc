@@ -37,11 +37,16 @@ The terms name 0.2 exports and the 0.2 meaning of `escapes`:
    resolver.
 4. Add a term for a partial real path, or fold it into TM-07: what
    `guard.realPath` returns, with `..` folded as text when the walk gives up.
-5. Land the terms in the same release as [T-05](T-05-ts-0-3-0-api.md).
+5. Add a term for a reserved name: a Windows device name such as `NUL`,
+   refused on Windows as `reserved_name`. Add a term for a path warning: the
+   kind and segment sent to `onWarning` when a path is fine here and means
+   something else on Windows.
+6. Land the terms in the same release as [T-05](T-05-ts-0-3-0-api.md).
 
 ## Acceptance criteria
 
 - [ ] No term names a removed 0.2 export except as history.
 - [ ] TM-04 covers only a proved escape and points to the new kinds.
-- [ ] Terms exist for an unresolvable path and a guard.
+- [ ] Terms exist for an unresolvable path, a guard, a reserved name and a
+      path warning.
 - [ ] The planning README lists the new terms.
