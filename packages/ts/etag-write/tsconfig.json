@@ -1,9 +1,7 @@
 {
   // Typechecks the source, tests/ and examples/. The build has its own include.
-  "extends": "@osdlc/tsconfig/bun-lib",
-  "compilerOptions": {
-    // Resolve `@osdlc/etag-write` in examples/ to the source, as bun does.
-    "customConditions": ["bun"]
-  },
-  "include": ["index.ts", "tests/*.ts", "examples/*.ts"]
+  // The package's own name resolves through `exports` to the built `dist/`, so
+  // run the build before the typecheck.
+  "extends": "@osdlc/tsconfig/node-lib",
+  "include": ["index.ts", "tests/*.ts", "examples/*.ts", "vitest.config.ts"]
 }

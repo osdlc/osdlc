@@ -1,22 +1,8 @@
 {
-  // Typechecks the source and tests/. The build has its own include. The package ships
-  // no TypeScript source, so `exports` has no `bun` condition.
+  // Typechecks the source and tests/. The build has its own include.
+  // Workspace siblings and the package's own name resolve through `exports` to
+  // the built `dist/`, so run the build before the typecheck.
   "extends": "@osdlc/tsconfig/node-lib",
-  "compilerOptions": {
-    // @osdlc/command-seam is a workspace sibling that ships a `bun` condition
-    // pointing at its source, so a typecheck needs no `dist/` to exist.
-    "customConditions": ["bun"],
-    // @osdlc/frontmatter-lossless has no `bun` condition. Map it to its source
-    // for the same reason. The build config clears this and uses its `dist/`.
-    // The package ships no TypeScript source, so map its own name to the source for
-    // tsc and (in vitest.config.ts) for the tests, so examples/ run before a build.
-    "paths": {
-      "@osdlc/detect-harness": ["./index.ts"],
-      "@osdlc/detect-harness/locations": ["./locations.ts"],
-      "@osdlc/detect-harness/model": ["./model/index.ts"],
-      "@osdlc/frontmatter-lossless": ["../frontmatter-lossless/index.ts"]
-    }
-  },
   "include": ["**/*.ts"],
   "exclude": ["dist", "node_modules"]
 }

@@ -1,18 +1,7 @@
 {
   // Typechecks the source and tests. The build has its own include.
+  // Workspace siblings resolve through `exports` to their built `dist/`, so
+  // run the build before the typecheck.
   "extends": "@osdlc/tsconfig/node-lib",
-  "compilerOptions": {
-    // The siblings with a `bun` condition resolve to their source, so a
-    // typecheck needs no `dist/` to exist.
-    "customConditions": ["bun"],
-    // config-layers has no `bun` condition, so it is mapped to its source
-    // too, along with the sources it imports that ship none. The build
-    // config clears this and uses their `dist/`.
-    "paths": {
-      "@osdlc/config-layers": ["../config-layers/index.ts"],
-      "@osdlc/tiered-dirs": ["../tiered-dirs/index.ts"],
-      "@osdlc/yaml-splice": ["../yaml-splice/index.ts"]
-    }
-  },
   "include": ["src"]
 }

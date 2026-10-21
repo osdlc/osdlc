@@ -1,10 +1,7 @@
 {
   // Typechecks the sources, tests/ and examples/. The build has its own include.
-  "extends": "@osdlc/tsconfig/bun-lib",
-  "compilerOptions": {
-    "lib": ["ES2022"],
-    // Resolve `@osdlc/gfm-table` in examples/ to the sources, as bun does.
-    "customConditions": ["bun"]
-  },
-  "include": ["src/**/*.ts", "tests/**/*.ts", "examples/**/*.ts"]
+  // The package's own name resolves through `exports` to the built `dist/`, so
+  // run the build before the typecheck.
+  "extends": "@osdlc/tsconfig/node-lib",
+  "include": ["src/**/*.ts", "tests/**/*.ts", "examples/**/*.ts", "vitest.config.ts"]
 }

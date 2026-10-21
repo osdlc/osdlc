@@ -4,8 +4,6 @@
   "extends": ["./tsconfig.json", "@osdlc/tsconfig/build"],
   "compilerOptions": {
     "rootDir": ".",
-    // The built sibling, not its source: the source is outside rootDir.
-    "paths": {},
     "types": ["node"],
     // The sources are not published, so a declaration map would point at nothing.
     "declarationMap": false

@@ -3,10 +3,7 @@
   // `include` keeps tests out of dist/.
   "extends": ["./tsconfig.json", "@osdlc/tsconfig/build"],
   "compilerOptions": {
-    "rootDir": "src",
-    // The built siblings, not their source: the source is outside rootDir.
-    "customConditions": [],
-    "paths": {}
+    "rootDir": "src"
   },
   "include": ["src"],
   "exclude": ["src/**/*.test.ts"]

@@ -25,21 +25,16 @@
   "sideEffects": false,
   "exports": {
     ".": {
-      "bun": "./index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
     "./devlink": {
-      "bun": "./devlink/index.ts",
       "types": "./dist/devlink/index.d.ts",
       "default": "./dist/devlink/index.js"
     }
   },
   "files": [
     "dist/",
-    "*.ts",
-    "!vitest.config.ts",
-    "devlink/*.ts",
     "devlink/README.md",
     "README.md",
     "CHANGELOG.md",

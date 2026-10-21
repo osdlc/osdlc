@@ -1,6 +1,6 @@
 {
   // Emit config for the published dist/; the dev tsconfig.json stays noEmit.
-  // The source only, and no Bun types, so a Bun global in it fails the build.
+  // The source only, with Node types: the package uses node:fs.
   "extends": ["./tsconfig.json", "@osdlc/tsconfig/build"],
   "compilerOptions": {
     "rootDir": ".",

@@ -25,15 +25,12 @@
   "sideEffects": false,
   "exports": {
     ".": {
-      "bun": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     }
   },
   "files": [
     "dist/",
-    "src",
-    "!src/**/*.test.ts",
     "README.md",
     "CHANGELOG.md",
     "LICENSE-MIT",

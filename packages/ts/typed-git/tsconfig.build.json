@@ -6,5 +6,5 @@
   },
   // Tests and examples check the published package; they do not ship.
   "include": ["*.ts"],
-  "exclude": ["tests", "examples"]
+  "exclude": ["tests", "examples", "vitest.config.ts"]
 }

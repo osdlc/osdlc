@@ -1,6 +1,6 @@
 {
   // Emit config for the published dist/; the dev tsconfig.json stays noEmit.
-  // The source only, and no Node or Bun types, so a runtime global in it fails
+  // The source only, and no Node types, so a runtime global in it fails
   // the build: the package must stay plain ES2022.
   "extends": ["./tsconfig.json", "@osdlc/tsconfig/build"],
   "compilerOptions": {

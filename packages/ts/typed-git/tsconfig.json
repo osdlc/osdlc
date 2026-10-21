@@ -1,13 +1,7 @@
 {
+  // Typechecks the source, tests/ and examples/. The build has its own include.
+  // Workspace siblings and the package's own name resolve through `exports` to
+  // the built `dist/`, so run the build before the typecheck.
   "extends": "@osdlc/tsconfig/node-lib",
-  "compilerOptions": {
-    // Resolve workspace siblings through their "bun" export condition, i.e. to
-    // TypeScript source, so a typecheck needs no sibling `dist/` to exist.
-    // Orthogonal to the node-lib/bun-lib split — this package wants source
-    // resolution but not bun's globals — so it is stated here, not inherited.
-    "customConditions": ["bun"],
-    // Tests import bun:test.
-    "types": ["node", "bun"]
-  },
   "include": ["*.ts", "tests/**/*.ts", "examples/**/*.ts"]
 }

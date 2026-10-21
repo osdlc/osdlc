@@ -1,14 +1,7 @@
 {
   // Typechecks the source and tests/. The build has its own include.
+  // The package's own name resolves through `exports` to the built `dist/`, so
+  // run the build before the typecheck.
   "extends": "@osdlc/tsconfig/node-lib",
-  "compilerOptions": {
-    // `exports` points at dist/, so map the package's own names to the source
-    // for tsc and (in vitest.config.ts) for the tests.
-    "paths": {
-      "@osdlc/intersect": ["./index.ts"],
-      "@osdlc/intersect/segments": ["./segments/index.ts"],
-      "@osdlc/intersect/fs": ["./fs.ts"]
-    }
-  },
   "include": ["*.ts", "segments/*.ts", "tests/*.ts", "vitest.config.ts"]
 }

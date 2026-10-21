@@ -5,10 +5,7 @@
   "compilerOptions": {
     // rootDir is src/, so dist/ keeps its flat shape and the export map's paths
     // are unchanged by the move.
-    "rootDir": "src",
-    // The built siblings, not their source: the source is outside rootDir.
-    "customConditions": [],
-    "paths": {}
+    "rootDir": "src"
   },
   "include": ["src"],
   "exclude": ["src/**/*.test.ts"]
