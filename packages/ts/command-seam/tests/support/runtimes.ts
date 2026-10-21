@@ -4,7 +4,7 @@
  * need Bun skip when it is absent, so Bun is optional for contributors.
  */
 
-import { which } from '../../which.ts'
+import { which } from '../../src/which.ts'
 
 export const NODE = process.execPath
 

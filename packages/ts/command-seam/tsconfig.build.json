@@ -3,11 +3,10 @@
   // Sources only, with Node types. vitest.config.ts is not part of the package.
   "extends": ["./tsconfig.json", "@osdlc/tsconfig/build"],
   "compilerOptions": {
-    "rootDir": ".",
-    // The sources are not published, so a declaration map would point at nothing.
+    "rootDir": "src",
+    // src/ is not published, so a declaration map would point at nothing.
     "declarationMap": false,
     "types": ["node"]
   },
-  "include": ["*.ts"],
-  "exclude": ["vitest.config.ts"]
+  "include": ["src"]
 }

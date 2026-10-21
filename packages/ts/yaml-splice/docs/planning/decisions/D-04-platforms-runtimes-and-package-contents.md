@@ -35,7 +35,7 @@ created: 2026-10-17
 
 ## Consequences
 
-- In this repository, Vitest maps the package's own name to `index.ts`, so
+- In this repository, Vitest maps the package's own name to `src/index.ts`, so
   the examples and the README blocks run on the source. `tsconfig.json` has no
   `paths` or `customConditions`; the typecheck and `tests/corpus-dist.test.ts`
   need the build first.

@@ -10,11 +10,11 @@ import { join } from 'node:path'
 
 import { z } from 'zod'
 
-import { ConfigInvalidError } from '../config-error.ts'
-import { deprecatedKeysSet, deprecationMessage } from '../deprecation.ts'
-import { assembleConfig } from '../loader.ts'
-import { ConfigKeyMetaSchema } from '../meta.ts'
-import { defineConfigSection } from '../section.ts'
+import { ConfigInvalidError } from '../src/config-error.ts'
+import { deprecatedKeysSet, deprecationMessage } from '../src/deprecation.ts'
+import { assembleConfig } from '../src/loader.ts'
+import { ConfigKeyMetaSchema } from '../src/meta.ts'
+import { defineConfigSection } from '../src/section.ts'
 
 import { CONFIG_FILE, META } from './support.ts'
 

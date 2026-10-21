@@ -9,8 +9,8 @@ import {
   TieredDirsError,
   isVendorBundleId,
   rootedBaseDirs,
-} from '../index.ts'
-import type { BaseDirs, Dir, Tier } from '../index.ts'
+} from '../src/index.ts'
+import type { BaseDirs, Dir, Tier } from '../src/index.ts'
 
 const VENDOR = 'com.example'
 

@@ -11,7 +11,7 @@ import { expect, test } from 'vitest'
 import ts from 'typescript'
 
 const PACKAGE_DIR = join(import.meta.dirname, '..')
-const ENTRY = join(PACKAGE_DIR, 'index.ts')
+const ENTRY = join(PACKAGE_DIR, 'src', 'index.ts')
 
 function isExperimental(declarations: readonly ts.Declaration[] | undefined): boolean {
   return (declarations ?? []).some((d) =>

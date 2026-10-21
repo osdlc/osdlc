@@ -25,7 +25,7 @@ import {
   forceWithLeaseArg,
   type CommandResult,
   type CommandRunner,
-} from '../index.ts'
+} from '../src/index.ts'
 
 // ── fake-runner layer ───────────────────────────────────────────────────────
 

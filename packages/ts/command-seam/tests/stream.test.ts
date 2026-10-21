@@ -10,7 +10,7 @@
 
 import { describe, expect, test, vi } from 'vitest'
 
-import { streamRunner, type StreamResult, type StreamRunner } from '../index.ts'
+import { streamRunner, type StreamResult, type StreamRunner } from '../src/index.ts'
 
 const CWD = process.cwd()
 

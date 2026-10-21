@@ -7,9 +7,9 @@ import { expect, test } from 'vitest'
 
 import { ENTRY_POINTS, MANIFEST } from '../examples/support/scenarios.ts'
 
-test('every entry point has a source file at the root of the package', () => {
-  expect(ENTRY_POINTS.map((e) => e.file)).toContain('testing.ts')
-  for (const { file } of ENTRY_POINTS) expect(file).toMatch(/^[\w-]+\.ts$/)
+test('every entry point has a source file under src/', () => {
+  expect(ENTRY_POINTS.map((e) => e.file)).toContain('src/testing.ts')
+  for (const { file } of ENTRY_POINTS) expect(file).toMatch(/^src\/[\w-]+\.ts$/)
 })
 
 test('files ships SECURITY.md and CONTRIBUTING.md', () => {

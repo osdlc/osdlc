@@ -15,8 +15,8 @@ import {
   searchPrs,
   type CommandResult,
   type CommandRunOptions,
-} from '../index.ts'
-import { parsePrSearchHit, parseRepository } from '../parse.ts'
+} from '../src/index.ts'
+import { parsePrSearchHit, parseRepository } from '../src/parse.ts'
 
 const out = (body: unknown): CommandResult => ({
   exitCode: 0,

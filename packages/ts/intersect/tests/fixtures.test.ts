@@ -10,15 +10,15 @@
  * The `fs.*` namespace is DELIBERATELY skipped here (see the dispatch loop):
  * those cases need a materialized temp tree on disk, so they run only through
  * `tests/fs.test.ts`. Keeping them out of this harness also keeps it free of
- * the globber — this file never imports `../fs.ts` — so nothing here pulls
+ * the globber — this file never imports `../src/fs.ts` — so nothing here pulls
  * `tinyglobby`. fs cases are still schema-linted below like every other file.
  */
 import { describe, expect, test } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import * as path from '../index.ts'
-import * as segments from '../segments/index.ts'
+import * as path from '../src/index.ts'
+import * as segments from '../src/segments/index.ts'
 import {
   assertCaseFile,
   caseFileNames,
@@ -27,7 +27,7 @@ import {
   loadCaseFiles,
   type Case,
   type OpName,
-} from '../fixtures.ts'
+} from './fixtures.ts'
 
 /** Call the public API for `op` with the case's inputs. May return a value or a Promise. */
 function dispatch(op: OpName, c: Case): unknown {

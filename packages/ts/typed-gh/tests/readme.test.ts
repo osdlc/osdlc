@@ -38,7 +38,7 @@ function tsBlocks(): Block[] {
 /** Value and type names the package exports, taken from its entry point. */
 function exportedNames(program: ts.Program): { values: string[]; types: string[] } {
   const checker = program.getTypeChecker()
-  const entry = program.getSourceFile(join(PACKAGE_DIR, 'index.ts'))!
+  const entry = program.getSourceFile(join(PACKAGE_DIR, 'src', 'index.ts'))!
   const values: string[] = []
   const types: string[] = []
   for (const exported of checker.getExportsOfModule(checker.getSymbolAtLocation(entry)!)) {
@@ -71,7 +71,7 @@ test('the README has ts blocks to check', () => {
 
 test('every ts block in the README type-checks against the package', () => {
   const options = { ...compilerOptions(), noEmit: true, noUnusedLocals: false }
-  const base = ts.createProgram([join(PACKAGE_DIR, 'index.ts')], options)
+  const base = ts.createProgram([join(PACKAGE_DIR, 'src', 'index.ts')], options)
   const { values, types } = exportedNames(base)
 
   const sources = new Map<string, string>()
@@ -91,7 +91,7 @@ test('every ts block in the README type-checks against the package', () => {
       (l) => !own.has(l.split(' ')[2]?.replace(':', '') ?? ''),
     )
     sources.set(
-      join(PACKAGE_DIR, `readme-block-${n}.ts`),
+      join(PACKAGE_DIR, `src/readme-block-${n}.ts`),
       [
         ...imports,
         ...prelude,

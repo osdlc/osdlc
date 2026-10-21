@@ -16,8 +16,8 @@ import {
   spawnRunnerAsync,
   streamRunner,
   type StreamResult,
-} from '../index.ts'
-import { fromSpawnSync, syncStop } from '../sync.ts'
+} from '../src/index.ts'
+import { fromSpawnSync, syncStop } from '../src/sync.ts'
 
 const CWD = process.cwd()
 const MISSING = 'definitely-not-a-real-binary-reason'

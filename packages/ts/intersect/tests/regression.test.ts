@@ -13,8 +13,8 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
-import * as fs from '../fs.ts'
-import { intersects, matches, witness, type Options } from '../index.ts'
+import * as fs from '../src/fs.ts'
+import { intersects, matches, witness, type Options } from '../src/index.ts'
 
 /** Materialize `tree` (empty files) under a fresh temp dir, run `body`, then remove it. */
 async function withTree(

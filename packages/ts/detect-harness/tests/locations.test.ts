@@ -5,15 +5,15 @@
 import { describe, expect, test } from 'vitest'
 import { join, resolve } from 'node:path'
 
-import { current } from '../current.ts'
-import { BUILTIN_HARNESSES, HARNESS_ALIASES, harnessId } from '../harnesses.ts'
+import { current } from '../src/current.ts'
+import { BUILTIN_HARNESSES, HARNESS_ALIASES, harnessId } from '../src/harnesses.ts'
 import {
   LOCATIONS,
   resolveBase,
   resolveConfigDir,
   resolveLocations,
   resolveTemplate,
-} from '../locations.ts'
+} from '../src/locations.ts'
 
 const home = '/h'
 

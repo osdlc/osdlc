@@ -17,7 +17,7 @@ import {
   type ManagedProcessExit,
   type ManagedProcessHandle,
   type ManagedProcessRunner,
-} from '../index.ts'
+} from '../src/index.ts'
 
 const CWD = process.cwd()
 

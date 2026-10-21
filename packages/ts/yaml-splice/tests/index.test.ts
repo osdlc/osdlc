@@ -18,7 +18,7 @@ import {
   type EditErrorCode,
   type EditValue,
   type FieldEdit,
-} from '../index.ts'
+} from '../src/index.ts'
 // The corpus is the crate's; this suite reads it in place.
 import corpus from '../../../rust/yaml-splice/tests/fixtures/conformance.json'
 

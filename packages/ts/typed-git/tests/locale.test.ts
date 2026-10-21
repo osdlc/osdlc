@@ -18,8 +18,8 @@ import {
   type CommandResult,
   type CommandRunner,
   type CommandRunOptions,
-} from '../index.ts'
-import { IDENTITY, makeGitFixture } from '../testing.ts'
+} from '../src/index.ts'
+import { IDENTITY, makeGitFixture } from '../src/testing.ts'
 
 const OK: CommandResult = { exitCode: 0, stdout: '', stderr: '' }
 

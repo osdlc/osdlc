@@ -11,7 +11,7 @@ import {
   CommandFailed,
   mapFailed,
   mapFailedAsync,
-} from '../index.ts'
+} from '../src/index.ts'
 
 const failed = (): CommandFailed =>
   new CommandFailed(['git', 'x'], { exitCode: 1, stdout: 'out', stderr: 'err' })

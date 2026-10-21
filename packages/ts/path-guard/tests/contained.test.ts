@@ -9,7 +9,7 @@ import { hook, resetHooks } from './fs-hooks.ts'
 
 // After `fs-hooks.ts`, so the module under test loads the `node:fs/promises` mock.
 const { existingPathInside, openContainedFile, readContainedFile, realPathInside } =
-  await import('../contained.ts')
+  await import('../src/contained.ts')
 
 let root: string
 let contentDir: string

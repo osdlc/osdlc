@@ -22,8 +22,8 @@ import {
   streamRunner,
   type AsyncCommandRunner,
   type CommandRunner,
-} from '../index.ts'
-import { normalizeTimeout } from '../sync.ts'
+} from '../src/index.ts'
+import { normalizeTimeout } from '../src/sync.ts'
 
 const CWD = process.cwd()
 

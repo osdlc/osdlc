@@ -9,9 +9,9 @@ export default defineConfig({
     // The examples import the package by name; run them on the source, so they
     // need no build. The subpaths first, then the bare name.
     alias: [
-      { find: /^@osdlc\/typed-git\/client$/, replacement: src('./client.ts') },
-      { find: /^@osdlc\/typed-git\/testing$/, replacement: src('./testing.ts') },
-      { find: /^@osdlc\/typed-git$/, replacement: src('./index.ts') },
+      { find: /^@osdlc\/typed-git\/client$/, replacement: src('./src/client.ts') },
+      { find: /^@osdlc\/typed-git\/testing$/, replacement: src('./src/testing.ts') },
+      { find: /^@osdlc\/typed-git$/, replacement: src('./src/index.ts') },
     ],
   },
   test: {
@@ -20,8 +20,7 @@ export default defineConfig({
     include: ['tests/**/*.test.ts', 'examples/**/*.test.ts'],
     coverage: {
       provider: 'v8',
-      include: ['*.ts'],
-      exclude: ['vitest.config.ts'],
+      include: ['src/**/*.ts'],
       reporter: ['text'],
     },
   },

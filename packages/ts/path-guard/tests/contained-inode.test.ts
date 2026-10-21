@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { hook, resetHooks } from './fs-hooks.ts'
 
 // After `fs-hooks.ts`, so the module under test loads the `node:fs/promises` mock.
-const { readContainedFile } = await import('../contained.ts')
+const { readContainedFile } = await import('../src/contained.ts')
 
 let root: string
 let realContentDir: string

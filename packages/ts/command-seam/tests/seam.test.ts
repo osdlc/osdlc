@@ -25,7 +25,7 @@ import {
   spawnRunnerAsync,
   type CommandResult,
   type CommandRunner,
-} from '../index.ts'
+} from '../src/index.ts'
 import { gone, reap } from './support/procs.ts'
 
 const CWD = process.cwd()
@@ -590,7 +590,7 @@ describe('spawnRunnerAsync — stdin failure contract', () => {
         probe,
         [
           `import { writeFileSync } from "node:fs";`,
-          `import { spawnRunnerAsync } from ${JSON.stringify(join(import.meta.dirname, '../index.ts'))};`,
+          `import { spawnRunnerAsync } from ${JSON.stringify(join(import.meta.dirname, '../src/index.ts'))};`,
           `const r = await spawnRunnerAsync("sh").run(["-c", "exec 0<&-; sleep 0.3"], {`,
           `  cwd: process.cwd(),`,
           `  input: "x".repeat(4 * 1024 * 1024),`,
@@ -629,7 +629,7 @@ describe('spawnRunner — production pipe path', () => {
         probe,
         [
           `import { writeFileSync } from "node:fs";`,
-          `import { spawnRunner } from ${JSON.stringify(join(import.meta.dirname, '../index.ts'))};`,
+          `import { spawnRunner } from ${JSON.stringify(join(import.meta.dirname, '../src/index.ts'))};`,
           `const r = spawnRunner("definitely-not-a-real-binary-xyzzy").run([], { cwd: process.cwd() });`,
           `writeFileSync(${JSON.stringify(outFile)}, JSON.stringify(r));`,
         ].join('\n'),

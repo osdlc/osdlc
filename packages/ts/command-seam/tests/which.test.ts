@@ -8,7 +8,7 @@ import { join } from 'node:path'
 
 import { afterAll, describe, expect, test } from 'vitest'
 
-import { spawnRunner, which } from '../index.ts'
+import { spawnRunner, which } from '../src/index.ts'
 
 const root = realpathSync(mkdtempSync(join(tmpdir(), 'seam-which-')))
 afterAll(() => rmSync(root, { recursive: true, force: true }))

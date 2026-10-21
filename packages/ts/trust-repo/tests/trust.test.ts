@@ -19,7 +19,7 @@ import {
   trustStoreDir,
   TRUST_MARKER_DIR,
   withheldHint,
-} from '../index.ts'
+} from '../src/index.ts'
 
 const roots: string[] = []
 afterAll(async () => {

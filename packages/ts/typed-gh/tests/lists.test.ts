@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from 'vitest'
 
-import { issueList, labelList, prList, type CommandResult } from '../index.ts'
+import { issueList, labelList, prList, type CommandResult } from '../src/index.ts'
 
 const rows = (n: number): CommandResult => ({
   exitCode: 0,

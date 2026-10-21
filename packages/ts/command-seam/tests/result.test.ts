@@ -16,7 +16,7 @@ import {
   type CommandRunner,
   type ManagedProcessExit,
   type StreamResult,
-} from '../index.ts'
+} from '../src/index.ts'
 
 const res = (over: Partial<CommandResult>): CommandResult => ({
   exitCode: 0,

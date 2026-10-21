@@ -2,8 +2,8 @@
 
 import { describe, expect, test } from 'vitest'
 
-import { asAsync, ran, runJson, shellRunnerAsync, stopProcess } from '../index.ts'
-import { fakeNeverExited, fakeProcess, fakeRunner } from '../testing.ts'
+import { asAsync, ran, runJson, shellRunnerAsync, stopProcess } from '../src/index.ts'
+import { fakeNeverExited, fakeProcess, fakeRunner } from '../src/testing.ts'
 
 const cwd = '/repo'
 

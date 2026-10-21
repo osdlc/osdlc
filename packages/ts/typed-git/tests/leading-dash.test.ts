@@ -17,8 +17,8 @@ import {
   type AsyncCommandRunner,
   type CommandResult,
   type CommandRunner,
-} from '../index.ts'
-import { makeGitFixture } from '../testing.ts'
+} from '../src/index.ts'
+import { makeGitFixture } from '../src/testing.ts'
 
 const OK: CommandResult = { exitCode: 0, stdout: '', stderr: '' }
 
@@ -119,7 +119,7 @@ const MORE_CASES: Array<[string, unknown[]]> = [
  * (which calls `positional`) in `verbs.ts`.
  */
 function guardedVerbs(): Set<string> {
-  const source = readFileSync(new URL('../verbs.ts', import.meta.url), 'utf8')
+  const source = readFileSync(new URL('../src/verbs.ts', import.meta.url), 'utf8')
   const names = [
     ...source.matchAll(/\b(?:optionalP|p)ositional\(\s*'(\w+)'|\bconfigKey\(\s*'(\w+)'/g),
   ].map((m) => (m[1] ?? m[2])!)

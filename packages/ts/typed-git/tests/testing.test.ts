@@ -9,7 +9,12 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
-import { IDENTITY, makeBareAndWorker, makeGitFixture, makeOriginAndCheckout } from '../testing.ts'
+import {
+  IDENTITY,
+  makeBareAndWorker,
+  makeGitFixture,
+  makeOriginAndCheckout,
+} from '../src/testing.ts'
 
 describe('@osdlc/typed-git/testing', () => {
   test('makeGitFixture builds a repo the client can drive', () => {

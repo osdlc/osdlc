@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from 'vitest'
 
-import { HarnessModelSchema, capabilitiesOfKind, countResources } from '../model/schema.ts'
+import { HarnessModelSchema, capabilitiesOfKind, countResources } from '../src/model/schema.ts'
 
 describe('HarnessModel schema', () => {
   test('defaults every control-plane collection to empty', () => {

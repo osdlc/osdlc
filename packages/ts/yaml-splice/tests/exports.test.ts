@@ -11,7 +11,7 @@ import { expect, test } from 'vitest'
 import ts from 'typescript'
 
 const PACKAGE_DIR = join(import.meta.dirname, '..')
-const ENTRY = join(PACKAGE_DIR, 'index.ts')
+const ENTRY = join(PACKAGE_DIR, 'src', 'index.ts')
 const README = readFileSync(join(PACKAGE_DIR, 'README.md'), 'utf-8')
 const PACKAGE_NAME = (
   JSON.parse(readFileSync(join(PACKAGE_DIR, 'package.json'), 'utf-8')) as { name: string }

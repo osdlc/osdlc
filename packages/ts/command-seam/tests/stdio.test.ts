@@ -23,12 +23,12 @@ import { join } from 'node:path'
 
 import { afterAll, describe, expect, test, vi } from 'vitest'
 
-import { managedProcessRunner, streamRunner, type StdioOption } from '../index.ts'
+import { managedProcessRunner, streamRunner, type StdioOption } from '../src/index.ts'
 import { alive, reap } from './support/procs.ts'
 import { BUN, NODE } from './support/runtimes.ts'
 
 const CWD = process.cwd()
-const INDEX = join(import.meta.dirname, '../index.ts')
+const INDEX = join(import.meta.dirname, '../src/index.ts')
 
 const scratch = mkdtempSync(join(tmpdir(), 'seam-stdio-'))
 afterAll(() => rmSync(scratch, { recursive: true, force: true }))

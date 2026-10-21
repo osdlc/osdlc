@@ -20,7 +20,7 @@ merged there.
 
 The editing itself is the `yaml-splice` Rust crate, in `packages/rust/yaml-splice`.
 `packages/rust/yaml-splice-wasm` exposes it to JavaScript, and this package's
-`index.ts` is the typed wrapper over that. A change to how YAML is edited goes
+`src/index.ts` is the typed wrapper over that. A change to how YAML is edited goes
 into the crate, with a fixture in its conformance corpus
 (`packages/rust/yaml-splice/tests/fixtures/conformance.json`), which both the
 crate's tests and this package's tests run.

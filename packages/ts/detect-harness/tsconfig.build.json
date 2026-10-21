@@ -3,11 +3,10 @@
   // The source only, with Node types: the package uses node:fs, node:os and process.
   "extends": ["./tsconfig.json", "@osdlc/tsconfig/build"],
   "compilerOptions": {
-    "rootDir": ".",
+    "rootDir": "src",
     "types": ["node"],
-    // The sources are not published, so a declaration map would point at nothing.
+    // src/ is not published, so a declaration map would point at nothing.
     "declarationMap": false
   },
-  "include": ["index.ts", "locations.ts", "model/index.ts"],
-  "exclude": []
+  "include": ["src"]
 }

@@ -20,8 +20,8 @@ import {
   type CommandResult,
   type CommandRunner,
   type CommandRunOptions,
-} from '../index.ts'
-import { makeGitFixture } from '../testing.ts'
+} from '../src/index.ts'
+import { makeGitFixture } from '../src/testing.ts'
 
 function recorder(result: CommandResult = { exitCode: 0, stdout: '', stderr: '' }) {
   const calls: Array<{ argv: string[]; opts: CommandRunOptions }> = []

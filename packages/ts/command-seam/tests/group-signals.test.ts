@@ -17,7 +17,7 @@ import {
   liveProcessGroups,
   managedProcessRunner,
   spawnRunnerAsync,
-} from '../index.ts'
+} from '../src/index.ts'
 import { alive, gone, reap } from './support/procs.ts'
 
 const CWD = process.cwd()
@@ -67,7 +67,7 @@ test.skipIf(!posix)('a run without processGroup is not registered', async () => 
 
 test.skipIf(!posix)('the listeners are armed before a group child is spawned', async () => {
   // The child can run and the host be signalled before spawn returns.
-  const { spawnTrackedGroup } = await import('../groups.ts')
+  const { spawnTrackedGroup } = await import('../src/groups.ts')
   expect(liveProcessGroups()).toEqual([])
   const uninstall = installGroupSignalForwarding({ exit: () => {} })
   try {
@@ -361,7 +361,7 @@ test.skipIf(!posix)('a group unregistered during the grace window is not SIGKILL
   const pid = bystander.pid!
   // Let sh install its trap before the first SIGTERM.
   await new Promise((r) => setTimeout(r, 200))
-  const { trackGroup } = await import('../groups.ts')
+  const { trackGroup } = await import('../src/groups.ts')
   const uninstall = installGroupSignalForwarding({ graceMs: 300, exit: () => {} })
   const untrack = trackGroup(pid)
   try {

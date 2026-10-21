@@ -18,12 +18,12 @@ export const PACKAGE_NAME = MANIFEST.name
 
 /**
  * Each public entry point, from `package.json` `exports`: its import
- * specifier and its source file, the `types` target with `dist/` and `.d`
- * taken off (`./dist/testing.d.ts` is `testing.ts`).
+ * specifier and its source file, the `types` target with `dist/` swapped for
+ * `src/` and `.d` taken off (`./dist/testing.d.ts` is `src/testing.ts`).
  */
 export const ENTRY_POINTS = Object.entries(MANIFEST.exports).map(([key, conditions]) => ({
   specifier: key === '.' ? PACKAGE_NAME : `${PACKAGE_NAME}${key.slice(1)}`,
-  file: conditions.types.replace(/^\.\/dist\//, '').replace(/\.d\.ts$/, '.ts'),
+  file: conditions.types.replace(/^\.\/dist\//, 'src/').replace(/\.d\.ts$/, '.ts'),
 }))
 
 export interface Scenario {

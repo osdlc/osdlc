@@ -29,7 +29,7 @@ import {
   type SessionEventOfModel,
   type SessionRecordOfModel,
   type SessionRunState,
-} from '../model.ts'
+} from '../src/model.ts'
 
 const model = defineSessionModel({
   harness: z.enum(['aider', 'goose']),
@@ -314,7 +314,7 @@ describe('two processes appending to one log', () => {
     looseSessionModel.recordSessionEventIn(dir, launched as never, '2026-10-09T10:00:00.000Z')
     const flags = ['--experimental-strip-types', '--no-warnings']
     const script = (writer: number) =>
-      `import('./model.ts').then((m) => { for (let i = 0; i < 40; i++) { try { ` +
+      `import('./src/model.ts').then((m) => { for (let i = 0; i < 40; i++) { try { ` +
       `m.looseSessionModel.recordSessionEventIn(${JSON.stringify(dir)}, ` +
       `{ kind: 'pr_linked', prNumber: ${writer} * 1000 + i }, new Date().toISOString()) ` +
       `} catch (e) { if (!(e instanceof m.SessionLogError)) throw e } } })`

@@ -1,5 +1,5 @@
 /**
- * The generated reference page (`../reference.ts`), asserted against a small
+ * The generated reference page (`../src/reference.ts`), asserted against a small
  * synthetic schema: deterministic, one section and table row per key, nested
  * fields, collection defaults, and the cell escaping.
  */
@@ -8,8 +8,8 @@ import { describe, expect, test } from 'vitest'
 
 import { z } from 'zod'
 
-import type { ConfigKeyMeta } from '../meta.ts'
-import { renderReference } from '../reference.ts'
+import type { ConfigKeyMeta } from '../src/meta.ts'
+import { renderReference } from '../src/reference.ts'
 
 import { vocabulary } from './support.ts'
 

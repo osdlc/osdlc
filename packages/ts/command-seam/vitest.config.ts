@@ -9,8 +9,8 @@ export default defineConfig({
     // The examples import the package by name; run them on the source, so they
     // need no build. The subpaths first, then the bare name.
     alias: [
-      { find: /^@osdlc\/command-seam\/testing$/, replacement: src('./testing.ts') },
-      { find: /^@osdlc\/command-seam$/, replacement: src('./index.ts') },
+      { find: /^@osdlc\/command-seam\/testing$/, replacement: src('./src/testing.ts') },
+      { find: /^@osdlc\/command-seam$/, replacement: src('./src/index.ts') },
     ],
   },
   test: {
@@ -19,8 +19,7 @@ export default defineConfig({
     include: ['tests/**/*.test.ts', 'examples/**/*.test.ts'],
     coverage: {
       provider: 'v8',
-      include: ['*.ts'],
-      exclude: ['vitest.config.ts'],
+      include: ['src/**/*.ts'],
       reporter: ['text'],
     },
   },

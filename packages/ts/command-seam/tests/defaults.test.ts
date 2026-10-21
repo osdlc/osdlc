@@ -23,7 +23,7 @@ import {
   type ShellRunOptions,
   type StreamRunner,
   type StreamRunOptions,
-} from '../index.ts'
+} from '../src/index.ts'
 
 const OK: CommandResult = { exitCode: 0, stdout: '', stderr: '' }
 

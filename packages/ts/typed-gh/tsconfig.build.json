@@ -2,11 +2,10 @@
   // Emit config for the published dist/ — the dev tsconfig.json stays noEmit.
   "extends": ["./tsconfig.json", "@osdlc/tsconfig/build"],
   "compilerOptions": {
-    "rootDir": ".",
-    // The sources are not published, so a declaration map would point at nothing.
+    "rootDir": "src",
+    // src/ is not published, so a declaration map would point at nothing.
     "declarationMap": false
   },
   // Tests and examples check the published package; they do not ship.
-  "include": ["*.ts"],
-  "exclude": ["tests", "examples", "vitest.config.ts"]
+  "include": ["src"]
 }

@@ -13,7 +13,7 @@ import {
   rootedBaseDirs,
   systemBaseDirs,
   xdgBaseDirs,
-} from '../index.ts'
+} from '../src/index.ts'
 
 const VENDOR = 'com.example'
 const ENV = envVars('EXAMPLE')

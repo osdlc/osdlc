@@ -21,8 +21,8 @@ import {
   type CommandResult,
   type CommandRunner,
   type CommandRunOptions,
-} from '../index.ts'
-import { makeGitFixture, makeOriginAndCheckout } from '../testing.ts'
+} from '../src/index.ts'
+import { makeGitFixture, makeOriginAndCheckout } from '../src/testing.ts'
 
 const CWD = '/tmp/repo'
 

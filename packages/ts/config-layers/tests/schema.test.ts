@@ -11,7 +11,7 @@ import {
   recordValueType,
   shapeOf,
   unwrapSchema,
-} from '../schema.ts'
+} from '../src/schema.ts'
 import { MachineSchema, ProjectSchema } from './support.ts'
 
 describe('zod layout tripwire', () => {

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
-import { gitSshUrl, parseGitUrl, parseRemoteUrl, parseRepoRef } from '../index.ts'
+import { gitSshUrl, parseGitUrl, parseRemoteUrl, parseRepoRef } from '../src/index.ts'
 
 describe('parseGitUrl', () => {
   test('https URL', () => {

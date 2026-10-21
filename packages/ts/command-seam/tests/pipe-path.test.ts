@@ -16,7 +16,7 @@ import { join } from 'node:path'
 
 import { beforeAll, describe, expect, test } from 'vitest'
 
-import type { CommandResult, JsonRun } from '../index.ts'
+import type { CommandResult, JsonRun } from '../src/index.ts'
 import { alive, reap } from './support/procs.ts'
 
 type Timed = { value: CommandResult; ms: number }

@@ -42,7 +42,7 @@ import {
   type CommandResult,
   type CommandRunner,
   type CommandRunOptions,
-} from '../index.ts'
+} from '../src/index.ts'
 import { alive, gone, reap } from './support/procs.ts'
 
 const CWD = process.cwd()

@@ -27,13 +27,13 @@ import {
   type DiffTextOptions,
   type RemoteGetUrlOptions,
   type StatusEntry,
-} from '../index.ts'
+} from '../src/index.ts'
 import type {
   BareAndWorker,
   MakeBareAndWorkerOptions,
   MakeOriginAndCheckoutOptions,
   OriginAndCheckout,
-} from '../testing.ts'
+} from '../src/testing.ts'
 
 const CWD = tmpdir()
 
@@ -90,7 +90,7 @@ describe('re-exported runners', () => {
 
 describe('public surface', () => {
   test('gate is internal; REF_FORMAT and parseRefRows stay', async () => {
-    for (const entry of ['../index.ts', '../client.ts']) {
+    for (const entry of ['../src/index.ts', '../src/client.ts']) {
       const mod = (await import(entry)) as Record<string, unknown>
       expect('gate' in mod).toBe(false)
       expect(typeof mod['REF_FORMAT']).toBe('string')
@@ -99,7 +99,7 @@ describe('public surface', () => {
   })
 
   test('the client.ts entry leaves out the URL parsers and the checkout walks', async () => {
-    const mod = (await import('../client.ts')) as Record<string, unknown>
+    const mod = (await import('../src/client.ts')) as Record<string, unknown>
     for (const name of ['parseGitUrl', 'gitSshUrl', 'parseRepoRef', 'checkoutRoot']) {
       expect(name in mod).toBe(false)
     }
@@ -133,7 +133,7 @@ describe('public surface', () => {
   })
 
   test('the backend seam is marked experimental', () => {
-    const source = readFileSync(new URL('../backend.ts', import.meta.url), 'utf8')
+    const source = readFileSync(new URL('../src/backend.ts', import.meta.url), 'utf8')
     for (const name of [
       'export type GitRequest =',
       'export interface GitResults',
@@ -148,7 +148,7 @@ describe('public surface', () => {
   })
 
   test('the README lists the same experimental items as the TSDoc tags', () => {
-    const source = readFileSync(new URL('../backend.ts', import.meta.url), 'utf8')
+    const source = readFileSync(new URL('../src/backend.ts', import.meta.url), 'utf8')
     const tagged = new Set<string>()
     for (const m of source.matchAll(
       /@experimental[\s\S]*?\*\/\s*export (?:type|interface|function) (\w+)/g,

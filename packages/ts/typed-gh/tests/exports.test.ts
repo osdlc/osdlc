@@ -115,7 +115,7 @@ const EXAMPLES = EXAMPLE_FILES.map((f) => readFileSync(join(ROOT, 'examples', f)
 
 /** Type names exported by `index.ts`, which have no runtime value to list. */
 function exportedTypes(): string[] {
-  const source = readFileSync(join(ROOT, 'index.ts'), 'utf8')
+  const source = readFileSync(join(ROOT, 'src', 'index.ts'), 'utf8')
   const inline = Array.from(source.matchAll(/\btype\s+(\w+)/g), (m) => m[1] ?? '')
   const blocks = Array.from(source.matchAll(/export type \{([^}]*)\}/g), (m) => m[1] ?? '')
   const listed = blocks.flatMap((block) => block.split(',').map((name) => name.trim()))

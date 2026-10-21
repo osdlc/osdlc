@@ -12,8 +12,8 @@ import { join, sep } from 'node:path'
 
 import { describe, expect, test } from 'vitest'
 
-import { PathError, PathGuard, lexical, type PathWarning, type Resolver } from '../index.ts'
-import { nodeGuard, nodeResolver } from '../node.ts'
+import { PathError, PathGuard, lexical, type PathWarning, type Resolver } from '../src/index.ts'
+import { nodeGuard, nodeResolver } from '../src/node.ts'
 
 /** One outcome: `ok`, `error` (a `PathError` kind) or `expected` (a boolean). */
 interface Outcome {

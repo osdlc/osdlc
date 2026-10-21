@@ -20,7 +20,7 @@ import {
   PR_LIST_FIELDS,
   type CommandResult,
   type CommandRunner,
-} from '../index.ts'
+} from '../src/index.ts'
 
 /** Records argv and replays a queue of canned results (last one repeats). */
 function recorder(results: CommandResult[] = [{ exitCode: 0, stdout: '', stderr: '' }]) {

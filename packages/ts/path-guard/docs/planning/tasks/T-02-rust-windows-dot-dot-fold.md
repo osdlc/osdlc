@@ -38,7 +38,7 @@ crate's 33 unit tests, so CI did not see this on `windows-latest`.
 1. Under `#[cfg(windows)]`, fold the path as text before `walk` and after each
    link it follows: drop `.`, and remove each `..` with the name before it. A
    `..` at a root stays there, and a leading `..` stays in a relative path and
-   after a bare drive (`C:`). `foldText` in `packages/ts/path-guard/resolve.ts`
+   after a bare drive (`C:`). `foldText` in `packages/ts/path-guard/src/resolve.ts`
    is the TypeScript version.
 2. Run the parity suite on Windows. For an on-disk case with a `..`, check the
    crate's answer against where the file system puts the path, as

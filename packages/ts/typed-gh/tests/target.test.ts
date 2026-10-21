@@ -35,7 +35,7 @@ import {
   type CommandRunner,
   type GhTarget,
   type GhVerb,
-} from '../index.ts'
+} from '../src/index.ts'
 
 const TARGET: GhTarget = { repo: 'acme/widgets', hostname: 'ghe.acme.com' }
 const QUALIFIED = 'ghe.acme.com/acme/widgets'

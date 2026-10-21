@@ -6,7 +6,7 @@
 
 import { describe, expect, test } from 'vitest'
 
-import { looseSessionModel } from '../model.ts'
+import { looseSessionModel } from '../src/model.ts'
 
 const model = looseSessionModel
 

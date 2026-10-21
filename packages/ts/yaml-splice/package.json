@@ -29,6 +29,12 @@
   "engines": {
     "node": ">=22"
   },
+  "imports": {
+    "#wasm": {
+      "types": "./wasm/yaml_splice_wasm.d.ts",
+      "default": "./dist/wasm/yaml_splice_wasm.js"
+    }
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",

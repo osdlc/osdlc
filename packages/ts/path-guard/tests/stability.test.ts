@@ -12,7 +12,9 @@ import { expect, test } from 'vitest'
 import ts from 'typescript'
 
 const PACKAGE_DIR = join(import.meta.dirname, '..')
-const ENTRIES = ['index.ts', 'lexical-entry.ts', 'node.ts'].map((file) => join(PACKAGE_DIR, file))
+const ENTRIES = ['index.ts', 'lexical-entry.ts', 'node.ts'].map((file) =>
+  join(PACKAGE_DIR, 'src', file),
+)
 const TIERS = new Set(['experimental', 'beta', 'alpha'])
 
 /** The exports of every entry point whose TSDoc names a tier other than stable. */
@@ -56,7 +58,7 @@ test('the README lists exactly the exports tagged @experimental, @beta or @alpha
 })
 
 test('no source file tags anything @deprecated', () => {
-  for (const file of readdirSync(PACKAGE_DIR).filter((f) => f.endsWith('.ts'))) {
-    expect(readFileSync(join(PACKAGE_DIR, file), 'utf-8'), file).not.toContain('@deprecated')
+  for (const file of readdirSync(join(PACKAGE_DIR, 'src')).filter((f) => f.endsWith('.ts'))) {
+    expect(readFileSync(join(PACKAGE_DIR, 'src', file), 'utf-8'), file).not.toContain('@deprecated')
   }
 })

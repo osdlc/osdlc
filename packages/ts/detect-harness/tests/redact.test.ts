@@ -2,7 +2,7 @@
 
 import { describe, expect, test } from 'vitest'
 
-import { REDACTED, redactArgs } from '../read/redact.ts'
+import { REDACTED, redactArgs } from '../src/read/redact.ts'
 
 describe('redactArgs', () => {
   test('a flag whose name contains token, secret, key, password or auth', () => {

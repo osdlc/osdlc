@@ -20,12 +20,12 @@ import {
   spawnRunnerAsync,
   type CommandResult,
   type CommandRunner,
-} from '../index.ts'
+} from '../src/index.ts'
 import { gone, reap } from './support/procs.ts'
 import { NODE } from './support/runtimes.ts'
 
 const CWD = process.cwd()
-const INDEX = join(import.meta.dirname, '../index.ts')
+const INDEX = join(import.meta.dirname, '../src/index.ts')
 
 function withTempDir<T>(fn: (dir: string) => T): T {
   const dir = mkdtempSync(join(tmpdir(), 'seam-regression-'))

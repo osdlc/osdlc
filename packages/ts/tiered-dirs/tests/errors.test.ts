@@ -7,8 +7,8 @@ import {
   parseConvention,
   rootedBaseDirs,
   systemBaseDirs,
-} from '../index.ts'
-import type { TieredDirsErrorCode } from '../index.ts'
+} from '../src/index.ts'
+import type { TieredDirsErrorCode } from '../src/index.ts'
 
 const ENV = envVars('EXAMPLE')
 const dirs = new TieredDirs('com.example', rootedBaseDirs('/b'))

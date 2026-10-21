@@ -23,7 +23,7 @@ import {
   writeCas,
   WriteConflictError,
   writeIfChanged,
-} from '../index.ts'
+} from '../src/index.ts'
 
 let root: string
 beforeEach(() => {

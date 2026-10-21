@@ -4,10 +4,10 @@
   // the build: the package must stay plain ES2022.
   "extends": ["./tsconfig.json", "@osdlc/tsconfig/build"],
   "compilerOptions": {
-    "rootDir": ".",
+    "rootDir": "src",
     "types": [],
-    // index.ts is not published, so a declaration map would point at nothing.
+    // src/ is not published, so a declaration map would point at nothing.
     "declarationMap": false
   },
-  "include": ["index.ts"]
+  "include": ["src"]
 }

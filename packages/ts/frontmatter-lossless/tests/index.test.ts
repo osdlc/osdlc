@@ -20,7 +20,14 @@ import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 
 import { test, expect, describe } from 'vitest'
-import { split, compose, newShape, splitLenient, type CloseEol, type OpenEol } from '../index.ts'
+import {
+  split,
+  compose,
+  newShape,
+  splitLenient,
+  type CloseEol,
+  type OpenEol,
+} from '../src/index.ts'
 import corpus from './fixtures/conformance.json'
 
 /** The Rust crate's corpus this copy was taken from. Change it only with the crate's. */

@@ -14,7 +14,7 @@ import {
   type AsyncCommandRunner,
   type CommandResult,
   type CommandRunner,
-} from '../index.ts'
+} from '../src/index.ts'
 
 const ok = (body: unknown): CommandResult => ({
   exitCode: 0,
