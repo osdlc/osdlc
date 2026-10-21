@@ -210,7 +210,7 @@ fn kind(e: &PathError) -> &'static str {
         PathError::Unresolvable(_) => "unresolvable",
         PathError::EmptyRoot => "empty_root",
         PathError::NotUnderRoot(..) => "not_under_root",
-        PathError::NotAbsolute(_) => "not_absolute",
+        PathError::NotAbsolute { .. } => "not_absolute",
         PathError::ReservedName(_) => "reserved_name",
         PathError::AlternateStream(_) => "alternate_stream",
         PathError::NotUtf8 => "not_utf8",

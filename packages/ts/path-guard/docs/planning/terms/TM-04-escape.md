@@ -32,5 +32,8 @@ real path of the root.
 
 Other refusals have their own kinds: `empty_root` for an empty root,
 `not_absolute` for a relative argument, and `not_under_root` when
-`toRelative` gets a path that is not under the root as text. In 0.2 these
-were all `escapes`.
+`toRelative` gets a path that is not under the root as text. In 0.2 most of
+these were `escapes`, but not all: a relative argument was resolved against
+cwd or answered false, and an empty root was false in `contains` and
+`parent_segment` in `toRelative`. See
+[D-06](../decisions/D-06-api-makes-the-filesystem-visible.md).

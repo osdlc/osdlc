@@ -138,7 +138,7 @@ matching `PathError` variants (`ReservedName`, `AlternateStream`). `PathError` s
 | Language   | Shape                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | TypeScript | `package.json` `exports` has `.`, `./lexical` and `./node`. `.` exports `lexical`, `PathGuard`, `Resolver`, `PathError`, `PathWarning` and `MAX_LINK_HOPS`. It imports no `node:fs`; it may import `node:path`, which `PathGuard` uses for the platform's path rules. `./lexical` exports the `lexical` functions, `PathError` and `PathWarning`, imports no `node:` module, and stays browser-safe. `./node` adds `nodeGuard`, `nodeResolver` and the race-checked file helpers. |
-| Rust       | A `lexical` module, a `guard` module with `Guard<R: Resolver>`, and the error type, `PathWarning` and `PathWarningKind` at the crate root. `lexical::windows_names` is in the `lexical` module. `Resolver`, `StdResolver` and `MAX_LINK_HOPS` stay at the root.                                                                                                                                                                                                                   |
+| Rust       | A `lexical` module, and `Guard<R: Resolver>` exported at the crate root from a private `guard` module, with the error type, `PathWarning` and `PathWarningKind` at the crate root. `lexical::windows_names` is in the `lexical` module. `Resolver`, `StdResolver` and `MAX_LINK_HOPS` stay at the root.                                                                                                                                                                                                                   |
 
 ### Windows names
 
@@ -287,6 +287,9 @@ review.
   warns on every host.
 - A Windows caller of `isInside` moves to `guard.contains`. `lexical.isUnder`
   does not read `\` or drive letters.
+- Rust `to_relative` read Windows paths in 0.2. `lexical::to_relative` is
+  POSIX, so a Windows path is `not_absolute`; a Windows caller uses
+  `Path::strip_prefix` on paths from `Guard::real_path`.
 - Every consumer that adopted 0.2.x migrates.
 
 ## Migration

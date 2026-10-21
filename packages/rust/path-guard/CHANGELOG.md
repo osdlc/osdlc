@@ -52,8 +52,9 @@ root.
 - `PathWarning { kind, segment }` and `PathWarningKind` (`ReservedName`,
   `AlternateStream`; `#[non_exhaustive]`).
 - `PathError` variants `Unresolvable`, `EmptyRoot`, `NotUnderRoot`,
-  `NotAbsolute`, `ReservedName` and `AlternateStream`. `PathError` stays
-  `#[non_exhaustive]`.
+  `NotAbsolute { argument, path }`, `ReservedName` and `AlternateStream`.
+  `NotAbsolute`'s `argument` names the parameter refused (`root`, `outer`,
+  `inner`, `path` or `cwd`). `PathError` stays `#[non_exhaustive]`.
 - `Resolver` is implemented for `&R` and `Arc<R>`, so a guard can borrow or
   share a resolver.
 
@@ -67,7 +68,10 @@ root.
 - A guard reads "absolute" as the platform does: on Windows a drive or share
   and a root. `lexical::is_under`, `lexical::absolute` and
   `lexical::to_relative` read POSIX paths on every platform, so `\` is part of
-  a name. `lexical_absolute` used the platform's paths.
+  a name. `lexical_absolute` and `to_relative` used the platform's paths.
+  On Windows, `lexical::to_relative` now returns `NotAbsolute` for a Windows
+  path such as `C:\v\a`. To turn a guarded path back into a relative one
+  there, use `Path::strip_prefix` on two paths from `Guard::real_path`.
 - A link loop, more than `MAX_LINK_HOPS` links, or a spent call budget is
   `Unresolvable`, no longer `Escapes`. `Escapes` now means a proved escape.
 - An empty root is `EmptyRoot` in `resolve` (was `Escapes`), `contains` (was
@@ -76,8 +80,12 @@ root.
   `Escapes`). It compares the paths as text, dropping `.` and empty segments.
 - `contains` returns `Result<bool, PathError>`. `Ok(false)` also means
   "cannot prove". `Err` is only for a refused argument.
-- `real_path` folds `..` as text where the walk gives up. Its answer never
-  holds a `..`. `canonical_existing_prefix` returned the path as written.
+- `real_path` folds `..` as text where the walk gives up. Its answer is
+  always absolute and never holds a `..`. `canonical_existing_prefix`
+  returned the path as written.
+- A guard refuses a root whose real path is not absolute, such as the empty
+  path a broken `Resolver` may answer: `resolve` returns `Escapes` and
+  `contains` returns `Ok(false)`, as 0.2.5 did for an empty real root.
 - On Windows a guard refuses a segment that is a reserved device name (`NUL`,
   `com1.txt` and the rest of Microsoft's list, plus `COM0`, `LPT0`,
   `CONIN$` and `CONOUT$`) as `ReservedName`, and one with a `name:stream` as
