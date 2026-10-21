@@ -199,6 +199,9 @@ type WarningHandler = Arc<dyn Fn(&PathWarning) + Send + Sync>;
 /// ```
 pub trait Resolver {
     /// `p` with every symlink resolved, as [`std::fs::canonicalize`] answers.
+    /// The answer must be absolute and canonical: no `.` or `..` component.
+    /// The guard trusts no answer that is not: it refuses the path, or
+    /// answers false, or, in [`Guard::real_path`], folds the input as text.
     /// Must fail when `p` does not exist. When `p` resolves, so must each of
     /// its leading parts. [`StdResolver`] meets this on Unix, and on Windows
     /// for the paths the guard asks about: there it folds `..` as text before

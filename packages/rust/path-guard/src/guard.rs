@@ -160,8 +160,9 @@ impl<R: Resolver> Guard<R> {
         let unresolvable = || PathError::Unresolvable(raw.to_string());
         let real_root = existing_prefix(&self.resolver, root).ok_or_else(unresolvable)?;
         let real = existing_prefix(&self.resolver, &joined).ok_or_else(unresolvable)?;
-        // A real root that is not absolute, such as the empty path a broken
-        // resolver may answer, would hold every path.
+        // A real root that is not absolute, such as the empty path
+        // `existing_prefix` answers for a broken resolver, would hold every
+        // path.
         if !real_root.is_absolute() || !real.starts_with(&real_root) {
             return Err(PathError::Escapes(raw.to_string(), real_root));
         }
@@ -312,9 +313,33 @@ const CALLS_PER_PART: usize = 4;
 /// The real path of as much of `p` as exists, as [`Guard::real_path`]
 /// describes. `None` when the walk follows more than [`MAX_LINK_HOPS`] links
 /// or spends its resolver calls. The answer holds no `..`.
+///
+/// When the resolver answers any path that is not absolute and canonical,
+/// such as `""` or `/v/../etc`, the answer is the empty path. It is not
+/// absolute, so the guard trusts nothing about it: `resolve` refuses it as
+/// an escape, `contains` answers false and `real_path` folds the input as
+/// text instead.
 pub(crate) fn existing_prefix<R: Resolver + ?Sized>(resolver: &R, p: &Path) -> Option<PathBuf> {
     let left = CALLS_PER_HOP * (MAX_LINK_HOPS + 1) + CALLS_PER_PART * p.components().count();
-    walk(&mut Calls { resolver, left }, p, 0)
+    let mut calls = Calls {
+        resolver,
+        left,
+        untrusted: false,
+    };
+    let real = walk(&mut calls, p, 0)?;
+    Some(if calls.untrusted {
+        PathBuf::new()
+    } else {
+        real
+    })
+}
+
+/// Is `p` a real path as [`Resolver::canonicalize`] must answer one: absolute,
+/// with no `.` or `..` component?
+fn canonical(p: &Path) -> bool {
+    p.is_absolute()
+        && p.components()
+            .all(|c| !matches!(c, Component::CurDir | Component::ParentDir))
 }
 
 /// A [`Resolver`] with a number of calls left. Each method answers `None`
@@ -322,12 +347,18 @@ pub(crate) fn existing_prefix<R: Resolver + ?Sized>(resolver: &R, p: &Path) -> O
 struct Calls<'r, R: ?Sized> {
     resolver: &'r R,
     left: usize,
+    /// Set once the resolver answers a path that is not [`canonical`].
+    untrusted: bool,
 }
 
 impl<R: Resolver + ?Sized> Calls<'_, R> {
     fn canonicalize(&mut self, p: &Path) -> Option<io::Result<PathBuf>> {
         self.left = self.left.checked_sub(1)?;
-        Some(self.resolver.canonicalize(p))
+        let answer = self.resolver.canonicalize(p);
+        if answer.as_ref().is_ok_and(|real| !canonical(real)) {
+            self.untrusted = true;
+        }
+        Some(answer)
     }
 
     fn read_link(&mut self, p: &Path) -> Option<io::Result<PathBuf>> {

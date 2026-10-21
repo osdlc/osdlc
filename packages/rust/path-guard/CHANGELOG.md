@@ -87,6 +87,10 @@ root.
 - A guard refuses a root whose real path is not absolute, such as the empty
   path a broken `Resolver` may answer: `resolve` returns `Escapes` and
   `contains` returns `Ok(false)`, as 0.2.5 did for an empty real root.
+- A guard trusts no `Resolver` answer that is not absolute and canonical,
+  such as one holding a `.` or `..` component, for the root or any part of
+  the path: `resolve` returns `Escapes`, `contains` returns `Ok(false)` and
+  `real_path` folds the input as text. The `Resolver` docs say so.
 - On Windows a guard refuses a segment that is a reserved device name (`NUL`,
   `com1.txt` and the rest of Microsoft's list, plus `COM0`, `LPT0`,
   `CONIN$` and `CONOUT$`) as `ReservedName`, and one with a `name:stream` as
