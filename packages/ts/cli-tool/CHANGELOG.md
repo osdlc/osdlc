@@ -1,5 +1,11 @@
 # @osdlc/cli-tool
 
+## 0.5.0
+
+### Minor Changes
+
+- d093384: **Breaking:** `./trust` moved to `@osdlc/trust-repo`. Import from `@osdlc/trust-repo` instead of `@osdlc/cli-tool/trust`.
+
 ## 0.4.0
 
 ### Minor Changes
