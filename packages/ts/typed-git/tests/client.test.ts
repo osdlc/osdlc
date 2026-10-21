@@ -1396,6 +1396,10 @@ describe("Git — probing 'does this repo have history?'", () => {
       g.init(undefined, { quiet: true, initialBranch: 'main' })
       g.configSet('user.email', 't@t')
       g.configSet('user.name', 't')
+      // No background maintenance after the commit: a detached job could
+      // write into the object store after the setup below removes it.
+      g.configSet('maintenance.auto', 'false')
+      g.configSet('gc.auto', '0')
       if (name !== 'empty') g.commit({ message: 'c1', allowEmpty: true })
     }
     // A HEAD ref pointing at an object that is not there.
@@ -1403,8 +1407,12 @@ describe("Git — probing 'does this repo have history?'", () => {
       join(scratch, 'dangling', '.git', 'refs', 'heads', 'main'),
       '0000000000000000000000000000000000000001\n',
     )
-    // A HEAD ref that is fine and an object store that is gone.
-    rmSync(join(scratch, 'noobjects', '.git', 'objects'), { recursive: true, force: true })
+    // A HEAD ref that is fine and an object store that is gone. A plain file
+    // takes its place, so nothing can recreate the directory behind the test's
+    // back and git still finds no object store there.
+    const objects = join(scratch, 'noobjects', '.git', 'objects')
+    rmSync(objects, { recursive: true, force: true })
+    writeFileSync(objects, '')
   })
 
   afterAll(() => {
