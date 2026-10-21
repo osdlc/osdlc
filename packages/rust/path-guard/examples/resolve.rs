@@ -4,10 +4,13 @@
 
 use std::path::Path;
 
+use path_guard::Guard;
+
 fn main() {
+    let guard = Guard::std();
     let root = Path::new("/srv/data");
     for raw in ["notes/a.md", "../etc/passwd", "~/secret", "C:\\Windows"] {
-        match path_guard::resolve(root, raw) {
+        match guard.resolve(root, raw) {
             Ok(path) => println!("{raw:?} -> {}", path.display()),
             Err(err) => println!("{raw:?} rejected: {err}"),
         }

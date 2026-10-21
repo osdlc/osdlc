@@ -1,4 +1,20 @@
+use std::io;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
+
+use super::guard::{fold_text, refuse_windows_names};
+use super::lexical::{to_relative, validate_relative};
 use super::*;
+
+/// The guard on the real disk.
+fn disk() -> Guard<StdResolver> {
+    Guard::std()
+}
+
+/// `contains` on the real disk, for absolute paths.
+fn contains(outer: &Path, inner: &Path) -> bool {
+    disk().contains(outer, inner).unwrap()
+}
 
 /// A symlink at `link` to `target`, as `ln -s` makes one. On Windows it is a
 /// directory link when the target is a directory that exists, else a file
@@ -62,7 +78,7 @@ fn windows_folds_a_dotdot_as_text_before_it_follows_a_link() {
     let inner = root.join(r"link\m\..\..\..\x");
     assert!(!contains(&root, &inner), "{}", inner.display());
     assert!(matches!(
-        resolve(&root, "x.json"),
+        disk().resolve(&root, "x.json"),
         Err(PathError::Escapes(..))
     ));
 
@@ -160,16 +176,127 @@ fn rejects_degenerate_segments() {
 }
 
 #[test]
+fn on_windows_the_guard_refuses_the_first_device_name_or_stream() {
+    assert_eq!(
+        refuse_windows_names("NUL/a:b", true),
+        Err(PathError::ReservedName("NUL".into()))
+    );
+    assert_eq!(
+        refuse_windows_names("a/b:c.txt", true),
+        Err(PathError::AlternateStream("b:c.txt".into()))
+    );
+    assert_eq!(refuse_windows_names("console", true), Ok(Vec::new()));
+}
+
+#[test]
+fn off_windows_the_guard_keeps_every_device_name_and_stream_as_a_warning() {
+    let got = refuse_windows_names("NUL/a:b", false).unwrap();
+    assert_eq!(
+        got,
+        [
+            PathWarning {
+                kind: PathWarningKind::ReservedName,
+                segment: "NUL".into()
+            },
+            PathWarning {
+                kind: PathWarningKind::AlternateStream,
+                segment: "a:b".into()
+            },
+        ]
+    );
+}
+
+/// A guard on the real disk that records each warning it sends.
+fn recording() -> (Guard<StdResolver>, Arc<Mutex<Vec<PathWarning>>>) {
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let log = Arc::clone(&seen);
+    let guard = disk().with_warning_handler(move |w| log.lock().unwrap().push(w.clone()));
+    (guard, seen)
+}
+
+#[test]
+fn resolve_sends_each_warning_to_the_handler_off_windows() {
+    let dir = tempfile::tempdir().unwrap();
+    let (guard, seen) = recording();
+    let got = guard.resolve(dir.path(), "NUL/a:b");
+    if cfg!(windows) {
+        assert_eq!(got, Err(PathError::ReservedName("NUL".into())));
+        assert!(seen.lock().unwrap().is_empty(), "refused, so no warning");
+    } else {
+        assert_eq!(got.unwrap(), dir.path().join("NUL/a:b"));
+        let kinds: Vec<_> = seen.lock().unwrap().iter().map(|w| w.kind).collect();
+        assert_eq!(
+            kinds,
+            [
+                PathWarningKind::ReservedName,
+                PathWarningKind::AlternateStream
+            ]
+        );
+    }
+    // A clone shares the handler.
+    let again = guard.clone().resolve(dir.path(), "aux");
+    assert_eq!(again.is_ok(), !cfg!(windows));
+    let sent = seen.lock().unwrap().len();
+    assert_eq!(sent, if cfg!(windows) { 0 } else { 3 });
+}
+
+#[test]
+fn resolve_sends_no_warning_for_a_path_it_refuses() {
+    let outside = tempfile::tempdir().unwrap();
+    let vault = tempfile::tempdir().unwrap();
+    symlink(outside.path(), vault.path().join("escape"));
+    let (guard, seen) = recording();
+    assert!(guard.resolve(vault.path(), "escape/NUL").is_err());
+    assert!(guard.resolve(vault.path(), "../NUL").is_err());
+    assert!(seen.lock().unwrap().is_empty());
+}
+
+/// The crate never writes to the console, handler or not.
+#[test]
+fn the_crate_prints_nothing() {
+    for (name, src) in [
+        ("lib.rs", include_str!("lib.rs")),
+        ("guard.rs", include_str!("guard.rs")),
+        ("lexical.rs", include_str!("lexical.rs")),
+    ] {
+        for call in ["print!", "eprint", "dbg!", "stdout", "stderr"] {
+            assert!(!src.contains(call), "{name} calls {call}");
+        }
+    }
+}
+
+#[test]
+fn a_guard_is_clone_send_and_sync() {
+    fn check<T: Clone + Send + Sync>() {}
+    check::<Guard<StdResolver>>();
+    check::<Guard<&StdResolver>>();
+    check::<Guard<Arc<StdResolver>>>();
+}
+
+#[test]
+fn the_guard_refuses_relative_and_empty_arguments() {
+    let g = disk();
+    let rel = Path::new("v");
+    assert_eq!(g.resolve(Path::new(""), "a"), Err(PathError::EmptyRoot));
+    assert_eq!(g.resolve(rel, "a"), Err(PathError::NotAbsolute(rel.into())));
+    assert_eq!(g.contains(Path::new(""), rel), Err(PathError::EmptyRoot));
+    assert_eq!(
+        g.real_path(Path::new("")),
+        Err(PathError::NotAbsolute(PathBuf::new()))
+    );
+}
+
+#[test]
 fn resolve_joins_under_the_vault() {
     let dir = tempfile::tempdir().unwrap();
-    let got = resolve(dir.path(), "Notes/a.md").unwrap();
+    let got = disk().resolve(dir.path(), "Notes/a.md").unwrap();
     assert_eq!(got, dir.path().join("Notes/a.md"));
 }
 
 #[test]
 fn resolve_allows_paths_that_do_not_exist_yet() {
     let dir = tempfile::tempdir().unwrap();
-    assert!(resolve(dir.path(), "brand/new/note.md").is_ok());
+    assert!(disk().resolve(dir.path(), "brand/new/note.md").is_ok());
 }
 
 #[test]
@@ -187,7 +314,7 @@ fn resolve_catches_a_symlink_that_escapes_the_vault() {
     );
     assert!(
         matches!(
-            resolve(vault.path(), "escape/secret.txt"),
+            disk().resolve(vault.path(), "escape/secret.txt"),
             Err(PathError::Escapes(..))
         ),
         "containment must reject it"
@@ -200,7 +327,7 @@ fn a_symlink_that_stays_inside_the_vault_is_fine() {
     std::fs::create_dir(vault.path().join("real")).unwrap();
     std::fs::write(vault.path().join("real/a.md"), b"x").unwrap();
     symlink(vault.path().join("real"), vault.path().join("alias"));
-    assert!(resolve(vault.path(), "alias/a.md").is_ok());
+    assert!(disk().resolve(vault.path(), "alias/a.md").is_ok());
 }
 
 /// `canonicalize` fails on a dangling link just as on a missing name, so the
@@ -213,7 +340,7 @@ fn resolve_refuses_a_dangling_symlink_whose_target_lands_outside() {
     symlink(&planted, vault.path().join("x.json"));
 
     assert!(matches!(
-        resolve(vault.path(), "x.json"),
+        disk().resolve(vault.path(), "x.json"),
         Err(PathError::Escapes(..))
     ));
     // The premise: a write through the link creates the file outside.
@@ -230,27 +357,27 @@ fn resolve_reads_a_relative_dangling_target_against_the_link_directory() {
     symlink("../../planted.json", vault.join("sub/out.json"));
 
     assert_eq!(
-        resolve(&vault, "sub/in.json").unwrap(),
+        disk().resolve(&vault, "sub/in.json").unwrap(),
         vault.join("sub/in.json")
     );
     assert!(matches!(
-        resolve(&vault, "sub/out.json"),
+        disk().resolve(&vault, "sub/out.json"),
         Err(PathError::Escapes(..))
     ));
 }
 
 #[test]
-fn resolve_refuses_a_symlink_loop() {
+fn a_symlink_loop_is_unresolvable() {
     let vault = tempfile::tempdir().unwrap();
     symlink("b", vault.path().join("a"));
     symlink("a", vault.path().join("b"));
-    assert!(matches!(
-        resolve(vault.path(), "a"),
-        Err(PathError::Escapes(..))
-    ));
+    assert_eq!(
+        disk().resolve(vault.path(), "a"),
+        Err(PathError::Unresolvable("a".into()))
+    );
     assert!(!contains(vault.path(), &vault.path().join("a")));
     let looped = vault.path().join("a/x.md");
-    assert_eq!(canonical_existing_prefix(&looped), looped);
+    assert_eq!(disk().real_path(&looped).unwrap(), looped);
 }
 
 /// A chain of `n` dangling links inside `vault`: `l0 -> l1 -> … -> end.json`.
@@ -269,13 +396,16 @@ fn link_chain(vault: &Path, n: usize) {
 fn resolve_follows_max_link_hops_links_and_refuses_one_more() {
     let ok = tempfile::tempdir().unwrap();
     link_chain(ok.path(), MAX_LINK_HOPS);
-    assert_eq!(resolve(ok.path(), "l0").unwrap(), ok.path().join("l0"));
+    assert_eq!(
+        disk().resolve(ok.path(), "l0").unwrap(),
+        ok.path().join("l0")
+    );
 
     let over = tempfile::tempdir().unwrap();
     link_chain(over.path(), MAX_LINK_HOPS + 1);
     assert!(matches!(
-        resolve(over.path(), "l0"),
-        Err(PathError::Escapes(..))
+        disk().resolve(over.path(), "l0"),
+        Err(PathError::Unresolvable(_))
     ));
 }
 
@@ -299,7 +429,10 @@ fn to_relative_uses_forward_slashes() {
         to_relative(root, Path::new("/v/Notes/a.md")).unwrap(),
         "Notes/a.md"
     );
-    assert!(to_relative(root, Path::new("/other/a.md")).is_err());
+    assert!(matches!(
+        to_relative(root, Path::new("/other/a.md")),
+        Err(PathError::NotUnderRoot(..))
+    ));
 }
 
 #[test]
@@ -419,8 +552,13 @@ impl Resolver for Table {
     }
 }
 
+// The in-memory tests below use POSIX roots such as `/v`, which a guard on
+// Windows refuses as not absolute, so they run on Unix. The Windows tests
+// further down use drive and share roots.
+
+#[cfg(unix)]
 #[test]
-fn resolve_with_follows_a_dangling_symlink() {
+fn a_guard_follows_a_dangling_symlink_in_memory() {
     let fs = Table(
         vec![("/v", "/v")],
         vec![
@@ -429,22 +567,24 @@ fn resolve_with_follows_a_dangling_symlink() {
         ],
     );
     let root = Path::new("/v");
+    let guard = Guard::new(&fs);
     assert!(matches!(
-        resolve_with(&fs, root, "out.json"),
+        guard.resolve(root, "out.json"),
         Err(PathError::Escapes(..))
     ));
     assert_eq!(
-        resolve_with(&fs, root, "in.json").unwrap(),
+        guard.resolve(root, "in.json").unwrap(),
         root.join("in.json")
     );
     assert_eq!(
-        existing_prefix(&fs, Path::new("/v/in.json")).unwrap(),
+        guard.real_path(Path::new("/v/in.json")).unwrap(),
         Path::new("/v/new.json")
     );
 }
 
+#[cfg(unix)]
 #[test]
-fn resolve_with_rejects_a_symlink_that_leaves_the_root() {
+fn a_guard_rejects_a_symlink_that_leaves_the_root_in_memory() {
     // `/v/escape` is a symlink to `/outside`.
     let fs = Table::new(vec![
         ("/v", "/v"),
@@ -452,86 +592,71 @@ fn resolve_with_rejects_a_symlink_that_leaves_the_root() {
         ("/v/escape/secret.txt", "/outside/secret.txt"),
     ]);
     let root = Path::new("/v");
+    let guard = Guard::new(fs);
     assert!(matches!(
-        resolve_with(&fs, root, "escape/secret.txt"),
+        guard.resolve(root, "escape/secret.txt"),
         Err(PathError::Escapes(..))
     ));
     assert!(
         matches!(
-            resolve_with(&fs, root, "escape/new.md"),
+            guard.resolve(root, "escape/new.md"),
             Err(PathError::Escapes(..))
         ),
         "a missing file behind the link escapes too"
     );
     assert_eq!(
-        resolve_with(&fs, root, "Notes/a.md").unwrap(),
+        guard.resolve(root, "Notes/a.md").unwrap(),
         root.join("Notes/a.md")
     );
 }
 
+#[cfg(unix)]
 #[test]
-fn resolve_with_measures_against_the_canonical_root() {
+fn a_guard_measures_against_the_canonical_root() {
     // The root is reached through a symlink, as `/var` -> `/private/var` on macOS.
     let fs = Table::new(vec![("/var", "/private/var"), ("/var/v", "/private/var/v")]);
     assert_eq!(
-        resolve_with(&fs, Path::new("/var/v"), "a.md").unwrap(),
+        Guard::new(fs).resolve(Path::new("/var/v"), "a.md").unwrap(),
         Path::new("/var/v/a.md")
     );
 }
 
+#[cfg(unix)]
 #[test]
-fn resolve_with_finds_a_one_component_root_under_slash() {
+fn a_guard_finds_a_one_component_root_under_slash() {
     let fs = Table::new(vec![("/var", "/private/var")]);
     assert_eq!(
-        resolve_with(&fs, Path::new("/var"), "a.md").unwrap(),
+        Guard::new(&fs).resolve(Path::new("/var"), "a.md").unwrap(),
         Path::new("/var/a.md")
     );
     assert_eq!(
-        existing_prefix(&fs, Path::new("/var/a.md")).unwrap(),
+        super::guard::existing_prefix(&fs, Path::new("/var/a.md")).unwrap(),
         Path::new("/private/var/a.md")
     );
 }
 
+#[cfg(unix)]
 #[test]
-fn existing_prefix_resolves_a_relative_path_from_its_first_component() {
-    let fs = Table::new(vec![
-        ("vault", "/abs/vault"),
-        ("vault/sub", "/abs/vault/sub"),
-    ]);
-    assert_eq!(
-        existing_prefix(&fs, Path::new("vault/a.md")).unwrap(),
-        Path::new("/abs/vault/a.md")
-    );
-    assert_eq!(
-        existing_prefix(&fs, Path::new("vault/sub/new/a.md")).unwrap(),
-        Path::new("/abs/vault/sub/new/a.md")
-    );
-    assert!(contains_with(
-        &fs,
-        Path::new("vault"),
-        Path::new("vault/new.md")
-    ));
-    // Nothing along it exists, so it comes back as written.
-    assert_eq!(
-        existing_prefix(&fs, Path::new("nope/a.md")).unwrap(),
-        Path::new("nope/a.md")
-    );
-}
-
-#[test]
-fn contains_with_folds_a_trailing_dotdot_behind_a_missing_component() {
+fn contains_folds_a_trailing_dotdot_behind_a_missing_component() {
     // `nope` does not exist, so the physical walk stops on the `..` and the
     // fold has to finish the job.
     let fs = Table::new(vec![("/tmp", "/private/tmp"), ("/tmp/v", "/private/tmp/v")]);
+    let guard = Guard::new(fs);
     let vault = Path::new("/tmp/v");
-    assert!(contains_with(&fs, vault, Path::new("/tmp/nope/../v/out")));
-    assert!(!contains_with(&fs, vault, Path::new("/tmp/nope/../w/out")));
+    assert_eq!(
+        guard.contains(vault, Path::new("/tmp/nope/../v/out")),
+        Ok(true)
+    );
+    assert_eq!(
+        guard.contains(vault, Path::new("/tmp/nope/../w/out")),
+        Ok(false)
+    );
 }
 
 /// The POSIX rule. Windows folds the `..` first; see the next test.
 #[cfg(unix)]
 #[test]
-fn contains_with_resolves_a_dotdot_behind_a_symlink_physically() {
+fn contains_resolves_a_dotdot_behind_a_symlink_physically() {
     // `/x/link` -> `/v/deep`, so `/x/link/../y` is `/v/y`.
     let fs = Table::new(vec![
         ("/v", "/v"),
@@ -539,37 +664,42 @@ fn contains_with_resolves_a_dotdot_behind_a_symlink_physically() {
         ("/x/link", "/v/deep"),
         ("/x/link/..", "/v"),
     ]);
-    assert!(contains_with(
-        &fs,
-        Path::new("/v"),
-        Path::new("/x/link/../y")
-    ));
+    assert_eq!(
+        Guard::new(fs).contains(Path::new("/v"), Path::new("/x/link/../y")),
+        Ok(true)
+    );
 }
 
 #[cfg(windows)]
 #[test]
-fn contains_with_folds_a_dotdot_as_text_before_it_follows_a_link() {
+fn contains_folds_a_dotdot_as_text_before_it_follows_a_link() {
     // On Unix `link/..` would be the parent of the link's target.
     let fs = Table::new(vec![
-        ("/v", "/v"),
-        ("/v/link", "/out"),
-        ("/x", "/x"),
-        ("/x/link", "/v/deep"),
+        (r"C:\", r"C:\"),
+        (r"C:\v", r"C:\v"),
+        (r"C:\v\link", r"C:\out"),
+        (r"C:\x", r"C:\x"),
+        (r"C:\x\link", r"C:\v\deep"),
     ]);
-    assert!(contains_with(
-        &fs,
-        Path::new("/v"),
-        Path::new("/v/link/../y")
-    ));
-    assert!(!contains_with(
-        &fs,
-        Path::new("/v"),
-        Path::new("/x/link/../y")
-    ));
+    let guard = Guard::new(fs);
+    assert_eq!(
+        guard.contains(Path::new(r"C:\v"), Path::new(r"C:\v\link\..\y")),
+        Ok(true)
+    );
+    assert_eq!(
+        guard.contains(Path::new(r"C:\v"), Path::new(r"C:\x\link\..\y")),
+        Ok(false)
+    );
 }
 
 /// Counts calls to the real filesystem.
 struct Counting(std::cell::Cell<usize>);
+
+impl Counting {
+    fn new() -> Self {
+        Self(std::cell::Cell::new(0))
+    }
+}
 
 impl Resolver for Counting {
     fn canonicalize(&self, p: &Path) -> io::Result<PathBuf> {
@@ -584,27 +714,27 @@ impl Resolver for Counting {
 }
 
 #[test]
-fn contains_with_bounds_the_resolver_calls_however_long_the_missing_tail() {
+fn contains_bounds_the_resolver_calls_however_long_the_missing_tail() {
     let tmp = tempfile::tempdir().unwrap();
     std::fs::create_dir(tmp.path().join("docs")).unwrap();
     // Under PATH_MAX on every platform, so each probe reaches the filesystem.
     let inner = tmp
         .path()
         .join(format!("{}{}", "docs/../".repeat(40), "zz/".repeat(200)));
-    let fs = Counting(std::cell::Cell::new(0));
-    assert!(contains_with(&fs, tmp.path(), &inner));
+    let fs = Counting::new();
+    assert_eq!(Guard::new(&fs).contains(tmp.path(), &inner), Ok(true));
     assert!(fs.0.get() < 40, "{} resolver calls", fs.0.get());
 }
 
 #[test]
-fn contains_with_spends_few_resolver_calls_on_each_dotdot_behind_a_missing_name() {
+fn contains_spends_few_resolver_calls_on_each_dotdot_behind_a_missing_name() {
     let tmp = tempfile::tempdir().unwrap();
     // Each `zz/..` folds back onto the root, so the walk resumes there.
     let inner = tmp
         .path()
         .join(format!("{}{}", "zz/../".repeat(40), "zz/".repeat(200)));
-    let fs = Counting(std::cell::Cell::new(0));
-    assert!(contains_with(&fs, tmp.path(), &inner));
+    let fs = Counting::new();
+    assert_eq!(Guard::new(&fs).contains(tmp.path(), &inner), Ok(true));
     assert!(fs.0.get() < 3 * 40, "{} resolver calls", fs.0.get());
 }
 
@@ -620,8 +750,8 @@ fn a_link_loop_through_dotdot_pairs_is_refused_within_a_fixed_number_of_calls() 
     symlink(format!("{pairs}b"), root.join("a"));
     symlink(format!("{pairs}a"), root.join("b"));
     for input in ["l/x.md", "a/x.md"] {
-        let fs = Counting(std::cell::Cell::new(0));
-        assert!(resolve_with(&fs, &root, input).is_err(), "{input}");
+        let fs = Counting::new();
+        assert!(Guard::new(&fs).resolve(&root, input).is_err(), "{input}");
         assert!(fs.0.get() < 2000, "{input}: {} resolver calls", fs.0.get());
     }
 }
@@ -633,56 +763,17 @@ fn a_dangling_link_through_dotdot_pairs_costs_calls_in_proportion_to_its_target(
     std::fs::create_dir(&root).unwrap();
     let pairs = "zz/../".repeat(160);
     symlink(format!("{pairs}new.md"), root.join("d"));
-    let fs = Counting(std::cell::Cell::new(0));
-    let got = resolve_with(&fs, &root, "d");
+    let fs = Counting::new();
+    let got = Guard::new(&fs).resolve(&root, "d");
     assert!(got.is_ok(), "{got:?}");
     assert!(fs.0.get() < 2 * 160 + 64, "{} resolver calls", fs.0.get());
 }
 
-/// The root of the current directory: `/` on Unix, `C:\` on Windows.
+/// The root of the current directory's drive, such as `C:\`.
+#[cfg(windows)]
 fn cwd_root() -> PathBuf {
     let cwd = std::env::current_dir().unwrap();
     cwd.ancestors().last().unwrap().to_path_buf()
-}
-
-#[test]
-fn lexical_absolute_folds_dots_and_anchors_at_the_cwd() {
-    let root = cwd_root();
-    let fold = |p: &Path| lexical_absolute(p).unwrap();
-    assert_eq!(fold(&root.join("a/./b/../c/")), root.join("a/c"));
-    // `..` at the root stays at the root.
-    assert_eq!(fold(&root.join("../a")), root.join("a"));
-    let cwd = std::env::current_dir().unwrap();
-    assert_eq!(fold(Path::new("x/./y")), cwd.join("x/y"));
-    assert_eq!(
-        fold(Path::new("x/../y")),
-        cwd.join("y"),
-        "a relative path folds after it is anchored"
-    );
-}
-
-#[test]
-fn lexical_absolute_pops_the_cwd_for_a_leading_dotdot() {
-    let cwd = std::env::current_dir().unwrap();
-    let mut up = cwd.clone();
-    up.pop();
-    assert_eq!(lexical_absolute(Path::new("../x")).unwrap(), up.join("x"));
-    // Above the root there is nothing left to pop.
-    let deep = "../".repeat(cwd.components().count() + 2);
-    assert_eq!(
-        lexical_absolute(Path::new(&format!("{deep}x"))).unwrap(),
-        cwd_root().join("x")
-    );
-}
-
-#[cfg(windows)]
-#[test]
-fn lexical_absolute_keeps_the_drive_for_a_rooted_path_without_one() {
-    let root = cwd_root();
-    assert_eq!(
-        lexical_absolute(Path::new(r"\a\.\b\..\c")).unwrap(),
-        root.join("a/c")
-    );
 }
 
 /// The `\\?\` form `canonicalize` returns on Windows, given by the caller.
@@ -693,14 +784,15 @@ fn a_link_right_under_a_verbatim_drive_root_is_followed() {
         vec![(r"\\?\C:\", r"\\?\C:\")],
         vec![(r"\\?\C:\link", r"\\?\D:\x")],
     );
+    let guard = Guard::new(fs);
     let root = Path::new(r"\\?\C:\");
-    assert!(!contains_with(&fs, root, Path::new(r"\\?\C:\link\y")));
+    assert_eq!(guard.contains(root, Path::new(r"\\?\C:\link\y")), Ok(false));
     assert!(matches!(
-        resolve_with(&fs, root, "link"),
+        guard.resolve(root, "link"),
         Err(PathError::Escapes(..))
     ));
-    assert!(contains_with(&fs, root, Path::new(r"\\?\C:\new\f")));
-    assert!(resolve_with(&fs, root, "new.md").is_ok());
+    assert_eq!(guard.contains(root, Path::new(r"\\?\C:\new\f")), Ok(true));
+    assert!(guard.resolve(root, "new.md").is_ok());
 }
 
 #[cfg(windows)]
@@ -719,12 +811,13 @@ fn a_chain_of_verbatim_links_is_followed_to_its_end() {
             (r"\\?\C:\v\r\l3", "new.json"),
         ],
     );
+    let guard = Guard::new(fs);
     let root = Path::new(r"\\?\C:\v\r");
     assert!(matches!(
-        resolve_with(&fs, root, "l0"),
+        guard.resolve(root, "l0"),
         Err(PathError::Escapes(..))
     ));
-    assert!(resolve_with(&fs, root, "l2").is_ok());
+    assert!(guard.resolve(root, "l2").is_ok());
 }
 
 #[cfg(windows)]
@@ -741,29 +834,22 @@ fn a_share_root_follows_a_link_right_under_it() {
         // A verbatim share with no trailing `\` has no root component, so the
         // walk asks about it both with and without one, as the real
         // filesystem answers either.
-        let fs = Table(
+        let guard = Guard::new(Table(
             vec![
                 (root, r"\\?\UNC\nas\vault"),
                 (r"\\?\UNC\nas\vault\", r"\\?\UNC\nas\vault"),
             ],
             links(),
-        );
+        ));
         let root = Path::new(root);
         assert!(
-            matches!(
-                resolve_with(&fs, root, "out.json"),
-                Err(PathError::Escapes(..))
-            ),
+            matches!(guard.resolve(root, "out.json"), Err(PathError::Escapes(..))),
             "{}",
             root.display()
         );
+        assert!(guard.resolve(root, "in.json").is_ok(), "{}", root.display());
         assert!(
-            resolve_with(&fs, root, "in.json").is_ok(),
-            "{}",
-            root.display()
-        );
-        assert!(
-            resolve_with(&fs, root, "new/a.md").is_ok(),
+            guard.resolve(root, "new/a.md").is_ok(),
             "{}",
             root.display()
         );
@@ -780,5 +866,5 @@ fn a_new_path_under_a_drive_root_is_inside_it() {
     assert!(!missing.exists());
     assert!(contains(&root, &missing.join("x")));
     let name = missing.file_name().unwrap().to_str().unwrap();
-    assert!(resolve(&root, &format!("{name}/x.md")).is_ok());
+    assert!(disk().resolve(&root, &format!("{name}/x.md")).is_ok());
 }
