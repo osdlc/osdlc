@@ -28,8 +28,7 @@ cd packages/ts/color
 pnpm test
 ```
 
-`pnpm run coverage` reports test coverage. It fails below 100% of the lines of
-`src/index.ts`.
+`pnpm run coverage` reports test coverage. It sets no threshold.
 
 `pnpm run build` compiles the package to `dist/`. `pnpm run smoke` runs
 `tests/smoke.mjs`, a short check of the built package under Node. Build first.

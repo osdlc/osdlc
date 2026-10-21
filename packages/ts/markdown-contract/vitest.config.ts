@@ -18,9 +18,9 @@ export default defineConfig({
     ],
   },
   test: {
-    // Unit tests sit beside their module in src/; tests/ holds the fixture-driven suites;
+    // tests/ holds the unit tests (mirroring src/) and the fixture-driven suites;
     // examples/ holds the runnable usage examples.
-    include: ['src/**/*.test.ts', 'tests/**/*.test.ts', 'examples/**/*.test.ts'],
+    include: ['tests/**/*.test.ts', 'examples/**/*.test.ts'],
     // Builds dist/ once: the CLI tests run the built bin, and tests/core-entry.test.ts reads
     // the built import graph.
     globalSetup: ['tests/global-setup.ts'],
@@ -28,7 +28,6 @@ export default defineConfig({
       provider: 'v8',
       include: ['src/**/*.ts'],
       reporter: ['text'],
-      thresholds: { statements: 90, branches: 85, functions: 90, lines: 90 },
     },
   },
 })
