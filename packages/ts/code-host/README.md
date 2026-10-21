@@ -29,8 +29,8 @@ Tests pass a fake `CommandRunner` instead, so nothing touches the network.
 
 ## Runtime and platform
 
-Node.js 22.18 or later, ESM only; Bun also runs it and loads the TypeScript source through the `bun`
-export condition. No `Bun.*` API is used. The GitHub adapter needs the `gh` CLI on `PATH`, signed
+Node.js 22.18 or later, ESM only; Bun also runs it, through the compiled `dist/`. No `Bun.*` API
+is used. The GitHub adapter needs the `gh` CLI on `PATH`, signed
 in; the Forgejo adapter needs `curl` and a personal access token in `FORGEJO_TOKEN` (or the variable
 named by the `forgejoTokenEnv` option). Both need `git` for drift counts. Linux and macOS are the
 tested platforms.

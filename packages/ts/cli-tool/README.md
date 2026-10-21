@@ -232,9 +232,8 @@ const vendorDirs = { vendor: 'com.example', envVars: envVars('EXAMPLE') }
 ## Runtime
 
 The bin of a CLI built on this runs under **node** over its built `dist/`,
-with `engines.node` declared. Bun stays the development runtime, and the
-package's `bun` export condition still hands a bun program the TypeScript
-source when it imports the library.
+with `engines.node` declared. A bun program can import the library too: it
+loads the same compiled `dist/`.
 
 Nothing in this package touches a `Bun.*` global, because every node-run bin
 imports it.
@@ -305,8 +304,8 @@ A test compares each list with the `@experimental` tags in the source.
 Linux and macOS for the 0.x line. Windows support is planned before 1.0. The
 devlink launcher is a POSIX shell script, so it does not run on Windows today.
 
-Node.js 22.18 or later, ESM only. Bun also runs it and loads the TypeScript source
-through the `bun` export condition. The tests run on Vitest under Node.
+Node.js 22.18 or later, ESM only. Bun also runs it, through the compiled `dist/`. The tests run
+on Vitest under Node.
 
 ## License
 

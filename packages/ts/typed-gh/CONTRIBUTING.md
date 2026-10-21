@@ -39,8 +39,9 @@ pnpm --filter @osdlc/typed-gh smoke
 
 ## Running the tests
 
-[Bun](https://bun.sh) is only the test runner. pnpm installs and
-runs the scripts, and the `test` script runs `bun test`. The tests run offline: a fake
+pnpm installs and runs the scripts, and the `test` script runs Vitest under
+Node. Build first, since the workspace packages resolve each other through
+`dist/`. The tests run offline: a fake
 runner stands in for `gh`, so they need no network, no login and no `gh`
 binary.
 

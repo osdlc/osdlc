@@ -34,7 +34,7 @@ work, but no test shows it. The behaviour tables below were measured against
 git 2.50.1. A verb that needs a newer git than you have fails with git's own
 error and throws `CommandFailed`. `mergeTree` needs git 2.38 or later.
 
-Bun runs the tests. It is not a tested runtime for consumers.
+The tests run on Vitest under Node. Bun is not a tested runtime for consumers.
 
 ## Stability
 

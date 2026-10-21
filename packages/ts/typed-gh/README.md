@@ -15,7 +15,7 @@ scripts, release bots and coding agents. It is the GitHub-side companion of
 npm install @osdlc/typed-gh
 ```
 
-It needs Node 22 or later (or Bun), and the `gh` CLI on `PATH`, signed in with `gh auth login`.
+It needs Node 22 or later (Bun also works, through the compiled `dist/`), and the `gh` CLI on `PATH`, signed in with `gh auth login`.
 It is supported on macOS and Linux. Windows is not supported yet; it will be once a Windows CI job
 runs the tests.
 

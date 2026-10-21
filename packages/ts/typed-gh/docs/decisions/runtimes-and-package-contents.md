@@ -10,18 +10,16 @@ created: 2026-10-20
 
 - Node 22 or later (`engines.node` is `>=22`). Node is the primary runtime.
 - ESM only. There is no CommonJS build.
-- Bun works. The `bun` export condition points Bun at the TypeScript source,
-  so Bun needs no build.
-- The tarball ships the `.ts` source files as well as `dist/`, because Bun
-  loads them.
+- Bun works, through the compiled `dist/`. `exports` has no `bun` condition.
+- The tarball ships `dist/` and no `.ts` source files.
 - macOS and Linux only for now. Windows waits for a Windows CI job.
 
 ## Why
 
 - Node 20 is past end of life. Node 22 and 24 are the supported lines.
-- The `bun` condition lets Bun users load
-  the source without a build step. Dropping it would make each of them build
-  first, for a small gain to other users.
+- One artifact for every runtime. A `bun` condition would run the source under
+  Bun while Node runs `dist/`, so a Bun user could run code the Node tests
+  never saw.
 - `@osdlc/typed-git` and `@osdlc/command-seam` use the same floor. This
   package declares `>=22`, as `@osdlc/command-seam` does. `@osdlc/typed-git`
   declares no `engines` field.
@@ -34,9 +32,7 @@ created: 2026-10-20
 ## Consequences
 
 - The README says Node 22 or later, and says macOS and Linux only.
-- `pnpm run smoke` runs the built package under Node, to catch a broken emit
-  that Bun would not show. CI runs the same check on the packed tarball.
-- Bun users load the source and Node users load the build. A build bug would
-  show for Node users only, which is why the smoke check exists.
-- The `bun` condition stays until the maintainer's packages load `dist/`
-  instead.
+- `pnpm run smoke` runs the built package under Node, to catch a broken emit.
+  CI runs the same check on the packed tarball.
+- Every runtime loads the build, so the workspace builds first, then
+  typechecks and tests. The tests run on Vitest under Node.

@@ -144,8 +144,7 @@ The experimental exports:
 
 ## Runtimes and platforms
 
-Node.js 22 or later, ESM only. Bun works too, and loads the TypeScript source
-through the `bun` export condition. The package does pure string work, with no
+Node.js 22 or later, ESM only. Bun works too, through the compiled `dist/`. The package does pure string work, with no
 file system, process or platform code, so it runs on any operating system.
 Its tests run on Linux and macOS.
 

@@ -56,8 +56,7 @@ These are the facts today, not a support promise.
 
 - **Node.js 22 or later** (`engines.node` is `>=22`). Node is the primary
   runtime.
-- **Bun** also works. Under Bun the package resolves to its TypeScript source
-  through the `bun` export condition.
+- **Bun** also works, through the compiled `dist/`.
 - **ESM only.** There is no CommonJS build.
 - **POSIX only (Linux, macOS).** `runShell` needs `sh` on `PATH`. The
   `processGroup` options use POSIX process groups. Signals

@@ -187,8 +187,8 @@ Linux and macOS for the 0.x line. Windows support is planned before 1.0. The
 store uses XDG state paths on every platform, so it does not run on Windows
 today.
 
-Node.js 22.18 or later, ESM only. Bun also runs it and loads the TypeScript source
-through the `bun` export condition. The tests run on Vitest under Node.
+Node.js 22.18 or later, ESM only. Bun also runs it, through the compiled `dist/`. The tests run
+on Vitest under Node.
 
 ## License
 

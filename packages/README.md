@@ -33,6 +33,33 @@ manifest and keeps the license files in its directory. `pnpm run
 check:packages` fails a library that declares any other license. The root
 `LICENSE` of this repository applies to everything outside `packages/`.
 
+## Package shape
+
+Every TypeScript library under `packages/ts/` has one shape, and
+`pnpm run check:packages` fails a library that drifts from it
+(`.github/scripts/package-shape.mjs`):
+
+- **Dist-only ESM with `.d.ts`.** The tarball ships `dist/` plus the README,
+  CHANGELOG, licences, SECURITY and CONTRIBUTING (and a `bin/` or `docs/` a
+  library already ships). No TypeScript source ships; a hand-written `.d.ts`
+  is the one exception. Each `exports` entry is exactly
+  `{ "types": "./dist/X.d.ts", "default": "./dist/X.js" }`, with no `bun`
+  condition. Bun still works, through the compiled `dist/`.
+- **Node 22 or later**, as each library's `engines.node` says.
+- **Vitest under Node** for every test, with a `vitest.config.ts` in the
+  library. No script invokes `bun`.
+- **pnpm** installs and runs the scripts.
+- **Build first.** Libraries resolve each other, and their own name, through
+  `exports` to `dist/`. `tsconfig.json` has no `customConditions` and no
+  `paths` into a sibling's source. A library's `vitest.config.ts` may alias its
+  own name to its source, so its examples run on the source without a build.
+
+The development loop is `pnpm -r build` (or `pnpm --filter <package>... build`
+for a library and what it depends on), then `pnpm -r typecheck` and
+`pnpm -r test`. CI runs the same order: install, build, typecheck, test,
+smoke, lint, then the package checks. A typecheck or test on a tree with no
+`dist/` fails on unresolved imports; build first.
+
 ## Why one repository
 
 One public repository is simpler to secure and maintain than one per library.

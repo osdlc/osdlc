@@ -131,7 +131,7 @@ The experimental exports:
 ## Runtimes and platforms
 
 Node.js 22 or later, ESM only. The built package is tested on Node.js 22 and
-24, and the test suite also runs under Bun. The code is plain ES2022 string
+24, and the test suite runs on Vitest under Node. The code is plain ES2022 string
 handling with no imports, but other runtimes, such as Deno or a browser, are
 not tested. It has no file system or platform code, so it runs on any
 operating system. Its tests run on Linux and macOS.
