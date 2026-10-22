@@ -36,8 +36,8 @@ check:packages` fails a library that declares any other license. The root
 ## Package shape
 
 Every TypeScript library and Rust crate has one shape, set out in
-[S-0001](../docs/standards/S-0001-package-shape-ts.md) and
-[S-0002](../docs/standards/S-0002-package-shape-rs.md). `pnpm run
+[S-0001](../docs/planning/standards/S-0001-package-shape-ts.md) and
+[S-0002](../docs/planning/standards/S-0002-package-shape-rs.md). `pnpm run
 check:packages` and `pnpm run check:crates` fail a package that drifts from it.
 
 The development loop is `pnpm -r build` (or `pnpm --filter <package>... build`

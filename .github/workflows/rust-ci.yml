@@ -102,7 +102,7 @@ jobs:
           persist-credentials: false
 
       # The runner's own Node: the crate shape check needs nothing installed.
-      # docs/standards/S-0002-package-shape-rs.md is the standard.
+      # docs/planning/standards/S-0002-package-shape-rs.md is the standard.
       - name: Test the crate shape rules
         run: node --test scripts/package-shape-rs.test.mjs
 

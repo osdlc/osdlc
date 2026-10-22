@@ -1,6 +1,6 @@
 // The shape every crate in the packages/rust Cargo workspace keeps, as checks
 // over data that the entry point at the bottom reads from disk. The standard
-// is docs/standards/S-0002-package-shape-rs.md.
+// is docs/planning/standards/S-0002-package-shape-rs.md.
 //
 // A published crate (the default):
 //

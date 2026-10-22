@@ -213,9 +213,11 @@ test('P7: examples/ needs a *.test.ts', () => {
   assert.equal(layoutProblems([...without, 'examples/doors.ts'], code.tsconfigs).length, 1)
 })
 
-test('P8: docs/ holds only planning/, with a README', () => {
+test('P8: docs/ holds only planning/, with a README, and guide/', () => {
   assert.deepEqual(docsProblems(FILES), [])
   assert.deepEqual(docsProblems(['src/index.ts']), [])
+  assert.deepEqual(docsProblems([...FILES, 'docs/guide/getting-started.md']), [])
+  assert.deepEqual(docsProblems(['docs/guide/getting-started.md']), [])
   assert.match(docsProblems([...FILES, 'docs/decisions/D-01.md'])[0], /docs\/decisions is outside docs\/planning/)
   assert.match(docsProblems(['docs/planning/decisions/D-01.md'])[0], /docs\/planning\/README\.md is missing/)
 })

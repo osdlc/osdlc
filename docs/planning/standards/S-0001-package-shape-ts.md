@@ -33,7 +33,8 @@ each. This standard says what that shape is.
   `*.test.ts` sits under `src/`. `tsconfig.build.json` emits `src` with
   `rootDir: "src"`, so `src/a/b.ts` becomes `dist/a/b.js`. `examples/` holds a
   `*.test.ts` that runs the README example through the package name. Docs live
-  in `docs/planning/`, with a README index.
+  in `docs/planning/`, with a README index, and a user guide in `docs/guide/`,
+  which the site publishes under the library's page.
 - **The same scripts and files.** `typecheck` checks the source and the build
   config, `smoke` runs `tests/smoke.mjs`, the CHANGELOG starts
   `# @osdlc/<name>`, the README has `## Install` and `## Licence`, and
