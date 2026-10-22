@@ -9,15 +9,15 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { EXIT, captureContext } from '@osdlc/cli-tool'
+import { EXIT, EXIT_FAILURE, captureContext } from '@osdlc/cli-tool'
 import { spawnRunner, type CommandResult, type CommandRunner } from '@osdlc/command-seam'
 import type { CodeHost } from '@osdlc/code-host'
+import { FailureError } from '@osdlc/result'
 import { makeGitFixture } from '@osdlc/typed-git/testing'
 
 import { main, type CliSeams } from '../src/cli.ts'
 import { prUpdateConfigSchema } from '../src/config.ts'
-import { PrListError, remoteSlug, runSurvey } from '../src/survey.ts'
-import { EXIT_CODE_HOST, EXIT_MISSING_TOOL, EXIT_NO_REMOTE } from '../src/preflight.ts'
+import { remoteSlug, runSurvey } from '../src/survey.ts'
 import { allToolsInstalled, emptyGh } from './support.ts'
 
 const dirs: string[] = []
@@ -51,6 +51,17 @@ const failing: CommandRunner = {
   run: (): CommandResult => ({ exitCode: 1, stdout: '', stderr: 'boom' }),
 }
 
+/** A `gh` that is not signed in: the banner it prints, and its exit code. */
+const signedOutGh: CommandRunner = {
+  run: (): CommandResult => ({
+    exitCode: 4,
+    stdout: '',
+    stderr: 'To get started with GitHub CLI, please run:  gh auth login',
+  }),
+}
+
+const SIGNED_OUT_LINE = 'pr-update: gh is not signed in to GitHub. Run `gh auth login`.\n'
+
 /** Records the argv of every call and answers an empty Forgejo PR list. */
 function fakeCurl(): { runner: CommandRunner; calls: string[][] } {
   const calls: string[][] = []
@@ -81,13 +92,13 @@ const FORGEJO = 'https://git.example.com/o/r.git'
 
 describe('a missing tool', () => {
   test.each(['survey', 'update'])(
-    '%s without gh says so and exits EXIT_MISSING_TOOL',
+    '%s without gh says so and exits EXIT_FAILURE.missingTool',
     async (sub) => {
       const { dir, env } = repoWith(GITHUB)
       const r = await run(dir, env, [sub], { which: without('gh') })
-      expect(r.code).toBe(EXIT_MISSING_TOOL)
+      expect(r.code).toBe(EXIT_FAILURE.missingTool)
       expect(r.err).toBe(
-        'pr-update needs the GitHub CLI (gh) on PATH to read pull requests. Install it from https://cli.github.com, then run `gh auth login`.\n',
+        'pr-update: `gh` is not installed or not on PATH. Install it from https://cli.github.com, then run `gh auth login`.\n',
       )
       expect(r.out).not.toContain('no open PRs')
     },
@@ -96,8 +107,10 @@ describe('a missing tool', () => {
   test('without git says so, even with gh missing too', async () => {
     const { dir, env } = repoWith(GITHUB)
     const r = await run(dir, env, ['survey'], { which: without('git', 'gh') })
-    expect(r.code).toBe(EXIT_MISSING_TOOL)
-    expect(r.err).toBe('pr-update needs git on PATH. Install it from https://git-scm.com.\n')
+    expect(r.code).toBe(EXIT_FAILURE.missingTool)
+    expect(r.err).toBe(
+      'pr-update: `git` is not installed or not on PATH. Install git from https://git-scm.com.\n',
+    )
   })
 
   test('a bare --branch without git names git, not the branch', async () => {
@@ -106,15 +119,15 @@ describe('a missing tool', () => {
       which: without('git'),
       git: failing,
     })
-    expect(r.code).toBe(EXIT_MISSING_TOOL)
-    expect(r.err).toContain('needs git on PATH')
+    expect(r.code).toBe(EXIT_FAILURE.missingTool)
+    expect(r.err).toContain('`git` is not installed')
   })
 
   test('a Forgejo remote without curl asks for curl, not gh', async () => {
     const { dir, env } = repoWith(FORGEJO)
     const r = await run(dir, env, ['survey'], { which: without('curl') })
-    expect(r.code).toBe(EXIT_MISSING_TOOL)
-    expect(r.err).toBe('pr-update needs curl on PATH to talk to Forgejo.\n')
+    expect(r.code).toBe(EXIT_FAILURE.missingTool)
+    expect(r.err).toBe('pr-update: `curl` is not installed or not on PATH. Install curl.\n')
   })
 
   test('a Forgejo remote does not need gh', async () => {
@@ -146,8 +159,10 @@ describe('a missing remote', () => {
   test('is named, not read as no PRs', async () => {
     const { dir, env } = repoWith(null)
     const r = await run(dir, env, ['survey'], { which: allToolsInstalled, gh: emptyGh })
-    expect(r.code).toBe(EXIT_NO_REMOTE)
-    expect(r.err).toContain("could not read the git remote 'origin'")
+    expect(r.code).toBe(EXIT_FAILURE.repository)
+    expect(r.err).toBe(
+      "pr-update: The remote 'origin' does not exist. List the remotes with `git remote -v`.\n",
+    )
     expect(r.out).toBe('')
   })
 
@@ -164,11 +179,9 @@ describe('a missing remote', () => {
 describe('a failed listing', () => {
   test('survey is an error naming the repository, not "no open PRs"', async () => {
     const { dir, env } = repoWith(GITHUB)
-    const r = await run(dir, env, ['survey'], { which: allToolsInstalled, gh: failing })
-    expect(r.code).toBe(EXIT_CODE_HOST)
-    expect(r.err).toBe(
-      'pr-update could not list pull requests for o/r: gh failed. Check `gh auth status` and your network.\n',
-    )
+    const r = await run(dir, env, ['survey'], { which: allToolsInstalled, gh: signedOutGh })
+    expect(r.code).toBe(EXIT_FAILURE.service)
+    expect(r.err).toBe(SIGNED_OUT_LINE)
     expect(r.out).toBe('')
   })
 
@@ -176,24 +189,50 @@ describe('a failed listing', () => {
     const { dir, env } = repoWith(GITHUB)
     const r = await run(dir, env, ['update', '--branch', 'main'], {
       which: allToolsInstalled,
-      gh: failing,
+      gh: signedOutGh,
     })
-    expect(r.code).toBe(EXIT_CODE_HOST)
-    expect(r.err).toContain('could not list pull requests for o/r')
+    expect(r.code).toBe(EXIT_FAILURE.service)
+    expect(r.err).toBe(SIGNED_OUT_LINE)
     expect(r.err).not.toContain('no open PR')
   })
 
-  test('--report holds {error} and the same message', async () => {
+  test('a gh failure no kind names is an ordinary failure: its first line, exit 1', async () => {
+    const { dir, env } = repoWith(GITHUB)
+    const r = await run(dir, env, ['survey'], { which: allToolsInstalled, gh: failing })
+    expect(r.code).toBe(EXIT.error)
+    expect(r.err).toBe('pr-update: boom\n')
+  })
+
+  test('an unreachable GitHub exits with the unreachable code', async () => {
+    const { dir, env } = repoWith(GITHUB)
+    const offline: CommandRunner = {
+      run: (): CommandResult => ({
+        exitCode: 1,
+        stdout: '',
+        stderr: 'error connecting to api.github.com',
+      }),
+    }
+    const r = await run(dir, env, ['survey'], { which: allToolsInstalled, gh: offline })
+    expect(r.code).toBe(EXIT_FAILURE.unreachable)
+    expect(r.err).toBe('pr-update: GitHub could not be reached. Check your network connection.\n')
+  })
+
+  test('--report holds {error} and the failure kind, message and hint', async () => {
     const { dir, env } = repoWith(GITHUB)
     const file = join(dir, 'out.json')
     writeFileSync(file, '{"stale":true}')
     const r = await run(dir, env, ['update', '--report', file], {
       which: allToolsInstalled,
-      gh: failing,
+      gh: signedOutGh,
     })
-    expect(r.code).toBe(EXIT_CODE_HOST)
+    expect(r.code).toBe(EXIT_FAILURE.service)
     expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({
-      error: expect.stringContaining('could not list pull requests for o/r'),
+      error: 'gh is not signed in to GitHub. Run `gh auth login`.',
+      failure: {
+        kind: 'not-authenticated',
+        message: 'gh is not signed in to GitHub.',
+        hint: 'Run `gh auth login`.',
+      },
     })
   })
 
@@ -204,15 +243,23 @@ describe('a failed listing', () => {
     expect(existsSync(file)).toBe(false)
   })
 
-  test('a Forgejo failure points at the token and host', async () => {
+  test('a Forgejo refusal points at the token and host', async () => {
     const { dir, env } = repoWith(FORGEJO)
     const prev = process.env['FORGEJO_TOKEN']
     process.env['FORGEJO_TOKEN'] = 't'
     try {
-      const r = await run(dir, env, ['survey'], { which: allToolsInstalled, curl: failing })
-      expect(r.code).toBe(EXIT_CODE_HOST)
-      expect(r.err).toContain('could not list pull requests for o/r')
-      expect(r.err).toContain('FORGEJO_TOKEN')
+      const refused: CommandRunner = {
+        run: (): CommandResult => ({
+          exitCode: 0,
+          stdout: '{"message":"token is invalid"}\nHTTPSTATUS:401',
+          stderr: '',
+        }),
+      }
+      const r = await run(dir, env, ['survey'], { which: allToolsInstalled, curl: refused })
+      expect(r.code).toBe(EXIT_FAILURE.service)
+      expect(r.err).toBe(
+        'pr-update: Forgejo at git.example.com refused the token. Set FORGEJO_TOKEN to a valid token.\n',
+      )
     } finally {
       if (prev === undefined) delete process.env['FORGEJO_TOKEN']
       else process.env['FORGEJO_TOKEN'] = prev
@@ -248,12 +295,31 @@ describe('host selection', () => {
     ).toBe(true)
   })
 
+  test('a Forgejo host that cannot be resolved is unreachable', async () => {
+    process.env['FORGEJO_TOKEN'] = 'secret'
+    const { dir, env } = repoWith(FORGEJO)
+    const dnsFailure: CommandRunner = {
+      run: (): CommandResult => ({
+        exitCode: 6,
+        stdout: '',
+        stderr: 'curl: (6) Could not resolve host: git.example.com',
+      }),
+    }
+    const r = await run(dir, env, ['survey'], { which: allToolsInstalled, curl: dnsFailure })
+    expect(r.code).toBe(EXIT_FAILURE.unreachable)
+    expect(r.err).toBe(
+      'pr-update: Forgejo at git.example.com could not be reached. Check your network connection and that the host is reachable.\n',
+    )
+  })
+
   test('a Forgejo remote without a token names the variable', async () => {
     delete process.env['FORGEJO_TOKEN']
     const { dir, env } = repoWith(FORGEJO)
     const r = await run(dir, env, ['survey'], { which: allToolsInstalled, curl: fakeCurl().runner })
-    expect(r.code).toBe(EXIT_CODE_HOST)
-    expect(r.err).toContain('set FORGEJO_TOKEN')
+    expect(r.code).toBe(EXIT_FAILURE.service)
+    expect(r.err).toBe(
+      'pr-update: Forgejo at git.example.com needs a token, but FORGEJO_TOKEN is not set. Set FORGEJO_TOKEN to a valid token.\n',
+    )
   })
 
   test('code_host.override: github uses gh on a non-github remote', async () => {
@@ -301,7 +367,7 @@ describe('the engine', () => {
     expect(remoteSlug('not a url')).toBeNull()
   })
 
-  test('runSurvey throws PrListError when the host cannot list, never an empty report', () => {
+  test('runSurvey throws the code host failure when it cannot list, never an empty report', () => {
     const { dir } = repoWith(GITHUB)
     const codeHost = {
       listPrDetails: () => ({ ok: false, error: { kind: 'exit', message: 'x', host: 'github' } }),
@@ -319,7 +385,7 @@ describe('the engine', () => {
           ports: { locate: () => null },
         },
       ),
-    ).toThrow(PrListError)
+    ).toThrow(FailureError)
   })
 })
 
@@ -327,7 +393,9 @@ describe('an unreadable remote url', () => {
   test('is named, not read as no PRs', async () => {
     const { dir, env } = repoWith('not a url')
     const r = await run(dir, env, ['survey'], { which: allToolsInstalled, gh: emptyGh })
-    expect(r.code).toBe(EXIT_NO_REMOTE)
-    expect(r.err).toContain('could not tell which repository')
+    expect(r.code).toBe(EXIT_FAILURE.repository)
+    expect(r.err).toBe(
+      'pr-update: The `origin` remote (not a url) names no host, owner and repository. Point it at the repository, such as https://git.example.com/owner/repo.git.\n',
+    )
   })
 })

@@ -50,6 +50,7 @@ import { Git, parseGitUrl, parseRemoteUrl, type Worktree } from '@osdlc/typed-gi
 
 import type { CodeHost, CodeHostPrDetail } from '@osdlc/code-host'
 import type { CommandRunner } from '@osdlc/command-seam'
+import { FailureError } from '@osdlc/result'
 import { githubCodeHostFor } from './code-host.ts'
 import { chooseStrategy, type Strategy } from './strategy.ts'
 import type { PrUpdateConfig } from './config.ts'
@@ -77,19 +78,6 @@ export type MergePrediction = (typeof MERGE_PREDICTIONS)[number]
  */
 export class SurveyUsageError extends Error {
   override name = 'SurveyUsageError'
-}
-
-/**
- * The code host would not list a repository's PRs (the adapter's listing came
- * back null: its tool is missing, it is not signed in, or the network is
- * down). Thrown rather than reported as zero PRs, so a broken setup cannot
- * pass for a repository with nothing open. `slug` names the repository.
- */
-export class PrListError extends Error {
-  override name = 'PrListError'
-  constructor(readonly slug: string) {
-    super(`could not list pull requests for ${slug}`)
-  }
 }
 
 /** A repository to survey, and the checkout its drift is measured in. */
@@ -627,8 +615,15 @@ export function runSurvey(args: SurveyArgs, env: SurveyEnv): SurveyReport {
       ...(author !== undefined ? { author } : {}),
     })
     // A failed listing (the tool is missing, not signed in, no network) is not
-    // an empty one: reading it as "no open PRs" would hide the failure.
-    if (!listed.ok) throw new PrListError(target.slug)
+    // an empty one: reading it as "no open PRs" would hide the failure. It is
+    // thrown as the code host's own classified failure.
+    if (!listed.ok) {
+      // With several repositories, say which one failed.
+      const { error } = listed
+      throw new FailureError(
+        targets.length > 1 ? { ...error, message: `${target.slug}: ${error.message}` } : error,
+      )
+    }
     const filtered = includeDrafts ? listed.value : listed.value.filter((p) => !p.isDraft)
     const wanted = new Set(args.pr)
     if (args.branch !== undefined) {

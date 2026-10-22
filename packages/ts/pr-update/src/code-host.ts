@@ -8,6 +8,7 @@
 
 import { GithubCodeHost, selectCodeHost, type CodeHost, type CodeHostName } from '@osdlc/code-host'
 import type { CommandRunner } from '@osdlc/command-seam'
+import { FailureError } from '@osdlc/result'
 
 /** A `SurveyEnv.codeHost` factory that builds a `GithubCodeHost` over `gh`. */
 export function githubCodeHostFor(
@@ -16,16 +17,13 @@ export function githubCodeHostFor(
   return (target) => new GithubCodeHost(target.cwd, { runner: gh })
 }
 
-/** The code host for a repository could not be built: no Forgejo token, or a remote it cannot parse. */
-export class CodeHostSetupError extends Error {
-  override name = 'CodeHostSetupError'
-}
-
 /**
  * A `SurveyEnv.codeHost` factory that picks GitHub or Forgejo from the
  * checkout's `origin` remote (or `override`), as `selectCodeHost` does. The
  * standalone CLI uses this; a library caller that injects its own `codeHost`
- * never reaches it. A host that cannot be built throws {@link CodeHostSetupError}.
+ * never reaches it. A host that cannot be built (no remote, a remote that names
+ * no repository, no Forgejo token) throws a `FailureError` carrying the code
+ * host's own failure, which `@osdlc/cli-tool` renders and numbers.
  */
 export function selectedCodeHostFor(deps: {
   git: CommandRunner
@@ -40,7 +38,7 @@ export function selectedCodeHostFor(deps: {
       ...(deps.curl !== undefined ? { curl: deps.curl } : {}),
       override: deps.override,
     })
-    if (!selected.ok) throw new CodeHostSetupError(selected.error.message)
+    if (!selected.ok) throw new FailureError(selected.error)
     return selected.value
   }
 }
