@@ -1,13 +1,14 @@
-# Builds the Astro site in site/ and publishes it to GitHub Pages. Pull
-# requests build it to catch errors; only main deploys.
+# Builds the Astro site in site/, with the libraries' API reference, and
+# publishes it to GitHub Pages. Pull requests build it to catch errors; only
+# main deploys.
 name: site
 
 on:
   pull_request:
-    paths: ['site/**', 'standards/**', '.github/workflows/site.yml']
+    paths: ['site/**', 'standards/**', 'packages/**', '.github/workflows/site.yml']
   push:
     branches: [main]
-    paths: ['site/**', 'standards/**', '.github/workflows/site.yml']
+    paths: ['site/**', 'standards/**', 'packages/**', '.github/workflows/site.yml']
   workflow_dispatch:
 
 permissions:
@@ -38,6 +39,9 @@ jobs:
 
       # site/ is not part of the packages workspace; install it on its own.
       - run: pnpm install --frozen-lockfile --ignore-workspace
+      # rustdoc and TypeDoc into public/api. cargo is on the runner; rustup
+      # installs the toolchain packages/rust/rust-toolchain.toml pins.
+      - run: pnpm run api
       - run: pnpm run build
 
       - if: github.event_name != 'pull_request'

@@ -22,6 +22,14 @@ export default defineConfig({
       ],
       sidebar: [
         { label: 'Standards', items: [{ autogenerate: { directory: 'standards' } }] },
+        {
+          label: 'Libraries',
+          items: [
+            { label: 'Overview', link: '/libraries/' },
+            { label: 'TypeScript', items: [{ autogenerate: { directory: 'libraries/ts' } }] },
+            { label: 'Rust', items: [{ autogenerate: { directory: 'libraries/rust' } }] },
+          ],
+        },
       ],
     }),
   ],
