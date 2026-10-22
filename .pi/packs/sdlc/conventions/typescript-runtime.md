@@ -109,12 +109,12 @@ self-contained executable via `bun build --compile`
    import bakes the tar into the binary; at first run the binary extracts it to a
    version-keyed cache so every module-relative asset read still resolves.
 3. **`bun build --compile`** — bundle the source + its deps (`markdown-contract`,
-   `@sksizer/agent-plugin`, and the rest) + the embedded Bun runtime into the
+   `@osdlc/detect-harness`, and the rest) + the embedded Bun runtime into the
    executable.
 
 `build-npm-wrapper.ts` then assembles the npm distribution: one
 `@sksizer/sdlc-<os>-<arch>` package per platform (the binary, os/cpu-gated) plus
-the main `@sksizer/sdlc` package whose `bin` is a plain-Node shim that resolves
+the main `@sdlc/cli` package whose `bin` is a plain-Node shim that resolves
 and execs the matching platform binary. `release.yml` cross-compiles every
 target, packs, smoke-tests, and (gated on `NPM_TOKEN`) publishes.
 
@@ -223,7 +223,7 @@ placement needs test configuration.
 
 Libraries have **no shebang** — they are imported, never executed. Any
 third-party dependency a library needs is declared once in the root
-`package.json` (`dependencies` today: `@hono/node-server`, `@sksizer/agent-plugin`,
+`package.json` (`dependencies` today: `@hono/node-server`, `@osdlc/detect-harness`,
 `commander`, `eta`, `hono`, `markdown-contract`, `tinyglobby`, `yaml`, `zod`).
 Adding a dependency is a deliberate `package.json` edit; the binary bundles it
 via `bun build --compile`, so it must resolve and bundle cleanly under Bun.

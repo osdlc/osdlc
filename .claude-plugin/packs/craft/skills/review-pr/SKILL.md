@@ -281,6 +281,33 @@ Read the change with `git diff <base>...<head>` and
 `git log <base>..<head>`, the PR description and prior discussion.
 Then review it the way `/craft:code-review` does; its rubric follows.
 
+### Prepare the change
+
+Always run `diffkit prep` before reading the change. It is read-only and prints one JSON manifest.
+The script is `diffkit.mjs` in the sibling `pr-stats` skill folder, `../pr-stats/diffkit.mjs`
+relative to this file; where skill folders carry a plugin prefix (`craft-pr-stats`) it is the
+sibling folder whose name ends in `pr-stats`:
+
+```sh
+node <pr-stats-dir>/diffkit.mjs prep <number>
+```
+
+Skip every path in `files.dropped` (generated, lockfile, formatting-only). The change is large
+when `files.kept.length` is more than 15 or the sum of `added + removed` over `files.kept` is more
+than 800; otherwise review it in one pass as before. If `prep` fails, review in one pass.
+
+For a large change, give each entry of `groups` (`{id, roots, files, lines}`: kept files by
+package, at most 12 each) to its own reviewer sub-agent, with the full rubric below, the group's
+files and the prior-findings lists. A sub-agent returns findings only, as `{path, line, title,
+body}` objects: it never runs `review-state.mjs` or `gh` and posts nothing. `flags` are places to
+look first, not findings. Then you, the main agent:
+
+1. Merge every sub-agent's findings into one array and drop duplicates with the same `path`,
+   `line` and `title`.
+2. Make a final pass across the groups for what no single group sees: contracts between packages
+   (an export and its callers, shared types, config read elsewhere), and add those findings.
+3. Carry that one array to step 6: one `record` and one posted review.
+
 Review like a senior engineer who has shipped the incident this code
 could cause. Prefer a concrete example of the failure over an abstract
 "this could be safer". If the fix is a one-liner, give it in the finding
@@ -686,6 +713,13 @@ author and accepted or left alone: do not raise it again unless the
 delta changed the code it points at so that it is true in a new way,
 and then say what changed. `fixed` findings need no attention beyond
 confirming the fix did not regress.
+
+Judge "large" (step 4) on the delta, not the whole change, so a three-line delta on a big PR is
+one reviewer. When the branch moved forward, get the delta's manifest with
+`node <pr-stats-dir>/diffkit.mjs prep --base <last> --head <head>` (exactly `<last>..<head>`); if
+it is large, give each group to its own sub-agent as in step 4, with the previous findings, and
+merge, dedupe and cross-check the same way. After a rebase or amend (the interdiff), review in one
+pass with no groups. The re-read of the whole changeset stays a single pass either way.
 
 Report in three parts:
 

@@ -43,9 +43,9 @@ import { basename as pathBasename, dirname, join, relative, resolve } from 'node
 
 import { z } from 'zod'
 
-import { defineCli, EXIT, type CliContext, type CliIo } from '@sksizer/cli-tool'
+import { defineCli, EXIT, type CliContext, type CliIo } from '@osdlc/cli-tool'
 import { Git } from '@osdlc/typed-git'
-import { isInside } from '@sksizer/path-guard'
+import { isInside } from '@osdlc/path-guard'
 
 import { defineOp, exitCodeFor, type OpCtx } from '@lib/registry'
 import { isDir, isFile } from '@lib/util/fs'

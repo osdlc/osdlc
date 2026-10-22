@@ -78,9 +78,10 @@ A caller that runs this skill or a step picks model and effort from
 8. Write the owner questions: one per row with the owner verdict, one per gate, one for a
    `--home` the evidence disagrees with, the API questions api-review names, and the version
    questions version-replay names. Each has a
-   recommendation and says what it settles.
-9. Ask for each sign-off the process names, unless the decision notes already record it. Say
-   where you looked.
+   recommendation and says what it settles. When a candidate is suitable, add the question the
+   [Alternatives gate](references/process.md#alternatives-gate) names.
+9. Ask for each sign-off the process names, and for the Alternatives gate answer when a
+   candidate is suitable, unless the decision notes already record it. Say where you looked.
 10. Write the fix list: one item per gap or group of gaps, each naming its rows, a tag, the files to
     change and a done-when check. Tag each item as
     [Fix-list tags](references/process.md#fix-list-tags) says. When the chosen version or the draft
@@ -109,7 +110,7 @@ Tools not installed: <tools, and the rows checked by reading instead, or none>.
 | Gate | Evidence | Recommendation |
 |---|---|---|
 | Name | <exact conflicts and confusing overlaps, dated> | <keep or rename>; sign-off: <recorded, or pending> |
-| Worthwhile | <prior art, outside and inside> | <publish, merge, contribute upstream, or do not publish> |
+| Worthwhile | <prior art, outside and inside; suitable alternative or none> | <publish, merge, contribute upstream, adopt an alternative, or do not publish>; alternatives answer: <recorded, pending, or not needed> |
 | Stable | <churn; figures in Version> | <version line and tiers> |
 | Home | <consumers, items used, co-change> | <where it lives> |
 | API | <items, flagged items, items with no example; see API> | <changes to agree>; sign-off: <recorded for <version>, or pending> |
@@ -117,6 +118,7 @@ Tools not installed: <tools, and the rows checked by reading instead, or none>.
 Gate evidence:
 - Name: <checks, with dates>
 - Worthwhile: <one line per hit>
+- Alternatives: <table: candidate, covers, lacks, licence, maintenance, fit, suitable? Or: none suitable, with the evidence>
 - Stable: <commits>
 - Home: <consumers>
 
@@ -174,6 +176,8 @@ audit kind and dated, for example
   flagged on the review page.
 - The name survey and the registry checks carry dates.
 - The Name and API gates show their sign-off as recorded or pending.
+- Every prior-art candidate is recorded and marked suitable or not, with evidence. A suitable
+  one shows the Alternatives gate answer as recorded or pending.
 - The API section lists every public item with its example, and every flag is in an owner
   question or a fix item.
 - The Version section's chosen version follows the strategy and version-replay's rules, is not
@@ -216,7 +220,9 @@ A scratch copy of a small crate with these planted cases:
 - a twin whose major.minor differs from the crate's (Q24 gap; an aligned version in the Version
   section's `Twin:` line; an `Aligned with` line in the draft; with `--release` set to a
   different version, a Q24 owner question instead);
-- a commit message that names a person and links a private PR, which must not reach the draft.
+- a commit message that names a person and links a private PR, which must not reach the draft;
+- a prior-art candidate that is suitable, with a recent release and an OSI licence (the run
+  stops after `audit`, the report shows the answer pending, and the owner question is asked).
 
 A second fixture covers the floor: a crate whose rename history gives an old name that is an
 existing crates.io crate with a known highest version above the replay, recorded in the test
@@ -237,4 +243,6 @@ lockfile). Expect the draft beside the report, with no name or private link in i
 - with `--changelog keep`, `summary` and `none`: the sanitized old file, one descriptive entry,
   and an empty Unreleased section;
 - with `--re-audit` after a commit that sets the chosen version and adds a fix: the same chosen
-  version, and the fix in its Unreleased entry.
+  version, and the fix in its Unreleased entry;
+- with `--re-audit` after a recorded `continue` for the suitable candidate: the answer shows as
+  recorded, and the run does not stop.

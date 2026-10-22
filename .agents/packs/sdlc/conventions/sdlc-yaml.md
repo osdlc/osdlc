@@ -57,7 +57,7 @@ alongside its value here.
 
 Every top-level key of `SdlcConfigSchema` carries a meta block, set through
 `defineSdlcSection`. The meta structure is `ConfigKeyMeta` in
-`packages/ts/config-layers/meta.ts`; sdlc's terms (categories, appliers,
+`meta.ts` in `@osdlc/config-layers`; sdlc's terms (categories, appliers,
 layers, run contexts, enforcement levels) live in
 `solutions/ontological/lib/config/vocabulary.ts`:
 
@@ -75,7 +75,7 @@ on the chain, because `.default()`/`.prefault()`/`.optional()` each wrap the
 schema in a new instance and the registry is keyed by instance.
 `checkConfigMeta(shape)` reports every key with missing or malformed meta, and
 `lib/config/meta.test.ts` fails on any report. The same test runs the
-completeness kit (`packages/ts/config-layers/meta-kit.ts`), which checks the
+completeness kit (`meta-kit.ts` in `@osdlc/config-layers`), which checks the
 claims the code can confirm: every `<path>#<symbol>` consumer exists and mentions the
 symbol, the `machine` layer is claimed by exactly the keys
 `MachineConfigSchema` declares, and no trust key appears in `SdlcConfigSchema`
@@ -144,7 +144,7 @@ scaffold`.
 `sdlc init` writes the smaller **starter** form
 instead (`configStarterYaml`, same module): only the verbs detection finds are
 set — `workflows.check` from the project's aggregate `ci`/`check` task or else
-its `fmt-check`/`lint`/`typecheck`/`test` tasks (`@sksizer/detect-runners`, as
+its `fmt-check`/`lint`/`typecheck`/`test` tasks (`@osdlc/detect-runners`, as
 `sdlc quality detect` probes), `workflows.setup` from `sdlc project
 detect-setup`'s candidates — and every other key is a commented-out skeleton
 with its description, grouped by meta category. It refuses to overwrite an
@@ -253,6 +253,9 @@ pr_review:                  # sdlc pr review
 verify:                     # sdlc verify changes
   tool: claude/haiku@low    # a reference, or profile: <name> — exactly one
   blocking: false
+
+quality:                    # sdlc quality checks
+  checks_dir: .sdlc/checks.d  # the default; a missing default folder is a no-op
 ```
 
 Every top-level key is optional. An entirely empty file (or a missing
@@ -520,7 +523,7 @@ once, per repository, outside the repo, and sdlc remembers the answer.
 
 The consent lives in `$XDG_STATE_HOME/sdlc/trusted/`, or
 `~/.local/state/sdlc/trusted/` when unset — deliberately outside the repo
-and outside `sdlc.yaml`'s own directory, the way `@sksizer/cli-tool/trust`
+and outside `sdlc.yaml`'s own directory, the way `@osdlc/cli-tool/trust`
 (the reusable store this is built on) keys every decision on the absolute,
 symlink-resolved repository root. `SDLC_TRUST_STATE=<dir>` relocates the
 store outright (tests only; never point it at a real trust directory).
@@ -665,9 +668,8 @@ orchestrator:
   records plus this pass's own dispatches (see
   `limits.session_ttl_minutes` for what "live" means). Default: `2`.
 - **`limits.executor.pr_respond:`** — cap on concurrent `pr-respond`
-  dispatches (the `prs` tick's NEEDS-RESPONSE/CI-FAILED path,
-  `merges`' CONFLICTS path, and a `respond` chain-stage advance from
-  the `issues` tick). Durable for fresh dispatches, per-pass for
+  dispatches (the `prs` tick's NEEDS-RESPONSE/CI-FAILED path and a
+  `respond` chain-stage advance from the `issues` tick). Durable for fresh dispatches, per-pass for
   resume: the Router's `fresh` route (and the direct non-Router
   dispatch) goes through session launch and leaves a session record a
   later pass counts, but a Router `resume` delivery bypasses session
@@ -676,14 +678,16 @@ orchestrator:
   within the pass that started it; a `live` delivery into an
   already-running session starts no new session and never counts at
   all. Default: `3`.
-- **`limits.executor.pr_update:`** — cap on concurrent `pr-update` dispatches
-  (the `merges` tick's stale-branch fan-out). Counted per pass only:
-  it is a deterministic script step, not an agent session, so no
-  session record exists to scan on a later pass. Every attempt counts,
-  whether the script exits clean or not. The built-in
-  `pr-update` workflow runs `sdlc pr update --pr {pr} --apply`, so each
-  dispatch can push a rebased or merged head: this cap bounds that
-  rebase/merge work. Default: `5`.
+- **`limits.executor.pr_update:`** — cap on concurrent `sdlc pr update`
+  runs (the `merges` tick's branch-update step, `orchestrator.pr_update`).
+  One run per PR, each holding one slot for its whole life, an agent
+  repair step included, so the cap bounds how many agents run at once.
+  Counted within the pass only: a run is a script step, not an agent
+  session, so no session record exists to scan on a later pass. The
+  built-in `pr-update` workflow runs
+  `sdlc pr update --pr {pr} --apply --strategy {strategy} --report {report}`.
+  The cap is not the off switch: `orchestrator.pr_update.enabled` is.
+  Default: `5`.
 - **`limits.executor.close_out:`** — cap on concurrent `close-out` dispatches
   (the `merges` tick's MERGED-verdict path, and a `close-out`
   chain-stage advance from the `issues` tick). Counted from live
@@ -699,6 +703,21 @@ orchestrator:
 - **`limits.executor.pr_merge:`** — cap on PR merges the `merges` tick
   performs in one pass. Counted per pass only: a merge is a deterministic
   op call, not an agent session. Default: `3`.
+- **`pr_update:`** (under `orchestrator:`) — the `merges` tick's
+  branch-update step. `enabled` (default `false`) turns it on;
+  `strategy` (`rebase`, the default, or `merge`) is how a PR is
+  brought up to date, a rebase that stops on a conflict no automatic
+  rule clears being retried as a merge; `repair` (default `false`)
+  lets a merge stuck on a conflict call the built-in `pr-repair`
+  agent workflow, which is `workflows.pr-repair` for its profile and
+  model. For each PR behind its base or in conflict the step first
+  skips one being landed (merged or checked this tick, auto-merge
+  set, a merge-queue entry, a `closing` task lease), then asks its
+  owner (a live session is messaged once per head and base; a held
+  work lock means wait), and otherwise runs one `sdlc pr update` for
+  it, reading the outcome back from its `--report`. A conflict is
+  reported and rests on the failed-attempt record; it is not handed
+  to `pr-respond`.
 - **`limits.executor.total:`** — optional cap across ALL of the executor
   operations above combined, checked in addition to each one's own
   limit. Reported as `limit executor <n>/<cap>`. Unset by default: no
@@ -1482,6 +1501,9 @@ a load error that names the entry. `sdlc.local.yaml` can define profiles that `s
 host:
   default: terminal       # terminal | orca | cmux | tmux | herdr | otty | wezterm | vscode | jetbrains
   close_pane: on-close-out  # on-close-out | on-done | never
+  open_workspace: true    # a launch opens a workspace (IDE project) for the cwd when the host has none open
+  jetbrains:
+    ide: WebStorm         # optional: which IDE (product name) when several run
 ```
 
 The default host for every feature that opens something for a person — an
@@ -1505,6 +1527,23 @@ terminal/workspace it opens — the two are independent, never a fixed pairing;
 fulfil a contract in parts; a feature that needs a part the host lacks fails
 rather than falling back. See
 `solutions/ontological/conventions/host.md`.
+
+`host.open_workspace` (default `true`): when the host keeps terminals in a
+workspace (today `jetbrains`: an IDE project) and none contains the session's
+working directory, a launch asks the host to open that directory's git root
+(the directory itself outside a repository or when the git root is your home
+directory), after printing one line saying so. The IDE still asks you to trust
+the folder and the launch fails if you have not answered within a minute; add
+the folder under Settings > Build, Execution, Deployment > Trusted Locations to
+skip the prompt. `false` makes an unmatched directory an error. Each worktree
+opens as its own project; a subfolder of a monorepo opens the whole repository.
+Only launches ever open a workspace; `send`, `find`, `focus` and `attach` never
+do.
+
+Per-host blocks hold host-specific selection only, never behaviour several
+hosts share. `host.jetbrains.ide` picks the IDE by product name (`WebStorm`,
+`IntelliJ IDEA`; the whole name, case-insensitive) when several run; it is not
+consulted when exactly one does.
 
 ### `pr_review:` — how `sdlc pr review` opens a session
 
@@ -1592,7 +1631,7 @@ hooks:
 - **`when`**: `always` (default), or `deps-missing`, which runs the step only
   when the checkout root has a lockfile whose deps dir is absent (`bun.lock`
   with no `node_modules`, `uv.lock` with no `.venv`; see `hasMissingDeps` in
-  `@sksizer/detect-runners`). The check repeats just before the step runs,
+  `@osdlc/detect-runners`). The check repeats just before the step runs,
   so an earlier `run: setup` that installed the deps skips it. A post-checkout
   file checkout (git's third argument `0`) skips it too.
 - **`on_fail`**: `block` (default) stops and exits 1, which aborts the commit
@@ -1770,7 +1809,7 @@ never breaks a file someone already wrote.
 | Key | Today | `applies_via` |
 |---|---|---|
 | `hooks:` | git hook name → hook steps, run by `sdlc hooks run` (see [`hooks:`](#hooks)) | `apply:hooks` |
-| `harness:` | `targets:` — harness exporter names to install for | `apply:harness` |
+| `harness:` | `targets:` — reserved; `sdlc apply` installs the Claude Code surface whatever it holds | `apply:harness` |
 | `mcp:` | `allow:` / `deny:` — op names the `sdlc mcp` server may or may not expose (both default `[]`) | `apply:mcp` |
 | `knowledge:` | reserved | `read` |
 | `issues:` | reserved — issue sync and the issues loop (Phase 7) | `read` |
@@ -1817,7 +1856,7 @@ Shape and loader: `MachineConfigSchema` in
 `solutions/ontological/lib/config/machine-schema.ts`, read by `@osdlc/config-layers`'s
 `machineConfigFile` with the same never-throws, defaults-on-failure contract
 as `loadConfig`. The merge rules live where each
-key is consumed — `repoContainers` (`repos`), `pathTokens` (`paths`),
+key is consumed — `repoContainers` (`repos`), `pathNames` (`paths`),
 `checkoutSettings` (`checkout`) — so the table above is documentation of
 those three functions, not a fourth mechanism. `SDLC_MACHINE_CONFIG=<path>`
 relocates the file for one run.
@@ -1885,14 +1924,14 @@ there too. The list below is the narrative companion.
   `ctx.sdlcConfig.pr_check.author_comments` to decide whether the PR
   author's own comments are actionable or self-notes.
 - **`solutions/ontological/lib/services/pr/ops/survey.ts`** — a thin
-  wrapper over `@sksizer/pr-update`: hands `ctx.sdlcConfig.pr_update`
+  wrapper over `@osdlc/pr-update`: hands `ctx.sdlcConfig.pr_update`
   through unchanged as the package's `PrUpdateConfig` (scope: `author`,
   `include_drafts`; the strategy block goes to the package's
   `chooseStrategy`, which decides rebase vs merge vs skip per PR), and binds
   the top-level `repos:` containers (via `repoContainers` / `locateRepo`) as
   the package's `locate` port for a `--repo` target.
 - **`solutions/ontological/lib/services/pr/ops/update.ts`** — a thin
-  wrapper over `@sksizer/pr-update`'s `runUpdate`, which plans from the same
+  wrapper over `@osdlc/pr-update`'s `runUpdate`, which plans from the same
   `runSurvey` call and reads `pr_update.lockfile_install`,
   `pr_update.resolvers` and `pr_update.verify` for the conflict-resolver
   ladder and the pre-push gate; `verify: check` or `test` reaches the
@@ -1926,6 +1965,9 @@ there too. The list below is the narrative companion.
   the commands without running them. An unconfigured name warns naming the
   project root it looked in (exit non-zero unless `--allow-empty`). Also accepts `--baseline-dir
   <path>` and `--diff-against-baseline <sha>`.
+- **`sdlc quality checks`** (`solutions/ontological/lib/services/quality/ops/checks.ts`) — reads
+  `quality.checks_dir` and runs that folder through `@osdlc/agent-dev`. Its script checks pass
+  the same repo-trust gate as `quality run`.
 - **`solutions/ontological/lib/services/git/arm-worktree.ts`** — resolves
   `setup-hooks` for ephemeral commit-worktrees via `resolveWorkflowCommands`,
   with trust gating and progress output.
@@ -1953,7 +1995,7 @@ any key in place (`<value>` read as YAML: a scalar or a flow list/map;
 `--layer local` targets `sdlc.local.yaml`, `--layer machine` the
 [machine-level config](#machine-level-config)), and `sdlc config unset <key>`
 removes one. Both validate the whole resulting config against
-`SdlcConfigSchema` before writing and write through `@sksizer/yaml-splice`
+`SdlcConfigSchema` before writing and write through `@osdlc/yaml-splice`
 (`lib/config/edit.ts`), so comments, key order and blank lines elsewhere in the
 file survive byte-for-byte. A key whose meta says `applies_via: apply:<x>`
 prints a reminder to run `sdlc apply`. `sdlc config get <key>` prints the

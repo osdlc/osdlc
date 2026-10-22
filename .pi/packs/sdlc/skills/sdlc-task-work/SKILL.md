@@ -1362,11 +1362,11 @@ The lease ref is at `phase: working` at this point.
    sdlc pr stats <N> --write || true
    ```
 
-   It measures the PR's diff (lines added and removed by code, comments, blank/whitespace and
-   prose, and by file group, with generated bundles counted apart) and writes a
-   `## Change statistics` section into the body, between `<!-- sdlc-pr-stats:start -->` and
-   `<!-- sdlc-pr-stats:end -->` markers. It inserts the section *before* the lease footer, so the
-   footer stays the last line of the body, byte for byte, and re-running replaces the section in
+   It measures the PR's diff (lines added and removed by code, comments, blank/whitespace and prose,
+   and by file group, with generated bundles counted apart) and writes a `## Change statistics`
+   section into the body, between `<!-- sdlc-diffkit-stats:start -->` and
+   `<!-- sdlc-diffkit-stats:end -->` markers. It inserts the section *before* the lease footer, so
+   the footer stays the last line of the body, byte for byte, and re-running replaces the section in
    place. A failure here (offline, `gh` hiccup) must NOT block Step 10.5: note it in the final
    report and go on. The statistics are descriptive, never a gate.
 

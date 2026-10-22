@@ -6,7 +6,7 @@
  *
  * Ported off `bun run ${CLAUDE_PLUGIN_ROOT}/skills/task-work/check_ancestry.ts`
  * ([[T-VAW3]] AC-2: a skill script invoked by file path resolves its
- * `@sksizer/cli-tool` / `@osdlc/typed-git` imports by accident of the
+ * `@osdlc/cli-tool` / `@osdlc/typed-git` imports by accident of the
  * in-repo `node_modules`, which is absent from a plugin copied outside this
  * monorepo — no `bun install` ever runs there). CLI parsing, stdout/stderr
  * shape and exit codes are unchanged from the retired script — only the
@@ -59,7 +59,7 @@
 
 import { z } from 'zod'
 
-import { defineCli, EXIT, type CliContext } from '@sksizer/cli-tool'
+import { defineCli, EXIT, type CliContext } from '@osdlc/cli-tool'
 import { CommandFailed, Git } from '@osdlc/typed-git'
 
 import { defineOp, type OpCtx } from '@lib/registry'

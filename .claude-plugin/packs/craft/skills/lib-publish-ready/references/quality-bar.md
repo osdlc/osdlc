@@ -50,7 +50,7 @@ than the ecosystem checks.
 |---|---|---|
 | Q1 Name | The name is free on every target registry and on the code host, and no name looks, sounds or reads like it; the checks are dated. It is the Name gate's evidence. `[owner]` | [process](process.md) `name-survey`, sign-off gates |
 | Q2 Purpose | The README opens with the problem, who it is for, and when not to use it, before any API. `[bar]` | |
-| Q3 Prior art | The README or docs compare it with the main alternatives, the owner's own libraries included, and say why it exists anyway. `[bar]`, owner's libraries `[owner]` | [process](process.md) `prior-art` |
+| Q3 Prior art | The README or docs compare it with the main alternatives, the owner's own libraries included, and say why it exists anyway. `[bar]`, owner's libraries `[owner]` | [process](process.md) `prior-art`, [Alternatives gate](process.md#alternatives-gate) |
 | Q4 API surface | Every public item is intended, typed where the language allows, named consistently and documented; no internal helper is public; a public error or option type can grow without breaking callers. It is the API gate's evidence. `[bar]`, error type `[new]`, API gate `[owner]` | [api-review](api-review.md) |
 | Q5 Stability tiers | Each public item's tier is declared in its docs, the README lists the items that are not stable, and a test checks that the list and the markers agree. `[lesson]` | |
 | Q6 Functional tests | Tests cover each public item's behaviour and error paths, and coverage is reported. `[bar]` | |

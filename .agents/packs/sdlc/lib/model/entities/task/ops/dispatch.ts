@@ -42,12 +42,16 @@
  * only reports the plan (basename + `would-dispatch`); it claims no lease
  * and calls no workflow.
  *
+ * An untrusted repository is refused first (`UNTRUSTED`, exit 21, naming
+ * `sdlc repo trust <root>`), dry run included, before any lease or worktree:
+ * its workflow steps would each refuse it anyway.
+ *
  * Does NOT run `task next`'s state and autonomy filtering — naming a
  * specific `basename` IS the override for those. A caller who wants the
  * tick's own picks should use `sdlc orchestrate run --loop work` instead.
  */
 
-import { EXIT } from '@sksizer/cli-tool'
+import { EXIT } from '@osdlc/cli-tool'
 import { z } from 'zod'
 
 import { DEFAULT_BASE_HEALTH } from '@lib/config/sections/orchestrator'
@@ -55,6 +59,7 @@ import { resolveTarget } from '@lib/model/corpus/resolve'
 import { scanEntities } from '@lib/model/read'
 import { defineOp, OP_ERROR_EXIT_CODES, OpError } from '@lib/registry'
 import { baseHealthWarning } from '@lib/services/orchestrator/base-health'
+import { requireTrustedRoot } from '@lib/services/orchestrator/ops/run'
 import { tickCtxFrom } from '@lib/services/orchestrator/ticks/_types'
 import { dispatchOneTask } from '@lib/services/orchestrator/ticks/work'
 import { FailureDetailSchema, renderFailure } from '@lib/services/orchestrator/work-runs'
@@ -198,6 +203,9 @@ export default defineOp({
       ...rawArgs,
       basename: resolveBasename(ctx.projectRoot, rawArgs.basename),
     }
+    // Every step runs this repository's own workflows, which an untrusted repository
+    // refuses. Refuse here, dry run included, before any lease or worktree.
+    await requireTrustedRoot(ctx.projectRoot, 'task dispatch')
     // `noGh: false` matches `runWorkTick`'s own call — `task inflight`'s
     // `awaiting-review` bucket needs a live `gh pr list` to categorize
     // correctly, and `implement` (the only field this op reads) does not

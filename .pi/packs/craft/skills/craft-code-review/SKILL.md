@@ -18,10 +18,34 @@ Usage:
 ```
 
 Reviews the branch checked out in the current directory against `<base>`,
-which defaults to the upstream default branch. Reports findings in the
+which defaults to the upstream default branch; with uncommitted changes, `prep --worktree` names
+them (below). Reports findings in the
 terminal and posts nothing. The rubric lives in `references/review-rubric.md`;
 `/skill:craft-review-pr` embeds the same file and adds the GitHub side: the marker,
 the delta review, the posted review.
+
+## Prepare the change
+
+Always run `diffkit prep` before reading the change. It is read-only and prints one JSON manifest.
+The script is `diffkit.mjs` in the sibling `pr-stats` skill folder, `../pr-stats/diffkit.mjs`
+relative to this file; where skill folders carry a plugin prefix (`craft-pr-stats`) it is the
+sibling folder whose name ends in `pr-stats`:
+
+```sh
+node <pr-stats-dir>/diffkit.mjs prep --base <base>     # the branch's commits
+node <pr-stats-dir>/diffkit.mjs prep --worktree        # uncommitted changes, untracked files too
+```
+
+Skip every path in `files.dropped` (generated, lockfile, formatting-only). The change is large when
+`files.kept.length` is more than 15 or the sum of `added + removed` over `files.kept` is more than
+800; otherwise review it in one pass. If `prep` fails, review in one pass.
+
+For a large change, give each entry of `groups` (`{id, roots, files, lines}`: kept files by
+package, at most 12 each) to its own reviewer sub-agent with the full rubric below and the group's
+files. A sub-agent returns findings only (`{path, line, title, body}`) and runs no script and no
+`gh`. `flags` are places to look first, not findings. Merge the findings into one array, drop
+duplicates with the same `path`, `line` and `title`, then make a final pass across the groups for
+contracts between packages (an export and its callers, shared types, config read elsewhere).
 
 ## The review
 

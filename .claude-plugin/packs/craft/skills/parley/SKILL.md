@@ -66,6 +66,7 @@ type. `writing.md` has the rules for sources, questions and revising.
 | To show | Use |
 |---|---|
 | Paragraphs of explanation, or a whole narrative | `prose` |
+| A signature, doc comment or usage example, shown exactly as written | `code` |
 | One image or video with a caption | `figure` |
 | Live Storybook stories and screenshots side by side | `story` |
 | A question at its place in the reading | `question` |

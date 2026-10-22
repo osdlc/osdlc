@@ -35,7 +35,7 @@ import { dirname } from 'node:path'
 
 import { z } from 'zod'
 
-import { defineCli, EXIT, type CliContext } from '@sksizer/cli-tool'
+import { defineCli, EXIT, type CliContext } from '@osdlc/cli-tool'
 
 import { defineOp, type OpCtx } from '@lib/registry'
 import { scanEntityDir } from '@lib/model/read'
