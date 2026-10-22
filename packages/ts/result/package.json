@@ -1,6 +1,6 @@
 {
   "name": "@osdlc/result",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "A plain-object Result type and a human-friendly Failure shape for TypeScript: ok/err, map, andThen, match, attempt, and a thrown FailureError. Zero dependencies.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",

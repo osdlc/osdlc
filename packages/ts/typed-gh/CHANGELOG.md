@@ -1,5 +1,41 @@
 # @osdlc/typed-gh
 
+## 0.7.0
+
+### Minor Changes
+
+- d9b0f77: **Breaking:** the plain door throws the classified failure. A failed `gh` (a mutation, `prDiff`, `rawChecked`, a query) now throws a `FailureError` whose `failure` is the `GhFailure` and whose `failure.cause` is the `CommandFailed`, where it threw the `CommandFailed` itself. The bare `CommandFailed` only had command-seam's generic `exit` kind, so a signed-out `gh` during a write exited 1 from `runMain` instead of 23. Read `error.failure.argv` and `error.failure.cause.result` where you read `error.argv` and `error.result`.
+  
+  **Breaking:** the single-thing queries no longer treat every `Could not resolve to a …` as absence. `prView` answers `null` only for a missing pull request, `issueView` only for a missing issue and `repoView` only for a missing repository; a mistyped `--repo` is now a `not-found` failure, and a bare `HTTP 404` is a failure. The absence test reads stderr and stdout, as the classifier does.
+  
+  An `HTTP 403` is now `not-authenticated` (SAML, a missing scope), the same as Forgejo's 401 and 403, unless the text says it is a rate limit, which stays `rate-limited`. The `try` and `soft` doors recognise a thrown failure by shape, so two installed copies of `@osdlc/command-seam` or `@osdlc/result` agree.
+- d9b0f77: `Gh` and `AsyncGh` get `typed-git`'s three doors. **Breaking:** a query no longer answers `null` for a failure. The plain method returns its value or throws `CommandFailed` (a `FailureError` carrying a `GhFailure` of kind `unreadable` when `gh` exited 0 but its output could not be read). A query for one thing (`prView`, `issueView`, `repoView`, and `prFind`, `openPrFor`, `prViewSettled` over them) still answers `null` when GitHub says there is no such thing. `prList`, `prBody`, `graphql`, `labelList`, `issueList`, `repoList`, `searchPrs` and `prReviewThreads` now return a non-null value and throw. `installed`, `authenticated`, `authStatus`, `ready` and `api` are unchanged: their failure is part of their value.
+  
+  New: `gh.try.*` returns `Result<T, GhFailure>` from `@osdlc/result`; `gh.soft.*` returns `null` for a failed query, which is the old query behaviour, now opt-in (`TriedSync`, `TriedAsync`, `Soft`). `GhFailure` carries a `kind`, a one-line `message`, a `hint` for a person, `detail`, `argv`, `exitCode` and the `CommandFailed` as `cause`. `GhFailureKind` is every `@osdlc/command-seam` kind plus `not-authenticated`, `network`, `not-found`, `rate-limited` and `unreadable`, read from `gh`'s stderr. `classifyGhFailure(commandFailed)` is exported. `@osdlc/result` is now a dependency.
+
+### Patch Changes
+
+- fb712e0: Ship the compiled `dist/` only. The `bun` export condition and the TypeScript source are no longer in the package, so Bun, Node and every bundler load the same compiled ESM and `.d.ts` files. Bun still works through the compiled `dist/`.
+- fb712e0: Make every package follow the same conventions. The published manifests and READMEs change; the runtime code and the `dist/` files do not.
+  
+  - `author` is `sksizer` in every manifest (`@osdlc/typed-gh` had none).
+  - `engines.node` is no wider than any dependency's. `@osdlc/typed-gh` and `@osdlc/code-host` now declare `^22.22.2 || ^24.15.0 || >=26.0.0`, the range of `@osdlc/typed-git` and its dependency `hosted-git-info`. `@osdlc/cli-tool` and `@osdlc/trust-repo` declare `>=22`, not `>=22.18`: a `dist/` install needs no TypeScript stripping.
+  - `@osdlc/tsconfig` and `@osdlc/prettier-config` are ESM with `sideEffects: false`, and ship SECURITY.md and CONTRIBUTING.md. `@osdlc/prettier-config` has an `exports` map (`.` is `index.json`) in place of `main`.
+  - Every README has `## Install` and `## Licence` sections, and every CHANGELOG starts `# @osdlc/<name>`.
+  - `@osdlc/color` and `@osdlc/markdown-contract` no longer set a coverage threshold.
+  - `@osdlc/yaml-splice` reaches its WebAssembly glue through a `#wasm` entry in `imports`. The shipped `dist/` files are the same.
+- Updated dependencies [d9b0f77]
+- Updated dependencies [d9b0f77]
+- Updated dependencies [fb712e0]
+- Updated dependencies [fb712e0]
+- Updated dependencies [d9b0f77]
+- Updated dependencies [d9b0f77]
+- Updated dependencies [d9b0f77]
+- Updated dependencies [d9b0f77]
+  - @osdlc/command-seam@0.9.0
+  - @osdlc/typed-git@0.6.0
+  - @osdlc/result@0.1.0
+
 ## 0.6.0
 
 ### Minor Changes
