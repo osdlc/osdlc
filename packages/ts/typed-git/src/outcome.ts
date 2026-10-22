@@ -6,7 +6,8 @@
  * the whole client rather than a per-verb option, so a new verb costs nothing
  * here. Two rules make it honest:
  *
- *   - It catches `CommandFailed` and nothing else, and classifies it as a
+ *   - It catches `CommandFailed` (recognised by shape, so two installed copies of
+ *     command-seam agree) and nothing else, and classifies it as a
  *     {@link GitFailure} whose `cause` is that `CommandFailed`. A `TypeError`
  *     from a programmer mistake propagates; this is not a blanket catch.
  *   - A declared absence is `{ ok: true }`. `git.try.configGet("no.such.key")`
@@ -14,7 +15,7 @@
  *     failure.
  */
 
-import { CommandFailed } from '@osdlc/command-seam'
+import { isCommandFailed } from '@osdlc/command-seam'
 import { err, ok, type Result } from '@osdlc/result'
 
 import { classifyGitFailure, type GitFailure } from './failure.ts'
@@ -45,7 +46,7 @@ export type TriedAsync<C> = {
 
 /** `CommandFailed` becomes a classified failure; anything else stays a throw. */
 function asFailure(error: unknown): Result<never, GitFailure> {
-  if (error instanceof CommandFailed) return err(classifyGitFailure(error))
+  if (isCommandFailed(error)) return err(classifyGitFailure(error))
   throw error
 }
 
@@ -173,7 +174,7 @@ export function softSync<C extends object>(client: C, table: SoftTable): Soft<C>
     try {
       return call()
     } catch (error) {
-      if (error instanceof CommandFailed) return fallbackFor(table, name)
+      if (isCommandFailed(error)) return fallbackFor(table, name)
       throw error
     }
   }) as Soft<C>
@@ -185,7 +186,7 @@ export function softAsync<C extends object>(client: C, table: SoftTable): Soft<C
     try {
       return await call()
     } catch (error) {
-      if (error instanceof CommandFailed) return fallbackFor(table, name)
+      if (isCommandFailed(error)) return fallbackFor(table, name)
       throw error
     }
   }) as Soft<C>

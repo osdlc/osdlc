@@ -14,7 +14,7 @@ created: 2026-10-21
   and no re-export of the old name.
 - `GitFailure` is a `Failure<GitFailureKind>`. Its `kind` is every
   `@osdlc/command-seam` kind plus `not-a-repo`, `no-remote`,
-  `remote-unreachable` and `not-authenticated`, read from git's stderr (the
+  `remote-unreachable`, `not-authenticated` and `not-found`, read from git's stderr (the
   table is in the README).
 - `GitFailure.cause` is the `CommandFailed` it was classified from, so the
   full `CommandResult` is still reachable: `error.cause.result`.

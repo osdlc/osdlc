@@ -147,8 +147,9 @@ joins them), git's own output in `detail`, the `argv` and `exitCode`, and the
 | `not-installed` | git is not on `PATH` | `` `git` is not installed or not on PATH. `` / `Install git from https://git-scm.com.` |
 | `not-a-repo` | stderr says `not a git repository` | `This is not a git repository.` / ``Run it inside a git repository, or create one with `git init`.`` |
 | `no-remote` | `No such remote`, or `'x' does not appear to be a git repository` | `The remote 'x' does not exist.` (or `… does not exist or is not a git repository.`) / ``List the remotes with `git remote -v`.`` |
-| `remote-unreachable` | `Could not read from remote repository`, `Could not resolve host`, `unable to access` | `The remote could not be reached.` / `Check your network connection and the remote URL.` |
-| `not-authenticated` | `Authentication failed`, `Permission denied (publickey)`, `could not read Username` | `The remote refused the credentials.` / `Check that you are signed in to the host, or that your SSH key is added.` |
+| `remote-unreachable` | `Could not read from remote repository`, `Could not resolve host`, `unable to access` with no HTTP status (a refused connection, a timeout) | `The remote could not be reached.` / `Check your network connection and the remote URL.` |
+| `not-authenticated` | `Authentication failed`, `Permission denied (publickey)`, `could not read Username`, `unable to access` with HTTP 401 or 403 | `The remote refused the credentials.` / `Check that you are signed in to the host, or that your SSH key is added.` |
+| `not-found` | `unable to access` with HTTP 404 | `The remote repository was not found, or you cannot see it.` / `Check the remote URL, and that your account can see the repository.` |
 | `not-executable`, `bad-cwd`, `timeout`, `output-cap`, `signal`, `aborted`, `spawn` | as in `@osdlc/command-seam` | command-seam's message, no hint |
 | `exit` | any other non-zero exit | git's first stderr line |
 

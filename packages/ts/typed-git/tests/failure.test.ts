@@ -85,6 +85,38 @@ suite('stderr patterns', () => {
       'The remote could not be reached.',
     ],
     [
+      'unable to access, HTTP 403 (the host refused: not a retry)',
+      fail(
+        "fatal: unable to access 'https://github.com/o/r.git/': The requested URL returned error: 403",
+      ),
+      'not-authenticated',
+      'The remote refused the credentials.',
+    ],
+    [
+      'unable to access, HTTP 401',
+      fail(
+        "fatal: unable to access 'https://github.com/o/r.git/': The requested URL returned error: 401",
+      ),
+      'not-authenticated',
+      'The remote refused the credentials.',
+    ],
+    [
+      'unable to access, HTTP 404 (a wrong URL: not a retry)',
+      fail(
+        "fatal: unable to access 'https://github.com/o/nope.git/': The requested URL returned error: 404",
+      ),
+      'not-found',
+      'The remote repository was not found, or you cannot see it.',
+    ],
+    [
+      'unable to access, a timeout stays unreachable',
+      fail(
+        "fatal: unable to access 'https://github.com/o/r.git/': Failed to connect to github.com port 443 after 21000 ms: Timed out",
+      ),
+      'remote-unreachable',
+      'The remote could not be reached.',
+    ],
+    [
       'Authentication failed',
       fail(
         "remote: Invalid username or password.\nfatal: Authentication failed for 'https://github.com/o/r.git/'",
@@ -236,5 +268,29 @@ suite('against a real git', () => {
     } finally {
       fx.cleanup()
     }
+  })
+})
+
+suite('a CommandFailed from another installed copy', () => {
+  // Another copy of command-seam has its own class, so `instanceof` is false;
+  // the doors go by shape.
+  const foreign = (): Error =>
+    Object.assign(new Error('boom'), {
+      failure: { kind: 'exit', message: 'x' },
+      argv: ['status'],
+      result: { exitCode: 128, stdout: '', stderr: 'fatal: not a git repository' },
+    })
+  const thrower: CommandRunner = {
+    binary: 'git',
+    run: () => {
+      throw foreign()
+    },
+  }
+
+  test('try classifies it, and soft answers the absence value', () => {
+    const git = new Git('/x', { runner: thrower })
+    const r = git.try.statusPorcelain()
+    expect(!r.ok && r.error.kind).toBe('not-a-repo')
+    expect(git.soft.statusPorcelain()).toEqual([])
   })
 })

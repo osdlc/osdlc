@@ -21,12 +21,21 @@ import { type Failure } from '@osdlc/result'
  * - `no-remote`: the named remote does not exist ("No such remote", "'x' does not
  *   appear to be a git repository");
  * - `remote-unreachable`: the remote exists but could not be reached ("Could not
- *   read from remote repository", "Could not resolve host", "unable to access");
+ *   read from remote repository", "Could not resolve host", "unable to access"
+ *   without an HTTP status: a refused connection, a timeout);
  * - `not-authenticated`: the remote refused the credentials ("Authentication
- *   failed", "Permission denied (publickey)", "could not read Username").
+ *   failed", "Permission denied (publickey)", "could not read Username", "unable
+ *   to access … The requested URL returned error: 401" or "403");
+ * - `not-found`: the host answered that the repository is not there ("unable to
+ *   access … The requested URL returned error: 404"). Retrying will not help.
  */
 export type GitFailureKind =
-  CommandFailureKind | 'not-a-repo' | 'no-remote' | 'remote-unreachable' | 'not-authenticated'
+  | CommandFailureKind
+  | 'not-a-repo'
+  | 'no-remote'
+  | 'remote-unreachable'
+  | 'not-authenticated'
+  | 'not-found'
 
 /** A failed git call. `message` is one line for a person; `detail` is git's own output. */
 export interface GitFailure extends Failure<GitFailureKind> {
@@ -90,6 +99,25 @@ export function classifyGitFailure(failed: CommandFailed): GitFailure {
       kind: 'not-authenticated',
       message: 'The remote refused the credentials.',
       hint: 'Check that you are signed in to the host, or that your SSH key is added.',
+    }
+  }
+  // "unable to access" with a status means the host answered. A refusal or a
+  // wrong URL will not clear up by retrying, so it must not read as unreachable.
+  const status = /unable to access[^\n]*returned error: (\d{3})/.exec(text)?.[1]
+  if (status === '401' || status === '403') {
+    return {
+      ...base,
+      kind: 'not-authenticated',
+      message: 'The remote refused the credentials.',
+      hint: 'Check that you are signed in to the host, or that your SSH key is added.',
+    }
+  }
+  if (status === '404') {
+    return {
+      ...base,
+      kind: 'not-found',
+      message: 'The remote repository was not found, or you cannot see it.',
+      hint: 'Check the remote URL, and that your account can see the repository.',
     }
   }
   if (notARemote !== undefined) {
