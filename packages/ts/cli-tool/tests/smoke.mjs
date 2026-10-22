@@ -70,4 +70,15 @@ const shim = devlink.renderShim(spec, '/checkout/bin/tooly')
 assert.match(shim, /^#!\/bin\/sh/)
 assert.ok(shim.includes('exec "$target" "$@"'))
 
+// A classified failure is one line and a category exit code, from the shared table.
+const failCtx = captureContext()
+const code = root.failWith(
+  failCtx,
+  { kind: 'not-installed', message: '`gh` is not installed or not on PATH.', hint: 'Install it.' },
+  { name: 'tooly' },
+)
+assert.equal(code, root.EXIT_FAILURE.missingTool)
+assert.equal(code, 22)
+assert.equal(failCtx.io.err, 'tooly: `gh` is not installed or not on PATH. Install it.\n')
+
 console.log('cli-tool smoke: OK')
