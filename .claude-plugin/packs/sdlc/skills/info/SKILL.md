@@ -85,5 +85,5 @@ tree, and cross-references the `~/.claude/plugins/` registration records.
   location — that reports the source tree it lives in, not the plugin the session loaded. Invoke via
   `/sdlc:info` for the authoritative answer.
 - Registration cross-reference reads `~/.claude/plugins/installed_plugins.json`
-  and `known_marketplaces.json` (honouring `CLAUDE_HOME`), the same records
-  `sdlc plugin resolve` resolves against.
+  and `known_marketplaces.json` (honouring `CLAUDE_CONFIG_DIR`), the same records
+  `sdlc plugin resolve` resolves against. A plugin installed for another project is not listed.

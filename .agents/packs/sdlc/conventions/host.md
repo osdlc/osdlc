@@ -34,6 +34,7 @@ interchangeable, and neither input accepts the other's values as an alias.
 | `focus` | `{cwd, sessionId?}` | Bring the live session forward; returns `false` when there is none or the host call failed |
 | `capture` | `{cwd, sessionId?}` | Recent screen text of the session; `null` when there is none or the host call failed. Feeds the receipt's `capture` probe |
 | `close` | `{cwd, sessionId?}` | Close the session's pane and kill what runs in it; `true` only when the host reported the close, `false` for no pane, an unverified pane or a failed call. Where a launch left no pane identity to match, `close` leaves the pane open rather than closing a neighbour's |
+| `openWorkspace` | `{cwd, notice?}` | For a host whose terminals live in a workspace (an IDE project): ensure one containing `cwd` is open, opening the cwd's git root when none is; idempotent. Returns `{root, opened}`; throws on failure |
 
 Every part is optional on a host — a consumer asks for the one it needs with
 `requirePart(host, 'session')` and gets `HostPartMissing` when the host lacks
@@ -54,6 +55,22 @@ is set when the text was accepted but the host cannot tell whether it landed
 (`herdr` `timeout`/`agent_prompt_stalled`, `orca` input accepted without a
 `turn_started` stage, `cmux` and `wezterm` when the Enter failed after the text
 was typed). An uncertain send arms no `host-ack` and is never re-sent.
+
+`openWorkspace` is called by one shared policy, `ensureWorkspace`
+(`lib/services/host/open-workspace.ts`), which `session start` and the
+dashboard's session open run before `session`/`terminal`: when
+`host.open_workspace` is `true` (the default) and the host has the part, the
+host opens the workspace first; `session start` prints one line saying so
+(the dashboard open stays silent). A host without the part is launched as
+before; `send`, `find`, `focus` and `attach` never call
+it. This is deliberate even though a person who chose a host did not ask for a
+new project: it fires only on a miss, the IDE's own trust prompt still gates the
+open, and the printed line names what is happening. Each worktree opens as its
+own workspace; a monorepo subfolder opens the whole repository (the git root),
+and a git root that is the home directory or the filesystem root is refused in
+favour of the cwd.
+Today only `jetbrains` implements it; `vscode` (`code -r <folder>`) and `orca`
+(repository registration) could.
 
 Three more fields sit on `Host` beside the parts: `platforms` (the OSes it runs
 on, or `'all'`), `platformHint` (optional, per unsupported OS: how to get the
@@ -120,7 +137,7 @@ the `done` already on the record. `never`: nothing is closed.
 | `otty` | `otty tab new` with a `[sd-i-<id>]` (else `[sd-<hash of cwd>]`) tag in the title; `send` is bracketed-paste `pane send-keys` plus `key:Enter`. `close` is `pane close`. Needs the app running. Docs-only: the app was not running when written. [[N-OTY7-hosts-otty]] | macOS | `session`, `terminal`, `send`, `find`, `focus`, `capture`, `close` | no |
 | `wezterm` | `wezterm cli spawn`; panes found by `cli list --format json`; `send` is `send-text` then a separate `\r` (Enter failing after the text is `uncertain`) and types only into panes this host spawned (remembered in `<runtime>/hosts/wezterm/panes.json`; the pane of each session id in `sessions.json`); `find`, `focus` and `capture` use the session's pane, else any pane at `cwd`; `close` is `cli kill-pane` and only for a spawned pane. Needs a running GUI or mux. Docs-only. [[N-WZTM-hosts-wezterm]] | all | `session`, `terminal`, `send`, `find`, `focus`, `capture`, `close` | no |
 | `vscode` | A terminal in the VS Code, Cursor or Windsurf window whose workspace contains `cwd`, via the `sdlc-host` companion extension (`packages/ts/vscode-host`, one private socket per window). Never opens a window unasked. `send`, `focus` and `list` see only terminals the extension created via `open`. `sendText` reports nothing. `open` carries the session id and the extension binds the terminal to it; `close` disposes the terminal. `close` needs a companion that knows the `close` op; an older companion answers an unknown op and the close reports false. [[N-VSCH-hosts-vscode]] | all | `session`, `terminal`, `send`, `find`, `focus`, `close` | no |
-| `jetbrains` | A terminal tab in the IDE with the project open, via the companion plugin (`solutions/ontological/ide/jetbrains`) over loopback HTTP with a per-IDE bearer token. Never opens a project. The plugin tracks only the tabs it opened, each with its own id (reopening a cwd adds a tab); `send` and `focus` target the newest live one for the cwd. `ack` is the plugin's `consumed` passed through, which the terminal API cannot confirm, so it is always false today. Addressed by `cwd` only (the plugin is unbuilt, so its wire format stays as is) and has no `close`. [[N-J3TB-hosts-jetbrains]] | macOS | `session`, `terminal`, `send`, `find`, `focus` | passes the plugin's `consumed` through (always false today) |
+| `jetbrains` | A terminal tab in the IDE with the project open, via the companion plugin (`packages/kotlin/jetbrains-host`) over loopback HTTP with a per-IDE bearer token. `openWorkspace` asks an IDE to open the cwd's git root (the cwd outside a repository, or when git fails or the root is the home directory or filesystem root) through `POST /api/sdlc/project/open`, when `host.open_workspace` is on and no open project contains the cwd; the IDE's own trust prompt is not bypassed, and `terminal`/`session`/`send`/`find`/`focus` never open a project themselves. With several IDEs running, `host.jetbrains.ide` (a product name, matched in full, ignoring case) picks one. The tab's process is the harness, started by a POSIX login shell (`$SHELL`, else `/bin/sh`) or directly on Windows (argv over the wire, never a quoted string), and the plugin tracks only the tabs it opened; `send`, `find` and `focus` target only live ones. The plugin waits at most 3 s (then 2 s more for work already begun) for the IDE's UI thread, so a busy IDE or an open modal dialog answers `503` (nothing was done) or `504` (outcome unknown; a `504` on `terminal/open` may still produce a tab, so callers must not retry blindly) instead of hanging a request; `ping` carries the IDE's `pid`, and the host skips an entry whose ping answers as another pid (a stale file whose port another process holds). The terminal API reports no consumption, so `ack` is always false. [[N-J3TB-hosts-jetbrains]] | macOS | `session`, `terminal`, `send`, `find`, `focus`, `openWorkspace` | no |
 
 ### Discovery registries
 
@@ -134,7 +151,7 @@ file is skipped.
 | Host | Path | Contents | Permissions |
 |---|---|---|---|
 | `vscode` | `<runtime>/hosts/vscode/<pid>.json` | `{version, pid, app, endpoint, token, folders, startedAt}` | dir 0700, file 0600; the socket is 0600 (a default-ACL named pipe on win32) |
-| `jetbrains` | `<runtime>/hosts/jetbrains/<pid>.json` | pid, loopback port, bearer token and `startedAt` | dir 0700 (an existing one is tightened), file 0600 (created so, POSIX only); the plugin deletes files of dead pids at startup |
+| `jetbrains` | `<runtime>/hosts/jetbrains/<pid>.json` | `{protocol, pid, port, token, startedAt}`; `protocol` is `2`, an IDE whose entry or ping reply carries another value, or whose ping `pid` differs from the file's, is skipped with the reason named | dir 0700 (an existing one is tightened), file 0600 (created so, POSIX only); stale pid files swept when the plugin publishes its entry; with the same project open in two IDEs the newest `startedAt` wins |
 | `wezterm` | `<runtime>/hosts/wezterm/panes.json` | the last 50 pane ids spawned | default (no chmod) |
 | `wezterm`, `orca`, `herdr` | `<runtime>/hosts/<name>/sessions/<session id>.json` | `{pane, cwd}`, one file per session so concurrent launches cannot lose each other (`hosts/session-panes.ts`) | default (no chmod) |
 
@@ -257,7 +274,7 @@ from the PROJECT ROOT the orchestrator itself uses (the main checkout — NOT
 `cd`ed into the task worktree), naming the worktree with `--cwd`:
 
 ```sh
-sdlc session launch --host tmux --tool claude --cwd <task-worktree>
+sdlc session launch --host tmux --tool claude --prompt <first-message> --cwd <task-worktree>
 ```
 
 This matters because `resolveProjectRoot` (`@lib/config`) picks the nearest
@@ -374,15 +391,14 @@ overrides). The result carries `evidence` and `armed`.
   as is `wezterm`: neither was verified against a live app.
 - **`vscode` and `jetbrains` start one subprocess per request**, because the
   host parts are synchronous and a Node socket is not.
-- **The JetBrains plugin was verified on macOS only.** It was run in the
-  `gradle runIde` sandbox (IntelliJ IDEA 2025.3, owner-observed 2026-10-10), so the
-  host lists `darwin`. The host's wire format is pinned by tests against a fake
-  IDE; the plugin's IDE-free logic has JUnit tests (`gradle test`). Its terminal
-  calls run on the EDT only while no modal dialog is open (otherwise the request
-  answers 503 and nothing is done), and `send` is refused (`accepted: false`)
-  unless a command is still running in the tab it opened. Before trusting a
-  registry entry the host checks the pid is alive and that the ping names that
-  pid.
+- **The JetBrains plugin has run live only in a `runIde` sandbox on macOS, so the host lists
+  `darwin`.** In
+  `solutions/ontological/packages/kotlin/jetbrains-host`,
+  `./gradlew buildPlugin verifyPluginStructure test` (JDK and Gradle pins in that directory's
+  `mise.toml`) compiles it against IntelliJ IDEA 2025.3 (Reworked Terminal API) and writes
+  `build/distributions/sdlc-host-0.1.0.zip`. The wire format is pinned by the golden files in
+  `protocol-fixtures/`, read by both the plugin's JUnit tests and `jetbrains.test.ts`; Plugin
+  Verifier results and open live checks are in [[N-J3TB-hosts-jetbrains]].
 
 ## Choosing a host
 

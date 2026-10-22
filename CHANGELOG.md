@@ -7,6 +7,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-10-22
+
+### Fixed
+
+- sdlc, `@osdlc/agent-dev` and `@osdlc/tool-router` take `@osdlc/agent-call` ^0.7.1, the range
+  `@osdlc/pr-update` already needs. The release packs pin one version of each npm package, so the
+  split stopped the 0.16.0 osdlc release from assembling.
+
+### Changed
+
+- `sdlc verify changes` can dispatch to every tool agent-call 0.7 has an adapter for, cursor and pi
+  among them, where before it refused all but claude, codex, antigravity and opencode.
+
+## [0.16.0] - 2026-10-22
+
+### Added
+
+- `sdlc dashboard start --lan --token <t>` serves a chosen access token instead of a random one, so
+  the LAN URL survives a restart. `SDLC_DASHBOARD_TOKEN` sets it too; `--token` wins, but shows in
+  `ps` while `start` runs and the variable does not. The token needs at least 16 characters from
+  `A-Z a-z 0-9 . _ ~ -`, `--token` without `--lan` is an error, and `start` refuses to reuse a
+  running LAN dashboard that serves a different token
+  ([#3657](https://github.com/sksizer/dev/pull/3657)).
+
+### Changed
+
+- `sdlc task dispatch` refuses an untrusted repository before it takes a lease or makes a
+  worktree, `--dry-run` included (`UNTRUSTED`, exit 21, naming `sdlc repo trust <root>`).
+  When define's scratch worktree cannot be made, the failure names the git command, its exit
+  code and the last lines of its output, and says when git made the worktree but its
+  post-checkout hook failed; the worktree and its temp dir are removed. A failed step too long
+  for the `task dispatch` or `orchestrate work-run` summary line now prints in full below it
+  ([#3577](https://github.com/sksizer/dev/pull/3577)).
+- `sdlc harness model` redacts MCP secrets: `env` and header values, and the user part and query
+  values of a server `url`, read `<redacted>` in the `--output json` model
+  ([#3495](https://github.com/sksizer/dev/pull/3495)).
+- `sdlc harness model` reads more of a Claude plugin: flat `commands/*.md` files, `hooks/hooks.json`
+  and the `hooks` and `mcpServers` of `plugin.json`. `.claude/settings.local.json` now overrides
+  `settings.json`, with permission rules and hooks from both kept
+  ([#3495](https://github.com/sksizer/dev/pull/3495)).
+- `sdlc` reads harness state through `@osdlc/detect-harness`: `harness detect`, `doctor`,
+  `harness model`, `plugin info`, `plugin resolve`, `log hooks status` and
+  `task preflight-permissions`. `CLAUDE_HOME` is no longer read; `CLAUDE_CONFIG_DIR` is honoured.
+  `plugin info` and `plugin resolve` no longer show plugins installed only for another project;
+  a plugin installed for the main checkout still shows in a linked worktree of it. When a plugin
+  registry holds nothing for the project, `plugin resolve` says "no plugin install record applies
+  to <project>" instead of "no plugins recorded".
+  `task preflight-permissions` loses `--user-settings`, `--project-settings` and
+  `--project-local-settings`, and with no git checkout it reads the task file's folder as the
+  project, so that folder's `.claude/settings.json` and `settings.local.json` count
+  ([#3499](https://github.com/sksizer/dev/pull/3499)).
+- `harness detect` and `project doctor` count the `oauthAccount` key in `~/.claude.json` as Claude
+  sign-in evidence, as the `@osdlc/detect-harness` library does. A machine whose login is in the
+  macOS Keychain now shows Claude as signed in, with evidence `~/.claude.json#oauthAccount`, where
+  it showed "unknown" before. Other tools' sign-in output is unchanged
+  ([#3499](https://github.com/sksizer/dev/pull/3499)).
+
 ## [0.15.0] - 2026-10-19
 
 The sdlc 1.0 work ships as 0.15.0, a pre-1.0 release: starting-rules kits, scheduled runs, a
@@ -107,7 +164,7 @@ skill `parley` at alpha. `craft` ships as 0.7.0. Breaking changes are marked bel
 - Config changes are picked up without a restart: `loadConfig` notices an edited `sdlc.yaml` or
   `sdlc.local.yaml`, and the orchestrate loop reloads at the start of each pass. An invalid edit is
   logged and skipped ([#3086](https://github.com/sksizer/dev/pull/3086)).
-- The config machinery is shared as `@sksizer/cli-tool/config` with an `SDLC_CONFIG` override
+- The config machinery is shared as `@osdlc/cli-tool/config` with an `SDLC_CONFIG` override
   ([#3153](https://github.com/sksizer/dev/pull/3153)).
 - `orchestrator.limits` is a hierarchy: a machine-wide `total`, an `executor` pool with a cap per
   operation, and a `schedule` pool ([#3205](https://github.com/sksizer/dev/pull/3205)).
@@ -457,6 +514,11 @@ Windows and Linux groundwork.
   most 7 days ahead (15 minutes when the reset cannot be read). The model is the exact id
   (`claude/claude-opus-5-5`, not `claude/opus`), and `route.outcome` records the same id; a
   profile entry naming an alias is matched by resolving it first.
+- `sdlc quality checks [<dir>]` runs a folder of numbered check scripts through
+  `@sksizer/agent-dev`: `<dir>`, else the new `quality.checks_dir`, else `.sdlc/checks.d/` (a
+  missing default folder is a no-op). Script checks pass the repo-trust gate `quality run` uses
+  (`--trust` for one run); `--dry-run` lists the plan and runs nothing; any failed check exits 1.
+  `sdlc setup` re-includes `.sdlc/checks.d/` in a consumer's `.gitignore`.
 - `log.store.scope: repo | worktree`: where a relative `log.store.path` resolves. `repo` (the new
   default) resolves it against the repository's main checkout (the git common dir's worktree), so
   every git worktree shares one log and the session hooks and the op journal write to the same
@@ -606,17 +668,24 @@ Windows and Linux groundwork.
   Cursor and Windsurf through the `sdlc-host` companion extension
   (`packages/ts/vscode-host`; the compiled `sdlc` binary needs `node` or `bun`
   on `PATH` to reach it, and reports the host unavailable otherwise);
-  `jetbrains` drives a companion plugin (`ide/jetbrains`; the host is unavailable until the
-  plugin is installed). The plugin builds (CI job `jetbrains-plugin`, with JUnit tests for its
-  IDE-free logic) and was verified in the `gradle runIde` sandbox on macOS, IntelliJ IDEA 2025.3
-  (owner-observed 2026-10-10), so the host lists `darwin` only. It compares the bearer token in
-  constant time, runs terminal calls on the EDT without ever acting after a request timed out
-  (the CLI then sees a 503 with nothing done), gives every tab it opens its own id, selects the
-  tab on `focus`, refuses `send` unless a command still runs in the tab, reaps registry files of
-  dead IDEs, and records `startedAt` so the CLI picks the newest IDE on a tie. The host
-  verifies the ping's `pid` against the registry file, surfaces the plugin's error text, times
-  pings out after 1.5 s and caches the answering IDEs for 5 s. `host.default`,
-  `pr_review.host` and `--host` accept the new names.
+  `jetbrains` drives a companion plugin (`packages/kotlin/jetbrains-host`; the host is
+  unavailable until the plugin is installed). The plugin builds (CI workflow
+  `jetbrains-host`, with JUnit tests over the golden wire fixtures) and was verified in the
+  `gradle runIde` sandbox on macOS, IntelliJ IDEA 2025.3 (owner-observed 2026-10-10), so the host
+  lists `darwin` only. It starts the agent as the tab's own process, reaps registry files of dead
+  IDEs, and records `startedAt` so the CLI picks the newest IDE on a tie. The host surfaces the
+  plugin's error text, times pings out after 1.5 s and caches the answering IDEs for 5 s. The plugin
+  bounds its wait for the IDE's UI thread (3 s, then 2 s more) and answers 503 (nothing done) or
+  504 (outcome unknown; a 504 on terminal/open may still produce a tab, so callers must not retry
+  blindly) instead of hanging a request; `ping` reports the IDE's `pid`, and the host
+  skips a registry entry whose ping answers as another pid. Wire protocol 2.
+  `host.default`, `pr_review.host` and `--host` accept the new names.
+- Launching a session opens a workspace first when the host has none open for the directory: the new
+  optional host part `openWorkspace` (implemented by `jetbrains`, which opens the git root as a
+  project; the IDE's trust prompt still applies) is called before `session`/`terminal` when
+  `host.open_workspace` (default `true`) is on, after one line on stderr saying what is opening.
+  `host.jetbrains.ide` picks the IDE by product name when several run. The plugin publishes itself
+  from the welcome screen too, so an IDE with no project open is found.
 - The `cmux` host now fulfils `send`, `find`, `focus` and `capture`. `live`
   sends type only into a known agent session: cmux needs a session-store row
   naming the agent, otty an sdlc-tagged pane; a match by working directory
@@ -673,6 +742,16 @@ Windows and Linux groundwork.
 
 ### Changed
 
+- `@sksizer/pr-stats` is now `@sksizer/diffkit`, with no alias. The craft `pr-stats` skill keeps its
+  name but its script is `diffkit.mjs` and the command is `node <skill-dir>/diffkit.mjs stats …`.
+  The PR-body statistics markers are `<!-- sdlc-diffkit-stats:start -->` and
+  `<!-- sdlc-diffkit-stats:end -->`; a body with the old markers gets a second section on the next
+  `sdlc pr stats --write`; delete the old one by hand. `sdlc pr stats` also takes
+  `--head <ref>` (exactly `<base>..<head>`) and `--worktree`. The script's new `prep` command
+  lists the kept and dropped files of a change and groups the kept ones by nearest package root.
+  `review-pr` and `code-review` always run it first, and review a large change (more than 15 kept
+  files or more than 800 changed lines) with one reviewer sub-agent per group.
+  ([#3089](https://github.com/sksizer/dev/pull/3089))
 - Depends on `@osdlc/color` `^1.0.1` from npm instead of `@sksizer/color`.
 - The `craft` skill `sks-code-review` is renamed `pr-review`; invoke it as `/craft:pr-review`. Its
   behaviour is unchanged.
@@ -799,9 +878,11 @@ Windows and Linux groundwork.
 - The setup wizard's `history` and `sessions` steps are one `log` step, and it
   has no `redact` choice (an old one is rejected as unknown): redaction is always on.
   It warns about every content channel captured into a tracked (`publish: repo`) store.
+- The `--host` help of `session launch` and `pr review` lists every host, generated from the host
+  names instead of hand-typed.
 - `Host.send` returns `{accepted, ack}`; `ack` is true only when the host itself confirmed the
-  harness consumed the input (`orca`, `herdr`; `jetbrains` passes the plugin's `consumed` through,
-  always false today). `uncertain` marks a send that was accepted but whose landing the host cannot
+  harness consumed the input (`orca`, `herdr`; `jetbrains` never acks: the terminal API cannot
+  confirm consumption). `uncertain` marks a send that was accepted but whose landing the host cannot
   tell; it arms no `host-ack` and is not re-sent.
 - The `live` route is skipped while the session is `waiting_for_input`, so
   the Enter cannot answer a permission prompt.
@@ -1173,7 +1254,7 @@ commands gain a uniform read surface.
   [#2886](https://github.com/sksizer/dev/pull/2886))
 - A `tracker:` config block (`tracker.kind`, default `github`) behind a Tracker
   port with a GitHub Issues adapter, and the code host is its own port
-  (`@sksizer/code-host`) that `pr survey` and `pr update` go through; every PR
+  (`@osdlc/code-host`) that `pr survey` and `pr update` go through; every PR
   argument parses with one `parsePrInput`.
   ([#2886](https://github.com/sksizer/dev/pull/2886))
 - Each PR head gets a step evidence ledger at `.sdlc/pr-evidence/<sha>.jsonl`,

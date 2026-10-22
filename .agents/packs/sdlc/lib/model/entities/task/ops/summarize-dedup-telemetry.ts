@@ -27,7 +27,7 @@ import { readFileSync } from 'node:fs'
 
 import { z } from 'zod'
 
-import { defineCli, EXIT, type CliContext } from '@sksizer/cli-tool'
+import { defineCli, EXIT, type CliContext } from '@osdlc/cli-tool'
 
 import { defineOp, type OpCtx } from '@lib/registry'
 import { isFile } from '@lib/util/fs'

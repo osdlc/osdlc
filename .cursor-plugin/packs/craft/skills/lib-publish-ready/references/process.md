@@ -70,7 +70,7 @@ after `release`.
 
 | Gate | Decided by | Blocks |
 |---|---|---|
-| Worthwhile | The owner | Everything after `audit`. A "do not publish" or "merge into X" ends the run. |
+| Worthwhile | The owner | Everything after `audit`. A "do not publish" or "merge into X" ends the run. See [Alternatives gate](#alternatives-gate). |
 | Name | The owner, as a sign-off | `fixes` and `move-ready`. `move` goes ahead under the current name; a rename is cheap while the PR is a draft. |
 | API | The owner, as a sign-off | `fixes` |
 | Stable | The owner | `fixes`, which sets the first version |
@@ -79,6 +79,37 @@ after `release`.
 | Release | A person | `release` |
 | Cutover | The owner, by merging the PR the `cutover` step produces | The consumer switching to the published package |
 | Promote | A person | `promotion` |
+
+## Alternatives gate
+
+It is part of the Worthwhile gate. It sits between `audit` and every step after it, except
+`decisions`, which may run to record the answer.
+
+`prior-art` records every candidate: each existing library that covers the same job, outside
+or in the owner's own libraries. A candidate is suitable when a consumer could use it instead
+of ours for the library's core job, and it meets the minimum below.
+
+- Licence: OSI-approved, and usable as a dependency under our licence.
+- Maintenance: a release or a merged commit in the last 12 months, and no open security issue
+  left unanswered. The evidence is dated, like the name survey.
+
+A candidate that fails the minimum is recorded as not suitable, with that reason.
+
+- A candidate is suitable: the run stops after `audit`. The owner must answer. Nothing else
+  is moved, fixed or published until the answer is recorded.
+- No candidate is suitable: the report says so, with the evidence per candidate (what it
+  lacks). No gate.
+
+The answer is one of `continue`, `adopt <candidate>` or `drop`, plus the reason.
+
+- Record it as a public decision (`decisions`), like a sign-off. A `continue` names the
+  candidates it weighed and why ours is still worth having. The reason carries no audit text.
+- `continue` lets the run go on. `adopt` and `drop` end it.
+- Only the owner answers. `--autonomy-to` and every other driver setting cannot skip or
+  assume the answer, and a driver never infers `continue` from silence.
+- The report shows the answer as recorded or pending, and asks until it is recorded. A
+  re-audit looks for the recorded answer in the decision notes and keeps it unless a new
+  suitable candidate appears.
 
 ## Fix-list tags
 
@@ -113,8 +144,10 @@ whenever. Each value implies that every earlier agent-line step ran.
 | `fixes` | the above, then `fixes` | The owner's answers are applied and the re-audit is done. The driver waits at the join for the answers `fixes` needs. |
 | `move-ready` | the above, then `move-ready` | The PR is marked ready to merge. This is the highest allowed value. |
 
-Values up to `move` never wait for answers. `fixes` and `move-ready` wait at the join, and
-`move-ready` also waits for the Name and Home sign-offs.
+The [Alternatives gate](#alternatives-gate) stops the driver after `audit` for every value.
+
+Otherwise values up to `move` never wait for answers. `fixes` and `move-ready` wait at the
+join, and `move-ready` also waits for the Name and Home sign-offs.
 
 `release`, `cutover` and `promotion` are not allowed values.
 
@@ -170,8 +203,12 @@ The Name and API gates are hard to undo after release, so each needs the owner's
     account and organisation the owner has (an input to the audit), and read the package
     folders of the repos that hold several libraries.
   - One table row per hit: what it is, the overlap, and what to do about it.
-- Produces: the table, and one recommendation: publish, merge with another library,
-  contribute upstream instead, or do not publish.
+  - For each candidate, outside or inside, record: what it covers, what it lacks, licence,
+    maintenance (last release, activity, with dates), fit, and whether it is suitable as the
+    [Alternatives gate](#alternatives-gate) defines.
+- Produces: the table, the candidate record, and one recommendation: publish, merge with
+  another library, contribute upstream instead, adopt an alternative, or do not publish. With a
+  suitable candidate, it also raises the Alternatives gate owner question.
 - Gate: none.
 
 ## `stability`: stability evidence `[bar]`
@@ -219,7 +256,7 @@ The Name and API gates are hard to undo after release, so each needs the owner's
   and for each sign-off. A note states the decision, not the audit finding. Notes live in the
   package's decisions folder, `<package>/decisions/` by default, or as decision entities in the
   package's own planning folder (bar row Q21).
-- Gate: Worthwhile.
+- Gate: Worthwhile, except that it may run to record the Alternatives gate answer.
 
 ## `bug-scan`: bug scan `[lesson]`
 

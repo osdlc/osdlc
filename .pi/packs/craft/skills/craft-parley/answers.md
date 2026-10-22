@@ -31,7 +31,10 @@ answers file holds. The skill text, `/skill:craft-parley` and its `loop.md`, say
   reply".
 - A first visit shows one line under the header on how to review. It stays dismissed in that
   browser.
-- Every figure and diagram has an expand button that opens it full size.
+- Every figure and diagram has an expand button that opens it full size. A wide diagram uses the
+  reading pane's full width. An expanded diagram fills the screen at the size that fits it, and
+  zooms and pans: the toolbar's buttons, `+` `-` `0` and the arrow keys, Ctrl+wheel or pinch, and
+  drag.
 - A story frame loads one at a time. When the document's Storybook does not answer, a banner
   says so and shows `storybookStart`.
 - The server's front page lists every document in the folder, newest first, with its block

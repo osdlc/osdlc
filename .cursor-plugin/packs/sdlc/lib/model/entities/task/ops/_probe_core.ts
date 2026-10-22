@@ -67,13 +67,13 @@ export function branchExists(basename: string, projectRoot: string, ctx: OpCtx):
 
 /**
  * The open-PR number for a branch, or null when none / unreachable — a thin
- * view over the shared typed-gh pures (`@osdlc/typed-gh`), exact-headRefName
- * matched (the gh search is a prefix match, so a non-exact hit is discarded).
+ * view over the shared typed-gh pures (`@osdlc/typed-gh`), matched on the
+ * exact headRefName.
  */
 export function openPrForBranch(branch: string, projectRoot: string, ctx: OpCtx): number | null {
   const verb = openPrsForBranch(branch)
   const rows = verb.parse(ctx.gh.run(verb.argv, { cwd: projectRoot }))
-  return pickPrForBranch(rows, branch)?.number ?? null
+  return pickPrForBranch(rows?.rows ?? null, branch)?.number ?? null
 }
 
 /** The subject line of the `main` branch's HEAD commit, or null when unreadable. */
@@ -117,6 +117,11 @@ export interface LocalLeaseSnapshot {
     readiness_verified_at: string | null
     touchpoints_verified_at: string | null
   } | null
+}
+
+/** Whether `lease` has lapsed at `now`; a lease with no expiry never does. */
+export function leaseExpired(lease: Pick<LocalLeaseSnapshot, 'expiresAt'>, now: Date): boolean {
+  return lease.expiresAt !== null && Date.parse(lease.expiresAt) <= now.getTime()
 }
 
 /**

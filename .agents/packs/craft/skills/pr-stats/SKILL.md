@@ -7,7 +7,8 @@ description: |
   cyclomatic-complexity movers. Use before or after opening a PR, in review, or when asked to
   "summarize this change", "how big is this PR", "what did this branch actually change", or
   "add stats to the PR". Optionally writes the table into the PR body. Runs from a bundled script
-  with plain Node, git and gh; needs no other plugin.
+  with plain Node, git and gh; needs no other plugin. `diffkit.mjs prep` also lists which files of
+  a large change to read or skip and groups them for separate reviewers.
 allowed-tools: read_file shell
 ---
 
@@ -27,15 +28,15 @@ Scope: measures and reports a diff. It never judges the change, never edits code
 the PR body, and only on `--write`.
 
 Inputs: a PR number, or a checkout with the branch to measure; `git` always, `gh` (authenticated)
-for a PR. Output: a markdown block between `<!-- sdlc-pr-stats:start -->` and
-`<!-- sdlc-pr-stats:end -->`, or the same data as JSON.
+for a PR. `prep` needs only `git` for a branch, and `gh` for a PR. Output: a markdown block between
+`<!-- sdlc-diffkit-stats:start -->` and `<!-- sdlc-diffkit-stats:end -->`, or the same data as JSON.
 
 ## Steps
 
 1. Run the script that ships beside this note, from inside the repository:
 
    ```text
-   node <skill-dir>/pr-stats.mjs [<pr>|--base <ref>] [--detail] [--json]
+   node <skill-dir>/diffkit.mjs stats [<pr>|--base <ref>] [--detail] [--json]
    ```
 
    Without a PR it diffs `<ref>...HEAD`, so commit first; uncommitted work is not measured.
@@ -59,6 +60,33 @@ for a PR. Output: a markdown block between `<!-- sdlc-pr-stats:start -->` and
    PR body on GitHub, so confirm with the user first unless they asked for it. A failure to write
    is not a failure of the review: say so and go on.
 5. Apply `after`.
+
+## Prep: what a reviewer should read
+
+`node <skill-dir>/diffkit.mjs prep [<pr>|--base <ref> [--head <ref>]|--worktree] [--group-size <n>]`
+prints one JSON manifest (`schema: 1`) and changes nothing. Use it to cut a large change down
+before a review:
+
+- `files.kept` are the files to read, each with its status, group, category and line counts;
+  `category: comments` marks a file whose change is only comments (kept: comment accuracy is
+  reviewed). `files.dropped` are the files to skip, each with a reason: `generated`, `lockfile` or
+  `formatting-only`. Formatting-only is conservative: within a block of changed lines they must
+  pair one to one in order and differ only in spaces and tabs outside string literals; a pure
+  move, a backtick, an unbalanced quote, a regex-looking token, a `\r` change or fused tokens
+  (`a + +b`) make it `logic`, and indentation counts in every language except the brace ones
+  (ts, js, json, rs, go, java, kt, c, cpp, cs, swift, css).
+- `groups` split the kept files for separate reviewers: each is `{id, roots, files, lines}`, where
+  a root is the nearest directory (at the head commit) holding a package manifest
+  (`package.json`, `Cargo.toml`, `pyproject.toml`, `go.mod`, `deno.json`, `pom.xml`,
+  `build.gradle(.kts)`, `setup.py`, `Gemfile`, `composer.json`, `Package.swift`, `mix.exs`,
+  `pubspec.yaml`), or `.` when none. A package over `--group-size` files (default 12) is split
+  evenly in path order, and neighbouring small packages are packed into one group (`roots` lists
+  them) up to that size.
+- `flags` are places to look first, never findings: `long-function` (a long, mostly-added
+  function) and `test-only-export` (an added export that only tests import). TypeScript only;
+  `coverage` says so, and a language without flags is not clean.
+
+The manifest is stateless. Review state and deltas live with `$craft:review-pr`.
 
 ## Accuracy
 
@@ -86,6 +114,6 @@ for a PR. Output: a markdown block between `<!-- sdlc-pr-stats:start -->` and
 ## Test environment
 
 In a scratch repository, commit a file, change it, commit again, and run
-`node <skill-dir>/pr-stats.mjs --base HEAD~1`. Expect one `logic` file and, with `typescript`
+`node <skill-dir>/diffkit.mjs stats --base HEAD~1`. Expect one `logic` file and, with `typescript`
 reachable, a complexity row. Then run it from a directory that is not a git repository and expect
 a one-line error, not a stack trace.

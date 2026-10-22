@@ -145,7 +145,7 @@ export function computeAppendMany(
  * Set the `prs:` field in place, span-preserving. Returns true iff bytes
  * changed.
  *
- * Emission goes through {@link editFrontmatterFields} — `@sksizer/yaml-splice`'s
+ * Emission goes through {@link editFrontmatterFields} — `@osdlc/yaml-splice`'s
  * span-preserving `editYaml` — so ONLY the `prs:` field's bytes change and
  * every other field (comments, key order, quoting, blank lines) survives
  * verbatim. Every task-file writer is span-preserving, so each touches only

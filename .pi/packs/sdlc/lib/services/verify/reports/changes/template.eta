@@ -22,7 +22,7 @@
     bySource.get(f.sourceId).rows.push(f);
   });
 
-  // Mirrors formatTokens() in @sksizer/agent-dev. The counts themselves come
+  // Mirrors formatTokens() in @osdlc/agent-dev. The counts themselves come
   // in on the payload, so the bytes-per-token constant stays over there.
   const tok = n => n < 1000 ? String(n) : (n / 1000 < 9.95 ? (n / 1000).toFixed(1) + "k" : Math.round(n / 1000) + "k");
   const failed = it.judged.filter(s => s.error);

@@ -5,14 +5,11 @@
  * Ported off `bun run ${CLAUDE_PLUGIN_ROOT}/skills/task-work/preflight_permissions.ts`
  * ([[T-VAW3]] AC-2: a skill script invoked by file path resolves its
  * `@lib/*` imports by accident of the in-repo layout, which breaks once the
- * built plugin is copied outside this monorepo). CLI parsing, stdout/stderr
- * shape and exit codes are unchanged from the retired script — only the
- * entry point moved onto the op substrate (`CliHints.rawArgv`, see
- * `lib/registry.ts`) — with one deliberate byte-level exception: the
- * unreadable-task-file case below now reads through `readTask`, which
- * collapses any read failure (not just ENOENT) to "absent" and so drops the
- * retired script's caught-exception detail from that one stderr line (see
- * the comment there).
+ * built plugin is copied outside this monorepo). The entry point moved onto the
+ * op substrate (`CliHints.rawArgv`, see `lib/registry.ts`). The unreadable-task-file
+ * case below reads through `readTask`, which collapses any read failure (not just
+ * ENOENT) to "absent" and so drops the retired script's caught-exception detail from
+ * that one stderr line (see the comment there).
  *
  * Package-manager permissions use a TWO-TIER model:
  *
@@ -45,17 +42,12 @@
  * mid-implementation (where the implementer would fall back to a Bash
  * heredoc).
  *
- * Settings paths probed (in Claude Code's documented precedence; later
- * entries override earlier ones for the same permission, and `deny`
- * beats `allow`):
- *
- *   1. ~/.claude/settings.json                    (user)
- *   2. <task-repo-root>/.claude/settings.json     (project)
- *   3. <task-repo-root>/.claude/settings.local.json (project-local)
- *
- * The same three files supply `defaultMode`: `acceptEdits` and
- * `bypassPermissions` are a blanket allow for `Write`/`Edit`, so no gap
- * is reported regardless of explicit allow/deny rules.
+ * The rules come from `@osdlc/detect-harness`, which reads Claude Code's
+ * settings files: the user's, the task repo root's `.claude/settings.json` and
+ * `.claude/settings.local.json`, and the managed settings. Rules of every scope
+ * add up, and `deny` beats `allow`. The same read supplies `defaultMode`:
+ * `acceptEdits` and `bypassPermissions` are a blanket allow for `Write`/`Edit`,
+ * so no gap is reported regardless of explicit allow/deny rules.
  *
  * Output:
  * - Exit 0: no hard gaps. Advisory `warning:` lines (if any) go to
@@ -68,24 +60,23 @@
  *   on stderr tells the two apart.
  */
 
-import { readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 
+import { detect } from '@osdlc/detect-harness'
 import { z } from 'zod'
 
-import { defineCli, EXIT, type CliContext, type CliIo } from '@sksizer/cli-tool'
+import { defineCli, EXIT, type CliContext, type CliIo } from '@osdlc/cli-tool'
 import { resolveWorkflowCommands } from '@lib/config/workflows'
-import { resolveProjectManagers } from '@sksizer/detect-runners'
+import { resolveProjectManagers } from '@osdlc/detect-runners'
 import { checkoutRoot } from '@osdlc/typed-git'
-import { claudeUserSettingsPath } from '@lib/util/claude-home'
 import { isFile } from '@lib/util/fs'
 import { worktreeDirFor } from '@lib/util/git'
 import { escapeRegExp } from '@lib/util/strings'
-import { isRecord } from '@lib/util/guards'
 import { defineOp, type OpCtx } from '@lib/registry'
 
 import { legacyCliContext } from '@lib/util/legacy-cli.ts'
+import type { MachineSeams } from '@lib/util/machine-seams.ts'
 import { readTask } from '../read.ts'
 
 // --- Signal table -----------------------------------------------------------
@@ -294,6 +285,13 @@ function toolPathMatches(spec: string, targetPath: string): boolean {
   return globCovers(absSpec, targetPath)
 }
 
+function expandUser(p: string): string {
+  if (p === '~' || p.startsWith('~/')) {
+    return join(homedir(), p.slice(1))
+  }
+  return p
+}
+
 function resolveSpecToAbsolute(spec: string, targetPath: string): string | null {
   if (spec === '') return null
   if (spec.startsWith('//')) {
@@ -371,58 +369,30 @@ function segmentMatches(seg: string, part: string): boolean {
   return re.test(part)
 }
 
-function loadSettings(io: CliIo, path: string): Record<string, unknown> {
-  let raw: string
-  try {
-    raw = readFileSync(path, 'utf-8')
-  } catch (exc) {
-    if ((exc as NodeJS.ErrnoException).code === 'ENOENT') {
-      return {}
-    }
-    io.stderr(`warning: could not read ${path}: ${exc}\n`)
-    return {}
-  }
-  let data: unknown
-  try {
-    data = JSON.parse(raw)
-  } catch (exc) {
-    io.stderr(`warning: could not read ${path}: ${exc}\n`)
-    return {}
-  }
-  return isRecord(data) ? data : {}
-}
-
-function collectPermissions(io: CliIo, settingPaths: string[]): ResolvedPermissions {
-  const allow = new Set<string>()
-  const deny = new Set<string>()
-  // `defaultMode` may live at the top level of a settings file or inside
-  // the `permissions` block; later files override earlier ones (the same
-  // precedence order the allow/deny sets accumulate under).
-  let defaultMode: string | null = null
-  for (const p of settingPaths) {
-    const data = loadSettings(io, p)
-    const topMode = isRecord(data) ? data['defaultMode'] : null
-    if (typeof topMode === 'string') {
-      defaultMode = topMode
-    }
-    const perms = isRecord(data) ? data['permissions'] : null
-    if (!isRecord(perms)) {
-      continue
-    }
-    const permMode = perms['defaultMode']
-    if (typeof permMode === 'string') {
-      defaultMode = permMode
-    }
-    const a = perms['allow']
-    const d = perms['deny']
-    if (Array.isArray(a)) {
-      for (const x of a) allow.add(String(x))
-    }
-    if (Array.isArray(d)) {
-      for (const x of d) deny.add(String(x))
+/**
+ * The permission rules and default mode Claude Code would apply under `projectRoot`, as
+ * `@osdlc/detect-harness` reads them. An unreadable settings file is a warning on stderr.
+ */
+async function collectPermissions(
+  io: CliIo,
+  projectRoot: string,
+  env: CliContext['env'],
+  machine: MachineSeams,
+): Promise<ResolvedPermissions> {
+  const report = (await detect({ only: ['claude'], projectRoot, env, ...machine })).reports[0]
+  for (const source of report?.sources ?? []) {
+    if (source.kind === 'settings' && source.status === 'error') {
+      io.stderr(`warning: could not read ${source.path}: ${source.error}\n`)
     }
   }
-  return new ResolvedPermissions(allow, deny, defaultMode)
+  const rules = report?.permissions.rules ?? []
+  const rulesOf = (kind: 'allow' | 'deny'): Set<string> =>
+    new Set(rules.filter((r) => r.kind === kind).map((r) => r.rule))
+  return new ResolvedPermissions(
+    rulesOf('allow'),
+    rulesOf('deny'),
+    report?.permissions.defaultMode ?? null,
+  )
 }
 
 /**
@@ -464,73 +434,22 @@ export function detectSignals(body: string): string[] {
 const cli = defineCli({
   name: 'sdlc task preflight-permissions',
   summary: "Report the Claude Code permissions a task's implementer will be missing.",
-  flags: {
-    userSettings: {
-      kind: 'string',
-      valueName: 'path',
-      help: "Override the user settings file. Default: Claude Code's own.",
-    },
-    projectSettings: {
-      kind: 'string',
-      valueName: 'path',
-      help: "Override the project settings file. Default: the task's repo root.",
-    },
-    projectLocalSettings: {
-      kind: 'string',
-      valueName: 'path',
-      help: 'Override the project-local settings file. Default: beside the project one.',
-    },
-  },
+  flags: {},
   positionals: [{ name: 'task-file', required: true, help: 'The task markdown to probe for.' }],
 })
 
-/** The three settings-file overrides, as {@link resolveSettingsPaths} reads them. */
-interface SettingsOverrides {
-  userSettings: string | undefined
-  projectSettings: string | undefined
-  projectLocalSettings: string | undefined
-}
-
-function expandUser(p: string): string {
-  if (p === '~' || p.startsWith('~/')) {
-    return join(homedir(), p.slice(1))
-  }
-  return p
-}
-
-function resolveSettingsPaths(args: SettingsOverrides, taskPath: string): string[] {
-  const user = args.userSettings ? expandUser(args.userSettings) : claudeUserSettingsPath()
-  const repoRoot = findRepoRoot(taskPath)
-  let project: string | null
-  if (args.projectSettings) {
-    project = args.projectSettings
-  } else if (repoRoot !== null) {
-    project = join(repoRoot, '.claude', 'settings.json')
-  } else {
-    project = null
-  }
-  let projectLocal: string | null
-  if (args.projectLocalSettings) {
-    projectLocal = args.projectLocalSettings
-  } else if (repoRoot !== null) {
-    projectLocal = join(repoRoot, '.claude', 'settings.local.json')
-  } else {
-    projectLocal = null
-  }
-  const paths: string[] = [user]
-  if (project !== null) paths.push(project)
-  if (projectLocal !== null) paths.push(projectLocal)
-  return paths
-}
-
-export async function main(argv: readonly string[], ctx: CliContext): Promise<number> {
+/** `machine` lets a test point the home folder and the system root (managed settings) at a temp folder. */
+export async function main(
+  argv: readonly string[],
+  ctx: CliContext,
+  machine: MachineSeams = {},
+): Promise<number> {
   const parsed = cli.parse(argv, ctx.io)
   if (parsed.status === 'help') return EXIT.ok
   if (parsed.status === 'error') {
     ctx.io.stderr(`error: ${parsed.message}\n`)
     return EXIT.usage
   }
-  const args = parsed.values
   const taskPath = parsed.positionals[0] as string
 
   if (!isFile(taskPath)) {
@@ -552,13 +471,19 @@ export async function main(argv: readonly string[], ctx: CliContext): Promise<nu
 
   const signals = detectSignals(read.body)
 
-  const settingsPaths = resolveSettingsPaths(args, taskPath)
-  const perms = collectPermissions(ctx.io, settingsPaths)
+  // Without a git checkout the task file's own folder stands in as the project root, so its
+  // `.claude/settings.json` and `settings.local.json` are read as project scope.
+  const repoRoot = findRepoRoot(taskPath)
+  const perms = await collectPermissions(
+    ctx.io,
+    repoRoot ?? dirname(resolve(taskPath)),
+    ctx.env,
+    machine,
+  )
 
   // Tier 1 — deterministic, project-grounded HARD gaps: a Bash(<pm>:*) grant
   // for every package manager the project resolves to. Skipped entirely when
   // the repo root can't be resolved (no project context → no PM hard gaps).
-  const repoRoot = findRepoRoot(taskPath)
   let resolvedManagers: Set<string>
   if (repoRoot === null) {
     resolvedManagers = new Set<string>()
@@ -653,8 +578,8 @@ export function worktreeDirForTaskFile(taskPath: string): string | null {
 
 // ---------------------------------------------------------------------------
 // Op definition — CliHints.rawArgv (see lib/registry.ts): this op's whole CLI
-// surface (flags, error text, exit codes) is `main`, above, unchanged from the
-// retired standalone script. No `needs` are declared: the retired script
+// surface (error text, exit codes; it takes no flags) is `main`, above. No `needs`
+// are declared: the retired script
 // never went through the op dispatcher's `preflight()` check either, and
 // `resolveWorkflowCommands`'s own validation (SCHEMA_ERROR on a broken
 // sdlc.yaml) is the only check this op ever ran.
