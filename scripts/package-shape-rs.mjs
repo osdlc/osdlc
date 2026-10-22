@@ -172,11 +172,29 @@ export function parseToml(text) {
     if (eq === -1) continue
     const key = line.slice(0, eq).trim()
     let value = line.slice(eq + 1)
-    if (/"""|'''/.test(value)) throw new Error(`line ${i + 1}: multi-line strings are not supported`)
-    while (depth(value) > 0 && i + 1 < lines.length) value += ` ${stripComment(lines[++i]).trim()}`
+    const noMultiline = (text) => {
+      if (opensMultilineString(text)) throw new Error(`line ${i + 1}: multi-line strings are not supported`)
+    }
+    noMultiline(value)
+    while (depth(value) > 0 && i + 1 < lines.length) {
+      const next = stripComment(lines[++i]).trim()
+      noMultiline(next)
+      value += ` ${next}`
+    }
     setPath(table, key.split('.').map((k) => k.trim().replace(/^"|"$/g, '')), parseValue(value))
   }
   return root
+}
+
+/** Whether `text` has a `"""` or `'''` outside a one-line string. */
+function opensMultilineString(text) {
+  for (let j = 0; j < text.length; j++) {
+    if (text.startsWith('"""', j) || text.startsWith("'''", j)) return true
+    const quote = text[j]
+    if (quote !== '"' && quote !== "'") continue
+    for (j++; j < text.length && text[j] !== quote; j++) if (quote === '"' && text[j] === '\\') j++
+  }
+  return false
 }
 
 /** The `members` of the workspace Cargo.toml text. */
@@ -369,4 +387,4 @@ function main() {
   console.log(`all ${results.length} crate(s) passed`)
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) main()
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main()

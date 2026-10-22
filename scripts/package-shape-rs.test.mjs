@@ -199,6 +199,15 @@ test('a multi-line string is a clear error naming the line, not a crash', () => 
     /line 3: multi-line strings are not supported/,
   )
   assert.throws(() => parseToml("description = '''x'''\n"), /multi-line strings are not supported/)
+  assert.throws(
+    () => parseToml('keywords = [\n  "a",\n  """b""",\n]\n'),
+    /line 3: multi-line strings are not supported/,
+  )
+})
+
+test('triple quotes inside a one-line string are ordinary text', () => {
+  assert.equal(parseToml(`description = "it'''s"\n`).description, "it'''s")
+  assert.equal(parseToml(`a = 'say """'\n`).a, 'say """')
 })
 
 test('checkWorkspace reports a multi-line string as a problem for its crate', () => {
