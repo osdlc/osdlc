@@ -104,9 +104,11 @@ jobs:
       # The runner's own Node: the crate shape check needs nothing installed.
       # docs/planning/standards/S-0002-package-shape-rs.md is the standard.
       - name: Test the crate shape rules
+        working-directory: .
         run: node --test scripts/package-shape-rs.test.mjs
 
       - name: Check the crate shape
+        working-directory: .
         run: node scripts/package-shape-rs.mjs
 
       - uses: ./.github/actions/rust-toolchain
