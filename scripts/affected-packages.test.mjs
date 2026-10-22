@@ -45,7 +45,8 @@ test('a shared root input picks every package', () => {
     '.oxlintrc.json',
     '.github/workflows/packages-ci.yml',
     'scripts/check-packages.mjs',
-    'scripts/package-shape-ts.mjs',
+    'scripts/package-shape-ts.ts',
+    'scripts/package-shape-ts.test.ts',
     '.changeset/config.json',
   ]) {
     assert.deepEqual(pr(['packages/ts/app/a.ts', file]), ALL, file)

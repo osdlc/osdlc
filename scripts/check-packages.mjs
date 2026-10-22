@@ -7,7 +7,7 @@
 // shipped: it is copied into the consumer project and imports the package by
 // name, so it runs against the installed tarball.
 //
-// Each package must also keep the shared shape (package-shape-ts.mjs): dist-only
+// Each package must also keep the shared shape (package-shape-ts.ts): dist-only
 // ESM, no `bun` export condition, no TypeScript source in the tarball, no bun in
 // its scripts, and no tsconfig `customConditions` or sibling `paths`; and the
 // conventions in conventionProblems (author, engines, scripts, layout, docs,
@@ -44,7 +44,7 @@ import {
   parseCatalog,
   parseJsonc,
   shapeProblems,
-} from './package-shape-ts.mjs'
+} from './package-shape-ts.ts'
 
 const root = process.cwd()
 

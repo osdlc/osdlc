@@ -1,10 +1,11 @@
 {
   "name": "sdlc-packages",
   "private": true,
+  "type": "module",
   "description": "Workspace root for the TypeScript libraries published to npm from this repository's packages/ts/ directory.",
   "packageManager": "pnpm@10.28.0",
   "engines": {
-    "node": ">=22"
+    "node": ">=24"
   },
   "scripts": {
     "typecheck": "pnpm -r --if-present run typecheck",
@@ -14,13 +15,17 @@
     "lint": "pnpm -r --if-present run lint",
     "format:check": "pnpm -r --if-present run format:check",
     "check:packages": "node scripts/check-packages.mjs",
-    "check:crates": "node scripts/package-shape-rs.mjs"
+    "check:crates": "node scripts/package-shape-rs.ts",
+    "typecheck:scripts": "tsc -p scripts/tsconfig.json"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "catalog:",
     "@changesets/cli": "catalog:",
+    "@types/node": "catalog:",
+    "@types/semver": "catalog:",
     "oxlint": "catalog:",
     "publint": "catalog:",
-    "semver": "catalog:"
+    "semver": "catalog:",
+    "typescript": "catalog:"
   }
 }
