@@ -6,6 +6,7 @@
  */
 
 export * from './types.ts'
+export * from './failure.ts'
 export * from './github.ts'
 export * from './github-auth.ts'
 export * from './forgejo.ts'

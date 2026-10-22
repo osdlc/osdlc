@@ -628,8 +628,8 @@ export function runSurvey(args: SurveyArgs, env: SurveyEnv): SurveyReport {
     })
     // A failed listing (the tool is missing, not signed in, no network) is not
     // an empty one: reading it as "no open PRs" would hide the failure.
-    if (listed === null) throw new PrListError(target.slug)
-    const filtered = includeDrafts ? listed : listed.filter((p) => !p.isDraft)
+    if (!listed.ok) throw new PrListError(target.slug)
+    const filtered = includeDrafts ? listed.value : listed.value.filter((p) => !p.isDraft)
     const wanted = new Set(args.pr)
     if (args.branch !== undefined) {
       // A fork's branch of the same name is another repository's branch, and

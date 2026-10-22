@@ -34,17 +34,13 @@ export function selectedCodeHostFor(deps: {
   override: CodeHostName | null
 }): (target: { cwd: string; slug: string }) => CodeHost {
   return (target) => {
-    try {
-      return selectCodeHost(target.cwd, {
-        git: deps.git,
-        gh: deps.gh,
-        ...(deps.curl !== undefined ? { curl: deps.curl } : {}),
-        override: deps.override,
-      })
-    } catch (e) {
-      throw new CodeHostSetupError(
-        (e instanceof Error ? e.message : String(e)).replace(/^selectCodeHost: /, ''),
-      )
-    }
+    const selected = selectCodeHost(target.cwd, {
+      git: deps.git,
+      gh: deps.gh,
+      ...(deps.curl !== undefined ? { curl: deps.curl } : {}),
+      override: deps.override,
+    })
+    if (!selected.ok) throw new CodeHostSetupError(selected.error.message)
+    return selected.value
   }
 }

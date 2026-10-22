@@ -13,6 +13,7 @@
  */
 
 import {
+  classifyGhFailure,
   Gh,
   normalizeAuthorLogin,
   parsePrUrl as ghParsePrUrl,
@@ -20,10 +21,13 @@ import {
   PR_REF_FIELDS,
   PR_VIEW_FIELDS,
   type CheckRun,
+  type GhFailure,
   type PullRequest,
 } from '@osdlc/typed-gh'
 
-import type { CommandRunner } from '@osdlc/command-seam'
+import { classifyFailure, CommandFailed, type CommandRunner } from '@osdlc/command-seam'
+import { err, mapErr, ok, type Result } from '@osdlc/result'
+import { fromGhFailure, type CodeHostFailure } from './failure.ts'
 import { CommentNotFoundError } from './types.ts'
 import type {
   Actor,
@@ -293,8 +297,8 @@ export function codeHostPrFrom(
 
 export class GithubCodeHost implements CodeHost {
   readonly name = 'github' as const
-  // The port's queries return `null` for a failure, which is `Gh`'s soft door:
-  // the adapter reads through `gh.soft` until the port reports failures itself.
+  // The port's queries return a `Result`, which is `Gh`'s `try` door; a
+  // mutation throws, which is its plain door.
   private readonly gh: Gh
 
   constructor(cwd: string, opts: { runner: CommandRunner }) {
@@ -305,24 +309,28 @@ export class GithubCodeHost implements CodeHost {
     state?: 'open' | 'closed' | 'all'
     author?: string
     limit?: number
-  }): CodeHostPrSummary[] | null {
-    const rows = this.gh.soft.prList({
-      state: q.state,
-      author: q.author,
-      limit: q.limit,
-      // `PR_REF_FIELDS` plus only what `CodeHostPrSummary` reads. No `mergeable`/
-      // `mergeStateStatus`: those make a listing expensive.
-      fields: [...PR_REF_FIELDS, 'author', 'labels', 'isDraft', 'updatedAt'],
-    })
-    if (rows === null) return null
-    return rows.rows.map((pr) => ({
-      number: pr.number,
-      headRef: pr.headRefName,
-      author: pr.author,
-      labels: pr.labels.map((l) => l.name),
-      isDraft: pr.isDraft,
-      updatedAt: pr.updatedAt,
-    }))
+  }): Result<CodeHostPrSummary[], CodeHostFailure> {
+    const rows = tried(
+      this.gh.try.prList({
+        state: q.state,
+        author: q.author,
+        limit: q.limit,
+        // `PR_REF_FIELDS` plus only what `CodeHostPrSummary` reads. No `mergeable`/
+        // `mergeStateStatus`: those make a listing expensive.
+        fields: [...PR_REF_FIELDS, 'author', 'labels', 'isDraft', 'updatedAt'],
+      }),
+    )
+    if (!rows.ok) return rows
+    return ok(
+      rows.value.rows.map((pr) => ({
+        number: pr.number,
+        headRef: pr.headRefName,
+        author: pr.author,
+        labels: pr.labels.map((l) => l.name),
+        isDraft: pr.isDraft,
+        updatedAt: pr.updatedAt,
+      })),
+    )
   }
 
   listPrDetails(q: {
@@ -330,45 +338,54 @@ export class GithubCodeHost implements CodeHost {
     author?: string
     limit?: number
     repo?: string
-  }): CodeHostPrDetail[] | null {
-    const rows = this.gh.soft.prList({
-      state: q.state,
-      author: q.author,
-      limit: q.limit,
-      repo: q.repo,
-      // `reviews` is not in the default listing, and the rebase guard needs it.
-      fields: [...PR_LIST_FIELDS, 'reviews'],
-    })
-    if (rows === null) return null
-    return rows.rows.map((pr) => ({
-      number: pr.number,
-      title: pr.title,
-      url: pr.url,
-      baseRef: pr.baseRefName,
-      headRef: pr.headRefName,
-      headSha: pr.headRefOid,
-      isDraft: pr.isDraft,
-      labels: pr.labels.map((l) => l.name),
-      reviewCount: pr.reviews.length,
-      isCrossRepository: pr.isCrossRepository,
-    }))
+  }): Result<CodeHostPrDetail[], CodeHostFailure> {
+    const rows = tried(
+      this.gh.try.prList({
+        state: q.state,
+        author: q.author,
+        limit: q.limit,
+        repo: q.repo,
+        // `reviews` is not in the default listing, and the rebase guard needs it.
+        fields: [...PR_LIST_FIELDS, 'reviews'],
+      }),
+    )
+    if (!rows.ok) return rows
+    return ok(
+      rows.value.rows.map((pr) => ({
+        number: pr.number,
+        title: pr.title,
+        url: pr.url,
+        baseRef: pr.baseRefName,
+        headRef: pr.headRefName,
+        headSha: pr.headRefOid,
+        isDraft: pr.isDraft,
+        labels: pr.labels.map((l) => l.name),
+        reviewCount: pr.reviews.length,
+        isCrossRepository: pr.isCrossRepository,
+      })),
+    )
   }
 
-  getPr(number: number, _opts: { since: string | null }): CodeHostPr | null {
+  getPr(
+    number: number,
+    _opts: { since: string | null },
+  ): Result<CodeHostPr | null, CodeHostFailure> {
     // No caller does an incremental "since" fetch today — always the
     // full state — so `since` is accepted for interface-parity with a future
     // caller and ignored here, same as every current call site.
-    const pr = this.gh.soft.prViewSettled(number, { fields: PR_VIEW_FIELDS })
-    if (pr === null) return null
+    const viewed = tried(this.gh.try.prViewSettled(number, { fields: PR_VIEW_FIELDS }))
+    if (!viewed.ok) return viewed
+    const pr = viewed.value
+    if (pr === null) return ok(null)
     const reviewComments = reviewCommentActivity(fetchReviewComments(this.gh, number))
     const codeHostPr = codeHostPrFrom(pr, reviewComments)
     // Billing/spending-limit block detection: only when there's at least one
     // failing check to inspect — see `detectBlockedChecks`'s doc for why this
     // never costs a green PR anything.
-    if (codeHostPr.checks.failing.length === 0) return codeHostPr
+    if (codeHostPr.checks.failing.length === 0) return ok(codeHostPr)
     const blocked = detectBlockedChecks(this.gh, codeHostPr.checks.failingUrls)
-    if (blocked.length === 0) return codeHostPr
-    return { ...codeHostPr, checks: { ...codeHostPr.checks, blocked } }
+    if (blocked.length === 0) return ok(codeHostPr)
+    return ok({ ...codeHostPr, checks: { ...codeHostPr.checks, blocked } })
   }
 
   postComment(number: number, body: string): { id: string; createdAt: string } {
@@ -415,11 +432,33 @@ export class GithubCodeHost implements CodeHost {
     throw new Error(`GithubCodeHost.updateComment: ${stderr || 'gh api failed'}`)
   }
 
-  listComments(number: number): { id: string; createdAt: string; body: string }[] | null {
-    const rest = this.gh.api(`repos/{owner}/{repo}/issues/${number}/comments?per_page=100`)
-    if (!rest.ok || !Array.isArray(rest.body)) return null
+  listComments(
+    number: number,
+  ): Result<{ id: string; createdAt: string; body: string }[], CodeHostFailure> {
+    const argv = ['api', `repos/{owner}/{repo}/issues/${number}/comments?per_page=100`]
+    const res = this.gh.raw(argv)
+    // `gh api` through `raw`, not `gh.api`: the failure needs the whole run to be classified.
+    if (classifyFailure(res, { binary: 'gh', argv }) !== null) {
+      return {
+        ok: false,
+        error: fromGhFailure(classifyGhFailure(new CommandFailed(argv, res, 'gh'))),
+      }
+    }
+    let body: unknown
+    try {
+      body = JSON.parse(res.stdout)
+    } catch {
+      body = null
+    }
+    if (!Array.isArray(body)) {
+      return err({
+        kind: 'unreadable',
+        message: 'GitHub answered, but its comment list could not be read.',
+        host: 'github',
+      })
+    }
     const out: { id: string; createdAt: string; body: string }[] = []
-    for (const c of rest.body as { id?: unknown; body?: unknown; created_at?: unknown }[]) {
+    for (const c of body as { id?: unknown; body?: unknown; created_at?: unknown }[]) {
       if (typeof c.id !== 'number' && typeof c.id !== 'string') continue
       out.push({
         id: String(c.id),
@@ -427,7 +466,7 @@ export class GithubCodeHost implements CodeHost {
         body: typeof c.body === 'string' ? c.body : '',
       })
     }
-    return out
+    return ok(out)
   }
 
   setDraft(number: number, draft: boolean): void {
@@ -442,8 +481,8 @@ export class GithubCodeHost implements CodeHost {
     this.gh.prUpdateBranch(number, style)
   }
 
-  reviewThreads(number: number): ReviewThreadState[] | null {
-    return this.gh.soft.prReviewThreads(number)
+  reviewThreads(number: number): Result<ReviewThreadState[], CodeHostFailure> {
+    return tried(this.gh.try.prReviewThreads(number))
   }
 
   mergePr(number: number, opts: { headSha: string; method: MergeMethod }): void {
@@ -464,8 +503,14 @@ export class GithubCodeHost implements CodeHost {
       : { codeHost: 'github', owner: ref.owner, repo: ref.repo, number: ref.number }
   }
 
-  prForBranch(branch: string): number | null {
-    const pr = this.gh.soft.openPrFor(branch)
-    return pr === null ? null : pr.number
+  prForBranch(branch: string): Result<number | null, CodeHostFailure> {
+    const pr = tried(this.gh.try.openPrFor(branch))
+    if (!pr.ok) return pr
+    return ok(pr.value === null ? null : pr.value.number)
   }
+}
+
+/** A `gh.try.*` result with its failure as a {@link CodeHostFailure}. */
+function tried<T>(result: Result<T, GhFailure>): Result<T, CodeHostFailure> {
+  return mapErr(result, fromGhFailure)
 }

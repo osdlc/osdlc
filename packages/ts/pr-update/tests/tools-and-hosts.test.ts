@@ -303,7 +303,9 @@ describe('the engine', () => {
 
   test('runSurvey throws PrListError when the host cannot list, never an empty report', () => {
     const { dir } = repoWith(GITHUB)
-    const codeHost = { listPrDetails: () => null } as unknown as CodeHost
+    const codeHost = {
+      listPrDetails: () => ({ ok: false, error: { kind: 'exit', message: 'x', host: 'github' } }),
+    } as unknown as CodeHost
     expect(() =>
       runSurvey(
         { repo: [], noFetch: true, noDrafts: false, limit: 10, remote: 'origin', pr: [] },

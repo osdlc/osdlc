@@ -39,7 +39,10 @@ const git: CommandRunner = {
 }
 
 const codeHost = {
-  listPrDetails: () => [pr(2, 'task/b', 'task/a'), pr(1, 'task/a', 'main')],
+  listPrDetails: () => ({
+    ok: true,
+    value: [pr(2, 'task/b', 'task/a'), pr(1, 'task/a', 'main')],
+  }),
 } as unknown as CodeHost
 
 test('survey a stack: the parent is updated first, the child waits on it', () => {

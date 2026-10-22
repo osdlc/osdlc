@@ -5,6 +5,7 @@
  * `CommandRunner`; nothing here touches the network.
  */
 
+import { unwrap } from '@osdlc/result'
 import { describe, expect, test } from 'vitest'
 
 import { ForgejoCodeHost, forgejoPrFrom, parseCurlResponse } from '../src/forgejo.ts'
@@ -107,7 +108,7 @@ describe('ForgejoCodeHost request transport', () => {
         return curlOk(200, BASE_PR)
       },
     }
-    codeHost(runner).getPr(42, { since: null })
+    unwrap(codeHost(runner).getPr(42, { since: null }))
     expect(seen.length).toBeGreaterThan(0)
     for (const call of seen) {
       // Not in argv: a value there sits in `ps`/`/proc/<pid>/cmdline` for
@@ -127,7 +128,7 @@ describe('ForgejoCodeHost request transport', () => {
         return runner.run(argv, opts)
       },
     }
-    codeHost(spying).getPr(42, { since: null })
+    unwrap(codeHost(spying).getPr(42, { since: null }))
     expect(firstArgv?.[0]).toBe('-q')
   })
 })
@@ -151,7 +152,7 @@ describe('ForgejoCodeHost.getPr', () => {
         },
       ],
     })
-    const pr = codeHost(runner).getPr(42, { since: null })
+    const pr = unwrap(codeHost(runner).getPr(42, { since: null }))
 
     expect(pr).not.toBeNull()
     expect(pr!.number).toBe(42)
@@ -173,17 +174,21 @@ describe('ForgejoCodeHost.getPr', () => {
 
   test('mergeable: true/false/absent map to mergeable/conflicting/unknown', () => {
     expect(
-      codeHost(fakeGh({ pr: { ...BASE_PR, mergeable: true } }).runner).getPr(42, { since: null })!
-        .mergeable,
+      unwrap(
+        codeHost(fakeGh({ pr: { ...BASE_PR, mergeable: true } }).runner).getPr(42, { since: null }),
+      )!.mergeable,
     ).toBe('mergeable')
     expect(
-      codeHost(fakeGh({ pr: { ...BASE_PR, mergeable: false } }).runner).getPr(42, { since: null })!
-        .mergeable,
+      unwrap(
+        codeHost(fakeGh({ pr: { ...BASE_PR, mergeable: false } }).runner).getPr(42, {
+          since: null,
+        }),
+      )!.mergeable,
     ).toBe('conflicting')
     const { mergeable: _drop, ...noMergeable } = BASE_PR
-    expect(codeHost(fakeGh({ pr: noMergeable }).runner).getPr(42, { since: null })!.mergeable).toBe(
-      'unknown',
-    )
+    expect(
+      unwrap(codeHost(fakeGh({ pr: noMergeable }).runner).getPr(42, { since: null }))!.mergeable,
+    ).toBe('unknown')
   })
 
   test('a draft PR reports mergeable: unknown even when Forgejo says mergeable: false', () => {
@@ -191,9 +196,11 @@ describe('ForgejoCodeHost.getPr', () => {
     // merge-ineligible PR, drafts included — that's never a real conflict,
     // so classify.ts's CONFLICTS rule must not fire off a draft's `false`.
     expect(
-      codeHost(fakeGh({ pr: { ...BASE_PR, draft: true, mergeable: false } }).runner).getPr(42, {
-        since: null,
-      })!.mergeable,
+      unwrap(
+        codeHost(fakeGh({ pr: { ...BASE_PR, draft: true, mergeable: false } }).runner).getPr(42, {
+          since: null,
+        }),
+      )!.mergeable,
     ).toBe('unknown')
   })
 
@@ -205,12 +212,14 @@ describe('ForgejoCodeHost.getPr', () => {
         { id: 2, user: { login: 'a' }, state: 'REQUEST_CHANGES', submitted_at: '2026-01-02' },
       ],
     })
-    expect(codeHost(runner).getPr(42, { since: null })!.reviewDecision).toBe('changes_requested')
+    expect(unwrap(codeHost(runner).getPr(42, { since: null }))!.reviewDecision).toBe(
+      'changes_requested',
+    )
   })
 
   test('reviewDecision: no reviews at all is null, not review_required', () => {
     const { runner } = fakeGh({ pr: BASE_PR, reviews: [] })
-    expect(codeHost(runner).getPr(42, { since: null })!.reviewDecision).toBeNull()
+    expect(unwrap(codeHost(runner).getPr(42, { since: null }))!.reviewDecision).toBeNull()
   })
 
   test('reviewDecision: a review with no APPROVED/REQUEST_CHANGES is review_required', () => {
@@ -218,7 +227,9 @@ describe('ForgejoCodeHost.getPr', () => {
       pr: BASE_PR,
       reviews: [{ id: 1, user: { login: 'a' }, state: 'COMMENT', submitted_at: '2026-01-01' }],
     })
-    expect(codeHost(runner).getPr(42, { since: null })!.reviewDecision).toBe('review_required')
+    expect(unwrap(codeHost(runner).getPr(42, { since: null }))!.reviewDecision).toBe(
+      'review_required',
+    )
   })
 
   test('reviewDecision: a dismissed or stale review never counts, even as the latest', () => {
@@ -246,7 +257,7 @@ describe('ForgejoCodeHost.getPr', () => {
     // one — excluded entirely, leaving `a`'s earlier APPROVED as the one
     // that counts. `b`'s only review is stale — excluded, contributing
     // nothing. Net: one standing APPROVED, no standing REQUEST_CHANGES.
-    expect(codeHost(runner).getPr(42, { since: null })!.reviewDecision).toBe('approved')
+    expect(unwrap(codeHost(runner).getPr(42, { since: null }))!.reviewDecision).toBe('approved')
   })
 
   test('checks rollup: any failure/error wins, else pending, else none/success', () => {
@@ -257,24 +268,34 @@ describe('ForgejoCodeHost.getPr', () => {
         { state: 'failure', context: 'b', target_url: 'https://x/b' },
       ],
     }).runner
-    const r1 = codeHost(failing).getPr(42, { since: null })!
+    const r1 = unwrap(codeHost(failing).getPr(42, { since: null }))!
     expect(r1.checks.rollup).toBe('failure')
     expect(r1.checks.failing).toEqual(['b'])
     expect(r1.checks.failingUrls).toEqual([{ name: 'b', url: 'https://x/b' }])
 
     const pending = fakeGh({ pr: BASE_PR, statuses: [{ state: 'pending', context: 'a' }] }).runner
-    expect(codeHost(pending).getPr(42, { since: null })!.checks.rollup).toBe('pending')
+    expect(unwrap(codeHost(pending).getPr(42, { since: null }))!.checks.rollup).toBe('pending')
 
     const none = fakeGh({ pr: BASE_PR, statuses: [] }).runner
-    expect(codeHost(none).getPr(42, { since: null })!.checks.rollup).toBe('none')
+    expect(unwrap(codeHost(none).getPr(42, { since: null }))!.checks.rollup).toBe('none')
 
     const success = fakeGh({ pr: BASE_PR, statuses: [{ state: 'success', context: 'a' }] }).runner
-    expect(codeHost(success).getPr(42, { since: null })!.checks.rollup).toBe('success')
+    expect(unwrap(codeHost(success).getPr(42, { since: null }))!.checks.rollup).toBe('success')
   })
 
-  test('null when the pr fetch fails', () => {
+  test('a failed pr fetch is a failure, not an absent PR', () => {
     const { runner } = fakeGh({ pr: null })
-    expect(codeHost(runner).getPr(42, { since: null })).toBeNull()
+    expect(codeHost(runner).getPr(42, { since: null })).toMatchObject({
+      ok: false,
+      error: { host: 'forgejo' },
+    })
+  })
+
+  test('a 404 for the PR number is the answer "no such PR"', () => {
+    expect(codeHost({ run: () => curlOk(404, {}) }).getPr(42, { since: null })).toEqual({
+      ok: true,
+      value: null,
+    })
   })
 
   test('a failing reviews/comments call degrades to empty activity, not a throw', () => {
@@ -286,7 +307,7 @@ describe('ForgejoCodeHost.getPr', () => {
         return curlFail()
       },
     }
-    const pr = codeHost(mixed).getPr(42, { since: null })
+    const pr = unwrap(codeHost(mixed).getPr(42, { since: null }))
     expect(pr!.activity).toEqual([])
   })
 })
@@ -306,7 +327,7 @@ describe('ForgejoCodeHost.listPrs / prForBranch', () => {
         { number: 2, head: { ref: 'b' }, user: null, labels: [], draft: false },
       ],
     })
-    expect(codeHost(runner).listPrs({ state: 'open' })).toEqual([
+    expect(unwrap(codeHost(runner).listPrs({ state: 'open' }))).toEqual([
       {
         number: 1,
         headRef: 'a',
@@ -321,14 +342,14 @@ describe('ForgejoCodeHost.listPrs / prForBranch', () => {
 
   test('null when the list call fails', () => {
     const { runner } = fakeGh({ list: null })
-    expect(codeHost(runner).listPrs({})).toBeNull()
+    expect(codeHost(runner).listPrs({}).ok).toBe(false)
   })
 
   test('prForBranch resolves the exact-match PR', () => {
     const { runner } = fakeGh({
       list: [{ number: 7, head: { ref: 'task/x' }, user: null, labels: [] }],
     })
-    expect(codeHost(runner).prForBranch('task/x')).toBe(7)
+    expect(unwrap(codeHost(runner).prForBranch('task/x'))).toBe(7)
   })
 })
 
@@ -348,7 +369,7 @@ describe('ForgejoCodeHost.listPrDetails', () => {
       ],
       reviews: [{ id: 1 }, { id: 2 }],
     })
-    expect(codeHost(runner).listPrDetails({ limit: 5 })).toEqual([
+    expect(unwrap(codeHost(runner).listPrDetails({ limit: 5 }))).toEqual([
       {
         number: 3,
         title: 'T',
@@ -373,7 +394,7 @@ describe('ForgejoCodeHost.listPrDetails', () => {
         return curlOk(200, [{ number: 3, head: { ref: 'f' }, base: { ref: 'main' } }])
       },
     }
-    expect(codeHost(runner).listPrDetails({})).toBeNull()
+    expect(codeHost(runner).listPrDetails({}).ok).toBe(false)
   })
 
   test('limit is sent to the server and the fork check ignores case', () => {
@@ -381,19 +402,19 @@ describe('ForgejoCodeHost.listPrDetails', () => {
       list: [{ number: 1, head: { ref: 'f', repo: { full_name: 'O/R' } }, base: { ref: 'm' } }],
     })
     const rows = codeHost(runner).listPrDetails({ limit: 100 })
-    expect(rows![0]!.isCrossRepository).toBe(false)
+    expect(unwrap(rows)[0]!.isCrossRepository).toBe(false)
     expect(calls[0]![calls[0]!.length - 1]).toContain('limit=100')
   })
 
   test('repo scopes the listing to another repository', () => {
     const { runner, calls } = fakeGh({ list: [] })
-    expect(codeHost(runner).listPrDetails({ repo: 'a/b' })).toEqual([])
+    expect(unwrap(codeHost(runner).listPrDetails({ repo: 'a/b' }))).toEqual([])
     expect(calls[0]![calls[0]!.length - 1]).toContain('/repos/a/b/pulls?')
   })
 
   test('null when the list call fails', () => {
     const { runner } = fakeGh({ list: null })
-    expect(codeHost(runner).listPrDetails({})).toBeNull()
+    expect(codeHost(runner).listPrDetails({}).ok).toBe(false)
   })
 })
 
@@ -452,7 +473,7 @@ describe('ForgejoCodeHost.createPr / mergePr / reviewThreads', () => {
     expect(argv.at(-1)).toBe('https://git.example.com/api/v1/repos/o/r/issues/comments/55')
     expect(argv).toContain(JSON.stringify({ body: 'edited' }))
     expect(() => codeHost({ run: () => curlOk(500, {}) }).updateComment(9, '55', 'x')).toThrow(
-      /updateComment: request failed/,
+      /answered HTTP 500/,
     )
   })
 
@@ -471,8 +492,11 @@ describe('ForgejoCodeHost.createPr / mergePr / reviewThreads', () => {
     expect(err).not.toBeInstanceOf(CommentNotFoundError)
   })
 
-  test('reviewThreads is unknown (null): no thread model is read', () => {
-    expect(codeHost({ run: () => curlOk(200, {}) }).reviewThreads(9)).toBeNull()
+  test('reviewThreads is unknown (an unsupported failure): no thread model is read', () => {
+    expect(codeHost({ run: () => curlOk(200, {}) }).reviewThreads(9)).toMatchObject({
+      ok: false,
+      error: { kind: 'unsupported', host: 'forgejo' },
+    })
   })
 })
 

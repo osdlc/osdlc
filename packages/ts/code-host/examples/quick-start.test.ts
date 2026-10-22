@@ -7,6 +7,7 @@ import type { CommandResult, CommandRunner } from '@osdlc/command-seam'
 import { expect, test } from 'vitest'
 
 import { parsePrInput, selectCodeHost } from '@osdlc/code-host'
+import { unwrap } from '@osdlc/result'
 
 const ok = (stdout: string): CommandResult => ({ exitCode: 0, stdout, stderr: '' })
 
@@ -62,10 +63,10 @@ function fakeGh(): { runner: CommandRunner; calls: string[][] } {
 
 test('pick the adapter from origin, read a PR, post a comment', () => {
   const gh = fakeGh()
-  const host = selectCodeHost('/repo', { git, gh: gh.runner })
+  const host = unwrap(selectCodeHost('/repo', { git, gh: gh.runner }))
   expect(host.name).toBe('github')
 
-  const pr = host.getPr(42, { since: null })
+  const pr = unwrap(host.getPr(42, { since: null }))
   expect(pr?.title).toBe('Add the widget')
   expect(pr?.mergeable).toBe('mergeable')
 

@@ -7,6 +7,12 @@
  * The port was first sketched as `Forge`. Three deliberate choices, made once
  * here rather than re-argued at every call site:
  *
+ *   - A query that can fail returns a `Result<T, CodeHostFailure>`
+ *     (`@osdlc/result`), never `null` for a failure: the failure carries a
+ *     `kind` (not signed in, no network, a missing tool, ...), a sentence and a
+ *     hint, the same for both adapters. A declared absence is still a success:
+ *     `{ ok: true, value: null }` for "no PR for that branch". A mutation throws
+ *     on failure (a `FailureError` carrying the failure, or `CommandFailed`).
  *   - Every method is SYNCHRONOUS. Callers hold `CommandRunner`s over
  *     `spawnRunner` (`@osdlc/command-seam`) and are sync end to end; going
  *     async here would color the whole call graph for no caller that needs it.
@@ -21,6 +27,9 @@
 import { z } from 'zod'
 
 import type { CommandRunner } from '@osdlc/command-seam'
+import type { Result } from '@osdlc/result'
+
+import type { CodeHostFailure } from './failure.ts'
 
 export type CodeHostName = 'github' | 'forgejo'
 
@@ -183,25 +192,24 @@ export interface CreatePrInput {
 
 export interface CodeHost {
   readonly name: CodeHostName
-  /** Open (or matching `q.state`) PRs, cheaply. `null` when the code host call failed. */
+  /** Open (or matching `q.state`) PRs, cheaply. */
   listPrs(q: {
     state?: 'open' | 'closed' | 'all'
     author?: string
     limit?: number
-  }): CodeHostPrSummary[] | null
+  }): Result<CodeHostPrSummary[], CodeHostFailure>
   /**
    * Open (or matching `q.state`) PRs with the fields a stack survey reads.
    * `q.repo` (`owner/name`) lists another repository than the checkout's own.
-   * `null` when the code host call failed.
    */
   listPrDetails(q: {
     state?: 'open' | 'closed' | 'all'
     author?: string
     limit?: number
     repo?: string
-  }): CodeHostPrDetail[] | null
-  /** One PR with every field a classifier or router needs. `null` when it doesn't exist or the call failed. `since` is accepted for a future incremental fetch; every adapter today ignores it and returns full state. */
-  getPr(number: number, opts: { since: string | null }): CodeHostPr | null
+  }): Result<CodeHostPrDetail[], CodeHostFailure>
+  /** One PR with every field a classifier or router needs. A success of `null` when it doesn't exist; a failure when the call failed. `since` is accepted for a future incremental fetch; every adapter today ignores it and returns full state. */
+  getPr(number: number, opts: { since: string | null }): Result<CodeHostPr | null, CodeHostFailure>
   /** Posts a comment; throws on failure (a mutation, per the tri-modal convention — see `Gh`/`Git`). */
   postComment(number: number, body: string): { id: string; createdAt: string }
   /**
@@ -212,21 +220,23 @@ export interface CodeHost {
   updateComment(number: number, commentId: string, body: string): void
   /**
    * The PR's conversation comments with the ids `postComment`/`updateComment` use (not the
-   * GraphQL node ids `getPr`'s activity carries). `null` when they cannot be read. Optional:
+   * GraphQL node ids `getPr`'s activity carries). A failure when they cannot be read. Optional:
    * a caller that wants to find a comment it posted earlier tolerates its absence.
    */
-  listComments?(number: number): { id: string; createdAt: string; body: string }[] | null
+  listComments?(
+    number: number,
+  ): Result<{ id: string; createdAt: string; body: string }[], CodeHostFailure>
   /** Marks the PR ready for review (`draft: false`) or converts it to a draft (`draft: true`); throws on failure, or `CodeHostUnsupported` where the code host has no draft toggle. */
   setDraft(number: number, draft: boolean): void
   /** Brings the PR's head up to date with its base; throws on failure. */
   updateBranch(number: number, style: 'merge' | 'rebase'): void
   /**
-   * Every review thread on the PR. `null` when they cannot be read in full (a
-   * failed call, too many threads, or a code host with no thread model): a
-   * caller gating a merge on this must treat `null` as "unknown", never as
-   * "none".
+   * Every review thread on the PR. A failure when they cannot be read in full (a
+   * failed call, too many threads, or a code host with no thread model, which
+   * is `unsupported`): a caller gating a merge on this must treat a failure as
+   * "unknown", never as "none".
    */
-  reviewThreads(number: number): ReviewThreadState[] | null
+  reviewThreads(number: number): Result<ReviewThreadState[], CodeHostFailure>
   /**
    * Merges the PR. `opts.headSha` is the head the caller judged; the code host
    * refuses (this throws) when the head has since moved, so an unreviewed push
@@ -237,8 +247,8 @@ export interface CodeHost {
   createPr(input: CreatePrInput): { number: number; url: string }
   /** `null` when `url` names no PR this code host recognizes. */
   parsePrUrl(url: string): PrRef | null
-  /** The open PR whose head is exactly `branch`, or `null`. */
-  prForBranch(branch: string): number | null
+  /** The open PR whose head is exactly `branch`; a success of `null` when there is none. */
+  prForBranch(branch: string): Result<number | null, CodeHostFailure>
 }
 
 /**

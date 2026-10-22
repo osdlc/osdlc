@@ -488,7 +488,7 @@ describe('runSurvey through the CodeHost port', () => {
           return {
             listPrDetails: (q: Record<string, unknown>) => {
               queries.push(q)
-              return [pr(1, 'topic', 'main')]
+              return { ok: true, value: [pr(1, 'topic', 'main')] }
             },
           } as unknown as CodeHost
         },
@@ -539,7 +539,7 @@ describe('runSurvey scoped by --pr', () => {
         ({
           listPrDetails: () => {
             listings += 1
-            return listing
+            return { ok: true, value: listing }
           },
         }) as unknown as CodeHost,
       cfg: prUpdateConfigSchema.parse({}),

@@ -10,6 +10,7 @@ import { describe, expect, test } from 'vitest'
 import { actionsJobId, detectBlockedChecks, codeHostPrFrom, GithubCodeHost } from '../src/github.ts'
 import { CommentNotFoundError } from '../src/types.ts'
 import { Gh } from '@osdlc/typed-gh'
+import { unwrap } from '@osdlc/result'
 import type { CommandResult, CommandRunner } from '@osdlc/command-seam'
 import type { PullRequest } from '@osdlc/typed-gh'
 
@@ -100,7 +101,7 @@ describe('GithubCodeHost.getPr', () => {
       ],
     })
     const codeHost = new GithubCodeHost('/repo', { runner })
-    const pr = codeHost.getPr(42, { since: null })
+    const pr = unwrap(codeHost.getPr(42, { since: null }))
 
     expect(pr).not.toBeNull()
     expect(pr!.number).toBe(42)
@@ -125,13 +126,16 @@ describe('GithubCodeHost.getPr', () => {
       view: { ...BASE_PR, mergeable: 'UNKNOWN', mergeStateStatus: 'DIRTY' },
     })
     const codeHost = new GithubCodeHost('/repo', { runner })
-    expect(codeHost.getPr(42, { since: null })!.mergeable).toBe('conflicting')
+    expect(unwrap(codeHost.getPr(42, { since: null }))!.mergeable).toBe('conflicting')
   })
 
-  test('null when gh fails', () => {
+  test('a failed gh is a failure, not an absent PR', () => {
     const { runner } = fakeGh({ view: null })
     const codeHost = new GithubCodeHost('/repo', { runner })
-    expect(codeHost.getPr(42, { since: null })).toBeNull()
+    expect(codeHost.getPr(42, { since: null })).toMatchObject({
+      ok: false,
+      error: { kind: 'exit', host: 'github' },
+    })
   })
 
   test('a review-comment author login is normalized, like every other activity kind', () => {
@@ -141,14 +145,14 @@ describe('GithubCodeHost.getPr', () => {
         ok(JSON.stringify([{ id: 1, body: 'x', user: { login: 'github-actions[bot]' } }])),
       ],
     })
-    const pr = new GithubCodeHost('/repo', { runner }).getPr(42, { since: null })!
+    const pr = unwrap(new GithubCodeHost('/repo', { runner }).getPr(42, { since: null }))!
     expect(pr.activity[0]!.author).toEqual({ login: 'github-actions', isBot: true })
   })
 
   test('a failing review-comments REST call degrades to no review-comment activity, not a throw', () => {
     const { runner } = fakeGh({ view: BASE_PR, restResponses: [fail()] })
     const codeHost = new GithubCodeHost('/repo', { runner })
-    const pr = codeHost.getPr(42, { since: null })
+    const pr = unwrap(codeHost.getPr(42, { since: null }))
     expect(pr!.activity).toEqual([])
   })
 
@@ -162,7 +166,7 @@ describe('GithubCodeHost.getPr', () => {
         ],
       },
     }).runner
-    const pr1 = new GithubCodeHost('/repo', { runner: failing }).getPr(42, { since: null })!
+    const pr1 = unwrap(new GithubCodeHost('/repo', { runner: failing }).getPr(42, { since: null }))!
     expect(pr1.checks.rollup).toBe('failure')
     expect(pr1.checks.failing).toEqual(['b'])
 
@@ -172,11 +176,11 @@ describe('GithubCodeHost.getPr', () => {
         statusCheckRollup: [{ name: 'a', status: 'IN_PROGRESS', conclusion: null }],
       },
     }).runner
-    const pr2 = new GithubCodeHost('/repo', { runner: pending }).getPr(42, { since: null })!
+    const pr2 = unwrap(new GithubCodeHost('/repo', { runner: pending }).getPr(42, { since: null }))!
     expect(pr2.checks.rollup).toBe('pending')
 
     const none = fakeGh({ view: { ...BASE_PR, statusCheckRollup: [] } }).runner
-    const pr3 = new GithubCodeHost('/repo', { runner: none }).getPr(42, { since: null })!
+    const pr3 = unwrap(new GithubCodeHost('/repo', { runner: none }).getPr(42, { since: null }))!
     expect(pr3.checks.rollup).toBe('none')
   })
 
@@ -189,7 +193,7 @@ describe('GithubCodeHost.getPr', () => {
         ],
       },
     })
-    const pr = new GithubCodeHost('/repo', { runner }).getPr(42, { since: null })!
+    const pr = unwrap(new GithubCodeHost('/repo', { runner }).getPr(42, { since: null }))!
     // No Actions-job-shaped URL to resolve an id from — no annotations call
     // is even attempted, so `blocked` stays empty (never a network failure).
     expect(pr.checks.failingUrls).toEqual([{ name: 'build', url: 'https://x/build' }])
@@ -198,7 +202,7 @@ describe('GithubCodeHost.getPr', () => {
 
   test('no failing checks: never fetches annotations (only the review-comments REST call runs)', () => {
     const { runner, calls } = fakeGh({ view: BASE_PR })
-    const pr = new GithubCodeHost('/repo', { runner }).getPr(42, { since: null })!
+    const pr = unwrap(new GithubCodeHost('/repo', { runner }).getPr(42, { since: null }))!
     expect(pr.checks.blocked).toEqual([])
     expect(calls.filter((c) => c[0] === 'api')).toHaveLength(1) // the review-comments fetch only
   })
@@ -227,7 +231,7 @@ describe('GithubCodeHost.getPr', () => {
         ), // check-run annotations
       ],
     })
-    const pr = new GithubCodeHost('/repo', { runner }).getPr(42, { since: null })!
+    const pr = unwrap(new GithubCodeHost('/repo', { runner }).getPr(42, { since: null }))!
     expect(pr.checks.blocked).toEqual(['ci'])
     const annotationsCall = calls.find(
       (c) => c[1] === 'repos/{owner}/{repo}/check-runs/12345/annotations',
@@ -260,7 +264,7 @@ describe('GithubCodeHost.getPr', () => {
         ),
       ],
     })
-    const pr = new GithubCodeHost('/repo', { runner }).getPr(42, { since: null })!
+    const pr = unwrap(new GithubCodeHost('/repo', { runner }).getPr(42, { since: null }))!
     expect(pr.checks.blocked).toEqual([])
   })
 
@@ -276,7 +280,7 @@ describe('GithubCodeHost.getPr', () => {
         ok(JSON.stringify([{ message: 'Process completed with exit code 1.' }])),
       ],
     })
-    const pr = new GithubCodeHost('/repo', { runner }).getPr(42, { since: null })!
+    const pr = unwrap(new GithubCodeHost('/repo', { runner }).getPr(42, { since: null }))!
     expect(pr.checks.blocked).toEqual([])
   })
 
@@ -289,7 +293,7 @@ describe('GithubCodeHost.getPr', () => {
       },
       restResponses: [ok('[]'), fail('rate limited')],
     })
-    const pr = new GithubCodeHost('/repo', { runner }).getPr(42, { since: null })!
+    const pr = unwrap(new GithubCodeHost('/repo', { runner }).getPr(42, { since: null }))!
     expect(pr.checks.blocked).toEqual([])
   })
 })
@@ -340,7 +344,7 @@ describe('GithubCodeHost.listPrs', () => {
       ],
     })
     const rows = new GithubCodeHost('/repo', { runner }).listPrs({ state: 'open' })
-    expect(rows).toEqual([
+    expect(unwrap(rows)).toEqual([
       {
         number: 1,
         headRef: 'a',
@@ -367,7 +371,7 @@ describe('GithubCodeHost.listPrs', () => {
 
   test('null when gh fails', () => {
     const { runner } = fakeGh({ list: null })
-    expect(new GithubCodeHost('/repo', { runner }).listPrs({})).toBeNull()
+    expect(new GithubCodeHost('/repo', { runner }).listPrs({}).ok).toBe(false)
   })
 })
 
@@ -394,7 +398,7 @@ describe('GithubCodeHost.listPrDetails', () => {
       limit: 7,
       repo: 'other/repo',
     })
-    expect(rows).toEqual([
+    expect(unwrap(rows)).toEqual([
       {
         number: 5,
         title: 'T',
@@ -417,7 +421,7 @@ describe('GithubCodeHost.listPrDetails', () => {
 
   test('null when gh fails', () => {
     const { runner } = fakeGh({ list: null })
-    expect(new GithubCodeHost('/repo', { runner }).listPrDetails({})).toBeNull()
+    expect(new GithubCodeHost('/repo', { runner }).listPrDetails({}).ok).toBe(false)
   })
 })
 
@@ -437,7 +441,7 @@ describe('GithubCodeHost.parsePrUrl / prForBranch', () => {
   test('prForBranch resolves the exact-match open PR for a branch', () => {
     const { runner } = fakeGh({ list: [{ ...BASE_PR, headRefName: 'task/x' }] })
     const codeHost = new GithubCodeHost('/repo', { runner })
-    expect(codeHost.prForBranch('task/x')).toBe(42)
+    expect(unwrap(codeHost.prForBranch('task/x'))).toBe(42)
   })
 })
 
@@ -547,9 +551,9 @@ describe('GithubCodeHost.mergePr / reviewThreads', () => {
     expect(() => new GithubCodeHost('/repo', { runner }).postComment(42, 'x')).toThrow(/403/)
   })
 
-  test('reviewThreads goes through the graphql client and is null on failure', () => {
+  test('reviewThreads goes through the graphql client and is a failure when it fails', () => {
     const { runner } = fakeGh({ restResponses: [fail()] })
-    expect(new GithubCodeHost('/repo', { runner }).reviewThreads(42)).toBeNull()
+    expect(new GithubCodeHost('/repo', { runner }).reviewThreads(42).ok).toBe(false)
   })
 })
 

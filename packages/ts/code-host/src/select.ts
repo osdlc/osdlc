@@ -18,6 +18,8 @@
 import { Git, parseRemoteUrl, type RemoteCoordinate } from '@osdlc/typed-git'
 
 import { spawnRunner, type CommandRunner } from '@osdlc/command-seam'
+import { err, ok, type Result } from '@osdlc/result'
+import type { CodeHostFailure } from './failure.ts'
 import { DEFAULT_FORGEJO_TOKEN_ENV, ForgejoCodeHost } from './forgejo.ts'
 import { forgejoAuthChecks } from './forgejo-auth.ts'
 import { GithubCodeHost } from './github.ts'
@@ -107,8 +109,11 @@ export function authChecksFor(
 }
 
 /**
- * Build the `CodeHost` for the repository at `cwd`. Throws when a Forgejo
- * adapter is needed but cannot be built (no readable remote, or no token).
+ * Build the `CodeHost` for the repository at `cwd`. A Forgejo adapter that
+ * cannot be built is a failure, not a throw: `no-remote` (no `origin`),
+ * `bad-remote` (a remote that names no host/owner/repo) or `missing-token`.
+ * Building is a query about the checkout and the environment, so it answers
+ * the way the port's queries do, with a `Result<CodeHost, CodeHostFailure>`.
  *
  * Two SEPARATE runners in, not one: `git`/`gh`/`curl` are each bound to a
  * specific binary in this package (`spawnRunner('git')`, `spawnRunner('gh')`,
@@ -129,34 +134,48 @@ export function selectCodeHost(
     /** Env var the Forgejo token is read from; `FORGEJO_TOKEN` when omitted. */
     forgejoTokenEnv?: string
   },
-): CodeHost {
+): Result<CodeHost, CodeHostFailure> {
   const { name, remoteUrl } = resolveCodeHost(cwd, opts.git, opts.override ?? null)
-  if (name === 'github') return new GithubCodeHost(cwd, { runner: opts.gh })
+  if (name === 'github') return ok(new GithubCodeHost(cwd, { runner: opts.gh }))
 
   if (remoteUrl === null) {
-    throw new Error('selectCodeHost: no `origin` remote to build a Forgejo adapter from')
+    return err({
+      kind: 'no-remote',
+      message: 'There is no `origin` remote to read the Forgejo repository from.',
+      hint: 'Run it inside a clone with an `origin` remote.',
+      host: 'forgejo',
+    })
   }
   const ref = parseRemoteUrl(remoteUrl)
   if (ref === null) {
-    throw new Error(
-      `selectCodeHost: could not parse a host/owner/repo from the origin remote (${redactRemoteUrl(remoteUrl)})`,
-    )
+    return err({
+      kind: 'bad-remote',
+      message: `The \`origin\` remote (${redactRemoteUrl(remoteUrl)}) names no host, owner and repository.`,
+      hint: 'Point `origin` at the repository, such as https://git.example.com/owner/repo.git.',
+      host: 'forgejo',
+    })
   }
   const hostForAdapter = forgejoHost(ref)
   const tokenEnv = opts.forgejoTokenEnv ?? DEFAULT_FORGEJO_TOKEN_ENV
   const token = process.env[tokenEnv]
   if (token === undefined || token === '') {
-    throw new Error(
-      `selectCodeHost: this run needs a Forgejo adapter for ${hostForAdapter}, but ${tokenEnv} is not set`,
-    )
+    return err({
+      kind: 'missing-token',
+      message: `Forgejo at ${hostForAdapter} needs a token, but ${tokenEnv} is not set.`,
+      hint: `Set ${tokenEnv} to a valid token.`,
+      host: 'forgejo',
+    })
   }
   const curlRunner = opts.curl ?? spawnRunner('curl')
-  return new ForgejoCodeHost({
-    runner: curlRunner,
-    cwd,
-    host: hostForAdapter,
-    owner: ref.owner,
-    repo: ref.repo,
-    token,
-  })
+  return ok(
+    new ForgejoCodeHost({
+      tokenEnv,
+      runner: curlRunner,
+      cwd,
+      host: hostForAdapter,
+      owner: ref.owner,
+      repo: ref.repo,
+      token,
+    }),
+  )
 }

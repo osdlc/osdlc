@@ -47,9 +47,30 @@ const git = {
       ? ok('https://github.com/acme/widgets.git\n')
       : ok(''),
 }
-const host = selectCodeHost('/repo', { git, gh: { run: () => ok('') } })
+const selected = selectCodeHost('/repo', { git, gh: { run: () => ok('') } })
+assert.equal(selected.ok, true)
+const host = selected.value
 assert.equal(host.name, 'github')
 assert.equal(typeof host.getPr, 'function')
 assert.equal(typeof CodeHostUnsupported, 'function')
+
+// A failed query is a classified failure, not null: a missing gh reads as `not-installed`.
+const missingGh = selectCodeHost('/repo', {
+  git,
+  gh: {
+    run: () => ({
+      exitCode: 1,
+      stdout: '',
+      stderr: '',
+      neverExited: true,
+      reason: 'spawn',
+      error: 'spawn gh ENOENT',
+    }),
+  },
+})
+const listed = missingGh.value.listPrs({})
+assert.equal(listed.ok, false)
+assert.equal(listed.error.kind, 'not-installed')
+assert.equal(listed.error.host, 'github')
 
 console.log('code-host smoke: OK')
