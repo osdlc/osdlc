@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.2
+
+### Patch Changes
+
+- b9d583c: Drop the dependency on `@osdlc/path-guard`. The one function it used, `isInside`, is removed in `@osdlc/path-guard` 0.3.0, so the package now carries the same text check itself. Nothing changes for callers.
+
 ## 0.4.1
 
 ### Patch Changes
