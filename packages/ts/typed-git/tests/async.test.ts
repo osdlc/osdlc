@@ -570,7 +570,8 @@ describe('AsyncGit — parity with Git', () => {
     const bad = await git.try.statusPorcelain()
     expect(bad.ok).toBe(false)
     if (bad.ok) throw new Error('unreachable')
-    expect(bad.error).toBeInstanceOf(CommandFailed)
+    expect(bad.error.cause).toBeInstanceOf(CommandFailed)
+    expect(bad.error.kind).toBe('exit')
 
     // The rule that matters most: a declared absence is a success.
     expect(await git.try.configGet('no.such.key')).toEqual({ ok: true, value: null })

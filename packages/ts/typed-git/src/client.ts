@@ -30,7 +30,8 @@ export {
   type GitResults,
 } from './backend.ts'
 
-export { type GitOutcome, type Soft, type TriedAsync, type TriedSync } from './outcome.ts'
+export { classifyGitFailure, type GitFailure, type GitFailureKind } from './failure.ts'
+export { type Soft, type TriedAsync, type TriedSync } from './outcome.ts'
 
 export {
   forceWithLeaseArg,

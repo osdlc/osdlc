@@ -20,6 +20,8 @@ They are never reused. Each decision has a `state`: `accepted` or
 ## Decisions
 
 - [D-01](decisions/D-01-first-release-api-review.md): First release API review
+- [D-02](decisions/D-02-git-failure-is-a-result.md): `try` returns a
+  `Result<T, GitFailure>`
 
 ## Follow-ups
 

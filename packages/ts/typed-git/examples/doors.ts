@@ -23,7 +23,9 @@ export function run(): void {
     assert.deepEqual(fx.git.try.resolveRef('no-such-ref'), { ok: true, value: null })
     const failed = outside.try.lsFilesUnmerged()
     assert.ok(!failed.ok)
-    assert.equal(failed.error.result.exitCode, 128)
+    assert.equal(failed.error.kind, 'not-a-repo')
+    assert.equal(failed.error.exitCode, 128)
+    assert.equal(failed.error.cause.result.exitCode, 128)
 
     // `soft` turns any failure into the verb's absence value.
     assert.deepEqual(outside.soft.lsFilesUnmerged(), [])

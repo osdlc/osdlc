@@ -118,7 +118,7 @@ export class AsyncGit {
   }
 
   /**
-   * The whole surface again, resolving to a {@link GitOutcome} instead of
+   * The whole surface again, resolving to a `Result<T, GitFailure>` instead of
    * rejecting. A declared absence is `ok: true`; see `./outcome.ts`.
    *
    * The type leaves out `raw`, `rawChecked` and `at`, but at runtime the proxy

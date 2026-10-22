@@ -763,6 +763,9 @@ importers:
       '@osdlc/command-seam':
         specifier: workspace:^
         version: link:../command-seam
+      '@osdlc/result':
+        specifier: workspace:^
+        version: link:../result
       hosted-git-info:
         specifier: ^10.1.1
         version: 10.1.1

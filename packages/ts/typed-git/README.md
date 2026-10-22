@@ -81,7 +81,7 @@ git.configGet("no.such.key");    // null — an unset key is an answer
 git.worktrees();                 // Worktree[] — throws outside a repository
 git.commit({ message: "feat" }); // throws CommandFailed on a non-zero exit
 
-const r = git.try.worktrees();   // { ok: true, value } | { ok: false, error }
+const r = git.try.worktrees();   // Result<Worktree[], GitFailure>
 
 const asyncGit = new AsyncGit(process.cwd());
 await asyncGit.currentBranch();
@@ -121,7 +121,7 @@ result.
 | | on a declared absence | on anything else |
 | --- | --- | --- |
 | **`git.verb()`** | the absence value — `null`, `[]`, `false` | throws `CommandFailed` |
-| **`git.try.verb()`** | `{ ok: true, value }` | `{ ok: false, error }` |
+| **`git.try.verb()`** | `{ ok: true, value }` | `{ ok: false, error: GitFailure }` |
 | **`git.raw(argv)`** | the raw `CommandResult`; you decide | the same |
 
 Why it matters: a guard that runs `status --porcelain` outside a repository
@@ -136,6 +136,26 @@ const r = git.try.topLevel();
 if (!r.ok) { console.error(r.error.detail); return; }
 use(r.value);
 ```
+
+The error is a `GitFailure`: a `Failure` from `@osdlc/result` with a `kind` to
+branch on, a one-line `message` and a `hint` for a person (`describe(error)`
+joins them), git's own output in `detail`, the `argv` and `exitCode`, and the
+`CommandFailed` it was read from in `cause`.
+
+| `kind` | When | `message` / `hint` |
+| --- | --- | --- |
+| `not-installed` | git is not on `PATH` | `` `git` is not installed or not on PATH. `` / `Install git from https://git-scm.com.` |
+| `not-a-repo` | stderr says `not a git repository` | `This is not a git repository.` / ``Run it inside a git repository, or create one with `git init`.`` |
+| `no-remote` | `No such remote`, or `'x' does not appear to be a git repository` | `The remote 'x' does not exist.` (or `… does not exist or is not a git repository.`) / ``List the remotes with `git remote -v`.`` |
+| `remote-unreachable` | `Could not read from remote repository`, `Could not resolve host`, `unable to access` | `The remote could not be reached.` / `Check your network connection and the remote URL.` |
+| `not-authenticated` | `Authentication failed`, `Permission denied (publickey)`, `could not read Username` | `The remote refused the credentials.` / `Check that you are signed in to the host, or that your SSH key is added.` |
+| `not-executable`, `bad-cwd`, `timeout`, `output-cap`, `signal`, `aborted`, `spawn` | as in `@osdlc/command-seam` | command-seam's message, no hint |
+| `exit` | any other non-zero exit | git's first stderr line |
+
+The patterns are git's English messages. Under another locale git's words
+differ and the failure is a plain `exit` with git's own line, never a wrong
+kind. `classifyGitFailure(commandFailed)` makes the same classification for a
+`CommandFailed` you caught yourself.
 
 It mirrors the whole surface, sync and async, and costs nothing per verb. Two
 rules keep it honest: it catches `CommandFailed` and nothing else, so a
@@ -408,7 +428,7 @@ needs to print.
 
 Every method exists on both `Git` and `AsyncGit` with the same name and
 arguments; the async one returns a promise. Each also mirrors onto
-`git.try.*`, which returns `{ ok, value } | { ok, error }` instead of throwing.
+`git.try.*`, which returns a `Result<T, GitFailure>` instead of throwing.
 Every method takes call options (`timeoutMs`, `env`, `maxOutputBytes`, and
 `signal` on the async side) as its last argument. `revParse` is variadic, so its options are the
 trailing argument that is not a string.
@@ -547,7 +567,7 @@ throws.
 | `raw(argv, opts)` | Run anything. Returns `CommandResult`; you read `exitCode`. |
 | `rawChecked(argv, opts)` | Same, but throws `CommandFailed` on a non-zero exit or on output cut short at a cap or a timeout. |
 | `at(cwd)` | The same client rooted elsewhere, reusing the runner or backend. |
-| `try.*` | The whole surface again, returning `GitOutcome<T>` instead of throwing. |
+| `try.*` | The whole surface again, returning `Result<T, GitFailure>` (from `@osdlc/result`) instead of throwing. |
 | `soft.*` | Every verb with an absence value, returning it instead of throwing. |
 
 `raw` is the honest answer for a one-off — `update-ref`, `tag -a`, a patch

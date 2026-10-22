@@ -170,7 +170,8 @@ export class Git {
 
   /**
    * The whole surface again, reporting failure instead of throwing:
-   * `git.try.topLevel()` is `{ ok: true, value } | { ok: false, error }`.
+   * `git.try.topLevel()` is a `Result<string | null, GitFailure>`: `{ ok: true, value }`
+   * or `{ ok: false, error }` with a classified {@link GitFailure}.
    * A declared absence is `ok: true` — see `./outcome.ts`.
    *
    * The type leaves out `raw`, `rawChecked` and `at`, but at runtime the proxy

@@ -1121,8 +1121,8 @@ describe('Git — git.try.*', () => {
     const r = git.try.statusPorcelain()
     expect(r.ok).toBe(false)
     if (r.ok) throw new Error('unreachable')
-    expect(r.error).toBeInstanceOf(CommandFailed)
-    expect(r.error.result.stderr).toBe('fatal: nope')
+    expect(r.error.cause).toBeInstanceOf(CommandFailed)
+    expect(r.error.cause.result.stderr).toBe('fatal: nope')
   })
 
   test('a declared absence is ok:true — absence is an answer, not a failure', () => {
@@ -1352,7 +1352,7 @@ describe('Git — real git outside a repository', () => {
     const r = new Git(nonRepo).try.statusPorcelain()
     expect(r.ok).toBe(false)
     if (r.ok) throw new Error('unreachable')
-    expect(r.error.result.exitCode).toBe(128)
+    expect(r.error.exitCode).toBe(128)
   })
 
   test("real exit codes match each verb's declaration", () => {
@@ -1587,7 +1587,7 @@ describe('Git — Tier 1 verbs against real git', () => {
     const outside = new Git(nonRepo).try.diffNameOnly()
     expect(outside.ok).toBe(false)
     if (outside.ok) throw new Error('unreachable')
-    expect(outside.error.result.exitCode).toBe(129)
+    expect(outside.error.exitCode).toBe(129)
   })
 
   test("log returns the caller's format verbatim; a bad rev throws", () => {
@@ -1612,7 +1612,7 @@ describe('Git — Tier 1 verbs against real git', () => {
       const r = git.try.log({ format: '%H' })
       expect(r.ok).toBe(false)
       if (r.ok) throw new Error('unreachable')
-      expect(r.error.result.exitCode).toBe(128)
+      expect(r.error.exitCode).toBe(128)
       // for-each-ref and diff --cached, by contrast, answer emptily.
       expect(git.forEachRef('refs/heads/')).toEqual([])
       expect(git.diffNameStatus({ cached: true })).toEqual([])
@@ -1682,7 +1682,7 @@ describe('Git — Tier 2 verbs against real git', () => {
     const r = git.try.isAncestor('no-such-rev', 'HEAD')
     expect(r.ok).toBe(false)
     if (r.ok) throw new Error('unreachable')
-    expect(r.error.result.exitCode).toBe(128)
+    expect(r.error.exitCode).toBe(128)
   })
 
   test('aheadBehind counts each side, and gets the field order right', () => {
