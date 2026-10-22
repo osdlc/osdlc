@@ -1,0 +1,4 @@
+dist/
+.astro/
+# Generated from ../standards by scripts/sync-standards.mjs.
+src/content/docs/standards/
