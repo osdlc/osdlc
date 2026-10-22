@@ -176,13 +176,15 @@ Developed here, in this repository:
   inside its root; the TypeScript twin of the `path-guard` crate)
 - `packages/ts/typed-git` (`@osdlc/typed-git` on npm, a typed git client for
   TypeScript, in a synchronous and an awaitable form; each verb declares what
-  absence means for it and every other failure throws)
+  absence means for it, every other failure throws, and `try` returns a
+  classified `Result`)
 - `packages/ts/result` (`@osdlc/result` on npm, a plain-object `Result` and a
   `Failure` shape for people: `kind`, `message`, `hint`, `detail`, `cause`)
 - `packages/ts/typed-gh` (`@osdlc/typed-gh` on npm, a typed GitHub client for
   TypeScript over the gh CLI; a total PullRequest, Review and CheckRun model,
-  pure argv builders and parsers, and a client where queries return parsed
-  values and mutations throw)
+  pure argv builders and parsers, and a client with the same three doors:
+  a call returns a value or throws, `try` returns a classified `Result`, and
+  `soft` returns `null` for a failed query)
 - `packages/ts/intersect` (`@osdlc/intersect` on npm, a path-pattern overlap
   engine: do two globs share a path, with a witness path, a registry and an
   optional filesystem layer)
