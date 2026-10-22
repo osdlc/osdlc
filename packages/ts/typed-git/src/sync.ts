@@ -100,7 +100,7 @@ export interface GitSyncCallOptions {
   env?: Record<string, string> | undefined
   /**
    * Cap on each output stream, in bytes; 256 MB when omitted. Past it the
-   * runner kills the child and the call throws `CommandFailed`. command-seam's
+   * runner kills the child and the call throws the classified failure. command-seam's
    * Bun test capture path (the Bun runtime with `NODE_ENV=test`) does not
    * apply it.
    */
@@ -207,7 +207,7 @@ export class Git {
   }
 
   /**
-   * Checked passthrough — throws `CommandFailed` on a non-zero exit, and on
+   * Checked passthrough — throws the classified failure on a non-zero exit, and on
    * output cut short at the output cap or a timeout, as every verb does.
    *
    * `CommandFailed.message` interpolates stderr only, and several git commands
@@ -763,7 +763,7 @@ export class Git {
   /**
    * Merge `ref` into the current branch. A conflict is a value, not a throw:
    * the outcome is `clean` or `conflict`. Git refusing to merge at all still
-   * throws `CommandFailed`.
+   * throws the classified failure.
    */
   merge(ref: string, opts: MergeOptions & GitSyncCallOptions = {}): MergeOutcome {
     return this.exec(v.merge(ref, opts), opts)

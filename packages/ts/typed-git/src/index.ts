@@ -17,7 +17,7 @@
  * else throws; `try` inspects; `raw` bypasses.** Each verb names the exit
  * codes that mean "not there" for it — an unset config key, a ref that does
  * not resolve — and those return `null` / `[]` / `false`. Every other non-zero
- * exit throws `CommandFailed`, so "git broke" is distinct from "nothing there".
+ * exit throws the classified failure, so "git broke" is distinct from "nothing there".
  * `git.try.*` is the door for callers that must tolerate failure; `git.soft.*`
  * for those whose fallback is the verb's own absence value.
  *

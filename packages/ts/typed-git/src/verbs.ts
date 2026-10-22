@@ -15,6 +15,8 @@
 
 import { CommandFailed, type CommandResult } from '@osdlc/command-seam'
 
+import { gitFailureError } from './failure.ts'
+
 /**
  * One git invocation: what to run, which exits are answers, and how to read
  * what came back.
@@ -51,15 +53,14 @@ export interface GitVerb<T> {
 }
 
 /**
- * Turn one git result into a value or a `CommandFailed`.
+ * Turn one git result into a value or a thrown failure: a `FailureError`
+ * carrying the classified `GitFailure`, whose `cause` is the `CommandFailed`.
  *
  * The exit-code throw site for the whole library, shared by both clients so
  * they cannot disagree. A parse can raise its own `CommandFailed` for output
  * it cannot read (`aheadBehind`, the integration verbs); it is handed the same
- * argv this reports. `CommandFailed` is reused rather than wrapped in a
- * git-specific class, so one `instanceof` matches failures from typed-git and
- * from any other command-seam caller; a caller that must tell which git call
- * failed reads `e.argv`.
+ * argv this reports. The `CommandFailed` is the `failure.cause`; a caller
+ * that must tell which git call failed reads `e.failure.argv`.
  *
  * `argv` overrides what the error reports. Both clients pass the argv they
  * actually ran, so a failure from a repository-bound client names its store.
@@ -76,14 +77,20 @@ export interface GitVerb<T> {
  * timeout, so a parse would read cut-short output as the whole answer.
  */
 export function gate<T>(verb: GitVerb<T>, result: CommandResult, argv?: string[]): T {
-  if (
-    result.neverExited ||
-    result.outputIncomplete ||
-    (result.exitCode !== 0 && !verb.absent.includes(result.exitCode))
-  ) {
-    throw new CommandFailed(argv ?? verb.argv, result)
+  try {
+    if (
+      result.neverExited ||
+      result.outputIncomplete ||
+      (result.exitCode !== 0 && !verb.absent.includes(result.exitCode))
+    ) {
+      throw new CommandFailed(argv ?? verb.argv, result)
+    }
+    return verb.parse(result, argv ?? verb.argv)
+  } catch (error) {
+    // The plain door throws the classified failure, a parse's own
+    // `CommandFailed` included; its `cause` is the `CommandFailed`.
+    throw gitFailureError(error)
   }
-  return verb.parse(result, argv ?? verb.argv)
 }
 
 /**
@@ -1227,7 +1234,7 @@ export function diffText(rev?: string | undefined, opts: DiffTextOptions = {}): 
  *
  * `--no-index` exits 1 whenever the inputs differ, which for a real file is
  * always, so exit 1 is the success case. git also exits 1, with empty stdout,
- * for a path it cannot read; that throws `CommandFailed`. Exit 2 (a usage or
+ * for a path it cannot read; that throws the classified failure. Exit 2 (a usage or
  * read error) throws too.
  */
 export function diffAddedFile(relPath: string): GitVerb<string> {

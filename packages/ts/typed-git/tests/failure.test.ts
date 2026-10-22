@@ -10,6 +10,8 @@ import { join } from 'node:path'
 
 import { describe as suite, expect, expectTypeOf, test } from 'vitest'
 
+import { FailureError } from '@osdlc/result'
+
 import { describe } from '@osdlc/result'
 
 import {
@@ -109,6 +111,14 @@ suite('stderr patterns', () => {
       'The remote repository was not found, or you cannot see it.',
     ],
     [
+      'unable to access, SSL certificate problem (not a retry)',
+      fail(
+        "fatal: unable to access 'https://git.example.com/o/r.git/': SSL certificate problem: unable to get local issuer certificate",
+      ),
+      'tls',
+      "The remote's TLS certificate could not be verified.",
+    ],
+    [
       'unable to access, a timeout stays unreachable',
       fail(
         "fatal: unable to access 'https://github.com/o/r.git/': Failed to connect to github.com port 443 after 21000 ms: Timed out",
@@ -147,7 +157,7 @@ suite('stderr patterns', () => {
     expect(f.exitCode).toBe(result.exitCode)
     expect(f.argv).toEqual(['status', '--porcelain', '-z'].slice(0, f.argv.length))
     expect(f.detail).toBe([result.stderr, result.stdout].filter(Boolean).join('\n'))
-    expect(f.cause).toBeInstanceOf(CommandFailed)
+    expect(f.cause).toBeInstanceOf(FailureError)
     expect(f.cause.failure.kind).toBe('exit')
   })
 
@@ -214,7 +224,7 @@ suite('subprocess kinds pass through', () => {
 suite('the three doors agree', () => {
   test('checked throws CommandFailed, try returns the failure, soft returns the absence value', () => {
     const git = new Git('/x', { runner: runnerOf(fail('fatal: not a git repository')) })
-    expect(() => git.statusPorcelain()).toThrow(CommandFailed)
+    expect(() => git.statusPorcelain()).toThrow(FailureError)
     const r = git.try.statusPorcelain()
     expect(!r.ok && r.error.kind).toBe('not-a-repo')
     expect(git.soft.statusPorcelain()).toEqual([])
@@ -292,5 +302,39 @@ suite('a CommandFailed from another installed copy', () => {
     const r = git.try.statusPorcelain()
     expect(!r.ok && r.error.kind).toBe('not-a-repo')
     expect(git.soft.statusPorcelain()).toEqual([])
+  })
+})
+
+suite('the plain door throws the classified failure', () => {
+  test('a signed-out push carries kind not-authenticated, with the CommandFailed as cause', () => {
+    const runner = runnerOf(
+      fail(
+        "fatal: unable to access 'https://github.com/o/r.git/': The requested URL returned error: 403",
+      ),
+    )
+    try {
+      new Git('/x', { runner }).push('origin', 'main')
+      expect.unreachable()
+    } catch (e) {
+      expect(e).toBeInstanceOf(FailureError)
+      const failure = (e as FailureError<GitFailure>).failure
+      expect(failure).toMatchObject({
+        kind: 'not-authenticated',
+        argv: expect.arrayContaining(['push']),
+      })
+      expect(failure.cause).toBeInstanceOf(CommandFailed)
+    }
+  })
+
+  test('a plain failure no kind names stays an exit', () => {
+    try {
+      new Git('/x', { runner: runnerOf(fail('boom')) }).statusPorcelain()
+      expect.unreachable()
+    } catch (e) {
+      expect((e as FailureError<GitFailure>).failure).toMatchObject({
+        kind: 'exit',
+        message: 'boom',
+      })
+    }
   })
 })

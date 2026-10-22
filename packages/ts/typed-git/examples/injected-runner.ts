@@ -20,5 +20,8 @@ export function run(): void {
     run: () => ({ exitCode: 128, stdout: '', stderr: 'fatal: not a git repository\n' }),
   }
   const broken = new Git('/nowhere', { runner: failing })
-  assert.throws(() => broken.currentBranch(), CommandFailed)
+  assert.throws(
+    () => broken.currentBranch(),
+    (e: { failure?: { cause?: unknown } }) => e.failure?.cause instanceof CommandFailed,
+  )
 }

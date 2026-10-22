@@ -14,7 +14,9 @@ import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 
-import { CommandFailed, Git, type CommandResult, type CommandRunner } from '../src/index.ts'
+import { FailureError } from '@osdlc/result'
+
+import { Git, type CommandResult, type CommandRunner } from '../src/index.ts'
 import { makeGitFixture, type GitFixture } from '../src/testing.ts'
 
 /** Records argv and replays one canned result. */
@@ -115,12 +117,12 @@ describe('integration outcomes — exit 1 is not enough on its own', () => {
     const git = new Git('/repo', {
       runner: recorder(res(1, '', 'merge: no-such-ref - not something we can merge')).runner,
     })
-    expect(() => git.merge('no-such-ref')).toThrow(CommandFailed)
+    expect(() => git.merge('no-such-ref')).toThrow(FailureError)
   })
 
   test("an undeclared exit code throws even with output — 2 is 'would overwrite'", () => {
     const git = new Git('/repo', { runner: recorder(res(2, '', 'error: local changes')).runner })
-    expect(() => git.merge('origin/main')).toThrow(CommandFailed)
+    expect(() => git.merge('origin/main')).toThrow(FailureError)
   })
 
   test('a clean merge reports fast-forward and already-up-to-date apart', () => {
@@ -201,7 +203,7 @@ describe('real git — the conflict shapes a resolver must tell apart', () => {
 
     // ffo-base now holds ahead.txt; ffo-side does not, so it has diverged.
     const before = fx.git.revParse('HEAD')
-    expect(() => fx.git.merge('ffo-side', { ffOnly: true })).toThrow(CommandFailed)
+    expect(() => fx.git.merge('ffo-side', { ffOnly: true })).toThrow(FailureError)
     expect(fx.git.revParse('HEAD')).toBe(before)
     fx.git.checkout('main')
   })
@@ -251,13 +253,13 @@ describe('real git — the conflict shapes a resolver must tell apart', () => {
 
   test('an unknown ref throws rather than reading as a conflict', () => {
     fx.git.checkout('main')
-    expect(() => fx.git.merge('no-such-ref')).toThrow(CommandFailed)
+    expect(() => fx.git.merge('no-such-ref')).toThrow(FailureError)
     // And nothing was left half-merged.
     expect(fx.git.lsFilesUnmerged()).toEqual([])
   })
 
   test('merge --abort with no merge running throws', () => {
-    expect(() => fx.git.mergeAbort()).toThrow(CommandFailed)
+    expect(() => fx.git.mergeAbort()).toThrow(FailureError)
   })
 
   test('rebase replays onto a moved base, conflicts, and continues', () => {
@@ -278,7 +280,7 @@ describe('real git — the conflict shapes a resolver must tell apart', () => {
   })
 
   test('rebase --abort with no rebase running throws', () => {
-    expect(() => fx.git.rebaseAbort()).toThrow(CommandFailed)
+    expect(() => fx.git.rebaseAbort()).toThrow(FailureError)
   })
 })
 
@@ -330,7 +332,7 @@ describe('real git — merge-tree predicts without touching the worktree', () =>
   test('a name git cannot merge exits 1 like a conflict, and throws', () => {
     // The same trap `merge` sets: exit 1 with nothing on stdout is a refusal,
     // and reading it as "no conflicts" would report a broken ref as mergeable.
-    expect(() => fx.git.mergeTree('main', 'no-such-ref')).toThrow(CommandFailed)
+    expect(() => fx.git.mergeTree('main', 'no-such-ref')).toThrow(FailureError)
   })
 
   test('-z returns a path needing quotes raw, not C-quoted', () => {

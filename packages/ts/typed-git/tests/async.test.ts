@@ -10,6 +10,9 @@
 
 import { describe, expect, test } from 'vitest'
 
+import { FailureError } from '@osdlc/result'
+import type { GitFailure } from '../src/failure.ts'
+
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -337,7 +340,7 @@ describe('AsyncGit — parity with Git', () => {
     expect(await git.resolveRef('refs/heads/gone')).toBeNull()
     expect(await git.remoteGetUrl('nope')).toBeNull()
     // An unborn HEAD is 128 here, which headRef does not declare absent.
-    await expect(git.headRef()).rejects.toThrow(CommandFailed)
+    await expect(git.headRef()).rejects.toThrow(FailureError)
   })
 
   test('the Tier 1 verbs parse identically across the two clients', async () => {
@@ -381,12 +384,12 @@ describe('AsyncGit — parity with Git', () => {
       log: fail,
     })
     const git = new AsyncGit(CWD, { backend: cliBackend({ runner: r.async }) })
-    await expect(git.lsFiles()).rejects.toThrow(CommandFailed)
-    await expect(git.forEachRef('refs/heads/')).rejects.toThrow(CommandFailed)
-    await expect(git.refs('refs/heads/')).rejects.toThrow(CommandFailed)
-    await expect(git.diffNameOnly()).rejects.toThrow(CommandFailed)
-    await expect(git.diffNameStatus()).rejects.toThrow(CommandFailed)
-    await expect(git.log()).rejects.toThrow(CommandFailed)
+    await expect(git.lsFiles()).rejects.toThrow(FailureError)
+    await expect(git.forEachRef('refs/heads/')).rejects.toThrow(FailureError)
+    await expect(git.refs('refs/heads/')).rejects.toThrow(FailureError)
+    await expect(git.diffNameOnly()).rejects.toThrow(FailureError)
+    await expect(git.diffNameStatus()).rejects.toThrow(FailureError)
+    await expect(git.log()).rejects.toThrow(FailureError)
     expect(await git.try.log()).toMatchObject({ ok: false })
   })
 
@@ -446,12 +449,12 @@ describe('AsyncGit — parity with Git', () => {
     const git = new AsyncGit(CWD, { backend: cliBackend({ runner: r.async }) })
     expect(await git.grep('TODO')).toEqual([])
     expect(await git.isAncestor('a', 'b')).toBe(false)
-    await expect(git.isAncestor('bad', 'b')).rejects.toThrow(CommandFailed)
-    await expect(git.lsTree('bad')).rejects.toThrow(CommandFailed)
-    await expect(git.diffTree('bad')).rejects.toThrow(CommandFailed)
-    await expect(git.aheadBehind('a', 'bad')).rejects.toThrow(CommandFailed)
-    await expect(git.configSet('x.y', 'z')).rejects.toThrow(CommandFailed)
-    await expect(git.worktreeMove('/a', '/b')).rejects.toThrow(CommandFailed)
+    await expect(git.isAncestor('bad', 'b')).rejects.toThrow(FailureError)
+    await expect(git.lsTree('bad')).rejects.toThrow(FailureError)
+    await expect(git.diffTree('bad')).rejects.toThrow(FailureError)
+    await expect(git.aheadBehind('a', 'bad')).rejects.toThrow(FailureError)
+    await expect(git.configSet('x.y', 'z')).rejects.toThrow(FailureError)
+    await expect(git.worktreeMove('/a', '/b')).rejects.toThrow(FailureError)
     expect(await git.try.grep('TODO')).toEqual({ ok: true, value: [] })
   })
 
@@ -532,8 +535,8 @@ describe('AsyncGit — parity with Git', () => {
       'status --porcelain': { exitCode: 128, stderr: 'fatal: not a repo' },
     })
     const git = new AsyncGit(CWD, { backend: cliBackend({ runner: r.async }) })
-    await expect(git.configGet('user.name')).rejects.toThrow(CommandFailed)
-    await expect(git.statusPorcelain()).rejects.toThrow(CommandFailed)
+    await expect(git.configGet('user.name')).rejects.toThrow(FailureError)
+    await expect(git.statusPorcelain()).rejects.toThrow(FailureError)
   })
 
   // `topLevel` is not `revParse --show-toplevel` any more: 128 is an answer
@@ -547,16 +550,16 @@ describe('AsyncGit — parity with Git', () => {
     const git = new AsyncGit(CWD, { backend: cliBackend({ runner: r.async }) })
     expect(await git.topLevel()).toBeNull()
     expect(await git.gitCommonDir()).toBeNull()
-    await expect(git.revParse('HEAD')).rejects.toThrow(CommandFailed)
+    await expect(git.revParse('HEAD')).rejects.toThrow(FailureError)
   })
 
   test('a mutation rejects with CommandFailed carrying argv and stderr', async () => {
     const r = recorder({ 'add -- a.ts': { exitCode: 128, stderr: 'fatal: pathspec' } })
     const git = new AsyncGit(CWD, { backend: cliBackend({ runner: r.async }) })
-    await expect(git.add(['a.ts'])).rejects.toThrow(CommandFailed)
+    await expect(git.add(['a.ts'])).rejects.toThrow(FailureError)
     const err = await git.add(['a.ts']).catch((e: unknown) => e)
-    expect(err).toBeInstanceOf(CommandFailed)
-    expect((err as CommandFailed).argv).toEqual(['add', '--', 'a.ts'])
+    expect(err).toBeInstanceOf(FailureError)
+    expect((err as FailureError<GitFailure>).failure.argv).toEqual(['add', '--', 'a.ts'])
     expect((err as CommandFailed).message).toContain('fatal: pathspec')
   })
 
@@ -570,7 +573,7 @@ describe('AsyncGit — parity with Git', () => {
     const bad = await git.try.statusPorcelain()
     expect(bad.ok).toBe(false)
     if (bad.ok) throw new Error('unreachable')
-    expect(bad.error.cause).toBeInstanceOf(CommandFailed)
+    expect(bad.error.cause).toBeInstanceOf(FailureError)
     expect(bad.error.kind).toBe('exit')
 
     // The rule that matters most: a declared absence is a success.
@@ -677,7 +680,7 @@ describe('backend seam', () => {
     const r = recorder({ status: { exitCode: 128, stderr: 'fatal: not a repo' } })
     const git = new AsyncGit(CWD, { backend: cliBackend({ runner: r.async }) })
     expect((await git.raw(['status'])).exitCode).toBe(128)
-    await expect(git.rawChecked(['status'])).rejects.toThrow(CommandFailed)
+    await expect(git.rawChecked(['status'])).rejects.toThrow(FailureError)
   })
 
   test('raw is argv, so a non-CLI backend rejects it', async () => {
@@ -722,7 +725,7 @@ describe('remoteOwnerRepo', () => {
     expect(new Git(CWD, { runner: r.sync }).remoteOwnerRepo()).toBeNull()
     const bad = recorder({ 'remote get-url origin': { exitCode: 128 } })
     const git = new Git(CWD, { runner: bad.sync })
-    expect(() => git.remoteOwnerRepo()).toThrow(CommandFailed)
+    expect(() => git.remoteOwnerRepo()).toThrow(FailureError)
     expect(git.try.remoteOwnerRepo().ok).toBe(false)
     const asyncGit = new AsyncGit(CWD, { backend: cliBackend({ runner: bad.async }) })
     expect((await asyncGit.try.remoteOwnerRepo()).ok).toBe(false)
@@ -782,7 +785,7 @@ describe('AsyncGit — symbolicRef, mainCheckout, mergeBase, checkIgnoreVerbose'
     })
     const git = new AsyncGit(CWD, { backend: cliBackend({ runner: r.async }) })
     expect(await git.mergeBase('a', 'b')).toBeNull()
-    await expect(git.mergeBase('a', 'bad')).rejects.toThrow(CommandFailed)
+    await expect(git.mergeBase('a', 'bad')).rejects.toThrow(FailureError)
   })
 
   test('checkIgnoreVerbose reports the rule behind a path, and [] for an empty input', async () => {

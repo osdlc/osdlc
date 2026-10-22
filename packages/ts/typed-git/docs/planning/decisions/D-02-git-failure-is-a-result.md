@@ -14,7 +14,7 @@ created: 2026-10-21
   and no re-export of the old name.
 - `GitFailure` is a `Failure<GitFailureKind>`. Its `kind` is every
   `@osdlc/command-seam` kind plus `not-a-repo`, `no-remote`,
-  `remote-unreachable`, `not-authenticated` and `not-found`, read from git's stderr (the
+  `remote-unreachable`, `not-authenticated`, `not-found` and `tls`, read from git's stderr (the
   table is in the README).
 - `GitFailure.cause` is the `CommandFailed` it was classified from, so the
   full `CommandResult` is still reachable: `error.cause.result`.
@@ -48,3 +48,17 @@ created: 2026-10-21
   read `outcome.error.cause.result`, or the copies on the failure itself
   (`error.argv`, `error.binary`, `error.exitCode`).
 - Callers that only test `outcome.ok` are unchanged.
+
+## Update: the plain door throws the classified failure
+
+- A failed git call through the plain door throws a `FailureError` carrying the
+  `GitFailure`; its `cause` is the `CommandFailed`. The bare `CommandFailed` had
+  only command-seam's `exit` kind, so a signed-out `git push` exited 1 from
+  `runMain` where the same failure through `try` is a `not-authenticated`
+  failure (23). One thrown shape for every caller keeps the classification from
+  depending on which door was used. This matches `@osdlc/typed-gh`.
+- `tls` is a new kind for `unable to access … SSL certificate problem`: the
+  host answered, so it is not `remote-unreachable`, and retrying cannot help.
+  `@osdlc/cli-tool` numbers it 23, the fix-it category.
+- `try` and `soft` recognise the thrown failure by shape, not `instanceof`, so
+  two installed copies of command-seam or result agree.

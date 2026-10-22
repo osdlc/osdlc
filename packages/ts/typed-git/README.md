@@ -34,7 +34,7 @@ GitHub-hosted runners ship. On 2026-10-20 that was git 2.55.0 on
 the checkout step logs it. So the tested minimum is git 2.55.0. Older git may
 work, but no test shows it. The behaviour tables below were measured against
 git 2.50.1. A verb that needs a newer git than you have fails with git's own
-error and throws `CommandFailed`. `mergeTree` needs git 2.38 or later.
+error and throws the classified failure. `mergeTree` needs git 2.38 or later.
 
 The tests run on Vitest under Node. Bun is not a tested runtime for consumers.
 
@@ -115,12 +115,12 @@ Every verb names the exit codes that mean "asked and answered: not there" for
 *that* verb. `config --get` exits 1 for an unset key; `check-ignore` exits 1
 for "none of these are ignored"; `merge-base` exits 1 for unrelated histories.
 Those return the absence value — `null`, `[]`, `false` — exactly as before.
-Any other non-zero exit throws `CommandFailed`, carrying the argv and the full
+Any other non-zero exit throws the classified failure, carrying the argv and the full
 result.
 
 | | on a declared absence | on anything else |
 | --- | --- | --- |
-| **`git.verb()`** | the absence value — `null`, `[]`, `false` | throws `CommandFailed` |
+| **`git.verb()`** | the absence value — `null`, `[]`, `false` | throws the classified failure |
 | **`git.try.verb()`** | `{ ok: true, value }` | `{ ok: false, error: GitFailure }` |
 | **`git.raw(argv)`** | the raw `CommandResult`; you decide | the same |
 
@@ -140,7 +140,7 @@ use(r.value);
 The error is a `GitFailure`: a `Failure` from `@osdlc/result` with a `kind` to
 branch on, a one-line `message` and a `hint` for a person (`describe(error)`
 joins them), git's own output in `detail`, the `argv` and `exitCode`, and the
-`CommandFailed` it was read from in `cause`.
+`CommandFailed` it was read from in `cause`. The plain door throws the same failure, wrapped in a `FailureError` (`error.failure`), so a CLI that reports a thrown failure, such as `runMain` from `@osdlc/cli-tool`, shows "The remote refused the credentials" and exits 23 for a signed-out `git push`, as it does for a read.
 
 | `kind` | When | `message` / `hint` |
 | --- | --- | --- |
@@ -150,6 +150,7 @@ joins them), git's own output in `detail`, the `argv` and `exitCode`, and the
 | `remote-unreachable` | `Could not read from remote repository`, `Could not resolve host`, `unable to access` with no HTTP status (a refused connection, a timeout) | `The remote could not be reached.` / `Check your network connection and the remote URL.` |
 | `not-authenticated` | `Authentication failed`, `Permission denied (publickey)`, `could not read Username`, `unable to access` with HTTP 401 or 403 | `The remote refused the credentials.` / `Check that you are signed in to the host, or that your SSH key is added.` |
 | `not-found` | `unable to access` with HTTP 404 | `The remote repository was not found, or you cannot see it.` / `Check the remote URL, and that your account can see the repository.` |
+| `tls` | `unable to access` with `SSL certificate problem` | `The remote's TLS certificate could not be verified.` / `Check the system clock and CA certificates, or the remote's certificate.` |
 | `not-executable`, `bad-cwd`, `timeout`, `output-cap`, `signal`, `aborted`, `spawn` | as in `@osdlc/command-seam` | command-seam's message, no hint |
 | `exit` | any other non-zero exit | git's first stderr line |
 
@@ -159,7 +160,7 @@ kind. `classifyGitFailure(commandFailed)` makes the same classification for a
 `CommandFailed` you caught yourself.
 
 It mirrors the whole surface, sync and async, and costs nothing per verb. Two
-rules keep it honest: it catches `CommandFailed` and nothing else, so a
+rules keep it honest: it catches a thrown git failure and nothing else, so a
 `TypeError` still propagates; and a declared absence is `{ ok: true }`,
 because absence is an answer.
 
@@ -179,7 +180,7 @@ outcome verbs such as `merge`, and `checkIgnore`, `aheadBehind` and `diffText`,
 plus every mutation. Reach for `try`. Boolean verbs fall back to
 `false`, which also means "could not ask": `soft.isDirty` reads a broken repo
 as clean, so do not gate a destructive action on it. `soft`
-catches `CommandFailed` only, exactly like `try`, and one table
+catches a thrown git failure only, exactly like `try`, and one table
 (`./soft.ts`, checked against both clients) defines it for `Git` and
 `AsyncGit`.
 
@@ -260,7 +261,7 @@ git.isAncestor(sha, "origin/main");
 
 An exit code only answers when git produced it. A `git` missing from PATH, a
 timeout kill or an abort leaves the runner with no exit code of its own to
-report, and every verb throws `CommandFailed` there — none of them reads that
+report, and every verb throws the classified failure there — none of them reads that
 as "no matches" or "no such key".
 
 `aheadBehind` is here for a different reason: it owns a field order that is
@@ -459,7 +460,7 @@ integer. Both checks throw a `TypeError` before git runs.
 ### Queries
 
 "Absence" is the exit code this verb declares as an answer. Any other non-zero
-exit throws `CommandFailed`.
+exit throws the classified failure.
 
 | Method | git | Absence → value |
 | --- | --- | --- |
@@ -521,7 +522,7 @@ empty repository from a dangling HEAD or a missing object store. Use
 ### Mutations
 
 Every mutation except `configRemoveSection` declares no absence: a non-zero
-exit throws `CommandFailed`, because the only sane handling of "the write did
+exit throws the classified failure, because the only sane handling of "the write did
 not happen" is to surface it. `configRemoveSection` declares 128 absent and
 returns `false` when there is no such section.
 
@@ -566,7 +567,7 @@ throws.
 | Method | What |
 | --- | --- |
 | `raw(argv, opts)` | Run anything. Returns `CommandResult`; you read `exitCode`. |
-| `rawChecked(argv, opts)` | Same, but throws `CommandFailed` on a non-zero exit or on output cut short at a cap or a timeout. |
+| `rawChecked(argv, opts)` | Same, but throws the classified failure on a non-zero exit or on output cut short at a cap or a timeout. |
 | `at(cwd)` | The same client rooted elsewhere, reusing the runner or backend. |
 | `try.*` | The whole surface again, returning `Result<T, GitFailure>` (from `@osdlc/result`) instead of throwing. |
 | `soft.*` | Every verb with an absence value, returning it instead of throwing. |

@@ -9,8 +9,13 @@
  * git's first stderr line as its message, never a wrong git kind.
  */
 
-import { classifyFailure, type CommandFailed, type CommandFailureKind } from '@osdlc/command-seam'
-import { type Failure } from '@osdlc/result'
+import {
+  classifyFailure,
+  isCommandFailed,
+  type CommandFailed,
+  type CommandFailureKind,
+} from '@osdlc/command-seam'
+import { FailureError, isFailure, type Failure } from '@osdlc/result'
 
 /**
  * Why a git call failed:
@@ -27,7 +32,11 @@ import { type Failure } from '@osdlc/result'
  *   failed", "Permission denied (publickey)", "could not read Username", "unable
  *   to access … The requested URL returned error: 401" or "403");
  * - `not-found`: the host answered that the repository is not there ("unable to
- *   access … The requested URL returned error: 404"). Retrying will not help.
+ *   access … The requested URL returned error: 404"). Retrying will not help;
+ * - `tls`: the TLS handshake failed ("unable to access … SSL certificate
+ *   problem"). The host was reached, so this is not `remote-unreachable`, and
+ *   retrying will not help until the clock, the CA certificates or the remote's
+ *   certificate is fixed.
  */
 export type GitFailureKind =
   | CommandFailureKind
@@ -36,6 +45,7 @@ export type GitFailureKind =
   | 'remote-unreachable'
   | 'not-authenticated'
   | 'not-found'
+  | 'tls'
 
 /** A failed git call. `message` is one line for a person; `detail` is git's own output. */
 export interface GitFailure extends Failure<GitFailureKind> {
@@ -120,6 +130,14 @@ export function classifyGitFailure(failed: CommandFailed): GitFailure {
       hint: 'Check the remote URL, and that your account can see the repository.',
     }
   }
+  if (/unable to access[^\n]*SSL certificate problem|SSL certificate problem/i.test(text)) {
+    return {
+      ...base,
+      kind: 'tls',
+      message: "The remote's TLS certificate could not be verified.",
+      hint: "Check the system clock and CA certificates, or the remote's certificate.",
+    }
+  }
   if (notARemote !== undefined) {
     return {
       ...base,
@@ -137,4 +155,30 @@ export function classifyGitFailure(failed: CommandFailed): GitFailure {
     }
   }
   return base
+}
+
+/**
+ * What the plain door throws for a failed git call: a `FailureError` carrying
+ * the {@link GitFailure} that {@link classifyGitFailure} reads from it, with the
+ * `CommandFailed` as its `cause`. Anything else is returned as it is. The
+ * classified kind (a signed-out remote, an unreachable one) is what lets a CLI
+ * that reports a thrown failure number it, which a bare `CommandFailed` with
+ * only command-seam's kinds cannot.
+ */
+export function gitFailureError(error: unknown): unknown {
+  return isCommandFailed(error) ? new FailureError(classifyGitFailure(error)) : error
+}
+
+/**
+ * The failure a thrown value carries, recognised by shape so two installed
+ * copies of command-seam or result agree; `null` for any other throw. A bare
+ * `CommandFailed` is classified here.
+ */
+export function thrownGitFailure(error: unknown): GitFailure | null {
+  if (isCommandFailed(error)) return classifyGitFailure(error)
+  if (typeof error === 'object' && error !== null) {
+    const carried = (error as { failure?: unknown }).failure
+    if (isFailure(carried)) return carried as GitFailure
+  }
+  return null
 }
