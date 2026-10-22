@@ -40,6 +40,18 @@ ESM only. Node.js `^22.22.2 || ^24.15.0 || >=26.0.0`, the range of its
 dependency `@osdlc/typed-git`. `pnpm add @osdlc/pr-update` and
 `yarn add @osdlc/pr-update` work too.
 
+## Requirements
+
+- `git` on `PATH`, always.
+- For a GitHub repository, the GitHub CLI (`gh`) on `PATH` and signed in:
+  `gh auth login`.
+- For a Forgejo repository, `curl` on `PATH` and a token in the
+  `FORGEJO_TOKEN` environment variable.
+
+`survey` and `update` check this before they list anything. A missing tool, an
+unreadable git remote or a PR listing the host refused is an error with its own
+exit code (see Exit codes), never "no open PRs".
+
 ## Why this exists as its own package
 
 A stack of PRs drifts constantly — every merge to `main` puts the next PR one
@@ -319,10 +331,41 @@ call a preset would make without running it.
 
 `survey` and `update` list PRs through the `CodeHost` port
 (`@osdlc/code-host`, `listPrDetails`), so no GitHub client is imported
-here. The default is `GithubCodeHost` over `gh` (`src/code-host.ts`, the only
-file that names a concrete host); a host that wants another adapter, Forgejo
-for one, supplies `SurveyEnv.codeHost`. The standalone CLI still builds the
-GitHub default.
+here. The `pr-update` binary picks the host with `selectCodeHost`: a
+`github.com` remote (and a repository with no `origin` to read) uses
+GitHub over `gh`; any other remote is read as a self-hosted Forgejo, over
+`curl`, with the token in `FORGEJO_TOKEN`. `code_host.override: github` or
+`forgejo` in the config forces the answer, for a GitHub Enterprise host say.
+The token's variable name is not configurable here; it is always
+`FORGEJO_TOKEN`.
+
+A host that embeds the engine as a library supplies `SurveyEnv.codeHost` and
+is untouched by all of this. Left absent, the library default stays GitHub
+over `gh`, as it always was: it does not read the remote, so an embedding that
+never named a host cannot start answering from Forgejo. `selectedCodeHostFor`
+is the CLI's factory, if a library caller wants the same choice.
+
+Whatever the host, a listing it could not complete (not signed in, no
+network, a refused token) throws `PrListError` from `runSurvey`; it is never
+an empty list.
+
+## Exit codes
+
+| Code | Meaning |
+|---|---|
+| `0` | Clean run (`survey` always; `update` when no PR ended `conflict` or `failed`) |
+| `1` | The run finished but a PR ended `conflict` or `failed`, or an unexpected error |
+| `2` | Malformed command line, or a `--branch` with no open PR |
+| `14` | The config file is invalid or unreadable |
+| `21` | `update` refused for want of repository trust |
+| `22` | A tool the run needs is not on `PATH`: `git`, and `gh` (GitHub) or `curl` (Forgejo) |
+| `23` | The code host cannot be used: no `FORGEJO_TOKEN`, or the PR listing failed (check `gh auth status`, the token and your network) |
+| `24` | The git remote cannot be read, or names no repository (pass `--remote` or `--repo`) |
+
+Exported as `EXIT_UNTRUSTED`, `EXIT_MISSING_TOOL`, `EXIT_CODE_HOST` and
+`EXIT_NO_REMOTE`. With `update --report`, a failed listing writes
+`{ "error": "<message>" }`; a missing tool or remote is refused before the run
+starts and writes none.
 
 ## When not to use
 
