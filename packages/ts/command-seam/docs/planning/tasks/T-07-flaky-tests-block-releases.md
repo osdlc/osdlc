@@ -44,6 +44,7 @@ complete.
 | a verb that starts with ${verb[0]} runs as a command, not an option (${name}) | `tests/shell.test.ts:48` | macos, node 24 (5 s timeout, publish) | [run](https://github.com/osdlc/osdlc/actions/runs/39133129996/job/117692188844) |
 | a timeout after a group-gone child exited keeps the exit code | `tests/contract.test.ts:531` | ubuntu, node 22 (publish) | [run](https://github.com/osdlc/osdlc/actions/runs/39181794567/job/117835920355) |
 | a timeout after a group-gone child exited keeps the exit code | `tests/contract.test.ts:531` | macos, node 24 (publish) | [run](https://github.com/osdlc/osdlc/actions/runs/39193123342/job/117870022024) |
+| the cap applies to stderr on its own | `tests/output-cap.test.ts:43` | ubuntu, node 22 | [run](https://github.com/osdlc/osdlc/actions/runs/39340978759) |
 
 The `shell.test.ts:48` title is a template. The older failing runs name it
 "a verb that starts with - or + runs as a command, not an option".
@@ -89,10 +90,31 @@ All eleven failed on a `command-seam` test.
       `examples/09-managed-process.test.ts:205`. Both read the registry
       right after the run settled, the same race. No failing run yet. Both
       now poll until the group is released.
+- [x] `tests/output-cap.test.ts:43` ("the cap applies to stderr on its
+      own"). A bug in the async runner, not the test. When one stream
+      passed `maxOutputBytes`, the runner settled at once and closed the
+      other stream, so output the child had already written to it was lost
+      whenever the capped stream's chunk was read first. The runner now
+      kills the child and settles on `close` or the exit grace, so the
+      other stream is read to the end, as the sync runner reads it.
+- [x] `tests/contract.test.ts:531` ("a timeout after a group-gone child
+      exited keeps the exit code"). The 240 ms timeout assumed the child
+      would start the runtime, spawn its grandchild and exit within 240 ms.
+      The failing runs took 274 and 538 ms, so the timeout fired first. The
+      child now exits at a fixed time 1.4 s out, and the timeout fires
+      125 ms later, inside the 250 ms exit grace. Under Vitest with the CPU
+      saturated it failed once in about 225 local runs; the cause of that
+      one was not found.
 - [ ] `examples/16-launch-and-log.test.ts:130`
 - [ ] `examples/17-binary-output.test.ts:118`
 - [ ] `tests/shell.test.ts:48`
-- [ ] `tests/contract.test.ts:531`
+
+The three open rows are timeouts on macOS only, under `bun test`. A local
+loop of the Bun suite under load hung the same way in a different test
+(2 of 15 runs). The child had exited and was reaped, but its `exit` event
+never reached the test: a Bun 1.4.2 issue, not a slow runner. The suite now
+runs on Vitest under Node, so these rows are expected to clear. Close them
+after a week of green macOS `verify` runs.
 
 ## Approach
 
