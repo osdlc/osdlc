@@ -66,7 +66,7 @@ cannot run.
 
 `packages/` holds the libraries developed in this repository and published to npm from it. See
 [packages/README.md](./packages/README.md) for the list and for how they are developed and
-released.
+released. The shape each package keeps is set out in [docs/standards](./docs/standards/README.md).
 
 ## License
 
