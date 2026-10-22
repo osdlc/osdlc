@@ -1,0 +1,42 @@
+---
+title: Open SDLC
+description: Defaults and standards for the software development lifecycle.
+template: splash
+hero:
+  tagline: Defaults that fit almost any software project. What the common tasks are called, where documents live, and how changes are reviewed, written for people, tools and coding agents.
+  actions:
+    - text: Read the standards
+      link: /osdlc/standards/
+      icon: right-arrow
+    - text: Libraries
+      link: /osdlc/libraries/
+      icon: seti:folder
+      variant: secondary
+    - text: Blog
+      link: /osdlc/blog/
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components'
+
+<CardGrid>
+  <Card title="Verbs" icon="seti:shell">
+    One set of task names for every project: `setup`, `fmt`, `lint`, `test`,
+    `build`, `deploy`. [Read the standard](/osdlc/standards/verbs/).
+  </Card>
+  <Card title="sdlc.yaml" icon="document">
+    A structured README: the facts a tool or agent needs to work on a project,
+    as data. [Read the standard](/osdlc/standards/sdlc-yaml/).
+  </Card>
+  <Card title="Documentation locations" icon="open-book">
+    One standard place for each kind of document.
+    [Read the standard](/osdlc/standards/doc-locations/).
+  </Card>
+  <Card title="Review" icon="approve-check">
+    A review process scaled by risk. [Read the standard](/osdlc/standards/review/).
+  </Card>
+  <Card title="Libraries" icon="puzzle">
+    The `@osdlc` TypeScript packages and Rust crates, with their twins paired
+    and an API reference for each. [Browse the libraries](/osdlc/libraries/).
+  </Card>
+</CardGrid>

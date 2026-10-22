@@ -1,0 +1,54 @@
+import { fileURLToPath } from 'node:url'
+import starlight from '@astrojs/starlight'
+import vue from '@astrojs/vue'
+import { defineConfig } from 'astro/config'
+import starlightBlog from 'starlight-blog'
+
+// Served from https://osdlc.github.io/osdlc/ until the site has its own domain.
+export default defineConfig({
+  site: 'https://osdlc.github.io',
+  base: '/osdlc',
+  vite: {
+    resolve: {
+      // Guide components live in packages/, outside this folder; resolve their
+      // vue import from the site's own install.
+      dedupe: ['vue'],
+      // A library guide's interactive components import the library by name
+      // and run against its source, so a guide never lags a release.
+      alias: [
+        {
+          find: /^@osdlc\/([\w-]+)$/,
+          replacement: fileURLToPath(new URL('../packages/ts/$1/src/index.ts', import.meta.url)),
+        },
+      ],
+    },
+  },
+  integrations: [
+    vue(),
+    starlight({
+      title: 'Open SDLC',
+      description: 'Defaults and standards for the software development lifecycle.',
+      social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/osdlc/osdlc' }],
+      editLink: { baseUrl: 'https://github.com/osdlc/osdlc/edit/main/site/' },
+      plugins: [
+        starlightBlog({
+          title: 'Blog',
+          authors: {
+            sksizer: { name: 'sksizer', url: 'https://github.com/sksizer' },
+          },
+        }),
+      ],
+      sidebar: [
+        { label: 'Standards', items: [{ autogenerate: { directory: 'standards' } }] },
+        {
+          label: 'Libraries',
+          items: [
+            { label: 'Overview', link: '/libraries/' },
+            { label: 'TypeScript', items: [{ autogenerate: { directory: 'libraries/ts', collapsed: true } }] },
+            { label: 'Rust', items: [{ autogenerate: { directory: 'libraries/rust', collapsed: true } }] },
+          ],
+        },
+      ],
+    }),
+  ],
+})
