@@ -320,19 +320,23 @@ describe('Gh — argv', () => {
   })
 })
 
-describe('Gh — the tri-modal contract', () => {
-  test("a failed query is null, never [] — 'no PRs' and 'couldn't ask' differ", () => {
+describe('Gh — the three doors', () => {
+  test("a failed query throws and soft is null, never [] — 'no PRs' and 'couldn't ask' differ", () => {
     const gh = new Gh('/repo', { runner: recorder([FAIL]).runner })
-    expect(gh.prList()).toBeNull()
-    expect(new Gh('/repo', { runner: recorder([FAIL]).runner }).prView(1)).toBeNull()
+    expect(() => gh.prList()).toThrow(CommandFailed)
+    expect(gh.soft.prList()).toBeNull()
+    expect(() => new Gh('/repo', { runner: recorder([FAIL]).runner }).prView(1)).toThrow(
+      CommandFailed,
+    )
 
     const empty = new Gh('/repo', { runner: recorder([json([])]).runner })
     expect(empty.prList()).toEqual({ rows: [], truncated: false })
   })
 
-  test('malformed JSON degrades to null rather than throwing', () => {
+  test('malformed JSON throws an unreadable failure, and soft is null', () => {
     const runner = recorder([{ exitCode: 0, stdout: 'not json', stderr: '' }]).runner
-    expect(new Gh('/repo', { runner }).prList()).toBeNull()
+    expect(() => new Gh('/repo', { runner }).prList()).toThrow(/could not be read/)
+    expect(new Gh('/repo', { runner }).soft.prList()).toBeNull()
   })
 
   test('a mutation throws CommandFailed, carrying argv and the result', () => {
@@ -340,24 +344,28 @@ describe('Gh — the tri-modal contract', () => {
     expect(() => gh.editPr(1, { body: 'x' })).toThrow(CommandFailed)
   })
 
-  test('labelList is null on failure, [] on a genuinely empty repo', () => {
-    expect(new Gh('/repo', { runner: recorder([FAIL]).runner }).labelList()).toBeNull()
+  test('labelList throws on failure, [] on a genuinely empty repo', () => {
+    expect(() => new Gh('/repo', { runner: recorder([FAIL]).runner }).labelList()).toThrow(
+      CommandFailed,
+    )
+    expect(new Gh('/repo', { runner: recorder([FAIL]).runner }).soft.labelList()).toBeNull()
     expect(new Gh('/repo', { runner: recorder([json([])]).runner }).labelList()).toEqual({
       rows: [],
       truncated: false,
     })
   })
 
-  test('labelList parses the full row and degrades to null on malformed JSON', () => {
+  test('labelList parses the full row and is unreadable on malformed JSON', () => {
     const runner = recorder([
       json([{ name: 'status:triage', color: '1f6feb', description: 'Triage stage' }]),
     ]).runner
-    expect(new Gh('/repo', { runner }).labelList()?.rows).toEqual([
+    expect(new Gh('/repo', { runner }).labelList().rows).toEqual([
       { name: 'status:triage', color: '1f6feb', description: 'Triage stage' },
     ])
 
     const bad = recorder([{ exitCode: 0, stdout: 'not json', stderr: '' }]).runner
-    expect(new Gh('/repo', { runner: bad }).labelList()).toBeNull()
+    expect(new Gh('/repo', { runner: bad }).soft.labelList()).toBeNull()
+    expect(() => new Gh('/repo', { runner: bad }).labelList()).toThrow(/could not be read/)
   })
 
   test('createLabel/editLabel throw CommandFailed on a non-zero exit', () => {
@@ -438,7 +446,9 @@ describe('Gh — the merge-state retry', () => {
 
   test('stops immediately when gh itself failed — retrying will not help', () => {
     const { runner, calls } = recorder([FAIL])
-    expect(new Gh('/repo', { runner }).prViewSettled(1, { sleep: () => {} })).toBeNull()
+    expect(() => new Gh('/repo', { runner }).prViewSettled(1, { sleep: () => {} })).toThrow(
+      CommandFailed,
+    )
     expect(calls).toHaveLength(1)
   })
 })
@@ -515,7 +525,7 @@ describe('prMerge and prReviewThreads', () => {
     expect(calls[0]).toContain('number=5')
   })
 
-  test('prReviewThreads is null on failure, bad shape, or a second page', () => {
+  test('prReviewThreads throws on failure, bad shape, or a second page; soft is null', () => {
     for (const r of [
       { exitCode: 1, stdout: '', stderr: 'x' },
       { exitCode: 0, stdout: 'not json', stderr: '' },
@@ -523,7 +533,8 @@ describe('prMerge and prReviewThreads', () => {
       { exitCode: 0, stdout: threadsPayload([], true), stderr: '' },
     ]) {
       const { runner } = recorder([r])
-      expect(new Gh('/repo', { runner }).prReviewThreads(5)).toBeNull()
+      expect(() => new Gh('/repo', { runner }).prReviewThreads(5)).toThrow()
+      expect(new Gh('/repo', { runner }).soft.prReviewThreads(5)).toBeNull()
     }
   })
 })

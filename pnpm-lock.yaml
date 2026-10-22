@@ -729,6 +729,9 @@ importers:
       '@osdlc/command-seam':
         specifier: workspace:^
         version: link:../command-seam
+      '@osdlc/result':
+        specifier: workspace:^
+        version: link:../result
       '@osdlc/typed-git':
         specifier: workspace:^
         version: link:../typed-git

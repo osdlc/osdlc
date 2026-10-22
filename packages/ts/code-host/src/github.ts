@@ -293,6 +293,8 @@ export function codeHostPrFrom(
 
 export class GithubCodeHost implements CodeHost {
   readonly name = 'github' as const
+  // The port's queries return `null` for a failure, which is `Gh`'s soft door:
+  // the adapter reads through `gh.soft` until the port reports failures itself.
   private readonly gh: Gh
 
   constructor(cwd: string, opts: { runner: CommandRunner }) {
@@ -304,7 +306,7 @@ export class GithubCodeHost implements CodeHost {
     author?: string
     limit?: number
   }): CodeHostPrSummary[] | null {
-    const rows = this.gh.prList({
+    const rows = this.gh.soft.prList({
       state: q.state,
       author: q.author,
       limit: q.limit,
@@ -329,7 +331,7 @@ export class GithubCodeHost implements CodeHost {
     limit?: number
     repo?: string
   }): CodeHostPrDetail[] | null {
-    const rows = this.gh.prList({
+    const rows = this.gh.soft.prList({
       state: q.state,
       author: q.author,
       limit: q.limit,
@@ -356,7 +358,7 @@ export class GithubCodeHost implements CodeHost {
     // No caller does an incremental "since" fetch today — always the
     // full state — so `since` is accepted for interface-parity with a future
     // caller and ignored here, same as every current call site.
-    const pr = this.gh.prViewSettled(number, { fields: PR_VIEW_FIELDS })
+    const pr = this.gh.soft.prViewSettled(number, { fields: PR_VIEW_FIELDS })
     if (pr === null) return null
     const reviewComments = reviewCommentActivity(fetchReviewComments(this.gh, number))
     const codeHostPr = codeHostPrFrom(pr, reviewComments)
@@ -441,7 +443,7 @@ export class GithubCodeHost implements CodeHost {
   }
 
   reviewThreads(number: number): ReviewThreadState[] | null {
-    return this.gh.prReviewThreads(number)
+    return this.gh.soft.prReviewThreads(number)
   }
 
   mergePr(number: number, opts: { headSha: string; method: MergeMethod }): void {
@@ -463,7 +465,7 @@ export class GithubCodeHost implements CodeHost {
   }
 
   prForBranch(branch: string): number | null {
-    const pr = this.gh.openPrFor(branch)
+    const pr = this.gh.soft.openPrFor(branch)
     return pr === null ? null : pr.number
   }
 }

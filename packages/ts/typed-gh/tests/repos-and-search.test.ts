@@ -184,7 +184,7 @@ describe('the clients pass the env through', () => {
     })
     expect(gh.searchPrs('x')).toEqual({ rows: [], truncated: false })
     await agh.repoList('acme')
-    await agh.repoView('acme/widgets')
+    await agh.soft.repoView('acme/widgets')
     expect(seen.map((o) => o.env)).toEqual([
       { GH_HOST: 'ghe.acme.com' },
       { GH_HOST: 'ghe.acme.com' },

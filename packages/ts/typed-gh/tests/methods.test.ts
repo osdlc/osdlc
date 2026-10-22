@@ -146,7 +146,8 @@ describe('defaultRunnerFactory', () => {
     const runner = defaultRunnerFactory('typed-gh-no-such-binary')
     const gh = new Gh(process.cwd(), { runner })
     expect(gh.installed()).toBe(false)
-    expect(gh.prList()).toBeNull()
+    expect(gh.soft.prList()).toBeNull()
+    expect(gh.try.prList()).toMatchObject({ ok: false, error: { kind: 'not-installed' } })
   })
 })
 
@@ -392,14 +393,16 @@ describe('AsyncGh forms agree with Gh', () => {
     expect(fromSync).toEqual(expected)
   })
 
-  test('the same methods reject with CommandFailed, or answer null/false, when gh fails', async () => {
+  test('the same methods reject with CommandFailed, or answer false/ok:false for a probe, when gh fails', async () => {
     const f = clients([FAIL])
-    expect(await f.agh.issueView(7)).toBeNull()
+    await expect(f.agh.issueView(7)).rejects.toBeInstanceOf(CommandFailed)
+    expect(await f.agh.soft.issueView(7)).toBeNull()
     expect(await f.agh.installed()).toBe(false)
     expect(await f.agh.authenticated()).toBe(false)
     expect(await f.agh.authStatus()).toEqual({ ok: false, detail: 'boom' })
     expect(await f.agh.ready()).toBe(false)
-    expect(await f.agh.prReviewThreads(5)).toBeNull()
+    await expect(f.agh.prReviewThreads(5)).rejects.toBeInstanceOf(CommandFailed)
+    expect(await f.agh.soft.prReviewThreads(5)).toBeNull()
     await expect(
       f.agh.createPr({ head: 'h', base: 'main', title: 't', body: 'b' }),
     ).rejects.toBeInstanceOf(CommandFailed)

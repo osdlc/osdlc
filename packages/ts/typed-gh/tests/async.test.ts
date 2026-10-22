@@ -35,14 +35,19 @@ function recorder(results: CommandResult[] = [{ exitCode: 0, stdout: '', stderr:
 const ok = (stdout: string): CommandResult => ({ exitCode: 0, stdout, stderr: '' })
 const FAIL: CommandResult = { exitCode: 1, stdout: '', stderr: 'boom' }
 
-describe('AsyncGh — tri-modal contract', () => {
-  test('queries resolve to null on failure and never reject', async () => {
+describe('AsyncGh — the three doors', () => {
+  test('queries reject on failure; soft resolves null; try resolves a Result', async () => {
     const { runner } = recorder([FAIL])
     const gh = new AsyncGh('/repo', { runner })
-    expect(await gh.prList()).toBeNull()
-    expect(await gh.prView(1)).toBeNull()
-    expect(await gh.prBody(1)).toBeNull()
-    expect(await gh.labelList()).toBeNull()
+    await expect(gh.prList()).rejects.toBeInstanceOf(CommandFailed)
+    await expect(gh.prView(1)).rejects.toBeInstanceOf(CommandFailed)
+    await expect(gh.prBody(1)).rejects.toBeInstanceOf(CommandFailed)
+    await expect(gh.labelList()).rejects.toBeInstanceOf(CommandFailed)
+    expect(await gh.soft.prList()).toBeNull()
+    expect(await gh.soft.prView(1)).toBeNull()
+    expect(await gh.soft.prBody(1)).toBeNull()
+    expect(await gh.soft.labelList()).toBeNull()
+    expect((await gh.try.prList()).ok).toBe(false)
   })
 
   test('mutations reject with CommandFailed', async () => {
