@@ -54,7 +54,7 @@ import { isAbsolute, dirname, resolve } from 'node:path'
 
 import { z } from 'zod'
 
-import { defineCli, EXIT, type CliContext } from '@sksizer/cli-tool'
+import { defineCli, EXIT, type CliContext } from '@osdlc/cli-tool'
 
 import { isFile } from '@lib/util/fs'
 import { defineOp, createCtx, callSync, type OpCtx } from '@lib/registry'

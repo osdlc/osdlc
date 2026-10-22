@@ -26,7 +26,7 @@
 import { z } from 'zod'
 
 import { defineOp } from '@lib/registry'
-import type { OpIo } from '@lib/registry'
+import type { OpCtx, OpIo } from '@lib/registry'
 import { listWorktreeBasenames, worktreeDir, worktreeRoot } from '@lib/util/git'
 import { realResolve } from '@lib/util/paths'
 import { pidAlive } from '@lib/util/process'
@@ -81,12 +81,12 @@ const CATEGORY_OTHER = 'other'
  *    is awaiting review; without one it is implementing only while a run is
  *    live, else `stale` (nothing holds it).
  *
- * `leasePhase` defaults to null and `runLive` to true so a caller that has not
- * gone lease-aware yet (the dashboard's local-worktree panel,
- * [[D-S30G-task-state-plane-split]] stage 6) keeps today's frontmatter
- * behavior rather than silently misclassifying.
+ * `leasePhase` defaults to null and `runLive` to true: with no lease and no
+ * work-run record the frontmatter rule applies. Every surface reaches this
+ * through {@link collectInflight}, never directly; the export is only the
+ * seam the precedence-table test drives.
  */
-function classify(
+export function classify(
   taskState: string | null,
   openPrNumber: number | null,
   leasePhase: string | null = null,
@@ -198,79 +198,104 @@ export default defineOp({
     flags: { noGh: { help: 'Skip gh pr list queries (hermetic/offline mode).' } },
     render: renderInflight,
   },
-  handler: (args, ctx) => {
-    const projectRoot = realResolve(ctx.projectRoot)
-
-    // ctx.sdlcConfig is hydrated by createCtx; degrade-to-defaults on any error.
-    const maxImpl =
-      ctx.sdlcConfig.orchestrator?.limits?.executor?.implement ?? DEFAULT_IMPLEMENT_LIMIT
-    const maxRev = ctx.sdlcConfig.orchestrator?.max_awaiting_review ?? DEFAULT_MAX_AWAITING_REVIEW
-
-    const branches = listLocalBranches(projectRoot, ctx)
-    // Worktrees live under the primary checkout, not the (possibly nested) project root.
-    const wtBase = worktreeRoot(projectRoot, { runner: ctx.git })
-    const basenames = listWorktreeBasenames(wtBase)
-
-    const tasks: z.infer<typeof InflightTask>[] = []
-    for (const basename of basenames) {
-      const branch = taskBranch(basename)
-      if (!branches.has(branch)) continue
-
-      const taskState = frontmatterString(
-        readFrontmatter(taskFilePath(projectRoot, basename)),
-        'state',
-      )
-
-      let openPrNumber: number | null = null
-      if (!args.noGh) {
-        openPrNumber = openPrForBranch(branch, projectRoot, ctx)
-      }
-
-      // Local mirror only — the roster scan runs every orchestrate tick and
-      // must stay network-free.
-      const lease = readLocalLease(basename, projectRoot, ctx)
-      const leasePhase = lease?.phase ?? null
-      const workRun = readWorkRun(projectRoot, basename)
-      const runLive = runIsLive(lease, workRun, new Date())
-
-      const category = classify(taskState, openPrNumber, leasePhase, runLive)
-      tasks.push({
-        basename,
-        worktree_path: worktreeDir(wtBase, basename),
-        branch,
-        task_state: taskState,
-        open_pr_number: openPrNumber,
-        lease_phase: leasePhase,
-        lease_pr_number: lease?.prNumber ?? null,
-        lease_owner_kind: lease?.ownerKind ?? null,
-        ...(workRun !== null
-          ? workRunIdentity(projectRoot, workRun)
-          : { runId: null, manual: null, output: null }),
-        category,
-      })
-    }
-
-    const counts: Record<string, number> = {
-      [CATEGORY_IMPLEMENTING]: 0,
-      [CATEGORY_AWAITING_REVIEW]: 0,
-      [CATEGORY_STALE]: 0,
-      [CATEGORY_OTHER]: 0,
-    }
-    for (const t of tasks) {
-      counts[t.category] = (counts[t.category] ?? 0) + 1
-    }
-
-    const capsReached: string[] = []
-    if ((counts[CATEGORY_IMPLEMENTING] ?? 0) >= maxImpl) capsReached.push('implement')
-    if ((counts[CATEGORY_AWAITING_REVIEW] ?? 0) >= maxRev) capsReached.push('max_awaiting_review')
-
-    return {
-      limits: { implement: maxImpl, max_awaiting_review: maxRev },
-      counts,
-      caps_reached: capsReached,
-      tasks,
-    }
-  },
+  handler: (args, ctx) =>
+    collectInflight(ctx, (branch, projectRoot) =>
+      args.noGh ? null : openPrForBranch(branch, projectRoot, ctx),
+    ),
 })
 
-export { classify }
+/**
+ * Which worktrees are in flight: each `<worktree root>/<basename>` dir whose
+ * `task/<basename>` branch exists locally. Cheap and local (one branch list,
+ * one directory read), so a caller that must look up PRs before classifying
+ * can name the branches without running {@link collectInflight} twice.
+ */
+export function inflightRoster(ctx: OpCtx): {
+  wtBase: string
+  entries: { basename: string; branch: string }[]
+} {
+  const projectRoot = realResolve(ctx.projectRoot)
+  const branches = listLocalBranches(projectRoot, ctx)
+  // Worktrees live under the primary checkout, not the (possibly nested) project root.
+  const wtBase = worktreeRoot(projectRoot, { runner: ctx.git })
+  const entries = listWorktreeBasenames(wtBase)
+    .map((basename) => ({ basename, branch: taskBranch(basename) }))
+    .filter((e) => branches.has(e.branch))
+  return { wtBase, entries }
+}
+
+/**
+ * The roster scan behind `task inflight`, shared so a surface that already
+ * holds the open-PR numbers (the web dashboard fetches them concurrently) calls
+ * this instead of re-deriving categories. `openPrFor` supplies each branch's
+ * open PR number; the op passes a `gh` probe, the dashboard its own map.
+ * Everything else is local: worktrees, branches, frontmatter, lease mirror,
+ * work-run records.
+ */
+export function collectInflight(
+  ctx: OpCtx,
+  openPrFor: (branch: string, projectRoot: string) => number | null,
+): Output {
+  const projectRoot = realResolve(ctx.projectRoot)
+
+  // ctx.sdlcConfig is hydrated by createCtx; degrade-to-defaults on any error.
+  const maxImpl =
+    ctx.sdlcConfig.orchestrator?.limits?.executor?.implement ?? DEFAULT_IMPLEMENT_LIMIT
+  const maxRev = ctx.sdlcConfig.orchestrator?.max_awaiting_review ?? DEFAULT_MAX_AWAITING_REVIEW
+
+  const { wtBase, entries } = inflightRoster(ctx)
+
+  const tasks: z.infer<typeof InflightTask>[] = []
+  for (const { basename, branch } of entries) {
+    const taskState = frontmatterString(
+      readFrontmatter(taskFilePath(projectRoot, basename)),
+      'state',
+    )
+
+    const openPrNumber = openPrFor(branch, projectRoot)
+
+    // Local mirror only — the roster scan runs every orchestrate tick and
+    // must stay network-free.
+    const lease = readLocalLease(basename, projectRoot, ctx)
+    const leasePhase = lease?.phase ?? null
+    const workRun = readWorkRun(projectRoot, basename)
+    const runLive = runIsLive(lease, workRun, new Date())
+
+    const category = classify(taskState, openPrNumber, leasePhase, runLive)
+    tasks.push({
+      basename,
+      worktree_path: worktreeDir(wtBase, basename),
+      branch,
+      task_state: taskState,
+      open_pr_number: openPrNumber,
+      lease_phase: leasePhase,
+      lease_pr_number: lease?.prNumber ?? null,
+      lease_owner_kind: lease?.ownerKind ?? null,
+      ...(workRun !== null
+        ? workRunIdentity(projectRoot, workRun)
+        : { runId: null, manual: null, output: null }),
+      category,
+    })
+  }
+
+  const counts: Record<string, number> = {
+    [CATEGORY_IMPLEMENTING]: 0,
+    [CATEGORY_AWAITING_REVIEW]: 0,
+    [CATEGORY_STALE]: 0,
+    [CATEGORY_OTHER]: 0,
+  }
+  for (const t of tasks) {
+    counts[t.category] = (counts[t.category] ?? 0) + 1
+  }
+
+  const capsReached: string[] = []
+  if ((counts[CATEGORY_IMPLEMENTING] ?? 0) >= maxImpl) capsReached.push('implement')
+  if ((counts[CATEGORY_AWAITING_REVIEW] ?? 0) >= maxRev) capsReached.push('max_awaiting_review')
+
+  return {
+    limits: { implement: maxImpl, max_awaiting_review: maxRev },
+    counts,
+    caps_reached: capsReached,
+    tasks,
+  }
+}

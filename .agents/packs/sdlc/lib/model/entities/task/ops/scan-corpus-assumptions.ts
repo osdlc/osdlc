@@ -64,7 +64,7 @@ import { dirname, resolve } from 'node:path'
 
 import { z } from 'zod'
 
-import { defineCli, EXIT, type CliContext } from '@sksizer/cli-tool'
+import { defineCli, EXIT, type CliContext } from '@osdlc/cli-tool'
 
 import { parse, sectionSpans, codeBlockLines } from 'markdown-contract'
 

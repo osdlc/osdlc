@@ -169,7 +169,7 @@ model call (if any) is read-only.
 
 Two seams, one per boundary:
 
-- **git / gh** (`Runner` / `RunnerFactory` from `@osdlc/typed-gh`,
+- **git / gh** (`CommandRunner` / `RunnerFactory` from `@osdlc/typed-gh`,
   re-exported from `create.ts`). `create(args, runnerFactory)` accepts a factory so the test
   suite injects a recording mock that returns canned `gh pr list` payloads and
   records the command sequence — exercising the whole tail (including all three

@@ -2,7 +2,7 @@
  * `sdlc capability coverage` — the capability corpus joined against the
  * project's structure, both ways.
  *
- * The structural side is the manifest walk (`@sksizer/manifest-graph`): every
+ * The structural side is the manifest walk (`@osdlc/manifest-graph`): every
  * package and crate on disk, with its directory. The capability side is
  * `buildCapabilityGraph`. Each `locations[]` entry degrades to a path under
  * the five-form grammar and lands on the deepest unit whose directory
@@ -23,8 +23,8 @@
 import { readFileSync } from 'node:fs'
 import { basename as pathBasename, join, relative, resolve, sep } from 'node:path'
 
-import { buildSystemGraph } from '@sksizer/manifest-graph'
-import { isInside } from '@sksizer/path-guard'
+import { buildSystemGraph } from '@osdlc/manifest-graph'
+import { isInside } from '@osdlc/path-guard'
 import { z } from 'zod'
 
 import { OpError, defineOp, type OpIo } from '@lib/registry'

@@ -58,8 +58,8 @@ import { dirname, join, resolve, basename as pathBasename } from 'node:path'
 
 import { z } from 'zod'
 
-import { defineCli, EXIT, type CliContext, type CliIo } from '@sksizer/cli-tool'
-import type { FieldEdit } from '@sksizer/yaml-splice'
+import { defineCli, EXIT, type CliContext, type CliIo } from '@osdlc/cli-tool'
+import type { FieldEdit } from '@osdlc/yaml-splice'
 import { CommandFailed, Git, type GitOutcome } from '@osdlc/typed-git'
 
 import { editFrontmatterFields, parseFrontmatterResult } from '@lib/util/frontmatter'

@@ -4,7 +4,7 @@ description: |
   Propose one solution as a parley document that ends in a decision: the problem, the
   solution as typed blocks, and a question with a recommendation for every trade-off the
   reviewer must ratify, so the page can be approved or sent back. Domains are notes beside
-  this skill (sql and ui). Then hand it to parley. Use it when the reader must decide.
+  this skill (sql, ui and api). Then hand it to parley. Use it when the reader must decide.
 allowed-tools: Read Grep Glob Write Shell
 ---
 

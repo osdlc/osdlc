@@ -55,7 +55,7 @@ function listOpenPrs(projectRoot: string, ctx: OpCtx, limit: number): OpenPr[] |
     limit,
   })
   if (rows === null) return null
-  return rows
+  return rows.rows
     .filter((r) => r.headRefName !== '')
     .map((r) => ({ number: r.number, headRefName: r.headRefName, url: r.url }))
 }

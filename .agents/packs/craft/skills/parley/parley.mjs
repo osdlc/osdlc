@@ -2063,19 +2063,39 @@ import { readFileSync as readFileSync9 } from "node:fs";
 import { existsSync as existsSync3, readFileSync as readFileSync5 } from "node:fs";
 import { join as join6, resolve as resolve3 } from "node:path";
 
-// ../../../node_modules/.bun/@osdlc+command-seam@0.4.0+e154a6929a67600d/node_modules/@osdlc/command-seam/sync.ts
+// ../../../node_modules/.bun/@osdlc+command-seam@0.8.0+e154a6929a67600d/node_modules/@osdlc/command-seam/sync.ts
 import { spawnSync } from "node:child_process";
-import {
-  accessSync,
-  constants,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  statSync,
-  writeFileSync
-} from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, statSync as statSync2, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { delimiter, join, resolve } from "node:path";
+import { join } from "node:path";
+
+// ../../../node_modules/.bun/@osdlc+command-seam@0.8.0+e154a6929a67600d/node_modules/@osdlc/command-seam/which.ts
+import { accessSync, constants, statSync } from "node:fs";
+import { delimiter, resolve } from "node:path";
+function which(binary, opts = {}) {
+  const cwd = opts.cwd ?? process.cwd();
+  if (binary === "")
+    return;
+  if (binary.includes("/"))
+    return executable(resolve(cwd, binary));
+  const path = opts.env !== undefined && "PATH" in opts.env ? opts.env["PATH"] : process.env["PATH"];
+  for (const dir of (path ?? "/usr/bin:/bin").split(delimiter)) {
+    const found = executable(resolve(cwd, dir, binary));
+    if (found !== undefined)
+      return found;
+  }
+  return;
+}
+function executable(p) {
+  try {
+    accessSync(p, constants.X_OK);
+    return statSync(p).isFile() ? p : undefined;
+  } catch {
+    return;
+  }
+}
+
+// ../../../node_modules/.bun/@osdlc+command-seam@0.8.0+e154a6929a67600d/node_modules/@osdlc/command-seam/sync.ts
 function mergedEnv(opts) {
   const env = { ...process.env, ...opts.env };
   for (const [key, value] of Object.entries(env))
@@ -2088,6 +2108,33 @@ function normalizeTimeout(timeoutMs) {
   if (timeoutMs === undefined)
     return;
   return timerMs("timeoutMs", timeoutMs, "positive");
+}
+var DEFAULT_SYNC_OUTPUT_CAP = 256 * 1024 * 1024;
+function normalizeOutputCap(maxOutputBytes) {
+  if (maxOutputBytes === undefined || maxOutputBytes === Infinity)
+    return maxOutputBytes;
+  if (typeof maxOutputBytes !== "number") {
+    throw new TypeError(`maxOutputBytes must be a number, got ${typeof maxOutputBytes}`);
+  }
+  if (!(maxOutputBytes > 0)) {
+    throw new RangeError(`maxOutputBytes must be a positive number or Infinity, got ${maxOutputBytes}`);
+  }
+  return Math.ceil(maxOutputBytes);
+}
+function utf8Prefix(buf, max) {
+  if (buf.length <= max)
+    return buf;
+  let end = max;
+  let lead = end;
+  while (lead > 0 && lead > end - 4 && (buf[lead - 1] & 192) === 128)
+    lead--;
+  if (lead > 0) {
+    const b = buf[lead - 1];
+    const len = b >= 240 ? 4 : b >= 224 ? 3 : b >= 192 ? 2 : 1;
+    if (len > 1 && lead - 1 + len > end)
+      end = lead - 1;
+  }
+  return buf.subarray(0, end);
 }
 function timerMs(name, ms, min) {
   if (ms === Infinity)
@@ -2103,7 +2150,7 @@ function timerMs(name, ms, min) {
 function cwdError(spawnName, binary, argv, opts) {
   let problem;
   try {
-    if (statSync(opts.cwd).isDirectory())
+    if (statSync2(opts.cwd).isDirectory())
       return;
     problem = "ENOTDIR: cwd %s is not a directory";
   } catch (e) {
@@ -2155,34 +2202,21 @@ function syncStop(proc) {
   return { reason: "spawn" };
 }
 var CHILD_STDIO_CORRUPTED = process.versions["bun"] !== undefined && process.env["NODE_ENV"] === "test";
-function findsExecutable(binary, cwd, path) {
-  const isExecutable = (p) => {
-    try {
-      accessSync(p, constants.X_OK);
-      return statSync(p).isFile();
-    } catch {
-      return false;
-    }
-  };
-  if (binary === "")
-    return false;
-  if (binary.includes("/"))
-    return isExecutable(resolve(cwd, binary));
-  return (path ?? "/usr/bin:/bin").split(delimiter).some((dir) => isExecutable(resolve(cwd, dir, binary)));
-}
 function fromSpawnSync(proc, stdout, stderr) {
+  const code = proc.error?.code;
   return {
     exitCode: proc.status ?? 1,
     ...proc.status == null ? { neverExited: true, ...syncStop(proc) } : {},
+    ...proc.status != null && (code === "ETIMEDOUT" || code === "ENOBUFS") ? { outputIncomplete: true } : {},
     stdout,
     stderr,
     ...proc.error ? { error: proc.error.message } : {}
   };
 }
-function runViaChildRedirect(binary, argv, opts, timeoutMs) {
+function runViaChildRedirect(binary, argv, opts, timeoutMs, bytes) {
   const { env } = mergedEnv(opts);
-  if (!findsExecutable(binary, opts.cwd, env["PATH"])) {
-    return spawnFailure(`spawnSync ${binary} ENOENT`);
+  if (which(binary, { cwd: opts.cwd, env: { PATH: env["PATH"] } }) === undefined) {
+    return emptyStdout(spawnFailure(`spawnSync ${binary} ENOENT`), bytes);
   }
   const dir = mkdtempSync(join(tmpdir(), "command-seam-"));
   try {
@@ -2207,42 +2241,56 @@ function runViaChildRedirect(binary, argv, opts, timeoutMs) {
     });
     const readOrEmpty = (p) => {
       try {
-        return readFileSync(p, "utf-8");
+        return readFileSync(p);
       } catch {
-        return "";
+        return Buffer.alloc(0);
       }
     };
-    return fromSpawnSync(proc, readOrEmpty(outFile), readOrEmpty(errFile));
+    const stdout = readOrEmpty(outFile);
+    return fromSpawnSync(proc, bytes ? stdout : stdout.toString(), readOrEmpty(errFile).toString());
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 }
 function spawnRunner(binary) {
   return {
-    run(argv, opts) {
-      const timeoutMs = normalizeTimeout(opts.timeoutMs);
-      const cwdMessage = cwdError(`spawnSync ${binary}`, binary, argv, opts);
-      if (cwdMessage !== undefined)
-        return spawnFailure(cwdMessage);
-      if (CHILD_STDIO_CORRUPTED)
-        return runViaChildRedirect(binary, argv, opts, timeoutMs);
-      const proc = spawnSync(binary, argv, {
-        cwd: opts.cwd,
-        maxBuffer: 256 * 1024 * 1024,
-        timeout: timeoutMs,
-        killSignal: "SIGKILL",
-        input: opts.input,
-        ...mergedEnv(opts)
-      });
-      return fromSpawnSync(proc, proc.stdout?.toString() ?? "", proc.stderr?.toString() ?? "");
-    }
+    binary,
+    run: (argv, opts) => runSync(binary, argv, opts, false)
   };
 }
-// ../../../node_modules/.bun/@osdlc+command-seam@0.4.0+e154a6929a67600d/node_modules/@osdlc/command-seam/async.ts
+function runSync(binary, argv, opts, bytes) {
+  const timeoutMs = normalizeTimeout(opts.timeoutMs);
+  const cap = normalizeOutputCap(opts.maxOutputBytes) ?? DEFAULT_SYNC_OUTPUT_CAP;
+  const cwdMessage = cwdError(`spawnSync ${binary}`, binary, argv, opts);
+  if (cwdMessage !== undefined)
+    return emptyStdout(spawnFailure(cwdMessage), bytes);
+  if (CHILD_STDIO_CORRUPTED)
+    return runViaChildRedirect(binary, argv, opts, timeoutMs, bytes);
+  const proc = spawnSync(binary, argv, {
+    cwd: opts.cwd,
+    maxBuffer: cap,
+    timeout: timeoutMs,
+    killSignal: "SIGKILL",
+    input: opts.input,
+    ...mergedEnv(opts)
+  });
+  const text = (b) => b == null ? "" : (b.length > cap ? utf8Prefix(b, cap) : b).toString();
+  const capped = proc.error?.code === "ENOBUFS";
+  const stderr = capped ? text(proc.stderr) : proc.stderr?.toString() ?? "";
+  if (bytes) {
+    const out = proc.stdout ?? Buffer.alloc(0);
+    return fromSpawnSync(proc, out.length > cap ? out.subarray(0, cap) : out, stderr);
+  }
+  return fromSpawnSync(proc, capped ? text(proc.stdout) : proc.stdout?.toString() ?? "", stderr);
+}
+function emptyStdout(result, bytes) {
+  return bytes ? { ...result, stdout: Buffer.alloc(0) } : result;
+}
+// ../../../node_modules/.bun/@osdlc+command-seam@0.8.0+e154a6929a67600d/node_modules/@osdlc/command-seam/async.ts
 import { spawn } from "node:child_process";
 import { StringDecoder } from "node:string_decoder";
 
-// ../../../node_modules/.bun/@osdlc+command-seam@0.4.0+e154a6929a67600d/node_modules/@osdlc/command-seam/groups.ts
+// ../../../node_modules/.bun/@osdlc+command-seam@0.8.0+e154a6929a67600d/node_modules/@osdlc/command-seam/groups.ts
 import { constants as constants2 } from "node:os";
 var osSignals = constants2.signals;
 var live = new Map;
@@ -2390,168 +2438,216 @@ function signalNumber(sig) {
   return typeof n === "number" ? n : 15;
 }
 
-// ../../../node_modules/.bun/@osdlc+command-seam@0.4.0+e154a6929a67600d/node_modules/@osdlc/command-seam/async.ts
+// ../../../node_modules/.bun/@osdlc+command-seam@0.8.0+e154a6929a67600d/node_modules/@osdlc/command-seam/async.ts
 var EXIT_GRACE_MS = 250;
 var ABORT_KILL_GRACE_MS = 1000;
 function spawnRunnerAsync(binary) {
   return {
-    run(argv, opts) {
-      return new Promise((resolve) => {
-        const timeoutMs = normalizeTimeout(opts.timeoutMs);
-        const cwdMessage = cwdError(`spawn ${binary}`, binary, argv, opts);
-        if (cwdMessage !== undefined) {
-          resolve(spawnFailure(cwdMessage));
-          return;
-        }
-        const group = opts.processGroup === true;
-        const refusal = group ? groupStartRefusal() : undefined;
-        if (refusal !== undefined) {
-          resolve({
-            exitCode: 1,
-            neverExited: true,
-            reason: "abort",
-            stdout: "",
-            stderr: "",
-            error: refusal
-          });
-          return;
-        }
-        const start = () => spawn(binary, argv, {
-          cwd: opts.cwd,
-          detached: group,
-          ...mergedEnv(opts)
-        });
-        const { child, untrack: untrackGroup } = group ? spawnTrackedGroup(start) : { child: start(), untrack: undefined };
-        let stopping = false;
-        const signalChild = (sig) => {
-          stopping = true;
-          if (group && child.pid !== undefined) {
-            try {
-              process.kill(-child.pid, sig);
-              return;
-            } catch {}
-          }
-          child.kill(sig);
-        };
-        const hardKill = () => signalChild("SIGKILL");
-        const groupGone = () => child.pid === undefined || !groupExists(child.pid);
-        let stdout = "";
-        let stderr = "";
-        let stdinError;
-        let settled = false;
-        let timer;
-        let graceTimer;
-        let abortKillTimer;
-        let exited;
-        const onAbort = () => {
-          signalChild("SIGTERM");
-          if (exited === undefined || group && !groupGone()) {
-            abortKillTimer = setTimeout(hardKill, ABORT_KILL_GRACE_MS);
-          }
-          if (exited !== undefined)
-            finish(exited, stdinError?.message);
-          else
-            finish({ exitCode: 1, neverExited: true, reason: "abort" }, "The operation was aborted");
-        };
-        const outDecoder = new StringDecoder("utf8");
-        const errDecoder = new StringDecoder("utf8");
-        const finish = (result, error) => {
-          if (settled)
-            return;
-          settled = true;
-          if (untrackGroup !== undefined && child.pid !== undefined) {
-            if (!stopping)
-              settleGroup(child.pid);
-            releaseWhenEmpty(child.pid, untrackGroup);
-          }
-          if (timer !== undefined)
-            clearTimeout(timer);
-          if (graceTimer !== undefined)
-            clearTimeout(graceTimer);
-          opts.signal?.removeEventListener("abort", onAbort);
-          stdout += outDecoder.end();
-          stderr += errDecoder.end();
-          child.stdout?.destroy();
-          child.stderr?.destroy();
-          resolve({
-            ...result,
-            stdout,
-            stderr,
-            ...error ? { error } : {}
-          });
-        };
-        child.stdout?.on("data", (d) => {
-          stdout += outDecoder.write(d);
-        });
-        child.stderr?.on("data", (d) => {
-          stderr += errDecoder.write(d);
-        });
-        child.on("error", (err) => {
-          finish({ exitCode: 1, neverExited: true, reason: "spawn" }, err.message);
-        });
-        const fromExit = (code, signal) => ({
-          exitCode: code ?? 1,
-          ...code === null ? {
-            neverExited: true,
-            reason: "signal",
-            ...signal === null ? {} : { signal }
-          } : {}
-        });
-        child.on("exit", (code, signal) => {
-          exited = fromExit(code, signal);
-          if (abortKillTimer !== undefined && (!group || groupGone())) {
-            clearTimeout(abortKillTimer);
-          }
-          if (settled)
-            return;
-          const result = exited;
-          graceTimer = setTimeout(() => setImmediate(() => {
-            if (group && !settled)
-              hardKill();
-            finish(result, stdinError?.message);
-          }), EXIT_GRACE_MS);
-        });
-        child.on("close", (code, signal) => {
-          finish(fromExit(code, signal), stdinError?.message);
-        });
-        child.stdin?.on("error", (err) => {
-          stdinError = err;
-        });
-        if (child.pid !== undefined && opts.onSpawn !== undefined) {
-          try {
-            opts.onSpawn(child.pid);
-          } catch (err) {
-            hardKill();
-            const message = err instanceof Error ? err.message : String(err);
-            finish({ exitCode: 1, neverExited: true, reason: "abort" }, `onSpawn threw: ${message}`);
-          }
-        }
-        if (!settled) {
-          if (opts.signal?.aborted === true)
-            onAbort();
-          else
-            opts.signal?.addEventListener("abort", onAbort, { once: true });
-        }
-        if (!settled && timeoutMs !== undefined) {
-          timer = setTimeout(() => {
-            hardKill();
-            if (exited !== undefined) {
-              finish(exited, stdinError?.message);
-              return;
-            }
-            finish({ exitCode: 1, neverExited: true, reason: "timeout" }, `timed out after ${timeoutMs}ms`);
-          }, timeoutMs);
-        }
-        if (opts.input !== undefined)
-          child.stdin?.end(opts.input);
-        else
-          child.stdin?.end();
-      });
+    binary,
+    run: (argv, opts) => runAsync(binary, argv, opts, false)
+  };
+}
+function capture(bytes) {
+  const decoder = new StringDecoder("utf8");
+  const chunks = [];
+  let text = "";
+  return {
+    write(d) {
+      if (bytes)
+        chunks.push(d);
+      else
+        text += decoder.write(d);
+    },
+    end(flush) {
+      if (bytes)
+        return Buffer.concat(chunks);
+      return flush ? text + decoder.end() : text;
     }
   };
 }
+function runAsync(binary, argv, opts, bytes) {
+  return new Promise((resolve) => {
+    const timeoutMs = normalizeTimeout(opts.timeoutMs);
+    const cap = normalizeOutputCap(opts.maxOutputBytes) ?? Infinity;
+    const cwdMessage = cwdError(`spawn ${binary}`, binary, argv, opts);
+    if (cwdMessage !== undefined) {
+      resolve(emptyStdout(spawnFailure(cwdMessage), bytes));
+      return;
+    }
+    const group = opts.processGroup === true;
+    const refusal = group ? groupStartRefusal() : undefined;
+    if (refusal !== undefined) {
+      const refused = {
+        exitCode: 1,
+        neverExited: true,
+        reason: "abort",
+        stdout: "",
+        stderr: "",
+        error: refusal
+      };
+      resolve(emptyStdout(refused, bytes));
+      return;
+    }
+    const start = () => spawn(binary, argv, {
+      cwd: opts.cwd,
+      detached: group,
+      ...mergedEnv(opts)
+    });
+    const { child, untrack: untrackGroup } = group ? spawnTrackedGroup(start) : { child: start(), untrack: undefined };
+    let stopping = false;
+    const signalChild = (sig) => {
+      stopping = true;
+      if (group && child.pid !== undefined) {
+        try {
+          process.kill(-child.pid, sig);
+          return;
+        } catch {}
+      }
+      child.kill(sig);
+    };
+    const hardKill = () => signalChild("SIGKILL");
+    const groupGone = () => child.pid === undefined || !groupExists(child.pid);
+    let stdinError;
+    let settled = false;
+    let timer;
+    let graceTimer;
+    let abortKillTimer;
+    let exited;
+    const onAbort = () => {
+      signalChild("SIGTERM");
+      if (exited === undefined || group && !groupGone()) {
+        abortKillTimer = setTimeout(hardKill, ABORT_KILL_GRACE_MS);
+      }
+      if (exited !== undefined)
+        finish(exited, stdinError?.message);
+      else
+        finish({ exitCode: 1, neverExited: true, reason: "abort" }, "The operation was aborted");
+    };
+    const out = capture(bytes);
+    const err = capture(false);
+    let outBytes = 0;
+    let errBytes = 0;
+    let capped;
+    const finish = (result, error) => {
+      if (settled)
+        return;
+      settled = true;
+      if (untrackGroup !== undefined && child.pid !== undefined) {
+        if (!stopping)
+          settleGroup(child.pid);
+        releaseWhenEmpty(child.pid, untrackGroup);
+      }
+      if (timer !== undefined)
+        clearTimeout(timer);
+      if (graceTimer !== undefined)
+        clearTimeout(graceTimer);
+      opts.signal?.removeEventListener("abort", onAbort);
+      const stdout = out.end(capped !== "stdout");
+      const stderr = err.end(capped !== "stderr");
+      child.stdout?.destroy();
+      child.stderr?.destroy();
+      resolve({
+        ...result,
+        stdout,
+        stderr,
+        ...error ? { error } : {}
+      });
+    };
+    const overCap = (name, fits) => {
+      capped = name;
+      if (name === "stdout")
+        out.write(fits);
+      else
+        err.write(fits);
+      hardKill();
+      const message = `${name} passed maxOutputBytes (${cap} bytes)`;
+      if (exited !== undefined && exited.neverExited !== true) {
+        finish({ ...exited, outputIncomplete: true }, message);
+      } else if (exited !== undefined)
+        finish(exited, message);
+      else
+        finish({ exitCode: 1, neverExited: true, reason: "output" }, message);
+    };
+    child.stdout?.on("data", (d) => {
+      if (settled)
+        return;
+      if (outBytes + d.length > cap)
+        return overCap("stdout", d.subarray(0, cap - outBytes));
+      outBytes += d.length;
+      out.write(d);
+    });
+    child.stderr?.on("data", (d) => {
+      if (settled)
+        return;
+      if (errBytes + d.length > cap)
+        return overCap("stderr", d.subarray(0, cap - errBytes));
+      errBytes += d.length;
+      err.write(d);
+    });
+    child.on("error", (err) => {
+      finish({ exitCode: 1, neverExited: true, reason: "spawn" }, err.message);
+    });
+    const fromExit = (code, signal) => ({
+      exitCode: code ?? 1,
+      ...code === null ? {
+        neverExited: true,
+        reason: "signal",
+        ...signal === null ? {} : { signal }
+      } : {}
+    });
+    child.on("exit", (code, signal) => {
+      exited = fromExit(code, signal);
+      if (abortKillTimer !== undefined && (!group || groupGone())) {
+        clearTimeout(abortKillTimer);
+      }
+      if (settled)
+        return;
+      const result = exited;
+      graceTimer = setTimeout(() => setImmediate(() => {
+        if (group && !settled)
+          hardKill();
+        finish(result, stdinError?.message);
+      }), EXIT_GRACE_MS);
+    });
+    child.on("close", (code, signal) => {
+      finish(fromExit(code, signal), stdinError?.message);
+    });
+    child.stdin?.on("error", (err) => {
+      stdinError = err;
+    });
+    if (child.pid !== undefined && opts.onSpawn !== undefined) {
+      try {
+        opts.onSpawn(child.pid);
+      } catch (err) {
+        hardKill();
+        const message = err instanceof Error ? err.message : String(err);
+        finish({ exitCode: 1, neverExited: true, reason: "abort" }, `onSpawn threw: ${message}`);
+      }
+    }
+    if (!settled) {
+      if (opts.signal?.aborted === true)
+        onAbort();
+      else
+        opts.signal?.addEventListener("abort", onAbort, { once: true });
+    }
+    if (!settled && timeoutMs !== undefined) {
+      timer = setTimeout(() => {
+        hardKill();
+        if (exited !== undefined) {
+          finish(exited, stdinError?.message);
+          return;
+        }
+        finish({ exitCode: 1, neverExited: true, reason: "timeout" }, `timed out after ${timeoutMs}ms`);
+      }, timeoutMs);
+    }
+    if (opts.input !== undefined)
+      child.stdin?.end(opts.input);
+    else
+      child.stdin?.end();
+  });
+}
 
-// ../../../node_modules/.bun/@osdlc+command-seam@0.4.0+e154a6929a67600d/node_modules/@osdlc/command-seam/shell.ts
+// ../../../node_modules/.bun/@osdlc+command-seam@0.8.0+e154a6929a67600d/node_modules/@osdlc/command-seam/shell.ts
 function shellArgv(verb, scriptName, args) {
   const rest = args ?? [];
   if (scriptName === undefined && rest.length === 0)
@@ -2568,6 +2664,216 @@ function shellRunnerAsync(sh = spawnRunnerAsync("sh")) {
 }
 function runShellAsync(verb, opts) {
   return shellRunnerAsync().run(verb, opts);
+}
+// ../../../node_modules/.bun/@osdlc+detect-harness@0.4.1+c4e756187df40c67/node_modules/@osdlc/detect-harness/dist/harnesses.js
+var BUILTIN_HARNESSES = [
+  "claude",
+  "codex",
+  "cursor",
+  "opencode",
+  "pi",
+  "antigravity"
+];
+var HARNESS_ALIASES = {
+  "claude-code": "claude",
+  "codex-cli": "codex",
+  "cursor-agent": "cursor",
+  "open-code": "opencode",
+  agy: "antigravity"
+};
+function harnessId(name) {
+  if (BUILTIN_HARNESSES.includes(name))
+    return name;
+  return Object.hasOwn(HARNESS_ALIASES, name) ? HARNESS_ALIASES[name] : undefined;
+}
+
+// ../../../node_modules/.bun/@osdlc+detect-harness@0.4.1+c4e756187df40c67/node_modules/@osdlc/detect-harness/dist/locations.js
+var p = (role, scope, kind, path, env) => env ? { role, scope, kind, path, env } : { role, scope, kind, path };
+var LOCATIONS = {
+  claude: {
+    label: "Claude Code",
+    binary: "claude",
+    appBundles: [],
+    currentEnv: ["CLAUDECODE"],
+    weakEnv: [],
+    bases: {
+      config: { env: [{ name: "CLAUDE_CONFIG_DIR" }], default: "~/.claude" },
+      managed: {
+        env: [],
+        default: {
+          darwin: "{system}/Library/Application Support/ClaudeCode",
+          linux: "{system}/etc/claude-code",
+          win32: "{system}/Program Files/ClaudeCode"
+        }
+      }
+    },
+    paths: [
+      p("settings", "managed", "file", "{managed}/managed-settings.json"),
+      p("settings", "user", "file", "{config}/settings.json"),
+      p("settings", "project", "file", "{project}/.claude/settings.json"),
+      p("settings", "local", "file", "{project}/.claude/settings.local.json"),
+      p("global-state", "user", "file", "~/.claude.json", [
+        { name: "CLAUDE_CONFIG_DIR", suffix: ".claude.json" }
+      ]),
+      p("mcp", "managed", "file", "{managed}/managed-mcp.json"),
+      p("mcp", "user", "file", "~/.claude.json", [
+        { name: "CLAUDE_CONFIG_DIR", suffix: ".claude.json" }
+      ]),
+      p("mcp", "project", "file", "{project}/.mcp.json"),
+      p("mcp", "local", "file", "~/.claude.json", [
+        { name: "CLAUDE_CONFIG_DIR", suffix: ".claude.json" }
+      ]),
+      p("skills", "user", "dir", "{config}/skills"),
+      p("skills", "project", "dir", "{project}/.claude/skills"),
+      p("commands", "user", "dir", "{config}/commands"),
+      p("commands", "project", "dir", "{project}/.claude/commands"),
+      p("agents", "user", "dir", "{config}/agents"),
+      p("agents", "project", "dir", "{project}/.claude/agents"),
+      p("instructions", "managed", "file", "{managed}/CLAUDE.md"),
+      p("instructions", "user", "file", "{config}/CLAUDE.md"),
+      p("instructions", "user", "dir", "{config}/rules"),
+      p("instructions", "project", "file", "{project}/CLAUDE.md"),
+      p("instructions", "project", "file", "{project}/.claude/CLAUDE.md"),
+      p("instructions", "project", "dir", "{project}/.claude/rules"),
+      p("instructions", "local", "file", "{project}/CLAUDE.local.md"),
+      p("credentials", "user", "file", "{config}/.credentials.json"),
+      p("plugins", "user", "dir", "{config}/plugins"),
+      p("plugin-registry", "user", "file", "{config}/plugins/installed_plugins.json"),
+      p("marketplace-registry", "user", "file", "{config}/plugins/known_marketplaces.json"),
+      p("sessions", "user", "dir", "{config}/sessions"),
+      p("transcripts", "user", "dir", "{config}/projects")
+    ]
+  },
+  codex: {
+    label: "Codex",
+    binary: "codex",
+    appBundles: [],
+    currentEnv: ["CODEX_THREAD_ID", "CODEX_SANDBOX", "CODEX_SANDBOX_NETWORK_DISABLED"],
+    weakEnv: [],
+    bases: {
+      config: { env: [{ name: "CODEX_HOME" }], default: "~/.codex" }
+    },
+    paths: [
+      p("config", "user", "file", "{config}/config.toml"),
+      p("config", "project", "file", "{project}/.codex/config.toml"),
+      p("mcp", "user", "file", "{config}/config.toml"),
+      p("mcp", "project", "file", "{project}/.codex/config.toml"),
+      p("hooks", "user", "file", "{config}/hooks.json"),
+      p("hooks", "project", "file", "{project}/.codex/hooks.json"),
+      p("skills", "user", "dir", "{config}/skills"),
+      p("skills", "user", "dir", "~/.agents/skills"),
+      p("skills", "project", "dir", "{project}/.agents/skills"),
+      p("instructions", "user", "file", "{config}/AGENTS.md"),
+      p("instructions", "user", "file", "{config}/AGENTS.override.md"),
+      p("instructions", "project", "file", "{project}/AGENTS.md"),
+      p("instructions", "project", "file", "{project}/AGENTS.override.md"),
+      p("credentials", "user", "file", "{config}/auth.json"),
+      p("sessions", "user", "dir", "{config}/sessions")
+    ]
+  },
+  cursor: {
+    label: "Cursor",
+    binary: "cursor-agent",
+    appBundles: ["{system}/Applications/Cursor.app", "~/Applications/Cursor.app"],
+    currentEnv: ["CURSOR_AGENT"],
+    weakEnv: ["CURSOR_TRACE_ID"],
+    bases: {
+      config: { env: [], default: "~/.cursor" }
+    },
+    paths: [
+      p("config", "user", "file", "{config}/cli-config.json"),
+      p("mcp", "user", "file", "{config}/mcp.json"),
+      p("mcp", "project", "file", "{project}/.cursor/mcp.json"),
+      p("hooks", "user", "file", "{config}/hooks.json"),
+      p("hooks", "project", "file", "{project}/.cursor/hooks.json"),
+      p("skills", "user", "dir", "{config}/skills"),
+      p("skills", "project", "dir", "{project}/.cursor/skills"),
+      p("instructions", "project", "file", "{project}/AGENTS.md"),
+      p("instructions", "project", "file", "{project}/.cursorrules"),
+      p("instructions", "project", "dir", "{project}/.cursor/rules")
+    ]
+  },
+  opencode: {
+    label: "OpenCode",
+    binary: "opencode",
+    appBundles: [],
+    currentEnv: ["OPENCODE"],
+    weakEnv: [],
+    bases: {
+      config: {
+        env: [{ name: "XDG_CONFIG_HOME", suffix: "opencode" }],
+        default: "~/.config/opencode"
+      },
+      data: {
+        env: [{ name: "XDG_DATA_HOME", suffix: "opencode" }],
+        default: "~/.local/share/opencode"
+      }
+    },
+    paths: [
+      p("config", "user", "file", "{config}/opencode.json"),
+      p("config", "project", "file", "{project}/opencode.json"),
+      p("instructions", "user", "file", "{config}/AGENTS.md"),
+      p("instructions", "project", "file", "{project}/AGENTS.md"),
+      p("credentials", "user", "file", "{data}/auth.json"),
+      p("sessions", "user", "dir", "{data}/storage")
+    ]
+  },
+  pi: {
+    label: "pi",
+    binary: "pi",
+    appBundles: [],
+    currentEnv: ["PI_CODING_AGENT"],
+    weakEnv: [],
+    bases: {
+      config: { env: [{ name: "PI_CODING_AGENT_DIR" }], default: "~/.pi/agent" }
+    },
+    paths: [
+      p("settings", "user", "file", "{config}/settings.json"),
+      p("settings", "project", "file", "{project}/.pi/settings.json"),
+      p("skills", "user", "dir", "{config}/skills"),
+      p("skills", "project", "dir", "{project}/.pi/skills"),
+      p("instructions", "project", "file", "{project}/AGENTS.md"),
+      p("credentials", "user", "file", "{config}/auth.json"),
+      p("sessions", "user", "dir", "{config}/sessions", [{ name: "PI_CODING_AGENT_SESSION_DIR" }])
+    ]
+  },
+  antigravity: {
+    label: "Antigravity",
+    binary: "agy",
+    appBundles: ["{system}/Applications/Antigravity.app", "~/Applications/Antigravity.app"],
+    currentEnv: [],
+    weakEnv: [],
+    bases: {
+      config: { env: [], default: "~/.gemini/antigravity-cli" }
+    },
+    paths: [
+      p("skills", "user", "dir", "{config}/skills"),
+      p("skills", "project", "dir", "{project}/.agents/skills"),
+      p("mcp", "user", "file", "~/.gemini/config/mcp_config.json"),
+      p("mcp", "project", "file", "{project}/.agents/mcp_config.json")
+    ]
+  }
+};
+
+// ../../../node_modules/.bun/@osdlc+detect-harness@0.4.1+c4e756187df40c67/node_modules/@osdlc/detect-harness/dist/current.js
+function firstSet(env, list) {
+  for (const harness of BUILTIN_HARNESSES) {
+    const names = LOCATIONS[harness][list];
+    const variable = names.find((name) => (env[name] ?? "") !== "");
+    if (variable !== undefined)
+      return { harness, evidence: variable };
+  }
+  return null;
+}
+function current(env = process.env) {
+  const strong = firstSet(env, "currentEnv");
+  if (strong)
+    return strong;
+  const declared = env["AI_AGENT"];
+  const id = declared ? harnessId(declared.trim().toLowerCase()) : undefined;
+  if (id)
+    return { harness: id, evidence: "AI_AGENT" };
+  return firstSet(env, "weakEnv");
 }
 // src/lib/cli-path.ts
 import { relative } from "node:path";
@@ -3040,15 +3346,6 @@ function digest(id, a, qs, revision) {
 function replyThread(a, target) {
   return a.comments.find((c) => c.id === target) ?? entry(a.choices, target);
 }
-function guessHarness(env) {
-  if (env.CLAUDECODE)
-    return "claude-code";
-  if (env.CODEX_SANDBOX)
-    return "codex";
-  if (env.CURSOR_TRACE_ID)
-    return "cursor";
-  return;
-}
 
 // src/lib/answers-file.ts
 import { createHash as createHash3, randomBytes as randomBytes2 } from "node:crypto";
@@ -3063,7 +3360,7 @@ import {
   readFileSync as readFileSync3,
   realpathSync,
   rmSync as rmSync3,
-  statSync as statSync3,
+  statSync as statSync4,
   writeSync as writeSync2
 } from "node:fs";
 import { homedir, hostname } from "node:os";
@@ -3080,7 +3377,7 @@ import {
   readFileSync as readFileSync2,
   renameSync,
   rmSync as rmSync2,
-  statSync as statSync2,
+  statSync as statSync3,
   writeSync
 } from "node:fs";
 import { basename, dirname, join as join2 } from "node:path";
@@ -3095,7 +3392,7 @@ function keptMode(path, mode) {
   if (mode !== undefined)
     return mode;
   try {
-    const st = statSync2(path);
+    const st = statSync3(path);
     return st.isFile() ? st.mode & 511 : undefined;
   } catch {
     return;
@@ -3249,7 +3546,7 @@ function createWith(path, text) {
 }
 function readHeld(path) {
   try {
-    return { text: readFileSync3(path, "utf8"), age: Date.now() - statSync3(path).mtimeMs };
+    return { text: readFileSync3(path, "utf8"), age: Date.now() - statSync4(path).mtimeMs };
   } catch {
     return;
   }
@@ -3320,7 +3617,7 @@ function sweepTemps(file, all, held) {
       continue;
     const p = join3(dir, n);
     try {
-      if ((isWrite ? all : held) || Date.now() - statSync3(p).mtimeMs > STALE_TEMP_MS)
+      if ((isWrite ? all : held) || Date.now() - statSync4(p).mtimeMs > STALE_TEMP_MS)
         rmSync3(p);
     } catch {}
   }
@@ -3568,7 +3865,7 @@ import {
   readdirSync as readdirSync2,
   readFileSync as readFileSync4,
   rmSync as rmSync4,
-  statSync as statSync4,
+  statSync as statSync5,
   writeSync as writeSync3
 } from "node:fs";
 import { hostname as hostname2 } from "node:os";
@@ -3627,7 +3924,7 @@ function listeningDocs(dir) {
       continue;
     const file = join4(listenersDir(), name);
     try {
-      const age = Date.now() - statSync4(file).mtimeMs;
+      const age = Date.now() - statSync5(file).mtimeMs;
       let info = {};
       try {
         info = JSON.parse(readFileSync4(file, "utf8"));
@@ -3645,7 +3942,7 @@ function listeningDocs(dir) {
 }
 
 // src/lib/watch.ts
-import { existsSync as existsSync2, readdirSync as readdirSync3, statSync as statSync5, watch } from "node:fs";
+import { existsSync as existsSync2, readdirSync as readdirSync3, statSync as statSync6, watch } from "node:fs";
 import { join as join5 } from "node:path";
 function safeWatch(path, listener, onError = () => {}, watchFn = watch) {
   let w;
@@ -3709,7 +4006,7 @@ function watchFolder(dir, match, onChange, opts = {}) {
 }
 function stamp(path) {
   try {
-    const s = statSync5(path);
+    const s = statSync6(path);
     return `${s.mtimeMs}:${s.size}`;
   } catch {
     return "-1";
@@ -3717,6 +4014,10 @@ function stamp(path) {
 }
 
 // src/commands/answers.ts
+function harnessOf(env) {
+  const found = current(env)?.harness;
+  return found === "claude" ? "claude-code" : found;
+}
 var EXIT_TIMEOUT = 10;
 var MAX_TIMEOUT = 2147483;
 var cli = defineCli({
@@ -3845,7 +4146,7 @@ async function main(argv, ctx) {
       id: values.id,
       action: values.action,
       model: values.model ?? ctx.env.PARLEY_MODEL,
-      harness: values.harness ?? guessHarness(ctx.env)
+      harness: values.harness ?? harnessOf(ctx.env)
     }, revision);
     if (!r.ok) {
       ctx.io.stderr(r.missing ? `${r.message}
@@ -4650,292 +4951,13 @@ function markdown(b) {
   return parts(fence(b.text, b.language ?? ""), items(steps));
 }
 
-// src/blocks/code-flow.ts
-var exports_code_flow = {};
-__export(exports_code_flow, {
-  EDGE: () => EDGE,
-  KINDS: () => KINDS,
+// src/blocks/code.ts
+var exports_code = {};
+__export(exports_code, {
   check: () => check2,
-  edges: () => edges,
   markdown: () => markdown2,
-  mermaidSource: () => mermaidSource,
   render: () => render2,
   shape: () => shape2
-});
-
-// src/lib/diagram.ts
-var ell = (s, max) => s.length > max ? s.slice(0, max - 1) + "…" : s;
-function svgText(x, y, text, cls, anchor = "middle", title) {
-  return `<text x="${x}" y="${y}" class="${cls}" text-anchor="${anchor}">${title ? `<title>${escapeHtml(title)}</title>` : ""}${escapeHtml(text)}</text>`;
-}
-function sequenceSvg(participants, messages, label = "Sequence diagram") {
-  const colW = Math.max(170, ...participants.map((p) => p.label.length * 7 + 40));
-  const left = 30;
-  const headH = 30;
-  const rowH = 46;
-  const x = new Map(participants.map((p, i) => [p.id, left + colW / 2 + i * colW]));
-  const width = left * 2 + participants.length * colW;
-  const top = 10;
-  const bodyTop = top + headH + 16;
-  const height = bodyTop + messages.length * rowH + 24;
-  const parts = participants.map((p) => {
-    const cx = x.get(p.id);
-    return `<g class="seq-part"><line x1="${cx}" y1="${top + headH}" x2="${cx}" y2="${height - 10}" class="lifeline"/><rect x="${cx - colW / 2 + 12}" y="${top}" width="${colW - 24}" height="${headH}" rx="6" class="part"/>${svgText(cx, top + headH / 2 + 4, ell(p.label, Math.floor((colW - 30) / 7)), "part-label", "middle", p.label)}</g>`;
-  }).join("");
-  const msgs = messages.map((m, i) => {
-    const y = bodyTop + i * rowH + rowH / 2;
-    const x1 = x.get(m.from) ?? left;
-    const x2 = x.get(m.to) ?? left;
-    const band = `<rect x="${left - 10}" y="${y - rowH / 2 + 2}" width="${width - left * 2 + 20}" height="${rowH - 4}" rx="6" class="band"/>`;
-    const label = `${m.n}. ${m.label}`;
-    if (m.kind === "branch") {
-      const bx = Math.min(x1, x2) - 60;
-      return `<g class="seq-msg ${m.kind}" data-node="${escapeHtml(m.id)}">${band}<rect x="${bx}" y="${y - 15}" width="${Math.abs(x2 - x1) + 120}" height="30" rx="4" class="alt"/>${svgText(bx + 8, y - 2, "alt", "alt-tag", "start")}${svgText(bx + 8, y + 11, ell(`${label}${m.note ? " · " + m.note : ""}`, Math.floor((Math.abs(x2 - x1) + 100) / 6.4)), "alt-text", "start", `${label}${m.note ? " · " + m.note : ""}`)}</g>`;
-    }
-    if (x1 === x2) {
-      const d = `M ${x1} ${y - 10} h 28 v 20 h -28`;
-      return `<g class="seq-msg ${m.kind}" data-node="${escapeHtml(m.id)}">${band}<path d="${d}" class="arrow ${m.kind}" marker-end="url(#${m.kind === "return" ? "open" : m.kind === "emit" ? "open" : "head"})"/>${svgText(x1 + 34, y + 4, ell(label, 44), "msg", "start", label)}</g>`;
-    }
-    const dir = x2 > x1 ? 1 : -1;
-    const mid = (x1 + x2) / 2;
-    const marker = m.kind === "return" || m.kind === "emit" ? "open" : m.kind === "error" ? "cross" : "head";
-    return `<g class="seq-msg ${m.kind}" data-node="${escapeHtml(m.id)}">${band}<line x1="${x1}" y1="${y}" x2="${x2 - dir * 6}" y2="${y}" class="arrow ${m.kind}" marker-end="url(#${marker})"/>${svgText(mid, y - 6, ell(label, Math.floor(Math.abs(x2 - x1) / 6.4)), "msg", "middle", label)}</g>`;
-  }).join("");
-  return `<svg class="diagram seq" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" role="group" aria-label="${escapeHtml(label)}">${DEFS}${parts}${msgs}</svg>`;
-}
-function flowchartSvg(nodes, edges, label = "Flow diagram") {
-  const w = 260;
-  const h = 46;
-  const rowH = 78;
-  const cx = 230;
-  const width = 460;
-  const idx = new Map(nodes.map((n, i) => [n.id, i]));
-  const yOf = (i) => 24 + i * rowH + h / 2;
-  const height = 24 + nodes.length * rowH;
-  const shapes = nodes.map((n, i) => {
-    const y = yOf(i);
-    let shape = "";
-    if (n.shape === "diamond")
-      shape = `<path d="M ${cx} ${y - h / 2 - 6} L ${cx + w / 2 - 20} ${y} L ${cx} ${y + h / 2 + 6} L ${cx - w / 2 + 20} ${y} Z" class="shape"/>`;
-    else if (n.shape === "stadium")
-      shape = `<rect x="${cx - w / 2}" y="${y - h / 2}" width="${w}" height="${h}" rx="${h / 2}" class="shape"/>`;
-    else if (n.shape === "wait")
-      shape = `<rect x="${cx - w / 2}" y="${y - h / 2}" width="${w}" height="${h}" rx="6" class="shape"/><line x1="${cx - w / 2 + 6}" y1="${y - h / 2}" x2="${cx - w / 2 + 6}" y2="${y + h / 2}" class="shape-line"/><line x1="${cx + w / 2 - 6}" y1="${y - h / 2}" x2="${cx + w / 2 - 6}" y2="${y + h / 2}" class="shape-line"/>`;
-    else
-      shape = `<rect x="${cx - w / 2}" y="${y - h / 2}" width="${w}" height="${h}" rx="6" class="shape"/>`;
-    const label = `${n.n}. ${n.label}`;
-    const maxChars = n.shape === "diamond" ? 26 : 34;
-    return `<g class="fc-node ${n.shape}" data-node="${escapeHtml(n.id)}">${shape}${svgText(cx, y + (n.sub ? 0 : 4), ell(label, maxChars), "node-label", "middle", label)}${n.sub ? svgText(cx, y + 14, ell(n.sub, 40), "node-sub", "middle", n.sub) : ""}</g>`;
-  }).join("");
-  let rightLanes = 0;
-  let leftLanes = 0;
-  const labels = [];
-  const lines = edges.map((e) => {
-    const a = idx.get(e.from);
-    const b = idx.get(e.to);
-    if (a == null || b == null)
-      return "";
-    const ya = yOf(a);
-    const yb = yOf(b);
-    if (b === a + 1) {
-      const y1 = ya + h / 2 + (nodes[a]?.shape === "diamond" ? 6 : 0);
-      const y2 = yb - h / 2 - (nodes[b]?.shape === "diamond" ? 6 : 0) - 6;
-      if (e.label)
-        labels.push(labelAt(e.label, cx + 10, (y1 + y2) / 2, "start"));
-      return `<g class="fc-edge"><line x1="${cx}" y1="${y1}" x2="${cx}" y2="${y2}" class="edge" marker-end="url(#fhead)"/></g>`;
-    }
-    const forward = b > a;
-    const lane = forward ? rightLanes++ : leftLanes++;
-    const xs = forward ? cx + w / 2 : cx - w / 2;
-    const xr = forward ? cx + w / 2 + 26 + lane * 16 : cx - w / 2 - 26 - lane * 16;
-    const yEnd = yb - h / 2 - 6;
-    const d = `M ${xs} ${ya} H ${xr} V ${yb - h / 2 - 14} H ${cx + (forward ? 20 : -20)} V ${yEnd}`;
-    if (e.label)
-      labels.push(labelAt(e.label, xr, (ya + yb) / 2, "middle"));
-    return `<g class="fc-edge ${forward ? "skip" : "loop"}"><path d="${d}" class="edge" marker-end="url(#fhead)"/></g>`;
-  }).join("");
-  return `<svg class="diagram fc" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" role="group" aria-label="${escapeHtml(label)}">${DEFS}${lines}${labels.join("")}${shapes}</svg>`;
-}
-function labelAt(text, x, y, anchor) {
-  const tw = text.length * 6.2 + 10;
-  const lx = anchor === "start" ? x + tw / 2 : x;
-  return `<g class="edge-label"><rect x="${lx - tw / 2}" y="${y - 9}" width="${tw}" height="16" rx="4" class="label-bg"/>${svgText(lx, y + 3, text, "edge-text")}</g>`;
-}
-var DEFS = `<defs>
-<marker id="head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" class="mk"/></marker>
-<marker id="open" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10" class="mk-open"/></marker>
-<marker id="cross" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M 1 1 L 9 9 M 9 1 L 1 9" class="mk-cross"/></marker>
-<marker id="fhead" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="mk"/></marker>
-</defs>`;
-function diagramBlock(svg, mermaid, id) {
-  return `<div class="diagram-wrap">${svg}</div><details class="mermaid-src"><summary>Mermaid source</summary><button type="button" class="quiet copy" data-copy="mm-${escapeHtml(id)}">Copy</button><pre id="mm-${escapeHtml(id)}">${escapeHtml(mermaid)}</pre></details>`;
-}
-function mmIds(prefix) {
-  const ids = new Map;
-  return (key) => {
-    if (!ids.has(key))
-      ids.set(key, `${prefix}${ids.size}`);
-    return ids.get(key);
-  };
-}
-var MM_ENTITY = { "#": "#35;", '"': "#quot;", ";": "#59;", "]": "#93;" };
-var mmText = (s) => s.replace(/[#";\]]/g, (c) => MM_ENTITY[c]);
-
-// src/blocks/code-flow.ts
-var KINDS = ["call", "branch", "loop", "await", "return", "emit", "error"];
-var EDGE = { to: "string", "when?": "string" };
-var shape2 = {
-  "language?": "string",
-  "entry?": "string",
-  steps: listOf({
-    ...NODE,
-    title: "string",
-    "symbol?": "string",
-    "kind?": "string",
-    "depth?": "number",
-    "code?": "string",
-    summary: "string",
-    "detail?": "string",
-    "next?": listOf(EDGE),
-    "warnings?": { list: "string" }
-  })
-};
-function kindChip(kind) {
-  const k = oneOf(kind, KINDS, "");
-  return k ? `<span class="chip kind-${k}">${k}</span> ` : "";
-}
-function participantOf(s, fallback) {
-  const src = Array.isArray(s.source) ? s.source[0] : s.source;
-  return s.symbol ?? src?.uri.split("/").pop() ?? fallback;
-}
-function edges(step, number, titles) {
-  if (!step.next?.length)
-    return "";
-  return `<div class="edges">${step.next.map((e) => `<a href="#" class="edge" data-select="${escapeHtml(e.to)}">${e.when ? `<span class="when">${escapeHtml(e.when)}</span> ` : ""}→ <span class="badge">${number.get(e.to) ?? "?"}</span> ${escapeHtml(titles.get(e.to) ?? e.to)}</a>`).join("")}</div>`;
-}
-function build(b) {
-  const caller = b.entry ? { id: "__entry", label: b.entry.length > 28 ? "caller" : b.entry } : { id: "__entry", label: "caller" };
-  const participants = [caller];
-  const seen = new Map([[caller.id, caller.id]]);
-  const pid = (label) => {
-    if (!seen.has(label)) {
-      const id = `p${participants.length}`;
-      seen.set(label, id);
-      participants.push({ id, label });
-    }
-    return seen.get(label);
-  };
-  const number = new Map(b.steps.map((s, i) => [s.id, i + 1]));
-  const stack = [caller.id];
-  const messages = b.steps.map((s, i) => {
-    const me = pid(participantOf(s, b.title ?? b.id));
-    const depth = Number.isInteger(s.depth) ? Math.max(0, s.depth) : 0;
-    stack.length = Math.min(stack.length, depth + 1);
-    const from = stack[stack.length - 1] ?? caller.id;
-    stack[depth + 1] = me;
-    const kind = s.kind && KINDS.includes(s.kind) ? s.kind : "call";
-    const note = s.next?.map((e) => `${e.when ? e.when + " → " : "→ "}${number.get(e.to) ?? "?"}`).join(", ");
-    if (kind === "return")
-      return {
-        id: s.id,
-        n: i + 1,
-        from: me,
-        to: stack[depth] ?? caller.id,
-        label: s.title,
-        kind,
-        note
-      };
-    return { id: s.id, n: i + 1, from, to: me, label: s.title, kind, note };
-  });
-  return { participants, messages };
-}
-function mermaid(participants, messages) {
-  const name = new Map(participants.map((p, i) => [p.id, `p${i}`]));
-  const lines = [
-    "sequenceDiagram",
-    ...participants.map((p) => `  participant ${name.get(p.id)} as ${mmText(p.label)}`)
-  ];
-  for (const m of messages) {
-    const a = name.get(m.from);
-    const z = name.get(m.to);
-    const txt = mmText(`${m.n}. ${m.label}${m.note ? " (" + m.note + ")" : ""}`);
-    if (m.kind === "branch")
-      lines.push(`  Note over ${z}: alt ${txt}`);
-    else if (m.kind === "return")
-      lines.push(`  ${a}-->>${z}: ${txt}`);
-    else if (m.kind === "emit")
-      lines.push(`  ${a}-)${z}: ${txt}`);
-    else if (m.kind === "error")
-      lines.push(`  ${a}--x${z}: ${txt}`);
-    else
-      lines.push(`  ${a}->>${z}: ${txt}`);
-  }
-  return lines.join(`
-`);
-}
-function render2(b) {
-  const { participants, messages } = build(b);
-  const number = new Map(b.steps.map((s, i) => [s.id, i + 1]));
-  const titles = new Map(b.steps.map((s) => [s.id, s.title]));
-  const code = (s) => s ? `<pre class="code">${tint(escapeHtml(s), b.language)}</pre>` : "";
-  const left = `<div class="flow">${b.entry ? `<div class="trace-input"><span class="eyebrow">Entry</span> ${escapeHtml(b.entry)}</div>` : ""}${diagramBlock(sequenceSvg(participants, messages, b.title ? `Sequence diagram: ${b.title}` : undefined), mermaid(participants, messages), b.id)}</div>`;
-  const sections = b.steps.map((s, i) => ({
-    id: s.id,
-    n: i + 1,
-    title: s.title,
-    source: s.source,
-    html: `<h2>${i + 1}. ${escapeHtml(s.title)}</h2><div class="kicker">${kindChip(s.kind)}${s.symbol ? `<code>${escapeHtml(s.symbol)}</code> · ` : ""}${escapeHtml(s.summary)}</div>${code(s.code)}${prose(s.detail)}${edges(s, number, titles)}${s.warnings?.map((w) => `<div class="warn">${escapeHtml(w)}</div>`).join("") ?? ""}`
-  }));
-  return { left, sections };
-}
-function check2(b, at) {
-  const errors = [];
-  if (b.steps.length < 2)
-    errors.push(`${at}: needs at least two steps`);
-  const ids = new Set(b.steps.map((s) => s.id));
-  b.steps.forEach((s, i) => {
-    const where = itemAt(at, "steps", i, s);
-    if (s.kind && !KINDS.includes(s.kind))
-      errors.push(`${where}: \`kind\` must be one of ${KINDS.join(", ")}`);
-    if (s.depth != null && (!Number.isInteger(s.depth) || s.depth < 0))
-      errors.push(`${where}: \`depth\` must be a whole number`);
-    if (s.code && !s.source)
-      errors.push(`${where}: \`code\` without \`source\`; say where the lines live`);
-    if (!s.symbol && !s.source)
-      errors.push(`${where}: needs a \`symbol\` or a \`source\` so the diagram knows where it runs`);
-    for (const e of s.next ?? [])
-      if (!ids.has(e.to))
-        errors.push(`${where}: \`next\` "${e.to}" is not a step id`);
-  });
-  return errors;
-}
-function mermaidSource(b) {
-  const { participants, messages } = build(b);
-  return mermaid(participants, messages);
-}
-function nextText(step, number, titles) {
-  return (step.next ?? []).map((e) => `${e.when ? `${e.when} ` : ""}→ ${number.get(e.to) ?? "?"}. ${titles.get(e.to) ?? e.to}`).join("; ");
-}
-function markdown2(b) {
-  const number = new Map(b.steps.map((s, i) => [s.id, i + 1]));
-  const titles = new Map(b.steps.map((s) => [s.id, s.title]));
-  const steps = b.steps.map((s, i) => {
-    const head = `${i + 1}. **${s.title}**${s.kind ? ` · ${s.kind}` : ""}${s.symbol ? ` · \`${s.symbol}\`` : ""}${s.source ? ` ${loc(s.source)}` : ""} — ${s.summary}`;
-    const body = parts(fence(s.code, b.language ?? ""), s.detail, nextText(s, number, titles), ...(s.warnings ?? []).map((w) => `⚠ ${w}`));
-    return parts(head, body ? indent(body) : "");
-  });
-  return parts(b.entry ? `Entry: ${b.entry}` : "", fence(mermaidSource(b), "mermaid"), items(steps));
-}
-
-// src/blocks/diff.ts
-var exports_diff = {};
-__export(exports_diff, {
-  SIDES: () => SIDES,
-  TONES: () => TONES,
-  check: () => check3,
-  markdown: () => markdown3,
-  render: () => render3,
-  shape: () => shape3
 });
 
 // src/lib/highlight.ts
@@ -5174,6 +5196,327 @@ function highlightLines(text, rel) {
   return lines;
 }
 
+// src/blocks/code.ts
+var shape2 = {
+  code: "string",
+  "language?": "string",
+  "caption?": "string"
+};
+var LANGUAGE = /^[A-Za-z0-9+#.-]{1,20}$/;
+function render2(b) {
+  const id = `code-${escapeHtml(b.id)}`;
+  const name = b.title || b.language;
+  const lead = b.code.startsWith(`
+`) ? `
+` : "";
+  const html = b.language ? highlightLines(b.code, `x.${b.language}`).join(`
+`) : escapeHtml(b.code);
+  const left = `<div class="code-block" data-node="${escapeHtml(b.id)}"><div class="code-head"><span class="code-lang">${escapeHtml(b.language ?? "code")}</span><button type="button" class="quiet copy" data-copy="${id}">Copy</button></div><pre class="code" id="${id}" tabindex="0" aria-label="${name ? `Code: ${escapeHtml(name)}` : "Code"}">${lead}${html}</pre>${b.caption ? `<div class="code-caption">${prose(b.caption)}</div>` : ""}</div>`;
+  return {
+    left,
+    sections: [{ id: b.id, title: name || "Code", html: "", source: b.source }]
+  };
+}
+function check2(b, at) {
+  const errors = [];
+  if (!b.code.trim())
+    errors.push(`${at}: \`code\` is blank`);
+  if (b.language !== undefined && !LANGUAGE.test(b.language))
+    errors.push(`${at}: \`language\` must be a short name such as ts, py or sql`);
+  return errors;
+}
+function markdown2(b) {
+  return parts(fence(b.code, b.language ?? ""), b.caption);
+}
+
+// src/blocks/code-flow.ts
+var exports_code_flow = {};
+__export(exports_code_flow, {
+  EDGE: () => EDGE,
+  KINDS: () => KINDS,
+  check: () => check3,
+  edges: () => edges,
+  markdown: () => markdown3,
+  mermaidSource: () => mermaidSource,
+  render: () => render3,
+  shape: () => shape3
+});
+
+// src/lib/diagram.ts
+var ell = (s, max) => s.length > max ? s.slice(0, max - 1) + "…" : s;
+function svgText(x, y, text, cls, anchor = "middle", title) {
+  return `<text x="${x}" y="${y}" class="${cls}" text-anchor="${anchor}">${title ? `<title>${escapeHtml(title)}</title>` : ""}${escapeHtml(text)}</text>`;
+}
+function sequenceSvg(participants, messages, label = "Sequence diagram") {
+  const colW = Math.max(170, ...participants.map((p) => p.label.length * 7 + 40));
+  const left = 30;
+  const headH = 30;
+  const rowH = 46;
+  const x = new Map(participants.map((p, i) => [p.id, left + colW / 2 + i * colW]));
+  const width = left * 2 + participants.length * colW;
+  const top = 10;
+  const bodyTop = top + headH + 16;
+  const height = bodyTop + messages.length * rowH + 24;
+  const parts = participants.map((p) => {
+    const cx = x.get(p.id);
+    return `<g class="seq-part"><line x1="${cx}" y1="${top + headH}" x2="${cx}" y2="${height - 10}" class="lifeline"/><rect x="${cx - colW / 2 + 12}" y="${top}" width="${colW - 24}" height="${headH}" rx="6" class="part"/>${svgText(cx, top + headH / 2 + 4, ell(p.label, Math.floor((colW - 30) / 7)), "part-label", "middle", p.label)}</g>`;
+  }).join("");
+  const msgs = messages.map((m, i) => {
+    const y = bodyTop + i * rowH + rowH / 2;
+    const x1 = x.get(m.from) ?? left;
+    const x2 = x.get(m.to) ?? left;
+    const band = `<rect x="${left - 10}" y="${y - rowH / 2 + 2}" width="${width - left * 2 + 20}" height="${rowH - 4}" rx="6" class="band"/>`;
+    const label = `${m.n}. ${m.label}`;
+    if (m.kind === "branch") {
+      const bx = Math.min(x1, x2) - 60;
+      return `<g class="seq-msg ${m.kind}" data-node="${escapeHtml(m.id)}">${band}<rect x="${bx}" y="${y - 15}" width="${Math.abs(x2 - x1) + 120}" height="30" rx="4" class="alt"/>${svgText(bx + 8, y - 2, "alt", "alt-tag", "start")}${svgText(bx + 8, y + 11, ell(`${label}${m.note ? " · " + m.note : ""}`, Math.floor((Math.abs(x2 - x1) + 100) / 6.4)), "alt-text", "start", `${label}${m.note ? " · " + m.note : ""}`)}</g>`;
+    }
+    if (x1 === x2) {
+      const d = `M ${x1} ${y - 10} h 28 v 20 h -28`;
+      return `<g class="seq-msg ${m.kind}" data-node="${escapeHtml(m.id)}">${band}<path d="${d}" class="arrow ${m.kind}" marker-end="url(#${m.kind === "return" ? "open" : m.kind === "emit" ? "open" : "head"})"/>${svgText(x1 + 34, y + 4, ell(label, 44), "msg", "start", label)}</g>`;
+    }
+    const dir = x2 > x1 ? 1 : -1;
+    const mid = (x1 + x2) / 2;
+    const marker = m.kind === "return" || m.kind === "emit" ? "open" : m.kind === "error" ? "cross" : "head";
+    return `<g class="seq-msg ${m.kind}" data-node="${escapeHtml(m.id)}">${band}<line x1="${x1}" y1="${y}" x2="${x2 - dir * 6}" y2="${y}" class="arrow ${m.kind}" marker-end="url(#${marker})"/>${svgText(mid, y - 6, ell(label, Math.floor(Math.abs(x2 - x1) / 6.4)), "msg", "middle", label)}</g>`;
+  }).join("");
+  return `<svg class="diagram seq" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" role="group" aria-label="${escapeHtml(label)}">${DEFS}${parts}${msgs}</svg>`;
+}
+function flowchartSvg(nodes, edges, label = "Flow diagram") {
+  const w = 260;
+  const h = 46;
+  const rowH = 78;
+  const cx = 230;
+  const width = 460;
+  const idx = new Map(nodes.map((n, i) => [n.id, i]));
+  const yOf = (i) => 24 + i * rowH + h / 2;
+  const height = 24 + nodes.length * rowH;
+  const shapes = nodes.map((n, i) => {
+    const y = yOf(i);
+    let shape = "";
+    if (n.shape === "diamond")
+      shape = `<path d="M ${cx} ${y - h / 2 - 6} L ${cx + w / 2 - 20} ${y} L ${cx} ${y + h / 2 + 6} L ${cx - w / 2 + 20} ${y} Z" class="shape"/>`;
+    else if (n.shape === "stadium")
+      shape = `<rect x="${cx - w / 2}" y="${y - h / 2}" width="${w}" height="${h}" rx="${h / 2}" class="shape"/>`;
+    else if (n.shape === "wait")
+      shape = `<rect x="${cx - w / 2}" y="${y - h / 2}" width="${w}" height="${h}" rx="6" class="shape"/><line x1="${cx - w / 2 + 6}" y1="${y - h / 2}" x2="${cx - w / 2 + 6}" y2="${y + h / 2}" class="shape-line"/><line x1="${cx + w / 2 - 6}" y1="${y - h / 2}" x2="${cx + w / 2 - 6}" y2="${y + h / 2}" class="shape-line"/>`;
+    else
+      shape = `<rect x="${cx - w / 2}" y="${y - h / 2}" width="${w}" height="${h}" rx="6" class="shape"/>`;
+    const label = `${n.n}. ${n.label}`;
+    const maxChars = n.shape === "diamond" ? 26 : 34;
+    return `<g class="fc-node ${n.shape}" data-node="${escapeHtml(n.id)}">${shape}${svgText(cx, y + (n.sub ? 0 : 4), ell(label, maxChars), "node-label", "middle", label)}${n.sub ? svgText(cx, y + 14, ell(n.sub, 40), "node-sub", "middle", n.sub) : ""}</g>`;
+  }).join("");
+  let rightLanes = 0;
+  let leftLanes = 0;
+  const labels = [];
+  const lines = edges.map((e) => {
+    const a = idx.get(e.from);
+    const b = idx.get(e.to);
+    if (a == null || b == null)
+      return "";
+    const ya = yOf(a);
+    const yb = yOf(b);
+    if (b === a + 1) {
+      const y1 = ya + h / 2 + (nodes[a]?.shape === "diamond" ? 6 : 0);
+      const y2 = yb - h / 2 - (nodes[b]?.shape === "diamond" ? 6 : 0) - 6;
+      if (e.label)
+        labels.push(labelAt(e.label, cx + 10, (y1 + y2) / 2, "start"));
+      return `<g class="fc-edge"><line x1="${cx}" y1="${y1}" x2="${cx}" y2="${y2}" class="edge" marker-end="url(#fhead)"/></g>`;
+    }
+    const forward = b > a;
+    const lane = forward ? rightLanes++ : leftLanes++;
+    const xs = forward ? cx + w / 2 : cx - w / 2;
+    const xr = forward ? cx + w / 2 + 26 + lane * 16 : cx - w / 2 - 26 - lane * 16;
+    const yEnd = yb - h / 2 - 6;
+    const d = `M ${xs} ${ya} H ${xr} V ${yb - h / 2 - 14} H ${cx + (forward ? 20 : -20)} V ${yEnd}`;
+    if (e.label)
+      labels.push(labelAt(e.label, xr, (ya + yb) / 2, "middle"));
+    return `<g class="fc-edge ${forward ? "skip" : "loop"}"><path d="${d}" class="edge" marker-end="url(#fhead)"/></g>`;
+  }).join("");
+  return `<svg class="diagram fc" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" role="group" aria-label="${escapeHtml(label)}">${DEFS}${lines}${labels.join("")}${shapes}</svg>`;
+}
+function labelAt(text, x, y, anchor) {
+  const tw = text.length * 6.2 + 10;
+  const lx = anchor === "start" ? x + tw / 2 : x;
+  return `<g class="edge-label"><rect x="${lx - tw / 2}" y="${y - 9}" width="${tw}" height="16" rx="4" class="label-bg"/>${svgText(lx, y + 3, text, "edge-text")}</g>`;
+}
+var DEFS = `<defs>
+<marker id="head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" class="mk"/></marker>
+<marker id="open" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10" class="mk-open"/></marker>
+<marker id="cross" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M 1 1 L 9 9 M 9 1 L 1 9" class="mk-cross"/></marker>
+<marker id="fhead" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="mk"/></marker>
+</defs>`;
+function diagramBlock(svg, mermaid, id) {
+  return `<div class="diagram-bleed"><div class="diagram-wrap">${svg}</div></div><details class="mermaid-src"><summary>Mermaid source</summary><button type="button" class="quiet copy" data-copy="mm-${escapeHtml(id)}">Copy</button><pre id="mm-${escapeHtml(id)}">${escapeHtml(mermaid)}</pre></details>`;
+}
+function mmIds(prefix) {
+  const ids = new Map;
+  return (key) => {
+    if (!ids.has(key))
+      ids.set(key, `${prefix}${ids.size}`);
+    return ids.get(key);
+  };
+}
+var MM_ENTITY = { "#": "#35;", '"': "#quot;", ";": "#59;", "]": "#93;" };
+var mmText = (s) => s.replace(/[#";\]]/g, (c) => MM_ENTITY[c]);
+
+// src/blocks/code-flow.ts
+var KINDS = ["call", "branch", "loop", "await", "return", "emit", "error"];
+var EDGE = { to: "string", "when?": "string" };
+var shape3 = {
+  "language?": "string",
+  "entry?": "string",
+  steps: listOf({
+    ...NODE,
+    title: "string",
+    "symbol?": "string",
+    "kind?": "string",
+    "depth?": "number",
+    "code?": "string",
+    summary: "string",
+    "detail?": "string",
+    "next?": listOf(EDGE),
+    "warnings?": { list: "string" }
+  })
+};
+function kindChip(kind) {
+  const k = oneOf(kind, KINDS, "");
+  return k ? `<span class="chip kind-${k}">${k}</span> ` : "";
+}
+function participantOf(s, fallback) {
+  const src = Array.isArray(s.source) ? s.source[0] : s.source;
+  return s.symbol ?? src?.uri.split("/").pop() ?? fallback;
+}
+function edges(step, number, titles) {
+  if (!step.next?.length)
+    return "";
+  return `<div class="edges">${step.next.map((e) => `<a href="#" class="edge" data-select="${escapeHtml(e.to)}">${e.when ? `<span class="when">${escapeHtml(e.when)}</span> ` : ""}→ <span class="badge">${number.get(e.to) ?? "?"}</span> ${escapeHtml(titles.get(e.to) ?? e.to)}</a>`).join("")}</div>`;
+}
+function build(b) {
+  const caller = b.entry ? { id: "__entry", label: b.entry.length > 28 ? "caller" : b.entry } : { id: "__entry", label: "caller" };
+  const participants = [caller];
+  const seen = new Map([[caller.id, caller.id]]);
+  const pid = (label) => {
+    if (!seen.has(label)) {
+      const id = `p${participants.length}`;
+      seen.set(label, id);
+      participants.push({ id, label });
+    }
+    return seen.get(label);
+  };
+  const number = new Map(b.steps.map((s, i) => [s.id, i + 1]));
+  const stack = [caller.id];
+  const messages = b.steps.map((s, i) => {
+    const me = pid(participantOf(s, b.title ?? b.id));
+    const depth = Number.isInteger(s.depth) ? Math.max(0, s.depth) : 0;
+    stack.length = Math.min(stack.length, depth + 1);
+    const from = stack[stack.length - 1] ?? caller.id;
+    stack[depth + 1] = me;
+    const kind = s.kind && KINDS.includes(s.kind) ? s.kind : "call";
+    const note = s.next?.map((e) => `${e.when ? e.when + " → " : "→ "}${number.get(e.to) ?? "?"}`).join(", ");
+    if (kind === "return")
+      return {
+        id: s.id,
+        n: i + 1,
+        from: me,
+        to: stack[depth] ?? caller.id,
+        label: s.title,
+        kind,
+        note
+      };
+    return { id: s.id, n: i + 1, from, to: me, label: s.title, kind, note };
+  });
+  return { participants, messages };
+}
+function mermaid(participants, messages) {
+  const name = new Map(participants.map((p, i) => [p.id, `p${i}`]));
+  const lines = [
+    "sequenceDiagram",
+    ...participants.map((p) => `  participant ${name.get(p.id)} as ${mmText(p.label)}`)
+  ];
+  for (const m of messages) {
+    const a = name.get(m.from);
+    const z = name.get(m.to);
+    const txt = mmText(`${m.n}. ${m.label}${m.note ? " (" + m.note + ")" : ""}`);
+    if (m.kind === "branch")
+      lines.push(`  Note over ${z}: alt ${txt}`);
+    else if (m.kind === "return")
+      lines.push(`  ${a}-->>${z}: ${txt}`);
+    else if (m.kind === "emit")
+      lines.push(`  ${a}-)${z}: ${txt}`);
+    else if (m.kind === "error")
+      lines.push(`  ${a}--x${z}: ${txt}`);
+    else
+      lines.push(`  ${a}->>${z}: ${txt}`);
+  }
+  return lines.join(`
+`);
+}
+function render3(b) {
+  const { participants, messages } = build(b);
+  const number = new Map(b.steps.map((s, i) => [s.id, i + 1]));
+  const titles = new Map(b.steps.map((s) => [s.id, s.title]));
+  const code = (s) => s ? `<pre class="code">${tint(escapeHtml(s), b.language)}</pre>` : "";
+  const left = `<div class="flow">${b.entry ? `<div class="trace-input"><span class="eyebrow">Entry</span> ${escapeHtml(b.entry)}</div>` : ""}${diagramBlock(sequenceSvg(participants, messages, b.title ? `Sequence diagram: ${b.title}` : undefined), mermaid(participants, messages), b.id)}</div>`;
+  const sections = b.steps.map((s, i) => ({
+    id: s.id,
+    n: i + 1,
+    title: s.title,
+    source: s.source,
+    html: `<h2>${i + 1}. ${escapeHtml(s.title)}</h2><div class="kicker">${kindChip(s.kind)}${s.symbol ? `<code>${escapeHtml(s.symbol)}</code> · ` : ""}${escapeHtml(s.summary)}</div>${code(s.code)}${prose(s.detail)}${edges(s, number, titles)}${s.warnings?.map((w) => `<div class="warn">${escapeHtml(w)}</div>`).join("") ?? ""}`
+  }));
+  return { left, sections };
+}
+function check3(b, at) {
+  const errors = [];
+  if (b.steps.length < 2)
+    errors.push(`${at}: needs at least two steps`);
+  const ids = new Set(b.steps.map((s) => s.id));
+  b.steps.forEach((s, i) => {
+    const where = itemAt(at, "steps", i, s);
+    if (s.kind && !KINDS.includes(s.kind))
+      errors.push(`${where}: \`kind\` must be one of ${KINDS.join(", ")}`);
+    if (s.depth != null && (!Number.isInteger(s.depth) || s.depth < 0))
+      errors.push(`${where}: \`depth\` must be a whole number`);
+    if (s.code && !s.source)
+      errors.push(`${where}: \`code\` without \`source\`; say where the lines live`);
+    if (!s.symbol && !s.source)
+      errors.push(`${where}: needs a \`symbol\` or a \`source\` so the diagram knows where it runs`);
+    for (const e of s.next ?? [])
+      if (!ids.has(e.to))
+        errors.push(`${where}: \`next\` "${e.to}" is not a step id`);
+  });
+  return errors;
+}
+function mermaidSource(b) {
+  const { participants, messages } = build(b);
+  return mermaid(participants, messages);
+}
+function nextText(step, number, titles) {
+  return (step.next ?? []).map((e) => `${e.when ? `${e.when} ` : ""}→ ${number.get(e.to) ?? "?"}. ${titles.get(e.to) ?? e.to}`).join("; ");
+}
+function markdown3(b) {
+  const number = new Map(b.steps.map((s, i) => [s.id, i + 1]));
+  const titles = new Map(b.steps.map((s) => [s.id, s.title]));
+  const steps = b.steps.map((s, i) => {
+    const head = `${i + 1}. **${s.title}**${s.kind ? ` · ${s.kind}` : ""}${s.symbol ? ` · \`${s.symbol}\`` : ""}${s.source ? ` ${loc(s.source)}` : ""} — ${s.summary}`;
+    const body = parts(fence(s.code, b.language ?? ""), s.detail, nextText(s, number, titles), ...(s.warnings ?? []).map((w) => `⚠ ${w}`));
+    return parts(head, body ? indent(body) : "");
+  });
+  return parts(b.entry ? `Entry: ${b.entry}` : "", fence(mermaidSource(b), "mermaid"), items(steps));
+}
+
+// src/blocks/diff.ts
+var exports_diff = {};
+__export(exports_diff, {
+  SIDES: () => SIDES,
+  TONES: () => TONES,
+  check: () => check4,
+  markdown: () => markdown4,
+  render: () => render4,
+  shape: () => shape4
+});
+
 // src/lib/unified-diff.ts
 var HUNK = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
 var ESCAPES = { a: 7, b: 8, t: 9, n: 10, v: 11, f: 12, r: 13 };
@@ -5353,7 +5696,7 @@ function countLines(file) {
 // src/blocks/diff.ts
 var TONES = ["ok", "warn", "bad", "skip"];
 var SIDES = ["new", "old"];
-var shape3 = {
+var shape4 = {
   diff: "string",
   "base?": "string",
   "head?": "string",
@@ -5449,7 +5792,7 @@ function head(b, files) {
   const cmp = b.base || b.head ? `${b.base ?? "?"} → ${b.head ?? "?"}` : "";
   return { text: [cmp, count(files.length, "file")].filter(Boolean).join(" · "), add, del };
 }
-function render3(b) {
+function render4(b) {
   const files = parseUnifiedDiff(b.diff ?? "");
   const findings = b.findings ?? [];
   const marked = new Map;
@@ -5511,7 +5854,7 @@ function render3(b) {
   return { left, sections };
 }
 var isLine = (n) => Number.isInteger(n) && n > 0;
-function check3(b, at) {
+function check4(b, at) {
   const errors = [];
   const files = parseUnifiedDiff(b.diff);
   if (!files.length)
@@ -5563,7 +5906,7 @@ function check3(b, at) {
   }
   return errors;
 }
-function markdown3(b) {
+function markdown4(b) {
   const files = parseUnifiedDiff(b.diff ?? "");
   const sum = head(b, files);
   const findings = (b.findings ?? []).map((f, i) => {
@@ -5581,19 +5924,19 @@ var extOf = (path) => path.split("/").pop().split(".").slice(1).pop() ?? "";
 // src/blocks/figure.ts
 var exports_figure = {};
 __export(exports_figure, {
-  check: () => check4,
-  markdown: () => markdown4,
-  render: () => render4,
-  shape: () => shape4
+  check: () => check5,
+  markdown: () => markdown5,
+  render: () => render5,
+  shape: () => shape5
 });
-var shape4 = {
+var shape5 = {
   src: "string",
   alt: "string",
   "caption?": "string",
   "detail?": "string",
   "href?": "string"
 };
-function render4(b) {
+function render5(b) {
   const href = webUrl(b.href);
   const left = `<figure class="fig" data-node="${escapeHtml(b.id)}"><img src="${escapeHtml(shotSrc(String(b.src ?? "")))}" alt="${escapeHtml(b.alt)}" loading="lazy">${b.caption || href ? `<figcaption>${escapeHtml(b.caption ?? "")}${href ? ` <a href="${escapeHtml(href)}" target="_blank" rel="noopener">Open the live version ↗</a>` : ""}</figcaption>` : ""}</figure>`;
   const title = b.title ?? b.caption ?? b.alt;
@@ -5610,7 +5953,7 @@ function render4(b) {
     ]
   };
 }
-function check4(b, at) {
+function check5(b, at) {
   const errors = [];
   if (!safePath(b.src))
     errors.push(`${at}: \`src\` must be x/<file> beside the document or a path from the repository root`);
@@ -5618,7 +5961,7 @@ function check4(b, at) {
     errors.push(`${at}: \`href\` must be an http(s) URL`);
   return errors;
 }
-function markdown4(b) {
+function markdown5(b) {
   return parts(`![${b.alt}](${b.src})`, b.caption ? `*${b.caption}*${b.href ? ` ([live](${b.href}))` : ""}` : "", b.detail);
 }
 
@@ -5626,14 +5969,14 @@ function markdown4(b) {
 var exports_matrix = {};
 __export(exports_matrix, {
   STATES: () => STATES,
-  check: () => check5,
-  markdown: () => markdown5,
+  check: () => check6,
+  markdown: () => markdown6,
   nodeIds: () => nodeIds,
-  render: () => render5,
-  shape: () => shape5
+  render: () => render6,
+  shape: () => shape6
 });
 var AXIS = renamed({ ...NODE, title: "string", "detail?": "string" }, { label: "title" });
-var shape5 = renamed({
+var shape6 = renamed({
   "rowsTitle?": "string",
   "columnsTitle?": "string",
   rows: listOf(AXIS),
@@ -5655,7 +5998,7 @@ function cellMap(b) {
     m.set(`${c.row}\x00${c.column}`, c);
   return m;
 }
-function render5(b) {
+function render6(b) {
   const cells = cellMap(b);
   const dflt = oneOf(b.default, STATES, "skip");
   const at = (r, c) => {
@@ -5683,7 +6026,7 @@ function render5(b) {
   const titles = Object.fromEntries(b.columns.map((c) => [c.id, c.title]));
   return { left, sections, titles };
 }
-function check5(b, at) {
+function check6(b, at) {
   const errors = [];
   if (!b.rows.length)
     errors.push(`${at}: needs at least one row`);
@@ -5715,7 +6058,7 @@ function nodeIds(b) {
   return (b.columns ?? []).map((c) => c.id);
 }
 var MARK2 = { valid: "✓", warn: "⚠", error: "✗", skip: "–" };
-function markdown5(b) {
+function markdown6(b) {
   const cells = cellMap(b);
   const rows = b.rows.map((r) => [
     r.title,
@@ -5732,13 +6075,13 @@ __export(exports_metrics, {
   BETTER: () => BETTER,
   LAYOUTS: () => LAYOUTS,
   change: () => change,
-  check: () => check6,
-  markdown: () => markdown6,
+  check: () => check7,
+  markdown: () => markdown7,
   numberShown: () => numberShown,
-  render: () => render6,
-  shape: () => shape6
+  render: () => render7,
+  shape: () => shape7
 });
-var shape6 = {
+var shape7 = {
   columns: listOf(renamed({ id: "string", title: "string" }, { label: "title" })),
   "compare?": { list: "string" },
   measures: listOf(renamed({
@@ -5874,7 +6217,7 @@ function layoutOf(b, columns) {
     return l;
   return b.measures.length <= MAX_TILES && columns.length === 2 ? "tiles" : "table";
 }
-function render6(b) {
+function render7(b) {
   const columns = Array.isArray(b.columns) ? b.columns : [];
   const label = new Map(columns.map((c) => [c.id, c.title]));
   const pair = compared(b);
@@ -5917,7 +6260,7 @@ function render6(b) {
   });
   return { left, sections };
 }
-function check6(b, at) {
+function check7(b, at) {
   const errors = [];
   if (!b.columns.length)
     errors.push(`${at}: needs at least one column`);
@@ -5984,7 +6327,7 @@ function sparkText(v) {
   const span = Math.max(...v) - min || 1;
   return v.map((n) => bars[Math.round((n - min) / span * (bars.length - 1))]).join("");
 }
-function markdown6(b) {
+function markdown7(b) {
   const pair = compared(b);
   const trend = b.measures.some((m) => trendOf(m).length >= 2);
   const rows = b.measures.map((m) => {
@@ -6014,11 +6357,11 @@ function markdown6(b) {
 var exports_operations = {};
 __export(exports_operations, {
   RISKS: () => RISKS,
-  check: () => check7,
-  markdown: () => markdown7,
+  check: () => check8,
+  markdown: () => markdown8,
   nodeIds: () => nodeIds2,
-  render: () => render7,
-  shape: () => shape7
+  render: () => render8,
+  shape: () => shape8
 });
 var RISKS = ["low", "medium", "high"];
 var OPERATION = {
@@ -6036,7 +6379,7 @@ var OPERATION = {
   "rollback?": "string",
   "warnings?": { list: "string" }
 };
-var shape7 = {
+var shape8 = {
   "language?": "string",
   operations: listOf(OPERATION),
   "phases?": listOf({
@@ -6057,7 +6400,7 @@ ${op.locks ? `<section><h3 class="sub">Locks</h3><p>${escapeHtml(op.locks)}</p><
 ${op.rollback ? `<section><h3 class="sub">Rollback</h3>${code(op.rollback)}</section>` : ""}
 ${op.warnings?.map((w) => `<div class="warn">${escapeHtml(w)}</div>`).join("") ?? ""}`;
 }
-function render7(b) {
+function render8(b) {
   const byId = new Map(b.operations.map((op) => [op.id, op]));
   const number = new Map(b.operations.map((op, i) => [op.id, i + 1]));
   const phases = b.phases ?? [
@@ -6074,7 +6417,7 @@ function render7(b) {
   }));
   return { left, sections };
 }
-function check7(b, at) {
+function check8(b, at) {
   const errors = [];
   if (!b.operations.length)
     errors.push(`${at}: needs at least one operation`);
@@ -6110,7 +6453,7 @@ function opMarkdown(op, n, language) {
   const body = parts(fence(op.code, language ?? ""), op.detail, op.locks ? `Locks: ${op.locks}` : "", op.rollback ? `Rollback: ${op.rollback}` : "", op.before || op.after ? `Before: \`${op.before ?? "—"}\` · After: \`${op.after ?? "—"}\`` : "", ...(op.warnings ?? []).map((w) => `⚠ ${w}`));
   return parts(head, body ? indent(body) : "");
 }
-function markdown7(b) {
+function markdown8(b) {
   const byId = new Map(b.operations.map((o, i) => [o.id, { o, n: i + 1 }]));
   if (!b.phases?.length)
     return items(b.operations.map((o, i) => opMarkdown(o, i + 1, b.language)));
@@ -6123,10 +6466,10 @@ function markdown7(b) {
 var exports_plan = {};
 __export(exports_plan, {
   STATUSES: () => STATUSES,
-  check: () => check8,
-  markdown: () => markdown8,
-  render: () => render8,
-  shape: () => shape8
+  check: () => check9,
+  markdown: () => markdown9,
+  render: () => render9,
+  shape: () => shape9
 });
 var STATUSES = ["todo", "doing", "done", "blocked"];
 var TASK = renamed({
@@ -6137,7 +6480,7 @@ var TASK = renamed({
   "gate?": "string",
   "detail?": "string"
 }, { label: "title" });
-var shape8 = {
+var shape9 = {
   phases: listOf(renamed({
     ...NODE,
     title: "string",
@@ -6162,7 +6505,7 @@ function meta(x) {
   ].filter(Boolean);
   return parts.length ? `<span class="chips">${parts.join("")}</span>` : "";
 }
-function render8(b) {
+function render9(b) {
   let n = 0;
   const sections = [];
   const left = b.phases.map((ph) => {
@@ -6196,7 +6539,7 @@ function render8(b) {
   }).join("");
   return { left: `<div class="plan">${left}</div>`, sections };
 }
-function check8(b, at) {
+function check9(b, at) {
   const errors = [];
   if (!b.phases.length)
     errors.push(`${at}: needs at least one phase`);
@@ -6225,7 +6568,7 @@ function tag(x) {
     x.gate ? `gate: ${x.gate}` : ""
   ].filter(Boolean).join(" · ");
 }
-function markdown8(b) {
+function markdown9(b) {
   return b.phases.map((p) => parts(`### ${p.title}${tag(p) ? ` _(${tag(p)})_` : ""}`, p.detail, ...p.workstreams.map((w) => parts(`**${w.title}**${w.detail ? ` — ${w.detail}` : ""}`, w.tasks.map((t) => `- [${t.status === "done" ? "x" : " "}] ${t.title}${tag(t) ? ` _(${tag(t)})_` : ""}${t.detail ? ` — ${t.detail}` : ""}`).join(`
 `))))).join(`
 
@@ -6235,12 +6578,12 @@ function markdown8(b) {
 // src/blocks/precedence.ts
 var exports_precedence = {};
 __export(exports_precedence, {
-  check: () => check9,
-  markdown: () => markdown9,
-  render: () => render9,
-  shape: () => shape9
+  check: () => check10,
+  markdown: () => markdown10,
+  render: () => render10,
+  shape: () => shape10
 });
-var shape9 = {
+var shape10 = {
   rungs: listOf(renamed({ ...NODE, title: "string", "detail?": "string" }, {
     label: "title"
   })),
@@ -6251,7 +6594,7 @@ var shape9 = {
     "reason?": "string"
   }, { label: "title", note: "reason" }))
 };
-function render9(b) {
+function render10(b) {
   const number = new Map(b.rungs.map((r, i) => [r.id, i + 1]));
   const rungs = b.rungs.map((r, i) => `<li class="row" data-node="${escapeHtml(r.id)}"><span class="badge">${i + 1}</span><div><div class="title">${escapeHtml(r.title)}</div>${r.detail ? `<div class="sub">${escapeHtml(r.detail)}</div>` : ""}</div><span class="first">${i === 0 ? "checked first" : i === b.rungs.length - 1 ? "last resort" : ""}</span></li>`).join("");
   const examples = b.examples?.length ? `<div class="examples"><span class="eyebrow">Examples</span>${b.examples.map((e) => `<span class="example" data-node="${escapeHtml(e.id)}" title="${escapeHtml(e.reason ?? "")}">${escapeHtml(e.title)} <span class="arrow">→</span> <span class="badge">${number.get(e.matches) ?? "?"}</span></span>`).join("")}</div>` : "";
@@ -6276,7 +6619,7 @@ function render9(b) {
   ];
   return { left, sections };
 }
-function check9(b, at) {
+function check10(b, at) {
   const errors = [];
   if (b.rungs.length < 2)
     errors.push(`${at}: needs at least two rungs`);
@@ -6287,7 +6630,7 @@ function check9(b, at) {
   });
   return errors;
 }
-function markdown9(b) {
+function markdown10(b) {
   const n = new Map(b.rungs.map((r, i) => [r.id, i + 1]));
   const rungs = b.rungs.map((r, i) => `${i + 1}. **${r.title}**${r.detail ? ` — ${r.detail}` : ""}`).join(`
 `);
@@ -6299,13 +6642,13 @@ function markdown9(b) {
 // src/blocks/prose.ts
 var exports_prose = {};
 __export(exports_prose, {
-  check: () => check10,
-  markdown: () => markdown10,
-  render: () => render10,
-  shape: () => shape10
+  check: () => check11,
+  markdown: () => markdown11,
+  render: () => render11,
+  shape: () => shape11
 });
-var shape10 = { text: "string" };
-function render10(b) {
+var shape11 = { text: "string" };
+function render11(b) {
   const left = `<div class="prose-block" data-node="${escapeHtml(b.id)}">${prose(b.text)}</div>`;
   const title = b.title ?? b.text.split(/\s+/).slice(0, 6).join(" ");
   return {
@@ -6313,21 +6656,21 @@ function render10(b) {
     sections: [{ id: b.id, title, html: "", source: b.source }]
   };
 }
-function check10(_b) {
+function check11(_b) {
   return [];
 }
-function markdown10(b) {
+function markdown11(b) {
   return para(b.text);
 }
 
 // src/blocks/question.ts
 var exports_question = {};
 __export(exports_question, {
-  check: () => check11,
-  markdown: () => markdown11,
+  check: () => check12,
+  markdown: () => markdown12,
   questions: () => questions,
-  render: () => render11,
-  shape: () => shape11
+  render: () => render12,
+  shape: () => shape12
 });
 
 // src/lib/question.ts
@@ -6380,21 +6723,21 @@ function renderQuestion(q, inline = false, doc = {}) {
 }
 
 // src/blocks/question.ts
-var shape11 = { questions: { list: "object" } };
-function render11(b, ctx) {
+var shape12 = { questions: { list: "object" } };
+function render12(b, ctx) {
   const title = b.title ?? (b.questions[0]?.prompt ?? b.id).split(/\s+/).slice(0, 6).join(" ");
   return {
     left: `<div class="ask-block">${b.questions.map((q) => renderQuestion(q, true, ctx.doc)).join("")}</div>`,
     sections: [{ id: b.id, title, html: "" }]
   };
 }
-function check11(b, at) {
+function check12(b, at) {
   return b.questions.length ? [] : [`${at}: needs at least one question`];
 }
 function questions(b) {
   return b.questions;
 }
-function markdown11(b, ctx) {
+function markdown12(b, ctx) {
   return b.questions.map((q, i) => questionMarkdown(q, i + 1, ctx?.doc)).join(`
 `);
 }
@@ -6403,11 +6746,11 @@ function markdown11(b, ctx) {
 var exports_schema = {};
 __export(exports_schema, {
   CARDINALITIES: () => CARDINALITIES,
-  check: () => check12,
-  markdown: () => markdown12,
+  check: () => check13,
+  markdown: () => markdown13,
   nodeIds: () => nodeIds3,
-  render: () => render12,
-  shape: () => shape12
+  render: () => render13,
+  shape: () => shape13
 });
 var COLUMN = {
   "id?": "string",
@@ -6430,7 +6773,7 @@ var INDEX = {
   "where?": "string",
   "purpose?": "string"
 };
-var shape12 = {
+var shape13 = {
   "dialect?": "string",
   tables: listOf({
     ...NODE,
@@ -6498,7 +6841,7 @@ ${t.indexes?.length ? `<section><h3 class="sub">Indexes</h3><table><thead><tr><t
 ${out.length || inc.length ? `<section><h3 class="sub">Relations</h3><ul>${out.map((r) => relLine(r, r.to, r.from)).join("")}${inc.map((r) => relLine(r, r.from, r.to)).join("")}</ul></section>` : ""}
 ${t.notes?.map((n) => `<div class="warn">${escapeHtml(n)}</div>`).join("") ?? ""}`;
 }
-function render12(b) {
+function render13(b) {
   const rels = derivedRelations(b);
   const byName = new Map(b.tables.map((t) => [t.name, t]));
   const groups = [...b.groups ?? []];
@@ -6521,7 +6864,7 @@ ${rels.length ? `<div class="group"><h2>Relations</h2><div class="rels">${rels.m
   const within = Object.fromEntries(b.tables.flatMap((t) => t.columns.map((c) => [colId(t, c), t.id])));
   return { left, sections, titles, within };
 }
-function check12(b, at) {
+function check13(b, at) {
   const errors = [];
   if (!b.tables.length)
     errors.push(`${at}: needs at least one table`);
@@ -6568,7 +6911,7 @@ function nodeIds3(b) {
     ...(b.groups ?? []).map((g) => g.id)
   ];
 }
-function markdown12(b) {
+function markdown13(b) {
   const rels = derivedRelations(b);
   const tables = b.tables.map((t) => {
     const rows = t.columns.map((c) => [
@@ -6597,17 +6940,17 @@ ${idx.join(`
 // src/blocks/story.ts
 var exports_story = {};
 __export(exports_story, {
-  check: () => check13,
-  markdown: () => markdown13,
-  render: () => render13,
-  shape: () => shape13
+  check: () => check14,
+  markdown: () => markdown14,
+  render: () => render14,
+  shape: () => shape14
 });
-var shape13 = {
+var shape14 = {
   ...MEDIA,
   "caption?": "string",
   "detail?": "string"
 };
-function render13(b, ctx) {
+function render14(b, ctx) {
   const left = `<div class="story-block" data-node="${escapeHtml(b.id)}">${mediaHtml(b, ctx.doc)}${b.caption ? `<p class="story-cap">${escapeHtml(b.caption)}</p>` : ""}</div>`;
   const title = b.title ?? b.caption ?? b.id;
   const detail = prose(b.detail);
@@ -6623,13 +6966,13 @@ function render13(b, ctx) {
     ]
   };
 }
-function check13(b, at) {
+function check14(b, at) {
   const errors = checkMedia(b, at);
   if (!errors.length && !hasMedia(b))
     errors.push(`${at}: needs at least one story or shot`);
   return errors;
 }
-function markdown13(b, ctx) {
+function markdown14(b, ctx) {
   return parts(mediaMarkdown(b, ctx?.doc ?? {}).join(`
 `), b.caption ? `*${b.caption}*` : "", b.detail);
 }
@@ -6638,12 +6981,12 @@ function markdown13(b, ctx) {
 var exports_trace = {};
 __export(exports_trace, {
   TONES: () => TONES2,
-  check: () => check14,
-  markdown: () => markdown14,
-  render: () => render14,
-  shape: () => shape14
+  check: () => check15,
+  markdown: () => markdown15,
+  render: () => render15,
+  shape: () => shape15
 });
-var shape14 = {
+var shape15 = {
   "input?": "string",
   steps: listOf(renamed({
     ...NODE,
@@ -6668,7 +7011,7 @@ function tone3(outcome, map) {
     return "warn";
   return "skip";
 }
-function render14(b) {
+function render15(b) {
   const rows = b.steps.map((s, i) => {
     const t = tone3(s.outcome, b.outcomes);
     return `<li class="row trace-step ${t}" data-node="${escapeHtml(s.id)}"><span class="badge">${i + 1}</span><div><div class="title">${escapeHtml(s.title)} <span class="chip tone-${t}">${escapeHtml(s.outcome)}</span></div><div class="sub">${escapeHtml(s.reason)}</div></div></li>`;
@@ -6685,7 +7028,7 @@ function render14(b) {
   });
   return { left, sections };
 }
-function check14(b, at) {
+function check15(b, at) {
   const errors = [];
   if (!b.steps.length)
     errors.push(`${at}: needs at least one step`);
@@ -6697,7 +7040,7 @@ function check14(b, at) {
     errors.push(`${at}: more than one step ends the walk (${ends} with a good outcome)`);
   return errors;
 }
-function markdown14(b) {
+function markdown15(b) {
   return parts(b.input ? `Input: ${b.input}` : "", b.steps.map((s, i) => `${i + 1}. **${s.title}** — ${s.outcome}: ${s.reason}${s.detail ? `
 ${indent(s.detail)}` : ""}`).join(`
 `));
@@ -6707,11 +7050,11 @@ ${indent(s.detail)}` : ""}`).join(`
 var exports_tradeoffs = {};
 __export(exports_tradeoffs, {
   SCALE_BETTER: () => SCALE_BETTER,
-  check: () => check15,
+  check: () => check16,
   columnId: () => columnId,
-  markdown: () => markdown15,
-  render: () => render15,
-  shape: () => shape15,
+  markdown: () => markdown16,
+  render: () => render16,
+  shape: () => shape16,
   warn: () => warn
 });
 var SCALE = {
@@ -6719,7 +7062,7 @@ var SCALE = {
   max: "number",
   "better?": "string"
 };
-var shape15 = {
+var shape16 = {
   question: "string",
   "scale?": { shape: SCALE },
   criteria: listOf(renamed({
@@ -6793,7 +7136,7 @@ var scaleLine = (b) => {
   const { min, max, better } = scaleOf(b);
   return `Scores from ${numberShown(min)} to ${numberShown(max)}, ${better} is better. The total is the sum of weight × score.`;
 };
-function render15(b, ctx) {
+function render16(b, ctx) {
   const { cols, scores, totals, best, question } = tally(b, ctx);
   const rec = question?.recommended;
   const { max } = scaleOf(b);
@@ -6832,7 +7175,7 @@ function render15(b, ctx) {
   });
   return { left, sections: [...sections, ...options] };
 }
-function check15(b, at, ctx) {
+function check16(b, at, ctx) {
   const errors = [];
   if (b.scale) {
     if (b.scale.min >= b.scale.max)
@@ -6889,7 +7232,7 @@ function warn(b, at, ctx) {
     `${at}: option "${cols[top].id}" has the best total (${numberShown(totals[top], 2)}), but question ${question.id} recommends "${rec}" (${numberShown(totals[r], 2)}); say why in the question or in a criterion's \`detail\``
   ];
 }
-function markdown15(b, ctx) {
+function markdown16(b, ctx) {
   const { cols, scores, totals, question } = tally(b, ctx);
   const rec = question?.recommended;
   const rows = b.criteria.map((c) => [
@@ -6921,14 +7264,14 @@ function markdown15(b, ctx) {
 var exports_workflow = {};
 __export(exports_workflow, {
   KINDS: () => KINDS2,
-  check: () => check16,
-  markdown: () => markdown16,
+  check: () => check17,
+  markdown: () => markdown17,
   mermaidSource: () => mermaidSource2,
-  render: () => render16,
-  shape: () => shape16
+  render: () => render17,
+  shape: () => shape17
 });
 var KINDS2 = ["start", "action", "decision", "wait", "handoff", "end"];
-var shape16 = {
+var shape17 = {
   "trigger?": "string",
   lanes: listOf(renamed({ ...NODE, title: "string", "detail?": "string" }, {
     label: "title"
@@ -6994,7 +7337,7 @@ function mermaid2(b, nodes, out) {
   return lines.join(`
 `);
 }
-function render16(b) {
+function render17(b) {
   const laneIndex = new Map(b.lanes.map((l, i) => [l.id, i % 6]));
   const laneTitle = new Map(b.lanes.map((l) => [l.id, l.title]));
   const number = new Map(b.steps.map((s, i) => [s.id, i + 1]));
@@ -7020,7 +7363,7 @@ function render16(b) {
   ];
   return { left, sections };
 }
-function check16(b, at) {
+function check17(b, at) {
   const errors = [];
   if (!b.lanes.length)
     errors.push(`${at}: needs at least one lane`);
@@ -7046,7 +7389,7 @@ function mermaidSource2(b) {
   const g = graph(b);
   return mermaid2(b, g.nodes, g.edges);
 }
-function markdown16(b) {
+function markdown17(b) {
   const laneTitle = new Map(b.lanes.map((l) => [l.id, l.title]));
   const number = new Map(b.steps.map((s, i) => [s.id, i + 1]));
   const titles = new Map(b.steps.map((s) => [s.id, s.title]));
@@ -7065,6 +7408,7 @@ function markdown16(b) {
 // src/blocks/index.ts
 var BLOCKS = {
   prose: exports_prose,
+  code: exports_code,
   figure: exports_figure,
   story: exports_story,
   question: exports_question,
@@ -7706,40 +8050,146 @@ var FINISH_JS = `  // ---- finishing: the verdict is given once, at the end of a
 `;
 
 // src/lib/page/lightbox.ts
-var LIGHTBOX_HTML = `<div class="lightbox" id="lightbox" hidden><button type="button" class="lb-close" title="Close (Esc)">×</button><div class="lb-body"></div></div>`;
-var LIGHTBOX_CSS = `/* expand: a button that appears over a figure or a diagram and opens it in a lightbox */
+var LIGHTBOX_HTML = `<div class="lightbox" id="lightbox" role="dialog" aria-label="Expanded figure" hidden><button type="button" class="lb-close" title="Close (Esc)">×</button><div class="lb-body"></div></div>`;
+var LIGHTBOX_CSS = `/* expand: an always-visible button that opens a figure or a diagram in a lightbox; on a diagram it sits above the drawing, not on it */
 .fig, .diagram-wrap { position: relative; }
-.expand { position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--pane); color: var(--muted); cursor: pointer; opacity: 0; transition: opacity .12s; display: inline-flex; align-items: center; justify-content: center; z-index: 1; }
-.fig:hover .expand, .diagram-wrap:hover .expand, .expand:focus-visible { opacity: 1; }
-.expand:hover { color: var(--fg); background: var(--code-bg); }
+.expand, .lb-bar button { border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--pane); color: var(--fg); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+.expand:hover, .expand:focus-visible, .lb-bar button:hover, .lb-bar button:focus-visible { background: var(--code-bg); border-color: var(--fg); }
+.expand { position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; z-index: 1; }
+.diagram-wrap > .expand { top: 4px; right: 0; }
 .lightbox { position: fixed; inset: 0; z-index: 50; background: rgba(0,0,0,.72); display: flex; align-items: center; justify-content: center; padding: 32px; cursor: zoom-out; }
 .lightbox[hidden] { display: none; }
 .lightbox .lb-body { max-width: 100%; max-height: 100%; overflow: auto; background: var(--pane); border-radius: var(--radius); padding: 12px; box-shadow: var(--shadow); cursor: default; }
 .lightbox img { display: block; max-width: none; width: auto; height: auto; }
 .lightbox svg.diagram { max-width: none; }
 .lightbox .lb-cap { font-size: 12.5px; color: var(--muted); padding: 8px 2px 0; }
-.lightbox .lb-close { position: fixed; top: 16px; right: 16px; width: 34px; height: 34px; border: 0; border-radius: 50%; background: var(--pane); color: var(--fg); font-size: 20px; cursor: pointer; }
+.lightbox .lb-close { position: absolute; top: 16px; right: 16px; width: 34px; height: 34px; border: 0; border-radius: 50%; background: var(--pane); color: var(--fg); font-size: 20px; cursor: pointer; z-index: 1; }
+/* an expanded diagram: a toolbar row, then a stage the diagram fits into; zoom and pan move its viewBox */
+.lightbox.lb-diagram { padding: 12px; }
+.lightbox.lb-diagram .lb-body { width: 100%; height: 100%; padding: 0; display: flex; flex-direction: column; overflow: hidden; }
+.lb-bar { flex: none; display: flex; align-items: center; gap: 4px; height: 46px; padding: 0 8px; border-bottom: 1px solid var(--line); }
+.lb-bar button { width: 32px; height: 30px; font-size: 18px; line-height: 1; }
+.lb-bar .lb-zoom { min-width: 48px; margin-left: 6px; font: 12.5px var(--sans); color: var(--fg); font-variant-numeric: tabular-nums; }
+.lb-stage { flex: 1; min-height: 0; position: relative; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; }
+.lb-stage.zoomed { cursor: grab; }
+.lb-stage.zoomed.grabbing, .lb-stage.zoomed.grabbing * { cursor: grabbing; }
+.lightbox .lb-stage svg.diagram { display: block; width: 100%; height: 100%; max-width: none; }
+/* expanded: wide, the overlay stops at the pane; narrow, the pane covers it below the header */
+@media (min-width: 861px) { body.lb-open .lightbox { right: var(--col-r, 0px); } }
+@media (max-width: 860px) { body.lb-open.right-open .right, body.lb-open.right-pinned .right { z-index: 51; } }
+body.lb-open .qpop, body.lb-open .anno { z-index: 52; }
 `;
-var LIGHTBOX_JS = `  // ---- lightbox: every figure and diagram gets an expand button on hover; the copy opens at full size
-  const EXPAND = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 2.5h4v4M13.5 2.5 9 7M6.5 13.5h-4v-4M2.5 13.5 7 9"/></svg>';
-  function addExpand() { $$('.fig, .diagram-wrap').forEach((w) => { if ($(':scope > .expand', w)) return; const b = document.createElement('button'); b.type = 'button'; b.className = 'expand'; b.title = 'Expand'; b.innerHTML = EXPAND; w.appendChild(b); }); }
+var LIGHTBOX_JS = `  // ---- lightbox: every figure and diagram gets an expand button; an image opens at full size, a diagram fits the overlay
+  const icon = (d) => '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="' + d + '"/></svg>';
+  const EXPAND = icon('M9.5 2.5h4v4M13.5 2.5 9 7M6.5 13.5h-4v-4M2.5 13.5 7 9');
+  function addExpand() { $$('.fig, .diagram-wrap').forEach((w) => { if ($(':scope > .expand', w)) return; const b = document.createElement('button'); b.type = 'button'; b.className = 'expand'; b.setAttribute('aria-label', w.classList.contains('fig') ? 'Expand figure' : 'Expand diagram'); b.innerHTML = EXPAND; if (w.classList.contains('fig')) w.appendChild(b); else w.prepend(b); }); }
   addExpand();
   const lightbox = $('#lightbox'); const lbBody = $('.lb-body', lightbox);
+  let lbOpener = null, zv = null;
+  // Inert while open: everything beside the path to the panel, so a new region needs no edit here. The note and popup stay live.
+  const lbBehind = () => { const r = []; for (let n = $('#right'); n !== body; n = n.parentElement) for (const s of n.parentElement.children) if (s !== n && s !== lightbox && !s.matches('script, #anno, #notice')) r.push(s); return r; };
+  function showLightbox(opener) { lbOpener = opener; body.classList.add('lb-open'); lbBehind().forEach((x) => { x.inert = true; }); lightbox.hidden = false; $('.lb-close', lightbox).focus(); }
+  const lbReset = () => { lbBody.innerHTML = ''; zv = null; lightbox.classList.remove('lb-diagram'); };
   function openLightbox(w) {
-    lbBody.innerHTML = '';
-    const img = w.querySelector('img'); const svg = w.querySelector('svg');
+    lbReset();
+    const img = w.querySelector('img'); const svg = w.querySelector('svg.diagram');
     if (img) { const big = document.createElement('img'); big.src = img.src; big.alt = img.alt; lbBody.appendChild(big); const cap = w.querySelector('figcaption'); if (cap) { const c = document.createElement('div'); c.className = 'lb-cap'; c.textContent = cap.textContent; lbBody.appendChild(c); } }
-    else if (svg) { const big = svg.cloneNode(true); const vb = svg.viewBox.baseVal; const scale = Math.max(1, Math.min((innerWidth - 100) / vb.width, (innerHeight - 100) / vb.height, 2.5)); big.setAttribute('width', String(vb.width * scale)); big.setAttribute('height', String(vb.height * scale)); big.querySelectorAll('[data-node]').forEach((n) => n.removeAttribute('data-node')); lbBody.appendChild(big); }
-    lightbox.hidden = false; $('.lb-close', lightbox).focus();
+    else if (svg) { const big = svg.cloneNode(true); big.setAttribute('width', '100%'); big.setAttribute('height', '100%'); // The copy's steps select by data-select, so no page query for [data-node] finds a second copy.
+      big.querySelectorAll('[data-node]').forEach((n) => { n.dataset.select = n.dataset.node; n.removeAttribute('data-node'); });
+      big.querySelectorAll('.on').forEach((n) => n.classList.remove('on'));
+      lightbox.classList.add('lb-diagram'); lbBody.innerHTML = ZOOM_BAR; const stage = document.createElement('div'); stage.className = 'lb-stage'; stage.appendChild(big); lbBody.appendChild(stage);
+      const vb = big.viewBox.baseVal; zv = { svg: big, stage, attr: big.getAttribute('viewBox'), fit: { x: vb.x, y: vb.y, w: vb.width, h: vb.height }, vb: { x: vb.x, y: vb.y, w: vb.width, h: vb.height } }; zShow();
+      markLightbox(); }
+    showLightbox($('.expand', w));
   }
-  function closeLightbox() { lightbox.hidden = true; lbBody.innerHTML = ''; }
+  function closeLightbox() { lightbox.hidden = true; lbReset(); body.classList.remove('lb-open'); lbBehind().forEach((x) => { x.inert = false; }); if (lbOpener && lbOpener.isConnected) lbOpener.focus({ preventScroll: true }); lbOpener = null; }
   document.addEventListener('click', (e) => {
+    const down = lbDown; lbDown = null;
     const x = e.target.closest('.expand'); if (x) { e.preventDefault(); e.stopPropagation(); openLightbox(x.closest('.fig, .diagram-wrap')); return; }
     const fx = e.target.closest('.frame-expand');
-    if (fx) { e.preventDefault(); e.stopPropagation(); const f = $('iframe', fx.closest('.frame')); lbBody.innerHTML = ''; const big = document.createElement('iframe'); big.className = 'lb-frame'; big.src = f.src || f.dataset.src; big.title = f.title; lbBody.appendChild(big); lightbox.hidden = false; $('.lb-close', lightbox).focus(); return; }
-    if (e.target.closest('.lb-close') || (e.target === lightbox)) closeLightbox();
+    if (fx) { e.preventDefault(); e.stopPropagation(); const f = $('iframe', fx.closest('.frame')); lbReset(); const big = document.createElement('iframe'); big.className = 'lb-frame'; big.src = f.src || f.dataset.src; big.title = f.title; lbBody.appendChild(big); showLightbox($('.frame-expand', fx.closest('.frame'))); return; }
+    // A drag that panned is not a click; the backdrop closes only on a press and release both on it.
+    if (zDragged && e.target.closest('#lightbox')) { zDragged = false; e.preventDefault(); e.stopPropagation(); return; }
+    const z = e.target.closest('[data-zoom]'); if (z && zv) { e.preventDefault(); e.stopPropagation(); zKey(ZOOM_KEYS[z.dataset.zoom]); return; }
+    // The backdrop closes unless the press began elsewhere (a drag that ended on it); a click with no press, such as a script's, closes.
+    if (e.target.closest('.lb-close') || (e.target === lightbox && down !== false)) closeLightbox();
   }, true);
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !lightbox.hidden) { e.stopPropagation(); closeLightbox(); } }, true);
+  document.addEventListener('keydown', (e) => {
+    if (lightbox.hidden) return;
+    // Escape in the panel is the panel's; elsewhere it closes the figure.
+    if (e.key === 'Escape') { if (!e.target.closest('#right')) { e.stopPropagation(); closeLightbox(); } return; }
+    // Zoom keys act on an expanded diagram, not while typing and not with a modifier (browser zoom and shortcuts stay).
+    const zk = zv && !e.ctrlKey && !e.metaKey && !e.altKey && !e.target.closest('textarea, input, select, [contenteditable]') && ZOOM_KEYS[e.key];
+    if (zk) { e.preventDefault(); e.stopPropagation(); zKey(zk); return; }
+    if (e.key !== 'Tab') return;
+    // Tab from the last figure item enters the current section; Shift+Tab returns.
+    const items = $$('button, [tabindex="0"]', lightbox).filter((x) => x.getClientRects().length);
+    const sec = selected && $('#node-' + CSS.escape(DATA.sectionOf[selected] || selected));
+    if (!sec || !(body.classList.contains('right-open') || body.classList.contains('right-pinned'))) return;
+    const first = $('button, a[href], textarea, input, select, [tabindex="0"]', sec);
+    if (!e.shiftKey && e.target === items[items.length - 1]) { e.preventDefault(); if (!sec.hasAttribute('tabindex')) sec.tabIndex = -1; sec.focus({ preventScroll: true }); }
+    else if (e.shiftKey && (e.target === sec || e.target === first) && items.length) { e.preventDefault(); items[items.length - 1].focus(); }
+  }, true);
+  // ---- zoom: the expanded diagram's viewBox is the view. Fit is the original viewBox; zoom is fit.w / view.w, from 1 to 8.
+  // The SVG fills the stage with the default xMidYMid meet, so the viewBox is drawn at one scale, centred on the shorter axis.
+  function zGeom(v) { const r = zv.svg.getBoundingClientRect(); const s = Math.min(r.width / v.w, r.height / v.h); return { s, ox: r.left + (r.width - v.w * s) / 2, oy: r.top + (r.height - v.h * s) / 2 }; }
+  function zShow() {
+    const f = zv.fit, v = zv.vb, z = f.w / v.w;
+    zv.svg.setAttribute('viewBox', z <= 1 ? zv.attr : [v.x, v.y, v.w, v.h].join(' '));
+    zv.stage.classList.toggle('zoomed', z > 1); const out = $('.lb-zoom', lightbox); if (out) out.textContent = z > 1 ? Math.round(z * 100) + '%' : 'Fit';
+  }
+  // Set the view, clamped: zoom from fit to 8x fit, and the view keeps at least 10% of each axis on the diagram.
+  function zSet(v) {
+    const f = zv.fit; const w = Math.min(f.w, Math.max(f.w / 8, v.w)), h = w * f.h / f.w;
+    if (w >= f.w) { zv.vb = { ...f }; zShow(); return; }
+    const x = Math.min(f.x + f.w - 0.1 * w, Math.max(f.x - 0.9 * w, v.x)), y = Math.min(f.y + f.h - 0.1 * h, Math.max(f.y - 0.9 * h, v.y));
+    zv.vb = { x, y, w, h }; zShow();
+  }
+  // Zoom to level z, keeping the diagram point under the screen point (px, py) where it is.
+  function zAt(z, px, py) {
+    const v = zv.vb, g = zGeom(v); const ux = v.x + (px - g.ox) / g.s, uy = v.y + (py - g.oy) / g.s;
+    z = Math.min(8, Math.max(1, z)); const w = zv.fit.w / z, h = zv.fit.h / z, g2 = zGeom({ w, h });
+    zSet({ x: ux - (px - g2.ox) / g2.s, y: uy - (py - g2.oy) / g2.s, w, h });
+  }
+  function zPan(dx, dy) { const v = zv.vb, g = zGeom(v); zSet({ ...v, x: v.x - dx / g.s, y: v.y - dy / g.s }); }
+  function zCentre() { const r = zv.stage.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; }
+  // Each key is [zoom factor, pan x, pan y as fractions of the view]; [] is fit. The toolbar buttons name their key in data-zoom.
+  const ZOOM_KEYS = { '+': [1.25], '=': [1.25], '-': [1 / 1.25], '0': [], ArrowLeft: [0, -0.1, 0], ArrowRight: [0, 0.1, 0], ArrowUp: [0, 0, -0.1], ArrowDown: [0, 0, 0.1] };
+  function zKey([f, dx, dy]) {
+    const v = zv.vb;
+    if (f) zAt(zv.fit.w / v.w * f, ...zCentre());
+    else if (dx || dy) zSet({ ...v, x: v.x + dx * v.w, y: v.y + dy * v.h });
+    else zSet({ ...zv.fit });
+  }
+  const ZOOM_BAR = '<div role="toolbar" aria-label="Zoom" class="lb-bar">' + [['-', 'Zoom out', '−'], ['+', 'Zoom in', '+'], ['0', 'Fit to view', icon('M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10')]].map(([k, n, g]) => '<button type="button" data-zoom="' + k + '" aria-label="' + n + '" title="' + n + ' (' + k + ')">' + g + '</button>').join('') + '<span class="lb-zoom" aria-live="polite">Fit</span></div>';
+  // Ctrl or Cmd + wheel (and trackpad pinch, which arrives as one) zooms at the pointer; a plain wheel pans once zoomed in.
+  lightbox.addEventListener('wheel', (e) => {
+    if (!zv || !e.target.closest('.lb-stage')) return;
+    e.preventDefault();
+    const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? innerHeight : 1;
+    // A mouse notch is deltaY 100; clamping the step makes it about one 1.25x step, while a pinch's small deltas stay smooth.
+    if (e.ctrlKey || e.metaKey) zAt(zv.fit.w / zv.vb.w * Math.exp(Math.max(-22, Math.min(22, -e.deltaY * unit)) * 0.01), e.clientX, e.clientY);
+    else if (zv.vb.w < zv.fit.w) zPan(-e.deltaX * unit, -e.deltaY * unit);
+  }, { passive: false });
+  // Drag pans after 4 px of movement and then eats its click; two pointers pinch.
+  const zPtrs = new Map(); let zDrag = null, zPinch = null, zDragged = false, lbDown = null;
+  lightbox.addEventListener('pointerdown', (e) => {
+    lbDown = e.target === lightbox; zDragged = false;
+    if (!zv || !e.target.closest('.lb-stage') || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    zPtrs.set(e.pointerId, [e.clientX, e.clientY]);
+    if (zPtrs.size === 1) zDrag = { id: e.pointerId, x: e.clientX, y: e.clientY, on: false };
+    else if (zPtrs.size === 2) { const [a, b] = [...zPtrs.values()]; zPinch = { d: Math.hypot(a[0] - b[0], a[1] - b[1]) || 1, z: zv.fit.w / zv.vb.w }; zDrag = null; zDragged = true; }
+  });
+  lightbox.addEventListener('pointermove', (e) => {
+    if (!zv || !zPtrs.has(e.pointerId)) return;
+    const last = zPtrs.get(e.pointerId); zPtrs.set(e.pointerId, [e.clientX, e.clientY]);
+    if (zPinch && zPtrs.size === 2) { const [a, b] = [...zPtrs.values()]; zAt(zPinch.z * Math.hypot(a[0] - b[0], a[1] - b[1]) / zPinch.d, (a[0] + b[0]) / 2, (a[1] + b[1]) / 2); return; }
+    if (!zDrag || zDrag.id !== e.pointerId) return;
+    if (!zDrag.on) { if (Math.hypot(e.clientX - zDrag.x, e.clientY - zDrag.y) < 4) return; zDrag.on = true; zDragged = true; zv.stage.setPointerCapture(e.pointerId); zv.stage.classList.toggle('grabbing', zv.vb.w < zv.fit.w); zPan(e.clientX - zDrag.x, e.clientY - zDrag.y); return; }
+    zPan(e.clientX - last[0], e.clientY - last[1]);
+  });
+  function zUp(e) { if (!zPtrs.delete(e.pointerId)) return; if (zPtrs.size < 2) zPinch = null; if (!zPtrs.size) { zDrag = null; if (zv) zv.stage.classList.remove('grabbing'); setTimeout(() => { zDragged = false; }); } }
+  lightbox.addEventListener('pointerup', zUp); lightbox.addEventListener('pointercancel', zUp);
   document.addEventListener('click', async (e) => {
     const b = e.target.closest('[data-copy]'); if (!b) return;
     e.preventDefault(); e.stopPropagation();
@@ -7808,6 +8258,11 @@ var DOCKS_JS = `  // ---- docks: each side pane collapses to a rail; hover peeks
 
 `;
 var SELECTION_JS = `  // ---- selection: one node is current; its section and its left-pane marks light up
+  // The expanded figure's copy keeps its steps as data-select, so it gets the same mark by that.
+  function markLightbox() {
+    const section = selected && DATA.sectionOf[selected];
+    $$('#lightbox [data-select]').forEach((el) => el.classList.toggle('on', !!selected && (el.dataset.select === selected || (el.classList.contains('node') && el.dataset.select === section))));
+  }
   function select(id, opts = {}) {
     selected = id;
     const wasOpen = body.classList.contains('right-open') || body.classList.contains('right-pinned');
@@ -7817,6 +8272,7 @@ var SELECTION_JS = `  // ---- selection: one node is current; its section and it
     const anchorEl = opts.from === 'right' && section ? $('#node-' + CSS.escape(section)) : null;
     const anchorTop = anchorEl ? anchorEl.getBoundingClientRect().top : 0;
     $$('[data-node]').forEach((el) => el.classList.toggle('on', el.dataset.node === id || (el.classList.contains('node') && el.dataset.node === section)));
+    markLightbox();
     $$('.sql .seg').forEach((el) => {
       const steps = (el.dataset.steps || '').split(' ').filter(Boolean);
       el.classList.toggle('on', !!id && steps.includes(id));
@@ -7883,6 +8339,9 @@ var SELECTION_JS = `  // ---- selection: one node is current; its section and it
     const sel = e.target.closest('[data-select]');
     if (sel) { e.preventDefault(); select(sel.dataset.select); return; }
     const node = e.target.closest('[data-node]');
+    // Selecting text in a code listing to copy it must not also open its details.
+    const listing = node && node.classList.contains('code-block') && e.target.closest('pre');
+    if (listing && String(getSelection()).trim() && listing.contains(getSelection().anchorNode)) return;
     if (!node) { if (e.target.closest('#left') && !String(getSelection()).trim()) { select(null); const d = $('#dock-l'); d.classList.remove('hover', 'open-tap'); } return; }
     if (node.closest('#nav')) { e.preventDefault(); if (narrowMq.matches) $('#dock-l').classList.remove('hover', 'open-tap'); }
     const from = node.closest('#right') ? 'right' : node.closest('#nav') ? 'nav' : 'left';
@@ -7895,12 +8354,15 @@ var SELECTION_JS = `  // ---- selection: one node is current; its section and it
   window.addEventListener('hashchange', () => { const id = location.hash.slice(1); if (id && id !== selected && (DATA.sectionOf[id] || id === DATA.doc)) select(id); });
   document.addEventListener('keydown', (e) => {
     if (e.metaKey || e.ctrlKey || e.altKey || body.classList.contains('viewing')) return;
+    if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('#lightbox [data-select][tabindex]')) { e.preventDefault(); select(e.target.dataset.select); return; }
+    // j k n p and Escape act on the page behind an expanded figure; the figure's own handler closes it, and Escape in the panel is the panel's.
+    const lb = body.classList.contains('lb-open');
     const typing = e.target.matches('textarea, input:not([type=radio]):not([type=checkbox]), select');
-    if (!typing && (e.key === 'n' || e.key === 'p' || e.key === 'N' || e.key === 'P')) { e.preventDefault(); stepQuestion(e.key.toLowerCase() === 'n' ? 1 : -1, e.shiftKey); return; }
+    if (!lb && !typing && (e.key === 'n' || e.key === 'p' || e.key === 'N' || e.key === 'P')) { e.preventDefault(); stepQuestion(e.key.toLowerCase() === 'n' ? 1 : -1, e.shiftKey); return; }
     if (e.target.matches('textarea, input, select')) return;
     if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('#left [data-node][tabindex]')) { e.preventDefault(); select(e.target.dataset.node, { from: 'left' }); return; }
-    if (e.key === 'Escape') select(null);
-    if (e.key === 'j' || e.key === 'k') {
+    if (e.key === 'Escape' && !lb) select(null);
+    if (!lb && (e.key === 'j' || e.key === 'k')) {
       const i = ORDER.indexOf(DATA.sectionOf[selected] || selected);
       const next = e.key === 'j' ? Math.min(ORDER.length - 1, i + 1) : Math.max(0, i - 1);
       select(ORDER[next]);
@@ -9575,18 +10037,18 @@ var FILE_CSS = `
 .fileview table.code td.ln a { color: var(--muted); text-decoration: none; }
 .fileview table.code tr.hl { background: var(--hl); }
 .fileview table.code tr.hl td.ln a { color: var(--fg); }
-.fileview, .udiff { --tk-cm: #5b636d; --tk-str: #086a35; --tk-num: #9a4c00; --tk-kw: #7a25c9; --tk-ty: #0a6170; --tk-fn: #0550ae; --tk-key: #a3313a; --tk-var: #7a5000; --tk-tag: #116329; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .fileview, :root:not([data-theme="light"]) .udiff { --tk-cm: #9da5af; --tk-str: #7ee2a8; --tk-num: #ffb86b; --tk-kw: #d2a8ff; --tk-ty: #66d9e8; --tk-fn: #79c0ff; --tk-key: #ff9492; --tk-var: #e3b341; --tk-tag: #7ee787; } }
-:root[data-theme="dark"] .fileview, :root[data-theme="dark"] .udiff { --tk-cm: #9da5af; --tk-str: #7ee2a8; --tk-num: #ffb86b; --tk-kw: #d2a8ff; --tk-ty: #66d9e8; --tk-fn: #79c0ff; --tk-key: #ff9492; --tk-var: #e3b341; --tk-tag: #7ee787; }
-.fileview .tk-cm, .udiff .tk-cm { color: var(--tk-cm); font-style: italic; }
-.fileview .tk-str, .udiff .tk-str { color: var(--tk-str); }
-.fileview .tk-num, .udiff .tk-num { color: var(--tk-num); }
-.fileview .tk-kw, .udiff .tk-kw { color: var(--tk-kw); font-weight: 600; }
-.fileview .tk-ty, .udiff .tk-ty { color: var(--tk-ty); }
-.fileview .tk-fn, .udiff .tk-fn { color: var(--tk-fn); }
-.fileview .tk-key, .udiff .tk-key { color: var(--tk-key); }
-.fileview .tk-var, .udiff .tk-var { color: var(--tk-var); }
-.fileview .tk-tag, .udiff .tk-tag { color: var(--tk-tag); }
+.fileview, .udiff, .code-block { --tk-cm: #5b636d; --tk-str: #086a35; --tk-num: #9a4c00; --tk-kw: #7a25c9; --tk-ty: #0a6170; --tk-fn: #0550ae; --tk-key: #a3313a; --tk-var: #7a5000; --tk-tag: #116329; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) :is(.fileview, .udiff, .code-block) { --tk-cm: #9da5af; --tk-str: #7ee2a8; --tk-num: #ffb86b; --tk-kw: #d2a8ff; --tk-ty: #66d9e8; --tk-fn: #79c0ff; --tk-key: #ff9492; --tk-var: #e3b341; --tk-tag: #7ee787; } }
+:root[data-theme="dark"] :is(.fileview, .udiff, .code-block) { --tk-cm: #9da5af; --tk-str: #7ee2a8; --tk-num: #ffb86b; --tk-kw: #d2a8ff; --tk-ty: #66d9e8; --tk-fn: #79c0ff; --tk-key: #ff9492; --tk-var: #e3b341; --tk-tag: #7ee787; }
+:is(.fileview, .udiff, .code-block) .tk-cm { color: var(--tk-cm); font-style: italic; }
+:is(.fileview, .udiff, .code-block) .tk-str { color: var(--tk-str); }
+:is(.fileview, .udiff, .code-block) .tk-num { color: var(--tk-num); }
+:is(.fileview, .udiff, .code-block) .tk-kw { color: var(--tk-kw); font-weight: 600; }
+:is(.fileview, .udiff, .code-block) .tk-ty { color: var(--tk-ty); }
+:is(.fileview, .udiff, .code-block) .tk-fn { color: var(--tk-fn); }
+:is(.fileview, .udiff, .code-block) .tk-key { color: var(--tk-key); }
+:is(.fileview, .udiff, .code-block) .tk-var { color: var(--tk-var); }
+:is(.fileview, .udiff, .code-block) .tk-tag { color: var(--tk-tag); }
 `;
 function fileBody(rel, text, view) {
   return rel.endsWith(".md") && view !== "source" ? `<div class="fileview md">${renderMarkdownFile(text, rel)}</div>` : `<div class="fileview source">${codeView(text, rel)}</div>`;
@@ -10008,6 +10470,14 @@ var BLOCK_CSS = `/* Blocks in the centre */
 .block-title { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px; }
 .prose-block { max-width: 70ch; cursor: pointer; padding: 8px 12px; margin-left: -12px; border-radius: var(--radius-sm); border: 1px solid transparent; }
 .prose-block:hover { background: var(--code-bg); }
+.code-block { max-width: 100ch; cursor: pointer; padding: 8px 12px; margin-left: -12px; border-radius: var(--radius-sm); border: 1px solid transparent; }
+.code-block:hover { border-color: var(--line); }
+.code-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.code-lang { font: 600 11px var(--mono); text-transform: uppercase; }
+.code-head .copy { padding: 1px 8px; font-size: 11px; border-radius: 999px; }
+.code-block pre.code { font: 12.5px/1.5 var(--mono); white-space: pre; tab-size: 4; background: var(--code-bg); border-radius: var(--radius-sm); padding: 10px 12px; margin: 0; }
+.code-caption { margin-top: 6px; font-size: 13px; }
+.code-block.on { border-color: var(--accent); background: var(--accent-soft); }
 .prose-block.on { border-color: var(--accent); background: var(--accent-soft); }
 
 /* Annotated text */
@@ -10065,7 +10535,9 @@ var FIGURE_CSS = `/* figure */
 .fig figcaption { font-size: 12px; color: var(--muted); padding: 8px 4px 2px; }
 .fig figcaption a { margin-left: 6px; }
 /* diagrams: sequence and flowchart, inline SVG, selection and hover through data-node */
-.diagram-wrap { overflow-x: auto; padding: 6px 0 2px; display: flex; justify-content: center; }
+/* wide diagrams break out to the pane width (.left is a size container); assumes a centred, unpadded parent; the expand button sits in the padding above the drawing */
+.diagram-bleed { margin-inline: calc(50% - 50cqw); }
+.diagram-wrap { width: fit-content; max-width: 100%; margin: 0 auto; overflow-x: auto; padding: 38px 0 2px; display: flex; justify-content: center; }
 .diagram { display: block; font: 12px var(--sans); max-width: 100%; height: auto; }
 .diagram .part { fill: var(--pane); stroke: var(--line-strong); }
 .diagram .part-label { fill: var(--fg); font-weight: 600; font-family: var(--mono); font-size: 11.5px; }
@@ -10387,7 +10859,7 @@ body:not(.right-pinned):not(.right-open) .dock-r.hover .right { opacity: 1; visi
 .nav-q .dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--danger); box-shadow: 0 0 0 3px var(--danger-soft); }
 .nav-q.answered .dot { background: var(--ok); box-shadow: 0 0 0 3px var(--ok-soft); }
 .nav-q.answered .nav-title { color: var(--muted); }
-.left { overflow: auto; height: 100%; }
+.left { overflow: auto; height: 100%; container-type: inline-size; }
 .left-inner { max-width: 980px; margin: 0 auto; }
 .right { background: var(--pane); border-left: 1px solid var(--line); overflow: auto; height: 100%; }
 body.right-pinned .right .pin[data-close-right] { display: none; }
@@ -11066,13 +11538,13 @@ function warnDoc(doc) {
 }
 
 // src/lib/files.ts
-import { closeSync as closeSync4, openSync as openSync4, readSync, realpathSync as realpathSync2, statSync as statSync6 } from "node:fs";
+import { closeSync as closeSync4, openSync as openSync4, readSync, realpathSync as realpathSync2, statSync as statSync7 } from "node:fs";
 import { dirname as dirname4, join as join8, posix as posix3, relative as relative2, resolve as resolve4, sep } from "node:path";
 function projectRoot(from) {
   let d = resolve4(from);
   for (;; ) {
     try {
-      statSync6(join8(d, ".git"));
+      statSync7(join8(d, ".git"));
       return d;
     } catch {}
     const up = dirname4(d);
@@ -11167,7 +11639,7 @@ class ProjectFiles {
         return;
       if (!this.#all.has(relative2(realRoot, path).split(sep).join("/")))
         return;
-      const size = statSync6(path).size;
+      const size = statSync7(path).size;
       if (media)
         return size > MAX_MEDIA ? undefined : { path, media };
       if (size > MAX_TEXT || looksBinary(path))
@@ -11434,9 +11906,17 @@ var PART_NOTES = {
 };
 var BLOCK_NOTES = {
   prose: {
-    about: "A few paragraphs of text. One item. A document can be a single long `prose` block. The page renders only this. A blank line starts a new paragraph. Inline code goes in backticks. Bold is `**bold**`. Links are `[label](link)`. Wikilinks are `[[wikilinks]]`. A bullet list is a paragraph where every line starts with `- `. A line of text above the dashes makes the whole paragraph plain text. Headings, `*italic*`, numbered lists, nested lists and tables show as typed. Code fences do not render: their backticks become empty code spans, so do not use them. Use the block `title` for a heading. A single line break inside a paragraph becomes a space. The markdown export (`render --out x.md`) pastes the text as written, so there headings and fences work.",
+    about: "A few paragraphs of text. One item. A document can be a single long `prose` block. The page renders only this. A blank line starts a new paragraph. Inline code goes in backticks. Bold is `**bold**`. Links are `[label](link)`. Wikilinks are `[[wikilinks]]`. A bullet list is a paragraph where every line starts with `- `. A line of text above the dashes makes the whole paragraph plain text. Headings, `*italic*`, numbered lists, nested lists and tables show as typed. Code fences do not render: their backticks become empty code spans. Use a `code` block to show a listing. Use the block `title` for a heading. A single line break inside a paragraph becomes a space. The markdown export (`render --out x.md`) pastes the text as written, so there headings and fences work.",
     fields: {
       text: "The text."
+    }
+  },
+  code: {
+    about: "A short piece of code shown exactly as written: a signature, a doc comment or a usage example. One item. Line breaks, indentation, tabs and blank lines stay as given, and nothing in it is read as markdown or HTML. Long lines scroll sideways. The block has a Copy button, and the markdown export writes it as a fenced code block. Use `annotated-text` for code with numbered notes, and `diff` for a change.",
+    fields: {
+      code: "The code, as written. Must not be blank.",
+      language: "A short language name such as `ts`, `py` or `sql`. It colours the code and labels the fence in the markdown export. A name with no colour rules shows plain. Up to 20 letters, digits or `+ # . -`.",
+      caption: "Prose under the listing: what it is for. Inline code and bold work."
     }
   },
   figure: {
@@ -12031,6 +12511,17 @@ var EXAMPLES = {
 
 This page explains why.`
   },
+  code: {
+    id: "sig-create",
+    type: "code",
+    title: "createOrder",
+    language: "ts",
+    code: `export function createOrder(
+  cart: Cart,
+  opts?: { dryRun?: boolean },
+): Order`,
+    caption: "The public entry point. `dryRun` skips the write."
+  },
   figure: {
     id: "mockup",
     type: "figure",
@@ -12402,7 +12893,7 @@ async function main4(argv, ctx) {
 
 // src/commands/serve.ts
 import { createHash as createHash5, randomBytes as randomBytes3, timingSafeEqual } from "node:crypto";
-import { existsSync as existsSync5, readdirSync as readdirSync4, readFileSync as readFileSync8, realpathSync as realpathSync3, statSync as statSync7 } from "node:fs";
+import { existsSync as existsSync5, readdirSync as readdirSync4, readFileSync as readFileSync8, realpathSync as realpathSync3, statSync as statSync8 } from "node:fs";
 import {
   createServer
 } from "node:http";
@@ -12414,7 +12905,7 @@ var str = (v) => typeof v === "string" ? undefined : "must be a string";
 var num = (v) => typeof v === "number" ? undefined : "must be a number";
 var bool = (v) => typeof v === "boolean" ? undefined : "must be true or false";
 var strings = (v) => Array.isArray(v) && v.every((s) => typeof s === "string") ? undefined : "must be an array of strings";
-function shape17(required, optional = {}) {
+function shape18(required, optional = {}) {
   return (v) => {
     if (!isObj2(v))
       return "must be an object";
@@ -12455,14 +12946,14 @@ var record = (item) => (v) => {
   }
   return;
 };
-var message = shape17({
+var message = shape18({
   id: str,
   from: (v) => v === "agent" || v === "reviewer" ? undefined : "must be agent or reviewer",
   text: str,
   at: str
 }, { sent: str, revision: num, action: str });
-var pastChoice = shape17({ selected: strings, at: str }, { note: str, ask: str, revision: num });
-var choice = shape17({ selected: strings, at: str }, {
+var pastChoice = shape18({ selected: strings, at: str }, { note: str, ask: str, revision: num });
+var choice = shape18({ selected: strings, at: str }, {
   note: str,
   hash: str,
   revision: num,
@@ -12471,10 +12962,10 @@ var choice = shape17({ selected: strings, at: str }, {
   sent: str,
   tab: str,
   replies: list(message),
-  reopened: shape17({ at: str }, { revision: num, closed: bool, resolution: str, cleared: str })
+  reopened: shape18({ at: str }, { revision: num, closed: bool, resolution: str, cleared: str })
 });
-var comment = shape17({ id: str, node: str, text: str, at: str }, { by: str, resolved: bool, sent: str, replies: list(message), selector: shape17({ type: str }) });
-var answers = shape17({
+var comment = shape18({ id: str, node: str, text: str, at: str }, { by: str, resolved: bool, sent: str, replies: list(message), selector: shape18({ type: str }) });
+var answers = shape18({
   doc: str,
   updated: str,
   verdict: (v) => isVerdict(v) ? undefined : "is not a known verdict",
@@ -12900,7 +13391,7 @@ function startServer(opts) {
         const links = docIds().filter((d) => d !== id).map((d) => ({ href: `/d/${d}`, label: title(d) }));
         return send(200, renderDoc(readDoc(id), [{ href: "/", label: "All documents" }, ...links], {
           storybook: opts.storybook,
-          updated: statSync7(join10(dir, `${id}.json`)).mtime
+          updated: statSync8(join10(dir, `${id}.json`)).mtime
         }), undefined, { "content-security-policy": pageCsp(opts.storybook) });
       }
       if (area === "a" && req.method === "GET") {
@@ -13074,7 +13565,7 @@ function mediaFile2(folder, rel) {
     return;
   try {
     const real = realpathSync3(resolve7(folder, rel));
-    if (!real.startsWith(realpathSync3(folder) + sep2) || !statSync7(real).isFile())
+    if (!real.startsWith(realpathSync3(folder) + sep2) || !statSync8(real).isFile())
       return;
     return real;
   } catch {

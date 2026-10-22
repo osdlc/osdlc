@@ -25,7 +25,7 @@ each version shipped.
 
 ## Current version
 
-**v0.15.0**
+**v0.17.0**
 
 ## Install
 

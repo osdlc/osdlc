@@ -1,0 +1,43 @@
+{
+  "id": "order-api",
+  "title": "The order API as written",
+  "summary": "Three listings from the order module: a signature, its doc comment and a usage example. Explanatory: no questions.",
+  "created": "2026-10-21",
+  "repo": {
+    "remote": "https://github.com/acme/shop",
+    "commit": "9f3c2a1d4e5b6c7d8e9f0a1b2c3d4e5f67890abc"
+  },
+  "blocks": [
+    {
+      "id": "intro",
+      "type": "prose",
+      "text": "`createOrder` is the only public entry point. The listings below are copied from `src/orders.ts` and keep their line breaks and indentation."
+    },
+    {
+      "id": "sig",
+      "type": "code",
+      "title": "Signature",
+      "language": "ts",
+      "code": "export function createOrder(\n  cart: Cart,\n  opts?: { dryRun?: boolean },\n): Order",
+      "caption": "The public entry point. `dryRun` skips the write.",
+      "source": {
+        "uri": "src/orders.ts",
+        "range": { "start": { "line": 12, "character": 0 }, "end": { "line": 16, "character": 0 } }
+      }
+    },
+    {
+      "id": "doc",
+      "type": "code",
+      "title": "Doc comment",
+      "language": "ts",
+      "code": "/**\n * Turns a cart into an order.\n *\n * @param cart  the cart to buy, checked for stock\n * @param opts  `dryRun` prices the order without saving it\n * @throws OutOfStock when a line has no stock\n */"
+    },
+    {
+      "id": "use",
+      "type": "code",
+      "title": "Usage",
+      "language": "ts",
+      "code": "const order = createOrder(cart, { dryRun: true })\nif (order.total > limit) {\n  throw new Error('over the limit')\n}"
+    }
+  ]
+}

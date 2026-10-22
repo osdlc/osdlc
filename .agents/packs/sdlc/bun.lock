@@ -6,36 +6,37 @@
       "name": "sdlc-plugin-runtime-deps",
       "dependencies": {
         "@hono/node-server": "^2.0.8",
+        "@kioac/fleet": "file:./vendor/kioac-fleet-0.3.0.tgz",
         "@modelcontextprotocol/sdk": "^1.30.1",
-        "@osdlc/agent-call": "0.4.1",
+        "@osdlc/agent-call": "0.7.1",
+        "@osdlc/agent-dev": "file:./vendor/osdlc-agent-dev-0.3.0.tgz",
+        "@osdlc/agent-session": "file:./vendor/osdlc-agent-session-0.3.3.tgz",
+        "@osdlc/cli-tool": "file:./vendor/osdlc-cli-tool-0.4.0.tgz",
+        "@osdlc/code-host": "file:./vendor/osdlc-code-host-0.3.1.tgz",
         "@osdlc/color": "1.0.1",
-        "@osdlc/command-seam": "0.4.0",
-        "@osdlc/config-layers": "file:./vendor/osdlc-config-layers-0.6.0.tgz",
+        "@osdlc/command-seam": "0.8.0",
+        "@osdlc/config-layers": "0.6.0",
+        "@osdlc/detect-harness": "0.4.1",
+        "@osdlc/detect-runners": "file:./vendor/osdlc-detect-runners-0.5.4.tgz",
+        "@osdlc/diffkit": "file:./vendor/osdlc-diffkit-0.1.0.tgz",
         "@osdlc/etag-write": "0.2.0",
-        "@osdlc/frontmatter-lossless": "1.0.0",
-        "@osdlc/gfm-table": "0.2.0",
+        "@osdlc/frontmatter-lossless": "1.1.0",
+        "@osdlc/gfm-table": "0.3.0",
+        "@osdlc/intersect": "0.3.0",
+        "@osdlc/manifest-graph": "file:./vendor/osdlc-manifest-graph-0.4.0.tgz",
+        "@osdlc/markdown-link": "file:./vendor/osdlc-markdown-link-0.1.0.tgz",
+        "@osdlc/npm-binary": "file:./vendor/osdlc-npm-binary-0.1.0.tgz",
+        "@osdlc/path-guard": "0.2.4",
+        "@osdlc/pr-update": "file:./vendor/osdlc-pr-update-0.6.0.tgz",
+        "@osdlc/repo-cleaner": "file:./vendor/osdlc-repo-cleaner-0.4.3.tgz",
         "@osdlc/tiered-dirs": "0.3.0",
-        "@osdlc/typed-gh": "file:./vendor/osdlc-typed-gh-0.4.1.tgz",
-        "@osdlc/typed-git": "file:./vendor/osdlc-typed-git-0.5.0.tgz",
+        "@osdlc/tool-router": "file:./vendor/osdlc-tool-router-0.3.1.tgz",
+        "@osdlc/typed-gh": "0.6.0",
+        "@osdlc/typed-git": "0.5.3",
+        "@osdlc/yaml-splice": "0.2.0",
         "@secretlint/core": "13.0.7",
         "@secretlint/secretlint-rule-preset-recommend": "13.0.7",
-        "@sksizer/agent-dev": "file:./vendor/sksizer-agent-dev-0.3.0.tgz",
-        "@sksizer/agent-plugin": "file:./vendor/sksizer-agent-plugin-0.3.1.tgz",
-        "@sksizer/agent-session": "file:./vendor/sksizer-agent-session-0.3.3.tgz",
-        "@sksizer/cli-tool": "file:./vendor/sksizer-cli-tool-0.4.0.tgz",
-        "@sksizer/code-host": "file:./vendor/sksizer-code-host-0.3.1.tgz",
-        "@sksizer/detect-runners": "file:./vendor/sksizer-detect-runners-0.5.4.tgz",
-        "@sksizer/fleet": "file:./vendor/sksizer-fleet-0.3.0.tgz",
-        "@sksizer/manifest-graph": "file:./vendor/sksizer-manifest-graph-0.4.0.tgz",
-        "@sksizer/npm-binary": "file:./vendor/sksizer-npm-binary-0.1.0.tgz",
-        "@sksizer/path-guard": "file:./vendor/sksizer-path-guard-0.2.2.tgz",
-        "@sksizer/pr-stats": "file:./vendor/sksizer-pr-stats-0.1.0.tgz",
-        "@sksizer/pr-update": "file:./vendor/sksizer-pr-update-0.5.0.tgz",
-        "@sksizer/repo-cleaner": "file:./vendor/sksizer-repo-cleaner-0.4.3.tgz",
         "@sksizer/sdlc-tool": "file:./vendor/sksizer-sdlc-tool-0.2.0.tgz",
-        "@sksizer/tool-router": "file:./vendor/sksizer-tool-router-0.3.1.tgz",
-        "@sksizer/wikilink": "file:./vendor/sksizer-wikilink-0.1.0.tgz",
-        "@sksizer/yaml-splice": "file:./vendor/sksizer-yaml-splice-0.1.4.tgz",
         "commander": "^12.1.0",
         "eta": "^4.6.0",
         "hono": "^4.6.14",
@@ -56,35 +57,35 @@
     "node-pty",
   ],
   "overrides": {
-    "@osdlc/agent-call": "0.4.1",
+    "@kioac/fleet": "file:./vendor/kioac-fleet-0.3.0.tgz",
+    "@osdlc/agent-call": "0.7.1",
+    "@osdlc/agent-dev": "file:./vendor/osdlc-agent-dev-0.3.0.tgz",
+    "@osdlc/agent-session": "file:./vendor/osdlc-agent-session-0.3.3.tgz",
+    "@osdlc/cli-tool": "file:./vendor/osdlc-cli-tool-0.4.0.tgz",
+    "@osdlc/code-host": "file:./vendor/osdlc-code-host-0.3.1.tgz",
     "@osdlc/color": "1.0.1",
-    "@osdlc/command-seam": "0.4.0",
-    "@osdlc/config-layers": "file:./vendor/osdlc-config-layers-0.6.0.tgz",
+    "@osdlc/command-seam": "0.8.0",
+    "@osdlc/config-layers": "0.6.0",
+    "@osdlc/detect-harness": "0.4.1",
+    "@osdlc/detect-runners": "file:./vendor/osdlc-detect-runners-0.5.4.tgz",
+    "@osdlc/diffkit": "file:./vendor/osdlc-diffkit-0.1.0.tgz",
     "@osdlc/etag-write": "0.2.0",
-    "@osdlc/frontmatter-lossless": "1.0.0",
-    "@osdlc/gfm-table": "0.2.0",
+    "@osdlc/frontmatter-lossless": "1.1.0",
+    "@osdlc/gfm-table": "0.3.0",
+    "@osdlc/intersect": "0.3.0",
+    "@osdlc/manifest-graph": "file:./vendor/osdlc-manifest-graph-0.4.0.tgz",
+    "@osdlc/markdown-link": "file:./vendor/osdlc-markdown-link-0.1.0.tgz",
+    "@osdlc/npm-binary": "file:./vendor/osdlc-npm-binary-0.1.0.tgz",
+    "@osdlc/path-guard": "0.2.4",
+    "@osdlc/pr-update": "file:./vendor/osdlc-pr-update-0.6.0.tgz",
+    "@osdlc/repo-cleaner": "file:./vendor/osdlc-repo-cleaner-0.4.3.tgz",
+    "@osdlc/system-model": "file:./vendor/osdlc-system-model-0.2.0.tgz",
     "@osdlc/tiered-dirs": "0.3.0",
-    "@osdlc/typed-gh": "file:./vendor/osdlc-typed-gh-0.4.1.tgz",
-    "@osdlc/typed-git": "file:./vendor/osdlc-typed-git-0.5.0.tgz",
-    "@sksizer/agent-dev": "file:./vendor/sksizer-agent-dev-0.3.0.tgz",
-    "@sksizer/agent-plugin": "file:./vendor/sksizer-agent-plugin-0.3.1.tgz",
-    "@sksizer/agent-session": "file:./vendor/sksizer-agent-session-0.3.3.tgz",
-    "@sksizer/cli-tool": "file:./vendor/sksizer-cli-tool-0.4.0.tgz",
-    "@sksizer/code-host": "file:./vendor/sksizer-code-host-0.3.1.tgz",
-    "@sksizer/detect-runners": "file:./vendor/sksizer-detect-runners-0.5.4.tgz",
-    "@sksizer/fleet": "file:./vendor/sksizer-fleet-0.3.0.tgz",
-    "@sksizer/intersect": "file:./vendor/sksizer-intersect-0.2.1.tgz",
-    "@sksizer/manifest-graph": "file:./vendor/sksizer-manifest-graph-0.4.0.tgz",
-    "@sksizer/npm-binary": "file:./vendor/sksizer-npm-binary-0.1.0.tgz",
-    "@sksizer/path-guard": "file:./vendor/sksizer-path-guard-0.2.2.tgz",
-    "@sksizer/pr-stats": "file:./vendor/sksizer-pr-stats-0.1.0.tgz",
-    "@sksizer/pr-update": "file:./vendor/sksizer-pr-update-0.5.0.tgz",
-    "@sksizer/repo-cleaner": "file:./vendor/sksizer-repo-cleaner-0.4.3.tgz",
+    "@osdlc/tool-router": "file:./vendor/osdlc-tool-router-0.3.1.tgz",
+    "@osdlc/typed-gh": "0.6.0",
+    "@osdlc/typed-git": "0.5.3",
+    "@osdlc/yaml-splice": "0.2.0",
     "@sksizer/sdlc-tool": "file:./vendor/sksizer-sdlc-tool-0.2.0.tgz",
-    "@sksizer/system-model": "file:./vendor/sksizer-system-model-0.2.0.tgz",
-    "@sksizer/tool-router": "file:./vendor/sksizer-tool-router-0.3.1.tgz",
-    "@sksizer/wikilink": "file:./vendor/sksizer-wikilink-0.1.0.tgz",
-    "@sksizer/yaml-splice": "file:./vendor/sksizer-yaml-splice-0.1.4.tgz",
     "markdown-contract": "file:./vendor/markdown-contract-0.2.1.tgz",
   },
   "packages": {
@@ -92,27 +93,63 @@
 
     "@hono/node-server": ["@hono/node-server@2.1.5", "", { "peerDependencies": { "hono": "^4 || ^5.0.0-0" } }, "sha512-MgP/I06GdvsilDspMk/qmRzpk8LOUStP6jFAbSRi40W09DhoyUn+Mj7eyKICPqeYKybOjVFLVIAQzvu1bfIa7Q=="],
 
+    "@kioac/fleet": ["@kioac/fleet@./vendor/kioac-fleet-0.3.0.tgz", { "dependencies": { "@osdlc/tiered-dirs": "0.3.0" } }, "sha512-SVCQ0ofQpigkrQhDuZ4LdiCZ6ECV3sQgx8RxGD7jMW/aLcFDjJgI1O0lCBDiIt60gg3UYTvpoB6JNtRmBV54IA=="],
+
     "@modelcontextprotocol/sdk": ["@modelcontextprotocol/sdk@1.32.1", "", { "dependencies": { "@hono/node-server": "^1.19.9 || ^2.0.5", "ajv": "^8.17.1", "ajv-formats": "^3.0.1", "content-type": "^1.0.5", "cors": "^2.8.5", "cross-spawn": "^7.0.5", "eventsource": "^3.0.2", "eventsource-parser": "^3.0.0", "express": "^5.2.1", "express-rate-limit": "^8.2.1", "hono": "^4.11.4", "jose": "^6.1.3", "json-schema-typed": "^8.0.2", "pkce-challenge": "^5.0.0", "raw-body": "^3.0.0", "zod": "^3.25 || ^4.0", "zod-to-json-schema": "^3.25.1" }, "peerDependencies": { "@cfworker/json-schema": "^4.1.1" }, "optionalPeers": ["@cfworker/json-schema"] }, "sha512-2DdE+SJDtzLEEWzY1ZjY7Q+VcPhcV1KisD3zI4u0XZyktsjHum1mwbMI+JaulUBi2OZk+KJAi2uPXzxichPkdw=="],
 
-    "@osdlc/agent-call": ["@osdlc/agent-call@0.4.1", "", {}, "sha512-rSNrjhP/fEcdlOCzGhtr7IJHpmx6MQteHUt34WCdM6pvBKb3AgVWyW/7QmGFoScq+TQbNGU7aIs7lQ0uKnyIIA=="],
+    "@osdlc/agent-call": ["@osdlc/agent-call@0.7.1", "", {}, "sha512-sF7Q4ffltUSbbD9iQWagJ3j2AMG0edTYbvBCXTOeQP7uzMUZZDwUHnVpENKoxIs0U5xQrXpjUoV3tlB7q7tN1Q=="],
+
+    "@osdlc/agent-dev": ["@osdlc/agent-dev@./vendor/osdlc-agent-dev-0.3.0.tgz", { "dependencies": { "@osdlc/agent-call": "0.7.1", "@osdlc/command-seam": "0.8.0", "@osdlc/intersect": "0.3.0", "@osdlc/path-guard": "0.2.4", "@osdlc/typed-git": "0.5.3" }, "bin": { "dfv": "./src/cli.ts" } }, "sha512-ST/kEFUvr0wsG8Gb4aYOEAXgXZsNPjzWeldjjQQUDkObAFIwxxzJuVA/ZNrJUfYkShlM5HCZacVykkJmXhuqLQ=="],
+
+    "@osdlc/agent-session": ["@osdlc/agent-session@./vendor/osdlc-agent-session-0.3.3.tgz", { "dependencies": { "@osdlc/command-seam": "0.8.0" }, "peerDependencies": { "zod": "^4" } }, "sha512-tvyni/6AOdIDj0SEssaniYR6F4HhC3ASCF5tXQjDCfxx1APEYNVg2B7DjfVv4FKosgXe7blBFY4h16jvd3hR8w=="],
+
+    "@osdlc/cli-tool": ["@osdlc/cli-tool@./vendor/osdlc-cli-tool-0.4.0.tgz", { "dependencies": { "@osdlc/config-layers": "0.6.0", "@osdlc/etag-write": "0.2.0", "@osdlc/path-guard": "0.2.4", "commander": "^12.1.0" } }, "sha512-OB6f4tbtBwkz/tu7mq7x27Y2AUhVGxQRbxEhgVpK0yuyRX+lg4jPZRA7B6KJT1wbxFREOgdXeJb/tyvhdOOeDg=="],
+
+    "@osdlc/code-host": ["@osdlc/code-host@./vendor/osdlc-code-host-0.3.1.tgz", { "dependencies": { "@osdlc/command-seam": "0.8.0", "@osdlc/config-layers": "0.6.0", "@osdlc/typed-gh": "0.6.0", "@osdlc/typed-git": "0.5.3", "zod": "4.4.3" } }, "sha512-hFEZn2eUWuOyzZwEEHxdQEKKu8py2KLo9o9pyDm55YzacHMVPzGj0HKRFDYnxhMFDX5PZ5SC1yA274EHZ8TjBg=="],
 
     "@osdlc/color": ["@osdlc/color@1.0.1", "", {}, "sha512-lkv3ZUwEhHRdzlcsxKGp0ScSn8Zrh7sNlIcR9sr7yNcJ6mjFyEHrcrgJHq+GiYFXX0is1wjJ5CoMtp5Umdw6Wg=="],
 
-    "@osdlc/command-seam": ["@osdlc/command-seam@0.4.0", "", { "peerDependencies": { "@types/node": "*" }, "optionalPeers": ["@types/node"] }, "sha512-x5CXVBaalLzL2yRi6aRzBsm0HqqV/UAJljfCvbnRsNAf+yGuDhMEXFNahOmagmMHcXuakPELO3gwdil/gkzuUQ=="],
+    "@osdlc/command-seam": ["@osdlc/command-seam@0.8.0", "", { "peerDependencies": { "@types/node": "*" }, "optionalPeers": ["@types/node"] }, "sha512-HT8PLMMOpu5vPkHa1+iNeMGgxNt1AY3Q3RAwfNd4pWXKgAuZP15AQw+hIxlAvpLhUUrYEVhDxLc4sRmrip1wfA=="],
 
-    "@osdlc/config-layers": ["@osdlc/config-layers@./vendor/osdlc-config-layers-0.6.0.tgz", { "dependencies": { "@osdlc/etag-write": "0.2.0", "@osdlc/gfm-table": "0.2.0", "@osdlc/tiered-dirs": "0.3.0", "@sksizer/yaml-splice": "^0.1.1", "yaml": "^2.6.1", "zod": "4.4.3" } }, "sha512-oP2pgy1dNn18hl900h9J9t53PGcNGxUscvvw9RCpKsaOWNcby8dHGR2wZo8LkZ2ISbN8EloA4TStmg40zryCFw=="],
+    "@osdlc/config-layers": ["@osdlc/config-layers@0.6.0", "", { "dependencies": { "@osdlc/etag-write": "^0.2.0", "@osdlc/gfm-table": "^0.3.0", "@osdlc/tiered-dirs": "^0.3.0", "@osdlc/yaml-splice": "^0.2.0", "yaml": "^2.6.1" }, "peerDependencies": { "zod": "^4" } }, "sha512-cH/PVfzHJuBJLa0RykxfpdObVunu+cMAj8lB1PxmCu0hhhdFMZAvW1aadxXYBbt7cV/ZCrj8KJk1L7kSvoe0EA=="],
+
+    "@osdlc/detect-harness": ["@osdlc/detect-harness@0.4.1", "", { "dependencies": { "@osdlc/command-seam": "^0.8.0", "@osdlc/frontmatter-lossless": "^1.1.0", "@osdlc/path-guard": "^0.2.4", "smol-toml": "^1.7.0", "yaml": "^2.9.0" }, "peerDependencies": { "zod": "^4" } }, "sha512-ZPUoy1MiNvpKq+CKuVPVRgl8ctoYwkg0hu4hh3PGWI+pL2iiBnGqdfhQ54fi3DZxwijxPVJGb76vLMDv1E/fKQ=="],
+
+    "@osdlc/detect-runners": ["@osdlc/detect-runners@./vendor/osdlc-detect-runners-0.5.4.tgz", { "dependencies": { "@osdlc/cli-tool": "^0.4.0", "@osdlc/command-seam": "0.8.0", "@osdlc/config-layers": "0.6.0", "@osdlc/etag-write": "0.2.0", "@sksizer/sdlc-tool": "^0.2.0", "smol-toml": "^1.7.0" }, "bin": { "detect-runners": "./bin/detect-runners.js" } }, "sha512-ByY+31v14hNAZWtbpVKcyDb7zebhL0w3ROg1ZGqfaUA91jvX6u0j4fTJEkVbnDuDY/LndYBoN/m+d8/9oYUDnA=="],
+
+    "@osdlc/diffkit": ["@osdlc/diffkit@./vendor/osdlc-diffkit-0.1.0.tgz", { "dependencies": { "@osdlc/cli-tool": "^0.4.0", "@osdlc/command-seam": "0.8.0", "@osdlc/typed-gh": "0.6.0", "@osdlc/typed-git": "0.5.3", "zod": "4.4.3" }, "peerDependencies": { "typescript": ">=5" }, "optionalPeers": ["typescript"], "bin": { "diffkit": "./bin/diffkit.js" } }, "sha512-cVhgqA/TB9ukQFLcNDz15U+0h0AFdJgZ9K/jTkzZ5MDGE5cCOgHBYUyG17Lmc9ZUH8eDIUwTVZ/TUZ6/2nQ+tg=="],
 
     "@osdlc/etag-write": ["@osdlc/etag-write@0.2.0", "", {}, "sha512-TXsybAPhZPVNDyeqZDaTHdu9jzpLroZEh45+0M0jdBeCvAPHAAnElqtEVjRcRmfVRDrBPyYpYULiAxlG3fmnbQ=="],
 
-    "@osdlc/frontmatter-lossless": ["@osdlc/frontmatter-lossless@1.0.0", "", {}, "sha512-XUIEeae0XvOLxeTfS03wlSDA0rcWXTIIM/QHbdHBBbQE4U2t6W4H8X6DRZEqrtJSqTnVZCVz8A8E4MHZmvKSCg=="],
+    "@osdlc/frontmatter-lossless": ["@osdlc/frontmatter-lossless@1.1.0", "", {}, "sha512-6CiuYzsYwxEKdEDAVpChAFr96tjOKTj6SplZOiyY0M0t9BplodY+97tbJpZgOk7SO7e52PwzU9D3ewICgKJqng=="],
 
-    "@osdlc/gfm-table": ["@osdlc/gfm-table@0.2.0", "", {}, "sha512-mtd3hZhxutLTV2IiZJBrHE31o4R5RMq7rEsvqryCzs78W4qbLhcOcAN1JpiQrlvSO1W06PZrPcFlmh0hsrO69Q=="],
+    "@osdlc/gfm-table": ["@osdlc/gfm-table@0.3.0", "", {}, "sha512-TDtWuuKk6d/4vWvtTt+iYtcCYDAhdacXObPBvwr89wb/GOD1GdlFftSNCBa8QGh/NfAWelgeXMPNLA9pDh+D2Q=="],
+
+    "@osdlc/intersect": ["@osdlc/intersect@0.3.0", "", { "dependencies": { "tinyglobby": "^0.2.17" } }, "sha512-YBrG77yM8RSB/1yUAJwCFENEE2v5bdDRhoQhRWaBbq9Nng8+GT5CzucHTrs633CcXHXgNPZ2X8BAyTV7vOvmCw=="],
+
+    "@osdlc/manifest-graph": ["@osdlc/manifest-graph@./vendor/osdlc-manifest-graph-0.4.0.tgz", { "dependencies": { "@osdlc/detect-runners": "0.5.4", "@osdlc/system-model": "0.2.0" }, "bin": { "manifest-graph": "./src/cli.ts" } }, "sha512-y8f62p2v017ZunxoZhOB9wUCT2j/v4SgbcRvW667M4SGhTreV+haiE8YyH3fNVgUO2nRNZAjtcbN5eGxnUUNhQ=="],
+
+    "@osdlc/markdown-link": ["@osdlc/markdown-link@./vendor/osdlc-markdown-link-0.1.0.tgz", {}, "sha512-/BzR6UyrIfWi3sBPoWgtkjrdIwzwAfV5BHXGEPXmNrkKe6HY34Revp57PvVWvGQsBLsZNXXA/Kou/6k7EfZmWA=="],
+
+    "@osdlc/npm-binary": ["@osdlc/npm-binary@./vendor/osdlc-npm-binary-0.1.0.tgz", { "dependencies": { "@osdlc/command-seam": "0.8.0" } }, "sha512-R31LY0jDp78FLi3dcF97N5juE4aifS8pyn6kefqBCBB7SiTRKqisG9d8j4OnU1iQPDMxRDuZ7f3TwivoOHgU5A=="],
+
+    "@osdlc/path-guard": ["@osdlc/path-guard@0.2.4", "", {}, "sha512-N7pfvF/nSdw8d7laToY71ssKgvX/f8lyzjNdonxHvZMBfA6O505bXLyC7QtPSu1aJdDkFjdp2tZLN7v83u7b3A=="],
+
+    "@osdlc/pr-update": ["@osdlc/pr-update@./vendor/osdlc-pr-update-0.6.0.tgz", { "dependencies": { "@osdlc/agent-call": "0.7.1", "@osdlc/cli-tool": "^0.4.0", "@osdlc/code-host": "^0.3.1", "@osdlc/command-seam": "0.8.0", "@osdlc/config-layers": "0.6.0", "@osdlc/etag-write": "0.2.0", "@osdlc/typed-git": "0.5.3", "yaml": "^2.6.1", "zod": "4.4.3" }, "bin": { "pr-update": "./bin/pr-update.js" } }, "sha512-weQLgf1QfCm3dw7WDNf/KmynrrL9DUJQc+OURnuFL8un+TwCbnXhSpIOZ2MEEJRWJRrHgrdk914JqfHu8sSvMA=="],
+
+    "@osdlc/repo-cleaner": ["@osdlc/repo-cleaner@./vendor/osdlc-repo-cleaner-0.4.3.tgz", { "dependencies": { "@osdlc/cli-tool": "^0.4.0", "@osdlc/command-seam": "0.8.0", "@osdlc/config-layers": "0.6.0", "@osdlc/path-guard": "0.2.4", "@osdlc/typed-gh": "0.6.0", "@osdlc/typed-git": "0.5.3", "zod": "4.4.3" }, "bin": { "repo-cleaner": "./bin/repo-cleaner.js" } }, "sha512-zKChQuhiqLo+x4IDl+8huhQTuyRwX9oa9/ZuhHo3e/KB9uZK2w5nQrEU2fz5TDefOKc83Z9+5cfU+i+bDNY4+w=="],
+
+    "@osdlc/system-model": ["@osdlc/system-model@./vendor/osdlc-system-model-0.2.0.tgz", {}, "sha512-cnf6oq8B/12UW6cXNH2SFiplYlUryy347Ed0jEArfyEV8IUOs6LtW0s/hnX2H/YtyVDXzmzn5rd02LIPL5ssUA=="],
 
     "@osdlc/tiered-dirs": ["@osdlc/tiered-dirs@0.3.0", "", {}, "sha512-ou0WYjD1d2xMfheHP5eI1rjn+RGHuAFI3cIPR2Dqx2yFHNo2MhmayPFxMv0c5MQheEG2Wz+gdKkNG5VPLCiwjg=="],
 
-    "@osdlc/typed-gh": ["@osdlc/typed-gh@./vendor/osdlc-typed-gh-0.4.1.tgz", { "dependencies": { "@osdlc/command-seam": "0.4.0", "@osdlc/typed-git": "^0.5.0" } }, "sha512-5w479rQuzgrdEHJSj0vDXEQ7WArUtYsrhhLszQWxxHG4CR2r9G7Eb30qDzzdZYq7ppud4s55qrjjJV1mDdy6qQ=="],
+    "@osdlc/tool-router": ["@osdlc/tool-router@./vendor/osdlc-tool-router-0.3.1.tgz", { "dependencies": { "@osdlc/agent-call": "0.7.1", "@osdlc/config-layers": "0.6.0", "zod": "4.4.3" } }, "sha512-ajF8ak0gnFsLu1LNyTXSc2XyuypExqzrzwNxI81DX2aYsRoTDnIreJrZEbEfIZ06LfzJsvp/7HhruWVM0i/P+w=="],
 
-    "@osdlc/typed-git": ["@osdlc/typed-git@./vendor/osdlc-typed-git-0.5.0.tgz", { "dependencies": { "@osdlc/command-seam": "0.4.0", "hosted-git-info": "^10.1.1" } }, "sha512-izEeelGG7wK4khhWcGrUUGJkvdPj0dcz1vDBA+pE3YFtsmQ9mMsIuWThG0SKtruvuVDG6hJcPZXQCFIxeqQ4Bg=="],
+    "@osdlc/typed-gh": ["@osdlc/typed-gh@0.6.0", "", { "dependencies": { "@osdlc/command-seam": "^0.8.0", "@osdlc/typed-git": "^0.5.3" } }, "sha512-1GnGVZjapXeIsEeSuRLexp3N4XnftvsK+M4gkm5JxS+SQkuC8Nmh1sSg2zV+znilya4NGLVkU5CebVTbu8tV6Q=="],
+
+    "@osdlc/typed-git": ["@osdlc/typed-git@0.5.3", "", { "dependencies": { "@osdlc/command-seam": "^0.8.0", "hosted-git-info": "^10.1.1" } }, "sha512-scRAyT8mNJLO04PhAf96ZDrVRQyIEgA4w9J3fsgJOya/OiEPrXIj/F79U8FJyA+jPCK6Iy8OER/OhFSusbxNXQ=="],
+
+    "@osdlc/yaml-splice": ["@osdlc/yaml-splice@0.2.0", "", {}, "sha512-YuWVMHNDxxI99qhfcRaFslUcoqTGGCvKUCxhj3ZZjH1aOueW2l8q2bGXbmcilcicTDsukHSlHeEJ+MtTY1AbUg=="],
 
     "@secretlint/core": ["@secretlint/core@13.0.7", "", { "dependencies": { "@secretlint/profiler": "13.0.7", "@secretlint/types": "13.0.7", "debug": "^4.4.3", "structured-source": "^4.0.0" } }, "sha512-IcOR87MpNjp/WTO7bVMsIj3qkhVD+Qr/oNaA0Xl4Ok1LqG4bjXu5RjiY0Kid70BoR9eCJgkoq5gNHDGXPx+o1g=="],
 
@@ -122,43 +159,7 @@
 
     "@secretlint/types": ["@secretlint/types@13.0.7", "", {}, "sha512-5DI1W8vTjBt5ZSrLXNMCX439f+36fzQLrSGi0JPu1vhBKl3QLxPu/ilPJ5x2Ul7pU3aWUrpRva9mvojSAi4h0A=="],
 
-    "@sksizer/agent-dev": ["@sksizer/agent-dev@./vendor/sksizer-agent-dev-0.3.0.tgz", { "dependencies": { "@osdlc/agent-call": "0.4.1", "@osdlc/command-seam": "0.4.0", "@osdlc/typed-git": "0.5.0", "@sksizer/intersect": "0.2.1", "@sksizer/path-guard": "0.2.2" }, "bin": { "dfv": "./dist/cli.js" } }, "sha512-075UQrTWnahkiMdgTCd6l18tfVqoH8A7FNoqKk0a81RuWZuTlpn/Lho8rUDFVNHc28RcpxWlAnOrxlRGxc+Bcw=="],
-
-    "@sksizer/agent-plugin": ["@sksizer/agent-plugin@./vendor/sksizer-agent-plugin-0.3.1.tgz", { "dependencies": { "@osdlc/frontmatter-lossless": "1.0.0", "markdown-contract": "0.2.1", "yaml": "^2.6.1", "zod": "4.4.3" } }, "sha512-OMirpbkR74olL2LkuYIPVr4Mn8UublNm7qKlNE+7VOMzSGWU+N2mMS2IoP5pLPWQkyOYEUC+msxcjH8hW7eDFw=="],
-
-    "@sksizer/agent-session": ["@sksizer/agent-session@./vendor/sksizer-agent-session-0.3.3.tgz", { "dependencies": { "@osdlc/command-seam": "0.4.0" }, "peerDependencies": { "zod": "^4" } }, "sha512-Gyytc76cfHYi1qfF4oUlt6oFMJ62kEN0QZ1U/hJonzSqh3ZAPxQb4hydp1jvu1gQUfd52Gs5m1mfbMGZ5NjFyQ=="],
-
-    "@sksizer/cli-tool": ["@sksizer/cli-tool@./vendor/sksizer-cli-tool-0.4.0.tgz", { "dependencies": { "@osdlc/config-layers": "^0.6.0", "@osdlc/etag-write": "0.2.0", "@sksizer/path-guard": "^0.2.2", "commander": "^12.1.0" } }, "sha512-vjGLP//b6Tovmma2sWvPPkBRYuh2EgDGi9H+sKr106tNMekwGNnwU60wl8hhP5+Ml/Gw6kZdCELDIaCASSFIMw=="],
-
-    "@sksizer/code-host": ["@sksizer/code-host@./vendor/sksizer-code-host-0.3.1.tgz", { "dependencies": { "@osdlc/command-seam": "0.4.0", "@osdlc/config-layers": "0.6.0", "@osdlc/typed-gh": "0.4.1", "@osdlc/typed-git": "0.5.0", "zod": "4.4.3" } }, "sha512-piO1W0XY0a2DzlfLSwQamvX8Utjt8uPATYKg4028yeHGCpL9nzBTZlLnTlPHE0pc0DDzM1ZhCcUFcsCI1DLT5Q=="],
-
-    "@sksizer/detect-runners": ["@sksizer/detect-runners@./vendor/sksizer-detect-runners-0.5.4.tgz", { "dependencies": { "@osdlc/command-seam": "0.4.0", "@osdlc/config-layers": "^0.6.0", "@osdlc/etag-write": "0.2.0", "@sksizer/cli-tool": "^0.4.0", "@sksizer/sdlc-tool": "^0.2.0", "smol-toml": "^1.7.0" }, "bin": { "detect-runners": "./bin/detect-runners.js" } }, "sha512-2xgnG9YlqhO1Hu3ctVFfdZkOOea/WFrHeQsqC5MM8MVhuTD4f7o9s/0Iz18CSuHl5GTvgOGrhHmIRSuBMPViHA=="],
-
-    "@sksizer/fleet": ["@sksizer/fleet@./vendor/sksizer-fleet-0.3.0.tgz", { "dependencies": { "@osdlc/tiered-dirs": "0.3.0" } }, "sha512-wirVcQHRmZhYbyTQLx7BFcxUy7zcwcHHtIcW/Bud/iSnauoHvVjvxb/hBZt2QAbZTLDzSHgfcxF8Fvq0nOc0Qw=="],
-
-    "@sksizer/intersect": ["@sksizer/intersect@./vendor/sksizer-intersect-0.2.1.tgz", { "dependencies": { "tinyglobby": "^0.2.17" } }, "sha512-CyDbNhgZQOcVM/QZYsB2Fd8cjV94UEhfZZClELP0OTO99KEm+lCWrmuhYO3uOb631JZT6VvAtdKV5436AAuCFQ=="],
-
-    "@sksizer/manifest-graph": ["@sksizer/manifest-graph@./vendor/sksizer-manifest-graph-0.4.0.tgz", { "dependencies": { "@sksizer/detect-runners": "0.5.4", "@sksizer/system-model": "0.2.0" }, "bin": { "manifest-graph": "./src/cli.ts" } }, "sha512-gahzh2lU9Spez8A6PgBwrrR+y/08ZjC2pzRvOS1OWBJCEiyBn+XlTpB8fJ/Ji7UdNXrZjd8c/bSIqCDi/kpiZg=="],
-
-    "@sksizer/npm-binary": ["@sksizer/npm-binary@./vendor/sksizer-npm-binary-0.1.0.tgz", { "dependencies": { "@osdlc/command-seam": "0.4.0" } }, "sha512-CZS+KoKTJaoT8e4tB4z6hQeh/RfxlatoHt6IMusVcrL8YwJupdOQqQkDGh5npqWEtkoyg7ltL0oBJh7GeWzV9Q=="],
-
-    "@sksizer/path-guard": ["@sksizer/path-guard@./vendor/sksizer-path-guard-0.2.2.tgz", {}, "sha512-GdavQwBCLGptNTtPR8IH5rgFI/A3W1OVAiF5R46/KuNKJz4KcntFlGgQZhu81cezQm+gZ5jYkZmEls4W85UKjw=="],
-
-    "@sksizer/pr-stats": ["@sksizer/pr-stats@./vendor/sksizer-pr-stats-0.1.0.tgz", { "dependencies": { "@osdlc/command-seam": "0.4.0", "@osdlc/typed-gh": "^0.4.0", "@osdlc/typed-git": "^0.5.0", "@sksizer/cli-tool": "^0.4.0", "zod": "4.4.3" }, "peerDependencies": { "typescript": ">=5" }, "optionalPeers": ["typescript"], "bin": { "pr-stats": "./bin/pr-stats.js" } }, "sha512-H1LRfvHzbUTPlDnEJnts6J7Ql/EfbOSau6kSdVYdA1iu5/EK/GHvz0LCPzXmqXSgwN3fnaM1S7z8pBjTAKG4/g=="],
-
-    "@sksizer/pr-update": ["@sksizer/pr-update@./vendor/sksizer-pr-update-0.5.0.tgz", { "dependencies": { "@osdlc/command-seam": "0.4.0", "@osdlc/config-layers": "^0.6.0", "@osdlc/etag-write": "0.2.0", "@osdlc/typed-git": "^0.5.0", "@sksizer/cli-tool": "^0.4.0", "@sksizer/code-host": "^0.3.1", "ink": "^5", "react": "^18", "yaml": "^2.6.1", "zod": "4.4.3" }, "bin": { "pr-update": "./bin/pr-update.js" } }, "sha512-sI9/5gk/xS5qKo/eZRFHZfSPy40SS6jh2p2NsAyglRkRX0v6RvHKNzBRvlz1JiX8MnK1htz0wjq4SLM3vAHQqQ=="],
-
-    "@sksizer/repo-cleaner": ["@sksizer/repo-cleaner@./vendor/sksizer-repo-cleaner-0.4.3.tgz", { "dependencies": { "@osdlc/command-seam": "0.4.0", "@osdlc/config-layers": "^0.6.0", "@osdlc/typed-gh": "^0.4.0", "@osdlc/typed-git": "^0.5.0", "@sksizer/cli-tool": "^0.4.0", "zod": "4.4.3" }, "bin": { "repo-cleaner": "./bin/repo-cleaner.js" } }, "sha512-jlA+saNMUcvAivJvFsaUqAKICOtQ2emrLVJ7xph0MNZvH5YrYtaohEVCKe0l2sRUS+iNVYNlW43Yg7FkaNaq8Q=="],
-
-    "@sksizer/sdlc-tool": ["@sksizer/sdlc-tool@./vendor/sksizer-sdlc-tool-0.2.0.tgz", { "dependencies": { "@osdlc/typed-gh": "^0.4.0", "@osdlc/typed-git": "^0.5.0", "@sksizer/cli-tool": "^0.4.0" } }, "sha512-GNX10CypFm4Oo5m5zTmjq1BtE7yaJ4EAx3gynkx5V2vfYHSqEpMkFFCZ/O1h9lWuGmYt0LhG4GxhEuUY03jM1Q=="],
-
-    "@sksizer/system-model": ["@sksizer/system-model@./vendor/sksizer-system-model-0.2.0.tgz", {}, "sha512-lHOmBniBU934BNA3NvZCGCDXAl4GjblZVNt1Hr8hrIaNeexK+0Xh3ipgUUTbYPqay+oOX6gUeVESy+z/0KEs4A=="],
-
-    "@sksizer/tool-router": ["@sksizer/tool-router@./vendor/sksizer-tool-router-0.3.1.tgz", { "dependencies": { "@osdlc/config-layers": "0.6.0", "zod": "4.4.3" } }, "sha512-zJnx7j7pTiF8g7MQ8i969uVRfDLgnqu9dxiC9RXF6uHMdlkDpjqN54I1rrY7sIoBY232MpoGLCW+m0TV0836ig=="],
-
-    "@sksizer/wikilink": ["@sksizer/wikilink@./vendor/sksizer-wikilink-0.1.0.tgz", {}, "sha512-BHCryTtLxLF6WLE6VT5bmZER02kEtpUe+VxhjAaW3uwCA2s7VaPue51KyUZ7UIIZw2ojbPEML+o+BgvGSIXPKg=="],
-
-    "@sksizer/yaml-splice": ["@sksizer/yaml-splice@./vendor/sksizer-yaml-splice-0.1.4.tgz", {}, "sha512-T2XhdZc96nezCxZuRz5vVVJtOqdaq1WXngJHK2fDkwRxdeAEL6BtYA3EL+tEGGf7HH3Q19P5LTpv8ueDKleQEA=="],
+    "@sksizer/sdlc-tool": ["@sksizer/sdlc-tool@./vendor/sksizer-sdlc-tool-0.2.0.tgz", { "dependencies": { "@osdlc/cli-tool": "^0.4.0", "@osdlc/typed-gh": "0.6.0", "@osdlc/typed-git": "0.5.3" } }, "sha512-+58trasuuaYclv2G8tIq9DaaX2yFUrTK0JDKmDfTMXH2OV9axyfeTXVo0DcXme3nmxGRlCwb9xz0DvzJTQ0NWQ=="],
 
     "@types/debug": ["@types/debug@4.1.13", "", { "dependencies": { "@types/ms": "*" } }, "sha512-KSVgmQmzMwPlmtljOomayoR89W4FynCAi3E8PPs7vmDVPe84hT+vGPKkJfThkmXs0x0jAaa9U8uW8bbfyS2fWw=="],
 
@@ -184,7 +185,7 @@
 
     "bail": ["bail@2.0.2", "", {}, "sha512-0xO6mYd7JB2YesxDKplafRpsiOzPt9V02ddPCLbY1xYGPOX24NTyN50qnUxgCPcSoYMhKpAuBTjQoRZCAkUDRw=="],
 
-    "body-parser": ["body-parser@2.3.0", "", { "dependencies": { "bytes": "^3.1.2", "content-type": "^2.0.0", "debug": "^4.4.3", "http-errors": "^2.0.1", "iconv-lite": "^0.7.2", "on-finished": "^2.4.1", "qs": "^6.15.2", "raw-body": "^3.0.2", "type-is": "^2.1.0" } }, "sha512-2cGmJupaNgg+QUwVLAucDuWuoMZ6EX9iHDRswZ5lsNYEmwPaRknMPCLZz07yTzVq/83p4o/wzbDZbBrTvGGTIw=="],
+    "body-parser": ["body-parser@2.4.0", "", { "dependencies": { "bytes": "^3.1.2", "content-type": "^2.1.0", "debug": "^4.4.3", "http-errors": "^2.0.1", "iconv-lite": "^0.7.3", "on-finished": "^2.4.1", "qs": "^6.16.1", "raw-body": "^3.0.2", "type-is": "^2.1.0" } }, "sha512-Ifk1KcLrxaGt1occQagQNFNNOqRt1LFuehEnHHzB8Z6cRgIxRU1TBaiIsUiCdA+gy5PL7Y1IX31DNKkRmxtXjQ=="],
 
     "boundary": ["boundary@2.0.0", "", {}, "sha512-rJKn5ooC9u8q13IMCrW0RSp31pxBCHE3y9V/tp3TdWSLf8Em3p6Di4NBpfzbJge9YjjFEsD0RtFEjtvHL5VyEA=="],
 
@@ -224,7 +225,7 @@
 
     "cross-spawn": ["cross-spawn@7.0.6", "", { "dependencies": { "path-key": "^3.1.0", "shebang-command": "^2.0.0", "which": "^2.0.1" } }, "sha512-uV2QOWP2nWzsy2aMp8aRibhi9dlzF5Hgh5SHaB9OiTGEyDTiJJyx0uy51QXdyWbtAHNua4XJzUKca3OzKUd3vA=="],
 
-    "debug": ["debug@4.4.3", "", { "dependencies": { "ms": "^2.1.3" }, "peerDependencies": { "supports-color": "*" }, "optionalPeers": ["supports-color"] }, "sha512-RGwwWnwQvkVfavKVt22FGLw+xYSdzARwm0ru6DhTVA3umU5hZc28V3kO4stgYryrTlLpuvgI9GiijltAjNbcqA=="],
+    "debug": ["debug@4.4.3", "", { "dependencies": { "ms": "^2.1.3" } }, "sha512-RGwwWnwQvkVfavKVt22FGLw+xYSdzARwm0ru6DhTVA3umU5hZc28V3kO4stgYryrTlLpuvgI9GiijltAjNbcqA=="],
 
     "decode-named-character-reference": ["decode-named-character-reference@1.3.0", "", { "dependencies": { "character-entities": "^2.0.0" } }, "sha512-GtpQYB283KrPp6nRw50q3U9/VfOutZOe103qlN7BPP6Ad27xYnOIWv4lPzo8HCAL+mMZofJ9KEy30fq6MfaK6Q=="],
 
@@ -272,7 +273,7 @@
 
     "fast-deep-equal": ["fast-deep-equal@3.1.3", "", {}, "sha512-f3qQ9oQy9j2AhBe/H9VC91wLmKBCCU/gDOnKNAYG5hswO7BLKj09Hc5HYNz9cGI++xlpDCIgDaitVs03ATR84Q=="],
 
-    "fast-uri": ["fast-uri@3.1.8", "", {}, "sha512-GZMtZUTNRpOVIECoXwLNZS5xUGE+mVNbTB8h/7Rwh2TFWcBQiPzTgyZi05BF9UMZKkLJv8XBRJTlU7zg8+ZfMg=="],
+    "fast-uri": ["fast-uri@3.1.9", "", {}, "sha512-hS/0Wt3Ya043oKXs0sIxrMpKQITXhMLIrVAKKXi4gozGC9v7YRWVnXIZzjNPTO02M9BdxLCWqK1yRXgNziVyJQ=="],
 
     "fault": ["fault@2.0.1", "", { "dependencies": { "format": "^0.2.0" } }, "sha512-WtySTkS4OKev5JtpHXnib4Gxiurzh5NCGvWrFaZ34m6JehfTUhKZvn9njTfw48t6JumVQOmrKqpmGcdwxnhqBQ=="],
 
@@ -328,7 +329,7 @@
 
     "isexe": ["isexe@2.0.0", "", {}, "sha512-RHxMLp9lnKHGHRng9QFhRCMbYAcVpn69smSGcq3f36xjgVVWThj4qqLbTLlq7Ssj8B+fIQ1EuCEGI2lKsyQeIw=="],
 
-    "jose": ["jose@6.2.12", "", {}, "sha512-9NiFmJEex0sy2Dk58j2UGBSHgUs2ypF9eZSu4L6vjOX3Dp96Sw1F3uL+H+D1sx02jZZdzUT0HgvCy59CuvXcWw=="],
+    "jose": ["jose@6.2.13", "", {}, "sha512-7TIg10ZE1x82YediN+lcrPNvGMKge9yFHQD+Qho/b8y2adfugU3AsvvHfxV0fzyFllT6l9xCjf4RWY9g/Z9PJQ=="],
 
     "js-tokens": ["js-tokens@4.0.0", "", {}, "sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ=="],
 
@@ -454,7 +455,7 @@
 
     "object-inspect": ["object-inspect@1.13.4", "", {}, "sha512-W67iLl4J2EXEGTbfeHCffrjDfitvLANg0UlX3wFUUSTx92KXRFegMHUVgSqE+wvhAbi4WqjGg9czysTV2Epbew=="],
 
-    "on-finished": ["on-finished@2.4.1", "", { "dependencies": { "ee-first": "1.1.1" } }, "sha512-oVlzkg3ENAhCk2zdv7IJwd/QUD4z2RxRwpkcGY8psCVcCYZNq4wYnVWALHM+brtuJjePWiYF/ClmuDr8Ch5+kg=="],
+    "on-finished": ["on-finished@2.4.2", "", { "dependencies": { "ee-first": "1.1.1" } }, "sha512-ATWUv387i+nLD49EiDoOft5scf32Vsdz3ktrQJG9bi7jRFmaXTssvyvj1EmeKVVgvesbqUtvQQvaS2TpTukAZQ=="],
 
     "once": ["once@1.4.0", "", { "dependencies": { "wrappy": "1" } }, "sha512-lNaJgI+2Q5URQBkccEKHTQOPaXdUxnZZElQTZY0MFUAuaEqe1E+Nyvgdz/aIyNi6Z9MzO5dv1H8n58/GELp3+w=="],
 

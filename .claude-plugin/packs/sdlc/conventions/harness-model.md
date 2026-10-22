@@ -2,7 +2,7 @@
 
 The **harness model** is a canonical, host-neutral description of an agentic
 harness, derived from sdlc's live Claude Code surface. See
-[[D-HRNS-harness-model-and-exporters]] and
+[[D-MDHQ-typescript-detect-harness-owns-harness-detection]] and
 [[C-HRNS-multi-harness-control-plane]]. Its per-host exporters (Claude, Codex,
 Cursor, Gemini, portable JSON) and `sdlc harness export` were retired in
 [[T-1NWG]] once the agent-pants vault build became sdlc's sole build path for
@@ -11,7 +11,8 @@ introspection op.
 
 ## Model shape
 
-`packages/ts/agent-plugin/model.ts` — a plain, JSON-serializable Zod shape.
+`@osdlc/detect-harness/model` (`packages/ts/detect-harness/model.ts` in `osdlc/osdlc`) — a plain,
+JSON-serializable Zod shape.
 
 | Field | Is |
 |---|---|
@@ -22,9 +23,9 @@ introspection op.
 | `permissions` | allow[], deny[], ask[] |
 | `documents[]` | name, body (shared context / conventions) |
 
-Capability and document markdown bodies validate through
-`packages/ts/agent-plugin/contract.ts` (markdown-contract): well-formedness
-plus a required level-1 title.
+The model does not check markdown bodies. MCP `env` and `headers` values, and
+the user part and query values of an MCP `url`, read `<redacted>` unless the
+caller asks to keep them.
 
 ## Ops
 
@@ -32,10 +33,9 @@ plus a required level-1 title.
 |---|---|
 | `sdlc harness model [--output json]` | Derive + emit the model from the running plugin (or `--root <dir>`). |
 
-## Bootstrapping
+## Reading
 
-The model is bootstrapped from an existing Claude surface with
-`importClaude(pluginRoot)` (an alias for `deriveHarnessModel`): it reads
-`skills/`, `conventions/`, and the harness config in `.claude/settings.json` +
-`.mcp.json`. Use it to introspect what a built plugin actually carries — it is
-a read of the surface, not a second way to produce one.
+`readPlugin(pluginRoot)` (from `@osdlc/detect-harness/model`) reads `skills/`, `commands/`,
+`conventions/`, `hooks/hooks.json`, the manifest's `hooks` and `mcpServers`, and the harness config
+in `.claude/settings.json`, `.claude/settings.local.json` and `.mcp.json`. Use it to introspect what
+a built plugin actually carries — it is a read of the surface, not a second way to produce one.
