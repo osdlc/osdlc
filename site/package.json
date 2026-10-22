@@ -8,7 +8,8 @@
     "node": ">=22"
   },
   "scripts": {
-    "sync": "node scripts/sync-standards.mjs",
+    "sync": "node scripts/sync-standards.mjs && node scripts/sync-libraries.mjs",
+    "api": "node scripts/build-api.mjs",
     "dev": "pnpm run sync && astro dev",
     "build": "pnpm run sync && astro build",
     "preview": "astro preview",
@@ -18,5 +19,8 @@
     "@astrojs/starlight": "0.42.5",
     "astro": "7.3.5",
     "starlight-blog": "0.30.0"
+  },
+  "devDependencies": {
+    "typedoc": "0.28.20"
   }
 }
