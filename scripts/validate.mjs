@@ -1,7 +1,7 @@
 // Static checks on the published plugin packs, using only Node builtins so it
 // runs on a bare checkout. Generated: written by sksizer/dev's
 // scripts/sdlc-mirror/assemble.ts on each release (edit
-// scripts/sdlc-mirror/templates/product/github/scripts/validate.mjs there).
+// scripts/sdlc-mirror/templates/product/scripts/validate.mjs there).
 //
 // Checks, per harness (Claude Code, Codex, Cursor, Pi):
 //   - every plugin in the marketplace manifest has a pack directory;
