@@ -1,6 +1,6 @@
 // Tests for affected-packages.mjs, over a made-up workspace.
 //
-//   node --test .github/scripts/affected-packages.test.mjs
+//   node --test scripts/affected-packages.test.mjs
 import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
 
@@ -44,8 +44,8 @@ test('a shared root input picks every package', () => {
     'package.json',
     '.oxlintrc.json',
     '.github/workflows/packages-ci.yml',
-    '.github/scripts/check-packages.mjs',
-    '.github/scripts/package-shape.mjs',
+    'scripts/check-packages.mjs',
+    'scripts/package-shape-ts.mjs',
     '.changeset/config.json',
   ]) {
     assert.deepEqual(pr(['packages/ts/app/a.ts', file]), ALL, file)

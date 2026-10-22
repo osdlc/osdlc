@@ -22,4 +22,4 @@ jobs:
         with:
           node-version: 22
       - name: Validate the published plugin packs
-        run: node .github/scripts/validate.mjs
+        run: node scripts/validate.mjs

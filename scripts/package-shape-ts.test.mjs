@@ -1,6 +1,6 @@
-// Tests for package-shape.mjs.
+// Tests for package-shape-ts.mjs.
 //
-//   node --test .github/scripts/package-shape.test.mjs
+//   node --test scripts/package-shape-ts.test.mjs
 import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
 
@@ -26,7 +26,7 @@ import {
   shippedSource,
   shippedSourceMaps,
   tsconfigProblems,
-} from './package-shape.mjs'
+} from './package-shape-ts.mjs'
 
 const good = {
   pkg: {

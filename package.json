@@ -13,7 +13,7 @@
     "smoke": "pnpm -r --if-present run smoke",
     "lint": "pnpm -r --if-present run lint",
     "format:check": "pnpm -r --if-present run format:check",
-    "check:packages": "node .github/scripts/check-packages.mjs"
+    "check:packages": "node scripts/check-packages.mjs"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "catalog:",

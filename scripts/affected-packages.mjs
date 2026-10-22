@@ -1,7 +1,7 @@
 // Picks the packages/ts/* packages a packages-ci.yml run checks, and writes
 // them to $GITHUB_OUTPUT (or prints them when it is unset).
 //
-//   node .github/scripts/affected-packages.mjs [base] [head]
+//   node scripts/affected-packages.mjs [base] [head]
 //
 // On a pull_request (EVENT=pull_request) it checks each package with a file
 // changed between `base` (default HEAD^1, the base branch side of the merge
@@ -26,7 +26,7 @@ import { pathToFileURL } from 'node:url'
 /** Files every package reads, or that decide how they are checked. */
 const SHARED = [
   /^\.github\/workflows\/packages-ci\.yml$/,
-  /^\.github\/scripts\/(affected-packages|check-packages|package-shape)\.mjs$/,
+  /^scripts\/(affected-packages|check-packages|package-shape-ts)\.mjs$/,
   /^package\.json$/,
   /^\.oxlintrc\.json$/,
   /^pnpm-lock\.yaml$/,

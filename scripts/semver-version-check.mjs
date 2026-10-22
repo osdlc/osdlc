@@ -1,7 +1,7 @@
 // Checks that a pull request with a breaking change to a crate also sets the
 // crate's new version in its Cargo.toml.
 //
-//   node .github/scripts/semver-version-check.mjs <path/to/Cargo.toml> <base-rev>
+//   node scripts/semver-version-check.mjs <path/to/Cargo.toml> <base-rev>
 //
 // For each workspace crate that publishes to crates.io, is on crates.io, and
 // has a file changed between <base-rev> and HEAD (every crate counts as

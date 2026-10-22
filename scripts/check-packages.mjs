@@ -7,7 +7,7 @@
 // shipped: it is copied into the consumer project and imports the package by
 // name, so it runs against the installed tarball.
 //
-// Each package must also keep the shared shape (package-shape.mjs): dist-only
+// Each package must also keep the shared shape (package-shape-ts.mjs): dist-only
 // ESM, no `bun` export condition, no TypeScript source in the tarball, no bun in
 // its scripts, and no tsconfig `customConditions` or sibling `paths`; and the
 // conventions in conventionProblems (author, engines, scripts, layout, docs,
@@ -19,7 +19,7 @@
 // resolve from local tarballs, not npm. A release bumps a library and its
 // dependents together, and the new library version is not on npm yet.
 //
-//   node .github/scripts/check-packages.mjs [packages/ts/<name> ...]
+//   node scripts/check-packages.mjs [packages/ts/<name> ...]
 //
 // With no package arguments it checks every packages/ts/* package; with
 // arguments, only those are checked, but all are still packed. The
@@ -44,7 +44,7 @@ import {
   parseCatalog,
   parseJsonc,
   shapeProblems,
-} from './package-shape.mjs'
+} from './package-shape-ts.mjs'
 
 const root = process.cwd()
 

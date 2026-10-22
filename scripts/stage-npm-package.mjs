@@ -5,7 +5,7 @@
 // npm can only add a trusted publisher to a package that already exists (see
 // packages/README.md, "Publishing a new library for the first time").
 //
-//   node .github/scripts/stage-npm-package.mjs [--dry-run] <package> ...
+//   node scripts/stage-npm-package.mjs [--dry-run] <package> ...
 //
 // Each <package> is a package directory (packages/ts/<name>). A package already
 // on npm is not published again, and one that already has a trusted publisher
@@ -29,7 +29,7 @@ const WORKFLOW = 'packages-publish.yml'
 
 function usage(problem) {
   console.error(
-    `${problem}\nusage: node .github/scripts/stage-npm-package.mjs [--dry-run] <package> ...`,
+    `${problem}\nusage: node scripts/stage-npm-package.mjs [--dry-run] <package> ...`,
   )
   process.exit(2)
 }

@@ -1,6 +1,6 @@
 // Picks the crates.io credential for one release-plz run.
 //
-//   node .github/scripts/crates-io-auth-plan.mjs <path/to/Cargo.toml>
+//   node scripts/crates-io-auth-plan.mjs <path/to/Cargo.toml>
 //
 // release-plz publishes every unpublished crate of a run with one credential.
 // The shared CARGO_REGISTRY_TOKEN is publish-new only: it can make the first
