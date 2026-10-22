@@ -70,7 +70,9 @@ try {
 
   const tried = outside.try.statusPorcelain()
   assert.equal(tried.ok, false)
-  assert.ok(tried.error instanceof CommandFailed)
+  assert.equal(tried.error.kind, 'not-a-repo')
+  assert.ok(tried.error.cause instanceof CommandFailed)
+  assert.equal(typeof tried.error.message, 'string')
   assert.equal(typeof tried.error.detail, 'string')
   assert.ok(tried.error.detail.length > 0, "detail must carry git's own message")
 } finally {
