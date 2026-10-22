@@ -159,7 +159,12 @@ exits 1. `FAILURE_EXIT` is the table by kind and `exitCodeFor(failure)` reads it
 
 `runMain` does this for a thrown failure (a `FailureError`, which includes
 `CommandFailed`): it prints `<name>: <message> <hint>` and sets the category's
-exit code. A `main` that holds a `Result` returns instead of throwing:
+exit code. The code follows the `kind` the thrown failure carries, so it is only
+as specific as the layer that threw it: `@osdlc/typed-gh` and `@osdlc/code-host`
+throw the classified failure (a signed-out `gh` during a write is 23), while a
+bare `CommandFailed` carries only command-seam's kinds (`not-installed`,
+`timeout`, ... and a generic `exit`, which is 1). Classify before throwing if
+you want more. A `main` that holds a `Result` returns instead of throwing:
 
 ```ts
 const listed = host.listPrs({})

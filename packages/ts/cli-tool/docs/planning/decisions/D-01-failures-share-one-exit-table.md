@@ -13,6 +13,14 @@ created: 2026-10-21
   `CommandFailed`, or a bare `Failure`) as `<tool name>: <message> <hint>` on
   stderr and exits with the code for the failure's `kind`. Any other thrown
   error keeps today's behaviour: its message and exit 1.
+- The code follows the `kind` the thrown failure carries. A layer that
+  classifies (`@osdlc/typed-gh`, `@osdlc/code-host`) throws the classified
+  failure; a bare `CommandFailed` carries only command-seam's kinds, so a
+  generic `exit` is 1 until some layer classifies it.
+- `FAILURE_EXIT` is checked against the kind unions of command-seam,
+  typed-git and code-host (which carries typed-gh's) by a test in
+  `@osdlc/pr-update`, the package that sees them all: a new kind must be in the
+  table or listed as exit 1 on purpose.
 - The table is `FAILURE_EXIT`, keyed by kind, exported from this package. It
   has four codes, one per category a script acts on differently, following the
   dev standard "a new distinct exit code for each distinct failure category":

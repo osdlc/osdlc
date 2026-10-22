@@ -25,7 +25,9 @@
  *   time, or limited the caller. The same command may work later.
  *
  * Every other kind (`exit`, `spawn`, `signal`, ...) is an ordinary failed run
- * and exits {@link EXIT.error}. The four codes sit in the tool band
+ * and exits {@link EXIT.error}. A test in `@osdlc/pr-update` checks the table
+ * against the kind unions of the layers that classify, so a new kind cannot
+ * land here unnoticed. The four codes sit in the tool band
  * ({@link DOMAIN_EXIT_MIN} to {@link DOMAIN_EXIT_MAX}); a tool numbering its own
  * outcomes avoids 22 to 25.
  */

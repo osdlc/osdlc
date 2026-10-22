@@ -10,7 +10,7 @@ import { describe, expect, test } from 'vitest'
 import { actionsJobId, detectBlockedChecks, codeHostPrFrom, GithubCodeHost } from '../src/github.ts'
 import { CommentNotFoundError } from '../src/types.ts'
 import { Gh } from '@osdlc/typed-gh'
-import { unwrap } from '@osdlc/result'
+import { FailureError, unwrap } from '@osdlc/result'
 import type { CommandResult, CommandRunner } from '@osdlc/command-seam'
 import type { PullRequest } from '@osdlc/typed-gh'
 
@@ -549,6 +549,20 @@ describe('GithubCodeHost.mergePr / reviewThreads', () => {
   test('postComment throws when the POST fails', () => {
     const { runner } = fakeGh({ restResponses: [fail('gh: Forbidden (HTTP 403)')] })
     expect(() => new GithubCodeHost('/repo', { runner }).postComment(42, 'x')).toThrow(/403/)
+  })
+
+  test('a mutation throws the classified failure, so a signed-out gh reads as not-authenticated', () => {
+    const { runner } = fakeGh({ restResponses: [fail('HTTP 401: Bad credentials')] })
+    try {
+      new GithubCodeHost('/repo', { runner }).postComment(42, 'x')
+      expect.unreachable()
+    } catch (e) {
+      expect(e).toBeInstanceOf(FailureError)
+      expect((e as FailureError).failure).toMatchObject({
+        kind: 'not-authenticated',
+        message: 'gh is not signed in to GitHub.',
+      })
+    }
   })
 
   test('reviewThreads goes through the graphql client and is a failure when it fails', () => {
