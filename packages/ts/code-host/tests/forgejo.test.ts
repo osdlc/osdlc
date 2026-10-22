@@ -105,7 +105,7 @@ describe('ForgejoCodeHost request transport', () => {
     const runner: CommandRunner = {
       run(argv, opts) {
         seen.push({ argv: [...argv], input: opts.input })
-        return curlOk(200, BASE_PR)
+        return fakeGh({ pr: BASE_PR }).runner.run(argv, opts)
       },
     }
     unwrap(codeHost(runner).getPr(42, { since: null }))
@@ -120,7 +120,7 @@ describe('ForgejoCodeHost request transport', () => {
   })
 
   test('-q is the first argument, so a local ~/.curlrc cannot inject headers or a proxy', () => {
-    const runner: CommandRunner = { run: () => curlOk(200, BASE_PR) }
+    const runner = fakeGh({ pr: BASE_PR }).runner
     let firstArgv: string[] | undefined
     const spying: CommandRunner = {
       run(argv, opts) {
@@ -298,18 +298,31 @@ describe('ForgejoCodeHost.getPr', () => {
     })
   })
 
-  test('a failing reviews/comments call degrades to empty activity, not a throw', () => {
-    // Only the PR fetch succeeds; every other endpoint fails.
-    const mixed: CommandRunner = {
-      run(argv) {
-        const url = argv[argv.length - 1]!
-        if (/\/pulls\/\d+$/.test(url)) return curlOk(200, BASE_PR)
-        return curlFail()
-      },
-    }
-    const pr = unwrap(codeHost(mixed).getPr(42, { since: null }))
-    expect(pr!.activity).toEqual([])
-  })
+  test.each([
+    ['comments', /\/issues\/\d+\/comments$/],
+    ['reviews', /\/pulls\/\d+\/reviews$/],
+    ['review comments', /\/reviews\/\d+\/comments$/],
+    ['combined status', /\/commits\/.+\/status$/],
+  ])(
+    'a failing %s call is the getPr failure, never an empty list or "no checks"',
+    (_n, failing) => {
+      // The PR fetch and every other endpoint succeed; one enrichment call fails.
+      const { runner: base } = fakeGh({
+        pr: BASE_PR,
+        reviews: [{ id: 9, user: { login: 'a' }, state: 'COMMENT', submitted_at: '2026-01-01' }],
+        statuses: [{ state: 'failure', context: 'ci' }],
+      })
+      const mixed: CommandRunner = {
+        run(argv, opts) {
+          const url = argv[argv.length - 1]!
+          return failing.test(url) ? curlOk(401, {}) : base.run(argv, opts)
+        },
+      }
+      const r = codeHost(mixed).getPr(42, { since: null })
+      expect(r.ok).toBe(false)
+      expect(!r.ok && r.error).toMatchObject({ kind: 'not-authenticated', host: 'forgejo' })
+    },
+  )
 })
 
 describe('ForgejoCodeHost.listPrs / prForBranch', () => {

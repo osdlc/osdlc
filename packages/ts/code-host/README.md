@@ -46,7 +46,8 @@ A query that can fail returns a `Result<T, CodeHostFailure>` from
 own output as `detail`. Both adapters report the same kinds, so a caller
 handles "not signed in" once. A declared absence is still a success: `getPr`
 of a number that does not exist, and `prForBranch` of a branch with no PR,
-answer `{ ok: true, value: null }`.
+answer `{ ok: true, value: null }`. A Forgejo `getPr` whose comments, reviews or
+status call fails is a failure, never a PR with no checks or no reviews.
 
 | `kind` | Means | `hint` |
 | --- | --- | --- |

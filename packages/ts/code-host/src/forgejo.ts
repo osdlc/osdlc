@@ -525,12 +525,6 @@ export class ForgejoCodeHost implements CodeHost {
     return Array.isArray(res.value) ? ok(res.value) : err(this.unreadable())
   }
 
-  /** `GET` a JSON array; `[]` on any failure — an enrichment endpoint degrades to empty, never fails the call. */
-  private getArray(path: string): unknown[] {
-    const res = this.getArrayResult(path)
-    return res.ok ? res.value : []
-  }
-
   /** Raw PR listing for `owner/repo`, filtered and capped. */
   private listRawPrs(q: {
     state?: 'open' | 'closed' | 'all'
@@ -621,12 +615,20 @@ export class ForgejoCodeHost implements CodeHost {
       return err(this.unreadable())
     }
 
-    const comments = this.getArray(
+    // Every enrichment call below fails the whole `getPr` when it fails. A
+    // failed status call read as "no statuses" is `rollup: 'none'`, which looks
+    // like a PR with no checks and so merge-eligible; a failed reviews call
+    // reads as no reviews. The caller gets the failure and decides.
+    const commentsRes = this.getArrayResult(
       `repos/${this.owner}/${this.repo}/issues/${number}/comments`,
-    ) as RawComment[]
-    const reviews = this.getArray(
+    )
+    if (!commentsRes.ok) return commentsRes
+    const comments = commentsRes.value as RawComment[]
+    const reviewsRes = this.getArrayResult(
       `repos/${this.owner}/${this.repo}/pulls/${number}/reviews`,
-    ) as RawReview[]
+    )
+    if (!reviewsRes.ok) return reviewsRes
+    const reviews = reviewsRes.value as RawReview[]
 
     // Forgejo has no flat per-line-comment endpoint like GitHub's REST
     // `pulls/<n>/comments` — inline comments are nested under each review,
@@ -636,17 +638,19 @@ export class ForgejoCodeHost implements CodeHost {
     const reviewComments: RawReviewComment[] = []
     for (const r of reviews) {
       if (typeof r.id !== 'number' && typeof r.id !== 'string') continue
-      const entries = this.getArray(
+      const entries = this.getArrayResult(
         `repos/${this.owner}/${this.repo}/pulls/${number}/reviews/${r.id}/comments`,
-      ) as RawReviewComment[]
-      reviewComments.push(...entries)
+      )
+      if (!entries.ok) return entries
+      reviewComments.push(...(entries.value as RawReviewComment[]))
     }
 
     const headSha = str(pr.head?.sha)
     let combined: RawCombinedStatus = { statuses: [] }
     if (headSha !== null) {
       const status = this.getJson(`repos/${this.owner}/${this.repo}/commits/${headSha}/status`)
-      if (status.ok) combined = status.value as RawCombinedStatus
+      if (!status.ok) return status
+      combined = status.value as RawCombinedStatus
     }
 
     return ok(forgejoPrFrom(pr, comments, reviews, reviewComments, combined.statuses ?? []))

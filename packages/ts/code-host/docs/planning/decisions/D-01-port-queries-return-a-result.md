@@ -22,6 +22,10 @@ created: 2026-10-21
   `prForBranch` of a branch with no PR answer `{ ok: true, value: null }`. On
   Forgejo, HTTP 404 on one PR number is that absence; 404 on a listing is
   `not-found`.
+- Forgejo's `getPr` makes several calls (comments, reviews, inline review
+  comments, the combined status). A failure of any of them is the failure of
+  `getPr`, not an empty list: a failed status call read as no statuses is
+  `rollup: 'none'`, which looks like a PR with no checks.
 - The GitHub adapter reads through `gh.try.*` and maps `GhFailure` one to one
   (same kind, message, hint and detail), with the `GhFailure` as `cause`. The
   Forgejo adapter classifies the curl run with `classifyFailure`, names curl
