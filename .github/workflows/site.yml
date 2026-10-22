@@ -35,8 +35,14 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-          cache-dependency-path: site/pnpm-lock.yaml
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            site/pnpm-lock.yaml
 
+      # Library guides import their package's source, whose tsconfig extends
+      # @osdlc/tsconfig from the packages workspace.
+      - run: pnpm install --frozen-lockfile
+        working-directory: .
       # site/ is not part of the packages workspace; install it on its own.
       - run: pnpm install --frozen-lockfile --ignore-workspace
       # rustdoc and TypeDoc into public/api. cargo is on the runner; rustup

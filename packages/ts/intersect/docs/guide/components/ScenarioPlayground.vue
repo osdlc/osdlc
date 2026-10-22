@@ -4,7 +4,7 @@
 // Pure L1 surface only — imported by name via the Vite alias, never `intersect/fs`.
 // Everything here is synchronous and SSR-safe: no window/document at setup top level.
 import { reactive, ref, computed } from 'vue'
-import { overlapping, witness, index, matches } from 'intersect'
+import { overlapping, witness, index, matches } from '@osdlc/intersect'
 
 /* ------------------------------------------------------------------ tabs */
 

@@ -1,5 +1,7 @@
 ---
 title: The algorithm
+sidebar:
+  order: 4
 description: How the engine decides overlap by walking a synchronized product of two pattern automata.
 ---
 

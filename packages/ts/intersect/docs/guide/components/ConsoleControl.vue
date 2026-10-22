@@ -3,7 +3,7 @@
 // "Do these two patterns describe overlapping sets of paths?"
 // Pure L1 surface only — imported by name via the Vite alias, never `intersect/fs`.
 import { ref, computed } from 'vue'
-import { intersects, witness, whichMatch } from 'intersect'
+import { intersects, witness, whichMatch } from '@osdlc/intersect'
 
 // --- Inputs: one pattern per line (a line-set is a Patterns value) -----------
 const DEFAULT_A = 'src/api/**'

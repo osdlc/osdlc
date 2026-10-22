@@ -3,7 +3,7 @@
 // their match-sets intersect and one concrete path that witnesses it.
 // Pure L1 surface only — imported by name via the Vite alias, never `intersect/fs`.
 import { ref, computed } from 'vue'
-import { intersects, witness } from 'intersect'
+import { intersects, witness } from '@osdlc/intersect'
 
 // --- Two patterns, pre-filled so the shell demos itself ----------------------
 const patternA = ref('src/api/**')

@@ -269,14 +269,17 @@ export function layoutProblems(files, tsconfigs = {}) {
   return problems
 }
 
+const DOCS_FOLDERS = ['planning', 'guide']
+
 /** What is wrong with the `docs/` folder. */
 export function docsProblems(files) {
   const docs = files.filter((f) => f.startsWith('docs/'))
   if (docs.length === 0) return []
   const problems = []
-  const outside = [...new Set(docs.map((f) => f.split('/')[1]))].filter((d) => d !== 'planning')
-  for (const d of outside.sort()) problems.push(`docs/${d} is outside docs/planning/; move it under docs/planning/`)
-  if (!files.includes('docs/planning/README.md')) {
+  // guide/ is the user guide the site publishes under the library's page.
+  const outside = [...new Set(docs.map((f) => f.split('/')[1]))].filter((d) => !DOCS_FOLDERS.includes(d))
+  for (const d of outside.sort()) problems.push(`docs/${d} is outside docs/planning/ and docs/guide/; move it under one`)
+  if (docs.some((f) => f.startsWith('docs/planning/')) && !files.includes('docs/planning/README.md')) {
     problems.push('docs/planning/README.md is missing; add the index of the planning documents')
   }
   return problems

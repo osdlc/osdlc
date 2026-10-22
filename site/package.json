@@ -17,8 +17,10 @@
   },
   "dependencies": {
     "@astrojs/starlight": "0.42.5",
+    "@astrojs/vue": "7.0.3",
     "astro": "7.3.5",
-    "starlight-blog": "0.30.0"
+    "starlight-blog": "0.30.0",
+    "vue": "3.5.43"
   },
   "devDependencies": {
     "typedoc": "0.28.20"
