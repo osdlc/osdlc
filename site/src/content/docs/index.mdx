@@ -8,6 +8,10 @@ hero:
     - text: Read the standards
       link: /osdlc/standards/
       icon: right-arrow
+    - text: Libraries
+      link: /osdlc/libraries/
+      icon: seti:folder
+      variant: secondary
     - text: Blog
       link: /osdlc/blog/
       variant: minimal
@@ -30,5 +34,9 @@ import { Card, CardGrid } from '@astrojs/starlight/components'
   </Card>
   <Card title="Review" icon="approve-check">
     A review process scaled by risk. [Read the standard](/osdlc/standards/review/).
+  </Card>
+  <Card title="Libraries" icon="puzzle">
+    The `@osdlc` TypeScript packages and Rust crates, with their twins paired
+    and an API reference for each. [Browse the libraries](/osdlc/libraries/).
   </Card>
 </CardGrid>
