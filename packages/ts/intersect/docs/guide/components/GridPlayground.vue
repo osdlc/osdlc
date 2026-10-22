@@ -2,7 +2,7 @@
 // Visual match-grid playground for Intersect.
 // Pure L1 surface only — imported by name via the Vite alias, never `intersect/fs`.
 import { ref, computed } from 'vue'
-import { matches, whichMatch, overlapping, witness, intersects } from 'intersect'
+import { matches, whichMatch, overlapping, witness, intersects } from '@osdlc/intersect'
 
 const mode = ref('membership') // "membership" | "overlap"
 

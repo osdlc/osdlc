@@ -1,5 +1,7 @@
 ---
 title: Overlap, matches, witness
+sidebar:
+  order: 3
 description: The path-API primitives — intersects, matches, whichMatch, overlapping, witness, compile.
 ---
 

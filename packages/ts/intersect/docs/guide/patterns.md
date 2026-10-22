@@ -1,5 +1,7 @@
 ---
 title: Patterns
+sidebar:
+  order: 2
 description: The glob dialect, the exact-match-vs-subtree rule, and the matching options.
 ---
 

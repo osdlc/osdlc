@@ -1,5 +1,7 @@
 ---
 title: Getting started
+sidebar:
+  order: 1
 description: The three entry points, their dependency posture, and a first intersects call.
 ---
 
@@ -54,4 +56,4 @@ intersects(["a/**"], ["b/**", "c/**"]);
 
 The pairwise question (`A` vs. `B`) is polynomial, so the API stays pairwise and
 one-vs-set — it never asks the intractable many-pattern question. Next: the [pattern
-dialect](/guide/patterns) and the [primitives](/guide/overlap-matches-witness).
+dialect](./patterns.md) and the [primitives](./overlap-matches-witness.md).

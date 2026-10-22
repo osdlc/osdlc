@@ -2,7 +2,7 @@
 // "Inline expression" console variant — the primitive rendered as a live,
 // editable formula. Pure L1 surface only; theme-aware via Starlight vars.
 import { ref, computed } from 'vue'
-import { intersects, witness } from 'intersect'
+import { intersects, witness } from '@osdlc/intersect'
 
 const a = ref('src/api/**')
 const b = ref('src/**/*.ts')

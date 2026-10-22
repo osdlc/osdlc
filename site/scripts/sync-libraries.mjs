@@ -2,8 +2,11 @@
 // manifest and README, plus an overview that pairs twins: a TypeScript package
 // and a Rust crate with the same name and the same behaviour. The pages are
 // generated on each sync; the READMEs stay the one source.
+//
+// A library with a docs/guide/ folder gets it published under its page:
+// markdown and MDX pages, which may import components from beside them.
 import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { dirname, join, posix } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const siteRoot = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -46,6 +49,7 @@ async function readTs() {
       // Config presets (tsconfig, prettier-config) ship no code to document.
       hasApi: Object.values(pkg.exports ?? {}).some((e) => JSON.stringify(e).includes('/dist/')),
       readme: await readFile(join(packages, 'ts', dir, 'README.md'), 'utf8'),
+      guide: await listGuide(join(packages, 'ts', dir)),
     })
   }
   return libs
@@ -69,6 +73,7 @@ async function readRust() {
       description: field('description'),
       hasApi: true,
       readme: await readFile(join(packages, 'rust', dir, 'README.md'), 'utf8'),
+      guide: await listGuide(join(packages, 'rust', dir)),
     })
   }
   return libs
@@ -104,6 +109,7 @@ async function writePage(lib, twin) {
     ['API reference', lib.hasApi ? `[${lib.lang === 'ts' ? 'TypeDoc' : 'rustdoc'}](${apiUrl(lib)})` : 'none (config only)'],
     ['Source', `[${lib.dir}](${repo}/tree/main/${lib.dir})`],
   ]
+  if (lib.guide.length) facts.splice(3, 0, ['Guide', `${lib.guide.length} pages, in the sidebar under ${lib.name}`])
   const aside = !rel
     ? ''
     : rel === 'twin'
@@ -116,7 +122,10 @@ async function writePage(lib, twin) {
     '---',
     `title: ${JSON.stringify(lib.name)}`,
     `description: ${JSON.stringify(lib.description ?? '')}`,
-    rel ? `sidebar:\n  badge:\n    text: ${rel}\n    variant: ${rel === 'twin' ? 'tip' : 'note'}` : null,
+    rel || lib.guide.length ? 'sidebar:' : null,
+    // With a guide the page becomes the index of the library's sidebar group.
+    lib.guide.length ? '  label: Overview\n  order: 0' : null,
+    rel ? `  badge:\n    text: ${rel}\n    variant: ${rel === 'twin' ? 'tip' : 'note'}` : null,
     `editUrl: ${JSON.stringify(`${repo}/edit/main/${lib.dir}/README.md`)}`,
     '---',
     '',
@@ -129,10 +138,44 @@ async function writePage(lib, twin) {
 
   const table = ['| | |', '|---|---|', ...facts.map(([k, v]) => `| ${k} | ${v} |`)].join('\n')
   const body = rewriteLinks(dropH1(lib.readme), lib.dir)
-  await writeFile(
-    join(target, lib.lang, `${lib.name}.md`),
-    `${frontmatter}${aside}${table}\n\n${body}`,
+  const file = lib.guide.length ? join(lib.name, 'index.md') : `${lib.name}.md`
+  await mkdir(dirname(join(target, lib.lang, file)), { recursive: true })
+  await writeFile(join(target, lib.lang, file), `${frontmatter}${aside}${table}\n\n${body}`)
+  for (const page of lib.guide) await copyGuidePage(lib, page)
+}
+
+async function listGuide(libRoot) {
+  const guide = join(libRoot, 'docs', 'guide')
+  const entries = await readdir(guide, { recursive: true }).catch(() => [])
+  return entries.filter((f) => /\.mdx?$/.test(f)).sort()
+}
+
+// A guide page keeps its own frontmatter. Its relative imports are made
+// absolute, links to sibling pages go to their site URLs, and any other
+// relative link goes to GitHub.
+async function copyGuidePage(lib, page) {
+  const source = join(packages, '..', lib.dir, 'docs', 'guide', page)
+  const pageDir = posix.dirname(page)
+  let text = await readFile(source, 'utf8')
+  text = text.replace(/^(import .+ from )'(\.{1,2}\/[^']+)'/gm, (m, head, rel) =>
+    `${head}'${join(dirname(source), rel)}'`,
   )
+  text = text.replace(/\]\((?!https?:|#|mailto:|\/)([^)\s]+)\)/g, (match, href) => {
+    const [path, anchor] = href.split('#')
+    const hash = anchor ? `#${anchor}` : ''
+    const resolved = posix.normalize(posix.join(pageDir, path))
+    if (/\.mdx?$/.test(path) && lib.guide.includes(resolved)) {
+      return `](${pageUrl(lib)}${resolved.replace(/\.mdx?$/, '')}/${hash})`
+    }
+    return `](${new URL(posix.join('docs/guide', resolved), `${repo}/blob/main/${lib.dir}/`).href}${hash})`
+  })
+  const note = `Generated from ${lib.dir}/docs/guide/${page} by scripts/sync-libraries.mjs. Edit the source.`
+  const comment = page.endsWith('.mdx') ? `{/* ${note} */}` : `<!-- ${note} -->`
+  const editUrl = `editUrl: ${JSON.stringify(`${repo}/edit/main/${lib.dir}/docs/guide/${page}`)}`
+  text = text.replace(/^---\n([\s\S]*?)\n---\n/, (m, fm) => `---\n${fm}\n${editUrl}\n---\n\n${comment}\n`)
+  const out = join(target, lib.lang, lib.name, page)
+  await mkdir(dirname(out), { recursive: true })
+  await writeFile(out, text)
 }
 
 function overview() {
