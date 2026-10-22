@@ -20,7 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Changed
 
 - The minimum supported Rust version is 1.89, up from 1.85. The whole workspace
-  moved together because `config-layers` needs `serde-saphyr`, which needs 1.89.
+  moved together; slug-collate and config-layers (through `serde-saphyr`) need
+  1.89.
 
 ## [0.2.0](https://github.com/osdlc/osdlc/compare/etag-write/v0.1.1...etag-write/v0.2.0) - 2026-10-17
 
