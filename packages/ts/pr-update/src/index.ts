@@ -24,6 +24,8 @@ export {
   type LoadEnv,
   type StandaloneConfig,
 } from './config-file.ts'
+export { EXIT_CODE_HOST, EXIT_MISSING_TOOL, EXIT_NO_REMOTE } from './preflight.ts'
+export { CodeHostSetupError, selectedCodeHostFor } from './code-host.ts'
 export { EXIT_UNTRUSTED, projectSourcedCommands, untrustedMessage } from './trust.ts'
 export { repairPrompt } from './repair/prompt.ts'
 export {
@@ -79,6 +81,7 @@ export {
   scopeToPrs,
   SCOPE_SHAPE,
   SurveyUsageError,
+  PrListError,
   row as surveyRowSchema,
   output as surveyOutputSchema,
   type MergePrediction,

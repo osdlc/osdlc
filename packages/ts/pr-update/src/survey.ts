@@ -46,7 +46,7 @@
 
 import { z } from 'zod'
 
-import { Git, parseGitUrl, type Worktree } from '@osdlc/typed-git'
+import { Git, parseGitUrl, parseRemoteUrl, type Worktree } from '@osdlc/typed-git'
 
 import type { CodeHost, CodeHostPrDetail } from '@osdlc/code-host'
 import type { CommandRunner } from '@osdlc/command-seam'
@@ -77,6 +77,19 @@ export type MergePrediction = (typeof MERGE_PREDICTIONS)[number]
  */
 export class SurveyUsageError extends Error {
   override name = 'SurveyUsageError'
+}
+
+/**
+ * The code host would not list a repository's PRs (the adapter's listing came
+ * back null: its tool is missing, it is not signed in, or the network is
+ * down). Thrown rather than reported as zero PRs, so a broken setup cannot
+ * pass for a repository with nothing open. `slug` names the repository.
+ */
+export class PrListError extends Error {
+  override name = 'PrListError'
+  constructor(readonly slug: string) {
+    super(`could not list pull requests for ${slug}`)
+  }
 }
 
 /** A repository to survey, and the checkout its drift is measured in. */
@@ -565,10 +578,16 @@ function scopedRefspecs(prs: readonly CodeHostPrDetail[], remote: string): strin
   return [...branches].map((b) => `+refs/heads/${b}:refs/remotes/${remote}/${b}`)
 }
 
-/** `owner/name` from a git remote reference, or null when it names no project. */
-function remoteSlug(url: string): string | null {
+/**
+ * `owner/name` from a git remote reference, or null when it names no project.
+ * A host the hosted-git library knows (GitHub, GitLab, ...) first, then any
+ * other `host/owner/repo` remote, which is what a self-hosted Forgejo is.
+ */
+export function remoteSlug(url: string): string | null {
   const info = parseGitUrl(url)
-  return info === null || !info.user || !info.project ? null : `${info.user}/${info.project}`
+  if (info !== null && info.user && info.project) return `${info.user}/${info.project}`
+  const ref = parseRemoteUrl(url)
+  return ref === null ? null : `${ref.owner}/${ref.repo}`
 }
 
 /**
@@ -602,12 +621,14 @@ export function runSurvey(args: SurveyArgs, env: SurveyEnv): SurveyReport {
 
     const isLocal = target.slug === localSlug
     const codeHost = codeHostFor({ cwd: target.path ?? env.projectRoot, slug: target.slug })
-    const listed =
-      codeHost.listPrDetails({
-        limit: args.limit,
-        ...(isLocal ? {} : { repo: target.slug }),
-        ...(author !== undefined ? { author } : {}),
-      }) ?? []
+    const listed = codeHost.listPrDetails({
+      limit: args.limit,
+      ...(isLocal ? {} : { repo: target.slug }),
+      ...(author !== undefined ? { author } : {}),
+    })
+    // A failed listing (the tool is missing, not signed in, no network) is not
+    // an empty one: reading it as "no open PRs" would hide the failure.
+    if (listed === null) throw new PrListError(target.slug)
     const filtered = includeDrafts ? listed : listed.filter((p) => !p.isDraft)
     const wanted = new Set(args.pr)
     if (args.branch !== undefined) {

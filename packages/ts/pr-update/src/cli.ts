@@ -21,7 +21,13 @@
  * any target left `conflict`/`failed` — read `results`/`counts` for which),
  * `2` on a malformed command line, `14` when the config file is unusable
  * (invalid or unreadable), `21` when `update` was refused for want of
- * repository trust.
+ * repository trust, `22` when a tool the run needs (`git`, and `gh` or `curl`
+ * for the code host) is not on PATH, `23` when the code host cannot be used
+ * (no Forgejo token, or its PR listing failed) and `24` when the git remote
+ * cannot be read.
+ *
+ * The code host is chosen by `selectCodeHost` from the `origin` remote, or
+ * `code_host.override`; a failed PR listing is an error, never "no open PRs".
  */
 
 import { mkdirSync, rmSync } from 'node:fs'
@@ -30,14 +36,25 @@ import { dirname, resolve } from 'node:path'
 import { atomicWrite } from '@osdlc/etag-write'
 import { EXIT, defineCli, type CliContext } from '@osdlc/cli-tool'
 import { spawnRunner, type CommandRunner } from '@osdlc/command-seam'
+import type { CodeHostName } from '@osdlc/code-host'
 import { Git } from '@osdlc/typed-git'
 import { CONFIG_INVALID_EXIT, ConfigInvalidError, type ConfigFileSpec } from '@osdlc/config-layers'
 
+import { CodeHostSetupError, selectedCodeHostFor } from './code-host.ts'
 import { runConfigCommand } from './config-cli.ts'
 import { loadConfigLayers } from './config-file.ts'
 import { standalonePorts } from './defaults.ts'
+import {
+  EXIT_CODE_HOST,
+  FORGEJO_TOKEN_ENV,
+  gitMissingFailure,
+  listingHint,
+  preflight,
+  type PreflightFailure,
+  type WhichSeam,
+} from './preflight.ts'
 import { REPAIR_AGENTS, REPAIR_AGENT_SUMMARIES, type RepairAgent } from './repair/names.ts'
-import { SurveyUsageError, renderSurveyText, runSurvey } from './survey.ts'
+import { PrListError, SurveyUsageError, renderSurveyText, runSurvey } from './survey.ts'
 import {
   EXIT_UNTRUSTED,
   prUpdateTrustStore,
@@ -274,6 +291,11 @@ Run 'pr-update <command> --help' for a command's own flags.`
 /** What a test substitutes for the real `gh`, or a host re-points; production runs pass none. */
 export interface CliSeams {
   gh?: CommandRunner
+  git?: CommandRunner
+  /** Runs `curl` for a Forgejo code host. */
+  curl?: CommandRunner
+  /** Finds a binary on PATH, for the check that the run's tools are installed. */
+  which?: WhichSeam
   /** The config file to read instead of {@link PR_UPDATE_CONFIG_FILE}. */
   configFile?: ConfigFileSpec
 }
@@ -287,6 +309,8 @@ function runEnv(
     command: null,
   },
 ): UpdateEnv {
+  const git = seams.git ?? spawnRunner('git')
+  const gh = seams.gh ?? spawnRunner('gh')
   const projectRoot = ctx.cwd
   const loaded = layers.merged.pr_update
   const cfg =
@@ -296,17 +320,71 @@ function runEnv(
   return {
     projectRoot,
     dryRun: false,
-    git: spawnRunner('git'),
-    gh: seams.gh ?? spawnRunner('gh'),
+    git,
+    gh,
+    codeHost: selectedCodeHostFor({
+      git,
+      gh,
+      curl: seams.curl,
+      override: layers.merged.code_host.override,
+    }),
     cfg,
     ports: standalonePorts(cfg, projectRoot),
   }
+}
+
+/** Check the run's tools, remote and code host before any PR is listed. */
+function checkStart(
+  ctx: CliContext,
+  layers: ReturnType<typeof loadConfigLayers>,
+  seams: CliSeams,
+  scope: { remote: string; repo: readonly string[] },
+): { host: CodeHostName } | { failure: PreflightFailure } {
+  const r = preflight({
+    cwd: ctx.cwd,
+    git: seams.git ?? spawnRunner('git'),
+    remote: scope.remote,
+    repoGiven: scope.repo.length > 0,
+    override: layers.merged.code_host.override,
+    which: seams.which,
+  })
+  return r.ok ? { host: r.host } : { failure: r.failure }
+}
+
+/**
+ * The message and exit code for a code-host failure a run threw, or null for
+ * any other error. A failed listing names the repository and the host's usual
+ * remedy; an adapter that could not be built carries its own reason.
+ */
+function codeHostFailure(e: unknown, host: CodeHostName): PreflightFailure | null {
+  if (e instanceof PrListError) {
+    return {
+      exit: EXIT_CODE_HOST,
+      message: `pr-update could not list pull requests for ${e.slug}: ${listingHint(host)}`,
+    }
+  }
+  if (e instanceof CodeHostSetupError) {
+    const tokenMissing = e.message.includes('is not set')
+    return {
+      exit: EXIT_CODE_HOST,
+      message: tokenMissing
+        ? `pr-update needs a Forgejo token: set ${FORGEJO_TOKEN_ENV} (${e.message}).`
+        : `pr-update could not set up the code host: ${e.message}.`,
+    }
+  }
+  return null
 }
 
 function runSurveyCommand(argv: readonly string[], ctx: CliContext, seams: CliSeams): number {
   const { io } = ctx
   const expanded = expandBranchFlag(argv, ctx.cwd)
   if ('error' in expanded) {
+    // A bare `--branch` asks git for the current branch; with git missing say so.
+    const noGit = gitMissingFailure(ctx.cwd, seams.which)
+    if (noGit !== null) {
+      io.stderr(`${noGit.message}\n`)
+      return noGit.exit
+    }
     io.stderr(`pr-update survey: ${expanded.error}\n`)
     return EXIT.usage
   }
@@ -327,14 +405,16 @@ function runSurveyCommand(argv: readonly string[], ctx: CliContext, seams: CliSe
     io.stderr(`pr-update survey: ${prNumbers.error}\n`)
     return EXIT.usage
   }
-  const env = runEnv(
-    ctx,
-    loadConfigLayers(seams.configFile ?? PR_UPDATE_CONFIG_FILE, ctx.cwd, {
-      env: ctx.env,
-      cwd: ctx.cwd,
-    }),
-    seams,
-  )
+  const layers = loadConfigLayers(seams.configFile ?? PR_UPDATE_CONFIG_FILE, ctx.cwd, {
+    env: ctx.env,
+    cwd: ctx.cwd,
+  })
+  const start = checkStart(ctx, layers, seams, v)
+  if ('failure' in start) {
+    io.stderr(`${start.failure.message}\n`)
+    return start.failure.exit
+  }
+  const env = runEnv(ctx, layers, seams)
   let report
   try {
     report = runSurvey(
@@ -351,6 +431,11 @@ function runSurveyCommand(argv: readonly string[], ctx: CliContext, seams: CliSe
       env,
     )
   } catch (e) {
+    const hostFailure = codeHostFailure(e, start.host)
+    if (hostFailure !== null) {
+      io.stderr(`${hostFailure.message}\n`)
+      return hostFailure.exit
+    }
     if (!(e instanceof SurveyUsageError)) throw e
     io.stderr(`pr-update survey: ${e.message}\n`)
     return EXIT.usage
@@ -386,6 +471,12 @@ async function runUpdateCommand(
   const { io } = ctx
   const expanded = expandBranchFlag(argv, ctx.cwd)
   if ('error' in expanded) {
+    // A bare `--branch` asks git for the current branch; with git missing say so.
+    const noGit = gitMissingFailure(ctx.cwd, seams.which)
+    if (noGit !== null) {
+      io.stderr(`${noGit.message}\n`)
+      return noGit.exit
+    }
     io.stderr(`pr-update update: ${expanded.error}\n`)
     return EXIT.usage
   }
@@ -438,6 +529,11 @@ async function runUpdateCommand(
     io.stderr(`pr-update update: ${refusal}\n`)
     return EXIT_UNTRUSTED
   }
+  const start = checkStart(ctx, layers, seams, v)
+  if ('failure' in start) {
+    io.stderr(`${start.failure.message}\n`)
+    return start.failure.exit
+  }
   const env: UpdateEnv = runEnv(ctx, layers, seams, {
     agent: v.repairAgent ?? null,
     command: v.repairCommand ?? null,
@@ -463,12 +559,17 @@ async function runUpdateCommand(
       env,
     )
   } catch (e) {
+    const hostFailure = codeHostFailure(e, start.host)
     if (reportFile !== undefined) {
       try {
-        writeErrorReport(reportFile, e)
+        writeErrorReport(reportFile, hostFailure === null ? e : new Error(hostFailure.message))
       } catch {
         // The original error is the one worth surfacing.
       }
+    }
+    if (hostFailure !== null) {
+      io.stderr(`${hostFailure.message}\n`)
+      return hostFailure.exit
     }
     if (!(e instanceof SurveyUsageError)) throw e
     io.stderr(`pr-update update: ${e.message}\n`)
