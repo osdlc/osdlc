@@ -35,6 +35,7 @@ const ACCOUNTED: Record<AnyKind, 'table' | 'exit1'> = {
   'remote-unreachable': 'table',
   'not-authenticated': 'table',
   'not-found': 'table',
+  tls: 'table',
   // code-host (and typed-gh, which it maps one to one)
   network: 'table',
   'rate-limited': 'table',

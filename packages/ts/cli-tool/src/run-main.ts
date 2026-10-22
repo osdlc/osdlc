@@ -11,8 +11,8 @@
  * failure (a `FailureError`, which includes `CommandFailed`) is rendered by
  * {@link renderFailure} and exits with the code {@link exitCodeFor} gives its
  * kind, so a missing tool, a signed-out `gh` and a dead network read the same
- * in every tool that throws the classified failure (`@osdlc/typed-gh` and
- * `@osdlc/code-host` do). A bare `CommandFailed` carries only command-seam's
+ * in every tool that throws the classified failure (`@osdlc/typed-git`,
+ * `@osdlc/typed-gh` and `@osdlc/code-host` do). A bare `CommandFailed` carries only command-seam's
  * kinds, so its generic `exit` is exit 1. A stack trace is the wrong default for a command someone
  * typed: it says where the code was, not what they should do. A tool wanting
  * traces can catch inside its own `main`.

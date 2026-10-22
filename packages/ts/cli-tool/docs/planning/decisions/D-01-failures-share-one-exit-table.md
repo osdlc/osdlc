@@ -14,7 +14,7 @@ created: 2026-10-21
   stderr and exits with the code for the failure's `kind`. Any other thrown
   error keeps today's behaviour: its message and exit 1.
 - The code follows the `kind` the thrown failure carries. A layer that
-  classifies (`@osdlc/typed-gh`, `@osdlc/code-host`) throws the classified
+  classifies (`@osdlc/typed-git`, `@osdlc/typed-gh`, `@osdlc/code-host`) throws the classified
   failure; a bare `CommandFailed` carries only command-seam's kinds, so a
   generic `exit` is 1 until some layer classifies it.
 - `FAILURE_EXIT` is checked against the kind unions of command-seam,
@@ -25,8 +25,8 @@ created: 2026-10-21
   has four codes, one per category a script acts on differently, following the
   dev standard "a new distinct exit code for each distinct failure category":
   - 22 `missingTool`: `not-installed`, `not-executable`. Install the program.
-  - 23 `service`: `not-authenticated`, `missing-token`, `not-found`, `http`,
-    `unreadable`, `unsupported`. The service answered and refused, or its
+  - 23 `service`: `not-authenticated`, `missing-token`, `not-found`, `tls`,
+    `http`, `unreadable`, `unsupported`. The service answered and refused, or its
     answer was unusable. Fix the credentials or the name.
   - 24 `repository`: `not-a-repo`, `no-remote`, `bad-remote`, `bad-cwd`. There
     is nothing to work on here.
@@ -54,6 +54,10 @@ created: 2026-10-21
   "retry later" and "fix your token" call for different scripts.
 - Rate limiting is in 25, not 23: the credentials are fine and waiting fixes
   it.
+- `tls` is in 23 and not 25: the host was reached and answered, so the network
+  is fine, and retrying the same command cannot clear a certificate that fails
+  verification until the system clock, the CA certificates or the remote's
+  certificate is fixed. That is the "fix it" category, not "try again later".
 - `not-found` is in 23 and not 24: a host that has no such repository or PR
   answered; "no repository here" is about the local checkout.
 

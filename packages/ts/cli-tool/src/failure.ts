@@ -17,7 +17,7 @@
  * - {@link EXIT_FAILURE.missingTool} (22): a program the run needs is not installed
  *   or cannot be run. Install it.
  * - {@link EXIT_FAILURE.service} (23): a service answered and refused, or its
- *   answer was unusable (not signed in, no token, not found, an HTTP error).
+ *   answer was unusable (not signed in, no token, not found, a certificate that fails TLS verification, an HTTP error).
  *   Fix the credentials or the name; retrying will not help.
  * - {@link EXIT_FAILURE.repository} (24): there is no repository, or no usable
  *   remote, to work on. Run it somewhere else, or name one.
@@ -60,6 +60,7 @@ export const FAILURE_EXIT: Readonly<Record<string, number>> = {
   'not-authenticated': EXIT_FAILURE.service,
   'missing-token': EXIT_FAILURE.service,
   'not-found': EXIT_FAILURE.service,
+  tls: EXIT_FAILURE.service,
   http: EXIT_FAILURE.service,
   unreadable: EXIT_FAILURE.service,
   unsupported: EXIT_FAILURE.service,

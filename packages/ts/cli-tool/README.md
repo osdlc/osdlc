@@ -150,7 +150,7 @@ ones a script acts on differently:
 | Code | `EXIT_FAILURE` | Kinds | A script should |
 |---|---|---|---|
 | 22 | `missingTool` | `not-installed`, `not-executable` | install the program |
-| 23 | `service` | `not-authenticated`, `missing-token`, `not-found`, `http`, `unreadable`, `unsupported` | fix the credentials or the name |
+| 23 | `service` | `not-authenticated`, `missing-token`, `not-found`, `tls`, `http`, `unreadable`, `unsupported` | fix the credentials or the name |
 | 24 | `repository` | `not-a-repo`, `no-remote`, `bad-remote`, `bad-cwd` | run it somewhere else, or name a repository |
 | 25 | `unreachable` | `network`, `remote-unreachable`, `timeout`, `rate-limited` | try again later |
 
@@ -160,11 +160,11 @@ exits 1. `FAILURE_EXIT` is the table by kind and `exitCodeFor(failure)` reads it
 `runMain` does this for a thrown failure (a `FailureError`, which includes
 `CommandFailed`): it prints `<name>: <message> <hint>` and sets the category's
 exit code. The code follows the `kind` the thrown failure carries, so it is only
-as specific as the layer that threw it: `@osdlc/typed-gh` and `@osdlc/code-host`
-throw the classified failure (a signed-out `gh` during a write is 23), while a
-bare `CommandFailed` carries only command-seam's kinds (`not-installed`,
-`timeout`, ... and a generic `exit`, which is 1). Classify before throwing if
-you want more. A `main` that holds a `Result` returns instead of throwing:
+as specific as the layer that threw it: `@osdlc/typed-git`, `@osdlc/typed-gh` and
+`@osdlc/code-host` throw the classified failure (a signed-out `gh` or `git push`
+is 23), while a bare `CommandFailed` from elsewhere carries only command-seam's
+kinds (`not-installed`, `timeout`, ... and a generic `exit`, which is 1).
+Classify before throwing if you want more. A `main` that holds a `Result` returns instead of throwing:
 
 ```ts
 const listed = host.listPrs({})
