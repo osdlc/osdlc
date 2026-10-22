@@ -177,6 +177,8 @@ Developed here, in this repository:
 - `packages/ts/typed-git` (`@osdlc/typed-git` on npm, a typed git client for
   TypeScript, in a synchronous and an awaitable form; each verb declares what
   absence means for it and every other failure throws)
+- `packages/ts/result` (`@osdlc/result` on npm, a plain-object `Result` and a
+  `Failure` shape for people: `kind`, `message`, `hint`, `detail`, `cause`)
 - `packages/ts/typed-gh` (`@osdlc/typed-gh` on npm, a typed GitHub client for
   TypeScript over the gh CLI; a total PullRequest, Review and CheckRun model,
   pure argv builders and parsers, and a client where queries return parsed
