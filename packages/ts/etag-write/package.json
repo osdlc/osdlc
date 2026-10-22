@@ -1,6 +1,6 @@
 {
   "name": "@osdlc/etag-write",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Atomic file writes, sha256 etags and compare-and-swap: a temp file in the same directory, fsync, rename, fsync the directory, so a reader never sees a torn file and a crash never leaves one. CAS refuses a blind overwrite.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",
