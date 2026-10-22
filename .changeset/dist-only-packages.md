@@ -4,6 +4,7 @@
 '@osdlc/command-seam': patch
 '@osdlc/etag-write': patch
 '@osdlc/gfm-table': patch
+'@osdlc/pr-update': patch
 '@osdlc/trust-repo': patch
 '@osdlc/typed-gh': patch
 '@osdlc/typed-git': patch

@@ -13,6 +13,7 @@
 '@osdlc/markdown-contract': patch
 '@osdlc/observe': patch
 '@osdlc/path-guard': patch
+'@osdlc/pr-update': patch
 '@osdlc/prettier-config': patch
 '@osdlc/tiered-dirs': patch
 '@osdlc/trust-repo': patch
