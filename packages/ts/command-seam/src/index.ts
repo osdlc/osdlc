@@ -18,13 +18,14 @@
  * - `which` finds a binary on `PATH` without running it.
  *
  * The capture runners share {@link CommandResult}, {@link CommandRunOptions}
- * and {@link CommandFailed}, so one `instanceof CommandFailed` check covers
+ * and {@link CommandFailed}, so one {@link isCommandFailed} check covers
  * the sync and async forms.
  */
 
 export {
   catchFailed,
   CommandFailed,
+  isCommandFailed,
   mapFailed,
   resolveRunner,
   runChecked,

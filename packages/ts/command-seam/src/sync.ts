@@ -16,7 +16,7 @@ import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { FailureError } from '@osdlc/result'
+import { FailureError, isFailure } from '@osdlc/result'
 
 import { buildFailure, type CommandFailure } from './failure.ts'
 import { shellJoin } from './quote.ts'
@@ -524,6 +524,23 @@ export class CommandFailed extends FailureError<CommandFailure> {
 }
 
 /**
+ * Whether `error` is a {@link CommandFailed}, by shape rather than `instanceof`:
+ * a carried {@link CommandFailure} plus the `argv` and `result` of the run. Two
+ * installed copies of this package (a monorepo consumer with mixed ranges) have
+ * two `CommandFailed` classes, and `instanceof` is false across them.
+ */
+export function isCommandFailed(error: unknown): error is CommandFailed {
+  if (typeof error !== 'object' || error === null) return false
+  const e = error as { failure?: unknown; argv?: unknown; result?: unknown }
+  return (
+    isFailure(e.failure) &&
+    Array.isArray(e.argv) &&
+    typeof e.result === 'object' &&
+    e.result !== null
+  )
+}
+
+/**
  * Run a command and throw if it fails. Use it where the only sensible
  * response to failure is to stop, instead of writing
  * `if (r.exitCode !== 0) throw` after each `run`.
@@ -580,7 +597,7 @@ export function runChecked(
 /**
  * Run `fn`; if it throws {@link CommandFailed}, throw `mapper(e)` instead.
  * Any other error propagates untouched, as does `fn`'s return value. Replaces
- * `catch (e) { if (e instanceof CommandFailed) throw new X(...); throw e }`.
+ * `catch (e) { if (isCommandFailed(e)) throw new X(...); throw e }`.
  *
  * `mapper` may have side effects (print the output, say) before returning the
  * error to throw. Async version: `mapFailedAsync`.
@@ -594,7 +611,7 @@ export function mapFailed<T>(fn: () => T, mapper: (failed: CommandFailed) => Err
   try {
     return fn()
   } catch (e) {
-    if (e instanceof CommandFailed) throw mapper(e)
+    if (isCommandFailed(e)) throw mapper(e)
     throw e
   }
 }
@@ -611,7 +628,7 @@ export function catchFailed<T, R>(fn: () => T, onFailed: (failed: CommandFailed)
   try {
     return fn()
   } catch (e) {
-    if (e instanceof CommandFailed) return onFailed(e)
+    if (isCommandFailed(e)) return onFailed(e)
     throw e
   }
 }

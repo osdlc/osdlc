@@ -596,6 +596,10 @@ instead. Other errors pass through unchanged. `mapFailedAsync` and
 `catchFailedAsync` do the same for async functions, and their mapper or
 handler may be async.
 
+`isCommandFailed(error)` checks a caught value by its shape rather than with
+`instanceof`, so it still recognises a `CommandFailed` thrown by another
+installed copy of this package. The helpers above use it.
+
 ```ts
 import { catchFailed, mapFailed, runChecked, spawnRunner } from '@osdlc/command-seam'
 
