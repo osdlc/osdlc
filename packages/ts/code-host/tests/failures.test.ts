@@ -9,6 +9,8 @@ import { describe, expect, test } from 'vitest'
 import type { CodeHostFailure } from '../src/failure.ts'
 import { ForgejoCodeHost } from '../src/forgejo.ts'
 import { GithubCodeHost } from '../src/github.ts'
+import { badRemoteFailure } from '../src/select.ts'
+import { missingToolFailure } from '../src/tools.ts'
 import type { CodeHost } from '../src/types.ts'
 
 /** A runner that answers every call with `result`. */
@@ -244,5 +246,25 @@ describe('ForgejoCodeHost failures', () => {
 
   test('a mutation throws a FailureError carrying the classified failure', () => {
     expect(() => forgejoWith(http(403)).postComment(1, 'x')).toThrow(/refused the token/)
+  })
+})
+
+describe('missingToolFailure and badRemoteFailure', () => {
+  test('a missing tool reads the way the adapter would have worded it', () => {
+    const gh = missingToolFailure('github')
+    expect(gh).toMatchObject({ kind: 'not-installed', host: 'github' })
+    const real = failureOf(ghFailing(neverRan('spawn', 'spawn gh ENOENT')))
+    expect([gh.kind, gh.message, gh.hint]).toEqual([real.kind, real.message, real.hint])
+    const curl = missingToolFailure('forgejo')
+    expect(curl).toMatchObject({ kind: 'not-installed', host: 'forgejo', hint: 'Install curl.' })
+    expect(curl.message).toBe(
+      failureOf(forgejoWith(neverRan('spawn', 'spawn curl ENOENT'))).message,
+    )
+  })
+
+  test('a bad remote is redacted of credentials', () => {
+    const f = badRemoteFailure('github', 'origin', 'https://user:secret@git.example.com/onlyrepo')
+    expect(f).toMatchObject({ kind: 'bad-remote', host: 'github' })
+    expect(JSON.stringify(f)).not.toContain('secret')
   })
 })

@@ -52,6 +52,9 @@ export const DEFAULT_FORGEJO_TOKEN_ENV = 'FORGEJO_TOKEN'
 
 const STATUS_MARKER = '\nHTTPSTATUS:'
 
+/** What to do when curl is not installed. */
+export const CURL_INSTALL_HINT = 'Install curl.'
+
 /** curl's exit code for "operation timed out". */
 const CURL_TIMEOUT_EXIT = 28
 
@@ -420,7 +423,7 @@ export class ForgejoCodeHost implements CodeHost {
       return {
         kind: 'not-installed',
         message: failed.message,
-        hint: 'Install curl.',
+        hint: CURL_INSTALL_HINT,
         ...detail,
         ...base,
       }

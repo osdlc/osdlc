@@ -109,6 +109,19 @@ export function authChecksFor(
 }
 
 /**
+ * The failure for a remote whose URL names no host, owner and repository. The
+ * URL is redacted of any credentials first, since the message reaches a terminal.
+ */
+export function badRemoteFailure(host: CodeHostName, remote: string, url: string): CodeHostFailure {
+  return {
+    kind: 'bad-remote',
+    message: `The \`${remote}\` remote (${redactRemoteUrl(url)}) names no host, owner and repository.`,
+    hint: 'Point it at the repository, such as https://git.example.com/owner/repo.git.',
+    host,
+  }
+}
+
+/**
  * Build the `CodeHost` for the repository at `cwd`. A Forgejo adapter that
  * cannot be built is a failure, not a throw: `no-remote` (no `origin`),
  * `bad-remote` (a remote that names no host/owner/repo) or `missing-token`.
@@ -147,14 +160,7 @@ export function selectCodeHost(
     })
   }
   const ref = parseRemoteUrl(remoteUrl)
-  if (ref === null) {
-    return err({
-      kind: 'bad-remote',
-      message: `The \`origin\` remote (${redactRemoteUrl(remoteUrl)}) names no host, owner and repository.`,
-      hint: 'Point `origin` at the repository, such as https://git.example.com/owner/repo.git.',
-      host: 'forgejo',
-    })
-  }
+  if (ref === null) return err(badRemoteFailure('forgejo', 'origin', remoteUrl))
   const hostForAdapter = forgejoHost(ref)
   const tokenEnv = opts.forgejoTokenEnv ?? DEFAULT_FORGEJO_TOKEN_ENV
   const token = process.env[tokenEnv]
