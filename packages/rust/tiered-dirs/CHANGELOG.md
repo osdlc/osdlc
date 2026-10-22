@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.3](https://github.com/osdlc/osdlc/compare/tiered-dirs/v0.3.2...tiered-dirs/v0.3.3) - 2026-10-22
+
+### Other
+
+- *(changelog)* correct the MSRV notes for path-guard and its siblings ([#398](https://github.com/osdlc/osdlc/pull/398))
+
 ## [0.3.2](https://github.com/osdlc/osdlc/compare/tiered-dirs/v0.3.1...tiered-dirs/v0.3.2) - 2026-10-19
 
 ### Added
