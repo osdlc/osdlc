@@ -16,8 +16,9 @@ import { type Failure } from '@osdlc/result'
  *
  * - everything `@osdlc/command-seam` reports (`not-installed`, `not-executable`,
  *   `bad-cwd`, `timeout`, `output-cap`, `signal`, `aborted`, `spawn`, `exit`);
- * - `not-authenticated`: `gh` has no usable credentials ("gh auth login",
- *   "HTTP 401", "Bad credentials");
+ * - `not-authenticated`: `gh` has no usable credentials, or GitHub refused
+ *   them ("gh auth login", "HTTP 401", "HTTP 403", "Bad credentials"). A 403 that
+ *   is a rate limit stays `rate-limited`;
  * - `network`: GitHub could not be reached ("error connecting to
  *   api.github.com", "Could not resolve host", "dial tcp", "i/o timeout");
  * - `not-found`: GitHub has no such thing, or hides it ("Could not resolve to a
@@ -47,18 +48,34 @@ const INSTALL_HINT = 'Install it from https://cli.github.com, then run `gh auth 
 
 const RATE_LIMITED = /API rate limit exceeded|secondary rate limit|rate limit exceeded|HTTP 429/i
 const NOT_AUTHENTICATED =
-  /gh auth login|HTTP 401|Bad credentials|authentication required|not logged in/i
+  /gh auth login|HTTP 401|HTTP 403|Bad credentials|authentication required|not logged in/i
 const NETWORK =
   /error connecting to|Could not resolve host|no such host|dial tcp|i\/o timeout|network is unreachable|connection refused/i
 const NOT_FOUND =
   /Could not resolve to an? [A-Za-z]+|HTTP 404|no pull requests found for branch|\(HTTP 404\)|Not Found/
 
+/** What a verb that reads one thing asks GitHub for. */
+export type Thing = 'pr' | 'issue' | 'repo'
+
+const ABSENT: Record<Thing, RegExp> = {
+  pr: /Could not resolve to a PullRequest|no pull requests found for branch/,
+  issue: /Could not resolve to an Issue/,
+  repo: /Could not resolve to a Repository/,
+}
+
 /**
- * Whether a failed `gh` run means "there is no such thing" for a verb that
- * reads one thing: the answer, not a failure.
+ * Whether the text of a failed `gh` run (stderr then stdout, as
+ * {@link classifyGhFailure} reads it) means "there is no such `thing`", for a
+ * verb that reads one thing: an answer, not a failure.
+ *
+ * Narrower than the `not-found` failure kind on purpose. A mistyped `--repo`
+ * makes `gh pr view 7` say "Could not resolve to a Repository", which is a
+ * wrong repository rather than a missing pull request, so it is a `not-found`
+ * failure and not absence. Likewise a bare `HTTP 404` does not say which part
+ * of the request was missing.
  */
-export function isNotFound(stderr: string): boolean {
-  return NOT_FOUND.test(stderr)
+export function isAbsent(thing: Thing, text: string): boolean {
+  return ABSENT[thing].test(text)
 }
 
 /** The gh failure for a failed `gh` run. */

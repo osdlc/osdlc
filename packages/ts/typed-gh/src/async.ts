@@ -2,7 +2,7 @@
  * `AsyncGh` — the awaitable GitHub client, with the same methods as {@link Gh}.
  *
  * Same three doors, promised: the plain method resolves to a value or rejects
- * (`CommandFailed` for a failed gh, `FailureError` for output it cannot read;
+ * (a `FailureError` carrying the classified `GhFailure` for a failed gh or output it cannot read;
  * a query for one thing resolves `null` when GitHub has no such thing),
  * `try` resolves to a `Result<T, GhFailure>`, `soft` resolves `null` for a
  * failure, and `raw`/`rawChecked` are the hatches. It is driven by the same pure verb
@@ -11,14 +11,20 @@
  */
 
 import {
-  runCheckedAsync,
   resolveRunnerAsync,
   type AsyncCommandRunner,
   type AsyncCommandRunOptions,
   type CommandResult,
 } from '@osdlc/command-seam'
 
-import { settle, softAsync, triedAsync, type Soft, type TriedAsync } from './doors.ts'
+import {
+  runCheckedGhAsync,
+  settle,
+  softAsync,
+  triedAsync,
+  type Soft,
+  type TriedAsync,
+} from './doors.ts'
 import { ownerRepoSlug, parseOwnerRepo, parsePrRef } from './repo.ts'
 import type { IssueRow, Label, OwnerRepo, PrSearchHit, PullRequest, Repository } from './types.ts'
 import * as v from './verbs.ts'
@@ -110,9 +116,9 @@ export class AsyncGh {
     return this.runner.run(argv, { cwd: this.cwd, ...opts })
   }
 
-  /** Checked passthrough — rejects with `CommandFailed` on a non-zero exit. */
+  /** Checked passthrough — rejects with the classified failure on a non-zero exit. */
   rawChecked(argv: string[], opts: AsyncCallOptions = {}): Promise<CommandResult> {
-    return runCheckedAsync(this.runner, argv, { cwd: this.cwd, ...opts })
+    return runCheckedGhAsync(this.runner, argv, { cwd: this.cwd, ...opts })
   }
 
   /** Run one verb from the table, honouring its checked/unchecked contract. */
@@ -123,7 +129,7 @@ export class AsyncGh {
     if (call.timeoutMs !== undefined) opts.timeoutMs = call.timeoutMs
     if (call.signal !== undefined) opts.signal = call.signal
     const result = verb.checked
-      ? await runCheckedAsync(this.runner, verb.argv, opts)
+      ? await runCheckedGhAsync(this.runner, verb.argv, opts)
       : await this.runner.run(verb.argv, opts)
     return settle(verb, result, this.runner.binary)
   }
@@ -313,7 +319,7 @@ export class AsyncGh {
     return this.exec(v.editPrBody(number, body, this.target))
   }
 
-  /** The PR's unified diff; rejects with `CommandFailed` when gh cannot produce it. */
+  /** The PR's unified diff; rejects with the classified failure when gh cannot produce it. */
   prDiff(number: number): Promise<string> {
     return this.exec(v.prDiff(number, this.target))
   }

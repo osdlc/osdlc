@@ -7,11 +7,12 @@
  * Offline: both clients run on fake runners that record each call.
  */
 
+import { FailureError } from '@osdlc/result'
 import { describe, expect, test } from 'vitest'
 
 import {
   AsyncGh,
-  CommandFailed,
+  type GhFailure,
   Gh,
   PR_REF_FIELDS,
   defaultRunnerFactory,
@@ -87,16 +88,16 @@ describe('raw and rawChecked', () => {
     expect(f.aghCalls).toEqual(expected)
   })
 
-  test('rawChecked returns a success and throws CommandFailed, with argv, on a failure', async () => {
+  test('rawChecked returns a success and throws the classified failure, with argv, on a failure', async () => {
     const good = clients([ok('fine')])
     expect(good.gh.rawChecked(['x']).stdout).toBe('fine')
     expect((await good.agh.rawChecked(['x'])).stdout).toBe('fine')
 
     const bad = clients([FAIL])
-    expect(() => bad.gh.rawChecked(['x', 'y'])).toThrow(CommandFailed)
+    expect(() => bad.gh.rawChecked(['x', 'y'])).toThrow(FailureError)
     const err = await bad.agh.rawChecked(['x', 'y']).catch((e: unknown) => e)
-    expect(err).toBeInstanceOf(CommandFailed)
-    expect((err as CommandFailed).argv).toEqual(['x', 'y'])
+    expect(err).toBeInstanceOf(FailureError)
+    expect((err as FailureError<GhFailure>).failure.argv).toEqual(['x', 'y'])
   })
 })
 
@@ -128,10 +129,10 @@ describe('prSetDraft', () => {
     expect(f.aghCalls.map((c) => c.argv)).toEqual([[...argv]])
   })
 
-  test('throws CommandFailed when gh refuses', async () => {
+  test('throws when gh refuses', async () => {
     const f = clients([FAIL])
-    expect(() => f.gh.prSetDraft(7, true)).toThrow(CommandFailed)
-    await expect(f.agh.prSetDraft(7, true)).rejects.toBeInstanceOf(CommandFailed)
+    expect(() => f.gh.prSetDraft(7, true)).toThrow(FailureError)
+    await expect(f.agh.prSetDraft(7, true)).rejects.toBeInstanceOf(FailureError)
   })
 })
 
@@ -393,23 +394,23 @@ describe('AsyncGh forms agree with Gh', () => {
     expect(fromSync).toEqual(expected)
   })
 
-  test('the same methods reject with CommandFailed, or answer false/ok:false for a probe, when gh fails', async () => {
+  test('the same methods reject, or answer false/ok:false for a probe, when gh fails', async () => {
     const f = clients([FAIL])
-    await expect(f.agh.issueView(7)).rejects.toBeInstanceOf(CommandFailed)
+    await expect(f.agh.issueView(7)).rejects.toBeInstanceOf(FailureError)
     expect(await f.agh.soft.issueView(7)).toBeNull()
     expect(await f.agh.installed()).toBe(false)
     expect(await f.agh.authenticated()).toBe(false)
     expect(await f.agh.authStatus()).toEqual({ ok: false, detail: 'boom' })
     expect(await f.agh.ready()).toBe(false)
-    await expect(f.agh.prReviewThreads(5)).rejects.toBeInstanceOf(CommandFailed)
+    await expect(f.agh.prReviewThreads(5)).rejects.toBeInstanceOf(FailureError)
     expect(await f.agh.soft.prReviewThreads(5)).toBeNull()
     await expect(
       f.agh.createPr({ head: 'h', base: 'main', title: 't', body: 'b' }),
-    ).rejects.toBeInstanceOf(CommandFailed)
+    ).rejects.toBeInstanceOf(FailureError)
     await expect(f.agh.prMerge(7, { method: 'squash', headSha: 'abc' })).rejects.toBeInstanceOf(
-      CommandFailed,
+      FailureError,
     )
-    await expect(f.agh.setIssueLabel(7, null, 'x')).rejects.toBeInstanceOf(CommandFailed)
+    await expect(f.agh.setIssueLabel(7, null, 'x')).rejects.toBeInstanceOf(FailureError)
   })
 })
 

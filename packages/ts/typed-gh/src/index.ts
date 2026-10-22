@@ -12,7 +12,8 @@
  *     spawn anything, so an async fan-out drives them through its own runner
  *     without duplicating a line of parsing.
  *   - **A client.** `Gh`, with `Git`'s three doors: the plain method returns a
- *     value or throws `CommandFailed`; `gh.try.*` returns a
+ *     value or throws a `FailureError` carrying the classified
+ *     `GhFailure`; `gh.try.*` returns a
  *     `Result<T, GhFailure>`; `gh.soft.*` returns `null` for a failed query.
  *     `raw` is the hatch.
  *

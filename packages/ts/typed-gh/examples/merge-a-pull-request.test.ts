@@ -4,10 +4,10 @@
  * to do.
  */
 
+import { FailureError } from '@osdlc/result'
 import { expect, test } from 'vitest'
 
 import {
-  CommandFailed,
   Gh,
   type CommandResult,
   type CommandRunner,
@@ -40,7 +40,7 @@ test('GitHub refuses the merge when the head moved, and that throws', () => {
   const { runner } = answering({ exitCode: 1, stdout: '', stderr: 'head commit changed' })
 
   expect(() => new Gh('/repo', { runner }).prMerge(9, { method: 'merge', headSha: 'abc' })).toThrow(
-    CommandFailed,
+    FailureError,
   )
 })
 

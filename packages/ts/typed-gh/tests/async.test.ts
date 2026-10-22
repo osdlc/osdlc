@@ -5,11 +5,11 @@
  * verb table.
  */
 
+import { FailureError } from '@osdlc/result'
 import { describe, expect, test } from 'vitest'
 
 import {
   AsyncGh,
-  CommandFailed,
   Gh,
   api,
   type AsyncCommandRunner,
@@ -39,10 +39,10 @@ describe('AsyncGh — the three doors', () => {
   test('queries reject on failure; soft resolves null; try resolves a Result', async () => {
     const { runner } = recorder([FAIL])
     const gh = new AsyncGh('/repo', { runner })
-    await expect(gh.prList()).rejects.toBeInstanceOf(CommandFailed)
-    await expect(gh.prView(1)).rejects.toBeInstanceOf(CommandFailed)
-    await expect(gh.prBody(1)).rejects.toBeInstanceOf(CommandFailed)
-    await expect(gh.labelList()).rejects.toBeInstanceOf(CommandFailed)
+    await expect(gh.prList()).rejects.toBeInstanceOf(FailureError)
+    await expect(gh.prView(1)).rejects.toBeInstanceOf(FailureError)
+    await expect(gh.prBody(1)).rejects.toBeInstanceOf(FailureError)
+    await expect(gh.labelList()).rejects.toBeInstanceOf(FailureError)
     expect(await gh.soft.prList()).toBeNull()
     expect(await gh.soft.prView(1)).toBeNull()
     expect(await gh.soft.prBody(1)).toBeNull()
@@ -50,19 +50,19 @@ describe('AsyncGh — the three doors', () => {
     expect((await gh.try.prList()).ok).toBe(false)
   })
 
-  test('mutations reject with CommandFailed', async () => {
+  test('mutations reject with the classified failure', async () => {
     const { runner } = recorder([FAIL])
     const gh = new AsyncGh('/repo', { runner })
-    await expect(gh.editPr(1, { title: 't' })).rejects.toBeInstanceOf(CommandFailed)
-    await expect(gh.prComment(1, 'hi')).rejects.toBeInstanceOf(CommandFailed)
-    await expect(gh.prUpdateBranch(1)).rejects.toBeInstanceOf(CommandFailed)
+    await expect(gh.editPr(1, { title: 't' })).rejects.toBeInstanceOf(FailureError)
+    await expect(gh.prComment(1, 'hi')).rejects.toBeInstanceOf(FailureError)
+    await expect(gh.prUpdateBranch(1)).rejects.toBeInstanceOf(FailureError)
   })
 
   test('raw is unchecked, rawChecked rejects', async () => {
     const { runner } = recorder([FAIL])
     const gh = new AsyncGh('/repo', { runner })
     expect((await gh.raw(['x'])).exitCode).toBe(1)
-    await expect(gh.rawChecked(['x'])).rejects.toBeInstanceOf(CommandFailed)
+    await expect(gh.rawChecked(['x'])).rejects.toBeInstanceOf(FailureError)
   })
 
   test('openPrFor discards a prefix-only match', async () => {

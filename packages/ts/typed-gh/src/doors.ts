@@ -2,22 +2,34 @@
  * The three doors, as `@osdlc/typed-git` has them: the plain verb (checked),
  * `gh.try.*` and `gh.soft.*`.
  *
- *   - **Plain / checked**: a value, or a throw. A failed `gh` throws
- *     `CommandFailed`; output that exited 0 but could not be read throws
- *     `FailureError` carrying a `GhFailure` of kind `unreadable`. A verb that
+ *   - **Plain / checked**: a value, or a throw. A failed `gh` throws a
+ *     `FailureError` carrying the classified `GhFailure` (its `cause` is the
+ *     `CommandFailed`), so a caller that reports it, such as `runMain`, reads
+ *     "signed out" or "rate limited" and not a bare exit; output that exited 0
+ *     but could not be read throws one of kind `unreadable`. A verb that
  *     reads one thing (`prView`, `issueView`, `repoView`) answers `null` when
  *     GitHub says there is no such thing: absence is an answer.
  *   - **`try`**: the same call, with the failure returned as
- *     `Result<T, GhFailure>`. It catches `CommandFailed` and `FailureError`
- *     and nothing else: a `RangeError` for a bad argument still throws.
+ *     `Result<T, GhFailure>`. It catches a thrown failure (a `FailureError`, or a
+ *     `CommandFailed` from `raw`-level code) and nothing else: a `RangeError` for a bad argument still throws.
  *   - **`soft`**: the same call, with `null` for a failure. Only the queries
  *     have a soft form; no mutation does.
  *
  * Both are facades over the whole client, so a new method costs nothing here.
  */
 
-import { CommandFailed, type CommandResult } from '@osdlc/command-seam'
-import { err, FailureError, isFailure, ok, type Result } from '@osdlc/result'
+import {
+  CommandFailed,
+  isCommandFailed,
+  runChecked,
+  runCheckedAsync,
+  type AsyncCommandRunner,
+  type AsyncCommandRunOptions,
+  type CommandResult,
+  type CommandRunner,
+  type CommandRunOptions,
+} from '@osdlc/command-seam'
+import { err, FailureError, isFailure, ok, type Failure, type Result } from '@osdlc/result'
 
 import { classifyGhFailure, type GhFailure, unreadableFailure } from './failure.ts'
 import type { GhVerb } from './verbs.ts'
@@ -32,20 +44,55 @@ import type { GhVerb } from './verbs.ts'
  * which `parse` turns into `null`. A read that exited 0 but parsed to `null`
  * could not be read completely, and throws.
  *
- * @throws {@link CommandFailed} for a failed run.
+ * @throws `FailureError` carrying the classified {@link GhFailure} for a failed run.
  * @throws `FailureError` carrying an `unreadable` {@link GhFailure}.
  */
 export function settle<T>(verb: GhVerb<T>, result: CommandResult, binary: string | undefined): T {
   if (verb.checked || verb.probe === true) return verb.parse(result)
   if (result.neverExited === true || result.exitCode !== 0) {
     if (result.neverExited !== true && verb.absent?.(result) === true) return verb.parse(result)
-    throw new CommandFailed(verb.argv, result, binary)
+    throw ghFailureError(new CommandFailed(verb.argv, result, binary))
   }
   const value = verb.parse(result)
   if (value === null) {
     throw new FailureError(unreadableFailure(verb.argv, result.stdout, binary))
   }
   return value
+}
+
+/**
+ * The error the plain door throws for a failed run: a `FailureError` carrying
+ * the {@link GhFailure} that {@link classifyGhFailure} reads from it, with the
+ * `CommandFailed` as its `cause`. Anything else is returned as it is.
+ */
+export function ghFailureError(error: unknown): unknown {
+  return isCommandFailed(error) ? new FailureError(classifyGhFailure(error)) : error
+}
+
+/** {@link runChecked}, throwing {@link ghFailureError}'s classified failure. */
+export function runCheckedGh(
+  runner: CommandRunner,
+  argv: string[],
+  opts: CommandRunOptions,
+): CommandResult {
+  try {
+    return runChecked(runner, argv, opts)
+  } catch (error) {
+    throw ghFailureError(error)
+  }
+}
+
+/** {@link runCheckedAsync}, rejecting with {@link ghFailureError}'s classified failure. */
+export async function runCheckedGhAsync(
+  runner: AsyncCommandRunner,
+  argv: string[],
+  opts: AsyncCommandRunOptions,
+): Promise<CommandResult> {
+  try {
+    return await runCheckedAsync(runner, argv, opts)
+  } catch (error) {
+    throw ghFailureError(error)
+  }
 }
 
 /** The methods the doors leave out: the escape hatches, pure helpers and plain properties. */
@@ -110,16 +157,23 @@ export type Soft<C> = {
     : never
 }
 
-/** Whether `error` is a `gh` failure to hand back rather than a bug to let through. */
-function isGhFailure(error: unknown): error is CommandFailed | FailureError<GhFailure> {
+/**
+ * Whether `error` carries a failure to hand back rather than a bug to let
+ * through. By shape, not `instanceof`: two installed copies of command-seam or
+ * result each have their own classes.
+ */
+function isGhFailure(error: unknown): error is { failure: Failure } {
   return (
-    error instanceof CommandFailed || (error instanceof FailureError && isFailure(error.failure))
+    typeof error === 'object' &&
+    error !== null &&
+    isFailure((error as { failure?: unknown }).failure)
   )
 }
 
 /** The failure a caught `CommandFailed` or `FailureError` stands for. */
-export function failureOf(error: CommandFailed | FailureError<GhFailure>): GhFailure {
-  return error instanceof CommandFailed ? classifyGhFailure(error) : error.failure
+export function failureOf(error: { failure: Failure }): GhFailure {
+  const thrown: unknown = error
+  return isCommandFailed(thrown) ? classifyGhFailure(thrown) : (error.failure as GhFailure)
 }
 
 function facade<C extends object>(

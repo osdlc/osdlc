@@ -1,5 +1,5 @@
 ---
-'@osdlc/command-seam': minor
+"@osdlc/command-seam": minor
 ---
 
 Failures carry a classified `kind`. New `classifyFailure(result, { binary, argv, okExitCodes })` returns a `CommandFailure` (a `Failure` from `@osdlc/result`) with `kind` `not-installed`, `not-executable`, `bad-cwd`, `timeout`, `output-cap`, `signal`, `aborted`, `spawn` or `exit`, a one-line `message` and the full `detail`, or `null` when the run succeeded. It reads any runner's result.

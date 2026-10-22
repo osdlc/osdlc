@@ -94,7 +94,7 @@ that decides whether to merge can then match every member.
 
 | | a value | on failure |
 | --- | --- | --- |
-| **`gh.query()`** (the plain method) | the value | throws `CommandFailed` (`FailureError` when `gh` succeeded but its output cannot be read) |
+| **`gh.query()`** (the plain method) | the value | throws a `FailureError` carrying the classified `GhFailure` (kind `unreadable` when `gh` succeeded but its output cannot be read) |
 | **`gh.try.query()`** | `{ ok: true, value }` | `{ ok: false, error: GhFailure }` |
 | **`gh.soft.query()`** | the value | `null` (queries only; a mutation has no soft form) |
 | **`raw(argv)`** | the raw `CommandResult`; you decide | the same |
@@ -107,9 +107,13 @@ expired credential would read as "nothing to do".
 
 **Absence is an answer.** A query for one thing (`prView`, `issueView`,
 `repoView`, and `prFind` and `openPrFor` over them) returns `null` on every
-door when GitHub says there is no such thing ("Could not resolve to a
-PullRequest", "HTTP 404", "no pull requests found for branch"). `gh.try.prView(99)`
-is `{ ok: true, value: null }`. Every other failure is a failure.
+door when GitHub says there is no such thing: "Could not resolve to a
+PullRequest" or "no pull requests found for branch" for `prView`, "Could not
+resolve to an Issue" for `issueView`, "Could not resolve to a Repository" for
+`repoView`. `gh.try.prView(99)` is `{ ok: true, value: null }`. Every other
+failure is a failure, including a wrong repository: `prView(7)` against a
+mistyped `--repo` is a `not-found` failure, not an absent PR. The check reads
+stderr and stdout, as the classifier does.
 
 **Probes answer.** `installed()`, `authenticated()`, `authStatus()`, `ready()`
 and `api()` return their failure as part of their value, in every door, because
@@ -129,12 +133,15 @@ if (!result.ok) {
 The error of `try` is a `GhFailure`, a `Failure` from `@osdlc/result`: a `kind`
 to branch on, a one-line `message` and a `hint` for a person (`describe(error)`
 joins them), `gh`'s own output in `detail`, the `argv` and `exitCode`, and the
-`CommandFailed` it was read from in `cause`.
+`CommandFailed` it was read from in `cause`. The plain door throws the same
+failure, wrapped in a `FailureError` (`error.failure`), so a CLI that reports a
+thrown failure, such as `runMain` from `@osdlc/cli-tool`, shows "gh is not
+signed in" for a write and exits with the same code as for a read.
 
 | `kind` | When (gh's stderr) | `message` / `hint` |
 | --- | --- | --- |
 | `not-installed` | `gh` is not on `PATH` | `` `gh` is not installed or not on PATH. `` / ``Install it from https://cli.github.com, then run `gh auth login`.`` |
-| `not-authenticated` | `gh auth login`, `HTTP 401`, `Bad credentials`, `not logged in` | `gh is not signed in to GitHub.` / ``Run `gh auth login`.`` |
+| `not-authenticated` | `gh auth login`, `HTTP 401`, `HTTP 403` (unless a rate limit), `Bad credentials`, `not logged in` | `gh is not signed in to GitHub.` / ``Run `gh auth login`.`` |
 | `network` | `error connecting to`, `Could not resolve host`, `no such host`, `dial tcp`, `i/o timeout` | `GitHub could not be reached.` / `Check your network connection.` |
 | `not-found` | `Could not resolve to a …`, `HTTP 404`, `no pull requests found for branch` | `GitHub has no such pull request, issue or repository, or you cannot see it.` / `Check the number or name, and that your account can see the repository.` |
 | `rate-limited` | `API rate limit exceeded`, `secondary rate limit`, `HTTP 429` | `GitHub's API rate limit was reached.` / `Wait a few minutes and try again.` |
@@ -176,7 +183,7 @@ acme.withRepo('acme/gadgets').prList()
 acme.api('repos/{owner}/{repo}/branches')
 ```
 
-The target goes into the argv, so a `CommandFailed` shows which repository a
+The target goes into the argv, so a failure's `argv` shows which repository a
 call hit: `pr`, `issue` and `label` calls get `--repo github.acme.com/acme/widgets`,
 `api` calls get `--hostname` and a filled `{owner}/{repo}`, and `authStatus`
 asks about that host. `repoList` and `searchPrs` have no host flag in gh, so
@@ -259,7 +266,7 @@ about staleness, never the measure of it. Compute that from the commit graph
 
 ## Changing pull requests
 
-Mutations throw `CommandFailed` when `gh` fails. `gh.try.editPr(…)` returns the failure as a `Result` instead; a mutation has no `soft` form.
+Mutations throw the classified failure (a `FailureError`) when `gh` fails. `gh.try.editPr(…)` returns the failure as a `Result` instead; a mutation has no `soft` form.
 
 ```ts
 const url = gh.createPr(options)
@@ -325,7 +332,7 @@ const review = gh.createReview(9, {
 gh.issueCommentEdit('4204154439', 'Updated: CI is green.')
 ```
 
-`prDiff` returns the unified diff and throws `CommandFailed` when `gh` cannot produce it.
+`prDiff` returns the unified diff and throws the classified failure when `gh` cannot produce it.
 
 `createReview` is experimental. It posts a review of kind `COMMENT`: it cannot approve or request
 changes. Each inline comment sits on one line of the new side of the diff. It returns the review's
@@ -353,7 +360,7 @@ const prs = verb.parse(result)
 ## `AsyncGh`
 
 The awaitable form of `Gh`, with the same methods, for a fan-out that must not block the event loop.
-Same three doors, promised (the plain method rejects with `CommandFailed`,
+Same three doors, promised (the plain method rejects with the classified failure,
 `try` resolves to a `Result<T, GhFailure>`, `soft` resolves `null` for a failed
 query, `raw`/`rawChecked` are the hatches), driven by the same verb table, so the two cannot drift. It takes an
 `AsyncCommandRunner` and defaults to `spawnRunnerAsync("gh")`.
@@ -525,7 +532,7 @@ the escape hatches, `at`, `withRepo`, `prViewSettled`, `openPrFor`, `prFind`, `a
 
 ### From the command seam
 
-- `CommandFailed`: thrown by a failed call. It carries the argv, the result and the classified `failure`.
+- `CommandFailed`: re-exported from `@osdlc/command-seam`. A failed call throws a `FailureError` whose `failure.cause` is the `CommandFailed`, which carries the argv and the result.
 - `CommandRunner`, `AsyncCommandRunner`, `CommandResult` and `CommandRunOptions`: the runner types
   that appear in signatures.
 

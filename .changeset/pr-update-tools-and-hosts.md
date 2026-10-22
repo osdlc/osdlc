@@ -1,5 +1,5 @@
 ---
-'@osdlc/pr-update': minor
+"@osdlc/pr-update": minor
 ---
 
 `pr-update` no longer reports a broken setup as "no open PRs", and the command-line tool picks its code host from the `origin` remote (or `code_host.override`): a Forgejo remote works with `curl` and `FORGEJO_TOKEN`, a GitHub one with `gh`. Before listing anything, `survey` and `update` check that `git`, and `gh` or `curl`, are installed and that the remote can be read. A PR listing the host refuses (`gh` signed out, no network, a refused token) is an error, not an empty list. Every one of these failures is the shared classified failure from `@osdlc/typed-git`, `@osdlc/typed-gh` and `@osdlc/code-host`, printed as `pr-update: <message> <hint>` and numbered by `@osdlc/cli-tool`: `22` a missing tool, `23` the host refused or answered unusably, `24` no repository or remote, `25` unreachable or rate-limited (`21`, untrusted, is unchanged). A self-hosted remote is now read as `owner/name`. `update --report` writes `{ "error", "failure": { "kind", "message", "hint" } }` for such a failure. Library callers that pass their own `codeHost` are unaffected, and the library default stays GitHub. `selectedCodeHostFor` is the CLI's host factory; it throws a `FailureError` when no host can be built.

@@ -5,14 +5,14 @@
  * on every door when GitHub says there is no such thing.
  */
 
-import { match } from '@osdlc/result'
+import { FailureError, match } from '@osdlc/result'
 import { expect, test } from 'vitest'
 
 import {
   AsyncGh,
   Gh,
   classifyGhFailure,
-  CommandFailed,
+  type GhFailure,
   type AsyncCommandRunner,
   type CommandResult,
   type CommandRunner,
@@ -70,13 +70,15 @@ test('a kind is a string a switch can be exhaustive over', () => {
   expect(!r.ok && advice(r.error.kind)).toBe('try again later')
 })
 
-test('classifyGhFailure reads a CommandFailed you caught yourself', () => {
+test('a thrown failure carries its CommandFailed as the cause', () => {
   try {
     new Gh('/repo', { runner: fail('HTTP 401: Bad credentials') }).editPrBody(1, 'b')
     expect.unreachable()
   } catch (e) {
-    expect(e).toBeInstanceOf(CommandFailed)
-    expect(classifyGhFailure(e as CommandFailed).kind).toBe('not-authenticated')
+    expect(e).toBeInstanceOf(FailureError)
+    const failure = (e as FailureError<GhFailure>).failure
+    expect(failure.kind).toBe('not-authenticated')
+    expect(classifyGhFailure(failure.cause!).kind).toBe('not-authenticated')
   }
 })
 

@@ -7,10 +7,10 @@
  * runs.
  */
 
+import { FailureError } from '@osdlc/result'
 import { describe, expect, test } from 'vitest'
 
 import {
-  CommandFailed,
   Gh,
   api,
   ownerRepoSlug,
@@ -59,7 +59,7 @@ describe('Gh — reviews', () => {
       ['pr', 'comment', '7', '--body', 'hi'],
     ])
     expect(() => new Gh('/repo', { runner: recorder([FAIL]).runner }).prDiff(7)).toThrow(
-      CommandFailed,
+      FailureError,
     )
   })
 
@@ -120,7 +120,7 @@ describe('Gh — review replies', () => {
     expect(gh.createReview(7, opts)).toBe('')
     expect(() =>
       new Gh('/repo', { runner: recorder([FAIL]).runner }).createReview(7, opts),
-    ).toThrow(CommandFailed)
+    ).toThrow(FailureError)
   })
 })
 
@@ -323,10 +323,10 @@ describe('Gh — argv', () => {
 describe('Gh — the three doors', () => {
   test("a failed query throws and soft is null, never [] — 'no PRs' and 'couldn't ask' differ", () => {
     const gh = new Gh('/repo', { runner: recorder([FAIL]).runner })
-    expect(() => gh.prList()).toThrow(CommandFailed)
+    expect(() => gh.prList()).toThrow(FailureError)
     expect(gh.soft.prList()).toBeNull()
     expect(() => new Gh('/repo', { runner: recorder([FAIL]).runner }).prView(1)).toThrow(
-      CommandFailed,
+      FailureError,
     )
 
     const empty = new Gh('/repo', { runner: recorder([json([])]).runner })
@@ -339,14 +339,14 @@ describe('Gh — the three doors', () => {
     expect(new Gh('/repo', { runner }).soft.prList()).toBeNull()
   })
 
-  test('a mutation throws CommandFailed, carrying argv and the result', () => {
+  test('a mutation throws the classified failure, carrying argv and the result', () => {
     const gh = new Gh('/repo', { runner: recorder([FAIL]).runner })
-    expect(() => gh.editPr(1, { body: 'x' })).toThrow(CommandFailed)
+    expect(() => gh.editPr(1, { body: 'x' })).toThrow(FailureError)
   })
 
   test('labelList throws on failure, [] on a genuinely empty repo', () => {
     expect(() => new Gh('/repo', { runner: recorder([FAIL]).runner }).labelList()).toThrow(
-      CommandFailed,
+      FailureError,
     )
     expect(new Gh('/repo', { runner: recorder([FAIL]).runner }).soft.labelList()).toBeNull()
     expect(new Gh('/repo', { runner: recorder([json([])]).runner }).labelList()).toEqual({
@@ -368,13 +368,13 @@ describe('Gh — the three doors', () => {
     expect(() => new Gh('/repo', { runner: bad }).labelList()).toThrow(/could not be read/)
   })
 
-  test('createLabel/editLabel throw CommandFailed on a non-zero exit', () => {
+  test('createLabel/editLabel throw on a non-zero exit', () => {
     const gh = new Gh('/repo', { runner: recorder([FAIL]).runner })
     expect(() => gh.createLabel({ name: 'x', color: '000000', description: '' })).toThrow(
-      CommandFailed,
+      FailureError,
     )
     const gh2 = new Gh('/repo', { runner: recorder([FAIL]).runner })
-    expect(() => gh2.editLabel('x', { color: '000000' })).toThrow(CommandFailed)
+    expect(() => gh2.editLabel('x', { color: '000000' })).toThrow(FailureError)
   })
 
   test('createPr returns the URL line gh printed', () => {
@@ -447,7 +447,7 @@ describe('Gh — the merge-state retry', () => {
   test('stops immediately when gh itself failed — retrying will not help', () => {
     const { runner, calls } = recorder([FAIL])
     expect(() => new Gh('/repo', { runner }).prViewSettled(1, { sleep: () => {} })).toThrow(
-      CommandFailed,
+      FailureError,
     )
     expect(calls).toHaveLength(1)
   })
@@ -487,11 +487,11 @@ describe('prMerge and prReviewThreads', () => {
     expect(calls).toEqual([['pr', 'merge', '7', '--squash', '--match-head-commit', 'abc1234']])
   })
 
-  test('prMerge throws CommandFailed when gh refuses', () => {
+  test('prMerge throws when gh refuses', () => {
     const { runner } = recorder([{ exitCode: 1, stdout: '', stderr: 'head moved' }])
     expect(() =>
       new Gh('/repo', { runner }).prMerge(7, { method: 'merge', headSha: 'abc1234' }),
-    ).toThrow(CommandFailed)
+    ).toThrow(FailureError)
   })
 
   const threadsPayload = (nodes: unknown[], hasNextPage = false) =>

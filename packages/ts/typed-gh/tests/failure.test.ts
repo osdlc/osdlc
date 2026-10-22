@@ -89,6 +89,13 @@ suite('stderr patterns', () => {
       'Check the number or name, and that your account can see the repository.',
     ],
     [
+      'HTTP 403 (SAML, a missing scope)',
+      fail('gh: Resource not accessible by personal access token (HTTP 403)'),
+      'not-authenticated',
+      'gh is not signed in to GitHub.',
+      'Run `gh auth login`.',
+    ],
+    [
       'API rate limit exceeded',
       fail('gh: API rate limit exceeded for user ID 1. (HTTP 403)'),
       'rate-limited',
@@ -194,5 +201,49 @@ suite('types', () => {
     const gh = new Gh('/x')
     expectTypeOf(gh.soft.prList).returns.toEqualTypeOf<ReturnType<Gh['prList']> | null>()
     expectTypeOf(gh.prList).returns.not.toBeNullable()
+  })
+})
+
+suite('a failure thrown by another installed copy', () => {
+  // Another copy of command-seam or result has its own classes, so
+  // `instanceof` is false; the doors go by shape.
+  const foreign = (): Error =>
+    Object.assign(new Error('boom'), {
+      failure: { kind: 'exit', message: 'gh: not authenticated' },
+      argv: ['pr', 'list'],
+      result: { exitCode: 1, stdout: '', stderr: 'HTTP 401: Bad credentials' },
+    })
+  const thrower: CommandRunner = {
+    binary: 'gh',
+    run: () => {
+      throw foreign()
+    },
+  }
+
+  test('try classifies it, and soft answers null', () => {
+    const gh = new Gh('/x', { runner: thrower })
+    const r = gh.try.prList()
+    expect(!r.ok && r.error.kind).toBe('not-authenticated')
+    expect(gh.soft.prList()).toBeNull()
+  })
+})
+
+suite('the plain door throws the classified failure', () => {
+  test('a signed-out gh during a write carries kind not-authenticated, with the CommandFailed as cause', () => {
+    const runner: CommandRunner = {
+      binary: 'gh',
+      run: () => fail('HTTP 401: Bad credentials'),
+    }
+    try {
+      new Gh('/x', { runner }).prComment(1, 'hi')
+      expect.unreachable()
+    } catch (e) {
+      const failure = (e as { failure: GhFailure }).failure
+      expect(failure).toMatchObject({
+        kind: 'not-authenticated',
+        message: 'gh is not signed in to GitHub.',
+      })
+      expect(failure.cause).toBeInstanceOf(CommandFailed)
+    }
   })
 })

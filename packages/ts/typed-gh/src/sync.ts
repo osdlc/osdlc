@@ -8,15 +8,14 @@
  * that reaches for `GITHUB_TOKEN` is a library that can leak one.
  *
  * The same three doors as the git client. The plain method returns a value
- * or throws: a failed `gh` throws `CommandFailed`, output that cannot be read
- * throws a `FailureError`, and a query for one thing (`prView`, `issueView`,
+ * or throws: a failed `gh` throws a `FailureError` carrying the classified
+ * `GhFailure`, output that cannot be read throws one of kind `unreadable`, and a query for one thing (`prView`, `issueView`,
  * `repoView`) answers `null` when GitHub says there is no such thing.
  * `gh.try.*` returns the failure as a `Result<T, GhFailure>`; `gh.soft.*` returns
  * `null` for it. `raw`/`rawChecked` are the escape hatches.
  */
 
 import {
-  runChecked,
   resolveRunner,
   spawnRunner,
   type CommandResult,
@@ -24,7 +23,7 @@ import {
   type CommandRunOptions,
 } from '@osdlc/command-seam'
 
-import { settle, softSync, triedSync, type Soft, type TriedSync } from './doors.ts'
+import { runCheckedGh, settle, softSync, triedSync, type Soft, type TriedSync } from './doors.ts'
 import * as v from './verbs.ts'
 import type {
   ApiOptions,
@@ -129,9 +128,9 @@ export class Gh {
     return this.runner.run(argv, { cwd: this.cwd, ...opts })
   }
 
-  /** Checked passthrough — throws `CommandFailed` on a non-zero exit. */
+  /** Checked passthrough — throws the classified failure on a non-zero exit. */
   rawChecked(argv: string[], opts: { timeoutMs?: number | undefined } = {}): CommandResult {
-    return runChecked(this.runner, argv, { cwd: this.cwd, ...opts })
+    return runCheckedGh(this.runner, argv, { cwd: this.cwd, ...opts })
   }
 
   /** Run one verb from the table, honouring its checked/unchecked contract. */
@@ -141,7 +140,7 @@ export class Gh {
     if (verb.env !== undefined) opts.env = verb.env
     if (timeoutMs !== undefined) opts.timeoutMs = timeoutMs
     const result = verb.checked
-      ? runChecked(this.runner, verb.argv, opts)
+      ? runCheckedGh(this.runner, verb.argv, opts)
       : this.runner.run(verb.argv, opts)
     return settle(verb, result, this.runner.binary)
   }
@@ -368,7 +367,7 @@ export class Gh {
     this.exec(v.editPr(number, opts, this.target))
   }
 
-  /** The PR's unified diff; throws `CommandFailed` when gh cannot produce it. */
+  /** The PR's unified diff; throws the classified failure when gh cannot produce it. */
   prDiff(number: number): string {
     return this.exec(v.prDiff(number, this.target))
   }

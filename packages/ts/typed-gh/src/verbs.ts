@@ -18,13 +18,13 @@
 import { stderrOrError, type CommandResult } from '@osdlc/command-seam'
 
 import { parseLabels, parsePrSearchHit, parsePullRequest, parseRepository } from './parse.ts'
-import { isNotFound } from './failure.ts'
+import { isAbsent, type Thing } from './failure.ts'
 import { isRepoSlug, parsePrUrl } from './repo.ts'
 import type { IssueRow, Label, PrSearchHit, PullRequest, Repository } from './types.ts'
 
-/** Whether a failed run's stderr says GitHub has no such pull request, issue or repository. */
-function noSuchThing(r: CommandResult): boolean {
-  return isNotFound(r.stderr)
+/** Whether a failed run says GitHub has no such `thing`: read from the same text the classifier reads. */
+function noSuch(thing: Thing): (r: CommandResult) => boolean {
+  return (r) => isAbsent(thing, `${r.stderr}\n${r.stdout}`)
 }
 
 /** One `gh` invocation: what to run, and how to read what came back. */
@@ -402,7 +402,7 @@ export function prView(
     ],
     checked: false,
     readOnly: true,
-    absent: noSuchThing,
+    absent: noSuch('pr'),
     parse: oneOrNull,
   }
 }
@@ -769,7 +769,7 @@ export function issueView(number: number, target?: GhTarget): GhVerb<IssueRow | 
     argv: ['issue', 'view', String(number), ...repoArgs(target), '--json', ISSUE_FIELDS],
     checked: false,
     readOnly: true,
-    absent: noSuchThing,
+    absent: noSuch('issue'),
     parse: oneIssueOrNull,
   }
 }
@@ -871,7 +871,7 @@ export function repoView(
     argv,
     checked: false,
     readOnly: true,
-    absent: noSuchThing,
+    absent: noSuch('repo'),
     parse(r) {
       if (r.exitCode !== 0) return null
       try {

@@ -12,6 +12,7 @@ import { describe, expect, test } from 'vitest'
 import {
   AsyncGh,
   CommandFailed,
+  type GhFailure,
   Gh,
   anyCheckFailed,
   parsePullRequest,
@@ -52,7 +53,7 @@ const json = (body: unknown): CommandResult => ok(JSON.stringify(body))
 const FAIL: CommandResult = { exitCode: 1, stdout: '', stderr: 'gh: not authenticated' }
 
 describe('README: the plain door throws on a failure; soft answers null; try answers a Result', () => {
-  test('a failed query throws CommandFailed, so "no rows" and "could not ask" differ', async () => {
+  test('a failed query throws, so "no rows" and "could not ask" differ', async () => {
     const failed = clients([FAIL])
     const empty = clients([json([])])
 
@@ -64,9 +65,9 @@ describe('README: the plain door throws on a failure; soft answers null; try ans
       (c: Gh | AsyncGh) => c.prReviewThreads(1),
       (c: Gh | AsyncGh) => c.openPrFor('feature/x'),
     ]) {
-      expect(() => call(failed.gh)).toThrow(CommandFailed)
+      expect(() => call(failed.gh)).toThrow(FailureError)
       await expect(Promise.resolve().then(() => call(failed.agh))).rejects.toBeInstanceOf(
-        CommandFailed,
+        FailureError,
       )
     }
 
@@ -121,8 +122,49 @@ describe('README: the plain door throws on a failure; soft answers null; try ans
     expect(gone.gh.prView(99)).toBeNull()
     expect(await gone.agh.prView(99)).toBeNull()
     expect(gone.gh.try.prView(99)).toEqual({ ok: true, value: null })
-    expect(gone.gh.issueView(99)).toBeNull()
-    expect(gone.gh.repoView('o/r')).toBeNull()
+    const noIssue = clients([
+      {
+        exitCode: 1,
+        stdout: '',
+        stderr: 'GraphQL: Could not resolve to an Issue with the number of 99. (repository.issue)',
+      },
+    ])
+    expect(noIssue.gh.issueView(99)).toBeNull()
+    const noRepo = clients([
+      {
+        exitCode: 1,
+        stdout: '',
+        stderr: "GraphQL: Could not resolve to a Repository with the name 'o/r'. (repository)",
+      },
+    ])
+    expect(noRepo.gh.repoView('o/r')).toBeNull()
+  })
+
+  test('a wrong repository is a not-found failure, not an absent PR or issue', async () => {
+    const wrongRepo = clients([
+      {
+        exitCode: 1,
+        stdout: '',
+        stderr:
+          "GraphQL: Could not resolve to a Repository with the name 'typo/typo'. (repository)",
+      },
+    ])
+    expect(() => wrongRepo.gh.withRepo('typo/typo').prView(7)).toThrow(FailureError)
+    expect(() => wrongRepo.gh.withRepo('typo/typo').issueView(7)).toThrow(FailureError)
+    const r = wrongRepo.gh.withRepo('typo/typo').try.prView(7)
+    expect(!r.ok && r.error.kind).toBe('not-found')
+    await expect(wrongRepo.agh.withRepo('typo/typo').prView(7)).rejects.toThrow(FailureError)
+  })
+
+  test('the absence test reads stdout as the classifier does', () => {
+    const gone = clients([
+      {
+        exitCode: 1,
+        stdout: 'GraphQL: Could not resolve to a PullRequest with the number of 99.',
+        stderr: '',
+      },
+    ])
+    expect(gone.gh.prView(99)).toBeNull()
   })
 
   test('output that exited 0 but cannot be read throws an unreadable FailureError', () => {
@@ -150,7 +192,7 @@ describe('README: the plain door throws on a failure; soft answers null; try ans
   })
 })
 
-describe('README: mutations throw CommandFailed, carrying argv and the full result', () => {
+describe('README: mutations throw the classified failure, carrying argv and the full result', () => {
   const MUTATIONS: [string, (c: Gh | AsyncGh) => unknown][] = [
     ['createPr', (c) => c.createPr({ head: 'h', base: 'main', title: 't', body: 'b' })],
     ['editPr', (c) => c.editPr(1, { title: 't' })],
@@ -178,10 +220,10 @@ describe('README: mutations throw CommandFailed, carrying argv and the full resu
     const fromAsync = await Promise.resolve(call(f.agh)).catch((e: unknown) => e)
 
     for (const err of [fromSync, fromAsync]) {
-      expect(err).toBeInstanceOf(CommandFailed)
-      const failed = err as CommandFailed
+      expect(err).toBeInstanceOf(FailureError)
+      const failed = (err as FailureError<GhFailure>).failure
       expect(failed.argv.length).toBeGreaterThan(0)
-      expect(failed.result).toMatchObject({ exitCode: 1, stderr: 'gh: not authenticated' })
+      expect(failed.cause?.result).toMatchObject({ exitCode: 1, stderr: 'gh: not authenticated' })
     }
   })
 })
