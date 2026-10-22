@@ -5,7 +5,7 @@
 //
 // It imports the package by name, so Node resolves it through `exports` as a
 // consumer would. `pnpm run smoke` runs it here, where the name resolves to
-// this package's own dist/. check-packages.mjs copies it into a clean project
+// this package's own dist/. check-packages.ts copies it into a clean project
 // that installed the tarball, so it must not import other repo files. It is
 // not a test-runner suite and is not in `files`.
 //
