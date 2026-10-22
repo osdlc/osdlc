@@ -30,3 +30,10 @@ changelog_update = true
 name = "yaml-splice-wasm"
 publish = false
 release = false
+
+# Held back for one release; see the note in its Cargo.toml. `release = false`
+# also stops a tag being cut for a version that was not published.
+[[package]]
+name = "frontmatter-lossless"
+publish = false
+release = false
