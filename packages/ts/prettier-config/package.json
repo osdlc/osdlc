@@ -3,7 +3,7 @@
   "version": "0.3.0",
   "description": "A shared Prettier config: no semicolons, single quotes, trailing commas, 100 columns. Markdown is left alone.",
   "license": "MIT OR Apache-2.0",
-  "author": "SK Sizer",
+  "author": "sksizer",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/osdlc/osdlc.git",
@@ -18,21 +18,25 @@
   "publishConfig": {
     "access": "public"
   },
-  "main": "index.json",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./index.json"
+  },
   "files": [
     "index.json",
     "README.md",
     "CHANGELOG.md",
     "LICENSE-MIT",
-    "LICENSE-APACHE"
+    "LICENSE-APACHE",
+    "SECURITY.md",
+    "CONTRIBUTING.md"
   ],
   "scripts": {
     "format": "prettier --write .",
-    "format:check": "prettier --check .",
-    "lint": "oxlint . --no-error-on-unmatched-pattern"
+    "format:check": "prettier --check ."
   },
   "devDependencies": {
-    "oxlint": "^1.65.0",
-    "prettier": "3.9.6"
+    "prettier": "catalog:"
   }
 }

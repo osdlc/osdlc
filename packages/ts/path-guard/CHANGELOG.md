@@ -1,4 +1,4 @@
-# Changelog
+# @osdlc/path-guard
 
 ## 0.3.0
 

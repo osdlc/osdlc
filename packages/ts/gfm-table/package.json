@@ -3,7 +3,7 @@
   "version": "0.3.0",
   "description": "GFM pipe tables as strings and offsets: row splitting with the backslash-escape rule, cell text and escaping, row splices, reading and rendering whole tables, column padding that lines up the pipes, and grid clipboard formats (TSV, CSV, HTML). No dependencies.",
   "license": "MIT OR Apache-2.0",
-  "author": "SK Sizer",
+  "author": "sksizer",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/osdlc/osdlc.git",
@@ -33,14 +33,12 @@
   },
   "exports": {
     ".": {
-      "bun": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     }
   },
   "files": [
     "dist/",
-    "src/",
     "README.md",
     "CHANGELOG.md",
     "LICENSE-MIT",
@@ -51,8 +49,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
-    "test": "bun test",
-    "coverage": "bun test --coverage",
+    "test": "vitest run",
+    "coverage": "vitest run --coverage",
     "smoke": "node tests/smoke.mjs",
     "prepublishOnly": "npm run clean && npm run build",
     "format": "prettier --write .",
@@ -63,10 +61,11 @@
   "devDependencies": {
     "@osdlc/prettier-config": "workspace:^",
     "@osdlc/tsconfig": "workspace:^",
-    "@types/bun": "^1.1.14",
-    "@types/node": "^26.1.0",
-    "oxlint": "^1.65.0",
-    "prettier": "3.9.6",
-    "typescript": "~6.0.3"
+    "@types/node": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
+    "oxlint": "catalog:",
+    "prettier": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   }
 }

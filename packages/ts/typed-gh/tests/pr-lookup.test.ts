@@ -3,7 +3,7 @@
  * `head` filter on `prList`, `parsePrRef`, and `prFind` on both clients.
  */
 
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'vitest'
 
 import {
   AsyncGh,
@@ -14,7 +14,7 @@ import {
   type AsyncCommandRunner,
   type CommandResult,
   type CommandRunner,
-} from '../index.ts'
+} from '../src/index.ts'
 
 const ok = (body: unknown): CommandResult => ({
   exitCode: 0,

@@ -10,9 +10,9 @@ import { readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'vitest'
 
-import { spawnRunner, spawnRunnerAsync } from '../index.ts'
+import { spawnRunner, spawnRunnerAsync } from '../src/index.ts'
 import { gone, reap } from './support/procs.ts'
 
 const CWD = process.cwd()

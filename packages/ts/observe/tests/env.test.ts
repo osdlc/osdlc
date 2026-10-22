@@ -8,15 +8,15 @@ import {
   SESSION_ID_RE,
   sessionEnv,
   TASK_ENV_VAR,
-} from '../env.ts'
+} from '../src/env.ts'
 import {
   INVOCATION_ENV_VAR,
   INVOCATION_PID_ENV_VAR,
   RUN_ENV_VAR,
   SESSION_ENV_VAR,
   SUBJECT_ENV_VAR,
-} from '../envelope.ts'
-import { MACHINE_ENV_VAR } from '../machine.ts'
+} from '../src/envelope.ts'
+import { MACHINE_ENV_VAR } from '../src/machine.ts'
 
 describe('the tag names', () => {
   test('every tag is an OBSERVE_ name', () => {

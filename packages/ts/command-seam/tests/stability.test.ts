@@ -6,12 +6,12 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { expect, test } from 'bun:test'
+import { expect, test } from 'vitest'
 import ts from 'typescript'
 
 import { ENTRY_POINTS } from '../examples/support/scenarios.ts'
 
-const PACKAGE_DIR = join(import.meta.dir, '..')
+const PACKAGE_DIR = join(import.meta.dirname, '..')
 const ENTRIES = ENTRY_POINTS.map((e) => join(PACKAGE_DIR, e.file))
 
 /** Every export of the entry points, mapped to whether it is tagged `@experimental`. */

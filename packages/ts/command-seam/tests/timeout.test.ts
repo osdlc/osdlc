@@ -10,7 +10,7 @@ import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'vitest'
 
 import {
   runShell,
@@ -22,8 +22,8 @@ import {
   streamRunner,
   type AsyncCommandRunner,
   type CommandRunner,
-} from '../index.ts'
-import { normalizeTimeout } from '../sync.ts'
+} from '../src/index.ts'
+import { normalizeTimeout } from '../src/sync.ts'
 
 const CWD = process.cwd()
 

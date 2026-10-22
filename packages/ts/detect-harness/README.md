@@ -35,6 +35,8 @@ Do not use it to:
 npm install @osdlc/detect-harness zod
 ```
 
+`pnpm add @osdlc/detect-harness` and `yarn add @osdlc/detect-harness` work too.
+
 `zod` `^4` is a peer dependency, because the report schemas are public. Node 22
 or newer.
 
@@ -401,4 +403,4 @@ has this shape.
 
 ## Licence
 
-`MIT OR Apache-2.0`, at your option. See `LICENSE-MIT` and `LICENSE-APACHE`.
+`MIT OR Apache-2.0`, at your option. See [LICENSE-MIT](./LICENSE-MIT) and [LICENSE-APACHE](./LICENSE-APACHE).

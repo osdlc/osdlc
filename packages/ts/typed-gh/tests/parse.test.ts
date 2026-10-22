@@ -8,10 +8,10 @@
  * the other, two node types in one array.
  */
 
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'vitest'
 
-import { anyCheckFailed, normalizeAuthorLogin, parsePullRequest, parsePrUrl } from '../index.ts'
-import { parseActor, parseCheckRun } from '../parse.ts'
+import { anyCheckFailed, normalizeAuthorLogin, parsePullRequest, parsePrUrl } from '../src/index.ts'
+import { parseActor, parseCheckRun } from '../src/parse.ts'
 
 /** A real `gh pr view --json` payload, trimmed to the fields under test. */
 const LIVE_PR = {

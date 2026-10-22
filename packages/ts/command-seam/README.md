@@ -56,8 +56,7 @@ These are the facts today, not a support promise.
 
 - **Node.js 22 or later** (`engines.node` is `>=22`). Node is the primary
   runtime.
-- **Bun** also works. Under Bun the package resolves to its TypeScript source
-  through the `bun` export condition.
+- **Bun** also works, through the compiled `dist/`.
 - **ESM only.** There is no CommonJS build.
 - **POSIX only (Linux, macOS).** `runShell` needs `sh` on `PATH`. The
   `processGroup` options use POSIX process groups. Signals
@@ -912,6 +911,6 @@ See
 Report security issues as described in
 [SECURITY.md](https://github.com/osdlc/osdlc/blob/main/packages/ts/command-seam/SECURITY.md).
 
-## License
+## Licence
 
-[MIT](https://github.com/osdlc/osdlc/blob/main/packages/ts/command-seam/LICENSE-MIT) or [Apache-2.0](https://github.com/osdlc/osdlc/blob/main/packages/ts/command-seam/LICENSE-APACHE), at your option.
+`MIT OR Apache-2.0`, at your option. See [LICENSE-MIT](./LICENSE-MIT) and [LICENSE-APACHE](./LICENSE-APACHE).

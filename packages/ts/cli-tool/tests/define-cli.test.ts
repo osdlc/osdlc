@@ -6,7 +6,13 @@
 
 import { describe, expect, test } from 'vitest'
 
-import { captureIo, defineCli, isDomainExit, DOMAIN_EXIT_MAX, DOMAIN_EXIT_MIN } from '../index.ts'
+import {
+  captureIo,
+  defineCli,
+  isDomainExit,
+  DOMAIN_EXIT_MAX,
+  DOMAIN_EXIT_MIN,
+} from '../src/index.ts'
 
 const cli = defineCli({
   name: 'sweep',

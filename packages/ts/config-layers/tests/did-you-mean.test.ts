@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
-import { closestMatches, didYouMean } from '../index.ts'
+import { closestMatches, didYouMean } from '../src/index.ts'
 
 describe('closestMatches', () => {
   test('finds a transposition', () => {

@@ -14,8 +14,8 @@ import {
   rootedBaseDirs,
   systemBaseDirs,
   xdgBaseDirs,
-} from '../index.ts'
-import type { BaseDirs, Convention, Dir, Home, TierKind } from '../index.ts'
+} from '../src/index.ts'
+import type { BaseDirs, Convention, Dir, Home, TierKind } from '../src/index.ts'
 
 /**
  * The shared parity fixture, driven from this side.

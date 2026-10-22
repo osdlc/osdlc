@@ -10,7 +10,7 @@ import { EXAMPLES_DIR, PACKAGE_DIR } from './typecheck.ts'
 /** The package's `package.json`, the fields these tests read. */
 export const MANIFEST = JSON.parse(readFileSync(join(PACKAGE_DIR, 'package.json'), 'utf-8')) as {
   name: string
-  exports: Record<string, { bun: string; types: string; default: string }>
+  exports: Record<string, { types: string; default: string }>
   files: string[]
 }
 
@@ -18,11 +18,12 @@ export const PACKAGE_NAME = MANIFEST.name
 
 /**
  * Each public entry point, from `package.json` `exports`: its import
- * specifier and its source file (the `bun` condition's target).
+ * specifier and its source file, the `types` target with `dist/` swapped for
+ * `src/` and `.d` taken off (`./dist/testing.d.ts` is `src/testing.ts`).
  */
 export const ENTRY_POINTS = Object.entries(MANIFEST.exports).map(([key, conditions]) => ({
   specifier: key === '.' ? PACKAGE_NAME : `${PACKAGE_NAME}${key.slice(1)}`,
-  file: conditions.bun.replace(/^\.\//, ''),
+  file: conditions.types.replace(/^\.\/dist\//, 'src/').replace(/\.d\.ts$/, '.ts'),
 }))
 
 export interface Scenario {

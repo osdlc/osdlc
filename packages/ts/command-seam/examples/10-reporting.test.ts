@@ -9,7 +9,7 @@
  * is `failureText(e.result, { both: true })`.
  */
 
-import { expect, test } from 'bun:test'
+import { expect, test } from 'vitest'
 
 import {
   CommandFailed,

@@ -5,10 +5,10 @@
  */
 import { describe, expect, test } from 'vitest'
 
-import { compile, index, intersects, matches, overlapping, witness } from '../index.ts'
-import * as root from '../index.ts'
-import * as segments from '../segments/index.ts'
-import { IntersectError } from '../index.ts'
+import { compile, index, intersects, matches, overlapping, witness } from '../src/index.ts'
+import * as root from '../src/index.ts'
+import * as segments from '../src/segments/index.ts'
+import { IntersectError } from '../src/index.ts'
 
 /** Run `body` and return the `IntersectError` it throws, failing if it throws anything else. */
 function thrown(body: () => unknown): IntersectError {
@@ -117,7 +117,7 @@ describe('IntersectError', () => {
 
 describe('./fs compiles the patterns before it walks', () => {
   test('a bad pattern with a missing cwd reports the pattern, not IO_ERROR', async () => {
-    const { filesInScope, resolveIntersection } = await import('../fs.ts')
+    const { filesInScope, resolveIntersection } = await import('../src/fs.ts')
     const cwd = '/definitely/not/a/directory'
     await expect(filesInScope('a{1..3}', { cwd })).rejects.toMatchObject({
       code: 'UNSUPPORTED_SYNTAX',

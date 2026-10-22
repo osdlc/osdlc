@@ -16,8 +16,8 @@ import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync }
 import { tmpdir } from 'node:os'
 import { join, relative } from 'node:path'
 
-import { readPlugin } from '../model/derive.ts'
-import { HarnessModelSchema } from '../model/schema.ts'
+import { readPlugin } from '../src/model/derive.ts'
+import { HarnessModelSchema } from '../src/model/schema.ts'
 
 let root: string
 

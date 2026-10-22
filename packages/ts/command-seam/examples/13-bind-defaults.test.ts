@@ -8,7 +8,7 @@
  * take the bound runner and need only the options it did not bind.
  */
 
-import { expect, test } from 'bun:test'
+import { expect, test } from 'vitest'
 
 import {
   runChecked,

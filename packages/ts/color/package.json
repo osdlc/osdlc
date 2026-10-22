@@ -60,12 +60,12 @@
   "devDependencies": {
     "@osdlc/prettier-config": "workspace:^",
     "@osdlc/tsconfig": "workspace:^",
-    "@types/node": "^26.1.0",
-    "@vitest/coverage-v8": "^5.0.5",
-    "oxlint": "^1.65.0",
+    "@types/node": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
+    "oxlint": "catalog:",
     "playwright": "1.61.1",
-    "prettier": "3.9.6",
-    "typescript": "~6.0.3",
-    "vitest": "^5.0.5"
+    "prettier": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   }
 }

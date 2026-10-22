@@ -6,3 +6,6 @@ dist/
 
 # Scratch directories from the README example test.
 .readme-*/
+
+# Test coverage (`npm run coverage`).
+coverage/

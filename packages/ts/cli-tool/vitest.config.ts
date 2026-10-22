@@ -9,16 +9,15 @@ export default defineConfig({
     // The examples import the package by name; run them on the source.
     // The longer subpaths come first so they win over the bare name.
     alias: [
-      { find: '@osdlc/cli-tool/devlink', replacement: src('./devlink/index.ts') },
-      { find: /^@osdlc\/cli-tool$/, replacement: src('./index.ts') },
+      { find: '@osdlc/cli-tool/devlink', replacement: src('./src/devlink/index.ts') },
+      { find: /^@osdlc\/cli-tool$/, replacement: src('./src/index.ts') },
     ],
   },
   test: {
     include: ['tests/**/*.test.ts', 'devlink/tests/**/*.test.ts', 'examples/**/*.test.ts'],
     coverage: {
       provider: 'v8',
-      include: ['*.ts', 'devlink/*.ts'],
-      exclude: ['vitest.config.ts'],
+      include: ['src/**/*.ts'],
       reporter: ['text'],
     },
   },

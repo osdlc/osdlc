@@ -8,7 +8,7 @@
 import { readFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 
-import { expect, test } from 'bun:test'
+import { expect, test } from 'vitest'
 
 import { ENTRY_POINTS, imports, publicExports, scenarios } from './support/scenarios.ts'
 import { PACKAGE_DIR } from './support/typecheck.ts'
@@ -39,7 +39,7 @@ for (const { specifier, exported } of entries) {
 test('scenarios import the package entry points only, never its modules', () => {
   const specifiers = new Set<string>(ENTRY_POINTS.map((e) => e.specifier))
   const allowed = (specifier: string) =>
-    specifiers.has(specifier) || specifier === 'bun:test' || specifier.startsWith('node:')
+    specifiers.has(specifier) || specifier === 'vitest' || specifier.startsWith('node:')
 
   const stray = scenarios().flatMap((s) =>
     imports(s.source)

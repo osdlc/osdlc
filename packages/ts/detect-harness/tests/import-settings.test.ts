@@ -13,8 +13,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { readPlugin } from '../model/derive.ts'
-import { REDACTED, readClaudeControlPlane } from '../model/control-plane.ts'
+import { readPlugin } from '../src/model/derive.ts'
+import { REDACTED, readClaudeControlPlane } from '../src/model/control-plane.ts'
 
 let src: string
 

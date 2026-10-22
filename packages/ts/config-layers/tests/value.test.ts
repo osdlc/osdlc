@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
-import { valueAt, valueIsSet } from '../value.ts'
+import { valueAt, valueIsSet } from '../src/value.ts'
 
 describe('valueAt', () => {
   test('walks a dotted key', () => {

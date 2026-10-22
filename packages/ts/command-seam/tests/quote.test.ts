@@ -1,7 +1,7 @@
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'vitest'
 
-import { spawnRunner } from '../sync.ts'
-import { shellJoin, shellQuote } from '../quote.ts'
+import { spawnRunner } from '../src/sync.ts'
+import { shellJoin, shellQuote } from '../src/quote.ts'
 
 describe('shellQuote', () => {
   test('leaves an inert word bare', () => {

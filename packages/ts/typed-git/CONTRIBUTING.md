@@ -20,8 +20,8 @@ there.
 ## Running the tests
 
 The repository is a pnpm workspace. Install from the repository root, then work
-in the package directory. The tests run under Bun today, so install
-[Bun](https://bun.sh) as well as Node 22 or later. `git` must be on `PATH`:
+in the package directory. The tests run on Vitest under Node 22 or later.
+`git` must be on `PATH`:
 many tests create real temporary repositories.
 
 ```sh
@@ -44,8 +44,7 @@ pnpm run lint
 pnpm run format:check
 ```
 
-`npm run <script>` and `bun run <script>` work the same way once the workspace
-is installed.
+`npm run <script>` works the same way once the workspace is installed.
 
 ## Code style
 

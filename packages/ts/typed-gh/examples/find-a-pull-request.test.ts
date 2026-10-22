@@ -3,7 +3,7 @@
  * and starts no process; `prFind` reads it and runs the lookup it needs.
  */
 
-import { expect, test } from 'bun:test'
+import { expect, test } from 'vitest'
 
 import { Gh, parsePrRef, type CommandRunner, type PrRef } from '@osdlc/typed-gh'
 

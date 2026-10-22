@@ -3,7 +3,7 @@ import { closeSync, mkdtempSync, openSync, rmSync, writeFileSync } from 'node:fs
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { askYesNo, isYes, readLine } from '../index.ts'
+import { askYesNo, isYes, readLine } from '../src/index.ts'
 
 let dir: string
 beforeEach(() => {

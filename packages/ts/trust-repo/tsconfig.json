@@ -1,18 +1,7 @@
 {
-  // Typechecks the source, tests/ and examples/. The build has its own include.
+  // Typechecks src/, tests/ and examples/. The build has its own include.
+  // Workspace siblings and the package's own name resolve through `exports` to
+  // the built `dist/`, so run the build before the typecheck.
   "extends": "@osdlc/tsconfig/node-lib",
-  "compilerOptions": {
-    // etag-write is a workspace sibling that ships a `bun` condition pointing
-    // at its source, so a typecheck needs no `dist/` to exist.
-    "customConditions": ["bun"],
-    // The package maps its own name to the source, for tsc and (in
-    // vitest.config.ts) for the tests, so examples/ run before a build.
-    // path-guard has no `bun` condition, so it is mapped to its source too.
-    // The build config clears this and uses its `dist/`.
-    "paths": {
-      "@osdlc/path-guard/node": ["../path-guard/node.ts"],
-      "@osdlc/trust-repo": ["./index.ts"]
-    }
-  },
-  "include": ["*.ts", "tests/*.ts", "examples/*.ts"]
+  "include": ["src", "tests", "examples", "vitest.config.ts"]
 }

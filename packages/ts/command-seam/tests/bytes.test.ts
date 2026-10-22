@@ -9,7 +9,7 @@
 
 import { createHash } from 'node:crypto'
 
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'vitest'
 
 import {
   asAsync,
@@ -23,8 +23,8 @@ import {
   type BytesCommandRunner,
   type CommandResult,
   type CommandRunner,
-} from '../index.ts'
-import { fakeRunner } from '../testing.ts'
+} from '../src/index.ts'
+import { fakeRunner } from '../src/testing.ts'
 
 const CWD = process.cwd()
 /** Bytes that are not UTF-8: decoding them would replace each with U+FFFD. */

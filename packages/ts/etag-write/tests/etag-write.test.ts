@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import {
   chmodSync,
   lstatSync,
@@ -23,7 +23,7 @@ import {
   writeCas,
   WriteConflictError,
   writeIfChanged,
-} from '../index.ts'
+} from '../src/index.ts'
 
 let root: string
 beforeEach(() => {
@@ -78,7 +78,7 @@ describe.each([
     const dir = join(root, 'occupied')
     mkdirSync(dir)
     writeFileSync(join(dir, 'child'), 'in the way')
-    await expect(async () => write(dir, 'y')).toThrow()
+    await expect((async () => write(dir, 'y'))()).rejects.toThrow()
     expect(readdirSync(root)).toEqual(['occupied'])
     expect(readFileSync(join(dir, 'child'), 'utf8')).toBe('in the way')
   })
@@ -92,7 +92,7 @@ describe.each([
       writeFileSync(p, 'old')
       chmodSync(dir, 0o555)
       try {
-        await expect(async () => write(p, 'new')).toThrow()
+        await expect((async () => write(p, 'new'))()).rejects.toThrow()
       } finally {
         chmodSync(dir, 0o755)
       }
@@ -157,7 +157,7 @@ describe.each([
       const dir = join(root, 'dir')
       mkdirSync(dir)
       const before = readdirSync(root).sort()
-      await expect(async () => write(dir, 'y')).toThrow()
+      await expect((async () => write(dir, 'y'))()).rejects.toThrow()
       expect(statSync(dir).isDirectory()).toBe(true)
       expect(readdirSync(dir)).toEqual([])
       expect(readdirSync(root).sort()).toEqual(before)
@@ -275,7 +275,9 @@ describe('writeCas follows the contract table', () => {
 test('writeIfChanged skips identical content and leaves mtime alone', () => {
   const p = join(root, 'x.md')
   expect(writeIfChanged(p, 'same')).toBe(true)
-  const past = new Date(Date.now() - 60_000)
+  // Whole seconds: a millisecond time can come back from stat as a float a
+  // hair off (…829.999 for …830), since Node converts through seconds.
+  const past = new Date(Math.floor((Date.now() - 60_000) / 1000) * 1000)
   utimesSync(p, past, past)
   expect(writeIfChanged(p, 'same')).toBe(false)
   expect(statSync(p).mtimeMs).toBe(past.getTime())

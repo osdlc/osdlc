@@ -25,21 +25,16 @@
   "sideEffects": false,
   "exports": {
     ".": {
-      "bun": "./index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
     "./devlink": {
-      "bun": "./devlink/index.ts",
       "types": "./dist/devlink/index.d.ts",
       "default": "./dist/devlink/index.js"
     }
   },
   "files": [
     "dist/",
-    "*.ts",
-    "!vitest.config.ts",
-    "devlink/*.ts",
     "devlink/README.md",
     "README.md",
     "CHANGELOG.md",
@@ -49,18 +44,19 @@
     "CONTRIBUTING.md"
   ],
   "engines": {
-    "node": ">=22.18"
+    "node": ">=22"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "test": "vitest run",
+    "smoke": "node tests/smoke.mjs",
     "coverage": "vitest run --coverage",
     "prepublishOnly": "npm run clean && npm run build",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "oxlint .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit"
   },
   "dependencies": {
     "@osdlc/config-layers": "workspace:^",
@@ -70,11 +66,11 @@
   "devDependencies": {
     "@osdlc/prettier-config": "workspace:^",
     "@osdlc/tsconfig": "workspace:^",
-    "@types/node": "^26.1.0",
-    "@vitest/coverage-v8": "^5.0.5",
-    "oxlint": "^1.65.0",
-    "prettier": "3.9.6",
-    "typescript": "~6.0.3",
-    "vitest": "^5.0.5"
+    "@types/node": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
+    "oxlint": "catalog:",
+    "prettier": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   }
 }

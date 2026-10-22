@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
-import { runStateForStatus, type AgentStatus } from '../status.ts'
+import { runStateForStatus, type AgentStatus } from '../src/status.ts'
 
 describe('runStateForStatus', () => {
   test('maps every hook status to the state it reports', () => {

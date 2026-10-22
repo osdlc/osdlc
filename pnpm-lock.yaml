@@ -4,19 +4,64 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+catalogs:
+  default:
+    '@arethetypeswrong/cli':
+      specifier: 0.18.5
+      version: 0.18.5
+    '@changesets/cli':
+      specifier: 3.0.3
+      version: 3.0.3
+    '@types/node':
+      specifier: ^26.1.0
+      version: 26.6.5
+    '@vitest/coverage-v8':
+      specifier: ^5.0.5
+      version: 5.0.5
+    oxlint:
+      specifier: ^1.65.0
+      version: 1.88.0
+    prettier:
+      specifier: 3.9.6
+      version: 3.9.6
+    publint:
+      specifier: 0.3.24
+      version: 0.3.24
+    semver:
+      specifier: ^7.8.5
+      version: 7.8.5
+    typescript:
+      specifier: ~6.0.3
+      version: 6.0.3
+    vitest:
+      specifier: ^5.0.5
+      version: 5.0.5
+    yaml:
+      specifier: ^2.9.0
+      version: 2.9.1
+    zod:
+      specifier: 4.4.3
+      version: 4.4.3
+
 importers:
 
   .:
     devDependencies:
       '@arethetypeswrong/cli':
-        specifier: 0.18.5
+        specifier: 'catalog:'
         version: 0.18.5
       '@changesets/cli':
-        specifier: 3.0.3
+        specifier: 'catalog:'
         version: 3.0.3
+      oxlint:
+        specifier: 'catalog:'
+        version: 1.88.0
       publint:
-        specifier: 0.3.24
+        specifier: 'catalog:'
         version: 0.3.24
+      semver:
+        specifier: 'catalog:'
+        version: 7.8.5
 
   packages/ts/agent-call:
     devDependencies:
@@ -27,22 +72,22 @@ importers:
         specifier: workspace:^
         version: link:../tsconfig
       '@types/node':
-        specifier: ^26.1.0
+        specifier: 'catalog:'
         version: 26.6.5
       '@vitest/coverage-v8':
-        specifier: ^5.0.5
+        specifier: 'catalog:'
         version: 5.0.5(vitest@5.0.5)
       oxlint:
-        specifier: ^1.65.0
+        specifier: 'catalog:'
         version: 1.88.0
       prettier:
-        specifier: 3.9.6
+        specifier: 'catalog:'
         version: 3.9.6
       typescript:
-        specifier: ~6.0.3
+        specifier: 'catalog:'
         version: 6.0.3
       vitest:
-        specifier: ^5.0.5
+        specifier: 'catalog:'
         version: 5.0.5(@types/node@26.6.5)(@vitest/coverage-v8@5.0.5)(vite@8.3.4(@types/node@26.6.5)(yaml@2.9.1))
 
   packages/ts/cli-tool:
@@ -64,22 +109,22 @@ importers:
         specifier: workspace:^
         version: link:../tsconfig
       '@types/node':
-        specifier: ^26.1.0
+        specifier: 'catalog:'
         version: 26.6.5
       '@vitest/coverage-v8':
-        specifier: ^5.0.5
+        specifier: 'catalog:'
         version: 5.0.5(vitest@5.0.5)
       oxlint:
-        specifier: ^1.65.0
+        specifier: 'catalog:'
         version: 1.88.0
       prettier:
-        specifier: 3.9.6
+        specifier: 'catalog:'
         version: 3.9.6
       typescript:
-        specifier: ~6.0.3
+        specifier: 'catalog:'
         version: 6.0.3
       vitest:
-        specifier: ^5.0.5
+        specifier: 'catalog:'
         version: 5.0.5(@types/node@26.6.5)(@vitest/coverage-v8@5.0.5)(vite@8.3.4(@types/node@26.6.5)(yaml@2.9.1))
 
   packages/ts/code-host:
@@ -97,7 +142,7 @@ importers:
         specifier: workspace:^
         version: link:../typed-git
       zod:
-        specifier: 4.4.3
+        specifier: 'catalog:'
         version: 4.4.3
     devDependencies:
       '@osdlc/prettier-config':
@@ -107,22 +152,22 @@ importers:
         specifier: workspace:^
         version: link:../tsconfig
       '@types/node':
-        specifier: ^26.1.0
+        specifier: 'catalog:'
         version: 26.6.5
       '@vitest/coverage-v8':
-        specifier: ^5.0.5
+        specifier: 'catalog:'
         version: 5.0.5(vitest@5.0.5)
       oxlint:
-        specifier: ^1.65.0
+        specifier: 'catalog:'
         version: 1.88.0
       prettier:
-        specifier: 3.9.6
+        specifier: 'catalog:'
         version: 3.9.6
       typescript:
-        specifier: ~6.0.3
+        specifier: 'catalog:'
         version: 6.0.3
       vitest:
-        specifier: ^5.0.5
+        specifier: 'catalog:'
         version: 5.0.5(@types/node@26.6.5)(@vitest/coverage-v8@5.0.5)(vite@8.3.4(@types/node@26.6.5)(yaml@2.9.1))
 
   packages/ts/color:
@@ -134,25 +179,25 @@ importers:
         specifier: workspace:^
         version: link:../tsconfig
       '@types/node':
-        specifier: ^26.1.0
+        specifier: 'catalog:'
         version: 26.6.5
       '@vitest/coverage-v8':
-        specifier: ^5.0.5
+        specifier: 'catalog:'
         version: 5.0.5(vitest@5.0.5)
       oxlint:
-        specifier: ^1.65.0
+        specifier: 'catalog:'
         version: 1.88.0
       playwright:
         specifier: 1.61.1
         version: 1.61.1
       prettier:
-        specifier: 3.9.6
+        specifier: 'catalog:'
         version: 3.9.6
       typescript:
-        specifier: ~6.0.3
+        specifier: 'catalog:'
         version: 6.0.3
       vitest:
-        specifier: ^5.0.5
+        specifier: 'catalog:'
         version: 5.0.5(@types/node@26.6.5)(@vitest/coverage-v8@5.0.5)(vite@8.3.4(@types/node@26.6.5)(yaml@2.9.1))
 
   packages/ts/command-seam:
@@ -163,21 +208,24 @@ importers:
       '@osdlc/tsconfig':
         specifier: workspace:^
         version: link:../tsconfig
-      '@types/bun':
-        specifier: ^1.1.14
-        version: 1.4.3
       '@types/node':
-        specifier: ^26.1.0
+        specifier: 'catalog:'
         version: 26.6.5
+      '@vitest/coverage-v8':
+        specifier: 'catalog:'
+        version: 5.0.5(vitest@5.0.5)
       oxlint:
-        specifier: ^1.65.0
+        specifier: 'catalog:'
         version: 1.88.0
       prettier:
-        specifier: 3.9.6
+        specifier: 'catalog:'
         version: 3.9.6
       typescript:
-        specifier: ~6.0.3
+        specifier: 'catalog:'
         version: 6.0.3
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@types/node@26.6.5)(@vitest/coverage-v8@5.0.5)(vite@8.3.4(@types/node@26.6.5)(yaml@2.9.1))
 
   packages/ts/config-layers:
     dependencies:
@@ -194,7 +242,7 @@ importers:
         specifier: workspace:^
         version: link:../yaml-splice
       yaml:
-        specifier: ^2.6.1
+        specifier: 'catalog:'
         version: 2.9.1
     devDependencies:
       '@osdlc/prettier-config':
@@ -204,25 +252,25 @@ importers:
         specifier: workspace:^
         version: link:../tsconfig
       '@types/node':
-        specifier: ^26.1.0
+        specifier: 'catalog:'
         version: 26.6.5
       '@vitest/coverage-v8':
-        specifier: ^5.0.5
+        specifier: 'catalog:'
         version: 5.0.5(vitest@5.0.5)
       oxlint:
-        specifier: ^1.65.0
+        specifier: 'catalog:'
         version: 1.88.0
       prettier:
-        specifier: 3.9.6
+        specifier: 'catalog:'
         version: 3.9.6
       typescript:
-        specifier: ~6.0.3
+        specifier: 'catalog:'
         version: 6.0.3
       vitest:
-        specifier: ^5.0.5
+        specifier: 'catalog:'
         version: 5.0.5(@types/node@26.6.5)(@vitest/coverage-v8@5.0.5)(vite@8.3.4(@types/node@26.6.5)(yaml@2.9.1))
       zod:
-        specifier: 4.4.3
+        specifier: 'catalog:'
         version: 4.4.3
 
   packages/ts/detect-harness:
@@ -237,7 +285,7 @@ importers:
         specifier: ^1.7.0
         version: 1.9.1
       yaml:
-        specifier: ^2.9.0
+        specifier: 'catalog:'
         version: 2.9.1
     devDependencies:
       '@osdlc/prettier-config':
@@ -247,25 +295,25 @@ importers:
         specifier: workspace:^
         version: link:../tsconfig
       '@types/node':
-        specifier: ^26.1.0
+        specifier: 'catalog:'
         version: 26.6.5
       '@vitest/coverage-v8':
-        specifier: ^5.0.5
+        specifier: 'catalog:'
         version: 5.0.5(vitest@5.0.5)
       oxlint:
-        specifier: ^1.65.0
+        specifier: 'catalog:'
         version: 1.88.0
       prettier:
-        specifier: 3.9.6
+        specifier: 'catalog:'
         version: 3.9.6
       typescript:
-        specifier: ~6.0.3
+        specifier: 'catalog:'
         version: 6.0.3
       vitest:
-        specifier: ^5.0.5
+        specifier: 'catalog:'
         version: 5.0.5(@types/node@26.6.5)(@vitest/coverage-v8@5.0.5)(vite@8.3.4(@types/node@26.6.5)(yaml@2.9.1))
       zod:
-        specifier: 4.4.3
+        specifier: 'catalog:'
         version: 4.4.3
 
   packages/ts/etag-write:
@@ -276,21 +324,24 @@ importers:
       '@osdlc/tsconfig':
         specifier: workspace:^
         version: link:../tsconfig
-      '@types/bun':
-        specifier: ^1.1.14
-        version: 1.4.3
       '@types/node':
-        specifier: ^26.1.0
+        specifier: 'catalog:'
         version: 26.6.5
+      '@vitest/coverage-v8':
+        specifier: 'catalog:'
+        version: 5.0.5(vitest@5.0.5)
       oxlint:
-        specifier: ^1.65.0
+        specifier: 'catalog:'
         version: 1.88.0
       prettier:
-        specifier: 3.9.6
+        specifier: 'catalog:'
         version: 3.9.6
       typescript:
-        specifier: ~6.0.3
+        specifier: 'catalog:'
         version: 6.0.3
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@types/node@26.6.5)(@vitest/coverage-v8@5.0.5)(vite@8.3.4(@types/node@26.6.5)(yaml@2.9.1))
 
   packages/ts/frontmatter-lossless:
     devDependencies:
@@ -300,21 +351,24 @@ importers:
       '@osdlc/tsconfig':
         specifier: workspace:^
         version: link:../tsconfig
-      '@types/bun':
-        specifier: ^1.1.14
-        version: 1.4.3
       '@types/node':
-        specifier: ^26.1.0
+        specifier: 'catalog:'
         version: 26.6.5
+      '@vitest/coverage-v8':
+        specifier: 'catalog:'
+        version: 5.0.5(vitest@5.0.5)
       oxlint:
-        specifier: ^1.65.0
+        specifier: 'catalog:'
         version: 1.88.0
       prettier:
-        specifier: 3.9.6
+        specifier: 'catalog:'
         version: 3.9.6
       typescript:
-        specifier: ~6.0.3
+        specifier: 'catalog:'
         version: 6.0.3
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@types/node@26.6.5)(@vitest/coverage-v8@5.0.5)(vite@8.3.4(@types/node@26.6.5)(yaml@2.9.1))
 
   packages/ts/gfm-table:
     devDependencies:
@@ -324,21 +378,24 @@ importers:
       '@osdlc/tsconfig':
         specifier: workspace:^
         version: link:../tsconfig
-      '@types/bun':
-        specifier: ^1.1.14
-        version: 1.4.3
       '@types/node':
-        specifier: ^26.1.0
+        specifier: 'catalog:'
         version: 26.6.5
+      '@vitest/coverage-v8':
+        specifier: 'catalog:'
+        version: 5.0.5(vitest@5.0.5)
       oxlint:
-        specifier: ^1.65.0
+        specifier: 'catalog:'
         version: 1.88.0
       prettier:
-        specifier: 3.9.6
+        specifier: 'catalog:'
         version: 3.9.6
       typescript:
-        specifier: ~6.0.3
+        specifier: 'catalog:'
         version: 6.0.3
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@types/node@26.6.5)(@vitest/coverage-v8@5.0.5)(vite@8.3.4(@types/node@26.6.5)(yaml@2.9.1))
 
   packages/ts/intersect:
     dependencies:
@@ -353,22 +410,22 @@ importers:
         specifier: workspace:^
         version: link:../tsconfig
       '@types/node':
-        specifier: ^26.1.0
+        specifier: 'catalog:'
         version: 26.6.5
       '@vitest/coverage-v8':
-        specifier: ^5.0.5
+        specifier: 'catalog:'
         version: 5.0.5(vitest@5.0.5)
       oxlint:
-        specifier: ^1.65.0
+        specifier: 'catalog:'
         version: 1.88.0
       prettier:
-        specifier: 3.9.6
+        specifier: 'catalog:'
         version: 3.9.6
       typescript:
-        specifier: ~6.0.3
+        specifier: 'catalog:'
         version: 6.0.3
       vitest:
-        specifier: ^5.0.5
+        specifier: 'catalog:'
         version: 5.0.5(@types/node@26.6.5)(@vitest/coverage-v8@5.0.5)(vite@8.3.4(@types/node@26.6.5)(yaml@2.9.1))
 
   packages/ts/markdown-contract:
@@ -398,7 +455,7 @@ importers:
         specifier: ^11.0.5
         version: 11.0.5
       yaml:
-        specifier: ^2.9.0
+        specifier: 'catalog:'
         version: 2.9.1
     devDependencies:
       '@osdlc/prettier-config':
@@ -408,31 +465,31 @@ importers:
         specifier: workspace:^
         version: link:../tsconfig
       '@types/node':
-        specifier: ^26.1.0
+        specifier: 'catalog:'
         version: 26.6.5
       '@types/picomatch':
         specifier: 4.0.3
         version: 4.0.3
       '@vitest/coverage-v8':
-        specifier: ^5.0.5
+        specifier: 'catalog:'
         version: 5.0.5(vitest@5.0.5)
       oxlint:
-        specifier: ^1.65.0
+        specifier: 'catalog:'
         version: 1.88.0
       prettier:
-        specifier: 3.9.6
+        specifier: 'catalog:'
         version: 3.9.6
       remark-stringify:
         specifier: 11.0.0
         version: 11.0.0
       typescript:
-        specifier: ~6.0.3
+        specifier: 'catalog:'
         version: 6.0.3
       vitest:
-        specifier: ^5.0.5
+        specifier: 'catalog:'
         version: 5.0.5(@types/node@26.6.5)(@vitest/coverage-v8@5.0.5)(vite@8.3.4(@types/node@26.6.5)(yaml@2.9.1))
       zod:
-        specifier: 4.4.3
+        specifier: 'catalog:'
         version: 4.4.3
 
   packages/ts/observe:
@@ -448,25 +505,25 @@ importers:
         specifier: workspace:^
         version: link:../tsconfig
       '@types/node':
-        specifier: ^26.1.0
+        specifier: 'catalog:'
         version: 26.6.5
       '@vitest/coverage-v8':
-        specifier: ^5.0.5
+        specifier: 'catalog:'
         version: 5.0.5(vitest@5.0.5)
       oxlint:
-        specifier: ^1.65.0
+        specifier: 'catalog:'
         version: 1.88.0
       prettier:
-        specifier: 3.9.6
+        specifier: 'catalog:'
         version: 3.9.6
       typescript:
-        specifier: ~6.0.3
+        specifier: 'catalog:'
         version: 6.0.3
       vitest:
-        specifier: ^5.0.5
+        specifier: 'catalog:'
         version: 5.0.5(@types/node@26.6.5)(@vitest/coverage-v8@5.0.5)(vite@8.3.4(@types/node@26.6.5)(yaml@2.9.1))
       zod:
-        specifier: 4.4.3
+        specifier: 'catalog:'
         version: 4.4.3
 
   packages/ts/path-guard:
@@ -478,22 +535,22 @@ importers:
         specifier: workspace:^
         version: link:../tsconfig
       '@types/node':
-        specifier: ^26.1.0
+        specifier: 'catalog:'
         version: 26.6.5
       '@vitest/coverage-v8':
-        specifier: ^5.0.5
+        specifier: 'catalog:'
         version: 5.0.5(vitest@5.0.5)
       oxlint:
-        specifier: ^1.65.0
+        specifier: 'catalog:'
         version: 1.88.0
       prettier:
-        specifier: 3.9.6
+        specifier: 'catalog:'
         version: 3.9.6
       typescript:
-        specifier: ~6.0.3
+        specifier: 'catalog:'
         version: 6.0.3
       vitest:
-        specifier: ^5.0.5
+        specifier: 'catalog:'
         version: 5.0.5(@types/node@26.6.5)(@vitest/coverage-v8@5.0.5)(vite@8.3.4(@types/node@26.6.5)(yaml@2.9.1))
 
   packages/ts/pr-update:
@@ -523,10 +580,10 @@ importers:
         specifier: workspace:^
         version: link:../typed-git
       yaml:
-        specifier: ^2.6.1
+        specifier: 'catalog:'
         version: 2.9.1
       zod:
-        specifier: 4.4.3
+        specifier: 'catalog:'
         version: 4.4.3
     devDependencies:
       '@osdlc/prettier-config':
@@ -536,31 +593,28 @@ importers:
         specifier: workspace:^
         version: link:../tsconfig
       '@types/node':
-        specifier: ^26.1.0
+        specifier: 'catalog:'
         version: 26.6.5
       '@vitest/coverage-v8':
-        specifier: ^5.0.5
+        specifier: 'catalog:'
         version: 5.0.5(vitest@5.0.5)
       oxlint:
-        specifier: ^1.65.0
+        specifier: 'catalog:'
         version: 1.88.0
       prettier:
-        specifier: 3.9.6
+        specifier: 'catalog:'
         version: 3.9.6
       typescript:
-        specifier: ~6.0.3
+        specifier: 'catalog:'
         version: 6.0.3
       vitest:
-        specifier: ^5.0.5
+        specifier: 'catalog:'
         version: 5.0.5(@types/node@26.6.5)(@vitest/coverage-v8@5.0.5)(vite@8.3.4(@types/node@26.6.5)(yaml@2.9.1))
 
   packages/ts/prettier-config:
     devDependencies:
-      oxlint:
-        specifier: ^1.65.0
-        version: 1.88.0
       prettier:
-        specifier: 3.9.6
+        specifier: 'catalog:'
         version: 3.9.6
 
   packages/ts/tiered-dirs:
@@ -572,22 +626,22 @@ importers:
         specifier: workspace:^
         version: link:../tsconfig
       '@types/node':
-        specifier: ^26.1.0
+        specifier: 'catalog:'
         version: 26.6.5
       '@vitest/coverage-v8':
-        specifier: ^5.0.5
+        specifier: 'catalog:'
         version: 5.0.5(vitest@5.0.5)
       oxlint:
-        specifier: ^1.65.0
+        specifier: 'catalog:'
         version: 1.88.0
       prettier:
-        specifier: 3.9.6
+        specifier: 'catalog:'
         version: 3.9.6
       typescript:
-        specifier: ~6.0.3
+        specifier: 'catalog:'
         version: 6.0.3
       vitest:
-        specifier: ^5.0.5
+        specifier: 'catalog:'
         version: 5.0.5(@types/node@26.6.5)(@vitest/coverage-v8@5.0.5)(vite@8.3.4(@types/node@26.6.5)(yaml@2.9.1))
 
   packages/ts/trust-repo:
@@ -606,22 +660,22 @@ importers:
         specifier: workspace:^
         version: link:../tsconfig
       '@types/node':
-        specifier: ^26.1.0
+        specifier: 'catalog:'
         version: 26.6.5
       '@vitest/coverage-v8':
-        specifier: ^5.0.5
+        specifier: 'catalog:'
         version: 5.0.5(vitest@5.0.5)
       oxlint:
-        specifier: ^1.65.0
+        specifier: 'catalog:'
         version: 1.88.0
       prettier:
-        specifier: 3.9.6
+        specifier: 'catalog:'
         version: 3.9.6
       typescript:
-        specifier: ~6.0.3
+        specifier: 'catalog:'
         version: 6.0.3
       vitest:
-        specifier: ^5.0.5
+        specifier: 'catalog:'
         version: 5.0.5(@types/node@26.6.5)(@vitest/coverage-v8@5.0.5)(vite@8.3.4(@types/node@26.6.5)(yaml@2.9.1))
 
   packages/ts/tsconfig:
@@ -630,13 +684,13 @@ importers:
         specifier: workspace:^
         version: link:../prettier-config
       oxlint:
-        specifier: ^1.65.0
+        specifier: 'catalog:'
         version: 1.88.0
       prettier:
-        specifier: 3.9.6
+        specifier: 'catalog:'
         version: 3.9.6
       typescript:
-        specifier: ~6.0.3
+        specifier: 'catalog:'
         version: 6.0.3
 
   packages/ts/typed-gh:
@@ -654,21 +708,24 @@ importers:
       '@osdlc/tsconfig':
         specifier: workspace:^
         version: link:../tsconfig
-      '@types/bun':
-        specifier: ^1.1.14
-        version: 1.4.3
       '@types/node':
-        specifier: ^26.1.0
+        specifier: 'catalog:'
         version: 26.6.5
+      '@vitest/coverage-v8':
+        specifier: 'catalog:'
+        version: 5.0.5(vitest@5.0.5)
       oxlint:
-        specifier: ^1.65.0
+        specifier: 'catalog:'
         version: 1.88.0
       prettier:
-        specifier: 3.9.6
+        specifier: 'catalog:'
         version: 3.9.6
       typescript:
-        specifier: ~6.0.3
+        specifier: 'catalog:'
         version: 6.0.3
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@types/node@26.6.5)(@vitest/coverage-v8@5.0.5)(vite@8.3.4(@types/node@26.6.5)(yaml@2.9.1))
 
   packages/ts/typed-git:
     dependencies:
@@ -685,21 +742,24 @@ importers:
       '@osdlc/tsconfig':
         specifier: workspace:^
         version: link:../tsconfig
-      '@types/bun':
-        specifier: ^1.1.14
-        version: 1.4.3
       '@types/node':
-        specifier: ^26.1.0
+        specifier: 'catalog:'
         version: 26.6.5
+      '@vitest/coverage-v8':
+        specifier: 'catalog:'
+        version: 5.0.5(vitest@5.0.5)
       oxlint:
-        specifier: ^1.65.0
+        specifier: 'catalog:'
         version: 1.88.0
       prettier:
-        specifier: 3.9.6
+        specifier: 'catalog:'
         version: 3.9.6
       typescript:
-        specifier: ~6.0.3
+        specifier: 'catalog:'
         version: 6.0.3
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@types/node@26.6.5)(@vitest/coverage-v8@5.0.5)(vite@8.3.4(@types/node@26.6.5)(yaml@2.9.1))
 
   packages/ts/yaml-splice:
     devDependencies:
@@ -709,21 +769,24 @@ importers:
       '@osdlc/tsconfig':
         specifier: workspace:^
         version: link:../tsconfig
-      '@types/bun':
-        specifier: ^1.1.14
-        version: 1.4.3
       '@types/node':
-        specifier: ^26.1.0
+        specifier: 'catalog:'
         version: 26.6.5
+      '@vitest/coverage-v8':
+        specifier: 'catalog:'
+        version: 5.0.5(vitest@5.0.5)
       oxlint:
-        specifier: ^1.65.0
+        specifier: 'catalog:'
         version: 1.88.0
       prettier:
-        specifier: 3.9.6
+        specifier: 'catalog:'
         version: 3.9.6
       typescript:
-        specifier: ~6.0.3
+        specifier: 'catalog:'
         version: 6.0.3
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@types/node@26.6.5)(@vitest/coverage-v8@5.0.5)(vite@8.3.4(@types/node@26.6.5)(yaml@2.9.1))
 
 packages:
 
@@ -1083,9 +1146,6 @@ packages:
     resolution: {integrity: sha512-t09vSN3MdfsyCHoFcTRCH/iUtG7OJ0CsjzB8cjAmKc/va/kIgeDI/TxsigdncE/4be734m0cvIYwNaV4i2XqAw==}
     engines: {node: '>=10'}
 
-  '@types/bun@1.4.3':
-    resolution: {integrity: sha512-N67Pqy8JXbAY/j0tNraS3V5mubGvc6rrrNDmDCtZLlFzccbUJPDb0tvgUBC5q4m8ybkP93Jcn1QB+RYQ6PvBhw==}
-
   '@types/chai@5.2.3':
     resolution: {integrity: sha512-Mw558oeA9fFbv65/y4mHtXDs9bPnFMZAL/jxdPFUpOHHIXX91mcgEHbS5Lahr+pwZFR8A7GQleRWeI6cGFC2UA==}
 
@@ -1172,9 +1232,6 @@ packages:
 
   bail@2.0.2:
     resolution: {integrity: sha512-0xO6mYd7JB2YesxDKplafRpsiOzPt9V02ddPCLbY1xYGPOX24NTyN50qnUxgCPcSoYMhKpAuBTjQoRZCAkUDRw==}
-
-  bun-types@1.4.3:
-    resolution: {integrity: sha512-tinRJNGOmUN+tEAsn2y2e942n9JHRHR42iUYzDH75NmhJqVBokGSQkkfSFdNWwsANIdrK6ACH9t01M452YyTwg==}
 
   cac@7.1.0:
     resolution: {integrity: sha512-LMDU/U2yA4IPIY8KT0NsNPWEYZvAMkbgyspxJ6btJaYV+WMDOHAZCmB0lsTObiHaRS1V/ztKAl7+TSkTqXyeoA==}
@@ -1776,9 +1833,6 @@ packages:
     engines: {node: '>=14.17'}
     hasBin: true
 
-  undici-types@8.12.1:
-    resolution: {integrity: sha512-nCiEcIx87oMw9u3Yzj2DuRBzv6p0e7akhy4HUPtpBiVWmAY3o6Phznst8QhmY1oLMttLgJ2tlAvsKuzCgBSoAw==}
-
   undici-types@8.9.0:
     resolution: {integrity: sha512-KTDyRTYX8sWmKXAikPHHSyc63CRPETMctyjKFupcC6OBLXT3xsN0e9aF7m+mIXutFWpUXuedtowG7iLOzp0kQg==}
 
@@ -2230,10 +2284,6 @@ snapshots:
 
   '@sindresorhus/is@4.6.0': {}
 
-  '@types/bun@1.4.3':
-    dependencies:
-      bun-types: 1.4.3
-
   '@types/chai@5.2.3':
     dependencies:
       '@types/deep-eql': 4.0.2
@@ -2313,11 +2363,6 @@ snapshots:
       js-tokens: 10.0.0
 
   bail@2.0.2: {}
-
-  bun-types@1.4.3:
-    dependencies:
-      '@types/node': 26.6.5
-      undici-types: 8.12.1
 
   cac@7.1.0: {}
 
@@ -3062,8 +3107,6 @@ snapshots:
   typescript@5.6.1-rc: {}
 
   typescript@6.0.3: {}
-
-  undici-types@8.12.1: {}
 
   undici-types@8.9.0: {}
 

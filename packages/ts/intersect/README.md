@@ -205,7 +205,6 @@ Version 0.x. The API may change in a minor release. Read the
 See [SECURITY.md](./SECURITY.md) for how to report a problem and for limits on
 untrusted patterns. To contribute, see [CONTRIBUTING.md](./CONTRIBUTING.md).
 
-## License
+## Licence
 
-MIT or Apache-2.0, at your option. See [LICENSE-MIT](./LICENSE-MIT) and
-[LICENSE-APACHE](./LICENSE-APACHE).
+`MIT OR Apache-2.0`, at your option. See [LICENSE-MIT](./LICENSE-MIT) and [LICENSE-APACHE](./LICENSE-APACHE).

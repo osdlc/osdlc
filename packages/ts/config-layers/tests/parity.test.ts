@@ -16,12 +16,12 @@ import { fileURLToPath } from 'node:url'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 import { z } from 'zod'
 
-import { envVars } from '../dirs.ts'
-import { readMappingFile } from '../loader.ts'
-import { machineConfigFile } from '../machine.ts'
-import { configNeeds } from '../needs.ts'
-import { resolveConfigPath, substitutePathNames } from '../paths.ts'
-import { valueAt, valueIsSet } from '../value.ts'
+import { envVars } from '../src/dirs.ts'
+import { readMappingFile } from '../src/loader.ts'
+import { machineConfigFile } from '../src/machine.ts'
+import { configNeeds } from '../src/needs.ts'
+import { resolveConfigPath, substitutePathNames } from '../src/paths.ts'
+import { valueAt, valueIsSet } from '../src/value.ts'
 
 interface Fixture {
   value_is_set: { name: string; missing?: boolean; value?: unknown; expected: boolean }[]

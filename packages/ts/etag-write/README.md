@@ -29,6 +29,8 @@ When not to use it:
 npm install @osdlc/etag-write
 ```
 
+`pnpm add @osdlc/etag-write` and `yarn add @osdlc/etag-write` work too.
+
 ESM only. Node.js 22 or later. Bun also works.
 
 ## Quick start
@@ -152,12 +154,11 @@ The experimental exports:
 
 ## Runtimes and platforms
 
-Node.js 22 or later, ESM only. Bun works too, and loads the TypeScript source
-through the `bun` export condition. The tests run on Linux and macOS. Windows
+Node.js 22 or later, ESM only. Bun works too, through the compiled `dist/`. The tests run on Linux and macOS. Windows
 is not tested: the code has no Windows-specific path, the permission tests are
 skipped there, and a rename over a file that another process holds open can
 fail on Windows.
 
-## License
+## Licence
 
-`MIT OR Apache-2.0`, at your option.
+`MIT OR Apache-2.0`, at your option. See [LICENSE-MIT](./LICENSE-MIT) and [LICENSE-APACHE](./LICENSE-APACHE).

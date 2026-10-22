@@ -3,7 +3,7 @@
  * intercepted; the return value and every other error pass through untouched.
  */
 
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'vitest'
 
 import {
   catchFailed,
@@ -11,7 +11,7 @@ import {
   CommandFailed,
   mapFailed,
   mapFailedAsync,
-} from '../index.ts'
+} from '../src/index.ts'
 
 const failed = (): CommandFailed =>
   new CommandFailed(['git', 'x'], { exitCode: 1, stdout: 'out', stderr: 'err' })

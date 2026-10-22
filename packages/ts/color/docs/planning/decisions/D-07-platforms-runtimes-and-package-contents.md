@@ -35,6 +35,6 @@ created: 2026-10-18
 ## Consequences
 
 - In this repository, `tsconfig.json` and `vitest.config.ts` map the
-  package's own name to `index.ts`, so the examples and the README blocks run
+  package's own name to `src/index.ts`, so the examples and the README blocks run
   before a build.
 - Dropping Node 22 is a breaking change, made in a major release.

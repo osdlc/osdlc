@@ -72,6 +72,8 @@ wrote.
 npm install @osdlc/observe zod
 ```
 
+`pnpm add @osdlc/observe` and `yarn add @osdlc/observe` work too.
+
 ESM only. Node.js 22 or later. `zod` 4 is a peer dependency:
 the session model takes your own zod schemas, so both must come from one zod.
 The one runtime dependency is `@osdlc/command-seam`, which runs `ps`, `ioreg`,
@@ -345,3 +347,7 @@ const result = await runHeadlessSession(ports, async (onSpawn) => {
 - `resolveOriginator` records the git user name and the hostname unless its
   `identity` argument is `false`.
 - Commands (`ps`, `ioreg`, `reg`, `git`) run with argument arrays and no shell.
+
+## Licence
+
+`MIT OR Apache-2.0`, at your option. See [LICENSE-MIT](./LICENSE-MIT) and [LICENSE-APACHE](./LICENSE-APACHE).

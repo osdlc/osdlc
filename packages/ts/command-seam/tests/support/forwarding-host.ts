@@ -24,7 +24,7 @@ import {
   installGroupSignalForwarding,
   managedProcessRunner,
   spawnRunnerAsync,
-} from '../../index.ts'
+} from '../../src/index.ts'
 
 const stubborn = process.argv.includes('--stubborn')
 const ownHandler = process.argv.includes('--own-handler')

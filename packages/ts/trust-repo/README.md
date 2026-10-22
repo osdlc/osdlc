@@ -9,7 +9,9 @@ runs.
 npm install @osdlc/trust-repo
 ```
 
-ESM only. Node.js 22.18 or later. Bun also works.
+`pnpm add @osdlc/trust-repo` and `yarn add @osdlc/trust-repo` work too.
+
+ESM only. Node.js 22 or later. Bun also works.
 
 ## Quick start
 
@@ -187,9 +189,9 @@ Linux and macOS for the 0.x line. Windows support is planned before 1.0. The
 store uses XDG state paths on every platform, so it does not run on Windows
 today.
 
-Node.js 22.18 or later, ESM only. Bun also runs it and loads the TypeScript source
-through the `bun` export condition. The tests run on Vitest under Node.
+Node.js 22 or later, ESM only. Bun also runs it, through the compiled `dist/`. The tests run
+on Vitest under Node.
 
-## License
+## Licence
 
-`MIT OR Apache-2.0`. See [LICENSE-MIT](./LICENSE-MIT) and [LICENSE-APACHE](./LICENSE-APACHE).
+`MIT OR Apache-2.0`, at your option. See [LICENSE-MIT](./LICENSE-MIT) and [LICENSE-APACHE](./LICENSE-APACHE).

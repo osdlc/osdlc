@@ -3,7 +3,7 @@
  * These helpers read text you give them; none of them runs `gh`.
  */
 
-import { expect, test } from 'bun:test'
+import { expect, test } from 'vitest'
 
 import {
   AsyncGh,

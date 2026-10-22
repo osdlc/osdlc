@@ -18,7 +18,7 @@
  */
 import { describe, expect, test } from 'vitest'
 
-import { compositeOver, mixColors, parseColor } from '../index.ts'
+import { compositeOver, mixColors, parseColor } from '../src/index.ts'
 import fixture from './fixtures/browser.json'
 
 interface Computed {

@@ -48,6 +48,8 @@ a smaller package may fit better.
 npm install @osdlc/path-guard
 ```
 
+`pnpm add @osdlc/path-guard` and `yarn add @osdlc/path-guard` work too.
+
 ## Quick start
 
 ```ts
@@ -331,6 +333,6 @@ Limits on Windows:
 The package reads the filesystem and runs no commands. See
 [SECURITY.md](./SECURITY.md) to report a problem.
 
-## License
+## Licence
 
-`MIT OR Apache-2.0`, at your option.
+`MIT OR Apache-2.0`, at your option. See [LICENSE-MIT](./LICENSE-MIT) and [LICENSE-APACHE](./LICENSE-APACHE).

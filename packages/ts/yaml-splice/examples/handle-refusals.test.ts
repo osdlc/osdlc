@@ -3,7 +3,7 @@
  * and returns nothing, so no half-applied document can be written.
  */
 
-import { expect, test } from 'bun:test'
+import { expect, test } from 'vitest'
 
 import { editYaml, EditError, type EditErrorCode, type EditSpan } from '@osdlc/yaml-splice'
 

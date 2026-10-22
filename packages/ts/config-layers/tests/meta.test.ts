@@ -1,7 +1,7 @@
 /**
  * Tests for the per-key meta ({@link checkConfigMeta} and friends), the
- * vocabulary factory (`../vocabulary.ts`) and the completeness test kit
- * (`../meta-kit.ts`), against the fake tool's vocabulary in `./support.ts`.
+ * vocabulary factory (`../src/vocabulary.ts`) and the completeness test kit
+ * (`../src/meta-kit.ts`), against the fake tool's vocabulary in `./support.ts`.
  */
 
 import { describe, expect, test } from 'vitest'
@@ -15,20 +15,20 @@ import {
   consumerProblems,
   enforcementProblems,
   machineLayerKeys,
-} from '../meta-kit.ts'
+} from '../src/meta-kit.ts'
 import {
   applierOf,
   appliesViaSchema,
   checkConfigMeta,
   isReserved,
   readConfigMeta,
-} from '../meta.ts'
-import { defineConfigVocabulary } from '../vocabulary.ts'
+} from '../src/meta.ts'
+import { defineConfigVocabulary } from '../src/vocabulary.ts'
 
 import { META as VALID, vocabulary } from './support.ts'
 
 /** The library's own source root, which the fixture consumers below are relative to. */
-const SOURCE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+const SOURCE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'src')
 
 const LEVELS = vocabulary.spec.enforcement
 

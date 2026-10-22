@@ -3,11 +3,9 @@
   // `include` keeps tests/ out of dist/.
   "extends": ["./tsconfig.json", "@osdlc/tsconfig/build"],
   "compilerOptions": {
-    "rootDir": ".",
-    // The built siblings, not their source: the source is outside rootDir.
-    "customConditions": [],
-    "paths": {}
+    "rootDir": "src",
+    // src/ is not published, so a declaration map would point at nothing.
+    "declarationMap": false
   },
-  "include": ["*.ts"],
-  "exclude": ["vitest.config.ts"]
+  "include": ["src"]
 }

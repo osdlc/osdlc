@@ -44,7 +44,7 @@ function graph(entry: string, ext: string): { files: string[]; external: string[
 }
 
 const TREES = [
-  { name: 'source', dir: PACKAGE_DIR, ext: '.ts', present: true },
+  { name: 'source', dir: join(PACKAGE_DIR, 'src'), ext: '.ts', present: true },
   { name: 'built', dir: DIST, ext: '.js', present: existsSync(join(DIST, 'index.js')) },
   { name: 'types', dir: DIST, ext: '.d.ts', present: existsSync(join(DIST, 'index.d.ts')) },
 ]

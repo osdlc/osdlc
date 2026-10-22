@@ -1,6 +1,6 @@
-// Runs the BUILT package under Node. `bun test` resolves the package name to
-// the TypeScript source, so a broken emit could pass it and fail on the
-// consumer's machine.
+// Runs the BUILT package under Node. The unit tests run the TypeScript source
+// (vitest.config.ts aliases the package name to it), so a broken emit could
+// pass them and fail on the consumer's machine.
 //
 // It imports the package by name, so Node resolves it through `exports` as a
 // consumer would. `pnpm run smoke` runs it here, where the name resolves to

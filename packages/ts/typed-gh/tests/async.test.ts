@@ -5,7 +5,7 @@
  * verb table.
  */
 
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'vitest'
 
 import {
   AsyncGh,
@@ -15,7 +15,7 @@ import {
   type AsyncCommandRunner,
   type CommandResult,
   type CommandRunner,
-} from '../index.ts'
+} from '../src/index.ts'
 import { asAsync } from '@osdlc/command-seam'
 
 function recorder(results: CommandResult[] = [{ exitCode: 0, stdout: '', stderr: '' }]) {

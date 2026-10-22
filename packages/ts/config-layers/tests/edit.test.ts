@@ -6,7 +6,7 @@
 
 import { describe, expect, test } from 'vitest'
 
-import { setPath, unsetPath } from '../edit.ts'
+import { setPath, unsetPath } from '../src/edit.ts'
 
 const FIXTURE = `# Project config.   Odd  spacing is deliberate.
 

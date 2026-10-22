@@ -18,7 +18,7 @@ created: 2026-10-17
   There is no CommonJS build.
 - Tests run on Node: CI runs the conformance corpus and a smoke check against
   the built package on Node 22 and 24, and runs the clean-consumer check on
-  the packed tarball. The unit tests also run under Bun.
+  the packed tarball. The unit tests run on Vitest under Node.
 - Another runtime, such as Deno or a browser, is claimed only once a test
   runs on it.
 
@@ -35,7 +35,8 @@ created: 2026-10-17
 
 ## Consequences
 
-- In this repository, `tsconfig.json` maps the package's own name to
-  `index.ts`, so the examples and the README blocks run under Bun before a
-  build. The Node tests need `pnpm run build` first.
+- In this repository, Vitest maps the package's own name to `src/index.ts`, so
+  the examples and the README blocks run on the source. `tsconfig.json` has no
+  `paths` or `customConditions`; the typecheck and `tests/corpus-dist.test.ts`
+  need `pnpm run build` first.
 - Dropping Node 22 is a breaking change, made in a major release.

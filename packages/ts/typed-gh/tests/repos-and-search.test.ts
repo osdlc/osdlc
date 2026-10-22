@@ -3,7 +3,7 @@
  * gh gives them no flag for, and how their rows parse.
  */
 
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'vitest'
 
 import {
   AsyncGh,
@@ -15,8 +15,8 @@ import {
   searchPrs,
   type CommandResult,
   type CommandRunOptions,
-} from '../index.ts'
-import { parsePrSearchHit, parseRepository } from '../parse.ts'
+} from '../src/index.ts'
+import { parsePrSearchHit, parseRepository } from '../src/parse.ts'
 
 const out = (body: unknown): CommandResult => ({
   exitCode: 0,

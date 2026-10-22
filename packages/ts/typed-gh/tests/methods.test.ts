@@ -7,7 +7,7 @@
  * Offline: both clients run on fake runners that record each call.
  */
 
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'vitest'
 
 import {
   AsyncGh,
@@ -22,7 +22,7 @@ import {
   type AsyncCommandRunner,
   type CommandResult,
   type CommandRunner,
-} from '../index.ts'
+} from '../src/index.ts'
 
 interface Call {
   argv: string[]

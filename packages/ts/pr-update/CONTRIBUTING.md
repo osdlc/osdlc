@@ -20,7 +20,7 @@ there.
 
 The repository is a pnpm workspace. Install from the repository root, then
 work in the package directory. The tests run on [Vitest](https://vitest.dev)
-under Node 22.18 or later. They run offline and need `git` on the PATH. Some
+under Node 22.22.2 or later. They run offline and need `git` on the PATH. Some
 tests build throwaway repositories in a temp directory, and a fake code host
 stands in for `gh`, so the tests need no network and no login. The package
 imports its sibling libraries through their built `dist/`, so run

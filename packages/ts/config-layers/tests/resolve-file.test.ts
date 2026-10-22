@@ -8,8 +8,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { ConfigInvalidError } from '../config-error.ts'
-import { overlayPath, resolveConfigFile } from '../resolve-file.ts'
+import { ConfigInvalidError } from '../src/config-error.ts'
+import { overlayPath, resolveConfigFile } from '../src/resolve-file.ts'
 
 import { CONFIG_FILE } from './support.ts'
 

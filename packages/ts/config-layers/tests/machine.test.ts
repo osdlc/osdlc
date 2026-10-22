@@ -4,12 +4,12 @@ import { dirname, join } from 'node:path'
 
 import { z } from 'zod'
 
-import { envStem, machineConfigFile } from '../machine.ts'
+import { envStem, machineConfigFile } from '../src/machine.ts'
 import {
   currentMachineVersion,
   migrateMachineRaw,
   type MachineMigration,
-} from '../machine-migrate.ts'
+} from '../src/machine-migrate.ts'
 import { MachineSchema, sandbox, type Sandbox, VENDOR_DIRS } from './support.ts'
 
 let sb: Sandbox

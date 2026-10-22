@@ -1,4 +1,4 @@
-# Changelog
+# @osdlc/typed-git
 
 ## 0.5.3
 

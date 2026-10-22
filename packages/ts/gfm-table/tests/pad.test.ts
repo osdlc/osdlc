@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'vitest'
 import { padTable, readTable } from '../src/index.ts'
 
 const lines = (...rows: string[]) => rows.join('\n')

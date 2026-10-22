@@ -1,4 +1,4 @@
-# Changelog
+# @osdlc/color
 
 ## 1.0.1
 

@@ -15,9 +15,8 @@ In the package:
   later.
 - Security reports go through GitHub private vulnerability reporting. The
   project aims to reply within a week.
-- CONTRIBUTING shows each script with `pnpm`, and says that `npm run` and
-  `bun run` work the same way. It asks for Bun only to run the tests, until
-  [T-02](../tasks/T-02-vitest.md).
+- CONTRIBUTING shows each script with `pnpm`, and says that `npm run` works
+  the same way. The tests need only Node ([T-02](../tasks/T-02-vitest.md)).
 - Any claim about another library is checked against that library before it
   goes in the README or a docs site.
 - `SECURITY.md` and `CONTRIBUTING.md` ship in the npm tarball, next to the

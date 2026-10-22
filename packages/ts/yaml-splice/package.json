@@ -29,6 +29,12 @@
   "engines": {
     "node": ">=22"
   },
+  "imports": {
+    "#wasm": {
+      "types": "./wasm/yaml_splice_wasm.d.ts",
+      "default": "./dist/wasm/yaml_splice_wasm.js"
+    }
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -48,9 +54,8 @@
     "build": "tsc -p tsconfig.build.json && node -e \"const fs=require('node:fs');fs.rmSync('dist/wasm',{recursive:true,force:true});fs.cpSync('wasm','dist/wasm',{recursive:true})\"",
     "build:wasm": "bash ../../rust/yaml-splice-wasm/build.sh",
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
-    "test": "bun test && npm run test:node",
-    "test:node": "pnpm run build && node --test tests/corpus-node.mjs",
-    "coverage": "bun test --coverage",
+    "test": "vitest run",
+    "coverage": "vitest run --coverage",
     "smoke": "node tests/smoke.mjs",
     "prepublishOnly": "npm run clean && npm run build",
     "format": "prettier --write .",
@@ -61,10 +66,11 @@
   "devDependencies": {
     "@osdlc/prettier-config": "workspace:^",
     "@osdlc/tsconfig": "workspace:^",
-    "@types/bun": "^1.1.14",
-    "@types/node": "^26.1.0",
-    "oxlint": "^1.65.0",
-    "prettier": "3.9.6",
-    "typescript": "~6.0.3"
+    "@types/node": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
+    "oxlint": "catalog:",
+    "prettier": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   }
 }

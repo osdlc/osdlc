@@ -6,7 +6,7 @@
  * one contract.
  */
 
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'vitest'
 
 import {
   AsyncGh,
@@ -18,9 +18,9 @@ import {
   type AsyncCommandRunner,
   type CommandResult,
   type CommandRunner,
-} from '../index.ts'
-import { parseActor, parseCheckRun } from '../parse.ts'
-import { needsMergeStateRetry } from '../verbs.ts'
+} from '../src/index.ts'
+import { parseActor, parseCheckRun } from '../src/parse.ts'
+import { needsMergeStateRetry } from '../src/verbs.ts'
 
 /** A `Gh` and an `AsyncGh` on fake runners that replay `results` (the last one repeats). */
 function clients(results: CommandResult[]) {

@@ -19,7 +19,7 @@ import { join } from 'node:path'
 import { describe, expect, test } from 'vitest'
 import { z } from 'zod'
 
-import { defineSessionModel, looseSessionModel } from '../model.ts'
+import { defineSessionModel, looseSessionModel } from '../src/model.ts'
 
 const fixtures = join(import.meta.dirname, 'fixtures')
 const read = (name: string) => readFileSync(join(fixtures, name), 'utf-8')

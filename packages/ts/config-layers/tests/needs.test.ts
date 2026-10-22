@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { configNeeds } from '../needs.ts'
+import { configNeeds } from '../src/needs.ts'
 import { PROJECT_FILE, ProjectSchema, sandbox, type Sandbox } from './support.ts'
 
 let sb: Sandbox

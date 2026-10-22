@@ -4,10 +4,8 @@
   "extends": ["./tsconfig.json", "@osdlc/tsconfig/build"],
   "compilerOptions": {
     "rootDir": "src",
-    // The built siblings, not their source: the source is outside rootDir.
-    "customConditions": [],
-    "paths": {}
+    // src/ is not published, so a declaration map would point at nothing.
+    "declarationMap": false
   },
-  "include": ["src"],
-  "exclude": ["src/**/*.test.ts"]
+  "include": ["src"]
 }

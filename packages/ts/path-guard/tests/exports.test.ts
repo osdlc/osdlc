@@ -12,9 +12,9 @@ import { pathToFileURL } from 'node:url'
 import { describe, expect, test } from 'vitest'
 import ts from 'typescript'
 
-import * as main from '../index.ts'
-import * as lexicalEntry from '../lexical-entry.ts'
-import * as nodeEntry from '../node.ts'
+import * as main from '../src/index.ts'
+import * as lexicalEntry from '../src/lexical-entry.ts'
+import * as nodeEntry from '../src/node.ts'
 
 const PACKAGE_DIR = join(import.meta.dirname, '..')
 // A Windows checkout may have CRLF line ends.
@@ -37,21 +37,21 @@ interface Entry {
 const ENTRIES: Entry[] = [
   {
     specifier: PACKAGE_NAME,
-    file: join(PACKAGE_DIR, 'index.ts'),
+    file: join(PACKAGE_DIR, 'src', 'index.ts'),
     runtime: main,
     values: ['MAX_LINK_HOPS', 'PathError', 'PathGuard', 'lexical'],
     types: ['PathErrorKind', 'PathWarning', 'Resolver'],
   },
   {
     specifier: `${PACKAGE_NAME}/lexical`,
-    file: join(PACKAGE_DIR, 'lexical-entry.ts'),
+    file: join(PACKAGE_DIR, 'src', 'lexical-entry.ts'),
     runtime: lexicalEntry,
     values: ['PathError', 'absolute', 'isUnder', 'toRelative', 'validateRelative'],
     types: ['PathErrorKind', 'PathWarning'],
   },
   {
     specifier: `${PACKAGE_NAME}/node`,
-    file: join(PACKAGE_DIR, 'node.ts'),
+    file: join(PACKAGE_DIR, 'src', 'node.ts'),
     runtime: nodeEntry,
     values: [
       'existingPathInside',

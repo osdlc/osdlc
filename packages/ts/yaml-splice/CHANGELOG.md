@@ -1,4 +1,4 @@
-# Changelog
+# @osdlc/yaml-splice
 
 ## 0.2.0
 

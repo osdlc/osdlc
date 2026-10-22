@@ -1,4 +1,4 @@
-# Changelog
+# @osdlc/tiered-dirs
 
 ## 0.3.0
 

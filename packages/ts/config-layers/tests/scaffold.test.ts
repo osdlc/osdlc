@@ -1,5 +1,5 @@
 /**
- * Unit tests for the schema-driven scaffold generator (`../scaffold.ts`),
+ * Unit tests for the schema-driven scaffold generator (`../src/scaffold.ts`),
  * asserted against a small synthetic schema.
  */
 
@@ -7,8 +7,8 @@ import { describe, expect, test } from 'vitest'
 
 import { z } from 'zod'
 
-import type { ConfigKeyMeta } from '../meta.ts'
-import { scaffoldLocalYaml, scaffoldYaml, starterYaml } from '../scaffold.ts'
+import type { ConfigKeyMeta } from '../src/meta.ts'
+import { scaffoldLocalYaml, scaffoldYaml, starterYaml } from '../src/scaffold.ts'
 
 import { vocabulary } from './support.ts'
 

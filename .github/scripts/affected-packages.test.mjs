@@ -42,8 +42,10 @@ test('a shared root input picks every package', () => {
   for (const file of [
     'pnpm-lock.yaml',
     'package.json',
+    '.oxlintrc.json',
     '.github/workflows/packages-ci.yml',
     '.github/scripts/check-packages.mjs',
+    '.github/scripts/package-shape.mjs',
     '.changeset/config.json',
   ]) {
     assert.deepEqual(pr(['packages/ts/app/a.ts', file]), ALL, file)

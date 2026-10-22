@@ -8,7 +8,7 @@
  * `partialBackend` exists for.
  */
 
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'vitest'
 
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -25,8 +25,8 @@ import {
   type CommandResult,
   type CommandRunner,
   type GitRequest,
-} from '../index.ts'
-import { makeGitFixture } from '../testing.ts'
+} from '../src/index.ts'
+import { makeGitFixture } from '../src/testing.ts'
 
 const CWD = '/tmp/repo'
 

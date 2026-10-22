@@ -4,7 +4,7 @@
  * inline comment sits on one line of the new side of the diff.
  */
 
-import { expect, test } from 'bun:test'
+import { expect, test } from 'vitest'
 
 import {
   Gh,

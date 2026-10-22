@@ -18,7 +18,7 @@ import {
   machineId,
   resolveMachineId,
   type MachineProbe,
-} from '../machine.ts'
+} from '../src/machine.ts'
 
 const derived = (uuid: string) =>
   `m-${createHash('sha256').update(`sdlc-machine:${uuid}`).digest('hex').slice(0, 16)}`
@@ -141,7 +141,11 @@ describe('machineId (inherited)', () => {
   const inherited = (env: Record<string, string>): string =>
     spawnRunner(process.execPath)
       .run(
-        [...runtimeFlags, '-e', "import('./machine.ts').then((m) => console.log(m.machineId()))"],
+        [
+          ...runtimeFlags,
+          '-e',
+          "import('./src/machine.ts').then((m) => console.log(m.machineId()))",
+        ],
         {
           cwd: join(import.meta.dirname, '..'),
           // Unset whatever this process inherited, so only the given tags reach the child.

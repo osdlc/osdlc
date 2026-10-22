@@ -3,7 +3,7 @@
  * `CommandFailed`, and `raw` hands the result back for you to judge.
  */
 
-import { expect, test } from 'bun:test'
+import { expect, test } from 'vitest'
 
 import { CommandFailed, Gh, type CommandResult, type CommandRunner } from '@osdlc/typed-gh'
 

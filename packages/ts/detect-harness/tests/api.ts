@@ -12,9 +12,9 @@ import ts from 'typescript'
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 
 export const ENTRIES = {
-  '.': 'index.ts',
-  './locations': 'locations.ts',
-  './model': 'model/index.ts',
+  '.': 'src/index.ts',
+  './locations': 'src/locations.ts',
+  './model': 'src/model/index.ts',
 } as const
 
 export type EntryName = keyof typeof ENTRIES
