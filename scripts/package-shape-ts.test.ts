@@ -1,6 +1,6 @@
-// Tests for package-shape-ts.mjs.
+// Tests for package-shape-ts.ts.
 //
-//   node --test scripts/package-shape-ts.test.mjs
+//   node --test scripts/package-shape-ts.test.ts
 import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
 
@@ -26,7 +26,7 @@ import {
   shippedSource,
   shippedSourceMaps,
   tsconfigProblems,
-} from './package-shape-ts.mjs'
+} from './package-shape-ts.ts'
 
 const good = {
   pkg: {
@@ -171,8 +171,8 @@ test('P2: engines.node is a subset of >=22 and of every workspace dependency', (
   assert.equal(enginesProblems({ engines: { node: '>=20' } }, {}).length, 1, 'wider than the base')
   const dependent = { engines: { node: '>=22' }, dependencies: { '@osdlc/typed-git': 'workspace:^' } }
   const [problem] = enginesProblems(dependent, { '@osdlc/typed-git': typedGit })
-  assert.match(problem, /wider than @osdlc\/typed-git's/)
-  assert.match(problem, /set it to \^22\.22\.2/)
+  assert.match(problem!, /wider than @osdlc\/typed-git's/)
+  assert.match(problem!, /set it to \^22\.22\.2/)
   assert.deepEqual(
     enginesProblems({ ...dependent, engines: { node: typedGit } }, { '@osdlc/typed-git': typedGit }),
     [],
@@ -186,16 +186,16 @@ test('P2: engines.node is a subset of >=22 and of every workspace dependency', (
 test('P3 and P4: the typecheck and smoke scripts, and the smoke file', () => {
   assert.deepEqual(scriptProblems(code.pkg, FILES), [])
   const noBuild = { ...code.pkg, scripts: { ...code.pkg.scripts, typecheck: 'tsc --noEmit' } }
-  assert.match(scriptProblems(noBuild, FILES)[0], /scripts\.typecheck/)
+  assert.match(scriptProblems(noBuild, FILES)[0]!, /scripts\.typecheck/)
   const noScript = { ...code.pkg, scripts: { typecheck: code.pkg.scripts.typecheck } }
-  assert.match(scriptProblems(noScript, FILES)[0], /scripts\.smoke/)
-  assert.match(scriptProblems(code.pkg, ['src/index.ts'])[0], /tests\/smoke\.mjs is missing/)
+  assert.match(scriptProblems(noScript, FILES)[0]!, /scripts\.smoke/)
+  assert.match(scriptProblems(code.pkg, ['src/index.ts'])[0]!, /tests\/smoke\.mjs is missing/)
 })
 
 test('P5: TypeScript at the package root, and a build that does not root at src, fail', () => {
   assert.deepEqual(layoutProblems(FILES, code.tsconfigs), [])
   assert.deepEqual(layoutProblems([...FILES, 'vitest.config.ts'], code.tsconfigs), [])
-  assert.match(layoutProblems([...FILES, 'index.ts'], code.tsconfigs)[0], /index\.ts sits at the package root/)
+  assert.match(layoutProblems([...FILES, 'index.ts'], code.tsconfigs)[0]!, /index\.ts sits at the package root/)
   assert.equal(layoutProblems([...FILES, 'a.mts'], code.tsconfigs).length, 1)
   assert.equal(layoutProblems(FILES.filter((f) => f !== 'src/index.ts'), code.tsconfigs).length, 1, 'no src')
   const rooted = { 'tsconfig.build.json': { compilerOptions: { rootDir: '.' }, include: ['*.ts'] } }
@@ -203,13 +203,13 @@ test('P5: TypeScript at the package root, and a build that does not root at src,
 })
 
 test('P6: a test under src/ fails', () => {
-  assert.match(layoutProblems([...FILES, 'src/a.test.ts'], code.tsconfigs)[0], /src\/a\.test\.ts is a test under src/)
+  assert.match(layoutProblems([...FILES, 'src/a.test.ts'], code.tsconfigs)[0]!, /src\/a\.test\.ts is a test under src/)
   assert.equal(layoutProblems([...FILES, 'src/cli/b.spec.ts'], code.tsconfigs).length, 1)
 })
 
 test('P7: examples/ needs a *.test.ts', () => {
   const without = FILES.filter((f) => f !== 'examples/readme.test.ts')
-  assert.match(layoutProblems(without, code.tsconfigs)[0], /examples\/ has no \*\.test\.ts/)
+  assert.match(layoutProblems(without, code.tsconfigs)[0]!, /examples\/ has no \*\.test\.ts/)
   assert.equal(layoutProblems([...without, 'examples/doors.ts'], code.tsconfigs).length, 1)
 })
 
@@ -218,28 +218,28 @@ test('P8: docs/ holds only planning/, with a README, and guide/', () => {
   assert.deepEqual(docsProblems(['src/index.ts']), [])
   assert.deepEqual(docsProblems([...FILES, 'docs/guide/getting-started.md']), [])
   assert.deepEqual(docsProblems(['docs/guide/getting-started.md']), [])
-  assert.match(docsProblems([...FILES, 'docs/decisions/D-01.md'])[0], /docs\/decisions is outside docs\/planning/)
-  assert.match(docsProblems(['docs/planning/decisions/D-01.md'])[0], /docs\/planning\/README\.md is missing/)
+  assert.match(docsProblems([...FILES, 'docs/decisions/D-01.md'])[0]!, /docs\/decisions is outside docs\/planning/)
+  assert.match(docsProblems(['docs/planning/decisions/D-01.md'])[0]!, /docs\/planning\/README\.md is missing/)
 })
 
 test('P9: the CHANGELOG title is the package name', () => {
   assert.deepEqual(changelogProblems('@osdlc/app', '# @osdlc/app\n'), [])
   assert.deepEqual(changelogProblems('@osdlc/app', null), [])
-  assert.match(changelogProblems('@osdlc/app', '# Changelog\n')[0], /start it "# @osdlc\/app"/)
+  assert.match(changelogProblems('@osdlc/app', '# Changelog\n')[0]!, /start it "# @osdlc\/app"/)
 })
 
 test('P10: the README has Install and Licence sections', () => {
   assert.deepEqual(readmeProblems('@osdlc/app', README), [])
   assert.deepEqual(section('# T\n\n## A\nx\n\n## B\ny\n', 'A'), 'x\n')
   assert.equal(section('```\n## A\n```\n', 'A'), null, 'a fenced heading is not a section')
-  assert.match(readmeProblems('@osdlc/app', '# x\n')[0], /no "## Install" section/)
+  assert.match(readmeProblems('@osdlc/app', '# x\n')[0]!, /no "## Install" section/)
   assert.equal(readmeProblems('@osdlc/app', '# x\n').length, 2)
   const license = README.replace('## Licence', '## License')
-  assert.match(readmeProblems('@osdlc/app', license)[0], /no "## Licence" section/)
+  assert.match(readmeProblems('@osdlc/app', license)[0]!, /no "## Licence" section/)
   const bare = README.replace(' See [LICENSE-MIT](./LICENSE-MIT) and [LICENSE-APACHE](./LICENSE-APACHE).', '')
   assert.equal(readmeProblems('@osdlc/app', bare).length, 2)
   const other = README.replace('npm install @osdlc/app', 'npm install @osdlc/other')
-  assert.match(readmeProblems('@osdlc/app', other)[0], /does not show `npm install @osdlc\/app`/)
+  assert.match(readmeProblems('@osdlc/app', other)[0]!, /does not show `npm install @osdlc\/app`/)
 })
 
 test('P11: .gitignore lists node_modules/, dist/ and coverage/', () => {
@@ -251,12 +251,12 @@ test('P11: .gitignore lists node_modules/, dist/ and coverage/', () => {
 test('P13: a cataloged third-party dependency is written catalog:', () => {
   const catalog = { vitest: '^5.0.5', zod: '4.4.3' }
   assert.deepEqual(catalogProblems({ devDependencies: { vitest: 'catalog:' } }, catalog), [])
-  assert.match(catalogProblems({ devDependencies: { vitest: '^5.0.5' } }, catalog)[0], /write "catalog:"/)
+  assert.match(catalogProblems({ devDependencies: { vitest: '^5.0.5' } }, catalog)[0]!, /write "catalog:"/)
   assert.equal(catalogProblems({ dependencies: { zod: '4.4.3' } }, catalog).length, 1)
   // A peer range is a compatibility statement, not an install.
   assert.deepEqual(catalogProblems({ peerDependencies: { zod: '^4' } }, catalog), [])
   assert.deepEqual(catalogProblems({ dependencies: { other: '1.0.0' } }, catalog), [])
-  assert.match(catalogProblems({ devDependencies: { other: 'catalog:' } }, catalog)[0], /has no other/)
+  assert.match(catalogProblems({ devDependencies: { other: 'catalog:' } }, catalog)[0]!, /has no other/)
   assert.deepEqual(parseCatalog("packages:\n  - 'a'\n\ncatalog:\n  '@x/y': ^1.0.0\n  # note\n  zod: 4.4.3\n\nother: 1\n"), {
     '@x/y': '^1.0.0',
     zod: '4.4.3',
@@ -281,8 +281,8 @@ test('P14: a config package is ESM with exports, sideEffects false and the polic
   assert.equal(configPackageProblems({ ...pkg, type: undefined }, files).length, 1)
   assert.equal(configPackageProblems({ ...pkg, exports: undefined }, files).length, 1)
   assert.equal(configPackageProblems({ ...pkg, sideEffects: undefined }, files).length, 1)
-  assert.match(configPackageProblems(pkg, ['index.json'])[0], /SECURITY\.md is missing/)
-  assert.match(configPackageProblems({ ...pkg, files: ['index.json'] }, files)[0], /"files" does not list SECURITY\.md/)
+  assert.match(configPackageProblems(pkg, ['index.json'])[0]!, /SECURITY\.md is missing/)
+  assert.match(configPackageProblems({ ...pkg, files: ['index.json'] }, files)[0]!, /"files" does not list SECURITY\.md/)
 })
 
 test('a config package is exempt from the build, test, src and smoke rules', () => {
@@ -310,5 +310,5 @@ test('a config package is exempt from the build, test, src and smoke rules', () 
 test('P15: a per-package .oxlintrc.json fails', () => {
   const problems = conventionProblems({ ...code, files: [...FILES, '.oxlintrc.json'] })
   assert.equal(problems.length, 1)
-  assert.match(problems[0], /\.oxlintrc\.json: delete it/)
+  assert.match(problems[0]!, /\.oxlintrc\.json: delete it/)
 })

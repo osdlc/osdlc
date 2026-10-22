@@ -1,5 +1,5 @@
 // The shape every packages/ts/* package keeps, as checks over data that
-// check-packages.mjs reads from disk and from the packed tarball:
+// check-packages.ts reads from disk and from the packed tarball:
 //
 //   - `exports` has no `bun` condition. Every entry is `types` and `default`,
 //     both under dist/.
@@ -35,13 +35,42 @@
 //     CONTRIBUTING.md.
 //
 // Each check returns a list of problems, empty when the package is fine.
-// package-shape-ts.test.mjs tests them.
+// package-shape-ts.test.ts tests them.
 import { posix } from 'node:path'
 
 import semver from 'semver'
 
+/** A parsed package.json: only the fields the checks read. */
+export interface PackageJson {
+  name?: string
+  author?: string
+  type?: string
+  sideEffects?: boolean
+  exports?: unknown
+  files?: string[]
+  engines?: { node?: unknown }
+  scripts?: Record<string, string>
+  dependencies?: Record<string, string>
+  devDependencies?: Record<string, string>
+  peerDependencies?: Record<string, string>
+  optionalDependencies?: Record<string, string>
+}
+
+type DepField = 'dependencies' | 'devDependencies' | 'peerDependencies' | 'optionalDependencies'
+
+/** A parsed tsconfig: only the fields the checks read. */
+export interface Tsconfig {
+  compilerOptions?: {
+    customConditions?: unknown
+    paths?: Record<string, unknown>
+    types?: string[]
+    rootDir?: string
+  }
+  include?: string[]
+}
+
 /** `text` as JSON: strips line and block comments (not inside strings) and trailing commas. */
-export function parseJsonc(text) {
+export function parseJsonc(text: string): unknown {
   let out = ''
   let i = 0
   while (i < text.length) {
@@ -64,9 +93,9 @@ export function parseJsonc(text) {
 }
 
 /** The `exports` paths at which a `bun` condition appears. */
-export function bunConditions(exportsField, path = 'exports') {
+export function bunConditions(exportsField: unknown, path = 'exports'): string[] {
   if (exportsField === null || typeof exportsField !== 'object') return []
-  const found = []
+  const found: string[] = []
   for (const [key, value] of Object.entries(exportsField)) {
     if (key === 'bun') found.push(`${path}.bun`)
     found.push(...bunConditions(value, `${path}[${JSON.stringify(key)}]`))
@@ -75,26 +104,26 @@ export function bunConditions(exportsField, path = 'exports') {
 }
 
 /** The packed files that are source maps (`.js.map`, `.d.ts.map`), which would point at unshipped source. */
-export function shippedSourceMaps(packedFiles) {
+export function shippedSourceMaps(packedFiles: string[]): string[] {
   return packedFiles.filter((f) => f.endsWith('.map'))
 }
 
 /** The packed files that are TypeScript source: `.ts`, `.mts`, `.cts`, `.tsx`, but not `.d.ts`. */
-export function shippedSource(packedFiles) {
+export function shippedSource(packedFiles: string[]): string[] {
   return packedFiles.filter((f) => /\.(ts|mts|cts|tsx)$/.test(f) && !/\.d\.[mc]?ts$/.test(f))
 }
 
 /** The scripts that invoke bun, as `name: command`. */
-export function bunScripts(scripts = {}) {
+export function bunScripts(scripts: Record<string, string> = {}): string[] {
   return Object.entries(scripts)
     .filter(([, command]) => /(^|[\s;&|(])(bun|bunx)(\s|$)/.test(command))
     .map(([name, command]) => `${name}: ${command}`)
 }
 
 /** What is wrong with one parsed tsconfig, named `file` in the messages. */
-export function tsconfigProblems(file, config) {
+export function tsconfigProblems(file: string, config: Tsconfig | undefined): string[] {
   const options = config?.compilerOptions ?? {}
-  const problems = []
+  const problems: string[] = []
   if ('customConditions' in options) {
     problems.push(`${file} sets customConditions; workspace packages resolve through dist/`)
   }
@@ -112,13 +141,19 @@ export function tsconfigProblems(file, config) {
 /**
  * Every problem with the package's shape.
  *
- * @param {object} input
- * @param {object} input.pkg the parsed package.json
- * @param {string[]} input.packedFiles the paths in the tarball, relative to the package
- * @param {Record<string, object>} input.tsconfigs the parsed tsconfig files, by file name
+ * `pkg` is the parsed package.json, `packedFiles` the paths in the tarball
+ * relative to the package, `tsconfigs` the parsed tsconfig files by file name.
  */
-export function shapeProblems({ pkg, packedFiles, tsconfigs }) {
-  const problems = []
+export function shapeProblems({
+  pkg,
+  packedFiles,
+  tsconfigs,
+}: {
+  pkg: PackageJson
+  packedFiles: string[]
+  tsconfigs: Record<string, Tsconfig>
+}): string[] {
+  const problems: string[] = []
   for (const path of bunConditions(pkg.exports)) {
     problems.push(`${path}: remove the bun condition; exports is { types, default } under dist/`)
   }
@@ -154,8 +189,8 @@ export const CONFIG_PACKAGES = ['tsconfig', 'prettier-config']
 const GITIGNORE_ENTRIES = ['node_modules/', 'dist/', 'coverage/']
 
 /** The `catalog:` entries of a pnpm-workspace.yaml, as `{ name: version }`. */
-export function parseCatalog(text) {
-  const catalog = {}
+export function parseCatalog(text: string): Record<string, string> {
+  const catalog: Record<string, string> = {}
   let inside = false
   for (const line of text.split('\n')) {
     if (/^catalog:\s*$/.test(line)) {
@@ -165,22 +200,22 @@ export function parseCatalog(text) {
     if (!inside || line.trim() === '' || line.startsWith('#')) continue
     if (/^\S/.test(line)) break
     const m = line.match(/^\s+(?:'([^']+)'|"([^"]+)"|([^\s:#]+)):\s*(?:'([^']*)'|"([^"]*)"|([^\s#]+))/)
-    if (m) catalog[m[1] ?? m[2] ?? m[3]] = m[4] ?? m[5] ?? m[6]
+    if (m) catalog[(m[1] ?? m[2] ?? m[3])!] = (m[4] ?? m[5] ?? m[6])!
   }
   return catalog
 }
 
 /** The body of the `## <heading>` section of a markdown file, or null. */
-export function section(markdown, heading) {
+export function section(markdown: string, heading: string): string | null {
   const lines = markdown.split('\n')
   let inFence = false
   let start = -1
   for (let i = 0; i < lines.length; i++) {
-    if (/^(```|~~~)/.test(lines[i])) inFence = !inFence
+    if (/^(```|~~~)/.test(lines[i]!)) inFence = !inFence
     if (inFence) continue
     if (start === -1) {
       if (lines[i] === `## ${heading}`) start = i + 1
-    } else if (/^## /.test(lines[i])) {
+    } else if (/^## /.test(lines[i]!)) {
       return lines.slice(start, i).join('\n')
     }
   }
@@ -188,7 +223,7 @@ export function section(markdown, heading) {
 }
 
 /** What is wrong with `author`. */
-export function authorProblems(pkg) {
+export function authorProblems(pkg: PackageJson): string[] {
   return pkg.author === AUTHOR ? [] : [`author is ${JSON.stringify(pkg.author)}; set "author": "${AUTHOR}"`]
 }
 
@@ -197,12 +232,12 @@ export function authorProblems(pkg) {
  * and of the range of every workspace dependency that declares one. `engines` maps
  * a dependency name to its range, for the workspace packages only.
  */
-export function enginesProblems(pkg, engines) {
+export function enginesProblems(pkg: PackageJson, engines: Record<string, string>): string[] {
   const range = pkg.engines?.node
   if (typeof range !== 'string' || semver.validRange(range) === null) {
     return [`engines.node is ${JSON.stringify(range)}; declare a range, ${BASE_ENGINE} unless a dependency needs less`]
   }
-  const problems = []
+  const problems: string[] = []
   if (!semver.subset(range, BASE_ENGINE)) {
     problems.push(`engines.node ${range} is wider than ${BASE_ENGINE}; narrow it`)
   }
@@ -220,8 +255,8 @@ export function enginesProblems(pkg, engines) {
 }
 
 /** What is wrong with the `typecheck` and `smoke` scripts. */
-export function scriptProblems(pkg, files) {
-  const problems = []
+export function scriptProblems(pkg: PackageJson, files: string[]): string[] {
+  const problems: string[] = []
   if (pkg.scripts?.typecheck !== TYPECHECK) {
     problems.push(`scripts.typecheck is ${JSON.stringify(pkg.scripts?.typecheck)}; set it to "${TYPECHECK}"`)
   }
@@ -240,8 +275,8 @@ const TS_FILE = /\.(ts|mts|cts|tsx)$/
  * What is wrong with the layout of a code package. `files` are the package's
  * files relative to its directory (not node_modules, dist or coverage), with `/`.
  */
-export function layoutProblems(files, tsconfigs = {}) {
-  const problems = []
+export function layoutProblems(files: string[], tsconfigs: Record<string, Tsconfig> = {}): string[] {
+  const problems: string[] = []
   for (const f of files) {
     if (!f.includes('/') && TS_FILE.test(f) && f !== 'vitest.config.ts') {
       problems.push(`${f} sits at the package root; move TypeScript source into src/`)
@@ -272,12 +307,12 @@ export function layoutProblems(files, tsconfigs = {}) {
 const DOCS_FOLDERS = ['planning', 'guide']
 
 /** What is wrong with the `docs/` folder. */
-export function docsProblems(files) {
+export function docsProblems(files: string[]): string[] {
   const docs = files.filter((f) => f.startsWith('docs/'))
   if (docs.length === 0) return []
-  const problems = []
+  const problems: string[] = []
   // guide/ is the user guide the site publishes under the library's page.
-  const outside = [...new Set(docs.map((f) => f.split('/')[1]))].filter((d) => !DOCS_FOLDERS.includes(d))
+  const outside = [...new Set(docs.map((f) => f.split('/')[1]!))].filter((d) => !DOCS_FOLDERS.includes(d))
   for (const d of outside.sort()) problems.push(`docs/${d} is outside docs/planning/ and docs/guide/; move it under one`)
   if (docs.some((f) => f.startsWith('docs/planning/')) && !files.includes('docs/planning/README.md')) {
     problems.push('docs/planning/README.md is missing; add the index of the planning documents')
@@ -286,15 +321,15 @@ export function docsProblems(files) {
 }
 
 /** What is wrong with the first line of CHANGELOG.md, or null when there is no changelog. */
-export function changelogProblems(name, changelog) {
+export function changelogProblems(name: string, changelog: string | null): string[] {
   if (changelog === null) return []
-  const first = changelog.split('\n')[0]
+  const first = changelog.split('\n')[0]!
   return first === `# ${name}` ? [] : [`CHANGELOG.md starts ${JSON.stringify(first)}; start it "# ${name}"`]
 }
 
 /** What is wrong with README.md's `## Install` and `## Licence` sections. */
-export function readmeProblems(name, readme) {
-  const problems = []
+export function readmeProblems(name: string, readme: string): string[] {
+  const problems: string[] = []
   const install = section(readme, 'Install')
   if (install === null) {
     problems.push(`README.md has no "## Install" section; add one with \`npm install ${name}\``)
@@ -314,7 +349,7 @@ export function readmeProblems(name, readme) {
 }
 
 /** What is wrong with .gitignore, or null when the package has none. */
-export function gitignoreProblems(gitignore) {
+export function gitignoreProblems(gitignore: string | null): string[] {
   if (gitignore === null) return ['.gitignore is missing; list node_modules/, dist/ and coverage/']
   const lines = gitignore.split('\n').map((l) => l.trim())
   return GITIGNORE_ENTRIES.filter((e) => !lines.includes(e)).map((e) => `.gitignore does not list ${e}`)
@@ -324,10 +359,10 @@ export function gitignoreProblems(gitignore) {
  * Third-party dependencies that the pnpm catalog covers must be written `catalog:`.
  * Peer ranges are exempt: they say which versions work, not which one to install.
  */
-export function catalogProblems(pkg, catalog) {
-  const problems = []
+export function catalogProblems(pkg: PackageJson, catalog: Record<string, string>): string[] {
+  const problems: string[] = []
   for (const field of ['dependencies', 'devDependencies', 'optionalDependencies']) {
-    for (const [dep, range] of Object.entries(pkg[field] ?? {})) {
+    for (const [dep, range] of Object.entries(pkg[field as DepField] ?? {})) {
       if (dep in catalog && range !== 'catalog:') {
         problems.push(`${field}.${dep} is ${JSON.stringify(range)}; pnpm-workspace.yaml's catalog pins it, so write "catalog:"`)
       }
@@ -340,10 +375,10 @@ export function catalogProblems(pkg, catalog) {
 }
 
 /** What is left unresolved in the manifest `pnpm pack` wrote into the tarball. */
-export function packedManifestProblems(manifest) {
-  const problems = []
+export function packedManifestProblems(manifest: PackageJson): string[] {
+  const problems: string[] = []
   for (const field of ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies']) {
-    for (const [dep, range] of Object.entries(manifest[field] ?? {})) {
+    for (const [dep, range] of Object.entries(manifest[field as DepField] ?? {})) {
       if (/^(catalog|workspace):/.test(range)) {
         problems.push(`the packed ${field}.${dep} is ${JSON.stringify(range)}; pack with pnpm so it becomes a version`)
       }
@@ -353,8 +388,8 @@ export function packedManifestProblems(manifest) {
 }
 
 /** What is wrong with a config package (tsconfig, prettier-config). */
-export function configPackageProblems(pkg, files) {
-  const problems = []
+export function configPackageProblems(pkg: PackageJson, files: string[]): string[] {
+  const problems: string[] = []
   if (pkg.type !== 'module') problems.push('type is not "module"; set "type": "module"')
   if (pkg.exports === undefined || typeof pkg.exports !== 'object') {
     problems.push('exports is missing; map every file a consumer may name')
@@ -370,24 +405,39 @@ export function configPackageProblems(pkg, files) {
 /**
  * The convention problems of one package.
  *
- * @param {object} input
- * @param {string} input.dir the package's directory name, such as `typed-git`
- * @param {object} input.pkg the parsed package.json
- * @param {string[]} input.files the package's files, relative to it
- * @param {Record<string, object>} input.tsconfigs the parsed tsconfig files, by file name
- * @param {string} input.readme README.md
- * @param {string|null} input.changelog CHANGELOG.md, null when there is none
- * @param {string|null} input.gitignore .gitignore, null when there is none
- * @param {Record<string, string>} input.catalog the pnpm catalog
- * @param {Record<string, string>} input.engines the `engines.node` of each workspace package, by name
+ * `dir` is the package's directory name, such as `typed-git`; `files` its
+ * files relative to it; `tsconfigs` its parsed tsconfig files by file name;
+ * `readme`, `changelog` (null when none) and `gitignore` (null when none) are
+ * file texts; `catalog` is the pnpm catalog; `engines` is the `engines.node`
+ * of each workspace package, by name.
  */
-export function conventionProblems({ dir, pkg, files, tsconfigs, readme, changelog, gitignore, catalog, engines }) {
+export function conventionProblems({
+  dir,
+  pkg,
+  files,
+  tsconfigs,
+  readme,
+  changelog,
+  gitignore,
+  catalog,
+  engines,
+}: {
+  dir: string
+  pkg: PackageJson
+  files: string[]
+  tsconfigs: Record<string, Tsconfig>
+  readme: string
+  changelog: string | null
+  gitignore: string | null
+  catalog: Record<string, string>
+  engines: Record<string, string>
+}): string[] {
   const config = CONFIG_PACKAGES.includes(dir)
-  const problems = [
+  const problems: string[] = [
     ...authorProblems(pkg),
     ...docsProblems(files),
-    ...changelogProblems(pkg.name, changelog),
-    ...readmeProblems(pkg.name, readme),
+    ...changelogProblems(pkg.name!, changelog),
+    ...readmeProblems(pkg.name!, readme),
     ...gitignoreProblems(gitignore),
     ...catalogProblems(pkg, catalog),
   ]

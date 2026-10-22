@@ -15,6 +15,9 @@ catalogs:
     '@types/node':
       specifier: ^26.1.0
       version: 26.6.5
+    '@types/semver':
+      specifier: ^7.7.1
+      version: 7.8.0
     '@vitest/coverage-v8':
       specifier: ^5.0.5
       version: 5.0.5
@@ -53,6 +56,12 @@ importers:
       '@changesets/cli':
         specifier: 'catalog:'
         version: 3.0.3
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.6.5
+      '@types/semver':
+        specifier: 'catalog:'
+        version: 7.8.0
       oxlint:
         specifier: 'catalog:'
         version: 1.88.0
@@ -62,6 +71,9 @@ importers:
       semver:
         specifier: 'catalog:'
         version: 7.8.5
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
 
   packages/ts/agent-call:
     devDependencies:
@@ -1219,6 +1231,9 @@ packages:
   '@types/picomatch@4.0.3':
     resolution: {integrity: sha512-iG0T6+nYJ9FAPmx9SsUlnwcq1ZVRuCXcVEvWnntoPlrOpwtSTKNDC9uVAxTsC3PUvJ+99n4RpAcNgBbHX3JSnQ==}
 
+  '@types/semver@7.8.0':
+    resolution: {integrity: sha512-1mAINjtQCXXeLkJ9ehXkwOcBpqtLxiVtKhpUf83DdRNdQKV0iXZpaHYqRr7nj+wvxuJzoAmAwXI+sCNMv1CzLQ==}
+
   '@types/unist@3.0.3':
     resolution: {integrity: sha512-ko/gIFJRv177XgZsZcBwnqJN5x/Gien8qNOn0D5bQU/zAzVf9Zt3BlcUiLqhV9y4ARk0GbT3tnUiPNgnTXzc/Q==}
 
@@ -2357,6 +2372,8 @@ snapshots:
       undici-types: 8.9.0
 
   '@types/picomatch@4.0.3': {}
+
+  '@types/semver@7.8.0': {}
 
   '@types/unist@3.0.3': {}
 

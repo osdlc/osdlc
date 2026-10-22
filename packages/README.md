@@ -216,7 +216,7 @@ mistake caught within hours, such as a leaked secret, and the owner does it.
 npm can only set up trusted publishing on a package that already exists, so
 CI cannot publish a new library's first version. Before its first release
 the owner does the two steps below.
-`node scripts/stage-npm-package.mjs packages/ts/<name>` does both.
+`node scripts/stage-npm-package.ts packages/ts/<name>` does both.
 It skips a step that is already done. `--dry-run` builds the package and
 shows what it would publish, without changing anything on npm.
 
@@ -321,10 +321,17 @@ pnpm run test
 
 The root scripts run each library's script of the same name.
 
-`.github/workflows/packages-ci.yml` runs these, the smoke checks and
-`pnpm run check:packages` on Linux and macOS, on Node 22 and 24. On a pull
+The repo tooling needs Node 24 or newer (`engines.node` in the root
+`package.json`). The package-shape checks in `scripts/` are TypeScript that
+Node runs directly by stripping the types, with no build step, so write them
+in erasable syntax only (no `enum`, `namespace` or parameter properties).
+`pnpm run typecheck:scripts` checks them. The libraries themselves still
+support Node 22.
+
+`.github/workflows/packages-ci.yml` runs these and the smoke checks on Linux
+and macOS, on Node 22 and 24, and `pnpm run check:packages` on Node 24 only. On a pull
 request it checks only the libraries the pull request changed and the ones
-that depend on them. `scripts/affected-packages.mjs` picks them, and
+that depend on them. `scripts/affected-packages.ts` picks them, and
 says which shared files make it check every library. path-guard also runs on
 Windows. The `verify` jobs always report, so they are the checks to require.
 

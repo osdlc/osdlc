@@ -1,0 +1,22 @@
+{
+  // Typechecks the TypeScript repo tooling in this directory. Node runs these
+  // files directly (type stripping), so this only checks; nothing is emitted.
+  // Standalone rather than extending @osdlc/tsconfig: the root project does not
+  // depend on the workspace packages, and Node's type stripping needs settings
+  // the library presets do not set (erasableSyntaxOnly, .ts import paths).
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023"],
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "types": ["node"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noEmit": true,
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "allowImportingTsExtensions": true,
+    "skipLibCheck": true
+  },
+  "include": ["*.ts"]
+}

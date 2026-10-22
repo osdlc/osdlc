@@ -20,7 +20,7 @@
 # environment crates-io), no token is passed and release-plz fetches an OIDC
 # token itself. One run uses one credential for every crate, so `plan`
 # refuses a run that mixes a first release with a new version of an
-# existing crate. See scripts/crates-io-auth-plan.mjs.
+# existing crate. See scripts/crates-io-auth-plan.ts.
 #
 # Tokens. The GitHub App `osdlc-release` opens the release pull request and
 # creates the tags. A pull request opened with GITHUB_TOKEN would not start
@@ -113,7 +113,7 @@ jobs:
       # job summary. Fails on a mixed run.
       - name: Pick the crates.io credential
         id: plan
-        run: node scripts/crates-io-auth-plan.mjs packages/rust/Cargo.toml
+        run: node scripts/crates-io-auth-plan.ts packages/rust/Cargo.toml
 
   release:
     needs: plan

@@ -1,6 +1,6 @@
 // Picks the crates.io credential for one release-plz run.
 //
-//   node scripts/crates-io-auth-plan.mjs <path/to/Cargo.toml>
+//   node scripts/crates-io-auth-plan.ts <path/to/Cargo.toml>
 //
 // release-plz publishes every unpublished crate of a run with one credential.
 // The shared CARGO_REGISTRY_TOKEN is publish-new only: it can make the first
@@ -24,15 +24,16 @@
 // `publish` field allows crates.io (unset, or a list that names `crates-io`).
 import { execFileSync } from 'node:child_process'
 import { appendFileSync } from 'node:fs'
-import { indexEntries, publishesToCratesIo } from './crates-io-index.mjs'
+import { indexEntries, publishesToCratesIo } from './crates-io-index.ts'
+import type { CargoMetadata } from './crates-io-index.ts'
 
 const manifest = process.argv[2]
 if (!manifest) {
-  console.error('usage: crates-io-auth-plan.mjs <path/to/Cargo.toml>')
+  console.error('usage: crates-io-auth-plan.ts <path/to/Cargo.toml>')
   process.exit(2)
 }
 
-const metadata = JSON.parse(
+const metadata: CargoMetadata = JSON.parse(
   execFileSync(
     'cargo',
     ['metadata', '--format-version', '1', '--no-deps', '--manifest-path', manifest],
@@ -41,25 +42,25 @@ const metadata = JSON.parse(
 )
 
 /** The versions of `name` on crates.io, yanked ones too, or null when the crate does not exist. */
-async function publishedVersions(name) {
+async function publishedVersions(name: string): Promise<Set<string> | null> {
   const entries = await indexEntries(name)
   return entries === null ? null : new Set(entries.map((e) => e.vers))
 }
 
 /** The name with every `-` turned into `_` and every `_` into `-`. */
-const swapped = (name) => name.replace(/[-_]/g, (c) => (c === '-' ? '_' : '-'))
+const swapped = (name: string): string => name.replace(/[-_]/g, (c) => (c === '-' ? '_' : '-'))
 
-const rows = []
-const clashes = []
+const rows: { name: string; version: string; exists: boolean; published: boolean }[] = []
+const clashes: string[] = []
 for (const id of metadata.workspace_members) {
-  const pkg = metadata.packages.find((p) => p.id === id)
+  const pkg = metadata.packages.find((p) => p.id === id)!
   if (!publishesToCratesIo(pkg)) continue
   const versions = await publishedVersions(pkg.name)
   const exists = versions !== null
   if (!exists && swapped(pkg.name) !== pkg.name) {
     if ((await publishedVersions(swapped(pkg.name))) !== null) clashes.push(pkg.name)
   }
-  const published = exists && versions.has(pkg.version)
+  const published = versions !== null && versions.has(pkg.version)
   rows.push({ name: pkg.name, version: pkg.version, exists, published })
 }
 
@@ -77,8 +78,8 @@ const table = [
   }),
 ].join('\n')
 
-let auth
-let problem = null
+let auth: string
+let problem: string | null = null
 if (clashes.length > 0) {
   auth = 'refused'
   problem =

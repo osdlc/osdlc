@@ -1,6 +1,6 @@
-// Tests for package-shape-rs.mjs.
+// Tests for package-shape-rs.ts.
 //
-//   node --test scripts/package-shape-rs.test.mjs
+//   node --test scripts/package-shape-rs.test.ts
 import { strict as assert } from 'node:assert'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -20,7 +20,7 @@ import {
   readmeProblems,
   section,
   workspaceMembers,
-} from './package-shape-rs.mjs'
+} from './package-shape-rs.ts'
 
 const GOOD_TOML = `
 # a comment
@@ -103,7 +103,7 @@ test('every workspace field must come from the workspace', () => {
     manifest.package[key] = key === 'edition' ? '2024' : 'x'
     const problems = manifestProblems('demo', manifest)
     assert.equal(problems.length, 1, key)
-    assert.match(problems[0], new RegExp(`package.${key}`))
+    assert.match(problems[0]!, new RegExp(`package.${key}`))
   }
 })
 
@@ -217,10 +217,10 @@ test('checkWorkspace reports a multi-line string as a problem for its crate', ()
     mkdirSync(join(rust, 'demo'), { recursive: true })
     writeFileSync(join(rust, 'Cargo.toml'), '[workspace]\nmembers = ["demo"]\n')
     writeFileSync(join(rust, 'demo', 'Cargo.toml'), '[package]\nname = "demo"\ndescription = """\nx\n"""\n')
-    const [result] = checkWorkspace(root)
+    const [result] = checkWorkspace(root) as [{ member: string; problems: string[] }]
     assert.equal(result.member, 'demo')
     assert.equal(result.problems.length, 1)
-    assert.match(result.problems[0], /packages\/rust\/demo\/Cargo\.toml: line 3: multi-line strings are not supported/)
+    assert.match(result.problems[0]!, /packages\/rust\/demo\/Cargo\.toml: line 3: multi-line strings are not supported/)
   } finally {
     rmSync(root, { recursive: true, force: true })
   }

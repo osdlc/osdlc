@@ -27,12 +27,19 @@
 // reported as a problem for its crate, not parsed.
 //
 // Each check returns a list of problems, empty when the crate is fine.
-// package-shape-rs.test.mjs tests them.
+// package-shape-rs.test.ts tests them.
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 /** The files a published crate ships and keeps. */
+/** A parsed TOML value. */
+export type Toml = string | number | boolean | Toml[] | Table
+
+/** A parsed TOML table. Fields are read defensively, so values are loosely typed. */
+// oxlint-disable-next-line typescript/no-explicit-any
+export type Table = { [key: string]: any }
+
 const DOC_FILES = ['README.md', 'CHANGELOG.md']
 const LICENCE_FILES = ['LICENSE-MIT', 'LICENSE-APACHE']
 /** The `[package]` keys a crate takes from the workspace. */
@@ -47,8 +54,8 @@ export const MAX_KEYWORDS = 5
 // tables. Anything else in a value is kept as its raw text.
 
 /** `line` without a trailing `# comment` (a `#` inside a string stays). */
-function stripComment(line) {
-  let quote = null
+function stripComment(line: string): string {
+  let quote: string | null = null
   for (let i = 0; i < line.length; i++) {
     const c = line[i]
     if (quote !== null) {
@@ -61,8 +68,8 @@ function stripComment(line) {
 }
 
 /** How many unclosed `[`/`{` the text leaves open, ignoring strings. */
-function depth(text) {
-  let quote = null
+function depth(text: string): number {
+  let quote: string | null = null
   let d = 0
   for (let i = 0; i < text.length; i++) {
     const c = text[i]
@@ -77,9 +84,9 @@ function depth(text) {
 }
 
 /** Splits `text` at top-level commas. */
-function splitTop(text) {
-  const parts = []
-  let quote = null
+function splitTop(text: string): string[] {
+  const parts: string[] = []
+  let quote: string | null = null
   let d = 0
   let start = 0
   for (let i = 0; i < text.length; i++) {
@@ -100,8 +107,8 @@ function splitTop(text) {
 }
 
 /** The index of the first top-level `=` in `text`, or -1. */
-function equalsAt(text) {
-  let quote = null
+function equalsAt(text: string): number {
+  let quote: string | null = null
   for (let i = 0; i < text.length; i++) {
     const c = text[i]
     if (quote !== null) {
@@ -114,7 +121,7 @@ function equalsAt(text) {
 }
 
 /** A TOML value as JavaScript: string, boolean, number, array, object, or the raw text. */
-export function parseValue(raw) {
+export function parseValue(raw: string): Toml {
   const text = raw.trim()
   if (text.startsWith('"') && text.endsWith('"') && text.length >= 2) {
     return JSON.parse(text)
@@ -125,7 +132,7 @@ export function parseValue(raw) {
   if (/^[+-]?\d[\d_]*(\.\d+)?$/.test(text)) return Number(text.replaceAll('_', ''))
   if (text.startsWith('[') && text.endsWith(']')) return splitTop(text.slice(1, -1)).map(parseValue)
   if (text.startsWith('{') && text.endsWith('}')) {
-    const out = {}
+    const out: Table = {}
     for (const entry of splitTop(text.slice(1, -1))) {
       const eq = equalsAt(entry)
       if (eq !== -1) setPath(out, entry.slice(0, eq).trim().split('.'), parseValue(entry.slice(eq + 1)))
@@ -136,30 +143,30 @@ export function parseValue(raw) {
 }
 
 /** Sets `value` at the dotted `path` in `obj`, making objects on the way. */
-function setPath(obj, path, value) {
+function setPath(obj: Table, path: string[], value: Toml): void {
   let at = obj
   for (const key of path.slice(0, -1)) {
     if (typeof at[key] !== 'object' || at[key] === null || Array.isArray(at[key])) at[key] = {}
     at = at[key]
   }
-  at[path.at(-1)] = value
+  at[path.at(-1)!] = value
 }
 
 /** Cargo.toml text as an object: `{ package: { name: ... }, lints: { workspace: true }, ... }`. */
-export function parseToml(text) {
-  const root = {}
+export function parseToml(text: string): Table {
+  const root: Table = {}
   let table = root
   const lines = text.split('\n')
   for (let i = 0; i < lines.length; i++) {
-    const line = stripComment(lines[i]).trim()
+    const line = stripComment(lines[i]!).trim()
     if (line === '') continue
     const header = /^\[\[?\s*([^\]]+?)\s*\]\]?$/.exec(line)
     if (header !== null && !line.includes('=')) {
-      const path = header[1].split('.').map((k) => k.trim().replace(/^"|"$/g, ''))
+      const path = header[1]!.split('.').map((k) => k.trim().replace(/^"|"$/g, ''))
       if (line.startsWith('[[')) {
         let at = root
         for (const key of path.slice(0, -1)) at = at[key] ??= {}
-        const list = (at[path.at(-1)] ??= [])
+        const list = (at[path.at(-1)!] ??= [])
         table = {}
         list.push(table)
       } else {
@@ -172,12 +179,12 @@ export function parseToml(text) {
     if (eq === -1) continue
     const key = line.slice(0, eq).trim()
     let value = line.slice(eq + 1)
-    const noMultiline = (text) => {
+    const noMultiline = (text: string) => {
       if (opensMultilineString(text)) throw new Error(`line ${i + 1}: multi-line strings are not supported`)
     }
     noMultiline(value)
     while (depth(value) > 0 && i + 1 < lines.length) {
-      const next = stripComment(lines[++i]).trim()
+      const next = stripComment(lines[++i]!).trim()
       noMultiline(next)
       value += ` ${next}`
     }
@@ -187,7 +194,7 @@ export function parseToml(text) {
 }
 
 /** Whether `text` has a `"""` or `'''` outside a one-line string. */
-function opensMultilineString(text) {
+function opensMultilineString(text: string): boolean {
   for (let j = 0; j < text.length; j++) {
     if (text.startsWith('"""', j) || text.startsWith("'''", j)) return true
     const quote = text[j]
@@ -198,7 +205,7 @@ function opensMultilineString(text) {
 }
 
 /** The `members` of the workspace Cargo.toml text. */
-export function workspaceMembers(text) {
+export function workspaceMembers(text: string): string[] {
   const members = parseToml(text).workspace?.members
   return Array.isArray(members) ? members : []
 }
@@ -207,16 +214,16 @@ export function workspaceMembers(text) {
 // Checks
 
 /** True when `value` is `{ workspace = true }`. */
-const fromWorkspace = (value) => value !== null && typeof value === 'object' && value.workspace === true
+const fromWorkspace = (value: Toml): boolean => value !== null && typeof value === 'object' && !Array.isArray(value) && value.workspace === true
 
 /** True for a crate that is not published to crates.io. */
-export function isUnpublished(manifest) {
+export function isUnpublished(manifest: Table): boolean {
   return manifest.package?.publish === false
 }
 
 /** What is wrong with the [package] and [lints] fields shared by every crate. */
-export function manifestProblems(dirName, manifest) {
-  const problems = []
+export function manifestProblems(dirName: string, manifest: Table): string[] {
+  const problems: string[] = []
   const pkg = manifest.package ?? {}
   if (pkg.name !== dirName) problems.push(`package.name is ${JSON.stringify(pkg.name)}; it must be the directory name "${dirName}"`)
   for (const key of WORKSPACE_KEYS) {
@@ -230,8 +237,8 @@ export function manifestProblems(dirName, manifest) {
 }
 
 /** What is wrong with the fields only a published crate needs. */
-export function publishedManifestProblems(manifest) {
-  const problems = []
+export function publishedManifestProblems(manifest: Table): string[] {
+  const problems: string[] = []
   const pkg = manifest.package ?? {}
   if (pkg.readme !== 'README.md') problems.push('package.readme must be "README.md"')
   for (const key of ['keywords', 'categories']) {
@@ -255,8 +262,11 @@ export function publishedManifestProblems(manifest) {
 }
 
 /** What is wrong with the files in the crate directory. `files` and `dirs` are its entry names. */
-export function layoutProblems({ files, dirs }, published) {
-  const problems = []
+export function layoutProblems(
+  { files, dirs }: { files: string[]; dirs: string[] },
+  published: boolean,
+): string[] {
+  const problems: string[] = []
   const need = published ? [...DOC_FILES, ...LICENCE_FILES] : LICENCE_FILES
   for (const f of need) if (!files.includes(f)) problems.push(`${f} is missing`)
   const needDirs = published ? ['src', 'examples'] : ['src']
@@ -265,8 +275,8 @@ export function layoutProblems({ files, dirs }, published) {
 }
 
 /** What is wrong with README.md: its title and the `## Install` and `## License` sections. */
-export function readmeProblems(name, readme) {
-  const problems = []
+export function readmeProblems(name: string, readme: string): string[] {
+  const problems: string[] = []
   const first = readme.split('\n')[0]
   if (first !== `# ${name}`) problems.push(`README.md starts ${JSON.stringify(first)}; start it "# ${name}"`)
   const install = section(readme, 'Install')
@@ -285,22 +295,22 @@ export function readmeProblems(name, readme) {
 }
 
 /** What is wrong with CHANGELOG.md's first line. */
-export function changelogProblems(changelog) {
+export function changelogProblems(changelog: string): string[] {
   const first = changelog.split('\n')[0]
   return first === '# Changelog' ? [] : [`CHANGELOG.md starts ${JSON.stringify(first)}; start it "# Changelog"`]
 }
 
 /** The body of the `## <heading>` section of a markdown file, or null. */
-export function section(markdown, heading) {
+export function section(markdown: string, heading: string): string | null {
   const lines = markdown.split('\n')
   let inFence = false
   let start = -1
   for (let i = 0; i < lines.length; i++) {
-    if (/^(```|~~~)/.test(lines[i])) inFence = !inFence
+    if (/^(```|~~~)/.test(lines[i]!)) inFence = !inFence
     if (inFence) continue
     if (start === -1) {
       if (lines[i] === `## ${heading}`) start = i + 1
-    } else if (/^## /.test(lines[i])) {
+    } else if (/^## /.test(lines[i]!)) {
       return lines.slice(start, i).join('\n')
     }
   }
@@ -311,7 +321,19 @@ export function section(markdown, heading) {
  * Every problem with one crate. `readme` and `changelog` are the file texts, or
  * null when the file is absent (layoutProblems reports that).
  */
-export function crateProblems({ dirName, manifest, entries, readme, changelog }) {
+export function crateProblems({
+  dirName,
+  manifest,
+  entries,
+  readme,
+  changelog,
+}: {
+  dirName: string
+  manifest: Table
+  entries: { files: string[]; dirs: string[] }
+  readme: string | null
+  changelog: string | null
+}): string[] {
   const published = !isUnpublished(manifest)
   const name = manifest.package?.name ?? dirName
   const problems = [...manifestProblems(dirName, manifest), ...layoutProblems(entries, published)]
@@ -327,16 +349,16 @@ export function crateProblems({ dirName, manifest, entries, readme, changelog })
 // Entry point: read packages/rust from disk, print the problems, exit non-zero.
 
 /** The problems of every workspace member under `root`, as `{ member, problems }`. */
-export function checkWorkspace(root) {
+export function checkWorkspace(root: string): { member: string; problems: string[] }[] {
   const rustDir = join(root, 'packages', 'rust')
-  let members
+  let members: string[]
   try {
     members = workspaceMembers(readFileSync(join(rustDir, 'Cargo.toml'), 'utf8'))
   } catch (err) {
-    return [{ member: 'packages/rust/Cargo.toml', problems: [`cannot parse packages/rust/Cargo.toml: ${err.message}`] }]
+    return [{ member: 'packages/rust/Cargo.toml', problems: [`cannot parse packages/rust/Cargo.toml: ${(err as Error).message}`] }]
   }
   if (members.length === 0) return [{ member: 'packages/rust/Cargo.toml', problems: ['the workspace lists no members'] }]
-  const results = []
+  const results: { member: string; problems: string[] }[] = []
   for (const member of members) {
     const dir = join(rustDir, member)
     const manifestPath = join(dir, 'Cargo.toml')
@@ -344,11 +366,11 @@ export function checkWorkspace(root) {
       results.push({ member, problems: ['Cargo.toml is missing'] })
       continue
     }
-    let manifest
+    let manifest: Table
     try {
       manifest = parseToml(readFileSync(manifestPath, 'utf8'))
     } catch (err) {
-      results.push({ member, problems: [`cannot parse packages/rust/${member}/Cargo.toml: ${err.message}`] })
+      results.push({ member, problems: [`cannot parse packages/rust/${member}/Cargo.toml: ${(err as Error).message}`] })
       continue
     }
     const names = readdirSync(dir)
@@ -356,7 +378,7 @@ export function checkWorkspace(root) {
       files: names.filter((n) => statSync(join(dir, n)).isFile()),
       dirs: names.filter((n) => statSync(join(dir, n)).isDirectory()),
     }
-    const read = (file) => (entries.files.includes(file) ? readFileSync(join(dir, file), 'utf8') : null)
+    const read = (file: string) => (entries.files.includes(file) ? readFileSync(join(dir, file), 'utf8') : null)
     results.push({
       member,
       problems: crateProblems({

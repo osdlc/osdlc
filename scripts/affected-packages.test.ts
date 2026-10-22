@@ -1,14 +1,15 @@
-// Tests for affected-packages.mjs, over a made-up workspace.
+// Tests for affected-packages.ts, over a made-up workspace.
 //
-//   node --test scripts/affected-packages.test.mjs
+//   node --test scripts/affected-packages.test.ts
 import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
 
-import { pick, withDependencies } from './affected-packages.mjs'
+import { pick, withDependencies } from './affected-packages.ts'
+import type { Manifest } from './affected-packages.ts'
 
 // `app` depends on `lib`, which depends on the config package `tsconfig`.
 // `twin` has a Rust crate, and `wasm` is built from `wasm-wasm`.
-const manifests = new Map([
+const manifests = new Map<string, Manifest>([
   ['packages/ts/app', { name: '@x/app', dependencies: { '@x/lib': 'workspace:^' } }],
   ['packages/ts/lib', { name: '@x/lib', devDependencies: { '@x/tsconfig': 'workspace:^' } }],
   ['packages/ts/tsconfig', { name: '@x/tsconfig' }],
@@ -16,7 +17,7 @@ const manifests = new Map([
   ['packages/ts/wasm', { name: '@x/wasm' }],
 ])
 const ALL = [...manifests.keys()].sort()
-const pr = (files) => pick({ event: 'pull_request', files, manifests })
+const pr = (files: string[] | null) => pick({ event: 'pull_request', files, manifests })
 
 test('a package change picks that package and its dependents', () => {
   assert.deepEqual(pr(['packages/ts/lib/index.ts']), ['packages/ts/app', 'packages/ts/lib'])
@@ -44,8 +45,9 @@ test('a shared root input picks every package', () => {
     'package.json',
     '.oxlintrc.json',
     '.github/workflows/packages-ci.yml',
-    'scripts/check-packages.mjs',
-    'scripts/package-shape-ts.mjs',
+    'scripts/check-packages.ts',
+    'scripts/package-shape-ts.ts',
+    'scripts/package-shape-ts.test.ts',
     '.changeset/config.json',
   ]) {
     assert.deepEqual(pr(['packages/ts/app/a.ts', file]), ALL, file)

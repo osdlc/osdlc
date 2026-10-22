@@ -1,7 +1,7 @@
 // Checks that a pull request with a breaking change to a crate also sets the
 // crate's new version in its Cargo.toml.
 //
-//   node scripts/semver-version-check.mjs <path/to/Cargo.toml> <base-rev>
+//   node scripts/semver-version-check.ts <path/to/Cargo.toml> <base-rev>
 //
 // For each workspace crate that publishes to crates.io, is on crates.io, and
 // has a file changed between <base-rev> and HEAD (every crate counts as
@@ -26,15 +26,16 @@
 import { execFileSync, spawnSync } from 'node:child_process'
 import { appendFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { indexEntries, publishesToCratesIo } from './crates-io-index.mjs'
+import { indexEntries, publishesToCratesIo } from './crates-io-index.ts'
+import type { CargoMetadata } from './crates-io-index.ts'
 
 const [manifest, base] = process.argv.slice(2)
 if (!manifest || !base) {
-  console.error('usage: semver-version-check.mjs <path/to/Cargo.toml> <base-rev>')
+  console.error('usage: semver-version-check.ts <path/to/Cargo.toml> <base-rev>')
   process.exit(2)
 }
 
-const metadata = JSON.parse(
+const metadata: CargoMetadata = JSON.parse(
   execFileSync(
     'cargo',
     ['metadata', '--format-version', '1', '--no-deps', '--manifest-path', manifest],
@@ -43,26 +44,30 @@ const metadata = JSON.parse(
 )
 
 /** `[major, minor, patch]` of a version, or null when it is not X.Y.Z. */
-function parse(v) {
+type Version = [number, number, number]
+
+function parse(v: string): Version | null {
   const m = /^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/.exec(v)
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null
 }
 
-const isPrerelease = (v) => /^[^+]*-/.test(v)
+const isPrerelease = (v: string): boolean => /^[^+]*-/.test(v)
 
-const compare = (a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2]
+const compare = (a: Version, b: Version): number => a[0] - b[0] || a[1] - b[1] || a[2] - b[2]
 
-function nextBreaking([major, minor, patch]) {
+function nextBreaking([major, minor, patch]: Version): Version {
   if (major > 0) return [major + 1, 0, 0]
   if (minor > 0) return [0, minor + 1, 0]
   return [0, 0, patch + 1]
 }
 
-const show = (v) => v.join('.')
+const show = (v: Version): string => v.join('.')
+
+const baseRev: string = base // narrowed above; `changed` reads it
 
 /** True when a file under any of `paths` changed between `base` and HEAD. */
-function changed(...paths) {
-  const out = execFileSync('git', ['diff', '--name-only', base, 'HEAD', '--', ...paths], {
+function changed(...paths: string[]): boolean {
+  const out = execFileSync('git', ['diff', '--name-only', baseRev, 'HEAD', '--', ...paths], {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'inherit'],
   })
@@ -72,11 +77,11 @@ function changed(...paths) {
 const root = metadata.workspace_root
 const workspaceChanged = changed(join(root, 'Cargo.toml'), join(root, 'Cargo.lock'))
 
-const rows = []
-const problems = []
+const rows: { name: string; version: string; baseline: string; result: string }[] = []
+const problems: string[] = []
 for (const id of metadata.workspace_members) {
-  const pkg = metadata.packages.find((p) => p.id === id)
-  const row = (result) => rows.push({ name: pkg.name, version: pkg.version, ...result })
+  const pkg = metadata.packages.find((p) => p.id === id)!
+  const row = (result: { baseline: string; result: string }) => rows.push({ name: pkg.name, version: pkg.version, ...result })
 
   if (!publishesToCratesIo(pkg)) {
     row({ baseline: '-', result: 'skipped: not published' })
@@ -90,13 +95,13 @@ for (const id of metadata.workspace_members) {
   const released = (entries ?? [])
     .filter((e) => !e.yanked && !isPrerelease(e.vers))
     .map((e) => parse(e.vers))
-    .filter((v) => v !== null)
+    .filter((v): v is Version => v !== null)
     .sort(compare)
   if (released.length === 0) {
     row({ baseline: '-', result: 'skipped: not on crates.io' })
     continue
   }
-  const baseline = released[released.length - 1]
+  const baseline = released[released.length - 1]!
   const required = nextBreaking(baseline)
   const local = parse(pkg.version)
   if (local !== null && compare(local, required) >= 0) {

@@ -5,7 +5,7 @@
 // npm can only add a trusted publisher to a package that already exists (see
 // packages/README.md, "Publishing a new library for the first time").
 //
-//   node scripts/stage-npm-package.mjs [--dry-run] <package> ...
+//   node scripts/stage-npm-package.ts [--dry-run] <package> ...
 //
 // Each <package> is a package directory (packages/ts/<name>). A package already
 // on npm is not published again, and one that already has a trusted publisher
@@ -27,25 +27,25 @@ const OWNER = 'osdlc'
 const REPO = 'osdlc'
 const WORKFLOW = 'packages-publish.yml'
 
-function usage(problem) {
+function usage(problem: string): never {
   console.error(
-    `${problem}\nusage: node scripts/stage-npm-package.mjs [--dry-run] <package> ...`,
+    `${problem}\nusage: node scripts/stage-npm-package.ts [--dry-run] <package> ...`,
   )
   process.exit(2)
 }
 
-let parsed
+let parsed: { values: { 'dry-run'?: boolean }; positionals: string[] }
 try {
   parsed = parseArgs({ options: { 'dry-run': { type: 'boolean' } }, allowPositionals: true })
 } catch (e) {
-  usage(e.message)
+  usage((e as Error).message)
 }
 const dryRun = parsed.values['dry-run'] ?? false
 const dry = dryRun ? ['--dry-run'] : []
 if (parsed.positionals.length === 0) usage('no package given')
 
 /** Runs pnpm in a package directory. */
-function pnpm(dir, args, stdout = 'inherit') {
+function pnpm(dir: string, args: string[], stdout: 'inherit' | 'pipe' = 'inherit') {
   console.log(`  pnpm ${args.join(' ')}`)
   return spawnSync('pnpm', args, {
     cwd: dir,
@@ -55,12 +55,12 @@ function pnpm(dir, args, stdout = 'inherit') {
 }
 
 /** Runs npm at the pinned version. */
-function npm(args, opts = {}) {
+function npm(args: string[], opts: { stdio?: 'inherit' } = {}) {
   return spawnSync('npx', ['-y', NPM, ...args], { encoding: 'utf8', ...opts })
 }
 
 /** Checks that `dir` is a publishable @osdlc package. Returns its directory and name. */
-function readTarget(dir) {
+function readTarget(dir: string): { dir: string; name: string } {
   const manifest = join(dir, 'package.json')
   if (!existsSync(manifest)) throw new Error(`${dir}: no package.json`)
   const pkg = JSON.parse(readFileSync(manifest, 'utf8'))
@@ -73,7 +73,7 @@ function readTarget(dir) {
 }
 
 /** True when the package exists, false on E404. Any other failure stops the script. */
-function onNpm(name) {
+function onNpm(name: string): boolean {
   const r = npm(['view', name, 'name'])
   if (r.status === 0) return true
   if (r.stderr.includes('E404')) return false
@@ -82,14 +82,14 @@ function onNpm(name) {
 }
 
 /** Builds and packs `dir` at the placeholder version, and publishes it under the `stage` tag. */
-function publishPlaceholder(dir) {
+function publishPlaceholder(dir: string): boolean {
   const manifest = join(dir, 'package.json')
   const original = readFileSync(manifest, 'utf8')
   const out = mkdtempSync(join(tmpdir(), 'stage-npm-package-'))
   try {
     const pkg = JSON.parse(original)
     writeFileSync(manifest, JSON.stringify({ ...pkg, version: PLACEHOLDER }, null, 2) + '\n')
-    let tarball
+    let tarball: string
     // Ctrl-C would otherwise exit before the finally restores package.json.
     const ignoreInterrupt = () => {}
     process.on('SIGINT', ignoreInterrupt)
@@ -115,12 +115,12 @@ function publishPlaceholder(dir) {
   }
 }
 
-let targets
+let targets: { dir: string; name: string }[]
 try {
   // Check every package before publishing any.
   targets = parsed.positionals.map(readTarget)
 } catch (e) {
-  usage(e.message)
+  usage((e as Error).message)
 }
 
 const who = npm(['whoami'])

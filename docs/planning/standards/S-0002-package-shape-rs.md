@@ -38,9 +38,9 @@ categories or `include`.
 
 ## Enforcement
 
-`scripts/package-shape-rs.mjs` holds the checks, as functions over data that
+`scripts/package-shape-rs.ts` holds the checks, as functions over data that
 its entry point reads from `packages/rust/`. It takes the crate list from
-`members` in `packages/rust/Cargo.toml`. `scripts/package-shape-rs.test.mjs`
+`members` in `packages/rust/Cargo.toml`. `scripts/package-shape-rs.test.ts`
 tests the checks and runs them over every crate in the repository.
 
 ```sh

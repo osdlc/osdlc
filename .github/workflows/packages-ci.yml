@@ -4,7 +4,7 @@
 #
 # A pull request checks only the packages it changed and the packages that
 # depend on them. The `changes` job picks them with
-# scripts/affected-packages.mjs, which says what counts as a change.
+# scripts/affected-packages.ts, which says what counts as a change.
 # A change to a shared input (this file, the lockfile, the root package.json)
 # checks every package, and so does every run that is not a pull request,
 # including the call from packages-publish.yml. The `verify` jobs always run
@@ -49,25 +49,33 @@ jobs:
           persist-credentials: false
           fetch-depth: 2
 
-      # The runner's own Node, since the script needs nothing installed.
-      - name: Test the package pick
-        run: node --test scripts/affected-packages.test.mjs
+      # Node 24 runs the repo tooling in scripts/ directly: the shape checks
+      # are TypeScript, which Node 24 runs by stripping the types.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
 
-      # package-shape-ts.mjs reads semver ranges with the root's `semver`, so
+      - name: Test the package pick
+        run: node --test scripts/affected-packages.test.ts
+
+      # package-shape-ts.ts reads semver ranges with the root's `semver`, so
       # install the root project only (not the packages).
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
 
       - name: Install the root dependencies
         run: pnpm install --frozen-lockfile --ignore-scripts --filter sdlc-packages
 
+      - name: Typecheck the repo scripts
+        run: pnpm run typecheck:scripts
+
       - name: Test the package shape rules
-        run: node --test scripts/package-shape-ts.test.mjs
+        run: node --test scripts/package-shape-ts.test.ts
 
       - name: Pick the packages to check
         id: pick
         env:
           EVENT: ${{ github.event_name }}
-        run: node scripts/affected-packages.mjs
+        run: node scripts/affected-packages.ts
 
   verify:
     name: verify (${{ matrix.os }}, node ${{ matrix.node }})
@@ -138,10 +146,12 @@ jobs:
         run: pnpm $FILTER --if-present run format:check
 
       # Packs every package, so a picked one can install its siblings from
-      # local tarballs, but checks only the picked ones.
+      # local tarballs, but checks only the picked ones. The checks are
+      # TypeScript run by Node 24's type stripping, so only the Node 24 leg
+      # runs them; they read the same packed files on every Node.
       - name: Pack, publint, attw
-        if: env.PICKED == 'true'
-        run: node scripts/check-packages.mjs $DIRS
+        if: env.PICKED == 'true' && matrix.node == '24'
+        run: node scripts/check-packages.ts $DIRS
 
   # Not required by the ruleset. Lint, format and the tarball checks read text
   # and tarballs the same on every OS, so they run in `verify` only.
