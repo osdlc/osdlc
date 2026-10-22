@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.1](https://github.com/osdlc/osdlc/compare/path-guard/v0.3.0...path-guard/v0.3.1) - 2026-10-22
+
+### Other
+
+- *(changelog)* correct the MSRV notes for path-guard and its siblings ([#398](https://github.com/osdlc/osdlc/pull/398))
+
 ## [0.3.0] - 2026-10-20
 
 A breaking release. A call site now shows which filesystem it works against:

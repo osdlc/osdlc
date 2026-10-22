@@ -161,7 +161,7 @@ dependencies = [
 
 [[package]]
 name = "etag-write"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "sha2",
  "tempfile",
@@ -309,7 +309,7 @@ checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 
 [[package]]
 name = "path-guard"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -542,7 +542,7 @@ dependencies = [
 
 [[package]]
 name = "tiered-dirs"
-version = "0.3.2"
+version = "0.3.3"
 dependencies = [
  "dirs",
  "serde",
@@ -651,7 +651,7 @@ dependencies = [
 
 [[package]]
 name = "yaml-splice"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "saphyr-parser",
  "serde_json",

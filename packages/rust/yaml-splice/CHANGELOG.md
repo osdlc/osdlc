@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.1](https://github.com/osdlc/osdlc/compare/yaml-splice/v0.3.0...yaml-splice/v0.3.1) - 2026-10-22
+
+### Other
+
+- *(changelog)* correct the MSRV notes for path-guard and its siblings ([#398](https://github.com/osdlc/osdlc/pull/398))
+
 ### Changed
 
 - The minimum supported Rust version is 1.89, up from 1.85. The whole workspace

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.2](https://github.com/osdlc/osdlc/compare/etag-write/v0.2.1...etag-write/v0.2.2) - 2026-10-22
+
+### Other
+
+- *(changelog)* correct the MSRV notes for path-guard and its siblings ([#398](https://github.com/osdlc/osdlc/pull/398))
+
 ## [0.2.1](https://github.com/osdlc/osdlc/compare/etag-write/v0.2.0...etag-write/v0.2.1) - 2026-10-19
 
 ### Added
