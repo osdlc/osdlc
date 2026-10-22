@@ -101,15 +101,20 @@ jobs:
         with:
           persist-credentials: false
 
-      # The runner's own Node: the crate shape check needs nothing installed.
+      # Node 24 runs the crate shape check (TypeScript) by stripping the
+      # types; it needs nothing installed.
       # docs/planning/standards/S-0002-package-shape-rs.md is the standard.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+
       - name: Test the crate shape rules
         working-directory: .
-        run: node --test scripts/package-shape-rs.test.mjs
+        run: node --test scripts/package-shape-rs.test.ts
 
       - name: Check the crate shape
         working-directory: .
-        run: node scripts/package-shape-rs.mjs
+        run: node scripts/package-shape-rs.ts
 
       - uses: ./.github/actions/rust-toolchain
         with:
