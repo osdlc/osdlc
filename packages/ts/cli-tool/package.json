@@ -61,9 +61,11 @@
   "dependencies": {
     "@osdlc/config-layers": "workspace:^",
     "@osdlc/etag-write": "workspace:^",
+    "@osdlc/result": "workspace:^",
     "commander": "^12.1.0"
   },
   "devDependencies": {
+    "@osdlc/command-seam": "workspace:^",
     "@osdlc/prettier-config": "workspace:^",
     "@osdlc/tsconfig": "workspace:^",
     "@types/node": "catalog:",

@@ -11,7 +11,7 @@ created: 2026-10-19
 - `prMerge(number, { method, headSha })` requires `headSha`. It runs
   `gh pr merge <n> --<method> --match-head-commit <sha>`.
 - GitHub refuses the merge when the head of the PR is no longer that sha.
-  The call then throws `CommandFailed`.
+  The call then throws the classified failure.
 - `method` is `squash`, `merge` or `rebase`, with no default.
 - The call never passes `--delete-branch`. The caller deletes the branch.
 

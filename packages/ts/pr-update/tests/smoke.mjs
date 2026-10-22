@@ -65,7 +65,10 @@ const report = runSurvey(
     git,
     gh: git,
     codeHost: () => ({
-      listPrDetails: () => [detail(2, 'task/b', 'task/a'), detail(1, 'task/a', 'main')],
+      listPrDetails: () => ({
+        ok: true,
+        value: [detail(2, 'task/b', 'task/a'), detail(1, 'task/a', 'main')],
+      }),
     }),
     cfg,
     ports: { ...standalonePorts(), locate: () => '/repo' },

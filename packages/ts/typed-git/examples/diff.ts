@@ -20,7 +20,10 @@ export function run(): void {
     assert.match(git.diffText(), /\+two/)
 
     // A bad rev throws; `try` reports it.
-    assert.throws(() => git.diffText('no-such-rev'), CommandFailed)
+    assert.throws(
+      () => git.diffText('no-such-rev'),
+      (e: { failure?: { cause?: unknown } }) => e.failure?.cause instanceof CommandFailed,
+    )
     assert.equal(git.try.diffText('no-such-rev').ok, false)
 
     // An untracked file as an all-added diff.

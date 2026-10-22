@@ -17,6 +17,7 @@ import { trustStore } from '@osdlc/trust-repo'
 import type { CommandRunner } from '@osdlc/command-seam'
 import { IDENTITY, makeBareAndWorker, makeGitFixture } from '@osdlc/typed-git/testing'
 
+import { FIXTURE_REMOTE, allToolsInstalled, fakeTools } from './support.ts'
 import { PR_UPDATE_CONFIG_FILE, main } from '../src/cli.ts'
 
 const PR_UPDATE_CONFIG_FILE_NAME = PR_UPDATE_CONFIG_FILE.name
@@ -28,17 +29,18 @@ const scratch = mkdtempSync(join(tmpdir(), 'pr-update-config-'))
 afterAll(() => rmSync(scratch, { recursive: true, force: true }))
 
 let n = 0
-/** A fresh git repo (no remote, so a survey finds no PRs) and an isolated trust state. */
+/** A fresh git repo (a github origin; the faked `gh` lists no PRs) and an isolated trust state. */
 function project(): { dir: string; env: Record<string, string> } {
   const repo = makeGitFixture({ dir: mkdtempSync(join(scratch, `p${n++}-`)) })
   repo.commit('init', { 'a.txt': 'a' })
+  repo.git.remoteAdd('origin', FIXTURE_REMOTE)
   const env = { PATH: process.env.PATH ?? '', XDG_STATE_HOME: join(scratch, `state${n}`) }
   return { dir: repo.dir, env }
 }
 
 async function run(dir: string, env: Record<string, string>, ...argv: string[]) {
   const ctx = captureContext({ cwd: dir, env })
-  const code = await main(argv, ctx)
+  const code = await main(argv, ctx, fakeTools)
   return { code, out: ctx.io.out, err: ctx.io.err }
 }
 
@@ -242,7 +244,10 @@ describe('trust gate on update', () => {
     const argv = ['update', '--apply', '--no-fetch', '--strategy', 'merge']
     const go = (...extra: string[]) => {
       const ctx = captureContext({ cwd: worker.dir, env })
-      return main([...argv, ...extra], ctx, { gh }).then((code) => ({ code, err: ctx.io.err }))
+      return main([...argv, ...extra], ctx, { gh, which: allToolsInstalled }).then((code) => ({
+        code,
+        err: ctx.io.err,
+      }))
     }
     try {
       const refused = await go()

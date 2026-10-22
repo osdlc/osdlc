@@ -66,6 +66,9 @@
     "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit",
     "coverage": "vitest run --coverage"
   },
+  "dependencies": {
+    "@osdlc/result": "workspace:^"
+  },
   "peerDependencies": {
     "@types/node": "*"
   },

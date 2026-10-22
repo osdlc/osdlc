@@ -1,10 +1,14 @@
 ---
 type: decision
-state: accepted
+state: superseded
+superseded_by: three-doors.md
 created: 2026-10-19
 ---
 
 # Three modes: query, mutation, raw
+
+Superseded by [Three doors](three-doors.md): queries now throw on failure, with
+`try` and `soft` doors. The mutation and `raw` rules below still hold.
 
 ## Decision
 

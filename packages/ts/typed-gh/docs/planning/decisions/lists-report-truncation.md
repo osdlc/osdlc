@@ -8,12 +8,13 @@ created: 2026-10-20
 
 ## Decision
 
-- Every list query returns `{ rows, truncated } | null`: `prList`,
+- Every list query returns `{ rows, truncated }`: `prList`,
   `issueList`, `labelList`, and the new `repoList` and `searchPrs`.
 - The verb asks gh for `limit + 1` rows. It returns at most `limit`, and sets
   `truncated` when the extra row came back.
-- `null` still means gh failed or its output could not be read. An empty,
-  complete list is `{ rows: [], truncated: false }`.
+- A failed call or unreadable output is not a list: it throws, or is `null`
+  through `soft` (see [Three doors](three-doors.md)). An empty, complete list
+  is `{ rows: [], truncated: false }`.
 - The change ships in 0.6.0 with a **Breaking** note in the CHANGELOG.
 
 ## Why

@@ -44,10 +44,10 @@ try {
   assert.equal(git.configGet('no.such.key'), null)
   assert.equal(git.objectExists('deadbeef'), false)
 
-  // Mutations throw on failure.
+  // Mutations throw the classified failure; its cause is the CommandFailed.
   assert.throws(
     () => git.deleteBranch('no-such-branch'),
-    (e) => e instanceof CommandFailed,
+    (e) => e.name === 'FailureError' && e.failure.cause instanceof CommandFailed,
   )
 
   const async = new AsyncGit(fx.dir)
@@ -65,12 +65,14 @@ try {
   assert.equal(outside.topLevel(), null)
   assert.throws(
     () => outside.statusPorcelain(),
-    (e) => e instanceof CommandFailed,
+    (e) => e.name === 'FailureError' && e.failure.cause instanceof CommandFailed,
   )
 
   const tried = outside.try.statusPorcelain()
   assert.equal(tried.ok, false)
-  assert.ok(tried.error instanceof CommandFailed)
+  assert.equal(tried.error.kind, 'not-a-repo')
+  assert.ok(tried.error.cause instanceof CommandFailed)
+  assert.equal(typeof tried.error.message, 'string')
   assert.equal(typeof tried.error.detail, 'string')
   assert.ok(tried.error.detail.length > 0, "detail must carry git's own message")
 } finally {

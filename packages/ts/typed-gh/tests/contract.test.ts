@@ -6,11 +6,13 @@
  * one contract.
  */
 
+import { FailureError } from '@osdlc/result'
 import { describe, expect, test } from 'vitest'
 
 import {
   AsyncGh,
   CommandFailed,
+  type GhFailure,
   Gh,
   anyCheckFailed,
   parsePullRequest,
@@ -50,43 +52,147 @@ const ok = (stdout = ''): CommandResult => ({ exitCode: 0, stdout, stderr: '' })
 const json = (body: unknown): CommandResult => ok(JSON.stringify(body))
 const FAIL: CommandResult = { exitCode: 1, stdout: '', stderr: 'gh: not authenticated' }
 
-describe('README: queries return null on failure and never throw', () => {
-  test('a query returns null, never [] — [] means there are no rows, null means we could not ask', async () => {
+describe('README: the plain door throws on a failure; soft answers null; try answers a Result', () => {
+  test('a failed query throws, so "no rows" and "could not ask" differ', async () => {
     const failed = clients([FAIL])
     const empty = clients([json([])])
 
-    expect(failed.gh.prList()).toBeNull()
-    expect(await failed.agh.prList()).toBeNull()
+    for (const call of [
+      (c: Gh | AsyncGh) => c.prList(),
+      (c: Gh | AsyncGh) => c.issueList(),
+      (c: Gh | AsyncGh) => c.labelList(),
+      (c: Gh | AsyncGh) => c.prBody(1),
+      (c: Gh | AsyncGh) => c.prReviewThreads(1),
+      (c: Gh | AsyncGh) => c.openPrFor('feature/x'),
+    ]) {
+      expect(() => call(failed.gh)).toThrow(FailureError)
+      await expect(Promise.resolve().then(() => call(failed.agh))).rejects.toBeInstanceOf(
+        FailureError,
+      )
+    }
+
     expect(empty.gh.prList()).toEqual({ rows: [], truncated: false })
     expect(await empty.agh.prList()).toEqual({ rows: [], truncated: false })
-
-    expect(failed.gh.issueList()).toBeNull()
-    expect(await failed.agh.issueList()).toBeNull()
     expect(empty.gh.issueList()).toEqual({ rows: [], truncated: false })
     expect(await empty.agh.issueList()).toEqual({ rows: [], truncated: false })
-
-    expect(failed.gh.labelList()).toBeNull()
-    expect(await failed.agh.labelList()).toBeNull()
     expect(empty.gh.labelList()).toEqual({ rows: [], truncated: false })
     expect(await empty.agh.labelList()).toEqual({ rows: [], truncated: false })
   })
 
-  test('single-value queries are null on failure too', async () => {
+  test('soft is null for every failed query, on both clients', async () => {
     const f = clients([FAIL])
-    expect(f.gh.prView(1)).toBeNull()
-    expect(f.gh.prBody(1)).toBeNull()
-    expect(f.gh.issueView(1)).toBeNull()
-    expect(f.gh.prReviewThreads(1)).toBeNull()
-    expect(f.gh.openPrFor('feature/x')).toBeNull()
-    expect(await f.agh.prView(1)).toBeNull()
-    expect(await f.agh.prBody(1)).toBeNull()
-    expect(await f.agh.issueView(1)).toBeNull()
-    expect(await f.agh.prReviewThreads(1)).toBeNull()
-    expect(await f.agh.openPrFor('feature/x')).toBeNull()
+    expect(f.gh.soft.prList()).toBeNull()
+    expect(f.gh.soft.prView(1)).toBeNull()
+    expect(f.gh.soft.prBody(1)).toBeNull()
+    expect(f.gh.soft.issueView(1)).toBeNull()
+    expect(f.gh.soft.labelList()).toBeNull()
+    expect(f.gh.soft.prReviewThreads(1)).toBeNull()
+    expect(f.gh.soft.openPrFor('feature/x')).toBeNull()
+    expect(await f.agh.soft.prList()).toBeNull()
+    expect(await f.agh.soft.prView(1)).toBeNull()
+    expect(await f.agh.soft.prBody(1)).toBeNull()
+    expect(await f.agh.soft.issueView(1)).toBeNull()
+    expect(await f.agh.soft.prReviewThreads(1)).toBeNull()
+    expect(await f.agh.soft.openPrFor('feature/x')).toBeNull()
+  })
+
+  test('try is a Result: a value on success, a GhFailure on failure, on both clients', async () => {
+    const good = clients([json([])])
+    expect(good.gh.try.prList()).toEqual({ ok: true, value: { rows: [], truncated: false } })
+    expect(await good.agh.try.prList()).toEqual({ ok: true, value: { rows: [], truncated: false } })
+
+    const f = clients([FAIL])
+    for (const r of [f.gh.try.prList(), await f.agh.try.prList()]) {
+      expect(r.ok).toBe(false)
+      if (r.ok) continue
+      expect(r.error).toMatchObject({ kind: 'exit', message: 'gh: not authenticated', exitCode: 1 })
+      expect(r.error.cause).toBeInstanceOf(CommandFailed)
+    }
+  })
+
+  test('a query for one thing answers null when GitHub says there is no such thing', async () => {
+    const gone = clients([
+      {
+        exitCode: 1,
+        stdout: '',
+        stderr:
+          'GraphQL: Could not resolve to a PullRequest with the number of 99. (repository.pullRequest)',
+      },
+    ])
+    expect(gone.gh.prView(99)).toBeNull()
+    expect(await gone.agh.prView(99)).toBeNull()
+    expect(gone.gh.try.prView(99)).toEqual({ ok: true, value: null })
+    const noIssue = clients([
+      {
+        exitCode: 1,
+        stdout: '',
+        stderr: 'GraphQL: Could not resolve to an Issue with the number of 99. (repository.issue)',
+      },
+    ])
+    expect(noIssue.gh.issueView(99)).toBeNull()
+    const noRepo = clients([
+      {
+        exitCode: 1,
+        stdout: '',
+        stderr: "GraphQL: Could not resolve to a Repository with the name 'o/r'. (repository)",
+      },
+    ])
+    expect(noRepo.gh.repoView('o/r')).toBeNull()
+  })
+
+  test('a wrong repository is a not-found failure, not an absent PR or issue', async () => {
+    const wrongRepo = clients([
+      {
+        exitCode: 1,
+        stdout: '',
+        stderr:
+          "GraphQL: Could not resolve to a Repository with the name 'typo/typo'. (repository)",
+      },
+    ])
+    expect(() => wrongRepo.gh.withRepo('typo/typo').prView(7)).toThrow(FailureError)
+    expect(() => wrongRepo.gh.withRepo('typo/typo').issueView(7)).toThrow(FailureError)
+    const r = wrongRepo.gh.withRepo('typo/typo').try.prView(7)
+    expect(!r.ok && r.error.kind).toBe('not-found')
+    await expect(wrongRepo.agh.withRepo('typo/typo').prView(7)).rejects.toThrow(FailureError)
+  })
+
+  test('the absence test reads stdout as the classifier does', () => {
+    const gone = clients([
+      {
+        exitCode: 1,
+        stdout: 'GraphQL: Could not resolve to a PullRequest with the number of 99.',
+        stderr: '',
+      },
+    ])
+    expect(gone.gh.prView(99)).toBeNull()
+  })
+
+  test('output that exited 0 but cannot be read throws an unreadable FailureError', () => {
+    const bad = clients([ok('not json')])
+    expect(() => bad.gh.prList()).toThrow(FailureError)
+    const r = bad.gh.try.prList()
+    expect(!r.ok && r.error.kind).toBe('unreadable')
+    expect(bad.gh.soft.prList()).toBeNull()
+  })
+
+  test('a mutation has no soft form', () => {
+    const f = clients([ok()])
+    expect(() =>
+      (f.gh.soft as unknown as { editPrBody(n: number, b: string): void }).editPrBody(1, 'b'),
+    ).toThrow(TypeError)
+  })
+
+  test('the probes answer in every door: failure is part of their value', async () => {
+    const f = clients([FAIL])
+    expect(f.gh.installed()).toBe(false)
+    expect(f.gh.try.installed()).toEqual({ ok: true, value: false })
+    expect(f.gh.authStatus().ok).toBe(false)
+    expect(f.gh.api('repos/o/r').ok).toBe(false)
+    expect((await f.agh.try.api('repos/o/r')).ok).toBe(true)
   })
 })
 
-describe('README: mutations throw CommandFailed, carrying argv and the full result', () => {
+describe('README: mutations throw the classified failure, carrying argv and the full result', () => {
   const MUTATIONS: [string, (c: Gh | AsyncGh) => unknown][] = [
     ['createPr', (c) => c.createPr({ head: 'h', base: 'main', title: 't', body: 'b' })],
     ['editPr', (c) => c.editPr(1, { title: 't' })],
@@ -114,10 +220,10 @@ describe('README: mutations throw CommandFailed, carrying argv and the full resu
     const fromAsync = await Promise.resolve(call(f.agh)).catch((e: unknown) => e)
 
     for (const err of [fromSync, fromAsync]) {
-      expect(err).toBeInstanceOf(CommandFailed)
-      const failed = err as CommandFailed
+      expect(err).toBeInstanceOf(FailureError)
+      const failed = (err as FailureError<GhFailure>).failure
       expect(failed.argv.length).toBeGreaterThan(0)
-      expect(failed.result).toMatchObject({ exitCode: 1, stderr: 'gh: not authenticated' })
+      expect(failed.cause?.result).toMatchObject({ exitCode: 1, stderr: 'gh: not authenticated' })
     }
   })
 })

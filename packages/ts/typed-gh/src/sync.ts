@@ -7,13 +7,15 @@
  * REST — the credential already exists in the user's keychain, and a library
  * that reaches for `GITHUB_TOKEN` is a library that can leak one.
  *
- * Tri-modal, same as the git client: queries return parsed values and never
- * throw, mutations throw `CommandFailed`, and `raw`/`rawChecked` are the
- * escape hatches.
+ * The same three doors as the git client. The plain method returns a value
+ * or throws: a failed `gh` throws a `FailureError` carrying the classified
+ * `GhFailure`, output that cannot be read throws one of kind `unreadable`, and a query for one thing (`prView`, `issueView`,
+ * `repoView`) answers `null` when GitHub says there is no such thing.
+ * `gh.try.*` returns the failure as a `Result<T, GhFailure>`; `gh.soft.*` returns
+ * `null` for it. `raw`/`rawChecked` are the escape hatches.
  */
 
 import {
-  runChecked,
   resolveRunner,
   spawnRunner,
   type CommandResult,
@@ -21,6 +23,7 @@ import {
   type CommandRunOptions,
 } from '@osdlc/command-seam'
 
+import { runCheckedGh, settle, softSync, triedSync, type Soft, type TriedSync } from './doors.ts'
 import * as v from './verbs.ts'
 import type {
   ApiOptions,
@@ -73,6 +76,8 @@ export class Gh {
   readonly hostname: string | undefined
   private readonly target: GhTarget
   private readonly runner: CommandRunner
+  private tried: TriedSync<Gh> | undefined
+  private softened: Soft<Gh> | undefined
 
   constructor(cwd: string, opts: GhOptions = {}) {
     v.checkTarget(opts)
@@ -93,6 +98,29 @@ export class Gh {
     return new Gh(this.cwd, { runner: this.runner, repo, hostname: this.hostname })
   }
 
+  /**
+   * The whole surface again, returning a `Result<T, GhFailure>` instead of
+   * throwing: `gh.try.prList()` is `{ ok: true, value } | { ok: false, error }`.
+   * A query for one thing that finds nothing is `ok: true` with `null`. See
+   * `./doors.ts`.
+   *
+   * The type leaves out the escape hatches and the pure helpers; at runtime
+   * the proxy wraps `raw` and `rawChecked` too. Call those on the client itself.
+   */
+  get try(): TriedSync<Gh> {
+    return (this.tried ??= triedSync(this))
+  }
+
+  /**
+   * Each query again, returning `null` instead of throwing when `gh` fails. A
+   * mutation has no soft form. Do not gate a write on a `null` from `soft`:
+   * it is the answer for "could not ask" as well as for "nothing there". Use
+   * `try` where the difference matters.
+   */
+  get soft(): Soft<Gh> {
+    return (this.softened ??= softSync(this))
+  }
+
   // ── escape hatches ────────────────────────────────────────────────────────
 
   /** Unchecked passthrough for verbs not yet lifted into the API. */
@@ -100,9 +128,9 @@ export class Gh {
     return this.runner.run(argv, { cwd: this.cwd, ...opts })
   }
 
-  /** Checked passthrough — throws `CommandFailed` on a non-zero exit. */
+  /** Checked passthrough — throws the classified failure on a non-zero exit. */
   rawChecked(argv: string[], opts: { timeoutMs?: number | undefined } = {}): CommandResult {
-    return runChecked(this.runner, argv, { cwd: this.cwd, ...opts })
+    return runCheckedGh(this.runner, argv, { cwd: this.cwd, ...opts })
   }
 
   /** Run one verb from the table, honouring its checked/unchecked contract. */
@@ -112,23 +140,26 @@ export class Gh {
     if (verb.env !== undefined) opts.env = verb.env
     if (timeoutMs !== undefined) opts.timeoutMs = timeoutMs
     const result = verb.checked
-      ? runChecked(this.runner, verb.argv, opts)
+      ? runCheckedGh(this.runner, verb.argv, opts)
       : this.runner.run(verb.argv, opts)
-    return verb.parse(result)
+    return settle(verb, result, this.runner.binary)
+  }
+
+  /** {@link exec} for a verb that never answers `null` as a value: a failed or unreadable run throws. */
+  private read<T>(verb: GhVerb<T | null>, timeoutMs?: number | undefined): T {
+    return this.exec(verb, timeoutMs) as T
   }
 
   // ── queries ───────────────────────────────────────────────────────────────
 
-  /** Pull requests matching `opts`, or null when gh failed. */
-  prList(
-    opts: PrListOptions & { timeoutMs?: number | undefined } = {},
-  ): ListResult<PullRequest> | null {
-    return this.exec(v.prList(opts, this.target), opts.timeoutMs)
+  /** Pull requests matching `opts`. Throws when gh fails; `soft.prList` gives null instead. */
+  prList(opts: PrListOptions & { timeoutMs?: number | undefined } = {}): ListResult<PullRequest> {
+    return this.read(v.prList(opts, this.target), opts.timeoutMs)
   }
 
   /**
-   * One PR by number, branch or URL, with the heavy fields; null when gh
-   * failed or there is no such PR.
+   * One PR by number, branch or URL, with the heavy fields; null when there is
+   * no such PR. Throws when gh fails otherwise.
    */
   prView(
     ref: number | string,
@@ -180,7 +211,7 @@ export class Gh {
       limit: opts.limit ?? 5,
       fields: opts.fields ?? v.PR_REF_FIELDS,
     })
-    return v.pickPrForBranch(rows?.rows ?? null, branch)
+    return v.pickPrForBranch(rows.rows, branch)
   }
 
   /**
@@ -215,22 +246,22 @@ export class Gh {
     return last
   }
 
-  /** A PR's body text, or null when gh failed. */
-  prBody(number: number, opts: { timeoutMs?: number | undefined } = {}): string | null {
-    return this.exec(v.prBody(number, this.target), opts.timeoutMs)
+  /** A PR's body text. Throws when gh fails. */
+  prBody(number: number, opts: { timeoutMs?: number | undefined } = {}): string {
+    return this.read(v.prBody(number, this.target), opts.timeoutMs)
   }
 
   /**
-   * A REST GET through `gh api`. Never throws: failure is `ok: false` on the
-   * returned {@link ApiResponse}.
+   * A REST GET through `gh api`. Never throws for a failed call, in any door:
+   * failure is `ok: false` on the returned {@link ApiResponse}.
    */
   api(endpoint: string, opts: ApiOptions & { timeoutMs?: number | undefined } = {}): ApiResponse {
     return this.exec(v.api(endpoint, opts, this.target), opts.timeoutMs)
   }
 
   /**
-   * A GraphQL query; each page's `data`, or null on a failed or partial
-   * result. See the `graphql` verb.
+   * A GraphQL query; each page's `data`. Throws on a failed or partial result;
+   * `soft.graphql` gives null. See the `graphql` verb.
    *
    * @experimental
    */
@@ -238,38 +269,38 @@ export class Gh {
     query: string,
     variables: Record<string, v.GraphqlVariable> = {},
     opts: v.GraphqlOptions & { timeoutMs?: number | undefined } = {},
-  ): unknown[] | null {
-    return this.exec(v.graphql(query, variables, opts, this.target), opts.timeoutMs)
+  ): unknown[] {
+    return this.read(v.graphql(query, variables, opts, this.target), opts.timeoutMs)
   }
 
-  /** Every label on the repository (up to `opts.limit`, default 1000), or null when gh failed. */
+  /** Every label on the repository (up to `opts.limit`, default 1000). Throws when gh fails. */
   labelList(
     opts: { limit?: number | undefined; timeoutMs?: number | undefined } = {},
-  ): ListResult<Label> | null {
-    return this.exec(v.labelList(opts, this.target), opts.timeoutMs)
+  ): ListResult<Label> {
+    return this.read(v.labelList(opts, this.target), opts.timeoutMs)
   }
 
-  /** Issues matching `opts` (open by default, up to 200), or null when gh failed. */
+  /** Issues matching `opts` (open by default, up to 200). Throws when gh fails. */
   issueList(
     opts: IssueListOptions & { timeoutMs?: number | undefined } = {},
-  ): ListResult<IssueRow> | null {
-    return this.exec(v.issueList(opts, this.target), opts.timeoutMs)
+  ): ListResult<IssueRow> {
+    return this.read(v.issueList(opts, this.target), opts.timeoutMs)
   }
 
-  /** One issue with its labels, or null when gh failed. */
+  /** One issue with its labels; null when there is no such issue. Throws when gh fails otherwise. */
   issueView(number: number, opts: { timeoutMs?: number | undefined } = {}): IssueRow | null {
     return this.exec(v.issueView(number, this.target), opts.timeoutMs)
   }
 
-  /** An owner's repositories (up to `opts.limit`, default 100), or null when gh failed. */
+  /** An owner's repositories (up to `opts.limit`, default 100). Throws when gh fails. */
   repoList(
     owner: string,
     opts: v.RepoListOptions & { timeoutMs?: number | undefined } = {},
-  ): ListResult<Repository> | null {
-    return this.exec(v.repoList(owner, opts, this.target), opts.timeoutMs)
+  ): ListResult<Repository> {
+    return this.read(v.repoList(owner, opts, this.target), opts.timeoutMs)
   }
 
-  /** One repository: `repo`, else the client's repo, else the clone at `cwd`. Null when gh failed. */
+  /** One repository: `repo`, else the client's repo, else the clone at `cwd`. Null when there is no such repository. */
   repoView(
     repo?: string | undefined,
     opts: { fields?: readonly string[] | undefined; timeoutMs?: number | undefined } = {},
@@ -277,12 +308,12 @@ export class Gh {
     return this.exec(v.repoView(repo, opts.fields ?? v.REPO_FIELDS, this.target), opts.timeoutMs)
   }
 
-  /** Pull requests across repositories matching a search query, or null when gh failed. */
+  /** Pull requests across repositories matching a search query. Throws when gh fails. */
   searchPrs(
     query: string,
     opts: v.SearchPrsOptions & { timeoutMs?: number | undefined } = {},
-  ): ListResult<PrSearchHit> | null {
-    return this.exec(v.searchPrs(query, opts, this.target), opts.timeoutMs)
+  ): ListResult<PrSearchHit> {
+    return this.read(v.searchPrs(query, opts, this.target), opts.timeoutMs)
   }
 
   /** True iff the `gh` binary is on PATH and runs. */
@@ -336,7 +367,7 @@ export class Gh {
     this.exec(v.editPr(number, opts, this.target))
   }
 
-  /** The PR's unified diff; throws `CommandFailed` when gh cannot produce it. */
+  /** The PR's unified diff; throws the classified failure when gh cannot produce it. */
   prDiff(number: number): string {
     return this.exec(v.prDiff(number, this.target))
   }
@@ -384,9 +415,9 @@ export class Gh {
     this.exec(v.prMerge(number, opts, this.target))
   }
 
-  /** A PR's review threads, or null when they could not be read completely. */
-  prReviewThreads(number: number): v.ReviewThread[] | null {
-    return this.exec(v.prReviewThreads(number, this.target))
+  /** A PR's review threads. Throws when they could not be read completely. */
+  prReviewThreads(number: number): v.ReviewThread[] {
+    return this.read(v.prReviewThreads(number, this.target))
   }
 
   /** Create a label (or force it to `opts`'s color/description if it already exists). */

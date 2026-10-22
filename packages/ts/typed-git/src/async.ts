@@ -118,7 +118,7 @@ export class AsyncGit {
   }
 
   /**
-   * The whole surface again, resolving to a {@link GitOutcome} instead of
+   * The whole surface again, resolving to a `Result<T, GitFailure>` instead of
    * rejecting. A declared absence is `ok: true`; see `./outcome.ts`.
    *
    * The type leaves out `raw`, `rawChecked` and `at`, but at runtime the proxy
@@ -157,7 +157,7 @@ export class AsyncGit {
   }
 
   /**
-   * Checked argv passthrough — rejects with `CommandFailed` on a non-zero
+   * Checked argv passthrough — rejects with the classified failure on a non-zero
    * exit, and on output cut short at the output cap or a timeout. Report
    * `e.detail`, which joins both streams; see {@link Git.rawChecked}.
    */
@@ -689,7 +689,7 @@ export class AsyncGit {
   /**
    * Merge `ref` into the current branch. A conflict is a value, not a
    * rejection: the outcome is `clean` or `conflict`. Git refusing to merge at
-   * all still rejects with `CommandFailed`.
+   * all still rejects with the classified failure.
    */
   merge(ref: string, opts: MergeOptions & GitCallOptions = {}): Promise<MergeOutcome> {
     const [call, req] = splitCallOptions(opts)

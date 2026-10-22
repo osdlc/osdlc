@@ -40,6 +40,20 @@ ESM only. Node.js `^22.22.2 || ^24.15.0 || >=26.0.0`, the range of its
 dependency `@osdlc/typed-git`. `pnpm add @osdlc/pr-update` and
 `yarn add @osdlc/pr-update` work too.
 
+## Requirements
+
+- `git` on `PATH`, always.
+- For a GitHub repository, the GitHub CLI (`gh`) on `PATH` and signed in:
+  `gh auth login`.
+- For a Forgejo repository, `curl` on `PATH` and a token in the
+  `FORGEJO_TOKEN` environment variable.
+
+`survey` and `update` check this before they list anything. A missing tool, an
+unreadable git remote or a PR listing the host refused is an error with its own
+exit code (see Exit codes), never "no open PRs". The message is the one every
+tool built on `@osdlc/cli-tool` prints for that failure, for example
+`pr-update: gh is not signed in to GitHub. Run \`gh auth login\`.`
+
 ## Why this exists as its own package
 
 A stack of PRs drifts constantly — every merge to `main` puts the next PR one
@@ -319,10 +333,59 @@ call a preset would make without running it.
 
 `survey` and `update` list PRs through the `CodeHost` port
 (`@osdlc/code-host`, `listPrDetails`), so no GitHub client is imported
-here. The default is `GithubCodeHost` over `gh` (`src/code-host.ts`, the only
-file that names a concrete host); a host that wants another adapter, Forgejo
-for one, supplies `SurveyEnv.codeHost`. The standalone CLI still builds the
-GitHub default.
+here. The `pr-update` binary picks the host with `selectCodeHost`: a
+`github.com` remote (and a repository with no `origin` to read) uses
+GitHub over `gh`; any other remote is read as a self-hosted Forgejo, over
+`curl`, with the token in `FORGEJO_TOKEN`. `code_host.override: github` or
+`forgejo` in the config forces the answer, for a GitHub Enterprise host say.
+The token's variable name is not configurable here; it is always
+`FORGEJO_TOKEN`.
+
+A host that embeds the engine as a library supplies `SurveyEnv.codeHost` and
+is untouched by all of this. Left absent, the library default stays GitHub
+over `gh`, as it always was: it does not read the remote, so an embedding that
+never named a host cannot start answering from Forgejo. `selectedCodeHostFor`
+is the CLI's factory, if a library caller wants the same choice.
+
+Whatever the host, a listing it could not complete (not signed in, no
+network, a refused token) makes `runSurvey` throw a `FailureError` from
+`@osdlc/result` carrying the code host's `CodeHostFailure` (its `kind`,
+`message` and `hint`); it is never an empty list. The CLI prints it as
+`pr-update: <message> <hint>` and exits with the code for its kind. A host
+that cannot be built throws the same way, from `selectedCodeHostFor`.
+
+With several `--repo` targets, one repository that cannot be listed does not
+abort the others. Every repository is surveyed; the failed one is recorded on
+its `repos` entry (`failure: { kind, message, hint }`, and no PRs), listed under
+`repoFailures` in `update --report`, and printed on stderr as
+`pr-update: <repo>: <message> <hint>`. The run then exits with the code of the
+first failure (a later one with a different code is printed but does not
+change it). With a single repository the failure is thrown, as before.
+
+## Exit codes
+
+| Code | Meaning |
+|---|---|
+| `0` | Clean run (`survey` always; `update` when no PR ended `conflict` or `failed`) |
+| `1` | The run finished but a PR ended `conflict` or `failed`, or an unexpected error |
+| `2` | Malformed command line, or a `--branch` with no open PR |
+| `14` | The config file is invalid or unreadable |
+| `21` | `update` refused for want of repository trust |
+| `22` | A tool the run needs is not installed: `git`, and `gh` (GitHub) or `curl` (Forgejo) |
+| `23` | The code host refused the caller or answered unusably: not signed in, no `FORGEJO_TOKEN` or a refused one, no such repository, an HTTP error |
+| `24` | There is no repository to work on: no readable git remote, one that names no repository, or not a git checkout (pass `--remote` or `--repo`) |
+| `25` | The code host could not be reached, timed out or rate-limited the caller; try again later |
+
+`22` to `25` are not pr-update's own: they are the failure codes every tool
+built on `@osdlc/cli-tool` shares (`EXIT_FAILURE`), so a script that handles one
+handles the others. `21` is this tool's. Any other failure of a tool the run
+shells out to is an ordinary `1`.
+
+With `update --report`, a run that failed before it had a result writes
+`{ "error": "<message and hint>", "failure": { "kind", "message", "hint" } }`
+(`failure` only for a classified failure; `hint` only when there is one). A
+refusal before the run starts (a missing tool, a missing remote, no trust)
+writes no report.
 
 ## When not to use
 

@@ -22,6 +22,7 @@ import {
   CommandFailed,
   cwdError,
   emptyStdout,
+  isCommandFailed,
   mergedEnv,
   normalizeOutputCap,
   normalizeTimeout,
@@ -561,7 +562,7 @@ export async function mapFailedAsync<T>(
   try {
     return await fn()
   } catch (e) {
-    if (e instanceof CommandFailed) throw await mapper(e)
+    if (isCommandFailed(e)) throw await mapper(e)
     throw e
   }
 }
@@ -582,7 +583,7 @@ export async function catchFailedAsync<T, R>(
   try {
     return await fn()
   } catch (e) {
-    if (e instanceof CommandFailed) return onFailed(e)
+    if (isCommandFailed(e)) return onFailed(e)
     throw e
   }
 }

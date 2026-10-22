@@ -11,13 +11,20 @@
  *   - **Pure argv builders and parsers.** The verb table and `parse.ts` never
  *     spawn anything, so an async fan-out drives them through its own runner
  *     without duplicating a line of parsing.
- *   - **A client.** `Gh`, tri-modal like `Git`: queries return parsed values
- *     and never throw, mutations throw `CommandFailed`, `raw` is the hatch.
+ *   - **A client.** `Gh`, with `Git`'s three doors: the plain method returns a
+ *     value or throws a `FailureError` carrying the classified
+ *     `GhFailure`; `gh.try.*` returns a
+ *     `Result<T, GhFailure>`; `gh.soft.*` returns `null` for a failed query.
+ *     `raw` is the hatch.
  *
  * Authentication is `gh`'s. No token is read, stored, or forwarded.
  */
 
 export { AsyncGh, type AsyncCallOptions, type AsyncGhOptions } from './async.ts'
+
+export { classifyGhFailure, type GhFailure, type GhFailureKind } from './failure.ts'
+
+export { type Soft, type TriedAsync, type TriedSync } from './doors.ts'
 
 export { Gh, defaultRunnerFactory, type GhOptions, type RunnerFactory } from './sync.ts'
 

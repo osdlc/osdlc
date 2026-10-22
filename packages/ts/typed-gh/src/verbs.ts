@@ -7,16 +7,25 @@
  * asynchronous fan-out drive the same definitions without either duplicating
  * the other's parsing.
  *
- * `checked` marks a verb whose failure is thrown with stderr: every mutation,
- * and `prDiff`, which is a read. Other queries are unchecked and fold failure
- * into an absence value.
+ * `checked` marks a verb the runner throws for on a non-zero exit, with
+ * stderr: every mutation, and `prDiff`, which is a read. Other queries are run
+ * unchecked and `parse` folds a failure into `null`, which is the verb's
+ * *soft* reading. The clients' plain door reads them through `settle` (see
+ * `doors.ts`) instead: a failure throws, except where the verb declares
+ * `absent` or is a `probe`.
  */
 
 import { stderrOrError, type CommandResult } from '@osdlc/command-seam'
 
 import { parseLabels, parsePrSearchHit, parsePullRequest, parseRepository } from './parse.ts'
+import { isAbsent, type Thing } from './failure.ts'
 import { isRepoSlug, parsePrUrl } from './repo.ts'
 import type { IssueRow, Label, PrSearchHit, PullRequest, Repository } from './types.ts'
+
+/** Whether a failed run says GitHub has no such `thing`: read from the same text the classifier reads. */
+function noSuch(thing: Thing): (r: CommandResult) => boolean {
+  return (r) => isAbsent(thing, `${r.stderr}\n${r.stdout}`)
+}
 
 /** One `gh` invocation: what to run, and how to read what came back. */
 export interface GhVerb<T> {
@@ -36,6 +45,19 @@ export interface GhVerb<T> {
    * on `gh search` and `gh repo list`.
    */
   env?: Record<string, string> | undefined
+  /**
+   * True for a read whose failure is part of its answer: `installed`,
+   * `authStatus` and `api` return what `parse` makes of any result, in every
+   * door. Other reads fail the plain door when gh exits non-zero.
+   */
+  probe?: boolean | undefined
+  /**
+   * For a read of one thing: whether a non-zero result means GitHub has no such
+   * thing (`prView`, `issueView`, `repoView`). The plain door then returns what
+   * `parse` makes of it, `null`, because absence is an answer. Other non-zero
+   * results fail the call.
+   */
+  absent?: ((result: CommandResult) => boolean) | undefined
   parse(result: CommandResult): T
 }
 
@@ -380,6 +402,7 @@ export function prView(
     ],
     checked: false,
     readOnly: true,
+    absent: noSuch('pr'),
     parse: oneOrNull,
   }
 }
@@ -478,6 +501,7 @@ export function api(
     argv,
     checked: false,
     readOnly: true,
+    probe: true,
     parse(r) {
       const response = parseApi(r, withHeaders)
       return paginate ? { ...response, body: flattenPages(response.body) } : response
@@ -663,7 +687,13 @@ function parseApi(r: CommandResult, withHeaders: boolean): ApiResponse {
 
 /** `gh --version` — the install probe. True when `gh` runs. */
 export function installed(): GhVerb<boolean> {
-  return { argv: ['--version'], checked: false, readOnly: true, parse: (r) => r.exitCode === 0 }
+  return {
+    argv: ['--version'],
+    checked: false,
+    readOnly: true,
+    probe: true,
+    parse: (r) => r.exitCode === 0,
+  }
 }
 
 /**
@@ -681,6 +711,7 @@ export function authStatus(target?: GhTarget): GhVerb<AuthStatus> {
     argv: ['auth', 'status', ...hostArgs(target)],
     checked: false,
     readOnly: true,
+    probe: true,
     parse: (r) => ({ ok: r.exitCode === 0, detail: stderrOrError(r) || r.stdout.trim() }),
   }
 }
@@ -738,6 +769,7 @@ export function issueView(number: number, target?: GhTarget): GhVerb<IssueRow | 
     argv: ['issue', 'view', String(number), ...repoArgs(target), '--json', ISSUE_FIELDS],
     checked: false,
     readOnly: true,
+    absent: noSuch('issue'),
     parse: oneIssueOrNull,
   }
 }
@@ -839,6 +871,7 @@ export function repoView(
     argv,
     checked: false,
     readOnly: true,
+    absent: noSuch('repo'),
     parse(r) {
       if (r.exitCode !== 0) return null
       try {

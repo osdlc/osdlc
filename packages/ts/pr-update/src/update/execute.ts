@@ -38,7 +38,7 @@ import { createHash } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 
-import { firstLine, stderrOrError } from '@osdlc/command-seam'
+import { firstLine, isCommandFailed, stderrOrError } from '@osdlc/command-seam'
 import { CommandFailed, Git } from '@osdlc/typed-git'
 
 import type {
@@ -169,10 +169,27 @@ export function isStalePush(stderr: string): boolean {
   )
 }
 
+/**
+ * The `CommandFailed` behind a thrown git failure. typed-git's plain door throws
+ * a `FailureError` carrying the classified failure, whose `cause` is the
+ * `CommandFailed`; a bare one counts too. Recognised by shape, not `instanceof`.
+ */
+function commandFailedOf(e: unknown): CommandFailed | null {
+  if (isCommandFailed(e)) return e
+  const cause =
+    typeof e === 'object' && e !== null
+      ? (e as { failure?: { cause?: unknown } }).failure?.cause
+      : null
+  return isCommandFailed(cause) ? cause : null
+}
+
 /** One line naming why `e` failed: stderr (or the runner's `error`), else stdout. */
 function errorLine(e: unknown): string {
-  if (e instanceof CommandFailed) {
-    return firstLine(stderrOrError(e.result)) || firstLine(e.result.stdout, 'command failed')
+  const failed = commandFailedOf(e)
+  if (failed !== null) {
+    return (
+      firstLine(stderrOrError(failed.result)) || firstLine(failed.result.stdout, 'command failed')
+    )
   }
   return e instanceof Error ? e.message : String(e)
 }
@@ -486,8 +503,9 @@ async function integrateAndPush(
     pushedOid = git.resolveRef('HEAD')
     pushUpdate(git, target, settings)
   } catch (e) {
+    const failed = commandFailedOf(e)
     const reason =
-      e instanceof CommandFailed && isStalePush(e.result.stderr)
+      failed !== null && isStalePush(failed.result.stderr)
         ? `push rejected — ${target.head} moved since the run started; re-run`
         : `push ${target.head}: ${errorLine(e)}`
     return { status: 'failed', reason }

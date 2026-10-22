@@ -24,6 +24,7 @@ export {
   type LoadEnv,
   type StandaloneConfig,
 } from './config-file.ts'
+export { selectedCodeHostFor } from './code-host.ts'
 export { EXIT_UNTRUSTED, projectSourcedCommands, untrustedMessage } from './trust.ts'
 export { repairPrompt } from './repair/prompt.ts'
 export {
@@ -70,6 +71,7 @@ export {
   num,
   parentEdges,
   renderSurveyText,
+  repoFailuresOf,
   resolveTargets,
   runSurvey,
   statusFor,

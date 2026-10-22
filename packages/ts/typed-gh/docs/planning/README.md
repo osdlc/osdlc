@@ -19,7 +19,9 @@ A decision is named for its topic, not numbered. Each has a `state`.
 
 - [The name](decisions/name.md): the name is `@osdlc/typed-gh`
 - [Shell out to `gh`](decisions/shell-out-to-gh.md)
-- [Three modes](decisions/three-modes.md): query, mutation, raw
+- [Three modes](decisions/three-modes.md): query, mutation, raw (superseded)
+- [Three doors](decisions/three-doors.md): plain, `try` and `soft`, and the
+  `GhFailure` kinds
 - [Repo and host as arguments](decisions/repo-and-host-as-arguments.md): the
   client names its repo and host in the argv
 - [A total model](decisions/total-model.md): a total pull request model

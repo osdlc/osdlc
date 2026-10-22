@@ -1,21 +1,30 @@
 /**
  * `AsyncGh` — the awaitable GitHub client, with the same methods as {@link Gh}.
  *
- * Same tri-modal contract, promised: queries resolve to parsed values and
- * never reject on a gh failure, mutations reject with `CommandFailed`, and
- * `raw`/`rawChecked` are the hatches. It is driven by the same pure verb
+ * Same three doors, promised: the plain method resolves to a value or rejects
+ * (a `FailureError` carrying the classified `GhFailure` for a failed gh or output it cannot read;
+ * a query for one thing resolves `null` when GitHub has no such thing),
+ * `try` resolves to a `Result<T, GhFailure>`, `soft` resolves `null` for a
+ * failure, and `raw`/`rawChecked` are the hatches. It is driven by the same pure verb
  * table as `Gh`, so the two cannot drift on argv or parsing. Use it where the
  * sync client would block the event loop: a fan-out of per-PR queries.
  */
 
 import {
-  runCheckedAsync,
   resolveRunnerAsync,
   type AsyncCommandRunner,
   type AsyncCommandRunOptions,
   type CommandResult,
 } from '@osdlc/command-seam'
 
+import {
+  runCheckedGhAsync,
+  settle,
+  softAsync,
+  triedAsync,
+  type Soft,
+  type TriedAsync,
+} from './doors.ts'
 import { ownerRepoSlug, parseOwnerRepo, parsePrRef } from './repo.ts'
 import type { IssueRow, Label, OwnerRepo, PrSearchHit, PullRequest, Repository } from './types.ts'
 import * as v from './verbs.ts'
@@ -64,6 +73,8 @@ export class AsyncGh {
   readonly hostname: string | undefined
   private readonly target: GhTarget
   private readonly runner: AsyncCommandRunner
+  private tried: TriedAsync<AsyncGh> | undefined
+  private softened: Soft<AsyncGh> | undefined
 
   constructor(cwd: string, opts: AsyncGhOptions = {}) {
     v.checkTarget(opts)
@@ -84,6 +95,20 @@ export class AsyncGh {
     return new AsyncGh(this.cwd, { runner: this.runner, repo, hostname: this.hostname })
   }
 
+  /**
+   * The whole surface again, resolving to a `Result<T, GhFailure>` instead of
+   * rejecting. A query for one thing that finds nothing is `ok: true` with
+   * `null`. See `Gh.try`.
+   */
+  get try(): TriedAsync<AsyncGh> {
+    return (this.tried ??= triedAsync(this))
+  }
+
+  /** Each query again, resolving `null` instead of rejecting when `gh` fails. See `Gh.soft`. */
+  get soft(): Soft<AsyncGh> {
+    return (this.softened ??= softAsync(this))
+  }
+
   // ── escape hatches ────────────────────────────────────────────────────────
 
   /** Unchecked passthrough for verbs not yet lifted into the API. */
@@ -91,9 +116,9 @@ export class AsyncGh {
     return this.runner.run(argv, { cwd: this.cwd, ...opts })
   }
 
-  /** Checked passthrough — rejects with `CommandFailed` on a non-zero exit. */
+  /** Checked passthrough — rejects with the classified failure on a non-zero exit. */
   rawChecked(argv: string[], opts: AsyncCallOptions = {}): Promise<CommandResult> {
-    return runCheckedAsync(this.runner, argv, { cwd: this.cwd, ...opts })
+    return runCheckedGhAsync(this.runner, argv, { cwd: this.cwd, ...opts })
   }
 
   /** Run one verb from the table, honouring its checked/unchecked contract. */
@@ -104,16 +129,21 @@ export class AsyncGh {
     if (call.timeoutMs !== undefined) opts.timeoutMs = call.timeoutMs
     if (call.signal !== undefined) opts.signal = call.signal
     const result = verb.checked
-      ? await runCheckedAsync(this.runner, verb.argv, opts)
+      ? await runCheckedGhAsync(this.runner, verb.argv, opts)
       : await this.runner.run(verb.argv, opts)
-    return verb.parse(result)
+    return settle(verb, result, this.runner.binary)
+  }
+
+  /** {@link exec} for a verb that never answers `null` as a value: a failed or unreadable run rejects. */
+  private async read<T>(verb: GhVerb<T | null>, call: AsyncCallOptions = {}): Promise<T> {
+    return (await this.exec(verb, call)) as T
   }
 
   // ── queries ───────────────────────────────────────────────────────────────
 
-  /** Pull requests matching `opts`, or null when gh failed. */
-  prList(opts: PrListOptions & AsyncCallOptions = {}): Promise<ListResult<PullRequest> | null> {
-    return this.exec(v.prList(opts, this.target), opts)
+  /** Pull requests matching `opts`. Rejects when gh fails; `soft.prList` resolves null instead. */
+  prList(opts: PrListOptions & AsyncCallOptions = {}): Promise<ListResult<PullRequest>> {
+    return this.read(v.prList(opts, this.target), opts)
   }
 
   /** One PR by number, branch or URL, with the heavy fields, or null. See `Gh.prView`. */
@@ -154,7 +184,7 @@ export class AsyncGh {
       timeoutMs: opts.timeoutMs,
       signal: opts.signal,
     })
-    return v.pickPrForBranch(rows?.rows ?? null, branch)
+    return v.pickPrForBranch(rows.rows, branch)
   }
 
   /** {@link prView}, re-asked until GitHub settles the merge state. See `Gh.prViewSettled`. */
@@ -177,9 +207,9 @@ export class AsyncGh {
     return last
   }
 
-  /** A PR's body text, or null when gh failed. */
-  prBody(number: number, opts: AsyncCallOptions = {}): Promise<string | null> {
-    return this.exec(v.prBody(number, this.target), opts)
+  /** A PR's body text. Rejects when gh fails. */
+  prBody(number: number, opts: AsyncCallOptions = {}): Promise<string> {
+    return this.read(v.prBody(number, this.target), opts)
   }
 
   /** A REST GET through `gh api`; failure is `ok: false`, never a rejection. */
@@ -188,7 +218,7 @@ export class AsyncGh {
   }
 
   /**
-   * A GraphQL query; each page's `data`, or null. See `Gh.graphql`.
+   * A GraphQL query; each page's `data`. Rejects on a failed or partial result. See `Gh.graphql`.
    *
    * @experimental
    */
@@ -196,36 +226,36 @@ export class AsyncGh {
     query: string,
     variables: Record<string, v.GraphqlVariable> = {},
     opts: v.GraphqlOptions & AsyncCallOptions = {},
-  ): Promise<unknown[] | null> {
-    return this.exec(v.graphql(query, variables, opts, this.target), opts)
+  ): Promise<unknown[]> {
+    return this.read(v.graphql(query, variables, opts, this.target), opts)
   }
 
-  /** Every label on the repository (up to `opts.limit`, default 1000), or null when gh failed. */
+  /** Every label on the repository (up to `opts.limit`, default 1000). Rejects when gh fails. */
   labelList(
     opts: { limit?: number | undefined } & AsyncCallOptions = {},
-  ): Promise<ListResult<Label> | null> {
-    return this.exec(v.labelList(opts, this.target), opts)
+  ): Promise<ListResult<Label>> {
+    return this.read(v.labelList(opts, this.target), opts)
   }
 
-  /** Issues matching `opts`, or null when gh failed. */
-  issueList(opts: IssueListOptions & AsyncCallOptions = {}): Promise<ListResult<IssueRow> | null> {
-    return this.exec(v.issueList(opts, this.target), opts)
+  /** Issues matching `opts`. Rejects when gh fails. */
+  issueList(opts: IssueListOptions & AsyncCallOptions = {}): Promise<ListResult<IssueRow>> {
+    return this.read(v.issueList(opts, this.target), opts)
   }
 
-  /** One issue with its labels, or null when gh failed. */
+  /** One issue with its labels; null when there is no such issue. */
   issueView(number: number, opts: AsyncCallOptions = {}): Promise<IssueRow | null> {
     return this.exec(v.issueView(number, this.target), opts)
   }
 
-  /** An owner's repositories, or null when gh failed. See `Gh.repoList`. */
+  /** An owner's repositories. Rejects when gh fails. See `Gh.repoList`. */
   repoList(
     owner: string,
     opts: v.RepoListOptions & AsyncCallOptions = {},
-  ): Promise<ListResult<Repository> | null> {
-    return this.exec(v.repoList(owner, opts, this.target), opts)
+  ): Promise<ListResult<Repository>> {
+    return this.read(v.repoList(owner, opts, this.target), opts)
   }
 
-  /** One repository, or null when gh failed. See `Gh.repoView`. */
+  /** One repository; null when there is no such repository. See `Gh.repoView`. */
   repoView(
     repo?: string | undefined,
     opts: { fields?: readonly string[] | undefined } & AsyncCallOptions = {},
@@ -233,12 +263,12 @@ export class AsyncGh {
     return this.exec(v.repoView(repo, opts.fields ?? v.REPO_FIELDS, this.target), opts)
   }
 
-  /** Pull requests across repositories matching a search query, or null. See `Gh.searchPrs`. */
+  /** Pull requests across repositories matching a search query. Rejects when gh fails. See `Gh.searchPrs`. */
   searchPrs(
     query: string,
     opts: v.SearchPrsOptions & AsyncCallOptions = {},
-  ): Promise<ListResult<PrSearchHit> | null> {
-    return this.exec(v.searchPrs(query, opts, this.target), opts)
+  ): Promise<ListResult<PrSearchHit>> {
+    return this.read(v.searchPrs(query, opts, this.target), opts)
   }
 
   /** True iff the `gh` binary is on PATH and runs. */
@@ -289,7 +319,7 @@ export class AsyncGh {
     return this.exec(v.editPrBody(number, body, this.target))
   }
 
-  /** The PR's unified diff; rejects with `CommandFailed` when gh cannot produce it. */
+  /** The PR's unified diff; rejects with the classified failure when gh cannot produce it. */
   prDiff(number: number): Promise<string> {
     return this.exec(v.prDiff(number, this.target))
   }
@@ -334,8 +364,8 @@ export class AsyncGh {
   }
 
   /** A PR's review threads, or null when they could not be read completely. */
-  prReviewThreads(number: number): Promise<v.ReviewThread[] | null> {
-    return this.exec(v.prReviewThreads(number, this.target))
+  prReviewThreads(number: number): Promise<v.ReviewThread[]> {
+    return this.read(v.prReviewThreads(number, this.target))
   }
 
   /** Create a label (or force it to `opts`'s color/description if it exists). */

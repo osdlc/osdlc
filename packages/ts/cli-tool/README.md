@@ -124,7 +124,8 @@ test one.
 | `EXIT.ok` (0) | The command did what it was asked |
 | `EXIT.error` (1) | A well-formed command that failed against the state it found |
 | `EXIT.usage` (2) | The command cannot run as typed |
-| 10-63 | This tool's own outcomes — `isDomainExit` checks the band |
+| `EXIT_FAILURE` (22-25) | A classified failure, the same in every tool; see below |
+| 10-63 | This tool's own outcomes — `isDomainExit` checks the band; avoid 22-25 |
 | 64+ | Not available: `sysexits.h` claims 64-78, the shell claims 126+ |
 
 A script can act on the split: 2 means fix the command line, 1 means look at
@@ -137,6 +138,43 @@ argparse and most GNU tools already use it.
 The band is for outcomes of the work — "nothing to sweep" as against
 "something failed to delete" — declared by the tool and documented at its own
 `main`. It is not a second spelling of the three universal codes above.
+
+### Failures
+
+A library below the CLI reports a missing tool, a signed-out `gh` or a dead
+network as a `Failure` from [`@osdlc/result`](../result#readme): a `kind`, a
+`message` and a `hint`. This package turns one into a line on stderr and an exit
+code, the same in every tool built on it. Four categories get a code each, the
+ones a script acts on differently:
+
+| Code | `EXIT_FAILURE` | Kinds | A script should |
+|---|---|---|---|
+| 22 | `missingTool` | `not-installed`, `not-executable` | install the program |
+| 23 | `service` | `not-authenticated`, `missing-token`, `not-found`, `tls`, `http`, `unreadable`, `unsupported` | fix the credentials or the name |
+| 24 | `repository` | `not-a-repo`, `no-remote`, `bad-remote`, `bad-cwd` | run it somewhere else, or name a repository |
+| 25 | `unreachable` | `network`, `remote-unreachable`, `timeout`, `rate-limited` | try again later |
+
+Any other kind (`exit`, `spawn`, `signal`, ...) is an ordinary failed run and
+exits 1. `FAILURE_EXIT` is the table by kind and `exitCodeFor(failure)` reads it.
+
+`runMain` does this for a thrown failure (a `FailureError`, which includes
+`CommandFailed`): it prints `<name>: <message> <hint>` and sets the category's
+exit code. The code follows the `kind` the thrown failure carries, so it is only
+as specific as the layer that threw it: `@osdlc/typed-git`, `@osdlc/typed-gh` and
+`@osdlc/code-host` throw the classified failure (a signed-out `gh` or `git push`
+is 23), while a bare `CommandFailed` from elsewhere carries only command-seam's
+kinds (`not-installed`, `timeout`, ... and a generic `exit`, which is 1).
+Classify before throwing if you want more. A `main` that holds a `Result` returns instead of throwing:
+
+```ts
+const listed = host.listPrs({})
+if (!listed.ok) return failWith(ctx, listed.error, { name: 'sweep' })
+```
+
+`failWith` prints the same line and returns the code. The line carries the
+message and the hint only; the raw `detail` (a tool's stderr) is left to a
+caller that asks for it, since this package has no verbose switch. Any other
+thrown error keeps the old behaviour: its message and exit 1.
 
 ### Flags are declared, not parsed
 
@@ -206,8 +244,10 @@ commander own `--help`.
 
 Assigns `process.exitCode` rather than calling `process.exit`, because
 exiting outright truncates buffered stdout and the bug only shows under a
-pipe. A thrown error becomes one line on stderr and exit 1; a stack trace
-says where the code was, not what the person who typed the command should do.
+pipe. A thrown error becomes one line on stderr and exit 1, and a thrown
+failure becomes its line and its category's exit code (see Failures); a stack
+trace says where the code was, not what the person who typed the command should
+do.
 
 ### Asking yes or no
 

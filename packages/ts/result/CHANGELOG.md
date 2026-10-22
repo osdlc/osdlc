@@ -1,0 +1,1 @@
+# @osdlc/result

@@ -1,7 +1,7 @@
 {
   "name": "@osdlc/typed-gh",
   "version": "0.6.0",
-  "description": "A typed GitHub client for TypeScript over the gh CLI. A total PullRequest/Review/CheckRun model, pure argv builders and parsers, and a tri-modal client — queries return parsed values, mutations throw, raw() is the escape hatch. Uses gh's own credentials; reads no token.",
+  "description": "A typed GitHub client for TypeScript over the gh CLI. A total PullRequest/Review/CheckRun model, pure argv builders and parsers, and a tri-modal client \u2014 queries return parsed values, mutations throw, raw() is the escape hatch. Uses gh's own credentials; reads no token.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",
   "type": "module",
@@ -23,7 +23,8 @@
   ],
   "dependencies": {
     "@osdlc/command-seam": "workspace:^",
-    "@osdlc/typed-git": "workspace:^"
+    "@osdlc/typed-git": "workspace:^",
+    "@osdlc/result": "workspace:^"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",

@@ -7,13 +7,19 @@
  * outright truncates buffered stdout — a piped run can lose its last lines,
  * and the bug only shows up under a pipe.
  *
- * A thrown error becomes one line on stderr and {@link EXIT.error}. A stack
- * trace is the wrong default for a command someone typed: it says where the
- * code was, not what they should do. A tool wanting traces can catch inside
- * its own `main`.
+ * A thrown error becomes one line on stderr and {@link EXIT.error}. A thrown
+ * failure (a `FailureError`, which includes `CommandFailed`) is rendered by
+ * {@link renderFailure} and exits with the code {@link exitCodeFor} gives its
+ * kind, so a missing tool, a signed-out `gh` and a dead network read the same
+ * in every tool that throws the classified failure (`@osdlc/typed-git`,
+ * `@osdlc/typed-gh` and `@osdlc/code-host` do). A bare `CommandFailed` carries only command-seam's
+ * kinds, so its generic `exit` is exit 1. A stack trace is the wrong default for a command someone
+ * typed: it says where the code was, not what they should do. A tool wanting
+ * traces can catch inside its own `main`.
  */
 
 import { EXIT } from './exit.ts'
+import { exitCodeFor, failureOf, renderFailure } from './failure.ts'
 import { processContext, type CliContext } from './io.ts'
 
 /**
@@ -40,6 +46,12 @@ export async function runMain(main: MainFn, options: RunMainOptions): Promise<vo
   try {
     process.exitCode = await main(argv, ctx)
   } catch (err) {
+    const failure = failureOf(err)
+    if (failure !== null) {
+      ctx.io.stderr(renderFailure(failure, options.name))
+      process.exitCode = exitCodeFor(failure)
+      return
+    }
     const message = err instanceof Error ? err.message : String(err)
     ctx.io.stderr(`${options.name}: ${message}\n`)
     process.exitCode = EXIT.error

@@ -21,6 +21,7 @@ const FUNCTIONS = [
   'anyCheckFailed',
   'api',
   'authStatus',
+  'classifyGhFailure',
   'createLabel',
   'createPr',
   'createReview',
@@ -144,9 +145,16 @@ describe('the examples', () => {
   })
 
   test('every method of Gh is called on a client', () => {
-    // `exec` is private, so it is not part of the surface.
+    // `exec` and `read` are private, so they are not part of the surface.
     const methods = Object.getOwnPropertyNames(pkg.Gh.prototype).filter(
-      (n) => n !== 'constructor' && n !== 'exec' && !WAITING.has(n),
+      (n) =>
+        n !== 'constructor' &&
+        n !== 'exec' &&
+        n !== 'read' &&
+        // The doors are getters; examples/ drives them by their methods.
+        n !== 'try' &&
+        n !== 'soft' &&
+        !WAITING.has(n),
     )
     expect(methods.length).toBeGreaterThan(0)
     expect(methods.filter((name) => !callsOnClient(name))).toEqual([])

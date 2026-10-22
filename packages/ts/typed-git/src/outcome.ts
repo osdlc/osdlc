@@ -1,22 +1,24 @@
 /**
- * The inspection door — `git.try.*`, and the {@link GitOutcome} it returns.
+ * The inspection door — `git.try.*`, and the `Result<T, GitFailure>` it returns.
  *
  * For callers that genuinely tolerate failure: a hook that must never break a
  * commit, a status endpoint that must always answer. `try` is a facade over
  * the whole client rather than a per-verb option, so a new verb costs nothing
  * here. Two rules make it honest:
  *
- *   - It catches `CommandFailed` and nothing else. A `TypeError` from a
- *     programmer mistake propagates; this is not a blanket catch.
+ *   - It catches a thrown git failure (the `FailureError` the plain door throws,
+ *     or a bare `CommandFailed`, both recognised by shape so two installed copies
+ *     of command-seam or result agree) and nothing else, and returns the
+ *     {@link GitFailure}, whose `cause` is the `CommandFailed`. A `TypeError`
+ *     from a programmer mistake propagates; this is not a blanket catch.
  *   - A declared absence is `{ ok: true }`. `git.try.configGet("no.such.key")`
  *     is `{ ok: true, value: null }`, because absence is an answer, not a
  *     failure.
  */
 
-import { CommandFailed } from '@osdlc/command-seam'
+import { err, ok, type Result } from '@osdlc/result'
 
-/** The result of a git call that was allowed to fail. */
-export type GitOutcome<T> = { ok: true; value: T } | { ok: false; error: CommandFailed }
+import { thrownGitFailure, type GitFailure } from './failure.ts'
 
 /**
  * The methods `try` mirrors: everything but the escape hatches, the
@@ -28,23 +30,24 @@ export type GitOutcome<T> = { ok: true; value: T } | { ok: false; error: Command
  */
 type Triable<C> = Omit<C, 'raw' | 'rawChecked' | 'at' | 'try' | 'soft' | 'cwd'>
 
-/** Every synchronous client method, returning a {@link GitOutcome}. */
+/** Every synchronous client method, returning a `Result<T, GitFailure>`. */
 export type TriedSync<C> = {
   [K in keyof Triable<C>]: Triable<C>[K] extends (...a: infer A) => infer R
-    ? (...a: A) => GitOutcome<R>
+    ? (...a: A) => Result<R, GitFailure>
     : never
 }
 
 /** Every awaitable client method, promising the same union. */
 export type TriedAsync<C> = {
   [K in keyof Triable<C>]: Triable<C>[K] extends (...a: infer A) => Promise<infer R>
-    ? (...a: A) => Promise<GitOutcome<R>>
+    ? (...a: A) => Promise<Result<R, GitFailure>>
     : never
 }
 
-/** `CommandFailed` becomes an outcome; anything else stays a throw. */
-function asOutcome<T>(error: unknown): GitOutcome<T> {
-  if (error instanceof CommandFailed) return { ok: false, error }
+/** `CommandFailed` becomes a classified failure; anything else stays a throw. */
+function asFailure(error: unknown): Result<never, GitFailure> {
+  const failure = thrownGitFailure(error)
+  if (failure !== null) return err(failure)
   throw error
 }
 
@@ -71,24 +74,24 @@ function facade<C extends object, F>(
   })
 }
 
-/** Wrap a synchronous client so every method returns a {@link GitOutcome}. */
+/** Wrap a synchronous client so every method returns a `Result<T, GitFailure>`. */
 export function triedSync<C extends object>(client: C): TriedSync<C> {
-  return facade(client, (call): GitOutcome<unknown> => {
+  return facade(client, (call): Result<unknown, GitFailure> => {
     try {
-      return { ok: true, value: call() }
+      return ok(call())
     } catch (error) {
-      return asOutcome(error)
+      return asFailure(error)
     }
   }) as TriedSync<C>
 }
 
-/** Wrap an awaitable client so every method promises a {@link GitOutcome}. */
+/** Wrap an awaitable client so every method promises a `Result<T, GitFailure>`. */
 export function triedAsync<C extends object>(client: C): TriedAsync<C> {
-  return facade(client, async (call): Promise<GitOutcome<unknown>> => {
+  return facade(client, async (call): Promise<Result<unknown, GitFailure>> => {
     try {
-      return { ok: true, value: await call() }
+      return ok(await call())
     } catch (error) {
-      return asOutcome(error)
+      return asFailure(error)
     }
   }) as TriedAsync<C>
 }
@@ -172,7 +175,7 @@ export function softSync<C extends object>(client: C, table: SoftTable): Soft<C>
     try {
       return call()
     } catch (error) {
-      if (error instanceof CommandFailed) return fallbackFor(table, name)
+      if (thrownGitFailure(error) !== null) return fallbackFor(table, name)
       throw error
     }
   }) as Soft<C>
@@ -184,7 +187,7 @@ export function softAsync<C extends object>(client: C, table: SoftTable): Soft<C
     try {
       return await call()
     } catch (error) {
-      if (error instanceof CommandFailed) return fallbackFor(table, name)
+      if (thrownGitFailure(error) !== null) return fallbackFor(table, name)
       throw error
     }
   }) as Soft<C>

@@ -14,6 +14,7 @@ import {
   catchFailed,
   catchFailedAsync,
   CommandFailed,
+  isCommandFailed,
   mapFailed,
   mapFailedAsync,
   runChecked,
@@ -177,6 +178,20 @@ test('an unreachable remote counts as no tag', async () => {
   })
 
   expect(await remoteHasTag('/repo', '1.2.0', asyncRunner)).toBe(false)
+})
+
+test('isCommandFailed reads a caught value by shape, so another copy of the package counts', () => {
+  const git = fakeRunner({ 'push origin': { exitCode: 1, stderr: 'rejected' } }).runner
+  const caught = (() => {
+    try {
+      return runChecked(git, ['push', 'origin'], { cwd: '/repo' })
+    } catch (e) {
+      return e
+    }
+  })()
+
+  expect(isCommandFailed(caught)).toBe(true)
+  expect(isCommandFailed(new Error('not a command'))).toBe(false)
 })
 
 // ---- The real runner -------------------------------------------------------

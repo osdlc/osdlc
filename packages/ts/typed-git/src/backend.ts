@@ -292,7 +292,7 @@ export type GitRequestKind = GitRequest['kind']
  *
  * A request resolves to its value — including the absence value (`null`,
  * `[]`, `false`) for a state the verb declares absent, such as an unset
- * config key. It rejects with `CommandFailed` — or whatever error the backend
+ * config key. It rejects with the classified failure — or whatever error the backend
  * considers equivalent — when git failed rather than answered.
  *
  * @experimental New request kinds land in minor releases. Use

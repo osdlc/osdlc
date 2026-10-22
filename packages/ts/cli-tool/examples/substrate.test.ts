@@ -22,11 +22,17 @@ import {
   didYouMean,
   envVars,
   EXIT,
+  EXIT_FAILURE,
+  exitCodeFor,
+  failureOf,
+  failWith,
+  FAILURE_EXIT,
   isDomainExit,
   isYes,
   processContext,
   processIo,
   readLine,
+  renderFailure,
   runMain,
   systemDirs,
   TieredDirs,
@@ -142,6 +148,47 @@ test('runMain turns a thrown error into one line on stderr and exit 1', async ()
     // Bun 1.4.2 treats an undefined reset as unset and exits 1, so restore 0 instead.
     process.exitCode = before ?? 0
   }
+})
+
+// A `Failure` from `@osdlc/result`: a kind to branch on, a message, a hint.
+const SIGNED_OUT = {
+  kind: 'not-authenticated',
+  message: 'gh is not signed in to GitHub.',
+  hint: 'Run `gh auth login`.',
+}
+
+/** What `FailureError` from `@osdlc/result` is: an `Error` carrying the failure. */
+function thrownFailure(): Error {
+  return Object.assign(new Error(SIGNED_OUT.message), { failure: SIGNED_OUT })
+}
+
+test('runMain renders a thrown failure as one line and the failure category exit code', async () => {
+  const context = captureContext()
+  const before = process.exitCode
+  try {
+    await runMain(
+      () => {
+        throw thrownFailure()
+      },
+      { name: 'tooly', context, argv: [] },
+    )
+    expect(context.io.err).toBe('tooly: gh is not signed in to GitHub. Run `gh auth login`.\n')
+    expect(process.exitCode).toBe(EXIT_FAILURE.service)
+  } finally {
+    process.exitCode = before ?? 0
+  }
+})
+
+test('a main holding a Result failure reports it and returns its exit code with failWith', () => {
+  const context = captureContext()
+  expect(failWith(context, SIGNED_OUT, { name: 'tooly' })).toBe(23)
+  expect(context.io.err).toBe(renderFailure(SIGNED_OUT, 'tooly'))
+  expect(exitCodeFor({ kind: 'not-installed', message: 'gh is not installed.' })).toBe(
+    FAILURE_EXIT['not-installed'],
+  )
+  expect(exitCodeFor({ kind: 'exit', message: 'it failed' })).toBe(EXIT.error)
+  expect(failureOf(thrownFailure())).toBe(SIGNED_OUT)
+  expect(failureOf(new Error('plain'))).toBeNull()
 })
 
 test('processIo is the real streams; captureIo is the test double', () => {

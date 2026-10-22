@@ -24,6 +24,15 @@ export type { CliContext, CliIo } from './io.ts'
 export { DOMAIN_EXIT_MAX, DOMAIN_EXIT_MIN, EXIT, isDomainExit } from './exit.ts'
 export type { ExitCode } from './exit.ts'
 
+export {
+  EXIT_FAILURE,
+  FAILURE_EXIT,
+  exitCodeFor,
+  failWith,
+  failureOf,
+  renderFailure,
+} from './failure.ts'
+
 export { defineCli } from './define-cli.ts'
 export type {
   BooleanFlag,

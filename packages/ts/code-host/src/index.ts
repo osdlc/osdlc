@@ -6,11 +6,13 @@
  */
 
 export * from './types.ts'
+export * from './failure.ts'
 export * from './github.ts'
 export * from './github-auth.ts'
 export * from './forgejo.ts'
 export * from './forgejo-auth.ts'
 export * from './facts.ts'
 export * from './select.ts'
+export * from './tools.ts'
 export * from './config.ts'
 export * from './pr-ref.ts'

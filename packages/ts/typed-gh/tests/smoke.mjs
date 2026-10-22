@@ -37,7 +37,7 @@ function fake(result) {
 
 // A query returns a parsed value.
 const ok = fake(answer('[{"number":7,"title":"Add retries"}]'))
-const prs = new Gh('/repo', { runner: ok.runner }).prList()?.rows
+const prs = new Gh('/repo', { runner: ok.runner }).prList().rows
 assert.equal(prs?.length, 1)
 assert.equal(prs?.[0]?.number, 7)
 assert.equal(
@@ -47,14 +47,23 @@ assert.equal(
 )
 assert.equal(ok.calls[0]?.[0], 'pr')
 
-// A failed query is null, not an empty list.
-assert.equal(new Gh('/repo', { runner: fake(answer('', 1)).runner }).prList(), null)
+// A failed query throws, not an empty list; `soft` is null and `try` a classified failure.
+const broken = new Gh('/repo', { runner: fake(answer('', 1)).runner })
+assert.throws(
+  () => broken.prList(),
+  (e) => e.name === 'FailureError' && e.failure.cause instanceof CommandFailed,
+)
+assert.equal(broken.soft.prList(), null)
+assert.equal(broken.try.prList().ok, false)
 
-// A failed mutation throws CommandFailed, carrying the argv.
+// A failed mutation throws the classified failure, carrying the argv; its cause is the CommandFailed.
 const failing = new Gh('/repo', { runner: fake(answer('', 1)).runner })
 assert.throws(
   () => failing.editPrBody(7, 'new body'),
-  (e) => e instanceof CommandFailed && e.argv.includes('7'),
+  (e) =>
+    e.name === 'FailureError' &&
+    e.failure.cause instanceof CommandFailed &&
+    e.failure.argv.includes('7'),
 )
 
 // The awaitable client follows the same contract.

@@ -1,26 +1,26 @@
 ---
-'@osdlc/agent-call': patch
-'@osdlc/cli-tool': patch
-'@osdlc/code-host': patch
-'@osdlc/color': patch
-'@osdlc/command-seam': patch
-'@osdlc/config-layers': patch
-'@osdlc/detect-harness': patch
-'@osdlc/etag-write': patch
-'@osdlc/frontmatter-lossless': patch
-'@osdlc/gfm-table': patch
-'@osdlc/intersect': patch
-'@osdlc/markdown-contract': patch
-'@osdlc/observe': patch
-'@osdlc/path-guard': patch
-'@osdlc/pr-update': patch
-'@osdlc/prettier-config': patch
-'@osdlc/tiered-dirs': patch
-'@osdlc/trust-repo': patch
-'@osdlc/tsconfig': patch
-'@osdlc/typed-gh': patch
-'@osdlc/typed-git': patch
-'@osdlc/yaml-splice': patch
+"@osdlc/agent-call": patch
+"@osdlc/cli-tool": patch
+"@osdlc/code-host": patch
+"@osdlc/color": patch
+"@osdlc/command-seam": patch
+"@osdlc/config-layers": patch
+"@osdlc/detect-harness": patch
+"@osdlc/etag-write": patch
+"@osdlc/frontmatter-lossless": patch
+"@osdlc/gfm-table": patch
+"@osdlc/intersect": patch
+"@osdlc/markdown-contract": patch
+"@osdlc/observe": patch
+"@osdlc/path-guard": patch
+"@osdlc/pr-update": patch
+"@osdlc/prettier-config": patch
+"@osdlc/tiered-dirs": patch
+"@osdlc/trust-repo": patch
+"@osdlc/tsconfig": patch
+"@osdlc/typed-gh": patch
+"@osdlc/typed-git": patch
+"@osdlc/yaml-splice": patch
 ---
 
 Make every package follow the same conventions. The published manifests and READMEs change; the runtime code and the `dist/` files do not.

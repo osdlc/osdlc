@@ -639,8 +639,8 @@ describe('posix', () => {
     test('without the option the same output is unparseable, on both runners', async () => {
       const s = runJson(syncRunner, ['-c', LOGGED], { cwd: CWD })
       const a = await runJsonAsync(asyncRunner, ['-c', LOGGED], { cwd: CWD })
-      expect(!s.ok && s.reason).toBe('unparseable')
-      expect(!a.ok && a.reason).toBe('unparseable')
+      expect(!s.ok && s.error.kind).toBe('unparseable')
+      expect(!a.ok && a.error.kind).toBe('unparseable')
     })
 
     test('trailing output is not tolerated', async () => {
@@ -659,7 +659,7 @@ describe('posix', () => {
         cwd: CWD,
         tolerateLeadingLog: true,
       })
-      expect(!s.ok && s.reason).toBe('failed')
+      expect(!s.ok && s.error.kind).toBe('exit')
     })
   })
 

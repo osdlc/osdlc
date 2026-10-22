@@ -17,20 +17,28 @@ export function run(): void {
 
     // Plain door: a declared absence is a value. Any other failure throws.
     assert.equal(fx.git.resolveRef('no-such-ref'), null)
-    assert.throws(() => outside.lsFilesUnmerged(), CommandFailed)
+    assert.throws(
+      () => outside.lsFilesUnmerged(),
+      (e: { failure?: { cause?: unknown } }) => e.failure?.cause instanceof CommandFailed,
+    )
 
     // `try` returns the failure as a value. A declared absence is still `ok`.
     assert.deepEqual(fx.git.try.resolveRef('no-such-ref'), { ok: true, value: null })
     const failed = outside.try.lsFilesUnmerged()
     assert.ok(!failed.ok)
-    assert.equal(failed.error.result.exitCode, 128)
+    assert.equal(failed.error.kind, 'not-a-repo')
+    assert.equal(failed.error.exitCode, 128)
+    assert.equal(failed.error.cause.result.exitCode, 128)
 
     // `soft` turns any failure into the verb's absence value.
     assert.deepEqual(outside.soft.lsFilesUnmerged(), [])
 
     // `raw` returns the result at any exit code. `rawChecked` throws on non-zero.
     assert.equal(outside.raw(['status']).exitCode, 128)
-    assert.throws(() => outside.rawChecked(['status']), CommandFailed)
+    assert.throws(
+      () => outside.rawChecked(['status']),
+      (e: { failure?: { cause?: unknown } }) => e.failure?.cause instanceof CommandFailed,
+    )
   } finally {
     rmSync(plain, { recursive: true, force: true })
     fx.cleanup()

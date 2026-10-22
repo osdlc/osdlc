@@ -489,15 +489,18 @@ result with `ran`: `ran(r) ? r.stdout : null`. When several steps can throw
 wrap them in `catchFailed` (see Reporting failures) instead of checking each
 result.
 
-`runJson` returns `{ ok: true, value, result }` or
-`{ ok: false, reason, message, result }`. `reason` is `'failed'` (the command
-did not run, or exited with a code not in `okExitCodes`), `'unparseable'`
-(stdout is not JSON) or `'invalid'` (the `parse` option threw).
+`runJson` returns a `Result` from `@osdlc/result` with the finished run
+alongside it: `{ ok: true, value, result }` or `{ ok: false, error, result }`.
+`error` is a `JsonFailure`. When the command did not run, or exited with a code
+not in `okExitCodes`, it is the `CommandFailure` for that run (`kind`
+`'not-installed'`, `'exit'`, `'timeout'` and so on, see "Classifying a
+failure"). Otherwise its `kind` is `'unparseable'` (stdout is not JSON) or
+`'invalid'` (the `parse` option threw; `error.cause` holds what it threw).
 `tolerateLeadingLog: true` skips log lines printed before the JSON.
 
 Some tools print JSON and exit non-zero on purpose: `npm outdated --json`
 exits 1 when anything is outdated. `okExitCodes: [0, 1]` accepts those
-codes. A run that never exited is still `'failed'`. An accepted non-zero exit
+codes. A run that never exited is still a failure. An accepted non-zero exit
 still needs output that parses, and the tool's own errors often use the same
 code (npm prints `{ "error": … }` and exits 1), so pass a `parse` that
 rejects the error output.
@@ -505,7 +508,7 @@ rejects the error output.
 Without `parse`, the type parameter is not checked at runtime. Pass `parse`,
 such as a schema's `parse` method, when you do not trust the producer. Its
 return type becomes the value's type. When it throws, the outcome is
-`invalid` and `cause` holds what it threw. `parse` must be sync: pass
+`invalid` and `error.cause` holds what it threw. `parse` must be sync: pass
 `schema.parse`, not `schema.parseAsync`. A `parse` that returns a promise
 gives `invalid` too.
 
@@ -515,7 +518,7 @@ import { runJson, spawnRunner } from '@osdlc/command-seam'
 const gh = spawnRunner('gh')
 const r = runJson<{ login: string }>(gh, ['api', 'user'], { cwd: process.cwd() })
 if (r.ok) console.log(r.value.login)
-else console.error(`${r.reason}: ${r.message}`)
+else console.error(`${r.error.kind}: ${r.error.message}`)
 
 // With a check: `parse` throws on a bad shape, and its return type is the value's.
 const login = (v: unknown): string => {
@@ -525,12 +528,52 @@ const login = (v: unknown): string => {
 }
 const checked = runJson(gh, ['api', 'user'], { cwd: process.cwd(), parse: login })
 if (checked.ok) console.log(checked.value.toUpperCase())
-else if (checked.reason === 'invalid') console.error(checked.message, checked.cause)
+else if (checked.error.kind === 'invalid') console.error(checked.error.message, checked.error.cause)
+```
+
+## Classifying a failure
+
+`classifyFailure(result, { binary, argv, okExitCodes })` turns a finished run
+into a `CommandFailure`, or `null` when the run succeeded (it exited with a
+code in `okExitCodes`, default `[0]`). It reads any runner's result: a capture
+runner's `CommandResult`, a `StreamResult` or a `ManagedProcessExit`. A
+`CommandFailure` is a `Failure` from `@osdlc/result` with the run's `binary`,
+`argv`, `exitCode` (`null` when the child never reported one) and `signal`.
+
+| `kind`           | When                                                                 | `message`                                                      |
+| ---------------- | -------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `not-installed`  | spawn `ENOENT` on the binary                                         | `` `gh` is not installed or not on PATH. ``                    |
+| `not-executable` | spawn `EACCES`, `EPERM` or `ENOEXEC`                                 | `` `gh` cannot be run: permission denied or not an executable. `` |
+| `bad-cwd`        | the working directory is missing or is not a directory               | `The working directory "/x" is missing or is not a directory.` |
+| `timeout`        | `timeoutMs` ran out                                                  | `` `gh` timed out and was stopped. ``                          |
+| `output-cap`     | the child passed `maxOutputBytes`                                    | `` `gh` wrote more output than allowed and was stopped. ``     |
+| `signal`         | a signal from elsewhere ended the child                              | `` `gh` was ended by SIGTERM. ``                               |
+| `aborted`        | an `AbortSignal` or `kill()` stopped it                              | `` `gh` was stopped before it finished. ``                     |
+| `spawn`          | any other failure to start (`EBADF`, `E2BIG`, a fake with no answer) | `` `gh` could not be started. ``                               |
+| `exit`           | it ran and exited with a code that is not accepted                   | the first line of the failure text (`failureText`)             |
+
+The messages say `The command` when the binary is not known. There is no
+`hint` at this layer: the layer that knows the tool knows how to install it.
+`detail` is the runner's `error` text for the kinds where the child never
+exited, and both streams (`failureText(result, { both: true })`) for `exit`.
+
+```ts
+import { classifyFailure, spawnRunner } from '@osdlc/command-seam'
+
+const r = spawnRunner('definitely-not-installed').run(['--version'], { cwd: process.cwd() })
+const failure = classifyFailure(r, { binary: 'definitely-not-installed', argv: ['--version'] })
+if (failure?.kind === 'not-installed') console.error(failure.message)
 ```
 
 ## Reporting failures
 
-`CommandFailed` carries `binary`, `argv` and the full `result`. Its `message`
+`CommandFailed` carries `failure`, the classified `CommandFailure` for the run.
+It extends `FailureError` from `@osdlc/result`, so a caller that handles
+`FailureError` handles it too, and `unwrap` rethrows one the same way.
+`failure.message` is the one line to show a person; `message` below is the
+long form for logs.
+
+`CommandFailed` also carries `binary`, `argv` and the full `result`. Its `message`
 is `command failed (exit N): <binary> <argv>`, quoted by `shellJoin`, then the
 stderr, or the runner's `error` when the child wrote no stderr. It never
 includes stdout. Some commands explain a failure on stdout instead, such as a
@@ -552,6 +595,10 @@ pass it through `env` or `input`.
 instead. Other errors pass through unchanged. `mapFailedAsync` and
 `catchFailedAsync` do the same for async functions, and their mapper or
 handler may be async.
+
+`isCommandFailed(error)` checks a caught value by its shape rather than with
+`instanceof`, so it still recognises a `CommandFailed` thrown by another
+installed copy of this package. The helpers above use it.
 
 ```ts
 import { catchFailed, mapFailed, runChecked, spawnRunner } from '@osdlc/command-seam'
@@ -823,7 +870,7 @@ The experimental exports:
 - `spawnRunnerBytes`, `spawnRunnerBytesAsync`, `BytesCommandRunner`, `AsyncBytesCommandRunner`
 - `catchFailedAsync`, `mapFailedAsync`
 - `firstLine`, `stderrOrError`
-- `runJson`, `runJsonAsync`, `parseJsonResult`, `JsonRun`, `RunJsonOptions`
+- `runJson`, `runJsonAsync`, `parseJsonResult`, `JsonRun`, `JsonFailure`, `RunJsonOptions`
 - `withDefaults`, `DefaultedRunner`
 - `which`, `WhichOptions`
 - `stopProcess`
