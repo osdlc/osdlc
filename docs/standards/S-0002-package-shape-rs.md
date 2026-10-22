@@ -8,7 +8,8 @@ the workspace. This standard says what that shape is.
 
 ## Rule
 
-A crate is a member of the Cargo workspace in `packages/rust/Cargo.toml`. A
+A crate is a member of the Cargo workspace in `packages/rust/Cargo.toml`, and
+only crates listed in its `members` are checked. A
 published crate (the default) keeps all of these:
 
 - **Shared fields from the workspace.** `edition`, `rust-version`, `license`
@@ -19,10 +20,10 @@ published crate (the default) keeps all of these:
   empty.
 - **Discoverable on crates.io.** `readme = "README.md"`, and `keywords` (at
   most five, the crates.io limit) and `categories` are not empty.
-- **A package list that ships the docs.** `include` lists `src/**/*.rs`,
-  `README.md`, `CHANGELOG.md`, `LICENSE-MIT` and `LICENSE-APACHE`. It may list
-  more, such as tests and fixtures. `cargo package` in CI builds the crate from
-  that list.
+- **A package list that ships the docs.** `include` has an entry under `src/`
+  (such as `src/**/*.rs`), and lists `README.md`, `CHANGELOG.md`, `LICENSE-MIT`
+  and `LICENSE-APACHE`. It may list more, such as tests and fixtures. `cargo
+  package` in CI builds the crate from that list.
 - **The same files.** The crate directory holds `README.md`, `CHANGELOG.md`,
   `LICENSE-MIT`, `LICENSE-APACHE`, `src/` and `examples/`.
 - **The same README and CHANGELOG.** `README.md` starts `# <name>`, has an

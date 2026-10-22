@@ -22,6 +22,10 @@
 // the licence files and src/. It needs no README, CHANGELOG, examples, keywords,
 // categories or `include`.
 //
+// Known limits of the TOML reader (below): no multi-line strings, and no quoted
+// keys or table headers containing `.` or `=`. A manifest that needs one is
+// reported as a problem for its crate, not parsed.
+//
 // Each check returns a list of problems, empty when the crate is fine.
 // package-shape-rs.test.mjs tests them.
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
@@ -168,6 +172,7 @@ export function parseToml(text) {
     if (eq === -1) continue
     const key = line.slice(0, eq).trim()
     let value = line.slice(eq + 1)
+    if (/"""|'''/.test(value)) throw new Error(`line ${i + 1}: multi-line strings are not supported`)
     while (depth(value) > 0 && i + 1 < lines.length) value += ` ${stripComment(lines[++i]).trim()}`
     setPath(table, key.split('.').map((k) => k.trim().replace(/^"|"$/g, '')), parseValue(value))
   }
@@ -306,7 +311,12 @@ export function crateProblems({ dirName, manifest, entries, readme, changelog })
 /** The problems of every workspace member under `root`, as `{ member, problems }`. */
 export function checkWorkspace(root) {
   const rustDir = join(root, 'packages', 'rust')
-  const members = workspaceMembers(readFileSync(join(rustDir, 'Cargo.toml'), 'utf8'))
+  let members
+  try {
+    members = workspaceMembers(readFileSync(join(rustDir, 'Cargo.toml'), 'utf8'))
+  } catch (err) {
+    return [{ member: 'packages/rust/Cargo.toml', problems: [`cannot parse packages/rust/Cargo.toml: ${err.message}`] }]
+  }
   if (members.length === 0) return [{ member: 'packages/rust/Cargo.toml', problems: ['the workspace lists no members'] }]
   const results = []
   for (const member of members) {
@@ -314,6 +324,13 @@ export function checkWorkspace(root) {
     const manifestPath = join(dir, 'Cargo.toml')
     if (!existsSync(manifestPath)) {
       results.push({ member, problems: ['Cargo.toml is missing'] })
+      continue
+    }
+    let manifest
+    try {
+      manifest = parseToml(readFileSync(manifestPath, 'utf8'))
+    } catch (err) {
+      results.push({ member, problems: [`cannot parse packages/rust/${member}/Cargo.toml: ${err.message}`] })
       continue
     }
     const names = readdirSync(dir)
@@ -326,7 +343,7 @@ export function checkWorkspace(root) {
       member,
       problems: crateProblems({
         dirName: member,
-        manifest: parseToml(readFileSync(manifestPath, 'utf8')),
+        manifest,
         entries,
         readme: read('README.md'),
         changelog: read('CHANGELOG.md'),

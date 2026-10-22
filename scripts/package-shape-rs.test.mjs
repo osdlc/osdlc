@@ -2,6 +2,9 @@
 //
 //   node --test scripts/package-shape-rs.test.mjs
 import { strict as assert } from 'node:assert'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { test } from 'node:test'
 
 import {
@@ -188,6 +191,30 @@ workspace = true
   manifest.package.edition = '2021'
   const bad = crateProblems({ dirName: 'demo', manifest, entries: { files: [], dirs: [] }, readme: null, changelog: null })
   assert.equal(bad.length, 4)
+})
+
+test('a multi-line string is a clear error naming the line, not a crash', () => {
+  assert.throws(
+    () => parseToml('[package]\nname = "demo"\ndescription = """\nA long\n"""\n'),
+    /line 3: multi-line strings are not supported/,
+  )
+  assert.throws(() => parseToml("description = '''x'''\n"), /multi-line strings are not supported/)
+})
+
+test('checkWorkspace reports a multi-line string as a problem for its crate', () => {
+  const root = mkdtempSync(join(tmpdir(), 'package-shape-rs-'))
+  try {
+    const rust = join(root, 'packages', 'rust')
+    mkdirSync(join(rust, 'demo'), { recursive: true })
+    writeFileSync(join(rust, 'Cargo.toml'), '[workspace]\nmembers = ["demo"]\n')
+    writeFileSync(join(rust, 'demo', 'Cargo.toml'), '[package]\nname = "demo"\ndescription = """\nx\n"""\n')
+    const [result] = checkWorkspace(root)
+    assert.equal(result.member, 'demo')
+    assert.equal(result.problems.length, 1)
+    assert.match(result.problems[0], /packages\/rust\/demo\/Cargo\.toml: line 3: multi-line strings are not supported/)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
 })
 
 test('every crate in this repository is in the shape', () => {

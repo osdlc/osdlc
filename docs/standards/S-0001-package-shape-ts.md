@@ -13,17 +13,21 @@ each. This standard says what that shape is.
   library already ships). No TypeScript source ships; a hand-written `.d.ts`
   is the one exception. Each `exports` entry is exactly
   `{ "types": "./dist/X.d.ts", "default": "./dist/X.js" }`, with no `bun`
-  condition. Bun still works, through the compiled `dist/`.
+  condition. Bun still works, through the compiled `dist/`. The tarball ships
+  no source maps, since they would point at the unshipped source.
 - **Node 22 or later**, as each library's `engines.node` says. A library's
   range is never wider than a workspace dependency's, so the ones that depend on
   `@osdlc/typed-git` carry its `^22.22.2 || ^24.15.0 || >=26.0.0`.
 - **Vitest under Node** for every test, with a `vitest.config.ts` in the
-  library. No script invokes `bun`.
+  library. No script invokes `bun`, and `@types/bun` is not a dependency.
 - **pnpm** installs and runs the scripts.
 - **Build first.** Libraries resolve each other, and their own name, through
-  `exports` to `dist/`. `tsconfig.json` has no `customConditions` and no
-  `paths` into a sibling's source. A library's `vitest.config.ts` may alias its
+  `exports` to `dist/`. `tsconfig.json` has no `customConditions`, and no
+  `paths` entry maps to a file outside the package (a sibling's source
+  included), so the build config adds no bun types. A library's `vitest.config.ts` may alias its
   own name to its source, so its examples run on the source without a build.
+- **Metadata.** `author` is `sksizer`, and `license` is `MIT OR Apache-2.0`,
+  the one licence every library declares.
 - **Source in `src/`, tests in `tests/`, examples in `examples/`.** No
   TypeScript sits at the package root but `vitest.config.ts`, and no
   `*.test.ts` sits under `src/`. `tsconfig.build.json` emits `src` with
