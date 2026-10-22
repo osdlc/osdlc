@@ -4,7 +4,7 @@
 #
 # A pull request checks only the packages it changed and the packages that
 # depend on them. The `changes` job picks them with
-# scripts/affected-packages.mjs, which says what counts as a change.
+# scripts/affected-packages.ts, which says what counts as a change.
 # A change to a shared input (this file, the lockfile, the root package.json)
 # checks every package, and so does every run that is not a pull request,
 # including the call from packages-publish.yml. The `verify` jobs always run
@@ -56,7 +56,7 @@ jobs:
           node-version: '24'
 
       - name: Test the package pick
-        run: node --test scripts/affected-packages.test.mjs
+        run: node --test scripts/affected-packages.test.ts
 
       # package-shape-ts.ts reads semver ranges with the root's `semver`, so
       # install the root project only (not the packages).
@@ -75,7 +75,7 @@ jobs:
         id: pick
         env:
           EVENT: ${{ github.event_name }}
-        run: node scripts/affected-packages.mjs
+        run: node scripts/affected-packages.ts
 
   verify:
     name: verify (${{ matrix.os }}, node ${{ matrix.node }})
@@ -151,7 +151,7 @@ jobs:
       # runs them; they read the same packed files on every Node.
       - name: Pack, publint, attw
         if: env.PICKED == 'true' && matrix.node == '24'
-        run: node scripts/check-packages.mjs $DIRS
+        run: node scripts/check-packages.ts $DIRS
 
   # Not required by the ruleset. Lint, format and the tarball checks read text
   # and tarballs the same on every OS, so they run in `verify` only.

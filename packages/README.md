@@ -216,7 +216,7 @@ mistake caught within hours, such as a leaked secret, and the owner does it.
 npm can only set up trusted publishing on a package that already exists, so
 CI cannot publish a new library's first version. Before its first release
 the owner does the two steps below.
-`node scripts/stage-npm-package.mjs packages/ts/<name>` does both.
+`node scripts/stage-npm-package.ts packages/ts/<name>` does both.
 It skips a step that is already done. `--dry-run` builds the package and
 shows what it would publish, without changing anything on npm.
 
@@ -331,7 +331,7 @@ support Node 22.
 `.github/workflows/packages-ci.yml` runs these and the smoke checks on Linux
 and macOS, on Node 22 and 24, and `pnpm run check:packages` on Node 24 only. On a pull
 request it checks only the libraries the pull request changed and the ones
-that depend on them. `scripts/affected-packages.mjs` picks them, and
+that depend on them. `scripts/affected-packages.ts` picks them, and
 says which shared files make it check every library. path-guard also runs on
 Windows. The `verify` jobs always report, so they are the checks to require.
 

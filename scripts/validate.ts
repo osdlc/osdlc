@@ -1,7 +1,7 @@
 // Static checks on the published plugin packs, using only Node builtins so it
 // runs on a bare checkout. Generated: written by sksizer/dev's
 // scripts/sdlc-mirror/assemble.ts on each release (edit
-// scripts/sdlc-mirror/templates/product/scripts/validate.mjs there).
+// scripts/sdlc-mirror/templates/product/scripts/validate.ts there).
 //
 // Checks, per harness (Claude Code, Codex, Cursor, Pi):
 //   - every plugin in the marketplace manifest has a pack directory;
@@ -10,7 +10,8 @@
 //   - the pack holds at least one skill, and every skill directory has a
 //     SKILL.md.
 // Then repo-wide:
-//   - every .mjs script parses (`node --check`);
+//   - every .mjs script parses (`node --check`; it cannot read TypeScript, so
+//     the .ts scripts are covered by `pnpm run typecheck:scripts` instead);
 //   - the bundled sdlc CLI starts under plain Node and reports the version
 //     the marketplace names for sdlc;
 //   - LICENSE exists and CHANGELOG.md has a section for that version.
@@ -19,13 +20,25 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 
 const root = process.cwd()
-const problems = []
-const fail = (msg) => problems.push(msg)
-const readJson = (rel) => {
+const problems: string[] = []
+const fail = (msg: string): void => {
+  problems.push(msg)
+}
+
+/** The fields of a marketplace or pack manifest that these checks read. */
+interface Manifest {
+  name?: unknown
+  version?: unknown
+  license?: unknown
+  pi?: unknown
+  plugins?: { name: string; version?: string }[]
+}
+
+const readJson = (rel: string): Manifest | undefined => {
   try {
     return JSON.parse(readFileSync(join(root, rel), 'utf8'))
   } catch (err) {
-    fail(`${rel}: ${err.message}`)
+    fail(`${rel}: ${(err as Error).message}`)
     return undefined
   }
 }
@@ -56,8 +69,8 @@ const harnesses = [
   { name: 'pi', market: null, packs: '.pi/packs', manifest: 'package.json', plain: true },
 ]
 
-let plugins // names listed by the Claude marketplace: the reference set
-let sdlcVersion
+let plugins: string[] | undefined // names listed by the Claude marketplace: the reference set
+let sdlcVersion: string | undefined
 for (const h of harnesses) {
   if (h.market !== null) {
     const market = readJson(h.market)
@@ -109,7 +122,7 @@ for (const h of harnesses) {
   }
 }
 
-const walk = (dir, out = []) => {
+const walk = (dir: string, out: string[] = []): string[] => {
   for (const e of readdirSync(dir, { withFileTypes: true })) {
     if (e.name === '.git' || e.name === 'node_modules') continue
     const p = join(dir, e.name)

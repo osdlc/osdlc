@@ -19,7 +19,7 @@
 // resolve from local tarballs, not npm. A release bumps a library and its
 // dependents together, and the new library version is not on npm yet.
 //
-//   node scripts/check-packages.mjs [packages/ts/<name> ...]
+//   node scripts/check-packages.ts [packages/ts/<name> ...]
 //
 // With no package arguments it checks every packages/ts/* package; with
 // arguments, only those are checked, but all are still packed. The
@@ -45,10 +45,28 @@ import {
   parseJsonc,
   shapeProblems,
 } from './package-shape-ts.ts'
+import type { PackageJson, Tsconfig } from './package-shape-ts.ts'
+
+/** A package.json: the shape fields plus the ones this script reads. */
+type Pkg = PackageJson & {
+  name: string
+  version?: string
+  license?: string
+  main?: string
+  types?: string
+  typings?: string
+}
+
+/** What packing one package produced: its tarball, or why it failed. */
+interface Packed {
+  pkg: Pkg
+  tarball?: string
+  error?: unknown
+}
 
 const root = process.cwd()
 
-const allDirs = []
+const allDirs: string[] = []
 const ts = join(root, 'packages', 'ts')
 for (const name of existsSync(ts) ? readdirSync(ts).sort() : []) {
   if (existsSync(join(ts, name, 'package.json'))) allDirs.push(join(ts, name))
@@ -57,22 +75,22 @@ const args = process.argv.slice(2)
 const dirs = args.length === 0 ? allDirs : [...new Set(args.map((d) => resolve(root, d)))]
 const out = mkdtempSync(join(tmpdir(), 'check-packages-'))
 
-const bin = (name) => join(root, 'node_modules', '.bin', name)
-const run = (cmd, argv, cwd) =>
+const bin = (name: string): string => join(root, 'node_modules', '.bin', name)
+const run = (cmd: string, argv: string[], cwd: string): string =>
   execFileSync(cmd, argv, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] })
 
 /** The package's smoke check, or undefined if it has none. */
-function smokeFile(pkgDir) {
+function smokeFile(pkgDir: string): string | undefined {
   const file = join(pkgDir, 'tests', 'smoke.mjs')
   return existsSync(file) ? file : undefined
 }
 
 /** The specifiers a consumer can load: `name` plus each `exports` subpath
  * (pattern subpaths skipped), or `name` alone for a `main`-only package. */
-function entryPoints(pkg) {
+function entryPoints(pkg: Pkg): string[] {
   if (pkg.exports === undefined) return pkg.main ? [pkg.name] : []
   if (typeof pkg.exports === 'string') return [pkg.name]
-  const keys = Object.keys(pkg.exports)
+  const keys = Object.keys(pkg.exports as object)
   if (!keys.some((k) => k.startsWith('.'))) return [pkg.name] // conditions only
   return keys
     .filter((k) => !k.includes('*') && k !== './package.json')
@@ -84,10 +102,15 @@ function entryPoints(pkg) {
  * preset, possibly with comments) is resolved and read, since its consumer
  * is a tool rather than Node. Then copies in the package's smoke check, if
  * it has one, and runs it there. */
-function cleanConsumer(pkg, pkgDir, tarball, packed) {
+function cleanConsumer(
+  pkg: Pkg,
+  pkgDir: string,
+  tarball: string,
+  packed: Map<string, Packed>,
+): void {
   const consumer = mkdtempSync(join(tmpdir(), 'check-packages-consumer-'))
   try {
-    const overrides = {}
+    const overrides: Record<string, string> = {}
     for (const [dir, p] of packed) {
       if (dir !== pkgDir && p.tarball) overrides[p.pkg.name] = `file:${p.tarball}`
     }
@@ -127,7 +150,7 @@ function cleanConsumer(pkg, pkgDir, tarball, packed) {
 const LICENSE = 'MIT OR Apache-2.0'
 
 /** The paths in `tarball`, relative to the package root inside it. */
-function packedFiles(tarball) {
+function packedFiles(tarball: string): string[] {
   return run('tar', ['-tzf', tarball], root)
     .split('\n')
     .filter((f) => f && !f.endsWith('/'))
@@ -135,18 +158,18 @@ function packedFiles(tarball) {
 }
 
 /** The package's tsconfig files that exist, parsed, by file name. */
-function tsconfigs(pkgDir) {
-  const out = {}
+function tsconfigs(pkgDir: string): Record<string, Tsconfig> {
+  const out: Record<string, Tsconfig> = {}
   for (const name of ['tsconfig.json', 'tsconfig.build.json']) {
     const file = join(pkgDir, name)
-    if (existsSync(file)) out[name] = parseJsonc(readFileSync(file, 'utf8'))
+    if (existsSync(file)) out[name] = parseJsonc(readFileSync(file, 'utf8')) as Tsconfig
   }
   return out
 }
 
 /** The package's files relative to it, skipping what a build or install leaves behind. */
-function packageFiles(pkgDir, rel = '') {
-  const out = []
+function packageFiles(pkgDir: string, rel = ''): string[] {
+  const out: string[] = []
   for (const entry of readdirSync(join(pkgDir, rel), { withFileTypes: true })) {
     if (['node_modules', 'dist', 'coverage', '.git'].includes(entry.name)) continue
     if (entry.name.startsWith('.readme-')) continue
@@ -158,27 +181,27 @@ function packageFiles(pkgDir, rel = '') {
 }
 
 /** The file's text, or null when it does not exist. */
-function textOrNull(file) {
+function textOrNull(file: string): string | null {
   return existsSync(file) ? readFileSync(file, 'utf8') : null
 }
 
 /** The manifest `pnpm pack` wrote into the tarball. */
-function packedManifest(tarball) {
+function packedManifest(tarball: string): PackageJson {
   return JSON.parse(run('tar', ['-xzOf', tarball, 'package/package.json'], root))
 }
 
 /** True when the manifest names a `types` entry, top level or in `exports`. */
-function shipsTypes(pkg) {
+function shipsTypes(pkg: Pkg): boolean {
   if (pkg.types || pkg.typings) return true
   return JSON.stringify(pkg.exports ?? {}).includes('"types"')
 }
 
-const packed = new Map()
+const packed = new Map<string, Packed>()
 for (const pkgDir of new Set([...allDirs, ...dirs])) {
   try {
-    const pkg = JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf8'))
+    const pkg: Pkg = JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf8'))
     const packedName = run('pnpm', ['pack', '--pack-destination', out], pkgDir).trim().split('\n').pop()
-    packed.set(pkgDir, { pkg, tarball: join(out, basename(packedName)) })
+    packed.set(pkgDir, { pkg, tarball: join(out, basename(packedName!)) })
   } catch (error) {
     packed.set(pkgDir, { pkg: { name: basename(pkgDir) }, error })
   }
@@ -186,9 +209,9 @@ for (const pkgDir of new Set([...allDirs, ...dirs])) {
 
 // The pnpm catalog, and every workspace package's `engines.node` by name.
 const catalog = parseCatalog(readFileSync(join(root, 'pnpm-workspace.yaml'), 'utf8'))
-const engines = {}
+const engines: Record<string, string> = {}
 for (const { pkg } of packed.values()) {
-  if (pkg.engines?.node !== undefined) engines[pkg.name] = pkg.engines.node
+  if (pkg.engines?.node !== undefined) engines[pkg.name] = pkg.engines.node as string
 }
 
 let failed = 0
@@ -197,10 +220,11 @@ if (!existsSync(join(root, '.oxlintrc.json'))) {
   console.error('FAILED: .oxlintrc.json is missing at the repository root; every package lints with it')
 }
 for (const pkgDir of dirs) {
-  const { pkg, tarball, error } = packed.get(pkgDir)
+  const { pkg, tarball: packedTarball, error } = packed.get(pkgDir)!
   console.log(`\n== ${pkg.name}@${pkg.version} (${relative(root, pkgDir)})`)
   try {
     if (error) throw error
+    const tarball = packedTarball!
     if (pkg.license !== LICENSE) {
       throw new Error(`license is ${JSON.stringify(pkg.license)}, expected ${JSON.stringify(LICENSE)}`)
     }
@@ -239,7 +263,8 @@ for (const pkgDir of dirs) {
       console.log('attw: skipped, the package ships no types')
     }
     cleanConsumer(pkg, pkgDir, tarball, packed)
-  } catch (err) {
+  } catch (caught) {
+    const err = caught as Error & { shape?: boolean; stdout?: string }
     failed++
     // The shape problems are one per line; the other tools' output is long.
     console.error(`FAILED: ${pkg.name}: ${err.shape ? err.message : err.message.split('\n')[0]}`)

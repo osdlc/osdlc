@@ -54,7 +54,7 @@ each. This standard says what that shape is.
 ## Enforcement
 
 `scripts/package-shape-ts.ts` holds the checks, as functions over data that
-`scripts/check-packages.mjs` reads from each package and from its packed
+`scripts/check-packages.ts` reads from each package and from its packed
 tarball. `scripts/package-shape-ts.test.ts` tests them.
 
 ```sh

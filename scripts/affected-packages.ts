@@ -1,7 +1,7 @@
 // Picks the packages/ts/* packages a packages-ci.yml run checks, and writes
 // them to $GITHUB_OUTPUT (or prints them when it is unset).
 //
-//   node scripts/affected-packages.mjs [base] [head]
+//   node scripts/affected-packages.ts [base] [head]
 //
 // On a pull_request (EVENT=pull_request) it checks each package with a file
 // changed between `base` (default HEAD^1, the base branch side of the merge
@@ -10,14 +10,14 @@
 // packages/ts/<name>, since a TypeScript twin reads its crate's fixtures; a
 // `-wasm` crate counts for the package without the suffix. Every package is
 // checked on any other event, when a shared input below changed, or when the
-// diff fails. affected-packages.test.mjs tests the rules.
+// diff fails. affected-packages.test.ts tests the rules.
 //
 // Outputs:
 //   packages  JSON array of the package directories to check
 //   filter    pnpm --filter flags for them
 //   build     pnpm --filter flags for them and their workspace dependencies,
 //             which a build needs first
-//   dirs      the directories, space-separated, for check-packages.mjs
+//   dirs      the directories, space-separated, for check-packages.ts
 import { execFileSync } from 'node:child_process'
 import { appendFileSync, existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -26,7 +26,7 @@ import { pathToFileURL } from 'node:url'
 /** Files every package reads, or that decide how they are checked. */
 const SHARED = [
   /^\.github\/workflows\/packages-ci\.yml$/,
-  /^scripts\/(affected-packages|check-packages)\.mjs$/,
+  /^scripts\/(affected-packages|check-packages)\.ts$/,
   /^scripts\/package-shape-ts(\.test)?\.ts$/,
   /^package\.json$/,
   /^\.oxlintrc\.json$/,
@@ -36,9 +36,21 @@ const SHARED = [
   /^\.changeset\/config\.json$/,
 ]
 
+/** The parts of a package.json these rules read. */
+export interface Manifest {
+  name: string
+  dependencies?: Record<string, string>
+  devDependencies?: Record<string, string>
+  peerDependencies?: Record<string, string>
+  optionalDependencies?: Record<string, string>
+}
+
 /** Each packages/ts/* manifest, by its directory. */
-export function workspace() {
-  const manifests = new Map()
+export type Manifests = Map<string, Manifest>
+
+/** Each packages/ts/* manifest, by its directory. */
+export function workspace(): Manifests {
+  const manifests: Manifests = new Map()
   for (const name of readdirSync('packages/ts').sort()) {
     const file = join('packages/ts', name, 'package.json')
     if (existsSync(file)) manifests.set(`packages/ts/${name}`, JSON.parse(readFileSync(file, 'utf8')))
@@ -47,9 +59,9 @@ export function workspace() {
 }
 
 /** The workspace packages each package depends on, by directory. */
-function dependencies(manifests) {
+function dependencies(manifests: Manifests): Map<string, string[]> {
   const dirOf = new Map([...manifests].map(([dir, pkg]) => [pkg.name, dir]))
-  const deps = new Map()
+  const deps = new Map<string, string[]>()
   for (const [dir, pkg] of manifests) {
     const names = Object.keys({
       ...pkg.dependencies,
@@ -57,7 +69,7 @@ function dependencies(manifests) {
       ...pkg.peerDependencies,
       ...pkg.optionalDependencies,
     })
-    deps.set(dir, names.filter((n) => dirOf.has(n)).map((n) => dirOf.get(n)))
+    deps.set(dir, names.filter((n) => dirOf.has(n)).map((n) => dirOf.get(n)!))
   }
   return deps
 }
@@ -66,15 +78,23 @@ function dependencies(manifests) {
  * The package directories to check, sorted. `files` is the changed files, or
  * null when the diff failed.
  */
-export function pick({ event, files, manifests }) {
+export function pick({
+  event,
+  files,
+  manifests,
+}: {
+  event: string | undefined
+  files: string[] | null
+  manifests: Manifests
+}): string[] {
   if (event !== 'pull_request' || files === null || files.some((f) => SHARED.some((re) => re.test(f)))) {
     return [...manifests.keys()].sort()
   }
-  const out = new Set()
+  const out = new Set<string>()
   for (const file of files) {
     const m = /^packages\/(ts|rust)\/([^/]+)\//.exec(file)
     if (m === null) continue
-    const name = m[1] === 'rust' ? m[2].replace(/-wasm$/, '') : m[2]
+    const name = m[1] === 'rust' ? m[2]!.replace(/-wasm$/, '') : m[2]
     if (manifests.has(`packages/ts/${name}`)) out.add(`packages/ts/${name}`)
   }
   // Add dependents until nothing changes.
@@ -92,15 +112,15 @@ export function pick({ event, files, manifests }) {
 }
 
 /** `dirs` and every workspace package they depend on, sorted. */
-export function withDependencies(dirs, manifests) {
+export function withDependencies(dirs: string[], manifests: Manifests): string[] {
   const deps = dependencies(manifests)
   const out = new Set(dirs)
-  for (const dir of out) for (const d of deps.get(dir)) out.add(d)
+  for (const dir of out) for (const d of deps.get(dir) ?? []) out.add(d)
   return [...out].sort()
 }
 
 /** The files changed between `base` and `head`, or null when the diff fails. */
-function changedFiles(base, head) {
+function changedFiles(base: string, head: string): string[] | null {
   try {
     const out = execFileSync('git', ['diff', '--name-only', '--no-renames', base, head], {
       encoding: 'utf8',
@@ -117,7 +137,7 @@ function main() {
   const manifests = workspace()
   const files = event === 'pull_request' ? changedFiles(base, head) : null
   const packages = pick({ event, files, manifests })
-  const filter = (dirs) => dirs.map((d) => `--filter ./${d}`).join(' ')
+  const filter = (dirs: string[]) => dirs.map((d) => `--filter ./${d}`).join(' ')
   const outputs = {
     packages: JSON.stringify(packages),
     filter: filter(packages),
@@ -137,4 +157,4 @@ function main() {
   }
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) main()
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main()

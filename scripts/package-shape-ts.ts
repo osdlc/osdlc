@@ -1,5 +1,5 @@
 // The shape every packages/ts/* package keeps, as checks over data that
-// check-packages.mjs reads from disk and from the packed tarball:
+// check-packages.ts reads from disk and from the packed tarball:
 //
 //   - `exports` has no `bun` condition. Every entry is `types` and `default`,
 //     both under dist/.

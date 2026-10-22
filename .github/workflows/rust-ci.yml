@@ -352,7 +352,7 @@ jobs:
 
   # A pull request with a breaking change to a crate on crates.io must set
   # the crate's new version in its Cargo.toml. See
-  # scripts/semver-version-check.mjs. cargo-semver-checks misses some
+  # scripts/semver-version-check.ts. cargo-semver-checks misses some
   # breaking changes, so reviewers still check.
   #
   # cargo-semver-checks reads the rustdoc JSON of the pinned toolchain, so its
@@ -388,7 +388,7 @@ jobs:
           node-version: '24'
 
       - name: Breaking changes set their own version
-        run: node scripts/semver-version-check.mjs packages/rust/Cargo.toml HEAD^1
+        run: node scripts/semver-version-check.ts packages/rust/Cargo.toml HEAD^1
 
   rust:
     needs: [changes, lint, rust-test, msrv, minimal-versions, wasm, release-plz, semver-version]

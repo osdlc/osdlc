@@ -14,7 +14,7 @@
     "smoke": "pnpm -r --if-present run smoke",
     "lint": "pnpm -r --if-present run lint",
     "format:check": "pnpm -r --if-present run format:check",
-    "check:packages": "node scripts/check-packages.mjs",
+    "check:packages": "node scripts/check-packages.ts",
     "check:crates": "node scripts/package-shape-rs.ts",
     "typecheck:scripts": "tsc -p scripts/tsconfig.json"
   },
