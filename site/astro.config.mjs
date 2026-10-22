@@ -1,4 +1,6 @@
+import { fileURLToPath } from 'node:url'
 import starlight from '@astrojs/starlight'
+import vue from '@astrojs/vue'
 import { defineConfig } from 'astro/config'
 import starlightBlog from 'starlight-blog'
 
@@ -6,7 +8,23 @@ import starlightBlog from 'starlight-blog'
 export default defineConfig({
   site: 'https://osdlc.github.io',
   base: '/osdlc',
+  vite: {
+    resolve: {
+      // Guide components live in packages/, outside this folder; resolve their
+      // vue import from the site's own install.
+      dedupe: ['vue'],
+      // A library guide's interactive components import the library by name
+      // and run against its source, so a guide never lags a release.
+      alias: [
+        {
+          find: /^@osdlc\/([\w-]+)$/,
+          replacement: fileURLToPath(new URL('../packages/ts/$1/src/index.ts', import.meta.url)),
+        },
+      ],
+    },
+  },
   integrations: [
+    vue(),
     starlight({
       title: 'Open SDLC',
       description: 'Defaults and standards for the software development lifecycle.',
@@ -22,6 +40,14 @@ export default defineConfig({
       ],
       sidebar: [
         { label: 'Standards', items: [{ autogenerate: { directory: 'standards' } }] },
+        {
+          label: 'Libraries',
+          items: [
+            { label: 'Overview', link: '/libraries/' },
+            { label: 'TypeScript', items: [{ autogenerate: { directory: 'libraries/ts', collapsed: true } }] },
+            { label: 'Rust', items: [{ autogenerate: { directory: 'libraries/rust', collapsed: true } }] },
+          ],
+        },
       ],
     }),
   ],

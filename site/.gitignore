@@ -2,3 +2,6 @@ dist/
 .astro/
 # Generated from ../standards by scripts/sync-standards.mjs.
 src/content/docs/standards/
+# Generated from ../packages by scripts/sync-libraries.mjs and build-api.mjs.
+src/content/docs/libraries/
+public/api/
