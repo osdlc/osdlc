@@ -487,20 +487,27 @@ describe('posix', () => {
     // and a later timeout or abort does not replace that result.
     // The child is this runtime running a short script: it starts the
     // grandchild with `detached: true` (its own session) and `stdio:
-    // 'inherit'` (the same pipes), records the grandchild's pid, then exits.
-    const leaver = (pidFile: string) =>
+    // 'inherit'` (the same pipes), records the grandchild's pid, then exits,
+    // at the wall-clock time `exitAt` when one is given.
+    const leaver = (pidFile: string, exitAt?: number) =>
       [
         `const { spawn } = require('node:child_process')`,
         `const g = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 3000)'], { detached: true, stdio: 'inherit' })`,
         `require('node:fs').writeFileSync(${JSON.stringify(pidFile)}, String(g.pid))`,
         `g.unref()`,
+        ...(exitAt === undefined
+          ? []
+          : [`setTimeout(() => {}, Math.max(0, ${exitAt} - Date.now()))`]),
       ].join('\n')
 
     /** Run `body` with the leaver script, which records its grandchild's pid in a temp file; reap the grandchild after. */
-    async function withLeaver(body: (script: string) => Promise<void>): Promise<void> {
+    async function withLeaver(
+      body: (script: string) => Promise<void>,
+      exitAt?: number,
+    ): Promise<void> {
       const pidFile = join(scratch, `leaver-${Math.random().toString(36).slice(2)}`)
       try {
-        await body(leaver(pidFile))
+        await body(leaver(pidFile, exitAt))
       } finally {
         try {
           reap(Number(readFileSync(pidFile, 'utf8')))
@@ -527,21 +534,23 @@ describe('posix', () => {
       15_000,
     )
 
-    test(
-      'a timeout after a group-gone child exited keeps the exit code',
-      () =>
-        withLeaver(async (script) => {
-          // Fires after the child exits and before EXIT_GRACE_MS (async.ts, 250 ms) ends.
-          const r = await spawnRunnerAsync(process.execPath).run(['-e', script], {
-            cwd: CWD,
-            timeoutMs: 240,
-            processGroup: true,
-          })
-          expect(r.exitCode).toBe(0)
-          expect(r.neverExited).toBeUndefined()
-        }),
-      15_000,
-    )
+    test('a timeout after a group-gone child exited keeps the exit code', () => {
+      // The timeout must fire after the child exits and before
+      // EXIT_GRACE_MS (async.ts, 250 ms) ends. Starting the child can take
+      // over 500 ms on a loaded CI runner, so it does not exit as soon as
+      // it can: it exits at a fixed time 1.4 s out, and the timeout fires
+      // 125 ms after that, in the middle of the grace.
+      const t0 = Date.now()
+      return withLeaver(async (script) => {
+        const r = await spawnRunnerAsync(process.execPath).run(['-e', script], {
+          cwd: CWD,
+          timeoutMs: 1_500,
+          processGroup: true,
+        })
+        expect(r.exitCode).toBe(0)
+        expect(r.neverExited).toBeUndefined()
+      }, t0 + 1_375)
+    }, 15_000)
 
     test(
       'an abort after a group-gone child exited keeps the exit code',

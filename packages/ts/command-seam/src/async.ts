@@ -308,7 +308,10 @@ function runAsync(
     // Bytes captured per stream, for `maxOutputBytes`.
     let outBytes = 0
     let errBytes = 0
-    let capped: 'stdout' | 'stderr' | undefined
+    // Each stream stops at its own cap; the first to pass it is the result.
+    const capped = { stdout: false, stderr: false }
+    let capOutcome:
+      { result: Omit<CommandResult, 'stdout' | 'stderr'>; message: string } | undefined
     /**
      * Settle once, with the streams flushed (see `capture`). Every settle
      * path routes through here, so one flush covers every path.
@@ -316,6 +319,10 @@ function runAsync(
     const finish = (result: Omit<CommandResult, 'stdout' | 'stderr'>, error?: string) => {
       if (settled) return
       settled = true
+      if (capOutcome !== undefined) {
+        result = capOutcome.result
+        error = capOutcome.message
+      }
       // The group can outlive the settle: a background member, or an aborted
       // group waiting for its SIGKILL. It stays registered until it is empty,
       // so a signal to the host still reaches the rest. Unless this runner
@@ -327,8 +334,8 @@ function runAsync(
       if (timer !== undefined) clearTimeout(timer)
       if (graceTimer !== undefined) clearTimeout(graceTimer)
       opts.signal?.removeEventListener('abort', onAbort)
-      const stdout = out.end(capped !== 'stdout')
-      const stderr = err.end(capped !== 'stderr') as string
+      const stdout = out.end(!capped.stdout)
+      const stderr = err.end(!capped.stderr) as string
       // Close the read ends. On `close` this is a no-op. On the other
       // paths a surviving grandchild may still hold the write ends and
       // keep writing. Handlers left installed would go on appending to
@@ -345,32 +352,35 @@ function runAsync(
       })
     }
     /**
-     * Stop at the cap: keep what fits, kill the child (or its group) and
-     * settle as the sync runner does. The decoder holds back a character
-     * the cut splits, and `finish` does not flush it, so a decoded stream
-     * ends on a character boundary. Raw bytes end at the cap.
+     * Stop at the cap: keep what fits and kill the child (or its group).
+     * The run settles on the usual `close` or exit grace, so output the
+     * child already wrote to the other stream is still read, as the sync
+     * runner reads it. The decoder holds back a character the cut splits,
+     * and `finish` does not flush it, so a decoded stream ends on a
+     * character boundary. Raw bytes end at the cap.
      */
     const overCap = (name: 'stdout' | 'stderr', fits: Buffer) => {
-      capped = name
+      capped[name] = true
       if (name === 'stdout') out.write(fits)
       else err.write(fits)
-      hardKill()
+      if (capOutcome !== undefined) return
       const message = `${name} passed maxOutputBytes (${cap} bytes)`
       // A child that exited keeps its answer; one that died by a signal
       // keeps `reason: 'signal'`, since `outputIncomplete` means it exited.
       if (exited !== undefined && exited.neverExited !== true) {
-        finish({ ...exited, outputIncomplete: true }, message)
-      } else if (exited !== undefined) finish(exited, message)
-      else finish({ exitCode: 1, neverExited: true, reason: 'output' }, message)
+        capOutcome = { result: { ...exited, outputIncomplete: true }, message }
+      } else if (exited !== undefined) capOutcome = { result: exited, message }
+      else capOutcome = { result: { exitCode: 1, neverExited: true, reason: 'output' }, message }
+      hardKill()
     }
     child.stdout?.on('data', (d: Buffer) => {
-      if (settled) return
+      if (settled || capped.stdout) return
       if (outBytes + d.length > cap) return overCap('stdout', d.subarray(0, cap - outBytes))
       outBytes += d.length
       out.write(d)
     })
     child.stderr?.on('data', (d: Buffer) => {
-      if (settled) return
+      if (settled || capped.stderr) return
       if (errBytes + d.length > cap) return overCap('stderr', d.subarray(0, cap - errBytes))
       errBytes += d.length
       err.write(d)
