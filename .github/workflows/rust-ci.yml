@@ -86,7 +86,7 @@ jobs:
               files='*'
               ;;
           esac
-          if [ "$files" = '*' ] || grep -qE '^(packages/rust/|packages/ts/yaml-splice/wasm/|\.github/workflows/(rust-ci|release-plz)\.yml$|\.github/actions/rust-|scripts/(crates-io-|semver-))' <<<"$files"; then
+          if [ "$files" = '*' ] || grep -qE '^(packages/rust/|packages/ts/yaml-splice/wasm/|\.github/workflows/(rust-ci|release-plz)\.yml$|\.github/actions/rust-|scripts/(crates-io-|semver-|package-shape-rs))' <<<"$files"; then
             echo "rust=true" >> "$GITHUB_OUTPUT"
           else
             echo "rust=false" >> "$GITHUB_OUTPUT"
@@ -100,6 +100,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      # The runner's own Node: the crate shape check needs nothing installed.
+      # docs/standards/S-0002-package-shape-rs.md is the standard.
+      - name: Test the crate shape rules
+        run: node --test scripts/package-shape-rs.test.mjs
+
+      - name: Check the crate shape
+        run: node scripts/package-shape-rs.mjs
 
       - uses: ./.github/actions/rust-toolchain
         with:
