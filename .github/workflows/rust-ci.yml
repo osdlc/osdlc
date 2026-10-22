@@ -86,7 +86,7 @@ jobs:
               files='*'
               ;;
           esac
-          if [ "$files" = '*' ] || grep -qE '^(packages/rust/|packages/ts/yaml-splice/wasm/|\.github/workflows/(rust-ci|release-plz)\.yml$|\.github/actions/rust-|\.github/scripts/(crates-io-|semver-))' <<<"$files"; then
+          if [ "$files" = '*' ] || grep -qE '^(packages/rust/|packages/ts/yaml-splice/wasm/|\.github/workflows/(rust-ci|release-plz)\.yml$|\.github/actions/rust-|scripts/(crates-io-|semver-|package-shape-rs))' <<<"$files"; then
             echo "rust=true" >> "$GITHUB_OUTPUT"
           else
             echo "rust=false" >> "$GITHUB_OUTPUT"
@@ -100,6 +100,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      # The runner's own Node: the crate shape check needs nothing installed.
+      # docs/planning/standards/S-0002-package-shape-rs.md is the standard.
+      - name: Test the crate shape rules
+        working-directory: .
+        run: node --test scripts/package-shape-rs.test.mjs
+
+      - name: Check the crate shape
+        working-directory: .
+        run: node scripts/package-shape-rs.mjs
 
       - uses: ./.github/actions/rust-toolchain
         with:
@@ -337,7 +347,7 @@ jobs:
 
   # A pull request with a breaking change to a crate on crates.io must set
   # the crate's new version in its Cargo.toml. See
-  # .github/scripts/semver-version-check.mjs. cargo-semver-checks misses some
+  # scripts/semver-version-check.mjs. cargo-semver-checks misses some
   # breaking changes, so reviewers still check.
   #
   # cargo-semver-checks reads the rustdoc JSON of the pinned toolchain, so its
@@ -373,7 +383,7 @@ jobs:
           node-version: '24'
 
       - name: Breaking changes set their own version
-        run: node .github/scripts/semver-version-check.mjs packages/rust/Cargo.toml HEAD^1
+        run: node scripts/semver-version-check.mjs packages/rust/Cargo.toml HEAD^1
 
   rust:
     needs: [changes, lint, rust-test, msrv, minimal-versions, wasm, release-plz, semver-version]

@@ -35,7 +35,7 @@
 //     CONTRIBUTING.md.
 //
 // Each check returns a list of problems, empty when the package is fine.
-// package-shape.test.mjs tests them.
+// package-shape-ts.test.mjs tests them.
 import { posix } from 'node:path'
 
 import semver from 'semver'

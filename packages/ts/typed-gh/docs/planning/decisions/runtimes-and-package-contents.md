@@ -25,7 +25,7 @@ created: 2026-10-20
   `@osdlc/command-seam` declares `>=22`. `@osdlc/typed-git` declares
   `^22.22.2 || ^24.15.0 || >=26.0.0`, because its dependency `hosted-git-info`
   10.1.1 does. This package depends on `@osdlc/typed-git`, so it declares the
-  same range. `package-shape.mjs` enforces the rule. (An earlier version of
+  same range. `package-shape-ts.mjs` enforces the rule. (An earlier version of
   this record kept `>=22` and left the warning to the package manager.)
 
 ## Consequences
