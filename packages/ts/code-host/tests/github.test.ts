@@ -548,7 +548,7 @@ describe('GithubCodeHost.mergePr / reviewThreads', () => {
 
   test('postComment throws when the POST fails', () => {
     const { runner } = fakeGh({ restResponses: [fail('gh: Forbidden (HTTP 403)')] })
-    expect(() => new GithubCodeHost('/repo', { runner }).postComment(42, 'x')).toThrow(/403/)
+    expect(() => new GithubCodeHost('/repo', { runner }).postComment(42, 'x')).toThrow(FailureError)
   })
 
   test('a mutation throws the classified failure, so a signed-out gh reads as not-authenticated', () => {

@@ -25,8 +25,13 @@ import {
   type PullRequest,
 } from '@osdlc/typed-gh'
 
-import { classifyFailure, CommandFailed, type CommandRunner } from '@osdlc/command-seam'
-import { err, mapErr, ok, type Result } from '@osdlc/result'
+import {
+  classifyFailure,
+  CommandFailed,
+  type CommandResult,
+  type CommandRunner,
+} from '@osdlc/command-seam'
+import { err, FailureError, mapErr, ok, type Result } from '@osdlc/result'
 import { fromGhFailure, type CodeHostFailure } from './failure.ts'
 import { CommentNotFoundError } from './types.ts'
 import type {
@@ -295,6 +300,15 @@ export function codeHostPrFrom(
   }
 }
 
+/**
+ * The classified failure of a failed `gh api` write, for a mutation to throw. The
+ * argv is passed without the `-f body=…` pair, so the comment text is not carried
+ * on the failure; a signed-out `gh` is `not-authenticated`, not a bare `exit`.
+ */
+function writeFailure(argv: string[], res: CommandResult): CodeHostFailure {
+  return fromGhFailure(classifyGhFailure(new CommandFailed(argv, res, 'gh')))
+}
+
 export class GithubCodeHost implements CodeHost {
   readonly name = 'github' as const
   // The port's queries return a `Result`, which is `Gh`'s `try` door; a
@@ -400,7 +414,7 @@ export class GithubCodeHost implements CodeHost {
       `body=${body}`,
     ])
     if (res.exitCode !== 0) {
-      throw new Error(`GithubCodeHost.postComment: ${res.stderr.trim() || 'gh api failed'}`)
+      throw new FailureError(writeFailure(['api', '-X', 'POST', `issues/${number}/comments`], res))
     }
     try {
       const parsed = JSON.parse(res.stdout) as { id?: unknown; created_at?: unknown }
@@ -429,7 +443,9 @@ export class GithubCodeHost implements CodeHost {
     if (res.exitCode === 0) return
     const stderr = res.stderr.trim()
     if (/\(HTTP 404\)/.test(stderr)) throw new CommentNotFoundError(commentId, stderr)
-    throw new Error(`GithubCodeHost.updateComment: ${stderr || 'gh api failed'}`)
+    throw new FailureError(
+      writeFailure(['api', '-X', 'PATCH', `issues/comments/${commentId}`], res),
+    )
   }
 
   listComments(
