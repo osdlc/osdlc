@@ -1,26 +1,19 @@
 {
   "name": "@osdlc/typed-gh",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "A typed GitHub client for TypeScript over the gh CLI. A total PullRequest/Review/CheckRun model, pure argv builders and parsers, and a tri-modal client \u2014 queries return parsed values, mutations throw, raw() is the escape hatch. Uses gh's own credentials; reads no token.",
   "license": "MIT OR Apache-2.0",
+  "author": "sksizer",
   "type": "module",
   "sideEffects": false,
   "exports": {
     ".": {
-      "bun": "./index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     }
   },
   "files": [
     "dist/",
-    "index.ts",
-    "sync.ts",
-    "async.ts",
-    "verbs.ts",
-    "parse.ts",
-    "repo.ts",
-    "types.ts",
     "README.md",
     "CHANGELOG.md",
     "SECURITY.md",
@@ -30,21 +23,23 @@
   ],
   "dependencies": {
     "@osdlc/command-seam": "workspace:^",
-    "@osdlc/typed-git": "workspace:^"
+    "@osdlc/typed-git": "workspace:^",
+    "@osdlc/result": "workspace:^"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
-    "test": "bun test",
+    "test": "vitest run",
     "smoke": "node tests/smoke.mjs",
     "prepublishOnly": "npm run clean && npm run build",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "oxlint .",
-    "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit"
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit",
+    "coverage": "vitest run --coverage"
   },
   "engines": {
-    "node": ">=22"
+    "node": "^22.22.2 || ^24.15.0 || >=26.0.0"
   },
   "publishConfig": {
     "access": "public"
@@ -67,10 +62,11 @@
   "devDependencies": {
     "@osdlc/prettier-config": "workspace:^",
     "@osdlc/tsconfig": "workspace:^",
-    "@types/bun": "^1.1.14",
-    "@types/node": "^26.1.0",
-    "oxlint": "^1.65.0",
-    "prettier": "3.9.6",
-    "typescript": "~6.0.3"
+    "@types/node": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
+    "oxlint": "catalog:",
+    "prettier": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   }
 }

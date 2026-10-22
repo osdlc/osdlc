@@ -1,5 +1,5 @@
 /**
- * Unit tests for the shared layered-resolution primitive (`provenance.ts`).
+ * Unit tests for the shared layered-resolution primitive (`../src/provenance.ts`).
  *
  * Standalone by design: every fixture here is an in-memory
  * `readRaw`/`defaultSteps`/`envSteps`, never a real config file. Covers the
@@ -11,7 +11,11 @@
 
 import { describe, expect, test } from 'vitest'
 
-import { type RawLayeredSteps, resolveLayeredSteps, resolveLayeredValue } from '../provenance.ts'
+import {
+  type RawLayeredSteps,
+  resolveLayeredSteps,
+  resolveLayeredValue,
+} from '../src/provenance.ts'
 
 /** A `readRaw` that always reports "this layer names nothing." */
 function noRaw(): undefined {

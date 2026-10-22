@@ -8,8 +8,8 @@ import {
   runInteractiveSession,
   type LifecycleEvent,
   type LifecyclePorts,
-} from '../lifecycle.ts'
-import type { SessionRunState } from '../model.ts'
+} from '../src/lifecycle.ts'
+import type { SessionRunState } from '../src/model.ts'
 
 type Host = 'terminal' | 'tmux'
 

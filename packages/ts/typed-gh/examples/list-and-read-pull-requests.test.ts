@@ -4,7 +4,7 @@
  * needs no GitHub and no login.
  */
 
-import { expect, test } from 'bun:test'
+import { expect, test } from 'vitest'
 
 import {
   Gh,

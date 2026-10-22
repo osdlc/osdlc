@@ -15,9 +15,9 @@ import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative, resolve } from 'node:path'
 
-import * as fs from '../fs.ts'
-import { IntersectError, type Patterns } from '../index.ts'
-import { effectiveOp, loadCaseFiles, type Case } from '../fixtures.ts'
+import * as fs from '../src/fs.ts'
+import { IntersectError, type Patterns } from '../src/index.ts'
+import { effectiveOp, loadCaseFiles, type Case } from './fixtures.ts'
 import { importsGlobber, reachableBareImports } from './import-graph.ts'
 
 /** Create every file in `tree` (as empty files) under `root`, making parent dirs. */
@@ -124,13 +124,13 @@ describe('dependency isolation (globber reaches fs only)', () => {
 
   test('core entries (index, segments) do not reach the globber', () => {
     const core = new Set<string>([
-      ...reachableBareImports(entry('index.ts')),
-      ...reachableBareImports(entry('segments/index.ts')),
+      ...reachableBareImports(entry('src/index.ts')),
+      ...reachableBareImports(entry('src/segments/index.ts')),
     ])
     expect(importsGlobber(core)).toBe(false)
   })
 
   test('fs entry does reach the globber (detector is real)', () => {
-    expect(importsGlobber(reachableBareImports(entry('fs.ts')))).toBe(true)
+    expect(importsGlobber(reachableBareImports(entry('src/fs.ts')))).toBe(true)
   })
 })

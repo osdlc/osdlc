@@ -1,14 +1,7 @@
 {
-  // Typechecks the source, tests/ and examples/. The build has its own include.
-  "extends": "@osdlc/tsconfig/bun-lib",
-  "compilerOptions": {
-    "lib": ["ES2022"],
-    // The package ships no TypeScript source, so `exports` has no `bun`
-    // condition. Map the package's own name to the source instead, for tsc and
-    // for bun, so examples/ and the README blocks run before a build.
-    "paths": {
-      "@osdlc/yaml-splice": ["./index.ts"]
-    }
-  },
-  "include": ["index.ts", "tests/*.ts", "examples/*.ts"]
+  // Typechecks src/, tests/ and examples/. The build has its own include.
+  // The package's own name resolves through `exports` to the built `dist/`, so
+  // run the build before the typecheck.
+  "extends": "@osdlc/tsconfig/node-lib",
+  "include": ["src", "tests", "examples", "vitest.config.ts"]
 }

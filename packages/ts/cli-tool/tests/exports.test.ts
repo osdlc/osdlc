@@ -17,15 +17,14 @@ const PACKAGE_NAME = (
 
 /** One entry point: its source file and the specifier consumers import. */
 const ENTRIES = [
-  { specifier: PACKAGE_NAME, entry: 'index.ts' },
-  { specifier: `${PACKAGE_NAME}/devlink`, entry: 'devlink/index.ts' },
+  { specifier: PACKAGE_NAME, entry: 'src/index.ts' },
+  { specifier: `${PACKAGE_NAME}/devlink`, entry: 'src/devlink/index.ts' },
 ] as const
 
 const COMPILER_OPTIONS: ts.CompilerOptions = {
   allowImportingTsExtensions: true,
   noEmit: true,
   types: [],
-  customConditions: ['bun'],
   moduleResolution: ts.ModuleResolutionKind.Bundler,
   module: ts.ModuleKind.ESNext,
 }

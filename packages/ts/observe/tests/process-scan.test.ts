@@ -5,13 +5,13 @@ import { join } from 'node:path'
 
 import { spawnRunnerAsync, type CommandRunner } from '@osdlc/command-seam'
 
-import { sessionEnv } from '../env.ts'
+import { sessionEnv } from '../src/env.ts'
 import {
   liveSessionIds,
   parsePsEnvironment,
   processScanSupported,
   scanTaggedProcesses,
-} from '../process-scan.ts'
+} from '../src/process-scan.ts'
 
 const COMMANDS = '  4242 agent -- hi\n  1 /sbin/launchd\n'
 const WITH_ENV =

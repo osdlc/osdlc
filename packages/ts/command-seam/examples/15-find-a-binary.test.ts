@@ -12,7 +12,7 @@ import { chmodSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { afterAll, expect, test } from 'bun:test'
+import { afterAll, expect, test } from 'vitest'
 
 import { which, type WhichOptions } from '@osdlc/command-seam'
 

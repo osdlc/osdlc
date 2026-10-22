@@ -9,7 +9,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { expect, test } from 'bun:test'
+import { expect, test } from 'vitest'
 import { displayWidth } from '../src/width.ts'
 
 const CASES: [name: string, text: string, width: number][] = [
@@ -40,7 +40,7 @@ for (const [name, text, width] of CASES) {
 }
 
 test('displayWidth matches every string in fixtures/unicode-width.tsv', () => {
-  const fixture = readFileSync(join(import.meta.dir, 'fixtures', 'unicode-width.tsv'), 'utf-8')
+  const fixture = readFileSync(join(import.meta.dirname, 'fixtures', 'unicode-width.tsv'), 'utf-8')
   const rows = fixture.trimEnd().split('\n')
   expect(rows.length).toBeGreaterThan(100)
   const wrong = rows.filter((row) => {

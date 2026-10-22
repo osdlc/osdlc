@@ -8,9 +8,9 @@
  * in `seam.test.ts` prove `CommandRunner`'s shape with a fake.
  */
 
-import { describe, expect, spyOn, test } from 'bun:test'
+import { describe, expect, test, vi } from 'vitest'
 
-import { streamRunner, type StreamResult, type StreamRunner } from '../index.ts'
+import { streamRunner, type StreamResult, type StreamRunner } from '../src/index.ts'
 
 const CWD = process.cwd()
 
@@ -30,7 +30,7 @@ describe('streamRunner', () => {
   test('timeoutMs caps a hanging child with a non-zero exit and neverExited', () => {
     // The timeout also sets a signal (SIGKILL); it must print once, not twice.
     const written: string[] = []
-    const spy = spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+    const spy = vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
       written.push(String(chunk))
       return true
     })
@@ -47,7 +47,7 @@ describe('streamRunner', () => {
 
   test('a signal death is reported on the parent stderr', () => {
     const written: string[] = []
-    const spy = spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+    const spy = vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
       written.push(String(chunk))
       return true
     })

@@ -13,19 +13,16 @@
  * the two clients build identical argv.
  */
 
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
+import { afterAll, beforeAll, describe, expect, test } from 'vitest'
+
+import { FailureError } from '@osdlc/result'
+import type { GitFailure } from '../src/failure.ts'
 
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import {
-  CommandFailed,
-  Git,
-  forceWithLeaseArg,
-  type CommandResult,
-  type CommandRunner,
-} from '../index.ts'
+import { Git, forceWithLeaseArg, type CommandResult, type CommandRunner } from '../src/index.ts'
 
 // ── fake-runner layer ───────────────────────────────────────────────────────
 
@@ -184,7 +181,7 @@ describe('Git — argv construction (fake runner)', () => {
   test('statusEntries is empty on a clean tree and throws outside a repository', () => {
     expect(new Git('/repo', { runner: recorder(OK('')).runner }).statusEntries()).toEqual([])
     expect(() => new Git('/repo', { runner: recorder(EXIT(128)).runner }).statusEntries()).toThrow(
-      CommandFailed,
+      FailureError,
     )
   })
 
@@ -215,7 +212,7 @@ describe('Git — argv construction (fake runner)', () => {
       output: '',
     })
     expect(() => new Git('/repo', { runner: recorder(EXIT(128)).runner }).diffCheck()).toThrow(
-      CommandFailed,
+      FailureError,
     )
   })
 
@@ -553,10 +550,10 @@ describe('Git — argv construction (fake runner)', () => {
   test('grep reads exit 1 as no matches and anything else as a failure', () => {
     expect(new Git('/repo', { runner: recorder(EXIT(1)).runner }).grep('x')).toEqual([])
     expect(() => new Git('/repo', { runner: recorder(EXIT(128)).runner }).grep('x')).toThrow(
-      CommandFailed,
+      FailureError,
     )
     expect(() => new Git('/repo', { runner: recorder(EXIT(129)).runner }).grep('x')).toThrow(
-      CommandFailed,
+      FailureError,
     )
     expect(new Git('/repo', { runner: recorder(EXIT(1)).runner }).try.grep('x')).toEqual({
       ok: true,
@@ -570,43 +567,43 @@ describe('Git — argv construction (fake runner)', () => {
     expect(new Git('/repo', { runner: recorder(EXIT(1)).runner }).isAncestor('a', 'b')).toBe(false)
     expect(() =>
       new Git('/repo', { runner: recorder(EXIT(128)).runner }).isAncestor('a', 'b'),
-    ).toThrow(CommandFailed)
+    ).toThrow(FailureError)
   })
 
   test('the other Tier 2 verbs declare no absence, so any non-zero exit throws', () => {
     const { runner } = recorder(FAIL)
     const git = new Git('/repo', { runner })
-    expect(() => git.lsTree('HEAD')).toThrow(CommandFailed)
-    expect(() => git.diffTree('HEAD')).toThrow(CommandFailed)
-    expect(() => git.aheadBehind('main', 'HEAD')).toThrow(CommandFailed)
-    expect(() => git.configSet('a.b', 'c')).toThrow(CommandFailed)
-    expect(() => git.init()).toThrow(CommandFailed)
-    expect(() => git.worktreeMove('/a', '/b')).toThrow(CommandFailed)
+    expect(() => git.lsTree('HEAD')).toThrow(FailureError)
+    expect(() => git.diffTree('HEAD')).toThrow(FailureError)
+    expect(() => git.aheadBehind('main', 'HEAD')).toThrow(FailureError)
+    expect(() => git.configSet('a.b', 'c')).toThrow(FailureError)
+    expect(() => git.init()).toThrow(FailureError)
+    expect(() => git.worktreeMove('/a', '/b')).toThrow(FailureError)
     // Exit 0 with output we cannot read is not an answer either: 0/0 would be
     // indistinguishable from "in sync".
     expect(() =>
       new Git('/repo', { runner: recorder(OK('garbage\n')).runner }).aheadBehind('main', 'HEAD'),
-    ).toThrow(CommandFailed)
+    ).toThrow(FailureError)
   })
 
   test('an undeclared non-zero exit throws, for every query', () => {
     const { runner } = recorder(FAIL)
     const git = new Git('/repo', { runner })
-    expect(() => git.revParse('HEAD')).toThrow(CommandFailed)
-    expect(() => git.currentBranch()).toThrow(CommandFailed)
-    expect(() => git.statusPorcelain()).toThrow(CommandFailed)
-    expect(() => git.isDirty()).toThrow(CommandFailed)
-    expect(() => git.branches()).toThrow(CommandFailed)
-    expect(() => git.worktrees()).toThrow(CommandFailed)
-    expect(() => git.mergeBase('a', 'b')).toThrow(CommandFailed)
-    expect(() => git.lsRemote('origin')).toThrow(CommandFailed)
-    expect(() => git.checkIgnore(['a'])).toThrow(CommandFailed)
-    expect(() => git.lsFiles()).toThrow(CommandFailed)
-    expect(() => git.forEachRef('refs/heads/')).toThrow(CommandFailed)
-    expect(() => git.refs('refs/heads/')).toThrow(CommandFailed)
-    expect(() => git.diffNameOnly()).toThrow(CommandFailed)
-    expect(() => git.diffNameStatus()).toThrow(CommandFailed)
-    expect(() => git.log()).toThrow(CommandFailed)
+    expect(() => git.revParse('HEAD')).toThrow(FailureError)
+    expect(() => git.currentBranch()).toThrow(FailureError)
+    expect(() => git.statusPorcelain()).toThrow(FailureError)
+    expect(() => git.isDirty()).toThrow(FailureError)
+    expect(() => git.branches()).toThrow(FailureError)
+    expect(() => git.worktrees()).toThrow(FailureError)
+    expect(() => git.mergeBase('a', 'b')).toThrow(FailureError)
+    expect(() => git.lsRemote('origin')).toThrow(FailureError)
+    expect(() => git.checkIgnore(['a'])).toThrow(FailureError)
+    expect(() => git.lsFiles()).toThrow(FailureError)
+    expect(() => git.forEachRef('refs/heads/')).toThrow(FailureError)
+    expect(() => git.refs('refs/heads/')).toThrow(FailureError)
+    expect(() => git.diffNameOnly()).toThrow(FailureError)
+    expect(() => git.diffNameStatus()).toThrow(FailureError)
+    expect(() => git.log()).toThrow(FailureError)
   })
 
   test('resolveRef / hasHistory / headRef build their flags', () => {
@@ -683,14 +680,14 @@ describe('Git — argv construction (fake runner)', () => {
           error: 'spawnSync git ETIMEDOUT',
         }).runner,
       })
-    expect(() => at().configGet('user.name')).toThrow(CommandFailed)
-    expect(() => at().resolveRef('refs/heads/main')).toThrow(CommandFailed)
-    expect(() => at().hasHistory()).toThrow(CommandFailed)
-    expect(() => at().isAncestor('a', 'b')).toThrow(CommandFailed)
-    expect(() => at().checkIgnore(['secret.key'])).toThrow(CommandFailed)
-    expect(() => at().mergeBase('a', 'b')).toThrow(CommandFailed)
-    expect(() => at().grep('needle')).toThrow(CommandFailed)
-    expect(() => at().revParse('--verify', '--quiet', 'HEAD')).toThrow(CommandFailed)
+    expect(() => at().configGet('user.name')).toThrow(FailureError)
+    expect(() => at().resolveRef('refs/heads/main')).toThrow(FailureError)
+    expect(() => at().hasHistory()).toThrow(FailureError)
+    expect(() => at().isAncestor('a', 'b')).toThrow(FailureError)
+    expect(() => at().checkIgnore(['secret.key'])).toThrow(FailureError)
+    expect(() => at().mergeBase('a', 'b')).toThrow(FailureError)
+    expect(() => at().grep('needle')).toThrow(FailureError)
+    expect(() => at().revParse('--verify', '--quiet', 'HEAD')).toThrow(FailureError)
   })
 
   // One case per verb that declares an absence code: the declaration is the
@@ -701,11 +698,11 @@ describe('Git — argv construction (fake runner)', () => {
     // showAtRev / logSubject: 128 (overloaded with "not a repository").
     expect(at(EXIT(128)).showAtRev('v', 'p')).toBeNull()
     expect(at(EXIT(128)).logSubject('HEAD')).toBeNull()
-    expect(() => at(EXIT(1)).showAtRev('v', 'p')).toThrow(CommandFailed)
+    expect(() => at(EXIT(1)).showAtRev('v', 'p')).toThrow(FailureError)
 
     // revParse: 1, the code `--verify --quiet` returns for a missing ref.
     expect(at(EXIT(1)).revParse('--verify', '--quiet', 'nope')).toBeNull()
-    expect(() => at(EXIT(128)).revParse('nope')).toThrow(CommandFailed)
+    expect(() => at(EXIT(128)).revParse('nope')).toThrow(FailureError)
 
     // topLevel / gitCommonDir: 128, because "not a repository" IS the answer.
     expect(at(EXIT(128)).topLevel()).toBeNull()
@@ -716,7 +713,7 @@ describe('Git — argv construction (fake runner)', () => {
 
     // configGet: 1 is an unset key.
     expect(at(EXIT(1)).configGet('no.such.key')).toBeNull()
-    expect(() => at(EXIT(128)).configGet('no.such.key')).toThrow(CommandFailed)
+    expect(() => at(EXIT(128)).configGet('no.such.key')).toThrow(FailureError)
 
     // objectExists: a predicate, so both of git's "no" codes are false.
     expect(at(EXIT(1)).objectExists('deadbeef')).toBe(false)
@@ -728,23 +725,23 @@ describe('Git — argv construction (fake runner)', () => {
     // resolveRef: 1 is a ref that does not resolve; 128 is an unreadable store.
     expect(at(EXIT(1)).resolveRef('refs/heads/gone')).toBeNull()
     expect(at(EXIT(1)).hasHistory()).toBe(false)
-    expect(() => at(EXIT(128)).resolveRef('HEAD')).toThrow(CommandFailed)
+    expect(() => at(EXIT(128)).resolveRef('HEAD')).toThrow(FailureError)
 
     // remoteGetUrl: 2 — git's code for an unknown remote, not 1 and not 128.
     expect(at(EXIT(2)).remoteGetUrl('nope')).toBeNull()
-    expect(() => at(EXIT(1)).remoteGetUrl('nope')).toThrow(CommandFailed)
+    expect(() => at(EXIT(1)).remoteGetUrl('nope')).toThrow(FailureError)
   })
 
   test('mutations declare no absence, so any non-zero exit throws', () => {
     const { runner } = recorder(FAIL)
     const git = new Git('/repo', { runner })
-    expect(() => git.add(['x'])).toThrow(CommandFailed)
-    expect(() => git.commit({ message: 'm' })).toThrow(CommandFailed)
-    expect(() => git.push('origin', 'HEAD')).toThrow(CommandFailed)
-    expect(() => git.worktreeRemove('/wt')).toThrow(CommandFailed)
-    expect(() => git.deleteBranch('b', { force: true })).toThrow(CommandFailed)
+    expect(() => git.add(['x'])).toThrow(FailureError)
+    expect(() => git.commit({ message: 'm' })).toThrow(FailureError)
+    expect(() => git.push('origin', 'HEAD')).toThrow(FailureError)
+    expect(() => git.worktreeRemove('/wt')).toThrow(FailureError)
+    expect(() => git.deleteBranch('b', { force: true })).toThrow(FailureError)
     expect(() => new Git('/repo', { runner: recorder(EXIT(1)).runner }).add(['x'])).toThrow(
-      CommandFailed,
+      FailureError,
     )
   })
 
@@ -752,7 +749,7 @@ describe('Git — argv construction (fake runner)', () => {
     const { runner } = recorder(FAIL)
     const git = new Git('/repo', { runner })
     expect(git.raw(['status']).exitCode).toBe(128)
-    expect(() => git.rawChecked(['status'])).toThrow(CommandFailed)
+    expect(() => git.rawChecked(['status'])).toThrow(FailureError)
   })
 
   test('worktrees() parses porcelain incl. detached and branch rows', () => {
@@ -952,7 +949,7 @@ describe('Git — argv construction (fake runner)', () => {
     expect(new Git('/repo', { runner: ok }).diffText('HEAD')).toContain('@@')
 
     const { runner: bad } = recorder({ exitCode: 128, stdout: '', stderr: 'boom' })
-    expect(() => new Git('/repo', { runner: bad }).diffText('HEAD')).toThrow(CommandFailed)
+    expect(() => new Git('/repo', { runner: bad }).diffText('HEAD')).toThrow(FailureError)
   })
 
   test('at() re-roots the cwd, keeping the runner', () => {
@@ -996,17 +993,22 @@ describe('Git — argv construction (fake runner)', () => {
     const prefix = ['--git-dir=/store/.git', '--work-tree=/tree']
 
     // Exit 1 with empty stdout is git declining to merge at all, not a conflict.
-    expect(() => bound(EXIT(1)).merge('nope')).toThrow(CommandFailed)
+    expect(() => bound(EXIT(1)).merge('nope')).toThrow(FailureError)
     try {
       bound(EXIT(1)).merge('nope')
     } catch (e) {
-      expect((e as CommandFailed).argv).toEqual([...prefix, 'merge', '--no-edit', 'nope'])
+      expect((e as FailureError<GitFailure>).failure.argv).toEqual([
+        ...prefix,
+        'merge',
+        '--no-edit',
+        'nope',
+      ])
     }
 
     try {
       bound(OK('not two counts\n')).aheadBehind('a', 'b')
     } catch (e) {
-      expect((e as CommandFailed).argv).toEqual([
+      expect((e as FailureError<GitFailure>).failure.argv).toEqual([
         ...prefix,
         'rev-list',
         '--left-right',
@@ -1081,8 +1083,8 @@ describe('Git — argv construction (fake runner)', () => {
       }
       return null
     })()
-    expect(err).toBeInstanceOf(CommandFailed)
-    expect((err as CommandFailed).argv).toEqual([
+    expect(err).toBeInstanceOf(FailureError)
+    expect((err as FailureError<GitFailure>).failure.argv).toEqual([
       '--git-dir=/store.git',
       '--work-tree=/tree',
       'add',
@@ -1102,7 +1104,7 @@ describe('Git — argv construction (fake runner)', () => {
       }
       return null
     })()
-    expect((err as CommandFailed).argv).toEqual(['add', '--', 'a.ts'])
+    expect((err as FailureError<GitFailure>).failure.argv).toEqual(['add', '--', 'a.ts'])
   })
 
   // Bare `--git-common-dir` answers the literal `.git` from a primary
@@ -1121,8 +1123,8 @@ describe('Git — git.try.*', () => {
     const r = git.try.statusPorcelain()
     expect(r.ok).toBe(false)
     if (r.ok) throw new Error('unreachable')
-    expect(r.error).toBeInstanceOf(CommandFailed)
-    expect(r.error.result.stderr).toBe('fatal: nope')
+    expect(r.error.cause).toBeInstanceOf(FailureError)
+    expect(r.error.cause.result.stderr).toBe('fatal: nope')
   })
 
   test('a declared absence is ok:true — absence is an answer, not a failure', () => {
@@ -1260,7 +1262,7 @@ describe('Git — real repo round trips', () => {
     const moved = git.resolveRef('refs/heads/cas')!
     git.worktreeRemove(join(repo, 'wt-cas'), { force: true })
 
-    expect(() => git.deleteRef('refs/heads/cas', { expected: stale })).toThrow(CommandFailed)
+    expect(() => git.deleteRef('refs/heads/cas', { expected: stale })).toThrow(FailureError)
     expect(git.try.deleteRef('refs/heads/cas', { expected: stale }).ok).toBe(false)
     expect(git.resolveRef('refs/heads/cas')).toBe(moved)
 
@@ -1311,7 +1313,7 @@ describe('Git — real repo round trips', () => {
     const git = new Git(repo)
     const head = git.revParse('HEAD')
     expect(git.mergeBase('HEAD', 'HEAD')).toBe(head)
-    expect(() => git.mergeBase('HEAD', 'no-such-rev')).toThrow(CommandFailed)
+    expect(() => git.mergeBase('HEAD', 'no-such-rev')).toThrow(FailureError)
     expect(git.logSubject('HEAD')).toBe('c2')
     expect(git.configGet('user.name')).toBe('t')
     expect(git.configGet('no.such.key')).toBeNull()
@@ -1341,29 +1343,29 @@ describe('Git — real git outside a repository', () => {
 
   test('a query that cannot be answered throws instead of reading as empty', () => {
     const git = new Git(nonRepo)
-    expect(() => git.statusPorcelain()).toThrow(CommandFailed)
-    expect(() => git.worktrees()).toThrow(CommandFailed)
-    expect(() => git.branches()).toThrow(CommandFailed)
-    expect(() => git.currentBranch()).toThrow(CommandFailed)
-    expect(() => git.checkIgnore(['a.md'])).toThrow(CommandFailed)
+    expect(() => git.statusPorcelain()).toThrow(FailureError)
+    expect(() => git.worktrees()).toThrow(FailureError)
+    expect(() => git.branches()).toThrow(FailureError)
+    expect(() => git.currentBranch()).toThrow(FailureError)
+    expect(() => git.checkIgnore(['a.md'])).toThrow(FailureError)
   })
 
   test('git.try turns that throw into an outcome the caller can inspect', () => {
     const r = new Git(nonRepo).try.statusPorcelain()
     expect(r.ok).toBe(false)
     if (r.ok) throw new Error('unreachable')
-    expect(r.error.result.exitCode).toBe(128)
+    expect(r.error.exitCode).toBe(128)
   })
 
   test("real exit codes match each verb's declaration", () => {
     const git = new Git(repo)
     expect(git.revParse('--verify', '--quiet', 'refs/heads/no-such')).toBeNull()
-    expect(() => git.revParse('no-such-rev')).toThrow(CommandFailed)
+    expect(() => git.revParse('no-such-rev')).toThrow(FailureError)
     expect(git.objectExists('deadbeefdeadbeefdeadbeefdeadbeefdeadbeef')).toBe(false)
     expect(git.objectExists('no-such-name')).toBe(false)
     expect(git.objectExists('HEAD')).toBe(true)
     expect(git.showAtRev('HEAD', 'docs/missing.md')).toBeNull()
-    expect(() => git.lsRemote(join(nonRepo, 'no-such-remote'))).toThrow(CommandFailed)
+    expect(() => git.lsRemote(join(nonRepo, 'no-such-remote'))).toThrow(FailureError)
   })
 
   test('gitDir/workTree drive a repo from outside its tree', () => {
@@ -1436,22 +1438,22 @@ describe("Git — probing 'does this repo have history?'", () => {
     )
     // No object store: exit 128, undeclared, so it throws rather than reading
     // as "nothing here yet".
-    expect(() => at('noobjects').revParse('--verify', '--quiet', 'HEAD')).toThrow(CommandFailed)
+    expect(() => at('noobjects').revParse('--verify', '--quiet', 'HEAD')).toThrow(FailureError)
   })
 
   test('log throws on an empty repo, so the probe must precede it', () => {
-    expect(() => at('empty').log({ maxCount: 1 })).toThrow(CommandFailed)
+    expect(() => at('empty').log({ maxCount: 1 })).toThrow(FailureError)
     expect(at('empty').try.log({ maxCount: 1 }).ok).toBe(false)
   })
 
   test('hasHistory is that probe: false unborn, true dangling, throw corrupt', () => {
     expect(at('empty').hasHistory()).toBe(false)
     expect(at('dangling').hasHistory()).toBe(true)
-    expect(() => at('noobjects').hasHistory()).toThrow(CommandFailed)
+    expect(() => at('noobjects').hasHistory()).toThrow(FailureError)
   })
 
   test('headRef throws on an unborn HEAD — real git exits 128 there', () => {
-    expect(() => at('empty').headRef()).toThrow(CommandFailed)
+    expect(() => at('empty').headRef()).toThrow(FailureError)
     expect(at('dangling').headRef()).toBe('main')
   })
 })
@@ -1543,7 +1545,7 @@ describe('Git — Tier 1 verbs against real git', () => {
     expect(git.lsFiles({ others: true, excludeStandard: true })).toContain('untracked.tmp')
     // No match is exit 0 with empty stdout — absence, not failure.
     expect(git.lsFiles({ cached: true, paths: ['no-such-dir'] })).toEqual([])
-    expect(() => new Git(nonRepo).lsFiles()).toThrow(CommandFailed)
+    expect(() => new Git(nonRepo).lsFiles()).toThrow(FailureError)
     rmSync(join(repo, 'untracked.tmp'))
   })
 
@@ -1553,8 +1555,8 @@ describe('Git — Tier 1 verbs against real git', () => {
     expect(git.forEachRef('refs/heads/', { format: '%(refname:short)' })).toEqual(['main'])
     expect(git.forEachRef('refs/no-such/')).toEqual([])
     // An unknown format field is a failure, not an empty answer.
-    expect(() => git.forEachRef('refs/heads/', { sort: 'nosuchfield' })).toThrow(CommandFailed)
-    expect(() => new Git(nonRepo).forEachRef('refs/heads/')).toThrow(CommandFailed)
+    expect(() => git.forEachRef('refs/heads/', { sort: 'nosuchfield' })).toThrow(FailureError)
+    expect(() => new Git(nonRepo).forEachRef('refs/heads/')).toThrow(FailureError)
   })
 
   test('diffNameOnly / diffNameStatus over a real staged rename', () => {
@@ -1587,7 +1589,7 @@ describe('Git — Tier 1 verbs against real git', () => {
     const outside = new Git(nonRepo).try.diffNameOnly()
     expect(outside.ok).toBe(false)
     if (outside.ok) throw new Error('unreachable')
-    expect(outside.error.result.exitCode).toBe(129)
+    expect(outside.error.exitCode).toBe(129)
   })
 
   test("log returns the caller's format verbatim; a bad rev throws", () => {
@@ -1596,8 +1598,8 @@ describe('Git — Tier 1 verbs against real git', () => {
     expect(raw.split('\n').filter(Boolean)).toEqual(['c1', 'c2', 'add b', 'rename b'])
     // An empty range is exit 0 with empty stdout — absence, not failure.
     expect(git.log({ range: 'HEAD..HEAD', format: '%H' })).toBe('')
-    expect(() => git.log({ rev: 'no-such-rev' })).toThrow(CommandFailed)
-    expect(() => new Git(nonRepo).log()).toThrow(CommandFailed)
+    expect(() => git.log({ rev: 'no-such-rev' })).toThrow(FailureError)
+    expect(() => new Git(nonRepo).log()).toThrow(FailureError)
   })
 
   // `absent: []` on `log` is deliberate: an empty repository and a corrupt one
@@ -1608,11 +1610,11 @@ describe('Git — Tier 1 verbs against real git', () => {
       const git = new Git(empty)
       git.rawChecked(['init', '-b', 'main'])
       expect(git.revParse('--verify', '--quiet', 'HEAD')).toBeNull()
-      expect(() => git.log({ format: '%H' })).toThrow(CommandFailed)
+      expect(() => git.log({ format: '%H' })).toThrow(FailureError)
       const r = git.try.log({ format: '%H' })
       expect(r.ok).toBe(false)
       if (r.ok) throw new Error('unreachable')
-      expect(r.error.result.exitCode).toBe(128)
+      expect(r.error.exitCode).toBe(128)
       // for-each-ref and diff --cached, by contrast, answer emptily.
       expect(git.forEachRef('refs/heads/')).toEqual([])
       expect(git.diffNameStatus({ cached: true })).toEqual([])
@@ -1637,8 +1639,8 @@ describe('Git — Tier 2 verbs against real git', () => {
     expect(git.lsTree('HEAD', { paths: ['no-such-dir'] })).toEqual([])
     // A rev that does not resolve is 128, and folding that to [] would read
     // as "the tree is empty".
-    expect(() => git.lsTree('no-such-rev')).toThrow(CommandFailed)
-    expect(() => new Git(nonRepo).lsTree('HEAD')).toThrow(CommandFailed)
+    expect(() => git.lsTree('no-such-rev')).toThrow(FailureError)
+    expect(() => new Git(nonRepo).lsTree('HEAD')).toThrow(FailureError)
   })
 
   test("diffTree reports one commit's changes, and needs --root for the first", () => {
@@ -1659,7 +1661,7 @@ describe('Git — Tier 2 verbs against real git', () => {
         .map((e) => e.path)
         .sort(),
     ).toEqual(['.gitignore', 'docs/a.md'])
-    expect(() => git.diffTree('no-such-rev')).toThrow(CommandFailed)
+    expect(() => git.diffTree('no-such-rev')).toThrow(FailureError)
   })
 
   test('grep answers [] for no matches (exit 1) and throws on a real failure', () => {
@@ -1668,8 +1670,8 @@ describe('Git — Tier 2 verbs against real git', () => {
     // Exit 1 is an answer: no matches.
     expect(git.grep('ZZZ-NOT-PRESENT')).toEqual([])
     // An unbalanced bracket is a fatal (128), not "no matches".
-    expect(() => git.grep('[', { extendedRegexp: true })).toThrow(CommandFailed)
-    expect(() => new Git(nonRepo).grep('x')).toThrow(CommandFailed)
+    expect(() => git.grep('[', { extendedRegexp: true })).toThrow(FailureError)
+    expect(() => new Git(nonRepo).grep('x')).toThrow(FailureError)
   })
 
   test('isAncestor: 0 yes, 1 no (diverged OR unrelated), 128 throws', () => {
@@ -1678,11 +1680,11 @@ describe('Git — Tier 2 verbs against real git', () => {
     expect(git.isAncestor(root, 'HEAD')).toBe(true)
     expect(git.isAncestor('HEAD', root)).toBe(false)
     // A rev that does not resolve must NOT read as "not an ancestor".
-    expect(() => git.isAncestor('no-such-rev', 'HEAD')).toThrow(CommandFailed)
+    expect(() => git.isAncestor('no-such-rev', 'HEAD')).toThrow(FailureError)
     const r = git.try.isAncestor('no-such-rev', 'HEAD')
     expect(r.ok).toBe(false)
     if (r.ok) throw new Error('unreachable')
-    expect(r.error.result.exitCode).toBe(128)
+    expect(r.error.exitCode).toBe(128)
   })
 
   test('aheadBehind counts each side, and gets the field order right', () => {
@@ -1693,7 +1695,7 @@ describe('Git — Tier 2 verbs against real git', () => {
     // `ab-tip` has one commit `ab-base` does not; nothing the other way.
     expect(git.aheadBehind('ab-base', 'ab-tip')).toEqual({ ahead: 1, behind: 0 })
     expect(git.aheadBehind('ab-tip', 'ab-base')).toEqual({ ahead: 0, behind: 1 })
-    expect(() => git.aheadBehind('main', 'no-such-rev')).toThrow(CommandFailed)
+    expect(() => git.aheadBehind('main', 'no-such-rev')).toThrow(FailureError)
     git.deleteBranch('ab-tip', { force: true })
     git.deleteBranch('ab-base', { force: true })
   })
@@ -1731,7 +1733,7 @@ describe('Git — Tier 2 verbs against real git', () => {
       // Compared by basename: macOS resolves the temp dir through /private, so
       // git reports a path that is not string-equal to the one we passed.
       expect(git.worktrees().some((w) => w.path.endsWith('wt-to'))).toBe(true)
-      expect(() => git.worktreeMove(join(fresh, 'no-such-wt'), to)).toThrow(CommandFailed)
+      expect(() => git.worktreeMove(join(fresh, 'no-such-wt'), to)).toThrow(FailureError)
     } finally {
       rmSync(fresh, { recursive: true, force: true })
     }

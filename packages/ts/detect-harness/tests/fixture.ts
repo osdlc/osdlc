@@ -7,9 +7,9 @@ import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:f
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
-import { detect } from '../detect.ts'
-import type { DetectOptions } from '../contract.ts'
-import type { HarnessCatalog, HarnessReport } from '../report.ts'
+import { detect } from '../src/detect.ts'
+import type { DetectOptions } from '../src/contract.ts'
+import type { HarnessCatalog, HarnessReport } from '../src/report.ts'
 
 export interface Fixture {
   root: string

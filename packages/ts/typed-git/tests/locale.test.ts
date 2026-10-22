@@ -3,7 +3,7 @@
  * `LC_ALL=C`. Their outcomes must not change under a caller's locale.
  */
 
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'vitest'
 
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -18,8 +18,8 @@ import {
   type CommandResult,
   type CommandRunner,
   type CommandRunOptions,
-} from '../index.ts'
-import { IDENTITY, makeGitFixture } from '../testing.ts'
+} from '../src/index.ts'
+import { IDENTITY, makeGitFixture } from '../src/testing.ts'
 
 const OK: CommandResult = { exitCode: 0, stdout: '', stderr: '' }
 

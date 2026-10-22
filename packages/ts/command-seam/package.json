@@ -1,9 +1,9 @@
 {
   "name": "@osdlc/command-seam",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "Injectable subprocess runner for Node: capture, stream and managed-process runners, hard timeouts, failures as results.",
   "license": "MIT OR Apache-2.0",
-  "author": "SK Sizer",
+  "author": "sksizer",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/osdlc/osdlc.git",
@@ -37,30 +37,16 @@
   },
   "exports": {
     ".": {
-      "bun": "./index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
     "./testing": {
-      "bun": "./testing.ts",
       "types": "./dist/testing.d.ts",
       "default": "./dist/testing.js"
     }
   },
   "files": [
     "dist/",
-    "index.ts",
-    "sync.ts",
-    "async.ts",
-    "result.ts",
-    "stream.ts",
-    "process.ts",
-    "groups.ts",
-    "quote.ts",
-    "shell.ts",
-    "defaults.ts",
-    "which.ts",
-    "testing.ts",
     "README.md",
     "CHANGELOG.md",
     "LICENSE-MIT",
@@ -71,13 +57,17 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
-    "test": "bun test",
+    "test": "vitest run",
     "smoke": "node tests/smoke.mjs",
     "prepublishOnly": "npm run clean && npm run build",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "oxlint .",
-    "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit"
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit",
+    "coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@osdlc/result": "workspace:^"
   },
   "peerDependencies": {
     "@types/node": "*"
@@ -90,10 +80,11 @@
   "devDependencies": {
     "@osdlc/prettier-config": "workspace:^",
     "@osdlc/tsconfig": "workspace:^",
-    "@types/bun": "^1.1.14",
-    "@types/node": "^26.1.0",
-    "oxlint": "^1.65.0",
-    "prettier": "3.9.6",
-    "typescript": "~6.0.3"
+    "@types/node": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
+    "oxlint": "catalog:",
+    "prettier": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   }
 }

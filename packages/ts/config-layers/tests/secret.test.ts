@@ -8,9 +8,9 @@ import { describe, expect, test } from 'vitest'
 
 import { z } from 'zod'
 
-import type { ConfigKeyMeta } from '../meta.ts'
-import { defineConfigSection, projectLayerIssues } from '../section.ts'
-import { sectionSecretPaths } from '../secret.ts'
+import type { ConfigKeyMeta } from '../src/meta.ts'
+import { defineConfigSection, projectLayerIssues } from '../src/section.ts'
+import { sectionSecretPaths } from '../src/secret.ts'
 
 const META: ConfigKeyMeta = {
   category: 'core',

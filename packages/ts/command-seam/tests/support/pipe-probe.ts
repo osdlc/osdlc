@@ -20,7 +20,7 @@ import {
   spawnRunner,
   spawnRunnerBytes,
   type CommandResult,
-} from '../../index.ts'
+} from '../../src/index.ts'
 
 const out = process.argv[2]
 if (out === undefined) throw new Error('usage: pipe-probe.ts <result-file>')

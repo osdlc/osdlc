@@ -13,14 +13,14 @@ import { join } from 'node:path'
 
 import { z } from 'zod'
 
-import { ConfigInvalidError } from '../config-error.ts'
-import { systemDirs } from '../dirs.ts'
-import { assembleConfig } from '../loader.ts'
-import { machineConfigFile } from '../machine.ts'
-import { enforcementProblems } from '../meta-kit.ts'
-import { configNeeds } from '../needs.ts'
-import { renderReference } from '../reference.ts'
-import { starterYaml } from '../scaffold.ts'
+import { ConfigInvalidError } from '../src/config-error.ts'
+import { systemDirs } from '../src/dirs.ts'
+import { assembleConfig } from '../src/loader.ts'
+import { machineConfigFile } from '../src/machine.ts'
+import { enforcementProblems } from '../src/meta-kit.ts'
+import { configNeeds } from '../src/needs.ts'
+import { renderReference } from '../src/reference.ts'
+import { starterYaml } from '../src/scaffold.ts'
 
 import {
   CONFIG_FILE,

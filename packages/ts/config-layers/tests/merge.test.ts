@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from 'vitest'
 
-import { deepMergeConfig } from '../merge.ts'
+import { deepMergeConfig } from '../src/merge.ts'
 
 describe('deepMergeConfig', () => {
   test('overlay scalar replaces base scalar', () => {

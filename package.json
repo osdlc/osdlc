@@ -16,8 +16,10 @@
     "check:packages": "node .github/scripts/check-packages.mjs"
   },
   "devDependencies": {
-    "@arethetypeswrong/cli": "0.18.5",
-    "@changesets/cli": "3.0.3",
-    "publint": "0.3.24"
+    "@arethetypeswrong/cli": "catalog:",
+    "@changesets/cli": "catalog:",
+    "oxlint": "catalog:",
+    "publint": "catalog:",
+    "semver": "catalog:"
   }
 }

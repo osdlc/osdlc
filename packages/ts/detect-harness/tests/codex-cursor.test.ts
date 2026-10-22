@@ -6,8 +6,8 @@
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import { join } from 'node:path'
 
-import { codexHookHash } from '../read/hooks.ts'
-import { REDACTED } from '../read/redact.ts'
+import { codexHookHash } from '../src/read/hooks.ts'
+import { REDACTED } from '../src/read/redact.ts'
 import { fixture, type Fixture } from './fixture.ts'
 
 let f: Fixture

@@ -11,8 +11,8 @@ created: 2026-10-13
 
 In the package:
 
-- The tests use `bun:test` for now. They move to Vitest in a later release
-  ([T-02](../tasks/T-02-vitest.md)).
+- The tests use Vitest on Node ([T-02](../tasks/T-02-vitest.md)). A probe that
+  needs `bun` skips when no `bun` is on `PATH`.
 - The examples import the package by its name, as a user would. CI builds
   before it tests, because under Node that name resolves to `dist/`.
 - A test typechecks the code snippets in the README and in these decisions.
@@ -22,8 +22,11 @@ In the package:
 - A test that needs a grandchild in its own session starts it with the
   test's own runtime, not with perl.
 - `typecheck` covers the tests and the examples as well as the source.
-- `tsconfig.json` extends `@osdlc/tsconfig/bun-lib`, because the tests
-  use `bun:test`. `tsconfig.build.json` adds `@osdlc/tsconfig/build` and
+- `tsconfig.json` extends `@osdlc/tsconfig/node-lib`, with no `paths` and no
+  `customConditions`: the package's own name and its workspace siblings resolve
+  through `exports` to `dist/`, so the typecheck runs after the build.
+  `vitest.config.ts` aliases the package's own name to its source for the
+  examples. `tsconfig.build.json` adds `@osdlc/tsconfig/build` and
   Node types only. The prettier config is `@osdlc/prettier-config`. Both
   config packages are devDependencies, as are `prettier` and `oxlint`, so
   `format` and `lint` run in a clean checkout.
@@ -45,6 +48,6 @@ In the package:
 
 ## Consequences
 
-- Contributors need Bun as well as Node until the Vitest move.
+- Contributors need only Node and pnpm. Build before typecheck and test.
 - A clean `NODE_ENV` run of the whole suite is not added. The Node matrix
   and the Vitest move cover that case.

@@ -2,8 +2,8 @@
  * The public surface. Imports the package by its own name, so a build that
  * drops or renames an export fails here and not in a consumer.
  *
- * Under Bun the name resolves to the source through the `bun` export
- * condition. Anywhere else it resolves to the built `dist/`.
+ * Vitest aliases the name to the source (vitest.config.ts); outside it the
+ * name resolves to the built `dist/`.
  *
  * It also checks that `examples/` shows each export, except those on the
  * waiting list below.
@@ -13,7 +13,7 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'vitest'
 
 import * as pkg from '@osdlc/typed-gh'
 
@@ -21,6 +21,7 @@ const FUNCTIONS = [
   'anyCheckFailed',
   'api',
   'authStatus',
+  'classifyGhFailure',
   'createLabel',
   'createPr',
   'createReview',
@@ -115,7 +116,7 @@ const EXAMPLES = EXAMPLE_FILES.map((f) => readFileSync(join(ROOT, 'examples', f)
 
 /** Type names exported by `index.ts`, which have no runtime value to list. */
 function exportedTypes(): string[] {
-  const source = readFileSync(join(ROOT, 'index.ts'), 'utf8')
+  const source = readFileSync(join(ROOT, 'src', 'index.ts'), 'utf8')
   const inline = Array.from(source.matchAll(/\btype\s+(\w+)/g), (m) => m[1] ?? '')
   const blocks = Array.from(source.matchAll(/export type \{([^}]*)\}/g), (m) => m[1] ?? '')
   const listed = blocks.flatMap((block) => block.split(',').map((name) => name.trim()))
@@ -144,9 +145,16 @@ describe('the examples', () => {
   })
 
   test('every method of Gh is called on a client', () => {
-    // `exec` is private, so it is not part of the surface.
+    // `exec` and `read` are private, so they are not part of the surface.
     const methods = Object.getOwnPropertyNames(pkg.Gh.prototype).filter(
-      (n) => n !== 'constructor' && n !== 'exec' && !WAITING.has(n),
+      (n) =>
+        n !== 'constructor' &&
+        n !== 'exec' &&
+        n !== 'read' &&
+        // The doors are getters; examples/ drives them by their methods.
+        n !== 'try' &&
+        n !== 'soft' &&
+        !WAITING.has(n),
     )
     expect(methods.length).toBeGreaterThan(0)
     expect(methods.filter((name) => !callsOnClient(name))).toEqual([])

@@ -11,13 +11,16 @@ import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 import { Git, type CommandResult, type CommandRunner } from '@osdlc/typed-git'
 import { makeOriginAndCheckout } from '@osdlc/typed-git/testing'
 
-import type { CodeHost, CodeHostPrDetail } from '@osdlc/code-host'
+import type { CodeHost, CodeHostFailure, CodeHostPrDetail } from '@osdlc/code-host'
+import { FailureError } from '@osdlc/result'
 
 import { prUpdateConfigSchema } from '../src/config.ts'
 import {
   measure,
   nearestBehindAncestor,
   parentEdges,
+  renderSurveyText,
+  repoFailuresOf,
   statusFor,
   resolveTargets,
   runSurvey,
@@ -488,7 +491,7 @@ describe('runSurvey through the CodeHost port', () => {
           return {
             listPrDetails: (q: Record<string, unknown>) => {
               queries.push(q)
-              return [pr(1, 'topic', 'main')]
+              return { ok: true, value: [pr(1, 'topic', 'main')] }
             },
           } as unknown as CodeHost
         },
@@ -502,6 +505,65 @@ describe('runSurvey through the CodeHost port', () => {
     ])
     expect(cwds).toEqual(['/repo', '/repo'])
     expect(report.prs.map((p) => p.repo)).toEqual(['o/r', 'x/y'])
+  })
+})
+
+describe('runSurvey over several repositories', () => {
+  const git: CommandRunner = {
+    run(argv) {
+      if (argv.join(' ') === 'remote get-url origin') {
+        return { exitCode: 0, stdout: 'git@github.com:o/r.git\n', stderr: '' }
+      }
+      if (argv[0] === 'rev-list') return counts(0, 0)
+      if (argv[0] === 'merge-tree') return cleanTree
+      if (argv[0] === 'rev-parse') return resolved('b'.repeat(40))
+      return { exitCode: 0, stdout: '', stderr: '' }
+    },
+  }
+  const refused: CodeHostFailure = {
+    kind: 'not-authenticated',
+    message: 'gh is not signed in to GitHub.',
+    hint: 'Run `gh auth login`.',
+    host: 'github',
+  }
+  const surveyOf = (repo: string[], failing: string[]) =>
+    runSurvey(surveyInput.parse({ repo, noFetch: true }), {
+      projectRoot: '/repo',
+      dryRun: false,
+      git,
+      gh: git,
+      codeHost: ({ slug }) =>
+        ({
+          listPrDetails: () =>
+            failing.includes(slug)
+              ? { ok: false, error: refused }
+              : { ok: true, value: [pr(1, `head-${slug.replace('/', '-')}`, 'main')] },
+        }) as unknown as CodeHost,
+      cfg: prUpdateConfigSchema.parse({}),
+      ports: { locate: () => '/repo' },
+    })
+
+  test('one failed listing does not abort the others: it is recorded on its repo entry', () => {
+    const report = surveyOf(['x/y', 'o/a'], ['x/y'])
+    expect(report.repos.map((r) => [r.slug, r.failure?.kind])).toEqual([
+      ['x/y', 'not-authenticated'],
+      ['o/a', undefined],
+    ])
+    expect(report.prs.map((p) => p.repo)).toEqual(['o/a'])
+    expect(repoFailuresOf(report)).toEqual([
+      {
+        kind: 'not-authenticated',
+        message: 'x/y: gh is not signed in to GitHub.',
+        hint: 'Run `gh auth login`.',
+      },
+    ])
+    expect(renderSurveyText(report)).toContain(
+      'x/y: could not be listed — gh is not signed in to GitHub.',
+    )
+  })
+
+  test('a single repository still throws its failure', () => {
+    expect(() => surveyOf(['x/y'], ['x/y'])).toThrow(FailureError)
   })
 })
 
@@ -539,7 +601,7 @@ describe('runSurvey scoped by --pr', () => {
         ({
           listPrDetails: () => {
             listings += 1
-            return listing
+            return { ok: true, value: listing }
           },
         }) as unknown as CodeHost,
       cfg: prUpdateConfigSchema.parse({}),

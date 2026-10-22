@@ -3,7 +3,7 @@
  * gh gives them no flag for, and how their rows parse.
  */
 
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'vitest'
 
 import {
   AsyncGh,
@@ -15,8 +15,8 @@ import {
   searchPrs,
   type CommandResult,
   type CommandRunOptions,
-} from '../index.ts'
-import { parsePrSearchHit, parseRepository } from '../parse.ts'
+} from '../src/index.ts'
+import { parsePrSearchHit, parseRepository } from '../src/parse.ts'
 
 const out = (body: unknown): CommandResult => ({
   exitCode: 0,
@@ -184,7 +184,7 @@ describe('the clients pass the env through', () => {
     })
     expect(gh.searchPrs('x')).toEqual({ rows: [], truncated: false })
     await agh.repoList('acme')
-    await agh.repoView('acme/widgets')
+    await agh.soft.repoView('acme/widgets')
     expect(seen.map((o) => o.env)).toEqual([
       { GH_HOST: 'ghe.acme.com' },
       { GH_HOST: 'ghe.acme.com' },

@@ -118,7 +118,7 @@ a fake `bun` on PATH and asserts it picks what `resolve()` picks.
 ## The verbs
 
 Mount them with `runDevCli(spec, argv, { self })` — a framework-free
-`<tool> dev <verb>` — or call the functions in `ops.ts` from your own CLI
+`<tool> dev <verb>` — or call the functions in `src/devlink/ops.ts` from your own CLI
 framework.
 
 | Verb | Effect |

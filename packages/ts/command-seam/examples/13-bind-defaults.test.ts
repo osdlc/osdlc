@@ -8,7 +8,7 @@
  * take the bound runner and need only the options it did not bind.
  */
 
-import { expect, test } from 'bun:test'
+import { expect, test } from 'vitest'
 
 import {
   runChecked,
@@ -140,7 +140,7 @@ test('runJson takes the bound runner', () => {
 
   expect(pr.ok && pr.value.title).toBe('Fix login')
   expect(count.ok && count.value).toBe(2)
-  expect(notAList.prCount()).toMatchObject({ ok: false, reason: 'invalid' })
+  expect(notAList.prCount()).toMatchObject({ ok: false, error: { kind: 'invalid' } })
 })
 
 test('the async forms do the same', async () => {

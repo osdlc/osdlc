@@ -7,7 +7,7 @@ import {
   LogSourceSchema,
   newRunId,
   newSortableId,
-} from '../envelope.ts'
+} from '../src/envelope.ts'
 
 describe('LogEnvelopeSchema', () => {
   const base = { v: 1, ts: '2026-10-08T20:11:03.120Z', kind: 'x', writer: 'm', source: 'cli' }

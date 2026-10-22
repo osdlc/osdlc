@@ -6,7 +6,7 @@
 
 import { describe, expect, test } from 'vitest'
 
-import { machineId } from '../machine.ts'
+import { machineId } from '../src/machine.ts'
 
 import {
   BACKFILL_STATUSES,
@@ -16,8 +16,8 @@ import {
   reconcileSessions,
   type BackfillStatus,
   type ReconcileDeps,
-} from '../reconcile.ts'
-import type { AnySessionRecord as SessionRecord } from '../model.ts'
+} from '../src/reconcile.ts'
+import type { AnySessionRecord as SessionRecord } from '../src/model.ts'
 
 const GRACE = 15 * 60_000
 

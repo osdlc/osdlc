@@ -33,6 +33,56 @@ manifest and keeps the license files in its directory. `pnpm run
 check:packages` fails a library that declares any other license. The root
 `LICENSE` of this repository applies to everything outside `packages/`.
 
+## Package shape
+
+Every TypeScript library under `packages/ts/` has one shape, and
+`pnpm run check:packages` fails a library that drifts from it
+(`.github/scripts/package-shape.mjs`):
+
+- **Dist-only ESM with `.d.ts`.** The tarball ships `dist/` plus the README,
+  CHANGELOG, licences, SECURITY and CONTRIBUTING (and a `bin/` or `docs/` a
+  library already ships). No TypeScript source ships; a hand-written `.d.ts`
+  is the one exception. Each `exports` entry is exactly
+  `{ "types": "./dist/X.d.ts", "default": "./dist/X.js" }`, with no `bun`
+  condition. Bun still works, through the compiled `dist/`.
+- **Node 22 or later**, as each library's `engines.node` says. A library's
+  range is never wider than a workspace dependency's, so the ones that depend on
+  `@osdlc/typed-git` carry its `^22.22.2 || ^24.15.0 || >=26.0.0`.
+- **Vitest under Node** for every test, with a `vitest.config.ts` in the
+  library. No script invokes `bun`.
+- **pnpm** installs and runs the scripts.
+- **Build first.** Libraries resolve each other, and their own name, through
+  `exports` to `dist/`. `tsconfig.json` has no `customConditions` and no
+  `paths` into a sibling's source. A library's `vitest.config.ts` may alias its
+  own name to its source, so its examples run on the source without a build.
+- **Source in `src/`, tests in `tests/`, examples in `examples/`.** No
+  TypeScript sits at the package root but `vitest.config.ts`, and no
+  `*.test.ts` sits under `src/`. `tsconfig.build.json` emits `src` with
+  `rootDir: "src"`, so `src/a/b.ts` becomes `dist/a/b.js`. `examples/` holds a
+  `*.test.ts` that runs the README example through the package name. Docs live
+  in `docs/planning/`, with a README index.
+- **The same scripts and files.** `typecheck` checks the source and the build
+  config, `smoke` runs `tests/smoke.mjs`, the CHANGELOG starts
+  `# @osdlc/<name>`, the README has `## Install` and `## Licence`, and
+  `.gitignore` lists `node_modules/`, `dist/` and `coverage/`. There is no
+  coverage threshold.
+- **One lint config and one catalog.** `.oxlintrc.json` at the repository root
+  is the only one; oxlint finds it from every package. A third-party version
+  that more than one package uses, and the shared dev tooling, is pinned once
+  in `pnpm-workspace.yaml`'s `catalog:` and written `"catalog:"` in the
+  package. `pnpm pack` turns `catalog:` and `workspace:` into versions in the
+  packed manifest.
+- **The config packages** (`tsconfig`, `prettier-config`) ship JSON and no
+  code. They are exempt from the build, test, `src/`, examples and smoke
+  rules, and are ESM with an `exports` map, `sideEffects: false`, SECURITY.md
+  and CONTRIBUTING.md.
+
+The development loop is `pnpm -r build` (or `pnpm --filter <package>... build`
+for a library and what it depends on), then `pnpm -r typecheck` and
+`pnpm -r test`. CI runs the same order: install, build, typecheck, test,
+smoke, lint, then the package checks. A typecheck or test on a tree with no
+`dist/` fails on unresolved imports; build first.
+
 ## Why one repository
 
 One public repository is simpler to secure and maintain than one per library.
@@ -126,11 +176,15 @@ Developed here, in this repository:
   inside its root; the TypeScript twin of the `path-guard` crate)
 - `packages/ts/typed-git` (`@osdlc/typed-git` on npm, a typed git client for
   TypeScript, in a synchronous and an awaitable form; each verb declares what
-  absence means for it and every other failure throws)
+  absence means for it, every other failure throws, and `try` returns a
+  classified `Result`)
+- `packages/ts/result` (`@osdlc/result` on npm, a plain-object `Result` and a
+  `Failure` shape for people: `kind`, `message`, `hint`, `detail`, `cause`)
 - `packages/ts/typed-gh` (`@osdlc/typed-gh` on npm, a typed GitHub client for
   TypeScript over the gh CLI; a total PullRequest, Review and CheckRun model,
-  pure argv builders and parsers, and a client where queries return parsed
-  values and mutations throw)
+  pure argv builders and parsers, and a client with the same three doors:
+  a call returns a value or throws, `try` returns a classified `Result`, and
+  `soft` returns `null` for a failed query)
 - `packages/ts/intersect` (`@osdlc/intersect` on npm, a path-pattern overlap
   engine: do two globs share a path, with a witness path, a registry and an
   optional filesystem layer)

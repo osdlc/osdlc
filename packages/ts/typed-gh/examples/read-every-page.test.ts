@@ -4,7 +4,7 @@
  * any page failed or came back partial; `nodesAt` joins one connection.
  */
 
-import { expect, test } from 'bun:test'
+import { expect, test } from 'vitest'
 
 import {
   Gh,
@@ -55,7 +55,8 @@ test('a page with errors is no answer at all', () => {
   const stdout = JSON.stringify({ data: { viewer: null }, errors: [{ message: 'rate limited' }] })
   const gh = new Gh('/repo', { runner: answering(stdout) })
 
-  expect(gh.graphql('query { viewer { login } }')).toBeNull()
+  expect(() => gh.graphql('query { viewer { login } }')).toThrow()
+  expect(gh.soft.graphql('query { viewer { login } }')).toBeNull()
 })
 
 test('a verb says whether it only reads', () => {

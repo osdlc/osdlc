@@ -14,9 +14,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { afterAll, beforeAll, expect, test } from 'vitest'
 import { z } from 'zod'
 
-import { assembleConfig } from '../loader.ts'
-import { defineConfigSection } from '../section.ts'
-import { keyDescription, keyExists, leafSchema } from '../schema.ts'
+import { assembleConfig } from '../src/loader.ts'
+import { defineConfigSection } from '../src/section.ts'
+import { keyDescription, keyExists, leafSchema } from '../src/schema.ts'
 
 import { META } from './support.ts'
 

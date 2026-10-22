@@ -20,7 +20,7 @@ there.
 
 The repository is a pnpm workspace. Install from the repository root, then
 work in the package directory. The tests run on [Vitest](https://vitest.dev)
-under Node 22.18 or later. They run offline: a fake runner stands in for `gh`,
+under Node 22.22.2 or later. They run offline: a fake runner stands in for `gh`,
 `git` and `curl`, so the tests need no network and no login.
 
 ```sh

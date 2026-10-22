@@ -1,9 +1,9 @@
 {
   "name": "@osdlc/tsconfig",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Strict TypeScript compiler presets: a shared bar plus node, bun, vue and build shapes. Consumed through `extends`; ships no code.",
   "license": "MIT OR Apache-2.0",
-  "author": "SK Sizer",
+  "author": "sksizer",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/osdlc/osdlc.git",
@@ -20,12 +20,16 @@
   "publishConfig": {
     "access": "public"
   },
+  "type": "module",
+  "sideEffects": false,
   "files": [
     "presets/",
     "README.md",
     "CHANGELOG.md",
     "LICENSE-MIT",
-    "LICENSE-APACHE"
+    "LICENSE-APACHE",
+    "SECURITY.md",
+    "CONTRIBUTING.md"
   ],
   "exports": {
     "./base": "./presets/base.json",
@@ -50,8 +54,8 @@
   },
   "devDependencies": {
     "@osdlc/prettier-config": "workspace:^",
-    "oxlint": "^1.65.0",
-    "prettier": "3.9.6",
-    "typescript": "~6.0.3"
+    "oxlint": "catalog:",
+    "prettier": "catalog:",
+    "typescript": "catalog:"
   }
 }

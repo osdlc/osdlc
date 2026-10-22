@@ -21,23 +21,35 @@
  * any target left `conflict`/`failed` — read `results`/`counts` for which),
  * `2` on a malformed command line, `14` when the config file is unusable
  * (invalid or unreadable), `21` when `update` was refused for want of
- * repository trust.
+ * repository trust, and the failure codes every `@osdlc/cli-tool` tool shares
+ * (`EXIT_FAILURE`): `22` when a tool the run needs (`git`, and `gh` or `curl`
+ * for the code host) is not installed, `23` when the code host refused the
+ * caller or answered unusably (not signed in, no Forgejo token, not found),
+ * `24` when there is no repository or git remote to read, and `25` when the
+ * code host could not be reached or rate-limited.
+ *
+ * The code host is chosen by `selectCodeHost` from the `origin` remote, or
+ * `code_host.override`; a failed PR listing is an error, never "no open PRs".
+ * Every classified failure is printed and numbered by `@osdlc/cli-tool`.
  */
 
 import { mkdirSync, rmSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 
 import { atomicWrite } from '@osdlc/etag-write'
-import { EXIT, defineCli, type CliContext } from '@osdlc/cli-tool'
+import { EXIT, defineCli, failWith, failureOf, type CliContext } from '@osdlc/cli-tool'
 import { spawnRunner, type CommandRunner } from '@osdlc/command-seam'
+import { describe, type Failure } from '@osdlc/result'
 import { Git } from '@osdlc/typed-git'
 import { CONFIG_INVALID_EXIT, ConfigInvalidError, type ConfigFileSpec } from '@osdlc/config-layers'
 
+import { selectedCodeHostFor } from './code-host.ts'
 import { runConfigCommand } from './config-cli.ts'
 import { loadConfigLayers } from './config-file.ts'
 import { standalonePorts } from './defaults.ts'
+import { gitMissingFailure, preflight, type WhichSeam } from './preflight.ts'
 import { REPAIR_AGENTS, REPAIR_AGENT_SUMMARIES, type RepairAgent } from './repair/names.ts'
-import { SurveyUsageError, renderSurveyText, runSurvey } from './survey.ts'
+import { SurveyUsageError, renderSurveyText, repoFailuresOf, runSurvey } from './survey.ts'
 import {
   EXIT_UNTRUSTED,
   prUpdateTrustStore,
@@ -274,6 +286,11 @@ Run 'pr-update <command> --help' for a command's own flags.`
 /** What a test substitutes for the real `gh`, or a host re-points; production runs pass none. */
 export interface CliSeams {
   gh?: CommandRunner
+  git?: CommandRunner
+  /** Runs `curl` for a Forgejo code host. */
+  curl?: CommandRunner
+  /** Finds a binary on PATH, for the check that the run's tools are installed. */
+  which?: WhichSeam
   /** The config file to read instead of {@link PR_UPDATE_CONFIG_FILE}. */
   configFile?: ConfigFileSpec
 }
@@ -287,6 +304,8 @@ function runEnv(
     command: null,
   },
 ): UpdateEnv {
+  const git = seams.git ?? spawnRunner('git')
+  const gh = seams.gh ?? spawnRunner('gh')
   const projectRoot = ctx.cwd
   const loaded = layers.merged.pr_update
   const cfg =
@@ -296,17 +315,43 @@ function runEnv(
   return {
     projectRoot,
     dryRun: false,
-    git: spawnRunner('git'),
-    gh: seams.gh ?? spawnRunner('gh'),
+    git,
+    gh,
+    codeHost: selectedCodeHostFor({
+      git,
+      gh,
+      curl: seams.curl,
+      override: layers.merged.code_host.override,
+    }),
     cfg,
     ports: standalonePorts(cfg, projectRoot),
   }
+}
+
+/** Check the run's tools, remote and code host before any PR is listed. */
+function checkStart(
+  ctx: CliContext,
+  layers: ReturnType<typeof loadConfigLayers>,
+  seams: CliSeams,
+  scope: { remote: string; repo: readonly string[] },
+): Failure | null {
+  return preflight({
+    cwd: ctx.cwd,
+    git: seams.git ?? spawnRunner('git'),
+    remote: scope.remote,
+    repoGiven: scope.repo.length > 0,
+    override: layers.merged.code_host.override,
+    which: seams.which,
+  })
 }
 
 function runSurveyCommand(argv: readonly string[], ctx: CliContext, seams: CliSeams): number {
   const { io } = ctx
   const expanded = expandBranchFlag(argv, ctx.cwd)
   if ('error' in expanded) {
+    // A bare `--branch` asks git for the current branch; with git missing say so.
+    const noGit = gitMissingFailure(ctx.cwd, seams.which)
+    if (noGit !== null) return failWith(ctx, noGit, { name: 'pr-update' })
     io.stderr(`pr-update survey: ${expanded.error}\n`)
     return EXIT.usage
   }
@@ -327,14 +372,13 @@ function runSurveyCommand(argv: readonly string[], ctx: CliContext, seams: CliSe
     io.stderr(`pr-update survey: ${prNumbers.error}\n`)
     return EXIT.usage
   }
-  const env = runEnv(
-    ctx,
-    loadConfigLayers(seams.configFile ?? PR_UPDATE_CONFIG_FILE, ctx.cwd, {
-      env: ctx.env,
-      cwd: ctx.cwd,
-    }),
-    seams,
-  )
+  const layers = loadConfigLayers(seams.configFile ?? PR_UPDATE_CONFIG_FILE, ctx.cwd, {
+    env: ctx.env,
+    cwd: ctx.cwd,
+  })
+  const unready = checkStart(ctx, layers, seams, v)
+  if (unready !== null) return failWith(ctx, unready, { name: 'pr-update' })
+  const env = runEnv(ctx, layers, seams)
   let report
   try {
     report = runSurvey(
@@ -351,6 +395,7 @@ function runSurveyCommand(argv: readonly string[], ctx: CliContext, seams: CliSe
       env,
     )
   } catch (e) {
+    // A classified failure (a failed listing) is rendered and numbered by `main`.
     if (!(e instanceof SurveyUsageError)) throw e
     io.stderr(`pr-update survey: ${e.message}\n`)
     return EXIT.usage
@@ -358,7 +403,24 @@ function runSurveyCommand(argv: readonly string[], ctx: CliContext, seams: CliSe
   io.stdout(
     resolveOutput(v) === 'json' ? `${JSON.stringify(report, null, 2)}\n` : renderSurveyText(report),
   )
-  return EXIT.ok
+  return reportRepoFailures(ctx, report) ?? EXIT.ok
+}
+
+/**
+ * Print each repository of a several-repository run that could not be listed,
+ * and return the exit code of the first, or null when none failed. The others
+ * were surveyed; the failure is not hidden by their rows.
+ */
+function reportRepoFailures(
+  ctx: CliContext,
+  report: Parameters<typeof repoFailuresOf>[0],
+): number | null {
+  let code: number | null = null
+  for (const failure of repoFailuresOf(report)) {
+    const exit = failWith(ctx, failure, { name: 'pr-update' })
+    code ??= exit
+  }
+  return code
 }
 
 /**
@@ -371,11 +433,26 @@ function writeReport(file: string, out: UpdateOutput): void {
   atomicWrite(file, `${JSON.stringify(updateOutputSchema.parse(out), null, 2)}\n`)
 }
 
-/** What `--report` holds when the run threw before producing a result. */
+/**
+ * What `--report` holds when the run threw before producing a result:
+ * `{ error }`, and for a classified failure also `{ failure: { kind, message,
+ * hint } }`, so a script can branch on the kind without parsing the sentence.
+ */
 export function writeErrorReport(file: string, e: unknown): void {
   mkdirSync(dirname(file), { recursive: true })
-  const error = e instanceof Error ? e.message : String(e)
-  atomicWrite(file, `${JSON.stringify({ error }, null, 2)}\n`)
+  const failure = failureOf(e)
+  const report =
+    failure === null
+      ? { error: e instanceof Error ? e.message : String(e) }
+      : {
+          error: describe(failure),
+          failure: {
+            kind: failure.kind,
+            message: failure.message,
+            ...(failure.hint === undefined ? {} : { hint: failure.hint }),
+          },
+        }
+  atomicWrite(file, `${JSON.stringify(report, null, 2)}\n`)
 }
 
 async function runUpdateCommand(
@@ -386,6 +463,9 @@ async function runUpdateCommand(
   const { io } = ctx
   const expanded = expandBranchFlag(argv, ctx.cwd)
   if ('error' in expanded) {
+    // A bare `--branch` asks git for the current branch; with git missing say so.
+    const noGit = gitMissingFailure(ctx.cwd, seams.which)
+    if (noGit !== null) return failWith(ctx, noGit, { name: 'pr-update' })
     io.stderr(`pr-update update: ${expanded.error}\n`)
     return EXIT.usage
   }
@@ -438,6 +518,8 @@ async function runUpdateCommand(
     io.stderr(`pr-update update: ${refusal}\n`)
     return EXIT_UNTRUSTED
   }
+  const unready = checkStart(ctx, layers, seams, v)
+  if (unready !== null) return failWith(ctx, unready, { name: 'pr-update' })
   const env: UpdateEnv = runEnv(ctx, layers, seams, {
     agent: v.repairAgent ?? null,
     command: v.repairCommand ?? null,
@@ -470,6 +552,7 @@ async function runUpdateCommand(
         // The original error is the one worth surfacing.
       }
     }
+    // A classified failure (a failed listing) is rendered and numbered by `main`.
     if (!(e instanceof SurveyUsageError)) throw e
     io.stderr(`pr-update update: ${e.message}\n`)
     return EXIT.usage
@@ -490,6 +573,15 @@ async function runUpdateCommand(
   // was left half-applied), but a conflict or push failure means some PR did
   // not end up updated. A script driving this in a loop needs that distinction
   // in its exit code, not just in the JSON `counts`.
+  const listingFailure = reportRepoFailures(ctx, {
+    repos: (out.repoFailures ?? []).map(({ repo, ...failure }) => ({
+      slug: repo,
+      measurable: false,
+      fetched: false,
+      failure,
+    })),
+  })
+  if (listingFailure !== null) return listingFailure
   return out.counts.conflict > 0 || out.counts.failed > 0 ? EXIT.error : EXIT.ok
 }
 
@@ -513,9 +605,15 @@ export async function main(
   try {
     return await dispatch(argv, ctx, seams)
   } catch (e) {
-    if (!(e instanceof ConfigInvalidError)) throw e
-    ctx.io.stderr(`pr-update: ${e.message}\n`)
-    return CONFIG_INVALID_EXIT
+    if (e instanceof ConfigInvalidError) {
+      ctx.io.stderr(`pr-update: ${e.message}\n`)
+      return CONFIG_INVALID_EXIT
+    }
+    // A classified failure (a missing tool, a failed listing) gets the shared
+    // line and exit code; anything else is a bug and goes to `runMain`.
+    const failure = failureOf(e)
+    if (failure !== null) return failWith(ctx, failure, { name: 'pr-update' })
+    throw e
   }
 }
 

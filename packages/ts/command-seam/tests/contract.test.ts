@@ -17,7 +17,7 @@ import { mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync } from 'no
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
+import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 
 import {
   asAsync,
@@ -42,7 +42,7 @@ import {
   type CommandResult,
   type CommandRunner,
   type CommandRunOptions,
-} from '../index.ts'
+} from '../src/index.ts'
 import { alive, gone, reap } from './support/procs.ts'
 
 const CWD = process.cwd()
@@ -604,8 +604,8 @@ describe('posix', () => {
       test(`${runner.name}: keeps the child's exit code and reports the write error in error`, async () => {
         const r = await runner.exec('exec 0<&-; sleep 0.3', { cwd: CWD, input: BIG })
         expect(r.exitCode).toBe(0)
-        // EPIPE, or ENOTCONN under some timings: both are a write to a closed peer.
-        expect(r.error).toMatch(/^(EPIPE|ENOTCONN): [^\n]*, write$/)
+        // EPIPE, or ENOTCONN under some timings: both are a write to a closed peer. Node words it "write EPIPE", Bun "EPIPE: …, write".
+        expect(r.error).toMatch(/^((EPIPE|ENOTCONN): [^\n]*, write|write (EPIPE|ENOTCONN))$/)
         expect(r.stderr).toBe('')
       }, 15_000)
     }
@@ -639,8 +639,8 @@ describe('posix', () => {
     test('without the option the same output is unparseable, on both runners', async () => {
       const s = runJson(syncRunner, ['-c', LOGGED], { cwd: CWD })
       const a = await runJsonAsync(asyncRunner, ['-c', LOGGED], { cwd: CWD })
-      expect(!s.ok && s.reason).toBe('unparseable')
-      expect(!a.ok && a.reason).toBe('unparseable')
+      expect(!s.ok && s.error.kind).toBe('unparseable')
+      expect(!a.ok && a.error.kind).toBe('unparseable')
     })
 
     test('trailing output is not tolerated', async () => {
@@ -659,7 +659,7 @@ describe('posix', () => {
         cwd: CWD,
         tolerateLeadingLog: true,
       })
-      expect(!s.ok && s.reason).toBe('failed')
+      expect(!s.ok && s.error.kind).toBe('exit')
     })
   })
 

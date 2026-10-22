@@ -3,7 +3,7 @@ import { appendFileSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileS
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { appendJsonl, jsonlSize, parseJsonl, readJsonl, readJsonlFrom } from '../writer.ts'
+import { appendJsonl, jsonlSize, parseJsonl, readJsonl, readJsonlFrom } from '../src/writer.ts'
 
 let dir: string
 beforeEach(() => {

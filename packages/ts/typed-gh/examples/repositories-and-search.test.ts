@@ -3,7 +3,7 @@
  * repositories. Each list says when its limit cut it short.
  */
 
-import { expect, test } from 'bun:test'
+import { expect, test } from 'vitest'
 
 import {
   Gh,

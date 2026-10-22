@@ -3,19 +3,10 @@
   // The source only, with Node types: fs.ts uses node:path and process.
   "extends": ["./tsconfig.json", "@osdlc/tsconfig/build"],
   "compilerOptions": {
-    "rootDir": ".",
+    "rootDir": "src",
     "types": ["node"],
-    // The sources are not published, so a declaration map would point at nothing.
+    // src/ is not published, so a declaration map would point at nothing.
     "declarationMap": false
   },
-  "include": [
-    "index.ts",
-    "errors.ts",
-    "parse.ts",
-    "registry.ts",
-    "fs.ts",
-    "segments/index.ts",
-    "segments/automaton.ts",
-    "segments/product.ts"
-  ]
+  "include": ["src"]
 }

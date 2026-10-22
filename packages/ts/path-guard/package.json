@@ -1,6 +1,6 @@
 {
   "name": "@osdlc/path-guard",
-  "version": "0.2.4",
+  "version": "0.3.1",
   "description": "Path containment guard: lexical validation of a root-relative path, then a symlink-aware proof, bound to one filesystem, that it stays inside its root, plus open-then-verify reads. Twin of the Rust `path-guard` crate.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",
@@ -66,11 +66,11 @@
   "devDependencies": {
     "@osdlc/prettier-config": "workspace:^",
     "@osdlc/tsconfig": "workspace:^",
-    "@types/node": "^26.1.0",
-    "@vitest/coverage-v8": "^5.0.5",
-    "oxlint": "^1.65.0",
-    "prettier": "3.9.6",
-    "typescript": "~6.0.3",
-    "vitest": "^5.0.5"
+    "@types/node": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
+    "oxlint": "catalog:",
+    "prettier": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   }
 }

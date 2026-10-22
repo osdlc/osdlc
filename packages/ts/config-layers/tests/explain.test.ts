@@ -1,5 +1,5 @@
 /**
- * Tests for the schema-side introspection (`../explain.ts`) against a small
+ * Tests for the schema-side introspection (`../src/explain.ts`) against a small
  * synthetic schema: the dotted key-path parser and walker, the shape renderer,
  * defaults and nested fields, and the plain-value path helpers.
  */
@@ -18,8 +18,8 @@ import {
   resolveKeyPath,
   splitKeyPath,
   topLevelKeys,
-} from '../explain.ts'
-import type { ConfigKeyMeta } from '../meta.ts'
+} from '../src/explain.ts'
+import type { ConfigKeyMeta } from '../src/meta.ts'
 
 const META: ConfigKeyMeta = {
   category: 'core',

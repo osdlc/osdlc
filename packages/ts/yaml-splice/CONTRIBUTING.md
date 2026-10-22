@@ -20,7 +20,7 @@ merged there.
 
 The editing itself is the `yaml-splice` Rust crate, in `packages/rust/yaml-splice`.
 `packages/rust/yaml-splice-wasm` exposes it to JavaScript, and this package's
-`index.ts` is the typed wrapper over that. A change to how YAML is edited goes
+`src/index.ts` is the typed wrapper over that. A change to how YAML is edited goes
 into the crate, with a fixture in its conformance corpus
 (`packages/rust/yaml-splice/tests/fixtures/conformance.json`), which both the
 crate's tests and this package's tests run.
@@ -28,8 +28,8 @@ crate's tests and this package's tests run.
 ## Running the tests
 
 The repository is a pnpm workspace. Install from the repository root, then
-work in the package directory. The unit tests run under Bun, so install
-[Bun](https://bun.sh) as well as Node 22 or later. No Rust toolchain is needed:
+work in the package directory. The tests run on Vitest under Node 22 or
+later. No Rust toolchain is needed:
 the built WebAssembly is committed in `wasm/`.
 
 ```sh
@@ -38,9 +38,9 @@ cd packages/ts/yaml-splice
 pnpm test
 ```
 
-`pnpm test` runs the Bun suite on the source, then builds the package and
-runs `tests/corpus-node.mjs`, which runs the conformance corpus on the built
-package under Node.
+`pnpm test` runs the Vitest suite. Most tests run the source;
+`tests/corpus-dist.test.ts` runs the conformance corpus on the built package,
+so build first.
 
 `pnpm run smoke` runs `tests/smoke.mjs`, a short check of the built package
 under Node. It is not published.

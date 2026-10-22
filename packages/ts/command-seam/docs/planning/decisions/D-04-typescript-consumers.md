@@ -18,8 +18,8 @@ created: 2026-10-13
 
 ## Why
 
-- Explicit `.ts` paths match the files on disk, so Bun and the type checker
-  read the source as written.
+- Explicit `.ts` paths match the files on disk, so Node's type stripping and
+  the type checker read the source as written.
 - TypeScript 5 resolves `.ts` paths in declaration files. Older versions do
   not. The declarations also use `NoInfer`, which needs TypeScript 5.4, so 5.4
   is the floor. Older versions are rare enough that changing every import path

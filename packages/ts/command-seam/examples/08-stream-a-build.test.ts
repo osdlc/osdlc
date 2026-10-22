@@ -12,7 +12,7 @@ import { chmodSync, existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { afterAll, expect, test } from 'bun:test'
+import { afterAll, expect, test } from 'vitest'
 
 import {
   ran,

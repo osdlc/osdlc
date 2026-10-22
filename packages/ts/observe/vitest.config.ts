@@ -8,16 +8,15 @@ export default defineConfig({
   resolve: {
     // The examples import the package by name; run them on the source.
     alias: [
-      { find: /^@osdlc\/observe\/session$/, replacement: here('session.ts') },
-      { find: /^@osdlc\/observe$/, replacement: here('index.ts') },
+      { find: /^@osdlc\/observe\/session$/, replacement: here('src/session.ts') },
+      { find: /^@osdlc\/observe$/, replacement: here('src/index.ts') },
     ],
   },
   test: {
     include: ['tests/**/*.test.ts', 'examples/**/*.test.ts'],
     coverage: {
       provider: 'v8',
-      include: ['*.ts'],
-      exclude: ['vitest.config.ts'],
+      include: ['src/**/*.ts'],
       reporter: ['text'],
     },
   },

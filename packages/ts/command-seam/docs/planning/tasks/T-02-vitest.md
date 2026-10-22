@@ -1,7 +1,7 @@
 ---
 id: T-02
 type: task
-state: open
+state: done
 created: 2026-10-13
 ---
 
@@ -14,9 +14,9 @@ The tests run under Vitest on Node, the runtime users run, instead of
 
 ## Today
 
-The tests use `bun:test`, so contributors need Bun. CI runs the suite under
-Bun. Under Node it runs only the build, the smoke check and the tarball
-check. No test needs perl, and `typecheck` already covers the tests and examples
+Done. The suite is ported to Vitest and runs on Node. It was `bun:test`, so
+contributors needed Bun and CI ran the suite under Bun, with only the build,
+the smoke check and the tarball check under Node. No test needs perl, and `typecheck` already covers the tests and examples
 ([D-12](../decisions/D-12-tests-and-tooling.md)), so this is a port, not a
 rewrite.
 
@@ -32,7 +32,7 @@ rewrite.
 
 ## Acceptance criteria
 
-- [ ] The suite passes under Vitest on Node 22 and 24.
-- [ ] Under Node, the examples import the package by name from the built
+- [x] The suite passes under Vitest on Node 22 and 24.
+- [x] Under Node, the examples import the package by name from the built
       `dist/`.
-- [ ] CONTRIBUTING no longer asks for Bun to run the tests.
+- [x] CONTRIBUTING no longer asks for Bun to run the tests.

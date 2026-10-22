@@ -10,7 +10,7 @@
  * for a result already in hand.
  */
 
-import { expect, test } from 'bun:test'
+import { expect, test } from 'vitest'
 
 import {
   parseJsonResult,
@@ -53,8 +53,8 @@ function openPullRequests(dir: string, gh: CommandRunner = spawnRunner('gh')): P
   const argv = ['pr', 'list', '--state', 'open', '--json', 'number,title,isDraft']
   const r = runJson(gh, argv, { cwd: dir, parse: parsePullRequests })
   if (r.ok) return r.value
-  throw new GhError(`gh pr list (${r.reason}): ${r.message}`, {
-    cause: r.reason === 'invalid' ? r.cause : undefined,
+  throw new GhError(`gh pr list (${r.error.kind}): ${r.error.message}`, {
+    cause: r.error.kind === 'invalid' ? r.error.cause : undefined,
   })
 }
 
@@ -141,9 +141,7 @@ test('the error says which step failed', () => {
   const failed = fakeRunner({ [prList]: { exitCode: 4, stderr: 'not logged in\n' } })
   const garbled = fakeRunner({ [prList]: { stdout: 'Fetching…\n' } })
 
-  expect(() => openPullRequests('/repo', failed.runner)).toThrow(
-    'gh pr list (failed): not logged in',
-  )
+  expect(() => openPullRequests('/repo', failed.runner)).toThrow('gh pr list (exit): not logged in')
   expect(() => openPullRequests('/repo', garbled.runner)).toThrow(
     'gh pr list (unparseable): stdout is not JSON',
   )
@@ -181,11 +179,16 @@ test('exit 1 from npm outdated is an answer, unless npm itself failed', () => {
   expect(r.ok && r.value['left-pad']?.latest).toBe('1.3.0')
   expect(outdatedPackages('/tmp', npmError.runner)).toMatchObject({
     ok: false,
-    reason: 'invalid',
-    message: 'stdout JSON was rejected: npm: No package.json found',
+    error: {
+      kind: 'invalid',
+      message: 'stdout JSON was rejected: npm: No package.json found',
+    },
   })
-  // A run that never exited is `failed`, whatever its stand-in exit code.
-  expect(outdatedPackages('/app', noNpm.runner)).toMatchObject({ ok: false, reason: 'failed' })
+  // A run that never exited is a failure of its own kind, whatever its stand-in exit code.
+  expect(outdatedPackages('/app', noNpm.runner)).toMatchObject({
+    ok: false,
+    error: { kind: 'spawn' },
+  })
 })
 
 test('a warning line before the JSON is skipped', async () => {

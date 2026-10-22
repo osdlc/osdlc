@@ -10,7 +10,7 @@
  * `shellJoin` prints an argv as a line a person can paste.
  */
 
-import { expect, test } from 'bun:test'
+import { expect, test } from 'vitest'
 
 import {
   runShell,

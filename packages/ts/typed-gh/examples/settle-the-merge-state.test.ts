@@ -3,7 +3,7 @@
  * and answers `UNKNOWN` until it has. `prViewSettled` asks again.
  */
 
-import { expect, test } from 'bun:test'
+import { expect, test } from 'vitest'
 
 import { Gh, type CommandRunner, type MergeStateStatus } from '@osdlc/typed-gh'
 

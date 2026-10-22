@@ -19,8 +19,8 @@ import {
   lexical,
   type PathWarning,
   type Resolver,
-} from '../index.ts'
-import { nodeGuard, nodeResolver } from '../node.ts'
+} from '../src/index.ts'
+import { nodeGuard, nodeResolver } from '../src/node.ts'
 
 /**
  * A resolver over a fixed table: `/` and each key of `entries` exist, and a key

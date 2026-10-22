@@ -4,7 +4,7 @@
  * `AsyncCallOptions`: a timeout and an `AbortSignal`.
  */
 
-import { expect, test } from 'bun:test'
+import { expect, test } from 'vitest'
 
 import {
   AsyncGh,

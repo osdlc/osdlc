@@ -1,10 +1,10 @@
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'vitest'
 
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 
-import { checkoutRoot, discoverCheckouts, scanForCheckouts } from '../index.ts'
+import { checkoutRoot, discoverCheckouts, scanForCheckouts } from '../src/index.ts'
 
 /** A throwaway `.git`-marked checkout, cleaned up via the returned dispose(). */
 function makeCheckout(): { root: string; dispose: () => void } {

@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import { mkdirSync, symlinkSync } from 'node:fs'
 import { basename, join } from 'node:path'
 
-import { REDACTED } from '../read/redact.ts'
+import { REDACTED } from '../src/read/redact.ts'
 import { fixture, type Fixture } from './fixture.ts'
 
 let f: Fixture

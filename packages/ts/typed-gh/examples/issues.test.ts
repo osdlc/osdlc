@@ -2,7 +2,7 @@
  * Read one issue with its labels, and swap its label in a single call.
  */
 
-import { expect, test } from 'bun:test'
+import { expect, test } from 'vitest'
 
 import {
   Gh,

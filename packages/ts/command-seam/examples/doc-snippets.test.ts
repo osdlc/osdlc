@@ -19,7 +19,7 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
 
-import { expect, test } from 'bun:test'
+import { expect, test } from 'vitest'
 
 import { PACKAGE_NAME, publicExports } from './support/scenarios.ts'
 import { EXAMPLES_DIR, PACKAGE_DIR, typecheck } from './support/typecheck.ts'
@@ -75,7 +75,7 @@ function snippetsOf(path: string): Snippet[] {
   return out
 }
 
-const allExports = publicExports(readFileSync(join(PACKAGE_DIR, 'index.ts'), 'utf-8'))
+const allExports = publicExports(readFileSync(join(PACKAGE_DIR, 'src', 'index.ts'), 'utf-8'))
 const globalsPath = join(EXAMPLES_DIR, '__doc_globals.ts')
 const snippets = DOCS.flatMap(snippetsOf).map((s, n) => {
   const rule = RULES.find((r) => s.code.includes(r.match))

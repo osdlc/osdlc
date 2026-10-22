@@ -15,6 +15,7 @@ import { closeSync, mkdtempSync, openSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
+  classifyFailure,
   spawnRunner,
   spawnRunnerBytes,
   runChecked,
@@ -94,5 +95,14 @@ assert.equal(runChecked(fake.runner, ['rev-parse', 'HEAD'], { cwd: '/' }).stdout
 const proc = fakeProcess()
 proc.kill()
 assert.equal((await proc.exited).reason, 'abort')
+
+// A failure is classified, and CommandFailed carries it.
+const missing = spawnRunner('command-seam-no-such-binary').run([], { cwd: '/' })
+assert.equal(classifyFailure(missing, { binary: 'x' })?.kind, 'not-installed')
+assert.equal(classifyFailure({ exitCode: 0, stdout: '', stderr: '' }), null)
+assert.throws(
+  () => runChecked(spawnRunner('command-seam-no-such-binary'), [], { cwd: '/' }),
+  (e) => e instanceof CommandFailed && e.failure.kind === 'not-installed',
+)
 
 console.log('command-seam smoke: OK')

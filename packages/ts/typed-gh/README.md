@@ -15,7 +15,9 @@ scripts, release bots and coding agents. It is the GitHub-side companion of
 npm install @osdlc/typed-gh
 ```
 
-It needs Node 22 or later (or Bun), and the `gh` CLI on `PATH`, signed in with `gh auth login`.
+`pnpm add @osdlc/typed-gh` and `yarn add @osdlc/typed-gh` work too.
+
+It needs Node `^22.22.2 || ^24.15.0 || >=26.0.0`, the range of its dependency `@osdlc/typed-git` (Bun also works, through the compiled `dist/`), and the `gh` CLI on `PATH`, signed in with `gh auth login`.
 It is supported on macOS and Linux. Windows is not supported yet; it will be once a Windows CI job
 runs the tests.
 
@@ -88,18 +90,69 @@ and `ReviewDecision` (`APPROVED`, `CHANGES_REQUESTED`, `REVIEW_REQUIRED`,
 `null`). A value GitHub adds to either reads as `UNKNOWN` or `null`. A check
 that decides whether to merge can then match every member.
 
-## Three modes, so failure is never ambiguous
+## Three doors, as in `typed-git`, so failure is never ambiguous
 
-| | on failure |
-| --- | --- |
-| **queries** | return the absence value, `null`. Never throw. |
-| **mutations** | throw `CommandFailed`, carrying argv and the full result. |
-| **`raw(argv)`** | hand back the raw `CommandResult`; you decide. |
+| | a value | on failure |
+| --- | --- | --- |
+| **`gh.query()`** (the plain method) | the value | throws a `FailureError` carrying the classified `GhFailure` (kind `unreadable` when `gh` succeeded but its output cannot be read) |
+| **`gh.try.query()`** | `{ ok: true, value }` | `{ ok: false, error: GhFailure }` |
+| **`gh.soft.query()`** | the value | `null` (queries only; a mutation has no soft form) |
+| **`raw(argv)`** | the raw `CommandResult`; you decide | the same |
 
-A query returns `null`, never an empty list on failure. `prList()` returning
-`{ rows: [], truncated: false }` means *this repository has no open PRs*.
-`null` means *we could not ask*. If the two were the same, an expired
-credential would read as "nothing to do".
+A query returns a list or a value, never an empty list on failure.
+`prList()` returning `{ rows: [], truncated: false }` means *this repository
+has no open PRs*. A failed call throws, or is `{ ok: false }` through `try`, or
+`null` through `soft`: *we could not ask*. If the two were the same, an
+expired credential would read as "nothing to do".
+
+**Absence is an answer.** A query for one thing (`prView`, `issueView`,
+`repoView`, and `prFind` and `openPrFor` over them) returns `null` on every
+door when GitHub says there is no such thing: "Could not resolve to a
+PullRequest" or "no pull requests found for branch" for `prView`, "Could not
+resolve to an Issue" for `issueView`, "Could not resolve to a Repository" for
+`repoView`. `gh.try.prView(99)` is `{ ok: true, value: null }`. Every other
+failure is a failure, including a wrong repository: `prView(7)` against a
+mistyped `--repo` is a `not-found` failure, not an absent PR. The check reads
+stderr and stdout, as the classifier does.
+
+**Probes answer.** `installed()`, `authenticated()`, `authStatus()`, `ready()`
+and `api()` return their failure as part of their value, in every door, because
+"gh is not installed" is the answer to the question they ask.
+
+```ts
+import { describe } from '@osdlc/result'
+
+const result = gh.try.prList({ limit: 50 })
+if (!result.ok) {
+  console.error(describe(result.error)) // e.g. "gh is not signed in to GitHub. Run `gh auth login`."
+}
+```
+
+### `GhFailure`
+
+The error of `try` is a `GhFailure`, a `Failure` from `@osdlc/result`: a `kind`
+to branch on, a one-line `message` and a `hint` for a person (`describe(error)`
+joins them), `gh`'s own output in `detail`, the `argv` and `exitCode`, and the
+`CommandFailed` it was read from in `cause`. The plain door throws the same
+failure, wrapped in a `FailureError` (`error.failure`), so a CLI that reports a
+thrown failure, such as `runMain` from `@osdlc/cli-tool`, shows "gh is not
+signed in" for a write and exits with the same code as for a read.
+
+| `kind` | When (gh's stderr) | `message` / `hint` |
+| --- | --- | --- |
+| `not-installed` | `gh` is not on `PATH` | `` `gh` is not installed or not on PATH. `` / ``Install it from https://cli.github.com, then run `gh auth login`.`` |
+| `not-authenticated` | `gh auth login`, `HTTP 401`, `HTTP 403` (unless a rate limit), `Bad credentials`, `not logged in` | `gh is not signed in to GitHub.` / ``Run `gh auth login`.`` |
+| `network` | `error connecting to`, `Could not resolve host`, `no such host`, `dial tcp`, `i/o timeout` | `GitHub could not be reached.` / `Check your network connection.` |
+| `not-found` | `Could not resolve to a …`, `HTTP 404`, `no pull requests found for branch` | `GitHub has no such pull request, issue or repository, or you cannot see it.` / `Check the number or name, and that your account can see the repository.` |
+| `rate-limited` | `API rate limit exceeded`, `secondary rate limit`, `HTTP 429` | `GitHub's API rate limit was reached.` / `Wait a few minutes and try again.` |
+| `unreadable` | `gh` exited 0 but its output could not be read completely | `gh answered, but its output could not be read completely.` (no hint, no `cause`) |
+| `not-executable`, `bad-cwd`, `timeout`, `output-cap`, `signal`, `aborted`, `spawn` | as in `@osdlc/command-seam` | command-seam's message, no hint |
+| `exit` | any other non-zero exit | `gh`'s first stderr line |
+
+The patterns are `gh`'s English messages; anything else is a plain `exit`,
+never a wrong kind. Rate limiting is checked before authentication, then
+network, then not-found. `classifyGhFailure(commandFailed)` makes the same
+classification for a `CommandFailed` you caught yourself.
 
 ## A list says when its limit cut it short
 
@@ -108,9 +161,9 @@ one row more than `limit` and returns `{ rows, truncated }`: at most `limit`
 rows, and `truncated: true` when there were more.
 
 ```ts
-const page: ListResult<PullRequest> | null = gh.prList({ limit: 50 })
+const page: ListResult<PullRequest> = gh.prList({ limit: 50 })
 
-if (page?.truncated) console.warn('more than 50 open PRs; raise the limit')
+if (page.truncated) console.warn('more than 50 open PRs; raise the limit')
 ```
 
 `prList`, `issueList`, `labelList`, `repoList` and `searchPrs` all work this
@@ -130,7 +183,7 @@ acme.withRepo('acme/gadgets').prList()
 acme.api('repos/{owner}/{repo}/branches')
 ```
 
-The target goes into the argv, so a `CommandFailed` shows which repository a
+The target goes into the argv, so a failure's `argv` shows which repository a
 call hit: `pr`, `issue` and `label` calls get `--repo github.acme.com/acme/widgets`,
 `api` calls get `--hostname` and a filled `{owner}/{repo}`, and `authStatus`
 asks about that host. `repoList` and `searchPrs` have no host flag in gh, so
@@ -213,7 +266,7 @@ about staleness, never the measure of it. Compute that from the commit graph
 
 ## Changing pull requests
 
-Mutations throw `CommandFailed` when `gh` fails.
+Mutations throw the classified failure (a `FailureError`) when `gh` fails. `gh.try.editPr(…)` returns the failure as a `Result` instead; a mutation has no `soft` form.
 
 ```ts
 const url = gh.createPr(options)
@@ -241,23 +294,23 @@ gh.prMerge(9, { method, headSha: 'abc1234' })
 ```
 
 `prReviewThreads(n)` reads the review threads, so you can look for open ones before you merge. It
-returns `null` when it could not read all of them (a failed call, an unexpected payload, or more
-than 100 threads). That is not the same as "no threads".
+throws when it could not read all of them (a failed call, an unexpected payload, or more
+than 100 threads; `soft.prReviewThreads` is `null`). That is not the same as "no threads".
 
 ```ts
-const threads: ReviewThread[] | null = gh.prReviewThreads(9)
+const threads: ReviewThread[] = gh.prReviewThreads(9)
 
-threads?.filter((t) => !t.isResolved)
+threads.filter((t) => !t.isResolved)
 ```
 
 ## Issues and labels
 
 ```ts
-const issue: IssueRow | null = gh.issueView(7)
-const triage: ListResult<IssueRow> | null = gh.issueList({ label: 'status:triage', limit: 50 })
+const issue: IssueRow | null = gh.issueView(7) // null: there is no issue 7
+const triage: ListResult<IssueRow> = gh.issueList({ label: 'status:triage', limit: 50 })
 gh.setIssueLabel(7, 'status:triage', 'status:define')
 
-const labels: ListResult<Label> | null = gh.labelList({ limit: 100 })
+const labels: ListResult<Label> = gh.labelList({ limit: 100 })
 gh.createLabel({ name: 'status:triage', color: '1f6feb', description: 'Triage stage' })
 gh.editLabel('status:triage', { description: 'Waiting for triage' })
 ```
@@ -279,7 +332,7 @@ const review = gh.createReview(9, {
 gh.issueCommentEdit('4204154439', 'Updated: CI is green.')
 ```
 
-`prDiff` returns the unified diff and throws `CommandFailed` when `gh` cannot produce it.
+`prDiff` returns the unified diff and throws the classified failure when `gh` cannot produce it.
 
 `createReview` is experimental. It posts a review of kind `COMMENT`: it cannot approve or request
 changes. Each inline comment sits on one line of the new side of the diff. It returns the review's
@@ -307,9 +360,9 @@ const prs = verb.parse(result)
 ## `AsyncGh`
 
 The awaitable form of `Gh`, with the same methods, for a fan-out that must not block the event loop.
-Same tri-modal contract (queries resolve to a value or `null` and never
-reject, mutations reject with `CommandFailed`, `raw`/`rawChecked` are the
-hatches), driven by the same verb table, so the two cannot drift. It takes an
+Same three doors, promised (the plain method rejects with the classified failure,
+`try` resolves to a `Result<T, GhFailure>`, `soft` resolves `null` for a failed
+query, `raw`/`rawChecked` are the hatches), driven by the same verb table, so the two cannot drift. It takes an
 `AsyncCommandRunner` and defaults to `spawnRunnerAsync("gh")`.
 
 ```ts
@@ -317,7 +370,7 @@ import { AsyncGh } from '@osdlc/typed-gh'
 
 const gh = new AsyncGh('/repo')
 const prs = await Promise.all(branches.map((b) => gh.openPrFor(b)))
-const body = await gh.prBody(42) // string | null
+const body = await gh.prBody(42) // string; rejects when gh fails
 await gh.editPrBody(42, `${body}\n\nfooter`)
 await gh.prComment(42, 'rebased') // the comment's URL, or ''
 await gh.prUpdateBranch(42, 'rebase')
@@ -346,8 +399,8 @@ without one. If `gh` prints more than one header block, the last one is read. `{
 const branches = gh.api('repos/{owner}/{repo}/branches', { paginate: true }).body
 ```
 
-`graphql` (experimental) runs a query and returns each page's `data`. It returns `null` when the
-call failed or any page has `errors` or no `data`: a partial answer is no answer. `nodesAt` joins
+`graphql` (experimental) runs a query and returns each page's `data`. It throws when the
+call failed or any page has `errors` or no `data` (`soft.graphql` is `null`): a partial answer is no answer. `nodesAt` joins
 one connection's `nodes` across the pages, and is `null` when any page lacks them.
 
 ```ts
@@ -369,9 +422,9 @@ one. `graphql` refuses a mutation with `RangeError`; send one through `raw`.
 ## Repositories and search
 
 ```ts
-const repos: ListResult<Repository> | null = gh.repoList('acme', { archived: false, limit: 200 })
-const repo: Repository | null = gh.repoView('acme/widgets')
-const hits: ListResult<PrSearchHit> | null = gh.searchPrs('TICKET-123', { owner: 'acme' })
+const repos: ListResult<Repository> = gh.repoList('acme', { archived: false, limit: 200 })
+const repo: Repository | null = gh.repoView('acme/widgets') // null: no such repository
+const hits: ListResult<PrSearchHit> = gh.searchPrs('TICKET-123', { owner: 'acme' })
 ```
 
 A `Repository` carries `nameWithOwner`, `owner`, `name`, `description`, `defaultBranch`,
@@ -422,9 +475,15 @@ Methods on both clients:
 - Issue and label queries: `issueList`, `issueView` and `labelList`.
 - Repository queries: `repoList` and `repoView`.
 - Issue and label changes: `setIssueLabel`, `createLabel`, `editLabel` and `issueCommentEdit`.
-- REST and GraphQL: `api` is a GET through `gh api` and `graphql` a query; neither throws.
+- REST and GraphQL: `api` is a GET through `gh api` and never throws (failure is `ok: false`); `graphql` is a query and throws on a failed or partial answer.
 - Setup checks: `installed`, `authenticated`, `authStatus` and `ready`.
 - `ownerRepo` reads the owner and repository from a remote URL. It starts no process.
+- `try` and `soft`: the whole surface again as a `Result<T, GhFailure>`, and the queries again with `null` for a failure. `TriedSync`, `TriedAsync` and `Soft` are their types.
+
+### Failures
+
+- `GhFailure` and `GhFailureKind`: the error of `try`, and its kinds (see "`GhFailure`" above).
+- `classifyGhFailure(commandFailed)`: the `GhFailure` for a `CommandFailed`.
 
 ### Verbs
 
@@ -473,7 +532,7 @@ the escape hatches, `at`, `withRepo`, `prViewSettled`, `openPrFor`, `prFind`, `a
 
 ### From the command seam
 
-- `CommandFailed`: thrown by a mutation. It carries the argv and the result.
+- `CommandFailed`: re-exported from `@osdlc/command-seam`. A failed call throws a `FailureError` whose `failure.cause` is the `CommandFailed`, which carries the argv and the result.
 - `CommandRunner`, `AsyncCommandRunner`, `CommandResult` and `CommandRunOptions`: the runner types
   that appear in signatures.
 
@@ -514,4 +573,4 @@ shell, so nothing in it is specific to one shell.
 
 ## Licence
 
-`MIT OR Apache-2.0`, at your option. See `LICENSE-MIT` and `LICENSE-APACHE`.
+`MIT OR Apache-2.0`, at your option. See [LICENSE-MIT](./LICENSE-MIT) and [LICENSE-APACHE](./LICENSE-APACHE).

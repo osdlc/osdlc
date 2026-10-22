@@ -9,7 +9,7 @@ import {
   pathNames,
   pathsSchema,
   resolveConfigPath,
-} from '../paths.ts'
+} from '../src/paths.ts'
 
 const ROOT = '/work/app'
 

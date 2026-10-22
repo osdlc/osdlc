@@ -19,8 +19,9 @@ merged there.
 ## Running the tests
 
 The repository is a pnpm workspace. Install from the repository root, then
-work in the package directory. The tests run under Bun, so install
-[Bun](https://bun.sh) as well as Node 22 or later.
+work in the package directory. The tests run on Vitest under Node 22 or
+later. Build first: the workspace packages and the examples resolve each other
+through `dist/`.
 
 ```sh
 pnpm install

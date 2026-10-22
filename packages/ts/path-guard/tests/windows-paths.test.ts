@@ -9,14 +9,14 @@ import { join } from 'node:path'
 
 import { describe, expect, test, vi } from 'vitest'
 
-import type { PathWarning } from '../errors.ts'
-import type { Resolver } from '../resolve.ts'
+import type { PathWarning } from '../src/errors.ts'
+import type { Resolver } from '../src/resolve.ts'
 
 const platform = Object.getOwnPropertyDescriptor(process, 'platform')!
 Object.defineProperty(process, 'platform', { value: 'win32' })
 vi.resetModules()
-const { PathGuard } = await import('../guard.ts')
-const { PathError } = await import('../errors.ts')
+const { PathGuard } = await import('../src/guard.ts')
+const { PathError } = await import('../src/errors.ts')
 Object.defineProperty(process, 'platform', platform)
 
 function enoent(): never {

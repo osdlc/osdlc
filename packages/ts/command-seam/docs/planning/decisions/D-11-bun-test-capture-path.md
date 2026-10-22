@@ -34,10 +34,11 @@ reporter found the problem gone in Bun 1.4.2.
 ## Consequences
 
 - The README "Known issue: `bun test`" section describes the path.
-- The normal suite under `bun test` takes this path, so a separate test runs
+- The suite used to run under `bun test` and take this path, so a separate test runs
   a child process without `NODE_ENV` to cover the pipe path that production
   users get. Its helper lives in `tests/support/`.
-- On Node, every test takes the pipe path. Moving the tests to Vitest
-  ([T-02](../tasks/T-02-vitest.md)) may make that extra test unneeded.
+- On Node, every test takes the pipe path. The tests now run on Vitest
+  ([T-02](../tasks/T-02-vitest.md)), so the capture path is exercised only by
+  a `bun test` run of the package, which CI no longer does.
 - Once the pipe path is shown to work under `bun test` on the Bun versions
   the package supports, this path can be removed.

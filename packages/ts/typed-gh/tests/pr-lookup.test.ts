@@ -3,7 +3,7 @@
  * `head` filter on `prList`, `parsePrRef`, and `prFind` on both clients.
  */
 
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'vitest'
 
 import {
   AsyncGh,
@@ -14,14 +14,20 @@ import {
   type AsyncCommandRunner,
   type CommandResult,
   type CommandRunner,
-} from '../index.ts'
+} from '../src/index.ts'
 
 const ok = (body: unknown): CommandResult => ({
   exitCode: 0,
   stdout: JSON.stringify(body),
   stderr: '',
 })
-const FAIL: CommandResult = { exitCode: 1, stdout: '', stderr: 'no pull requests found' }
+/** What `gh pr view` says when there is no such PR: an answer, not a failure. */
+const FAIL: CommandResult = {
+  exitCode: 1,
+  stdout: '',
+  stderr: 'no pull requests found for branch "x"',
+}
+const BROKEN: CommandResult = { exitCode: 1, stdout: '', stderr: 'boom' }
 
 /** A `Gh` and an `AsyncGh` that answer each argv with `answer(argv)`. */
 function clients(answer: (argv: string[]) => CommandResult, opts: { repo?: string } = {}) {
@@ -225,9 +231,10 @@ describe('prFind', () => {
     expect(argv[argv.indexOf('--json') + 1]).toBe('number,state,headRefName,title')
   })
 
-  test('null when nothing matches, the input is not a reference, or gh failed', async () => {
+  test('null when nothing matches or the input is not a reference; a failed gh throws, soft is null', async () => {
     expect(clients(() => ok([])).gh.prFind('feature/x')).toBeNull()
-    expect(clients(() => FAIL).gh.prFind('feature/x')).toBeNull()
+    expect(() => clients(() => BROKEN).gh.prFind('feature/x')).toThrow()
+    expect(clients(() => BROKEN).gh.soft.prFind('feature/x')).toBeNull()
     const { gh, agh, calls } = clients(() => ok([]))
     expect(gh.prFind('not a ref')).toBeNull()
     expect(await agh.prFind('not a ref')).toBeNull()

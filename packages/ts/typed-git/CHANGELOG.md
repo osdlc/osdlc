@@ -1,4 +1,33 @@
-# Changelog
+# @osdlc/typed-git
+
+## 0.6.0
+
+### Minor Changes
+
+- d9b0f77: **Breaking:** typed-git's plain door throws the classified failure, as typed-gh's does. A failed git call (any verb, `rawChecked`) now throws a `FailureError` whose `failure` is the `GitFailure` and whose `failure.cause` is the `CommandFailed`, where it threw the `CommandFailed` itself. The bare `CommandFailed` had only command-seam's generic `exit` kind, so a signed-out `git push` exited 1 from `runMain` instead of 23. Read `error.failure.argv` and `error.failure.cause.result` where you read `error.argv` and `error.result`.
+  
+  New `GitFailureKind` `tls`: `unable to access … SSL certificate problem` is no longer `remote-unreachable`. The host answered, so retrying cannot help until the system clock, the CA certificates or the remote's certificate is fixed. `@osdlc/cli-tool` numbers `tls` 23, with the other "fix it" failures; `@osdlc/pr-update` accounts for it in its exit-table check and reads a push failure through the `FailureError`'s cause.
+- d9b0f77: **Breaking:** `git.try.*` returns `Result<T, GitFailure>` from `@osdlc/result`. `GitOutcome` is removed. The error is a classified `GitFailure` (`kind`, `message`, `hint`, `detail`, `argv`, `exitCode`) and its `cause` is the `CommandFailed`; read the raw result at `error.cause.result`. `kind` is a `GitFailureKind`: every `@osdlc/command-seam` failure kind (`not-installed` carries the hint `Install git from https://git-scm.com.`), plus `not-a-repo`, `no-remote`, `remote-unreachable` and `not-authenticated`, read from git's stderr. `classifyGitFailure(commandFailed)` is exported. The plain verb (throws `CommandFailed`) and `git.soft.*` are unchanged. `@osdlc/result` is now a dependency.
+- d9b0f77: A git failure with an HTTP status is no longer `remote-unreachable`. `unable to access … The requested URL returned error: 401` or `403` is `not-authenticated`, and `404` is the new kind `not-found` (`GitFailureKind` gains it), so a script that retries on `remote-unreachable` does not loop on a permission or wrong-URL problem. A refused connection, a DNS failure and a timeout stay `remote-unreachable`. The `try` and `soft` doors recognise a thrown `CommandFailed` by shape, so two installed copies of `@osdlc/command-seam` agree.
+
+### Patch Changes
+
+- fb712e0: Ship the compiled `dist/` only. The `bun` export condition and the TypeScript source are no longer in the package, so Bun, Node and every bundler load the same compiled ESM and `.d.ts` files. Bun still works through the compiled `dist/`.
+- fb712e0: Make every package follow the same conventions. The published manifests and READMEs change; the runtime code and the `dist/` files do not.
+  
+  - `author` is `sksizer` in every manifest (`@osdlc/typed-gh` had none).
+  - `engines.node` is no wider than any dependency's. `@osdlc/typed-gh` and `@osdlc/code-host` now declare `^22.22.2 || ^24.15.0 || >=26.0.0`, the range of `@osdlc/typed-git` and its dependency `hosted-git-info`. `@osdlc/cli-tool` and `@osdlc/trust-repo` declare `>=22`, not `>=22.18`: a `dist/` install needs no TypeScript stripping.
+  - `@osdlc/tsconfig` and `@osdlc/prettier-config` are ESM with `sideEffects: false`, and ship SECURITY.md and CONTRIBUTING.md. `@osdlc/prettier-config` has an `exports` map (`.` is `index.json`) in place of `main`.
+  - Every README has `## Install` and `## Licence` sections, and every CHANGELOG starts `# @osdlc/<name>`.
+  - `@osdlc/color` and `@osdlc/markdown-contract` no longer set a coverage threshold.
+  - `@osdlc/yaml-splice` reaches its WebAssembly glue through a `#wasm` entry in `imports`. The shipped `dist/` files are the same.
+- Updated dependencies [d9b0f77]
+- Updated dependencies [d9b0f77]
+- Updated dependencies [fb712e0]
+- Updated dependencies [fb712e0]
+- Updated dependencies [d9b0f77]
+  - @osdlc/command-seam@0.9.0
+  - @osdlc/result@0.1.0
 
 ## 0.5.3
 

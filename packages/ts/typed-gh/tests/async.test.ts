@@ -5,17 +5,17 @@
  * verb table.
  */
 
-import { describe, expect, test } from 'bun:test'
+import { FailureError } from '@osdlc/result'
+import { describe, expect, test } from 'vitest'
 
 import {
   AsyncGh,
-  CommandFailed,
   Gh,
   api,
   type AsyncCommandRunner,
   type CommandResult,
   type CommandRunner,
-} from '../index.ts'
+} from '../src/index.ts'
 import { asAsync } from '@osdlc/command-seam'
 
 function recorder(results: CommandResult[] = [{ exitCode: 0, stdout: '', stderr: '' }]) {
@@ -35,29 +35,34 @@ function recorder(results: CommandResult[] = [{ exitCode: 0, stdout: '', stderr:
 const ok = (stdout: string): CommandResult => ({ exitCode: 0, stdout, stderr: '' })
 const FAIL: CommandResult = { exitCode: 1, stdout: '', stderr: 'boom' }
 
-describe('AsyncGh — tri-modal contract', () => {
-  test('queries resolve to null on failure and never reject', async () => {
+describe('AsyncGh — the three doors', () => {
+  test('queries reject on failure; soft resolves null; try resolves a Result', async () => {
     const { runner } = recorder([FAIL])
     const gh = new AsyncGh('/repo', { runner })
-    expect(await gh.prList()).toBeNull()
-    expect(await gh.prView(1)).toBeNull()
-    expect(await gh.prBody(1)).toBeNull()
-    expect(await gh.labelList()).toBeNull()
+    await expect(gh.prList()).rejects.toBeInstanceOf(FailureError)
+    await expect(gh.prView(1)).rejects.toBeInstanceOf(FailureError)
+    await expect(gh.prBody(1)).rejects.toBeInstanceOf(FailureError)
+    await expect(gh.labelList()).rejects.toBeInstanceOf(FailureError)
+    expect(await gh.soft.prList()).toBeNull()
+    expect(await gh.soft.prView(1)).toBeNull()
+    expect(await gh.soft.prBody(1)).toBeNull()
+    expect(await gh.soft.labelList()).toBeNull()
+    expect((await gh.try.prList()).ok).toBe(false)
   })
 
-  test('mutations reject with CommandFailed', async () => {
+  test('mutations reject with the classified failure', async () => {
     const { runner } = recorder([FAIL])
     const gh = new AsyncGh('/repo', { runner })
-    await expect(gh.editPr(1, { title: 't' })).rejects.toBeInstanceOf(CommandFailed)
-    await expect(gh.prComment(1, 'hi')).rejects.toBeInstanceOf(CommandFailed)
-    await expect(gh.prUpdateBranch(1)).rejects.toBeInstanceOf(CommandFailed)
+    await expect(gh.editPr(1, { title: 't' })).rejects.toBeInstanceOf(FailureError)
+    await expect(gh.prComment(1, 'hi')).rejects.toBeInstanceOf(FailureError)
+    await expect(gh.prUpdateBranch(1)).rejects.toBeInstanceOf(FailureError)
   })
 
   test('raw is unchecked, rawChecked rejects', async () => {
     const { runner } = recorder([FAIL])
     const gh = new AsyncGh('/repo', { runner })
     expect((await gh.raw(['x'])).exitCode).toBe(1)
-    await expect(gh.rawChecked(['x'])).rejects.toBeInstanceOf(CommandFailed)
+    await expect(gh.rawChecked(['x'])).rejects.toBeInstanceOf(FailureError)
   })
 
   test('openPrFor discards a prefix-only match', async () => {

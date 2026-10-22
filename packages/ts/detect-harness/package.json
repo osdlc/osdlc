@@ -1,6 +1,6 @@
 {
   "name": "@osdlc/detect-harness",
-  "version": "0.4.1",
+  "version": "0.4.3",
   "description": "Find the coding-agent harnesses (Claude Code, Codex, Cursor, opencode, pi, Antigravity) on a machine and in a project, and read what each has configured: plugins, skills, hooks, MCP servers, permissions, instructions and sign-in evidence. Read-only; MCP env and header values, URL credentials and secret-looking MCP args are redacted by default.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",
@@ -64,13 +64,13 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "oxlint .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit"
   },
   "dependencies": {
     "@osdlc/command-seam": "workspace:^",
     "@osdlc/frontmatter-lossless": "workspace:^",
     "smol-toml": "^1.7.0",
-    "yaml": "^2.9.0"
+    "yaml": "catalog:"
   },
   "peerDependencies": {
     "zod": "^4"
@@ -78,12 +78,12 @@
   "devDependencies": {
     "@osdlc/prettier-config": "workspace:^",
     "@osdlc/tsconfig": "workspace:^",
-    "@types/node": "^26.1.0",
-    "@vitest/coverage-v8": "^5.0.5",
-    "oxlint": "^1.65.0",
-    "prettier": "3.9.6",
-    "typescript": "~6.0.3",
-    "vitest": "^5.0.5",
-    "zod": "4.4.3"
+    "@types/node": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
+    "oxlint": "catalog:",
+    "prettier": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:",
+    "zod": "catalog:"
   }
 }

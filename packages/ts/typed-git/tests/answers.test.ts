@@ -5,7 +5,9 @@
  * without `configRemoveSection`.
  */
 
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'vitest'
+
+import { FailureError } from '@osdlc/result'
 
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -14,14 +16,13 @@ import { join } from 'node:path'
 import {
   AsyncGit,
   cliBackend,
-  CommandFailed,
   Git,
   type AsyncCommandRunner,
   type CommandResult,
   type CommandRunner,
   type CommandRunOptions,
-} from '../index.ts'
-import { makeGitFixture } from '../testing.ts'
+} from '../src/index.ts'
+import { makeGitFixture } from '../src/testing.ts'
 
 function recorder(result: CommandResult = { exitCode: 0, stdout: '', stderr: '' }) {
   const calls: Array<{ argv: string[]; opts: CommandRunOptions }> = []
@@ -51,16 +52,16 @@ describe('diffText and diffAddedFile follow the failure contract', () => {
       writeFileSync(join(fx.dir, 'a.md'), 'two\n')
       expect(git.diffText('HEAD')).toContain('+two')
 
-      expect(() => git.diffText('does-not-exist')).toThrow(CommandFailed)
+      expect(() => git.diffText('does-not-exist')).toThrow(FailureError)
       const tried = git.try.diffText('does-not-exist')
       expect(tried.ok).toBe(false)
 
       const out = new Git(outside)
-      expect(() => out.diffText()).toThrow(CommandFailed)
+      expect(() => out.diffText()).toThrow(FailureError)
       expect(out.try.diffText().ok).toBe(false)
 
       const asyncGit = new AsyncGit(fx.dir)
-      await expect(asyncGit.diffText('does-not-exist')).rejects.toBeInstanceOf(CommandFailed)
+      await expect(asyncGit.diffText('does-not-exist')).rejects.toBeInstanceOf(FailureError)
       expect((await asyncGit.try.diffText('does-not-exist')).ok).toBe(false)
     } finally {
       fx.cleanup()
@@ -78,10 +79,10 @@ describe('diffText and diffAddedFile follow the failure contract', () => {
       // An empty file is still a real diff, not a failure.
       expect(git.diffAddedFile('empty.md')).toContain('new file mode')
 
-      expect(() => git.diffAddedFile('missing.md')).toThrow(CommandFailed)
+      expect(() => git.diffAddedFile('missing.md')).toThrow(FailureError)
       expect(git.try.diffAddedFile('missing.md').ok).toBe(false)
       const asyncGit = new AsyncGit(fx.dir)
-      await expect(asyncGit.diffAddedFile('missing.md')).rejects.toBeInstanceOf(CommandFailed)
+      await expect(asyncGit.diffAddedFile('missing.md')).rejects.toBeInstanceOf(FailureError)
     } finally {
       fx.cleanup()
     }

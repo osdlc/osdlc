@@ -11,7 +11,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { describe, expect, setDefaultTimeout, test } from 'bun:test'
+import { describe, expect, test } from 'vitest'
 
 import {
   asAsync,
@@ -25,13 +25,10 @@ import {
   spawnRunnerAsync,
   type CommandResult,
   type CommandRunner,
-} from '../index.ts'
+} from '../src/index.ts'
 import { gone, reap } from './support/procs.ts'
 
 const CWD = process.cwd()
-
-// Real spawns on a loaded machine can pass Bun's 5 s default.
-setDefaultTimeout(15_000)
 
 describe('spawnRunner', () => {
   test("input is written to the child's stdin", () => {
@@ -593,7 +590,7 @@ describe('spawnRunnerAsync — stdin failure contract', () => {
         probe,
         [
           `import { writeFileSync } from "node:fs";`,
-          `import { spawnRunnerAsync } from ${JSON.stringify(join(import.meta.dir, '../index.ts'))};`,
+          `import { spawnRunnerAsync } from ${JSON.stringify(join(import.meta.dirname, '../src/index.ts'))};`,
           `const r = await spawnRunnerAsync("sh").run(["-c", "exec 0<&-; sleep 0.3"], {`,
           `  cwd: process.cwd(),`,
           `  input: "x".repeat(4 * 1024 * 1024),`,
@@ -601,15 +598,15 @@ describe('spawnRunnerAsync — stdin failure contract', () => {
           `writeFileSync(${JSON.stringify(outFile)}, JSON.stringify(r));`,
         ].join('\n'),
       )
-      const proc = spawnSync(process.execPath, ['run', probe], { cwd: CWD })
+      const proc = spawnSync(process.execPath, ['--no-warnings', probe], { cwd: CWD })
       expect(proc.status).toBe(0)
       const res = JSON.parse(readFileSync(outFile, 'utf-8')) as CommandResult
       // The child's own exit code is still the result...
       expect(res.exitCode).toBe(0)
       // ...but the input it never read is not silently forgotten: the write
       // failure rides out in `error`.
-      // EPIPE, or ENOTCONN under some timings: both are a write to a closed peer.
-      expect(res.error).toMatch(/^(EPIPE|ENOTCONN): [^\n]*, write$/)
+      // EPIPE, or ENOTCONN under some timings: both are a write to a closed peer. Node words it "write EPIPE", Bun "EPIPE: …, write".
+      expect(res.error).toMatch(/^((EPIPE|ENOTCONN): [^\n]*, write|write (EPIPE|ENOTCONN))$/)
       expect(res.stderr).toBe('')
     } finally {
       rmSync(dir, { recursive: true, force: true })
@@ -632,14 +629,14 @@ describe('spawnRunner — production pipe path', () => {
         probe,
         [
           `import { writeFileSync } from "node:fs";`,
-          `import { spawnRunner } from ${JSON.stringify(join(import.meta.dir, '../index.ts'))};`,
+          `import { spawnRunner } from ${JSON.stringify(join(import.meta.dirname, '../src/index.ts'))};`,
           `const r = spawnRunner("definitely-not-a-real-binary-xyzzy").run([], { cwd: process.cwd() });`,
           `writeFileSync(${JSON.stringify(outFile)}, JSON.stringify(r));`,
         ].join('\n'),
       )
       const env = { ...process.env }
       delete env['NODE_ENV']
-      spawnSync(process.execPath, ['run', probe], { cwd: CWD, env })
+      spawnSync(process.execPath, ['--no-warnings', probe], { cwd: CWD, env })
       const res = JSON.parse(readFileSync(outFile, 'utf-8')) as CommandResult
       expect(res.exitCode).not.toBe(0)
       expect(res.error).toContain('definitely-not-a-real-binary-xyzzy')
@@ -656,7 +653,7 @@ describe('package exports', () => {
     // `./index.ts`, every such build fails with TS5097 ("an import path can
     // only end in .ts when allowImportingTsExtensions is enabled") on the
     // package's own internal `./sync.ts` imports.
-    const pkg = JSON.parse(readFileSync(join(import.meta.dir, '../package.json'), 'utf-8')) as {
+    const pkg = JSON.parse(readFileSync(join(import.meta.dirname, '../package.json'), 'utf-8')) as {
       exports: Record<string, Record<string, string>>
     }
     expect(pkg.exports['.']?.['types']).toBe('./dist/index.d.ts')
@@ -695,7 +692,8 @@ describe('timeoutMs: the cap fires on the deadline', () => {
         { cwd: CWD, timeoutMs: 300, processGroup: true },
       )
       const elapsed = Date.now() - started
-      for (let i = 0; i < 100 && !existsSync(pidfile); i++) await Bun.sleep(20)
+      for (let i = 0; i < 100 && !existsSync(pidfile); i++)
+        await new Promise((r) => setTimeout(r, 20))
       grandchild = Number(readFileSync(pidfile, 'utf-8').trim())
       expect(r).toMatchObject({ exitCode: 1, neverExited: true, reason: 'timeout' })
       expect(elapsed).toBeGreaterThanOrEqual(250)

@@ -3,15 +3,16 @@
  * intercepted; the return value and every other error pass through untouched.
  */
 
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'vitest'
 
 import {
   catchFailed,
   catchFailedAsync,
   CommandFailed,
+  isCommandFailed,
   mapFailed,
   mapFailedAsync,
-} from '../index.ts'
+} from '../src/index.ts'
 
 const failed = (): CommandFailed =>
   new CommandFailed(['git', 'x'], { exitCode: 1, stdout: 'out', stderr: 'err' })
@@ -163,5 +164,53 @@ describe('async twins', () => {
         () => 'x',
       ),
     ).rejects.toBe(boom)
+  })
+})
+
+describe('a CommandFailed from another installed copy', () => {
+  // A second copy of this package has its own class, so `instanceof` is false;
+  // the helpers and `isCommandFailed` go by shape.
+  const foreign = (): Error =>
+    Object.assign(new Error('boom'), {
+      failure: { kind: 'exit', message: 'x' },
+      argv: ['a'],
+      result: { exitCode: 1, stdout: '', stderr: 'err' },
+    })
+
+  test('isCommandFailed accepts it, and rejects a plain failure error or a non-error', () => {
+    expect(isCommandFailed(foreign())).toBe(true)
+    expect(isCommandFailed(failed())).toBe(true)
+    expect(
+      isCommandFailed(Object.assign(new Error('x'), { failure: { kind: 'k', message: 'm' } })),
+    ).toBe(false)
+    expect(isCommandFailed(null)).toBe(false)
+    expect(isCommandFailed('x')).toBe(false)
+  })
+  test('catchFailed and mapFailed intercept it', async () => {
+    const f = foreign()
+    expect(
+      catchFailed(
+        () => {
+          throw f
+        },
+        () => 'caught',
+      ),
+    ).toBe('caught')
+    await expect(
+      catchFailedAsync(
+        async () => {
+          throw f
+        },
+        () => 'caught',
+      ),
+    ).resolves.toBe('caught')
+    expect(() =>
+      mapFailed(
+        () => {
+          throw f
+        },
+        () => new DomainError(),
+      ),
+    ).toThrow(DomainError)
   })
 })

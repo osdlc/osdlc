@@ -58,6 +58,8 @@ twin held to the same paths.
 npm install @osdlc/tiered-dirs
 ```
 
+`pnpm add @osdlc/tiered-dirs` and `yarn add @osdlc/tiered-dirs` work too.
+
 ## Quick start
 
 ```ts
@@ -418,6 +420,6 @@ The package builds path strings. It runs no commands, writes no files and
 creates no temporary files. Every caller-supplied segment is checked, and an
 override variable must be an absolute path. See [SECURITY.md](./SECURITY.md).
 
-## License
+## Licence
 
-`MIT OR Apache-2.0`, at your option.
+`MIT OR Apache-2.0`, at your option. See [LICENSE-MIT](./LICENSE-MIT) and [LICENSE-APACHE](./LICENSE-APACHE).

@@ -46,10 +46,11 @@
 
 import { z } from 'zod'
 
-import { Git, parseGitUrl, type Worktree } from '@osdlc/typed-git'
+import { Git, parseGitUrl, parseRemoteUrl, type Worktree } from '@osdlc/typed-git'
 
 import type { CodeHost, CodeHostPrDetail } from '@osdlc/code-host'
 import type { CommandRunner } from '@osdlc/command-seam'
+import { FailureError, type Failure } from '@osdlc/result'
 import { githubCodeHostFor } from './code-host.ts'
 import { chooseStrategy, type Strategy } from './strategy.ts'
 import type { PrUpdateConfig } from './config.ts'
@@ -501,9 +502,27 @@ export const row = z.object({
   strategyReason: z.string(),
 })
 
+/** Why one repository of a several-repository run could not be listed. */
+export const repoFailure = z.object({
+  kind: z.string().describe('The failure kind, such as `not-authenticated` or `network`.'),
+  message: z.string(),
+  hint: z.string().optional(),
+})
+
 export const output = z.object({
   repos: z
-    .array(z.object({ slug: z.string(), measurable: z.boolean(), fetched: z.boolean() }))
+    .array(
+      z.object({
+        slug: z.string(),
+        measurable: z.boolean(),
+        fetched: z.boolean(),
+        failure: repoFailure
+          .optional()
+          .describe(
+            'Present when this repository could not be listed (several-repository runs only; a single repository throws). It contributes no PRs.',
+          ),
+      }),
+    )
     .describe('Repositories surveyed. `measurable` is false when no local checkout is known.'),
   prs: z.array(row).describe('Open PRs in stack order — a parent always precedes its children.'),
   cycles: z
@@ -565,10 +584,16 @@ function scopedRefspecs(prs: readonly CodeHostPrDetail[], remote: string): strin
   return [...branches].map((b) => `+refs/heads/${b}:refs/remotes/${remote}/${b}`)
 }
 
-/** `owner/name` from a git remote reference, or null when it names no project. */
-function remoteSlug(url: string): string | null {
+/**
+ * `owner/name` from a git remote reference, or null when it names no project.
+ * A host the hosted-git library knows (GitHub, GitLab, ...) first, then any
+ * other `host/owner/repo` remote, which is what a self-hosted Forgejo is.
+ */
+export function remoteSlug(url: string): string | null {
   const info = parseGitUrl(url)
-  return info === null || !info.user || !info.project ? null : `${info.user}/${info.project}`
+  if (info !== null && info.user && info.project) return `${info.user}/${info.project}`
+  const ref = parseRemoteUrl(url)
+  return ref === null ? null : `${ref.owner}/${ref.repo}`
 }
 
 /**
@@ -591,7 +616,7 @@ export function runSurvey(args: SurveyArgs, env: SurveyEnv): SurveyReport {
   const author = args.author ?? cfg.author ?? undefined
   const includeDrafts = args.noDrafts ? false : cfg.include_drafts
 
-  const repos: { slug: string; measurable: boolean; fetched: boolean }[] = []
+  const repos: SurveyReport['repos'] = []
   const allRows: SurveyRow[] = []
   const allCycles: number[] = []
   let branchMatches = 0
@@ -602,13 +627,32 @@ export function runSurvey(args: SurveyArgs, env: SurveyEnv): SurveyReport {
 
     const isLocal = target.slug === localSlug
     const codeHost = codeHostFor({ cwd: target.path ?? env.projectRoot, slug: target.slug })
-    const listed =
-      codeHost.listPrDetails({
-        limit: args.limit,
-        ...(isLocal ? {} : { repo: target.slug }),
-        ...(author !== undefined ? { author } : {}),
-      }) ?? []
-    const filtered = includeDrafts ? listed : listed.filter((p) => !p.isDraft)
+    const listed = codeHost.listPrDetails({
+      limit: args.limit,
+      ...(isLocal ? {} : { repo: target.slug }),
+      ...(author !== undefined ? { author } : {}),
+    })
+    // A failed listing (the tool is missing, not signed in, no network) is not
+    // an empty one: reading it as "no open PRs" would hide the failure. With
+    // one repository it is thrown as the code host's own classified failure.
+    // With several, the others are still surveyed: the failure is recorded on
+    // this repository's entry and the caller reports it and exits with its code.
+    if (!listed.ok) {
+      const { error } = listed
+      if (targets.length === 1) throw new FailureError(error)
+      repos.push({
+        slug: target.slug,
+        measurable,
+        fetched: false,
+        failure: {
+          kind: error.kind,
+          message: error.message,
+          ...(error.hint === undefined ? {} : { hint: error.hint }),
+        },
+      })
+      continue
+    }
+    const filtered = includeDrafts ? listed.value : listed.value.filter((p) => !p.isDraft)
     const wanted = new Set(args.pr)
     if (args.branch !== undefined) {
       // A fork's branch of the same name is another repository's branch, and
@@ -668,6 +712,24 @@ export function runSurvey(args: SurveyArgs, env: SurveyEnv): SurveyReport {
   }
 }
 
+/**
+ * The repositories of a report that could not be listed, as failures whose
+ * message names the repository. Empty for a single-repository run, which throws.
+ */
+export function repoFailuresOf(report: Pick<SurveyReport, 'repos'>): Failure[] {
+  return report.repos.flatMap((r) =>
+    r.failure === undefined
+      ? []
+      : [
+          {
+            kind: r.failure.kind,
+            message: `${r.slug}: ${r.failure.message}`,
+            ...(r.failure.hint === undefined ? {} : { hint: r.failure.hint }),
+          },
+        ],
+  )
+}
+
 function pad(text: string, width: number): string {
   return text.length >= width ? text : text + ' '.repeat(width - text.length)
 }
@@ -680,6 +742,10 @@ export function renderSurveyText(out: SurveyReport): string {
   const unmeasured = out.repos.filter((r) => !r.measurable)
   for (const r of unmeasured) {
     lines.push(`${r.slug}: no local checkout — drift not measured`)
+  }
+  // A repository that could not be listed is not one with no PRs.
+  for (const r of out.repos) {
+    if (r.failure !== undefined) lines.push(`${r.slug}: could not be listed — ${r.failure.message}`)
   }
   if (out.prs.length === 0) {
     lines.push('PR-SURVEY: no open PRs')

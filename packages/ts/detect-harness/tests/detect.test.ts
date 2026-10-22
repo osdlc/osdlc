@@ -10,13 +10,13 @@ import { join } from 'node:path'
 
 import type { AsyncCommandRunner } from '@osdlc/command-seam'
 
-import { createContext, forHarness } from '../context.ts'
-import type { HarnessProvider } from '../contract.ts'
-import { parseVersion } from '../detect.ts'
-import { BUILTIN_HARNESSES } from '../harnesses.ts'
-import { builtinProviders } from '../providers/index.ts'
-import { HarnessCatalogSchema } from '../report.ts'
-import { which } from '../which.ts'
+import { createContext, forHarness } from '../src/context.ts'
+import type { HarnessProvider } from '../src/contract.ts'
+import { parseVersion } from '../src/detect.ts'
+import { BUILTIN_HARNESSES } from '../src/harnesses.ts'
+import { builtinProviders } from '../src/providers/index.ts'
+import { HarnessCatalogSchema } from '../src/report.ts'
+import { which } from '../src/which.ts'
 import { fixture, type Fixture } from './fixture.ts'
 
 let f: Fixture

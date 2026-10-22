@@ -11,8 +11,8 @@ import { join } from 'node:path'
 import ts from 'typescript'
 import { describe, expect, test } from 'vitest'
 
-import * as core from '../index.ts'
-import * as session from '../session.ts'
+import * as core from '../src/index.ts'
+import * as session from '../src/session.ts'
 
 const PACKAGE_DIR = join(import.meta.dirname, '..')
 const README = readFileSync(join(PACKAGE_DIR, 'README.md'), 'utf-8')
@@ -53,8 +53,8 @@ function exportInfo(entry: string): Map<string, ExportInfo> {
   return out
 }
 
-const CORE = exportInfo(join(PACKAGE_DIR, 'index.ts'))
-const SESSION = exportInfo(join(PACKAGE_DIR, 'session.ts'))
+const CORE = exportInfo(join(PACKAGE_DIR, 'src', 'index.ts'))
+const SESSION = exportInfo(join(PACKAGE_DIR, 'src', 'session.ts'))
 const EXPORTS = new Map([...CORE, ...SESSION])
 
 /** Whitespace, line comments and trailing commas removed, so reflowed code compares equal. */
@@ -293,9 +293,9 @@ test('zod is a peer dependency, and command-seam the one runtime dependency', ()
 
 describe('what the package ships', () => {
   const sources = [
-    ...readdirSync(PACKAGE_DIR)
+    ...readdirSync(join(PACKAGE_DIR, 'src'))
       .filter((f) => f.endsWith('.ts'))
-      .map((f) => join(PACKAGE_DIR, f)),
+      .map((f) => join(PACKAGE_DIR, 'src', f)),
     join(PACKAGE_DIR, 'README.md'),
     join(PACKAGE_DIR, 'CHANGELOG.md'),
   ]

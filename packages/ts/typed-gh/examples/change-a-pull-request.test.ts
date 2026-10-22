@@ -4,7 +4,7 @@
  * `gh` command; the fake runner records the argv.
  */
 
-import { expect, test } from 'bun:test'
+import { expect, test } from 'vitest'
 
 import { Gh, type CommandRunner, type CreatePrOptions } from '@osdlc/typed-gh'
 

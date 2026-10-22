@@ -11,12 +11,12 @@ import { join } from 'node:path'
 
 import { z } from 'zod'
 
-import { envVars, systemDirs, type TieredDirs, type VendorDirs } from '../dirs.ts'
+import { envVars, systemDirs, type TieredDirs, type VendorDirs } from '../src/dirs.ts'
 
-import { machineConfigFile, type MachineConfigFile } from '../machine.ts'
-import type { ConfigKeyMeta } from '../meta.ts'
-import { configNeeds, type ConfigNeeds } from '../needs.ts'
-import { defineConfigVocabulary, type TermsOf } from '../vocabulary.ts'
+import { machineConfigFile, type MachineConfigFile } from '../src/machine.ts'
+import type { ConfigKeyMeta } from '../src/meta.ts'
+import { configNeeds, type ConfigNeeds } from '../src/needs.ts'
+import { defineConfigVocabulary, type TermsOf } from '../src/vocabulary.ts'
 
 export const TOOL = 'tooly'
 export const PROJECT_FILE = 'tooly.yaml'

@@ -20,8 +20,9 @@ on a later run. Each failure below is in a `verify` job, and a later run of the 
 branch or of `main` passed. Only run 39371522600 was re-run on the same
 commit; its sixth attempt passed.
 
-The tests run on Bun (`bun test`). The "job" column is the CI job label: the
-runner and the Node version set up beside Bun, which the tests do not use.
+The tests ran on Bun (`bun test`) when these failures happened; they now run
+on Vitest under Node. The "job" column is the CI job label: the runner and the
+Node version set up beside Bun, which the tests did not use.
 
 This list comes from a sweep of the failed `packages-ci.yml` and
 `packages-publish.yml` runs from 2026-10-18 to 2026-10-20. It may not be

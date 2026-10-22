@@ -3,7 +3,7 @@
  * later edit sees the earlier ones.
  */
 
-import { expect, test } from 'bun:test'
+import { expect, test } from 'vitest'
 
 import { editYaml, type FieldEdit } from '@osdlc/yaml-splice'
 

@@ -5,9 +5,9 @@
 
 import { describe, expect, test } from 'vitest'
 
-import * as root from '../index.ts'
-import * as locations from '../locations.ts'
-import * as model from '../model/index.ts'
+import * as root from '../src/index.ts'
+import * as locations from '../src/locations.ts'
+import * as model from '../src/model/index.ts'
 
 const LOCATION_EXPORTS = [
   'LOCATIONS',

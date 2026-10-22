@@ -5,7 +5,9 @@
  * new `clone` and `fetch` flags, and the `maxOutputBytes` call option.
  */
 
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'vitest'
+
+import { FailureError } from '@osdlc/result'
 
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -14,15 +16,14 @@ import { join } from 'node:path'
 import {
   AsyncGit,
   cliBackend,
-  CommandFailed,
   Git,
   type AsyncCommandRunner,
   type AsyncCommandRunOptions,
   type CommandResult,
   type CommandRunner,
   type CommandRunOptions,
-} from '../index.ts'
-import { makeGitFixture, makeOriginAndCheckout } from '../testing.ts'
+} from '../src/index.ts'
+import { makeGitFixture, makeOriginAndCheckout } from '../src/testing.ts'
 
 const CWD = '/tmp/repo'
 
@@ -136,14 +137,14 @@ describe('absence and parsing', () => {
       new Git(CWD, { runner: { run: () => ({ exitCode: 0, stdout, stderr: '' }) } })
     expect(at('true\n').configGetBool('a.b')).toBe(true)
     expect(at('false\n').configGetBool('a.b')).toBe(false)
-    expect(() => at('maybe\n').configGetBool('a.b')).toThrow(CommandFailed)
+    expect(() => at('maybe\n').configGetBool('a.b')).toThrow(FailureError)
   })
 
   test('remoteGetUrls: exit 2 is [], other codes throw', () => {
     const at = (exitCode: number) =>
       new Git(CWD, { runner: { run: () => ({ exitCode, stdout: '', stderr: '' }) } })
     expect(at(2).remoteGetUrls('nope')).toEqual([])
-    expect(() => at(128).remoteGetUrls('nope')).toThrow(CommandFailed)
+    expect(() => at(128).remoteGetUrls('nope')).toThrow(FailureError)
   })
 
   test('remoteHead reads the ref: line; no such line is null; a failure throws', () => {
@@ -155,20 +156,20 @@ describe('absence and parsing', () => {
     expect(at({ stdout: out }).remoteHead('origin')).toBe('refs/heads/trunk')
     expect(at({ stdout: 'abc\tHEAD\n' }).remoteHead('origin')).toBeNull()
     expect(at({ stdout: '' }).remoteHead('origin')).toBeNull()
-    expect(() => at({ exitCode: 128 }).remoteHead('origin')).toThrow(CommandFailed)
+    expect(() => at({ exitCode: 128 }).remoteHead('origin')).toThrow(FailureError)
   })
 
   test('cut-short output is a failure, not an answer', async () => {
     const cut: CommandResult = { exitCode: 0, stdout: 'x', stderr: '', outputIncomplete: true }
     const sync = new Git(CWD, { runner: { run: () => cut } })
-    expect(() => sync.configGetAll('a.b')).toThrow(CommandFailed)
+    expect(() => sync.configGetAll('a.b')).toThrow(FailureError)
     const asyncGit = new AsyncGit(CWD, {
       backend: cliBackend({ runner: { run: () => Promise.resolve(cut) } }),
     })
-    await expect(asyncGit.configGetAll('a.b')).rejects.toBeInstanceOf(CommandFailed)
-    expect(() => sync.rawChecked(['cat-file', 'blob', 'HEAD:big'])).toThrow(CommandFailed)
+    await expect(asyncGit.configGetAll('a.b')).rejects.toBeInstanceOf(FailureError)
+    expect(() => sync.rawChecked(['cat-file', 'blob', 'HEAD:big'])).toThrow(FailureError)
     await expect(asyncGit.rawChecked(['cat-file', 'blob', 'HEAD:big'])).rejects.toBeInstanceOf(
-      CommandFailed,
+      FailureError,
     )
     // Unchecked `raw` hands the result back as it is.
     expect(sync.raw(['cat-file', 'blob', 'HEAD:big'])).toEqual(cut)
@@ -225,7 +226,7 @@ describe('real git', () => {
       expect(git.configGetAll('no.such.key')).toEqual([])
 
       git.configSet('x.bad', 'maybe')
-      expect(() => git.configGetBool('x.bad')).toThrow(CommandFailed)
+      expect(() => git.configGetBool('x.bad')).toThrow(FailureError)
 
       const asyncGit = new AsyncGit(fx.dir)
       expect(await asyncGit.configGet('x.k', { scope: 'global', env })).toBe('global')
@@ -242,7 +243,7 @@ describe('real git', () => {
       }
 
       const outside = new Git(home)
-      expect(() => outside.configGet('x.k', { scope: 'local' })).toThrow(CommandFailed)
+      expect(() => outside.configGet('x.k', { scope: 'local' })).toThrow(FailureError)
     } finally {
       fx.cleanup()
       rmSync(home, { recursive: true, force: true })
@@ -263,7 +264,7 @@ describe('real git', () => {
       const fresh = new Git(checkout.dir)
       expect(fresh.remoteHead(origin.dir)).toBe('refs/heads/trunk')
       expect(await new AsyncGit(checkout.dir).remoteHead(origin.dir)).toBe('refs/heads/trunk')
-      expect(() => fresh.remoteHead('/no/such/remote')).toThrow(CommandFailed)
+      expect(() => fresh.remoteHead('/no/such/remote')).toThrow(FailureError)
     } finally {
       cleanup()
     }
@@ -327,8 +328,7 @@ describe('real git', () => {
     }
   })
 
-  // Async only: under `bun test` the sync runner captures to files and does
-  // not apply the cap. The sync option is checked with a fake runner above.
+  // Async only: the sync option is checked with a fake runner above.
   // The runner kills the child here, so this covers the `neverExited` path.
   // The `outputIncomplete` path is covered with a fake runner above.
   test('maxOutputBytes kills a large answer and throws', async () => {
@@ -339,7 +339,7 @@ describe('real git', () => {
       expect(await asyncGit.showAtRev('HEAD', 'big.txt')).toHaveLength(4096)
       await expect(
         asyncGit.showAtRev('HEAD', 'big.txt', { maxOutputBytes: 100 }),
-      ).rejects.toBeInstanceOf(CommandFailed)
+      ).rejects.toBeInstanceOf(FailureError)
     } finally {
       fx.cleanup()
     }

@@ -5,8 +5,8 @@
 
 import { describe, expect, test } from 'vitest'
 
-import { looseSessionModel } from '../model.ts'
-import { resolveOriginator, type OriginatorProbe } from '../machine.ts'
+import { looseSessionModel } from '../src/model.ts'
+import { resolveOriginator, type OriginatorProbe } from '../src/machine.ts'
 
 function probe(over: Partial<OriginatorProbe>): OriginatorProbe {
   return {

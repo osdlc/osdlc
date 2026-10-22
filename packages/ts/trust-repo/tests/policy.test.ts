@@ -1,5 +1,5 @@
 /**
- * The trust policy (`../policy.ts`) without git: glob matching, the marker →
+ * The trust policy (`../src/policy.ts`) without git: glob matching, the marker →
  * path → owner precedence, and the injected `ownerOf`/`expandPath` callbacks.
  * The git-backed `origin` lookup is the tool's own.
  */
@@ -9,8 +9,8 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from 'node:
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { pathGlobToRegExp, policyDecision, policyExecGate, trustDecision } from '../policy.ts'
-import { trustStore } from '../store.ts'
+import { pathGlobToRegExp, policyDecision, policyExecGate, trustDecision } from '../src/policy.ts'
+import { trustStore } from '../src/store.ts'
 
 const dirs: string[] = []
 function tmp(): string {

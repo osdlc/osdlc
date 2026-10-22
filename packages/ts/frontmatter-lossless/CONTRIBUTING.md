@@ -19,8 +19,8 @@ reviewed and merged there.
 ## Running the tests
 
 The repository is a pnpm workspace. Install from the repository root, then
-work in the package directory. The unit tests run under Bun, so install
-[Bun](https://bun.sh) as well as Node 22 or later.
+work in the package directory. The tests run on Vitest under Node 22 or
+later.
 
 ```sh
 pnpm install
@@ -29,9 +29,9 @@ pnpm run build
 pnpm test
 ```
 
-`pnpm test` runs the Bun suite on the source, then
-`tests/corpus-node.mjs`, which runs the conformance corpus on the built
-package under Node. Build first.
+`pnpm test` runs the Vitest suite. Most tests run the source;
+`tests/corpus-dist.test.ts` runs the conformance corpus on the built package.
+Build first.
 
 `pnpm run smoke` runs `tests/smoke.mjs`, a short check of the built package
 under Node. It is not published.

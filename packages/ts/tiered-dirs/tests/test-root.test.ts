@@ -12,8 +12,8 @@ import {
   overrideVars,
   systemBaseDirs,
   testRoot,
-} from '../index.ts'
-import { isTestRunnerProcess } from '../base-dirs.ts'
+} from '../src/index.ts'
+import { isTestRunnerProcess } from '../src/base-dirs.ts'
 
 const VENDOR = 'com.example'
 const ENV = envVars('EXAMPLE')
@@ -48,7 +48,7 @@ function runInChild(extra: Record<string, string>, expression: string) {
       '--no-warnings',
       '--input-type=module',
       '-e',
-      `import { envVars, systemBaseDirs, testRoot } from './index.ts'; console.log(JSON.stringify(${expression}))`,
+      `import { envVars, systemBaseDirs, testRoot } from './src/index.ts'; console.log(JSON.stringify(${expression}))`,
     ],
     { cwd: join(import.meta.dirname, '..'), env: env as NodeJS.ProcessEnv, encoding: 'utf-8' },
   )

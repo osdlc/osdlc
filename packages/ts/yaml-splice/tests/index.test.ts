@@ -8,7 +8,7 @@
  * single-quote quoting byte for byte, and an edit that changes no value, which
  * returns the input bytes with `changed === false`.
  */
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -18,7 +18,7 @@ import {
   type EditErrorCode,
   type EditValue,
   type FieldEdit,
-} from '../index.ts'
+} from '../src/index.ts'
 // The corpus is the crate's; this suite reads it in place.
 import corpus from '../../../rust/yaml-splice/tests/fixtures/conformance.json'
 
@@ -276,7 +276,7 @@ describe('EditErrorCode', () => {
 
   test("lists exactly the variants of the crate's EditError, plus InvalidEdit", () => {
     const source = readFileSync(
-      join(import.meta.dir, '../../../rust/yaml-splice/src/edit.rs'),
+      join(import.meta.dirname, '../../../rust/yaml-splice/src/edit.rs'),
       'utf-8',
     )
     const body = /pub enum EditError \{([\s\S]*?)\n\}/.exec(source)?.[1]
@@ -285,7 +285,7 @@ describe('EditErrorCode', () => {
     expect(variants.length).toBeGreaterThan(0)
     expect([...variants, ...WRAPPER_CODES].sort()).toEqual(Object.keys(CODES).sort())
     const wrapper = readFileSync(
-      join(import.meta.dir, '../../../rust/yaml-splice-wasm/src/lib.rs'),
+      join(import.meta.dirname, '../../../rust/yaml-splice-wasm/src/lib.rs'),
       'utf-8',
     )
     for (const code of WRAPPER_CODES) expect(wrapper).toContain(`"${code}"`)

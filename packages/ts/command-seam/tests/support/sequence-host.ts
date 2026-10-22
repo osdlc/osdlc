@@ -6,7 +6,11 @@
  * Args: the path the second run would create.
  */
 
-import { forwardedExitCode, installGroupSignalForwarding, spawnRunnerAsync } from '../../index.ts'
+import {
+  forwardedExitCode,
+  installGroupSignalForwarding,
+  spawnRunnerAsync,
+} from '../../src/index.ts'
 
 const marker = process.argv[2]!
 const cwd = process.cwd()

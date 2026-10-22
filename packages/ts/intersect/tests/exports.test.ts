@@ -14,7 +14,7 @@ import { resolve } from 'node:path'
 
 import { describe, expect, test } from 'vitest'
 
-import { loadCaseFiles } from '../fixtures.ts'
+import { loadCaseFiles } from './fixtures.ts'
 import { importsGlobber, reachableBareImports } from './import-graph.ts'
 
 const pkgDir = resolve(import.meta.dirname, '..')
@@ -31,10 +31,10 @@ function readPackageJson(): PackageJson {
   return JSON.parse(readFileSync(entry('package.json'), 'utf8')) as PackageJson
 }
 
-/** The source file behind a `dist/` target: `./dist/segments/index.js` -> `segments/index.ts`. */
+/** The source file behind a `dist/` target: `./dist/segments/index.js` -> `src/segments/index.ts`. */
 function sourceOf(distTarget: unknown): string {
   return String(distTarget)
-    .replace(/^\.\/dist\//, '')
+    .replace(/^\.\/dist\//, 'src/')
     .replace(/\.(d\.ts|js)$/, '.ts')
 }
 

@@ -33,6 +33,8 @@ When not to use it:
 npm install @osdlc/config-layers zod
 ```
 
+`pnpm add @osdlc/config-layers` and `yarn add @osdlc/config-layers` work too.
+
 ESM only. Node.js 22 or later.
 
 ## Quick start
@@ -430,6 +432,6 @@ and no test runs on Windows.
 Node.js 22 or later, ESM only. The tests run on Vitest under Node.js 22 and 24, on Linux and
 macOS. Bun is not tested.
 
-## License
+## Licence
 
-`MIT OR Apache-2.0`, at your option.
+`MIT OR Apache-2.0`, at your option. See [LICENSE-MIT](./LICENSE-MIT) and [LICENSE-APACHE](./LICENSE-APACHE).

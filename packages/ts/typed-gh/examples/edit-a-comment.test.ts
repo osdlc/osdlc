@@ -4,7 +4,7 @@
  * `prView` gives in `Comment.id`.
  */
 
-import { expect, test } from 'bun:test'
+import { expect, test } from 'vitest'
 
 import { Gh, type CommandRunner } from '@osdlc/typed-gh'
 

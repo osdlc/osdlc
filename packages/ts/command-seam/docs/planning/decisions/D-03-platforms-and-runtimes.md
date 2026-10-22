@@ -13,10 +13,8 @@ created: 2026-10-13
   comes before `1.0`, if that is feasible ([T-01](../tasks/T-01-windows-support.md)).
 - Node.js 22 or later (`engines.node` is `>=22`). Node is the primary runtime.
 - ESM only. There is no CommonJS build.
-- Bun works. The `bun` export condition points Bun at the TypeScript source,
-  so Bun needs no build. The condition stays while the maintainer's own
-  packages load the source through it. Once they resolve `dist/` instead, it
-  will be dropped.
+- Bun works, through the compiled `dist/`. `exports` has no `bun` condition and
+  the tarball ships no TypeScript source.
 
 ## Why
 
@@ -26,20 +24,20 @@ created: 2026-10-13
 - Node 20 is past end of life. Node 22 and 24 are the supported lines.
 - The library uses nothing newer than Node 18. The floor is about what is
   supported, not a code limit.
-- Dropping the `bun` condition now would make every package that loads the
-  source build first, for a small gain to users.
+- One artifact for every runtime. A `bun` condition would run the source under
+  Bun while Node runs `dist/`, so a Bun user could run code the Node tests
+  never saw. Workspace packages resolve each other through `dist/`, built
+  first.
 
 ## Consequences
 
 - The README states POSIX only and Node 22, as the facts today rather than a
   promise of support.
 - CI builds the package, runs the smoke check and checks the tarball on Node
-  22 and on Node 24. The test suite itself runs under Bun until
-  [T-02](../tasks/T-02-vitest.md).
+  22 and on Node 24. The test suite runs on Vitest under Node
+  ([T-02](../tasks/T-02-vitest.md)).
 - CommonJS users on Node 22.12 or later can `require()` the package. On Node
   22.0 to 22.11 they need `await import()`.
-- Bun users load the source and Node users load the build. A build bug would
-  show for Node users only. The tarball check loads every entry point under
-  Node to catch that.
-- The tarball ships the `.ts` source files as well as `dist/`, because Bun
-  loads them.
+- Every runtime loads the build, so a build bug shows for all of them. The
+  tarball check loads every entry point under Node to catch that.
+- The tarball ships `dist/` and no `.ts` source files.

@@ -10,10 +10,10 @@ import { join } from 'node:path'
 
 import { z } from 'zod'
 
-import { CONFIG_INVALID_EXIT, ConfigInvalidError } from '../config-error.ts'
-import { assembleConfig, readMappingFile, readParsedFile } from '../loader.ts'
-import { pathMatcher, stripUnknownKeys } from '../unknown-keys.ts'
-import { defineConfigSection } from '../section.ts'
+import { CONFIG_INVALID_EXIT, ConfigInvalidError } from '../src/config-error.ts'
+import { assembleConfig, readMappingFile, readParsedFile } from '../src/loader.ts'
+import { pathMatcher, stripUnknownKeys } from '../src/unknown-keys.ts'
+import { defineConfigSection } from '../src/section.ts'
 
 import { CONFIG_FILE, META } from './support.ts'
 

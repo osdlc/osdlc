@@ -35,6 +35,8 @@ When not to use it:
 npm install @osdlc/yaml-splice
 ```
 
+`pnpm add @osdlc/yaml-splice` and `yarn add @osdlc/yaml-splice` work too.
+
 ESM only. Node.js 22 or later, or Bun.
 
 ## Quick start
@@ -157,10 +159,10 @@ Node.js 22 or later, and Bun. The WebAssembly glue is built for Node.js: it
 reads the `.wasm` file with `fs` from beside itself. So the package does not
 load in a browser, in Deno without Node compatibility, or through a bundler
 such as Vite. The built package is tested on Node.js 22 and 24, and the test
-suite also runs under Bun. It has no native code and no platform-specific
+suite runs on Vitest under Node. It has no native code and no platform-specific
 code, so it runs on any operating system Node.js runs on. Its tests run on
 Linux and macOS.
 
-## License
+## Licence
 
-`MIT OR Apache-2.0`, at your option.
+`MIT OR Apache-2.0`, at your option. See [LICENSE-MIT](./LICENSE-MIT) and [LICENSE-APACHE](./LICENSE-APACHE).

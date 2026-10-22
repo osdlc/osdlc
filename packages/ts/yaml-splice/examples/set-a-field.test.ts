@@ -2,7 +2,7 @@
  * Set fields in a YAML document and keep everything else byte for byte.
  */
 
-import { expect, test } from 'bun:test'
+import { expect, test } from 'vitest'
 
 import { editYaml, type EditOutcome, type EditValue, type FieldEdit } from '@osdlc/yaml-splice'
 

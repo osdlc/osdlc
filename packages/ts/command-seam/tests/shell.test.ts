@@ -1,8 +1,8 @@
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, test } from 'vitest'
 
-import { asAsync, shellQuote } from '../index.ts'
-import { runShell, runShellAsync, shellRunner, shellRunnerAsync } from '../shell.ts'
-import type { CommandRunner } from '../sync.ts'
+import { asAsync, shellQuote } from '../src/index.ts'
+import { runShell, runShellAsync, shellRunner, shellRunnerAsync } from '../src/shell.ts'
+import type { CommandRunner } from '../src/sync.ts'
 
 const CWD = process.cwd()
 
