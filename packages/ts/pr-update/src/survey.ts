@@ -50,7 +50,7 @@ import { Git, parseGitUrl, parseRemoteUrl, type Worktree } from '@osdlc/typed-gi
 
 import type { CodeHost, CodeHostPrDetail } from '@osdlc/code-host'
 import type { CommandRunner } from '@osdlc/command-seam'
-import { FailureError } from '@osdlc/result'
+import { FailureError, type Failure } from '@osdlc/result'
 import { githubCodeHostFor } from './code-host.ts'
 import { chooseStrategy, type Strategy } from './strategy.ts'
 import type { PrUpdateConfig } from './config.ts'
@@ -502,9 +502,27 @@ export const row = z.object({
   strategyReason: z.string(),
 })
 
+/** Why one repository of a several-repository run could not be listed. */
+export const repoFailure = z.object({
+  kind: z.string().describe('The failure kind, such as `not-authenticated` or `network`.'),
+  message: z.string(),
+  hint: z.string().optional(),
+})
+
 export const output = z.object({
   repos: z
-    .array(z.object({ slug: z.string(), measurable: z.boolean(), fetched: z.boolean() }))
+    .array(
+      z.object({
+        slug: z.string(),
+        measurable: z.boolean(),
+        fetched: z.boolean(),
+        failure: repoFailure
+          .optional()
+          .describe(
+            'Present when this repository could not be listed (several-repository runs only; a single repository throws). It contributes no PRs.',
+          ),
+      }),
+    )
     .describe('Repositories surveyed. `measurable` is false when no local checkout is known.'),
   prs: z.array(row).describe('Open PRs in stack order — a parent always precedes its children.'),
   cycles: z
@@ -598,7 +616,7 @@ export function runSurvey(args: SurveyArgs, env: SurveyEnv): SurveyReport {
   const author = args.author ?? cfg.author ?? undefined
   const includeDrafts = args.noDrafts ? false : cfg.include_drafts
 
-  const repos: { slug: string; measurable: boolean; fetched: boolean }[] = []
+  const repos: SurveyReport['repos'] = []
   const allRows: SurveyRow[] = []
   const allCycles: number[] = []
   let branchMatches = 0
@@ -615,14 +633,24 @@ export function runSurvey(args: SurveyArgs, env: SurveyEnv): SurveyReport {
       ...(author !== undefined ? { author } : {}),
     })
     // A failed listing (the tool is missing, not signed in, no network) is not
-    // an empty one: reading it as "no open PRs" would hide the failure. It is
-    // thrown as the code host's own classified failure.
+    // an empty one: reading it as "no open PRs" would hide the failure. With
+    // one repository it is thrown as the code host's own classified failure.
+    // With several, the others are still surveyed: the failure is recorded on
+    // this repository's entry and the caller reports it and exits with its code.
     if (!listed.ok) {
-      // With several repositories, say which one failed.
       const { error } = listed
-      throw new FailureError(
-        targets.length > 1 ? { ...error, message: `${target.slug}: ${error.message}` } : error,
-      )
+      if (targets.length === 1) throw new FailureError(error)
+      repos.push({
+        slug: target.slug,
+        measurable,
+        fetched: false,
+        failure: {
+          kind: error.kind,
+          message: error.message,
+          ...(error.hint === undefined ? {} : { hint: error.hint }),
+        },
+      })
+      continue
     }
     const filtered = includeDrafts ? listed.value : listed.value.filter((p) => !p.isDraft)
     const wanted = new Set(args.pr)
@@ -684,6 +712,24 @@ export function runSurvey(args: SurveyArgs, env: SurveyEnv): SurveyReport {
   }
 }
 
+/**
+ * The repositories of a report that could not be listed, as failures whose
+ * message names the repository. Empty for a single-repository run, which throws.
+ */
+export function repoFailuresOf(report: Pick<SurveyReport, 'repos'>): Failure[] {
+  return report.repos.flatMap((r) =>
+    r.failure === undefined
+      ? []
+      : [
+          {
+            kind: r.failure.kind,
+            message: `${r.slug}: ${r.failure.message}`,
+            ...(r.failure.hint === undefined ? {} : { hint: r.failure.hint }),
+          },
+        ],
+  )
+}
+
 function pad(text: string, width: number): string {
   return text.length >= width ? text : text + ' '.repeat(width - text.length)
 }
@@ -696,6 +742,10 @@ export function renderSurveyText(out: SurveyReport): string {
   const unmeasured = out.repos.filter((r) => !r.measurable)
   for (const r of unmeasured) {
     lines.push(`${r.slug}: no local checkout — drift not measured`)
+  }
+  // A repository that could not be listed is not one with no PRs.
+  for (const r of out.repos) {
+    if (r.failure !== undefined) lines.push(`${r.slug}: could not be listed — ${r.failure.message}`)
   }
   if (out.prs.length === 0) {
     lines.push('PR-SURVEY: no open PRs')

@@ -185,6 +185,67 @@ describe('a failed listing', () => {
     expect(r.out).toBe('')
   })
 
+  test('with several --repo, one refused listing is printed and exits with its code, after the others are surveyed', async () => {
+    const { dir, env } = repoWith(GITHUB)
+    const asked: string[] = []
+    const gh: CommandRunner = {
+      run: (argv): CommandResult => {
+        asked.push(argv.join(' '))
+        return argv.includes('x/y')
+          ? { exitCode: 1, stdout: '', stderr: 'HTTP 401: Bad credentials' }
+          : { exitCode: 0, stdout: '[]', stderr: '' }
+      },
+    }
+    const r = await run(dir, env, ['survey', '--repo', 'x/y', '--repo', 'o/a'], {
+      which: allToolsInstalled,
+      gh,
+    })
+    expect(asked.some((c) => c.includes('o/a'))).toBe(true)
+    expect(r.code).toBe(EXIT_FAILURE.service)
+    expect(r.err).toBe('pr-update: x/y: gh is not signed in to GitHub. Run `gh auth login`.\n')
+    expect(r.out).toContain('x/y: could not be listed')
+  })
+
+  test('with several --repo and different failures, the first one sets the exit code', async () => {
+    const { dir, env } = repoWith(GITHUB)
+    const gh: CommandRunner = {
+      run: (argv): CommandResult =>
+        argv.includes('x/y')
+          ? { exitCode: 1, stdout: '', stderr: 'error connecting to api.github.com' }
+          : { exitCode: 1, stdout: '', stderr: 'HTTP 401: Bad credentials' },
+    }
+    const r = await run(dir, env, ['survey', '--repo', 'x/y', '--repo', 'o/a'], {
+      which: allToolsInstalled,
+      gh,
+    })
+    expect(r.code).toBe(EXIT_FAILURE.unreachable)
+    expect(r.err.split('\n').filter(Boolean)).toHaveLength(2)
+  })
+
+  test('update over several --repo lists the failed one in --report and exits with its code', async () => {
+    const { dir, env } = repoWith(GITHUB)
+    const file = join(dir, 'out.json')
+    const gh: CommandRunner = {
+      run: (argv): CommandResult =>
+        argv.includes('x/y')
+          ? { exitCode: 1, stdout: '', stderr: 'HTTP 401: Bad credentials' }
+          : { exitCode: 0, stdout: '[]', stderr: '' },
+    }
+    const r = await run(dir, env, ['update', '--repo', 'x/y', '--repo', 'o/a', '--report', file], {
+      which: allToolsInstalled,
+      gh,
+    })
+    expect(r.code).toBe(EXIT_FAILURE.service)
+    expect(JSON.parse(readFileSync(file, 'utf8')).repoFailures).toEqual([
+      {
+        repo: 'x/y',
+        kind: 'not-authenticated',
+        message: 'gh is not signed in to GitHub.',
+        hint: 'Run `gh auth login`.',
+      },
+    ])
+  })
+
   test('update --branch reports the failure, not a missing PR', async () => {
     const { dir, env } = repoWith(GITHUB)
     const r = await run(dir, env, ['update', '--branch', 'main'], {

@@ -46,6 +46,7 @@ import {
 import {
   SCOPE_SHAPE,
   SurveyUsageError,
+  repoFailure,
   runSurvey,
   type SurveyEnv,
   type SurveyReport,
@@ -223,6 +224,12 @@ export const output = z.object({
   skipped: z
     .array(z.object({ number: z.number(), head: z.string(), reason: z.string() }))
     .describe('PRs deliberately not acted on. Every surveyed PR is here or in `results`.'),
+  repoFailures: z
+    .array(repoFailure.extend({ repo: z.string() }))
+    .optional()
+    .describe(
+      'Repositories that could not be listed, in a run over several repositories; absent when none failed. The run still acted on the others.',
+    ),
   counts: z.object({
     updated: z.number(),
     upToDate: z.number(),
@@ -409,10 +416,14 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
   }
 
   const t = tally(results)
+  const failedRepos = report.repos.flatMap((r) =>
+    r.failure === undefined ? [] : [{ repo: r.slug, ...r.failure }],
+  )
   return {
     applied: writes,
     results: results.map((r) => toResult(r, local.get(r.number))),
     skipped,
+    ...(failedRepos.length > 0 ? { repoFailures: failedRepos } : {}),
     counts: {
       updated: t['updated'] ?? 0,
       upToDate: t['up-to-date'] ?? 0,

@@ -71,6 +71,7 @@ export {
   num,
   parentEdges,
   renderSurveyText,
+  repoFailuresOf,
   resolveTargets,
   runSurvey,
   statusFor,

@@ -354,6 +354,14 @@ network, a refused token) makes `runSurvey` throw a `FailureError` from
 `pr-update: <message> <hint>` and exits with the code for its kind. A host
 that cannot be built throws the same way, from `selectedCodeHostFor`.
 
+With several `--repo` targets, one repository that cannot be listed does not
+abort the others. Every repository is surveyed; the failed one is recorded on
+its `repos` entry (`failure: { kind, message, hint }`, and no PRs), listed under
+`repoFailures` in `update --report`, and printed on stderr as
+`pr-update: <repo>: <message> <hint>`. The run then exits with the code of the
+first failure (a later one with a different code is printed but does not
+change it). With a single repository the failure is thrown, as before.
+
 ## Exit codes
 
 | Code | Meaning |

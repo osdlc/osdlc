@@ -49,7 +49,7 @@ import { loadConfigLayers } from './config-file.ts'
 import { standalonePorts } from './defaults.ts'
 import { gitMissingFailure, preflight, type WhichSeam } from './preflight.ts'
 import { REPAIR_AGENTS, REPAIR_AGENT_SUMMARIES, type RepairAgent } from './repair/names.ts'
-import { SurveyUsageError, renderSurveyText, runSurvey } from './survey.ts'
+import { SurveyUsageError, renderSurveyText, repoFailuresOf, runSurvey } from './survey.ts'
 import {
   EXIT_UNTRUSTED,
   prUpdateTrustStore,
@@ -403,7 +403,24 @@ function runSurveyCommand(argv: readonly string[], ctx: CliContext, seams: CliSe
   io.stdout(
     resolveOutput(v) === 'json' ? `${JSON.stringify(report, null, 2)}\n` : renderSurveyText(report),
   )
-  return EXIT.ok
+  return reportRepoFailures(ctx, report) ?? EXIT.ok
+}
+
+/**
+ * Print each repository of a several-repository run that could not be listed,
+ * and return the exit code of the first, or null when none failed. The others
+ * were surveyed; the failure is not hidden by their rows.
+ */
+function reportRepoFailures(
+  ctx: CliContext,
+  report: Parameters<typeof repoFailuresOf>[0],
+): number | null {
+  let code: number | null = null
+  for (const failure of repoFailuresOf(report)) {
+    const exit = failWith(ctx, failure, { name: 'pr-update' })
+    code ??= exit
+  }
+  return code
 }
 
 /**
@@ -556,6 +573,15 @@ async function runUpdateCommand(
   // was left half-applied), but a conflict or push failure means some PR did
   // not end up updated. A script driving this in a loop needs that distinction
   // in its exit code, not just in the JSON `counts`.
+  const listingFailure = reportRepoFailures(ctx, {
+    repos: (out.repoFailures ?? []).map(({ repo, ...failure }) => ({
+      slug: repo,
+      measurable: false,
+      fetched: false,
+      failure,
+    })),
+  })
+  if (listingFailure !== null) return listingFailure
   return out.counts.conflict > 0 || out.counts.failed > 0 ? EXIT.error : EXIT.ok
 }
 
