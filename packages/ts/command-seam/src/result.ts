@@ -7,6 +7,9 @@
  * sensible response.
  */
 
+import { err, type Failure, ok, type Result } from '@osdlc/result'
+
+import { classifyFailure, type CommandFailure } from './failure.ts'
 import type { AsyncCommandRunner, AsyncCommandRunOptions } from './async.ts'
 import type { CommandResult, CommandRunner, CommandRunOptions } from './sync.ts'
 
@@ -99,36 +102,26 @@ export function firstLine(text: string, fallback = ''): string {
 }
 
 /**
- * Outcome of {@link runJson}: a parsed value, or why there is none. Two
- * fields are named `reason`: `j.reason` says why there is no value (`failed`,
- * `unparseable` or `invalid`), and `j.result.reason` says why the command
- * never finished, when it did not (see `NeverExitedReason`).
+ * Why {@link runJson} has no value: the command failed (a {@link CommandFailure}
+ * with its own `kind`: `not-installed`, `exit`, `timeout` and so on), or it ran
+ * and its stdout was not usable.
+ *
+ * - `unparseable`: exited with an accepted code, and stdout was not JSON.
+ * - `invalid`: stdout was JSON, and the `parse` option threw for it; `cause`
+ *   holds what it threw, such as a schema library's error with its issue list.
  *
  * @experimental
  */
-export type JsonRun<T> =
-  | { ok: true; value: T; result: CommandResult }
-  | {
-      ok: false
-      /**
-       * `failed`: did not run, or exited with a code not in `okExitCodes`.
-       * `unparseable`: exited with an accepted code, and stdout was not JSON.
-       */
-      reason: 'failed' | 'unparseable'
-      /** A human-readable explanation (the failure text, or the parse error). */
-      message: string
-      result: CommandResult
-    }
-  | {
-      ok: false
-      /** `invalid`: stdout was JSON, and the `parse` option threw for it. */
-      reason: 'invalid'
-      /** `stdout JSON was rejected: ` and the thrown error's message. */
-      message: string
-      /** What `parse` threw, such as a schema library's error with its issue list. */
-      cause: unknown
-      result: CommandResult
-    }
+export type JsonFailure = CommandFailure | Failure<'unparseable' | 'invalid'>
+
+/**
+ * Outcome of {@link runJson}: a `Result` with the finished run alongside it.
+ * `ok` narrows to `value` or `error` (a {@link JsonFailure}), and `result` is
+ * the {@link CommandResult} either way, for the exit code or the raw output.
+ *
+ * @experimental
+ */
+export type JsonRun<T> = Result<T, JsonFailure> & { readonly result: CommandResult }
 
 /**
  * Options for {@link runJson}, apart from `parse`, which is typed by the
@@ -178,39 +171,42 @@ type JsonOptions<T> = RunJsonOptions & ParseOption<T>
  *
  * @param result - A finished run.
  * @param opts - Parse options.
- * @returns `{ ok: true, value }`, or `{ ok: false, reason, message }` with
- * `reason` `failed` (did not run, or exited with a code not accepted),
- * `unparseable`, or `invalid` (`parse` threw; `cause` holds what it threw).
+ * @param context - The binary and argv, to name in a command failure.
+ * @returns `{ ok: true, value, result }`, or `{ ok: false, error, result }`
+ * with a {@link JsonFailure}: the {@link CommandFailure} (did not run, or
+ * exited with a code not accepted), `unparseable`, or `invalid` (`parse` threw;
+ * `cause` holds what it threw).
  * @experimental
  */
 export function parseJsonResult<T = unknown>(
   result: CommandResult,
   opts: JsonOptions<T> = {},
+  context: { binary?: string | undefined; argv?: readonly string[] | undefined } = {},
 ): JsonRun<T> {
-  const okExitCodes = opts.okExitCodes ?? [0]
-  if (result.neverExited === true || !okExitCodes.includes(result.exitCode)) {
-    return { ok: false, reason: 'failed', message: failureText(result), result }
-  }
+  const failed = classifyFailure(result, { ...context, okExitCodes: opts.okExitCodes })
+  if (failed !== null) return { ...err(failed), result }
   const parsed = tryParse(result.stdout, opts.tolerateLeadingLog === true)
   if (!parsed.ok) {
     return {
-      ok: false,
-      reason: 'unparseable',
-      message: `stdout is not JSON: ${parsed.error}`,
+      ...err<JsonFailure>({
+        kind: 'unparseable',
+        message: `stdout is not JSON: ${parsed.error}`,
+      }),
       result,
     }
   }
-  if (opts.parse === undefined) return { ok: true, value: parsed.value as T, result }
+  if (opts.parse === undefined) return { ...ok(parsed.value as T), result }
   let value: T
   try {
     value = opts.parse(parsed.value)
   } catch (e) {
     const why = e instanceof Error ? e.message : String(e)
     return {
-      ok: false,
-      reason: 'invalid',
-      message: `stdout JSON was rejected: ${why}`,
-      cause: e,
+      ...err<JsonFailure>({
+        kind: 'invalid',
+        message: `stdout JSON was rejected: ${why}`,
+        cause: e,
+      }),
       result,
     }
   }
@@ -219,14 +215,15 @@ export function parseJsonResult<T = unknown>(
     // late, so say so, and keep its rejection from going unhandled.
     value.then(undefined, () => {})
     return {
-      ok: false,
-      reason: 'invalid',
-      message: 'stdout JSON was rejected: parse returned a promise; it must be sync',
-      cause: value,
+      ...err<JsonFailure>({
+        kind: 'invalid',
+        message: 'stdout JSON was rejected: parse returned a promise; it must be sync',
+        cause: value,
+      }),
       result,
     }
   }
-  return { ok: true, value, result }
+  return { ...ok(value), result }
 }
 
 function isThenable(v: unknown): v is PromiseLike<unknown> {
@@ -354,12 +351,15 @@ export function runJson<T = unknown, P extends unknown[] = [opts: CommandRunOpti
   ...opts: WithJsonOptions<P, T>
 ): JsonRun<T>
 export function runJson<T>(
-  runner: { run(argv: string[], ...opts: unknown[]): CommandResult },
+  runner: {
+    readonly binary?: string | undefined
+    run(argv: string[], ...opts: unknown[]): CommandResult
+  },
   argv: string[],
   ...opts: unknown[]
 ): JsonRun<T> {
   const { run, json } = splitJsonOptions<T>(opts)
-  return parseJsonResult<T>(runner.run(argv, ...run), json)
+  return parseJsonResult<T>(runner.run(argv, ...run), json, { binary: runner.binary, argv })
 }
 
 /**
@@ -389,12 +389,18 @@ export async function runJsonAsync<
   ...opts: WithJsonOptions<P, T>
 ): Promise<JsonRun<T>>
 export async function runJsonAsync<T>(
-  runner: { run(argv: string[], ...opts: unknown[]): Promise<CommandResult> },
+  runner: {
+    readonly binary?: string | undefined
+    run(argv: string[], ...opts: unknown[]): Promise<CommandResult>
+  },
   argv: string[],
   ...opts: unknown[]
 ): Promise<JsonRun<T>> {
   const { run, json } = splitJsonOptions<T>(opts)
-  return parseJsonResult<T>(await runner.run(argv, ...run), json)
+  return parseJsonResult<T>(await runner.run(argv, ...run), json, {
+    binary: runner.binary,
+    argv,
+  })
 }
 
 /** Split `runJson`'s options into the runner's and the parse step's. */

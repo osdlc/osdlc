@@ -39,6 +39,26 @@ if (r.neverExited) console.error(`grep did not finish (${r.reason}): ${r.error}`
 else if (r.exitCode === 1) console.log('no matches')
 ```
 
+- `classifyFailure(result, { binary, argv, okExitCodes })` turns a finished
+  run into a `CommandFailure`, a `Failure` from `@osdlc/result`, or `null` when
+  the run succeeded. Its `kind` is one of `not-installed`, `not-executable`,
+  `bad-cwd`, `timeout`, `output-cap`, `signal`, `aborted`, `spawn` or `exit`.
+  It reads the run's `reason`; for a failed spawn it reads the runner's error
+  text (`spawn gh ENOENT`, or `ENOENT: cwd "…" does not exist` for a bad
+  `cwd`, checked first because its text also says `ENOENT`).
+- `CommandFailed` extends `FailureError<CommandFailure>`. `failure` is the
+  classification; `failure.message` is one line for a person; `message` keeps
+  the long form for logs, which names the whole command. The class therefore
+  also answers `instanceof FailureError`, so `unwrap` and generic handlers
+  treat it like any other failure.
+- `runJson` returns a `Result<T, JsonFailure>` with the run's `result`
+  alongside. A failed command is the same `CommandFailure`; `unparseable` and
+  `invalid` are the two JSON failures. The old `reason: 'failed'` is gone: the
+  command failure's own `kind` replaces it. This was a hard cutover.
+- The messages carry no `hint`: this layer does not know the tool, so it does
+  not know how to install it. The layer that does (typed-git, typed-gh) adds
+  the hint.
+
 ## Why
 
 - One result shape for every failure lets the caller handle them in one
@@ -51,6 +71,12 @@ else if (r.exitCode === 1) console.log('no matches')
 - A quoted argv can be pasted into a terminal and shows where each argument
   ends. The library cannot know which argument is secret, so it does not
   redact.
+
+- A bare `kind` ends the string-matching on `error` text that callers did
+  before: they asked whether the text contained `ENOENT`.
+- `aborted` and `spawn` are kinds beyond the obvious ones because an abort and
+  an `EBADF` are not a missing binary, and calling them one would send a person
+  to install something that is installed.
 
 ## Consequences
 

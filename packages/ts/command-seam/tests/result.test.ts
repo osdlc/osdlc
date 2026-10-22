@@ -120,7 +120,10 @@ describe('CommandFailed on a never-exited result', () => {
   test('runJson reports the spawn message', () => {
     const j = runJson(spawnRunner('definitely-not-a-real-binary-rj'), [], opts)
     expect(j.ok).toBe(false)
-    if (!j.ok) expect(j.message).toBe(j.result.error!)
+    if (!j.ok) {
+      expect(j.error.kind).toBe('not-installed')
+      expect(j.error.detail).toBe(j.result.error!)
+    }
   })
 })
 
@@ -140,14 +143,14 @@ describe('runJson', () => {
 
   test('non-zero exit and never-exited are failed, carrying the failure text', () => {
     const bad = runJson(fake(res({ exitCode: 3, stderr: 'boom' })), [], opts)
-    expect(bad).toMatchObject({ ok: false, reason: 'failed', message: 'boom' })
+    expect(bad).toMatchObject({ ok: false, error: { kind: 'exit', message: 'boom' } })
     const gone = runJson(fake(res({ neverExited: true, stdout: '{}' })), [], opts)
-    expect(gone).toMatchObject({ ok: false, reason: 'failed' })
+    expect(gone).toMatchObject({ ok: false, error: { kind: 'spawn' } })
   })
 
   test('bad JSON is unparseable, not thrown', () => {
     const r = runJson(fake(res({ stdout: 'nope' })), [], opts)
-    expect(r).toMatchObject({ ok: false, reason: 'unparseable' })
+    expect(r).toMatchObject({ ok: false, error: { kind: 'unparseable' } })
   })
 
   test('tolerateLeadingLog skips log lines before the first { or [', () => {
@@ -169,7 +172,7 @@ describe('runJson', () => {
     )
     expect(logged.ok && logged.value.a).toBe(1)
     const none = runJson(fake(res({ stdout: 'just logs\nmore' })), [], tol)
-    expect(none).toMatchObject({ ok: false, reason: 'unparseable' })
+    expect(none).toMatchObject({ ok: false, error: { kind: 'unparseable' } })
   })
 
   test('tolerateLeadingLog parses at most twice, however many lines start with [ or {', () => {
@@ -191,8 +194,8 @@ describe('runJson', () => {
     const tol = { ...opts, tolerateLeadingLog: true }
     const take = (stdout: string) => runJson(fake(res({ stdout })), [], tol)
     expect(take('log\n[1]\n[2]\n')).toMatchObject({ ok: true, value: [2] })
-    expect(take('log\n{"a":1}\ndone\n')).toMatchObject({ reason: 'unparseable' })
-    expect(take('[\n[\n')).toMatchObject({ reason: 'unparseable' })
+    expect(take('log\n{"a":1}\ndone\n')).toMatchObject({ error: { kind: 'unparseable' } })
+    expect(take('[\n[\n')).toMatchObject({ error: { kind: 'unparseable' } })
     expect(take('log\r\n{"a":"x"}\r\n')).toMatchObject({ ok: true, value: { a: 'x' } })
   })
 
@@ -209,7 +212,7 @@ describe('runJson', () => {
     const tol = { ...opts, tolerateLeadingLog: true }
     for (const sep of ['\u2028', '\u2029']) {
       const r = runJson(fake(res({ stdout: `log${sep}{"a":1}` })), [], tol)
-      expect(r).toMatchObject({ ok: false, reason: 'unparseable' })
+      expect(r).toMatchObject({ ok: false, error: { kind: 'unparseable' } })
     }
   })
 
@@ -230,7 +233,7 @@ describe('runJson', () => {
     )
     expect(r.ok && r.value.b).toBe('x')
     const f = await runJsonAsync(asAsync(fake(res({ exitCode: 1 }))), [], opts)
-    expect(f).toMatchObject({ ok: false, reason: 'failed', message: 'exit 1' })
+    expect(f).toMatchObject({ ok: false, error: { kind: 'exit', message: 'exit 1' } })
   })
 
   test('parseJsonResult works on a finished result', () => {
@@ -256,10 +259,9 @@ describe('runJson parse', () => {
     const r = runJson(fake(res({ stdout: '-1' })), [], { ...opts, parse: positive })
     expect(r).toMatchObject({
       ok: false,
-      reason: 'invalid',
-      message: 'stdout JSON was rejected: not positive: -1',
+      error: { kind: 'invalid', message: 'stdout JSON was rejected: not positive: -1' },
     })
-    expect(!r.ok && r.reason === 'invalid' && r.cause).toBeInstanceOf(RangeError)
+    expect(!r.ok && r.error.kind === 'invalid' && r.error.cause).toBeInstanceOf(RangeError)
   })
 
   test('a non-Error throw is stringified into the message', () => {
@@ -270,9 +272,7 @@ describe('runJson parse', () => {
       },
     })
     expect(r).toMatchObject({
-      reason: 'invalid',
-      message: 'stdout JSON was rejected: nope',
-      cause: 'nope',
+      error: { kind: 'invalid', message: 'stdout JSON was rejected: nope', cause: 'nope' },
     })
   })
 
@@ -281,7 +281,7 @@ describe('runJson parse', () => {
     const parse = (v: unknown) => (calls++, v)
     expect(runJson(fake(res({ exitCode: 1 })), [], { ...opts, parse }).ok).toBe(false)
     expect(runJson(fake(res({ stdout: 'x' })), [], { ...opts, parse })).toMatchObject({
-      reason: 'unparseable',
+      error: { kind: 'unparseable' },
     })
     expect(calls).toBe(0)
   })
@@ -292,7 +292,7 @@ describe('runJson parse', () => {
       run: (_a, o) => ((seen = o), res({ stdout: 'log line\n5' })),
     }
     const r = runJson(spy, [], { ...opts, tolerateLeadingLog: true, parse: positive })
-    expect(r).toMatchObject({ ok: false, reason: 'unparseable' })
+    expect(r).toMatchObject({ ok: false, error: { kind: 'unparseable' } })
     const ok = runJson(fake(res({ stdout: 'log\n[5]' })), [], {
       ...opts,
       tolerateLeadingLog: true,
@@ -313,10 +313,12 @@ describe('runJson parse', () => {
       })
       expect(r).toMatchObject({
         ok: false,
-        reason: 'invalid',
-        message: 'stdout JSON was rejected: parse returned a promise; it must be sync',
+        error: {
+          kind: 'invalid',
+          message: 'stdout JSON was rejected: parse returned a promise; it must be sync',
+        },
       })
-      expect(!r.ok && r.reason === 'invalid' && r.cause).toBeInstanceOf(Promise)
+      expect(!r.ok && r.error.kind === 'invalid' && r.error.cause).toBeInstanceOf(Promise)
       await new Promise((resolve) => setTimeout(resolve, 10))
       expect(unhandled).toBe(0)
     } finally {
@@ -329,7 +331,7 @@ describe('runJson parse', () => {
       ...opts,
       parse: positive,
     })
-    expect(a).toMatchObject({ ok: false, reason: 'invalid' })
+    expect(a).toMatchObject({ ok: false, error: { kind: 'invalid' } })
     expect(parseJsonResult(res({ stdout: '3' }), { parse: positive })).toMatchObject({
       ok: true,
       value: 3,
@@ -351,9 +353,9 @@ describe('runJson okExitCodes', () => {
       ...opts,
       okExitCodes: [0, 1],
     })
-    expect(two).toMatchObject({ ok: false, reason: 'failed' })
+    expect(two).toMatchObject({ ok: false, error: { kind: 'exit' } })
     const zero = parseJsonResult(res({ stdout: '{}' }), { okExitCodes: [1] })
-    expect(zero).toMatchObject({ ok: false, reason: 'failed' })
+    expect(zero).toMatchObject({ ok: false, error: { kind: 'exit' } })
   })
 
   test('a run that never exited is failed whatever its stand-in code', () => {
@@ -363,21 +365,21 @@ describe('runJson okExitCodes', () => {
         okExitCodes: [1],
       },
     )
-    expect(r).toMatchObject({ ok: false, reason: 'failed' })
+    expect(r).toMatchObject({ ok: false, error: { kind: 'spawn' } })
   })
 
   test('an accepted exit still has to parse and pass parse', () => {
     const accept = { okExitCodes: [1] }
     expect(parseJsonResult(res({ exitCode: 1, stdout: 'Error' }), accept)).toMatchObject({
       ok: false,
-      reason: 'unparseable',
+      error: { kind: 'unparseable' },
     })
     const reject = () => {
       throw new Error('npm error')
     }
     expect(
       parseJsonResult(res({ exitCode: 1, stdout: '{"error":{}}' }), { ...accept, parse: reject }),
-    ).toMatchObject({ ok: false, reason: 'invalid' })
+    ).toMatchObject({ ok: false, error: { kind: 'invalid' } })
   })
 
   test('is not forwarded to the runner, and works on the async form', async () => {

@@ -16,6 +16,9 @@ import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import { FailureError } from '@osdlc/result'
+
+import { buildFailure, type CommandFailure } from './failure.ts'
 import { shellJoin } from './quote.ts'
 import { failureText, stderrOrError } from './result.ts'
 import { which } from './which.ts'
@@ -464,8 +467,13 @@ export function syncStop(proc: { error?: Error | undefined; signal: NodeJS.Signa
  * `env` or `input`, not argv. Use `detail` to show a person
  * why it failed. The binary is left out when it is not known, as for a fake
  * runner without `binary`.
+ *
+ * It is a `FailureError`: `failure` is the classified {@link CommandFailure}
+ * (`kind`, a one-line `message` for a person, the full `detail`). `failure.message`
+ * is the line to show; `message` here is the long form for logs. A Result-based
+ * caller can `unwrap` or `isFailure`-check it like any other failure.
  */
-export class CommandFailed extends Error {
+export class CommandFailed extends FailureError<CommandFailure> {
   /** The binary that ran, when the runner reports one (see `CommandRunner.binary`). */
   readonly binary: string | undefined
   /** The arguments the command ran with, without the binary name. */
@@ -500,12 +508,14 @@ export class CommandFailed extends Error {
    * @param binary - The binary that ran, when known.
    */
   constructor(argv: string[], result: CommandResult<string | Buffer>, binary?: string | undefined) {
+    super(buildFailure(result, { binary, argv }))
     const stderr = stderrOrError(result)
     const command = binary === undefined ? argv : [binary, ...argv]
-    super(
+    // The long form, for logs: it names the full command. `failure.message` is
+    // the one line for a person.
+    this.message =
       `command failed (exit ${result.exitCode}): ${shellJoin(command)}` +
-        (stderr ? `\n${stderr}` : ''),
-    )
+      (stderr ? `\n${stderr}` : '')
     this.name = 'CommandFailed'
     this.binary = binary
     this.argv = argv

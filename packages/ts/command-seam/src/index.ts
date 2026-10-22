@@ -61,9 +61,18 @@ export {
   runJsonAsync,
   stderrOrError,
   type FailureTextOptions,
+  type JsonFailure,
   type JsonRun,
   type RunJsonOptions,
 } from './result.ts'
+
+export {
+  classifyFailure,
+  type ClassifiableRun,
+  type ClassifyContext,
+  type CommandFailure,
+  type CommandFailureKind,
+} from './failure.ts'
 
 export { shellJoin, shellQuote } from './quote.ts'
 
