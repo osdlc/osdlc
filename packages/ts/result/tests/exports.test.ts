@@ -68,7 +68,7 @@ test('every export is used by examples/, which imports the package name only', (
 })
 
 test('the README names every export', () => {
-  // A code span that starts with the name, such as `etag(data)`, names it.
+  // A code span that starts with the name, such as `unwrap(r)`, names it.
   const named = new Set([...README.matchAll(/`([A-Za-z_$][\w$]*)/g)].map((m) => m[1]!))
   expect([...EXPORTS.keys()].filter((name) => !named.has(name))).toEqual([])
 })
