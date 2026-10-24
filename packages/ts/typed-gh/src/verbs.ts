@@ -449,7 +449,7 @@ export interface ApiResponse {
   body: unknown
   /** `body.message` when the body is an object with a string `message` (GitHub's error text), else null. */
   message: string | null
-  /** True when a non-empty body arrived but was not valid JSON (`body` is then null). */
+  /** True when a non-empty body arrived but was not valid JSON (`body` is then null); also true on a failed call with a non-JSON body. */
   malformed: boolean
   /** gh's stderr, trimmed. */
   stderr: string

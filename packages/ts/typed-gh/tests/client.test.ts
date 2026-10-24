@@ -581,7 +581,12 @@ describe('api keeps the error body when the request fails', () => {
   test('a failed call with -i reads the status and the error body', () => {
     const stdout = `HTTP/2.0 404 Not Found\r\n\r\n${errBody}`
     const r = api('repos/o/r', { includeHeaders: true }).parse({ exitCode: 1, stdout, stderr: '' })
-    expect(r).toMatchObject({ ok: false, status: 404, message: 'Not Found' })
+    expect(r).toMatchObject({
+      ok: false,
+      status: 404,
+      body: { message: 'Not Found' },
+      message: 'Not Found',
+    })
   })
 
   test('a non-JSON failure body is malformed, with no message', () => {
