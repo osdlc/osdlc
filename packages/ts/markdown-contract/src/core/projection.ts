@@ -6,13 +6,13 @@
  *   sections, deeper headings nest by depth.
  * - Blocks become `BlockNode`s with flattened text and a source position.
  * - The frontmatter keeps the source line of each key (`lineForPath`).
- * - `^anchor` ids bind to their block or section; `[[wikilinks]]` and `![[embeds]]` stay as text.
+ * - `^anchor` ids bind to their block or section. `[[wikilinks]]` and `![[embeds]]` stay as text.
  *
- * Invariants, each covered in `projection.test.ts`:
- * - A fenced code block is opaque: a heading, anchor or table line inside it is just code.
- * - A skipped heading level (H2 then H4) keeps its true depth under the nearest parent; nothing is
+ * Invariants, each covered in `tests/core/projection.test.ts`:
+ * - A heading, anchor or table line inside a fenced code block is just code.
+ * - A skipped heading level (H2 then H4) keeps its true depth under the nearest parent. Nothing is
  *   inserted, and this module reports no finding for it.
- * - Only blocks at the document's top level become `section.blocks`; a block inside a quote or
+ * - Only blocks at the document's top level become `section.blocks`. A block inside a quote or
  *   list item is never lifted out.
  */
 import type {
@@ -47,7 +47,7 @@ import type {
 
 // ── mdast → SourcePos ───────────────────────────────────────────────────────────
 
-/** Project an mdast node's `position.start` to a single-point `SourcePos` (line + col). */
+/** The `SourcePos` (line and col) of an mdast node's `position.start`. */
 function posOf(node: {
   position?: { start: { line: number; column: number } } | undefined
 }): SourcePos {
@@ -58,10 +58,9 @@ function posOf(node: {
 // ── Inline flattening (cells, paragraphs, list-item text) ────────────────────────
 
 /**
- * Flatten an inline phrasing subtree to its plain-text value. `text` and `inlineCode`
- * contribute their `value`; emphasis/strong/link/etc. contribute their children's text;
- * a hard `break` becomes a space. This is the `tableCell → inlineCode/text → "value"`
- * flattening the projection promises.
+ * Flattens inline content to plain text. `text` and `inlineCode` give their `value`. Emphasis,
+ * strong, links and other containers give their children's text. A hard `break` becomes a
+ * space.
  */
 function flattenInline(nodes: readonly PhrasingContent[]): string {
   let out = ''
@@ -88,20 +87,19 @@ function flattenInline(nodes: readonly PhrasingContent[]): string {
 // ── Inline-code spans ──────────────
 
 /**
- * A single point projected to a clean `{ line, col }` — no `offset` key rides along, so the
- * `SourcePos` deep-equals what a fixture pins. `column` is 1-based (unist convention).
+ * A unist point as `{ line, col }`, without its `offset`, so it deep-equals the positions tests
+ * expect. `column` is 1-based, as in unist.
  */
 function pointPos(point: { line: number; column: number }): SourcePos {
   return { line: point.line, col: point.column }
 }
 
 /**
- * Walk an inline phrasing subtree and collect every `inlineCode` run's `InlineSpan` into `out`,
- * in document order. The mdast node's NATIVE `position` is threaded through verbatim (start on
- * the opening backtick, end one column past the closing backtick — unist's half-open range); `raw`
- * is the exact source slice between the node's offsets, so the backticks round-trip. We recurse
- * into container nodes (emphasis / strong / link / …) so an `inlineCode` nested inside them still
- * registers. This runs BESIDE `flattenInline` — the flattened string it returns is untouched.
+ * Adds an `InlineSpan` to `out` for every `inlineCode` node in the inline content, in document
+ * order. The span uses the node's own `position`: start on the opening backtick, end one column
+ * past the closing backtick (unist's end-exclusive range). `raw` is the exact source between the
+ * node's offsets, backticks included. It descends into emphasis, links and other containers, so
+ * inline code nested in them is found. It does not change the text `flattenInline` returns.
  */
 function collectInlineSpans(
   nodes: readonly PhrasingContent[],
@@ -124,7 +122,7 @@ function collectInlineSpans(
   }
 }
 
-/** The inline spans of a phrasing subtree (`[]` when none) — the collector as an expression. */
+/** The inline code spans of inline content, or `[]` when there are none. */
 function inlineSpansOf(nodes: readonly PhrasingContent[], source: string): InlineSpan[] {
   const spans: InlineSpan[] = []
   collectInlineSpans(nodes, source, spans)
@@ -132,9 +130,9 @@ function inlineSpansOf(nodes: readonly PhrasingContent[], source: string): Inlin
 }
 
 /**
- * The verbatim backticked source of an inline-code node: the slice between the node's byte offsets
- * (delimiters included). Falls back to a single-backtick reconstruction only if offsets are absent
- * (they never are from remark) — a defensive belt, not the live path.
+ * The exact source of an inline code node, backticks included: the slice between the node's
+ * character offsets. When the offsets are missing it rebuilds the text with single backticks.
+ * remark always sets offsets, so that fallback should not run.
  */
 function inlineRaw(
   source: string,
@@ -148,10 +146,10 @@ function inlineRaw(
 }
 
 /**
- * The cell's content-start position (with `col`): the source column of the cell's FIRST inline
- * child (its first non-whitespace content), falling back to the cell node's own start when empty.
- * GFM already trims a cell's surrounding whitespace off the child positions, so this lands on the
- * cell's real content column — for a `` `path` `` cell, the opening backtick.
+ * Where a cell's content starts (with `col`): the start of the cell's first inline child, or the
+ * cell's own start when it is empty. GFM leaves the surrounding whitespace out of the child
+ * positions, so this is the first content column. For a `` `path` `` cell it is the opening
+ * backtick.
  */
 function cellContentPos(cell: TableCell): SourcePos {
   const first = cell.children[0]
@@ -159,7 +157,10 @@ function cellContentPos(cell: TableCell): SourcePos {
   return posOf(cell)
 }
 
-/** Flatten a list item's content to a single text string (its first paragraph's prose). */
+/**
+ * A list item's text: its paragraphs, flattened and joined by spaces. Nested lists and other
+ * blocks in the item are left out.
+ */
 function flattenListItem(item: MdListItem): string {
   const parts: string[] = []
   for (const child of item.children) {
@@ -170,15 +171,15 @@ function flattenListItem(item: MdListItem): string {
   return parts.join(' ').trim()
 }
 
-// ── Block projection (a root-level RootContent → BlockNode | null) ───────────────
+// ── Blocks (a top-level mdast node to a BlockNode or null) ───────────────
 
-/** Project a `paragraph` node to a `paragraph` BlockNode (anchor stripped by the caller). */
+/** A `paragraph` BlockNode for a `paragraph` node. The caller strips any anchor. */
 function projectParagraph(
   node: Paragraph,
   source: string,
 ): Extract<BlockNode, { kind: 'paragraph' }> {
-  // The inline-code spans are computed once here and closed over by the accessor,
-  // so they never serialize onto the block. The flattened `text` is unchanged.
+  // The spans are computed once and returned by a function, so they are not serialized with
+  // the block.
   const spans = inlineSpansOf(node.children, source)
   return {
     kind: 'paragraph',
@@ -188,12 +189,12 @@ function projectParagraph(
   }
 }
 
-/** Project a `code` node verbatim. `lang` is `null` for an unlabelled fence. */
+/** A `code` BlockNode for a `code` node. `lang` is `null` for a fence with no language. */
 function projectCode(node: Code): Extract<BlockNode, { kind: 'code' }> {
   return { kind: 'code', lang: node.lang ?? null, value: node.value, pos: posOf(node) }
 }
 
-/** Project a `list` node to a `list` BlockNode; task-list `checked` rides on each item. */
+/** A `list` BlockNode for a `list` node. Each task list item keeps its `checked` state. */
 function projectList(node: MdList): Extract<BlockNode, { kind: 'list' }> {
   const items: ListItem[] = node.children.map((li) => {
     const item: ListItem = { text: flattenListItem(li), pos: posOf(li) }
@@ -210,18 +211,17 @@ function projectList(node: MdList): Extract<BlockNode, { kind: 'list' }> {
 }
 
 /**
- * Project a `table` node. The header row's cells flatten to `columns`; body rows flatten
- * to `rows` (`string[][]`). A trailing single-cell row that is *only* a `^block-id`
- * (GFM absorbs an anchor line directly under a table into an extra row) is lifted out as
- * the table's anchor, not kept as a data row. `rowPos(i)` returns the i-th *body* row's
- * source line.
+ * A `table` BlockNode for a `table` node. The header cells become `columns` and the body rows
+ * become `rows` (`string[][]`), as flattened text. GFM reads an anchor line directly under a
+ * table as an extra row. So a last row with a single cell that is only a `^block-id` becomes the
+ * table's anchor, not a data row. `rowPos(i)` returns the source line of body row `i`.
  */
 function projectTable(
   node: Table,
   source: string,
 ): {
   block: Extract<BlockNode, { kind: 'table' }>
-  /** an anchor absorbed as a trailing single-cell `^id` row, if any */
+  /** The id from a last row that held only a `^id`, if any. */
   absorbedAnchor?: string
 } {
   const [headerRow, ...bodyRows] = node.children
@@ -229,7 +229,6 @@ function projectTable(
     ? headerRow.children.map((cell) => flattenInline(cell.children).trim())
     : []
 
-  // Detect a trailing single-cell row that is only a `^block-id`.
   let absorbedAnchor: string | undefined
   let dataRows = bodyRows
   const lastRow = bodyRows[bodyRows.length - 1]
@@ -247,9 +246,8 @@ function projectTable(
   )
   const rowLines = dataRows.map((row) => posOf(row))
 
-  // per-cell overlays, indexed [bodyRow][col] exactly like `rows`. `cellPositions`
-  // is each cell's content-start `SourcePos` (with `col`); `cellSpans` is each cell's inline-code
-  // spans. Both are closure-captured below so they never serialize onto the public block.
+  // Per-cell data, indexed [bodyRow][col] like `rows`: where each cell's content starts, and
+  // its inline code spans. The block's methods return them, so they are not serialized with it.
   const cellPositions: SourcePos[][] = dataRows.map((row) => row.children.map(cellContentPos))
   const cellSpans: InlineSpan[][][] = dataRows.map((row) =>
     row.children.map((cell) => inlineSpansOf(cell.children, source)),
@@ -274,9 +272,8 @@ function projectTable(
 }
 
 /**
- * Project one root-level content node to a `BlockNode`, or `null` if it carries no block
- * (a heading is handled by the section walker; a blockquote / nested list is NOT hoisted —
- * so it yields no section-level block).
+ * The `BlockNode` for one top-level node, or `null` for a node that is not a block kind
+ * (a blockquote, a thematic break, HTML and so on). `buildTree` handles headings.
  */
 function projectBlock(node: RootContent, source: string): BlockNode | null {
   switch (node.type) {
@@ -289,40 +286,39 @@ function projectBlock(node: RootContent, source: string): BlockNode | null {
     case 'table':
       return projectTable(node, source).block
     default:
-      // blockquote, thematicBreak, html, definition, footnoteDefinition, …: not hoisted.
       return null
   }
 }
 
-// ── Section tree assembly (flat headings → nested SectionNode tree) ──────────────
+// ── The section tree (flat headings to nested SectionNodes) ──────────────
 
 function newSection(name: string, depth: number, pos: SourcePos): SectionNode {
   return { name, depth, pos, sections: [], blocks: [], anchors: [] }
 }
 
 /**
- * Walk the flat root children, building the nested section tree.
+ * Builds the nested section tree from the flat list of top-level nodes.
  *
- * - A leading `# H1` is captured as the document title (`root.name`); it does not become
- *   a body section. (Only the *first* H1 is the title; a later H1 nests like any heading.)
- * - H2 are the top-level body sections (`root.sections`).
- * - H3/H4… nest under the nearest ancestor of smaller depth (a skipped level attaches
- *   to the nearest ancestor with its true `depth` preserved; nothing is inserted).
- * - Non-heading content attaches to the current section's `blocks` (only root-level
- *   blocks; nested blockquote/list blocks are not hoisted).
- * - `^block-id` anchors bind to the block they terminate (`BlockNode.anchor`) or, when
- *   standalone with no preceding block in the section, to the section (`SectionNode.anchors`).
+ * - The first `# H1` is the document title (`root.name`). It is not a body section. A later H1
+ *   nests like any other heading.
+ * - H2s are the top-level body sections (`root.sections`).
+ * - H3 and deeper nest under the nearest section of smaller depth. A skipped level keeps its
+ *   true `depth`. Nothing is inserted.
+ * - Other top-level nodes go into the current section's `blocks`.
+ * - A `^block-id` binds to the block it ends (`BlockNode.anchor`). A standalone one binds to
+ *   the block before it, or to the section (`SectionNode.anchors`) when there is no such block
+ *   or that block already has an anchor.
  */
 function buildTree(
   root: Root,
   source: string,
 ): { docRoot: SectionNode; title: string | undefined } {
-  // The synthetic root is depth 1 (the H1 level); its `sections` are the top-level H2s.
+  // The root has depth 1 (the H1 level). Its `sections` are the H2s.
   const docRoot = newSection('', 1, { line: 0 })
   let title: string | undefined
   let titleSeen = false
 
-  // The ancestor stack: docRoot plus the chain of open sections, deepest last.
+  // docRoot plus the open sections, deepest last.
   const stack: SectionNode[] = [docRoot]
 
   for (const node of root.children) {
@@ -331,7 +327,6 @@ function buildTree(
     if (node.type === 'heading') {
       const name = flattenInline(node.children).trim()
       if (node.depth === 1 && !titleSeen) {
-        // The leading H1 is the document title — captured, not a body section.
         title = name
         titleSeen = true
         continue
@@ -340,16 +335,15 @@ function buildTree(
       continue
     }
 
-    // Non-heading content → a BlockNode on the current (deepest open) section (root-level only).
+    // Any other node becomes a block of the deepest open section.
     attachContentNode(stack[stack.length - 1] as SectionNode, node, source)
   }
 
   return { docRoot, title }
 }
 
-/** Attach `child` under the nearest open ancestor whose depth is < child.depth. */
+/** Adds `child` under the nearest open section whose depth is less than `child.depth`. */
 function attachSection(stack: SectionNode[], child: SectionNode): void {
-  // Pop the stack to the nearest ancestor of smaller depth.
   while (stack.length > 1 && (stack[stack.length - 1] as SectionNode).depth >= child.depth) {
     stack.pop()
   }
@@ -358,12 +352,11 @@ function attachSection(stack: SectionNode[], child: SectionNode): void {
 }
 
 /**
- * Project one non-heading root node and attach its block to `sec` (root-level only). A table's
- * absorbed `^id` row becomes the table anchor; a standalone `^block-id` paragraph binds an anchor
- * and yields no block; a trailing `^id` on a paragraph / list item is stripped onto the block.
+ * Turns one top-level node into a block of `sec`. A table's last `^id` row becomes the table's
+ * anchor. A paragraph that is only a `^block-id` binds an anchor and adds no block. A trailing
+ * `^id` on a paragraph or list item is removed from the text and set as the block's anchor.
  */
 function attachContentNode(sec: SectionNode, node: RootContent, source: string): void {
-  // Table: project once; a trailing single-cell `^id` row becomes the table's anchor.
   if (node.type === 'table') {
     const projected = projectTable(node, source)
     if (projected.absorbedAnchor !== undefined) {
@@ -384,16 +377,16 @@ function attachContentNode(sec: SectionNode, node: RootContent, source: string):
     }
   }
 
-  if (!block) return // blockquote / nested content yields no section-level block
+  if (!block) return // not a block kind, such as a blockquote
 
   bindTrailingAnchor(block)
   sec.blocks.push(block)
 }
 
 /**
- * Strip a trailing `^id` off a paragraph or list block and bind it as the block's anchor. On a
- * paragraph the inline anchor (no blank line before it) is lifted; on a list the FIRST item
- * carrying one wins (Obsidian binds it to the block it sits in), and the token is stripped.
+ * Moves a trailing `^id` from a paragraph or list into the block's anchor. On a paragraph this
+ * is an anchor with no blank line before it. On a list the first item that has one wins
+ * (Obsidian binds it to the block it sits in).
  */
 function bindTrailingAnchor(block: BlockNode): void {
   if (block.kind === 'paragraph') {
@@ -418,9 +411,8 @@ function bindTrailingAnchor(block: BlockNode): void {
 }
 
 /**
- * Bind a standalone `^id` to a section: if the section already has a trailing block with
- * no anchor, the id binds to that block (`BlockNode.anchor`); otherwise it is a
- * section-level id (`SectionNode.anchors`).
+ * Binds a standalone `^id`. When the section's last block has no anchor, the id goes to that
+ * block (`BlockNode.anchor`). Otherwise it goes to the section (`SectionNode.anchors`).
  */
 function bindAnchor(sec: SectionNode, id: string): void {
   const lastBlock = sec.blocks[sec.blocks.length - 1]
@@ -431,18 +423,17 @@ function bindAnchor(sec: SectionNode, id: string): void {
   }
 }
 
-// ── Frontmatter (position-aware; lineForPath via the `yaml` CST) ─────────────────
+// ── Frontmatter (with `lineForPath` from the `yaml` CST) ─────────────────
 
 /**
- * Build the position-aware frontmatter projection from the mdast `yaml` node.
+ * Builds `DocTree.frontmatter` from the mdast `yaml` node.
  *
- * `lineForPath(path)` maps a key path (a Zod issue path: `["status"]`, `["prs", 0]`,
- * `["nested", "b"]`) to the source line of that **key** (for a map key) or **element**
- * (for an array index), using the `yaml` package's CST node ranges.
+ * `lineForPath(path)` maps a key path (a Zod issue path such as `["status"]`, `["prs", 0]` or
+ * `["nested", "b"]`) to the source line of that key (for a map) or element (for an array). It
+ * uses the node ranges from the `yaml` package.
  *
- * The mdast `yaml` node's `value` omits the surrounding `---` fences and so begins on the
- * document line *after* the opening `---` (which sits on `pos.line`). A block-local 1-based
- * line `L` therefore maps to document line `pos.line + L`.
+ * The node's `value` leaves out the `---` fences, so it starts on the line after the opening
+ * `---`, which is `pos.line`. Line `L` of the YAML (1-based) is document line `pos.line + L`.
  */
 function buildFrontmatter(node: Yaml): NonNullable<DocTree['frontmatter']> {
   const pos = posOf(node)
@@ -460,12 +451,10 @@ function buildFrontmatter(node: Yaml): NonNullable<DocTree['frontmatter']> {
     errors.push({ message: (err as Error).message, line: pos.line + 1 })
   }
 
-  // Document line of the opening `---`; the YAML text begins on `pos.line + 1`, and a
-  // block-local 1-based line L maps to document line `pos.line + L`.
   const blockBaseLine = pos.line
 
   function lineForPath(path: (string | number)[]): number | undefined {
-    if (path.length === 0) return blockBaseLine + 1 // the block itself → first key line
+    if (path.length === 0) return blockBaseLine + 1 // the whole block: its first line
     const localOffset = keyOffset(doc.contents as unknown, path)
     if (localOffset === undefined) return undefined
     return blockBaseLine + offsetToLine(raw, localOffset)
@@ -493,9 +482,8 @@ export function frontmatterYamlErrors(
 }
 
 /**
- * Walk the `yaml` CST along `path`, returning the char offset of the addressed **key**
- * node (map) or **element** node (sequence). Top-level keys resolve exactly; nested keys
- * and array indices are resolved best-effort along the same walk.
+ * Follows `path` through the parsed YAML and returns the character offset of the key (in a map)
+ * or element (in a sequence) it names. Returns `undefined` when the path does not resolve.
  */
 function keyOffset(contents: unknown, path: (string | number)[]): number | undefined {
   let node: unknown = contents
@@ -519,7 +507,7 @@ function keyOffset(contents: unknown, path: (string | number)[]): number | undef
   return offset
 }
 
-/** The scalar value of a map key node (or the node itself if it is already a primitive). */
+/** The value of a map key node, or the key itself when it is already a primitive. */
 function scalarKey(key: unknown): unknown {
   if (key && typeof key === 'object' && 'value' in key) {
     return (key as { value: unknown }).value
@@ -527,13 +515,13 @@ function scalarKey(key: unknown): unknown {
   return key
 }
 
-/** The 0-based start offset of a CST node's source range, if it carries one. */
+/** The 0-based start offset of a node's source range, if it has one. */
 function rangeStart(node: unknown): number | undefined {
   const range = (node as { range?: readonly number[] } | undefined)?.range
   return range && typeof range[0] === 'number' ? range[0] : undefined
 }
 
-/** Convert a 0-based char offset in `text` to a 1-based line number. */
+/** The 1-based line number of a 0-based character offset in `text`. */
 function offsetToLine(text: string, offset: number): number {
   let line = 1
   for (let i = 0; i < offset && i < text.length; i++) {
@@ -542,7 +530,7 @@ function offsetToLine(text: string, offset: number): number {
   return line
 }
 
-// ── parse() — the public entry point ─────────────────────────────────────────────
+// ── parse() ─────────────────────────────────────────────
 
 const PROCESSOR = unified().use(remarkParse).use(remarkGfm).use(remarkFrontmatter, ['yaml'])
 
@@ -566,7 +554,7 @@ function processorFor(extensions: MicromarkExtension[] | undefined): {
  * sections holding typed blocks with source positions, and the remark tree.
  *
  * GFM (tables, task lists, strikethrough, autolinks) and YAML frontmatter are on. A `^anchor`
- * at the end of a block, or alone on the line after it, binds that id to the block; one alone
+ * at the end of a block, or alone on the line after it, binds that id to the block. One alone
  * before any block binds it to the section. `[[wikilinks]]` and `![[embeds]]` are kept as text.
  *
  * It does not throw on bad frontmatter YAML. `frontmatter.data` is then best-effort (`null` when
@@ -575,7 +563,6 @@ function processorFor(extensions: MicromarkExtension[] | undefined): {
 export function parse(markdown: string, opts?: ParseOptions): DocTree {
   const mdast = processorFor(opts?.extensions).parse(markdown) as Root
 
-  // Frontmatter: the first `yaml` root child, if any.
   const yamlNode = mdast.children.find((c): c is Yaml => c.type === 'yaml')
   const frontmatter = yamlNode ? buildFrontmatter(yamlNode) : null
 

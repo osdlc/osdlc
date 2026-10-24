@@ -1,18 +1,17 @@
 /**
- * The finding-id → default `FindingLevel` registry plus the `Ctx` factory (`makeCtx`).
+ * The default `FindingLevel` for each finding id, and the `Ctx` factory (`makeCtx`).
  *
- * `level` is **contract data**, not a call-site choice: a finding id has one default severity
- * wherever it fires. This registry holds the defaults for the structure, content (including
- * frontmatter), text and rule planes.
+ * A finding id has one default level wherever it is reported. The code that reports it does not
+ * choose. This registry holds the defaults for the structure, content (including frontmatter),
+ * text and rule planes.
  *
- * `makeCtx(path, registry)` returns the `Ctx` a rule body uses: its `finding(...)` stamps
- * the document `path` and fills `level` from the registry when the caller does not supply
- * one. Engine-internal structure findings reuse the same registry through this Ctx so
- * a single source defines every default.
+ * `makeCtx(path, registry)` returns the `Ctx` a rule uses. Its `finding(...)` sets the document
+ * `path` and fills `level` from the registry when the caller gives none. The engine's own
+ * structure findings go through the same `Ctx`, so every default comes from one place.
  */
 import type { Ctx, Finding, FindingLevel, SourcePos } from './types.js'
 
-/** The default severity for every structure-plane finding id this plane emits. */
+/** The default level of each structure-plane finding id. */
 export const STRUCTURE_LEVELS: Record<string, FindingLevel> = {
   'structure/section-missing': 'error',
   'structure/section-order': 'error',
@@ -27,9 +26,8 @@ export const STRUCTURE_LEVELS: Record<string, FindingLevel> = {
 }
 
 /**
- * The default severity for every content- and frontmatter-plane finding id.
- * Content checks default to `error` (a data-shape violation blocks the typed model); the
- * frontmatter Zod findings are likewise `error`.
+ * The default level of each content and frontmatter finding id. All are `error`, because data
+ * of the wrong shape cannot be read into the typed model.
  */
 const CONTENT_LEVELS: Record<string, FindingLevel> = {
   // table
@@ -50,31 +48,30 @@ const CONTENT_LEVELS: Record<string, FindingLevel> = {
   'frontmatter/unknown-key': 'error',
   'frontmatter/type': 'error',
   'frontmatter/required': 'error',
-  // a `.refine()` cross-field predicate surfaces as a Zod `custom` issue
+  // a failed `.refine()` check is reported by Zod as a `custom` issue
   'frontmatter/refine': 'error',
 }
 
 /**
- * Default severities for the rule plane (`rule/*` and the contract-chosen namespaces a
- * `rule` / `docRule` may mint, e.g. `task/...`, `summary/...`). `level` is contract data:
- * a rule body names the problem and the engine fills the default level. A rule
- * that supplies its own `level` overrides this; an unregistered rule id still defaults to
- * `"error"` via {@link makeCtx}, so this table is the documented, not the load-bearing, source.
+ * Default levels for rule ids: `rule/*` and the ids a contract's `rule` or `docRule` chooses,
+ * such as `task/...` or `summary/...`. A rule names the problem and the engine fills the default
+ * level. A rule that sets its own `level` overrides this. An id not listed here still defaults
+ * to `"error"` in {@link makeCtx}, so this table documents the defaults but is not required.
  */
 const RULE_LEVELS: Record<string, FindingLevel> = {
-  // cross-plane docRule ids the corpus contracts use
+  // docRule ids the corpus contracts use
   'task/post-mortem-when-worked': 'error',
   'task/completion-note-when-closed': 'error',
-  // node-local rule ids the corpus contracts use
+  // section rule ids the corpus contracts use
   'summary/mentions-outcome': 'error',
   'summary/names-contract': 'warn',
 }
 
 /**
- * Default severities for the text plane (`text/*`). Every declarative text constraint
- * emits through these three ids: `text/requires` (a required phrase is missing), `text/forbids`
- * (a forbidden phrase is present), and `text/count` (a `min` / `max` occurrence bound is
- * violated). All default to `error`, overridable per entry via the spec's `level`.
+ * Default levels for text checks (`text/*`). Every text check reports one of three ids:
+ * `text/requires` (a required phrase is missing), `text/forbids` (a forbidden phrase is
+ * present) and `text/count` (a `min` or `max` count is not met). All default to `error`. A
+ * check's `level` overrides that.
  */
 const TEXT_LEVELS: Record<string, FindingLevel> = {
   'text/requires': 'error',
@@ -82,18 +79,18 @@ const TEXT_LEVELS: Record<string, FindingLevel> = {
   'text/count': 'error',
 }
 
-/** The id → default-level registry. */
+/** Maps a finding id to its default level. */
 type LevelRegistry = Record<string, FindingLevel>
 
-/** A fresh registry seeded with the structure-, content-, text-, and rule-plane defaults. */
+/** A new registry with the structure, content, text and rule defaults. */
 export function defaultRegistry(): LevelRegistry {
   return { ...STRUCTURE_LEVELS, ...CONTENT_LEVELS, ...TEXT_LEVELS, ...RULE_LEVELS }
 }
 
 /**
- * Build the rule-author finding factory. `finding({id, message, level?, pos?})` stamps
- * the document `path`, fills `level` from the registry (defaulting to `"error"` for an
- * unregistered id), and carries `pos` only when supplied (omitted for absence findings).
+ * Builds the `Ctx` that rules use to make findings. `finding({id, message, level?, pos?})`
+ * sets the document `path` and fills `level` from the registry (`"error"` for an id not in
+ * it). It sets `pos` only when given. A finding about something missing has no `pos`.
  */
 export function makeCtx(path: string, registry: LevelRegistry): Ctx {
   return {
@@ -108,11 +105,11 @@ export function makeCtx(path: string, registry: LevelRegistry): Ctx {
 }
 
 /**
- * Decorate a `Ctx` so every finding it mints carries `hint` — the nearest enclosing authored
- * `description` in scope at the mint site. The engine walks compute the EFFECTIVE hint
- * (own description ?? inherited) and wrap once per scope; a later wrap overrides an earlier one,
- * so the innermost description wins. `hint === undefined` returns `ctx` unchanged — a
- * description-free contract mints byte-identical findings (no `hint` key at all).
+ * Wraps a `Ctx` so every finding it makes carries `hint`: the nearest `description` that
+ * encloses the check. The engine works out that hint (the scope's own description, else the
+ * inherited one) and wraps once per scope. A later wrap overrides an earlier one, so the
+ * innermost description wins. When `hint` is `undefined` it returns `ctx` unchanged, so a
+ * contract with no descriptions gives findings with no `hint` key.
  */
 export function withHint(ctx: Ctx, hint: string | undefined): Ctx {
   if (hint === undefined) return ctx

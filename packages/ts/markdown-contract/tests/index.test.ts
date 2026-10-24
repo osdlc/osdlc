@@ -7,8 +7,8 @@ test('the engine doors run end to end: parse, validate, and read', () => {
   const tree = parse('## A\n\nx\n')
   expect(tree.root.sections[0]?.name).toBe('A')
 
-  // `validate` runs every plane in one pass: it returns a ValidationResult
-  // (findings + the projection + the model on success), never throwing.
+  // `validate` runs every plane in one pass and does not throw. It returns a
+  // ValidationResult: the findings, the tree, and the model when the doc is valid.
   const c = contract({})
   const result = c.validate('x', { path: 'f.md' })
   expect(Array.isArray(result.findings)).toBe(true)

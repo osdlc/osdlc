@@ -1,12 +1,12 @@
 /**
  * Peer test for the text-constraint builders.
  *
- * `requires` / `forbids` build a section-scoped node-local `Rule` over the bound section's
- * subtree text; `textRule` builds a whole-document `DocRule`. Each runs the text-match core
- * (`text-match.ts`) and mints `text/*` findings. These cases read first as documentation —
- * lead with a section `requires` pass/fail and a document `forbids` pass/fail (the unit twins
- * of fixtures 22 / 23) — then cover counts, regex, normalize/ignoreCase, note/level flow-through,
- * the synthesized per-entry id, and the `requires` absence-form purity guard.
+ * `requires` / `forbids` build a `Rule` over the text of the bound section and its subsections.
+ * `textRule` builds a whole-document `DocRule`. Each uses the matcher in `text-match.ts` and
+ * emits `text/*` findings. The first cases are meant to read as documentation: a section
+ * `requires` pass and fail, and a document `forbids` pass and fail (unit versions of fixtures
+ * 22 and 23). Later cases cover counts, regex, normalize/ignoreCase, passing note and level
+ * through, the generated per-entry id, and the check on the `requires` absence form.
  */
 import { describe, expect, it } from 'vitest'
 

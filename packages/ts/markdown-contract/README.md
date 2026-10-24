@@ -192,7 +192,7 @@ markdown-contract init ./docs --check              # fail when files drift from 
 markdown-contract migrate old.contract.yaml --write
 ```
 
-Each command takes only its own flags; a flag from another command, or a second
+Each command takes only its own flags. A flag from another command, or a second
 `validate` path, exits with 2. `migrate` loads each result before it prints or
 writes it. A file that version 2 cannot load is reported and left alone, and
 the exit code is 2. With several files and no `--write`, each document follows
@@ -213,7 +213,7 @@ command in process and returns `{ code, stdout, stderr }` as a `CliResult`.
 `@osdlc/markdown-contract/core` holds the parser, the contract builders, the
 typed model and the read helpers. It imports no Node module, so it can go in
 a browser bundle. `@osdlc/markdown-contract` is `./core` plus the folder
-runner. `./declarative` reads YAML and `./cli` runs the command; both need
+runner. `./declarative` reads YAML and `./cli` runs the command. Both need
 Node.
 
 - Parse: `parse(source, options)` returns a `DocTree` of `SectionNode`s and
@@ -261,14 +261,14 @@ The experimental exports:
 `InferredFile`, `TextEdit`, `runCli` and `CliResult`.
 
 Config inference and the in-process command work and are tested, but their
-shape is not settled. No check fills `TextEdit` yet; it is carried on
-`Finding.fix`. The `markdown-contract` command, its flags and its output
+shape is not settled. `TextEdit` is the type of `Finding.fix`, and no check
+fills it yet. The `markdown-contract` command, its flags and its output
 formats are experimental in the same way.
 
 ## Runtimes and platforms
 
 - **Runtimes:** Node.js 22 or later. ESM only. `./core` has no Node imports.
-  A test checks its built import graph; no test runs it in a browser.
+  A test checks its built import graph. No test runs it in a browser.
 - **Platforms:** Linux and macOS are supported and tested in CI. Windows is
   expected to work but is untested. Support for it is planned.
 
@@ -279,7 +279,7 @@ formats are experimental in the same way.
   package adds Zod checks on table cells and list items, rules in code, and a
   typed model of a valid document.
 - **`remark-lint-frontmatter-schema`** checks frontmatter against a JSON
-  Schema. It overlaps with the frontmatter plane only; it does not check
+  Schema. It overlaps with the frontmatter plane only. It does not check
   sections or blocks.
 - **markdownlint** and **remark-lint** check style: heading levels, list
   markers, line length. They do not know what a document of one type must
@@ -292,8 +292,8 @@ cell schema. A cell whose schema transforms its value, such as
 `z.coerce.number()`, reads back as the transformed value; other columns stay
 strings. `table()`, `section()`, `sections()` and `Infer` carry the cell
 types, and `RowOf` computes the row type. The parse tree keeps the raw
-strings; the values belong to the model of one `validate()` call, so several
-contracts can validate one tree.
+strings. The typed values belong to the model of one `validate()` call, so
+several contracts can validate one tree.
 
 ## Security
 

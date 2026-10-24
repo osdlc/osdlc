@@ -1,8 +1,8 @@
 /**
- * Source-faithful table cells: a projected table's rows re-split from the raw source lines. The
- * projection's `table.columns` and `table.rows` flatten inline markup (`` `tool x new` `` becomes
- * `tool x new`). These helpers keep the verbatim cell text instead, found through the table's
- * `pos` (header) and `rowPos(i)` (data rows).
+ * Table cells as written in the source. The parsed `table.columns` and `table.rows` flatten
+ * inline markup (`` `tool x new` `` becomes `tool x new`). These helpers split the raw source
+ * lines again and keep the exact cell text. They find the lines through the table's `pos`
+ * (header) and `rowPos(i)` (data rows).
  *
  * Each line is split by the GFM rule, in `@osdlc/gfm-table`: a backslash escapes the next
  * character, so `\|` stays inside its cell. Each cell is trimmed and the outer pipes are
@@ -35,9 +35,9 @@ export function rawTableRow(table: TableBlock, source: string | string[], i: num
 }
 
 /**
- * Re-split a projected table's header line and every data row from the raw `source`, keeping the
- * verbatim cell text (backticks and other inline markup the projection flattens). `source` may be
- * the whole document string or its pre-split lines.
+ * Splits a table's header line and every data row from the raw `source`, keeping the exact
+ * cell text (backticks and other inline markup that parsing flattens). `source` may be the whole
+ * document string or its lines.
  *
  * `opts.pad` pads short data rows to a fixed width: `"header"` pads to the header cell count, a
  * number pads to that many cells. Rows are unpadded by default. Rows whose source line has no

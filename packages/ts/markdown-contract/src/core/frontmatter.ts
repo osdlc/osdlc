@@ -3,8 +3,7 @@ import remarkFrontmatter from 'remark-frontmatter'
 import remarkParse from 'remark-parse'
 import { unified } from 'unified'
 
-// Minimal recognizer: same frontmatter extension parse() uses (remark-frontmatter
-// wraps micromark-extension-frontmatter), without the gfm/section/wikilink projection.
+// Finds frontmatter with the same extension parse() uses, without the rest of parse().
 const FRONTMATTER_PROCESSOR = unified().use(remarkParse).use(remarkFrontmatter, ['yaml'])
 
 /** What {@link splitFrontmatter} returns: the frontmatter text and the body text. */
@@ -16,10 +15,9 @@ export interface FrontmatterSplit {
 }
 
 /**
- * Verbatim body after a leading frontmatter block, given the mdast `yaml` node the
- * recognizer produced (or `undefined` when there is none). Shared by `splitFrontmatter`
- * and `parse()` so the two never diverge. Skips exactly one line terminator (CRLF or LF)
- * after the closing fence; byte-exact otherwise.
+ * Returns the exact text after a leading frontmatter block, given its mdast `yaml` node (or
+ * `undefined` when there is none). `splitFrontmatter` and `parse()` both use it, so they agree.
+ * It skips one line break (CRLF or LF) after the closing fence and keeps everything else.
  */
 export function bodyAfterFrontmatter(md: string, yamlNode: Yaml | undefined): string {
   const end = yamlNode?.position?.end?.offset

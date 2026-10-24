@@ -1,33 +1,28 @@
 /**
- * The v2 schema compiler — a JSON Schema 2020-12 SUBSET → Zod.
+ * Compiles a subset of JSON Schema 2020-12 into Zod, for the frontmatter of a v2 contract.
  *
- * v2 replaces the v1 house dialect with standard JSON Schema spellings: `properties` /
- * `required` / `additionalProperties` for objects (optional-by-default — the JSON Schema
- * inversion of v1's optional-by-flag), `items` / `minItems` / `maxItems` for arrays,
- * `minLength` / `maxLength` / `pattern` / `format` for strings (a `format` now COMPOSES with
- * the length/pattern constraints), `minimum` / `maximum` for numbers, `type: integer`, and a
- * two-element `[T, "null"]` type union for nullability. `enum` / `const` / `default` /
- * `description` carry over; a `const` value is validated (string | number | boolean), where
- * v1 blindly cast.
+ * The subset: `properties`, `required` and `additionalProperties` for objects (a property is
+ * optional unless `required` lists it), `items`, `minItems` and `maxItems` for arrays,
+ * `minLength`, `maxLength`, `pattern` and `format` for strings (a `format` can be combined with
+ * the others), `minimum` and `maximum` for numbers, `type: integer`, and a two-element
+ * `[T, "null"]` type for a nullable value. Also `enum`, `const`, `default` and `description`. A
+ * `const` value must be a string, number or boolean.
  *
- * The vocabulary is CLOSED per node shape (this fixes a real v1 bug — v1 ignored unknown
- * schema keys): after the base is picked, every present key must be in that node-shape's
- * allowed set. Rejections speak three distinct dialects:
- *   a. a v1 spelling (`fields`, `of`, `strict`, …) → a migration hint naming the v2 form;
- *   b. recognized JSON Schema outside the subset (`oneOf`, `$ref`, `patternProperties`, …)
- *      → "outside the supported v2 subset";
- *   c. anything else → "unknown key", with a did-you-mean suggestion when a supported key
- *      is within Levenshtein distance 1–2.
+ * Each node may use only the keys allowed for its type. Any other key throws, with one of three
+ * messages:
+ *   a. A v1 spelling (`fields`, `of`, `strict`, …): the message names the v2 form.
+ *   b. A JSON Schema keyword outside the subset (`oneOf`, `$ref`, `patternProperties`, …):
+ *      "outside the supported v2 subset".
+ *   c. Anything else: "unknown key", with a suggestion when an allowed key is 1 or 2 edits away.
  */
 import { z } from 'zod'
 
 import { DeclarativeError } from './errors.js'
 
 /**
- * The closed `format` vocabulary: the string formats Zod
- * and JSON Schema both expose out of the box, each mapped to its Zod constructor. Deliberately
- * broad so common shapes never fall back to a hand-written `pattern`; anything outside the set
- * is a `pattern`. In v2 a format COMPOSES with the length/pattern constraints.
+ * The allowed `format` values, each mapped to its Zod constructor. The list is broad on purpose,
+ * so common shapes do not need a hand-written `pattern`. For anything else, use a `pattern`. A
+ * format can be combined with the length and pattern constraints.
  */
 const STRING_FORMATS: Record<string, () => z.ZodType> = {
   // web / identity
@@ -62,15 +57,15 @@ const describeValue = (v: unknown): string =>
 const isMap = (v: unknown): v is Record<string, unknown> =>
   v !== null && typeof v === 'object' && !Array.isArray(v)
 
-// ── The closed per-node-shape key vocabulary ─────────────────────────────────────
+// ── The keys each node type allows ─────────────────────────────────────
 
 /** The six base types of the v2 subset. */
 const BASE_TYPES = new Set(['string', 'number', 'integer', 'boolean', 'array', 'object'])
 
-/** Keys every node shape admits beside its base selector. */
+/** Keys every node allows besides `type`, `enum` or `const`. */
 const COMMON_KEYS = ['default', 'description'] as const
 
-/** The extra keys each `type` admits. */
+/** The extra keys each `type` allows. */
 const TYPE_KEYS: Record<string, readonly string[]> = {
   string: ['minLength', 'maxLength', 'pattern', 'format'],
   number: ['minimum', 'maximum'],
@@ -80,7 +75,7 @@ const TYPE_KEYS: Record<string, readonly string[]> = {
   object: ['properties', 'required', 'additionalProperties'],
 }
 
-/** v1 spellings → the v2 form the migration hint names. */
+/** v1 keys, mapped to the v2 form the error message names. */
 const V1_SPELLINGS: Record<string, string> = {
   fields: "'properties'",
   of: "'items'",
@@ -92,7 +87,7 @@ const V1_SPELLINGS: Record<string, string> = {
   max: "'maxLength' / 'maximum' / 'maxItems'",
 }
 
-/** Recognized JSON Schema 2020-12 keywords deliberately OUTSIDE the v2 subset. */
+/** JSON Schema 2020-12 keywords that the subset leaves out on purpose. */
 const OUTSIDE_SUBSET = new Set([
   'oneOf',
   'anyOf',
@@ -131,9 +126,9 @@ const OUTSIDE_SUBSET = new Set([
   'writeOnly',
 ])
 
-// ── Rejection: the three dialects ────────────────────────────────────────────────
+// ── Rejecting keys ────────────────────────────────────────────────
 
-/** Plain Levenshtein edit distance (insert / delete / substitute), for did-you-mean. */
+/** Levenshtein edit distance (insert, delete, substitute), for suggestions. */
 function levenshtein(a: string, b: string): number {
   const dp: number[] = Array.from({ length: a.length + 1 }, (_, i) => i)
   for (let j = 1; j <= b.length; j++) {
@@ -148,7 +143,7 @@ function levenshtein(a: string, b: string): number {
   return dp[a.length]!
 }
 
-/** The nearest allowed key within edit distance 1–2, if any (did-you-mean). */
+/** The nearest allowed key 1 or 2 edits away, if any. */
 function suggestionFor(key: string, allowed: Iterable<string>): string | undefined {
   let best: string | undefined
   let bestDist = 3
@@ -163,8 +158,8 @@ function suggestionFor(key: string, allowed: Iterable<string>): string | undefin
 }
 
 /**
- * Enforce the closed per-node vocabulary: every present key must be in `allowed`. A violation
- * throws in one of the three rejection dialects (v1 spelling / outside the subset / unknown).
+ * Throws on any key not in `allowed`, with one of the three messages in the module comment
+ * (v1 spelling, outside the subset, unknown key).
  */
 function assertAllowedKeys(n: Record<string, unknown>, allowed: Set<string>, path: string): void {
   for (const key of Object.keys(n)) {
@@ -186,9 +181,9 @@ function assertAllowedKeys(n: Record<string, unknown>, allowed: Set<string>, pat
   }
 }
 
-// ── Constraint-value readers ─────────────────────────────────────────────────────
+// ── Reading constraint values ─────────────────────────────────────────────────────
 
-/** Read an optional numeric constraint (`minLength`, `maximum`, …), rejecting a wrong type. */
+/** Reads an optional number constraint (`minLength`, `maximum`, …). Throws when it is not a number. */
 function numberKey(n: Record<string, unknown>, key: string, path: string): number | undefined {
   if (!(key in n)) return undefined
   const v = n[key]
@@ -198,7 +193,7 @@ function numberKey(n: Record<string, unknown>, key: string, path: string): numbe
 
 // ── The compiler ─────────────────────────────────────────────────────────────────
 
-/** Compile one v2 schema node (the JSON Schema subset) into a Zod schema. */
+/** Compiles one schema node into a Zod schema. */
 export function compileSchemaV2(node: unknown, path = 'schema'): z.ZodType {
   if (!isMap(node)) {
     throw new DeclarativeError(`${path}: a schema must be a mapping (got ${describeValue(node)})`)
@@ -213,9 +208,8 @@ export function compileSchemaV2(node: unknown, path = 'schema'): z.ZodType {
     )
   }
 
-  // Pick the node shape, enforce the closed key vocabulary for that shape (the v1-spelling /
-  // outside-subset / unknown-key rejections fire here, before any constraint is compiled),
-  // then build the base schema.
+  // Pick the node's type, check its keys (before any constraint is compiled), then build the
+  // base schema.
   let base: z.ZodType
   let nullable = false
   const selector = selectors[0]!
@@ -232,8 +226,8 @@ export function compileSchemaV2(node: unknown, path = 'schema'): z.ZodType {
     base = typedSchema(n, resolved.base, path)
   }
 
-  // Wrappers, innermost-first: base → nullable (from the type union) → default → description.
-  // The `.optional()` from required-absence is the OBJECT compiler's to apply (outermost).
+  // Wrappers, innermost first: nullable (from the type union), default, description. The
+  // object compiler adds `.optional()` outside these for a property not in `required`.
   let schema: z.ZodType = base
   if (nullable) schema = schema.nullable()
   if ('default' in n) schema = schema.default(n.default as never)
@@ -247,9 +241,8 @@ export function compileSchemaV2(node: unknown, path = 'schema'): z.ZodType {
 }
 
 /**
- * Compile the frontmatter ROOT: a v2 `frontmatter:` must be a schema node with an explicit
- * `type: object` — v2 frontmatter IS an object schema (properties / required /
- * additionalProperties), not v1's `strict` / `fields` mapping.
+ * Compiles the `frontmatter:` schema. It must be a schema node with `type: object`
+ * (`properties`, `required`, `additionalProperties`).
  */
 export function compileObjectSchemaV2(node: unknown, path = 'frontmatter'): z.ZodType {
   if (!isMap(node) || node.type !== 'object') {
@@ -262,7 +255,7 @@ export function compileObjectSchemaV2(node: unknown, path = 'frontmatter'): z.Zo
   return compileSchemaV2(node, path)
 }
 
-/** `enum: [...]` — a non-empty list of strings. */
+/** `enum: [...]`: a non-empty list of strings. */
 function enumSchema(n: Record<string, unknown>, path: string): z.ZodType {
   const values = n.enum
   if (
@@ -275,7 +268,7 @@ function enumSchema(n: Record<string, unknown>, path: string): z.ZodType {
   return z.enum(values as [string, ...string[]])
 }
 
-/** `const: <v>` — the value must be a string, number, or boolean (validated; v1 blindly cast). */
+/** `const: <v>`: the value must be a string, number or boolean. */
 function constSchema(n: Record<string, unknown>, path: string): z.ZodType {
   const v = n.const
   if (typeof v !== 'string' && typeof v !== 'number' && typeof v !== 'boolean') {
@@ -287,8 +280,8 @@ function constSchema(n: Record<string, unknown>, path: string): z.ZodType {
 }
 
 /**
- * Resolve a `type` value: a single base type, or a two-element `[T, "null"]` union (either
- * order) marking the node nullable. Any other array form is outside the v2 subset.
+ * Reads a `type` value: one base type, or a two-element `[T, "null"]` list (in either order) for
+ * a nullable value. Any other list is outside the subset.
  */
 function resolveType(t: unknown, path: string): { base: string; nullable: boolean } {
   if (typeof t === 'string' && BASE_TYPES.has(t)) return { base: t, nullable: false }
@@ -308,7 +301,7 @@ function resolveType(t: unknown, path: string): { base: string; nullable: boolea
   )
 }
 
-/** Dispatch a resolved base type to its constraint compiler. */
+/** Compiles a node of a known base type. */
 function typedSchema(n: Record<string, unknown>, base: string, path: string): z.ZodType {
   switch (base) {
     case 'string':
@@ -326,9 +319,8 @@ function typedSchema(n: Record<string, unknown>, base: string, path: string): z.
 }
 
 /**
- * `type: string` — a named `format` (the closed constructor map above) or a plain string,
- * COMPOSED with `minLength` / `maxLength` / `pattern`. In v1 a `format` was exclusive; in v2
- * the constraints chain onto the format constructor.
+ * `type: string`: a `format` from `STRING_FORMATS`, or a plain string, with `minLength`,
+ * `maxLength` and `pattern` added on.
  */
 function stringSchema(n: Record<string, unknown>, path: string): z.ZodType {
   let s: z.ZodString
@@ -340,7 +332,7 @@ function stringSchema(n: Record<string, unknown>, path: string): z.ZodType {
         `${path}: unsupported string format '${n.format}' (expected one of: ${Object.keys(STRING_FORMATS).join(', ')})`,
       )
     }
-    // Every format constructor returns a ZodString subclass, so the length/pattern checks chain.
+    // Every format constructor returns a ZodString subclass, so the length and pattern checks apply.
     s = make() as z.ZodString
   } else {
     s = z.string()
@@ -357,7 +349,7 @@ function stringSchema(n: Record<string, unknown>, path: string): z.ZodType {
   return s
 }
 
-/** `type: number` / `type: integer` — with optional `minimum` / `maximum` bounds. */
+/** `type: number` or `type: integer`, with optional `minimum` and `maximum`. */
 function numericSchema(n: Record<string, unknown>, base: string, path: string): z.ZodType {
   let s = base === 'integer' ? z.int() : z.number()
   const min = numberKey(n, 'minimum', path)
@@ -367,7 +359,7 @@ function numericSchema(n: Record<string, unknown>, base: string, path: string): 
   return s
 }
 
-/** `type: array` — a required `items` element schema, with optional `minItems` / `maxItems`. */
+/** `type: array`: a required `items` schema, with optional `minItems` and `maxItems`. */
 function arraySchema(n: Record<string, unknown>, path: string): z.ZodType {
   if (!('items' in n)) {
     throw new DeclarativeError(`${path}: an array schema needs an 'items' element schema`)
@@ -381,10 +373,9 @@ function arraySchema(n: Record<string, unknown>, path: string): z.ZodType {
 }
 
 /**
- * `type: object` — `properties` (required), `required` (each entry must name a declared
- * property), `additionalProperties` (boolean only; `false` → a strict object). Properties NOT
- * listed in `required` compile with an outermost `.optional()` — optional-by-default, the
- * JSON Schema inversion of v1's per-field `optional: true`.
+ * `type: object`: `properties` (required), `required` (each entry must name a declared
+ * property) and `additionalProperties` (a boolean; `false` gives a strict object). A property
+ * not listed in `required` gets an outermost `.optional()`.
  */
 function objectSchema(n: Record<string, unknown>, path: string): z.ZodType {
   if (!('properties' in n)) {
@@ -409,7 +400,7 @@ function objectSchema(n: Record<string, unknown>, path: string): z.ZodType {
   return n.additionalProperties === false ? z.strictObject(shape) : z.object(shape)
 }
 
-/** Validate and read the `required` list: strings only, each naming a declared property. */
+/** Reads the `required` list. Each entry must be a string naming a declared property. */
 function requiredSet(
   n: Record<string, unknown>,
   props: Record<string, unknown>,

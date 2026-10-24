@@ -46,7 +46,7 @@ function vault(files: Record<string, string>): string {
 describe('compileMatcher — a single `**/`-glob spans root and nested', () => {
   it('matches a prefixed file at the run root AND nested under it', () => {
     const match = compileMatcher(['**/T-*.md'])
-    expect(match('T-0001.md')).toBe(true) // root-level — the case the bare `T-*.md` used to cover
+    expect(match('T-0001.md')).toBe(true) // at the root
     expect(match('tasks/T-0001.md')).toBe(true) // one level down
     expect(match('a/b/T-0001.md')).toBe(true) // arbitrarily deep
   })

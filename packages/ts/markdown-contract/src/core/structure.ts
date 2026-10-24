@@ -1,25 +1,26 @@
 /**
- * The structure plane — the tree-grammar matcher.
+ * The structure plane: matches the section tree against the body grammar.
  *
- * `matchStructure(tree, body, ctx)` walks the projection's section tree against a level's
- * ordered `Spec[]`, recursing through `children`, and emits the `structure/*` findings:
+ * `matchStructure(tree, body, ctx)` walks the section tree against each level's ordered
+ * `Spec[]`, and the `children` below, and reports the `structure/*` findings:
  *
- *   - section presence       — `structure/section-missing`
- *   - ordering               — `structure/section-order` (order × allowUnknown × gap)
- *   - gap windows            — `structure/gap-count`
- *   - duplicates / aliases   — `structure/duplicate-section`
- *   - camelCase collisions   — `structure/key-collision`
- *   - the block kind-gate    — `structure/block-missing`, `structure/block-kind`
- *   - anchors                — `structure/anchor-missing`
- *   - node-local rules       — `rule(...)` carriers run here
+ *   - section presence         — `structure/section-missing`
+ *   - order                    — `structure/section-order` (from `order`, `allowUnknown`, gaps)
+ *   - gap counts               — `structure/gap-count`
+ *   - repeat counts            — `structure/repeat-count`
+ *   - duplicates and aliases   — `structure/duplicate-section`
+ *   - camelCase collisions     — `structure/key-collision`
+ *   - block kind               — `structure/block-missing`, `structure/block-kind`
+ *   - anchors                  — `structure/anchor-missing`
+ *   - section rules            — each `rule(...)` runs here
  *
- * Kind and presence are structure; data shape is content. This plane reads
- * `LeafSpec.kind` only — it never builds or runs the content Zod schema.
+ * Whether a block is present and of the right kind is structure. The block's data is content.
+ * This plane reads only `LeafSpec.kind`. It never runs a Zod schema.
  *
- * Hints: the walk threads the nearest enclosing authored `description` — each level
- * computes its effective hint (`opts.description ?? inherited`) and passes it down; slot-bound
- * findings prefer the slot's own description. Findings mint through a `withHint`-wrapped `Ctx`,
- * so a description-free contract stays byte-identical (no `hint` key).
+ * Hints: each level's hint is its own `description`, else the one inherited from above, and it
+ * is passed down. A finding about a slot uses the slot's description first. Findings are made
+ * through a `withHint` `Ctx`, so a contract with no descriptions gives findings with no `hint`
+ * key.
  */
 import { toCamelKey } from './camel.js'
 import { withHint } from './registry.js'
@@ -39,26 +40,26 @@ import type {
   Spec,
 } from './types.js'
 
-// ── Spec inspection helpers ──────────────────────────────────────────────────────
+// ── Reading the specs ──────────────────────────────────────────────────────
 
-/** A declared section/oneOf slot, after `optional(...)` is unwrapped. */
+/** A declared `section` or `oneOf` slot, after `optional(...)` is unwrapped. */
 interface Slot {
-  /** index into the level's `specs` array (the gap-bearing one) */
+  /** The index into the level's `specs` array, which includes gaps. */
   specIdx: number
-  /** the admissible heading spellings (alias set for oneOf / `section([...])`) */
+  /** The accepted heading spellings. */
   names: string[]
   optional: boolean
-  /** repeatable slot — its heading may recur as peers; occurrences fill this one slot */
+  /** The heading may appear more than once. All occurrences fill this one slot. */
   repeatable: boolean
-  /** minimum occurrence count for a repeatable slot, if declared */
+  /** The fewest occurrences of a repeatable slot, if declared. */
   min?: number
-  /** maximum occurrence count for a repeatable slot, if declared */
+  /** The most occurrences of a repeatable slot, if declared. */
   max?: number
-  /** the section opts (content / children / rules / anchor), if any */
+  /** The section options (content, children, rules, anchor), if any. */
   opts?: SectionOpts | undefined
 }
 
-/** Unwrap `optional(spec)` to its inner spec, tracking optionality. */
+/** Unwraps `optional(spec)` to the spec inside it, and says whether it was optional. */
 function unwrap(spec: Spec): { inner: SectionSpec | OneOfSpec | GapSpec; optional: boolean } {
   if (spec.kind === 'optional') {
     const u = unwrap((spec as OptionalSpec).spec)
@@ -67,7 +68,7 @@ function unwrap(spec: Spec): { inner: SectionSpec | OneOfSpec | GapSpec; optiona
   return { inner: spec, optional: false }
 }
 
-/** Build a slot from a section/oneOf's shared shape — names, optionality, and the repeatable bounds. */
+/** Builds a slot from a `section` or `oneOf`: names, whether optional, and repeat bounds. */
 function makeSlot(
   specIdx: number,
   names: string[],
@@ -85,7 +86,7 @@ function makeSlot(
   }
 }
 
-/** Project the declared `Spec[]` into the ordered list of section/oneOf slots (gaps excluded). */
+/** The `section` and `oneOf` slots of `specs`, in order. Gaps are left out. */
 function slotsOf(specs: readonly Spec[]): Slot[] {
   const slots: Slot[] = []
   specs.forEach((spec, specIdx) => {
@@ -101,30 +102,29 @@ function slotsOf(specs: readonly Spec[]): Slot[] {
   return slots
 }
 
-/** The index of the first slot whose name set contains `name`, or -1 (unknown). */
+/** The index of the first slot whose names include `name`, or -1 when none does. */
 function slotForName(slots: Slot[], name: string): number {
   return slots.findIndex((s) => s.names.includes(name))
 }
 
-/** Whether `name` matches a declared REPEATABLE slot — its peers are admitted, not errors. */
+/** True when `name` matches a repeatable slot, so a repeat of it is allowed. */
 function isRepeatableName(slots: Slot[], name: string): boolean {
   return slots.some((s) => s.repeatable && s.names.includes(name))
 }
 
-// ── The per-level match ──────────────────────────────────────────────────────────
+// ── Matching one level ──────────────────────────────────────────────────────────
 
-/** A doc section paired with the declared slot it matches (or `null` when unknown). */
+/** A document section and the slot it matches. */
 interface Assigned {
   node: SectionNode
-  /** index into `slots`, or `null` when the section matches no declared slot */
+  /** The index into `slots`, or `null` when the section matches no declared slot. */
   slotIdx: number | null
 }
 
 /**
- * Duplicate-heading and camelCase key-collision detection at one level. A heading
- * matching a declared REPEATABLE slot is exempt — its peers are the collection the slot admits,
- * so neither `structure/duplicate-section` (exact repeat) nor `structure/key-collision` fires for
- * it. Every other heading keeps today's per-level-uniqueness rule.
+ * Reports repeated headings and camelCase key collisions at one level. A heading that matches
+ * a repeatable slot may repeat, so it gets neither `structure/duplicate-section` nor
+ * `structure/key-collision`. Every other heading must be unique at its level.
  */
 function checkDuplicateHeadings(
   nodes: SectionNode[],
@@ -145,7 +145,7 @@ function checkDuplicateHeadings(
           }),
         )
       }
-      continue // a duplicate cannot also collide a new key
+      continue // its key is already recorded
     }
     seenName.set(node.name, node)
     const key = toCamelKey(node.name)
@@ -166,10 +166,10 @@ function checkDuplicateHeadings(
 }
 
 /**
- * Repeatable-slot occurrence bounds (min / max) → `structure/repeat-count`. A present
- * repeatable slot outside its declared bounds is an error: `max` bites at the first surplus
- * occurrence; `min` bites only once the slot is present (count 0 for a required slot is
- * `structure/section-missing`, its absence — not its count).
+ * Reports a repeatable slot whose number of occurrences is outside its `min` or `max`
+ * (`structure/repeat-count`). The `max` finding is placed on the first extra occurrence. The
+ * `min` check applies only when the slot is present. A required slot with no occurrences gets
+ * `structure/section-missing` instead.
  */
 function checkRepeatBounds(
   nodes: SectionNode[],
@@ -185,14 +185,13 @@ function checkRepeatBounds(
   }
 }
 
-/** Emit `structure/repeat-count` for one repeatable slot whose occurrence count falls outside its
- *  declared `min` / `max`. `max` bites at the first surplus occurrence; `min` bites once present. */
+/** Reports `structure/repeat-count` for one repeatable slot, as `checkRepeatBounds` describes. */
 function emitRepeatBound(slot: Slot, nodes: SectionNode[], ctx: Ctx, out: Finding[]): void {
   const matches = nodes.filter((n) => slot.names.includes(n.name))
   const count = matches.length
   const label = slot.names.join('’ / ‘')
   if (slot.max !== undefined && count > slot.max) {
-    const offender = matches[slot.max] // the first occurrence past the bound
+    const offender = matches[slot.max] // the first extra occurrence
     out.push(
       ctx.finding({
         id: 'structure/repeat-count',
@@ -213,10 +212,10 @@ function emitRepeatBound(slot: Slot, nodes: SectionNode[], ctx: Ctx, out: Findin
 }
 
 /**
- * Match one level: `nodes` (the sibling sections at this depth) against `specs` under
- * `opts`. Emits findings into `out`, then recurses into declared sections' `children`.
- * `inheritedHint` is the nearest enclosing description above this level; the
- * level's own `opts.description` (if any) supersedes it for everything minted below.
+ * Matches one level: `nodes` (the sibling sections at this depth) against `seq`. Adds findings
+ * to `out`, then checks the `children` of declared sections. `inheritedHint` is the nearest
+ * description above this level. The level's own `opts.description`, if any, replaces it for
+ * everything below.
  */
 function matchLevel(
   nodes: SectionNode[],
@@ -234,7 +233,7 @@ function matchLevel(
 
   checkDuplicateHeadings(nodes, slots, lctx, out)
 
-  // Assign each section to its declared slot (first occurrence binds the slot).
+  // Match each section to the first slot that names it.
   const assigned: Assigned[] = nodes.map((node) => ({
     node,
     slotIdx: slotForOrNull(slots, node.name),
@@ -247,14 +246,17 @@ function matchLevel(
   runPresentSlotChecks(assigned, slots, ctx, out, levelHint)
 }
 
-/** oneOf / alias ambiguity: a second distinct spelling filling an already-filled multi-name slot. */
+/**
+ * Reports a second, different spelling of a slot with several names (a `oneOf` or
+ * `section([...])`) when the slot is already filled.
+ */
 function checkAliasAmbiguity(assigned: Assigned[], slots: Slot[], ctx: Ctx, out: Finding[]): void {
-  const slotBoundBy = new Map<number, string>() // slotIdx → the heading that first filled it
+  const slotBoundBy = new Map<number, string>() // slotIdx → the heading that filled it first
   for (const a of assigned) {
     if (a.slotIdx === null) continue
     const slot = slots[a.slotIdx]!
-    if (slot.repeatable) continue // a repeatable slot admits every spelling of its peers
-    if (slot.names.length <= 1) continue // single-spelling slot: handled by duplicate-section above
+    if (slot.repeatable) continue // a repeatable slot accepts every spelling
+    if (slot.names.length <= 1) continue // checkDuplicateHeadings covers a single spelling
     const boundHeading = slotBoundBy.get(a.slotIdx)
     if (boundHeading === undefined) {
       slotBoundBy.set(a.slotIdx, a.node.name)
@@ -270,7 +272,7 @@ function checkAliasAmbiguity(assigned: Assigned[], slots: Slot[], ctx: Ctx, out:
   }
 }
 
-/** Required (non-optional) declared slots that no doc section filled → `structure/section-missing`. */
+/** Reports each required slot that no section filled (`structure/section-missing`). */
 function checkMissingSlots(
   assigned: Assigned[],
   slots: Slot[],
@@ -284,8 +286,8 @@ function checkMissingSlots(
   slots.forEach((slot, slotIdx) => {
     if (slot.optional) return
     if (filledSlots.has(slotIdx)) return
-    // Absence localizes to the document: pin pos to the first body heading when one exists,
-    // else omit (an empty body has no line to point at). The fixtures pin line 1 / omit.
+    // A missing section has no line of its own. Use the first body heading, or no `pos` when
+    // the body has no headings.
     const firstHeading = nodes[0]
     out.push(
       withHint(ctx, slot.opts?.description ?? levelHint).finding({
@@ -298,10 +300,10 @@ function checkMissingSlots(
 }
 
 /**
- * Ordering + unknown-admission. `recognized-relative` / `strict` run their order check; then, for a
- * non-strict level with `allowUnknown: false`, each unknown is out of place unless a gap admits it
- * (a gap on an unordered level counts all unknowns against that single window). `order === "none"`
- * with `allowUnknown: true` admits everything.
+ * Checks order and undeclared sections. `recognized-relative` and `strict` run their order check.
+ * Then, on a level that is not `strict` and has `allowUnknown: false`, each undeclared section is
+ * reported unless a gap allows it. On such a level every undeclared section counts toward the one
+ * gap. `order: "none"` with `allowUnknown: true` allows everything.
  */
 function checkOrderAndUnknowns(
   order: 'none' | 'recognized-relative' | 'strict',
@@ -321,17 +323,16 @@ function checkOrderAndUnknowns(
 
   if (order === 'strict' || allowUnknown) return
 
-  // Unknowns are only legal at a gap; with no gap declared, each unknown is out of place.
+  // Undeclared sections are allowed only at a gap. With no gap, each one is reported.
   const hasGap = specs.some((s) => unwrap(s).inner.kind === 'gap')
   if (!hasGap) {
     emitStrayUnknowns(assigned, ctx, out)
   } else {
-    // A gap exists but the level is unordered — count all unknowns against the (single) gap.
     checkUnorderedGap(assigned, specs, ctx, out)
   }
 }
 
-/** One `structure/section-order` per unknown section on a gap-less, unknown-forbidding level. */
+/** One `structure/section-order` per undeclared section, on a level with no gap that forbids them. */
 function emitStrayUnknowns(assigned: Assigned[], ctx: Ctx, out: Finding[]): void {
   for (const a of assigned) {
     if (a.slotIdx === null) {
@@ -346,7 +347,7 @@ function emitStrayUnknowns(assigned: Assigned[], ctx: Ctx, out: Finding[]): void
   }
 }
 
-/** The kind-gate, anchors, and node-local rules for each declared, present slot. */
+/** Runs the block-kind, anchor and rule checks for each declared section that is present. */
 function runPresentSlotChecks(
   assigned: Assigned[],
   slots: Slot[],
@@ -362,16 +363,16 @@ function runPresentSlotChecks(
   }
 }
 
-/** First slot index for `name`, or `null` when unknown. */
+/** The first slot index for `name`, or `null` when none matches. */
 function slotForOrNull(slots: Slot[], name: string): number | null {
   const i = slotForName(slots, name)
   return i === -1 ? null : i
 }
 
 /**
- * recognized-relative: recognized sections must keep declared relative order; unknowns
- * interleave freely. Scanning recognized sections in document order, a section whose
- * declared index is *less* than the largest index already seen is the out-of-place one.
+ * `recognized-relative`: declared sections keep their declared order. Undeclared sections may sit
+ * anywhere. In document order, a declared section whose slot index is less than the largest index
+ * seen so far is out of place.
  */
 function checkRecognizedRelative(assigned: Assigned[], ctx: Ctx, out: Finding[]): void {
   let maxSlot = -1
@@ -392,17 +393,17 @@ function checkRecognizedRelative(assigned: Assigned[], ctx: Ctx, out: Finding[])
 }
 
 /**
- * strict: recognized sections in declared order, contiguous; unknowns admitted only at a
- * `gap()` window. A positional walk over doc sections and declared specs:
- *   - a section matching the current slot consumes it;
- *   - a section matching a *later* slot while a required slot is pending has jumped ahead
- *     → `structure/section-order` at the jumper, then it consumes the later slot;
- *   - an unknown at a gap is admitted (counted for the gap bound); an unknown with no gap
- *     here and `allowUnknown: false` → `structure/section-order`.
- * Gap bounds are checked against each window's admitted count.
+ * `strict`: declared sections in declared order, with undeclared sections only at a `gap()`. It
+ * walks the document sections and the specs together:
+ *   - A section that matches the current slot fills it.
+ *   - A section that matches a later slot while a required slot is still unfilled is out of
+ *     order. It gets `structure/section-order` and fills the later slot.
+ *   - An undeclared section at a gap is counted toward that gap. An undeclared section with no
+ *     gap here and `allowUnknown: false` gets `structure/section-order`.
+ * Then each gap's count is checked against its bounds.
  *
- * The separable passes (past-sequence admission, gap-count bounds) are extracted to
- * `admitPastSequence` / `emitGapCounts`; what remains is the irreducible two-cursor merge.
+ * `admitPastSequence` handles sections after the last spec. `emitGapCounts` checks the gap
+ * bounds.
  */
 function checkStrict(
   nodes: SectionNode[],
@@ -412,18 +413,18 @@ function checkStrict(
   ctx: Ctx,
   out: Finding[],
 ): void {
-  // Per-spec gap windows: specIdx → { min, max, count, anchorPos }.
+  // The number of sections each gap has taken in: specIdx → count.
   const gapCount = new Map<number, number>()
   specs.forEach((s, i) => {
     if (unwrap(s).inner.kind === 'gap') gapCount.set(i, 0)
   })
 
-  // How many document sections a slot at `specIdx` has consumed so far. A repeatable slot
-  // stays on the cursor to absorb consecutive matching peers, so its fill count can exceed one; a
-  // filled repeatable slot behaves like a satisfied (optional) one when a later slot arrives.
+  // How many sections the slot at `specIdx` has taken so far. A repeatable slot stays current
+  // while matching sections follow, so its count can exceed one. Once filled, it acts like an
+  // optional slot when a section for a later slot arrives.
   const slotFill = new Map<number, number>()
 
-  /** Does `name` match a section/oneOf slot whose specIdx is ≥ `fromSpecIdx`? */
+  /** The specIdx of the first slot at or after `fromSpecIdx` that names `name`, or `null`. */
   function matchesSlotFrom(name: string, fromSpecIdx: number): number | null {
     for (const slot of slots) {
       if (slot.specIdx >= fromSpecIdx && slot.names.includes(name)) return slot.specIdx
@@ -437,7 +438,7 @@ function checkStrict(
     const node = nodes[docIdx]!
 
     if (specIdx >= specs.length) {
-      // Past the declared sequence — a trailing gap absorbs extras, else an unknown is out of place.
+      // Past the last spec: a trailing gap takes extras, else an undeclared section is reported.
       admitPastSequence(node, specs, slots, allowUnknown, gapCount, ctx, out)
       docIdx++
       continue
@@ -447,33 +448,32 @@ function checkStrict(
     const u = unwrap(spec)
 
     if (u.inner.kind === 'gap') {
-      // Does this section anchor a later slot? Then close the gap and re-evaluate the section.
+      // A section that matches a later slot ends the gap. Check it again against the next spec.
       if (matchesSlotFrom(node.name, specIdx + 1) !== null) {
         specIdx++
         continue
       }
-      // Otherwise admit the unknown into the gap window.
+      // Otherwise the gap takes the section.
       gapCount.set(specIdx, (gapCount.get(specIdx) ?? 0) + 1)
       docIdx++
       continue
     }
 
-    // A section/oneOf slot at the cursor.
+    // The current spec is a `section` or `oneOf` slot.
     const slot = slots.find((s) => s.specIdx === specIdx)!
     if (slot.names.includes(node.name)) {
       slotFill.set(specIdx, (slotFill.get(specIdx) ?? 0) + 1)
-      // A repeatable slot stays on the cursor to consume consecutive matching peers;
-      // a normal slot advances past it after a single match.
+      // A repeatable slot stays current for the next matching section. Any other slot is done.
       if (!slot.repeatable) specIdx++
       docIdx++
       continue
     }
 
-    // A repeatable slot that has already consumed ≥1 peer is satisfied — treat it like an
-    // optional slot as the walk moves on (its bounds are checked separately as repeat-count).
+    // A repeatable slot with at least one section is filled. Treat it as optional from here.
+    // Its bounds are checked separately (repeat-count).
     const repeatSatisfied = slot.repeatable && (slotFill.get(specIdx) ?? 0) > 0
 
-    // Doesn't match the cursor slot. If it matches a later slot, it jumped ahead of this one.
+    // The section does not match the current slot. If it matches a later one, it came early.
     const later = matchesSlotFrom(node.name, specIdx + 1)
     if (later !== null) {
       if (!slot.optional && !repeatSatisfied) {
@@ -485,19 +485,19 @@ function checkStrict(
           }),
         )
       }
-      // Advance the cursor to the later slot and consume the section there.
+      // Move past the later slot, which this section fills.
       specIdx = later + 1
       docIdx++
       continue
     }
 
-    // The cursor slot is optional (or a satisfied repeatable) and unmatched → skip it, retry section.
+    // The current slot is optional or already filled: skip it and check the section again.
     if (slot.optional || repeatSatisfied) {
       specIdx++
       continue
     }
 
-    // An unknown section sitting on a required slot with no gap here.
+    // An undeclared section where a required slot is expected, with no gap here.
     if (slotForOrNull(slots, node.name) === null) {
       if (!allowUnknown) {
         out.push(
@@ -512,7 +512,7 @@ function checkStrict(
       continue
     }
 
-    // A recognized section whose slot is earlier (already consumed/skipped): advance the cursor.
+    // A declared section whose slot came earlier (filled or skipped): move to the next spec.
     specIdx++
   }
 
@@ -520,10 +520,9 @@ function checkStrict(
 }
 
 /**
- * A doc section encountered past the declared spec sequence. A trailing gap (if the last spec was
- * one) absorbs it into that window; otherwise an unknown is out of place under `allowUnknown: false`.
- * A recognized section here matched an earlier (skipped) slot — its disorder was already flagged at
- * the jumper.
+ * Handles a section after the last spec. When the last spec is a gap, the gap takes it.
+ * Otherwise an undeclared section is reported under `allowUnknown: false`. A declared section here
+ * matches an earlier slot. Its order problem was already reported on the section that came early.
  */
 function admitPastSequence(
   node: SectionNode,
@@ -549,7 +548,7 @@ function admitPastSequence(
   }
 }
 
-/** Check each gap window's admitted count against its `min` / `max` bound → `structure/gap-count`. */
+/** Checks each gap's count against its `min` and `max` (`structure/gap-count`). */
 function emitGapCounts(
   gapCount: Map<number, number>,
   specs: readonly Spec[],
@@ -578,8 +577,8 @@ function emitGapCounts(
 }
 
 /**
- * Count unknowns against a single gap on an *unordered* level with `allowUnknown: false`.
- * (Order is unconstrained, so every unknown counts toward the lone gap window.)
+ * Counts undeclared sections toward the first gap, on a level that is not `strict` and has
+ * `allowUnknown: false`. Order does not matter there, so every undeclared section counts.
  */
 function checkUnorderedGap(
   assigned: Assigned[],
@@ -611,14 +610,13 @@ function gapAnchorPos(
   nodes: SectionNode[],
   gapSpecIdx: number,
 ): { pos?: SectionNode['pos'] } {
-  // The slot immediately following the gap, if any, anchors the window.
   const after = slots.find((s) => s.specIdx > gapSpecIdx)
   if (!after) return {}
   const node = nodes.find((n) => after.names.includes(n.name))
   return node ? { pos: node.pos } : {}
 }
 
-// ── Per-section checks: kind-gate, anchors, node-local rules, recursion ───────────
+// ── Per-section checks: block kind, anchors, rules, children ───────────
 
 function runSectionChecks(
   node: SectionNode,
@@ -627,11 +625,11 @@ function runSectionChecks(
   out: Finding[],
   levelHint?: string,
 ): void {
-  // The section's effective hint — its own description, else the enclosing level's.
+  // The section's own description, else the level's.
   const sectionHint = opts.description ?? levelHint
   const sctx = withHint(ctx, sectionHint)
 
-  // Anchor presence — a declared `^anchor` must resolve to a block or section anchor.
+  // A declared `^anchor` must be on a block or on the section.
   if (opts.anchor !== undefined) {
     if (!anchorResolves(node, opts.anchor)) {
       out.push(
@@ -644,8 +642,8 @@ function runSectionChecks(
     }
   }
 
-  // The content kind-gate — a single leaf, or named leaves bound by `^anchor`. A leaf's own
-  // config description (v2) is the nearest hint for its kind-gate findings.
+  // Block kind, for one leaf or for named leaves bound by `^anchor`. A leaf's own description
+  // is the nearest hint for these findings.
   if (opts.content !== undefined) {
     if (isLeafSpec(opts.content)) {
       kindGate(
@@ -662,43 +660,41 @@ function runSectionChecks(
     }
   }
 
-  // Node-local rules.
+  // Section rules.
   if (opts.rules) {
     for (const r of opts.rules) {
       out.push(...r.run(node, sctx))
     }
   }
 
-  // Recurse into declared children.
   if (opts.children) {
     matchLevel(node.sections, opts.children, ctx, out, sectionHint)
   }
 }
 
-/** A leaf's effective hint: its config's authored `description` (v2), else the section's. */
+/** A leaf's hint: the `description` in its options, else the section's hint. */
 export function leafHintOf(leaf: LeafSpec, sectionHint: string | undefined): string | undefined {
   const desc = (leaf.config as { description?: unknown } | undefined)?.description
   return typeof desc === 'string' ? desc : sectionHint
 }
 
-/** Whether an anchor id resolves to a block-bound or section-level anchor in this section. */
+/** True when this section or one of its blocks has the anchor `id`. */
 function anchorResolves(node: SectionNode, id: string): boolean {
   if (node.anchors.includes(id)) return true
   return node.blocks.some((b) => b.anchor === id)
 }
 
-/** Structural type-guard: a single `LeafSpec` vs a `Record<string, LeafSpec>`. */
+/** True for a single `LeafSpec`, false for a `Record<string, LeafSpec>`. */
 function isLeafSpec(c: LeafSpec | Record<string, LeafSpec>): c is LeafSpec {
   return typeof (c as LeafSpec).kind === 'string'
 }
 
 /**
- * The kind-gate: a declared content slot must be filled by a block of the expected kind.
- *   - no block of any kind present (or, for an anchored leaf, no block at that anchor) →
- *     `structure/block-missing`;
- *   - a block present (at the anchor, or the section's lone block) but the wrong kind →
+ * Checks that a leaf's block is present and of the right kind.
+ *   - No block (or, for an anchored leaf, no block with that anchor): `structure/block-missing`.
+ *   - A block (the anchored one, or the section's first) of the wrong kind:
  *     `structure/block-kind`.
- * Data shape (columns / rows / items) is NOT checked here — that is the content plane.
+ * The block's data (columns, rows, items) is checked by the content plane.
  */
 function kindGate(
   node: SectionNode,
@@ -733,9 +729,8 @@ function kindGate(
 }
 
 /**
- * The block a content slot addresses: when `anchor` is set, the block carrying that anchor
- * (or `null` if none); otherwise the section's first block of the expected role, here the
- * first block (a single-leaf slot addresses the section's sole content block).
+ * The block a leaf checks: the block with `anchor` when it is set (or `null` if none), otherwise
+ * the section's first block.
  */
 function pickBlock(node: SectionNode, anchor: string | undefined): BlockNode | null {
   if (anchor !== undefined) {
@@ -744,13 +739,12 @@ function pickBlock(node: SectionNode, anchor: string | undefined): BlockNode | n
   return node.blocks[0] ?? null
 }
 
-// ── Public entry ─────────────────────────────────────────────────────────────────
+// ── Entry points ─────────────────────────────────────────────────────────────────
 
 /**
- * Walk the projection's top-level sections against the body grammar, emitting every
- * `structure/*` finding. The result is returned in emission order; `validate()` applies
- * the deterministic sort. `rootHint` is the
- * contract-root `description` — the outermost hint fallback for the walk.
+ * Matches the top-level sections against the body grammar and returns every `structure/*`
+ * finding, in the order they were made. `validate()` sorts them. `rootHint` is the contract's
+ * `description`, the last fallback for hints.
  */
 export function matchStructure(
   tree: { root: SectionNode },
@@ -764,15 +758,14 @@ export function matchStructure(
 }
 
 /**
- * Emit `structure/heading-depth-jump` (warn) for a sub-heading nested more than one level
- * below its parent section — an H2 immediately followed by an H4. The
- * projection attaches the deeper heading to its nearest ancestor with its TRUE depth preserved
- * (no synthesized intermediate), so the jump is re-derivable here as `child.depth > parent.depth + 1`.
+ * Reports `structure/heading-depth-jump` (warn) for a heading more than one level below its
+ * parent section, such as an H4 right under an H2. `parse()` keeps the deeper heading's true
+ * depth under its nearest parent and inserts nothing, so the jump shows as
+ * `child.depth > parent.depth + 1`.
  *
- * Contract-independent: it scans the whole projected tree, not the grammar, so a malformed
- * outline is flagged whether or not a contract declares those sections. The synthetic root's
- * direct children (the top-level H2s) are not checked against it — "H1-title → H2" is the normal
- * step, and the root's depth is a projection artifact, not an authored heading.
+ * It scans the whole tree, not the grammar, so it reports a skipped level whether or not the
+ * contract declares those sections. The root's direct children are not checked. The root stands
+ * for the H1 title and is not a real heading in the source.
  */
 export function scanHeadingDepthJumps(root: SectionNode, ctx: Ctx): Finding[] {
   const out: Finding[] = []

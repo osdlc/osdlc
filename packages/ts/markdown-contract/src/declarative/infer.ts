@@ -1,47 +1,41 @@
 /**
- * `inferConfig`: scaffold a tight-but-accepting config from existing markdown.
+ * `inferConfig`: builds a config from existing markdown, as strict as it can be while still
+ * accepting every file.
  *
- * `markdown-contract init <dir>…` infers a runnable config from the markdown already in a
- * target directory: the *tightest contract that still accepts every file in its subtree*
- * (single-contract mode), or a *meta-config across a tree* cut at a configurable `--depth`
- * (meta mode). This module is the pure pipeline behind that verb — it reads files, derives a
- * model, and serializes the would-be YAML; it never writes (the CLI owns IO) and never edits
- * the source docs.
+ * `markdown-contract init <dir>…` uses it. In single-contract mode it infers one contract for a
+ * folder and everything below it. In meta mode it infers one contract per folder at a chosen
+ * `--depth`. This module reads files, builds the contracts and turns them into YAML text. It
+ * writes nothing (the CLI does) and never changes the documents.
  *
- * The defining guarantee is **accept-by-construction**: running the
- * generated config over the corpus it was inferred from reports zero error-level findings.
- * Generalization tightens freely but never past the point where a *current* file would fail.
+ * The main promise: running the config over the files it was inferred from gives no error-level
+ * findings. Inference makes the contract as strict as it can, but never so strict that a current
+ * file fails. The `init` command checks this after it writes the files.
  *
- * The pipeline:
- *   discover (*.md) → parse (DocTree) → group (by dir & depth) → generalize (tightest
- *   contract that accepts all) → infer field schemas (value ladder) → emit (YAML) → self-check.
+ * The steps: find the `*.md` files, parse them, group them by folder and depth, infer each
+ * group's contract and field types, and turn the result into YAML.
  *
- * Policy this module fixes:
- *  - **Two modes.** Single contract (default; depth 0) vs meta-config (`--meta`, `--depth N`).
- *  - **Grouping** by directory at exactly depth `N`, each contract recursive over its subtree,
- *    plus an optional root contract for files directly in the run root. Contracts are
- *    uniform-depth and never nested, so globs never overlap. Files stranded
- *    between the root and a depth ≥ 2 cut are *warned*, never wrapped in a nested contract.
- *  - **Sections**: required = present in EVERY file; the rest emitted as
- *    counted slots (`minContains: 0` + `maxContains: 1`); `additionalSections: false`
- *    when no unlisted section appeared; `order` is the strongest consistent with every file —
- *    `strict` only if every file is identical+gap-free, `recognized-relative` if files agree
- *    on relative order, else `none`.
- *  - **Frontmatter**: a v2 object schema node — `required` lists the keys
- *    present in every file; `additionalProperties: false` only when the key set is closed;
- *    field value types from the value ladder.
- *  - **Value ladder**: const (uniform) → number → boolean → array →
- *    format (date/datetime/email/url/uuid/…) → enum (distinct ≤ 12 AND < half the files) →
- *    else string. Every rung admits every observed value.
- *  - **`--relax`**: loosen to a permissive floor — `order: none`,
- *    `additionalSections: true`, an open frontmatter object, everything-non-universal optional,
- *    no enums, loosest value types.
- *  - **Naming**: a contract is named after its directory's full
- *    relative-path slug (`api`, `api-v1`, `web-v1`) — inherently unique, no de-collision step.
+ * The rules:
+ *  - Two modes: one contract (the default, or depth 0), or one per folder (`--meta`, `--depth N`).
+ *  - Grouping: by folder at exactly depth `N`, each contract covering everything below its
+ *    folder, plus a root contract for files directly in the run folder. Contracts are all at
+ *    one depth and never nested, so their globs never overlap. A file in a folder between the
+ *    root and a cut at depth 2 or more gets a warning and no contract.
+ *  - Sections: a section in every file is required. The others become `minContains: 0` and
+ *    `maxContains: 1`. Every section seen is listed, so `additionalSections` is `false`. `order`
+ *    is the strictest that fits every file: `strict` when every file has the same sections in the
+ *    same order, `recognized-relative` when the files agree on relative order, else `none`.
+ *  - Frontmatter: an object schema. `required` lists the keys in every file.
+ *    `additionalProperties` is `false` unless `--relax` is set. Field types come from the steps
+ *    in `inferFieldSchema`.
+ *  - Field types, tried in order: `const` (one value everywhere), number, boolean, array,
+ *    `format` (date, datetime, email, url, uuid, …), `enum` (at most 12 values and fewer than
+ *    half the files), then string. Each step accepts every value seen.
+ *  - `--relax`: `order: none`, `additionalSections: true`, an open frontmatter object, and no
+ *    enums.
+ *  - Names: a contract is named after its folder's path from the root as a slug (`api`,
+ *    `api-v1`, `web-v1`). Paths are unique, so names are too.
  *
- * The inferer is a producer of the declarative-YAML formats — emitting the
- * mcVersion 2 vocabulary — and a consumer of its own output (the self-check loads the
- * scaffold back and runs it); it adds no format and no engine surface.
+ * The output is ordinary `mcVersion: 2` YAML. Inference adds no format of its own.
  */
 import { readFileSync } from 'node:fs'
 import { basename, resolve, sep } from 'node:path'
@@ -81,28 +75,25 @@ export interface InferOptions {
 }
 
 /**
- * The resolved value-ladder knobs threaded into `inferFieldSchema` — one bag so the const
- * string-length cap and the min-examples floor ride the same plumbing as `relax`. Resolved once
- * at the `inferConfig` boundary from `InferOptions` (with defaults applied), then passed down
- * unchanged through `generalize` → `inferFrontmatter` → `inferFieldSchema`.
+ * The options `inferFieldSchema` uses, with defaults applied. `inferConfig` builds them once from
+ * `InferOptions` and passes them down through `generalize` and `inferFrontmatter`.
  */
 interface FieldInferOptions {
-  /** `--relax`: drop strict + categorical enums toward a permissive floor. */
+  /** `--relax`: no `additionalProperties: false` and no enums. */
   relax: boolean
-  /** Strings longer than this never become a `const` nor enter an `enum`. */
+  /** A string longer than this never becomes a `const` or an `enum` value. */
   maxConstStringLength: number
-  /** A uniform scalar needs at least this many observed docs to become a `const`. */
+  /** A scalar with one value everywhere needs at least this many documents to become a `const`. */
   minConstExamples: number
 }
 
 /**
- * Diagnostics collected while generalizing a corpus into contracts. A `warning` is
- * advisory — inference proceeds and the scaffold is still written (e.g. two case-variant headings
- * merged into one aliased section). An `error` is fatal — the corpus cannot yield a faithful,
- * accept-by-construction contract (e.g. two key-colliding headings appear together as peers in one
- * doc), so `inferConfig` aborts with all collected errors rather than emit a contract that would
- * fail its own self-check. A shared sink threads down `inferConfig → inferMeta → generalize →
- * inferBody` so diagnostics from every group surface together in one run.
+ * Messages collected during inference. A `warning` does not stop it, and the files are still
+ * written (for example, two headings that differ only in case merged into one section with an
+ * alias). An `error` means no contract can accept the files (for example, two headings with the
+ * same camelCase key side by side in one file). `inferConfig` then throws with every error,
+ * instead of returning a contract that fails on its own files. One sink is passed down through
+ * `inferMeta`, `generalize` and `inferBody`, so one run reports the messages of every group.
  */
 interface InferSink {
   warnings: string[]
@@ -110,8 +101,8 @@ interface InferSink {
 }
 
 /**
- * One inferred contract for a folder, in YAML object form.
- * `def` is exactly a `compileContractObject(def)` input — the v2 vocabulary:
+ * One inferred contract for a folder, as a YAML-shaped object. `def` is an input for
+ * `compileContractObject(def)`:
  *   { frontmatter?: { type: "object"; required?: string[]; additionalProperties?: boolean;
  *                     properties?: Record<string, unknown> },
  *     body?: { order?: "none"|"recognized-relative"|"strict"; additionalSections?: boolean;
@@ -156,38 +147,34 @@ export interface InferResult {
   warnings: string[]
 }
 
-// ── Discovery & parse ────────────────────────────────────────────────────────────
+// ── Finding and parsing files ────────────────────────────────────────────────────────────
 
-/** One parsed corpus file: its path (relative, POSIX) and the two inference inputs. */
+/** One parsed file: its path and what inference reads from it. */
 interface ParsedDoc {
-  /** path relative to the run root, POSIX-separated (deterministic, sorted) */
+  /** The path relative to the run folder, with `/` separators. */
   rel: string
-  /** top-level H2 section names, in document order */
+  /** The top-level section names, in document order. */
   sections: string[]
-  /** the parsed frontmatter map (an object), or `{}` when the file carries none */
+  /** The parsed frontmatter object, or `{}` when the file has none. */
   frontmatter: Record<string, unknown>
 }
 
-/** Normalize a path to POSIX separators so globs and names read the same on every platform. */
+/** Converts a path to `/` separators, so globs and names are the same on every platform. */
 function toPosix(p: string): string {
   return sep === '/' ? p : p.split(sep).join('/')
 }
 
-/** picomatch options — `dot` so dotfiles match like any other file (mirrors the runner). */
+/** picomatch options. `dot` makes dotfiles match like any other file, as in the runner. */
 const PICOMATCH_OPTS = { dot: true } as const
 
 /**
- * Recursively collect every `*.md` under `root`, returned as paths relative to `root`
- * (POSIX-separated), in a deterministic order: directory entries are sorted before
- * recursion, so re-running over an unchanged corpus walks the files identically. It uses the
- * runner's own `walkSync`, so inference sees exactly the file set the self-check will route,
- * and skips `.git` and `node_modules` folders as it does.
+ * Every `*.md` under `root`, as paths relative to `root` with `/` separators, in sorted order.
+ * It uses the runner's `walkSync`, so it sees the same files the `init` self-check runs on and
+ * skips `.git` and `node_modules` folders.
  *
- * An optional `include` / `exclude` glob pre-filter (relative to `root`) narrows which files feed
- * inference. It uses the same `picomatch` options and AND-narrowing as `validate`'s `--glob`,
- * `--include` and `--exclude`: a file is kept only if it matches at least one `include` glob (when
- * any are given) and no `exclude` glob. The self-check applies the identical scope, so what
- * inference saw is exactly what is routed.
+ * Optional `include` and `exclude` globs (relative to `root`) narrow the files. They work as
+ * `validate`'s `--glob`, `--include` and `--exclude` do: a file is kept when it matches an
+ * `include` glob (if any are given) and no `exclude` glob. The self-check uses the same globs.
  */
 function discover(root: string, scope?: { include?: string[]; exclude?: string[] }): string[] {
   const include =
@@ -195,7 +182,7 @@ function discover(root: string, scope?: { include?: string[]; exclude?: string[]
   const exclude =
     scope?.exclude && scope.exclude.length > 0 ? picomatch(scope.exclude, PICOMATCH_OPTS) : null
 
-  /** A `*.md` path survives the scope pre-filter (AND-narrowing, mirrors the runner). */
+  /** True when a path passes the `include` and `exclude` globs. */
   const keep = (rel: string): boolean => {
     if (exclude && exclude(rel)) return false
     if (include && !include(rel)) return false
@@ -205,7 +192,7 @@ function discover(root: string, scope?: { include?: string[]; exclude?: string[]
   return walkSync(root).filter((rel) => rel.endsWith('.md') && keep(rel))
 }
 
-/** Whether a parsed frontmatter value is a usable key→value map (the only inference-relevant shape). */
+/** The parsed frontmatter when it is an object, else `{}`. */
 function asFrontmatterMap(data: unknown): Record<string, unknown> {
   return data !== null && typeof data === 'object' && !Array.isArray(data)
     ? (data as Record<string, unknown>)
@@ -213,8 +200,8 @@ function asFrontmatterMap(data: unknown): Record<string, unknown> {
 }
 
 /**
- * Parse one corpus file into a `ParsedDoc`. Only the top-level H2 spine drives the contract:
- * nested sections are in the parse tree but not used here.
+ * Parses one file into a `ParsedDoc`. Only the top-level sections shape the contract. Nested
+ * sections are not used.
  *
  * @throws {DeclarativeError} Naming `rel`, when the file cannot be read or its frontmatter is not
  *   valid YAML. Inference cannot accept a file that validation would reject.
@@ -237,15 +224,14 @@ function parseDoc(root: string, rel: string): ParsedDoc {
   }
 }
 
-// ── Section ordering ─────────────────────────────────────
+// ── Section order ─────────────────────────────────────
 
 type Order = 'none' | 'recognized-relative' | 'strict'
 
 /**
- * The union of all observed section names, in **first-appearance order** across the docs
- * (the docs themselves are in deterministic walk order, so this is stable). This is the
- * fallback emission order for `order: none`, and the deterministic tie-break for the
- * topological sort that fixes the `recognized-relative` emission order.
+ * Every section name seen, in the order each first appears across the docs. The docs are in
+ * sorted walk order, so this is stable. It is the output order for `order: none`, and the
+ * tie-break for the sort that sets the `recognized-relative` order.
  */
 function sectionUnion(docs: ParsedDoc[]): string[] {
   const seen = new Set<string>()
@@ -262,9 +248,8 @@ function sectionUnion(docs: ParsedDoc[]): string[] {
 }
 
 /**
- * `strict` iff every doc has the **identical, gap-free** section sequence — i.e. each doc's
- * ordered section list equals every other's. A doc with a
- * different subset or a different order breaks it.
+ * True when every doc has exactly the same list of sections in the same order, which allows
+ * `strict`. A doc with other sections or another order breaks it.
  */
 function allIdenticalSequences(docs: ParsedDoc[]): boolean {
   if (docs.length === 0) return false
@@ -275,10 +260,9 @@ function allIdenticalSequences(docs: ParsedDoc[]): boolean {
 }
 
 /**
- * Build the strict-precedence graph over section names: an edge `a → b` whenever some doc
- * places `a` immediately-or-eventually before `b`. `recognized-relative` holds iff this
- * relation is acyclic (no two docs disagree on the relative order of a shared pair); a cycle
- * is an order conflict → `order: none`.
+ * Builds the "comes before" graph over section names: an edge `a → b` when some doc has `a`
+ * anywhere before `b`. `recognized-relative` fits when no two sections have edges both ways
+ * (no two docs disagree on the order of a pair). A pair with both edges means `order: none`.
  */
 function precedence(docs: ParsedDoc[]): Map<string, Set<string>> {
   const edges = new Map<string, Set<string>>()
@@ -297,7 +281,7 @@ function precedence(docs: ParsedDoc[]): Map<string, Set<string>> {
   return edges
 }
 
-/** Whether two distinct sections are ordered both ways anywhere in the corpus (an order conflict). */
+/** True when some pair of sections appears in both orders across the docs. */
 function hasOrderConflict(edges: Map<string, Set<string>>): boolean {
   for (const [a, tos] of edges) {
     for (const b of tos) {
@@ -308,12 +292,10 @@ function hasOrderConflict(edges: Map<string, Set<string>>): boolean {
 }
 
 /**
- * Detect the strongest `order` consistent with every doc and the section list to emit in
- * that order. For `strict` the shared identical sequence is the
- * emission order; for `recognized-relative` a deterministic topological sort of the
- * precedence graph (ties broken by first-appearance order) gives an order that is a linear
- * extension of every doc — so the engine's recognized-relative check never fires (accept-by-
- * construction). For `none` the first-appearance union order is emitted.
+ * The strictest `order` that fits every doc, and the section list in that order. For `strict`
+ * it is the shared sequence. For `recognized-relative` it is a sort of the "comes before" graph
+ * (ties broken by first appearance), which agrees with every doc, so the order check passes. For
+ * `none` it is the first-appearance order.
  */
 function detectOrder(docs: ParsedDoc[]): { order: Order; sections: string[] } {
   const union = sectionUnion(docs)
@@ -331,11 +313,10 @@ function detectOrder(docs: ParsedDoc[]): { order: Order; sections: string[] } {
 }
 
 /**
- * Deterministic topological sort: emit names in first-appearance (`union`) order, but never
- * before a predecessor still unemitted. Each pass picks the earliest-by-union name whose
- * predecessors are all already emitted; the precedence graph is acyclic here (the caller
- * gates on `hasOrderConflict`), so every name is eventually emitted. The union order is the
- * tie-break, so the result is stable across runs.
+ * A topological sort: names in `union` order, but never before a name that must come first.
+ * Each pass takes the earliest name in `union` whose predecessors are all placed. The caller
+ * checks `hasOrderConflict` first, so every name gets placed. Ties follow `union`, so the result
+ * is the same on every run.
  */
 function topoSort(union: string[], edges: Map<string, Set<string>>): string[] {
   const out: string[] = []
@@ -348,7 +329,7 @@ function topoSort(union: string[], edges: Map<string, Set<string>>): string[] {
   }
   while (out.length < union.length) {
     const next = union.find((n) => !emitted.has(n) && predsSatisfied(n))
-    // `next` is always defined while the graph is acyclic; guard keeps the loop total.
+    // `next` is always defined when the graph has no cycle. This guard ends the loop anyway.
     if (next === undefined) {
       for (const n of union) {
         if (emitted.has(n)) continue
@@ -366,15 +347,12 @@ function topoSort(union: string[], edges: Map<string, Set<string>>): string[] {
 // ── Frontmatter ────
 
 /**
- * The ordered `format` candidates the ladder auto-detects (a conservative subset of the
- * `format` vocabulary). Each is **structurally distinctive** — a plain word or free-form
- * phrase can never accidentally match — so detecting one is a genuine signal, not a coincidence.
- * The loose formats (`hostname`, `cuid2`, `base64`, `emoji`, …) are deliberately
- * EXCLUDED here: an ordinary token like `policy` validates as a `hostname`/`cuid2`, which would
- * mislabel a categorical or free-form field as a format. The order is most-specific-first so
- * `date` is preferred over `datetime` when both could match; a value
- * is validated through the very `compileSchemaV2` the self-check uses, so a detected format is
- * accept-by-construction by definition.
+ * The `format` values inference tries, in order. Each has a shape that a plain word or phrase
+ * cannot match by accident, so a match means something. Loose formats (`hostname`, `cuid2`,
+ * `base64`, `emoji`, …) are left out on purpose: an ordinary word like `policy` is a valid
+ * `hostname` or `cuid2`, so a field of words would be labelled a format. The most specific come
+ * first, so `date` wins over `datetime` when both match. Values are checked with
+ * `compileSchemaV2`, the same compiler the self-check uses, so a chosen format accepts them.
  */
 const FORMAT_CANDIDATES = [
   'date',
@@ -390,13 +368,13 @@ const FORMAT_CANDIDATES = [
   'e164',
 ] as const
 
-/** Whether every observed string value validates against the given `format` (via the engine's own compiler). */
+/** True when every string passes the given `format`, checked with `compileSchemaV2`. */
 function allMatchFormat(values: string[], format: string): boolean {
   const schema = compileSchemaV2({ type: 'string', format })
   return values.every((v) => schema.safeParse(v).success)
 }
 
-/** A deep structural-equality check over JSON-shaped values, for the `const` (all-identical) rung. */
+/** Deep equality for JSON-shaped values, for the `const` step. */
 function deepEqual(a: unknown, b: unknown): boolean {
   if (a === b) return true
   if (Array.isArray(a) && Array.isArray(b)) {
@@ -415,33 +393,30 @@ function deepEqual(a: unknown, b: unknown): boolean {
   return false
 }
 
-/** A schema for one rung is only valid if it admits every observed value, so YAML-typed scalars (`const`) stay JSON-shaped. */
+/** True for a string, number or boolean, the values a `const` may hold. */
 function isScalar(v: unknown): v is string | number | boolean {
   return typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean'
 }
 
 /**
- * Infer one field's schema from its observed values with the **tight-but-accepting value
- * ladder**. For the observed values of a single frontmatter key, pick the *most specific* schema that still admits *every* value, defaulting looser only when no tighter rung
- * fits — so the choice can never break accept-by-construction:
+ * Infers one frontmatter field's schema from the values seen. It picks the most specific schema
+ * that still accepts every value, trying these steps in order:
  *
- *  1. all values **identical** (a scalar), seen in **≥ `opts.minConstExamples`** docs, and — for
- *     strings — **≤ `opts.maxConstStringLength`** long → `{ const: <value> }`;
- *  2. else all **numbers** → `{ type: number }` (`type: integer` if all integers);
- *  3. else all **booleans** → `{ type: boolean }`;
- *  4. else all **arrays** → `{ type: array, items: <recursively inferred LOOSE element schema> }`;
- *  5. else all **strings matching one `format`** (most specific; `date` before `datetime`) →
- *     `{ type: string, format: <name> }`;
- *  6. else a **small closed categorical set** — ≤ 12 distinct values, fewer than half the files,
- *     and no value over the string-length cap — → `{ enum: [<observed values, first-appearance order>] }`;
- *  7. else → `{ type: string }`.
+ *  1. All values the same scalar, seen in at least `opts.minConstExamples` docs, and for a
+ *     string at most `opts.maxConstStringLength` long: `{ const: <value> }`.
+ *  2. All numbers: `{ type: number }`, or `type: integer` when all are integers.
+ *  3. All booleans: `{ type: boolean }`.
+ *  4. All arrays: `{ type: array, items: <loose schema inferred from every element> }`.
+ *  5. All strings that match one `format` (most specific first, `date` before `datetime`):
+ *     `{ type: string, format: <name> }`.
+ *  6. A small set of strings: at most 12 distinct values, fewer than half the files, and none
+ *     over the length limit: `{ enum: [<values, in first-appearance order>] }`.
+ *  7. Otherwise `{ type: string }`.
  *
- * `fileCount` is the group's file count (the rung-6 ratio gate). `opts` carries the ladder knobs:
- * `relax` skips rung 6 so a categorical field stays `{ type: string }` (`--relax`
- * drops enums); `maxConstStringLength` keeps a long free-text value off rungs 1 and 6;
- * `minConstExamples` keeps a uniform scalar off rung 1 until enough docs back it. Each guard only
- * ever loosens the rung, so accept-by-construction holds. `min`, `max` and `pattern` are never
- * inferred.
+ * `fileCount` is the number of files in the group, used in step 6. `opts.relax` skips step 6.
+ * `maxConstStringLength` keeps long text out of steps 1 and 6. `minConstExamples` keeps a value
+ * out of step 1 until enough docs have it. Each of these only makes the result looser, so it
+ * still accepts every value. `min`, `max` and `pattern` are never inferred.
  */
 function inferFieldSchema(
   values: unknown[],
@@ -450,19 +425,17 @@ function inferFieldSchema(
 ): Record<string, unknown> {
   if (values.length === 0) return { type: 'string' }
 
-  // Null — handled before the rungs. No base rung admits `null` (string/number/boolean/array and
-  // enum/const all reject it), so a field with a `null` observation would otherwise infer a schema
-  // that rejects its own corpus. Infer over
-  // the non-null values and pair the base type with "null" in a v2 type union. The v2
-  // subset has no nullable spelling for an enum/const base, so those rungs are disabled here —
-  // strictly looser, so accept-by-construction still holds. An all-null field becomes a nullable
-  // string placeholder (the author can tighten the base type by hand).
+  // Null is handled first. No step accepts `null`, so a field with a `null` value would get a
+  // schema that rejects its own files. Infer from the other values, then pair the type with
+  // "null" (`[T, "null"]`). The YAML subset cannot make an enum or const nullable, so those steps
+  // are turned off here. That only makes the result looser. A field that is always null becomes a
+  // nullable string, which the author can tighten by hand.
   if (values.some((v) => v === null)) {
     const nonNull = values.filter((v) => v !== null)
     const typedOpts: FieldInferOptions = {
       ...opts,
-      relax: true, // rung 6 (enum) has no nullable v2 spelling
-      minConstExamples: Number.MAX_SAFE_INTEGER, // rung 1 (const) has none either
+      relax: true, // an enum (step 6) cannot be nullable
+      minConstExamples: Number.MAX_SAFE_INTEGER, // nor can a const (step 1)
     }
     const baseSchema =
       nonNull.length > 0 ? inferFieldSchema(nonNull, fileCount, typedOpts) : { type: 'string' }
@@ -470,25 +443,24 @@ function inferFieldSchema(
     return { type: [type, 'null'], ...rest }
   }
 
-  // Rung 1 — all identical (scalar) → const (with the length / min-examples guards).
+  // Step 1: one value everywhere → const (with the length and count limits).
   const constSchema = constRung(values, opts)
   if (constSchema) return constSchema
 
-  // Rung 2 — all numbers → number (`type: integer` when every value is an integer).
+  // Step 2: all numbers → number, or integer when every value is one.
   if (values.every((v) => typeof v === 'number')) {
     return (values as number[]).every((n) => Number.isInteger(n))
       ? { type: 'integer' }
       : { type: 'number' }
   }
 
-  // Rung 3 — all booleans → boolean.
+  // Step 3: all booleans → boolean.
   if (values.every((v) => typeof v === 'boolean')) {
     return { type: 'boolean' }
   }
 
-  // Rung 4 — all arrays → array; the element schema is inferred LOOSELY over every element
-  // flattened across the field (no enum — `relax`-style — and ratio'd against the element count),
-  // so it admits each item the corpus actually carries.
+  // Step 4: all arrays → array. The item schema is inferred from every element of every array,
+  // with no enum (as with `relax`), so it accepts each item in the files.
   if (values.every((v) => Array.isArray(v))) {
     const items = (values as unknown[][]).flat()
     return {
@@ -497,20 +469,20 @@ function inferFieldSchema(
     }
   }
 
-  // Rung 5 (format) + Rung 6 (enum) — all strings.
+  // Steps 5 (format) and 6 (enum): all strings.
   if (values.every((v) => typeof v === 'string')) {
     return stringRung(values as string[], fileCount, opts)
   }
 
-  // Rung 7 — fallback: a plain string accepts every value.
+  // Step 7: a plain string accepts every value.
   return { type: 'string' }
 }
 
 /**
- * Rung 1 — all values identical (a scalar) → `{ const }`, or `null` to fall through. Two guards
- * keep a coincidentally-uniform field from being frozen on thin/unwieldy evidence: a string longer
- * than the cap is never a const, and any scalar needs at least `minConstExamples` observations.
- * Either miss falls to a looser rung — still accept-by-construction.
+ * Step 1: one scalar value everywhere gives `{ const }`. Returns `null` to move on. Two limits
+ * stop a field that happens to have one value from becoming fixed: a string longer than the
+ * length limit is never a const, and the value must be seen at least `minConstExamples` times.
+ * Either one moves the field to a looser step.
  */
 function constRung(values: unknown[], opts: FieldInferOptions): Record<string, unknown> | null {
   const first = values[0]
@@ -521,8 +493,8 @@ function constRung(values: unknown[], opts: FieldInferOptions): Record<string, u
 }
 
 /**
- * Rung 5 + 6 for an all-string field: the most-specific matching `format` (validated via the
- * engine), else a small closed categorical `enum`, else a plain `{ type: string }`.
+ * Steps 5 and 6 for a field of strings: the first matching `format`, else a small `enum`, else
+ * `{ type: string }`.
  */
 function stringRung(
   strings: string[],
@@ -536,10 +508,11 @@ function stringRung(
 }
 
 /**
- * Rung 6 — a small closed categorical set → `{ enum }`, or `null` to fall through (unless --relax,
- * which keeps it a string). The compiler's `enum` is strings-only; the ratio (< half the files)
- * keeps a coincidentally repetitive free-form field from enum'ing on thin evidence. An enum must admit EVERY observed value, so a value over the const string-length cap
- * can't be dropped — if any value exceeds it, skip the rung and let the field fall to a string.
+ * Step 6: a small set of strings gives `{ enum }`. Returns `null` to move on, always so under
+ * `--relax`. The YAML `enum` holds only strings. Requiring fewer distinct values than half the
+ * files stops a free-text field that happens to repeat from becoming an enum. An enum must accept
+ * every value, so a long value cannot be left out. When any value is over the length limit, the
+ * step is skipped.
  */
 function enumRung(
   strings: string[],
@@ -559,13 +532,10 @@ function enumRung(
 }
 
 /**
- * Generalize the frontmatter plane, emitted as a v2 OBJECT
- * schema node: keys in first-appearance order (deterministic); `required` lists the
- * keys present in EVERY doc (v2 is optional-by-default, so the rest simply stay off the list).
- * Field value types come from the value-type ladder (`inferFieldSchema`), the *tightest* schema
- * that still admits every observed value. `additionalProperties: false` is always safe here:
- * every key any doc carried is listed, so the key set is closed by construction; `--relax`
- * drops it (open object) and (via the ladder) drops categorical enums.
+ * Infers the frontmatter as an object schema. Keys are in first-appearance order. `required`
+ * lists the keys present in every doc. The others are left off, which makes them optional.
+ * Field types come from `inferFieldSchema`. `additionalProperties: false` is always safe, since
+ * every key seen is listed. `--relax` leaves it out and also turns off enums.
  */
 function inferFrontmatter(
   docs: ParsedDoc[],
@@ -586,8 +556,8 @@ function inferFrontmatter(
   }
   if (keys.length === 0) return undefined
 
-  // The rung-6 ratio gates `enum` against the group's file count, not a field's present-count,
-  // so a half-optional field doesn't enum on coincidence.
+  // Step 6 compares against the group's file count, not the number of files with the field,
+  // so a field present in only some files does not become an enum by chance.
   const fileCount = docs.length
   const properties: Record<string, unknown> = {}
   const required: string[] = []
@@ -597,9 +567,7 @@ function inferFrontmatter(
     properties[key] = inferFieldSchema(values.get(key)!, fileCount, opts)
   }
 
-  // Canonical v2 node order (as `migrate` emits): type, required, additionalProperties,
-  // properties. The key set is closed by construction (every observed key is listed), so
-  // `additionalProperties: false` is safe; `--relax` loosens to an open object.
+  // Key order, as `migrate` writes it: type, required, additionalProperties, properties.
   const node: Record<string, unknown> = { type: 'object' }
   if (required.length > 0) node.required = required
   if (!opts.relax) node.additionalProperties = false
@@ -609,14 +577,14 @@ function inferFrontmatter(
 
 // ── Body ────────────────────────────
 
-/** Render a sample of `list` for a diagnostic, capping the tail so a big vault stays readable. */
+/** The first few items of `list` for a message, with a count of the rest. */
 function sampleList(list: string[], n = 5): string {
   return list.length <= n
     ? list.join(', ')
     : `${list.slice(0, n).join(', ')} (and ${list.length - n} more)`
 }
 
-/** Drop repeats from a list, keeping the first occurrence of each value (order preserved). */
+/** Removes repeats from a list, keeping the first of each value, in order. */
 function dedupePreservingOrder(names: string[]): string[] {
   const seen = new Set<string>()
   const out: string[] = []
@@ -629,21 +597,18 @@ function dedupePreservingOrder(names: string[]): string[] {
 }
 
 /**
- * Generalize the body plane, emitted
- * in the v2 vocabulary. Lists the group's complete observed section vocabulary in the
- * detected order; required = universal (a plain slot), the rest counted `minContains: 0` +
- * `maxContains: 1`; `additionalSections: false` (every observed section is listed, so the
- * unknown door is safe to close) — `--relax` opens it and drops order to `none`.
+ * Infers the body. It lists every section seen in the group, in the detected order. A section
+ * in every doc is a plain slot. The others get `minContains: 0` and `maxContains: 1`.
+ * `additionalSections` is `false`, since every section seen is listed. `--relax` sets it to
+ * `true` and the order to `none`.
  *
- * Sections are keyed by their generated camelCase key (`core/camel.ts`), and two DISTINCT
- * spellings that collapse to the same key cannot be two sibling sections (the engine's build-time
- * `contract/key-collision` guard). So before emitting, observed spellings are grouped by key and
- * each clash collapses into ONE section: the first-seen spelling is the primary, the rest become
- * `aliases` (the engine accepts alias spellings for one slot) — a warning records the merge. The
- * one case that cannot be merged is two clashing spellings appearing TOGETHER as peers in a single
- * doc: the merged slot would then match twice (`structure/duplicate-section`), so that is a fatal
- * `sink.errors` entry naming the offending file(s). A heading that yields no key (no
- * alphanumerics) generates no alias and so can never collide — it is emitted unchanged.
+ * Two different headings with the same camelCase key (`core/camel.ts`) cannot be two sibling
+ * sections. `contract()` rejects that (`contract/key-collision`). So headings are grouped by key
+ * and each group becomes one section: the first spelling seen is the name, and the rest become
+ * `aliases`. A warning records the merge. Two such headings side by side in one doc cannot be
+ * merged, since the one slot would then match twice (`structure/duplicate-section`). That adds an
+ * error to `sink.errors` naming the files. A heading with no letters or digits has no key, so it
+ * cannot collide and is listed as it is.
  */
 function inferBody(
   docs: ParsedDoc[],
@@ -662,16 +627,15 @@ function inferBody(
     }
   | undefined {
   const { order, sections: detected } = detectOrder(docs)
-  // Dedupe the detected spine: a heading repeated as peers in one doc (a repeatable slot) appears
-  // once in the contract. `detectOrder`'s `none` / `recognized-relative` paths already dedupe via
-  // the union; the `strict` path echoes `docs[0]`'s sequence verbatim, so collapse it here.
+  // A heading repeated in one doc (a repeatable slot) appears once in the contract. The `none`
+  // and `recognized-relative` results are already unique. The `strict` result is `docs[0]`'s
+  // list as it is, so remove repeats here.
   const sections = dedupePreservingOrder(detected)
   if (sections.length === 0) return undefined
 
-  // A spelling that appears ≥2 times as peers within ANY single doc is a repeatable slot:
-  // its exact-duplicate peers must validate (not `structure/duplicate-section`), so the inferred
-  // contract accepts its own corpus. (`ParsedDoc.sections` preserves per-doc duplicates.) Distinct
-  // key-colliding spellings are handled below unchanged — repeatable is only for exact duplicates.
+  // A heading that appears twice or more in one doc is a repeatable slot, so its repeats pass
+  // instead of giving `structure/duplicate-section`. (`ParsedDoc.sections` keeps repeats.) Only
+  // exact repeats count. Different spellings with the same key are handled below.
   const repeatedSpellings = new Set<string>()
   for (const doc of docs) {
     const counts = new Map<string, number>()
@@ -687,7 +651,7 @@ function inferBody(
     minContains?: number
     maxContains?: number
   }> = []
-  const emitted = new Set<string>() // primary spellings already emitted
+  const emitted = new Set<string>() // section names already added
   for (const name of sections) {
     emitSectionEntry(name, byKey, emitted, repeatedSpellings, docs, sink, entries)
   }
@@ -697,12 +661,12 @@ function inferBody(
     : { order, additionalSections: false, sections: entries }
 }
 
-/** Group observed section spellings by their generated camelCase key, in first-appearance order. */
+/** Groups section names by camelCase key, in first-appearance order. */
 function groupSpellingsByKey(sections: string[]): Map<string, string[]> {
   const byKey = new Map<string, string[]>()
   for (const name of sections) {
     const key = toCamelKey(name)
-    if (key === '') continue // no alphanumerics ⇒ no generated alias ⇒ cannot collide
+    if (key === '') continue // no letters or digits: no key, so no collision
     let spellings = byKey.get(key)
     if (!spellings) byKey.set(key, (spellings = []))
     spellings.push(name)
@@ -711,14 +675,13 @@ function groupSpellingsByKey(sections: string[]): Map<string, string[]> {
 }
 
 /**
- * Emit the section entry for `name` — but only once per merged slot, at its primary spelling. An
- * alias spelling (or an already-emitted primary) is skipped; the primary carries any `aliases`
- * and its v2 occurrence bounds, and records the merge. The occurrence
- * matrix mirrors `markdown-contract migrate` exactly:
- *   - required, non-repeating   → a plain slot (no occurrence keys);
- *   - optional, non-repeating   → `minContains: 0` + `maxContains: 1`;
- *   - required, repeating       → `minContains: 1` (no upper bound);
- *   - optional, repeating       → `minContains: 0` (no upper bound).
+ * Adds the section entry for `name`, once per merged group, at its first spelling. Other
+ * spellings, and a name already added, are skipped. The entry carries any `aliases` and its
+ * counts, and the merge is recorded. The counts match what `markdown-contract migrate` writes:
+ *   - required, not repeating   → a plain slot (no count keys)
+ *   - optional, not repeating   → `minContains: 0` and `maxContains: 1`
+ *   - required, repeating       → `minContains: 1` (no upper bound)
+ *   - optional, repeating       → `minContains: 0` (no upper bound)
  */
 function emitSectionEntry(
   name: string,
@@ -737,14 +700,14 @@ function emitSectionEntry(
   const key = toCamelKey(name)
   const spellings = key === '' ? [name] : byKey.get(key)!
   const primary = spellings[0]!
-  if (name !== primary) return // an alias spelling — its slot is emitted at the primary
+  if (name !== primary) return // an alias: its entry is added at the first spelling
   if (emitted.has(primary)) return
   emitted.add(primary)
 
   const aliases = spellings.slice(1)
-  // Required iff every doc carries at least ONE of the (merged) spellings.
+  // Required when every doc has at least one of the spellings.
   const required = docs.every((d) => spellings.some((s) => d.sections.includes(s)))
-  // Repeatable when any of the slot's spellings recurs as peers within one doc.
+  // Repeatable when any of the spellings repeats within one doc.
   const repeatable = spellings.some((s) => repeatedSpellings.has(s))
   const entry: {
     section: string
@@ -754,7 +717,7 @@ function emitSectionEntry(
   } = { section: primary }
   if (aliases.length > 0) entry.aliases = aliases
   if (repeatable) {
-    entry.minContains = required ? 1 : 0 // repeatable — no upper bound
+    entry.minContains = required ? 1 : 0 // repeatable, no upper bound
   } else if (!required) {
     entry.minContains = 0
     entry.maxContains = 1
@@ -765,9 +728,9 @@ function emitSectionEntry(
 }
 
 /**
- * Record the diagnostic for a set of merged spellings sharing one `key`: a fatal `sink.errors`
- * entry when any single doc carries MORE THAN ONE of them as peers (the one slot would match twice
- * — genuine ambiguity), else an advisory `sink.warnings` entry naming the merge.
+ * Records the message for merged spellings that share one `key`. When one doc has more than one
+ * of them, the one slot would match twice, so it adds an error to `sink.errors`. Otherwise it
+ * adds a warning that names the merge.
  */
 function recordAliasMerge(
   spellings: string[],
@@ -796,12 +759,11 @@ function recordAliasMerge(
   }
 }
 
-// ── Naming & emission ──────────────────────────────────────────────────────────────
+// ── Names and output ──────────────────────────────────────────────────────────────
 
 /**
- * Slugify one path segment into a name fragment: lower-case, runs of
- * non-alphanumerics collapse to a single `-`, leading/trailing `-` trimmed. A segment that
- * slugs to empty falls back to `contract` (so a degenerate basename still produces a name).
+ * A slug for one path segment: lowercased, each run of characters outside `a-z0-9` replaced
+ * by one `-`, and leading and trailing `-` removed. An empty result becomes `contract`.
  */
 function slugify(name: string): string {
   const slug = name
@@ -812,11 +774,10 @@ function slugify(name: string): string {
 }
 
 /**
- * Name a directory group from its FULL relative path: slugify every path
- * segment from the run root and join with `-` (`api/v1` → `api-v1`, `web/v1` → `web-v1`, a
- * top-level `api` → `api`). The relative path is inherently unique, so the joined slug is too —
- * no de-collision step. An empty relative path is the run root itself, named after its basename
- * (or `root` when even that slugs empty). The name is just a label the author can rename.
+ * The name of a folder group from its path relative to the run folder: each segment slugged and
+ * joined with `-` (`api/v1` → `api-v1`, `web/v1` → `web-v1`, `api` → `api`). Paths are unique,
+ * so names are too. An empty path is the run folder, named after its basename (or `root` when
+ * that slug is empty). The author can rename it.
  */
 function nameForDir(relDir: string, absRoot: string): string {
   if (relDir === '') {
@@ -827,11 +788,10 @@ function nameForDir(relDir: string, absRoot: string): string {
 }
 
 /**
- * Generalize one group of docs into a contract `def` — the
- * frontmatter and body planes inferred to the tightest shape that still accepts every doc in
- * the group. Shared by single-contract mode (the whole subtree is one group) and meta mode
- * (one group per directory at the depth cut). Returns the bare `def` object an
- * `InferredContract` and `compileContractObject` both consume.
+ * Infers the contract `def` for one group of docs: the strictest frontmatter and body that still
+ * accept every doc in the group. Both modes use it: single-contract mode has one group, and meta
+ * mode has one per folder at the cut. The `def` goes in `InferredContract` and can be passed to
+ * `compileContractObject`.
  */
 function generalize(
   docs: ParsedDoc[],
@@ -846,23 +806,23 @@ function generalize(
   return def
 }
 
-/** The directory of a relative POSIX file path (`""` for a file directly in the run root). */
+/** The folder of a relative file path (`""` for a file directly in the run folder). */
 function dirOf(rel: string): string {
   const slash = rel.lastIndexOf('/')
   return slash === -1 ? '' : rel.slice(0, slash)
 }
 
-/** The depth of a relative directory: `""` is depth 0, `api` is depth 1, `api/v1` is depth 2. */
+/** The depth of a relative folder: `""` is 0, `api` is 1, `api/v1` is 2. */
 function depthOf(relDir: string): number {
   return relDir === '' ? 0 : relDir.split('/').length
 }
 
-/** The ancestor directory of `relDir` at exactly `depth` (`api/v1/x` at depth 2 → `api/v1`). */
+/** The parent folder of `relDir` at `depth` (`api/v1/x` at depth 2 → `api/v1`). */
 function ancestorAt(relDir: string, depth: number): string {
   return relDir.split('/').slice(0, depth).join('/')
 }
 
-/** Get (creating on first sight, recording walk order) the doc bucket for a group key. */
+/** The doc list for a group key. A new key is added to `order`. */
 function bucketFor(groups: Map<string, ParsedDoc[]>, order: string[], key: string): ParsedDoc[] {
   let bucket = groups.get(key)
   if (!bucket) {
@@ -873,23 +833,20 @@ function bucketFor(groups: Map<string, ParsedDoc[]>, order: string[], key: strin
 }
 
 /**
- * Build the meta-config result: a uniform-depth cut at `depth`.
+ * Builds the meta-mode result, one contract per folder at `depth`.
  *
- * Every file is routed by the ancestor directory at exactly `depth`:
- *  - a file whose directory is at depth ≥ `depth` belongs to its depth-`depth` ancestor → that
- *    directory gets ONE contract, recursive over its subtree (`<reldir>/**\/*.md`);
- *  - a file sitting directly in the run root (depth-0 directory) ALWAYS belongs to the ROOT
- *    contract, a DIRECT-ONLY `*.md` glob (never `**\/*.md`), so it can never overlap a subdir
- *    glob — independent of the depth knob;
- *  - a file in a directory strictly BETWEEN the root and the cut (depth ≥ 1 but `< depth`) is
- *    STRANDED: uniform depth refuses to wrap it in a nested parent contract, so it is named in
- *    a warning and routed nowhere (it matches no rule, so accept-by-construction still holds —
- *    the self-check simply skips it). Only depth ≥ 2 can strand; depth 1 never does.
+ * Each file goes by its parent folder at `depth`:
+ *  - A file in a folder at depth `depth` or deeper belongs to its parent at `depth`. That folder
+ *    gets one contract for everything below it (`<reldir>/**\/*.md`).
+ *  - A file directly in the run folder always belongs to the root contract. Its glob is `*.md`,
+ *    not `**\/*.md`, so it never overlaps a subfolder's glob, whatever the depth.
+ *  - A file in a folder between the root and the cut (depth 1 or more, but less than `depth`)
+ *    gets no contract, since contracts are never nested. A warning names it. It matches no rule,
+ *    so the self-check skips it. This happens only when `depth` is 2 or more.
  *
- * Because every contract sits at one uniform depth and is never an ancestor of another, the
- * globs never overlap and routing is order-independent. Contracts are named after the full
- * relative-path slug of their directory. Output order is deterministic: groups in
- * first-appearance (walk) order, with the root contract first when present.
+ * All contracts are at one depth and none is inside another, so the globs never overlap and
+ * rule order does not matter. Contracts are named after their folder's path. Output order is
+ * the root contract first, if any, then the groups in walk order.
  */
 function inferMeta(
   absRoot: string,
@@ -899,8 +856,8 @@ function inferMeta(
   inline: boolean,
   sink: InferSink,
 ): InferResult {
-  // Route each doc to a group key (its depth-`depth` ancestor dir), tracking stranded files.
-  const groups = new Map<string, ParsedDoc[]>() // group dir → its docs (first-appearance order)
+  // Put each doc in the group of its parent folder at `depth`, or in `stranded`.
+  const groups = new Map<string, ParsedDoc[]>() // group folder → its docs, in walk order
   const groupOrder: string[] = []
   const stranded: string[] = []
   let hasRoot = false
@@ -909,20 +866,17 @@ function inferMeta(
     const fileDir = dirOf(doc.rel)
     const fileDepth = depthOf(fileDir)
     if (fileDepth === 0) {
-      // Directly in the run root — always the root contract, regardless of the depth knob.
       hasRoot = true
       bucketFor(groups, groupOrder, '').push(doc)
     } else if (fileDepth >= depth) {
-      // Deep enough to be routed to its depth-`depth` ancestor directory's contract.
       bucketFor(groups, groupOrder, ancestorAt(fileDir, depth)).push(doc)
     } else {
-      // In an intermediate directory between the root and a depth ≥ 2 cut — stranded
-      // (uniform depth never nests it under a parent contract).
+      // Between the root and a cut at depth 2 or more: no contract.
       stranded.push(doc.rel)
     }
   }
 
-  // Emit the root group first (its direct-only glob), then the subdir groups in walk order.
+  // The root group first, then the subfolder groups in walk order.
   const orderedKeys = [...(hasRoot ? [''] : []), ...groupOrder.filter((k) => k !== '')]
 
   const contracts: InferredContract[] = orderedKeys.map((key) => ({
@@ -947,12 +901,11 @@ function inferMeta(
 }
 
 /**
- * Serialize the meta-config files. With `--inline`, ONE self-contained
- * `markdown-contract.yaml` carries each contract's def inline on its rule. Otherwise the
- * offramp shape: a `markdown-contract.yaml` whose `contracts` registry maps each name to
- * `./contracts/<name>.contract.yaml`, with `rules` referencing the names, PLUS one
- * `contracts/<name>.contract.yaml` per group. Rules follow contract (walk) order; globs are
- * non-overlapping so order is purely for a clean diff.
+ * The meta-mode files. With `--inline`, one `markdown-contract.yaml` holds each contract inline
+ * on its rule. Otherwise `markdown-contract.yaml` has a `contracts` map from each name to
+ * `./contracts/<name>.contract.yaml` and `rules` that use the names, and there is one
+ * `contracts/<name>.contract.yaml` per group. Rules follow contract order. The globs do not
+ * overlap, so the order only keeps diffs clean.
  */
 function emitMetaFiles(contracts: InferredContract[], inline: boolean): InferredFile[] {
   if (inline) {
@@ -984,16 +937,16 @@ function emitMetaFiles(contracts: InferredContract[], inline: boolean): Inferred
 }
 
 /**
- * Infers a config from the markdown files under `root`: the tightest contract that still
+ * Infers a config from the markdown files under `root`: the strictest contract that still
  * accepts every file. It reads files and writes nothing. Two modes:
- *  - **single-contract** (`opts.meta` falsy, the default) — one contract over the whole subtree,
- *    the tightest shape that accepts every `*.md` under it;
- *  - **meta-config** (`opts.meta` truthy) — a uniform-depth cut at `opts.depth ?? 1`: one
- *    contract per directory at exactly that depth (recursive over its subtree) plus a root
- *    contract for files directly in the run root, files stranded above a depth ≥ 2 cut warned.
+ *  - Single contract (the default, `opts.meta` not set): one contract for every `*.md` under
+ *    `root`.
+ *  - Meta (`opts.meta` set): one contract per folder at depth `opts.depth ?? 1`, covering
+ *    everything below it, plus a root contract for files directly in `root`. A file in a folder
+ *    above a cut at depth 2 or more gets a warning and no contract.
  *
- * Both modes share the same generalization (`generalize`); meta is single-contract with the cut
- * moved off the root. `opts.depth` 0 (or single mode) collapses to one contract over `**\/*.md`.
+ * Both modes infer each group the same way (`generalize`). `opts.depth` 0, or single mode, gives
+ * one contract over `**\/*.md`.
  *
  * @param root The folder to read.
  * @param opts How to infer; see {@link InferOptions}.
@@ -1006,7 +959,7 @@ function emitMetaFiles(contracts: InferredContract[], inline: boolean): Inferred
  */
 export function inferConfig(root: string, opts?: InferOptions): InferResult {
   const absRoot = resolve(root)
-  // Resolve the value-ladder knobs once (defaults applied) and thread the one bag downward.
+  // The field inference options, with defaults applied.
   const fieldOpts: FieldInferOptions = {
     relax: opts?.relax === true,
     maxConstStringLength: opts?.maxConstStringLength ?? DEFAULT_MAX_CONST_STRING_LENGTH,
@@ -1018,17 +971,17 @@ export function inferConfig(root: string, opts?: InferOptions): InferResult {
   }
   const docs = discover(absRoot, scope).map((rel) => parseDoc(absRoot, rel))
 
-  // Diagnostics from every group accumulate here; a fatal `error` aborts AFTER all are collected,
-  // so one run names every heading clash to fix rather than failing on the first.
+  // Messages from every group collect here. Errors throw only after all groups run, so one run
+  // names every heading clash, not just the first.
   const sink: InferSink = { warnings: [], errors: [] }
 
-  // Meta mode: cut the tree at the depth knob (default 1). Depth 0 is single-contract mode.
+  // Meta mode cuts at `depth` (default 1). Depth 0 means single-contract mode.
   const depth = opts?.depth ?? 1
   let result: InferResult
   if (opts?.meta === true && depth >= 1) {
     result = inferMeta(absRoot, docs, depth, fieldOpts, opts?.inline === true, sink)
   } else {
-    // Single-contract mode: the whole subtree is one group, named after the run-root basename.
+    // Single-contract mode: one group, named after the run folder's basename.
     const def = generalize(docs, fieldOpts, sink)
     const name = slugify(basename(absRoot))
     const contract: InferredContract = { name, include: ['**/*.md'], def }
@@ -1041,8 +994,8 @@ export function inferConfig(root: string, opts?: InferOptions): InferResult {
     }
   }
 
-  // Accept-by-construction: if the corpus can't yield a faithful contract, refuse to emit
-  // one that would fail its own self-check — abort with every collected clash named.
+  // When no contract can accept the files, throw with every heading clash named, instead of
+  // returning a contract that would fail on its own files.
   if (sink.errors.length > 0) {
     const lead =
       sink.errors.length === 1

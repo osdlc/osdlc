@@ -1,34 +1,28 @@
 /**
- * Declarative text-constraint builders — `requires` / `forbids` (section-scoped) and
- * `textRule` (document-scoped). They attach required / forbidden phrase checks to a contract,
- * compiling to the engine's existing node-local `rule` / cross-plane `docRule` machinery:
- * "does this literal-or-regex appear (or not) in this scope, the right
- * number of times?". This is the TS-API surface the declarative `requires:` / `forbids:` YAML
- * keys compile to, so both authoring surfaces share one implementation and one set of findings.
+ * Text check builders: `requires` and `forbids` for one section, and `textRule` for the whole
+ * document. Each checks whether a literal or a regex appears in its scope, or does not, the right
+ * number of times. They build ordinary `rule` and `docRule` values. The YAML `requires:` and
+ * `forbids:` keys compile to these builders, so both forms give the same findings.
  *
- * Each builder is a thin scope-resolver over the text-match core (`text-match.ts`):
+ * The matching itself is in `text-match.ts`. The builders choose the text to match:
  *
- *   - `requires(specs)` / `forbids(specs)` → a node-local `Rule`. The matcher runs over the
- *     bound section's *subtree text* (every block — prose, list items, table cells, code — of
- *     the section and its descendants, reconstructed line-faithfully from the projected
- *     `SectionNode` so a `forbids` hit reports its real source line). The `scopeKey` is the
- *     section's generated lowerCamelCase key; a `requires` miss / count violation pins at the
- *     section heading.
- *   - `textRule({ requires?, forbids? })` → a cross-plane `DocRule` over the WHOLE document.
- *     The `DocRule` receives the projected `DocTree`, so the whole-document text is
- *     reconstructed line-faithfully from the projected tree (`tree.root`) — a whole-document
- *     `forbids` hit therefore anchors at the exact offending source line. The `scopeKey` is the
- *     literal `"doc"`; a `requires` miss is document-level (no position).
+ *   - `requires(specs)` and `forbids(specs)` return a section `Rule`. The text is every block
+ *     (prose, list items, table cells, code) of the section and its subsections, placed on its
+ *     source line, so a `forbids` hit reports the real line. The `scopeKey` is the section's
+ *     lowerCamelCase key. A `requires` miss or a count problem is placed on the section heading.
+ *   - `textRule({ requires?, forbids? })` returns a `DocRule` over the whole document. Its text
+ *     is built the same way from `tree.root`, so a `forbids` hit reports the real line. The
+ *     `scopeKey` is `"doc"`. A `requires` miss has no position.
  *
- * What the matcher sees: the text of the paragraphs, list items, table cells and code blocks that
- * the projection holds in `SectionNode.blocks`. It does not see a blockquote, a nested list item,
- * a heading's own text or raw HTML (such as a comment), because the projection builds no block
- * from them. A `forbids` aimed at one of those finds nothing. "Whole document" means every
- * section's blocks, including those under the H1.
+ * The text includes the paragraphs, list items, table cells and code blocks in
+ * `SectionNode.blocks`. It does not include blockquotes, nested list items, heading text or raw
+ * HTML (such as a comment), because `parse()` makes no block for them. A `forbids` aimed at one
+ * of those finds nothing. "Whole document" means every section's blocks, including those under
+ * the H1.
  *
- * Purity: a `requires` entry whose bound expresses ABSENCE (`max: 0`, or `max < min`)
- * is a constructor-time error — the absence form is `forbids`. The check fires when `requires(...)`
- * (or the `requires` arm of `textRule(...)`) is *called*, not at validation time.
+ * A `requires` entry whose bounds mean absence (`max: 0`, or `max < min`) is an error when the
+ * contract is built. Use `forbids` for that. The check runs when `requires(...)` or
+ * `textRule(...)` is called, not when a document is validated.
  */
 import { toCamelKey } from './camel.js'
 import { ContractBuildError } from './grammar.js'
@@ -37,35 +31,34 @@ import { buildTextFindings, matchText } from './text-match.js'
 import type { BlockNode, Ctx, Doc, DocRule, DocTree, Finding, Rule, SectionNode } from './types.js'
 
 /**
- * One required / forbidden text-match entry — the closed match-spec vocabulary. This is the matcher's `TextMatchSpec` re-exported verbatim, so the authoring
- * surface and the matcher core never diverge: exactly one of `pattern` (a literal substring) or
- * `regex` (a regex source) supplies the needle; `normalize` / `ignoreCase` tune matching;
- * `min` / `max` bound the count; `id` pins identity; `note` / `level` shape the finding.
+ * One text check entry, the same `TextMatchSpec` the matcher uses. Exactly one of `pattern` (a
+ * literal substring) or `regex` (a regex source) gives the text to find. `normalize` and
+ * `ignoreCase` change how it matches. `min` and `max` bound the count. `id` names the entry.
+ * `note` and `level` shape the finding.
  */
 export type { TextMatchSpec } from './text-match.js'
 
 /**
- * The document-scoped options for `textRule(...)` — `requires` / `forbids` lists, each a set of
- * independent whole-document checks (the body-root form of the YAML `requires:` / `forbids:`).
+ * The options for `textRule(...)`: `requires` and `forbids` lists of independent checks over the
+ * whole document. The YAML `requires:` and `forbids:` keys on the body compile to this.
  */
 export interface TextRuleSpec {
   requires?: TextMatchSpec[]
   forbids?: TextMatchSpec[]
 }
 
-// ── Purity: a `requires` entry may not express absence ────────────────────────
+// ── A `requires` entry may not mean absence ────────────────────────
 
-/** The needle as it reads in an error message — `"literal"` for a pattern, `/source/` for a regex. */
+/** The search text for an error message: `"literal"` for a pattern, `/source/` for a regex. */
 function specRepr(spec: TextMatchSpec): string {
   if (spec.regex !== undefined) return `/${spec.regex}/`
   return `"${spec.pattern ?? ''}"`
 }
 
 /**
- * Reject a `requires` entry whose count bound expresses ABSENCE — `max: 0`, or any `max` below
- * the entry's effective minimum (`min`, default 1). A "this scope must NOT contain X" check is
- * the `forbids` form, not a `requires` with `max: 0`. Thrown at construction (a contract-authoring
- * error), mirroring `grammar.ts`'s build-time `ContractBuildError` convention.
+ * Throws for a `requires` entry whose bounds mean absence: `max: 0`, or a `max` below the
+ * entry's minimum (`min`, default and at least 1). "This scope must not contain X" is a
+ * `forbids` check. It throws when the contract is built, like the other `ContractBuildError`s.
  */
 function assertRequiresPurity(specs: TextMatchSpec[]): void {
   for (const spec of specs) {
@@ -80,13 +73,13 @@ function assertRequiresPurity(specs: TextMatchSpec[]): void {
   }
 }
 
-// ── Line-faithful scope-text reconstruction ────────────────────────────────────────────
+// ── Building the scope text, line by line ────────────────────────────────────────────
 
 /**
- * Accumulates text fragments at their 1-based source lines and renders them into one string
- * whose newline structure mirrors the source — so the matcher's positions land on real source
- * lines. A fragment may itself be multi-line (a paragraph's soft-wrapped prose); each of its
- * lines is placed on a consecutive source line. Two fragments on one line are space-joined.
+ * Collects text at 1-based source lines and renders one string with the same line breaks as the
+ * source, so match positions fall on real source lines. A piece of text may span several lines
+ * (a wrapped paragraph). Each of its lines goes on the next source line. Two pieces on one line
+ * are joined by a space.
  */
 class LineBuffer {
   private lines: string[] = []
@@ -108,7 +101,7 @@ class LineBuffer {
   }
 }
 
-/** Place one projected block's text at its real source line(s). */
+/** Places one block's text on its source lines. */
 function placeBlock(buf: LineBuffer, block: BlockNode): void {
   switch (block.kind) {
     case 'paragraph':
@@ -130,10 +123,9 @@ function placeBlock(buf: LineBuffer, block: BlockNode): void {
 }
 
 /**
- * The section's subtree text, reconstructed line-faithfully from the projected `SectionNode`:
- * every block (prose, list items, table cells, code) of this section and every descendant,
- * placed at its real source line. Built from the `SectionNode` (not the typed `SectionView`),
- * so per-block positions are exact and a `forbids` hit reports its true source line.
+ * The text of every block (prose, list items, table cells, code) in this section and its
+ * subsections, each on its source line. It reads the `SectionNode`, not the `SectionView`,
+ * because the node has each block's position, so a `forbids` hit reports the real line.
  */
 function sectionScopeText(node: SectionNode): string {
   const buf = new LineBuffer()
@@ -145,7 +137,7 @@ function sectionScopeText(node: SectionNode): string {
   return buf.render()
 }
 
-/** The whole-document scope text, reconstructed line-faithfully from the projected tree. */
+/** The text of the whole document, each block on its source line. */
 function docScopeText(tree: DocTree): string {
   return sectionScopeText(tree.root)
 }
@@ -153,11 +145,11 @@ function docScopeText(tree: DocTree): string {
 // ── The builders ───────────────────────────────────────────────────────────────────────
 
 /**
- * Require each listed phrase to be PRESENT in the bound section's subtree text — a node-local
- * `Rule` for a section's `rules: [...]` slot (the section-scoped form of the YAML `requires:`).
- * Each entry emits its own `text/requires` finding at the section heading when its phrase is
- * absent (or `text/count` when a `min` / `max` bound is violated). Rejects an absence-form
- * entry (`max: 0` / `max < min`) at construction (use {@link forbids}).
+ * A section rule that requires each listed phrase in the section and its subsections. Put it in
+ * a section's `rules: [...]`. It is the code form of a section's YAML `requires:`. Each entry
+ * gives a `text/requires` finding on the section heading when its phrase is missing, or
+ * `text/count` when a `min` or `max` is not met. An entry with `max: 0` or `max < min` throws when
+ * built. Use {@link forbids} for that.
  *
  * @param specs The phrases, each with its own options.
  * @throws {ContractBuildError} When an entry's bound expresses absence (`max: 0`, or `max` below `min`).
@@ -190,11 +182,10 @@ export function requires(specs: TextMatchSpec[]): Rule {
 }
 
 /**
- * Forbid each listed phrase from appearing in the bound section's subtree text — a node-local
- * `Rule` for a section's `rules: [...]` slot (the section-scoped form of the YAML `forbids:`).
- * Each entry emits a `text/forbids` finding at the offending line for every hit (or `text/count`
- * at the heading when a positive `max` cap is exceeded). `forbids` is the absence form, so there
- * is no purity restriction.
+ * A section rule that forbids each listed phrase in the section and its subsections. Put it in a
+ * section's `rules: [...]`. It is the code form of a section's YAML `forbids:`. Each entry gives
+ * a `text/forbids` finding on the line of every hit, or `text/count` on the heading when there
+ * are more than a positive `max`.
  */
 export function forbids(specs: TextMatchSpec[]): Rule {
   return {
@@ -223,11 +214,11 @@ export function forbids(specs: TextMatchSpec[]): Rule {
 }
 
 /**
- * Attach required / forbidden phrase checks to the WHOLE document — a cross-plane `DocRule` for
- * a contract's `rules: [...]` slot (the body-root form of the YAML `requires:` / `forbids:`).
- * Each `requires` entry emits a document-level `text/requires` (no position) when its phrase is
- * absent; each `forbids` entry emits a `text/forbids` at the offending line for every hit. The
- * `requires` arm enforces the same absence-form purity as {@link requires}.
+ * A document rule with required and forbidden phrase checks over the whole document. Put it in a
+ * contract's `rules: [...]`. It is the code form of the YAML `requires:` and `forbids:` on the
+ * body. Each `requires` entry gives a `text/requires` with no position when its phrase is
+ * missing. Each `forbids` entry gives a `text/forbids` on the line of every hit. The `requires`
+ * entries have the same limit as in {@link requires}.
  *
  * @param spec The `requires` and `forbids` lists.
  * @throws {ContractBuildError} When a `requires` entry's bound expresses absence (`max: 0`, or `max` below `min`).

@@ -1,6 +1,6 @@
 /**
  * The CLI as a function. It parses the arguments, runs the command and returns the exit code and
- * the output. It never exits the process or writes to the real streams; `./bin.ts` does that.
+ * the output. It never exits the process or writes to the real streams. `./bin.ts` does that.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, isAbsolute, resolve } from 'node:path'
@@ -36,7 +36,7 @@ const USAGE = [
   '       markdown-contract migrate <file> ... [--write]',
 ].join('\n')
 
-/** A single corpus rule (`include`/`exclude` globs → contract) — the unit a CorpusConfig holds. */
+/** One rule of a `CorpusConfig`: `include` and `exclude` globs and a contract. */
 type Rule = CorpusConfig['rules'][number]
 
 const DEFAULT_CONFIG_NAMES = [
@@ -64,9 +64,8 @@ export interface CliResult {
 }
 
 /**
- * `parseArgs` over the CLI flag schema — extracted so `runCli` can name its exact
- * return type (`ReturnType<typeof parseCliArgs>`) instead of relying on an implicit
- * `any` for the `parsed` binding.
+ * Parses the CLI flags. It is a separate function so `runCli` can name its return type
+ * (`ReturnType<typeof parseCliArgs>`) for `parsed`.
  */
 function parseCliArgs(argv: string[]) {
   return parseArgs({
@@ -76,21 +75,21 @@ function parseCliArgs(argv: string[]) {
       config: { type: 'string' },
       contract: { type: 'string', multiple: true }, // a YAML contract (repeatable for pairs)
       path: { type: 'string', multiple: true }, // the target dir paired with each --contract
-      glob: { type: 'string', multiple: true }, // include filter (alias of --include), relative to run root
-      include: { type: 'string', multiple: true }, // include filter, relative to run root
-      exclude: { type: 'string', multiple: true }, // exclude filter, relative to run root
+      glob: { type: 'string', multiple: true }, // same as --include, relative to the run folder
+      include: { type: 'string', multiple: true }, // include globs, relative to the run folder
+      exclude: { type: 'string', multiple: true }, // exclude globs, relative to the run folder
       help: { type: 'boolean', short: 'h' },
       // `init` flags.
-      meta: { type: 'boolean' }, // emit a meta-config + per-dir contracts (default: single)
-      depth: { type: 'string' }, // directory cut for --meta (default 1; 0 == single)
-      relax: { type: 'boolean' }, // loosen generation toward a permissive floor
-      inline: { type: 'boolean' }, // one self-contained config instead of contracts/ files
-      out: { type: 'string' }, // where to write (default: the single inferred root; cwd for multi-root)
-      force: { type: 'boolean' }, // overwrite an existing config (default: refuse)
-      'dry-run': { type: 'boolean' }, // print the would-be files to stdout; write nothing
-      check: { type: 'boolean' }, // verify an existing config still accepts the tree
-      'max-const-len': { type: 'string' }, // cap: strings longer than this never become const/enum
-      'min-const-examples': { type: 'string' }, // floor: a uniform scalar needs >= n docs to become const
+      meta: { type: 'boolean' }, // one contract per folder, plus a config (default: one contract)
+      depth: { type: 'string' }, // folder depth for --meta (default 1; 0 means one contract)
+      relax: { type: 'boolean' }, // make the inferred contracts looser
+      inline: { type: 'boolean' }, // one config with the contracts inline, no contracts/ files
+      out: { type: 'string' }, // where to write (default: the one root; cwd for several roots)
+      force: { type: 'boolean' }, // overwrite existing files (default: refuse)
+      'dry-run': { type: 'boolean' }, // print the files to stdout and write nothing
+      check: { type: 'boolean' }, // check that an existing config still accepts the files
+      'max-const-len': { type: 'string' }, // a longer string never becomes a const or enum value
+      'min-const-examples': { type: 'string' }, // docs a value needs to become a const
       // `migrate` flag.
       write: { type: 'boolean' }, // rewrite each file in place instead of printing it
     },
@@ -98,7 +97,7 @@ function parseCliArgs(argv: string[]) {
   })
 }
 
-/** The parsed CLI flag bag (`parseArgs` values) threaded into the command handlers. */
+/** The parsed flags, passed to each command. */
 type CliValues = ReturnType<typeof parseCliArgs>['values']
 
 /** The flags each command accepts. `--help` is handled before the command runs. */
@@ -185,10 +184,9 @@ export async function runCli(argv: string[], opts?: { cwd?: string }): Promise<C
 }
 
 /**
- * `markdown-contract validate <path>` — resolve the run root + `CorpusConfig`, run the corpus, and
- * format the findings. Both inline `--contract` and file `--config` forms compile to one
- * CorpusConfig run through the same `runCorpus`. Exit codes: `0`/`1` from `runCorpus`, `2` for a
- * usage/config error raised here.
+ * `markdown-contract validate <path>`: finds the run folder and the `CorpusConfig`, runs it and
+ * formats the findings. `--contract` and `--config` both become one `CorpusConfig` for
+ * `runCorpus`. Exit codes: `0` or `1` from `runCorpus`, `2` for a usage or config error.
  */
 async function runValidate(cwd: string, rest: string[], values: CliValues): Promise<CliResult> {
   if (rest.length > 1) {
@@ -218,8 +216,8 @@ async function runValidate(cwd: string, rest: string[], values: CliValues): Prom
     }
   }
 
-  // Global glob pre-filter (relative to the run root), applied in EVERY mode incl.
-  // --config. `--glob` is the friendly alias of `--include`; both feed the include set.
+  // The run's own globs (relative to the run folder), applied in every mode, `--config` too.
+  // `--glob` is another name for `--include`.
   const include = [...(values.glob ?? []), ...(values.include ?? [])]
   const exclude = values.exclude ?? []
 
@@ -234,10 +232,9 @@ async function runValidate(cwd: string, rest: string[], values: CliValues): Prom
 }
 
 /**
- * The usage guards for `validate`: an unknown `--format`, `--contract` + `--config` together, or
- * `--path` with no `--contract`. Returns the `code: 2` result to short-circuit on, or `null` when
- * the flags are coherent. The contract binding comes from EITHER an inline `--contract` (config-less
- * parameterization) OR a `--config` file, never both.
+ * The usage checks for `validate`: an unknown `--format`, `--contract` with `--config`, or
+ * `--path` with no `--contract`. Returns the `code: 2` result, or `null` when the flags are
+ * fine. The contracts come from `--contract` (no config file) or from `--config`, never both.
  */
 function validateRunArgs(
   format: string,
@@ -270,9 +267,9 @@ function validateRunArgs(
 }
 
 /**
- * Resolve the run root (the runner's cwd) and the `CorpusConfig` — inline `--contract` builds it
- * directly; otherwise the `--config` file is loaded. A throw from either (bad/missing config, etc.)
- * becomes a `code: 2` error result.
+ * Finds the run folder (the runner's cwd) and the `CorpusConfig`. `--contract` builds the config
+ * directly. Otherwise the config file is loaded. A throw from either (such as a bad or missing
+ * config) becomes a `code: 2` result.
  */
 async function resolveRunConfig(
   cwd: string,
@@ -295,8 +292,8 @@ async function resolveRunConfig(
 }
 
 /**
- * Run the corpus, mapping a runtime failure inside the runner (e.g. a contract throwing) to a
- * `code: 2` error result — from the CLI's vantage that is a config/usage problem, not a crash.
+ * Runs `runCorpus`. A throw inside it (such as a contract that throws) becomes a `code: 2`
+ * result, since for the CLI it is a config problem, not a crash.
  */
 function runCorpusGuarded(
   config: CorpusConfig,
@@ -320,9 +317,8 @@ function runCorpusGuarded(
 }
 
 /**
- * Render the findings for the chosen `format`. The human format gains an additive run summary
- * (total + per-contract counts) above the findings report; json/sarif are byte-for-byte the bare
- * finding outputs (the summary is human-only).
+ * Formats the findings in the chosen `format`. The human format puts the run summary (totals and
+ * per-contract counts) above the report. `json` and `sarif` have no summary.
  */
 function formatOutput(
   format: string,
@@ -344,7 +340,7 @@ function formatOutput(
  * Warnings go to stderr.
  *
  * A result that version 2 cannot load is reported and not printed or written. A file that cannot
- * be read, or is not a version 1 document, is also reported and skipped; the exit code is then 2.
+ * be read, or is not a version 1 document, is also reported and skipped. The exit code is then 2.
  * A file that is already version 2 is noted on stderr and does not change the exit code.
  */
 function runMigrate(cwd: string, files: string[], write: boolean): CliResult {
@@ -388,7 +384,7 @@ function runMigrate(cwd: string, files: string[], write: boolean): CliResult {
   return { code: failed ? 2 : 0, stdout: stdout.join('\n'), stderr: stderr.join('\n') }
 }
 
-/** The parsed-flag bag `runCli` threads into `runInit` (the `init`-relevant subset of `parseArgs` values). */
+/** The flags `runInit` reads. */
 interface InitFlags {
   meta?: boolean
   depth?: string
@@ -405,32 +401,32 @@ interface InitFlags {
   exclude?: string[]
 }
 
-/** The default config filename `init` writes and `--check` loads back (a `markdown-contract.yaml` router/inline config). */
+/** The config file name `init` writes and `--check` loads. */
 const INIT_CONFIG_NAME = 'markdown-contract.yaml'
 
 /**
- * `markdown-contract init <dir>…` — infer a tight-but-accepting config from existing markdown,
- * then IO + self-check around the pure `inferConfig` pipeline.
+ * `markdown-contract init <dir>…`: infers a config from existing markdown with `inferConfig`,
+ * writes it and checks it.
  *
- * The pure inference is in `../declarative/infer`; this verb owns everything stateful around it:
- *  - **scope** — `--include` / `--exclude` / `--glob` choose which files feed inference, exactly
- *    as `validate` scopes a run; the same globs also scope the self-check.
- *  - **`--dry-run`** — print the would-be files to stdout and write nothing (exit 0).
- *  - **write** — otherwise write `result.files` under `--out` (default: the single inferred root,
- *    so `init <dir> --check` finds it from any cwd and `validate` finds it when run inside
- *    `<dir>`; a multi-root run has no single natural base, so it falls back to cwd with a
- *    stderr warning), REFUSING to clobber an existing config without `--force` (exit 2).
- *    Single-contract mode additionally writes a `markdown-contract.yaml` router, which
- *    `validate` loads when run inside `<dir>` or given `--config <dir>/markdown-contract.yaml`.
- *  - **self-check** — after writing, load the scaffold back through `loadConfigFile` and run it
- *    over the corpus via `runCorpus`; an error-level finding is an inferer bug, reported loudly.
- *  - **`--check`** — do NOT infer or write: load the EXISTING config and run it over the tree;
- *    exit 0 if clean, 1 if any error-level finding (the CI drift guard).
+ * Inference is in `../declarative/infer`. This command does the rest:
+ *  - Scope: `--include`, `--exclude` and `--glob` choose the files, as for `validate`. The same
+ *    globs apply to the self-check.
+ *  - `--dry-run`: print the files to stdout and write nothing (exit 0).
+ *  - Write: otherwise write `result.files` under `--out`. The default is the one root, so
+ *    `init <dir> --check` finds the config from any cwd and `validate` finds it when run inside
+ *    `<dir>`. With several roots there is no one base, so it uses cwd and warns on stderr. It
+ *    refuses to overwrite an existing config without `--force` (exit 2). Single-contract mode
+ *    also writes a `markdown-contract.yaml` config, which `validate` loads when run inside
+ *    `<dir>` or given `--config <dir>/markdown-contract.yaml`.
+ *  - Self-check: after writing, load the config back with `loadConfigFile` and run it over the
+ *    files with `runCorpus`. An error-level finding means inference has a bug, and exits 1.
+ *  - `--check`: do not infer or write. Load the existing config and run it over the files. Exit 0
+ *    when clean, 1 on any error-level finding. Use it in CI to catch drift.
  *
- * Multiple roots merge into one run: each root is inferred and self-checked against its own tree
- * (globs are run-root-relative, so each root's contracts are verified with that root as cwd), and
- * the emitted files carry every root's contracts. A summary (groups, files, warnings, self-check)
- * is printed to stdout; usage/config errors exit 2.
+ * Several roots run together. Each root is inferred and self-checked on its own files (globs are
+ * relative to the root, so each root's contracts run with that root as cwd). The written files
+ * hold every root's contracts. A summary (groups, files, warnings, self-check) goes to stdout.
+ * Usage and config errors exit 2.
  */
 function runInit(cwd: string, roots: string[], flags: InitFlags): CliResult {
   if (roots.length === 0) {
@@ -441,7 +437,7 @@ function runInit(cwd: string, roots: string[], flags: InitFlags): CliResult {
     }
   }
 
-  // --depth / --max-const-len / --min-const-examples parse to integers; a bad value is a usage error.
+  // --depth, --max-const-len and --min-const-examples must be integers. A bad value is a usage error.
   const nums = parseInitNumericFlags(flags)
   if ('error' in nums) return nums.error
 
@@ -453,21 +449,21 @@ function runInit(cwd: string, roots: string[], flags: InitFlags): CliResult {
 
   const { outDir, warning: multiRootWarning } = resolveInitOutDir(flags, cwd, absRoots)
 
-  // --check: verify an EXISTING config against the tree(s); never infer or write.
+  // --check: run the existing config over the roots. Never infer or write.
   if (flags.check === true) {
     return runInitCheck(absRoots, scope)
   }
 
   const opts = buildInferOptions(flags, scope, nums)
 
-  // Infer one result per root, then merge into the files to write (and verify per root).
+  // Infer one result per root, then merge them into the files to write.
   const inferred = inferAll(absRoots, opts)
   if ('error' in inferred) return inferred.error
   const results = inferred.results
 
   const files = mergeFiles(results, opts)
 
-  // --dry-run: print the would-be files; write nothing.
+  // --dry-run: print the files and write nothing.
   if (flags['dry-run'] === true) {
     return { code: 0, stdout: renderDryRun(files, results), stderr: '' }
   }
@@ -475,18 +471,18 @@ function runInit(cwd: string, roots: string[], flags: InitFlags): CliResult {
   const writeError = writeInitFiles(files, outDir, flags.force === true)
   if (writeError) return writeError
 
-  // Self-check: load each root's contracts back and run them over that root (accept-by-construction).
+  // Self-check: load each root's contracts back and run them over that root.
   const selfCheckErrors = selfCheck(results, absRoots, scope)
 
   const summary = renderSummary(results, files, selfCheckErrors)
-  // A self-check failure is an inferer bug, surfaced loudly with a non-zero exit. The multi-root
-  // cwd-fallback warning (empty otherwise) rides along on stderr regardless of the self-check.
+  // A self-check failure means inference has a bug, so exit 1. The several-roots warning (empty
+  // otherwise) goes to stderr either way.
   return selfCheckErrors.length > 0
     ? { code: 1, stdout: summary, stderr: multiRootWarning }
     : { code: 0, stdout: summary, stderr: multiRootWarning }
 }
 
-/** The parsed numeric `init` knobs, or the `code: 2` usage error for the first bad value. */
+/** The parsed number flags of `init`. */
 interface InitNumericFlags {
   depth?: number
   maxConstStringLength?: number
@@ -494,8 +490,8 @@ interface InitNumericFlags {
 }
 
 /**
- * Parse `--depth` / `--max-const-len` / `--min-const-examples` (each an optional integer with a
- * lower bound). Returns the parsed values, or the `code: 2` usage error for the first bad flag.
+ * Parses `--depth`, `--max-const-len` and `--min-const-examples` (each an optional integer with a
+ * lower bound). Returns the values, or the `code: 2` usage error for the first bad flag.
  */
 function parseInitNumericFlags(flags: InitFlags): InitNumericFlags | { error: CliResult } {
   const depth = parseIntFlag(
@@ -523,7 +519,7 @@ function parseInitNumericFlags(flags: InitFlags): InitNumericFlags | { error: Cl
   }
 }
 
-/** Parse one optional integer flag with a lower bound, or the `code: 2` usage error `message(raw)`. */
+/** Parses one optional integer flag with a lower bound, or returns the `code: 2` error `message(raw)`. */
 function parseIntFlag(
   raw: string | undefined,
   min: number,
@@ -537,7 +533,7 @@ function parseIntFlag(
   return { value }
 }
 
-/** The `--glob` / `--include` / `--exclude` scope, as `validate` (undefined when empty). */
+/** The `--glob`, `--include` and `--exclude` globs, as for `validate`. Empty lists are left out. */
 function buildInitScope(flags: InitFlags): { include?: string[]; exclude?: string[] } {
   const include = [...(flags.glob ?? []), ...(flags.include ?? [])]
   const exclude = flags.exclude ?? []
@@ -558,11 +554,11 @@ function checkRootsExist(absRoots: string[]): CliResult | null {
 }
 
 /**
- * Resolve the write target and any multi-root warning. Default the target to the SINGLE inferred
- * root, so the config, `contracts/`, and the root-relative globs share one base. `init <dir>
- * --check` resolves `<dir>/markdown-contract.yaml` from any cwd; `validate` loads the config only
- * from the current folder or from `--config`. A multi-root run has no single natural base, so it
- * keeps the cwd fallback (with a warning). Explicit `--out` overrides both.
+ * The folder to write to, and a warning for several roots. The default is the one root, so the
+ * config, `contracts/` and the root-relative globs share one base. `init <dir> --check` finds
+ * `<dir>/markdown-contract.yaml` from any cwd. `validate` loads the config only from the current
+ * folder or from `--config`. With several roots there is no one base, so it uses cwd and warns.
+ * `--out` overrides both.
  */
 function resolveInitOutDir(
   flags: InitFlags,
@@ -583,7 +579,7 @@ function resolveInitOutDir(
   return { outDir, warning }
 }
 
-/** Assemble the `InferOptions` from the boolean flags, the parsed numeric knobs, and the scope. */
+/** Builds the `InferOptions` from the flags, the parsed numbers and the globs. */
 function buildInferOptions(
   flags: InitFlags,
   scope: { include?: string[]; exclude?: string[] },
@@ -602,7 +598,7 @@ function buildInferOptions(
   }
 }
 
-/** Infer one result per root, or the `code: 2` error result for a throw (e.g. a heading clash). */
+/** One result per root, or a `code: 2` result when inference throws (such as on a heading clash). */
 function inferAll(
   absRoots: string[],
   opts: InferOptions,
@@ -617,9 +613,9 @@ function inferAll(
 }
 
 /**
- * Write every inferred file under `outDir`, refusing to clobber an existing config (the router, or
- * any per-contract file) without `--force`. Returns a `code: 2` error result on a clash or a write
- * failure, or `null` on success.
+ * Writes every inferred file under `outDir`. Without `--force` it refuses to overwrite any
+ * existing file (the config or a contract file). Returns a `code: 2` result when a file exists or
+ * a write fails, or `null` on success.
  */
 function writeInitFiles(files: InferredFile[], outDir: string, force: boolean): CliResult | null {
   if (!force) {
@@ -645,10 +641,9 @@ function writeInitFiles(files: InferredFile[], outDir: string, force: boolean): 
 }
 
 /**
- * `--check`: load the EXISTING config near each root and run it over the
- * tree. No inference, no write. Exit 0 when every root is clean, 1 when any error-level finding
- * appears (a doc drifted from the inferred shape — the CI drift guard). A missing config is a
- * usage error (exit 2): `--check` verifies a config that already exists.
+ * `--check`: loads the existing `markdown-contract.yaml` in each root and runs it over that root.
+ * No inference and no writing. Exit 0 when every root is clean, 1 on any error-level finding (a
+ * doc no longer fits the inferred shape). A missing config is a usage error (exit 2).
  */
 function runInitCheck(
   absRoots: string[],
@@ -681,18 +676,16 @@ function runInitCheck(
 }
 
 /**
- * Merge each root's `InferResult.files` into the single set the verb writes. In meta mode every
- * root already emits a self-contained `markdown-contract.yaml` (+ `contracts/`), so the files
- * pass through (a multi-root run keeps the first root's config as the discoverable router; the
- * self-check verifies each root independently). In single-contract mode each root emits one
- * `<name>.contract.yaml`; the verb additionally synthesizes a `markdown-contract.yaml` router
- * over those contracts, so `validate` finds the scaffold when run inside `<dir>` (inference
- * leaves single mode as a bare contract file; the router is the file the verb adds).
+ * Merges each root's `InferResult.files` into the files to write. In meta mode each root already
+ * has its own `markdown-contract.yaml` and `contracts/`, so the files pass through. With several
+ * roots the first root's file wins for each path, and the self-check runs on each root on its
+ * own. In single-contract mode each root gives one `<name>.contract.yaml`, and this adds a
+ * `markdown-contract.yaml` config that lists those contracts, so `validate` finds them when run
+ * inside `<dir>`.
  */
 function mergeFiles(results: InferResult[], opts: InferOptions): InferredFile[] {
   if (opts.meta === true) {
-    // Meta mode: each root self-describes. Keep the first root's router/contracts as the output;
-    // additional roots' files are de-duplicated by path (first wins) so a re-run diffs cleanly.
+    // Meta mode: keep the first file for each path.
     const seen = new Set<string>()
     const out: InferredFile[] = []
     for (const r of results) {
@@ -706,7 +699,7 @@ function mergeFiles(results: InferResult[], opts: InferOptions): InferredFile[] 
     return out
   }
 
-  // Single mode: write each root's contract file + a router that references them all.
+  // Single mode: each root's contract file, plus a config that lists them all.
   const contracts: InferredContract[] = results.flatMap((r) => r.contracts)
   const files: InferredFile[] = results.flatMap((r) => r.files)
   const registry: Record<string, string> = {}
@@ -721,10 +714,10 @@ function mergeFiles(results: InferResult[], opts: InferOptions): InferredFile[] 
 }
 
 /**
- * Self-check the written scaffold: compile each root's contracts and run
- * them over that root via `runCorpus`. Each root is checked with itself as cwd, so the run-root-
- * relative globs route exactly the files inference saw. Returns the error-level findings (a
- * non-empty list means an emitted constraint is tighter than the data allows — an inferer bug).
+ * Checks the written contracts: compiles each root's contracts and runs them over that root with
+ * `runCorpus`. Each root is its own cwd, so the root-relative globs match the files inference
+ * saw. Returns the error-level findings as text. Any entry means an inferred rule is stricter
+ * than the files allow, which is a bug in inference.
  */
 function selfCheck(
   results: InferResult[],
@@ -734,14 +727,12 @@ function selfCheck(
   const errors: string[] = []
   results.forEach((r, i) => {
     const root = absRoots[i]!
-    // Compile each contract on its own so a build-time guard (e.g. contract/key-collision) is
-    // reported as a clean, attributed self-check failure — naming the contract and its globs —
-    // instead of escaping as an uncaught throw that crashes the verb.
+    // Compile each contract on its own, so a build error (such as contract/key-collision) is
+    // reported as a self-check failure naming the contract and its globs, not an uncaught throw.
     const rules: CorpusConfig['rules'] = []
     let compileFailed = false
     for (const c of r.contracts) {
       try {
-        // Inferred defs are authored in the v2 vocabulary.
         rules.push({ include: c.include, contract: compileContractObject(c.def) })
       } catch (err) {
         errors.push(
@@ -765,7 +756,7 @@ function selfCheck(
   return errors
 }
 
-/** Render the `--dry-run` output: each would-be file as a `# path` banner followed by its content. */
+/** The `--dry-run` output: each file as a `# path` line followed by its content. */
 function renderDryRun(files: InferredFile[], results: InferResult[]): string {
   const blocks = files.map((f) => `# ${f.path}\n${f.content}`)
   const warnings = results.flatMap((r) => r.warnings)
@@ -773,7 +764,7 @@ function renderDryRun(files: InferredFile[], results: InferResult[]): string {
   return [...blocks, ...trailer].join('\n').trimEnd()
 }
 
-/** Render the post-write human summary: groups/files, any warnings, and the self-check verdict. */
+/** The summary after writing: contracts and files, any warnings, and the self-check result. */
 function renderSummary(
   results: InferResult[],
   files: InferredFile[],
@@ -796,16 +787,15 @@ function renderSummary(
 }
 
 /**
- * Build a `CorpusConfig` from inline `--contract` flags — the config-less parameterization
- * of the same binary. Two shapes:
+ * Builds a `CorpusConfig` from `--contract` flags, for a run with no config file. Two forms:
  *
- * - **one contract, no `--path`**: apply that contract to every `*.md` under the positional
- *   `<path>` (the run root) — a single catch-all rule `include: ['**\/*.md']`.
- * - **paired `--contract` + `--path`**: one rule per pair, `include: ['<dir>/**\/*.md']`,
- *   matched relative to the run root (the cwd); a positional `<path>` is not used here.
+ * - One contract, no `--path`: the contract applies to every `*.md` under the positional
+ *   `<path>` (the run folder), as one rule with `include: ['**\/*.md']`.
+ * - `--contract` and `--path` pairs: one rule per pair, `include: ['<dir>/**\/*.md']`, relative
+ *   to the cwd. A positional `<path>` is not allowed here.
  *
- * Contract refs must be `.yaml`/`.yml` (a contract written in code goes in a `.js` / `.mjs` config).
- * Throws on a count mismatch or an unsupported ref; the caller maps the throw to a `2` exit.
+ * Contract refs must be `.yaml` or `.yml`. A contract written in code goes in a `.js` or `.mjs`
+ * config. Throws on a count mismatch or another file type. The caller turns the throw into exit 2.
  */
 function buildInlineConfig(
   cwd: string,
@@ -822,7 +812,7 @@ function buildInlineConfig(
     return loadContractFile(isAbsolute(ref) ? ref : resolve(cwd, ref))
   }
 
-  // Single contract over a tree: `validate <path> --contract x.yaml`.
+  // One contract over a folder: `validate <path> --contract x.yaml`.
   if (paths.length === 0) {
     if (contracts.length !== 1) {
       throw new Error(
@@ -836,7 +826,7 @@ function buildInlineConfig(
     }
   }
 
-  // Paired routing: `validate --contract a.yaml --path d1 --contract b.yaml --path d2`.
+  // Pairs: `validate --contract a.yaml --path d1 --contract b.yaml --path d2`.
   if (paths.length !== contracts.length) {
     throw new Error(
       `each --contract needs a matching --path (got ${contracts.length} --contract and ${paths.length} --path)`,
@@ -856,11 +846,11 @@ function buildInlineConfig(
 }
 
 /**
- * Load a `CorpusConfig` from a `.js`/`.mjs` module via dynamic `import()`. With an
- * explicit `--config`, that path (resolved against `cwd`) is used; otherwise the
- * default names are probed in `cwd`. The module's `default` export is the config.
- * A `.ts` config (or any unsupported extension), a missing file, or a module without
- * a `default` export each throw — the caller maps the throw to a `2` exit.
+ * Loads a `CorpusConfig`. With `--config`, that path (resolved against `cwd`) is used. Otherwise
+ * it looks for the default names in `cwd`. A `.yaml` or `.yml` file goes through
+ * `loadConfigFile`. A `.js` or `.mjs` file is loaded with `import()`, and its `default` export is
+ * the config. A `.ts` or other file, a missing file, or a module with no `default` export
+ * throws. The caller turns the throw into exit 2.
  */
 async function loadConfig(cwd: string, configFlag?: string): Promise<CorpusConfig> {
   let configPath: string
@@ -879,7 +869,6 @@ async function loadConfig(cwd: string, configFlag?: string): Promise<CorpusConfi
     configPath = found
   }
 
-  // A declarative YAML config compiles to a CorpusConfig via the declarative front-end.
   if (/\.ya?ml$/i.test(configPath)) {
     return loadConfigFile(configPath)
   }

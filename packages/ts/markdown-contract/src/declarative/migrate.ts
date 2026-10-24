@@ -1,7 +1,7 @@
 /**
  * The migration from YAML contract version 1 to version 2, behind `markdown-contract migrate`.
  * It works on the YAML document, so comments and key order survive. Two cases need care:
- * - Required fields: v1 fields are required unless marked `optional:`; v2 lists the required
+ * - Required fields: v1 fields are required unless marked `optional:`. v2 lists the required
  *   ones in `required: [...]`.
  * - Bounds beside a `format`: v1 ignored `min`, `max` and `pattern` next to a `format`, but v2
  *   would apply them, so they are dropped with a warning and the findings stay the same.
@@ -65,9 +65,9 @@ function flowSeq(cx: Cx, values: unknown[]): YAMLSeq {
 
 // ── schema nodes (frontmatter fields, table cells, list items) ──────────────────────
 
-/** Transform one v1 schema node in place into its v2 spelling. */
+/** Rewrites one v1 schema node in place in its v2 form. */
 function transformSchemaNode(cx: Cx, node: unknown, path: string): void {
-  if (!isMap(node)) return // malformed — leave for the compiler to reject
+  if (!isMap(node)) return // malformed: the compiler will reject it
   const type = scalarOf(node, 'type')
 
   // An object field's `optional` is consumed by its parent. Anywhere else (a table cell, a list
@@ -80,7 +80,7 @@ function transformSchemaNode(cx: Cx, node: unknown, path: string): void {
   switch (type) {
     case 'string': {
       if (has(node, 'format')) {
-        // v1 short-circuit: bounds/pattern beside a format were inert — drop, don't activate.
+        // v1 ignored these beside a format. Drop them so v2 does not start applying them.
         for (const inert of ['min', 'max', 'pattern']) {
           if (has(node, inert)) {
             deleteKey(node, inert)
@@ -119,8 +119,8 @@ function transformSchemaNode(cx: Cx, node: unknown, path: string): void {
       break // enum / const / boolean bases: wrappers only
   }
 
-  // After the base type is settled (`int` may have turned `number` into `integer`):
-  // nullable: true → type: [T, "null"], keeping T.
+  // After the base type is final (`int` may have turned `number` into `integer`),
+  // `nullable: true` becomes `type: [T, "null"]`.
   if (has(node, 'nullable')) {
     const base = scalarOf(node, 'type')
     if (typeof base === 'string') {
@@ -136,9 +136,9 @@ function transformSchemaNode(cx: Cx, node: unknown, path: string): void {
 }
 
 /**
- * Transform a v1 object schema (`fields` + `strict`, implicit-required) in place into the
- * v2 spelling (`properties` + `required` list + `additionalProperties`). Also used for the
- * frontmatter root, which additionally gains its explicit `type: object`.
+ * Rewrites a v1 object schema (`fields` and `strict`, fields required by default) in place in
+ * its v2 form (`properties`, a `required` list and `additionalProperties`). Also used for the
+ * frontmatter root, which gets an explicit `type: object`.
  */
 function transformObjectSchema(cx: Cx, node: YAMLMap, path: string): void {
   const fieldsPair = getPair(node, 'fields')
@@ -160,7 +160,7 @@ function transformObjectSchema(cx: Cx, node: YAMLMap, path: string): void {
   const strict = scalarOf(node, 'strict') === true
   deleteKey(node, 'strict')
 
-  // Assemble in canonical order: type, required, additionalProperties, properties.
+  // Key order: type, required, additionalProperties, properties.
   const typeAt = node.items.findIndex((p) => keyOf(p) === 'type')
   let at = typeAt + 1
   if (typeAt < 0) {
@@ -190,7 +190,7 @@ function transformBodyLevel(cx: Cx, level: unknown, path: string): void {
 function transformBodyNode(cx: Cx, node: unknown, path: string): void {
   if (!isMap(node)) return
 
-  // A gap has its own bounds; v1 ignored occurrence keys beside it, and v2 rejects them.
+  // A gap has its own bounds. v1 ignored count keys beside it, and v2 rejects them.
   if (has(node, 'gap')) {
     for (const key of ['optional', 'repeatable', 'min', 'max']) {
       if (has(node, key)) {
@@ -226,7 +226,7 @@ function transformBodyNode(cx: Cx, node: unknown, path: string): void {
     }
   }
 
-  // children: { … } → hoisted sections / order / additionalSections on the node itself.
+  // `children: { … }` becomes `sections`, `order` and `additionalSections` on the node itself.
   const childrenPair = getPair(node, 'children')
   if (childrenPair && isMap(childrenPair.value)) {
     const children = childrenPair.value as YAMLMap
@@ -235,7 +235,7 @@ function transformBodyNode(cx: Cx, node: unknown, path: string): void {
     for (const p of children.items) node.items.push(p)
   }
 
-  // content leaves: list.everyItem → items; table.cells.* are schema nodes.
+  // Content leaves: `list.everyItem` becomes `items`. `table.cells.*` are schema nodes.
   const contentPair = getPair(node, 'content')
   if (contentPair && isMap(contentPair.value)) {
     const content = contentPair.value as YAMLMap

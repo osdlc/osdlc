@@ -20,9 +20,8 @@ import type { ConsumptionFixture, ValidationFixture } from './harness.js'
  * partial fixtures match once their documented `# GAP:` finding is excluded.
  */
 
-// The fixture modules, found on disk. The walk recurses so a subdirectory can never hide a
-// fixture from the "peers exist" check: folder placement is not load-bearing. A fixture opts out
-// of the twin expectation explicitly with `peerless: true` (see below).
+// The fixture modules, found on disk. The walk recurses, so a fixture in a subfolder is still
+// checked for a peer. A fixture opts out with `peerless: true` (see below).
 async function loadModules<T>(rel: string): Promise<Record<string, { default: T }>> {
   const root = fileURLToPath(new URL(rel, import.meta.url))
   const files = readdirSync(root, { recursive: true, encoding: 'utf8' }).filter((f) =>
@@ -55,7 +54,7 @@ function fixtures<T>(mods: Record<string, { default: T }>): Entry<T>[] {
     .sort((a, b) => a.stem.localeCompare(b.stem))
 }
 
-/** A fixture's `.contract.yaml` twin: in the shared corpus for validation, beside it otherwise. */
+/** A fixture's `.contract.yaml` peer: in the shared corpus for validation, beside it otherwise. */
 const peerText = (key: string): string =>
   readFileSync(
     fileURLToPath(
@@ -67,7 +66,7 @@ const peerText = (key: string): string =>
     'utf8',
   )
 
-/** Whether a fixture's `.contract.yaml` twin exists on disk. */
+/** Whether a fixture's `.contract.yaml` peer exists on disk. */
 const hasPeer = (key: string): boolean => {
   try {
     peerText(key)
@@ -92,11 +91,11 @@ const valEntries = fixtures(valMods)
 const conEntries = fixtures(conMods)
 
 /**
- * Housekeeping existence check — intentionally SOFT (this is the only softened check; the two
- * behavioral parity describes below stay hard). A fixture that opts out with `peerless: true` is
- * accepted silently. A non-peerless fixture missing its `.contract.yaml` twin emits a NON-failing
- * CI warning via the vitest Test Annotations API (`annotate(msg, "warning")` → a GitHub Actions
- * warning annotation) — the test still PASSES. Folder placement gates nothing.
+ * Checks that each fixture has a `.contract.yaml` peer. This is the only check here that warns
+ * instead of failing. The two parity `describe`s below still fail. A fixture with
+ * `peerless: true` passes silently. Any other fixture with no peer gets a warning through the
+ * vitest Test Annotations API (`annotate(msg, "warning")`, a GitHub Actions warning), and the test
+ * still passes. Where a fixture file sits does not matter.
  */
 async function warnMissingPeers<T extends { peerless?: boolean }>(
   entries: Entry<T>[],
@@ -121,11 +120,10 @@ describe('YAML contract peers exist for every fixture', () => {
   })
 })
 
-// The behavioral parity describes run only fixtures that actually have a twin: `peerText()`
-// throws on any fixture with no `.contract.yaml`, so a peerless (intentionally twin-less) OR an
-// accidentally twin-less fixture is excluded — the latter is already surfaced as a soft warning
-// above, and must not become a hard failure here. Everything else is unchanged, so a
-// real TS⇄YAML mismatch on a fixture that DOES have a twin still fails hard.
+// The parity tests run only fixtures that have a peer, since `peerText()` throws on a fixture
+// with no `.contract.yaml`. A fixture that is `peerless`, or that lacks a peer by mistake, is
+// skipped. The second kind already gets a warning above. A real TS and YAML mismatch on a fixture
+// with a peer still fails.
 const hasTwin = <T extends { peerless?: boolean }>(e: Entry<T>): boolean =>
   !e.fx.peerless && hasPeer(e.key)
 

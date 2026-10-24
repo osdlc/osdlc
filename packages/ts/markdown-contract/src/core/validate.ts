@@ -1,19 +1,18 @@
 /**
- * The `Contract.validate` / `read` entry points — the one-pass over the planes that
- * produces the merged, deterministically sorted `Finding[]`.
- * `grammar.ts`'s `contract()` wires its `validate` / `read` methods straight to these,
- * passing the retained `ContractDef`.
+ * `Contract.validate` and `Contract.read`. `contract()` in `grammar.ts` calls these with its
+ * `ContractDef`.
  *
- * One pass:
- *   1. parse `source` (or accept a pre-parsed `DocTree`);
- *   2. run the STRUCTURE plane (`matchStructure`) — its kind-gate gates the content leaf;
- *   3. run the CONTENT plane (`matchContent`) — frontmatter Zod + each section's leaf;
- *   4. run the cross-plane `docRule(...)` rules over the built model (`def.rules`), each
- *      emitting `rule/*` findings via `ctx.finding(...)`;
- *   5. merge + deterministically SORT all findings (the plane-aware comparator below);
- *   6. GATE the model: `doc` present iff no `error`-level finding, built lazily.
+ * `validate` runs in one pass:
+ *   1. Parse `source`, or take a `DocTree` that is already parsed.
+ *   2. Warn on headings that skip a level.
+ *   3. Run the structure plane (`matchStructure`). A block of the wrong kind stops the content
+ *      check for that leaf.
+ *   4. Run the content plane (`matchContent`): the frontmatter schema and each section's leaf.
+ *   5. Run the `docRule(...)` rules (`def.rules`) over the typed model.
+ *   6. Merge and sort all findings (see `sortFindings`).
+ *   7. Set `doc` only when there is no `error`-level finding. It is built on first access.
  *
- * `read()` runs `validate` and returns `doc`, or throws {@link ContractError} carrying the
+ * `read()` runs `validate` and returns `doc`, or throws {@link ContractError} with the
  * error-level findings.
  */
 import { matchContent } from './content.js'
@@ -33,25 +32,24 @@ import type {
   ValidationResult,
 } from './types.js'
 
-/** A `DocTree` is the pre-parsed input shape; a string is parsed with the bundled projection. */
+/** Parses a string. A `DocTree` is returned as it is. */
 function asTree(input: string | DocTree): DocTree {
   return typeof input === 'string' ? parse(input) : input
 }
 
-// ── Deterministic ordering ─────────────────────────
+// ── Ordering ─────────────────────────
 
 /**
- * The merge planes, in their tie-break order. A finding's plane is its id prefix. `text` sits
- * after `content` and before `rule`: a declarative text constraint's `text/*` finding
- * sorts into its own plane rather than being lumped in with the custom-rule namespace.
+ * The planes, in tie-break order. A finding's plane is its id prefix. `text/*` findings from
+ * text checks have their own plane, after `content` and before `rule`, so they do not sort with
+ * custom rule ids.
  */
 const PLANE_ORDER = ['frontmatter', 'structure', 'content', 'text', 'rule'] as const
 
 /**
- * The plane a finding belongs to, derived from its id prefix. The named planes map by their
- * leading segment; any other prefix (a contract-chosen rule namespace like `task/...` or
- * `summary/...`, minted by `rule` / `docRule`) is the `rule` plane — so a custom rule id sorts
- * after `content` and `text`, as the plane order requires.
+ * The rank of a finding's plane, from its id prefix. Any prefix not in `PLANE_ORDER` (an id a
+ * contract's `rule` or `docRule` chose, such as `task/...` or `summary/...`) ranks as `rule`, so
+ * custom rule ids sort after `content` and `text`.
  */
 function planeRank(id: string): number {
   const area = id.slice(0, id.indexOf('/'))
@@ -60,12 +58,12 @@ function planeRank(id: string): number {
 }
 
 /**
- * Sort findings deterministically so goldens pin:
- *   1. ascending `pos.line` — a no-`pos` (whole-document) finding sorts FIRST, as line 0;
- *   2. ties on a line break by `pos.col` (a no-`col` finding sorts first, as col 0);
- *   3. then by PLANE order (`frontmatter` → `structure` → `content` → `text` → `rule`);
- *   4. then by stable emission order (the index the finding was collected at).
- * The sort is total and stable; the `i` tie-break makes it deterministic across engines.
+ * Sorts findings into a fixed order, so expected findings in tests can be compared exactly:
+ *   1. By `pos.line`, ascending. A finding with no `pos` (whole document) counts as line 0.
+ *   2. Then by `pos.col`. A finding with no `col` counts as column 0.
+ *   3. Then by plane (`frontmatter`, `structure`, `content`, `text`, `rule`).
+ *   4. Then by the order the findings were collected in.
+ * The last key makes the order the same in every engine.
  */
 function sortFindings(findings: Finding[]): Finding[] {
   return findings
@@ -80,20 +78,18 @@ function sortFindings(findings: Finding[]): Finding[] {
       const pa = planeRank(a.f.id)
       const pb = planeRank(b.f.id)
       if (pa !== pb) return pa - pb
-      return a.i - b.i // stable emission order
+      return a.i - b.i
     })
     .map((x) => x.f)
 }
 
-// ── The one-pass orchestration ─────────────────────────────────────────────────────
+// ── The pass ─────────────────────────────────────────────────────
 
 /**
- * Run the cross-plane `docRule(...)` rules over the built model, collecting their findings.
- * Each rule's `fn(doc, ctx, tree)` sees the whole typed doc (both planes) and also the projected
- * `tree` — so a whole-document scope can pin a finding at the exact offending source line — and
- * mints `rule/*` findings through `ctx.finding(...)`, which stamps `path` and the registry default
- * level. The model is built once here only when the contract declares rules (so a rule-free
- * validation never forces model construction).
+ * Runs the `docRule(...)` rules over the typed model and adds their findings to `out`. Each
+ * rule's `fn(doc, ctx, tree)` gets the typed doc and the parse tree, so it can report the exact
+ * source line. Its findings come from `ctx.finding(...)`, which sets `path` and the default
+ * level. The model is built here only when the contract has rules.
  */
 function runDocRules<F, B>(
   def: ContractDef<F, B>,
@@ -104,8 +100,8 @@ function runDocRules<F, B>(
 ): void {
   if (!def.rules || def.rules.length === 0) return
   const doc = buildModel(tree, def, { path: ctx.path }, values)
-  // Document-scoped rules (incl. the body-root `textRule`) have no nearer description than the
-  // contract root, so their findings carry it as `hint` when one is authored.
+  // Document rules (including a `textRule` on the whole body) have no description nearer than
+  // the contract's, so their findings carry it as `hint` when there is one.
   const rctx = withHint(ctx, def.description)
   for (const r of def.rules) {
     out.push(...r.run(doc as Doc, rctx, tree))
@@ -113,12 +109,11 @@ function runDocRules<F, B>(
 }
 
 /**
- * The "show me everything" door: problems come back as findings, not exceptions. Parses a `source: string`
- * (bundled projection) or accepts a pre-parsed `DocTree`. Runs every plane in one
- * pass, merges + sorts the findings, and gates the typed model on no error-level
- * finding: `doc` is built lazily (a getter) so a passing fixture that only reads
- * `.findings` never forces model construction; when there is an error-level finding, `doc`
- * is `undefined`. The projection (`tree`) is always returned, valid or not.
+ * Checks a document and returns problems as findings. It does not throw on a bad document.
+ * Parses a `source` string, or takes a `DocTree` that is already parsed. Runs every plane in
+ * one pass and sorts the findings. `doc` is set only when there is no error-level finding. It
+ * is a getter, so the typed model is built only when a caller reads it. `tree` is always
+ * returned.
  */
 export function validate<F, B>(
   def: ContractDef<F, B>,
@@ -129,20 +124,18 @@ export function validate<F, B>(
   const fctx = makeCtx(ctx.path, defaultRegistry())
 
   const findings: Finding[] = []
-  // Contract-independent outline check: a sub-heading that skips a level (H2→H4) warns,
-  // whether or not the grammar declares those sections. Its nearest
-  // enclosing description is the contract root's, when one is authored.
+  // A heading that skips a level (H2 to H4) warns, whatever the grammar declares. Its hint is
+  // the contract's description, when there is one.
   findings.push(...scanHeadingDepthJumps(tree.root, withHint(fctx, def.description)))
-  // Structure plane — its kind-gate gates the content leaf (a non-table never reaches
-  // table-column validation), so it must run before content.
+  // Structure runs before content. A block of the wrong kind (say, not a table) never reaches
+  // the content check for that leaf (say, table columns).
   if (def.body) {
     findings.push(...matchStructure(tree, def.body, fctx, def.description))
   }
-  // Content plane: frontmatter Zod + each section's content leaf over a present, correct-kind
-  // block. Guarded inside `matchContent` so it never re-reports the structure kind-gate.
+  // Content: the frontmatter schema and each section's leaf, on blocks of the right kind.
+  // `matchContent` skips the wrong-kind blocks so it does not report them twice.
   const values = createParsedValues()
   findings.push(...matchContent(tree, def, fctx, values))
-  // Rule plane: cross-plane `docRule(...)` over the built model (only when rules exist).
   runDocRules(def, tree, fctx, values, findings)
 
   const sorted = sortFindings(findings)
@@ -150,8 +143,7 @@ export function validate<F, B>(
 
   const result: ValidationResult<F, B> = { findings: sorted, tree }
   if (!hasError) {
-    // `doc` present iff valid, built LAZILY — a passing fixture that only reads `.findings`
-    // never forces model construction. A getter defers the build to first access and caches.
+    // A getter builds the model on first access and caches it.
     let built: Doc<F, B> | undefined
     Object.defineProperty(result, 'doc', {
       enumerable: true,
@@ -162,14 +154,12 @@ export function validate<F, B>(
       },
     })
   }
-  // When `hasError`, `doc` stays absent (the property is simply not defined ⇒ `undefined`).
   return result
 }
 
 /**
- * The "give me the data or fail" door — returns the typed model, or throws
- * {@link ContractError} carrying the error-level findings. Runs `validate`,
- * then either returns `doc` (no error-level finding) or throws with the error findings.
+ * Runs `validate` and returns the typed model. Throws {@link ContractError} with the
+ * error-level findings when there are any.
  */
 export function read<F, B>(def: ContractDef<F, B>, source: string, ctx: ValidateCtx): Doc<F, B> {
   const { findings, doc } = validate<F, B>(def, source, ctx)

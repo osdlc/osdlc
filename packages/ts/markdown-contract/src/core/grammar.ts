@@ -97,7 +97,7 @@ function assertNoKeyCollision(specs: readonly Spec[]): void {
     else if (inner.kind === 'oneOf') primaryName = (inner as OneOfSpec).names[0]
     if (primaryName === undefined) continue
     const key = toCamelKey(primaryName)
-    if (key === '') continue // no generated alias → cannot collide on a key
+    if (key === '') continue // no generated key, so nothing to collide with
     const prior = keyToName.get(key)
     if (prior !== undefined && prior !== primaryName) {
       throw new ContractBuildError(
@@ -109,7 +109,7 @@ function assertNoKeyCollision(specs: readonly Spec[]): void {
   }
 }
 
-/** Unwrap `optional(spec)` to its inner tagged spec. */
+/** Unwraps `optional(spec)` to the spec inside it. */
 function unwrapInner(spec: Spec): SectionSpec | OneOfSpec | GapSpec {
   return spec.kind === 'optional' ? unwrapInner((spec as OptionalSpec).spec) : spec
 }

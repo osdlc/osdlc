@@ -1,7 +1,7 @@
 # Fixture-driven tests
 
-`tests/` holds the suites that run the whole engine. Unit tests sit next to their
-module in `src/` as `*.test.ts` files.
+The suites at the top of `tests/` run the whole engine. Unit tests sit in folders under
+`tests/` that mirror `src/`, such as `tests/core/`.
 
 ## Layout
 

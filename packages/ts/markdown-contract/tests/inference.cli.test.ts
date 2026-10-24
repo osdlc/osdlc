@@ -1,11 +1,11 @@
 /**
  * CLI-level tests for `markdown-contract init`.
  *
- * These drive the real CLI through `runCli` over throwaway copies of the inference fixture
- * vaults (copied into an OS temp dir via `mkdtempSync`, so a write-mode `init` never touches
- * the checked-in fixtures). They cover the verb's full surface: `--dry-run`, the default write
- * + `--force` clobber refusal, `--meta --depth N`, `--inline`, the `--check` drift guard,
- * multi-root runs, and `--include`/`--exclude` scoping.
+ * These run the real CLI through `runCli` over temporary copies of the inference fixture
+ * folders (made with `mkdtempSync`), so a writing `init` never touches the checked-in
+ * fixtures. They cover `--dry-run`, the default write and its refusal to overwrite without
+ * `--force`, `--meta --depth N`, `--inline`, the `--check` drift check, multi-root runs, and
+ * `--include`/`--exclude`.
  */
 import {
   cpSync,
@@ -64,7 +64,7 @@ describe('markdown-contract init (CLI)', () => {
     const written = await runCli(['validate', dir], { cwd: dir })
     expect(written.code).toBe(0) // accept-by-construction over the written config
 
-    // A second run refuses to clobber the existing config.
+    // A second run refuses to overwrite the existing config.
     const second = await runCli(['init', dir], { cwd: dir })
     expect(second.code).toBe(2)
 
@@ -131,15 +131,15 @@ describe('markdown-contract init (CLI)', () => {
     expect(existsSync(join(cwd, 'contracts'))).toBe(false)
     expect(readdirSync(cwd)).toHaveLength(0)
 
-    // The clobber guard operates on the NEW default location: a re-run from the same foreign
-    // cwd still refuses to overwrite the scaffold at the inferred root without --force.
+    // The overwrite check applies at the default location: a re-run from the same foreign cwd
+    // still refuses to overwrite the files at the inferred root without --force.
     const reRun = await runCli(['init', vault, '--meta'], { cwd })
     expect(reRun.code).toBe(2)
   })
 
   test('init <dir> then init <dir> --check round-trips from a foreign cwd (exit 0)', async () => {
-    // The round-trip that fails today: with the scaffold written to the inferred root, `--check`
-    // (which loads resolve(<dir>, markdown-contract.yaml)) finds it from any cwd.
+    // With the files written to the inferred root, `--check` (which loads
+    // resolve(<dir>, markdown-contract.yaml)) finds them from any cwd.
     const vault = stageVault('01-flat-uniform')
     const cwd = tmp('mc-cwd-')
 
@@ -275,9 +275,8 @@ describe('markdown-contract init — heading key-collision', () => {
   }
 
   test('does not crash on key-colliding peer headings — exits 2 with a descriptive message', async () => {
-    // Two case-variant headings as PEERS in one doc both key to `scheduleForToday`. This used to
-    // escape as an uncaught ContractBuildError stack trace from the self-check; now it is a clean
-    // exit-2 diagnostic naming the file.
+    // Two headings in one doc that differ only in case both key to `scheduleForToday`. The run
+    // exits 2 with a message naming the file, not an uncaught ContractBuildError.
     const dir = freshVault()
     writeFileSync(
       join(dir, 'both.md'),

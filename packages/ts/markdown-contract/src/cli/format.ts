@@ -1,18 +1,16 @@
 /**
- * The CLI output formatters — `human`, `json`, `sarif`. Each takes the aggregated
- * `Finding[]` from the runner and returns a string the CLI writes to stdout. Pure:
- * no IO, no `process`. `./bin.ts` owns the streams and the exit code.
+ * The CLI output formats: `human`, `json` and `sarif`. Each takes the runner's `Finding[]` and
+ * returns the text the CLI prints. None of them does IO or touches `process`. `./bin.ts` writes
+ * the output.
  *
- * - `human`  — a readable per-file report plus a summary count.
- * - `json`   — the findings array as-is (machine-parseable, stable shape).
- * - `sarif`  — a valid SARIF 2.1.0 log for code-scanning surfaces (GitHub, etc.).
+ * - `human`: a report per file and a count of findings.
+ * - `json`: the findings array as it is.
+ * - `sarif`: a SARIF 2.1.0 log for code scanning tools (GitHub and others).
  *
- * Plus `formatRunSummary` — the additive, human-only run summary the `validate` path
- * prepends to the findings report (total files scanned/matched/unmatched, and a
- * per-contract breakdown when named rules exist). Also pure.
+ * `formatRunSummary` gives the run summary that `validate` prints before a human report: files
+ * scanned, matched and unmatched, and a count per contract when rules are named.
  *
- * Imports flow one way: cli → runner/core (types only). The only runner dependency is
- * the `RunStats` shape `formatRunSummary` renders.
+ * This module imports `countByLevel` from core and only the `RunStats` type from the runner.
  */
 import { countByLevel, type Finding, type FindingLevel } from '../core/index.js'
 import type { RunStats } from '../runner/index.js'
@@ -21,17 +19,16 @@ const SARIF_SCHEMA =
   'https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json'
 
 /**
- * The human report: one `"<path>:<line> <level> <id> — <message>"` line per finding,
- * grouped by file (files in first-seen order) with each file's findings in the order
- * the runner already sorted them. A finding with no `pos` prints without a `:line`;
- * a finding carrying a `hint` adds an
- * indented `  hint: <text>` line beneath its own. A trailing summary line counts
- * findings by level. An empty corpus reports "No findings."
+ * The human report: one `"<path>:<line> <level> <id> — <message>"` line per finding, grouped
+ * by file (in first-seen order), each file's findings in the order the runner gave them. A
+ * finding with no `pos` prints without `:line`. A finding with a `hint` gets an indented
+ * `  hint: <text>` line below it. A last line counts findings by level. With no findings it
+ * prints "No findings."
  */
 export function formatHuman(findings: Finding[]): string {
   if (findings.length === 0) return 'No findings.'
 
-  // Group by file path, preserving first-seen order of the paths.
+  // Group by file path, in first-seen order.
   const byPath = new Map<string, Finding[]>()
   for (const f of findings) {
     const list = byPath.get(f.path)
@@ -54,24 +51,23 @@ export function formatHuman(findings: Finding[]): string {
   return lines.join('\n')
 }
 
-/** `n word` with a plural `s` unless `n === 1` — e.g. `1 file`, `39 files`, `6 contracts`. */
+/** `n word`, with an `s` unless `n === 1`: `1 file`, `39 files`, `6 contracts`. */
 function plural(n: number, word: string): string {
   return `${n} ${word}${n === 1 ? '' : 's'}`
 }
 
 /**
- * The human run summary — additive evidence that the run happened and how it routed,
- * prepended to the findings report on the `validate` path (so it shows even on a clean,
- * `No findings.` run). Pure: no IO, no `process`.
+ * The run summary `validate` prints before the human report, so a clean run still shows which
+ * files it checked.
  *
- * `labels[i]` is the contract name for `stats.matchedByRule[i]` (parallel to `config.rules`),
- * or `undefined` for an unnamed rule (an inline `--contract` run). The total line always prints:
+ * `labels[i]` is the contract name for `stats.matchedByRule[i]` (in `config.rules` order), or
+ * `undefined` for a rule with no name (a `--contract` run). The total line always prints:
  *
  *   Scanned 12 files; 12 matched, 0 unmatched
  *
- * When ANY rule is named (the `--config` form), the total line gains an `across K contracts`
- * clause (K = number of named rules) and one indented `  <name>: <count>` row per named rule,
- * in rule order — including a named rule that matched 0 (evidence it routed nothing):
+ * When any rule has a name (the `--config` form), the total line adds `across K contracts`
+ * (K named rules) and one indented `  <name>: <count>` row per named rule, in rule order. A
+ * named rule that matched nothing still gets a row:
  *
  *   Scanned 39 files; 38 matched across 6 contracts, 1 unmatched
  *     capability: 8
@@ -90,14 +86,14 @@ export function formatRunSummary(stats: RunStats, labels: Array<string | undefin
 }
 
 /**
- * The JSON report: the findings array serialized with two-space indent. The shape is
- * exactly the `Finding[]` the runner returns, so it round-trips through `JSON.parse`.
+ * The JSON report: the findings array with a two-space indent. It is exactly the runner's
+ * `Finding[]`, so `JSON.parse` gives it back.
  */
 export function formatJson(findings: Finding[]): string {
   return JSON.stringify(findings, null, 2)
 }
 
-/** SARIF level mapping: error→"error", warn→"warning", report→"note". */
+/** The SARIF level for a finding level: error→"error", warn→"warning", report→"note". */
 function sarifLevel(level: FindingLevel): 'error' | 'warning' | 'note' {
   switch (level) {
     case 'error':
@@ -110,16 +106,14 @@ function sarifLevel(level: FindingLevel): 'error' | 'warning' | 'note' {
 }
 
 /**
- * The SARIF 2.1.0 report. A single run whose `tool.driver` is `markdown-contract`;
- * `driver.rules` lists every distinct finding id seen (deduped), and each finding
- * becomes one `result` with its `ruleId`, mapped `level`, `message.text`, and a
- * `physicalLocation` pointing at the file (and `region.startLine` when the finding
- * has a `pos`; the region is omitted for whole-document findings). A finding's
- * `hint` rides in the result's `properties: { hint }` bag. The whole object
- * round-trips through `JSON.parse` / `JSON.stringify`.
+ * The SARIF 2.1.0 report: one run whose `tool.driver` is `markdown-contract`. `driver.rules`
+ * lists each distinct finding id once. Each finding becomes one `result` with its `ruleId`,
+ * `level`, `message.text` and a `physicalLocation` for the file. The location has
+ * `region.startLine` when the finding has a `pos`, and no region for a whole-document finding.
+ * A finding's `hint` goes in the result's `properties: { hint }`.
  */
 export function formatSarif(findings: Finding[]): string {
-  // Distinct rule ids, in first-seen order, for the driver's rule descriptors.
+  // Each finding id once, in first-seen order, for `driver.rules`.
   const ruleIds: string[] = []
   const seen = new Set<string>()
   for (const f of findings) {

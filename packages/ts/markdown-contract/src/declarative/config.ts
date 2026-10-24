@@ -76,8 +76,8 @@ function compileRule(
   const out: { include: string[]; exclude?: string[]; contract: Contract; name?: string } = {
     include: rule.include as string[],
     contract: resolveContract(rule.contract, `${path}.contract`, contracts, baseDir),
-    // A string contract ref IS the human contract name (e.g. `capability`, `task`) — carry it as the
-    // rule's label for the CLI run summary. Inline contract objects have no name, so leave it unset.
+    // A string contract ref is the contract's name (such as `capability` or `task`). The CLI run
+    // summary prints it for the rule. An inline contract object has no name.
     ...(typeof rule.contract === 'string' ? { name: rule.contract } : {}),
   }
   if ('exclude' in rule) {
@@ -100,9 +100,8 @@ function resolveContract(
       `${path}: a rule needs a contract (a name, a .yaml path, or an inline contract)`,
     )
   if (isMap(ref)) {
-    // An inline contract object (frontmatter? / body?) — no envelope of its own; it compiles
-    // with the v2 compiler set, like everything else. A referenced .yaml file keeps
-    // its own envelope.
+    // An inline contract object (`frontmatter`, `body`). It needs no envelope. A referenced
+    // .yaml file has its own.
     return compileContractObject(ref)
   }
   if (typeof ref !== 'string') {
@@ -110,7 +109,7 @@ function resolveContract(
       `${path}: contract must be a name, a .yaml path, or an inline contract`,
     )
   }
-  // A name resolves through the `contracts` map; otherwise the string is itself a path.
+  // A name is looked up in the `contracts` map. Otherwise the string is a path.
   const target = typeof contracts[ref] === 'string' ? (contracts[ref] as string) : ref
   if (!/\.ya?ml$/i.test(target)) {
     throw new DeclarativeError(
