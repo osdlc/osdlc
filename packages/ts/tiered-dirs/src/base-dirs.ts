@@ -4,12 +4,12 @@ import { join } from 'node:path'
 import { TieredDirsError } from './errors.ts'
 
 /**
- * The horizontal axis: how durable a piece of state is. The vertical axis —
- * who shares it — is the tier (see `tiered-dirs.ts`).
+ * How long a piece of state must last. The other axis, who shares it, is the
+ * tier (see `tiered-dirs.ts`).
  *
  * A caller names both: `suite('notes').cache()`.
  *
- * Exhaustive on purpose, as in the Rust twin: a new home changes every
+ * Exhaustive on purpose, as in the Rust crate: a new home changes every
  * caller's layout, so adding one is a breaking (0.x minor) release.
  *
  * Stable in 0.x.
@@ -25,10 +25,10 @@ export const HOMES: readonly Home[] = ['durable', 'config', 'cache', 'state', 'l
 
 /**
  * Which per-OS table the homes come from when no override moves them. The two
- * differ on macOS only: `native` is Apple's places, `xdg` is the XDG Base
+ * differ on macOS only: `native` is Apple's locations, `xdg` is the XDG Base
  * Directory rules. Linux uses XDG under both, and on Windows `xdg` means
- * `native`. A CLI or developer tool uses `xdg`; a GUI app uses `native`. The
- * Rust twin's `Convention` has the same two.
+ * `native`. A CLI or developer tool uses `xdg`. A GUI app uses `native`. The
+ * Rust crate's `Convention` has the same two.
  *
  * A minor release may add a convention, as the Rust `Convention` is
  * `#[non_exhaustive]`. A `switch` over it needs a `default` arm.
@@ -51,7 +51,7 @@ function findConvention(value: string): Convention | undefined {
 
 /**
  * Parse a {@link Convention}: exactly `native` or `xdg`, in lower case,
- * untrimmed. The Rust twin's `Convention::from_str` is the same rule.
+ * untrimmed. The Rust crate's `Convention::from_str` is the same rule.
  *
  * Throws {@link TieredDirsError} with code `INVALID_CONVENTION` for any other
  * value. {@link EnvVars.convention} is read differently: it is trimmed first.
@@ -70,13 +70,13 @@ export function parseConvention(value: string): Convention {
 /**
  * The per-OS roots the whole package is built on.
  *
- * This is the injectable seam. Nothing below it reads the environment: a
- * `TieredDirs` resolves its roots once, at construction, and every path after that
- * is pure string work. That is what lets a server that cannot read the
- * environment hand in roots from its own configuration, while a command-line
+ * A caller can build this value itself and pass it in. Nothing below it reads
+ * the environment. A `TieredDirs` resolves its roots once, at construction, and
+ * every path after that is pure string work. So a server that cannot read the
+ * environment can pass roots from its own configuration, while a command-line
  * program builds them from the environment.
  *
- * Every field is `readonly`: build a new value to change a root, as
+ * Every field is `readonly`. Build a new value to change a root, as
  * {@link rootedBaseDirs} and the `overrides` option do.
  *
  * Stable in 0.x.
@@ -90,14 +90,13 @@ export interface BaseDirs {
   readonly cache: string
   /** State that should outlive a restart but is not user data: history, trust markers. */
   readonly state: string
-  /** Log files. Never folded into `cache` — the OS purges cache. */
+  /** Log files. Never under `cache`, because the OS purges cache. */
   readonly logs: string
   /** Pidfiles, sockets, locks. Never under `cache`; see {@link systemBaseDirs}. */
   readonly runtime: string
   /**
-   * The platform temp directory. Not a {@link Home}: nothing here outlives the
-   * call that wrote it, so it is untiered and reached through `TieredDirs.scratch()`
-   * rather than through a tier.
+   * The platform temp directory. Not a {@link Home}. Nothing here outlives the
+   * call that wrote it, so it has no tier. Reach it through `TieredDirs.scratch()`.
    */
   readonly scratch: string
 }
@@ -145,7 +144,7 @@ export interface EnvVars {
  * {@link EnvVars} named from one prefix: `<P>_ROOT`, `<P>_DURABLE_DIR`,
  * `<P>_CONFIG_DIR`, `<P>_CACHE_DIR`, `<P>_STATE_DIR`, `<P>_LOGS_DIR`,
  * `<P>_RUNTIME_DIR`, `<P>_SCRATCH_DIR`, `<P>_REQUIRE_OVERRIDE` and
- * `<P>_CONVENTION`. The Rust twin's `env_vars!` derives the same names.
+ * `<P>_CONVENTION`. The Rust crate's `env_vars!` derives the same names.
  *
  * Stable in 0.x.
  */
@@ -179,7 +178,7 @@ export function overrideVars(vars: EnvVars): readonly string[] {
 
 /**
  * Whether `env` sets any of {@link overrideVars} to a non-empty value. The
- * Rust twin's `EnvVars::is_overridden` is the same test.
+ * Rust crate's `EnvVars::is_overridden` is the same test.
  *
  * Stable in 0.x.
  */
@@ -195,9 +194,9 @@ export function isOverridden(
  * `<root>/cache`, `<root>/state`, `<root>/logs`, `<root>/scratch`, and runtime
  * at `<root>/durable/run`.
  *
- * The test and parity-fixture seam, and the layout {@link EnvVars.root} selects. The
- * Rust twin's `BaseDirs::rooted` has the same layout, so a fixture row asserts
- * identical absolute paths on both arms.
+ * Tests and the parity fixture use this layout, and {@link EnvVars.root}
+ * selects it. The Rust crate's `BaseDirs::rooted` has the same layout, so a
+ * fixture row checks identical absolute paths in both languages.
  *
  * Stable in 0.x.
  */
@@ -216,9 +215,9 @@ export function rootedBaseDirs(root: string): BaseDirs {
 
 /**
  * How {@link systemBaseDirs} and `TieredDirs.fromEnv` resolve. Every input is
- * optional and injectable. The Rust twin's `ResolveOptions` has `convention`
- * and `testRoot`; `platform`, `env`, `home` and `overrides` are this twin's
- * own seams.
+ * optional and injectable. The Rust crate's `ResolveOptions` has `convention`
+ * and `testRoot`. `platform`, `env`, `home` and `overrides` exist only in this
+ * package.
  *
  * Stable in 0.x.
  */
@@ -227,20 +226,20 @@ export interface ResolveOptions {
   platform?: string
   /**
    * The per-OS table to use. Defaults to `native`. {@link EnvVars.convention}
-   * beats it when set.
+   * overrides it when set.
    */
   convention?: Convention
   /**
-   * Defaults to `process.env`. Injecting this means the supplied environment
-   * is the whole story: the host's real home directory is not consulted. The
-   * override variables are read from it too.
+   * Defaults to `process.env`. When given, it is the only environment read.
+   * The host's real home directory is not used. The override variables are
+   * read from it too.
    */
   env?: Record<string, string | undefined>
   /** Home directory. Overrides `HOME` / `USERPROFILE` when given. */
   home?: string
   /**
-   * Replace individual roots, ahead of the environment. An overridden root is
-   * taken as-is and needs no home directory. It is not a base for the others:
+   * Replace individual roots. These take precedence over the environment. An
+   * overridden root is used as-is and needs no home directory. It is not a base for the others:
    * overriding `durable` here leaves `runtime` and `logs` where the
    * environment and the per-OS table put them.
    */
@@ -256,30 +255,31 @@ export interface ResolveOptions {
 }
 
 /**
- * Resolve the base directories. Each takes the first answer in this order:
+ * Resolve the base directories. Each root takes the first value set, in this
+ * order:
  *
  * 1. `opts.overrides`.
  * 2. The root's own variable, `vars.dirs[key]` ({@link EnvVars.dirs}).
- * 3. `vars.root` ({@link EnvVars.root}) — the {@link rootedBaseDirs} layout.
+ * 3. `vars.root` ({@link EnvVars.root}), with the {@link rootedBaseDirs} layout.
  * 4. The per-OS table below, for the convention: {@link EnvVars.convention}
  *    when set, else `opts.convention`, else `native`. The variable is
  *    trimmed, then must be exactly `native` or `xdg`; anything else throws.
  *
  * Runtime follows durable: when the runtime variable is unset but durable is
  * moved by step 2 or 3, runtime is `<durable>/run`, never the OS runtime
- * directory. An empty variable counts as unset; a relative one throws. The
- * Rust twin's `BaseDirs::from_env` resolves steps 2–4 the same way, held to it
- * by the parity fixture's `env_cases`.
+ * directory. An empty variable counts as unset. A relative one throws. The
+ * Rust crate's `BaseDirs::from_env` resolves steps 2–4 the same way. The parity
+ * fixture's `env_cases` check that.
  *
- * The per-OS table this package owns so no caller has to. Linux, and macOS
- * under `xdg`, use the XDG column; Windows uses its column under both.
+ * The per-OS table follows. Linux, and macOS under `xdg`, use the XDG column.
+ * Windows uses its column under both conventions.
  *
  * | home    | macOS, `native`                | XDG (Linux/other; macOS `xdg`)  | Windows              |
  * |---------|--------------------------------|---------------------------------|----------------------|
  * | durable | `~/Library/Application Support`| `$XDG_DATA_HOME`, `~/.local/share` | `%APPDATA%`, `<home>/AppData/Roaming` |
  * | config  | `~/Library/Application Support`| `$XDG_CONFIG_HOME`, `~/.config` | `%APPDATA%`, `<home>/AppData/Roaming` |
  * | cache   | `~/Library/Caches`             | `$XDG_CACHE_HOME`, `~/.cache`   | `%LOCALAPPDATA%`, `<home>/AppData/Local` |
- * | state   | `~/Library/Application Support`| `$XDG_STATE_HOME`, `~/.local/state` | `<local>/state`, where `<local>` is the cache cell |
+ * | state   | `~/Library/Application Support`| `$XDG_STATE_HOME`, `~/.local/state` | `<local>/state`, where `<local>` is the cache entry |
  * | logs    | `~/Library/Logs`               | `$XDG_STATE_HOME`, `~/.local/state` | `<durable>/logs` |
  * | runtime | `<durable>/run`                | `$XDG_RUNTIME_DIR`, `<durable>/run` | `<durable>/run`  |
  * | scratch | `$TMPDIR`, `/tmp`              | `$TMPDIR`, `/tmp`               | `%TEMP%`, `%TMP%`, `<home>/AppData/Local/Temp` |
@@ -287,23 +287,23 @@ export interface ResolveOptions {
  * A relative `XDG_*` value is ignored, as the XDG spec says, and `~` is not
  * expanded. Under XDG, logs and state share one directory.
  *
- * Two of those cells need care:
+ * Two of those entries need care:
  *
- * - `logs` has no cross-platform library equivalent. macOS wants
- *   `~/Library/Logs`; where the OS offers nothing, logs land at
- *   `<durable>/logs`. They are never folded into `cache`.
- * - `runtime` is real only under the XDG table (Linux, and macOS under
- *   `xdg`), and only when `XDG_RUNTIME_DIR` is set. Everywhere else it
- *   resolves under `<durable>/run` — deliberately not under cache, because the
- *   OS may purge cache while the process a pidfile describes is still alive.
- *   State is never cache either: on Windows it is `<local>/state`, beside
+ * - `logs` has no cross-platform library equivalent. macOS uses
+ *   `~/Library/Logs`. Where the OS has no logs directory, logs go to
+ *   `<durable>/logs`. They are never under `cache`.
+ * - `runtime` is an OS directory only under the XDG table (Linux, and macOS
+ *   under `xdg`), and only when `XDG_RUNTIME_DIR` is set. Everywhere else it
+ *   is `<durable>/run`. It is not under cache on purpose, because the OS may
+ *   purge cache while the process a pidfile describes is still alive.
+ *   State is never cache either. On Windows it is `<local>/state`, beside
  *   each tier's cache folder. The reserved segment names keep them apart.
  *
- * `scratch` is resolved from the injected environment rather than by calling
- * `os.tmpdir()`, which reads the real `process.env` and would make an injected
- * environment stop being the whole story. The Rust twin asks its own platform
- * the same question; the two roots need not match, because parity pins only
- * what sits below a root.
+ * `scratch` is read from the injected environment, not from `os.tmpdir()`.
+ * `os.tmpdir()` reads the real `process.env`, so an injected environment
+ * would no longer be the only one read. The Rust crate asks its own platform.
+ * The two roots need not match, because parity checks only the paths below a
+ * root.
  *
  * Throws {@link TieredDirsError}. Its `code` is `MISSING_BASE_DIR` when a
  * root falls back to the home directory and none can be found,
@@ -313,33 +313,31 @@ export interface ResolveOptions {
  * sandboxes do not always have a home directory.
  *
  * Two test rules run first, and only when neither `env` nor `home` is
- * injected (an injected environment is the whole story):
+ * injected (an injected environment is the only one read):
  *
  * - In a test runner process with the root variable unset and `HOME` not
  *   moved, the root reads as {@link testRoot}:
  *   `<tmp>/tiered-dirs-test-<pid>-<start ms>`, unique per process and
  *   cached per module instance (per test file under Vitest's default isolation).
- *   `opts.testRoot: false` turns this rule off; the next one still applies.
- *   A test runner process has a test file as its entry point and runs
- *   under `NODE_ENV=test`, `NODE_TEST_CONTEXT` (set by `node --test`), Bun, or
- *   a Vitest worker. Bun counts on its own because `bun test` keeps a
- *   `NODE_ENV` that is already set. A Vitest worker has `VITEST_WORKER_ID` or
- *   `VITEST_POOL_ID` set, and its entry point is a file in the `dist/workers`
- *   folder of the `vitest` package (Vitest 4 and later) or tinypool's
- *   `dist/entry/process.js` or `dist/entry/worker.js` (Vitest 3 and earlier),
- *   not the test file, so a worker counts by that entry point instead of the
- *   test-file check. A child a test spawns
- *   inherits the Vitest variables but has a different entry point, so it gets
- *   no default. A test that points `HOME` at a fixture, in-process or for a child,
- *   keeps it.
+ *   `opts.testRoot: false` turns this rule off. The next one still applies.
+ *   A test runner process is one of two kinds. The first has a test file as
+ *   its entry point and runs under `NODE_ENV=test`, `NODE_TEST_CONTEXT` (set
+ *   by `node --test`) or Bun. Bun counts on its own because `bun test` keeps a
+ *   `NODE_ENV` that is already set. The second is a Vitest worker: it has
+ *   `VITEST_WORKER_ID` or `VITEST_POOL_ID` set, and its entry point is a file
+ *   in the `vitest` package's `dist/workers` folder (Vitest 4 and later) or
+ *   tinypool's `dist/entry/process.js` or `dist/entry/worker.js` (Vitest 3 and
+ *   earlier). A child a test spawns inherits the Vitest variables but has a
+ *   different entry point, so it gets no default. A test that points `HOME` at
+ *   a fixture, in-process or for a child, keeps that `HOME`.
  * - With {@link EnvVars.requireOverride} set, a root that would fall back to
  *   the per-OS table throws a {@link TieredDirsError} naming the fix.
  *
- * The Rust twin's `BaseDirs::from_env` applies the same two rules, with two
- * differences. It detects a test by its cargo test binary rather than by the
- * environment. And the "`HOME` not moved" condition exists only here: a
- * TypeScript test can point `HOME` at a fixture to redirect the home, which a
- * Rust test cannot do through `dirs`, so the TypeScript rule yields to it.
+ * The Rust crate's `BaseDirs::from_env` applies the same two rules, with two
+ * differences. It detects a test by its cargo test binary, not by the
+ * environment. And the "`HOME` not moved" condition exists only here. A
+ * TypeScript test can point `HOME` at a fixture to move the home, which a Rust
+ * test cannot do through `dirs`, so the TypeScript rule gives way to it.
  * The cost is that a CI job whose `HOME` differs from the passwd home, such as
  * a GitHub Actions container job (`HOME=/github/home`, passwd home `/root`),
  * gets no test-root default. Set `<P>_ROOT` there.
@@ -406,7 +404,7 @@ function guardedEnv(
   return env
 }
 
-/** {@link testRoot}'s answer, once it has looked. */
+/** The cached result of {@link testRoot}. */
 let processTestRoot: { root: string | undefined } | undefined
 
 /**
@@ -419,9 +417,9 @@ let processTestRoot: { root: string | undefined } | undefined
  * file as its entry point under `NODE_ENV=test`, `NODE_TEST_CONTEXT` or Bun,
  * or a Vitest worker. A child a test spawns is not one.
  *
- * The start time keeps a later process that reuses the pid off this one's
- * leftover state. Callers that read the environment themselves, such as a
- * product-tier layer, use this to apply the same default. The Rust twin's
+ * The start time stops a later process with the same pid from using this
+ * one's leftover files. Callers that read the environment themselves, such as
+ * a product-tier layer, use this to apply the same default. The Rust crate's
  * `test_root()` is the same per-process root, detected by its cargo test
  * binary.
  *
@@ -534,8 +532,8 @@ function envOverrides(
  * an absolute path, else its default under `home`. Logs share the state home.
  * Scratch is `$TMPDIR`, else `/tmp`.
  *
- * The Rust twin's `BaseDirs::xdg` builds the same layout, held to it by the
- * parity fixture's `convention_cases`.
+ * The Rust crate's `BaseDirs::xdg` builds the same layout. The parity
+ * fixture's `convention_cases` check that.
  *
  * Stable in 0.x.
  */
@@ -555,8 +553,8 @@ export function xdgBaseDirs(home: string, env: Record<string, string | undefined
 type Table = Record<keyof BaseDirs, () => string>
 
 /**
- * The per-OS table, one thunk per root. Deferred so that an overridden root
- * skips its cell, and with it the home lookup that cell would have made.
+ * The per-OS table, one function per root. Each runs only when called, so an
+ * overridden root skips its entry and the home lookup that entry would make.
  */
 function platformTable(
   platform: string,
@@ -643,8 +641,8 @@ function resolveHome(
   const fromEnv = platform === 'win32' ? env['USERPROFILE'] : env['HOME']
   if (fromEnv) return fromEnv
 
-  // An injected environment is the whole story — falling back to the host's
-  // real home here would make a test's paths depend on the machine running it.
+  // With an injected environment, do not fall back to the host's real home.
+  // That would make a test's paths depend on the machine running it.
   if (opts.env !== undefined) {
     throw new TieredDirsError(
       'MISSING_BASE_DIR',

@@ -47,7 +47,7 @@ pnpm run format:check
 `packages/rust/tiered-dirs/tests/fixtures/parity.json` is read by this
 package's `tests/parity.test.ts` and by the Rust crate's `tests/parity.rs`.
 A new path shape goes into that file first, so both suites cover it. Neither
-twin may add a shape the other lacks.
+package may add a shape the other lacks.
 
 ## Code style
 

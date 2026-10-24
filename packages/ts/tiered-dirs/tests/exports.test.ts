@@ -76,7 +76,7 @@ test('every export says "Stable in 0.x." in its TSDoc', () => {
 })
 
 test('the README names every export', () => {
-  // A code span that starts with the name, such as `parseColor(css)`, names it.
+  // A code span that starts with the name, such as `envVars(prefix)`, names it.
   const named = new Set([...README.matchAll(/`([A-Za-z_$][\w$]*)/g)].map((m) => m[1]!))
   expect([...EXPORTS.keys()].filter((name) => !named.has(name))).toEqual([])
 })

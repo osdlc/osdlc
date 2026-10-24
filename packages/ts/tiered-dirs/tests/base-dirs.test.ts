@@ -55,7 +55,7 @@ describe('macOS', () => {
       env: { HOME: '/Users/x', TMPDIR: '/var/folders/ab/T' },
     })
     expect(normalize(withTmp.scratch)).toBe(normalize('/var/folders/ab/T'))
-    // Scratch is swept; runtime describes a live process. Never the same root.
+    // The OS clears scratch, and runtime describes a live process, so they never share a root.
     expect(withTmp.scratch).not.toBe(withTmp.runtime)
   })
 

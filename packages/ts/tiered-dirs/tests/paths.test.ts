@@ -16,7 +16,7 @@ const VENDOR = 'com.example'
 
 /**
  * Stub roots, so every assertion below is an exact string with no real home.
- * `rootedBaseDirs` is the same layout the Rust twin's `BaseDirs::rooted` uses.
+ * `rootedBaseDirs` is the same layout the Rust crate's `BaseDirs::rooted` uses.
  */
 const BASES = rootedBaseDirs('/b')
 
@@ -51,8 +51,8 @@ describe('composition', () => {
   })
 
   test('a standalone tool gets its own root and no vendor segment', () => {
-    // The whole point: a general tool installed in someone else's repository
-    // must not write under the vendor's namespace.
+    // A general tool installed in someone else's repository must not write
+    // under the vendor's directory.
     const tier = dirs.standalone('devtool')
     expect(tier.segment).toBe('devtool')
     expect(tier.segment).not.toContain(VENDOR)
@@ -104,8 +104,8 @@ describe('scratch', () => {
   })
 
   test('scratch is not the runtime home — different lifetimes', () => {
-    // A pidfile outlives the call and describes a live process; a scratch
-    // file does not outlive the call at all.
+    // A pidfile outlives the call and describes a live process. A scratch
+    // file does not outlive the call.
     expect(dirs.scratch().path).not.toBe(dirs.vendor().runtime().path)
     expect(BASES.scratch).not.toBe(BASES.runtime)
   })
@@ -121,8 +121,8 @@ describe('tiers do not merge', () => {
   })
 
   test('there is no API that reads two tiers at once', () => {
-    // The absence is the contract. A reader that wants both looks up both
-    // deliberately, per file, at its own call site.
+    // There is no merge method, on purpose. A reader that wants both tiers
+    // looks up both itself, per file, in its own code.
     const tier = dirs.suite('notes') as unknown as Record<string, unknown>
     expect(tier['merge']).toBeUndefined()
     expect(tier['resolve']).toBeUndefined()
@@ -261,9 +261,8 @@ describe('vendor bundle assertion', () => {
 
   test('the check is a bare prefix test, matching the Rust twin', () => {
     // The Rust side is `debug_assert!(bundle_id.starts_with(VENDOR))`. A
-    // tighter dot-boundary rule here would make the two twins disagree about
-    // which apps are conformant, which is the drift this package exists to
-    // stop.
+    // stricter dot-boundary rule here would make the two packages disagree
+    // about which apps conform, and this package exists to prevent that.
     expect(dirs.isVendorBundleId('com.exampleorp.app')).toBe(true)
   })
 
