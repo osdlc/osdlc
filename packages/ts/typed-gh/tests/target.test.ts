@@ -28,9 +28,9 @@ import {
   prMerge,
   prReviewThreads,
   prSetDraft,
-  repoList,
   prUpdateBranch,
   prView,
+  repoList,
   setIssueLabel,
   type AsyncCommandRunner,
   type CommandRunner,
@@ -149,7 +149,7 @@ describe("an empty hostname ''", () => {
     expect(wire(repoList('acme', {}, empty))).toEqual(wire(repoList('acme', {}, none)))
   })
 
-  test('clients accept it and send no host', () => {
+  test('clients accept it', () => {
     expect(() => new Gh('/repo', empty)).not.toThrow()
     expect(() => new AsyncGh('/repo', empty)).not.toThrow()
   })
