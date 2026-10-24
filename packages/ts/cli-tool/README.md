@@ -78,7 +78,12 @@ await runMain(main, { name: 'sweep' })
 The tool's project and machine config files are a separate package,
 `@osdlc/config-layers`. The root re-exports
 its directory and did-you-mean helpers (`systemDirs`, `TieredDirs`,
-`envVars`, `closestMatches`, `didYouMean`) and their types.
+`envVars`, `closestMatches`, `didYouMean`) and their types, taken from the
+light `@osdlc/config-layers/dirs` and `/did-you-mean` subpaths so importing the
+root does not load yaml or zod.
+
+To import only what a tool uses, the root's modules are also subpaths:
+`@osdlc/cli-tool/define-cli`, `/io`, `/prompt` and `/exit`.
 
 A bin shim asks devlink which checkout should answer and then hands control to
 `main`; `main` reads its config and

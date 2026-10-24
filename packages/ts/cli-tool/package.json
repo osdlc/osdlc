@@ -31,6 +31,22 @@
     "./devlink": {
       "types": "./dist/devlink/index.d.ts",
       "default": "./dist/devlink/index.js"
+    },
+    "./define-cli": {
+      "types": "./dist/define-cli.d.ts",
+      "default": "./dist/define-cli.js"
+    },
+    "./io": {
+      "types": "./dist/io.d.ts",
+      "default": "./dist/io.js"
+    },
+    "./prompt": {
+      "types": "./dist/prompt.d.ts",
+      "default": "./dist/prompt.js"
+    },
+    "./exit": {
+      "types": "./dist/exit.d.ts",
+      "default": "./dist/exit.js"
     }
   },
   "files": [

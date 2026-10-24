@@ -211,7 +211,9 @@ to the record itself.
 
 `systemDirs` and the `VendorDirs` type resolve a tool's machine-local directories over `TieredDirs`
 and `envVars`, which are re-exported from `@osdlc/tiered-dirs`. `closestMatches` and `didYouMean`
-suggest close names for a mistyped noun, verb, key or repo.
+suggest close names for a mistyped noun, verb, key or repo. Both groups are also
+exported from the light subpaths `@osdlc/config-layers/dirs` and
+`@osdlc/config-layers/did-you-mean`, which load neither yaml nor zod.
 
 The schema walk reads Zod's private `_def` layout by tag name rather than
 `instanceof`, so a second copy of zod in a consumer's tree still resolves.

@@ -16,7 +16,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, appendFileSync } from 'nod
 import { dirname, join } from 'node:path'
 
 import { atomicWrite } from '@osdlc/etag-write'
-import { systemDirs, type TieredDirs } from '@osdlc/config-layers'
+import { systemDirs, type TieredDirs } from '@osdlc/config-layers/dirs'
 import type { ToolSpec } from './spec.ts'
 
 /**

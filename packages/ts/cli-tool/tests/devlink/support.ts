@@ -7,7 +7,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
-import { envVars, systemDirs, type TieredDirs } from '@osdlc/config-layers'
+import { envVars, systemDirs, type TieredDirs } from '@osdlc/config-layers/dirs'
 import type { ToolSpec } from '../../src/devlink/spec.ts'
 
 export const SPEC: ToolSpec = {

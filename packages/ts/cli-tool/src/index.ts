@@ -50,8 +50,9 @@ export type {
   TristateFlag,
 } from './define-cli.ts'
 
-export { closestMatches, didYouMean, envVars, systemDirs, TieredDirs } from '@osdlc/config-layers'
-export type { EnvVars, ResolveOptions, VendorDirs } from '@osdlc/config-layers'
+export { envVars, systemDirs, TieredDirs } from '@osdlc/config-layers/dirs'
+export { closestMatches, didYouMean } from '@osdlc/config-layers/did-you-mean'
+export type { EnvVars, ResolveOptions, VendorDirs } from '@osdlc/config-layers/dirs'
 export { askYesNo, canPrompt, isYes, readLine } from './prompt.ts'
 export type { AskYesNoOptions } from './prompt.ts'
 
