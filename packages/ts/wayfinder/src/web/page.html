@@ -2,16 +2,17 @@
 <meta charset="utf-8" />
 <title>wayfinder</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<!-- The server's per-process session token, substituted by buildPage. Every
-     mutating request carries it (see authFetch in web/api.ts); a page from
-     another origin cannot read it. -->
+<!-- buildPage does not fill in this meta tag. It injects the session token
+     as an inline script at the TOKEN placeholder at the end of this file.
+     Every request carries the token (see authFetch in web/api.ts), and a
+     page from another origin cannot read it. -->
 <meta name="wayfinder-token" content="@TOKEN@" />
 <!-- @STYLE@ -->
 
 <div id="chrome">
   <!-- Above the status strip, and empty until there is something to say. A
-     withheld runner is a call to action, not a statistic, so it does not
-     belong in a row of counts and keyboard hints. -->
+     withheld runner needs the user to act, so it does not belong in a row
+     of counts and keyboard hints. -->
   <div class="trustbar" id="trustbar" hidden></div>
   <div class="status" id="status"></div>
   <header>

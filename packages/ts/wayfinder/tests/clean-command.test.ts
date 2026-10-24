@@ -2,9 +2,8 @@
  * The `clean` subcommand.
  *
  * Every test injects its own `home` and an empty `env`. A test that let either
- * default would report on — and then DELETE — the developer's real cache, trust
- * store and configuration, which is the one mistake this command must never
- * make on anyone's machine, including ours.
+ * default would report on, and then delete, the developer's real cache, trust
+ * store and configuration.
  */
 import { describe, expect, test } from 'vitest'
 import { mkdir, stat, writeFile } from 'node:fs/promises'
@@ -101,7 +100,7 @@ describe('clean', () => {
   })
 
   test('--config refuses without --yes, and the file survives the refusal', async () => {
-    // The config is the only thing here a person WROTE; nothing regenerates it.
+    // The config is the only store a person wrote. Nothing regenerates it.
     const home = await populatedHome()
     try {
       const { err, io } = capture(home)
@@ -216,8 +215,8 @@ describe('clean --json', () => {
 
       const rows = stores(out)
       expect(rows.map((r) => r.key)).toEqual(['cache', 'trust', 'config'])
-      // The flag that removes each store rides along, so a caller reading the
-      // report knows how to act on it without a second lookup.
+      // Each store's entry names the flag that removes it, so a caller reading
+      // the report knows how to act on it without a second lookup.
       expect(rows.map((r) => r.flag)).toEqual(['--cache', '--trust', '--config'])
       expect(rows.every((r) => r.removed === false)).toBe(true)
       expect(rows.every((r) => typeof r.bytes === 'number')).toBe(true)

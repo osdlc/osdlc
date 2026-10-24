@@ -1,17 +1,16 @@
 /**
  * `way`: browse and run every task in a repository.
  *
- * wayfinder is willing to run a repository's tools in principle (`allowExec:
- * true` by default): you are standing in your own repository, and a task
- * browser that cannot see the build graph is not much of a browser.
- * `--no-exec` opts out.
+ * wayfinder's `allowExec` default is `true`. You usually run it in your own
+ * repository, and a task browser that cannot see the build graph is of little
+ * use. `--no-exec` turns execution off.
  *
- * The default is not the gate. Per-repository trust is: `@osdlc/trust-repo`'s
- * `policyExecGate` combines the configured value with the marker store and the
- * user file's `trust.paths`/`trust.owners` policy, so willingness becomes
- * execution only once a person, or a policy they configured, has said yes to
- * this repository. A configured `false` means no exec however trusted the
- * repository is.
+ * The default alone does not allow execution. The repository must also be
+ * trusted. `@osdlc/trust-repo`'s `policyExecGate` combines the configured value
+ * with the marker store and the user file's `trust.paths`/`trust.owners`
+ * policy. Execution happens only once a person, or a policy they configured,
+ * has trusted this repository. A configured `false` means no execution, however
+ * trusted the repository is.
  */
 
 import { homedir } from 'node:os'
@@ -91,7 +90,7 @@ In the terminal UI:
 `
 
 /**
- * The surface and subcommand names, for both help tiers. A generated flag
+ * The surface and subcommand names, for both help levels. A generated flag
  * list cannot say which surface you are choosing, or name a subcommand that
  * has its own flag list.
  */
@@ -110,11 +109,11 @@ subcommands
   dev        run the installed ${BIN} from a development checkout; see dev --help`
 
 /**
- * wayfinder's own `true` default for exec lives in {@link main}, below the
- * config layer — which is why `exec` and the collection lists are declared
- * absent-unless-given, per `TristateFlag` in `@osdlc/cli-tool`. `autoHelp`
- * is off for the reason `CliDecl.autoHelp` gives: `help` and `all` are
- * declared below as ordinary flags.
+ * wayfinder's own `true` default for exec is applied in {@link main}, below
+ * the config layer. So `exec` and the collection lists are absent unless
+ * given, per `TristateFlag` in `@osdlc/cli-tool`. `autoHelp` is off for the
+ * reason `CliDecl.autoHelp` gives: `help` and `all` are declared below as
+ * ordinary flags.
  */
 const cli = defineCli({
   name: BIN,
@@ -216,13 +215,13 @@ Until then they are withheld and every surface says so.
 ${PROSE}`,
 })
 
-/** The complete help tier. */
+/** The complete help. */
 const USAGE = cli.help()
 
 /**
- * The default help tier. Nothing in it is the only place a fact lives, and
- * every deeper tier is named. The trust paragraph is in it because a reader
- * who does not know about the gate sees a shorter catalog and no reason why.
+ * The default, short help. Every fact in it is also stated in the complete
+ * help, and it names the longer forms. The trust paragraph is here because a
+ * reader who does not know about trust sees a shorter catalog and no reason why.
  */
 const SHORT_USAGE = cli.help({ all: false })
 
@@ -248,13 +247,13 @@ willing in principle, still gated on trust.`,
 
 /**
  * Optional fields are absent unless their flag was given, so the config layer
- * can answer instead. wayfinder's `allowExec: true` default lives in
- * {@link main}, below that layer.
+ * can supply the value instead. wayfinder's `allowExec: true` default is
+ * applied in {@link main}, below that layer.
  */
 interface Flags {
   mode: 'tui' | 'serve' | 'json' | 'list' | 'query'
   dir: string
-  /** Answer --json/--list from the stored probe. The UI surfaces do it always. */
+  /** Answer --json/--list from the stored probe. The UI surfaces always do. */
   cached: boolean
   allowExec?: boolean
   open: boolean
@@ -263,14 +262,14 @@ interface Flags {
   exclude?: string[]
   /**
    * Repeatable: `--exclude-path a --exclude-path b` means both. Passing any
-   * at all replaces the configured list, as every other array setting merges.
+   * replaces the configured list, as with every other array setting.
    */
   excludePaths?: string[]
   discovery?: 'git' | 'walk' | 'auto'
   help: boolean
   /**
-   * `query`'s search terms, and the marker that this IS a query: absent for
-   * every other mode, whose one positional is a directory instead.
+   * `query`'s search terms. Present only for a query. In every other mode the
+   * one positional is a directory instead.
    */
   terms?: string[]
   /** `query --json`: the matching tasks, rather than one command line each. */
@@ -286,10 +285,10 @@ interface Flags {
 }
 
 /**
- * `query` is claimed before the flag parse like `config` and `trust` (see
- * {@link main}), but only because it changes what a positional MEANS, from a
- * directory to search terms. Every collection flag still applies after it,
- * which is why it is not a command with its own flag list.
+ * `query` is matched before the flags are parsed, like `config` and `trust`
+ * (see {@link main}), because it changes what a positional means: search terms
+ * instead of a directory. Every collection flag still applies after it, so it
+ * is not a command with its own flag list.
  */
 export function parseArgs(
   argv: readonly string[],
@@ -302,8 +301,8 @@ export function parseArgs(
   if (parsed.status === 'error') return { error: parsed.message }
   const v = parsed.values
 
-  // Under `query` these choose the OUTPUT FORM rather than the surface:
-  // letting them set the mode would silently drop the terms.
+  // Under `query` these choose the output form, not the surface. Letting them
+  // set the mode would silently drop the terms.
   const mode: Flags['mode'] = isQuery
     ? 'query'
     : v.serve
@@ -340,16 +339,16 @@ export function parseArgs(
     if (v.exact) return { error: '--exact only applies to query' }
     if (v.services) return { error: '--services only applies to query' }
   } else {
-    // The mode ternary above short-circuits on `isQuery`, so a serve flag
-    // under `query` would otherwise be read by nothing at all.
+    // The mode ternary above stops at `isQuery`, so nothing else would read a
+    // serve flag under `query`.
     if (v.serve) return { error: '--serve does not apply to query' }
     if (v.port !== undefined) return { error: '--port only applies to --serve' }
   }
   if (v.port !== undefined) {
-    // Digits only, before coercing: `Number('')` and `Number('  ')` are 0,
-    // `Number('0x10')` is 16 and `Number('1e3')` is 1000 — every one an
-    // integer in range, so a bare `Number()` would accept a port nobody typed,
-    // and port 0 means "let the OS pick", which is what --port exists to stop.
+    // Check for digits before converting. `Number('')` and `Number('  ')` are
+    // 0, `Number('0x10')` is 16 and `Number('1e3')` is 1000. Each is an integer
+    // in range, so a bare `Number()` would accept a port nobody typed. Port 0
+    // means "let the OS pick", which is what --port exists to prevent.
     if (!/^\d+$/.test(v.port.trim())) {
       return { error: '--port needs a port number' }
     }
@@ -373,12 +372,12 @@ export function parseArgs(
 /**
  * wayfinder's own defaults, applied only where no config file answered.
  *
- * One constant, read in two places: {@link main} resolves the run with it, and
- * `config list` / `config get` are handed it so they report the value this tool
- * would really use rather than the library's.
+ * One constant, read in two places. {@link main} resolves the run with it, and
+ * `config list` / `config get` receive it, so they report the value this tool
+ * really uses rather than the library default.
  *
- * `allowExec: true` means WILLING IN PRINCIPLE, not "run this repository's
- * code"; trust is the gate, and a configured `false` still means no exec.
+ * `allowExec: true` does not mean "run this repository's code". The repository
+ * must also be trusted, and a configured `false` still means no execution.
  */
 const WAYFINDER_DEFAULTS: Partial<TaskConfig> = { allowExec: true }
 
@@ -390,8 +389,8 @@ function configuredAllowExec(cfg: LoadedConfig): boolean {
 
 /**
  * The single stderr line `--cached` prints, or null when there is nothing to
- * say. Where this repo has never measured a runner's probe cost it says so
- * rather than inventing a number.
+ * say. When this repo has never measured a runner's probe time, the line says
+ * so rather than guessing a number.
  */
 function cacheNote(rows: readonly RunnerCacheState[]): string | null {
   const stale = rows.filter((r) => r.state === 'stale')
@@ -461,8 +460,9 @@ export async function main(
   home: string = homedir(),
   io: CliIo = processIo,
 ): Promise<number> {
-  // Subcommands are claimed before the flag parse: their arguments are not
-  // this parser's flags. The root is found with the built-in tools only.
+  // Subcommands are matched before the flags are parsed, because their
+  // arguments are not this parser's flags. The root is found with the
+  // built-in tools only.
   const findRoot = (dir: string): Promise<string> => makeProject().findRoot(dir)
   const usageError = (message: string): number => {
     io.stderr(`${APP}: ${message}\n\n${SHORT_USAGE}`)
@@ -470,7 +470,7 @@ export async function main(
   }
 
   if (argv[0] === 'config' || argv[0] === 'trust' || argv[0] === 'providers') {
-    // -C has to work here: pointing at another directory must show THAT
+    // -C has to work here, so pointing at another directory shows that
     // directory's configuration, trust and tools.
     const taken = takeConfigDir(argv.slice(1))
     if ('error' in taken) return usageError(taken.error)
@@ -502,7 +502,7 @@ export async function main(
   }
 
   const parsed = parseArgs(argv, io)
-  // The short form on a typo: the error is the part the reader came for.
+  // A usage error prints the short help, so the error is easy to find.
   if ('error' in parsed) return usageError(parsed.error)
   if (parsed.help) {
     io.stdout(parsed.all ? USAGE : SHORT_USAGE)
@@ -523,12 +523,13 @@ export async function main(
   }
   for (const warning of cfg.warnings) io.stderr(`warning: ${warning}\n`)
 
-  // Precedence for allowExec, highest first: --exec / --no-exec; allowExec in
-  // the project file, then the user file; wayfinder's own default (true). Only
-  // `sources` separates "a file said false" from "nobody said anything".
+  // Precedence for allowExec, highest first: --exec / --no-exec, then
+  // allowExec in the project file (false only), then the user file, then
+  // wayfinder's own default (true). Only `sources` tells "a file said false"
+  // apart from "no file set it".
   const configured = configuredAllowExec(cfg)
 
-  // The trust seam. Collection never reads the store.
+  // Trust is decided here. Collection never reads the trust store.
   const trustStoreInstance = appTrustStore({ env, home })
   const gate = await policyExecGate(
     trustStoreInstance,
@@ -565,16 +566,16 @@ export async function main(
     ...(parsed.discovery !== undefined ? { discovery: parsed.discovery } : {}),
   }
 
-  // The config keys a flag already answered. `serve` re-derives the file's
-  // slice after a save from the page and leaves these alone.
+  // The config keys a flag already set. When the page saves the config,
+  // `serve` re-reads the file's options and leaves these alone.
   const pinnedByFlag = [
     ...(parsed.exclude ? ['exclude'] : []),
     ...(parsed.excludePaths ? ['excludePaths'] : []),
     ...(parsed.discovery !== undefined ? ['discovery'] : []),
   ]
 
-  // Said once for all runners, and only by the non-interactive modes: the TUI
-  // and the page have their own affordance.
+  // Printed once for all runners, and only by the non-interactive modes. The
+  // TUI and the page show their own trust prompt.
   const reportWithheld = (catalog: Catalog): void => {
     const withheld = catalog.reports.filter((r) => r.skippedForExec).length
     if (gate.reason !== 'untrusted' || withheld === 0) return
@@ -587,10 +588,10 @@ export async function main(
   const order = cfg.effective.runners?.order
 
   /**
-   * The catalog for a data surface, plus the cache verdict when one was read.
-   * Fresh by default, since a script must not get a quietly old answer; the
-   * probe still writes the store. --cached reads the store and says so on
-   * stderr.
+   * The catalog for a data surface, plus the cache states when the store was
+   * read. Probed fresh by default, since a script must not get an old answer
+   * without being told. The probe still writes the store. --cached reads the
+   * store and says so on stderr.
    */
   const dataCatalog = async (): Promise<{
     catalog: Catalog
@@ -608,7 +609,7 @@ export async function main(
       const fresh = await collectAndCache(project, root, options, store)
       return { catalog: orderedCatalog(fresh, order), cache: freshStates(fresh) }
     }
-    // A miss is a gap in the cache: the missing runners alone are probed.
+    // A miss is a runner with nothing stored. Only the missing runners are probed.
     const missing = stored.runners.filter((r) => r.state === 'miss').map((r) => r.runner)
     const merged =
       missing.length === 0
@@ -684,7 +685,7 @@ export async function main(
         io.stdout(`${hits.map((h) => h.task.display).join('\n')}\n`)
       }
       reportWithheld(catalog)
-      // grep's contract: a search with terms that matched nothing exits 1.
+      // As with grep, a search with terms that matched nothing exits 1.
       return queryTerms.length > 0 && hits.length === 0 ? 1 : 0
     }
     case 'tui':

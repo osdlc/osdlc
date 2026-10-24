@@ -1,5 +1,5 @@
 /**
- * Downstream tools: modules that export `ToolDef`s, registered beside the
+ * Custom tools: modules that export `ToolDef`s, registered beside the
  * built-ins. A module is code, so where it was named decides whether it loads:
  *
  *   --config <module>      always; you typed it
@@ -79,9 +79,9 @@ export interface ToolSources {
 
 /**
  * Load every tool module the sources name, in order: flags, user file,
- * project file. Returns the tools and a warning when project entries are
- * skipped because the repository is not trusted or execution is off. A tool id that is built in or defined twice is a
- * {@link ToolModuleError}.
+ * project file. Returns the tools, plus a warning when project entries are
+ * skipped because the repository is not trusted or execution is off. A tool id
+ * that is built in or defined twice throws {@link ToolModuleError}.
  */
 export async function loadTools(
   sources: ToolSources,

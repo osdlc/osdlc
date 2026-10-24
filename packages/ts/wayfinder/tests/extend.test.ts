@@ -1,5 +1,5 @@
 /**
- * Downstream tools: a module of `ToolDef`s named by `--config`, by the user
+ * Custom tools: a module of `ToolDef`s named by `--config`, by the user
  * file or by a trusted project file, and `way providers`, which lists them
  * beside the built-ins.
  */

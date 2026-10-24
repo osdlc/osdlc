@@ -1,30 +1,30 @@
 /**
- * The terminal UI, photographed as text.
+ * The terminal UI, captured as text.
  *
  * `frame()` returns the whole screen as a string, so the committed artifact is
- * that string: an image diff says "these pixels moved" where a reader wants
+ * that string. An image diff says "these pixels moved", where a reader wants
  * "this column moved two characters".
  *
- * The file is two things at once:
+ * The file has two uses:
  *
- *   1. DOCUMENTATION. `tests/frames/*.txt` is what the terminal UI looks like,
- *      quotable into the guide and legible in a pull request.
- *   2. A REGRESSION TEST. It ASSERTS by default. A change that moves the
- *      layout fails here and shows exactly which line moved — the drift check
- *      a screenshot corpus cannot have.
+ *   1. Documentation. `tests/frames/*.txt` shows what the terminal UI looks
+ *      like, can be quoted in the guide, and is readable in a pull request.
+ *   2. A regression test. It asserts by default. A change that moves the
+ *      layout fails here and shows exactly which line moved, which a set of
+ *      screenshots cannot do.
  *
  * Regenerate after an intended change:
  *
  *     CAPTURE_FRAMES=1 pnpm exec vitest run tests/frames.test.ts
  *
- * The catalog is WRITTEN DOWN rather than detected — see
- * `fixtures/showcase-catalog.ts`. These assert in CI, so what they read has to
- * be identical everywhere, and collecting from the fixture is not: `just`'s
+ * The catalog is written out rather than detected. See
+ * `fixtures/showcase-catalog.ts`. These assert in CI, so their input has to be
+ * the same everywhere, and collecting from the fixture is not: `just`'s
  * parameters need `just --dump`, and a runner without the binary sees none.
  *
- * Colour is stripped, because `frame()` paints only when stdout is a TTY and
- * these run under a test runner where it is not — so the committed text is the
- * NO_COLOR shape, which is also the shape a reader can compare by eye.
+ * Colour is stripped. `frame()` adds colour only when stdout is a TTY, and
+ * under a test runner it is not. So the committed text is the NO_COLOR form,
+ * which is also the form a reader can compare by eye.
  */
 
 import { beforeAll, describe, expect, test } from 'vitest'
@@ -118,12 +118,12 @@ describe('the terminal UI, frame by frame', () => {
   })
 
   test('the settings screen', () => {
-    // The LINES are written down rather than produced by `settingsLines()`,
-    // which reads `loadConfig` from disk — including the user layer under
-    // `~/.config/wayfinder/`. A contributor who happens to have one would get a
-    // different screen, and this asserts in CI. What the frame is for is the
-    // LAYOUT: that the screen replaces the list, that section headings are
-    // picked out from their entries, and that the footer says it is read-only.
+    // The lines are written out rather than produced by `settingsLines()`,
+    // which reads `loadConfig` from disk, including the user layer under
+    // `~/.config/wayfinder/`. A contributor who has one would get a different
+    // screen, and this asserts in CI. The frame checks the layout: the screen
+    // replaces the list, section headings stand out from their entries, and
+    // the footer says it is read-only.
     state.query = ''
     state.servicesOnly = false
     state.entering = null
@@ -152,8 +152,8 @@ describe('the terminal UI, frame by frame', () => {
     state.selectedId = null
     recompute()
     const parameterised = state.rows.find((r) => r.task.parameters.length > 0)
-    // Guarded rather than assumed: this frame exists to show the entry line,
-    // and capturing the plain list under its name would be a silent lie.
+    // Checked rather than assumed: this frame exists to show the entry line,
+    // and saving the plain list under its name would be wrong with no warning.
     expect(parameterised).toBeDefined()
     state.entering = { task: parameterised!.task, text: 'staging' }
     checkFrame('entry-line')

@@ -1,11 +1,11 @@
 /**
  * The argument boundary.
  *
- * Two of these are convenience — how a typed line becomes argv entries — and
- * two are the security property `/api/run` rests on: what a caller may
- * contribute to a spawn, and what it may not. The route itself cannot be
- * tested, because succeeding at it hands over the terminal and exits the
- * process, which is exactly why the rule lives in a pure function.
+ * Two of these cover how a typed line becomes argv entries. The other two
+ * cover the security rule `/api/run` depends on: what a caller may add to a
+ * spawn, and what it may not. The route itself cannot be tested, because a
+ * successful run hands over the terminal and exits the process. That is why
+ * the rule lives in a pure function.
  */
 
 import { describe, expect, test } from 'vitest'

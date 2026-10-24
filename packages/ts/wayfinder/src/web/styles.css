@@ -12,9 +12,9 @@
   --d-border-subtle: #ebebf0;
   --d-accent: #1d59d8;
   --d-accent-hover: #1a4fbe;
-  /* The label laid ON an accent fill. It follows the ground scale rather
-       than being a fixed white, so a pressed control reads dark-on-hue in
-       dark mode — white on the dark accent is 2.56:1 and fails AA. */
+  /* The label drawn on an accent fill. It follows the ground scale rather
+       than being a fixed white, so a pressed control is dark-on-hue in dark
+       mode. White on the dark accent is 2.56:1 and fails AA. */
   --d-accent-fg: #ffffff;
   --d-status-success: #188a46;
   --d-status-error: #d70015;
@@ -32,12 +32,12 @@
   --head-h: 28px; /* group-header height; the sticky stack counts in these */
   --chrome-h: 0px; /* measured at runtime — see measureChrome() */
 }
-/* Dark is declared twice, on purpose. The media query is the SYSTEM default,
-     which is what applies while `data-theme` is absent; the attribute selector
-     is the explicit choice, which has to win in both directions — so light must
-     also be reachable on a machine set to dark. Defining the dark palette only
-     inside the media query would make "Light" a no-op there. The two blocks
-     must stay value-identical. */
+/* Dark is declared twice, on purpose. The media query is the system default,
+     which applies while `data-theme` is absent. The attribute selector is the
+     explicit choice, which must win in both directions, so light must also be
+     reachable on a machine set to dark. With the dark palette only inside the
+     media query, "Light" would do nothing there. The two blocks must keep
+     identical values. */
 :root[data-theme='dark'],
 :root:not([data-theme='light']) {
   color-scheme: light dark;
@@ -85,9 +85,9 @@
 * {
   box-sizing: border-box;
 }
-/* Text for assistive tech only. It stays IN the accessibility tree — clipped
-     to a pixel rather than `display: none` — which is what gives an element
-     whose whole meaning is an icon a name to announce. */
+/* Text for assistive tech only. It stays in the accessibility tree (clipped
+     to a pixel rather than `display: none`), which gives an element whose
+     whole meaning is an icon a name to announce. */
 .sr {
   position: absolute;
   width: 1px;
@@ -106,8 +106,8 @@ body {
     'Segoe UI',
     sans-serif;
 }
-/* Status, search box and tabs travel together: the group headers
-     stick BELOW this block, and they need one measurable height to offset by. */
+/* Status, search box and tabs stay together: the group headers stick below
+     this block, and need one measurable height to offset by. */
 #chrome {
   position: sticky;
   top: 0;
@@ -118,8 +118,8 @@ body {
 header {
   padding: 12px 16px 0;
 }
-/* Wraps rather than crushes: below about 1100px the clusters drop to a second
-     line instead of squeezing the search field down to a few characters. */
+/* Wraps rather than shrinking: below about 1100px the clusters drop to a
+     second line instead of squeezing the search field to a few characters. */
 .searchrow {
   display: flex;
   gap: 8px;
@@ -127,12 +127,11 @@ header {
   flex-wrap: wrap;
 }
 /* The only flexible item in the row, so every pixel the toolbar does not need
-     goes to the query. It is also the positioning context for the inline
-     Fuzzy/Exact toggle, which sits against the field's right inside edge. */
-/* The min-width is what decides when the row wraps. 260 is the short
-     placeholder plus the inline toggle's 112px reserve, so the field never
-     shows a clipped word: below that the clusters drop to a second line
-     instead. */
+     goes to the query. It also positions the inline Fuzzy/Exact toggle, which
+     sits against the field's right inside edge. */
+/* The min-width decides when the row wraps. 260 is the short placeholder
+     plus the inline toggle's 112px reserve, so the field never shows a clipped
+     word. Below that the clusters drop to a second line. */
 .searchbox {
   position: relative;
   display: flex;
@@ -143,17 +142,17 @@ header {
   flex: 1;
   font: 13px/1.4 var(--d-font-mono);
   padding: 9px 12px;
-  /* An input's default intrinsic width plus the 112px reserve below is a
-       min-content width of about 290px, which is more than the box above will
-       ever be — and a flex item's default `min-width: auto` refuses to go below
-       it. The field then painted OUT of its own box, over the Scope cluster
-       beside it. The box's min-width is what decides when the row wraps; the
-       field just has to fit whatever the box turns out to be. */
+  /* An input's default intrinsic width plus the 112px reserve below gives a
+       min-content width of about 290px, more than the box above will ever be,
+       and a flex item's default `min-width: auto` will not go below it. The
+       field would then draw outside its own box, over the Scope cluster. The
+       box's min-width decides when the row wraps; the field just has to fit
+       the box. */
   min-width: 0;
-  /* Room for the inline mode toggle. It renders 94px wide and is inset 6px
-       from the field's right edge, so 112px leaves about 12px of clear space
-       and text never slides under it. Measured, not guessed: change the
-       toggle's font or padding and this number has to be re-measured. */
+  /* Room for the inline mode toggle. It is 94px wide and inset 6px from the
+       field's right edge, so 112px leaves about 12px of clear space and text
+       never slides under it. Measured: if the toggle's font or padding
+       changes, measure this again. */
   padding-right: 112px;
   background: var(--d-bg-surface);
   color: var(--d-text-primary);
@@ -165,8 +164,8 @@ header {
   outline-offset: -1px;
 }
 
-/* Groups of related controls, named quietly. The label is chrome, not a
-     control: a span, so it takes no tab stop and announces nothing. */
+/* Groups of related controls, with a quiet label. The label is a span, not a
+     control, so it takes no tab stop and announces nothing. */
 .cluster {
   display: flex;
   gap: 6px;
@@ -182,11 +181,10 @@ header {
   user-select: none;
 }
 
-/* Only the search box had a focus style, so tabbing through the toolbar put
-     focus on buttons that gave no sign of having it — the controls looked
-     skipped rather than merely unmarked. One visible ring, on everything
-     focusable, offset outward so it is not swallowed by the button's own
-     border. `:focus-visible` rather than `:focus` keeps it off a mouse click. */
+/* One visible focus ring on everything focusable, so tabbing through the
+     toolbar shows where focus is. It is offset outward so the button's own
+     border does not hide it. `:focus-visible` rather than `:focus` keeps it
+     off a mouse click. */
 :where(button, input, [tabindex]):focus-visible {
   outline: 2px solid var(--d-accent);
   outline-offset: 2px;
@@ -196,10 +194,10 @@ header {
 .tabs button[data-runner]:focus-visible {
   outline-offset: -2px;
 }
-/* `overflow: visible`, so the outward focus ring on a segment's button is not
-     clipped away by the group box. Visible overflow means the group's own
-     rounding no longer clips its buttons, so the end buttons round themselves
-     below — otherwise a square button corner would sit in a rounded group. */
+/* `overflow: visible`, so the group box does not clip the outward focus ring
+     on a segment's button. With visible overflow the group's rounding no
+     longer clips its buttons, so the end buttons round themselves below.
+     Otherwise a square button corner would sit in a rounded group. */
 .seg {
   display: flex;
   border: 1px solid var(--d-border);
@@ -224,11 +222,11 @@ header {
   background: var(--d-accent);
   color: var(--d-accent-fg);
 }
-/* How a query matches belongs to the query, so the toggle lives in the field
-     it governs. Smaller than a toolbar seg and ringed, so it reads as a control
-     sitting in the box rather than as trailing text. */
-/* The 6px inset from the field's right edge is what leaves room for this
-     toggle's focus ring to be drawn outside it. */
+/* How a query matches belongs to the query, so the toggle sits in the field
+     it controls. It is smaller than a toolbar segment and has a ring, so it
+     looks like a control inside the box rather than trailing text. */
+/* The 6px inset from the field's right edge leaves room for this toggle's
+     focus ring outside it. */
 .seg.inline {
   position: absolute;
   right: 6px;
@@ -240,8 +238,8 @@ header {
   font: 11px/1 system-ui;
   padding: 4px 8px;
 }
-/* One button, showing the current colour scheme rather than three showing the
-     choices. Squared to the toolbar's height so the glyph is not cramped. */
+/* One button that shows the current colour scheme, rather than three buttons
+     for the choices. Square, at the toolbar's height, so the glyph has room. */
 .toolbtn.iconbtn {
   font-size: 14px;
   line-height: 1;
@@ -263,16 +261,17 @@ header {
   color: var(--d-accent-fg);
   border-color: var(--d-accent);
 }
-/* 10px, which is what each tab's `i` button needs to the right of it for a
-     24px hit target that stops 2px SHORT of the next tab. At 8px the overlay's
-     right edge met that tab's left edge exactly, and on a fractionally
-     positioned row pixel snapping put the overlay on both sides of every tab
-     boundary — a click just inside a tab opened the previous runner's modal.
+/* 10px, which each tab's `i` button needs to its right for a 24px hit target
+     that stops 2px short of the next tab. At 8px the overlay's right edge
+     would meet that tab's left edge exactly, and on a row at a fractional
+     position, pixel snapping would put the overlay on both sides of the tab
+     boundary. A click just inside a tab would then open the previous runner's
+     modal.
 
-     It wraps rather than overflowing: below about 926px the strip had a hard
-     floor and the whole PAGE scrolled sideways to hold it. A second line costs
-     nothing (the chrome is measured, not assumed) and keeps every tab visible,
-     which a scroller inside the strip would not. */
+     It wraps rather than overflowing, so below about 926px the page does not
+     scroll sideways. A second line costs nothing (the sticky header's height
+     is measured, not assumed) and keeps every tab visible, which a scroller
+     inside the strip would not. */
 .tabs {
   display: flex;
   flex-wrap: wrap;
@@ -282,22 +281,21 @@ header {
 }
 /* Positioning context for the drop-down, which hangs below the button. The
      picker sits in the toolbar's Scope cluster, so it takes its place in that
-     flex row and needs no margin of its own. */
+     flex row and needs no margin. */
 .picker {
   position: relative;
 }
-/* The slot render() writes the picker into. A div, because the picker it
-     holds is block-level and cannot legally nest in a span. */
+/* The element render() writes the picker into. A div, because the picker is
+     block-level and cannot be inside a span. */
 #pickerhost {
   display: flex;
 }
-/* Capped against the VIEWPORT and scrolled inside itself. It hangs out of a
-     sticky #chrome, so an over-long menu simply ran off the bottom of the
-     window with nothing able to bring it back: scrolling the page moves the
-     chrome not at all. Thirteen runners passed that point below about 570px of
-     window height. The chrome's own measured height is the offset, which is
-     more than the menu's real top — deliberately conservative, so the cap is
-     never the thing that overflows. */
+/* Height capped against the viewport, and scrolled inside itself. It hangs
+     out of a sticky #chrome, so scrolling the page does not move it, and a
+     long menu would run off the bottom of the window with no way to reach it.
+     Thirteen runners pass that point below about 570px of window height. The
+     offset is the sticky header's measured height, which is more than the
+     menu's real top, so the cap itself never overflows. */
 .pickmenu {
   position: absolute;
   right: 0;
@@ -327,10 +325,10 @@ header {
 .pick:hover {
   background: var(--d-bg-hover);
 }
-/* The row itself is a plain div now, not a <label>: the info button rides
-     beside it (see view.ts), and a label wrapping the whole row would also
-     forward that button's click to the checkbox. Only this inner label,
-     around the checkbox/name/count, still toggles the runner on click. */
+/* The row is a plain div, not a <label>. The info button sits beside the
+     label (see view.ts), and a label around the whole row would also pass that
+     button's click to the checkbox. Only the inner label, around the
+     checkbox, name and count, toggles the runner on click. */
 .pick-label {
   display: flex;
   align-items: center;
@@ -355,13 +353,12 @@ header {
   cursor: grabbing;
 }
 
-/* The drag image: a SOLID copy of what is being dragged, lifted off the page.
-     The browser's own ghost is near-transparent and reads as a rendering
-     accident rather than as the thing in hand. It is parked off-screen because
-     setDragImage only needs it rendered, not seen, and it inherits none of its
-     surface's context there - so it carries its own card styling, and the
-     affordances that belong to the row rather than to its identity (the grip,
-     the info button) are dropped from the copy. */
+/* The drag image: a solid copy of what is being dragged, raised off the page.
+     The browser's own drag image is nearly transparent and looks like a
+     rendering error. It is placed off-screen because setDragImage only needs
+     it rendered, not seen, and there it inherits none of its surface's
+     styles. So it has its own card styling, and the parts that belong to the
+     row rather than to the runner (the grip, the info button) are left out. */
 [data-drag-ghost] {
   position: fixed;
   left: 0;
@@ -374,14 +371,14 @@ header {
   padding: 6px 10px;
   pointer-events: none;
   font: 13px/1 system-ui;
-  /* An accent wash over the surface tone, not the page ground: --d-bg-base
-       IS the ground in both themes, so a card painted in it read as an
-       outlined rectangle rather than as something picked up. Mixing toward the
-       accent lifts it off either ground and says the card is in hand.
+  /* An accent tint over the surface colour, not the page background.
+       --d-bg-base is the background in both themes, so a card in that colour
+       would look like an outlined rectangle rather than something picked up.
+       Mixing toward the accent raises it off either background.
 
-       Two shadows, because one cannot serve both themes: black carries the
-       lift on white and is invisible on #14161a, so an accent halo carries it
-       there. Each is harmless where the other is doing the work. */
+       Two shadows, because one cannot serve both themes. Black shows the lift
+       on white and is invisible on #14161a, so an accent halo shows it there.
+       Each is harmless where the other does the work. */
   background: color-mix(in srgb, var(--d-accent) 14%, var(--d-bg-surface));
   color: var(--d-text-primary);
   border: 1px solid var(--d-accent);
@@ -410,15 +407,15 @@ header {
   color: var(--d-text-muted);
   font-size: 11px;
 }
-/* The dragged element itself, faded because the ghost is the copy the eye is
-     following. The preview MOVES it, so this fades wherever it has slid to —
-     it marks the slot the drop would take, not the one it started in. */
+/* The dragged element itself, faded because the drag image is the copy the
+     eye follows. The preview moves it, so it marks the slot the drop would
+     take, not the one it started in. */
 .dragging {
   opacity: 0.4;
 }
-/* The siblings the preview displaces slide to their new places. The
-     transform is set from input.ts as a FLIP; this is only how long it takes.
-     Reduced motion takes the jump instead. */
+/* The siblings the preview moves slide to their new places. input.ts sets
+     the transform (the FLIP technique); this only sets how long it takes. With
+     reduced motion they jump instead. */
 .tabs .tab,
 .pickmenu .pick {
   transition: transform 0.12s ease;
@@ -434,17 +431,17 @@ header {
   color: var(--d-text-muted);
   font-size: 11px;
 }
-/* The picker's sort header. It reorders the one persisted order, so it reads
-     as a table head over the rows it governs rather than as a second control:
-     quiet, uppercase, on the menu's own ground.
+/* The picker's sort header. It reorders the one saved order, so it looks like
+     a table header over the rows rather than a second control: quiet,
+     uppercase, on the menu's background.
 
-     Pinned, because the menu scrolls now: a header that scrolled away would
-     leave the rows it governs with nothing naming their order. It pins below
-     the menu's own 6px padding, and the shadow repaints that band in the
-     menu's ground so rows do not show through the sliver above it. */
+     Sticky, because the menu scrolls: a header that scrolled away would leave
+     the rows with nothing naming their order. It sticks below the menu's 6px
+     padding, and the shadow fills that band in the menu's background so rows
+     do not show through above it. */
 .pickhead {
   /* 8px, not 4px: the same gap `.pick` uses, so the header's first column
-       lands over the row's first control rather than 4px short of it. */
+       sits over the row's first control rather than 4px short of it. */
   display: flex;
   gap: 8px;
   align-items: center;
@@ -457,16 +454,16 @@ header {
   background: var(--d-bg-base);
   box-shadow: 0 -6px 0 var(--d-bg-base);
 }
-/* A stand-in for the row's drag handle: present so it takes up the handle's
-     width, invisible because there is nothing to drag in a header. */
+/* Takes the width of the row's drag handle, and is invisible because there
+     is nothing to drag in a header. */
 .pickhead .grip {
   visibility: hidden;
 }
-/* The shown column sits directly over the checkboxes it orders by, so it
-     takes no horizontal padding that would push it out of that line, and its
-     content is left-aligned rather than centred so the glyph's left edge meets
-     the checkbox's. The width is fixed and roomy enough for the direction
-     arrow, so activating the sort cannot shift the two columns beside it. */
+/* The shown column sits directly over the checkboxes it sorts by. It has no
+     horizontal padding that would push it out of line, and its content is
+     left-aligned so the glyph's left edge meets the checkbox's. The width is
+     fixed and leaves room for the direction arrow, so activating the sort does
+     not move the two columns beside it. */
 .picksort[data-sort-runners='shown'] {
   flex: 0 0 24px;
   padding-left: 0;
@@ -496,8 +493,8 @@ header {
   color: var(--d-accent-hover);
   border-color: var(--d-border);
 }
-/* Pressed means "the order on screen IS this sort", which is derived every
-     render - so it clears itself the moment a drag breaks the sort. */
+/* Pressed means "the order on screen matches this sort". It is computed on
+     every render, so it clears as soon as a drag breaks the sort. */
 .picksort[aria-pressed='true'] {
   color: var(--d-text-primary);
 }
@@ -526,11 +523,11 @@ header {
   color: var(--d-accent-hover);
   border-color: var(--d-accent);
 }
-/* Scoped to [data-runner]: the tab row also hosts .tabinfo, and a bare
-     `.tabs button` outranks its own single-class rule — it was stripping
-     .tabinfo's size. Only real tabs carry data-runner.
+/* Limited to [data-runner]: the tab row also holds .tabinfo, and a bare
+     `.tabs button` selector is more specific than .tabinfo's single-class rule
+     and would override its size. Only real tabs have data-runner.
 
-     `nowrap`, or a long label breaks across two lines inside its own button
+     `nowrap`, or a long label would break across two lines inside its button
      while the strip still has room to wrap instead. */
 .tabs button[data-runner] {
   font: 13px/1 system-ui;
@@ -556,8 +553,8 @@ header {
   font-size: 11px;
   margin-left: 5px;
 }
-/* A runner held back because execution is off. Quiet, in the count's own
-     voice: nothing failed, so it must not read like the error marker. */
+/* A runner withheld because execution is off. Quiet, styled like the count:
+     nothing failed, so it must not look like the error marker. */
 .tabs .count.exec {
   margin-left: 4px;
   padding: 1px 5px;
@@ -565,8 +562,8 @@ header {
   border: 1px solid var(--d-border);
   font-size: 10px;
 }
-/* `flex: none`, so a full strip wraps rather than squeezing its tabs: a
-     shrunken tab pulls its label out from under its own hit geometry. */
+/* `flex: none`, so a full strip wraps rather than squeezing its tabs. A
+     shrunken tab moves its label away from its click area. */
 .tab {
   display: flex;
   align-items: center;
@@ -602,18 +599,17 @@ header {
   width: 15px;
   height: 15px;
 }
-/* Quiet, not dead. An affordance drawn at .35 opacity is the platform
-     convention for DISABLED, so this button read as unavailable rather than
-     merely secondary. Full opacity in the muted text colour on a subtle ring
-     is quiet without making a false claim. The modal stays reachable by Tab:
-     the tab row's roving group is scoped to `button[data-runner]`, so .tabinfo
-     keeps its own natural tab stop.
+/* Quiet, but not looking disabled. A control at .35 opacity is the usual
+     sign for disabled, so this button uses full opacity in the muted text
+     colour on a subtle ring. The modal stays reachable by Tab: the tab row's
+     roving group is limited to `button[data-runner]`, so .tabinfo keeps its
+     own tab stop.
 
-     `flex: none`, or a crowded row shrinks the button: 16px became 14.4px at
-     1000px and 12.2px at 900px while the 24px overlay below stayed put, so the
-     overlay reached almost 4px past the NEXT tab's left edge and swallowed
-     clicks meant for it. The strip wraps now instead of crowding, and this
-     keeps the ring itself from degrading either way. */
+     `flex: none`, or a crowded row would shrink the button (16px to 14.4px at
+     1000px, 12.2px at 900px) while the 24px overlay below stayed the same
+     size. The overlay would then reach almost 4px past the next tab's left
+     edge and take its clicks. The strip wraps instead of crowding, and this
+     keeps the ring from shrinking either way. */
 .tabinfo {
   font: 600 11px/1 var(--d-font-mono);
   width: 16px;
@@ -629,18 +625,16 @@ header {
   border-radius: 50%;
 }
 /* The visible ring is 16px, under the 24px minimum target size. A
-     transparent overlay grows what the pointer can hit without growing the
-     ring, so the tab row keeps its density. Out of flow, so the glyph inside
-     does not move.
+     transparent overlay enlarges the click area without enlarging the ring, so
+     the tab row stays compact. It is out of flow, so the glyph does not move.
 
-     It grows OUTWARD, not from the centre: a centred 24px box reached back
-     over the tab it belongs to, and clicking that tab's right edge opened the
-     info modal instead of selecting the runner. Anchored at the button's left
-     edge it spans the button and 8 of the 10px of gap after it — 24px of
-     target with 2px of clear space before the next tab, which is what keeps a
-     click at that tab's own edge landing on the tab. Both numbers are needed:
-     24 is the minimum target, so the slack comes out of the gap rather than
-     out of the target. */
+     It grows outward to the right, not from the centre. A centred 24px box
+     would reach back over its own tab, so clicking that tab's right edge would
+     open the info modal instead of selecting the runner. Anchored at the
+     button's left edge, it covers the button and 8 of the 10px gap after it:
+     24px of target with 2px of clear space before the next tab, so a click at
+     that tab's edge still selects the tab. Both numbers matter: 24 is the
+     minimum target, so the slack comes from the gap, not the target. */
 .tabinfo::before {
   content: '';
   position: absolute;
@@ -654,15 +648,15 @@ header {
   color: var(--d-accent-hover);
   border-color: var(--d-accent);
 }
-/* In the picker the count runs up to the row's right edge, so the button
-     needs its own breathing room; its hit overlay reaches into the row's own
-     padding, where nothing else is. */
+/* In the picker the count runs to the row's right edge, so the button needs
+     its own spacing. Its hit overlay reaches into the row's padding, where
+     nothing else is. */
 .pick .tabinfo {
   margin-left: 4px;
 }
-/* The trust grant, where the picker row names the withholding. Sized down to
-     the row rather than given a look of its own: it is a toolbar button in an
-     unusually small place, not a new kind of control. */
+/* The trust grant, where the picker row names the withheld runner. Sized
+     down to fit the row: it is a toolbar button in a small space, not a new
+     kind of control. */
 .pick .toolbtn {
   margin-left: 4px;
   font-size: 11px;
@@ -670,11 +664,10 @@ header {
   white-space: nowrap;
 }
 
-/* The chip standing in for every empty runner's tab. Quiet on purpose —
-     folding these was the point, so the chip should read as calmer than a
-     real tab, not as a louder one. It carries no `data-runner`, so the tab
-     row's roving-tabindex group (scoped to `button[data-runner]`) leaves it
-     its own natural tab stop. */
+/* The chip in place of every empty runner's tab. Quiet on purpose: the point
+     of folding them is to reduce noise, so the chip should look calmer than a
+     real tab. It has no `data-runner`, so the tab row's roving-tabindex group
+     (limited to `button[data-runner]`) leaves it its own tab stop. */
 .tab-folded {
   font: 11px/1 system-ui;
   padding: 6px 10px;
@@ -690,10 +683,10 @@ header {
   color: var(--d-accent-hover);
   border-color: var(--d-accent);
 }
-/* The first strip in the chrome. It was between the column heads and the
-     rows, where a count read as a table row and broke the header away from its
-     body; above everything it reads as a caption for the whole view. Outside
-     `header`, so it carries its own horizontal padding. */
+/* The first strip in the sticky header. Above everything, it reads as a
+     caption for the whole view. Between the column headers and the rows, a
+     count would look like a table row and separate the header from its body.
+     It is outside `header`, so it has its own horizontal padding. */
 .status {
   display: flex;
   gap: 14px;
@@ -709,11 +702,11 @@ header {
   color: var(--d-status-error);
 }
 /* The trust bar. Its own row above everything, because it asks for a
-     decision rather than reporting a number: in the status strip it sat
-     between the clock and the keyboard hints, where a button reads as one
-     more piece of chrome. Warning colour, not error — nothing failed,
-     something was declined — and a tinted ground so the row is visibly a
-     different KIND of thing from the counts below it. */
+     decision rather than reporting a number. In the status strip, between
+     the clock and the keyboard hints, a button would look like one more
+     control. Warning colour, not error, because nothing failed: something was
+     declined. A tinted background shows it is a different kind of thing from
+     the counts below. */
 .trustbar {
   display: flex;
   gap: 12px;
@@ -728,13 +721,13 @@ header {
 .trustbar[hidden] {
   display: none;
 }
-/* The runners are the subject of the sentence, so they carry the weight the
-     surrounding explanation does not. */
+/* The runners are the subject of the sentence, so they are emphasized and
+     the explanation around them is not. */
 .trustbar .who {
   font-weight: 600;
 }
-/* Withheld runners are not an error — nothing failed, something was
-     declined — so they take the warning colour rather than the error one. */
+/* Withheld runners are not an error (nothing failed, something was
+     declined), so they use the warning colour, not the error one. */
 .status .warn {
   color: var(--d-status-warning);
 }
@@ -760,17 +753,17 @@ main {
   color: var(--d-text-muted);
 }
 
-/* The call-chain tree: each level indents one step, leaves are table rows.
-     Every header sticks under the chrome and under its own ancestors, at a top
-     offset this depth's inline style sets. Sticking stops where the header's
-     `.node` ends, so the next group at the same depth pushes it off screen
-     rather than piling up on it — which is why the height must be FIXED, and
-     why the whole stack has to agree on it (--head-h).
+/* The call-chain tree: each level indents one step, and leaves are table
+     rows. Every header sticks below the sticky header and below its own
+     parents, at a top offset this depth's inline style sets. A header stops
+     sticking where its `.node` ends, so the next group at the same depth
+     pushes it off screen rather than piling up on it. That is why the height
+     must be fixed, and why the whole stack must agree on it (--head-h).
 
-     z-index is set INLINE, per depth, and descends: a shallower header pins
-     higher on screen, so it has to paint above the deeper ones still
-     travelling up through its band. With one shared z-index the deeper header
-     wins on DOM order and scrolls straight over its own parent. */
+     z-index is set inline, per depth, and decreases with depth. A shallower
+     header sticks higher on screen, so it must draw above the deeper ones
+     moving up through its band. With one shared z-index the deeper header
+     would win on DOM order and scroll over its own parent. */
 .node > .head {
   position: sticky;
   background: var(--d-bg-base);
@@ -810,12 +803,10 @@ main {
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
-/* One level of nesting costs exactly 25px, and that number is duplicated in
-     view.ts as INDENT_PER_LEVEL: `outdent()` and `colgroup()` both compute
-     pixel positions from it, so if this margin and padding stop adding up to
-     25 every table's left edge drifts away from the Command column. The 1px
-     `border-left` that used to stand in for nesting was part of that 25; the
-     connectors replaced it, so the padding grew by 1 to give the pixel back. */
+/* One level of nesting is exactly 25px, and view.ts repeats that number as
+     INDENT_PER_LEVEL: `outdent()` and `colgroup()` both compute pixel
+     positions from it. If this margin and padding stop adding up to 25, every
+     table's left edge drifts away from the Command column. */
 .kids {
   margin-left: 14px;
   padding-left: 11px;
@@ -825,30 +816,27 @@ main {
 }
 
 /* File-tree connectors. Each child group draws its own two segments rather
-     than the parent drawing one long rule: a vertical trunk down the child's
-     full height, and a horizontal arm reaching the child's header at its
-     midline. Because the trunk belongs to the CHILD and spans the child's own
-     box, a collapsed group shrinks to just its header and its line stops
-     there without any rule of its own. Scoped to `.kids > .node`, so a root
-     node — which has no parent to connect to — gets nothing.
+     than the parent drawing one long line: a vertical trunk down the child's
+     full height, and a horizontal arm to the child's header at its middle.
+     Because the trunk belongs to the child and spans the child's own box, a
+     collapsed group shrinks to its header and its line stops there. Limited
+     to `.kids > .node`, so a root node, which has no parent, gets nothing.
 
-     The trunk sits at -11px, the x the old `.kids` border-left occupied, so
-     the tree's vertical rhythm is unchanged.
+     The trunk sits at -11px, inside the `.kids` indentation.
 
      `--d-border` rather than `--d-border-subtle`: subtle is #eceff3 on white,
-     which at 1px reads as a smudge, and these lines now carry structure
-     rather than only separating. --d-border stays quiet in both themes.
+     which at 1px looks like a smudge, and these lines show structure.
+     --d-border stays quiet in both themes.
 
-     `.node` is only `position: relative` — no z-index — so it creates no
+     `.node` is only `position: relative`, with no z-index, so it creates no
      stacking context and the pseudo-elements stay at layer 0. The sticky
-     headers carry an inline z-index of 20 - depth, so a pinned header always
-     paints over any connector scrolling under it.
+     headers have an inline z-index of 20 - depth, so a stuck header always
+     draws over any connector scrolling under it.
 
-     Nothing connects to the leaf `<table>`: it is deliberately outdented back
-     out of the tree indentation by `outdent()` so the Command column lands at
-     one x at every depth, which leaves it no left edge inside the indentation
-     for an arm to reach. The connectors join a container to its child group
-     HEADERS and stop there. */
+     Nothing connects to the leaf `<table>`. `outdent()` moves it back out of
+     the tree indentation so the Command column is at one x at every depth,
+     so it has no left edge inside the indentation for an arm to reach. The
+     connectors join a container to its child group headers only. */
 .kids > .node {
   position: relative;
 }
@@ -861,9 +849,9 @@ main {
   width: 1px;
   background: var(--d-border);
 }
-/* The last group ends the trunk at its own header, which is what turns the
-     tee into an elbow. `:last-of-type` and not `:last-child`, because the
-     leaf table is emitted after the child groups. */
+/* The last group ends the trunk at its own header, which turns the tee
+     into an elbow. `:last-of-type` and not `:last-child`, because the leaf
+     table comes after the child groups. */
 .kids > .node:last-of-type::before {
   bottom: auto;
   height: calc(var(--head-h) / 2);
@@ -878,9 +866,9 @@ main {
   background: var(--d-border);
 }
 
-/* `fixed` is what makes the columns line up: with `auto`, every group is its
-     own table and each sizes to its own widest chain, so the command column
-     lands somewhere different in each one. */
+/* `fixed` makes the columns line up. With `auto`, every group is its own
+     table and each sizes to its widest chain, so the command column lands
+     somewhere different in each. */
 table {
   width: 100%;
   border-collapse: collapse;
@@ -892,55 +880,55 @@ tbody tr {
 tbody tr:hover {
   background: var(--d-bg-hover);
 }
-/* A whisper of the runner's brand color down the row's left edge — enough to
-     tell moon rows from cargo rows at a glance, not enough to read as state.
-     Declared BEFORE .enter-target and .copied so those win the box-shadow
-     channel at equal specificity: the tint must never fight the "Enter takes
-     this row" bar or the copied flash. color-mix against transparent lets one
-     rule sit correctly on both themes' row backgrounds. A report without a
-     brand color sets no --rb, so its rows render exactly as before. */
+/* A faint line of the runner's brand colour down the row's left edge, enough
+     to tell moon rows from cargo rows at a glance, not enough to look like
+     state. Declared before .enter-target and .copied so those win the
+     box-shadow at equal specificity: the tint must never compete with the
+     "Enter takes this row" bar or the copied flash. color-mix against
+     transparent works on both themes' row backgrounds. A report without a
+     brand colour sets no --rb, so its rows have no tint. */
 tbody tr.branded {
   box-shadow: inset 2px 0 0 color-mix(in srgb, var(--rb) 50%, transparent);
 }
-/* Enter takes this row, so it says so across its whole width — a lone
-     highlighted button was easy to miss and easy to misread as hover. While
-     focus is in the list this follows the focused row; otherwise it is the top
-     hit. See markEnterTarget(). */
+/* Enter takes this row, so the whole row shows it. A single highlighted
+     button would be easy to miss and easy to mistake for hover. While focus is
+     in the list this follows the focused row; otherwise it is the top hit. See
+     markEnterTarget(). */
 tbody tr.enter-target {
   background: var(--d-bg-hover);
   box-shadow: inset 2px 0 0 var(--d-accent);
 }
-/* The darker accent stop, not the base one: the base accent on this row's
-     lifted background is 4.26:1 and misses AA. The trade is that this one
-     Copy button does not shift colour on hover — the rule outranks
-     `.copy:hover`, and its resting state is already the hover colour.
-     A solid base ground and a heavier weight make it read as the primary
-     action on the row rather than as one more quiet button. */
+/* The darker accent, not the base one: the base accent on this row's raised
+     background is 4.26:1 and misses AA. As a result this one Copy button does
+     not change colour on hover: the rule is more specific than `.copy:hover`,
+     and its resting state is already the hover colour. A solid background and
+     a heavier weight make it the row's primary action rather than one more
+     quiet button. */
 tbody tr.enter-target .copy {
   color: var(--d-accent-hover);
   border-color: var(--d-accent);
   background: var(--d-bg-base);
   font-weight: 600;
 }
-/* The Enter affordance IS this button — the glyph is not a separate chip on
-     the left of the row, which truncated. It is a pseudo-element rather than
-     part of the button's text because the click handler swaps that text to
-     `copied`; drawn as content the confirmation would read `↵ copied`. The
-     `.done` exclusion drops the glyph for exactly that moment. */
+/* The Enter marker is part of this button, not a separate chip on the left
+     of the row, which would get cut off. It is a pseudo-element rather than
+     part of the button's text because the click handler changes that text to
+     `copied`, which would then read `↵ copied`. The `.done` exclusion hides
+     the glyph at that moment. */
 tbody tr.enter-target .copy:not(.done)::before {
   content: '↵ ';
 }
-/* Rows are flush against each other, so an outward ring on one is drawn over
-     the text of the rows above and below it. The focused row takes the ring
-     inset instead. `outline-offset` is the only thing that changes; the colour
-     and width stay the page's one focus style. */
+/* Rows touch each other, so an outward ring on one would cover the text of
+     the rows above and below. The focused row's ring is inset instead. Only
+     `outline-offset` changes; the colour and width stay the page's one focus
+     style. */
 tbody tr:focus-visible {
   outline-offset: -2px;
 }
 
-/* And the confirmation when Enter is actually pressed: the row glows and
-     settles. A green flash rather than the accent, so "it happened" reads
-     differently from "this is the one it would take". */
+/* The confirmation when Enter is pressed: the row glows and fades. A green
+     flash rather than the accent, so "it happened" looks different from "this
+     is the one it would take". */
 @keyframes copied-glow {
   0% {
     background: var(--d-status-success);
@@ -974,18 +962,17 @@ td {
   vertical-align: top;
   line-height: 1.5;
 }
-/* The leading gutter is a slot for row indicators, not a service column.
-     The brand tint stays OUTBOARD, on the row's own left edge, because it
-     belongs to the whole row rather than to this cell; the icons are inset
-     from it by centring in a 30px gutter, which leaves about 8px of clear
-     space so an icon never sits on the 2px bar. */
+/* The leading column is for row indicators in general, not only services.
+     The brand tint stays on the row's own left edge, because it belongs to the
+     whole row, not to this cell. The icons are centred in a 30px column, which
+     leaves about 8px of clear space so an icon never sits on the 2px bar. */
 td.ind {
   padding: 5px 0;
 }
 /* A flex row so a second indicator can join without moving the first. It is
-     block-level, so it makes no line box of its own: an indicator row is
-     exactly as tall as a plain one, whose 13px/1.5 text is taller than this
-     box. The margin drops the icons onto that text's optical centre. */
+     block-level, so it makes no line box of its own: a row with an indicator
+     is as tall as a plain one, whose 13px/1.5 text is taller than this box.
+     The margin moves the icons onto that text's optical centre. */
 .inds {
   display: flex;
   align-items: center;
@@ -993,12 +980,13 @@ td.ind {
   gap: 3px;
   margin-top: 3px;
 }
-/* Icons ship with a viewBox and no size, like .ricon, so the box is set
-     here and currentColor carries the theme token into the SVG. An inferred
-     service keeps the softer voice the chip had: the hollow glyph, drawn in
-     the muted text colour rather than the success green. */
-/* `relative` so the clipped `.sr` name inside anchors here rather than to the
-     page, which would give the document a stray 1px box at its top left. */
+/* Icons have a viewBox and no size, like .ricon, so the size is set here
+     and currentColor passes the theme colour into the SVG. An inferred
+     service is quieter: the hollow glyph, in the muted text colour rather
+     than the success green. */
+/* `relative` so the clipped `.sr` name inside is positioned here rather than
+     to the page, which would give the document a stray 1px box at its top
+     left. */
 .ind-svc {
   display: flex;
   position: relative;
@@ -1042,8 +1030,8 @@ td.doc .detail {
   white-space: nowrap;
 }
 /* `relative` so the 409 note can hang under the buttons without adding a
-     line to the row — the tables are fixed-layout and a taller cell would
-     move every row below it. */
+     line to the row. The tables are fixed-layout, and a taller cell would move
+     every row below it. */
 td.act {
   text-align: right;
   position: relative;
@@ -1078,8 +1066,8 @@ td.act {
   cursor: default;
   opacity: 0.5;
 }
-/* Out of flow, right-aligned under the row's own buttons, so the message
-     lands where the click did without disturbing the table. */
+/* Out of flow, right-aligned under the row's buttons, so the message
+     appears where the click was without moving the table. */
 .runerr {
   position: absolute;
   right: 8px;
@@ -1093,11 +1081,10 @@ td.act {
   padding: 3px 6px;
 }
 
-/* Arguments for a parameterised task. A bar at the foot rather than a modal:
-     the row that opened it stays visible, and Esc is the whole dismissal —
-     there is no overlay to click past. The command prefix is static text; only
-     the field is yours to type, because only the tail is what the server will
-     accept. */
+/* Arguments for a task with parameters. A bar at the bottom rather than a
+     modal: the row that opened it stays visible, and Esc dismisses it, with no
+     overlay to click past. The command prefix is static text. Only the field
+     can be typed in, because the server accepts only the trailing arguments. */
 #runbar {
   position: fixed;
   left: 0;
@@ -1150,8 +1137,8 @@ td.act {
   font-family: var(--d-font-mono);
 }
 
-/* The end state: the terminal has the task and this page has nothing left to
-     do, so it says so over everything rather than beside it. */
+/* The end state: the task has the terminal and this page has nothing left
+     to do, so it says so over everything rather than beside it. */
 #handoff {
   position: fixed;
   inset: 0;
@@ -1202,10 +1189,10 @@ td.act {
   border-color: var(--d-accent);
 }
 
-/* The column heads live in the chrome, not in each group's table: with one
-     table per group they would repeat down the page. They are a table of their
-     own using the same depth-0 colgroup, which lines up because every table's
-     command column starts at the same x by construction. */
+/* The column headers are in the sticky header, not in each group's table,
+     where they would repeat down the page. They are their own table using the
+     same depth-0 colgroup, which lines up because every table's command
+     column starts at the same x. */
 .colheads {
   padding: 0 16px;
   background: var(--d-bg-base);
@@ -1239,8 +1226,8 @@ dialog#settings::backdrop {
   background: rgba(0, 0, 0, 0.45);
 }
 
-/* The settings screen. Reading only — every value here is reported, none is
-     editable yet, so nothing in this block styles a control. */
+/* The settings screen. Values are shown with the layer they came from, and
+     the runners, discovery and excluded paths can be edited and saved. */
 .set-head h2 {
   font: 600 15px/1.3 system-ui;
   margin: 0;
@@ -1265,8 +1252,8 @@ dialog#settings::backdrop {
   align-items: baseline;
   gap: 12px;
 }
-/* Which layer supplied the value — the question this screen exists to
-     answer, so it is on every section rather than only the surprising ones. */
+/* Which layer supplied the value. This screen exists to answer that, so it is
+     on every section, not only the surprising ones. */
 .set-layer {
   font: 400 10px/1 system-ui;
   text-transform: none;
@@ -1329,8 +1316,8 @@ dialog#settings::backdrop {
 .set-warnings p {
   margin: 0;
 }
-/* An edit that has not been written. Named on the section it belongs to as
-     well as in the title, so a scrolled screen still says which key is dirty. */
+/* An edit that has not been written. Shown on its section as well as in the
+     title, so a scrolled screen still says which key is unsaved. */
 .set-layer[data-layer='staged'] {
   color: var(--d-accent);
   border-color: var(--d-accent);
@@ -1344,9 +1331,9 @@ dialog#settings::backdrop {
   margin-left: 6px;
   vertical-align: middle;
 }
-/* The picker's own footnote: the checkbox above it filters the session, and
-     the durable setting is a click away. Quiet — it is a signpost, not a
-     control. */
+/* The picker's footnote: the checkboxes above filter this session, and the
+     saved setting is one click away. Quiet, because it points somewhere and
+     is not a control. */
 .picknote {
   margin: 0;
   padding: 8px 10px;

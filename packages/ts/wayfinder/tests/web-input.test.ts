@@ -130,8 +130,8 @@ describe('copying a row from the keyboard', () => {
   test('closes an open runner picker, exactly as clicking the button does', async () => {
     // A mouse click on `.copy` bubbles to the document handler, whose last
     // branch closes the picker on any click outside it. The keyboard paths
-    // reach the same copy without a click, and used to borrow that close by
-    // synthesising one.
+    // reach the same copy without a click, so they must close the picker
+    // themselves.
     setClipboard(() => Promise.resolve())
     const menu = document.getElementById('pickmenu') as HTMLElement
     menu.hidden = false

@@ -12,7 +12,7 @@ interactive surfaces can show something at once.
 ## Who reads the store
 
 - **The terminal UI and `--serve`** always start from the store, then probe
-  behind you and update in place.
+  in the background and update in place.
 - **`--json`, `--list` and `way query`** re-probe on every run, so a script
   gets what the repository has now. These runs also write the store.
 - **`--cached`** makes `--json`, `--list` or `query` answer from the store.
@@ -79,7 +79,7 @@ A fingerprint covers at most 256 paths. A run that hits the cap adds an
 unset. Losing it costs one slow probe. `way clean --cache` removes it, and also
 the old `waypost` cache directory when one is left over.
 
-The cache is apart from the trust store and plays no part in the execution
-gate. A cached answer is never a trust grant, clearing the cache does not
-change what is trusted, and a runner withheld for want of trust or one that
-errored is never stored. See [Trust and execution](trust.md).
+The cache is separate from the trust store and plays no part in deciding
+execution. A cached answer is never a trust grant, and clearing the cache does
+not change what is trusted. A runner withheld for lack of trust, or one that
+errored, is never stored. See [Trust and execution](trust.md).

@@ -7,8 +7,8 @@ description: Why a repository must be trusted before some runners are read, and 
 
 Some runners can only be read by running them. Reading moon's task graph
 evaluates the repository's toolchain configuration. Reading mise's tasks can
-fire that repository's hooks. Pointing `way` at a repository you did not
-write is code execution before you have run anything from the list.
+run that repository's hooks. So pointing `way` at a repository you did not
+write runs its code, before you have run anything from the list.
 
 `allowExec` alone cannot gate that. `wayfinder.config.json` lives inside the
 repository, so a setting it could raise is a setting the repository could
@@ -70,9 +70,10 @@ The terminal UI grants trust with `Ctrl+S`, after a `y`/`n` question. The
 web view offers a **Trust this repository** button. Both are offered only
 when trust is what is missing.
 
-When runners are withheld for want of trust, `--list` and `--json` print a
+When runners are withheld for lack of trust, `--list` and `--json` print a
 line on stderr, the terminal UI shows `N hidden — repo not trusted (^s to
-trust)`, and the web view shows the button on each withheld runner.
+trust)`, and the web view shows the button in a bar above the list, in each
+withheld runner's info panel and in the runner picker.
 
 ## The policy
 
@@ -144,7 +145,7 @@ trust store. See [The cache](cache.md).
 - A cached answer is never a trust grant. The gate is resolved fresh on every
   run.
 - Clearing the cache does not change what is trusted.
-- A runner withheld for want of trust is never stored.
+- A runner withheld for lack of trust is never stored.
 
 ## Removing what is stored
 

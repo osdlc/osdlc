@@ -1,7 +1,7 @@
 /**
- * `way dev …` is devlink mounted under wayfinder's own `main`: the verb is
- * claimed before the flag parser, its state lands under the injected HOME,
- * and `self` is this checkout.
+ * `way dev …` is devlink run from wayfinder's own `main`. The verb is matched
+ * before the flags are parsed, its state goes under the injected HOME, and
+ * `self` is this checkout.
  */
 
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'

@@ -114,7 +114,7 @@ clean      remove the data this tool stores outside your repositories
 dev        run the installed way from a development checkout
 ```
 
-Each takes `--help`. A subcommand is claimed before the flag parse, so its
+Each takes `--help`. A subcommand is matched before flags are parsed, so its
 arguments are not read as top-level flags. `config`, `trust` and `providers`
 take `-C`.
 

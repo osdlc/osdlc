@@ -111,9 +111,9 @@ describe('way trust --untrust', () => {
   })
 
   test('exits 1 when the root was never trusted', async () => {
-    // A well-formed command that failed against the state it found — the house
-    // rule's 1, not its 2. Reported rather than shrugged off: a silent success
-    // reads as "it is no longer trusted", which is wrong if it never was.
+    // A well-formed command that failed against the state it found: exit 1,
+    // not 2. It is reported because a silent success reads as "it is no longer
+    // trusted", which is wrong if it never was.
     const dir = await root()
     const result = await run(dir, ['--untrust'])
 
@@ -290,8 +290,8 @@ describe('way trust usage errors', () => {
  *
  * The command answers three different questions, and a caller that had to
  * branch on which flag it passed to know which JSON shape came back would be
- * doing the tool's job for it — so the three root-scoped modes share one shape
- * (now carrying `by`/`rule` too) and only `--list` differs.
+ * doing the tool's job for it. So the three root-scoped modes share one shape
+ * (including `by`/`rule`) and only `--list` differs.
  */
 describe('way trust --json', () => {
   test('every root-scoped mode answers in the same shape, with by="marker" once granted', async () => {
@@ -396,8 +396,8 @@ describe('way trust --json', () => {
   })
 
   test('combines with each mode rather than contradicting them', async () => {
-    // --json is not a fourth mode: pairing it with one must not trip the
-    // two-modes-given guard.
+    // --json is not a fourth mode: pairing it with one must not fail the
+    // two-modes check.
     const dir = await root()
     expect((await run(dir, ['--show', '--json'])).code).toBe(0)
     expect((await run(dir, ['--list', '--json'])).code).toBe(0)

@@ -154,7 +154,7 @@ describe('mergeConfig', () => {
 
 describe('validateConfig', () => {
   test('warns about an unknown key and still returns the rest', () => {
-    // Forward compatibility: a file written by a newer version must not brick
+    // Forward compatibility: a file written by a newer version must not break
     // an older one, so an unrecognized key is reported and skipped.
     const { config, warnings } = validateConfig(
       { allowExec: true, futureThing: 1, runners: { order: ['moon'], nested: 2 } },

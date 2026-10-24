@@ -354,8 +354,8 @@ describe('config path', () => {
   })
 
   test('rejects arguments instead of swallowing them', async () => {
-    // It used to ignore its argv entirely, which made it the one subcommand
-    // where a typo looked like it had worked.
+    // If it ignored its argv, it would be the one subcommand where a typo
+    // looked like it had worked.
     const s = await scenario()
     expect((await s.run(['path', '--nonsense'])).code).toBe(2)
     expect((await s.run(['path', 'extra'])).code).toBe(2)
@@ -469,8 +469,8 @@ describe('takeConfigDir', () => {
   })
 
   test('the attached spellings commander accepts are accepted here too', () => {
-    // The help advertises one `-C, --dir <PATH>`; a user cannot know that a
-    // claimed subcommand reads it with a different parser than the main one.
+    // The help lists one `-C, --dir <PATH>`. A user cannot know that a
+    // subcommand reads it with a different parser than the main one.
     expect(takeConfigDir(['-C/tmp/x', 'list'])).toEqual({ dir: '/tmp/x', rest: ['list'] })
     expect(takeConfigDir(['-C=/tmp/x', 'list'])).toEqual({ dir: '/tmp/x', rest: ['list'] })
     expect(takeConfigDir(['--dir=/tmp/x', 'list'])).toEqual({ dir: '/tmp/x', rest: ['list'] })

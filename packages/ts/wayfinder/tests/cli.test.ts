@@ -69,8 +69,8 @@ describe('parseArgs', () => {
     expect(parse(['--port', '0'])).toMatchObject({ port: 0 })
     expect(parse(['--port', 'notaport'])).toEqual({ error: '--port needs a port number' })
     expect(parse(['--port', '70000'])).toEqual({ error: '--port needs a port number' })
-    // A missing value is now commander's message rather than this one, but it
-    // is still refused and still names the flag.
+    // A missing value gets commander's message, but it is still refused and
+    // still names the flag.
     expect((parse(['--port']) as { error?: string }).error).toContain('--port')
   })
 
@@ -119,8 +119,8 @@ describe('parseArgs', () => {
   })
 
   test('rejects bad input rather than guessing', () => {
-    // The wording of the first two is commander's now; what matters is that
-    // each is refused and names what was wrong.
+    // The wording of the first two is commander's. What matters is that each
+    // is refused and names what was wrong.
     for (const [argv, mentions] of [
       [['--only'], '--only'],
       [['--nope'], '--nope'],
@@ -168,8 +168,8 @@ async function project(config?: unknown, configText?: string): Promise<string> {
     JSON.stringify({ name: 'p', scripts: { build: 'echo b' } }),
     'utf-8',
   )
-  // Escaped, not a literal tab: the repo's control-character guard scans source
-  // files, and a real tab here would trip it.
+  // Escaped, not a literal tab: the repo's control-character check scans
+  // source files, and a real tab here would fail it.
   await writeFile(join(dir, 'Makefile'), 'lint:\n\techo l\n', 'utf-8')
   await writeFile(join(dir, 'Cargo.toml'), '[package]\nname = "p"\nversion = "0.1.0"\n', 'utf-8')
   // mise is an exec runner, so an untrusted run withholds it.
@@ -189,10 +189,10 @@ interface Ran {
 }
 
 /**
- * Run `main`, capturing what it writes through the `CliIo` seam rather than
- * the process streams — `main` no longer writes to those directly. `dir` is
- * appended as `-C dir` when given; the config-branch cases pass it themselves,
- * since where in the argv it appears is part of what they are testing.
+ * Run `main`, capturing what it writes through `CliIo` rather than the
+ * process streams. `dir` is appended as `-C dir` when given. The config-branch
+ * cases pass it themselves, since where it appears in the argv is part of what
+ * they test.
  *
  * `injectedHome` lets a case share a user layer AND a trust store across
  * invocations. Every run injects `env: {}` and a temp home, so no test can
@@ -214,10 +214,9 @@ async function allowExecOf(argv: string[], dir: string): Promise<boolean> {
 
 describe('main allowExec precedence', () => {
   test("wayfinder's own default applies when no file answered, once the repo is trusted", async () => {
-    // Step 3 of the chain. DEFAULT_CONFIG.allowExec is false; wayfinder's is true,
-    // and wayfinder's is the one that must win over the library's. Willingness is
-    // not the gate, though: trust is, so the repository has to be trusted for
-    // the default to become execution.
+    // Step 3 of the chain. DEFAULT_CONFIG.allowExec is false and wayfinder's is
+    // true, and wayfinder's must win over the library's. The default alone does
+    // not allow execution, so the repository has to be trusted too.
     const home = await temp()
     const dir = await project()
     await trustStoreFor(home).trust(await findRoot(dir))
@@ -252,13 +251,13 @@ describe('main allowExec precedence', () => {
 /**
  * The trust gate.
  *
- * The hole these close: `allowExec` alone could never gate subprocess
- * execution, because the scanned repository writes `wayfinder.config.json` and wayfinder
- * defaults the setting to `true` — so a freshly cloned repository ran its own
- * toolchain configuration the moment it was browsed.
+ * `allowExec` alone cannot control subprocess execution, because the scanned
+ * repository writes `wayfinder.config.json` and wayfinder defaults the setting
+ * to `true`. Without trust, a freshly cloned repository would run its own
+ * toolchain configuration as soon as it was browsed.
  */
 describe('main trust gate', () => {
-  /** How many runners the catalog says went uncollected for want of execution. */
+  /** How many runners the catalog says were not collected because execution was off. */
   function withheld(out: string): string[] {
     return (
       JSON.parse(out) as { reports: Array<{ runner: string; skippedForExec: boolean }> }
@@ -268,8 +267,8 @@ describe('main trust gate', () => {
   }
 
   test('an untrusted root withholds exec runners even with allowExec: true configured', async () => {
-    // A user-layer true, which IS allowed to raise the configured value. Trust
-    // is a second gate above it, so the answer is still no.
+    // A user-layer true, which is allowed to raise the configured value. Trust
+    // is a second check on top of it, so the answer is still no.
     const home = await temp()
     await mkdir(join(home, '.config', 'wayfinder'), { recursive: true })
     await writeFile(
@@ -428,8 +427,8 @@ describe('main config wiring', () => {
 
   test("config honours -C, reporting the named directory's project", async () => {
     // -C is documented as a global flag, and the config branch runs before the
-    // flag parse — so without explicit handling it was accepted and discarded,
-    // silently reporting the current directory instead.
+    // flags are parsed. Without explicit handling, -C would be accepted and
+    // ignored, and the current directory reported instead.
     const dir = await project({ discovery: 'walk' })
     const ran = await run(['config', 'path', '-C', dir])
 
@@ -525,8 +524,8 @@ describe('--cached', () => {
 
     const cached = await run(['--list', '--cached'], dir, home)
     expect(cached.code).toBe(0)
-    // The stale answer is what is shown — that is the point of the flag — and
-    // stdout stays pipeable because the admission goes to stderr.
+    // The stale answer is shown, which is the point of the flag. stdout stays
+    // pipeable because the note goes to stderr.
     expect(cached.out).not.toContain('make ship')
     expect(cacheLines(cached.err)).toHaveLength(1)
     expect(cacheLines(cached.err)[0]).toMatch(/^wayfinder: --cached: stale: .*\bmake \(/)
@@ -650,21 +649,20 @@ describe('help tiers', () => {
     const short = (await run(['--help'])).out
 
     expect(short.split('\n').length).toBeLessThan(45)
-    // The clause that makes this disclosure and not omission.
+    // The short help says where the rest is.
     expect(short).toContain('--help --all')
     expect(short).toContain('guide')
-    // A default that bites silently: without it a reader sees a shorter
-    // catalog and no reason why.
+    // Trust hides runners by default. Without this line a reader sees a
+    // shorter catalog and no reason why.
     expect(short).toContain('trust')
-    // And a tier-2 flag has not leaked back up.
+    // And a tier-2 flag does not appear in tier 1.
     expect(short).not.toContain('--exclude-path')
   })
 
   test('--help --all is the complete tier: every flag the parser accepts is in it', async () => {
     // Derived from the complete help, which `defineCli` renders from the flag
-    // declaration — so a flag added to the parser is in tier 2 by
-    // construction. What this still pins is that tier 2 is a SUPERSET of
-    // tier 1 and genuinely longer.
+    // declaration, so a flag added to the parser is always in tier 2. What
+    // this still checks is that tier 2 contains tier 1 and is longer.
     const all = (await run(['--help', '--all'])).out
     const accepted = acceptedFlags(all)
 
@@ -674,8 +672,8 @@ describe('help tiers', () => {
   })
 
   test('a usage error answers with the short form, not the whole surface', async () => {
-    // Answering a mistyped flag with the complete text is the behaviour the
-    // tiering exists to remove: the error is the part the reader came for.
+    // The tiers exist so a mistyped flag does not print the complete text.
+    // The error is the part the reader needs.
     const ran = await run(['--nope'])
 
     expect(ran.code).toBe(2)
