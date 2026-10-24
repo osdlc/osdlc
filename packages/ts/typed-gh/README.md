@@ -401,7 +401,8 @@ These methods take `AsyncCallOptions`: `raw`, `rawChecked`, `prList`, `prView`, 
 `signal`.
 
 `api(endpoint, opts)` (on `Gh` and `AsyncGh`) is a REST GET through `gh api`.
-It never throws; the result is `{ ok, status, etag, body, malformed, stderr, error? }`.
+It never throws; the result is `{ ok, status, etag, body, message, malformed, stderr, error? }`.
+On failure `body` still carries GitHub's error object and `message` its text; `status` is only observed when headers were requested (`etag` or `includeHeaders`).
 `stderr` is gh's own; `error` holds the runner's message when gh never ran or
 was stopped (a missing binary, a timeout).
 Pass `etag` for a conditional request (`If-None-Match`; a 304 comes back as

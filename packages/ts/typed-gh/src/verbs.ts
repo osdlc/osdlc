@@ -444,13 +444,15 @@ export function prBody(number: number, target?: GhTarget): GhVerb<string | null>
 export interface ApiResponse {
   /** True iff gh exited 0 and the status is below 400 (2xx, or a 304 on a conditional GET). */
   ok: boolean
-  /** HTTP status; read off the header block under `-i`. Without `-i` it is synthesized (200 on exit 0, 0 on failure), not observed. */
+  /** HTTP status; set only when headers were requested (`-i`, `etag` or `includeHeaders`). Without them it is synthesized (200 on exit 0, 0 on failure), not observed. */
   status: number
   /** The response `ETag`, when headers were requested and one came back. */
   etag: string | null
-  /** The decoded JSON body; null when empty (e.g. a 304), unparseable, or the call failed. */
+  /** The decoded JSON body, whatever gh's exit code (on failure, GitHub's error object); null when empty (e.g. a 304) or unparseable. */
   body: unknown
-  /** True when a non-empty body arrived but was not valid JSON (`body` is then null). */
+  /** `body.message` when the body is an object with a string `message` (GitHub's error text), else null. */
+  message: string | null
+  /** True when a non-empty body arrived but was not valid JSON (`body` is then null); also true on a failed call with a non-JSON body. */
   malformed: boolean
   /** gh's stderr, trimmed. */
   stderr: string
@@ -669,7 +671,7 @@ function parseApi(r: CommandResult, withHeaders: boolean): ApiResponse {
   }
   let body: unknown = null
   let malformed = false
-  if (r.exitCode === 0 && bodyText.trim() !== '') {
+  if (bodyText.trim() !== '') {
     try {
       body = JSON.parse(bodyText)
     } catch {
@@ -677,11 +679,16 @@ function parseApi(r: CommandResult, withHeaders: boolean): ApiResponse {
     }
   }
   const ok = r.exitCode === 0 && status >= 200 && status < 400
+  const rawMessage =
+    body !== null && typeof body === 'object' && !Array.isArray(body)
+      ? (body as Record<string, unknown>)['message']
+      : undefined
   return {
     ok,
     status,
     etag,
     body,
+    message: typeof rawMessage === 'string' ? rawMessage : null,
     malformed,
     stderr: r.stderr.trim(),
     ...(r.error === undefined ? {} : { error: r.error }),
