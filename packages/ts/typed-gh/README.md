@@ -191,7 +191,11 @@ they get `GH_HOST` in the environment. `withRepo` and `at` keep the runner and
 the rest of the target.
 
 `hostname` is any GitHub host: `github.com`, a GitHub Enterprise Server host,
-or a `<tenant>.ghe.com` host. gh supports only GitHub's API, so Forgejo, Gitea
+or a `<tenant>.ghe.com` host. An empty string means no host, so a value read
+from config can be passed as it is. `github.com` is not dropped: it goes to gh
+as `--repo github.com/owner/name`, `--hostname` or `GH_HOST`, which keeps the
+call on github.com even when the environment sets another default host. gh
+supports only GitHub's API, so Forgejo, Gitea
 and GitLab are not supported. A `repo` that is not `owner/name`, or a
 `hostname` that is not a bare host, throws `RangeError`.
 
