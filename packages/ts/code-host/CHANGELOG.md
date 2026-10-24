@@ -1,5 +1,12 @@
 # @osdlc/code-host
 
+## 0.4.1
+
+### Patch Changes
+
+- Updated dependencies [ae400e5]
+  - @osdlc/typed-gh@0.8.0
+
 ## 0.4.0
 
 ### Minor Changes
