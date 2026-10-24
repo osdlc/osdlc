@@ -174,7 +174,7 @@ Developed here, in this repository:
   a repository contains, its packages, ecosystems and tools described once
   with their roles, and the tasks its runners expose; built-in tools ship as
   plugin entries)
-- `packages/ts/waypost` (`@osdlc/waypost` on npm, the `way` command: browse
+- `packages/ts/wayfinder` (`@osdlc/wayfinder` on npm, the `way` command: browse
   and run every task in a repository from a terminal UI, a live web view or
   JSON, built on `@osdlc/system-model`)
 

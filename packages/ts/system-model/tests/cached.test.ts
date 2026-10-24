@@ -350,7 +350,7 @@ describe('runners.readCached', () => {
     try {
       const s = setup([execTool('gamma')], {
         allowExec: false,
-        execWithheldHint: 'run `waypost trust` first',
+        execWithheldHint: 'run `way trust` first',
       })
       const profile = await detect(s, root)
       const cached = await s.project.runners.readCached(profile, cache, s.options)
