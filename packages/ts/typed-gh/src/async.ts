@@ -13,18 +13,11 @@
 import {
   resolveRunnerAsync,
   type AsyncCommandRunner,
-  type AsyncCommandRunOptions,
   type CommandResult,
 } from '@osdlc/command-seam'
 
-import {
-  runCheckedGhAsync,
-  settle,
-  softAsync,
-  triedAsync,
-  type Soft,
-  type TriedAsync,
-} from './doors.ts'
+import { runCheckedGhAsync, softAsync, triedAsync, type Soft, type TriedAsync } from './doors.ts'
+import { runVerbAsync } from './run.ts'
 import { ownerRepoSlug, parseOwnerRepo, parsePrRef } from './repo.ts'
 import type { IssueRow, Label, OwnerRepo, PrSearchHit, PullRequest, Repository } from './types.ts'
 import * as v from './verbs.ts'
@@ -123,15 +116,11 @@ export class AsyncGh {
 
   /** Run one verb from the table, honouring its checked/unchecked contract. */
   private async exec<T>(verb: GhVerb<T>, call: AsyncCallOptions = {}): Promise<T> {
-    const opts: AsyncCommandRunOptions = { cwd: this.cwd }
-    if (verb.input !== undefined) opts.input = verb.input
-    if (verb.env !== undefined) opts.env = verb.env
-    if (call.timeoutMs !== undefined) opts.timeoutMs = call.timeoutMs
-    if (call.signal !== undefined) opts.signal = call.signal
-    const result = verb.checked
-      ? await runCheckedGhAsync(this.runner, verb.argv, opts)
-      : await this.runner.run(verb.argv, opts)
-    return settle(verb, result, this.runner.binary)
+    return runVerbAsync(verb, this.runner, {
+      cwd: this.cwd,
+      timeoutMs: call.timeoutMs,
+      signal: call.signal,
+    })
   }
 
   /** {@link exec} for a verb that never answers `null` as a value: a failed or unreadable run rejects. */
