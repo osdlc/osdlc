@@ -140,6 +140,7 @@ export class AsyncGit {
    * runtime, though the type leaves them out.
    */
   get soft(): Soft<AsyncGit> {
+    // Explicit type argument: otherwise TS 5.x infers the polymorphic `this`.
     return (this.softened ??= softAsync<AsyncGit>(this, SOFT_TABLE))
   }
 
