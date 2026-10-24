@@ -17,11 +17,20 @@ import { strict as assert } from 'node:assert'
 
 import * as root from '@osdlc/cli-tool'
 import * as devlink from '@osdlc/cli-tool/devlink'
+import * as defineCliEntry from '@osdlc/cli-tool/define-cli'
+import * as exitEntry from '@osdlc/cli-tool/exit'
+import * as ioEntry from '@osdlc/cli-tool/io'
+import * as promptEntry from '@osdlc/cli-tool/prompt'
 
 const { captureContext, captureIo, defineCli, EXIT, isDomainExit } = root
 
 assert.ok(Object.keys(root).length > 0, 'the root entry exports nothing')
 assert.ok(Object.keys(devlink).length > 0, 'the ./devlink entry exports nothing')
+// The per-module subpaths hold the same bindings as the root.
+assert.equal(defineCliEntry.defineCli, root.defineCli)
+assert.equal(exitEntry.EXIT, root.EXIT)
+assert.equal(ioEntry.captureIo, root.captureIo)
+assert.equal(promptEntry.askYesNo, root.askYesNo)
 
 // Flags are declared once and parsed to typed values.
 const cli = defineCli({

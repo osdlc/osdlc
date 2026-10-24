@@ -11,9 +11,15 @@
 import { strict as assert } from 'node:assert'
 
 import { didYouMean, substitutePathNames, valueAt, valueIsSet } from '@osdlc/config-layers'
+import { didYouMean as lightDidYouMean } from '@osdlc/config-layers/did-you-mean'
+import { systemDirs } from '@osdlc/config-layers/dirs'
 
 assert.equal(valueIsSet(''), false)
 assert.equal(valueIsSet('x'), true)
 assert.equal(valueAt({ a: { b: 1 } }, 'a.b'), 1)
 assert.equal(substitutePathNames('{dev}/x', { dev: '/d' }, 'paths:'), '/d/x')
 assert.equal(didYouMean('pth', ['path', 'other']), 'did you mean: path?')
+
+// The light subpaths hold the same bindings as the barrel.
+assert.equal(lightDidYouMean, didYouMean)
+assert.equal(typeof systemDirs, 'function')

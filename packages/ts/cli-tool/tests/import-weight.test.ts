@@ -44,9 +44,13 @@ for (const entry of [
   'prompt.ts',
   'exit.ts',
 ]) {
-  test(`${entry} does not import the config-layers barrel, yaml or zod`, () => {
+  test(`${entry} imports only the light config-layers subpaths, never yaml or zod`, () => {
     const heavy = [...packageSpecifiers(entry)].filter(
-      (s) => s === '@osdlc/config-layers' || s === 'yaml' || s === 'zod',
+      (s) =>
+        s === 'yaml' ||
+        s === 'zod' ||
+        (s.startsWith('@osdlc/config-layers') &&
+          !['@osdlc/config-layers/dirs', '@osdlc/config-layers/did-you-mean'].includes(s)),
     )
     expect(heavy).toEqual([])
   })
