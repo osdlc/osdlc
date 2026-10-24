@@ -27,10 +27,10 @@ pnpm run api       # API reference into public/api (needs cargo); before build
 - **Libraries** get a page each under `/libraries/ts/` and `/libraries/rust/`,
   made by `scripts/sync-libraries.mjs` from each package's manifest and
   README. A TypeScript package and a Rust crate with the same directory name
-  are paired as twins; the overview at `/libraries/` lists them side by side.
+  are paired as twins. The overview at `/libraries/` lists them side by side.
 - **Library guides**: a package with a `docs/guide/` folder gets those pages
   published under its library page, in the sidebar under the library's name.
-  They are markdown or MDX; an MDX page may import a Vue component from beside
+  They are markdown or MDX. An MDX page may import a Vue component from beside
   it, and the component may import the library as `@osdlc/<name>`, which
   resolves to the package's source. `packages/ts/intersect/docs/guide/` is the
   example.

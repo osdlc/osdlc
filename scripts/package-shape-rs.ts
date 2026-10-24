@@ -6,15 +6,15 @@
 //
 //   - `edition`, `rust-version`, `license` and `repository` come from the
 //     workspace (`<key>.workspace = true`), and `[lints] workspace = true`.
-//   - `name` is the directory name; `description` is not empty.
-//   - `readme = "README.md"`; `keywords` (at most 5, crates.io's limit) and
+//   - `name` is the directory name. `description` is not empty.
+//   - `readme = "README.md"`. `keywords` (at most 5, crates.io's limit) and
 //     `categories` are not empty.
 //   - `include` ships src/, README.md, CHANGELOG.md, LICENSE-MIT and
 //     LICENSE-APACHE. It may list more (tests, fixtures).
 //   - The directory holds README.md, CHANGELOG.md, LICENSE-MIT, LICENSE-APACHE,
 //     src/ and examples/.
 //   - README.md starts `# <name>`, has `## Install` showing `cargo add <name>`
-//     and `## License` naming MIT and Apache; CHANGELOG.md starts `# Changelog`
+//     and `## License` naming MIT and Apache. CHANGELOG.md starts `# Changelog`
 //     (release-plz writes it).
 //
 // A crate with `publish = false` is not on crates.io, so it keeps only the
@@ -32,7 +32,6 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-/** The files a published crate ships and keeps. */
 /** A parsed TOML value. */
 export type Toml = string | number | boolean | Toml[] | Table
 
@@ -40,6 +39,7 @@ export type Toml = string | number | boolean | Toml[] | Table
 // oxlint-disable-next-line typescript/no-explicit-any
 export type Table = { [key: string]: any }
 
+/** The files a published crate ships and keeps. */
 const DOC_FILES = ['README.md', 'CHANGELOG.md']
 const LICENCE_FILES = ['LICENSE-MIT', 'LICENSE-APACHE']
 /** The `[package]` keys a crate takes from the workspace. */

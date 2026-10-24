@@ -10,11 +10,11 @@ export default defineConfig({
   base: '/osdlc',
   vite: {
     resolve: {
-      // Guide components live in packages/, outside this folder; resolve their
+      // Guide components live in packages/, outside this folder. Resolve their
       // vue import from the site's own install.
       dedupe: ['vue'],
       // A library guide's interactive components import the library by name
-      // and run against its source, so a guide never lags a release.
+      // and run against its source, so a guide always matches the current code.
       alias: [
         {
           find: /^@osdlc\/([\w-]+)$/,

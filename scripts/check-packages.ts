@@ -1,30 +1,32 @@
 // Packs each workspace package the way it will be published and checks the
-// tarball: `pnpm pack` (which rewrites `workspace:` ranges), then publint, then
-// Are The Types Wrong for a package that ships types, then a clean consumer:
-// `npm install <tarball>` into an empty project, load every entry point under
-// Node, and run the package's smoke check against it if the package has one.
-// The smoke check is `tests/smoke.mjs` in the package directory. It is not
-// shipped: it is copied into the consumer project and imports the package by
-// name, so it runs against the installed tarball.
+// tarball. For each package it runs `pnpm pack` (which rewrites `workspace:`
+// ranges), checks the shared shape, runs publint, runs Are The Types Wrong if
+// the package ships types, and then tries a clean consumer. The consumer step
+// runs `npm install <tarball>` in an empty project, loads every entry point
+// under Node, and runs the package's smoke check if it has one. The smoke
+// check is `tests/smoke.mjs` in the package directory. It is not shipped. It
+// is copied into the consumer project and imports the package by name, so it
+// runs against the installed tarball.
 //
-// Each package must also keep the shared shape (package-shape-ts.ts): dist-only
-// ESM, no `bun` export condition, no TypeScript source in the tarball, no bun in
-// its scripts, and no tsconfig `customConditions` or sibling `paths`; and the
-// conventions in conventionProblems (author, engines, scripts, layout, docs,
-// README sections, .gitignore, the pnpm catalog), plus no `catalog:` or
-// `workspace:` range left in the packed package.json.
+// The shared shape is defined in package-shape-ts.ts: dist-only ESM, no `bun`
+// export condition, no TypeScript source in the tarball, no bun in its
+// scripts, and no tsconfig `customConditions` or sibling `paths`. It also
+// covers the conventions in conventionProblems (author, engines, scripts,
+// layout, docs, README sections, .gitignore, the pnpm catalog), and no
+// `catalog:` or `workspace:` range left in the packed package.json.
 //
 // Every packages/ts/* package is packed first. The consumer maps each other
 // workspace package to its local tarball with npm `overrides`, so siblings
-// resolve from local tarballs, not npm. A release bumps a library and its
-// dependents together, and the new library version is not on npm yet.
+// resolve from local tarballs, not npm. This matters because a release bumps
+// a library and its dependents together, and the new library version is not
+// on npm yet.
 //
 //   node scripts/check-packages.ts [packages/ts/<name> ...]
 //
-// With no package arguments it checks every packages/ts/* package; with
-// arguments, only those are checked, but all are still packed. The
-// tarballs go to a temporary directory. Run `pnpm run build` first: the
-// tarball must contain dist/.
+// With no arguments it checks every packages/ts/* package. With arguments it
+// checks only those, but still packs all of them. The tarballs go to a
+// temporary directory. Run `pnpm run build` first, because the tarball must
+// contain dist/.
 import { execFileSync } from 'node:child_process'
 import {
   copyFileSync,
@@ -99,10 +101,10 @@ function entryPoints(pkg: Pkg): string[] {
 }
 
 /** Installs `tarball` into an empty project and loads each entry point the
- * way a Node consumer would: code through `import()`, where an entry with no
- * values passes if its `.d.ts` exports something; a JSON entry (a config
- * preset, possibly with comments) is resolved and read, since its consumer
- * is a tool rather than Node. Then copies in the package's smoke check, if
+ * way a Node consumer would. Code loads through `import()`. An entry with no
+ * values passes if its `.d.ts` exports something. A JSON entry (a config
+ * preset, possibly with comments) is only resolved and read, because its
+ * consumer is a tool, not Node. Then copies in the package's smoke check, if
  * it has one, and runs it there. */
 function cleanConsumer(
   pkg: Pkg,
