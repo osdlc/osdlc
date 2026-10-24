@@ -14,7 +14,7 @@ import type { CommandOptions } from './adapters/shared.js'
 import type { AgentName } from './spec.js'
 
 /**
- * Instantiate a built-in adapter by name. `options` takes `binary` or
+ * Create a built-in adapter by name. `options` takes `binary` or
  * `command`, as each adapter's own options do.
  */
 export function adapterFor(name: AgentName, options: CommandOptions = {}): AgentAdapter {
@@ -69,18 +69,18 @@ export interface AgentAvailability {
   version?: string | undefined
   /**
    * The command that answered, when available. It is the adapter's command,
-   * except for the default cursor adapter when `agent` is not the Cursor CLI
-   * and `cursor-agent` answers instead: then it is `['cursor-agent']`, which
-   * `cursorAdapter({ command })` takes.
+   * with one exception. For the default cursor adapter, when `agent` is not
+   * the Cursor CLI and `cursor-agent` answers instead, it is
+   * `['cursor-agent']`, which you can pass to `cursorAdapter({ command })`.
    */
   command?: readonly string[] | undefined
 }
 
 /**
- * Probe which agent CLIs are installed, by running each adapter's command
+ * Check which agent CLIs are installed, by running each adapter's command
  * (its `command`, else its `binary`) with `--version` appended. `agent`, the
  * default cursor adapter's binary, is a generic name, so it counts only when
- * its version is date-stamped, such as `2026.10.01-abc123`; otherwise the
+ * its version is date-stamped, such as `2026.10.01-abc123`. Otherwise the
  * default cursor adapter tries `cursor-agent`, the CLI's other install name.
  */
 export async function detectAgents(

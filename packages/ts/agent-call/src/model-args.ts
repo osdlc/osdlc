@@ -4,7 +4,7 @@ import { piThinkingArgv } from './adapters/pi.js'
 import { modelFlag } from './adapters/shared.js'
 
 /**
- * A resolved model and effort to hand a tool's CLI; all optional, none validated here.
+ * A resolved model and effort to pass to a tool's CLI. All fields are optional, and none is validated here.
  *
  * @experimental Part of the launch-argv helpers, which may change in a minor release.
  */
@@ -20,10 +20,11 @@ export interface ModelChoice {
 }
 
 /**
- * Each tool's effort flag, keyed by tool name: the tools whose command line a
- * caller builds itself with a model and an effort. A tool run through an
- * adapter or a template translates its own. pi's `--thinking <level>` takes
- * `off` through `max`: `none` becomes `off` (pi's spelling), the rest pass through.
+ * Each tool's effort flag, keyed by tool name, for the tools whose command
+ * line a caller builds itself with a model and an effort. A tool run through
+ * an adapter or a template translates its own. pi's `--thinking <level>`
+ * takes `off` through `max`. `none` becomes `off` (pi's spelling), and the
+ * rest pass through.
  */
 const EFFORT_ARGV: Record<string, (effort: string) => string[]> = {
   claude: claudeEffortArgv,
@@ -34,8 +35,8 @@ const EFFORT_ARGV: Record<string, (effort: string) => string[]> = {
 /**
  * Why `tool`'s argv cannot take `choice`, or `null` when it can (a tool with
  * nothing asked of it always can). Only claude, codex and pi have model and
- * effort flags wired here; any other tool refuses rather than dropping the
- * choice silently.
+ * effort flags here. Any other tool refuses, so the choice is never dropped
+ * silently.
  *
  * @experimental Part of the launch-argv helpers, which may change in a minor release.
  */
@@ -55,11 +56,11 @@ export function modelArgsRefusal(tool: string, choice: ModelChoice): string | nu
  * The CLI flags that select `choice` for `tool`, using the headless adapters'
  * own flag rules: claude `--model <m> --effort <e>`, codex `--model <m> -c
  * model_reasoning_effort="<e>"`, pi `--model <m> --thinking <e>` (the model as
- * given, `provider/id` included, e.g. `ollama/qwen3:4b`). A launch mode
+ * given, `provider/id` included, such as `ollama/qwen3:4b`). A launch mode
  * (`choice.via`) goes first: codex `--oss --local-provider ollama --model
  * gemma3:4b`. Empty when nothing is set.
  *
- * @throws {Error} For a tool with no flags wired, naming the tool and what was
+ * @throws {Error} For a tool with no flags here, naming the tool and what was
  * asked ({@link modelArgsRefusal} gives the same text without throwing).
  * @experimental Part of the launch-argv helpers, which may change in a minor release.
  */

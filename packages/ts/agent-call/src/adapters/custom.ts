@@ -14,29 +14,30 @@ export interface CustomAdapterOptions extends CommandOptions {
    */
   binary?: string
   /**
-   * Build the args (after the binary, or after the whole `command`) for a
-   * spec. The effective prompt — spec.prompt with context/system/schema
-   * folded in — is provided so simple CLIs get the emulation layer for free. Place it in the returned args, or
-   * set `promptVia: 'stdin'` to send it on stdin instead. Whatever `args`
-   * throws propagates out of planning.
+   * Build the args for a spec. They follow the binary, or the whole `command`.
+   * `effectivePrompt` is `spec.prompt` with the context, system prompts and
+   * schema folded in, so a simple CLI gets the same prompt emulation as the
+   * built-in adapters. Place it in the returned args, or set
+   * `promptVia: 'stdin'` to send it on stdin instead. Whatever `args` throws
+   * passes out of planning.
    */
   args: (spec: AgentCallSpec, effectivePrompt: string) => string[]
   /** How the prompt travels. Default: `"argv"` (your `args` must place it). */
   promptVia?: 'argv' | 'stdin'
   /**
-   * Optional custom parse; default returns trimmed stdout as text. If it
+   * Optional custom parser. The default returns trimmed stdout as text. If it
    * throws, `callAgent` resolves `ok: false` with reason `agent-error`.
    */
   parse?: (stdout: string, stderr: string) => ParsedOutput
 }
 
 /**
- * Escape hatch for agents this package has no adapter for: aider, goose,
- * anything with a one-shot CLI. Context, system prompt and schema are folded
- * into the prompt, and `permissions.mode` is noted as dropped. Any other spec
- * field is the `args` builder's to handle; it is not noted if left out.
- * `planned.argv` starts with `command` (or `[binary]`), and the adapter's
- * `command` is set to it, so `detectAgents` probes the whole prefix.
+ * An adapter for agents this package has no built-in adapter for: aider,
+ * goose, anything with a one-shot CLI. Context, system prompts and schema are
+ * folded into the prompt, and `permissions.mode` is noted as dropped. The
+ * `args` builder handles any other spec field, and a field it leaves out is
+ * not noted. `planned.argv` starts with `command` (or `[binary]`), and the
+ * adapter's `command` is set to it, so `detectAgents` runs the whole prefix.
  */
 export function customAdapter(options: CustomAdapterOptions): AgentAdapter {
   const command = commandPrefix(options, options.name)

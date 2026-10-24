@@ -39,13 +39,14 @@ export interface CursorAdapterOptions extends CommandOptions {
 
 /**
  * Cursor Agent CLI (`agent -p`). The install script links both `agent` and
- * the older `cursor-agent`; `--help` and the CLI's own error messages name
+ * the older `cursor-agent`. `--help` and the CLI's own error messages name
  * `agent`, so that is the default. The prompt travels on stdin (read when no
- * prompt argument is given), `--output-format text|json|stream-json` prints
+ * prompt argument is given). `--output-format text|json|stream-json` prints
  * a claude-style result envelope or event stream. A headless run in a
- * workspace Cursor does not trust exits 1 instead of asking; pass
- * `trustWorkspace: true` to trust it (persistently) with `--trust`. The CLI has no effort, system-prompt or schema flag; system prompts
- * and the schema are emulated. Verified against agent 2026.08.11-e8db854
+ * workspace Cursor does not trust exits 1 instead of asking. Pass
+ * `trustWorkspace: true` to trust it, for good, with `--trust`. The CLI has
+ * no effort, system-prompt or schema flag, so system prompts and the schema
+ * are emulated. Verified against agent 2026.08.11-e8db854
  * driven by a fake Cursor backend (`--endpoint`), not a live account.
  */
 export function cursorAdapter(options: CursorAdapterOptions = {}): AgentAdapter {
@@ -72,12 +73,12 @@ function planCursor(command: readonly string[], trust: boolean, spec: AgentCallS
   const tempFiles: TempFile[] = []
   // --trust marks the workspace trusted (a lasting marker under
   // ~/.cursor/projects/) instead of exiting with "Workspace Trust Required".
-  // It approves nothing else: commands and MCP servers keep their own gates.
-  // Opt-in, since the trust outlives the call.
+  // It approves nothing else: commands and MCP servers keep their own checks.
+  // Off by default, since the trust outlives the call.
   const argv = [...command, '-p']
   if (trust) argv.push('--trust')
 
-  // Explicit even for text: the documented default has changed between releases.
+  // Passed even for text, because the documented default has changed between releases.
   const format: OutputFormat = spec.output?.format ?? 'json'
   argv.push('--output-format', format)
 
@@ -94,7 +95,7 @@ function planCursor(command: readonly string[], trust: boolean, spec: AgentCallS
 
   if (spec.mcp?.servers !== undefined) {
     // MCP servers come from mcp.json files only. A plugin directory may carry
-    // one, so the servers go in a session-only plugin in the temp dir: their
+    // one, so the servers go in a session-only plugin in the temp dir. Their
     // `env` stays off argv, and plugin servers start without --approve-mcps
     // (which would also approve every project server).
     tempFiles.push(
@@ -127,8 +128,8 @@ function planCursor(command: readonly string[], trust: boolean, spec: AgentCallS
   const permissions = spec.permissions
   // Observed headless postures: with no flag, file writes apply and shell
   // commands come back `rejected` (nothing waits on a prompt). --sandbox
-  // enabled auto-runs commands in a workspace-write sandbox without network;
-  // --force runs them unsandboxed.
+  // enabled runs commands without asking, in a workspace-write sandbox with
+  // no network. --force runs them with no sandbox.
   applyPermissionMode(argv, notes, permissions?.mode, {
     'read-only': {
       argv: ['--mode', 'ask'],
@@ -178,7 +179,7 @@ function planCursor(command: readonly string[], trust: boolean, spec: AgentCallS
 
   const session = spec.session
   if (session?.resume !== undefined) {
-    // `--resume` takes an optional value; the `=` form keeps the id bound to it.
+    // `--resume` takes an optional value. The `=` form keeps the id attached to it.
     // An unknown id is not an error: the CLI starts a new chat under that id.
     argv.push(`--resume=${session.resume}`)
     note(notes, 'session.resume', 'native', '--resume=<id>')
@@ -231,7 +232,7 @@ function parseCursor(planned: PlannedCall, raw: RawProcessOutput): ParsedOutput 
         : [...(parsed.events ?? [])].reverse().find((e) => get(e, 'type') === 'result')
     parsed.usage = cursorUsage(get(envelope, 'usage'))
   }
-  // A failed run prints no result at all: the reason is on stderr (exit 1).
+  // A failed run prints no result. The reason is on stderr (exit 1).
   if (parsed.isError === true && parsed.text === '') {
     const reason = lastLine(raw.stderr)
     if (reason !== undefined) parsed.errorDetail = reason
@@ -328,7 +329,7 @@ function cursorConversation(planned: PlannedCall, raw: RawProcessOutput): Conver
           })
         }
       }
-      // `user` echoes the prompt; system, retry and connection events carry no message.
+      // `user` repeats the prompt. System, retry and connection events carry no message.
     }
   } else if (parsed.text !== '') {
     messages.push({ role: 'assistant', parts: [{ type: 'text', text: parsed.text }] })

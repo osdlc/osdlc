@@ -116,7 +116,7 @@ describe('antigravity parse', () => {
     expect(parsed.text).toBe('hello from agy')
     expect(parsed.sessionId).toBe('c1')
     expect(parsed.usage?.inputTokens).toBe(100)
-    // thinking_tokens (5) fold into output, so the parts sum to total_tokens.
+    // thinking_tokens (5) are added to output, so the parts sum to total_tokens.
     expect(parsed.usage?.outputTokens).toBe(25)
     expect(parsed.usage?.cacheReadTokens).toBe(30)
     expect(parsed.usage?.totalTokens).toBe(155)

@@ -81,7 +81,7 @@ describe('copilot plan', () => {
     })
     expect(noteFor(planned, 'appendSystemPrompt')?.support).toBe('approximated')
 
-    // A caller's own directories are kept after ours.
+    // A caller's own directories are kept after the adapter's.
     const merged = adapter.plan({
       prompt: 'q',
       appendSystemPrompt: 'x',

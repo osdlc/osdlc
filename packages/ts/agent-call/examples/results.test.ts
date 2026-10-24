@@ -130,7 +130,7 @@ describe('CallOptions', () => {
 })
 
 describe('conversations', () => {
-  /** An adapter that lifts its transcript into the conversation model. */
+  /** An adapter that converts its transcript into the conversation model. */
   const recording: AgentAdapter = {
     ...customAdapter({
       name: 'recording',

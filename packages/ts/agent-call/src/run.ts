@@ -20,12 +20,12 @@ export interface CallError {
    * - `spawn-failed` — the process never started (binary missing, empty argv).
    * - `timeout` — `timeoutMs` elapsed or the caller aborted.
    * - `nonzero-exit` — the process exited with a nonzero code, or ended on a
-   *   signal the runner did not send (such as an out-of-memory kill); `detail`
-   *   names the signal.
+   *   signal the runner did not send (such as an out-of-memory kill). For a
+   *   signal, `detail` names it.
    * - `agent-error` — the process exited 0 but the agent reported failure, or
    *   the adapter's parser threw on the output.
    * - `output-limit` — stdout or stderr passed `maxOutputBytes`, and the run
-   *   was stopped; `detail` names the stream.
+   *   was stopped. `detail` names the stream.
    */
   reason: 'spawn-failed' | 'timeout' | 'nonzero-exit' | 'agent-error' | 'output-limit'
   /** A human-readable explanation, taken from the agent's output where there is one. */
@@ -38,7 +38,7 @@ export interface AgentResult extends ParsedOutput {
   exitCode: number | null
   durationMs: number
   error?: CallError | undefined
-  /** The exact invocation that ran — argv, env additions, notes, spec. */
+  /** The exact call that ran: argv, env additions, notes and spec. */
   planned: PlannedCall
   /** Raw process output, always preserved. */
   raw: RawProcessOutput
@@ -48,7 +48,7 @@ export interface AgentResult extends ParsedOutput {
 
 /** Per-run options for `callAgent`, separate from the spec. */
 export interface CallOptions {
-  /** Also lift the transcript into the normalized conversation model. */
+  /** Also convert the transcript into the normalized conversation model. */
   captureConversation?: boolean | undefined
   /** Abort the run early: kills the child, or skips the spawn if already aborted. */
   signal?: AbortSignal | undefined
@@ -68,19 +68,19 @@ export interface CallOptions {
 
 /**
  * Plan a call without running it: the exact argv, stdin, env, temp files,
- * and capability notes the adapter would use. Pure and side-effect free.
+ * and capability notes the adapter would use. It has no side effects.
  *
- * @throws Whatever the adapter's `plan` throws: see `templateAdapter`'s
- * `@throws`; and `customAdapter` lets its `args` function throw.
+ * @throws Whatever the adapter's `plan` throws. See `templateAdapter`'s
+ * `@throws`. `customAdapter` passes on whatever its `args` function throws.
  */
 export function planCall(adapter: AgentAdapter, spec: AgentCallSpec): PlannedCall {
   return adapter.plan(spec)
 }
 
 /**
- * Translate the spec through the adapter, run the CLI, normalize the result.
- * Never throws on agent failure: a failed run returns `ok: false` with an
- * `error`.
+ * Translate the spec through the adapter, run the CLI and normalize the
+ * result. Does not throw when the agent fails: a failed run returns
+ * `ok: false` with an `error`.
  *
  * Runs the child in its own process group and kills the group on timeout or
  * abort, so it needs POSIX process groups (Linux, macOS). The child inherits
@@ -93,12 +93,12 @@ export function planCall(adapter: AgentAdapter, spec: AgentCallSpec): PlannedCal
  *
  * @throws The returned promise rejects, rather than resolving `ok: false`,
  * with a `RangeError` when `spec.maxOutputBytes` is `0`, negative or `NaN`,
- * and a `TypeError` when it is not a number (a fraction rounds up); when
- * planning throws (see {@link planCall}); when a `TempFile.name` is not a
- * plain file name (empty, or holding `/`, `\` or `..`), or when the per-call
- * temp directory cannot be created or written. A directory that was made is
- * removed. A parser that throws on the output does not reject: the result is
- * `ok: false` with reason `agent-error`.
+ * and a `TypeError` when it is not a number (a fraction rounds up). It also
+ * rejects when planning throws (see {@link planCall}), when a
+ * `TempFile.name` is not a plain file name (empty, or holding `/`, `\` or
+ * `..`), or when the per-call temp directory cannot be created or written. A
+ * directory that was made is removed. A parser that throws on the output does
+ * not reject: the result is `ok: false` with reason `agent-error`.
  */
 export async function callAgent(
   adapter: AgentAdapter,
@@ -261,7 +261,7 @@ async function execute(
         try {
           files[file.name] = await readFile(join(tempDir, file.name), 'utf8')
         } catch {
-          // The CLI may not have written it (e.g. errored before finishing).
+          // The CLI may not have written it, for example when it failed early.
         }
       }
       if (Object.keys(files).length > 0) raw.files = files

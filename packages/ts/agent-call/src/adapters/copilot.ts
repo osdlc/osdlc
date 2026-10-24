@@ -30,14 +30,14 @@ const INSTRUCTIONS_FILE = 'agent-call.instructions.md'
 const INSTRUCTIONS_ENV = 'COPILOT_CUSTOM_INSTRUCTIONS_DIRS'
 
 /**
- * GitHub Copilot CLI (`copilot`). Headless when the prompt arrives on piped
- * stdin; `--output-format json` is a JSONL event stream backing both json and
- * stream-json requests. Its stream carries no token counts, so usage is read
- * back from `--usage-output-file`. Tool rules (`--allow-tool`/`--deny-tool`),
- * effort, extra directories, MCP servers and sessions are native flags;
- * `appendSystemPrompt` travels as a custom-instructions file; the system
- * prompt and output schema are emulated. Without an allow flag, any tool call
- * that needs approval is denied headless rather than prompting.
+ * GitHub Copilot CLI (`copilot`). Runs headless when the prompt arrives on
+ * piped stdin. `--output-format json` prints a JSONL event stream, used for
+ * both json and stream-json requests. Its stream carries no token counts, so
+ * usage is read back from `--usage-output-file`. Tool rules (`--allow-tool`,
+ * `--deny-tool`), effort, extra directories, MCP servers and sessions have
+ * flags. `appendSystemPrompt` goes in a custom-instructions file. The system
+ * prompt and output schema are emulated. Without an allow flag, a headless
+ * run denies any tool call that needs approval instead of prompting.
  */
 export function copilotAdapter(options: CopilotAdapterOptions = {}): AgentAdapter {
   const command = commandPrefix(options, 'copilot')
@@ -64,9 +64,10 @@ function planCopilot(command: readonly string[], spec: AgentCallSpec): PlannedCa
   const env: Record<string, string> = { ...spec.env }
   const argv = [...command]
 
-  // `--output-format json` is a JSONL event stream, so it backs both "json"
-  // (we aggregate) and "stream-json" (events exposed). Text needs `-s`, or the
-  // CLI appends a stats footer to the answer.
+  // `--output-format json` prints a JSONL event stream. It is used for both
+  // "json" (the events are combined into one result) and "stream-json" (the
+  // events are returned). Text needs `-s`, or the CLI appends a stats footer
+  // to the answer.
   const format: OutputFormat = spec.output?.format ?? 'json'
   if (format === 'text') {
     argv.push('-s')
@@ -165,8 +166,8 @@ function planCopilot(command: readonly string[], spec: AgentCallSpec): PlannedCa
       detail: '--allow-all',
     },
   })
-  // `=` binds one pattern per flag: both flags are variadic, so a bare value
-  // list would swallow the arguments after it.
+  // One `--flag=pattern` per pattern. Both flags take several values, so a
+  // bare value list would also consume the arguments after it.
   for (const tool of permissions?.allowTools ?? []) argv.push(`--allow-tool=${tool}`)
   if ((permissions?.allowTools ?? []).length > 0) {
     note(notes, 'permissions.allowTools', 'native', '--allow-tool')
@@ -185,7 +186,7 @@ function planCopilot(command: readonly string[], spec: AgentCallSpec): PlannedCa
 
   const session = spec.session
   if (session?.resume !== undefined) {
-    // `--resume` takes an optional value; `=` keeps an id bound to it.
+    // `--resume` takes an optional value. The `=` form keeps the id attached to it.
     argv.push(`--resume=${session.resume}`)
     note(notes, 'session.resume', 'native', '--resume=<id>')
   } else if (session?.continueLast === true) {
@@ -215,7 +216,7 @@ function planCopilot(command: readonly string[], spec: AgentCallSpec): PlannedCa
 
   argv.push(...(spec.extraArgs ?? []))
 
-  // `@path` is not expanded in prompt mode and --attachment takes only images
+  // `@path` is not expanded in prompt mode, and --attachment takes only images
   // and documents, so files are listed in the preamble.
   const stdin = buildEffectivePrompt(spec, { appendSystemNative: true }, notes)
 
@@ -253,7 +254,7 @@ function parseCopilot(planned: PlannedCall, raw: RawProcessOutput): ParsedOutput
     if (type === 'session.start') {
       sessionId = asString(get(event, 'data', 'sessionId')) ?? sessionId
     } else if (type === 'assistant.message') {
-      // Sub-agent messages carry parentToolCallId; the answer is the main agent's.
+      // Sub-agent messages carry parentToolCallId. The answer is the main agent's.
       if (get(event, 'data', 'parentToolCallId') !== undefined) continue
       model = asString(get(event, 'data', 'model')) ?? model
       const content = asString(get(event, 'data', 'content'))
@@ -329,7 +330,7 @@ function copilotConversation(
   for (const event of parsed.events ?? []) {
     const type = get(event, 'type')
     const data = get(event, 'data')
-    // Sub-agent traffic (parentToolCallId) stays in raw; the main thread is lifted.
+    // Sub-agent events (parentToolCallId) stay in raw. Only the main thread is converted.
     if (get(data, 'parentToolCallId') !== undefined) continue
     const timestamp = asString(get(event, 'timestamp'))
 

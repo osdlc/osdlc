@@ -34,11 +34,12 @@ const EDIT_TOOLS = [...READ_ONLY_TOOLS, 'edit', 'write']
 const ALL_TOOLS = ['read', 'bash', 'edit', 'write', 'grep', 'find', 'ls'].map((t) => `+${t}`)
 
 /**
- * pi coding agent (`pi`). Headless via `--mode json` (a JSONL event stream
- * backing both json and stream-json) or `-p` for text; the prompt travels on
- * stdin. Effort (`--thinking`), both system prompts (read from temp files),
- * context files (`@path`), sessions and tool deny rules are native. pi never
- * asks for approval: the permission posture is the set of enabled tools.
+ * pi coding agent (`pi`). Runs headless with `--mode json` (a JSONL event
+ * stream, used for both json and stream-json) or `-p` for text. The prompt
+ * travels on stdin. Effort (`--thinking`), both system prompts (read from
+ * temp files), context files (`@path`), sessions and tool deny rules have
+ * flags. pi never asks for approval: the permission posture is the set of
+ * enabled tools.
  */
 export function piAdapter(options: PiAdapterOptions = {}): AgentAdapter {
   const command = commandPrefix(options, 'pi')
@@ -69,7 +70,7 @@ function planPi(command: readonly string[], spec: AgentCallSpec): PlannedCall {
   const tempFiles: TempFile[] = []
   const argv = [...command]
 
-  // `--mode json` runs once and exits; `-p` prints the final answer as text.
+  // `--mode json` runs once and exits. `-p` prints the final answer as text.
   const format: OutputFormat = spec.output?.format ?? 'json'
   if (format !== 'text') {
     argv.push('--mode', 'json')
@@ -88,13 +89,13 @@ function planPi(command: readonly string[], spec: AgentCallSpec): PlannedCall {
   if (spec.model !== undefined) argv.push(...modelFlag(spec.model))
 
   if (spec.effort !== undefined) {
-    // pi takes off|minimal|low|medium|high|xhigh|max: `none` is its `off`, the rest pass through.
+    // pi takes off|minimal|low|medium|high|xhigh|max. `none` is its `off`, and the rest pass through.
     argv.push(...piThinkingArgv(spec.effort))
     note(notes, 'effort', 'native', '--thinking (pi clamps it to what the model supports)')
   }
 
-  // Both flags read an existing file's contents in place of literal text; a
-  // temp file keeps the prompt out of argv and off the path-or-text guess.
+  // Both flags take a file path or literal text, and read the file when it
+  // exists. A temp file keeps the prompt out of argv and avoids that guess.
   if (spec.systemPrompt !== undefined) {
     tempFiles.push({ name: SYSTEM_PROMPT_FILE, content: spec.systemPrompt })
     argv.push('--system-prompt', `${TMP_TOKEN}/${SYSTEM_PROMPT_FILE}`)
@@ -116,9 +117,10 @@ function planPi(command: readonly string[], spec: AgentCallSpec): PlannedCall {
   }
 
   // pi has no approval prompt, so a posture is a tool selection. `--tools`
-  // takes one list (the last flag wins), so allowTools merge into it: plain
-  // names join an allowlist, `+name` entries add to the default selection.
-  // pi rejects a list that mixes the two, so each side is normalized.
+  // takes one list (the last flag wins), so allowTools merge into it. Plain
+  // names form an allowlist, and `+name` entries add to the default
+  // selection. pi rejects a list that mixes the two, so each side is
+  // normalized.
   const permissions = spec.permissions
   const allow = permissions?.allowTools ?? []
   const plus = (tools: string[]): string[] => tools.map((t) => (t.startsWith('+') ? t : `+${t}`))
@@ -209,7 +211,7 @@ function planPi(command: readonly string[], spec: AgentCallSpec): PlannedCall {
   }
 
   // pi appends each `@path` file's text to the first prompt in a <file> block
-  // (images attach); a missing file fails the run before the model is called.
+  // (images attach). A missing file fails the run before the model is called.
   const files = spec.context?.files ?? []
   for (const file of files) argv.push(`@${file}`)
   if (files.length > 0) {
@@ -264,7 +266,7 @@ function parsePi(planned: PlannedCall, raw: RawProcessOutput): ParsedOutput {
       sessionId = asString(get(event, 'id'))
     } else if (type === 'message_end' && get(event, 'message', 'role') === 'assistant') {
       // Each assistant message carries the usage of its own model call, so the
-      // run's usage is the sum over messages (as claude's result envelope reports).
+      // run's usage is the sum over messages, as claude's result envelope reports it.
       const message = get(event, 'message')
       last = message
       const messageText = assistantText(message)
@@ -283,7 +285,7 @@ function parsePi(planned: PlannedCall, raw: RawProcessOutput): ParsedOutput {
     }
   }
 
-  // `--mode json` exits 0 when the provider fails: the error is the stop reason
+  // `--mode json` exits 0 when the provider fails. The error is the stop reason
   // of the last assistant message. Startup failures (unknown model, missing
   // @file) exit 1 with no events and the reason on stderr.
   const stopReason = asString(get(last, 'stopReason'))
@@ -321,7 +323,7 @@ function assistantText(message: unknown): string {
     .trim()
 }
 
-/** pi's `input` excludes cache reads, as claude's does; `reasoning` is already inside `output`. */
+/** pi's `input` excludes cache reads, as claude's does. `reasoning` is already counted in `output`. */
 function addUsage(total: Usage, usage: unknown): void {
   const add = (key: keyof Usage, value: unknown): void => {
     const n = asNumber(value)
@@ -338,7 +340,7 @@ function piConversation(planned: PlannedCall, raw: RawProcessOutput): Conversati
   const parsed = parsePi(planned, raw)
   const messages: ConversationMessage[] = []
 
-  // message_end is the authoritative copy of each message. The leading system
+  // message_end holds the final copy of each message. The leading system
   // message (prompt sections and tool declarations) stays in `raw` only.
   for (const event of parsed.events ?? []) {
     if (get(event, 'type') !== 'message_end') continue

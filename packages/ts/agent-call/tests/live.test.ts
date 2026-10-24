@@ -3,9 +3,9 @@ import { describe, expect, test } from 'vitest'
 import { adapterFor, detectAgents } from '../src/registry.js'
 import { callAgent } from '../src/run.js'
 
-// Live smoke tests: real agent calls, real tokens. Opt in with
+// Live smoke tests: real agent calls that spend real tokens. Opt in with
 //   AGENT_CALL_LIVE=1 pnpm test:live
-// Each test skips itself if the CLI isn't installed.
+// Each test skips itself if its CLI is not installed.
 
 const live = process.env['AGENT_CALL_LIVE'] === '1'
 
@@ -52,8 +52,8 @@ describe.skipIf(!live)('live smoke', () => {
     expect(result.ok).toBe(true)
     expect(result.text.toLowerCase()).toContain('pong')
   })
-  // The six agents added after the first four. Each answers with its own default model and
-  // credentials; pi needs a model with credentials in the environment.
+  // The other six agents. Each answers with its own default model and
+  // credentials. pi needs credentials for some provider in the environment.
   for (const name of ['copilot', 'pi', 'qwen', 'droid', 'cursor', 'deepseek'] as const) {
     test(`${name} answers`, { timeout: 150_000 }, async () => {
       const [agent] = await detectAgents([adapterFor(name)])

@@ -295,7 +295,7 @@ function get(value: unknown, ...path: string[]): unknown {
 }
 
 // Fixtures captured from dsh 0.2.0-rc.2 (`dsh --profile headless [--json] -`)
-// against a mock Anthropic Messages server (DEEPSEEK_BASE_URL); cwd paths trimmed.
+// against a mock Anthropic Messages server (DEEPSEEK_BASE_URL). cwd paths are trimmed.
 const JSON_RUN = [
   '{"type":"session","sessionId":"session-08799e37-384c-484c-a85e-e5af3d3729ff","cwd":"/work"}',
   '{"type":"status","phase":"turn_start","turn":1}',
@@ -321,8 +321,8 @@ const TOOL_RUN = [
   '{"type":"final","text":"done"}',
 ].join('\n')
 
-// DSH_PERMISSION_MODE=read-only and the model asks to escalate: headless has no
-// approval channel, so the call is denied at once and the run completes.
+// DSH_PERMISSION_MODE=read-only and the model asks for more access. A headless
+// run cannot ask for approval, so the call is denied at once and the run completes.
 const DENIED_RUN = [
   '{"type":"session","sessionId":"session-d9844e10-f3f0-43aa-9d99-9e28c7cf626d","cwd":"/work"}',
   '{"type":"status","phase":"turn_start","turn":1}',
@@ -349,8 +349,8 @@ const THINKING_RUN = [
   '{"type":"final","text":"hello there"}',
 ].join('\n')
 
-// The provider answered HTTP 400: an in-turn failure ends with an empty
-// `final` and no `error` event; dsh exits 1.
+// The provider answered HTTP 400. A failure inside a turn ends with an empty
+// `final` and no `error` event, and dsh exits 1.
 const PROVIDER_ERROR_RUN = [
   '{"type":"session","sessionId":"session-bb8e1bb5-65d9-4718-8252-e495d2dbfd5a","cwd":"/work"}',
   '{"type":"status","phase":"turn_start","turn":1}',

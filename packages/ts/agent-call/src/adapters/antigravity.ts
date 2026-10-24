@@ -25,10 +25,10 @@ import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './types.js'
 export interface AntigravityAdapterOptions extends CommandOptions {}
 
 /**
- * Google Antigravity CLI (`agy`). Headless via `-p <prompt>` with
+ * Google Antigravity CLI (`agy`). Runs headless with `-p <prompt>` and
  * `--output-format text|json|stream-json`. Effort, the output schema,
- * session continuation and the full-auto posture are native flags; the CLI
- * documents no system-prompt flag, so system prompts are emulated; `cwd` and
+ * session continuation and the full-auto posture have flags. The CLI
+ * documents no system-prompt flag, so system prompts are emulated. `cwd` and
  * `env` apply to the process. Model slugs are not documented (`agy models`
  * lists them), so `model` passes through as given.
  */
@@ -162,7 +162,7 @@ function planAntigravity(command: readonly string[], spec: AgentCallSpec): Plann
   argv.push(...(spec.extraArgs ?? []))
 
   // The prompt is the value of -p, so it travels in argv, not stdin. The schema
-  // is native (--json-schema); both system prompts have no flag and are emulated.
+  // has a flag (--json-schema). Both system prompts have none and are emulated.
   const prompt = buildEffectivePrompt(spec, { filesAtSyntax: true, schemaNative: true }, notes)
   argv.push('-p', prompt)
 
@@ -203,7 +203,7 @@ function parseAntigravity(planned: PlannedCall, raw: RawProcessOutput): ParsedOu
   return fromResultEnvelope(planned, envelope)
 }
 
-/** Shared by the json envelope and the stream's closing `result` event, which carries the same shape. */
+/** Reads the json envelope and the stream's final `result` event, which have the same shape. */
 function fromResultEnvelope(planned: PlannedCall, envelope: unknown): ParsedOutput {
   const text = asString(get(envelope, 'response')) ?? ''
   const status = asString(get(envelope, 'status'))
@@ -265,8 +265,8 @@ function parseAntigravityStream(planned: PlannedCall, raw: RawProcessOutput): Pa
 /**
  * agy reports `thinking_tokens` beside `output_tokens` (its `total_tokens` is
  * input + output + thinking + cache reads). claude's and codex's output counts
- * already include reasoning, so thinking folds into `outputTokens` here and a
- * sum of the parts matches `totalTokens`. `input_tokens` excludes cache reads,
+ * already include reasoning, so thinking is added to `outputTokens` here, and
+ * the sum of the parts matches `totalTokens`. `input_tokens` excludes cache reads,
  * as claude's does.
  */
 function antigravityUsage(usage: unknown): Usage | undefined {
@@ -292,8 +292,8 @@ function antigravityConversation(
   ]
 
   if (planned.outputFormat === 'stream-json') {
-    // Tool steps are reported as step_update events; the CLI documents no
-    // tool-result payload, so only the call is surfaced (once, when DONE).
+    // Tool steps are reported as step_update events. The CLI documents no
+    // tool-result payload, so only the call is recorded (once, when DONE).
     for (const event of parsed.events ?? []) {
       if (
         get(event, 'event') === 'step_update' &&

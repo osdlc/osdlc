@@ -18,8 +18,9 @@ const MCP_CONFIG_FILE = 'mcp.json'
 export interface ClaudeAdapterOptions extends CommandOptions {}
 
 /**
- * Claude Code (`claude -p`). The richest surface: permissions, tool rules,
- * system prompts, structured output, sessions, and budget are all native.
+ * Claude Code (`claude -p`). It has flags for tool rules, system prompts,
+ * structured output, sessions and budget. `read-only` and `full-auto` are
+ * approximated.
  */
 export function claudeAdapter(options: ClaudeAdapterOptions = {}): AgentAdapter {
   const command = commandPrefix(options, 'claude')
@@ -41,8 +42,8 @@ export function claudeAdapter(options: ClaudeAdapterOptions = {}): AgentAdapter 
 }
 
 /**
- * `--resume=<id>`: `--resume` takes an optional value, so the `=` form keeps an
- * id that starts with `-` bound to it.
+ * `--resume=<id>`. `--resume` takes an optional value, so the `=` form keeps an
+ * id that starts with `-` attached to the flag.
  *
  * @experimental Part of the launch-argv helpers, which may change in a minor release.
  */
@@ -50,7 +51,7 @@ export function claudeResumeFlag(id: string): string {
   return `--resume=${id}`
 }
 
-/** `--effort <level>`: levels below `low` become `low`; anything else passes through, so a new CLI level needs no change. */
+/** `--effort <level>`. Levels below `low` become `low`. Any other level passes through, so a new CLI level needs no change here. */
 export function claudeEffortArgv(effort: string): string[] {
   return ['--effort', isBelowLow(effort) ? 'low' : effort]
 }
@@ -76,8 +77,8 @@ function planClaude(command: readonly string[], spec: AgentCallSpec): PlannedCal
   const tempFiles: TempFile[] = []
   const argv = [...command, '-p']
 
-  // Prefer the JSON envelope when the caller didn't ask for a specific
-  // format: same answer, plus usage/cost/session metadata.
+  // Default to the JSON envelope when the caller asks for no format. It has
+  // the same answer, plus usage, cost and session metadata.
   let format: OutputFormat = spec.output?.format ?? 'json'
   if (spec.output?.schema !== undefined && format === 'text') {
     format = 'json'

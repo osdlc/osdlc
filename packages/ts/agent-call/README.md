@@ -7,9 +7,9 @@ output shape and the session. Each adapter turns that into a command line for
 `claude`, `codex`, `agy`, `opencode`, `copilot`, `pi`, `qwen`, `droid`,
 `agent` (Cursor) or `dsh` on a best-effort basis and records every
 approximation. The result comes back normalized (final text, structured
-output, session id, token usage, cost) with the raw output kept. An optional
-layer lifts the whole transcript into one conversation model for analysis
-afterwards. No dependencies.
+output, session id, token usage, cost) with the raw output kept. On request,
+the whole transcript is also converted into one conversation model for
+analysis afterwards. No dependencies.
 
 ## Why
 
@@ -184,7 +184,7 @@ const result = await callAgent(adapter, spec, {
 })
 ```
 
-A throw from `onOutput` is swallowed and stops later calls; the run carries
+A throw from `onOutput` is swallowed and stops later calls. The run carries
 on. Nothing is delivered past `maxOutputBytes`.
 
 ### Capping output
@@ -205,12 +205,12 @@ handling.
 
 `callAgent` does not throw when the agent fails. It resolves with `ok: false`
 and an `error`: `{ reason, detail }`. The reasons today are `spawn-failed`,
-`timeout`, `nonzero-exit`, `agent-error` and `output-limit`. **The set of reasons is open.** A
-minor release may add one, so handle the reasons you know and keep a default
-branch.
+`timeout`, `nonzero-exit`, `agent-error` and `output-limit`. The set of
+reasons is open. A minor release may add one, so handle the reasons you know
+and keep a default branch.
 
 It rejects with a `RangeError` when `maxOutputBytes` is `0`, negative or `NaN`,
-and a `TypeError` when it is not a number; a fraction rounds up. It also
+and a `TypeError` when it is not a number. A fraction rounds up. It also
 rejects, with an `Error`, when planning throws: `templateAdapter` throws for a
 model or effort that does not fit its template, and `customAdapter` passes on
 whatever your `args` function throws. It also rejects when a plan's
@@ -280,7 +280,7 @@ shows it.
 - **Run** (`callAgent(adapter, spec)`) spawns the planned call, applies the
   library-level timeout (no agent CLI has one), and returns an `AgentResult`.
 - **Conversation** (optional): `callAgent(adapter, spec, { captureConversation:
-  true })` lifts the transcript into `agent-conversation/1`: role-tagged
+  true })` converts the transcript into `agent-conversation/1`: role-tagged
   messages of typed parts (`text`, `reasoning`, `tool-call`, `tool-result`)
   with usage, cost, duration and stop reason. The untouched transcript stays in
   `raw`. The shape follows the common core of ACP session updates, OpenTelemetry
@@ -294,14 +294,14 @@ const calls = toolCalls(conversation)
 ```
 
 `assistantText` joins the assistant's text. `toolCalls` lists every tool call
-in order. `JSON.stringify(conversation)` is stable: store it.
+in order. `JSON.stringify(conversation)` is stable, so you can store it.
 
 ### Best-effort translation, reported
 
 Every planned call carries `notes: CapabilityNote[]`, one entry per spec field
 that did not map one to one:
 
-- `native`: the CLI has a first-class flag.
+- `native`: the CLI has a flag for it.
 - `approximated`: mapped to the closest available behaviour.
 - `emulated`: reproduced in the prompt or through the environment.
 - `dropped`: the CLI cannot express it. The field is ignored and the note says
@@ -337,7 +337,7 @@ that did not map one to one:
 | `maxOutputBytes` | library-level per-stream cap (SIGTERM → SIGKILL, reason `output-limit`) on all agents | | | |
 | `extraArgs` | appended verbatim on all agents | | | |
 
-The same rows for the six agents added after those four:
+The same rows for the other six agents:
 
 | Spec field | copilot | pi | qwen | droid | cursor | deepseek |
 |---|---|---|---|---| --- |---|
@@ -412,7 +412,7 @@ format (a JSON envelope or an event stream), so metadata is captured.
 - Not every posture is a sandbox. pi never asks before a tool call and has no
   sandbox: its modes only choose which tools are enabled, and MCP tools stay
   enabled unless denied. droid's `--auto` levels and copilot's tool rules
-  gate commands by risk, not by an OS sandbox.
+  allow or block commands by risk, not by an OS sandbox.
 - pi with no `model` picks whichever provider has credentials in the
   environment, cloud credentials such as AWS included. Pass `model`, or a
   trimmed environment.
@@ -463,15 +463,15 @@ against a local fake model server through each CLI's custom-provider setting,
 not a vendor's model. dsh is a developer preview and may change in any
 release. cursor (`agent` 2026.08.11) was checked against its bundled source
 and run against a fake Cursor backend, since its backend speaks Cursor's own
-protocol rather than a model API; read-only enforcement happens in Cursor's
-backend and was not exercised. The live suite has no case for these six yet.
+protocol rather than a model API. Cursor's backend enforces read-only mode,
+so that was not tested. The live suite has a case for each of these six.
 
 ## Non-goals
 
-- Orchestration (worktrees, queues, parallelism). This is the invocation
-  primitive such tools build on.
-- A trace backend. `agent-conversation/1` is meant to be stored or exported;
-  bring your own sink.
+- Orchestration (worktrees, queues, parallelism). This package makes the
+  single call that such tools build on.
+- A trace backend. `agent-conversation/1` is meant to be stored or exported.
+  Store it where you choose.
 
 ## Licence
 

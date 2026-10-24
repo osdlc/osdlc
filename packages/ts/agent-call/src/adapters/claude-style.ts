@@ -1,10 +1,10 @@
 /**
- * The result shape Claude Code's `--output-format json|stream-json` made
- * common: a `result` envelope with `result`, `subtype`, `is_error`,
- * `session_id` and `usage`, and a stream of `assistant`/`user` events whose
- * `message.content` holds Anthropic content blocks. claude and qwen emit it;
- * droid's json envelope and cursor's json and stream envelopes do too (cursor
- * with its own usage names). Parsing it lives here once.
+ * The output shape of Claude Code's `--output-format json|stream-json`, which
+ * other CLIs copy: a `result` envelope with `result`, `subtype`, `is_error`,
+ * `session_id` and `usage`, and a stream of `assistant` and `user` events
+ * whose `message.content` holds Anthropic content blocks. claude and qwen
+ * print it. droid's json envelope and cursor's json and stream envelopes do
+ * too, cursor with its own usage names. This module is the one parser for it.
  */
 
 import {
@@ -18,9 +18,9 @@ import type { PlannedCall } from '../plan.js'
 import { asNumber, asString, get, parseJsonLines, tryParseJson } from './shared.js'
 import type { ParsedOutput, RawProcessOutput } from './types.js'
 
-/** How one CLI's output departs from claude's. */
+/** How one CLI's output differs from claude's. */
 export interface ClaudeStyleOptions {
-  /** How the CLI is named in error details, e.g. `qwen --output-format json`. */
+  /** How the CLI is named in error details, such as `qwen --output-format json`. */
   label: string
 }
 
@@ -44,9 +44,9 @@ export function parseClaudeStyle(
     const events = parseJsonLines(raw.stdout)
     const result = lastResult(events)
     if (result === undefined) {
-      // The stream ended without its terminal envelope (crash, kill, truncated
-      // output). The events are still returned so callers can mine them, and
-      // the exit code and stderr stay on the AgentResult.
+      // The stream ended without its final envelope (a crash, a kill, or
+      // truncated output). The events are still returned so callers can read
+      // them, and the exit code and stderr stay on the AgentResult.
       return {
         text: '',
         isError: true,
@@ -79,9 +79,9 @@ export function parseClaudeStyle(
 
 /**
  * The fields of one result envelope (the `json` envelope or the stream's
- * `result` event). qwen departs from claude in two places, read as fallbacks:
- * a failed run carries `error.message` instead of `result` text, and the schema
- * answer is at `structured_result`.
+ * `result` event). qwen differs from claude in two places, read as fallbacks.
+ * A failed run carries `error.message` instead of `result` text, and the
+ * schema answer is at `structured_result`.
  */
 export function claudeStyleFields(envelope: unknown, planned: PlannedCall): ParsedOutput {
   const text = asString(get(envelope, 'result')) ?? ''
@@ -117,8 +117,8 @@ export function claudeStyleUsage(usage: unknown): Usage | undefined {
 
 /**
  * The conversation of a claude-style run. With events (stream-json, or a json
- * array), each `assistant` and `user` event's content becomes a message;
- * otherwise only the prompt and the final answer are known.
+ * array), each `assistant` and `user` event's content becomes a message.
+ * Otherwise only the prompt and the final answer are known.
  */
 export function claudeStyleConversation(
   agent: string,
@@ -135,7 +135,7 @@ export function claudeStyleConversation(
     for (const event of parsed.events) {
       const type = get(event, 'type')
       if (type !== 'assistant' && type !== 'user') continue
-      // Sub-agent traffic stays in `raw`; the conversation is the main thread.
+      // Sub-agent events stay in `raw`. The conversation is the main thread only.
       if (get(event, 'parent_tool_use_id') != null) continue
       const parts = anthropicContentParts(get(event, 'message', 'content'))
       if (parts.length > 0) {
@@ -162,7 +162,7 @@ export function claudeStyleConversation(
   }
 }
 
-/** Anthropic message content blocks → normalized parts. */
+/** Convert Anthropic message content blocks to normalized parts. */
 export function anthropicContentParts(content: unknown): Part[] {
   if (!Array.isArray(content)) return []
   const parts: Part[] = []
@@ -193,7 +193,7 @@ export function anthropicContentParts(content: unknown): Part[] {
   return parts
 }
 
-/** The last `result` event, the run's closing envelope. */
+/** The last `result` event, the run's final envelope. */
 function lastResult(events: unknown[]): unknown {
   for (let i = events.length - 1; i >= 0; i--) {
     if (get(events[i], 'type') === 'result') return events[i]

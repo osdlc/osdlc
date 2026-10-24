@@ -1,8 +1,8 @@
 /**
- * The normalized conversation data model — the optional layer on top of the
- * caller abstraction. Every adapter can lift its raw transcript into this
- * shape for post-facto analysis; the raw payload is always preserved in
- * `Conversation.raw` so normalization never loses information.
+ * The normalized conversation model, an optional result of a call. An adapter
+ * can convert its raw transcript into this shape for analysis after the run.
+ * The raw transcript is kept in `Conversation.raw`, so normalizing loses no
+ * information.
  *
  * The shape follows the common core of the OpenTelemetry GenAI conventions
  * and the Vercel AI SDK message model: role-tagged messages made of typed
@@ -10,7 +10,7 @@
  * cost, and timing.
  */
 
-/** The `Conversation.schema` value of this data model; its version is part of the string. */
+/** The `Conversation.schema` value of this model. Its version is part of the string. */
 export const CONVERSATION_SCHEMA = 'agent-conversation/1' as const
 
 /** Who produced a message. Tool results travel under `tool`. */
@@ -46,7 +46,7 @@ export interface Usage {
   totalTokens?: number | undefined
 }
 
-/** A run lifted into the normalized model, with the untouched source kept in `raw`. */
+/** A run converted into the normalized model, with the untouched source kept in `raw`. */
 export interface Conversation {
   schema: typeof CONVERSATION_SCHEMA
   /** Adapter name, e.g. "claude". */
