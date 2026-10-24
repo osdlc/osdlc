@@ -93,9 +93,9 @@
       "line": 72,
       "title": "comment about binary sits on the runner role, which has no binary",
       "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365462127",
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "99aa56dbb4cda793b1f4f25dd01dac94e74f7c7c"
     },
     {
       "id": "r1-9",
