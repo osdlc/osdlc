@@ -1,12 +1,35 @@
 {
   "schema": 1,
   "pr": 429,
-  "head": null,
-  "base": null,
-  "round": 0,
+  "head": "32fcdd18dfaa5cd9bef10081c24ce59212f31050",
+  "base": "9086fc528e64a0f5c6be6a890ac1f81c244c3897",
+  "round": 1,
   "claim": {
     "owner": "Mac.local:claude-w7p2rk",
     "at": "2026-10-24T05:27:16.412Z"
   },
-  "findings": []
+  "findings": [
+    {
+      "id": "r1-1",
+      "round": 1,
+      "path": "packages/ts/wayfinder/src/config.ts",
+      "line": 396,
+      "title": "When both project files exist, waypost.config.json is ignored without a warning",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-2",
+      "round": 1,
+      "path": "packages/ts/wayfinder/src/clean-command.ts",
+      "line": 136,
+      "title": "way clean never offers the old waypost cache directory",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    }
+  ]
 }
