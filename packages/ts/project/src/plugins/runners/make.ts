@@ -1,0 +1,107 @@
+/**
+ * make — targets scanned out of a Makefile.
+ *
+ * The scan is deliberately conservative, and it will miss things: `include`d
+ * makefiles, targets built by pattern rules, anything generated at parse time.
+ * It reports what is written down at column 0 and nothing else.
+ *
+ * make is the one runner here that does NOT gain an exec upgrade when execution
+ * is allowed, unlike just, rake, go-task and gradle. Consent is not the
+ * obstacle; the output is. `make --print-data-base` was measured against a
+ * fixture with an `include`, a pattern rule and `$(eval)`-built targets: over
+ * 98% of its 1354 lines are make's own built-in rules and variables, a real
+ * target is not distinguishable from a pattern-rule expansion except by
+ * prose-formatted comments, and the same target appears twice. The format is
+ * debugging output, not a machine contract, and BSD make does not implement the
+ * flag at all. It also evaluates the makefile: `$(shell …)` in a `:=`
+ * assignment runs during parsing, which neither `-n` nor `-q` suppresses, and
+ * bare `-p` goes on to build the default goal. So there is no invocation whose
+ * answer could be trusted even with consent in hand.
+ */
+
+import type { ProviderResult, RunnerBrand, Task } from '../../model.ts'
+import type { RunnerRole } from '../../tool.ts'
+import { dirOf, onePerDir, sourcesOf, taskId } from '../support/shared.ts'
+
+/** The names make looks for. */
+export const MAKEFILE_NAMES = ['Makefile', 'makefile', 'GNUmakefile']
+
+const CHAIN = [
+  { label: 'runner', hint: 'make builds targets declared in a Makefile.' },
+  { label: 'makefile', hint: 'Which makefile declares the target. `.` is the one at the root.' },
+  { label: 'target', hint: 'The target name, as written at column 0 before the colon.' },
+]
+
+/** `name:` at column 0, but not `name :=` — that is a variable assignment. */
+const TARGET = /^([A-Za-z0-9_][A-Za-z0-9_./-]*)\s*:(?!=)/
+
+/**
+ * A gear — a substitute glyph, kept after checking simple-icons: it has no
+ * make-specific icon (`make` is Make.com, an unrelated product; `gnumake`
+ * does not exist), and its `gnu` head is CC-BY-SA-2.0, not CC0, which an MIT
+ * package cannot pass on (and ~14.7KB of path). GNU publishes no official
+ * color; this is the deep red conventionally used for GNU marks.
+ */
+const BRAND: RunnerBrand = {
+  icon: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="10.9" y="2" width="2.2" height="5" rx="1"/><rect x="10.9" y="2" width="2.2" height="5" rx="1" transform="rotate(45 12 12)"/><rect x="10.9" y="2" width="2.2" height="5" rx="1" transform="rotate(90 12 12)"/><rect x="10.9" y="2" width="2.2" height="5" rx="1" transform="rotate(135 12 12)"/><rect x="10.9" y="2" width="2.2" height="5" rx="1" transform="rotate(180 12 12)"/><rect x="10.9" y="2" width="2.2" height="5" rx="1" transform="rotate(225 12 12)"/><rect x="10.9" y="2" width="2.2" height="5" rx="1" transform="rotate(270 12 12)"/><rect x="10.9" y="2" width="2.2" height="5" rx="1" transform="rotate(315 12 12)"/><path fill-rule="evenodd" d="M12 5a7 7 0 1 0 0 14 7 7 0 0 0 0-14Zm0 4a3 3 0 1 1 0 6 3 3 0 0 1 0-6Z"/></svg>',
+  color: '#a42e2b',
+}
+
+export const makeRunner: RunnerRole = {
+  kind: 'parse',
+  chain: CHAIN,
+  brand: BRAND,
+
+  async collect(ctx, packages): Promise<ProviderResult> {
+    const makefiles = onePerDir(sourcesOf(packages, 'make', MAKEFILE_NAMES))
+    if (makefiles.length === 0) return { status: 'absent', tasks: [], diagnostics: [] }
+
+    const tasks: Task[] = []
+    for (const file of makefiles) {
+      const text = await ctx.readText(file)
+      if (text === null) continue
+      const dir = dirOf(file)
+      for (const name of scanTargets(text)) {
+        const argv = dir === '.' ? ['make', name] : ['make', '-C', dir, name]
+        tasks.push({
+          id: taskId('make', file, name),
+          runner: 'make',
+          path: ['make', dir, name],
+          argv,
+          cwd: '.',
+          display: argv.join(' '),
+          parameters: [],
+          source: file,
+          origin: 'declared',
+          tags: ['make', dir],
+          persistent: { value: false, declared: false },
+          executes: 'local',
+        })
+      }
+    }
+
+    return {
+      status: 'ok',
+      tasks,
+      diagnostics: [],
+    }
+  },
+}
+
+export function scanTargets(text: string): string[] {
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const raw of text.split(/\r?\n/)) {
+    if (!raw || raw[0] === ' ' || raw[0] === '\t' || raw[0] === '#') continue
+    const m = TARGET.exec(raw)
+    const name = m?.[1]
+    if (name === undefined) continue
+    // `.PHONY` and friends are directives, not things to run; `%` is a pattern
+    // rule, which names a shape rather than a target.
+    if (name.startsWith('.') || name.includes('%')) continue
+    if (seen.has(name)) continue
+    seen.add(name)
+    out.push(name)
+  }
+  return out.sort()
+}
