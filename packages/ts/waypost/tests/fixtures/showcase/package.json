@@ -1,0 +1,11 @@
+{
+  "name": "showcase",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Capture fixture. Not a real package; never installed, never published.",
+  "scripts": {
+    "build": "echo building",
+    "lint": "echo linting",
+    "start": "echo serving"
+  }
+}

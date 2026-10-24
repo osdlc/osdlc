@@ -1,0 +1,12 @@
+{
+  // Emit config for the published dist/. The dev tsconfig.json stays noEmit.
+  "extends": ["./tsconfig.json", "@osdlc/tsconfig/build"],
+  "compilerOptions": {
+    "rootDir": "src",
+    // src/ is not published, so a declaration map would point at nothing.
+    "declarationMap": false
+  },
+  // The page script is bundled for the browser by scripts/build-web.mjs.
+  "include": ["src"],
+  "exclude": ["src/web"]
+}
