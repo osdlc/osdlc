@@ -82,9 +82,9 @@
       "line": 16,
       "title": "stale: comment says the plugin avoids a TOML dependency",
       "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365462125",
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "99aa56dbb4cda793b1f4f25dd01dac94e74f7c7c"
     },
     {
       "id": "r1-8",
