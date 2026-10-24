@@ -1,5 +1,11 @@
 # @osdlc/typed-gh
 
+## 0.8.0
+
+### Minor Changes
+
+- ae400e5: Added `runVerb` and `runVerbAsync`, with `RunVerbOptions` and `RunVerbAsyncOptions`. They run one verb through a runner the caller owns and apply what the verb carries: `env` (the target host, as `GH_HOST`, for `repoList` and `searchPrs`), `input` (the payload `createReview` sends on stdin), `timeoutMs` and the checked contract. Running `verb.parse(await run(verb.argv))` yourself dropped `env` and `input` without an error. `Gh` and `AsyncGh` now call them, so there is one copy of that logic.
+
 ## 0.7.0
 
 ### Minor Changes
