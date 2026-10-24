@@ -1,14 +1,14 @@
-//! The older single-key splice functions — **never reserialize**.
+//! The older single-key splice functions. They never reserialize.
 //!
 //! The rule:
 //!
 //! > To change a key's value, find the bytes that value occupies and replace
-//! > *only those bytes*. Every other byte of the file — comments, key order,
-//! > quoting style, indentation quirks, the blank line somebody left in on
-//! > purpose — comes through untouched because it is never re-emitted.
+//! > only those bytes. Every other byte of the file (comments, key order,
+//! > quoting style, indentation quirks, a blank line left in on purpose)
+//! > comes through untouched because it is never re-emitted.
 //!
 //! The alternative is to parse the block into a map, change the map and
-//! stringify it back. That *looks* correct in a unit test and damages real
+//! stringify it back. That looks correct in a unit test and damages real
 //! files: comments vanish (no YAML value model carries them), key order
 //! changes, `'single'` becomes `"double"`, and a folded scalar becomes a
 //! quoted one-liner.
@@ -24,20 +24,20 @@
 //!
 //! # The shape of the returned text
 //!
-//! Every function here returns the block in **split form**: the last line is
-//! *not* terminated, because the terminator is the caller's framing and not
+//! Every function here returns the block in split form: the last line is
+//! not terminated, because the terminator is the caller's framing and not
 //! the block's content. That is the text between the `---` fences of a
 //! Markdown file, without the line ending before the closing fence. Under
 //! CRLF the last line ends on a bare `\r`, its `\n` having been taken as the
 //! separator.
 //!
-//! A replace produces split form for free. An append is the one place these
+//! A replace already produces split form. An append is the one place these
 //! functions write bytes of their own, and it writes them in the same form: it
 //! separates entries with the block's line ending but does not terminate the
 //! last one. A caller can put the result back between the fences without
 //! knowing whether the key it wrote was replaced or appended.
 //!
-//! A caller editing a standalone `.yaml` *file*, where the final newline is
+//! A caller editing a standalone `.yaml` file, where the final newline is
 //! content rather than framing, appends that newline itself, or uses
 //! [`edit_yaml`](crate::edit::edit_yaml), which treats its input as a whole
 //! document.
@@ -65,8 +65,8 @@ pub enum SpliceError {
 /// How a value should be rendered when it lands in the file.
 ///
 /// `Raw` exists because the caller sometimes already has the exact text it
-/// wants (a value copied from another file, a hand-written block scalar) and
-/// re-rendering it would be the very churn this module prevents.
+/// wants (a value copied from another file, a hand-written block scalar), and
+/// re-rendering it would change bytes this module exists to keep.
 #[derive(Debug, Clone)]
 pub enum Replacement {
     /// Render the value through the emitter in [`crate::render`].
@@ -130,7 +130,7 @@ pub fn splice_keys(yaml: &str, edits: Vec<(String, Replacement)>) -> Result<Stri
             Some(span) => {
                 let key_indent = line_indent(yaml, span.key_range.start);
                 let text = render_assignment(&replacement, &key_indent)?;
-                // From just past the `:` — see `KeySpan::assign_end` for why
+                // From just past the `:`. See `KeySpan::assign_end` for why
                 // the separator has to be part of the replaced range.
                 applied.push(fit_assignment(
                     yaml,
@@ -153,9 +153,9 @@ pub fn splice_keys(yaml: &str, edits: Vec<(String, Replacement)>) -> Result<Stri
         let eol = block_eol(yaml);
         for (key, replacement) in appended {
             // Finish the block's last line so the new entry starts on one of
-            // its own. In split form that line is missing exactly its `\n` —
-            // under CRLF the `\r` is still there — so a single `\n` completes
-            // it in either dialect, and a block already ending in a terminator
+            // its own. In split form that line is missing exactly its `\n`
+            // (under CRLF the `\r` is still there), so a single `\n` completes
+            // it in either case, and a block already ending in a terminator
             // needs nothing.
             if !out.is_empty() && !out.ends_with('\n') {
                 out.push('\n');
@@ -234,7 +234,7 @@ pub fn remove_key(yaml: &str, key: &str) -> Result<String, SpliceError> {
     Ok(out)
 }
 
-/// Render everything that follows the `:` — the separator included.
+/// Render everything that follows the `:`, the separator included.
 ///
 /// Owning the separator is what lets one code path handle both layouts:
 /// a scalar renders as `" v"` and stays on the key's line, while a non-empty
@@ -356,7 +356,7 @@ alpha: 2
         let src = "a: 1\nb: 2\nc: 3\n";
         let out = splice_key(src, "b", Value::Int(20)).unwrap();
         assert_eq!(out, "a: 1\nb: 20\nc: 3\n");
-        // The bytes before and after the spliced range are the SAME bytes.
+        // The bytes before and after the spliced range are the same bytes.
         assert_eq!(&out[..5], &src[..5]);
         assert_eq!(&out[out.len() - 5..], &src[src.len() - 5..]);
     }
@@ -393,7 +393,7 @@ alpha: 2
     #[test]
     fn appending_into_an_empty_block_writes_just_the_entry() {
         // The no-frontmatter case: there is no block to splice against, so the
-        // result is the entry alone — no leading and no trailing newline.
+        // result is the entry alone, with no leading or trailing newline.
         assert_eq!(splice_key("", "kind", s("note")).unwrap(), "kind: note");
     }
 
@@ -418,8 +418,8 @@ alpha: 2
 
     #[test]
     fn a_crlf_block_gets_its_appended_line_in_crlf() {
-        // A one-key CRLF block in split form contains no `\n` at all — the
-        // only one it had was consumed as the fence separator — so a detector
+        // A one-key CRLF block in split form contains no `\n` at all (the
+        // only one it had was consumed as the fence separator), so a detector
         // that looks for line endings the usual way concludes LF and leaves the
         // single LF line of a CRLF note behind.
         let out = splice_key("title: Ada\r", "kind", s("human")).unwrap();

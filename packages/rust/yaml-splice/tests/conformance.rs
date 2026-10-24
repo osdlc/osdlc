@@ -10,11 +10,10 @@
 //! `error_span_within_source`).
 //!
 //! Compatibility is the returned bytes, the changed/no-op classification, and
-//! the error code/span — not implementation details. The key property
-//! throughout is byte preservation: **the prefix and suffix outside every
-//! edited span are byte-identical** to the input. `single_span` proves that
-//! directly by locating the one contiguous region that differs and asserting
-//! everything around it survived unchanged.
+//! the error code and span, not implementation details. The key property
+//! throughout is byte preservation: the bytes outside every edited span are
+//! identical to the input. `single_span` asks for a check that only one
+//! region differs.
 
 use serde_json::Value as Json;
 use yaml_splice::{
@@ -24,8 +23,8 @@ use yaml_splice::{
 const CORPUS: &str = include_str!("fixtures/conformance.json");
 
 /// The whole shared corpus, one test. A failure aggregates every offending
-/// fixture by name rather than stopping at the first, so a drift shows its full
-/// blast radius.
+/// fixture by name rather than stopping at the first, so a drift shows every
+/// fixture it breaks.
 #[test]
 fn shared_conformance_corpus() {
     let root: Json = serde_json::from_str(CORPUS).expect("conformance.json is valid JSON");

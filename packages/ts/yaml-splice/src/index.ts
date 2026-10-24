@@ -17,9 +17,9 @@ import { editYaml as editYamlWasm, type EditResult as WasmEditResult } from '#wa
 
 /**
  * A JSON-shaped value a `Set` edit may write: the same shape a JavaScript value
- * can take, matching the crate's `From<&serde_json::Value>` bridge. Object key
- * order for NESTED maps is not load-bearing (see the crate's ordering caveat);
- * the TOP-LEVEL key being edited is addressed by `key`, never rebuilt.
+ * can take, matching the crate's `From<&serde_json::Value>` bridge. Do not rely
+ * on the key order of a nested object (see the crate's note on key order). The
+ * top-level key being edited is addressed by `key` and is never rebuilt.
  */
 export type EditValue =
   null | boolean | number | string | readonly EditValue[] | { readonly [key: string]: EditValue }
@@ -85,9 +85,9 @@ export class EditError extends Error {
     super(message)
     this.name = code
     this.code = code
-    // Assign only when present so `span` stays a truly-optional property under a
-    // consumer's `exactOptionalPropertyTypes` (an absent property still reads as
-    // `undefined`; assigning `undefined` outright would violate that flag).
+    // Assign only when present, so `span` stays an optional property under a
+    // consumer's `exactOptionalPropertyTypes`. Assigning `undefined` would break
+    // that flag.
     if (span !== undefined) this.span = span
   }
 }
@@ -133,7 +133,7 @@ export function editYaml(source: Uint8Array, edits: readonly FieldEdit[]): EditO
     throw isRefusal(raw) ? toEditError(raw) : raw
   }
 
-  // Read both fields into a plain object, THEN free the handle. The glue's
+  // Read both fields into a plain object, then free the handle. The glue's
   // `bytes` getter returns an owned copy (`.slice()`), so it survives `free()`.
   try {
     return { bytes: result.bytes, changed: result.changed }
@@ -144,7 +144,7 @@ export function editYaml(source: Uint8Array, edits: readonly FieldEdit[]): EditO
 
 /**
  * Refuse non-finite numbers before the JSON boundary. `JSON.stringify` renders
- * `NaN` and `±Infinity` as `null`, so without this guard a `Set` would silently
+ * `NaN` and `±Infinity` as `null`, so without this check a `Set` would silently
  * write `null` over the field instead of refusing the value.
  */
 function assertFiniteNumbers(edits: readonly FieldEdit[]): void {
@@ -174,8 +174,8 @@ function assertFiniteValue(value: EditValue, key: string): void {
 
 /**
  * The `.name` the wasm gives a crate `EditError` variant it has no name for
- * (the crate's enum is `#[non_exhaustive]`). Still a refusal: reported as
- * `InvalidResult`, as before 0.2.0.
+ * (the crate's enum is `#[non_exhaustive]`). It is still a refusal, reported as
+ * `InvalidResult`.
  */
 const UNNAMED_REFUSAL = 'EditError'
 

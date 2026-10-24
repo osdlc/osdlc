@@ -1,5 +1,5 @@
-//! The YAML 1.2 value emitter: **byte-identical to the npm `yaml` package,
-//! version 2 (`yaml@2`), `stringify`**.
+//! The YAML 1.2 value emitter. Its output is byte-identical to `stringify` in
+//! the npm `yaml` package, version 2 (`yaml@2`).
 //!
 //! The edit functions and [`splice`](crate::splice) render the bytes of a new
 //! value through it. It never renders the enclosing mapping, which the caller
@@ -20,7 +20,7 @@
 //! ## Limitation: folded block scalars
 //!
 //! `yaml@2` switches a multi-line string from a literal block (`|`) to a
-//! *folded* block (`>`) when some line exceeds `lineWidth`, and falls back to
+//! folded block (`>`) when some line exceeds `lineWidth`, and falls back to
 //! literal again if the fold finds no space to break on. Writing `>` correctly
 //! means reproducing three chained regex rewrites and the more-indented-line
 //! handling of `FOLD_BLOCK`. That path is unreachable with `line_width: 0`, so
@@ -137,8 +137,8 @@ pub fn render_value(value: &Value, opts: EmitOptions) -> Result<String, RenderEr
     Ok(out)
 }
 
-/// Render everything that follows a key's `:` for a `Set`/append — the
-/// separator included — with the value re-indented one level under a key at
+/// Render everything that follows a key's `:` for a `Set` or an append, the
+/// separator included, with the value re-indented one level under a key at
 /// `key_indent`.
 ///
 /// Owning the separator is what lets one code path handle both layouts: a
@@ -224,9 +224,9 @@ fn stringify_map(map: &Mapping, ctx: &Ctx) -> Result<String, RenderError> {
     if map.is_empty() {
         return Ok("{}".to_string());
     }
-    // A block map's items sit at the map's OWN indent (`itemIndent:
-    // ctx.indent || ''` in YAMLMap.js); the extra level appears on the
-    // *value* side, inside stringify_pair.
+    // A block map's items sit at the map's own indent (`itemIndent:
+    // ctx.indent || ''` in YAMLMap.js). The extra level appears on the
+    // value side, inside stringify_pair.
     let mut lines = Vec::new();
     for (k, v) in map.iter() {
         lines.push(stringify_pair(k, v, ctx)?);
@@ -254,8 +254,8 @@ fn stringify_seq(items: &[Value], ctx: &Ctx) -> Result<String, RenderError> {
 }
 
 /// `stringifyBlockCollection`'s join: first line bare, the rest prefixed with
-/// the collection's indent. Empty lines get no indent (trailing-whitespace
-/// hygiene that `yaml@2` is careful about and diffs notice).
+/// the collection's indent. Empty lines get no indent, so no line ends in
+/// whitespace, as in `yaml@2`.
 fn join_block_lines(lines: &[String], indent: &str) -> String {
     let mut out = String::new();
     for (i, line) in lines.iter().enumerate() {
@@ -295,10 +295,10 @@ fn stringify_pair(key: &str, value: &Value, ctx: &Ctx) -> Result<String, RenderE
 
     let value_ctx = Ctx {
         indent: child_indent.clone(),
-        // `ctx.indentAtStart = str.length + 1` — deliberately measured from
-        // the KEY text alone, not including the collection indent that gets
-        // prepended at join time. That undercount is `yaml@2`'s, and
-        // reproducing it is the point.
+        // `ctx.indentAtStart = str.length + 1`, measured from the key text
+        // alone. It leaves out the collection indent added at join time.
+        // That undercount is `yaml@2`'s, and this code copies it so lines
+        // fold in the same place.
         indent_at_start: if !explicit_key && !value.is_collection() {
             Some(utf16_len(&str_) + 1)
         } else {
@@ -397,7 +397,7 @@ fn plain_is_disallowed(v: &str) -> bool {
 /// `schema/common/null.js`. A plain rendering matching any of these would
 /// read back as a non-string, so it gets quoted instead.
 fn would_reparse_as_non_string(s: &str) -> bool {
-    // null: /^(?:~|[Nn]ull|NULL)?$/  — note it matches the EMPTY string.
+    // null: /^(?:~|[Nn]ull|NULL)?$/  (it matches the empty string too).
     if s.is_empty() || s == "~" || s == "null" || s == "Null" || s == "NULL" {
         return true;
     }
@@ -518,7 +518,7 @@ fn plain_string(value: &str, ctx: &Ctx) -> Result<String, RenderError> {
     }
 }
 
-/// `value.replace(/\n+/g, '$&' + suffix)` — append `suffix` after each RUN of
+/// `value.replace(/\n+/g, '$&' + suffix)`: append `suffix` after each run of
 /// newlines, not after each newline.
 fn replace_newline_runs_with(value: &str, suffix: &str) -> String {
     let mut out = String::with_capacity(value.len());
@@ -683,7 +683,7 @@ fn json_stringify_str(value: &str) -> String {
     out
 }
 
-/// `lineLengthOverLimit` — does any line exceed `lineWidth - indentLength`?
+/// `lineLengthOverLimit`: does any line exceed `lineWidth - indentLength`?
 fn line_length_over_limit(s: &str, line_width: usize, indent_len: usize) -> bool {
     if line_width == 0 {
         return false;
@@ -731,10 +731,10 @@ fn block_string(value: &str, ctx: &Ctx) -> Result<String, RenderError> {
 
     let literal = !line_length_over_limit(value, ctx.opts.line_width, indent.chars().count());
     if !literal {
-        // See the module docs: `>` is deliberately not implemented. But
+        // See the module docs: `>` is not implemented on purpose. But
         // `yaml@2` itself falls back to `|` when the fold finds nothing to
-        // break on, and that fallback IS reachable with ordinary data
-        // (a long unbroken token), so check for it before erroring.
+        // break on, and ordinary data (a long unbroken token) can reach that
+        // fallback, so check for it before returning the error.
         if folded_would_overflow_to_literal(value, &indent, ctx.opts) {
             // fall through to the literal emit below
         } else {
@@ -818,7 +818,7 @@ fn block_string(value: &str, ctx: &Ctx) -> Result<String, RenderError> {
     Ok(format!("|{header}\n{indent}{start}{body}{end}"))
 }
 
-/// `blockEndNewlines` — `(^|(?<!\n))\n+(?!\n|$)`: indent after each newline
+/// `blockEndNewlines`, `(^|(?<!\n))\n+(?!\n|$)`: indent after each newline
 /// run that is neither at the very end nor followed by another newline.
 fn indent_inner_newline_runs(s: &str, indent: &str) -> String {
     let chars: Vec<char> = s.chars().collect();
@@ -1038,9 +1038,8 @@ mod tests {
 
     /// Every `expected` here was produced by running
     /// `YAML.stringify(input, { lineWidth })` against `yaml@2.9.0`. They are
-    /// asserted
-    /// byte-for-byte on purpose — see the module docs for what drifts if
-    /// they stop matching.
+    /// asserted byte for byte. See the module docs for what changes if they
+    /// stop matching.
     #[test]
     fn scalars_match_js_yaml_byte_for_byte() {
         let v = m(vec![
@@ -1107,7 +1106,7 @@ mod tests {
 
     #[test]
     fn reserved_words_are_quoted_but_yaml11_booleans_are_not() {
-        // `yes`/`no`/`on`/`off` are NOT booleans in the YAML 1.2 core schema,
+        // `yes`/`no`/`on`/`off` are not booleans in the YAML 1.2 core schema,
         // so `yaml@2` leaves them plain. A serializer that quotes them (many
         // do) would churn every note that has `draft: no` in frontmatter.
         let v = m(vec![
@@ -1341,8 +1340,8 @@ mod tests {
              of the line to force wrapping\n  behaviour indeed it does keep going for quite a \
              while longer\n"
         );
-        // Nested: the continuation indent grows, but the FOLD POINT does not
-        // move — `yaml@2` measures `indentAtStart` from the key text alone.
+        // Nested: the continuation indent grows, but the fold point does not
+        // move, because `yaml@2` measures `indentAtStart` from the key text alone.
         assert_eq!(
             render_value(
                 &m(vec![("a", m(vec![("b", m(vec![("s", s(long))]))]))]),

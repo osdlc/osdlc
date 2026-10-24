@@ -1,4 +1,4 @@
-//! An **ordered** YAML value model.
+//! An ordered YAML value model.
 //!
 //! Why not `serde_yaml::Value` or `serde_json::Value`? Because key order
 //! matters here and neither type guarantees it: `serde_json::Map` is sorted
@@ -289,7 +289,7 @@ pub fn js_float_to_string(f: f64) -> String {
         return if f.is_sign_negative() { "-0" } else { "0" }.to_string();
     }
 
-    // Rust's `{:e}` yields the SHORTEST round-tripping digit string, which is
+    // Rust's `{:e}` yields the shortest round-tripping digit string, which is
     // the same digit sequence the ECMAScript spec's `k`/`s` pair names. Parse
     // it back apart rather than reimplementing Grisu.
     let sci = format!("{f:e}"); // e.g. "2.5e-8", "1e21", "-1.25e2"

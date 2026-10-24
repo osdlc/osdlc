@@ -1,12 +1,12 @@
-//! YAML parsing that keeps **byte spans**, which is what makes the
-//! span-preserving splice possible at all.
+//! YAML parsing that keeps byte spans. The splice needs them to replace one
+//! value and keep every other byte.
 //!
-//! `serde_yaml` drops the source text once it has a value, so there is no way
-//! to ask it "which bytes were `status:`'s value?" — and without that answer,
-//! the only way to change one key is to reserialize the whole block, which
-//! loses comments, key order and quoting style. `saphyr-parser` keeps a
-//! [`Span`] per event, so the splice can replace exactly the bytes that belong
-//! to one value and leave every other byte of the file untouched.
+//! `serde_yaml` drops the source text once it has a value, so it cannot say
+//! which bytes were the value of `status:`. Without that, the only way to
+//! change one key is to reserialize the whole block, which loses comments, key
+//! order and quoting style. `saphyr-parser` keeps a [`Span`] per event, so the
+//! splice can replace exactly the bytes of one value and leave every other
+//! byte of the file untouched.
 //!
 //! One pass produces both:
 //!
@@ -21,7 +21,7 @@
 //! # Agreement with the npm `yaml` package
 //!
 //! The reader agrees with the npm `yaml` package, version 2 (`yaml@2`, the
-//! common JavaScript YAML library), about what a document *means*. The
+//! common JavaScript YAML library), about what a document means. The
 //! expected values in the tests were captured from `yaml@2.9.0`. Three
 //! constructs need care:
 //!
@@ -31,7 +31,7 @@
 //! reads as the value anchored at `pos`, not as null.
 //!
 //! Two hostile shapes are refused rather than resolved, because this value
-//! model is a **tree** while `yaml@2`'s is a graph:
+//! model is a tree while `yaml@2`'s is a graph:
 //!
 //! - **Recursive aliases** (`&x [*x]`) are legal YAML and `saphyr` emits them.
 //!   `yaml@2` builds a circular object, which its own `JSON.stringify` then
@@ -55,7 +55,7 @@
 //!
 //! ## Duplicate keys are reported, not raised
 //!
-//! `yaml@2` **throws** `Map keys must be unique`. The default entry points
+//! `yaml@2` throws `Map keys must be unique`. The default entry points
 //! here ([`parse`], [`parse_mapping`], [`parse_with_spans`]) do not: the last
 //! value wins, and the duplicates are listed in [`Parsed::duplicate_keys`].
 //! [`parse_strict`], [`parse_mapping_strict`] and [`parse_with_spans_strict`]
@@ -66,7 +66,7 @@
 //! one path that drops every comment in the file. A caller that counts
 //! duplicates itself needs a successful parse to compare against.
 //!
-//! The report compares the **resolved** key, before [`Mapping`] turns it into
+//! The report compares the resolved key, before [`Mapping`] turns it into
 //! a string, which is `yaml@2`'s rule. `a:`/`'a':` collide and `~:`/`null:`
 //! collide; `1:`/`'1':` and `true:`/`'true':` do not.
 
@@ -77,12 +77,12 @@ use crate::value::{Mapping, Value};
 /// How many `Value` nodes an entire document is allowed to materialise by
 /// expanding aliases.
 ///
-/// `yaml@2` aliases by *reference*, so `&a [x,x] / &b [*a,*a] / [*b,*b]`
-/// costs it nothing. This module builds a tree and therefore **copies**, which
-/// turns the same document into exponential memory — the classic billion-laughs
-/// shape. Real frontmatter is far below this ceiling (a few hundred nodes,
-/// usually with no aliases at all), so a fixed budget buys safety on hostile
-/// input at no cost to ordinary documents.
+/// `yaml@2` aliases by reference, so `&a [x,x] / &b [*a,*a] / [*b,*b]`
+/// costs it nothing. This module builds a tree and so copies each alias. The
+/// same document then takes exponential memory (the billion-laughs attack).
+/// Real frontmatter is far below this limit (a few hundred nodes, usually
+/// with no aliases at all), so a fixed budget stops hostile input and costs
+/// ordinary documents nothing.
 const MAX_ALIAS_EXPANSION_NODES: usize = 10_000;
 
 /// Why a document could not be parsed.
@@ -144,7 +144,7 @@ pub struct Parsed {
     /// are reported, not raised". [`parse_strict`] and [`parse_mapping_strict`]
     /// fail instead.
     ///
-    /// The comparison is on the *resolved* key, before it is turned into a
+    /// The comparison is on the resolved key, before it is turned into a
     /// [`Mapping`] string key: `a:`/`'a':` collide and `~:`/`null:` collide,
     /// but `1:`/`'1':` and `true:`/`'true':` do not.
     pub duplicate_keys: Vec<String>,
@@ -274,8 +274,8 @@ enum EvKind {
 /// | `!!float` | float, else the raw text | [`TagKind::Float`] |
 /// | `!!bool` | boolean, else the raw text | [`TagKind::Bool`] |
 /// | `!!null` | null, else the raw text | [`TagKind::Null`] |
-/// | `!foo`, `!<verbatim>` | the raw text as a **string** (warns) | [`TagKind::Str`] |
-/// | `!!binary`, `!!timestamp` | `Buffer` / `Date` | **not honoured** — [`TagKind::Ignored`] |
+/// | `!foo`, `!<verbatim>` | the raw text as a string (warns) | [`TagKind::Str`] |
+/// | `!!binary`, `!!timestamp` | `Buffer` / `Date` | not honoured: [`TagKind::Ignored`] |
 /// | any tag on a seq or a map | ignored | ignored |
 ///
 /// The two deliberate gaps are `!!binary` and `!!timestamp`: this value model
@@ -297,7 +297,7 @@ impl TagKind {
     fn from_tag(tag: &saphyr_parser::Tag) -> TagKind {
         if !tag.is_yaml_core_schema() {
             // `yaml@2` cannot resolve a local or verbatim tag either, and its
-            // fallback is the unresolved *string* — `!foo 42` is "42", not 42.
+            // fallback is the unresolved string: `!foo 42` is "42", not 42.
             return TagKind::Str;
         }
         match tag.suffix.as_str() {
@@ -339,11 +339,11 @@ fn collect_events(src: &str) -> Result<Vec<Ev>, ParseError> {
 
 /// Resolve a scalar, honouring an explicit tag when there is one.
 ///
-/// A tag beats BOTH the spelling and the quoting: `!!int '42'` is the integer
+/// A tag beats both the spelling and the quoting: `!!int '42'` is the integer
 /// 42 in `yaml@2` even though a quoted scalar is otherwise always a string, and
 /// `!!str 2024` is the string `"2024"` even though the spelling says integer.
-/// A tag that does not fit its value is not an error — `yaml@2` warns and yields
-/// the raw text — so every typed arm falls back to [`Value::Str`].
+/// A tag that does not fit its value is not an error. `yaml@2` warns and yields
+/// the raw text, so every typed arm falls back to [`Value::Str`].
 fn resolve_scalar(text: &str, style: ScalarStyle, tag: Option<TagKind>) -> Value {
     let as_str = || Value::Str(text.to_string());
     match tag {
@@ -370,7 +370,7 @@ fn resolve_scalar(text: &str, style: ScalarStyle, tag: Option<TagKind>) -> Value
     resolve_plain(text, style)
 }
 
-/// YAML 1.2 core-schema resolution for an UNTAGGED scalar. A quoted scalar is
+/// YAML 1.2 core-schema resolution for an untagged scalar. A quoted scalar is
 /// always a string, which is why the style is part of the decision — getting
 /// this backwards is how `version: "1.0"` silently becomes the float `1`.
 fn resolve_plain(text: &str, style: ScalarStyle) -> Value {
@@ -392,10 +392,10 @@ fn resolve_plain(text: &str, style: ScalarStyle) -> Value {
     Value::Str(text.to_string())
 }
 
-/// Does this top-level [`KeySpan`] address a **string** key?
+/// Does this top-level [`KeySpan`] address a string key?
 ///
-/// Non-string keys — a plain scalar that resolves to int/float/
-/// bool/null, like `123:` or `true:` — are preserved untouched but cannot be
+/// Non-string keys (a plain scalar that resolves to int/float/
+/// bool/null, like `123:` or `true:`) are kept untouched but cannot be
 /// targeted by the edit API. The stored `KeySpan::key` is the decoded key
 /// text, which does not distinguish `1:` (an integer key) from `'1':` (a
 /// string key), so the source token is inspected: a quoted token is always a
@@ -480,13 +480,13 @@ struct Builder<'a> {
     events: &'a [Ev],
     /// Completed anchor values, keyed by `saphyr`'s anchor id.
     ///
-    /// Populated when a node *finishes*, never before, which is what makes a
+    /// Populated when a node finishes, never before, which is what makes a
     /// recursive alias detectable: `&x [*x]` reaches its `*x` while id `x` is
     /// still absent, and `saphyr` has already rejected the only other way an
     /// id can be missing (a genuine forward reference is
     /// "found unknown anchor" at the event stage). Ids are unique per
     /// definition, so a redefined anchor gets a fresh id and the "latest
-    /// definition wins" rule falls out for free.
+    /// definition wins" rule follows from that.
     anchors: Vec<(usize, Value)>,
     /// Remaining node budget for alias expansion; see
     /// [`MAX_ALIAS_EXPANSION_NODES`].
@@ -551,8 +551,8 @@ impl<'a> Builder<'a> {
                     let (v, after_val) = self.build_node(after_key)?;
                     // Non-string keys are stringified: frontmatter has no use
                     // for complex keys, and dropping them would lose data
-                    // silently. Note this is a SEPARATE collapse from the one
-                    // above — `1:` and `'1':` are distinct keys to `yaml@2` and to
+                    // silently. This is a separate collapse from the one
+                    // above: `1:` and `'1':` are distinct keys to `yaml@2` and to
                     // `seen`, and only become one entry here.
                     let key = match &k {
                         Value::Str(s) => s.clone(),
@@ -590,7 +590,7 @@ impl<'a> Builder<'a> {
                 "recursive yaml alias: an anchor cannot contain an alias to itself".to_string(),
             ));
         };
-        // Charge the budget BEFORE cloning, so a bomb is refused rather than
+        // Charge the budget before cloning, so a bomb is refused rather than
         // materialised and then complained about. The stored value is itself
         // budget-bounded, which keeps this count cheap.
         let cost = count_nodes(value);
@@ -612,7 +612,7 @@ fn count_nodes(v: &Value) -> usize {
     }
 }
 
-/// Advance past one node without building it — what the span walk needs.
+/// Advance past one node without building it. The span walk needs only that.
 ///
 /// Deliberately not [`Builder::build_node`]: the span pass discards every
 /// value it produces, so running the alias resolver here would spend the
@@ -659,8 +659,8 @@ fn top_level_spans(events: &[Ev], src: &str) -> Vec<KeySpan> {
         key: String,
         key_range: std::ops::Range<usize>,
         value_start: usize,
-        /// End of the deepest SCALAR in the value. Exact for scalars, and a
-        /// safe floor for collections — nothing before it can be a comment.
+        /// End of the last scalar or alias in the value. Exact for scalars,
+        /// and a safe floor for collections: nothing before it is a comment.
         value_scalar_end: usize,
         /// End of the furthest event in the value, which for a flow
         /// collection covers the closing bracket and for a block collection
@@ -674,8 +674,8 @@ fn top_level_spans(events: &[Ev], src: &str) -> Vec<KeySpan> {
         let key = match &key_ev.kind {
             EvKind::Scalar(t, ..) => t.clone(),
             _ => {
-                // Complex key — skip its whole subtree; splicing one is out
-                // of scope and pretending otherwise would corrupt the file.
+                // A complex key: skip its whole subtree. Splicing one is out
+                // of scope, and trying would corrupt the file.
                 let next = skip_node(events, i);
                 i = skip_node(events, next);
                 continue;
@@ -878,8 +878,8 @@ fn assign_end(src: &str, key_end: usize, value_start: usize) -> usize {
 /// Pull `end` back off trailing whitespace and trailing comments.
 ///
 /// `floor` is why this is safe: it is the end of the last scalar the parser
-/// reported inside the value, so a `#` that is really content — a literal
-/// block scalar containing `# heading` — sits *below* the floor and is never
+/// reported inside the value. A `#` that is content (a literal block scalar
+/// containing `# heading`) sits below the floor and is never
 /// mistaken for a comment.
 fn trim_value_end(src: &str, hard_stop: usize, floor: usize, event_end: usize) -> usize {
     let hard_stop = hard_stop.min(src.len());
@@ -917,8 +917,8 @@ fn byte_range(src: &str, span: Span) -> std::ops::Range<usize> {
     byte_index(src, span.start.index())..byte_index(src, span.end.index())
 }
 
-/// `saphyr-parser`'s `Marker` documents its index inconsistently — "in chars"
-/// on the field, "in bytes" on the accessor. It is **chars**, verified by
+/// `saphyr-parser`'s `Marker` documents its index inconsistently: "in chars"
+/// on the field, "in bytes" on the accessor. It is chars, verified by
 /// `unicode_keys_produce_valid_byte_ranges` below, which slices a Cyrillic
 /// key and fails loudly if this is ever wrong again. Treating the index as
 /// bytes does not merely misalign: it panics on a char boundary, and real
@@ -945,10 +945,10 @@ mod tests {
         assert_eq!(m.get("b"), Some(&Value::Bool(true)));
         assert_eq!(m.get("c"), Some(&Value::Null));
         assert_eq!(m.get("d"), Some(&Value::Float(1.5)));
-        // Quoted scalars stay strings — this is the `version: "1.0"` guard.
+        // Quoted scalars stay strings: the `version: "1.0"` case.
         assert_eq!(m.get("e"), Some(&Value::Str("yes".into())));
         assert_eq!(m.get("f"), Some(&Value::Str("1.0".into())));
-        // …and `yes` is a STRING in YAML 1.2, not a boolean.
+        // `yes` is a string in YAML 1.2, not a boolean.
         assert_eq!(m.get("g"), Some(&Value::Str("yes".into())));
     }
 
@@ -1020,8 +1020,8 @@ mod tests {
 
     #[test]
     fn an_alias_resolves_to_the_anchored_value() {
-        // `yaml@2`: layout is {s: {x: 10, y: 20}}. Before the fix: {s: null}, and
-        // the splice then deletes the whole `layout:` block on rewrite.
+        // `yaml@2`: layout is {s: {x: 10, y: 20}}. Read as {s: null}, the
+        // splice would delete the whole `layout:` block on rewrite.
         let src = "anchors: &pos {x: 10, y: 20}\nsteps: [{id: s, title: S, type: task}]\nlayout:\n  s: *pos\n";
         let m = parse_mapping(src).unwrap();
         let layout = m.get("layout").unwrap().as_mapping().unwrap();
@@ -1042,8 +1042,8 @@ mod tests {
 
     #[test]
     fn an_alias_can_be_a_mapping_key() {
-        // `yaml@2`: {"a":"kk","kk":2} — the alias resolves, then the two `kk`
-        // entries collapse, last one winning.
+        // `yaml@2`: {"a":"kk","kk":2}. The alias resolves, then the two `kk`
+        // entries collapse and the last one wins.
         let m = parse_mapping("a: &k kk\n*k : 1\nkk: 2\n").unwrap();
         assert_eq!(m.get("kk"), Some(&Value::Int(2)));
     }
@@ -1057,7 +1057,7 @@ mod tests {
 
     #[test]
     fn a_merge_key_alias_resolves_but_is_not_expanded() {
-        // `yaml@2` does NOT apply merge-key semantics: `<<` stays a literal
+        // `yaml@2` does not apply merge-key semantics: `<<` stays a literal
         // key whose value is the aliased mapping.
         // `yaml@2`: {"base":{"x":1},"derived":{"<<":{"x":1},"y":2}}.
         let m = parse_mapping("base: &b {x: 1}\nderived:\n  <<: *b\n  y: 2\n").unwrap();
@@ -1071,7 +1071,7 @@ mod tests {
 
     #[test]
     fn a_recursive_alias_is_rejected_rather_than_hanging() {
-        // YAML permits `&x [*x]`; `saphyr` emits it happily. Our `Value` is a
+        // YAML permits `&x [*x]`, and `saphyr` emits it. Our `Value` is a
         // tree and cannot hold a cycle, and `yaml@2`'s own `JSON.stringify`
         // throws on the circular object it builds, so there is nothing to be
         // faithful to. Reject, deterministically, instead of recursing.
@@ -1114,8 +1114,8 @@ mod tests {
 
     #[test]
     fn an_explicit_str_tag_forces_a_string() {
-        // `yaml@2`: title is the STRING "2024"; before the fix this was Int(2024)
-        // and `as_str()` returned None.
+        // `yaml@2`: title is the string "2024", not Int(2024), so `as_str()`
+        // returns it.
         let m = parse_mapping("title: !!str 2024\n").unwrap();
         assert_eq!(m.get("title"), Some(&Value::Str("2024".into())));
         assert_eq!(m.get("title").and_then(Value::as_str), Some("2024"));
@@ -1149,7 +1149,7 @@ mod tests {
 
     #[test]
     fn a_non_core_tag_reads_as_a_string_the_way_yaml2_reads_it() {
-        // `yaml@2`: `!foo 42` is the STRING "42" — an unresolved tag suppresses
+        // `yaml@2`: `!foo 42` is the string "42". An unresolved tag turns off
         // core-schema resolution entirely.
         let m = parse_mapping("x: !foo 42\ny: !<tag:example.com,2000:t> 42\n").unwrap();
         assert_eq!(m.get("x"), Some(&Value::Str("42".into())));
@@ -1170,7 +1170,7 @@ mod tests {
 
     #[test]
     fn the_lenient_parse_reports_a_duplicate_key_instead_of_failing() {
-        // Last write still wins, exactly as before — the report is additive.
+        // The last value still wins. The report only adds information.
         // See the module docs for why this cannot be an error by default.
         let p = parse_with_spans("title: First\ntitle: Second\n").unwrap();
         assert_eq!(p.duplicate_keys, vec!["title".to_string()]);
@@ -1206,8 +1206,8 @@ mod tests {
     #[test]
     fn duplicate_detection_uses_yaml2s_key_equality_not_the_stringified_one() {
         // Observed in `yaml@2.9.0`: `a`/`'a'` and `~`/`null` collide, but
-        // `1`/`'1'` and `true`/`'true'` do NOT — an Int key and a Str key are
-        // different keys. Comparing the RESOLVED key rather than the
+        // `1`/`'1'` and `true`/`'true'` do not: an Int key and a Str key are
+        // different keys. Comparing the resolved key rather than the
         // stringified one is what reproduces that.
         assert_eq!(
             parse_with_spans("a: 1\n'a': 2\n").unwrap().duplicate_keys,
@@ -1257,14 +1257,13 @@ mod tests {
         }
     }
 
-    // --- the end-to-end loss this fixes -----------------------------------
+    // --- end to end: an alias is not lost on rewrite ----------------------
 
     #[test]
     fn a_splice_no_longer_deletes_the_block_an_alias_points_into() {
-        // The data loss, reproduced at the seam where it actually
-        // destroyed bytes: read the frontmatter, hand the SAME value back for
-        // an unrelated key, and re-emit. While `layout.s` read as null, the
-        // aliased mapping was written back as `null` and the block was gone.
+        // Read the frontmatter, hand the same value back for an unrelated
+        // key, and re-emit. If `layout.s` read as null, the aliased mapping
+        // would be written back as `null` and the block would be gone.
         let src = "anchors: &pos {x: 10, y: 20}\nsteps: [{id: s, title: S, type: task}]\nlayout:\n  s: *pos\n";
         let m = parse_mapping(src).unwrap();
         let layout = m.get("layout").unwrap().clone();
