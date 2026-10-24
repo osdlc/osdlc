@@ -324,7 +324,7 @@ export interface PrListOptions {
   search?: string | undefined
   author?: string | undefined
   limit?: number | undefined
-  /** Field subset; defaults to {@link PR_LIST_FIELDS}. */
+  /** Field subset; defaults to {@link PR_LIST_FIELDS}. `number` is always requested. */
   fields?: readonly string[] | undefined
 }
 

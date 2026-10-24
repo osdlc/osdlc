@@ -148,6 +148,17 @@ describe('Gh — argv', () => {
     expect(result?.rows[0]?.number).toBe(3)
   })
 
+  test('truncated stays correct when fields leaves out number', () => {
+    const rows = [
+      { number: 1, title: 'a' },
+      { number: 2, title: 'b' },
+    ]
+    const { runner } = recorder([json(rows)])
+    const result = new Gh('/repo', { runner }).prList({ fields: ['title'], limit: 1 })
+    expect(result?.truncated).toBe(true)
+    expect(result?.rows).toHaveLength(1)
+  })
+
   test("a head filter becomes gh's exact --head, base becomes an exact flag", () => {
     const { runner, calls } = recorder([json([])])
     new Gh('/repo', { runner }).prList({ head: 'feature/x', base: 'main', limit: 5 })
