@@ -60,9 +60,9 @@
       "line": 157,
       "title": "synthesized install tasks put the directory in cwd, against the Task.cwd contract",
       "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365462114",
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "99aa56dbb4cda793b1f4f25dd01dac94e74f7c7c"
     },
     {
       "id": "r1-6",
