@@ -16,9 +16,9 @@
       "line": 116,
       "title": "collect reuses detect's memoized reads and listing on every later call, so a re-collect is stale",
       "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365462100",
-      "status": "fixed",
+      "status": "open",
       "reason": null,
-      "fixedIn": "99aa56dbb4cda793b1f4f25dd01dac94e74f7c7c"
+      "fixedIn": null
     },
     {
       "id": "r1-2",
@@ -27,9 +27,9 @@
       "line": 187,
       "title": "missingDeps offers npm ci for a pinned package with no lockfile",
       "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365462102",
-      "status": "fixed",
+      "status": "open",
       "reason": null,
-      "fixedIn": "99aa56dbb4cda793b1f4f25dd01dac94e74f7c7c"
+      "fixedIn": null
     },
     {
       "id": "r1-3",
@@ -38,9 +38,9 @@
       "line": 102,
       "title": "a profile not built by detect is re-listed with the built-in excludes even when detect turned them off",
       "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365462106",
-      "status": "fixed",
+      "status": "open",
       "reason": null,
-      "fixedIn": "99aa56dbb4cda793b1f4f25dd01dac94e74f7c7c"
+      "fixedIn": null
     },
     {
       "id": "r1-4",
@@ -49,9 +49,9 @@
       "line": 135,
       "title": "workspace members with no lockfile each get their own install",
       "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365462110",
-      "status": "fixed",
+      "status": "open",
       "reason": null,
-      "fixedIn": "99aa56dbb4cda793b1f4f25dd01dac94e74f7c7c"
+      "fixedIn": null
     },
     {
       "id": "r1-5",
@@ -60,9 +60,9 @@
       "line": 157,
       "title": "synthesized install tasks put the directory in cwd, against the Task.cwd contract",
       "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365462114",
-      "status": "fixed",
+      "status": "open",
       "reason": null,
-      "fixedIn": "99aa56dbb4cda793b1f4f25dd01dac94e74f7c7c"
+      "fixedIn": null
     },
     {
       "id": "r1-6",
@@ -71,9 +71,9 @@
       "line": 76,
       "title": "python runner re-reads pyproject.toml and re-derives the manager instead of using the profile",
       "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365462121",
-      "status": "fixed",
+      "status": "open",
       "reason": null,
-      "fixedIn": "99aa56dbb4cda793b1f4f25dd01dac94e74f7c7c"
+      "fixedIn": null
     },
     {
       "id": "r1-7",
@@ -82,9 +82,9 @@
       "line": 16,
       "title": "stale: comment says the plugin avoids a TOML dependency",
       "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365462125",
-      "status": "fixed",
+      "status": "open",
       "reason": null,
-      "fixedIn": "99aa56dbb4cda793b1f4f25dd01dac94e74f7c7c"
+      "fixedIn": null
     },
     {
       "id": "r1-8",
@@ -93,9 +93,9 @@
       "line": 72,
       "title": "comment about binary sits on the runner role, which has no binary",
       "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365462127",
-      "status": "fixed",
+      "status": "open",
       "reason": null,
-      "fixedIn": "99aa56dbb4cda793b1f4f25dd01dac94e74f7c7c"
+      "fixedIn": null
     },
     {
       "id": "r1-9",
@@ -104,9 +104,9 @@
       "line": 152,
       "title": "stale: comment says the contract requires a static binary on the runner",
       "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365462129",
-      "status": "fixed",
+      "status": "open",
       "reason": null,
-      "fixedIn": "99aa56dbb4cda793b1f4f25dd01dac94e74f7c7c"
+      "fixedIn": null
     },
     {
       "id": "r1-10",
@@ -115,9 +115,9 @@
       "line": 114,
       "title": "createProject doc omits the duplicate-ecosystem throw",
       "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365462131",
-      "status": "fixed",
+      "status": "open",
       "reason": null,
-      "fixedIn": "99aa56dbb4cda793b1f4f25dd01dac94e74f7c7c"
+      "fixedIn": null
     },
     {
       "id": "r1-11",
@@ -126,9 +126,9 @@
       "line": 128,
       "title": "README implies ctx.files() also checks anchored literals on disk",
       "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365462134",
-      "status": "fixed",
+      "status": "open",
       "reason": null,
-      "fixedIn": "99aa56dbb4cda793b1f4f25dd01dac94e74f7c7c"
+      "fixedIn": null
     },
     {
       "id": "r1-12",
@@ -137,9 +137,9 @@
       "line": 171,
       "title": "snapshot rebuilt once per tool with detect or describe",
       "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365462137",
-      "status": "fixed",
+      "status": "open",
       "reason": null,
-      "fixedIn": "99aa56dbb4cda793b1f4f25dd01dac94e74f7c7c"
+      "fixedIn": null
     },
     {
       "id": "r2-1",
@@ -148,9 +148,9 @@
       "line": 72,
       "title": "python runner uses detect-time pyproject facts, so a re-collect misses edits and collectAndCache stores stale tasks under a fresh fingerprint",
       "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365781520",
-      "status": "fixed",
+      "status": "open",
       "reason": null,
-      "fixedIn": "99aa56dbb4cda793b1f4f25dd01dac94e74f7c7c"
+      "fixedIn": null
     },
     {
       "id": "r2-2",
@@ -159,9 +159,9 @@
       "line": 54,
       "title": "node-scripts uses detect-time package.json facts, so a re-collect misses edits and collectAndCache poisons the cache",
       "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365781525",
-      "status": "fixed",
+      "status": "open",
       "reason": null,
-      "fixedIn": "99aa56dbb4cda793b1f4f25dd01dac94e74f7c7c"
+      "fixedIn": null
     },
     {
       "id": "r2-3",
@@ -170,9 +170,9 @@
       "line": 121,
       "title": "a nested package that is not a workspace member takes the root lockfile's install",
       "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365781528",
-      "status": "fixed",
+      "status": "open",
       "reason": null,
-      "fixedIn": "99aa56dbb4cda793b1f4f25dd01dac94e74f7c7c"
+      "fixedIn": null
     },
     {
       "id": "r2-4",
@@ -181,9 +181,9 @@
       "line": 134,
       "title": "types-only check passes an empty entry, since tsc emits export {} for an empty module",
       "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365781534",
-      "status": "fixed",
+      "status": "open",
       "reason": null,
-      "fixedIn": "99aa56dbb4cda793b1f4f25dd01dac94e74f7c7c"
+      "fixedIn": null
     },
     {
       "id": "r2-5",
@@ -192,9 +192,9 @@
       "line": 48,
       "title": "wrong: bundler has --gemfile",
       "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365781537",
-      "status": "fixed",
+      "status": "open",
       "reason": null,
-      "fixedIn": "99aa56dbb4cda793b1f4f25dd01dac94e74f7c7c"
+      "fixedIn": null
     },
     {
       "id": "r2-6",
@@ -203,9 +203,9 @@
       "line": 38,
       "title": "directory chain hint says the command runs there; flagged installs run at the root",
       "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365781542",
-      "status": "fixed",
+      "status": "open",
       "reason": null,
-      "fixedIn": "99aa56dbb4cda793b1f4f25dd01dac94e74f7c7c"
+      "fixedIn": null
     },
     {
       "id": "r2-7",
@@ -214,9 +214,9 @@
       "line": 4,
       "title": "says tool managers detected in the repository; rootTools takes only the root",
       "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365781544",
-      "status": "fixed",
+      "status": "open",
       "reason": null,
-      "fixedIn": "99aa56dbb4cda793b1f4f25dd01dac94e74f7c7c"
+      "fixedIn": null
     },
     {
       "id": "r2-8",
@@ -225,9 +225,9 @@
       "line": 176,
       "title": "memberMatches re-implements segmentRegExp from pattern.ts and builds a RegExp per recursive step",
       "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365781547",
-      "status": "fixed",
+      "status": "open",
       "reason": null,
-      "fixedIn": "99aa56dbb4cda793b1f4f25dd01dac94e74f7c7c"
+      "fixedIn": null
     },
     {
       "id": "r2-9",
@@ -236,9 +236,9 @@
       "line": 113,
       "title": "effectiveExcludes repeats createLister's exclude combination",
       "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365781550",
-      "status": "fixed",
+      "status": "open",
       "reason": null,
-      "fixedIn": "99aa56dbb4cda793b1f4f25dd01dac94e74f7c7c"
+      "fixedIn": null
     },
     {
       "id": "r2-10",
@@ -257,7 +257,7 @@
       "path": "packages/ts/system-model/src/plugins/node/pnpm-workspace.ts",
       "line": 30,
       "title": "pnpm-workspace parser drops zero-indent and multi-line flow package lists, so pnpm members fall back to npm",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365847703",
       "status": "open",
       "reason": null,
       "fixedIn": null
@@ -268,7 +268,7 @@
       "path": "packages/ts/system-model/src/collect.ts",
       "line": 208,
       "title": "chain copy covers only DEFAULT_CHAIN; a runner's own chain is still shared across reports",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365847712",
       "status": "open",
       "reason": null,
       "fixedIn": null
@@ -279,7 +279,7 @@
       "path": "packages/ts/system-model/README.md",
       "line": 271,
       "title": "README says python and go have no workspace notion",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365847713",
       "status": "open",
       "reason": null,
       "fixedIn": null
