@@ -1,18 +1,17 @@
 /**
- * The verb table — every `gh` invocation this library knows, as data.
+ * The verb table: every `gh` call this library knows, as data.
  *
- * Same shape and same reasoning as `@osdlc/typed-git`'s: a {@link GhVerb}
- * pairs the argv to run with the function that reads the result, and nothing
- * here spawns anything. That is what lets a synchronous client and an
- * asynchronous fan-out drive the same definitions without either duplicating
- * the other's parsing.
+ * It has the same shape as `@osdlc/typed-git`'s. A {@link GhVerb} pairs the
+ * argv to run with the function that reads the result, and nothing here
+ * starts a process. So the sync client, the async client and callers with
+ * their own runner all use the same definitions and the same parsing.
  *
  * `checked` marks a verb the runner throws for on a non-zero exit, with
- * stderr: every mutation, and `prDiff`, which is a read. Other queries are run
- * unchecked and `parse` folds a failure into `null`, which is the verb's
- * *soft* reading. The clients' plain door reads them through `settle` (see
- * `doors.ts`) instead: a failure throws, except where the verb declares
- * `absent` or is a `probe`.
+ * stderr. That is every mutation, and `prDiff`, which is a read. Other
+ * queries run unchecked, and `parse` turns a failure into `null`, which is
+ * what `soft` returns. The clients' methods that throw read them through
+ * `settle` (see `doors.ts`) instead. There a failure throws, except where the
+ * verb declares `absent` or is a `probe`.
  */
 
 import { stderrOrError, type CommandResult } from '@osdlc/command-seam'
@@ -22,7 +21,7 @@ import { isAbsent, type Thing } from './failure.ts'
 import { isRepoSlug, parsePrUrl } from './repo.ts'
 import type { IssueRow, Label, PrSearchHit, PullRequest, Repository } from './types.ts'
 
-/** Whether a failed run says GitHub has no such `thing`: read from the same text the classifier reads. */
+/** Whether a failed run says GitHub has no such `thing`. Reads the same text the classifier reads. */
 function noSuch(thing: Thing): (r: CommandResult) => boolean {
   return (r) => isAbsent(thing, `${r.stderr}\n${r.stdout}`)
 }
@@ -30,49 +29,50 @@ function noSuch(thing: Thing): (r: CommandResult) => boolean {
 /** One `gh` invocation: what to run, and how to read what came back. */
 export interface GhVerb<T> {
   argv: string[]
-  /** True for every mutation and for `prDiff` — throw on a non-zero exit instead of parsing. */
+  /** True for every mutation and for `prDiff`: throw on a non-zero exit instead of parsing. */
   checked: boolean
   /**
-   * True when the call only reads: it changes nothing on GitHub. Every query
-   * is read-only, and so is `prDiff`; every mutation is not. A caller that
+   * True when the call only reads and changes nothing on GitHub. Every query
+   * is read-only, and so is `prDiff`. No mutation is. A caller that
    * keeps an allowlist of safe calls can check this before running a verb.
    */
   readOnly: boolean
   /** Written to the child's stdin, for a verb whose payload is too large or structured for argv. */
   input?: string | undefined
   /**
-   * Variables to set on the child, for a target gh takes no flag for: `GH_HOST`
-   * on `gh search` and `gh repo list`.
+   * Variables to set on the child process, for a target gh has no flag for:
+   * `GH_HOST` on `gh search` and `gh repo list`.
    */
   env?: Record<string, string> | undefined
   /**
-   * True for a read whose failure is part of its answer: `installed`,
-   * `authStatus` and `api` return what `parse` makes of any result, in every
-   * door. Other reads fail the plain door when gh exits non-zero.
+   * True for a read whose failure is part of its answer. `installed`,
+   * `authStatus` and `api` return what `parse` makes of any result, in all
+   * three call styles. Other reads throw from the plain method when gh exits
+   * non-zero.
    */
   probe?: boolean | undefined
   /**
    * For a read of one thing: whether a non-zero result means GitHub has no such
-   * thing (`prView`, `issueView`, `repoView`). The plain door then returns what
-   * `parse` makes of it, `null`, because absence is an answer. Other non-zero
-   * results fail the call.
+   * thing (`prView`, `issueView`, `repoView`). The plain method then returns
+   * what `parse` makes of it, `null`, because a missing item is an answer.
+   * Other non-zero results fail the call.
    */
   absent?: ((result: CommandResult) => boolean) | undefined
   parse(result: CommandResult): T
 }
 
 /**
- * The repository and host a verb talks to. Both are optional: with no `repo`,
- * gh uses the repository of the clone at the client's working directory, and
- * with no `hostname`, gh's default host.
+ * The repository and host a verb talks to. Both are optional. With no `repo`,
+ * gh uses the repository of the clone at the client's working directory. With
+ * no `hostname`, it uses gh's default host.
  */
 export interface GhTarget {
   /** `owner/name`. */
   repo?: string | undefined
   /**
    * A GitHub host: `github.com`, a GitHub Enterprise Server host such as
-   * `github.acme.com`, or a `<tenant>.ghe.com` host. Other forges are out of
-   * reach: gh speaks only GitHub's API.
+   * `github.acme.com`, or a `<tenant>.ghe.com` host. Other forges are not
+   * supported, because gh supports only GitHub's API.
    */
   hostname?: string | undefined
 }
@@ -93,7 +93,7 @@ export function checkTarget(target: GhTarget | undefined): void {
   }
 }
 
-/** `--repo [host/]owner/name` for `pr`, `issue` and `label` verbs; `repo` overrides the target's. */
+/** `--repo [host/]owner/name` for `pr`, `issue` and `label` verbs. `repo` overrides the target's. */
 function repoArgs(target: GhTarget | undefined, repo?: string | undefined): string[] {
   checkTarget(target)
   const slug = repo ?? target?.repo
@@ -126,22 +126,22 @@ function fillRepo(endpoint: string, target: GhTarget | undefined): string {
 }
 
 /**
- * The cheapest useful set: enough to identify a PR and nothing more.
+ * The smallest useful set: enough to identify a PR and nothing more.
  *
- * Reach for this whenever the question is "which PR is this branch?".
- * `mergeable` and `mergeStateStatus` are absent on purpose — GitHub computes
- * them per PR on demand, so asking for them across a fan-out of branches
- * turns a cheap listing into a rate-limit incident.
+ * Use it when the question is "which PR is this branch?". `mergeable` and
+ * `mergeStateStatus` are left out on purpose. GitHub computes them per PR
+ * when asked, so asking for them across many branches can hit the rate
+ * limit.
  */
 export const PR_REF_FIELDS = ['number', 'state', 'headRefName', 'url'] as const
 
 /**
- * The light field set for triage: everything needed to decide what to do with
- * a PR without paying for its body, comments, reviews, or check rollup.
+ * The smaller field set for triage: enough to decide what to do with a PR,
+ * without its body, comments, reviews, or check rollup.
  *
- * `mergeable` and `mergeStateStatus` are the expensive pair — GitHub computes
- * them lazily and answers `UNKNOWN` until it has, so a cold query over many
- * PRs commonly needs a retry. `prViewSettled` on the clients does it.
+ * `mergeable` and `mergeStateStatus` are the costly pair. GitHub computes
+ * them only when asked and answers `UNKNOWN` until it has. So a first query
+ * over many PRs often needs a retry. `prViewSettled` on the clients does it.
  */
 export const PR_LIST_FIELDS = [
   'number',
@@ -163,7 +163,7 @@ export const PR_LIST_FIELDS = [
   'updatedAt',
 ] as const
 
-/** {@link PR_LIST_FIELDS} plus the heavy ones a single PR can afford. */
+/** {@link PR_LIST_FIELDS} plus the costly fields, for a single PR. */
 export const PR_VIEW_FIELDS = [
   ...PR_LIST_FIELDS,
   'body',
@@ -185,8 +185,8 @@ function oneOrNull(r: CommandResult): PullRequest | null {
 }
 
 /**
- * Parse a `--json` payload that is an array. Null — not `[]` — when the call
- * failed: a caller must be able to tell "no PRs" from "couldn't ask".
+ * Parse a `--json` payload that is an array. Null, not `[]`, when the call
+ * failed. A caller must be able to tell "no PRs" from "couldn't ask".
  */
 function manyOrNull(r: CommandResult): PullRequest[] | null {
   if (r.exitCode !== 0) return null
@@ -207,7 +207,7 @@ function manyOrNull(r: CommandResult): PullRequest[] | null {
 
 /**
  * A list query's answer: the rows, and whether `limit` cut the list short.
- * The verb asks gh for one row more than `limit`; `truncated` is true when
+ * The verb asks gh for one row more than `limit`. `truncated` is true when
  * that row came back, and `rows` holds at most `limit`.
  */
 export interface ListResult<T> {
@@ -232,10 +232,9 @@ function limited<T>(rows: T[] | null, limit: number): ListResult<T> | null {
 function nothing(): void {}
 
 /**
- * Parse a `gh label list --json name,color,description` payload. Null — not
- * `[]` — when the call failed, same "no rows" vs. "couldn't ask" split as
- * {@link manyOrNull}: a repo with genuinely zero labels and a `gh` call that
- * never ran must not collapse onto the same value.
+ * Parse a `gh label list --json name,color,description` payload. Null, not
+ * `[]`, when the call failed, as in {@link manyOrNull}. A repo with no labels
+ * and a `gh` call that never ran must not give the same value.
  */
 function manyLabelsOrNull(r: CommandResult): Label[] | null {
   if (r.exitCode !== 0) return null
@@ -249,7 +248,7 @@ function manyLabelsOrNull(r: CommandResult): Label[] | null {
   return parseLabels(data)
 }
 
-/** The `gh issue list`/`view --json` field set the `issues` surface needs. */
+/** The `gh issue list`/`view --json` field set an {@link IssueRow} reads. */
 const ISSUE_FIELDS = 'number,title,body,labels,state'
 
 /** Parse one `gh issue list`/`view --json` row into an {@link IssueRow}. */
@@ -280,9 +279,8 @@ function oneIssueOrNull(r: CommandResult): IssueRow | null {
 }
 
 /**
- * Parse a `gh issue list --json` payload that is an array. Null — not `[]` —
- * on failure, the same "no rows" vs. "couldn't ask" split {@link manyOrNull}
- * makes for PRs.
+ * Parse a `gh issue list --json` payload that is an array. Null, not `[]`,
+ * on failure, as {@link manyOrNull} does for PRs.
  */
 function manyIssuesOrNull(r: CommandResult): IssueRow[] | null {
   if (r.exitCode !== 0) return null
@@ -303,7 +301,7 @@ function manyIssuesOrNull(r: CommandResult): IssueRow[] | null {
 
 // ── queries ─────────────────────────────────────────────────────────────────
 
-/** What to narrow a listing to. Every filter is optional; none means "all open". */
+/** What to narrow a listing to. Every filter is optional. None means "all open". */
 export interface PrListOptions {
   /**
    * `owner/name` to list from, instead of the repository at the client's cwd.
@@ -316,7 +314,7 @@ export interface PrListOptions {
   /**
    * Head branch filter, exact: `task/foo` does not match `task/foo-2`. Passed
    * as gh's `--head`, and the rows are filtered again on `headRefName`. Two
-   * forks can share a branch name; ask for `headRepositoryOwner` to tell them
+   * forks can share a branch name. Ask for `headRepositoryOwner` to tell them
    * apart.
    */
   head?: string | undefined
@@ -324,11 +322,11 @@ export interface PrListOptions {
   search?: string | undefined
   author?: string | undefined
   limit?: number | undefined
-  /** Field subset; defaults to {@link PR_LIST_FIELDS}. `number` is always requested. */
+  /** Field subset. Defaults to {@link PR_LIST_FIELDS}. `number` is always requested. */
   fields?: readonly string[] | undefined
 }
 
-/** `gh pr list …` — open PRs by default. `opts.repo` overrides the target's repo. */
+/** `gh pr list …`: open PRs by default. `opts.repo` overrides the target's repo. */
 export function prList(
   opts: PrListOptions = {},
   target?: GhTarget,
@@ -340,8 +338,8 @@ export function prList(
   if (opts.head !== undefined) argv.push('--head', opts.head)
   if (opts.search !== undefined) argv.push('--search', opts.search)
   if (opts.author !== undefined) argv.push('--author', opts.author)
-  // A row without `number` does not parse and is dropped, so always ask for it;
-  // the exact-head filter below also reads `headRefName`.
+  // A row without `number` does not parse and is dropped, so always ask for it.
+  // The exact-head filter below also reads `headRefName`.
   const asked = withFields(opts.fields ?? PR_LIST_FIELDS, [
     'number',
     ...(opts.head === undefined ? [] : ['headRefName']),
@@ -377,7 +375,7 @@ function notAFlag(what: string, value: string): void {
 }
 
 /**
- * `gh pr view <number|branch|url> --json …` — one PR, with the heavy fields
+ * `gh pr view <number|branch|url> --json …`: one PR, with the full field set
  * by default.
  *
  * A branch is the PR whose head is that branch, as gh picks it. A URL names
@@ -413,8 +411,8 @@ export function prView(
 /**
  * Open PRs whose head is exactly `branch`.
  *
- * The common shape behind "which PR is this branch?", bundling the cheap
- * field set with a small limit. More than one row comes back only when forks
+ * The usual way to ask "which PR is this branch?". It uses the smallest field
+ * set and a small limit. More than one row comes back only when forks
  * share the branch name.
  */
 export function openPrsForBranch(
@@ -426,7 +424,7 @@ export function openPrsForBranch(
 }
 
 /**
- * `gh pr view <n> --json body -q .body` — just the PR body. Null when gh
+ * `gh pr view <n> --json body -q .body`: just the PR body. Null when gh
  * failed. gh's `-q` output ends with a newline that is not part of the body,
  * so every trailing `\r` and `\n` is trimmed (including any that were part of
  * the body, such as the `\r\n` of a body saved with CRLF line endings).
@@ -444,15 +442,15 @@ export function prBody(number: number, target?: GhTarget): GhVerb<string | null>
 export interface ApiResponse {
   /** True iff gh exited 0 and the status is below 400 (2xx, or a 304 on a conditional GET). */
   ok: boolean
-  /** HTTP status; set only when headers were requested (`-i`, `etag` or `includeHeaders`). Without them it is synthesized (200 on exit 0, 0 on failure), not observed. */
+  /** HTTP status, read only when headers were requested (`etag` or `includeHeaders`, which pass `-i`). Without them it is made up from the exit code (200 on exit 0, 0 on failure). */
   status: number
   /** The response `ETag`, when headers were requested and one came back. */
   etag: string | null
-  /** The decoded JSON body, whatever gh's exit code (on failure, GitHub's error object); null when empty (e.g. a 304) or unparseable. */
+  /** The decoded JSON body, whatever gh's exit code (on failure, GitHub's error object). Null when empty (such as a 304) or not valid JSON. */
   body: unknown
   /** `body.message` when the body is an object with a string `message` (GitHub's error text), else null. */
   message: string | null
-  /** True when a non-empty body arrived but was not valid JSON (`body` is then null); also true on a failed call with a non-JSON body. */
+  /** True when a non-empty body arrived but was not valid JSON (`body` is then null). This includes a failed call with a non-JSON body. */
   malformed: boolean
   /** gh's stderr, trimmed. */
   stderr: string
@@ -461,7 +459,7 @@ export interface ApiResponse {
 }
 
 /**
- * Options for {@link api}. Both are optional; with neither, the call is a plain
+ * Options for {@link api}. All are optional. With none, the call is a plain
  * `gh api <endpoint>` and the response carries no status or ETag.
  */
 export interface ApiOptions {
@@ -472,17 +470,18 @@ export interface ApiOptions {
   /**
    * Fetch every page (`--paginate --slurp`). `body` is then the pages joined
    * into one array when every page is an array, else the list of pages.
-   * Cannot be combined with `etag` or `includeHeaders`: with `-i` gh prints
-   * a header block per page. `status` is synthesized, as without `-i`.
+   * Cannot be combined with `etag` or `includeHeaders`, because with `-i` gh
+   * prints a header block per page. `status` is made up from the exit code, as
+   * without `-i`.
    */
   paginate?: boolean | undefined
 }
 
 /**
- * `gh api [-i] [-H If-None-Match: …] <endpoint>` — a GET against the REST API. `{owner}` and
+ * `gh api [-i] [-H If-None-Match: …] <endpoint>`: a GET against the REST API. `{owner}` and
  * `{repo}` placeholders in the endpoint are filled from the target's repo, or by gh from the
  * cwd's repo when the target names none.
- * Unchecked: failure is a value (`ok: false`), so a caller can tell a 304
+ * Unchecked. Failure is a value (`ok: false`), so a caller can tell a 304
  * from an outage.
  */
 export function api(
@@ -521,7 +520,7 @@ function flattenPages(body: unknown): unknown {
 }
 
 /**
- * A GraphQL variable: gh sends a string with `-f` and the rest with `-F`.
+ * A GraphQL variable. gh sends a string with `-f` and the rest with `-F`.
  *
  * @experimental
  */
@@ -536,22 +535,22 @@ export interface GraphqlOptions {
   /**
    * Follow every page (`--paginate --slurp`). The query must take
    * `$endCursor: String` and select `pageInfo { hasNextPage endCursor }` on
-   * the one connection it pages through; gh follows only that connection.
+   * the one connection it pages through. gh follows only that connection.
    */
   paginate?: boolean | undefined
 }
 
 /**
- * `gh api graphql -f query=… [--paginate --slurp]` — a GraphQL query.
+ * `gh api graphql -f query=… [--paginate --slurp]`: a GraphQL query.
  *
- * Returns each page's `data`, one entry per page (one without `paginate`),
- * or null when the call failed, the output did not parse, or any page
- * carries `errors` or lacks `data`: a partial answer is no answer. Read one
+ * Returns each page's `data`, one entry per page (one without `paginate`).
+ * Returns null when the call failed, the output did not parse, or any page
+ * carries `errors` or lacks `data`. A partial answer counts as a failure. Read one
  * connection across the pages with {@link nodesAt}.
  *
  * A string variable of exactly `{owner}` or `{repo}` is filled from the
  * target's repo, or by gh from the clone. A mutation document throws
- * `RangeError`: this is a read, and changes go through `raw`.
+ * `RangeError`. This is a read, and changes go through `raw`.
  *
  * @experimental
  */
@@ -615,8 +614,8 @@ export function graphql(
 }
 
 /**
- * The `nodes` of one connection, joined across {@link graphql} pages: walk
- * `path` into each page and take its `nodes` array. Null when `pages` is
+ * The `nodes` of one connection, joined across {@link graphql} pages. It
+ * follows `path` into each page and takes its `nodes` array. Null when `pages` is
  * null, or any page lacks the path or a `nodes` array, so a page that came
  * back short is never read as fewer rows.
  *
@@ -639,7 +638,7 @@ export function nodesAt(pages: unknown[] | null, path: readonly string[]): unkno
   return out
 }
 
-/** One header block off the front of `text`: the block, and what follows its blank line. */
+/** Split one header block off the front of `text`: the block, and what follows its blank line. */
 function takeHeaderBlock(text: string): { block: string; rest: string } {
   const crlf = text.indexOf('\r\n\r\n')
   const lf = text.indexOf('\n\n')
@@ -653,7 +652,7 @@ const STATUS_LINE = /^HTTP\/[\d.]+\s+\d{3}/i
 
 /**
  * Split a `gh api -i` payload (status line + headers, blank line, body) and decode it.
- * A real `gh` prints one block. As a guard, if several are stacked, the last one is read:
+ * A real `gh` prints one block. If there are several, the last one is read:
  * its status and ETag, and the body that follows it.
  */
 function parseApi(r: CommandResult, withHeaders: boolean): ApiResponse {
@@ -695,7 +694,7 @@ function parseApi(r: CommandResult, withHeaders: boolean): ApiResponse {
   }
 }
 
-/** `gh --version` — the install probe. True when `gh` runs. */
+/** `gh --version`: checks that `gh` is installed. True when `gh` runs. */
 export function installed(): GhVerb<boolean> {
   return {
     argv: ['--version'],
@@ -715,7 +714,7 @@ export interface AuthStatus {
   detail: string
 }
 
-/** `gh auth status [--hostname <host>]` — the credential probe, for one host when the target names it. */
+/** `gh auth status [--hostname <host>]`: checks credentials, for one host when the target names it. */
 export function authStatus(target?: GhTarget): GhVerb<AuthStatus> {
   return {
     argv: ['auth', 'status', ...hostArgs(target)],
@@ -727,8 +726,8 @@ export function authStatus(target?: GhTarget): GhVerb<AuthStatus> {
 }
 
 /**
- * `gh label list --json name,color,description` — every label on the repo,
- * up to `limit` (default 1000; `gh`'s own default is 30).
+ * `gh label list --json name,color,description`: every label on the repo,
+ * up to `limit` (default 1000. `gh`'s own default is 30).
  */
 export function labelList(
   opts: { limit?: number | undefined } = {},
@@ -760,7 +759,7 @@ export interface IssueListOptions {
   limit?: number | undefined
 }
 
-/** `gh issue list --json …` — open issues by default, optionally by label. */
+/** `gh issue list --json …`: open issues, optionally by label. */
 export function issueList(
   opts: IssueListOptions = {},
   target?: GhTarget,
@@ -773,7 +772,7 @@ export function issueList(
   return { argv, checked: false, readOnly: true, parse: (r) => limited(manyIssuesOrNull(r), limit) }
 }
 
-/** `gh issue view <n> --json …` — one issue, same field set as {@link issueList}. */
+/** `gh issue view <n> --json …`: one issue, same field set as {@link issueList}. */
 export function issueView(number: number, target?: GhTarget): GhVerb<IssueRow | null> {
   return {
     argv: ['issue', 'view', String(number), ...repoArgs(target), '--json', ISSUE_FIELDS],
@@ -824,18 +823,18 @@ function rowsOrNull<T>(r: CommandResult, parse: (raw: unknown) => T | null): T[]
 
 /** What to narrow a repository listing to. Every filter is optional. */
 export interface RepoListOptions {
-  /** True for archived repositories only, false to leave them out; both when absent. */
+  /** True for archived repositories only, false to leave them out. Both when absent. */
   archived?: boolean | undefined
   visibility?: 'public' | 'private' | 'internal' | undefined
   /** The most repositories to return. Defaults to 100. */
   limit?: number | undefined
-  /** Field subset; defaults to {@link REPO_FIELDS}. `nameWithOwner` is always asked for. */
+  /** Field subset. Defaults to {@link REPO_FIELDS}. `nameWithOwner` is always asked for. */
   fields?: readonly string[] | undefined
 }
 
 /**
- * `gh repo list <owner> --json …` — an owner's repositories. The host comes
- * from the target (`GH_HOST`); the target's repo is not used.
+ * `gh repo list <owner> --json …`: an owner's repositories. The host comes
+ * from the target (`GH_HOST`). The target's repo is not used.
  */
 export function repoList(
   owner: string,
@@ -861,7 +860,7 @@ export function repoList(
 }
 
 /**
- * `gh repo view [<[host/]owner/name>] --json …` — one repository: `repo`,
+ * `gh repo view [<[host/]owner/name>] --json …`: one repository. That is `repo`,
  * else the target's repo, else the clone at the client's cwd.
  */
 export function repoView(
@@ -899,18 +898,18 @@ export interface SearchPrsOptions {
   owner?: string | undefined
   /** Only this `owner/name` repository. */
   repo?: string | undefined
-  /** `merged` is `--merged`; `open` and `closed` are `--state`. */
+  /** `merged` is `--merged`. `open` and `closed` are `--state`. */
   state?: 'open' | 'closed' | 'merged' | undefined
   /** The most hits to return. Defaults to 100. */
   limit?: number | undefined
-  /** Field subset; defaults to {@link SEARCH_PR_FIELDS}. `number` is always asked for. */
+  /** Field subset. Defaults to {@link SEARCH_PR_FIELDS}. `number` is always asked for. */
   fields?: readonly string[] | undefined
 }
 
 /**
- * `gh search prs [flags] -- <query>` — pull requests across repositories,
+ * `gh search prs [flags] -- <query>`: pull requests across repositories,
  * with GitHub's search syntax in `query` (it may start with `-`, as in
- * `-label:bug`). The host comes from the target (`GH_HOST`); the target's
+ * `-label:bug`). The host comes from the target (`GH_HOST`). The target's
  * repo is not used, so pass `opts.repo` or `opts.owner` to narrow.
  */
 export function searchPrs(
@@ -943,7 +942,7 @@ export function searchPrs(
   }
 }
 
-// ── mutations (checked — the caller throws CommandFailed on non-zero) ────────
+// ── mutations (checked: a non-zero exit throws the classified failure) ──────
 
 /**
  * Options for {@link createPr}. `head` is the branch to merge from and `base`
@@ -980,7 +979,7 @@ export function createPr(opts: CreatePrOptions, target?: GhTarget): GhVerb<strin
   }
 }
 
-/** `gh pr edit <n>` — retitle or rewrite the body. */
+/** `gh pr edit <n>`: change the title or the body. */
 export function editPr(
   number: number,
   opts: { title?: string | undefined; body?: string | undefined },
@@ -992,12 +991,12 @@ export function editPr(
   return { argv, checked: true, readOnly: false, parse: nothing }
 }
 
-/** `gh pr edit <n> --body` — rewrite just the body. */
+/** `gh pr edit <n> --body`: rewrite just the body. */
 export function editPrBody(number: number, body: string, target?: GhTarget): GhVerb<void> {
   return editPr(number, { body }, target)
 }
 
-/** `gh pr update-branch <n> [--rebase]` — bring the head up to date with its base. */
+/** `gh pr update-branch <n> [--rebase]`: bring the head up to date with its base. */
 export function prUpdateBranch(
   number: number,
   style: 'merge' | 'rebase' = 'merge',
@@ -1008,7 +1007,7 @@ export function prUpdateBranch(
   return { argv, checked: true, readOnly: false, parse: nothing }
 }
 
-/** `gh pr ready <n> [--undo]` — mark a draft PR ready for review, or (with `draft`) convert it back to a draft. */
+/** `gh pr ready <n> [--undo]`: mark a draft PR ready for review, or (with `draft`) convert it back to a draft. */
 export function prSetDraft(number: number, draft: boolean, target?: GhTarget): GhVerb<void> {
   const argv = ['pr', 'ready', String(number), ...repoArgs(target)]
   if (draft) argv.push('--undo')
@@ -1016,13 +1015,13 @@ export function prSetDraft(number: number, draft: boolean, target?: GhTarget): G
 }
 
 /**
- * `gh api -X PATCH repos/{owner}/{repo}/issues/comments/<id> -f body=…` — rewrite one
+ * `gh api -X PATCH repos/{owner}/{repo}/issues/comments/<id> -f body=…`: rewrite one
  * conversation comment.
  *
- * `commentId` is the comment's numeric REST id, as text: the `id` that
+ * `commentId` is the comment's numeric REST id, as text. That is the `id` that
  * `gh api repos/{owner}/{repo}/issues/<n>/comments` returns. It is not the
  * GraphQL node id (such as `IC_kw…`) that `gh pr view --json comments` gives
- * in `Comment.id`; the REST path answers 404 for a node id.
+ * in `Comment.id`. The REST path answers 404 for a node id.
  *
  * Throws `RangeError` when `commentId` is not all digits, so a node id fails
  * at once and no text can change which endpoint the PATCH reaches.
@@ -1056,10 +1055,10 @@ export type PrMergeMethod = 'squash' | 'merge' | 'rebase'
 
 /**
  * `gh pr merge <n> --<method> --match-head-commit <sha>`. The head sha is
- * required, not optional: GitHub refuses the merge when the PR head moved
- * since the caller judged it, so a push that lands between a gate and the
- * merge can never ride in unreviewed. The branch is left alone (no
- * `--delete-branch`); deleting it is the caller's job.
+ * required. GitHub refuses the merge when the PR head moved since the caller
+ * checked it. So a push that lands between the check and the merge cannot be
+ * merged without review. The branch is left alone (no `--delete-branch`).
+ * Deleting it is the caller's job.
  */
 export function prMerge(
   number: number,
@@ -1082,7 +1081,7 @@ export function prMerge(
 export interface ReviewThread {
   isResolved: boolean
   isOutdated: boolean
-  /** Login of the thread's newest comment; null when the account is gone. */
+  /** Login of the author of the thread's newest comment. Null when the account is gone. */
   lastCommentAuthor: string | null
 }
 
@@ -1091,14 +1090,13 @@ const REVIEW_THREADS_QUERY =
 
 /**
  * A PR's review threads over GraphQL (`gh pr view --json` has no thread
- * field). Null — never `[]` — when the call failed, the payload was not the
- * expected shape, or more than 100 threads exist: a caller deciding whether a
- * PR is clear to merge must read "could not tell" differently from "no
- * threads".
+ * field). Null, never `[]`, when the call failed, the payload was not the
+ * expected shape, or more than 100 threads exist. A caller deciding whether a
+ * PR is clear to merge must tell "could not tell" from "no threads".
  */
 export function prReviewThreads(number: number, target?: GhTarget): GhVerb<ReviewThread[] | null> {
   checkTarget(target)
-  // `-F` lets gh fill the placeholders from the clone; real values go as plain strings.
+  // `-F` lets gh fill the placeholders from the clone. Real values go as plain strings.
   const [owner, name] = target?.repo?.split('/') ?? []
   const repo =
     owner === undefined || name === undefined
@@ -1164,7 +1162,7 @@ export interface CreateLabelOptions {
 
 /**
  * `gh label create <name> --color <hex> --description <text> --force`.
- * `--force` makes it safe to repeat: when the label already exists, its color
+ * `--force` makes it safe to repeat. When the label already exists, its color
  * and description are set to these instead of failing.
  */
 export function createLabel(opts: CreateLabelOptions, target?: GhTarget): GhVerb<void> {
@@ -1182,7 +1180,7 @@ export function createLabel(opts: CreateLabelOptions, target?: GhTarget): GhVerb
   return { argv, checked: true, readOnly: false, parse: nothing }
 }
 
-/** `gh label edit <name>` — recolor or redescribe; omits a flag not given. */
+/** `gh label edit <name>`: change the color or description. A flag not given is left out. */
 export function editLabel(
   name: string,
   opts: { color?: string | undefined; description?: string | undefined },
@@ -1195,21 +1193,18 @@ export function editLabel(
 }
 
 /**
- * `gh issue edit <n> [--remove-label <current>] --add-label <new>` — swap
- * one label for another on an issue in ONE call, so the issue is never
- * briefly unlabeled or briefly holding both labels BETWEEN the remove and the
- * add — that atomicity is real and is this one call's own guarantee. It does
- * NOT cover the window before the call: `currentLabel` is whatever the caller
- * already read (perhaps minutes earlier, from a `gh issue list` snapshot),
- * never re-read here. If the issue's live label changed since then (a human,
- * or another process, relabeled it in between), `--remove-label
- * <currentLabel>` targets a label the issue no longer carries — `gh` no-ops
- * that removal silently rather than erroring — so the call still adds
- * `newLabel`, and the issue ends up holding BOTH the label it actually has
- * now and `newLabel`. A caller that cares about that race re-reads the live
- * label immediately before calling this. `currentLabel` is `null` when the
- * issue carries no prior label to remove — the `--remove-label` flag is then
- * omitted rather than passed empty.
+ * `gh issue edit <n> [--remove-label <current>] --add-label <new>`: swap one
+ * label for another on an issue in one call. The issue is never left with
+ * neither label or both labels between the remove and the add.
+ *
+ * That covers only the call itself. `currentLabel` is whatever the caller
+ * read earlier, perhaps from a `gh issue list` minutes before. It is not read
+ * again here. If someone relabeled the issue since then, `--remove-label
+ * <currentLabel>` names a label the issue no longer has. `gh` skips that
+ * removal with no error and still adds `newLabel`. The issue then has both
+ * its current label and `newLabel`. A caller that cares reads the label again
+ * just before calling this. Pass `null` for `currentLabel` when there is no
+ * label to remove. The `--remove-label` flag is then left out.
  */
 export function setIssueLabel(
   number: number,
@@ -1223,7 +1218,7 @@ export function setIssueLabel(
   return { argv, checked: true, readOnly: false, parse: nothing }
 }
 
-/** `gh pr diff <n>` — the PR's unified diff, as text. Checked: an empty diff is a value, a failed call is not. */
+/** `gh pr diff <n>`: the PR's unified diff, as text. Checked, so an empty diff is a value and a failed call throws. */
 export function prDiff(number: number, target?: GhTarget): GhVerb<string> {
   return {
     argv: ['pr', 'diff', String(number), ...repoArgs(target)],
@@ -1233,7 +1228,7 @@ export function prDiff(number: number, target?: GhTarget): GhVerb<string> {
   }
 }
 
-/** `gh pr comment <n> --body <body>` — post a conversation comment, returning the URL gh prints ('' if none). */
+/** `gh pr comment <n> --body <body>`: post a conversation comment, returning the URL gh prints ('' if none). */
 export function prComment(number: number, body: string, target?: GhTarget): GhVerb<string> {
   return {
     argv: ['pr', 'comment', String(number), ...repoArgs(target), '--body', body],
@@ -1268,7 +1263,7 @@ export interface ReviewComment {
  * @experimental
  */
 export interface CreateReviewOptions {
-  /** The commit the review is anchored to; line numbers refer to the diff at this sha. */
+  /** The commit the review is on. Line numbers refer to the diff at this sha. */
   commitId: string
   /** The review summary. GitHub rejects a review whose body and comments are both empty. */
   body: string
@@ -1277,10 +1272,10 @@ export interface CreateReviewOptions {
 
 /**
  * Create a PR review with inline comments, returning the review's URL (empty
- * when GitHub's reply carried none). The event is always `COMMENT`: this
- * library does not offer a way to approve or request changes. Goes through
+ * when GitHub's reply carried none). The event is always `COMMENT`. This
+ * library does not offer a way to approve or request changes. It goes through
  * `gh api` with the payload on stdin, because `gh pr review` cannot attach
- * line-anchored comments; `{owner}`/`{repo}` come from the target's repo, or
+ * comments to lines. `{owner}`/`{repo}` come from the target's repo, or
  * are filled in by `gh` from the client's working directory.
  *
  * @experimental
@@ -1357,10 +1352,10 @@ export function branchPrFields(fields: readonly string[]): string[] {
 /**
  * True when GitHub has not finished computing this PR's mergeability.
  *
- * The answer is not stable on a cold query: GitHub kicks off the merge
- * computation when asked and answers `UNKNOWN` until it lands. A caller that
- * treats the first `UNKNOWN` as final will mis-triage a PR that is merely
- * slow, so re-ask a few times before believing it.
+ * The first answer may not be final. GitHub starts the merge computation when
+ * asked and answers `UNKNOWN` until it finishes. A caller that treats the
+ * first `UNKNOWN` as final misjudges a PR whose computation is slow. So ask a
+ * few times before trusting it.
  */
 export function needsMergeStateRetry(pr: PullRequest): boolean {
   return pr.mergeable === 'UNKNOWN' || pr.mergeStateStatus === 'UNKNOWN'

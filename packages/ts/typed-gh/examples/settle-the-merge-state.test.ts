@@ -7,7 +7,7 @@ import { expect, test } from 'vitest'
 
 import { Gh, type CommandRunner, type MergeStateStatus } from '@osdlc/typed-gh'
 
-/** A runner that gives each call the next canned body; the last body repeats. */
+/** A runner that gives each call the next canned body. The last body repeats. */
 function replaying(bodies: object[]) {
   let asked = 0
   const runner: CommandRunner = {

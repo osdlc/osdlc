@@ -39,7 +39,7 @@ test('list the open pull requests into the main branch', () => {
   expect(prs.map((pr) => [pr.number, pr.baseRefName, pr.mergeable])).toEqual([
     [7, 'main', 'MERGEABLE'],
   ])
-  // The light field set: enough to triage, cheap to ask for.
+  // The smaller field set: enough to triage, and cheap to ask for.
   expect(calls[0]).toContain(PR_LIST_FIELDS.join(','))
 })
 
@@ -50,7 +50,7 @@ test('read one pull request in full', () => {
   const pr = new Gh('/repo', { runner }).prView(7)
 
   expect(pr?.title).toBe('Fix the parser')
-  // The heavy field set adds the body, comments, reviews and checks.
+  // The full field set adds the body, comments, reviews and checks.
   expect(calls[0]).toContain(PR_VIEW_FIELDS.join(','))
 })
 

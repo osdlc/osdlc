@@ -1,8 +1,8 @@
 /**
- * The three doors, as `Git` has them. The plain method returns a value or
- * throws. `.try` returns a `Result` whose error says what to do. `.soft` gives
- * `null` when the fallback is "nothing". A query for one thing answers `null`
- * on every door when GitHub says there is no such thing.
+ * The three call styles, as `Git` has them. The plain method returns a value
+ * or throws. `.try` returns a `Result` whose error says what to do. `.soft`
+ * gives `null` when the fallback is "nothing". A query for one thing returns
+ * `null` in all three when GitHub says there is no such thing.
  */
 
 import { FailureError, match } from '@osdlc/result'

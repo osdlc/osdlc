@@ -63,7 +63,7 @@ test('list the open issues with one label', () => {
   const filter: IssueListOptions = { label: 'status:triage', limit: 50 }
   const issues: ListResult<IssueRow> | null = new Gh('/repo', { runner }).issueList(filter)
 
-  // No rows is "no such issues"; `null` would mean gh could not answer.
+  // No rows means there are no such issues. A failed call would throw.
   expect(issues).toEqual({ rows: [], truncated: false })
   expect(calls).toEqual([
     [

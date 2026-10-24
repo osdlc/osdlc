@@ -14,7 +14,7 @@ import {
   type RunnerFactory,
 } from '@osdlc/typed-gh'
 
-/** `gh --version` works; `gh auth status` fails the way a signed-out gh does. */
+/** `gh --version` works. `gh auth status` fails the way a signed-out gh does. */
 const signedOut: CommandRunner = {
   run: (argv) =>
     argv[0] === 'auth'
@@ -47,7 +47,7 @@ test('ready asks both questions, and stops at the first failure', () => {
 })
 
 test('the default runner factory builds a real runner for a binary name', () => {
-  // `new Gh(cwd)` uses it. A test can supply its own factory in its place.
+  // `new Gh(cwd)` makes the same kind of runner. A test passes its own runner instead.
   const runner: CommandRunner = defaultRunnerFactory('gh')
   const factory: RunnerFactory = defaultRunnerFactory
 

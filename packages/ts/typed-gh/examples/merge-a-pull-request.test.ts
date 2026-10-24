@@ -1,7 +1,7 @@
 /**
- * Merge a pull request only if its head is still the commit you judged, and
- * check its review threads first. The branch is not deleted; that is yours
- * to do.
+ * Merge a pull request only if its head is still the commit you checked, and
+ * check its review threads first. The branch is not deleted. That is up to
+ * you.
  */
 
 import { FailureError } from '@osdlc/result'

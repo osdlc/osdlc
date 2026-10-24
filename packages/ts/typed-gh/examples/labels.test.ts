@@ -1,6 +1,6 @@
 /**
  * List a repository's labels, create one, and recolor it. `createLabel` is
- * safe to repeat: when the label exists, its color and description are set.
+ * safe to repeat. When the label exists, its color and description are set.
  */
 
 import { expect, test } from 'vitest'

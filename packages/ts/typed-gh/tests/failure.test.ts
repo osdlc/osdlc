@@ -1,6 +1,6 @@
 /**
- * `gh.try.*` classifies a failed call as a `GhFailure`: gh's stderr gives the
- * gh-specific kinds, the subprocess layer gives the rest, and `cause` is the
+ * `gh.try.*` classifies a failed call as a `GhFailure`. gh's stderr gives the
+ * gh-specific kinds, command-seam gives the rest, and `cause` is the
  * `CommandFailed` it came from.
  */
 
@@ -206,7 +206,7 @@ suite('types', () => {
 
 suite('a failure thrown by another installed copy', () => {
   // Another copy of command-seam or result has its own classes, so
-  // `instanceof` is false; the doors go by shape.
+  // `instanceof` is false. `try` and `soft` check the shape instead.
   const foreign = (): Error =>
     Object.assign(new Error('boom'), {
       failure: { kind: 'exit', message: 'gh: not authenticated' },

@@ -2,7 +2,7 @@
  * The repository and host a client names. Every verb takes an optional
  * target and puts it in its argv: `--repo` on `pr`, `issue` and `label`
  * verbs, `--hostname` and filled `{owner}/{repo}` on `api` verbs. With no
- * target, the argv is what it was before targets existed.
+ * target, the argv has no target flags.
  */
 
 import { describe, expect, test } from 'vitest'

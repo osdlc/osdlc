@@ -1,6 +1,6 @@
 /**
  * Read a pull request's diff, then post a review with an inline comment.
- * `createReview` is experimental: it always posts a `COMMENT` review, and each
+ * `createReview` is experimental. It always posts a `COMMENT` review, and each
  * inline comment sits on one line of the new side of the diff.
  */
 

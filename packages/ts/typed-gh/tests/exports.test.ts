@@ -5,8 +5,8 @@
  * Vitest aliases the name to the source (vitest.config.ts); outside it the
  * name resolves to the built `dist/`.
  *
- * It also checks that `examples/` shows each export, except those on the
- * waiting list below.
+ * It also checks that `examples/` shows each export, except those listed in
+ * `WAITING_FOR_THE_OWNER` below.
  */
 
 import { readdirSync, readFileSync } from 'node:fs'
@@ -153,7 +153,7 @@ describe('the examples', () => {
         n !== 'constructor' &&
         n !== 'exec' &&
         n !== 'read' &&
-        // The doors are getters; examples/ drives them by their methods.
+        // `try` and `soft` are getters. examples/ calls them through their methods.
         n !== 'try' &&
         n !== 'soft' &&
         !WAITING.has(n),

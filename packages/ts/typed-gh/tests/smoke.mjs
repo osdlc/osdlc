@@ -1,7 +1,7 @@
-// Runs the BUILT package under Node, which no other check does: the unit tests
+// Runs the built package under Node, which no other check does. The unit tests
 // run the TypeScript source (vitest.config.ts aliases the package name to it),
-// so dist/ is compiled and never executed. A broken emit passes every other
-// gate and fails on the consumer's machine.
+// so dist/ is compiled but never run. A broken build output passes every other
+// check and fails on the consumer's machine.
 //
 // It imports the package by name, so Node resolves it through `exports` as a
 // consumer would. `pnpm run smoke` runs it here, where the name resolves to
@@ -47,7 +47,7 @@ assert.equal(
 )
 assert.equal(ok.calls[0]?.[0], 'pr')
 
-// A failed query throws, not an empty list; `soft` is null and `try` a classified failure.
+// A failed query throws instead of returning an empty list. `soft` is null and `try` a classified failure.
 const broken = new Gh('/repo', { runner: fake(answer('', 1)).runner })
 assert.throws(
   () => broken.prList(),
@@ -56,7 +56,7 @@ assert.throws(
 assert.equal(broken.soft.prList(), null)
 assert.equal(broken.try.prList().ok, false)
 
-// A failed mutation throws the classified failure, carrying the argv; its cause is the CommandFailed.
+// A failed mutation throws the classified failure, carrying the argv. Its cause is the CommandFailed.
 const failing = new Gh('/repo', { runner: fake(answer('', 1)).runner })
 assert.throws(
   () => failing.editPrBody(7, 'new body'),

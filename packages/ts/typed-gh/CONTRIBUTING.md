@@ -68,7 +68,7 @@ version and writes the CHANGELOG from the pending changesets. See
   the package by name. A test fails if an exported function is not called, or
   an exported type not imported, in `examples/`. `tests/exports.test.ts` lists
   the few exports that have no example yet.
-- Shell out only through the command seam, never with a raw `child_process`
+- Run commands only through `@osdlc/command-seam`, never with a raw `child_process`
   call.
 - Add a changeset for a change users can see. See above.
 - Record a design choice in

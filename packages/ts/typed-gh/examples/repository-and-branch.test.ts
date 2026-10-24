@@ -1,6 +1,6 @@
 /**
  * Work out which repository, pull request and branch you are talking about.
- * These helpers read text you give them; none of them runs `gh`.
+ * These helpers read text you give them. None of them runs `gh`.
  */
 
 import { expect, test } from 'vitest'

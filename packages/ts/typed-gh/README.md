@@ -17,8 +17,8 @@ npm install @osdlc/typed-gh
 
 `pnpm add @osdlc/typed-gh` and `yarn add @osdlc/typed-gh` work too.
 
-It needs Node `^22.22.2 || ^24.15.0 || >=26.0.0`, the range of its dependency `@osdlc/typed-git` (Bun also works, through the compiled `dist/`), and the `gh` CLI on `PATH`, signed in with `gh auth login`.
-It is supported on macOS and Linux. Windows is not supported yet; it will be once a Windows CI job
+It needs Node `^22.22.2 || ^24.15.0 || >=26.0.0`, the range of its dependency `@osdlc/typed-git`. Bun also works, through the compiled `dist/`. It also needs the `gh` CLI on `PATH`, signed in with `gh auth login`.
+It is supported on macOS and Linux. Windows is not supported yet. It will be once a Windows CI job
 runs the tests.
 
 ```ts
@@ -34,11 +34,11 @@ The `examples` folder in the repository runs the same calls as tests.
 
 ## When not to use it
 
-- **`gh` is not installed.** In a browser or a serverless function, use an HTTP client such as
+- `gh` is not installed. In a browser or a serverless function, use an HTTP client such as
   Octokit.
-- **You sign in with a token, a GitHub App or OAuth.** This package reads no token.
-- **You make many calls or poll in a loop.** Each call starts a `gh` process.
-- **You need the whole API typed.** This package covers the calls listed below. `api()` is a GET
+- You sign in with a token, a GitHub App or OAuth. This package reads no token.
+- You make many calls or poll in a loop. Each call starts a `gh` process.
+- You need the whole API typed. This package covers the calls listed below. `api()` is a GET
   and `graphql()` is a query. Anything else goes through `raw`.
 
 ## How it compares
@@ -60,15 +60,14 @@ and `@osdlc/typed-git`.
 
 ## Authentication is `gh`'s
 
-No token is read, stored, or forwarded. That is the reason this shells out to
-the CLI rather than speaking REST: the credential already exists in the user's
-keychain, and a library that reaches for `GITHUB_TOKEN` is a library that can
-leak one.
+No token is read, stored, or forwarded. That is why this package runs the CLI
+instead of calling the REST API. The credential is already in the user's
+keychain. A library that reads `GITHUB_TOKEN` can leak it.
 
 ## A total model
 
-`gh --json` returns only the fields you asked for, so every field on
-`PullRequest` has a "not known" value and none of them is `undefined`:
+`gh --json` returns only the fields you asked for. So every field on
+`PullRequest` has a "not known" value, and none of them is `undefined`:
 
 ```ts
 const pr = parsePullRequest({ number: 7 })
@@ -90,34 +89,35 @@ and `ReviewDecision` (`APPROVED`, `CHANGES_REQUESTED`, `REVIEW_REQUIRED`,
 `null`). A value GitHub adds to either reads as `UNKNOWN` or `null`. A check
 that decides whether to merge can then match every member.
 
-## Three doors, as in `typed-git`, so failure is never ambiguous
+## Three ways to call, as in `typed-git`, so a failure is never mistaken for an answer
 
 | | a value | on failure |
 | --- | --- | --- |
-| **`gh.query()`** (the plain method) | the value | throws a `FailureError` carrying the classified `GhFailure` (kind `unreadable` when `gh` succeeded but its output cannot be read) |
-| **`gh.try.query()`** | `{ ok: true, value }` | `{ ok: false, error: GhFailure }` |
-| **`gh.soft.query()`** | the value | `null` (queries only; a mutation has no soft form) |
-| **`raw(argv)`** | the raw `CommandResult`; you decide | the same |
+| `gh.query()` (the method that throws) | the value | throws a `FailureError` carrying the classified `GhFailure` (kind `unreadable` when `gh` succeeded but its output cannot be read) |
+| `gh.try.query()` | `{ ok: true, value }` | `{ ok: false, error: GhFailure }` |
+| `gh.soft.query()` | the value | `null` (queries only. A mutation has no soft form.) |
+| `raw(argv)` | the raw `CommandResult`. You decide. | the same |
 
 A query returns a list or a value, never an empty list on failure.
-`prList()` returning `{ rows: [], truncated: false }` means *this repository
-has no open PRs*. A failed call throws, or is `{ ok: false }` through `try`, or
-`null` through `soft`: *we could not ask*. If the two were the same, an
+`prList()` returning `{ rows: [], truncated: false }` means this repository
+has no open PRs. A failed call throws, or is `{ ok: false }` through `try`, or
+`null` through `soft`. That means we could not ask. If the two were the same, an
 expired credential would read as "nothing to do".
 
-**Absence is an answer.** A query for one thing (`prView`, `issueView`,
-`repoView`, and `prFind` and `openPrFor` over them) returns `null` on every
-door when GitHub says there is no such thing: "Could not resolve to a
+A missing item is an answer, not a failure. A query for one thing (`prView`, `issueView`,
+`repoView`, and `prFind` and `openPrFor`, which use them) returns `null` in all
+three call styles when GitHub says there is no such thing: "Could not resolve to a
 PullRequest" or "no pull requests found for branch" for `prView`, "Could not
 resolve to an Issue" for `issueView`, "Could not resolve to a Repository" for
 `repoView`. `gh.try.prView(99)` is `{ ok: true, value: null }`. Every other
-failure is a failure, including a wrong repository: `prView(7)` against a
+failure is a failure, including a wrong repository. `prView(7)` against a
 mistyped `--repo` is a `not-found` failure, not an absent PR. The check reads
 stderr and stdout, as the classifier does.
 
-**Probes answer.** `installed()`, `authenticated()`, `authStatus()`, `ready()`
-and `api()` return their failure as part of their value, in every door, because
-"gh is not installed" is the answer to the question they ask.
+Setup checks return their failure as a value. `installed()`, `authenticated()`,
+`authStatus()`, `ready()` and `api()` return their failure as part of their
+value, in all three call styles. For them, "gh is not installed" is the answer
+to the question they ask.
 
 ```ts
 import { describe } from '@osdlc/result'
@@ -130,11 +130,11 @@ if (!result.ok) {
 
 ### `GhFailure`
 
-The error of `try` is a `GhFailure`, a `Failure` from `@osdlc/result`: a `kind`
+The error of `try` is a `GhFailure`, a `Failure` from `@osdlc/result`. It has a `kind`
 to branch on, a one-line `message` and a `hint` for a person (`describe(error)`
 joins them), `gh`'s own output in `detail`, the `argv` and `exitCode`, and the
-`CommandFailed` it was read from in `cause`. The plain door throws the same
-failure, wrapped in a `FailureError` (`error.failure`), so a CLI that reports a
+`CommandFailed` it was read from in `cause`. The methods that throw throw the same
+failure, wrapped in a `FailureError` (`error.failure`). So a CLI that reports a
 thrown failure, such as `runMain` from `@osdlc/cli-tool`, shows "gh is not
 signed in" for a write and exits with the same code as for a read.
 
@@ -149,7 +149,7 @@ signed in" for a write and exits with the same code as for a read.
 | `not-executable`, `bad-cwd`, `timeout`, `output-cap`, `signal`, `aborted`, `spawn` | as in `@osdlc/command-seam` | command-seam's message, no hint |
 | `exit` | any other non-zero exit | `gh`'s first stderr line |
 
-The patterns are `gh`'s English messages; anything else is a plain `exit`,
+The patterns are `gh`'s English messages. Anything else is a plain `exit`,
 never a wrong kind. Rate limiting is checked before authentication, then
 network, then not-found. `classifyGhFailure(commandFailed)` makes the same
 classification for a `CommandFailed` you caught yourself.
@@ -157,7 +157,7 @@ classification for a `CommandFailed` you caught yourself.
 ## A list says when its limit cut it short
 
 `gh --limit` cuts a list without saying so. Every list query here asks for
-one row more than `limit` and returns `{ rows, truncated }`: at most `limit`
+one row more than `limit` and returns `{ rows, truncated }`. That is at most `limit`
 rows, and `truncated: true` when there were more.
 
 ```ts
@@ -172,8 +172,8 @@ way. A `limit` that is not a positive integer throws `RangeError`.
 ## A repository without a clone
 
 By default a client talks to the repository of the clone at its directory.
-Name a repository, a host, or both, and every call targets them instead, so
-no clone is needed:
+Name a repository, a host, or both, and every call targets them instead. No
+clone is needed:
 
 ```ts
 const acme = new Gh(process.cwd(), { repo: 'acme/widgets', hostname: 'github.acme.com' })
@@ -184,15 +184,15 @@ acme.api('repos/{owner}/{repo}/branches')
 ```
 
 The target goes into the argv, so a failure's `argv` shows which repository a
-call hit: `pr`, `issue` and `label` calls get `--repo github.acme.com/acme/widgets`,
-`api` calls get `--hostname` and a filled `{owner}/{repo}`, and `authStatus`
+call hit. `pr`, `issue` and `label` calls get `--repo github.acme.com/acme/widgets`.
+`api` calls get `--hostname` and a filled `{owner}/{repo}`. `authStatus`
 asks about that host. `repoList` and `searchPrs` have no host flag in gh, so
 they get `GH_HOST` in the environment. `withRepo` and `at` keep the runner and
 the rest of the target.
 
 `hostname` is any GitHub host: `github.com`, a GitHub Enterprise Server host,
-or a `<tenant>.ghe.com` host. gh speaks only GitHub's API, so Forgejo, Gitea
-and GitLab are out of reach. A `repo` that is not `owner/name`, or a
+or a `<tenant>.ghe.com` host. gh supports only GitHub's API, so Forgejo, Gitea
+and GitLab are not supported. A `repo` that is not `owner/name`, or a
 `hostname` that is not a bare host, throws `RangeError`.
 
 ## Finding a pull request
@@ -212,7 +212,7 @@ gh.prView('https://github.acme.com/acme/widgets/pull/42')
 const pr: PullRequest | null = gh.prFind(process.argv[2] ?? '')
 ```
 
-It reads the text with `parsePrRef`, which starts no process: `42` and `#42`
+It reads the text with `parsePrRef`, which starts no process. `42` and `#42`
 are numbers, `owner/name#42` is a number in that repository, a URL is a URL,
 and any other valid branch name is a branch. Bare digits are tried as a PR
 number first and then as a branch, since a branch can be named `42`. A branch
@@ -220,19 +220,19 @@ gives its open PR, or else its newest closed or merged one, so a tool run
 after the merge still finds it.
 
 `prList({ head })` matches the head branch exactly: `task/foo` never returns
-`task/foo-2`. Two forks can share a branch name; ask for
+`task/foo-2`. Two forks can share a branch name. Ask for
 `headRepositoryOwner` to tell them apart.
 
-## Two shape hazards it absorbs
+## Two payload differences it handles
 
-**Author logins differ by transport.** GraphQL (`gh pr view --json`) returns a
-login without a suffix (`github-actions`). REST (`gh api`) returns the suffixed
-one (`github-actions[bot]`). Comparing one with the other never matches, and
-no error shows it. That is how bot noise gets treated as human review
-feedback. Logins are cut to the suffix-less form once, when a payload is
-parsed.
+Author logins differ between GraphQL and REST. GraphQL (`gh pr view --json`)
+returns a login without a suffix (`github-actions`). REST (`gh api`) returns
+the suffixed one (`github-actions[bot]`). Comparing one with the other never
+matches, and no error shows it. Then a bot's comments are treated as human
+review feedback. Logins are cut to the form without the suffix once, when a
+payload is parsed.
 
-**`statusCheckRollup` holds two node types.** A modern `CheckRun` carries
+`statusCheckRollup` holds two node types. A modern `CheckRun` carries
 `name`/`status`/`conclusion`. A legacy `StatusContext` carries
 `context`/`state`. Both map onto one `verdict` axis:
 
@@ -248,21 +248,20 @@ as green, a red build could merge.
 
 ## The merge state is not stable on a cold query
 
-GitHub computes mergeability lazily: the first query kicks it off and answers
-`UNKNOWN` until it lands. A caller that believes that first answer mis-triages
-every PR that is merely slow.
+GitHub computes mergeability only when asked. The first query starts the
+computation and answers `UNKNOWN` until it finishes. A caller that trusts that
+first answer misjudges every PR whose computation is slow.
 
 ```ts
 const pr = gh.prViewSettled(7, { attempts: 3 }) // 3 is the default
 ```
 
-`UNKNOWN` is still a legitimate final verdict, so callers must handle it.
+`UNKNOWN` can still be the final answer, so callers must handle it.
 
-Note also that `mergeStateStatus: "BEHIND"` only ever appears when branch
-protection *requires* an up-to-date branch. Without that rule a branch a
-hundred commits behind still reports `CLEAN` — so it is a corroborating hint
-about staleness, never the measure of it. Compute that from the commit graph
-(`typed-git`'s `aheadBehind`).
+`mergeStateStatus: "BEHIND"` appears only when branch protection requires an
+up-to-date branch. Without that rule, a branch a hundred commits behind still
+reports `CLEAN`. So `BEHIND` is a hint that a branch is out of date, not a
+measure of it. Compute that from the commit graph (`typed-git`'s `aheadBehind`).
 
 ## Changing pull requests
 
@@ -283,9 +282,9 @@ a draft.
 
 ## Merging
 
-`prMerge` takes the head commit you judged. GitHub refuses the merge if the head has moved since,
-so a push that lands between your check and the merge cannot ride in unreviewed. The branch is not
-deleted. That is yours to do.
+`prMerge` takes the head commit you checked. GitHub refuses the merge if the head has moved since.
+So a push that lands between your check and the merge cannot be merged without review. The branch
+is not deleted. That is up to you.
 
 ```ts
 const method: PrMergeMethod = 'squash'
@@ -316,8 +315,8 @@ gh.editLabel('status:triage', { description: 'Waiting for triage' })
 ```
 
 `issueList` returns open issues, up to `limit` (default 200). `labelList` returns up to `limit`
-labels (default 1000; `gh`'s own default is 30). `setIssueLabel` removes one label and adds
-another in one `gh issue edit` call. `createLabel` passes `--force`, so it is safe to repeat: an
+labels (default 1000. `gh`'s own default is 30). `setIssueLabel` removes one label and adds
+another in one `gh issue edit` call. `createLabel` passes `--force`, so it is safe to repeat. An
 existing label gets the color and description you pass.
 
 ## Diffs, reviews and comments
@@ -334,20 +333,20 @@ gh.issueCommentEdit('4204154439', 'Updated: CI is green.')
 
 `prDiff` returns the unified diff and throws the classified failure when `gh` cannot produce it.
 
-`createReview` is experimental. It posts a review of kind `COMMENT`: it cannot approve or request
+`createReview` is experimental. It posts a review of kind `COMMENT`. It cannot approve or request
 changes. Each inline comment sits on one line of the new side of the diff. It returns the review's
 URL.
 
-`issueCommentEdit` is experimental. It takes the comment's numeric REST id, as text: the `id` from
+`issueCommentEdit` is experimental. It takes the comment's numeric REST id, as text. That is the `id` from
 `gh api repos/{owner}/{repo}/issues/<n>/comments`. The `Comment.id` that `prView` returns is a
 GraphQL node id, which this REST path does not accept. An id that is not all digits throws
 `RangeError` before `gh` runs (`AsyncGh` returns a rejected Promise).
 
-## Pure halves, for an async fan-out
+## Verbs and parsers, for running calls yourself
 
-The verb table and every parser are side-effect free, so concurrent callers
-drive them through their own `AsyncCommandRunner` without duplicating a line
-of parsing:
+The verb table and every parser have no side effects. So code that runs many
+calls at once can run them through its own `AsyncCommandRunner` and reuse the
+parsing:
 
 ```ts
 import { prList } from '@osdlc/typed-gh'
@@ -358,9 +357,9 @@ const prs = verb.parse(result)
 ```
 
 That is only safe for a verb with no `env` or `input`. `repoList` and `searchPrs` send the target
-host as `GH_HOST` (`env`), and `createReview` sends its payload on stdin (`input`); a runner call
-that passes only `verb.argv` drops both, silently: the query goes to github.com, and the review is
-never sent. `runVerb` (and `runVerbAsync`, for an `AsyncCommandRunner`) run a verb the way `Gh` and
+host as `GH_HOST` (`env`), and `createReview` sends its payload on stdin (`input`). A runner call
+that passes only `verb.argv` drops both, with no error. The query goes to github.com, and the review
+is never sent. `runVerb` (and `runVerbAsync`, for an `AsyncCommandRunner`) run a verb the way `Gh` and
 `AsyncGh` do, with `cwd`, `env`, `input`, `timeoutMs` and the checked contract applied, and return
 the parsed value or throw the classified failure:
 
@@ -378,11 +377,11 @@ They take a `CommandRunner`. A plain `(binary, argv, opts) => result` function i
 
 ## `AsyncGh`
 
-The awaitable form of `Gh`, with the same methods, for a fan-out that must not block the event loop.
-Same three doors, promised (the plain method rejects with the classified failure,
-`try` resolves to a `Result<T, GhFailure>`, `soft` resolves `null` for a failed
-query, `raw`/`rawChecked` are the hatches), driven by the same verb table, so the two cannot drift. It takes an
-`AsyncCommandRunner` and defaults to `spawnRunnerAsync("gh")`.
+The awaitable form of `Gh`, with the same methods, for code that runs many calls at once and must
+not block the event loop. It has the same three call styles, as Promises. The plain method rejects
+with the classified failure. `try` resolves to a `Result<T, GhFailure>`. `soft` resolves `null` for
+a failed query. `raw` and `rawChecked` run any `gh` call. Both clients use the same verb table, so
+they cannot drift apart. It takes an `AsyncCommandRunner` and defaults to `spawnRunnerAsync("gh")`.
 
 ```ts
 import { AsyncGh } from '@osdlc/typed-gh'
@@ -401,12 +400,12 @@ These methods take `AsyncCallOptions`: `raw`, `rawChecked`, `prList`, `prView`, 
 `signal`.
 
 `api(endpoint, opts)` (on `Gh` and `AsyncGh`) is a REST GET through `gh api`.
-It never throws; the result is `{ ok, status, etag, body, message, malformed, stderr, error? }`.
-On failure `body` still carries GitHub's error object and `message` its text; `status` is only observed when headers were requested (`etag` or `includeHeaders`).
-`stderr` is gh's own; `error` holds the runner's message when gh never ran or
+It never throws. The result is `{ ok, status, etag, body, message, malformed, stderr, error? }`.
+On failure `body` still carries GitHub's error object and `message` its text. `status` is read only when headers were requested (`etag` or `includeHeaders`).
+`stderr` is gh's own. `error` holds the runner's message when gh never ran or
 was stopped (a missing binary, a timeout).
-Pass `etag` for a conditional request (`If-None-Match`; a 304 comes back as
-`status: 304, body: null`), or `includeHeaders: true` to read status and ETag
+Pass `etag` for a conditional request (`If-None-Match`. A 304 comes back as
+`status: 304, body: null`). Or pass `includeHeaders: true` to read status and ETag
 without one. If `gh` prints more than one header block, the last one is read. `{owner}` and
 `{repo}` in the endpoint come from the client's repo, or are filled in by gh from the clone.
 
@@ -420,7 +419,7 @@ const branches = gh.api('repos/{owner}/{repo}/branches', { paginate: true }).bod
 ```
 
 `graphql` (experimental) runs a query and returns each page's `data`. It throws when the
-call failed or any page has `errors` or no `data` (`soft.graphql` is `null`): a partial answer is no answer. `nodesAt` joins
+call failed or any page has `errors` or no `data` (`soft.graphql` is `null`). A partial answer counts as a failure. `nodesAt` joins
 one connection's `nodes` across the pages, and is `null` when any page lacks them.
 
 ```ts
@@ -436,8 +435,8 @@ const pages = gh.graphql(query, { owner: '{owner}', name: '{repo}' }, { paginate
 const prs = nodesAt(pages, ['repository', 'pullRequests'])
 ```
 
-With `paginate`, the query must take `$endCursor` and page one connection; gh follows only that
-one. `graphql` refuses a mutation with `RangeError`; send one through `raw`.
+With `paginate`, the query must take `$endCursor` and page one connection. gh follows only that
+one. `graphql` refuses a mutation with `RangeError`. Send one through `raw`.
 
 ## Repositories and search
 
@@ -448,15 +447,15 @@ const hits: ListResult<PrSearchHit> = gh.searchPrs('TICKET-123', { owner: 'acme'
 ```
 
 A `Repository` carries `nameWithOwner`, `owner`, `name`, `description`, `defaultBranch`,
-`visibility`, `isArchived` and `url`. `gh search prs` has its own field set: a `PrSearchHit` names
+`visibility`, `isArchived` and `url`. `gh search prs` has its own field set. A `PrSearchHit` names
 its `repository` but has no head or base branch, so it is not a `PullRequest`. Its `state` is
 upper-cased to match. The query takes GitHub's search syntax and may start with `-`.
 
-## Injecting the subprocess seam
+## Passing your own runner
 
 `Gh` takes a `CommandRunner` from
-[`@osdlc/command-seam`](https://github.com/osdlc/osdlc/tree/main/packages/ts/command-seam), so a
-suite runs offline:
+[`@osdlc/command-seam`](https://github.com/osdlc/osdlc/tree/main/packages/ts/command-seam), so
+tests can run offline:
 
 ```ts
 const empty: CommandRunner = { run: () => ({ exitCode: 0, stdout: '[]', stderr: '' }) }
@@ -487,7 +486,7 @@ experimental.
 
 Methods on both clients:
 
-- Escape hatches: `raw` runs any `gh` call and returns the result. `rawChecked` throws on a failed
+- Direct calls: `raw` runs any `gh` call and returns the result. `rawChecked` throws on a failed
   exit. `at` returns the same client rooted at another directory, and `withRepo` the same client
   aimed at another repository.
 - Pull request queries: `prList`, `prView`, `prFind`, `openPrFor`, `prViewSettled`, `prBody`,
@@ -513,7 +512,7 @@ A verb is plain data: argv, a `checked` flag, a `readOnly` flag, optional stdin 
 and a `parse` function. `readOnly` is true for every query and `prDiff`, and false for every
 mutation, so a caller that keeps an allowlist of safe calls can check a verb before running it.
 Each verb takes an optional `GhTarget` last. Each client method has a verb of the same name, except
-the escape hatches, `at`, `withRepo`, `prViewSettled`, `openPrFor`, `prFind`, `authenticated`,
+`raw`, `rawChecked`, `at`, `withRepo`, `prViewSettled`, `openPrFor`, `prFind`, `authenticated`,
 `ready` and `ownerRepo`. `openPrsForBranch` is a verb with no method.
 
 - `GhVerb`: the shape of a verb. `GhTarget`: the `repo` and `hostname` a verb talks to.
@@ -562,9 +561,9 @@ the escape hatches, `at`, `withRepo`, `prViewSettled`, `openPrFor`, `prFind`, `a
 
 The package is at 0.x. Each item is stable or experimental.
 
-- **Stable** items change only with a minor release, and a breaking change is marked
+- Stable items change only with a minor release, and a breaking change is marked
   **Breaking** in the CHANGELOG.
-- **Experimental** items may change or go in any release. Each has an `@experimental` tag in its
+- Experimental items may change or go in any release. Each has an `@experimental` tag in its
   TSDoc.
 
 The experimental items:
@@ -587,11 +586,11 @@ shell, so nothing in it is specific to one shell.
 
 ## What is not here
 
-- **Closing a PR and deleting a branch.** `prMerge` merges and leaves the branch alone. Closing and
-  deleting belong to a caller's own policy layer, where the audit trail lives.
-- **A full REST or GraphQL client.** `api()` is a GET and `graphql()` a query; anything else goes
+- Closing a PR and deleting a branch. `prMerge` merges and leaves the branch alone. Closing and
+  deleting belong in the caller's own code, which keeps its own record of what it did.
+- A full REST or GraphQL client. `api()` is a GET and `graphql()` a query. Anything else goes
   through `raw(["api", …])`.
-- **Anything that reads a token.**
+- Anything that reads a token.
 
 ## Licence
 

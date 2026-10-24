@@ -1,21 +1,22 @@
 /**
- * `gh --json` payloads → the typed model.
+ * Parsers from `gh --json` payloads to the typed model.
  *
- * Everything here is pure, so an async fan-out can reuse it without going
- * near a subprocess, and so the awkward cases can be tested as data.
+ * Nothing here has side effects, so code that runs its own calls can reuse
+ * it without starting a process, and the hard cases can be tested as data.
  *
- * Two shape hazards this file exists to absorb:
+ * It handles two payload differences:
  *
- *  1. **Author logins differ by transport.** GraphQL (`gh pr view --json`)
- *     returns a suffix-less login (`github-actions`); REST (`gh api`) returns
- *     the suffixed one (`github-actions[bot]`). Comparing one against the
- *     other silently never matches, which is how bot noise gets treated as
- *     human review feedback. Logins are normalized to the suffix-less form
- *     here, once.
- *  2. **`statusCheckRollup` holds two different node types.** A modern
- *     `CheckRun` carries `name`/`status`/`conclusion`; a legacy
- *     `StatusContext` carries `context`/`state`. They are folded onto one
- *     verdict axis so a caller never has to know which it got.
+ *  1. Author logins differ between GraphQL and REST. GraphQL
+ *     (`gh pr view --json`) returns a login without a suffix
+ *     (`github-actions`). REST (`gh api`) returns the suffixed one
+ *     (`github-actions[bot]`). Comparing one with the other never matches,
+ *     and no error shows it. Then a bot's comments are treated as human
+ *     review feedback. Logins are normalized here, once, to the form without
+ *     the suffix.
+ *  2. `statusCheckRollup` holds two node types. A modern `CheckRun` carries
+ *     `name`/`status`/`conclusion`. A legacy `StatusContext` carries
+ *     `context`/`state`. Both map to one verdict, so a caller never has to
+ *     know which it got.
  */
 
 import type {
@@ -51,8 +52,8 @@ function bool(x: unknown): boolean {
 }
 
 /**
- * A comment/review id: GraphQL sends a string node id, REST a numeric one —
- * stringify either. A numeric id of 2^53 or more has already lost precision
+ * A comment/review id. GraphQL sends a string node id, REST a numeric one.
+ * Either becomes a string. A numeric id of 2^53 or more has already lost precision
  * in `JSON.parse` by the time it gets here.
  */
 function idOrNull(x: unknown): string | null {
@@ -68,16 +69,15 @@ function list(x: unknown): unknown[] {
 // ── actors ──────────────────────────────────────────────────────────────────
 
 /**
- * Strip a single trailing `[bot]` suffix — REST shape folded to GraphQL shape.
- *
- * The one normalization that makes a login from either transport comparable.
+ * Strip a single trailing `[bot]` suffix, so a REST login matches the
+ * GraphQL one.
  */
 export function normalizeAuthorLogin(login: string): string {
   return login.endsWith('[bot]') ? login.slice(0, -'[bot]'.length) : login
 }
 
 /**
- * Parse an author node from either transport (`author` or REST's `user`).
+ * Parse an author node from GraphQL (`author`) or REST (`user`).
  * Null when there is no login, or the login is empty once `[bot]` is removed.
  */
 export function parseActor(x: unknown): Actor | null {
@@ -87,7 +87,7 @@ export function parseActor(x: unknown): Actor | null {
   if (login === '') return null
   return {
     login,
-    // `is_bot` is REST/GraphQL-dependent; the suffix is the portable signal.
+    // Only some payloads carry `is_bot`. The suffix works for both.
     isBot: bool(x['is_bot']) || raw.endsWith('[bot]'),
   }
 }
@@ -97,10 +97,9 @@ export function parseActor(x: unknown): Actor | null {
 /**
  * Conclusions that mean the check failed.
  *
- * `ACTION_REQUIRED` is deliberately not here: it means a human must do
- * something, not that the build broke, and the existing consumers treat it as
- * neutral. Widening this set changes triage verdicts, so it is a decision to
- * make on purpose rather than by adding a plausible-looking member.
+ * `ACTION_REQUIRED` is not here on purpose. It means a person must do
+ * something, not that the build broke, and callers treat it as neutral.
+ * Adding a member changes every caller's verdicts, so decide it on purpose.
  */
 const FAILED_CONCLUSIONS = new Set(['FAILURE', 'TIMED_OUT', 'CANCELLED', 'STARTUP_FAILURE'])
 
@@ -128,13 +127,12 @@ export function parseCheckRun(x: unknown): CheckRun | null {
   if (name === null) return null
   const status = str(x['status']).toUpperCase()
   const conclusion = strOrNull(x['conclusion']) as CheckConclusion
-  // `detailsUrl` is the modern CheckRun field; `targetUrl` is the legacy
-  // StatusContext one — a raw payload occasionally carries either under a
-  // `name`-shaped node, so read both rather than assume the field follows
-  // the node-type split strictly.
+  // `detailsUrl` is the modern CheckRun field and `targetUrl` the legacy
+  // StatusContext one. A payload sometimes carries either on a node with a
+  // `name`, so read both.
   const url = strOrNull(x['detailsUrl']) ?? strOrNull(x['targetUrl'])
 
-  // Still running: not a pass. Reading "no failure yet" as green merges red.
+  // Still running, so not a pass. If "no failure yet" counted as green, a red build could merge.
   if (status !== '' && status !== 'COMPLETED') {
     return { name, status, conclusion, verdict: 'pending', url }
   }
@@ -156,7 +154,7 @@ export function anyCheckFailed(checks: readonly CheckRun[]): boolean {
 
 // ── the pull request ────────────────────────────────────────────────────────
 
-/** Parse a `labels` field (PR, issue, or a bare `gh label list` array) into {@link Label} rows — the one label-array parse every `gh` caller shares. Skips an item with no name, or an empty-string name (indistinguishable from absent). */
+/** Parse a `labels` field (PR, issue, or a bare `gh label list` array) into {@link Label} rows. Every label list in this package goes through it. Skips an item with no name, or an empty name, which reads the same as no name. */
 export function parseLabels(x: unknown): Label[] {
   const out: Label[] = []
   for (const item of list(x)) {
@@ -198,13 +196,13 @@ function parseReviews(x: unknown): Review[] {
   return out
 }
 
-/** `mergeable` is tri-state; anything unrecognized (or absent) is UNKNOWN. */
+/** `mergeable` has three states. Anything unknown, or absent, is UNKNOWN. */
 function parseMergeable(x: unknown): MergeableState {
   const v = str(x).toUpperCase()
   return v === 'MERGEABLE' || v === 'CONFLICTING' ? v : 'UNKNOWN'
 }
 
-/** gh returns `""` for "no decision yet"; the model says `null`. */
+/** gh returns `""` for "no decision yet". The model says `null`. */
 function parseReviewDecision(x: unknown): ReviewDecision {
   const v = strOrNull(x)
   return v === 'APPROVED' || v === 'CHANGES_REQUESTED' || v === 'REVIEW_REQUIRED' ? v : null
@@ -213,8 +211,8 @@ function parseReviewDecision(x: unknown): ReviewDecision {
 /**
  * One PR from a `gh --json` object, or null when it carries no usable number.
  *
- * Total by construction: a field `gh` was not asked for lands at its "not
- * known" value rather than `undefined`, so the result is safe to build from
+ * Every field gets a value. A field `gh` was not asked for gets its "not
+ * known" value, not `undefined`, so the result is safe to build from
  * any field subset.
  */
 export function parsePullRequest(raw: unknown): PullRequest | null {
@@ -285,7 +283,7 @@ export function parsePrSearchHit(raw: unknown): PrSearchHit | null {
   return {
     number,
     title: str(raw['title']),
-    // Search answers in lower case; `PullRequest.state` is upper case.
+    // Search answers in lower case. `PullRequest.state` is upper case.
     state: str(raw['state']).toUpperCase(),
     url: str(raw['url']),
     isDraft: bool(raw['isDraft']),

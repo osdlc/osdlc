@@ -1,13 +1,14 @@
 /**
- * `AsyncGh` — the awaitable GitHub client, with the same methods as {@link Gh}.
+ * `AsyncGh`: the awaitable GitHub client, with the same methods as {@link Gh}.
  *
- * Same three doors, promised: the plain method resolves to a value or rejects
- * (a `FailureError` carrying the classified `GhFailure` for a failed gh or output it cannot read;
- * a query for one thing resolves `null` when GitHub has no such thing),
- * `try` resolves to a `Result<T, GhFailure>`, `soft` resolves `null` for a
- * failure, and `raw`/`rawChecked` are the hatches. It is driven by the same pure verb
- * table as `Gh`, so the two cannot drift on argv or parsing. Use it where the
- * sync client would block the event loop: a fan-out of per-PR queries.
+ * It has the same three call styles, as Promises. The plain method resolves to
+ * a value or rejects with a `FailureError` carrying the classified `GhFailure`,
+ * for a failed gh or output it cannot read. A query for one thing resolves
+ * `null` when GitHub has no such thing. `try` resolves to a
+ * `Result<T, GhFailure>`. `soft` resolves `null` for a failure. `raw` and
+ * `rawChecked` run any `gh` call. It uses the same verb table as `Gh`, so the
+ * two cannot differ on argv or parsing. Use it where the sync client would
+ * block the event loop, such as many per-PR queries at once.
  */
 
 import {
@@ -44,7 +45,7 @@ export interface AsyncCallOptions {
    * non-number.
    */
   timeoutMs?: number | undefined
-  /** Aborts the call; the runner stops the child. */
+  /** Aborts the call. The runner stops the child process. */
   signal?: AbortSignal | undefined
 }
 
@@ -102,19 +103,19 @@ export class AsyncGh {
     return (this.softened ??= softAsync(this))
   }
 
-  // ── escape hatches ────────────────────────────────────────────────────────
+  // ── raw calls ─────────────────────────────────────────────────────────────
 
-  /** Unchecked passthrough for verbs not yet lifted into the API. */
+  /** Run any `gh` call and return the result, whatever the exit code. */
   raw(argv: string[], opts: AsyncCallOptions = {}): Promise<CommandResult> {
     return this.runner.run(argv, { cwd: this.cwd, ...opts })
   }
 
-  /** Checked passthrough — rejects with the classified failure on a non-zero exit. */
+  /** Run any `gh` call. Rejects with the classified failure on a non-zero exit. */
   rawChecked(argv: string[], opts: AsyncCallOptions = {}): Promise<CommandResult> {
     return runCheckedGhAsync(this.runner, argv, { cwd: this.cwd, ...opts })
   }
 
-  /** Run one verb from the table, honouring its checked/unchecked contract. */
+  /** Run one verb from the table, checked or unchecked as the verb says. */
   private async exec<T>(verb: GhVerb<T>, call: AsyncCallOptions = {}): Promise<T> {
     return runVerbAsync(verb, this.runner, {
       cwd: this.cwd,
@@ -123,14 +124,14 @@ export class AsyncGh {
     })
   }
 
-  /** {@link exec} for a verb that never answers `null` as a value: a failed or unreadable run rejects. */
+  /** {@link exec} for a verb that never returns `null` as a value. A failed or unreadable run rejects. */
   private async read<T>(verb: GhVerb<T | null>, call: AsyncCallOptions = {}): Promise<T> {
     return (await this.exec(verb, call)) as T
   }
 
   // ── queries ───────────────────────────────────────────────────────────────
 
-  /** Pull requests matching `opts`. Rejects when gh fails; `soft.prList` resolves null instead. */
+  /** Pull requests matching `opts`. Rejects when gh fails. `soft.prList` resolves null instead. */
   prList(opts: PrListOptions & AsyncCallOptions = {}): Promise<ListResult<PullRequest>> {
     return this.read(v.prList(opts, this.target), opts)
   }
@@ -176,7 +177,7 @@ export class AsyncGh {
     return v.pickPrForBranch(rows.rows, branch)
   }
 
-  /** {@link prView}, re-asked until GitHub settles the merge state. See `Gh.prViewSettled`. */
+  /** {@link prView}, asked again until GitHub has computed the merge state. See `Gh.prViewSettled`. */
   async prViewSettled(
     number: number,
     opts: {
@@ -201,13 +202,13 @@ export class AsyncGh {
     return this.read(v.prBody(number, this.target), opts)
   }
 
-  /** A REST GET through `gh api`; failure is `ok: false`, never a rejection. */
+  /** A REST GET through `gh api`. Failure is `ok: false`, never a rejection. */
   api(endpoint: string, opts: ApiOptions & AsyncCallOptions = {}): Promise<ApiResponse> {
     return this.exec(v.api(endpoint, opts, this.target), opts)
   }
 
   /**
-   * A GraphQL query; each page's `data`. Rejects on a failed or partial result. See `Gh.graphql`.
+   * A GraphQL query. Resolves to each page's `data`. Rejects on a failed or partial result. See `Gh.graphql`.
    *
    * @experimental
    */
@@ -231,7 +232,7 @@ export class AsyncGh {
     return this.read(v.issueList(opts, this.target), opts)
   }
 
-  /** One issue with its labels; null when there is no such issue. */
+  /** One issue with its labels, or null when there is no such issue. */
   issueView(number: number, opts: AsyncCallOptions = {}): Promise<IssueRow | null> {
     return this.exec(v.issueView(number, this.target), opts)
   }
@@ -244,7 +245,7 @@ export class AsyncGh {
     return this.read(v.repoList(owner, opts, this.target), opts)
   }
 
-  /** One repository; null when there is no such repository. See `Gh.repoView`. */
+  /** One repository, or null when there is no such repository. See `Gh.repoView`. */
   repoView(
     repo?: string | undefined,
     opts: { fields?: readonly string[] | undefined } & AsyncCallOptions = {},
@@ -275,14 +276,14 @@ export class AsyncGh {
     return this.exec(v.authStatus(this.target))
   }
 
-  /** True iff `gh` is installed AND authenticated; short-circuits. */
+  /** True iff `gh` is installed and authenticated. Skips the auth check when `gh` is not installed. */
   async ready(): Promise<boolean> {
     return (await this.installed()) && (await this.authenticated())
   }
 
   /**
    * `{owner, repo}` parsed from the remote URL you pass, or null when it is
-   * null or names no project. Pure, so it is sync on purpose.
+   * null or names no project. It starts no process, so it is sync on purpose.
    */
   ownerRepo(remoteUrl: string | null): OwnerRepo | null {
     return remoteUrl === null ? null : parseOwnerRepo(remoteUrl)
@@ -308,18 +309,18 @@ export class AsyncGh {
     return this.exec(v.editPrBody(number, body, this.target))
   }
 
-  /** The PR's unified diff; rejects with the classified failure when gh cannot produce it. */
+  /** The PR's unified diff. Rejects with the classified failure when gh cannot produce it. */
   prDiff(number: number): Promise<string> {
     return this.exec(v.prDiff(number, this.target))
   }
 
-  /** Post one conversation comment on a PR; resolves to its URL ('' if gh printed none). */
+  /** Post one conversation comment on a PR. Resolves to its URL ('' if gh printed none). */
   prComment(number: number, body: string): Promise<string> {
     return this.exec(v.prComment(number, body, this.target))
   }
 
   /**
-   * Create a `COMMENT` review with inline comments; resolves to the review's URL ('' if none came back).
+   * Create a `COMMENT` review with inline comments. Resolves to the review's URL ('' if none came back).
    *
    * @experimental
    */
@@ -338,21 +339,21 @@ export class AsyncGh {
   }
 
   /**
-   * Rewrite one PR conversation comment's body. `commentId` is the numeric REST id; anything else rejects with `RangeError`.
+   * Rewrite one PR conversation comment's body. `commentId` is the numeric REST id. Anything else rejects with `RangeError`.
    *
    * @experimental
    */
   async issueCommentEdit(commentId: string, body: string): Promise<void> {
-    // async, so a bad id rejects the Promise instead of throwing at the call.
+    // async, so a bad id rejects the Promise instead of throwing at the call site.
     return this.exec(v.issueCommentEdit(commentId, body, this.target))
   }
 
-  /** Merge a PR; GitHub refuses when its head is no longer `opts.headSha`. */
+  /** Merge a PR. GitHub refuses when its head is no longer `opts.headSha`. */
   prMerge(number: number, opts: { method: v.PrMergeMethod; headSha: string }): Promise<void> {
     return this.exec(v.prMerge(number, opts, this.target))
   }
 
-  /** A PR's review threads, or null when they could not be read completely. */
+  /** A PR's review threads. Rejects when they could not be read completely. `soft.prReviewThreads` resolves null instead. */
   prReviewThreads(number: number): Promise<v.ReviewThread[]> {
     return this.read(v.prReviewThreads(number, this.target))
   }

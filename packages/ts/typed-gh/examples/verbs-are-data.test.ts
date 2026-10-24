@@ -63,7 +63,7 @@ test('run a verb on your own async runner', async () => {
 })
 
 test('queries are unchecked and mutations are checked', () => {
-  // A checked verb is one your runner should treat a non-zero exit as a failure for.
+  // For a checked verb, your runner should treat a non-zero exit as a failure.
   const queries = [
     prList(),
     prView(7),
@@ -90,7 +90,7 @@ test('queries are unchecked and mutations are checked', () => {
     editLabel('bug', { color: 'ffffff' }),
     issueCommentEdit('4204154439', 'new text'),
     createReview(7, { commitId: 'abc1234', body: 'Looks fine.', comments: [] }),
-    // A read, but checked: an empty diff is a value, a failed call is not.
+    // A read, but checked. An empty diff is a value, and a failed call throws.
     prDiff(7),
   ]
 

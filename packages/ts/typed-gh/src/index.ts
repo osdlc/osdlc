@@ -1,21 +1,20 @@
 /**
- * `@osdlc/typed-gh` — a typed GitHub client for TypeScript, over the `gh`
+ * `@osdlc/typed-gh`: a typed GitHub client for TypeScript, over the `gh`
  * CLI. The GitHub-side companion of `@osdlc/typed-git`.
  *
- * Three things it is:
+ * It has three parts:
  *
- *   - **A model.** `PullRequest`, `Review`, `CheckRun` and their enums, so a
- *     caller stops reading `payload["mergeable"] as string | undefined`. Every
- *     field is total: one a query did not ask for lands at its "not known"
- *     value, because absent and unknowable are the same answer.
- *   - **Pure argv builders and parsers.** The verb table and `parse.ts` never
- *     spawn anything, so an async fan-out drives them through its own runner
- *     without duplicating a line of parsing.
- *   - **A client.** `Gh`, with `Git`'s three doors: the plain method returns a
- *     value or throws a `FailureError` carrying the classified
- *     `GhFailure`; `gh.try.*` returns a
- *     `Result<T, GhFailure>`; `gh.soft.*` returns `null` for a failed query.
- *     `raw` is the hatch.
+ *   - A model. `PullRequest`, `Review`, `CheckRun` and their enums, so a
+ *     caller does not read `payload["mergeable"] as string | undefined`. Every
+ *     field always has a value. A field the query did not ask for gets its
+ *     "not known" value, because absent and unknowable are the same answer.
+ *   - Argv builders and parsers with no side effects. The verb table and
+ *     `parse.ts` never start a process, so code that runs many calls at once
+ *     can run them through its own runner and reuse the parsing.
+ *   - A client. `Gh` has the same three call styles as `Git`. The method that
+ *     throws returns a value or throws a `FailureError` carrying the
+ *     classified `GhFailure`. `gh.try.*` returns a `Result<T, GhFailure>`.
+ *     `gh.soft.*` returns `null` for a failed query. `raw` runs any `gh` call.
  *
  * Authentication is `gh`'s. No token is read, stored, or forwarded.
  */
@@ -117,7 +116,7 @@ export type {
   ReviewState,
 } from './types.ts'
 
-// The seam's error and runner types appear in this package's signatures, so
+// command-seam's error and runner types appear in this package's signatures, so
 // they are re-exported. Its functions are not: import them from
 // `@osdlc/command-seam`.
 export {
