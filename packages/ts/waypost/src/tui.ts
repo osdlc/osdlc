@@ -106,6 +106,8 @@ interface State {
   catalog: Catalog | null
   /** The registered tools, built-ins plus any loaded. */
   project: Project
+  /** The project file names tools that were not loaded because the repository is untrusted or execution is off. */
+  projectToolsPending: boolean
   root: string
   options: WayOptions
   /** `runners.order` from config; applied to every collected catalog. */
@@ -186,6 +188,7 @@ interface State {
 export const state: State = {
   catalog: null,
   project: makeProject(),
+  projectToolsPending: false,
   root: process.cwd(),
   options: {},
   runnerOrder: undefined,
@@ -788,7 +791,10 @@ async function grantTrust(): Promise<void> {
   const { execWithheldHint: _dropped, ...rest } = state.options
   state.options = { ...rest, allowExec: true }
   if (state.gate) state.gate = { ...state.gate, allowExec: true, trusted: true, reason: 'allowed' }
-  state.message = 'trusted — re-probing'
+  // Tool modules are code; they load at the next start, not mid-session.
+  state.message = state.projectToolsPending
+    ? `trusted — re-probing; the project's tools load the next time ${BIN} starts with execution allowed`
+    : 'trusted — re-probing'
   // A probe started before the grant was collected under the old gate, and
   // `refresh` drops a request while one is running — so the grant would be
   // announced and never acted on. Abandon that probe first; `refresh` bumps
@@ -974,6 +980,7 @@ export function handle(key: string): void {
  */
 export interface TuiOptions {
   project: Project
+  projectToolsPending?: boolean | undefined
   root: string
   options: WayOptions
   runnerOrder?: string[] | undefined
@@ -984,6 +991,7 @@ export interface TuiOptions {
 
 export async function runTui({
   project,
+  projectToolsPending,
   root,
   options,
   runnerOrder,
@@ -999,6 +1007,7 @@ export async function runTui({
   }
 
   state.project = project
+  state.projectToolsPending = projectToolsPending ?? false
   state.root = root
   state.options = options
   state.runnerOrder = runnerOrder

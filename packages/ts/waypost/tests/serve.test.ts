@@ -86,11 +86,13 @@ async function start(
   // the real state a slow runner leaves behind on a boot, reached the real way
   // rather than by reaching into the server's internals.
   cache: 'cold' | 'stale' = 'cold',
+  projectToolsPending = false,
 ): Promise<Started> {
   const root = await project()
   const home = await temp('waypost-serve-home-')
   const options: ServeOptions = {
     project: makeProject(),
+    projectToolsPending,
     root,
     collectOptions: {
       allowExec: shape === 'exec',
@@ -581,6 +583,19 @@ describe('POST /api/config — what the settings screen may write', () => {
     }
   })
 
+  test('tools are refused: the page never writes a code path into the project file', async () => {
+    const s = await start('untrusted')
+    try {
+      await writeFile(join(s.root, 'waypost.config.json'), JSON.stringify({ excludePaths: ['a'] }))
+      const res = await save(s, { tools: ['./evil.mjs'] })
+      expect(res.status).toBe(400)
+      expect(await res.text()).toContain('way config set tools')
+      expect(await fileAt(s.root)).toEqual({ excludePaths: ['a'] })
+    } finally {
+      s.stop()
+    }
+  })
+
   test('a key that is not a setting is refused, not silently dropped', async () => {
     const s = await start('untrusted')
     try {
@@ -970,6 +985,32 @@ describe('POST /api/config — the running server adopts what it saved', () => {
       expect(reports.map((r) => r.runner)).not.toContain('make')
     } finally {
       void server.stop()
+    }
+  })
+})
+
+describe('POST /api/trust — project tools', () => {
+  test("a grant says the project file's tools load at the next start", async () => {
+    const s = await start('untrusted', 'cold', true)
+    try {
+      const res = await post(s.address, await pageToken(s.address, s.bootToken))
+      expect(res.status).toBe(200)
+      const body = (await res.json()) as { note?: string }
+      expect(body.note).toBe(
+        'the tools waypost.config.json names load the next time way starts with execution allowed',
+      )
+    } finally {
+      s.stop()
+    }
+  })
+
+  test('without pending tools the grant carries no note', async () => {
+    const s = await start('untrusted')
+    try {
+      const res = await post(s.address, await pageToken(s.address, s.bootToken))
+      expect(((await res.json()) as { note?: string }).note).toBeUndefined()
+    } finally {
+      s.stop()
     }
   })
 })

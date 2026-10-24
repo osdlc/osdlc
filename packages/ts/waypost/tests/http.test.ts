@@ -3,7 +3,7 @@
 import { expect, test } from 'vitest'
 import { request } from 'node:http'
 
-import { serveFetch } from '../src/http.ts'
+import { MAX_BODY_BYTES, serveFetch } from '../src/http.ts'
 
 test('hands the handler a web Request with its method, path, headers and body', async () => {
   const server = await serveFetch({
@@ -100,4 +100,111 @@ test('stop resolves with a keep-alive connection still open', async () => {
   const started = Date.now()
   await server.stop()
   expect(Date.now() - started).toBeLessThan(900)
+})
+
+test('a body over the cap is a 413, answered before the rest is read', async () => {
+  let called = false
+  const server = await serveFetch({
+    hostname: '127.0.0.1',
+    port: 0,
+    fetch: () => {
+      called = true
+      return new Response('ok')
+    },
+  })
+  try {
+    // The server answers and closes while the client may still be uploading,
+    // so the client sees either the 413 or a reset (-1).
+    const status = await new Promise<number>((resolve) => {
+      const req = request(
+        { host: '127.0.0.1', port: server.port, path: '/api/x', method: 'POST' },
+        (res) => {
+          res.resume()
+          resolve(res.statusCode ?? 0)
+        },
+      )
+      req.on('error', () => resolve(-1))
+      req.write(Buffer.alloc(MAX_BODY_BYTES + 1))
+      req.end()
+    })
+    expect([413, -1]).toContain(status)
+    expect(called).toBe(false)
+  } finally {
+    await server.stop()
+  }
+})
+
+test('a client that disconnects mid-body cancels the stream', async () => {
+  let cancelled!: () => void
+  const wasCancelled = new Promise<void>((resolve) => {
+    cancelled = resolve
+  })
+  const server = await serveFetch({
+    hostname: '127.0.0.1',
+    port: 0,
+    fetch: () =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode('first\n'))
+          },
+          cancel() {
+            cancelled()
+          },
+        }),
+      ),
+  })
+  try {
+    await new Promise<void>((resolve) => {
+      const req = request({ host: '127.0.0.1', port: server.port, path: '/' }, (res) => {
+        res.once('data', () => {
+          req.destroy()
+          resolve()
+        })
+      })
+      req.on('error', () => {})
+      req.end()
+    })
+    await wasCancelled
+  } finally {
+    await server.stop()
+  }
+})
+
+test('a stream that fails after the headers cuts the response off, adding nothing', async () => {
+  const server = await serveFetch({
+    hostname: '127.0.0.1',
+    port: 0,
+    fetch: () => {
+      let sent = false
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          pull(controller) {
+            if (sent) throw new Error('boom')
+            sent = true
+            controller.enqueue(new TextEncoder().encode('partial'))
+          },
+        }),
+      )
+    },
+  })
+  try {
+    // The socket is destroyed, so the client sees a hang-up or a cut-off
+    // body, never a complete 200 and never the error text.
+    const got = await new Promise<{ complete: boolean; body: string }>((resolve) => {
+      let body = ''
+      const req = request({ host: '127.0.0.1', port: server.port, path: '/' }, (res) => {
+        res.setEncoding('utf8')
+        res.on('data', (c: string) => (body += c))
+        res.on('error', () => {})
+        res.on('close', () => resolve({ complete: res.complete, body }))
+      })
+      req.on('error', () => resolve({ complete: false, body }))
+      req.end()
+    })
+    expect(got.complete).toBe(false)
+    expect(got.body).not.toContain('boom')
+  } finally {
+    await server.stop()
+  }
 })

@@ -45,7 +45,7 @@ import {
 import { humanAge } from '@osdlc/system-model/duration'
 import { trustDecision, trustStore } from '@osdlc/trust-repo'
 
-import { APP, BIN, TOKEN_HEADER } from './app.ts'
+import { APP, BIN, PROJECT_CONFIG_FILENAME, TOKEN_HEADER } from './app.ts'
 import { acceptArgs, runArgv } from './args.ts'
 import { cacheDir } from './cache.ts'
 import {
@@ -268,6 +268,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 export interface ServeOptions {
   /** The registered tools, built-ins plus any loaded. */
   project: Project
+  /**
+   * The project file names tools that were not loaded because the repository is untrusted or execution is off.
+   * A grant from the page does not load them; the response says so.
+   */
+  projectToolsPending?: boolean | undefined
   root: string
   collectOptions: WayOptions
   port?: number | undefined
@@ -573,8 +578,17 @@ export async function startServer(options: ServeOptions): Promise<{
         // The fresh catalog comes back with the grant, so the page re-renders
         // from one round trip rather than racing its own poll.
         const granted = await catalog(true)
+        // Tool modules are code; this handler does not import them.
+        const note = options.projectToolsPending
+          ? `the tools ${PROJECT_CONFIG_FILENAME} names load the next time ${BIN} starts with execution allowed`
+          : undefined
         return Response.json(
-          { ...granted.catalog, cache: granted.cache, trustable: trustable() },
+          {
+            ...granted.catalog,
+            cache: granted.cache,
+            trustable: trustable(),
+            ...(note !== undefined ? { note } : {}),
+          },
           { headers: { 'cache-control': 'no-store' } },
         )
       }
@@ -642,31 +656,15 @@ export async function startServer(options: ServeOptions): Promise<{
 
         // The response has to reach the browser BEFORE the terminal changes
         // hands, because taking it kills this server. `spawnSync` blocks the
-        // event loop outright, so a plain return would race the socket write.
-        //
-        // Streaming the body gives a signal to wait on: with the default
-        // one-chunk queue, `pull` is not called until the enqueued chunk has
-        // been drained by the server's writer, so a pull means the payload
-        // went out. `stop()` then drains the connection before the spawn.
+        // event loop outright, so the spawn waits for `stop()`, which resolves
+        // once open responses have finished and their connections closed.
         // Echo the argv that will actually run, arguments included, so the
         // handoff banner names the command rather than the recipe.
         const payload = JSON.stringify({ ok: true, display: task.display, argv })
-        let flushed!: () => void
-        const written = new Promise<void>((resolve) => {
-          flushed = resolve
-        })
-        const stream = new ReadableStream({
-          start(controller) {
-            controller.enqueue(new TextEncoder().encode(payload))
-          },
-          pull(controller) {
-            controller.close()
-            flushed()
-          },
-        })
 
-        void written.then(async () => {
-          // A macrotask before the listener goes away. On a warm catalog this
+        void (async () => {
+          // A macrotask before the listener goes away, which also lets this
+          // response be written first. On a warm catalog this
           // whole handler runs without ever yielding, so a POST already queued
           // on another socket has not been parsed yet — stopping here destroys
           // it, and the loser sees a connection reset instead of the 409 the
@@ -676,9 +674,9 @@ export async function startServer(options: ServeOptions): Promise<{
           await new Promise<void>((resolve) => setTimeout(resolve, 0))
           await self.stop()
           runAndExit(options.root, task, argv)
-        })
+        })()
 
-        return new Response(stream, {
+        return new Response(payload, {
           headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
         })
       }

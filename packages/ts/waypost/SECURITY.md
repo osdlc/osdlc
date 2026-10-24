@@ -31,8 +31,8 @@ making `way` run code the user did not choose to run are in scope.
   cannot trust itself: `allowExec` and `trust` in its own `waypost.config.json`
   cannot raise the gate.
 - **Tool modules are code.** A module named by `--config` or the user file is
-  the user's own choice. One named by the project file loads only in a trusted
-  repository.
+  the user's own choice. One named by the project file loads only when the
+  repository is trusted and execution is allowed.
 - **Tasks run without a shell.** A task is spawned from an argument vector.
   Typed arguments are bound by the task's tool and never replace its binary.
 - **The web view listens on 127.0.0.1.** Any local process and any page the

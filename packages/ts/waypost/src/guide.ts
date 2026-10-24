@@ -207,8 +207,8 @@ will not parse, a key that is not set where you asked to unset it.
 The project file cannot grant execution. It may LOWER \`allowExec\` to false,
 never raise it, because it lives inside the repository being scanned. A
 project file's \`allowExec: true\` and any trust block are dropped with a
-warning. Its \`tools\` load only once the repository is trusted, since a tool
-module is code.
+warning. Its \`tools\` load only when the repository is trusted and execution
+is allowed, since a tool module is code.
 
 The effective gate: \`--no-exec\` forbids execution whatever is configured;
 \`--exec\` allows it for that one run; with neither flag, execution needs a
@@ -362,7 +362,7 @@ Load it:
 - for one run: \`${BIN} --config ./acme-tools.js\` (repeatable);
 - always: \`${BIN} config set tools '["./acme-tools.js"]' --user\`;
 - for one repository: \`tools\` in \`${PROJECT_CONFIG_FILENAME}\`, which loads only
-  once the repository is trusted.
+  when the repository is trusted and execution is allowed.
 
 The module exports \`tools\`, an array, or a default that is an array or has
 \`tools\`. Node loads it, so write JavaScript, or TypeScript on a Node that

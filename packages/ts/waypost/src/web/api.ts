@@ -20,7 +20,12 @@ import {
  * runner's rows came from — the server may answer out of its store so the page
  * appears at once, and this is what admits it.
  */
-type CatalogResponse = Catalog & { trustable?: boolean; cache?: RunnerCacheState[] }
+type CatalogResponse = Catalog & {
+  trustable?: boolean
+  cache?: RunnerCacheState[]
+  /** Set on a trust grant that leaves something for the next start. */
+  note?: string
+}
 
 // ---------------------------------------------------------------- auth
 
@@ -139,6 +144,7 @@ export async function trustRepo(): Promise<void> {
     state.checkedAt = cat.generatedAt
     state.fingerprint = ''
     render()
+    if (cat.note !== undefined) $('status').textContent = cat.note
   } catch (err) {
     $('status').innerHTML =
       '<span class="err">trust failed: ' +

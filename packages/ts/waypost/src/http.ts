@@ -39,19 +39,33 @@ function toRequest(req: IncomingMessage, origin: string, body: Buffer | null): R
   })
 }
 
+/** The largest request body read; every route takes a small JSON body. */
+export const MAX_BODY_BYTES = 1024 * 1024
+
+class BodyTooLarge extends Error {}
+
 function readBody(req: IncomingMessage): Promise<Buffer | null> {
   if (req.method === 'GET' || req.method === 'HEAD') return Promise.resolve(null)
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = []
-    req.on('data', (c: Buffer) => chunks.push(c))
+    let size = 0
+    req.on('data', (c: Buffer) => {
+      size += c.length
+      if (size > MAX_BODY_BYTES) {
+        req.removeAllListeners('data')
+        reject(new BodyTooLarge())
+        return
+      }
+      chunks.push(c)
+    })
     req.on('end', () => resolve(Buffer.concat(chunks)))
     req.on('error', reject)
   })
 }
 
 /**
- * Write `response` out. Each chunk is written before the next is read, so a
- * stream's `pull` runs only after the previous chunk reached the socket.
+ * Write `response` out. Each chunk is written, and drained when the socket is
+ * full, before the next is read. A client that disconnects cancels the body.
  */
 async function writeResponse(res: ServerResponse, response: Response): Promise<void> {
   const headers: Record<string, string> = {}
@@ -64,12 +78,32 @@ async function writeResponse(res: ServerResponse, response: Response): Promise<v
     return
   }
   const reader = response.body.getReader()
-  for (;;) {
-    const { done, value } = await reader.read()
-    if (done) break
-    if (!res.write(value)) await new Promise<void>((resolve) => res.once('drain', resolve))
+  let closed = false
+  let wake: () => void = () => {}
+  const onClose = () => {
+    if (res.writableFinished) return
+    closed = true
+    wake()
+    void reader.cancel().catch(() => {})
   }
-  res.end()
+  res.once('close', onClose)
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done || closed) break
+      if (!res.write(value)) {
+        await new Promise<void>((resolve) => {
+          wake = resolve
+          res.once('drain', resolve)
+        })
+        res.off('drain', wake)
+        if (closed) break
+      }
+    }
+  } finally {
+    res.off('close', onClose)
+  }
+  if (!closed) res.end()
 }
 
 /** Bind `hostname:port` and answer every request with `fetch`. */
@@ -88,8 +122,19 @@ export function serveFetch(options: ServeFetchOptions): Promise<FetchServer> {
         const origin = `http://${req.headers.host ?? `${options.hostname}:${handle.port}`}`
         await writeResponse(res, await options.fetch(toRequest(req, origin, body), handle))
       } catch (err) {
-        if (!res.headersSent) res.writeHead(500, { 'content-type': 'text/plain' })
-        res.end(err instanceof Error ? err.message : String(err))
+        if (res.headersSent) {
+          // A body is part-sent under a success status: cut it off rather
+          // than append an error to it.
+          res.destroy()
+        } else if (err instanceof BodyTooLarge) {
+          res.writeHead(413, { 'content-type': 'text/plain', connection: 'close' })
+          res.end('request body too large')
+          // Stop reading the rest once the answer is out.
+          res.once('finish', () => req.destroy())
+        } else {
+          res.writeHead(500, { 'content-type': 'text/plain' })
+          res.end(err instanceof Error ? err.message : String(err))
+        }
       }
     })()
   })
