@@ -174,6 +174,9 @@ Developed here, in this repository:
   a repository contains, its packages, ecosystems and tools described once
   with their roles, and the tasks its runners expose; built-in tools ship as
   plugin entries)
+- `packages/ts/waypost` (`@osdlc/waypost` on npm, the `way` command: browse
+  and run every task in a repository from a terminal UI, a live web view or
+  JSON, built on `@osdlc/system-model`)
 
 The development repository will take each TypeScript library from npm, like
 any other consumer. Today it still keeps its own copies. Open issues and pull
