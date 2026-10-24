@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.2](https://github.com/osdlc/osdlc/compare/yaml-splice/v0.3.1...yaml-splice/v0.3.2) - 2026-10-24
+
+### Other
+
+- plain-language pass over docs and comments ([#444](https://github.com/osdlc/osdlc/pull/444))
+
 ## [0.3.1](https://github.com/osdlc/osdlc/compare/yaml-splice/v0.3.0...yaml-splice/v0.3.1) - 2026-10-22
 
 ### Other

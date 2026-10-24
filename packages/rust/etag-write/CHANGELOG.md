@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.3](https://github.com/osdlc/osdlc/compare/etag-write/v0.2.2...etag-write/v0.2.3) - 2026-10-24
+
+### Other
+
+- plain-language pass over docs and comments ([#444](https://github.com/osdlc/osdlc/pull/444))
+
 ## [0.2.2](https://github.com/osdlc/osdlc/compare/etag-write/v0.2.1...etag-write/v0.2.2) - 2026-10-22
 
 ### Other

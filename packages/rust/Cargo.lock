@@ -60,7 +60,7 @@ checksum = "4e7648175b45a9a48536d676f68d918270699102aa8dab5496df06904c914600"
 
 [[package]]
 name = "config-layers"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "serde",
  "serde-saphyr",
@@ -161,7 +161,7 @@ dependencies = [
 
 [[package]]
 name = "etag-write"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "sha2",
  "tempfile",
@@ -176,7 +176,7 @@ checksum = "da7c62ceae207dd37ea5b845da6a0696c799f85e97da1ab5b7910be3c1c80223"
 
 [[package]]
 name = "frontmatter-lossless"
-version = "1.1.0"
+version = "1.1.1"
 dependencies = [
  "serde_json",
 ]
@@ -309,7 +309,7 @@ checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 
 [[package]]
 name = "path-guard"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -474,7 +474,7 @@ checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
 
 [[package]]
 name = "slug-collate"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "unicode-normalization",
 ]
@@ -542,7 +542,7 @@ dependencies = [
 
 [[package]]
 name = "tiered-dirs"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "dirs",
  "serde",
@@ -651,7 +651,7 @@ dependencies = [
 
 [[package]]
 name = "yaml-splice"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "saphyr-parser",
  "serde_json",
