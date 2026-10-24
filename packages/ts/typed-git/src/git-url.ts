@@ -1,8 +1,8 @@
 /**
  * Parse an arbitrary git repository reference (https, ssh, scp-style,
  * `owner/repo` shorthand, `github:owner/repo`, …) into its host, owner, and
- * project, over `hosted-git-info` — the parser npm itself uses for the same
- * job. Covers GitHub, GitLab, Bitbucket, and Sourcehut.
+ * project. It uses `hosted-git-info`, the parser npm itself uses for this.
+ * Covers GitHub, GitLab, Bitbucket, and Sourcehut.
  */
 
 // The ambient declaration must travel with this file: a consumer that pulls
@@ -70,10 +70,10 @@ const HTTP_INPUT = /^https?:\/\//i
  * repository (a local path, an unknown host).
  *
  * {@link parseGitUrl} reads clone URLs and shorthand but refuses the web
- * pages people actually copy — a pull request, an issue, a file — because it
- * takes `/pull/12` as part of the project path. So an http(s) input that
- * fails to parse is retried with its path cut to `/<owner>/<repo>`: the
- * coordinate survives whatever page it was copied from.
+ * pages people often copy, such as a pull request, an issue or a file, because
+ * it takes `/pull/12` as part of the project path. So an http(s) input that
+ * fails to parse is retried with its path cut to `/<owner>/<repo>`. The owner
+ * and repo are then found whatever page the URL came from.
  *
  * `protocol` decides the clone URL only for an input that carries none
  * (`owner/repo`, `github:owner/repo`); an explicit `https://…` or `git@…:`

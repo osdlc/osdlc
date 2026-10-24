@@ -1,16 +1,18 @@
 /**
- * The inspection door — `git.try.*`, and the `Result<T, GitFailure>` it returns.
+ * `git.try.*` and `git.soft.*`, and the `Result<T, GitFailure>` that `try`
+ * returns.
  *
- * For callers that genuinely tolerate failure: a hook that must never break a
- * commit, a status endpoint that must always answer. `try` is a facade over
- * the whole client rather than a per-verb option, so a new verb costs nothing
- * here. Two rules make it honest:
+ * `try` is for callers that must tolerate failure: a hook that must never
+ * break a commit, a status endpoint that must always answer. It wraps the
+ * whole client rather than being a per-verb option, so a new verb needs no
+ * code here. Two rules apply:
  *
- *   - It catches a thrown git failure (the `FailureError` the plain door throws,
- *     or a bare `CommandFailed`, both recognised by shape so two installed copies
- *     of command-seam or result agree) and nothing else, and returns the
- *     {@link GitFailure}, whose `cause` is the `CommandFailed`. A `TypeError`
- *     from a programmer mistake propagates; this is not a blanket catch.
+ *   - It catches a thrown git failure and nothing else. That is the
+ *     `FailureError` the throwing methods raise, or a bare `CommandFailed`.
+ *     Both are recognised by shape, so two installed copies of command-seam or
+ *     result agree. It returns the {@link GitFailure}, whose `cause` is the
+ *     `CommandFailed`. A `TypeError` from a programmer mistake still
+ *     propagates.
  *   - A declared absence is `{ ok: true }`. `git.try.configGet("no.such.key")`
  *     is `{ ok: true, value: null }`, because absence is an answer, not a
  *     failure.
@@ -21,12 +23,11 @@ import { err, ok, type Result } from '@osdlc/result'
 import { thrownGitFailure, type GitFailure } from './failure.ts'
 
 /**
- * The methods `try` mirrors: everything but the escape hatches, the
- * re-rooting helper, and `try` itself. `raw` already returns a
- * `CommandResult` and never throws; `rawChecked` is the deliberate throwing
- * door; `at(cwd)` returns a fresh client that has its own `.try`. The types
- * omit them, but the runtime proxy wraps every function property, these
- * included.
+ * The methods `try` mirrors: everything except `raw`, `rawChecked`, `at`,
+ * and `try` itself. `raw` already returns a `CommandResult` and never throws.
+ * `rawChecked` exists to throw. `at(cwd)` returns a new client that has its
+ * own `.try`. The types leave them out, but the runtime proxy wraps every
+ * function property, these included.
  */
 type Triable<C> = Omit<C, 'raw' | 'rawChecked' | 'at' | 'try' | 'soft' | 'cwd'>
 
@@ -44,7 +45,7 @@ export type TriedAsync<C> = {
     : never
 }
 
-/** `CommandFailed` becomes a classified failure; anything else stays a throw. */
+/** A thrown git failure becomes an `err`; anything else is thrown again. */
 function asFailure(error: unknown): Result<never, GitFailure> {
   const failure = thrownGitFailure(error)
   if (failure !== null) return err(failure)
@@ -53,8 +54,8 @@ function asFailure(error: unknown): Result<never, GitFailure> {
 
 /**
  * A `Proxy` rather than a generated object: it mirrors whatever the client
- * has, including composed methods like `isDirty` that call through the gated
- * ones, without a per-verb entry to keep in step. Methods are invoked on the
+ * has, including methods like `isDirty` that call other verbs, with no
+ * per-verb entry to keep in step. Methods are invoked on the
  * client itself, not on the proxy, so private state stays reachable.
  */
 function facade<C extends object, F>(
@@ -64,7 +65,7 @@ function facade<C extends object, F>(
   return new Proxy(client, {
     get(target, prop) {
       // Read from the target, not the proxy: a getter (`try` itself) must run
-      // against the real client rather than recursing through the facade.
+      // against the real client rather than recursing through the proxy.
       const value: unknown = Reflect.get(target, prop)
       if (typeof value !== 'function') return value
       const method = value as (...a: unknown[]) => unknown
@@ -96,17 +97,17 @@ export function triedAsync<C extends object>(client: C): TriedAsync<C> {
   }) as TriedAsync<C>
 }
 
-// ── the soft door ───────────────────────────────────────────────────────────
+// ── git.soft ────────────────────────────────────────────────────────────────
 
 /**
  * What a verb's absence value is, by return type: `[]` for a list, `null` for
  * a nullable, `false` for a boolean. A verb returning anything else (a
  * record, a `Set`, free text) has no absence value, so it has no soft form.
  *
- * Mind the boolean kind: `false` is the answer for "could not ask" too, so
- * `soft.isDirty` reads a broken repo as clean and `soft.branchExists` as
- * "no such branch". Do not gate a destructive action on a `false` from `soft`;
- * use `try` there.
+ * Take care with booleans. `false` is also the answer for "could not ask", so
+ * `soft.isDirty` reads a broken repo as clean and `soft.branchExists` reads it
+ * as "no such branch". Do not base a destructive action on a `false` from
+ * `soft`. Use `try` there.
  */
 type SoftKind<R> = R extends readonly unknown[]
   ? 'empty'
@@ -119,7 +120,7 @@ type SoftKind<R> = R extends readonly unknown[]
 type Unwrap<R> = R extends Promise<infer U> ? U : R
 
 /**
- * Methods left out of the soft door although their return type has an absence
+ * Methods left out of `soft` although their return type has an absence
  * value. `configRemoveSection` is a mutation, and no mutation has a soft form.
  */
 type NoSoftForm = 'configRemoveSection'
@@ -139,7 +140,7 @@ export type SoftKinds<C> = {
 
 /**
  * Every client method that has an absence value, returning that value
- * instead of throwing `CommandFailed`. One type for both clients: an
+ * instead of throwing the classified failure. One type for both clients: an
  * awaitable method already returns a `Promise`.
  */
 export type Soft<C> = {
@@ -149,14 +150,15 @@ export type Soft<C> = {
 }
 
 /**
- * The soft door's table type: which absence value each softable verb falls back
- * to. Typed against the client so a new list/nullable/boolean verb is a
- * compile error here until it is declared, and so a wrong entry cannot
- * compile; `Git` and `AsyncGit` read this one table, so they cannot drift.
+ * The type of the `soft` table: which absence value each verb with a soft form
+ * falls back to. It is typed against the client, so a new list, nullable or
+ * boolean verb is a compile error until it is added, and a wrong entry does
+ * not compile. `Git` and `AsyncGit` read the same table, so they cannot
+ * differ.
  */
 export type SoftTable = Record<string, 'empty' | 'null' | 'false'>
 
-/** A table that must name exactly the softable methods of `C`, each with the right kind. */
+/** A table that must name exactly the methods of `C` that have a soft form, each with the right kind. */
 export type SoftTableFor<C> = SoftKinds<C>
 
 function fallbackFor(table: SoftTable, name: string): unknown {

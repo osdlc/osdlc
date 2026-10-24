@@ -1,8 +1,7 @@
 /**
- * Behaviour set by the API review: the `diffText` and `diffAddedFile` failure
- * contract, call options on `revParse`, `diffText` and `diffAddedFile`,
- * `checkoutSide` with no paths, the `remotes()` name, and the soft door
- * without `configRemoveSection`.
+ * The `diffText` and `diffAddedFile` failure contract, call options on
+ * `revParse`, `diffText` and `diffAddedFile`, `checkoutSide` with no paths,
+ * the `remotes()` name, and `soft` without `configRemoveSection`.
  */
 
 import { describe, expect, test } from 'vitest'

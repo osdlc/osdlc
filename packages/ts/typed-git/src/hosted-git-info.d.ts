@@ -1,7 +1,7 @@
 /**
  * `hosted-git-info` ships no types of its own, and the DefinitelyTyped
  * package (`@types/hosted-git-info@3.0.5`, 2023) targets a pre-v7 API. This
- * declares only the surface `git-url.ts` actually calls.
+ * declares only what `git-url.ts` calls.
  */
 declare module 'hosted-git-info' {
   export interface GitHost {

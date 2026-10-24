@@ -2,18 +2,18 @@
  * `Git` — the synchronous client, bound to one working directory and one
  * {@link CommandRunner}.
  *
- * Synchronous on purpose: sequential git one-shots gain nothing from being
- * awaited, and staying sync keeps a caller's call graph uncolored. Reach for
- * `AsyncGit` when the caller must not block, when calls fan out concurrently,
- * or when the work should run against a non-CLI backend.
+ * It is synchronous on purpose. Git calls run one after another gain nothing
+ * from being awaited, and a sync client does not force its callers to be
+ * async. Use `AsyncGit` when the caller must not block, when calls run
+ * concurrently, or when the work should run against a non-CLI backend.
  *
- * The contract — declared absence returns a value, everything else throws,
- * `try` inspects, `raw` bypasses — is stated once in `./index.ts`. Each verb's
- * own absence codes and parsing live in `./verbs.ts`.
+ * The contract is stated once in `./index.ts`: a declared absence returns a
+ * value, everything else throws, `try` reports instead of throwing, and `raw`
+ * skips the checks. Each verb's absence codes and parsing live in
+ * `./verbs.ts`.
  *
- * Deliberately NOT here: any control-plane protocol with its own conflict
- * semantics (a lease service's CAS ref primitives, say) — that is not
- * general git.
+ * Not here: any protocol with its own conflict rules, such as a lease
+ * service's compare-and-swap ref operations. That is not general git.
  */
 
 import { dirname } from 'node:path'
@@ -85,13 +85,13 @@ import {
 /**
  * Per-call concerns that are not part of the operation itself.
  *
- * The synchronous twin of `GitCallOptions`, minus `signal`: a `spawnSync`
- * child cannot be cancelled mid-flight, so offering an `AbortSignal` here
- * would be a promise the seam cannot keep. `timeoutMs` is the sync answer.
+ * The synchronous counterpart of `GitCallOptions`, without `signal`. A
+ * `spawnSync` child cannot be cancelled while it runs, so an `AbortSignal`
+ * here would do nothing. Use `timeoutMs` instead.
  */
 export interface GitSyncCallOptions {
   /**
-   * Hard cap on the call, enforced by the runner. Without it there is no cap.
+   * Time limit for the call, enforced by the runner. Without it there is no cap.
    * An invalid value throws, as in command-seam (`RangeError` for 0, negative
    * or NaN; `TypeError` for a non-number).
    */
@@ -118,18 +118,18 @@ export class Git {
   private softened: Soft<Git> | undefined
 
   /**
-   * `gitDir` / `workTree` name which repository this client drives, as
-   * `--git-dir` / `--work-tree` prefixed onto every invocation — the way to
-   * operate on a repo that is not the process's own tree (a bare store, or a
-   * checkout whose `.git` lives elsewhere).
+   * `gitDir` / `workTree` name the repository this client works on. They are
+   * added to every call as `--git-dir` / `--work-tree`. Use them for a repo
+   * that is not the process's own tree, such as a bare store or a checkout
+   * whose `.git` lives elsewhere.
    *
-   * They are a property of the client, not of any one call, because "which
-   * repository" binds the client the same way `cwd` does. `AsyncGit` takes
-   * them on its backend instead (`cliBackend({ gitDir })`): a non-CLI backend
-   * has no `--git-dir` to receive, so the option belongs to the thing that
-   * spawns git, and for the sync client that thing is the client.
+   * They belong to the client, not to one call, because the repository is
+   * fixed for the client the same way `cwd` is. `AsyncGit` takes them on its
+   * backend instead (`cliBackend({ gitDir })`). A non-CLI backend has no
+   * `--git-dir` to receive, so the option goes on whatever spawns git. For
+   * the sync client, that is the client itself.
    *
-   * `env` is the same idea for the environment — see `cliBackend` in
+   * `env` works the same way for the environment. See `cliBackend` in
    * `backend.ts`.
    *
    * This client takes a `runner`, where `AsyncGit` takes a `backend`. The
@@ -156,8 +156,8 @@ export class Git {
   }
 
   /**
-   * The same client rooted at a different directory — same runner, same repo
-   * binding, same client-level `env`.
+   * The same client in a different directory, with the same runner,
+   * repository options and client-level `env`.
    */
   at(cwd: string): Git {
     return new Git(cwd, {
@@ -169,10 +169,10 @@ export class Git {
   }
 
   /**
-   * The whole surface again, reporting failure instead of throwing:
+   * Every method again, returning the failure instead of throwing.
    * `git.try.topLevel()` is a `Result<string | null, GitFailure>`: `{ ok: true, value }`
    * or `{ ok: false, error }` with a classified {@link GitFailure}.
-   * A declared absence is `ok: true` — see `./outcome.ts`.
+   * A declared absence is `ok: true`. See `./outcome.ts`.
    *
    * The type leaves out `raw`, `rawChecked` and `at`, but at runtime the proxy
    * wraps them too: `git.try.raw(argv)` returns `{ ok: true, value }`. Call
@@ -183,11 +183,11 @@ export class Git {
   }
 
   /**
-   * The tolerant door: each verb with an absence value (`null`, `[]` or
-   * `false`) returns that value when git fails instead of throwing. For
-   * callers that treat "could not ask" the same as "nothing there" —
-   * `git.soft.resolveRef(x)` is `null` for a missing ref and for a broken
-   * repo alike. Use `try` when the failure itself matters.
+   * Each verb with an absence value (`null`, `[]` or `false`) returns that
+   * value when git fails, instead of throwing. It is for callers that treat
+   * "could not ask" the same as "nothing there": `git.soft.resolveRef(x)` is
+   * `null` both for a missing ref and for a broken repo. Use `try` when the
+   * failure itself matters.
    *
    * As with `try`, the proxy also wraps `raw`, `rawChecked` and `at` at
    * runtime, though the type leaves them out.
@@ -199,7 +199,7 @@ export class Git {
 
   // ── escape hatch ──────────────────────────────────────────────────────────
 
-  /** Unchecked passthrough for verbs not yet lifted into the API. */
+  /** Runs any git argv without checking the exit code. For git commands that have no verb here. */
   raw(
     argv: string[],
     opts: GitSyncCallOptions & { input?: string | undefined } = {},
@@ -208,26 +208,25 @@ export class Git {
   }
 
   /**
-   * Checked passthrough — throws the classified failure on a non-zero exit, and on
-   * output cut short at the output cap or a timeout, as every verb does.
+   * Runs any git argv and throws the classified failure on a non-zero exit, or
+   * on output cut short at the output cap or a timeout, as every verb does.
    *
-   * `CommandFailed.message` interpolates stderr only, and several git commands
-   * write the sentence that explains the failure to stdout instead — a
-   * rejecting hook, `commit` on a clean tree, `apply --check`. Report
-   * `e.detail`, which reads both.
+   * Several git commands write the reason for a failure to stdout, not stderr:
+   * a rejecting hook, `commit` on a clean tree, `apply --check`. Report
+   * `e.failure.detail`, which holds both streams.
    */
   rawChecked(
     argv: string[],
     opts: GitSyncCallOptions & { input?: string | undefined } = {},
   ): CommandResult {
-    // Through the gate, like `AsyncGit.rawChecked`: the seam's `runChecked`
-    // checks the exit code only, so it would pass cut-short output.
+    // Through `gate`, like `AsyncGit.rawChecked`. The seam's `runChecked`
+    // checks only the exit code, so it would accept cut-short output.
     const verb: GitVerb<CommandResult> = { argv, absent: [], parse: (r) => r }
     if (opts.input !== undefined) verb.input = opts.input
     return this.exec(verb, opts)
   }
 
-  /** The verb's argv behind this client's repository binding. */
+  /** The verb's argv, after this client's `--git-dir` / `--work-tree` flags. */
   private argv(argv: string[]): string[] {
     const prefix = repoPrefix(this.boundGitDir, this.workTree)
     return prefix.length === 0 ? argv : [...prefix, ...argv]
@@ -244,7 +243,7 @@ export class Git {
     return run
   }
 
-  /** Run one verb from the table and gate its result. */
+  /** Run one verb from the table and check its result with `gate`. */
   private exec<T>(verb: GitVerb<T>, opts: GitSyncCallOptions = {}): T {
     const run = this.runOpts(opts)
     if (verb.input !== undefined) run.input = verb.input
@@ -263,8 +262,7 @@ export class Git {
   }
 
   /**
-   * Trimmed `git rev-parse <args>` output — the escape hatch for a query no
-   * dedicated verb covers. See `revParse` in `verbs.ts`; for a ref, prefer
+   * Trimmed `git rev-parse <args>` output, for a query no other verb covers. See `revParse` in `verbs.ts`; for a ref, prefer
    * {@link Git.resolveRef}.
    *
    * Variadic. Call options go last, as an object:
@@ -285,11 +283,11 @@ export class Git {
   }
 
   /**
-   * True iff this repository has any history — `resolveRef("HEAD") !== null`.
+   * True iff this repository has any history: `resolveRef("HEAD") !== null`.
    *
-   * The repository-health probe. False means an unborn HEAD only; an
-   * unreadable store throws rather than reading as empty, which is why this is
-   * not `objectExists("HEAD")`.
+   * Use it to check that a repository is readable. False means only an unborn
+   * HEAD. An unreadable store throws rather than reading as empty, which is
+   * why this is not `objectExists("HEAD")`.
    */
   hasHistory(opts: GitSyncCallOptions = {}): boolean {
     return this.resolveRef('HEAD', opts) !== null
@@ -338,9 +336,9 @@ export class Git {
    * The primary checkout that owns this working directory, or null when it is
    * not inside a repository at all.
    *
-   * Correct when the cwd is a linked worktree, which is what makes it worth a
-   * method: `gitCommonDir()` is worktree-aware and absolute, so its parent is
-   * the primary checkout in both cases. Callers kept rediscovering that pair.
+   * It is correct when the cwd is a linked worktree too. `gitCommonDir()` is
+   * worktree-aware and absolute, so its parent is the primary checkout in
+   * both cases.
    */
   mainCheckout(opts: GitSyncCallOptions = {}): string | null {
     const common = this.gitCommonDir(opts)
@@ -421,7 +419,7 @@ export class Git {
   /**
    * `ls-remote` rows for a remote (optionally pattern-filtered). `[]` means
    * the remote has no matching refs; an unreachable remote throws.
-   * `timeoutMs` guards the network call.
+   * `timeoutMs` limits the network call.
    */
   lsRemote(
     remote: string,
@@ -616,8 +614,8 @@ export class Git {
    * The coordinate (`owner`, `repo`, `host`, `port`) a remote's URL names, or
    * null when no such remote exists or its URL names no project. Any host: see
    * {@link parseRemoteUrl}. Outside a repository it throws, like
-   * {@link Git.remoteGetUrl}. A composite helper, not a verb: it parses after
-   * the verb runs, so it is written once per client.
+   * {@link Git.remoteGetUrl}. It is a helper, not a verb: it parses after the
+   * verb runs, so each client has its own copy.
    */
   remoteOwnerRepo(remote = 'origin', opts: GitSyncCallOptions = {}): RemoteCoordinate | null {
     const url = this.remoteGetUrl(remote, opts)
@@ -642,14 +640,14 @@ export class Git {
 
   /**
    * Commit with an inline message, a message file or a stdin message (exactly
-   * one). A failing hook throws; git writes hook output to stdout, which
-   * `e.detail` reads.
+   * one). A failing hook throws. git writes hook output to stdout, which
+   * `e.failure.detail` includes.
    */
   commit(opts: GitSyncCallOptions & CommitOptions): void {
     this.exec(v.commit(opts), opts)
   }
 
-  /** `git config <key> <value>` — the twin of {@link Git.configGet}. */
+  /** `git config <key> <value>`, the write counterpart of {@link Git.configGet}. */
   configSet(key: string, value: string, opts: GitSyncCallOptions & ConfigSetOptions = {}): void {
     this.exec(v.configSet(key, value, opts), opts)
   }
@@ -676,7 +674,7 @@ export class Git {
 
   /**
    * Push a refspec. A {@link ForceLease} pins `--force-with-lease`, which means
-   * "nobody has touched this since I looked". `{forceWithLease: true}` adds the
+   * "push only if the remote ref is still where I saw it". `{forceWithLease: true}` adds the
    * bare flag, which is the unsafe form: it compares against the
    * remote-tracking ref, which a fetch in this same process may have just
    * updated. See `push` in `verbs.ts`.
@@ -792,8 +790,8 @@ export class Git {
 
   /**
    * What merging `theirs` into `ours` would do — no index, no checkout, no
-   * worktree. The cheap way to ask "would this conflict, and where", and the
-   * merged `tree` it returns is real enough to build a commit from.
+   * worktree. It is the cheap way to ask "would this conflict, and where". The
+   * merged `tree` it returns is a real object you can build a commit from.
    */
   mergeTree(
     ours: string,

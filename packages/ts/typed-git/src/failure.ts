@@ -1,12 +1,12 @@
 /**
- * {@link GitFailure}: a failed git call, classified. The `git.try.*` door
- * returns it as the error of a `Result`; its `cause` is the `CommandFailed`
- * it was read from.
+ * {@link GitFailure}: a failed git call, classified. `git.try.*` returns it
+ * as the error of a `Result`. Its `cause` is the `CommandFailed` it was read
+ * from.
  *
- * The git-specific kinds come from git's stderr, matched in English. Git
- * translates its messages under a non-English locale; those fall through to the
- * subprocess layer's kind, so an unrecognised failure is still an `exit` with
- * git's first stderr line as its message, never a wrong git kind.
+ * The git-specific kinds come from git's stderr, matched in English. Under a
+ * non-English locale git translates its messages. Those keep command-seam's
+ * kind, so an unrecognised failure is still an `exit` with git's first stderr
+ * line as its message, never a wrong git kind.
  */
 
 import {
@@ -180,18 +180,18 @@ export function describeGitFailure(failure: GitFailure): string {
 }
 
 /**
- * What the plain door throws for a failed git call: a `FailureError` carrying
- * the {@link GitFailure} that {@link classifyGitFailure} reads from it, with the
- * `CommandFailed` as its `cause`. Its `message` is {@link describeGitFailure},
- * so it names the command that failed. Anything else is returned as it is. The
- * classified kind (a signed-out remote, an unreachable one) is what lets a CLI
- * that reports a thrown failure number it, which a bare `CommandFailed` with
- * only command-seam's kinds cannot.
+ * What the throwing methods throw for a failed git call: a `FailureError`
+ * carrying the {@link GitFailure} that {@link classifyGitFailure} reads from
+ * it, with the `CommandFailed` as its `cause`. Its `message` is
+ * {@link describeGitFailure}, so it names the command that failed. Any other
+ * value is returned unchanged. The git kind (a signed-out remote, an
+ * unreachable one) lets a CLI that reports a thrown failure pick an exit code
+ * for it. A bare `CommandFailed` has only command-seam's kinds.
  */
 export function gitFailureError(error: unknown): unknown {
   if (!isCommandFailed(error)) return error
   const failure = classifyGitFailure(error)
-  // FailureError's message is the bare sentence; this door adds the command.
+  // FailureError's message is the bare sentence. Add the command to it.
   const thrown = new FailureError(failure)
   thrown.message = describeGitFailure(failure)
   return thrown

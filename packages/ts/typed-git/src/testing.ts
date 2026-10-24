@@ -4,9 +4,9 @@
  * A separate subpath, not part of the package entry: production code should
  * not be able to reach `mkdtemp` through a git client.
  *
- * Deliberately general. Conventions that belong to one consuming project — a
- * particular directory layout, its own ref namespace — go in that project's
- * own wrapper around these helpers, not here.
+ * It is general on purpose. Conventions that belong to one consuming project,
+ * such as a directory layout or a ref namespace, go in that project's own
+ * wrapper around these helpers, not here.
  */
 
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
@@ -54,8 +54,8 @@ export interface GitFixture {
   readonly dir: string
   /**
    * A client rooted at {@link GitFixture.dir}, carrying the fixture identity
-   * as its client-level `env` — so every call through it, a suite's own
-   * included, runs under the pinned identity.
+   * as its client-level `env`, so every call through it runs under the pinned
+   * identity, a suite's own calls included.
    */
   readonly git: Git
   /** Write files (paths relative to `dir`), stage everything, and commit. */
@@ -64,7 +64,7 @@ export interface GitFixture {
   cleanup(): void
 }
 
-/** Shared knobs for choosing where a fixture lands and who authors it. */
+/** Shared options for where a fixture is made and who authors it. */
 interface FixtureLocation {
   /**
    * Use this exact directory rather than making one. `cleanup()` still removes
@@ -73,8 +73,8 @@ interface FixtureLocation {
   dir?: string | undefined
   /**
    * Make the temp directory under this parent instead of `os.tmpdir()`, so two
-   * related repositories share one parent — a store and its worker, an origin
-   * and its clone.
+   * related repositories share one parent, such as a store and its worker, or
+   * an origin and its clone.
    */
   parent?: string | undefined
   /** Prefix for the generated directory name. */
@@ -97,9 +97,9 @@ function fixtureDir(opts: FixtureLocation, fallbackPrefix: string): string {
 /**
  * Wrap an existing directory that already holds a repository.
  *
- * The identity is bound as the client's `env` rather than threaded onto each
- * call, so every call the fixture makes runs under it — the internal
- * `rev-parse` in `commit()` included.
+ * The identity is set as the client's `env` rather than passed on each call,
+ * so every call the fixture makes runs under it, including the `rev-parse`
+ * inside `commit()`.
  */
 function fixtureAt(
   dir: string,
@@ -187,10 +187,10 @@ export interface OriginAndCheckout {
 }
 
 /**
- * An origin repository with one commit, plus a clone of it — the shape a test
- * of fetch/push/worktree behaviour needs.
+ * An origin repository with one commit, plus a clone of it. Tests of fetch,
+ * push and worktree behaviour need this setup.
  *
- * Reach for {@link makeBareAndWorker} instead when the second repo must have
+ * Use {@link makeBareAndWorker} instead when the second repo must have
  * its own history rather than the origin's.
  */
 export function makeOriginAndCheckout(opts: MakeOriginAndCheckoutOptions = {}): OriginAndCheckout {
@@ -204,7 +204,7 @@ export function makeOriginAndCheckout(opts: MakeOriginAndCheckoutOptions = {}): 
   origin.commit('initial', opts.files ?? { 'README.md': 'fixture\n' })
 
   const dir = fixtureDir({ parent: opts.parent }, 'typed-git-checkout-')
-  // `Git.clone` runs from `cwd` (see sync.ts) — `dir` isn't a repository yet, so this call makes it the checkout below.
+  // `Git.clone` runs from `cwd` (see sync.ts). `dir` is not a repository yet; this clone makes it the checkout.
   new Git(dir).clone(origin.dir, '.', { quiet: true, branch })
   const checkout = fixtureAt(dir, { identity: opts.identity })
 
@@ -251,7 +251,7 @@ export interface BareAndWorker {
  *
  * Not a clone: the worker is `git init`ed on its own and given a remote, so it
  * starts with no history and no upstream tracking, and its first push is a
- * genuine publish into an empty store.
+ * real first push into an empty store.
  *
  * Both repositories land under one parent, so a suite deletes one directory.
  * `cleanup()` deletes that whole parent, also one the caller passed in; see

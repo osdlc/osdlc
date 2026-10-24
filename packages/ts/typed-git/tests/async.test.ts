@@ -1,11 +1,11 @@
 /**
- * `AsyncGit` and the backend seam.
+ * `AsyncGit` and the backend interface.
  *
- * Two things are pinned here. First, the async client and the sync one
- * must build the same argv, which is the whole point of the shared verb table
- * — a recording runner under each client is compared directly. Second, a
- * backend that is not the CLI must be able to serve the client, which is what
- * `partialBackend` exists for.
+ * Two things are tested here. First, the async client and the sync one must
+ * build the same argv, which is the reason for the shared verb table. A
+ * recording runner under each client is compared directly. Second, a backend
+ * that is not the CLI must work with the client, which is what
+ * `partialBackend` is for.
  */
 
 import { describe, expect, test } from 'vitest'
@@ -458,8 +458,8 @@ describe('AsyncGit — parity with Git', () => {
     expect(await git.try.grep('TODO')).toEqual({ ok: true, value: [] })
   })
 
-  // A request has to stay serializable data — loggable, queueable, replayable
-  // — so the per-call concerns must not ride into it on the option spread.
+  // A request has to stay serializable data (loggable, queueable, replayable),
+  // so the per-call options must not end up in it through the option spread.
   test('call options reach the runner without entering the request', async () => {
     const seen: GitRequest[] = []
     const backend = partialBackend('recording', {
@@ -539,8 +539,8 @@ describe('AsyncGit — parity with Git', () => {
     await expect(git.statusPorcelain()).rejects.toThrow(FailureError)
   })
 
-  // `topLevel` is not `revParse --show-toplevel` any more: 128 is an answer
-  // for the first and a failure for the second, so they are separate kinds.
+  // `topLevel` is not `revParse --show-toplevel`: 128 is an answer for the
+  // first and a failure for the second, so they are separate kinds.
   test('topLevel answers null outside a repo where revParse rejects', async () => {
     const r = recorder({
       'rev-parse --show-toplevel': { exitCode: 128, stderr: 'fatal: not a repo' },
@@ -643,8 +643,8 @@ describe('AsyncGit — diff-text parity', () => {
     await asyncGit.diffText('abc123', { paths: ['src/a.ts'] })
     await asyncGit.diffAddedFile('src/new.ts')
 
-    // The verb table is the single source of argv; a divergence here means one
-    // client grew its own opinion.
+    // The verb table is the single source of argv. A difference here means one
+    // client built its own argv.
     expect(a.calls).toEqual(s.calls)
   })
 })

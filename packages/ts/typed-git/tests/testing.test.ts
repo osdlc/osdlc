@@ -54,8 +54,8 @@ describe('@osdlc/typed-git/testing', () => {
     }
   })
 
-  // Bound as the client's `env`, so every call through `fx.git` carries it —
-  // the fixture's internal `rev-parse` and a suite's own calls alike.
+  // Set as the client's `env`, so every call through `fx.git` carries it:
+  // the fixture's own `rev-parse` and a suite's calls alike.
   test('the identity is bound on the client, not threaded per call', () => {
     const fx = makeGitFixture()
     try {

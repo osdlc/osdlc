@@ -2,14 +2,13 @@
  * `AsyncGit` — the awaitable client, bound to one working directory and one
  * {@link GitBackend}.
  *
- * The sync `Git` surface, promised, with one difference: what performs the
- * work is a backend rather than a runner. The default backend shells out to
- * `git`; any other implementation of {@link GitBackend} — a pure-JavaScript
- * git, a remote service, a recorded fixture — drives the same client
- * unchanged. Each method mirrors its {@link Git} twin, rejecting where that
- * one throws.
+ * The same methods as the sync `Git`, returning promises. One difference: a
+ * backend does the work, not a runner. The default backend runs the `git`
+ * CLI. Any other {@link GitBackend}, such as a pure-JavaScript git, a remote
+ * service or a recorded fixture, works with the same client. Each method
+ * matches its {@link Git} counterpart and rejects where that one throws.
  *
- * Which repository is a backend concern here:
+ * Here the repository is set on the backend:
  * `new AsyncGit(cwd, { backend: cliBackend({ gitDir }) })`, where the sync
  * client takes `gitDir` on its own constructor.
  */
@@ -118,7 +117,7 @@ export class AsyncGit {
   }
 
   /**
-   * The whole surface again, resolving to a `Result<T, GitFailure>` instead of
+   * Every method again, resolving to a `Result<T, GitFailure>` instead of
    * rejecting. A declared absence is `ok: true`; see `./outcome.ts`.
    *
    * The type leaves out `raw`, `rawChecked` and `at`, but at runtime the proxy
@@ -130,11 +129,11 @@ export class AsyncGit {
   }
 
   /**
-   * The tolerant door: each verb with an absence value (`null`, `[]` or
-   * `false`) returns that value when git fails instead of throwing. For
-   * callers that treat "could not ask" the same as "nothing there" —
-   * `git.soft.resolveRef(x)` is `null` for a missing ref and for a broken
-   * repo alike. Use `try` when the failure itself matters.
+   * Each verb with an absence value (`null`, `[]` or `false`) resolves to that
+   * value when git fails, instead of rejecting. It is for callers that treat
+   * "could not ask" the same as "nothing there": `git.soft.resolveRef(x)` is
+   * `null` both for a missing ref and for a broken repo. Use `try` when the
+   * failure itself matters.
    *
    * As with `try`, the proxy also wraps `raw`, `rawChecked` and `at` at
    * runtime, though the type leaves them out.
@@ -147,8 +146,8 @@ export class AsyncGit {
   // ── escape hatch ──────────────────────────────────────────────────────────
 
   /**
-   * Unchecked argv passthrough. Only a CLI-shaped backend can serve this;
-   * others reject with `UnsupportedRequest`.
+   * Runs any git argv without checking the exit code. Only a CLI backend can
+   * run this. Others reject with `UnsupportedRequest`.
    */
   raw(
     argv: string[],
@@ -158,9 +157,9 @@ export class AsyncGit {
   }
 
   /**
-   * Checked argv passthrough — rejects with the classified failure on a non-zero
-   * exit, and on output cut short at the output cap or a timeout. Report
-   * `e.detail`, which joins both streams; see {@link Git.rawChecked}.
+   * Runs any git argv and rejects with the classified failure on a non-zero
+   * exit, or on output cut short at the output cap or a timeout. Report
+   * `e.failure.detail`, which holds both streams. See {@link Git.rawChecked}.
    */
   rawChecked(
     argv: string[],
@@ -552,15 +551,15 @@ export class AsyncGit {
 
   /**
    * Commit with an inline message, a message file or a stdin message (exactly
-   * one). A failing hook rejects; git writes hook output to stdout, which
-   * `e.detail` reads.
+   * one). A failing hook rejects. git writes hook output to stdout, which
+   * `e.failure.detail` includes.
    */
   commit(opts: GitCallOptions & CommitOptions): Promise<void> {
     const [call, req] = splitCallOptions(opts)
     return this.backend.execute(this.cwd, { kind: 'commit', ...req }, call)
   }
 
-  /** `git config <key> <value>` — the twin of {@link AsyncGit.configGet}. */
+  /** `git config <key> <value>`, the write counterpart of {@link AsyncGit.configGet}. */
   configSet(
     key: string,
     value: string,
@@ -720,8 +719,8 @@ export class AsyncGit {
 
   /**
    * What merging `theirs` into `ours` would do — no index, no checkout, no
-   * worktree. The cheap way to ask "would this conflict, and where", and the
-   * merged `tree` it returns is real enough to build a commit from.
+   * worktree. It is the cheap way to ask "would this conflict, and where". The
+   * merged `tree` it returns is a real object you can build a commit from.
    */
   mergeTree(
     ours: string,

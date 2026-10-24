@@ -3,11 +3,9 @@
  * them.
  *
  * These are the verbs where a non-zero exit carries the answer, so the
- * interesting cases are the ones where the exit code alone is not enough.
- * `git merge` exits 1 both for a conflict and for a ref it cannot resolve;
- * everything here that looks like paranoia is a code measured against git
- * 2.50.1 rather than assumed, and the two that broke the first design are
- * pinned by name.
+ * important cases are the ones where the exit code alone is not enough.
+ * `git merge` exits 1 both for a conflict and for a ref it cannot resolve.
+ * Each exit code here was measured against git 2.50.1, not assumed.
  */
 
 import { writeFileSync } from 'node:fs'
@@ -111,7 +109,7 @@ describe('integration outcomes — exit 1 is not enough on its own', () => {
     })
   })
 
-  // The case that broke the first design: `git merge no-such-ref` exits 1,
+  // The key case: `git merge no-such-ref` exits 1,
   // exactly like a conflict. Only the empty stdout tells them apart.
   test('exit 1 with nothing on stdout is git refusing, and throws', () => {
     const git = new Git('/repo', {

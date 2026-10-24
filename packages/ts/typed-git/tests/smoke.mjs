@@ -1,8 +1,8 @@
 // Runs the BUILT package under Node, which no other check does: the unit tests
 // run the TypeScript source (vitest.config.ts aliases the package name to it),
-// so dist/ is compiled and never executed. A broken emit — an unrewritten `.ts` import, a
-// dependency with no dist/ of its own — passes every other gate and fails on
-// the consumer's machine.
+// so dist/ is compiled and never executed. A broken build output, such as an
+// unrewritten `.ts` import or a dependency with no dist/ of its own, passes
+// every other check and fails on the consumer's machine.
 //
 // It imports the package by name, so Node resolves it through `exports` as a
 // consumer would. `pnpm run smoke` runs it here, where the name resolves to
@@ -12,7 +12,7 @@
 //
 // Exercises all three subpaths, because each is a separate entry point that
 // can break on its own, and the contract itself: a declared absence returns a
-// value, anything else throws, `try` inspects.
+// value, anything else throws, `try` reports instead of throwing.
 
 import { strict as assert } from 'node:assert'
 import { mkdtempSync, rmSync } from 'node:fs'
