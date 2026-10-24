@@ -14,7 +14,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
-import { createProject, tasks } from '@osdlc/system-model'
+import { createProject, tasks } from '@osdlc/system-model/detect'
 import { builtins, BUILTIN_TOOL_IDS } from '@osdlc/system-model/builtins'
 import { humanMs } from '@osdlc/system-model/duration'
 import { terms } from '@osdlc/system-model/match'

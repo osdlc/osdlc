@@ -20,8 +20,6 @@ import {
   type Detected,
   type DetectOptions,
   type DiscoveryMode,
-  type Evidence,
-  type EvidenceKind,
   type GemfileFact,
   type GoModFact,
   type MalformedManifest,
@@ -32,7 +30,8 @@ import {
   type ProjectOptions,
   type ProjectProfile,
   type PyprojectFact,
-} from '@osdlc/system-model'
+} from '@osdlc/system-model/detect'
+import type { Evidence, EvidenceKind } from '@osdlc/system-model'
 import { builtins, BUILTIN_TOOL_IDS, type BuiltinToolId } from '@osdlc/system-model/builtins'
 
 const roots: string[] = []

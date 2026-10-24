@@ -23,6 +23,7 @@ export default defineConfig({
     // The examples import the package by name; run them on the source.
     alias: [
       { find: /^@osdlc\/system-model$/, replacement: src('./src/index.ts') },
+      { find: /^@osdlc\/system-model\/detect$/, replacement: src('./src/engine.ts') },
       { find: /^@osdlc\/system-model\/builtins$/, replacement: src('./src/builtins.ts') },
       ...['match', 'params', 'duration', 'graph', 'aspect', 'client', 'saved-view'].map(
         (entry) => ({

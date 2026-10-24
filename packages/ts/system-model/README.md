@@ -5,11 +5,13 @@ A repository's system model, in two halves.
 - **The wire contract**: a project's structure as it crosses the wire
   (`SystemGraph`, `SystemNode`, `SystemEdge`, aspects with tiered evidence),
   plus the ports a host satisfies to serve it. Types and small pure helpers,
-  with no runtime dependencies.
+  with no runtime dependencies. This is the root entry, `@osdlc/system-model`,
+  and it is safe to import in browser code.
 - **Detection and tools**: what a repository contains (its packages,
   ecosystems and tools) and the tasks its runners expose. Each tool is
   described once, with the roles it plays. Detection reads files. Running a
-  repository's own tools stays off unless you allow it.
+  repository's own tools stays off unless you allow it. This starts at
+  `@osdlc/system-model/detect` and needs Node or Bun.
 
 ## Install
 
@@ -24,7 +26,7 @@ ESM only. Node.js 22 or later. Bun also works.
 ## Quick start
 
 ```ts
-import { createProject, tasks } from '@osdlc/system-model'
+import { createProject, tasks } from '@osdlc/system-model/detect'
 import { builtins } from '@osdlc/system-model/builtins'
 
 const project = createProject({ tools: builtins })
@@ -82,8 +84,8 @@ and there is no second call for "the graph, but collapsed".
 **`./saved-view`**: `SavedView` and the `SavedViewStore` port that keeps
 named views of a graph, with `slugify` and `SLUG_PATTERN`.
 
-`ProjectFacets` and the optional `ProjectFacetsStore` port, from the root
-entry, carry what the build system knows about a project that a manifest
+`ProjectFacets` and the optional `ProjectFacetsStore` port, in the root
+entry only, carry what the build system knows about a project that a manifest
 cannot say, joined to graph nodes by directory.
 
 ### Who is on each side
@@ -126,11 +128,12 @@ Evidence tiers run from the most direct to the least: `manifest` (1),
 
 | Entry | Exports |
 |---|---|
-| `@osdlc/system-model` | the wire contract's types and helpers, `createProject`, the task model, the profile and `ToolDef` types |
+| `@osdlc/system-model` | the whole wire contract: everything in the four entries below, plus `ProjectFacets` and `ProjectFacetsStore` |
 | `@osdlc/system-model/graph` | `SystemGraph`, `SystemNode`, `SystemEdge`, the kind unions and their `ALL_*` rosters |
 | `@osdlc/system-model/aspect` | `Aspect`, `Evidence`, `EvidenceKind`, `EVIDENCE_TIERS`, `ALL_ASPECTS`, `hasAspect`, `strongestTier` |
 | `@osdlc/system-model/client` | `SystemGraphClient` |
 | `@osdlc/system-model/saved-view` | `SavedView`, `SavedViewStore`, `PositionOverride`, `slugify`, `SLUG_PATTERN` |
+| `@osdlc/system-model/detect` | `createProject`, the task model, the profile and `ToolDef` types |
 | `@osdlc/system-model/builtins` | `builtins`, every built-in tool in report order, and `BUILTIN_TOOL_IDS` |
 | `@osdlc/system-model/node` | bun, pnpm, yarn, npm, `node-scripts`, and the node ecosystem |
 | `@osdlc/system-model/rust` | cargo and the rust ecosystem |
@@ -148,9 +151,9 @@ Evidence tiers run from the most direct to the least: `manifest` (1),
 | `@osdlc/system-model/duration` | `humanMs` and `humanAge` |
 
 The core knows no tool. A plugin imports only the core, never another plugin.
-`./graph`, `./aspect`, `./client`, `./saved-view`, `./match`, `./params` and
-`./duration` import no Node built-in and no dependency, so a browser bundle can
-use them.
+The root entry, `./graph`, `./aspect`, `./client`, `./saved-view`, `./match`,
+`./params` and `./duration` import no Node built-in and no dependency, so a
+browser bundle can use them. A test walks each one's imports to check.
 
 ## Detection
 
@@ -265,7 +268,7 @@ bun, pnpm, yarn, npm). With nothing found, node falls back to `npm install`.
 A downstream tool is a `ToolDef`, the same shape as a built-in:
 
 ```ts
-import { createProject, type ToolDef } from '@osdlc/system-model'
+import { createProject, type ToolDef } from '@osdlc/system-model/detect'
 import { builtins } from '@osdlc/system-model/builtins'
 
 const bashScripts: ToolDef = {
@@ -304,7 +307,7 @@ stable for the 0.x line. The role answers, the manifest facts, pinned installs
 and the cache are experimental: their shapes are new, and they may change in
 any release.
 
-The experimental exports of `@osdlc/system-model`:
+The experimental exports of `@osdlc/system-model/detect`:
 
 `CachedCatalog`, `CargoFact`, `DepFact`, `DepFactKind`, `DepFactSpecifierKind`,
 `GemfileFact`, `GoModFact`, `HookDef`, `HookManagerRole`, `ManifestFacts`,

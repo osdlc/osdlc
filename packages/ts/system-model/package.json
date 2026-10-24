@@ -47,6 +47,10 @@
       "types": "./dist/saved-view.d.ts",
       "default": "./dist/saved-view.js"
     },
+    "./detect": {
+      "types": "./dist/engine.d.ts",
+      "default": "./dist/engine.js"
+    },
     "./builtins": {
       "types": "./dist/builtins.d.ts",
       "default": "./dist/builtins.js"

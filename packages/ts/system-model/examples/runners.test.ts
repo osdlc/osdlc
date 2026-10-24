@@ -28,7 +28,7 @@ import {
   type Task,
   type TaskExecutionTarget,
   type TaskOrigin,
-} from '@osdlc/system-model'
+} from '@osdlc/system-model/detect'
 import { builtins } from '@osdlc/system-model/builtins'
 import { humanAge, humanMs } from '@osdlc/system-model/duration'
 import {

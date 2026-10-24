@@ -16,7 +16,7 @@ import {
   type PinnedInstallOptions,
   type PinnedSource,
   type ToolAction,
-} from '@osdlc/system-model'
+} from '@osdlc/system-model/detect'
 import { builtins } from '@osdlc/system-model/builtins'
 
 const roots: string[] = []

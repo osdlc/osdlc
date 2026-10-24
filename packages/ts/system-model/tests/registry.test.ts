@@ -159,12 +159,42 @@ describe('marker gating', () => {
 })
 
 describe('browser-safe entries', () => {
-  test('./match, ./params, ./duration and the wire-contract entries import no runtime module', async () => {
+  /** Every non-relative module an entry reaches through runtime imports and re-exports. */
+  async function reached(entry: string): Promise<string[]> {
     const { readFileSync } = await import('node:fs')
-    for (const name of ['match', 'params', 'duration', 'graph', 'aspect', 'client', 'saved-view']) {
-      const text = readFileSync(new URL(`../src/${name}.ts`, import.meta.url), 'utf-8')
-      const runtime = [...text.matchAll(/^import (?!type )[^\n]*$/gm)].map((m) => m[0])
-      expect(runtime, name).toEqual([])
+    const { dirname, resolve } = await import('node:path')
+    const seen = new Set<string>()
+    const outside = new Set<string>()
+    const walk = (file: string): void => {
+      if (seen.has(file)) return
+      seen.add(file)
+      const text = readFileSync(file, 'utf-8')
+      for (const m of text.matchAll(/^(?:import|export)\s+(?!type\b)[^;]*?from\s+'([^']+)'/gms)) {
+        const spec = m[1]!
+        if (spec.startsWith('.')) walk(resolve(dirname(file), spec))
+        else outside.add(spec)
+      }
     }
+    walk(new URL(`../src/${entry}.ts`, import.meta.url).pathname)
+    return [...outside]
+  }
+
+  test('the root, the wire-contract entries, ./match, ./params and ./duration reach no Node built-in or dependency', async () => {
+    for (const entry of [
+      'index',
+      'graph',
+      'aspect',
+      'client',
+      'saved-view',
+      'match',
+      'params',
+      'duration',
+    ]) {
+      expect(await reached(entry), entry).toEqual([])
+    }
+  })
+
+  test('the walk sees what ./detect reaches', async () => {
+    expect(await reached('engine')).toContain('node:fs')
   })
 })

@@ -28,7 +28,7 @@ import {
   type ToolDef,
   type ToolFact,
   type ToolManagerRole,
-} from '@osdlc/system-model'
+} from '@osdlc/system-model/detect'
 import { denoEcosystem, denoTasks, denoTools } from '@osdlc/system-model/deno'
 import { go, goEcosystem, goTools } from '@osdlc/system-model/go'
 import { gradle, jvmEcosystem, jvmTools, maven, sbt } from '@osdlc/system-model/jvm'
