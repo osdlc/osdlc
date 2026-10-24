@@ -1,8 +1,8 @@
 /**
  * Delimited text files (CSV, TSV, semicolon and pipe separated) read
- * tolerantly: {@link gridFromCsv} rejects a whole file over one bad quote,
- * this keeps reading and reports each problem by line. Plain strings in and
- * out; typing the cells is the caller's job.
+ * tolerantly. {@link gridFromCsv} rejects a whole file over one bad quote.
+ * This reader keeps reading and reports each problem by line. Plain strings
+ * in and out. Typing the cells is the caller's job.
  */
 
 /**
@@ -96,7 +96,7 @@ function delimiterCounts(text: string, delim: string, maxLines = 20): number[] {
 /**
  * The delimiter whose per-line count over the first 20 lines is most
  * consistent and non-zero. Ties go to the order of {@link DELIMITERS}, so
- * comma wins; text with none of them reads as comma.
+ * comma wins. Text with none of them reads as comma.
  *
  * @experimental
  */
@@ -159,7 +159,7 @@ const isEnd = (ch: string | undefined, delim: string) =>
 /**
  * RFC 4180 records, tolerant of bad input. A leading BOM is dropped. A
  * quoted field may hold delimiters, `""` and line breaks. An unclosed quote
- * is read as literal text up to the next delimiter or line end; text after a
+ * is read as literal text up to the next delimiter or line end. Text after a
  * closing quote is kept. Blank lines add no record. Records end at CRLF, LF or CR.
  *
  * @experimental
@@ -258,9 +258,9 @@ export interface ReadDelimitedOptions {
 
 /**
  * Read a delimited file: sniff the delimiter, detect a header, parse
- * tolerantly. A row whose field count differs from the header's is reported
- * as an issue on its line and kept as written: short rows are not padded,
- * long rows keep their extra fields.
+ * tolerantly. A row whose field count differs from the header's (or, with no
+ * header, the widest row's) is reported as an issue on its line and kept as
+ * written: short rows are not padded, long rows keep their extra fields.
  *
  * @experimental
  */

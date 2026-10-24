@@ -91,7 +91,7 @@ function paddedCell(raw: string, rawWidth: number, align: ColumnAlign, width: nu
  * - text that is not a table;
  * - a table with a zero-width space, joiner, non-joiner or word joiner,
  *   whose width depends on the terminal, as MD060 does;
- * - a table with a pipe after a run of backslashes, such as `\\|`. This
+ * - a table with a pipe after an even run of backslashes, such as `\\|`. This
  *   package reads the run as escaped backslashes and the pipe as a cell end,
  *   but GitHub keeps the pipe in the cell, so padding could change what
  *   GitHub shows.

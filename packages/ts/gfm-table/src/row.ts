@@ -13,7 +13,7 @@ export interface TableCellSpan {
   from: number
   /** Offset just past the cell, at its closing pipe or the line end. */
   to: number
-  /** Content minus space padding; an empty cell collapses to a point. */
+  /** Content without its space padding. An empty cell's content is a point. */
   content: { from: number; to: number }
 }
 
@@ -41,7 +41,7 @@ function cellFromRegion(text: string, from: number, to: number): TableCellSpan {
   let e = text.length
   while (e > s && text[e - 1] === ' ') e--
   if (s === e) {
-    // Empty cell: the caret home is just past the single pad space, if any.
+    // Empty cell: the content point sits just past the first pad space, if any.
     const at = from + Math.min(1, text.length)
     return { from, to, content: { from: at, to: at } }
   }
@@ -51,7 +51,7 @@ function cellFromRegion(text: string, from: number, to: number): TableCellSpan {
 /**
  * Cell regions of a row line given its pipe positions (each one char wide,
  * absolute, so `pipes[i] - base` indexes `line`). Use it when the pipes come
- * from elsewhere, such as a parser's syntax tree; {@link splitRow} finds them
+ * from elsewhere, such as a parser's syntax tree. {@link splitRow} finds them
  * itself.
  */
 export function rowFromPipes(line: string, base: number, pipes: readonly number[]): TableRowSpan {

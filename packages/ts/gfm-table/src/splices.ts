@@ -1,6 +1,6 @@
 /**
  * Byte splices for table structure: new row lines, and per-line cell inserts
- * and deletes. Each splice touches only its own bytes; nothing else on the
+ * and deletes. Each splice touches only its own bytes. Nothing else on the
  * line moves. A row is passed as its own text (`line`, starting at
  * `span.from`) beside its {@link TableRowSpan}.
  */
@@ -178,8 +178,8 @@ export function deleteCellSplice(span: TableRowSpan, col: number): LineSplice {
     // Ragged row with no such cell: untouched, cursor to its last cell.
     return { change: null, anchor: cells[cells.length - 1]?.content.from ?? span.from, offset: 0 }
   }
-  // Prefer the pipe after the cell; on an unclosed last cell take the one
-  // before it, unless that is the row's opening pipe, which stays.
+  // Remove the pipe after the cell. On an unclosed last cell, remove the one
+  // before it instead, unless that is the row's opening pipe, which stays.
   const pipeAfter = col < cells.length - 1 || hasTrailingPipe(span)
   const change = pipeAfter
     ? { from: cell.from, to: cell.to + 1 }

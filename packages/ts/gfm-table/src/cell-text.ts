@@ -20,7 +20,7 @@ export interface CellText {
 /**
  * Read a cell's source slice. A backslash escapes the next character, as in
  * the GFM row splitter, so `\|` reads as `|` and `\\` stays two characters.
- * Only the pipe escape is table-level; other escapes are inline markdown and
+ * Only the pipe escape is table-level. Other escapes are inline markdown and
  * stay in the text.
  */
 export function cellTextFromSource(source: string): CellText {
@@ -104,7 +104,7 @@ export function escapeCell(text: string): string {
  * Source bytes for a cell shown inside a backtick code span. A code span has
  * no backslash escapes, and the table only turns `\|` into `|`, so only
  * pipes are escaped and backslashes stay as they are. A pipe after an odd run
- * of backslashes is already escaped by that run; it shows without its last
+ * of backslashes is already escaped by that run. It shows without its last
  * backslash, since no source shows `\|` in a code span.
  */
 export function escapeCodeCell(text: string): string {
