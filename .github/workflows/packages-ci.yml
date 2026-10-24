@@ -129,6 +129,13 @@ jobs:
         if: env.PICKED == 'true'
         run: pnpm $FILTER --if-present run typecheck
 
+      # A package opts into extra checks by defining a `check:extra` script
+      # (for example a typecheck under an older TypeScript). The shared shape
+      # pins `typecheck`, so package-specific checks go here instead.
+      - name: Package-specific checks
+        if: env.PICKED == 'true'
+        run: pnpm $FILTER --if-present run check:extra
+
       - name: Test
         if: env.PICKED == 'true'
         run: pnpm $FILTER --if-present run test
