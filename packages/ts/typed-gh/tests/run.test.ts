@@ -98,12 +98,13 @@ describe('runVerbAsync', () => {
 })
 
 describe('the clients go through it', () => {
-  test('Gh and AsyncGh send the host as env', async () => {
+  test('Gh and AsyncGh send the host as env and the timeout through', async () => {
     const a = spy(ok('[]'))
-    new Gh('/repo', { runner: a.runner, ...HOST }).repoList('acme')
+    new Gh('/repo', { runner: a.runner, ...HOST }).repoList('acme', { timeoutMs: 9 })
     const b = spy(ok('[]'))
-    await new AsyncGh('/repo', { runner: b.runner, ...HOST }).repoList('acme')
-    expect(a.calls[0]!.opts?.env).toEqual({ GH_HOST: 'ghe.example.com' })
-    expect(b.calls[0]!.opts?.env).toEqual({ GH_HOST: 'ghe.example.com' })
+    await new AsyncGh('/repo', { runner: b.runner, ...HOST }).repoList('acme', { timeoutMs: 9 })
+    for (const { calls } of [a, b]) {
+      expect(calls[0]!.opts).toMatchObject({ timeoutMs: 9, env: { GH_HOST: 'ghe.example.com' } })
+    }
   })
 })

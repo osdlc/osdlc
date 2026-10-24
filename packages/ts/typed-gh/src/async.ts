@@ -116,7 +116,11 @@ export class AsyncGh {
 
   /** Run one verb from the table, honouring its checked/unchecked contract. */
   private async exec<T>(verb: GhVerb<T>, call: AsyncCallOptions = {}): Promise<T> {
-    return runVerbAsync(verb, this.runner, { cwd: this.cwd, ...call })
+    return runVerbAsync(verb, this.runner, {
+      cwd: this.cwd,
+      timeoutMs: call.timeoutMs,
+      signal: call.signal,
+    })
   }
 
   /** {@link exec} for a verb that never answers `null` as a value: a failed or unreadable run rejects. */
