@@ -1,12 +1,24 @@
 {
   "schema": 1,
   "pr": 442,
-  "head": null,
-  "base": null,
-  "round": 0,
+  "head": "169b2ee867f7b661c02f24b3a8a0a30b08d1278f",
+  "base": "450d7c771e62c6a210697299a26336dfd3395761",
+  "round": 1,
   "claim": {
     "owner": "Mac.local:claude-p4w8zt",
     "at": "2026-10-24T09:14:15.517Z"
   },
-  "findings": []
+  "findings": [
+    {
+      "id": "r1-1",
+      "round": 1,
+      "path": "packages/ts/system-model/src/tool.ts",
+      "line": 252,
+      "title": "described duplicates facts as a parallel array; replace facts with ToolFact[] in 0.4.0",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    }
+  ]
 }
