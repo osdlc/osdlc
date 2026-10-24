@@ -393,8 +393,9 @@ pub fn compose(frontmatter: Option<&str>, body: &str, shape: NoteShape) -> Strin
 /// the opening fence, and trailing whitespace on the `---` fence lines. The
 /// closing fence must not be indented. It returns a [`LenientSplit`], or `None`
 /// when there is no block. It records no framing, so its result cannot be
-/// written back exactly. Use it to read, never to rewrite. A fence still closes only on `---` alone on its line (trailing
-/// whitespace aside), so a `---heading` in the body does not end the block.
+/// written back exactly. Use it to read, never to rewrite. A fence still closes
+/// only on `---` alone on its line (trailing whitespace aside), so a
+/// `---heading` in the body does not end the block.
 ///
 /// ```
 /// use frontmatter_lossless::split_lenient;

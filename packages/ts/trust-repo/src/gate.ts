@@ -19,8 +19,8 @@
  * cannot change, and a person who turned the behaviour off does not need
  * their trust state read. `flag: true` is consent for one run, typed by a
  * person when they ran the command. The result's `trusted` field still
- * reports the store's answer, but the flag is never saved. Saving it would
- * turn one run into a lasting grant that nobody remembers giving.
+ * reports whether the root is trusted, but the flag is never saved. Saving it
+ * would turn one run into a lasting grant that nobody remembers giving.
  */
 
 import type { TrustStore } from './store.ts'

@@ -39,8 +39,8 @@ onto a root. It has no dependencies. The
 
 `@osdlc/path-guard` pairs a lexical check with a symlink-aware proof that works
 for paths that do not exist yet, takes any filesystem through a `Resolver`, and
-shares one test fixture with a Rust twin. If you need only one of those halves,
-a smaller package may fit better.
+shares one test fixture with the `path-guard` Rust crate. If you need only one
+of those halves, a smaller package may fit better.
 
 ## Install
 

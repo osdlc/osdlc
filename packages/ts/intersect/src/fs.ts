@@ -148,8 +148,8 @@ function absolutize(rel: readonly string[], opts: FsOptions | undefined): string
  * The call lists the whole tree under `cwd` before it filters. The patterns do
  * not narrow it. Symbolic links are neither followed nor listed.
  * `ignore: ['node_modules']` matches only a path named exactly `node_modules`.
- * To exclude the folder's contents, write `node_modules/**`. A pattern that starts with `./` or `/` matches no
- * file, and `!` is not negation.
+ * To exclude the folder's contents, write `node_modules/**`. A pattern that
+ * starts with `./` or `/` matches no file, and `!` is not negation.
  * @example
  * ```ts
  * const context = await filesInScope(["src/api/**", "src/db/**"], { cwd: repoRoot });

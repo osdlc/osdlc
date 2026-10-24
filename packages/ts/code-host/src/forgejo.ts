@@ -169,10 +169,10 @@ function checksSummaryFrom(statuses: readonly RawStatus[]): CheckSummary {
  * Forgejo has no `reviewDecision` field, so this derives one from the review
  * list. Each reviewer's latest review counts. Any `REQUEST_CHANGES` gives
  * `changes_requested`, then any `APPROVED` gives `approved`, else
- * `review_required`. The `ReviewStateType` values `APPROVED` and
- * `REQUEST_CHANGES` are inferred, not confirmed by the spec. An unrecognized
- * state still counts as a review for `review_required`, but never as an
- * approval or a rejection.
+ * `review_required`. With no review left to count, the result is `null`. The
+ * `ReviewStateType` values `APPROVED` and `REQUEST_CHANGES` are inferred, not
+ * confirmed by the spec. An unrecognized state still counts as a review for
+ * `review_required`, but never as an approval or a rejection.
  *
  * `dismissed` and `stale` are documented fields (Reviews section). A review
  * with either set is skipped before the latest review is picked, as Forgejo's

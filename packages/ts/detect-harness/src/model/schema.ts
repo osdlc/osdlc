@@ -89,7 +89,8 @@ export type CapabilityKind = z.infer<typeof CapabilityKindSchema>
  * A capability an agent or user can invoke. `name` is the kebab-case id and the
  * last part of the invocation name. `instructions` is the markdown the agent
  * follows, `allowedTools` the permitted tools, and `argumentHint` the CLI-style
- * hint for commands that take arguments. `annotations` holds the frontmatter keys the model has no field for.
+ * hint for commands that take arguments. `annotations` holds the frontmatter
+ * keys the model has no field for.
  *
  * @experimental
  */

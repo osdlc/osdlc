@@ -316,9 +316,9 @@ that did not map one to one:
 | `effort` (`none` to `max`, least to most reasoning) | `--effort` (`none`, `minimal` → `low`) | `model_reasoning_effort` | `--effort` (`none`, `minimal` → `low`; `xhigh`, `max` → `high`) | `--variant` |
 | `systemPrompt` | `--system-prompt` | prompt-emulated | prompt-emulated | prompt-emulated |
 | `appendSystemPrompt` | `--append-system-prompt` | prompt-emulated | prompt-emulated | prompt-emulated |
-| `permissions.mode: read-only` | `--permission-mode plan` | `--sandbox read-only` | `--sandbox` (approximated) | `OPENCODE_PERMISSION` deny map |
+| `permissions.mode: read-only` | `--permission-mode plan` (approximated) | `--sandbox read-only` | `--sandbox` (approximated) | `OPENCODE_PERMISSION` deny map |
 | `permissions.mode: edits` | `--permission-mode acceptEdits` | `--sandbox workspace-write` | dropped | `OPENCODE_PERMISSION` |
-| `permissions.mode: full-auto` | acceptEdits + allowed Bash/Web | `--sandbox workspace-write` | `--dangerously-skip-permissions` | `OPENCODE_PERMISSION` allow map |
+| `permissions.mode: full-auto` | acceptEdits + allowed Bash/Web (approximated) | `--sandbox workspace-write` | `--dangerously-skip-permissions` | `OPENCODE_PERMISSION` allow map |
 | `permissions.mode: bypass` | `--dangerously-skip-permissions` | `--dangerously-bypass-approvals-and-sandbox` | `--dangerously-skip-permissions` | `OPENCODE_PERMISSION` allow map |
 | `permissions.allowTools` | `--allowedTools` | dropped | dropped | dropped |
 | `permissions.denyTools` | `--disallowedTools` | dropped | dropped | dropped |
@@ -463,8 +463,9 @@ against a local fake model server through each CLI's custom-provider setting,
 not a vendor's model. dsh is a developer preview and may change in any
 release. cursor (`agent` 2026.08.11) was checked against its bundled source
 and run against a fake Cursor backend, since its backend speaks Cursor's own
-protocol rather than a model API. Cursor's backend enforces read-only mode,
-so that was not tested. The live suite has a case for each of these six.
+protocol rather than a model API. Cursor's real backend enforces read-only
+mode. The tests use a fake backend, so that was not tested. The live suite
+has a case for each of these six.
 
 ## Non-goals
 

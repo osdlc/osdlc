@@ -1,7 +1,7 @@
 /**
  * The typed model: builds the `Doc` from a parse tree and a contract. `read()` and
- * `validate().doc` return it, and `docRule` rules receive it. The checks never read it. Their
- * findings come from the parse tree, the Zod schemas and the grammar.
+ * `validate().doc` return it, and `docRule` rules receive it. The structure and content checks
+ * never read it. Their findings come from the parse tree, the Zod schemas and the grammar.
  *
  * At each level the model reads `def.body` to tell declared sections from undeclared ones (those
  * a `gap()` or `allowUnknown` allows). A declared section that is present gets two keys on the

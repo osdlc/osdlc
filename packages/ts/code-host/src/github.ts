@@ -469,6 +469,8 @@ export class GithubCodeHost implements CodeHost {
   }
 
   updateBranch(number: number, style: 'merge' | 'rebase'): void {
+    // `--rebase` for rebase is inferred from the design doc. It has not been
+    // checked against a real `gh` install.
     this.gh.prUpdateBranch(number, style)
   }
 

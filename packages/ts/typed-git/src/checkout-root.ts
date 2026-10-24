@@ -101,10 +101,9 @@ export interface CheckoutScan {
  *
  * Like {@link checkoutRoot}, it reads the filesystem only. No git process
  * runs, so the cost is a `readdir` per directory entered and a `stat` per
- * child. A
- * linked worktree answers as a checkout here, since both carry a `.git`
- * entry; a caller that wants one row per repository resolves each result
- * through `Git#mainCheckout()` and de-duplicates.
+ * child. A linked worktree answers as a checkout here, since both carry a
+ * `.git` entry. A caller that wants one row per repository resolves each
+ * result through `Git#mainCheckout()` and de-duplicates.
  *
  * An unreadable directory contributes nothing rather than throwing, matching
  * this module's contract that absence is an answer.

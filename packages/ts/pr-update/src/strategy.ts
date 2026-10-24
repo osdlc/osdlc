@@ -13,8 +13,8 @@
  * else, and no override turns it off. The other two guards are preferences,
  * and an explicit override beats them.
  *
- * Guards only step down, from rebase to merge or to skip. No guard turns a
- * configured `merge` into a rebase.
+ * Guards only step down. They turn a rebase into a merge or a skip, and a
+ * merge into a skip. No guard turns a configured `merge` into a rebase.
  */
 
 import type { PrUpdateConfig } from './config.ts'

@@ -51,5 +51,5 @@ not intend are in scope.
   and PR titles, bodies and comments travel in argv. Do not log the message
   where those are private. `createReview` sends its payload on stdin instead.
 - **`prMerge` needs the head sha.** GitHub refuses the merge when the PR head
-  is no longer that sha, so a push made after review cannot be merged. Pass the
-  sha you reviewed, not one read just before the call.
+  is no longer that sha, so a push made after review is not merged by this
+  call. Pass the sha you reviewed, not one read just before the call.

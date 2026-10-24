@@ -90,7 +90,7 @@ platforms.
 
 | Export | What it is |
 | --- | --- |
-| `CodeHost` | The port: `listPrs`, `listPrDetails`, `getPr`, `postComment`, `updateComment`, `listComments`, `setDraft`, `updateBranch`, `reviewThreads`, `mergePr`, `createPr`, `parsePrUrl`, `prForBranch`. Every method is synchronous. Queries return a `Result` |
+| `CodeHost` | The port: `listPrs`, `listPrDetails`, `getPr`, `postComment`, `updateComment`, `listComments` (optional), `setDraft`, `updateBranch`, `reviewThreads`, `mergePr`, `createPr`, `parsePrUrl`, `prForBranch`. Every method is synchronous. Queries return a `Result` |
 | `CodeHostFailure`, `CodeHostFailureKind` | The classified failure the queries report (see Failures) |
 | `CodeHostPr`, `PrFacts`, `Activity`, `PrInput`, ... | The normalized shapes the port speaks (`types.ts`) |
 | `GithubCodeHost`, `codeHostPrFrom` | GitHub adapter over `@osdlc/typed-gh` |

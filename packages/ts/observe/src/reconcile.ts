@@ -1,6 +1,6 @@
 /**
  * Reconcile: end the records that never got an end event. A launcher killed
- * mid-run, a pane closed under a host that does not report it, or a harness with
+ * mid-run, a pane closed under a host that does not wait, or a harness with
  * no hooks (`capture: launch-only`) all leave a record `running` forever. This
  * module looks for evidence that the session is gone. Only with enough evidence
  * does it move the record to `ended` with outcome `lost`. Reconcile never ends a

@@ -102,7 +102,8 @@ export const CONFIG_NAMES = [
 ]
 
 /**
- * A plain checklist glyph drawn here, not simple-icons' `task` entry (which
+ * A plain checklist glyph drawn here, since this package does not copy
+ * artwork from any icon set. It is not simple-icons' `task` entry (which
  * comes from `go-task/task`'s `docs/static/img/logo_mono.svg`). The color
  * `#29beb0` is the fill in go-task's own logo
  * (`https://taskfile.dev/img/logo.svg`). It also matches simple-icons' hex for

@@ -85,8 +85,7 @@ export type PrRef =
  *
  * It starts no process. Digits are read as a number first, the way
  * `gh pr view 42` reads them. `orBranch` keeps the text for reading it as a
- * branch. The
- * clients' `prFind` tries both.
+ * branch. The clients' `prFind` tries both.
  */
 export function parsePrRef(input: string): PrRef | null {
   const text = input.trim()

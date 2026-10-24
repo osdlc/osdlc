@@ -83,7 +83,8 @@ export interface SourceRange {
  * `src.slice(yamlRange.start, yamlRange.end) === yaml` and
  * `src.slice(bodyStart) === body` hold on the string you passed in. (The Rust
  * crate's offsets are UTF-8 byte offsets. Each side indexes its own string
- * type. The shared corpus checks the content, not the offsets.)
+ * type. The corpus expects the same content on both sides. Each side checks
+ * its own offsets.)
  */
 export interface Split {
   /** The frontmatter YAML, verbatim and without the `---` fences. `null`

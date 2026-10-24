@@ -16,7 +16,7 @@
   // The combinations that recur are the other presets: ./node-lib.json,
   // ./bun-lib.json and ./vue.json. A package that fits none of them extends
   // ./source-shipped.json and states its own options. A preset with only two
-  // users would hide one clear line behind an extra file.
+  // users would hide one clear line behind an extra file, so do not add one.
   //
   // Do not use this bar under a config that extends a framework-generated one
   // (./.nuxt/tsconfig.json, astro/tsconfigs/*). It would overwrite the `paths`,

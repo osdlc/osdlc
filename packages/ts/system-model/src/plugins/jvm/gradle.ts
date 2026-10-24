@@ -99,10 +99,11 @@ const PROBE_TIMEOUT_MS = 300_000
 /**
  * A plain glyph of stepped blocks, not Gradle's elephant logo. simple-icons
  * has a CC0 `gradle` entry (no license problem, unlike cargo.ts's `rust` or
- * maven.ts's `apachemaven`), but this glyph is drawn here instead. The color
- * (`#02303A`) comes from Gradle's documentation stylesheet (gradle/gradle,
- * `platforms/documentation/docs/src/docs/css/base.css`), not from
- * simple-icons.
+ * maven.ts's `apachemaven`), but this package does not copy artwork from any
+ * icon set, whatever its license. Every brand glyph here is drawn fresh. The
+ * color (`#02303A`) comes from Gradle's documentation stylesheet
+ * (gradle/gradle, `platforms/documentation/docs/src/docs/css/base.css`), not
+ * from simple-icons.
  */
 const BRAND: RunnerBrand = {
   icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="15" width="6" height="5"/><rect x="9" y="9" width="6" height="5"/><rect x="14" y="3" width="6" height="5"/></svg>',

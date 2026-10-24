@@ -459,11 +459,12 @@ fn to_relative_uses_forward_slashes() {
 
 #[test]
 fn contains_sees_a_path_that_only_lands_inside_after_dots_fold() {
-    // A spelling that can defeat the check: `nope` does not exist, so
-    // every `canonicalize` fails and the walk stops on the trailing `..`,
-    // where `Path::file_name` is `None`. Left unfolded, the raw
-    // `/var/…` spelling compares unequal to the canonical `/private/var/…`
-    // root and the check passes a path that materialises inside it.
+    // A spelling that would defeat a check that did not fold `..`. `nope`
+    // does not exist, so every `canonicalize` fails and the walk stops on
+    // the trailing `..`, where `Path::file_name` is `None`. Left unfolded,
+    // the raw `/var/…` spelling compares unequal to the canonical
+    // `/private/var/…` root and the check passes a path that materialises
+    // inside it.
     let dir = tempfile::tempdir().unwrap();
     let vault = dir.path().join("vault-b");
     std::fs::create_dir_all(&vault).unwrap();

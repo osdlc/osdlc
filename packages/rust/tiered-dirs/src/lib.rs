@@ -172,10 +172,11 @@
 //!
 //! Each public item's docs say "stable in 0.x": a breaking change to it ships
 //! only in a new 0.x minor release, with a CHANGELOG entry. [`Error`],
-//! [`Convention`] and [`TierKind`] are `#[non_exhaustive]`, so a later release can add a variant without a
-//! breaking change. [`EnvVars`] and [`ResolveOptions`] are too, so a later
-//! release can add a field. [`Home`] is exhaustive: adding a home changes
-//! every caller's layout, so it is a breaking (0.x minor) release.
+//! [`Convention`] and [`TierKind`] are `#[non_exhaustive]`, so a later release
+//! can add a variant without a breaking change. [`EnvVars`] and
+//! [`ResolveOptions`] are too, so a later release can add a field. [`Home`]
+//! is exhaustive: adding a home changes every caller's layout, so it is a
+//! breaking (0.x minor) release.
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs, clippy::missing_errors_doc, clippy::missing_panics_doc)]
@@ -327,8 +328,8 @@ impl EnvVars {
 }
 
 /// Whether a bundle identifier starts with `vendor`: a bare prefix test,
-/// matching the TypeScript package's `isVendorBundleId`. It is not stricter on
-/// purpose. A dot-boundary rule would make the two packages disagree about
+/// matching the TypeScript package's `isVendorBundleId`. It is deliberately no
+/// stricter. A dot-boundary rule would make the two packages disagree about
 /// which apps conform.
 ///
 /// **Stability:** stable in 0.x.
@@ -1209,7 +1210,7 @@ impl TieredDirs {
     /// Whether a bundle identifier starts with this vendor.
     ///
     /// A bare prefix test, matching the TypeScript package's
-    /// `isVendorBundleId`. It is not stricter on purpose. A dot-boundary rule
+    /// `isVendorBundleId`. It is deliberately no stricter. A dot-boundary rule
     /// would make the two packages disagree about which apps conform.
     pub fn is_vendor_bundle_id(&self, bundle_id: &str) -> bool {
         is_vendor_bundle_id(&self.vendor, bundle_id)

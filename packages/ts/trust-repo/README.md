@@ -108,9 +108,9 @@ boolean the tool acts on. Every caller that uses it gets the same answer:
 | (none) | `true` | `true` | `true` | `allowed` |
 
 `flag: false` returns at once and does not read the store. `flag: true` is
-consent for one run. The result's `trusted` field still reports the store's
-answer, but the flag is never saved. A one-time `--trust` does not become a
-lasting grant that nobody remembers giving.
+consent for one run. The result's `trusted` field still reports whether the
+root is trusted, but the flag is never saved. A one-time `--trust` does not
+become a lasting grant that nobody remembers giving.
 
 When `args.trusted` is set, it is used instead of `store.isTrusted(root)`.
 This lets a tool add a policy on top of the marker store. A caller that has
