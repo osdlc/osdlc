@@ -104,9 +104,9 @@
       "line": 152,
       "title": "stale: comment says the contract requires a static binary on the runner",
       "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365462129",
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "99aa56dbb4cda793b1f4f25dd01dac94e74f7c7c"
     },
     {
       "id": "r1-10",
