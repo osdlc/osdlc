@@ -10,7 +10,7 @@ import { spawnSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 // The package has no `exports`, so its files resolve by path once installed.
 // In this repo nothing installs it, so fall back to the directory above.
@@ -58,6 +58,14 @@ try {
   const providers = way(['providers', '--json', '-C', dir])
   assert.equal(providers.status, 0, providers.stderr)
   assert.ok(JSON.parse(providers.stdout).some((p) => p.id === 'npm' && p.source === 'built-in'))
+
+  // The web view's page, built from dist/ the way `way --serve` builds it.
+  const { buildPage } = await import(pathToFileURL(join(packageDir(), 'dist', 'page.js')).href)
+  const html = await buildPage('tok')
+  assert.ok(html.includes('window.__WAYPOST_TOKEN__ = "tok"'))
+  assert.ok(!html.includes('<!-- @SCRIPT@ -->') && !html.includes('<!-- @STYLE@ -->'))
+  assert.ok(!html.includes('the page script failed to build'), 'dist/web/main.js is missing')
+  assert.match(html, /<script type="module">\n.{1000,}/s)
 } finally {
   rmSync(base, { recursive: true, force: true })
 }

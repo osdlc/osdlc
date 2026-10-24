@@ -5,6 +5,7 @@
  */
 
 import { afterAll, describe, expect, test } from 'vitest'
+import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -118,6 +119,67 @@ describe('tools in a config file', () => {
     const after = await run(['--list', '-C', dir], home)
     expect(after.out).toContain('acme run build')
     expect(after.err).not.toContain('tools not loaded')
+  })
+})
+
+describe('tools that must not load', () => {
+  /** A tools module that leaves a file behind when it is imported. */
+  async function sideEffectModule(dir: string, marker: string): Promise<void> {
+    await writeFile(
+      join(dir, 'side.mjs'),
+      `import { writeFileSync } from 'node:fs'\nwriteFileSync(${JSON.stringify(marker)}, 'ran')\nexport const tools = []\n`,
+    )
+  }
+
+  test('a trusted project with allowExec false in the user file imports nothing', async () => {
+    const dir = await acmeRepo({ tools: ['./side.mjs'] })
+    const home = await temp()
+    const marker = join(home, 'imported')
+    await sideEffectModule(dir, marker)
+    await mkdir(join(home, '.config', 'waypost'), { recursive: true })
+    await writeFile(
+      join(home, '.config', 'waypost', 'config.json'),
+      JSON.stringify({ allowExec: false }),
+    )
+    expect((await run(['trust', '-C', dir], home)).code).toBe(0)
+
+    const listed = await run(['--list', '-C', dir], home)
+    expect(listed.code).toBe(0)
+    expect(listed.err).toContain('tools not loaded')
+    expect((await run(['providers', '-C', dir], home)).code).toBe(0)
+    expect(existsSync(marker)).toBe(false)
+  })
+
+  test('--no-exec imports nothing from a trusted project either', async () => {
+    const dir = await acmeRepo({ tools: ['./side.mjs'] })
+    const home = await temp()
+    const marker = join(home, 'imported')
+    await sideEffectModule(dir, marker)
+    expect((await run(['trust', '-C', dir], home)).code).toBe(0)
+    await run(['--list', '--no-exec', '-C', dir], home)
+    expect(existsSync(marker)).toBe(false)
+    // And the same repository with execution on does import it.
+    await run(['--list', '-C', dir], home)
+    expect(existsSync(marker)).toBe(true)
+  })
+})
+
+describe('duplicate tool ids', () => {
+  test('a module that reuses a built-in id is an error naming the module', async () => {
+    const dir = await temp()
+    const file = join(dir, 'npm.mjs')
+    await writeFile(file, "export const tools = [{ id: 'npm', roles: {} }]\n")
+    const ran = await run(['--list', '--config', file, '-C', dir])
+    expect(ran.code).toBe(1)
+    expect(ran.err).toBe(`waypost: ${file}: tool "npm" is already a built-in tool\n`)
+  })
+
+  test('two modules that define one id are an error naming both', async () => {
+    const dir = await acmeRepo()
+    const second = await acmeModule(dir)
+    const ran = await run(['--list', '--config', EXAMPLE, '--config', second, '-C', dir])
+    expect(ran.code).toBe(1)
+    expect(ran.err).toBe(`waypost: tool "acme" is defined twice: in ${EXAMPLE} and in ${second}\n`)
   })
 })
 

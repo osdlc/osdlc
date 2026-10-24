@@ -10,7 +10,7 @@ import { delimiter, join } from 'node:path'
 
 import { EXIT, type CliIo } from '@osdlc/cli-tool'
 import type { Project, RoleName, ToolDef } from '@osdlc/system-model/detect'
-import { trustDecision, trustStore } from '@osdlc/trust-repo'
+import { policyExecGate, trustStore } from '@osdlc/trust-repo'
 
 import { APP, BIN } from './app.ts'
 import {
@@ -26,11 +26,13 @@ import type { LoadedTool } from './tools.ts'
 export interface ProvidersCommandIO extends CliIo {
   env?: Record<string, string | undefined>
   home?: string
+  /** The configured `allowExec`, with waypost's default; `main` supplies it. */
+  configuredAllowExec: (cfg: LoadedConfig) => boolean
   /** Load the tool modules and build the project; `main` supplies it. */
   load: (
     cfg: LoadedConfig,
     modules: readonly string[],
-    trusted: boolean,
+    projectAllowed: boolean,
   ) => Promise<{ project: Project; tools: LoadedTool[]; warnings: string[] } | { error: string }>
 }
 
@@ -161,14 +163,14 @@ export async function runProvidersCommand(
   }
   for (const warning of cfg.warnings) io.stderr(`warning: ${warning}\n`)
 
-  const store = trustStore({ tool: TRUST_STORE_TOOL, env, home })
-  const { trusted } = await trustDecision(
-    store,
-    root,
+  // The same gate `way` applies: project modules need trust and execution allowed.
+  const gate = await policyExecGate(
+    trustStore({ tool: TRUST_STORE_TOOL, env, home }),
     trustPolicyFromConfig(cfg.effective),
+    { root, configured: io.configuredAllowExec(cfg) },
     trustPolicyOptions(home),
   )
-  const built = await io.load(cfg, modules, trusted)
+  const built = await io.load(cfg, modules, gate.trusted && gate.allowExec)
   if ('error' in built) {
     io.stderr(`${APP}: ${built.error}\n`)
     return EXIT.error
