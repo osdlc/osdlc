@@ -16,9 +16,9 @@
       "line": 116,
       "title": "collect reuses detect's memoized reads and listing on every later call, so a re-collect is stale",
       "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365462100",
-      "status": "fixed",
+      "status": "open",
       "reason": null,
-      "fixedIn": "38b29eb469ebeec5810d2f3017fb9e2190085030"
+      "fixedIn": null
     },
     {
       "id": "r1-2",
@@ -27,9 +27,9 @@
       "line": 187,
       "title": "missingDeps offers npm ci for a pinned package with no lockfile",
       "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365462102",
-      "status": "fixed",
+      "status": "open",
       "reason": null,
-      "fixedIn": "38b29eb469ebeec5810d2f3017fb9e2190085030"
+      "fixedIn": null
     },
     {
       "id": "r1-3",
@@ -38,9 +38,9 @@
       "line": 102,
       "title": "a profile not built by detect is re-listed with the built-in excludes even when detect turned them off",
       "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365462106",
-      "status": "fixed",
+      "status": "open",
       "reason": null,
-      "fixedIn": "38b29eb469ebeec5810d2f3017fb9e2190085030"
+      "fixedIn": null
     },
     {
       "id": "r1-4",
@@ -49,9 +49,9 @@
       "line": 135,
       "title": "workspace members with no lockfile each get their own install",
       "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365462110",
-      "status": "fixed",
+      "status": "open",
       "reason": null,
-      "fixedIn": "38b29eb469ebeec5810d2f3017fb9e2190085030"
+      "fixedIn": null
     },
     {
       "id": "r1-5",
@@ -60,9 +60,9 @@
       "line": 157,
       "title": "synthesized install tasks put the directory in cwd, against the Task.cwd contract",
       "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365462114",
-      "status": "fixed",
+      "status": "open",
       "reason": null,
-      "fixedIn": "38b29eb469ebeec5810d2f3017fb9e2190085030"
+      "fixedIn": null
     },
     {
       "id": "r1-6",
@@ -71,9 +71,9 @@
       "line": 76,
       "title": "python runner re-reads pyproject.toml and re-derives the manager instead of using the profile",
       "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365462121",
-      "status": "fixed",
+      "status": "open",
       "reason": null,
-      "fixedIn": "38b29eb469ebeec5810d2f3017fb9e2190085030"
+      "fixedIn": null
     },
     {
       "id": "r1-7",
@@ -82,9 +82,9 @@
       "line": 16,
       "title": "stale: comment says the plugin avoids a TOML dependency",
       "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365462125",
-      "status": "fixed",
+      "status": "open",
       "reason": null,
-      "fixedIn": "38b29eb469ebeec5810d2f3017fb9e2190085030"
+      "fixedIn": null
     },
     {
       "id": "r1-8",
@@ -93,9 +93,9 @@
       "line": 72,
       "title": "comment about binary sits on the runner role, which has no binary",
       "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365462127",
-      "status": "fixed",
+      "status": "open",
       "reason": null,
-      "fixedIn": "38b29eb469ebeec5810d2f3017fb9e2190085030"
+      "fixedIn": null
     },
     {
       "id": "r1-9",
@@ -104,9 +104,9 @@
       "line": 152,
       "title": "stale: comment says the contract requires a static binary on the runner",
       "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365462129",
-      "status": "fixed",
+      "status": "open",
       "reason": null,
-      "fixedIn": "38b29eb469ebeec5810d2f3017fb9e2190085030"
+      "fixedIn": null
     },
     {
       "id": "r1-10",
@@ -115,9 +115,9 @@
       "line": 114,
       "title": "createProject doc omits the duplicate-ecosystem throw",
       "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365462131",
-      "status": "fixed",
+      "status": "open",
       "reason": null,
-      "fixedIn": "38b29eb469ebeec5810d2f3017fb9e2190085030"
+      "fixedIn": null
     },
     {
       "id": "r1-11",
@@ -126,9 +126,9 @@
       "line": 128,
       "title": "README implies ctx.files() also checks anchored literals on disk",
       "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365462134",
-      "status": "fixed",
+      "status": "open",
       "reason": null,
-      "fixedIn": "38b29eb469ebeec5810d2f3017fb9e2190085030"
+      "fixedIn": null
     },
     {
       "id": "r1-12",
@@ -137,9 +137,9 @@
       "line": 171,
       "title": "snapshot rebuilt once per tool with detect or describe",
       "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365462137",
-      "status": "fixed",
+      "status": "open",
       "reason": null,
-      "fixedIn": "38b29eb469ebeec5810d2f3017fb9e2190085030"
+      "fixedIn": null
     },
     {
       "id": "r2-1",
@@ -147,7 +147,7 @@
       "path": "packages/ts/system-model/src/plugins/python/python.ts",
       "line": 72,
       "title": "python runner uses detect-time pyproject facts, so a re-collect misses edits and collectAndCache stores stale tasks under a fresh fingerprint",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365781520",
       "status": "open",
       "reason": null,
       "fixedIn": null
@@ -158,7 +158,7 @@
       "path": "packages/ts/system-model/src/plugins/node/node-scripts.ts",
       "line": 54,
       "title": "node-scripts uses detect-time package.json facts, so a re-collect misses edits and collectAndCache poisons the cache",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365781525",
       "status": "open",
       "reason": null,
       "fixedIn": null
@@ -169,7 +169,7 @@
       "path": "packages/ts/system-model/src/roles.ts",
       "line": 121,
       "title": "a nested package that is not a workspace member takes the root lockfile's install",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365781528",
       "status": "open",
       "reason": null,
       "fixedIn": null
@@ -180,7 +180,7 @@
       "path": "scripts/check-packages.ts",
       "line": 134,
       "title": "types-only check passes an empty entry, since tsc emits export {} for an empty module",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365781534",
       "status": "open",
       "reason": null,
       "fixedIn": null
@@ -191,7 +191,7 @@
       "path": "packages/ts/system-model/src/plugins/ruby/index.ts",
       "line": 48,
       "title": "wrong: bundler has --gemfile",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365781537",
       "status": "open",
       "reason": null,
       "fixedIn": null
@@ -202,7 +202,7 @@
       "path": "packages/ts/system-model/src/synthesized.ts",
       "line": 38,
       "title": "directory chain hint says the command runs there; flagged installs run at the root",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365781542",
       "status": "open",
       "reason": null,
       "fixedIn": null
@@ -213,7 +213,7 @@
       "path": "packages/ts/system-model/src/pinned.ts",
       "line": 4,
       "title": "says tool managers detected in the repository; rootTools takes only the root",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365781544",
       "status": "open",
       "reason": null,
       "fixedIn": null
@@ -224,7 +224,7 @@
       "path": "packages/ts/system-model/src/roles.ts",
       "line": 176,
       "title": "memberMatches re-implements segmentRegExp from pattern.ts and builds a RegExp per recursive step",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365781547",
       "status": "open",
       "reason": null,
       "fixedIn": null
@@ -235,7 +235,7 @@
       "path": "packages/ts/system-model/src/collect.ts",
       "line": 113,
       "title": "effectiveExcludes repeats createLister's exclude combination",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365781550",
       "status": "open",
       "reason": null,
       "fixedIn": null
@@ -246,7 +246,7 @@
       "path": null,
       "line": null,
       "title": "D-PRJM and the dev LIBRARIES.md system-model row no longer match the shipped package",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/424#pullrequestreview-5636540285",
       "status": "open",
       "reason": null,
       "fixedIn": null
