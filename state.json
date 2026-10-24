@@ -214,9 +214,9 @@
       "line": 4,
       "title": "says tool managers detected in the repository; rootTools takes only the root",
       "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365781544",
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "e46a1997bba8c5323423e4b59d27d3a17ceaa7e9"
     },
     {
       "id": "r2-8",
