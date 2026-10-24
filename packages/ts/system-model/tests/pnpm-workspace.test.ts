@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 
 import { parsePnpmWorkspace } from '../src/plugins/node/pnpm-workspace.ts'
 
@@ -40,5 +40,15 @@ describe('pnpm-workspace.yaml packages', () => {
     expect(parsePnpmWorkspace('catalog:\n  react: ^19\n')).toBeNull()
     expect(parsePnpmWorkspace('packages: []\n')).toBeNull()
     expect(parsePnpmWorkspace('packages: [\n')).toBeNull()
+  })
+
+  test('an unresolved tag emits no warning', () => {
+    const spy = vi.spyOn(process, 'emitWarning')
+    try {
+      expect(parsePnpmWorkspace('packages: !custom\n')).toBeNull()
+      expect(spy).not.toHaveBeenCalled()
+    } finally {
+      spy.mockRestore()
+    }
   })
 })
