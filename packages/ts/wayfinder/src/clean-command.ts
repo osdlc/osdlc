@@ -1,8 +1,8 @@
 /**
  * The `clean` subcommand: the three stores wayfinder keeps outside your
- * repositories (cache, trust, config). `--trust` also clears the old waypost
- * trust store, whose grants are still honoured; it is listed only when it
- * holds something.
+ * repositories (cache, trust, config). `--cache` and `--trust` also clear
+ * the old waypost cache and trust store. Each is listed only when it holds
+ * something.
  *
  * ## Nothing is removed unless asked
  *
@@ -38,7 +38,7 @@ import { homedir } from 'node:os'
 import { dirname } from 'node:path'
 
 import { BIN } from './app.ts'
-import { cacheDir } from './cache.ts'
+import { cacheDir, legacyCacheDir } from './cache.ts'
 import { LEGACY_TRUST_STORE_TOOL, TRUST_STORE_TOOL, configLocations } from './config.ts'
 import { EXIT, type CliIo } from '@osdlc/cli-tool'
 import { trustStoreDir } from '@osdlc/trust-repo'
@@ -121,6 +121,14 @@ function storesFor(env: Record<string, string | undefined>, home: string): Store
       what: 'stored probe results',
       path: cacheDir(env, home),
       file: false,
+    },
+    {
+      key: 'cache',
+      flag: '--cache',
+      what: 'stored probe results under the old waypost name',
+      path: legacyCacheDir(env, home),
+      file: false,
+      legacy: true,
     },
     {
       key: 'trust',

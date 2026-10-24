@@ -11,12 +11,12 @@
   - **Your own tools.** `--config <module>` loads a module that exports `tools`, an array of `ToolDef`s, for one run. The `tools` config key loads modules every run: from the user file always, from the project file only when the repository is trusted and execution is allowed. `way guide extend` has an example.
   - **Arguments.** Typed arguments are bound by each tool's `invoke(task, args)`, so `npm run` gets them after `--`.
   - **Node.** Runs on Node 22.22+, 24.15+ and 26; Bun is no longer required. The web view is served through `node:http` and the page script is bundled at build time. Running a development checkout through `way dev` still needs Bun.
-  - **Rename.** Every path and name moved from `waypost` to `wayfinder`. The old ones are still read when the new ones are absent, with a warning:
+  - **Rename.** Every path and name moved from `waypost` to `wayfinder`. The old ones are still read when the new ones are absent, with a warning. When both an old and a new config file exist, the new one is read and a warning says the old one is ignored:
     - project file: `wayfinder.config.json`, falling back to `waypost.config.json`.
     - user file: `$XDG_CONFIG_HOME/wayfinder/config.json`, falling back to `$XDG_CONFIG_HOME/waypost/config.json`.
     - config variable: `WAYFINDER_CONFIG`, falling back to `WAYPOST_CONFIG`.
     - trust store: `$XDG_STATE_HOME/wayfinder/trusted/`. Grants in `$XDG_STATE_HOME/waypost/trusted/` still count. `way trust --untrust` and `way clean --trust` remove a grant from both.
-    - cache: `$XDG_CACHE_HOME/wayfinder/`, with no fallback. The first run re-probes.
+    - cache: `$XDG_CACHE_HOME/wayfinder/`, with no fallback. The first run re-probes. `way clean --cache` also removes the old `$XDG_CACHE_HOME/waypost/`.
   - **Names.** The devlink state directories take their overrides from `WAY_ROOT`, `WAY_CONFIG_DIR` and the other `WAY_*` variables, in place of `FLEET_*`, and the vendor segment is `wayfinder` in place of `com.sizerllc`. A link made with `way dev link` before the rename must be made again, and `way dev install` writes a `wayfinder` shim beside `way`. Subcommand usage and hints name the `way` command.
   
   Behaviour changes for existing users: the stored probe cache uses system-model's layout, so the first run after upgrading re-probes. Runners that must be executed (moon, mise tasks, sbt) are reported only when the repository uses them. The config files and the trust store moved, with the fallbacks listed under Rename. The web view's settings screen refuses to write `tools`; use `way config set tools`.

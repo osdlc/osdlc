@@ -8,13 +8,16 @@
  */
 
 import { afterAll, describe, expect, test } from 'vitest'
+import { existsSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
+import { captureIo } from '@osdlc/cli-tool'
 import { trustStore } from '@osdlc/trust-repo'
 
 import { cacheDir } from '../src/cache.ts'
 import { runCleanCommand } from '../src/clean-command.ts'
+import { main } from '../src/cli.ts'
 import { runConfigCommand } from '../src/config-command.ts'
 import { configLocations, loadConfig } from '../src/config.ts'
 import { appTrustStore } from '../src/trust-store.ts'
@@ -89,7 +92,35 @@ describe('user file', () => {
     const loaded = await loadConfig(await root(), {}, home)
     expect(loaded.locations.userLegacy).toBe(false)
     expect(loaded.effective.discovery).toBe('walk')
+  })
+
+  test('when both user files exist, a warning says the waypost one is ignored', async () => {
+    const home = await root({
+      '.config/waypost/config.json': json({ discovery: 'git' }),
+      '.config/wayfinder/config.json': json({ discovery: 'walk' }),
+    })
+    const loaded = await loadConfig(await root(), {}, home)
+    expect(loaded.locations.userIgnored).toBe(join(home, '.config/waypost/config.json'))
+    expect(loaded.warnings).toEqual([
+      `${join(home, '.config/waypost/config.json')} is ignored because ` +
+        `${join(home, '.config/wayfinder/config.json')} exists; merge it and delete it`,
+    ])
+  })
+
+  test('no ignored-file warning when only the wayfinder user file exists', async () => {
+    const home = await root({ '.config/wayfinder/config.json': json({ discovery: 'walk' }) })
+    const loaded = await loadConfig(await root(), {}, home)
+    expect(loaded.locations.userIgnored).toBeNull()
     expect(loaded.warnings).toEqual([])
+  })
+
+  test('a config variable leaves the waypost user file out of it', async () => {
+    const home = await root({
+      '.config/waypost/config.json': json({}),
+      '.config/wayfinder/config.json': json({}),
+    })
+    const at = configLocations('/repo', { WAYFINDER_CONFIG: '/elsewhere.json' }, home)
+    expect(at.userIgnored).toBeNull()
   })
 
   test('the fallback follows XDG_CONFIG_HOME', async () => {
@@ -137,10 +168,55 @@ describe('project file', () => {
     expect(loaded.effective.excludePaths).toEqual(['new'])
   })
 
+  test('when both project files exist, a warning says waypost.config.json is ignored', async () => {
+    const project = await root({
+      'waypost.config.json': json({ allowExec: false }),
+      'wayfinder.config.json': json({ excludePaths: ['new'] }),
+    })
+    const loaded = await loadConfig(project, {}, await root())
+    expect(loaded.locations.projectIgnored).toBe(join(project, 'waypost.config.json'))
+    expect(loaded.warnings).toEqual([
+      `${join(project, 'waypost.config.json')} is ignored because wayfinder.config.json exists; merge it and delete it`,
+    ])
+  })
+
   test('the old file keeps the same limits: it cannot raise allowExec', async () => {
     const project = await root({ 'waypost.config.json': json({ allowExec: true }) })
     const loaded = await loadConfig(project, {}, await root())
     expect(loaded.effective.allowExec).toBe(false)
+  })
+
+  test('the old file cannot set trust: the block is dropped with a warning', async () => {
+    const project = await root({ 'waypost.config.json': json({ trust: { paths: ['/**'] } }) })
+    const loaded = await loadConfig(project, {}, await root())
+    expect(loaded.effective.trust).toEqual({ paths: [], owners: [] })
+    expect(loaded.warnings.join('\n')).toContain('trust is ignored in a project file')
+  })
+
+  test('in an untrusted repository the old file loads no tools and cannot trust itself', async () => {
+    const project = await root({ 'package.json': '{}' })
+    const ran = join(project, 'module-ran')
+    await writeFile(
+      join(project, 'tools.mjs'),
+      `import { writeFileSync } from 'node:fs'\nwriteFileSync(${JSON.stringify(ran)}, '')\nexport const tools = []\n`,
+    )
+    await writeFile(
+      join(project, 'waypost.config.json'),
+      json({ tools: ['./tools.mjs'], allowExec: true, trust: { paths: [project] } }),
+    )
+    const home = await root()
+    const env = { XDG_STATE_HOME: join(home, 'state') }
+
+    const io = captureIo()
+    expect(await main(['--list', '-C', project], env, home, io)).toBe(0)
+    expect(io.err).toContain('tools not loaded')
+    expect(io.err).toContain('trust is ignored in a project file')
+    expect(io.err).toContain('allowExec: true is ignored in a project file')
+    expect(existsSync(ran)).toBe(false)
+
+    const show = captureIo()
+    expect(await main(['trust', '--show', '-C', project], env, home, show)).toBe(0)
+    expect(show.out).toContain('not trusted')
   })
 
   test('a new project file is wayfinder.config.json', () => {
@@ -236,6 +312,38 @@ describe('trust store', () => {
 })
 
 describe('cache', () => {
+  test('clean --cache clears the waypost cache too', async () => {
+    const home = await root({ '.cache/waypost/reports/a.json': '{}' })
+    let out = ''
+    const code = await runCleanCommand('wayfinder', ['--cache'], {
+      stdout: (t) => void (out += t),
+      stderr: () => {},
+      env: {},
+      home,
+    })
+    expect(code).toBe(0)
+    expect(out).toContain('the old waypost name')
+    expect(existsSync(join(home, '.cache/waypost'))).toBe(false)
+  })
+
+  test('bare clean lists the waypost cache only when it holds something', async () => {
+    const home = await root()
+    const report = async (): Promise<string> => {
+      let out = ''
+      await runCleanCommand('wayfinder', [], {
+        stdout: (t) => void (out += t),
+        stderr: () => {},
+        env: {},
+        home,
+      })
+      return out
+    }
+    expect(await report()).not.toContain('waypost')
+    await mkdir(join(home, '.cache/waypost'), { recursive: true })
+    await writeFile(join(home, '.cache/waypost/x'), '', 'utf-8')
+    expect(await report()).toContain(join(home, '.cache/waypost'))
+  })
+
   test('has no waypost fallback', async () => {
     const home = await root()
     await mkdir(join(home, '.cache/waypost'), { recursive: true })

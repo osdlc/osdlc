@@ -53,7 +53,9 @@
  * when `<config>/wayfinder/config.json` does not exist, and `waypost.config.json`
  * when `wayfinder.config.json` does not exist. A file found this way is also the
  * one `config set` edits, so a setting never lands in a file that is not read.
- * Each fallback adds a warning that names the new location.
+ * Each fallback adds a warning that names the new location. When both the old
+ * and the new file exist, the new one is read and a warning says the old one
+ * is ignored.
  *
  * ## Merge rule
  *
@@ -205,6 +207,8 @@ export interface ConfigLocations {
   userEnvVar: string | null
   /** True when `user` is the old waypost file, found because the new one does not exist. */
   userLegacy: boolean
+  /** The old waypost user file, when it exists beside the new one and is ignored. */
+  userIgnored: string | null
   /**
    * Absolute path of `<root>/wayfinder.config.json`, whether or not it exists,
    * or of `<root>/waypost.config.json` when only that one exists.
@@ -212,6 +216,8 @@ export interface ConfigLocations {
   project: string
   /** True when `project` is the old waypost file. */
   projectLegacy: boolean
+  /** `<root>/waypost.config.json`, when it exists beside the new file and is ignored. */
+  projectIgnored: string | null
 }
 
 /**
@@ -386,15 +392,25 @@ export function configLocations(
     userFromEnv: envPath !== null,
     userEnvVar,
     userLegacy: envPath === null && xdgUser.legacy,
+    userIgnored: envPath === null ? xdgUser.ignored : null,
     project: project.path,
     projectLegacy: project.legacy,
+    projectIgnored: project.ignored,
   }
 }
 
-/** The new path, unless only the old one exists. */
-function preferNew(path: string, legacy: string): { path: string; legacy: boolean } {
-  if (!existsSync(path) && existsSync(legacy)) return { path: legacy, legacy: true }
-  return { path, legacy: false }
+/**
+ * The new path, unless only the old one exists. `ignored` names the old file
+ * when both exist, so the caller can say it is not read.
+ */
+function preferNew(
+  path: string,
+  legacy: string,
+): { path: string; legacy: boolean; ignored: string | null } {
+  const hasNew = existsSync(path)
+  const hasLegacy = existsSync(legacy)
+  if (!hasNew && hasLegacy) return { path: legacy, legacy: true, ignored: null }
+  return { path, legacy: false, ignored: hasNew && hasLegacy ? legacy : null }
 }
 
 /**
@@ -729,8 +745,18 @@ function legacyWarnings(locations: ConfigLocations): string[] {
     const target = join(dirname(dirname(locations.user)), USER_CONFIG_DIR, USER_CONFIG_FILENAME)
     out.push(`${locations.user}: read from the old waypost location; move it to ${target}`)
   }
+  if (locations.userIgnored !== null) {
+    out.push(
+      `${locations.userIgnored} is ignored because ${locations.user} exists; merge it and delete it`,
+    )
+  }
   if (locations.projectLegacy) {
     out.push(`${locations.project}: the old file name; rename it to ${PROJECT_CONFIG_FILENAME}`)
+  }
+  if (locations.projectIgnored !== null) {
+    out.push(
+      `${locations.projectIgnored} is ignored because ${PROJECT_CONFIG_FILENAME} exists; merge it and delete it`,
+    )
   }
   return out
 }

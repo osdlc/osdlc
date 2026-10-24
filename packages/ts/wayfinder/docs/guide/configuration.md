@@ -43,6 +43,9 @@ work when the new ones are absent:
 
 `way config set` edits the file that is read, old name or new. Each fallback
 prints a warning that names the new location. Rename the file to stop it.
+When both the old and the new file exist, only the new one is read, and a
+warning says the old one is ignored. Merge it into the new file and delete
+it.
 
 ## Merging
 
