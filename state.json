@@ -203,9 +203,9 @@
       "line": 38,
       "title": "directory chain hint says the command runs there; flagged installs run at the root",
       "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365781542",
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "e46a1997bba8c5323423e4b59d27d3a17ceaa7e9"
     },
     {
       "id": "r2-7",
