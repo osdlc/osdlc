@@ -125,14 +125,18 @@ Markers, manifests and `ctx.files()` share one pattern language, with
 | `/.github/workflows/*.yml` | `*` matches within one segment |
 | `/.husky/` | every file under that directory |
 
-An anchored pattern with no `*` is also checked on disk, so a gitignored
-`mise.local.toml` still counts.
+Detection also checks an anchored pattern with no `*` on disk, so a
+gitignored `mise.local.toml` still counts as a marker. `ctx.files()` returns
+only the files discovery listed.
 
 ## Runners
 
 `project.runners.collect(profile, options)` runs the runner of each detected
 tool and returns a `Catalog` of reports, in registry order. A tool that was not
-detected produces no report.
+detected produces no report. Each call lists and reads the repository afresh,
+with the discovery settings the profile records (`discovery`, `excludePaths`,
+`useBuiltinExcludes`), so a second collect sees later edits and a profile
+copied through JSON collects the same way.
 
 A runner is `parse` or `exec`. A `parse` runner reads files. An `exec` runner,
 such as moon or mise, has to run the repository's own configuration to list

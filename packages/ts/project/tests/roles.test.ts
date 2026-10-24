@@ -647,9 +647,10 @@ describe('the package-manager runner', () => {
     const dir = await root({ 'go/go.mod': 'module x\n', 'py/uv.lock': '' })
     const { catalog } = await collectWalk(dir)
     expect(report(catalog, 'package-manager')?.tasks.map((t) => [t.cwd, t.display])).toEqual([
+      // go has no directory flag, so it runs in `cwd`; uv takes `--project`.
       ['go', 'go mod download'],
-      ['py', 'uv sync'],
-      ['py', 'uv sync --locked'],
+      ['.', 'uv sync --project py'],
+      ['.', 'uv sync --locked --project py'],
     ])
   })
 
@@ -668,5 +669,61 @@ describe('the package-manager runner', () => {
       which: fakeWhich({}),
     })
     expect(catalog.reports.map((r) => r.runner)).toEqual(['just'])
+  })
+})
+
+describe('workspaces, unlocked installs and install directories', () => {
+  test('missingDeps skips a pinned manager with no lockfile', async () => {
+    const dir = await root({ 'package.json': JSON.stringify({ packageManager: 'npm@10.0.0' }) })
+    const profile = await detect(dir)
+    expect(project.install(profile).map((a) => a.argv)).toEqual([['npm', 'install']])
+    expect(project.missingDeps(profile)).toEqual([])
+  })
+
+  test('a cargo workspace with no lockfile installs once, at its root', async () => {
+    const dir = await root({
+      'Cargo.toml': '[workspace]\nmembers = ["crates/*"]\n',
+      'crates/a/Cargo.toml': '[package]\nname = "a"\n',
+      'crates/b/Cargo.toml': '[package]\nname = "b"\n',
+    })
+    const profile = await detect(dir)
+    expect(project.install(profile, 'crates/a')).toMatchObject([
+      { tool: 'cargo', dir: '.', argv: ['cargo', 'fetch'] },
+    ])
+    const { catalog } = await collectWalk(dir)
+    expect(report(catalog, 'package-manager')?.tasks.map((t) => [t.cwd, t.display])).toEqual([
+      ['.', 'cargo fetch'],
+    ])
+  })
+
+  test('a node workspace with no lockfile installs once, at its root', async () => {
+    const dir = await root({
+      'package.json': JSON.stringify({ workspaces: ['packages/*'] }),
+      'packages/a/package.json': '{}',
+      'packages/b/package.json': '{}',
+      'tools/c/package.json': '{}',
+    })
+    const profile = await detect(dir)
+    expect(project.install(profile, 'packages/a').map((a) => [a.dir, a.argv.join(' ')])).toEqual([
+      ['.', 'npm install'],
+    ])
+    // Not a member, so it installs on its own.
+    expect(project.install(profile, 'tools/c').map((a) => a.dir)).toEqual(['tools/c'])
+  })
+
+  test('a nested install names its directory in argv, and cwd stays "."', async () => {
+    const dir = await root({
+      'apps/web/package.json': '{}',
+      'apps/web/pnpm-lock.yaml': '',
+      'crates/x/Cargo.toml': '[package]\nname = "x"\n',
+      'crates/x/Cargo.lock': '',
+    })
+    const { catalog } = await collectWalk(dir)
+    expect(report(catalog, 'package-manager')?.tasks.map((t) => [t.cwd, t.argv])).toEqual([
+      ['.', ['pnpm', '--dir', 'apps/web', 'install']],
+      ['.', ['pnpm', '--dir', 'apps/web', 'install', '--frozen-lockfile']],
+      ['.', ['cargo', 'fetch', '--manifest-path', 'crates/x/Cargo.toml']],
+      ['.', ['cargo', 'fetch', '--locked', '--manifest-path', 'crates/x/Cargo.toml']],
+    ])
   })
 })

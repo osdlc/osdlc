@@ -4,7 +4,7 @@ import { parse as parseToml } from 'smol-toml'
 
 import type { DepFact, PyprojectFact } from '../../manifests.ts'
 import type { EcosystemDef } from '../../tool.ts'
-import { isTable } from '../support/shared.ts'
+import { isTable, sortedEntries } from '../support/shared.ts'
 
 export const PYPROJECT_TOML = 'pyproject.toml'
 
@@ -23,17 +23,20 @@ export function parsePyproject(text: string, path: string): PyprojectFact {
     doc = parseToml(text) as Record<string, unknown>
   } catch (err) {
     const error = `parse failed: ${err instanceof Error ? err.message : String(err)}`
-    return { manifestPath: path, scripts: [], tools: [], error }
+    return { manifestPath: path, scripts: {}, tools: [], error }
   }
   const project = isTable(doc['project']) ? doc['project'] : {}
   const tool = isTable(doc['tool']) ? doc['tool'] : {}
   const poetry = isTable(tool['poetry']) ? tool['poetry'] : {}
   const name = typeof project['name'] === 'string' ? project['name'] : poetry['name']
   const version = typeof project['version'] === 'string' ? project['version'] : poetry['version']
-  const scripts = new Set([
-    ...Object.keys(isTable(project['scripts']) ? project['scripts'] : {}),
-    ...Object.keys(isTable(poetry['scripts']) ? poetry['scripts'] : {}),
-  ])
+  const scripts: Record<string, string> = {}
+  for (const table of [project['scripts'], poetry['scripts']]) {
+    if (!isTable(table)) continue
+    for (const [key, value] of sortedEntries(table)) {
+      if (typeof value === 'string') scripts[key] = value
+    }
+  }
   const deps: DepFact[] = []
   for (const spec of Array.isArray(project['dependencies']) ? project['dependencies'] : []) {
     if (typeof spec !== 'string') continue
@@ -53,7 +56,7 @@ export function parsePyproject(text: string, path: string): PyprojectFact {
     manifestPath: path,
     ...(typeof name === 'string' ? { name } : {}),
     ...(typeof version === 'string' ? { version } : {}),
-    scripts: [...scripts].sort(),
+    scripts,
     tools: Object.keys(tool).sort(),
     ...(deps.length > 0 ? { deps } : {}),
   }

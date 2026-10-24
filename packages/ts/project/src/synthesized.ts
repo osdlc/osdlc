@@ -75,7 +75,8 @@ export function synthesizedRunners(registry: Registry, profile: ProjectProfile):
                 const key = `${action.dir}\0${action.argv.join('\0')}`
                 if (seen.has(key)) continue
                 seen.add(key)
-                tasks.push(synthTask(runner, action, name))
+                const inDir = registry.byId.get(action.tool)?.roles.packageManager?.inDir
+                tasks.push(synthTask(runner, action, name, inDir))
               }
             }
           }
@@ -148,14 +149,25 @@ function act(tool: string, argv: string[], source: string): ToolAction {
   return { tool, dir: '.', argv, source }
 }
 
-function synthTask(runner: string, action: ToolAction, name: string): Task {
+/**
+ * A role action as a task. The directory goes into `argv` through `inDir`
+ * when the tool has a directory flag; only a tool without one runs in `cwd`.
+ */
+function synthTask(
+  runner: string,
+  action: ToolAction,
+  name: string,
+  inDir?: (argv: readonly string[], dir: string) => string[],
+): Task {
+  const flagged = action.dir !== '.' && inDir !== undefined
+  const argv = flagged ? inDir(action.argv, action.dir) : action.argv
   return {
     id: `${runner}:${action.source}:${action.tool}:${name}`,
     runner,
     path: [runner, action.dir, action.tool, name],
-    argv: action.argv,
-    cwd: action.dir,
-    display: action.argv.join(' '),
+    argv,
+    cwd: flagged ? '.' : action.dir,
+    display: argv.join(' '),
     parameters: [],
     source: action.source,
     origin: 'synthesized',

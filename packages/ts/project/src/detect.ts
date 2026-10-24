@@ -17,7 +17,7 @@ import { join, resolve } from 'node:path'
 
 import { spawnRunnerAsync } from '@osdlc/command-seam'
 
-import { createContext, createContextState, type ContextState } from './context.ts'
+import { createContext, createContextState } from './context.ts'
 import type { DetectOptions, ProviderContext } from './contract.ts'
 import { createLister, resolveDiscovery } from './discovery.ts'
 import type { ManifestFacts } from './manifests.ts'
@@ -26,9 +26,6 @@ import { compilePattern, dirOf, joinRel } from './pattern.ts'
 import { markersOf, rolesOf, type Registry } from './registry.ts'
 import type { Detected, EcosystemDef, MalformedManifest, Package, ProjectProfile } from './tool.ts'
 import { which as whichOnPath } from './which.ts'
-
-/** What a profile was read with, so a later collect lists no file twice. */
-export const profileState = new WeakMap<ProjectProfile, ContextState>()
 
 interface Hit {
   path: string
@@ -55,6 +52,7 @@ export async function detectProject(
   const which = opts.which ?? whichOnPath
   const signal = opts.signal ?? new AbortController().signal
   const excludePaths = opts.excludePaths ?? []
+  const useBuiltinExcludes = opts.useBuiltinExcludes ?? true
 
   const discovery = await resolveDiscovery(absRoot, opts.discovery ?? 'auto', makeRunner('git'))
   const lister = createLister(
@@ -62,7 +60,7 @@ export async function detectProject(
     discovery,
     makeRunner('git'),
     excludePaths,
-    opts.useBuiltinExcludes ?? true,
+    useBuiltinExcludes,
   )
   const state = createContextState(lister)
   const ctx = createContext({ absRoot, allowExec, makeRunner, which, signal, discovery, state })
@@ -166,9 +164,11 @@ export async function detectProject(
 
   for (const hit of markerHits) addEvidence(nearest(hit.base), hit.tool, hit.ev)
 
+  // `detect` functions read manifests only, which no loop below changes.
+  const beforeDetect = snapshot(registry, builders, all)
   for (const tool of registry.tools) {
     if (tool.detect === undefined) continue
-    for (const ev of await tool.detect(ctx, snapshot(registry, builders, all))) {
+    for (const ev of await tool.detect(ctx, beforeDetect)) {
       addEvidence(nearest(dirOf(ev.source.split('#')[0]!)), tool.id, ev)
     }
   }
@@ -189,6 +189,7 @@ export async function detectProject(
     discovery,
     allowExec,
     excludePaths: [...excludePaths],
+    useBuiltinExcludes,
     packages,
     ecosystems: union(
       (p) => p.ecosystems,
@@ -201,7 +202,6 @@ export async function detectProject(
     ),
     malformed,
   }
-  profileState.set(profile, state)
   return profile
 }
 
@@ -213,11 +213,10 @@ async function describeTools(
   nearest: (dir: string) => Builder,
   addEvidence: (b: Builder, tool: string, ev: Evidence) => void,
 ): Promise<void> {
+  const afterDetect = snapshot(registry, builders, all)
   for (const tool of registry.tools) {
     if (tool.describe === undefined) continue
-    const packages = snapshot(registry, builders, all).filter((p) =>
-      p.tools.some((t) => t.tool === tool.id),
-    )
+    const packages = afterDetect.filter((p) => p.tools.some((t) => t.tool === tool.id))
     if (packages.length === 0) continue
     for (const fact of await tool.describe(ctx, packages)) {
       const b = nearest(fact.dir)

@@ -7,6 +7,7 @@
 
 import { evidence, type Evidence } from '../../model.ts'
 import type { Package, PackageManagerRole, ToolDef } from '../../tool.ts'
+import { flagAfterBinary } from '../support/shared.ts'
 import { nodeEcosystem } from './ecosystem.ts'
 
 /** The `packageManager` field names this manager: the strongest evidence there is. */
@@ -50,6 +51,7 @@ export const bun: ToolDef = {
       lockfiles: ['bun.lock', 'bun.lockb'],
       install: ['bun', 'install'],
       frozen: ['--frozen-lockfile'],
+      inDir: flagAfterBinary('--cwd'),
       depsDirs: [NODE_MODULES],
       pin: pinOf('bun'),
       run: { verb: ['bun', 'run'], dirFlag: '--cwd' },
@@ -69,6 +71,7 @@ export const pnpm: ToolDef = {
       lockfiles: ['pnpm-lock.yaml'],
       install: ['pnpm', 'install'],
       frozen: ['--frozen-lockfile'],
+      inDir: flagAfterBinary('--dir'),
       depsDirs: [NODE_MODULES],
       pin: pinOf('pnpm'),
       run: { verb: ['pnpm', 'run'], dirFlag: '--dir' },
@@ -87,6 +90,7 @@ export const yarn: ToolDef = {
       lockfiles: ['yarn.lock'],
       install: ['yarn', 'install'],
       frozen: ['--frozen-lockfile'],
+      inDir: flagAfterBinary('--cwd'),
       depsDirs: [NODE_MODULES, '.pnp.cjs'],
       pin: pinOf('yarn'),
       run: { verb: ['yarn'], dirFlag: '--cwd' },
@@ -106,6 +110,7 @@ export const npm: ToolDef = {
       install: ['npm', 'ci'],
       installUnlocked: ['npm', 'install'],
       frozen: [],
+      inDir: flagAfterBinary('--prefix'),
       depsDirs: [NODE_MODULES],
       pin: pinOf('npm'),
       run: { verb: ['npm', 'run'], dirFlag: '--prefix', separator: true },

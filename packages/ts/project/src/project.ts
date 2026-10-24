@@ -111,7 +111,10 @@ export interface ProjectOptions {
   tools: readonly ToolDef[]
 }
 
-/** Bind `tools` into a {@link Project}. Throws when two tools share an id. */
+/**
+ * Bind `tools` into a {@link Project}. Throws when two tools share an id, or
+ * when two different ecosystem definitions share an id.
+ */
 export function createProject(options: ProjectOptions): Project {
   const registry = buildRegistry(options.tools)
   return {

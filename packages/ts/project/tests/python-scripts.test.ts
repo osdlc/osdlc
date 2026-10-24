@@ -1,8 +1,8 @@
 import { afterAll, describe, expect, test } from 'vitest'
 
 import { tasks, type Task } from '../src/model.ts'
-import { python } from '../src/plugins/python/index.ts'
-import { extractInlineTable } from '../src/plugins/python/python.ts'
+import { parsePyproject } from '../src/plugins/python/ecosystem.ts'
+import { pythonTools } from '../src/plugins/python/index.ts'
 import { collect, fixtureRoot, removeRoot } from './support.ts'
 
 const roots: string[] = []
@@ -18,7 +18,7 @@ async function root(files: Record<string, string>): Promise<string> {
 
 /** Fixture roots are not repositories, so discovery is pinned to the walk. */
 function opts(extra: Record<string, unknown> = {}) {
-  return { discovery: 'walk' as const, tools: [python], ...extra }
+  return { discovery: 'walk' as const, tools: pythonTools, ...extra }
 }
 
 function byName(list: Task[], name: string): Task | undefined {
@@ -41,7 +41,7 @@ const PYPROJECT_WITH_POETRY_SCRIPTS = [
   'mycli = "mypkg.cli:main"',
 ].join('\n')
 
-describe('python provider — declared scripts', () => {
+describe('python runner — declared scripts', () => {
   test('[project.scripts] with a uv.lock present emits a `uv run` task', async () => {
     const dir = await root({
       'pyproject.toml': PYPROJECT_WITH_SCRIPTS,
@@ -163,60 +163,42 @@ describe('python provider — declared scripts', () => {
   })
 })
 
-describe('extractInlineTable — adversarial cases', () => {
-  test('a trailing comment after a quoted value is stripped, not merged into it', () => {
-    const text = ['[project.scripts]', 'foo = "bar"  # note'].join('\n')
-    expect(extractInlineTable(text, '[project.scripts]')).toEqual({ foo: 'bar' })
+describe('pyproject scripts, as detection parses them', () => {
+  const scripts = (text: string) => parsePyproject(text, 'pyproject.toml').scripts
+
+  test('a trailing comment after a quoted value is not part of it', () => {
+    expect(scripts('[project.scripts]\nfoo = "bar" # note\n')).toEqual({ foo: 'bar' })
   })
 
-  test('the section is the last one in the file with no trailing header', () => {
+  test('a section header that is a prefix of another is not confused with it', () => {
     const text = [
-      '[project]',
-      'name = "demo"',
-      '',
-      '[project.scripts]',
-      'mycli = "mypkg.cli:main"',
-    ].join('\n')
-    expect(extractInlineTable(text, '[project.scripts]')).toEqual({ mycli: 'mypkg.cli:main' })
-  })
-
-  test('an empty section yields no entries', () => {
-    const text = ['[project.scripts]', '', '[tool.ruff]', 'line-length = 100'].join('\n')
-    expect(extractInlineTable(text, '[project.scripts]')).toEqual({})
-  })
-
-  test('a section header that is a substring of another is not falsely matched', () => {
-    const text = [
-      '[tool.poetry.scripts.extra]',
-      'mycli = "mypkg.cli:main"',
+      '[tool.poetry.scripts-extra]',
+      'fake = "nope:x"',
       '',
       '[tool.poetry.scripts]',
       'real = "mypkg:real"',
     ].join('\n')
-    // The exact `[tool.poetry.scripts]` header must be found on its own line,
-    // not the longer `[tool.poetry.scripts.extra]` header that merely starts
-    // with the same text.
-    expect(extractInlineTable(text, '[tool.poetry.scripts]')).toEqual({ real: 'mypkg:real' })
+    expect(scripts(text)).toEqual({ real: 'mypkg:real' })
   })
 
-  test('single- and double-quoted values are both read', () => {
-    const text = ['[project.scripts]', "a = 'single'", 'b = "double"'].join('\n')
-    expect(extractInlineTable(text, '[project.scripts]')).toEqual({ a: 'single', b: 'double' })
+  test('single- and double-quoted values are both read; an empty section yields nothing', () => {
+    expect(scripts('[project.scripts]\na = \'single\'\nb = "double"\n')).toEqual({
+      a: 'single',
+      b: 'double',
+    })
+    expect(scripts('[project.scripts]\n')).toEqual({})
   })
 
-  test('comment and blank lines inside the section are skipped', () => {
-    const text = [
-      '[project.scripts]',
-      '# a comment',
-      '',
-      'mycli = "mypkg.cli:main"',
-      '  # another comment, indented',
-    ].join('\n')
-    expect(extractInlineTable(text, '[project.scripts]')).toEqual({ mycli: 'mypkg.cli:main' })
+  test('invalid TOML sets error, and the runner reports it', async () => {
+    expect(parsePyproject('[project\n', 'pyproject.toml').error).toMatch(/parse failed/)
+    const dir = await root({ 'pyproject.toml': '[project\n' })
+    const report = (await collect(dir, opts())).reports[0]!
+    expect(report.tasks).toEqual([])
+    expect(report.diagnostics[0]?.severity).toBe('warning')
   })
 })
 
-describe('python provider — declared scripts, directory joining', () => {
+describe('python runner — declared scripts, directory joining', () => {
   test('a pyproject in a subdirectory checks <dir>/uv.lock, not the root, and expresses the directory via --project', async () => {
     const dir = await root({
       'sub/pyproject.toml': PYPROJECT_WITH_SCRIPTS,
@@ -270,16 +252,14 @@ describe('python provider — declared scripts, directory joining', () => {
     expect(task?.cwd).toBe('.')
   })
 
-  test("a root uv.lock does not satisfy a subdirectory pyproject's lock check", async () => {
+  test('a root uv.lock serves a subdirectory pyproject, as in a uv workspace', async () => {
     const dir = await root({
       'sub/pyproject.toml': PYPROJECT_WITH_SCRIPTS,
       'uv.lock': '',
     })
     const report = (await collect(dir, opts())).reports[0]!
 
-    expect(byName(report.tasks, 'mycli')).toBeUndefined()
-    expect(report.diagnostics).toHaveLength(1)
-    expect(report.diagnostics[0]?.source).toBe('sub/pyproject.toml')
+    expect(byName(report.tasks, 'mycli')?.argv).toEqual(['uv', 'run', '--project', 'sub', 'mycli'])
   })
 })
 

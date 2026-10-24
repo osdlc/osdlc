@@ -93,8 +93,11 @@ export interface PyprojectFact {
   /** `[project].name`, else `[tool.poetry].name`. */
   name?: string | undefined
   version?: string | undefined
-  /** Names under `[project.scripts]` and `[tool.poetry.scripts]`. */
-  scripts: string[]
+  /**
+   * `[project.scripts]` and `[tool.poetry.scripts]`, name to entry point
+   * (`mypkg.cli:main`). A name in both keeps the `[tool.poetry.scripts]` value.
+   */
+  scripts: Record<string, string>
   /** Every `[tool.<name>]` table. */
   tools: string[]
   deps?: DepFact[] | undefined

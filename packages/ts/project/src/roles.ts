@@ -9,7 +9,7 @@ import { join } from 'node:path'
 import { compilePattern, dirOf, joinRel } from './pattern.ts'
 import type { Registry } from './registry.ts'
 import type { Evidence } from './model.ts'
-import type { Detected, Package, ProjectProfile, ToolDef } from './tool.ts'
+import type { Detected, EcosystemDef, Package, ProjectProfile, ToolDef } from './tool.ts'
 
 /**
  * The package manager chosen for one ecosystem of one package.
@@ -73,20 +73,28 @@ export function choosePackageManagers(
   for (const eco of registry.ecosystems) {
     if (!ecoIds.has(eco.id)) continue
     const managers = eco.tools.filter((id) => registry.byId.get(id)?.roles.packageManager)
-    const choice = nearestManager(registry, profile, dir, managers)
+    const choice = chosenAbove(registry, profile, dir, managers)
     if (choice !== null) {
       out.push({ ...choice, ecosystem: eco.id, fallback: false })
       continue
     }
-    const fallback = eco.fallback
-    const manifest = pkg.manifestFiles.find((f) =>
-      eco.manifests.some((m) => compilePattern(m.files).base(f) === dir),
+    // Nothing chose a manager. A workspace member installs at its workspace root.
+    const home = workspaceRoot(profile, eco, dir) ?? dir
+    const implied = bestAt(registry, profile, home, managers, (e) => !chooses(e))
+    if (implied !== null) {
+      out.push({ ...implied, ecosystem: eco.id, fallback: false })
+      continue
+    }
+    const homePkg = packageAt(profile, home)
+    const manifest = homePkg?.manifestFiles.find((f) =>
+      eco.manifests.some((m) => compilePattern(m.files).base(f) === home),
     )
+    const fallback = eco.fallback
     if (fallback !== undefined && registry.byId.has(fallback) && manifest !== undefined) {
       out.push({
         tool: fallback,
         ecosystem: eco.id,
-        dir,
+        dir: home,
         source: manifest,
         locked: false,
         fallback: true,
@@ -96,43 +104,81 @@ export function choosePackageManagers(
   return out
 }
 
+type Found = Omit<PackageManagerChoice, 'ecosystem' | 'fallback'>
+
 /**
- * The nearest package at or above `dir` whose files choose one of `managers`.
- * A lockfile, a marker or a pin chooses; a manifest that merely implies the
- * tool (a `Cargo.toml` implies cargo) chooses only at `dir` itself, and only
- * when nothing above chose, so a workspace member defers to its root.
+ * The nearest package at or above `dir` whose lockfile, marker or pin
+ * chooses one of `managers`. A manifest that merely implies a tool (a
+ * `Cargo.toml` implies cargo) does not choose here.
  */
-function nearestManager(
+function chosenAbove(
   registry: Registry,
   profile: ProjectProfile,
   dir: string,
   managers: readonly string[],
-): Omit<PackageManagerChoice, 'ecosystem' | 'fallback'> | null {
-  const pick = (current: string, implied: boolean) => {
-    const candidates = (packageAt(profile, current)?.tools ?? [])
-      .filter((t) => managers.includes(t.tool))
-      .map((t) => ({ t, evidence: t.evidence.filter((e) => chooses(e) !== implied) }))
-      .filter((c) => c.evidence.length > 0)
-      .sort(
-        (a, b) =>
-          bestTier(a.evidence) - bestTier(b.evidence) ||
-          managers.indexOf(a.t.tool) - managers.indexOf(b.t.tool),
-      )
-    const found = candidates[0]
-    if (found === undefined) return null
-    const best = [...found.evidence].sort((a, b) => a.tier - b.tier)[0]!
-    const lockfiles = registry.byId.get(found.t.tool)?.roles.packageManager?.lockfiles ?? []
-    const locked = found.t.evidence.some((e) =>
-      lockfiles.some((l) => compilePattern(l).base(e.source) === current),
-    )
-    return { tool: found.t.tool, dir: current, source: best.source, locked }
-  }
+): Found | null {
   for (let current = dir; ; current = dirOf(current)) {
-    const found = pick(current, false)
+    const found = bestAt(registry, profile, current, managers, chooses)
     if (found !== null) return found
-    if (current === '.') break
+    if (current === '.') return null
   }
-  return pick(dir, true)
+}
+
+/**
+ * The manager with the most direct evidence that passes `counts` in the
+ * package at `dir`, then the ecosystem's precedence.
+ */
+function bestAt(
+  registry: Registry,
+  profile: ProjectProfile,
+  dir: string,
+  managers: readonly string[],
+  counts: (e: Evidence) => boolean,
+): Found | null {
+  const found = (packageAt(profile, dir)?.tools ?? [])
+    .filter((t) => managers.includes(t.tool))
+    .map((t) => ({ t, evidence: t.evidence.filter(counts) }))
+    .filter((c) => c.evidence.length > 0)
+    .sort(
+      (a, b) =>
+        bestTier(a.evidence) - bestTier(b.evidence) ||
+        managers.indexOf(a.t.tool) - managers.indexOf(b.t.tool),
+    )[0]
+  if (found === undefined) return null
+  const best = [...found.evidence].sort((a, b) => a.tier - b.tier)[0]!
+  const lockfiles = registry.byId.get(found.t.tool)?.roles.packageManager?.lockfiles ?? []
+  const locked = found.t.evidence.some((e) =>
+    lockfiles.some((l) => compilePattern(l).base(e.source) === dir),
+  )
+  return { tool: found.t.tool, dir, source: best.source, locked }
+}
+
+/** The nearest package above `dir` whose manifest declares `dir` a workspace member. */
+function workspaceRoot(profile: ProjectProfile, eco: EcosystemDef, dir: string): string | null {
+  if (eco.workspace === undefined || dir === '.') return null
+  for (let current = dirOf(dir); ; current = dirOf(current)) {
+    const pkg = packageAt(profile, current)
+    const members = pkg === undefined ? undefined : eco.workspace(pkg)
+    const rel = current === '.' ? dir : dir.slice(current.length + 1)
+    if (members?.some((glob) => memberMatches(glob, rel))) return current
+    if (current === '.') return null
+  }
+}
+
+/** A workspace member glob against a relative path: `*` is one segment, `**` any. */
+function memberMatches(glob: string, rel: string): boolean {
+  const g = glob.replace(/^\.\//, '').replace(/\/$/, '').split('/')
+  const r = rel.split('/')
+  const match = (i: number, j: number): boolean => {
+    if (i === g.length) return j === r.length
+    if (g[i] === '**') return match(i + 1, j) || (j < r.length && match(i, j + 1))
+    if (j === r.length) return false
+    const re = new RegExp(
+      `^${g[i]!.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[^/]*')}$`,
+    )
+    return re.test(r[j]!) && match(i + 1, j + 1)
+  }
+  return match(0, 0)
 }
 
 /** Evidence that chooses a manager, as opposed to a manifest that only implies it. */
@@ -172,9 +218,9 @@ export function frozenInstallActions(
 }
 
 /**
- * The install commands whose dependency directory is missing. A manager
- * assumed with no lockfile never counts: an install with nothing to install
- * creates no directory, so the step would re-run forever.
+ * The install commands whose dependency directory is missing. Only a
+ * manager with its lockfile counts: an install with nothing locked may
+ * create no directory, so the step would re-run forever.
  */
 export function missingDepsActions(
   registry: Registry,
@@ -184,7 +230,7 @@ export function missingDepsActions(
   return choosePackageManagers(registry, profile, dir).flatMap((choice) => {
     const role = registry.byId.get(choice.tool)?.roles.packageManager
     const dirs = role?.depsDirs
-    if (role === undefined || dirs === undefined || choice.fallback) return []
+    if (role === undefined || dirs === undefined || !choice.locked) return []
     const present = dirs.some((d) => existsSync(join(profile.root, joinRel(choice.dir, d))))
     return present ? [] : [action(choice, [...role.install])]
   })

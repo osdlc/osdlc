@@ -62,7 +62,11 @@ export const builtins: readonly ToolDef[] = [
   preCommit,
 ]
 
-/** The ids of {@link builtins}, in the same order. */
+/**
+ * The ids of {@link builtins}, in the same order. Written out rather than
+ * derived so {@link BuiltinToolId} is a union of literals; a test keeps the
+ * two lists in step.
+ */
 export const BUILTIN_TOOL_IDS = [
   'moon',
   'proto',

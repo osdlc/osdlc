@@ -7,16 +7,18 @@
  * its withheld row appears only when its tool was detected. Runners run
  * concurrently; one throwing does not lose the others' work.
  *
- * Collection holds nothing across calls. The cache is a layer above this
- * (`cached.ts`), reached through `probeObserver`.
+ * Each call lists and reads the repository afresh, with the discovery
+ * settings recorded on the profile, so a second collect sees edits made
+ * since the first and a profile copied through JSON collects the same way.
+ * The cache is a layer above this (`cached.ts`), reached through
+ * `probeObserver`.
  */
 
 import { spawnRunnerAsync } from '@osdlc/command-seam'
 
 import { createContext, createContextState, type ContextState } from './context.ts'
 import type { CollectOptions, ProviderContext, ProviderKind, RunnerContext } from './contract.ts'
-import { profileState } from './detect.ts'
-import { createLister } from './discovery.ts'
+import { createLister, DEFAULT_EXCLUDES } from './discovery.ts'
 import type { Catalog, ChainSegment, RunnerBrand, RunnerReport, Task } from './model.ts'
 import { manifestsOf, markersOf, type Registry } from './registry.ts'
 import { choosePackageManagers } from './roles.ts'
@@ -91,17 +93,27 @@ export function selectRunners(
   return out
 }
 
-/** The context state for a profile: the one `detect` built, or a fresh one. */
+/** Fresh read state for one call, listing the way the profile was detected. */
 export function stateFor(
   profile: ProjectProfile,
   makeGit: () => ReturnType<typeof spawnRunnerAsync>,
 ): ContextState {
-  return (
-    profileState.get(profile) ??
-    createContextState(
-      createLister(profile.root, profile.discovery, makeGit(), profile.excludePaths),
-    )
+  return createContextState(
+    createLister(
+      profile.root,
+      profile.discovery,
+      makeGit(),
+      profile.excludePaths,
+      profile.useBuiltinExcludes,
+    ),
   )
+}
+
+/** The whole exclude list a profile was listed with, for the cache fingerprint. */
+export function effectiveExcludes(profile: ProjectProfile): string[] {
+  return profile.useBuiltinExcludes
+    ? [...DEFAULT_EXCLUDES, ...profile.excludePaths]
+    : [...profile.excludePaths]
 }
 
 export async function collectRunners(

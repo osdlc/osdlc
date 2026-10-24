@@ -53,6 +53,7 @@ export const go: ToolDef = {
   binary: 'go',
   ecosystem: goEcosystem,
   roles: {
+    // No `inDir`: `go -C` needs go 1.20, so a nested install runs in `cwd`.
     packageManager: { lockfiles: ['go.sum'], install: ['go', 'mod', 'download'] },
   },
 }

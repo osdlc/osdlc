@@ -49,6 +49,12 @@ export interface PackageManagerRole {
   installUnlocked?: readonly string[] | undefined
   /** Flags that refuse to change the lockfile. `[]` when `install` already does. */
   frozen?: readonly string[] | undefined
+  /**
+   * `argv` (an install, frozen or not) aimed at the package in `dir`, through
+   * the tool's own directory flag (`pnpm --dir apps/web install`). Without
+   * it, a synthesized install task runs in `cwd`.
+   */
+  inDir?: ((argv: readonly string[], dir: string) => string[]) | undefined
   /** Directories an install leaves in the package; any one present means installed. */
   depsDirs?: readonly string[] | undefined
   /** The version a package pins this manager to, if it pins one. */
@@ -223,6 +229,12 @@ export interface EcosystemDef {
   tools: readonly string[]
   /** The package manager to assume when a package has a manifest and no lockfile. */
   fallback?: string | undefined
+  /**
+   * The member globs a package's manifest declares as a workspace, relative to
+   * the package (`["crates/*"]`), or `undefined` when it declares none. A
+   * member with no lockfile of its own installs at its workspace root.
+   */
+  workspace?: ((pkg: Package) => readonly string[] | undefined) | undefined
 }
 
 /** One detected tool in one package. */
@@ -266,8 +278,10 @@ export interface ProjectProfile {
   discovery: DiscoveryMode
   /** Whether `describe` functions were allowed to run subprocesses. */
   allowExec: boolean
-  /** The exclude list discovery ran with, as passed. */
+  /** The extra exclude list discovery ran with, as passed. */
   excludePaths: string[]
+  /** Whether discovery added `DEFAULT_EXCLUDES` to `excludePaths`. */
+  useBuiltinExcludes: boolean
   /** Sorted by `dir`, root first. */
   packages: Package[]
   /** The union over packages, in registry order. */

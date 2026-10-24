@@ -27,6 +27,7 @@ import {
   collectRunners,
   execWithheldReport,
   selectRunners,
+  effectiveExcludes,
   stateFor,
   type ProbeRecord,
 } from './collect.ts'
@@ -128,13 +129,13 @@ export async function readCachedCatalog(
         slow: isSlow(entry.durations ?? []),
       }
 
-      // Recomputed against the live listing from the stored paths and every
+      // Recomputed against a fresh listing from the stored paths and every
       // pattern that built them, never the stored expansion of those patterns.
       const current = await fingerprint({
         root: profile.root,
         paths: entry.fingerprint?.paths ?? [],
         patterns: [...(spec.role.watch ?? []), ...(entry.fingerprint?.patterns ?? [])],
-        excludes: profile.excludePaths,
+        excludes: effectiveExcludes(profile),
         files,
       })
 
@@ -207,7 +208,7 @@ export async function collectAndCache(
         root: catalog.root,
         paths: probe.reads,
         patterns: [...probe.watch, ...probe.queries],
-        excludes: profile.excludePaths,
+        excludes: effectiveExcludes(profile),
         files: probe.files,
       })
       if (print.truncated) truncated.add(probe.runner)

@@ -1,10 +1,14 @@
+import { writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
+
 import { afterAll, describe, expect, test } from 'vitest'
 
 import type { RunnerContext } from '../src/contract.ts'
 import { diagnostics, tasks, type ProviderResult } from '../src/model.ts'
 import { just, make, moon } from '../src/plugins/runners/index.ts'
 import { nodeScripts } from '../src/plugins/node/index.ts'
-import type { RunnerRole, ToolDef } from '../src/tool.ts'
+import { createProject } from '../src/project.ts'
+import type { ProjectProfile, RunnerRole, ToolDef } from '../src/tool.ts'
 import {
   collect,
   detectAndCollect,
@@ -347,5 +351,67 @@ describe('collect', () => {
       expect(report.status).toBe('error')
       expect(report.tool).toEqual({ binary: 'foo', found: true, path: '/usr/bin/foo' })
     })
+  })
+})
+
+describe('each collect reads afresh', () => {
+  test('a second collect on one profile sees an edit made after the first', async () => {
+    const dir = await root({ justfile: 'build:\n    echo build\n' })
+    const { project, profile, catalog } = await detectAndCollect(dir, walkOpts({ tools: [just] }))
+    expect(tasks(catalog).map((t) => t.display)).toEqual(['just build'])
+
+    await writeFile(join(dir, 'justfile'), 'build:\n    echo build\n\ndeploy:\n    echo deploy\n')
+    const again = await project.runners.collect(profile, walkOpts())
+    expect(tasks(again).map((t) => t.display)).toEqual(['just build', 'just deploy'])
+  })
+
+  test('a profile copied through JSON collects the same way, with its exclude settings', async () => {
+    const dir = await root({
+      'build/justfile': 'inner:\n    echo inner\n',
+      justfile: 'outer:\n    echo outer\n',
+    })
+    // `build` is a built-in exclude; turning the list off makes it visible.
+    const opts = walkOpts({ tools: [just], useBuiltinExcludes: false })
+    const { project, profile, catalog } = await detectAndCollect(dir, opts)
+    expect(profile.useBuiltinExcludes).toBe(false)
+    const copy = JSON.parse(JSON.stringify(profile)) as typeof profile
+    const fromCopy = await project.runners.collect(copy, walkOpts())
+    expect(tasks(fromCopy).map((t) => t.display)).toEqual(tasks(catalog).map((t) => t.display))
+    expect(tasks(fromCopy).map((t) => t.argv.at(-1))).toEqual(['inner', 'outer'])
+  })
+
+  test('a profile built by hand, not by detect, collects', async () => {
+    const dir = await root({ justfile: 'build:\n    echo build\n' })
+    const project = createProject({ tools: [just] })
+    const profile: ProjectProfile = {
+      root: dir,
+      generatedAt: new Date(0).toISOString(),
+      discovery: 'walk',
+      allowExec: false,
+      excludePaths: [],
+      useBuiltinExcludes: true,
+      packages: [
+        {
+          dir: '.',
+          ecosystems: [],
+          languages: [],
+          manifests: {},
+          manifestFiles: [],
+          tools: [
+            {
+              tool: 'just',
+              roles: ['runner'],
+              evidence: [{ kind: 'files', tier: 3, source: 'justfile', found: 'justfile' }],
+            },
+          ],
+        },
+      ],
+      ecosystems: [],
+      languages: [],
+      tools: ['just'],
+      malformed: [],
+    }
+    const catalog = await project.runners.collect(profile, walkOpts())
+    expect(tasks(catalog).map((t) => t.display)).toEqual(['just build'])
   })
 })

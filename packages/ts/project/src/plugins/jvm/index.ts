@@ -9,6 +9,9 @@ import { sbtRunner, VERSION_MARKER } from './sbt.ts'
 /** gradle: tasks from the build, or the conventional ones. */
 export const gradle: ToolDef = {
   id: 'gradle',
+  // A wrapper build (the common case) runs `./gradlew`, never this binary, so
+  // the report's `tool.found` means "is bare gradle on PATH", not "can this
+  // repository's build run".
   binary: 'gradle',
   ecosystem: jvmEcosystem,
   roles: { runner: gradleRunner },

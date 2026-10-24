@@ -22,9 +22,10 @@ const project = createProject({ tools: builtins })
 async function profileWith(
   pkg: Record<string, unknown> | string,
   lockfile = 'bun.lock',
+  extra: Record<string, string> = {},
 ): Promise<ProjectProfile> {
   const text = typeof pkg === 'string' ? pkg : JSON.stringify(pkg)
-  const dir = await fixtureRoot({ 'package.json': text, [lockfile]: '' })
+  const dir = await fixtureRoot({ 'package.json': text, [lockfile]: '', ...extra })
   roots.push(dir)
   return project.detect(dir, {
     discovery: 'walk',
@@ -32,6 +33,9 @@ async function profileWith(
     which: fakeWhich({}),
   })
 }
+
+/** Config that makes proto and mise detected tool managers. */
+const MANAGERS = { '.prototools': '', 'mise.toml': '' }
 
 const BUN_INSTALL: ToolAction = {
   tool: 'bun',
@@ -214,8 +218,21 @@ describe('pinnedInstall — probe cwd', () => {
     expect(cwds[0]).not.toBe(profile.root)
   })
 
-  test('the tool-manager probes run from the project root, since resolving its pin is the point', async () => {
+  test('only detected tool managers are probed', async () => {
     const profile = await profileWith({ packageManager: 'bun@1.4.2' })
+    const probed: string[] = []
+    const runnerFor = (binary: string): CommandRunner => ({
+      run: () => {
+        probed.push(binary)
+        return { exitCode: 127, stdout: '', stderr: 'not found' }
+      },
+    })
+    project.pinnedInstall(profile, BUN_INSTALL, { allowExec: true, runnerFor })
+    expect(probed).toEqual(['bun'])
+  })
+
+  test('the tool-manager probes run from the project root, since resolving its pin is the point', async () => {
+    const profile = await profileWith({ packageManager: 'bun@1.4.2' }, 'bun.lock', MANAGERS)
     const calls: Array<{ binary: string; argv: readonly string[]; cwd: string | undefined }> = []
     const runnerFor = (binary: string): CommandRunner => ({
       run: (argv, opts) => {
@@ -271,7 +288,7 @@ describe('pinnedInstall — executable-selection order', () => {
   })
 
   test('PATH bun mismatched, proto matches → proto wins, no warning', async () => {
-    const profile = await profileWith({ packageManager: 'bun@1.4.2' })
+    const profile = await profileWith({ packageManager: 'bun@1.4.2' }, 'bun.lock', MANAGERS)
     const runnerFor = (binary: string): CommandRunner => ({
       run: (argv) => {
         if (binary === 'bun') return { exitCode: 0, stdout: '1.3.0', stderr: '' }
@@ -291,7 +308,7 @@ describe('pinnedInstall — executable-selection order', () => {
   })
 
   test('only mise matches → mise-scoped command with the trust env inline', async () => {
-    const profile = await profileWith({ packageManager: 'bun@1.4.2' })
+    const profile = await profileWith({ packageManager: 'bun@1.4.2' }, 'bun.lock', MANAGERS)
     const runnerFor = fakeRunners({ env: '1.4.2' })
     const r = project.pinnedInstall(profile, BUN_INSTALL, { allowExec: true, runnerFor })
     expect(r?.source).toBe('mise')
@@ -326,7 +343,7 @@ describe('pinnedInstall — executable-selection order', () => {
   })
 
   test('the first found may be a tool manager when PATH has none', async () => {
-    const profile = await profileWith({ packageManager: 'bun@1.4.2' })
+    const profile = await profileWith({ packageManager: 'bun@1.4.2' }, 'bun.lock', MANAGERS)
     const runnerFor = fakeRunners({ proto: '1.2.0' })
     const r = project.pinnedInstall(profile, BUN_INSTALL, { allowExec: true, runnerFor })
     expect(r?.source).toBe('proto')

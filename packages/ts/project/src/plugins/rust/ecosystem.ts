@@ -14,6 +14,8 @@ export const rustEcosystem: EcosystemDef = {
   manifests: [{ files: CARGO_TOML, tool: 'cargo', slot: 'cargo', parse: parseCargo }],
   languages: [{ id: 'rust' }],
   tools: ['cargo'],
+  workspace: (pkg) =>
+    pkg.manifests.cargo?.workspace ? (pkg.manifests.cargo.workspaceMembers ?? []) : undefined,
 }
 
 const CARGO_DEP_TABLES: ReadonlyArray<[string, DepFactKind]> = [

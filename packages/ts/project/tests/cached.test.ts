@@ -621,6 +621,22 @@ describe('a changed exclusion set', () => {
     }
   })
 
+  test('turning the built-in excludes off marks an entry stale, reason excludes', async () => {
+    const root = await jobsRoot()
+    const cache = await fixtureRoot({})
+    try {
+      const s = setup([listingTool('alpha')])
+      const before = await detect(s, root)
+      await s.project.runners.collectAndCache(before, cache, s.options)
+      const after = await detect(s, root, { useBuiltinExcludes: false })
+      const cached = await s.project.runners.readCached(after, cache, s.options)
+      expect(cached.runners[0]?.reason).toBe('excludes')
+    } finally {
+      await removeRoot(root)
+      await removeRoot(cache)
+    }
+  })
+
   test('re-probing under the exclusion drops the excluded tasks and stays fresh', async () => {
     const root = await jobsRoot()
     const cache = await fixtureRoot({})

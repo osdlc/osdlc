@@ -45,6 +45,7 @@ export const bundler: ToolDef = {
   binary: 'bundle',
   ecosystem: rubyEcosystem,
   roles: {
+    // No `inDir`: bundler takes its Gemfile from the environment, not a flag.
     packageManager: { lockfiles: ['Gemfile.lock'], install: ['bundle', 'install'] },
   },
 }

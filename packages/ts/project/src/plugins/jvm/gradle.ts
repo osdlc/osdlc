@@ -146,14 +146,6 @@ export const gradleRunner: RunnerRole = {
   kind: 'parse',
   chain: CHAIN,
   brand: BRAND,
-  // A wrapper build (the common case) runs its own bundled distribution via
-  // `./gradlew`, never the `gradle` named here — so `ctx.which("gradle")`
-  // finding nothing on PATH does not mean the build can't run, and finding
-  // something does not mean it's what actually runs. `binary` still names
-  // `"gradle"` because the contract requires a single static declaration and
-  // that is the tool this runner is fundamentally about; the report's
-  // `tool.found` should be read as "is bare gradle available", not as "can
-  // this repo's build run".
   // This runner already lists these at any depth, so the value here is
   // catching a NEWLY ADDED one: re-hashing only the paths a previous run
   // recorded can never see a build script that did not exist then, and a new

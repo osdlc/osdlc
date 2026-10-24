@@ -17,4 +17,5 @@ export const nodeEcosystem: EcosystemDef = {
   ],
   tools: ['bun', 'pnpm', 'yarn', 'npm', 'node-scripts'],
   fallback: 'npm',
+  workspace: (pkg) => pkg.manifests.packageJson?.workspaces,
 }

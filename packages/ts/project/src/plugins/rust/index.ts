@@ -1,6 +1,7 @@
 /** `@osdlc/project/rust`: the rust ecosystem and cargo. */
 
 import type { ToolDef } from '../../tool.ts'
+import { flagAtEnd, joinRel } from '../support/shared.ts'
 import { cargoRunner } from './cargo.ts'
 import { rustEcosystem } from './ecosystem.ts'
 
@@ -14,6 +15,7 @@ export const cargo: ToolDef = {
       lockfiles: ['Cargo.lock'],
       install: ['cargo', 'fetch'],
       frozen: ['--locked'],
+      inDir: flagAtEnd('--manifest-path', (dir) => joinRel(dir, 'Cargo.toml')),
     },
     runner: cargoRunner,
   },

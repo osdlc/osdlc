@@ -98,3 +98,16 @@ export function onePerDir(files: readonly string[]): string[] {
   for (const file of [...files].sort()) byDir.set(dirOf(file), file)
   return [...byDir.values()].sort()
 }
+
+/** `argv` with `flag dir` straight after the binary: `pnpm --dir apps/web install`. */
+export function flagAfterBinary(flag: string): (argv: readonly string[], dir: string) => string[] {
+  return ([binary, ...rest], dir) => [binary!, flag, dir, ...rest]
+}
+
+/** `argv` with `flag value` at the end: `uv sync --project py`. */
+export function flagAtEnd(
+  flag: string,
+  value: (dir: string) => string = (dir) => dir,
+): (argv: readonly string[], dir: string) => string[] {
+  return (argv, dir) => [...argv, flag, value(dir)]
+}

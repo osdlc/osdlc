@@ -13,7 +13,7 @@ import type { ProviderContext } from './contract.ts'
 import { pathExists, type Lister } from './discovery.ts'
 import type { DiscoveryMode } from './model.ts'
 
-/** The caches behind a context, so a later call over the same profile can reuse them. */
+/** The listing and file caches behind one context, for one detect or one collect. */
 export interface ContextState {
   lister: Lister
   textCache: Map<string, Promise<string | null>>

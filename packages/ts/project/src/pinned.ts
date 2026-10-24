@@ -1,8 +1,8 @@
 /**
  * The install command for a package manager a package pins to one version,
- * through the first executable that has that version: PATH, then each
- * registered tool manager that can run a tool (proto, then mise, in
- * registration order).
+ * through the first executable that has that version: PATH, then each tool
+ * manager detected in the repository that can run a tool (proto, then mise,
+ * in registration order).
  *
  * A stale `bun` on PATH can rewrite a lockfile the pinned `bun` wrote, so the
  * version is checked before the command is chosen. With no match the first
@@ -19,7 +19,7 @@ import { tmpdir } from 'node:os'
 import { type CommandRunner, spawnRunner } from '@osdlc/command-seam'
 
 import type { Registry } from './registry.ts'
-import { packageAt, type ToolAction } from './roles.ts'
+import { packageAt, rootTools, type ToolAction } from './roles.ts'
 import type { ProjectProfile } from './tool.ts'
 
 /**
@@ -95,7 +95,7 @@ export function pinnedInstall(
     { source: 'path', binary, versionArgs: ['--version'], prefix: [binary], cwd: tmpdir() },
   ]
   if (options.allowExec) {
-    for (const manager of registry.tools) {
+    for (const { def: manager } of rootTools(registry, profile, 'toolManager')) {
       const tm = manager.roles.toolManager
       if (tm?.exec === undefined) continue
       const env = Object.entries(tm.trustEnv?.(profile.root) ?? {}).map(([k, v]) => `${k}=${v}`)

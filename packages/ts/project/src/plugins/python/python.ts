@@ -8,24 +8,19 @@
  *
  * The `[project.scripts]` / `[tool.poetry.scripts]` half is `declared`: the
  * project itself names these commands. What is inferred there is only how to
- * invoke them — `uv run <name>` or `poetry run <name>` — chosen from which
- * lock file sits next to the pyproject.toml, since a bare `pip install`'s
+ * invoke them — `uv run <name>` or `poetry run <name>` — chosen from the
+ * package's python manager, since a bare `pip install`'s
  * entry points are not reliably invocable without knowing which venv they
  * landed in.
  *
- * The `[tool.x]` test is a regex rather than a TOML parse on purpose — it needs
- * only to know whether a section header exists, which does not justify a TOML
- * dependency. The scripts extraction below does the same: a small inline-table
- * reader for the common case (bare keys, simple quoted string values), not a
- * TOML parser.
+ * Both halves read the `pyproject.toml` facts detection parsed once, and the
+ * script manager comes from `ctx.packageManagers`, so the profile and the
+ * task list agree.
  */
 
-import type { ProviderContext } from '../../contract.ts'
 import type { Diagnostic, ProviderResult, RunnerBrand, Task } from '../../model.ts'
 import type { RunnerRole } from '../../tool.ts'
-import { dirOf, joinRel, taskId } from '../support/shared.ts'
-import { PYPROJECT_TOML } from './ecosystem.ts'
-import { poetry, uv } from './managers.ts'
+import { taskId } from '../support/shared.ts'
 
 const CHAIN = [
   { label: 'runner', hint: 'Python tooling configured in a pyproject.toml.' },
@@ -69,22 +64,21 @@ export const pythonRunner: RunnerRole = {
   kind: 'parse',
   chain: CHAIN,
   brand: BRAND,
-  // No `binary`: which manager runs a script (uv/poetry) is resolved per
-  // project from its lock file, so a single static name would be wrong.
-
-  async collect(ctx: ProviderContext): Promise<ProviderResult> {
-    const projects = (await ctx.files(PYPROJECT_TOML)).sort()
-    if (projects.length === 0) return { status: 'absent', tasks: [], diagnostics: [] }
-
+  async collect(ctx, packages): Promise<ProviderResult> {
     const tasks: Task[] = []
     const diagnostics: Diagnostic[] = []
 
-    for (const file of projects) {
-      const text = await ctx.readText(file)
-      if (text === null) continue
-      const dir = dirOf(file)
+    for (const pkg of packages) {
+      const fact = pkg.manifests.pyproject
+      if (fact === undefined) continue
+      const file = fact.manifestPath
+      if (fact.error !== undefined) {
+        diagnostics.push({ severity: 'warning', message: fact.error, source: file })
+        continue
+      }
+      const dir = pkg.dir
       for (const tool of TOOL_VERBS) {
-        if (!hasToolSection(text, tool.name)) continue
+        if (!fact.tools.includes(tool.name)) continue
         const argv = tool.argv(dir)
         tasks.push({
           id: taskId('python', file, tool.name),
@@ -104,45 +98,31 @@ export const pythonRunner: RunnerRole = {
 
       // `[project.scripts]` (PEP 621) and `[tool.poetry.scripts]` (Poetry)
       // declare the same shape of thing: a command name mapped to a
-      // `module:function` entry point. A name declared in both is unusual but
-      // not forbidden — dedupe per file so it is offered once, not twice.
-      const declared: Record<string, string> = {
-        ...extractInlineTable(text, '[project.scripts]'),
-        ...extractInlineTable(text, '[tool.poetry.scripts]'),
-      }
-      const names = Object.keys(declared)
+      // `module:function` entry point.
+      const names = Object.keys(fact.scripts)
       if (names.length === 0) continue
 
-      const has = async (tool: typeof uv) => {
-        for (const lock of tool.roles.packageManager?.lockfiles ?? []) {
-          if (await ctx.exists(joinRel(dir, lock))) return true
-        }
-        return false
-      }
-      const manager = (await has(uv)) ? 'uv' : (await has(poetry)) ? 'poetry' : null
-
+      // Only uv and poetry run a script inside the project's environment.
+      const chosen = ctx.packageManagers(dir).find((c) => c.ecosystem === 'python')?.tool
+      const manager = chosen === 'uv' || chosen === 'poetry' ? chosen : null
       if (manager === null) {
         diagnostics.push({
           severity: 'info',
           message:
             `${names.length} script(s) declared in pyproject.toml but no uv.lock or ` +
-            "poetry.lock found nearby — a bare pip install's entry points aren't reliably " +
+            "poetry.lock found — a bare pip install's entry points aren't reliably " +
             "invocable without knowing the venv, so they're not offered as tasks",
           source: file,
         })
         continue
       }
 
-      const emitted = new Set<string>()
       for (const name of names) {
-        if (emitted.has(name)) continue
-        emitted.add(name)
         // `uv run --project <dir>` and `poetry --directory <dir> run` both
         // put the directory in argv via the tool's own flag, so `cwd` stays
         // "." and the displayed command is correct pasted from the
         // repository root. Poetry's `--directory` is a global option, so it
-        // precedes the `run` subcommand, the same way `--working-dir`
-        // precedes Composer's subcommand.
+        // precedes the `run` subcommand.
         const argv =
           dir === '.'
             ? [manager, 'run', name]
@@ -156,7 +136,7 @@ export const pythonRunner: RunnerRole = {
           argv,
           cwd: '.',
           display: argv.join(' '),
-          detail: declared[name],
+          detail: fact.scripts[name],
           parameters: [],
           source: file,
           origin: 'declared',
@@ -173,46 +153,4 @@ export const pythonRunner: RunnerRole = {
       diagnostics,
     }
   },
-}
-
-/** `[tool.ruff]` or any sub-table of it, at the start of a line. */
-export function hasToolSection(text: string, tool: string): boolean {
-  const re = new RegExp(`^\\[tool\\.${escapeRegExp(tool)}(\\.[^\\]]+)?\\]`, 'm')
-  return re.test(text)
-}
-
-function escapeRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-}
-
-/**
- * Reads a simple TOML table of `key = "value"` pairs under an exact section
- * header, e.g. `[project.scripts]`. Out of scope on purpose: multi-line
- * strings, arrays, nested tables, and quoted/dotted keys — the header must
- * match `sectionHeader` verbatim (no sub-tables), and a line that isn't the
- * simple `bareKey = "value"` / `bareKey = 'value'` shape is skipped rather
- * than throwing. That covers the common case; anything fancier is a reason to
- * reach for a real TOML parser, which this file deliberately doesn't carry.
- */
-export function extractInlineTable(text: string, sectionHeader: string): Record<string, string> {
-  const header = escapeRegExp(sectionHeader)
-  const headerRe = new RegExp(`^${header}\\s*$`, 'm')
-  const match = headerRe.exec(text)
-  if (match === null) return {}
-
-  const rest = text.slice(match.index + match[0].length)
-  const nextHeader = /^\[/m.exec(rest)
-  const body = nextHeader === null ? rest : rest.slice(0, nextHeader.index)
-
-  const out: Record<string, string> = {}
-  const lineRe = /^([A-Za-z_][A-Za-z0-9_-]*)\s*=\s*["']([^"']*)["']\s*(?:#.*)?$/
-  for (const rawLine of body.split('\n')) {
-    const line = rawLine.trim()
-    if (line === '' || line.startsWith('#')) continue
-    const m = lineRe.exec(line)
-    if (m === null) continue
-    const [, key, value] = m
-    if (key !== undefined && value !== undefined) out[key] = value
-  }
-  return out
 }

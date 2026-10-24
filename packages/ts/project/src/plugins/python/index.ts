@@ -5,7 +5,10 @@ import { pythonEcosystem } from './ecosystem.ts'
 import { pip, poetry, uv } from './managers.ts'
 import { pythonRunner } from './python.ts'
 
-/** Tools a pyproject.toml configures, and the scripts it declares. */
+/**
+ * Tools a pyproject.toml configures, and the scripts it declares. No
+ * `binary`: each task runs its own tool, or uv or poetry for a script.
+ */
 export const python: ToolDef = {
   id: 'python',
   ecosystem: pythonEcosystem,
