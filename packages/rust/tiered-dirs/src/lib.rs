@@ -2,7 +2,7 @@
 //!
 //! # Two axes, not one
 //!
-//! A directory is addressed by naming BOTH axes. Neither alone is an address.
+//! A directory is addressed by naming both axes. Neither alone is an address.
 //!
 //! **Tier — who shares the state:**
 //!
@@ -13,15 +13,15 @@
 //! | product    | `<durable>/<bundle id>`, or the app framework's own directory | one product, keyed by bundle identifier |
 //! | standalone | `<tool>`             | one general tool, shipped outside the vendor's suite |
 //!
-//! **Home — how durable the state is:** `durable`, `config`, `cache`,
+//! **Home — how long the state must last:** `durable`, `config`, `cache`,
 //! `state`, `logs`, `runtime`.
 //!
 //! **Convention — which per-OS table the homes come from:**
 //! [`Convention::Native`] (the default) or [`Convention::Xdg`]. They differ on
-//! macOS only. CLI and developer tools use Xdg; GUI apps use Native. A caller
+//! macOS only. CLI and developer tools use Xdg. GUI apps use Native. A caller
 //! picks one through [`ResolveOptions`]. See [`Convention`].
 //!
-//! [`TieredDirs::scratch`] sits outside both axes: see "`scratch` is not a
+//! [`TieredDirs::scratch`] is on neither axis. See "`scratch` is not a
 //! home".
 //!
 //! ```
@@ -43,27 +43,27 @@
 //! # Composition
 //!
 //! The vendor segment is the only string the caller fixes up front. The suite
-//! segment is composed as `vendor + "." + suite_key`. It is deliberately NOT
-//! derived from a bundle identifier: bundle identifiers carry brand and
-//! product segments that change on their own schedule. `suite_key` stays a
+//! segment is built as `vendor + "." + suite_key`. It is not derived from a
+//! bundle identifier, on purpose. Bundle identifiers carry brand and product
+//! segments that change on their own schedule. `suite_key` stays a
 //! caller-supplied constant.
 //!
 //! # A general tool supplies its own root
 //!
-//! The vendor and suite tiers govern a SUITE: products that share one owner,
+//! The vendor and suite tiers are for a suite: products that share one owner,
 //! and at the suite tier one user's data. A general tool the vendor ships into
 //! other people's repositories is not in that suite. Installed in a third
-//! party's checkout, `suite("tool")` would write the vendor's namespace onto
+//! party's checkout, `suite("tool")` would create a vendor-named directory on
 //! their machine.
 //!
 //! [`TieredDirs::standalone`] is the tier for that tool. Its segment is the
-//! bare tool name, with no vendor composition. Its config directory is
-//! `~/.config/<tool>` on Linux, and on macOS under [`Convention::Xdg`]; it is
+//! bare tool name, with no vendor in it. Its config directory is
+//! `~/.config/<tool>` on Linux, and on macOS under [`Convention::Xdg`]. It is
 //! `~/Library/Application Support/<tool>` on macOS under
 //! [`Convention::Native`].
 //!
 //! [`Tier::kind`] reports which constructor produced a tier, so a caller or a
-//! gate can tell a suite address from a standalone one without parsing the
+//! check can tell a suite address from a standalone one without parsing the
 //! segment.
 //!
 //! # The product tier
@@ -71,21 +71,22 @@
 //! The product tier is one product's own directory, keyed by its bundle
 //! identifier. An app framework such as Tauri usually resolves it, so this
 //! crate takes no framework dependency and leaves that tier to a thin layer
-//! above it. Such a layer can use [`TieredDirs::is_vendor_bundle_id`] to check that the
-//! product's bundle identifier sits under the vendor.
+//! above it. Such a layer can use [`TieredDirs::is_vendor_bundle_id`] to check
+//! that the product's bundle identifier starts with the vendor.
 //!
 //! # `scratch` is not a home
 //!
-//! [`TieredDirs::scratch`] hands back the platform temp directory. It wraps
-//! `std::env::temp_dir()` and adds nothing to it, so "no direct OS path call
-//! outside this crate" stays a greppable invariant with no exception.
+//! [`TieredDirs::scratch`] returns the platform temp directory. It wraps
+//! `std::env::temp_dir()` and adds nothing to it. It exists so that "no direct
+//! OS path call outside this crate" can be checked with a search, with no
+//! exception.
 //!
-//! It is untiered, and it is not [`Home::Runtime`]. Scratch holds state that
-//! does not outlive a single call — a temp file a command writes and removes.
-//! Runtime holds state that does outlive the call and describes a live
-//! process: a pidfile, a socket, a lock. A pidfile in scratch is lost to the
-//! next temp sweep while its process still runs; a scratch file in runtime is
-//! never swept at all.
+//! It has no tier, and it is not [`Home::Runtime`]. Scratch holds state that
+//! does not outlive a single call, such as a temp file a command writes and
+//! removes. Runtime holds state that outlives the call and describes a live
+//! process: a pidfile, a socket, a lock. A pidfile in scratch can be deleted
+//! when the OS clears temp while its process still runs. A scratch file in
+//! runtime is never cleaned up at all.
 //!
 //! # Tiers are distinct addresses. There is no merge.
 //!
@@ -93,27 +94,28 @@
 //! This crate never reads both and merges them. A given piece of state lives
 //! at exactly one tier and the caller names the tier it means.
 //!
-//! # The three traps this crate exists to absorb
+//! # Three problems this crate handles
 //!
-//! 1. **`logs` has no `dirs` equivalent.** macOS wants `~/Library/Logs`.
-//!    [`BaseDirs::from_env`] branches on the platform explicitly. Folding logs
-//!    into cache would be silently wrong — the OS purges cache.
-//! 2. **Only `XDG_RUNTIME_DIR` names a runtime directory**, and it is
-//!    usually set on Linux only. Where it is absent, runtime resolves under
-//!    `<durable>/run`, deliberately NOT under cache: the OS may purge cache
-//!    while the process a pidfile describes is still alive.
-//! 3. **Every base directory can fail.** Headless CI and sandboxes do not
-//!    always have a home directory. Nothing here unwraps; a missing base
-//!    directory is [`Error::MissingBaseDir`].
+//! 1. `logs` has no `dirs` equivalent. macOS uses `~/Library/Logs`.
+//!    [`BaseDirs::from_env`] branches on the platform explicitly. Putting logs
+//!    under cache would be wrong without any error, because the OS purges
+//!    cache.
+//! 2. Only `XDG_RUNTIME_DIR` names a runtime directory, and it is usually set
+//!    on Linux only. Where it is absent, runtime resolves under
+//!    `<durable>/run`, not under cache. The OS may purge cache while the
+//!    process a pidfile describes is still alive.
+//! 3. Every base directory can fail. Headless CI and sandboxes do not always
+//!    have a home directory. Nothing here unwraps. A missing base directory is
+//!    [`Error::MissingBaseDir`].
 //!
 //! # Testability
 //!
-//! Base directories are resolved ONCE, at construction, and are injectable.
-//! Nothing below [`BaseDirs`] reads the environment, so a test asserts exact
-//! paths without touching a real home directory. [`BaseDirs::rooted`] is the
-//! seam the parity fixture uses, [`BaseDirs::xdg`] builds the XDG layout under
-//! any home, and [`BaseDirs::from_env_with`] takes the override variables from
-//! a test's own map.
+//! Base directories are resolved once, at construction, and can be injected.
+//! Nothing below [`BaseDirs`] reads the environment, so a test checks exact
+//! paths without touching a real home directory. The parity fixture uses
+//! [`BaseDirs::rooted`]. [`BaseDirs::xdg`] builds the XDG layout under any
+//! home. [`BaseDirs::from_env_with`] takes the override variables from a
+//! test's own map.
 //!
 //! # Overrides and scratch roots
 //!
@@ -123,22 +125,23 @@
 //! `env_vars!("MYAPP")` reads `MYAPP_ROOT`, `MYAPP_<HOME>_DIR`,
 //! `MYAPP_SCRATCH_DIR`, `MYAPP_REQUIRE_OVERRIDE` and `MYAPP_CONVENTION`.
 //!
-//! Per base directory, the first answer wins: the per-home variable, then the
-//! root variable laid out as [`BaseDirs::rooted`], then the OS default for the
-//! convention. `<P>_CONVENTION` picks that convention over the caller's. See
-//! [`BaseDirs::from_env`]. The TS twin's `systemBaseDirs` resolves the same
-//! order, held to it by the `env_cases` in the parity fixture.
+//! For each base directory, the first source that is set wins: the per-home
+//! variable, then the root variable laid out as [`BaseDirs::rooted`], then the
+//! OS default for the convention. `<P>_CONVENTION` picks that convention over
+//! the caller's. See [`BaseDirs::from_env`]. The TypeScript package's
+//! `systemBaseDirs` resolves in the same order. The `env_cases` in the parity
+//! fixture check that.
 //!
 //! # Tests never resolve a real home
 //!
-//! Two rules sit in [`BaseDirs::from_env`], and so in [`TieredDirs::from_env`],
-//! above that order:
+//! [`BaseDirs::from_env`], and so [`TieredDirs::from_env`], apply two rules
+//! before that order:
 //!
 //! - **A cargo test binary defaults to a scratch root.** When the root
 //!   variable is unset in a test binary that cargo or nextest runs, it reads
 //!   as [`test_root`]: `<temp>/tiered-dirs-test-<pid>-<start nanos>`, unique
 //!   per process. Plain `cargo test` needs no setup, and a killed run leaves
-//!   its debris in temp, not in the real homes. A test binary run directly,
+//!   its files in temp, not in the real homes. A test binary run directly,
 //!   as an IDE debugger does, has no `CARGO` set and gets none. A caller
 //!   that wants the OS defaults even under cargo turns this rule off with
 //!   [`ResolveOptions::with_test_root`].
@@ -157,19 +160,19 @@
 //! `\state` is relative to the current drive, so it is refused like any other
 //! relative path.
 //!
-//! # The TypeScript twin
+//! # The TypeScript package
 //!
-//! A TypeScript twin is published as `@osdlc/tiered-dirs` on npm.
-//! Both are checked against `tests/fixtures/parity.json`. The two must agree
-//! on the path produced for a given (tier, home, scope, app), or a Rust
-//! program and a TypeScript program over the same state split it. Neither
-//! twin may add a path shape the other lacks.
+//! A TypeScript version is published as `@osdlc/tiered-dirs` on npm.
+//! Both are checked against `tests/fixtures/parity.json`. The two must give
+//! the same path for a given (tier, home, scope, app). Otherwise a Rust
+//! program and a TypeScript program would put the same state in different
+//! places. Neither package may add a path shape the other lacks.
 //!
 //! # Stability
 //!
 //! Each public item's docs say "stable in 0.x": a breaking change to it ships
-//! only in a new 0.x minor release, with a CHANGELOG entry. [`Error`], [`Convention`] and [`TierKind`]
-//! are `#[non_exhaustive]`, so a later release can add a variant without a
+//! only in a new 0.x minor release, with a CHANGELOG entry. [`Error`],
+//! [`Convention`] and [`TierKind`] are `#[non_exhaustive]`, so a later release can add a variant without a
 //! breaking change. [`EnvVars`] and [`ResolveOptions`] are too, so a later
 //! release can add a field. [`Home`] is exhaustive: adding a home changes
 //! every caller's layout, so it is a breaking (0.x minor) release.
@@ -323,9 +326,10 @@ impl EnvVars {
     }
 }
 
-/// Whether a bundle identifier sits under `vendor`: a bare prefix test,
-/// matching the TS twin's `isVendorBundleId`. Nothing stricter: a dot-boundary
-/// rule would make the twins disagree about which apps conform.
+/// Whether a bundle identifier starts with `vendor`: a bare prefix test,
+/// matching the TypeScript package's `isVendorBundleId`. It is not stricter on
+/// purpose. A dot-boundary rule would make the two packages disagree about
+/// which apps conform.
 ///
 /// **Stability:** stable in 0.x.
 pub fn is_vendor_bundle_id(vendor: &str, bundle_id: &str) -> bool {
@@ -333,8 +337,8 @@ pub fn is_vendor_bundle_id(vendor: &str, bundle_id: &str) -> bool {
 }
 
 /// Debug-only [`is_vendor_bundle_id`] check, for a caller with no
-/// `TieredDirs`. A migration tracker, not a gate: it cannot break a release
-/// build.
+/// `TieredDirs`. It reports apps that do not conform but cannot break a
+/// release build.
 ///
 /// **Stability:** stable in 0.x.
 pub fn assert_vendor_bundle_id(vendor: &str, bundle_id: &str) {
@@ -345,23 +349,23 @@ pub fn assert_vendor_bundle_id(vendor: &str, bundle_id: &str) {
 }
 
 /// Directory name that holds runtime state where the platform offers no
-/// runtime directory of its own (trap 2).
+/// runtime directory of its own (problem 2 in the crate docs).
 const RUNTIME_FALLBACK_SEGMENT: &str = "run";
 
 /// Folders this crate places directly under another home's base on some OS:
 /// state under cache and logs under durable on Windows, and runtime under
 /// durable wherever the platform has no runtime directory. A tier segment
 /// with one of these names would land on that home's root, so
-/// [`is_valid_segment`] refuses them, ignoring case.
+/// [`is_valid_segment`] refuses them in any letter case.
 const RESERVED_SEGMENTS: [&str; 3] = ["state", "logs", RUNTIME_FALLBACK_SEGMENT];
 
 /// Everything this crate can fail with.
 ///
-/// New variants may be added in a compatible release (0.3.z), so a `match`
-/// needs a wildcard arm.
+/// New variants may be added in any release, so a `match` needs a wildcard
+/// arm.
 ///
 /// **Stability:** stable in 0.x. A change to the five variants or their fields
-/// ships only in a new 0.x minor release; new variants may be added in any
+/// ships only in a new 0.x minor release. New variants may be added in any
 /// release.
 #[derive(Debug, thiserror::Error, PartialEq, Eq, Clone)]
 #[non_exhaustive]
@@ -374,9 +378,9 @@ pub enum Error {
         home: &'static str,
     },
 
-    /// An override variable holds a relative path. Refused rather than
-    /// resolved against the working directory or ignored: either would put
-    /// state somewhere the caller did not name.
+    /// An override variable holds a relative path. It is refused, not resolved
+    /// against the working directory or ignored. Either would put state
+    /// somewhere the caller did not name.
     #[error("{var} must be an absolute path")]
     RelativeOverride {
         /// The variable that holds the relative path.
@@ -428,14 +432,15 @@ pub enum Error {
 /// Whether `key` is a safe single path segment: a leading ASCII letter/digit,
 /// then letters/digits and `.`/`_`/`-`, with no separator and no `..`.
 ///
-/// `state`, `logs` and `run` are refused in any case. This crate puts those
-/// folders under another home's base on some OS (state beside the cache
+/// `state`, `logs` and `run` are refused in any letter case. This crate puts
+/// those folders under another home's base on some OS (state beside the cache
 /// folders on Windows, for one), so a tier named after one would land on that
 /// home's root. Windows and macOS paths ignore case, so `State` is refused too.
 ///
-/// Mirrors the TS twin's `isValidSegment`. [`TieredDirs::with_base_dirs`],
-/// [`TieredDirs::suite`], [`Dir::scoped`] and [`Dir::app`] apply it
-/// themselves; this is for callers that want the answer without the path.
+/// Matches the TypeScript package's `isValidSegment`.
+/// [`TieredDirs::with_base_dirs`], [`TieredDirs::suite`], [`Dir::scoped`] and
+/// [`Dir::app`] apply it themselves. This function is for callers that want
+/// the check without building a path.
 ///
 /// **Stability:** stable in 0.x.
 pub fn is_valid_segment(key: &str) -> bool {
@@ -472,10 +477,9 @@ fn check_key(kind: &'static str, key: &str) -> Result<(), Error> {
     }
 }
 
-/// The horizontal axis: how durable a piece of state is.
+/// How long a piece of state must last.
 ///
-/// Distinct from the tier axis, and orthogonal to it — every tier offers
-/// every home.
+/// Separate from the tier axis. Every tier has every home.
 ///
 /// **Stability:** stable in 0.x. Exhaustive on purpose: a new home changes
 /// every caller's layout, so adding one is a breaking (0.x minor) release.
@@ -490,7 +494,7 @@ pub enum Home {
     /// State that should outlive a restart but is not user data: history,
     /// recent files, trust markers.
     State,
-    /// Log files. Never cache — purging logs loses the evidence.
+    /// Log files. Never under cache, because purging logs loses the evidence.
     Logs,
     /// Process-lifetime state: pidfiles, sockets, locks.
     Runtime,
@@ -535,8 +539,8 @@ impl Home {
 /// | runtime | `~/Library/Application Support/run`  | `$XDG_RUNTIME_DIR`, else `<durable>/run`  |
 ///
 /// Linux uses the XDG table under both. Windows uses its Known Folders under
-/// both: Xdg means Native there. A CLI or developer tool uses `Xdg`, where its
-/// users look for dotfiles. A GUI app uses `Native`.
+/// both, so Xdg means Native there. A CLI or developer tool uses `Xdg`, where
+/// its users look for dotfiles. A GUI app uses `Native`.
 ///
 /// [`EnvVars::convention`] picks one over the caller's choice, which is
 /// [`ResolveOptions::convention`].
@@ -545,7 +549,7 @@ impl Home {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum Convention {
-    /// The platform's own places. The default.
+    /// The platform's own locations. The default.
     #[default]
     Native,
     /// The XDG Base Directory rules, on macOS as on Linux.
@@ -588,8 +592,8 @@ impl std::str::FromStr for Convention {
 /// How [`BaseDirs::from_env`] and [`TieredDirs::from_env`] resolve, and their
 /// `_with` forms.
 ///
-/// One value for every knob, so a new knob is a new field here rather than a
-/// new constructor. Build it with [`ResolveOptions::new`] or `default()`, then
+/// One value holds every option, so a new option is a new field here rather
+/// than a new constructor. Build it with [`ResolveOptions::new`] or `default()`, then
 /// the `with_*` setters:
 ///
 /// ```
@@ -606,12 +610,12 @@ impl std::str::FromStr for Convention {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub struct ResolveOptions {
-    /// The per-OS table for the OS defaults. [`EnvVars::convention`] beats it
-    /// when set.
+    /// The per-OS table for the OS defaults. [`EnvVars::convention`] overrides
+    /// it when set.
     pub convention: Convention,
     /// Whether [`BaseDirs::from_env`] and [`TieredDirs::from_env`] read an
     /// unset root variable as [`test_root`] in a cargo test binary. On by
-    /// default. Off, they resolve as they would outside cargo;
+    /// default. When off, they resolve as they would outside cargo.
     /// [`EnvVars::root`] and [`EnvVars::require_override`] still apply.
     pub test_root: bool,
 }
@@ -653,8 +657,8 @@ impl Default for ResolveOptions {
 ///
 /// Construct with [`BaseDirs::from_env`] in production and
 /// [`BaseDirs::rooted`], [`BaseDirs::xdg`] or [`BaseDirs::from_env_with`] in
-/// tests. Once built, nothing in this crate
-/// consults the environment again — path resolution below this type is pure.
+/// tests. Once built, nothing in this crate reads the environment again. Path
+/// resolution below this type is pure.
 ///
 /// **Stability:** stable in 0.x.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -671,12 +675,12 @@ pub struct BaseDirs {
 impl BaseDirs {
     /// Resolve from the environment and the platform, once.
     ///
-    /// Each base directory takes the first answer in this order:
+    /// Each base directory takes the first value set, in this order:
     ///
     /// 1. Its own variable: [`EnvVars::dir`].
-    /// 2. [`EnvVars::root`] — the [`BaseDirs::rooted`] layout.
+    /// 2. [`EnvVars::root`], with the [`BaseDirs::rooted`] layout.
     /// 3. The OS default for the convention. [`EnvVars::convention`] picks
-    ///    it when set; [`ResolveOptions::convention`] otherwise.
+    ///    it when set, else [`ResolveOptions::convention`].
     ///
     /// | home    | Linux, and macOS under Xdg | macOS under Native | Windows |
     /// |---------|----------------------------|--------------------|---------|
@@ -697,12 +701,12 @@ impl BaseDirs {
     /// runtime directory. An empty variable counts as unset.
     ///
     /// Two test rules run first (see "Tests never resolve a real home" in the
-    /// crate docs): in a cargo test binary an unset root variable reads as
-    /// [`test_root`], unless [`ResolveOptions::test_root`] is off, and with
-    /// [`EnvVars::require_override`] set an OS fallback is
+    /// crate docs). In a cargo test binary an unset root variable reads as
+    /// [`test_root`], unless [`ResolveOptions::test_root`] is off. With
+    /// [`EnvVars::require_override`] set, an OS fallback is
     /// [`Error::OverrideRequired`].
     ///
-    /// A later knob goes on [`ResolveOptions`], not on a new constructor.
+    /// A later option goes on [`ResolveOptions`], not on a new constructor.
     ///
     /// # Errors
     ///
@@ -761,10 +765,10 @@ impl BaseDirs {
     /// [`BaseDirs::from_env`] with every variable read through `var`
     /// instead of the process environment: the override variables, the
     /// convention variable and `XDG_*`. The home directory and the macOS
-    /// Native and Windows cells still come from the platform. The seam that
-    /// lets a test exercise every precedence case without mutating the
-    /// process env. Applies neither test rule, so
-    /// [`ResolveOptions::test_root`] has no effect here.
+    /// Native and Windows cells still come from the platform. A test uses this
+    /// to try every precedence case without changing the process env. It
+    /// applies neither test rule, so [`ResolveOptions::test_root`] has no
+    /// effect here.
     ///
     /// # Errors
     ///
@@ -823,12 +827,12 @@ impl BaseDirs {
         Self::from_parts(durable, config, cache, state, logs, runtime, scratch)
     }
 
-    /// Assemble from raw optional roots, exactly as `dirs` hands them over.
+    /// Assemble from raw optional roots, exactly as `dirs` returns them.
     ///
-    /// A `None` runtime is not an error: it resolves to `<durable>/run`
-    /// (trap 2). Every other `None` is an [`Error::MissingBaseDir`]
-    /// (trap 3). This is the seam that lets a test exercise a machine with no
-    /// home directory.
+    /// A `None` runtime is not an error. It resolves to `<durable>/run`
+    /// (problem 2 in the crate docs). Every other `None` is an
+    /// [`Error::MissingBaseDir`] (problem 3). A test uses this to simulate a
+    /// machine with no home directory.
     ///
     /// # Errors
     ///
@@ -865,9 +869,9 @@ impl BaseDirs {
     /// `<root>/config`, `<root>/cache`, `<root>/state`, `<root>/logs`,
     /// `<root>/scratch`, and runtime at `<root>/durable/run`.
     ///
-    /// The layout [`EnvVars::root`] selects, and the test and parity-fixture
-    /// seam. The TS twin ships the same helper with the same layout, so a
-    /// fixture row asserts identical absolute paths on both arms.
+    /// The layout [`EnvVars::root`] selects. Tests and the parity fixture use
+    /// it. The TypeScript package has the same helper with the same layout, so
+    /// a fixture row checks identical absolute paths in both languages.
     pub fn rooted(root: impl AsRef<Path>) -> Self {
         let root = root.as_ref();
         let durable = root.join("durable");
@@ -890,8 +894,8 @@ impl BaseDirs {
     /// Each home is its `XDG_*` variable when that holds an absolute path,
     /// else its default under `home`. A relative value is ignored, as the XDG
     /// spec says. Logs share the state home. Runtime is `$XDG_RUNTIME_DIR`,
-    /// else `<durable>/run`. The TS twin's `xdgBaseDirs` builds the same
-    /// layout, held to it by the parity fixture's `convention_cases`.
+    /// else `<durable>/run`. The TypeScript package's `xdgBaseDirs` builds the
+    /// same layout. The parity fixture's `convention_cases` check that.
     pub fn xdg(home: impl AsRef<Path>, var: impl Fn(&str) -> Option<OsString>) -> Self {
         let home = home.as_ref();
         let under = |segments: &[&str]| segments.iter().fold(home.to_path_buf(), |p, s| p.join(s));
@@ -921,9 +925,9 @@ impl BaseDirs {
         }
     }
 
-    /// The platform temp directory. Deliberately not reachable through
-    /// [`BaseDirs::get`]: scratch is not a [`Home`], because nothing in it
-    /// outlives the call that wrote it.
+    /// The platform temp directory. Not reachable through [`BaseDirs::get`],
+    /// on purpose. Scratch is not a [`Home`], because nothing in it outlives
+    /// the call that wrote it.
     pub fn scratch(&self) -> &Path {
         &self.scratch
     }
@@ -1001,8 +1005,9 @@ fn xdg_defaults(var: impl Fn(&str) -> Option<OsString>) -> OsDefaults {
     }
 }
 
-/// macOS: Native is Apple's places, with logs in `~/Library/Logs`, which
-/// `dirs` has no accessor for (trap 1). Xdg is the XDG table.
+/// macOS: Native is Apple's locations, with logs in `~/Library/Logs`, which
+/// `dirs` has no accessor for (problem 1 in the crate docs). Xdg is the XDG
+/// table.
 #[cfg(target_os = "macos")]
 #[allow(
     clippy::disallowed_methods,
@@ -1024,11 +1029,11 @@ fn os_defaults(convention: Convention, var: impl Fn(&str) -> Option<OsString>) -
 
 /// Windows: the Known Folders under both conventions. Xdg means Native here.
 ///
-/// Logs land at `<durable>/logs`, not under `%LOCALAPPDATA%`: that is the
-/// same root as cache, which the OS purges (trap 1 by another route). State
-/// goes to `%LOCALAPPDATA%\state`: machine-local, so it need not roam. That
+/// Logs go to `<durable>/logs`, not under `%LOCALAPPDATA%`. That is the same
+/// root as cache, which the OS purges (problem 1 in the crate docs). State goes
+/// to `%LOCALAPPDATA%\state`. It is machine-local, so it need not roam. That
 /// puts it beside each tier's cache folder under the same root, never the same
-/// folder: [`is_valid_segment`] refuses `state`, `logs` and `run` as segments,
+/// folder. [`is_valid_segment`] refuses `state`, `logs` and `run` as segments,
 /// so no tier folder can be another home's root.
 #[cfg(windows)]
 #[allow(
@@ -1058,11 +1063,11 @@ fn os_defaults(_convention: Convention, var: impl Fn(&str) -> Option<OsString>) 
 /// A test binary lives in `<target>/<profile>/deps/` and runs with `CARGO` (or
 /// `NEXTEST`) set. Requiring both keeps an installed app, or a `cargo run`
 /// binary in `<target>/<profile>/`, on the real homes. A doctest binary lives
-/// in a rustdoc temp dir and gets no default; [`EnvVars::require_override`]
+/// in a rustdoc temp dir and gets no default. [`EnvVars::require_override`]
 /// catches it when a test runner sets that variable.
 ///
-/// The start time keeps a later process that reuses the pid off this one's
-/// leftover state. Callers that read the environment themselves, such as a
+/// The start time stops a later process with the same pid from using this
+/// one's leftover files. Callers that read the environment themselves, such as a
 /// product-tier layer, use this to apply the same default.
 ///
 /// **Stability:** stable in 0.x.
@@ -1084,7 +1089,7 @@ pub fn test_root() -> Option<&'static Path> {
 }
 
 /// The entry point. Holds the vendor and the resolved base directories, and
-/// hands out tiers.
+/// returns tiers.
 ///
 /// **Stability:** stable in 0.x.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1124,7 +1129,7 @@ impl TieredDirs {
         Self::with_base_dirs(vendor, BaseDirs::from_env_with(vars, opts, var)?)
     }
 
-    /// Build from injected base directories. The testable constructor.
+    /// Build from injected base directories. Tests use this constructor.
     ///
     /// `vendor` is validated as a single path segment, e.g. `com.example`.
     ///
@@ -1161,7 +1166,7 @@ impl TieredDirs {
     /// The suite tier: `<vendor>.<suite_key>`. Shared by the products that
     /// share user data.
     ///
-    /// `suite_key` is validated as a single path segment; it is a
+    /// `suite_key` is validated as a single path segment. It is a
     /// caller-supplied constant, never derived from a bundle identifier.
     ///
     /// # Errors
@@ -1176,18 +1181,18 @@ impl TieredDirs {
         })
     }
 
-    /// The standalone tier: the bare `tool` name, with NO vendor segment.
+    /// The standalone tier: the bare `tool` name, with no vendor segment.
     ///
     /// For a general tool the vendor ships into other people's repositories.
     /// It is not part of the vendor's suite, so it must not write under the
-    /// vendor's namespace. Its config directory is `<config>/<tool>`:
-    /// `~/.config/<tool>` on Linux and under [`Convention::Xdg`] on macOS,
+    /// vendor's directory. Its config directory is `<config>/<tool>`:
+    /// `~/.config/<tool>` on Linux and under [`Convention::Xdg`] on macOS, and
     /// `~/Library/Application Support/<tool>` under [`Convention::Native`] on
     /// macOS.
     ///
     /// `tool` is validated as a single path segment. Use
-    /// [`TieredDirs::suite`] for anything that ships as part of the suite —
-    /// the two are different addresses and nothing merges them.
+    /// [`TieredDirs::suite`] for anything that ships as part of the suite. The
+    /// two are different addresses and nothing merges them.
     ///
     /// # Errors
     ///
@@ -1201,34 +1206,33 @@ impl TieredDirs {
         })
     }
 
-    /// Whether a bundle identifier sits under this vendor.
+    /// Whether a bundle identifier starts with this vendor.
     ///
-    /// A bare prefix test, matching the TS twin's `isVendorBundleId`. Nothing
-    /// stricter: a dot-boundary rule would make the twins disagree about which
-    /// apps conform.
+    /// A bare prefix test, matching the TypeScript package's
+    /// `isVendorBundleId`. It is not stricter on purpose. A dot-boundary rule
+    /// would make the two packages disagree about which apps conform.
     pub fn is_vendor_bundle_id(&self, bundle_id: &str) -> bool {
         is_vendor_bundle_id(&self.vendor, bundle_id)
     }
 
-    /// Debug-only check that a bundle identifier sits under this vendor.
+    /// Debug-only check that a bundle identifier starts with this vendor.
     ///
-    /// A migration tracker, not a gate: it cannot break a release build. An
-    /// app still on a legacy prefix fails it, which is how adopting this crate
-    /// surfaces the app as non-conformant.
+    /// It cannot break a release build. An app still on a legacy prefix fails
+    /// it in debug builds, which shows the app does not conform yet.
     ///
-    /// TS has no debug assertion, so the twin stops at
+    /// TS has no debug assertion, so the TypeScript package has only
     /// [`TieredDirs::is_vendor_bundle_id`] and leaves the caller to decide.
-    /// Same predicate either way.
+    /// The check is the same in both.
     pub fn assert_vendor_bundle_id(&self, bundle_id: &str) {
         assert_vendor_bundle_id(&self.vendor, bundle_id);
     }
 
-    /// The platform temp directory, untiered: state that does not outlive the
-    /// call that wrote it.
+    /// The platform temp directory, with no tier: state that does not outlive
+    /// the call that wrote it.
     ///
-    /// Not [`Tier::runtime`]. Runtime holds state that DOES outlive the call
-    /// and describes a live process — a pidfile, a socket, a lock — and the OS
-    /// sweeps temp while such a process is still running.
+    /// Not [`Tier::runtime`]. Runtime holds state that outlives the call and
+    /// describes a live process: a pidfile, a socket, a lock. The OS may clear
+    /// temp while such a process is still running.
     pub fn scratch(&self) -> Dir {
         Dir {
             path: self.base.scratch.clone(),
@@ -1238,11 +1242,11 @@ impl TieredDirs {
 
 /// Which constructor produced a [`Tier`].
 ///
-/// Exposed so a caller — or a gate run over a third party's install — can tell
+/// Exposed so a caller, or a check run over a third party's install, can tell
 /// a suite address from a standalone one without parsing the segment string.
 ///
 /// **Stability:** stable in 0.x. `#[non_exhaustive]`, so a later release can
-/// add a kind without a breaking change; a `match` outside this crate needs a
+/// add a kind without a breaking change. A `match` outside this crate needs a
 /// `_` arm.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
@@ -1529,7 +1533,7 @@ mod tests {
     #[test]
     fn a_standalone_tool_gets_no_vendor_segment() {
         // A general tool installed in someone else's repository must not
-        // write under the vendor's namespace.
+        // write under the vendor's directory.
         let dirs = dirs();
         let tier = dirs.standalone("tool").unwrap();
         assert_eq!(tier.segment(), "tool");
@@ -1568,7 +1572,7 @@ mod tests {
     #[test]
     fn scratch_is_not_the_runtime_home() {
         // Different lifetimes. A pidfile outlives the call and describes a
-        // live process; a scratch file does not outlive the call at all.
+        // live process. A scratch file does not outlive the call.
         let base = BaseDirs::rooted("/stub");
         assert_ne!(base.scratch(), base.get(Home::Runtime));
         assert_ne!(dirs().scratch().path(), dirs().vendor().runtime().path());
@@ -1629,7 +1633,7 @@ mod tests {
 
     #[test]
     fn runtime_is_not_cache() {
-        // Trap 2. The OS may purge cache while the process a pidfile
+        // Problem 2. The OS may purge cache while the process a pidfile
         // describes is still alive, so runtime falls back under durable.
         let base = BaseDirs::from_parts(
             Some(PathBuf::from("/d")),
@@ -1667,7 +1671,7 @@ mod tests {
 
     #[test]
     fn a_missing_base_dir_is_an_error_not_a_panic() {
-        // Trap 3. Headless CI and sandboxes do not always have a home.
+        // Problem 3. Headless CI and sandboxes do not always have a home.
         let some = |p: &str| Some(PathBuf::from(p));
         let names = ["durable", "config", "cache", "state", "logs", "scratch"];
         for (missing, home) in names.into_iter().enumerate() {
@@ -1682,18 +1686,18 @@ mod tests {
 
     #[test]
     fn from_env_resolves_or_errors_without_panicking() {
-        // Whichever way this machine answers, it must not unwrap.
+        // Whatever this machine returns, nothing may panic.
         match BaseDirs::from_env(&ENV, ResolveOptions::new()) {
             Ok(base) => {
                 for home in Home::ALL {
                     assert!(base.get(home).is_absolute(), "{}", home.as_str());
                 }
                 assert!(base.scratch().is_absolute());
-                // Logs and state never fold into cache — the OS purges cache.
+                // Logs and state are never under cache, because the OS purges cache.
                 assert_ne!(base.get(Home::Logs), base.get(Home::Cache));
                 assert_ne!(base.get(Home::State), base.get(Home::Cache));
                 assert_ne!(base.get(Home::Runtime), base.get(Home::Cache));
-                // Scratch is swept; runtime describes a live process.
+                // The OS clears scratch, and runtime describes a live process.
                 assert_ne!(base.scratch(), base.get(Home::Runtime));
             }
             Err(Error::MissingBaseDir { .. }) => {}
@@ -1771,7 +1775,7 @@ mod tests {
         let base = guarded(&[("EXAMPLE_CACHE_DIR", "/c")], Some("/t")).unwrap();
         assert_eq!(base.get(Home::Cache), abs("/c"));
         assert_eq!(base.get(Home::Durable), abs("/t/durable"));
-        // An explicit root wins over the test root, and over the guard.
+        // An explicit root wins over the test root and the require-override check.
         assert_eq!(
             guarded(
                 &[("EXAMPLE_ROOT", "/r"), (ENV.require_override, "1")],
@@ -1807,12 +1811,12 @@ mod tests {
             guarded_opts(off, &[("EXAMPLE_ROOT", "/r")], Some("/t")).unwrap(),
             BaseDirs::rooted(abs("/r")),
         );
-        // The guard still refuses an OS fallback.
+        // The require-override check still refuses an OS fallback.
         assert!(matches!(
             guarded_opts(off, &[(ENV.require_override, "1")], Some("/t")),
             Err(Error::OverrideRequired { .. })
         ));
-        // On, the fake test root stands in as before.
+        // With the switch on, the fake test root is used.
         let on = ResolveOptions::new().with_test_root(true);
         assert_eq!(
             guarded_opts(on, &[], Some("/t")).unwrap(),

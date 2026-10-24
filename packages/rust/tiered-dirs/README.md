@@ -18,7 +18,7 @@ directory.
 - **home**: how long the state must last. `durable`, `config`, `cache`,
   `state`, `logs` or `runtime`.
 
-`scratch()` sits outside both axes: the platform temp directory.
+`scratch()` is on neither axis. It is the platform temp directory.
 
 A **convention** picks the per-OS table the homes come from: `Native` (the
 default) or `Xdg`. They differ on macOS only. A caller picks one through
@@ -71,7 +71,7 @@ produced a tier.
 Every segment a caller passes (vendor, suite key, tool, scope kind and key,
 app) must be one safe path segment: a leading ASCII letter or digit, then
 letters, digits, `.`, `_` or `-`, with no `..`. It must not be `state`, `logs`
-or `run`, in any case (see Homes). Anything else is `Error::InvalidKey`.
+or `run`, in any letter case (see Homes). Anything else is `Error::InvalidKey`.
 
 `examples/layout.rs` prints every directory for one vendor. Run it with
 `cargo run --example layout`.
@@ -80,8 +80,8 @@ or `run`, in any case (see Homes). Anything else is `Error::InvalidKey`.
 
 The vendor and suite tiers are for a suite: programs with one owner. A general
 tool that the vendor ships into other people's projects is not part of that
-suite. `suite("tool")` would write the vendor's name onto a stranger's
-machine.
+suite. `suite("tool")` would create a vendor-named directory on the machine
+of someone who does not use the suite.
 
 `standalone(tool)` is the tier for that tool. Its segment is the bare tool
 name, with no vendor in it. Its config directory is `~/.config/<tool>` on
@@ -114,13 +114,13 @@ The XDG paths are defaults: `XDG_DATA_HOME`, `XDG_CONFIG_HOME`,
 reads those variables itself, through the same environment as the override
 variables. A relative value is ignored, as the XDG spec says, and `~` is not
 expanded. On Windows, `Xdg` means `Native`. The macOS Native and Windows cells
-come from the `dirs` crate. Three rules of this crate apply to every cell:
+come from the `dirs` crate. These rules of this crate apply to every cell:
 
 - Logs, state and runtime never go under cache, because the OS may purge
   cache. Where the platform has no logs or runtime directory, they go under
-  durable. On Windows state is `%LOCALAPPDATA%\state`: under the same root
-  as each tier's cache folder and beside it, never the same folder.
-- `state`, `logs` and `run` are reserved, in any case. A tier, scope or app
+  durable. On Windows state is `%LOCALAPPDATA%\state`. That is under the
+  same root as each tier's cache folder and beside it, never the same folder.
+- `state`, `logs` and `run` are reserved, in any letter case. A tier, scope or app
   segment with one of those names is `Error::InvalidKey`. Otherwise
   `standalone("state").cache()` would be the Windows state root, and
   `standalone("logs").durable()` the Windows logs root.
@@ -138,16 +138,16 @@ come from the `dirs` crate. Three rules of this crate apply to every cell:
   owns it, under that program's convention.
 
 `BaseDirs::from_env` and `TieredDirs::from_env` take a `ResolveOptions`.
-`ResolveOptions::new()` and `default()` mean `Native`; set `Xdg` with
+`ResolveOptions::new()` and `default()` mean `Native`. Set `Xdg` with
 `with_convention`. `<P>_CONVENTION=native` or `xdg` overrides the caller's
-choice; any other value is `Error::InvalidConvention`. The value is trimmed,
+choice. Any other value is `Error::InvalidConvention`. The value is trimmed,
 then must match exactly, in lower case. `Convention` also implements
 `FromStr`, which takes `native` or `xdg` exactly, for a command-line flag.
 
 `BaseDirs` and `TieredDirs` each read the environment through two
 constructors: `from_env` reads the process environment, and `from_env_with`
 reads the variables through a caller's function. Both take a
-`ResolveOptions`. A later knob goes on `ResolveOptions`, not on a new
+`ResolveOptions`. A later option goes on `ResolveOptions`, not on a new
 constructor.
 
 ```rust
@@ -170,7 +170,7 @@ Every base directory can be moved by an environment variable, on every OS, so
 a test or harness can run a whole program inside one scratch root. The caller
 names the variables with `EnvVars`, through `env_vars!("<P>")`. Every name
 shares that one prefix. There is no public way to pick unrelated names.
-For each base directory, the first answer wins:
+For each base directory, the first source that is set wins:
 
 | order | source | effect |
 |---|---|---|
@@ -181,12 +181,12 @@ For each base directory, the first answer wins:
 Runtime follows durable: when `<P>_RUNTIME_DIR` is unset but durable is moved
 by step 1 or 2, runtime is `<durable>/run`. An empty variable counts as unset.
 A relative path is `Error::RelativeOverride`. On Windows an absolute path has a
-drive or a UNC prefix (`C:\state`, `\\server\share`); `\state` alone is
+drive or a UNC prefix (`C:\state`, `\\server\share`). `\state` alone is
 relative to the current drive and is refused.
 
 `BaseDirs::from_env_with` reads the variables through a caller's own
-function, `XDG_*` included, so a test can try every case
-without changing the process environment. `BaseDirs::xdg(home, var)` builds
+function, `XDG_*` included, so a test can try every case without changing the
+process environment. `BaseDirs::xdg(home, var)` builds
 the XDG table under any home, on any OS.
 `EnvVars::is_overridden` reports whether any override variable is set.
 
@@ -201,7 +201,7 @@ order:
   `cargo test` needs no setup. `test_root()` returns that root. A doc-test,
   or a test binary started directly, gets no such default. To resolve the
   OS defaults even under cargo, pass
-  `ResolveOptions::new().with_test_root(false)`; `<P>_ROOT` and
+  `ResolveOptions::new().with_test_root(false)`. `<P>_ROOT` and
   `<P>_REQUIRE_OVERRIDE` still apply.
 - With `<P>_REQUIRE_OVERRIDE` set, a home that would fall back to the OS
   default is `Error::OverrideRequired`, whose message names the fix. Child
@@ -214,17 +214,17 @@ defaults calls it.
 ## Scratch
 
 `scratch()` returns the platform temp directory. It wraps
-`std::env::temp_dir()` and adds nothing, so a rule such as "no direct OS path
-call outside this crate" holds with no exception.
+`std::env::temp_dir()` and adds nothing. It exists so that a rule such as "no
+direct OS path call outside this crate" holds with no exception.
 
 Scratch is not the runtime home. Scratch holds state that does not outlive one
-call. Runtime holds state that does outlive it and describes a live process:
+call. Runtime holds state that outlives it and describes a live process:
 a pidfile, a socket, a lock.
 
 ## Platforms
 
 Linux, macOS and Windows. The tests run on all three. Other Unix systems
-follow the Linux (XDG) rules; they are not tested. On a target with no home
+follow the Linux (XDG) rules. They are not tested. On a target with no home
 directory at all, such as `wasm32-unknown-unknown`, the OS defaults are
 `Error::MissingBaseDir` and only the override variables or
 `BaseDirs::rooted` give directories.
@@ -250,17 +250,16 @@ Minimum supported Rust version: 1.89.
 This comparison is from each crate's documentation. On Linux all of them
 follow the `XDG_*` variables.
 
-## Parity with the TypeScript twin
+## Parity with the TypeScript package
 
-A TypeScript twin is published as
+A TypeScript version is published as
 [`@osdlc/tiered-dirs`](https://www.npmjs.com/package/@osdlc/tiered-dirs). Both
 are checked against `tests/fixtures/parity.json`. The two must give the same
 path for the same tier, home, scope and app, so a Rust program and a
 TypeScript program can share state. The fixture holds the cases: tier, home,
 scope and app with the expected path, scratch cases, override cases, the XDG
-layout under a stub home, and refused convention values. Both
-twins run every case with stubbed base directories (`BaseDirs::rooted("/stub")`
-here).
+layout under a stub home, and refused convention values. Both packages run
+every case with stubbed base directories (`BaseDirs::rooted("/stub")` here).
 
 ## Which test shows what
 
