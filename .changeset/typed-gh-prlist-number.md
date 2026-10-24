@@ -2,4 +2,4 @@
 '@osdlc/typed-gh': patch
 ---
 
-`prList` always requests `number`, so a `fields` list without it no longer drops every row and returns an empty result.
+`prList` always requests the `number` field. Before, a `fields` list without `number` returned no rows.
