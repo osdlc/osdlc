@@ -12,10 +12,10 @@
     {
       "id": "r1-1",
       "round": 1,
-      "path": "packages/ts/project/src/collect.ts",
+      "path": "packages/ts/system-model/src/collect.ts",
       "line": 116,
       "title": "collect reuses detect's memoized reads and listing on every later call, so a re-collect is stale",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365462100",
       "status": "open",
       "reason": null,
       "fixedIn": null
@@ -26,7 +26,7 @@
       "path": "packages/ts/project/src/roles.ts",
       "line": 187,
       "title": "missingDeps offers npm ci for a pinned package with no lockfile",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365462102",
       "status": "open",
       "reason": null,
       "fixedIn": null
@@ -37,7 +37,7 @@
       "path": "packages/ts/project/src/collect.ts",
       "line": 102,
       "title": "a profile not built by detect is re-listed with the built-in excludes even when detect turned them off",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365462106",
       "status": "open",
       "reason": null,
       "fixedIn": null
@@ -48,7 +48,7 @@
       "path": "packages/ts/project/src/roles.ts",
       "line": 135,
       "title": "workspace members with no lockfile each get their own install",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365462110",
       "status": "open",
       "reason": null,
       "fixedIn": null
@@ -59,7 +59,7 @@
       "path": "packages/ts/project/src/synthesized.ts",
       "line": 157,
       "title": "synthesized install tasks put the directory in cwd, against the Task.cwd contract",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365462114",
       "status": "open",
       "reason": null,
       "fixedIn": null
@@ -70,7 +70,7 @@
       "path": "packages/ts/project/src/plugins/python/python.ts",
       "line": 76,
       "title": "python runner re-reads pyproject.toml and re-derives the manager instead of using the profile",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365462121",
       "status": "open",
       "reason": null,
       "fixedIn": null
@@ -81,7 +81,7 @@
       "path": "packages/ts/project/src/plugins/python/python.ts",
       "line": 16,
       "title": "stale: comment says the plugin avoids a TOML dependency",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365462125",
       "status": "open",
       "reason": null,
       "fixedIn": null
@@ -92,7 +92,7 @@
       "path": "packages/ts/project/src/plugins/python/python.ts",
       "line": 72,
       "title": "comment about binary sits on the runner role, which has no binary",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365462127",
       "status": "open",
       "reason": null,
       "fixedIn": null
@@ -103,7 +103,7 @@
       "path": "packages/ts/project/src/plugins/jvm/gradle.ts",
       "line": 152,
       "title": "stale: comment says the contract requires a static binary on the runner",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365462129",
       "status": "open",
       "reason": null,
       "fixedIn": null
@@ -114,7 +114,7 @@
       "path": "packages/ts/project/src/project.ts",
       "line": 114,
       "title": "createProject doc omits the duplicate-ecosystem throw",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365462131",
       "status": "open",
       "reason": null,
       "fixedIn": null
@@ -125,7 +125,7 @@
       "path": "packages/ts/project/README.md",
       "line": 128,
       "title": "README implies ctx.files() also checks anchored literals on disk",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365462134",
       "status": "open",
       "reason": null,
       "fixedIn": null
@@ -136,7 +136,7 @@
       "path": "packages/ts/project/src/detect.ts",
       "line": 171,
       "title": "snapshot rebuilt once per tool with detect or describe",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365462137",
       "status": "open",
       "reason": null,
       "fixedIn": null
