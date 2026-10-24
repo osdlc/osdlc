@@ -357,6 +357,25 @@ const result = await runner.run(verb.argv, { cwd: '/repo', timeoutMs: 5_000 })
 const prs = verb.parse(result)
 ```
 
+That is only safe for a verb with no `env` or `input`. `repoList` and `searchPrs` send the target
+host as `GH_HOST` (`env`), and `createReview` sends its payload on stdin (`input`); a runner call
+that passes only `verb.argv` drops both, silently: the query goes to github.com, and the review is
+never sent. `runVerb` (and `runVerbAsync`, for an `AsyncCommandRunner`) run a verb the way `Gh` and
+`AsyncGh` do, with `cwd`, `env`, `input`, `timeoutMs` and the checked contract applied, and return
+the parsed value or throw the classified failure:
+
+```ts
+import { repoList, runVerbAsync } from '@osdlc/typed-gh'
+
+const repos = await runVerbAsync(repoList('acme', {}, { hostname: 'ghe.example.com' }), runner, {
+  cwd: '/repo',
+  timeoutMs: 5_000,
+})
+```
+
+They take a `CommandRunner`. A plain `(binary, argv, opts) => result` function is wrapped as
+`{ run: (argv, opts) => fn('gh', argv, opts) }`.
+
 ## `AsyncGh`
 
 The awaitable form of `Gh`, with the same methods, for a fan-out that must not block the event loop.
@@ -382,7 +401,8 @@ These methods take `AsyncCallOptions`: `raw`, `rawChecked`, `prList`, `prView`, 
 `signal`.
 
 `api(endpoint, opts)` (on `Gh` and `AsyncGh`) is a REST GET through `gh api`.
-It never throws; the result is `{ ok, status, etag, body, malformed, stderr, error? }`.
+It never throws; the result is `{ ok, status, etag, body, message, malformed, stderr, error? }`.
+On failure `body` still carries GitHub's error object and `message` its text; `status` is only observed when headers were requested (`etag` or `includeHeaders`).
 `stderr` is gh's own; `error` holds the runner's message when gh never ran or
 was stopped (a missing binary, a timeout).
 Pass `etag` for a conditional request (`If-None-Match`; a 304 comes back as
@@ -462,6 +482,8 @@ experimental.
 - `GhOptions` and `AsyncGhOptions`: the runner, `repo` and `hostname` a client is built with.
 - `AsyncCallOptions`: `timeoutMs` and `signal`, accepted by sixteen methods of `AsyncGh`.
 - `defaultRunnerFactory` and `RunnerFactory`: how a client makes its default runner for `gh`.
+- `runVerb` and `runVerbAsync`, with `RunVerbOptions` and `RunVerbAsyncOptions`: run one verb through
+  a runner you own, with its `env`, `input`, timeout and checked contract applied.
 
 Methods on both clients:
 
