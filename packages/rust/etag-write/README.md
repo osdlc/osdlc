@@ -16,8 +16,9 @@ notes, config files, state files.
   cannot open a directory as a file).
 - `write_cas` takes the etag you read and refuses the write if the file
   changed since then, or if the file exists and you sent no etag.
-- `write_if_changed` skips the write when the bytes are the same, so file
-  watchers and mtime-keyed caches are not woken for nothing.
+- `write_if_changed` skips the write when the bytes are the same, so the
+  mtime does not change and file watchers and mtime-keyed caches are not
+  triggered.
 - `etag` and `etag_of_file` give the lowercase hex sha256 of bytes or a file.
 
 It works on bytes and paths only. It knows nothing about file formats.
@@ -75,8 +76,8 @@ These are the guarantees, and how far the tests go:
   behind.
 - The temp file is fsynced before the rename, and the directory after it
   (except on Windows, which skips the directory fsync), so that the new bytes
-  and the rename survive a power cut. That depends on the
-  operating system and the disk honouring fsync. No test covers it.
+  and the rename survive a power cut. That depends on the operating system
+  and the disk honouring fsync. No test covers it.
 
 ## The compare-and-swap rules
 
@@ -171,7 +172,7 @@ than one writer edits the same file and a lost update matters.
 
 ## Stability
 
-0.1 is the first release. The crate stays on 0.x for now. The seven public
+The crate stays on 0.x for now. The seven public
 items (`etag`, `etag_of_file`, `write_atomic`, `write_cas`, `write_if_changed`,
 `WriteError` and `ReadError`) are each marked "stable in 0.x" in their docs:
 they are not expected to change. `WriteError` is `#[non_exhaustive]`, so a

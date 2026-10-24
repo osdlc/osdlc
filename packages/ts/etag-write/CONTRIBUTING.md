@@ -7,8 +7,8 @@ Thanks for your interest in `@osdlc/etag-write`.
 Report bugs and ask for features in the
 [issue tracker](https://github.com/osdlc/osdlc/issues). For a bug, include the
 library version, your runtime (Node or Bun) and version, your operating
-system and file system, and a minimal example. Report security problems privately. See
-[SECURITY.md](./SECURITY.md).
+system and file system, and a minimal example. Report security problems
+privately. See [SECURITY.md](./SECURITY.md).
 
 ## Pull requests
 
@@ -20,8 +20,8 @@ merged there.
 
 The repository is a pnpm workspace. Install from the repository root, then
 work in the package directory. The tests run on Vitest under Node 22 or
-later. Build first: the workspace packages and the examples resolve each other
-through `dist/`.
+later, against the TypeScript source. The smoke check below runs the built
+package, so build before it.
 
 ```sh
 pnpm install
@@ -31,8 +31,7 @@ pnpm test
 ```
 
 `pnpm run smoke` runs `tests/smoke.mjs`, a short check of the built package
-under Node. It is not published.
-`pnpm run coverage` reports test coverage.
+under Node. It is not published. `pnpm run coverage` reports test coverage.
 
 Other checks:
 
@@ -54,5 +53,5 @@ pnpm run format:check
   README's Stability section. A test checks that the two agree.
 - For a change users can see, add a changeset: run `pnpm changeset` at the
   repository root. Start a breaking change's summary with `**Breaking:**`.
-  Do not edit `CHANGELOG.md` or `version` by hand; the release writes them.
+  Do not edit `CHANGELOG.md` or `version` by hand. The release writes them.
   See [packages/README.md](https://github.com/osdlc/osdlc/blob/main/packages/README.md).

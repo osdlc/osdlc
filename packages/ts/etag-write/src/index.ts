@@ -63,7 +63,7 @@ const toBytes = (data: WriteData): Buffer =>
     ? Buffer.from(data, 'utf8')
     : Buffer.from(data.buffer, data.byteOffset, data.byteLength)
 
-/** Lowercase hex sha256 of `data`; a string hashes as UTF-8. */
+/** Lowercase hex sha256 of `data`. A string hashes as UTF-8. */
 export function etag(data: WriteData): string {
   return createHash('sha256').update(toBytes(data)).digest('hex')
 }
@@ -99,10 +99,10 @@ function tempPath(path: string): string {
 
 /**
  * The mode a write gives the file: the caller's, else the old file's
- * permission bits. setuid, setgid and sticky are dropped, as the crate drops
- * them, because the new file has a new owner. `undefined` (a new file's mode)
- * when the target is missing, is not a regular file, or cannot be stat'ed, as
- * the crate does: any real problem with the path surfaces from the write.
+ * permission bits. setuid, setgid and sticky are dropped, as in the crate,
+ * because the new file has a new owner. Returns `undefined` (a new file's
+ * mode) when the target is missing, is not a regular file, or cannot be
+ * stat'ed. Any real problem with the path then surfaces from the write.
  */
 function keptMode(path: string, mode: number | undefined): number | undefined {
   if (mode !== undefined) return mode
@@ -124,7 +124,7 @@ async function keptModeAsync(path: string, mode: number | undefined): Promise<nu
   }
 }
 
-/** Durability of the rename itself; a platform that refuses a directory fsync skips it. */
+/** Fsyncs the directory so the rename survives a crash. Skipped where the platform refuses it. */
 function syncDir(dir: string): void {
   let fd: number | undefined
   try {
@@ -243,7 +243,7 @@ export function writeCas(
 /**
  * Write only when the content differs, so an identical write leaves mtime
  * alone and triggers no file watchers. Returns whether it wrote. `mode` applies
- * only to a write; an unchanged file keeps its permissions.
+ * only to a write. An unchanged file keeps its permissions.
  */
 export function writeIfChanged(
   path: string,

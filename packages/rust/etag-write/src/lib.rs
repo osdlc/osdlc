@@ -1,21 +1,20 @@
 //! Atomic write, sha256 etag, and compare-and-swap.
 //!
-//! Two failure modes this closes, both of which a plain `fs::write` leaves
-//! open:
+//! A plain `fs::write` has two problems that this crate fixes.
 //!
 //! **Torn files.** `fs::write` truncates and then writes. A reader (an
 //! editor, a file watcher, another process) that opens the file in between
-//! sees a truncated file; a crash in between leaves one on disk for good.
-//! The fix is the standard one: write a temp file in the SAME directory
-//! (`rename` is only atomic within a filesystem), fsync it so the bytes are
-//! durable before the name points at them, rename, then best-effort fsync the
-//! directory so the rename itself survives a power cut. Windows cannot open a
-//! directory as a file, so it skips the directory fsync.
+//! sees a truncated file. A crash in between leaves a truncated file on disk.
+//! The fix is the standard one. Write a temp file in the same directory,
+//! because `rename` is only atomic within a filesystem. Fsync it, so the bytes
+//! are on disk before the name points at them. Rename it. Then fsync the
+//! directory, best effort, so the rename itself survives a power cut. Windows
+//! cannot open a directory as a file, so it skips the directory fsync.
 //!
 //! **Lost updates.** When a person and a program edit the same file, a
-//! program that writes without checking silently discards whatever the
-//! person typed since the program read it. [`write_cas`] takes the etag the
-//! caller read and refuses the write if the file changed:
+//! program that writes without checking discards whatever the person typed
+//! since the program read it. [`write_cas`] takes the etag the caller read
+//! and refuses the write if the file changed:
 //!
 //! | on disk | etag supplied | result |
 //! |---|---|---|
@@ -23,18 +22,18 @@
 //! | exists | differs | `Conflict` |
 //! | exists | none | `ExistsWithoutEtag` — "send its etag to overwrite" |
 //! | absent | none | create |
-//! | absent | some | create (the file was deleted under us) |
+//! | absent | some | create (the file was deleted since it was read) |
 //! | unreadable | any | `Io` — never treated as absent |
 //!
-//! The third row is the important one: an absent etag on an existing file is
-//! a *blind* write, and blind writes are how edits get lost.
+//! The third row matters most. No etag on an existing file is a blind write,
+//! and blind writes lose edits.
 //!
 //! Temp files are named `.<name>.etag-write-<pid>-<n>.tmp` in the target's
 //! directory. Every failed write removes its temp file.
 //!
-//! **Stability.** Each item's docs say "stable in 0.x": it is not expected
-//! to change. The crate stays on 0.x for now, so a breaking change, if one
-//! is ever needed, ships as 0.2 rather than 2.0.
+//! **Stability.** Each public item's docs say "stable in 0.x": it is not
+//! expected to change. The crate stays on 0.x for now, so a breaking change,
+//! if one is ever needed, ships as a new 0.x minor release, not 1.0.
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs, clippy::missing_errors_doc, clippy::missing_panics_doc)]
@@ -167,14 +166,12 @@ fn read_or_none(path: &Path) -> io::Result<Option<Vec<u8>>> {
 
 /// Removes the temp file it names when dropped, unless disarmed.
 ///
-/// Every exit between creating the temp file and a successful rename has to
-/// leave the directory as it found it, and there are four of them: the
-/// write, setting permissions, the sync and the rename. A guard
-/// makes that structural rather than something each new early return has to
-/// remember. Leaks are not self-healing: the names are deterministic per pid
-/// and attempt, so a leaked one keeps its name, and once attempts 0..=64 are
-/// occupied the next write reports `AlreadyExists` instead of whatever
-/// actually went wrong.
+/// Four steps can fail between creating the temp file and a successful
+/// rename: the write, setting permissions, the sync and the rename. Each
+/// failure must leave the directory as it found it. The guard does that on
+/// drop, so a new early return cannot forget it. A leaked temp file stays:
+/// names are fixed per pid and attempt, and once attempts 0..=64 are all
+/// taken the next write reports `AlreadyExists` instead of the real error.
 struct TempGuard {
     path: PathBuf,
     armed: bool,
@@ -282,8 +279,8 @@ fn write_atomic_with(
         .map(|m| kept_permissions(&m));
 
     // Same directory, so the rename below cannot cross a filesystem
-    // boundary. O_EXCL via a unique name + create_new so two concurrent
-    // writers cannot pick the same temp file.
+    // boundary. `create_new` (O_EXCL) fails on a taken name, so two
+    // concurrent writers cannot share a temp file.
     let mut attempt = 0u32;
     let mut tmp = loop {
         let name = format!(
@@ -301,16 +298,15 @@ fn write_atomic_with(
             .open(&candidate)
         {
             Ok(mut f) => {
-                // Armed before the first fallible call, so a failed write,
-                // set-permissions or fsync takes the file it just created
-                // with it.
+                // Armed before the first call that can fail, so a failed
+                // write, set-permissions or fsync removes the file.
                 let guard = TempGuard::new(candidate);
                 f.write_all(content).map_err(io)?;
                 if let Some(perms) = keep.clone() {
                     f.set_permissions(perms).map_err(io)?;
                 }
-                // Durability BEFORE the rename: otherwise a crash can leave
-                // the name pointing at a file whose contents never landed.
+                // Sync before the rename. Otherwise a crash can leave the
+                // name pointing at a file whose contents never reached disk.
                 f.sync_all().map_err(io)?;
                 break guard;
             }
@@ -577,18 +573,17 @@ mod tests {
         assert_eq!(fs::read(&p).unwrap(), b"body");
     }
 
-    /// Cleanup on failure, tested where it can be reached directly. A write
-    /// that fails after the temp file exists must take it with it: the temp
-    /// name is deterministic per pid and attempt, so leaked ones sit at fixed
-    /// names until attempts 0..=64 are all occupied and the next write reports
-    /// `AlreadyExists` instead of what actually went wrong.
+    /// A write that fails after the temp file exists must remove it. Leaked
+    /// temp files keep fixed names per pid and attempt, so once attempts
+    /// 0..=64 are all taken the next write reports `AlreadyExists` instead
+    /// of the real error.
     ///
-    /// The guard is tested rather than each failing call. A test can make
-    /// the rename fail, by argument or through `write_atomic_with`, but
-    /// making `write_all`, `set_permissions` or `sync_all` fail on the temp
-    /// file needs a filesystem it can fill or a process-wide rlimit, neither
-    /// portable. Arming the guard before those three calls is what puts them
-    /// under it.
+    /// This tests the guard, not each failing call. A test can make the
+    /// rename fail, by argument or through `write_atomic_with`. Making
+    /// `write_all`, `set_permissions` or `sync_all` fail on the temp file
+    /// needs a filesystem the test can fill or a process-wide rlimit, and
+    /// neither is portable. The guard is armed before those three calls, so
+    /// it covers them.
     #[test]
     fn the_temp_guard_removes_its_file_unless_disarmed() {
         let d = tempfile::tempdir().unwrap();
@@ -822,10 +817,9 @@ mod tests {
         assert_eq!(fs::read(d.path().join("file")).unwrap(), b"not a directory");
     }
 
-    /// Regression guard for the one failure a caller can arrange by
-    /// argument: renaming onto a non-empty directory, which the kernel
-    /// refuses. End-to-end proof that the guard is wired into `write_atomic`
-    /// and not merely correct in isolation.
+    /// The one failure a caller can cause by argument: renaming onto a
+    /// non-empty directory, which the kernel refuses. Shows end to end that
+    /// `write_atomic` uses the guard.
     #[test]
     fn a_failed_rename_removes_the_temp_file() {
         let d = tempfile::tempdir().unwrap();
