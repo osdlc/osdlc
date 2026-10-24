@@ -1,1 +1,0 @@
-# @osdlc/project

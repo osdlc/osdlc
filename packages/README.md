@@ -169,9 +169,11 @@ Developed here, in this repository:
 - `packages/ts/pr-update` (`@osdlc/pr-update` on npm, a tool and library that
   brings pull-request branches up to date: survey, rebase with a merge
   fallback, a conflict ladder and a repair port)
-- `packages/ts/project` (`@osdlc/project` on npm, what a repository contains:
-  packages, ecosystems and tools described once with their roles, and the
-  tasks its runners expose; built-in tools ship as plugin entries)
+- `packages/ts/system-model` (`@osdlc/system-model` on npm, a repository's
+  system model: the `SystemGraph` wire contract and its host ports, plus what
+  a repository contains, its packages, ecosystems and tools described once
+  with their roles, and the tasks its runners expose; built-in tools ship as
+  plugin entries)
 
 The development repository will take each TypeScript library from npm, like
 any other consumer. Today it still keeps its own copies. Open issues and pull

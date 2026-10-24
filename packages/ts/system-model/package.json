@@ -1,0 +1,150 @@
+{
+  "name": "@osdlc/system-model",
+  "version": "0.2.0",
+  "description": "A repository's system model: its structure on the wire (SystemGraph, aspects with tiered evidence) and the ports a host satisfies to serve it, plus detection of its packages, ecosystems and tools, each tool described once with the roles it plays, and the tasks its runners expose. Running a repository's own tools is off by default.",
+  "license": "MIT OR Apache-2.0",
+  "author": "sksizer",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/osdlc/osdlc.git",
+    "directory": "packages/ts/system-model"
+  },
+  "homepage": "https://github.com/osdlc/osdlc/tree/main/packages/ts/system-model#readme",
+  "bugs": "https://github.com/osdlc/osdlc/issues",
+  "keywords": [
+    "monorepo",
+    "task-runner",
+    "package-manager",
+    "detection",
+    "moon",
+    "just",
+    "pnpm",
+    "cargo"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./graph": {
+      "types": "./dist/graph.d.ts",
+      "default": "./dist/graph.js"
+    },
+    "./aspect": {
+      "types": "./dist/aspect.d.ts",
+      "default": "./dist/aspect.js"
+    },
+    "./client": {
+      "types": "./dist/client.d.ts",
+      "default": "./dist/client.js"
+    },
+    "./saved-view": {
+      "types": "./dist/saved-view.d.ts",
+      "default": "./dist/saved-view.js"
+    },
+    "./builtins": {
+      "types": "./dist/builtins.d.ts",
+      "default": "./dist/builtins.js"
+    },
+    "./node": {
+      "types": "./dist/plugins/node/index.d.ts",
+      "default": "./dist/plugins/node/index.js"
+    },
+    "./rust": {
+      "types": "./dist/plugins/rust/index.d.ts",
+      "default": "./dist/plugins/rust/index.js"
+    },
+    "./python": {
+      "types": "./dist/plugins/python/index.d.ts",
+      "default": "./dist/plugins/python/index.js"
+    },
+    "./jvm": {
+      "types": "./dist/plugins/jvm/index.d.ts",
+      "default": "./dist/plugins/jvm/index.js"
+    },
+    "./php": {
+      "types": "./dist/plugins/php/index.d.ts",
+      "default": "./dist/plugins/php/index.js"
+    },
+    "./swift": {
+      "types": "./dist/plugins/swift/index.d.ts",
+      "default": "./dist/plugins/swift/index.js"
+    },
+    "./ruby": {
+      "types": "./dist/plugins/ruby/index.d.ts",
+      "default": "./dist/plugins/ruby/index.js"
+    },
+    "./go": {
+      "types": "./dist/plugins/go/index.d.ts",
+      "default": "./dist/plugins/go/index.js"
+    },
+    "./deno": {
+      "types": "./dist/plugins/deno/index.d.ts",
+      "default": "./dist/plugins/deno/index.js"
+    },
+    "./runners": {
+      "types": "./dist/plugins/runners/index.d.ts",
+      "default": "./dist/plugins/runners/index.js"
+    },
+    "./tools": {
+      "types": "./dist/plugins/tools/index.d.ts",
+      "default": "./dist/plugins/tools/index.js"
+    },
+    "./match": {
+      "types": "./dist/match.d.ts",
+      "default": "./dist/match.js"
+    },
+    "./params": {
+      "types": "./dist/params.d.ts",
+      "default": "./dist/params.js"
+    },
+    "./duration": {
+      "types": "./dist/duration.d.ts",
+      "default": "./dist/duration.js"
+    }
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE-MIT",
+    "LICENSE-APACHE",
+    "SECURITY.md",
+    "CONTRIBUTING.md"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "test": "vitest run",
+    "smoke": "node tests/smoke.mjs",
+    "coverage": "vitest run --coverage",
+    "prepublishOnly": "npm run clean && npm run build",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "oxlint .",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit"
+  },
+  "dependencies": {
+    "@osdlc/command-seam": "workspace:^",
+    "@osdlc/etag-write": "workspace:^",
+    "smol-toml": "catalog:"
+  },
+  "devDependencies": {
+    "@osdlc/prettier-config": "workspace:^",
+    "@osdlc/tsconfig": "workspace:^",
+    "@types/node": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
+    "oxlint": "catalog:",
+    "prettier": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

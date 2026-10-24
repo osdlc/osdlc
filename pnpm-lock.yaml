@@ -648,7 +648,7 @@ importers:
         specifier: 'catalog:'
         version: 3.9.6
 
-  packages/ts/project:
+  packages/ts/system-model:
     dependencies:
       '@osdlc/command-seam':
         specifier: workspace:^
