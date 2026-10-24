@@ -20,10 +20,10 @@ import {
   spawnRunner,
   type CommandResult,
   type CommandRunner,
-  type CommandRunOptions,
 } from '@osdlc/command-seam'
 
-import { runCheckedGh, settle, softSync, triedSync, type Soft, type TriedSync } from './doors.ts'
+import { runCheckedGh, softSync, triedSync, type Soft, type TriedSync } from './doors.ts'
+import { runVerb } from './run.ts'
 import * as v from './verbs.ts'
 import type {
   ApiOptions,
@@ -135,14 +135,7 @@ export class Gh {
 
   /** Run one verb from the table, honouring its checked/unchecked contract. */
   private exec<T>(verb: GhVerb<T>, timeoutMs?: number | undefined): T {
-    const opts: CommandRunOptions = { cwd: this.cwd }
-    if (verb.input !== undefined) opts.input = verb.input
-    if (verb.env !== undefined) opts.env = verb.env
-    if (timeoutMs !== undefined) opts.timeoutMs = timeoutMs
-    const result = verb.checked
-      ? runCheckedGh(this.runner, verb.argv, opts)
-      : this.runner.run(verb.argv, opts)
-    return settle(verb, result, this.runner.binary)
+    return runVerb(verb, this.runner, { cwd: this.cwd, timeoutMs })
   }
 
   /** {@link exec} for a verb that never answers `null` as a value: a failed or unreadable run throws. */

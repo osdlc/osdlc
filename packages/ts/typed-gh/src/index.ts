@@ -26,6 +26,8 @@ export { classifyGhFailure, type GhFailure, type GhFailureKind } from './failure
 
 export { type Soft, type TriedAsync, type TriedSync } from './doors.ts'
 
+export { runVerb, runVerbAsync, type RunVerbAsyncOptions, type RunVerbOptions } from './run.ts'
+
 export { Gh, defaultRunnerFactory, type GhOptions, type RunnerFactory } from './sync.ts'
 
 export {

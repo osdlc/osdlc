@@ -324,7 +324,7 @@ export interface PrListOptions {
   search?: string | undefined
   author?: string | undefined
   limit?: number | undefined
-  /** Field subset; defaults to {@link PR_LIST_FIELDS}. */
+  /** Field subset; defaults to {@link PR_LIST_FIELDS}. `number` is always requested. */
   fields?: readonly string[] | undefined
 }
 
@@ -340,9 +340,12 @@ export function prList(
   if (opts.head !== undefined) argv.push('--head', opts.head)
   if (opts.search !== undefined) argv.push('--search', opts.search)
   if (opts.author !== undefined) argv.push('--author', opts.author)
-  // The exact-head filter below reads `headRefName`, so ask for it.
-  const fields = opts.fields ?? PR_LIST_FIELDS
-  const asked = opts.head === undefined ? fields : withFields(fields, ['headRefName'])
+  // A row without `number` does not parse and is dropped, so always ask for it;
+  // the exact-head filter below also reads `headRefName`.
+  const asked = withFields(opts.fields ?? PR_LIST_FIELDS, [
+    'number',
+    ...(opts.head === undefined ? [] : ['headRefName']),
+  ])
   argv.push('--json', asked.join(','))
   argv.push('--limit', String(limit + 1))
   const head = opts.head

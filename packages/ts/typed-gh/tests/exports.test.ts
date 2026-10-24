@@ -54,6 +54,8 @@ const FUNCTIONS = [
   'prView',
   'repoList',
   'repoView',
+  'runVerb',
+  'runVerbAsync',
   'searchPrs',
   'setIssueLabel',
 ]
