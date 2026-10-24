@@ -1,9 +1,9 @@
 /**
- * Both runners of the seam: `input` stdin passthrough and `timeoutMs` on
- * `spawnRunner` / `spawnRunnerAsync`, and the `runChecked` /
- * `runCheckedAsync` / `CommandFailed` checked runner. Real-spawn cases use
- * `sh`/`cat` (present on every supported platform); the checked-runner
- * semantics use a fake runner for determinism.
+ * Both capture runners: `input` on stdin and `timeoutMs` on `spawnRunner` and
+ * `spawnRunnerAsync`, and the checked calls `runChecked`, `runCheckedAsync`
+ * and `CommandFailed`. Real-spawn cases use `sh` and `cat`, present on every
+ * supported platform. The checked calls use a fake runner, so they are
+ * deterministic.
  */
 
 import { spawnSync } from 'node:child_process'
@@ -52,12 +52,12 @@ describe('spawnRunner', () => {
   })
 
   test('timeoutMs is a hard cap even for a child that ignores SIGTERM', () => {
-    // `timeout` alone kills with the default SIGTERM and then goes on waiting
-    // for an exit that a child trapping it never gives: the cap degrades to
-    // the child's full runtime, which is the one thing it exists to bound.
-    // The bound is wall clock because a sync spawn blocks the runner — a test
-    // timeout cannot preempt it — but 250ms against a 10s child leaves no
-    // scheduling delay that could close the gap.
+    // `timeout` alone kills with the default SIGTERM and then keeps waiting
+    // for an exit that a child trapping it never makes. The cap would then
+    // last the child's full runtime, which is what it exists to prevent.
+    // The check uses wall-clock time because a sync spawn blocks, so a test
+    // timeout cannot interrupt it. 250ms against a 10s child leaves a wide
+    // margin for scheduling delay.
     const sh = spawnRunner('sh')
     const t0 = performance.now()
     const r = sh.run(['-c', "trap '' TERM; sleep 10"], { cwd: CWD, timeoutMs: 250 })
@@ -72,9 +72,9 @@ describe('spawnRunner', () => {
   })
 
   test('a child that never reported a status is flagged, not just exit 1', () => {
-    // The `1` a killed or unspawnable child reports is the seam's stand-in,
-    // not an answer, and it collides with the exit code plenty of binaries
-    // use for a legitimate negative result. `neverExited` is the difference.
+    // The `1` a killed or unstarted child reports is the runner's stand-in,
+    // not an answer. Many binaries use the same exit code for a real
+    // negative result. `neverExited` tells them apart.
     const sh = spawnRunner('sh')
     const killed = sh.run(['-c', 'sleep 30'], { cwd: CWD, timeoutMs: 250 })
     expect(killed.exitCode).not.toBe(0)
@@ -93,7 +93,7 @@ describe('spawnRunner', () => {
     })
     expect(r.exitCode).toBe(0)
     expect(r.stdout.startsWith('injected:')).toBe(true)
-    // The parent env still rides along (HOME survives the merge).
+    // The parent env is still passed (HOME survives the merge).
     expect(r.stdout.trim()).not.toBe('injected:')
   })
 
@@ -111,12 +111,12 @@ describe('spawnRunner', () => {
   })
 
   test('no `env` override still sees a var set on process.env at runtime', () => {
-    // Regression: passing `env: undefined` (rather than omitting the key)
-    // makes Bun's spawnSync fall back to a startup snapshot that misses a
-    // var set on `process.env` after the process started — a caller that
-    // never passes `env` still expects LIVE inheritance (a test pointing an
-    // env var at a temp dir right before spawning, say). PATH/HOME survived
-    // that snapshot and masked the bug; a var minted here cannot have.
+    // Passing `env: undefined` (rather than omitting the key) makes Bun's
+    // spawnSync use a startup snapshot that misses a var set on
+    // `process.env` after the process started. A caller that never passes
+    // `env` still expects the live environment, such as a test that points a
+    // var at a temp dir just before spawning. PATH and HOME are in the
+    // snapshot, so they would hide the bug. A var set here cannot be.
     process.env['T1_SEAM_RUNTIME_PROBE'] = 'set-after-start'
     try {
       const sh = spawnRunner('sh')
@@ -220,7 +220,7 @@ describe('spawnRunnerAsync', () => {
   })
 
   test('no `env` override still sees a var set on process.env at runtime', async () => {
-    // Async runner's twin of the sync-runner regression above.
+    // The async form of the sync-runner test above.
     process.env['T1_SEAM_RUNTIME_PROBE_ASYNC'] = 'set-after-start'
     try {
       const sh = spawnRunnerAsync('sh')
@@ -232,27 +232,25 @@ describe('spawnRunnerAsync', () => {
   })
 
   test('timeoutMs caps a hanging child', async () => {
-    // The cap is proven by construction, not by a wall-clock bound. The child
-    // would run for 30s against a 250ms cap, so the only way this run resolves
-    // inside the test's own 10s timeout is the cap firing and killing it — a
-    // cap that was a no-op would let `sleep 30` outlive the test window and
-    // fail the test as a timeout, never slipping through on the child's exit
-    // code. A wall-clock bound would be flaky: under load a 250ms timer can
-    // fire well past 2500ms.
+    // The test's own timeout is the check, not a wall-clock bound. The child
+    // would run for 30s against a 250ms cap, so this run can resolve inside
+    // the test's 10s timeout only if the cap fires and kills it. A cap that
+    // did nothing would let `sleep 30` outlast the test, which then fails as
+    // a timeout. A wall-clock bound would be flaky: under load a 250ms timer
+    // can fire well past 2500ms.
     const sh = spawnRunnerAsync('sh')
     const r = await sh.run(['-c', 'sleep 30'], { cwd: CWD, timeoutMs: 250 })
     expect(r.exitCode).not.toBe(0)
   }, 10_000)
 
   test('timeoutMs caps a child that FORKED a surviving grandchild', async () => {
-    // `&` forces the fork everywhere (some /bin/sh exec the last command,
-    // others fork it): the grandchild outlives the SIGKILL still holding the
-    // stdio write ends, so anything waiting on pipe EOF (the `close` event)
-    // blocks for the child's full runtime. The cap must resolve off its own
-    // deadline, not off `close`. Proven by construction like the test above —
-    // `wait` blocks on the 30s grandchild, so resolving inside the test window
-    // can only mean the cap fired without waiting on pipes a hung grandchild
-    // controls.
+    // `&` forces the fork on every shell (some /bin/sh exec the last
+    // command, others fork it). The grandchild outlives the SIGKILL and still
+    // holds the stdio write ends, so anything waiting on pipe EOF (the
+    // `close` event) blocks for the child's full runtime. The cap must
+    // resolve on its own deadline, not on `close`. As in the test above, the
+    // test's timeout is the check. `wait` blocks on the 30s grandchild, so
+    // resolving in time means the cap fired without waiting on the pipes.
     const sh = spawnRunnerAsync('sh')
     const r = await sh.run(['-c', 'sleep 30 & wait'], { cwd: CWD, timeoutMs: 250 })
     expect(r.exitCode).not.toBe(0)
@@ -315,13 +313,10 @@ describe('runCheckedAsync / asAsync', () => {
   })
 })
 
-// Under `bun test` these exercise `runViaChildRedirect`, not the pipe path
-// (NODE_ENV=test flips CHILD_STDIO_CORRUPTED). That is the runner every test
-// harness shells through, so its failure contract is the one worth pinning:
-// a capture that fails must say so. Silent empty output at
-// exit 1 is indistinguishable from a command that genuinely exited 1, which
-// is how a resource-starved spawn reaches an assertion as an irreproducible
-// flake.
+// A capture that fails must say so. Empty output at exit 1 looks the same as
+// a command that really exited 1, and a spawn starved of resources then
+// reaches an assertion as a flake no one can reproduce. On Node these take
+// the pipe path. Under `bun test` they would take `runViaChildRedirect`.
 describe('spawnRunner — capture contract', () => {
   test('captures stdout and a zero exit', () => {
     const res = spawnRunner('sh').run(['-c', 'printf hello'], { cwd: process.cwd() })
@@ -359,10 +354,10 @@ describe('spawnRunner — capture contract', () => {
 
 describe('spawnRunnerAsync — capture contract', () => {
   test('a multi-byte character straddling a chunk boundary survives', async () => {
-    // The two bytes of `é` (C3 A9) arrive in separate `data` events — a pipe
-    // splits at 64KB in practice, and the sleep forces the same split
-    // deterministically. Decoding each chunk in isolation turns each half
-    // into U+FFFD, so the captured string differs from what the child wrote.
+    // The two bytes of `é` (C3 A9) arrive in separate `data` events. A pipe
+    // splits at 64KB in practice, and the sleep forces the same split every
+    // time. Decoding each chunk alone turns each half into U+FFFD, so the
+    // captured string would differ from what the child wrote.
     const sh = spawnRunnerAsync('sh')
     const r = await sh.run(
       ['-c', 'printf "a"; printf "\\303"; sleep 0.2; printf "\\251"; printf "b"'],
@@ -373,12 +368,12 @@ describe('spawnRunnerAsync — capture contract', () => {
   })
 
   test('output ending mid-sequence surfaces as U+FFFD rather than vanishing', async () => {
-    // The decoder holds a partial sequence back waiting for the rest of it.
-    // When the stream ends there instead — truncated output, or bytes that
-    // are not UTF-8 at all — those held bytes are only reported if the
-    // decoder is flushed. Unflushed they are silently dropped, so the capture
-    // is shorter than what the child wrote and disagrees with the sync runner,
-    // which decodes whole buffers and yields U+FFFD.
+    // The decoder holds a partial sequence back until the rest arrives. When
+    // the stream ends there instead, from cut-short output or bytes that are
+    // not UTF-8 at all, the held bytes are reported only if the decoder is
+    // flushed. Without the flush they are dropped, so the capture is shorter
+    // than what the child wrote. It then differs from the sync runner, which
+    // decodes whole buffers and gives U+FFFD.
     const sh = spawnRunnerAsync('sh')
     const r = await sh.run(
       ['-c', 'printf "a"; printf "\\303"; printf "b" >&2; printf "\\316" >&2'],
@@ -390,14 +385,13 @@ describe('spawnRunnerAsync — capture contract', () => {
   })
 
   test('the timeout path detaches from the pipes a surviving grandchild holds', async () => {
-    // The SIGKILL reaps only the direct child; the grandchild keeps the write
-    // ends and keeps writing. Left attached, the parent goes on appending that
-    // output to a string nobody will ever read — an unbounded heap leak in a
-    // long-lived host (measured at ~26MB of extra heap over the two seconds
-    // this test watches). Whether the read end was closed is directly
-    // observable from the writer: the grandchild's loop breaks on the first
-    // failed write, so it exits once the parent lets go and runs forever
-    // while the parent keeps draining.
+    // The SIGKILL ends only the direct child. The grandchild keeps the write
+    // ends and keeps writing. With the handlers left attached, the parent
+    // keeps appending that output to a string no one reads. In a long-lived
+    // host that memory grows without limit (about 26MB over the two seconds
+    // this test watches). The writer shows whether the read end was closed.
+    // The grandchild's loop stops on the first failed write, so it exits once
+    // the parent closes the pipe, and runs forever while the parent reads.
     const dir = mkdtempSync(join(tmpdir(), 'seam-pipe-detach-'))
     let pid = 0
     try {
@@ -425,7 +419,7 @@ describe('spawnRunnerAsync — capture contract', () => {
 })
 
 describe('spawnRunnerAsync — processGroup', () => {
-  // A foreground child that is not exec'd: `sh` waits on `sleep`, so killing
+  // A foreground child that is not exec'd. `sh` waits on `sleep`, so killing
   // `sh` alone leaves `sleep` running. The inner `sh` prints its own pid and
   // then execs `sleep`, so the printed pid is the grandchild's.
   const GRANDCHILD = ['-c', `sh -c 'echo $$; exec sleep 30'; echo after`]
@@ -567,21 +561,20 @@ describe('spawnRunnerAsync — abort', () => {
 
 describe('spawnRunnerAsync — stdin failure contract', () => {
   test('a child that closes stdin mid-write is a result, not a host crash', () => {
-    // `child.stdin` is its own EventEmitter: an `error` on it is not routed
-    // through the `child.on("error")` handler, and an unhandled `error` on an
-    // emitter is rethrown as an uncaught exception — one that lands after
-    // `run` has already resolved, so no `try`/`catch` around the await sees
-    // it. Only a child process can observe that: an uncaught exception in
-    // this process would abort the test runner rather than fail one test.
+    // `child.stdin` is its own EventEmitter. An `error` on it does not go
+    // through the `child.on('error')` handler, and an unhandled `error` on an
+    // emitter is rethrown as an uncaught exception. That exception comes
+    // after `run` has resolved, so no `try`/`catch` around the await sees it.
+    // Only a child process can observe it: an uncaught exception in this
+    // process would stop the test runner rather than fail one test.
     //
-    // The trigger is deterministic by construction. `exec 0<&-` closes the
-    // child's read end while the child is still alive, so the parent's
-    // 4MB write (far past the pipe buffer, so still pending) fails with
-    // EPIPE, and the following `sleep` guarantees that failure lands before
-    // the child exits. A child that merely exits (`sh -c "exit 0"`) races the
-    // write instead: measured on Bun 1.3.14, a 10MB write against it raised
-    // EPIPE in 1 run of 20, so a test built on that trigger goes green with
-    // the bug fully present.
+    // The trigger always fires. `exec 0<&-` closes the child's read end while
+    // the child is still alive, so the parent's 4MB write (far past the pipe
+    // buffer, so still pending) fails with EPIPE. The `sleep` after it makes
+    // sure that failure comes before the child exits. A child that only exits
+    // (`sh -c "exit 0"`) races the write instead. On Bun 1.3.14, a 10MB write
+    // against it raised EPIPE in 1 run of 20, so a test built on that trigger
+    // passes with the bug present.
     const dir = mkdtempSync(join(tmpdir(), 'seam-stdin-epipe-'))
     try {
       const outFile = join(dir, 'result.json')
@@ -603,9 +596,10 @@ describe('spawnRunnerAsync — stdin failure contract', () => {
       const res = JSON.parse(readFileSync(outFile, 'utf-8')) as CommandResult
       // The child's own exit code is still the result...
       expect(res.exitCode).toBe(0)
-      // ...but the input it never read is not silently forgotten: the write
-      // failure rides out in `error`.
-      // EPIPE, or ENOTCONN under some timings: both are a write to a closed peer. Node words it "write EPIPE", Bun "EPIPE: …, write".
+      // ...but the input it never read is not ignored. The write failure is
+      // in `error`.
+      // EPIPE, or ENOTCONN with some timings. Both are a write to a closed
+      // peer. Node words it "write EPIPE", Bun "EPIPE: …, write".
       expect(res.error).toMatch(/^((EPIPE|ENOTCONN): [^\n]*, write|write (EPIPE|ENOTCONN))$/)
       expect(res.stderr).toBe('')
     } finally {
@@ -616,11 +610,10 @@ describe('spawnRunnerAsync — stdin failure contract', () => {
 
 describe('spawnRunner — production pipe path', () => {
   test('a failed spawn explains itself instead of reporting a bare exit 1', () => {
-    // `CHILD_STDIO_CORRUPTED` is read from NODE_ENV at import time and
-    // `bun test` sets it, so the pipe path production actually runs is only
-    // reachable from a child with NODE_ENV cleared. The probe writes its
-    // answer to a file rather than stdout, since the pipe capture is exactly
-    // what Bun mis-wires here.
+    // `CHILD_STDIO_CORRUPTED` is read from the runtime and NODE_ENV at import
+    // time. A child with NODE_ENV cleared takes the pipe path under any
+    // runtime. The probe writes its answer to a file, not stdout, since
+    // under `bun test` the pipes are what break.
     const dir = mkdtempSync(join(tmpdir(), 'seam-pipe-path-'))
     try {
       const outFile = join(dir, 'result.json')

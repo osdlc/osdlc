@@ -1,6 +1,6 @@
 /**
  * Process helpers shared by the real-spawn tests. Not a `*.test.ts` file, so
- * `bun test` does not collect it.
+ * the test runner does not collect it.
  */
 
 /** True while `pid` exists. Throws on a non-positive or NaN pid, which would signal a group or mean nothing. */

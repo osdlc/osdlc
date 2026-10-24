@@ -2,15 +2,15 @@
  * Need: start a dev server, wait until it is ready, fail fast if it dies or
  * never gets ready, and stop it (and anything it forked) at the end.
  *
- * `managedProcessRunner` returns a handle as soon as the child exists:
- * `exited` settles when it is gone, `kill` stops it. Output is inherited, not
+ * `managedProcessRunner` returns a handle as soon as the child starts.
+ * `exited` settles when it is gone, and `kill` stops it. Output is inherited, not
  * captured, so readiness is checked from outside (a port, a file, an HTTP
  * probe). `processGroup` makes `kill` reach the server's own children.
- * `kill` sends one signal, so a server that ignores SIGTERM would never stop;
+ * `kill` sends one signal, so a server that ignores SIGTERM would never stop.
  * `stopProcess` sends SIGTERM, waits a grace period, then sends SIGKILL.
- * A group leader misses the terminal's Ctrl-C, so the host calls
- * `installGroupSignalForwarding` once: on SIGINT, SIGTERM or SIGHUP every live
- * group is killed before the host exits. `forwardedSignal` tells a loop that
+ * A group leader does not get the terminal's Ctrl-C, so the host calls
+ * `installGroupSignalForwarding` once. On SIGINT, SIGTERM or SIGHUP every
+ * live group is killed before the host exits. `forwardedSignal` tells a loop that
  * starts one command after another to stop, and `forwardedExitCode` gives the
  * host its exit code.
  */
@@ -91,8 +91,8 @@ async function startDevServer(
     const deadline = Date.now() + (opts.readyTimeoutMs ?? 30_000)
     for (;;) {
       const ready = await probe(isReady)
-      // Checked after every probe: a stale ready file or a port held by
-      // another process must not hide a dead server.
+      // Checked after every probe, so a stale ready file or a port held by
+      // another process does not hide a dead server.
       if (early) {
         throw new DevServerError(`dev server stopped before it was ready: ${describeExit(early)}`)
       }

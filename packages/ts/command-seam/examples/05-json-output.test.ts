@@ -4,8 +4,9 @@
  * step went wrong when it is not usable.
  *
  * `runJson` runs, checks the run succeeded, parses stdout and, with `parse`,
- * validates the value. It never throws for a failed command: the outcome's
- * `reason` is `failed`, `unparseable` or `invalid`. `okExitCodes` accepts a
+ * validates the value. It never throws for a failed command. On failure,
+ * `error.kind` is the command failure's kind (such as `not-installed` or
+ * `exit`), `unparseable` or `invalid`. `okExitCodes` accepts a
  * non-zero exit that is an answer. `parseJsonResult` is the parse step alone,
  * for a result already in hand.
  */
@@ -34,7 +35,7 @@ interface PullRequest {
   isDraft: boolean
 }
 
-/** A hand-written validator; a schema library's `parse` fits the same slot. */
+/** A hand-written validator. A schema library's `parse` works the same way. */
 function parsePullRequests(value: unknown): PullRequest[] {
   if (!Array.isArray(value)) throw new Error('expected an array')
   return value.map((item: Partial<PullRequest> | null, i) => {
@@ -94,7 +95,7 @@ function versionList(value: unknown): string[] {
   throw new Error('expected a version or a list of versions')
 }
 
-/** Every published version of `name`; empty when npm cannot say. */
+/** Every published version of `name`, or none when npm cannot say. */
 async function publishedVersions(
   name: string,
   npm: AsyncCommandRunner = spawnRunnerAsync('npm'),
@@ -104,7 +105,7 @@ async function publishedVersions(
   return r.ok ? r.value : []
 }
 
-/** Run once more after a timeout; any other outcome is final. */
+/** Run once more after a timeout. Any other outcome is final. */
 function retryOnTimeout(npm: CommandRunner, argv: string[]): CommandResult {
   const run = () => npm.run(argv, { cwd: process.cwd(), timeoutMs: 30_000 })
   const r = run()

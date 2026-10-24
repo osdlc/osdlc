@@ -25,7 +25,7 @@ const posix = process.platform !== 'win32'
 const HOST = join(import.meta.dirname, 'support', 'forwarding-host.ts')
 const SEQUENCE_HOST = join(import.meta.dirname, 'support', 'sequence-host.ts')
 
-/** Spawn the host script under bun; resolves with the pids it prints once ready. */
+/** Spawn the host script under this runtime. Resolves with the pids it prints once ready. */
 async function startHost(extra: string[] = []) {
   const host = spawn(process.execPath, [HOST, ...extra], { stdio: ['ignore', 'pipe', 'inherit'] })
   let out = ''
@@ -48,8 +48,8 @@ test.skipIf(!posix)(
     expect(liveProcessGroups().length).toBe(before + 1)
     await run
     // Released once the group is empty, which may take a later poll. The async
-    // runner exposes no pid, so the count is the only handle; a timeout shows as
-    // a count of before + 1.
+    // runner exposes no pid, so the count is all there is to check. If the
+    // wait times out, the count is still before + 1.
     const end = performance.now() + 3_000
     while (liveProcessGroups().length > before && performance.now() < end) {
       await new Promise((r) => setTimeout(r, 25))
@@ -78,7 +78,7 @@ test.skipIf(!posix)('the listeners are armed before a group child is spawned', a
       return { pid: undefined }
     })
     expect(during).toBe(before + 1)
-    // No pid, so nothing registered: the listeners go again.
+    // No pid, so nothing is registered, and the listeners are removed again.
     expect(untrack).toBeUndefined()
     expect(process.listenerCount('SIGTERM')).toBe(before)
   } finally {

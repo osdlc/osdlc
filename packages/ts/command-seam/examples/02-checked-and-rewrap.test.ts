@@ -3,7 +3,7 @@
  * app's own error rather than a raw command failure.
  *
  * `runChecked` throws `CommandFailed` on a non-zero exit. `mapFailed` turns
- * that into the caller's error type; `catchFailed` turns it into a fallback
+ * that into the caller's error type. `catchFailed` turns it into a fallback
  * value. Both let any other error through. The `Async` forms do the same for
  * `runCheckedAsync`.
  */
@@ -45,7 +45,7 @@ function tagRelease(dir: string, version: string, git: CommandRunner = spawnRunn
   )
 }
 
-/** The upstream branch and how far HEAD is ahead of it; `null` when there is no upstream. */
+/** The upstream branch and how far HEAD is ahead of it, or `null` when there is no upstream. */
 function upstream(
   dir: string,
   git: CommandRunner = spawnRunner('git'),
@@ -62,7 +62,7 @@ function upstream(
   )
 }
 
-/** Push the tag; a rejected push becomes a `ReleaseError`. */
+/** Push the tag. A rejected push becomes a `ReleaseError`. */
 async function pushTag(
   dir: string,
   version: string,

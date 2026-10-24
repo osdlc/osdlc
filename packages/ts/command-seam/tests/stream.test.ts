@@ -1,11 +1,10 @@
 /**
- * The streaming runner: real-spawn cases prove stdio is actually inherited
- * (via a child that reads its own inherited stdin and writes to its own
- * inherited stdout/stderr, so a wiring bug would surface as the parent
- * process's own streams going quiet, not as a captured-but-wrong string);
- * the fake-injection case proves the `StreamRunner` shape a call site takes
- * is usable with no real process at all, the same way the `runChecked` tests
- * in `seam.test.ts` prove `CommandRunner`'s shape with a fake.
+ * The streaming runner. Real-spawn cases check that stdio is inherited. The
+ * child reads its inherited stdin and writes to its inherited stdout and
+ * stderr, so a wiring bug would show as the parent's own streams going
+ * quiet, not as a wrong captured string. The fake case checks that a call
+ * site can use the `StreamRunner` type with no real process, as the
+ * `runChecked` tests in `seam.test.ts` do for `CommandRunner`.
  */
 
 import { describe, expect, test, vi } from 'vitest'
@@ -28,7 +27,7 @@ describe('streamRunner', () => {
   })
 
   test('timeoutMs caps a hanging child with a non-zero exit and neverExited', () => {
-    // The timeout also sets a signal (SIGKILL); it must print once, not twice.
+    // The timeout also sets a signal (SIGKILL). It must print once, not twice.
     const written: string[] = []
     const spy = vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
       written.push(String(chunk))
@@ -67,9 +66,9 @@ describe('streamRunner', () => {
   })
 
   test('env entries merge over the parent environment', () => {
-    // Inherited stdio means this can't read the child's stdout back — so the
-    // child instead asserts on itself and signals success via its own exit
-    // code, which the streaming runner DOES report.
+    // With inherited stdio, this cannot read the child's stdout back. So the
+    // child checks itself and reports success through its exit code, which
+    // the streaming runner does report.
     const sh = streamRunner('sh')
     const r = sh.run(['-c', 'test "$T1_STREAM_PROBE" = "injected" && test -n "$HOME"'], {
       cwd: CWD,
@@ -80,9 +79,9 @@ describe('streamRunner', () => {
 
   test('argv is never re-parsed as shell', () => {
     const sh = streamRunner('sh')
-    // `$(echo pwned)` rides as an argv element (`$1`), never as script source
-    // — if it were re-parsed, `$1` would hold the EVALUATED "pwned" instead
-    // of the literal string, and this comparison would flip.
+    // `$(echo pwned)` is passed as an argv element (`$1`), never as script
+    // source. If it were parsed again, `$1` would hold the result "pwned"
+    // instead of the literal string, and this comparison would fail.
     const r = sh.run(['-c', 'test "$1" != "pwned"', 'sh', '$(echo pwned)'], { cwd: CWD })
     expect(r.exitCode).toBe(0)
   })

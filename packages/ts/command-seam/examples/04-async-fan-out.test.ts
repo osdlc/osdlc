@@ -4,7 +4,7 @@
  * without one failure sinking the batch.
  *
  * `spawnRunnerAsync` returns a promise, so calls run concurrently. A timeout
- * or abort never rejects: it comes back as a result with `neverExited` and a
+ * or abort never rejects. It comes back as a result with `neverExited` and a
  * `reason`. `processGroup` makes the stop reach the processes git started.
  */
 
@@ -41,7 +41,7 @@ interface FetchAllOptions {
   git?: AsyncCommandRunner
 }
 
-/** Fetch every repo concurrently; one outcome per repo, in order. */
+/** Fetch every repo concurrently. Returns one outcome per repo, in order. */
 async function fetchAll(repos: string[], opts: FetchAllOptions = {}): Promise<FetchOutcome[]> {
   const git = opts.git ?? spawnRunnerAsync('git')
   return Promise.all(
@@ -56,7 +56,7 @@ async function fetchAll(repos: string[], opts: FetchAllOptions = {}): Promise<Fe
       }
       const r = await git.run(['fetch', '--prune', 'origin'], runOpts)
       if (ran(r)) return { repo, ok: true }
-      // A stop has no message worth more than its reason; anything else does.
+      // For a stop, the reason says enough. Any other failure keeps its message.
       const why = r.reason === 'timeout' || r.reason === 'abort' ? r.reason : stderrOrError(r)
       return { repo, ok: false, why }
     }),
@@ -129,7 +129,7 @@ test('a real timeout and a real abort each stop only what they should', async ()
 
   const timed = await fetchAll([fast, slow], {
     git,
-    // The fast fetch takes about 10 ms; the slow one would take 10 s.
+    // The fast fetch takes about 10 ms. The slow one would take 10 s.
     timeoutMs: 1_000,
     onStart: (repo) => started.push(repo),
   })

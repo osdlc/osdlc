@@ -3,17 +3,23 @@
  * signal forwarding, starts a process-group child that forks a grandchild,
  * prints the grandchild's pid, then waits to be signalled.
  *
- * Flags: `--stubborn` makes the grandchild ignore SIGTERM; `--own-handler`
- * gives the host its own SIGTERM listener that exits 7 after 700 ms;
- * `--own-handler-immediate` gives it one that exits 9 at once; `--own-once`
- * gives it a `process.once` listener, added before the group starts, that
- * starts one more group run after 700 ms, prints `later=<result>` and exits 7;
- * `--long-grace` sets `graceMs` to 30 s; `--unref` starts the group with
- * `unref: true`, so forwarding does not track it; `--async-background` starts
- * the group through the async runner instead, whose `sh` leaves a background
- * grandchild and exits at once. `--exit` makes the host exit with code 0 on its
- * own instead of waiting for a signal: after that run settles, or, with
- * `--in-flight`, while an async run is still going.
+ * Flags:
+ *
+ * - `--stubborn`: the grandchild ignores SIGTERM.
+ * - `--own-handler`: the host has its own SIGTERM listener that exits 7
+ *   after 700 ms.
+ * - `--own-handler-immediate`: the same, but it exits 9 at once.
+ * - `--own-once`: a `process.once` listener, added before the group starts,
+ *   that starts one more group run after 700 ms, prints `later=<result>` and
+ *   exits 7.
+ * - `--long-grace`: `graceMs` is 30 s.
+ * - `--unref`: the group starts with `unref: true`, so forwarding does not
+ *   track it.
+ * - `--async-background`: the group starts through the async runner instead,
+ *   whose `sh` leaves a background grandchild and exits at once.
+ * - `--exit`: the host exits with code 0 on its own instead of waiting for a
+ *   signal, after that run settles. With `--in-flight`, it exits while an
+ *   async run is still going.
  */
 
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
@@ -81,7 +87,7 @@ if (inFlight) {
   rmSync(dir, { recursive: true, force: true })
   await print(`grandchild=${pid}\n`)
 } else if (asyncBackground) {
-  // The run settles when `sh` exits; the grandchild holds no pipe and outlives it.
+  // The run settles when `sh` exits. The grandchild holds no pipe and outlives it.
   const r = await spawnRunnerAsync('sh').run(
     ['-c', 'sleep 30 >/dev/null 2>&1 & echo grandchild=$!'],
     { cwd: process.cwd(), processGroup: true },

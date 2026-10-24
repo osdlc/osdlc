@@ -1,6 +1,6 @@
 /**
- * `mapFailed` / `catchFailed` and their async twins: only `CommandFailed` is
- * intercepted; the return value and every other error pass through untouched.
+ * `mapFailed` and `catchFailed` and their async forms. Only `CommandFailed` is
+ * caught. The return value and every other error pass through unchanged.
  */
 
 import { describe, expect, test } from 'vitest'
@@ -168,8 +168,8 @@ describe('async twins', () => {
 })
 
 describe('a CommandFailed from another installed copy', () => {
-  // A second copy of this package has its own class, so `instanceof` is false;
-  // the helpers and `isCommandFailed` go by shape.
+  // A second copy of this package has its own class, so `instanceof` is
+  // false. The helpers and `isCommandFailed` go by shape.
   const foreign = (): Error =>
     Object.assign(new Error('boom'), {
       failure: { kind: 'exit', message: 'x' },

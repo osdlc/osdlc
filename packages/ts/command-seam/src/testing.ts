@@ -36,7 +36,7 @@ export interface FakeCall<O> {
 
 /**
  * What a fake answers: fields over `{ exitCode: 0, stdout: '', stderr: '' }`.
- * `stdout` may be a string or a `Buffer`; each runner converts it to its own
+ * `stdout` may be a string or a `Buffer`. Each runner converts it to its own
  * type.
  */
 type FakeAnswer = Partial<CommandResult<string | Buffer>>
@@ -56,7 +56,7 @@ export interface FakeRunner {
   asyncRunner: AsyncCommandRunner
   /**
    * The same fake as a {@link BytesCommandRunner}, for code that reads stdout
-   * as bytes. A string `stdout` in an answer is encoded as UTF-8; a `Buffer`
+   * as bytes. A string `stdout` in an answer is encoded as UTF-8. A `Buffer`
    * is returned as it is. It shares the answers and `calls`.
    */
   bytesRunner: BytesCommandRunner
@@ -79,8 +79,8 @@ export interface FakeRunner {
  * argument quoted with `shellQuote`, joined with single spaces: a plain
  * argument stays as it is, and one with a space or a shell character is
  * single-quoted, so `['-m', 'a b']` is `-m 'a b'` and cannot match
- * `['-m', 'a', 'b']`. It can also be a function of the call; return
- * `undefined` for no answer.
+ * `['-m', 'a', 'b']`. It can also be a function of the call. Return
+ * `undefined` from it for no answer.
  *
  * A call with no answer reports a failed spawn, as a missing binary would:
  * `exitCode: 1`, `neverExited: true`, `reason: 'spawn'`, and
@@ -93,7 +93,7 @@ export interface FakeRunner {
  * nothing, and `onSpawn` is never called.
  *
  * An answer's `stdout` may be a string or a `Buffer`. `runner` and
- * `asyncRunner` decode a `Buffer` as UTF-8; `bytesRunner` and
+ * `asyncRunner` decode a `Buffer` as UTF-8. `bytesRunner` and
  * `asyncBytesRunner` encode a string as UTF-8.
  *
  * @param answers - Results by argv, or a function that picks one.
@@ -234,7 +234,7 @@ export interface FakeProcess extends ManagedProcessHandle {
    * `managedProcessRunner` reports it.
    */
   exit(result?: Partial<ManagedProcessExit>): void
-  /** Every signal passed to `kill()`, in order; `SIGTERM` when none was given. */
+  /** Every signal passed to `kill()`, in order. `SIGTERM` when none was given. */
   signals: (NodeJS.Signals | number)[]
   /** A runner that returns this handle from every `run`. */
   runner: ManagedProcessRunner
@@ -249,7 +249,7 @@ export interface FakeProcess extends ManagedProcessHandle {
  *
  * @param opts - The pid, and which signals sent through `kill()` end the process.
  * @returns The handle, with `exit()`, the signals sent and a runner that
- * serves it.
+ * returns it.
  *
  * @example
  * ```ts

@@ -96,16 +96,15 @@ try {
   is a string, or a `Buffer` from the bytes runners (`CommandResult<Buffer>`).
 - **`neverExited`**: `true` when the command never reported an exit status.
   The spawn failed, a timeout or abort killed it, a signal ended it, or the
-  runner killed it at the output cap.
-  `exitCode` is then a stand-in `1`. Check it before you treat an exit code as
-  an answer: `grep` exits 1 for "no matches", and a missing `grep` must not
-  look the same.
+  runner killed it at the output cap. `exitCode` is then a stand-in `1`.
+  Check it before you treat an exit code as an answer: `grep` exits 1 for "no
+  matches", and a missing `grep` must not look the same.
 - **`reason`**: which of those causes it was, set whenever `neverExited` is:
   `'spawn'` (it never started), `'timeout'`, `'abort'` (the caller stopped
   it), `'signal'` (a signal from elsewhere ended it) or `'output'` (the
   output cap: `maxOutputBytes`, or the sync runner's default of 256 MB).
-  `signal` names the signal when the runner knows it. A timeout may pass on a retry; a spawn failure or the output cap
-  will not.
+  `signal` names the signal when the runner knows it. A timeout may pass on a
+  retry. A spawn failure or the output cap will not.
 - **`outputIncomplete`**: `true` when the child exited but the runner stopped
   reading its output early, so `stdout` and `stderr` may be cut short. The
   exit code is real and `reason` is absent. See "`error` can come with a real
@@ -116,7 +115,7 @@ try {
   `stderr` is empty.
 - **Checked call**: `runChecked` and `runCheckedAsync` throw `CommandFailed`
   when `exitCode` is not 0. Plain `run` calls never throw for a failed
-  command; programmer errors throw (see Behaviour).
+  command. Programmer errors throw (see Behaviour).
 
 ## Choosing a runner
 
@@ -201,8 +200,8 @@ or an `AsyncBytesCommandRunner`, and tests pass `fakeRunner`'s `bytesRunner`
 Every other runner passes `argv` straight to the binary, so nothing is parsed
 by a shell. `runShell` is the one function that runs a shell string, as
 `sh -c -- <verb>`. The `--` keeps a verb that starts with `-` or `+` from
-being read as an option to `sh`. Pass data as positional parameters (`$1`, `$2`, …) through
-`args`, or quote it with `shellQuote`.
+being read as an option to `sh`. Pass data as positional parameters (`$1`,
+`$2`, …) through `args`, or quote it with `shellQuote`.
 
 ```ts
 import { runShell, runShellAsync, shellQuote, shellRunner, spawnRunner } from '@osdlc/command-seam'
@@ -237,7 +236,7 @@ appears as it runs. The result has no output, only how the child ended:
 `signal`, and `error`, the runner's message when the spawn failed or the
 timeout fired. That message, or `<binary> was killed by <signal>`, is also
 written to the parent's stderr. Pass `quiet: true` to turn that line off
-when you report the failure yourself; the result's fields are set either way.
+when you report the failure yourself. The result's fields are set either way.
 
 ```ts
 import { ran, streamRunner } from '@osdlc/command-seam'
@@ -268,7 +267,7 @@ The child gets its own copy of each fd when it starts, so you can close yours
 once `run` returns. The runner never closes it. An fd that is not open is a
 failed spawn (`reason: 'spawn'`, with `EBADF` in `error`). An fd that is not a
 whole number, 0 or more, throws before anything starts. A pipe from one child
-into another (`git archive | tar -x`) is out of scope; use `runShell` or
+into another (`git archive | tar -x`) is out of scope. Use `runShell` or
 `child_process` for that.
 
 ```ts
@@ -346,29 +345,32 @@ group (async and managed runners with `processGroup: true`), then `SIGKILL` to
 those still registered after `graceMs`, and the process exits with
 `128 + signal number`. A second signal during the grace skips to `SIGKILL`. An
 `exit` handler also `SIGKILL`s every group whose run is still in flight, so a
-host that exits first leaves none behind. The listeners are attached just before the first
-group starts and removed when the last one is gone, so a host with no live group
-keeps each signal's default action. If the host has its own listener for the
-signal (`process.once` counts too), the groups still get `SIGTERM` at once
-and `SIGKILL` after `graceMs` (or on exit, if sooner and the run is in
-flight), but that listener keeps the exit. By default the exit
-sets `process.exitCode` and lets output drain, then calls `process.exit` after
-500 ms, so piped stdout is not cut. A group stays registered until no member is
-left, also after its async run settles or its managed leader exits. A
-forwarded signal kills what such a group left behind, such as a daemon. The
-host's normal exit leaves it running, unless the runner was stopping the group
-(an abort, a timeout or `kill()`). `SIGKILL`
-of the host cannot be caught. POSIX only; a no-op on Windows.
-`liveProcessGroups()` lists the registered group pids.
+host that exits first leaves none behind.
+
+The listeners are attached just before the first group starts and removed
+when the last one is gone, so a host with no live group keeps each signal's
+default action. If the host has its own listener for the signal
+(`process.once` counts too), the groups still get `SIGTERM` at once and
+`SIGKILL` after `graceMs` (or on exit, if sooner and the run is in flight).
+But that listener keeps the exit. By default the exit sets `process.exitCode`
+and lets output drain, then calls `process.exit` after 500 ms, so piped
+stdout is not cut.
+
+A group stays registered until no member is left, also after its async run
+settles or its managed leader exits. A forwarded signal kills what such a
+group left behind, such as a daemon. The host's normal exit leaves it
+running, unless the runner was stopping the group (an abort, a timeout or
+`kill()`). `SIGKILL` of the host cannot be caught. POSIX only. On Windows it
+does nothing. `liveProcessGroups()` lists the registered group pids.
 
 When forwarding owns the exit (the host has no listener of its own for the
 signal), the first forwarded signal puts the host in a stopping state. A new
 run with `processGroup: true` is refused: it starts nothing and settles with
 `reason: 'abort'`. `forwardedSignal()` returns the signal, so a host that runs
 one command after another can stop its loop. `forwardedExitCode()` returns
-`128 + signal number` for it. Only the uninstall function
-resets this. A host with its own listener, one that may keep running, gets no
-stopping state: its groups are killed, and later runs start as usual.
+`128 + signal number` for it. Only the uninstall function resets this. A
+host with its own listener, one that may keep running, gets no stopping
+state. Its groups are killed, and later runs start as usual.
 
 A host that sets `process.exitCode` itself after its work returns should keep
 the `128 + signal number` code. The default exit still forces `process.exit`
@@ -389,7 +391,7 @@ running leaves `await server.exited` waiting forever.
 `stopProcess(handle, { graceMs })` sends `SIGTERM`, waits up to `graceMs`
 (default 5 s), then sends `SIGKILL`, and resolves with the exit. It works
 with any handle, fakes included. With `processGroup`, it waits for the
-leader only: a group member that outlives the leader gets no `SIGKILL`.
+leader only. A group member that outlives the leader gets no `SIGKILL`.
 
 ```ts
 import { managedProcessRunner, stopProcess } from '@osdlc/command-seam'
@@ -400,9 +402,10 @@ const exit = await stopProcess(server, { graceMs: 2_000 })
 console.log(exit.signal)
 ```
 
-The runner cannot tell you when the process is ready from its output: stdio
-is never piped. Poll from outside instead: try the port or an HTTP
-endpoint, or wait for a file the process writes, in a loop with a deadline.
+The runner cannot tell you from the output when the process is ready,
+because stdio is never piped. Check from outside instead. Try the port or an
+HTTP endpoint, or wait for a file the process writes, in a loop with a
+deadline.
 Check `exited` after each try, so a process that died early is reported
 rather than waited on.
 
@@ -420,7 +423,7 @@ git.run(['status'])
 git.run(['fetch'], { timeoutMs: 120_000 }) // a per-call option wins
 ```
 
-A per-call option replaces the default of the same name, except `env`: a
+A per-call option replaces the default of the same name, except `env`. A
 per-call `env` is merged over the bound one, key by key, so a client that
 binds `LC_ALL=C` keeps it when one call adds a variable. A per-call `env`
 value of `undefined` removes a bound variable. A per-call option set to
@@ -495,7 +498,7 @@ alongside it: `{ ok: true, value, result }` or `{ ok: false, error, result }`.
 not in `okExitCodes`, it is the `CommandFailure` for that run (`kind`
 `'not-installed'`, `'exit'`, `'timeout'` and so on, see "Classifying a
 failure"). Otherwise its `kind` is `'unparseable'` (stdout is not JSON) or
-`'invalid'` (the `parse` option threw; `error.cause` holds what it threw).
+`'invalid'` (the `parse` option threw, and `error.cause` holds what it threw).
 `tolerateLeadingLog: true` skips log lines printed before the JSON.
 
 Some tools print JSON and exit non-zero on purpose: `npm outdated --json`
@@ -508,7 +511,7 @@ rejects the error output.
 Without `parse`, the type parameter is not checked at runtime. Pass `parse`,
 such as a schema's `parse` method, when you do not trust the producer. Its
 return type becomes the value's type. When it throws, the outcome is
-`invalid` and `error.cause` holds what it threw. `parse` must be sync: pass
+`invalid` and `error.cause` holds what it threw. `parse` must be sync. Pass
 `schema.parse`, not `schema.parseAsync`. A `parse` that returns a promise
 gives `invalid` too.
 
@@ -553,7 +556,7 @@ runner's `CommandResult`, a `StreamResult` or a `ManagedProcessExit`. A
 | `exit`           | it ran and exited with a code that is not accepted                   | the first line of the failure text (`failureText`)             |
 
 The messages say `The command` when the binary is not known. There is no
-`hint` at this layer: the layer that knows the tool knows how to install it.
+`hint` at this layer. The layer that knows the tool knows how to install it.
 `detail` is the runner's `error` text for the kinds where the child never
 exited, and both streams (`failureText(result, { both: true })`) for `exit`.
 
@@ -570,25 +573,25 @@ if (failure?.kind === 'not-installed') console.error(failure.message)
 `CommandFailed` carries `failure`, the classified `CommandFailure` for the run.
 It extends `FailureError` from `@osdlc/result`, so a caller that handles
 `FailureError` handles it too, and `unwrap` rethrows one the same way.
-`failure.message` is the one line to show a person; `message` below is the
+`failure.message` is the one line to show a person. `message` below is the
 long form for logs.
 
 `CommandFailed` also carries `binary`, `argv` and the full `result`. Its `message`
 is `command failed (exit N): <binary> <argv>`, quoted by `shellJoin`, then the
 stderr, or the runner's `error` when the child wrote no stderr. It never
 includes stdout. Some commands explain a failure on stdout instead, such as a
-git hook that rejects a commit. `e.detail` joins both
-streams, trimmed, and drops empty ones: it is
-`failureText(e.result, { both: true })`. Show `detail` to a person.
+git hook that rejects a commit. `e.detail` joins both streams, trimmed, and
+drops empty ones. It is `failureText(e.result, { both: true })`. Show
+`detail` to a person.
 
 `runChecked` and `runCheckedAsync` take the binary from the runner's
 `binary` property, which `spawnRunner`, `spawnRunnerAsync`, `asAsync` and
-`withDefaults` runners have. A fake runner may leave it out; the message then
+`withDefaults` runners have. A fake runner may leave it out. The message then
 shows the argv alone and `e.binary` is `undefined`.
 
 The message carries the full argv, so it reaches error logs and crash
-reports. Do not pass a secret, such as a token in a URL, as an argument:
-pass it through `env` or `input`.
+reports. Do not pass a secret, such as a token in a URL, as an argument.
+Pass it through `env` or `input`.
 
 `mapFailed(fn, mapper)` runs `fn` and, if it throws `CommandFailed`, throws
 `mapper(e)` instead. `catchFailed(fn, onFailed)` returns `onFailed(e)`
@@ -680,7 +683,7 @@ production code does not import them. It also exports their types:
   `fakeRunner: no answer for: <key>` in `error`, with the key you would add to
   the table. Code that reads a failed run as an answer can still go on, so
   assert on `calls`, which records each call's argv and options. `asyncRunner`
-  is the same fake as an `AsyncCommandRunner`, for async code; the async
+  is the same fake as an `AsyncCommandRunner`, for async code. The async
   options are recorded, and `onSpawn` is never called. `bytesRunner` and
   `asyncBytesRunner` are the same fake as bytes runners. An answer's `stdout`
   may be a string or a `Buffer`: the bytes forms encode a string as UTF-8, and
@@ -694,8 +697,8 @@ production code does not import them. It also exports their types:
   `exit(fields?)` settles `exited` with `{ exitCode: 0, signal: null }` and
   your fields. To fake a death by a signal from elsewhere, pass
   `{ exitCode: 1, signal, neverExited: true, reason: 'signal' }`, as
-  `managedProcessRunner` reports it. `kill()` records the signal in `signals` and ends the process
-  with `reason: 'abort'`. `exitOnKill: false` makes it survive every signal,
+  `managedProcessRunner` reports it. `kill()` records the signal in `signals`
+  and ends the process with `reason: 'abort'`. `exitOnKill: false` makes it survive every signal,
   and a list such as `exitOnKill: ['SIGKILL']` makes it die only of those,
   as a process that traps `SIGTERM` would. `runner` is a
   `ManagedProcessRunner` that returns the handle, and `calls` records what it
@@ -771,15 +774,16 @@ console.log(await server.exited) // { exitCode: 0, signal: null }
 - A process group does not receive the terminal's Ctrl-C. To stop it on
   Ctrl-C, call `installGroupSignalForwarding()` once at startup, or listen
   for `SIGINT` and abort through `signal`.
-- `signal` (async only) sends `SIGTERM`, then `SIGKILL` 1 s later if the child is still running. The
-  `SIGTERM` lets a child such as git remove its lock files. The promise resolves at once, with
-  `neverExited: true`, `reason: 'abort'` and `The operation was aborted` in `error`. An abort that
-  lands after the child exited keeps the child's exit code. While a child ignores `SIGTERM`, the
-  pending `SIGKILL` keeps the host alive for up to 1 s.
+- `signal` (async only) sends `SIGTERM`, then `SIGKILL` 1 s later if the
+  child is still running. The `SIGTERM` lets a child such as git remove its
+  lock files. The promise resolves at once, with `neverExited: true`,
+  `reason: 'abort'` and `The operation was aborted` in `error`. An abort that
+  lands after the child exited keeps the child's exit code. While a child
+  ignores `SIGTERM`, the pending `SIGKILL` keeps the host alive for up to 1 s.
 
 ## Behaviour
 
-- **`run` never throws for a failed command; programmer errors throw.** A
+- **`run` never throws for a failed command. Programmer errors throw.** A
   missing binary, a timeout or an abort becomes a result with a non-zero
   `exitCode`, `neverExited: true` and a `reason`. An invalid `timeoutMs`
   (`RangeError`, or `TypeError` for a non-number) or a NUL byte in argv or
@@ -790,7 +794,7 @@ console.log(await server.exited) // { exitCode: 0, signal: null }
 - **The streaming and managed-process runners capture no output.** Their
   stdio is inherited by default, or `/dev/null` or file descriptors you
   pass through `stdio`. On a failed spawn they return `exitCode: 1`,
-  `neverExited: true`, `reason: 'spawn'` and the message in `error`; an fd in
+  `neverExited: true`, `reason: 'spawn'` and the message in `error`. An fd in
   `stdio` that is not open is a failed spawn too. The streaming runner also
   prints the error to the parent's stderr, and prints a line when a signal or
   the timeout ends the child, unless `quiet` is set.
@@ -822,30 +826,29 @@ console.log(await server.exited) // { exitCode: 0, signal: null }
   message built from a bytes result (`failureText`, `CommandFailed`) decodes
   stdout as UTF-8.
 - **Output is capped per stream.** `maxOutputBytes` caps each of stdout and
-  stderr on the capture runners. The sync pipe path defaults to 256 MB; the
+  stderr on the capture runners. The sync pipe path defaults to 256 MB. The
   async runner has no default cap. The cap counts the bytes the child wrote,
   not the decoded text: bytes that are not valid UTF-8 decode to U+FFFD, which
   is 3 bytes, so a stream can be longer than the cap once decoded. A child
   that passes the cap is killed with `SIGKILL` (its group, with
   `processGroup`), with `reason: 'output'`, the runner's message in `error`,
   and that stream cut to the cap on a character boundary (a bytes runner's
-  stdout at exactly the cap). A child that passes
-  the cap but exits before the kill lands keeps its exit code and gets
-  `outputIncomplete: true` and `error`. The `bun test` capture path writes to
-  files and has no cap. `@osdlc/agent-call` has the same option on its call
-  spec, with the reason `output-limit`; it stops the agent the way its timeout
-  does (`SIGTERM`, then `SIGKILL` after 5 s), where this runner sends
-  `SIGKILL` at once.
+  stdout at exactly the cap). A child that passes the cap but exits before
+  the kill lands keeps its exit code and gets `outputIncomplete: true` and
+  `error`. The `bun test` capture path writes to files and has no cap.
+  `@osdlc/agent-call` has the same option on its call spec, with the reason
+  `output-limit`. It stops the agent the way its timeout does (`SIGTERM`,
+  then `SIGKILL` after 5 s), where this runner sends `SIGKILL` at once.
 
 ## Known issue: `bun test`
 
 Under `bun test`, once a large module graph is loaded, Bun can hand child
 processes stdio that the parent reads back as empty. The upstream report is
 [oven-sh/bun#24690](https://github.com/oven-sh/bun/issues/24690). To work
-around this, `spawnRunner` (and `spawnRunnerBytes`) checks for the Bun runtime with `NODE_ENV=test`.
-When both are true, it runs the command through `/bin/sh` with stdin, stdout
-and stderr redirected to temp files, then reads the files back. Arguments are
-still not parsed by the shell.
+around this, `spawnRunner` (and `spawnRunnerBytes`) checks for the Bun
+runtime with `NODE_ENV=test`. When both are true, it runs the command
+through `/bin/sh` with stdin, stdout and stderr redirected to temp files,
+then reads the files back. Arguments are still not parsed by the shell.
 
 This applies only under Bun. Jest and Vitest on Node use the normal pipe
 path. The async runner does not have this workaround. If the test process is
@@ -857,9 +860,9 @@ left behind.
 The package is at 0.x. Each export is stable or experimental.
 
 - **Stable** exports are the runner contract: the runners, their options and
-  results, `CommandFailed`, and the helpers around them. The runners and
-  helpers are in use by other packages; a type that names their options or
-  results is stable with them. A breaking change to one is marked
+  results, `CommandFailed`, and the helpers around them. Other packages use
+  the runners and helpers. A type that names their options or results is
+  stable with them. A breaking change to one is marked
   **Breaking** in the CHANGELOG.
 - **Experimental** exports are newer or have no user yet. Any release may
   change or remove one. Each has an `@experimental` tag in its TSDoc.

@@ -1,7 +1,7 @@
 /**
  * Regression tests, one describe per fixed behaviour. Child processes that
- * must report back write to a file, not to a pipe: under `bun test` the
- * pipes a parent hands a child can come back empty (see `sync.ts`).
+ * must report back write to a file, not to a pipe, because under `bun test`
+ * the pipes a parent gives a child can come back empty (see `sync.ts`).
  */
 
 import { spawnSync } from 'node:child_process'
@@ -95,7 +95,7 @@ function withoutNodeEnv(): NodeJS.ProcessEnv {
 describe('the bun-test capture path is gated on the Bun runtime', () => {
   test('Node with NODE_ENV=test keeps the pipe path', () => {
     // The redirect path makes a temp dir. With TMPDIR pointing nowhere, that
-    // path throws; the pipe path never touches TMPDIR. So a clean result
+    // path throws. The pipe path never touches TMPDIR. So a clean result
     // under Node proves the pipe path ran.
     withTempDir((dir) => {
       const env = { ...process.env, NODE_ENV: 'test', TMPDIR: join(dir, 'missing') }
@@ -131,8 +131,8 @@ describe('the bun-test capture path removes its temp dir', () => {
 
 describe('a child that closes stdin early', () => {
   test("Node's sync pipe path reports the failed write and keeps the exit code", () => {
-    // Bun's `spawnSync` does not report it (a README known limit), so this
-    // runs under Node.
+    // Bun's `spawnSync` does not report it (see the README's Behaviour
+    // section), so this runs under Node.
     withTempDir((dir) => {
       const res = runProbe(dir, ON_NODE, [
         'const input = "x".repeat(4 * 1024 * 1024);',
@@ -140,7 +140,7 @@ describe('a child that closes stdin early', () => {
       ]).result as CommandResult
       expect(res.exitCode).toBe(0)
       expect(res.reason).toBeUndefined()
-      // EPIPE, or ENOTCONN under some timings: both are a write to a closed peer.
+      // EPIPE, or ENOTCONN with some timings. Both are a write to a closed peer.
       expect(res.error).toMatch(/EPIPE|ENOTCONN/)
       expect(res.stderr).toBe('')
     })

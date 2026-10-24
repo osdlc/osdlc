@@ -5,7 +5,7 @@
  * `@osdlc/command-seam/testing` has the fakes, kept out of the main entry so
  * production code never imports them. `fakeRunner` answers from a table keyed
  * by argv (each argument quoted with `shellQuote`), or a function, and
- * records every call; `asyncRunner` is the same fake for async code.
+ * records every call. `asyncRunner` is the same fake for async code.
  * `fakeProcess` is a managed-process handle the test ends by hand.
  */
 

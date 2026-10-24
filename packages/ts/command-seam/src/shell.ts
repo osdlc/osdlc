@@ -2,12 +2,12 @@
  * The shell runner: the one place in this package that runs a shell string.
  *
  * Every other runner passes argv straight to a binary, so nothing is parsed
- * as shell. A configured command such as `bun install --filter '@x/y'` or
- * `a && b` is a shell string by nature, and it runs as `sh -c -- <verb>`.
- * Keeping that call in one place makes shell use easy to find and audit, and
- * keeps the invocation the same everywhere.
+ * by a shell. A configured command such as `bun install --filter '@x/y'` or
+ * `a && b` is a shell string, and it runs as `sh -c -- <verb>`. Keeping that
+ * call in one place makes shell use easy to find and audit, and keeps the
+ * call the same everywhere.
  *
- * Built on the capture runners, so it uses their types
+ * It is built on the capture runners, so it uses their types
  * ({@link CommandResult}, {@link CommandRunOptions}, `CommandFailed`) and
  * their timeout, env and stdin handling.
  */
@@ -22,8 +22,8 @@ import {
 } from './sync.ts'
 
 /**
- * Positional parameters for the verb. They ride as separate argv entries,
- * never spliced into the string, so they are inert data.
+ * Positional parameters for the verb. They are passed as separate argv
+ * entries, never inserted into the string, so the shell never parses them.
  */
 export interface ShellPositionals {
   /** Sets `$0`, the name the script sees for itself, used in its error messages. Default `sh`. */
@@ -53,7 +53,7 @@ export interface AsyncShellRunner {
 }
 
 /**
- * The `sh -c -- <verb>` argv; `$0`/`$1…` are appended only when given. The
+ * The `sh -c -- <verb>` argv. `$0` and `$1…` are added only when given. The
  * `--` keeps a verb that starts with `-` or `+` from being read as an option.
  */
 function shellArgv(
@@ -104,8 +104,8 @@ export function shellRunnerAsync(
 
 /**
  * Run `verb` once through `sh -c --` and capture the result. Needs `sh` on
- * `PATH`. Never throws for a failed command, like `spawnRunner`; programmer
- * errors such as an invalid `timeoutMs` throw.
+ * `PATH`. Like `spawnRunner`, it never throws for a failed command.
+ * Programmer errors such as an invalid `timeoutMs` throw.
  *
  * @param verb - A shell string. Quote any data in it with `shellQuote`, or
  * pass it through `args`.
@@ -123,8 +123,8 @@ export function runShell(verb: string, opts: ShellRunOptions): CommandResult {
 }
 
 /**
- * The async version of {@link runShell}. Never rejects for a failed command;
- * rejects for programmer errors such as an invalid `timeoutMs`.
+ * The async version of {@link runShell}. Never rejects for a failed command.
+ * Rejects for programmer errors such as an invalid `timeoutMs`.
  */
 export function runShellAsync(verb: string, opts: AsyncShellRunOptions): Promise<CommandResult> {
   return shellRunnerAsync().run(verb, opts)

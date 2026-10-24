@@ -4,8 +4,9 @@
  *
  * Every other runner in this package waits for the child to exit
  * (synchronously or through a promise) and reports how it went. This one
- * returns as soon as the child exists, so the caller can do other work while
- * it runs: enforce its own timeout, respond to signals, stop it later.
+ * returns as soon as the child starts, so the caller can do other work while
+ * it runs, such as apply its own timeout, respond to signals, or stop it
+ * later.
  */
 
 import { spawn } from 'node:child_process'
@@ -36,22 +37,23 @@ export interface ManagedProcessRunOptions {
    * ManagedProcessHandle.kill} then signals the whole group instead of just
    * the direct child, so processes the child started die with it. The group
    * no longer gets the terminal's Ctrl-C. POSIX only.
+   *
    * `installGroupSignalForwarding` kills live groups when the host is
-   * signalled, and once it is stopping the host, a new group run is refused
-   * (`reason: 'abort'`, pid `-1`).
+   * signalled. Once forwarding is stopping the host, a new group run is
+   * refused (`reason: 'abort'`, pid `-1`).
    */
   processGroup?: boolean | undefined
   /**
-   * Let the parent exit while the child runs: the child's handle stops
-   * holding the parent's event loop open. Meant for a `processGroup` child
-   * that is supposed to outlive the call that started it (a loop tick that
-   * starts a run and returns); {@link ManagedProcessHandle.exited} then only
-   * settles while the parent is still alive. An `unref`'d group is not tracked
-   * by `installGroupSignalForwarding`: a signal to the parent does not reach it,
-   * and the parent's exit does not `SIGKILL` it.
+   * Let the parent exit while the child runs. The child's handle no longer
+   * keeps the parent's event loop open. It is meant for a `processGroup`
+   * child that should outlive the call that started it, such as a loop tick
+   * that starts a run and returns. {@link ManagedProcessHandle.exited} then
+   * settles only while the parent is still alive. An `unref`'d group is not
+   * tracked by `installGroupSignalForwarding`. A signal to the parent does not
+   * reach it, and the parent's exit does not `SIGKILL` it.
    *
-   * For a fire-and-forget launch (an editor, a browser) that must outlive
-   * the parent, add `processGroup: true` so the terminal's signals do not
+   * To launch a program and leave it running after the parent exits (an
+   * editor, a browser), add `processGroup: true` so the terminal's signals do not
    * reach it, and `stdio: 'ignore'` so it does not write to the parent's
    * terminal after the parent exits.
    */
@@ -72,19 +74,23 @@ export interface ManagedProcessExit {
   /** The signal that ended the child, or `null` when it exited on its own or never started. */
   signal: NodeJS.Signals | null
   /**
-   * No exit code was reported: the spawn failed (e.g. a missing binary) or a
-   * signal killed the process (see `signal`). Same meaning as
+   * No exit code was reported: the spawn failed (such as a missing binary) or
+   * a signal killed the process (see `signal`). Same meaning as
    * `CommandResult.neverExited`.
    */
   neverExited?: boolean | undefined
   /**
    * Why no exit code was reported. Set whenever `neverExited` is, absent
-   * otherwise. `spawn`: the process never started (see `error`). `abort`: a
-   * signal ended it after the caller's own `kill()`, or a `processGroup` run
-   * was refused because signal forwarding is stopping the host (it never
-   * started; see `error`). `signal`: a signal from
-   * elsewhere ended it. There is no `timeout` or `output`: this runner has
-   * neither a timeout nor captured output.
+   * otherwise.
+   *
+   * - `spawn`: the process never started (see `error`).
+   * - `abort`: a signal ended it after the caller's own `kill()`. Also a
+   *   `processGroup` run refused because signal forwarding is stopping the
+   *   host. That run never started (see `error`).
+   * - `signal`: a signal from elsewhere ended it.
+   *
+   * There is no `timeout` or `output`, since this runner has neither a
+   * timeout nor captured output.
    */
   reason?: Exclude<NeverExitedReason, 'timeout' | 'output'> | undefined
   /**
@@ -94,7 +100,7 @@ export interface ManagedProcessExit {
   error?: string | undefined
 }
 
-/** A running child: its pid, a way to kill it, and a promise settling once it's gone. */
+/** A running child: its pid, a way to kill it, and a promise that settles once it is gone. */
 export interface ManagedProcessHandle {
   /** The child's pid, or `-1` when it could not be spawned at all. */
   readonly pid: number
@@ -105,7 +111,7 @@ export interface ManagedProcessHandle {
    * exited, so a reused pid is never signalled. With `processGroup`, it still
    * signals any member of the group that is left. If the process dies of a
    * signal sent here, `exited` reports `reason: 'abort'`. A signal the child
-   * handles and survives does not count: a later death by another signal is
+   * handles and survives does not count. A later death by another signal is
    * `'signal'`.
    */
   kill(signal?: NodeJS.Signals | number): void
@@ -181,7 +187,7 @@ export function managedProcessRunner(binary: string): ManagedProcessRunner {
       } catch (e) {
         // `spawn` throws, rather than emitting `error`, for some failures,
         // such as an fd in `stdio` that is not open (EBADF). A system error
-        // has an `errno`; a programmer error, such as a NUL byte, does not.
+        // has an `errno`. A programmer error, such as a NUL byte, does not.
         if (typeof (e as NodeJS.ErrnoException).errno !== 'number') throw e
         const exit = spawnExit((e as Error).message)
         return { pid: -1, kill: () => {}, exited: Promise.resolve(exit) }
@@ -190,7 +196,7 @@ export function managedProcessRunner(binary: string): ManagedProcessRunner {
       const pid = child.pid ?? -1
       if (opts.unref === true) child.unref()
       // The signals `kill()` has sent. A death by one of them is the caller's
-      // own stop; a death by any other signal came from elsewhere.
+      // own stop. A death by any other signal came from elsewhere.
       const sent = new Set<NodeJS.Signals>()
 
       const exited = new Promise<ManagedProcessExit>((resolve) => {
@@ -200,13 +206,13 @@ export function managedProcessRunner(binary: string): ManagedProcessRunner {
           settled = true
           resolve(result)
         }
-        // A spawn failure (e.g. ENOENT): no exit was ever reported.
+        // A spawn failure (such as ENOENT). No exit was reported.
         child.on('error', (err) => {
           untrackGroup?.()
           finish(spawnExit(err.message))
         })
         child.on('exit', (code, signal) => {
-          // The leader is gone but the group may not be: stay registered until
+          // The leader is gone, but the group may not be. Stay registered until
           // no member is left, so a signal to the host still reaches the rest.
           // Unless `kill()` is stopping it, the host's exit leaves it running.
           if (untrackGroup !== undefined) {
@@ -232,15 +238,15 @@ export function managedProcessRunner(binary: string): ManagedProcessRunner {
         kill(signal: NodeJS.Signals | number = 'SIGTERM'): void {
           if (pid === -1) return
           try {
-            // A negative pid signals the whole process group — see
-            // `processGroup`'s doc above. The direct child goes through
-            // `child.kill`, which does nothing once the child has been
-            // reaped, so a reused pid is never signalled.
+            // A negative pid signals the whole process group (see
+            // `processGroup`). The direct child goes through `child.kill`,
+            // which does nothing once the child has been reaped, so a reused
+            // pid is never signalled.
             const delivered = group ? process.kill(-pid, signal) : child.kill(signal)
             const name = typeof signal === 'number' ? signalName(signal) : signal
             if (delivered && name !== undefined) sent.add(name)
           } catch {
-            // Already gone — nothing to reap.
+            // Already gone.
           }
         },
         exited,
@@ -255,12 +261,12 @@ export function managedProcessRunner(binary: string): ManagedProcessRunner {
  * that ignores `SIGTERM` would leave `await handle.exited` waiting forever.
  *
  * Works with any {@link ManagedProcessHandle}, fakes included. It waits for
- * the handle's own process only: with `processGroup`, a group member that
+ * the handle's own process only. With `processGroup`, a group member that
  * outlives the leader is not sent `SIGKILL`.
  *
  * @param handle - The process to stop.
  * @param opts - `graceMs`: how long to wait after `SIGTERM`. Default `5_000`.
- * `0` sends `SIGKILL` right after `SIGTERM`; `Infinity` never sends it. A
+ * `0` sends `SIGKILL` right after `SIGTERM`. `Infinity` never sends it. A
  * value above 2^31 - 1, the largest timer delay, is clamped to it. A
  * negative value or `NaN` rejects with `RangeError`, a non-number with
  * `TypeError`.

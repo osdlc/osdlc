@@ -3,9 +3,9 @@
  * user must see live, then say in one line why it failed.
  *
  * `streamRunner` inherits stdin, stdout and stderr, so there is nothing to
- * capture; the result says only how the child ended. `ran` reads it the same
+ * capture. The result says only how the child ended. `ran` reads it the same
  * way it reads a captured result, and `reason` says why it never finished.
- * There is no ready-made stream fake; a test writes a small object.
+ * There is no ready-made stream fake, so a test writes a small object.
  */
 
 import { chmodSync, existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
@@ -40,7 +40,7 @@ function whyItFailed(r: StreamResult): string {
   }
 }
 
-/** Run `npm run build` in `dir` with live output; throws when it fails. */
+/** Run `npm run build` in `dir` with live output. Throws when it fails. */
 function build(dir: string, npm: StreamRunner = streamRunner('npm')): void {
   const opts: StreamRunOptions = { cwd: dir, timeoutMs: 10 * 60_000, env: { FORCE_COLOR: '1' } }
   const r = npm.run(['run', 'build'], opts)

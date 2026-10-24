@@ -1,10 +1,10 @@
 /**
- * The production sync capture path. Under `bun test` `NODE_ENV=test`, and
- * `spawnRunner` reads that once at import time to switch to a temp-file
- * capture. Everything in `seam.test.ts` therefore runs the test-only path.
- * Here `support/pipe-probe.ts` runs a matrix of cases in a child with
- * `NODE_ENV` removed, so the pipe path users actually run is checked by real
- * tests. No source change is needed: a fresh process re-reads the switch.
+ * The production sync capture path. `spawnRunner` checks for the Bun runtime
+ * and `NODE_ENV=test` once at import time, and under `bun test` it switches
+ * to a temp-file capture. Here `support/pipe-probe.ts` runs a matrix of cases
+ * in a child with `NODE_ENV` removed, so the pipe path is checked whatever
+ * runtime runs the suite. No source change is needed, because a new process
+ * reads the switch again.
  *
  * POSIX-only (`sh`, `kill`, `head`), grouped so a platform skip can wrap it.
  */
@@ -217,8 +217,8 @@ describe('spawnRunner — production pipe path (NODE_ENV unset)', () => {
     if (probe.runJson.ok) expect(probe.runJson.value).toEqual({ a: 1 })
   })
 
-  // Bun's `spawnSync`, which runs this probe, does not report the failed write
-  // (a README known limit); regressions.test.ts checks that Node's does.
+  // This checks only the exit code. Bun's `spawnSync` does not report the
+  // failed write, and regressions.test.ts checks that Node's does.
   test('a child that closes stdin early keeps its exit code', () => {
     expect(probe.epipe.value.exitCode).toBe(0)
   })

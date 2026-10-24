@@ -1,8 +1,8 @@
-// Runs the BUILT package under Node, which no other check does: `bun test`
-// resolves the `bun` export condition to the TypeScript sources, so dist/ is
-// compiled and never executed. A broken emit — an unrewritten `.ts` import, a
-// dependency with no dist/ of its own — passes every other gate and fails on
-// the consumer's machine.
+// Runs the built package under Node, which no other check does. Vitest
+// aliases the package name to the TypeScript sources (see vitest.config.ts),
+// so the tests compile dist/ but never run it. A broken emit, such as an
+// unrewritten `.ts` import or a dependency with no dist/ of its own, passes
+// every other check and fails on the consumer's machine.
 //
 // It imports the package by name, so Node resolves it through `exports` as a
 // consumer would. `pnpm run smoke` runs it here, where the name resolves to
@@ -37,14 +37,14 @@ const bad = runner.run(['-e', "process.stderr.write('boom'); process.exit(3)"], 
 assert.equal(bad.exitCode, 3)
 assert.match(bad.stderr, /boom/)
 
-// `run` never throws; `runChecked` does.
+// `run` never throws. `runChecked` does.
 assert.throws(
   () => runChecked(runner, ['-e', 'process.exit(1)'], { cwd: process.cwd() }),
   (e) => e instanceof CommandFailed && e.argv.length === 2,
 )
 
-// detail joins both streams, empty ones dropped — the reason it exists is a
-// command that explains itself on stdout while git reports failure on stderr.
+// detail joins both streams and drops empty ones. It exists for a command
+// that explains itself on stdout while git reports the failure on stderr.
 const both = new CommandFailed(['x'], { exitCode: 1, stdout: 'why\n', stderr: 'what\n' })
 assert.equal(both.detail, 'what\nwhy')
 assert.equal(new CommandFailed(['x'], { exitCode: 1, stdout: 'only\n', stderr: '' }).detail, 'only')

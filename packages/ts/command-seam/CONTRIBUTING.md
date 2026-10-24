@@ -20,8 +20,8 @@ merged there.
 
 The repository is a pnpm workspace. Install from the repository root, then
 work in the package directory. The tests run on Vitest under Node 22 or
-later. Build first: the workspace packages and the examples resolve each other
-through `dist/`.
+later. Build first, because workspace packages resolve each other through
+`dist/`.
 
 ```sh
 pnpm install
@@ -30,10 +30,10 @@ pnpm run build
 pnpm test
 ```
 
-Build before testing: the examples import the package by name, and under Node
-that name resolves to `dist/`. After a build, `pnpm run smoke` runs
-`tests/smoke.mjs`, a short check of the built package under Node. It is not
-published.
+Vitest runs the examples on the source (see `vitest.config.ts`). The
+typecheck resolves the package's own name through `dist/`, so it needs a
+build. After a build, `pnpm run smoke` runs `tests/smoke.mjs`, a short check
+of the built package under Node. It is not published.
 
 Other checks:
 

@@ -6,9 +6,9 @@
  * `stdio` on `managedProcessRunner` and `streamRunner` sends the child's
  * stdio to `/dev/null` (`'ignore'`) or to file descriptors the caller opened
  * (`{ stdout, stderr }`, the same fd for both to keep one ordered log).
- * `'ignore'` with `unref` and `processGroup` is a fire-and-forget launch: the
- * editor outlives the CLI, does not hold it open, and never writes to its
- * terminal. `quiet` stops `streamRunner` printing its own failure line, for a
+ * `'ignore'` with `unref` and `processGroup` launches a program and leaves it
+ * running. The editor outlives the CLI, does not keep it open, and never
+ * writes to its terminal. `quiet` stops `streamRunner` printing its own failure line, for a
  * caller that reports the failure itself.
  */
 
@@ -55,7 +55,7 @@ async function runToFd(
   return exit.reason === 'spawn' ? 127 : exit.exitCode
 }
 
-/** Run `make` in `dir` with its output in `log`; throws a `StepError` of our own when it fails. */
+/** Run `make` in `dir` with its output in `log`. Throws a `StepError` of our own when it fails. */
 function make(dir: string, log: string, runner: StreamRunner = streamRunner('make')): void {
   const fd = openSync(log, 'a')
   let r: StreamResult

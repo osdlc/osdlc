@@ -2,7 +2,7 @@
  * Helpers for reading a {@link CommandResult}: did it run and succeed, what
  * to tell a person, and its stdout as JSON.
  *
- * None of them throw for a failed command: a failure stays a value the
+ * None of them throw for a failed command. A failure stays a value the
  * caller reads. Use `runChecked` when stopping on failure is the only
  * sensible response.
  */
@@ -14,8 +14,8 @@ import type { AsyncCommandRunner, AsyncCommandRunOptions } from './async.ts'
 import type { CommandResult, CommandRunner, CommandRunOptions } from './sync.ts'
 
 /**
- * Whether the process started and exited 0. `exitCode` alone is not enough:
- * a spawn failure, timeout or abort reports a stand-in `1`, and a caller that
+ * Whether the process started and exited 0. `exitCode` alone is not enough.
+ * A spawn failure, timeout or abort reports a stand-in `1`, and a caller that
  * reads exit codes as answers must rule that out first.
  *
  * Takes any runner's result: a `CommandResult`, a `StreamResult` or a
@@ -30,8 +30,8 @@ export function ran(result: { exitCode: number; neverExited?: boolean | undefine
 /**
  * The child's trimmed stderr, else the runner's trimmed `error` (a failed
  * spawn, a timeout, an abort), else `''`. Use it where a failure message reads
- * stderr: since the runner's message is only in `error`, reading `stderr`
- * alone shows nothing when the command never ran.
+ * stderr. The runner's message is only in `error`, so reading `stderr` alone
+ * shows nothing when the command never ran.
  *
  * @param result - A run's result.
  * @returns The text, trimmed; `''` when both are empty.
@@ -51,11 +51,12 @@ export function stderrOrError(result: Pick<CommandResult, 'stderr' | 'error'>): 
 export interface FailureTextOptions {
   /**
    * Return both streams instead of one: trimmed stderr (or the runner's
-   * `error`, when the child wrote no stderr) and trimmed stdout,
-   * newline-joined, empty ones dropped. Empty when stderr, `error` and stdout
-   * are all empty; there is no `exit N` fallback. This is what `CommandFailed.detail`
-   * returns. Use it when both halves matter, such as a git hook that rejects
-   * a commit: git's own error is on stderr, the hook's reason on stdout.
+   * `error`, when the child wrote no stderr) and trimmed stdout, joined by a
+   * newline, with empty ones dropped. Empty when stderr, `error` and stdout
+   * are all empty. There is no `exit N` fallback. This is what
+   * `CommandFailed.detail` returns. Use it when both halves matter, such as a
+   * git hook that rejects a commit: git's own error is on stderr, the hook's
+   * reason on stdout.
    */
   both?: boolean | undefined
 }
@@ -64,8 +65,8 @@ export interface FailureTextOptions {
  * The failure text to show a person. By default it picks one stream, which
  * suits a one-line message: trimmed stderr, else the runner's trimmed
  * `error` (a failed spawn, a timeout), else trimmed stdout (some commands
- * explain a failure there), else `exit N`. With `both: true` it
- * joins both streams (see {@link FailureTextOptions.both}).
+ * explain a failure there), else `exit N`. With `both: true` it joins both
+ * streams (see {@link FailureTextOptions.both}).
  *
  * A bytes runner's stdout is decoded as UTF-8 here.
  *
@@ -85,7 +86,7 @@ export function failureText(
 }
 
 /**
- * The first non-blank line of `text`, trimmed; `fallback` when there is
+ * The first non-blank line of `text`, trimmed, or `fallback` when there is
  * none. For short diagnostics from multi-line tool output.
  *
  * @param text - Usually `stdout` or `stderr`.
@@ -107,7 +108,7 @@ export function firstLine(text: string, fallback = ''): string {
  * and its stdout was not usable.
  *
  * - `unparseable`: exited with an accepted code, and stdout was not JSON.
- * - `invalid`: stdout was JSON, and the `parse` option threw for it; `cause`
+ * - `invalid`: stdout was JSON, and the `parse` option threw for it. `cause`
  *   holds what it threw, such as a schema library's error with its issue list.
  *
  * @experimental
@@ -142,7 +143,7 @@ export interface RunJsonOptions {
    * Exit codes that count as an answer, for a tool that prints JSON and
    * exits non-zero on purpose (`npm outdated --json` exits 1 when anything is
    * outdated). Default `[0]`. List `0` too if it still counts. A run that
-   * never exited is `failed` whatever its stand-in code. Output from an
+   * never exited is a failure whatever its stand-in code. Output from an
    * accepted non-zero exit must still parse, so pass a `parse` that rejects
    * the tool's own error output.
    */
@@ -153,7 +154,7 @@ export interface RunJsonOptions {
 interface ParseOption<T> {
   /**
    * Check the parsed value and return it typed, such as a schema's `parse`.
-   * A throw makes the outcome `invalid`. It must be sync: a returned promise
+   * A throw makes the outcome `invalid`. It must be sync. A returned promise
    * is also `invalid`. Without it, `T` is the caller's claim and is not
    * checked.
    */
@@ -166,7 +167,7 @@ type JsonOptions<T> = RunJsonOptions & ParseOption<T>
 /**
  * Parse a finished run's stdout as JSON, if it ran and exited with a code in
  * `okExitCodes` (default `[0]`). Without the `parse` option, `T` is the
- * caller's claim about the shape and is not checked; pass `parse` when the
+ * caller's claim about the shape and is not checked. Pass `parse` when the
  * producer is not trusted. Never throws.
  *
  * @param result - A finished run.
@@ -174,8 +175,8 @@ type JsonOptions<T> = RunJsonOptions & ParseOption<T>
  * @param context - The binary and argv, to name in a command failure.
  * @returns `{ ok: true, value, result }`, or `{ ok: false, error, result }`
  * with a {@link JsonFailure}: the {@link CommandFailure} (did not run, or
- * exited with a code not accepted), `unparseable`, or `invalid` (`parse` threw;
- * `cause` holds what it threw).
+ * exited with a code not accepted), `unparseable`, or `invalid` (`parse` threw,
+ * and `cause` holds what it threw).
  * @experimental
  */
 export function parseJsonResult<T = unknown>(
@@ -211,8 +212,8 @@ export function parseJsonResult<T = unknown>(
     }
   }
   if (isThenable(value)) {
-    // An async `parse` (such as `parseAsync`): its verdict would arrive too
-    // late, so say so, and keep its rejection from going unhandled.
+    // An async `parse` (such as `parseAsync`). Its answer would arrive too
+    // late, so report that, and keep its rejection from going unhandled.
     value.then(undefined, () => {})
     return {
       ...err<JsonFailure>({
@@ -299,8 +300,8 @@ function jsonStart(stdout: string): number {
 
 /**
  * The runner's options tuple, `[opts]` or `[opts?]`, with the `runJson`
- * options added. A conditional rather than a mapped type, so `T` can be inferred
- * from `parse`; `NoInfer` keeps `P` inferred from the runner alone.
+ * options added. It is a conditional type, not a mapped type, so `T` can be
+ * inferred from `parse`. `NoInfer` keeps `P` inferred from the runner alone.
  */
 type WithJsonOptions<P extends unknown[], T> = P extends [opts: infer O]
   ? [opts: NoInfer<O> & JsonOptions<T>]
@@ -310,7 +311,7 @@ type WithJsonOptions<P extends unknown[], T> = P extends [opts: infer O]
 
 /**
  * Run a command with a sync runner and parse its stdout as JSON
- * ({@link parseJsonResult}). Never throws for a failed command; a programmer
+ * ({@link parseJsonResult}). Never throws for a failed command. A programmer
  * error, such as an invalid `timeoutMs`, throws. With the `parse` option,
  * `T` is what `parse` returns.
  *
@@ -327,7 +328,7 @@ type WithJsonOptions<P extends unknown[], T> = P extends [opts: infer O]
  * const gh = spawnRunner('gh')
  * const r = runJson<{ login: string }>(gh, ['api', 'user'], { cwd: '.' })
  * if (r.ok) console.log(r.value.login)
- * else console.error(r.message)
+ * else console.error(r.error.message)
  * ```
  *
  * @experimental
@@ -338,7 +339,7 @@ export function runJson<T = unknown>(
   opts: CommandRunOptions & JsonOptions<T>,
 ): JsonRun<T>
 // A runner that needs no options, such as one with `cwd` bound. Its only type
-// parameter is `T`, so `runJson<T>(bound, argv)` compiles: naming `T` on the
+// parameter is `T`, so `runJson<T>(bound, argv)` compiles. Naming `T` on the
 // generic overload below would also fix `P` to its default.
 export function runJson<T = unknown>(
   runner: { run(argv: string[]): CommandResult },
@@ -363,8 +364,8 @@ export function runJson<T>(
 }
 
 /**
- * The async version of {@link runJson}. Never rejects for a failed command;
- * a programmer error, such as an invalid `timeoutMs`, rejects. `parse` is
+ * The async version of {@link runJson}. Never rejects for a failed command.
+ * A programmer error, such as an invalid `timeoutMs`, rejects. `parse` is
  * sync, as in `runJson`.
  *
  * @experimental
@@ -374,7 +375,7 @@ export async function runJsonAsync<T = unknown>(
   argv: string[],
   opts: AsyncCommandRunOptions & JsonOptions<T>,
 ): Promise<JsonRun<T>>
-// A runner that needs no options; see the same overload of `runJson`.
+// A runner that needs no options. See the same overload of `runJson`.
 export async function runJsonAsync<T = unknown>(
   runner: { run(argv: string[]): Promise<CommandResult> },
   argv: string[],
