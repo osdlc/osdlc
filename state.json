@@ -236,9 +236,9 @@
       "line": 113,
       "title": "effectiveExcludes repeats createLister's exclude combination",
       "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365781550",
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "e46a1997bba8c5323423e4b59d27d3a17ceaa7e9"
     },
     {
       "id": "r2-10",
