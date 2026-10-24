@@ -1,12 +1,145 @@
 {
   "schema": 1,
   "pr": 424,
-  "head": null,
-  "base": null,
-  "round": 0,
+  "head": "e5ea9979f3eb120c118bc7f2a41c6b0185b06195",
+  "base": "51b874db252ff90edd6960c8d72be1aa298a1af6",
+  "round": 1,
   "claim": {
     "owner": "KellyMBP.local:claude-r7m2qx",
     "at": "2026-10-24T01:00:32.463Z"
   },
-  "findings": []
+  "findings": [
+    {
+      "id": "r1-1",
+      "round": 1,
+      "path": "packages/ts/project/src/collect.ts",
+      "line": 116,
+      "title": "collect reuses detect's memoized reads and listing on every later call, so a re-collect is stale",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-2",
+      "round": 1,
+      "path": "packages/ts/project/src/roles.ts",
+      "line": 187,
+      "title": "missingDeps offers npm ci for a pinned package with no lockfile",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-3",
+      "round": 1,
+      "path": "packages/ts/project/src/collect.ts",
+      "line": 102,
+      "title": "a profile not built by detect is re-listed with the built-in excludes even when detect turned them off",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-4",
+      "round": 1,
+      "path": "packages/ts/project/src/roles.ts",
+      "line": 135,
+      "title": "workspace members with no lockfile each get their own install",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-5",
+      "round": 1,
+      "path": "packages/ts/project/src/synthesized.ts",
+      "line": 157,
+      "title": "synthesized install tasks put the directory in cwd, against the Task.cwd contract",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-6",
+      "round": 1,
+      "path": "packages/ts/project/src/plugins/python/python.ts",
+      "line": 76,
+      "title": "python runner re-reads pyproject.toml and re-derives the manager instead of using the profile",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-7",
+      "round": 1,
+      "path": "packages/ts/project/src/plugins/python/python.ts",
+      "line": 16,
+      "title": "stale: comment says the plugin avoids a TOML dependency",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-8",
+      "round": 1,
+      "path": "packages/ts/project/src/plugins/python/python.ts",
+      "line": 72,
+      "title": "comment about binary sits on the runner role, which has no binary",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-9",
+      "round": 1,
+      "path": "packages/ts/project/src/plugins/jvm/gradle.ts",
+      "line": 152,
+      "title": "stale: comment says the contract requires a static binary on the runner",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-10",
+      "round": 1,
+      "path": "packages/ts/project/src/project.ts",
+      "line": 114,
+      "title": "createProject doc omits the duplicate-ecosystem throw",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-11",
+      "round": 1,
+      "path": "packages/ts/project/README.md",
+      "line": 128,
+      "title": "README implies ctx.files() also checks anchored literals on disk",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-12",
+      "round": 1,
+      "path": "packages/ts/project/src/detect.ts",
+      "line": 171,
+      "title": "snapshot rebuilt once per tool with detect or describe",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    }
+  ]
 }
