@@ -1,5 +1,19 @@
 # @osdlc/typed-git
 
+## 0.7.0
+
+### Minor Changes
+
+- b5aac07: When a git call fails and throws a `FailureError`, the error's `message` now starts with the git command, for example `git push: The remote 'origin' does not exist or is not a git repository.`, followed by the hint. Before, the message had no command, so code that ran several git calls in one `try` could not tell which one failed. `failure.message` is unchanged.
+  
+  The new `describeGitFailure(failure)` builds the same `git <verb>: <message> <hint>` line for a failure returned by `git.try.*`.
+  
+  If your code matches on the text of a thrown git error's `message`, it will now see the `git <verb>: ` prefix. Match on `error.failure.kind` instead.
+
+### Patch Changes
+
+- 41ef520: Fix two type errors under TypeScript 5.9. The emitted `outcome.d.ts` failed with TS2536, because `Soft<C>` used a key on `Triable<C>` that TS 5.x could not prove valid. The source failed with TS2322, because `Git.soft` and `AsyncGit.soft` inferred `this` instead of the class type. A new `typecheck:ts59` script checks the package under 5.9.
+
 ## 0.6.0
 
 ### Minor Changes

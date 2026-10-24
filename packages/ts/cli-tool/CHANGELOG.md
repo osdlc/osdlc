@@ -1,5 +1,19 @@
 # @osdlc/cli-tool
 
+## 0.7.0
+
+### Minor Changes
+
+- 007d8ee: Importing `@osdlc/cli-tool` no longer loads yaml and zod. The root now takes its directory helpers from a new `@osdlc/config-layers/dirs` subpath, and `closestMatches` and `didYouMean` from a new `@osdlc/config-layers/did-you-mean` subpath. The root's exports are unchanged.
+  
+  `@osdlc/cli-tool` also adds the subpaths `./define-cli`, `./io`, `./prompt` and `./exit`, so a tool can import only the parts it uses.
+
+### Patch Changes
+
+- 96b7144: Declare `zod` (`^4`) as a peer dependency. Parts of cli-tool load `@osdlc/config-layers`, which needs zod. cli-tool did not declare it, so consumers had to find and install it themselves.
+- Updated dependencies [007d8ee]
+  - @osdlc/config-layers@0.7.0
+
 ## 0.6.0
 
 ### Minor Changes
