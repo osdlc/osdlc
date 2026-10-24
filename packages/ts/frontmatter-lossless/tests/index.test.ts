@@ -1,20 +1,20 @@
 /**
- * @osdlc/frontmatter-lossless conformance — the TS half of the shared framing
- * corpus. The `frontmatter-lossless` Rust crate runs the same fixtures. Each
- * fixture checks split parity, lenient parity, offset validity, a
- * byte-identical round trip and its `edit` case, if it has one.
+ * Conformance tests for @osdlc/frontmatter-lossless: the TypeScript side of
+ * the shared framing corpus. The `frontmatter-lossless` Rust crate runs the
+ * same fixtures. Each fixture checks the strict split, the lenient split,
+ * the offsets, a byte-identical round trip, and its `edit` case if it has one.
  *
- * Plus TS mirrors of the Rust crate's hand-written tests (mid-text BOM, CRLF
- * value swap, new text written into an empty block or after a closing fence at
- * the end of the file), so the two suites cover the same ground even where the
- * corpus JSON has no field for it.
+ * This file also ports the Rust crate's hand-written tests (BOM inside the
+ * text, CRLF value swap, new text written into an empty block or after a
+ * closing fence at the end of the file), so the two suites cover the same
+ * cases even where the corpus JSON has no field for them.
  *
- * `fixtures/conformance.json` is a copy of the Rust crate's corpus, pinned by
- * `CORPUS_SHA256` below. The pin only stops the copy changing by accident: a
- * change to the crate's corpus does not reach this suite, and a change made
+ * `fixtures/conformance.json` is a copy of the Rust crate's corpus
+ * (packages/rust/frontmatter-lossless/tests/fixtures/conformance.json), pinned
+ * by `CORPUS_SHA256` below. The pin only stops the copy changing by accident.
+ * A change to the crate's corpus does not reach this suite, and a change made
  * only here fails nothing in the crate. The copy is re-synced by hand until
- * the crate moves into this repository (sksizer/dev task T-ACAH) and both
- * suites read one file. See docs/planning/decisions/D-07-conformance-corpus.md.
+ * both suites read one file. See docs/planning/decisions/D-07-conformance-corpus.md.
  */
 import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
@@ -73,9 +73,9 @@ describe('shared conformance corpus', () => {
       expect(s.shape.closeSep).toBe(fx.split.closeSep)
     })
 
-    // The property that matters: split a note and recompose it, and land on
-    // the original file byte for byte — anything that normalises fences,
-    // drops or doubles a BOM, or rewrites CRLF fails here.
+    // The property that matters: split a note and compose it again, and get
+    // the original file byte for byte. Anything that normalises fences, drops
+    // or doubles a BOM, or rewrites CRLF fails here.
     test(`[${fx.name}] round trip is byte-identical`, () => {
       const s = split(fx.source)
       expect(compose(s.yaml, s.body, s.shape)).toBe(fx.source)
@@ -101,8 +101,8 @@ describe('shared conformance corpus', () => {
       })
     }
 
-    // `yamlRange` and `bodyStart` index the original source exactly (as
-    // string indices — the port's native indexing, per the module doc).
+    // `yamlRange` and `bodyStart` index the original source exactly, as
+    // UTF-16 string indices (see the module doc).
     test(`[${fx.name}] offsets index the original source`, () => {
       const s = split(fx.source)
       if (s.yaml !== null) {
@@ -121,7 +121,7 @@ describe('framing details (mirrors of the Rust hand-written tests)', () => {
   })
 
   test('CRLF fences survive a value swap', () => {
-    // Emulate a splice: keep the shape, hand `compose` new YAML text. The
+    // Simulate an edit: keep the shape and pass `compose` new YAML text. The
     // fences must come back as CRLF, not LF.
     const s = split('---\r\ntitle: old\r\n---\r\nbody\r\n')
     const out = compose('title: new\r', s.body, s.shape)
@@ -137,9 +137,9 @@ describe('framing details (mirrors of the Rust hand-written tests)', () => {
   })
 
   test('lenient does not strip a mid-whitespace BOM the way trimStart would', () => {
-    // JS String.prototype.trimStart eats U+FEFF; Rust's trim_start does not.
-    // The port must side with Rust: a BOM after leading spaces blocks the
-    // fence from being recognised.
+    // JS String.prototype.trimStart strips U+FEFF. Rust's trim_start does not.
+    // This package must match Rust: a BOM after leading spaces stops the fence
+    // from being recognised.
     expect(splitLenient(`  ${BOM}---\na: 1\n---\nbody\n`)).toBeNull()
   })
 })

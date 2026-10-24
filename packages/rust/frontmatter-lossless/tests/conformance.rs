@@ -1,21 +1,19 @@
 //! Framing conformance corpus for `frontmatter-lossless`.
 //!
-//! The fixtures the framing must get right — BOM, CRLF, empty and
-//! unterminated blocks, byte offsets, and round-trip identity. Each fixture
-//! carries one property a naive splitter breaks, and the property tests run
-//! against the whole corpus so a regression in one code path is caught by
-//! every relevant fixture.
+//! The cases the framing must get right: BOM, CRLF, empty and unterminated
+//! blocks, byte offsets, and round trips. Each fixture holds one case a simple
+//! splitter gets wrong. Each property is checked against the whole corpus, so a
+//! regression in one code path fails every fixture it affects.
 //!
-//! The corpus is **language-neutral JSON** at
-//! `tests/fixtures/conformance.json`; this file loads it. The TypeScript twin
-//! `@osdlc/frontmatter-lossless` tests the same corpus, so the two
-//! implementations agree on every case. Each fixture is
+//! The corpus is plain JSON at `tests/fixtures/conformance.json`, and this
+//! file loads it. The TypeScript version, `@osdlc/frontmatter-lossless`, tests
+//! a copy of the same corpus, so the two implementations agree on every case. Each fixture is
 //! `{ name, source, split, lenient }` where `split` is the strict
 //! [`split`] outcome (`yaml` null when there is no block, plus the
 //! `bom`/`openEol`/`closeEol` shape) and `lenient` is the [`split_lenient`]
-//! outcome (`null` when it finds no block). Round-trip identity —
-//! `compose(split(src)) == src` — is asserted as a property over every
-//! fixture rather than stored. A fixture may also carry `edit`
+//! outcome (`null` when it finds no block). The round trip,
+//! `compose(split(src)) == src`, is checked for every fixture rather than
+//! stored. A fixture may also carry `edit`
 //! (`{ yaml, body, out }`): composing that new yaml and body with the source's
 //! shape must give `out`, and `out` must split back to them.
 
@@ -37,9 +35,9 @@ fn str_of<'a>(fx: &'a Json, key: &str) -> &'a str {
         .unwrap_or_else(|| panic!("fixture field {key:?} must be a string: {fx}"))
 }
 
-/// The whole shared corpus, one test. A failure aggregates every offending
-/// fixture by name rather than stopping at the first, so a drift shows its
-/// full blast radius.
+/// The whole shared corpus, one test. A failure lists every failing fixture by
+/// name rather than stopping at the first, so a change shows everything it
+/// breaks.
 #[test]
 fn shared_conformance_corpus() {
     let mut failures = Vec::new();
@@ -60,7 +58,7 @@ fn run_fixture(fx: &Json) -> Result<(), String> {
     let source = str_of(fx, "source");
     let expect = fx.get("split").ok_or("fixture is missing \"split\"")?;
 
-    // Strict split parity: yaml / body / shape all match the stored contract.
+    // Strict split: yaml, body and shape all match the stored values.
     let s = split(source);
     let want_yaml = expect.get("yaml").ok_or("split.yaml is required")?;
     match (s.yaml, want_yaml.as_str()) {
@@ -92,15 +90,15 @@ fn run_fixture(fx: &Json) -> Result<(), String> {
         return Err(format!("split.closeSep: got {}", s.shape.close_sep));
     }
 
-    // The property that matters: split a note and recompose it, and land on
-    // the original file byte for byte — so anything that normalises fences,
-    // drops or doubles a BOM, or rewrites CRLF fails on every relevant shape.
+    // The property that matters: split a note and compose it again, and get
+    // the original file byte for byte. Anything that normalises fences, drops
+    // or doubles a BOM, or rewrites CRLF fails on every shape it affects.
     let out = compose(s.yaml, s.body, s.shape);
     if out != source {
         return Err(format!("round trip was not byte-identical: {out:?}"));
     }
 
-    // Lenient parity: the read-only tolerant split agrees with the contract.
+    // Lenient split: the tolerant read-only split matches the stored values.
     let lenient = fx.get("lenient").ok_or("fixture is missing \"lenient\"")?;
     match (split_lenient(source), lenient.as_object()) {
         (None, None) if lenient.is_null() => {}
@@ -136,10 +134,10 @@ fn run_fixture(fx: &Json) -> Result<(), String> {
     Ok(())
 }
 
-/// `yaml_range` and `body_start` index the original source exactly, so a splice
-/// can address real byte offsets. (Offsets are byte positions into the UTF-8
-/// source — a Rust-side contract; the TS binding asserts the same offsets
-/// against the source `Uint8Array`.)
+/// `yaml_range` and `body_start` index the original source exactly, so an edit
+/// can use real byte offsets. (Offsets are byte positions into the UTF-8
+/// source. The TypeScript package uses UTF-16 string indices instead and checks
+/// its own offsets against the source string.)
 #[test]
 fn offsets_index_the_original_source_across_the_corpus() {
     for fx in fixtures() {
@@ -153,7 +151,7 @@ fn offsets_index_the_original_source_across_the_corpus() {
     }
 }
 
-/// The empty block is a first-class shape: [`split`] captures it as `Some("")`
+/// The empty block is a shape of its own: [`split`] returns it as `Some("")`
 /// with its framing, and [`compose`] puts the fences back.
 #[test]
 fn compose_reproduces_an_empty_block() {
@@ -178,7 +176,7 @@ fn bom_is_recognised_and_preserved() {
 
 #[test]
 fn crlf_fences_survive_a_value_swap() {
-    // Emulate a splice: keep the shape, hand `compose` new YAML text. The
+    // Simulate an edit: keep the shape and pass `compose` new YAML text. The
     // fences must come back as CRLF, not LF.
     let s = split("---\r\ntitle: old\r\n---\r\nbody\r\n");
     let out = compose(Some("title: new\r"), s.body, s.shape);

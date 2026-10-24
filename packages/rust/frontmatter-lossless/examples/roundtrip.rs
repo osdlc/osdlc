@@ -1,5 +1,5 @@
-//! Split a note, edit its frontmatter, recompose it byte for byte, and build a
-//! note from scratch.
+//! Split a note, edit its frontmatter, compose it again byte for byte, and
+//! build a note from scratch.
 //!
 //! Run with `cargo run --example roundtrip`.
 
@@ -14,7 +14,7 @@ fn main() {
     println!("body: {:?}", s.body); // "# Heading\r\n"
     println!("shape: {:?}", s.shape);
 
-    // Hand split's parts straight back and the original comes out byte for byte.
+    // Pass split's parts straight back and the original comes out byte for byte.
     assert_eq!(compose(s.yaml, s.body, s.shape), note);
     println!(
         "round trip is byte-exact: {}",

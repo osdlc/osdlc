@@ -29,7 +29,7 @@ pnpm run build
 pnpm test
 ```
 
-`pnpm test` runs the Vitest suite. Most tests run the source;
+`pnpm test` runs the Vitest suite. Most tests run the source.
 `tests/corpus-dist.test.ts` runs the conformance corpus on the built package.
 Build first.
 
@@ -47,10 +47,11 @@ pnpm run format:check
 
 ## The conformance corpus
 
-`tests/fixtures/conformance.json` is shared with the `frontmatter-lossless`
-Rust crate. A change to how notes are split changes both implementations and
-the corpus together, and the copy here stays byte-identical to the crate's.
-See
+`tests/fixtures/conformance.json` is a copy of the `frontmatter-lossless`
+Rust crate's corpus, at
+`packages/rust/frontmatter-lossless/tests/fixtures/conformance.json`. A
+change to how notes are split changes both implementations and the corpus
+together, and the copy here stays byte-identical to the crate's. See
 [D-07](https://github.com/osdlc/osdlc/blob/main/packages/ts/frontmatter-lossless/docs/planning/decisions/D-07-conformance-corpus.md).
 
 ## Code style
@@ -65,5 +66,5 @@ See
   README's Stability section. A test checks that the two agree.
 - For a change users can see, add a changeset: run `pnpm changeset` at the
   repository root. Start a breaking change's summary with `**Breaking:**`.
-  Do not edit `CHANGELOG.md` or `version` by hand; the release writes them.
+  Do not edit `CHANGELOG.md` or `version` by hand. The release writes them.
   See [packages/README.md](https://github.com/osdlc/osdlc/blob/main/packages/README.md).
