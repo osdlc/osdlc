@@ -258,9 +258,9 @@
       "line": 30,
       "title": "pnpm-workspace parser drops zero-indent and multi-line flow package lists, so pnpm members fall back to npm",
       "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365847703",
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "e46a1997bba8c5323423e4b59d27d3a17ceaa7e9"
     },
     {
       "id": "r3-2",
