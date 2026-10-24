@@ -1,0 +1,22 @@
+ all 9  just 4  make 2  node-scripts 3                                  fuzzy
+> █
+9/9  checked HH:MM:SS   
+RUNNERS  (this project)
+  [x] just
+  [x] make
+  [ ] gradle   not collected
+  order: alphabetical  (default)
+
+EXECUTION  (trust store)
+  not trusted — runners that must be run to be read were skipped (^s to trust)
+  allowExec: false  (default)
+
+DISCOVERY  (default)
+  auto
+
+
+
+
+
+──────────────────────────────────────────────────────────────────────────────
+reading only — edit with `way config set`    esc back

@@ -1,0 +1,22 @@
+ all 9  just 4  make 2  node-scripts 3                                  fuzzy
+> dep█
+4/9  checked HH:MM:SS   
+>   just > . > deploy
+    node-scripts > . > showcase > build
+    node-scripts > . > showcase > lint
+  * node-scripts > . > showcase > start
+
+
+
+
+
+
+
+
+
+
+
+------------------------------------------------------------------------------
+just deploy <env> [tag]                            runner > justfile > recipe
+Ship a build to an environment.
+enter run  ^y copy  tab runner  ^e exact  ^t services  ^s trust  ^r refresh  …
