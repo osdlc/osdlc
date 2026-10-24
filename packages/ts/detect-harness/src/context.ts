@@ -4,9 +4,8 @@
  *
  * Reads are memoized for one `detect()` call, so two providers reading one
  * `AGENTS.md` cost one read. In `project` mode every read outside the project
- * root answers "absent" without reading it, which is what makes that
- * mode's "never reads the home folder" a property of the context rather than a
- * promise each provider has to keep.
+ * root answers "absent" without reading the file. So the context enforces that
+ * the mode never reads the home folder, and no provider has to remember it.
  *
  * Runtime-agnostic: `node:` APIs only.
  */

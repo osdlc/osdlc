@@ -1,5 +1,5 @@
 /**
- * The public surface: every export of every entry point is named here, so
+ * The public exports: every export of every entry point is named here, so
  * adding or removing one fails this test and shows up in review.
  */
 

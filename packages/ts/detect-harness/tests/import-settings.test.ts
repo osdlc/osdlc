@@ -1,9 +1,9 @@
 /**
  * Control-plane reading.
  *
- * Seeds a project with `.claude/settings.json` (hooks, permissions, an stdio MCP
- * server) and a `.mcp.json` (a remote server), and asserts the control plane
- * lands in the model's shapes. Further suites pin the scope rules (local
+ * Seeds a project with `.claude/settings.json` (hooks, permissions, a stdio MCP
+ * server) and a `.mcp.json` (a remote server), and checks that they are read
+ * into the model's shapes. Further suites check the scope rules (local
  * settings over project settings, permission lists merged) and the redaction of
  * secret values.
  */

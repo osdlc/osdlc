@@ -1,6 +1,6 @@
 /**
- * The harness model: pins its shape (capabilities with a kind, hooks, MCP
- * servers, permissions, documents — all defaulting empty) and its helpers.
+ * The harness model: checks its shape (capabilities with a kind, hooks, MCP
+ * servers, permissions and documents, all empty by default) and its helpers.
  */
 
 import { describe, expect, test } from 'vitest'

@@ -1,5 +1,5 @@
 /**
- * The documented surface: every export has TSDoc, the `@experimental` tags
+ * The documented exports: every export has TSDoc, the `@experimental` tags
  * match the README's "Experimental" list, every stable export is used in an
  * example that imports only the package by name, and every README `ts` block
  * is run by an example.

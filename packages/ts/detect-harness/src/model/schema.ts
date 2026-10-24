@@ -1,15 +1,15 @@
 /**
  * The harness model: a JSON-safe description of a coding-agent plugin.
  *
- * A "harness" is the control-plane surface a coding agent runs inside: its
- * invocable capabilities, the context it carries, the tools it may use, the MCP
- * servers it can reach, the permissions that gate it, and the lifecycle hooks
- * that fire around it. This module holds the shape of that surface. It is read
+ * A "harness" here is what a coding agent runs inside: the capabilities it can
+ * invoke, the context it carries, the tools it may use, the MCP servers it can
+ * reach, the permissions that limit it, and the lifecycle hooks that run around
+ * it. This module holds the shape of that description. It is read
  * from a Claude Code plugin folder by {@link readPlugin} in
  * `./derive.ts`.
  *
- * The model is a plain, JSON-serializable Zod shape, so it also serves as its
- * own interchange form. Zod is a peer dependency: the schemas are public, and a
+ * The model is a plain, JSON-serializable Zod shape, so it is also its own
+ * exchange format. Zod is a peer dependency: the schemas are public, and a
  * consumer that nests them in its own schemas needs one copy of Zod.
  *
  * Runtime-agnostic: pure schema, no `node:`/Bun coupling.
@@ -30,15 +30,15 @@ export const HARNESS_MODEL_VERSION = '2' as const
  * @experimental
  */
 export const HarnessMetadataSchema = z.object({
-  /** Machine name / plugin id (kebab), e.g. `"my-plugin"`. */
+  /** Machine name or plugin id (kebab-case), e.g. `"my-plugin"`. */
   name: z.string().min(1),
-  /** Semver-ish version string, or `"unknown"`. */
+  /** A version string, usually semver, or `"unknown"`. */
   version: z.string().min(1),
   /** One-paragraph human description. */
   description: z.string().default(''),
   /** Author name, when the source manifest declares one. */
   author: z.string().optional(),
-  /** Project homepage / repo URL, when declared. */
+  /** Project homepage or repo URL, when declared. */
   homepage: z.string().optional(),
 })
 /**
@@ -49,14 +49,14 @@ export const HarnessMetadataSchema = z.object({
 export type HarnessMetadata = z.infer<typeof HarnessMetadataSchema>
 
 /**
- * A file co-located with a capability (a helper script, a fixture). Contents are
- * carried as text — the surface is markdown + source scripts, never binary —
- * with the executable bit preserved so a launcher stays runnable.
+ * A file next to a capability (a helper script, a fixture). Contents are kept as
+ * text, since these files are markdown and source scripts, never binary. The
+ * executable bit is kept so a launcher script stays runnable.
  *
  * @experimental
  */
 export const HarnessResourceSchema = z.object({
-  /** Path RELATIVE to the capability's own directory (e.g. `"start_task.ts"`). */
+  /** Path relative to the capability's own directory (e.g. `"start_task.ts"`). */
   path: z.string().min(1),
   /** File contents, verbatim. */
   contents: z.string(),
@@ -86,10 +86,10 @@ export const CapabilityKindSchema = z.enum(['skill', 'command'])
 export type CapabilityKind = z.infer<typeof CapabilityKindSchema>
 
 /**
- * An invocable capability. `name` is the kebab id (and the invocation leaf):
- * `instructions` is the markdown the agent runs against, `allowedTools` the
- * permitted tools, `argumentHint` the CLI-style hint for commands that take
- * arguments. `annotations` holds the frontmatter keys the model has no field for.
+ * A capability an agent or user can invoke. `name` is the kebab-case id and the
+ * last part of the invocation name. `instructions` is the markdown the agent
+ * follows, `allowedTools` the permitted tools, and `argumentHint` the CLI-style
+ * hint for commands that take arguments. `annotations` holds the frontmatter keys the model has no field for.
  *
  * @experimental
  */
@@ -98,15 +98,15 @@ export const HarnessCapabilitySchema = z.object({
   name: z.string().min(1),
   /** skill (model-invoked) or command (user-invoked). */
   kind: CapabilityKindSchema.default('skill'),
-  /** Invocation summary — what it does, when to reach for it. */
+  /** A summary: what it does and when to use it. */
   description: z.string().default(''),
-  /** Markdown instruction body the agent runs against. */
+  /** Markdown instruction body the agent follows. */
   instructions: z.string().default(''),
   /** Tools the capability is permitted to use. */
   allowedTools: z.array(z.string()).default([]),
   /** CLI-style argument hint, for commands that take arguments. */
   argumentHint: z.string().optional(),
-  /** Co-located helper files, by capability-relative path. */
+  /** Helper files next to the capability, by path relative to it. */
   resources: z.array(HarnessResourceSchema).default([]),
   /** Frontmatter keys with no field of their own (e.g. `need_human_review`). */
   annotations: z.record(z.string(), z.unknown()).default({}),
@@ -119,16 +119,16 @@ export const HarnessCapabilitySchema = z.object({
 export type HarnessCapability = z.infer<typeof HarnessCapabilitySchema>
 
 /**
- * A lifecycle hook: a shell `action` fired on `event` (e.g. `PreToolUse`,
- * `Stop`, `SessionStart`), optionally gated by a `matcher` (a tool-name / event
- * pattern).
+ * A lifecycle hook: a shell `action` run on `event` (e.g. `PreToolUse`,
+ * `Stop`, `SessionStart`), optionally limited by a `matcher` (a tool-name or
+ * event pattern).
  *
  * @experimental
  */
 export const HarnessHookSchema = z.object({
   /** Lifecycle event name, in Claude Code's own spelling. */
   event: z.string().min(1),
-  /** Optional matcher (tool-name / pattern) scoping when the hook fires. */
+  /** Optional matcher (tool name or pattern) that limits when the hook runs. */
   matcher: z.string().optional(),
   /** The shell command to run. */
   action: z.string().min(1),
@@ -155,7 +155,7 @@ export type McpTransport = z.infer<typeof McpTransportSchema>
 
 /**
  * An MCP server the harness can reach. `stdio` servers carry `command`/`args`/
- * `env`; `http`/`sse` servers carry `url` (+ optional `headers`). Nothing checks
+ * `env`. `http`/`sse` servers carry `url` and optional `headers`. Nothing checks
  * that a server has the fields of its transport.
  *
  * The readers replace `env` and `headers` values, the user part and query
@@ -231,7 +231,7 @@ export type HarnessDocument = z.infer<typeof HarnessDocumentSchema>
  * @experimental
  */
 export const HarnessModelSchema = z.object({
-  /** Model schema version — see {@link HARNESS_MODEL_VERSION}. */
+  /** Model schema version. See {@link HARNESS_MODEL_VERSION}. */
   modelVersion: z.literal(HARNESS_MODEL_VERSION).default(HARNESS_MODEL_VERSION),
   metadata: HarnessMetadataSchema,
   /** Capabilities, sorted by `name` for a deterministic emit. */
@@ -253,7 +253,7 @@ export const HarnessModelSchema = z.object({
 export type HarnessModel = z.infer<typeof HarnessModelSchema>
 
 /**
- * Total resource-file count across every capability — a cheap summary stat.
+ * The total number of resource files across every capability.
  *
  * @experimental
  */

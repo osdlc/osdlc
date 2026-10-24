@@ -6,7 +6,7 @@
  *
  *   detect({ providers: [...builtinProviders, mine] })
  *
- * Two rules keep providers honest and testable:
+ * Two rules keep providers correct and testable:
  *
  *   1. They never read the file system or spawn directly. Every read goes
  *      through the {@link ProviderContext}, which enforces `project` mode (no

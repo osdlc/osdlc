@@ -110,10 +110,10 @@ function sortedJson(value: unknown): string {
 
 /**
  * The hash Codex records as `trusted_hash` when the user approves a command hook:
- * sha256 of the sorted JSON of `{ event_name, matcher?, hooks: [handler] }`, the
- * handler normalised (`async` defaults to false; `timeout` defaults to 600 s, or
- * for `Interrupt` and `SessionEnd` to 1 s clamped to 1–3 s; unset optional
- * fields omitted).
+ * sha256 of the sorted JSON of `{ event_name, matcher?, hooks: [handler] }`, with
+ * the handler normalised. `async` defaults to false. `timeout` defaults to 600 s
+ * (at least 1 s). For `Interrupt` and `SessionEnd` it defaults to 1 s and is
+ * clamped to 1–3 s. Unset optional fields are omitted.
  */
 export function codexHookHash(event: string, group: Json, hook: Json): string {
   const short = event === 'Interrupt' || event === 'SessionEnd'
