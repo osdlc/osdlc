@@ -1,10 +1,10 @@
 /**
- * The session entry: the record of an agent session a launcher starts. An
- * append-only event log per session reduces to a record through a fixed state
- * machine; the env tags a launched agent carries are read back by a process
- * scan; reconcile ends a record whose session is gone. The harness, host and
- * launch-flag vocabularies are the consumer's: {@link defineSessionModel} builds
- * the model from them.
+ * The session entry: the record of an agent session a launcher starts. Each
+ * session has an append-only event log, reduced to a record through a fixed
+ * state machine. A process scan reads back the env tags a launched agent
+ * carries. Reconcile ends a record whose session is gone. The consumer defines
+ * the harness, host and launch-flag vocabularies, and
+ * {@link defineSessionModel} builds the model from them.
  */
 
 export {

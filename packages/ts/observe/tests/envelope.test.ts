@@ -37,7 +37,7 @@ describe('correlationFromEnv', () => {
     expect(
       correlationFromEnv({ SDLC_SESSION: 's1', SDLC_RUN: 'r-1', SDLC_SUBJECT: 'issue-1' }),
     ).toEqual({ session: 's1', run: 'r-1', subject: 'issue-1' })
-    // A pre-0.3.3 launcher nested in a newer session sets only SDLC_*; the inherited
+    // A pre-0.3.3 launcher nested in a newer session sets only SDLC_*, so the inherited
     // OBSERVE_* value is stale.
     expect(correlationFromEnv({ OBSERVE_SESSION: 'A', SDLC_SESSION: 'B' })).toEqual({
       session: 'B',

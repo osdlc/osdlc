@@ -15,18 +15,18 @@ import { spawnRunner } from '@osdlc/command-seam'
 import { readTag } from './envelope.ts'
 
 /**
- * The launching process's {@link machineId}, handed down so a child (a hook
- * process fires once per tool call) reads it instead of probing the platform
- * again. Absent on a cold start, where `machineId()` probes. Writers also set
+ * The launching process's {@link machineId}, passed down so a child reads it
+ * instead of probing the platform again. This matters for hook processes,
+ * which start once per tool call. When it is absent, `machineId()` probes. Writers also set
  * `SDLC_MACHINE_ID`; readers accept either.
  */
 export const MACHINE_ENV_VAR = 'OBSERVE_MACHINE_ID'
 
 /**
  * What {@link deriveMachineId} reads to tell machines apart. Injected so tests
- * never touch the real platform: `platform` is a `process.platform` value,
- * `readFile` returns a file's text or `null` when unreadable, `run` returns a
- * command's stdout or `null` when it failed, `hostname` is the fallback.
+ * never touch the real platform. `platform` is a `process.platform` value.
+ * `readFile` returns a file's text, or `null` when unreadable. `run` returns a
+ * command's stdout, or `null` when it failed. `hostname` is the fallback.
  */
 export interface MachineProbe {
   platform: string
@@ -84,10 +84,11 @@ function platformUuid(probe: MachineProbe): string | null {
  * characters of `sha256("sdlc-machine:" + platformUuid)`. The platform UUID
  * (macOS `IOPlatformUUID`, Linux `/etc/machine-id`, Windows `MachineGuid`) is a
  * hardware identifier, so only this derived id is ever written down. A machine
- * whose UUID cannot be read hashes its hostname the same way, under a different
- * seed so the two never collide: a raw hostname is never an id, because the id
- * lands on every record and envelope even when identity capture is off. The
- * seeds are part of the format: changing them would change every machine's id.
+ * whose UUID cannot be read hashes its hostname the same way, with a different
+ * seed so the two never collide. A raw hostname is never used as the id,
+ * because the id is written on every record and envelope even when identity
+ * capture is off. The seeds are part of the format. Changing them would change
+ * every machine's id.
  */
 export function deriveMachineId(probe: MachineProbe): string {
   const uuid = platformUuid(probe)
@@ -104,13 +105,13 @@ function machineIdCachePath(): string {
 }
 
 /**
- * Internal: not exported from the package entry; {@link machineId} uses it.
+ * Internal, not exported from the package entry. {@link machineId} uses it.
  *
- * The machine's id: the file at `cachePath` when it holds one, else
- * {@link deriveMachineId}, which is then written there (mode 0600). On a cold
- * start this keeps the platform probe (a process spawn on macOS and Windows) off
- * every command after the first. The file holds only the derived id, never the
- * hardware UUID; a write that fails is ignored.
+ * The machine's id: the id in the file at `cachePath` when it holds one, else
+ * {@link deriveMachineId}, which is then written there (mode 0600). This way
+ * only the first command probes the platform (which spawns a process on macOS
+ * and Windows). The file holds only the derived id, never the hardware UUID. A
+ * failed write is ignored.
  */
 export function resolveMachineId(probe: MachineProbe, cachePath: string | null): string {
   if (cachePath !== null) {
@@ -137,16 +138,16 @@ let cachedMachineId: string | undefined
 
 /**
  * This machine's id, as a record's `machine` and an envelope's `writer`. Stable
- * across hostname changes (a laptop's network renames it).
+ * across hostname changes (for example when a laptop's network renames it).
  *
- * Side effects. It reads process-wide state and resolves once per process: the
- * first call reads {@link MACHINE_ENV_VAR} (or its legacy `SDLC_MACHINE_ID`)
- * from `process.env`; when that is unset it reads the cache file
- * `$XDG_CACHE_HOME/sdlc/machine-id` (default `~/.cache/sdlc/machine-id`), and
- * when that holds no id it probes the platform, which spawns `ioreg` on macOS
- * or `reg` on Windows and reads `/etc/machine-id` on Linux, and then writes the
+ * It has side effects. It reads process-wide state and computes the id once
+ * per process. The first call reads {@link MACHINE_ENV_VAR} (or its legacy
+ * `SDLC_MACHINE_ID`) from `process.env`. When that is unset, it reads the cache
+ * file `$XDG_CACHE_HOME/sdlc/machine-id` (default `~/.cache/sdlc/machine-id`).
+ * When the cache holds no id, it probes the platform (it runs `ioreg` on macOS
+ * or `reg` on Windows, and reads `/etc/machine-id` on Linux) and writes the
  * cache file. Later calls return the same value. Functions that would call it
- * implicitly take an optional machine id instead.
+ * take an optional machine id, so a caller can avoid the call.
  */
 export function machineId(): string {
   cachedMachineId ??=
@@ -157,9 +158,9 @@ export function machineId(): string {
 
 /**
  * Whether `record` was launched by `machine` (default: this machine's
- * {@link machineId}, with its side effects). Liveness readers (a pid, an open
- * end, the process scan) consider only these; another machine's records are
- * history.
+ * {@link machineId}, with its side effects). Liveness checks (a pid, an open
+ * end, the process scan) consider only these records. Another machine's
+ * records are history.
  */
 export function isThisMachine(record: { machine: string }, machine: string = machineId()): boolean {
   return record.machine === machine
@@ -167,15 +168,15 @@ export function isThisMachine(record: { machine: string }, machine: string = mac
 
 /** Who started something and where: recorded at session launch and at the start of a run. */
 export interface Originator {
-  /** The git `user.name` in the launch directory, else the OS login; `null` when neither could be read or identity is not captured. */
+  /** The git `user.name` in the launch directory, else the OS login. `null` when neither could be read or identity is not captured. */
   startedBy: string | null
-  /** The machine's readable name (`os.hostname()`); the derived {@link machineId} stays its identity. Absent when identity is not captured. */
+  /** The machine's readable name (`os.hostname()`). The derived {@link machineId} is still its identity. Absent when identity is not captured. */
   hostname?: string | undefined
   /** The IANA zone the machine's clock is set to, e.g. `Europe/Berlin`. */
   tz: string
 }
 
-/** What {@link resolveOriginator} reads; injected so tests never touch the real machine. */
+/** What {@link resolveOriginator} reads. Injected so tests never touch the real machine. */
 export interface OriginatorProbe {
   /** `git config user.name` as run in `cwd`; `null` when unset or git failed. */
   gitUserName(cwd: string): string | null
@@ -209,9 +210,9 @@ const LIVE_ORIGINATOR_PROBE: OriginatorProbe = {
 
 /**
  * Who is launching from `cwd`: git `user.name`, falling back to the OS login.
- * The default probe runs `git config user.name` in `cwd`. With `identity` false
- * neither the person nor the machine's name is read: `startedBy` is `null`,
- * `hostname` absent, and only the time zone is reported.
+ * The default probe runs `git config user.name` in `cwd`. With `identity` false,
+ * neither the person nor the machine's name is read. `startedBy` is `null`,
+ * `hostname` is absent, and only the time zone is reported.
  */
 export function resolveOriginator(
   cwd: string,

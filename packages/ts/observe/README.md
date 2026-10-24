@@ -172,7 +172,7 @@ Every export has TSDoc; the `.d.ts` files are the reference. An overview:
   `RUN_ENV_VAR`, `SUBJECT_ENV_VAR`, `INVOCATION_ENV_VAR` and
   `INVOCATION_PID_ENV_VAR`.
 - **Ids.** `newSortableId(prefix)` and `newRunId()`: ids that sort by the time
-  they were minted.
+  they were created.
 - **JSONL.** `appendJsonl` (with `AppendOptions`), `parseJsonl`, `readJsonl`,
   `readJsonlFrom` (returns a `JsonlTail`: only what was appended after an
   offset) and `jsonlSize`.
@@ -195,11 +195,11 @@ const id = deriveMachineId(linux)
 ```
 
 `machineId()` has side effects. It reads `OBSERVE_MACHINE_ID` (or
-`SDLC_MACHINE_ID`) from `process.env`; when that is unset it reads the cache
-file `~/.cache/sdlc/machine-id` (under `$XDG_CACHE_HOME` when set); when that
-holds no id it probes the platform (it spawns `ioreg` on macOS or `reg` on
+`SDLC_MACHINE_ID`) from `process.env`. When that is unset, it reads the cache
+file `~/.cache/sdlc/machine-id` (under `$XDG_CACHE_HOME` when set). When the
+cache holds no id, it probes the platform (it runs `ioreg` on macOS or `reg` on
 Windows, and reads `/etc/machine-id` on Linux) and writes the cache file. It
-resolves once per process. `sessionEnv`, `isThisMachine` and the reconcile run
+computes the id once per process. `sessionEnv`, `isThisMachine` and the reconcile run
 take a machine id, so a caller can avoid the implicit call.
 
 ### `@osdlc/observe/session`
@@ -212,8 +212,8 @@ take a machine id, so a caller can avoid the implicit call.
   `readSessionRecordIn`. Name its types with `SessionEventOfModel`,
   `NewSessionEventOfModel` and `SessionRecordOfModel`. `looseSessionModel`
   accepts any vocabulary, for a reader that must read logs from any writer.
-  A `launched` event may name the `task` the session serves (its basename);
-  the record keeps it, and it is absent when the session serves none.
+  A `launched` event may name the `task` the session works on (its basename).
+  The record keeps it. It is absent when the session works on no task.
   The record and its parts: `SessionRecordOf`, `AnySessionRecord`,
   `SessionAuthorOf`, `SessionReductionOf`, `IgnoredEventOf`. Files:
   `EVENTS_FILE`, `RECORD_FILE`, `sessionEventsPath`. `SessionLogError` is
@@ -232,8 +232,8 @@ take a machine id, so a caller can avoid the implicit call.
   process. Also `SESSION_ID_RE`, `TASK_ENV_VAR`, `PROJECT_ROOT_ENV_VAR`,
   `PINNED_CMD_ENV_VAR`, `AUTHOR_ENV_VAR` and `authorFromEnv`.
 - **Process scan.** `scanTaggedProcesses` returns the `TaggedProcess` list, or
-  `null` when it could not tell; `processScanSupported`; `liveSessionIds`, the
-  default `LiveIds` probe.
+  `null` when it could not tell. Also `processScanSupported`, and
+  `liveSessionIds`, the default `LiveIds` probe.
 - **Hook status.** `runStateForStatus` maps an `AgentStatus` to the state it
   reports.
 - **Reconcile.** `decideReconcile` turns `ReconcileEvidence` into a
@@ -329,13 +329,13 @@ const result = await runHeadlessSession(ports, async (onSpawn) => {
 
 ## Runtimes and platforms
 
-- Node.js 22 or later (`engines.node`); the tests run on Node 22 and 24 with
+- Node.js 22 or later (`engines.node`). The tests run on Node 22 and 24 with
   Vitest.
 - Linux and macOS are supported: the process scan reads `/proc` on Linux and
   `ps -E` on macOS.
 - On Windows the record, the log and the machine id work, and the process scan
-  reports that it cannot tell (`null`), so with the default live-id source reconcile never ends a record there
-  (reconcile takes the live ids as an input).
+  reports that it cannot tell (`null`). Reconcile takes the live ids as an
+  input, so with the default live-id source it never ends a record there.
 
 ## Security
 
@@ -344,7 +344,7 @@ const result = await runHeadlessSession(ports, async (onSpawn) => {
 - `events.jsonl`, `record.json`, other JSONL files the writer creates, and the
   machine-id cache are created with mode 0600. `record.json` is written
   through a temporary file and a rename.
-- The machine id never contains the hardware UUID or the hostname; it is a
+- The machine id never contains the hardware UUID or the hostname. It is a
   hash.
 - `resolveOriginator` records the git user name and the hostname unless its
   `identity` argument is `false`.

@@ -1,7 +1,7 @@
 /**
- * File mechanics for a log: the append-only JSONL writer every stream uses
- * and its tolerant reader. No redaction happens here; a caller that
- * stores content redacts it before calling {@link appendJsonl}.
+ * File handling for a log: the append-only JSONL writer every stream uses,
+ * and a reader that skips damaged lines. Nothing is redacted here. A caller
+ * that stores content redacts it before calling {@link appendJsonl}.
  */
 
 import {
@@ -20,11 +20,11 @@ import { dirname } from 'node:path'
 /** How {@link appendJsonl} treats a line. */
 export interface AppendOptions {
   /**
-   * `fsync` before closing (default `true`). A record that must survive an OS
-   * crash (a session's lifecycle events) keeps it; a high-rate line that is
-   * only a trace (a hook's activity, a journal op line) passes `false`: the
-   * process dying still leaves the whole line in the page cache, and only a
-   * power loss can lose the last few, which the log tolerates.
+   * `fsync` before closing (default `true`). Keep it for a record that must
+   * survive an OS crash (a session's lifecycle events). Pass `false` for
+   * frequent lines that are only a trace (a hook's activity, a journal op
+   * line). If the process dies, the whole line is still in the page cache.
+   * Only a power loss can lose the last few lines, and the log tolerates that.
    */
   sync?: boolean
 }
@@ -34,10 +34,10 @@ export interface AppendOptions {
  * `write` on an `O_APPEND` descriptor (optionally synced, see
  * {@link AppendOptions.sync}), so a crash leaves either the whole line or a
  * torn tail that {@link parseJsonl} drops. Creates the directory chain.
- * Appenders stay safe against each other only while a line is written in one
- * `write`, which the writers keep by convention: content over a field's inline
- * limit is clipped or stored in a blob the line names, so a line stays small.
- * Nothing here enforces a length. A new file is created with mode 0600.
+ * Concurrent appenders are safe only while each line is written in one
+ * `write`. Writers keep lines small by convention: content over a field's
+ * inline limit is clipped or stored in a blob the line names. Nothing here
+ * enforces a length. A new file is created with mode 0600.
  *
  * @throws The file system's error when the directory or file cannot be created
  * or written.
@@ -49,10 +49,10 @@ export function appendJsonl(path: string, obj: unknown, options: AppendOptions =
   // `a+` so the last byte can be read through the same descriptor the append uses.
   const fd = openSync(path, 'a+', 0o600)
   try {
-    // A crash can leave a torn last line; start on a fresh line so this one is
-    // not glued onto the fragment (the reader drops the fragment, not this line).
+    // A crash can leave a torn last line. Start on a new line so this one is
+    // not joined to the fragment. The reader then drops the fragment, not this line.
     const bytes = Buffer.from(endsWithNewline(fd) ? line : `\n${line}`, 'utf-8')
-    // One write in practice; the loop covers a short write so a line is never split.
+    // One write in practice. The loop handles a short write so a line is never split.
     for (let off = 0; off < bytes.length;) off += writeSync(fd, bytes, off)
     if (options.sync !== false) fsyncSync(fd)
   } finally {
@@ -70,7 +70,7 @@ function endsWithNewline(fd: number): boolean {
 
 /**
  * The JSON values in `text`, one per line, in order. A final line with no
- * newline is a torn write and is dropped; a complete line that is not JSON is
+ * newline is a torn write and is dropped. A complete line that is not JSON is
  * skipped.
  */
 export function parseJsonl(text: string): unknown[] {
@@ -78,11 +78,11 @@ export function parseJsonl(text: string): unknown[] {
 }
 
 /**
- * Internal: not exported from the package entry.
+ * Internal, not exported from the package entry.
  *
- * {@link parseJsonl} with each value's 0-based physical line number (blank and
- * unparsable lines count, so a line keeps its number however the file around it
- * is filtered), and the number of complete lines `text` holds.
+ * {@link parseJsonl} with each value's 0-based line number in the text, and the
+ * number of complete lines `text` holds. Blank and unparsable lines are counted,
+ * so a line's number does not depend on which other lines parsed.
  */
 export function parseJsonlLines(text: string): {
   values: { value: unknown; line: number }[]
@@ -96,15 +96,15 @@ export function parseJsonlLines(text: string): {
     try {
       values.push({ value: JSON.parse(raw), line })
     } catch {
-      // a complete line that is not JSON is skipped
+      // skip a complete line that is not JSON
     }
   })
   return { values, lineCount: lines.length }
 }
 
 /**
- * {@link parseJsonl} over a file; `[]` when it does not exist (or is removed
- * mid-read).
+ * {@link parseJsonl} over a file. `[]` when it does not exist (or is removed
+ * during the read).
  *
  * @throws The file system's error for any failure other than a missing file.
  */
@@ -125,17 +125,17 @@ export interface JsonlTail {
   lines: number[]
   /** How many complete lines (blank and unparsable ones too) the bytes read held. */
   lineCount: number
-  /** Byte offset just past the last complete line read; pass it to the next call. */
+  /** Byte offset just past the last complete line read. Pass it to the next call. */
   offset: number
 }
 
 /**
  * The JSON values appended to `path` after byte `offset`, reading only those
- * bytes (a poller does not reread the whole file). A final line with no
- * newline is a torn or in-flight write: it is left unread and the returned
+ * bytes, so a poller does not reread the whole file. A final line with no
+ * newline is a torn or unfinished write. It is left unread and the returned
  * offset stops before it, so the next call sees it whole. A complete line
- * that is not JSON is skipped. A missing file reads nothing and keeps `offset`;
- * an `offset` past the end (the file was truncated or replaced) restarts from 0.
+ * that is not JSON is skipped. A missing file reads nothing and keeps `offset`.
+ * An `offset` past the end (the file was truncated or replaced) restarts from 0.
  */
 export function readJsonlFrom(path: string, offset: number): JsonlTail {
   let fd: number
@@ -169,7 +169,7 @@ export function readJsonlFrom(path: string, offset: number): JsonlTail {
   }
 }
 
-/** The byte size of `path`, or 0 when it does not exist: the baseline offset to tail from. */
+/** The byte size of `path`, or 0 when it does not exist. Use it as the starting offset for {@link readJsonlFrom}. */
 export function jsonlSize(path: string): number {
   try {
     return statSync(path).size

@@ -1,8 +1,8 @@
 /**
  * The session model: the state machine as a table, the `done`, `resumed` and
- * `pid_recorded` events, the task a session serves, the read functions over a
- * session directory, a log that will not settle, and two processes appending to
- * one log.
+ * `pid_recorded` events, the task a session works on, the read functions over a
+ * session directory, a log that never stops growing, and two processes appending
+ * to one log.
  */
 
 import { appendFileSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs'
@@ -279,7 +279,7 @@ describe('reading a session directory', () => {
     expect(model.readSessionRecordIn(dir)).toBeNull()
     model.recordSessionEventIn(dir, launched, '2026-10-09T10:00:00.000Z')
     expect(model.readSessionRecordIn(dir)?.state).toBe('starting')
-    // Appended without re-projecting: record.json is stale, and the reader sees past it.
+    // Appended without updating record.json, so it is stale. The reader reduces the log instead.
     model.appendSessionEvent(dir, { ...to('running'), ts: '2026-10-09T10:00:01.000Z' } as Event)
     const record: SessionRecord | null = model.readSessionRecordIn(dir)
     expect(record?.state).toBe('running')
@@ -329,9 +329,9 @@ describe('a log that keeps growing', () => {
 })
 
 describe('two processes appending to one log', () => {
-  // Two tight loops can keep one writer's projection from settling: that call
-  // throws SessionLogError after its line is appended, so the writers count it
-  // and go on. The next append from a quiet log settles record.json.
+  // Two tight loops can keep the log growing during one writer's reduction. That
+  // call throws SessionLogError after its line is appended, so the writers count
+  // it and go on. The next append, once the log is quiet, writes record.json.
   test('lose no line, and the next append settles record.json over the whole log', async () => {
     looseSessionModel.recordSessionEventIn(dir, launched as never, '2026-10-09T10:00:00.000Z')
     const flags = ['--experimental-strip-types', '--no-warnings']

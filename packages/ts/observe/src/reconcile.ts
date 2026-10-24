@@ -1,19 +1,20 @@
 /**
- * Reconcile: end the records that never got an end. A launcher killed mid-run,
- * a pane closed under a hands-off host, a harness with no hooks (`capture:
- * launch-only`) all leave a record `running` forever; this looks for evidence
- * that the session is gone and, only with enough of it, moves the record to
- * `ended` with outcome `lost`. Reconcile never ends a record any other way and
- * never revives one.
+ * Reconcile: end the records that never got an end event. A launcher killed
+ * mid-run, a pane closed under a host that does not report it, or a harness with
+ * no hooks (`capture: launch-only`) all leave a record `running` forever. This
+ * module looks for evidence that the session is gone. Only with enough evidence
+ * does it move the record to `ended` with outcome `lost`. Reconcile never ends a
+ * record any other way and never revives one.
  *
- * Everything here is decision and orchestration over INJECTED probes: it imports
- * no config, host registry or adapter. A consumer wires the real probes.
+ * The code here only decides and runs the steps. The probes are injected: it
+ * imports no config, host registry or adapter. A consumer passes in the real
+ * probes.
  *
- * `lost` is terminal. A hook that arrives for such a record should be recorded
- * as a mismatch ({@link endedAsLost} tells) and never revive it; the reducer
- * already ignores a second `ended` and a second `outcome`, so a reconciler
- * racing a hook (or another reconciler) needs no lock. The record is re-read
- * immediately before the end is written for that reason.
+ * `lost` is final. A hook that arrives for such a record should be recorded as
+ * a mismatch ({@link endedAsLost} detects this) and must not revive it. The
+ * reducer already ignores a second `ended` and a second `outcome`, so a
+ * reconciler that races a hook (or another reconciler) needs no lock. For the
+ * same reason the record is read again just before the end is written.
  *
  * The decision ({@link decideReconcile} and its types) is stable. The run over
  * a store ({@link reconcileSessions} and its types) is experimental.
@@ -22,7 +23,7 @@
 import { isThisMachine, machineId } from './machine.ts'
 import type { SessionOutcome, SessionRunState } from './model.ts'
 
-/** The record fields reconcile reads; any consumer's session record has them. */
+/** The record fields reconcile reads. Every consumer's session record has them. */
 export interface ReconcilableRecord {
   id: string
   harness: string
@@ -33,12 +34,12 @@ export interface ReconcilableRecord {
   machine: string
 }
 
-/** Default grace: it guards a slow `ps` and an asynchronous transcript, not a slow agent. */
+/** The default grace period. It allows for a slow `ps` and a transcript written late, not for a slow agent. */
 export const DEFAULT_GRACE_MS = 15 * 60_000
 
 /** What the probes say about one non-ended session. `null` is "could not tell". */
 export interface ReconcileEvidence {
-  /** A process tagged with the session id is running (children count). `null`: the scan could not run (unsupported platform, `ps` failed). */
+  /** A process tagged with the session id is running (child processes count). `null`: the scan could not run (unsupported platform, `ps` failed). */
   process: boolean | null
   /**
    * The host reports a pane for this harness at this cwd. `null`: the host has no `find`
@@ -61,14 +62,15 @@ export type ReconcileVerdict = 'live' | 'quiet' | 'unknown' | 'lost'
 /** A {@link ReconcileVerdict} and the reason for it. */
 export interface ReconcileDecision {
   verdict: ReconcileVerdict
-  /** For `lost`, becomes the `state_changed` cause; for the others, the report's reason. */
+  /** For `lost`, the `state_changed` cause. For the other verdicts, the reason in the report. */
   reason: string
 }
 
 /**
- * The decision table. Ends a record only on two agreeing absences plus grace:
- * no process, and no pane (or a host with nothing to ask, where the process probe
- * stands alone); never on unknown process evidence or a host probe that failed.
+ * The decision table. A record is ended only when the grace period has passed
+ * and both checks agree it is gone: no process, and no pane. When there is no
+ * host to ask, the process check decides alone. A record is never ended when
+ * the process scan could not tell or the host probe failed.
  */
 export function decideReconcile(e: ReconcileEvidence): ReconcileDecision {
   if (e.process === true) return { verdict: 'live', reason: 'a process carries the session id' }
@@ -88,10 +90,10 @@ export function decideReconcile(e: ReconcileEvidence): ReconcileDecision {
   }
 }
 
-/** The cause a reconcile end carries on its `state_changed` event. Internal: not exported from the package entry. */
+/** The cause a reconcile end carries on its `state_changed` event. Internal, not exported from the package entry. */
 export const reconcileCause = (reason: string): string => `reconcile: ${reason}`
 
-/** Whether `record` was ended by reconcile (outcome `lost`): a later hook for it is a mismatch. */
+/** Whether `record` was ended by reconcile (outcome `lost`). A later hook for it is a mismatch. */
 export function endedAsLost(record: Pick<ReconcilableRecord, 'state' | 'outcome'>): boolean {
   return record.state === 'ended' && record.outcome === 'lost'
 }
@@ -128,9 +130,9 @@ export interface ReconcileRow<R extends ReconcilableRecord = ReconcilableRecord>
   id: string
   harness: R['harness']
   host: R['host']
-  /** The record's state when looked at. */
+  /** The record's state when it was checked. */
   state: R['state']
-  /** `ended-but-live`: an ended record whose process still runs; it is never revived (a relaunch is a new session). */
+  /** `ended-but-live`: an ended record whose process still runs. It is never revived (a relaunch is a new session). */
   verdict: ReconcileVerdict | 'ended-but-live' | 'ended'
   reason: string
   /** `ended`: the record was moved to ended/lost. `would-end`: a dry run would. */
@@ -154,13 +156,13 @@ export interface ReconcileDeps<R extends ReconcilableRecord> {
   graceMs: number
   /** Report what would be ended and backfilled, and write nothing. */
   dryRun: boolean
-  /** This machine's id; only its records are reconciled. Defaults to `machineId()`, with that function's side effects. */
+  /** This machine's id. Only its records are reconciled. Defaults to `machineId()`, with that function's side effects. */
   machine?: string | undefined
   /** Also digest already-ended records that have no digest marker. */
   backfill: boolean
   /** Ids of running sessions, or `null` when the scan could not run. */
   liveIds: () => ReadonlySet<string> | null
-  /** The host's answer for a non-ended record; `null` when there is no host to ask. Throws when asking failed: that reads as unknown, never as gone. */
+  /** The host's answer for a non-ended record. `null` when there is no host to ask. Throws when asking failed, which counts as unknown, never as gone. */
   hostOpen: (record: R) => boolean | null
   /** Instant (ms) of the newest sign of life for `record`, never before its start. */
   lastEvidence: (record: R) => number
@@ -172,7 +174,7 @@ export interface ReconcileDeps<R extends ReconcilableRecord> {
   hasAdapter: (harness: R['harness']) => boolean
   /** Whether the session already has a digest marker. */
   hasDigest: (record: R) => boolean
-  /** Run the digest; never throws. */
+  /** Run the digest. Never throws. */
   digest: (record: R) => Promise<BackfillStatus>
 }
 
@@ -218,11 +220,11 @@ function askHost<R extends ReconcilableRecord>(
 }
 
 /**
- * Reconcile `deps.records` (this machine's only; another machine's records are
- * history). A non-ended record is probed and, when the table says `lost`, ended
- * at the last evidence time, so duration and cost windows stay true. With
- * `backfill`, an ended record without a digest marker is digested too; a record
- * just ended always is.
+ * Reconcile `deps.records`, only this machine's (another machine's records are
+ * history). Each non-ended record is probed. When the table says `lost`, the
+ * record is ended at the time of the last evidence, so durations and cost
+ * windows stay correct. A record ended by this run is always digested. With
+ * `backfill`, an already-ended record without a digest marker is digested too.
  *
  * @experimental
  */
@@ -264,7 +266,7 @@ export async function reconcileSessions<R extends ReconcilableRecord>(
       rows.push({ ...base, ...decision, action: 'would-end' })
       continue
     }
-    // A hook or another reconciler may have ended it since the listing; the fresh read wins.
+    // A hook or another reconciler may have ended it since the listing. The fresh read wins.
     const fresh = deps.reread(record.id)
     if (fresh === null || fresh.state === 'ended') {
       rows.push({

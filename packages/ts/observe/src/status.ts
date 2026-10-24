@@ -1,8 +1,8 @@
 /**
- * The harness-agnostic status vocabulary a hook payload maps into, and how it
- * folds onto the session state machine (`./model.ts`). Each harness maps its own
- * hook events into {@link AgentStatus}; whether a move is legal from the
- * session's current state is the reducer's call, not this module's.
+ * The harness-independent statuses a hook payload maps to, and how each maps
+ * to a session state (`./model.ts`). Each harness maps its own hook events to
+ * {@link AgentStatus}. The reducer, not this module, decides whether a move is
+ * legal from the session's current state.
  */
 
 import type { SessionRunState } from './model.ts'
@@ -10,8 +10,7 @@ import type { SessionRunState } from './model.ts'
 /**
  * What a harness hook reports about its agent: the prompt was `delivered` (the
  * harness started), it is `working`, `idle`, it `needs_input`, or it `ended`.
- * Each harness maps its own hook events into this. A closed union: a new value
- * is a breaking change.
+ * A closed union: a new value is a breaking change.
  */
 export type AgentStatus = 'delivered' | 'working' | 'idle' | 'needs_input' | 'ended'
 

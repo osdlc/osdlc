@@ -1,6 +1,6 @@
 /**
  * The core entry: the log envelope every line carries, the correlation ids and
- * the environment tags that hand them to child processes, sortable ids, the
+ * the environment tags that pass them to child processes, sortable ids, the
  * JSONL writer and reader, and the stable machine id. The session record lives
  * in the `./session` entry.
  */

@@ -1,7 +1,7 @@
 /**
  * A session's name: the latest `person` rename, else the launcher's explicit
- * name, else the latest `harness` title. Folded from events, so order of the
- * log (not of the kinds) decides within a source.
+ * name, else the latest `harness` title. Computed from the events, so within one
+ * source the order in the log decides.
  */
 
 import { describe, expect, test } from 'vitest'

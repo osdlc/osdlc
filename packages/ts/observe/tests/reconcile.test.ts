@@ -1,7 +1,7 @@
 /**
- * The reconcile decision table and the service over fake probes: every
+ * The reconcile decision table and the reconcile run over fake probes: every
  * (process, host, quiet) combination, unknown evidence never ending anything,
- * a fresh record winning the race, ended-but-live, dry run and backfill.
+ * a fresh read winning the race, ended-but-live, dry run and backfill.
  */
 
 import { describe, expect, test } from 'vitest'

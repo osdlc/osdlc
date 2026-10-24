@@ -42,7 +42,7 @@ function tagValue([current, legacy]: [RegExp, RegExp], environment: string): str
 /** Whether `text` carries a non-empty session tag under either name. */
 const hasSessionTag = (text: string): boolean => !!tagValue(SESSION_TAGS, text)
 
-/** Reads the tags from a process's environment only; an empty session tag is no tag, and an empty task tag is no task. */
+/** Reads the tags from a process's environment only. An empty session tag counts as no tag, and an empty task tag as no task. */
 function tagged(pid: number, environment: string): TaggedProcess | null {
   const sessionId = tagValue(SESSION_TAGS, environment)
   if (!sessionId) return null
@@ -62,13 +62,13 @@ function psLines(stdout: string): Map<number, string> {
 /**
  * Parse `ps -axww -E -o pid=,command=` output, given the plain command lines of
  * (at least) the pids that carry a tag. Each `-E` line is the command line plus
- * the environment, so only the suffix past the command line is read: a process
+ * the environment, so only the part after the command line is read. A process
  * whose arguments contain `OBSERVE_SESSION=` is not taken as tagged.
  *
- * `null` means "could not tell": a tagged pid is still running but its command
+ * `null` means "could not tell". A tagged pid is still running but its command
  * line no longer matches (it re-exec'd between the two snapshots), so whether
  * it is a session is unknown. A pid missing from `withoutEnv` has exited and is
- * skipped. Internal: not exported from the package entry.
+ * skipped. Internal, not exported from the package entry.
  */
 export function parsePsEnvironment(withEnv: string, withoutEnv: string): TaggedProcess[] | null {
   const commands = psLines(withoutEnv)
@@ -88,7 +88,7 @@ export function parsePsEnvironment(withEnv: string, withoutEnv: string): TaggedP
   return found
 }
 
-/** The pids of `ps -E` lines that mention a session tag anywhere (the cheap pre-filter for the second `ps`). */
+/** The pids of `ps -E` lines that contain a session tag anywhere. A quick filter before the second `ps`. */
 function candidatePids(withEnv: string): number[] {
   return [...psLines(withEnv)].filter(([, line]) => hasSessionTag(line)).map(([pid]) => pid)
 }
@@ -114,17 +114,17 @@ export function processScanSupported(platform: NodeJS.Platform = process.platfor
   return platform === 'linux' || platform === 'darwin'
 }
 
-/** A probe for the ids of running sessions: `null` when the scan could not run (unsupported platform, `ps` failed, unreadable `/proc`). */
+/** A probe for the ids of running sessions. `null` when the scan could not run (unsupported platform, `ps` failed, unreadable `/proc`). */
 export type LiveIds = () => ReadonlySet<string> | null
 
 /**
  * Running processes tagged by a launcher (`sessionEnv`), found by reading
  * each process's environment. Read-only. On macOS it runs `ps` through `runner`
- * (`ps -axww -E`, then `ps -p` for the tagged pids); on Linux it reads `procDir`
- * (default `/proc`) and does not use `runner`. Only processes of the same user
+ * (`ps -axww -E`, then `ps -p` for the tagged pids). On Linux it reads `procDir`
+ * (default `/proc`) and does not use `runner`. Only the same user's processes
  * are visible. `null` means the scan could not run (unsupported platform, `ps`
- * failed or threw, `/proc` unreadable): "could not tell", which is not the same
- * as `[]`, "none running".
+ * failed or threw, `/proc` unreadable). That is "could not tell", which differs
+ * from `[]`, "none running".
  */
 export function scanTaggedProcesses(
   runner: CommandRunner,
@@ -134,12 +134,12 @@ export function scanTaggedProcesses(
   try {
     if (!processScanSupported(platform)) return null
     if (platform === 'linux') return scanProc(opts.procDir ?? '/proc')
-    // `ps -E` appends the environment to each command line; it omits it for
-    // other users' processes and SIP-protected system binaries.
+    // `ps -E` appends the environment to each command line. It leaves it out
+    // for other users' processes and SIP-protected system binaries.
     const withEnv = runner.run(['-axww', '-E', '-o', 'pid=,command='], { cwd: '/' })
     if (withEnv.exitCode !== 0) return null
-    // The plain command lines are read only for the pids that carry a tag, to
-    // split each command from its environment; every other process is skipped.
+    // Read the plain command lines only for the pids that carry a tag, to
+    // split each command from its environment.
     const pids = candidatePids(withEnv.stdout)
     if (pids.length === 0) return []
     const withoutEnv = runner.run(['-ww', '-p', pids.join(','), '-o', 'pid=,command='], {
@@ -157,7 +157,7 @@ export function scanTaggedProcesses(
   }
 }
 
-/** The default {@link LiveIds}: one {@link scanTaggedProcesses} with the system `ps`; `null` when the scan failed. */
+/** The default {@link LiveIds}: one {@link scanTaggedProcesses} with the system `ps`. `null` when the scan failed. */
 export const liveSessionIds: LiveIds = () => {
   const found = scanTaggedProcesses(spawnRunner('ps'))
   return found === null ? null : new Set(found.map((p) => p.sessionId))

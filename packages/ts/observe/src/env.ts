@@ -4,7 +4,8 @@
  * and by the agent's own tools.
  *
  * Every tag is set under its `OBSERVE_*` name and, for readers older than
- * 0.3.3, under its `SDLC_*` name too. Readers take the `OBSERVE_*` value first.
+ * 0.3.3, under its `SDLC_*` name too. Readers use the `SDLC_*` value when it is
+ * set and differs, else the `OBSERVE_*` value (see `readTag` in `./envelope.ts`).
  */
 
 import {
@@ -31,18 +32,18 @@ export const SESSION_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[
  */
 export const PROJECT_ROOT_ENV_VAR = 'OBSERVE_PROJECT_ROOT'
 /**
- * Names the task the session works on; empty otherwise. Writers also set
+ * Names the task the session works on. Empty when there is none. Writers also set
  * `SDLC_TASK`; readers accept either.
  */
 export const TASK_ENV_VAR = 'OBSERVE_TASK'
 /**
- * The exact command the agent should run its tool as; unset when the session
+ * The exact command the agent should run its tool as. Unset when the session
  * has no pin. Writers also set `SDLC_PINNED_CMD`; readers accept either.
  */
 export const PINNED_CMD_ENV_VAR = 'OBSERVE_PINNED_CMD'
 /**
  * Who runs the session's work, as the launcher's text for it (for example a
- * `harness/model@effort` reference); empty when unknown. This package carries
+ * `harness/model@effort` reference). Empty when unknown. This package carries
  * the text and does not parse it. Writers also set `SDLC_AUTHOR`; readers
  * accept either.
  */
@@ -60,8 +61,8 @@ export type SessionEnv = Record<string, string | undefined>
  * - `OBSERVE_TASK` is the given task or empty.
  * - `OBSERVE_RUN` is empty when the session has no run.
  * - `OBSERVE_SUBJECT` is the given subject, else the task, else empty.
- * - `OBSERVE_INVOCATION` and its pid are empty (the agent's own tool calls set
- *   theirs; the launching op's must not read as theirs).
+ * - `OBSERVE_INVOCATION` and its pid are empty. The agent's own tool calls set
+ *   their own, and the launching op's values must not look like theirs.
  * - `OBSERVE_AUTHOR` is the given author text or empty.
  * - `OBSERVE_PINNED_CMD` is the given `pin`, unset when there is none.
  * - `OBSERVE_PROJECT_ROOT` is the given project root, unset when there is none.
@@ -78,7 +79,7 @@ export function sessionEnv(session: {
   pin?: string | undefined
   /** The task the session works on, when the caller knows one. */
   task?: string | null | undefined
-  /** The project root of the launch; unset (as is the tag) when the caller does not know it. */
+  /** The project root of the launch. When the caller does not know it, leave it unset and the tag stays unset. */
   projectRoot?: string | undefined
   /** The run the session belongs to. */
   run?: string | null | undefined
@@ -105,9 +106,9 @@ export function sessionEnv(session: {
 }
 
 /**
- * The author text `env` (default `process.env`) carries, read from
- * {@link AUTHOR_ENV_VAR} and then `SDLC_AUTHOR`; `undefined` when unset or
- * empty.
+ * The author text in `env` (default `process.env`), read from
+ * {@link AUTHOR_ENV_VAR} or `SDLC_AUTHOR` (the `SDLC_*` value wins when it
+ * differs). `undefined` when unset or empty.
  */
 export function authorFromEnv(
   env: Record<string, string | undefined> = process.env,
