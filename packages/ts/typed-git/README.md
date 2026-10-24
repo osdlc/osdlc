@@ -140,7 +140,7 @@ use(r.value);
 The error is a `GitFailure`: a `Failure` from `@osdlc/result` with a `kind` to
 branch on, a one-line `message` and a `hint` for a person (`describe(error)`
 joins them), git's own output in `detail`, the `argv` and `exitCode`, and the
-`CommandFailed` it was read from in `cause`. The plain door throws the same failure, wrapped in a `FailureError` (`error.failure`), so a CLI that reports a thrown failure, such as `runMain` from `@osdlc/cli-tool`, shows "The remote refused the credentials" and exits 23 for a signed-out `git push`, as it does for a read.
+`CommandFailed` it was read from in `cause`. The plain door throws the same failure, wrapped in a `FailureError` (`error.failure`), so a CLI that reports a thrown failure, such as `runMain` from `@osdlc/cli-tool`, shows "The remote refused the credentials" and exits 23 for a signed-out `git push`, as it does for a read. The thrown `message` names the command (`git push: The remote refused the credentials. …`); `failure.message` is the bare sentence, and `describeGitFailure(failure)` renders the same `git <verb>: <message> <hint>` line for a failure from `git.try.*`.
 
 | `kind` | When | `message` / `hint` |
 | --- | --- | --- |

@@ -18,6 +18,7 @@ import {
   AsyncGit,
   classifyGitFailure,
   cliBackend,
+  describeGitFailure,
   CommandFailed,
   Git,
   type CommandResult,
@@ -336,5 +337,33 @@ suite('the plain door throws the classified failure', () => {
         message: 'boom',
       })
     }
+  })
+})
+
+suite('the thrown message names the git command', () => {
+  const push = () =>
+    new Git('/x', {
+      runner: runnerOf(fail("fatal: 'origin' does not appear to be a git repository")),
+    }).push('origin', 'HEAD:refs/heads/x')
+
+  test('message is `git <verb>: <message> <hint>`; failure.message stays the bare sentence', () => {
+    try {
+      push()
+      expect.unreachable()
+    } catch (e) {
+      const { failure, message } = e as FailureError<GitFailure>
+      expect(message).toBe(`git push: ${failure.message} ${failure.hint}`)
+      expect(message.startsWith("git push: The remote 'origin'")).toBe(true)
+      expect(failure.message).not.toContain('git push')
+    }
+  })
+
+  test('describeGitFailure skips leading -c / -C options to find the verb', () => {
+    const failure = (argv: string[]) =>
+      ({ kind: 'exit', message: 'boom', argv, exitCode: 1 }) as unknown as GitFailure
+    expect(describeGitFailure(failure(['-c', 'core.editor=true', 'rebase', '--continue']))).toBe(
+      'git rebase: boom',
+    )
+    expect(describeGitFailure(failure([]))).toBe('git: boom')
   })
 })
