@@ -140,7 +140,7 @@ export class AsyncGit {
    * runtime, though the type leaves them out.
    */
   get soft(): Soft<AsyncGit> {
-    return (this.softened ??= softAsync(this, SOFT_TABLE))
+    return (this.softened ??= softAsync<AsyncGit>(this, SOFT_TABLE))
   }
 
   // ── escape hatch ──────────────────────────────────────────────────────────

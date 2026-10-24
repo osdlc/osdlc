@@ -60,6 +60,7 @@
     "format:check": "prettier --check .",
     "lint": "oxlint .",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit",
+    "typecheck:ts59": "node node_modules/typescript59/bin/tsc -p tsconfig.build.json --noEmit",
     "coverage": "vitest run --coverage"
   },
   "dependencies": {
@@ -75,6 +76,7 @@
     "oxlint": "catalog:",
     "prettier": "catalog:",
     "typescript": "catalog:",
+    "typescript59": "npm:typescript@5.9.3",
     "vitest": "catalog:"
   }
 }

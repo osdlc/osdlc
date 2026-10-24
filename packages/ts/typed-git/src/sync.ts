@@ -193,7 +193,7 @@ export class Git {
    * runtime, though the type leaves them out.
    */
   get soft(): Soft<Git> {
-    return (this.softened ??= softSync(this, SOFT_TABLE))
+    return (this.softened ??= softSync<Git>(this, SOFT_TABLE))
   }
 
   // ── escape hatch ──────────────────────────────────────────────────────────
