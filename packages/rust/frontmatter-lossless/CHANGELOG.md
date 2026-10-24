@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.1.1](https://github.com/osdlc/osdlc/compare/frontmatter-lossless/v1.1.0...frontmatter-lossless/v1.1.1) - 2026-10-24
+
+### Other
+
+- plain-language pass over docs and comments ([#444](https://github.com/osdlc/osdlc/pull/444))
+
 ## [1.1.0](https://github.com/osdlc/osdlc/releases/tag/frontmatter-lossless/v1.1.0) - 2026-10-21
 
 ### Added

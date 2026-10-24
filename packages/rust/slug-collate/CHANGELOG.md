@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.2](https://github.com/osdlc/osdlc/compare/slug-collate/v0.1.1...slug-collate/v0.1.2) - 2026-10-24
+
+### Other
+
+- plain-language pass over docs and comments ([#444](https://github.com/osdlc/osdlc/pull/444))
+
 ## [0.1.1](https://github.com/osdlc/osdlc/releases/tag/slug-collate/v0.1.1) - 2026-10-19
 
 ### Added

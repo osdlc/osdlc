@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.1](https://github.com/osdlc/osdlc/compare/config-layers/v0.6.0...config-layers/v0.6.1) - 2026-10-24
+
+### Other
+
+- plain-language pass over docs and comments ([#444](https://github.com/osdlc/osdlc/pull/444))
+
 ## [0.6.0] - Unreleased
 
 The first release as `config-layers`.

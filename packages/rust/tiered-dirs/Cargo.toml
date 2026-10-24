@@ -1,6 +1,6 @@
 [package]
 name = "tiered-dirs"
-version = "0.3.3"
+version = "0.3.4"
 edition.workspace = true
 rust-version.workspace = true
 description = "Per-OS directories for a vendor's programs, by tier (vendor, suite, standalone tool) and home (durable, config, cache, state, logs, runtime), with native or XDG paths, override variables and tests kept off the real home."
