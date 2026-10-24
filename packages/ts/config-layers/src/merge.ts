@@ -1,20 +1,20 @@
 /**
- * Generic deep-merge for two parsed YAML mappings — the primitive behind the
- * project-file overlay (`tooly.local.yaml` for a tool named `tooly`).
+ * Deep merge of two parsed YAML mappings. The project-file overlay
+ * (`tooly.local.yaml` for a tool named `tooly`) is applied with it.
  *
- * `deepMergeConfig(base, overlay)` merges `overlay` over `base`: a key whose
- * value is a mapping on BOTH sides merges recursively (so `tooly.local.yaml`
- * can override one nested key — say `workflows.check` — without repeating
- * every sibling key `tooly.yaml` already declares); every other value (an
- * array, a scalar, or a mapping on only one side) REPLACES the base value
- * wholesale. Arrays never concatenate: a `workflows.setup:` list in the
- * overlay is the whole list, not an addition to the project's. The one
- * exception is the top-level `schedules:` list, which merges by entry `name`
- * (see `mergeByName`).
+ * `deepMergeConfig(base, overlay)` merges `overlay` over `base`. A key whose
+ * value is a mapping on both sides merges recursively. So `tooly.local.yaml`
+ * can override one nested key, such as `workflows.check`, without repeating
+ * every sibling key `tooly.yaml` declares. Every other value (an array, a
+ * scalar, or a mapping on only one side) replaces the base value whole.
+ * Arrays never concatenate: a `workflows.setup:` list in the overlay is the
+ * whole list, not an addition to the project's. The one exception is the
+ * top-level `schedules:` list, which merges by entry `name` (see
+ * `mergeByName`).
  *
- * Pure, and schema-agnostic apart from that one hard-coded `schedules` key — it
- * merges raw `unknown` mappings BEFORE either side is validated, so one schema `safeParse`
- * downstream covers both files at once.
+ * The function is pure. It knows no schema apart from the hard-coded
+ * `schedules` key. It merges raw mappings before either side is validated, so
+ * one schema `safeParse` afterwards covers both files.
  */
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -22,11 +22,11 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 }
 
 /**
- * Deep-merge `overlay` over `base`. Neither argument is mutated. A key
- * present in `overlay` whose value and the corresponding `base` value are
- * both mappings merges recursively; otherwise the overlay's value wins
- * outright (this is also how a `null`/scalar/array overlay value clears or
- * replaces a mapping in `base`).
+ * Deep-merge `overlay` over `base`. Neither argument is mutated. When a key's
+ * value is a mapping in both, the two merge recursively. Otherwise the
+ * overlay's value wins, so a `null`, scalar or array in the overlay clears or
+ * replaces a mapping in `base`. A top-level `schedules:` list in both merges
+ * by entry `name`.
  * @experimental
  */
 export function deepMergeConfig(

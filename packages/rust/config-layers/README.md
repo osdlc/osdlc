@@ -12,7 +12,7 @@ the two together:
 
 - `machine::MachineConfigFile<T>` finds the machine file at
   `<config home>/<tool>/config.yaml`, lets an env var move it, and loads it
-  into your `T`. `load()` never fails: a missing, unreadable or malformed file
+  into your `T`. `load()` never fails. A missing, unreadable or malformed file
   gives `T::default()`. `read_strict()` reports the problem instead, for a
   `doctor` or `config check` command.
 - `paths` reads a `paths:` map of named directories from both files (the
@@ -24,18 +24,18 @@ the two together:
   whether it counts as set.
 - `file` reads a file into a YAML mapping, walks up the directory tree to find
   the project file, and fills the project file's gaps from the machine file.
-- `needs` is the check a command runs before it starts: which settings it
-  cannot run without, whether they are set, and one message that names the
-  command, the key, what the key is for and the file to set it in.
+- `needs` is the check a command runs before it starts. It lists the
+  settings the command cannot run without and says whether they are set. If
+  not, it gives one message that names the command, the key, what the key is
+  for and the file to set it in.
 
-It is for programs, command-line tools among them, that want a project file
-and a machine file and clear messages, with your own serde types for the
-shape.
+It is for programs, such as command-line tools, that want a project file, a
+machine file and clear messages, with your own serde types for the shape.
 
 The machine file's location comes from [`tiered-dirs`](https://crates.io/crates/tiered-dirs),
 which resolves the per-OS config home and its override variables. You build a
-`tiered_dirs::TieredDirs` for your vendor and variables and hand it over. The
-crate re-exports `tiered_dirs` so you can name the same version.
+`tiered_dirs::TieredDirs` for your vendor and variables and pass it in. The
+crate re-exports `tiered_dirs` so you can use the same version.
 
 The settings read from a file are a generic tree of `serde_json::Value` and
 `serde_json::Map`, which iterates in sorted key order unless your build turns
@@ -120,7 +120,7 @@ need. Run it with `cargo run --example layered_files`.
   rewritten in place is not re-read until `clear_cache`. The cache uses a
   `RefCell`, so a `MachineConfigFile` is not
   `Sync`.
-- **The env var wins verbatim.** When the variable (default
+- **The env var path is used as given.** When the variable (default
   `<TOOL>_MACHINE_CONFIG`, from `machine::env_stem`) holds a non-blank path,
   that path is the machine file. A blank value is ignored.
 - **Project over machine, one level deep.** `file::overlay_top_level` keeps
@@ -131,24 +131,24 @@ need. Run it with `cargo run --example layered_files`.
 - **What counts as set.** Missing, `null`, an empty or whitespace-only string,
   an empty list and an empty mapping are unset. `false` and `0` are set.
 - **Only `true` and `false` are booleans.** `yes`, `no`, `on` and `off` read as
-  strings. A scalar key such as `1` reads as the string `"1"`; a list or
+  strings. A scalar key such as `1` reads as the string `"1"`. A list or
   mapping as a key is an error. YAML tags are dropped and the value kept.
-- **Errors carry their cause.** `FileProblem` has a `source`: an
-  `std::io::Error` for `Unreadable`, and the YAML error (or a plain message
-  for an empty document or a top level that is not a mapping) for
-  `Malformed`. The `Display` text names the file only, so a reporter that
-  walks the chain prints the cause once. No file contents are quoted in an
-  error. Downcast the source to `std::io::Error` or `serde_saphyr::Error` to
-  look closer (the latter makes your crate depend on `serde-saphyr`); the
-  empty and not-a-mapping cases carry only a message.
+- **Errors carry their cause.** `FileProblem` has a `source`. For
+  `Unreadable` it is an `std::io::Error`. For `Malformed` it is the YAML
+  error, or a plain message for an empty document or a top level that is not
+  a mapping. The `Display` text names the file only, so a reporter that walks
+  the chain prints the cause once. No file contents are quoted in an error.
+  Downcast the source to `std::io::Error` or `serde_saphyr::Error` to look
+  closer. The latter makes your crate depend on `serde-saphyr`. The empty and
+  not-a-mapping cases carry only a message.
 - **Numbers and keys.** An integer beyond `u64` reads as a lossy float, with
   no error. A null key (`~: x`) is an error.
 - **Non-finite numbers and merge keys.** `.inf`, `-.inf`, `.nan` and numbers
   that overflow, such as `1e999`, read as strings, since JSON cannot hold
   them. `<<` is an ordinary key and is not merged, as in `serde_yaml`.
 - **Parser limits stay at the library defaults.** `serde-saphyr` caps events,
-  aliases and anchors far above any real config file, which also stops an
-  alias bomb in a file you did not write.
+  aliases and anchors far above any real config file. This also stops a file
+  you did not write from using up memory through nested aliases.
 - **What counts as a path.** `resolve_config_path` treats a value as a path
   when it contains `/` or starts with `.` or `~`. A URL (`scheme://`) and a
   bare word pass through unchanged. Write relative paths with `/`, also on
@@ -161,7 +161,7 @@ need. Run it with `cargo run --example layered_files`.
 
 | Claim | Test |
 |---|---|
-| The machine file lives under the standalone config home; a non-blank env var wins | `lives_under_the_standalone_config_home_and_a_non_blank_override_wins`, `the_env_var_relocates_the_file` |
+| The machine file lives under the standalone config home, and a non-blank env var overrides it | `lives_under_the_standalone_config_home_and_a_non_blank_override_wins`, `the_env_var_relocates_the_file` |
 | `load` gives defaults for a missing file and for every bad document | `missing_file_returns_defaults`, `an_invalid_document_degrades_to_defaults_rather_than_throwing` |
 | `load` is memoised per path until `clear_cache` | `the_text_is_remembered_per_path_until_clear_cache`, `a_valid_file_is_read_and_re_read_when_the_path_changes` |
 | `read_strict` reports what `load` hides | `read_strict_reports_what_load_hides` |
@@ -170,9 +170,9 @@ need. Run it with `cargo run --example layered_files`.
 | `~` and relative paths resolve without touching the file system; URLs and bare words pass through | `expands_tilde_and_resolves_a_relative_path_against_the_base`, `leaves_alone_what_is_not_a_path_a_url_a_bare_word`, `normalizes_dot_dot_without_touching_the_filesystem` |
 | An unknown `{name}` is an error naming the setting, the fix and what exists | `an_unknown_name_is_an_error_naming_the_setting_the_fix_and_what_exists`, `omits_the_parenthetical_when_no_names_are_known`, `the_tool_names_its_own_files_in_the_hint` |
 | What counts as set | `missing_null_empty_string_empty_list_and_empty_map_are_unset` (includes a whitespace-only string), `a_non_empty_string_list_or_map_is_set`, `false_and_zero_are_set` |
-| Project over machine, one level deep; the machine fills only missing or unset keys | `project_wins_on_an_overlapping_key`, `a_set_project_value_is_kept_even_when_falsy`, `every_unset_project_value_falls_back_to_machine`, `a_project_null_falls_back_to_machine`, `nested_mappings_are_not_merged`, `a_machine_only_key_is_added` |
-| Only `true` and `false` are booleans; tags are dropped | `only_true_and_false_are_booleans`, `a_tag_is_dropped_and_its_value_kept`, `scalar_keys_read_as_strings_and_a_collection_key_is_malformed` |
-| Non-finite numbers read as strings; `<<` is an ordinary key | `a_non_finite_float_reads_as_a_string_and_the_file_loads`, `a_merge_key_stays_an_ordinary_key` |
+| Project over machine, one level deep. The machine fills only missing or unset keys | `project_wins_on_an_overlapping_key`, `a_set_project_value_is_kept_even_when_falsy`, `every_unset_project_value_falls_back_to_machine`, `a_project_null_falls_back_to_machine`, `nested_mappings_are_not_merged`, `a_machine_only_key_is_added` |
+| Only `true` and `false` are booleans, and tags are dropped | `only_true_and_false_are_booleans`, `a_tag_is_dropped_and_its_value_kept`, `scalar_keys_read_as_strings_and_a_collection_key_is_malformed` |
+| Non-finite numbers read as strings, and `<<` is an ordinary key | `a_non_finite_float_reads_as_a_string_and_the_file_loads`, `a_merge_key_stays_an_ordinary_key` |
 | A problem carries its source | `the_problem_carries_its_source_for_a_caller_to_downcast`, `read_strict_reports_an_empty_file_and_carries_its_source` |
 | An error quotes no file contents and does not repeat its source | `an_error_does_not_quote_the_files_lines`, `display_does_not_repeat_the_source` |
 | An empty machine file gives the serde field defaults | `an_empty_or_comment_only_file_gives_the_field_defaults` |
@@ -183,9 +183,9 @@ Coverage is not measured.
 ## Platforms
 
 The code uses only the standard library, `serde`, `serde_json`, `serde-saphyr`,
-`thiserror` and `tiered-dirs`, has no platform-specific code of its own, and is written for
-Linux, macOS and Windows. CI runs the tests on all three. Where the config home
-is on each OS is `tiered-dirs`' table.
+`thiserror` and `tiered-dirs`. It has no platform-specific code of its own, and is written for
+Linux, macOS and Windows. CI runs the tests on all three. The `tiered-dirs` docs have a table of
+where the config home is on each OS.
 
 Minimum supported Rust version: 1.89, the version `serde-saphyr` needs. It is
 the MSRV of the whole workspace.

@@ -102,7 +102,7 @@ fn parse_typed<T: DeserializeOwned>(text: &str) -> Result<Option<T>, serde_saphy
 /// std::fs::create_dir_all(path.parent().expect("a file has a parent"))?;
 /// std::fs::write(&path, "repos:\n  - ~/Developer\n")?;
 ///
-/// // `load` remembers the file's text per path; `clear_cache` makes it read again.
+/// // `load` remembers the file's text per path. `clear_cache` makes it read again.
 /// machine.clear_cache();
 /// assert_eq!(machine.load().repos, vec!["~/Developer".to_string()]);
 /// assert_eq!(machine.load().editor, None);
@@ -166,8 +166,8 @@ impl<T: DeserializeOwned + Default> MachineConfigFile<T> {
 
     /// Where the machine file is: `<config-home>/<tool>/<file_name>`, unless
     /// the environment variable names a non-blank path, in which case that
-    /// path is used as given. A value that is not valid UTF-8 is used as
-    /// given; only the blank check reads it lossily.
+    /// path is used as given. A value that is not valid UTF-8 is also used as
+    /// given. Only the blank check reads it lossily.
     pub fn path(&self) -> PathBuf {
         self.path_with(std::env::var_os(&self.env))
     }

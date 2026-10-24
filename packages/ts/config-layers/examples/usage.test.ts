@@ -559,8 +559,8 @@ test('a host that mounts every section can drop unknown keys and say which', () 
   const dir = project()
   const handle = toolyConfig('warn')
 
-  // An unknown key at any depth is removed from the parsed copy and reported;
-  // the file on disk is left as it was.
+  // An unknown key at any depth is removed from the parsed copy and reported.
+  // The file on disk is left as it was.
   write(dir, PROJECT_FILE, 'authority: origin\nstranger: 1\ncheckout:\n  surprise: true\n')
   const layers = handle.loadLayers(dir)
   expect(layers.merged.authority).toBe('origin')
@@ -570,7 +570,7 @@ test('a host that mounts every section can drop unknown keys and say which', () 
     `${PROJECT_FILE}: unknown key stranger ignored`,
   )
 
-  // `stripUnknownKeys` is the piece underneath: a strict schema, an input, a copy without the keys.
+  // The loader uses `stripUnknownKeys`: a strict schema and an input give a copy without the keys.
   const stripped: StrippedKeys = stripUnknownKeys(z.object({ a: z.string() }).strict(), {
     a: 'x',
     b: 1,
@@ -578,7 +578,7 @@ test('a host that mounts every section can drop unknown keys and say which', () 
   expect(stripped.value).toEqual({ a: 'x' })
   expect(stripped.unknown).toEqual([['b']])
 
-  // A matcher names the objects where a dropped key would widen the match; those keep failing.
+  // `pathMatcher` matches the objects where a dropped key would widen the match. Those still fail.
   const strict = pathMatcher(['checkout'])
   expect(strict(['checkout'])).toBe(true)
   expect(strict(['authority'])).toBe(false)
@@ -646,7 +646,7 @@ test('scaffold a fully annotated file, an overlay template and a starter', () =>
   expect(full).toContain('# see also: the remote')
   expect(full).toContain('#   check: detected')
   expect(full).toContain('# each entry is a list of commands')
-  // Written out, the scaffold changes nothing: it parses to the defaults; optional keys stay commented out.
+  // Written out, the scaffold changes nothing: it parses to the defaults. Optional keys stay commented out.
   expect(parseYaml(full)).toEqual({
     authority: '',
     checkout: { layout: '{dev}/{repo}' },
@@ -952,7 +952,7 @@ test('resolve a command list through env, local, project and default', async () 
   expect([layer, mode]).toEqual(['local', 'prepend'])
   expect(wrapped.steps[3]!.source).toEqual({ layer: 'project', mode: 'append' })
 
-  // A layer that names `steps` replaces what is beneath it; env replaces everything.
+  // A layer that names `steps` replaces what is beneath it. Env replaces everything.
   const replaced = await resolveLayeredSteps('check', {
     defaultSteps: async () => defaults,
     readRaw: (l) => (l === 'project' ? { steps: ['just ci'] } : undefined),

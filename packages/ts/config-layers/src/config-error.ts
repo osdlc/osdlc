@@ -2,9 +2,9 @@
  * The error every reader of a project config file throws when the file is
  * unusable, and the exit code that means it.
  *
- * Exit 14 is owned here, by the library, so every tool built on the same config
- * agrees on the number a script sees for "the config file is wrong". It sits in
- * the band 10-63, which is left for a tool's own outcomes.
+ * The library sets exit 14, so every tool built on it gives a script the same
+ * number for "the config file is wrong". It is in the range 10-63, which is
+ * left for a tool's own outcomes.
  */
 
 /**
@@ -27,9 +27,9 @@ export interface ConfigIssue {
 
 /**
  * A config file exists but is unusable: unreadable, not YAML, not a mapping, or
- * failing its schema; or the environment variable that relocates the file names a file that is not there. A reader
- * refuses to run on it rather than substituting defaults. A tool maps it to
- * {@link CONFIG_INVALID_EXIT}.
+ * failing its schema. Also thrown when the environment variable that relocates
+ * the file names a file that is not there. A reader refuses to run on it rather
+ * than use defaults. A tool maps it to {@link CONFIG_INVALID_EXIT}.
  * @experimental
  */
 export class ConfigInvalidError extends Error {

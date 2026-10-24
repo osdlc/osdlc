@@ -1,5 +1,6 @@
-//! Reading, merging, and path-resolving the project/machine config file
-//! pair, built on [`resolve_config_path`] and [`value_is_set`].
+//! Read the project and machine config files, fill the project file's gaps
+//! from the machine file, and resolve path values. Built on
+//! [`resolve_config_path`] and [`value_is_set`].
 //!
 //! A config file here is a YAML mapping read into a
 //! [`serde_json::Map`]. The map iterates in sorted key order, unless a
@@ -84,8 +85,8 @@ impl FileProblem {
 /// - an error does not quote the file's lines.
 ///
 /// The default `budget` is kept. It caps the parser's events, aliases and
-/// anchors far above any real config file, and it stops an alias bomb in a
-/// file someone else wrote.
+/// anchors far above any real config file. It also stops a file someone else
+/// wrote from using up memory through nested aliases.
 pub(crate) fn yaml_options() -> serde_saphyr::Options {
     let mut options = serde_saphyr::Options::default();
     options.strict_booleans = true;
@@ -98,7 +99,7 @@ pub(crate) fn yaml_options() -> serde_saphyr::Options {
 /// Read `path` and parse it as a YAML mapping.
 ///
 /// Any I/O failure (missing file, permission denied) is
-/// [`FileProblem::Unreadable`]; a file that reads but does not parse as YAML,
+/// [`FileProblem::Unreadable`]. A file that reads but does not parse as YAML,
 /// or that parses to something other than a mapping at the top level (a
 /// list, a scalar, `null`, an empty document), is [`FileProblem::Malformed`].
 ///
@@ -144,8 +145,9 @@ fn kind_of(value: Option<&Value>) -> &'static str {
 /// looking for an entry named `file_name`. Returns the first match, or `None`
 /// if the search reaches the filesystem root without finding one.
 ///
-/// Existence, not file-ness: a directory of that name stops the walk, so the
-/// caller reports it as an unreadable config rather than walking past it.
+/// Any entry counts, not only a file. A directory of that name stops the
+/// walk, so the caller reports it as an unreadable config instead of walking
+/// past it.
 ///
 /// **Stability:** stable in 0.x.
 pub fn find_up(cwd: &Path, file_name: &str) -> Option<PathBuf> {
@@ -162,7 +164,7 @@ pub fn find_up(cwd: &Path, file_name: &str) -> Option<PathBuf> {
 
 /// Fill the gaps in the project file's settings from the machine file's.
 ///
-/// Works on the top-level keys only; nested mappings are not merged. A key
+/// Works on the top-level keys only. Nested mappings are not merged. A key
 /// the project file sets keeps its value. A key the project file leaves out,
 /// or leaves unset per [`value_is_set`] (null, an empty or whitespace-only
 /// string, an empty list or mapping), takes the machine file's value. A key

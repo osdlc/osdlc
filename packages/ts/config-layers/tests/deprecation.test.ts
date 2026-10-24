@@ -1,6 +1,6 @@
 /**
- * A section whose meta carries `deprecation` loads and
- * warns once on stderr naming its replacement; an unknown key still refuses.
+ * A section whose meta carries `deprecation` loads, and warns once on stderr
+ * naming its replacement. An unknown key is still refused.
  */
 
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'

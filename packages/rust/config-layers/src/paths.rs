@@ -1,12 +1,12 @@
 //! Named directories, and `{name}` substitution in path settings.
 //!
-//! A `paths:` map — name -> directory — lives in both config files, and the
-//! machine's entry wins per name, since a directory is a fact about a
-//! machine. Any other path-valued setting then refers to an entry as
-//! `{name}`, so `~/Developer` is written once however many settings need it.
+//! Both config files can carry a `paths:` map from name to directory. The
+//! machine file's entry wins per name, since a directory is a fact about a
+//! machine. Any other path-valued setting refers to an entry as `{name}`, so
+//! `~/Developer` is written once however many settings need it.
 //!
-//! Also home to [`resolve_config_path`], the one `~` and relative expansion
-//! every config path value goes through. Every function here takes the
+//! [`resolve_config_path`] is here too. Every config path value goes through
+//! it for `~` and relative-path expansion. Every function here takes the
 //! directories it needs (the base, the home directory) as arguments and
 //! never reads the environment or the file system.
 
@@ -19,15 +19,16 @@ const DEFAULT_DEFINE_HINT: &str = "define it under paths:";
 
 /// Expand a single config path value relative to `base_dir`.
 ///
-/// URLs (`scheme://…`) and bare words that do not look like paths pass
-/// through untouched — a value may legitimately be a name rather than a
-/// place. A leading `~` expands to `home`; a relative path resolves against
-/// `base_dir`, which is the project root for a project file and, for a
-/// machine file, whatever the reading tool considers its working root.
+/// URLs (`scheme://…`) and bare words that do not look like paths are
+/// returned unchanged, because a value may be a name rather than a place. A
+/// leading `~` is replaced by `home`. That includes `~user/x`, which becomes
+/// `<home>user/x`. A relative path resolves against `base_dir`. For a project
+/// file that is the project root. For a machine file it is whatever directory
+/// the reading tool uses as its base.
 ///
-/// This never touches the filesystem: resolving a relative path is a lexical
-/// join-and-normalize, not a canonicalization, so it works the same whether
-/// or not the path exists.
+/// This never touches the file system. A relative path is joined and its `.`
+/// and `..` parts removed as text, not canonicalized, so the result is the
+/// same whether or not the path exists.
 ///
 /// **Stability:** stable in 0.x.
 pub fn resolve_config_path(value: &str, base_dir: &Path, home: &Path) -> String {
@@ -51,9 +52,9 @@ pub fn resolve_config_path(value: &str, base_dir: &Path, home: &Path) -> String 
     }
 }
 
-/// Lexically join and normalize a path: resolve `.` and `..` components
-/// without touching the filesystem (no symlink resolution, no existence
-/// check — unlike `std::fs::canonicalize`).
+/// Normalize a path as text: resolve `.` and `..` components without
+/// touching the file system. Unlike `std::fs::canonicalize`, it resolves no
+/// symlinks and does not check that the path exists.
 fn normalize_path(path: &Path) -> PathBuf {
     let mut out = PathBuf::new();
     for component in path.components() {
@@ -150,7 +151,7 @@ pub fn substitute_path_names(
 /// Replace each `{name}` in `value` with the directory that `names` holds
 /// under that name, and say in the error where to define a missing one.
 ///
-/// A name nothing defines is a [`PathNameError`] rather than an empty string: a
+/// A name nothing defines is a [`PathNameError`], not an empty string. A
 /// setting that silently expands to `/repo` instead of `/Users/me/dev/repo`
 /// fails somewhere far from the typo. The message says where the name was
 /// found (`setting`, e.g. `repos:`), how to define it (`define_hint`), and
@@ -177,7 +178,7 @@ pub fn substitute_path_names_with_hint(
         out.push_str(&rest[..start]);
         let after_open = &rest[start + 1..];
         let Some(end) = after_open.find('}') else {
-            // No closing brace: the rest has no further name, emit it as-is.
+            // No closing brace, so the rest has no further name. Emit it as is.
             out.push_str(&rest[start..]);
             break;
         };

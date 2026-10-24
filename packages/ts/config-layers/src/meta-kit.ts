@@ -1,13 +1,13 @@
 /**
- * The meta completeness test kit: the checks a tool's own `meta` test runs
- * against its live config schema, so every tool built on this module proves
- * its per-key meta the same way.
+ * Test helpers for meta completeness: the checks a tool's own `meta` test runs
+ * against its config schema, so every tool built on this module checks its
+ * per-key meta the same way.
  *
- * Each function returns the problems it found (empty when none) instead of
- * asserting, so the kit needs no test runner and a test prints every problem
- * at once with `expect(problems).toEqual([])`. {@link checkConfigMeta} in
- * `./meta.ts` is the well-formedness half; these are the truthfulness half,
- * the claims meta makes that the code can confirm.
+ * Each function returns the problems it found (empty when none) and does not
+ * assert. So the kit needs no test runner, and a test prints every problem at
+ * once with `expect(problems).toEqual([])`. {@link checkConfigMeta} in
+ * `./meta.ts` checks that meta is well formed. These functions check that the
+ * claims meta makes are true, where the code can confirm them.
  */
 
 import { existsSync, readFileSync } from 'node:fs'
@@ -19,10 +19,9 @@ import { MACHINE_LAYER, PLANNED_PREFIX, applierOf, isReserved, readConfigMeta } 
 
 /**
  * Every `<path>.ts#<symbol>` consumer must name a file under `sourceRoot` that
- * mentions the symbol. The symbol match is a word-boundary one, not a bare
- * substring: `server` would otherwise match `serverLog`. It does
- * not tell a code reference from a comment or string mention, so a symbol that
- * also appears in the file's prose still passes.
+ * mentions the symbol. The match is on word boundaries, not a bare substring,
+ * so `server` does not match `serverLog`. It does not tell code from a comment
+ * or a string, so a symbol that appears only in the file's prose still passes.
  * @experimental
  */
 export function consumerProblems(shape: Record<string, z.ZodType>, sourceRoot: string): string[] {
@@ -36,8 +35,8 @@ export function consumerProblems(shape: Record<string, z.ZodType>, sourceRoot: s
         broken.push(`${key}: ${ref} (no such file)`)
         continue
       }
-      // The consumer grammar limits a symbol to `[A-Za-z_$][\w$]*`, which has no
-      // regex metacharacters; the escape stays in case the grammar widens.
+      // The consumer grammar allows only `[A-Za-z_$][\w$]*` in a symbol. `$` is a regex
+      // metacharacter, so the escape is needed.
       const word = new RegExp(`\\b${symbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`)
       if (!word.test(readFileSync(file, 'utf-8')))
         broken.push(`${key}: ${ref} (symbol not in file)`)
@@ -96,9 +95,10 @@ export function machineLayerKeys(
 }
 
 /**
- * The appliers in `declared` that no key uses (`except` carves out one with no
- * key of its own, such as an applier that acts on the whole file), plus every reserved key that is not
- * optional: a reserved key has no reader, so it must parse when absent.
+ * The appliers in `declared` that no key uses, plus every reserved key that is
+ * not optional. `except` lists appliers with no key of their own, such as one
+ * that acts on the whole file. A reserved key has no reader, so it must parse
+ * when absent.
  * @experimental
  */
 export function applierAndReservedProblems(

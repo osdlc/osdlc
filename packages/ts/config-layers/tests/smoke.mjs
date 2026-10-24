@@ -1,4 +1,4 @@
-// Runs the BUILT package under Node. The unit tests resolve the package name to
+// Runs the built package under Node. The unit tests resolve the package name to
 // the TypeScript source, so a broken emit could pass them and fail on the
 // consumer's machine.
 //
@@ -20,6 +20,6 @@ assert.equal(valueAt({ a: { b: 1 } }, 'a.b'), 1)
 assert.equal(substitutePathNames('{dev}/x', { dev: '/d' }, 'paths:'), '/d/x')
 assert.equal(didYouMean('pth', ['path', 'other']), 'did you mean: path?')
 
-// The light subpaths hold the same bindings as the barrel.
+// The light subpaths export the same bindings as the main entry point.
 assert.equal(lightDidYouMean, didYouMean)
 assert.equal(typeof systemDirs, 'function')

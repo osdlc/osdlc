@@ -1,6 +1,6 @@
 /**
- * Read a setting out of a hydrated config by dotted key, and decide whether
- * what is there counts as set.
+ * Read a setting from a parsed config by dotted key, and decide whether the
+ * value counts as set.
  */
 
 /**

@@ -1,18 +1,17 @@
 /**
- * The machine-level config file — the committed project file's twin for
- * values that describe THIS machine rather than a project.
+ * The machine config file. It holds values that describe this machine, not a
+ * project.
  *
- * A project file is committed, so a path like `~/Developer` that only means
- * something on one laptop has no honest place in it. The machine file lives
- * in the config home of the tool's standalone tier
- * (`<config>/<tool>/config.yaml`), is never committed, and carries only keys that are
- * machine-specific by nature.
+ * The project file is committed, so it is the wrong place for a path like
+ * `~/Developer` that only means something on one laptop. The machine file
+ * lives in the tool's standalone config home (`<config>/<tool>/config.yaml`).
+ * It is never committed and holds only machine-specific keys.
  *
- * The contract: Zod is the single source of truth, every key has a default,
- * and the loader never throws; `load()` says what it drops. The result is
- * memoised per path. The path is a function, not a constant, so a test or a
- * one-off run relocates the file through an environment variable instead of
- * writing into the developer's real config home.
+ * The Zod schema defines the file, and every key has a default. The loader
+ * never throws. `loadWithIssues()` reports what it dropped. The result is
+ * memoised per path. The path is computed on each call, so a test or a one-off
+ * run can move the file with an environment variable and not write into the
+ * developer's real config home.
  */
 
 import { copyFileSync, existsSync, readFileSync } from 'node:fs'

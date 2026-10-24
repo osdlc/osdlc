@@ -3,8 +3,8 @@
 //!
 //! A program keeps most settings in a file committed with the project. A few
 //! settings are only true on one computer, such as `~/Developer`. Those go in
-//! a second file in the user's config directory, which this crate finds and
-//! reads, and the two are layered with the project file taking precedence.
+//! a second file in the user's config directory. This crate finds and reads
+//! it, and layers the two files with the project file taking precedence.
 //!
 //! - [`machine`]: [`MachineConfigFile<T>`](machine::MachineConfigFile), the
 //!   per-machine file at `<config home>/<tool>/config.yaml`, moved by an env
@@ -16,7 +16,7 @@
 //!   in path settings, and `~` and relative path resolution.
 //! - [`value`]: lookup by dotted key, and whether a value counts as set.
 //! - [`needs`]: the check a command runs for the settings it cannot run
-//!   without, and the one message an unmet need renders.
+//!   without, and the message for an unmet need.
 //!
 //! **Stability.** Every public item is marked "stable in 0.x" in its docs. A
 //! breaking change to one of them ships only in a new 0.x minor release,
@@ -34,7 +34,7 @@ pub mod value;
 /// The directory resolver [`machine::MachineConfigFile`] takes, re-exported so
 /// a caller names the same version this crate was built against.
 ///
-/// **Stability:** follows `tiered-dirs` 0.3; a move to a new `tiered-dirs`
+/// **Stability:** follows `tiered-dirs` 0.3. A move to a new `tiered-dirs`
 /// minor release is a new minor release of this crate, with a CHANGELOG entry.
 pub use tiered_dirs;
 
@@ -42,7 +42,7 @@ pub use tiered_dirs;
 /// that [`file::read_mapping`], [`value`] and [`needs`] use, re-exported so a
 /// caller names the same version this crate was built against.
 ///
-/// **Stability:** follows `serde_json` 1.x; a move to a new major version of
+/// **Stability:** follows `serde_json` 1.x. A move to a new major version of
 /// `serde_json` would be a breaking release of this crate.
 pub use serde_json;
 

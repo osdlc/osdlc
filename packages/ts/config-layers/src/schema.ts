@@ -2,11 +2,11 @@
  * Walk a Zod object schema by dotted key to the schema for one setting, so a
  * message about it can quote the setting's own `.describe()` prose.
  *
- * Reads Zod's private `_def` layout — `type` tag and `innerType` — for the
+ * Reads Zod's private `_def` layout (the `type` tag and `innerType`) for the
  * four wrappers (`optional`, `nullable`, `default`, `prefault`) and the
- * `record` tag. Tag names rather than `instanceof`, so a second copy of zod
- * in a consumer's tree still resolves. The tripwire test in `tests/` fails
- * loudly if a zod release moves this layout.
+ * `record` tag. It checks tag names, not `instanceof`, so a second copy of zod
+ * in a consumer's dependency tree still works. A test in `tests/` fails if a
+ * zod release changes this layout.
  */
 
 import type { z } from 'zod'

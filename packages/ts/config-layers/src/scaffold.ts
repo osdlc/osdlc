@@ -1,21 +1,21 @@
 /**
- * Schema-driven config scaffold: an annotated YAML file projected from a
- * tool's Zod config schema.
+ * Config scaffold: an annotated YAML file generated from a tool's Zod config
+ * schema.
  *
- * "Parse, don't validate": the schema is the single typed source of truth for
- * the config surface, and the annotated YAML is DERIVED from it. Every key, its
- * default value, its optionality, and its `.describe()` prose come straight from
- * the schema, so a new key / changed default / reworded description flows into
- * the scaffolded file automatically — it cannot drift by construction.
+ * The schema defines the config, and the annotated YAML is derived from it.
+ * Every key, its default value, whether it is optional, and its `.describe()`
+ * prose come from the schema. A new key, a changed default or a reworded
+ * description shows up in the scaffold file with no edit, so the two cannot
+ * disagree.
  *
  * The emitted values equal `schema.parse({})`, so writing the file changes no
- * behavior; it only documents the surface. Optional keys with no default are
- * emitted commented-out.
+ * behavior. It only documents the config. Optional keys with no default are
+ * emitted commented out.
  *
  * The tool supplies the header comment (its name, how to regenerate, where the
- * prose lives) and any tool-specific notes; nothing here names a tool.
- * Introspection goes through `./schema.ts`, the one module that reads Zod
- * internals; the `.description` read is Zod's public getter, not an internal.
+ * prose lives) and any tool-specific notes. Nothing here names a tool. Reads
+ * of Zod internals go through `./schema.ts`, the one module that reads them.
+ * The `.description` read is Zod's public getter, not an internal.
  */
 
 import type { z } from 'zod'
@@ -35,9 +35,9 @@ export interface ScaffoldOptions {
    * key's name (e.g. `{ docs_site: ["see also: ..."] }` renders each as a
    * `# see also: ...` suggestion under `docs_site:`). A record-valued key also
    * takes entries keyed `<key>.<name>` (`hooks.build`): each renders under
-   * the record as `#   <name>: detected — uncomment any to use:` followed by
-   * its lines, in the order the keys appear. A tool uses this to offer
-   * detected values.
+   * the record as `#   <name>: detected — uncomment any to use:`, followed by
+   * its lines, in the order the keys appear. A tool uses this to offer values
+   * it detected.
    */
   extraCommentsByKey?: Record<string, string[]>
   /**
@@ -59,15 +59,14 @@ function renderValue(v: unknown): string {
   if (typeof v === 'string') return renderScalarString(v)
   // A record leaf (`z.record(…)`, e.g. `paths:`) reaches here with a
   // plain-object default. The `String(v)` fallback would render it as
-  // `[object Object]`, which YAML reads back as a sequence; a flow map is the
-  // honest rendering.
+  // `[object Object]`, which YAML reads back as a sequence. Render a flow map.
   if (v !== null && typeof v === 'object') {
     const entries = Object.entries(v as Record<string, unknown>)
     if (entries.length === 0) return '{}'
     const pairs = entries.map(([k, e]) => `${renderScalarString(k)}: ${renderValue(e)}`)
     return '{ ' + pairs.join(', ') + ' }'
   }
-  // undefined shouldn't reach a leaf; be defensive.
+  // undefined should not reach a leaf. Handle it anyway.
   return v === null ? 'null' : String(v)
 }
 
@@ -116,7 +115,6 @@ function renderShape(
 ): void {
   let first = true
   for (const [key, sub] of Object.entries(shape)) {
-    // A blank line between top-level blocks for readability.
     if (topLevel && !first) lines.push('')
     first = false
 
@@ -125,7 +123,7 @@ function renderShape(
 
     const kind = kindOf(sub)
     // Optional with no default (e.g. a reserved section): the all-defaults
-    // object has no such key, so the section renders commented out — an
+    // object has no such key, so the section renders commented out. An
     // uncommented `key: {}` would parse back as `{}`, not absent.
     const unfield = fieldInfo(sub)
     const absent = unfield.optional && unfield.defaultValue === undefined
@@ -137,12 +135,10 @@ function renderShape(
         lines.push(...commentOutLines(subLines))
         continue
       }
-      // Every field inside the object optional-with-no-default (or the object
-      // is shape-empty) renders as comment-only lines — a bare `key:` header
-      // with nothing but comments beneath it is a YAML mapping with zero
-      // entries, which parses back as `null`, not `{}`. Collapse to an
-      // explicit empty flow-map so the round-trip holds, and keep the
-      // discoverability comments right below it.
+      // When every field in the object is optional with no default (or the
+      // object has no fields), the body is comment lines only. A bare `key:`
+      // with only comments beneath it parses back as `null`, not `{}`. So
+      // write `key: {}` to keep the round trip, with the comments below it.
       const hasContent = subLines.some((l) => {
         const t = l.trim()
         return t !== '' && !t.startsWith('#')
@@ -179,7 +175,7 @@ function renderShape(
     if (unfield.defaultValue !== undefined) {
       lines.push(`${indent}${key}: ${renderValue(unfield.defaultValue)}`)
     } else {
-      // Optional, no default → show commented so the key is discoverable.
+      // Optional with no default: show it commented out, so a reader finds the key.
       lines.push(`${indent}# ${key}:`)
     }
 
@@ -191,8 +187,8 @@ function renderShape(
 }
 
 /**
- * The fully-annotated, schema-driven file for a fresh project: `header` lines,
- * then every key at its schema default with its description as a comment.
+ * The fully annotated file for a fresh project: `header` lines, then every key
+ * at its schema default with its description as a comment.
  * @experimental
  */
 export function scaffoldYaml(
@@ -220,10 +216,10 @@ function commentOutLines(lines: string[]): string[] {
 }
 
 /**
- * A commented override template: the same schema walk as {@link scaffoldYaml}
- * with every key commented out, under `header`. For the gitignored overlay file, where a key overrides the committed
- * file once uncommented (maps merge recursively, lists and scalars replace —
- * see `deepMergeConfig`).
+ * A commented override template: the same output as {@link scaffoldYaml} with
+ * every key commented out, under `header`. It is for the gitignored overlay
+ * file, where a key overrides the committed file once uncommented. Maps merge
+ * recursively, and lists and scalars replace (see `deepMergeConfig`).
  * @experimental
  */
 export function scaffoldLocalYaml(
@@ -251,7 +247,7 @@ export interface StarterOptions {
   categories: readonly string[]
   /**
    * Record-valued keys to set live, by key then entry name:
-   * `{ workflows: { check: ['just ci'] } }`. Empty lists are dropped; a key with
+   * `{ workflows: { check: ['just ci'] } }`. Empty lists are dropped. A key with
    * none left renders commented out like every other section.
    */
   live?: Record<string, Record<string, string[]>>
@@ -260,13 +256,12 @@ export interface StarterOptions {
 }
 
 /**
- * The starter file written for a fresh project: the `live` entries set under
- * their keys, and every other top-level key as a commented-out skeleton — its
- * schema description, then its default block — grouped under a banner per meta
- * `category`. A projection of the schema like {@link scaffoldYaml}, which
- * instead writes every key live at its default; the starter's only live values
- * are the ones detection found, so it parses to the all-defaults object plus
- * those entries.
+ * The starter file written for a fresh project. The `live` entries are set
+ * under their keys. Every other top-level key is commented out: its schema
+ * description, then its default block. Keys are grouped under a banner per
+ * meta `category`. {@link scaffoldYaml} writes every key uncommented at its
+ * default. The starter's only uncommented values are the `live` ones, so it
+ * parses to the all-defaults object plus those entries.
  * @experimental
  */
 export function starterYaml(schema: z.ZodTypeAny, opts: StarterOptions): string {

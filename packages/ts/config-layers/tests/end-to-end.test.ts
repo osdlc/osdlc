@@ -59,7 +59,7 @@ const token = vocabulary.defineSection({
 
 const SECTIONS = [jobs, shims, token] as const
 
-/** The host tool this library was split from; spelled in pieces so a source grep for it stays clean. */
+/** The name of the tool this library came out of. Split in two so a grep of the source does not find it. */
 const HOST_TOOL = ['sd', 'lc'].join('')
 
 /** Assert text the library printed never names the host tool. */

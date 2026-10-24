@@ -1,6 +1,6 @@
 /**
  * Close-match suggestions for a mistyped name (noun, verb, config key,
- * repo). One rule for every CLI built on this package.
+ * repo). Every CLI built on this package uses the same rule.
  */
 
 /** Optimal-string-alignment distance: edits plus adjacent transpositions. */

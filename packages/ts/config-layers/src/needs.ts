@@ -1,12 +1,12 @@
 /**
- * What a command needs from the config before it can run, and the one
- * message every unmet need renders: the command, the key, what the key is
- * for (its own schema description), and where to set it.
+ * What a command needs from the config before it can run, and the message an
+ * unmet need gives. The message names the command, the key, what the key is
+ * for (its schema description), and where to set it.
  *
- * A tool builds one {@link ConfigNeeds} from its two schemas. A command then
- * declares `{ config: 'dotted.key' }`, optionally with an input that stands
- * in for the setting (`--endpoint` for `upload.endpoint`), and asks `met`
- * before its handler runs.
+ * A tool builds one {@link ConfigNeeds} from its two schemas. A command
+ * declares `{ config: 'dotted.key' }`, optionally with an input that can be
+ * given instead of the setting (`--endpoint` for `upload.endpoint`). It calls
+ * `met` before its handler runs.
  */
 
 import { existsSync } from 'node:fs'
@@ -27,9 +27,9 @@ export interface ConfigNeed {
   /** Dotted path into the config: `upload.endpoint`, `paths.dev`. */
   config: string
   /**
-   * An input key that stands in for the setting when given on the command
-   * line (`endpoint` for `--endpoint`). The need is met when that input is
-   * present and non-empty, whatever the config says.
+   * An input key that can be given on the command line instead of the setting
+   * (`endpoint` for `--endpoint`). The need is met when that input is present
+   * and non-empty, whatever the config says.
    */
   unlessInput?: string
 }
@@ -68,9 +68,9 @@ export interface ConfigNeedsOptions<P extends z.ZodTypeAny, M extends z.ZodTypeA
  * @experimental
  */
 export interface MetOptions {
-  /** The hydrated project config (all defaults filled). */
+  /** The parsed project config (all defaults filled). */
   project: unknown
-  /** The raw command input, so `unlessInput` can stand in. */
+  /** The raw command input, checked for the `unlessInput` key. */
   input?: Record<string, unknown> | undefined
 }
 
@@ -96,15 +96,15 @@ export interface ConfigNeeds {
   keyExists(key: string): boolean
   /** The first sentence of either schema's description for `key`, or null. */
   keyDescription(key: string): string | null
-  /** Whether `need` is met: the input stands in, or the setting is set in either file. */
+  /** Whether `need` is met: the input is given, or the setting is set in either file. */
   met(need: ConfigNeed, opts: MetOptions): boolean
-  /** The one message every unmet need renders. */
+  /** The message for an unmet need. */
   message(need: ConfigNeed, opts: MessageOptions): string
   /**
-   * Where `key` can be set, as prose: the files whose schema carries it, the
-   * one a person is standing in first. Outside a project (no project file at
-   * the root) the machine file leads and the project file is described rather
-   * than pointed at, since the root is not one.
+   * Where `key` can be set, as prose: the files whose schema carries it. When
+   * a project file exists at `projectRoot`, it comes first. Otherwise the
+   * machine file comes first, and the project file is described instead of
+   * given as a path, since there is no file to point at.
    */
   whereToSet(key: string, projectRoot: string): string
 }

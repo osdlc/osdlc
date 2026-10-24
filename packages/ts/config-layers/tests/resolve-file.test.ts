@@ -1,6 +1,5 @@
 /**
- * `resolveConfigFile`: the one decision about where a tool's project config
- * file and its overlay are.
+ * `resolveConfigFile`: finds a tool's project config file and its overlay.
  */
 
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'

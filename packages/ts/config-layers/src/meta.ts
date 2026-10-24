@@ -2,35 +2,37 @@
  * Machine-readable metadata for every top-level key of a tool's project config
  * (`tooly.yaml` for a tool named `tooly`).
  *
- * Each key of the tool's config schema (a tool assembles its schema from its section modules) carries a Zod 4 `.meta()` block of shape
- * {@link ConfigKeyMeta}, next to its `.describe()` prose. Both land in
- * `z.globalRegistry`, so `schema.meta()` on a top-level key returns the merged
+ * Each top-level key of the tool's config schema (built from its section
+ * modules) carries a Zod 4 `.meta()` block of shape {@link ConfigKeyMeta},
+ * next to its `.describe()` prose. Both go into `z.globalRegistry`, so
+ * `schema.meta()` on a top-level key returns the merged
  * `{ description, category, consumers, layers, applies_via, enforcement, runs_in }` record.
- * That record is what `tooly config list|explain`, the generated `tooly.yaml`
- * reference, an apply command (keyed by the applier name) and a drift
- * report read, so it is validated here rather than trusted:
- * {@link checkConfigMeta} reports every key whose meta is missing or malformed,
- * and a tool's meta test fails on any report against its live schema
- * (`./meta-kit.ts` holds the checks). The terms a block may use (categories,
- * appliers, layers, run contexts, enforcement levels) are the tool's, declared
- * with `defineConfigVocabulary` (`./vocabulary.ts`); this module holds the
- * structure they fill.
+ * `tooly config list|explain`, the generated `tooly.yaml` reference, an apply
+ * command (keyed by the applier name) and a drift report all read that record.
+ * So it is validated here, not trusted. {@link checkConfigMeta} reports every
+ * key whose meta is missing or malformed. A tool's meta test runs it against
+ * the tool's real schema and fails on any report (`./meta-kit.ts` holds the
+ * checks). The terms a block may use (categories, appliers, layers, run
+ * contexts, enforcement levels) belong to the tool and are declared with
+ * `defineConfigVocabulary` (`./vocabulary.ts`). This module holds the structure
+ * they fill.
  *
- * Meta is required on TOP-LEVEL keys only. A nested field carries just a
- * `.describe()`: category, layers, applier and run context are properties of
- * a section as a whole, and a nested field inherits its section's. The one
- * exception is the optional `secret` flag, which a nested field may set itself
+ * Meta is required on top-level keys only. A nested field carries just a
+ * `.describe()`. Category, layers, applier and run context belong to a section
+ * as a whole, and a nested field inherits its section's. The one exception is
+ * the optional `secret` flag, which a nested field may set itself
  * (`./secret.ts`).
  *
- * `.meta()` must be the LAST call on a key's schema chain;
- * `defineConfigSection` (`./section.ts`) makes it the last call, so a
- * section author passes `meta:` and never calls `.meta()` directly. `.default()`,
+ * `.meta()` must be the last call on a key's schema chain.
+ * `defineConfigSection` (`./section.ts`) makes it the last call, so a section
+ * author passes `meta:` and never calls `.meta()` directly. `.default()`,
  * `.prefault()` and `.optional()` each wrap the schema in a new instance, and
- * the registry is keyed by instance, so meta set before a wrap is not visible
- * on the wrapper the schema's `shape` holds. `.describe()` before or after
- * `.meta()` is fine: both register on a clone whose parent's entry is merged.
+ * the registry is keyed by instance. Meta set before a wrap is therefore not
+ * visible on the wrapper that the schema's `shape` holds. `.describe()` before
+ * or after `.meta()` is fine: both register on a clone, and the parent's entry
+ * is merged into it.
  *
- * Functions here take a schema shape as an argument; the module knows no
+ * Functions here take a schema shape as an argument. The module knows no
  * tool's schema.
  */
 
@@ -51,9 +53,10 @@ export interface MetaTerms {
 }
 
 /**
- * The layers the library itself reads: the committed project file, its
- * overlay (`./loader.ts`), and the machine file (`./machine.ts`). A vocabulary
- * lists all three and may add its own.
+ * The name of the project layer, the committed project file. The library
+ * reads three layers itself: this one, its overlay (`./loader.ts`), and the
+ * machine file (`./machine.ts`). A vocabulary lists all three and may add its
+ * own.
  * @experimental
  */
 export const PROJECT_LAYER = 'project'
@@ -89,10 +92,10 @@ export type AppliesVia<A extends string = string> = 'read' | `apply:${A}`
 export const APPLY_PREFIX = 'apply:'
 
 /**
- * A consumer entry: either a source reference `<path>.ts#<symbol>` (the path
- * relative to the owning tool's source root, the symbol an identifier that appears in
- * that file where the key is read), or `planned:<note>` for a reserved section
- * whose reader has not been built yet.
+ * A consumer entry: either a source reference `<path>.ts#<symbol>`, or
+ * `planned:<note>` for a reserved section whose reader has not been built yet.
+ * The path is relative to the owning tool's source root. The symbol is an
+ * identifier in that file where the key is read.
  * @experimental
  */
 export const CONSUMER_REF = /^[a-z0-9_][a-z0-9_./-]*\.ts#[A-Za-z_$][\w$]*$/
@@ -125,8 +128,8 @@ function unique<T extends z.ZodType>(item: T) {
 /**
  * A deprecation notice, shared by a config key's meta and any other described item:
  * since which release it is deprecated, the release that removes it, and what
- * to use instead. A deprecated key stays in the schema and loads normally;
- * the loader warns once per key. Removing it is a later hard cutover.
+ * to use instead. A deprecated key stays in the schema and loads normally.
+ * The loader warns once per key. A later release removes the key outright.
  * @experimental
  */
 export const DeprecationSchema = z
@@ -144,8 +147,8 @@ export type Deprecation = z.infer<typeof DeprecationSchema>
 
 /**
  * Whether a key is covered by the consumer's compatibility promise. Absent
- * means `stable`; `experimental` keys sit outside that promise. The library
- * only carries the level; what it commits the consumer to is the consumer's.
+ * means `stable`. `experimental` keys are outside that promise. The library
+ * only carries the level. The consumer decides what each level promises.
  * @experimental
  */
 export const STABILITY_LEVELS = ['stable', 'experimental'] as const
@@ -174,14 +177,14 @@ export type ConfigKeyMeta<T extends MetaTerms = MetaTerms> = {
   enforcement: T['enforcement']
   runs_in: T['runContext'][]
   /**
-   * `secret: true` marks a key whose value must never sit in the project file (a
-   * webhook URL carries its own credential); see `./secret.ts`. On a top-level key
-   * it covers the whole section; a nested field sets it with `.meta({ secret: true })`.
+   * `secret: true` marks a key whose value must never be in the project file (a
+   * webhook URL carries its own credential). See `./secret.ts`. On a top-level
+   * key it covers the whole section. A nested field sets it with `.meta({ secret: true })`.
    */
   secret?: boolean | undefined
   stability?: Stability | undefined
   /**
-   * Set while the key is deprecated; absent on a live key. Named `deprecation`
+   * Set while the key is deprecated, absent otherwise. Named `deprecation`
    * because Zod's own registry meta reserves `deprecated` as a boolean.
    */
   deprecation?: Deprecation | undefined
@@ -206,9 +209,9 @@ export interface MetaTermSchemas {
 }
 
 /**
- * `read` or `apply:<applier>`, with the applier checked by `applier`; `null`
- * means the vocabulary has no appliers, so only `read` passes. A template
- * literal, so the JSON Schema states the `apply:` pattern.
+ * `read` or `apply:<applier>`, with the applier checked by `applier`. `null`
+ * means the vocabulary has no appliers, so only `read` passes. It is a
+ * template literal, so the JSON Schema states the `apply:` pattern.
  */
 export function appliesViaSchema(applier: z.ZodEnum | z.ZodString | null): z.ZodType<AppliesVia> {
   if (applier === null) return z.literal('read')
@@ -277,7 +280,7 @@ export interface MetaValidator<T extends MetaTerms = MetaTerms> {
 }
 
 /**
- * True when every consumer of a key is a `planned:` entry — the key is reserved.
+ * True when every consumer of a key is a `planned:` entry, which makes the key reserved.
  *
  * @experimental
  */

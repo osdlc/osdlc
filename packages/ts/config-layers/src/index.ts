@@ -2,20 +2,22 @@
  * `@osdlc/config-layers` — a CLI tool's two config files and the check a
  * command runs before it starts.
  *
- * A tool has a committed project file (its name is the tool's) and a per-machine file in
- * the config home of its standalone tier (`<config>/<tool>/config.yaml`), each read through a
- * Zod schema. {@link machineConfigFile} is the machine loader: never throws,
- * keeps the valid sections and reports what it dropped, relocates through an
- * env var, migrates older files in memory, and writes the file atomically.
- * {@link configNeeds} takes both schemas and answers, for a command that
- * declares `{ config: 'dotted.key' }`, whether the setting is set in either
- * file and, if not, one message saying what the key is for and where to set
- * it. {@link valueAt}, {@link valueIsSet} and {@link keyDescription} are the
- * pieces underneath, exported for a tool that only needs one of them.
+ * A tool has a committed project file (the tool picks its name) and a
+ * per-machine file in its standalone config home (`<config>/<tool>/config.yaml`).
+ * Each is read through a Zod schema. {@link machineConfigFile} loads the machine
+ * file. It never throws, keeps the valid sections and reports what it dropped.
+ * An env var can move the file. It migrates older files in memory and writes
+ * the file atomically.
  *
- * {@link pathsSchema} and {@link substitutePathNames} are the third piece both
- * files share: a `paths:` map of named directories, and the `{name}`
- * expansion any other path-valued setting refers to them by.
+ * {@link configNeeds} takes both schemas. For a command that declares
+ * `{ config: 'dotted.key' }`, it says whether the setting is set in either
+ * file. If not, it gives one message that says what the key is for and where
+ * to set it. {@link valueAt}, {@link valueIsSet} and {@link keyDescription} are
+ * the functions it uses, exported for a tool that needs only one of them.
+ *
+ * {@link pathsSchema} and {@link substitutePathNames} handle the `paths:` map
+ * that both files can carry. The map names directories, and any other
+ * path-valued setting refers to one as `{name}`.
  *
  * {@link systemDirs}, {@link TieredDirs}, {@link envVars} and {@link VendorDirs}
  * resolve the tool's machine-local directories. {@link closestMatches} and

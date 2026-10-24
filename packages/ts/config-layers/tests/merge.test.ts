@@ -1,5 +1,5 @@
 /**
- * Unit tests for `deepMergeConfig` — the raw-mapping merge behind the
+ * Unit tests for `deepMergeConfig`, the raw-mapping merge that applies the
  * `tooly.local.yaml` overlay.
  */
 

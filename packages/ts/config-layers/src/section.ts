@@ -1,13 +1,13 @@
 /**
- * The config section: the unit a tool's config schema is built from. One module per
- * top-level key exports one section made by {@link defineConfigSection}; the
- * tool lists them in key order and hands the list to {@link assembleConfig}
- * (`./loader.ts`), which builds the schema, the loader and the single-file
- * schema from it.
+ * Config sections. A tool's config schema is built from sections, one per
+ * top-level key. Each section module exports one section made by
+ * {@link defineConfigSection}. The tool lists them in key order and hands the
+ * list to {@link assembleConfig} (`./loader.ts`), which builds the schema, the
+ * loader and the single-file schema from it.
  *
  * A section module must not import values from the module that assembles the
- * list: the assembly imports the sections and builds the schema at module
- * evaluation, so a back-edge is an import cycle.
+ * list. That module imports the sections and builds the schema when it is
+ * evaluated, so an import back from a section creates an import cycle.
  */
 
 import type { z } from 'zod'
@@ -17,8 +17,8 @@ import { PROJECT_LAYER, type ConfigKeyMeta, type MetaTerms } from './meta.ts'
 import { SECRET_ALLOWED_LAYERS, secretKeysSet, sectionSecretPaths } from './secret.ts'
 
 /**
- * What a section's {@link ConfigSectionHooks.layerCheck} is handed once the
- * merged config parsed: the section's value in each raw layer (before the
+ * What a section's {@link ConfigSectionHooks.layerCheck} receives after the
+ * merged config parses: the section's value in each raw layer (before the
  * merge, `undefined` when the layer does not set it), its parsed merged value,
  * and the project root the file belongs to.
  * @experimental
@@ -41,17 +41,17 @@ export interface LayerCheckContext<V> {
  */
 export interface ConfigSectionHooks<S extends z.ZodType = z.ZodType> {
   /**
-   * The schema used when ONE file is validated alone (the project file or the
-   * overlay), in place of {@link ConfigSection.schema}. A section whose schema
-   * checks across fields that a project may deliberately split between the two
-   * files supplies its un-refined variant here, so a single file's partial view
-   * is not reported as wrong. Absent: the section's schema is used as is.
+   * The schema used when one file is validated alone (the project file or the
+   * overlay), in place of {@link ConfigSection.schema}. Some schemas check
+   * across fields that a project may split between the two files. Such a
+   * section supplies its un-refined variant here, so one file's partial content
+   * is not reported as wrong. When absent, the section's schema is used.
    */
   fileSchema?: z.ZodType
   /**
-   * Rules only visible with layer knowledge, checked after the merged config
-   * parsed (for example a value the committed file must not set). Returns the
-   * issues found; a non-empty result refuses the config.
+   * Rules that need to know which layer set a value, checked after the merged
+   * config parses (for example a value the committed file must not set).
+   * Returns the issues found. A non-empty result refuses the config.
    */
   layerCheck?(ctx: LayerCheckContext<z.output<S>>): ConfigIssue[]
 }
@@ -73,7 +73,7 @@ export interface ConfigSection<
 }
 
 /**
- * Define a section. The meta is registered on the schema as the LAST call on
+ * Define a section. The meta is registered on the schema as the last call on
  * its chain (`./meta.ts` explains why it must be last), so callers pass the
  * schema with its `.describe()` prose and the meta separately.
  * @experimental
@@ -124,10 +124,10 @@ function secretIssues(
 }
 
 /**
- * Run every section's {@link ConfigSectionHooks.layerCheck} (the `secret` check
- * defineConfigSection adds included) and collect the issues. The one place the
- * checks run: the loader calls it with the parsed merged `value`, and
- * {@link projectLayerIssues} without.
+ * Run every section's {@link ConfigSectionHooks.layerCheck}, including the
+ * checks defineConfigSection adds, and collect the issues. The checks run only
+ * here. The loader calls it with the parsed merged `value`, and
+ * {@link projectLayerIssues} calls it without.
  */
 export function layerCheckIssues(
   sections: readonly ConfigSection[],
@@ -155,9 +155,9 @@ export function layerCheckIssues(
 
 /**
  * The layer checks over a raw project file read on its own, with no merged
- * config: for diagnostics that must name a problem before (or without) loading.
- * A check that needs the merged value (`LayerCheckContext.value` is `undefined`
- * here) reports nothing, so this is the subset the file alone can answer.
+ * config. For diagnostics that must name a problem before (or without) loading.
+ * `LayerCheckContext.value` is `undefined` here, so a check that needs the
+ * merged value reports nothing. Only checks the file alone can answer run.
  * @experimental
  */
 export function projectLayerIssues(

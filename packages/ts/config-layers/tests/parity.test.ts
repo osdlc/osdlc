@@ -1,11 +1,11 @@
 /**
- * The shared parity fixture, driven from this side.
+ * Runs the shared parity fixture against this package.
  *
- * `packages/rust/config-layers/tests/fixtures/parity.json` is the contract
- * between this package and the Rust crate `config-layers`, which reads the same
- * file in `tests/parity.rs`: same input, same result. A case added on either side
- * goes in the fixture, never in one twin's own suite. What the twins do
- * differently is listed in the README, not here.
+ * `packages/rust/config-layers/tests/fixtures/parity.json` defines the
+ * behaviour this package and the Rust crate `config-layers` share. The crate
+ * reads the same file in `tests/parity.rs`: same input, same result. A shared
+ * case goes in the fixture, never in only one of the two suites. What the two
+ * do differently is listed in the README, not here.
  */
 
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'

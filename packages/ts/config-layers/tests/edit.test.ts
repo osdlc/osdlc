@@ -1,7 +1,7 @@
 /**
- * `setPath` / `unsetPath` — span-preserving dotted-path edits over
- * `@osdlc/yaml-splice`. Every case asserts the exact output text: an edit
- * may touch only the edited value's line(s).
+ * `setPath` / `unsetPath`: dotted-path edits built on `@osdlc/yaml-splice`.
+ * Every case asserts the exact output text. An edit may change only the
+ * edited value's lines.
  */
 
 import { describe, expect, test } from 'vitest'
@@ -105,10 +105,8 @@ describe('unsetPath', () => {
   })
 
   test('a non-mapping parent leaves the text unchanged (nothing to descend into)', () => {
-    // `a` is a scalar (`1`), not a mapping — `a.x` was never set, so there is
-    // nothing to unset. (Previously this wiped the whole document to `""`:
-    // `applyPlain` built a fresh `{}`, found it empty after the no-op delete,
-    // and that `undefined` was read as "remove `a` entirely".)
+    // `a` is a scalar (`1`), not a mapping, so `a.x` was never set and there is
+    // nothing to unset. The document must not lose `a`.
     expect(unsetPath('a: 1\n', ['a', 'x'])).toBe('a: 1\n')
   })
 
@@ -123,10 +121,9 @@ describe('unsetPath', () => {
   })
 
   test('a comment block immediately preceding the removed section is left dangling (documented trade-off)', () => {
-    // Span-preserving means comment-blind: the comment above `notify:` is
-    // not part of that key's own span, so removing the section's one key
-    // (which empties and removes `notify:` itself) leaves the comment
-    // behind, now describing a setting that no longer exists.
+    // The edit ignores comments. The comment above `notify:` is not part of
+    // that key's span. Removing the section's one key also removes the empty
+    // `notify:`, and the comment stays behind.
     const src = `a: 1
 # Explanatory comment about notify.
 notify:
@@ -141,14 +138,12 @@ z: 2
 
 describe('merge-key anchors (`<<: *anchor`)', () => {
   // A nested edit dedents the parent's lines into a standalone sub-document
-  // (`spliceBlock`) to edit it in isolation, then re-indents the result back
-  // in. When the sub-document merges in an anchor defined OUTSIDE the block
-  // being extracted, that anchor is left behind — the cut-out fragment can no
-  // longer resolve it. Rather than let that surface as the underlying
-  // library's raw parse error (or an unhandled `ReferenceError` out of
-  // `doc.toJS()`), `edit` detects it up front and throws a clear, actionable
-  // `Error` naming the anchor — before anything is spliced, so the source
-  // text is never touched.
+  // (`spliceBlock`), edits it, then re-indents the result. When the
+  // sub-document merges in an anchor defined outside the cut-out block, the
+  // block can no longer resolve it. `edit` checks for this first and throws an
+  // `Error` that names the anchor, instead of the YAML library's parse error
+  // or a `ReferenceError` from `doc.toJS()`. Nothing has been spliced yet, so
+  // the source text is never changed.
   const EXTERNAL_ANCHOR = `defaults: &defaults
   a: 1
 service:
@@ -169,9 +164,9 @@ service:
   })
 
   test('an anchor defined and merged entirely within the edited block round-trips', () => {
-    // Both `&features` and `<<: *features` live inside `service` here, so
-    // dedenting `service` on its own keeps full context — no error, and
-    // the merge key itself survives byte-for-byte.
+    // Both `&features` and `<<: *features` are inside `service` here, so
+    // `service` can be edited on its own. No error, and the merge key is kept
+    // byte for byte.
     const src = `service:
   features: &features
     alpha: true

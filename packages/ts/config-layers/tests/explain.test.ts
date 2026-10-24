@@ -1,5 +1,5 @@
 /**
- * Tests for the schema-side introspection (`../src/explain.ts`) against a small
+ * Tests for reading keys from a schema (`../src/explain.ts`) against a small
  * synthetic schema: the dotted key-path parser and walker, the shape renderer,
  * defaults and nested fields, and the plain-value path helpers.
  */
