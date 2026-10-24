@@ -25,11 +25,8 @@
  * A task's declaration (`desc`, `summary`, `internal`) is data sitting in the
  * `tasks:` mapping, which is why the reader can exist at all.
  *
- * There is no YAML dependency in this package (see `package.json`; the
- * monorepo's `yaml` and `yaml-splice` packages are span-preserving editors
- * for known top-level fields, not general parsers, and neither belongs in a
- * `parse` runner that reads arbitrary repositories). So the reader is
- * hand-written for exactly the `tasks:` mapping level.
+ * The reader is hand-written for exactly the `tasks:` mapping level, so it
+ * keeps going past YAML a full parser would reject (see `yaml-lite.ts`).
  *
  * The lexing layer comes from `yaml-lite.ts`, shared with `docker-compose.ts`
  * and `github-actions.ts`: BOM strip, line split, comment strip, anchor/merge

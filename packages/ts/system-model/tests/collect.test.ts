@@ -365,6 +365,16 @@ describe('each collect reads afresh', () => {
     expect(tasks(again).map((t) => t.display)).toEqual(['just build', 'just deploy'])
   })
 
+  test("editing one report's chain does not reach the next collect", async () => {
+    const dir = await root({ justfile: 'build:\n    echo build\n' })
+    const { project, profile, catalog } = await detectAndCollect(dir, walkOpts({ tools: [just] }))
+    const first = catalog.reports.find((r) => r.runner === 'just')!
+    const label = first.chain[0]!.label
+    first.chain[0]!.label = 'MUTATED'
+    const again = await project.runners.collect(profile, walkOpts())
+    expect(again.reports.find((r) => r.runner === 'just')!.chain[0]!.label).toBe(label)
+  })
+
   test('a profile copied through JSON collects the same way, with its exclude settings', async () => {
     const dir = await root({
       'build/justfile': 'inner:\n    echo inner\n',

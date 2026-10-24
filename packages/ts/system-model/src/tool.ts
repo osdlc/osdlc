@@ -224,10 +224,13 @@ export interface EcosystemDef {
   fallback?: string | undefined
   /**
    * The member globs a package's manifest declares as a workspace, relative to
-   * the package (`["crates/*"]`), or `undefined` when it declares none. A
-   * member with no lockfile of its own installs at its workspace root.
+   * the package (`["crates/*"]`); a `!` glob removes a member. `undefined`
+   * when it declares no workspace, and `null` when it is a workspace root
+   * whose members could not be read, so every package below counts as one.
+   * A member takes its workspace root's lockfile, and with no lockfile
+   * installs at that root.
    */
-  workspace?: ((pkg: Package) => readonly string[] | undefined) | undefined
+  workspace?: ((pkg: Package) => readonly string[] | null | undefined) | undefined
 }
 
 /** One detected tool in one package. */

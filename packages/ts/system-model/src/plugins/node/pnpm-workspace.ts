@@ -4,50 +4,36 @@
  * `package.json#workspaces`.
  */
 
+import { parse } from 'yaml'
+
 import type { ProviderContext } from '../../contract.ts'
 import type { Package, ToolFact } from '../../tool.ts'
-import { joinRel } from '../support/shared.ts'
-import { leadingSpaces, matchKey, scanLine, unquote } from '../support/yaml-lite.ts'
+import { isTable, joinRel } from '../support/shared.ts'
 
 export const PNPM_WORKSPACE = 'pnpm-workspace.yaml'
 
 /** The fact pnpm's `describe` records at a directory holding a `pnpm-workspace.yaml`. */
 interface PnpmWorkspaceFact {
-  pnpmWorkspacePackages: string[]
+  /** `null` when the members are unknown. */
+  pnpmWorkspacePackages: string[] | null
 }
 
 /**
- * The `packages:` entries, in a block list or a one-line flow list. `!`
- * negations are kept as they are written.
+ * The `packages:` globs, with `!` negations as written. `null` when the file
+ * does not parse or lists no package: the members are then unknown, not none.
  */
-export function parsePnpmWorkspace(text: string): string[] {
-  const out: string[] = []
-  let inPackages = false
-  for (const raw of text.split('\n')) {
-    const line = scanLine(raw).cleaned.replace(/\s+$/, '')
-    if (line.trim() === '') continue
-    const indent = leadingSpaces(line)
-    if (indent === 0) {
-      const key = matchKey(line, 0)
-      inPackages = key?.key === 'packages'
-      const value = key?.value.trim() ?? ''
-      if (inPackages && value.startsWith('[')) {
-        const inner = value.replace(/^\[/, '').replace(/\]$/, '')
-        out.push(
-          ...inner
-            .split(',')
-            .map(unquote)
-            .filter((v) => v !== ''),
-        )
-        inPackages = false
-      }
-      continue
-    }
-    if (!inPackages) continue
-    const item = /^\s*-\s+(.*)$/.exec(line)
-    if (item) out.push(unquote(item[1]!))
+export function parsePnpmWorkspace(text: string): string[] | null {
+  let doc: unknown
+  try {
+    // One document, no custom tags; a small alias budget keeps a hostile file cheap.
+    doc = parse(text, { maxAliasCount: 16 })
+  } catch {
+    return null
   }
-  return out
+  const packages = isTable(doc) ? doc['packages'] : undefined
+  if (!Array.isArray(packages)) return null
+  const globs = packages.filter((g): g is string => typeof g === 'string' && g !== '')
+  return globs.length > 0 ? globs : null
 }
 
 /** Reads each detected `pnpm-workspace.yaml` once, at detect time. */
@@ -71,11 +57,15 @@ export async function describePnpmWorkspaces(
   return facts
 }
 
-/** The globs a `pnpm-workspace.yaml` at this package declares, if it has one. */
-export function pnpmWorkspacePackages(pkg: Package): string[] | undefined {
+/**
+ * The globs a `pnpm-workspace.yaml` at this package declares: `undefined`
+ * with no such file, `null` when the file lists no readable member.
+ */
+export function pnpmWorkspacePackages(pkg: Package): string[] | null | undefined {
   for (const fact of pkg.tools.find((t) => t.tool === 'pnpm')?.facts ?? []) {
-    const packages = (fact as Partial<PnpmWorkspaceFact> | null)?.pnpmWorkspacePackages
-    if (Array.isArray(packages)) return packages
+    if (fact !== null && typeof fact === 'object' && 'pnpmWorkspacePackages' in fact) {
+      return (fact as PnpmWorkspaceFact).pnpmWorkspacePackages
+    }
   }
   return undefined
 }

@@ -22,7 +22,23 @@ describe('pnpm-workspace.yaml packages', () => {
     expect(parsePnpmWorkspace('packages: [\'apps/*\', "libs/*"]\n')).toEqual(['apps/*', 'libs/*'])
   })
 
-  test('no packages key gives no globs', () => {
-    expect(parsePnpmWorkspace('catalog:\n  react: ^19\n')).toEqual([])
+  test('a block list at the same indent as its key', () => {
+    expect(parsePnpmWorkspace("packages:\n- 'packages/*'\n- apps/*\n")).toEqual([
+      'packages/*',
+      'apps/*',
+    ])
+  })
+
+  test('a flow list over several lines', () => {
+    expect(parsePnpmWorkspace("packages: [\n  'apps/*',\n  'libs/*',\n]\n")).toEqual([
+      'apps/*',
+      'libs/*',
+    ])
+  })
+
+  test('no readable packages list means the members are unknown', () => {
+    expect(parsePnpmWorkspace('catalog:\n  react: ^19\n')).toBeNull()
+    expect(parsePnpmWorkspace('packages: []\n')).toBeNull()
+    expect(parsePnpmWorkspace('packages: [\n')).toBeNull()
   })
 })

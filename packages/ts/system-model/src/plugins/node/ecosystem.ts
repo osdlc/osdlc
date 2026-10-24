@@ -22,6 +22,7 @@ export const nodeEcosystem: EcosystemDef = {
   workspace: (pkg) => {
     const fromJson = pkg.manifests.packageJson?.workspaces
     const fromPnpm = pnpmWorkspacePackages(pkg)
+    if (fromPnpm === null && fromJson === undefined) return null
     if (fromJson === undefined && fromPnpm === undefined) return undefined
     return [...(fromJson ?? []), ...(fromPnpm ?? [])]
   },

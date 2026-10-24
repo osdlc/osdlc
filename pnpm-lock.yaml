@@ -648,17 +648,7 @@ importers:
         specifier: 'catalog:'
         version: 3.9.6
 
-  packages/ts/system-model:
-    dependencies:
-      '@osdlc/command-seam':
-        specifier: workspace:^
-        version: link:../command-seam
-      '@osdlc/etag-write':
-        specifier: workspace:^
-        version: link:../etag-write
-      smol-toml:
-        specifier: 'catalog:'
-        version: 1.9.1
+  packages/ts/result:
     devDependencies:
       '@osdlc/prettier-config':
         specifier: workspace:^
@@ -685,7 +675,20 @@ importers:
         specifier: 'catalog:'
         version: 5.0.5(@types/node@26.6.5)(@vitest/coverage-v8@5.0.5)(vite@8.3.4(@types/node@26.6.5)(yaml@2.9.1))
 
-  packages/ts/result:
+  packages/ts/system-model:
+    dependencies:
+      '@osdlc/command-seam':
+        specifier: workspace:^
+        version: link:../command-seam
+      '@osdlc/etag-write':
+        specifier: workspace:^
+        version: link:../etag-write
+      smol-toml:
+        specifier: 'catalog:'
+        version: 1.9.1
+      yaml:
+        specifier: 'catalog:'
+        version: 2.9.1
     devDependencies:
       '@osdlc/prettier-config':
         specifier: workspace:^

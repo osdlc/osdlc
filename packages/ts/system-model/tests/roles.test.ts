@@ -802,6 +802,32 @@ describe('workspaces, unlocked installs and install directories', () => {
     ])
   })
 
+  test('a pnpm member under a zero-indent packages list takes the root lockfile', async () => {
+    const dir = await root({
+      'package.json': '{}',
+      'pnpm-lock.yaml': '',
+      'pnpm-workspace.yaml': "packages:\n- 'packages/*'\n",
+      'packages/a/package.json': '{}',
+    })
+    const profile = await detect(dir)
+    expect(project.install(profile, 'packages/a').map((a) => [a.dir, a.argv.join(' ')])).toEqual([
+      ['.', 'pnpm install'],
+    ])
+  })
+
+  test('a pnpm-workspace.yaml with no readable packages keeps the walk up to its lockfile', async () => {
+    const dir = await root({
+      'package.json': '{}',
+      'pnpm-lock.yaml': '',
+      'pnpm-workspace.yaml': 'catalog:\n  react: ^19\n',
+      'tools/x/package.json': '{}',
+    })
+    const profile = await detect(dir)
+    expect(project.packageManagers(profile, 'tools/x')).toMatchObject([
+      { tool: 'pnpm', dir: '.', locked: true },
+    ])
+  })
+
   test('a crate in [workspace] exclude does not take the workspace lockfile', async () => {
     const dir = await root({
       'Cargo.toml': '[workspace]\nmembers = ["crates/*"]\nexclude = ["crates/old"]\n',

@@ -162,13 +162,18 @@ function bestAt(
   return { tool: found.t.tool, dir, source: best.source, locked }
 }
 
-/** The nearest package above `dir` whose manifest declares `dir` a workspace member. */
+/**
+ * The nearest package above `dir` whose manifest declares `dir` a workspace
+ * member, or whose workspace members could not be read.
+ */
 function workspaceRoot(profile: ProjectProfile, eco: EcosystemDef, dir: string): string | null {
   if (eco.workspace === undefined || dir === '.') return null
   for (let current = dirOf(dir); ; current = dirOf(current)) {
     const pkg = packageAt(profile, current)
     const members = pkg === undefined ? undefined : eco.workspace(pkg)
     const rel = current === '.' ? dir : dir.slice(current.length + 1)
+    // Unknown members: treat `dir` as one, as the nearest-above walk would.
+    if (members === null) return current
     if (members !== undefined && memberMatches(members, rel)) return current
     if (current === '.') return null
   }

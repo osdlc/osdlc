@@ -57,10 +57,10 @@ export interface InternalCollectOptions extends CollectOptions {
   probeObserver?: ((probe: ProbeRecord) => void) | undefined
 }
 
-const DEFAULT_CHAIN: readonly Readonly<ChainSegment>[] = Object.freeze([
-  Object.freeze({ label: 'runner', hint: 'The tool that runs the task.' }),
-  Object.freeze({ label: 'task', hint: 'The task name.' }),
-])
+const DEFAULT_CHAIN: readonly ChainSegment[] = [
+  { label: 'runner', hint: 'The tool that runs the task.' },
+  { label: 'task', hint: 'The task name.' },
+]
 
 /** The runners one call runs, in registry order, after `only` and `exclude`. */
 export function selectRunners(
@@ -205,8 +205,9 @@ function reportHead(
 ): Pick<RunnerReport, 'runner' | 'chain' | 'brand' | 'tool'> {
   return {
     runner: spec.id,
-    // A copy, so a caller editing one report's chain changes no other report.
-    chain: spec.role.chain ?? DEFAULT_CHAIN.map((segment) => ({ ...segment })),
+    // A copy of every chain, so a caller editing one report's chain changes
+    // no other report and no later collect.
+    chain: (spec.role.chain ?? DEFAULT_CHAIN).map((segment) => ({ ...segment })),
     ...(spec.role.brand ? { brand: spec.role.brand as RunnerBrand } : {}),
     ...(spec.binary ? { tool: toolStatus(spec.binary, which) } : {}),
   }

@@ -3,12 +3,11 @@
  * runners that read YAML: `docker-compose.ts`, `github-actions.ts`, and
  * `go-task.ts`.
  *
- * WHY IT IS HAND-WRITTEN. This package takes no YAML dependency (see
- * `package.json`, and the note in `go-task.ts`): the monorepo's `yaml` and
- * `yaml-splice` packages are span-preserving editors for known top-level
- * fields, not general parsers, and neither belongs in a runner that reads
- * arbitrary repositories on someone else's disk. So each runner reads the
- * one mapping level it cares about out of raw text. What they all needed was
+ * WHY IT IS HAND-WRITTEN. These runners read one mapping level out of
+ * arbitrary repositories, and keep going (with a diagnostic) past YAML a
+ * parser would reject or that uses anchors and merge keys. A full parse would
+ * fail the whole file instead. `pnpm-workspace.yaml`, whose one list must be
+ * read exactly, goes through the `yaml` parser instead. What they all needed was
  * the same lexical layer underneath: strip comments, notice quoting, find the
  * indent, tell a block scalar's body from structure, and stop at a document
  * separator. That layer is this module.

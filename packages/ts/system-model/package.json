@@ -139,7 +139,8 @@
   "dependencies": {
     "@osdlc/command-seam": "workspace:^",
     "@osdlc/etag-write": "workspace:^",
-    "smol-toml": "catalog:"
+    "smol-toml": "catalog:",
+    "yaml": "catalog:"
   },
   "devDependencies": {
     "@osdlc/prettier-config": "workspace:^",

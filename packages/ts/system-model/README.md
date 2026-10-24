@@ -266,9 +266,11 @@ The package manager is chosen at the package itself, then at the workspace
 root that lists it as a member, and so on up: the first package whose
 lockfile, marker or pin chooses one wins. Members come from
 `package.json#workspaces`, `pnpm-workspace.yaml` `packages`, and cargo's
-`[workspace] members` less `exclude`; a `!` glob removes a member. A nested
+`[workspace] members` less `exclude`; a `!` glob removes a member. A
+`pnpm-workspace.yaml` that lists no package leaves the members unknown, and
+every package below it counts as one. A nested
 package outside every workspace does not take the root's lockfile. An
-ecosystem with no workspace notion (python, go, ruby, ...) takes the nearest
+ecosystem with no `workspace` hook (python, go, ruby, ...) takes the nearest
 package above. Within a package the most direct evidence wins, then the
 ecosystem's order (node: bun, pnpm, yarn, npm). With nothing found, node falls
 back to `npm install`.
