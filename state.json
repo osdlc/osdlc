@@ -49,9 +49,9 @@
       "line": 135,
       "title": "workspace members with no lockfile each get their own install",
       "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365462110",
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "e46a1997bba8c5323423e4b59d27d3a17ceaa7e9"
     },
     {
       "id": "r1-5",
