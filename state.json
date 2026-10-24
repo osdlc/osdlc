@@ -137,9 +137,9 @@
       "line": 171,
       "title": "snapshot rebuilt once per tool with detect or describe",
       "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365462137",
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "38b29eb469ebeec5810d2f3017fb9e2190085030"
     },
     {
       "id": "r2-1",
