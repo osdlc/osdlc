@@ -9,8 +9,8 @@ import {
   sections,
 } from '../../src/core/grammar.js'
 
-// grammar.ts's combinators build the inert spec IR a contract body is made of. Each case
-// shows exactly what a combinator constructs — the shape the structure plane consumes.
+// grammar.ts's combinators build the plain spec objects a contract body is made of. Each case
+// shows exactly what a combinator builds, which is what the structure plane reads.
 
 describe('the body-grammar combinators build tagged spec data', () => {
   test('section(name) → a required section spec', () => {

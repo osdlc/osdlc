@@ -42,7 +42,7 @@ function sectionNode(
   return { name, depth: 2, pos: { line, col: 1 }, sections: sub, blocks, anchors: [] }
 }
 
-// ── Documentation-leading cases: section `requires`, document `forbids` ──────────────────
+// ── Examples: section `requires`, document `forbids` ─────────────────────────────────────
 
 describe('requires — a section must CONTAIN a phrase', () => {
   const c = contract({
@@ -88,8 +88,8 @@ describe('textRule — a document must NOT contain a phrase (forbids)', () => {
     expect(f.id).toBe('text/forbids/doc/mf4oln')
     expect(f.level).toBe('error')
     expect(f.message).toBe('forbidden phrase "TODO" present')
-    // The whole-document scope now uses the projected tree, reconstructing text from
-    // `tree.root` at real source lines, so the forbid pins at the exact offending line (line 3).
+    // The whole-document scope builds its text from `tree.root` with real source lines, so the
+    // finding is on the offending line (line 3).
     expect(f.pos?.line).toBe(3)
   })
 })
@@ -112,7 +112,7 @@ describe('forbids — a section must NOT contain a phrase, reported at the sourc
   })
 })
 
-// ── : counts, regex, normalize, ignoreCase, note, level ──────────────────────────────
+// ── counts, regex, normalize, ignoreCase, note, level ────────────────────────────────
 
 describe('count bounds', () => {
   it('a below-min count is a text/count finding at the heading', () => {
@@ -172,7 +172,7 @@ describe('note and level flow onto the finding', () => {
   })
 })
 
-// ── : stable per-entry id; distinct entries are distinct findings ─────────────────────
+// ── stable per-entry id; distinct entries are distinct findings ───────────────────────
 
 describe('per-entry id', () => {
   it('two distinct requirements on one section are two distinct findings', () => {
@@ -191,7 +191,7 @@ describe('per-entry id', () => {
   })
 })
 
-// ── : requires purity — the absence form is forbids ───────────────────────────────────
+// ── `requires` rejects the absence form, which is `forbids` ────────────────────────────
 
 describe('requires purity', () => {
   it('rejects max:0 at construction (use forbids)', () => {

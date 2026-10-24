@@ -1,9 +1,7 @@
 /**
- * Unit tests for the one-pass validate + finding assembly.
- *
- * These exercise the assembly directly — the deterministic cross-plane sort, the
- * `doc`-iff-no-error gate, `read()` / `ContractError`, a `docRule` finding, and the
- * pre-parsed `DocTree` overload — independent of the corpus fixtures.
+ * Unit tests for `validate` and how it collects findings: the sort across planes, `doc` being
+ * set only when there is no error, `read()` and `ContractError`, a `docRule` finding, and
+ * passing an already parsed `DocTree`.
  */
 import { describe, expect, test } from 'vitest'
 import { z } from 'zod'
@@ -32,7 +30,7 @@ function fourPlaneContract() {
       section('Items', { content: list({ everyItem: 'checkbox', minItems: 1 }) }),
     ]),
     rules: [
-      // A cross-plane docRule that always fires (no pos ⇒ document-level, sorts first).
+      // A docRule that always fires. It has no pos, so it is document-level and sorts first.
       docRule('doc/always', (_doc, ctx) => [
         ctx.finding({ id: 'doc/always', message: 'the always-on cross-plane rule' }),
       ]),
@@ -60,9 +58,9 @@ describe('deterministic cross-plane finding order', () => {
     const { findings } = fourPlaneContract().validate(source, { path: PATH })
     const shape = findings.map((f) => ({ id: f.id, line: f.pos?.line }))
 
-    // doc/always has no pos ⇒ sorts FIRST (document-level, as line 0); then the line-3
-    // frontmatter finding; then the line-12 content finding. Plane order only breaks ties
-    // on the same line — here the lines already order them.
+    // doc/always has no pos, so it sorts first (as line 0). Then the line-3 frontmatter
+    // finding, then the line-12 content finding. Plane order only breaks ties on the same
+    // line, and here the lines already differ.
     expect(shape).toEqual([
       { id: 'doc/always', line: undefined },
       { id: 'frontmatter/enum', line: 3 },
@@ -71,9 +69,9 @@ describe('deterministic cross-plane finding order', () => {
   })
 
   test('on a fully-tied pos, plane order breaks the tie (structure before rule)', () => {
-    // A doc whose only section "S" sits at line 1, col 1, with a missing required anchor
-    // (a structure finding pinned to the section pos) plus a docRule that emits at the SAME
-    // pos: line and col tie, so the plane order (structure → rule) decides.
+    // A doc whose only section "S" is at line 1, col 1 and lacks a required anchor (a
+    // structure finding at the section pos), plus a docRule that emits at the same pos. Line
+    // and col tie, so the plane order (structure, then rule) decides.
     const c = contract({
       body: sections({}, [section('S', { anchor: 'x' })]),
       rules: [
@@ -169,9 +167,9 @@ describe('docRule execution', () => {
     expect(rule).toBeDefined()
     expect(rule?.level).toBe('error') // registered default (RULE_LEVELS / fallback)
     expect(rule?.path).toBe(PATH) // the engine stamps the document path
-    expect(rule?.pos).toBeUndefined() // no pos supplied ⇒ document-level
+    expect(rule?.pos).toBeUndefined() // no pos, so document-level
 
-    // An open task short-circuits the rule — no finding.
+    // For an open task the rule returns early, with no finding.
     const open = c.validate(
       ['---', 'status: open', '---', '', '## Goal', '', 'do the thing'].join('\n'),
       { path: PATH },
@@ -190,7 +188,7 @@ describe('the pre-parsed DocTree overload', () => {
 
     const ids = (r: { findings: Finding[] }) => r.findings.map((f) => f.id)
     expect(ids(fromTree)).toEqual(ids(fromString))
-    // and the returned projection is the very tree we passed in.
+    // and the returned tree is the same object we passed in.
     expect(fromTree.tree).toBe(tree)
   })
 })

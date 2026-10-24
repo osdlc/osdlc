@@ -1,11 +1,10 @@
 /**
- * Peer test for the corpus runner's glob matching (`compileMatcher`).
+ * Tests of the corpus runner's glob matching (`compileMatcher`).
  *
- * The contract this pins, as input → exact output: a single `**\/`-prefixed include glob matches
- * a file at ANY depth — the run root AND nested directories alike — so a config needs only one
- * entry per rule (no separate bare `X-*.md` for root-level files). It drives the runner's own
- * matcher, so it fails loudly if `**\/` ever stops spanning the root (an opts change or a
- * picomatch upgrade), rather than silently un-routing root-level files.
+ * One include glob that starts with `**\/` matches a file at any depth, at the run root and in
+ * nested folders. So a config needs one entry per rule, with no separate `X-*.md` for files at
+ * the root. The test uses the runner's own matcher, so it fails if `**\/` stops matching the
+ * root (after an options change or a picomatch upgrade).
  */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -31,7 +30,7 @@ afterAll(() => {
   for (const dir of made) rmSync(dir, { recursive: true, force: true })
 })
 
-/** Lay down a tiny corpus in a fresh temp dir, removed after the suite, and return its root. */
+/** Writes a small corpus to a new temp folder, removed after the suite, and returns its root. */
 function vault(files: Record<string, string>): string {
   const root = mkdtempSync(join(tmpdir(), 'mc-corpus-'))
   made.push(root)
@@ -65,13 +64,13 @@ describe('compileMatcher — a single `**/`-glob spans root and nested', () => {
 })
 
 /**
- * `runCorpus`'s run stats — the per-run counts the CLI renders as a summary. The contract,
- * as input → exact counts: every walked file is `filesScanned`; a file routed to a rule is
- * `filesMatched` (and increments that rule's `matchedByRule[i]`, parallel to `config.rules`);
- * everything else (matching no rule, or removed by the global pre-filter) is `filesUnmatched`.
+ * `runCorpus`'s run stats, the counts the CLI prints as a summary. Every walked file counts in
+ * `filesScanned`. A file sent to a rule counts in `filesMatched` and in that rule's
+ * `matchedByRule[i]` (indexed like `config.rules`). Every other file (it matches no rule, or the
+ * global filter removed it) counts in `filesUnmatched`.
  */
 describe('runCorpus — run stats', () => {
-  /** A contract that accepts everything (no findings) — stats counting is independent of finding content. */
+  /** A contract that accepts everything. The stats do not depend on findings. */
   const acceptAll: Contract = {
     validate: () => ({ findings: [] as Finding[], tree: {} as DocTree }),
     read: () => {
@@ -80,7 +79,7 @@ describe('runCorpus — run stats', () => {
   } as Contract
 
   it('counts scanned / matched / unmatched and per-rule matches, parallel to config.rules', () => {
-    // 5 files: 2 tasks, 1 capability, and 2 that no rule routes (a README and a note).
+    // 5 files: 2 tasks, 1 capability, and 2 that match no rule (a README and a note).
     const root = vault({
       'T-0001.md': '# task one',
       'T-0002.md': '# task two',
@@ -102,7 +101,7 @@ describe('runCorpus — run stats', () => {
     expect(stats.filesUnmatched).toBe(2) // README.md + notes.txt match no rule
     expect(stats.matchedByRule).toEqual([2, 1]) // [task, capability], parallel to config.rules
 
-    // The invariants the summary leans on.
+    // The totals the summary relies on.
     expect(stats.matchedByRule.length).toBe(config.rules.length)
     expect(stats.matchedByRule.reduce((a, b) => a + b, 0)).toBe(stats.filesMatched)
     expect(stats.filesScanned - stats.filesMatched).toBe(stats.filesUnmatched)
@@ -136,7 +135,7 @@ describe('runCorpus — run stats', () => {
     expect(stats.filesScanned).toBe(1)
     expect(stats.filesMatched).toBe(0)
     expect(stats.filesUnmatched).toBe(1)
-    expect(stats.matchedByRule).toEqual([0]) // the named rule routed nothing
+    expect(stats.matchedByRule).toEqual([0]) // the named rule matched nothing
   })
 
   it('a file removed by the global --exclude pre-filter counts as unmatched, not scanned-away', () => {
@@ -151,28 +150,26 @@ describe('runCorpus — run stats', () => {
     const { stats } = runCorpus(config, { cwd: root, exclude: ['**/T-0002.md'] })
 
     expect(stats.filesScanned).toBe(2) // both files were walked
-    expect(stats.filesMatched).toBe(1) // only the non-excluded one routed
-    expect(stats.filesUnmatched).toBe(1) // the pre-filtered file is unmatched
+    expect(stats.filesMatched).toBe(1) // only the one not excluded matched
+    expect(stats.filesUnmatched).toBe(1) // the filtered-out file is unmatched
     expect(stats.matchedByRule).toEqual([1])
   })
 })
 
 /**
- * `runCorpus` collects the findings each document's contract emits into ONE flat run-level
- * `findings` array, then derives the run `exitCode` from those findings' levels. The contract,
- * as input → exact output: route a `docRule`-bearing contract — a rule that sees the whole typed
- * doc — across a multi-document corpus, and every doc's docRule findings land in the same run
- * `findings`, each stamped with the document it came from (`ctx.path`, the POSIX-relative file
- * path). That cross-document stamping is how aggregation is observable. The exit code follows
- * finding level: any `error` ⇒ `1`; a `warn`-only run stays `0` (a warn never bumps the code).
+ * `runCorpus` collects every document's findings into one flat `findings` array, and sets the
+ * run's `exitCode` from their levels. The tests run a contract with `docRule`s (rules that see
+ * the whole typed doc) over several documents. Every doc's findings end up in the same array,
+ * each with the path of its document (`ctx.path`, relative, with `/` separators). Any `error`
+ * gives exit code `1`. A run with only `warn` findings exits `0`.
  */
 describe('runCorpus — docRule findings aggregate across documents into findings / exitCode', () => {
   /**
-   * A tiny "doc" contract with TWO whole-document docRules over a body of two optional sections.
-   * `doc/needs-summary` (error — the default level) fires when there is no `## Summary`;
-   * `doc/has-owner` (warn — explicit level) fires when there is no `## Owner`. No `frontmatter`
-   * key, so the ONLY findings a document can produce are these two docRules — which keeps the
-   * aggregation assertions exact (every finding below is one of these two, from one of the docs).
+   * A small contract with two docRules over a body of two optional sections.
+   * `doc/needs-summary` (error, the default level) fires when there is no `## Summary`.
+   * `doc/has-owner` (warn, set explicitly) fires when there is no `## Owner`. There is no
+   * `frontmatter` key, so these two rules are the only findings a document can produce. That
+   * keeps the checks below exact.
    */
   function docContract() {
     return contract({
@@ -182,9 +179,9 @@ describe('runCorpus — docRule findings aggregate across documents into finding
       ]),
       rules: [
         docRule('doc/needs-summary', (doc, ctx) => {
-          // Mirror fixture 16's cast: the typed body exposes `section(name)` (truthy when the
-          // section is present, `undefined` when absent). No `pos` ⇒ a whole-document finding,
-          // which the engine stamps with `ctx.path`.
+          // The same cast as fixture 16: the typed body has `section(name)`, which returns
+          // `undefined` when the section is absent. With no `pos`, the finding is for the whole
+          // document, and the engine sets its path from `ctx.path`.
           const body = doc.body as { section(name: string): unknown }
           return body.section('Summary')
             ? []
@@ -203,7 +200,7 @@ describe('runCorpus — docRule findings aggregate across documents into finding
                 ctx.finding({
                   id: 'doc/has-owner',
                   message: 'a doc should name an ## Owner',
-                  level: 'warn', // explicit warn — the only thing keeping the exit code off 1 in case 2
+                  level: 'warn', // warn, so case 2 exits 0
                 }),
               ]
         }),
@@ -211,16 +208,16 @@ describe('runCorpus — docRule findings aggregate across documents into finding
     })
   }
 
-  /** One rule routing every `.md` in the tree through the doc contract. */
+  /** One rule that sends every `.md` in the tree to the doc contract. */
   const config: CorpusConfig = {
     rules: [{ include: ['**/*.md'], contract: docContract(), name: 'doc' }],
   }
 
   it('aggregates BOTH docRules across BOTH documents; the error-level rule sets exitCode 1', () => {
-    // Two docs, each with only a `## Notes` body (all-H2, so the heading-depth scan stays quiet) —
-    // neither has a Summary or an Owner, so on each doc BOTH rules fire. The walk is deterministic
-    // (entries sorted ascending), so doc-a is validated before doc-b; within a doc the two findings
-    // are whole-document (line 0) and break the tie by emission order, i.e. rule-array order.
+    // Two docs, each with only a `## Notes` section (all H2, so there is no heading-depth-jump).
+    // Neither has a Summary or an Owner, so both rules fire on each doc. The walk is sorted, so
+    // doc-a comes before doc-b. Within a doc both findings are at line 0, so they stay in the
+    // order the rules are listed.
     const root = vault({
       'doc-a.md': '## Notes\n\nnotes for a\n',
       'doc-b.md': '## Notes\n\nnotes for b\n',
@@ -228,8 +225,8 @@ describe('runCorpus — docRule findings aggregate across documents into finding
 
     const { findings, exitCode } = runCorpus(config, { cwd: root })
 
-    // Exact, ordered shape: 4 findings = 2 rules × 2 docs, each stamped with its source path.
-    // needs-summary precedes has-owner within a doc; doc-a precedes doc-b across docs.
+    // 4 findings (2 rules × 2 docs), each with its document's path. needs-summary comes before
+    // has-owner within a doc, and doc-a comes before doc-b.
     expect(findings.map((f) => ({ id: f.id, level: f.level, path: f.path }))).toEqual([
       { id: 'doc/needs-summary', level: 'error', path: 'doc-a.md' },
       { id: 'doc/has-owner', level: 'warn', path: 'doc-a.md' },
@@ -237,20 +234,19 @@ describe('runCorpus — docRule findings aggregate across documents into finding
       { id: 'doc/has-owner', level: 'warn', path: 'doc-b.md' },
     ])
 
-    // Cross-document: the run's findings carry BOTH documents' paths (aggregation across files).
+    // The run's findings include both documents' paths.
     expect(new Set(findings.map((f) => f.path))).toEqual(new Set(['doc-a.md', 'doc-b.md']))
-    // Multiple docRules: BOTH rule ids contributed findings to the run.
+    // Both rule ids appear in the run's findings.
     expect(new Set(findings.map((f) => f.id))).toEqual(
       new Set(['doc/needs-summary', 'doc/has-owner']),
     )
-    // An error-level finding exists somewhere in the corpus ⇒ the run exits 1.
+    // There is an error-level finding, so the run exits 1.
     expect(exitCode).toBe(1)
   })
 
   it('a warn-only run leaves exitCode 0 — a warn-level docRule does NOT bump the exit code', () => {
-    // Each doc now HAS a `## Summary` (the error rule is satisfied) but still lacks `## Owner`
-    // (the warn rule fires). So the run's only findings are warn-level — and yet aggregation
-    // still spans both documents.
+    // Each doc has a `## Summary`, so the error rule passes. Each still lacks `## Owner`, so the
+    // warn rule fires. The run's only findings are warnings, and they come from both documents.
     const root = vault({
       'doc-a.md': '## Summary\n\nsummary for a\n',
       'doc-b.md': '## Summary\n\nsummary for b\n',
@@ -262,29 +258,26 @@ describe('runCorpus — docRule findings aggregate across documents into finding
       { id: 'doc/has-owner', level: 'warn', path: 'doc-a.md' },
       { id: 'doc/has-owner', level: 'warn', path: 'doc-b.md' },
     ])
-    // No error-level finding anywhere ⇒ the exit code stays 0 despite the warns.
+    // No error-level finding, so the exit code is 0 despite the warnings.
     expect(findings.every((f) => f.level === 'warn')).toBe(true)
     expect(exitCode).toBe(0)
   })
 })
 
 /**
- * Cross-document referential integrity over a vault: a `docRule` that pairs
- * `extractVaultRefs` (the dialect's wikilink recognizer) with a known-page set to emit a `warn`-level
- * finding for a wikilink whose TARGET PAGE does not exist anywhere in the vault — a dangling link.
+ * Links between documents: a `docRule` uses `extractVaultRefs` (the test's wikilink helper) and
+ * a set of known pages to emit a `warn` finding for a wikilink whose target page does not exist.
  *
- * `runCorpus` validates each document independently, so there is no built-in vault-wide view; the
- * docRule closes over the set of page stems the test itself lays down (it constructs the vault, so it
- * knows them). This is the *documented composition* over the existing primitives — NOT first-class
- * vault-wide validation, which leaves out of scope. The contract, as input → output: route a
- * vault through this rule and a link to a missing page surfaces as one `warn` finding stamped with the
- * linking document's path, while a link to a real page surfaces nothing — and a warn never bumps the
- * exit code off 0.
+ * `runCorpus` validates each document on its own, so it has no view of the whole folder. The
+ * docRule uses the set of page names the test writes. This shows how to build the check from
+ * existing parts. It is not built-in folder-wide validation, which is out of scope. A link to a
+ * missing page gives one `warn` finding with the linking document's path. A link to a real page
+ * gives nothing. A warning does not change the exit code from 0.
  */
 describe('runCorpus — a cross-document docRule warns on a wikilink whose target page is missing', () => {
   /**
-   * The vault's existing pages, by `.md` stem. The docRule closes over this set — the test builds the
-   * vault, so it knows the page names. A wikilink whose `target` is not in here is a dangling link.
+   * The folder's pages, by `.md` stem. The test writes the folder, so it knows the page names.
+   * A wikilink whose `target` is not in this set is a broken link.
    */
   const knownPages = new Set(['index', 'exists'])
 
@@ -299,20 +292,20 @@ describe('runCorpus — a cross-document docRule warns on a wikilink whose targe
             section(name: string): { text(scope: 'all'): string } | undefined
             unknown: { text(scope: 'all'): string }[]
           }
-          // The whole doc's flattened section text — the `[[target]]` tokens survive flattening.
+          // The whole doc's flattened section text. The `[[target]]` tokens are kept when flattening.
           const text = [
             body.section('Links')?.text('all') ?? '',
             ...body.unknown.map((s) => s.text('all')),
           ].join('\n')
 
           return extractVaultRefs(text)
-            .filter((ref) => ref.kind === 'wikilink' && ref.target !== '') // ignore pure `#`/`#^` in-doc fragments
+            .filter((ref) => ref.kind === 'wikilink' && ref.target !== '') // ignore `#` / `#^` links within the doc
             .filter((ref) => !knownPages.has(ref.target)) // the target page is not in the vault
             .map((ref) =>
               ctx.finding({
                 id: 'vault/wikilink-target-exists',
                 message: `wikilink target [[${ref.target}]] matches no page in the vault`,
-                level: 'warn', // a dangling cross-doc link warns; it does not block
+                level: 'warn', // a broken link warns and does not fail the run
               }),
             )
         }),
@@ -320,14 +313,14 @@ describe('runCorpus — a cross-document docRule warns on a wikilink whose targe
     })
   }
 
-  /** One rule routing every `.md` in the vault through the wikilink-existence contract. */
+  /** One rule that sends every `.md` in the folder to the wikilink contract. */
   const config: CorpusConfig = {
     rules: [{ include: ['**/*.md'], contract: vaultLinkContract(), name: 'vault' }],
   }
 
   it('emits exactly one warn finding for the dangling target; the existing target produces none; exitCode stays 0', () => {
-    // `index.md` links to one REAL page (`exists`) and one MISSING page (`ghost`); `exists.md` is
-    // present, there is NO `ghost.md`. All-H2 so the heading-depth scan stays quiet.
+    // `index.md` links to one real page (`exists`) and one missing page (`ghost`). There is an
+    // `exists.md` and no `ghost.md`. All headings are H2, so there is no heading-depth-jump.
     const root = vault({
       'index.md': '## Links\n\nSee [[exists]] and also [[ghost]] for more.\n',
       'exists.md': '## Links\n\nNothing dangling on this page.\n',
@@ -335,37 +328,32 @@ describe('runCorpus — a cross-document docRule warns on a wikilink whose targe
 
     const { findings, exitCode } = runCorpus(config, { cwd: root })
 
-    // Exact shape: the ONLY finding is the dangling `ghost` link, stamped with the linking doc's path.
+    // The only finding is the broken `ghost` link, with the linking doc's path.
     expect(findings.map((f) => ({ id: f.id, level: f.level, path: f.path }))).toEqual([
       { id: 'vault/wikilink-target-exists', level: 'warn', path: 'index.md' },
     ])
-    // The existing-target link (`[[exists]]`) produced NO finding — it resolves to a real page.
+    // The link to a real page (`[[exists]]`) gives no finding.
     expect(findings.filter((f) => f.message.includes('[[exists]]'))).toEqual([])
     expect(findings[0]?.message).toContain('[[ghost]]')
-    // A warn-only run never bumps the exit code off 0.
+    // A run with only warnings exits 0.
     expect(exitCode).toBe(0)
   })
 })
 
 /**
- * Routing precedence — the runner's core promise. `runCorpus` is a FIRST-match
- * router: for each file it picks the FIRST rule whose `include` matches and whose per-rule
- * `exclude` does not, validates the file against THAT rule's contract only, and moves on.
+ * Rule order. For each file, `runCorpus` picks the first rule whose `include` matches and whose
+ * own `exclude` does not. It validates the file against that rule's contract only.
  *
- * The three describes below pin that promise as input → exact output. Each uses a
- * `tagContract(tag)` whose single `docRule` UNCONDITIONALLY emits exactly one finding with
- * the contract-unique id `rule/<tag>` — so *which contract validated a file* is observable
- * from the finding's id, and *how many times* it was validated is observable from the finding
- * count. (No `pos` ⇒ a whole-document finding, which the engine stamps with `ctx.path`, the
- * POSIX-relative file path — so each finding also names the file it came from.) The bodies are
- * all-H2 and `allowUnknown`, so the only finding any document can produce is its rule's tag —
- * which keeps every `toEqual` below exact.
+ * The three `describe`s below check this. Each uses `tagContract(tag)`, whose one `docRule`
+ * always emits one finding with the id `rule/<tag>`. The finding's id shows which contract
+ * validated a file, and the finding count shows how many times. The finding has no `pos`, so
+ * the engine sets its path from `ctx.path`, and each finding names its file. The bodies are all
+ * H2 and `allowUnknown`, so a document's only finding is its rule's tag.
  */
 
 /**
- * A trivially-distinguishable contract: its lone `docRule` always fires, emitting one
- * `rule/<tag>` finding for every document routed to it. The `tag` is the only signal — route a
- * file here and you get exactly one finding whose id names this contract.
+ * A contract whose one `docRule` always fires, emitting one `rule/<tag>` finding for every
+ * document sent to it. The id names the contract.
  */
 function tagContract(tag: string): Contract {
   return contract({
@@ -382,9 +370,8 @@ function tagContract(tag: string): Contract {
 
 describe('runCorpus — first-match precedence: among overlapping rules the earliest wins', () => {
   it("routes a file matching BOTH rules to the FIRST rule's contract — exactly once", () => {
-    // Two rules whose `include` globs OVERLAP on `A-0001.md`: rule 0 matches `A-*.md`, rule 1
-    // is a `**/*.md` catch-all that ALSO matches it. The file is validated by rule 0's contract
-    // only — given these two overlapping rules and this one file, you get exactly this one finding.
+    // Both rules' `include` globs match `A-0001.md`: rule 0 is `A-*.md` and rule 1 is a
+    // `**/*.md` catch-all. Only rule 0's contract validates the file.
     const root = vault({ 'A-0001.md': '## Body\n\nrouted content\n' })
     const config: CorpusConfig = {
       rules: [
@@ -395,15 +382,15 @@ describe('runCorpus — first-match precedence: among overlapping rules the earl
 
     const { findings } = runCorpus(config, { cwd: root })
 
-    // The ONLY finding is from rule 0's contract (`rule/A`) — rule 1's `rule/B` never ran.
+    // The only finding is from rule 0's contract (`rule/A`). Rule 1's `rule/B` did not run.
     expect(findings.map((f) => ({ id: f.id, path: f.path }))).toEqual([
       { id: 'rule/A', path: 'A-0001.md' },
     ])
   })
 
   it('attributes the match to rule index 0 (not 1) and reports the file exactly once', () => {
-    // Same overlap, asserted through the stats: the earlier rule claims the file, so the file is
-    // counted under index 0; the later overlapping rule sees nothing, and there is no double-report.
+    // The same overlap, checked through the stats. The earlier rule takes the file, so it is
+    // counted under index 0. The later rule gets nothing, and the file is reported once.
     const root = vault({ 'A-0001.md': '## Body\n\nrouted content\n' })
     const config: CorpusConfig = {
       rules: [
@@ -414,7 +401,7 @@ describe('runCorpus — first-match precedence: among overlapping rules the earl
 
     const { findings, stats } = runCorpus(config, { cwd: root })
 
-    expect(stats.matchedByRule).toEqual([1, 0]) // index 0 claimed it; index 1 got nothing
+    expect(stats.matchedByRule).toEqual([1, 0]) // index 0 took it; index 1 got nothing
     expect(stats.filesMatched).toBe(1)
     expect(findings.length).toBe(1) // validated once, not once per matching rule
   })
@@ -422,9 +409,9 @@ describe('runCorpus — first-match precedence: among overlapping rules the earl
 
 describe('runCorpus — a trailing catch-all rule fires only for files no earlier rule matched', () => {
   it('routes `A-*.md` to the specific rule and everything else to the trailing catch-all', () => {
-    // Rule 0 is specific (`A-*.md`); rule 1 is a trailing `**/*.md` catch-all. `A-0001.md` matches
-    // both but is claimed by rule 0; `notes.md` matches ONLY the catch-all. The walk is sorted
-    // ascending, so `A-0001.md` (0x41) precedes `notes.md` (0x6e).
+    // Rule 0 is specific (`A-*.md`). Rule 1 is a `**/*.md` catch-all at the end. `A-0001.md`
+    // matches both and goes to rule 0. `notes.md` matches only the catch-all. The walk is sorted,
+    // so `A-0001.md` (0x41) comes before `notes.md` (0x6e).
     const root = vault({
       'A-0001.md': '## Body\n\na task\n',
       'notes.md': '## Body\n\nloose notes\n',
@@ -438,7 +425,7 @@ describe('runCorpus — a trailing catch-all rule fires only for files no earlie
 
     const { findings, stats } = runCorpus(config, { cwd: root })
 
-    // The catch-all fired ONLY for `notes.md`; `A-0001.md` went to the earlier specific rule.
+    // The catch-all fired only for `notes.md`. `A-0001.md` went to the earlier rule.
     expect(findings.map((f) => ({ id: f.id, path: f.path }))).toEqual([
       { id: 'rule/A', path: 'A-0001.md' },
       { id: 'rule/catchall', path: 'notes.md' },
@@ -451,10 +438,10 @@ describe('runCorpus — a trailing catch-all rule fires only for files no earlie
 
 describe('runCorpus — a per-rule `exclude` drops a file from that rule', () => {
   it('falls a per-rule-excluded file THROUGH to the next matching rule', () => {
-    // Rule 0 includes every `.md` but EXCLUDES `skip-*.md`; rule 1 is a plain `**/*.md` catch-all.
-    // `keep.md` matches rule 0 (not excluded) → rule 0. `skip-me.md` matches rule 0's include but
-    // is removed by its per-rule exclude, so it falls through to rule 1. Walk order: `keep.md`
-    // (0x6b) precedes `skip-me.md` (0x73).
+    // Rule 0 includes every `.md` but excludes `skip-*.md`. Rule 1 is a `**/*.md` catch-all.
+    // `keep.md` goes to rule 0. `skip-me.md` matches rule 0's include, but rule 0's exclude
+    // removes it, so it goes to rule 1. In walk order `keep.md` (0x6b) comes before
+    // `skip-me.md` (0x73).
     const root = vault({
       'keep.md': '## Body\n\nkept by rule 0\n',
       'skip-me.md': '## Body\n\nexcluded from rule 0\n',
@@ -473,7 +460,7 @@ describe('runCorpus — a per-rule `exclude` drops a file from that rule', () =>
 
     const { findings, stats } = runCorpus(config, { cwd: root })
 
-    // `keep.md` → rule 0's contract; `skip-me.md`, dropped from rule 0 by its exclude, → rule 1's.
+    // `keep.md` → rule 0's contract. `skip-me.md`, excluded from rule 0, → rule 1's.
     expect(findings.map((f) => ({ id: f.id, path: f.path }))).toEqual([
       { id: 'rule/A', path: 'keep.md' },
       { id: 'rule/B', path: 'skip-me.md' },
@@ -483,8 +470,8 @@ describe('runCorpus — a per-rule `exclude` drops a file from that rule', () =>
   })
 
   it('skips a per-rule-excluded file entirely when no later rule matches it', () => {
-    // Only one rule, which excludes `skip-*.md`. `skip-me.md` is dropped from rule 0 and there is
-    // no later rule to catch it, so it routes to nothing — scanned but unmatched, no finding.
+    // One rule, which excludes `skip-*.md`. `skip-me.md` is excluded and no later rule takes it,
+    // so it is scanned but unmatched, with no finding.
     const root = vault({
       'keep.md': '## Body\n\nkept by rule 0\n',
       'skip-me.md': '## Body\n\nexcluded, with no fallback\n',
@@ -506,8 +493,8 @@ describe('runCorpus — a per-rule `exclude` drops a file from that rule', () =>
       { id: 'rule/A', path: 'keep.md' },
     ])
     expect(stats.filesScanned).toBe(2) // both walked
-    expect(stats.filesMatched).toBe(1) // only `keep.md` routed
-    expect(stats.filesUnmatched).toBe(1) // `skip-me.md` dropped by the per-rule exclude, no fallback
+    expect(stats.filesMatched).toBe(1) // only `keep.md` matched
+    expect(stats.filesUnmatched).toBe(1) // `skip-me.md` excluded, and no later rule
     expect(stats.matchedByRule).toEqual([1])
   })
 })

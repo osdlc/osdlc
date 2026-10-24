@@ -21,7 +21,7 @@ const manifest = JSON.parse(
   readFileSync(join(CORPUS, 'corpus-manifest.json'), 'utf8'),
 ) as ManifestEntry[]
 
-/** The version 1 form of each corpus contract, from before the corpus moved to version 2. */
+/** The version 1 form of each corpus contract. */
 const v1Files = readdirSync(V1_DIR).filter((f) => f.endsWith('.contract.yaml'))
 
 const brief = (findings: { id: string; level: string; pos?: { line: number } }[]) =>

@@ -2,9 +2,9 @@ import { describe, expect, test } from 'vitest'
 
 import { code, list, maxWords, table } from '../../src/core/leaves.js'
 
-// leaves.ts builds a LeafSpec for each content kind: the `kind` drives the structure
-// plane's kind-gate, and `config` is stashed for the content plane to validate. Each case
-// shows the kind a builder declares and the config it carries.
+// leaves.ts builds a LeafSpec for each content kind. The structure plane checks the block
+// against `kind`, and the content plane validates against `config`. Each case shows the kind a
+// builder declares and the config it carries.
 
 describe('content-leaf builders → LeafSpec { kind, config }', () => {
   test('table(...) declares the `table` kind and carries its column config', () => {

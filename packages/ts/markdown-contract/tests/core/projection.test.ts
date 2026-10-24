@@ -1,18 +1,17 @@
 /**
- * Projection fixtures — `parse()` tested DIRECTLY.
- *
- * These exercise the projection in isolation (no contract / `validate()`). Coverage:
- *   - section nesting + names + positions (01 / 01a shapes); H1-as-title; H2 top-level;
+ * Tests of `parse()` on its own, with no contract or `validate()`. They cover:
+ *   - section nesting, names and positions (01 / 01a shapes); H1 as title; H2 as top level;
  *   - every block kind (table column/row/cell flattening + rowPos; list task `checked`;
  *     code verbatim; paragraph text);
  *   - frontmatter `data` + `lineForPath` (top-level + nested + array index);
  *   - `^block-id` anchor binding (block-level and section-level);
- *   - the three invariants: fence opacity, depth-jump attach + preserved depth, no hoisting;
- *   - `tree.mdast` is the retained raw tree;
+ *   - three invariants: headings inside fences are ignored, a skipped heading level attaches
+ *     directly and keeps its depth, and nested blocks are not hoisted;
+ *   - `tree.mdast` is the raw tree;
  *   - a parse → stringify → re-parse round-trip preserving the dialect constructs.
  *
- * It also reads a snapshot of a real document (under `tests/fixtures/projection/`) to show
- * the projection holds on a real file, not just inline snippets.
+ * It also parses a copy of a real document (under `tests/fixtures/projection/`), not only
+ * inline snippets.
  */
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -244,7 +243,7 @@ describe('frontmatter', () => {
   })
 })
 
-// ── ^block-id anchors (the addressing primitive — must work) ──────────────────────
+// ── ^block-id anchors ─────────────────────────────────────────────────────────────
 
 describe('^block-id anchors', () => {
   test('trailing anchor on a paragraph binds to that block (text stripped)', () => {
@@ -270,7 +269,7 @@ describe('^block-id anchors', () => {
     expect(table.rows).toEqual([
       ['1', 'x'],
       ['2', 'y'],
-    ]) // the ^components row is NOT a data row
+    ]) // the ^components row is not a data row
   })
 
   test('section-level anchor (no preceding block) lands on SectionNode.anchors', () => {
@@ -316,16 +315,16 @@ describe('invariant no depth-jump synthesis', () => {
     const t = parse(['## Decision', '', 'prose', '', '#### Components', '', 'more'].join('\n'))
     const decision = t.root.sections[0]!
     expect(decision.depth).toBe(2)
-    // The H4 is a DIRECT child of the H2 — no synthesized intermediate H3.
+    // The H4 is a direct child of the H2. No H3 is added between them.
     expect(decision.sections).toHaveLength(1)
     const components = decision.sections[0]!
     expect(components.name).toBe('Components')
-    expect(components.depth).toBe(4) // TRUE depth preserved → jump re-derivable downstream
+    expect(components.depth).toBe(4) // the real depth is kept, so callers can see the skipped level
     expect(components.pos.line).toBe(5)
   })
 
   test('no finding is emitted by the projection itself (findings are a later plane)', () => {
-    // The projection returns a DocTree only — there is no findings channel here.
+    // `parse()` returns only a DocTree. It reports no findings.
     const t = parse(['## A', '', '#### Deep'].join('\n'))
     expect(t).not.toHaveProperty('findings')
     expect(t.root.sections[0]!.sections[0]!.depth).toBe(4)
@@ -343,7 +342,7 @@ describe('invariant no hoisting', () => {
         '> | Engine | done   |',
       ].join('\n'),
     )
-    // The quoted table is nested in a blockquote → not hoisted to section.blocks.
+    // The table is inside a blockquote, so it is not added to section.blocks.
     expect(t.root.sections[0]!.blocks.filter((b) => b.kind === 'table')).toHaveLength(0)
   })
 
@@ -352,12 +351,12 @@ describe('invariant no hoisting', () => {
       ['## D', '', '- intro', '', '  | a | b |', '  | - | - |', '  | 1 | 2 |'].join('\n'),
     )
     expect(t.root.sections[0]!.blocks.filter((b) => b.kind === 'table')).toHaveLength(0)
-    // The list itself is heading-direct, so it IS a section block.
+    // The list is a direct block of the section, so it is in section.blocks.
     expect(t.root.sections[0]!.blocks.filter((b) => b.kind === 'list')).toHaveLength(1)
   })
 })
 
-// ── tree.mdast retained ──────────────────────────────────────────────────────────
+// ── tree.mdast ───────────────────────────────────────────────────────────────────
 
 describe('tree.mdast', () => {
   test('the raw layer-0 Root is retained and exposed', () => {
@@ -368,7 +367,7 @@ describe('tree.mdast', () => {
   })
 })
 
-// ── Dialect round-trip proof ────────────────────────────────────────────
+// ── Dialect round-trip ──────────────────────────────────────────────────
 
 describe('dialect round-trip', () => {
   const stringify = (md: string): string => {
@@ -414,8 +413,8 @@ describe('dialect round-trip', () => {
 
 describe('real document', () => {
   test('the capability doc projects: H1 title, H2 sections, frontmatter, ^summary', () => {
-    // A byte-for-byte snapshot of the capability doc, vendored package-local
-    // under tests/fixtures/projection/ so the suite stays self-contained.
+    // An exact copy of the capability doc, kept under tests/fixtures/projection/ so the
+    // suite needs no files outside the package.
     const path = fileURLToPath(
       new URL('../fixtures/projection/C-0004-dialect-aware-projection.md', import.meta.url),
     )

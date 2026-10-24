@@ -3,9 +3,9 @@ import { describe, expect, test } from 'vitest'
 import { splitFrontmatter } from '../../src/core/frontmatter.js'
 import { parse } from '../../src/core/projection.js'
 
-// frontmatter.ts owns the pure frontmatter/body split: given a source string, you get back
-// the fences-stripped inter-fence YAML text (`raw`, or null) and the verbatim body tail.
-// These cases double as the module's contract — each is an input and its exact output.
+// frontmatter.ts splits a source string into frontmatter and body. It returns the YAML text
+// between the fences (`raw`, or null) and the rest of the source unchanged as the body.
+// Each case is an input and its exact output.
 
 describe('splitFrontmatter — pure { raw, body } split', () => {
   test('a normal doc with frontmatter → fences-stripped raw + verbatim body', () => {

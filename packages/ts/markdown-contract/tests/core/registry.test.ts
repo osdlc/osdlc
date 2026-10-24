@@ -2,8 +2,8 @@ import { describe, expect, test } from 'vitest'
 
 import { defaultRegistry, makeCtx, STRUCTURE_LEVELS, withHint } from '../../src/core/registry.js'
 
-// registry.ts holds the finding-id → default-level table and the Ctx factory whose
-// finding() stamps the document path and fills the default level. Each case is the contract.
+// registry.ts holds the table of finding id → default level, and the Ctx factory. Its
+// finding() sets the document path and fills in the default level.
 
 describe('default finding levels', () => {
   test('structure ids default to error; heading-depth-jump is a warn', () => {

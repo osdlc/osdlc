@@ -1,9 +1,9 @@
 /**
- * Peer unit tests for `inferConfig` single-contract core. The gating truth is
- * `tests/fixtures/infer` (accept-by-construction + deterministic over real vaults); these add
- * direct, fast assertions over the model an in-memory vault produces — base-type frontmatter,
- * the required list, order detection, additionalProperties, naming, and the emitted YAML.
- * The emitted vocabulary is mcVersion 2.
+ * Unit tests for `inferConfig`. The main checks are the fixtures in `tests/fixtures/infer`
+ * (accept-by-construction and deterministic, over realistic folders). These add fast, direct
+ * checks on what a small temporary folder produces: frontmatter types, the required list, order
+ * detection, additionalProperties, naming, `--meta` splits, heading-case merges, and the
+ * emitted YAML, which is mcVersion 2.
  */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -18,7 +18,7 @@ import { compileContractObject } from '../../src/declarative/load.js'
 
 let root: string
 
-/** Write one `*.md` into the temp vault, creating intermediate dirs. */
+/** Writes one `*.md` into the temp folder, creating parent folders. */
 function file(rel: string, body: string): void {
   const abs = join(root, rel)
   mkdirSync(join(abs, '..'), { recursive: true })
@@ -79,7 +79,7 @@ describe('inferConfig — single-contract mode shape', () => {
     file('top.md', '## Summary\n\nx\n')
     file('nested/deep.md', '## Summary\n\ny\n')
     const r = inferConfig(root)
-    // Summary appears in every (both) files → required, present.
+    // Summary appears in both files, so it is required.
     expect(def(r.contracts[0]!).body?.sections).toEqual([{ section: 'Summary' }])
   })
 })
@@ -110,7 +110,7 @@ describe('inferConfig — order detection', () => {
     file('three.md', '## B\n\nx\n\n## C\n\nx\n')
     const body = def(inferConfig(root).contracts[0]!).body!
     expect(body.order).toBe('recognized-relative')
-    // A topological order: A before B before C (a linear extension of every file).
+    // An order that fits every file: A before B before C.
     expect(body.sections!.map((s) => s.section)).toEqual(['A', 'B', 'C'])
   })
 
@@ -130,9 +130,8 @@ describe('inferConfig — frontmatter required list + additionalProperties', () 
     expect(fm.additionalProperties).toBe(false)
     expect(fm.required).toEqual(['title'])
     expect(fm.properties!.title).toEqual({ type: 'string' })
-    // `status` is present in only one file → optional (off the required list); one example is
-    // below the default min-const-examples floor (3), so it is NOT pinned as a const — it
-    // falls to a plain string.
+    // `status` is in only one file, so it is optional. One example is below the default
+    // min-const-examples (3), so it does not become a const. It is a plain string.
     expect(fm.properties!.status).toEqual({ type: 'string' })
   })
 
@@ -141,7 +140,7 @@ describe('inferConfig — frontmatter required list + additionalProperties', () 
     file('two.md', '---\ntitle: B\n---\n\n## S\n\nx\n')
     const fm = def(inferConfig(root, { minConstExamples: 1 }).contracts[0]!).frontmatter!
     expect(fm.properties!.status).toEqual({ const: 'open' })
-    expect(fm.required).toEqual(['title']) // status stays optional-by-absence
+    expect(fm.required).toEqual(['title']) // status is optional because one file lacks it
   })
 
   it('picks the tightest type that admits every observed value (the value ladder)', () => {
@@ -245,7 +244,7 @@ describe('inferConfig — const string-length cap', () => {
   })
 
   it('excludes a field from enum when any observed value is over the cap', () => {
-    // 6 docs, 2 distinct values → would enum (2*2 < 6), but one value is over-length so rung 6 is skipped.
+    // 6 docs and 2 distinct values would give an enum (2*2 < 6), but one value is too long, so rung 6 is skipped.
     for (let i = 0; i < 6; i++) {
       const v = i % 2 === 0 ? 'short' : `"${'y'.repeat(70)}"`
       file(`g${i}.md`, `---\ntag: ${v}\n---\n\n## S\n\nx\n`)
@@ -310,8 +309,8 @@ describe('inferConfig — nullable fields (accept-by-construction)', () => {
   })
 
   it('a nullable field never pins const/enum (no v2 spelling) — it loosens to the base type', () => {
-    // Uniform "policy" across 3 docs would pin const, but the 4th doc's null forces the
-    // type-union spelling — and v2 cannot pair a const/enum base with "null".
+    // "policy" in 3 docs would give a const, but the 4th doc's null needs a type union, and v2
+    // cannot combine a const or enum with "null".
     for (const [i, v] of ['policy', 'policy', 'policy', 'null'].entries()) {
       file(`f${i}.md`, `---\nkind: ${v}\n---\n\n## S\n\nx\n`)
     }
@@ -356,12 +355,12 @@ describe('inferConfig — meta mode', () => {
     const r = inferConfig(root, { meta: true })
     const rootContract = r.contracts.find((c) => c.include.includes('*.md'))
     expect(rootContract).toBeDefined()
-    expect(rootContract!.include).toEqual(['*.md']) // direct-only, never **/*.md
+    expect(rootContract!.include).toEqual(['*.md']) // direct children only, never **/*.md
     expect(includes(r.contracts)['guides']).toEqual(['guides/**/*.md'])
   })
 
   it('warns (does not nest) for a file stranded above a depth ≥ 2 cut', () => {
-    file('api/overview.md', '## Overview\n\nx\n') // depth 1 — above the depth-2 cut
+    file('api/overview.md', '## Overview\n\nx\n') // depth 1, above the depth-2 split
     file('api/v1/users.md', '## Request\n\nx\n')
     const r = inferConfig(root, { meta: true, depth: 2 })
     expect(r.warnings.length).toBeGreaterThan(0)
@@ -404,7 +403,8 @@ describe('inferConfig — meta mode', () => {
 
 describe('inferConfig — heading key-collision handling', () => {
   // Two spellings that differ only by case both generate the camelCase key `scheduleForToday`.
-  // Across separate docs they are the same logical section: collapse to ONE aliased slot + warn.
+  // In separate docs they are the same section, so they merge into one slot with an alias and
+  // a warning.
   it('merges case-variant headings across docs into one aliased section, with a warning', () => {
     file('mon.md', '## Schedule For today\n\nx\n')
     file('tue.md', '## Schedule For Today\n\nx\n')
@@ -417,7 +417,7 @@ describe('inferConfig — heading key-collision handling', () => {
     expect(r.warnings[0]).toMatch(/merged variant headings/)
   })
 
-  // Accept-by-construction: the merged contract must accept BOTH spellings with no error finding.
+  // The merged contract must accept both spellings with no error finding.
   it('the merged contract accepts both spellings (no error findings)', () => {
     file('mon.md', '## Schedule For today\n\nx\n')
     file('tue.md', '## Schedule For Today\n\nx\n')
@@ -428,8 +428,8 @@ describe('inferConfig — heading key-collision handling', () => {
     expect(b.findings.filter((f) => f.level === 'error')).toEqual([])
   })
 
-  // The one case that cannot merge: both spellings as PEERS in a single doc would make the merged
-  // slot match twice (structure/duplicate-section). That is fatal — abort, naming the file.
+  // Both spellings in one doc cannot merge: the merged slot would match twice
+  // (structure/duplicate-section). Inference stops with an error naming the file.
   it('aborts with a descriptive error when key-colliding headings are peers in one doc', () => {
     file('both.md', '## Schedule For today\n\nx\n\n## Schedule For Today\n\nx\n')
     expect(() => inferConfig(root)).toThrow(/both\.md/)
@@ -452,7 +452,7 @@ describe('inferConfig — repeatable-slot inference', () => {
     file('a.md', '## Entry\n\nx\n\n## Entry\n\ny\n')
     const r = inferConfig(root)
     expect(def(r.contracts[0]!).body!.sections).toEqual([{ section: 'Entry', minContains: 1 }])
-    // Not a spurious variant-merge: a single spelling emits no alias and no warning.
+    // A single spelling gives no alias and no warning.
     expect(r.warnings).toEqual([])
   })
 
@@ -478,7 +478,7 @@ describe('inferConfig — repeatable-slot inference', () => {
   })
 
   it('optional + repeatable → minContains: 0 with no upper bound', () => {
-    // `Note` repeats as peers in one doc but is absent from the other: absent-or-many.
+    // `Note` repeats in one doc and is absent from the other, so it is optional and repeatable.
     file('a.md', '## Note\n\nx\n\n## Note\n\ny\n\n## S\n\nx\n')
     file('b.md', '## S\n\nx\n')
     const sections = def(inferConfig(root).contracts[0]!).body!.sections!
@@ -499,7 +499,7 @@ describe('inferConfig — emission + determinism', () => {
     const yaml = parse(a.files[0]!.content) as Record<string, unknown>
     expect(yaml.mcVersion).toBe(2)
     expect(yaml.kind).toBe('contract')
-    // The emitted def round-trips through the loader the self-check uses (the v2 compilers).
+    // The emitted def compiles with the same loader the self-check uses.
     expect(() => compileContractObject(a.contracts[0]!.def)).not.toThrow()
   })
 })
