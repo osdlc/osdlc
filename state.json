@@ -1,9 +1,9 @@
 {
   "schema": 1,
   "pr": 424,
-  "head": "e5ea9979f3eb120c118bc7f2a41c6b0185b06195",
+  "head": "38b29eb469ebeec5810d2f3017fb9e2190085030",
   "base": "51b874db252ff90edd6960c8d72be1aa298a1af6",
-  "round": 1,
+  "round": 2,
   "claim": {
     "owner": "Mac.local:claude-p4w8zt",
     "at": "2026-10-24T02:59:22.915Z"
@@ -137,6 +137,116 @@
       "line": 171,
       "title": "snapshot rebuilt once per tool with detect or describe",
       "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365462137",
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r2-1",
+      "round": 2,
+      "path": "packages/ts/system-model/src/plugins/python/python.ts",
+      "line": 72,
+      "title": "python runner uses detect-time pyproject facts, so a re-collect misses edits and collectAndCache stores stale tasks under a fresh fingerprint",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r2-2",
+      "round": 2,
+      "path": "packages/ts/system-model/src/plugins/node/node-scripts.ts",
+      "line": 54,
+      "title": "node-scripts uses detect-time package.json facts, so a re-collect misses edits and collectAndCache poisons the cache",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r2-3",
+      "round": 2,
+      "path": "packages/ts/system-model/src/roles.ts",
+      "line": 121,
+      "title": "a nested package that is not a workspace member takes the root lockfile's install",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r2-4",
+      "round": 2,
+      "path": "scripts/check-packages.ts",
+      "line": 134,
+      "title": "types-only check passes an empty entry, since tsc emits export {} for an empty module",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r2-5",
+      "round": 2,
+      "path": "packages/ts/system-model/src/plugins/ruby/index.ts",
+      "line": 48,
+      "title": "wrong: bundler has --gemfile",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r2-6",
+      "round": 2,
+      "path": "packages/ts/system-model/src/synthesized.ts",
+      "line": 38,
+      "title": "directory chain hint says the command runs there; flagged installs run at the root",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r2-7",
+      "round": 2,
+      "path": "packages/ts/system-model/src/pinned.ts",
+      "line": 4,
+      "title": "says tool managers detected in the repository; rootTools takes only the root",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r2-8",
+      "round": 2,
+      "path": "packages/ts/system-model/src/roles.ts",
+      "line": 176,
+      "title": "memberMatches re-implements segmentRegExp from pattern.ts and builds a RegExp per recursive step",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r2-9",
+      "round": 2,
+      "path": "packages/ts/system-model/src/collect.ts",
+      "line": 113,
+      "title": "effectiveExcludes repeats createLister's exclude combination",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r2-10",
+      "round": 2,
+      "path": null,
+      "line": null,
+      "title": "D-PRJM and the dev LIBRARIES.md system-model row no longer match the shipped package",
+      "comment": null,
       "status": "open",
       "reason": null,
       "fixedIn": null
