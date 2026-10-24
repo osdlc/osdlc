@@ -25,7 +25,14 @@ import type { Evidence } from './aspect.ts'
 import { evidence } from './model.ts'
 import { compilePattern, dirOf, joinRel } from './pattern.ts'
 import { markersOf, rolesOf, type Registry } from './registry.ts'
-import type { Detected, EcosystemDef, MalformedManifest, Package, ProjectProfile } from './tool.ts'
+import type {
+  Detected,
+  EcosystemDef,
+  MalformedManifest,
+  Package,
+  ProjectProfile,
+  ToolFact,
+} from './tool.ts'
 import { which as whichOnPath } from './which.ts'
 
 interface Hit {
@@ -39,7 +46,7 @@ interface Builder {
   manifests: ManifestFacts
   manifestFiles: string[]
   ecosystems: Set<string>
-  tools: Map<string, { evidence: Evidence[]; facts: unknown[] }>
+  tools: Map<string, { evidence: Evidence[]; facts: ToolFact[] }>
 }
 
 export async function detectProject(
@@ -222,7 +229,7 @@ async function describeTools(
     for (const fact of await tool.describe(ctx, packages)) {
       const b = nearest(fact.dir)
       addEvidence(b, tool.id, fact.evidence)
-      b.tools.get(tool.id)?.facts.push(fact.fact)
+      b.tools.get(tool.id)?.facts.push(fact)
     }
   }
 }

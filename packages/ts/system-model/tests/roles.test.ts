@@ -784,6 +784,112 @@ describe('workspaces, unlocked installs and install directories', () => {
     expect(project.missingDeps(profile, 'tools/x')).toEqual([])
   })
 
+  describe('a package listed by a nested root and by the root', () => {
+    // dev's shape: `a/` lists `b/*` and has no lockfile, is not a root member,
+    // and the root lists `a/b/*` directly and holds the lockfile.
+    const files = {
+      'package.json': JSON.stringify({ workspaces: ['a/b/*'] }),
+      'bun.lock': '',
+      'a/package.json': JSON.stringify({ workspaces: ['b/*'] }),
+      'a/b/x/package.json': JSON.stringify({ scripts: { dev: 'vite' } }),
+      'a/c/package.json': '{}',
+    }
+
+    test('takes the outer root’s lockfile when the nested root chooses nothing', async () => {
+      const dir = await root(files)
+      const profile = await detect(dir)
+      expect(project.packageManagers(profile, 'a/b/x')).toEqual([
+        {
+          tool: 'bun',
+          ecosystem: 'node',
+          dir: '.',
+          source: 'bun.lock',
+          locked: true,
+          fallback: false,
+        },
+      ])
+      const { catalog } = await collectWalk(dir)
+      const dev = catalog.reports
+        .flatMap((r) => r.tasks)
+        .find((t) => t.path.at(-1) === 'dev' && t.argv.includes('a/b/x'))
+      expect(dev?.argv.slice(0, 3)).toEqual(['bun', 'run', '--cwd'])
+    })
+
+    test('a non-member under the nested root stays standalone', async () => {
+      const profile = await detect(await root(files))
+      expect(project.packageManagers(profile, 'a/c')).toMatchObject([
+        { tool: 'npm', dir: 'a/c', fallback: true },
+      ])
+    })
+
+    test('the nested root’s own lockfile still wins when it has one', async () => {
+      const profile = await detect(await root({ ...files, 'a/yarn.lock': '' }))
+      expect(project.packageManagers(profile, 'a/b/x')).toMatchObject([
+        { tool: 'yarn', dir: 'a', locked: true },
+      ])
+    })
+  })
+
+  test('a member of a nested root that is itself a root member takes the root manager', async () => {
+    const dir = await root({
+      'package.json': JSON.stringify({ workspaces: ['a'] }),
+      'pnpm-lock.yaml': '',
+      'pnpm-workspace.yaml': "packages:\n  - 'a'\n",
+      'a/package.json': JSON.stringify({ workspaces: ['b/*'] }),
+      'a/b/x/package.json': '{}',
+      'a/c/package.json': '{}',
+    })
+    const profile = await detect(dir)
+    expect(project.packageManagers(profile, 'a/b/x')).toMatchObject([
+      { tool: 'pnpm', dir: '.', locked: true },
+    ])
+    // Under the member `a` but listed by no root: no lockfile from above.
+    expect(project.packageManagers(profile, 'a/c')).toMatchObject([
+      { tool: 'npm', dir: 'a/c', fallback: true },
+    ])
+  })
+
+  test('with no lockfile anywhere, a chained member installs at the nearest covering root', async () => {
+    const dir = await root({
+      'package.json': JSON.stringify({ workspaces: ['a', 'a/b/*'] }),
+      'a/package.json': JSON.stringify({ workspaces: ['b/*'] }),
+      'a/b/x/package.json': '{}',
+    })
+    const profile = await detect(dir)
+    expect(project.packageManagers(profile, 'a/b/x')).toMatchObject([
+      { tool: 'npm', dir: 'a', source: 'a/package.json', locked: false, fallback: true },
+    ])
+  })
+
+  test('a root with unknown members covers everything under a nested root', async () => {
+    const dir = await root({
+      'package.json': '{}',
+      'pnpm-lock.yaml': '',
+      'pnpm-workspace.yaml': 'catalog:\n  react: ^19\n',
+      'a/package.json': JSON.stringify({ workspaces: ['b/*'] }),
+      'a/b/x/package.json': '{}',
+      'a/c/package.json': '{}',
+    })
+    const profile = await detect(dir)
+    for (const pkg of ['a/b/x', 'a/c']) {
+      expect(project.packageManagers(profile, pkg)).toMatchObject([
+        { tool: 'pnpm', dir: '.', locked: true },
+      ])
+    }
+  })
+
+  test('a nested root with unknown members chooses before the outer root', async () => {
+    const dir = await root({
+      'package.json': JSON.stringify({ workspaces: ['a'] }),
+      'bun.lock': '',
+      'a/package.json': '{}',
+      'a/pnpm-workspace.yaml': 'catalog:\n  react: ^19\n',
+      'a/z/q/package.json': '{}',
+    })
+    const profile = await detect(dir)
+    expect(project.packageManagers(profile, 'a/z/q')).toMatchObject([{ tool: 'pnpm', dir: 'a' }])
+  })
+
   test('a pnpm member, listed in pnpm-workspace.yaml, takes the root lockfile', async () => {
     const dir = await root({
       'package.json': '{}',

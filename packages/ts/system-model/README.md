@@ -170,7 +170,9 @@ browser bundle can use them. A test walks each one's imports to check.
    as a `packageManager` field.
 6. Each detected tool's `describe` function adds facts that may need the tool
    itself, such as moon's project roles. It runs a subprocess only when
-   `allowExec` is set.
+   `allowExec` is set. A fact goes on the package of its directory, or the
+   nearest one above. `Detected.facts` holds them as `ToolFact`s, each with
+   the directory it is about and its evidence.
 7. Each package gets its ecosystems and languages. The profile gets the union.
 
 | Option | Default | Does |
@@ -262,9 +264,12 @@ detection evidence changes, or, for an `exec` runner, after a maximum age.
 | `hookManagers(profile)`, `armHooks(profile)` | lefthook, husky and pre-commit |
 | `toolForCommand(command)` | the tool a command's first word names (`bunx` is bun) |
 
-The package manager is chosen at the package itself, then at the workspace
-root that lists it as a member, and so on up: the first package whose
-lockfile, marker or pin chooses one wins. Members come from
+The package manager is chosen at the package itself, then at each workspace
+root that covers it, nearest first: the first package whose lockfile, marker
+or pin chooses one wins. A root covers a package when it lists the package as
+a member, or lists a nested root that covers it. So when `a/` lists `b/*` and
+has no lockfile, and the root lists `a/b/*` and holds `bun.lock`, `a/b/x`
+takes bun from the root. Members come from
 `package.json#workspaces`, `pnpm-workspace.yaml` `packages`, and cargo's
 `[workspace] members` less `exclude`; a `!` glob removes a member. A
 `pnpm-workspace.yaml` that lists no package leaves the members unknown, and
