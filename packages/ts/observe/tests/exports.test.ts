@@ -314,6 +314,38 @@ describe('what the package ships', () => {
     }
   })
 
+  test('no source, test, example or document names a host project, tool or note', () => {
+    // Built from parts so this file does not match its own check. `claudeFlags`
+    // and `sdlcPin` (legacy keys) and the `SDLC_` env names do not match: the
+    // word checks need a boundary.
+    const hostTerms = new RegExp(
+      [
+        '\\bsd' + 'lc\\b', // the scope `@osdlc` is not the tool
+        'ontolo' + 'gical',
+        'way' + 'post',
+        'detect-' + 'runners',
+        '\\bcla' + 'ude\\b',
+        '\\bco' + 'dex\\b',
+        'log\\.' + 'capture',
+        'docs/' + 'planning',
+        'mono' + 'repo',
+        '\\b[TDBSMN]-[0-9A-Z]{4}\\b',
+      ].join('|'),
+      'i',
+    )
+    // The machine id's seeds and cache path keep the old name, so ids do not change.
+    const wireNames = /sdlc-machine(-host)?:|sdlc\/machine-id|'sdlc', 'machine-id'/g
+    const files = [
+      ...sources,
+      ...sourceFiles(join(PACKAGE_DIR, 'tests')),
+      ...sourceFiles(join(PACKAGE_DIR, 'examples')),
+    ].filter((f) => !f.endsWith('exports.test.ts'))
+    for (const file of files) {
+      const text = readFileSync(file, 'utf-8').replace(wireNames, '')
+      expect([file, text.match(hostTerms)?.[0]]).toEqual([file, undefined])
+    }
+  })
+
   test('no source file or document names the pre-release package scope', () => {
     for (const file of sources) {
       expect([file, readFileSync(file, 'utf-8').includes('@' + 'sksizer')]).toEqual([file, false])

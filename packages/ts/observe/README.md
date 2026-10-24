@@ -212,6 +212,8 @@ take a machine id, so a caller can avoid the implicit call.
   `readSessionRecordIn`. Name its types with `SessionEventOfModel`,
   `NewSessionEventOfModel` and `SessionRecordOfModel`. `looseSessionModel`
   accepts any vocabulary, for a reader that must read logs from any writer.
+  A `launched` event may name the `task` the session serves (its basename);
+  the record keeps it, and it is absent when the session serves none.
   The record and its parts: `SessionRecordOf`, `AnySessionRecord`,
   `SessionAuthorOf`, `SessionReductionOf`, `IgnoredEventOf`. Files:
   `EVENTS_FILE`, `RECORD_FILE`, `sessionEventsPath`. `SessionLogError` is
