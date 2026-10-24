@@ -1,26 +1,23 @@
 //! Slugify and deterministic collation.
 //!
-//! **Slugify.** Turn a human title into a filename or an id. Non-ASCII
-//! titles make the normalisation form matter: NFKD then dropping combining
-//! marks turns `café` into `cafe` rather than dropping the `é` entirely and
-//! producing `caf`. Doing it the naive `[^a-z0-9]` way would collapse
-//! `Ärzte` and `Rzte` to the same slug, which is a filename collision in a
-//! folder a human reads.
+//! **Slugify.** Turn a human title into a filename or an id. For non-ASCII
+//! titles the normalisation form matters. NFKD followed by dropping the
+//! combining marks turns `café` into `cafe`, not `caf`. A naive `[^a-z0-9]`
+//! filter would collapse `Ärzte` and `Rzte` to the same slug, which is a
+//! filename collision in a folder a person reads.
 //!
-//! **Collation.** Every place a node side calls `localeCompare` is a place
-//! two machines can disagree about sort order — and several of those
-//! orderings end up hashed or rendered. `localeCompare`'s result depends on
-//! ICU data and the host locale, so it cannot be the contract. [`compare`] is
-//! an explicit, boring, portable substitute: case-insensitive, accent-folded,
-//! ties broken by the raw bytes so the order is total. It is not a
-//! reimplementation of ICU: callers needing real locale-aware ordering must
-//! say so rather than inheriting this by accident.
+//! **Collation.** JavaScript's `localeCompare` depends on ICU data and the
+//! host locale, so two machines can disagree about sort order. That matters
+//! when the order ends up hashed or rendered. [`compare`] is a portable
+//! substitute: case-insensitive, accent-folded, with ties broken by the raw
+//! bytes so the order is total. It is not a reimplementation of ICU. A
+//! caller that needs locale-aware ordering should use a collation library.
 
 #![doc = include_str!("../README.md")]
 
 use unicode_normalization::UnicodeNormalization;
 
-/// Slugify options, because the callers genuinely differ.
+/// Options for [`slugify_with`].
 ///
 /// `SlugOptions` is `#[non_exhaustive]`, so build it with a constructor and
 /// then set the fields you care about, never a struct literal:

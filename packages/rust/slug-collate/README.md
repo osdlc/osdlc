@@ -8,12 +8,12 @@ accents and replaces the rest with a separator. Second, those files and titles
 get sorted, and the sort has to be the same on every machine. `compare` gives a
 fixed order that does not depend on the host locale.
 
-The slugify half folds accents the careful way. It normalises with NFKD and
-drops the combining marks, so `café` becomes `cafe`, not `caf`. A naive
+`slugify` folds accents. It normalises with NFKD and drops the combining
+marks, so `café` becomes `cafe`, not `caf`. A naive
 `[^a-z0-9]` filter would drop the whole accented letter and collapse `Ärzte`
 and `Rzte` to one slug, a filename collision in a folder a person reads.
 
-The collation half is a substitute for JavaScript's `localeCompare`.
+`compare` is a substitute for JavaScript's `localeCompare`.
 `localeCompare` depends on ICU data and the host locale, so two machines can
 disagree about order, and that order sometimes ends up hashed or rendered.
 `compare` is case-insensitive and accent-folded, with ties broken by the raw
@@ -60,13 +60,13 @@ exactly `compare_paths`' order.
 
 ## When not to use it
 
-- You need real locale-aware ordering — German phone-book order, Swedish
-  `å ä ö` after `z`, locale-specific tailoring. Use `icu_collator` or `feruca`.
-  `compare` is deliberately not locale-aware.
+- You need real locale-aware ordering, such as German phone-book order,
+  Swedish `å ä ö` after `z`, or other locale-specific rules. Use
+  `icu_collator` or `feruca`. `compare` is not locale-aware, by design.
 - You need the Unicode Collation Algorithm. `compare` is a simpler fold, not
   the UCA.
 - You want a slug library with transliteration tables (`Ж` to `zh`, emoji to
-  words). This crate keeps non-Latin letters as they are; it does not romanise
+  words). This crate keeps non-Latin letters as they are. It does not romanise
   them.
 
 ## Compared with other crates
@@ -93,15 +93,15 @@ on `unicode-normalization`.
 
 ## Platforms
 
-Any target the Rust std library supports; the crate is pure std with no
+Any target the Rust standard library supports. The crate has no
 platform-specific code.
 
 ## Stability
 
-0.1 is the first release. The crate stays on 0.x for now. Every public item
+The crate stays on 0.x for now. Every public item
 (`slugify`, `slugify_with`, `SlugOptions`, `compare`, `compare_paths`,
 `path_sort_key`) is stable in 0.x. `SlugOptions` is `#[non_exhaustive]`, so a
-later release can add a field without a breaking change; build it with
+later release can add a field without a breaking change. Build it with
 `SlugOptions::new()` or `SlugOptions::with_max_len(n)` and set fields, never a
 struct literal.
 
