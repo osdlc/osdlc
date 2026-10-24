@@ -1,12 +1,46 @@
 {
   "schema": 1,
   "pr": 427,
-  "head": null,
-  "base": null,
-  "round": 0,
+  "head": "ece95a766044cb43b36de60e349988160c9a5261",
+  "base": "e5a7a9890b627e7c54d559b33e33a10105be8386",
+  "round": 1,
   "claim": {
     "owner": "Mac.local:claude-w7p2rk",
     "at": "2026-10-24T04:08:09.074Z"
   },
-  "findings": []
+  "findings": [
+    {
+      "id": "r1-1",
+      "round": 1,
+      "path": "packages/ts/waypost/src/cli.ts",
+      "line": 439,
+      "title": "A custom tool whose ecosystem id matches a built-in one still crashes with a stack trace",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-2",
+      "round": 1,
+      "path": "packages/ts/waypost/tests/http.test.ts",
+      "line": 125,
+      "title": "413 test hangs instead of failing if the client errors before the response",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-3",
+      "round": 1,
+      "path": null,
+      "line": null,
+      "title": "Docs and usage text still say project tools need only trust",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    }
+  ]
 }
