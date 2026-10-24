@@ -61,8 +61,8 @@ Trust is one of two conditions, not the whole gate: execution must also be
 enabled. ${APP} enables it by default, so trust alone is enough unless a
 config file sets allowExec: false. A repository cannot trust itself: allowExec
 in ${PROJECT_CONFIG_FILENAME} cannot raise the gate. Pass --exec instead to
-allow a single run without recording anything. Trust also loads the tools a
-project file names.
+allow a single run without recording anything. Trust, with execution
+allowed, also loads the tools a project file names.
 
 A root can also be trusted with no marker at all, by the user file's
 trust.paths/trust.owners policy ("${BIN} config path" names it; a

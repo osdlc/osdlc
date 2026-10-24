@@ -122,7 +122,8 @@ There are three places to name a module:
   ```
 
 - **One repository**: `tools` in the project's `waypost.config.json`. These
-  load only once the repository is trusted, because a tool module is code.
+  load only when the repository is trusted and execution is allowed, because
+  a tool module is code.
   Until then `way` prints a warning and skips them.
 
 A relative path in a config file resolves against the file that names it. A

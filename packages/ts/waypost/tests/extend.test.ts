@@ -174,6 +174,19 @@ describe('duplicate tool ids', () => {
     expect(ran.err).toBe(`waypost: ${file}: tool "npm" is already a built-in tool\n`)
   })
 
+  test('a module whose ecosystem id a built-in uses is an error naming the module', async () => {
+    const dir = await temp()
+    const file = join(dir, 'eco.mjs')
+    await writeFile(
+      file,
+      "export const tools = [{ id: 'acme', roles: {}, ecosystem: { id: 'node', name: 'Node' } }]\n",
+    )
+    const ran = await run(['--list', '--config', file, '-C', dir])
+    expect(ran.code).toBe(1)
+    expect(ran.err).toMatch(/^waypost: .*"node".*\(from a tool module: .*eco\.mjs\)\n$/)
+    expect(ran.err).not.toContain('    at ')
+  })
+
   test('two modules that define one id are an error naming both', async () => {
     const dir = await acmeRepo()
     const second = await acmeModule(dir)

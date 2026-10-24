@@ -111,8 +111,8 @@ Changing this marks stored probes stale, with `reason: "excludes"`. See
 
 Paths to modules that export extra tools. A relative path resolves against
 the file that names it. Entries in the user file always load. Entries in the
-project file load only once the repository is trusted, because a tool module
-is code. See [Extending](extending.md).
+project file load only when the repository is trusted and execution is
+allowed, because a tool module is code. See [Extending](extending.md).
 
 ### `allowExec`
 

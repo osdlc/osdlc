@@ -62,7 +62,8 @@ Giving two mode flags is a usage error. Trusting an already-trusted
 repository says so and changes nothing. `--untrust` on a root that was not
 trusted exits 1. `--show` exits 0 either way.
 
-Trust also lets the `tools` named in the project file load. See
+Trust, with execution allowed, also lets the `tools` named in the project
+file load. See
 [Extending](extending.md).
 
 The terminal UI grants trust with `Ctrl+S`, after a `y`/`n` question. The

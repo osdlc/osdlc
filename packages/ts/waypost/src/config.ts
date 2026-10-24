@@ -24,8 +24,8 @@
  * repository.
  *
  * `tools` is gated too, because a tool module is code. User-layer entries
- * always load; project-layer entries load only once the repository is trusted
- * (see `tools.ts`).
+ * always load; project-layer entries load only when the repository is trusted
+ * and execution is allowed (see `tools.ts`).
  *
  * `trust` IS THE SAME EXCEPTION, more strongly: it has no "lower" state to
  * honour from the project layer at all, so ANY project-layer `trust.paths` or
@@ -148,8 +148,8 @@ export type TaskConfig = {
   trust?: TrustConfig
   /**
    * Modules that export extra `ToolDef`s, as paths. A relative path resolves
-   * against the file that names it. Project entries load only in a trusted
-   * repository.
+   * against the file that names it. Project entries load only when the
+   * repository is trusted and execution is allowed.
    */
   tools?: string[]
 }

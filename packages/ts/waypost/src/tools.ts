@@ -4,8 +4,8 @@
  *
  *   --config <module>      always; you typed it
  *   user config `tools`    always; it is your own file
- *   project file `tools`   only in a trusted repository, since the repository
- *                          wrote it
+ *   project file `tools`   only when the repository is trusted and execution
+ *                          is allowed, since the repository wrote it
  *
  * A module exports `tools` (an array), or a default that is an array or has
  * `tools`.
@@ -80,7 +80,7 @@ export interface ToolSources {
 /**
  * Load every tool module the sources name, in order: flags, user file,
  * project file. Returns the tools and a warning when project entries are
- * skipped for want of trust. A tool id that is built in or defined twice is a
+ * skipped because the repository is not trusted or execution is off. A tool id that is built in or defined twice is a
  * {@link ToolModuleError}.
  */
 export async function loadTools(

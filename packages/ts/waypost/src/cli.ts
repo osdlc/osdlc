@@ -436,7 +436,15 @@ async function projectFor(
       home,
       projectAllowed,
     })
-    return { project: makeProject(tools.map((t) => t.def)), tools, warnings }
+    try {
+      return { project: makeProject(tools.map((t) => t.def)), tools, warnings }
+    } catch (err) {
+      // Every tool here passed loadTools, so a registry refusal (such as an
+      // ecosystem id a built-in already uses) comes from the modules.
+      const modules = [...new Set(tools.map((t) => t.module))].join(', ')
+      const message = err instanceof Error ? err.message : String(err)
+      return { error: `${message} (from a tool module: ${modules})` }
+    }
   } catch (err) {
     if (err instanceof ToolModuleError) return { error: err.message }
     throw err

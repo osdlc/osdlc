@@ -63,7 +63,8 @@ usage: ${BIN} providers [options]
   -h, --help          this text
 
 A custom tool comes from --config, from "tools" in the user config, or from
-"tools" in the project file once the repository is trusted. kind is the runner
+"tools" in the project file when the repository is trusted and execution is
+allowed. kind is the runner
 role's: parse reads files, exec runs the repository's tools and needs trust.
 `
 }

@@ -182,7 +182,8 @@ only when `by` is `"path"` or `"owner"`. A `--untrust` that found nothing still
 prints its document and reports the miss through exit 1 and stderr, so a parser
 is never handed an empty stdout to interpret.
 
-`-C` applies here too. Trust also lets the project file load tool modules; see
+`-C` applies here too. Trust, with execution allowed, also lets the project
+file load tool modules; see
 [Adding your own tools](#adding-your-own-tools).
 
 ### The policy
@@ -434,7 +435,7 @@ answer depends on which repository you are asking about take it.
 |---|---|---|
 | `config` | yes | reports the configuration THAT directory resolves |
 | `trust` | yes | the grant keys on that directory's project root |
-| `providers` | yes | a trusted project file can add tools |
+| `providers` | yes | a trusted project file can add tools when execution is allowed |
 | `clean` | no | resolves every path from the environment and the home directory |
 | `guide` | no | its argument is a topic name |
 | `dev` | no | its state is devlink's, keyed on the tool name |
@@ -461,12 +462,13 @@ ways:
 ```sh
 way --config ./acme-tools.ts --list                  # this run only
 way config set --user tools '["~/acme-tools.mjs"]'   # every run, from your user file
-way config set tools '["./tools/acme.mjs"]'          # this repository, once trusted
+way config set tools '["./tools/acme.mjs"]'          # this repository, once trusted with exec on
 ```
 
 A module is code, so where it is named decides whether it loads. `--config`
-and the user file always load. The project file loads only in a trusted
-repository; otherwise waypost prints a warning and loads nothing from it.
+and the user file always load. The project file loads only when the
+repository is trusted and execution is allowed (`allowExec` not `false`, no
+`--no-exec`); otherwise waypost prints a warning and loads nothing from it.
 `way guide extend` prints a complete example. A tool's runner may define
 `invoke(task, args)` to say where typed arguments go, such as after `--` for
 `npm run`; the default appends them.
