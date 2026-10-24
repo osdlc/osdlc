@@ -1,10 +1,10 @@
 /**
- * Minimal frontmatter reader — the only markdown primitive the readers need.
+ * A minimal frontmatter reader, the only markdown function the readers need.
  *
- * The framing comes from `@osdlc/frontmatter-lossless` (the shared byte-exact
- * splitter); what stays local is the small `yaml` reader over it. Reads are LENIENT (`splitLenient`: BOM,
- * leading blanks, and padded fence lines are tolerated) — this module never
- * writes anything back.
+ * `@osdlc/frontmatter-lossless` finds the frontmatter block. This module adds a
+ * small `yaml` parse of it. Reads are lenient (`splitLenient` accepts a BOM,
+ * leading blank lines and padded fence lines). This module never writes
+ * anything back.
  *
  * Runtime-agnostic: pure, no `node:`/Bun coupling.
  */
@@ -19,10 +19,10 @@ import { asObject } from './json.ts'
  * first element is null and the body is the whole input; otherwise the body is
  * exactly what follows the closing fence line.
  *
- * Lenient framing, matching {@link parseFrontmatter}: the same documents that
- * parse must also split, or a block the parser recognised (padded fence, leading
- * blanks, BOM) would be handed back as body. Read-only — the tolerated framing
- * is not recorded, so never rebuild a file from this pair.
+ * It is as lenient as {@link parseFrontmatter}. The documents that parse must
+ * also split, or a block the parser recognised (padded fence, leading blanks,
+ * BOM) would be returned as body. Read-only: the tolerated framing is not
+ * recorded, so never rebuild a file from this pair.
  */
 export function splitFrontmatter(text: string): [string | null, string] {
   const s = splitLenient(text)

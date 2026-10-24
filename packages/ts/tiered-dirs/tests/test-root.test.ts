@@ -117,7 +117,7 @@ describe('under a test runner', () => {
       join(testRoot()!, 'durable'),
     )
     const bases = systemBaseDirs(ENV, { platform: 'linux', testRoot: false })
-    // An injected environment runs no test rule: the per-OS table, unguarded.
+    // An injected environment runs no test rule, so this is the plain per-OS table.
     expect(bases).toEqual(systemBaseDirs(ENV, { platform: 'linux', env: { ...process.env } }))
     expect(bases.durable.startsWith(testRoot()!)).toBe(false)
   })
@@ -147,7 +147,7 @@ describe('under a test runner', () => {
   })
 })
 
-// A spawned script is not a test runner process, so it reaches the guard.
+// A spawned script is not a test runner process, so the require-override check runs.
 describe(ENV.requireOverride, () => {
   test('refuses an OS fallback and names the fix', () => {
     const child = resolveInChild({ [ENV.requireOverride]: '1' })

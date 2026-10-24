@@ -1,7 +1,7 @@
 /**
  * `which`: find a binary on `PATH` without running it, the way the runners'
- * spawn would find it. For code that picks a tool by what is installed;
- * running `--version` to probe is slow for some CLIs and has side effects
+ * spawn would find it. For code that picks a tool by what is installed.
+ * Running `--version` to check is slow for some CLIs and has side effects
  * (update checks, telemetry) for others.
  */
 
@@ -23,7 +23,7 @@ export interface WhichOptions {
   cwd?: string | undefined
   /**
    * Variables merged over the parent's environment, as the runners take
-   * them. Only `PATH` is read; an `undefined` value unsets it.
+   * them. Only `PATH` is read. An `undefined` value unsets it.
    */
   env?: EnvOverrides | undefined
 }
@@ -31,11 +31,11 @@ export interface WhichOptions {
 /**
  * The absolute path of the file a spawn of `binary` would run, or
  * `undefined` when there is none. A name with a `/` is taken relative to
- * `cwd`; a bare name is looked up on `PATH`, first match wins. A match must be
- * an executable file. With `PATH` unset, it searches `/usr/bin:/bin`. An
- * empty `PATH` entry (`PATH=''`, `a::b`, a trailing `:`) means `cwd`, as it
- * does for Node's spawn; Bun's spawn skips empty entries, so under Bun such
- * a match may not start. POSIX only: `PATHEXT` is not read.
+ * `cwd`. A bare name is looked up on `PATH`, and the first match wins. A
+ * match must be an executable file. With `PATH` unset, it searches
+ * `/usr/bin:/bin`. An empty `PATH` entry (`PATH=''`, `a::b`, a trailing `:`)
+ * means `cwd`, as it does for Node's spawn. Bun's spawn skips empty entries,
+ * so under Bun such a match may not start. POSIX only: `PATHEXT` is not read.
  *
  * Never throws for a missing binary, an unreadable folder or a bad `cwd`.
  *

@@ -269,8 +269,8 @@ describe('compositeOver', () => {
       b: 128,
       a: 1,
     })
-    // The same colour as getImageData reports it: alpha 128/255, a hair under
-    // a half, so the rounded channel lands one below.
+    // The same colour as getImageData reports it: alpha 128/255, just under a
+    // half, so the rounded channel lands one below.
     expect(compositeOver(fromPixel([0, 0, 0, 128]), WHITE)).toEqual({
       r: 127,
       g: 127,

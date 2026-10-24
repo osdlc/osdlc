@@ -1,8 +1,8 @@
 /**
- * `AsyncGh` and the verbs added alongside it. Offline: a fake
- * `AsyncCommandRunner` records argv and replays canned results, and a parity
- * block pins that `Gh` and `AsyncGh` build identical argv from the shared
- * verb table.
+ * `AsyncGh` and its verbs. The tests run offline. A fake
+ * `AsyncCommandRunner` records argv and replays canned results. One block
+ * checks that `Gh` and `AsyncGh` build the same argv from the shared verb
+ * table.
  */
 
 import { FailureError } from '@osdlc/result'

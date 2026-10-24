@@ -1,8 +1,8 @@
 /**
- * Checks on the public surface as a whole: every export of both entry points
- * is used in examples/, is documented, and has the stability tier the README
- * lists; the functions that can throw say so; the README's code blocks come
- * from examples/; and the shipped files stay clean.
+ * Checks on the package's public exports. Every export of both entry points is
+ * used in examples/, is documented, and has the stability tier the README lists.
+ * The functions that can throw say so. The README's code blocks come from
+ * examples/. The shipped files stay clean.
  */
 
 import { readdirSync, readFileSync } from 'node:fs'

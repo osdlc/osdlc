@@ -25,8 +25,8 @@ interface PnpmWorkspaceFact {
 export function parsePnpmWorkspace(text: string): string[] | null {
   let doc: unknown
   try {
-    // A small alias budget keeps a hostile file cheap; `logLevel: 'error'` keeps
-    // yaml's warnings (an unknown tag) off stderr during detection.
+    // A low alias limit keeps a hostile file cheap to parse. `logLevel: 'error'`
+    // keeps yaml's warnings (such as an unknown tag) off stderr during detection.
     doc = parse(text, { maxAliasCount: 16, logLevel: 'error' })
   } catch {
     return null

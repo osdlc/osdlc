@@ -60,11 +60,12 @@ export interface AsyncCommandRunOptions extends CommandRunOptions {
    * When the child exits but a group member still holds its output pipes,
    * the group gets `SIGKILL` once the exit grace ends. A member that does not
    * hold the pipes is left running after a normal exit.
+   *
    * The group no longer gets the terminal's Ctrl-C. To stop it on Ctrl-C,
    * listen for `SIGINT` and abort through `signal`, or call
    * `installGroupSignalForwarding`, which kills live groups when the host is
-   * signalled; once it is stopping the host, a new group run is refused
-   * (`neverExited: true`, `reason: 'abort'`). POSIX only.
+   * signalled. Once forwarding is stopping the host, a new group run is
+   * refused (`neverExited: true`, `reason: 'abort'`). POSIX only.
    */
   processGroup?: boolean | undefined
 }
@@ -75,7 +76,7 @@ export interface AsyncCommandRunner {
   readonly binary?: string | undefined
   /**
    * Run the binary with `argv` (without the binary name). The promise never
-   * rejects for a failed command: a non-zero exit, a missing binary, a
+   * rejects for a failed command. A non-zero exit, a missing binary, a
    * timeout or an abort all resolve to a {@link CommandResult}. Programmer
    * errors reject: an invalid `timeoutMs` (see its doc) or a NUL byte in
    * argv or env.
@@ -118,9 +119,9 @@ export function resolveRunnerAsync(
 const EXIT_GRACE_MS = 250
 
 /**
- * How long an aborted child has between `SIGTERM` and `SIGKILL`. Long enough
- * for git to remove its `.lock` files; short enough that a child that ignores
- * `SIGTERM` still stops soon.
+ * How long an aborted child has between `SIGTERM` and `SIGKILL`. It is long
+ * enough for git to remove its `.lock` files, and short enough that a child
+ * that ignores `SIGTERM` still stops soon.
  */
 const ABORT_KILL_GRACE_MS = 1000
 
@@ -128,20 +129,20 @@ const ABORT_KILL_GRACE_MS = 1000
  * The default {@link AsyncCommandRunner}: runs `binary` with `spawn`. The
  * promise never rejects for a failed command. A missing binary, a timeout or
  * an abort resolves with a non-zero `exitCode`, `neverExited: true` and a
- * `reason`, and `error` carries the runner's message.
- * Programmer errors (an invalid `timeoutMs`, a NUL byte in argv or env)
- * reject, and nothing is spawned.
+ * `reason`, and `error` holds the runner's message. Programmer errors (an
+ * invalid `timeoutMs`, a NUL byte in argv or env) reject, and nothing is
+ * spawned.
  *
  * The result settles when the child's stdio closes, or 250 ms after the
- * child exits if a process it started still holds its pipes.
- * Either way `exitCode` is the child's own. In the second case the pipes
- * are closed: the background process loses any later output and may die of
- * `SIGPIPE` on its next write. With `processGroup`, the group is killed
- * instead. A timeout settles on the deadline, not when the pipes close.
+ * child exits if a process it started still holds its pipes. Either way
+ * `exitCode` is the child's own. In the second case the pipes are closed.
+ * The background process loses any later output and may die of `SIGPIPE` on
+ * its next write. With `processGroup`, the group is also killed. A timeout
+ * settles on the deadline, not when the pipes close.
  *
  * Output is captured through pipes with no size cap unless `maxOutputBytes`
- * is given. Under `bun test` with a
- * large module graph loaded, Bun can return empty output from child pipes.
+ * is given. Under `bun test` with a large module graph loaded, Bun can
+ * return empty output from child pipes.
  * The sync `spawnRunner` works around this; this runner does not.
  *
  * @param binary - A name looked up on `PATH`, or a path.
@@ -193,13 +194,12 @@ export function spawnRunnerBytesAsync(binary: string): AsyncBytesCommandRunner {
 }
 
 /**
- * One captured stream: decoded text, or the raw chunks when `bytes`.
- * Decoded through a StringDecoder rather than per-chunk `toString()`: a
- * multi-byte character straddling a chunk boundary would otherwise be
- * decoded as two partial sequences and each half replaced with U+FFFD. The
- * decoder holds the partial sequence back until the rest of it arrives.
- * (Both sync paths decode the whole buffer, or the whole file, at once, so
- * they do not need this.)
+ * One captured stream: decoded text, or the raw chunks when `bytes`. It
+ * decodes through a StringDecoder, not `toString()` per chunk. Per chunk, a
+ * multi-byte character split across two chunks would decode as two partial
+ * sequences, each replaced with U+FFFD. The decoder holds a partial sequence
+ * back until the rest arrives. Both sync paths decode the whole buffer, or
+ * the whole file, at once, so they do not need this.
  */
 function capture(bytes: boolean) {
   const decoder = new StringDecoder('utf8')
@@ -211,10 +211,11 @@ function capture(bytes: boolean) {
       else text += decoder.write(d)
     },
     /**
-     * The whole stream. `flush` surfaces a sequence the decoder is still
-     * holding back when the output ends mid-character: truncated capture, or
-     * bytes that were never UTF-8. Unflushed, those bytes would be dropped.
-     * Past the cap, a held-back partial character is the cut, not output.
+     * The whole stream. `flush` emits a sequence the decoder still holds when
+     * the output ends mid-character, from a cut-short capture or bytes that
+     * were never UTF-8. Without the flush, those bytes would be dropped. Past
+     * the cap, a held-back partial character is where the cut fell, not
+     * output, so it is not flushed.
      */
     end(flush: boolean): string | Buffer {
       if (bytes) return Buffer.concat(chunks)
@@ -266,7 +267,7 @@ function runAsync(
     const { child, untrack: untrackGroup } = group
       ? spawnTrackedGroup(start)
       : { child: start(), untrack: undefined }
-    // Set once this runner signals the child: a group it is stopping stays
+    // Set once this runner signals the child. A group it is stopping stays
     // in flight for the host's exit handler.
     let stopping = false
     const signalChild = (sig: NodeJS.Signals) => {
@@ -276,7 +277,7 @@ function runAsync(
           process.kill(-child.pid, sig)
           return
         } catch {
-          // The group is already gone; fall through to the direct child.
+          // The group is already gone. Signal the direct child instead.
         }
       }
       child.kill(sig)
@@ -288,15 +289,15 @@ function runAsync(
     let timer: ReturnType<typeof setTimeout> | undefined
     let graceTimer: ReturnType<typeof setTimeout> | undefined
     let abortKillTimer: ReturnType<typeof setTimeout> | undefined
-    // Set once the child exits; a later timeout or abort reports this
-    // rather than a stand-in, since the command did answer.
+    // Set once the child exits. A later timeout or abort reports this, not a
+    // stand-in, since the command did answer.
     let exited: Omit<CommandResult, 'stdout' | 'stderr'> | undefined
     const onAbort = () => {
       signalChild('SIGTERM')
-      // Outlives the settle on purpose. Not unref'd: an unref'd timer
-      // does not reliably fire on every Bun version. Cleared when the
-      // child exits, or in group mode when the group is already gone by
-      // then.
+      // This timer outlives the settle on purpose. It is not unref'd, because
+      // an unref'd timer does not always fire on every Bun version. It is
+      // cleared when the child exits, or in group mode when the group is
+      // gone by then.
       if (exited === undefined || (group && !groupGone())) {
         abortKillTimer = setTimeout(hardKill, ABORT_KILL_GRACE_MS)
       }
@@ -308,14 +309,11 @@ function runAsync(
     // Bytes captured per stream, for `maxOutputBytes`.
     let outBytes = 0
     let errBytes = 0
-    // Each stream stops at its own cap; the first to pass it is the result.
+    // Each stream stops at its own cap. The first to pass it sets the result.
     const capped = { stdout: false, stderr: false }
     let capOutcome:
       { result: Omit<CommandResult, 'stdout' | 'stderr'>; message: string } | undefined
-    /**
-     * Settle once, with the streams flushed (see `capture`). Every settle
-     * path routes through here, so one flush covers every path.
-     */
+    /** Settle once, with the streams flushed (see `capture`). Every settle goes through here. */
     const finish = (result: Omit<CommandResult, 'stdout' | 'stderr'>, error?: string) => {
       if (settled) return
       settled = true
@@ -323,10 +321,10 @@ function runAsync(
         result = capOutcome.result
         error = capOutcome.message
       }
-      // The group can outlive the settle: a background member, or an aborted
-      // group waiting for its SIGKILL. It stays registered until it is empty,
-      // so a signal to the host still reaches the rest. Unless this runner
-      // is stopping it, the host's exit leaves it running.
+      // The group can outlive the settle, through a background member or an
+      // aborted group waiting for its SIGKILL. It stays registered until it
+      // is empty, so a signal to the host still reaches the rest. Unless this
+      // runner is stopping it, the host's exit leaves it running.
       if (untrackGroup !== undefined && child.pid !== undefined) {
         if (!stopping) settleGroup(child.pid)
         releaseWhenEmpty(child.pid, untrackGroup)
@@ -336,12 +334,11 @@ function runAsync(
       opts.signal?.removeEventListener('abort', onAbort)
       const stdout = out.end(!capped.stdout)
       const stderr = err.end(!capped.stderr) as string
-      // Close the read ends. On `close` this is a no-op. On the other
-      // paths a surviving grandchild may still hold the write ends and
-      // keep writing. Handlers left installed would go on appending to
-      // `stdout` / `stderr` after this promise resolved: an unbounded
-      // heap leak in a long-lived host, which also keeps the grandchild
-      // alive by draining what it writes.
+      // Close the read ends. On `close` this does nothing. On the other
+      // paths a surviving grandchild may still hold the write ends and keep
+      // writing. Handlers left in place would keep appending to `stdout` and
+      // `stderr` after the promise resolved. In a long-lived host that memory
+      // grows without limit, and reading the pipe keeps the grandchild alive.
       child.stdout?.destroy()
       child.stderr?.destroy()
       resolve({
@@ -352,7 +349,7 @@ function runAsync(
       })
     }
     /**
-     * Stop at the cap: keep what fits and kill the child (or its group).
+     * Stop at the cap. Keep what fits and kill the child (or its group).
      * The run settles on the usual `close` or exit grace, so output the
      * child already wrote to the other stream is still read, as the sync
      * runner reads it. The decoder holds back a character the cut splits,
@@ -365,8 +362,8 @@ function runAsync(
       else err.write(fits)
       if (capOutcome !== undefined) return
       const message = `${name} passed maxOutputBytes (${cap} bytes)`
-      // A child that exited keeps its answer; one that died by a signal
-      // keeps `reason: 'signal'`, since `outputIncomplete` means it exited.
+      // A child that exited keeps its answer. One that died by a signal keeps
+      // `reason: 'signal'`, since `outputIncomplete` means it exited.
       if (exited !== undefined && exited.neverExited !== true) {
         capOutcome = { result: { ...exited, outputIncomplete: true }, message }
       } else if (exited !== undefined) capOutcome = { result: exited, message }
@@ -386,8 +383,7 @@ function runAsync(
       err.write(d)
     })
     child.on('error', (err) => {
-      // A spawn failure: no exit code was ever reported, so the 1 is a
-      // stand-in and the result says so.
+      // A spawn failure. No exit code was reported, so the 1 is a stand-in.
       finish({ exitCode: 1, neverExited: true, reason: 'spawn' }, err.message)
     })
     const fromExit = (
@@ -405,7 +401,7 @@ function runAsync(
     })
     child.on('exit', (code, signal) => {
       exited = fromExit(code, signal)
-      // A group can outlive its leader; keep the follow-up while it does.
+      // A group can outlive its leader. Keep the SIGKILL follow-up while it does.
       if (abortKillTimer !== undefined && (!group || groupGone())) {
         clearTimeout(abortKillTimer)
       }
@@ -417,8 +413,8 @@ function runAsync(
       graceTimer = setTimeout(
         () =>
           setImmediate(() => {
-            // A group member holds the pipes. Without a group there is no
-            // handle on it: the direct child is gone, and only `finish`
+            // A group member holds the pipes. Without a group there is no way
+            // to signal it. The direct child is gone, and only `finish`
             // closing the pipes reaches the background process.
             if (group && !settled) hardKill()
             finish(result, stdinError?.message)
@@ -429,17 +425,16 @@ function runAsync(
     child.on('close', (code, signal) => {
       finish(fromExit(code, signal), stdinError?.message)
     })
-    // `child.stdin` is its own emitter — an `error` on it never reaches the
-    // `child.on("error")` handler above, and an unhandled `error` on an
-    // emitter is rethrown as an uncaught exception that takes the host
-    // process down. A child that closes its read end before `input` drains
-    // (it exits, or closes fd 0) fails the write (EPIPE, or ENOTCONN under
-    // some timings). That is not a command failure: the child ran, and its
-    // own exit code is the result.
-    // But it does mean the child read only part of `input`, so the message
-    // rides out in `error`, the way a spawn error already does. (A write
-    // error that lands after the promise settles is only swallowed —
-    // nothing left to report it on.)
+    // `child.stdin` is its own emitter. An `error` on it never reaches the
+    // `child.on('error')` handler above, and an unhandled `error` on an
+    // emitter is rethrown as an uncaught exception that ends the host
+    // process. A child that closes its read end before `input` is written (it
+    // exits, or closes fd 0) fails the write with EPIPE, or ENOTCONN with
+    // some timings. That is not a command failure: the child ran, and its own
+    // exit code is the result. But the child read only part of `input`, so
+    // the message goes in `error`, as a spawn error does. A write error after
+    // the promise settles is ignored, since there is no result left to put it
+    // on.
     child.stdin?.on('error', (err) => {
       stdinError = err
     })
@@ -447,9 +442,9 @@ function runAsync(
       try {
         opts.onSpawn(child.pid)
       } catch (err) {
-        // Called once every handler is installed, so a throw here can
-        // still kill the child and settle rather than reject and leave
-        // it running untracked.
+        // Called after every handler is in place, so a throw here can still
+        // kill the child and settle, rather than reject and leave it running
+        // untracked.
         hardKill()
         const message = err instanceof Error ? err.message : String(err)
         finish({ exitCode: 1, neverExited: true, reason: 'abort' }, `onSpawn threw: ${message}`)
@@ -460,25 +455,25 @@ function runAsync(
       else opts.signal?.addEventListener('abort', onAbort, { once: true })
     }
     if (!settled && timeoutMs !== undefined) {
-      // The timeout is enforced here rather than handed to spawn's own
-      // `timeout` option, which is a no-op on some Bun versions. Not
-      // unref'd: an unref'd timer does not reliably fire on every Bun
-      // version, and `finish` clears it, so it never outlives the call.
+      // The timeout is enforced here, not through spawn's own `timeout`
+      // option, which does nothing on some Bun versions. The timer is not
+      // unref'd, because an unref'd timer does not always fire on every Bun
+      // version. `finish` clears it, so it never outlives the call.
       timer = setTimeout(() => {
-        // SIGKILL, not the default SIGTERM: the contract is a hard cap and
-        // the child is by assumption already hung, so a signal it may trap
-        // or ignore is no cap at all. This matches the sync and streaming
-        // runners, which cannot escalate. An abort, by contrast, is a
-        // request to stop and sends SIGTERM first.
+        // SIGKILL, not the default SIGTERM. The timeout is a hard cap, and
+        // a child that has run this long is assumed to be hung. A signal it
+        // can trap or ignore would not be a cap. This matches the sync and
+        // streaming runners, which cannot escalate. An abort is a request to
+        // stop, so it sends SIGTERM first.
         hardKill()
         if (exited !== undefined) {
           finish(exited, stdinError?.message)
           return
         }
-        // Settle here rather than leaving it to `close`. `close` waits for
-        // the stdio pipes to hit EOF, and a forked grandchild survives the
-        // kill still holding the write ends. So resolve on the deadline
-        // with the output captured so far.
+        // Settle here, not on `close`. `close` waits for the stdio pipes to
+        // reach EOF, and a forked grandchild can survive the kill and still
+        // hold the write ends. So resolve on the deadline with the output
+        // captured so far.
         finish(
           { exitCode: 1, neverExited: true, reason: 'timeout' },
           `timed out after ${timeoutMs}ms`,
@@ -494,7 +489,7 @@ function runAsync(
  * The async version of `runChecked`: run a command and reject if it fails.
  * Like `runChecked`, it takes the runner's own options, so a `withDefaults`
  * runner needs only the options it did not bind. An
- * {@link AsyncBytesCommandRunner} resolves to `CommandResult<Buffer>`; its
+ * {@link AsyncBytesCommandRunner} resolves to `CommandResult<Buffer>`. Its
  * `CommandFailed` carries stdout decoded as UTF-8.
  *
  * @param argv - Arguments, without the binary name.
@@ -533,9 +528,9 @@ export async function runCheckedAsync(
 }
 
 /**
- * Wrap a sync runner as an async one, so one test fake serves both forms.
- * `signal`, `onSpawn` and `processGroup` are ignored: a sync runner cannot be
- * cancelled mid-flight and reports no pid. A throw from the sync runner
+ * Wrap a sync runner as an async one, so one test fake works for both forms.
+ * `signal`, `onSpawn` and `processGroup` are ignored, because a sync runner
+ * cannot be cancelled while it runs and reports no pid. A throw from the sync runner
  * becomes a rejection. A `BytesCommandRunner` becomes an
  * {@link AsyncBytesCommandRunner}.
  *

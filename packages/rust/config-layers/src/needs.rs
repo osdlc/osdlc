@@ -1,11 +1,11 @@
-//! What a command needs from the config before it can run, and the one
-//! message every unmet need renders: the command, the key, what the key is
-//! for, and where to set it.
+//! What a command needs from the config before it can run, and the message
+//! an unmet need gives. The message names the command, the key, what the key
+//! is for, and where to set it.
 //!
-//! A tool declares a static [`KeySpec`] table beside its serde structs, one
-//! entry per dotted key it cares about, stating the key's scope and a
-//! one-sentence description. Rust cannot read either from a serde-derived
-//! type, so the table says them directly.
+//! A tool declares a static [`KeySpec`] table beside its serde structs, with
+//! one entry per dotted key it cares about. Each entry states the key's scope
+//! and a one-sentence description. Rust cannot read either from a
+//! serde-derived type, so the table states them.
 
 use std::path::Path;
 
@@ -26,7 +26,8 @@ pub enum Scope {
     Project,
     /// The machine-local file only.
     Machine,
-    /// Either file; the one a person is standing in leads.
+    /// Either file. The project file comes first in the message when it
+    /// exists, the machine file otherwise.
     Both,
 }
 
@@ -51,9 +52,10 @@ pub struct KeySpec {
 pub struct Need {
     /// Dotted path into the config: `lease_authority`, `paths.dev`.
     pub config: &'static str,
-    /// An input key that stands in for the setting when given on the
-    /// command line (`authority` for `--authority`). The need is met when
-    /// that input is present and non-empty, whatever the config says.
+    /// An input key that can be given on the command line instead of the
+    /// setting (`authority` for `--authority`). The need is met when the
+    /// `input_set` callback of [`Needs::met`] says that input was given,
+    /// whatever the config says.
     pub unless_input: Option<&'static str>,
 }
 
@@ -68,12 +70,11 @@ pub struct KeyScopes {
     pub machine: bool,
 }
 
-/// A tool's key table plus the two files' identifying details, for
-/// answering whether a need is met and rendering the one message when it
-/// is not.
+/// A tool's key table plus the names of its two files. It answers whether a
+/// need is met and gives the message when it is not.
 ///
 /// It holds the machine file's resolved path, not a
-/// [`MachineConfigFile`](crate::machine::MachineConfigFile): it reports on
+/// [`MachineConfigFile`](crate::machine::MachineConfigFile). It only reports
 /// paths and never needs the file's typed shape.
 ///
 /// **Stability:** stable in 0.x.
@@ -87,11 +88,11 @@ pub struct Needs {
 }
 
 impl Needs {
-    /// `tool` names the command in [`Needs::message`]; `project_file` is
-    /// the committed file's name, looked for at the project root;
-    /// `machine_path` is the already-resolved path to the machine file
-    /// (e.g. from [`crate::machine::MachineConfigFile::path`]);
-    /// `scaffold_hint` is appended after a semicolon, e.g.
+    /// `tool` names the command in [`Needs::message`]. `project_file` is the
+    /// committed file's name, looked for at the project root. `machine_path`
+    /// is the resolved path to the machine file (e.g. from
+    /// [`crate::machine::MachineConfigFile::path`]). `scaffold_hint` is
+    /// appended after a semicolon, e.g.
     /// `` `tooly config scaffold` shows the full shape ``.
     pub fn new(
         tool: &str,
@@ -138,11 +139,11 @@ impl Needs {
         self.find(key).map(|spec| spec.description)
     }
 
-    /// Whether `need` is met: the stand-in input is set, or the setting is
-    /// set in the project config or the machine config. `project` and
-    /// `machine` are the two files' already-hydrated top-level values (a
-    /// caller that has no machine file yet passes `None`); `input_set`
-    /// answers whether a given input key was passed on the command line.
+    /// Whether `need` is met: the `unless_input` input was given, or the
+    /// setting is set in the project config or the machine config. `project`
+    /// and `machine` are the two files' parsed top-level values. A caller
+    /// with no machine file yet passes `None`. `input_set` answers whether a
+    /// given input key was passed on the command line.
     pub fn met(
         &self,
         need: &Need,
@@ -159,10 +160,11 @@ impl Needs {
         value_is_set(machine.and_then(|m| value_at(m, need.config)))
     }
 
-    /// Where `key` can be set, as prose: the file(s) whose key table
-    /// carries it, the one a person is standing in first. Outside a
-    /// project (no project file at the root) the project file is
-    /// described rather than pointed at, since the root is not one.
+    /// Where `key` can be set, as prose: the files the key table allows for
+    /// it. When a project file exists at `project_root`, it comes first.
+    /// Otherwise the machine file comes first, and the project file is
+    /// described instead of given as a path, since there is no file to
+    /// point at.
     pub fn where_to_set(&self, key: &str, project_root: &Path) -> String {
         let scopes = self.key_scopes(key);
         let project_path = project_root.join(&self.project_file);
@@ -190,7 +192,7 @@ impl Needs {
         }
     }
 
-    /// The one message every unmet need renders. `command` is the command
+    /// The message for an unmet need. `command` is the command
     /// words after the tool name (`&["push"]` for `mytool push`); with none,
     /// the message says "this command". `project_root` is where the project
     /// file is, or would be.
@@ -377,13 +379,13 @@ mod tests {
             let project = yaml("authority: ''\n");
             assert!(!needs.met(&NEED, Some(&project), None, &no_input));
 
-            // The stand-in input satisfies the need even though the setting
-            // itself is unset.
+            // The `unless_input` input meets the need even though the setting
+            // is unset.
             let has_authority = |k: &str| k == "authority";
             assert!(needs.met(&NEED, Some(&project), None, &has_authority));
 
-            // `input_set` already answers "is this input usefully set", so an
-            // input present but empty is `false` here, the same as no input.
+            // `input_set` answers "is this input set", so the caller returns
+            // `false` for an input given but empty, the same as no input.
             assert!(!needs.met(&NEED, Some(&project), None, &no_input));
 
             let machine = yaml("paths:\n  dev: ~/Developer\n");

@@ -20,7 +20,7 @@ import { fakeRunner } from '@osdlc/command-seam/testing'
 
 // ---- Code under test -------------------------------------------------------
 
-/** Run each hook in order and stop at the first that fails; returns those that passed. */
+/** Run each hook in order and stop at the first that fails. Returns those that passed. */
 function runHooks(hooks: string[], cwd: string, sh: ShellRunner = shellRunner()): string[] {
   const passed: string[] = []
   for (const hook of hooks) {
@@ -30,7 +30,7 @@ function runHooks(hooks: string[], cwd: string, sh: ShellRunner = shellRunner())
   return passed
 }
 
-/** Run independent hooks at once; returns the hooks that failed. */
+/** Run independent hooks at once. Returns the hooks that failed. */
 async function failingHooks(
   hooks: string[],
   cwd: string,

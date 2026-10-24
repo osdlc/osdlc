@@ -1,7 +1,7 @@
 /**
  * Need: retry a flaky network command, but only when another try might help.
  *
- * `neverExited` says the exit code is a stand-in, not the command's answer;
+ * `neverExited` says the exit code is a stand-in, not the command's answer.
  * `reason` says which cause it was. A timeout or a stray signal may pass on a
  * retry. A binary that cannot start, the output cap, or a real non-zero exit
  * fails the same way every time, and a deliberate stop should not be undone

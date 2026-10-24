@@ -1,6 +1,6 @@
 <script setup>
-// "Inline expression" console variant — the primitive rendered as a live,
-// editable formula. Pure L1 surface only; theme-aware via Starlight vars.
+// Console shown as an inline expression: the `intersects` call as an editable
+// formula. Imports only the root entry. Uses Starlight's CSS variables for the theme.
 import { ref, computed } from 'vue'
 import { intersects, witness } from '@osdlc/intersect'
 

@@ -3,13 +3,13 @@
  * state machine, and the record that log reduces to. Each session directory
  * holds an append-only `events.jsonl`, one `{ts, kind, ...}` object per line,
  * and `record.json` is only the projection {@link SessionModel.reduceSessionEvents}
- * computes from it. A writer appends an event and re-reduces the WHOLE log
- * (never a read-modify-write of the last projection), so two processes on one
- * machine cannot overwrite each other's newer state with a stale one.
+ * computes from it. A writer appends an event and reduces the whole log again,
+ * never a read-modify-write of the last projection. So two processes on one
+ * machine cannot overwrite each other's newer state with older state.
  *
- * The harness, host and launch-flag vocabularies belong to the consumer, so the
- * model is built by {@link defineSessionModel} from the schemas it should
- * validate them with. {@link looseSessionModel} accepts any string, for a reader
+ * The consumer defines the harness, host and launch-flag vocabularies.
+ * {@link defineSessionModel} builds the model from the schemas that validate
+ * them. {@link looseSessionModel} accepts any string, for a reader
  * that must stay able to read a log after a harness or host is added or removed.
  *
  * Kinds: `launched`, `host_attached`, `pid_recorded`, `harness_session_resolved`,
@@ -22,23 +22,23 @@
  * `idle`, `done` or `ended`; `idle` to `running`, `waiting_for_input`, `done` or
  * `ended`; `done` (the agent declared its task finished, by a `done` event) to
  * `done` (declared again), `running` (a new prompt) or `ended`. `ended` takes no
- * `state_changed`; only a `resumed` event leaves it, back to `starting`, for a
+ * `state_changed`. Only a `resumed` event leaves it, back to `starting`, for a
  * new run of the same harness session. Any other `state_changed` is ignored by
  * the reducer (reported in `ignored`, still present in the log). A repeated
  * `ended`, a `resumed` on a session that has not ended, or a `host_attached` on
- * an ended session, is ignored the same way; `output`, `outcome`, `pr_linked`,
- * `named` and `harness_session_resolved` still apply, since each describes the
- * session rather than its life.
+ * an ended session, is ignored the same way. `output`, `outcome`, `pr_linked`,
+ * `named` and `harness_session_resolved` still apply after the end, since each
+ * describes the session, not its state.
  *
  * Keys renamed in 0.3.3: the `launched` event and the record write `harness`,
  * `launchFlags` and `pin`. Logs and records written before carry `engine`,
- * `claudeFlags` and `sdlcPin`; the schemas read those as the new keys, so an
+ * `claudeFlags` and `sdlcPin`. The schemas read those as the new keys, so an
  * existing store loads unchanged.
  *
  * Name: the record's `name` is the latest `named` event from a `person`, else
  * the name the `launched` event carried (`nameSource` `launch`), else the
- * latest `named` event from the `harness`. A harness-generated title never
- * displaces a name a person or the launcher chose.
+ * latest `named` event from the `harness`. A title the harness generated never
+ * replaces a name a person or the launcher chose.
  */
 
 import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
@@ -52,7 +52,7 @@ import { appendJsonl, parseJsonl, readJsonlFrom } from './writer.ts'
 // ── Vocabulary ───────────────────────────────────────────────────────────
 
 /**
- * Where a session is in its life; the module header lists the legal moves. A
+ * A session's current state. The module header lists the legal moves. A
  * closed list: adding a state is a breaking change.
  */
 export const SESSION_RUN_STATES = [
@@ -101,12 +101,12 @@ export type SessionLaunched = z.infer<typeof SessionLaunchedSchema>
 
 /** Who chose a session's name: a `person` (a rename), the `launch` (an explicit name), or the `harness` (a title it generated). */
 export const SessionNameSourceSchema = z.enum(['person', 'launch', 'harness'])
-/** One of `person`, `launch` or `harness`; see {@link SessionNameSourceSchema}. */
+/** One of `person`, `launch` or `harness`. See {@link SessionNameSourceSchema}. */
 export type SessionNameSource = z.infer<typeof SessionNameSourceSchema>
 
 /** Whether a session ran with no terminal (`headless`) or in a host's terminal (`interactive`). */
 export const SessionKindSchema = z.enum(['headless', 'interactive'])
-/** `headless` or `interactive`; see {@link SessionKindSchema}. */
+/** `headless` or `interactive`. See {@link SessionKindSchema}. */
 export type SessionKind = z.infer<typeof SessionKindSchema>
 
 /**
@@ -147,7 +147,7 @@ export const UsageSampleSchema = z.object({
   totalTokens: z.number().nullable(),
   costUsd: z.number().nullable(),
 })
-/** A parsed {@link UsageSampleSchema}; each count is `null` when the harness did not report it. */
+/** A parsed {@link UsageSampleSchema}. Each count is `null` when the harness did not report it. */
 export type UsageSample = z.infer<typeof UsageSampleSchema>
 
 /** What an agent declares with a `done` event: the work it was given succeeded or failed. */
@@ -157,7 +157,7 @@ export const SessionDoneOutcomeSchema = z.enum(SESSION_DONE_OUTCOMES)
 /** One of {@link SESSION_DONE_OUTCOMES}. */
 export type SessionDoneOutcome = z.infer<typeof SessionDoneOutcomeSchema>
 
-/** The agent's own statement that it finished its task ({@link SessionRecordOf.done}); distinct from the session's `outcome`, which is how the session ENDED. */
+/** The agent's own statement that it finished its task ({@link SessionRecordOf.done}). This differs from the session's `outcome`, which is how the session ended. */
 export const SessionDoneSchema = z.object({
   at: z.string(),
   outcome: SessionDoneOutcomeSchema,
@@ -205,21 +205,21 @@ export interface SessionRecordOf<H extends string, Ho extends string, F> {
   id: string
   /** The harness (the agent CLI) the session runs. Written as `engine` before 0.3.3. */
   harness: H
-  /** `headless` or `interactive`; `host === null` exactly when headless. */
+  /** `headless` or `interactive`. `host === null` exactly when headless. */
   kind: SessionKind
   origin: SessionOrigin
   author: SessionAuthorOf<H>
-  /** Where the session is in its life; `ended` is terminal. */
+  /** The session's current state. `ended` is final. */
   state: SessionRunState
-  /** How it ended; `null` until an `outcome` event lands. */
+  /** How it ended. `null` until an `outcome` event arrives. */
   outcome: SessionOutcome | null
   /** `null` for a headless run (no host is involved). */
   host: Ho | null
   cwd: string
   launched: SessionLaunched
-  /** The session's chosen name, by the precedence in the module header; `null` when none was chosen (a reader derives one from `launched`). */
+  /** The session's chosen name, by the order in the module header. `null` when none was chosen (a reader derives one from `launched`). */
   name: string | null
-  /** Who chose `name`; `null` exactly when `name` is. */
+  /** Who chose `name`. `null` exactly when `name` is. */
   nameSource: SessionNameSource | null
   startedAt: string
   /** `null` while the session is still running, or when nothing observed its end. */
@@ -230,36 +230,37 @@ export interface SessionRecordOf<H extends string, Ho extends string, F> {
   harnessSessionId: string | null
   /** Where the harness keeps its transcript, once a hook reported it. */
   transcriptPath?: string | undefined
-  /** Where a headless run's captured output landed; `null` for an interactive run. */
+  /** Where a headless run's captured output was written. `null` for an interactive run. */
   logPath: string | null
-  /** The git branch checked out in `cwd` at launch, best-effort. */
+  /** The git branch checked out in `cwd` at launch, if it could be read. */
   branch: string | null
   /** A PR number cached once something resolved the session for a PR. */
   prNumber: number | null
-  /** The caller's limit key this dispatch counts against, stored as handed. */
+  /** The caller's limit key this dispatch counts against, stored as given. */
   operation: string | null
   /**
-   * The spawned harness process's pid: a headless launch's, or, for a hands-off
-   * interactive one, the pid a wrapper process recorded (`pid_recorded`), so a
-   * reader can tell a live session from an orphan.
+   * The spawned harness process's pid. For a headless launch, its own pid. For
+   * an interactive launch on a host that does not wait, the pid a wrapper
+   * process recorded (`pid_recorded`). A reader uses it to tell a live session
+   * from an orphan.
    */
   pid: number | null
   /**
-   * The agent's own `done` declaration, from the `done` event until a new prompt moves
-   * the session back to `running` (which clears it); a session that ends done keeps it.
+   * The agent's own `done` declaration. Set by the `done` event and cleared when a new
+   * prompt moves the session back to `running`. A session that ends while done keeps it.
    */
   done?: SessionDone | undefined
-  /** The launch flags; replayed on resume. Written as `claudeFlags` before 0.3.3. */
+  /** The launch flags, replayed on resume. Written as `claudeFlags` before 0.3.3. */
   launchFlags?: F | undefined
-  /** Pinned command the agent should run; replayed on resume. Written as `sdlcPin` before 0.3.3. */
+  /** Pinned command the agent should run, replayed on resume. Written as `sdlcPin` before 0.3.3. */
   pin?: string | undefined
-  /** How the session is observed; absent for a session launched before hooks existed. */
+  /** How the session is observed. Absent for a session launched before hooks existed. */
   capture?: SessionCapture | undefined
-  /** The derived `machineId()` of the machine that launched the session; liveness readers ignore another machine's records. */
+  /** The derived `machineId()` of the machine that launched the session. Liveness checks ignore another machine's records. */
   machine: string
   /** Who launched it: git `user.name` at launch, else the OS login. Absent on a log written before originators were recorded, and `null` when neither could be read or identity capture is off. */
   startedBy?: string | null | undefined
-  /** The launching machine's readable name (`os.hostname()`); `machine` stays its identity. Absent on an older log or with identity capture off. */
+  /** The launching machine's readable name (`os.hostname()`). `machine` is still its identity. Absent on an older log or with identity capture off. */
   hostname?: string | undefined
   /** The IANA zone of the launching machine's clock. Absent on an older log. */
   tz?: string | undefined
@@ -267,15 +268,15 @@ export interface SessionRecordOf<H extends string, Ho extends string, F> {
   run?: string | undefined
   /** The task or PR the session is about. */
   subject?: string | undefined
-  /** The basename of the task the session serves; absent when it serves none (or on a log written before tasks were recorded). */
+  /** The basename of the task the session works on. Absent when there is none (or on a log written before tasks were recorded). */
   task?: string | undefined
-  /** The session and op invocation that launched this one; absent for a root session. */
+  /** The session and op invocation that launched this one. Absent for a root session. */
   parent?: SessionParent | undefined
-  /** Length in bytes of the event log this record was projected from; readers re-reduce when the log's length differs. */
+  /** Length in bytes of the event log this record was projected from. Readers reduce the log again when its length differs. */
   logBytes?: number | undefined
 }
 
-/** A record of any vocabulary: what a vocabulary-blind function (liveness, reconcile) takes. */
+/** A record of any vocabulary. Functions that do not depend on the vocabulary (liveness, reconcile) take it. */
 export type AnySessionRecord = SessionRecordOf<string, string, unknown>
 
 /** An event the reducer skipped: its index in the log, the event, and why. */
@@ -297,14 +298,14 @@ export interface SessionReductionOf<E, R> {
   record: R | null
   /** `null` until a `launched` event is seen. */
   state: SessionRunState | null
-  /** `null` until an `outcome` event lands. */
+  /** `null` until an `outcome` event arrives. */
   outcome: SessionOutcome | null
   ignored: IgnoredEventOf<E>[]
 }
 
 /**
- * Thrown by a model's `recordSessionEventIn` when the projection would not
- * settle because other writers kept appending to the log while it was reduced.
+ * Thrown by a model's `recordSessionEventIn` when other writers kept appending
+ * to the log while it was reduced, so no stable projection could be written.
  */
 export class SessionLogError extends Error {
   override name = 'SessionLogError'
@@ -317,7 +318,7 @@ export interface SessionVocabulary<H extends string, Ho extends string, F> {
   launchFlags: z.ZodType<F>
 }
 
-// ── File mechanics ───────────────────────────────────────────────────────
+// ── Files ────────────────────────────────────────────────────────────────
 
 /** The name of a session's append-only event log inside its directory. */
 export const EVENTS_FILE = 'events.jsonl'
@@ -379,13 +380,13 @@ function withCurrentKeys(value: unknown): unknown {
 
 /**
  * Build the session model for a vocabulary: the event and record schemas that
- * validate it, the reducer, and the file mechanics over a session directory.
+ * validate it, the reducer, and the file functions for a session directory.
  * Name the model's types with {@link SessionEventOfModel},
  * {@link NewSessionEventOfModel} and {@link SessionRecordOfModel}.
  *
  * The event and record schemas read the keys renamed in 0.3.3 (`engine`,
  * `claudeFlags`, `sdlcPin`) as their new names, so a log or record written
- * before loads unchanged; what they write uses the new names.
+ * before loads unchanged. What they write uses the new names.
  */
 export function defineSessionModel<H extends string, Ho extends string, F>(
   v: SessionVocabulary<H, Ho, F>,
@@ -423,29 +424,29 @@ export function defineSessionModel<H extends string, Ho extends string, F>(
         cwd: z.string(),
         branch: z.string().nullable(),
         launched: SessionLaunchedSchema,
-        /** An explicit name the launcher passed (an op, or `--name`); absent when it passed none. */
+        /** An explicit name the launcher passed (an op, or `--name`). Absent when it passed none. */
         name: z.string().optional(),
         operation: z.string().nullable(),
         launchFlags: v.launchFlags.optional(),
         pin: z.string().optional(),
-        /** How the session is observed; absent on a log written before hooks existed. */
+        /** How the session is observed. Absent on a log written before hooks existed. */
         capture: SessionCaptureSchema.optional(),
         machine: z.string(),
-        /** Who launched it (git `user.name`, else the OS login); `null` when neither was readable, absent on an older log. */
+        /** Who launched it (git `user.name`, else the OS login). `null` when neither was readable. Absent on an older log. */
         startedBy: z.string().nullable().optional(),
-        /** The launching machine's `os.hostname()`; absent on an older log. */
+        /** The launching machine's `os.hostname()`. Absent on an older log. */
         hostname: z.string().optional(),
-        /** The launching machine's IANA time zone; absent on an older log. */
+        /** The launching machine's IANA time zone. Absent on an older log. */
         tz: z.string().optional(),
-        /** The run (correlation id) the session belongs to; absent on a log written before runs existed. */
+        /** The run (correlation id) the session belongs to. Absent on a log written before runs existed. */
         run: z.string().nullable().optional(),
-        /** The task or PR the run is about; absent when none was known. */
+        /** The task or PR the run is about. Absent when none was known. */
         subject: z.string().nullable().optional(),
-        /** The basename of the task the session serves; absent when it serves none. */
+        /** The basename of the task the session works on. Absent when there is none. */
         task: z.string().nullable().optional(),
-        /** The machine that wrote the log, as the journal's `writer`; absent on an older log. */
+        /** The machine that wrote the log, as the journal's `writer`. Absent on an older log. */
         writer: z.string().optional(),
-        /** The session and op invocation that launched this one; `null`/absent for a root. */
+        /** The session and op invocation that launched this one. `null` or absent for a root session. */
         parent: SessionParentSchema.nullable().optional(),
       }),
       z.object({
@@ -508,7 +509,7 @@ export function defineSessionModel<H extends string, Ho extends string, F>(
         via,
         kind: z.literal('named'),
         name: z.string(),
-        /** `person` for a rename; `harness` for a title the harness generated. */
+        /** `person` for a rename, `harness` for a title the harness generated. */
         source: z.enum(['person', 'harness']),
       }),
       z.object({ ts, via, kind: z.literal('ended') }),
@@ -526,9 +527,9 @@ export function defineSessionModel<H extends string, Ho extends string, F>(
   type NewEvent = Event extends infer E ? (E extends Event ? Omit<E, 'ts'> : never) : never
 
   /**
-   * Runtime shape-check for a `record.json`, field for field with the record.
+   * Runtime shape check for a `record.json`, field for field with the record.
    * `harnessSessionId`/`name`/`nameSource`/`branch`/`prNumber`/`operation`/`pid` default to `null`
-   * when absent; any other mismatch fails the parse, which a reader treats as
+   * when absent. Any other mismatch fails the parse, which a reader treats as
    * unreadable, not a crash. A record written before 0.3.3 reads with its keys
    * renamed.
    */
@@ -574,10 +575,10 @@ export function defineSessionModel<H extends string, Ho extends string, F>(
   )
 
   /**
-   * Fold `events` in file order into the session's record. File order, not
-   * `ts` order, decides: a line is appended at the moment it happens on the
-   * writing machine, so a clock skew between a launcher and a hook process
-   * cannot reorder it.
+   * Reduce `events`, in file order, to the session's record. File order, not
+   * `ts` order, decides. A line is appended when the event happens on the
+   * writing machine, so clock skew between a launcher and a hook process
+   * cannot reorder events.
    */
   function reduceSessionEvents(events: readonly Event[]): SessionReductionOf<Event, Record> {
     let record: Record | null = null
@@ -644,8 +645,8 @@ export function defineSessionModel<H extends string, Ho extends string, F>(
             host: event.host,
             // A resolved harness id is not erased by a later attach that has none.
             harnessSessionId: event.harnessSessionId ?? current.harnessSessionId,
-            // A wrapper process may have recorded the pid before the launcher,
-            // which knows none for a hands-off host, attaches.
+            // A wrapper process may have recorded the pid before the launcher
+            // attaches. For a host that does not wait, the launcher knows no pid.
             pid: event.pid ?? current.pid,
           }
           return
@@ -676,15 +677,15 @@ export function defineSessionModel<H extends string, Ho extends string, F>(
             return skip(state === 'ended' ? 'after_ended' : 'illegal_transition')
           }
           // `from` is the writer's view when it planned the event and may be stale (hooks run
-          // concurrently); only `to`'s legality from the folded state rules.
+          // concurrently). Only whether `to` is legal from the current state matters.
           state = event.to
-          // A new prompt reopens a done session; `done` stays on a session that ends done.
+          // A new prompt reopens a done session. `done` stays on a session that ends while done.
           if (event.to === 'running' && current.done !== undefined) {
             const { done: _cleared, ...rest } = current
             record = rest as Record
           }
-          // The launcher pairs this with an `ended` event, which stamps the same instant;
-          // a log with only this half must still read as over to the liveness readers.
+          // The launcher pairs this with an `ended` event, which stamps the same instant.
+          // A log with only this half must still read as over to the liveness checks.
           if (event.to === 'ended' && current.endedAt === null)
             record = { ...current, endedAt: event.ts }
           return
@@ -692,7 +693,7 @@ export function defineSessionModel<H extends string, Ho extends string, F>(
           record = { ...current, logPath: event.logPath }
           return
         case 'outcome':
-          // The outcome may land after `ended` (it describes how the session ended), but only once.
+          // The outcome may arrive after `ended` (it describes how the session ended), but only once.
           if (outcome !== null) return skip('repeated_outcome')
           outcome = event.outcome
           record = { ...current, exitCode: event.exitCode }
@@ -708,11 +709,11 @@ export function defineSessionModel<H extends string, Ho extends string, F>(
           if (endedSeen) return skip('after_ended')
           endedSeen = true
           state = 'ended'
-          // A `state_changed` to `ended` may already have stamped it; keep the first instant.
+          // A `state_changed` to `ended` may already have stamped it. Keep the first instant.
           record = { ...current, endedAt: current.endedAt ?? event.ts }
           return
         case 'resumed':
-          // Reopens an ended session for a new run of the same harness session; a live one
+          // Reopens an ended session for a new run of the same harness session. A live one
           // has nothing to reopen.
           if (state !== 'ended') return skip('illegal_transition')
           state = 'starting'
@@ -721,7 +722,7 @@ export function defineSessionModel<H extends string, Ho extends string, F>(
           record = { ...current, host: event.host, pid: event.pid, endedAt: null, exitCode: null }
           return
         case 'usage_sample':
-          // Tokens and cost are not record fields; a usage ledger keeps its own rows.
+          // Tokens and cost are not record fields. A usage ledger keeps its own rows.
           return
       }
     })
@@ -750,9 +751,9 @@ export function defineSessionModel<H extends string, Ho extends string, F>(
   /**
    * Append one event as one line (a single `O_APPEND` write, synced, so a
    * crash leaves the whole line or a torn tail that {@link parseSessionEvents}
-   * drops). Keep lines under 4 KiB by convention; `launched` carries a
+   * drops). Keep lines under 4 KiB by convention. `launched` carries a
    * prompt's text and is the one kind that can exceed it. Does not update
-   * `record.json`; {@link recordSessionEventIn} does both.
+   * `record.json`. {@link recordSessionEventIn} does both.
    *
    * @throws A `ZodError` when `event` does not match the event schema.
    */
@@ -762,8 +763,8 @@ export function defineSessionModel<H extends string, Ho extends string, F>(
 
   /**
    * Events in `text`, in order. A final line with no newline is a torn write
-   * and is not an event; a complete line that is not JSON, or not a known
-   * event, is skipped (a kind a later writer adds must not break an older reader).
+   * and is not an event. A complete line that is not JSON, or not a known
+   * event, is skipped, so a kind a later writer adds does not break an older reader.
    */
   function parseSessionEvents(text: string): Event[] {
     const out: Event[] = []
@@ -774,7 +775,7 @@ export function defineSessionModel<H extends string, Ho extends string, F>(
     return out
   }
 
-  /** The events in a session directory; `[]` when there is no log. */
+  /** The events in a session directory. `[]` when there is no log. */
   function readSessionEvents(sessionDirectory: string): Event[] {
     const path = sessionEventsPath(sessionDirectory)
     if (!existsSync(path)) return []
@@ -796,15 +797,15 @@ export function defineSessionModel<H extends string, Ho extends string, F>(
   }
 
   /**
-   * Append `event` (stamped `ts`) to the session in `dir`, re-reduce the whole
-   * log and rewrite `record.json` from it, stamping the log length the
-   * projection covers (`logBytes`). The log can grow while this process
-   * reduces (a hook process appending), so the length is re-checked after the
-   * write and the reduction repeated; if it never settles the call throws
-   * {@link SessionLogError} rather than leave a projection it cannot vouch for.
+   * Append `event` (stamped `ts`) to the session in `dir`, reduce the whole log
+   * again and rewrite `record.json` from it, with the log length the projection
+   * covers (`logBytes`). The log can grow while this process reduces it (a hook
+   * process appending). So the length is checked again after the write and the
+   * reduction is repeated. If the log never stops growing, the call throws
+   * {@link SessionLogError} and does not leave a projection it cannot trust.
    * Returns `null` when the log has no usable `launched` event yet.
    *
-   * @throws {@link SessionLogError} when the log keeps growing; a `ZodError`
+   * @throws {@link SessionLogError} when the log keeps growing, or a `ZodError`
    * when `event` does not match the event schema.
    */
   function recordSessionEventIn(dir: string, event: NewEvent, ts: string): Record | null {
@@ -812,9 +813,9 @@ export function defineSessionModel<H extends string, Ho extends string, F>(
   }
 
   /**
-   * {@link recordSessionEventIn}, also saying whether the reducer applied the
-   * appended event (`applied: false`: it was ignored, e.g. an `ended` that lost
-   * a race to another writer's). A caller that mirrors events elsewhere mirrors
+   * {@link recordSessionEventIn}, also reporting whether the reducer applied the
+   * appended event. `applied: false` means it was ignored, for example an `ended`
+   * that lost a race to another writer's. A caller that mirrors events elsewhere mirrors
    * only the applied ones, so the mirror cannot disagree with the record.
    *
    * @throws As {@link recordSessionEventIn}.

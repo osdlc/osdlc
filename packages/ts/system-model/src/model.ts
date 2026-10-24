@@ -13,9 +13,9 @@ import { EVIDENCE_TIERS, type Evidence, type EvidenceKind } from './aspect.ts'
 /**
  * A task parameter, as data rather than as text in a command line.
  *
- * This is why `argv` and `display` are separate fields. just renders
- * parameters as `<required>`, `[optional]` and `*variadic`; joined into a
- * shell string, `<lib>` is an input redirection and `*flags` a glob.
+ * This is why `argv` and `display` are separate fields. just shows
+ * parameters as `<required>`, `[optional]` and `*variadic`. In a shell
+ * string, `<lib>` is an input redirection and `*flags` is a glob.
  */
 export interface Param {
   name: string
@@ -32,9 +32,9 @@ export interface Param {
 export type TaskOrigin = 'declared' | 'synthesized'
 
 /**
- * Where a task's command runs when someone runs it. Independent of how the
- * task was found: a GitHub Actions workflow is read from a file but runs
- * `remote`; a compose service runs in a `container`.
+ * Where a task's command runs. This is separate from how the task was found.
+ * A GitHub Actions workflow is read from a file but runs `remote`. A compose
+ * service runs in a `container`.
  */
 export type TaskExecutionTarget = 'local' | 'remote' | 'container'
 
@@ -42,7 +42,7 @@ export type TaskExecutionTarget = 'local' | 'remote' | 'container'
  * One runnable command.
  *
  * `argv` is what you execute. `display` is what you show. Never build one
- * from the other; to add arguments, use `Project.runners.invoke`.
+ * from the other. To add arguments, use `Project.runners.invoke`.
  */
 export interface Task {
   /** Stable across a re-collect: runner, declaring file and name. */
@@ -109,7 +109,7 @@ export interface Diagnostic {
 }
 
 /**
- * A runner's visual identity, for surfaces that show more than text. Kept on
+ * A runner's icon and colour, for views that show more than text. Kept on
  * the report rather than on each task.
  */
 export interface RunnerBrand {
@@ -159,7 +159,7 @@ export interface Catalog {
   root: string
   generatedAt: string
   discovery: DiscoveryMode
-  /** Whether runners were permitted to run subprocesses. */
+  /** Whether runners were allowed to run subprocesses. */
   allowExec: boolean
   reports: RunnerReport[]
 }

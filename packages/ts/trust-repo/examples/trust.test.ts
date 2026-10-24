@@ -1,6 +1,6 @@
 /**
- * The trust entry used the way a consumer uses it: through the package name
- * only. Every export of `@osdlc/trust-repo` appears here at least once;
+ * The package used the way a consumer uses it: through the package name
+ * only. Every export of `@osdlc/trust-repo` appears here at least once.
  * `tests/exports.test.ts` checks that.
  */
 

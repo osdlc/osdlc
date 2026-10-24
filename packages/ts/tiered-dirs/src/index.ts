@@ -1,22 +1,22 @@
 /**
- * `@osdlc/tiered-dirs` — one answer to "where does this state live?" for a
- * vendor's products, in Rust and TypeScript alike.
+ * `@osdlc/tiered-dirs` says where each piece of state lives on disk for a
+ * vendor's products. A Rust crate gives the same answers.
  *
  * Two axes. The tier says who shares the state (the vendor, a suite of
  * products that share user data, or one general tool shipped outside the
- * suite). The home says how durable it is (durable, config, cache, state,
+ * suite). The home says how long it must last (durable, config, cache, state,
  * logs, runtime). A caller names both:
  *
  * ```ts
  * TieredDirs.fromEnv('com.example', envVars('EXAMPLE')).suite('notes').cache().app('search')
  * ```
  *
- * `TieredDirs.scratch()` sits outside both axes: the platform temp directory,
+ * `TieredDirs.scratch()` is on neither axis. It is the platform temp directory,
  * for state that does not outlive a single call.
  *
- * This module is the twin of the Rust `tiered-dirs` crate. Identical input
- * must yield an identical relative path in both, and `tests/parity.test.ts`
- * pins that against a fixture both twins read.
+ * This module matches the Rust `tiered-dirs` crate. The same input must give
+ * the same relative path in both. `tests/parity.test.ts` checks that against a
+ * fixture both packages read.
  */
 
 export { TieredDirsError } from './errors.ts'

@@ -1,8 +1,8 @@
 /**
- * The config, remote and repository verbs added after the first-release
- * review: `configGet` with a scope, `configGetAll`, `configGetBool`,
- * `remoteGetUrl` with `push`, `remoteGetUrls`, `remoteHead`, `gitDir`, the
- * new `clone` and `fetch` flags, and the `maxOutputBytes` call option.
+ * Config, remote and repository verbs: `configGet` with a scope,
+ * `configGetAll`, `configGetBool`, `remoteGetUrl` with `push`,
+ * `remoteGetUrls`, `remoteHead`, `gitDir`, the `clone` and `fetch` flags, and
+ * the `maxOutputBytes` call option.
  */
 
 import { describe, expect, test } from 'vitest'

@@ -180,7 +180,7 @@ impl<R: Resolver> Guard<R> {
     ///
     /// `Path::starts_with` on raw spellings answers the wrong question: on
     /// macOS a temporary directory is handed out as `/var/…` and canonicalises
-    /// to `/private/var/…`, so a path genuinely inside the root compares
+    /// to `/private/var/…`, so a path inside the root compares
     /// unequal. `starts_with` itself is component-wise, so a sibling named
     /// `/vault-bee` never matches a root of `/vault-b`.
     ///
@@ -478,7 +478,7 @@ fn walk<R: Resolver + ?Sized>(calls: &mut Calls<R>, p: &Path, hops: usize) -> Op
 /// Windows reads a path before it follows any link. A `..` at a root stays
 /// there. A leading `..` stays in a relative path and after a bare drive
 /// (`C:`), which is a working directory too. `foldText` in the TypeScript
-/// twin's `resolve.ts` is the same rule.
+/// package's `resolve.ts` is the same rule.
 ///
 /// The walk calls it on Windows, and [`Guard::real_path`] on every platform
 /// when the walk gives up. It reads `p` with the platform's components.

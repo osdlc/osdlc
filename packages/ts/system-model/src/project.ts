@@ -1,8 +1,8 @@
 /**
- * `createProject`: bind a set of tools into one registry and offer every
+ * `createProject`: build one registry from a set of tools and answer every
  * question over it.
  *
- * Registration is explicit. The caller passes the tools it wants; nothing is
+ * Registration is explicit. The caller passes the tools it wants. Nothing is
  * discovered or loaded by name.
  */
 
@@ -43,8 +43,8 @@ export interface Runners {
   /** The tasks matching a query, best first. An empty query matches everything. */
   search(catalog: Catalog, query: string, mode?: Mode): Task[]
   /**
-   * What the cache under `cacheDir` holds for this profile, judged per
-   * runner, without probing.
+   * What the cache under `cacheDir` holds for this profile, with a fresh,
+   * stale or miss state per runner, without probing.
    *
    * @experimental
    */
@@ -66,8 +66,8 @@ export interface Runners {
 }
 
 /**
- * A registry of tools and every question asked over it. Role questions take
- * a package directory, `.` (the root) by default.
+ * A registry of tools and the questions you can ask of it. Role questions
+ * take a package directory, `.` (the root) by default.
  */
 export interface Project {
   readonly tools: readonly ToolDef[]
@@ -107,12 +107,12 @@ export interface Project {
 
 /** Options for {@link createProject}. */
 export interface ProjectOptions {
-  /** The tools to know, in report order. */
+  /** The tools to register, in report order. */
   tools: readonly ToolDef[]
 }
 
 /**
- * Bind `tools` into a {@link Project}. Throws when two tools share an id, or
+ * Build a {@link Project} from `tools`. Throws when two tools share an id, or
  * when two different ecosystem definitions share an id.
  */
 export function createProject(options: ProjectOptions): Project {

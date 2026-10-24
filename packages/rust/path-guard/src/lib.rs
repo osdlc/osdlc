@@ -4,7 +4,7 @@
 //! It rejects innocent names (`My ..dotfiles note.md`) and accepts hostile
 //! ones: an absolute path (`/etc/passwd`), a Windows drive (`C:\`), a UNC
 //! prefix, a `~` a shell would expand, a NUL byte that truncates the path in
-//! any C API it reaches, or a symlink whose *target* leaves the root although
+//! any C API it reaches, or a symlink whose target leaves the root although
 //! its spelling never says `..`.
 //!
 //! So the guard has two layers, and both are mandatory:
@@ -20,7 +20,7 @@
 //!    would be created. This layer catches the symlink escape, and it is why
 //!    `join()` alone is never enough.
 //!
-//! Every entry point that accepts a path from a client must route through
+//! Every entry point that accepts a path from a client must go through
 //! [`Guard::resolve`]. [`Guard::std`] is the guard on the real disk. Every
 //! path a guard is given must be absolute: the guard reads no current
 //! directory.
@@ -138,7 +138,7 @@ pub enum PathError {
     /// A [`Guard`] refuses it there. Holds the segment.
     #[error("path segment {0:?} names an alternate data stream on Windows")]
     AlternateStream(String),
-    /// A path component was not valid UTF-8. Rust only: the TypeScript twin
+    /// A path component was not valid UTF-8. Rust only: the TypeScript package
     /// has no such kind.
     #[error("path is not valid UTF-8")]
     NotUtf8,

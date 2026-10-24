@@ -14,7 +14,7 @@ export interface RawProcessOutput {
   cutShortBy?: 'timeout' | 'abort' | undefined
   /**
    * The first stream that passed `maxOutputBytes`. A stream that passed the
-   * cap is cut to it on a character boundary; a stream under the cap is left
+   * cap is cut to it on a character boundary. A stream under the cap is left
    * whole. When the cap stopped the run, `timedOut` is `false`. When a
    * timeout or abort came first, `timedOut` is `true` and stays the cause, and
    * this field still marks the truncation.
@@ -24,7 +24,7 @@ export interface RawProcessOutput {
   signal?: string | undefined
   /**
    * The prompt could not be fully written to the child's stdin, because the
-   * child exited or closed the pipe first — so the agent answered a truncated
+   * child exited or closed the pipe first. The agent answered a truncated
    * prompt. Absent when the write completed.
    */
   stdinError?: string | undefined
@@ -51,25 +51,25 @@ export interface ParsedOutput {
 }
 
 /**
- * One agent CLI. `plan` is pure (spec in, invocation out); `parseResult`
- * is pure (bytes in, structure out). All process handling lives in the
- * runner, so adapters are trivially unit-testable.
+ * One agent CLI. `plan` turns a spec into a command line, and `parseResult`
+ * turns output into fields. Both are pure. The runner does all process
+ * handling, so adapters are easy to unit test.
  */
 export interface AgentAdapter {
   name: string
-  /** Binary to spawn; override via each adapter factory's `binary` option. */
+  /** Binary to spawn. Override it with each adapter factory's `binary` option. */
   binary: string
   /**
    * The full command prefix, such as `['npx', '-y', '@anthropic-ai/claude-code']`
-   * or just `['claude']`; `binary` is its first element. The built-in adapters
-   * always set it. `detectAgents` probes it, or `binary` when it is absent, so
+   * or just `['claude']`. `binary` is its first element. The built-in adapters
+   * always set it. `detectAgents` runs it, or `binary` when it is absent, so
    * an adapter copied with a new `binary` (`{ ...claudeAdapter(), binary }`)
-   * must also replace `command`; pass `binary` or `command` to the factory
+   * must also replace `command`. Pass `binary` or `command` to the factory
    * instead.
    */
   command?: readonly string[] | undefined
   plan(spec: AgentCallSpec): PlannedCall
   parseResult(planned: PlannedCall, raw: RawProcessOutput): ParsedOutput
-  /** Optional supplemental layer: lift the raw transcript into the normalized model. */
+  /** Optional: convert the raw transcript into the normalized conversation model. */
   toConversation?(planned: PlannedCall, raw: RawProcessOutput): Conversation | undefined
 }

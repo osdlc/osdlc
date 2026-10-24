@@ -2,35 +2,35 @@
  * Byte-exact Markdown frontmatter framing.
  *
  * A note is `---`-fenced YAML frontmatter followed by a body. This module
- * splits the two and recomposes them without touching a single byte the
- * author wrote: the YAML text comes back verbatim (fences excluded), and
- * {@link compose} rebuilds the original file exactly — same BOM, same `\n` vs
- * `\r\n` fences, same trailing state.
+ * splits the two and joins them again without changing any byte the author
+ * wrote. The YAML text comes back as written (without the fences), and
+ * {@link compose} rebuilds the original file exactly: the same BOM, the same
+ * `\n` or `\r\n` fences, and the same ending.
  *
  * No YAML parsing, no file system, no dependencies: plain ES2022 string
- * handling. Reading the frontmatter's *values* is a job for a YAML parser; this
+ * handling. Reading the frontmatter's values is a job for a YAML parser. This
  * module only finds where the block is and puts it back.
  *
- * It is the TypeScript twin of the `frontmatter-lossless` Rust crate. It
+ * It is the TypeScript version of the `frontmatter-lossless` Rust crate. It
  * follows the crate's algorithm function for function (`split`, `compose`,
  * `split_lenient`), and both run one shared conformance corpus.
  *
- * Three tolerances, each one a bug someone has already hit:
+ * It handles three cases that real notes contain:
  *
- * - **BOM.** Notes written by some Windows editors start `\uFEFF---`. The
- *   split recognises and remembers it so a later write can restore it.
- * - **CRLF.** The `\r` stays attached to the YAML slice, so callers see the
- *   exact text and {@link compose} rebuilds `---\r\n` fences rather than
- *   silently rewriting them to `---\n` and churning the whole file in a diff.
- * - **A missing or malformed terminator is not an error.** An unterminated
- *   block is simply body: a projection over thousands of notes must degrade,
- *   never abort.
+ * - **BOM.** Some Windows editors start a note with `\uFEFF---`. The split
+ *   recognises the BOM and records it, so a later write can restore it.
+ * - **CRLF.** The `\r` stays in the YAML slice, so callers see the exact text.
+ *   {@link compose} rebuilds `---\r\n` fences rather than rewriting them to
+ *   `---\n`, which would change every line of the file in a diff.
+ * - **A missing or malformed closing fence is not an error.** An unterminated
+ *   block is read as body, so code that reads thousands of notes keeps going
+ *   instead of stopping at one bad note.
  *
  * @module @osdlc/frontmatter-lossless
  */
 
 /**
- * Line ending after the opening `---` fence. A closed set: a new member would
+ * Line ending after the opening `---` fence. A closed set. A new member would
  * be a major release, so an exhaustive `switch` over it is safe.
  */
 export type OpenEol = '\n' | '\r\n'
@@ -44,14 +44,13 @@ export type CloseEol = '' | '\n' | '\r\n'
 /**
  * Everything about a note's framing that a writer has to put back exactly.
  *
- * It exists because reassembling a note is where byte fidelity quietly dies:
- * the *values* survive a careful splice and then `---\n` gets written over a
- * file whose fences were `---\r\n`, and now every line of the note shows as
- * changed in git. The fences are data too.
+ * Without it, a writer that edits the values carefully can still write `---\n`
+ * fences over a file whose fences were `---\r\n`. Then every line of the note
+ * shows as changed in git. The fences have to be kept too.
  *
- * Take it from {@link split} and pass it back to {@link compose}, or, for a
- * new note with no source text, from {@link newShape}. Do not build one by
- * hand: a minor release may add a field, which would break an object literal
+ * Take it from {@link split} and pass it back to {@link compose}. For a new
+ * note with no source text, take it from {@link newShape}. Do not build one by
+ * hand. A minor release may add a field, which would break an object literal
  * typed as `NoteShape`.
  */
 export interface NoteShape {
@@ -61,12 +60,13 @@ export interface NoteShape {
   readonly openEol: OpenEol
   /** Line ending of the closing fence, empty when the note ends at it. */
   readonly closeEol: CloseEol
-  /** Whether the `\n` separating the block's content from the closing `---`
-   *  is present. True for every block except the adjacent-fence empty one
-   *  (`---\n---`), where the closing fence directly follows the opener's
-   *  newline. It is a separate bit because {@link Split.yaml} alone cannot
-   *  distinguish that block from a blank-line-only one (`---\n\n---`): both
-   *  yield `""`, but only the latter has a separator byte to restore. */
+  /** Whether the `\n` between the block's content and the closing `---` is
+   *  present. True for every block except the empty one with no line between
+   *  the fences (`---\n---`), where the closing fence directly follows the
+   *  opening fence's newline. It is a separate field because {@link Split.yaml}
+   *  alone cannot tell that block from one that holds only a blank line
+   *  (`---\n\n---`). Both give `""`, but only the second has a separator byte
+   *  to restore. */
   readonly closeSep: boolean
 }
 
@@ -82,8 +82,9 @@ export interface SourceRange {
  * Offsets are JavaScript string indices (UTF-16 code units), so
  * `src.slice(yamlRange.start, yamlRange.end) === yaml` and
  * `src.slice(bodyStart) === body` hold on the string you passed in. (The Rust
- * crate's offsets are UTF-8 byte offsets; each side indexes its own native
- * representation — the *content* invariants are what the shared corpus pins.)
+ * crate's offsets are UTF-8 byte offsets. Each side indexes its own string
+ * type. The corpus expects the same content on both sides. Each side checks
+ * its own offsets.)
  */
 export interface Split {
   /** The frontmatter YAML, verbatim and without the `---` fences. `null`
@@ -100,11 +101,11 @@ export interface Split {
   /** `true` when the note opens a frontmatter block that never closes: it
    *  starts with a valid opening fence (`---` and a line break, after an
    *  optional BOM) and no closing `---` line follows. `yaml` is still `null`
-   *  and `body` the whole text, as for a note with no block, so a projection
-   *  keeps going; a caller that holds authored notes to a contract can read
+   *  and `body` the whole text, as for a note with no block, so a reader of
+   *  many notes keeps going. A caller that requires valid frontmatter can read
    *  this to report the note as malformed instead. `false` otherwise.
-   *  Optional so a `Split` built by hand, such as a test fake, still type-checks;
-   *  {@link split} always sets it. */
+   *  Optional so a `Split` built by hand, such as a test fake, still
+   *  type-checks. {@link split} always sets it. */
   readonly unterminated?: boolean | undefined
 }
 
@@ -132,10 +133,10 @@ const BOM = '\uFEFF'
  *
  * Frontmatter is recognised only when the document begins with `---\n` (or
  * `---\r\n`, or either after a BOM) and is closed by `---` alone on a line.
- * Anything else — including a missing terminator — is body; a missing
- * terminator also sets {@link Split.unterminated}. A leading BOM is
- * framing: it is recorded in {@link Split.shape} and excluded from both
- * `yaml` and `body`, never duplicated into the content.
+ * Anything else, including a missing closing fence, is body. A missing
+ * closing fence also sets {@link Split.unterminated}. A leading BOM is part of
+ * the framing: it is recorded in {@link Split.shape} and left out of both
+ * `yaml` and `body`.
  */
 export function split(src: string): Split {
   const bom = src.startsWith(BOM)
@@ -230,33 +231,32 @@ export function split(src: string): Split {
 }
 
 /**
- * Reassemble a note from a (possibly spliced) frontmatter block and a body —
+ * Rebuild a note from a frontmatter block (possibly edited) and a body. This is
  * the exact inverse of {@link split}.
  *
  * `frontmatter` mirrors {@link Split.yaml}: `null` is a note with no block
  * (just the body, after any BOM), `""` is an empty `---` / `---` block, and
- * text is a block with content. Handing `split(src).yaml` straight back
+ * text is a block with content. Passing `split(src).yaml` straight back
  * reproduces `src` byte for byte for every shape.
  */
 export function compose(frontmatter: string | null, body: string, shape: NoteShape): string {
   let out = shape.bom ? BOM : ''
   if (frontmatter === null) {
-    // No block: the document is just its body (which the BOM, if any, now
-    // prefixes exactly once).
+    // No block: the document is its body, after the BOM if there is one.
     return out + body
   }
   out += '---' + shape.openEol
   out += frontmatter
-  // Restore the separator the split consumed while finding the terminator —
-  // a single `\n` (under CRLF the block ends in a bare `\r`, so `\n`, not
-  // `openEol`, rebuilds the original text). It is driven by the recorded
-  // shape, never inferred from the yaml text: a block ENDING in a blank
-  // line legitimately ends with `\n` and still had a separator after it.
-  // Only empty YAML can omit it: text written into a shape taken from an
-  // empty `---\n---` block still needs its own line before the closing fence.
+  // Restore the separator that split removed before the closing fence: a
+  // single `\n`. (Under CRLF the block ends in a bare `\r`, so `\n`, not
+  // `openEol`, rebuilds the original text.) The recorded shape decides this,
+  // not the yaml text: a block that ends in a blank line ends with `\n` and
+  // still had a separator after it. Only empty YAML can leave it out. Text
+  // written into a shape taken from an empty `---\n---` block still needs its
+  // own line before the closing fence.
   if (shape.closeSep || frontmatter !== '') out += '\n'
   // A shape from a file that ended at its closing fence has no line ending
-  // there; a new body still needs one, so borrow the opening fence's.
+  // there. A new body still needs one, so use the opening fence's.
   out += '---' + (shape.closeEol === '' && body !== '' ? shape.openEol : shape.closeEol) + body
   return out
 }
@@ -275,8 +275,8 @@ export function compose(frontmatter: string | null, body: string, shape: NoteSha
  * the yaml text keeps its own line endings, so end its lines in `\r\n` and
  * the text itself in `\r`, as {@link split} returns a CRLF block.
  *
- * An empty `yaml` gives `---\n\n---\n`: since the closing fence keeps its
- * line break, the block holds one blank line. It round-trips through
+ * An empty `yaml` gives `---\n\n---\n`. The separator before the closing
+ * fence is kept, so the block holds one blank line. It round-trips through
  * {@link split}.
  *
  * @example
@@ -290,18 +290,19 @@ export function newShape(opts: NewShapeOptions = {}): NoteShape {
 }
 
 /**
- * A tolerant, read-only frontmatter read for possibly-sloppy input.
+ * A tolerant, read-only frontmatter read for input that may be loosely
+ * written.
  *
- * {@link split} is strict and lossless — the basis of the write path. This
- * accepts what hand-authored notes drift into and a *reader* can safely
- * ignore: a leading BOM, blank lines or indentation before the opening
- * fence, and trailing whitespace on the `---` fence lines. The closing fence
- * must not be indented. It returns `{ yaml, body }`, or `null`
+ * {@link split} is strict and lossless, and is the one to use before a write.
+ * This function also accepts things hand-written notes often contain and a
+ * reader can safely ignore: a leading BOM, blank lines or indentation before
+ * the opening fence, and trailing whitespace on the `---` fence lines. The
+ * closing fence must not be indented. It returns `{ yaml, body }`, or `null`
  * when there is no block (where {@link split} gives a result with
- * `yaml: null`). It tracks no framing, so it is not a round trip —
- * parse with it, never rewrite. A fence still closes only on `---` alone on
- * its line (trailing whitespace aside), so a `---heading` in the body does
- * not end the block.
+ * `yaml: null`). It records no framing, so its result cannot be written back
+ * exactly. Use it to read, never to rewrite. A fence still closes only on
+ * `---` alone on its line (trailing whitespace aside), so a `---heading` in
+ * the body does not end the block.
  */
 export function splitLenient(content: string): LenientSplit | null {
   const afterBom = content.startsWith(BOM) ? content.slice(BOM.length) : content
@@ -327,9 +328,9 @@ export function splitLenient(content: string): LenientSplit | null {
 }
 
 // Rust's `str::trim_start`/`trim_end` trim exactly Unicode `White_Space`.
-// JavaScript's `trimStart`/`trimEnd` additionally strip U+FEFF (a BOM mid-way
-// through leading spaces would silently vanish) and miss U+0085 NEL, so the
-// port trims by the same character class the reference does.
+// JavaScript's `trimStart`/`trimEnd` also strip U+FEFF (so a BOM inside the
+// leading spaces would be lost) and miss U+0085 NEL. So this code trims the
+// same characters the Rust crate does.
 const WHITESPACE_RE = /[\t\n\v\f\r \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]/
 
 function trimStartWhitespace(s: string): string {

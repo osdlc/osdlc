@@ -1,4 +1,4 @@
-// Runs the BUILT package under Node. The unit tests resolve the package name to
+// Runs the built package under Node. The unit tests resolve the package name to
 // the TypeScript source, so a broken emit could pass them and fail on the
 // consumer's machine.
 //

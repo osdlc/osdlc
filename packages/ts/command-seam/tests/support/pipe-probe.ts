@@ -1,12 +1,13 @@
 /**
- * Probe for the production sync capture path. `spawnRunner` reads
- * `NODE_ENV === 'test'` once at import time and switches to a temp-file
- * capture; `bun test` sets it, so this script is run in a child with
- * `NODE_ENV` removed. It runs a fixed matrix of cases through the real
- * `spawnRunner` pipe path and writes `{ [caseName]: result }` as JSON to the
- * file named by argv[2] (not stdout: the pipe capture is what is under test).
+ * Probe for the production sync capture path. `spawnRunner` checks for the
+ * Bun runtime and `NODE_ENV === 'test'` once at import time, and under
+ * `bun test` it switches to a temp-file capture. So this script runs in a
+ * child with `NODE_ENV` removed. It runs a fixed matrix of cases through the
+ * real `spawnRunner` pipe path and writes `{ [caseName]: result }` as JSON to
+ * the file named by argv[2]. It does not use stdout, since the pipe capture
+ * is what is under test.
  *
- * Not a `*.test.ts` file, so `bun test` does not collect it.
+ * Not a `*.test.ts` file, so the test runner does not collect it.
  */
 
 import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'

@@ -1,12 +1,12 @@
 /**
- * cargo — the conventional verbs a Rust crate answers to.
+ * cargo: the conventional verbs of a Rust crate.
  *
- * The clearest example of `origin: "synthesized"` in the package. Nothing in a
- * Cargo.toml declares `cargo test` or `cargo clippy`; they are what a crate
- * runs because it is a crate.
+ * The clearest case of `origin: "synthesized"` in the package. Nothing in a
+ * Cargo.toml declares `cargo test` or `cargo clippy`. A crate runs them because
+ * it is a crate.
  *
- * A consumer that only wants what a repo actually wrote down filters these out
- * with `origin === "declared"`, which is why the field exists.
+ * A consumer that wants only what a repo wrote down keeps tasks with
+ * `origin === "declared"`. That is why the field exists.
  */
 
 import type { ProviderResult, RunnerBrand, Task } from '../../model.ts'
@@ -31,10 +31,10 @@ const VERBS: ReadonlyArray<{ name: string; args: string[] }> = [
 ]
 
 /**
- * A shipping crate — cargo ships crates. A substitute glyph, kept after
- * checking simple-icons: its `rust` icon is CC-BY-SA-4.0, not CC0 (the Rust
- * logo's own license), which an MIT package cannot pass on — and its path is
- * ~4.1KB besides. Color is GitHub Linguist's rust-orange for the language.
+ * A plain box glyph, not the Rust logo. simple-icons' `rust` icon is
+ * CC-BY-SA-4.0 (the Rust logo's own license), not CC0, and an MIT package
+ * cannot pass that on. Its path is also about 4.1KB. Color is GitHub
+ * Linguist's orange for Rust.
  */
 const BRAND: RunnerBrand = {
   icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.9 20.4 7v10L12 21.1 3.6 17V7Z"/><path d="M3.6 7 12 11.2 20.4 7M12 11.2V21"/></svg>',

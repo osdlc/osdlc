@@ -1,16 +1,16 @@
 /**
- * Intersect L0 — segment-sequence product and reachability.
+ * The search over two patterns' segment sequences.
  *
- * Each `SegmentPattern` compiles to a sequence NFA: a literal/glob segment
- * consumes exactly one input segment subject to its matcher; `**` consumes
- * zero-or-more segments (an epsilon skip plus a self-loop), honoring
- * `globstarMatchesZero`. {@link search} runs the synchronized product of two
- * such NFAs — advancing both on the same input segment only where their
- * matchers share a concrete string — and BFS-reaches a joint accepting state.
- * Product states expand lazily (they are never fully materialized), and
- * predecessors are recorded so one witness path is reconstructed on success.
+ * Each `SegmentPattern` compiles to an NFA over path segments. A normal
+ * segment consumes exactly one input segment that its matcher accepts. `**`
+ * consumes zero or more segments (an epsilon move plus a self-loop), as
+ * `globstarMatchesZero` allows. {@link search} walks the product of two such
+ * NFAs breadth-first. Both advance together on one segment, only where their
+ * matchers share a concrete string. The walk stops at a state where both
+ * accept. Product states are built only as the walk reaches them. Each
+ * state's predecessor is recorded, so the common path can be rebuilt.
  *
- * Zero runtime dependencies — standard library only.
+ * No runtime dependencies.
  */
 import type { Options, SegmentPattern } from './index.ts'
 import { compileSegment, commonSegment, SyntaxState, type SegmentMatcher } from './automaton.ts'
@@ -21,9 +21,9 @@ interface ConsumeEdge {
 }
 
 /**
- * A pattern as a sequence NFA over path segments. `eps` are free moves;
- * `consume` edges eat one input segment matching their matcher; `accept[s]`
- * marks an accepting state.
+ * A pattern as an NFA over path segments. `eps` are free moves. Each `consume`
+ * edge takes one input segment that its matcher accepts. `accept[s]` marks an
+ * accepting state.
  */
 interface SeqNFA {
   readonly eps: number[][]
@@ -32,7 +32,7 @@ interface SeqNFA {
   readonly start: number
 }
 
-/** The synthetic segment matcher for what a `*` / `**` step consumes: one whole segment. */
+/** The matcher for one segment a `**` step consumes: `*`, any one whole segment. */
 function starMatcher(opts: Options | undefined): SegmentMatcher {
   return compileSegment('*', opts)
 }
@@ -100,15 +100,15 @@ function anyAccept(nfa: SeqNFA, states: Set<number>): boolean {
 }
 
 /**
- * One concrete segment path that matches BOTH patterns, or `null` when they are
- * disjoint. This is the shared engine behind `intersects` (is it non-null?) and
- * `witness` (return it). BFS finds the fewest-segments common path.
+ * One concrete segment path that matches both patterns, or `null` when they are
+ * disjoint. `intersects` checks that it is not null. `witness` returns it. The
+ * breadth-first walk finds the common path with the fewest segments.
  *
  * With `spellable`, a path of more than one segment whose last segment is empty
- * does not count: no path string spells it. The search goes on past such a
- * path, so the result is the fewest-segments path that CAN be spelled. The
+ * does not count, since no path string can write it. The search goes on past
+ * such a path, so the result is the shortest path that a string can write. The
  * product state then carries a flag for "the last segment was empty", because
- * the same pair of NFA states is accepting or not depending on it.
+ * whether a pair of NFA states counts as accepting depends on it.
  */
 export function search(
   a: SegmentPattern,

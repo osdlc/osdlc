@@ -1,18 +1,19 @@
 /**
- * `Gh` — the synchronous GitHub client, the companion of `@osdlc/typed-git`'s
+ * `Gh`: the synchronous GitHub client, the companion of `@osdlc/typed-git`'s
  * `Git`, bound to one working directory and one {@link CommandRunner}.
  *
- * Authentication is `gh`'s, not ours: no token is read, stored, or passed.
- * That is the whole reason this shells out to the CLI instead of speaking
- * REST — the credential already exists in the user's keychain, and a library
- * that reaches for `GITHUB_TOKEN` is a library that can leak one.
+ * `gh` handles authentication. No token is read, stored, or passed. That is
+ * why this runs the CLI instead of calling the REST API. The credential is
+ * already in the user's keychain. A library that reads `GITHUB_TOKEN` can
+ * leak it.
  *
- * The same three doors as the git client. The plain method returns a value
- * or throws: a failed `gh` throws a `FailureError` carrying the classified
- * `GhFailure`, output that cannot be read throws one of kind `unreadable`, and a query for one thing (`prView`, `issueView`,
- * `repoView`) answers `null` when GitHub says there is no such thing.
- * `gh.try.*` returns the failure as a `Result<T, GhFailure>`; `gh.soft.*` returns
- * `null` for it. `raw`/`rawChecked` are the escape hatches.
+ * It has the same three call styles as the git client. The plain method
+ * returns a value or throws. A failed `gh` throws a `FailureError` carrying
+ * the classified `GhFailure`. Output that cannot be read throws one of kind
+ * `unreadable`. A query for one thing (`prView`, `issueView`, `repoView`)
+ * returns `null` when GitHub says there is no such thing. `gh.try.*` returns
+ * the failure as a `Result<T, GhFailure>`. `gh.soft.*` returns `null` for it.
+ * `raw` and `rawChecked` run any `gh` call.
  */
 
 import {
@@ -39,13 +40,13 @@ import { ownerRepoSlug, parseOwnerRepo, parsePrRef } from './repo.ts'
 import type { IssueRow, Label, OwnerRepo, PrSearchHit, PullRequest, Repository } from './types.ts'
 
 /**
- * Factory of per-binary runners — the injectable subprocess seam a CLI tail
- * threads through its call graph. Production uses `spawnRunner`; tests supply
- * a recording factory so a whole tail runs offline.
+ * Makes a runner for a binary. A CLI passes one factory to every place that
+ * runs a command. Real code uses `spawnRunner`. Tests pass a factory that
+ * records calls, so the CLI runs offline.
  */
 export type RunnerFactory = (binary: string) => CommandRunner
 
-/** Default factory: real, spawnSync-backed runners. */
+/** The default factory: real runners that use `spawnSync`. */
 export const defaultRunnerFactory: RunnerFactory = spawnRunner
 
 /** How long to wait between merge-state retries, in milliseconds. */
@@ -100,12 +101,13 @@ export class Gh {
 
   /**
    * The whole surface again, returning a `Result<T, GhFailure>` instead of
-   * throwing: `gh.try.prList()` is `{ ok: true, value } | { ok: false, error }`.
+   * throwing. `gh.try.prList()` is `{ ok: true, value } | { ok: false, error }`.
    * A query for one thing that finds nothing is `ok: true` with `null`. See
    * `./doors.ts`.
    *
-   * The type leaves out the escape hatches and the pure helpers; at runtime
-   * the proxy wraps `raw` and `rawChecked` too. Call those on the client itself.
+   * The type leaves out `raw`, `rawChecked` and the helpers that run nothing.
+   * At runtime the proxy wraps `raw` and `rawChecked` too. Call those on the
+   * client itself.
    */
   get try(): TriedSync<Gh> {
     return (this.tried ??= triedSync(this))
@@ -113,46 +115,46 @@ export class Gh {
 
   /**
    * Each query again, returning `null` instead of throwing when `gh` fails. A
-   * mutation has no soft form. Do not gate a write on a `null` from `soft`:
-   * it is the answer for "could not ask" as well as for "nothing there". Use
+   * mutation has no soft form. Do not decide a write on a `null` from `soft`.
+   * It is the answer for "could not ask" as well as for "nothing there". Use
    * `try` where the difference matters.
    */
   get soft(): Soft<Gh> {
     return (this.softened ??= softSync(this))
   }
 
-  // ── escape hatches ────────────────────────────────────────────────────────
+  // ── raw calls ─────────────────────────────────────────────────────────────
 
-  /** Unchecked passthrough for verbs not yet lifted into the API. */
+  /** Run any `gh` call and return the result, whatever the exit code. */
   raw(argv: string[], opts: { timeoutMs?: number | undefined } = {}): CommandResult {
     return this.runner.run(argv, { cwd: this.cwd, ...opts })
   }
 
-  /** Checked passthrough — throws the classified failure on a non-zero exit. */
+  /** Run any `gh` call. Throws the classified failure on a non-zero exit. */
   rawChecked(argv: string[], opts: { timeoutMs?: number | undefined } = {}): CommandResult {
     return runCheckedGh(this.runner, argv, { cwd: this.cwd, ...opts })
   }
 
-  /** Run one verb from the table, honouring its checked/unchecked contract. */
+  /** Run one verb from the table, checked or unchecked as the verb says. */
   private exec<T>(verb: GhVerb<T>, timeoutMs?: number | undefined): T {
     return runVerb(verb, this.runner, { cwd: this.cwd, timeoutMs })
   }
 
-  /** {@link exec} for a verb that never answers `null` as a value: a failed or unreadable run throws. */
+  /** {@link exec} for a verb that never returns `null` as a value. A failed or unreadable run throws. */
   private read<T>(verb: GhVerb<T | null>, timeoutMs?: number | undefined): T {
     return this.exec(verb, timeoutMs) as T
   }
 
   // ── queries ───────────────────────────────────────────────────────────────
 
-  /** Pull requests matching `opts`. Throws when gh fails; `soft.prList` gives null instead. */
+  /** Pull requests matching `opts`. Throws when gh fails. `soft.prList` gives null instead. */
   prList(opts: PrListOptions & { timeoutMs?: number | undefined } = {}): ListResult<PullRequest> {
     return this.read(v.prList(opts, this.target), opts.timeoutMs)
   }
 
   /**
-   * One PR by number, branch or URL, with the heavy fields; null when there is
-   * no such PR. Throws when gh fails otherwise.
+   * One PR by number, branch or URL, with the full field set. Null when there
+   * is no such PR. Throws when gh fails otherwise.
    */
   prView(
     ref: number | string,
@@ -162,10 +164,11 @@ export class Gh {
   }
 
   /**
-   * The one PR that `input` names, or null: what a person typed, such as `42`,
-   * `#42`, `owner/name#42`, a URL or a branch (read by `parsePrRef`).
+   * The one PR that `input` names, or null. `input` is what a person typed,
+   * such as `42`, `#42`, `owner/name#42`, a URL or a branch (read by
+   * `parsePrRef`).
    *
-   * Digits are a PR number first; when no such PR comes back, they are tried
+   * Digits are a PR number first. When no such PR comes back, they are tried
    * as a branch. A branch gives its open PR, or else its newest closed or
    * merged one, so a tool run after the merge still finds it. Fields default
    * to {@link PR_LIST_FIELDS}.
@@ -188,12 +191,10 @@ export class Gh {
   /**
    * The open PR whose head exactly equals `branch`, or null.
    *
-   * Defaults to {@link PR_REF_FIELDS}: identifying a PR must not cost a
-   * merge-state computation. Pass `opts.fields` to ask for more (e.g.
-   * `isDraft`) in the SAME call, when a caller needs a field beyond identity
-   * before deciding whether to act on the PR at all — asking `prList`/`prView`
-   * separately would cost a second round trip for the common case where the
-   * caller already knows it wants that field up front.
+   * Defaults to {@link PR_REF_FIELDS}, so finding a PR does not make GitHub
+   * compute the merge state. Pass `opts.fields` to ask for more (such as
+   * `isDraft`) in the same call. That saves a second `prList` or `prView`
+   * call when the caller already knows it needs the field.
    */
   openPrFor(
     branch: string,
@@ -208,16 +209,16 @@ export class Gh {
   }
 
   /**
-   * {@link prView}, re-asked until GitHub settles the merge state.
+   * {@link prView}, asked again until GitHub has computed the merge state.
    *
-   * GitHub computes mergeability lazily: the first query kicks it off and
-   * answers `UNKNOWN` while it runs. A caller that believes that first answer
-   * mis-triages every PR that is merely slow to compute, so this re-asks
-   * `attempts` times before returning what it has. The last answer is
-   * returned whether or not it settled — `UNKNOWN` is a legitimate final
-   * verdict and callers must still handle it.
+   * GitHub computes mergeability only when asked. The first query starts it
+   * and answers `UNKNOWN` while it runs. A caller that trusts that first
+   * answer misjudges every PR whose computation is slow. So this asks up to
+   * `attempts` times while the answer is `UNKNOWN`. The last answer is
+   * returned either way. `UNKNOWN` can be the final answer, and callers must
+   * still handle it.
    *
-   * `sleep` is injected so a test does not spend real seconds waiting.
+   * `sleep` is an option so a test does not spend real seconds waiting.
    */
   prViewSettled(
     number: number,
@@ -245,16 +246,16 @@ export class Gh {
   }
 
   /**
-   * A REST GET through `gh api`. Never throws for a failed call, in any door:
-   * failure is `ok: false` on the returned {@link ApiResponse}.
+   * A REST GET through `gh api`. Never throws for a failed call, in any call
+   * style. Failure is `ok: false` on the returned {@link ApiResponse}.
    */
   api(endpoint: string, opts: ApiOptions & { timeoutMs?: number | undefined } = {}): ApiResponse {
     return this.exec(v.api(endpoint, opts, this.target), opts.timeoutMs)
   }
 
   /**
-   * A GraphQL query; each page's `data`. Throws on a failed or partial result;
-   * `soft.graphql` gives null. See the `graphql` verb.
+   * A GraphQL query. Returns each page's `data`. Throws on a failed or partial
+   * result. `soft.graphql` gives null. See the `graphql` verb.
    *
    * @experimental
    */
@@ -280,7 +281,7 @@ export class Gh {
     return this.read(v.issueList(opts, this.target), opts.timeoutMs)
   }
 
-  /** One issue with its labels; null when there is no such issue. Throws when gh fails otherwise. */
+  /** One issue with its labels, or null when there is no such issue. Throws when gh fails otherwise. */
   issueView(number: number, opts: { timeoutMs?: number | undefined } = {}): IssueRow | null {
     return this.exec(v.issueView(number, this.target), opts.timeoutMs)
   }
@@ -315,24 +316,25 @@ export class Gh {
   }
 
   /**
-   * True iff `gh` holds credentials. Asked on its own only by a caller that
-   * reports the two halves separately — "gh is missing" and "gh is not logged
-   * in" are different things to tell a person, and a report that collapses
-   * them sends someone to install software they already have.
+   * True iff `gh` holds credentials. Call it on its own to report the two
+   * checks separately. "gh is missing" and "gh is not logged in" need
+   * different fixes. A report that merges them sends someone to install
+   * software they already have.
    */
   authenticated(): boolean {
     return this.authStatus().ok
   }
 
-  /** Login state and what `gh auth status` printed; `authenticated()` is its `ok`. */
+  /** Login state and what `gh auth status` printed. `authenticated()` is its `ok`. */
   authStatus(): AuthStatus {
     return this.exec(v.authStatus(this.target))
   }
 
   /**
-   * True iff `gh` is installed AND authenticated — the two-step probe.
+   * True iff `gh` is installed and authenticated.
    *
-   * Short-circuits: an absent binary cannot be asked about credentials.
+   * Skips the auth check when `gh` is not installed, since there is nothing to
+   * ask.
    */
   ready(): boolean {
     return this.installed() && this.authenticated()
@@ -342,7 +344,7 @@ export class Gh {
    * `{owner, repo}` parsed from the remote URL you pass, or null when it is
    * null or names no project.
    *
-   * Pure: it reads no git config, starts no process and does not ask GitHub.
+   * It reads no git config, starts no process and does not ask GitHub.
    */
   ownerRepo(remoteUrl: string | null): OwnerRepo | null {
     return remoteUrl === null ? null : parseOwnerRepo(remoteUrl)
@@ -360,18 +362,18 @@ export class Gh {
     this.exec(v.editPr(number, opts, this.target))
   }
 
-  /** The PR's unified diff; throws the classified failure when gh cannot produce it. */
+  /** The PR's unified diff. Throws the classified failure when gh cannot produce it. */
   prDiff(number: number): string {
     return this.exec(v.prDiff(number, this.target))
   }
 
-  /** Post one conversation comment on a PR; returns its URL ('' if gh printed none). */
+  /** Post one conversation comment on a PR. Returns its URL ('' if gh printed none). */
   prComment(number: number, body: string): string {
     return this.exec(v.prComment(number, body, this.target))
   }
 
   /**
-   * Create a `COMMENT` review with inline comments; returns the review's URL ('' if none came back).
+   * Create a `COMMENT` review with inline comments. Returns the review's URL ('' if none came back).
    *
    * @experimental
    */
@@ -395,7 +397,7 @@ export class Gh {
   }
 
   /**
-   * Rewrite one PR conversation comment's body. `commentId` is the numeric REST id; anything else throws `RangeError`.
+   * Rewrite one PR conversation comment's body. `commentId` is the numeric REST id. Anything else throws `RangeError`.
    *
    * @experimental
    */
@@ -403,7 +405,7 @@ export class Gh {
     this.exec(v.issueCommentEdit(commentId, body, this.target))
   }
 
-  /** Merge a PR; GitHub refuses when its head is no longer `opts.headSha`. */
+  /** Merge a PR. GitHub refuses when its head is no longer `opts.headSha`. */
   prMerge(number: number, opts: { method: v.PrMergeMethod; headSha: string }): void {
     this.exec(v.prMerge(number, opts, this.target))
   }
@@ -428,8 +430,8 @@ export class Gh {
 
   /**
    * Swap an issue's label: remove `currentLabel` (when given) and add
-   * `newLabel`, in a single `gh issue edit` call — never a briefly-unlabeled
-   * or briefly-double-labeled intermediate state.
+   * `newLabel`, in a single `gh issue edit` call. The issue is never left
+   * with neither label or both labels in between.
    */
   setIssueLabel(number: number, currentLabel: string | null, newLabel: string): void {
     this.exec(v.setIssueLabel(number, currentLabel, newLabel, this.target))
@@ -453,9 +455,9 @@ function prForBranchOn(
 }
 
 /**
- * Block the calling thread. Crude on purpose: the synchronous client has no
- * event loop to await on, and the alternative — making every caller async to
- * accommodate one retry delay — colors the whole call graph.
+ * Block the calling thread. The synchronous client has no event loop to
+ * await on. The alternative is to make every caller async for one retry
+ * delay.
  */
 function sleepSync(ms: number): void {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)

@@ -1,10 +1,10 @@
 /**
  * Deprecated config keys. A section whose meta carries `deprecation:`
- * (`./meta.ts`) stays in the schema and loads normally; the loader warns on
- * stderr, once per key per handle, and the run goes on. Only a key that is NOT
- * in the schema is refused, so removing a deprecated key is a separate, later
- * change. The library carries the notice; which keys are deprecated is the
- * tool's call, made in its section metas.
+ * (`./meta.ts`) stays in the schema and loads normally. The loader warns on
+ * stderr, once per key per handle, and the run goes on. Removing the key from
+ * the schema is a separate, later change. After that the loader treats it as
+ * an unknown key. The library carries the notice. The tool decides which keys
+ * are deprecated, in its section metas.
  */
 
 import type { ConfigSection } from './section.ts'
@@ -25,7 +25,7 @@ export interface DeprecatedKeyUse {
 /**
  * Every deprecated section whose key is set in any of `layers` (raw mappings,
  * `null` for an absent layer), in section order, each with the first layer that
- * sets it. Judged on the raw files, not the merged result, so a key that merely
+ * sets it. It checks the raw files, not the merged result, so a key that only
  * has a default is never reported.
  * @experimental
  */

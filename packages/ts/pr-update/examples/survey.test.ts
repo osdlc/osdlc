@@ -73,8 +73,8 @@ test('the strategy for a PR is chosen from signals, not hard-coded', () => {
   )
   expect(decision.strategy).toBe('rebase')
 
-  // A branch holding unpushed local commits is never rebased over: the guard
-  // outranks every preference.
+  // A branch holding unpushed local commits is never rebased over. The guard
+  // comes before every preference.
   const guarded = chooseStrategy(
     { base: 'main', labels: [], ahead: 1, reviews: 0, unpushedLocal: true, crossRepo: false },
     cfg,

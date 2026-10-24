@@ -47,7 +47,7 @@ pnpm run format:check
 `packages/rust/config-layers/tests/fixtures/parity.json` is read by this
 package's `tests/parity.test.ts` and by the Rust crate's `tests/parity.rs`.
 A new shared behaviour goes into that file first, so both suites cover it.
-The README's "Differences from the Rust twin" table lists what is left out.
+The table in the README's "The Rust crate" section lists what is left out.
 
 ## Code style
 
@@ -62,5 +62,5 @@ The README's "Differences from the Rust twin" table lists what is left out.
 - Path assertions must not depend on the separator: compare with `normalize`.
 - For a change users can see, add a changeset: run `pnpm changeset` at the
   repository root. Start a breaking change's summary with `**Breaking:**`.
-  Do not edit `CHANGELOG.md` or `version` by hand; the release writes them.
+  Do not edit `CHANGELOG.md` or `version` by hand. The release writes them.
   See [packages/README.md](https://github.com/osdlc/osdlc/blob/main/packages/README.md).

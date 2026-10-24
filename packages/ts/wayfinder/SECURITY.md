@@ -37,7 +37,7 @@ making `way` run code the user did not choose to run are in scope.
   Typed arguments are bound by the task's tool and never replace its binary.
 - **The web view listens on 127.0.0.1.** Any local process and any page the
   browser visits can reach the port. A one-shot boot token and a session token
-  guard every route. `/api/run` takes a task id from the server's own catalog,
+  protect every route. `/api/run` takes a task id from the server's own catalog,
   never a command. `/api/trust` refuses when a grant would not apply, so
   `--no-exec` cannot be lifted from the page.
 - **Trust is keyed on the resolved path.** A trusted repository that later

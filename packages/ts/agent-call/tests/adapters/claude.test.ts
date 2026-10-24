@@ -84,7 +84,7 @@ describe('claude plan', () => {
     expect(joined).toContain('--verbose')
     expect(planned.stdin).toContain('<context>\nbackground info\n</context>')
     expect(planned.stdin).toContain('do the thing')
-    // System prompts are native — must NOT be folded into the prompt.
+    // System prompts have flags, so they are not folded into the prompt.
     expect(planned.stdin).not.toContain('you are terse')
   })
 
@@ -109,7 +109,7 @@ describe('claude plan', () => {
     expect(planned.argv.join(' ')).toContain('--json-schema')
     const upgrade = planned.notes.find((n) => n.field === 'output.format')
     expect(upgrade?.support).toBe('approximated')
-    // Native schema: no emulation instruction appended to the prompt.
+    // The schema has a flag, so no JSON instruction is appended to the prompt.
     expect(planned.stdin).not.toContain('JSON Schema')
   })
 

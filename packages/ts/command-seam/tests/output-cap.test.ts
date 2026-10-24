@@ -1,7 +1,8 @@
 /**
  * `maxOutputBytes`: the per-stream output cap. The async runner is checked
- * here on real pipes; the sync pipe path is in `pipe-path.test.ts`, since
- * under `bun test` the sync runner captures through files and has no cap.
+ * here on real pipes. The sync runner's cap is checked in `pipe-path.test.ts`,
+ * in a child with `NODE_ENV` removed, since under `bun test` the sync runner
+ * captures through files and has no cap.
  *
  * POSIX-only (`sh`, `head`, `tr`, `printf`).
  */

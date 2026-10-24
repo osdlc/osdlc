@@ -1,9 +1,9 @@
 /**
  * Need: run commands a user wrote in a config file (`lint: "eslint . && tsc"`,
- * `format: "prettier --write {file}"`), which are shell by nature, without
- * letting a file name turn into shell.
+ * `format: "prettier --write {file}"`), which are shell strings, without
+ * letting a file name be parsed as shell.
  *
- * `runShell` and `runShellAsync` run `sh -c -- <verb>`; every other runner
+ * `runShell` and `runShellAsync` run `sh -c -- <verb>`. Every other runner
  * passes argv straight to a binary. Data goes in one of two ways: quoted
  * into the verb with `shellQuote`, or passed as positional parameters (`$1`,
  * `$2`, …) with `args`, which needs no quoting.
@@ -43,7 +43,7 @@ function runHook(hook: Hook, cwd: string, files: string[]): CommandResult {
   return runShell(hook.run, opts)
 }
 
-/** Run independent hooks at once; `signal` cancels the ones still running. */
+/** Run independent hooks at once. `signal` cancels the ones still running. */
 function runHooksAtOnce(hooks: Hook[], cwd: string, signal?: AbortSignal) {
   return Promise.all(
     hooks.map((hook) => {

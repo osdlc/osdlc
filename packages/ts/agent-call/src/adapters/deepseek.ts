@@ -31,7 +31,7 @@ const DEFAULT_MODEL = 'deepseek-flash'
 const HEADLESS_PERSONA_PREFIX = 'You are a coding agent powered by the {{model}} model.'
 const HEADLESS_PERSONA_SUFFIX = 'Your working directory is {{cwd}}.'
 
-/** permissions.mode → `DSH_PERMISSION_MODE`, the preset the sandbox and approval rows read. */
+/** Maps `permissions.mode` to `DSH_PERMISSION_MODE`, the preset the sandbox and approval rows read. */
 const PERMISSION_ENV: Record<Exclude<PermissionMode, 'default'>, string> = {
   'read-only': 'read-only',
   edits: 'workspace-write',
@@ -41,12 +41,12 @@ const PERMISSION_ENV: Record<Exclude<PermissionMode, 'default'>, string> = {
 
 /**
  * DeepSeek Harness (`dsh --profile headless`). The prompt travels on stdin
- * (`-`); `--json` is an NDJSON event stream backing both json and
+ * (`-`). `--json` prints an NDJSON event stream, used for both json and
  * stream-json requests. The CLI has no model, effort or system-prompt flags,
- * so those (and MCP servers) are rows of a `--patch` overlay file the
- * launcher layers over the profile; permission postures ride the
- * `DSH_PERMISSION_MODE` env preset. Headless denies any tool call that needs
- * approval (there is no approval channel), so no posture can hang a run.
+ * so those (and MCP servers) are rows of a `--patch` overlay file that the
+ * launcher applies over the profile. Permission postures go in the
+ * `DSH_PERMISSION_MODE` env var. A headless run denies any tool call that
+ * needs approval (nothing can approve it), so no posture can hang a run.
  */
 export function deepseekAdapter(options: DeepseekAdapterOptions = {}): AgentAdapter {
   const command = commandPrefix(options, 'dsh')
@@ -121,8 +121,8 @@ function planDeepseek(command: readonly string[], spec: AgentCallSpec): PlannedC
     }
   }
 
-  // The system-prompt row owns the persona around dsh's first-party tool
-  // guidance: personaPrefix opens the prompt, personaSuffix closes it.
+  // The system-prompt row holds the persona text around dsh's own tool
+  // guidance. personaPrefix comes first in the prompt, personaSuffix last.
   if (spec.systemPrompt !== undefined || spec.appendSystemPrompt !== undefined) {
     const config: Record<string, unknown> = {}
     if (spec.systemPrompt !== undefined) {
@@ -137,8 +137,8 @@ function planDeepseek(command: readonly string[], spec: AgentCallSpec): PlannedC
     } else {
       config['personaPrefix'] = HEADLESS_PERSONA_PREFIX
     }
-    // The headless suffix tells the model its working directory; keep it ahead
-    // of any appended text.
+    // The headless suffix tells the model its working directory. Keep it before
+    // any appended text.
     config['personaSuffix'] =
       spec.appendSystemPrompt === undefined
         ? HEADLESS_PERSONA_SUFFIX
@@ -181,8 +181,9 @@ function planDeepseek(command: readonly string[], spec: AgentCallSpec): PlannedC
     argv.push('--patch', `${TMP_TOKEN}/${PATCH_FILE}`)
   }
 
-  // `--json` is an NDJSON event stream, so it backs both "json" (we
-  // aggregate) and "stream-json" (events exposed).
+  // `--json` prints an NDJSON event stream. It is used for both "json" (the
+  // events are combined into one result) and "stream-json" (the events are
+  // returned).
   const format: OutputFormat = spec.output?.format ?? 'json'
   if (format !== 'text') {
     argv.push('--json')
@@ -199,8 +200,8 @@ function planDeepseek(command: readonly string[], spec: AgentCallSpec): PlannedC
   const permissions = spec.permissions
   const mode = permissions?.mode
   if (mode !== undefined && mode !== 'default' && spec.session?.resume !== undefined) {
-    // DSH_PERMISSION_MODE seeds new sessions only; a resumed session keeps the
-    // permission it recorded, so setting it would claim a posture dsh ignores.
+    // DSH_PERMISSION_MODE applies to new sessions only. A resumed session keeps
+    // the permission it recorded, so setting it would claim a posture dsh ignores.
     note(
       notes,
       'permissions.mode',
@@ -248,7 +249,7 @@ function planDeepseek(command: readonly string[], spec: AgentCallSpec): PlannedC
 
   const session = spec.session
   if (session?.resume !== undefined) {
-    // The `=` form keeps an id that starts with `-` bound to the option.
+    // The `=` form keeps an id that starts with `-` attached to the option.
     argv.push(`--session-id=${session.resume}`)
     note(
       notes,
@@ -284,7 +285,7 @@ function planDeepseek(command: readonly string[], spec: AgentCallSpec): PlannedC
 
   argv.push(...(spec.extraArgs ?? []))
 
-  // The system prompts ride the system-prompt row, so neither is folded in.
+  // The system prompts go in the system-prompt row, so neither is folded into the prompt.
   const prompt = buildEffectivePrompt(spec, { systemNative: true, appendSystemNative: true }, notes)
   // A lone `-` reads the task from stdin, keeping it out of argv.
   argv.push('-')
@@ -303,7 +304,7 @@ function planDeepseek(command: readonly string[], spec: AgentCallSpec): PlannedC
 }
 
 /**
- * The common `mcpServers` entry → a dsh-mcp-client config: `command` runs over
+ * Convert a common `mcpServers` entry to a dsh-mcp-client config. `command` runs over
  * stdio, `url` over Streamable HTTP (dsh has no SSE transport).
  */
 function mcpClientConfig(
@@ -365,8 +366,8 @@ function parseDeepseek(planned: PlannedCall, raw: RawProcessOutput): ParsedOutpu
     }
   }
 
-  // An in-turn failure still ends with `final` (often empty) and no `error`
-  // event; the turn_end reason is the failure signal.
+  // A failure inside a turn still ends with `final` (often empty) and no
+  // `error` event. The turn_end reason shows the failure.
   const kind = asString(get(reason, 'kind'))
   if (errorDetail === undefined && kind !== undefined && kind !== 'completed') {
     const code = asString(get(reason, 'error', 'code'))
@@ -383,7 +384,7 @@ function parseDeepseek(planned: PlannedCall, raw: RawProcessOutput): ParsedOutpu
   }
 
   return withStructured(planned, {
-    // `final` is the lossless answer; `text` events are capped at 8 KiB.
+    // `final` holds the whole answer. `text` events are capped at 8 KiB.
     text: (text ?? lastText ?? '').trim(),
     sessionId,
     usage,
@@ -407,7 +408,7 @@ function lastDiagnostic(stderr: string): string | undefined {
 
 /**
  * Usage arrives per step (`status` step_end), already summed over a step's
- * retried attempts; the run total is the sum over steps. Counts are disjoint
+ * retried attempts. The run total is the sum over steps. Counts are disjoint
  * (input excludes cache reads, as claude's does), and the Messages output count
  * already includes thinking, so `reasoningTokens` is not added again.
  */
@@ -496,7 +497,7 @@ function deepseekConversation(
       }
     }
     flush()
-    // No text event survived (none committed): still record the final answer.
+    // No text event was committed: still record the final answer.
     if (!sawText && parsed.text !== '') {
       messages.push({ role: 'assistant', parts: [{ type: 'text', text: parsed.text }] })
     }

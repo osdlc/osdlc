@@ -62,8 +62,8 @@ describe('withheldBar', () => {
   })
 
   test('agrees with itself about number', () => {
-    // The first version built one sentence with a swapped noun and produced
-    // "so runner that can only be read by running it were skipped".
+    // One sentence with only the noun swapped produces "so runner that can
+    // only be read by running it were skipped".
     state.trustable = true
     const one = withheldBar([report('moon', true)])
     expect(one).toContain('1 runner was not read')

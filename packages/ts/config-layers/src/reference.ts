@@ -1,15 +1,14 @@
 /**
- * The generated config reference: a markdown page projected from a tool's Zod
- * config schema and its per-key `.meta()`,
- * gated for drift by the tool's own docs generation.
+ * The generated config reference: a markdown page built from a tool's Zod
+ * config schema and its per-key `.meta()`. The tool's own docs generation
+ * checks that the committed page is current.
  *
- * Generic over the schema: it walks whatever top-level keys the schema
- * declares (grouped by meta `category` in the tool's category order, in
- * schema order within a category)
- * and recurses into object-valued fields, so a new or changed key changes
- * the page on the next regeneration with no edit here. Deterministic: no
- * timestamps, no environment reads, the same bytes for the same schema. The
- * tool supplies the page's front matter and prose preamble.
+ * It works for any schema. It walks the top-level keys the schema declares,
+ * grouped by meta `category` in the tool's category order and in schema order
+ * within a category. It recurses into object-valued fields. A new or changed
+ * key changes the page on the next run with no edit here. The output is
+ * deterministic: no timestamps, no environment reads, the same bytes for the
+ * same schema. The tool supplies the page's front matter and prose preamble.
  */
 
 import { escapeCell } from '@osdlc/gfm-table'
@@ -40,7 +39,7 @@ export interface ReferenceOptions {
   enforcementDoc: string
 }
 
-/** The house YAML emission for a default shown in the page: insertion order, no folding, single quotes. */
+/** YAML for a default shown in the page: insertion order, no line folding, single quotes. */
 function dumpValue(value: unknown): string {
   return stringify(value, { sortMapEntries: false, lineWidth: 0, singleQuote: true })
 }

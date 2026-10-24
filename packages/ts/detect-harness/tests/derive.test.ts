@@ -1,12 +1,12 @@
 /**
  * `readPlugin`.
  *
- * Derives the model from a tiny fake plugin (manifest + two skills — one with a
- * co-located executable resource, one with a native frontmatter key — plus a
- * convention doc) and asserts the normalization: frontmatter split into
- * `description`/`allowedTools`, unmodeled keys preserved under `annotations`,
- * resources captured with their executable bit, documents read from
- * `conventions/`, everything sorted deterministically. Later suites cover the
+ * Derives the model from a tiny fake plugin: a manifest, two skills and a
+ * convention doc. One skill has an executable resource file next to it, the
+ * other has a frontmatter key the model has a field for. The tests check the
+ * normalization: frontmatter split into `description`/`allowedTools`, keys
+ * with no field kept under `annotations`, resources kept with their executable
+ * bit, documents read from `conventions/`, and everything sorted. Later suites cover the
  * Claude Code layouts: flat commands, plugin hooks, inline and referenced
  * manifest fields, the documents folder option, and secret redaction.
  */
@@ -33,7 +33,7 @@ function seed(dir: string): void {
     )}\n`,
   )
 
-  // skill: task-work — description + allowed-tools + an executable resource + a test (ignored)
+  // skill: task-work, with description, allowed-tools, an executable resource and a test (ignored)
   const tw = join(dir, 'skills', 'task-work')
   mkdirSync(tw, { recursive: true })
   writeFileSync(
@@ -49,7 +49,7 @@ function seed(dir: string): void {
   mkdirSync(join(tw, 'tests'), { recursive: true })
   writeFileSync(join(tw, 'tests', 'run.test.ts'), '// ignored\n')
 
-  // skill: setup — carries an unmodeled frontmatter key (argument-hint)
+  // skill: setup, with the argument-hint frontmatter key
   const setup = join(dir, 'skills', 'setup')
   mkdirSync(setup, { recursive: true })
   writeFileSync(
@@ -104,7 +104,7 @@ describe('readPlugin', () => {
 
     const setup = m.capabilities.find((c) => c.name === 'setup')!
     expect(setup.allowedTools).toEqual(['Bash'])
-    // argument-hint promotes to a first-class field, not annotations.
+    // argument-hint becomes its own field, not an annotation.
     expect(setup.argumentHint).toBe('--dry-run')
     expect(setup.annotations).toEqual({})
   })
@@ -129,9 +129,9 @@ describe('readPlugin', () => {
 })
 
 describe('readPlugin — lenient frontmatter framing', () => {
-  // The parse path (`parseFrontmatter` -> `splitLenient`) tolerates a padded
-  // closing fence and leading blank lines; the body split must agree, or the
-  // frontmatter block leaks into `instructions`.
+  // The parser (`parseFrontmatter` -> `splitLenient`) accepts a padded closing
+  // fence and leading blank lines. The body split must agree, or the
+  // frontmatter block ends up in `instructions`.
   test('a padded closing fence does not leak frontmatter into instructions', () => {
     const padded = join(root, 'skills', 'padded')
     mkdirSync(padded, { recursive: true })

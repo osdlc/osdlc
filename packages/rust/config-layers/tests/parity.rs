@@ -1,13 +1,13 @@
-//! The shared parity fixture, driven from this side.
+//! Runs the shared parity fixture against this crate.
 //!
-//! `tests/fixtures/parity.json` is the contract between this crate and its
-//! TypeScript twin `@osdlc/config-layers`, which reads the same file from the
-//! repository in `packages/ts/config-layers/tests/parity.test.ts`: same input,
-//! same result. A case added on either side goes in the fixture, never in one
-//! twin's own suite. What the twins do differently is listed in the TypeScript
+//! `tests/fixtures/parity.json` defines the behaviour this crate and the
+//! TypeScript package `@osdlc/config-layers` share. The package reads the same
+//! file in `packages/ts/config-layers/tests/parity.test.ts`: same input, same
+//! result. A shared case goes in the fixture, never in only one of the two
+//! suites. What the two do differently is listed in the TypeScript package's
 //! README, not here.
 //!
-//! An integration test, so it reaches the fixture only through the public API.
+//! An integration test, so it reaches the crate only through the public API.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -23,8 +23,8 @@ use config_layers::{
 };
 use serde::Deserialize;
 
-/// Compiled in rather than read at runtime: the test binary then carries the
-/// fixture, and a moved or deleted fixture is a build error, not a late panic.
+/// Compiled in, not read at runtime. The test binary carries the fixture, and
+/// a moved or deleted fixture is a build error, not a late panic.
 const FIXTURE_JSON: &str = include_str!("fixtures/parity.json");
 
 /// Every top-level key, so a misspelled or stray one fails here.
@@ -227,7 +227,7 @@ fn substitute_path_names_matches_the_fixture() {
 fn the_unmet_need_message_matches_the_fixture() {
     let dir = tempfile::tempdir().unwrap();
     for (g, group) in fixture().needs.into_iter().enumerate() {
-        // `Needs` borrows its key table for 'static; leaking a few strings in a test is fine.
+        // `Needs` borrows its key table for 'static. Leaking a few strings in a test is fine.
         let keys: &'static [KeySpec] = Box::leak(
             group
                 .keys

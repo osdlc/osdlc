@@ -1,23 +1,21 @@
 /**
  * just — https://just.systems
  *
- * The only runner with two paths, because its two callers need different
- * things:
+ * Two paths, because its callers need different things:
  *
  *   --dump   `just --dump --dump-format json` gives doc attributes, typed
  *            parameters with defaults, private flags and aliases. Accurate,
- *            and requires the binary.
+ *            but needs the binary.
  *   regex    scan recipe headers at column 0. Names only, but works on a
- *            machine with no `just` installed — which the sdlc quality service
- *            depends on, and which is also what happens when this runs against
- *            a checkout on a fresh box.
+ *            machine with no `just` installed. The sdlc quality service
+ *            depends on that, and it is also the case for a checkout on a new
+ *            machine.
  *
- * The fallback is why this can be a `parse` runner at all. It is the floor
- * and never regresses: the dump is an upgrade taken per discovered justfile,
- * and any failure of it — a non-zero exit, unparseable JSON — falls back to
- * the scan FOR THAT FILE with a diagnostic saying why. When it is used, it
- * says so in diagnostics, so a caller never silently gets thinner data than
- * it thought.
+ * The regex fallback is why this can be a `parse` runner. It is always
+ * available. The dump is tried per justfile, and any failure (a non-zero exit,
+ * unparseable JSON) falls back to the scan for that file, with a diagnostic
+ * saying why. So a caller never gets less data than it expects without being
+ * told.
  */
 
 import { dirname } from 'node:path'
@@ -59,7 +57,7 @@ interface JustRecipe {
 
 /**
  * just's exclamation-point logo from just.systems, a mark of the just
- * project; it is used here nominatively, to identify the tool. Icon
+ * project, used here only to identify the tool. Icon
  * path: simple-icons v16 (CC0), slug `just`. simple-icons lists plain
  * black for it, so the color stays GitHub Linguist's Just color.
  */
@@ -69,8 +67,8 @@ const BRAND: RunnerBrand = {
 }
 
 export const justRunner: RunnerRole = {
-  // `parse`, not `exec`: the regex path means this runner always has
-  // something to offer. It uses the binary when allowed, and says when it did not.
+  // `parse`, not `exec`: the regex path means this runner always has tasks to
+  // offer. It runs just when allowed, and says when it did not.
   kind: 'parse',
   chain: CHAIN,
   brand: BRAND,
@@ -84,9 +82,8 @@ export const justRunner: RunnerRole = {
 
     const diagnostics: Diagnostic[] = []
     const tasks: Task[] = []
-    // `ctx.which`, not a `--version` probe: a PATH lookup answers the same
-    // question with no subprocess, which is cheaper and correct under a
-    // `parse` runner's posture.
+    // `ctx.which`, not a `--version` call: a PATH lookup answers the same
+    // question without starting a process.
     const usable = ctx.allowExec && ctx.which('just') !== null
 
     if (!usable && ctx.allowExec) {
@@ -108,11 +105,10 @@ export const justRunner: RunnerRole = {
           }
           continue
         }
-        // The scan is the floor, so a failed dump degrades to it FOR THIS FILE
-        // rather than deleting the file's recipes — a justfile whose `import`
-        // target is missing exits non-zero, and its recipes are still real and
-        // still runnable. Losing them would make turning execution on thin the
-        // list, which is the one thing the upgrade path must never do.
+        // A failed dump falls back to the scan for this file instead of
+        // dropping its recipes. A justfile whose `import` target is missing
+        // exits non-zero, but its recipes are still real and runnable. Turning
+        // execution on must never make the list shorter.
         diagnostics.push({
           severity: 'warning',
           message: `\`just --dump\` did not answer for this file (${parsed.error}) — recipes were parsed from source, so docs, parameters and private flags are missing`,
@@ -157,9 +153,9 @@ async function dumpRecipes(
 }
 
 /**
- * `argv` addresses the justfile explicitly so it is correct from the catalog
- * root regardless of which justfile it came from. The root justfile skips the
- * flags because the bare form is what a human would type.
+ * `argv` names the justfile explicitly, so it works from the catalog root
+ * whichever justfile it came from. The root justfile skips the flags because
+ * the bare form is what a person would type.
  */
 function baseArgv(file: string, dir: string): string[] {
   return dir === '.' ? ['just'] : ['just', '--justfile', file, '--working-directory', dir]
@@ -175,7 +171,7 @@ function fromDump(recipe: JustRecipe, file: string, dir: string): Task {
     path: ['just', dir, name],
     argv,
     cwd: '.',
-    // Placeholders live ONLY here. `argv` above is executable as-is.
+    // Placeholders appear only here. `argv` above runs as it is.
     display: `${argv.join(' ')}${renderParams(parameters)}`,
     parameters,
     source: file,
@@ -197,8 +193,8 @@ function fromScan(name: string, file: string, dir: string): Task {
     argv,
     cwd: '.',
     display: argv.join(' '),
-    // Empty rather than absent: the regex path cannot see parameters, and an
-    // empty list here means "none known", which is what the caller can act on.
+    // Empty, not absent: the regex path cannot see parameters, and an empty
+    // list means "none known".
     parameters: [],
     source: file,
     origin: 'declared',
@@ -229,15 +225,15 @@ function renderParams(params: Param[]): string {
  * Recipe headers at column 0. Indented lines are recipe bodies and a leading
  * `#` is a comment, both filtered by the caller.
  *
- * Deliberately wide. A pattern requiring the line to end at the colon, with a
- * restricted character class before it, finds only 91 of this repo's 110
- * recipes — it misses two common shapes:
+ * Wide on purpose. A pattern that requires the line to end at the colon, with
+ * a narrow character class before it, finds only 91 of this repo's 110
+ * recipes. It misses two common forms:
  *
  *     release-lib lib bump *flags:      `*` must be in the character class
  *     ci base="main": ci-guards         text after the colon must not end it
  *
- * `:(?!=)` is what keeps assignments out — `alias b := build` and
- * `set shell := [...]` are not recipes.
+ * `:(?!=)` keeps assignments out: `alias b := build` and `set shell := [...]`
+ * are not recipes.
  */
 const RECIPE_HEADER = /^@?([a-zA-Z_][a-zA-Z0-9_-]*)(?:\s+[^:\n]*?)?:(?!=)/
 

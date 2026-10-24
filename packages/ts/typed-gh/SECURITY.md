@@ -33,8 +33,8 @@ not intend are in scope.
   keychain entry, or `GH_TOKEN` and `GITHUB_TOKEN` in the environment. The
   child process inherits the caller's environment.
 - **No shell is involved.** The package starts `gh` directly and passes each
-  value as one argument, so spaces and shell metacharacters in a title or a
-  body are inert.
+  value as one argument. Spaces and shell metacharacters in a title or a
+  body have no effect.
 - **`gh` still parses its arguments.** A positional value that starts with `-`,
   such as a label name, can be read as a flag. Check untrusted input before you
   pass it.
@@ -51,5 +51,5 @@ not intend are in scope.
   and PR titles, bodies and comments travel in argv. Do not log the message
   where those are private. `createReview` sends its payload on stdin instead.
 - **`prMerge` needs the head sha.** GitHub refuses the merge when the PR head
-  is no longer that sha, so a push made after review cannot ride in. Pass the
-  sha you judged, not one read just before the call.
+  is no longer that sha, so a push made after review is not merged by this
+  call. Pass the sha you reviewed, not one read just before the call.

@@ -14,7 +14,7 @@ import { fakeRunner } from '@osdlc/command-seam/testing'
 
 // ---- Code under test -------------------------------------------------------
 
-/** The checked-out branch; `null` when HEAD is detached, `dir` is not a repo, or git could not run. */
+/** The checked-out branch, or `null` when HEAD is detached, `dir` is not a repo, or git could not run. */
 function currentBranch(dir: string, git: CommandRunner = spawnRunner('git')): string | null {
   const r = git.run(['branch', '--show-current'], { cwd: dir })
   return ran(r) ? firstLine(r.stdout) || null : null

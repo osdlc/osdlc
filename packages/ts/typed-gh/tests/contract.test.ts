@@ -1,6 +1,6 @@
 /**
- * The README's claims, one named test each. If a sentence in the README stops
- * being true, the test with that sentence in its name fails.
+ * The README's claims, one named test each. If a README claim stops being
+ * true, the test named for it fails.
  *
  * Each claim is checked on `Gh` and on `AsyncGh`, which the README says share
  * one contract.
@@ -305,7 +305,7 @@ describe('README: UNKNOWN is a legitimate final verdict', () => {
     const fromAsync = await f.agh.prViewSettled(1, { attempts: 3, sleep: async () => {} })
     expect(fromSync?.mergeable).toBe('UNKNOWN')
     expect(fromAsync?.mergeable).toBe('UNKNOWN')
-    // Three asks each, on two clients.
+    // Three calls each, on two clients.
     expect(f.seen).toHaveLength(6)
   })
 

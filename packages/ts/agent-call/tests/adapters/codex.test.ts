@@ -197,7 +197,7 @@ describe('codex parse', () => {
     const parsed = adapter.parseResult(planned, raw(withWarning))
     expect(parsed.text).toBe('pong')
     expect(parsed.isError).toBe(false)
-    // Detail is still surfaced for observability.
+    // The detail is still reported.
     expect(parsed.errorDetail).toContain('deprecated')
   })
 

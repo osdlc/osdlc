@@ -19,12 +19,12 @@ const SETTINGS_DEFAULTS_FILE = 'qwen-system-defaults.json'
 export interface QwenAdapterOptions extends CommandOptions {}
 
 /**
- * Qwen Code (`qwen`). Headless whenever a prompt arrives, here on stdin, with
- * `--output-format text|json|stream-json` in Claude Code's result shape (its
- * `json` is the whole run as an array of events). System prompts, approval
- * modes, tool rules, extra directories, the output schema, sessions and MCP
- * config are native flags; effort has no flag and travels as
- * `model.reasoningEffort` in a temp settings file; `cwd` and `env` apply to
+ * Qwen Code (`qwen`). Runs headless whenever a prompt arrives, here on stdin,
+ * with `--output-format text|json|stream-json` in Claude Code's result shape
+ * (its `json` is the whole run as an array of events). System prompts,
+ * approval modes, tool rules, extra directories, the output schema, sessions
+ * and MCP config have flags. Effort has no flag and goes as
+ * `model.reasoningEffort` in a temp settings file. `cwd` and `env` apply to
  * the process.
  */
 export function qwenAdapter(options: QwenAdapterOptions = {}): AgentAdapter {
@@ -59,8 +59,8 @@ function planQwen(command: readonly string[], spec: AgentCallSpec): PlannedCall 
   if (spec.model !== undefined) argv.push(...modelFlag(spec.model))
 
   if (spec.effort !== undefined) {
-    // No effort flag. model.reasoningEffort (low..max, the same rungs) is a
-    // setting, and the system-defaults file is the one settings layer an env
+    // No effort flag. model.reasoningEffort (low..max, the same levels) is a
+    // setting, and the system-defaults file is the only settings file an env
     // var can point at. It sits below user and project settings.
     tempFiles.push({
       name: SETTINGS_DEFAULTS_FILE,
@@ -136,8 +136,8 @@ function planQwen(command: readonly string[], spec: AgentCallSpec): PlannedCall 
       detail: '--approval-mode yolo',
     },
   })
-  // Array flags, repeated per value: one flag with several values would also
-  // swallow a positional that follows it.
+  // Array flags, repeated per value. One flag with several values would also
+  // consume a positional argument that follows it.
   for (const tool of permissions?.allowTools ?? []) argv.push('--allowed-tools', tool)
   if ((permissions?.allowTools ?? []).length > 0) {
     note(notes, 'permissions.allowTools', 'native', '--allowed-tools')
@@ -163,7 +163,7 @@ function planQwen(command: readonly string[], spec: AgentCallSpec): PlannedCall 
     note(notes, 'session.id', 'native', '--session-id (qwen rejects an id that is not a UUID)')
   }
   // `--resume` alone opens a session picker, so the `=` form keeps an id that
-  // starts with `-` bound to it.
+  // starts with `-` attached to it.
   if (session?.resume !== undefined) {
     argv.push(`--resume=${session.resume}`)
     note(notes, 'session.resume', 'native', '--resume=<id>')

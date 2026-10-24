@@ -86,7 +86,7 @@ pub fn validate_relative(raw: &str) -> Result<String, PathError> {
 /// Each segment is checked after `\` has become `/`. Its base name is its text
 /// up to the first `.` or `:`, with trailing spaces removed. A segment is
 /// [`PathWarningKind::ReservedName`] when the base name is a reserved device
-/// name, compared case-insensitively: `CON`, `PRN`, `AUX`, `NUL`, `COM0` to
+/// name, compared with ASCII case folded: `CON`, `PRN`, `AUX`, `NUL`, `COM0` to
 /// `COM9`, `LPT0` to `LPT9`, `COM¹`, `COM²`, `COM³`, `LPT¹`, `LPT²`, `LPT³`,
 /// `CONIN$` and `CONOUT$`. Otherwise it is
 /// [`PathWarningKind::AlternateStream`] when it holds a `:`.

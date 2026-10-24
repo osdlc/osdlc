@@ -9,10 +9,9 @@ import {
   type TextMatchSpec,
 } from '../../src/core/text-match.js'
 
-// text-match.ts owns the pure text matcher, the `text/*` finding-builder, and the stable
-// finding-id synthesis. These tests double as the module's contract: each `matchText`
-// / `synthesizeTextId` case is an input and the exact value it returns; the builder cases pin the
-// exact finding emitted for a present / absent / counted phrase.
+// text-match.ts holds the text matcher, the `text/*` finding builder, and the stable finding id.
+// Each `matchText` / `synthesizeTextId` case is an input and the exact value it returns. The
+// builder cases check the exact finding for a present, absent or counted phrase.
 
 describe("matchText — count occurrences and pin each hit's source position", () => {
   test("a present literal → count 1 and the hit's { line, col }", () => {
@@ -300,9 +299,9 @@ describe('the text plane is registered', () => {
   })
 
   test('text/* findings sort into their own plane — after content, before rule', () => {
-    // A docRule that emits, all at the same { line, col }, one finding in each of the content /
-    // text / rule planes (out of emission order). The deterministic sort breaks the pos tie by
-    // plane, so the order proves `text` sits between `content` and `rule` in PLANE_ORDER.
+    // A docRule that emits one finding in each of the content, text and rule planes, all at the
+    // same { line, col } and out of order. The sort breaks the tie by plane, so the result shows
+    // that `text` comes between `content` and `rule` in PLANE_ORDER.
     const c = contract({
       body: sections({ order: 'none', allowUnknown: true }, [section('S')]),
       rules: [

@@ -785,8 +785,8 @@ describe('workspaces, unlocked installs and install directories', () => {
   })
 
   describe('a package listed by a nested root and by the root', () => {
-    // dev's shape: `a/` lists `b/*` and has no lockfile, is not a root member,
-    // and the root lists `a/b/*` directly and holds the lockfile.
+    // The dev repo's layout: `a/` lists `b/*`, has no lockfile and is not a root
+    // member. The root lists `a/b/*` directly and holds the lockfile.
     const files = {
       'package.json': JSON.stringify({ workspaces: ['a/b/*'] }),
       'bun.lock': '',
@@ -843,7 +843,8 @@ describe('workspaces, unlocked installs and install directories', () => {
     expect(project.packageManagers(profile, 'a/b/x')).toMatchObject([
       { tool: 'pnpm', dir: '.', locked: true },
     ])
-    // Under the member `a` but listed by no root: no lockfile from above.
+    // Under the member `a` but listed by no root, so it does not take a lockfile
+    // from a parent directory.
     expect(project.packageManagers(profile, 'a/c')).toMatchObject([
       { tool: 'npm', dir: 'a/c', fallback: true },
     ])

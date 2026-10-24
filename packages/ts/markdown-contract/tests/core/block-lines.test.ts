@@ -3,8 +3,8 @@ import { describe, expect, test } from 'vitest'
 import { codeBlockLines, tableRowLines } from '../../src/core/block-lines.js'
 import { parse } from '../../src/core/projection.js'
 
-// block-lines.ts enumerates the source lines occupied by fenced code and by table rows.
-// Each case pins exact 1-indexed line numbers against a counted document.
+// block-lines.ts lists the source lines that fenced code and table rows occupy.
+// Each case checks exact 1-based line numbers against a numbered document.
 
 describe('codeBlockLines — every fenced-code source line', () => {
   test('covers the opening fence through the closing fence, inclusive', () => {
@@ -32,7 +32,7 @@ describe('codeBlockLines — every fenced-code source line', () => {
       '  ```', // 7
     ].join('\n')
     const lines = codeBlockLines(parse(doc))
-    // The nested code fence is captured even though it is not a heading-direct block.
+    // The nested code fence is found even though it is not a direct block of the section.
     expect(lines.has(5)).toBe(true)
     expect(lines.has(6)).toBe(true)
     expect(lines.has(7)).toBe(true)

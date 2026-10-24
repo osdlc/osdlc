@@ -1,12 +1,12 @@
 /**
  * Host-agnostic reading of a git remote URL into its coordinate.
  *
- * `parseGitUrl` (git-url.ts) is over `hosted-git-info`, which only knows a
- * fixed allowlist of hosts and answers null for a self-hosted Forgejo or
- * Gitea. A remote read out of a checkout's own config is always a clone URL
- * (scp-style or `scheme://`), so this parses that shape for ANY host and
- * needs no dependency — which is why it, not `parseGitUrl`, backs
- * `Git.remoteOwnerRepo` and stays on the `./client` entry.
+ * `parseGitUrl` (git-url.ts) is built on `hosted-git-info`, which knows only a
+ * fixed list of hosts and answers null for a self-hosted Forgejo or Gitea. A
+ * remote read from a checkout's own config is always a clone URL (scp-style or
+ * `scheme://`), so this parses that shape for any host and needs no
+ * dependency. That is why `Git.remoteOwnerRepo` uses it rather than
+ * `parseGitUrl`, and why it is on the `./client` entry.
  */
 
 /** A remote clone URL split into where it lives and what it names. */

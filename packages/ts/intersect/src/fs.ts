@@ -1,29 +1,26 @@
 /**
- * Intersect L2 — filesystem (`intersect/fs`).
+ * The filesystem entry (`@osdlc/intersect/fs`).
  *
- * The only layer that reads disk and the only one carrying a runtime
- * dependency (a globber, `tinyglobby`). It enumerates real files with the
- * globber, then filters via the pure path API (L1/L0) — it does not
- * re-implement matching; L0/L1 stay pure questions about patterns.
+ * The only entry that reads the disk, and the only one with a runtime
+ * dependency (`tinyglobby`). It lists real files with `tinyglobby`, then
+ * filters them with the path API. It does not match patterns itself.
  *
- * Semantics are IDENTICAL to the pure layer: a bare path is an exact match and
- * a subtree needs `**`, exactly as at L1 — the globber's own dialect never
- * leaks into the result.
+ * Matching works as in the path API: a bare path is an exact match and a
+ * subtree needs `**`. `tinyglobby`'s own glob rules never affect the result.
  *
- * The arguments are GLOBS and the enumerated names are FILENAMES. The path API
- * reads the names literally, so a file really called `pages/[id].vue` is that
- * name and not a character class. The corollary binds callers: to reach such a
- * file you must escape the metacharacters in your pattern too
- * (`pages/\[id\].vue`) — a literal repo path fed in verbatim silently matches
- * nothing.
+ * The arguments are globs and the listed names are file names. The path API
+ * reads the names literally, so a file named `pages/[id].vue` is that name and
+ * not a character class. To match such a file, escape the glob characters in
+ * your pattern too (`pages/\[id\].vue`). A literal path passed unescaped
+ * matches nothing, with no error.
  *
- * The walk lists the WHOLE tree under `cwd` before it filters; it is not pruned
- * by the patterns. Symbolic links are neither followed nor listed. Anything the
+ * The walk lists the whole tree under `cwd` before it filters. The patterns do
+ * not narrow it. Symbolic links are neither followed nor listed. Anything the
  * walk cannot read throws an `IntersectError` with code `IO_ERROR`.
  *
- * `tinyglobby` is imported ONLY here; the core entries (`./index`,
- * `./segments`, `./parse`, `./registry`) never reference it, keeping them
- * zero-dependency.
+ * Only this file imports `tinyglobby`. The other entries (`./index`,
+ * `./segments`, `./parse`, `./registry`) never do, so they have no
+ * dependencies.
  *
  * @module fs
  */
@@ -32,7 +29,7 @@ import { resolve } from 'node:path'
 import { glob } from 'tinyglobby'
 import { compile, IntersectError, type Matcher, type Options, type Patterns } from './index.ts'
 
-/** Options for the filesystem layer — matching semantics plus on-disk resolution controls. */
+/** Options for the filesystem entry: the matching options, plus where and what to list. */
 export interface FsOptions extends Options {
   /**
    * Directory the globs resolve against. Default `process.cwd()`. A directory
@@ -68,15 +65,15 @@ function byCodePoint(a: string, b: string): number {
 }
 
 /**
- * Enumerate every file under `cwd`, then keep those the path API says fall in
- * `patterns` and not in `ignore`. Returns cwd-relative paths, sorted by code
- * point. The enumeration always runs with `dot: true` so dotfiles reach
- * the post-filter; whether `*`/`**` actually match a dot segment is then the
- * path API's `dot` option's call — keeping the decision in one place (L1).
+ * List every file under `cwd`, then keep those the path API says match
+ * `patterns` and not `ignore`. Returns paths relative to `cwd`, sorted by code
+ * point. The listing always runs with `dot: true`, so dotfiles reach the
+ * filter. Whether `*` and `**` match a dot segment is then decided by the path
+ * API's `dot` option, in one place.
  *
- * `opts` goes straight to `matches` as its `Options`: `FsOptions` extends
- * `Options`, and the path API reads only the matching keys, ignoring the
- * fs-only ones (`cwd`, `ignore`, …).
+ * `opts` is passed to `compile` as its `Options`. `FsOptions` extends
+ * `Options`, and the path API reads only the matching keys. It ignores the
+ * fs-only ones (`cwd`, `ignore`, and so on).
  */
 async function filesMatching(
   patterns: Patterns,
@@ -87,7 +84,7 @@ async function filesMatching(
   // Compile first: a bad pattern or argument must fail before the walk starts.
   const include = compile(patterns, opts)
   const ignore = opts?.ignore?.length ? compile(opts.ignore, opts) : null
-  // The globber swallows read errors. Record them from its `readdir` and throw
+  // tinyglobby ignores read errors. Record them from its `readdir` and throw
   // once the walk is done.
   const failures: { path: string; error: NodeJS.ErrnoException }[] = []
   const found = await glob('**/*', {
@@ -113,9 +110,8 @@ async function filesMatching(
       { cause: first.error },
     )
   }
-  // Under `onlyFiles: false` the globber emits directory entries in its own
-  // dialect, with a trailing separator (`src/api/`). Strip it at the boundary:
-  // a path this layer returns is a plain path, never a globber-shaped one.
+  // Under `onlyFiles: false`, tinyglobby returns directories with a trailing
+  // separator (`src/api/`). Strip it, so every returned path is a plain path.
   const entries = found.map((rel) => (rel.endsWith('/') ? rel.slice(0, -1) : rel))
   // `matches` reads each name literally, so a file called `[id].vue` is that name.
   const survivors = entries.filter((rel) => {
@@ -126,7 +122,7 @@ async function filesMatching(
   return survivors.sort(byCodePoint)
 }
 
-/** Absolutize cwd-relative paths when `opts.absolute` is set; otherwise pass them through. */
+/** Make cwd-relative paths absolute when `opts.absolute` is set. Otherwise return them as they are. */
 function absolutize(rel: readonly string[], opts: FsOptions | undefined): string[] {
   if (!(opts?.absolute ?? false)) return [...rel]
   const cwd = opts?.cwd ?? process.cwd()
@@ -134,26 +130,26 @@ function absolutize(rel: readonly string[], opts: FsOptions | undefined): string
 }
 
 /**
- * The concrete on-disk files matching `patterns` — a scope's context slice.
+ * The files on disk that match `patterns`.
  *
  * @param patterns - The scope to resolve ({@link Patterns}).
- * @param opts - {@link FsOptions}: matching semantics plus `cwd` / `ignore` /
+ * @param opts - {@link FsOptions}: the matching options, plus `cwd` / `ignore` /
  * `onlyFiles` / `absolute`.
- * @returns The matching files, sorted by code point; cwd-relative unless
- * `opts.absolute`, which gives `resolve(cwd, path)`.
+ * @returns The matching files, sorted by code point. Paths are relative to
+ * `cwd`, unless `opts.absolute` is set, which gives `resolve(cwd, path)`.
  * @throws {@link IntersectError} with code `IO_ERROR` when `cwd` is missing, is
  * not a directory, or when any directory under it cannot be read.
- * @remarks Same semantics as the pure layer — a bare path is an exact match and
- * a subtree needs `**`. The globber only enumerates the tree; every
- * include/exclude decision is the path API's `matches`. `patterns` are globs,
- * not filenames: escape `*?[]{}` to name a file that really contains them
- * (`pages/\[id\].vue`), or the file is not returned.
+ * @remarks Matching works as in the path API: a bare path is an exact match and
+ * a subtree needs `**`. tinyglobby only lists the tree. The path API decides
+ * every include and exclude. `patterns` are globs, not file names: escape
+ * `*?[]{}` to name a file that contains them (`pages/\[id\].vue`), or the file
+ * is not returned.
  *
- * The call lists the whole tree under `cwd` before it filters, and does not
- * prune it by the patterns. Symbolic links are neither followed nor listed.
- * `ignore: ['node_modules']` matches only a path named exactly `node_modules`;
- * write `node_modules/**`. A pattern that starts with `./` or `/` matches no
- * file, and `!` is not negation.
+ * The call lists the whole tree under `cwd` before it filters. The patterns do
+ * not narrow it. Symbolic links are neither followed nor listed.
+ * `ignore: ['node_modules']` matches only a path named exactly `node_modules`.
+ * To exclude the folder's contents, write `node_modules/**`. A pattern that
+ * starts with `./` or `/` matches no file, and `!` is not negation.
  * @example
  * ```ts
  * const context = await filesInScope(["src/api/**", "src/db/**"], { cwd: repoRoot });
@@ -166,16 +162,16 @@ export async function filesInScope(patterns: Patterns, opts?: FsOptions): Promis
 }
 
 /**
- * The concrete on-disk files that fall in BOTH `a` and `b`.
+ * The files on disk that match both `a` and `b`.
  *
  * @param a - The first scope ({@link Patterns}).
  * @param b - The second scope ({@link Patterns}).
- * @param opts - {@link FsOptions}: matching semantics plus on-disk controls.
- * @returns The files matching both `a` and `b`, sorted by code point;
- * cwd-relative unless `opts.absolute`.
+ * @param opts - {@link FsOptions}: the matching options, plus where and what to list.
+ * @returns The files matching both `a` and `b`, sorted by code point. Paths are
+ * relative to `cwd` unless `opts.absolute` is set.
  * @throws {@link IntersectError} with code `IO_ERROR`, as {@link filesInScope}.
- * @remarks The same rules as {@link filesInScope}: globs, not filenames; the
- * whole tree is listed; symbolic links are skipped.
+ * @remarks The same rules as {@link filesInScope}: the patterns are globs, not
+ * file names, the whole tree is listed, and symbolic links are skipped.
  * @example
  * ```ts
  * const both = await resolveIntersection(["src/**"], ["src/api/**"], { cwd: repoRoot });
@@ -187,8 +183,8 @@ export async function resolveIntersection(
   b: Patterns,
   opts?: FsOptions,
 ): Promise<string[]> {
-  // Resolve in relative space (regardless of `opts.absolute`) so the relative
-  // patterns match, then absolutize once at the boundary.
+  // Match on relative paths (whatever `opts.absolute` says), so the relative
+  // patterns match. Make them absolute once, at the end.
   const rel = await filesMatching(a, opts, compile(b, opts))
   return absolutize(rel, opts)
 }

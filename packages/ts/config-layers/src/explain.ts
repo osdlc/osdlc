@@ -1,16 +1,15 @@
 /**
- * Schema-side introspection of a tool's config keys: the read model behind a
- * `config list|explain` command and the generated reference.
+ * Reads a tool's config keys from its schema. A `config list|explain` command
+ * and the generated reference are built on these functions.
  *
- * Everything is derived from the tool's config schema and its per-key
- * `.meta()` ({@link readConfigMeta}) at call time; nothing here names a key, so
- * a new or changed key flows into every surface that reads it without an edit.
- * Functions take the schema's top-level `shape` as an argument; the tool binds
- * its own schema.
+ * Everything is derived at call time from the tool's config schema and its
+ * per-key `.meta()` ({@link readConfigMeta}). Nothing here names a key, so a
+ * new or changed key shows up everywhere without an edit. Functions take the
+ * schema's top-level `shape` as an argument. The tool passes its own schema.
  *
  *   - {@link resolveKeyPath} walks a dotted path (`server.limits.timeout`,
  *     `hooks.build`) through object fields and record values to the field's
- *     schema, returning it with its own description and its top-level
+ *     schema. It returns the schema with its own description and its top-level
  *     section's meta (nested fields inherit their section's).
  *   - {@link describeShape} renders a field's value shape as a short type string
  *     (`map<string, list<string>>`, `integer >= 0`, `'rebase' | 'merge'`)
@@ -19,8 +18,8 @@
  *     own parse of `undefined`, so `.default()`, `.prefault()` and
  *     `.optional()` all answer the same way the loader would.
  *   - {@link nestedFields} lists an object field's children.
- *   - {@link getIn} and {@link omitPath} read and prune a plain value by dotted
- *     path, the pieces a value-source lookup is built from.
+ *   - {@link getIn} and {@link omitPath} read and remove a value in a plain
+ *     object by path. A lookup of where a value came from is built from them.
  */
 
 import { z } from 'zod'
@@ -60,7 +59,7 @@ export interface ResolvedKey<T extends MetaTerms = MetaTerms> {
   schema: z.ZodType
   /** The field's own `.describe()` text; empty when it carries none. */
   description: string
-  /** The section's meta — a nested field inherits it. */
+  /** The section's meta. A nested field inherits it. */
   meta: RegisteredKeyMeta<T>
 }
 
@@ -90,9 +89,9 @@ export interface ResolveKeyPathOptions<T extends MetaTerms = MetaTerms> {
 
 /**
  * Walk `path` through the config `shape`: object fields by name, record
- * (`z.record`) values by any key. Throws an `Error` naming the first segment
- * that does not resolve, with the closest keys when any are close and the
- * keys that would have resolved otherwise.
+ * (`z.record`) values by any key. Throws an `Error` that names the first
+ * segment that does not resolve. The message lists the closest keys when any
+ * are close, and otherwise the keys that would have resolved.
  * @experimental
  */
 export function resolveKeyPath<T extends MetaTerms = MetaTerms>(
@@ -227,7 +226,7 @@ function stripNonShape(v: unknown): unknown {
   const out: Record<string, unknown> = {}
   for (const [k, child] of Object.entries(v as Record<string, unknown>)) {
     if (NON_SHAPE_KEYS.has(k)) continue
-    // `properties` maps field NAMES to schemas; never strip a name.
+    // `properties` maps field names to schemas. Never strip a name.
     if (k === 'properties' && child !== null && typeof child === 'object') {
       out[k] = Object.fromEntries(
         Object.entries(child as Record<string, unknown>).map(([name, s]) => [
@@ -331,12 +330,11 @@ export function getIn(value: unknown, path: readonly string[]): { found: boolean
 }
 
 /**
- * A copy of `obj` with `path` removed, leaving every sibling key's data
- * completely untouched (only the objects ON the path down to the removed key
- * are shallow-copied). Used to exclude ONE key's value from a layer's raw
- * data before that layer feeds an effective-config computation — the layer's
- * other keys still need their full document. A no-op (returns `obj` as-is)
- * when `path` does not resolve inside `obj`.
+ * A copy of `obj` with `path` removed. Sibling keys are not touched. Only the
+ * objects on the path down to the removed key are shallow-copied. Use it to
+ * leave one key's value out of a layer's raw data before computing the
+ * effective config, since the layer's other keys still need their full data.
+ * Returns `obj` unchanged when `path` does not resolve inside `obj`.
  * @experimental
  */
 export function omitPath(

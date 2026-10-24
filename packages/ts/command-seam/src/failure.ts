@@ -34,13 +34,13 @@ export type CommandFailureKind =
   | 'spawn'
   | 'exit'
 
-/** A failed run, classified. `message` is one line for a person; `detail` is the full output. */
+/** A failed run, classified. `message` is one line for a person. `detail` is the full output. */
 export interface CommandFailure extends Failure<CommandFailureKind> {
   /** The binary that ran, when known. */
   binary?: string | undefined
   /** The arguments the command ran with, without the binary name. */
   argv: string[]
-  /** The child's own exit code; `null` when it never reported one. */
+  /** The child's own exit code, or `null` when it never reported one. */
   exitCode: number | null
   /** The signal that ended the child, when the runner knows it. */
   signal?: NodeJS.Signals | null | undefined

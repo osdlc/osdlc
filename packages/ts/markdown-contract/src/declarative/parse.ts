@@ -1,6 +1,6 @@
 /**
  * Parses a YAML contract or config document and checks its envelope: `mcVersion` and `kind`.
- * Only `mcVersion: 2` is supported; `mcVersion: 1` gets an error that names the migration
+ * Only `mcVersion: 2` is supported. `mcVersion: 1` gets an error that names the migration
  * command. The rest of the document goes to the compiler for its kind.
  */
 import { parse as parseYaml } from 'yaml'
@@ -13,7 +13,7 @@ const SUPPORTED_VERSIONS = new Set([2])
 /** A parsed YAML document whose envelope passed the checks. */
 export interface DeclarativeDoc {
   kind: 'contract' | 'config'
-  /** the parsed YAML mapping, envelope validated */
+  /** The parsed YAML mapping. */
   raw: Record<string, unknown>
 }
 

@@ -3,12 +3,12 @@
  *
  * `POST /api/trust` is the only thing in this repository that grants standing
  * permission to run a repository's code from a request. The page hides its
- * button when a grant would not apply, and a hidden button is not a gate — two
- * defects shipped in exactly that space, one letting `--no-exec` be overridden
- * from the browser and one persisting the deliberately unpersisted `--exec`.
+ * button when a grant would not apply, but a hidden button does not stop a
+ * request. The server must refuse it, or `--no-exec` could be overridden from
+ * the browser and a one-run `--exec` could be stored as a grant.
  *
  * Every case injects `env` and `home` at a temp directory. A test that granted
- * trust in the developer's own `~/.local/state/wayfinder/` would be a bug worse than
+ * trust in the developer's own `~/.local/state/wayfinder/` would be worse than
  * a failure, so one case also asserts the real store is untouched.
  *
  * The token is read out of the served page the way the page reads it, so the
@@ -124,9 +124,8 @@ async function start(
 /**
  * The session token, obtained the way the page itself obtains it: spend the
  * one-shot boot token on the page route, then read the token the server
- * embedded in the document. The boot token is burned by this call, which is
- * the real flow — a test that fetched the page unauthenticated would be
- * testing a route that no longer exists.
+ * embedded in the document. This call uses up the boot token, as the real
+ * flow does. The page cannot be fetched without a token.
  */
 async function pageToken(address: string, bootToken: string): Promise<string> {
   const html = await (await fetch(`${address}/?boot=${bootToken}`)).text()
@@ -146,9 +145,9 @@ describe('POST /api/trust — method', () => {
   test('every other method is 405, including the GET a link or an <img> makes', async () => {
     const s = await start('untrusted')
     try {
-      // DELETE is absent because it is now a real route — revoking. It is
-      // still unreachable from a link or an <img>, which is what this test is
-      // about; its own auth is covered below.
+      // DELETE is absent because it is a real route, for revoking. It is still
+      // unreachable from a link or an <img>, which is what this test is about.
+      // Its own auth is covered below.
       for (const method of ['GET', 'HEAD', 'PUT', 'OPTIONS']) {
         const res = await fetch(`${s.address}/api/trust`, { method })
         expect(res.status).toBe(405)
@@ -194,7 +193,7 @@ describe('POST /api/trust — token', () => {
 
       const body = (await res.json()) as { allowExec: boolean; trustable: boolean }
       expect(body.allowExec).toBe(true)
-      // The grant applied, so the offer is withdrawn — the page must not go on
+      // The grant applied, so the offer is withdrawn. The page must not keep
       // telling the user to do what they just did.
       expect(body.trustable).toBe(false)
       expect(await trustStoreFor(s.home).list()).toEqual([await resolveTrustRoot(s.root)])
@@ -206,9 +205,9 @@ describe('POST /api/trust — token', () => {
 
 describe('POST /api/trust — applicability', () => {
   test('--no-exec refuses the grant, and the store stays empty', async () => {
-    // The regression: the endpoint used to grant on method and token alone, so
-    // a server started with --no-exec could be talked into running moon from
-    // the browser. --no-exec is the last word however trusted the repo is.
+    // Method and token alone must not be enough to grant. Otherwise a server
+    // started with --no-exec could be made to run moon from the browser.
+    // --no-exec wins however trusted the repo is.
     const s = await start('no-exec')
     try {
       const res = await post(s.address, await pageToken(s.address, s.bootToken))
@@ -220,9 +219,9 @@ describe('POST /api/trust — applicability', () => {
   })
 
   test('--exec refuses the grant, so consent for one run is never persisted', async () => {
-    // The regression: --exec records nothing everywhere else — the CLIs and the
-    // TUI all honour that — and only this endpoint turned a deliberate single
-    // run into a standing grant nobody remembers giving.
+    // --exec records nothing in the CLIs and the TUI. This endpoint must not
+    // turn a deliberate single run into a standing grant nobody remembers
+    // giving.
     const s = await start('exec')
     try {
       const res = await post(s.address, await pageToken(s.address, s.bootToken))
@@ -238,8 +237,8 @@ describe('POST /api/trust — applicability', () => {
  * The cache the page is served from.
  *
  * `start()` injects `env: {}` and a temp `home`, so the store is
- * `<temp home>/.cache/wayfinder` — the real `~/.cache/wayfinder` is neither read nor
- * written by anything here, the same rule the trust cases follow.
+ * `<temp home>/.cache/wayfinder`. Nothing here reads or writes the real
+ * `~/.cache/wayfinder`, the same rule the trust cases follow.
  */
 describe('GET /api/catalog — cache', () => {
   test('carries a cache array beside trustable, one entry per runner', async () => {
@@ -271,10 +270,10 @@ describe('GET /api/catalog — cache', () => {
 
 describe('POST /api/run — a row that is no longer there', () => {
   test("names the staleness rather than answering a bare 'not found'", async () => {
-    // The dishonesty this prevents: a row is on screen, the user clicks it, and
-    // the server says it does not exist with nothing connecting the two facts.
-    // The listing came out of the store; saying so, with its age, is the
-    // difference between a dead end and something the user can act on.
+    // The problem this prevents: a row is on screen, the user clicks it, and
+    // the server says it does not exist, with nothing linking the two facts.
+    // The listing came from the store. Saying so, with its age, gives the user
+    // something to act on.
     const s = await start('untrusted', 'stale')
     try {
       const token = await pageToken(s.address, s.bootToken)
@@ -314,9 +313,9 @@ describe('POST /api/run — a row that is no longer there', () => {
 
 describe('POST /api/trust — the injected seam', () => {
   test('a granting run writes to the injected home and leaves the real one alone', async () => {
-    // Read-only against the developer's machine, and the whole point of `env`
-    // and `home` being threaded into serve(): before this they defaulted, so
-    // the test above would have granted trust on whoever ran it.
+    // Read-only against the developer's machine. This is why `env` and `home`
+    // are passed into serve(): if they defaulted, the test above would grant
+    // trust on the machine that ran it.
     const before = await trustStore({ tool: 'wayfinder' }).list()
     const s = await start('untrusted')
     try {
@@ -354,10 +353,10 @@ describe('GET /api/config — what the settings screen reads', () => {
       expect(body.effective['excludePaths']).toEqual([])
       expect(body.effective['runners']).toEqual({ disabled: [], order: [] })
 
-      // `sources` is the whole reason this endpoint exists rather than the
-      // page reading a file: it says which layer supplied each value. It is a
-      // Map on the server, and a Map serialises as `{}` — so this asserts it
-      // survived the crossing.
+      // `sources` is the reason this endpoint exists rather than the page
+      // reading a file: it says which layer supplied each value. It is a Map
+      // on the server, and a Map serialises as `{}`, so this asserts it
+      // survived serialisation.
       expect(body.sources['allowExec']).toBe('default')
       expect(body.sources['runners.disabled']).toBe('default')
 
@@ -443,8 +442,8 @@ describe('GET /api/config — what the settings screen reads', () => {
   })
 
   test('the BOOT token does not open it — API routes take the session token only', async () => {
-    // The boot token rides in a URL, which is readable by any process on this
-    // machine for as long as the command line survives. It signs a browser in
+    // The boot token is in a URL, which any process on this machine can read
+    // for as long as the command line exists. It signs a browser in
     // on the page route and is accepted nowhere else; a new endpoint that
     // forgot this would widen that.
     const s = await start('untrusted')

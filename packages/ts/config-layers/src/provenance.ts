@@ -1,18 +1,18 @@
 /**
- * Shared layered-resolution primitive: the provenance half of the config library.
+ * Resolves a setting across layers and records which layer each part came
+ * from.
  *
- * One generic cascade — env → local → project → default, with `local`/
- * `project` each able to fully REPLACE or WRAP (`prepend`/`append`) whatever
- * the layer beneath them resolved to — backs any list-valued setting (and, through its scalar narrowing,
- * `resolveLayeredValue`, a single-value setting) with one algorithm and one
- * provenance shape, `{layer, mode}`.
+ * The layers are env, local, project and default. `local` and `project` can
+ * each replace what the layers beneath them resolved to, or wrap it
+ * (`prepend`/`append`). {@link resolveLayeredSteps} does this for a
+ * list-valued setting, and {@link resolveLayeredValue} for a single value.
+ * Both report the source as `{layer, mode}`.
  *
- * This module is intentionally standalone: it knows nothing about
- * the config file, an environment variable's shape, or any one config
- * section's step grammar. A caller supplies `readRaw` (already scoped to one
- * layer and one entry name) and an already-parsed `envSteps`/`defaultSteps`;
- * this module only sequences the four layers and tags each resulting step
- * with where it came from.
+ * This module stands alone. It knows nothing about the config file, the shape
+ * of an environment variable, or any config section's step format. A caller
+ * supplies `readRaw` (already scoped to one layer and one entry name) and
+ * parsed `envSteps`/`defaultSteps`. This module only applies the four layers
+ * in order and tags each resulting step with where it came from.
  */
 
 // ---------------------------------------------------------------------------
@@ -20,20 +20,20 @@
 // ---------------------------------------------------------------------------
 
 /**
- * Which cascade layer a resolved step (or value) came from. `'detected'` is
- * a caller's own addition — a fallback derived from the environment, tried
- * between `'project'`/`'local'` and `'none'`; this module never
- * produces that tag itself, it only needs the value in its own vocabulary so
- * a caller can carry it on a `StepProvenance`/`ResolvedStep` it builds by hand.
+ * Which layer a resolved step (or value) came from. `'detected'` is for a
+ * caller's own fallback derived from the environment, tried after
+ * `'project'`/`'local'` and before `'none'`. This module never produces it.
+ * It is in the type so a caller can put it on a `StepProvenance` or
+ * `ResolvedStep` it builds by hand.
  * @experimental
  */
 export type ValueLayer = 'env' | 'local' | 'project' | 'default' | 'detected' | 'none'
 
 /**
- * How a layer contributed a step: `'default'` only for the base list itself,
- * `'replace'` for a layer that supplied a full step list outright (including
- * `env`, which only ever replaces), `'prepend'`/`'append'` for a layer that
- * wrapped whatever the layer(s) beneath it resolved to instead of replacing it.
+ * How a layer contributed a step. `'default'` is only for the base list.
+ * `'replace'` is for a layer that supplied a full step list, including `env`,
+ * which only replaces. `'prepend'`/`'append'` are for a layer that wrapped
+ * what the layers beneath it resolved to.
  * @experimental
  */
 export type StepMode = 'default' | 'replace' | 'prepend' | 'append'
@@ -61,11 +61,11 @@ export interface ResolvedStep<T> {
 }
 
 /**
- * One layer's raw entry for a step-list name: `steps` fully replaces
- * whatever the layer(s) beneath it resolved to; `prepend`/`append` wrap it
- * instead. A caller's own schema decides whether `steps` and `prepend`/
- * `append` may coexist on one entry — this module trusts whichever fields
- * are present and never validates the combination itself.
+ * One layer's raw entry for a step-list name. `steps` replaces what the layers
+ * beneath it resolved to. `prepend`/`append` wrap it instead. The caller's
+ * schema decides whether `steps` and `prepend`/`append` may appear together on
+ * one entry. This module uses whichever fields are present and does not check
+ * the combination. When `steps` is present, it wins.
  * @experimental
  */
 export interface RawLayeredSteps<T> {
@@ -80,22 +80,22 @@ export interface RawLayeredSteps<T> {
  */
 export interface ResolveLayeredStepsOptions<T> {
   /**
-   * The base list before any layer overrides it. A plain array for a
-   * static built-in default, or an async probe run only when the base is
-   * actually needed — how a detection heuristic plugs in.
+   * The base list before any layer overrides it. A plain array for a fixed
+   * default, or an async function that detects the default. The function is
+   * called on every resolve, before the layers apply.
    */
   defaultSteps: T[] | (() => Promise<T[]>)
   /**
-   * `'project'` reads the project file, `'local'` its overlay — RAW,
-   * one call per layer, `undefined` when that layer names nothing for this
-   * entry at all. Supplied per config section by the caller; this module does not know which
-   * file or key it came from.
+   * Reads the raw entry from one layer: `'project'` is the project file,
+   * `'local'` its overlay. Called once per layer. Returns `undefined` when that
+   * layer has nothing for this entry. The caller supplies it per config
+   * section. This module does not know which file or key it reads.
    */
   readRaw: (layer: 'local' | 'project') => RawLayeredSteps<T> | undefined
   /**
-   * Already-parsed full replacement from the env layer, if any — this
-   * module does not know the variable's shape, only that a
-   * defined value here wins outright over every other layer, unwrapped.
+   * A parsed full replacement from the env layer, if any. This module does not
+   * know the variable's shape. A defined value here wins over every other
+   * layer and is never wrapped.
    */
   envSteps?: T[]
 }
@@ -113,10 +113,10 @@ function tagSteps<T>(steps: readonly T[], source: StepProvenance): ResolvedStep<
 }
 
 /**
- * Apply one layer's raw entry onto what the layer(s) beneath it resolved to:
- * absent leaves `resolved` untouched, `steps` fully replaces it, `prepend`/
- * `append` wrap it (an absent `prepend`/`append` on a wrapping entry
- * contributes nothing on that side, not a step).
+ * Apply one layer's raw entry onto what the layers beneath it resolved to. An
+ * absent entry leaves `resolved` unchanged. `steps` replaces it. `prepend`/
+ * `append` wrap it, and a missing `prepend` or `append` adds nothing on that
+ * side.
  */
 function applyLayer<T>(
   raw: RawLayeredSteps<T> | undefined,
@@ -133,16 +133,14 @@ function applyLayer<T>(
 }
 
 /**
- * Resolve a step list through the shared env → local → project → default
- * cascade. `local`/`project` are applied in that order (project first, then
- * local, so a local wrap wraps whatever project+default already produced —
- * the layer closest to the repo wins outermost); a defined `envSteps`
- * overrides the result of that whole cascade outright, matching-or-wrapping
- * semantics included, since env never wraps.
+ * Resolve a step list through the env, local, project and default layers.
+ * Project applies first, then local, so a local wrap goes around what project
+ * and default produced. A defined `envSteps` replaces the whole result,
+ * including any wraps, since env never wraps.
  *
- * `name` identifies the entry being resolved. It is not used inside this
- * function — `readRaw`/`defaultSteps` are already scoped to one entry by the
- * caller. It is kept so both resolvers take `(name, opts)`.
+ * `name` identifies the entry being resolved. This function does not use it,
+ * because the caller already scoped `readRaw` and `defaultSteps` to one entry.
+ * It is kept so both resolvers take `(name, opts)`.
  * @experimental
  */
 export async function resolveLayeredSteps<T>(
@@ -164,7 +162,7 @@ export async function resolveLayeredSteps<T>(
 }
 
 // ---------------------------------------------------------------------------
-// resolveLayeredValue — the single-value case
+// resolveLayeredValue: the single-value case
 // ---------------------------------------------------------------------------
 
 /**
@@ -175,10 +173,11 @@ export interface ResolveLayeredValueOptions<V> {
   /** The value before any layer overrides it. */
   defaultValue: V
   /**
-   * `'project'` reads the project file, `'local'` its overlay — RAW,
-   * one call per layer, `undefined` when that layer sets nothing for this
-   * entry. The scalar narrowing of {@link ResolveLayeredStepsOptions.readRaw}:
-   * a bare value, since there is nothing to wrap.
+   * Reads the raw value from one layer: `'project'` is the project file,
+   * `'local'` its overlay. Returns `undefined` when that layer sets nothing for
+   * this entry. The single-value form of
+   * {@link ResolveLayeredStepsOptions.readRaw}: a bare value, since there is
+   * nothing to wrap.
    */
   readRaw: (layer: 'local' | 'project') => V | undefined
 }
@@ -193,9 +192,9 @@ export interface ResolvedLayeredValue<V> {
 }
 
 /**
- * The scalar narrowing of {@link resolveLayeredSteps}: `local` > `project` >
- * `default`, no `mode` (nothing to wrap) and no `env` layer.
- * `name` is unused here for the same reason as `resolveLayeredSteps`'s.
+ * The single-value form of {@link resolveLayeredSteps}: `local` over `project`
+ * over `default`, with no `mode` (nothing to wrap) and no `env` layer. `name`
+ * is unused, for the same reason as in `resolveLayeredSteps`.
  * @experimental
  */
 export function resolveLayeredValue<V>(

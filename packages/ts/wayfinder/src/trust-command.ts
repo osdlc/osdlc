@@ -27,8 +27,7 @@ import {
 import { appTrustStore } from './trust-store.ts'
 
 /**
- * A VIEW of `CliIo`: the same output seam, plus the environment this command
- * needs injected — not a third pattern alongside `CliIo` and `ConfigCommandIO`.
+ * `CliIo` plus the environment this command needs injected.
  */
 export interface TrustCommandIO extends CliIo {
   /** Defaults to `process.env`. Supplies `XDG_STATE_HOME`. */
@@ -78,9 +77,10 @@ the marker is gone.
 /**
  * Split the mode flag off the argument list.
  *
- * The three modes contradict each other and two of them WRITE, so a
- * last-one-wins reading would act on a store the user named the other of. A
- * pair is a usage error instead, as `--user` and `--project` are for `config`.
+ * The three mode flags ask different things, and `--untrust` writes. If the
+ * last flag won, a run meant only to read could change the store. Two
+ * different modes are a usage error instead, as `--user` and `--project` are
+ * for `config`.
  */
 function takeMode(
   argv: string[],
@@ -92,8 +92,8 @@ function takeMode(
     if (arg === '-h' || arg === '--help') {
       help = true
     } else if (arg === '--json') {
-      // Not a mode: it asks the SAME question in the machine form, so it
-      // combines with each of the three rather than contradicting them.
+      // Not a mode: it asks the same question in JSON form, so it combines
+      // with each of the modes.
       json = true
     } else if (arg === '--untrust' || arg === '--show' || arg === '--list') {
       const named = arg.slice(2) as Mode
@@ -111,12 +111,11 @@ function takeMode(
 }
 
 /**
- * The USER-layer trust.paths/trust.owners policy for `root`, or the rendered
- * message when the project's config file will not parse. Lazy — computed only
- * by the modes that need a per-root decision (`show`, `untrust`, the plain
- * grant), so `--list` and `--help` ask nothing about a particular root and a
- * broken project config cannot break them, matching how `main()` only loads
- * config for the collection path.
+ * The user-layer trust.paths/trust.owners policy for `root`, or the error
+ * message when a config file will not parse. Only the modes that decide about
+ * one root call it (`show`, `untrust`, the plain grant). So a broken config
+ * file cannot break `--list` or `--help`, just as `main()` loads config only
+ * when it collects tasks.
  */
 async function loadPolicy(
   root: string,
@@ -137,10 +136,10 @@ async function loadPolicy(
  * `<tool> trust [--untrust|--show|--list]`. `root` is the resolved project
  * root. Returns the exit code.
  *
- * Exit codes follow `runConfigCommand`: 2 for a command that cannot run as
- * typed, decided from the argument list alone; 1 for a well-formed command that
- * failed against the state it found — here, `--untrust` on a root that was
- * never trusted, or a project config file that will not parse.
+ * Exit codes follow `runConfigCommand`. 2 is a command that cannot run as
+ * typed, decided from the arguments alone. 1 is a valid command that failed
+ * against the state it found: here, `--untrust` on a root with no marker, or a
+ * config file that will not parse.
  */
 export async function runTrustCommand(
   toolName: string,
@@ -150,8 +149,8 @@ export async function runTrustCommand(
 ): Promise<number> {
   const env = io.env ?? process.env
   const home = io.home ?? homedir()
-  // Keyed on the app name, not `toolName`, so a grant lands in one store
-  // whichever name the caller printed.
+  // Keyed on the app name, not `toolName`, so every grant lands in one store
+  // whatever name the caller prints.
   const store = appTrustStore({ env, home })
   const policyOptions = trustPolicyOptions(home)
 
@@ -166,11 +165,10 @@ export async function runTrustCommand(
   }
 
   /**
-   * The machine form of every root-scoped answer, in ONE shape across `trust`,
-   * `--untrust` and `--show`: which root was decided on, whether it is trusted
-   * now, whether THIS invocation changed the store, and which layer decided
-   * (`by`/`rule`, mirroring `sdlc repo trust --show`). Three questions with
-   * three JSON shapes would make a caller branch on the flag it just passed.
+   * The JSON answer for `trust`, `--untrust` and `--show`, in one shape: the
+   * root decided on, whether it is trusted now, whether this run changed the
+   * store, and which layer decided (`by`/`rule`, as `sdlc repo trust --show`
+   * reports). One shape means a caller does not branch on the flag it passed.
    */
   const rootAnswer = (
     path: string,
@@ -188,18 +186,18 @@ export async function runTrustCommand(
       return EXIT.ok
     }
     case 'show': {
-      // Both answers are exit 0: "not trusted" is a fact this command was asked
-      // for, not a failure to report it.
+      // Both answers exit 0. "Not trusted" is the answer that was asked for,
+      // not a failure.
       const policy = await loadPolicy(root, toolName, env, home)
       if ('error' in policy) {
         io.stderr(`${toolName}: ${policy.error}\n`)
         return EXIT.error
       }
-      // Decided through the SAME function that gates a real run
-      // (`policyExecGate`), so this answer cannot drift from what actually
-      // governs execution. `configured: true` asks "if execution were on,
-      // would this root's marker or policy allow it" — the only question
-      // `--show` has, so `allowExec`/`reason` are unused here.
+      // Decided by the same function that checks a real run
+      // (`policyExecGate`), so this answer always matches what controls
+      // execution. `configured: true` asks "if execution were on, would this
+      // root's marker or policy allow it". That is the only question `--show`
+      // asks, so `allowExec` and `reason` are unused here.
       const gate = await policyExecGate(store, policy, { root, configured: true }, policyOptions)
       io.stdout(
         taken.json
@@ -215,17 +213,16 @@ export async function runTrustCommand(
         return EXIT.error
       }
       // Resolved first so the message names the path the store is keyed on,
-      // which is the path a later --list will show.
+      // which is the path a later --list shows.
       const resolved = await store.resolveRoot(root)
       const removed = await store.untrust(resolved)
-      // Independent of the marker either way, so it answers the same question
-      // whether or not this call removed one — the root may still be trusted
-      // by policy after its marker is gone.
+      // Checked whether or not a marker was removed: the root may still be
+      // trusted by policy after its marker is gone.
       const after = await policyExecGate(store, policy, { root, configured: true }, policyOptions)
-      // The answer goes to stdout either way. A --json caller that gets exit 1
-      // still gets a document saying what the store held; the failure itself is
-      // the exit code and the line on stderr, which is where every other aside
-      // in this package already goes.
+      // The JSON answer goes to stdout either way, so a --json caller that gets
+      // exit 1 still gets a document. The failure is reported by the exit code
+      // and a line on stderr, where every other side message in this package
+      // goes.
       if (taken.json) io.stdout(rootAnswer(resolved, after.trusted, removed, after.by, after.rule))
       if (!removed) {
         io.stderr(`${toolName}: not trusted: ${resolved}\n`)
@@ -233,8 +230,8 @@ export async function runTrustCommand(
       }
       if (!taken.json) {
         io.stdout(`untrusted ${resolved}\n`)
-        // Mirrors `sdlc repo untrust`'s note: removing the marker did not
-        // change the answer when a policy rule covers this root regardless.
+        // Matches `sdlc repo untrust`'s note: when a policy rule covers this
+        // root, removing the marker did not change the answer.
         if (after.trusted) {
           io.stderr(
             `note: ${resolved} is still trusted by ${toolName}'s trust.${after.by}s ` +
@@ -251,8 +248,8 @@ export async function runTrustCommand(
         return EXIT.error
       }
       const result = await store.trust(root)
-      // After granting (or confirming) the marker, the marker itself is
-      // always why this root is trusted — `trustDecision` checks it first.
+      // After the marker is written (or found), the marker is always the
+      // reason this root is trusted, because the marker is checked first.
       const decision = await policyExecGate(
         store,
         policy,

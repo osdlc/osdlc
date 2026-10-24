@@ -1,12 +1,11 @@
 /**
- * Assembling `PrFacts` from a `CodeHostPr` — the one place `behind`/`ahead` get
- * computed, from local git, never a code host field.
+ * Builds `PrFacts` from a `CodeHostPr`. This is the one place `behind` and
+ * `ahead` are computed. They come from local git, never from a code host field.
  *
- * GitHub only reports `mergeStateStatus: BEHIND` when branch protection
- * requires an up-to-date branch, so on a repository without one the field is
- * silent no matter how far a branch has drifted; Forgejo has no equivalent
- * field at all. this measures it locally
- * for exactly that reason, code-host-agnostic.
+ * GitHub reports `mergeStateStatus: BEHIND` only when branch protection
+ * requires an up-to-date branch. On a repository without that rule the field
+ * says nothing, however far the branch has drifted. Forgejo has no such field.
+ * So the drift is measured locally, the same way for every host.
  */
 
 import { Git } from '@osdlc/typed-git'
@@ -15,9 +14,9 @@ import type { CommandRunner } from '@osdlc/command-seam'
 import type { CodeHostPr, PrFacts } from './types.ts'
 
 /**
- * `behind`/`ahead` are null when the refs aren't resolvable (a ref this
- * checkout never fetched) — null means "unknown", never zero, since zero
- * reads as "up to date" and would silently clear a real drift.
+ * `behind` and `ahead` are null when a ref cannot be resolved, for example a
+ * ref this checkout never fetched. Null means "unknown". It is never zero,
+ * because zero reads as "up to date" and would hide a real drift.
  */
 export function assemblePrFacts(
   pr: CodeHostPr,

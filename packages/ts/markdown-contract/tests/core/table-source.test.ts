@@ -4,8 +4,8 @@ import { blocksOfKind } from '../../src/core/navigate.js'
 import { parse } from '../../src/core/projection.js'
 import { rawTableRow, rawTableRows } from '../../src/core/table-source.js'
 
-// table-source.ts re-splits table cells from the raw source so verbatim markup survives.
-// Each case shows the projection FLATTENING a cell while the raw split preserves it.
+// table-source.ts splits table cells again from the raw source, so markup in a cell is kept.
+// Each case shows `parse()` flattening a cell while the raw split keeps it.
 
 const DOC = [
   '## Operations', // 1
@@ -24,9 +24,9 @@ function opsTable(doc: string) {
 describe('rawTableRows — verbatim header + rows from source', () => {
   test("preserves backticks the projection's columns/rows flatten away", () => {
     const table = opsTable(DOC)
-    // The projection drops the backticks:
+    // `parse()` drops the backticks:
     expect(table.rows[0]).toEqual(['create', 'tool x new', 'Make a thing'])
-    // The raw re-split keeps them:
+    // The raw split keeps them:
     expect(rawTableRows(table, DOC)).toEqual({
       header: ['Name', 'CLI', 'Description'],
       rows: [

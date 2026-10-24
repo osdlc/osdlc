@@ -1,33 +1,33 @@
 /**
- * `pr-update update` — bring out-of-date PRs up to date.
+ * `pr-update update`: bring out-of-date PRs up to date.
  *
- * The plan comes from `survey`, called directly rather than reimplemented, so
- * what this applies is exactly what that reports. Rows arrive in stack order
- * and are applied in it: a stack updated child-first is work that gets redone
- * the moment the parent moves.
+ * The plan comes from calling `survey` directly, not from a second
+ * implementation, so what this applies is exactly what that reports. Rows
+ * arrive in stack order and are applied in it. A stack updated child first is
+ * work that has to be redone as soon as the parent moves.
  *
- * **Nothing is written without `apply`.** A bare invocation walks the whole
- * path — checkout, integrate, resolve — and pushes nothing, so the report
- * tells you which PRs would conflict before you have touched a remote. That
- * is the default because the failure mode of this verb is a bad force-push,
- * and a default that could cause one would be wrong. `confirmPush` adds a
- * second gate: a y/N before each rebase force-push.
+ * Nothing is written without `apply`. A bare run goes through the whole path
+ * (checkout, integrate, resolve) and pushes nothing, so the report says which
+ * PRs would conflict before anything reaches a remote. That is the default
+ * because the worst failure of this command is a bad force-push, and a default
+ * that could cause one would be wrong. `confirmPush` adds a second check: a
+ * y/N before each rebase force-push.
  *
  * What is skipped, and why it is skipped rather than attempted:
  *
- *   - `strategy: skip` — the strategy guards already decided. A branch with
- *     unpushed work in somebody's worktree, or a fork we cannot push to.
- *   - `status: blocked` — its base is another PR that is itself behind.
- *     Updating it now integrates a base about to move.
- *   - `status: unknown` — drift could not be measured, so there is no
- *     evidence an update is wanted.
- *   - a recorded failure — the update already failed `max_failed_attempts`
+ *   - `strategy: skip`: the strategy guards already decided. A branch with
+ *     unpushed work in somebody's worktree, or a fork this run cannot push to.
+ *   - `status: blocked`: its base is another PR that is itself behind.
+ *     Updating it now integrates a base that is about to move.
+ *   - `status: unknown`: drift could not be measured, so nothing shows that an
+ *     update is needed.
+ *   - a recorded failure: the update already failed `max_failed_attempts`
  *     times at this head and base sha, and would fail the same way again.
  *     `--retry-failed` attempts it anyway.
  *
  * `verify: check` or `verify: test` runs the `verifyVerbs` that
- * `ports.resolveVerifyVerbs` returns before a push. Trust-gating a
- * project-sourced verb list is the host's business, decided in that port.
+ * `ports.resolveVerifyVerbs` returns before a push. Whether a verb list from
+ * the project may run is the host's decision, made in that port.
  */
 
 import { join } from 'node:path'
@@ -55,7 +55,7 @@ import type { AttemptKey, AttemptStore, ConfirmPush, Ports } from './ports.ts'
 import { terminalConfirmPush } from './update/confirm.ts'
 import type { PrUpdateConfig } from './config.ts'
 
-/** A row the run declined to touch, and the reason, so nothing is silently dropped. */
+/** A row the run left alone, and the reason, so no row is dropped without a word. */
 export interface SkippedPr {
   number: number
   head: string
@@ -80,11 +80,12 @@ export interface FailedAttemptPolicy {
 /**
  * Split the survey into what this run will act on and what it will not.
  *
- * Every row lands in exactly one list, AND every number `only` (`--pr`)
- * named lands somewhere too, even one the survey never reported (a typo, or
- * a PR that closed between the survey and this run) — it gets a synthetic
- * `skipped` entry rather than vanishing. A PR that quietly disappeared would
- * be the worst outcome here: the reader would assume it was fine.
+ * Every row lands in exactly one list. Every number `only` (`--pr`) named
+ * lands somewhere too, even one the survey never reported (a typo, or a PR
+ * that closed between the survey and this run). Such a number gets a made-up
+ * `skipped` entry instead of disappearing. A PR that disappeared from the
+ * report would be the worst outcome, because the reader would assume it was
+ * fine.
  */
 export function selectTargets(
   report: SurveyReport,
@@ -103,17 +104,14 @@ export function selectTargets(
       skipped.push({ number: row.number, head: row.head, reason })
     }
     if (wanted.size > 0 && !wanted.has(row.number)) {
-      // `note`, not a bare `continue`: a PR this run's own `--pr` scope
-      // excludes is still a row the survey reported, and the doc comment
-      // above (and the `skipped` schema's own description) both promise
-      // every surveyed PR lands in `targets` or here — a PR that vanished
-      // from both because `--pr` named other numbers would be exactly the
-      // silent-disappearance case this function exists to rule out.
+      // `note`, not a bare `continue`. A PR outside this run's `--pr` scope is
+      // still a row the survey reported, and every surveyed PR must land in
+      // `targets` or `skipped`.
       note('not selected by --pr/--branch')
       continue
     }
-    // The output schema types `strategy` as a plain string; only these two
-    // are executable, and narrowing here is what makes that true downstream.
+    // The output schema types `strategy` as a plain string. Only these two can
+    // run, and this check narrows the type for the code after it.
     if (row.strategy !== 'rebase' && row.strategy !== 'merge') {
       note(row.strategyReason)
     } else if (row.status === 'blocked') note(`blocked on #${row.blockedBy ?? '?'}`)
@@ -137,11 +135,9 @@ export function selectTargets(
     }
   }
   // A `--pr` number the survey never reported (a typo, or a PR that closed
-  // between survey and this run) would otherwise vanish with no mention at
-  // all — the loop above only ever sees `report.prs`'s own rows, so a wanted
-  // number outside that set never reaches `note()`. Same invariant as the
-  // rest of this function: every number this run was asked about ends up
-  // somewhere, not silently dropped.
+  // between the survey and this run) never reaches `note()` in the loop above,
+  // which sees only `report.prs`. Add it here, so every number this run was
+  // asked about is reported.
   for (const number of wanted) {
     if (!seen.has(number)) skipped.push({ number, head: '', reason: 'not found in survey' })
   }
@@ -239,7 +235,7 @@ export const output = z.object({
   }),
 })
 
-/** Map one executor result onto the `result` schema. Exported for direct testing. */
+/** Map one executor result to the `result` schema. Exported for tests. */
 export function toResult(r: UpdateResult, localCheckout?: LocalCheckout): z.infer<typeof result> {
   return {
     number: r.number,
@@ -265,13 +261,14 @@ export type LocalCheckout = { updated: boolean; detail: string }
 
 /**
  * Move the working directory's checkout onto the head just pushed, when that
- * loses nothing: it is on the PR's branch, holds no uncommitted change and sits
+ * loses nothing: it is on the PR's branch, holds no uncommitted change, and is
  * exactly at the head the run started from. Otherwise leave it and say why.
  *
  * A merge update is a fast-forward of the branch. A rebase is not, and the
- * checkout still moves with `reset --hard`: it is clean and at the old remote
+ * checkout still moves with `reset --hard`. It is clean and at the old remote
  * head, so every commit it held is one the push replaced or kept. Paths under
- * `.pr-update/` (this tool's own scratch and record) do not count as changes.
+ * `.pr-update/` (this tool's own scratch files and record) do not count as
+ * changes.
  */
 export function syncLocalCheckout(git: Git, r: UpdateResult): LocalCheckout | undefined {
   if (r.outcome.status !== 'updated' || !r.outcome.pushed) return undefined
@@ -308,13 +305,12 @@ export interface UpdateEnv extends SurveyEnv {
 /**
  * `args.strategy`, folded into `cfg` for this run.
  *
- * Swaps only `strategy` — `overrides` and `guards` pass through untouched —
- * so `chooseStrategy` (`./strategy.ts`) still consults the ORIGINAL
- * `overrides` array (a per-PR rule keeps winning) and `guards.unpushed_local`
- * stays unconditional regardless of which default strategy is in effect. Only
- * the branch that falls through to "no override, no guard fired" ever sees
- * the swapped default. Exported and pure so this precedence is testable
- * without driving the whole survey/update pipeline.
+ * Replaces only `strategy`. `overrides` and `guards` pass through unchanged,
+ * so `chooseStrategy` (`./strategy.ts`) still reads the original `overrides`
+ * (a per-PR rule still wins), and `guards.unpushed_local` still always
+ * applies. The new default is used only when no override matched and no guard
+ * fired. Exported and pure, so this order can be tested without running the
+ * whole survey and update.
  */
 export function applyStrategyOverride(
   cfg: PrUpdateConfig,
@@ -325,8 +321,8 @@ export function applyStrategyOverride(
 
 /**
  * Whether this run may write: push updates and call a repair. `--apply` is the
- * user's intent; `dryRun` is the harness-wide override that must beat it, so a
- * global rehearsal never writes.
+ * user's intent. `dryRun` is the caller's global override and beats it, so a
+ * rehearsal never writes.
  */
 export function wantsWrite(args: Pick<UpdateArgs, 'apply'>, dryRun: boolean): boolean {
   return args.apply && !dryRun
@@ -358,16 +354,16 @@ function bindConfirmPush(args: UpdateArgs, ports: Ports, dryRun: boolean): Confi
 /**
  * Run the update.
  *
- * Exported separately from any CLI/op wrapper so a test can invoke it
- * directly, and so a host embedding this package as a library never pays for
- * a preflight it does not need.
+ * Exported apart from any CLI wrapper, so a test can call it directly, and a
+ * host that embeds this package as a library does not run a preflight it does
+ * not need.
  */
 export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<UpdateOutput> {
   const confirmPush = bindConfirmPush(args, env.ports, env.dryRun)
   const effectiveCfg = applyStrategyOverride(env.cfg, args.strategy)
   const report = runSurvey(args, { ...env, cfg: effectiveCfg })
   const attempts = env.ports.attempts
-  // Branch mode names its PR by head branch; the survey has already narrowed
+  // Branch mode names its PR by head branch. The survey has already narrowed
   // the report to it and its stack parents.
   const only =
     args.branch === undefined

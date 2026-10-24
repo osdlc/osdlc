@@ -1,52 +1,48 @@
 /**
- * gradle — the tasks a Gradle build declares, with the conventional JVM
- * lifecycle verbs as a floor.
+ * gradle: the tasks a Gradle build declares, with the conventional JVM
+ * lifecycle verbs as a fallback.
  *
- * Two paths, the shape `just` uses:
+ * Two paths, as in `just`:
  *
  *   ask     `gradle tasks --all` (or `./gradlew tasks --all`) makes the build
- *           itself enumerate its tasks — every plugin-contributed task, every
- *           bespoke one, every subproject's, with the descriptions their
- *           authors wrote. Requires running the build's own tool.
- *   floor   synthesize `build`, `test`, `clean`, `assemble`, `check` — the
- *           lifecycle verbs the base and java plugins define, which nearly
- *           every Gradle build answers to. Names only, and conventions rather
- *           than an observation, but it works on a machine with no gradle and
- *           under `allowExec: false`, which is what makes this a `parse`
- *           runner at all.
+ *           list its own tasks: every task from a plugin, every custom one,
+ *           every subproject's, with the descriptions their authors wrote.
+ *           This runs the build's own tool.
+ *   floor   synthesize `build`, `test`, `clean`, `assemble`, `check`, the
+ *           lifecycle verbs the base and java plugins define. Nearly every
+ *           Gradle build has them. These are names only, and conventions, not
+ *           observed tasks. But they work on a machine with no gradle and
+ *           under `allowExec: false`, which is why this is a `parse` runner.
  *
- * WHY ASKING IS THE ONLY WAY TO LEARN THE REAL LIST. `build.gradle` and
- * `build.gradle.kts` are Groovy and Kotlin — general-purpose languages, not
- * data formats. A task can be registered inside a loop, behind a condition,
- * from a convention plugin in `buildSrc`, or by a third-party plugin whose name
- * never appears next to the task it contributes. Parsing that text correctly
- * means embedding a Groovy/Kotlin interpreter and then running it, so scraping
- * would produce a confidently wrong answer. Gradle is the only component that
- * knows, which is exactly why the exec path exists.
+ * Why only asking gives the real list: `build.gradle` and `build.gradle.kts`
+ * are Groovy and Kotlin, general-purpose languages, not data formats. A task
+ * can be registered in a loop, behind a condition, from a convention plugin in
+ * `buildSrc`, or by a third-party plugin whose name never appears next to the
+ * task. Parsing that text correctly means embedding a Groovy/Kotlin
+ * interpreter and running it, so scraping would give a wrong answer. Only
+ * Gradle knows, which is why the exec path exists.
  *
- * AND WHY RUNNING IT IS ALLOWED. `allowExec` is not a ban on running the
- * scanned repository's tools; it is the switch that says a person has
- * consented to exactly that, and the CLIs only turn it on behind a
- * repository-trust gate. A `parse` runner is one that still has an answer
- * WITHOUT the flag — which this one does, the floor below — not one that
- * refuses to use the flag when it is set.
+ * Why running it is allowed: `allowExec` does not forbid running the scanned
+ * repository's tools. It is the switch that says a person has agreed to that,
+ * and the CLIs turn it on only after a repository-trust check. A `parse`
+ * runner is one that still has an answer without the flag (this one has the
+ * floor), not one that refuses to use the flag when it is set.
  *
- * THE COST IS REAL AND NEW. Every millisecond-scale runner here reads
- * files; this one starts (or wakes) a Gradle daemon, resolves the
- * build's own plugin dependencies and COMPILES the build script to answer.
- * Cold that is seconds to minutes, and on a first run with an empty dependency
- * cache it is network-bound. So this asks gradle exactly ONCE per collection,
- * never once per project directory: `tasks --all` run against the root build
- * already enumerates every subproject's tasks under its own `sub:task` name
+ * The cost is high. The other fast runners here read files. This one starts
+ * (or wakes) a Gradle daemon, resolves the build's plugin dependencies and
+ * compiles the build script. Cold, that takes seconds to minutes, and a first
+ * run with an empty dependency cache waits on the network. So this asks
+ * gradle once per collection, not once per project directory. `tasks --all`
+ * on the root build already lists every subproject's tasks as `sub:task`
  * (docs.gradle.org/current/userguide/part5_build_scripts.html shows
  * `./gradlew tasks --all` from the root listing `app:greeting` and
- * `lib:task3`), so a second invocation would buy nothing and cost another
- * configuration. The call carries a generous but finite timeout and the
- * caller's abort signal.
+ * `lib:task3`). A second call would add nothing and cost another
+ * configuration. The call has a long but finite timeout and the caller's abort
+ * signal.
  *
- * Every failure — no gradle, non-zero exit, timeout, output that does not
- * parse — lands on the floor with a diagnostic saying so. The task list is
- * never empty and nothing here throws.
+ * Every failure (no gradle, non-zero exit, timeout, output that does not
+ * parse) falls back to the floor with a diagnostic. The task list is never
+ * empty and nothing here throws.
  */
 
 import { stderrOrError } from '@osdlc/command-seam'
@@ -65,12 +61,11 @@ const CHAIN = [
   },
   {
     label: 'verb',
-    // Deliberately covers both paths. `chain` is a static property on the
-    // runner, read by `collect()` when it assembles the report, so it cannot
-    // describe the path a particular run took without mutating shared module
-    // state under concurrent collections. Which path ran is carried per task by
-    // `origin` (`declared` = gradle said so, `synthesized` = convention) and
-    // stated outright in the run's diagnostics.
+    // Covers both paths on purpose. `chain` is a static property of the
+    // runner, so it cannot describe the path one run took without changing
+    // shared module state during concurrent collections. Each task's `origin`
+    // says which path it came from (`declared` = gradle listed it,
+    // `synthesized` = convention), and the run's diagnostics say so too.
     hint:
       "A Gradle task. Read from `gradle tasks --all` when the build's own tool could be " +
       'run; otherwise one of the conventional lifecycle verbs a Gradle build answers to.',
@@ -78,9 +73,8 @@ const CHAIN = [
 ]
 
 /**
- * The floor: lifecycle tasks the `base` and `java` plugins define, offered when
- * gradle itself could not be asked. Conventions, not config — and a task the
- * report DID list always wins over its entry here.
+ * The floor: lifecycle tasks the `base` and `java` plugins define. Conventions,
+ * not config. A task the report did list always wins over its entry here.
  */
 const VERBS: ReadonlyArray<{ name: string }> = [
   { name: 'build' },
@@ -91,27 +85,25 @@ const VERBS: ReadonlyArray<{ name: string }> = [
 ]
 
 /**
- * A generous cap. Gradle's answer is bounded by build-script compilation and
- * plugin resolution, not by the size of the listing: a warm daemon replies in
- * about a second, a cold JVM start plus configuration is tens of seconds, and
- * a first run against an empty dependency cache is network-bound and can take
- * minutes. Five minutes is chosen to be longer than an honest cold run and
- * short enough that a wedged daemon does not hang a catalog forever — the
- * timeout is a hard cap in `spawnRunnerAsync`, and hitting it falls to the
- * floor with a diagnostic rather than failing the runner.
+ * A long cap. Gradle's answer time depends on build-script compilation and
+ * plugin resolution, not on the size of the listing. A warm daemon replies in
+ * about a second. A cold JVM start plus configuration takes tens of seconds. A
+ * first run with an empty dependency cache waits on the network and can take
+ * minutes. Five minutes is longer than a normal cold run, and short enough
+ * that a stuck daemon does not hang a catalog forever. The timeout is a hard
+ * cap in `spawnRunnerAsync`. Hitting it falls back to the floor with a
+ * diagnostic; the runner does not fail.
  */
 const PROBE_TIMEOUT_MS = 300_000
 
 /**
- * A stepped block — Gradle's own mark is a stylized elephant, unrelated in
- * shape to anything this substitute could legally reproduce. simple-icons
- * ships a `gradle` entry (CC0-licensed, so no licensing bar the way
- * cargo.ts's `rust` or maven.ts's `apachemaven` face) but this package does
- * not copy artwork from any icon set regardless of its license — every brand
- * here is drawn fresh. Color (`#02303A`) is independently attested in
- * Gradle's own documentation stylesheet (gradle/gradle,
- * `platforms/documentation/docs/src/docs/css/base.css`), not lifted from
- * simple-icons' entry.
+ * A plain glyph of stepped blocks, not Gradle's elephant logo. simple-icons
+ * has a CC0 `gradle` entry (no license problem, unlike cargo.ts's `rust` or
+ * maven.ts's `apachemaven`), but this package does not copy artwork from any
+ * icon set, whatever its license. Every brand glyph here is drawn fresh. The
+ * color (`#02303A`) comes from Gradle's documentation stylesheet
+ * (gradle/gradle, `platforms/documentation/docs/src/docs/css/base.css`), not
+ * from simple-icons.
  */
 const BRAND: RunnerBrand = {
   icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="15" width="6" height="5"/><rect x="9" y="9" width="6" height="5"/><rect x="14" y="3" width="6" height="5"/></svg>',
@@ -122,16 +114,13 @@ const BRAND: RunnerBrand = {
  * Whether `./gradlew` should be preferred over the bare `gradle` binary for a
  * project directory.
  *
- * `cwd` never leaves `"."` (the standing policy: address the directory via
- * the tool's own flag, not by changing the working directory), so a wrapper
- * is only actually invocable as written when it sits at the repository root
- * — `./gradlew` run from root resolves there regardless of which directory
- * `-p` then points at, which is also how a real multi-project Gradle build
- * works: one wrapper at the root serves every subproject. A root wrapper is
- * therefore checked first and wins outright. Only when there is no root
- * wrapper does a wrapper sitting next to a nested build file matter, and only
- * for addressing that one project, since nothing else could reach it as a
- * relative path from root.
+ * `cwd` is always `"."`: tasks pass the directory with the tool's own flag
+ * instead of changing the working directory. `./gradlew` run from the root
+ * resolves there, whatever directory `-p` points at. A real multi-project
+ * Gradle build works the same way: one wrapper at the root serves every
+ * subproject. So a root wrapper is checked first and always wins. A wrapper
+ * next to a nested build file is used only when there is no root wrapper, and
+ * only for that one project, run by its path from the root.
  */
 async function wrapperArgv0(ctx: ProviderContext, dir: string): Promise<string> {
   if (await ctx.exists('gradlew')) return './gradlew'
@@ -141,15 +130,14 @@ async function wrapperArgv0(ctx: ProviderContext, dir: string): Promise<string> 
 
 export const gradleRunner: RunnerRole = {
   // `parse`, not `exec`: the synthesized floor means this runner always has
-  // something to offer. It asks the build's own tool when allowed, and says
-  // when it did not.
+  // tasks to offer. It asks the build's own tool when allowed.
   kind: 'parse',
   chain: CHAIN,
   brand: BRAND,
-  // This runner already lists these at any depth, so the value here is
-  // catching a NEWLY ADDED one: re-hashing only the paths a previous run
-  // recorded can never see a build script that did not exist then, and a new
-  // `build.gradle` is a new set of tasks.
+  // This runner already reads these at any depth. The watch is for a newly
+  // added one: re-hashing only the paths a previous run recorded cannot see a
+  // build script that did not exist then, and a new `build.gradle` means new
+  // tasks.
   watch: [...GRADLE_FILES],
 
   async collect(ctx: ProviderContext): Promise<ProviderResult> {
@@ -175,11 +163,11 @@ export const gradleRunner: RunnerRole = {
     for (const dir of dirs) {
       const filesHere = byDir.get(dir) ?? []
       if (filesHere.length === 0) continue
-      // Deterministic pick when a directory carries more than one marker
-      // (e.g. build.gradle.kts + settings.gradle.kts at the root): one task
-      // set per directory, not one per file. `filesHere` is built above from
-      // exactly `dir === "." ? m : `${dir}/${m}`` for each `m` in `GRADLE_FILES`
-      // that `ctx.files` found, so this `find` always matches.
+      // A fixed pick when a directory has more than one build file (such as
+      // build.gradle.kts + settings.gradle.kts at the root): one task set per
+      // directory, not one per file. `filesHere` holds exactly
+      // `dir === "." ? m : `${dir}/${m}`` for each `m` in `GRADLE_FILES` that
+      // `ctx.files` found, so this `find` always matches.
       const source = GRADLE_FILES.find((m) => filesHere.includes(dir === '.' ? m : `${dir}/${m}`))
       if (source === undefined) continue
       const sourcePath = dir === '.' ? source : `${dir}/${source}`
@@ -203,11 +191,11 @@ export const gradleRunner: RunnerRole = {
           }),
         )
       }
-      // THE FLOOR NEVER REGRESSES. A verb gradle already listed keeps gradle's
-      // own description and `origin: "declared"`; one it did not list is still
-      // offered. A build with no `java` plugin genuinely has no `assemble`, so
-      // this can over-offer — `origin` is what a caller filters on to see only
-      // what the build actually asserted.
+      // The floor is always offered. A verb gradle listed keeps gradle's
+      // description and `origin: "declared"`. A verb it did not list is still
+      // offered. A build with no `java` plugin has no `assemble`, so this can
+      // offer too much. A caller filters on `origin` to see only what the
+      // build reported.
       for (const verb of VERBS) {
         if (seen.has(verb.name)) continue
         seen.add(verb.name)
@@ -232,11 +220,10 @@ function toTask(args: {
   origin: TaskOrigin
 }): Task {
   const { argv0, dir, sourcePath, name, doc, origin } = args
-  // One addressing rule for both paths. `-p <dir>` is Gradle's own start
-  // directory flag — "Specifies the start directory for Gradle. Defaults to
-  // current directory."
-  // (docs.gradle.org/current/userguide/command_line_interface.html) — so the
-  // command is correct pasted from the repository root and `cwd` stays ".".
+  // One rule for both paths. `-p <dir>` is Gradle's start directory flag
+  // ("Specifies the start directory for Gradle. Defaults to current
+  // directory.", docs.gradle.org/current/userguide/command_line_interface.html).
+  // So the command works when pasted at the repository root, and `cwd` stays ".".
   const argv = dir === '.' ? [argv0, name] : [argv0, '-p', dir, name]
   return {
     id: taskId('gradle', sourcePath, name),
@@ -266,10 +253,11 @@ interface ReportRow {
 /**
  * Ask gradle once, and map its answer onto the discovered project directories.
  *
- * Returns an empty map on every path that is not a clean, parseable listing —
- * `allowExec` off, no invocable gradle, non-zero exit, timeout, unreadable
- * output — after appending the diagnostic that explains which of those it was.
- * An empty map means every directory falls back to the synthesized floor.
+ * Returns an empty map whenever there is no clean, parseable listing:
+ * `allowExec` off, no gradle to run, non-zero exit, timeout, unreadable
+ * output. Each case except `allowExec` off first appends a diagnostic that
+ * says which it was. An empty map means every directory falls back to the
+ * synthesized floor.
  */
 async function askGradle(
   ctx: ProviderContext,
@@ -278,24 +266,21 @@ async function askGradle(
 ): Promise<Map<string, ReportRow[]>> {
   const empty = new Map<string, ReportRow[]>()
 
-  // The build to interrogate. A root build is the one worth asking: its
-  // `tasks --all` covers the whole multi-project tree. With no build file at
-  // the root there is no root build, so the first discovered directory is
-  // asked instead and any others fall to the floor (noted below) — still one
-  // invocation, never one per directory.
+  // The build to ask. A root build is best: its `tasks --all` covers the
+  // whole multi-project tree. With no build file at the root, the first
+  // directory found is asked instead, and the others fall back to the floor
+  // (noted below). Still one call, never one per directory.
   const probeDir = dirs.includes('.') ? '.' : (dirs[0] ?? '.')
   const argv0 = await wrapperArgv0(ctx, probeDir)
 
-  // WHAT `ctx.which` CAN AND CANNOT ANSWER HERE. It is a PATH lookup, so it is
-  // the right question for the bare `gradle` binary and the WRONG question for
-  // a wrapper: `ctx.which("./gradlew")` searches PATH for a name containing a
-  // slash and finds nothing, and a wrapper repo — the overwhelmingly common
-  // case, and one that deliberately has no bare gradle installed — would be
-  // locked out of the exec path forever by asking it. So presence is settled
-  // per argv0: a wrapper's existence was already proven by `ctx.exists` inside
-  // `wrapperArgv0`, and only the bare-binary case consults PATH. This also
-  // satisfies the rule that the probe must invoke the SAME binary the emitted
-  // argv uses — both come from `wrapperArgv0`.
+  // `ctx.which` is a PATH lookup. It is right for the bare `gradle` binary and
+  // wrong for a wrapper: `ctx.which("./gradlew")` searches PATH for a name
+  // with a slash and finds nothing. A wrapper repo is by far the common case,
+  // and often has no bare gradle installed, so asking `which` would always
+  // block it from the exec path. `wrapperArgv0` already checked a wrapper
+  // exists with `ctx.exists`, so only the bare binary consults PATH. The probe
+  // and the emitted argv also run the same binary, since both come from
+  // `wrapperArgv0`.
   const invocable = argv0 !== 'gradle' || ctx.which('gradle') !== null
 
   if (!ctx.allowExec) return empty
@@ -320,32 +305,31 @@ async function askGradle(
   // `--all`" (docs.gradle.org/current/dsl/
   // org.gradle.api.tasks.diagnostics.TaskReportTask.html).
   //
-  // The flags, each deliberate:
+  // The flags:
   //
   //   -q               "Log errors only."
   //                    (command_line_interface.html). Drops the `> Task :tasks`
   //                    banner, the progress lines and `BUILD SUCCESSFUL`,
-  //                    leaving the report. The parser tolerates them either
-  //                    way — this is noise reduction, not a dependency.
+  //                    leaving the report. The parser handles them either
+  //                    way; this only cuts noise.
   //   --console=plain  "Set to `plain` to generate plain text only. This
   //                    option disables all color and other rich output."
   //                    (command_line_interface.html). stdout here is a pipe,
   //                    so gradle's `auto` default would usually pick plain
-  //                    anyway; passing it explicitly means a build that pins
+  //                    anyway. Passing it means a build that sets
   //                    `org.gradle.console=rich` in gradle.properties cannot
-  //                    change the shape of what we parse.
-  //   --no-daemon      NOT passed. It trades one cost for another and loses:
-  //                    the daemon is documented as on by default ("Use the
+  //                    change the format we parse.
+  //   --no-daemon      Not passed. The daemon is on by default ("Use the
   //                    Gradle Daemon to run the build. Starts the daemon if
   //                    not running or the existing daemon is busy. Default is
-  //                    on."), so an already-warm daemon answers this probe in
-  //                    about a second, and a daemon this probe starts is then
-  //                    reused by the user's next build. `--no-daemon` forks a
-  //                    throwaway JVM every time, paying full cold start here
-  //                    and leaving nothing behind.
+  //                    on."). A warm daemon answers this probe in about a
+  //                    second, and a daemon this probe starts is reused by the
+  //                    user's next build. `--no-daemon` starts a throwaway JVM
+  //                    every time, pays the full cold start, and leaves
+  //                    nothing behind.
   //
-  // No `--offline`: it would make configuration fail on any build whose
-  // plugins are not already cached, turning a slow answer into no answer.
+  // No `--offline`: configuration would fail on any build whose plugins are
+  // not cached yet, so a slow answer would become no answer.
   const argv = [
     ...(probeDir === '.' ? [] : ['-p', probeDir]),
     '-q',
@@ -359,8 +343,8 @@ async function askGradle(
     signal: ctx.signal,
   })
 
-  // `run` never rejects — a missing binary, a killed timeout and a build-script
-  // compile error all arrive as a non-zero exit code.
+  // `run` never rejects. A missing binary, a timeout and a build-script
+  // compile error all come back as a non-zero exit code.
   if (res.exitCode !== 0) {
     diagnostics.push({
       severity: 'warning',
@@ -389,13 +373,12 @@ async function askGradle(
   }
 
   for (const row of rows) {
-    // A Gradle project path maps to a directory by convention: `:app:api` is
-    // `app/api` below the build root. When that directory is one this scan
-    // found a build file in, the task belongs there and is addressed with the
-    // same `-p` form the floor uses. When it is not — a subproject declared in
-    // settings with no build file of its own — the task is kept on the probed
-    // build under its fully qualified `:app:api:name`, which is exactly how
-    // gradle's own report named it and is invocable from the build root.
+    // By convention a Gradle project path maps to a directory: `:app:api` is
+    // `app/api` below the build root. If this scan found a build file in that
+    // directory, the task goes there and uses the same `-p` form as the floor.
+    // If not (a subproject declared in settings with no build file of its
+    // own), the task stays on the probed build under its full `:app:api:name`.
+    // That is the name gradle's report used, and it runs from the build root.
     const at = row.name.lastIndexOf(':')
     if (at === -1) {
       push(probeDir, row)
@@ -441,29 +424,32 @@ async function askGradle(
  *     -----
  *     Pattern: clean<TaskName>: Cleans the output files of a task.
  *
- * Verified against gradle's own documented output: the group heading over a
- * dashed underline and the `name - description` rows are in
- * docs.gradle.org/current/userguide/command_line_interface.html ("Build tasks /
- * ----------- / assemble - Assembles the outputs of this project."); a row with
- * NO description is in docs.gradle.org/current/userguide/bp_tasks.html, whose
- * `gradlew :app:tasks --all` sample lists a bare `generateDocs` beside
- * described siblings; subproject-qualified names under `--all` from the root
- * are in docs.gradle.org/current/userguide/part5_build_scripts.html, whose
- * `./gradlew tasks --all` sample lists `app:greeting` and `lib:task3`. The
- * `Rules` group carries task RULES, not tasks — "The string parameter provided
- * to the rule serves as a description that appears when listing available tasks
- * via the command line"
- * (docs.gradle.org/current/userguide/controlling_task_execution.html) — so its
- * rows are dropped by name below rather than by shape, since a `Pattern:` line
- * is prose.
+ * Checked against gradle's documented output:
+ * - The group heading over a dashed underline and the `name - description`
+ *   rows are in docs.gradle.org/current/userguide/command_line_interface.html
+ *   ("Build tasks / ----------- / assemble - Assembles the outputs of this
+ *   project.").
+ * - A row with no description is in
+ *   docs.gradle.org/current/userguide/bp_tasks.html, whose
+ *   `gradlew :app:tasks --all` sample lists a bare `generateDocs` next to rows
+ *   with descriptions.
+ * - Subproject-qualified names under `--all` from the root are in
+ *   docs.gradle.org/current/userguide/part5_build_scripts.html, whose
+ *   `./gradlew tasks --all` sample lists `app:greeting` and `lib:task3`.
+ * - The `Rules` group holds task rules, not tasks ("The string parameter
+ *   provided to the rule serves as a description that appears when listing
+ *   available tasks via the command line",
+ *   docs.gradle.org/current/userguide/controlling_task_execution.html). Its
+ *   rows are dropped by group name, not by shape, since a `Pattern:` line is
+ *   prose.
  *
- * Structure carries the parse, not a guess at which words look like tasks: a
- * row counts only while directly under a `heading` + `same-length dashes`
- * pair, and a blank line closes the group. That keeps `BUILD SUCCESSFUL in
- * 2s`, the `> Task :tasks` banner, the `Tasks runnable from ...` header (whose
- * bracketing rules are 60 dashes, never its own length) and the trailing
- * `To see more detail about a task, run gradle help --task <task>` out without
- * having to enumerate them.
+ * The parse relies on structure, not on guessing which words look like tasks.
+ * A row counts only under a heading followed by dashes of the same length, and
+ * a blank line ends the group. That keeps out `BUILD SUCCESSFUL in 2s`, the
+ * `> Task :tasks` banner, the `Tasks runnable from ...` header (its rules are
+ * 60 dashes, never its own length) and the trailing
+ * `To see more detail about a task, run gradle help --task <task>`, without
+ * listing them.
  */
 export function parseTaskReport(output: string): ReportRow[] {
   const rows: ReportRow[] = []
@@ -496,9 +482,9 @@ export function parseTaskReport(output: string): ReportRow[] {
 
 /**
  * Gradle prints the useful part of a failure as `FAILURE:` / `* What went
- * wrong:` prose, so the message is assembled from those lines. A missing
- * binary is called out by name because it is the one failure a user fixes by
- * installing something rather than by fixing their build.
+ * wrong:` text, so the message is built from those lines. A missing binary
+ * gets its own message because the user fixes it by installing something, not
+ * by fixing the build.
  */
 function failureMessage(argv0: string, exitCode: number, stderr: string, stdout: string): string {
   const combined = `${stderr}\n${stdout}`

@@ -1,10 +1,10 @@
 /**
- * {@link GhFailure}: a failed `gh` call, classified. The `gh.try.*` door
- * returns it as the error of a `Result`; its `cause` is the `CommandFailed`
+ * {@link GhFailure}: a failed `gh` call, classified. The `gh.try.*` methods
+ * return it as the error of a `Result`. Its `cause` is the `CommandFailed`
  * it was read from.
  *
- * The kinds beyond the subprocess layer's come from `gh`'s stderr, matched in
- * English. A message that matches none stays the subprocess layer's `exit`
+ * The kinds beyond command-seam's come from `gh`'s stderr and stdout, matched
+ * in English. A message that matches none stays the subprocess layer's `exit`
  * with `gh`'s first stderr line, never a wrong kind.
  */
 
@@ -30,17 +30,17 @@ import { type Failure } from '@osdlc/result'
 export type GhFailureKind =
   CommandFailureKind | 'not-authenticated' | 'network' | 'not-found' | 'rate-limited' | 'unreadable'
 
-/** A failed `gh` call. `message` is one line for a person; `detail` is `gh`'s own output. */
+/** A failed `gh` call. `message` is one line for a person. `detail` is `gh`'s own output. */
 export interface GhFailure extends Failure<GhFailureKind> {
   /** The binary that ran (`gh`), when known. */
   binary?: string | undefined
   /** The arguments `gh` ran with, without the binary name. */
   argv: string[]
-  /** `gh`'s exit code; `null` when it never reported one. */
+  /** `gh`'s exit code, or `null` when it never reported one. */
   exitCode: number | null
   /** The signal that ended `gh`, when the runner knows it. */
   signal?: NodeJS.Signals | null | undefined
-  /** The `CommandFailed` this was classified from; absent for `unreadable`, where `gh` succeeded. */
+  /** The `CommandFailed` this was classified from. Absent for `unreadable`, where `gh` succeeded. */
   cause?: CommandFailed | undefined
 }
 
@@ -66,7 +66,7 @@ const ABSENT: Record<Thing, RegExp> = {
 /**
  * Whether the text of a failed `gh` run (stderr then stdout, as
  * {@link classifyGhFailure} reads it) means "there is no such `thing`", for a
- * verb that reads one thing: an answer, not a failure.
+ * verb that reads one thing. That is an answer, not a failure.
  *
  * Narrower than the `not-found` failure kind on purpose. A mistyped `--repo`
  * makes `gh pr view 7` say "Could not resolve to a Repository", which is a
@@ -80,7 +80,7 @@ export function isAbsent(thing: Thing, text: string): boolean {
 
 /** The gh failure for a failed `gh` run. */
 export function classifyGhFailure(failed: CommandFailed): GhFailure {
-  // The client's runner may not name its binary; this is gh either way, so the
+  // The client's runner may not name its binary. It is gh either way, so the
   // messages say `gh` rather than "The command".
   const f =
     failed.binary === undefined

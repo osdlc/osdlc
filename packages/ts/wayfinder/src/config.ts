@@ -1,8 +1,8 @@
 /**
- * wayfinder's configuration: layered, and readable without running anything.
- * The settings people want every time (runners to skip, paths that are not
+ * wayfinder's configuration. It is layered, and reading it runs nothing.
+ * Settings people want on every run (runners to skip, paths that are not
  * project structure, whether execution is allowed, extra tools) are set once,
- * per user and per project; flags stay for the exceptions.
+ * per user and per project. Flags are for one-off changes.
  *
  * ## Layers, lowest precedence first
  *
@@ -10,40 +10,40 @@
  *   2. USER — `$XDG_CONFIG_HOME/wayfinder/config.json`, or `~/.config/wayfinder/config.json`
  *      when `XDG_CONFIG_HOME` is unset.
  *   3. PROJECT — `wayfinder.config.json` at the root `findRoot` resolves.
- *   4. CLI flags — not this module's business. {@link collectOptionsFromConfig}
- *      produces the slice a caller spreads its own flags on top of.
+ *   4. CLI flags, applied by the caller. {@link collectOptionsFromConfig}
+ *      returns the options a caller spreads its own flags on top of.
  *
- * `allowExec` IS AN EXCEPTION TO THIS ORDER. The project layer may lower it to
- * `false` — a repository asking not to be shelled out for is safe to honour —
- * but it can never raise it to `true`. `wayfinder.config.json` lives INSIDE the
- * repository being scanned, so honouring `allowExec: true` from it would let a
- * repository authorize the execution of its own code. The key is therefore
- * stripped from the project layer before merging, with a warning, and only the
- * user layer and the CLI flags can turn execution on. Granting a repository
- * standing permission is `way trust`, which records the consent outside the
- * repository.
+ * `allowExec` is an exception to this order. The project layer may lower it to
+ * `false`, since a repository asking not to be run is safe to honour. It can
+ * never raise it to `true`. `wayfinder.config.json` lives inside the repository
+ * being scanned, so honouring `allowExec: true` from it would let a repository
+ * authorize running its own code. So `allowExec: true` is removed from the
+ * project layer before merging, with a warning. Only the user layer and the CLI
+ * flags can turn execution on. To give a repository lasting permission, run
+ * `way trust`, which records the consent outside the repository.
  *
  * `tools` is gated too, because a tool module is code. User-layer entries
  * always load; project-layer entries load only when the repository is trusted
  * and execution is allowed (see `tools.ts`).
  *
- * `trust` IS THE SAME EXCEPTION, more strongly: it has no "lower" state to
- * honour from the project layer at all, so ANY project-layer `trust.paths` or
- * `trust.owners` entry is dropped, with a warning — a repository must not be
- * able to pre-authorize itself, or any class of repositories including
- * itself. Only the USER layer's `trust` reaches `@osdlc/trust-repo`'s
- * `policyExecGate`, which combines it with the marker store that
- * `way trust` writes to. See that package's README for the glob dialect,
- * and `origin-owner.ts` for the origin-remote lookup `trust.owners` rests on.
+ * `trust` is a stricter exception. It has no lower setting a project could
+ * choose, so the whole project-layer `trust` block is dropped, with a warning
+ * when it is not empty. A repository must not be able to pre-authorize itself,
+ * or any group of repositories that includes it. Only the user layer's `trust`
+ * reaches `@osdlc/trust-repo`'s `policyExecGate`, which combines it with the
+ * marker store that `way trust` writes to. See that package's README for the
+ * glob dialect, and `origin-owner.ts` for the origin-remote lookup that
+ * `trust.owners` uses.
  *
- * XDG is used on every platform, macOS included, as `gh` does: a developer
- * with a dotfiles repository expects this beside their other tool config.
+ * XDG paths are used on every platform, macOS included, as `gh` does. A
+ * developer with a dotfiles repository expects this file beside their other
+ * tool config.
  *
- * `WAYFINDER_CONFIG=/path/to/file` replaces the USER layer's LOCATION and nothing
- * else. The named file is read INSTEAD OF the XDG path; the project layer is
- * still read from the project root, still merges on top, and cannot be turned
- * off this way. Naming a file that does not exist is an error rather than a
- * silent empty layer — an env var pointing at nothing is a typo, not a choice.
+ * `WAYFINDER_CONFIG=/path/to/file` changes only where the user layer is read
+ * from. The named file is read instead of the XDG path. The project layer is
+ * still read from the project root and still merges on top. Naming a file that
+ * does not exist is an error, not an empty layer: an env var that points at
+ * nothing is a typo.
  *
  * ## The old waypost names
  *
@@ -59,10 +59,10 @@
  *
  * ## Merge rule
  *
- * Objects merge key-wise; everything else — scalars and arrays alike —
- * REPLACES wholesale. Arrays replace because both of ours are answers to
- * "which ones, in what order", and a project that says `order: ["just"]` means
- * that list, not that list appended to whatever the user happened to have.
+ * Objects merge key by key. Everything else, scalars and arrays alike,
+ * replaces the lower value whole. Arrays replace because each array setting
+ * answers "which ones, in what order". A project that says `order: ["just"]`
+ * means that list, not that list appended to the user's.
  *
  *   user    { runners: { disabled: ["cargo"], order: ["moon"] } }
  *   project { runners: {                      order: ["just"] } }
@@ -70,12 +70,12 @@
  *
  * ## Unknown keys and broken files
  *
- * An unknown key is a WARNING naming the file and the key, and the rest of the
- * file still loads — a config written for a newer version must not brick an
- * older one. A file that is malformed, or that holds a wrong-typed value where
- * the type is knowable, is a {@link ConfigError} naming the file and the
- * problem. There is no silent fallback: a setting that quietly did not apply is
- * worse than one that refused to load.
+ * An unknown key is a warning naming the file and the key, and the rest of the
+ * file still loads. A config written for a newer version must not break an
+ * older one. A malformed file, or a value of the wrong type for a known key, is
+ * a {@link ConfigError} naming the file and the problem. There is no silent
+ * fallback: a setting that quietly did not apply is worse than one that refused
+ * to load.
  */
 
 import { existsSync } from 'node:fs'
@@ -127,16 +127,14 @@ export interface RunnersConfig {
 
 /**
  * The policy `@osdlc/trust-repo`'s `policyExecGate` decides trust over, on
- * top of the marker store `way trust` writes to. USER LAYER ONLY — see
- * the module docblock's "trust IS THE SAME EXCEPTION" note; a project-layer
- * entry is dropped before the merge, with a warning.
+ * top of the marker store `way trust` writes to. User layer only (see the
+ * module docblock). A project-layer block is dropped before the merge.
  */
 export interface TrustConfig {
   /**
    * Glob patterns (`@osdlc/trust-repo`'s dialect: `*`, `?`, `**`, a trailing
-   * `/**` matching descendants only) over the resolved, symlink-free repo
-   * root. A leading `~` expands against `home`; there is no `{name}` token
-   * vocabulary here the way sdlc's `paths:` map has one.
+   * `/**` matching descendants only) over the repo root with symlinks resolved.
+   * A leading `~` expands against `home`. There are no `{name}` tokens.
    */
   paths?: string[]
   /** Origin remote owners (case-insensitive) that trust a root without a marker. */
@@ -146,9 +144,9 @@ export interface TrustConfig {
 /**
  * The whole configuration document, schema v1.
  *
- * A type alias rather than an interface so it carries an implicit index
- * signature: {@link setConfigValue} and friends operate on this and on the raw
- * untyped record from a file with one implementation.
+ * A type alias rather than an interface, so it has an implicit index
+ * signature. That lets {@link setConfigValue} and the related functions take
+ * both this and the raw record read from a file.
  */
 export type TaskConfig = {
   runners?: RunnersConfig
@@ -160,18 +158,17 @@ export type TaskConfig = {
    * matches any path segment; a value with a slash matches a path prefix from
    * the root, taking the tree beneath it.
    *
-   * The setting a repository reaches for to say that a tree is DATA rather than
-   * project structure — a fixture repo, a vendored sample. Unlike
-   * `runners.disabled`, which turns off a runner everywhere in this project,
-   * this leaves the runner on and narrows where it looks.
+   * Use it to mark a tree as data rather than project structure, such as a
+   * fixture repo or a vendored sample. `runners.disabled` turns a runner off
+   * everywhere in the project. This leaves the runner on and narrows where it
+   * looks.
    *
-   * The project layer is the natural home: which of a repository's own trees
-   * are fixtures is a fact about that repository, and the same answer for
-   * everyone working in it. Nothing stops the user layer from setting it, and
-   * the usual replace-wholesale rule applies if both do.
+   * It usually belongs in the project layer: which trees are fixtures is a fact
+   * about the repository, the same for everyone working in it. The user layer
+   * may set it too, and then the project value replaces the user value whole.
    */
   excludePaths?: string[]
-  /** USER LAYER ONLY. See {@link TrustConfig} and the module docblock. */
+  /** User layer only. See {@link TrustConfig} and the module docblock. */
   trust?: TrustConfig
   /**
    * Modules that export extra `ToolDef`s, as paths. A relative path resolves
@@ -184,8 +181,8 @@ export type TaskConfig = {
 /**
  * The built-in defaults layer.
  *
- * Every leaf is present, which is what makes {@link LoadedConfig.sources}
- * total: a key with no answer anywhere would otherwise have no layer to name.
+ * Every leaf is present, so {@link LoadedConfig.sources} has an entry for
+ * every key. A key set in no file is attributed to this layer.
  */
 export const DEFAULT_CONFIG: Required<TaskConfig> = {
   runners: { disabled: [], order: [] },
@@ -242,9 +239,9 @@ export class ConfigError extends Error {
 type FieldType = 'boolean' | 'string-array' | 'discovery'
 
 /**
- * Every settable key, by dotted path. This is the single list: validation,
- * {@link setConfigValue} and "is that a real setting" all read it, so a new
- * setting cannot be accepted in one path and rejected in another.
+ * Every settable key, by dotted path. Validation, {@link setConfigValue} and
+ * the known-key check all read this one list, so a setting cannot be accepted
+ * in one place and rejected in another.
  */
 const FIELDS: Record<string, FieldType> = {
   'runners.disabled': 'string-array',
@@ -260,18 +257,18 @@ const FIELDS: Record<string, FieldType> = {
 /**
  * Every settable key, in schema order — the dotted names `config set` accepts.
  *
- * Derived from {@link FIELDS} rather than retyped, so a surface that lists the
- * keys (the `guide` command's config section) cannot fall behind the schema.
+ * Derived from {@link FIELDS}, so anything that lists the keys (the `guide`
+ * command's config section) stays in step with the schema.
  */
 export const CONFIG_KEYS: readonly string[] = Object.keys(FIELDS)
 
 const DISCOVERY_VALUES = ['git', 'walk', 'auto'] as const
 
 /**
- * Canonical key order for writing, schema order rather than alphabetical, so a
- * written file reads like the documented schema. Keys not listed here are
- * unknown to this version and are written after the known ones in the order the
- * file already had them.
+ * Key order for writing: schema order, not alphabetical, so a written file
+ * reads like the documented schema. Keys not listed here are unknown to this
+ * version. They are written after the known ones, in the order the file
+ * already had them.
  */
 const KEY_ORDER: Record<string, readonly string[]> = {
   '': ['runners', 'allowExec', 'discovery', 'excludePaths', 'trust', 'tools'],
@@ -338,24 +335,21 @@ function unknownKeyWarning(file: string, key: string): string {
 }
 
 /**
- * Resolve where each layer's file lives. `env` and `home` are injectable
- * because a test that consulted the real environment would read the developer's
- * own `~/.config`, and pass or fail according to what is in it. The only other
- * input is whether a file exists, which picks between a new name and its old
- * waypost fallback (see the module docblock).
+ * Resolve where each layer's file lives. `env` and `home` are injectable so a
+ * test does not read the developer's own `~/.config`. The only other input is
+ * whether a file exists, which picks between a new name and its old waypost
+ * name (see the module docblock).
  *
- * Two details of how a path out of the environment is read:
+ * Two rules for a path taken from the environment:
  *
  * A leading `~` is expanded against `home`. A shell expands it before exec, but
- * `.env` loaders, direnv and CI YAML hand the literal tilde through, and
- * `~/config.json` quietly becoming `<somewhere>/~/config.json` is the silent
- * wrong answer this module refuses to give anywhere else.
+ * `.env` loaders, direnv and CI YAML pass the literal tilde through. Without
+ * this, `~/config.json` would silently become `<somewhere>/~/config.json`.
  *
- * A RELATIVE path resolves against `root`, not the process working directory.
- * This function is otherwise a pure function of its arguments; reading
- * `process.cwd()` would smuggle an ambient input in, so a library consumer
- * scanning some other directory would get a user-layer path unrelated to the
- * directory being scanned while the project layer tracked it.
+ * A relative path resolves against `root`, not the process working directory.
+ * Reading `process.cwd()` would give a library caller that scans another
+ * directory a user-layer path unrelated to that directory, while the project
+ * layer followed it.
  */
 export function configLocations(
   root: string,
@@ -416,10 +410,9 @@ function preferNew(
 /**
  * Validate a parsed JSON document against schema v1.
  *
- * Throws {@link ConfigError} on a type violation; returns the recognized subset
- * plus one warning per unknown key. The returned config holds ONLY known keys,
- * which is why the write path never round-trips through this shape — see
- * {@link readRawConfigFile}.
+ * Throws {@link ConfigError} on a type error. Returns the known keys plus one
+ * warning per unknown key. Because the result holds only known keys, the write
+ * path never goes through this shape (see {@link readRawConfigFile}).
  */
 export function validateConfig(
   raw: unknown,
@@ -488,11 +481,10 @@ export function validateConfig(
 }
 
 /**
- * Copy a value deeply enough that the result shares no mutable structure with
- * its source. A shallow spread is not enough here: `DEFAULT_CONFIG` is an
- * exported process-wide singleton that every `loadConfig` merges on top of, so
- * a branch aliased out of it would let one caller mutating `effective` corrupt
- * the built-in defaults for every later load in the process.
+ * Deep-copy a value so the result shares no mutable structure with its source.
+ * A shallow spread is not enough. Every `loadConfig` merges on top of the
+ * exported `DEFAULT_CONFIG` object, so a shared branch would let a caller that
+ * mutates `effective` corrupt the defaults for every later load.
  */
 function cloneValue(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(cloneValue)
@@ -524,23 +516,21 @@ function deepMerge(
 }
 
 /**
- * Merge `over` onto `base` per the module's rule: objects key-wise, scalars and
- * arrays wholesale.
+ * Merge `over` onto `base` per the module's rule: objects key by key, scalars
+ * and arrays replaced whole.
  *
- * Non-mutating in both directions: neither argument is touched, and the result
- * shares no object or array with either of them — including branches `over`
- * never mentioned. Mutating a loaded config must not reach back into
- * `DEFAULT_CONFIG`.
+ * Neither argument is changed, and the result shares no object or array with
+ * either, including branches `over` does not mention. Mutating a loaded config
+ * must not change `DEFAULT_CONFIG`.
  */
 export function mergeConfig(base: TaskConfig, over: TaskConfig): TaskConfig {
   return deepMerge(base, over) as TaskConfig
 }
 
 /**
- * One layer file as a plain object, read through `@osdlc/config-layers`'s
- * file read (the one read of a config file's bytes). `null` when the file does
- * not exist; a file that is unreadable, not JSON, or not an object throws
- * {@link ConfigError} naming it.
+ * One layer file as a plain object, read with `@osdlc/config-layers`'s
+ * `readParsedFile`. `null` when the file does not exist. A file that is
+ * unreadable, not JSON, or not an object throws {@link ConfigError} naming it.
  */
 async function readJsonFile(file: string): Promise<Record<string, unknown> | null> {
   const read = readParsedFile(file, 'json')
@@ -562,20 +552,19 @@ async function readJsonFile(file: string): Promise<Record<string, unknown> | nul
 /**
  * The file's parsed object, unvalidated and with every key intact.
  *
- * This is the read half of an edit that preserves what this version does not
- * understand. `set` and `unset` must apply to THIS, not to the validated shape,
- * because validation drops unknown keys — so writing a validated document back
- * would silently delete a setting a newer version had written. `null` when the
- * file does not exist.
+ * `set` and `unset` edit this object, not the validated shape, because
+ * validation drops unknown keys. Writing a validated document back would
+ * silently delete a setting a newer version had written. `null` when the file
+ * does not exist.
  */
 export async function readRawConfigFile(file: string): Promise<Record<string, unknown> | null> {
   return readJsonFile(file)
 }
 
 /**
- * Read, parse and validate one layer. `null` when the file does not exist —
- * absence is normal and is not an error. A file that exists and is broken
- * throws {@link ConfigError}.
+ * Read, parse and validate one layer. `null` when the file does not exist,
+ * which is normal and not an error. A file that exists and is broken throws
+ * {@link ConfigError}.
  */
 export async function readConfigFile(
   file: string,
@@ -609,11 +598,11 @@ function stabilize(record: Record<string, unknown>, section: string): Record<str
  * Parent directories are created.
  *
  * The order is fixed so that writing an unchanged document produces an
- * unchanged file — a config under version control should not churn its diff
+ * unchanged file. A config under version control should not show a diff
  * because a key moved.
  *
- * Accepts a raw record as well as a {@link TaskConfig}, which is what makes the
- * unknown-key-preserving edit path writable.
+ * Accepts a raw record as well as a {@link TaskConfig}, so an edit can keep
+ * unknown keys.
  */
 export async function writeConfigFile(
   file: string,
@@ -625,23 +614,23 @@ export async function writeConfigFile(
 }
 
 export interface LoadedConfig {
-  /** Defaults, then user, then project. What a caller should actually act on. */
+  /** Defaults, then user, then project, merged. The values a caller should use. */
   effective: TaskConfig
   /**
-   * The layers as they were APPLIED. `project` has already had a rejected
-   * `allowExec: true` removed, so it matches what `effective` and `sources`
-   * say. Read the file itself with {@link readRawConfigFile} to see what was
-   * written.
+   * The layers as they were applied. `project` has already had a rejected
+   * `allowExec: true` and any `trust` block removed, so it matches `effective`
+   * and `sources`. Read the file itself with {@link readRawConfigFile} to see
+   * what was written.
    */
   layers: { default: TaskConfig; user: TaskConfig | null; project: TaskConfig | null }
   /**
    * Dotted key to the layer that supplied the winning value. Every leaf of
    * `effective` appears, so `way config list` can say where each value came
-   * from — the question a user asks when a setting is not what they expected.
+   * from when a setting is not what the user expected.
    */
   sources: Map<string, ConfigLayer>
   locations: ConfigLocations
-  /** Unknown-key warnings from every layer, in layer order. */
+  /** Warnings from every layer: unknown keys, ignored project keys, old waypost names. */
   warnings: string[]
 }
 
@@ -678,17 +667,16 @@ export async function loadConfig(
   warnings.push(...legacyWarnings(locations))
 
   // A repository cannot grant itself permission to run its own code. Lowering
-  // to false is honoured; raising to true is dropped here, BEFORE the merge and
-  // before `sources`, so `config list` attributes the value to the layer that
-  // really supplied it rather than to the file that was ignored.
+  // to false is honoured. Raising to true is dropped here, before the merge and
+  // before `sources`, so `config list` names the layer that really supplied the
+  // value, not the ignored file.
   //
-  // Not in validateConfig: that function is layer-agnostic and is also the
-  // `config set` write path's check. This rule is about which layer a value
-  // came from, which only layer resolution knows.
+  // Not in validateConfig: that check is the same for every layer and is also
+  // used by `config set`. This rule depends on which layer a value came from.
   if (project?.allowExec === true) {
-    // Warned even when the user layer already said true. The author's intent —
-    // grant exec — is never honoured from this file, and silence would let them
-    // believe it worked and rely on it in a repo where it does not.
+    // Warn even when the user layer already said true. The file's setting is
+    // never honoured, and without a warning its author might rely on it in a
+    // repo where it has no effect.
     warnings.push(
       `${locations.project}: allowExec: true is ignored in a project file — a repository cannot grant itself permission to run subprocesses; run "${BIN} trust" to trust this repository`,
     )
@@ -696,12 +684,11 @@ export async function loadConfig(
     project = rest
   }
 
-  // Same rule, more strongly: a project-layer `trust` block is dropped
-  // whole, whatever it holds — a repository must not be able to pre-authorize
-  // itself or any class of repositories, and even an empty `paths: []` would
-  // otherwise deep-merge over the user's list and silently narrow it. The
-  // warning is for a non-empty block only, matching allowExec's silence on
-  // `false`: an empty block granted nothing worth naming.
+  // A stricter version of the same rule: a project-layer `trust` block is
+  // dropped whole, whatever it holds. A repository must not pre-authorize
+  // itself or any group of repositories. Even an empty `paths: []` would
+  // otherwise replace the user's list in the merge. Only a non-empty block is
+  // warned about, since an empty one granted nothing.
   if (project?.trust !== undefined) {
     if ((project.trust.paths?.length ?? 0) > 0 || (project.trust.owners?.length ?? 0) > 0) {
       warnings.push(
@@ -772,14 +759,13 @@ export function getConfigValue(config: object, key: string): unknown {
 }
 
 /**
- * Set a dotted path, returning a new document. Non-mutating and creating any
- * intermediate objects, so `set` works on an empty file.
+ * Set a dotted path, returning a new document. The input is not changed.
+ * Missing intermediate objects are created, so `set` works on an empty file.
  *
- * The key must be a known setting and the value must match its type; both throw
- * {@link ConfigError} rather than writing something that will fail to load
- * next time, as does an existing intermediate value that is not an object. The
- * generic return means a raw record edits to a raw record with its unknown keys
- * untouched.
+ * Throws {@link ConfigError} for an unknown key, a value of the wrong type, or
+ * an existing intermediate value that is not an object, rather than writing a
+ * file that will fail to load. Given a raw record, it returns a raw record with
+ * its unknown keys untouched.
  */
 export function setConfigValue<T extends object>(config: T, key: string, value: unknown): T {
   if (!(key in FIELDS)) {
@@ -794,8 +780,8 @@ export function setConfigValue<T extends object>(config: T, key: string, value: 
   for (const segment of segments.slice(0, -1)) {
     walked = walked === '' ? segment : `${walked}.${segment}`
     const existing = cursor[segment]
-    // A container of the wrong type is a broken file, not a slot to overwrite:
-    // silently replacing it would delete whatever the user meant by it.
+    // A container of the wrong type means the file is broken. Replacing it
+    // would silently delete whatever the user meant by it.
     if (existing !== undefined && !isPlainObject(existing)) {
       throw new ConfigError(
         `cannot set ${key}: ${walked} is ${describe(existing)}, not an object`,
@@ -815,8 +801,8 @@ export function setConfigValue<T extends object>(config: T, key: string, value: 
  * removal is removed too, so unsetting the last `runners.*` key does not leave
  * `"runners": {}` behind.
  *
- * Unlike `set`, any key may be unset — including one this version does not know
- * — because removing a stale setting is exactly when you need that.
+ * Unlike `set`, any key may be unset, including one this version does not
+ * know, so a stale setting can be removed.
  */
 export function unsetConfigValue<T extends object>(config: T, key: string): T {
   const segments = key.split('.')
@@ -842,9 +828,9 @@ export function unsetConfigValue<T extends object>(config: T, key: string): T {
 }
 
 /**
- * Parse a value typed on a command line. JSON first, so `true`, `3` and
- * `["a","b"]` arrive as themselves; a bare word that is not valid JSON falls
- * back to the string, so `moon` does not have to be typed as `"moon"`.
+ * Parse a value typed on a command line. It is parsed as JSON first, so
+ * `true`, `3` and `["a","b"]` keep their types. A bare word that is not valid
+ * JSON is kept as a string, so `moon` need not be typed as `"moon"`.
  */
 export function parseConfigValue(raw: string): unknown {
   try {
@@ -855,8 +841,8 @@ export function parseConfigValue(raw: string): unknown {
 }
 
 /**
- * The {@link WayOptions} slice this configuration owns. Only keys the config
- * sets are present, so a caller spreads its own flags after it.
+ * The {@link WayOptions} fields this configuration controls. Only keys the
+ * config sets are present, so a caller spreads its own flags after it.
  */
 export function collectOptionsFromConfig(
   config: TaskConfig,
@@ -876,14 +862,14 @@ export function trustPolicyFromConfig(config: TaskConfig): TrustPolicy {
 }
 
 /**
- * Expand a `trust.paths` entry's leading `~` against `home`, then
- * symlink-resolve the pattern's static prefix — the part before the first
- * glob character — through `resolveTrustRoot`.
+ * Expand a `trust.paths` entry's leading `~` against `home`, then resolve
+ * symlinks in the pattern's static prefix (the part before the first glob
+ * character) with `resolveTrustRoot`.
  *
- * The injected `expandPath` `policyExecGate`/`policyDecision` take. Without it, a pattern written against the spelling a person typed
- * (`/tmp/…`, which on macOS is really `/private/tmp/…`) would silently never
- * match the RESOLVED root `@osdlc/trust-repo`'s `policyDecision` compares it
- * against.
+ * This is the `expandPath` that `policyExecGate` and `policyDecision` take.
+ * Without it, a pattern written as a person typed it (`/tmp/…`, which on macOS
+ * is really `/private/tmp/…`) would never match the resolved root that
+ * `policyDecision` compares it with.
  */
 export async function expandTrustPath(raw: string, home: string): Promise<string> {
   const abs = resolve(expandTilde(raw, home))
@@ -896,9 +882,9 @@ export async function expandTrustPath(raw: string, home: string): Promise<string
 
 /**
  * The options every `@osdlc/trust-repo` gate call takes: {@link expandTrustPath}
- * against `home`, and the git-backed {@link originOwner} lookup `trust.owners`
- * rests on. One home for the binding, so a call site cannot leave `ownerOf` out
- * and silently stop honouring `trust.owners`.
+ * against `home`, and the {@link originOwner} lookup that `trust.owners` needs.
+ * Built in one place, so a call site cannot leave out `ownerOf` and silently
+ * stop honouring `trust.owners`.
  */
 export function trustPolicyOptions(home: string): PolicyDecisionOptions {
   return { expandPath: (raw) => expandTrustPath(raw, home), ownerOf: originOwner }
@@ -907,7 +893,7 @@ export function trustPolicyOptions(home: string): PolicyDecisionOptions {
 /**
  * Sort runner-keyed items for display: the ids named in `order` first, in that
  * order, then everything else alphabetically. Alphabetical rather than
- * registry order, so adding a tool does not reshuffle the list.
+ * registry order, so adding a tool does not reorder the list.
  */
 export function orderRunners<T extends { runner: string }>(items: T[], order?: string[]): T[] {
   const rank = new Map((order ?? []).map((id, index) => [id, index]))

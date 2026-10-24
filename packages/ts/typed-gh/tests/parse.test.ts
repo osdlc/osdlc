@@ -1,11 +1,11 @@
 /**
- * The parser — the shape hazards it exists to absorb.
+ * The parser, and the payload differences it handles.
  *
- * The fixtures mirror real `gh` output field-for-field (captured from
- * `gh pr view --json …` against a live PR), because every bug this layer can
- * have is a bug about what GitHub actually sends: an empty string where a
- * null was expected, a login that carries `[bot]` on one transport and not
- * the other, two node types in one array.
+ * The payloads match real `gh` output field for field (captured from
+ * `gh pr view --json …` against a live PR). Every bug this layer can have is
+ * about what GitHub actually sends: an empty string where a null was
+ * expected, a login that carries `[bot]` from REST and not from GraphQL, two
+ * node types in one array.
  */
 
 import { describe, expect, test } from 'vitest'
@@ -53,7 +53,7 @@ describe('parsePullRequest — a live payload', () => {
     expect(pr.headRefOid).toBe('cb3a85c77d6cc786233a1f61d627469d1666d925')
     expect(pr.baseRefName).toBe('feature/dispatcher')
     expect(pr.author).toEqual({ login: 'octocat', isBot: false })
-    // gh sends "" for "nobody has decided yet"; the model says null.
+    // gh sends "" for "nobody has decided yet". The model says null.
     expect(pr.reviewDecision).toBeNull()
     expect(pr.mergedAt).toBeNull()
     expect(pr.checks).toEqual([
@@ -174,7 +174,7 @@ describe('statusCheckRollup — two node types, one verdict axis', () => {
     expect(verdict('SUCCESS')).toBe('success')
     expect(verdict('SKIPPED')).toBe('neutral')
     expect(verdict('NEUTRAL')).toBe('neutral')
-    // Deliberately neutral: a human must act, but the build is not broken.
+    // Neutral on purpose. A person must act, but the build is not broken.
     expect(verdict('ACTION_REQUIRED')).toBe('neutral')
   })
 

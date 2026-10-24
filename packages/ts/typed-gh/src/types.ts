@@ -1,16 +1,16 @@
 /**
  * The GitHub model, typed.
  *
- * `gh` returns GraphQL-shaped JSON whose fields depend on what you asked for,
- * so every field here is total: a value, or the enum member that means "not
- * known". Absent and unknowable are the same answer to a caller, and giving
- * them one representation is what keeps a consumer from reading a field it
- * never requested as a fact.
+ * `gh` returns GraphQL-shaped JSON whose fields depend on what you asked for.
+ * So every field here always has a value: a real one, or the value that means
+ * "not known". Absent and unknowable are the same answer to a caller. Giving
+ * them one value keeps a caller from reading a field it never requested as a
+ * fact.
  *
  * Most enums are open on purpose. GitHub adds members, and a client that
- * crashes on an unrecognized one is worse than a client that carries it
- * through: unions end in `(string & {})` so a new value still types as the
- * enum while the known members keep their autocomplete.
+ * crashes on an unknown one is worse than a client that passes it on. Unions
+ * end in `(string & {})`, so a new value still types as the enum and the known
+ * members keep their autocomplete.
  *
  * Two are closed: {@link MergeableState} and {@link ReviewDecision}. Callers
  * compare them member by member to decide whether to merge, so the parser
@@ -27,10 +27,10 @@ export type MergeableState = 'MERGEABLE' | 'CONFLICTING' | 'UNKNOWN'
 /**
  * The merge-button state.
  *
- * `BEHIND` only ever appears when branch protection *requires* an up-to-date
- * branch. Without that rule a branch a hundred commits behind still reports
- * `CLEAN`, so this is a corroborating hint about staleness and never the
- * measure of it — compute that from the commit graph.
+ * `BEHIND` appears only when branch protection requires an up-to-date branch.
+ * Without that rule, a branch a hundred commits behind still reports `CLEAN`.
+ * So `BEHIND` is a hint that a branch is out of date, not a measure of it.
+ * Compute that from the commit graph.
  */
 export type MergeStateStatus =
   | 'BEHIND'
@@ -57,14 +57,14 @@ export type ReviewDecision = 'APPROVED' | 'CHANGES_REQUESTED' | 'REVIEW_REQUIRED
 export type ReviewState =
   'APPROVED' | 'CHANGES_REQUESTED' | 'COMMENTED' | 'DISMISSED' | 'PENDING' | (string & {})
 
-/** Who wrote something. `login` is normalized — a `[bot]` suffix is stripped. */
+/** Who wrote something. `login` is normalized: a `[bot]` suffix is stripped. */
 export interface Actor {
   login: string
   /** True when GitHub marks the account as a bot, or the login carried `[bot]`. */
   isBot: boolean
 }
 
-/** A repository label. `color` is hex digits such as `d73a4a`; a field the payload lacks is `''`. */
+/** A repository label. `color` is hex digits such as `d73a4a`. A field the payload lacks is `''`. */
 export interface Label {
   name: string
   color: string
@@ -72,10 +72,9 @@ export interface Label {
 }
 
 /**
- * A GitHub issue, off `gh issue list`/`gh issue view --json
- * number,title,body,labels,state`. Deliberately a small field set — not the
- * full PR-sized model, since nothing here reads reviews, checks or comments
- * off an issue.
+ * A GitHub issue, from `gh issue list`/`gh issue view --json
+ * number,title,body,labels,state`. It has a small field set on purpose,
+ * because nothing here reads reviews, checks or comments on an issue.
  */
 export interface IssueRow {
   number: number
@@ -88,7 +87,7 @@ export interface IssueRow {
 /**
  * How a finished check ended, as GitHub reports it. Null while the check is
  * still running, and always null for a legacy status context. Read
- * {@link CheckRun.verdict} for the answer folded across both node types.
+ * {@link CheckRun.verdict} for one answer that covers both node types.
  */
 export type CheckConclusion =
   | 'SUCCESS'
@@ -103,19 +102,19 @@ export type CheckConclusion =
   | (string & {})
   | null
 
-/** One rolled-up check, with the two GitHub shapes folded into one. */
+/** One check from the status rollup, with GitHub's two node types mapped to one shape. */
 export interface CheckRun {
   /** A CheckRun's `name`, or a legacy StatusContext's `context`. */
   name: string
-  /** `QUEUED` / `IN_PROGRESS` / `COMPLETED`; null for a status context. */
+  /** `QUEUED` / `IN_PROGRESS` / `COMPLETED`. Null for a status context. */
   status: string | null
   conclusion: CheckConclusion
   /**
-   * The normalized verdict. A check still running is `pending`, not a pass —
-   * treating "no failure yet" as green is how a red build merges.
+   * The normalized verdict. A check still running is `pending`, not a pass.
+   * If "no failure yet" counted as green, a red build could merge.
    */
   verdict: 'pending' | 'success' | 'failure' | 'neutral'
-  /** A CheckRun's `detailsUrl`, or a legacy StatusContext's `targetUrl` — where to read the log. Null when the code host gives none. */
+  /** A CheckRun's `detailsUrl`, or a legacy StatusContext's `targetUrl`: where to read the log. Null when GitHub gives none. */
   url: string | null
 }
 
@@ -148,7 +147,7 @@ export interface Review {
  *
  * Fields `gh` was not asked for come back at their "not known" value, so this
  * type is safe to build from any field subset. `number` is the only field
- * without one — a PR with no number is not a PR, and parsing returns null.
+ * without one. A payload with no number is not a PR, and parsing returns null.
  */
 export interface PullRequest {
   number: number
@@ -159,11 +158,11 @@ export interface PullRequest {
   isDraft: boolean
   baseRefName: string
   headRefName: string
-  /** Head commit sha, when requested — the thing to pin a force-push lease to. */
+  /** Head commit sha, when requested. Use it as the expected value for `--force-with-lease`. */
   headRefOid: string | null
   /**
-   * True when the head branch lives in a fork. Its ref is then not on the
-   * base repository's `origin`; fetch `refs/pull/<n>/head` instead.
+   * True when the head branch is in a fork. Its ref is then not on the
+   * base repository's `origin`. Fetch `refs/pull/<n>/head` instead.
    */
   isCrossRepository: boolean
   mergeable: MergeableState
@@ -189,7 +188,7 @@ export interface OwnerRepo {
 export type RepositoryVisibility = 'PUBLIC' | 'PRIVATE' | 'INTERNAL' | (string & {})
 
 /**
- * A repository, off `gh repo list`/`gh repo view --json`. A field not asked
+ * A repository, from `gh repo list`/`gh repo view --json`. A field not asked
  * for comes back at its "not known" value. `nameWithOwner` is the only field
  * without one: a row without it is dropped.
  */
@@ -199,7 +198,7 @@ export interface Repository {
   owner: string
   name: string
   description: string
-  /** The default branch; null when not asked for, or the repository is empty. */
+  /** The default branch. Null when not asked for, or when the repository is empty. */
   defaultBranch: string | null
   visibility: RepositoryVisibility | null
   isArchived: boolean
@@ -207,8 +206,8 @@ export interface Repository {
 }
 
 /**
- * One pull request found by `gh search prs`. Search has its own field set:
- * it names the repository but carries no head or base branch, so this is not
+ * One pull request found by `gh search prs`. Search has its own field set.
+ * It names the repository but carries no head or base branch, so this is not
  * a {@link PullRequest}. `state` is upper-cased to match `PullRequest`.
  */
 export interface PrSearchHit {

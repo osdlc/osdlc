@@ -1,15 +1,16 @@
 /**
- * The two files devlink keeps per tool, in the CONFIG home of the tool's
+ * The two files devlink keeps per tool, in the config home of the tool's
  * standalone tier (`<config>/<name>/`):
  *
- *   home             the active link — one absolute checkout path, or absent.
- *                    A bash launcher reads it with `cat`; that is why it is a
+ *   home             the active link: one absolute checkout path, or absent.
+ *                    A bash launcher reads it with `cat`, which is why it is a
  *                    bare path and not JSON.
  *   history.jsonl    every link / use / off event, one JSON object per line,
  *                    append-only. `history` and `use #n` are views over it.
  *
- * Config rather than durable: the user sets it and clears it on purpose, and
- * losing it costs nothing but the redirect. The launcher reads the `home` file by name.
+ * It is config rather than durable state. The user sets and clears it on
+ * purpose, and losing it loses only the link. The launcher reads the `home`
+ * file by name.
  */
 
 import { existsSync, mkdirSync, readFileSync, rmSync, appendFileSync } from 'node:fs'
@@ -50,7 +51,7 @@ export interface HistoryEvent {
   branch?: string | null
   /** The checkout's git HEAD (short) at the time, when readable. */
   head?: string | null
-  /** Free text a caller attached — `--label`. */
+  /** Free text a caller attached with `--label`. */
   label?: string
 }
 
@@ -61,7 +62,7 @@ export interface HistoryEvent {
 export interface StateOptions {
   /**
    * The directories to resolve against. Defaults to `spec.vendorDirs` on the
-   * running system; tests inject a rooted one to land under a temp dir.
+   * running system. Tests inject a rooted one so files go under a temp dir.
    */
   dirs?: TieredDirs
 }
@@ -103,7 +104,7 @@ export function readActive(spec: ToolSpec, opts: StateOptions = {}): string | nu
     value = readFileSync(homePath(spec, opts), 'utf-8').trim()
   } catch {
     // Absent, unreadable, or not a file (ENOENT, EACCES, EISDIR, ENOTDIR): no link. A bad
-    // state path must not brick `resolve`, which a launcher runs on every start.
+    // state path must not break `resolve`, which a launcher runs on every start.
     return null
   }
   return value.length > 0 ? value : null
@@ -144,8 +145,8 @@ export function appendHistory(spec: ToolSpec, event: HistoryEvent, opts: StateOp
 
 /**
  * Every recorded event, oldest first. A line that is not a JSON object with
- * an `event` string is skipped rather than failing the read: the file is
- * append-only and a torn last line must not hide the rest.
+ * an `event` string is skipped rather than failing the read. The file is
+ * append-only, and a partly written last line must not hide the rest.
  * @experimental
  */
 export function readHistory(spec: ToolSpec, opts: StateOptions = {}): HistoryEvent[] {

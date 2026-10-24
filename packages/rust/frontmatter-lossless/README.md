@@ -112,7 +112,7 @@ builds it.
 ## How it compares
 
 Several Rust crates read frontmatter. They parse the block into values. This
-crate does not: it returns the YAML text verbatim with byte offsets and
+crate does not. It returns the YAML text as written, with byte offsets, and
 rebuilds the note from the parts, so a round trip is byte-exact. That is a
 different job.
 
@@ -131,8 +131,8 @@ This crate is the layer under such an editor.
 
 ## Twin
 
-`@osdlc/frontmatter-lossless` is the TypeScript twin: the same algorithm and
-the same conformance corpus. Its offsets are UTF-16 code units; this crate's
+`@osdlc/frontmatter-lossless` is the TypeScript version, with the same
+algorithm and the same conformance corpus. Its offsets are UTF-16 code units; this crate's
 are UTF-8 bytes.
 
 ## Stability

@@ -1,12 +1,11 @@
 {
-  // A Vue 3 component package: the modern browser, the DOM and the iterable form
-  // of its collections, SFC/JSX left for the bundler, and NO ambient @types at
-  // all — a browser component must not silently pick up node globals, which is
-  // what an omitted `types` gets you once anything hoists them into reach.
+  // A Vue 3 component package: a modern browser target, the DOM and its
+  // iterable collections, SFC/JSX left to the bundler, and no ambient @types.
+  // A browser component must not pick up node globals. An omitted `types`
+  // includes them as soon as anything hoists @types/node into node_modules.
   //
-  // A Vue package that targets ES2022, or sets no `jsx`, is a different shape
-  // rather than a drifted copy of this one; it extends ./source-shipped.json
-  // directly and states its own facts.
+  // A Vue package that targets ES2022, or sets no `jsx`, does not fit this
+  // preset. It extends ./source-shipped.json directly and sets its own options.
   "extends": "./source-shipped.json",
   "compilerOptions": {
     "target": "ESNext",

@@ -1,6 +1,6 @@
 /**
  * Grids of cell texts and their clipboard formats: TSV and CSV text, and an
- * HTML table. Strings only; reading HTML back needs a DOM and stays with the
+ * HTML table. Strings only. Reading HTML back needs a DOM and is left to the
  * caller.
  */
 
@@ -31,7 +31,7 @@ export function padRow(cells: readonly string[], width: number): string[] {
   return [...cells, ...Array.from({ length: Math.max(0, width - cells.length) }, () => '')]
 }
 
-/** Lines of clipboard text: any line break, without one trailing break. */
+/** Clipboard text split on any line break. One trailing break adds no line. */
 export function clipboardLines(text: string): string[] {
   const lines = text.split(/\r\n|\r|\n/)
   if (lines.length > 1 && lines[lines.length - 1] === '') lines.pop()
@@ -40,8 +40,8 @@ export function clipboardLines(text: string): string[] {
 
 /**
  * Tab-separated text: the same tab count on every line, and some line with
- * two non-empty cells. Tab-indented code (`\tfoo()`) has one, so it stays
- * text.
+ * two non-empty cells. Tab-indented code (`\tfoo()`) has one non-empty cell
+ * per line, so it stays text.
  */
 export function gridFromTsv(text: string): CellGrid | null {
   const lines = clipboardLines(text)
@@ -52,7 +52,7 @@ export function gridFromTsv(text: string): CellGrid | null {
   return rows.some((row) => row.filter((cell) => cell !== '').length >= 2) ? rows : null
 }
 
-/** TSV of cell texts; tabs and line breaks inside a cell become spaces. */
+/** TSV of cell texts. Tabs and line breaks inside a cell become spaces. */
 export function tsvFromGrid(grid: CellGrid): string {
   return grid.map((row) => row.map((cell) => cell.replace(/[\t\r\n]/g, ' ')).join('\t')).join('\n')
 }
@@ -78,7 +78,7 @@ export function toCsv(rows: string[][]): string {
 /**
  * Parse RFC 4180 CSV into records, as written: rows keep their own field
  * count and fields are not trimmed. A quoted field may hold commas, `""`
- * quotes and line breaks. Records end at CRLF, LF or CR; one trailing break
+ * quotes and line breaks. Records end at CRLF, LF or CR. One trailing break
  * adds no record. A quote inside an unquoted field is literal. Null for
  * empty text, or when a quoted field is unterminated or followed by
  * anything other than a comma or a line break.
@@ -167,8 +167,9 @@ export function htmlFromGrid(shown: CellGrid, source: CellGrid, header: boolean)
 }
 
 /**
- * Where a grid lands: from `start`, the grid's size. Inside a `range` of
- * the grid's size the range itself; a one-cell grid fills a larger range.
+ * The cells a pasted grid covers: the grid's size, starting at `start`. A
+ * one-cell grid pasted with a `range` fills the whole range. Otherwise
+ * `range` is ignored.
  */
 export function pasteRect(
   grid: CellGrid,

@@ -1,22 +1,21 @@
 /**
- * make — targets scanned out of a Makefile.
+ * make: targets scanned from a Makefile.
  *
- * The scan is deliberately conservative, and it will miss things: `include`d
- * makefiles, targets built by pattern rules, anything generated at parse time.
- * It reports what is written down at column 0 and nothing else.
+ * The scan is cautious on purpose and will miss things: `include`d makefiles,
+ * targets built by pattern rules, anything generated at parse time. It reports
+ * only what is written at column 0.
  *
- * make is the one runner here that does NOT gain an exec upgrade when execution
- * is allowed, unlike just, rake, go-task and gradle. Consent is not the
- * obstacle; the output is. `make --print-data-base` was measured against a
- * fixture with an `include`, a pattern rule and `$(eval)`-built targets: over
- * 98% of its 1354 lines are make's own built-in rules and variables, a real
- * target is not distinguishable from a pattern-rule expansion except by
- * prose-formatted comments, and the same target appears twice. The format is
- * debugging output, not a machine contract, and BSD make does not implement the
- * flag at all. It also evaluates the makefile: `$(shell …)` in a `:=`
- * assignment runs during parsing, which neither `-n` nor `-q` suppresses, and
- * bare `-p` goes on to build the default goal. So there is no invocation whose
- * answer could be trusted even with consent in hand.
+ * Unlike just, rake, go-task and gradle, make has no exec path when execution
+ * is allowed. Consent is not the problem; the output is. `make
+ * --print-data-base` was tested on a fixture with an `include`, a pattern rule
+ * and `$(eval)`-built targets. Over 98% of its 1354 lines were make's own
+ * built-in rules and variables. A real target could be told apart from a
+ * pattern-rule expansion only by free-text comments, and the same target
+ * appeared twice. The format is debugging output, not a stable interface, and
+ * BSD make does not have the flag. It also evaluates the makefile: `$(shell …)`
+ * in a `:=` assignment runs during parsing, and neither `-n` nor `-q` stops
+ * it. Bare `-p` then builds the default goal. So no invocation gives an answer
+ * that could be trusted, even with consent.
  */
 
 import type { ProviderResult, RunnerBrand, Task } from '../../model.ts'
@@ -36,11 +35,11 @@ const CHAIN = [
 const TARGET = /^([A-Za-z0-9_][A-Za-z0-9_./-]*)\s*:(?!=)/
 
 /**
- * A gear — a substitute glyph, kept after checking simple-icons: it has no
- * make-specific icon (`make` is Make.com, an unrelated product; `gnumake`
- * does not exist), and its `gnu` head is CC-BY-SA-2.0, not CC0, which an MIT
- * package cannot pass on (and ~14.7KB of path). GNU publishes no official
- * color; this is the deep red conventionally used for GNU marks.
+ * A plain gear glyph. simple-icons has no icon for make (`make` is Make.com,
+ * an unrelated product, and there is no `gnumake`). Its `gnu` head is
+ * CC-BY-SA-2.0, not CC0, which an MIT package cannot pass on, and its path is
+ * about 14.7KB. GNU has no official color; this is the deep red usually used
+ * for GNU marks.
  */
 const BRAND: RunnerBrand = {
   icon: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="10.9" y="2" width="2.2" height="5" rx="1"/><rect x="10.9" y="2" width="2.2" height="5" rx="1" transform="rotate(45 12 12)"/><rect x="10.9" y="2" width="2.2" height="5" rx="1" transform="rotate(90 12 12)"/><rect x="10.9" y="2" width="2.2" height="5" rx="1" transform="rotate(135 12 12)"/><rect x="10.9" y="2" width="2.2" height="5" rx="1" transform="rotate(180 12 12)"/><rect x="10.9" y="2" width="2.2" height="5" rx="1" transform="rotate(225 12 12)"/><rect x="10.9" y="2" width="2.2" height="5" rx="1" transform="rotate(270 12 12)"/><rect x="10.9" y="2" width="2.2" height="5" rx="1" transform="rotate(315 12 12)"/><path fill-rule="evenodd" d="M12 5a7 7 0 1 0 0 14 7 7 0 0 0 0-14Zm0 4a3 3 0 1 1 0 6 3 3 0 0 1 0-6Z"/></svg>',
@@ -96,8 +95,8 @@ export function scanTargets(text: string): string[] {
     const m = TARGET.exec(raw)
     const name = m?.[1]
     if (name === undefined) continue
-    // `.PHONY` and friends are directives, not things to run; `%` is a pattern
-    // rule, which names a shape rather than a target.
+    // `.PHONY` and similar names are directives, not things to run. `%` marks
+    // a pattern rule, which is not a single target.
     if (name.startsWith('.') || name.includes('%')) continue
     if (seen.has(name)) continue
     seen.add(name)

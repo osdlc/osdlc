@@ -4,7 +4,6 @@ import type { AgentCallSpec, PermissionMode } from '../spec.js'
 import type { PlannedCall } from '../plan.js'
 import type { ParsedOutput } from './types.js'
 
-/** The `binary` and `command` options every built-in adapter takes. */
 /** The command a built-in adapter runs, as each adapter factory and `adapterFor` take it. */
 export interface CommandOptions {
   /** Binary to spawn. Default: the CLI's own name. */
@@ -13,7 +12,7 @@ export interface CommandOptions {
    * The command to run, as argv: the binary and any arguments that must come
    * before the adapter's own, such as a launcher (`['npx', '-y', '<package>']`)
    * or a global flag (`['<cli>', '--profile', 'work']`). It replaces `binary`
-   * when it has at least one element; an empty array is ignored.
+   * when it has at least one element. An empty array is ignored.
    * `planned.argv` starts with it, and `detectAgents` runs it with `--version`
    * appended.
    */
@@ -31,7 +30,7 @@ export function commandPrefix(options: CommandOptions, fallback: string): readon
   return Object.freeze([options.binary ?? fallback])
 }
 
-/** `--model <model>`: the flag claude, codex, antigravity and pi all take. */
+/** `--model <model>`, the model flag of every built-in adapter but deepseek. */
 export function modelFlag(model: string): string[] {
   return ['--model', model]
 }
@@ -45,7 +44,7 @@ export type PermissionModeTable = Partial<
   Record<Exclude<PermissionMode, 'default'>, PermissionModeEntry>
 >
 
-/** permissions.mode → argv tokens, shared by adapters that express modes as CLI flags. */
+/** Maps `permissions.mode` to argv tokens, for adapters that express modes as CLI flags. */
 export function applyPermissionMode(
   argv: string[],
   notes: CapabilityNote[],
@@ -59,23 +58,23 @@ export function applyPermissionMode(
   note(notes, 'permissions.mode', entry.support, entry.detail)
 }
 
-/** Which spec fields the target CLI handles natively (everything else gets emulated in the prompt). */
+/** Which spec fields the target CLI has flags for. The rest are emulated in the prompt. */
 export interface PromptEmulation {
-  /** CLI attaches context files natively; skip the file preamble. */
+  /** The CLI attaches context files itself. Skip the file preamble. */
   filesNative?: boolean | undefined
-  /** Prefix file entries with `@` for agents with @-inclusion syntax. */
+  /** Prefix file entries with `@`, for agents that read `@path` in the prompt. */
   filesAtSyntax?: boolean | undefined
-  /** CLI enforces an output schema natively; skip the JSON instruction. */
+  /** The CLI enforces an output schema itself. Skip the JSON instruction. */
   schemaNative?: boolean | undefined
-  /** CLI takes system prompts natively; skip the system preamble. */
+  /** The CLI has a system-prompt flag. Skip the system preamble. */
   systemNative?: boolean
-  /** CLI takes appended system prompts natively; skip the instructions preamble. */
+  /** The CLI has an append-system-prompt flag. Skip the instructions preamble. */
   appendSystemNative?: boolean
 }
 
 /**
- * Build the prompt actually sent, folding in every spec field the target CLI
- * cannot express natively. Each fold is recorded as an `emulated` note.
+ * Build the prompt that is sent, folding in every spec field the target CLI
+ * has no flag for. Each folded field is recorded as an `emulated` note.
  */
 export function buildEffectivePrompt(
   spec: AgentCallSpec,
@@ -175,13 +174,13 @@ export function parseJsonLines(stdout: string): unknown[] {
     try {
       events.push(JSON.parse(trimmed))
     } catch {
-      // Interleaved log noise is expected on some CLIs; skip it.
+      // Some CLIs mix log lines into the output. Skip them.
     }
   }
   return events
 }
 
-/** Type-tolerant object field access for parsing loosely specified payloads. */
+/** Read a nested field from an untyped payload. Returns undefined if any step is not an object. */
 export function get(value: unknown, ...path: string[]): unknown {
   let current: unknown = value
   for (const key of path) {

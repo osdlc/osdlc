@@ -86,9 +86,8 @@ describe('python runner — declared scripts', () => {
     expect(report.diagnostics[0]?.source).toBe('pyproject.toml')
   })
 
-  // uv is preferred when both lock files are present: it's the modern, faster
-  // tool this repo generally leans toward, and precedence must be
-  // deterministic either way.
+  // With both lock files present, uv wins. Precedence must be deterministic,
+  // and uv is the faster, more current tool.
   test('both uv.lock and poetry.lock present: uv wins', async () => {
     const dir = await root({
       'pyproject.toml': PYPROJECT_WITH_SCRIPTS,

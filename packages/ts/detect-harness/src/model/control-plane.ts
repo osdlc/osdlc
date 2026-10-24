@@ -1,11 +1,11 @@
 /**
- * Read the Claude control plane (hooks, permissions, MCP servers) into the
- * model's host-neutral shapes.
+ * Read Claude Code's hooks, permissions and MCP servers (the "control plane")
+ * into the model's host-neutral shapes.
  *
  * Project scope reads `.claude/settings.json`, `.claude/settings.local.json` and
  * a sibling `.mcp.json`. Plugin scope ({@link readPluginControlPlane}) adds
  * `hooks/hooks.json` and the `hooks` and `mcpServers` fields of `plugin.json`.
- * Every source is optional; a root with none yields empty collections. A file
+ * Every source is optional. A root with none yields empty collections. A file
  * that is not valid JSON is treated as absent.
  *
  * Scope rules follow Claude Code: `settings.local.json` overrides
@@ -13,7 +13,7 @@
  * MCP server in the local settings replaces the same-named server elsewhere.
  *
  * The parsing is `detect()`'s (`../read/hooks.ts`, `../read/mcp.ts`,
- * `../read/manifest.ts`); this module maps its entries onto the model's shapes
+ * `../read/manifest.ts`). This module maps its entries onto the model's shapes
  * and applies the model's merge rules.
  *
  * Secrets: MCP `env` and `headers` values, the user part and query values of an
@@ -61,7 +61,7 @@ export interface ClaudeControlPlane {
   permissions: HarnessPermissions
 }
 
-/** Reads straight from the file system; an unreadable or malformed file is absent. */
+/** Reads straight from the file system. An unreadable or malformed file counts as absent. */
 const fsReader: ManifestReader = {
   realpath: (path) => {
     try {

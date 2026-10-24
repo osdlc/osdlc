@@ -5,22 +5,22 @@ export const SEP = ' › ' // the chain separator shown between segments
 export const OPEN = '▾' // twisty, expanded
 export const SHUT = '▸' // twisty, collapsed
 
-/** The pseudo-runner id for the combined, all-runners tab. */
+/** The tab id for the combined tab that shows every runner. */
 export const ALL = 'all'
 
 /**
- * Every static element this page touches is declared in `page.html` and never
- * removed, so a lookup that fails is a bug in the markup, not a runtime case
- * to handle — the `!` reflects that invariant rather than hiding a real null.
+ * Every static element this page uses is declared in `page.html` and never
+ * removed, so a failed lookup is a bug in the markup, not a case to handle at
+ * runtime. The `!` states that rule rather than hiding a real null.
  */
 export function $(id: string): HTMLElement {
   return document.getElementById(id)!
 }
 
 /**
- * A ranked search hit, or a plain leaf under a tree group: `score`/`labelHits`
- * are meaningless (0 / null) once a query is empty, but every row carries the
- * same shape so the render path does not fork on whether one is active.
+ * A ranked search hit, or a plain leaf under a tree group. `score` and
+ * `labelHits` are 0 and null when the query is empty, but every row has the
+ * same shape so rendering does not branch on whether a query is active.
  */
 export interface Row {
   entry: Task
@@ -55,23 +55,22 @@ export interface AppState {
   checkedAt: number | string
   loading: boolean
   /**
-   * Whether the server says a trust grant is what would collect the withheld
-   * runners. False when execution is off for some other reason — a config file
-   * said so — in which case offering to trust the repository would be a wrong
-   * instruction, since trusting it would change nothing.
+   * Whether the server says a trust grant would collect the withheld runners.
+   * False when execution is off for another reason, such as a config file. Then
+   * trusting the repository would change nothing, so the page does not offer it.
    */
   trustable: boolean
   /**
-   * Where each runner's rows came from, as the server read it — one entry per
-   * selected runner. The server may answer the first request out of its store
-   * so the page appears at once, which means a row on screen can be older than
-   * the clock beside it; this is what says which, and `renderStatus` shows it.
+   * Where each runner's rows came from, as the server reports it, one entry per
+   * selected runner. The server may answer the first request from its store so
+   * the page appears at once, so a row on screen can be older than the clock
+   * beside it. This records which rows are, and `renderStatus` shows it.
    */
   cache: RunnerCacheState[]
   /**
-   * The row keyboard focus is on inside the results list, held as the task's
-   * `id` rather than its position. render() rebuilds #out wholesale on a
-   * resize, a filter change and the 15s poll, so a position would name a
+   * The row in the results list that has keyboard focus, held as the task's
+   * `id` rather than its position. render() rebuilds all of #out on a resize,
+   * a filter change and the 15s poll, so a position would point at a
    * different row after any of those.
    *
    * null means focus is not in the list, which also makes the enter-target

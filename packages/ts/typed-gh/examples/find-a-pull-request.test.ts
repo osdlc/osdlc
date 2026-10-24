@@ -1,6 +1,6 @@
 /**
  * Turn what a person typed into one pull request. `parsePrRef` reads the text
- * and starts no process; `prFind` reads it and runs the lookup it needs.
+ * and starts no process. `prFind` reads it and runs the lookup it needs.
  */
 
 import { expect, test } from 'vitest'

@@ -26,26 +26,26 @@ Or in a `.prettierrc`:
 "@osdlc/prettier-config"
 ```
 
-The quotes are required in `.prettierrc`: it is parsed as YAML, and a bare `@`
-leading a plain scalar is reserved.
+The quotes are required in `.prettierrc`. It is parsed as YAML, and YAML
+reserves `@` at the start of an unquoted value.
 
 ## Markdown is not formatted
 
-The config has exactly one override, and it exists to hand `.md` away rather
-than to style it:
+The config has one override. It stops Prettier from formatting `.md` files:
 
 ```json
 { "files": "*.md", "options": { "requirePragma": true } }
 ```
 
-Prettier column-pads markdown tables on every pass, which fights a dedicated
-markdown formatter. Prettier has no way to exclude a language from config:
-`overrides` sets options, there is no `ignore` key, and `excludeFiles` only
-drops a file from that override's options. With `requirePragma` set, Prettier
-parses markdown and then declines to reformat any file that lacks a `@format`
-or `@prettier` pragma. A file that adds the pragma opts itself back in.
+Prettier pads markdown table columns on every pass, which conflicts with a
+dedicated markdown formatter. Prettier has no config option to exclude a
+language. `overrides` sets options, there is no `ignore` key, and
+`excludeFiles` only removes a file from that override's options. With
+`requirePragma` set, Prettier parses markdown but does not reformat a file
+that lacks a `@format` or `@prettier` pragma. A file that adds the pragma is
+formatted again.
 
-`.mdx` is still Prettier's: `files: "*.md"` does not match it.
+Prettier still formats `.mdx`, because `files: "*.md"` does not match it.
 
 ## Ignore files
 

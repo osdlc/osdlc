@@ -1,21 +1,19 @@
 /**
- * The terminal UI — browse every task in a repository, and run one.
+ * The terminal UI: browse every task in a repository, and run one.
  *
- * The affordance a browser cannot have: Enter RUNS the selected task, in this
- * shell, with the terminal handed to it. A web view can only ever offer you
- * something to paste.
+ * Unlike the page, Enter runs the selected task in this shell and hands it the
+ * terminal. The page can only give you a command to paste.
  *
- * Dependency-free: raw mode, ANSI, and one frame string per keystroke. A TUI
- * toolkit would be a heavier dependency than the code it saves, and this has to
- * keep working from a checkout whose node_modules is the thing you are trying
- * to repair. The CLI routes its output through the `CliIo` seam so
- * `main()` is testable without touching a real stream, but this file writes
- * to `process.stdout` directly — owning the interactive terminal, raw mode,
- * the alternate screen, handing the terminal to a spawned task, is the whole
- * point of it, and that job is outside the seam by design.
+ * No dependencies: raw mode, ANSI, and one frame string per keystroke. A TUI
+ * toolkit would weigh more than the code it saves, and this has to keep
+ * working from a checkout whose node_modules is what you are trying to repair.
+ * The CLI sends its output through `CliIo` so `main()` can be tested without
+ * a real stream. This file writes to `process.stdout` directly, because its
+ * job is to control the terminal: raw mode, the alternate screen, and handing
+ * the terminal to a spawned task.
  *
- * Collection is asynchronous, which is what most of the state machinery below
- * is for: keystrokes arrive mid-refresh, and a row can be stale.
+ * Collection is async, which is what most of the state handling below is for:
+ * keystrokes arrive during a refresh, and a row can be stale.
  */
 
 import { spawnRunner, streamRunner } from '@osdlc/command-seam'
@@ -107,28 +105,30 @@ interface State {
   catalog: Catalog | null
   /** The registered tools, built-ins plus any loaded. */
   project: Project
-  /** The project file names tools that were not loaded because the repository is untrusted or execution is off. */
+  /**
+   * The project file names tools that were not loaded, because the repository
+   * is untrusted or execution is off.
+   */
   projectToolsPending: boolean
   root: string
   options: WayOptions
   /** `runners.order` from config; applied to every collected catalog. */
   runnerOrder: string[] | undefined
   /**
-   * The trust store's environment and home, threaded from the CLI. Injectable
-   * for the reason every sibling in this lane is: a test that let them default
-   * would grant trust in the developer's own `~/.local/state/wayfinder/`. Nothing but
-   * a test ever passes them.
+   * The trust store's environment and home, passed from the CLI. Injectable so
+   * a test does not grant trust in the developer's own
+   * `~/.local/state/wayfinder/`. Only tests pass them.
    */
   env: Record<string, string | undefined> | undefined
   home: string | undefined
   /** Where stored probes live, resolved once from the injected env and home. */
   store: string
   /**
-   * Where each runner's rows came from — one entry per selected provider.
+   * Where each runner's rows came from, one entry per selected runner.
    *
-   * The boot sequence paints from the store before anything is probed, so a row
-   * on screen may be an hour old. This is what says which, and it is cleared to
-   * all-fresh the moment a real probe lands.
+   * At start the screen shows the store before anything is probed, so a row
+   * may be an hour old. This records which rows are, and is reset to all-fresh
+   * as soon as a real probe finishes.
    */
   cache: RunnerCacheState[]
   runner: string
@@ -142,37 +142,36 @@ interface State {
   message: string
   loading: boolean
   /**
-   * Why execution came out the way it did, resolved once by the CLI. Only
-   * `"untrusted"` earns the ^s affordance: when a config file turned execution
-   * off, trusting the repository would change nothing, and offering it would be
-   * a wrong instruction.
+   * Why execution is on or off, decided once by the CLI. Only `"untrusted"`
+   * offers ^s. When a config file turned execution off, trusting the
+   * repository would change nothing, so offering it would mislead.
    */
   gate: ExecGate | null
   /**
-   * True once ^s has asked and is waiting for `y`. Trust permits this
-   * repository's code to run, so it cannot be granted by one keystroke —
-   * least of all ^s, which is flow control on many terminals and arrives
-   * unintentionally. The second key is what makes it a decision.
+   * True once ^s has asked and is waiting for `y`. Trust lets this
+   * repository's code run, so one keystroke cannot grant it. This matters
+   * most for ^s, which is flow control on many terminals and can be sent by
+   * accident. The second key makes it a decision.
    */
   confirmingTrust: boolean
   /**
    * The task whose arguments are being typed, and what has been typed so far.
    *
-   * Non-null only for a task that declares parameters: `argv` omits them, so
-   * running one straight off Enter spawns `just deploy` with no environment
-   * and the terminal is gone before anything can say so. Null is the ordinary
-   * case and costs an unparameterised task nothing — Enter still runs it.
+   * Set only for a task that declares parameters. `argv` leaves them out, so
+   * running it straight from Enter would spawn `just deploy` with no
+   * environment, and the terminal would be handed over before anything could
+   * say so. For a task with no parameters it stays null and Enter runs it.
    */
   entering: { task: Task; text: string } | null
   /**
    * The settings screen's rendered lines, or null when it is closed.
    *
-   * Rendered once on open rather than on every frame: it reads the config
-   * from disk, which is IO, and a screen that re-read it per keystroke would
-   * be doing that for a view nothing can change from here.
+   * Rendered once on open rather than on every frame. It reads the config
+   * from disk, and nothing on this screen can change it, so re-reading it per
+   * keystroke would be wasted work.
    */
   settings: string[] | null
-  /** Bumped per refresh so a superseded result cannot overwrite a newer one. */
+  /** Increased on each refresh, so an older result cannot overwrite a newer one. */
   generation: number
   inFlight: AbortController | null
   rows: Row[]
@@ -181,10 +180,10 @@ interface State {
 /**
  * The module singleton.
  *
- * Exported for one reason: `runTui` owns a real terminal and never returns, so
- * the selection rule — the thing that must survive a refresh reordering and
- * dropping rows underneath the cursor — is only testable through this and
- * { recompute}. Nothing outside a test writes to it.
+ * Exported for one reason. `runTui` takes over a real terminal and never
+ * returns, so the selection rule (the selection must survive a refresh that
+ * reorders or drops rows under the cursor) can only be tested through this
+ * and {@link recompute}. Nothing outside a test writes to it.
  */
 export const state: State = {
   catalog: null,
@@ -218,7 +217,7 @@ function reportFor(runner: string) {
   return state.catalog?.reports.find((r) => r.runner === runner)
 }
 
-/** How many runners went uncollected for want of trust; 0 when trust is not the reason. */
+/** How many runners were not collected for lack of trust; 0 when trust is not the reason. */
 function withheldForTrust(): number {
   if (state.gate?.reason !== 'untrusted') return 0
   return state.catalog?.reports.filter((r) => r.skippedForExec).length ?? 0
@@ -241,15 +240,15 @@ function staleRunners(): RunnerCacheState[] {
 /**
  * What the status line says about the rows on screen, in three states.
  *
- * Fresh says NOTHING: a line that is always there is a line nobody reads, and
- * there is nothing here to report.
+ * Fresh says nothing. A line that is always shown is a line nobody reads,
+ * and there is nothing to report.
  *
- * Stale-and-slow is separated from ordinary stale because it is the case the
- * whole cache exists for. A runner this repository has MEASURED at several
- * seconds is why the screen would otherwise have been empty, and telling the
- * user "a moment" in the same voice as a 200ms refresh would waste the one
- * warning that matters. Slow is measured, never declared — a runner that is
- * quick here is not called slow because it is slow elsewhere.
+ * Stale and slow is kept apart from ordinary stale because it is the case the
+ * cache exists for. A runner measured at several seconds in this repository
+ * is why the screen would otherwise be empty. Showing it the same way as a
+ * 200ms refresh would hide the one warning that matters. Slowness is
+ * measured, never assumed: a runner that is quick here is not called slow
+ * because it is slow elsewhere.
  */
 export function refreshNote(
   rows: readonly RunnerCacheState[],
@@ -266,8 +265,7 @@ export function refreshNote(
 
   if (!loading) {
     // The refresh is over and these rows are still what the store held: it
-    // failed, or it has not been asked for yet. Saying "re-probing" would
-    // describe work nobody is doing.
+    // failed, or it has not been asked for yet. "re-probing" would be untrue.
     return {
       slow: slow.length > 0,
       text: `cached rows: ${stale.map((r) => `${r.runner} ${humanAge(r.ageMs)}`).join(', ')} — ^r to re-probe`,
@@ -358,10 +356,10 @@ function chainChunks(row: Row): Chunk[] {
 /**
  * The whole screen as one string.
  *
- * Exported alongside {@link state} and {@link recompute} so the three cache
- * states can be asserted as RENDERED lines rather than as the helper that feeds
- * them — the status line is the surface a user reads, and a note that is
- * correct but composed into the wrong line helps nobody.
+ * Exported with {@link state} and {@link recompute} so tests can check the
+ * three cache states in the rendered lines, not only in the helper that
+ * builds them. The user reads the status line, and a correct note placed in
+ * the wrong line helps nobody.
  */
 export function frame(width: number, height: number): string {
   const out: string[] = []
@@ -375,10 +373,10 @@ export function frame(width: number, height: number): string {
       name === ALL
         ? (state.catalog?.reports ?? []).reduce((n, r) => n + r.tasks.length, 0)
         : (reportFor(name)?.tasks.length ?? 0)
-    // Marked at the TAB, not per row: the whole runner's rows are as old as
-    // each other, so a per-row mark would repeat one fact hundreds of times and
-    // the row renderer would have to know about the cache. A leading `~` reads
-    // as "about" at a glance and survives NO_COLOR.
+    // Marked on the tab, not per row. All of a runner's rows are the same age,
+    // so a per-row mark would repeat one fact many times, and the row
+    // renderer would have to know about the cache. A leading `~` reads as
+    // "about" and still shows under NO_COLOR.
     const stale = name === ALL ? staleRunners().length > 0 : cacheFor(name)?.state === 'stale'
     // A bar between groups: tasks, then dependencies, tools and git hooks.
     const prev = tabs()[tabs().indexOf(name) - 1]
@@ -416,16 +414,16 @@ export function frame(width: number, height: number): string {
         ...(state.loading && refreshNote(state.cache, true) === null
           ? [{ text: '  refreshing', paint: yellow }]
           : []),
-        // The cache's three states. Fresh returns null and says nothing;
-        // stale-and-slow paints red so it does not read like the ordinary
-        // refresh note beside it.
+        // The cache's three states. Fresh returns null and shows nothing.
+        // Stale and slow is red, so it stands apart from an ordinary
+        // refresh note.
         ...(() => {
           const note = refreshNote(state.cache, state.loading)
           return note === null ? [] : [{ text: `  ${note.text}`, paint: note.slow ? red : yellow }]
         })(),
         ...(state.message ? [{ text: `  ${state.message}`, paint: yellow }] : []),
-        // A note beside the counts, not a modal: you may well have come here to
-        // look at what is already collected and run nothing.
+        // A note beside the counts, not a modal, since you may only want to
+        // look at what is already collected.
         ...(state.confirmingTrust
           ? [{ text: '  trust this repository? y/n', paint: yellow }]
           : withheldForTrust() > 0
@@ -444,9 +442,8 @@ export function frame(width: number, height: number): string {
     ),
   )
 
-  // 4a. the settings screen, which REPLACES the list while it is open. It is
-  // a different view of the same repository rather than an overlay on this
-  // one, so nothing below it renders.
+  // 4a. the settings screen, which replaces the list while it is open. It is
+  // a separate view, not an overlay, so nothing below it renders.
   if (state.settings !== null) {
     const room = Math.max(1, height - out.length - 2)
     for (let i = 0; i < room; i++) {
@@ -467,9 +464,9 @@ export function frame(width: number, height: number): string {
     return HOME + out.join('\r\n') + CLEAR_BELOW
   }
 
-  // 4. the list, sized by what the chrome leaves. The entry line costs one
-  // more row than the key hints it replaces, so the list gives one up while
-  // arguments are being typed rather than the bottom line falling off screen.
+  // 4. the list, in the rows left over. The entry line takes one more row
+  // than the key hints it replaces, so the list gives up a row while
+  // arguments are typed, and the bottom line stays on screen.
   const listHeight = Math.max(1, height - out.length - (state.entering ? 5 : 4))
   clampScroll(at, listHeight)
   for (let i = 0; i < listHeight; i++) {
@@ -490,7 +487,7 @@ export function frame(width: number, height: number): string {
     )
   }
 
-  // 5. what Enter would run — always on screen, so it is never a surprise
+  // 5. what Enter would run, always on screen
   const current = state.rows[at]
   out.push(line([{ text: '-'.repeat(width), paint: dim }], width))
   if (current) {
@@ -516,10 +513,10 @@ export function frame(width: number, height: number): string {
     out.push(line([], width))
   }
 
-  // 6. keys — or, while arguments are being typed, the entry line in their
-  // place. It replaces the key hints rather than sitting above them because
-  // the keys that matter while typing are the two this line names, and a
-  // second row would push the list up mid-task.
+  // 6. keys, or the entry line in their place while arguments are typed. It
+  // replaces the key hints rather than sitting above them, because the only
+  // keys that matter while typing are the two this line names, and an extra
+  // row would push the list up.
   if (state.entering) {
     const { task, text } = state.entering
     const shape = paramShape(task.parameters)
@@ -562,10 +559,10 @@ function clampScroll(at: number, listHeight: number): void {
  * Rebuild the visible rows and re-anchor the selection onto a task that is
  * still there.
  *
- * Split out of {@link draw} so it can be exercised without a terminal. It is
- * the whole reason selection is held by task id: a refresh reorders rows and
- * drops some of them, and an index would silently point at a different task —
- * which is the same keystroke running the wrong command.
+ * Split out of {@link draw} so it can be tested without a terminal. This is
+ * why selection is held by task id: a refresh reorders and drops rows, and an
+ * index would silently point at a different task, so the same keystroke
+ * would run the wrong command.
  */
 export function recompute(): void {
   state.rows = visibleRows()
@@ -580,15 +577,13 @@ function draw(): void {
 }
 
 /**
- * The settings screen, as text — the same four sections the page shows, in the
- * config schema's own key order, so the two surfaces describe a project the
- * same way.
+ * The settings screen, as text: the same four sections the page shows, in
+ * the config schema's key order, so both describe a project the same way.
  *
- * READ ONLY, and it says so on screen. The page can edit because it has a
- * server to POST to and a pointer to click with; giving the terminal the same
- * would mean an input mode per field, which is a larger thing than showing
- * someone what their configuration is. `way config set` is the editor
- * this line points at.
+ * Read only, and it says so on screen. The page can edit because it has a
+ * server to POST to and a pointer to click with. Editing here would need an
+ * input mode per field, which is more than showing the configuration needs.
+ * The screen points to `way config set` for edits.
  */
 async function settingsLines(): Promise<string[]> {
   const loaded = await loadConfig(state.root, state.env, state.home)
@@ -674,12 +669,12 @@ function restoreTerminal(): void {
 }
 
 /**
- * Hand the terminal to the selected task and take this process out of the way.
- * It streams through the command seam, so the task owns the terminal while it
- * runs.
+ * Hand the terminal to the selected task and exit when it finishes. It
+ * streams through `@osdlc/command-seam`, so the task has the terminal while
+ * it runs.
  *
- * `argv` is spawned WITHOUT a shell. `display` would be wrong to run — for a
- * parameterised recipe it carries `<placeholders>`, which a shell reads as
+ * `argv` is spawned without a shell. Running `display` would be wrong: for a
+ * recipe with parameters it has `<placeholders>`, which a shell reads as
  * redirections.
  */
 function runAndExit(task: Task, args: readonly string[] = []): never {
@@ -687,9 +682,8 @@ function runAndExit(task: Task, args: readonly string[] = []): never {
   state.inFlight?.abort()
   restoreTerminal()
 
-  // Echo what actually RAN, not `display` — for a parameterised task those
-  // differ, and printing the placeholder form above a command that did not
-  // include it would be a lie about what just happened.
+  // Print what actually runs, not `display`. For a task with parameters they
+  // differ, and printing the placeholder form would misstate what ran.
   let argv: string[]
   try {
     argv = runArgv(state.project, task, args)
@@ -698,10 +692,8 @@ function runAndExit(task: Task, args: readonly string[] = []): never {
     process.exit(1)
   }
   process.stdout.write(`${dim('$')} ${bold(argv.join(' '))}\n`)
-  // The shape is worth repeating only when it went unanswered: a task run
-  // WITH its arguments has just shown them on the line above, and naming the
-  // placeholders again would read as a complaint about a command that was
-  // complete.
+  // Show the parameters only when none were given. A task run with its
+  // arguments has just shown them on the line above.
   if (task.parameters.length > 0 && args.length === 0) {
     process.stdout.write(`${dim(`  takes ${paramShape(task.parameters)}`)}\n`)
   }
@@ -711,10 +703,9 @@ function runAndExit(task: Task, args: readonly string[] = []): never {
     cwd: task.cwd === '.' ? state.root : `${state.root}/${task.cwd}`,
     quiet: true,
   })
-  // A spawn that never started at all — no such binary, no such directory. The
-  // row may simply have been wrong: it came out of the store, and the task it
-  // named can have been renamed or deleted since. Naming the staleness turns an
-  // unexplained failure into one the user can act on.
+  // The spawn never started: no such binary, or no such directory. The row may
+  // be out of date. It came from the store, and its task may have been
+  // renamed or deleted since. Saying so gives the user something to act on.
   if (res.reason === 'spawn') {
     process.stderr.write(`${APP}: ${binary}: ${res.error ?? 'could not start'}\n`)
     const from = cacheFor(task.runner)
@@ -729,9 +720,9 @@ function runAndExit(task: Task, args: readonly string[] = []): never {
 }
 
 /**
- * Re-probe. Guarded three ways, all of which the synchronous version got for
- * free: a single in-flight probe, a generation token so a superseded result is
- * discarded, and an abort signal so an abandoned one stops working.
+ * Re-probe, with three protections: one probe in flight at a time, a
+ * generation number so an older result is discarded, and an abort signal so
+ * an abandoned probe stops.
  */
 async function refresh(): Promise<void> {
   if (state.loading) return
@@ -743,10 +734,9 @@ async function refresh(): Promise<void> {
   draw()
 
   try {
-    // ALWAYS a real probe, never a cache read — ^r means "ask again", and a
-    // refresh that could answer from the store would make the one key that
-    // guarantees accuracy indistinguishable from doing nothing. It writes the
-    // store on the way out, so the next start still paints instantly.
+    // Always a real probe, never a cache read. ^r means "ask again", and an
+    // answer from the store would look the same as doing nothing. The probe
+    // writes the store, so the next start still shows rows at once.
     const collected = await collectAndCache(
       state.project,
       state.root,
@@ -772,9 +762,8 @@ async function refresh(): Promise<void> {
 /**
  * Grant trust, then re-probe in place so the runners appear where the note was.
  *
- * The hint is dropped at the same time: it tells the user to trust the
- * repository, which they just did, and a catalog carrying it after the fact
- * would be instructing them to repeat themselves.
+ * The hint is dropped at the same time. It tells the user to trust the
+ * repository, which they just did.
  */
 async function grantTrust(): Promise<void> {
   try {
@@ -783,8 +772,8 @@ async function grantTrust(): Promise<void> {
       ...(state.home !== undefined ? { home: state.home } : {}),
     }).trust(state.root)
   } catch (err) {
-    // Never silent: the keystroke did something, and if it failed the user has
-    // to know the runners are still hidden for a reason they can act on.
+    // Never silent. If the grant failed, the user must know why the runners
+    // are still hidden.
     state.message = `trust failed: ${err instanceof Error ? err.message : String(err)}`
     return
   }
@@ -795,11 +784,11 @@ async function grantTrust(): Promise<void> {
   state.message = state.projectToolsPending
     ? `trusted — re-probing; the project's tools load the next time ${BIN} starts with execution allowed`
     : 'trusted — re-probing'
-  // A probe started before the grant was collected under the old gate, and
-  // `refresh` drops a request while one is running — so the grant would be
-  // announced and never acted on. Abandon that probe first; `refresh` bumps
-  // the generation synchronously, so the abandoned one cannot come back and
-  // overwrite the new result or its bookkeeping.
+  // A probe started before the grant runs with the old settings, and
+  // `refresh` ignores a call while one is running, so the grant would be
+  // announced and never used. Abandon that probe first. `refresh` increases
+  // the generation synchronously, so the abandoned probe cannot overwrite
+  // the new result or its state.
   state.inFlight?.abort()
   state.inFlight = null
   state.loading = false
@@ -819,9 +808,9 @@ function cycleRunner(step: number): void {
 /**
  * One keystroke.
  *
- * Exported for the same reason `state` is: `runTui` owns a real terminal and
- * never returns, so the keys that reach disk — settings, trust — are only
- * reachable from a test through this.
+ * Exported for the same reason `state` is. `runTui` takes over a real
+ * terminal and never returns, so tests reach the keys that touch disk
+ * (settings, trust) only through this.
  */
 export function handle(key: string): void {
   const listHeight = Math.max(1, (process.stdout.rows || 30) - 7)
@@ -830,9 +819,8 @@ export function handle(key: string): void {
     state.message = ''
   }
 
-  // The armed prompt owns the keyboard for exactly one keystroke. `y` grants;
-  // anything else cancels and is swallowed, so the key that cancelled cannot
-  // also do its usual job in the same breath.
+  // The trust prompt takes exactly one keystroke. `y` grants. Any other key
+  // cancels and is consumed, so it does not also do its usual job.
   if (state.confirmingTrust) {
     state.confirmingTrust = false
     state.message = ''
@@ -840,17 +828,16 @@ export function handle(key: string): void {
     return
   }
 
-  // The settings screen owns the keyboard while it is open, for the same
-  // reason the entry line does: the keys below act on a list that is not on
-  // screen.
+  // The settings screen takes all keys while it is open, as the entry line
+  // does, because the keys below act on a list that is not on screen.
   if (state.settings !== null) {
     if (key === '\x1b' || key === '\x03' || key === ',' || key === 'q') state.settings = null
     return
   }
 
-  // Typing arguments owns the keyboard: every key is text or one of the two
-  // that end it. Placed before the switch so ^y, tab and the arrows cannot
-  // act on a list the user is no longer looking at.
+  // While arguments are typed, every key is text or one of the two that end
+  // it. This comes before the switch so ^y, tab and the arrows cannot act on
+  // a list the user is no longer looking at.
   if (state.entering) {
     const entering = state.entering
     if (key === '\x1b' || key === '\x03') {
@@ -884,9 +871,9 @@ export function handle(key: string): void {
     case '\n': {
       const row = state.rows[cursor()]
       if (!row) break
-      // A parameterised recipe collects its arguments first. Running it here
+      // A recipe with parameters asks for its arguments first. Running it here
       // would spawn the command without them and hand over the terminal, so
-      // the mistake could not even be reported.
+      // the mistake could not be reported.
       if (row.task.parameters.length > 0) state.entering = { task: row.task, text: '' }
       else runAndExit(row.task)
       break
@@ -906,9 +893,9 @@ export function handle(key: string): void {
       state.selectedId = null
       break
     case ',':
-      // Loaded on open, not on every frame — it is a disk read. A disk read
-      // fails: an unparseable config throws, and without the catch that is an
-      // unhandled rejection instead of a line the user can act on.
+      // Loaded on open, not on every frame, because it reads from disk. A
+      // config that will not parse throws, and without the catch that would
+      // be an unhandled rejection instead of a message.
       void settingsLines()
         .then((lines) => {
           state.settings = lines
@@ -973,10 +960,10 @@ export function handle(key: string): void {
 // ---------------------------------------------------------------- boot
 
 /**
- * `gate` is the CLI's already-resolved trust decision. The TUI needs it, not
- * just the boolean it produced, because "no exec because a file said so" and
- * "no exec because this repository is not trusted" call for different offers —
- * only the second one has an action a keystroke can take.
+ * `gate` is the trust decision the CLI already made. The TUI needs the whole
+ * decision, not just its boolean. "No exec because a file said so" and "no
+ * exec because this repository is not trusted" need different messages, and
+ * only the second has a key that fixes it.
  */
 export interface TuiOptions {
   project: Project
@@ -1038,13 +1025,14 @@ export async function runTui({
     draw()
   })
 
-  // Stale-then-refresh. The first paint costs a few file hashes rather than a
-  // full probe, so a repository whose slowest runner takes seconds shows its
-  // tasks at once — marked as cached — instead of an empty frame. The probe
-  // then lands underneath and the rows update in place.
+  // Show the store, then refresh. The first frame costs a few file hashes
+  // rather than a full probe, so even when the slowest runner takes seconds
+  // the tasks show at once, marked as cached, instead of an empty frame. When
+  // the probe finishes, the rows update in place.
   const stored = await readCachedCatalog(project, root, options, state.store)
-  // Only painted when something came OUT of the store: with execution off, a
-  // cold store still yields withheld reports, an empty list posing as an answer.
+  // Shown only when something came from the store. With execution off, an
+  // empty store still returns withheld reports, which would look like an
+  // empty answer.
   if (stored.catalog !== null && fromStore(stored)) {
     state.catalog = orderedCatalog(stored.catalog, runnerOrder)
     state.cache = stored.runners

@@ -1,6 +1,6 @@
 /**
  * `@osdlc/cli-tool`'s `FAILURE_EXIT` is keyed by strings, so a kind added to a
- * lower layer would silently exit 1. This is the one package that sees the
+ * lower layer would exit 1 with no warning. This is the one package that sees the
  * command, git and code-host kind unions together (the code host's union also
  * carries every `gh` kind, which it maps one to one), so the check lives here.
  *

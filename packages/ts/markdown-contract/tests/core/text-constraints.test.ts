@@ -1,12 +1,12 @@
 /**
  * Peer test for the text-constraint builders.
  *
- * `requires` / `forbids` build a section-scoped node-local `Rule` over the bound section's
- * subtree text; `textRule` builds a whole-document `DocRule`. Each runs the text-match core
- * (`text-match.ts`) and mints `text/*` findings. These cases read first as documentation —
- * lead with a section `requires` pass/fail and a document `forbids` pass/fail (the unit twins
- * of fixtures 22 / 23) — then cover counts, regex, normalize/ignoreCase, note/level flow-through,
- * the synthesized per-entry id, and the `requires` absence-form purity guard.
+ * `requires` / `forbids` build a `Rule` over the text of the bound section and its subsections.
+ * `textRule` builds a whole-document `DocRule`. Each uses the matcher in `text-match.ts` and
+ * emits `text/*` findings. The first cases are meant to read as documentation: a section
+ * `requires` pass and fail, and a document `forbids` pass and fail (unit versions of fixtures
+ * 22 and 23). Later cases cover counts, regex, normalize/ignoreCase, passing note and level
+ * through, the generated per-entry id, and the check on the `requires` absence form.
  */
 import { describe, expect, it } from 'vitest'
 
@@ -42,7 +42,7 @@ function sectionNode(
   return { name, depth: 2, pos: { line, col: 1 }, sections: sub, blocks, anchors: [] }
 }
 
-// ── Documentation-leading cases: section `requires`, document `forbids` ──────────────────
+// ── Examples: section `requires`, document `forbids` ─────────────────────────────────────
 
 describe('requires — a section must CONTAIN a phrase', () => {
   const c = contract({
@@ -88,8 +88,8 @@ describe('textRule — a document must NOT contain a phrase (forbids)', () => {
     expect(f.id).toBe('text/forbids/doc/mf4oln')
     expect(f.level).toBe('error')
     expect(f.message).toBe('forbidden phrase "TODO" present')
-    // The whole-document scope now uses the projected tree, reconstructing text from
-    // `tree.root` at real source lines, so the forbid pins at the exact offending line (line 3).
+    // The whole-document scope builds its text from `tree.root` with real source lines, so the
+    // finding is on the offending line (line 3).
     expect(f.pos?.line).toBe(3)
   })
 })
@@ -112,7 +112,7 @@ describe('forbids — a section must NOT contain a phrase, reported at the sourc
   })
 })
 
-// ── : counts, regex, normalize, ignoreCase, note, level ──────────────────────────────
+// ── counts, regex, normalize, ignoreCase, note, level ────────────────────────────────
 
 describe('count bounds', () => {
   it('a below-min count is a text/count finding at the heading', () => {
@@ -172,7 +172,7 @@ describe('note and level flow onto the finding', () => {
   })
 })
 
-// ── : stable per-entry id; distinct entries are distinct findings ─────────────────────
+// ── stable per-entry id; distinct entries are distinct findings ───────────────────────
 
 describe('per-entry id', () => {
   it('two distinct requirements on one section are two distinct findings', () => {
@@ -191,7 +191,7 @@ describe('per-entry id', () => {
   })
 })
 
-// ── : requires purity — the absence form is forbids ───────────────────────────────────
+// ── `requires` rejects the absence form, which is `forbids` ────────────────────────────
 
 describe('requires purity', () => {
   it('rejects max:0 at construction (use forbids)', () => {

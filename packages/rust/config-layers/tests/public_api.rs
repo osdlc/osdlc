@@ -37,9 +37,8 @@ fn dirs(root: &Path) -> TieredDirs {
     TieredDirs::with_base_dirs("com.example", BaseDirs::rooted(root)).unwrap()
 }
 
-/// `CARGO_MANIFEST_DIR` is set for every test cargo runs, so it stands in
-/// for a user's override variable without the test mutating the
-/// environment.
+/// Cargo sets `CARGO_MANIFEST_DIR` for every test it runs, so the test uses
+/// it as the override variable and does not change the environment.
 #[test]
 fn the_env_var_relocates_the_file() {
     let tmp = tempfile::tempdir().unwrap();

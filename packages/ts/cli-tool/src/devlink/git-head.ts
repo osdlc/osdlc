@@ -1,12 +1,12 @@
 /**
  * The branch and short HEAD of a checkout, read from `.git` directly.
  *
- * No git spawn: a history event is written on every `link` and `use`, and the
- * point of recording HEAD is to tell two links of one path apart later, so a
- * best-effort read is enough. Anything unreadable — no `.git`, a packed ref
- * this does not find, a detached HEAD whose object is elsewhere — yields null
- * for that field rather than an error. Handles a worktree's `.git` FILE
- * (`gitdir: <path>`) and the `commondir` indirection refs live behind.
+ * It does not spawn git. A history event is written on every `link` and
+ * `use`, and HEAD is recorded only to tell two links of one path apart later,
+ * so a best-effort read is enough. Anything unreadable (no `.git`, a packed
+ * ref this does not find, a detached HEAD whose object is elsewhere) gives
+ * null for that field rather than an error. It handles a worktree's `.git`
+ * file (`gitdir: <path>`) and the `commondir` file that points to the refs.
  */
 
 import { existsSync, readFileSync, statSync } from 'node:fs'
@@ -22,7 +22,8 @@ export interface GitHead {
 }
 
 /**
- * Read the branch and commit of a checkout from its git files, without running git.
+ * Read the branch and commit of a checkout from its git files, without running
+ * git.
  * @experimental
  */
 export function gitHead(checkout: string): GitHead {

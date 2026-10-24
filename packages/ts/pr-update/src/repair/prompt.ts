@@ -2,9 +2,9 @@
  * The prompt every repair agent gets.
  *
  * One prompt for every agent, and for a host that binds `repair` to its own
- * agent runner, so the contract the executor checks (`execute.ts`) is stated
- * the same way wherever the agent runs. The agent is told what is wrong and
- * what it may not do; the executor stages, commits, verifies and pushes.
+ * agent runner, so the rules the executor checks (`execute.ts`) are stated the
+ * same way wherever the agent runs. The agent is told what is wrong and what it
+ * may not do. The executor stages, commits, verifies and pushes.
  */
 
 import type { RepairRequest } from '../ports.ts'

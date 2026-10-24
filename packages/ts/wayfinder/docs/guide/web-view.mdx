@@ -140,8 +140,8 @@ reachable with `Tab`.
 ## Startup and the cache
 
 The first `/api/catalog` request is answered from the
-[stored probe](cache.md) when there is one, with a real probe running behind
-it. The rows update in place when the probe lands. **Refresh** always runs a
+[stored probe](cache.md) when there is one, with a real probe running in the
+background. The rows update in place when the probe finishes. **Refresh** always runs a
 real probe. Nothing is served from an empty store.
 
 The status area reports stored rows the same way the terminal UI does:
@@ -180,8 +180,8 @@ Where a dragged tab order is in force, the Runners section says so and offers
 ### Trust from the page
 
 Where a grant would change something, the page offers **Trust this
-repository**: on a withheld runner, in the runner picker and in the Execution
-section. It asks for confirmation. On a grant, the server returns a freshly
+repository**: in the bar above the list, on a withheld runner, in the runner
+picker and in the Execution section. It asks for confirmation. On a grant, the server returns a freshly
 probed catalog.
 
 **Untrust** is offered where the repository is trusted. It removes the stored
@@ -215,8 +215,8 @@ is embedded once in the served HTML, and the page keeps it in memory only,
 not in `localStorage`, `sessionStorage` or a cookie. Every `/api/*` request
 sends it in the `x-wayfinder-token` header.
 
-A header is used instead of a cookie on purpose. A cookie rides along on a
-cross-origin request from any site, which is CSRF. A custom header does not,
+A header is used instead of a cookie on purpose. The browser sends a cookie
+with a cross-origin request from any site, which allows CSRF. A custom header does not,
 and it forces a CORS preflight the server never answers.
 
 Two smaller points:

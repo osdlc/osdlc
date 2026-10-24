@@ -1,8 +1,9 @@
 /**
- * How a failure shows up. The plain method throws a `FailureError` carrying the classified `GhFailure` (a query as
- * much as a mutation), `.try` returns it as a `Result` with a `kind` and a
- * message for a person, `.soft` returns `null` for a failed query, and `raw`
- * hands the result back for you to judge.
+ * How a failure shows up. The plain method throws a `FailureError` carrying
+ * the classified `GhFailure`, for a query as well as a mutation. `.try`
+ * returns it as a `Result` with a `kind` and a message for a person. `.soft`
+ * returns `null` for a failed query. `raw` returns the result for you to
+ * check.
  */
 
 import { expect, test } from 'vitest'

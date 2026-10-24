@@ -11,9 +11,9 @@ export function isYes(answer: string): boolean {
 const PAUSE = new Int32Array(new SharedArrayBuffer(4))
 
 /**
- * Up to the first newline from `fd`; empty at end of input. Reads one byte at a
- * time so nothing after the newline is consumed (the next call sees it) and a
- * multi-byte character is decoded whole.
+ * Read up to the first newline from `fd`. Returns an empty string at end of
+ * input. Reads one byte at a time so nothing after the newline is consumed
+ * (the next call sees it) and a multi-byte character is decoded whole.
  */
 export function readLine(fd = 0): string {
   const buf = Buffer.alloc(1)
@@ -40,7 +40,8 @@ export function canPrompt(): boolean {
 }
 
 /**
- * Options for asking a yes/no question on the terminal: the default answer, where to write the question and where to read the answer.
+ * Options for asking a yes/no question on the terminal: the default answer,
+ * where to write the question and where to read the answer.
  */
 export interface AskYesNoOptions {
   /** The answer an empty line gives. */
@@ -53,7 +54,7 @@ export interface AskYesNoOptions {
 
 /**
  * Write `question` with a `[y/N]` or `[Y/n]` hint and read one line. An empty
- * answer takes `defaultYes`; otherwise only `y`/`yes` is yes.
+ * answer takes `defaultYes`. Otherwise only `y`/`yes` is yes.
  */
 export function askYesNo(question: string, opts: AskYesNoOptions = {}): boolean {
   const defaultYes = opts.defaultYes ?? false

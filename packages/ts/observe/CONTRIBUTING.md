@@ -44,7 +44,7 @@ pnpm run format:check
 
 ## Code style
 
-- TypeScript, ES modules, and `.ts` extensions on relative imports; the build
+- TypeScript, ES modules, and `.ts` extensions on relative imports. The build
   rewrites them.
 - Prettier formats the code and oxlint checks it. Run `pnpm run format` and
   `pnpm run lint` before you commit.
@@ -53,7 +53,7 @@ pnpm run format:check
   `examples/`, which imports the package by name. A test fails if an export
   has no example.
 - An experimental export carries `@experimental` and is listed in the
-  README's API section. A test checks that the two agree.
+  README's Stability section. A test checks that the two agree.
 - Spawn processes only through `@osdlc/command-seam`, never `child_process`.
 - For a change users can see, add a changeset: run `pnpm changeset` at the
   repository root. Start a breaking change's summary with `**Breaking:**`.

@@ -1,7 +1,7 @@
 /**
  * Open a pull request, then edit it: retitle it, rewrite its body, comment,
  * bring its branch up to date, and mark it ready for review. Each call is one
- * `gh` command; the fake runner records the argv.
+ * `gh` command. The fake runner records the argv.
  */
 
 import { expect, test } from 'vitest'

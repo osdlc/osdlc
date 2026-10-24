@@ -16,8 +16,8 @@ import { MachineSchema, ProjectSchema } from './support.ts'
 
 describe('zod layout tripwire', () => {
   // The module reads zod's private `_def.type` / `_def.innerType`. If a zod
-  // release moves them, every lookup below silently returns null; this test
-  // is the loud failure instead.
+  // release moves them, every lookup silently returns null. This test fails
+  // instead.
   test('wrappers peel by tag and records are tagged', () => {
     const wrapped = z.string().optional().default('x').nullable()
     expect((unwrapSchema(wrapped) as { _def: { type: string } })._def.type).toBe('string')

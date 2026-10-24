@@ -107,7 +107,7 @@ describe('droid plan', () => {
       appendSystemPrompt: 'cite files',
     })
     expect(planned.argv.join(' ')).toContain('--append-system-prompt-file __AGENT_CALL_TMP__/')
-    // The text rides a temp file, not argv.
+    // The text goes in a temp file, not argv.
     expect(planned.argv.join(' ')).not.toContain('cite files')
     expect(planned.tempFiles.map((f) => f.content)).toContain('cite files')
     expect(planned.stdin).toContain('<system>\nbe terse\n</system>')

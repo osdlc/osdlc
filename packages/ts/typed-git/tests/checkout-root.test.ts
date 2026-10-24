@@ -70,7 +70,7 @@ describe('checkoutRoot', () => {
   })
 
   test('no ancestor has a .git marker: returns null', () => {
-    // Guards the guard: if the OS temp root itself sat under a `.git`
+    // Checks the test's own setup: if the OS temp root itself sat under a `.git`
     // ancestor (a dotfiles repo at $HOME, say), this test would pass for
     // the wrong reason. Assert the precondition instead of assuming it.
     let above = resolve(tmpdir())

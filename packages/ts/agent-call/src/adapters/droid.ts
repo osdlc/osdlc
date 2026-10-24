@@ -30,12 +30,12 @@ export interface DroidAdapterOptions extends CommandOptions {}
 /**
  * Factory Droid (`droid exec`). The prompt travels on stdin. Runs are
  * read-only unless `--auto low|medium|high` or `--skip-permissions-unsafe`
- * is given, so the canonical postures map onto those flags. Effort, appended
- * system prompts, session continuation (`-s`) and tool removal are native;
- * the system prompt, context files and the output schema are emulated in the
- * prompt. `--output-format json` prints a claude-style result envelope;
- * `stream-json` is droid's own event stream closed by a `completion` event.
- * BYOK models are addressed as `custom:<id>`; `model` passes through as given.
+ * is given, so the permission modes map onto those flags. Effort, appended
+ * system prompts, session continuation (`-s`) and tool removal have flags.
+ * The system prompt, context files and the output schema are emulated in the
+ * prompt. `--output-format json` prints a claude-style result envelope.
+ * `stream-json` is droid's own event stream, ending with a `completion` event.
+ * BYOK models are named `custom:<id>`. `model` passes through as given.
  */
 export function droidAdapter(options: DroidAdapterOptions = {}): AgentAdapter {
   const command = commandPrefix(options, 'droid')
@@ -61,15 +61,15 @@ function planDroid(command: readonly string[], spec: AgentCallSpec): PlannedCall
   const tempFiles: TempFile[] = []
   const argv = [...command, 'exec']
 
-  // The json envelope carries usage and the session id; text is the CLI's
-  // own default, so it is passed explicitly for every format.
+  // Default to json, whose envelope carries usage and the session id. The
+  // CLI's own default is text, so `--output-format` is always passed.
   const format: OutputFormat = spec.output?.format ?? 'json'
   argv.push('--output-format', format)
 
   if (spec.model !== undefined) argv.push(...modelFlag(spec.model))
 
   if (spec.effort !== undefined) {
-    // droid takes low..max; which levels a model accepts is per model
+    // droid takes low..max. Each model accepts its own levels
     // (`droid exec --help` lists them).
     if (isBelowLow(spec.effort)) {
       argv.push('--reasoning-effort', 'low')
@@ -97,10 +97,10 @@ function planDroid(command: readonly string[], spec: AgentCallSpec): PlannedCall
     note(notes, 'appendSystemPrompt', 'native', '--append-system-prompt-file <temp file>')
   }
 
-  // Exec ignores the autonomy level in settings.json, so no flag is read-only.
-  // A command above the granted level ends the run with an error instead of
-  // prompting. --auto and --skip-permissions-unsafe cannot be combined; only
-  // one is ever planned.
+  // Exec ignores the autonomy level in settings.json, so a run with no flag is
+  // read-only. A command above the granted level ends the run with an error
+  // instead of prompting. --auto and --skip-permissions-unsafe cannot be
+  // combined, so only one is ever planned.
   const permissions = spec.permissions
   if (permissions?.mode === 'read-only') {
     note(
@@ -214,7 +214,7 @@ function parseDroid(planned: PlannedCall, raw: RawProcessOutput): ParsedOutput {
 /**
  * droid's stream: `system`/`init` (model, tools), `message` (user and
  * assistant text), `reasoning`, `tool_call`, `tool_result`, `error`, and a
- * closing `completion` with the final text, session id and usage. A failed
+ * final `completion` with the final text, session id and usage. A failed
  * run ends with an `error` event (`source: "cli"`) and no `completion`.
  */
 function parseDroidStream(planned: PlannedCall, raw: RawProcessOutput): ParsedOutput {
@@ -328,7 +328,7 @@ function droidConversation(planned: PlannedCall, raw: RawProcessOutput): Convers
   }
 }
 
-/** droid stamps events in epoch milliseconds. */
+/** droid timestamps events in epoch milliseconds. */
 function isoTimestamp(value: unknown): string | undefined {
   const ms = asNumber(value)
   return ms === undefined ? undefined : new Date(ms).toISOString()

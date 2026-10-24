@@ -2,16 +2,16 @@
  * sRGB colour arithmetic.
  *
  * A colour is an {@link Rgba}: channels 0-255, alpha 0-1. Parsing accepts the
- * CSS syntaxes a browser reports; mixing and compositing happen in
+ * CSS syntaxes a browser reports. Mixing and compositing happen in
  * gamma-encoded sRGB. Contrast is the WCAG 2 relative luminance ratio.
  *
- * Errors: a colour that cannot be parsed throws a plain `Error`; a number
- * argument a function cannot use throws a `RangeError`. Every message starts
- * with `color:`.
+ * Errors: a colour that cannot be parsed, and a pixel with fewer than 4
+ * entries, throw a plain `Error`. A number argument a function cannot use
+ * throws a `RangeError`. Every message starts with `color:`.
  */
 
 /**
- * A colour. Channels `r`, `g` and `b` are 0-255; `a` is 0-1.
+ * A colour. Channels `r`, `g` and `b` are 0-255. `a` is 0-1.
  *
  * The fields are read-only, so a frozen object or an `as const` literal can be
  * passed in. Every function returns a new plain object, except that

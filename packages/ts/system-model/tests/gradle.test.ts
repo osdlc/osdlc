@@ -119,12 +119,11 @@ describe('gradle runner', () => {
 
 // ------------------------------------------------------------ the exec path
 //
-// gradle is NOT installed on the machine these tests run on, and installing it
-// is not a prerequisite for this suite. Every exec-path assertion below runs
-// against RECORDED `gradle tasks --all` output through the injected runner, in
-// the same spirit as the moon and just suites: a change to gradle's report
-// format shows up here as a deliberate fixture edit rather than as a suite that
-// passes on one machine and fails on another.
+// This suite does not need gradle installed. Every exec-path assertion below
+// runs against recorded `gradle tasks --all` output through the injected
+// runner, as the moon and just suites do. A change to gradle's report format
+// shows up here as a deliberate fixture edit, not as a suite that passes on one
+// machine and fails on another.
 
 /**
  * A `gradle tasks --all` listing carrying every shape the parser has to
@@ -168,8 +167,8 @@ const PROBE_ARGV = ['-q', '--console=plain', 'tasks', '--all']
  * The probe's run options are part of what it promises. A `tasks --all` that
  * starts a daemon and compiles a build script is the one call in this package
  * that can hang for minutes, so the cap, the caller's abort signal and the
- * directory it runs in are asserted rather than assumed — every one of them
- * could be deleted from the provider and still leave the task assertions green.
+ * directory it runs in are asserted. Any of them could be removed from the
+ * provider and the task assertions would still pass.
  */
 function expectProbeOptions(
   opts: {
@@ -210,9 +209,9 @@ describe('gradle provider — asking the build', () => {
       which: fakeWhich({ gradle: '/usr/bin/gradle' }),
     })
 
-    // Nothing was withheld and nothing degraded: with execution off, the
-    // synthesized floor is the whole intended answer, so warning the user about
-    // it would be noise on every `quality detect` run in the repository.
+    // Nothing was withheld and nothing degraded. With execution off, the
+    // synthesized verbs are the whole intended answer, so a warning would be
+    // noise on every `quality detect` run in the repository.
     expect(catalog.reports.find((r) => r.runner === 'gradle')?.diagnostics).toEqual([])
   })
 
@@ -258,7 +257,7 @@ describe('gradle provider — asking the build', () => {
     })
     const found = tasks(catalog)
 
-    // ONE invocation for the whole multi-project build, with the verified argv.
+    // One invocation for the whole multi-project build, with the verified argv.
     const probe = gradleCalls(calls)
     expect(probe).toHaveLength(1)
     expect(probe[0]?.binary).toBe('gradle')
@@ -357,7 +356,7 @@ describe('gradle provider — asking the build', () => {
 
   test('a failed spawn says gradle could not be run', async () => {
     const dir = await root({ 'build.gradle.kts': '// build\n' })
-    // The seam's own message is in `error`; the child wrote no stderr.
+    // The command seam's message is in `error`. The child wrote no stderr.
     const { options } = opts([
       { binary: 'gradle', argv: PROBE_ARGV, exitCode: 1, error: 'spawn gradle ENOENT' },
     ])
@@ -404,8 +403,8 @@ describe('gradle provider — asking the build', () => {
       ...options,
       tools: [gradle],
       allowExec: true,
-      // The whole point: nothing named `gradle` on PATH, and the exec path
-      // still runs because the wrapper IS the binary.
+      // Nothing named `gradle` is on PATH. The exec path still runs because
+      // the wrapper is the binary.
       which: fakeWhich({}),
     })
     const found = tasks(catalog)
@@ -509,9 +508,9 @@ describe('gradle provider — asking the build', () => {
       }),
     )
 
-    // `declared: false` throughout: gradle's task report says nothing about
-    // whether a task keeps running, so this is this package's name heuristic
-    // and a consumer that wants only authoritative answers ignores it.
+    // `declared: false` throughout. gradle's task report says nothing about
+    // whether a task keeps running, so this is a guess from the task name. A
+    // consumer that wants only authoritative answers ignores it.
     const run = found.find((t) => t.path[2] === 'run')
     expect(run?.origin).toBe('declared')
     expect(run?.persistent).toEqual({ value: true, declared: false })

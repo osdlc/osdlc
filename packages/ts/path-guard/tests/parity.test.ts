@@ -82,7 +82,7 @@ interface Fixture {
 /**
  * The one parity fixture lives in the Rust crate, which its `tests/parity.rs`
  * also reads. This suite reads it by its path in the repository, so a case added
- * on either side goes in the fixture, never in one twin's own suite.
+ * on either side goes in the fixture, never in one package's own suite.
  */
 const FIXTURE_PATH = join(
   import.meta.dirname,

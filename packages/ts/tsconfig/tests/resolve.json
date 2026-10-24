@@ -1,15 +1,14 @@
 {
-  // Resolution probe — the `check` task points tsc at this file.
+  // Resolution probe. The `typecheck` script points tsc at this file.
   //
-  // Extends every preset BY THE BARE SPECIFIER A CONSUMER WRITES, so tsc has to
-  // resolve each one through this package's `exports` map. That is the only
-  // thing here that catches the one mistake invisible from inside the package:
-  // adding a preset file and forgetting its `exports` entry, which breaks every
-  // consumer and nothing local.
+  // It extends every preset by the bare specifier a consumer writes, so tsc
+  // must resolve each one through this package's `exports` map. This catches a
+  // mistake that nothing inside the package shows: a preset file added without
+  // its `exports` entry, which breaks every consumer.
   //
-  // The array form also exercises the left-to-right merge the tsconfig.build.json
-  // consumers depend on. `--noEmit` is passed on the command line, which is
-  // authoritative over build.json's `noEmit: false`.
+  // The array form also tests the left-to-right merge that tsconfig.build.json
+  // files depend on. `--noEmit` on the command line overrides build.json's
+  // `noEmit: false`.
   "extends": [
     "@osdlc/tsconfig/base",
     "@osdlc/tsconfig/source-shipped",

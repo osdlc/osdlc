@@ -1,15 +1,15 @@
 /**
- * `PrUpdateConfig` — everything `survey`/`update` read to decide scope and
- * strategy, and the `pr_update` config section that carries it.
+ * `PrUpdateConfig`: everything `survey` and `update` read to decide scope and
+ * strategy, and the `pr_update` config section that holds it.
  *
- * The package owns the section; a host that keeps its own config file mounts
+ * The package owns the section. A host that keeps its own config file mounts
  * {@link prUpdateSection} in its section list, so that file's block and a
- * standalone run read one schema with one set of defaults. A value handed to
- * `runSurvey`/`runUpdate` means the same thing whichever host parsed it.
+ * standalone run read one schema with one set of defaults. A value passed to
+ * `runSurvey` or `runUpdate` means the same thing whichever host parsed it.
  *
  * Strict at every level: a misspelt key is refused, not ignored. `test_command`
- * is the one key only a standalone run reads, so it lives in
- * {@link prUpdateStandaloneSchema}, not in the shared block: a host that
+ * is the one key only a standalone run reads, so it is in
+ * {@link prUpdateStandaloneSchema}, not in the shared block. A host that
  * resolves `verify: test` itself (from its own command lists) never sees it.
  */
 
@@ -246,5 +246,5 @@ export type PrUpdateConfig = z.infer<typeof prUpdateConfigSchema>
 
 export type PrUpdateStandaloneConfig = z.infer<typeof prUpdateStandaloneSchema>
 
-/** Every key at its built-in default — the verb works with no config at all. */
+/** Every key at its built-in default, so the commands work with no config. */
 export const DEFAULT_PR_UPDATE_CONFIG: PrUpdateConfig = prUpdateConfigSchema.parse({})

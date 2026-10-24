@@ -3,7 +3,7 @@ import { describe, expect, test } from 'vitest'
 import { extractVaultRefs } from './wikilinks.js'
 
 // wikilinks.ts recognizes Obsidian vault references in already-flattened text. Each case is
-// an input string and the exact VaultRef[] it yields — the module's contract at a glance.
+// an input string and the exact VaultRef[] it returns.
 
 describe('extractVaultRefs — recognize [[wikilink]] and ![[transclusion]]', () => {
   test('a plain [[wikilink]] → one wikilink ref whose target is the inner text', () => {

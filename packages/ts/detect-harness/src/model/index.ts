@@ -1,5 +1,5 @@
 /**
- * `@osdlc/detect-harness/model` — read one plugin folder into a typed model.
+ * `@osdlc/detect-harness/model`: read one plugin folder into a typed model.
  *
  * @experimental The plugin model is the start of a harness-neutral surface for
  * import and translation. Its shape will change (a `HarnessSurface` with

@@ -21,9 +21,9 @@ import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './types.js'
 export interface OpencodeAdapterOptions extends CommandOptions {}
 
 /**
- * opencode (`opencode run`). Context files attach natively (`-f`);
- * permissions travel via the OPENCODE_PERMISSION env JSON; `--format json`
- * is a raw event stream backing both json and stream-json requests.
+ * opencode (`opencode run`). Context files attach with `-f`. Permissions go
+ * in the OPENCODE_PERMISSION env var as JSON. `--format json` prints a raw
+ * event stream, used for both json and stream-json requests.
  */
 export function opencodeAdapter(options: OpencodeAdapterOptions = {}): AgentAdapter {
   const command = commandPrefix(options, 'opencode')
@@ -196,8 +196,8 @@ function parseOpencode(planned: PlannedCall, raw: RawProcessOutput): ParsedOutpu
   let order = 0
 
   for (const event of events) {
-    // Both shapes seen in the wild: a bare part object, or an event wrapping
-    // one at `properties.part` / `part`.
+    // opencode prints both shapes: a bare part object, or an event that holds
+    // one at `properties.part` or `part`.
     const part = get(event, 'properties', 'part') ?? get(event, 'part') ?? event
     const partType = get(part, 'type')
     if (partType === 'text') {

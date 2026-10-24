@@ -48,7 +48,7 @@ const RESERVED = new Set([
  * The Windows device names and alternate data streams in `rel`, a path that
  * `validateRelative` returned, in segment order. The base name of a segment
  * is its text up to the first `.` or `:`, with trailing spaces removed, and
- * is compared with ASCII letters folded only, as the Rust twin does. A reserved
+ * is compared with ASCII letters folded only, as the Rust crate does. A reserved
  * base name wins over a `:`.
  */
 export function windowsNames(rel: string): PathWarning[] {

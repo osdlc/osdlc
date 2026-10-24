@@ -1,18 +1,15 @@
 /**
- * Positioned block enumeration over the projection — the source lines occupied by fenced
- * code blocks and by table rows. These are the two "which lines are opaque / are data rows"
- * line sets consumers build to scan a raw document safely (skip fenced code, inspect table
- * rows). Both return 1-indexed source line numbers.
+ * The source lines of code blocks and of table rows. A caller that scans the raw lines of a
+ * document uses them to skip code and to find table rows. Both return 1-based line numbers.
  *
- * `codeBlockLines` walks `tree.mdast` (layer-0) rather than the heading-direct `SectionNode.blocks`,
- * so code fences nested inside lists / blockquotes — which the section projection does not hoist —
- * are still covered. `tableRowLines` reads the projected table blocks (recursively), whose header
- * `pos` and per-row `rowPos` already give the exact row lines (the separator row forms no data row,
- * so it is naturally excluded).
+ * `codeBlockLines` walks `tree.mdast`, not `SectionNode.blocks`, because a section's blocks do
+ * not include code nested in lists or blockquotes. `tableRowLines` reads the table blocks of
+ * every section. Their `pos` and `rowPos` give the row lines. The separator row is not a data
+ * row, so it is left out.
  */
 import type { DocTree, SectionNode } from './types.js'
 
-/** Minimal structural view of the mdast nodes we walk for fenced-code spans. */
+/** The fields of an mdast node that `codeBlockLines` reads. */
 interface MdLike {
   type: string
   position?: { start: { line: number }; end: { line: number } }
@@ -20,10 +17,9 @@ interface MdLike {
 }
 
 /**
- * Every source line occupied by a fenced code block — opening fence through closing fence,
- * inclusive — sourced from `tree.mdast` so code nested in lists / blockquotes is included
- * (heading-direct `SectionNode.blocks` misses those). A `##` / `|` / placeholder line inside a
- * fence is thereby opaque to a raw-line scan.
+ * Every source line of a code block, from the opening fence to the closing fence. Code nested
+ * in lists and blockquotes is included. A raw-line scan can use the set to ignore a `##` or `|`
+ * line inside a code block.
  */
 export function codeBlockLines(tree: DocTree): Set<number> {
   const lines = new Set<number>()
@@ -40,10 +36,9 @@ export function codeBlockLines(tree: DocTree): Set<number> {
 }
 
 /**
- * Every table row line: each table's header line (`table.pos.line`) plus every data-row line
- * (`table.rowPos(i).line`). It covers the blocks under `root` itself (the H1) and every section
- * below it. The separator row is absent (the projection forms no data row for it). These are the
- * lines a table-cell scanner inspects.
+ * Every table row line: each table's header line (`table.pos.line`) and each data row line
+ * (`table.rowPos(i).line`). It covers the blocks directly under `root` (the H1) and every
+ * section below it. The separator row is left out.
  */
 export function tableRowLines(root: SectionNode): Set<number> {
   const lines = new Set<number>()

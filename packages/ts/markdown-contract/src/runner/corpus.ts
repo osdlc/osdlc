@@ -1,6 +1,6 @@
 /**
  * The folder runner: walks a folder, sends each file to the first config rule whose globs match
- * it, and returns every finding with an exit code. It reads files and returns data; it never
+ * it, and returns every finding with an exit code. It reads files and returns data. It never
  * writes output or exits.
  */
 import { readdirSync, readFileSync } from 'node:fs'
@@ -53,16 +53,14 @@ interface CompiledRule {
   contract: Contract
 }
 
-/** picomatch options — `dot` so dotfiles match like any other file. */
+/** picomatch options. `dot` makes dotfiles match like any other file. */
 const PICOMATCH_OPTS = { dot: true } as const
 
 /**
- * Compile a glob set into a matcher under the runner's own matching options (`PICOMATCH_OPTS`).
- * This is the single code path `compile` uses for both `include` and `exclude`, so a test that
- * drives it exercises the runner's real semantics — notably that a single `**\/`-prefixed glob
- * spans both the run root and nested files (so configs need only one entry per rule). A test
- * against this helper fails if those semantics ever regress (an `opts` change or a picomatch
- * upgrade), rather than passing against a re-specified `{ dot: true }` in the test.
+ * Compiles globs into a matcher with the runner's options (`PICOMATCH_OPTS`). The runner uses it
+ * for every `include` and `exclude`, so tests of it test the runner's real matching. For example,
+ * one `**\/`-prefixed glob matches files at the run root and in subfolders, so a rule needs only
+ * one entry. Such a test fails if an options change or a picomatch upgrade breaks this.
  */
 export function compileMatcher(globs: string[]): ReturnType<typeof picomatch> {
   return picomatch(globs, PICOMATCH_OPTS)
@@ -76,7 +74,7 @@ function compile(config: CorpusConfig): CompiledRule[] {
   }))
 }
 
-/** Whether `posixRel` survives the optional global include/exclude pre-filter (AND-narrowing). */
+/** True when `posixRel` passes the run's `include` and `exclude` options, when given. */
 function passesPreFilter(
   posixRel: string,
   include: ReturnType<typeof picomatch> | null,
@@ -87,7 +85,7 @@ function passesPreFilter(
   return true
 }
 
-/** Index of the first compiled rule whose include matches and exclude does not, or -1 when none. */
+/** The index of the first rule whose include matches and exclude does not, or -1. */
 function firstMatchingRule(rules: CompiledRule[], posixRel: string): number {
   return rules.findIndex((r) => r.include(posixRel) && !(r.exclude && r.exclude(posixRel)))
 }
@@ -149,16 +147,15 @@ export function runCorpus(
   const root = resolve(opts?.cwd ?? process.cwd())
   const rules = compile(config)
 
-  // Optional global pre-filter, applied before rule matching (AND-narrowing).
+  // The run's own include and exclude, applied before the rules.
   const include = opts?.include && opts.include.length > 0 ? compileMatcher(opts.include) : null
   const exclude = opts?.exclude && opts.exclude.length > 0 ? compileMatcher(opts.exclude) : null
 
   const findings: Finding[] = []
   const files = walkSync(root)
 
-  // Run counts, tallied inside the single walk (no second pass). `matchedByRule` is
-  // parallel to `config.rules` by index; the matched rule is found by INDEX so its
-  // count can be attributed back to the rule the CLI labels.
+  // `matchedByRule[i]` counts the files rule `i` of `config.rules` matched. The CLI prints it
+  // against the rule's name.
   const matchedByRule: number[] = Array.from({ length: config.rules.length }, () => 0)
   let filesMatched = 0
 

@@ -8,16 +8,16 @@
  * {@link installGroupSignalForwarding} makes the host kill them when it is
  * signalled. A group stays registered until it is empty. Once its run has
  * settled, the host's normal exit leaves what is left of it running, such as a
- * daemon; a forwarded signal still kills it.
+ * daemon. A forwarded signal still kills it.
  *
  * Once a signal has been forwarded and this module owns the exit, the host is
- * stopping: the runners refuse to start a new group, and
+ * stopping. The runners refuse to start a new group, and
  * {@link forwardedSignal} tells the host's own code to stop.
  *
  * The signal listeners exist only while a group is starting or registered. A
  * JS listener replaces the default "terminate" action and runs only when the
- * event loop turns, so keeping one armed would make a host blocked in a sync
- * spawn ignore a signal it would otherwise die from.
+ * event loop turns. A listener left attached would make a host that is
+ * blocked in a sync spawn ignore a signal it would otherwise die from.
  */
 
 import { constants } from 'node:os'
@@ -26,7 +26,7 @@ const osSignals = constants.signals as Record<string, number>
 
 /** Live group leaders, in start order, and whether each one's run has settled. */
 const live = new Map<number, { settled: boolean }>()
-/** Group spawns in progress: the listeners are armed before their pid is known. */
+/** Group spawns in progress. The listeners are attached before their pid is known. */
 let spawning = 0
 
 /**
@@ -43,10 +43,10 @@ export interface GroupSignalForwardingOptions {
    */
   graceMs?: number | undefined
   /**
-   * Called to end the process, with `128 + signal number`. Default: set
-   * `process.exitCode` and let the event loop drain, so piped stdout is not
-   * truncated, then `process.exit` after 500 ms if handles still hold the loop.
-   * Tests replace it.
+   * Called to end the process, with `128 + signal number`. The default sets
+   * `process.exitCode` and lets the event loop drain, so piped stdout is not
+   * cut short. It calls `process.exit` after 500 ms if handles still keep the
+   * loop open. Tests replace it.
    */
   exit?: ((code: number) => void) | undefined
 }
@@ -71,14 +71,14 @@ let armed: { off: () => void } | undefined
 let forwarded: NodeJS.Signals | undefined
 /** Set while a graceful kill is waiting out its grace. */
 let killing = false
-/** A repeat signal already sent `SIGKILL`: the graceful kill stops waiting. */
+/** A repeat signal already sent `SIGKILL`, so the graceful kill stops waiting. */
 let escalated = false
 
 /**
- * Register a group leader. The returned function unregisters it; call it once
- * the group is gone so a reused pid is never signalled. Registering the first
- * group arms the signal listeners (when forwarding is installed); removing the
- * last disarms them.
+ * Register a group leader. The returned function unregisters it. Call it once
+ * the group is gone, so a reused pid is never signalled. Registering the
+ * first group attaches the signal listeners (when forwarding is installed).
+ * Removing the last one detaches them.
  *
  * @internal
  */
@@ -92,10 +92,10 @@ export function trackGroup(pid: number): () => void {
 }
 
 /**
- * Start a group leader with `start` and register it. The listeners are armed
- * before `start` runs: the child can print, and the host be signalled, before
- * `spawn` returns, and a signal that comes before the listeners would kill the
- * host by default and orphan the group. `untrack` is `undefined` when the
+ * Start a group leader with `start` and register it. The listeners are
+ * attached before `start` runs. The child can print, and the host can be
+ * signalled, before `spawn` returns. A signal that comes before the listeners
+ * would kill the host by default and orphan the group. `untrack` is `undefined` when the
  * child got no pid.
  *
  * @internal
@@ -115,8 +115,8 @@ export function spawnTrackedGroup<C extends { readonly pid?: number | undefined 
 }
 
 /**
- * Mark the run of the group led by `pid` as settled: the host's exit no longer
- * kills what is left of the group. A forwarded signal still does. A runner
+ * Mark the run of the group led by `pid` as settled. The host's exit then no
+ * longer kills what is left of the group. A forwarded signal still does. A runner
  * does not call this for a group it is stopping itself.
  *
  * @internal
@@ -138,13 +138,14 @@ export function groupStartRefusal(): string | undefined {
 }
 
 /**
- * Run `release` once the group led by `pid` has no member: now if it is
- * already empty, else polled on an unref'd timer.
+ * Run `release` once the group led by `pid` has no member. That is at once if
+ * it is already empty, else when a poll on an unref'd timer finds it empty.
  *
- * Unref'd on purpose: a ref'd poll would keep the host alive for as long as a
- * member the group left behind. On a Bun version where an unref'd timer does
- * not fire (see `async.ts`), the entry stays registered. The listeners then
- * stay armed and a signal still kills that member, which is the safe side.
+ * The timer is unref'd on purpose. A ref'd poll would keep the host alive as
+ * long as a member the group left behind. On a Bun version where an unref'd
+ * timer does not fire (see `async.ts`), the entry stays registered. The
+ * listeners then stay attached and a signal still kills that member, which
+ * is the safe failure.
  *
  * @internal
  */
@@ -196,9 +197,9 @@ export function liveProcessGroups(): number[] {
 
 /**
  * The signal the host was sent and forwarded to its groups, or `undefined`
- * while none has been. Set only when forwarding owns the exit, that is, the
- * host has no listener of its own for that signal. Once set, the host is
- * stopping: a loop that runs one command after another should check it and
+ * while none has been. Set only when forwarding owns the exit, that is, when
+ * the host has no listener of its own for that signal. Once set, the host is
+ * stopping. A loop that runs one command after another should check it and
  * stop, and the runners refuse to start a new `processGroup` run. The
  * uninstall function clears it.
  *
@@ -224,8 +225,8 @@ function arm(): void {
   if (config === undefined || armed !== undefined || (live.size === 0 && spawning === 0)) return
   const { signals, graceMs, exit } = config
   const onExit = () => {
-    // The host is going away: nothing async runs after this, so end every group
-    // whose run is still in flight now. A settled run's leftovers stay.
+    // The host is exiting and nothing async runs after this. Kill every group
+    // whose run is still in flight now. What a settled run left behind stays.
     for (const [pid, { settled }] of live) if (!settled) signalGroup(pid, 'SIGKILL')
   }
   const handlers = signals.map((sig) => {
@@ -239,7 +240,7 @@ function arm(): void {
         return
       }
       // A host listener owns the exit and may keep running (a REPL cancelling
-      // a job, a daemon reloading on SIGHUP): kill the groups, but do not
+      // a job, a daemon reloading on SIGHUP). Kill the groups, but do not
       // refuse later runs.
       const othersOwnExit = othersListen(sig)
       if (!othersOwnExit) forwarded = sig
@@ -250,8 +251,9 @@ function arm(): void {
         if (!escalated && !othersOwnExit) exit(code)
       })
     }
-    // First in line: Node and Bun drop a host's `process.once` wrapper before
-    // calling it, so a handler that ran later would not count that listener.
+    // Added first, because Node and Bun remove a host's `process.once` wrapper
+    // before calling it. A handler that ran after it would not count that
+    // listener.
     process.prependListener(sig, handler)
     return [sig, handler] as const
   })
@@ -288,20 +290,21 @@ function othersListen(sig: NodeJS.Signals): boolean {
  * grace, or any later one, skips straight to `SIGKILL` and the exit. From the
  * first signal on, {@link forwardedSignal} returns it and the runners refuse
  * to start a new `processGroup` run, until the uninstall function resets
- * that. A `process` `exit` handler, armed with the listeners, also `SIGKILL`s
- * every group whose run is still in flight, so a host that exits first does
- * not leave one behind. A member that a settled run left behind, such as a
- * daemon, outlives the host's exit; a forwarded signal still kills it.
+ * that. A `process` `exit` handler, attached with the listeners, also
+ * `SIGKILL`s every group whose run is still in flight, so a host that exits
+ * first does not leave one behind. A member that a settled run left behind,
+ * such as a daemon, outlives the host's exit. A forwarded signal still kills
+ * it.
  *
  * The listeners are attached just before the first group starts and removed
- * when the last one goes, so a host with no live group keeps each signal's default
- * action. If the host has its own listener for the signal (`process.once`
- * counts too), the groups still
- * get `SIGTERM` at once and `SIGKILL` after `graceMs` (or on `exit`, if
- * sooner and the run is in flight), but that listener keeps the exit, and later runs are not refused.
- * Calling it again while installed is a no-op returning the same
- * uninstall function. `SIGKILL` of the host cannot be caught and still orphans
- * its groups. POSIX only; a no-op on Windows.
+ * when the last one goes, so a host with no live group keeps each signal's
+ * default action. If the host has its own listener for the signal
+ * (`process.once` counts too), the groups still get `SIGTERM` at once and
+ * `SIGKILL` after `graceMs` (or on `exit`, if sooner and the run is in
+ * flight). But that listener keeps the exit, and later runs are not refused.
+ * Calling it again while installed does nothing and returns the same
+ * uninstall function. `SIGKILL` of the host cannot be caught and still
+ * orphans its groups. POSIX only. On Windows it does nothing.
  *
  * @returns A function that removes the forwarding.
  * @experimental
@@ -327,9 +330,10 @@ function uninstall(): void {
 }
 
 /**
- * Set the exit code and let output drain; force the exit after 500 ms. Not
- * unref'd: an unref'd timer does not reliably fire on every Bun version, and
- * holding the loop for 500 ms after a signal is cheap.
+ * Set the exit code and let output drain, then force the exit after 500 ms.
+ * The timer is not unref'd, because an unref'd timer does not always fire on
+ * every Bun version, and keeping the loop open for 500 ms after a signal
+ * costs little.
  */
 function defaultExit(code: number): void {
   process.exitCode = code

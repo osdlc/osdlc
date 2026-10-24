@@ -105,8 +105,8 @@ The terminal view is read-only. Use `way config set` to change a value. The
 ## Startup and the cache
 
 The first frame comes from the [stored probe](cache.md), so a repository
-with a slow runner shows its tasks at once. A real probe runs behind it and
-the rows update in place. Nothing is painted from an empty store.
+with a slow runner shows its tasks at once. A real probe runs in the
+background and the rows update in place. Nothing is painted from an empty store.
 
 A runner whose stored rows are out of date gets a leading `~` on its tab. The
 status line beside the task count then says one of three things:
@@ -141,5 +141,5 @@ because `Ctrl+S` is flow control on many terminals and can arrive by
 accident.
 
 A `y` writes the same grant as `way trust`, then re-probes so the withheld
-runners appear. When nothing is withheld for want of trust, `Ctrl+S` says
+runners appear. When nothing is withheld for lack of trust, `Ctrl+S` says
 `nothing is withheld` and does nothing. See [Trust and execution](trust.md).

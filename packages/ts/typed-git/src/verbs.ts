@@ -8,7 +8,7 @@
  * here once.
  *
  * {@link gate} is the single place a git result becomes either a value or a
- * `CommandFailed`. Both clients call it, so they cannot disagree.
+ * thrown failure. Both clients call it, so they cannot disagree.
  *
  * `GitVerb` and `gate` are internal: the package entries do not export them.
  */
@@ -56,7 +56,7 @@ export interface GitVerb<T> {
  * Turn one git result into a value or a thrown failure: a `FailureError`
  * carrying the classified `GitFailure`, whose `cause` is the `CommandFailed`.
  *
- * The exit-code throw site for the whole library, shared by both clients so
+ * The one place the library throws on an exit code, shared by both clients so
  * they cannot disagree. A parse can raise its own `CommandFailed` for output
  * it cannot read (`aheadBehind`, the integration verbs); it is handed the same
  * argv this reports. The `CommandFailed` is the `failure.cause`; a caller
@@ -87,8 +87,8 @@ export function gate<T>(verb: GitVerb<T>, result: CommandResult, argv?: string[]
     }
     return verb.parse(result, argv ?? verb.argv)
   } catch (error) {
-    // The plain door throws the classified failure, a parse's own
-    // `CommandFailed` included; its `cause` is the `CommandFailed`.
+    // Throw the classified failure, for a parse's own `CommandFailed` too.
+    // Its `cause` is the `CommandFailed`.
     throw gitFailureError(error)
   }
 }
@@ -326,8 +326,8 @@ const C_LOCALE: Readonly<Record<string, string>> = Object.freeze({ LC_ALL: 'C' }
 /**
  * A file's content at a rev (`git show <rev>:<relPath>`), null if absent.
  *
- * `absent: [128]` is as sharp as git allows: it spells both "no such path in
- * that tree" and "not a repository" as 128, so this verb cannot separate
+ * `absent: [128]` is the closest git allows. git exits 128 both for "no such
+ * path in that tree" and for "not a repository", so this verb cannot separate
  * absence from breakage.
  */
 export function showAtRev(rev: string, relPath: string): GitVerb<string | null> {
@@ -341,8 +341,7 @@ export function showAtRev(rev: string, relPath: string): GitVerb<string | null> 
 }
 
 /**
- * Trimmed `git rev-parse <args>` output — the general escape hatch, for a
- * query no dedicated verb covers.
+ * Trimmed `git rev-parse <args>` output, for a query no other verb covers.
  *
  * `absent: [1]`, the code `rev-parse --verify --quiet <ref>` returns for a ref
  * that does not resolve. {@link resolveRef} passes those flags for you; reach
@@ -364,8 +363,8 @@ export function revParse(...args: string[]): GitVerb<string | null> {
  *
  * `absent: [1]` — an unborn HEAD, a branch that does not exist, a tag that was
  * never fetched. An unreadable store exits 128 and throws, so absence stays
- * separable from breakage. That is what makes `resolveRef("HEAD")` the
- * repository-health probe — see {@link objectExists}, which is not.
+ * separable from breakage. That is why `resolveRef("HEAD")` is the way to check
+ * that a repository is readable. {@link objectExists} is not; see there.
  */
 export function resolveRef(ref: string): GitVerb<string | null> {
   return {
@@ -396,8 +395,8 @@ export function headRef(): GitVerb<string | null> {
 /**
  * Absolute repo top-level directory, or null outside a repo.
  *
- * `absent: [128]`: for this question "not a repository" is a genuine answer,
- * so `if (!git.topLevel())` is the idiomatic "am I in a repo?" check. Most
+ * `absent: [128]`: for this question "not a repository" is a real answer,
+ * so `if (!git.topLevel())` is the usual "am I in a repo?" check. Most
  * other verbs throw there — see {@link lsFiles}.
  */
 export function topLevel(): GitVerb<string | null> {
@@ -689,8 +688,8 @@ export function configGetBool(key: string, opts: ConfigGetOptions = {}): GitVerb
  * A predicate, so both of git's "no" codes are absence: 1 for a well-formed
  * name with no object behind it, 128 for a name it cannot even parse.
  *
- * That breadth is what makes it a predicate, and also what disqualifies it as
- * a repository-health probe. `false` here does not mean "no history": measured
+ * That is right for a predicate, and it is why this verb cannot check that a
+ * repository is readable. `false` here does not mean "no history": measured
  * against real stores, `cat-file -e HEAD` exits 128 on an empty repository, 1
  * on a dangling HEAD ref, and 128 again with the object directory removed — so
  * `objectExists("HEAD")` answers `false` for all three and folds a corrupt
@@ -746,9 +745,9 @@ export function lsRemote(
  * exits 128 and this throws, so a caller cannot mistake "could not ask" for
  * "nothing is ignored".
  *
- * A fail-closed caller — a guard deciding whether a path may be read or
- * published — must use `git.try.checkIgnore` with an explicit `!ok` branch
- * that refuses. It must neither let the `CommandFailed` escape nor read it as
+ * A fail-closed caller, such as a check deciding whether a path may be read
+ * or published, must use `git.try.checkIgnore` with an explicit `!ok` branch
+ * that refuses. It must neither let the thrown failure escape nor read it as
  * "not ignored":
  *
  * ```ts
@@ -818,11 +817,11 @@ export interface LsFilesOptions {
  * Tracked and/or untracked file paths (`git ls-files -z`).
  *
  * `absent: []` — no matching files is exit 0 with empty stdout, so `[]` means
- * "none". Outside a repository git exits 128 and this throws: a guard that
+ * "none". Outside a repository git exits 128 and this throws: a check that
  * cannot read the index has not "found zero files to check".
  *
- * Note the asymmetry with {@link topLevel}, which guards commonly call on the
- * adjacent line: `topLevel()` returns null outside a repository and this verb
+ * Note the difference from {@link topLevel}, which such checks often call on
+ * the line before: `topLevel()` returns null outside a repository and this verb
  * throws there. Both are correct — "not a repository" answers "where is the
  * root?" but not "which files are here?" — but a reader who assumes the two
  * behave alike writes `if (!git.topLevel()) return; git.lsFiles()` and is not
@@ -1339,9 +1338,9 @@ export interface GrepOptions {
  * real failure is 128 (not a repository, an unbalanced regex) or 129 (a usage
  * error), and those throw.
  *
- * The one dull edge: a pathspec that matches no file also exits 1, so a typo'd
- * path reads as "no matches" rather than as an error. git gives us nothing to
- * separate the two.
+ * One limit: a pathspec that matches no file also exits 1, so a mistyped path
+ * reads as "no matches" rather than as an error. git gives no way to tell the
+ * two apart.
  *
  * Lines, not `-z`: the output is `path:line:text`, not a path listing, and `-z`
  * only changes the separator after the path — a caller still has to split the
@@ -1498,8 +1497,8 @@ export function remoteHead(remote: string): GitVerb<string | null> {
 
 // ── mutations ───────────────────────────────────────────────────────────────
 //
-// absent: [], so any non-zero exit throws CommandFailed. `configRemoveSection`
-// is the one exception: it declares 128.
+// absent: [], so any non-zero exit throws the classified failure.
+// `configRemoveSection` is the one exception: it declares 128.
 
 /** Options for {@link fetch}. */
 export interface FetchOptions {
@@ -1624,9 +1623,9 @@ export type CommitOptions = CommitFlags &
  * Commit with an inline message, a message file, or a stdin message (exactly
  * one source).
  *
- * `absent: []`. A failing commit hook is a failure, not an answer — and its
- * output goes to **stdout**, so a caller that must report it reads
- * `e.result.stdout`, not stderr.
+ * `absent: []`. A failing commit hook is a failure, not an answer. Its output
+ * goes to stdout, so a caller that must report it reads `e.failure.detail`,
+ * which holds both streams, not stderr alone.
  */
 export function commit(opts: CommitOptions): GitVerb<void> {
   const argv = ['commit']
@@ -1781,7 +1780,7 @@ export interface ForceLease {
  *
  * An empty `ref` or `expect` is refused: the empty-oid spelling means "ref
  * must be absent", and reaching it from a missing sha by accident would turn
- * an intended pin into the wrong guard. Absence is only ever `expect: null`.
+ * an intended pin into the wrong check. Absence is only ever `expect: null`.
  */
 export function forceWithLeaseArg(lease: ForceLease): string {
   if (lease.ref === '') throw new Error('force-with-lease: ref is empty')
@@ -1797,8 +1796,8 @@ export function forceWithLeaseArg(lease: ForceLease): string {
  * `forceWithLease` takes a {@link ForceLease} for the pinned form, or `true`
  * for the bare `--force-with-lease`. `true` is the unsafe form. It trusts
  * whatever the local remote-tracking ref says, and a background fetch can
- * bring that up to date. The lease then vetoes nothing, and a concurrent push
- * is erased. Pin the lease whenever the expected remote sha is known.
+ * bring that up to date. The lease then blocks nothing, and a concurrent push
+ * is overwritten. Pin the lease whenever the expected remote sha is known.
  */
 export function push(
   remote: string,
@@ -1943,8 +1942,8 @@ export function remoteAdd(name: string, url: string): GitVerb<void> {
 // a conflict is the outcome a caller asked about, not a failure to report. So
 // exit 1 is declared absent and the parse turns it into a `conflict` outcome.
 //
-// Which is only safe because the parse looks past the exit code. Measured
-// against git 2.50.1, and the assumptions did not survive:
+// That is only safe because the parse looks past the exit code. Measured
+// against git 2.50.1:
 //
 //   git merge, conflict                     1   (stdout carries the report)
 //   git merge, unknown ref                  1   (stdout empty)
@@ -1958,9 +1957,9 @@ export function remoteAdd(name: string, url: string): GitVerb<void> {
 //   git rebase/merge --abort, none running  128
 //
 // An unknown ref exits 1 exactly like a conflict, so the exit code alone
-// cannot tell them apart. The discriminator is that a conflict always writes
-// its report to stdout and a refusal writes nothing there — a structural
-// signal rather than a string match.
+// cannot tell them apart. What does is that a conflict always writes its
+// report to stdout and a refusal writes nothing there. That depends on where
+// the output goes, not on matching git's words.
 //
 // `fastForward`, `alreadyUpToDate` and the conflict list do read git's text.
 // That text is translatable, so `merge`, `rebase` and `rebaseContinue` run
@@ -2030,8 +2029,8 @@ export interface MergeOptions {
 /**
  * Merge `ref` into the current branch (`git merge --no-edit`).
  *
- * `--no-edit` is unconditional: an editor prompt in a non-interactive caller
- * is a hang, not a prompt.
+ * `--no-edit` is always passed: an editor prompt in a non-interactive caller
+ * hangs.
  *
  * `absent: [1]` — a conflict is this verb's "asked and answered". See the
  * section note above for the measured codes and why the parse looks at
@@ -2110,9 +2109,8 @@ export function rebaseAbort(): GitVerb<void> {
 /**
  * `git rebase --continue`, with the editor stubbed out.
  *
- * `-c core.editor=true` rather than an environment variable: the verb table
- * describes an invocation, and git's own config override keeps that
- * description complete.
+ * `-c core.editor=true` rather than an environment variable, so the argv alone
+ * describes the whole command.
  *
  * `absent: [1]` — the replay can conflict again on the next commit, which is
  * an answer, not a failure.
@@ -2153,7 +2151,7 @@ export interface MergeTreeOptions {
  * `git merge-tree --write-tree`: what merging `theirs` into `ours` would do,
  * against the object database alone — no index, no checkout, no worktree.
  *
- * The cheap half of {@link merge}. Predicting every open PR's merge across a
+ * The cheaper counterpart of {@link merge}. Predicting every open PR's merge across a
  * 10,000-file monorepo costs seconds here; checking each one out to learn the
  * same thing costs minutes, and most of them turn out to merge cleanly.
  *
@@ -2165,15 +2163,15 @@ export interface MergeTreeOptions {
  * paths in a machine-readable section rather than in translatable prose — so
  * there is no need to follow up with {@link lsFilesUnmerged}.
  *
- * `absent: [1]`, with this section's usual discriminator. Measured against
- * git 2.50.1:
+ * `absent: [1]`, with the same stdout check as the other integration verbs.
+ * Measured against git 2.50.1:
  *
  *     clean                  0    `<tree>`
  *     conflict               1    `<tree>` then the conflicted paths
  *     unmergeable name       1    stdout empty
  *     unrelated histories    128
  *
- * A name git cannot merge exits 1 exactly like a conflict, so once again only
+ * A name git cannot merge exits 1 exactly like a conflict, so again only
  * stdout separates an answer from a refusal.
  */
 export function mergeTree(
@@ -2264,10 +2262,10 @@ export type ConflictSide = 'ours' | 'theirs'
  * `absent: []` — a checkout that did not happen is not an answer. Both
  * clients return without running git when `paths` is empty.
  *
- * Note the sharp edge git leaves here: on a path that is not conflicted this
- * exits 0 and does nothing. There is no error to catch, so a caller working
- * from a stale conflict list silently resolves nothing. Take the path list
- * from {@link lsFilesUnmerged} in the same breath, not from an earlier one.
+ * Note one trap in git here: on a path that is not conflicted this exits 0 and
+ * does nothing. There is no error to catch, so a caller working from an old
+ * conflict list silently resolves nothing. Take the path list from
+ * {@link lsFilesUnmerged} just before this call, not from an earlier one.
  */
 export function checkoutSide(side: ConflictSide, paths: string[]): GitVerb<void> {
   return {

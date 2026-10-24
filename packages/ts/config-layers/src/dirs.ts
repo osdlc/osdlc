@@ -1,10 +1,10 @@
 /**
  * Whose machine-local directories a tool's state lives under.
  *
- * A tool's machine config file and its link state sit in the config home
- * of its standalone tier (`<config>/<tool>/`). The vendor and the override
- * variables (`<PREFIX>_ROOT`, `<PREFIX>_<HOME>_DIR`) belong to whoever ships
- * the tool, so the tool supplies them rather than this package fixing them.
+ * A tool's machine config file and its link state sit in its standalone
+ * config home (`<config>/<tool>/`). The vendor and the override variables
+ * (`<PREFIX>_ROOT`, `<PREFIX>_<HOME>_DIR`) belong to whoever ships the tool,
+ * so the tool supplies them. This package does not fix them.
  */
 import {
   type EnvVars,

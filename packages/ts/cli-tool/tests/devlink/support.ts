@@ -29,7 +29,7 @@ export interface Sandbox {
 }
 
 export function sandbox(): Sandbox {
-  // realpath: macOS hands out `/var/...` for a temp dir that is really
+  // realpath: macOS returns `/var/...` for a temp dir that is really
   // `/private/var/...`, and the bash launcher reports `pwd -P` paths.
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'devlink-')))
   const home = join(root, 'home')

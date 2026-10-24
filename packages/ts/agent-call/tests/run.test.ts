@@ -9,9 +9,9 @@ import { customAdapter } from '../src/adapters/custom.js'
 import { claudeAdapter } from '../src/adapters/claude.js'
 import { callAgent, planCall } from '../src/run.js'
 
-// Real-process runner tests via harmless system binaries — no agents, no
-// network. The custom adapter is both the escape hatch under test and the
-// vehicle for exercising the runner end to end.
+// Runner tests on real processes, using harmless system binaries. No agents
+// and no network. The custom adapter is under test here, and it also runs the
+// runner end to end.
 
 const echoAdapter = customAdapter({
   name: 'echo',
@@ -113,7 +113,7 @@ describe('callAgent', () => {
   })
 
   test('temp files are materialized, substituted, and read back', async () => {
-    // The claude adapter doesn't use temp files; build a bespoke planned call
+    // The claude adapter does not use temp files, so build a planned call
     // through a custom adapter that echoes a temp file path.
     const tmpAdapter = {
       ...catAdapter,
@@ -146,8 +146,8 @@ describe('callAgent', () => {
 
   test('multi-byte characters spanning a read boundary survive', async () => {
     // The child writes the first two bytes of an emoji, pauses, then the rest,
-    // so the UTF-8 sequence is guaranteed to straddle two reads — decoding each
-    // chunk independently replaces it with U+FFFD.
+    // so the UTF-8 sequence is split across two reads. Decoding each chunk on
+    // its own would replace it with U+FFFD.
     const split = customAdapter({
       name: 'split',
       binary: '/bin/sh',
@@ -159,7 +159,7 @@ describe('callAgent', () => {
 
   test('captureConversation lifts a transcript', async () => {
     const result = await callAgent(echoAdapter, { prompt: 'hi' }, { captureConversation: true })
-    // The custom adapter has no toConversation; result stays undefined.
+    // The custom adapter has no toConversation, so the result has none.
     expect(result.conversation).toBeUndefined()
   })
 })
@@ -177,9 +177,9 @@ describe('planCall', () => {
 
 describe('child stdin', () => {
   test('a child that exits without draining stdin does not crash the host', async () => {
-    // Stands in for an agent CLI that rejects its flags, is unauthenticated,
-    // or prints usage and exits: it never reads stdin, so a prompt larger
-    // than the pipe buffer makes the write fail (EPIPE, or ENOTCONN under some timings).
+    // Stands in for an agent CLI that rejects its flags, is not signed in, or
+    // prints usage and exits. It never reads stdin, so a prompt larger than
+    // the pipe buffer makes the write fail (EPIPE, or ENOTCONN under some timings).
     const deaf = customAdapter({
       name: 'deaf',
       binary: '/bin/sh',
@@ -194,7 +194,7 @@ describe('child stdin', () => {
 
   test('a prompt the child never finished reading is recorded, not dropped', async () => {
     // Exits 0 after five bytes, so nothing else in the result marks the run as
-    // wrong: without `stdinError` the truncated prompt leaves no trace at all.
+    // wrong. Without `stdinError` the truncated prompt leaves no trace.
     const partial = customAdapter({
       name: 'partial',
       binary: '/bin/sh',

@@ -1,4 +1,4 @@
-// Runs the BUILT package under Node. The unit tests resolve the package name to
+// Runs the built package under Node. The unit tests resolve the package name to
 // the TypeScript source, so a broken emit could pass them and fail on the
 // consumer's machine.
 //
@@ -37,7 +37,7 @@ const warnings = []
 assert.equal(lexical.validateRelative('a/NUL', { onWarning: (w) => warnings.push(w) }), 'a/NUL')
 assert.deepEqual(warnings, [{ kind: 'reserved_name', segment: 'NUL' }])
 
-// A resolver in which nothing exists: the guard is pure over it.
+// A resolver in which nothing exists, so the guard reads no disk.
 const missing = () => {
   throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' })
 }

@@ -1,14 +1,14 @@
 /**
- * Ranked search over catalog entries — the one matcher both views use.
+ * Ranked search over catalog entries. Both views use this one matcher.
  *
- * Every surface over this catalog has to agree on what a query means, or the
- * same keystrokes rank differently depending on which one you reached for.
- * The terminal UI imports it directly; the web view loads it transpiled for
- * the browser, which is why it has its own `./match` export subpath and why it
- * must stay free of DOM and of node builtins. Importing anything from
- * `node:fs` here breaks the browser build.
+ * Every view of this catalog must agree on what a query means. Otherwise the
+ * same query ranks differently depending on which view you use. The terminal
+ * UI imports it directly. The web view loads it transpiled for the browser.
+ * That is why it has its own `./match` export subpath, and why it must not use
+ * the DOM or Node built-ins. Importing anything from `node:fs` here breaks the
+ * browser build.
  *
- * Query language, such as it is:
+ * Query language:
  *   - terms are whitespace-separated and ANDed; every term must match a field
  *   - a leading `'` forces that term to match as a substring, fzf-style
  *   - `mode: "exact"` forces every term to, without the prefix
@@ -52,9 +52,9 @@ export type Mode = 'fuzzy' | 'exact'
  */
 export function fuzzy(text: string, rawTerm: string): Hit | null {
   const hay = text.toLowerCase()
-  // Both sides are lowered here rather than trusting the caller: `terms()`
-  // already lowers, but these are exported and a capitalised term would
-  // otherwise fail to match anything, silently.
+  // Both sides are lowercased here rather than relying on the caller.
+  // `terms()` already lowercases, but these functions are exported, and a
+  // capitalised term would otherwise silently match nothing.
   const term = rawTerm.toLowerCase()
   let ti = 0
   let score = 0
@@ -72,9 +72,9 @@ export function fuzzy(text: string, rawTerm: string): Hit | null {
     ti++
   }
   if (ti !== term.length) return null
-  // A subsequence smeared across a long string is a coincidence, not a hit:
-  // "photo" is a subsequence of the absolute path inside sdf:dev's command
-  // line. Require the matched span to stay near the term's own length.
+  // A subsequence spread across a long string is a coincidence, not a match.
+  // "photo" is a subsequence of the absolute path in sdf:dev's command line.
+  // Require the matched span to stay close to the term's own length.
   const span = idx[idx.length - 1]! - idx[0]! + 1
   if (span > term.length * 4 + 8) return null
   return { score, idx }

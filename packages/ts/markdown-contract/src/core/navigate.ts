@@ -1,18 +1,16 @@
 /**
- * Section navigation: helpers over the projected section tree (`DocTree.root` and its nested
- * `SectionNode`s). They find a section by name, slice sections by depth, map a source line to its
- * enclosing section, compute a section's body extent, and collect blocks of one kind.
+ * Helpers over the section tree (`DocTree.root` and its nested `SectionNode`s). They find a
+ * section by name, list sections at a depth, map a source line to its section, compute a
+ * section's body lines, and collect blocks of one kind.
  *
- * Pure functions over the `SectionNode` and `BlockNode` shapes. Nothing here parses, mutates or
- * reshapes the tree.
+ * Nothing here parses or changes the tree.
  */
 import type { BlockNode, SectionNode } from './types.js'
 
 /**
- * The first top-level section in `root.sections` whose `name` matches `name` (a single
- * name, or any alias when an array). `opts.depth` restricts the match to that heading
- * depth; `opts.ci` matches case-insensitively (names are otherwise exact and
- * case-sensitive, as `SectionNode.name` is trimmed heading text).
+ * The first section in `root.sections` whose `name` matches `name` (one name, or any of them
+ * when an array). `opts.depth` limits the match to that heading depth. `opts.ci` ignores case.
+ * Otherwise names match exactly, case included. `SectionNode.name` is the trimmed heading text.
  *
  * For example, `findSection(root, "Operations", { depth: 2 })`.
  */
@@ -37,10 +35,10 @@ export function sectionsAt(root: SectionNode, depth: number): SectionNode[] {
 }
 
 /**
- * The section enclosing a source `line`: the last top-level section (at `opts.depth`, or any
- * depth by default) whose heading `pos.line <= line`. `root.sections` is in document order, so
- * that is the section whose body extends up to (but not into) the next same-depth sibling. It
- * maps a finding's line back to its section.
+ * The section that contains a source `line`: the last section in `root.sections` (at
+ * `opts.depth`, or any depth by default) whose heading `pos.line <= line`. `root.sections` is in
+ * document order, so this is the section whose body runs up to the next sibling. Use it to map a
+ * finding's line back to its section.
  */
 export function sectionForLine(
   root: SectionNode,
@@ -57,19 +55,19 @@ export function sectionForLine(
   return enclosing
 }
 
-/** A section paired with its 1-indexed body line extent (both bounds inclusive). */
+/** A section and its body lines, 1-based, both bounds included. */
 export interface SectionSpan {
   section: SectionNode
-  /** first body line — the line after the heading (`pos.line + 1`) */
+  /** The first body line: the line after the heading (`pos.line + 1`). */
   start: number
-  /** last body line — the line before the next same-depth sibling, or `lineCount` at EOF */
+  /** The last body line: the line before the next sibling at the same depth, or `lineCount`. */
   end: number
 }
 
 /**
- * Each section's body extent, for every top-level section at `opts.depth` (default `2`). A
- * section's body runs from the line after its heading (`start = pos.line + 1`) to the line before
- * the next same-depth sibling (`end = next.pos.line - 1`), or to `lineCount` for the last section.
+ * The body lines of every section in `root.sections` at `opts.depth` (default `2`). A body runs
+ * from the line after its heading (`start = pos.line + 1`) to the line before the next sibling
+ * at the same depth (`end = next.pos.line - 1`), or to `lineCount` for the last section.
  */
 export function sectionSpans(
   root: SectionNode,
@@ -89,9 +87,8 @@ export function sectionSpans(
 }
 
 /**
- * The section's blocks of a given `kind`, narrowed to the matching `BlockNode` arm. With
- * `opts.recursive`, descends the section's subsection tree (`section.sections`) too, this
- * section's own blocks first.
+ * The section's blocks of one `kind`, typed as that `BlockNode` variant. With `opts.recursive`,
+ * it also collects from the subsections (`section.sections`), after this section's own blocks.
  */
 export function blocksOfKind<K extends BlockNode['kind']>(
   section: SectionNode,

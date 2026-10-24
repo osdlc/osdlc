@@ -1,9 +1,8 @@
 /**
- * Unit tests for the content plane — the leaf data-shape checks and the
- * frontmatter Zod pass, exercising the cases the fixture corpus does not pin directly:
- * the `extraColumns: "ignore"` no-op, the `everyItem: ZodType` form, the deferral to
- * the structure plane (wrong-kind / absent block), the row-line remap on a cell finding,
- * and the frontmatter `lineForPath` remap for enum / unknown-key / required / type.
+ * Unit tests for the content plane: the leaf checks and the frontmatter Zod check. They cover
+ * cases the fixtures do not: `extraColumns: "ignore"` doing nothing, the `everyItem: ZodType`
+ * form, leaving a wrong-kind or absent block to the structure plane, the row line on a cell
+ * finding, and the `lineForPath` line on enum, unknown-key, required and type findings.
  */
 import { describe, expect, test } from 'vitest'
 import { z } from 'zod'
@@ -12,7 +11,7 @@ import { code, contract, list, maxWords, parse, section, sections, table } from 
 
 const CTX = { path: 'fixture.md' }
 
-/** Validate `source` against `c`, returning the findings (deterministically sorted). */
+/** Validates `source` against `c` and returns the findings, in sorted order. */
 function find(c: ReturnType<typeof contract>, source: string): Finding[] {
   return c.validate(source, CTX).findings
 }
@@ -101,7 +100,7 @@ describe('table leaf', () => {
 
   test('a wrong-kind block defers to the structure plane (no content finding)', () => {
     const c = filesTable()
-    // A list where a table is declared: structure emits block-kind; content stays silent.
+    // A list where a table is declared: structure reports block-kind, and content reports nothing.
     const src = ['## Files', '', '- not a table'].join('\n')
     const ids = find(c, src).map((f) => f.id)
     expect(ids).toContain('structure/block-kind')

@@ -1,41 +1,39 @@
 /**
  * go-task (Taskfile.yml) — https://taskfile.dev
  *
- * `kind: "parse"` with two paths, the same shape as `just.ts`:
+ * `kind: "parse"` with two paths, as in `just.ts`:
  *
- *   listing  `task --list-all --json --taskfile <file>` — go-task's own
- *            enumeration. A real YAML parser plus go-task's own `includes:`
- *            resolution, so every limitation the reader declares below is
- *            lifted. Needs `allowExec` and the `task` binary.
+ *   listing  `task --list-all --json --taskfile <file>`: go-task lists its own
+ *            tasks. It uses a real YAML parser and resolves `includes:`
+ *            itself, so none of the reader's limits below apply. Needs
+ *            `allowExec` and the `task` binary.
  *   reader   the hand-written `tasks:` reader in this file. Narrower, but it
- *            works on a machine with no `task` installed — which is what
- *            `allowExec: false` callers get, and what a fresh checkout looks
- *            like.
+ *            works on a machine with no `task` installed. That is what
+ *            `allowExec: false` callers get, and what a new checkout has.
  *
- * The reader is the floor and never regresses. The listing is an upgrade
- * taken per discovered file; any failure of it — non-zero exit, unparseable
- * JSON, a listing naming no tasks at all — falls back to the reader FOR THAT
- * FILE with a diagnostic saying why. A listing whose tasks all belong to
- * other discovered Taskfiles is a SUCCESS, not a failure: that is what an
- * aggregator root carrying only `version:` and `includes:` looks like, and
- * its tasks are reported by the files that declare them. Diagnostics name
- * which path ran, so a caller never silently gets thinner data than it
- * thought.
+ * The reader is always available. The listing is tried per Taskfile. Any
+ * failure (non-zero exit, unparseable JSON, a listing with no tasks at all)
+ * falls back to the reader for that file, with a diagnostic saying why. A
+ * listing whose tasks all belong to other discovered Taskfiles is a success,
+ * not a failure. That is what a root holding only `version:` and `includes:`
+ * looks like, and its tasks are reported by the files that declare them. The
+ * diagnostics say which path ran, so a caller never gets less data than it
+ * expects without being told.
  *
- * A task's declaration (`desc`, `summary`, `internal`) is data sitting in the
- * `tasks:` mapping, which is why the reader can exist at all.
+ * A task's declaration (`desc`, `summary`, `internal`) is plain data in the
+ * `tasks:` mapping. That is why a reader is possible.
  *
- * The reader is hand-written for exactly the `tasks:` mapping level, so it
- * keeps going past YAML a full parser would reject (see `yaml-lite.ts`).
+ * The reader handles only the `tasks:` mapping level, so it keeps going past
+ * YAML a full parser would reject (see `yaml-lite.ts`).
  *
- * The lexing layer comes from `yaml-lite.ts`, shared with `docker-compose.ts`
- * and `github-actions.ts`: BOM strip, line split, comment strip, anchor/merge
- * flagging, block-scalar masking, and truncation at the first document
- * separator. What stays in this file is the structural reader — the two-pass
- * walk over `tasks:` — and the diagnostics, whose wording names what a
- * go-task user loses.
+ * The lexing comes from `yaml-lite.ts`, shared with `docker-compose.ts` and
+ * `github-actions.ts`: BOM strip, line split, comment strip, anchor/merge
+ * detection, block-scalar masking, and truncation at the first document
+ * separator. This file keeps the structural reader (the two-pass walk over
+ * `tasks:`) and the diagnostics, whose wording says what a go-task user
+ * loses.
  *
- * THE READER'S CEILING. It reads:
+ * What the reader handles:
  *   - the top-level `tasks:` key (block-style only) and the task names
  *     nested one level under it
  *   - each task's `desc`, `summary`, `internal` scalar fields, one level
@@ -44,8 +42,8 @@
  *   - `#` comments (outside quoted strings) and single/double-quoted keys
  *     and values
  *
- * It does NOT attempt, and emits a `warning` Diagnostic (source: the file)
- * when it detects one of these instead of silently under-reporting:
+ * It does not handle the following. When it finds one, it emits a `warning`
+ * Diagnostic (source: the file) instead of silently reporting too little:
  *   - YAML anchors/aliases (`&`/`*`)
  *   - merge keys (`<<`)
  *   - multiple YAML documents — a `---` separator or a `...` end marker at
@@ -55,22 +53,20 @@
  *   - `includes:` pulling in other Taskfiles — included tasks are never
  *     enumerated, only the file's own `tasks:`
  *
- * All five are SUPPRESSED on the listing path: go-task parses the YAML
- * itself and resolves its own includes, so each names a limitation that no
- * longer applies.
+ * All five warnings are dropped on the listing path. go-task parses the YAML
+ * and resolves its includes itself, so none of these limits apply.
  *
- * TWO CASES THE LEXER SETTLES BEFORE THE READER RUNS. First, a leading UTF-8
- * BOM is stripped. JS `\s` matches U+FEFF, so the byte binds to the first
- * key: a BOM'd `tasks:` never matches `tasks`, and the file reads as empty
- * with nothing to report. `version:` is optional in Task v3, so `tasks:` is
- * genuinely the first line of real Taskfiles. Second, a block scalar's body
- * is blanked, so it is literal text and cannot be read as structure — a
- * `cmds:` entry holding a shell heredoc with a `---` line in it is shell,
- * not a document separator, and neither an `&` nor a `<<:` in there is YAML
- * either.
+ * The lexer handles two cases before the reader runs. First, it strips a
+ * leading UTF-8 BOM. JS `\s` matches U+FEFF, so the BOM sticks to the first
+ * key: `tasks:` after a BOM never matches `tasks`, and the file reads as
+ * empty with no warning. `version:` is optional in Task v3, so `tasks:` really
+ * is the first line of some Taskfiles. Second, a block scalar's body is
+ * blanked, so it is text and not read as structure. A `cmds:` entry holding a
+ * shell heredoc with a `---` line is shell, not a document separator, and an
+ * `&` or `<<:` in there is not YAML either.
  *
- * A block-scalar description (`desc: |`) is read as absent rather than as
- * the literal `|`: the value is recognizable but not decoded.
+ * A block-scalar description (`desc: |`) is read as absent, not as the
+ * literal `|`. The form is recognized but not decoded.
  */
 
 import { firstLine, stderrOrError } from '@osdlc/command-seam'
@@ -88,12 +84,11 @@ const CHAIN = [
 ]
 
 /**
- * Config filenames go-task actually looks for, in its own priority order —
- * https://taskfile.dev/usage/ ("Task looks for files with the following
+ * The config filenames go-task looks for, in its priority order
+ * (https://taskfile.dev/usage/: "Task looks for files with the following
  * names, in order of priority: `Taskfile.yml`, `taskfile.yml`,
  * `Taskfile.yaml`, `taskfile.yaml`, `Taskfile.dist.yml`, `taskfile.dist.yml`,
- * `Taskfile.dist.yaml`, `taskfile.dist.yaml`"). All eight are real; this
- * runner does not guess at a subset.
+ * `Taskfile.dist.yaml`, `taskfile.dist.yaml`").
  */
 export const CONFIG_NAMES = [
   'Taskfile.yml',
@@ -107,13 +102,12 @@ export const CONFIG_NAMES = [
 ]
 
 /**
- * A checklist — an original substitute glyph, not simple-icons' `task` entry
- * (source: `go-task/task`'s own `docs/static/img/logo_mono.svg`), per the
- * house rule of not copying artwork from any icon set. Color `#29beb0` is
- * independently attested: it is the fill used in go-task's own logo, fetched
- * directly from `https://taskfile.dev/img/logo.svg`, and separately matches
- * simple-icons' recorded hex for the same mark, without a per-icon license
- * override.
+ * A plain checklist glyph drawn here, since this package does not copy
+ * artwork from any icon set. It is not simple-icons' `task` entry (which
+ * comes from `go-task/task`'s `docs/static/img/logo_mono.svg`). The color
+ * `#29beb0` is the fill in go-task's own logo
+ * (`https://taskfile.dev/img/logo.svg`). It also matches simple-icons' hex for
+ * the mark, which has no per-icon license override.
  */
 const BRAND: RunnerBrand = {
   icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="2"/><path d="M7 8.5h5M7 12h7M7 15.5h4"/><path d="m15 14.5 1.6 1.6L20 12.5"/></svg>',
@@ -239,9 +233,9 @@ export function readTaskfile(text: string): ReadResult {
  *                                  "taskfile": "/path/to/Taskfile.yml" } } ],
  *       "location": "/path/to/Taskfile.yml" }
  *
- * Everything is optional here because this is untrusted output from a
- * binary whose version we do not control: an older or newer `task` that
- * drops a field must degrade, not throw.
+ * Every field is optional because this is untrusted output from a binary
+ * whose version we do not control. An older or newer `task` that drops a
+ * field must not cause a throw.
  */
 interface ListedTask {
   name?: unknown
@@ -253,9 +247,9 @@ interface ListedTask {
 
 /**
  * A hard cap on the listing. `task --list-all` parses a Taskfile and its
- * includes and does not run any task's commands, so it is fast; a Taskfile
- * whose includes reach a remote entrypoint (taskfile.dev "Remote Taskfiles")
- * can still hang on the network, and a `parse`-kind runner must not.
+ * includes without running any task's commands, so it is fast. But a
+ * Taskfile whose includes reach a remote file (taskfile.dev "Remote
+ * Taskfiles") can hang on the network, and a `parse` runner must not hang.
  */
 const LIST_TIMEOUT_MS = 10_000
 
@@ -264,15 +258,14 @@ const LIST_TIMEOUT_MS = 10_000
  * `--json` ("Output task information in JSON format (use with `--list` or
  * `--list-all`)") — both quoted from https://taskfile.dev/reference/cli/.
  *
- * `--taskfile`, not `--dir`: the docs describe them as alternatives —
- * "Users can override the default search by specifying a path with the
- * --taskfile flag or changing the search directory with the --dir flag"
+ * `--taskfile`, not `--dir`. The docs give them as alternatives: "Users can
+ * override the default search by specifying a path with the --taskfile flag
+ * or changing the search directory with the --dir flag"
  * (https://taskfile.dev/docs/guide, "Running Taskfiles"). `--dir` names a
- * directory and go-task then picks by its own filename priority, which is
- * the wrong file whenever a directory holds two of the eight CONFIG_NAMES.
- * `--taskfile` pins exactly the file discovery found, so the listing path
- * enumerates the same files the reader path does — one invocation per
- * discovered file, no more and no fewer.
+ * directory, and go-task then picks a file by its own priority. That is the
+ * wrong file when a directory holds more than one of the CONFIG_NAMES.
+ * `--taskfile` names the exact file discovery found, so the listing path
+ * covers the same files as the reader path: one invocation per file.
  */
 function listArgv(file: string): string[] {
   return ['--list-all', '--json', '--taskfile', file]
@@ -282,9 +275,9 @@ async function listTasks(
   ctx: ProviderContext,
   file: string,
 ): Promise<{ entries: ListedTask[]; error?: string }> {
-  // `.run()` never rejects (see spawnRunnerAsync): a missing binary, a
-  // timeout kill and an abort all arrive as a non-zero exitCode. So the
-  // only failure handling needed is the exit code and the JSON parse.
+  // `.run()` never rejects (see spawnRunnerAsync). A missing binary, a
+  // timeout and an abort all come back as a non-zero exitCode. So only the
+  // exit code and the JSON parse need checking.
   const res = await ctx.runner('task').run(listArgv(file), {
     cwd: ctx.root,
     timeoutMs: LIST_TIMEOUT_MS,
@@ -309,24 +302,24 @@ async function listTasks(
 }
 
 /**
- * Which discovered Taskfile an entry was DECLARED in, or `undefined` when it
+ * Which discovered Taskfile an entry was declared in, or `undefined` when it
  * belongs to none of them.
  *
  * go-task resolves `includes:` itself, so the root Taskfile's listing also
- * carries every included file's tasks — and discovery finds those included
- * files too, so a naive invocation per discovered file would report the same
- * task twice (once as `docs:build` from the root, once as `build` from
- * `docs/Taskfile.yml`). Each entry's `location.taskfile` says where it really
- * came from, so an entry is emitted only by the invocation for its own file
- * and every task appears exactly once, under the same name, id, source and
- * argv the reader path would have given it.
+ * holds every included file's tasks. Discovery finds those included files
+ * too, so a simple invocation per file would report the same task twice
+ * (once as `docs:build` from the root, once as `build` from
+ * `docs/Taskfile.yml`). Each entry's `location.taskfile` says where it came
+ * from. So an entry is emitted only by the invocation for its own file, and
+ * every task appears once, with the same name, id, source and argv the
+ * reader path would give it.
  *
- * The comparison is by longest matching path suffix rather than by string
- * equality with `resolve(root, f)`: go-task reports a real path, and a root
- * reached through a symlink (macOS's `/var` -> `/private/var`, a worktree
- * behind a symlinked checkout) would fail equality for every entry at once.
- * The longest match wins so that `/abs/root/docs/Taskfile.yml` is attributed
- * to `docs/Taskfile.yml` and not to the root's `Taskfile.yml`.
+ * The match is by longest path suffix, not by string equality with
+ * `resolve(root, f)`. go-task reports a real path, and a root reached through
+ * a symlink (macOS's `/var` -> `/private/var`, a worktree behind a symlinked
+ * checkout) would fail equality for every entry. The longest match wins, so
+ * `/abs/root/docs/Taskfile.yml` goes to `docs/Taskfile.yml`, not to the
+ * root's `Taskfile.yml`.
  */
 function ownerOf(location: string, files: string[]): string | undefined {
   const norm = location.replace(/\\/g, '/')
@@ -360,15 +353,15 @@ function ownEntries(
     if (typeof location === 'string' && location !== '') {
       const owner = ownerOf(location, files)
       // Owned by another discovered Taskfile: that file's own invocation
-      // emits it, under its own plain name. Owned by no discovered file: an
-      // include discovery never saw, so this listing is the only place it
-      // exists and this file is the right place to attribute it to.
+      // emits it, under its plain name. Owned by no discovered file: an
+      // include discovery never saw. This listing is the only place it
+      // appears, so it is attributed to this file.
       if (owner !== undefined && owner !== file) continue
     } else if (name.includes(':')) {
-      // No location to go on. `:` is go-task's namespace separator for
-      // included Taskfiles, and the reader cannot produce such a name, so a
-      // namespaced name here is an include — dropped rather than risk
-      // double-reporting a task the included file's own invocation emits.
+      // No location. `:` is go-task's namespace separator for included
+      // Taskfiles, and the reader cannot produce such a name. So a namespaced
+      // name here comes from an include. It is dropped, so a task the
+      // included file's own invocation emits is not reported twice.
       continue
     }
 
@@ -383,21 +376,20 @@ function ownEntries(
 }
 
 /**
- * The discovered files go-task's own directory search would actually reach.
+ * The discovered files go-task's directory search would reach.
  *
- * go-task reads exactly ONE Taskfile per directory, picked by CONFIG_NAMES
- * priority. So `--dir <dir>` — and the root's no-flag form, which is the same
- * search run in the catalog root — can only ever address that directory's
- * highest-priority file. Any other discovered file in the same directory has
- * to be addressed by name; see {@link makeTask}.
+ * go-task reads one Taskfile per directory, picked by CONFIG_NAMES priority.
+ * So `--dir <dir>`, and the root's no-flag form (the same search in the
+ * catalog root), can only reach that directory's highest-priority file. Any
+ * other file in the same directory must be named; see {@link makeTask}.
  */
 function priorityWinners(files: string[]): Set<string> {
   const best = new Map<string, { rank: number; file: string }>()
   for (const file of files) {
     const dir = dirOf(file)
     const rank = CONFIG_NAMES.indexOf(dir === '.' ? file : file.slice(dir.length + 1))
-    // Discovery only yields CONFIG_NAMES, so an unranked name cannot happen;
-    // treat one as lowest priority rather than as the winner.
+    // Discovery only yields CONFIG_NAMES, so an unranked name cannot happen.
+    // If one does, treat it as lowest priority, not as the winner.
     const ranked = rank === -1 ? CONFIG_NAMES.length : rank
     const held = best.get(dir)
     if (held === undefined || ranked < held.rank) best.set(dir, { rank: ranked, file })
@@ -412,21 +404,20 @@ function makeTask(
   reachableByDir: boolean,
 ): Task {
   const dir = dirOf(file)
-  // go-task's own directory flag, `-d`/`--dir`: "Set the directory where
-  // Task will run and look for Taskfiles" (taskfile.dev CLI reference). A
-  // root Taskfile emits no flag at all. This is the command a human RUNS,
-  // and stays identical on both paths — the listing path's own invocation
-  // uses `--taskfile` for its own reasons (see listArgv) and never leaks
-  // into argv here.
+  // go-task's directory flag, `-d`/`--dir`: "Set the directory where Task
+  // will run and look for Taskfiles" (taskfile.dev CLI reference). A root
+  // Taskfile gets no flag. This is the command a person runs, and it is the
+  // same on both paths. The listing call uses `--taskfile` for its own
+  // reasons (see listArgv), and that does not affect argv here.
   //
-  // EXCEPT for a file `--dir` cannot reach: a directory holding two of the
-  // eight CONFIG_NAMES has seven losers whose tasks a directory-addressed
-  // command would never resolve (see priorityWinners). Those get
-  // `--taskfile <file>`, the flag the docs give as `--dir`'s alternative —
-  // "Users can override the default search by specifying a path with the
-  // --taskfile flag or changing the search directory with the --dir flag"
-  // (https://taskfile.dev/docs/guide, "Running Taskfiles"). go-task runs from
-  // the pinned file's own directory, so `cwd` stays "." either way.
+  // The exception is a file `--dir` cannot reach. When a directory holds more
+  // than one of the CONFIG_NAMES, only the highest-priority one is reachable
+  // by directory (see priorityWinners). The others get `--taskfile <file>`,
+  // the flag the docs give as the alternative to `--dir` ("Users can override
+  // the default search by specifying a path with the --taskfile flag or
+  // changing the search directory with the --dir flag",
+  // https://taskfile.dev/docs/guide, "Running Taskfiles"). go-task runs from
+  // that file's own directory, so `cwd` stays "." either way.
   const argv = reachableByDir
     ? dir === '.'
       ? ['task', name]
@@ -450,8 +441,8 @@ function makeTask(
 }
 
 export const goTaskRunner: RunnerRole = {
-  // `parse`, not `exec`: the reader means this runner always has something
-  // to offer. It uses the binary when allowed, and says when it did not.
+  // `parse`, not `exec`: the reader means this runner always has tasks to
+  // offer. It runs `task` when allowed, and says when it did not.
   kind: 'parse',
   chain: CHAIN,
   brand: BRAND,
@@ -463,14 +454,13 @@ export const goTaskRunner: RunnerRole = {
 
     const diagnostics: Diagnostic[] = []
     const tasks: Task[] = []
-    // `ctx.which`, not a `--version` probe: a PATH lookup answers the same
-    // question with no subprocess, which is cheaper and correct under a
-    // `parse` runner's posture.
+    // `ctx.which`, not a `--version` call: a PATH lookup answers the same
+    // question without starting a process.
     const usable = ctx.allowExec && ctx.which('task') !== null
     const winners = priorityWinners(files)
-    // One line per run, not per file: a monorepo with fifty Taskfiles would
-    // otherwise get fifty identical infos. The per-file detail that DOES vary
-    // — a file the listing could not answer for — is still reported per file,
+    // One info line per run, not per file: a monorepo with fifty Taskfiles
+    // would otherwise get fifty identical lines. The detail that does vary
+    // per file (a file the listing failed for) is still reported per file,
     // with its source.
     let listingRan = false
 
@@ -484,7 +474,7 @@ export const goTaskRunner: RunnerRole = {
 
     for (const file of files) {
       // Read even on the listing path: `internal` is checked against the
-      // reader below, and an unreadable file must not cost the listing.
+      // reader below. An unreadable file must not block the listing.
       const text = await ctx.readText(file)
       const { tasks: parsed, warnings } =
         text === null
@@ -493,29 +483,29 @@ export const goTaskRunner: RunnerRole = {
 
       if (usable) {
         const listed = await listTasks(ctx, file)
-        // Answered, not "answered with tasks of its own": a listing whose
-        // entries all belong to OTHER discovered Taskfiles is the correct
-        // result for an aggregator root. Treating that as a failure would fall
-        // back to the reader and re-emit the `includes:` warning the listing
-        // had just made false.
+        // Success means the listing has entries, not that it has tasks of its
+        // own. A listing whose entries all belong to other discovered
+        // Taskfiles is correct for a root that only includes others. Treating
+        // it as a failure would fall back to the reader and emit the
+        // `includes:` warning, which the listing just made false.
         if (listed.error === undefined && listed.entries.length > 0) {
           listingRan = true
           for (const { name, doc } of ownEntries(listed.entries, file, files)) {
-            // go-task hides `internal: true` tasks from its own listings
-            // ("Mark tasks as internal to prevent them from appearing in CLI
-            // lists", taskfile.dev/docs/guide), so this normally removes
-            // nothing. It is belt and braces against a version that stops
-            // filtering: `internal` is the one field the reader can see that
-            // the listing does not report, so the two paths would otherwise
-            // disagree about which tasks exist.
+            // go-task hides `internal: true` tasks from its listings ("Mark
+            // tasks as internal to prevent them from appearing in CLI lists",
+            // taskfile.dev/docs/guide), so this normally removes nothing. It
+            // guards against a version that stops filtering. `internal` is the
+            // one field the reader sees that the listing does not report, so
+            // without this the two paths could disagree about which tasks
+            // exist.
             if (parsed.get(name)?.internal === true) continue
             tasks.push(makeTask(file, name, doc, winners.has(file)))
           }
           continue
         }
-        // A listing with no entries at all is a failure, not an answer: even
-        // an aggregator's listing carries its includes' tasks. Falling back
-        // costs one file read and can only add tasks.
+        // A listing with no entries at all is a failure. Even a root that only
+        // includes others lists its includes' tasks. Falling back costs one
+        // file read and can only add tasks.
         const why = listed.error ?? 'the listing named no tasks at all'
         diagnostics.push({
           severity: 'warning',

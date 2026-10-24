@@ -1,8 +1,7 @@
 /**
- * Tests for `ForgejoCodeHost` (`../src/forgejo.ts`) — the mapping from Forgejo's REST
- * JSON shapes onto `CodeHostPr`, and the `curl -w` response framing this whole
- * adapter's transport depends on. All calls go through a fake
- * `CommandRunner`; nothing here touches the network.
+ * Tests for `ForgejoCodeHost` (`../src/forgejo.ts`): the mapping from Forgejo's REST
+ * JSON to `CodeHostPr`, and the `curl -w` response format the adapter depends on.
+ * All calls go through a fake `CommandRunner`, so nothing touches the network.
  */
 
 import { unwrap } from '@osdlc/result'
@@ -51,10 +50,9 @@ const BASE_PR = {
 }
 
 /**
- * Routes `getPr`'s four/five GET calls by URL shape. `opts.reviewComments`
- * answers EVERY review's own inline-comments call with the same list — fine
- * for these tests, which never give a PR more than one review with inline
- * comments to distinguish.
+ * Answers `getPr`'s GET calls by URL shape. `opts.reviewComments` answers every
+ * review's inline-comments call with the same list. That is enough here, since
+ * no test gives a PR more than one review with inline comments.
  */
 function fakeGh(opts: {
   pr?: Record<string, unknown> | null
@@ -111,8 +109,8 @@ describe('ForgejoCodeHost request transport', () => {
     unwrap(codeHost(runner).getPr(42, { since: null }))
     expect(seen.length).toBeGreaterThan(0)
     for (const call of seen) {
-      // Not in argv: a value there sits in `ps`/`/proc/<pid>/cmdline` for
-      // the life of the process, visible to anything else on the box.
+      // Not in argv: a value there shows in `ps` and `/proc/<pid>/cmdline` for
+      // the life of the process, where any other process can read it.
       expect(call.argv.join(' ')).not.toContain('tok')
       expect(call.argv).toContain('-K')
       expect(call.input).toContain('Authorization: token tok')
@@ -192,9 +190,8 @@ describe('ForgejoCodeHost.getPr', () => {
   })
 
   test('a draft PR reports mergeable: unknown even when Forgejo says mergeable: false', () => {
-    // Forgejo's `mergeable` is a plain boolean that's `false` for any
-    // merge-ineligible PR, drafts included — that's never a real conflict,
-    // so classify.ts's CONFLICTS rule must not fire off a draft's `false`.
+    // Forgejo's `mergeable` is `false` for any PR that cannot be merged yet,
+    // drafts included. For a draft that is not a conflict.
     expect(
       unwrap(
         codeHost(fakeGh({ pr: { ...BASE_PR, draft: true, mergeable: false } }).runner).getPr(42, {
@@ -253,10 +250,9 @@ describe('ForgejoCodeHost.getPr', () => {
         },
       ],
     })
-    // `a`'s only standing review is the (later-dismissed) REQUEST_CHANGES
-    // one — excluded entirely, leaving `a`'s earlier APPROVED as the one
-    // that counts. `b`'s only review is stale — excluded, contributing
-    // nothing. Net: one standing APPROVED, no standing REQUEST_CHANGES.
+    // `a`'s later REQUEST_CHANGES was dismissed, so it is skipped and `a`'s
+    // earlier APPROVED counts. `b`'s only review is stale, so it is skipped.
+    // The result is one APPROVED and no REQUEST_CHANGES.
     expect(unwrap(codeHost(runner).getPr(42, { since: null }))!.reviewDecision).toBe('approved')
   })
 

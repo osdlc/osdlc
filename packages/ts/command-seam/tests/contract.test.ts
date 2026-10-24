@@ -1,13 +1,14 @@
 /**
- * README contract claims, proven on every runner they apply to. Each claim is
- * one `describe` block; the capture runners (sync, async, shell sync, shell
- * async) run the same case through `eachRunner`, so a runner that drifts from the
- * others fails by name. The stream and managed-process runners have their own
- * blocks because they return no output to read back (stdio is inherited): the
- * child asserts on itself and signals through its exit code.
+ * README contract claims, checked on every runner they apply to. Each claim is
+ * one `describe` block. The capture runners (sync, async, shell sync, shell
+ * async) run the same case through `eachRunner`, so a runner that differs from
+ * the others fails by name. The stream and managed-process runners have their
+ * own blocks because they return no output to read back (stdio is inherited).
+ * The child checks itself and reports through its exit code.
  *
- * The sync runner here runs the `NODE_ENV=test` temp-file capture. The
- * production pipe path is covered by `pipe-path.test.ts`.
+ * The suite runs on Node, so the sync runner takes its pipe path here.
+ * `pipe-path.test.ts` also checks that path in a child with `NODE_ENV`
+ * removed.
  *
  * POSIX-only (`sh`, `sleep`, `kill`). Everything that spawns sits in a
  * `posix` group so a platform skip can wrap it in one place.
@@ -47,13 +48,14 @@ import { alive, gone, reap } from './support/procs.ts'
 
 const CWD = process.cwd()
 
-/** Run `sh -c script` and return the capture result, whichever runner. */
+/** One capture runner under test. */
 interface RunnerCase {
   name: string
+  /** Run `sh -c script` and return the capture result. */
   exec(script: string, opts: AsyncCommandRunOptions): Promise<CommandResult>
-  /** Same as `exec`, but the binary is the one to run; shell runners wrap it as their `sh`. */
+  /** Like `exec`, but runs `binary`. The shell runners use it as their `sh`. */
   withBinary(binary: string, argv: string[], opts: AsyncCommandRunOptions): Promise<CommandResult>
-  /** Runners that accept AbortSignal / processGroup (async twins only). */
+  /** Whether the runner takes `signal` and `processGroup` (the async forms only). */
   async: boolean
 }
 
@@ -108,7 +110,7 @@ afterAll(() => {
 // ── Type-level: cwd is required on every runner ───────────────────────────────
 describe('cwd is required (type level)', () => {
   test('every runner rejects a call with no cwd at compile time', () => {
-    // Never called; the point is that each line below needs its directive.
+    // Never called. Each line below must need its directive.
     // `tsc` fails with "unused @ts-expect-error" if cwd ever becomes optional.
     const _unused = () => {
       // @ts-expect-error cwd is mandatory
@@ -151,7 +153,7 @@ describe('posix', () => {
     })
 
     test('async settles on the deadline even when a forked grandchild holds the pipes', async () => {
-      // The grandchild keeps the write ends open for 4s; `close` would not
+      // The grandchild keeps the write ends open for 4s, so `close` would not
       // fire until it exits. The cap must resolve at the deadline instead.
       for (const runner of RUNNER_CASES.filter((d) => d.async)) {
         const t0 = performance.now()
@@ -164,7 +166,7 @@ describe('posix', () => {
     // `timeoutMs: 0` and other invalid values: tests/timeout.test.ts.
   })
 
-  // ── neverExited: set only when the seam's own stand-in 1 is reported ──────
+  // ── neverExited: set only when the runner's own stand-in 1 is reported ────
   describe('neverExited', () => {
     eachRunner((runner) => {
       test('is absent on a genuine exit 1', async () => {
@@ -194,8 +196,6 @@ describe('posix', () => {
       })
     })
 
-    // The sync runners run through the bun-test capture path here; the
-    // production path is covered in pipe-path.test.ts.
     eachRunner((runner) => {
       test('neverExited', async () => {
         const r = await runner.withBinary(MISSING, ['true'], { cwd: CWD })
@@ -315,8 +315,6 @@ describe('posix', () => {
       test('a directory that does not exist is a neverExited result, not a throw', async () => {
         const r = await runner.exec('true', { cwd: join(scratch, 'no-such-dir') })
         expect(r.exitCode).not.toBe(0)
-        // The redirect path (sync, under NODE_ENV=test) reports sh's own
-        // failure the same way: a message, not a throw.
         expect(r.error).toContain('no-such-dir')
         expect(r.stderr).toBe('')
       })
@@ -470,8 +468,9 @@ describe('posix', () => {
     }
 
     test('sync and stream runners do not offer processGroup (documented limit)', () => {
-      // Nothing to assert at runtime: the option does not exist on these
-      // runners (the async and managed runners have it). The compile-time half is the directive below.
+      // Nothing to check at runtime. The option does not exist on these
+      // runners (the async and managed runners have it). The directives below
+      // check it at compile time.
       const _unused = () => {
         // @ts-expect-error processGroup is not offered on the sync runner
         spawnRunner('sh').run([], { cwd: CWD, processGroup: true })
@@ -500,7 +499,10 @@ describe('posix', () => {
           : [`setTimeout(() => {}, Math.max(0, ${exitAt} - Date.now()))`]),
       ].join('\n')
 
-    /** Run `body` with the leaver script, which records its grandchild's pid in a temp file; reap the grandchild after. */
+    /**
+     * Run `body` with the leaver script, which records its grandchild's pid in
+     * a temp file. Reap the grandchild after.
+     */
     async function withLeaver(
       body: (script: string) => Promise<void>,
       exitAt?: number,
@@ -574,8 +576,9 @@ describe('posix', () => {
   })
 
   // The sync and stream runners kill the direct child only on timeout, not its
-  // group, so a grandchild survives. These pin that, so changing it is
-  // deliberate. The compile-time half (no `processGroup` option) is above.
+  // group, so a grandchild survives. These tests check that, so a change to
+  // it is deliberate. The compile-time check (no `processGroup` option) is
+  // above.
   describe('sync and stream runners kill the direct child only on timeout', () => {
     // The child backgrounds a long `sleep`, records its pid in a file (the
     // stream runner returns no output), then waits so the timeout ends it.
@@ -613,14 +616,15 @@ describe('posix', () => {
       test(`${runner.name}: keeps the child's exit code and reports the write error in error`, async () => {
         const r = await runner.exec('exec 0<&-; sleep 0.3', { cwd: CWD, input: BIG })
         expect(r.exitCode).toBe(0)
-        // EPIPE, or ENOTCONN under some timings: both are a write to a closed peer. Node words it "write EPIPE", Bun "EPIPE: …, write".
+        // EPIPE, or ENOTCONN with some timings. Both are a write to a closed
+        // peer. Node words it "write EPIPE", Bun "EPIPE: …, write".
         expect(r.error).toMatch(/^((EPIPE|ENOTCONN): [^\n]*, write|write (EPIPE|ENOTCONN))$/)
         expect(r.stderr).toBe('')
       }, 15_000)
     }
 
-    // Async only. Under `bun test` the sync runners feed `input` from a file,
-    // so no write can fail; regressions.test.ts checks Node's sync pipe path.
+    // Async only. regressions.test.ts checks the sync pipe path, in a child
+    // process.
   })
 
   // ── runJson ───────────────────────────────────────────────────────────────

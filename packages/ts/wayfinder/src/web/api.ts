@@ -15,10 +15,10 @@ import {
 /**
  * The catalog, plus two things the page cannot work out for itself.
  *
- * `trustable` is the server's own reading of the gate it resolved, not
- * something inferred from the repository's files. `cache` is where each
- * runner's rows came from — the server may answer out of its store so the page
- * appears at once, and this is what admits it.
+ * `trustable` comes from the server's own trust decision, not from the
+ * repository's files. `cache` is where each runner's rows came from. The
+ * server may answer from its store so the page appears at once, and this
+ * says when it did.
  */
 type CatalogResponse = Catalog & {
   trustable?: boolean
@@ -32,19 +32,18 @@ type CatalogResponse = Catalog & {
 /**
  * The session token the server embedded in this page, read once at import.
  *
- * Module state and nothing else. localStorage, sessionStorage and cookies all
- * outlive the tab or ride along on requests the page did not make; this dies
- * with the page, which is the lifetime it should have.
+ * Kept in module state only. localStorage, sessionStorage and cookies either
+ * outlive the tab or are sent with requests the page did not make. Module
+ * state ends with the page, which is the lifetime the token should have.
  */
 const token: string = (globalThis as { __WAYFINDER_TOKEN__?: string }).__WAYFINDER_TOKEN__ ?? ''
 
 /**
- * Every server call goes through here — the one place the token is attached.
+ * Every server call goes through here, the one place the token is attached.
  *
  * The endpoints are on loopback, which any process on this machine and any
- * page the user is visiting can reach, so reads and mutations alike carry the
- * token. Route new endpoints through here; one that skips it gets a 401,
- * which is the point.
+ * page the user visits can reach, so reads and writes both carry the token.
+ * Send new endpoints through here. A request without the token gets a 401.
  */
 export function authFetch(path: string, init: RequestInit = {}): Promise<Response> {
   const headers = new Headers(init.headers)
@@ -56,10 +55,9 @@ export function authFetch(path: string, init: RequestInit = {}): Promise<Respons
  * What `/api/config` answers: the merged configuration, the two layers that
  * produced it, and which layer supplied each leaf.
  *
- * `sources` is keyed by DOTTED path (`runners.disabled`, `allowExec`) because
- * that is what `way config` names, so the screen and the CLI say the same
- * thing about the same key. The server converts it from a Map; a Map would
- * have serialised as `{}`.
+ * `sources` is keyed by dotted path (`runners.disabled`, `allowExec`), as
+ * `way config` names keys, so the screen and the CLI use the same names. The
+ * server converts it from a Map, which would serialise as `{}`.
  */
 export interface ConfigResponse {
   effective: Record<string, unknown>
@@ -80,8 +78,8 @@ export async function getConfig(): Promise<ConfigResponse | null> {
     return (await res.json()) as ConfigResponse
   } catch {
     // The server is gone (a run took the terminal) or the page is offline.
-    // The dialog says so rather than rendering an empty screen that looks
-    // like a project with no configuration.
+    // The dialog says so, rather than showing an empty screen that looks like
+    // a project with no configuration.
     return null
   }
 }
@@ -89,12 +87,12 @@ export async function getConfig(): Promise<ConfigResponse | null> {
 /**
  * Write staged settings to the project file, and read back what that produced.
  *
- * A PATCH of dotted keys, matching what `way config set` names. The server
+ * A patch of dotted keys, named as `way config set` names them. The server
  * applies it to the file's raw contents, so a key this version does not know
- * survives the save — see `writeProjectConfig` in serve.ts.
+ * survives the save (see `writeProjectConfig` in serve.ts).
  *
- * The success arm carries the config as it now IS rather than as the caller
- * hoped: one round trip, and the screen re-renders from the file.
+ * On success it returns the config as it now is in the file, so the screen
+ * re-renders from the file in one round trip.
  */
 export async function saveConfig(
   set: Record<string, unknown>,
@@ -105,8 +103,8 @@ export async function saveConfig(
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ set }),
     })
-    // A refusal's body is written for a person — "allowExec: true cannot be
-    // written to a project file …" — so it is shown rather than the status.
+    // A refusal's body is written for a person ("allowExec: true cannot be
+    // written to a project file …"), so it is shown instead of the status.
     if (!res.ok)
       return { ok: false, detail: (await res.text()) || `the server answered ${res.status}` }
     return { ok: true, config: (await res.json()) as ConfigResponse }
@@ -127,8 +125,8 @@ export async function trustRepo(): Promise<void> {
   try {
     const res = await authFetch('/api/trust', { method: 'POST' })
     if (!res.ok) {
-      // Never silent: the click asked for something with consequences, so a
-      // refusal has to be as visible as a failed refresh.
+      // Never silent. The click asked for something with consequences, so a
+      // refusal must be as visible as a failed refresh.
       $('status').innerHTML =
         '<span class="err">trust failed: ' +
         escapeHtml(await res.text()) +
@@ -156,11 +154,10 @@ export async function trustRepo(): Promise<void> {
 /**
  * Revoke this repository's trust.
  *
- * The store is the durable answer and this makes it `false`. The RUNNING
- * session keeps whatever execution gate it resolved at startup — see the
- * DELETE branch in serve.ts for why the server will not guess whether that
- * came from the store or from an explicit `--exec`. The caller shows that
- * rather than implying a revoke the process did not perform.
+ * The store then says not trusted. The running session keeps the execution
+ * setting it decided at start. See the DELETE branch in serve.ts for why the
+ * server does not guess whether that came from the store or from `--exec`.
+ * The caller says so, rather than implying a revoke that did not happen.
  */
 export async function untrustRepo(): Promise<{ ok: boolean; detail?: string }> {
   try {
@@ -179,10 +176,10 @@ export async function untrustRepo(): Promise<{ ok: boolean; detail?: string }> {
 }
 
 /**
- * What a run request came back as. `taken` is the server's 409 — one run wins,
- * and this one did not. `gone` is the same story told by the socket instead of
- * by a status line: the server that would have answered has already left with
- * the terminal. `failed` is everything genuinely unexpected.
+ * The result of a run request. `taken` is the server's 409: another run got
+ * the terminal first. `gone` is the same case seen as a closed connection
+ * instead of a status: the server already stopped and handed off the
+ * terminal. `failed` is anything unexpected.
  */
 export type RunResult =
   | { outcome: 'handed-off'; command: string }
@@ -193,12 +190,11 @@ export type RunResult =
 /**
  * Ask the server to hand its terminal to a task.
  *
- * The id selects the command; `args` is the tail a parameterised recipe needs
- * (`staging` for `just deploy <env>`). The server looks the task up in the
- * catalog it built itself and APPENDS these — the binary, the leading
- * arguments and the cwd never come from here, because a command sent from this
- * side would be a command the server was told to run by whatever could reach
- * the port.
+ * The id selects the command. `args` are the trailing arguments a recipe with
+ * parameters needs (`staging` for `just deploy <env>`). The server looks the
+ * task up in the catalog it built and adds these. The binary, the leading
+ * arguments and the cwd never come from the page, because anything that can
+ * reach the port could send a command.
  */
 export async function requestRun(id: string, args: readonly string[] = []): Promise<RunResult> {
   try {
@@ -209,9 +205,9 @@ export async function requestRun(id: string, args: readonly string[] = []): Prom
     })
     if (res.status === 409) return { outcome: 'taken' }
     // A 404 is the one failure whose body is written for a person: the row was
-    // in a listing the server served out of its cache and the task is not there
-    // any more. Showing the status code instead would drop the only sentence
-    // that explains why a row on screen cannot be run.
+    // in a listing served from the cache and the task is gone. Showing only the
+    // status code would drop the one sentence that explains why a row on
+    // screen cannot be run.
     if (res.status === 404) {
       const detail = await res.text().catch(() => '')
       return { outcome: 'failed', detail: detail || 'the server answered 404' }
@@ -220,12 +216,12 @@ export async function requestRun(id: string, args: readonly string[] = []): Prom
     const body = (await res.json()) as { display?: string; argv?: string[] }
     return { outcome: 'handed-off', command: body.argv?.join(' ') || body.display || 'the task' }
   } catch (err) {
-    // fetch rejects with a TypeError when the request never got an answer at
-    // all — the normal shape of losing this race, because the winner's server
-    // is on its way out with the terminal. It is the browser's own wording
-    // ("Failed to fetch"), which says nothing a user can act on, so the
-    // outcome carries the meaning and the string is dropped. Anything else
-    // (a body that did not parse) is a real surprise and keeps its detail.
+    // fetch rejects with a TypeError when the request got no answer. That is
+    // the usual result of losing this race, because the server is stopping to
+    // hand over the terminal. The browser's message ("Failed to fetch") tells
+    // the user nothing, so it is dropped and the outcome says what happened.
+    // Anything else (a body that did not parse) is unexpected and keeps its
+    // detail.
     if (err instanceof TypeError) return { outcome: 'gone' }
     return { outcome: 'failed', detail: String(err) }
   }
@@ -234,13 +230,13 @@ export async function requestRun(id: string, args: readonly string[] = []): Prom
 /**
  * Pull the catalog.
  *
- * `force` is the Refresh button, and it is always a real probe of every runner
- * — an explicit refresh that could be answered from a store is not a refresh.
- * An unforced call (first paint, focus, the poll) takes whatever the server has
- * freshest, which on the very first request is the stored answer with a probe
- * already running behind it; `state.cache` says which rows those were.
+ * `force` is the Refresh button, and it always runs a real probe of every
+ * runner, since a refresh answered from a store is not a refresh. An unforced
+ * call (first view, focus, the poll) takes the newest answer the server has.
+ * On the first request that is the stored answer, with a probe already
+ * running in the background. `state.cache` says which rows those were.
  *
- * The fingerprint check keeps an unchanged poll from blowing away scroll
+ * The fingerprint check stops an unchanged poll from resetting the scroll
  * position and open groups.
  */
 export async function load(force: boolean): Promise<void> {
@@ -267,8 +263,8 @@ export async function load(force: boolean): Promise<void> {
       // `listRows`, not a document-wide sweep: the settings dialog draws its
       // runner list as a table too, and its rows are not commands.
       renderStatus(listRows().length, inScope)
-      // The unchanged-poll path too: a repository trusted in another
-      // window changes what is withheld without changing a single row.
+      // Also on an unchanged poll: trusting the repository in another window
+      // changes what is withheld without changing any row.
       renderTrustBar()
       return
     }

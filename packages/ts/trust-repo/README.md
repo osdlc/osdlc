@@ -33,13 +33,11 @@ if (!gate.allowExec) {
 
 ## Why
 
-Some things a tool does to a repository it did not write are code execution
-in disguise — running that repository's own scripts, evaluating its build
-config, firing its hooks. A setting the repository itself can write (its own
-config file, its own build config) cannot be what authorizes that, because a
-setting a repository can write is a setting a repository can grant itself.
-So the tool asks a person once, per repository, and remembers the answer
-here.
+Some things a tool does to a repository it did not write run that
+repository's code: its own scripts, its build config, its hooks. A setting
+inside the repository (its config file, its build config) cannot authorize
+this. The repository could grant itself that setting. So the tool asks a
+person once per repository and stores the answer here.
 
 Any CLI tool gets its own store by name.
 
@@ -51,59 +49,55 @@ Any CLI tool gets its own store by name.
 |---|---|
 | `dir()` | the store's directory: `dir` verbatim when given, else `$XDG_STATE_HOME/<tool>/trusted/`, or `~/.local/state/<tool>/trusted/` when unset |
 | `resolveRoot(root)` | the absolute, symlink-resolved key a root's grant is stored under |
-| `markerPath(root)` | the marker file's path for `root`, without creating it (a `--show` surface) |
+| `markerPath(root)` | the marker file's path for `root`, without creating it (for a `--show` command) |
 | `isTrusted(root)` | whether the root has a grant |
-| `trust(root)` | records a grant; `{ root, marker, alreadyTrusted }` — idempotent, reports whether one already existed |
+| `trust(root)` | records a grant and returns `{ root, marker, alreadyTrusted }`. Safe to repeat. `alreadyTrusted` says whether a grant already existed |
 | `untrust(root)` | removes a grant; `false` when there was none |
 | `list()` | every trusted path for this tool, sorted; `[]` when the store has never been written to |
 
-`env`/`home` are injectable the way `machineConfigFile`'s are: a test
-supplies a throwaway pair so it can never read or write the developer's real
-trust store. `dir` is a stronger override still — it bypasses the `tool` +
-XDG derivation outright, for a consumer that mirrors a machine-config-style
-env var (for example `TOOLY_TRUST_STATE`) pointing straight at the marker
-directory rather than at an `XDG_STATE_HOME` to join `tool` and `trusted`
-onto.
+A test passes its own `env` and `home`, so it never reads or writes the
+developer's real trust store. `dir` sets the store's directory directly and
+skips the `tool` and XDG lookup. Use it when a tool has its own environment
+variable (for example `TOOLY_TRUST_STATE`) that names the marker directory
+itself, not an `XDG_STATE_HOME` to add `tool` and `trusted` to.
 
 ### Where the store lives
 
-XDG **state**, not config — `$XDG_STATE_HOME`, `~/.local/state` otherwise,
-used on every platform including macOS, matching
-`@osdlc/config-layers`'s paths. Trust is state a
-program maintains, not configuration a person hand-edits: it deliberately
-does not sit beside a tool's `config.yaml`. A grant living in a file people
-edit and sync between machines would travel with a dotfiles repo, and a
-per-machine consent record that follows you onto a new machine has stopped
-being consent.
+In the XDG state directory, not the config directory: `$XDG_STATE_HOME`, or
+`~/.local/state` when it is unset. This holds on every platform, macOS
+included, and matches the paths `@osdlc/config-layers` uses. Trust is state
+a program keeps, not configuration a person edits, so it is not stored next
+to a tool's `config.yaml`. People sync config files between machines, for
+example in a dotfiles repo. A consent record for one machine that is copied
+to another machine is no longer consent.
 
 ### What a decision is keyed on
 
-The absolute, symlink-resolved repository root — a path, not a hash of the
-repository's contents. Two paths that name one repository are one decision,
-because a person answering the question answered it about the repository,
-not about the spelling they used to reach it. A repository trusted once that
-later pulls hostile changes stays trusted; `untrust` is the only remedy.
-Content-hashing would re-prompt on ordinary edits, training people to
-approve without reading — weaker security than an honest weaker rule.
+The absolute, symlink-resolved repository root. It is a path, not a hash of
+the repository's contents. Two paths that lead to one repository share one
+decision, because the person answered about the repository, not about the
+path they typed. A trusted repository stays trusted if it later pulls
+hostile changes. `untrust` is the only way to remove the grant. A content
+hash would ask again after ordinary edits. People asked that often learn to
+approve without reading, which is less safe than a simple path rule.
 
 ### How it is stored
 
 A directory of marker files, one per trusted root, named
 `${basename(root)}-${sha256(root).slice(0, 16)}`, containing the resolved
-absolute path. Creating and unlinking a file are atomic and independent, so
-two processes trusting two different repositories at once cannot lose each
-other's write, and a temp-file-then-rename write means a marker that exists
-is always a complete grant, never a partial one.
+absolute path. Creating and deleting a file are atomic and independent, so
+two processes that trust two repositories at the same time cannot lose each
+other's write. Each marker is written to a temp file and then renamed, so a
+marker that exists is always complete.
 
 Two stores for two different `tool` names never share a directory, so
 `tooly`'s grants and another tool's grants are independent even on one machine.
 
 ## The gate
 
-`resolveExecGate(store, { root, configured, flag?, trusted? })` is the one
-place a tool's configured value, an explicit per-run flag and the store
-combine into the boolean the tool actually acts on, so every caller of a
-store agrees on the answer:
+`resolveExecGate(store, { root, configured, flag?, trusted? })` combines a
+tool's configured value, an explicit per-run flag and the store into one
+boolean the tool acts on. Every caller that uses it gets the same answer:
 
 | flag | configured | trusted | allowExec | reason |
 |---|---|---|---|---|
@@ -113,31 +107,30 @@ store agrees on the answer:
 | (none) | `true` | `false` | `false` | `untrusted` |
 | (none) | `true` | `true` | `true` | `allowed` |
 
-`flag: false` short-circuits without consulting the store. `flag: true` is
-consent for one run — reported truthfully in `trusted` but never recorded,
-so one deliberate `--trust`-style override never becomes a standing grant
-nobody remembers giving.
+`flag: false` returns at once and does not read the store. `flag: true` is
+consent for one run. The result's `trusted` field still reports whether the
+root is trusted, but the flag is never saved. A one-time `--trust` does not
+become a lasting grant that nobody remembers giving.
 
-`args.trusted`, when present, is used INSTEAD OF `store.isTrusted(root)` —
-the hook a tool uses to layer a policy over the marker store. A caller that
-already computed a broader decision (a marker OR a path/owner policy, as
-`trustDecision`/`policyExecGate` do) hands the boolean
-straight through rather than paying for a second, marker-only lookup that
-could disagree with it. `root` is still resolved through `store.resolveRoot`
-either way, so a marker key and a policy match always agree on one root's
-resolved spelling.
+When `args.trusted` is set, it is used instead of `store.isTrusted(root)`.
+This lets a tool add a policy on top of the marker store. A caller that has
+already decided trust from a marker or a path/owner policy (as
+`trustDecision` and `policyExecGate` do) passes that boolean in. A second,
+marker-only lookup could disagree with it. `root` is still resolved through
+`store.resolveRoot` in both cases, so the marker key and the policy match
+use the same resolved path.
 
-`withheldHint(toolName, { verb = 'trust', flag = '--exec' })` is the one
-sentence every surface (CLI, TUI, a web page) shows when the gate withholds
-something, so a user never reads a different instruction in two places.
-`flag: null` drops the per-run half of it, for a surface that accepts no
-such flag — the sentence must not name a remedy the command will reject.
+`withheldHint(toolName, { verb = 'trust', flag = '--exec' })` returns the
+sentence every interface (CLI, TUI, web page) shows when the gate withholds
+something, so users see the same instruction everywhere. `flag: null` drops
+the per-run part, for a command that has no such flag. The sentence must
+not suggest a flag the command will reject.
 
 ## The standing policy
 
 A marker is one person's decision about one repository. A tool whose machine file
-carries a `trust:` block (`paths` globs and `owners`, in the tool's own
-`@osdlc/config-layers` machine schema) layers that policy over the store:
+has a `trust:` block (`paths` globs and `owners`, in the tool's own
+`@osdlc/config-layers` machine schema) can apply that policy on top of the store:
 
 ```ts
 import { policyExecGate, trustDecision } from '@osdlc/trust-repo'
@@ -158,14 +151,14 @@ owner of the root's `origin` remote. This package knows no git, so without an `o
 
 ## Wording
 
-`withheldHint` takes the trust verb and the per-run flag as a second, defaulted
-options object, so a tool that nests its verb (`tooly repo trust`) or spells its
-override differently (`--trust`) does not have to write its own copy.
+`withheldHint` takes the trust verb and the per-run flag in an optional second
+argument. A tool with a nested verb (`tooly repo trust`) or a different flag name
+(`--trust`) passes its own and does not need to write its own message.
 
 ## Runtime
 
 Runs under Bun and Node. It uses `node:fs/promises`, `node:path`, `node:crypto`,
-`node:os`, `@osdlc/etag-write` and `@osdlc/path-guard`; no `child_process`.
+`node:os`, `@osdlc/etag-write` and `@osdlc/path-guard`. It does not use `child_process`.
 
 ## Stability
 

@@ -1,6 +1,7 @@
 /**
  * The root import stays light: nothing it reaches may load config-layers'
- * barrel (and through it yaml and zod). A CLI pays this on every run.
+ * index module (and through it yaml and zod). A CLI pays that load time on
+ * every run.
  */
 
 import { readFileSync } from 'node:fs'
@@ -19,7 +20,7 @@ const COMPILER_OPTIONS: ts.CompilerOptions = {
   module: ts.ModuleKind.ESNext,
 }
 
-/** Every package specifier (not relative) imported by `src/` files reachable from `entry`. */
+/** Every package specifier (not relative) imported by the `src/` files reachable from `entry`. */
 function packageSpecifiers(entry: string): Set<string> {
   const program = ts.createProgram([join(SRC, entry)], COMPILER_OPTIONS)
   const out = new Set<string>()

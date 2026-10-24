@@ -1,9 +1,9 @@
 /**
  * Locate the git checkout containing a path, and find the checkouts inside a
- * directory — pure filesystem walks, no git process involved. Every other query in this package answers by shelling
- * out (see `Git#topLevel()`, `git rev-parse --show-toplevel`); this one
- * exists for callers that must not depend on a git binary being present, or
- * that run before it would be safe to spawn one.
+ * directory, by reading the filesystem only, with no git process. Every other
+ * query in this package runs git (see `Git#topLevel()`, `git rev-parse
+ * --show-toplevel`). These exist for callers that must not depend on a git
+ * binary being present, or that run before it would be safe to spawn one.
  */
 
 import { existsSync, readdirSync, statSync } from 'node:fs'
@@ -23,11 +23,11 @@ function isDir(p: string): boolean {
  * included) carrying a `.git` entry, or null when none does.
  *
  * `.git` is a directory in a main checkout and a file (`gitdir: <path>`) in a
- * linked worktree; `existsSync` matches either without distinguishing them,
- * which is what every call site actually wants.
+ * linked worktree. `existsSync` matches either without telling them apart,
+ * which is what callers want.
  *
- * `path` may be a file or a directory — a file (or anything that cannot be
- * stat'ed, e.g. it does not exist yet) starts the walk from its parent.
+ * `path` may be a file or a directory. A file, or anything that cannot be
+ * stat'ed (for example, it does not exist yet), starts the walk from its parent.
  * Returns null on a miss rather than throwing: "no checkout here" is an
  * answer, not a failure, matching this package's query contract.
  */
@@ -45,7 +45,7 @@ export function checkoutRoot(path: string): string | null {
 /** How far below the search root {@link discoverCheckouts} looks by default. */
 export const DEFAULT_MAX_DEPTH = 3
 
-/** Directories read before the walk says out loud that the tree is huge. */
+/** Directories read before the walk warns that the tree is very large. */
 export const DEFAULT_WARN_AFTER = 10_000
 
 export interface DiscoverCheckoutsOptions {
@@ -60,10 +60,10 @@ export interface DiscoverCheckoutsOptions {
    */
   warnAfter?: number | undefined
   /**
-   * Told once, mid-walk, that this search root is enormous. Defaults to a
-   * line on stderr: a walk that takes a noticeable amount of time should say
-   * why while it is still happening, not in a summary afterwards. A host with
-   * its own output passes its own; `() => {}` silences it.
+   * Called once, during the walk, when the search root turns out to be very
+   * large. Defaults to a line on stderr: a slow walk should say why while it
+   * is still running, not in a summary afterwards. A host with its own output
+   * passes its own function. `() => {}` silences it.
    */
   onWarn?: ((message: string) => void) | undefined
 }
@@ -71,7 +71,7 @@ export interface DiscoverCheckoutsOptions {
 export interface CheckoutScan {
   /** The checkouts found, sorted, as absolute paths. */
   checkouts: string[]
-  /** Directories read, the search root included. The cost of the walk. */
+  /** Directories read, the search root included. */
   directoriesScanned: number
   /**
    * Directories left unopened because `maxDepth` stopped the walk there. A
@@ -81,28 +81,29 @@ export interface CheckoutScan {
 }
 
 /**
- * The checkouts under `dir`, with what the walk cost to find them.
+ * The checkouts under `dir`, with counts of what the walk read.
  *
  * The walk descends through directories that are not checkouts and stops at
  * the ones that are, because people group repositories: `~/Developer` holds
  * an owner directory per GitHub org, or a folder per client, and the
- * checkouts sit a level or two inside. Stopping at a checkout is what keeps
- * this cheap — a repository's own `node_modules`, `vendor` and nested
- * worktrees are below one, so they are never entered.
+ * checkouts sit a level or two inside. Stopping at a checkout keeps this
+ * fast: a repository's own `node_modules`, `vendor` and nested worktrees are
+ * below it, so they are never entered.
  *
- * Two bounds keep an unlucky search root from becoming a full-disk walk:
- * dotted children are skipped, and nothing deeper than `maxDepth` is
- * entered. The depth cap is the one that matters, since a directory of
- * ordinary files — a documents folder, a media library — has no checkout to
- * stop the descent. `warnAfter` is the third line of defence, and the only
- * one a person sees: past that many directories the walk says so and carries
- * on, because the usual cause is a search root pointed at the wrong place.
+ * Two limits keep a bad search root from turning into a walk of the whole
+ * disk: children whose names start with a dot are skipped, and nothing
+ * deeper than `maxDepth` is entered. The depth limit matters most, since a
+ * directory of ordinary files, such as a documents folder or a media
+ * library, has no checkout to stop the walk. `warnAfter` is a third check,
+ * and the only one a person sees: past that many directories the walk warns
+ * and keeps going, because the usual cause is a search root pointed at the
+ * wrong place.
  *
- * Like {@link checkoutRoot}, a pure filesystem walk: no git process runs, so
- * the cost is a `readdir` per directory entered and a `stat` per child. A
- * linked worktree answers as a checkout here, since both carry a `.git`
- * entry; a caller that wants one row per repository resolves each result
- * through `Git#mainCheckout()` and de-duplicates.
+ * Like {@link checkoutRoot}, it reads the filesystem only. No git process
+ * runs, so the cost is a `readdir` per directory entered and a `stat` per
+ * child. A linked worktree answers as a checkout here, since both carry a
+ * `.git` entry. A caller that wants one row per repository resolves each
+ * result through `Git#mainCheckout()` and de-duplicates.
  *
  * An unreadable directory contributes nothing rather than throwing, matching
  * this module's contract that absence is an answer.
@@ -156,8 +157,8 @@ export function scanForCheckouts(dir: string, opts: DiscoverCheckoutsOptions = {
 }
 
 /**
- * The checkouts under `dir`, sorted, as absolute paths — {@link
- * scanForCheckouts} for a caller that wants the answer and not the cost.
+ * The checkouts under `dir`, sorted, as absolute paths. {@link
+ * scanForCheckouts} without the counts.
  */
 export function discoverCheckouts(dir: string, opts: DiscoverCheckoutsOptions = {}): string[] {
   return scanForCheckouts(dir, opts).checkouts

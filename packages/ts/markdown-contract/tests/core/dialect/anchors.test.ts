@@ -2,8 +2,8 @@ import { describe, expect, test } from 'vitest'
 
 import { extractTrailingAnchor, isStandaloneAnchor } from '../../../src/core/dialect/anchors.js'
 
-// anchors.ts owns the `^block-id` addressing primitive. These tests double as the module's
-// contract: each case is an input string and the exact value the function returns.
+// anchors.ts handles `^block-id` anchors. Each case is an input string and the exact value the
+// function returns.
 
 describe("extractTrailingAnchor — lift a line-terminal ^id off the end of a block's text", () => {
   test('a ^id on its own final line is lifted; `rest` is the text without it', () => {

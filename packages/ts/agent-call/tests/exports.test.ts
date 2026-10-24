@@ -1,8 +1,8 @@
 /**
- * Checks on the public surface as a whole: every export is used in
- * examples/, is documented, and has the stability tier the README lists; the
- * functions that can throw say so; the README's code blocks come from
- * examples/; and the shipped files stay independent of any host project.
+ * Checks on the public API as a whole. Every export is used in examples/, is
+ * documented, and has the stability tier the README lists. The functions that
+ * can throw say so. The README's code blocks come from examples/. The shipped
+ * files do not depend on any host project.
  */
 
 import { readdirSync, readFileSync } from 'node:fs'

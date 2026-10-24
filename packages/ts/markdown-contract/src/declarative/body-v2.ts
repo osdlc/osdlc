@@ -1,20 +1,19 @@
 /**
- * The v2 body-grammar and content-leaf compiler: the YAML body vocabulary compiles to the engine
- * combinators `sections` / `section` / `oneOf` / `gap` / `optional` and the four leaves
- * (`table` / `list` / `code` / `maxWords`).
+ * Compiles the YAML `body:` into the grammar builders (`sections`, `section`, `oneOf`, `gap`,
+ * `optional`) and the four leaves (`table`, `list`, `code`, `maxWords`).
  *
- * The spellings are closed: an unknown node, level or leaf key is a `DeclarativeError`.
- *   - `additionalSections` (boolean) replaces `allowUnknown` on a level;
- *   - occurrence is declared with `minContains` / `maxContains` (JSON Schema's counting
- *     names) instead of `optional` / `repeatable` / `min` / `max` — both absent is a plain
- *     slot; either present is a counted slot with lo = minContains ?? 1, hi = maxContains ?? ∞;
- *   - a nested level HOISTS onto its section node: `sections` (+ optional `order` /
- *     `additionalSections`) sit directly on the node, with no `children:` wrapper;
- *   - a list leaf constrains items with `items` (checkbox | schema node) instead of
- *     `everyItem`; leaf `cells` / `items` schemas compile through the v2 schema subset;
- *   - `description` is admitted on levels, nodes, and leaf mappings — it becomes the
- *     hint findings carry.
- * `requires:` / `forbids:` compile through `text.ts`.
+ * An unknown node, level or leaf key is a `DeclarativeError`. The YAML names differ from the
+ * code options in these ways:
+ *   - `additionalSections` (boolean) on a level is `allowUnknown`.
+ *   - `minContains` and `maxContains` (JSON Schema's names) set how often a section occurs, in
+ *     place of `optional`, `repeatable`, `min` and `max`. With neither, the slot is plain. With
+ *     either, the count runs from `minContains ?? 1` to `maxContains ?? ∞`.
+ *   - A nested level sits directly on its section node: `sections` (and optional `order` and
+ *     `additionalSections`), with no `children:` wrapper.
+ *   - A list leaf's `items` (`checkbox` or a schema node) is `everyItem`. Leaf `cells` and
+ *     `items` schemas use the JSON Schema subset in `schema-v2.ts`.
+ *   - `description` is allowed on levels, nodes and leaves. It becomes the findings' hint.
+ * `requires:` and `forbids:` compile through `text.ts`.
  */
 import type { ZodType } from 'zod'
 
@@ -30,9 +29,9 @@ const LEAF_KEYS = new Set(['table', 'list', 'code', 'maxWords'])
 const isMap = (v: unknown): v is Record<string, unknown> =>
   v !== null && typeof v === 'object' && !Array.isArray(v)
 
-// ── The closed key vocabulary ────────────────────────────────────────────────────
+// ── Allowed keys ────────────────────────────────────────────────────
 
-/** The body-root level keys (`requires` / `forbids` compile at the contract level — load.ts). */
+/** The keys of `body:`. Its `requires` and `forbids` become a contract rule (see `load.ts`). */
 const LEVEL_KEYS = new Set([
   'order',
   'additionalSections',
@@ -42,7 +41,7 @@ const LEVEL_KEYS = new Set([
   'forbids',
 ])
 
-/** The section-node keys, nested-level keys hoisted (`sections` / `order` / `additionalSections`). */
+/** The keys of a section node, including those of a nested level (`sections`, `order`, `additionalSections`). */
 const SECTION_NODE_KEYS = new Set([
   'section',
   'aliases',
@@ -58,12 +57,12 @@ const SECTION_NODE_KEYS = new Set([
   'additionalSections',
 ])
 
-/** The oneOf-node keys — the section set minus `aliases` (a oneOf IS an alias set). */
+/** The keys of a `oneOf` node: the section keys with `oneOf` in place of `section` and `aliases`. */
 const ONEOF_NODE_KEYS = new Set(
   [...SECTION_NODE_KEYS].filter((k) => k !== 'aliases' && k !== 'section').concat('oneOf'),
 )
 
-/** v1 body spellings → the v2 form the migration hint names. */
+/** v1 body keys, mapped to the v2 form the error message names. */
 const V1_BODY_SPELLINGS: Record<string, string> = {
   optional: "'minContains: 0'",
   repeatable: "'minContains' / 'maxContains'",
@@ -74,7 +73,7 @@ const V1_BODY_SPELLINGS: Record<string, string> = {
   everyItem: "'items'",
 }
 
-/** Reject any key outside `allowed` — a v1 spelling gets its migration hint, the rest "unknown key". */
+/** Throws on any key not in `allowed`. A v1 key's message names the v2 form. Others are "unknown key". */
 function assertClosedKeys(n: Record<string, unknown>, allowed: Set<string>, path: string): void {
   for (const key of Object.keys(n)) {
     if (allowed.has(key)) continue
@@ -90,7 +89,7 @@ function assertClosedKeys(n: Record<string, unknown>, allowed: Set<string>, path
 
 // ── Levels ───────────────────────────────────────────────────────────────────────
 
-/** Compile a v2 `body:` mapping into a `sections(opts, specs)` body grammar. */
+/** Compiles a `body:` mapping into a `sections(opts, specs)` body grammar. */
 export function compileBodyV2(node: unknown, path = 'body'): SectionSeq {
   if (!isMap(node)) {
     throw new DeclarativeError(`${path}: must be a mapping with a 'sections' list`)
@@ -99,7 +98,7 @@ export function compileBodyV2(node: unknown, path = 'body'): SectionSeq {
   return compileLevel(node, path)
 }
 
-/** Compile one level's `order` / `additionalSections` / `description` / `sections` into a `SectionSeq`. */
+/** Compiles one level's `order`, `additionalSections`, `description` and `sections` into a `SectionSeq`. */
 function compileLevel(node: Record<string, unknown>, path: string): SectionSeq {
   const opts: LevelOpts = {}
   if ('order' in node) {
@@ -126,7 +125,7 @@ function compileLevel(node: Record<string, unknown>, path: string): SectionSeq {
   return sections(opts, specs)
 }
 
-/** Read a validated `description` string off a node. */
+/** Reads a node's `description`. Throws when it is not a string. */
 function readDescription(node: Record<string, unknown>, path: string): string {
   if (typeof node.description !== 'string') {
     throw new DeclarativeError(`${path}.description must be a string`)
@@ -160,7 +159,7 @@ function compileNode(node: unknown, path: string): Spec {
   }
 }
 
-/** Compile a `gap:` node — an empty window, or `{ min?, max? }` bounds (closed keys). */
+/** Compiles a `gap:` node: empty, or `{ min?, max? }`. */
 function compileGap(node: Record<string, unknown>, path: string): Spec {
   const g = node.gap
   if (g === null || g === undefined) return gap({})
@@ -181,7 +180,7 @@ function compileGap(node: Record<string, unknown>, path: string): Spec {
   })
 }
 
-/** Compile a `oneOf: [...]` node into a (possibly counted) `oneOf(names, opts)` spec. */
+/** Compiles a `oneOf: [...]` node into a `oneOf(names, opts)` spec, with its count applied. */
 function compileOneOf(node: Record<string, unknown>, path: string): Spec {
   const names = node.oneOf
   if (!Array.isArray(names) || names.length === 0 || !names.every((s) => typeof s === 'string')) {
@@ -192,7 +191,7 @@ function compileOneOf(node: Record<string, unknown>, path: string): Spec {
   return applyOccurrence(node, path, (o) => oneOf(names as string[], o), opts)
 }
 
-/** Compile a `section: <name>` node (with optional `aliases`) into a (possibly counted) `section(...)` spec. */
+/** Compiles a `section: <name>` node (with optional `aliases`) into a `section(...)` spec, with its count applied. */
 function compileSectionNode(node: Record<string, unknown>, path: string): Spec {
   const name = node.section
   if (typeof name !== 'string') {
@@ -210,7 +209,7 @@ function compileSectionNode(node: Record<string, unknown>, path: string): Spec {
   return applyOccurrence(node, path, (o) => section(names, o), opts)
 }
 
-/** The shared section/oneOf `SectionOpts`: anchor, content, hoisted children, text rules, description. */
+/** The `SectionOpts` of a section or `oneOf` node: anchor, content, nested level, text rules and description. */
 function sectionOptsV2(
   node: Record<string, unknown>,
   path: string,
@@ -235,7 +234,7 @@ function sectionOptsV2(
     opts.children = children
     any = true
   }
-  // `requires:` / `forbids:` on a node → node-local rules over that section's subtree.
+  // `requires:` and `forbids:` on a node become rules over that section and its subsections.
   if (hasTextKeys(node)) {
     const rules = compileSectionTextRules(node, path, label)
     if (rules.length > 0) {
@@ -247,9 +246,8 @@ function sectionOptsV2(
 }
 
 /**
- * The HOISTED nested level: `sections` (+ optional `order` / `additionalSections`) sit directly
- * on the section node — v1's `children:` wrapper is gone. The level knobs alone,
- * without a `sections` list to govern, are an authoring error.
+ * The nested level written on a section node: `sections`, with optional `order` and
+ * `additionalSections`. `order` or `additionalSections` without `sections` is an error.
  */
 function hoistedChildren(node: Record<string, unknown>, path: string): SectionSeq | undefined {
   if ('sections' in node) {
@@ -265,12 +263,12 @@ function hoistedChildren(node: Record<string, unknown>, path: string): SectionSe
   return undefined
 }
 
-// ── Occurrence (minContains / maxContains → optional / repeatable / min / max) ────
+// ── Counts (minContains, maxContains → optional, repeatable, min, max) ────
 
 /**
- * Read the counted-slot bounds: both keys absent → `undefined` (a plain
- * slot); either present → `{ lo, hi }` with lo = minContains ?? 1, hi = maxContains ?? ∞.
- * Bounds must be non-negative integers with hi ≥ 1 and hi ≥ lo.
+ * Reads a slot's count bounds. Returns `undefined` when both keys are absent (a plain slot),
+ * else `{ lo, hi }` with lo = minContains ?? 1 and hi = maxContains ?? ∞. Both must be
+ * non-negative integers, with hi ≥ 1 and hi ≥ lo.
  */
 function readOccurrence(
   node: Record<string, unknown>,
@@ -292,7 +290,7 @@ function readOccurrence(
   return { lo, hi }
 }
 
-/** An occurrence bound must be a non-negative integer. */
+/** Checks that a count bound is a non-negative integer. */
 function occurrenceInt(v: unknown, path: string): number {
   if (typeof v !== 'number' || !Number.isInteger(v) || v < 0) {
     throw new DeclarativeError(`${path} must be a non-negative integer`)
@@ -301,11 +299,11 @@ function occurrenceInt(v: unknown, path: string): number {
 }
 
 /**
- * Map the counted-slot bounds onto the combinators:
- *   - lo=0, hi=1 → `optional(slot)` (no repeatable);
- *   - lo=1, hi=1 → a plain slot (same as both keys absent);
- *   - hi>1 or hi=∞ → `repeatable: true`, with `min: lo` when lo ≥ 2 and `max: hi` when finite;
- *   - lo=0 wraps the slot in `optional(...)`; lo ≥ 1 never does.
+ * Turns the count bounds into builder options:
+ *   - lo=0, hi=1: `optional(slot)`, not repeatable.
+ *   - lo=1, hi=1: a plain slot, the same as both keys absent.
+ *   - hi>1 or hi=∞: `repeatable: true`, with `min: lo` when lo ≥ 2 and `max: hi` when finite.
+ *   - lo=0 always wraps the slot in `optional(...)`. lo ≥ 1 never does.
  */
 function applyOccurrence(
   node: Record<string, unknown>,
@@ -371,7 +369,7 @@ function compileLeaf(node: unknown, path: string): LeafSpec {
   }
 }
 
-/** Stash an authored leaf `description` on the leaf's config so the content plane reads it as a hint. */
+/** Stores a leaf's `description` in its config, where the planes read it as the hint. */
 function attachLeafDescription(leaf: LeafSpec, description: string | undefined): LeafSpec {
   if (description !== undefined) {
     ;(leaf.config as Record<string, unknown>).description = description
@@ -379,7 +377,7 @@ function attachLeafDescription(leaf: LeafSpec, description: string | undefined):
   return leaf
 }
 
-/** `code: { lang?, description? }` (also admits an empty `code:`). */
+/** `code: { lang?, description? }`, or an empty `code:`. */
 function codeLeaf(cfg: unknown, path: string): LeafSpec {
   if (cfg === null || cfg === undefined) return code({})
   if (!isMap(cfg)) throw new DeclarativeError(`${path}.code must be a mapping`)
@@ -392,7 +390,7 @@ function codeLeaf(cfg: unknown, path: string): LeafSpec {
   return attachLeafDescription(leaf, description)
 }
 
-/** `table: { columns, anchor?, minRows?, cells?, extraColumns?, description? }` — `cells` via the v2 schema subset. */
+/** `table: { columns, anchor?, minRows?, cells?, extraColumns?, description? }`. `cells` use the schema subset. */
 function tableLeaf(cfg: unknown, path: string): LeafSpec {
   if (!isMap(cfg)) throw new DeclarativeError(`${path}.table must be a mapping`)
   assertClosedKeys(
@@ -429,7 +427,7 @@ function tableLeaf(cfg: unknown, path: string): LeafSpec {
   return attachLeafDescription(table(out), description)
 }
 
-/** A table's `cells` map — each column's schema compiled through the v2 subset. */
+/** A table's `cells` map, each column's schema compiled with `compileSchemaV2`. */
 function tableCells(
   cfg: Record<string, unknown>,
   path: string,
@@ -445,7 +443,7 @@ function tableCells(
   return cells
 }
 
-/** `list: { items?, minItems?, ordered?, description? }` — `items` is `checkbox` or a v2 schema node. */
+/** `list: { items?, minItems?, ordered?, description? }`. `items` is `checkbox` or a schema node. */
 function listLeaf(cfg: unknown, path: string): LeafSpec {
   if (!isMap(cfg)) throw new DeclarativeError(`${path}.list must be a mapping`)
   assertClosedKeys(cfg, new Set(['items', 'minItems', 'ordered', 'description']), `${path}.list`)

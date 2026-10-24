@@ -1,8 +1,8 @@
 /**
  * `reason` and `signal`: why a run never reported an exit status, on every
  * runner. Each runner gets one case per cause it can hit, and a genuine exit
- * that must carry neither field. The sync pipe path is covered in
- * `pipe-path.test.ts`; here the sync runner takes the `bun test` path.
+ * that must carry neither field. The suite runs on Node, so the sync runner
+ * takes its pipe path here.
  */
 
 import { describe, expect, test, vi } from 'vitest'

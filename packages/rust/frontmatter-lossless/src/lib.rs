@@ -1,27 +1,28 @@
 //! Byte-exact Markdown frontmatter framing.
 //!
 //! A note is `---`-fenced YAML frontmatter followed by a body. This crate
-//! splits the two and recomposes them **without touching a single byte** the
-//! author wrote: the YAML text comes back verbatim (fences excluded), with the
-//! byte offsets a splice needs, and [`compose`] rebuilds the original file
-//! exactly — same BOM, same `\n` vs `\r\n` fences, same trailing state.
+//! splits the two and joins them again without changing any byte the author
+//! wrote. The YAML text comes back as written (without the fences), with the
+//! byte offsets an edit needs, and [`compose`] rebuilds the original file
+//! exactly: the same BOM, the same `\n` or `\r\n` fences, and the same ending.
 //!
-//! It is deliberately a tier-0 primitive: no YAML parsing, no filesystem, no
-//! regex, nothing but `std`. Parsing the frontmatter's *values* is a job for a
-//! YAML-aware layer above this crate; this crate only finds where the block is
-//! and puts it back. Lexers over the body belong with their users.
+//! It has no YAML parsing, no filesystem access, no regex, and nothing but
+//! `std`. Reading the frontmatter's values is a job for a YAML parser. This
+//! crate only finds where the block is and puts it back. It does not parse
+//! the body.
 //!
-//! Three tolerances, each one a bug someone has already hit:
+//! It handles three cases that real notes contain:
 //!
-//! - **BOM.** Notes written by some Windows editors start `\u{feff}---`. The
-//!   split recognises and remembers it so a later write can restore it.
-//! - **CRLF.** The `\r` stays attached to the YAML slice, so callers see the
-//!   exact bytes and [`compose`] rebuilds `---\r\n` fences rather than silently
-//!   rewriting them to `---\n` and churning the whole file in a diff.
-//! - **A missing or malformed terminator is not an error.** An unterminated
-//!   block is simply body: a projection over thousands of notes must degrade,
-//!   never abort. [`split`] still flags it in [`Split::unterminated`] for a
-//!   caller that wants to report the note as malformed instead.
+//! - **BOM.** Some Windows editors start a note with `\u{feff}---`. The split
+//!   recognises the BOM and records it, so a later write can restore it.
+//! - **CRLF.** The `\r` stays in the YAML slice, so callers see the exact
+//!   bytes. [`compose`] rebuilds `---\r\n` fences rather than rewriting them to
+//!   `---\n`, which would change every line of the file in a diff.
+//! - **A missing or malformed closing fence is not an error.** An unterminated
+//!   block is read as body, so code that reads thousands of notes keeps going
+//!   instead of stopping at one bad note. [`split`] still flags it in
+//!   [`Split::unterminated`] for a caller that wants to report the note as
+//!   malformed.
 //!
 //! ```
 //! use frontmatter_lossless::split;
@@ -34,7 +35,7 @@
 
 /// Line ending after the opening `---` fence.
 ///
-/// A closed set: adding a member would be a major release, so an exhaustive
+/// A closed set. Adding a member would be a major release, so an exhaustive
 /// `match` over it is safe.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum OpenEol {
@@ -57,7 +58,7 @@ impl OpenEol {
 
 /// Line ending after the closing `---` fence.
 ///
-/// A closed set, like [`OpenEol`], with one more member — [`CloseEol::None`],
+/// A closed set, like [`OpenEol`], with one more member: [`CloseEol::None`],
 /// for a file that ended at its closing fence with no line ending after it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CloseEol {
@@ -70,7 +71,7 @@ pub enum CloseEol {
 }
 
 impl CloseEol {
-    /// The line ending as the bytes it stands for; `""` for [`CloseEol::None`].
+    /// The line ending as the bytes it stands for. `""` for [`CloseEol::None`].
     pub const fn as_str(self) -> &'static str {
         match self {
             CloseEol::None => "",
@@ -82,14 +83,13 @@ impl CloseEol {
 
 /// Everything about a note's framing that a writer has to put back exactly.
 ///
-/// It exists because reassembling a note is where byte fidelity quietly dies:
-/// the *values* survive a careful splice and then `---\n` gets written over a
-/// file whose fences were `---\r\n`, and now every line of the note shows as
-/// changed in git. The fences are data too.
+/// Without it, a writer that edits the values carefully can still write `---\n`
+/// fences over a file whose fences were `---\r\n`. Then every line of the note
+/// shows as changed in git. The fences have to be kept too.
 ///
-/// Take one from [`split`] and pass it back to [`compose`], or, for a new note
-/// with no source text, from [`new_shape`]. The fields are public to read, but
-/// the type is `#[non_exhaustive]`: build one with [`new_shape`], never a
+/// Take one from [`split`] and pass it back to [`compose`]. For a new note with
+/// no source text, take one from [`new_shape`]. The fields are public to read,
+/// but the type is `#[non_exhaustive]`. Build one with [`new_shape`], never a
 /// struct literal, so a later field is not a breaking change.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
@@ -101,12 +101,13 @@ pub struct NoteShape {
     /// Line ending after the closing `---`. [`CloseEol::None`] when the file
     /// ended there.
     pub close_eol: CloseEol,
-    /// Whether the `\n` separating the block's content from the closing `---`
-    /// is present. True for every block except the adjacent-fence empty one
-    /// (`---\n---`), where the closing fence directly follows the opener's
-    /// newline. It is a separate bit because [`Split::yaml`] alone cannot
-    /// distinguish that block from a blank-line-only one (`---\n\n---`): both
-    /// yield `Some("")`, but only the latter has a separator byte to restore.
+    /// Whether the `\n` between the block's content and the closing `---` is
+    /// present. True for every block except the empty one with no line between
+    /// the fences (`---\n---`), where the closing fence directly follows the
+    /// opening fence's newline. It is a separate field because [`Split::yaml`]
+    /// alone cannot tell that block from one that holds only a blank line
+    /// (`---\n\n---`). Both give `Some("")`, but only the second has a
+    /// separator byte to restore.
     pub close_sep: bool,
 }
 
@@ -131,7 +132,7 @@ pub struct NewShapeOptions {
 
 /// A note split into its parts, with byte offsets into the original source.
 ///
-/// The fields are public to read, but the type is `#[non_exhaustive]`: you get
+/// The fields are public to read, but the type is `#[non_exhaustive]`. You get
 /// one from [`split`], never a struct literal, so a later field is not a
 /// breaking change.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -151,16 +152,16 @@ pub struct Split<'a> {
     /// `true` when the note opens a frontmatter block that never closes: it
     /// starts with a valid opening fence (`---` and a line break, after an
     /// optional BOM) and no closing `---` line follows. `yaml` is still `None`
-    /// and `body` the whole text, as for a note with no block, so a projection
-    /// keeps going; a caller that holds authored notes to a contract can read
-    /// this to report the note as malformed instead. `false` otherwise.
+    /// and `body` the whole text, as for a note with no block, so a reader of
+    /// many notes keeps going. A caller that requires valid frontmatter can
+    /// read this to report the note as malformed instead. `false` otherwise.
     pub unterminated: bool,
 }
 
 /// The result of a tolerant read-only split: see [`split_lenient`].
 ///
 /// The fields are public to read, but the type is `#[non_exhaustive]` so it can
-/// gain a field without breaking callers; read `yaml` and `body` by name.
+/// gain a field without breaking callers. Read `yaml` and `body` by name.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct LenientSplit<'a> {
@@ -179,7 +180,7 @@ const BOM: &str = "\u{feff}";
 /// `compose(yaml, body, new_shape(NewShapeOptions::default()))` gives
 /// `---\n<yaml>\n---\n<body>`. The `yaml` argument is the text between the
 /// fences as [`split`] returns it, without the line break before the closing
-/// fence; a YAML serializer's output usually ends in one, so drop it first or
+/// fence. A YAML serializer's output usually ends in one, so drop it first, or
 /// the block ends in a blank line. With `eol: OpenEol::Crlf`, [`compose`]
 /// writes the fences as CRLF and the yaml text keeps its own line endings, so
 /// end its lines in `\r\n` and the text itself in `\r`, as [`split`] returns a
@@ -208,10 +209,10 @@ pub fn new_shape(opts: NewShapeOptions) -> NoteShape {
 ///
 /// Frontmatter is recognised only when the document begins with `---\n` (or
 /// `---\r\n`, or either after a BOM) and is closed by `---` alone on a line.
-/// Anything else — including a missing terminator — is body; a missing
-/// terminator also sets [`Split::unterminated`]. A leading BOM is framing: it
-/// is recorded in [`Split::shape`] and excluded from both `yaml` and `body`,
-/// never duplicated into the content.
+/// Anything else, including a missing closing fence, is body. A missing closing
+/// fence also sets [`Split::unterminated`]. A leading BOM is part of the
+/// framing: it is recorded in [`Split::shape`] and left out of both `yaml` and
+/// `body`.
 ///
 /// ```
 /// use frontmatter_lossless::split;
@@ -331,12 +332,12 @@ pub fn split(src: &str) -> Split<'_> {
     }
 }
 
-/// Reassemble a note from a (possibly spliced) frontmatter block and a body —
+/// Rebuild a note from a frontmatter block (possibly edited) and a body. This is
 /// the exact inverse of [`split`].
 ///
 /// `frontmatter` mirrors [`Split::yaml`]: `None` is a note with no block (just
 /// the body, after any BOM), `Some("")` is an empty `---` / `---` block, and
-/// `Some(text)` is a block with content. Handing `split(src).yaml` straight
+/// `Some(text)` is a block with content. Passing `split(src).yaml` straight
 /// back reproduces `src` byte for byte for every shape. New YAML or a new body
 /// always gets its own line, so a later [`split`] finds the block again.
 ///
@@ -354,27 +355,26 @@ pub fn compose(frontmatter: Option<&str>, body: &str, shape: NoteShape) -> Strin
         out.push_str(BOM);
     }
     let Some(yaml) = frontmatter else {
-        // No block: the document is just its body (which the BOM, if any, now
-        // prefixes exactly once).
+        // No block: the document is its body, after the BOM if there is one.
         out.push_str(body);
         return out;
     };
     out.push_str("---");
     out.push_str(shape.open_eol.as_str());
     out.push_str(yaml);
-    // Restore the separator the split consumed while finding the terminator —
-    // a single `\n` (under CRLF the block ends in a bare `\r`, so `\n`, not
-    // `open_eol`, rebuilds the original bytes). It is driven by the recorded
-    // shape, never inferred from the yaml text: a block ENDING in a blank
-    // line legitimately ends with `\n` and still had a separator after it.
-    // Only empty YAML can omit it: text written into a shape taken from an
-    // empty `---\n---` block still needs its own line before the closing fence.
+    // Restore the separator that split removed before the closing fence: a
+    // single `\n`. (Under CRLF the block ends in a bare `\r`, so `\n`, not
+    // `open_eol`, rebuilds the original bytes.) The recorded shape decides
+    // this, not the yaml text: a block that ends in a blank line ends with
+    // `\n` and still had a separator after it. Only empty YAML can leave it
+    // out. Text written into a shape taken from an empty `---\n---` block still
+    // needs its own line before the closing fence.
     if shape.close_sep || !yaml.is_empty() {
         out.push('\n');
     }
     out.push_str("---");
     // A shape from a file that ended at its closing fence has no line ending
-    // there; a new body still needs one, so borrow the opening fence's.
+    // there. A new body still needs one, so use the opening fence's.
     if shape.close_eol == CloseEol::None && !body.is_empty() {
         out.push_str(shape.open_eol.as_str());
     } else {
@@ -384,16 +384,18 @@ pub fn compose(frontmatter: Option<&str>, body: &str, shape: NoteShape) -> Strin
     out
 }
 
-/// A tolerant, read-only frontmatter read for possibly-sloppy input.
+/// A tolerant, read-only frontmatter read for input that may be loosely
+/// written.
 ///
-/// [`split`] is strict and lossless — the basis of the write path. This accepts
-/// what hand-authored notes drift into and a *reader* can safely ignore: a
-/// leading BOM, blank lines or indentation before the opening fence, and
-/// trailing whitespace on the `---` fence lines. The closing fence must not be
-/// indented. It returns a [`LenientSplit`], or `None` when there is no block.
-/// It tracks no framing, so it is not a round trip — parse with it, never
-/// rewrite. A fence still closes only on `---` alone on its line (trailing
-/// whitespace aside), so a `---heading` in the body does not end the block.
+/// [`split`] is strict and lossless, and is the one to use before a write.
+/// This function also accepts things hand-written notes often contain and a
+/// reader can safely ignore: a leading BOM, blank lines or indentation before
+/// the opening fence, and trailing whitespace on the `---` fence lines. The
+/// closing fence must not be indented. It returns a [`LenientSplit`], or `None`
+/// when there is no block. It records no framing, so its result cannot be
+/// written back exactly. Use it to read, never to rewrite. A fence still closes
+/// only on `---` alone on its line (trailing whitespace aside), so a
+/// `---heading` in the body does not end the block.
 ///
 /// ```
 /// use frontmatter_lossless::split_lenient;

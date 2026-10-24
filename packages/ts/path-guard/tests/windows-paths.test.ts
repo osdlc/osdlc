@@ -132,7 +132,7 @@ describe('guard.contains on Windows', () => {
     expect(new PathGuard(nothing).contains('c:\\v', 'C:\\v\\a')).toBe(true)
   })
 
-  // A known twin difference, recorded in D-03: Rust compares a UNC server and
+  // A known difference from the Rust crate, recorded in D-03: Rust compares a UNC server and
   // share exactly, and matches only a drive letter in any case.
   test('matches a UNC server and share in any case, as Windows does', () => {
     expect(new PathGuard(nothing).contains('\\\\srv\\share\\v', '\\\\SRV\\Share\\v\\a')).toBe(true)

@@ -3,10 +3,10 @@ import type { AgentCallSpec, OutputFormat } from './spec.js'
 /**
  * How faithfully a spec field survived translation to a concrete CLI call.
  *
- * - `native`       — the CLI has a first-class flag for it.
+ * - `native`       — the CLI has a flag for it.
  * - `approximated` — mapped to the closest available behavior.
- * - `emulated`     — reproduced through prompt engineering or env plumbing.
- * - `dropped`      — the CLI has no way to express it; the field was ignored.
+ * - `emulated`     — reproduced in the prompt or through environment variables.
+ * - `dropped`      — the CLI cannot express it. The field was ignored.
  */
 export type Support = 'native' | 'approximated' | 'emulated' | 'dropped'
 
@@ -19,9 +19,9 @@ export interface CapabilityNote {
 }
 
 /**
- * Placeholder that adapters embed in argv/env values wherever a temp-file
- * path is needed. The runner replaces it with a real per-call temp directory
- * after materializing `PlannedCall.tempFiles`.
+ * Placeholder that adapters put in argv and env values where a temp-file path
+ * is needed. The runner writes `PlannedCall.tempFiles` to a per-call temp
+ * directory, then replaces the placeholder with that directory's path.
  */
 export const TMP_TOKEN = '__AGENT_CALL_TMP__'
 
@@ -36,9 +36,9 @@ export interface TempFile {
 }
 
 /**
- * A fully translated call: pure data, no side effects. `planCall()` produces
- * one without running anything, so you can inspect, log, or golden-test the
- * exact invocation an adapter would make.
+ * A translated call, as plain data. `planCall()` returns one without running
+ * anything, so you can inspect, log or snapshot-test the exact command an
+ * adapter would run.
  */
 export interface PlannedCall {
   agent: string

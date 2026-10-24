@@ -1,36 +1,36 @@
 /**
  * The `clean` subcommand: the three stores wayfinder keeps outside your
  * repositories (cache, trust, config). `--cache` and `--trust` also clear
- * the old waypost cache and trust store. Each is listed only when it holds
- * something.
+ * the old waypost cache and trust store. An old store is listed only when it
+ * holds something.
  *
  * ## Nothing is removed unless asked
  *
- * Bare `clean` REPORTS: what each store is, where it is, and whether anything
- * is in it. A `--dry-run` flag would put the safe behaviour behind a flag people
- * forget, so instead the flags name what to remove, and no flag removes nothing.
+ * Bare `clean` only reports: what each store is, where it is, and whether
+ * anything is in it. A `--dry-run` flag would put the safe behaviour behind a
+ * flag people forget. Instead the flags name what to remove, and with no flag
+ * nothing is removed.
  *
  * ## Why `--config` alone needs `--yes`
  *
- * The three stores are not equally replaceable, and the guard follows that
- * rather than being uniform for tidiness:
+ * The three stores are not equally easy to replace, and the check follows
+ * that:
  *
- *   - the CACHE is derived. Deleting it costs one slow probe.
- *   - the TRUST store is consent. Deleting it costs re-answering a question
- *     you have already answered, per repository — annoying, not lossy.
- *   - the CONFIG is the only thing here a person WROTE. Nothing regenerates it.
+ *   - The cache is derived. Deleting it costs one slow probe.
+ *   - The trust store is consent. Deleting it means answering the trust
+ *     question again for each repository. That is annoying, but nothing is lost.
+ *   - The config is the only one a person wrote. Nothing regenerates it.
  *
- * So `--config` (and `--all`, which includes it) additionally wants `--yes`.
+ * So `--config` (and `--all`, which includes it) also needs `--yes`.
  *
  * ## What it will not touch
  *
  * Anything inside a repository. `wayfinder.config.json` is a project file that
- * belongs to whoever wrote it, and a tool that deletes files from a checkout
- * because it was asked to clean its own data has misunderstood whose data it
- * is. Only paths under the user's home (or their XDG overrides) are candidates.
+ * belongs to whoever wrote it, not to this tool's data. Only paths under the
+ * user's home (or their XDG overrides) are removed.
  *
- * Everything outside that is injected — `stdout`, `stderr`, `env`, `home` — so
- * a test cannot read or delete the developer's real stores.
+ * `stdout`, `stderr`, `env` and `home` are injected, so a test cannot read or
+ * delete the developer's real stores.
  */
 
 import { readdir, rm, rmdir, stat } from 'node:fs/promises'
@@ -110,9 +110,9 @@ function humanBytes(bytes: number): string {
 }
 
 function storesFor(env: Record<string, string | undefined>, home: string): Store[] {
-  // The root is irrelevant to the USER config path, which is what this command
-  // touches; the project layer is deliberately out of scope. `home` stands in
-  // so the call is well-formed without pretending a repository is involved.
+  // This command touches only the user config path, which does not depend on
+  // the root. The project layer is out of scope. `home` is passed as the root
+  // because the call needs one and no repository is involved.
   const user = configLocations(home, env, home).user
   return [
     {
@@ -150,13 +150,13 @@ function storesFor(env: Record<string, string | undefined>, home: string): Store
 }
 
 /**
- * One store's entry in the `--json` document. The same shape whether the run
- * reported or removed — `removed` is what separates them — so a caller reads
- * one document and never branches on which flags it passed.
+ * One store's entry in the `--json` document. It has the same shape whether
+ * the run reported or removed (`removed` tells them apart), so a caller never
+ * branches on which flags it passed.
  *
- * `bytes` is null when nothing is stored there, which is also how a store that
- * FAILED to be removed is told apart from one that had nothing to remove: the
- * failure carries a size and `removed: false`.
+ * `bytes` is null when nothing is stored there. That is also how a store that
+ * failed to be removed is told apart from one that had nothing to remove: the
+ * failure has a size and `removed: false`.
  */
 interface StoreReport {
   key: Store['key']
@@ -167,7 +167,7 @@ interface StoreReport {
   removed: boolean
 }
 
-/** A store's reportable fields — `file` is an implementation detail, not an answer. */
+/** A store's reported fields. `file` is internal and is left out. */
 function reportOf(store: Store, bytes: number | null, removed: boolean): StoreReport {
   return { key: store.key, flag: store.flag, what: store.what, path: store.path, bytes, removed }
 }
@@ -234,8 +234,7 @@ export async function runCleanCommand(
   const home = io.home ?? homedir()
   const stores = storesFor(env, home)
 
-  // The report. Also what a bare `clean` prints, which is why it is built
-  // before anything is removed rather than inside the removal branch.
+  // A bare `clean` prints the report and removes nothing.
   if (parsed.chosen.size === 0) {
     const reports: StoreReport[] = []
     for (const store of stores) {
@@ -281,15 +280,15 @@ export async function runCleanCommand(
     }
     try {
       await rm(store.path, { recursive: true, force: true })
-      // A config file leaves its directory behind. Remove it when this was the
-      // last thing in it, and leave it alone when it was not — the directory is
-      // shared with anything else a future version puts there.
+      // A config file leaves its directory behind. Remove the directory when it
+      // is now empty, and leave it when it is not, since a future version may
+      // keep other files there.
       if (store.file) {
         const dir = dirname(store.path)
         try {
           if ((await readdir(dir)).length === 0) await rmdir(dir)
         } catch {
-          // Not ours to insist on. The file is gone, which is what was asked.
+          // Not required. The file is gone, which is what was asked.
         }
       }
       reports.push(reportOf(store, size, true))
@@ -299,8 +298,8 @@ export async function runCleanCommand(
       removed += 1
     } catch (err) {
       io.stderr(`${toolName}: could not remove ${store.path}: ${String(err)}\n`)
-      // Recorded and then abandoned, exactly as before: a store that would not
-      // delete is not a reason to keep deleting the others.
+      // Record the failure and stop. A store that would not delete is a reason
+      // to stop deleting the others.
       reports.push(reportOf(store, size, false))
       failed = true
       break
@@ -313,8 +312,8 @@ export async function runCleanCommand(
   if (failed) return EXIT.error
 
   if (removed > 0 && parsed.chosen.has('trust')) {
-    // An aside rather than the answer, so under --json it goes to stderr and
-    // leaves the document one object.
+    // A side note, not the answer, so under --json it goes to stderr and
+    // stdout stays one JSON object.
     const note = 'Trusted repositories will ask again the next time you read them.\n'
     if (parsed.json) io.stderr(note)
     else io.stdout(`\n${note}`)

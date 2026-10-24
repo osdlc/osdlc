@@ -1,24 +1,25 @@
 /**
- * The life of a started session, in events: what a launcher appends between
- * its `launched` event and the end, in what order, and how a failure still
- * leaves the record ended. The launcher supplies the ports (where events go,
- * how to read the state back, how to spawn or open the session); everything
- * that names a harness, a host registry or a config stays with it.
+ * The events of a started session: what a launcher appends between its
+ * `launched` event and the end, in what order, and how a failure still leaves
+ * the record ended. The launcher supplies the ports (where events go, how to
+ * read the state back, how to spawn or open the session). Anything that names
+ * a harness, a host registry or a config stays in the launcher.
  *
  * Headless ({@link runHeadlessSession}): the agent is spawned directly. Its pid
- * is attached and the session moves to `running` the moment the process
- * exists; on exit come `outcome`, `state_changed` to `ended` and `ended`.
+ * is attached and the session moves to `running` as soon as the process
+ * exists. On exit come `outcome`, `state_changed` to `ended`, and `ended`.
  *
  * Interactive ({@link runInteractiveSession}): the session opens on a host. A
- * host that WAITS (its open call returns only once the person leaves the
- * session) ends the record with the real exit code; a hands-off host only
- * launched it, so the record is left `running` for a hook or reconcile to end.
+ * host that waits (its open call returns only when the person leaves the
+ * session) ends the record with the real exit code. A host that does not wait
+ * (a hands-off host) only launched the session, so the record is left
+ * `running` for a hook or reconcile to end.
  *
- * Hooks move the session while the launcher works, so every end reads the
- * state from the log first ({@link endSession}) and never writes a second
- * `state_changed` to `ended`.
+ * Hooks change the session's state while the launcher works. So every end
+ * reads the state from the log first ({@link endSession}) and never writes a
+ * second `state_changed` to `ended`.
  *
- * The whole module is experimental: it may change in a minor release.
+ * The whole module is experimental. It may change in a minor release.
  */
 
 import {
@@ -31,7 +32,7 @@ import {
 import type { SessionOutcome, SessionParent, SessionRunState } from './model.ts'
 
 /**
- * The events the lifecycle appends; `launched` and harness-specific events are the launcher's.
+ * The events the lifecycle appends. The launcher appends `launched` and harness-specific events.
  *
  * @experimental
  */
@@ -49,7 +50,7 @@ export type LifecycleEvent<Ho extends string> =
 export interface LifecyclePorts<Ho extends string> {
   /** Append `event` stamped `ts` (default: now) to the session's log. */
   emit: (event: LifecycleEvent<Ho>, ts?: string) => void
-  /** The session's state as its log says now; `null` while it has no record. */
+  /** The session's current state, from its log. `null` while it has no record. */
   state: () => SessionRunState | null
   /** The current instant, RFC 3339. */
   now: () => string
@@ -58,9 +59,9 @@ export interface LifecyclePorts<Ho extends string> {
 }
 
 /**
- * End the session: `state_changed` from wherever the log says it is now (else
- * `fallback`) to `ended`, skipped when a hook already ended it, then `ended`,
- * both stamped `at`. `cause` goes on the `state_changed` event.
+ * End the session. Appends `state_changed` from the state the log shows now
+ * (else `fallback`) to `ended`, unless a hook already ended it. Then appends
+ * `ended`. Both are stamped `at`. `cause` goes on the `state_changed` event.
  *
  * @experimental
  */
@@ -104,13 +105,13 @@ function endExited<Ho extends string>(
 /**
  * Run a headless session the launcher has already recorded as `launched`.
  * `spawn` starts the agent and calls `onSpawn` with its pid as soon as the
- * process exists, so a launcher that dies mid-run leaves a record whose pid
- * tells an orphan from a live run. A spawn that throws still ends the record
- * (`failed`) before the error propagates. `afterExit` runs before the outcome
- * is written: whatever it appends (output, usage) precedes the end. If it
- * throws, the record is still ended with the real exit code and then the error
- * is rethrown, so a failing `afterExit` never leaves the record un-ended. A
- * result with `timedOut` set ends the record with outcome `timeout`.
+ * process exists. If the launcher dies mid-run, the pid in the record shows
+ * whether the agent is orphaned or still running. A spawn that throws still
+ * ends the record (`failed`) before the error propagates. `afterExit` runs
+ * before the outcome is written, so whatever it appends (output, usage) comes
+ * before the end. If it throws, the record is still ended with the real exit
+ * code and then the error is rethrown. A result with `timedOut` set ends the
+ * record with outcome `timeout`.
  *
  * @throws Whatever `spawn` or `afterExit` throws, after the record is ended.
  * @experimental
@@ -178,30 +179,31 @@ export interface InteractiveRun<Ho extends string> {
   open: (beforeLaunch: () => void) => HostOpened
   /** Writes the `launched` event (and anything else known up front). */
   beforeLaunch: () => void
-  /** The harness session id the launch preset; it wins over the host's. */
+  /** The harness session id the launch set in advance. It wins over the host's. */
   presetHarnessSessionId: string | null
   /** Appends what the host's result adds right after `host_attached`. */
   afterAttach?: ((opened: HostOpened) => void) | undefined
 }
 
 /**
- * What {@link runInteractiveSession} returns: the host's result, with the
- * harness session id the launch preset winning over the host's, and when the
- * session ended.
+ * What {@link runInteractiveSession} returns: the host's result and when the
+ * session ended. A harness session id the launch set in advance wins over the
+ * host's.
  *
  * @experimental
  */
 export interface InteractiveResult extends HostOpened {
-  /** When the session ended, for a host that waits; `null` while it runs on. */
+  /** When the session ended, for a host that waits. `null` while it is still running. */
   endedAt: string | null
 }
 
 /**
- * Open an interactive session and record what that says. A host that throws
- * after `beforeLaunch` wrote the record ends it `failed`, so no record is left
- * `starting`. A waiting host's session is over when `open` returns: unless a
- * hook moved it already, it goes to `running` and then ends with the exit
- * code. A hands-off host's session is `running` once attached.
+ * Open an interactive session and record the result. If the host throws after
+ * `beforeLaunch` wrote the record, the record is ended `failed`, so no record
+ * is left `starting`. For a host that waits, the session is over when `open`
+ * returns. Unless a hook already moved it, it goes to `running` and then ends
+ * with the exit code. For a host that does not wait, the session is `running`
+ * once attached.
  *
  * @throws Whatever `run.open` throws, after the record (if any) is ended `failed`.
  * @experimental
@@ -240,7 +242,7 @@ export function runInteractiveSession<Ho extends string>(
 }
 
 /**
- * The run a session belongs to, and whether this start minted it.
+ * The run a session belongs to, and whether this start created it (`minted`).
  *
  * @experimental
  */
@@ -256,7 +258,7 @@ export interface RunContext {
 /**
  * The given run, else the run tag in `env` (default `process.env`), else a new
  * one. A given run that differs from the run tag already in `env` is a new run
- * on purpose: it nests under the environment's (`parentRun`) and counts as
+ * on purpose. It nests under the environment's run (`parentRun`) and counts as
  * minted. The subject is the given one, else the subject tag, else
  * `fallbackSubject`. Tags are read as {@link correlationFromEnv} reads them.
  *
@@ -282,11 +284,12 @@ export function resolveRun(
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
 
 /**
- * The session and op invocation that launched session `id`, from `env`, kept
- * only while they describe a live launcher: the parent session must have a
- * record (`parentRecord`) that had not ended before `startedAt`, and the
- * invocation's process (the invocation pid tag) must be alive. A variable left
- * in a long-lived shell, or by a crashed op, would otherwise draw a false edge.
+ * The session and op invocation that launched session `id`, read from `env`.
+ * Each is kept only if it is a live launcher. The parent session must have a
+ * record (`parentRecord`) that had not ended before `startedAt`. The
+ * invocation's process (the invocation pid tag) must be alive. Otherwise a
+ * variable left in a long-lived shell, or by a crashed op, would create a false
+ * parent link.
  * `env` defaults to `process.env`.
  *
  * @experimental
@@ -308,7 +311,7 @@ export function resolveLineage(opts: {
     if (record === null || ended) session = null
   }
   const pid = Number(readTag(env, INVOCATION_PID_ENV_VAR))
-  // A non-positive pid is not one process: `kill(0)` would signal a group.
+  // A pid of 0 or less is not a single process. `kill(0)` would signal a group.
   const live = Number.isInteger(pid) && pid > 0 && opts.pidAlive(pid)
   const invocation = raw.invocation !== null && live ? raw.invocation : null
   return session === null && invocation === null ? null : { session, invocation }

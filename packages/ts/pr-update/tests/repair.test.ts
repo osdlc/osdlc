@@ -71,7 +71,7 @@ describe('the presets, planned and not run', () => {
       const want = expected[agent]
       expect(planned.argv[0]).toBe(want.binary)
       for (const arg of want.has) expect(planned.argv).toContain(arg)
-      // Never a bypass posture: edits, no shell, no prompts.
+      // Never a mode that bypasses permission checks: edits, no shell, no prompts.
       expect(planned.argv.join(' ')).not.toMatch(/dangerously|bypass|--force|yolo/)
       expect(planned.cwd).toBe('/work/tree')
       expect(planned.argv).toContain('some-model')

@@ -1,26 +1,26 @@
 /**
- * Combine a tool's configured value, an explicit per-run flag and a
- * {@link TrustStore} into the one boolean a tool actually acts on.
+ * Combines a tool's configured value, an explicit per-run flag and a
+ * {@link TrustStore} into the one boolean the tool acts on.
  *
- * It works with any store built by {@link trustStore}: a tool that gates project-sourced behaviour behind
- * trust (running a verb read from inside the repository, evaluating its
- * build config) computes this once so every caller agrees on the answer.
+ * It works with any store built by {@link trustStore}. A tool that puts
+ * repository-sourced behaviour behind trust (running a verb defined in the
+ * repository, evaluating its build config) computes this once, so every
+ * caller gets the same answer.
  *
- * |  flag        | configured | trusted | allowExec | reason         |
- * |--------------|------------|---------|-----------|----------------|
- * |  false        | any        | any     | false     | configured-off |
- * |  true         | any        | any     | true      | allowed-by-flag|
- * |  (none)       | false      | any     | false     | configured-off |
- * |  (none)       | true       | false   | false     | untrusted      |
- * |  (none)       | true       | true    | true      | allowed        |
+ * | flag   | configured | trusted | allowExec | reason          |
+ * |--------|------------|---------|-----------|-----------------|
+ * | false  | any        | any     | false     | configured-off  |
+ * | true   | any        | any     | true      | allowed-by-flag |
+ * | (none) | false      | any     | false     | configured-off  |
+ * | (none) | true       | false   | false     | untrusted       |
+ * | (none) | true       | true    | true      | allowed         |
  *
- * An explicit `flag: false` short-circuits without consulting the store:
- * the answer cannot change, and a person turning the behaviour off should
- * not have their trust state read to be told so. `flag: true` is consent
- * for one run: a human typed it, with intent, at the moment of running. It
- * is reported truthfully in `trusted` but never recorded — persisting it
- * would turn one deliberate run into a standing grant nobody remembers
- * giving.
+ * An explicit `flag: false` returns without reading the store. The answer
+ * cannot change, and a person who turned the behaviour off does not need
+ * their trust state read. `flag: true` is consent for one run, typed by a
+ * person when they ran the command. The result's `trusted` field still
+ * reports whether the root is trusted, but the flag is never saved. Saving it
+ * would turn one run into a lasting grant that nobody remembers giving.
  */
 
 import type { TrustStore } from './store.ts'
@@ -52,13 +52,12 @@ export interface ResolveExecGateArgs {
   /** An explicit per-run override, if one was given on the command line. */
   flag?: boolean | undefined
   /**
-   * A precomputed trust decision, used INSTEAD OF `store.isTrusted(root)` when
-   * present. The hook a tool uses to layer a policy on top of the marker
-   * store: a tool's `trustDecision` may already check the store
-   * plus a path/owner policy, and a caller that has run it hands the result
-   * straight through rather than paying for a second, marker-only lookup that
-   * would disagree with the policy-aware answer. `root` is still resolved
-   * through `store.resolveRoot`, so the two never key on different spellings.
+   * A trust decision the caller already made. When set, it is used instead
+   * of `store.isTrusted(root)`. This lets a tool add a policy on top of the
+   * marker store: `trustDecision` checks the store and a path/owner policy,
+   * and its result is passed in here. A second, marker-only lookup could
+   * disagree with it. `root` is still resolved through `store.resolveRoot`,
+   * so both use the same resolved path.
    */
   trusted?: boolean
 }
@@ -100,22 +99,19 @@ export async function resolveExecGate(
 }
 
 /**
- * The actionable sentence shown when a tool withheld something for want of
- * trust. One function because every surface that can show it — CLI, TUI, a
- * web page — should say the same thing, so a user who reads a different
- * instruction in each does not have to work out which one is current.
+ * The sentence shown when a tool withheld something because the repository
+ * is not trusted. Every interface (CLI, TUI, web page) uses this one
+ * function, so users see the same instruction everywhere.
  *
- * `verb` is the store's trust subcommand (`trust` by default; a tool that
- * nests it, e.g. `tooly repo trust`, passes the full `toolName` including
- * the noun and leaves `verb` alone, or passes both to spell out its own
- * wording). `flag` is the per-run override named in the sentence's second
- * half (`--exec` by default, matching `resolveExecGate`'s `flag`); a tool
- * whose override is spelled differently (for example `--trust`) passes its own.
+ * `verb` is the trust subcommand, `trust` by default. A tool with a nested
+ * command such as `tooly repo trust` passes `verb: 'repo trust'`, or passes
+ * `tooly repo` as `toolName`. `flag` is the per-run override named in the
+ * second half of the sentence, `--exec` by default. A tool whose flag has
+ * another name (for example `--trust`) passes its own.
  *
- * `flag: null` drops that second half, for a surface that has no per-run
- * override. Advice naming a flag the command then rejects as unknown costs
- * the operator a run to find out, and teaches them to distrust the half of
- * the sentence that was true.
+ * `flag: null` drops the second half, for a command that has no per-run
+ * flag. A hint that names a flag the command rejects wastes a run and makes
+ * the user doubt the rest of the hint.
  * @experimental
  */
 export function withheldHint(

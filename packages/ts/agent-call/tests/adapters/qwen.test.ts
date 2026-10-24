@@ -48,7 +48,7 @@ describe('qwen plan', () => {
     expect(joined).toContain('--include-directories /a --include-directories /b')
     expect(joined).toContain('--json-schema {"type":"object"}')
     expect(planned.argv.slice(-2)).toEqual(['--max-session-turns', '3'])
-    // Native fields are not repeated in the prompt; context.text still is.
+    // Fields with flags are not repeated in the prompt. context.text still is.
     expect(planned.stdin).toBe('<context>\nbackground\n</context>\n\nq')
     for (const field of ['systemPrompt', 'appendSystemPrompt', 'context.dirs', 'output.schema']) {
       expect(supportOf(planned.notes, field)).toBe('native')

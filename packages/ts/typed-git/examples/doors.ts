@@ -1,4 +1,4 @@
-// Read one failure through each door: plain, try, soft, raw and rawChecked.
+// Read one failure through each call style: the throwing methods, try, soft, raw and rawChecked.
 import assert from 'node:assert/strict'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -15,7 +15,7 @@ export function run(): void {
     // `at` roots the same client at another directory. This one is not a repository.
     const outside = fx.git.at(plain)
 
-    // Plain door: a declared absence is a value. Any other failure throws.
+    // The throwing methods: a declared absence is a value. Any other failure throws.
     assert.equal(fx.git.resolveRef('no-such-ref'), null)
     assert.throws(
       () => outside.lsFilesUnmerged(),

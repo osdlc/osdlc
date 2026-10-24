@@ -9,7 +9,7 @@
  *
  * Every verb's declared absence has a case here.
  *
- * `AsyncGit` and the backend seam live in async.test.ts, which also asserts
+ * `AsyncGit` and the backend interface are tested in async.test.ts, which also asserts
  * the two clients build identical argv.
  */
 
@@ -664,9 +664,9 @@ describe('Git — argv construction (fake runner)', () => {
     ])
   })
 
-  // The seam fabricates exit 1 when the child never reported a status — a
-  // `git` missing from PATH, a timeout kill, an abort — and that stand-in
-  // collides with the absence code half the table below declares. A result
+  // command-seam reports a stand-in exit 1 when the child never reported a
+  // status (a `git` missing from PATH, a timeout kill, an abort). That is the
+  // same code half the table below declares as absence. A result
   // carrying `neverExited` is a failure for every verb, declared or not.
   test('a process that never ran is a failure, not a declared absence', () => {
     const at = () =>
@@ -690,8 +690,8 @@ describe('Git — argv construction (fake runner)', () => {
     expect(() => at().revParse('--verify', '--quiet', 'HEAD')).toThrow(FailureError)
   })
 
-  // One case per verb that declares an absence code: the declaration is the
-  // deliverable of this contract, and an undeclared code beside it must throw.
+  // One case per verb that declares an absence code: the declared code must be
+  // an answer, and an undeclared code beside it must throw.
   test("each verb's declared absence returns its value; its neighbours throw", () => {
     const at = (r: CommandResult) => new Git('/repo', { runner: recorder(r).runner })
 
@@ -863,7 +863,7 @@ describe('Git — argv construction (fake runner)', () => {
     expect(new Git('/repo', { runner }).checkIgnoreVerbose([])).toEqual([])
   })
 
-  // The correctness hot spot: a rename record is three NUL fields, not two, so
+  // The case parsers most often get wrong: a rename record is three NUL fields, not two, so
   // a parser that pairs fields desynchronizes on the first rename and
   // mislabels everything after it. The third field is the source path, which
   // `from` reports — and only for R/C, so a plain record stays two-keyed.
@@ -1116,7 +1116,7 @@ describe('Git — argv construction (fake runner)', () => {
   })
 })
 
-// `try` is the door for callers that genuinely tolerate failure.
+// `try` is for callers that must tolerate failure.
 describe('Git — git.try.*', () => {
   test('a failure is reported, not thrown, and carries the CommandFailed', () => {
     const git = new Git('/repo', { runner: recorder(FAIL).runner })
@@ -1149,7 +1149,7 @@ describe('Git — git.try.*', () => {
   })
 })
 
-// `soft` is the door for callers whose fallback is the verb's own absence value.
+// `soft` is for callers whose fallback is the verb's own absence value.
 describe('Git — git.soft.*', () => {
   const broken = () => new Git('/repo', { runner: recorder(FAIL).runner })
 

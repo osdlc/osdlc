@@ -4,10 +4,10 @@ import type { Finding } from '../../src/core/types.js'
 import { DeclarativeError } from '../../src/declarative/errors.js'
 import { loadContract } from '../../src/declarative/load.js'
 
-// `requires:` / `forbids:` in YAML are the data-authoring twin of the `requires(...)` / `forbids(...)`
-// TS builders: a list of match specs over a scope's text. Each example below is a whole contract and
-// a document, validated end-to-end through `loadContract(...).validate(...)` — so the test reads first
-// as "author this YAML, feed it this markdown, get exactly these findings".
+// `requires:` / `forbids:` in YAML are the data form of the `requires(...)` / `forbids(...)` TS
+// builders: a list of match specs over a scope's text. Each example below is a whole contract and a
+// document, run through `loadContract(...).validate(...)`. Each reads as "write this YAML, give it
+// this markdown, get these findings".
 
 /** Compare on the fields a finding pins: id / level / line. */
 const shape = (

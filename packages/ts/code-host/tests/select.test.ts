@@ -1,7 +1,7 @@
 /**
- * Tests for `../src/select.ts` — the `origin`-remote-driven `CodeHost` chooser. All
- * calls go through a fake `CommandRunner`; nothing here touches the network
- * or spawns a real `git`/`curl`.
+ * Tests for `../src/select.ts`, which picks a `CodeHost` from the `origin` remote.
+ * All calls go through a fake `CommandRunner`, so nothing touches the network or
+ * spawns a real `git` or `curl`.
  */
 
 import { unwrap } from '@osdlc/result'
@@ -130,8 +130,7 @@ describe('selectCodeHost', () => {
       )
       codeHost.listPrs({})
       const url = calls[0]?.[calls[0].length - 1]
-      // Dropping the port here would silently hit the default 443 instead —
-      // the exact regression this test pins.
+      // Without the port, requests would go to the default port 443.
       expect(url).toBe('https://git.example.com:3000/api/v1/repos/o/r/pulls?state=open')
     } finally {
       if (prevToken === undefined) delete process.env[DEFAULT_FORGEJO_TOKEN_ENV]
@@ -141,8 +140,8 @@ describe('selectCodeHost', () => {
 
   test('an unparseable remote is a bad-remote failure, redacted, credentials included', () => {
     // No `owner/repo` path (`parseRemoteUrl` needs at least two segments), so
-    // this reaches the `bad-remote` failure, whose message must not repeat
-    // embedded userinfo from the raw remote.
+    // this gives the `bad-remote` failure. Its message must not repeat the
+    // credentials in the raw remote.
     const prevToken = process.env[DEFAULT_FORGEJO_TOKEN_ENV]
     process.env[DEFAULT_FORGEJO_TOKEN_ENV] = 'tok'
     try {

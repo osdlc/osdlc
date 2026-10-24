@@ -1,18 +1,18 @@
 /**
- * `@osdlc/typed-git/client` — the git clients and their seams, without the
- * git-reference parsers and the checkout walks.
+ * `@osdlc/typed-git/client`: the git clients, their backend and runner
+ * types, without the git-reference parsers and the checkout walks.
  *
  * The package entry minus two groups. The first is `parseGitUrl`,
  * `gitSshUrl`, `parseRepoRef` and their types, which pull in
  * `hosted-git-info`. The second is the checkout walks: `checkoutRoot`,
  * `discoverCheckouts`, `scanForCheckouts`, their types and their defaults. A
- * consumer that only drives git — a runner discovery pass, a guard script —
+ * consumer that only runs git, such as a runner discovery pass or a check script,
  * imports from here and keeps `hosted-git-info` off its module graph. It stays
  * in `dependencies` either way, so this is a bundle saving, not an install
  * one.
  *
  * The package entry is defined as this module plus the URL exports, so there
- * is one definition of the surface rather than two lists to keep in step.
+ * is one list of exports rather than two to keep in step.
  */
 
 export { Git, type GitSyncCallOptions } from './sync.ts'
@@ -90,7 +90,7 @@ export {
   type WorktreeMoveOptions,
 } from './verbs.ts'
 
-// The subprocess seam is re-exported so a caller wiring a runner or catching
+// The command-seam exports are re-exported so a caller wiring a runner or catching
 // a failure needs one import, not two. `@osdlc/command-seam` is the package
 // that owns these; it is usable on its own, without a git client.
 export {

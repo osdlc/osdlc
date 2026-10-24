@@ -1,7 +1,6 @@
 /**
- * The PATH lookup, tested against a real temporary directory — the point of
- * replacing `Bun.which` was that it must work under node, and a stubbed
- * filesystem would not prove that.
+ * Tests the PATH lookup against a real temporary directory. The lookup must
+ * work under node, and a stubbed filesystem would not prove that.
  */
 
 import { afterAll, describe, expect, test } from 'vitest'

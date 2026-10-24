@@ -6,8 +6,8 @@ const src = (path: string) => fileURLToPath(new URL(path, import.meta.url))
 
 export default defineConfig({
   resolve: {
-    // The examples import the package by name; run them on the source, so they
-    // need no build. The subpaths first, then the bare name.
+    // The examples import the package by name. Run them on the source, so they
+    // need no build.
     alias: [{ find: /^@osdlc\/typed-gh$/, replacement: src('./src/index.ts') }],
   },
   test: {

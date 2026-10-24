@@ -28,7 +28,7 @@ Patterns of a few segments finish in a few milliseconds.
 
 Brace nesting is limited. A pattern with `{` groups nested more than 64 deep
 throws an `IntersectError` with code `PATTERN_TOO_DEEP`, so a hostile pattern
-cannot overflow the stack. This limit does not bound time or memory; the
+cannot overflow the stack. This limit does not bound time or memory. The
 cost above still applies.
 
 `./fs` lists the whole tree under `cwd` before it filters, and does not follow

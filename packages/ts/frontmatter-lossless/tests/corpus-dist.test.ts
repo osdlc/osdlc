@@ -1,4 +1,4 @@
-// Runs the conformance corpus against the BUILT package. The other tests run
+// Runs the conformance corpus against the built package. The other tests run
 // the TypeScript source; this one runs dist/, the code npm users get. It
 // imports `../dist/index.js`, so it needs the build, which the workspace runs
 // before the tests (`pnpm -r build`, then `pnpm test`).

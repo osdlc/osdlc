@@ -1,4 +1,4 @@
-/** The conflict-resolver ladder: which rung claims which path. */
+/** The conflict resolvers: which resolver claims which path. */
 
 import { describe, expect, test } from 'vitest'
 
@@ -23,13 +23,13 @@ const INSTALL = 'bun install'
 describe('isLockfile', () => {
   test('matches by basename, at any depth', () => {
     expect(isLockfile('bun.lock')).toBe(true)
-    // A monorepo has one per workspace and they are all equally derived.
+    // A monorepo has one per workspace, and all of them are generated.
     expect(isLockfile('apps/web/package-lock.json')).toBe(true)
     expect(isLockfile('crates/core/Cargo.lock')).toBe(true)
   })
 
   test('a manifest is not its lockfile', () => {
-    // Cargo.toml and package.json carry hand-written intent; only the derived
+    // Cargo.toml and package.json are written by hand. Only the generated
     // file can be thrown away and rebuilt.
     expect(isLockfile('Cargo.toml')).toBe(false)
     expect(isLockfile('package.json')).toBe(false)
@@ -59,8 +59,8 @@ describe('matchRegenerate', () => {
 
 describe('planPaths', () => {
   test('the built-in lockfile rung outranks a configured rule', () => {
-    // Otherwise a broad `**` glob in a project's config would silently take
-    // over a case the product already handles correctly.
+    // Otherwise a broad `**` glob in a project's config would take over a
+    // case the package already handles, without any sign.
     const greedy: RegenerateRule = { paths: ['**'], run: 'do-everything' }
     expect(planPaths(['bun.lock'], [greedy], INSTALL)).toEqual([
       { kind: 'lockfile', path: 'bun.lock', run: INSTALL },
@@ -81,7 +81,7 @@ describe('planPaths', () => {
   })
 
   test('a lockfile with no install verb is unclaimed, not guessed at', () => {
-    // Taking a side without re-deriving pushes a lockfile that disagrees with
+    // Taking a side without regenerating pushes a lockfile that disagrees with
     // its own manifest. Not updating is the better failure.
     const [plan] = planPaths(['bun.lock'], [], null)
     expect(plan).toEqual({

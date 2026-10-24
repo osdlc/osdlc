@@ -1,12 +1,12 @@
 /**
  * Turborepo — `turbo.json` (v1 `pipeline`, v2 `tasks`).
  *
- * Turborepo 2.0 renamed the top-level `pipeline` key to `tasks`; the value
- * shape under each key is otherwise the same. Both are read here — `tasks`
- * wins when a file somehow carries both, with a diagnostic noting it.
+ * Turborepo 2.0 renamed the top-level `pipeline` key to `tasks`. The values
+ * under each key have the same shape. Both are read here. If a file has both,
+ * `tasks` wins and a diagnostic says so.
  *
- * `kind: "parse"`: turbo.json is plain data, so there is nothing to shell out
- * for.
+ * `kind: "parse"`: turbo.json is plain data, so there is no need to run
+ * turbo.
  */
 
 import type { ProviderContext } from '../../contract.ts'
@@ -27,8 +27,8 @@ const CHAIN = [
 ]
 
 /**
- * Turborepo's mark. Turborepo is a trademark of Vercel; used here
- * nominatively, to identify the tool. Icon path and color: simple-icons
+ * Turborepo's mark. Turborepo is a trademark of Vercel, used here only to
+ * identify the tool. Icon path and color: simple-icons
  * (CC0-1.0), slug `turborepo`, fetched from
  * cdn.jsdelivr.net/npm/simple-icons@latest/icons/turborepo.svg and its data
  * file (hex `#EF4444`).
@@ -55,10 +55,10 @@ export const turboRunner: RunnerRole = {
 
   async collect(ctx: ProviderContext): Promise<ProviderResult> {
     const jsonFiles = await ctx.files(TURBO_JSON)
-    // turbo.jsonc is a newer, best-effort addition: it needs comment-stripping
-    // to parse as JSON, and `ctx.readJson` does not tolerate comments.
-    // Plugins stay independent, so the stripper below is local rather than
-    // shared with deno's; a file that still fails to parse becomes a diagnostic.
+    // turbo.jsonc is best-effort. It needs its comments stripped to parse as
+    // JSON, and `ctx.readJson` does not accept comments. Plugins stay
+    // independent, so the stripper below is local, not shared with deno's. A
+    // file that still fails to parse becomes a diagnostic.
     const jsoncFiles = await ctx.files(TURBO_JSONC)
     const files = [...jsonFiles, ...jsoncFiles].sort()
     if (files.length === 0) return { status: 'absent', tasks: [], diagnostics: [] }
@@ -109,23 +109,22 @@ export const turboRunner: RunnerRole = {
         if (value === null || typeof value !== 'object' || Array.isArray(value)) continue
         const task = value as TurboTaskConfig
 
-        // A bare key runs on every workspace: `["turbo", "run", key]`. A
-        // `workspace#task` key is split — turbo's `--filter` flag scopes a
-        // run to one workspace, so `web#build` becomes
-        // `turbo run build --filter web`. This assumes `workspacePart` is
-        // already a valid turbo package name/filter expression; the
-        // runner does not validate it further.
+        // A bare key runs in every workspace: `["turbo", "run", key]`. A
+        // `workspace#task` key is split. turbo's `--filter` flag limits a run
+        // to one workspace, so `web#build` becomes
+        // `turbo run build --filter web`. The part before `#` is assumed to be
+        // a valid turbo package name or filter; it is not checked.
         //
-        // A turbo.json below the root is named by turbo's own global
-        // working-directory flag, `--cwd <path>`, which precedes the command
-        // (`turbo --skip-infer --cwd ../.. get-mfe-port`, turborepo.dev
-        // microfrontends guide) — so `cwd` stays ".". Without it argv would
-        // address the ROOT turbo project instead of the declaring one. Turbo
-        // scopes a run to the package it is invoked inside
+        // A turbo.json below the root is reached with turbo's global
+        // working-directory flag, `--cwd <path>`, which goes before the
+        // command (`turbo --skip-infer --cwd ../.. get-mfe-port`, turborepo.dev
+        // microfrontends guide). So `cwd` stays ".". Without the flag, argv
+        // would run the root turbo project instead of the declaring one. Turbo
+        // limits a run to the package it is run inside
         // (turborepo.dev/docs/crafting-your-repository/running-tasks,
-        // "Automatic Package Scoping"), so this is right both for a package
-        // configuration extending a root turbo.json and for a standalone
-        // nested turbo project.
+        // "Automatic Package Scoping"). So this is right both for a package
+        // config that extends a root turbo.json and for a separate nested
+        // turbo project.
         const head = dir === '.' ? ['turbo'] : ['turbo', '--cwd', dir]
         const hashAt = key.indexOf('#')
         const argv =
@@ -179,10 +178,9 @@ export const turboRunner: RunnerRole = {
 
 /**
  * Reads a turbo config file. `.json` files go straight through
- * `ctx.readJson`. `.jsonc` files get a minimal comment strip first — turbo
- * accepts `//` and `/* *\/` comments there — because `ctx.readJson` parses
- * strict JSON. Best-effort: enough for real-world turbo.jsonc, not a full
- * JSONC parser.
+ * `ctx.readJson`. `.jsonc` files may hold `//` and `/* *\/` comments, and
+ * `ctx.readJson` parses strict JSON, so their comments are stripped first.
+ * Best-effort: enough for real turbo.jsonc files, not a full JSONC parser.
  */
 async function readTurboConfig(ctx: ProviderContext, file: string): Promise<unknown> {
   if (!file.endsWith('.jsonc')) return ctx.readJson(file)

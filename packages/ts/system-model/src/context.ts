@@ -1,7 +1,7 @@
 /**
- * The `ProviderContext` builder: memoized `files()`, `readText()`,
- * `readJson()` and `exists()` over one root, shared by detection and the
- * runners so a file is listed and read once per call.
+ * Builds a `ProviderContext`: memoized `files()`, `readText()` and
+ * `readJson()` over one root, shared by detection and the runners so a file
+ * is listed and read once per call. `exists()` is not memoized.
  */
 
 import { readFile } from 'node:fs/promises'
@@ -67,7 +67,7 @@ export function createContext(args: {
   }
 }
 
-/** `null` rather than a throw: a malformed file is a diagnostic, not a crash. */
+/** Returns `null` rather than throwing: a malformed file is a diagnostic, not a crash. */
 function safeParse(text: string): unknown {
   try {
     return JSON.parse(text)

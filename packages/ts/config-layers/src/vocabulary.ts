@@ -1,17 +1,18 @@
 /**
  * A tool's config vocabulary: the terms its per-key meta (`./meta.ts`) may use.
  *
- * The library fixes the shape of a meta block; the tool fixes the words that
+ * The library fixes the shape of a meta block. The tool fixes the words that
  * fill it. {@link defineConfigVocabulary} takes the tool's categories, appliers,
- * layers, run contexts and enforcement levels and returns the schemas and
- * helpers typed to them: {@link ConfigVocabulary.defineSection} type-checks a
- * section's meta against the terms, and {@link ConfigVocabulary.checkMeta}
- * checks a live schema's meta at run time.
+ * layers, run contexts and enforcement levels, and returns schemas and helpers
+ * typed to them. {@link ConfigVocabulary.defineSection} type-checks a section's
+ * meta against the terms. {@link ConfigVocabulary.checkMeta} checks a schema's
+ * meta at run time.
  *
- * Two words keep a library meaning. The layers must include the three the
- * library reads itself (`project`, `local`, `machine`), and may add more. `enforcement.reserved` and
- * `enforcement.applied` name the levels `enforcementProblems`
- * (`./meta-kit.ts`) ties to a reserved key and to an `apply:<applier>` key.
+ * Some words have a meaning in the library. The layers must include the three
+ * the library reads itself (`project`, `local`, `machine`), and may add more.
+ * `enforcement.reserved` and `enforcement.applied` name the levels that
+ * `enforcementProblems` (`./meta-kit.ts`) ties to a reserved key and to an
+ * `apply:<applier>` key.
  */
 
 import { z } from 'zod'
@@ -51,11 +52,11 @@ export interface ConfigVocabularySpec<
   /** Where a key's consumers run. */
   runContexts: readonly [R, ...R[]]
   enforcement: {
-    /** How firmly the tool stands behind a key, strongest first. */
+    /** How strongly the tool supports a key, strongest first. */
     levels: readonly [E, ...E[]]
-    /** The level that means "accepted, nothing reads it yet": exactly a reserved key. */
+    /** The level that means "accepted, nothing reads it yet". A key has it exactly when it is reserved. */
     reserved?: E
-    /** The level that means "takes effect only through an applier": exactly an `apply:` key. */
+    /** The level that means "takes effect only through an applier". A key has it exactly when it is an `apply:` key. */
     applied?: E
   }
 }

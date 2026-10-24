@@ -1,26 +1,27 @@
 /**
- * The one place a tool finds its project config file and the overlay that
- * layers over it.
+ * Finds a tool's project config file and its overlay. No other code does.
  *
- * The tool names the file and the env variable that relocates it; there is no
+ * The tool names the file and the env variable that relocates it. There is no
  * default. With `{ name: 'tooly.yaml', envVar: 'TOOLY_CONFIG' }` the pair is
  * `<projectRoot>/tooly.yaml` and `<projectRoot>/tooly.local.yaml`. While the
- * variable is set it REPLACES that pair — neither root file is read — with the
- * file it names and that file's derived overlay:
+ * variable is set, it replaces that pair with the file it names and that
+ * file's overlay. Neither root file is read.
  *
- *   - a relative path resolves against the process working directory as it was
- *     when this module loaded (the tool's startup directory), and the absolute
- *     path is what every caller prints;
- *   - the overlay is `<dir>/<basename without its last extension>.local.<ext>`:
+ *   - A relative path resolves against the process working directory at the
+ *     time this module loaded (the tool's startup directory). Every caller
+ *     prints the absolute path.
+ *   - The overlay is `<dir>/<basename without its last extension>.local.<ext>`.
  *     `tools/tooly.yaml` pairs with `tools/tooly.local.yaml`, `cfg.yml` with
- *     `cfg.local.yml`;
- *   - a set variable naming a missing file is an error ({@link ConfigInvalidError},
- *     exit 14): an explicit pointer to nothing is a mistake, unlike the absent
- *     default file, which still means all defaults.
+ *     `cfg.local.yml`.
+ *   - A set variable that names a missing file is an error
+ *     ({@link ConfigInvalidError}, exit 14). Someone set the variable on
+ *     purpose, so a missing file is a mistake. An absent default file is not
+ *     an error and means all defaults.
  *
- * A file named by the variable is project-sourced for a repository-trust gate
- * exactly like the default file; pointing it outside the repository is not a
- * way around it. The machine file and the trust store are not affected by it.
+ * A repository-trust check treats a file named by the variable as
+ * project-sourced, exactly like the default file. Pointing the variable outside
+ * the repository does not get around the check. The variable does not affect
+ * the machine file or the trust store.
  */
 
 import { existsSync, statSync } from 'node:fs'
@@ -55,8 +56,8 @@ export interface ResolveConfigFileOptions extends ConfigFileSpec {
   /**
    * `root` (default): the project root's own file, which the variable replaces.
    * `subtree`: a directory beneath the root that carries its own file (a
-   * per-directory overlay); the variable names the ROOT file only, so a subtree always
-   * resolves to its own default pair.
+   * per-directory overlay). The variable names the root file only, so a
+   * subtree always resolves to its own default pair.
    */
   scope?: 'root' | 'subtree'
 }

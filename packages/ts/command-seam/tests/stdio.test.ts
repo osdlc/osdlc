@@ -1,7 +1,7 @@
 /**
  * The `stdio` option of the managed and streaming runners, and `quiet` on the
- * streaming runner. Children report back through files, not pipes: under
- * `bun test` the pipes a parent hands a child can come back empty (see
+ * streaming runner. Children report back through files, not pipes, because
+ * under `bun test` the pipes a parent gives a child can come back empty (see
  * `sync.ts`).
  *
  * POSIX-only (`sh`, `test -ef`, `/dev/null`).
@@ -55,7 +55,7 @@ function closedFd(): number {
   }
 }
 
-/** Run `fn` with `process.stderr.write` captured; returns what was written. */
+/** Run `fn` with `process.stderr.write` captured. Returns what was written. */
 function stderrOf(fn: () => void): string[] {
   const written: string[] = []
   const spy = vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {

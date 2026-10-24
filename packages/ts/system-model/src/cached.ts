@@ -1,13 +1,13 @@
 /**
- * The cached collection a surface consumes: read what is stored and judge
- * it, then refresh it.
+ * Cached collection: read what is stored and check whether it is current,
+ * then refresh it.
  *
  *   - {@link readCachedCatalog} probes nothing. It returns what was last
- *     measured, labelled per runner fresh, stale or miss, so a surface can
- *     paint at once.
- *   - {@link collectAndCache} probes and stores what came back.
+ *     measured, marked fresh, stale or miss per runner, so a caller can show
+ *     it at once.
+ *   - {@link collectAndCache} probes and stores the results.
  *
- * Only runners whose tool was detected are read or stored: the selection is
+ * Only runners whose tool was detected are read or stored. The selection is
  * the same one `collect` makes from the profile.
  */
 
@@ -56,9 +56,9 @@ export interface RunnerCacheState {
   state: 'fresh' | 'stale' | 'miss'
   /** Present only when `state` is `stale`. */
   reason?: StaleReason | undefined
-  /** Age of the cached probe in ms; absent on a miss. */
+  /** Age of the cached probe in ms. Absent on a miss. */
   ageMs?: number | undefined
-  /** Expected refresh time, the median of this repository's measured probes; null when never measured. */
+  /** Expected refresh time: the median of this repository's measured probes. Null when never measured. */
   estimateMs: number | null
   /** True when this repository has measured this runner as slow. */
   slow: boolean
@@ -70,7 +70,7 @@ export interface RunnerCacheState {
  * @experimental
  */
 export interface CachedCatalog {
-  /** Paintable now; null when nothing usable was cached. */
+  /** Ready to show now. Null when nothing usable was cached. */
   catalog: Catalog | null
   /** One per selected runner, in runner order. */
   runners: RunnerCacheState[]
@@ -83,7 +83,7 @@ function sameExcludes(current: string[], stored: string[] | undefined): boolean 
   return current.length === stored.length && current.every((value, i) => stored[i] === value)
 }
 
-/** Read what is cached and judge it, without probing. Never throws. */
+/** Read what is cached and check whether it is current, without probing. Never throws. */
 export async function readCachedCatalog(
   registry: Registry,
   profile: ProjectProfile,
@@ -129,8 +129,9 @@ export async function readCachedCatalog(
         slow: isSlow(entry.durations ?? []),
       }
 
-      // Recomputed against a fresh listing from the stored paths and every
-      // pattern that built them, never the stored expansion of those patterns.
+      // Recomputed from a fresh listing, using the stored paths and every
+      // pattern that produced them. Never use the stored expansion of those
+      // patterns.
       const current = await fingerprint({
         root: profile.root,
         paths: entry.fingerprint?.paths ?? [],
@@ -141,8 +142,8 @@ export async function readCachedCatalog(
 
       let state: RunnerCacheState['state'] = 'fresh'
       let reason: StaleReason | undefined
-      // Checked before the digest: a changed exclude list explains a changed
-      // digest, and widening it can leave the digest unchanged.
+      // Checked before the digest. A changed exclude list explains a changed
+      // digest, and widening the list can leave the digest unchanged.
       if (!sameExcludes(current.excludes, entry.fingerprint?.excludes)) {
         state = 'stale'
         reason = 'excludes'
@@ -150,20 +151,20 @@ export async function readCachedCatalog(
         state = 'stale'
         reason = 'changed'
       } else if (spec.role.kind === 'exec' && ageMs > EXEC_MAX_AGE_MS) {
-        // Only exec entries age out: their tool merges files the digest
-        // cannot see.
+        // Only exec entries expire by age, because their tool merges files
+        // the digest cannot see.
         state = 'stale'
         reason = 'max-age'
       }
 
       runners.push({ runner: spec.id, state, reason, ageMs, ...measured })
-      // A stale row is kept: an answer that was true an hour ago beats an
-      // empty screen, as long as the screen says which it is.
+      // A stale entry is kept. An answer that was true an hour ago is better
+      // than nothing, as long as it is marked stale.
       reports.push(entry.report)
       if (!Number.isNaN(takenAt)) takenAts.push(takenAt)
     }
 
-    // The catalog is only as fresh as its stalest row.
+    // The catalog's time is that of its oldest entry.
     const oldest = takenAts.length === 0 ? now : Math.min(...takenAts)
     return {
       catalog:
@@ -185,9 +186,9 @@ export async function readCachedCatalog(
 }
 
 /**
- * Probe and write what came back. The returned catalog is `collect`'s, plus a
- * diagnostic where a fingerprint was truncated. Cache writes never fail the
- * collection.
+ * Probe and store the results. Returns the catalog `collect` returns, plus a
+ * diagnostic for each runner whose fingerprint was truncated. A failed cache
+ * write never fails the collection.
  */
 export async function collectAndCache(
   registry: Registry,
@@ -228,7 +229,7 @@ export async function collectAndCache(
       // `writeEntry` refuses errored and withheld reports.
       await writeEntry(cacheDir, entry)
     } catch {
-      // A store that cannot be written costs the next run some time, nothing more.
+      // A failed write only makes the next run slower.
     }
   }
 

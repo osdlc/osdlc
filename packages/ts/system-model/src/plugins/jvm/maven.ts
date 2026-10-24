@@ -1,10 +1,9 @@
 /**
- * maven — the conventional lifecycle phases a Maven module answers to.
+ * maven: the conventional lifecycle phases of a Maven module.
  *
- * Presence-only, mirroring cargo.ts: nothing about `mvn test` or `mvn install`
- * is declared inside a pom.xml — those phases are what a module runs because
- * it is a Maven module. This runner never parses the pom.xml's XML; the
- * file's existence is the only signal.
+ * Works like cargo.ts: only the file's presence matters. A pom.xml does not
+ * declare `mvn test` or `mvn install`. A module runs those phases because it
+ * is a Maven module. This runner never parses the pom.xml.
  */
 
 import type { ProviderContext } from '../../contract.ts'
@@ -31,15 +30,13 @@ const VERBS: ReadonlyArray<{ name: string }> = [
 ]
 
 /**
- * A stack of layers — Maven runs the build through an ordered lifecycle of
- * phases, which this substitute glyph gestures at. Checked against
- * simple-icons before use: its `apachemaven` entry carries a per-icon
- * `license` override of `Apache-2.0`, not the aggregate package's CC0-1.0
- * (`data/simple-icons.json`, slug `apachemaven`) — the same shape as `rust`
- * in cargo.ts's precedent, and an MIT package cannot pass that on. Color
- * (`#C71A36`) is Apache Maven's own brand red, independently attested across
- * brand-asset references (e.g. Wikipedia's Maven logo file) rather than
- * copied from the encumbered icon entry.
+ * A plain glyph of stacked layers, for Maven's ordered lifecycle phases. It
+ * stands in for the Maven logo. simple-icons' `apachemaven` entry overrides
+ * the set's CC0-1.0 with `Apache-2.0` (`data/simple-icons.json`), the same
+ * problem cargo.ts has with `rust`, and an MIT package cannot pass that on.
+ * The color (`#C71A36`) is Apache Maven's brand red, taken from public brand
+ * references (such as Wikipedia's Maven logo file), not from the licensed
+ * icon entry.
  */
 const BRAND: RunnerBrand = {
   icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 21 8l-9 5-9-5Z"/><path d="M3 12l9 5 9-5M3 16l9 5 9-5"/></svg>',

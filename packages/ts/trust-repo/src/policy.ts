@@ -1,43 +1,43 @@
 /**
- * The trust POLICY: which repository roots a tool may treat as consented-to
- * run their own scripts, decided from a policy object the caller supplies
- * rather than any config file this package reads itself.
+ * The trust policy: which repository roots a tool may treat as trusted to
+ * run their own scripts. The caller supplies the policy object. This package
+ * reads no config file itself.
  *
- * Exposed here, beside the marker store, so a standalone tool built on the
- * config module (the tool's machine schema, built with `@osdlc/config-layers`,
- * carries the `trust:` block this policy is read from) gets the trust decision and its exit
- * code without writing them. This package knows no git, so the one thing the
- * `owners` rule needs — the owner of a root's `origin` remote — is supplied by
- * the caller as {@link PolicyDecisionOptions.ownerOf}. A git-backed lookup belongs in the tool.
+ * It sits beside the marker store so a tool built on `@osdlc/config-layers`
+ * (whose machine schema has the `trust:` block the policy comes from) gets
+ * the trust decision without writing it. This package does not use git. The
+ * `owners` rule needs the owner of a root's `origin` remote, so the caller
+ * supplies {@link PolicyDecisionOptions.ownerOf}. The tool provides a
+ * git-backed lookup.
  *
- * {@link trustDecision} is where consent is actually decided, in order:
+ * {@link trustDecision} decides trust in this order:
  *
  *   1. A marker grant in the caller's {@link TrustStore}.
- *   2. `policy.paths` — a glob over the resolved repo root.
- *   3. `policy.owners` — a case-insensitive match on the owner `ownerOf` returns.
+ *   2. `policy.paths`: a glob over the resolved repo root.
+ *   3. `policy.owners`: a case-insensitive match on the owner `ownerOf` returns.
  *
- * Path token expansion (`~`, `{name}` and whatever else a tool's own paths
- * vocabulary defines) is likewise the caller's: {@link PolicyDecisionOptions.expandPath}.
+ * The caller also expands path tokens (`~`, `{name}`, and any others its own
+ * paths format defines), through {@link PolicyDecisionOptions.expandPath}.
  *
- * {@link policyExecGate} is the one call a tool makes to turn a trust decision
- * into the boolean it actually acts on: it layers `trustDecision` over
- * {@link resolveExecGate}, so `configured` and a per-run flag combine with the
- * marker-or-policy decision the same way they combine with a marker-only one,
- * and `by`/`rule` ride along on the result.
+ * {@link policyExecGate} turns a trust decision into the boolean a tool acts
+ * on. It feeds `trustDecision` into {@link resolveExecGate}, so `configured`
+ * and a per-run flag combine with a marker-or-policy decision the same way
+ * they combine with a marker-only one. The result also carries `by` and
+ * `rule`.
  */
 
 import { resolveExecGate, type ExecGate, type ResolveExecGateArgs } from './gate.ts'
 import { resolveTrustRoot, type TrustStore } from './store.ts'
 
 /**
- * Pure string glob match — no filesystem access, unlike a globber that only
- * reports entries that exist on disk right now. A trust policy has to answer
- * for a root that may have been deleted since (an `untrust`-style query on a
- * gone checkout is still a valid question), so matching is a string comparison
- * against the resolved pattern, never a directory walk.
+ * Converts a glob to a regular expression for string matching. It does not
+ * touch the filesystem, unlike a globber that lists only entries on disk. A
+ * trust policy must answer for a root that may have been deleted (an
+ * `untrust`-style query on a removed checkout is still valid), so matching
+ * compares strings and never walks a directory.
  *
- * This matcher supports exactly what a directory policy needs: `**` (any number
- * of path segments, `/` included) and `*`/`?` (within one segment) — not a
+ * It supports only what a directory policy needs: `**` (any number of path
+ * segments, `/` included) and `*`/`?` (within one segment). It is not a
  * general-purpose glob engine.
  * @experimental
  */
@@ -84,7 +84,7 @@ export interface TrustPolicy {
  */
 export type TrustBy = 'marker' | 'path' | 'owner'
 /**
- * How, if at all, {@link policyDecision} resolved trust — never `'marker'`.
+ * How, if at all, {@link policyDecision} resolved trust. Never `'marker'`.
  *
  * @experimental
  */
@@ -120,31 +120,32 @@ export interface PolicyDecision {
  */
 export interface PolicyDecisionOptions {
   /**
-   * Expand a `policy.paths` pattern's own vocabulary (a leading `~`, `{name}`
-   * tokens, whatever else the caller's paths format defines) before matching
-   * — this package has no such vocabulary of its own. Identity when omitted.
+   * Expands tokens in a `policy.paths` pattern (a leading `~`, `{name}`
+   * tokens, and any others the caller's paths format defines) before
+   * matching. This package expands none itself. When omitted, patterns are
+   * used as written.
    */
   expandPath?: (raw: string) => Promise<string> | string
   /**
    * The owner of `root`'s `origin` remote, or null when there is none to read.
-   * This package knows no git, so without it `policy.owners` never matches.
+   * This package does not use git, so without it `policy.owners` never matches.
    */
   ownerOf?: (root: string) => string | null
   /**
-   * An existing {@link TrustStore} to resolve the root through, so a caller
-   * that already has one (as {@link trustDecision}'s caller does) does not
-   * pay for a second resolution. Defaults to {@link resolveTrustRoot} — the
-   * same function a store's own `resolveRoot` is, so a marker key and a path
-   * match always agree on one root's resolved spelling.
+   * A {@link TrustStore} whose `resolveRoot` resolves the root before path
+   * matching. {@link trustDecision} passes its own store here. Without it,
+   * {@link resolveTrustRoot} is used, which is the function a store's
+   * `resolveRoot` is. Either way a marker key and a path match use the same
+   * resolved path.
    */
   store?: TrustStore
 }
 
 /**
- * `policy.paths`/`policy.owners` only — never a marker store. Exposed
- * separately from {@link trustDecision} so a caller can ask "does policy
- * ALSO cover this root" independent of whether a marker exists (an
- * `untrust`-style "removing the marker changes nothing" notice).
+ * Checks `policy.paths` and `policy.owners` only, never a marker store. It is
+ * separate from {@link trustDecision} so a caller can ask whether the policy
+ * also covers a root, whether or not a marker exists. For example, `untrust`
+ * can warn that removing the marker changes nothing.
  * @experimental
  */
 export async function policyDecision(
@@ -174,9 +175,9 @@ export async function policyDecision(
 }
 
 /**
- * Whether `root` (any spelling — a symlink and its target are one decision)
- * is trusted, and by what: a marker grant in `store` first, then `policy`
- * ({@link policyDecision}).
+ * Whether `root` is trusted, and by which layer: a marker grant in `store`
+ * first, then `policy` ({@link policyDecision}). A symlink and its target
+ * get the same decision.
  * @experimental
  */
 export async function trustDecision(
@@ -190,15 +191,15 @@ export async function trustDecision(
 }
 
 /**
- * {@link resolveExecGate}, with {@link trustDecision} — marker store, then
- * `policy` — standing in for the store's own marker-only `isTrusted` check. The
- * one call a tool makes to turn "is this root trusted, by marker or by policy"
- * plus "is execution configured on, and did a per-run flag say otherwise" into
- * the single boolean it acts on, with `by`/`rule` attached so a `--show`-style
- * surface can report which layer decided without a second lookup.
+ * {@link resolveExecGate}, with {@link trustDecision} (marker store, then
+ * `policy`) in place of the store's marker-only `isTrusted` check. A tool
+ * calls this once to combine trust (by marker or policy), the configured
+ * value and any per-run flag into the boolean it acts on. The result carries
+ * `by` and `rule`, so a `--show`-style command can report which layer
+ * decided without a second lookup.
  *
- * `args.root` is resolved once, through `store` — the same resolution
- * `trustDecision`'s own marker check and `policy.paths` matching agree on.
+ * Every step resolves `args.root` through `store`, so the marker check,
+ * `policy.paths` matching and the gate all use the same resolved path.
  * @experimental
  */
 export async function policyExecGate(
@@ -210,8 +211,8 @@ export async function policyExecGate(
   const decision = await trustDecision(store, args.root, policy, opts)
   const gateArgs: ResolveExecGateArgs = { ...args, trusted: decision.trusted }
   const gate = await resolveExecGate(store, gateArgs)
-  // `rule` omitted rather than set to `undefined` — under `exactOptionalPropertyTypes`
-  // those are different things.
+  // Omit `rule` instead of setting it to `undefined`. Under
+  // `exactOptionalPropertyTypes` the two differ.
   return {
     ...gate,
     by: decision.by,

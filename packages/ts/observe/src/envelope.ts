@@ -6,10 +6,10 @@
  * from the `OBSERVE_SESSION`, `OBSERVE_RUN` and `OBSERVE_SUBJECT` variables a
  * launched process tree inherits.
  *
- * Every tag is written under two names for now: its `OBSERVE_*` name and the
- * `SDLC_*` name it had before 0.3.3. Readers take the `OBSERVE_*` value when it
- * is set and fall back to the `SDLC_*` one, so processes started by an older
- * writer are still read.
+ * For now every tag is written under two names: its `OBSERVE_*` name and the
+ * `SDLC_*` name it had before 0.3.3. Readers use {@link readTag}: the `SDLC_*`
+ * value when it is set and differs from the `OBSERVE_*` value, else the
+ * `OBSERVE_*` value. So processes started by an older writer are still read.
  */
 
 import { z } from 'zod'
@@ -62,15 +62,15 @@ export interface Correlation {
 const LEGACY_PREFIX = 'SDLC_'
 const PREFIX = 'OBSERVE_'
 
-/** The pre-0.3.3 name of tag `name`: `OBSERVE_RUN` was `SDLC_RUN`. Internal: not exported from the package entry. */
+/** The pre-0.3.3 name of tag `name`: `OBSERVE_RUN` was `SDLC_RUN`. Internal, not exported from the package entry. */
 export function legacyName(name: string): string {
   return name.startsWith(PREFIX) ? LEGACY_PREFIX + name.slice(PREFIX.length) : name
 }
 
 /**
- * Tag `name` as `env` carries it. Writers set both names to one value, so when they
- * differ the legacy `SDLC_*` one was written later by a pre-0.3.3 writer nested inside
- * a newer session, and it wins. Otherwise the `OBSERVE_*` value. Internal.
+ * Tag `name` as `env` carries it. Writers set both names to one value. When they
+ * differ, the legacy `SDLC_*` value was set later, by a pre-0.3.3 writer nested inside
+ * a newer session, so it wins. Otherwise the `OBSERVE_*` value is used. Internal.
  */
 export function readTag(env: Record<string, string | undefined>, name: string): string | undefined {
   const legacy = env[legacyName(name)]
@@ -108,22 +108,22 @@ export const SUBJECT_ENV_VAR = 'OBSERVE_SUBJECT'
 export const INVOCATION_ENV_VAR = 'OBSERVE_INVOCATION'
 /**
  * The pid of the process that exported {@link INVOCATION_ENV_VAR}.
- * {@link correlationFromEnv} does not check it; the lifecycle's lineage check
+ * {@link correlationFromEnv} does not check it. The lifecycle's lineage check
  * drops an invocation id whose pid is gone, so a leaked id is not recorded as a
  * session's parent. Writers also set `SDLC_INVOCATION_PID`; readers accept
  * either.
  */
 export const INVOCATION_PID_ENV_VAR = 'OBSERVE_INVOCATION_PID'
 /**
- * Names the session a launched agent belongs to; the process scan reads it
+ * Names the session a launched agent belongs to. The process scan reads it
  * back. Writers also set `SDLC_SESSION`; readers accept either.
  */
 export const SESSION_ENV_VAR = 'OBSERVE_SESSION'
 
 /**
- * The correlation `env` names (default `process.env`), each tag read under its
- * `OBSERVE_*` name first and its `SDLC_*` name second. An unset or empty
- * variable is absent.
+ * The correlation ids in `env` (default `process.env`). Each tag is read under
+ * its `OBSERVE_*` and `SDLC_*` names. The `SDLC_*` value wins when it is set and
+ * differs. An unset or empty variable is left out.
  */
 export function correlationFromEnv(
   env: Record<string, string | undefined> = process.env,
@@ -138,14 +138,14 @@ export function correlationFromEnv(
   return out
 }
 
-// Crockford base32: no I, L, O or U, so an id reads aloud and copies cleanly.
+// Crockford base32 has no I, L, O or U, so an id is easy to read aloud and copy.
 const CROCKFORD = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'
 
 /**
  * A sortable id: `prefix`, 10 base32 characters of the millisecond time `now`
  * (default `Date.now()`), then 16 of randomness. This is the ULID layout with a
- * prefix, written here so the package needs no ULID dependency. Ids minted
- * later sort later as strings; within one millisecond the order is random.
+ * prefix, written here so the package needs no ULID dependency. Ids created
+ * later sort later as strings. Within one millisecond the order is random.
  */
 export function newSortableId(prefix: string, now: number = Date.now()): string {
   let time = ''
@@ -161,10 +161,10 @@ export function newSortableId(prefix: string, now: number = Date.now()): string 
 }
 
 /**
- * The session and op invocation that started a session, from the environment
- * `env` names; `null` when neither is set. `selfSession` is the starting
- * session's own id, which is not its own parent. Internal: not exported from
- * the package entry; `resolveLineage` is the public reader.
+ * The session and op invocation that started a session, read from `env`.
+ * `null` when neither is set. `selfSession` is the session's own id, which is
+ * never its own parent. Internal, not exported from the package entry.
+ * `resolveLineage` is the public reader.
  */
 export function lineageFromEnv(
   env: Record<string, string | undefined> = process.env,
@@ -179,7 +179,7 @@ export function lineageFromEnv(
     : { session: parentSession, invocation: parentInvocation }
 }
 
-/** A run id: `r-` and a {@link newSortableId}, minted at `now` (default `Date.now()`). */
+/** A run id: `r-` and a {@link newSortableId}, created at `now` (default `Date.now()`). */
 export function newRunId(now?: number): string {
   return newSortableId('r-', now)
 }

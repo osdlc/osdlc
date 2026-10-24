@@ -133,8 +133,8 @@ allowed, because a tool module is code. See [Extending](extending.md).
 
 ### `allowExec`
 
-wayfinder's built-in default for `allowExec` is `true`. That means willing in
-principle. It is still gated on trust.
+wayfinder's built-in default for `allowExec` is `true`. Execution still needs
+a trusted repository.
 
 The project file can lower `allowExec` to `false`. It can never raise it to
 `true`, because the file lives inside the repository being scanned. A project
@@ -145,7 +145,7 @@ execution on.
 Highest precedence first:
 
 1. `--exec` or `--no-exec`
-2. `allowExec` in the user file, and `allowExec: false` in the project file
+2. `allowExec: false` in the project file, then `allowExec` in the user file
 3. wayfinder's default, `true`
 
 `way config list` and `way config get allowExec` report wayfinder's default,

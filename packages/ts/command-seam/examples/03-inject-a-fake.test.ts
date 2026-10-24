@@ -4,9 +4,9 @@
  *
  * The function takes an optional runner. `resolveRunner(binary, injected)`
  * returns the injected one, else the real `spawnRunner(binary)`. A fake is
- * any object with a `run` method; this file writes one by hand to show that.
- * Scenario 14 uses the ready-made fakes. `asAsync` lets one sync fake serve
- * async code too.
+ * any object with a `run` method. This file writes one by hand to show that.
+ * Scenario 14 uses the ready-made fakes. `asAsync` lets one sync fake work
+ * for async code too.
  */
 
 import { expect, test } from 'vitest'
@@ -55,7 +55,7 @@ async function repoInfos(dirs: string[], runner?: AsyncCommandRunner): Promise<R
 
 // ---- A hand-written fake ---------------------------------------------------
 
-/** Answers by argv, per repo; records every call. */
+/** Answers by argv, per repo, and records every call. */
 function fakeGit(repos: Record<string, Record<string, Partial<CommandResult>>>) {
   const calls: { argv: string[]; opts: CommandRunOptions }[] = []
   const runner: CommandRunner = {

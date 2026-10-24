@@ -1,19 +1,18 @@
 /**
- * The settings screen — this project's configuration, and edits to it.
+ * The settings screen: this project's configuration, and edits to it.
  *
- * Edits STAGE: nothing here writes until Save. The project config is a
- * committed file, so a click must not dirty someone's working tree silently.
+ * Edits are staged. Nothing is written until Save. The project config is a
+ * committed file, so a click must not silently change someone's working tree.
  *
- * It is deliberately NOT the runner picker. The picker in the header filters
- * this session and forgets; this describes what the project uses at all.
+ * It is not the runner picker. The picker in the header filters this session
+ * and is then forgotten. This screen sets which runners the project uses.
  *
- * Section order follows the config schema's own key order — runners,
- * execution, discovery, excluded paths — so the screen reads like the file it
- * describes.
+ * Sections follow the config schema's key order (runners, execution,
+ * discovery, excluded paths), so the screen reads like the file it describes.
  *
- * STATE LIVES HERE, not in `state.ts`. The staged document is the dialog's
- * own and meaningless once the dialog closes; in the page-wide `AppState`
- * every consumer would carry a field about a screen they never open.
+ * Its state lives here, not in `state.ts`. The staged edits belong to the
+ * dialog and mean nothing once it closes. In the page-wide `AppState`, every
+ * user of that state would carry a field about a screen it never opens.
  */
 
 import { getConfig, saveConfig, trustRepo, untrustRepo, type ConfigResponse } from './api.ts'
@@ -23,12 +22,12 @@ import { escapeHtml, render } from './view.ts'
 /** What the server last told us the configuration is. */
 let loaded: ConfigResponse | null = null
 
-/** Runner ids the catalog reported — the config alone cannot supply them. */
+/** Runner ids the catalog reported. The config alone cannot supply them. */
 let knownRunners: readonly string[] = []
 
 /**
- * Edits not yet written, by dotted key. Empty means clean — that is the whole
- * dirty test; a separate boolean could disagree with it.
+ * Edits not yet written, by dotted key. Empty means nothing is unsaved. This
+ * is the only unsaved-changes test, since a separate boolean could disagree.
  */
 let staged: Record<string, unknown> = {}
 
@@ -104,14 +103,13 @@ function section(title: string, key: string, body: string): string {
 }
 
 function runnersSection(): string {
-  // The browser's own arrangement, which is a different thing from
-  // `runners.order` and outranks it. Read here so the section can say whether
-  // one is in force at all.
+  // The order saved in this browser, which is separate from `runners.order`
+  // and overrides it. Read here so the section can say whether one is set.
   const localOrder = restoreRunnerOrder()
   const disabled = new Set(stringsAt('runners.disabled'))
-  // Every runner the catalog knows, plus any named in `disabled`: a disabled
-  // runner is invisible to the collection, so listing only what was collected
-  // would hide exactly the rows this section exists to show.
+  // Every runner the catalog knows, plus any named in `disabled`. A disabled
+  // runner is not collected, so listing only collected runners would hide
+  // the rows this section exists to show.
   const names = [...new Set([...knownRunners, ...disabled])].sort()
   const rows = names
     .map((name) => {
@@ -145,8 +143,8 @@ function runnersSection(): string {
         ? 'alphabetical'
         : order.map((r) => '<code>' + escapeHtml(r) + '</code>').join(' ')) +
       '</p>' +
-      // A drag in the tab bar wins over `runners.order` until it is cleared;
-      // said here, where both orders are visible.
+      // An order dragged in the tab bar overrides `runners.order` until it is
+      // cleared. This is shown here, where both orders are visible.
       (localOrder.length === 0
         ? ''
         : '<p class="set-sub set-override">A dragged order is in force in this browser and ' +
@@ -156,21 +154,21 @@ function runnersSection(): string {
 }
 
 function executionSection(): string {
-  // Trust and `allowExec` are NOT two spellings of one switch, and the screen
-  // says so because getting this backwards is the documented vulnerability:
-  // a project file may only ever LOWER execution. Turning it on is the trust
-  // grant, which is a per-machine decision a person makes once per repository.
+  // Trust and `allowExec` are not the same switch, and the screen says so,
+  // because confusing them is the security risk: a project file may only
+  // turn execution off. Turning it on is the trust grant, which a person
+  // decides once per repository on each machine.
   const config = loaded!
-  // The gate this PROCESS resolved, which is a third fact and not derivable
-  // from the other two: untrusting mid-session makes the store say no while
-  // this run keeps the execution it started with, and `trustable` went false
-  // at the grant. Without it the screen asserts execution is off while probes
+  // What this process decided is a third fact, not derived from the other
+  // two. Untrusting during a session makes the store say no, but this run
+  // keeps the execution it started with, and `trustable` became false at the
+  // grant. Without this the screen would say execution is off while probes
   // are still being spawned.
   //
-  // The sentence names the gate and stops there. Two different sessions land
-  // here — untrusted mid-run, and `--exec` on a repository that was never
-  // trusted — and a restart drops execution in the first and keeps it in the
-  // second, so advising one would be wrong for the other.
+  // The sentence states the situation and gives no advice. Two kinds of
+  // session reach here: untrusted during the run, and `--exec` on a
+  // repository never trusted. A restart turns execution off in the first and
+  // keeps it in the second, so advice for one would be wrong for the other.
   const running = state.catalog?.allowExec === true
   const trust = config.trusted
     ? 'This repository is trusted, so runners may spawn probes.'
@@ -181,10 +179,9 @@ function executionSection(): string {
         ? 'This repository is not trusted, so runners that must be run to be read were skipped.'
         : 'Execution is off for this project, and trusting the repository would not change that.'
 
-  // Offered only where it would do something. `trustable` is the server's own
-  // reading of the gate it resolved — under `--no-exec` or `--exec` a grant
-  // changes nothing, and the endpoint refuses one, so a button here would be a
-  // wrong instruction rather than a hidden gate.
+  // Offered only where it would do something. `trustable` comes from the
+  // server's own decision. Under `--no-exec` or `--exec` a grant changes
+  // nothing and the endpoint refuses it, so a button would mislead.
   const action = config.trusted
     ? '<button data-untrust-repo="1">Untrust</button>'
     : config.trustable
@@ -327,17 +324,17 @@ export function openSettings(config: ConfigResponse | null, known: readonly stri
 }
 
 /**
- * Handle a click inside the settings dialog. Returns true when it was ours, so
- * the page's delegated listener can stop.
+ * Handle a click inside the settings dialog. Returns true when this function
+ * handled it, so the page's shared click listener can stop.
  */
 export function handleSettingsClick(target: HTMLElement): boolean {
   const runner = target.closest('[data-set-runner]') as HTMLInputElement | null
   if (runner !== null) {
     const name = runner.dataset['setRunner']!
     const disabled = new Set(stringsAt('runners.disabled'))
-    // The checkbox reads as "collect this", so checking it REMOVES the name
-    // from the disabled list. The file stores the small inverse; the screen
-    // shows the affirmative.
+    // The checkbox means "collect this", so checking it removes the name from
+    // the disabled list. The file stores the disabled list; the screen shows
+    // what is collected.
     if (runner.checked) disabled.delete(name)
     else disabled.add(name)
     stage('runners.disabled', [...disabled].sort())
@@ -372,9 +369,8 @@ export function handleSettingsClick(target: HTMLElement): boolean {
   }
 
   if (target.closest('[data-trust-repo-settings]') !== null) {
-    // Confirmed, like the picker's button: trusting permits this repository's
-    // code to run, and a click is not a decision when that is what is being
-    // decided.
+    // Asks for confirmation, like the picker's button. Trusting lets this
+    // repository's code run, which one click should not decide.
     if (
       confirm(
         'Trust this repository? Its runners will be read by running them, now and on every later visit, until you untrust it.',
@@ -390,9 +386,9 @@ export function handleSettingsClick(target: HTMLElement): boolean {
       notice = result.ok
         ? {
             kind: 'ok',
-            // Said plainly, because it is the surprising half: the store is
-            // the durable answer and it now says no, but this process keeps
-            // the gate it started with.
+            // Stated plainly, because it is surprising: the store now says
+            // not trusted, but this process keeps the execution it started
+            // with.
             text: 'Untrusted. This session keeps the execution it started with — start wayfinder again to re-probe without it.',
           }
         : { kind: 'err', text: result.detail ?? 'untrust failed' }
@@ -403,9 +399,8 @@ export function handleSettingsClick(target: HTMLElement): boolean {
 
   if (target.closest('[data-reset-order]') !== null) {
     clearRunnerOrder()
-    // The tab bar behind the dialog follows the same order, so it is
-    // re-rendered too rather than left showing an arrangement that no longer
-    // exists.
+    // The tab bar behind the dialog uses the same order, so it is
+    // re-rendered too.
     render()
     repaint()
     return true
@@ -445,8 +440,8 @@ async function commit(): Promise<void> {
     staged = {}
     notice = { kind: 'ok', text: 'Saved.' }
   } else {
-    // Nothing is cleared on failure: the edits are still the person's, and
-    // dropping them because a write was refused would lose their work.
+    // Nothing is cleared on failure, so a refused write does not lose the
+    // person's edits.
     notice = { kind: 'err', text: result.detail }
   }
   repaint()

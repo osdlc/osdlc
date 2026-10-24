@@ -2,15 +2,15 @@
  * The built-in repair agents: `claude`, `codex`, `cursor` and `pi`.
  *
  * Each is one `@osdlc/agent-call` call run in the update worktree. agent-call
- * owns every CLI's argument list, permission flags, timeout and result parsing;
- * nothing here knows an agent's argv. A preset only says what the call is for:
- * the shared prompt, a posture that lets the agent edit files and never asks,
- * and the repair timeout.
+ * handles every CLI's argument list, permission flags, timeout and result
+ * parsing, so nothing here knows an agent's argv. A preset only says what the
+ * call is for: the shared prompt, a permission mode that lets the agent edit
+ * files without asking, and the repair timeout.
  *
- * The posture is `edits`: file edits allowed, no shell commands, no prompts.
- * That is all a repair needs, and the executor (`../update/execute.ts`) checks
- * the contract afterwards (no commit, no new ref, no conflict markers), so the
- * agent's own sandbox is a second line of defence rather than the only one.
+ * The permission mode is `edits`: file edits allowed, no shell commands, no
+ * prompts. That is all a repair needs. The executor (`../update/execute.ts`)
+ * checks the result afterwards (no commit, no new ref, no conflict markers), so
+ * the agent's own sandbox is a second check, not the only one.
  */
 
 import {
@@ -47,12 +47,12 @@ const ADAPTERS: Record<RepairAgent, () => AgentAdapter> = {
   claude: () => claudeAdapter(),
   codex: () => codexAdapter(),
   // Cursor refuses a headless run in a workspace it has not been told to trust.
-  // The worktree is ours and ephemeral, and choosing this agent is the consent.
+  // The worktree is this run's own and temporary, and choosing this agent is the consent.
   cursor: () => cursorAdapter({ trustWorkspace: true }),
   pi: () => piAdapter(),
 }
 
-/** The agent-call spec for one repair: shared prompt, edit-only posture, worktree, timeout. */
+/** The agent-call spec for one repair: shared prompt, edit-only permissions, worktree, timeout. */
 export function repairCallSpec(req: RepairRequest, opts: AgentRepairOptions = {}): AgentCallSpec {
   return {
     prompt: repairPrompt(req),
@@ -81,8 +81,8 @@ function lastLine(text: string): string {
 }
 
 /**
- * A `Repair` that runs `agent` on the request. Exit status gives `ok`; the
- * agent's final text gives the note (or why it failed, when it said nothing).
+ * A `Repair` that runs `agent` on the request. The exit status gives `ok`. The
+ * agent's final text gives the note, or why it failed when it said nothing.
  */
 export function agentRepair(
   agent: RepairAgent,

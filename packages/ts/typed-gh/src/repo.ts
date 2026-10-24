@@ -1,11 +1,11 @@
 /**
- * Turning a git remote into a GitHub coordinate.
+ * Reading the GitHub owner and repository from a git remote, and a pull
+ * request from a URL or what a person typed.
  *
- * This is `@osdlc/typed-git`'s `parseGitUrl` applied to the one question a
- * GitHub client always ends up asking. It lives here rather than in each
- * caller because the hand-rolled version is always a regex over
- * `remote.origin.url`, and that regex is always missing a URL shape —
- * scp-style, a trailing `.git`, an `ssh://` port, a bare `owner/repo`.
+ * `parseOwnerRepo` uses `@osdlc/typed-git`'s `parseGitUrl`. It lives here so
+ * callers do not each write a regex over `remote.origin.url`. Such a regex
+ * usually misses a URL form: scp-style, a trailing `.git`, an `ssh://` port,
+ * or a bare `owner/repo`.
  */
 
 import { parseGitUrl } from '@osdlc/typed-git'
@@ -42,11 +42,11 @@ export interface PullRequestRef extends OwnerRepo {
  *
  * Accepts `https://<host>/<owner>/<repo>/pull/<n>` with or without a scheme,
  * a trailing slash, a sub-page (`/files`, `/commits`), a query string or a
- * fragment — every shape a browser's address bar hands over. The host is
+ * fragment, as copied from a browser's address bar. The host is
  * `github.com` (a `www.` prefix is dropped) or a GitHub Enterprise host such
- * as `github.acme.com` or `acme.ghe.com`; without a scheme the host must
- * contain a dot. `parseGitUrl` is the wrong tool here: it reads `/pull/<n>`
- * as part of the project path.
+ * as `github.acme.com` or `acme.ghe.com`. Without a scheme the host must
+ * contain a dot. `parseGitUrl` does not fit here, because it reads
+ * `/pull/<n>` as part of the project path.
  */
 export function parsePrUrl(url: string): PullRequestRef | null {
   const m =
@@ -83,9 +83,9 @@ export type PrRef =
  * Read what a person typed to name a pull request: a number, `#42`,
  * `owner/name#42`, a URL, or a branch name. Null when it is none of these.
  *
- * Pure: it starts no process. Digits are read as a number first, the way
- * `gh pr view 42` reads them; `orBranch` keeps the branch reading. The
- * clients' `prFind` tries both.
+ * It starts no process. Digits are read as a number first, the way
+ * `gh pr view 42` reads them. `orBranch` keeps the text for reading it as a
+ * branch. The clients' `prFind` tries both.
  */
 export function parsePrRef(input: string): PrRef | null {
   const text = input.trim()

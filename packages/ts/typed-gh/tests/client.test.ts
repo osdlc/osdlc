@@ -1,10 +1,9 @@
 /**
- * The `Gh` client — argv construction, the tri-modal contract, and the one
- * piece of real behaviour it carries: the merge-state retry.
+ * The `Gh` client: how it builds argv, its three call styles, and the
+ * merge-state retry, the one behaviour it adds on top of `gh`.
  *
- * Every test runs offline against a fake `CommandRunner`. That is the point
- * of the seam: a GitHub client whose suite needs GitHub is a suite nobody
- * runs.
+ * Every test runs offline against a fake `CommandRunner`, so the suite does
+ * not need GitHub.
  */
 
 import { FailureError } from '@osdlc/result'
@@ -22,7 +21,7 @@ import {
   type CommandRunner,
 } from '../src/index.ts'
 
-/** Records argv and replays a queue of canned results (last one repeats). */
+/** Records argv and replays a queue of canned results (the last one repeats). */
 function recorder(results: CommandResult[] = [{ exitCode: 0, stdout: '', stderr: '' }]) {
   const calls: string[][] = []
   let i = 0
@@ -314,8 +313,8 @@ describe('Gh — argv', () => {
   })
 
   test('installed() and authenticated() ask one question each', () => {
-    // A report that tells a person which half failed needs the halves; going
-    // through raw() for them was what this pair replaced.
+    // A report that tells a person which check failed needs each check on
+    // its own.
     const missing = recorder([FAIL])
     expect(new Gh('/repo', { runner: missing.runner }).installed()).toBe(false)
     expect(missing.calls).toEqual([['--version']])
@@ -480,7 +479,7 @@ describe('branch matching and owner/repo', () => {
     ]
     expect(pickPrForBranch(rows, 'feature/foo')?.number).toBe(2)
     expect(pickPrForBranch(rows, 'feature/nope')).toBeNull()
-    // Couldn't ask stays couldn't ask.
+    // A failed call (null) stays null.
     expect(pickPrForBranch(null, 'feature/foo')).toBeNull()
   })
 

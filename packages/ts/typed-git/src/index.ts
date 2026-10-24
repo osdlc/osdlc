@@ -2,29 +2,30 @@
  * `@osdlc/typed-git` — a typed git client for TypeScript, in a synchronous
  * and an awaitable form.
  *
- * Two clients, one surface:
+ * Two clients with the same methods:
  *
- *   - {@link Git} is synchronous and always shells out. Sequential git
- *     one-shots gain nothing from being awaited, and staying sync keeps a
- *     caller's call graph uncolored. It takes a `CommandRunner`, so tests
- *     inject a fake.
- *   - {@link AsyncGit} is awaitable and takes a {@link GitBackend} — a seam
- *     over *what performs git*, not over how a process is spawned. The
- *     default backend runs the CLI; any other implementation drives the same
- *     client unchanged.
+ *   - {@link Git} is synchronous and always runs the `git` CLI. Git calls run
+ *     one after another gain nothing from being awaited, and a sync client
+ *     does not force its callers to be async. It takes a `CommandRunner`, so
+ *     tests can pass a fake.
+ *   - {@link AsyncGit} is awaitable and takes a {@link GitBackend}, which
+ *     replaces what performs git, not how a process is spawned. The default
+ *     backend runs the CLI. Any other implementation works with the same
+ *     client.
  *
- * One contract, both clients: **declared absence returns a value; everything
- * else throws; `try` inspects; `raw` bypasses.** Each verb names the exit
- * codes that mean "not there" for it — an unset config key, a ref that does
- * not resolve — and those return `null` / `[]` / `false`. Every other non-zero
- * exit throws the classified failure, so "git broke" is distinct from "nothing there".
- * `git.try.*` is the door for callers that must tolerate failure; `git.soft.*`
- * for those whose fallback is the verb's own absence value.
+ * Both clients follow one contract. A declared absence returns a value,
+ * everything else throws, `try` returns the failure instead of throwing, and
+ * `raw` skips the checks. Each verb names the exit codes that mean "not
+ * there" for it, such as an unset config key or a ref that does not resolve,
+ * and those return `null` / `[]` / `false`. Every other non-zero exit throws
+ * the classified failure, so "git broke" is distinct from "nothing there".
+ * `git.try.*` is for callers that must tolerate failure. `git.soft.*` is for
+ * callers whose fallback is the verb's own absence value.
  *
  * The verb table in `./verbs.ts` is the single definition of every argv,
  * every absence code and every parser, so the two clients cannot drift apart.
- * The one exception is `remoteOwnerRepo`, a composite of `remoteGetUrl` plus
- * `parseRemoteUrl` written in each client.
+ * The one exception is `remoteOwnerRepo`, which calls `remoteGetUrl` and then
+ * `parseRemoteUrl`, and is written in each client.
  *
  * Subpath exports: `./client` is everything here except the git-reference
  * parsers and the checkout walks (and so without `hosted-git-info` on the

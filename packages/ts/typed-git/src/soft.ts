@@ -1,10 +1,10 @@
 /**
- * The soft door's table — the one place that says which verbs have a
- * tolerant form and what they fall back to.
+ * The `soft` table: the one place that says which verbs have a `git.soft.*`
+ * form and what each falls back to.
  *
- * Typed against `Git` and `AsyncGit` both, so adding a list-, nullable- or
- * boolean-returning verb to either client is a compile error here until it
- * is declared, and the two clients cannot grow different soft doors.
+ * It is typed against both `Git` and `AsyncGit`. Adding a verb that returns
+ * a list, a nullable or a boolean to either client is a compile error here
+ * until it is added, so the two clients cannot have different `soft` methods.
  * Mutations have no soft form, so `configRemoveSection` is not here.
  */
 

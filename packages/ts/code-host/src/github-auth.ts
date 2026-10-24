@@ -3,7 +3,7 @@ import { Gh } from '@osdlc/typed-gh'
 
 import type { AuthCheck, CodeHostAuthCheckDeps } from './types.ts'
 
-/** Name of the `gh --version` check. a doctor command finds its gh probe result by this name. */
+/** Name of the `gh --version` check. A doctor command finds the result of its gh check by this name. */
 export const GH_INSTALLED_CHECK = 'gh installed'
 
 /** Name of the check that the `origin` remote is a `github.com` repository. */

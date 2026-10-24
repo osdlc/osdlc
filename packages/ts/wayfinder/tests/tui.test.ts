@@ -61,8 +61,8 @@ function catalog(names: string[]): Catalog {
           { label: 'target', hint: 'The target name, as written at column 0 before the colon.' },
         ],
         tasks: names.map((n) => task('make', n)),
-        // Required, and false is the honest value: make is a parse provider,
-        // so it is never the runner that gets withheld for want of execution.
+        // Required, and false is the correct value: make is a parse provider,
+        // so it is never withheld because execution is off.
         skippedForExec: false,
         diagnostics: [],
       },

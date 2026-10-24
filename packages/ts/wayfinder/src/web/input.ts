@@ -25,13 +25,12 @@ import { handleSettingsClick, openSettings } from './settings.ts'
 // ------------------------------------------------------------------- run
 
 /**
- * Ask for the terminal and deal with every way that ends.
+ * Ask for the terminal and handle every outcome.
  *
  * Shared by the row button and the run bar so the four outcomes are handled
- * once. `button`, when given, is disabled for the round trip: a double click
- * would otherwise send a second POST the server can only answer 409 to, and
- * "another run took the terminal" is a confusing thing to be told about
- * yourself.
+ * in one place. `button`, when given, is disabled for the round trip.
+ * Otherwise a double click would send a second POST that gets a 409, and the
+ * user would be told "another run took the terminal" about their own click.
  */
 async function handOff(
   id: string,
@@ -41,8 +40,8 @@ async function handOff(
   if (button) button.disabled = true
   const result = await requestRun(id, args)
   if (result.outcome === 'handed-off') {
-    // The server is on its way out; nothing this page could fetch now would
-    // succeed, so the polling stops before the view is replaced.
+    // The server is stopping, so no fetch from this page can succeed now.
+    // Polling stops before the view is replaced.
     stopPolling()
     hideRunBar()
     showHandoff(result.command)
@@ -53,8 +52,8 @@ async function handOff(
   else if (result.outcome === 'taken') {
     $('status').innerHTML = '<span class="err">another run already took the terminal.</span>'
   } else if (result.outcome === 'gone') {
-    // The request died with the connection, so this page has no server left to
-    // talk to either — polling would only repeat the failure in the same line.
+    // The connection closed, so this page has no server left to talk to.
+    // Polling would only repeat the failure in the same line.
     stopPolling()
     $('status').innerHTML =
       '<span class="err">the terminal has already been handed off - this page is done.</span>'
@@ -66,9 +65,9 @@ async function handOff(
 /**
  * Keys for the run bar's field: Enter runs what is typed, Escape goes back.
  *
- * Bound to the field itself rather than the document, so it dies with the bar
- * and cannot outlive it — a stale document listener would send a run for a
- * task the user had already dismissed.
+ * Bound to the field rather than the document, so it goes away with the bar.
+ * A leftover document listener could send a run for a task the user had
+ * already dismissed.
  */
 function armRunBar(id: string, field: HTMLInputElement): void {
   field.addEventListener('keydown', (ev) => {
@@ -90,8 +89,8 @@ function armRunBar(id: string, field: HTMLInputElement): void {
 /**
  * The refresh loop, and the flag that ends it.
  *
- * The flag is not redundant with clearing the interval: the focus listener is
- * a second way in, and one flag turns both off in one place.
+ * The flag is needed as well as clearing the interval, because the focus
+ * listener also loads. One flag turns both off in one place.
  */
 let pollTimer: ReturnType<typeof setInterval> | undefined
 let polling = true
@@ -110,11 +109,10 @@ export function wireInput(): void {
     clearTimeout(debounce)
     debounce = setTimeout(render, 40)
   })
-  // Focus reaching the SEARCH BOX is what returns the enter-target mark to the
-  // top hit. Every route back to the field - Escape from a row, "/", a click -
-  // lands here, so the marking is corrected in one place rather than at each of
-  // them. Moving to a toolbar button instead leaves the row marked: Enter there
-  // presses that button, so the mark is not claiming anything false.
+  // Focus on the search box moves the enter-target mark back to the top hit.
+  // Every way back to the field (Escape from a row, "/", a click) ends here, so
+  // the mark is reset in one place. Moving to a toolbar button leaves the row
+  // marked. Enter there presses that button, so the mark is still accurate.
   $('q').addEventListener('focus', () => {
     if (state.focusedId !== null) setFocusedRow(null)
   })
@@ -126,9 +124,9 @@ export function wireInput(): void {
         document.querySelector('tbody tr.enter-target') ?? document.querySelector('tbody tr')
       if (!row) return
       copyRow(row as HTMLElement)
-      // Enter both takes the top hit and hands the list over: from here the
-      // arrows walk the results, which is the natural next move after seeing
-      // that the top hit was not the one wanted.
+      // Enter copies the top hit and moves focus to the list. From there the
+      // arrows move through the results, which helps when the top hit was not
+      // the one wanted.
       setFocusedRow((row as HTMLElement).dataset.id ?? null)
       ;(row as HTMLElement).focus()
     }
@@ -157,9 +155,9 @@ export function wireInput(): void {
   document.addEventListener('click', (e) => {
     const target = e.target as HTMLElement
 
-    // The settings dialog repaints its own body on every edit, so its controls
-    // are as delegated as the tab row's. Asked first and given the whole
-    // event: while it is open it owns the clicks inside it.
+    // The settings dialog repaints its body on every edit, so its controls are
+    // handled here too, like the tab row's. It is checked first, and handles
+    // every click inside it while it is open.
     if (target.closest('#settings') !== null && handleSettingsClick(target)) return
     const info = target.closest('[data-info-runner]') as HTMLElement | null
     if (info) {
@@ -167,9 +165,9 @@ export function wireInput(): void {
       return
     }
 
-    // Trusting a repository permits its code to run, so the click is not the
-    // decision — the confirm is. Deliberately blocking and native: a bespoke
-    // dialog here would be one more thing to dismiss by reflex.
+    // Trusting a repository lets its code run, so the confirm, not the click,
+    // is the decision. It uses the native blocking confirm on purpose. A custom
+    // dialog would be one more thing to dismiss without reading.
     if (target.closest('[data-trust-repo]')) {
       if (
         confirm(
@@ -187,11 +185,11 @@ export function wireInput(): void {
       return
     }
 
-    // The picker's pointer at the durable setting. Same handler as the gear,
-    // so the two routes into the dialog cannot drift apart.
+    // The picker's link to the saved setting. It shares the gear's handler, so
+    // both ways into the dialog behave the same.
     if (target.closest('[data-open-settings]') || target.closest('#settingsbtn')) {
-      // Opened first, filled second: the fetch is a round trip, and a dialog
-      // that appears only once the server answers reads as a click that did
+      // Open first, fill second. The fetch is a round trip, and a dialog that
+      // appears only once the server answers looks like a click that did
       // nothing.
       $('settings-body').innerHTML = '<p class="set-empty">Reading configuration…</p>'
       ;($('settings') as HTMLDialogElement).showModal()
@@ -221,8 +219,8 @@ export function wireInput(): void {
       return
     }
 
-    // Sorting is a REORDER, not a view of its own: it writes the same
-    // persisted order the drag writes, so the tab bar follows immediately.
+    // Sorting reorders, rather than being a separate view. It writes the same
+    // saved order a drag writes, so the tab bar updates at once.
     const sort = target.closest('[data-sort-runners]') as HTMLElement | null
     if (sort) {
       sortRunners(sort.dataset.sortRunners as SortKey, Number(sort.dataset.sortDir) === -1 ? -1 : 1)
@@ -240,13 +238,12 @@ export function wireInput(): void {
       return
     }
 
-    // The folded-empties chip is a shortcut into the picker, not a menu of
-    // its own: everything it would say (0 tasks, not trusted, failed) is
-    // already on each picker row. It only ever OPENS. Synthesising a click on
-    // #pickbtn would land on that button's toggle branch, so clicking the chip
-    // with the menu already open would close it — the opposite of what the
-    // chip's own label promises. Focus follows to the picker button, so the
-    // menu the chip just opened is where the keyboard already is.
+    // The chip for folded empty runners is a shortcut into the picker, not a
+    // menu of its own: what it would say (0 tasks, not trusted, failed) is
+    // already on each picker row. It only opens the menu. A synthetic click
+    // on #pickbtn would toggle, so clicking the chip with the menu open would
+    // close it, the opposite of what its label says. Focus moves to the
+    // picker button, so the keyboard is at the menu the chip opened.
     if (target.closest('[data-open-picker]')) {
       const btn = document.getElementById('pickbtn')
       if (menu) menu.hidden = false
@@ -260,29 +257,28 @@ export function wireInput(): void {
   })
 
   /**
-   * Drag-to-reorder, shared by the tab bar and the picker: both mark their
-   * draggables with a runner id, so one pair of handlers serves the two
-   * surfaces.
+   * Drag to reorder, shared by the tab bar and the picker. Both mark their
+   * draggable elements with a runner id, so one set of handlers serves both.
    *
-   * The drag PREVIEWS itself. A solid clone carries the pointer in place of
-   * the browser's near-transparent default ghost, and the real elements move
-   * as the pointer passes their midpoints - the dragged one among them, faded,
-   * marking the slot it would land in. So the list shows the order the drop
-   * will produce rather than only revealing it afterwards.
+   * The drag shows a preview. A solid clone follows the pointer instead of the
+   * browser's faint default drag image, and the real elements move as the
+   * pointer passes their midpoints. The dragged element moves with them,
+   * faded, to mark where it would land. So the list shows the order the drop
+   * will produce before the drop.
    *
-   * The DOM is only the preview. State stays the source of truth: the drop
-   * commits through saveRunnerOrder, and a drag abandoned without one
-   * re-renders from the persisted order, which snaps everything back.
+   * The DOM is only the preview. State is the source of truth: the drop saves
+   * through saveRunnerOrder, and a drag cancelled without a drop re-renders
+   * from the saved order, which puts everything back.
    */
   let dragging: string | null = null
   let dragEl: HTMLElement | null = null
   let ghost: HTMLElement | null = null
   /**
-   * The arrangement the user has actually SEEN, refreshed once per animation
-   * frame. Chromium delivers a last `dragover` in the same task as the `drop`,
-   * so the move that dragover makes is committed without ever being painted -
-   * and what persisted was one position off from what was on screen.
-   * Committing this snapshot instead makes what lands what was last shown.
+   * The order the user has actually seen, updated once per animation frame.
+   * Chromium sends a last `dragover` in the same task as the `drop`, so the
+   * move that dragover makes is never painted. Saving the live DOM order would
+   * then be one position off from what was on screen. Saving this snapshot
+   * saves what was last shown.
    */
   let painted: string[] = []
   let paintQueued = false
@@ -304,15 +300,15 @@ export function wireInput(): void {
   }
 
   /**
-   * Put the page back the way a drag found it. Idempotent, and called from BOTH
-   * ends: `drop` runs it before committing, because the commit re-renders the
-   * tab strip and the picker, which detaches the drag source - and Chromium
-   * fires no `dragend` for a source that is no longer in the document. Cleanup
-   * left to that event alone simply never ran, so every committed drag leaked
-   * its ghost and left the drag state armed.
+   * Put the page back as it was before the drag. Idempotent, and called from
+   * both `drop` and `dragend`. `drop` runs it before saving, because saving
+   * re-renders the tab strip and the picker, which removes the drag source, and
+   * Chromium fires no `dragend` for a source no longer in the document. If
+   * only `dragend` cleaned up, every saved drag would leave its drag image and
+   * drag state behind.
    *
-   * Returns whether there was a drag to end, which is what tells `dragend` it
-   * is the cancel path rather than the tail of a commit.
+   * Returns whether there was a drag to end, which tells `dragend` whether it
+   * is the cancel path or the end of a saved drag.
    */
   function endDrag(): boolean {
     if (!dragEl) return false
@@ -332,8 +328,8 @@ export function wireInput(): void {
     const dt = (e as DragEvent).dataTransfer
     const runner = el ? (el.dataset.dragRunner ?? el.dataset.runner ?? null) : null
     if (!el || !dt || runner === null) return
-    // A tab's own `i` button rides beside it inside `.tab`, so the whole span
-    // is what moves; a picker row is already the whole thing.
+    // A tab's `i` button sits beside it inside `.tab`, so the whole span
+    // moves. A picker row is already a single element.
     dragEl = (el.closest('.tab') as HTMLElement | null) ?? el
     dragging = runner
     dt.effectAllowed = 'move'
@@ -349,18 +345,18 @@ export function wireInput(): void {
     if (!dragEl) return
     const ev = e as DragEvent
     const surface = dragEl.parentElement
-    // The whole SURFACE takes the drop - the tab strip, or the picker menu -
-    // not only a sibling the pointer could be slid past. The preview has
-    // already settled the order, so a release anywhere inside it commits what
-    // is shown. Refusing the gaps, the `all` tab and the folded chip threw the
-    // whole drag away on a release over one of them, and the preview's own
-    // reflow can slide such a spot under a pointer that never moved.
+    // The whole surface (the tab strip, or the picker menu) accepts the drop,
+    // not only the siblings. The preview has already set the order, so a
+    // release anywhere inside it saves what is shown. A gap, the `all` tab or
+    // the folded chip must accept it too: the preview's reflow can move one of
+    // them under a pointer that did not move, and refusing would drop the
+    // whole drag.
     if (!surface || !surface.contains(ev.target as Node)) return
     ev.preventDefault() // required, or drop never fires
     if (ev.dataTransfer) ev.dataTransfer.dropEffect = 'move'
-    // Landing ON something is still what MOVES anything. The `all` tab is an
-    // aggregate and the folded-empties chip is a shortcut, not a runner:
-    // neither is a position, so neither displaces the dragged element.
+    // Only passing over a runner moves anything. The `all` tab and the chip
+    // for folded empty runners are not runners, so neither is a position and
+    // neither moves the dragged element.
     const over = (ev.target as HTMLElement).closest(
       '.tabs .tab, [data-drag-runner]',
     ) as HTMLElement | null
@@ -375,21 +371,20 @@ export function wireInput(): void {
     e.preventDefault()
     const moved = dragging
     const shown = painted
-    // Cleanup FIRST: the commit re-renders and takes the drag source with it.
+    // Clean up first, because saving re-renders and removes the drag source.
     endDrag()
     commitDragOrder(shown, moved)
   })
 
   document.addEventListener('dragend', () => {
-    // The cancel path. A committed drop has already cleaned up, so this is a
-    // no-op there. The preview moved real elements, so a drag that ended
-    // nowhere has to be put back - and the persisted order is the only thing
-    // that knows where.
+    // The cancel path. After a saved drop, cleanup has already run and this
+    // does nothing. The preview moved real elements, so a cancelled drag must
+    // be put back, and only the saved order knows where.
     if (endDrag()) render()
   })
 
-  // One button cycling System - Light - Dark, rather than three showing the
-  // choices. It reports the scheme in force and its title names the next one.
+  // One button that cycles System, Light, Dark, rather than three buttons. It
+  // shows the scheme in use and its title names the next one.
   $('theme').addEventListener('click', () => {
     const choice = THEME_CYCLE[$('theme').dataset.themeChoice ?? 'system'] ?? 'light'
     // Absent means "follow the system", which is what the media query already
@@ -445,10 +440,11 @@ export function wireInput(): void {
     const run = target.closest('.runbtn') as HTMLButtonElement | null
     if (run) {
       const id = run.dataset.runId ?? ''
-      // A recipe that declares parameters cannot be run from the row: `argv`
-      // omits them, so the click would spawn `just deploy` with no environment
-      // and the terminal would be gone before anyone could say so. The bar
-      // collects the tail first; the run happens from there.
+      // A recipe that declares parameters cannot run from the row. `argv`
+      // leaves them out, so the click would spawn `just deploy` with no
+      // environment, and the terminal would be handed over before anything
+      // could say so. The run bar asks for the arguments first and runs from
+      // there.
       const task = (state.catalog?.reports ?? []).flatMap((r) => r.tasks).find((t) => t.id === id)
       if (task && task.parameters.length > 0) {
         armRunBar(task.id, showRunBar(task))
@@ -468,9 +464,9 @@ export function wireInput(): void {
   })
 
   /**
-   * The results list as one keyboard surface. Rows are <tr> spread across a
-   * table per tree group, so "next row" is the next row in DOCUMENT order
-   * across all of #out rather than within one table.
+   * Keyboard handling for the whole results list. Rows are <tr> elements in
+   * one table per tree group, so "next row" is the next row in document order
+   * across all of #out, not within one table.
    */
   $('out').addEventListener('keydown', (e) => {
     const ev = e as KeyboardEvent
@@ -478,17 +474,17 @@ export function wireInput(): void {
     if (!row) return
 
     if (ev.key === 'Escape') {
-      // Focus returns to the search box; the query is left alone. Clearing it
-      // is the search box's OWN Escape, and losing a query just to get back to
-      // the field would be a surprise.
+      // Focus returns to the search box and the query is kept. Escape in the
+      // search box clears it. Losing the query just to get back to the field
+      // would be a surprise.
       ev.preventDefault()
       ;($('q') as HTMLInputElement).focus()
       return
     }
 
-    // Arrows and Enter belong to the row itself. Once Tab has moved into the
-    // row's copy button the keys are the button's, so an Enter or a Space
-    // there presses it rather than being intercepted here.
+    // Arrows and Enter act on the row itself. Once Tab has moved to the row's
+    // copy button, Enter or Space there presses the button and is not handled
+    // here.
     if (ev.target !== row) return
 
     if (ev.key === 'Enter') {
@@ -502,9 +498,8 @@ export function wireInput(): void {
     ev.preventDefault()
     const rows = listRows()
     const at = rows.indexOf(row)
-    // Clamped, not wrapped: at the last row ArrowDown stays put. A list this
-    // long has no visible seam between its end and its start, so a wrap would
-    // read as the page having jumped rather than as the cursor having moved.
+    // Clamped, not wrapped: at the last row ArrowDown stays put. In a long
+    // list a wrap would look like the page jumped, not like the cursor moved.
     const next = rows[Math.min(rows.length - 1, Math.max(0, at + step))]
     if (!next || next === row) return
     setFocusedRow(next.dataset.id ?? null)
@@ -519,10 +514,10 @@ export function wireInput(): void {
       ;($('q') as HTMLInputElement).select()
       return
     }
-    // Escape dismisses the picker and hands focus back to the button that
-    // opened it, or the menu would close under a focus that has nowhere to go.
-    // Scoped to a focus already inside the picker: Escape in the search box
-    // belongs to the query, and one key must not mean two things at once.
+    // Escape closes the picker and returns focus to the button that opened it,
+    // so focus is not left on a closed menu. Only when focus is inside the
+    // picker: Escape in the search box acts on the query, and one key must not
+    // do two things.
     if (e.key !== 'Escape') return
     const menu = document.getElementById('pickmenu')
     const picker = document.getElementById('pickerhost')
@@ -543,8 +538,8 @@ export function wireInput(): void {
     resizeTimer = setTimeout(render, 60)
   })
 
-  // Stay current without being asked: on window focus, and on a slow poll.
-  // Both stop for good once the terminal has been handed off — see stopPolling.
+  // Stay current on window focus and on a slow poll. Both stop for good once
+  // the terminal has been handed off (see stopPolling).
   window.addEventListener('focus', () => {
     if (polling) load(false)
   })
@@ -552,15 +547,14 @@ export function wireInput(): void {
     if (polling && !document.hidden) load(false)
   }, 15000)
 
-  // The authored placeholder is a sentence, and at 1100px it truncated
-  // mid-word inside a field the toolbar has already taken its share of. The
-  // short form fits every width; the sentence moves to the field's own title,
-  // and the help modal says it at length.
+  // The placeholder in the markup is a sentence, which is cut off mid-word at
+  // narrow widths such as 1100px. The short form fits every width. The
+  // sentence moves to the field's title, and the help modal explains it fully.
   const q = $('q') as HTMLInputElement
   q.title = q.placeholder
-  // A placeholder names a field only while the field is empty, so typing one
-  // character left this input nameless. The authored sentence becomes the name
-  // proper, which the short placeholder then no longer has to carry.
+  // A placeholder names a field only while the field is empty. The sentence
+  // becomes the field's accessible name, so the input keeps a name while the
+  // user types.
   q.setAttribute('aria-label', q.placeholder)
   q.placeholder = 'Search commands'
 
@@ -571,9 +565,9 @@ export function wireInput(): void {
 /**
  * Put a row's command on the clipboard and say what happened.
  *
- * The button is the ONLY evidence anyone has that the paste buffer changed, so
- * a refused write — a permissions policy, a page that is not the active
- * document — must not be reported as a copy. Returns whether it landed.
+ * The button is the only sign that the clipboard changed, so a refused write
+ * (a permissions policy, or a page that is not the active document) must not
+ * be reported as a copy. Returns whether the write succeeded.
  */
 async function copyCommand(copy: HTMLElement): Promise<boolean> {
   let ok = true
@@ -594,22 +588,22 @@ async function copyCommand(copy: HTMLElement): Promise<boolean> {
 /**
  * Copy a row's command and say so on the row.
  *
- * The confirmation is on the ROW, not just the button, because both paths that
- * reach here act at a distance: from the search box the button is off to the
- * right of where the eye is, and from a focused row the keypress named the row
- * rather than the button. One helper, so the two paths cannot drift.
+ * The confirmation shows on the row, not just the button, because neither
+ * caller is looking at the button. From the search box the button is far to
+ * the right, and from a focused row the keypress was on the row. One helper,
+ * so both callers behave the same.
  */
 function copyRow(row: HTMLElement): void {
   const button = row.querySelector('.copy') as HTMLElement | null
   if (button === null) return
-  // What a real click on that button did on the way past: the document's click
-  // handler closes the picker on any click outside it. `copyCommand` is called
-  // rather than clicked — the flash below needs its answer, and a click cannot
-  // be awaited — so the close is done here rather than quietly lost.
+  // A real click on the button would also close the picker, through the
+  // document's click handler. `copyCommand` is called directly instead of
+  // clicking, because the flash below needs its result and a click cannot be
+  // awaited. So the picker is closed here.
   const menu = document.getElementById('pickmenu')
   if (menu) menu.hidden = true
-  // The flash is a second claim that the command was copied, so it waits on
-  // the same answer the button does.
+  // The flash also says the command was copied, so it waits for the same
+  // result the button does.
   void copyCommand(button).then((ok) => {
     if (!ok) return
     row.classList.remove('copied')
@@ -639,10 +633,10 @@ function runnerOf(el: HTMLElement): string | null {
 /**
  * The drag image: a solid, elevated copy of what is being dragged.
  *
- * setDragImage only takes an element that is rendered, so the clone is put in
- * the document and parked off-screen by its own class. It is removed at
- * dragend rather than on the next tick, because a snapshot the engine has not
- * taken yet cannot be removed early.
+ * setDragImage only takes a rendered element, so the clone is added to the
+ * document and placed off-screen by its class. It is removed at the end of
+ * the drag, not on the next tick, because the browser may not have taken its
+ * snapshot yet.
  */
 function makeDragGhost(el: HTMLElement, e: DragEvent, dt: DataTransfer): HTMLElement {
   const box = el.getBoundingClientRect()
@@ -650,9 +644,9 @@ function makeDragGhost(el: HTMLElement, e: DragEvent, dt: DataTransfer): HTMLEle
   clone.classList.add('dragghost')
   clone.setAttribute('data-drag-ghost', '')
   clone.removeAttribute('draggable')
-  // A copy is not a control. Every attribute the page identifies a runner by
-  // is stripped from it, or the ghost would answer a query for the runner it
-  // depicts and be counted as a second one.
+  // A copy is not a control. Every attribute the page uses to find a runner is
+  // removed from it, or a query for that runner would find the copy and count
+  // it twice.
   for (const node of [clone, ...clone.querySelectorAll<HTMLElement>('*')]) {
     node.removeAttribute('id')
     for (const attr of [
@@ -664,14 +658,14 @@ function makeDragGhost(el: HTMLElement, e: DragEvent, dt: DataTransfer): HTMLEle
       node.removeAttribute(attr)
     }
   }
-  // Height carries over from the source; WIDTH does not. The source's width
-  // counts children the ghost drops (the info button, the grip), so copying it
-  // would leave a card of blank space to the right of everything drawn in it.
-  // Letting the copy size itself makes the card exactly its own content.
+  // Height is copied from the source; width is not. The source's width
+  // includes children the copy does not show (the info button, the grip), so
+  // copying it would leave blank space on the right. The copy sizes itself to
+  // its own content.
   clone.style.height = box.height + 'px'
   document.body.appendChild(clone)
-  // The grab point is measured on the source, so it can land past the narrower
-  // copy's right edge; held there it would drag by a corner it is not under.
+  // The grab point is measured on the source, so it can fall past the narrower
+  // copy's right edge. It is clamped so the pointer stays over the copy.
   const width = clone.getBoundingClientRect().width
   dt.setDragImage(clone, Math.min(e.clientX - box.left, width), e.clientY - box.top)
   return clone
@@ -680,11 +674,10 @@ function makeDragGhost(el: HTMLElement, e: DragEvent, dt: DataTransfer): HTMLEle
 /**
  * Move `moving` before `before` and let the displaced siblings slide there.
  *
- * insertBefore is instant, so the shift would otherwise be a jump with nothing
- * connecting the two arrangements. Each sibling's old position is measured,
- * then it is offset back to it and released - the standard
- * first/last/invert/play. Reduced motion keeps the jump, which is the setting
- * asking for exactly that.
+ * insertBefore is instant, so without this the siblings would jump. Each
+ * sibling's old position is measured, it is offset back there, and then the
+ * offset is released (the FLIP technique: first, last, invert, play). With
+ * reduced motion set, the siblings jump, which is what that setting asks for.
  */
 function slideInto(parent: HTMLElement, moving: HTMLElement, before: Node | null): void {
   if (moving.nextSibling === before && before !== null) return
@@ -711,14 +704,14 @@ function slideInto(parent: HTMLElement, moving: HTMLElement, before: Node | null
 /**
  * Commit a previewed arrangement to the persisted order.
  *
- * The surface being dragged shows a SUBSET of the runners - the tab bar folds
- * the empty ones and hides the disabled ones - so the preview cannot simply
- * become the order. All a drag settles is where the moved runner sits AMONG THE
- * ONES ON SCREEN, and the runners it never showed must keep the neighbours they
- * have. So the moved runner is anchored to its new visible SUCCESSOR, or to its
- * visible predecessor when it was dropped last: a drop at the head means
- * "before the first VISIBLE runner", not "at the front of the full list", which
- * would hoist it past folded and disabled runners the user never saw.
+ * The dragged surface shows only some of the runners (the tab bar folds the
+ * empty ones and hides the disabled ones), so the preview cannot become the
+ * order as it is. A drag only decides where the moved runner sits among the
+ * runners on screen, and the hidden runners must keep their neighbours. So
+ * the moved runner is placed before its new visible successor, or after its
+ * visible predecessor when it was dropped last. A drop at the start means
+ * "before the first visible runner", not "at the front of the full list",
+ * which would move it past folded and disabled runners the user never saw.
  */
 function commitDragOrder(shown: string[], moved: string): void {
   const order = runnerOrder().filter((r) => r !== moved)
@@ -740,19 +733,19 @@ function commitDragOrder(shown: string[], moved: string): void {
 }
 
 /**
- * Make a group of buttons ONE tab stop, moved within by arrow keys.
+ * Make a group of buttons one tab stop, with arrow keys moving inside it.
  *
- * Without this, two segmented controls and eight runner tabs are a dozen
- * stops between the search box and anything else — Tab stops meaning "next
- * control" and starts meaning "next button", which is the opposite of what
- * a keyboard user expects. Only the active button stays reachable by Tab;
- * the rest are reached with the arrows, as a radio group or tablist is.
+ * Without this, two segmented controls and eight runner tabs add a dozen Tab
+ * stops between the search box and anything else. Tab would move to the next
+ * button instead of the next control, which is not what a keyboard user
+ * expects. Only the active button is reachable by Tab. The rest are reached
+ * with the arrows, as in a radio group or tab list.
  */
 function rovingGroup(container: HTMLElement | null, selector = 'button'): void {
   if (!container) return
-  // Scoped by selector because the tab row also hosts each tab's `i` button: a
-  // bare `button` sweep would fold those into the roving group and cost them
-  // their own tab stop.
+  // Limited by selector because the tab row also holds each tab's `i` button.
+  // Matching every `button` would add those to the group and take away their
+  // own tab stop.
   const buttons = () => [...container.querySelectorAll<HTMLElement>(selector)]
 
   const sync = () => {
@@ -776,12 +769,11 @@ function rovingGroup(container: HTMLElement | null, selector = 'button'): void {
     if (!next) return
     next.focus()
     next.click()
-    // The click can rebuild the group wholesale — the tab strip is re-rendered
-    // on every render — which detaches the button just focused and drops focus
-    // to <body>, leaving the next arrow press with nothing to act on. Focus is
-    // taken back by POSITION rather than by identity: a click inside a roving
-    // group selects, it never adds or removes members, and a group that did
-    // change length simply leaves focus where it is rather than guessing.
+    // The click can rebuild the whole group (the tab strip is re-rendered on
+    // every render). That removes the button just focused and moves focus to
+    // <body>, so the next arrow press would do nothing. Focus is restored by
+    // position, not by element: a click in the group selects and never adds or
+    // removes buttons. If the group did change length, focus is left alone.
     const rebuilt = buttons()[index]
     if (rebuilt !== undefined && rebuilt !== document.activeElement) rebuilt.focus()
   })
@@ -790,7 +782,7 @@ function rovingGroup(container: HTMLElement | null, selector = 'button'): void {
 /** The colour-scheme cycle: what a click on the theme button moves to. */
 const THEME_CYCLE: Record<string, string> = { system: 'light', light: 'dark', dark: 'system' }
 
-/** How each scheme presents itself once it is the one in force. */
+/** How the button shows each scheme when it is the one in use. */
 const THEME_FACE: Record<string, { glyph: string; name: string; note: string }> = {
   system: { glyph: '◐', name: 'System', note: ' (follows your OS)' },
   light: { glyph: '☀', name: 'Light', note: '' },
@@ -798,14 +790,13 @@ const THEME_FACE: Record<string, { glyph: string; name: string; note: string }> 
 }
 
 /**
- * Paint the theme button for the choice now in force.
+ * Update the theme button for the choice now in use.
  *
- * The button shows the CURRENT scheme, so both the title and the accessible
- * name have to carry two facts: what is on, and what a click does next. A
- * single cycling control has no other place to say the second one, and a name
- * carrying only the first would leave a screen-reader user guessing what the
- * press does. Boot calls this too, so the button and the restored preference
- * agree from the first frame.
+ * The button shows the current scheme, so both the title and the accessible
+ * name must say two things: what is on, and what a click does next. A single
+ * cycling button has nowhere else to say the second, and a screen-reader user
+ * would otherwise not know what the press does. Startup calls this too, so
+ * the button matches the restored preference from the first frame.
  */
 export function setThemeButton(choice: string): void {
   const btn = $('theme')

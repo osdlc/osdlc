@@ -1,8 +1,8 @@
 /**
- * The anti-drift suite for the `guide` command. Nothing here asserts on
- * wording: each test derives the fact from the source (the flags the parser
- * accepts, the keys the config schema declares, the built-in tools) and
- * asserts the guide agrees.
+ * The suite that keeps the `guide` command in step with the source. Nothing
+ * here asserts on wording. Each test derives a fact from the source (the
+ * flags the parser accepts, the keys the config schema declares, the built-in
+ * tools) and asserts the guide agrees.
  */
 
 import { describe, expect, test } from 'vitest'
@@ -35,9 +35,9 @@ export const FLAG_SKIP: readonly string[] = [
 ]
 
 /**
- * Backticked tokens in the config section that are key-SHAPED but are not
- * settings. Only filenames qualify: a dotted lowercase filename is
- * indistinguishable from a dotted setting name by pattern alone.
+ * Backticked tokens in the config section that look like keys but are not
+ * settings. Only filenames qualify: a dotted lowercase filename cannot be told
+ * apart from a dotted setting name by pattern alone.
  */
 const NON_KEY_TOKENS = new Set(['wayfinder.config.json', 'waypost.config.json'])
 
@@ -55,10 +55,10 @@ export function flagTokens(text: string): Set<string> {
 /** Every flag the tool's rendered help lists in its options block. */
 export function acceptedFlags(usage: string): Set<string> {
   // The tool's own rendered help, which `defineCli` generates from the flag
-  // declaration — so this compares the guide against what the parser really
+  // declaration. So this compares the guide against what the parser really
   // takes, not against a second list that could disagree with it. Only the
   // options block is scanned: the prose below it names flags of the
-  // SUBCOMMANDS, which this tool's top-level parser does not accept.
+  // subcommands, which this tool's top-level parser does not accept.
   const options = usage.split(/^Options:$/m)[1] ?? ''
   const upTo = options.split(/\n\n/)[0] ?? ''
   return new Set([...upTo.matchAll(/(?<![\w-])(--?[A-Za-z][\w-]*)/g)].map((m) => m[1] as string))
@@ -88,8 +88,8 @@ export function guideSuite(tool: GuideTool, main: GuideMain): void {
       const accepted = acceptedFlags(tool.usage)
       expect(accepted.size).toBeGreaterThan(0)
 
-      // Every section EXCEPT usage. The usage section is `tool.usage` itself,
-      // which `defineCli` renders from the flag declaration — comparing it
+      // Every section except usage. The usage section is `tool.usage` itself,
+      // which `defineCli` renders from the flag declaration. Comparing it
       // against flags derived from that same string would assert nothing.
       // The prose around it is written by hand, and that is what can drift:
       // a renamed flag, or one that never existed.
@@ -101,9 +101,8 @@ export function guideSuite(tool: GuideTool, main: GuideMain): void {
     })
 
     test('the usage section is the live help, so it cannot omit a flag', () => {
-      // The other half of the old both-directions check. It is now structural
-      // rather than asserted: `guide usage` prints the same string `--help`
-      // does, and both come from the declaration.
+      // The other direction needs no flag-by-flag check: `guide usage` prints
+      // the same string `--help` does, and both come from the declaration.
       expect(guideSection('usage', tool)).toContain(tool.usage.trim())
     })
 

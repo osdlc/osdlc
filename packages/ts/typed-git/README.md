@@ -1,9 +1,10 @@
 # @osdlc/typed-git
 
 A typed wrapper around the `git` command line for TypeScript, in a synchronous
-and an awaitable form. Each verb declares what *absence* means for it; every
-other failure throws. `git.try.*` inspects, `raw()` bypasses. What actually
-performs the git is a parameter.
+and an awaitable form. Each verb declares which exit codes mean "not there"
+for it, and every other failure throws. `git.try.*` returns the failure
+instead of throwing, and `raw()` skips the checks. You can replace what runs
+git.
 
 Use it when a Node or Bun program needs to ask git questions and act on typed
 answers, without parsing porcelain output by hand. It runs the `git` binary, so
@@ -79,7 +80,7 @@ const git = new Git(process.cwd());
 git.currentBranch();             // "main", or null when detached
 git.configGet("no.such.key");    // null — an unset key is an answer
 git.worktrees();                 // Worktree[] — throws outside a repository
-git.commit({ message: "feat" }); // throws CommandFailed on a non-zero exit
+git.commit({ message: "feat" }); // throws FailureError on a non-zero exit
 
 const r = git.try.worktrees();   // Result<Worktree[], GitFailure>
 
@@ -93,30 +94,30 @@ of the repository. They are not part of the published package.
 
 ## Two clients, one surface
 
-`Git` is synchronous and always shells out. That is a deliberate choice, not a
-missing feature: sequential git one-shots gain nothing from being awaited, and
-staying synchronous keeps a caller's call graph uncolored.
+`Git` is synchronous and always runs the `git` CLI. That is on purpose. Git
+calls run one after another gain nothing from being awaited, and a
+synchronous client does not force its callers to be async.
 
-`AsyncGit` is the awaitable twin. Reach for it when the caller is a server
-that must not block, when calls fan out concurrently, or when git should come
-from something other than a subprocess.
+`AsyncGit` has the same methods and returns promises. Use it when the caller
+is a server that must not block, when calls run concurrently, or when git
+should come from something other than a subprocess.
 
-Both drive the same verb table — one definition of every argv and every
-parser — so they cannot drift apart. The test suite asserts it: the two
-clients are run side by side against a recording runner and their argv
-compared.
+Both use the same verb table, which holds the one definition of every argv
+and every parser, so they cannot drift apart. The tests check this: they run
+the two clients side by side against a recording runner and compare their
+argv.
 
 ## Absence is an answer; failure is not
 
-**Declared absence returns a value; everything else throws; `try` inspects;
-`raw` bypasses.**
+A declared absence returns a value. Everything else throws. `try` returns
+the failure instead of throwing. `raw` skips the checks.
 
 Every verb names the exit codes that mean "asked and answered: not there" for
-*that* verb. `config --get` exits 1 for an unset key; `check-ignore` exits 1
-for "none of these are ignored"; `merge-base` exits 1 for unrelated histories.
-Those return the absence value — `null`, `[]`, `false` — exactly as before.
-Any other non-zero exit throws the classified failure, carrying the argv and the full
-result.
+that verb. `config --get` exits 1 for an unset key. `check-ignore` exits 1
+for "none of these are ignored". `merge-base` exits 1 for unrelated
+histories. Those return the absence value: `null`, `[]` or `false`. Any other
+non-zero exit throws the classified failure, which carries the argv and the
+full result.
 
 | | on a declared absence | on anything else |
 | --- | --- | --- |
@@ -124,12 +125,12 @@ result.
 | **`git.try.verb()`** | `{ ok: true, value }` | `{ ok: false, error: GitFailure }` |
 | **`git.raw(argv)`** | the raw `CommandResult`; you decide | the same |
 
-Why it matters: a guard that runs `status --porcelain` outside a repository
-used to receive `[]` and report a clean tree. It now throws. The failing check
-can no longer ship as a passing one.
+Why it matters: a check that runs `status --porcelain` outside a repository
+gets a throw, not `[]`. So it cannot report a clean tree when git could not
+look.
 
-`git.try.*` is for callers that genuinely tolerate failure — a hook that must
-not break a commit, an endpoint that must always answer:
+`git.try.*` is for callers that must tolerate failure, such as a hook that
+must not break a commit, or an endpoint that must always answer:
 
 ```ts
 const r = git.try.topLevel();
@@ -140,7 +141,16 @@ use(r.value);
 The error is a `GitFailure`: a `Failure` from `@osdlc/result` with a `kind` to
 branch on, a one-line `message` and a `hint` for a person (`describe(error)`
 joins them), git's own output in `detail`, the `argv` and `exitCode`, and the
-`CommandFailed` it was read from in `cause`. The plain door throws the same failure, wrapped in a `FailureError` (`error.failure`), so a CLI that reports a thrown failure, such as `runMain` from `@osdlc/cli-tool`, shows "The remote refused the credentials" and exits 23 for a signed-out `git push`, as it does for a read. The thrown `message` names the command (`git push: The remote refused the credentials. …`); `failure.message` is the bare sentence, and `describeGitFailure(failure)` renders the same `git <verb>: <message> <hint>` line for a failure from `git.try.*`.
+`CommandFailed` it was read from in `cause`.
+
+The methods that throw (`git.push()` and the rest) throw the same failure,
+wrapped in a `FailureError` (`error.failure`). So a CLI that reports a thrown
+failure, such as `runMain` from `@osdlc/cli-tool`, shows "The remote refused
+the credentials" and exits 23 for a signed-out `git push`, as it does for a
+read. The thrown `message` names the command (`git push: The remote refused
+the credentials. …`). `failure.message` is the bare sentence.
+`describeGitFailure(failure)` builds the same `git <verb>: <message> <hint>`
+line for a failure from `git.try.*`.
 
 | `kind` | When | `message` / `hint` |
 | --- | --- | --- |
@@ -159,10 +169,9 @@ differ and the failure is a plain `exit` with git's own line, never a wrong
 kind. `classifyGitFailure(commandFailed)` makes the same classification for a
 `CommandFailed` you caught yourself.
 
-It mirrors the whole surface, sync and async, and costs nothing per verb. Two
-rules keep it honest: it catches a thrown git failure and nothing else, so a
-`TypeError` still propagates; and a declared absence is `{ ok: true }`,
-because absence is an answer.
+`git.try.*` covers every method, on both clients. Two rules apply. It catches
+a thrown git failure and nothing else, so a `TypeError` still propagates. And
+a declared absence is `{ ok: true }`, because absence is an answer.
 
 `git.soft.*` is for the narrower case where "could not ask" and "nothing
 there" are the same answer to the caller. Each verb that returns `null`, `[]`
@@ -174,29 +183,27 @@ const sha = git.soft.resolveRef(name);      // string | null — null on a broke
 const dirty = git.soft.statusPorcelain();   // string[] — [] on a broken repo too
 ```
 
-It is the one-liner for `const r = git.try.resolveRef(x); return r.ok ? r.value : null`.
+It is short for `const r = git.try.resolveRef(x); return r.ok ? r.value : null`.
 Verbs whose absence is not `null`, `[]` or `false` have no soft form: the
 outcome verbs such as `merge`, and `checkIgnore`, `aheadBehind` and `diffText`,
-plus every mutation. Reach for `try`. Boolean verbs fall back to
-`false`, which also means "could not ask": `soft.isDirty` reads a broken repo
-as clean, so do not gate a destructive action on it. `soft`
-catches a thrown git failure only, exactly like `try`, and one table
-(`./soft.ts`, checked against both clients) defines it for `Git` and
-`AsyncGit`.
+plus every mutation. Use `try` for those. Boolean verbs fall back to
+`false`, which also means "could not ask". `soft.isDirty` reads a broken repo
+as clean, so do not base a destructive action on it. `soft` catches a thrown
+git failure only, like `try`. One table (`./soft.ts`, checked against both
+clients) defines it for `Git` and `AsyncGit`.
 
-### The honest limit: git overloads exit 128
+### Exit 128 means two things in git
 
-For `show` and `log`, git spells *both* "that path/ref is not in the tree"
-*and* "this is not a repository" as exit 128. `showAtRev` and `logSubject`
-must therefore declare `absent: [128]`, and for those verbs absence and
-breakage remain indistinguishable — they keep exactly the weakness this
-contract removes elsewhere.
+For `show` and `log`, git uses exit 128 both for "that path/ref is not in the
+tree" and for "this is not a repository". So `showAtRev` and `logSubject`
+must declare `absent: [128]`, and for those verbs absence and breakage look
+the same. This contract cannot separate them there.
 
 Eight verbs declare 128 as absence: `showAtRev`, `topLevel`, `gitCommonDir`,
-`gitDir`, `symbolicRef`, `logSubject`, `objectExists` and `configRemoveSection`. `try` and `soft` inherit it, because 128 is a declared absence
+`gitDir`, `symbolicRef`, `logSubject`, `objectExists` and `configRemoveSection`. `try` and `soft` behave the same, because 128 is a declared absence
 there: `git.try.logSubject("HEAD")` outside a repository is `{ ok: true,
-value: null }`, not a failure. The contract narrows the failure surface; it
-does not eliminate it.
+value: null }`, not a failure. The contract reduces these cases. It does not
+remove them.
 
 Where the difference matters, probe with `hasHistory()` first:
 
@@ -206,27 +213,26 @@ if (!git.hasHistory()) return [];
 const subject = git.logSubject("HEAD");     // a 128 here is now real breakage
 ```
 
-**Not `objectExists("HEAD")`.** It is a predicate over both of git's "no"
-codes, which is right for "does this name resolve?" and wrong for "does this
-repo have history?". Measured against real stores, `cat-file -e HEAD` exits
-**128** on an empty repository, **1** on a dangling HEAD ref, and **128** with
-the object directory removed — so `objectExists` answers `false` for all three
-and folds a *corrupt* store into "nothing here yet", which is the exact
-confusion this contract exists to remove. `hasHistory()` — `resolveRef("HEAD")`
-under the hood — separates them: **1** (→ `null`) for unborn, **0** for a dangling ref, **128**
-(→ throw) for a missing object store.
+Do not use `objectExists("HEAD")` for this. It treats both of git's "no"
+codes as `false`, which is right for "does this name resolve?" and wrong for
+"does this repo have history?". Measured against real stores, `cat-file -e
+HEAD` exits 128 on an empty repository, 1 on a dangling HEAD ref, and 128
+with the object directory removed. So `objectExists` answers `false` for all
+three, and a corrupt store reads as "nothing here yet". `hasHistory()` calls
+`resolveRef("HEAD")`, which separates them: 1 (→ `null`) for unborn, 0 for a
+dangling ref, 128 (→ throw) for a missing object store.
 
 ## Paths come back NUL-split
 
 `lsFiles`, `lsTree`, `diffNameOnly`, `diffNameStatus` and `diffTree` always
-pass `-z`. git's default output *quotes* a path containing a space, a quote or
+pass `-z`. git's default output quotes a path containing a space, a quote or
 a non-ASCII byte (`"docs/a b.md"`), and a caller splitting on newlines reads the
 quotes as part of the name. There is no option to turn this off.
 
 `diffNameStatus` and `diffTree` return `{ status, path, from? }` rows. The
-status token is verbatim — `R100`, not `R` — a rename or copy reports its
-**destination** in `path` and its **source** in `from`, and `from` is absent on
-every other status:
+status token is verbatim: `R100`, not `R`. A rename or copy reports its
+destination in `path` and its source in `from`. `from` is absent on every
+other status:
 
 ```ts
 git.diffNameStatus({ cached: true });
@@ -235,7 +241,7 @@ git.diffNameStatus({ cached: true });
 ```
 
 That record is three NUL fields (`R100`, old path, new path) where every other
-record is two, which is what a hand-rolled caller-side split gets wrong.
+record is two. A split written by hand often gets this wrong.
 
 `lsTree` is `-z` for the same reason, and returns
 `{ mode, type, sha, sizeBytes, path }` rows. `sizeBytes` is set only for a blob
@@ -244,8 +250,8 @@ prints `-` there and a fabricated `0` would be worse than nothing.
 
 ## Exit codes that are answers
 
-Two verbs carry their answer in the exit code rather than in stdout, and both
-are here because a caller reading `exitCode` by hand gets them wrong:
+Two verbs carry their answer in the exit code rather than in stdout. Both are
+here because a caller reading `exitCode` by hand often gets them wrong:
 
 ```ts
 git.grep("TODO|FIXME", { extendedRegexp: true, lineNumber: true });
@@ -261,23 +267,23 @@ git.isAncestor(sha, "origin/main");
 
 An exit code only answers when git produced it. A `git` missing from PATH, a
 timeout kill or an abort leaves the runner with no exit code of its own to
-report, and every verb throws the classified failure there — none of them reads that
-as "no matches" or "no such key".
+report. Every verb throws the classified failure there. None of them reads
+that as "no matches" or "no such key".
 
 `aheadBehind` is here for a different reason: it owns a field order that is
 easy to invert. `rev-list --left-right --count base...tip` prints the left
-count first, and left is `base` — so that number is *behind*, not ahead.
+count first, and left is `base`. So that number is behind, not ahead.
 
 ```ts
 git.aheadBehind("origin/main", "HEAD"); // { ahead: 2, behind: 1 }
 ```
 
-Two more edges worth knowing, both exit 0 with empty output rather than an
-error: `diffTree` on a **root commit** reports nothing unless you pass
+Two more cases exit 0 with empty output rather than an error: `diffTree` on
+a root commit reports nothing unless you pass
 `{ root: true }`, and a `grep` pathspec that matches no file is
 indistinguishable from "no matches".
 
-`diffTreeNumstat(rev, opts)` is the counting twin of `diffTree`, with the same
+`diffTreeNumstat(rev, opts)` is the line-count version of `diffTree`, with the same
 options and rows of `{ path, linesAdded, linesDeleted }` (`null` counts for a
 binary file). Two verbs rather than one option, because git rejects
 `--numstat` together with `--name-status`.
@@ -323,16 +329,16 @@ The exit code alone cannot carry this. Measured against git 2.50.1:
 | `merge-tree`, unmergeable name | `1` — **stdout empty** |
 | `merge-tree`, unrelated histories | `128` |
 
-A ref git cannot resolve exits **1, exactly like a conflict**. What separates
+A ref git cannot resolve exits 1, exactly like a conflict. What separates
 them is that a conflict always writes its report to stdout and a refusal
-writes nothing there — a structural signal rather than a string match, because
-git's messages are translatable and a locale must not change what an outcome
-means.
+writes nothing there. The check looks at where the output goes, not at git's
+words, because git's messages are translated and a locale must not change
+what an outcome means.
 
 `conflicts` on the outcome is that report, so treat it as a summary:
 rename/rename and rename/delete have no parseable form in it, and under a
-localized git it can be empty on a real conflict. **`lsFilesUnmerged()` is the
-authoritative list.** Its stage detail is also what tells the shapes apart —
+localized git it can be empty on a real conflict. `lsFilesUnmerged()` is the
+authoritative list. Its stage detail is also what tells the shapes apart:
 all of 1/2/3 is both-modified, 1+3 is we-deleted, 1+2 is they-deleted, 2+3
 with no base is add/add. A resolver that assumes both-modified deletes files.
 For the paths alone, `diffNameOnly({ diffFilter: "U" })` is cheaper.
@@ -341,17 +347,17 @@ For the paths alone, `diffNameOnly({ diffFilter: "U" })` is cheaper.
 backend and call `env`, so `fastForward`, `alreadyUpToDate` and `conflicts` do
 not change with the caller's locale. Other verbs keep the caller's locale.
 
-One sharp edge git leaves in `checkoutSide`: on a path that is *not*
-conflicted it exits 0 and does nothing. There is no error to catch, so take
-the path list from `lsFilesUnmerged()` in the same breath, not from an
-earlier one. An empty path list returns without running git.
+One trap in `checkoutSide`: on a path that is not conflicted, git exits 0 and
+does nothing. There is no error to catch, so take the path list from
+`lsFilesUnmerged()` just before the call, not from an earlier one. An empty
+path list returns without running git.
 
 ## Asking without checking out
 
-`mergeTree` answers the same question as `merge` — would this merge, and where
-would it conflict — against the object database alone. No index, no checkout,
-no worktree, so it needs no clean tree to run in and leaves nothing to clean
-up:
+`mergeTree` answers the same question as `merge` (would this merge, and where
+would it conflict) against the object database alone. It uses no index, no
+checkout and no worktree, so it needs no clean tree to run in and leaves
+nothing to clean up:
 
 ```ts
 const out = git.mergeTree("main", "origin/topic");
@@ -361,14 +367,13 @@ if (out.status === "clean") {
 }
 ```
 
-Surveying many branches is where this pays: predicting every open PR's merge
-across a large repository costs seconds, while checking each one out to learn
-the same thing costs minutes — and most of them merge cleanly, so the checkout
-was wasted.
+This helps most when checking many branches. Predicting every open PR's merge
+across a large repository takes seconds. Checking each one out to learn the
+same thing takes minutes, and most of them merge cleanly anyway.
 
-Two differences from `merge` are worth knowing. Its conflict list **is**
-authoritative — git names the paths in a machine-readable section rather than
-in prose, so there is no `lsFilesUnmerged()` to follow up with. And it takes
+Two differences from `merge`. Its conflict list is authoritative: git names
+the paths in a machine-readable section rather than in prose, so there is no
+need to call `lsFilesUnmerged()` after it. And it takes
 both sides as arguments rather than merging into the current branch, so
 nothing depends on where `HEAD` happens to be.
 
@@ -380,12 +385,12 @@ const raw = git.log({ format: "format:%x1e%H%x1f%s", numstat: true });
 
 `log` returns stdout unsplit and untrimmed. The format is yours, and callers
 frame their own records with `%x1e` / `%x1f` or interleave `--name-status`
-blocks — splitting on newlines would cut those records in half. For a
+blocks. Splitting on newlines would cut those records in half. For a
 one-record-per-line format, `logLines(opts)` is `log` plus that split.
 
-It declares no absence code, deliberately. An empty repository exits 128 —
-the same code a corrupt one gives — so `log` on a store with no commits
-throws. Probe first, or tolerate:
+It declares no absence code, on purpose. An empty repository exits 128, the
+same code a corrupt one gives, so `log` on a store with no commits throws.
+Check first, or use `try`:
 
 ```ts
 if (git.hasHistory()) git.log({ format: "%H" });
@@ -410,7 +415,7 @@ git.remoteAdd("origin", url);
 
 `remoteOwnerRepo(remote = "origin")` is `remoteGetUrl` plus a parse: `null`
 when there is no such remote or its URL names no project. The parse is
-host-agnostic (`parseRemoteUrl`: scp-style and `scheme://[user@]host[:port]/…`),
+not tied to known hosts (`parseRemoteUrl`: scp-style and `scheme://[user@]host[:port]/…`),
 so a self-hosted Forgejo or Gitea answers, which `parseGitUrl` would not. Two
 limits: a path with groups, `group/sub/repo`, gives owner `sub` and repo
 `repo`; and a port is read only from an `http(s)://` URL. The port of an
@@ -419,8 +424,8 @@ throws outside a repository like `remoteGetUrl`; use `git.try.remoteOwnerRepo()`
 to fold that into a failed outcome.
 
 `resolveRef` passes `--verify --quiet`, so a ref that does not resolve is
-`null` and an unreadable store still throws. That is what makes `hasHistory()`
-the repository-health probe and `objectExists("HEAD")` the wrong one.
+`null` and an unreadable store still throws. That is why `hasHistory()` is the
+way to check a repository, and `objectExists("HEAD")` is not.
 
 `headRef` and `currentBranch` differ only on a detached HEAD: `headRef` prints
 the literal `"HEAD"`, `currentBranch` answers `null`. Pick by what the caller
@@ -572,16 +577,16 @@ throws.
 | `try.*` | The whole surface again, returning `Result<T, GitFailure>` (from `@osdlc/result`) instead of throwing. |
 | `soft.*` | Every verb with an absence value, returning it instead of throwing. |
 
-`raw` is the honest answer for a one-off — `update-ref`, `tag -a`, a patch
-from `diff --unified`. A verb earns its place by having a
-parser worth sharing or an absence worth declaring, not by existing.
+Use `raw` for a one-off command, such as `update-ref`, `tag -a` or a patch
+from `diff --unified`. A git command gets its own verb only when it has a
+parser worth sharing or an absence worth declaring.
 
 ## Driving the CLI, or something else
 
-`AsyncGit` talks to a **`GitBackend`**, which takes a `GitRequest` — a plain,
-serializable description of one operation — and returns its typed result.
-Deliberately not argv: argv is a CLI detail, and a backend built on a
-pure-JavaScript git has no argv to receive.
+`AsyncGit` calls a `GitBackend`, which takes a `GitRequest` (a plain,
+serializable description of one operation) and returns its typed result. The
+request is not argv on purpose. argv is a CLI detail, and a backend built on
+a pure-JavaScript git has no argv to receive.
 
 ```ts
 import { AsyncGit, cliBackend, partialBackend } from "@osdlc/typed-git";
@@ -598,15 +603,15 @@ await new AsyncGit(cwd, { backend }).branchExists("topic"); // true
 await new AsyncGit(cwd, { backend }).worktrees();           // UnsupportedRequest
 ```
 
-Because a request is data, it can also be logged, queued, or replayed. The one
-request that cannot cross that line is `raw`, which is argv by definition.
+Because a request is data, it can also be logged, queued, or replayed. The
+exception is `raw`, which is argv by definition.
 
 ## Injecting the subprocess seam
 
 `Git` takes a `CommandRunner` and `cliBackend` takes an `AsyncCommandRunner`,
 both from [`@osdlc/command-seam`](https://www.npmjs.com/package/@osdlc/command-seam).
-That is the layer to replace when you want a real `git` but your own spawning —
-a fake in tests, a supervised child, a timeout policy of your own.
+Replace the runner when you want a real `git` but your own way of spawning
+it, such as a fake in tests, a supervised child, or your own timeout policy.
 
 ```ts
 import { Git, type CommandRunner } from "@osdlc/typed-git";
@@ -627,23 +632,23 @@ calls;               // [["branch", "--show-current"]]
 const failing: CommandRunner = {
   run: () => ({ exitCode: 128, stdout: "", stderr: "fatal: not a git repository\n" }),
 };
-new Git("/nowhere", { runner: failing }).currentBranch(); // throws CommandFailed
+new Git("/nowhere", { runner: failing }).currentBranch(); // throws FailureError (kind "not-a-repo")
 ```
 
 `runner: undefined` is the same as omitting it, so a caller holding an optional
 runner passes it straight through, without a conditional spread. `cliBackend`
 accepts it too.
 
-The seam's exports are re-exported here, so wiring a runner or catching a
+command-seam's exports are re-exported here, so wiring a runner or catching a
 `CommandFailed` needs one import rather than two.
 
 ## Also: git references
 
-`parseGitUrl` turns any git reference — https, ssh, scp-style, `owner/repo`
-shorthand, `github:owner/repo` — into its host, user, and project, over
-`hosted-git-info`. `gitSshUrl` builds the scp-style clone URL back out of it.
-Returns `null` on anything that is not a known git host — a parse, not a git
-invocation, so nothing here throws.
+`parseGitUrl` turns any git reference (https, ssh, scp-style, `owner/repo`
+shorthand, `github:owner/repo`) into its host, user, and project, using
+`hosted-git-info`. `gitSshUrl` builds the scp-style clone URL from it. Both
+return `null` for anything that is not a known git host. They only parse and
+never run git, so nothing here throws.
 
 ```ts
 parseGitUrl("github:acme/widgets#v1");
@@ -659,9 +664,9 @@ is what `remoteOwnerRepo` uses, and it stays on `@osdlc/typed-git/client`.
 Use it for a remote read from a checkout (any host); use `parseGitUrl` /
 `parseRepoRef` for a URL a person pasted.
 
-`parseRepoRef` is the question a clone command asks: given anything a person
-might paste — a clone URL, the page of a pull request or a file, a bare
-`owner/repo` — which repository, and what does `git clone` take? It returns
+`parseRepoRef` answers the question a clone command asks. Given anything a
+person might paste (a clone URL, the page of a pull request or a file, a bare
+`owner/repo`), which repository is it, and what does `git clone` take? It returns
 the host, owner and repo, a clone URL, and any branch the input named. An
 explicit `https://…` or `git@…:` input keeps its protocol; shorthand takes
 the `protocol` argument (default `https`).
@@ -681,20 +686,20 @@ parseRepoRef("./a/local/path"); // null — the input names no repository
 (`parseGitUrl`, `gitSshUrl`, `parseRepoRef` and their types) and the checkout
 walks (`checkoutRoot`, `discoverCheckouts`, `scanForCheckouts`, their types,
 `DEFAULT_MAX_DEPTH` and `DEFAULT_WARN_AFTER`). It has no `hosted-git-info` on
-your module graph. That package stays in `dependencies` either way — a bundle
-saving, not an install one.
+your module graph. That package stays in `dependencies` either way, so this
+makes the bundle smaller, not the install.
 
 `@osdlc/typed-git/testing` builds throwaway repositories:
 
 - `makeGitFixture({ dir?, parent?, prefix?, identity?, initialBranch?, bare? })`
   — one initialized repo.
 - `makeOriginAndCheckout({ parent?, identity?, initialBranch?, files? })` — an
-  origin plus a **clone** of it. Returns `{ origin, checkout, cleanup }`.
+  origin plus a clone of it. Returns `{ origin, checkout, cleanup }`.
 - `makeBareAndWorker({ remoteName?, parent?, identity?, initialBranch? })` — a
-  bare store plus an **independently-inited** worker that names it as a remote.
-  Returns `{ bare, worker, remoteName, parent, cleanup }`. Not a clone: the
-  worker starts with no history and no tracking, so its first push is a
-  genuine publish into an empty store.
+  bare store plus a separately initialized worker that names it as a remote.
+  Returns `{ bare, worker, remoteName, parent, cleanup }`. It is not a clone:
+  the worker starts with no history and no tracking, so its first push is a
+  real first push into an empty store.
 
 `cleanup()` is manual. Nothing removes a fixture when the process exits, so
 call it in a `finally` block or an `afterEach`. The helpers have named option
@@ -706,15 +711,15 @@ suite that asserts on a sha gets the same sha every run. Only the identity
 (and `commit.gpgsign=false` in the fixture repository) is isolated.
 `core.hooksPath`, `commit.template`, `init.templateDir`, `core.autocrlf` and
 other global or system git config still apply. To isolate them, set
-`GIT_CONFIG_GLOBAL` and `GIT_CONFIG_NOSYSTEM` through `identity`. The identity is bound
-as the fixture client's **client-level `env`**, so every call through
-`fixture.git` carries it — the suite's own calls included, not just the ones
+`GIT_CONFIG_GLOBAL` and `GIT_CONFIG_NOSYSTEM` through `identity`. The identity is set
+as the fixture client's client-level `env`, so every call through
+`fixture.git` carries it, the suite's own calls included, not just the ones
 the fixture makes. `IDENTITY` is exported and frozen, so a suite asserting on
 dates reads the pinned values instead of re-declaring them. `fixture.commit(msg,
 files, { date, env })` overrides them for one commit.
 
 Pass `parent` to put two related repos under one directory (and `dir` to name
-one exactly) — the way to have a suite delete a single tree at the end, or
+one exactly). Use it to have a suite delete a single tree at the end, or to
 assert on relative paths between two repositories. `cleanup()` removes the
 `dir` you named. The one from `makeBareAndWorker` removes its whole `parent`,
 including a `parent` you passed in. `makeOriginAndCheckout` removes only its
@@ -735,11 +740,11 @@ try {
 ## Also: finding a checkout without git
 
 `checkoutRoot(path)` finds the git checkout containing `path` by walking up
-for a `.git` entry — a pure filesystem check, no git process. `path` may be a
-file or a directory. Returns `null` rather than throwing when there is no
-checkout, and does not distinguish a linked worktree (`.git` as a file) from a
-main checkout (`.git` as a directory) — callers that need `git`'s own answer
-(bare repos, `GIT_DIR` overrides) use `Git#topLevel()` instead.
+for a `.git` entry. It reads the filesystem only and runs no git process.
+`path` may be a file or a directory. It returns `null` rather than throwing
+when there is no checkout. It does not tell a linked worktree (`.git` as a
+file) from a main checkout (`.git` as a directory). Callers that need git's
+own answer (bare repos, `GIT_DIR` overrides) use `Git#topLevel()` instead.
 
 ```ts
 import { checkoutRoot } from "@osdlc/typed-git";
@@ -771,7 +776,7 @@ de-duplicate.
 - No call has a default timeout. Pass `timeoutMs` where a hung `git` would
   hurt.
 - `Git` kills a child that writes more than 256 MB to one stream and throws
-  `CommandFailed`. `AsyncGit` has no such cap. The `maxOutputBytes` call
+  the classified failure. `AsyncGit` has no such cap. The `maxOutputBytes` call
   option sets the cap for one call on either client. Output cut short at a
   cap or a timeout is a failure, never an answer.
 - stdout is text. There is no verb or call option that returns raw bytes,
@@ -781,9 +786,11 @@ de-duplicate.
 - Output is captured, never streamed. For live progress from `clone` or
   `fetch`, run git through command-seam's `streamRunner`.
 - `Git` cannot cancel a call. `AsyncGit` takes a `signal`.
-- A `CommandFailed` carries `argv`, `result` and `detail`. Read `detail` for
-  the message, because git writes some failure text to stdout.
-- `UnsupportedRequest` is not a `CommandFailed`, so `try` and `soft` let it
+- A thrown `FailureError` carries the `GitFailure` in `error.failure`, with
+  `argv`, `exitCode` and `detail`. Read `detail` for git's message, because
+  git writes some failure text to stdout. `error.cause` is the
+  `CommandFailed`, with the raw `result`.
+- `UnsupportedRequest` is not a git failure, so `try` and `soft` let it
   through.
 - `merge`, `rebase` and `rebaseContinue` run with `LC_ALL=C`. Any other verb
   that reads git's messages assumes English output, so a localized git can

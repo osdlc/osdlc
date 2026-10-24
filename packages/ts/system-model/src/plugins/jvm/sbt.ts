@@ -1,25 +1,25 @@
 /**
  * sbt — https://www.scala-sbt.org
  *
- * `kind: "exec"`. An sbt build is a Scala PROGRAM: `build.sbt` is compiled,
- * `project/*.scala` and `project/plugins.sbt` extend it, and almost every task a
- * person actually runs — `compile`, `test`, `publishLocal`, `assembly`,
- * `scalafmtAll` — is contributed by a plugin and appears nowhere in the build
- * files as text. The only component that knows the task set is sbt itself.
+ * `kind: "exec"`. An sbt build is a Scala program. `build.sbt` is compiled,
+ * and `project/*.scala` and `project/plugins.sbt` extend it. Almost every task
+ * people run (`compile`, `test`, `publishLocal`, `assembly`, `scalafmtAll`)
+ * comes from a plugin and does not appear in the build files as text. Only sbt
+ * itself knows the task set.
  *
- * NO PARSE FALLBACK, unlike `just`, whose recipe headers are literal text at
- * column 0 mapping one-to-one onto recipes. Scraping `build.sbt` for
- * `taskKey[Unit]("foo")` would find only a build's handful of bespoke keys and
- * miss the entire conventional set, so the catalog would claim `sbt` was
- * understood while omitting `test`. An honest absence is better, the same call
- * `mise` makes.
+ * There is no parse fallback. `just` has one because its recipe headers are
+ * literal text at column 0, one per recipe. Scraping `build.sbt` for
+ * `taskKey[Unit]("foo")` would find only the build's few custom keys and miss
+ * all the conventional ones. The catalog would then claim to understand `sbt`
+ * while leaving out `test`. Reporting nothing is better. `mise` makes the same
+ * choice.
  *
- * The cost is real: every other exec runner here answers in milliseconds; sbt
- * boots a JVM, resolves the build's own dependencies and compiles the build
- * definition, which is 10-30s cold and can be minutes on a first run with an
- * empty ivy/coursier cache. That is why this asks sbt exactly ONCE, batching
- * both commands into a single JVM, and why it accepts a coarser answer rather
- * than paying per project (see `collect`).
+ * The cost is high. Every other exec runner here answers in milliseconds. sbt
+ * starts a JVM, resolves the build's own dependencies and compiles the build
+ * definition. That takes 10-30s cold, and can take minutes on a first run with
+ * an empty ivy/coursier cache. So this asks sbt once, with both commands in a
+ * single JVM, and accepts a coarser answer instead of asking per project (see
+ * `collect`).
  */
 
 import { stderrOrError } from '@osdlc/command-seam'
@@ -46,26 +46,24 @@ const CHAIN = [
 ]
 
 /**
- * `project/build.properties` pins `sbt.version` and is what the launcher reads,
- * so it is present in every real sbt build — including ones whose definition
- * lives entirely in `project/*.scala` with no `build.sbt` at all.
+ * `project/build.properties` pins `sbt.version` and the launcher reads it. So
+ * every real sbt build has it, including builds defined only in
+ * `project/*.scala` with no `build.sbt`.
  *
- * Root `*.sbt` is a marker too: sbt loads EVERY `.sbt` file in the base
- * directory, so a build may be spelled `dependencies.sbt` with no `build.sbt`.
- * Only the root ones count — `project/plugins.sbt` describes the meta-build,
- * and a nested `core/build.sbt` is not a build of its own: sbt subprojects are
- * declared in the ROOT build.sbt (`lazy val core = project.in(file("core"))`),
- * and a `core/build.sbt` merely adds settings to a project the root already
- * declared. Treating it as a marker would invent a second sbt build that no one
- * can invoke.
+ * Root `*.sbt` files are markers too. sbt loads every `.sbt` file in the base
+ * directory, so a build may use `dependencies.sbt` and no `build.sbt`. Only
+ * root files count. `project/plugins.sbt` describes the meta-build. A nested
+ * `core/build.sbt` is not a separate build: sbt subprojects are declared in the
+ * root build.sbt (`lazy val core = project.in(file("core"))`), and
+ * `core/build.sbt` only adds settings to that project. Treating it as a marker
+ * would report a second sbt build that no one can run.
  */
 export const VERSION_MARKER = 'project/build.properties'
 
 /**
- * The Scala mark — the ecosystem symbol sbt builds for; simple-icons has
- * no `sbt` slug, and the Scala mark is the recognizable one. Scala is a
- * trademark of EPFL; it is used here nominatively, to identify the
- * ecosystem. Icon path: simple-icons v16 (CC0), slug `scala`. Color is
+ * The Scala mark. simple-icons has no `sbt` slug, and the Scala mark is the
+ * one people recognize. Scala is a trademark of EPFL, used here only to
+ * identify the ecosystem. Icon path: simple-icons v16 (CC0), slug `scala`. Color is
  * the same Scala brand red simple-icons lists for it.
  */
 const BRAND: RunnerBrand = {
@@ -77,10 +75,10 @@ export const sbtRunner: RunnerRole = {
   kind: 'exec',
   chain: CHAIN,
   brand: BRAND,
-  // This runner uses ROOT `*.sbt` files only; sbt loads the build from
-  // nested ones too, so a newly added subproject `.sbt` changes the task set
-  // without changing anything read here. `project/**` — plugins and build
-  // definitions — has no watchable basename and rides the exec max age.
+  // Watch every `*.sbt`, not only the root ones this runner reads. sbt also
+  // loads nested ones, so a new subproject `.sbt` changes the task set.
+  // `project/**` (plugins and build definitions) has no basename to watch, so
+  // it relies on the exec max age.
   watch: [SBT_FILES],
 
   async collect(ctx: ProviderContext): Promise<ProviderResult> {
@@ -90,23 +88,22 @@ export const sbtRunner: RunnerRole = {
     if (await ctx.exists(VERSION_MARKER)) markers.push(VERSION_MARKER)
     if (markers.length === 0) return { status: 'absent', tasks: [], diagnostics: [] }
 
-    // ONE invocation, two commands. sbt runs each trailing argument as a
+    // One invocation, two commands. sbt runs each trailing argument as a
     // command in the same session, so `projects tasks` costs one JVM start
     // instead of two.
     //
-    // `tasks` rather than `tasks -V`: the verbose form dumps every internal key
-    // in the build (`compileIncremental`, `dependencyClasspath`, `bgRun`), which
-    // is a hundred-odd rows of things nobody types. The default listing is the
-    // set sbt itself considers commonly used.
+    // `tasks`, not `tasks -V`. The verbose form lists every internal key in the
+    // build (`compileIncremental`, `dependencyClasspath`, `bgRun`): a hundred or
+    // so rows nobody types. The default listing is the set sbt considers
+    // commonly used.
     //
-    // There is NO machine-readable listing to prefer here. sbt's structured
-    // channel is BSP — it writes `.bsp/sbt.json` and speaks JSON-RPC over a
-    // long-lived server connection — which enumerates build targets and
-    // compile/test/run capabilities, not the build's task keys, and which costs
-    // a session handshake this package has no business owning. `sbt --client`
-    // (the `sbtn` thin client) only reuses an already-running server; it emits
-    // the same human text and does not help the cold case that dominates here.
-    // So: parse the console listing.
+    // sbt has no machine-readable task listing. Its structured channel is BSP
+    // (it writes `.bsp/sbt.json` and speaks JSON-RPC over a long-lived server
+    // connection). BSP lists build targets and compile/test/run capabilities,
+    // not task keys, and needs a session handshake this package should not
+    // manage. `sbt --client` (the `sbtn` thin client) only reuses a server
+    // that is already running. It prints the same text and does not help the
+    // cold start, which is the usual case. So this parses the console listing.
     const res = await ctx
       .runner('sbt')
       .run(['-batch', '-Dsbt.log.noformat=true', 'projects', 'tasks'], { cwd: ctx.root })
@@ -124,9 +121,9 @@ export const sbtRunner: RunnerRole = {
       }
     }
 
-    // sbt writes its listings to stdout through the logger, but a build that
-    // logs to stderr still has its answer in stdout; joining both would double
-    // rows, so read stdout and fall back only if it is empty.
+    // sbt writes its listings to stdout. A build that logs to stderr still has
+    // its listing in stdout, and joining both would double rows. So read
+    // stdout, and use stderr only if stdout is empty.
     const output = res.stdout.trim().length > 0 ? res.stdout : res.stderr
     const projects = parseProjects(output)
     const rows = parseTaskRows(output)
@@ -148,12 +145,12 @@ export const sbtRunner: RunnerRole = {
     const tasks: Task[] = []
     for (const row of rows) {
       tasks.push(toTask({ project: current, qualify: false, row, source, origin: 'declared' }))
-      // sbt lists tasks for the CURRENT project only, and asking per project
-      // means `project X; tasks` in a fresh session per subproject — a JVM
-      // start each. Instead the listing is replicated across the build's other
-      // projects, which is right whenever they share the build's plugin set
-      // (the common case) and marked `synthesized` because sbt did not say so.
-      // A caller that wants only what sbt asserted filters on `origin`.
+      // sbt lists tasks for the current project only. Asking per project means
+      // `project X; tasks` in a new session per subproject, one JVM start each.
+      // Instead the listing is copied to the build's other projects. That is
+      // right when they share the build's plugin set (the common case). The
+      // copies are `synthesized` because sbt did not list them. A caller that
+      // wants only what sbt reported filters on `origin`.
       for (const project of others) {
         tasks.push(toTask({ project, qualify: true, row, source, origin: 'synthesized' }))
       }
@@ -194,9 +191,8 @@ function toTask(args: {
   origin: 'declared' | 'synthesized'
 }): Task {
   const { project, qualify, row, source, origin } = args
-  // sbt's scoped-key syntax: `core/test`. The bare form runs in whatever project
-  // sbt loads as current, which is the build's root — so qualifying the root's
-  // own tasks would add noise without adding meaning.
+  // sbt's scoped-key syntax: `core/test`. The bare form runs in the project sbt
+  // loads as current, the build's root, so the root's tasks need no prefix.
   const addressed = qualify ? `${project}/${row.name}` : row.name
   const argv = ['sbt', addressed]
   return {
@@ -266,11 +262,10 @@ function parseProjects(output: string): SbtProject[] {
  *
  *     [info]   clean    Deletes files produced by the build...
  *
- * The two-space separator is what keeps the command's prose header out ("This
- * is a list of tasks defined for the current project." separates its words with
- * one space), and the leading indent is what keeps a project id out — those
- * carry no description. This is scraped text: a loose expression turns
- * sentences into tasks.
+ * The two-space separator keeps the command's prose header out ("This is a
+ * list of tasks defined for the current project." uses single spaces). The
+ * required description keeps project ids out, since they have none. This is
+ * scraped text, and a looser pattern would turn sentences into tasks.
  */
 function parseTaskRows(output: string): TaskRow[] {
   const out: TaskRow[] = []
@@ -289,10 +284,10 @@ function parseTaskRows(output: string): TaskRow[] {
 }
 
 /**
- * sbt reports build failures as `[error]` lines and says nothing useful on the
- * exit code alone, so the message is assembled from those. A missing binary is
- * called out by name because it is the one failure the user fixes by installing
- * something rather than by fixing their build.
+ * sbt reports build failures as `[error]` lines, and the exit code alone says
+ * nothing useful, so the message is built from those lines. A missing binary
+ * gets its own message because the user fixes it by installing sbt, not by
+ * fixing the build.
  */
 function failureMessage(exitCode: number, stderr: string, stdout: string): string {
   const combined = `${stderr}\n${stdout}`

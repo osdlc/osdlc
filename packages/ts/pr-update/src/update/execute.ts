@@ -1,36 +1,35 @@
 /**
  * Bringing one PR up to date, and a run of them.
  *
- * The shape is dictated by two facts about updating many PRs at once.
+ * Two facts about updating many PRs at once decide the design.
  *
- * **One worktree, reused.** A checkout of a monorepo is expensive and doing it
- * per PR is not affordable at fifty. So the run creates one ephemeral worktree
- * and resets it between PRs. Nothing here ever touches the user's checkout:
- * the branch we work on is a single run-scoped name repointed with `checkout
- * -B`, never the PR's own branch. That matters beyond tidiness — a PR's branch
- * may be checked out in somebody's live worktree, and git refuses to check out
- * the same branch twice. Working on a scratch branch and pushing `HEAD:<head>`
- * sidesteps the question entirely.
+ * One worktree, reused. A checkout of a monorepo is expensive, and one per PR
+ * is too slow at fifty PRs. So the run creates one temporary worktree and
+ * resets it between PRs. Nothing here touches the user's checkout. The run
+ * works on one scratch branch, moved with `checkout -B`, never on the PR's own
+ * branch. This matters because a PR's branch may be checked out in someone's
+ * worktree, and git refuses to check out the same branch twice. Working on a
+ * scratch branch and pushing `HEAD:<head>` avoids that problem.
  *
- * **One stuck PR must not end the run.** Every failure mode is a recorded
- * outcome, never a throw: a conflict nothing claims, a rebuild verb that
- * fails, a push rejected by a concurrent update. The run continues and the
- * report says what happened to each PR. The alternative — stopping at the
- * first hard PR — means the easy forty-nine never get updated.
+ * One stuck PR must not end the run. Every failure is a recorded outcome,
+ * never a throw: a conflict nothing claims, a rebuild verb that fails, a push
+ * rejected by a concurrent update. The run continues, and the report says
+ * what happened to each PR. Stopping at the first hard PR would leave the
+ * other forty-nine not updated.
  *
- * **Rebase, then merge, then judgement.** A rebase replays every commit, so
- * it can stop once per commit. The deterministic rungs (rerere, lockfile,
- * resolvers, generators) run at every stop. A stop they cannot clear aborts
- * the rebase and the PR is retried as a merge, which resolves the same
- * conflict once; only there is `repair` offered the problem, so an agent is
- * never asked to fix twenty versions of one conflict. The outcome records the
- * change of strategy so a reader does not mistake the push for a rebase.
+ * Rebase, then merge, then repair. A rebase replays every commit, so it can
+ * stop once per commit. The fixed resolvers (rerere, lockfile, resolvers,
+ * generators) run at every stop. A stop they cannot clear aborts the rebase,
+ * and the PR is retried as a merge, which meets the same conflict once. Only
+ * then is `repair` called, so an agent is never asked to fix twenty versions
+ * of one conflict. The outcome records the change of strategy, so a reader
+ * does not mistake the push for a rebase.
  *
- * Order matters and comes from the caller: a stack must be updated
- * parent-first, because updating a child before its parent is work that has
- * to be redone the moment the parent moves.
+ * The caller decides the order. A stack must be updated parent first, because
+ * updating a child before its parent is work that has to be redone as soon as
+ * the parent moves.
  *
- * Nothing is written without `apply`. A dry run walks the same code, predicts
+ * Nothing is written without `apply`. A dry run runs the same code, predicts
  * the same conflicts, and pushes nothing.
  */
 
@@ -66,9 +65,8 @@ export type { RunVerb } from '../ports.ts'
  * The prefix of the scratch branch every PR is built on. Never a PR's own
  * branch.
  *
- * Named for this package, not for any host: a standalone run against an
- * arbitrary repository should not leave a branch name behind that presumes
- * where it was started from.
+ * Named for this package, not for any host, so a standalone run against any
+ * repository does not leave behind a branch named for another tool.
  */
 export const WORK_BRANCH = 'pr-update/scratch'
 
@@ -90,12 +88,12 @@ export interface UpdateTarget {
   head: string
   base: string
   /**
-   * The head sha as observed when the run started. A rebase force-push is
-   * pinned to it, so a PR somebody pushed to mid-run is rejected rather than
-   * overwritten.
+   * The head sha seen when the run started. A rebase force-push is pinned to
+   * it, so if someone pushes to the PR during the run, the force-push is
+   * rejected instead of overwriting their work.
    */
   headOid: string | null
-  /** The base sha as observed when the run started. Keys the failed-attempt record. */
+  /** The base sha seen when the run started. Part of the failed-attempt key. */
   baseOid: string | null
   strategy: 'rebase' | 'merge'
 }
@@ -110,11 +108,11 @@ export interface UpdateSettings {
   repair?: Repair | undefined
   /** The kinds `repair` is called for. */
   repairOn?: readonly RepairKind[] | undefined
-  /** Asked before each rebase force-push; false leaves the branch alone. */
+  /** Asked before each rebase force-push. False leaves the branch alone. */
   confirmPush?: ConfirmPush | undefined
   /**
-   * What a rebase does when a stop needs more than the deterministic rungs:
-   * `merge` (the default) retries the PR as a merge, `fail` reports it.
+   * What a rebase does when the fixed resolvers cannot clear a stop: `merge`
+   * (the default) retries the PR as a merge, and `fail` reports it.
    */
   onRebaseConflict?: 'merge' | 'fail' | undefined
 }
@@ -158,9 +156,9 @@ export interface UpdateResult extends UpdateTarget {
 }
 
 /**
- * A push rejection caused by the remote having moved, not by anything wrong
- * with what we built. Worth reporting distinctly: the answer is to re-run,
- * not to go and look at the branch.
+ * A push rejected because the remote moved, not because the built update was
+ * wrong. It is reported apart from other failures, because the fix is to run
+ * again, not to inspect the branch.
  */
 export function isStalePush(stderr: string): boolean {
   return (
@@ -170,9 +168,10 @@ export function isStalePush(stderr: string): boolean {
 }
 
 /**
- * The `CommandFailed` behind a thrown git failure. typed-git's plain door throws
- * a `FailureError` carrying the classified failure, whose `cause` is the
- * `CommandFailed`; a bare one counts too. Recognised by shape, not `instanceof`.
+ * The `CommandFailed` behind a thrown git failure. typed-git's throwing methods
+ * throw a `FailureError` carrying the classified failure, whose `cause` is the
+ * `CommandFailed`. A bare `CommandFailed` counts too. Recognised by shape, not
+ * `instanceof`.
  */
 function commandFailedOf(e: unknown): CommandFailed | null {
   if (isCommandFailed(e)) return e
@@ -195,11 +194,11 @@ function errorLine(e: unknown): string {
 }
 
 /**
- * The conflicted paths git itself reports, which is the authoritative list.
+ * The conflicted paths git itself reports. This is the list to trust.
  *
- * An integration outcome's own `conflicts` is a best-effort read of a
- * translatable message and has no parseable form for rename/rename, so it is
- * useful for a report and not for a decision.
+ * An integration outcome's own `conflicts` is a best-effort parse of a message
+ * that can be translated, and it has no parseable form for rename/rename. It
+ * is good for a report, not for a decision.
  */
 function conflictedPaths(git: Git): string[] {
   return git.diffNameOnly({ diffFilter: 'U' })
@@ -208,10 +207,10 @@ function conflictedPaths(git: Git): string[] {
 /**
  * Update one PR in an already-prepared worktree.
  *
- * The caller owns the worktree's lifetime; this owns what happens inside it
- * for one PR, including leaving it clean enough for the next one. A caught
- * failure always aborts the in-progress merge or rebase, because a worktree
- * left mid-integration would corrupt every PR after it.
+ * The caller creates and removes the worktree. This function handles what
+ * happens inside it for one PR, including leaving it clean for the next one. A
+ * caught failure always aborts the merge or rebase in progress, because a
+ * worktree left in the middle of one would break every PR after it.
  */
 export async function updateOne(
   git: Git,
@@ -234,8 +233,8 @@ export async function updateOne(
   }
 
   // The push lease pins `target.headOid`, the code host's view of the head. A
-  // tracking ref behind it (a skipped or failed fetch) would build on a stale
-  // base and the lease would still pass, dropping the newer remote commits.
+  // tracking ref behind it (after a skipped or failed fetch) would build on an
+  // old head, and the lease would still pass, dropping the newer remote commits.
   const tracked = git.resolveRef('HEAD')
   if (target.headOid !== null && tracked !== target.headOid) {
     return {
@@ -244,7 +243,7 @@ export async function updateOne(
     }
   }
 
-  // Nothing to do is the common answer in a run over every open PR, and it
+  // "Nothing to do" is the common answer in a run over every open PR, and it
   // must cost nothing: no integration, no rebuild, no push.
   const counts = git.try.aheadBehind(base, 'HEAD')
   if (counts.ok && counts.value.behind === 0) return { status: 'up-to-date' }
@@ -254,8 +253,8 @@ export async function updateOne(
   let strategyFallback: string | undefined
   if (strategy === 'rebase') {
     const attempt = rebaseThroughRungs(git, base, settings, runVerb, opts.worktree, {
-      // Each stop replays one commit, so more stops than commits means git
-      // is not making progress and looping would never end.
+      // Each stop replays one commit. More stops than commits means git is
+      // not making progress, and the loop would never end.
       maxStops: counts.ok ? counts.value.ahead + 1 : 1000,
     })
     if (attempt.kind === 'failed') return { status: 'failed', reason: attempt.reason }
@@ -288,13 +287,13 @@ type RebaseAttempt =
   | { kind: 'failed'; reason: string }
 
 /**
- * Replay the branch onto `base`, running the deterministic rungs at every stop.
+ * Replay the branch onto `base`, running the fixed resolvers at every stop.
  *
- * Generated files tend to conflict on every commit that touches them, so
- * clearing only the first stop would leave the case the rungs exist for
- * failing on the second. A stop they cannot clear leaves the worktree clean
- * (the rebase aborted) and answers `stuck`, for the caller to merge or report.
- * `repair` is deliberately not offered here: see the module comment.
+ * Generated files tend to conflict on every commit that touches them. Clearing
+ * only the first stop would leave exactly those files failing at the second.
+ * A stop the resolvers cannot clear aborts the rebase, leaves the worktree
+ * clean, and returns `stuck`, for the caller to merge or report. `repair` is
+ * not called here on purpose (see the module comment).
  */
 function rebaseThroughRungs(
   git: Git,
@@ -304,8 +303,8 @@ function rebaseThroughRungs(
   worktree: string,
   limits: { maxStops: number },
 ): RebaseAttempt {
-  // Whatever the way out, leave a clean tree on the branch: the fallback
-  // merges in this same worktree.
+  // However this ends, leave a clean tree on the branch, because the fallback
+  // merge runs in this same worktree.
   const reset = (): void => {
     git.try.rebaseAbort()
     git.try.resetHard('HEAD')
@@ -340,10 +339,10 @@ function rebaseThroughRungs(
     const failure = rebuild(git, plans, settings, runVerb, worktree)
     if (failure !== null) return failed(failure)
     try {
-      // `.` and not the conflicted paths alone: a generator legitimately
-      // rewrites files beyond the ones that conflicted, and leaving those
-      // unstaged would continue with a half-regenerated tree. Safe because the
-      // worktree is ephemeral and held nothing but this integration.
+      // `.`, not only the conflicted paths. A generator can rewrite files
+      // beyond the ones that conflicted, and leaving those unstaged would
+      // continue with a half-regenerated tree. This is safe because the
+      // worktree is temporary and holds nothing but this integration.
       git.add(['.'])
       outcome = git.rebaseContinue({ env: noHooksEnv() })
     } catch (e) {
@@ -387,8 +386,8 @@ async function integrateAndPush(
   const repaired: Repaired[] = []
   const fail = (reason: string): UpdateOutcome => {
     git.try.mergeAbort()
-    // A rebuild or repair may leave edits, intent-to-add entries and untracked
-    // files that the next PR's `add .` would otherwise pick up.
+    // A rebuild or repair can leave edits, intent-to-add entries and untracked
+    // files, which the next PR's `add .` would otherwise pick up.
     git.try.resetHard('HEAD')
     git.clean({ directories: true })
     return { status: 'failed', reason }
@@ -442,9 +441,9 @@ async function integrateAndPush(
           repaired.length > 0
             ? 'Conflicts resolved by rebuilding the generated artifacts and the repair.'
             : 'Conflicts resolved by rebuilding the generated artifacts.',
-        // The project's gate is `verify:`'s business, run once per PR under the
-        // caller's control: git would otherwise fire the commit hooks here and
-        // nowhere else, a gate whose scope is an accident of the strategy. The
+        // The project's checks belong to `verify:`, run once per PR under the
+        // caller's control. Otherwise git would run the commit hooks here and
+        // nowhere else, so whether they ran would depend on the strategy. The
         // rebase path turns hooks off the same way (see `noHooksEnv`).
         noVerify: true,
       })
@@ -534,14 +533,14 @@ function pushPreview(git: Git, target: UpdateTarget, remoteHead: string): PushPr
  * Push the work branch onto the PR's own branch.
  *
  * A rebase rewrote history, so it needs `--force-with-lease` pinned to the sha
- * observed at the start of the run. The bare `--force-with-lease` would not
- * do: it compares against the remote-tracking ref this process just fetched,
- * which is exactly the value a mid-run push by someone else would have
- * updated. Pinning to the observed sha is what makes the lease mean "nobody
- * has touched this since I looked".
+ * seen at the start of the run. A bare `--force-with-lease` is not enough. It
+ * compares against the remote-tracking ref this process just fetched, which a
+ * push by someone else during the run would have updated. Pinning to the sha
+ * seen at the start makes the lease mean "nobody has changed this since the
+ * run looked".
  *
- * Without a known sha there is nothing to pin to, and a force-push with no
- * lease is not something to do on someone's behalf — so it is refused.
+ * Without a known sha there is nothing to pin to. A force-push with no lease
+ * should not be done on someone's behalf, so it is refused.
  */
 function pushUpdate(git: Git, target: UpdateTarget, settings: UpdateSettings): void {
   const refspec = `HEAD:refs/heads/${target.head}`
@@ -559,7 +558,7 @@ function pushUpdate(git: Git, target: UpdateTarget, settings: UpdateSettings): v
 
 /**
  * Run each rebuild verb and generator the plan needs. Returns a reason on
- * failure, null on success; the caller aborts on a reason.
+ * failure, or null on success. The caller aborts on a reason.
  */
 function rebuild(
   git: Git,
@@ -568,10 +567,10 @@ function rebuild(
   runVerb: RunVerb,
   worktree: string,
 ): string | null {
-  // Give the rebuild a tree it can read: a file with conflict markers in it is
-  // not valid input to a generator or a package manager. Either side works
-  // because the rebuild overwrites the content anyway; `--ours` is the side
-  // that already exists on the branch.
+  // Give the rebuild a tree it can read. A file with conflict markers is not
+  // valid input to a generator or a package manager. Either side works,
+  // because the rebuild overwrites the content. `--ours` is the side already
+  // on the branch.
   const paths = plans.filter((p) => p.kind !== 'unclaimed').map((p) => p.path)
   if (paths.length > 0) {
     try {
@@ -594,7 +593,7 @@ function rebuild(
   return null
 }
 
-/** Run the verify verbs in order; the first failure, or null when all pass. */
+/** Run the verify verbs in order. Returns the first failure, or null when all pass. */
 function runVerify(
   verbs: readonly string[],
   runVerb: RunVerb,
@@ -615,11 +614,11 @@ function runVerify(
   return null
 }
 
-/** Commit hooks off for one call: the project's gate is `verify:`'s business. */
+/** Commit hooks off for one call, because the project's checks belong to `verify:`. */
 export function noHooksEnv(
   parent: Record<string, string | undefined> = process.env,
 ): Record<string, string> {
-  // Append to any GIT_CONFIG_* the parent already set instead of clobbering it.
+  // Append to any GIT_CONFIG_* the parent already set instead of overwriting it.
   const parsed = Number.parseInt(parent.GIT_CONFIG_COUNT ?? '', 10)
   const i = Number.isInteger(parsed) && parsed > 0 ? parsed : 0
   return {
@@ -686,14 +685,15 @@ async function tryRepair(
   const created = [...refNames(git)].filter((r) => !refsBefore.has(r))
   if (created.length > 0) return rejected(`created refs: ${created.join(', ')}`)
   if (!res.ok) return rejected('gave up')
-  // Only what the repair wrote: rebuild output that ran before it is not its fault.
+  // Only what the repair wrote. Output from a rebuild that ran earlier is not its fault.
   const touched = [
     ...new Set([...req.paths, ...touchedSince(dirtyBefore, dirtyFiles(git, req.worktree))]),
   ]
   if (touched.length === 0) return { ok: true, note: res.note }
-  // A file that already held marker-like lines at HEAD (a fixture, a doc) is
-  // not a conflict the repair left behind; only a `conflict` repair owns such
-  // files. HEAD is the commit before the repair (checked unmoved above).
+  // A file that already had marker-like lines at HEAD (a fixture, a doc) is
+  // not a conflict the repair left behind. Only a `conflict` repair is
+  // responsible for such files. HEAD is the commit before the repair (checked
+  // unmoved above).
   const markedAtHead = (p: string): boolean => {
     const content = git.showAtRev('HEAD', p)
     return content !== null && CONFLICT_MARKER.test(content)
@@ -714,7 +714,7 @@ async function tryRepair(
 /** Commit what a `verify-failed` repair changed, on top of the update. */
 function commitRepair(git: Git, target: UpdateTarget, note: string): void {
   git.add(['.'])
-  // A repair that changed nothing (a flaky check, say) still gets its re-run.
+  // A repair that changed nothing (for a flaky check, say) still gets its re-run.
   if (git.diffNameOnly({ cached: true }).length === 0) return
   git.commit({
     message: `Fix verify after updating ${target.head} onto ${target.base}`,
@@ -746,14 +746,14 @@ export function describeOutcome(o: UpdateOutcome): string {
 }
 
 /**
- * Update a list of PRs in one ephemeral worktree.
+ * Update a list of PRs in one temporary worktree.
  *
- * `targets` must already be in dependency order — the survey's topological
- * sort — because a stack updated child-first is work that gets redone.
+ * `targets` must already be in dependency order (the survey's topological
+ * sort), because a stack updated child first is work that gets redone.
  *
- * The worktree is created detached at the first target's base and torn down
- * in a `finally`, so an exception anywhere still leaves no stray checkout and
- * no registered worktree behind. The scratch branch is deleted with it.
+ * The worktree is created detached at the first target's base and removed in
+ * a `finally`, so an exception anywhere still leaves no stray checkout and no
+ * registered worktree. The scratch branch is deleted with it.
  */
 export async function updateAll(
   git: Git,
@@ -778,17 +778,16 @@ export async function updateAll(
       const ran = 'strategyFallback' in outcome ? 'merge' : target.strategy
       const result = { ...target, strategy: ran, outcome }
       results.push(result)
-      // Streamed rather than returned only at the end: a run over fifty PRs
-      // takes minutes, and a caller rendering progress needs each one as it
-      // lands.
+      // Reported as each PR finishes, not only at the end. A run over fifty
+      // PRs takes minutes, and a caller showing progress needs each result.
       opts.onResult?.(result)
     }
   } finally {
-    // Order matters: the scratch branch is checked out in the worktree, and
-    // git refuses to delete a branch some worktree holds. Removing the
-    // worktree releases it. Each step is `try` so a failure in one still
-    // leaves the others to run — a stray worktree is worse than a stray
-    // branch, and both are worse than an exception here masking the real one.
+    // Order matters. The scratch branch is checked out in the worktree, and
+    // git refuses to delete a branch a worktree holds. Removing the worktree
+    // releases it. Each step uses `try`, so a failure in one still lets the
+    // others run. A stray worktree is worse than a stray branch, and both are
+    // worse than an exception here hiding the real one.
     git.try.worktreeRemove(opts.worktreeRoot, { force: true })
     git.try.worktreePrune()
     git.try.deleteBranch(scratchBranch(opts.worktreeRoot), { force: true })

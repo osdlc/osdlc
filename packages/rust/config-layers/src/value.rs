@@ -1,5 +1,5 @@
-//! Read a setting out of a loaded config by dotted key, and decide whether
-//! what is there counts as set.
+//! Read a setting from a loaded config by dotted key, and decide whether the
+//! value counts as set.
 //!
 //! A loaded config is a [`serde_json::Value`]: the generic tree of maps,
 //! lists, strings, numbers, booleans and null that a YAML file reads into.
@@ -9,8 +9,8 @@ use serde_json::Value;
 /// The value at `key` (`lease_authority`, `paths.dev`) in `obj`, or `None`.
 ///
 /// Each `.`-separated segment walks one level deeper through nested
-/// mappings; hitting a non-mapping value, or a missing key, at any segment
-/// yields `None`. A key that itself contains a `.` cannot be reached.
+/// mappings. A non-mapping value or a missing key at any segment gives
+/// `None`. A key that itself contains a `.` cannot be reached.
 ///
 /// **Stability:** stable in 0.x.
 pub fn value_at<'a>(obj: &'a Value, key: &str) -> Option<&'a Value> {
@@ -26,7 +26,7 @@ pub fn value_at<'a>(obj: &'a Value, key: &str) -> Option<&'a Value> {
 /// default that is empty (`repos: []`, `paths: {}`) is therefore "unset",
 /// which is what a need means by it.
 ///
-/// `false` and `0` are set — a present-but-falsy scalar still counts.
+/// `false` and `0` are set: a scalar that is present counts, even when falsy.
 ///
 /// **Stability:** stable in 0.x.
 pub fn value_is_set(value: Option<&Value>) -> bool {

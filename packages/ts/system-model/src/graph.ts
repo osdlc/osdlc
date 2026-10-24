@@ -1,27 +1,26 @@
 import type { Aspect } from './aspect.ts'
 
 /**
- * The system model: a project's structure as it crosses the wire.
+ * The system model: a project's structure in its wire format.
  *
- * Field names are snake_case because that is what crosses — ontogen carries
- * these read-model DTOs through verbatim from
+ * Field names are snake_case because that is the wire format. ontogen passes
+ * these read-model DTOs through unchanged from
  * `solutions/ontological/desktop/src-tauri/src/schema/system_graph.rs`, which
- * remains the authority on the shape. This file is that shape stated once for
- * TypeScript, so that a producer, a consumer and a host are talking about the
- * same thing rather than three lookalikes.
+ * is the authority on the shape. This file states that shape once for
+ * TypeScript, so a producer, a consumer and a host all use the same types.
  *
- * THE WHOLE PAYLOAD CROSSES ONCE. Containment is a tree the viewer folds and
- * unfolds constantly; a round trip per collapse would be unusable, so the full
- * node set and the full edge set ship together and the client does its own
- * aggregation.
+ * The whole payload is sent in one response. Containment is a tree the viewer
+ * folds and unfolds often, and a round trip per fold would be too slow. So the
+ * full node set and the full edge set are sent together, and the client does
+ * its own aggregation.
  */
 
 /**
- * What a node structurally IS — the axis containment is drawn on.
+ * What a node is structurally. Containment is drawn by this kind.
  *
- * `group` is synthetic: a directory that holds manifests but declares none.
- * `repo` is the single containment root. `external` sits outside the tree
- * entirely — a registry dependency is not *within* the repo.
+ * `group` is synthetic: a directory that holds manifests but has none of its
+ * own. `repo` is the single containment root. `external` is outside the tree,
+ * because a registry dependency is not inside the repo.
  */
 export type NodeKind = 'repo' | 'group' | 'package' | 'crate' | 'external'
 
@@ -37,11 +36,11 @@ export type Ecosystem = 'node' | 'rust'
 /**
  * One package, crate, directory, or external dependency.
  *
- * The enum-shaped fields are typed `string`, not as the unions above, and the
- * unions are exported separately for the cases that want to narrow. This is
- * deliberate and matches the Rust: a newer walker may learn a sixth node kind
- * or a fifth dependency kind, and a consumer that pattern-matched an
- * exhaustive union would break on data it could simply have shown.
+ * The enum-shaped fields are typed `string`, not as the unions above. The
+ * unions are exported separately for code that wants to narrow. This is
+ * deliberate and matches the Rust. A newer walker may add a new node kind or
+ * dependency kind. A consumer that matched an exhaustive union would break on
+ * data it could have shown.
  */
 export interface SystemNode {
   /**
@@ -50,7 +49,7 @@ export interface SystemNode {
    * `external:node`) that no real package name can collide with.
    */
   id: string
-  /** What to show. Never empty — a nameless manifest falls back to its dir. */
+  /** The display name. Never empty: a manifest with no name uses its dir. */
   label: string
   /**
    * Root-relative directory, `''` for the repo itself. `null` for nodes that
@@ -58,11 +57,11 @@ export interface SystemNode {
    */
   dir: string | null
   /**
-   * The containing node's id. `null` marks a containment ROOT: the repo, and
+   * The containing node's id. `null` marks a containment root: the repo, and
    * each external group.
    */
   parent: string | null
-  /** A {@link NodeKind}, widened — see the note on this interface. */
+  /** A {@link NodeKind}, widened. See the note on this interface. */
   kind: string
   /** An {@link Ecosystem}, widened, or `null` for a directory. */
   ecosystem: string | null
@@ -72,19 +71,19 @@ export interface SystemNode {
   description: string | null
   /** npm `"private": true`, or cargo `publish = false`. */
   private: boolean
-  /** Derived hint: npm `main` points at `nuxt.config.ts` — a Nuxt layer. */
+  /** Derived hint: npm `main` points at `nuxt.config.ts`, so it is a Nuxt layer. */
   is_nuxt_layer: boolean
   /** Derived hint: npm `bin` entries, or cargo `[[bin]]` sections. */
   has_bin: boolean
   /**
-   * Set when this node's manifest could not be parsed. The node still appears:
-   * a half-written manifest the operator cannot see is worse than one marked.
+   * Set when this node's manifest could not be parsed. The node still appears,
+   * because a broken manifest the operator cannot see is worse than one marked.
    */
   error: string | null
   /**
-   * What this node IS, technologically, and what makes anyone think so.
+   * The technologies this node uses, and the evidence for each.
    *
-   * A list, because a package is rarely one technology — see `./aspect`.
+   * A list, because a package is rarely one technology. See `./aspect`.
    * Empty for synthetic nodes (the repo root, directory groups) and for
    * externals, which are named by a manifest rather than read from one.
    */
@@ -94,8 +93,8 @@ export interface SystemNode {
 /**
  * One declared dependency, from the declaring node to the depended-on node.
  *
- * Containment is deliberately NOT here — it is {@link SystemNode.parent}. The
- * two relations have different shapes (a mesh and a tree) and a viewer draws
+ * Containment is deliberately not here. It is {@link SystemNode.parent}. The
+ * two relations have different shapes (a mesh and a tree), and a viewer draws
  * them differently.
  */
 export interface SystemEdge {
@@ -113,7 +112,7 @@ export interface SystemEdge {
 export interface SystemGraph {
   /**
    * Absolute path of the project this graph was walked from. Shown so the view
-   * can never lie about its scope.
+   * always states its scope correctly.
    */
   root: string
   /** The checkout's directory name, and the repo node's label. */
@@ -123,8 +122,9 @@ export interface SystemGraph {
   nodes: SystemNode[]
   edges: SystemEdge[]
   /**
-   * Non-fatal oddities from the walk: duplicate manifest names, id collisions.
-   * Data, not errors — one duplicate must not blank the view.
+   * Non-fatal problems from the walk, such as duplicate manifest names or id
+   * collisions. They are data, not errors, so one duplicate does not empty the
+   * view.
    */
   warnings: string[]
   /** Manifests walked, including ones that failed to parse. */

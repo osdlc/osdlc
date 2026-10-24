@@ -31,33 +31,33 @@ function brandOf(runner: string): RunnerBrand | null {
 }
 
 /**
- * The runner's icon, injected RAW on purpose: it is inline SVG the server's
- * own providers declare, the same trust this page already extends to every
- * field it renders. Running it through escapeHtml would print the markup as
- * text instead of drawing it.
+ * The runner's icon, inserted unescaped on purpose. It is inline SVG that the
+ * server's own runners declare, which this page trusts as it trusts every
+ * field it renders. Escaping it would print the markup as text instead of
+ * drawing it.
  */
 function iconHtml(runner: string): string {
   const icon = brandOf(runner)?.icon
   return icon ? '<span class="ricon" aria-hidden="true">' + icon + '</span>' : ''
 }
 
-/** Row tint attributes. The color is data handed to CSS, so it IS escaped. */
+/** Row tint attributes. The color is data passed to CSS, so it is escaped. */
 function brandAttrs(runner: string): string {
   const color = brandOf(runner)?.color
   return color ? ' class="branded" style="--rb:' + escapeHtml(color) + '"' : ''
 }
 
 /**
- * The attributes every body row carries: the brand tint, the task's stable id,
- * and a roving-tabindex slot.
+ * The attributes every body row has: the brand tint, the task's stable id,
+ * and a tabindex for roving focus.
  *
- * `data-id` is the task's own id, not its position: the list is traversed by
- * keyboard and render() replaces #out wholesale, so the focused row has to be
- * findable again by identity after a rebuild reorders or drops rows.
+ * `data-id` is the task's own id, not its position. The list is used by
+ * keyboard and render() replaces all of #out, so the focused row must be
+ * found again by id after a rebuild reorders or drops rows.
  *
- * Every row starts at -1. markEnterTarget() promotes exactly one to 0, so the
- * whole list is a single tab stop and the arrows move within it — the same
- * pattern rovingGroup() uses for the toolbar segments.
+ * Every row starts at -1. markEnterTarget() sets exactly one to 0, so the
+ * whole list is a single tab stop and the arrows move within it. This is the
+ * same pattern rovingGroup() uses for the toolbar segments.
  */
 function rowAttrs(e: Task): string {
   return brandAttrs(e.runner) + ' data-id="' + escapeHtml(e.id) + '" tabindex="-1"'
@@ -119,19 +119,19 @@ function renderNode(node: TreeNode, prefix: string[]): string {
     const key = prefix.concat(seg).join(' ')
     const collapsed = state.collapsed.has(key)
     // A header at tree depth d sits at path index d + treeStart(). In the
-    // combined index the runner is the top node, so which chain to consult
-    // depends on the branch: at depth 0 the segment IS the runner name.
+    // combined index the runner is the top node, so which chain to read
+    // depends on the branch: at depth 0 the segment is the runner name.
     const depth = prefix.length
     const branchRunner = treeStart() === 0 ? (depth === 0 ? seg : prefix[0]!) : state.runner
     const meta = chainOf(branchRunner)[depth + treeStart()]
-    // Only the combined index's top level IS a runner; deeper headers are
-    // directories and projects, which have no mark to show.
+    // Only the combined index's top level is a runner. Deeper headers are
+    // directories and projects, which have no icon.
     const icon = treeStart() === 0 && depth === 0 ? iconHtml(seg) : ''
-    // Each level parks one header-height below the one above it, so an open
-    // group leaves a readable breadcrumb of its ancestors at the top.
+    // Each level sticks one header height below the one above it, so an open
+    // group keeps its parent headers visible at the top.
     const top = 'calc(var(--chrome-h) + ' + depth + ' * var(--head-h))'
-    // Descending, and floored at 1 so a pathologically deep tree still
-    // paints above the unpositioned rows.
+    // Descending, with a minimum of 1 so even a very deep tree draws above
+    // the unpositioned rows.
     const layer = Math.max(1, 20 - depth)
     html +=
       '<div class="node" data-collapsed="' +
@@ -168,10 +168,10 @@ function renderNode(node: TreeNode, prefix: string[]): string {
       .slice()
       .sort((a, b) => b.score - a.score || a.entry.path.join().localeCompare(b.entry.path.join()))
     // Pull the table back out of the tree's indentation. Runners nest to
-    // different depths — moon is four segments deep, just is three — so a
-    // table left inside `.kids` starts further right in some branches than
-    // in others, and the command column stops lining up across the combined
-    // view. Headers keep their indent; rows align to one left edge.
+    // different depths (moon is four segments deep, just is three), so a
+    // table left inside `.kids` would start further right in some branches,
+    // and the command column would not line up across the combined view.
+    // Headers keep their indent; rows align to one left edge.
     html +=
       '<table style="' +
       outdent(prefix.length) +
@@ -185,10 +185,10 @@ function renderNode(node: TreeNode, prefix: string[]): string {
 }
 
 /**
- * The service icon, authored here rather than taken from a runner's brand:
- * the brand icons identify RUNNERS, and this marks a property of the task.
- * No fixed size and no colour of its own — styles.css sizes the box and
- * `currentColor` lets the theme tokens paint it.
+ * The service icon, drawn here rather than taken from a runner's brand. Brand
+ * icons identify runners, and this marks a property of the task. It has no
+ * fixed size or colour: styles.css sizes the box and `currentColor` takes the
+ * theme colour.
  */
 function serviceIcon(declared: boolean): string {
   return declared
@@ -208,16 +208,16 @@ function quoteDir(dir: string): string {
 /**
  * What Copy hands over, which is not always what the Command column shows.
  *
- * Most tasks are written to run from the repository root and copy bare. A task
- * bound to its own directory gets the `cd` that makes it work — omitting it
- * would hand the user a command that fails. `argv` is untouched either way:
- * anything that SPAWNS a task already has the directory.
+ * Most tasks are written to run from the repository root and are copied as
+ * they are. A task bound to its own directory gets the `cd` it needs, since
+ * without it the copied command would fail. `argv` is unchanged either way,
+ * because anything that spawns a task already uses the directory.
  */
 export function copyText(task: Task): string {
   return task.cwd === '.' ? task.display : 'cd ' + quoteDir(task.cwd) + ' && ' + task.display
 }
 
-/** What Run costs, said up front: the page ends and the terminal takes over. */
+/** What Run does, stated up front: the page ends and the task takes the terminal. */
 function runTip(task: Task): string {
   return (
     'Run ' +
@@ -231,26 +231,27 @@ function runTip(task: Task): string {
 function copyTip(task: Task): string {
   return task.cwd === '.'
     ? 'Copy the command to the clipboard.'
-    : // The SAME quoting copyText applies: a bare directory here would describe
-      // a command the clipboard never gets, and for one holding a space or a
-      // backtick it would read as something else entirely.
+    : // The same quoting copyText uses. An unquoted directory here would not
+      // match what is copied, and one with a space or a backtick would read as
+      // something else entirely.
       'Copy — includes cd ' + quoteDir(task.cwd) + ' because this task must run from there.'
 }
 
 /**
  * The columns, in the order the colgroup declares them, plus the depth spacer
- * that sits between the first two below the root. Five of them, or four once
- * Runs drops at a narrow width (see `showRuns`). The indicator sits in its own
- * gutter rather than inline in the name: prefixing the text pushed every marked
+ * between the first two below the root. Five of them, or four once Runs is
+ * dropped at a narrow width (see `showRuns`). The indicator has its own column
+ * rather than sitting before the name, because a prefix would push each marked
  * row's chain out of line with its neighbours.
  */
 function cells(e: Task, nameHtml: string, depth = 0): string {
-  // The runner SAYING a task is a service and this page guessing from its name
+  // The runner saying a task is a service and this page guessing from its name
   // are different claims. A guess is drawn as the hollow icon and says so on
-  // hover rather than being passed off as fact.
+  // hover.
   const p = e.persistent
-  // The name is in the DOM as clipped text, not in the `title`: a bare span is
-  // not focusable and `title` alone gives assistive tech nothing to read.
+  // The name is in the DOM as visually hidden text, not only in the `title`. A
+  // bare span is not focusable, and `title` alone gives assistive tech nothing
+  // to read.
   const service = p.value
     ? '<span class="ind-svc' +
       (p.declared ? '' : ' inferred') +
@@ -266,9 +267,8 @@ function cells(e: Task, nameHtml: string, depth = 0): string {
       (p.declared ? 'Service' : 'Service, inferred') +
       '</span></span>'
     : ''
-  // The leading column is a slot for row indicators in general, not a service
-  // column. Service is its first resident; a second indicator joins the same
-  // centred flex row.
+  // The leading column is for row indicators in general, not only services.
+  // Service is the first. A second indicator would join the same centred row.
   return (
     '<td class="ind"><span class="inds">' +
     service +
@@ -284,8 +284,8 @@ function cells(e: Task, nameHtml: string, depth = 0): string {
     '">' +
     escapeHtml(e.display) +
     '</td>' +
-    // Omitted, not emptied: an empty cell would still take a column slot and
-    // the row would no longer match the colgroup the table was built with.
+    // Left out, not emptied: an empty cell would still take a column, and the
+    // row would no longer match the table's colgroup.
     (showRuns()
       ? '<td class="doc">' +
         escapeHtml(e.doc || '') +
@@ -298,10 +298,10 @@ function cells(e: Task, nameHtml: string, depth = 0): string {
           : '') +
         '</td>'
       : '') +
-    // The action gutter holds run, then copy. The list traversal already treats
-    // a row's actions as a group Tab walks into. Run hands the task to the
-    // terminal the server runs in; copy's title says when what it copies is not
-    // what the Command column shows, so the extra `cd` is never a surprise.
+    // The action column holds run, then copy. Keyboard navigation treats a
+    // row's actions as a group that Tab moves into. Run hands the task to the
+    // server's terminal. Copy's title says when it copies more than the
+    // Command column shows, so the extra `cd` is not a surprise.
     '<td class="act">' +
     '<button class="runbtn" data-run-id="' +
     escapeHtml(e.id) +
@@ -329,26 +329,23 @@ function outdent(depth: number): string {
 }
 
 /**
- * The action gutter. Wide enough for `run` beside the enter-target row's
- * `↵ copy`, which is the widest the column ever gets — the plain `copy` on
- * every other row leaves 14px more spare. Measured in Chromium at 1700px and
- * 1100px, which agree: `run` 35.23 + a 4px gap + `↵ copy` 57.89 + the cell's
- * own 8px right padding is 105.12.
+ * The action column. Wide enough for `run` beside the enter-target row's
+ * `↵ copy`, the widest the column gets. The plain `copy` on other rows leaves
+ * 14px more. Measured in Chromium at 1700px and 1100px, which agree: `run`
+ * 35.23 + a 4px gap + `↵ copy` 57.89 + the cell's 8px right padding is 105.12.
  *
- * 112 rather than that 106, because 106 left 0.88px. Nothing clipped, but a
- * fallback font or one more pixel of button padding would have, and the
- * failure is silent — the row's actions simply lose their right edge. The
- * 6.88px here is slack a re-measure can spend.
+ * 112 rather than 106, because 106 leaves only 0.88px. A fallback font or one
+ * more pixel of button padding would then clip, and silently: the row's
+ * actions would lose their right edge. The 6.88px is spare room.
  */
 const ACT_W = 112
 /** The indicator gutter: one icon wide, with room to centre a second later. */
 const IND_W = 30
 /**
- * Below this the Runs column is dropped. The UX review put the point where
- * Runs truncates to noise at a 1100px VIEWPORT; `main` pads 16px each side,
- * so that is about 1068px of table width. The number is in the same units as
- * `availWidth()` — the width of the table area itself (`main` minus its own
- * padding), not of the window.
+ * Below this the Runs column is dropped. Runs is cut off too much to be useful
+ * below a 1100px viewport. `main` pads 16px on each side, so that is about
+ * 1068px of table width. The number is in the same units as `availWidth()`:
+ * the width of the table area (`main` minus its padding), not of the window.
  */
 const RUNS_MIN_W = 1068
 
@@ -358,19 +355,19 @@ function availWidth(): number {
 }
 
 /**
- * Whether the Runs column exists at all right now. `colgroup`, `cells` and
- * `renderColHeads` all ask this one question, because a table whose colgroup,
- * head row and body rows disagree about how many columns there are misaligns
- * every column after the first.
+ * Whether the Runs column is shown right now. `colgroup`, `cells` and
+ * `renderColHeads` all call this, because if a table's colgroup, head row and
+ * body rows disagree on the number of columns, every column after the first
+ * is misaligned.
  */
 function showRuns(): boolean {
   return availWidth() >= RUNS_MIN_W
 }
 
 /**
- * The columns, named once. `tip` is the hover explanation; the modal carries
- * the longer version for anything a tooltip cannot hold. This is the full
- * roster; `renderColHeads` drops Runs from it when the width does.
+ * The columns, named once. `tip` is the hover text. The help modal has the
+ * longer version of anything a tooltip cannot hold. This is the full list;
+ * `renderColHeads` drops Runs when the width does.
  */
 export const COLUMNS = [
   {
@@ -396,35 +393,34 @@ export const COLUMNS = [
 ]
 
 /**
- * Column widths, in pixels rather than percentages, because the tables are
- * different widths: each is outdented by its depth (see `outdent`) so their
- * left edges agree, which makes a percentage mean a different number of
- * pixels at every level.
+ * Column widths, in pixels rather than percentages, because the tables have
+ * different widths. Each is outdented by its depth (see `outdent`) so their
+ * left edges agree, so a percentage would be a different number of pixels at
+ * each level.
  *
- * A leading spacer column of exactly the outdent puts the CONTENT back where
- * its group header is, and the name column gives up the same amount — so the
- * command column starts at the same absolute x whatever the depth, and no row
- * text lands in the strip to the left of the headers. Painting text there was
- * the visible bug: a header's background stops at its own indented box, so a
- * row scrolling under one showed through beside it.
+ * A leading spacer column as wide as the outdent puts the content back under
+ * its group header, and the name column gives up the same amount. So the
+ * command column starts at the same x at every depth, and no row text lands
+ * in the strip left of the headers. Text there would show through beside a
+ * header as rows scroll under it, because a header's background stops at its
+ * own indented box.
  *
- * Which columns exist is itself a function of the width: under RUNS_MIN_W the
- * Runs column is dropped and its space goes back to Task and Command. That
- * has to happen in this arithmetic rather than in a media query, because the
- * widths are computed pixels — a media query can hide the cells but cannot
- * recompute what the others are worth.
+ * Which columns exist depends on the width: under RUNS_MIN_W the Runs column
+ * is dropped and its space goes to Task and Command. That has to happen here
+ * rather than in a media query, because the widths are computed pixels. A
+ * media query can hide cells but cannot recompute the other widths.
  */
 function colgroup(depth: number): string {
   const indent = depth * INDENT_PER_LEVEL
   const avail = availWidth()
   const wide = showRuns()
-  // Wide, Runs is the one flexible column and soaks up whatever the sized
-  // columns leave. Narrow, Runs is gone and nothing is flexible, so the
-  // sized columns have to add up to `avail` exactly: `table-layout: fixed`
-  // hands any slack back to the columns in proportion, which would move the
-  // command column to a different x at every depth. So the remainder after
-  // the two fixed gutters is split explicitly, keeping the wide layout's
-  // 0.4 : 0.34 ratio renormalised to 0.54 : 0.46.
+  // When wide, Runs is the one flexible column and takes whatever the sized
+  // columns leave. When narrow, Runs is gone and nothing is flexible, so the
+  // sized columns must add up to `avail` exactly. `table-layout: fixed`
+  // spreads any leftover across the columns in proportion, which would move
+  // the command column at every depth. So the space left after the two fixed
+  // columns is split explicitly, keeping the wide layout's 0.4 : 0.34 ratio,
+  // rescaled to 0.54 : 0.46.
   const rest = avail - IND_W - ACT_W
   const name = wide
     ? Math.max(80, Math.round(avail * 0.4) - indent)
@@ -432,10 +428,10 @@ function colgroup(depth: number): string {
   const run = wide ? Math.round(avail * 0.34) : rest - indent - name
   return (
     '<colgroup>' +
-    // The indicator gutter leads and is fixed, so an icon sits at one x for
-    // every row. The depth spacer goes BEHIND it, indenting only the Task
-    // text — a spacer in front would slide the icons rightwards as the tree
-    // deepened.
+    // The indicator column comes first and is fixed, so an icon sits at the
+    // same x in every row. The depth spacer comes after it and indents only
+    // the Task text. A spacer before it would move the icons right as the
+    // tree got deeper.
     '<col style="width:' +
     IND_W +
     'px" />' +
@@ -462,8 +458,8 @@ function spacerCell(depth: number): string {
 /** Under a group header the parent chain is already on screen; show the leaf. */
 function renderTreeRow(row: Row, depth: number): string {
   const e = row.entry
-  // Everything the group headers above did NOT account for. At full depth
-  // that is just the leaf; at a shallower setting the row carries the rest of
+  // The part of the chain the group headers above do not show. At full depth
+  // that is just the leaf. At a shallower setting the row shows the rest of
   // its chain, so nothing is lost by grouping less.
   const covered = treeStart() + depth
   const rest = e.path.slice(covered)
@@ -494,8 +490,8 @@ function renderSearchRow(row: Row): string {
     cursor = 0,
     open = false
   for (let p = 0; p < e.path.length; p++) {
-    // Each segment carries what its POSITION means, so the chain explains
-    // itself on hover rather than needing to be learned once and remembered.
+    // Each segment has a tooltip saying what its position means, so the chain
+    // explains itself on hover.
     const seg = chain[p]
     out += seg
       ? '<span class="seg-hit" title="' + escapeHtml(seg.label + ' - ' + seg.hint) + '">'
@@ -529,13 +525,13 @@ function renderSearchRow(row: Row): string {
 // ---------------------------------------------------------------- render
 
 /**
- * How deep in the repository a task is DECLARED — the number of directories
+ * How deep in the repository a task is declared: the number of directories
  * above its source file. `justfile` and `moon.yml` at the root are 0;
  * `apps/web/client/moon.yml` is 3.
  *
- * This is where a task LIVES, not how the tree draws it. The Depth control
- * filters on it, so "Root" is the handful of commands the repository itself
- * declares rather than the ones its packages do.
+ * This is where a task is declared, not how the tree draws it. The Depth
+ * control filters on it, so "Root" is the few commands the repository itself
+ * declares, not the ones its packages do.
  */
 function sourceDepth(task: Task): number {
   const at = task.source.lastIndexOf('/')
@@ -543,14 +539,13 @@ function sourceDepth(task: Task): number {
 }
 
 /**
- * The one runner order, driving the tabs, the picker and the tree's top
- * level — three surfaces that must agree or the tab bar stops predicting the
- * page under it.
+ * The one runner order, used by the tabs, the picker and the tree's top level.
+ * All three must agree, or the tab bar no longer matches the page below it.
  *
  * Grouped first (tasks, dependencies, tools, git hooks), then alphabetical
- * within a group. Any explicit arrangement (dragged on either surface) is
- * kept in localStorage and wins within its group. A runner not in the saved
- * arrangement slots in alphabetically after it rather than vanishing.
+ * within a group. An order the user dragged (on either surface) is kept in
+ * localStorage and wins within its group. A runner not in the saved order is
+ * placed alphabetically after it rather than left out.
  */
 export function runnerOrder(): string[] {
   const present = (state.catalog?.reports || []).map((r) => r.runner)
@@ -590,22 +585,21 @@ function sortedRunnerOrder(key: SortKey, dir: 1 | -1): string[] {
 }
 
 /**
- * The sort the user last ASKED for. Not a claim about the order on screen —
- * activeSort verifies it against the live order before the header shows
- * anything, so a drag clears the arrow. It only decides WHICH column is
- * credited when an order satisfies two sorts, which every order does when the
- * counts are all equal.
+ * The sort the user last asked for. It does not say what order is on screen.
+ * activeSort checks it against the live order before the header shows
+ * anything, so a drag clears the arrow. It only decides which column gets the
+ * arrow when an order matches two sorts, as every order does when all the
+ * counts are equal.
  */
 let requestedSort: { key: SortKey; dir: 1 | -1 } | null = null
 
 /**
- * Which sort the order ALREADY is, if any - verified by comparing, never taken
- * on trust. A stored "sorted by name" flag alone would keep claiming that after
- * a drag had rearranged the list out from under it, and the header would be
- * lying about what is on screen.
+ * Which sort the current order already matches, if any, found by comparing.
+ * A stored "sorted by name" flag would stay set after a drag rearranged the
+ * list, and the header would then be wrong about what is on screen.
  *
- * The last requested sort is tried FIRST, because two sorts can both describe
- * one order and only one of them is the one the user pressed.
+ * The last requested sort is tried first, because two sorts can match one
+ * order and only one of them is the one the user pressed.
  */
 function activeSort(): { key: SortKey; dir: 1 | -1 } | null {
   const now = runnerOrder().join('\u0000')
@@ -620,7 +614,7 @@ function activeSort(): { key: SortKey; dir: 1 | -1 } | null {
   return null
 }
 
-/** Sorting IS reordering: one persisted order, so the tab bar follows at once. */
+/** Sorting reorders the one saved order, so the tab bar updates at once. */
 export function sortRunners(key: SortKey, dir: 1 | -1): void {
   requestedSort = { key, dir }
   saveRunnerOrder(sortedRunnerOrder(key, dir))
@@ -648,13 +642,13 @@ function treeStart(): number {
 }
 
 /**
- * Why a runner reports nothing when execution is off. Said in one place
- * because three surfaces say it: the tab's tooltip, the picker's note and the
+ * Why a runner reports nothing when execution is off. Defined once because
+ * three places show it: the tab's tooltip, the picker's note and the
  * per-runner modal.
  *
- * Two sentences, because there are two reasons. Reading this runner means
- * running it either way; whether that is fixable from here depends on whether
- * trust is what is missing, which only the server knows (see `state.trustable`).
+ * Two sentences, for two reasons. Either way, reading this runner means
+ * running it. Whether the page can fix that depends on whether trust is what
+ * is missing, which only the server knows (see `state.trustable`).
  */
 const EXEC_NOTE_OFF =
   'This runner can only be read by running it, and execution is off for this session.'
@@ -666,21 +660,19 @@ function execNote(): string {
 }
 
 /**
- * The grant. Offered wherever the withholding is EXPLAINED, which now includes
- * the status bar: this used to appear only in the per-runner modal and the
- * picker, on the reasoning that the toolbar was the wrong place for it, and the
- * result was that a person who opened neither was never told anything at all. A
- * three-letter badge and a tooltip are not telling. Confirmed before it POSTs —
- * see input.ts.
+ * The trust grant button. Offered wherever the withheld runners are explained:
+ * the trust bar, the per-runner modal and the picker. A badge and a tooltip
+ * alone would leave someone who opens neither menu uninformed. It asks for
+ * confirmation before it POSTs (see input.ts).
  */
 const TRUST_BUTTON =
   '<button class="toolbtn" data-trust-repo="1" title="Record that this repository may run subprocesses to be read. Remembered per repository.">Trust this repository</button>'
 
 /**
- * The stand-in for every folded runner's tab: one quiet chip naming how many,
- * with the who and the why in its title. It is not a menu of its own — the
- * runner picker already lists each one with its count and its (failed) /
- * (needs --exec) / (not trusted) note, so this only has to point there (see
+ * One chip in place of the tabs of all folded runners. It shows how many, and
+ * its title says which and why. It is not a menu of its own. The runner
+ * picker already lists each one with its count and its (failed),
+ * (needs --exec) or (not trusted) note, so this only opens the picker (see
  * input.ts).
  */
 function foldedChip(reports: RunnerReport[]): string {
@@ -700,8 +692,8 @@ function foldedChip(reports: RunnerReport[]): string {
     pronoun +
     ' off.'
   // No `aria-label`: it would replace the visible text as the chip's name, and
-  // a name that does not contain its own label cannot be spoken to voice
-  // control. The long sentence stays in the `title`.
+  // voice control users say the visible label. The long sentence stays in the
+  // `title`.
   return (
     '<button class="tab-folded" data-open-picker="1" title="' +
     escapeHtml(title) +
@@ -717,21 +709,20 @@ export function render(): void {
     $('out').innerHTML = '<div class="empty">Loading...</div>'
     return
   }
-  // Column widths are pixels off this, so it has to be current BEFORE the
-  // tables are built — measuring afterwards leaves the first paint wrong.
-  // clientWidth includes `main`'s own horizontal padding, which the tables do
-  // not get to use, so it is taken back off: the columns have to add up to the
-  // width a table actually has, or a layout with no flexible column overflows
-  // the page by exactly that padding.
+  // Column widths are computed from this, so it must be measured before the
+  // tables are built, or the first view is wrong. clientWidth includes
+  // `main`'s horizontal padding, which the tables cannot use, so it is
+  // subtracted. The columns must add up to the table's real width, or a
+  // layout with no flexible column overflows the page by that padding.
   const main = $('out')
   const pad = getComputedStyle(main)
   state.mainWidth = Math.round(
     main.clientWidth - parseFloat(pad.paddingLeft) - parseFloat(pad.paddingRight),
   )
 
-  // Default every runner on the first catalog; afterwards the picker owns it,
-  // and a runner that appears later (a provider added to the library) turns
-  // itself on rather than silently hiding.
+  // Every runner is on for the first catalog. After that the picker controls
+  // it, and a runner that appears later (a runner added to the library) is
+  // turned on rather than silently hidden.
   state.enabled ??= new Set(cat.reports.map((s) => s.runner))
   const enabled = state.enabled
   for (const s of cat.reports)
@@ -749,13 +740,13 @@ export function render(): void {
     .filter((s): s is RunnerReport => s !== undefined && enabled.has(s.runner))
   const total = on.reduce((n, s) => n + s.tasks.length, 0)
   const anyError = on.some((s) => s.status === 'error')
-  // A runner with nothing to show is not worth a tab of its own, and folds only
-  // when "empty" is the whole story. A runner that FAILED to probe, that was
-  // held back because execution is off, or that carries a warning banner is
-  // still reporting something — folding it would read as "all clear" while its
-  // own banner says otherwise. The selected runner is never folded, or the tab
-  // bar would show nothing pressed. Recomputed every render, so a runner that
-  // gains tasks on a refresh reappears as a tab of its own.
+  // A runner with nothing to show gets no tab of its own, but only when it is
+  // simply empty. A runner that failed to probe, was withheld because
+  // execution is off, or has a warning banner still reports something.
+  // Folding it would look like "all clear" while its banner says otherwise.
+  // The selected runner is never folded, or no tab would be pressed. This is
+  // recomputed every render, so a runner that gains tasks on a refresh gets
+  // its tab back.
   const foldable = on.filter(
     (s) =>
       s.tasks.length === 0 &&
@@ -792,9 +783,9 @@ export function render(): void {
         const shape = chain.map((c, i) => (i === 0 ? t.runner : c.label)).join(' › ')
         // The `all` tab is an aggregate, pinned first, and not draggable.
         const draggable = t.runner !== ALL ? ' draggable="true"' : ''
-        // A runner held back for exec keeps its tab precisely so it can say so;
-        // the marker and the tooltip are the point of the tab. Drawn as a quiet
-        // count-like badge, not the error `!`: nothing failed.
+        // A runner withheld for exec keeps its tab so it can say so, through
+        // the badge and the tooltip. The badge looks like a count, not the
+        // error `!`, because nothing failed.
         const tip = t.exec ? (shape ? shape + '. ' + execNote() : execNote()) : shape
         const btn =
           '<button data-runner="' +
@@ -813,9 +804,9 @@ export function render(): void {
           '</span>' +
           (t.exec ? '<span class="count exec">exec</span>' : '') +
           '</button>'
-        // The info button rides beside the tab rather than inside it: a
-        // button cannot nest in a button, and the tab must stay one click
-        // target that selects rather than explains.
+        // The info button sits beside the tab, not inside it. A button cannot
+        // be inside a button, and the tab must stay one click target that
+        // selects.
         const info = chain.length
           ? '<button class="tabinfo" data-info-runner="' +
             escapeHtml(t.runner) +
@@ -831,9 +822,9 @@ export function render(): void {
   // The picker is a toolbar control, not a tab, so it renders into the Scope
   // cluster in the search row rather than at the end of the tab strip.
   //
-  // Rewriting its markup replaces the focused node, so the control focus was
-  // on is named before the rebuild and found again after it — the same
-  // restore-by-identity the results list does with the task id.
+  // Rewriting its markup replaces the focused element, so the focused control
+  // is recorded before the rebuild and found again after it, as the results
+  // list does with the task id.
   //
   // The markup always comes back closed, so an open menu is reopened here
   // before focus is restored: focus() on an element inside a `hidden` subtree
@@ -858,8 +849,9 @@ export function render(): void {
     for (const entry of sec.tasks) {
       if (state.servicesOnly && !entry.persistent.value) continue
       // `synthesized` tasks are inferred from a convention rather than
-      // written down — `cargo test` for every Cargo.toml, `ruff check .` for
-      // every configured ruff. Useful, and a lot of them, so they can go.
+      // written down: `cargo test` for every Cargo.toml, `ruff check .` for
+      // every configured ruff. They are useful but many, so they can be
+      // hidden.
       if (state.declaredOnly && entry.origin !== 'declared') continue
       if (sourceDepth(entry) > state.depth) continue
       if (terms.length === 0) {
@@ -873,9 +865,9 @@ export function render(): void {
 
   let html = ''
   for (const sec of scope) {
-    // Diagnostics are structured now, so severity decides the treatment:
-    // an error is a banner, a warning is a note, and "moon was skipped
-    // because execution is off" is info the tab count already implies.
+    // Severity decides how a diagnostic is shown. An error is a banner, a
+    // warning is a note, and info such as "moon was skipped because execution
+    // is off" is not shown, since the tab already says it.
     for (const d of sec.diagnostics || []) {
       if (d.severity === 'info') continue
       const label = d.severity === 'error' ? 'banner' : 'banner warn'
@@ -905,10 +897,10 @@ export function render(): void {
   } else {
     html += renderNode(buildTree(rows), [])
   }
-  // Whether the user's focus is IN the list has to be read before the html is
-  // overwritten, because overwriting it drops focus to <body>. Only a focus
-  // that was already in the list is restored — restoring unconditionally would
-  // steal focus from the search box on every 15s poll.
+  // Whether focus is in the list must be read before the html is replaced,
+  // because replacing it moves focus to <body>. Focus is restored only if it
+  // was in the list. Restoring it always would take focus from the search box
+  // on every 15s poll.
   const focusWasInList = $('out').contains(document.activeElement)
   $('out').innerHTML = html
   markEnterTarget()
@@ -922,11 +914,10 @@ export function render(): void {
 /**
  * Put keyboard focus back in the rebuilt list.
  *
- * The focused row is found by task id. When that task is gone — a filter, the
- * 15s poll or a resize dropped it — focus would otherwise fall to <body> and
- * the arrows would stop working with nothing on screen saying why. The first
- * surviving row takes it instead, and with no rows left focus goes back to the
- * search box, which is where the user can act.
+ * The focused row is found by task id. When that task is gone (a filter, the
+ * 15s poll or a resize dropped it), focus would fall to <body> and the arrows
+ * would stop working with no sign why. So the first remaining row takes
+ * focus, and with no rows left focus goes back to the search box.
  */
 function restoreListFocus(): void {
   const rows = listRows()
@@ -944,9 +935,9 @@ function restoreListFocus(): void {
 /**
  * A selector naming one picker control, stable across a rebuild.
  *
- * The picker's markup is regenerated wholesale, so a node reference is useless
- * afterwards. Every control in it is identified by a runner id or a fixed
- * attribute, which survives.
+ * The picker's markup is regenerated in full, so an element reference is no
+ * use afterwards. Every control in it has a runner id or a fixed attribute,
+ * which stays the same.
  */
 function pickerFocusSelector(el: HTMLElement): string | null {
   if (el.closest('#pickbtn')) return '#pickbtn'
@@ -962,10 +953,10 @@ function pickerFocusSelector(el: HTMLElement): string | null {
 }
 
 /**
- * The longer explanation, for what a tooltip is too small to hold — chiefly
- * the two distinctions that surprise people: part of a task's chain is
- * grouping this page invents, and a task can be one a runner declares or one
- * a convention merely implies.
+ * The longer explanation, for what a tooltip is too small to hold. Mainly the
+ * two points that surprise people: part of a task's chain is grouping this
+ * page adds, and a task can be declared by a runner or only implied by a
+ * convention.
  */
 export const HELP = [
   '<h3>What this is</h3>',
@@ -1007,9 +998,9 @@ export const HELP = [
 ].join('')
 
 /**
- * The header cell for the selection column: a checkbox mark, sized to sit with
- * the row checkboxes below it. Presentational only — the accessible name comes
- * from the button's aria-label, so a screen reader hears "Shown", not a shape.
+ * The header for the selection column: a checkbox mark, sized to match the
+ * row checkboxes below it. Visual only. The accessible name comes from the
+ * button's aria-label, so a screen reader says "Shown", not a shape.
  */
 const CHECK_GLYPH =
   '<svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true" focusable="false">' +
@@ -1018,33 +1009,29 @@ const CHECK_GLYPH =
   'stroke-linecap="round" stroke-linejoin="round"/></svg>'
 
 /**
- * The picker's sort header: three columns that reorder the one persisted order.
+ * The picker's sort header: three columns that reorder the one saved order.
  *
- * The columns are emitted in the order the ROW puts them — shown, name, count.
- * A header column names the thing underneath it, so it has to sit above the
- * column it sorts; one placed elsewhere reads as a control belonging to
- * whatever it is nearest.
+ * The columns are in the same order as in each row: shown, name, count. A
+ * header must sit above the column it sorts, or it looks like it belongs to
+ * whatever is nearest.
  *
- * The row's leading drag handle is repeated here, hidden, rather than being
- * replaced by a width. It is the same element and the same character, so the
- * columns keep starting where the row's own content starts even if that handle
- * ever changes.
+ * The row's leading drag handle is repeated here, hidden, instead of a fixed
+ * width. It is the same element and character, so the columns start where the
+ * row's content starts even if the handle changes.
  *
  * Real buttons, so the header is reachable by Tab and by voice. The arrow
- * appears only while the current order IS that sort - after a drag breaks it,
- * neither column claims anything. Count reads the live task counts, so it
- * follows a refresh rather than a snapshot.
+ * shows only while the current order matches that sort. After a drag, neither
+ * column shows one. Count uses the live task counts, so it follows a refresh.
  */
 export function renderSortHead(): string {
   const active = activeSort()
   const col = (key: SortKey, label: string, glyph?: string) => {
     const on = active?.key === key
-    // A new column starts where it is most useful: names ascending, but counts
-    // busiest-first and shown selected-first, since the interesting end of
-    // both of those is the high one.
+    // A newly chosen column starts with its most useful direction: names
+    // ascending, counts largest first, shown runners first.
     const next: 1 | -1 = on ? (active!.dir === 1 ? -1 : 1) : key === 'name' ? 1 : -1
-    // "shown" is a yes/no, so ascending/descending would say nothing useful;
-    // name the end that ends up on top instead.
+    // "shown" is yes or no, so ascending or descending means little. The title
+    // names which end goes on top instead.
     const way =
       key === 'shown'
         ? next === -1
@@ -1088,10 +1075,10 @@ export function renderSortHead(): string {
 /**
  * The runner picker, a control in the toolbar's Scope cluster.
  *
- * A DISABLED runner is still collected — the library probes what it probes —
- * and only hidden here. That keeps the toggle instant, and the counts you see
- * when you re-enable one are current rather than stale. A runner that failed to
- * probe still lists, with its error, so unchecking it silences a broken one.
+ * A runner turned off here is still collected and only hidden. That keeps the
+ * toggle instant, and its counts are current when you turn it back on. A
+ * runner that failed to probe is still listed with its error, so unchecking
+ * it hides a broken runner.
  */
 function renderRunnerPicker(cat: Catalog): string {
   // Guaranteed non-null: `render()` seeds `state.enabled` before this runs,
@@ -1110,16 +1097,15 @@ function renderRunnerPicker(cat: Catalog): string {
               ? ' (not trusted)'
               : ' (needs --exec)'
             : ''
-      // The note's own position carries the action, so the offer sits where the
-      // problem is named. One button per withheld row is fine: they all grant
-      // the same thing, and the click is confirmed before anything happens.
+      // The button sits next to the note, where the problem is named. One
+      // button per withheld row is fine: they all grant the same thing, and
+      // the click is confirmed before anything happens.
       const grant = s.skippedForExec && state.trustable ? TRUST_BUTTON : ''
-      // A folded runner has no tab, so its `i` button lived only on a tab
-      // that no longer exists. The picker row is the one place every runner
-      // is always listed, so it carries the same info affordance here — a
-      // <label> already forwards a click to its checkbox, so the button
-      // rides outside that label rather than inside it, or clicking it would
-      // also toggle the runner off.
+      // A folded runner has no tab, and so no tab `i` button. The picker row
+      // is the one place every runner is always listed, so it has the same
+      // info button. A <label> passes a click to its checkbox, so the button
+      // sits outside the label, or clicking it would also turn the runner
+      // off.
       const info = s.chain.length
         ? '<button class="tabinfo" data-info-runner="' +
           escapeHtml(s.runner) +
@@ -1163,9 +1149,9 @@ function renderRunnerPicker(cat: Catalog): string {
     renderSortHead() +
     items +
     '<div class="pickactions"><button data-pick-all="1">All</button><button data-pick-none="1">None</button></div>' +
-    // The checkbox above looks durable and is not: it filters THIS SESSION and
-    // dies with the tab. The durable choice — which runners this project
-    // collects at all — lives in Settings.
+    // The checkbox above looks permanent but is not. It filters this session
+    // only and is lost when the tab closes. The saved choice (which runners
+    // this project collects) is in Settings.
     '<p class="picknote">Filters this session only. ' +
     '<button class="linkish" data-open-settings="1">Settings</button>' +
     ' turns a runner off for the project.</p>' +
@@ -1181,14 +1167,13 @@ export function listRows(): HTMLElement[] {
 /**
  * Which row Enter takes, and where the single tab stop into the list sits.
  *
- * Two meanings, by whether a row is focused. While `focusedId` names a row the
- * mark follows it: Enter there copies the row you are on. The mark reverts to
- * the top hit when `focusedId` is cleared, which is what the search box's own
- * focus handler does (see input.ts) — moving to a toolbar button leaves the
- * row marked, because Enter from there still belongs to that button, not to
- * the list. The top hit is only marked while a query is active: with no query
- * there is no "top" anything, and a permanently marked first row would be a
- * lie about what the key does.
+ * It depends on whether a row is focused. While `focusedId` names a row, the
+ * mark follows it: Enter there copies that row. The mark goes back to the top
+ * hit when `focusedId` is cleared, which the search box's focus handler does
+ * (see input.ts). Moving to a toolbar button leaves the row marked, because
+ * Enter there presses that button, not the list. The top hit is marked only
+ * while a query is active. With no query there is no top hit, and a marked
+ * first row would misstate what Enter does.
  *
  * A focused row whose task no longer exists (a filter dropped it) clears
  * `focusedId` rather than leaving the list marked with a row that is gone.
@@ -1208,8 +1193,8 @@ export function markEnterTarget(): void {
   if (!target && splitTerms(state.query).length > 0) target = rows[0] ?? null
   if (target) target.classList.add('enter-target')
 
-  // The roving stop falls back to the first row, so the list is always
-  // enterable by Tab even with no query and nothing marked.
+  // The tab stop falls back to the first row, so Tab can always reach the
+  // list, even with no query and nothing marked.
   const roving = target ?? rows[0]
   if (roving) roving.tabIndex = 0
 }
@@ -1217,8 +1202,8 @@ export function markEnterTarget(): void {
 /**
  * Move the list's keyboard focus to `id`, or off the list entirely with null.
  *
- * Re-marks rather than re-rendering: the rows themselves have not changed, and
- * a full render() on every arrow key would rebuild the whole table to move one
+ * Updates the mark rather than re-rendering. The rows have not changed, and a
+ * full render() on every arrow key would rebuild the whole table to move one
  * class.
  */
 export function setFocusedRow(id: string | null): void {
@@ -1227,12 +1212,8 @@ export function setFocusedRow(id: string | null): void {
 }
 
 /**
- * One runner's own explanation: what each position of its path selects, how
- * it is read, and whether reading it means running anything.
- *
- * This is what the legend's chain chips used to say, for every runner at
- * once. Asked for one runner at a time it fits, and it can say more than a
- * chip had room for.
+ * One runner's explanation: what each position of its path selects, how it
+ * is read, and whether reading it means running anything.
  */
 export function showRunnerInfo(runner: string): void {
   const report = (state.catalog?.reports || []).find((r) => r.runner === runner)
@@ -1278,10 +1259,10 @@ export function showRunnerInfo(runner: string): void {
 }
 
 /**
- * The column heads, drawn as their own depth-0 table in the chrome. Putting a
- * `thead` in each group's table would repeat the row down the whole page;
- * this stays put and still lines up, because every table's command column
- * starts at the same x whatever its depth.
+ * The column headers, drawn as their own depth-0 table in the sticky header.
+ * A `thead` in each group's table would repeat the row down the whole page.
+ * This one stays in place and still lines up, because every table's command
+ * column starts at the same x at every depth.
  */
 function renderColHeads(): void {
   // A column with no label still needs a box to hover, so an empty label
@@ -1296,13 +1277,13 @@ function renderColHeads(): void {
 }
 
 /**
- * The cache's three states, as one status span — the same three the TUI shows.
+ * The cache's three states, as one status span, the same three the TUI shows.
  *
  * Fresh returns "": there is nothing to report, and a span that is always
- * present is a span nobody reads. Stale-and-SLOW is separated from ordinary
- * stale because it is the case the cache exists for — a runner MEASURED at
- * seconds is why the page has rows instead of a spinner, and it earns the
- * louder class. Slow is measured, never declared.
+ * shown is a span nobody reads. Stale and slow is kept apart from ordinary
+ * stale because it is the case the cache exists for. A runner measured at
+ * seconds is why the page has rows instead of a spinner, so it gets the more
+ * prominent class. Slowness is measured, never assumed.
  */
 export function cacheSpan(rows: readonly RunnerCacheState[]): string {
   const stale = rows.filter((r) => r.state === 'stale')
@@ -1327,35 +1308,31 @@ export function cacheSpan(rows: readonly RunnerCacheState[]): string {
 }
 
 /**
- * Runners held back for want of execution, as the page's own bar above
- * everything — the equivalent of the CLI's "N runners not collected" line.
+ * Runners withheld because execution is off, shown in the page's own bar
+ * above everything. It matches the CLI's "N runners not collected" line.
  *
- * This exists because the page used to say it NOWHERE at rest. The withholding
- * was on the tab as a three-letter badge, in that tab's tooltip, in the
- * per-runner modal and in the picker — every one of them behind a hover or a
- * click. Someone looking at a repository whose exec runners were all withheld
- * saw a shorter catalog and no statement that anything was missing, which is
- * the one thing this tool must never do quietly.
+ * Without it, the page would mention withheld runners only on the tab badge,
+ * in its tooltip, in the per-runner modal and in the picker, all behind a
+ * hover or a click. Someone would see a shorter catalog with nothing saying
+ * that anything was missing, which this tool must never do quietly.
  *
- * Its own bar rather than a span in the status strip. The first attempt put it
- * there, between the clock and the keyboard hints, and it was wrong for a
- * reason worth keeping written down: that strip reports NUMBERS about what you
- * are looking at, and this asks for a DECISION about what you are not. A button
- * in a row of counts reads as one more piece of chrome.
+ * It is its own bar rather than a span in the status strip. The status strip
+ * reports numbers about what you are looking at, and this asks for a decision
+ * about what you are not. A button in a row of counts looks like one more
+ * control.
  *
- * It names the runners rather than only counting them: "3 runners" invites the
- * question the sentence should already answer. The grant rides along only when
- * trust is what is missing — when it is not, execution is off for the session
- * and trusting the repository would change nothing, so offering it would be a
- * wrong instruction.
+ * It names the runners rather than only counting them, so the reader does not
+ * have to ask which. The trust button is included only when trust is what is
+ * missing. Otherwise execution is off for the session and trusting the
+ * repository would change nothing.
  */
 export function withheldBar(reports: readonly RunnerReport[]): string {
   const held = reports.filter((s) => s.skippedForExec)
   if (held.length === 0) return ''
   const names = held.map((s) => s.runner).join(', ')
-  // The count and the names lead, because they are the news. The explanation
-  // follows in its own sentence rather than as a subordinate clause, which is
-  // what made the first attempt disagree with itself about number.
+  // The count and the names come first, because they are the news. The
+  // explanation is a separate sentence, which keeps singular and plural
+  // agreement simple.
   const one = held.length === 1
   const lead = held.length + (one ? ' runner was' : ' runners were') + ' not read: '
   const why = one
@@ -1386,10 +1363,10 @@ export function renderTrustBar(): void {
 }
 
 /**
- * Kept separate from the table so an unchanged poll can refresh the clock
- * without touching the DOM under it. Otherwise pressing Refresh on a repo
- * that has not changed looks like nothing happened, and the timestamp claims
- * data is older than it was just verified to be.
+ * Kept separate from the table so an unchanged poll can update the clock
+ * without touching the table. Otherwise Refresh on an unchanged repo would
+ * look like nothing happened, and the timestamp would show data as older than
+ * it is.
  */
 export function renderStatus(shown: number, total: number): void {
   const errs = (state.catalog?.reports || [])
@@ -1415,14 +1392,14 @@ export function renderStatus(shown: number, total: number): void {
 }
 
 /**
- * The run bar: supply a parameterised task's arguments before handing over.
+ * The run bar: enter a task's arguments before handing over the terminal.
  *
- * The command PREFIX is static text, not part of the field. The server appends
+ * The command prefix is static text, not part of the field. The server adds
  * what this sends to the argv it looked up itself and ignores anything else,
- * so an editable `just` that silently still ran `just` would be a control that
- * lies. Only the tail is yours to type, and the bar shows exactly that.
+ * so an editable `just` would mislead: editing it would change nothing. Only
+ * the trailing arguments can be typed, and the bar shows exactly that.
  *
- * A bar rather than a modal: it costs no click to dismiss, and the row that
+ * A bar rather than a modal: it needs no click to dismiss, and the row that
  * opened it stays on screen behind it.
  */
 export function showRunBar(task: Task): HTMLInputElement {
@@ -1453,18 +1430,18 @@ export function showRunBar(task: Task): HTMLInputElement {
   return field
 }
 
-/** Take the run bar down. Idempotent — `esc`, a run and a re-open all call it. */
+/** Remove the run bar. Idempotent: `esc`, a run and a re-open all call it. */
 export function hideRunBar(): void {
   document.getElementById('runbar')?.remove()
 }
 
 /**
- * The end of the page: the task now owns the terminal and this server is gone.
+ * The end of the page: the task now has the terminal and this server is gone.
  *
- * It replaces the view rather than sitting beside it, because everything still
- * on screen is about to be a lie — the catalog cannot be refreshed, the
- * buttons cannot act, and a poll would only paint a failed fetch. Saying the
- * tab is finished is the honest state.
+ * It replaces the view rather than sitting beside it, because nothing on
+ * screen works any more. The catalog cannot be refreshed, the buttons cannot
+ * act, and a poll would only show a failed fetch. So the page says the tab
+ * is finished.
  */
 export function showHandoff(command: string): void {
   const el = document.createElement('div')
@@ -1482,7 +1459,7 @@ export function showHandoff(command: string): void {
   el.focus()
 }
 
-/** Said on the row that asked, when another run got the terminal first. */
+/** Shown on the row that asked, when another run got the terminal first. */
 export function showRunTaken(button: HTMLElement): void {
   const cell = button.closest('td.act')
   if (!cell || cell.querySelector('.runerr')) return
@@ -1495,10 +1472,10 @@ export function showRunTaken(button: HTMLElement): void {
 }
 
 /**
- * Publish the sticky chrome's real height as a CSS variable. It is measured
- * rather than hard-coded because the search row and the status line wrap at narrow
- * widths, and a stale number would either hide the first group header behind
- * the chrome or leave a gap under it.
+ * Set the sticky header's real height as a CSS variable. It is measured
+ * rather than hard-coded because the search row and the status line wrap at
+ * narrow widths. A wrong number would hide the first group header behind the
+ * sticky header or leave a gap under it.
  */
 export function measureChrome(): void {
   document.documentElement.style.setProperty(

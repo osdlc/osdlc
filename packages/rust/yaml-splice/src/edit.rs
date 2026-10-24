@@ -264,10 +264,10 @@ pub fn edit_yaml_with(
     check_document_profile(body, bom_len)?;
     let eol = detect_eol(body);
 
-    // Apply the edits in the order given, over one logical mapping. Applying
-    // each against a freshly parsed working copy makes ordered evaluation
-    // exact — later edits see earlier ones — at a cost (a reparse per edit)
-    // that is irrelevant for the handful of keys a frontmatter block holds.
+    // Apply the edits in order. Each one runs on a fresh parse of the result
+    // of the ones before it, so later edits see earlier ones. That costs a
+    // reparse per edit, which does not matter for the few keys a frontmatter
+    // block holds.
     let mut current = body.to_string();
     let mut changed = false;
     for edit in edits {
@@ -583,8 +583,8 @@ fn set(
         1 => {
             let span = hits[0];
             let existing = parsed.root.as_mapping().and_then(|m| m.get(&span.key));
-            // `Set`: an equal value is a byte-identical no-op — no quoting
-            // normalization, no collection reordering, no scalar re-spelling.
+            // A `Set` of an equal value changes no byte: no quoting is
+            // normalized, no collection reordered, no scalar re-spelled.
             if existing.is_some_and(|e| same_value(e, value)) {
                 Ok((current.to_string(), false))
             } else {
@@ -658,9 +658,9 @@ fn rename(
         }
     };
 
-    // A destination that collides with a *different* existing key is a
-    // conflict; a destination that folds to the source key itself (a
-    // re-spelling, e.g. `title` → `Title`) is not.
+    // A destination that matches a different existing key is a conflict.
+    // One that folds to the source key itself (a re-spelling, such as
+    // `title` → `Title`) is not.
     if let Some(conflict) = parsed.top_level.iter().find(|k| {
         parse::is_string_key(current, k)
             && key_eq(&k.key, to, opts)

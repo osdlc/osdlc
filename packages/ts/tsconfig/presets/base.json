@@ -1,49 +1,36 @@
 {
-  // The one TypeScript bar every package on these presets meets — and the only
+  // The strictness bar every package on these presets meets. It is the only
   // preset that assumes nothing about how a package is shipped.
   //
-  // It exists so that "how strictly is this checked" is not a per-package
-  // accident. A package cannot be laxer than the app that consumes it, and a
-  // new package inherits the bar instead of choosing one.
+  // A shared bar means strictness is not chosen per package. A package cannot
+  // be laxer than the app that consumes it, and a new package inherits the bar.
   //
-  // Nothing here assumes a workspace, a bundler, or source-shipped siblings, so
-  // this is the preset an outside consumer extends. The two options that DO
-  // assume all three — `allowImportingTsExtensions` and `noEmit` — live one
-  // level down in ./source-shipped.json, which the sibling presets reach
-  // through. Nothing extends this file for the bar alone; the resolution probe
-  // in this package's tests is what keeps it honest with no local consumer.
+  // Nothing here assumes a workspace, a bundler or source-shipped siblings, so
+  // this is the preset an outside consumer extends. The two options that do
+  // assume them, `allowImportingTsExtensions` and `noEmit`, are in
+  // ./source-shipped.json, which the other presets extend. No package in this
+  // repo extends this file directly. The resolution probe in tests/ checks it.
   //
-  // What is NOT here is otherwise deliberate. `lib`, `types`, `jsx` and
-  // `include` are genuine per-package facts — a DOM library and a node CLI
-  // legitimately differ — so packages still set those themselves. The
-  // combinations that recur anyway are the sibling presets: ./node-lib.json,
-  // ./bun-lib.json and ./vue.json. A package not covered by one extends
-  // ./source-shipped.json and states its own facts; a preset with two consumers
-  // would hide one self-documenting line behind an indirection, which is worse
-  // than the line.
+  // `lib`, `types`, `jsx` and `include` are left out on purpose. They differ
+  // between packages (a DOM library and a node CLI), so each package sets them.
+  // The combinations that recur are the other presets: ./node-lib.json,
+  // ./bun-lib.json and ./vue.json. A package that fits none of them extends
+  // ./source-shipped.json and states its own options. A preset with only two
+  // users would hide one clear line behind an extra file, so do not add one.
   //
-  // NOT reachable from here: a config that extends a framework-generated one
-  // (./.nuxt/tsconfig.json, astro/tsconfigs/*). Applying this bar on top of
-  // those would clobber the `paths`, `types`, `moduleResolution` and `jsx` the
-  // generator computed.
-  //
-  // `exactOptionalPropertyTypes` was the last option to arrive, in 2026-09, and
-  // it came in the long way: per package, cheapest first, each setting it
-  // locally until the last holdout fell and the line could move here. It cost
-  // 59 fixes across 8 packages, nearly all of one shape — an optional property
-  // handed a `T | undefined` — and nearly all resolved by omitting the key
-  // rather than widening the type, which is the distinction the flag exists to
-  // preserve.
+  // Do not use this bar under a config that extends a framework-generated one
+  // (./.nuxt/tsconfig.json, astro/tsconfigs/*). It would overwrite the `paths`,
+  // `types`, `moduleResolution` and `jsx` the generator computed.
   "compilerOptions": {
     "target": "ES2022",
     "module": "ESNext",
-    // Capitalised. TypeScript accepts either spelling, which is exactly how the
-    // two drift apart across a set of packages.
+    // Capitalised. TypeScript accepts either spelling, so packages drift apart
+    // unless one is fixed here.
     "moduleResolution": "Bundler",
 
     "strict": true,
-    // `arr[i]` is `T | undefined`, which is true. Pretending otherwise is how an
-    // index out of range becomes a runtime error rather than a compile one.
+    // `arr[i]` is `T | undefined`. Without this, an index out of range is a
+    // runtime error instead of a compile error.
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
     "noFallthroughCasesInSwitch": true,
@@ -54,8 +41,9 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
 
-    // An optional property is absent or it holds a value; it is not "present
-    // and undefined". See the note above for how this one arrived.
+    // An optional property is either absent or holds a value. It is not
+    // "present and undefined". Most fixes omit the key rather than widen the
+    // type to `T | undefined`.
     "exactOptionalPropertyTypes": true
   }
 }

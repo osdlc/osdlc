@@ -1,11 +1,11 @@
 /**
  * CLI-level tests for `markdown-contract init`.
  *
- * These drive the real CLI through `runCli` over throwaway copies of the inference fixture
- * vaults (copied into an OS temp dir via `mkdtempSync`, so a write-mode `init` never touches
- * the checked-in fixtures). They cover the verb's full surface: `--dry-run`, the default write
- * + `--force` clobber refusal, `--meta --depth N`, `--inline`, the `--check` drift guard,
- * multi-root runs, and `--include`/`--exclude` scoping.
+ * These run the real CLI through `runCli` over temporary copies of the inference fixture
+ * folders (made with `mkdtempSync`), so a writing `init` never touches the checked-in
+ * fixtures. They cover `--dry-run`, the default write and its refusal to overwrite without
+ * `--force`, `--meta --depth N`, `--inline`, the `--check` drift check, multi-root runs, and
+ * `--include`/`--exclude`.
  */
 import {
   cpSync,
@@ -62,9 +62,9 @@ describe('markdown-contract init (CLI)', () => {
     const first = await runCli(['init', dir], { cwd: dir })
     expect(first.code).toBe(0)
     const written = await runCli(['validate', dir], { cwd: dir })
-    expect(written.code).toBe(0) // accept-by-construction over the written config
+    expect(written.code).toBe(0) // the inferred config accepts its own files
 
-    // A second run refuses to clobber the existing config.
+    // A second run refuses to overwrite the existing config.
     const second = await runCli(['init', dir], { cwd: dir })
     expect(second.code).toBe(2)
 
@@ -100,46 +100,46 @@ describe('markdown-contract init (CLI)', () => {
     const r = await runCli(['init', vault, '--meta', '--out', outDir], { cwd })
     expect(r.code).toBe(0)
 
-    // The scaffold (config + per-contract files) lands under the --out target.
+    // The config and the contract files are written under the --out target.
     expect(existsSync(join(outDir, 'markdown-contract.yaml'))).toBe(true)
     expect(existsSync(join(outDir, 'contracts'))).toBe(true)
     expect(readdirSync(join(outDir, 'contracts')).some((f) => f.endsWith('.contract.yaml'))).toBe(
       true,
     )
 
-    // cwd is left completely untouched by the run.
+    // Nothing is written to cwd.
     expect(existsSync(join(cwd, 'markdown-contract.yaml'))).toBe(false)
     expect(existsSync(join(cwd, 'contracts'))).toBe(false)
     expect(readdirSync(cwd)).toHaveLength(0)
   })
 
   test('default write lands under <dir> (the inferred root), not cwd, when run from a foreign cwd', async () => {
-    // The scaffold is anchored to the single inferred root by default, so it shares one base
-    // with the root-relative globs and `--check` — regardless of where the command is run from.
+    // By default the files are written to the one inferred root. That is the same base the
+    // globs and `--check` use, wherever the command is run from.
     const vault = stageVault('07-tree-depth1')
     const cwd = tmp('mc-cwd-')
 
     const r = await runCli(['init', vault, '--meta'], { cwd })
     expect(r.code).toBe(0)
 
-    // The scaffold lands under the inferred root <dir>.
+    // The files are written under the inferred root <dir>.
     expect(existsSync(join(vault, 'markdown-contract.yaml'))).toBe(true)
     expect(existsSync(join(vault, 'contracts'))).toBe(true)
 
-    // The foreign cwd is left completely untouched.
+    // Nothing is written to the other cwd.
     expect(existsSync(join(cwd, 'markdown-contract.yaml'))).toBe(false)
     expect(existsSync(join(cwd, 'contracts'))).toBe(false)
     expect(readdirSync(cwd)).toHaveLength(0)
 
-    // The clobber guard operates on the NEW default location: a re-run from the same foreign
-    // cwd still refuses to overwrite the scaffold at the inferred root without --force.
+    // The overwrite check applies at the default location: a re-run from the same foreign cwd
+    // still refuses to overwrite the files at the inferred root without --force.
     const reRun = await runCli(['init', vault, '--meta'], { cwd })
     expect(reRun.code).toBe(2)
   })
 
   test('init <dir> then init <dir> --check round-trips from a foreign cwd (exit 0)', async () => {
-    // The round-trip that fails today: with the scaffold written to the inferred root, `--check`
-    // (which loads resolve(<dir>, markdown-contract.yaml)) finds it from any cwd.
+    // With the files written to the inferred root, `--check` (which loads
+    // resolve(<dir>, markdown-contract.yaml)) finds them from any cwd.
     const vault = stageVault('01-flat-uniform')
     const cwd = tmp('mc-cwd-')
 
@@ -151,7 +151,7 @@ describe('markdown-contract init (CLI)', () => {
   })
 
   test('multi-root without --out writes to cwd and warns, suggesting --out', async () => {
-    // A multi-root run has no single natural base, so it keeps the cwd fallback — and says so.
+    // A run over several roots has no single base, so it writes to cwd and warns.
     const a = stageVault('01-flat-uniform')
     const b = stageVault('02-optional-sections')
     const cwd = tmp('mc-cwd-')
@@ -159,7 +159,7 @@ describe('markdown-contract init (CLI)', () => {
     const r = await runCli(['init', a, b, '--meta'], { cwd })
     expect(r.code).toBe(0)
 
-    // The scaffold lands in cwd (the fallback base), not in either root.
+    // The files are written to cwd, not to either root.
     expect(existsSync(join(cwd, 'markdown-contract.yaml'))).toBe(true)
 
     // A warning names the fallback and suggests --out.
@@ -236,12 +236,12 @@ describe('markdown-contract init (CLI)', () => {
 describe('markdown-contract validate — run summary', () => {
   test("a clean --config run prints the run summary ABOVE 'No findings.' and still exits 0", async () => {
     const dir = stageVault('01-flat-uniform')
-    // Scaffold a named-rule config so the summary has per-contract rows to render.
+    // Write a config with named rules, so the summary has a row per contract.
     const init = await runCli(['init', dir], { cwd: dir })
     expect(init.code).toBe(0)
 
     const r = await runCli(['validate', dir], { cwd: dir })
-    expect(r.code).toBe(0) // accept-by-construction — a clean run
+    expect(r.code).toBe(0) // the inferred config accepts its own files
 
     // The run summary shows even on a clean run, and precedes the findings report.
     expect(r.stdout).toMatch(
@@ -253,7 +253,7 @@ describe('markdown-contract validate — run summary', () => {
 
   test('an inline --contract run prints the total WITHOUT per-contract rows (unnamed rule)', async () => {
     const dir = stageVault('01-flat-uniform')
-    // Write the scaffold, then drive validate via the inline --contract form against that contract file.
+    // Write the files, then run validate with --contract pointing at the written contract file.
     const init = await runCli(['init', dir], { cwd: dir })
     expect(init.code).toBe(0)
     const contractFile = readdirSync(dir).find((f) => f.endsWith('.contract.yaml'))
@@ -275,9 +275,8 @@ describe('markdown-contract init — heading key-collision', () => {
   }
 
   test('does not crash on key-colliding peer headings — exits 2 with a descriptive message', async () => {
-    // Two case-variant headings as PEERS in one doc both key to `scheduleForToday`. This used to
-    // escape as an uncaught ContractBuildError stack trace from the self-check; now it is a clean
-    // exit-2 diagnostic naming the file.
+    // Two headings in one doc that differ only in case both key to `scheduleForToday`. The run
+    // exits 2 with a message naming the file, not an uncaught ContractBuildError.
     const dir = freshVault()
     writeFileSync(
       join(dir, 'both.md'),

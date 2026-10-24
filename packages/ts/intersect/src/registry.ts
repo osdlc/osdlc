@@ -1,62 +1,60 @@
 /**
- * Intersect L1 — registry over labeled pattern-sets (`index`).
+ * The registry (`index`): an index of labeled sets of patterns, such as a UI
+ * guideline or a coding standard and the paths each one covers. Given a
+ * scope, it answers which entries apply. It does not read the disk, so the
+ * paths need not exist. Entries keep the order they were given in. A
+ * duplicate `id` throws when the registry is built.
  *
- * A reverse index over *labeled* pattern-sets — artifacts that declare the
- * paths they govern (a UI guideline, a coding standard's list of paths).
- * Given a scope it answers which artifacts apply. Pure; targets need not
- * exist. Registration order is significant and preserved; a duplicate `id`
- * throws at construction.
- *
- * Builds only on the path API (`./index`) — it compiles each entry via
- * `compile` and never reaches the filesystem layer.
+ * It uses only the path API (`./index`): it compiles each entry with
+ * `compile` and never imports the filesystem entry.
  */
 import { compile } from './index.ts'
 import { IntersectError } from './errors.ts'
 import type { Matcher, Options, Patterns } from './index.ts'
 
 /**
- * An artifact and the pattern-set it declares — an `index()` entry.
+ * One `index()` entry: an id and the patterns it covers.
  *
  * @typeParam T - The id type. Defaults to `string`; pass a union or branded
  * type to keep the returned ids typed.
  */
 export interface Labeled<T = string> {
-  /** The artifact's identifier, echoed back by the registry's queries. */
+  /** The entry's id, returned by the registry's queries. */
   id: T
-  /** The path-pattern set this artifact governs (a single string or a set). */
+  /** The patterns this entry covers (a single string or an array). */
   patterns: Patterns
 }
 
 /**
- * A reverse index answering which labeled pattern-sets apply to a scope or path.
+ * An index that answers which labeled sets of patterns apply to a scope or a path.
  *
  * @typeParam T - The id type carried through from the {@link Labeled} entries.
  */
 export interface Registry<T = string> {
-  /** The entries as supplied, in registration order. */
+  /** The entries as given, in order. */
   readonly entries: readonly Labeled<T>[]
-  /** Ids whose set OVERLAPS the scope, in registry order. (A subtree scope is written `dir/**`.) */
+  /** Ids whose patterns overlap the scope, in registry order. (A subtree scope is written `dir/**`.) */
   applicableTo(scope: Patterns): T[]
-  /** Ids whose set matches a CONCRETE path (read literally, not as a glob), in registry order. */
+  /** Ids whose patterns match a concrete path (read literally, not as a glob), in registry order. */
   matching(path: string): T[]
 }
 
 /**
- * Build the reverse index over labeled pattern-sets. Retains entry order and
- * compiles each entry's patterns once, up front.
+ * Build the registry. It keeps the entries in order and compiles each entry's
+ * patterns once, up front.
  *
  * @typeParam T - The id type, inferred from `entries`.
- * @param entries - The labeled pattern-sets to index, in significant order.
- * @param opts - Matching semantics ({@link Options}) applied to every entry.
- * @returns A {@link Registry} whose queries echo matching ids in registration order.
+ * @param entries - The labeled sets of patterns to index. Their order matters.
+ * @param opts - Matching options ({@link Options}) applied to every entry.
+ * @returns A {@link Registry} whose queries return matching ids in the order given.
  * @throws {@link IntersectError} with code `DUPLICATE_REGISTRY_ID` if any `id` is
- * supplied twice — rejected at construction rather than silently keeping first
- * or last. Unsupported pattern syntax throws here too (`UNSUPPORTED_SYNTAX`,
+ * given twice, rather than keeping the first or the last without a word.
+ * Unsupported pattern syntax throws here too (`UNSUPPORTED_SYNTAX`,
  * `PATTERN_TOO_DEEP`).
- * @remarks Registration order is significant and preserved: register
- * general-to-specific and read a query result as a prioritization (first =
- * most general, last = most specific). Intersect returns the order; the caller
- * picks the precedence rule. Pure — target paths need not exist.
+ * @remarks The order of entries is kept. Register them from general to
+ * specific, and read a query result as a priority list: first is most
+ * general, last is most specific. This package returns the order. The caller
+ * picks the precedence rule. The paths need not exist.
  * @example
  * ```ts
  * const guidelines = index([
@@ -64,10 +62,10 @@ export interface Registry<T = string> {
  *   { id: "guidelines/db",  patterns: ["src/db/**"] },
  * ]);
  *
- * guidelines.applicableTo("src/api/**"); // ["guidelines/api"]  — db does not overlap
+ * guidelines.applicableTo("src/api/**"); // ["guidelines/api"]  (db does not overlap)
  * guidelines.matching("src/db/pool.ts"); // ["guidelines/db"]
  * ```
- * @example Duplicate ids throw at construction:
+ * @example Duplicate ids throw when the registry is built:
  * ```ts
  * index([
  *   { id: "a", patterns: ["src/**"] },

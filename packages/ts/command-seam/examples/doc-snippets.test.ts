@@ -8,12 +8,12 @@
  * every public export.
  *
  * `RULES` holds per-snippet exceptions (a wrapper for a fragment, or a known
- * failure reported as a todo). A rule that matches no snippet fails the suite, so a rule cannot
- * outlive the snippet it was written for.
+ * failure reported as a todo). A rule that matches no snippet fails the
+ * suite, so a rule cannot outlive the snippet it was written for.
  *
- * None of the snippets is executed: most run a binary or a server that is
+ * None of the snippets is executed. Most start a binary or a server that is
  * not here (`git push`, `gh api`, `node server.js`), so a typecheck is the
- * strongest check that holds everywhere.
+ * strongest check that works everywhere.
  */
 
 import { readdirSync, readFileSync } from 'node:fs'

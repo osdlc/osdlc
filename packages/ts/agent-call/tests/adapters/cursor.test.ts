@@ -177,9 +177,9 @@ describe('cursor plan', () => {
   })
 })
 
-// Fixtures below are trimmed from real runs of agent 2026.08.11-e8db854 with
-// `--endpoint` pointed at a fake Cursor backend (Connect/protobuf) that
-// scripted the model side; the CLI itself produced every line, ran the tool
+// The fixtures below are trimmed from real runs of agent 2026.08.11-e8db854
+// with `--endpoint` pointed at a fake Cursor backend (Connect/protobuf) that
+// scripted the model side. The CLI itself printed every line, ran the tool
 // and wrote the envelope. Long `args` objects are trimmed.
 describe('cursor parse', () => {
   const session = 'a92469e7-e533-4af3-8cc5-c6ca2c87a0ea'
@@ -228,7 +228,7 @@ describe('cursor parse', () => {
 
   test('text output is the final message after the last tool call', () => {
     // Same run as the tool stream below: json's `result` joins every text
-    // segment ("Running it.It printed hi."), text prints only the last one.
+    // segment ("Running it.It printed hi."). text prints only the last one.
     const planned = adapter.plan({ prompt: 'run echo hi', output: { format: 'text' } })
     expect(adapter.parseResult(planned, raw('It printed hi.\n')).text).toBe('It printed hi.')
   })
@@ -345,8 +345,8 @@ describe('cursor parse', () => {
   })
 
   test('a rejected or failed tool is an error result', () => {
-    // Real results: without --force a shell command comes back `rejected`;
-    // with a missing working directory, `spawnError`.
+    // Real results: without --force a shell command comes back `rejected`.
+    // With a missing working directory it comes back `spawnError`.
     const lines = [
       {
         type: 'tool_call',
@@ -394,7 +394,7 @@ describe('cursor parse', () => {
   })
 
   test('thinking deltas become one reasoning part', () => {
-    // Built from the CLI source (headless.ts): the fake backend sent no thinking.
+    // Built from the CLI source (headless.ts). The fake backend sent no thinking.
     const lines = [
       { type: 'thinking', subtype: 'delta', text: 'let me ' },
       { type: 'thinking', subtype: 'delta', text: 'think' },

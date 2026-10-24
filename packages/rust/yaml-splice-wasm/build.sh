@@ -7,8 +7,8 @@
 #         -> $OUT_DIR, default packages/ts/yaml-splice/wasm/ (the npm package's
 #            committed wasm/)
 #
-# PINNED TOOL VERSIONS. The artifact is only reproducible against these:
-#   * wasm-bindgen CLI : 0.2.126   (MUST equal the wasm-bindgen crate pin in
+# Pinned tool versions. The artifact is only reproducible with these:
+#   * wasm-bindgen CLI : 0.2.126   (must equal the wasm-bindgen crate pin in
 #                                    packages/rust/Cargo.toml; a
 #                                    mismatch silently emits wrong glue)
 #   * binaryen/wasm-opt: version_131
@@ -21,8 +21,8 @@
 # `wasm` job in .github/workflows/rust-ci.yml rebuilds and compares with the
 # committed files.
 # Override the tool locations with WASM_BINDGEN / WASM_OPT if they are not on
-# PATH (e.g. prebuilt tarballs); otherwise PATH is used. CARGO_TARGET_DIR is
-# honoured. OUT_DIR overrides the output folder.
+# PATH (for example, prebuilt tarballs). CARGO_TARGET_DIR is honoured.
+# OUT_DIR overrides the output folder.
 set -euo pipefail
 
 REQUIRED_WASM_BINDGEN="0.2.126"
@@ -69,8 +69,8 @@ fi
 
 # --- 1. compile the cdylib to wasm32 ---------------------------------------
 # rustup picks the toolchain from rust-toolchain.toml in the current
-# directory, so run from the workspace. An inherited
-# RUSTUP_TOOLCHAIN would override that file, so drop it.
+# directory, so run from the workspace. An inherited RUSTUP_TOOLCHAIN would
+# override that file, so unset it.
 cd "$WORKSPACE"
 unset RUSTUP_TOOLCHAIN
 

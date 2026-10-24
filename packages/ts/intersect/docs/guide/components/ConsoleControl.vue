@@ -1,7 +1,7 @@
 <script setup>
-// Ergonomic control panel for the pairwise Intersect question:
-// "Do these two patterns describe overlapping sets of paths?"
-// Pure L1 surface only — imported by name via the Vite alias, never `intersect/fs`.
+// Control panel for the question "do these two patterns match any path in
+// common?"
+// Imports only the root entry, by package name, never `@osdlc/intersect/fs`.
 import { ref, computed } from 'vue'
 import { intersects, witness, whichMatch } from '@osdlc/intersect'
 

@@ -43,7 +43,7 @@ describe('opencode plan', () => {
     const joined = planned.argv.join(' ')
     expect(joined).toContain('--file a.ts')
     expect(joined).toContain('--file b.ts')
-    // Native attach: no preamble folded into the prompt.
+    // Files attach with a flag, so no preamble is folded into the prompt.
     expect(planned.argv[planned.argv.length - 1]).toBe('x')
     const n = planned.notes.find((note) => note.field === 'context.files')
     expect(n?.support).toBe('native')

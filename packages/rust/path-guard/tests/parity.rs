@@ -1,8 +1,8 @@
 //! The shared conformance fixture, `tests/fixtures/parity.json`.
 //!
-//! This file is the contract between this crate and its TypeScript twin in
+//! This file is the contract between this crate and the TypeScript package in
 //! `packages/ts/path-guard`, which reads it in place: same input, same result.
-//! A case added on either side goes in the fixture, never in one twin's own
+//! A case added on either side goes in the fixture, never in one package's own
 //! suite. Every section is read here, and an unknown section fails the run.
 //!
 //! The `resolve`, `resolve_windows_names` and `contains` cases run under a

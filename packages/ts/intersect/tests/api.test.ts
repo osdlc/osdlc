@@ -1,7 +1,7 @@
 /**
  * API behaviour the shared corpus cannot state: the `Matcher` surface, and
- * errors for arguments the type system would block (the Rust twin is typed, so
- * these cases are TypeScript-only).
+ * errors for arguments the type system would block. (The Rust peer crate is
+ * typed, so these cases are TypeScript-only.)
  */
 import { describe, expect, test } from 'vitest'
 

@@ -1,27 +1,23 @@
 /**
- * The declarative text-constraint compiler — the closed `requires:` / `forbids:` match-spec
- * vocabulary of a `*.contract.yaml`, compiled onto the TS text-predicate builders
- * (`requires` / `forbids` / `textRule` in `../core/text-constraints.ts`). It is
- * the data-authoring twin of `schema-v2.ts`: a finite vocabulary in, the engine's builders out, with
- * the authoring mistakes rejected at compile time rather than surfacing as confusing findings.
+ * Compiles the YAML `requires:` and `forbids:` keys of a `*.contract.yaml` into the text check
+ * builders (`requires`, `forbids` and `textRule` in `../core/text-constraints.ts`). Mistakes in
+ * the YAML are rejected here, at compile time, instead of showing up as confusing findings.
  *
- * A `requires:` / `forbids:` value is a LIST of match-spec entries. Each entry is checked against
- * the finite vocabulary — exactly one needle (`pattern` literal | `regex` source), the
- * `normalize` / `ignoreCase` matcher tuning, the `min` / `max` count bound, and the
- * `id` / `note` / `level` finding shapers — so an unknown key, a missing or doubled needle, or a
- * wrong-typed value is a `DeclarativeError`. Two further compile-time consistency checks apply:
+ * A `requires:` or `forbids:` value is a list of entries. Each entry must have exactly one of
+ * `pattern` (a literal) or `regex` (a source), and may have `normalize`, `ignoreCase`, `min`,
+ * `max`, `id`, `note` and `level`. An unknown key, a missing or doubled `pattern`/`regex`, or a
+ * value of the wrong type is a `DeclarativeError`. Two more checks apply:
  *
- *   - a DUPLICATE — two entries in one list with the same matcher identity (needle + `normalize`
- *     + `ignoreCase`) — is rejected: they would synthesize one finding id. Byte-identical `regex`
- *     sources count as duplicates.
- *   - a CONTRADICTION — a `requires` and a `forbids` entry over the same literal `pattern` at the
- *     same scope, or a single entry whose `max` falls below its effective minimum — is rejected.
- *     Detection is literal-only: no cross-`regex` overlap is analyzed.
+ *   - Duplicates: two entries in one list with the same search text, `normalize` and
+ *     `ignoreCase` are rejected, because they would get the same finding id. Two `regex` entries
+ *     with the same source are duplicates.
+ *   - Contradictions: a `requires` and a `forbids` entry with the same literal `pattern` in one
+ *     scope are rejected, and so is an entry whose `max` is below its minimum. Only literals are
+ *     compared. Overlapping regexes are not detected.
  *
- * A section node's keys compile to node-local `Rule`s (`requires(...)` then `forbids(...)`, the
- * order a TS author writes them); the body root's keys compile to one cross-plane `textRule(...)`
- * `DocRule`. Either surface emits findings identical to the equivalent TS builder — same
- * synthesized ids, levels, positions, messages.
+ * A section's keys compile to section `Rule`s (`requires(...)` then `forbids(...)`, the order
+ * code would list them). The body's keys compile to one `textRule(...)` `DocRule`. The findings
+ * are the same as from the code builders: same ids, levels, positions and messages.
  */
 
 import type { TextMatchSpec } from '../core/text-constraints.js'
@@ -29,10 +25,10 @@ import { forbids, requires, textRule } from '../core/text-constraints.js'
 import type { DocRule, Rule } from '../core/types.js'
 import { DeclarativeError } from './errors.js'
 
-/** The kind of scope a match-spec list is authored under — shapes the count-bound floor. */
+/** Which list an entry is in. It sets the default minimum count. */
 type TextKind = 'requires' | 'forbids'
 
-/** The closed match-spec vocabulary. Any other key is a `DeclarativeError`. */
+/** The allowed keys of an entry. Any other key is a `DeclarativeError`. */
 const SPEC_KEYS = new Set([
   'pattern',
   'regex',
@@ -48,7 +44,7 @@ const SPEC_KEYS = new Set([
 const isMap = (v: unknown): v is Record<string, unknown> =>
   v !== null && typeof v === 'object' && !Array.isArray(v)
 
-/** The plain scalar spec fields validated by a single type check, keyed to the expected typeof. */
+/** The scalar entry fields and the `typeof` each must have. */
 const SCALAR_SPEC_FIELDS = [
   ['normalize', 'boolean'],
   ['ignoreCase', 'boolean'],
@@ -58,7 +54,7 @@ const SCALAR_SPEC_FIELDS = [
   ['note', 'string'],
 ] as const
 
-/** Compile and validate ONE match-spec entry against the closed vocabulary. */
+/** Checks and compiles one entry. */
 function compileMatchSpec(raw: unknown, kind: TextKind, path: string): TextMatchSpec {
   if (!isMap(raw)) {
     throw new DeclarativeError(`${path}: a match spec must be a mapping (pattern | regex, …)`)
@@ -73,7 +69,7 @@ function compileMatchSpec(raw: unknown, kind: TextKind, path: string): TextMatch
   return spec
 }
 
-/** Reject any key outside the closed match-spec vocabulary. */
+/** Throws on any key not in `SPEC_KEYS`. */
 function assertKnownSpecKeys(raw: Record<string, unknown>, path: string): void {
   for (const key of Object.keys(raw)) {
     if (!SPEC_KEYS.has(key)) {
@@ -84,7 +80,7 @@ function assertKnownSpecKeys(raw: Record<string, unknown>, path: string): void {
   }
 }
 
-/** Resolve the needle onto `spec`: exactly one of `pattern` (a literal) or `regex` (a source). */
+/** Copies `pattern` or `regex` onto `spec`. Exactly one must be present. */
 function assignNeedle(raw: Record<string, unknown>, spec: TextMatchSpec, path: string): void {
   const hasPattern = 'pattern' in raw
   const hasRegex = 'regex' in raw
@@ -109,7 +105,7 @@ function assignNeedle(raw: Record<string, unknown>, spec: TextMatchSpec, path: s
   }
 }
 
-/** Copy each present scalar tuning / shaper field onto `spec`, type-checking it by its expected typeof. */
+/** Copies each scalar field that is present onto `spec`, after checking its type. */
 function assignScalarFields(raw: Record<string, unknown>, spec: TextMatchSpec, path: string): void {
   for (const [key, type] of SCALAR_SPEC_FIELDS) {
     if (key in raw) {
@@ -120,7 +116,7 @@ function assignScalarFields(raw: Record<string, unknown>, spec: TextMatchSpec, p
   }
 }
 
-/** Validate and assign the finding `level` override (`error` | `warn`). */
+/** Checks and copies `level` (`error` or `warn`). */
 function assignLevel(raw: Record<string, unknown>, spec: TextMatchSpec, path: string): void {
   if ('level' in raw) {
     if (raw.level !== 'error' && raw.level !== 'warn') {
@@ -133,9 +129,9 @@ function assignLevel(raw: Record<string, unknown>, spec: TextMatchSpec, path: st
 }
 
 /**
- * A count bound below its effective floor can never be satisfied — routes absence to
- * `forbids`, not a `requires` with `max: 0`. Caught here as a `DeclarativeError` so the builder's
- * construction-time `ContractBuildError` (`assertRequiresPurity`) never fires.
+ * Throws when `max` is below the minimum, since the check could never pass. An absence check
+ * belongs in `forbids`, not in a `requires` with `max: 0`. Throwing a `DeclarativeError` here
+ * means the builder's `ContractBuildError` (`assertRequiresPurity`) never fires for YAML.
  */
 function assertCountBound(spec: TextMatchSpec, kind: TextKind, path: string): void {
   if (spec.max !== undefined) {
@@ -150,9 +146,9 @@ function assertCountBound(spec: TextMatchSpec, kind: TextKind, path: string): vo
 }
 
 /**
- * The canonical identity of a spec's MATCHER — the needle plus the flags that change what matches
- * (`normalize` / `ignoreCase`). Two entries with the same identity synthesize one finding id, so
- * they are duplicates; this mirrors `text-match.ts`'s `patternKey`.
+ * The search text plus the flags that change what matches (`normalize`, `ignoreCase`). Two
+ * entries with the same value get the same finding id, so they are duplicates. It must match
+ * `patternKey` in `text-match.ts`.
  */
 function matcherIdentity(spec: TextMatchSpec): string {
   const fold = spec.ignoreCase ? 'i' : ''
@@ -162,7 +158,7 @@ function matcherIdentity(spec: TextMatchSpec): string {
   return `pattern|${normalize ? 'n' : 'x'}|${needle}|${fold}`
 }
 
-/** Compile a `requires` / `forbids` LIST, rejecting a duplicate matcher within the list. */
+/** Compiles a `requires` or `forbids` list. Throws on a duplicate entry. */
 function compileMatchSpecs(raw: unknown, kind: TextKind, path: string): TextMatchSpec[] {
   if (!Array.isArray(raw)) {
     throw new DeclarativeError(`${path}: ${kind} must be a list of match specs`)
@@ -182,21 +178,21 @@ function compileMatchSpecs(raw: unknown, kind: TextKind, path: string): TextMatc
   return specs
 }
 
-/** A scope's compiled `requires` / `forbids` spec lists (either may be empty). */
+/** A scope's compiled `requires` and `forbids` lists. Either may be empty. */
 interface ScopeTextSpecs {
   requires: TextMatchSpec[]
   forbids: TextMatchSpec[]
 }
 
-/** Does this node carry either text-constraint key? */
+/** True when the node has a `requires` or `forbids` key. */
 export function hasTextKeys(node: Record<string, unknown>): boolean {
   return 'requires' in node || 'forbids' in node
 }
 
 /**
- * Compile one scope's `requires` / `forbids` lists and run the cross-list contradiction check: a
- * `requires` and a `forbids` entry over the SAME literal `pattern` (regex excluded) at one scope
- * is unsatisfiable. `scopeLabel` names the scope in the error.
+ * Compiles one scope's `requires` and `forbids` lists. Throws when a `requires` and a `forbids`
+ * entry have the same literal `pattern` in this scope, since both cannot pass. Regexes are not
+ * compared. `scopeLabel` names the scope in the error.
  */
 function compileScopeTextSpecs(
   node: Record<string, unknown>,
@@ -208,7 +204,6 @@ function compileScopeTextSpecs(
   const forbidsSpecs =
     'forbids' in node ? compileMatchSpecs(node.forbids, 'forbids', `${path}.forbids`) : []
 
-  // Literal-only contradiction: regex needles carry no identity here (no overlap analysis).
   const literalId = (spec: TextMatchSpec): string | undefined =>
     spec.regex === undefined ? matcherIdentity(spec) : undefined
   const required = new Set(reqSpecs.map(literalId).filter((k): k is string => k !== undefined))
@@ -225,9 +220,9 @@ function compileScopeTextSpecs(
 }
 
 /**
- * The node-local rules for a section node's `requires` / `forbids` — `requires(...)` then
- * `forbids(...)`, matching the order a TS author writes `rules: [requires(...), forbids(...)]`.
- * Empty when the node carries neither key (or only empty lists).
+ * The section rules for a section's `requires` and `forbids`: `requires(...)` then
+ * `forbids(...)`, the same order as `rules: [requires(...), forbids(...)]` in code. Empty when
+ * the section has neither key, or only empty lists.
  */
 export function compileSectionTextRules(
   node: Record<string, unknown>,
@@ -246,9 +241,8 @@ export function compileSectionTextRules(
 }
 
 /**
- * The single cross-plane `DocRule` for the body root's `requires` / `forbids` — one
- * `textRule({ requires, forbids })`, the document-scoped form. `undefined` when
- * neither key is present, so the caller attaches nothing.
+ * One `textRule({ requires, forbids })` document rule for the body's `requires` and `forbids`.
+ * `undefined` when both are absent or empty.
  */
 export function compileBodyTextRule(
   node: Record<string, unknown>,

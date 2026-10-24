@@ -3,16 +3,16 @@
  * every run.
  *
  * One file per repo, head branch and base branch (`<dir>/<repo>__<head>-<hash>.json`, the hash
- * over `repo\0head\0base`), i.e. one file per PR target, each written whole with an atomic write.
+ * over `repo\0head\0base`), so one file per PR target. Each is written whole with an atomic write.
  * A failure at a new head or base sha replaces the file's entry rather than adding to it. Entries
  * older than 30 days are dropped on every write. A missing or unreadable file reads as empty, and
  * the next write replaces it.
  *
  * There is no lock. A host that runs at most one update per PR at a time has at most one writer
  * per file, since PRs with the same head but different bases have separate files. Two callers
- * updating the same PR at once can still lose one record; that is benign (one extra retry). The
- * earlier single `attempts.json` is not read and not deleted; its records are simply forgotten,
- * so each PR gets one fresh attempt.
+ * updating the same PR at once can still lose one record. That costs only one extra retry. An old
+ * single `attempts.json` file is neither read nor deleted, so each PR it recorded gets one fresh
+ * attempt.
  */
 
 import { createHash } from 'node:crypto'

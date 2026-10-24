@@ -1,12 +1,11 @@
 /**
  * Direct unit tests for the structure plane.
  *
- * These exercise structure-matcher edges that the active validation fixtures do not reach:
- * the kind-gate (`structure/block-missing`, `structure/block-kind` — several kind-gate
- * fixtures are tagged `content` and stay skipped), the build-time `contract/key-collision`
- * throw, the document-time `structure/key-collision` finding, and `gap({min,max})` bounds
- * (the active gap fixture pins only ids). The matcher is tested directly through
- * `contract().validate(...)`, which runs the structure plane and returns findings as data.
+ * They cover the block-kind check (`structure/block-missing`, `structure/block-kind`),
+ * `structure/anchor-missing`, the `contract/key-collision` throw at build time, the
+ * `structure/key-collision` finding on a document, `gap({min,max})` bounds, repeatable sections
+ * and the line of `structure/duplicate-section`. They run through `contract().validate(...)`,
+ * which returns findings as data.
  */
 import { describe, expect, test } from 'vitest'
 import type { Finding } from '../../src/index.js'
@@ -84,7 +83,7 @@ describe('kind-gate · block-missing / block-kind', () => {
     const c = contract({
       body: sections({}, [section('Summary', { content: maxWords(50) })]),
     })
-    // A paragraph satisfies the kind-gate; word-count is the content plane, not checked here.
+    // A paragraph passes the kind check. Word count belongs to the content plane and is not checked here.
     expect(c.validate('## Summary\n\nshort prose\n', ctx).findings).toEqual([])
     // A table where a paragraph is expected → wrong kind.
     const tableDoc = ['## Summary', '', '| a |', '| - |', '| 1 |', ''].join('\n')
@@ -214,7 +213,7 @@ describe('repeatable sections', () => {
     const source = ['## Entry', '', 'a', '', '## Entry', '', 'b', '', '## Entry', '', 'c', ''].join(
       '\n',
     )
-    // No structure/duplicate-section, no structure/key-collision — the peers are the collection.
+    // No structure/duplicate-section and no structure/key-collision: the repeated sections form the collection.
     expect(c.validate(source, ctx).findings).toEqual([])
   })
 

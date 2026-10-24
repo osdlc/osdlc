@@ -40,24 +40,22 @@ export type Component =
   | 'cell-pos'
 
 /**
- * Load a fixture's markdown from a peer `.md` file. Each fixture case keeps its
- * document in a sibling file (one `.md` per case; bare stem for single-case) so the
- * markdown reads as a real document rather than an inlined string array. `metaUrl`
- * is the fixture module's `import.meta.url`; `rel` is the peer file (e.g. `./x.md`).
- * The bytes are returned verbatim — no normalization — so position-pinned findings
- * stay exact.
+ * Loads a fixture's markdown from a `.md` file beside it. Each case keeps its document in its
+ * own file (one `.md` per case, or just the stem for a single case), so the markdown reads as a
+ * real document. `metaUrl` is the fixture module's `import.meta.url`. `rel` is the file (such as
+ * `./x.md`). The text is returned unchanged, so expected line numbers stay exact.
  */
 export function loadSource(metaUrl: string, rel: string): string {
   return readFileSync(new URL(rel, metaUrl), 'utf8')
 }
 
-/** An expected finding — `id` is required; `level`/`line`/`hint` are asserted only when given. */
+/** An expected finding. `id` is required. `level`, `line` and `hint` are checked only when given. */
 export interface ExpectedFinding {
   id: string
   level?: Finding['level']
-  /** `pos.line`; omit while a position is still being pinned down. */
+  /** `pos.line`. Omit it to skip the line check. */
   line?: number
-  /** the v2 `description:`-derived hint; asserted only when the golden pins it. */
+  /** The hint from a `description:`. Checked only when given. */
   hint?: string
 }
 
@@ -68,15 +66,15 @@ export interface ExpectedFinding {
  */
 export const CORPUS_URL = new URL('../corpus/', import.meta.url)
 
-/** Load a validation case's markdown from the corpus, verbatim. */
+/** Loads a validation case's markdown from the corpus, unchanged. */
 export function loadCorpusSource(rel: string): string {
   return readFileSync(new URL(rel, CORPUS_URL), 'utf8')
 }
 
 /**
- * Load a validation case's expected findings from its corpus golden, the
- * `<source-basename>.expected.json` file beside the case's `.md` input. The golden is a JSON
- * array of `{ id, level?, line?, hint? }` in engine order; `[]` asserts a passing document.
+ * Loads a validation case's expected findings from the `<source-basename>.expected.json` file
+ * beside the case's `.md` in the corpus. The file is a JSON array of `{ id, level?, line?, hint? }`
+ * in engine order. `[]` means the document passes.
  */
 export function loadExpected(rel: string): ExpectedFinding[] {
   return JSON.parse(readFileSync(new URL(rel, CORPUS_URL), 'utf8')) as ExpectedFinding[]
@@ -86,27 +84,24 @@ export interface ValidationCase {
   /** "pass — …" or a description of the failure variant. */
   label: string
   source: string
-  /** Expected findings in engine order (from the `.expected.json` golden); `[]` is a passing document. */
+  /** Expected findings in engine order, from the `.expected.json` file. `[]` means it passes. */
   findings: ExpectedFinding[]
 }
 
 export interface ValidationFixture {
-  /** stable short id, e.g. "v01" / "v10b". */
+  /** A short fixed id, such as "v01" or "v10b". */
   id: string
   title: string
-  /** the part of the engine the fixture exercises. */
+  /** The part of the engine the fixture tests. */
   component: Component
-  /** `ctx.path` — defaults to "fixture.md". */
+  /** `ctx.path`. Default "fixture.md". */
   path?: string
-  /** lazy contract construction — runs only inside an active test. */
+  /** Builds the contract. It runs only inside a test. */
   build: () => Contract
   cases: ValidationCase[]
   /**
-   * Intentionally twin-less: this fixture has no `.contract.yaml` parity peer (yet).
-   * Set while a fixture is authored ahead of its declarative loader. The yaml-parity
-   * "peers exist" check accepts a `peerless` fixture silently (no warning), and the
-   * behavioral parity loops skip it (running its YAML twin would throw). See
-   * `tests/yaml-parity.test.ts`.
+   * The fixture has no `.contract.yaml` peer on purpose. The "peers exist" check in
+   * `tests/yaml-parity.test.ts` then gives no warning, and the parity tests skip it.
    */
   peerless?: boolean
   note?: string
@@ -119,21 +114,18 @@ export interface ModelRead {
 }
 
 export interface ConsumptionFixture {
-  /** stable short id, e.g. "c01". */
+  /** A short fixed id, such as "c01". */
   id: string
   title: string
   component: Component
   path?: string
   source: string
   build: () => Contract
-  /** typed-model reads asserted against `read()`'s `doc`. */
+  /** Reads checked against the `doc` that `read()` returns. */
   reads?: ModelRead[]
-  /** when set, assert `read()` throws `ContractError` instead of running `reads`. */
+  /** When set, check that `read()` throws `ContractError` instead of running `reads`. */
   throws?: 'ContractError'
-  /**
-   * Intentionally twin-less: this fixture has no `.contract.yaml` parity peer (yet).
-   * Honored identically to {@link ValidationFixture.peerless}; see `tests/yaml-parity.test.ts`.
-   */
+  /** No `.contract.yaml` peer on purpose, as {@link ValidationFixture.peerless}. */
   peerless?: boolean
   note?: string
 }
@@ -199,25 +191,23 @@ export function runConsumptionFixtures(label: string, fixtures: ConsumptionFixtu
 }
 
 /**
- * An inference fixture. Each fixture is a self-contained input vault — a
- * small, realistic markdown corpus — under `tests/fixtures/infer/NN-name/vault/`,
- * pointed at by an absolute `dir`. `inferConfig(dir, opts)` is run over it and the result is
- * exercised by three auto-tests (see `runInferenceFixtures`):
- *  - **accept-by-construction** — the inferred config, loaded back through
- *    `compileContractObject` and run via `runCorpus`, reports zero error-level findings (the
- *    defining guarantee).
- *  - **deterministic** — inferring twice yields identical contracts.
- *  - **inferred shape** — the optional `assert` callback inspects the model against the spec.
+ * An inference fixture: a small, realistic folder of markdown under
+ * `tests/fixtures/infer/NN-name/vault/`, given by an absolute `dir`. `inferConfig(dir, opts)` runs
+ * over it, and `runInferenceFixtures` adds three tests:
+ *  - "accept-by-construction": the inferred config, compiled with `compileContractObject` and run
+ *    with `runCorpus`, gives no error-level findings.
+ *  - "deterministic": inferring twice gives the same contracts.
+ *  - "inferred shape": the optional `assert` callback checks the result.
  */
 export interface InferenceFixture {
   id: string
   title: string
-  /** the part of the engine the fixture exercises: an `infer-*` label. */
+  /** The part of the engine the fixture tests: an `infer-*` label. */
   component: Component
-  /** ABSOLUTE path to the input vault (compute via `fileURLToPath(new URL("./vault", import.meta.url))`). */
+  /** The absolute path to the input folder (`fileURLToPath(new URL("./vault", import.meta.url))`). */
   dir: string
   opts?: InferOptions
-  /** the inferred-shape assertion — runs only when present. */
+  /** The "inferred shape" check. Runs only when set. */
   assert?: (result: InferResult) => void
   note?: string
 }
@@ -235,7 +225,6 @@ export function runInferenceFixtures(label: string, fixtures: InferenceFixture[]
         const cfg: CorpusConfig = {
           rules: r.contracts.map((c) => ({
             include: c.include,
-            // Inferred defs are authored in the v2 vocabulary — compile as v2.
             contract: compileContractObject(c.def),
           })),
         }

@@ -1,6 +1,6 @@
 /**
  * Read a `gh pr view --json` payload into the typed model, with no `gh`
- * involved. Every field has a value: one the payload lacks takes its "not
+ * involved. Every field has a value. One the payload lacks takes its "not
  * known" value.
  */
 
@@ -83,7 +83,7 @@ test('logins from GraphQL and REST compare equal once normalized', () => {
 })
 
 test('the two closed enums can be matched in full', () => {
-  // MergeableState and ReviewDecision are closed: a value GitHub adds reads as
+  // MergeableState and ReviewDecision are closed. A value GitHub adds reads as
   // UNKNOWN or null. So a switch over them needs no default.
   const pr = parsePullRequest({ number: 7, mergeable: 'CONFLICTING', reviewDecision: 'APPROVED' })
   const mergeable: MergeableState = pr?.mergeable ?? 'UNKNOWN'

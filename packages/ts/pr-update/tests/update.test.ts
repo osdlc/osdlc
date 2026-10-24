@@ -3,11 +3,10 @@
  * the output schema, the strategy-override precedence, and the `Ports`
  * contract (`resolveVerifyVerbs` is called only when `verify` is not `none`).
  *
- * The repo-trust *policy* itself (what makes a project-sourced verb list safe
- * to run) is a host's business — the host tests that against its real trust
- * store. This only proves the package holds up its
- * end of the port: it asks, and it asks with the right argument, at the right
- * time.
+ * The trust rules themselves (what makes a verb list from the project safe to
+ * run) belong to the host, which tests them against its real trust store. This
+ * only checks the package's side of the port: it asks, with the right
+ * argument, at the right time.
  */
 
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
@@ -152,9 +151,8 @@ describe('selectTargets', () => {
   })
 
   test('--pr naming a number the survey never reported still shows up, in skipped', () => {
-    // Regression: the loop below only ever visits `report.prs`'s own rows —
-    // a typo'd or already-closed `--pr` number outside that set used to
-    // vanish with no mention anywhere in the result.
+    // The loop in `selectTargets` visits only `report.prs`. A mistyped or
+    // closed `--pr` number outside that set must still appear in the result.
     const { targets, skipped } = selectTargets(report([row({ number: 1 })]), [1, 999])
     expect(targets.map((t) => t.number)).toEqual([1])
     expect(skipped).toEqual([{ number: 999, head: '', reason: 'not found in survey' }])
@@ -216,8 +214,7 @@ describe('toResult', () => {
 //
 // A fixture with no `origin` remote makes `resolveTargets` report zero
 // targets (the local repo has no parseable owner/repo, and `args.repo` names
-// nothing else) without ever touching `gh` — the same trick the original
-// trust-gate test used. `updateAll` early-returns on an empty
+// nothing else) without calling `gh`. `updateAll` returns early on an empty
 // target list, so the whole run completes with no real worktree.
 // ---------------------------------------------------------------------------
 

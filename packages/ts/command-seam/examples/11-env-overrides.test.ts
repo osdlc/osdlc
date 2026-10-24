@@ -4,7 +4,7 @@
  * HOME) as it is.
  *
  * Every runner merges `env` over the parent's environment. A string sets a
- * variable; `undefined` removes one the parent has.
+ * variable. `undefined` removes one the parent has.
  */
 
 import { expect, test } from 'vitest'
@@ -21,7 +21,7 @@ const quietGit: EnvOverrides = {
   GITHUB_TOKEN: undefined,
 }
 
-/** Branch names on `origin`; empty when git could not ask. */
+/** Branch names on `origin`, or none when git could not ask. */
 function remoteBranches(dir: string, git: CommandRunner = spawnRunner('git')): string[] {
   const r = git.run(['ls-remote', '--heads', 'origin'], {
     cwd: dir,

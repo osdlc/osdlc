@@ -1,13 +1,12 @@
-// Node-free entry point (the package's `./models` subpath export): the effort vocabulary.
-// Imports nothing, so a browser bundle can take it without pulling in the
-// process runner (`node:child_process`) that the package barrel re-exports.
-// This package takes a resolved model; which levels a model accepts is not
-// decided here.
+// The `./models` subpath export: the effort levels, with no Node imports.
+// A browser bundle can import it without the process runner
+// (`node:child_process`) that the package index re-exports.
+// This package does not decide which levels a given model accepts.
 
 /**
- * Reasoning-effort intent, a separate axis from model choice: the closed set
- * the adapters translate, ordered least to most reasoning. Each tool's
- * mapping is in the README capability table. Frozen at run time.
+ * The reasoning-effort levels the adapters translate, ordered least to most
+ * reasoning. Effort is set separately from the model. Each agent's mapping is
+ * in the README capability map. Frozen at run time.
  */
 export const EFFORT_LEVELS = Object.freeze([
   'none',
@@ -21,7 +20,7 @@ export const EFFORT_LEVELS = Object.freeze([
 /** One of {@link EFFORT_LEVELS}. */
 export type EffortLevel = (typeof EFFORT_LEVELS)[number]
 
-/** True for the levels below `low` (`none`, `minimal`), which tools with a `low` floor raise to it. */
+/** True for the levels below `low` (`none`, `minimal`). Agents whose lowest level is `low` raise these to `low`. */
 export function isBelowLow(effort: string): boolean {
   return effort === 'none' || effort === 'minimal'
 }

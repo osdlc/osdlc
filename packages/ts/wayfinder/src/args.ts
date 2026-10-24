@@ -1,11 +1,11 @@
 /**
- * Turning a typed argument tail into argv entries, shared by the terminal's
- * entry line and the page's run bar so the two never disagree about a quote.
+ * Turns typed trailing arguments into argv entries. The terminal's entry line
+ * and the page's run bar share it, so the two always split quotes the same way.
  *
- * {@link runArgv} and {@link acceptArgs} are the boundary: what a caller may
- * contribute to a spawn, and what it may not. As pure functions they can be
- * asserted; the route they protect cannot, because succeeding at it hands over
- * the terminal and exits the process.
+ * {@link runArgv} and {@link acceptArgs} decide what a caller may add to a
+ * spawn and what it may not. As pure functions they can be tested. The route
+ * they protect cannot, because a successful call hands over the terminal and
+ * exits the process.
  */
 
 import type { Project, Task } from '@osdlc/system-model/detect'
@@ -33,8 +33,8 @@ export function runArgv(project: Project, task: Task, args: readonly string[] = 
 /**
  * The argument list from an untrusted JSON body, or an empty one.
  *
- * Non-strings are DROPPED rather than coerced: `String(value)` would quietly
- * hand a spawn `"[object Object]"` or `"null"` as a real argument, and an
+ * Non-strings are dropped rather than converted. `String(value)` would quietly
+ * pass `"[object Object]"` or `"null"` to a spawn as a real argument, and an
  * argument nobody typed is worse than a missing one.
  */
 export function acceptArgs(value: unknown): string[] {
@@ -43,17 +43,17 @@ export function acceptArgs(value: unknown): string[] {
 }
 
 /**
- * Split a typed argument tail the way a shell splits words, and in no other
- * way a shell behaves.
+ * Split typed arguments into words the way a shell does, and do nothing else
+ * a shell does.
  *
  * Quotes group and a backslash escapes the next character. There is no
- * globbing, no variable expansion, no operators, no substitution: the result
- * goes to an `execvp`-style spawn as separate argv entries, never to a shell,
- * so `*.log` is passed through as the four characters somebody typed. That is
- * the same rule `argv` and `display` exist to keep.
+ * globbing, no variable expansion, no operators and no substitution. The
+ * result goes to an `execvp`-style spawn as separate argv entries, never to a
+ * shell, so `*.log` is passed through as the five characters typed. This is
+ * the same rule that keeps `argv` separate from `display`.
  *
- * Splitting rather than `.split(/\s+/)` for exactly one reason: a quoted
- * `"two words"` has to stay ONE argument.
+ * This is not `.split(/\s+/)` for one reason: a quoted `"two words"` must stay
+ * one argument.
  */
 export function splitArgs(input: string): string[] {
   const out: string[] = []
@@ -87,9 +87,9 @@ export function splitArgs(input: string): string[] {
     current += ch
     started = true
   }
-  // An unterminated quote keeps what was typed rather than dropping it. The
-  // user is mid-word; losing their text would be worse than passing a token
-  // they can see in the command echoed above the run.
+  // An unclosed quote keeps what was typed rather than dropping it. Losing the
+  // user's text would be worse than passing a word they can see in the
+  // command shown above the run.
   if (started) out.push(current)
   return out
 }

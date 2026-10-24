@@ -1,12 +1,11 @@
 /**
- * Unit tests for the shared layered-resolution primitive (`../src/provenance.ts`).
+ * Unit tests for layered resolution (`../src/provenance.ts`).
  *
- * Standalone by design: every fixture here is an in-memory
- * `readRaw`/`defaultSteps`/`envSteps`, never a real config file. Covers the
- * full layer/mode matrix for `resolveLayeredSteps` (default-only; project
- * replace; project prepend/append; local replace/wrap layered on top of
- * project+default; env replace beating everything; an async `defaultSteps`)
- * plus `resolveLayeredValue`'s three-layer scalar case.
+ * Every input is an in-memory `readRaw`/`defaultSteps`/`envSteps`, never a
+ * real config file. Covers each layer and mode for `resolveLayeredSteps`:
+ * default only, project replace, project prepend/append, local replace or
+ * wrap on top of project and default, env replacing everything, and an async
+ * `defaultSteps`. Also covers `resolveLayeredValue` across its three layers.
  */
 
 import { describe, expect, test } from 'vitest'

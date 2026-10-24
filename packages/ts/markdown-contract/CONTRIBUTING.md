@@ -45,11 +45,13 @@ pnpm run format:check
 
 ## Layout
 
-- `src/core/` is the `./core` entry. It must import no Node module; a test
+- `src/core/` is the `./core` entry. It must import no Node module. A test
   fails if it does.
 - `src/runner/`, `src/declarative/` and `src/cli/` read files and need Node.
-- Unit tests sit next to their module as `*.test.ts`. `tests/` holds the
-  fixture-driven suites; see [tests/FIXTURES.md](./tests/FIXTURES.md).
+- Unit tests live under `tests/`, in folders that mirror `src/` (for example
+  `tests/core/grammar.test.ts` for `src/core/grammar.ts`). The fixture-driven
+  suites sit at the top of `tests/`. See
+  [tests/FIXTURES.md](./tests/FIXTURES.md).
 - `corpus/` is the shared validation corpus: documents, YAML contracts and
   expected findings in plain files. See [corpus/README.md](./corpus/README.md).
   A change to the engine's findings updates the corpus in the same pull
@@ -68,5 +70,5 @@ pnpm run format:check
   README's stability section. A test checks that the two agree.
 - For a change users can see, add a changeset: run `pnpm changeset` at the
   repository root. Start a breaking change's summary with `**Breaking:**`.
-  Do not edit `CHANGELOG.md` or `version` by hand; the release writes them.
+  Do not edit `CHANGELOG.md` or `version` by hand. The release writes them.
   See [packages/README.md](https://github.com/osdlc/osdlc/blob/main/packages/README.md).

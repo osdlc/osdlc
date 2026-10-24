@@ -1,112 +1,107 @@
 /**
  * GitHub Actions workflows — https://docs.github.com/actions
  *
- * `kind: "parse"`, and every task it emits is `executes: "remote"`. Those two
- * axes are independent and this runner is where the difference is visible:
- * reading a workflow is pure YAML parsing on this machine, but RUNNING one
- * happens on GitHub's hosted runners, not here.
+ * `kind: "parse"`, and every task it emits is `executes: "remote"`. The two
+ * are independent, and this runner shows the difference. Reading a workflow
+ * is YAML parsing on this machine. Running one happens on GitHub's hosted
+ * runners, not here.
  *
- * THE CEILING, because a UI must be able to warn before a click.
- * `gh workflow run` does not build anything locally. It creates a
- * `workflow_dispatch` event against the repository the working directory's git
- * remote points at. That means it:
+ * What a dispatch does, so a UI can warn before a click. `gh workflow run`
+ * builds nothing locally. It creates a `workflow_dispatch` event on the
+ * repository the working directory's git remote points at. So it:
  *   - spends real CI minutes on someone's account,
- *   - requires an authenticated `gh` and write access to the repository,
- *   - produces no local output at all — the result is a run URL,
- *   - and takes effect on the remote default branch (or `--ref`), not on the
- *     working tree the user is looking at.
+ *   - needs an authenticated `gh` and write access to the repository,
+ *   - prints no local output; the result is a run URL,
+ *   - and acts on the remote default branch (or `--ref`), not on the working
+ *     tree the user is looking at.
  * A row for `cargo build` and a row for `gh workflow run release.yml` are not
- * the same kind of thing, and `executes: "remote"` is the field that says so.
+ * the same kind of thing. `executes: "remote"` is the field that says so.
  *
- * DETECTION. Files directly under `.github/workflows/` whose name ends in
- * `.yml` or `.yaml` AND have a name before the extension — a file called
- * literally `.yml` is a dotfile with no workflow name, and `gh workflow run
- * .yml` identifies nothing. The directory test is exact and deliberate: GitHub only
- * reads `.github/workflows/` AT THE REPOSITORY ROOT, and ignores
- * subdirectories inside it. So `packages/x/.github/workflows/y.yml` is not a
- * workflow of the repository being scanned, and `.github/workflows/sub/z.yml`
- * is not a workflow at all — both are rejected. The anchored patterns in
- * `WORKFLOW_FILES` do most of this; `isWorkflowPath` rejects the nameless
- * `.yml`.
+ * Detection. Files directly under `.github/workflows/` whose name ends in
+ * `.yml` or `.yaml` and has a name before the extension. A file called just
+ * `.yml` has no workflow name, and `gh workflow run .yml` names nothing. The
+ * directory test is exact on purpose. GitHub reads `.github/workflows/` only
+ * at the repository root, and ignores subdirectories in it. So
+ * `packages/x/.github/workflows/y.yml` is not a workflow of the scanned
+ * repository, and `.github/workflows/sub/z.yml` is not a workflow at all.
+ * Both are rejected. The anchored patterns in `WORKFLOW_FILES` do most of
+ * this; `isWorkflowPath` rejects the nameless `.yml`.
  *
- * THE DISPATCH GATE. Only a workflow declaring an `on.workflow_dispatch`
- * trigger is emitted as a task. `gh workflow run --help` (gh 2.97.0) says
- * verbatim: "This command will trigger GitHub Actions to run a given workflow
- * file. The given workflow file must support an `on.workflow_dispatch` trigger
- * in order to be run in this way." A task for a workflow that cannot be
- * dispatched is a row that always fails, so those are withheld and counted in
- * a diagnostic instead — a user is never silently short a task without being
- * told how many and which.
+ * Dispatch check. Only a workflow with an `on.workflow_dispatch` trigger
+ * becomes a task. `gh workflow run --help` (gh 2.97.0) says: "This command
+ * will trigger GitHub Actions to run a given workflow file. The given workflow
+ * file must support an `on.workflow_dispatch` trigger in order to be run in
+ * this way." A task for a workflow that cannot be dispatched would always
+ * fail. So those are left out and listed in a diagnostic, with their count
+ * and names.
  *
- * THE YAML 1.1 `on:` TRAP. YAML 1.1 reads the bare key `on` as the boolean
- * `true`, so a parser following that spec hands back a workflow whose trigger
- * key is `true`, not `"on"`. That is why naive `doc["on"]` code reports every
- * workflow as untriggered. This reader works on raw text and matches the
- * literal key, so the trap does not bite it; it is recorded here because the
- * next person reaching for a real YAML library will hit it.
+ * The YAML 1.1 `on:` problem. YAML 1.1 reads the bare key `on` as the boolean
+ * `true`, so a parser that follows that spec returns a workflow whose trigger
+ * key is `true`, not `"on"`. Simple `doc["on"]` code then reports every
+ * workflow as having no trigger. This reader works on raw text and matches
+ * the literal key, so it is not affected. The note is here for anyone who
+ * switches to a real YAML library.
  *
- * THE READER'S CEILING. There is no YAML dependency in this package (see
- * `package.json`, and the note in `go-task.ts`). The lexical layer lives in
+ * Reader limits. This reader uses no YAML library. The lexing is in
  * `yaml-lite.ts`, shared with `docker-compose.ts` and `go-task.ts`: it strips
  * the leading UTF-8 BOM, strips comments outside quoted strings, blanks block
  * scalar bodies, truncates at the first document separator, and flags
- * anchors, aliases and merge keys. What stays here is the `on:` reader, the
- * trigger semantics, and every diagnostic.
+ * anchors, aliases and merge keys. This file keeps the `on:` reader, the
+ * trigger rules, and every diagnostic.
  *
- * On top of that layer this file reads exactly two top-level keys:
+ * On top of that, this file reads exactly two top-level keys:
  *   - the top-level `name:` scalar, used as `doc`. A block scalar (`name: |`)
- *     is recognized but not decoded, and is deliberately treated as absent.
+ *     is recognized but not decoded, and is treated as absent on purpose.
  *   - the top-level `on:` trigger in five forms: scalar
  *     (`on: workflow_dispatch`), flow sequence (`on: [push, workflow_dispatch]`),
  *     flow mapping (`on: {workflow_dispatch: {}}`), block mapping and block
  *     sequence. Key order in a workflow is free, so `on:` is read wherever it
- *     sits — after `jobs:` as readily as before it.
- * Quoted keys and values are honoured, including the `"on":` and `'on':`
- * spellings a repository uses precisely to dodge the YAML 1.1 trap above.
+ *     is, after `jobs:` as well as before it.
+ * Quoted keys and values are handled, including the `"on":` and `'on':` forms
+ * a repository uses to avoid the YAML 1.1 problem above.
  *
- * It does NOT attempt the following, and emits a `warning` Diagnostic naming
- * the file rather than under-reporting silently:
- *   - YAML anchors/aliases (`&`/`*`) and merge keys (`<<`), warned about only
+ * It does not handle the following. It emits a `warning` Diagnostic naming
+ * the file instead of silently reporting too little:
+ *   - YAML anchors/aliases (`&`/`*`) and merge keys (`<<`). It warns only
  *     where they could change this reader's answer: inside the `on:`
  *     declaration and its block, or a merge key at top level, which could
- *     splice an `on:` into the document. An anchor in the `jobs:` section
- *     cannot touch the trigger, and the common `&defaults` / `<<: *defaults`
- *     job pattern would otherwise warn on ordinary repositories. A `&` or `*`
- *     inside a plain scalar is not an anchor either — `if: rm -rf *tmp` is a
- *     glob, and the lexer does not flag it.
- *   - multi-document files — only the content before the first document
- *     separator (`---`) or end marker (`...`) at COLUMN ZERO, and outside any
- *     open block scalar, is read
- *   - the multi-line flow forms (`on: {` … `}` or `on: [` … `]` spanning
- *     lines). Valid YAML that GitHub accepts, but the terminator must be on
- *     the `on:` line here; otherwise the value reads as uninterpretable and
- *     the workflow is emitted under the fail-open rule below.
- *   - decoding escapes inside quoted scalars: `name: 'It''s CI'` yields
- *     `It''s CI`. Cosmetic — it reaches `doc` only, never `argv`.
+ *     insert an `on:` into the document. An anchor in `jobs:` cannot affect
+ *     the trigger, and the common `&defaults` / `<<: *defaults` job pattern
+ *     would otherwise warn on ordinary repositories. A `&` or `*` inside a
+ *     plain scalar is not an anchor either: `if: rm -rf *tmp` is a glob, and
+ *     the lexer does not flag it.
+ *   - multi-document files. Only the content before the first document
+ *     separator (`---`) or end marker (`...`) at column 0, outside any open
+ *     block scalar, is read.
+ *   - multi-line flow forms (`on: {` … `}` or `on: [` … `]` across lines).
+ *     GitHub accepts this valid YAML, but here the closing bracket must be on
+ *     the `on:` line. Otherwise the value cannot be read, and the workflow is
+ *     emitted under the fail-open rule below.
+ *   - escapes inside quoted scalars: `name: 'It''s CI'` gives `It''s CI`.
+ *     Cosmetic: it reaches `doc` only, never `argv`.
  *   - an `on:` value it cannot interpret
  *
- * WHICH WAY IT FAILS. On an UNINTERPRETABLE `on:` the workflow is EMITTED, not
- * suppressed, alongside the warning. Suppressing would hide a task the user
- * knows exists and give them no way to reach it; emitting at worst produces a
- * row that `gh` rejects with its own clear message ("does not have
- * 'workflow_dispatch' trigger"). A cleanly-read `on:` that simply lacks
- * `workflow_dispatch` — including a workflow with no `on:` at all — is
- * suppressed and counted in the `info` diagnostic, because that reading is
- * trustworthy: every construct that could have hidden a trigger from this
- * reader (a BOM, a block scalar, an anchor, a document marker) either is
- * handled above or raises a warning of its own.
+ * Which way it fails. When `on:` cannot be interpreted, the workflow is
+ * emitted with the warning, not left out. Leaving it out would hide a task
+ * the user knows exists, with no way to reach it. Emitting it at worst gives
+ * a row that `gh` rejects with its own clear message ("does not have
+ * 'workflow_dispatch' trigger"). An `on:` read cleanly that lacks
+ * `workflow_dispatch` (including a workflow with no `on:` at all) is left out
+ * and counted in the `info` diagnostic. That reading can be trusted: every
+ * construct that could hide a trigger from this reader (a BOM, a block
+ * scalar, an anchor, a document marker) is handled above or raises its own
+ * warning.
  *
- * AN EMPTY FILE is neither of those. A zero-byte or whitespace-only file has
- * no trigger declaration that could be missing, so counting it as "lacks
- * workflow_dispatch" states something about a document that does not exist,
- * and emitting a task for it under the fail-open rule would produce a row
- * `gh` cannot run. It is withheld with a warning of its own: the file is empty.
+ * An empty file is neither case. A zero-byte or whitespace-only file has no
+ * trigger declaration that could be missing. Counting it as "lacks
+ * workflow_dispatch" would describe a document that does not exist, and
+ * emitting a task for it under the fail-open rule would give a row `gh` cannot
+ * run. It is left out with its own warning: the file is empty.
  *
- * INPUTS ARE NOT MODELLED. A `workflow_dispatch.inputs:` map would surface as
- * `-f key=value` parameters. This reader does not descend into it, so every
- * task carries `parameters: []`. `argv` contains no placeholders either way,
- * so nothing here is unsafe to execute — it just runs the workflow with its
- * declared defaults.
+ * Inputs are not modelled. A `workflow_dispatch.inputs:` map would become
+ * `-f key=value` parameters. This reader does not read into it, so every task
+ * has `parameters: []`. `argv` has no placeholders either way, so a task
+ * cannot inject arguments. It runs the workflow with its declared defaults.
  */
 
 import type { ProviderContext } from '../../contract.ts'
@@ -139,13 +134,13 @@ const UNREADABLE_ON =
   'the `on:` trigger could not be interpreted — this workflow is listed as dispatchable without proof, and `gh` will reject it if it is not'
 
 /**
- * A workflow file GitHub would actually honour.
+ * A workflow file GitHub would use.
  *
- * Exact-prefix, single-segment-remainder: `.github/workflows/ci.yml` yes,
+ * Exact prefix, one path segment after it: `.github/workflows/ci.yml` yes,
  * `packages/x/.github/workflows/ci.yml` no (not the repository root's
  * directory), `.github/workflows/sub/ci.yml` no (GitHub ignores
  * subdirectories under `.github/workflows/`), `.github/workflows/.yml` no (a
- * dotfile whose entire name is the extension — no workflow name to hand
+ * dotfile whose whole name is the extension, so no workflow name to give
  * `gh workflow run`).
  */
 function isWorkflowPath(rel: string): boolean {
@@ -167,9 +162,9 @@ type Trigger =
   /** Present but in a form this reader does not understand. */
   | { kind: 'unreadable' }
   /**
-   * The file has no content at all, so there is no declaration to read either
-   * way — distinct from `read`, which would assert a missing trigger in a
-   * document that does not exist. See "AN EMPTY FILE" in the file header.
+   * The file has no content, so there is no declaration to read. Not `read`,
+   * which would claim a missing trigger in a document that does not exist.
+   * See "An empty file" in the file header.
    */
   | { kind: 'empty' }
 
@@ -239,9 +234,9 @@ function onBlockEnd(lines: string[], onLine: number): number {
  */
 export function readWorkflow(text: string): WorkflowRead {
   const warnings = new Set<string>()
-  // A leading BOM is stripped by `prepass`, so there is none to strip here.
-  // Testing the raw text for emptiness first is safe: U+FEFF is ECMAScript
-  // WhiteSpace, so `trim()` removes it and a BOM-only file reads as empty.
+  // `prepass` strips a leading BOM. Testing the raw text for emptiness first
+  // is safe: U+FEFF is ECMAScript WhiteSpace, so `trim()` removes it and a
+  // BOM-only file reads as empty.
   if (text.trim() === '') return { trigger: { kind: 'empty' }, warnings: [] }
 
   // One walk over the file: comments stripped, block-scalar bodies blanked so
@@ -264,26 +259,26 @@ export function readWorkflow(text: string): WorkflowRead {
       // treated as absent rather than reported as the literal indicator.
       if (v !== '' && !BLOCK_SCALAR_VALUE.test(v)) name = v
     }
-    // The literal key only. YAML 1.1 would have turned this into `true`; see
-    // the file header. `"on"` and `'on'` are the quoted spellings a repo uses
-    // precisely to dodge that trap, and matchKey already unquotes them.
+    // The literal key only. YAML 1.1 would turn this into `true`; see the file
+    // header. `"on"` and `'on'` are the quoted forms a repo uses to avoid
+    // that, and matchKey already unquotes them.
     if (m.key === 'on' && onLine === -1) {
       onLine = i
       onValue = m.value.trim()
     }
   }
 
-  // Anchors, aliases and merge keys are warned about only where they could
-  // change THIS reader's answer: inside the `on:` declaration and its block,
-  // or in a merge key at top level, which could splice an `on:` into the
-  // document. An `&defaults` on a job cannot misread a trigger, and warning on
-  // the common job-anchor pattern would fire on ordinary repositories and
-  // teach a user to ignore this runner's warnings.
+  // Warn about anchors, aliases and merge keys only where they could change
+  // this reader's answer: inside the `on:` declaration and its block, or a
+  // merge key at top level, which could insert an `on:` into the document. An
+  // `&defaults` on a job cannot affect a trigger. Warning on that common job
+  // pattern would fire on ordinary repositories and teach users to ignore
+  // this runner's warnings.
   const onEnd = onBlockEnd(lines, onLine)
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i] ?? ''
-    // Block-scalar content was blanked by the prepass, so it is skipped here
-    // too, and its per-line flags are false by construction.
+    // The prepass blanked block-scalar content, so it is skipped here too,
+    // and its per-line flags are always false.
     if (line.trim() === '') continue
     const inOnBlock = onLine !== -1 && i >= onLine && i < onEnd
     const topLevel = leadingSpaces(line) === 0
@@ -357,8 +352,8 @@ export function readWorkflow(text: string): WorkflowRead {
   }
 
   if (names.length === 0) {
-    // `on:` with nothing readable under it — not a trigger list this reader
-    // can vouch for either way.
+    // `on:` with nothing readable under it: this reader cannot say either
+    // way.
     warnings.add(UNREADABLE_ON)
     return { name, trigger: { kind: 'unreadable' }, warnings: [...warnings] }
   }
@@ -371,30 +366,29 @@ export function readWorkflow(text: string): WorkflowRead {
 
 function makeTask(file: string, doc: string): Task {
   const workflow = basenameOf(file)
-  // `gh workflow run [<workflow-id> | <workflow-name>]`, verified against
-  // `gh workflow run --help` on gh 2.97.0, whose own example is
-  // `gh workflow run triage.yml`. gh identifies a workflow by its FILE NAME —
-  // not by a path, and not by the root-relative `.github/workflows/…` — so
-  // the basename is what goes in argv.
+  // `gh workflow run [<workflow-id> | <workflow-name>]`, checked against
+  // `gh workflow run --help` on gh 2.97.0, whose example is
+  // `gh workflow run triage.yml`. gh identifies a workflow by its file name,
+  // not by a path and not by the root-relative `.github/workflows/…`. So the
+  // basename goes in argv.
   const argv = ['gh', 'workflow', 'run', workflow]
   return {
     id: taskId('github-actions', file, workflow),
     runner: 'github-actions',
     path: ['github-actions', workflow],
     argv,
-    // `cwd` stays "." and there is no directory flag to reach for. gh resolves
-    // the repository from the git remote of the working directory, and
-    // workflows only ever live at the repository root, so the root is already
-    // the right place to run from. `-R/--repo` is not the flag: it selects a
-    // DIFFERENT repository, which is the opposite of what a catalog of THIS
-    // repository's tasks wants.
+    // `cwd` stays "." and no directory flag is needed. gh finds the
+    // repository from the working directory's git remote, and workflows live
+    // only at the repository root, so the root is the right place to run.
+    // `-R/--repo` is not wanted: it selects a different repository, and this
+    // catalog lists this repository's tasks.
     cwd: '.',
-    // A plain join, matching every sibling runner, NOT a shell-quoted form.
-    // A workflow filename may legally contain a space, `$`, a backtick or a
-    // `;`, so this string is not always safe to paste into a shell — but
-    // `display` is documented in model.ts as the human form that "is NOT
-    // executable" (it carries parameter placeholders elsewhere for the same
-    // reason), and `argv` is the executable one: an array, spawned directly,
+    // A plain join, like every other runner, not a shell-quoted form. A
+    // workflow filename may contain a space, `$`, a backtick or a `;`, so
+    // this string is not always safe to paste into a shell. That is fine:
+    // model.ts defines `display` as the human form for showing and copying
+    // (other runners put parameter placeholders in it), and says never to
+    // build `argv` from it. `argv` is what runs: an array, spawned directly,
     // never re-joined.
     display: argv.join(' '),
     parameters: [],
@@ -402,8 +396,8 @@ function makeTask(file: string, doc: string): Task {
     origin: 'declared',
     doc,
     tags: ['github-actions', 'ci', 'remote'],
-    // A dispatch POSTs an event and returns a run URL; it does not stream the
-    // run. Nothing stays attached to this process.
+    // A dispatch POSTs an event and returns a run URL. It does not stream the
+    // run, and nothing stays attached to this process.
     persistent: { value: false, declared: false },
     executes: 'remote',
   }
@@ -414,7 +408,7 @@ export const WORKFLOW_FILES = ['/.github/workflows/*.yml', '/.github/workflows/*
 
 export const githubActionsRunner: RunnerRole = {
   // `parse`: workflows are read from YAML on this machine, never by asking gh.
-  // That the TASKS run remotely is a separate axis — see `executes`.
+  // That the tasks run remotely is a separate matter; see `executes`.
   kind: 'parse',
   chain: CHAIN,
 
@@ -442,9 +436,9 @@ export const githubActionsRunner: RunnerRole = {
         diagnostics.push({ severity: 'warning', message, source: file })
       }
       if (read.trigger.kind === 'empty') {
-        // Withheld, and NOT counted among "cannot be dispatched": that line
-        // says a trigger declaration is missing, and an empty file has no
-        // declarations at all. See "AN EMPTY FILE" in the file header.
+        // Left out, and not counted as "cannot be dispatched": that line says
+        // a trigger declaration is missing, and an empty file has none at all.
+        // See "An empty file" in the file header.
         diagnostics.push({ severity: 'warning', message: EMPTY_FILE, source: file })
         continue
       }
@@ -453,9 +447,9 @@ export const githubActionsRunner: RunnerRole = {
         continue
       }
       if (read.trigger.kind === 'unreadable') {
-        // Fail open — see "WHICH WAY IT FAILS" in the file header. The warning
-        // is emitted from the reader for a malformed block, and here for the
-        // flow/scalar forms that returned unreadable without one.
+        // Fail open; see "Which way it fails" in the file header. The reader
+        // emits the warning for a malformed block. This emits it for the
+        // flow and scalar forms that returned unreadable without one.
         if (!read.warnings.includes(UNREADABLE_ON)) {
           diagnostics.push({ severity: 'warning', message: UNREADABLE_ON, source: file })
         }
@@ -464,12 +458,11 @@ export const githubActionsRunner: RunnerRole = {
     }
 
     if (skipped.length > 0) {
-      // `info`, not `warning`: most workflows in most repositories are
-      // push/pull_request CI and are not meant to be dispatched by hand. A
-      // warning on the normal case would fire on nearly every repository and
-      // teach a user to ignore this runner's warnings, which are reserved
-      // for the reader's real blind spots. The count and the names are here so
-      // a user missing an expected task can see exactly why.
+      // `info`, not `warning`: most workflows are push/pull_request CI and are
+      // not meant to be dispatched by hand. A warning on the normal case would
+      // fire on nearly every repository and teach users to ignore this
+      // runner's warnings, which are kept for the reader's real gaps. The
+      // count and names let a user missing a task see why.
       diagnostics.push({
         severity: 'info',
         message: `${skipped.length} workflow${skipped.length === 1 ? '' : 's'} cannot be dispatched and ${
@@ -479,10 +472,10 @@ export const githubActionsRunner: RunnerRole = {
     }
 
     return {
-      // "ok" with zero tasks, not "absent": the workflows ARE here, they just
+      // "ok" with zero tasks, not "absent": the workflows are here, they just
       // cannot be dispatched. `absent` means "this runner is not present",
-      // which would be false, and would strand the diagnostic explaining the
-      // empty list in a report a consumer is entitled to hide.
+      // which would be false. It would also put the diagnostic that explains
+      // the empty list in a report a consumer may hide.
       status: 'ok',
       tasks,
       diagnostics,

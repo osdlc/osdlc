@@ -75,8 +75,8 @@ export interface RenderTableOptions {
 /**
  * A table's markdown from cell texts, one space of padding per cell side.
  * Every cell goes through {@link escapeCell}. Short body rows are padded with
- * empty cells to the header's width; longer ones keep their extra cells. An
- * empty header gives `''`: no table has no columns.
+ * empty cells to the header's width. Longer ones keep their extra cells. An
+ * empty header gives `''`, since a table needs at least one column.
  */
 export function renderTable(table: TableInput, options: RenderTableOptions = {}): string {
   const width = table.header.length

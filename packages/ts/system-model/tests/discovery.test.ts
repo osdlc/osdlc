@@ -2,12 +2,11 @@
  * The exclusion set and the file lister: what a path has to look like to be
  * left out, and how a pattern selects what is left.
  *
- * The `walk` cases run against a real temporary tree rather than a mocked
- * lister: the walk prunes and the final filter rejects, and running the real
- * pair is what keeps the two from drifting into disagreeing about which files
- * exist. The `git` cases mostly drive a canned runner, so they can assert the
- * argv sent and exercise the failure exits; one case uses a real repository
- * to cover a gitignored file.
+ * The `walk` cases run against a real temporary tree, not a mocked lister. The
+ * walk prunes directories and a final filter rejects files. Running both for
+ * real keeps them from disagreeing about which files exist. The `git` cases
+ * mostly use a canned runner, so they can assert the argv sent and test the
+ * failure exits. One case uses a real repository to cover a gitignored file.
  */
 
 import { afterAll, describe, expect, test } from 'vitest'
@@ -87,8 +86,8 @@ describe('matchesExclude', () => {
   })
 
   test('a path prefix is compared per segment, not per character', () => {
-    // The one-line string-prefix test passes every suite except on a repository
-    // that has both of these, and then silently deletes half of it.
+    // A plain string-prefix test would also exclude `src/application`. That only
+    // shows up in a repository that has both directories.
     const set = normalizeExcludes(['src/app'])
     expect(matchesExclude('src/app/main.ts', set)).toBe(true)
     expect(matchesExclude('src/application/main.ts', set)).toBe(false)
@@ -123,9 +122,8 @@ describe('createLister exclusions', () => {
   })
 
   test('honours a path exclusion shipped in the built-in list', async () => {
-    // `.moon/cache` has been in DEFAULT_EXCLUDES since the list was written and
-    // never excluded anything: no single path segment is ever equal to
-    // `.moon/cache`, and membership was tested one segment at a time.
+    // `.moon/cache` has two segments. A check that compares one segment at a
+    // time never matches it, so it must be read as a path.
     expect(DEFAULT_EXCLUDES).toContain('.moon/cache')
     const root = await fixtureRoot({
       '.moon/cache/package.json': '{}',
@@ -139,10 +137,9 @@ describe('createLister exclusions', () => {
   })
 
   test('keeps a dependency tree out of the answer', async () => {
-    // The RESULT is what this asserts. That the walk also prunes rather than
-    // descending and discarding is a cost, not a behaviour: both spellings
-    // return this same list, so no assertion here can tell them apart, and the
-    // reason to prune is documented at `walkFiles` instead of claimed here.
+    // This asserts the result only. Pruning a directory and descending then
+    // discarding return the same list, so no assertion here can tell them
+    // apart. `walkFiles` documents why the walk prunes.
     const root = await fixtureRoot({
       'package.json': '{}',
       'node_modules/a/package.json': '{}',
@@ -167,9 +164,9 @@ describe('gitAvailable', () => {
   })
 
   test('false outside a repository rather than throwing', async () => {
-    // git exits 128 here, which `revParse` does NOT declare absent — so the
-    // default door would reject. The probe asks a question whose answer is
-    // "no", so it goes through `try`.
+    // git exits 128 here, which `revParse` does not treat as "absent", so the
+    // throwing method would reject. The probe expects "no" as a normal answer,
+    // so it goes through `try`.
     const runners = fakeRunners([
       { binary: 'git', argv: probe, exitCode: 128, stderr: 'not a git repository' },
     ])
@@ -177,7 +174,7 @@ describe('gitAvailable', () => {
   })
 
   test('false when git is not on PATH', async () => {
-    // The seam flattens a missing binary to a non-zero exit, so this reaches
+    // The command seam turns a missing binary into a non-zero exit, so this reaches
     // the client as a failed call, not as a spawn throw.
     expect(await gitAvailable('/repo', fakeRunners([]).make('git'))).toBe(false)
   })
@@ -210,9 +207,9 @@ describe('createLister in git mode', () => {
   })
 
   test('throws when git fails rather than reporting an empty repository', async () => {
-    // The whole point. `gitAvailable` already said this is a repository, so a
-    // failing `ls-files` is a broken one — and "no files" would report every
-    // runner as absent from a project that has them.
+    // `gitAvailable` already said this is a repository, so a failing `ls-files`
+    // means a broken one. Returning "no files" would report every runner as
+    // absent from a project that has them.
     const runners = fakeRunners([
       { binary: 'git', argv: lsFiles, exitCode: 128, stderr: 'index file corrupt' },
     ])

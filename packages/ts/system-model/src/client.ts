@@ -1,24 +1,24 @@
 import type { SystemGraph } from './graph.ts'
 
 /**
- * The API a host must satisfy to feed a system-graph surface.
+ * The API a host implements to supply a system-graph viewer.
  *
- * One method, because the surface needs one thing: the whole graph. Folding a
- * container is an interaction, not a query — the aggregation that makes
- * collapse work runs client-side over this payload — so there is no second
- * call for "the graph, but collapsed".
+ * One method, because the viewer needs one thing: the whole graph. Folding a
+ * container is an interaction, not a query. The aggregation for folding runs
+ * on the client over this payload, so there is no second call for "the graph,
+ * but collapsed".
  *
- * Stating it here rather than inside a viewer is what lets a host be written
- * against the contract without depending on the viewer, and lets a viewer be
- * written without knowing which host it will run in. Two hosts satisfy it
- * today and they share no code: SDF reaches the Rust `manifest-graph` crate
- * through ontogen's generated transport, and `product-system-graph` calls the
- * crate's TypeScript peer in-process over one Nitro route.
+ * It is defined here, not inside a viewer. So a host can be written against
+ * the contract without depending on the viewer, and a viewer can be written
+ * without knowing which host it runs in. Two hosts implement it and share no
+ * code. SDF reaches the Rust `manifest-graph` crate through ontogen's
+ * generated transport. `product-system-graph` calls the crate's TypeScript
+ * counterpart in-process over one Nitro route.
  */
 export interface SystemGraphClient {
   /**
-   * The project's structure. `includeExternal` also materialises the registry
-   * packages it depends on, gathered under one node per ecosystem.
+   * The project's structure. `includeExternal` also adds nodes for the
+   * registry packages it depends on, grouped under one node per ecosystem.
    */
   graph(includeExternal: boolean): Promise<SystemGraph>
 }

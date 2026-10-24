@@ -1,6 +1,6 @@
 /**
- * Role actions: narrow questions asked by role, answered from the profile
- * and the registered tools. Nothing here spawns.
+ * Role actions: specific questions asked by role, answered from the profile
+ * and the registered tools. Nothing here spawns a process.
  */
 
 import { existsSync } from 'node:fs'
@@ -113,9 +113,9 @@ type Found = Omit<PackageManagerChoice, 'ecosystem' | 'fallback'>
  * `Cargo.toml` implies cargo) does not choose here.
  *
  * In an ecosystem with workspaces, the walk visits only the workspace roots
- * that cover `dir` (see `workspaceRoots`), so a nested package outside every
- * workspace does not take a lockfile from above. An ecosystem without a
- * `workspace` hook takes the nearest package above.
+ * that cover `dir` (see `workspaceRoots`). So a nested package outside every
+ * workspace does not take a lockfile from a parent directory. An ecosystem
+ * without a `workspace` hook takes the nearest package above.
  */
 function chosenAbove(
   registry: Registry,
@@ -204,7 +204,7 @@ function listingRoots(profile: ProjectProfile, eco: EcosystemDef, dir: string): 
     const pkg = packageAt(profile, current)
     const members = pkg === undefined ? undefined : eco.workspace(pkg)
     const rel = current === '.' ? dir : dir.slice(current.length + 1)
-    // Unknown members: treat `dir` as one, as the nearest-above walk would.
+    // Members unknown: count `dir` as a member, as the nearest-package walk would.
     if (members === null || (members !== undefined && memberMatches(members, rel))) {
       out.push(current)
     }

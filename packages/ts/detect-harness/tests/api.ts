@@ -1,5 +1,5 @@
 /**
- * Reads the public surface with the TypeScript compiler API: the exports of
+ * Reads the public exports with the TypeScript compiler API: the exports of
  * each entry point, whether each has TSDoc, and whether it is tagged
  * `@experimental`. Shared by the documentation tests and the example tests.
  */

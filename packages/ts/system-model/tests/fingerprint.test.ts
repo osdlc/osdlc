@@ -70,8 +70,8 @@ describe('fingerprint', () => {
   })
 
   test('a recorded directory invalidates when a file is added inside it', async () => {
-    // The `mise-tasks/` trap: `ctx.exists()` on the directory is true before
-    // and after, so an existence bit would never move.
+    // The `mise-tasks/` case: `ctx.exists()` on the directory is true before
+    // and after, so an existence check alone would never change.
     const root = await fixtureRoot({ 'mise-tasks/build': '#!/bin/sh\n' })
     try {
       const before = await digestOf(root, ['mise-tasks'])

@@ -46,16 +46,16 @@ const DISPATCH_ONLY = [
 /**
  * A control workflow for every negative fixture.
  *
- * Without one, an assertion that the provider emitted NOTHING passes just as
- * well against a provider that can emit nothing at all — a suppression test
- * and a broken-collect test look identical. The control makes the empty
- * result discriminating: the provider demonstrably still works on this root.
+ * Without one, an assertion that the provider emitted nothing also passes
+ * against a provider that is broken. A suppression test and a broken-collect
+ * test would look the same. The control shows the provider still works on
+ * this root, so the empty result means something.
  */
 const CONTROL = ['name: Control', 'on: workflow_dispatch', 'jobs: {}', ''].join('\n')
 
 /**
- * Written as the escape, never the literal byte: a raw U+FEFF is invisible in
- * every editor and diff, so a test asserting on one must show it in source.
+ * Written as the escape, never the literal byte. A raw U+FEFF is invisible in
+ * editors and diffs, so a test that asserts on one must show it in source.
  */
 const BOM = '\uFEFF'
 
@@ -103,7 +103,7 @@ describe('github-actions runner', () => {
     expect(deploy?.doc).toBe('Deploy to production')
     expect(deploy?.argv).toEqual(['gh', 'workflow', 'run', 'deploy.yaml'])
 
-    // The whole reason the axis exists: every emitted task runs elsewhere.
+    // The reason `executes` exists: every emitted task runs remotely.
     for (const t of list) {
       expect(t.executes).toBe('remote')
       expect(t.cwd).toBe('.')
@@ -136,10 +136,10 @@ describe('github-actions runner', () => {
   })
 
   test('a hostile workflow filename survives intact as a single argv element', async () => {
-    // The real invariant is not "argv has no metacharacters" — a workflow file
-    // may legally be named with any of them. It is that argv stays an ARRAY:
-    // the name arrives as ONE element, unsplit and unescaped, because nothing
-    // ever re-joins argv to hand it to a shell.
+    // The invariant here is not "argv has no metacharacters". A workflow file
+    // may legally use any of them in its name. The invariant is that argv stays
+    // an array: the name arrives as one element, unsplit and unescaped, because
+    // nothing joins argv back into a shell string.
     const hostile = 'my $(evil) `x`;rm.yml'
     const dir = await root({
       [`.github/workflows/${hostile}`]: DISPATCH_ONLY,
@@ -153,9 +153,9 @@ describe('github-actions runner', () => {
     // Verbatim: no quoting, no escaping, nothing dropped.
     expect(task?.argv[3]).toBe(hostile)
 
-    // display is the documented human form and is NOT executable (see
-    // model.ts and the note at makeTask): it is the plain join, metacharacters
-    // and all, and a consumer must never rebuild argv from it.
+    // display is the human-readable form and is not executable (see model.ts
+    // and the note at makeTask). It is the plain join, metacharacters and all.
+    // A consumer must never rebuild argv from it.
     expect(task?.display).toBe(`gh workflow run ${hostile}`)
   })
 
@@ -307,10 +307,10 @@ describe('github-actions runner', () => {
   })
 
   test('a leading UTF-8 BOM does not hide the trigger or the name', async () => {
-    // Regression: JS `\s` matches U+FEFF, so the bare-key regex rejected the
-    // BOM and returned null for the whole first line. The workflow was then
-    // withheld with NO warning, and counted in the info line as if it had
-    // been read and found to lack a trigger.
+    // JS `\s` matches U+FEFF, so without the BOM strip the bare-key regex
+    // returns null for the whole first line. The workflow would then be
+    // withheld with no warning, and counted in the info line as if it had been
+    // read and found to lack a trigger.
     const dir = await root({
       '.github/workflows/bom.yml': `${BOM}on: workflow_dispatch\njobs: {}\n`,
       '.github/workflows/bom-name.yml': `${BOM}name: Named\non: workflow_dispatch\njobs: {}\n`,
@@ -377,10 +377,11 @@ describe('github-actions runner', () => {
   })
 
   test('an indented `---` inside a block scalar is text, not a document separator', async () => {
-    // Regression: the separator test was trimmed, so a `---` inside a `run: |`
-    // truncated the file. Key order in a workflow is free, so an `on:` after
-    // `jobs:` was then thrown away — the workflow vanished, with a false
-    // multi-document warning and a false "cannot be dispatched" line.
+    // A `---` inside a `run: |` block is content, not a separator. If it were
+    // read as a separator, the file would be truncated there. Key order in a
+    // workflow is free, so an `on:` after `jobs:` would be lost. The workflow
+    // would vanish, with a false multi-document warning and a false "cannot be
+    // dispatched" line.
     const dir = await root({
       '.github/workflows/heredoc.yml': [
         'name: Late',
@@ -403,7 +404,7 @@ describe('github-actions runner', () => {
 
   test('an `on:` inside a block scalar is text, and does not make a workflow dispatchable', async () => {
     // The mirror of the test above: block-scalar content must not be read as
-    // structure in EITHER direction.
+    // structure in either direction.
     const dir = await root({
       '.github/workflows/quoting.yml': [
         'name: Quoting',
@@ -422,7 +423,7 @@ describe('github-actions runner', () => {
   })
 
   test('anchors and merge keys warn only where they could change the answer', async () => {
-    // The stated limitation is that a TRIGGER defined via an anchor/alias may
+    // The stated limitation is that a trigger defined via an anchor/alias may
     // be misread. An anchor on a job cannot do that, and the `&defaults` /
     // `<<: *defaults` job pattern is common enough that warning on it would
     // teach a user to ignore this provider's warnings.
@@ -524,9 +525,9 @@ describe('github-actions runner', () => {
   })
 
   test('a multi-line flow form is not supported, and fails open with a warning', async () => {
-    // Valid YAML that GitHub accepts; this reader needs the terminator on the
-    // `on:` line. Named in the file header's ceiling, and pinned here so the
-    // day someone supports it, this test is what tells them to update the doc.
+    // Valid YAML that GitHub accepts. This reader needs the terminator on the
+    // `on:` line. The limit is listed in the file header. If someone adds
+    // support, this test fails and tells them to update that header.
     const dir = await root({
       '.github/workflows/flow-map-lines.yml': [
         'on: {',
@@ -557,8 +558,8 @@ describe('github-actions runner', () => {
   test('an empty workflow is withheld as empty, not as lacking a trigger', async () => {
     // A zero-byte file has no trigger declaration that could be missing, so
     // the "requires an on.workflow_dispatch trigger" line would be a claim
-    // about a document that does not exist. Failing open is wrong too: the
-    // emitted row could never run.
+    // about a document that does not exist. Failing open is wrong too, since
+    // the emitted row could never run.
     const dir = await root({
       '.github/workflows/zero.yml': '',
       '.github/workflows/blank.yml': '   \n\n',
@@ -574,7 +575,7 @@ describe('github-actions runner', () => {
       '.github/workflows/zero.yml',
     ])
     expect(empty.every((d) => d.severity === 'warning')).toBe(true)
-    // And they are NOT counted among the workflows that cannot be dispatched.
+    // And they are not counted among the workflows that cannot be dispatched.
     expect(diags.some((d) => d.message.includes('requires an `on.workflow_dispatch`'))).toBe(false)
   })
 

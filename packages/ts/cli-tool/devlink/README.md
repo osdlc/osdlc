@@ -16,35 +16,35 @@ tooly dev status             # which checkout runs now, and why
 
 ## Why
 
-A CLI you develop is also a CLI you use, and the two want different code. The
-installed one should run the source you are standing in without a link step,
-follow one linked checkout from anywhere on the machine, and come back to the
-published install with one verb. Every tool that ships as an installable
-binary reinvents this — a `HOME` override here, a config file there — and
-none of them remembers where they were pointed last week.
+A CLI you develop is also a CLI you use, and the two need different code. The
+installed one should run the source in your current directory without a link
+step, follow one linked checkout from anywhere on the machine, and go back to
+the published install with one verb. Every tool that ships as an installable
+binary builds this again, with a `HOME` override in one tool and a config file
+in another. None of them remembers where it pointed last week.
 
-This package is that mechanism once: a spec the tool declares, a resolution
+This package implements it once: a spec the tool declares, a resolution
 order, a state directory, and a history.
 
 ## Resolution order
 
-Four layers, first hit wins. `<NAME>` is the tool name upper-cased
+Four layers. The first that matches wins. `<NAME>` is the tool name upper-cased
 (`tooly` → `TOOLY`, `pr-updater` → `PR_UPDATER`).
 
 | Layer | Wins when | Off when |
 |---|---|---|
-| env | `<NAME>_HOME` names a checkout | never — explicit always applies |
+| env | `<NAME>_HOME` names a checkout | never. An explicit value always applies |
 | cwd | the cwd is inside a checkout of this tool | a suppressor is set, or `<NAME>_CWD_DEV=0` |
 | link | `<config>/<name>/home` names a checkout | a suppressor is set |
-| local | none of the above | — |
+| local | none of the above | never |
 
-A layer naming a directory that is no longer a checkout is skipped, not
-fatal: deleting a linked checkout must not brick the installed tool. A layer
+A layer naming a directory that is no longer a checkout is skipped, not an
+error. Deleting a linked checkout must not break the installed tool. A layer
 naming the launcher's own checkout resolves to `local`, so a link to the
 installed checkout never re-execs itself.
 
-A **suppressor** is an environment variable whose presence turns off the cwd
-and link layers. A tool that a host program runs names the host's root
+A suppressor is an environment variable whose presence turns off the cwd and
+link layers. A tool that a host program runs names the host's root
 variable, so a machine-wide link never silently changes which code the host
 runs.
 
@@ -56,7 +56,7 @@ variables that move it. Two files live under `<config>/<name>/`:
 
 | File | Holds | Read by |
 |---|---|---|
-| `home` | the active link — one absolute path, or absent | the launcher, with `cat` |
+| `home` | the active link: one absolute path, or absent | the launcher, with `cat` |
 | `history.jsonl` | every `link` / `use` / `off` event, append-only | `history`, `use #n` |
 
 The `home` file is a bare path rather than JSON because a bash launcher reads
@@ -81,10 +81,10 @@ export const SPEC: ToolSpec = validateSpec({
 
 ## Two launcher shapes
 
-A launcher is the file on PATH. It has to decide which checkout answers, and
-where it can make that decision depends on what the canonical install is.
+A launcher is the file on PATH. It decides which checkout runs. Where it can
+make that decision depends on what the canonical install is.
 
-**A JavaScript shim** — the tool's npm `bin` — calls `resolve` and hands off:
+A JavaScript shim (the tool's npm `bin`) calls `resolve` and hands off:
 
 ```ts
 #!/usr/bin/env bun
@@ -97,29 +97,28 @@ const handedOff = execSelection(SPEC, resolve(SPEC, { self: checkoutRoot() }), a
 process.exitCode = handedOff ?? (await main(argv))
 ```
 
-`execSelection` returns `null` for a `local` selection — run your own code —
-and otherwise spawns `bun run <entry>` with inherited stdio and returns its
-exit code. This is the one place the package spawns; the child *is* the
+`execSelection` returns `null` for a `local` selection, meaning run your own
+code. Otherwise it spawns `bun run <entry>` with inherited stdio and returns
+its exit code. This is the one place the package spawns. The child is the
 program the user invoked.
 
-**A bash launcher** — for a tool whose canonical install is a compiled binary
-or built JavaScript, so the choice must be made before any runtime exists.
-`renderLauncher(spec)` writes the same four-layer walk in bash; the tool
-commits the result and `launcherDrift(spec, checkout)` in its test suite
-fails when the committed file no longer matches the render. Pass
-`{ builtEntry }` for a built sibling to prefer under Node — except inside a
-dev checkout of the tool itself (`node_modules` present, `bun` on PATH),
-which always runs its own source instead, so a committed built entry never
-shadows the code being edited.
+A bash launcher is for a tool whose canonical install is a compiled binary or
+built JavaScript, so the choice must be made before any runtime exists.
+`renderLauncher(spec)` writes the same four-layer check in bash. The tool
+commits the result, and `launcherDrift(spec, checkout)` in its test suite
+fails when the committed file no longer matches the rendered one. Pass
+`{ builtEntry }` to prefer a built file under Node. A dev checkout of the
+tool itself (`node_modules` present, `bun` on PATH) still runs its own
+source, so a committed built entry never hides the code being edited.
 
 The package's launcher test drives the rendered script through every layer with
 a fake `bun` on PATH and asserts it picks what `resolve()` picks.
 
 ## The verbs
 
-Mount them with `runDevCli(spec, argv, { self })` — a framework-free
-`<tool> dev <verb>` — or call the functions in `src/devlink/ops.ts` from your own CLI
-framework.
+Mount them with `runDevCli(spec, argv, { self })`, which gives a
+`<tool> dev <verb>` command with no framework. Or call the functions in
+`src/devlink/ops.ts` from your own CLI framework.
 
 | Verb | Effect |
 |---|---|
@@ -132,17 +131,17 @@ framework.
 
 Every verb takes `--dry-run` (compute, write nothing) and `--json`.
 
-Branch and HEAD are read from `.git` directly — a plain repo or a worktree's
-`gitdir:` file — never by spawning git; anything unreadable is `null`.
+Branch and HEAD are read from `.git` directly (a plain repo or a worktree's
+`gitdir:` file), never by spawning git. Anything unreadable is `null`.
 
 ## What is not here
 
-- **A standalone `devlink` binary.** The spec is the tool's; there is nothing
-  for a generic command to act on.
-- **Version pinning or installation.** This links checkouts, it does not
-  fetch them. The canonical install is whatever `npm i -g` or a compiled
-  binary put on PATH.
-- **Windows launchers.** The bash template is Unix; the JavaScript shim
+- A standalone `devlink` binary. The spec belongs to the tool, so a generic
+  command would have nothing to act on.
+- Version pinning or installation. This links checkouts. It does not fetch
+  them. The canonical install is whatever `npm i -g` or a compiled binary put
+  on PATH.
+- Windows launchers. The bash template is Unix only. The JavaScript shim
   works anywhere bun does.
 
 ## Development

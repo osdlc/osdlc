@@ -8,10 +8,10 @@
  * `input`, since stdin is inherited, not piped, plus `stdio` and `quiet`.
  * Code takes a `StreamRunner` the same way it takes a `CommandRunner`, and
  * tests pass a fake. `stdio` can send stdout and stderr to file descriptors
- * the caller opened; a pipe from one child to another is out of scope, so
- * call `child_process` directly for that.
+ * the caller opened. A pipe from one child to another is out of scope. Call
+ * `child_process` directly for that.
  *
- * There is no async version: `run` blocks until the child exits, as
+ * There is no async version. `run` blocks until the child exits, as
  * `spawnRunner` does.
  */
 
@@ -52,15 +52,15 @@ export interface StreamRunOptions extends Omit<CommandRunOptions, 'input' | 'max
 }
 
 /**
- * Result of a streamed run. There is no output to report, since it went
- * straight to the inherited stdio; only how the child ended.
+ * Result of a streamed run. It has no output, since the output went straight
+ * to the child's stdio. It says only how the child ended.
  */
 export interface StreamResult {
   /** The child's exit code, or `1` when it never reported one (see `neverExited`). */
   exitCode: number
   /**
    * The child never reported an exit status: the spawn failed, the timeout
-   * killed it, or a signal took it down. Same meaning as
+   * killed it, or a signal ended it. Same meaning as
    * `CommandResult.neverExited`. A message is also written to the parent's
    * stderr, unless `quiet` is set.
    */
@@ -68,8 +68,8 @@ export interface StreamResult {
   /**
    * Why the child never reported an exit status: `spawn`, `timeout` or
    * `signal` (a streamed run cannot be aborted, and its output is not
-   * captured, so there is no cap). Set whenever `neverExited`
-   * is, absent otherwise.
+   * captured, so there is no cap). Set whenever `neverExited` is, absent
+   * otherwise.
    */
   reason?: Exclude<NeverExitedReason, 'abort' | 'output'> | undefined
   /**
@@ -101,14 +101,14 @@ export interface StreamRunner {
  * `stdio: 'inherit'`, so the child's prompts, progress and output reach the
  * terminal directly. It behaves like a direct `spawnSync` call, but code
  * takes it as a parameter, so tests can pass a fake. On timeout the direct
- * child gets `SIGKILL`. Processes it started keep running: this runner has
- * no `processGroup` option. A run that may start background work (an install
+ * child gets `SIGKILL`. Processes it started keep running, because this
+ * runner has no `processGroup` option. A run that may start background work (an install
  * with postinstall scripts, a daemon) belongs on `spawnRunnerAsync` or
  * `managedProcessRunner` with `processGroup: true`.
  *
  * When the spawn fails, the timeout fires or a signal ends the child, a
  * message is written to the parent's stderr, since there is no captured
- * stderr to carry it; `quiet` turns it off. The result says why in `reason`,
+ * stderr to hold it. `quiet` turns it off. The result says why in `reason`,
  * and carries the spawn or timeout message in `error`.
  *
  * `stdio` sends the child's output elsewhere: `'ignore'` drops it, and

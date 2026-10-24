@@ -9,7 +9,7 @@
 // that installed the tarball, so it must not import other repo files. It is
 // not a test-runner suite and is not in `files`.
 //
-// Exercises both entry points, because each is a separate file that can break
+// Tests both entry points, because each is a separate file that can break
 // on its own: the root (flag parsing, exit codes, a captured context) and
 // ./devlink (the tool spec and the PATH shim).
 

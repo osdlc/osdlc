@@ -1,33 +1,29 @@
 /**
- * Intersect L1 — parse a path-like glob string into a `SegmentPattern`.
- *
- * The seam between path strings and the segment core: it splits a path-like
- * glob on the separator into segments, each of which is a glob token taken
- * verbatim. No inference — there is NO directory/file/ambiguity classification.
+ * Parse a path-like glob string into a `SegmentPattern`: split it on the
+ * separator into segments, each kept as written. It does not guess whether a
+ * segment names a directory or a file.
  */
 import { IntersectError } from './errors.ts'
 import type { SegmentPattern } from './segments/index.ts'
 
 /**
- * Split a path-like glob into segments on the separator. Each segment is a glob
- * token, verbatim — no classification. A trailing separator (which splits into
- * an empty final segment) is normalized off, so `src/api/` == `src/api`.
- * Nothing else is collapsed or inferred.
+ * Split a path-like glob into segments on the separator. Each segment is kept
+ * as written. One trailing separator (which would give an empty last segment)
+ * is dropped, so `src/api/` equals `src/api`. Nothing else is collapsed.
  *
  * @param pathLike - A path-like glob string, e.g. `"src/api/**"`.
  * @param opts - Parsing options. `separator` overrides the split character. The
  * default is `"/"`, and an empty string means the default too.
- * @returns The {@link SegmentPattern} — the segments in order, the segment core's unit.
- * @remarks No inference: a pattern with no wildcards is an exact-path match
- * (`src/siteA/components` matches only that path, not files beneath it); opt
- * into a subtree explicitly with a trailing `**`. Only a single trailing
- * separator is normalized off.
+ * @returns The {@link SegmentPattern}: the segments in order.
+ * @remarks A pattern with no wildcards matches only that exact path
+ * (`src/siteA/components` matches that path, not files beneath it). To match a
+ * subtree, end the pattern with `**`.
  * @throws {@link IntersectError} with code `INVALID_ARGUMENT` when `pathLike` is not a string.
  * @example
  * ```ts
  * parse("src/api/**");  // ["src", "api", "**"]
- * parse("src/api/");    // ["src", "api"]   — trailing separator normalized off
- * parse("README.md");   // ["README.md"]    — no wildcards → an exact-path match
+ * parse("src/api/");    // ["src", "api"]   (trailing separator dropped)
+ * parse("README.md");   // ["README.md"]    (no wildcards: an exact path)
  * ```
  */
 export function parse(pathLike: string, opts?: { separator?: string }): SegmentPattern {
@@ -37,11 +33,10 @@ export function parse(pathLike: string, opts?: { separator?: string }): SegmentP
       `expected a pattern string, got ${describe(pathLike)}`,
     )
   }
-  // An empty separator would split into characters, which is no path reading.
+  // An empty separator would split the string into characters, so use the default.
   const separator = opts?.separator || '/'
   const segments = pathLike.split(separator)
-  // Normalize off a trailing separator: an empty final segment from a path that
-  // ends with the separator. Only the one trailing empty is dropped.
+  // Drop the one empty last segment that a trailing separator gives.
   if (segments.length > 1 && segments[segments.length - 1] === '') {
     segments.pop()
   }
@@ -52,10 +47,10 @@ export function parse(pathLike: string, opts?: { separator?: string }): SegmentP
 const GLOB_META = /[\\*?[\]{}(]/g
 
 /**
- * Quote a concrete path so the pattern parser reads it as the literal name it
- * is. Callers that hold a real path (the root layer's `matches` family and
- * `./fs`) run it through this before parsing, so `pages/[id].vue` is that name
- * and not a character class.
+ * Escape a concrete path so the pattern parser reads it as a literal name.
+ * Callers that hold a real path (the root entry's `matches` family and `./fs`)
+ * run it through this before parsing, so `pages/[id].vue` is that name and not
+ * a character class.
  */
 export function literal(path: string): string {
   return path.replace(GLOB_META, '\\$&')

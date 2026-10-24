@@ -1,11 +1,11 @@
 /**
- * `readPlugin` — read a Claude Code plugin folder into the {@link HarnessModel}.
+ * `readPlugin`: read a Claude Code plugin folder into the {@link HarnessModel}.
  *
  * Sources under `<pluginRoot>/`:
  *   - `.claude-plugin/plugin.json`  → `metadata`, and its inline or referenced
  *     `hooks` and `mcpServers`
  *   - `skills/<name>/SKILL.md`      → one `skill` each (frontmatter normalized,
- *     body preserved, co-located non-test files captured as `resources`)
+ *     body kept, other non-test files in the folder kept as `resources`)
  *   - `commands/<name>/SKILL.md` and flat `commands/<name>.md` → one `command` each
  *   - `<documentsDir>/**\/*.md`      → one `document` each (default `conventions`)
  *   - `hooks/hooks.json`, `.claude/settings{,.local}.json`, `.mcp.json` → hooks,
@@ -32,7 +32,7 @@ import {
 } from './schema.ts'
 import { readPluginControlPlane, type ControlPlaneOptions } from './control-plane.ts'
 
-/** Frontmatter keys the model normalizes into first-class fields. */
+/** Frontmatter keys the model turns into fields of their own. */
 const NORMALIZED_KEYS = new Set(['description', 'allowed-tools', 'argument-hint'])
 
 /** Coerce a frontmatter value to a trimmed string (block scalars arrive parsed). */
@@ -46,7 +46,7 @@ function asString(value: unknown): string {
 function asToolList(value: unknown): string[] {
   if (Array.isArray(value)) return value.map((v) => String(v))
   if (typeof value === 'string') {
-    // Tolerate a comma- or newline-separated scalar form.
+    // Also accept a single string separated by commas or newlines.
     return value
       .split(/[,\n]/)
       .map((s) => s.trim())
@@ -75,7 +75,7 @@ function walkFiles(dir: string): string[] {
   return out
 }
 
-/** True when a skill-relative path is a co-located resource (not SKILL.md / a test). */
+/** True when a path relative to the skill is a resource file (not SKILL.md or a test). */
 function isResourcePath(rel: string): boolean {
   if (rel === 'SKILL.md') return false
   const segments = rel.split('/')
@@ -175,10 +175,10 @@ export interface ReadPluginOptions extends ControlPlaneOptions {
 
 /**
  * Derive the {@link HarnessModel} from the Claude Code plugin folder at
- * `pluginRoot`. Capabilities, documents, hooks and servers are sorted for a
- * deterministic, diff-friendly emit. The result is parsed through
- * {@link HarnessModelSchema}, so a malformed source surfaces as a schema error
- * here, not downstream.
+ * `pluginRoot`. Capabilities, documents, hooks and servers are sorted, so the
+ * output is stable and easy to diff. The result is parsed through
+ * {@link HarnessModelSchema}, so a malformed source fails here with a schema
+ * error, not later in the caller.
  *
  * A missing or unreadable `plugin.json` is not an error: the metadata then reads
  * `harness` and `unknown`.

@@ -1,4 +1,4 @@
-// Runs the BUILT package under Node. check-packages.ts copies this file into a
+// Runs the built package under Node. check-packages.ts copies this file into a
 // clean project that installed the tarball, so it imports the package by name
 // and no other repo file. It is not a test-runner suite and is not in `files`.
 

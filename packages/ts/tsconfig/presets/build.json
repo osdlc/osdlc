@@ -1,35 +1,36 @@
 {
-  // The emit block, as a MIXIN. Use it as the LAST element of an extends array,
-  // never on its own:
+  // The emit options, as a mixin. Use it as the last element of an extends
+  // array, never on its own:
   //
   //   "extends": ["./tsconfig.json", "@osdlc/tsconfig/build"]
   //
-  // Two things here are deliberate, and both fail silently if changed.
+  // Two choices here are deliberate. Changing either fails silently.
   //
   // 1. `${configDir}` on outDir. A file-path option in an extended config is
-  //    normalized against THAT CONFIG'S directory, not the consumer's — a plain
-  //    "dist" here emits into this package's own directory, so every consumer's
-  //    build produces nothing and the npm tarballs ship empty. The template is
-  //    exempted from that normalization and substitutes against the consuming
-  //    project. (typescript 6.0.3, normalizeNonListOptionValue.)
+  //    resolved against that config's directory, not the consumer's. A plain
+  //    "dist" here would emit into this package's directory, so every
+  //    consumer's build would produce nothing and its npm tarball would ship
+  //    empty. The template is not resolved that way. It is replaced with the
+  //    consuming project's directory. (typescript 6.0.3,
+  //    normalizeNonListOptionValue.)
   //
   // 2. No `extends`, and no `include`/`exclude`/`files`. Extending a preset here
-  //    would re-apply it over the consumer's own config and revert what the
-  //    consumer overrode — a NodeNext package would silently become
-  //    ESNext/Bundler. An `include` here would replace the consumer's, rebased
-  //    onto a directory inside node_modules.
+  //    would apply it again over the consumer's config and undo the consumer's
+  //    overrides. A NodeNext package would become ESNext/Bundler. An `include`
+  //    here would replace the consumer's, resolved against a directory inside
+  //    node_modules.
   //
-  // `rootDir` is not here either: it differs between consumers ("." or "src"),
-  // and guessing wrong quietly changes the dist/ layout.
+  // `rootDir` is not set either. It differs between consumers ("." or "src"),
+  // and a wrong guess changes the dist/ layout without an error.
   "compilerOptions": {
     "noEmit": false,
     "outDir": "${configDir}/dist",
     "declaration": true,
     "declarationMap": true,
-    // What makes an emitting build legal alongside source-shipped.json's
-    // `allowImportingTsExtensions`, which TS otherwise rejects (TS5096); also
-    // what lets a source-shipped dependency whose own imports carry .ts
-    // extensions typecheck through (TS5097).
+    // Lets an emitting build keep source-shipped.json's
+    // `allowImportingTsExtensions`, which TS otherwise rejects (TS5096). It also
+    // lets a source-shipped dependency whose imports end in .ts typecheck
+    // (TS5097).
     "rewriteRelativeImportExtensions": true
   }
 }

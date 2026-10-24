@@ -1,37 +1,37 @@
 /**
- * Unicode-aware camelCase key derivation.
+ * camelCase keys for section headings.
  *
- * A section's exact heading text gets a generated `lowerCamelCase` key alongside it
- * (`doc.body.filesToTouch`). The rule must be locale-independent and Unicode-aware so
- * most scripts work: split on runs of non-alphanumeric characters (`/[^\p{L}\p{N}]+/u`),
- * drop empties, and lowerCamel-join — lowercasing the first word, capitalizing the first
- * letter of each subsequent word and lowercasing its remainder.
+ * Each section can be read by its exact heading text or by a generated `lowerCamelCase` key
+ * (`doc.body.filesToTouch`). The rule does not depend on locale and handles Unicode, so most
+ * scripts work. It splits on runs of characters that are not letters or digits
+ * (`/[^\p{L}\p{N}]+/u`), drops empty parts, lowercases the first word, and capitalizes the
+ * first letter of each later word with the rest lowercased.
  *
- * Used for collision detection (`structure/key-collision`, `contract/key-collision`) and for the
- * dual-key access of the typed model.
+ * The keys are used to detect collisions (`structure/key-collision`, `contract/key-collision`)
+ * and to give the typed model its second key.
  *
- * A heading that yields no alphanumeric run (e.g. `"---"`, or a caseless script with no
- * `\p{L}`/`\p{N}` content) produces an empty key (`""`); callers treat an empty key as
- * "no generated alias" (exact-bracket + `.section()` still reach it).
+ * A heading with no letters or digits (such as `"---"`) gives an empty key (`""`). Callers
+ * treat an empty key as "no generated key". The section is still reachable by its exact
+ * heading text and by `.section()`.
  */
 
 const NON_ALNUM = /[^\p{L}\p{N}]+/u
 
-/** Lower the first character of `word` (and leave the rest as-is). */
+/** Lowercases the first character of `word` and leaves the rest. */
 function lowerFirst(word: string): string {
   if (word.length === 0) return word
   return word[0]!.toLowerCase() + word.slice(1)
 }
 
-/** Capitalize the first character of `word` and lowercase the remainder. */
+/** Uppercases the first character of `word` and lowercases the rest. */
 function capitalize(word: string): string {
   if (word.length === 0) return word
   return word[0]!.toUpperCase() + word.slice(1).toLowerCase()
 }
 
 /**
- * Derive the lowerCamelCase key for a heading. Returns `""` when the heading carries no
- * alphanumeric content (no generated alias).
+ * Returns the lowerCamelCase key for a heading, or `""` when the heading has no letters or
+ * digits.
  *
  * Examples:
  *   "Files to touch"        → "filesToTouch"

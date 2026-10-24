@@ -1,7 +1,7 @@
 /**
  * Read a whole list, not its first page. `api` with `paginate` joins REST
  * pages into one array. `graphql` returns each page's `data`, or null when
- * any page failed or came back partial; `nodesAt` joins one connection.
+ * any page failed or came back partial. `nodesAt` joins one connection.
  */
 
 import { expect, test } from 'vitest'

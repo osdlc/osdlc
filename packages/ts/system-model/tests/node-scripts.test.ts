@@ -64,8 +64,8 @@ describe('node-scripts runner', () => {
   })
 
   test("addresses a nested package with each manager's own directory flag", async () => {
-    // `--cwd` is a bun/yarn-1 flag: npm swallows it as an unknown config and
-    // runs the root package's script, and pnpm rejects it.
+    // `--cwd` is a bun/yarn-1 flag. npm treats it as an unknown config and
+    // runs the root package's script. pnpm rejects it.
     const cases: Array<[string, string, string[]]> = [
       ['package-lock.json', 'npm', ['npm', 'run', '--prefix', 'packages/leaf', 'build']],
       ['pnpm-lock.yaml', 'pnpm', ['pnpm', 'run', '--dir', 'packages/leaf', 'build']],

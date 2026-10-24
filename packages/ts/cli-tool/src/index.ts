@@ -1,14 +1,14 @@
 /**
- * `@osdlc/cli-tool` — what a standalone CLI needs before it does anything
- * of its own.
+ * `@osdlc/cli-tool`: what a standalone CLI needs before it does anything of
+ * its own.
  *
- * Two entries, because a tool reaches for both at once and splitting
- * them bought two manifests rather than two ideas:
+ * The package has two entries. A tool usually uses both, so they ship in one
+ * package:
  *
- *   - this one, the CLI substrate: the {@link CliIo} output seam, the
- *     {@link CliContext} a `main` is handed, the exit-code rule, the
+ *   - this one, the CLI basics: the {@link CliIo} output interface, the
+ *     {@link CliContext} a `main` receives, the exit-code rule, the
  *     {@link defineCli} flag declaration, and {@link runMain} for the shim.
- *   - `@osdlc/cli-tool/devlink` — running a system-installed tool from a
+ *   - `@osdlc/cli-tool/devlink`: running a system-installed tool from a
  *     development checkout.
  *
  * A tool's config files live in `@osdlc/config-layers`. The directory and

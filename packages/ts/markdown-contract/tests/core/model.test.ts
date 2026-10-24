@@ -1,10 +1,9 @@
 /**
- * Direct unit tests for the consumption object model — the edges the
- * fixture corpus (c01–c11) may not isolate: `unknown` partitioning (empty + non-empty),
- * absent-optional → `undefined`, the three dual-key access paths reaching one view, `byAnchor`
- * for a declared vs an undeclared anchor, nested `sections` recursion, `text("prose")` vs
- * `text("all")`, and the `TableView` surface (iteration / `column` / `find` / `rowPos`). These
- * build the model through the public `read()` door, so they exercise the same path consumers do.
+ * Unit tests for the typed model, for edge cases the consumption fixtures may not isolate:
+ * `unknown` (empty and not), an absent optional section as `undefined`, the three key paths
+ * that reach one view, `byAnchor` for a declared and an undeclared anchor, nested `sections`,
+ * `text("prose")` against `text("all")`, and `TableView` (iteration, `column`, `find`,
+ * `rowPos`). They build the model through the public `read()`, the same path consumers use.
  */
 import { describe, expect, expectTypeOf, test } from 'vitest'
 import { z } from 'zod'
@@ -43,7 +42,7 @@ describe('unknown partitioning', () => {
     expect(body.unknown.length).toBe(1)
     expect(body.unknown[0].name).toBe('Risks')
     expect(body.unknown[0].text()).toBe('thin')
-    // An unknown section is NOT an enumerable dual-key key.
+    // An unknown section is not an enumerable key.
     expect(Object.keys(body)).not.toContain('Risks')
     expect(Object.keys(body)).not.toContain('risks')
     // …but `.section()` (the dynamic/edge accessor) still reaches it.
@@ -53,8 +52,8 @@ describe('unknown partitioning', () => {
   test('unknown and section are non-enumerable; an empty group deep-equals {}', () => {
     const c = contract({ body: sections({}, [section('Solo')]) })
     const doc = c.read('## Solo\n\nx\n\n### Child\n\ny\n', PATH)
-    // `Solo` declares no `children` grammar, so the H3 `Child` is undeclared at the nested level
-    // and lands in unknown (non-enumerable) — the nested group still has no enumerable keys.
+    // `Solo` declares no `children`, so the H3 `Child` is undeclared at the nested level and goes
+    // to unknown. The nested group still has no enumerable keys.
     const childGroup = (doc.body as any).solo.sections as SectionGroup
     expect(childGroup).toEqual({})
     expect(Object.keys(childGroup)).toEqual([])
@@ -157,9 +156,9 @@ describe('byAnchor — declared vs undeclared', () => {
 })
 
 describe('byAnchor — section-level anchor is NOT a block-level hit', () => {
-  // A `^section-id` standing alone, with no preceding block, is a *section-level* anchor: it
-  // lands on `node.anchors` (surfacing on `SectionView.anchors`) but binds to no block, so the
-  // block-level `byAnchor` index does not reach it.
+  // A `^section-id` on its own, with no block before it, is a section-level anchor. It is in
+  // `node.anchors` (and so in `SectionView.anchors`) but binds to no block, so the block-level
+  // `byAnchor` does not find it.
   const src = ['## Notes', '', '^section-id'].join('\n')
   const build = () => contract({ body: sections({}, [section('Notes')]) })
 
@@ -322,9 +321,9 @@ describe('frontmatter and the doc shape', () => {
 })
 
 describe('typed cell read-back', () => {
-  // A transforming cell: `path` or `path#symbol` → a structured object, cached by the content
-  // plane's per-cell parse and read back here. `Kind` is a plain enum (no
-  // transform); `Change` declares no cell, so it stays the raw cell string.
+  // A transforming cell: `path` or `path#symbol` → an object. The content plane keeps the parsed
+  // value and the model reads it back. `Kind` is a plain enum with no transform. `Change`
+  // declares no cell, so it stays the raw cell string.
   const Location = z.string().transform((raw) => {
     const [path, symbol] = raw.split('#')
     return symbol ? { path, symbol } : { path }
@@ -389,8 +388,8 @@ describe('typed cell read-back', () => {
       path: 'src/core/leaves.ts',
       symbol: 'table',
     })
-    // Projection: the same table block's raw `rows` are untouched strings; the transform output
-    // rides only on the model.
+    // Tree: the same table block's `rows` are the raw strings. Only the model has the
+    // transform output.
     const block = result.tree.root.sections[0]?.blocks.find((b) => b.kind === 'table')
     expect(block?.kind).toBe('table')
     if (block?.kind !== 'table') throw new Error('expected a table block')
@@ -420,11 +419,10 @@ describe('typed cell read-back', () => {
 })
 
 // ── Type-level assertions ───────────────────────────────────────────────────────────
-// Compile-time proof (checked by `pnpm run typecheck`; `expectTypeOf` does nothing at run time)
-// that the row read back through `read()` and `Infer` is `z.output<cells>` for a declared cell and
-// `string` for an undeclared column: the per-column inference, not only a runtime assertion.
-// Force reduction of the deferred conditional types the combinator generics carry, so the check
-// compares the resolved row shape rather than an unevaluated `RowOf<...>` alias.
+// Type checks, run by `pnpm run typecheck` (`expectTypeOf` does nothing at run time). The row
+// read through `read()` and `Infer` is `z.output<cells>` for a declared cell and `string` for an
+// undeclared column. `Resolve` forces TypeScript to evaluate the conditional types, so the check
+// compares the final row shape and not an unevaluated `RowOf<...>` alias.
 type Resolve<T> = T extends infer U ? { [K in keyof U]: U[K] } : never
 
 const LocationCell = z.string().transform((raw) => {
@@ -451,16 +449,16 @@ type InferRow = Resolve<
   Infer<typeof typedSpec>['body']['Files'] extends TableView<infer R> ? R : never
 >
 
-// declared transforming cell → its parsed `z.output` (NOT a raw string)
+// declared transforming cell → its parsed `z.output`, not a raw string
 expectTypeOf<ReadRow['Location']>().toEqualTypeOf<z.output<typeof LocationCell>>()
 expectTypeOf<InferRow['Location']>().toEqualTypeOf<z.output<typeof LocationCell>>()
 // undeclared column → raw string
 expectTypeOf<ReadRow['Change']>().toEqualTypeOf<string>()
 expectTypeOf<InferRow['Change']>().toEqualTypeOf<string>()
-// the row is NOT the untyped `Record<string, string>` default — the typing actually flowed through
+// the row is not the untyped `Record<string, string>` default
 expectTypeOf<ReadRow>().not.toEqualTypeOf<Record<string, string>>()
 
-// Type level: a table with NO declared cells keeps the `Record<string, string>` default.
+// Type level: a table with no declared cells keeps the `Record<string, string>` default.
 const plainSpec = contract({
   body: sections({}, [section('Files', { content: table({ columns: ['File', 'Kind'] }) })]),
 })
@@ -469,9 +467,9 @@ type PlainRow =
 expectTypeOf<PlainRow>().toEqualTypeOf<Record<string, string>>()
 
 describe('typed list-item read-back', () => {
-  // A transforming item: `AC-1: do the thing` → { ref, text }, cached by the content plane's per-item
-  // parse and read back here. `calls` counts transform invocations to prove the read-back is
-  // cache-sourced (the transform is not re-run when the view's items are read).
+  // A transforming item: `AC-1: do the thing` → { ref, text }. The content plane keeps the parsed
+  // value and the model reads it back. `calls` counts transform runs, to show that reading the
+  // view's items does not run the transform again.
   let calls = 0
   const criterion = z.string().transform((raw) => {
     calls++
@@ -485,9 +483,9 @@ describe('typed list-item read-back', () => {
   })
   const src = ['## Acceptance criteria', '', '- AC-1: scaffold it', '- AC-2: stub it'].join('\n')
 
-  // Typed navigation — the feature under test types `body["Acceptance criteria"]` as
-  // `SectionView<Item>` (Item = `z.output<everyItem>`), so its `.lists` are `ListView<Item>` with
-  // no `as any`. Read through the exact heading key (dual-key, runtime-valid).
+  // `body["Acceptance criteria"]` is typed as `SectionView<Item>` (Item = `z.output<everyItem>`),
+  // so its `.lists` are `ListView<Item>` with no `as any`. It is read through the exact heading
+  // key.
   test('a transforming everyItem reads items back as the parsed value, from the cache', () => {
     const doc = c.read(src, PATH)
     const view = doc.body['Acceptance criteria'].lists[0]
@@ -503,10 +501,10 @@ describe('typed list-item read-back', () => {
     calls = 0
     const doc = c.read(src, PATH)
     const afterValidate = calls // however many times validate ran it (once per item)
-    expect(afterValidate).toBeGreaterThan(0) // it DID run during validate, populating the cache
+    expect(afterValidate).toBeGreaterThan(0) // it ran during validate and stored the values
     const view = doc.body['Acceptance criteria'].lists[0]
     if (!view) throw new Error('expected a list view')
-    // Read the items several ways; none re-runs the transform — the values come from the cache.
+    // Read the items several ways. None runs the transform again: the values are stored.
     void view.items[0]
     void [...view]
     void view.items[1]
@@ -519,8 +517,8 @@ describe('typed list-item read-back', () => {
     if (!doc) throw new Error('expected a valid doc')
     const view = doc.body['Acceptance criteria'].lists[0]
     expect(view?.items[0]).toEqual({ ref: 'AC-1', text: 'scaffold it' })
-    // Projection: the same list block's raw `items` are untouched strings; the transform output
-    // rides only on the model.
+    // Tree: the same list block's `items` are the raw strings. Only the model has the
+    // transform output.
     const block = result.tree.root.sections[0]?.blocks.find((b) => b.kind === 'list')
     expect(block?.kind).toBe('list')
     if (block?.kind !== 'list') throw new Error('expected a list block')
@@ -549,10 +547,10 @@ describe('typed list-item read-back', () => {
 })
 
 // ── Type-level assertions ──────────────────────────────────────────
-// Compile-time proof that the item read back through `read()` and `Infer` is `z.output<everyItem>`
-// for a transforming list and the raw `ListItem` otherwise — the per-item literal inference. The
-// section is NOT promoted (unlike the sole-table case): `doc.body["Acceptance criteria"]` stays a
-// `SectionView`, but a typed one — `SectionView<Item>` — so its `.lists` are `ListView<Item>`.
+// Type checks: the item read through `read()` and `Infer` is `z.output<everyItem>` for a
+// transforming list and the raw `ListItem` otherwise. Unlike a section whose only content is a
+// table, this section is not promoted to its block: `doc.body["Acceptance criteria"]` stays a
+// `SectionView`, typed as `SectionView<Item>`, so its `.lists` are `ListView<Item>`.
 const criterionCell = z.string().transform((raw) => {
   const [ref = '', ...rest] = raw.split(':')
   return { ref: ref.trim(), text: rest.join(':').trim() }
@@ -584,14 +582,14 @@ type ListsItem = ReturnType<
   ? Resolve<LI>
   : never
 
-// a transforming everyItem → its parsed `z.output` (NOT a raw `ListItem`)
+// a transforming everyItem → its parsed `z.output`, not a raw `ListItem`
 expectTypeOf<ReadItem>().toEqualTypeOf<z.output<typeof criterionCell>>()
 expectTypeOf<InferItem>().toEqualTypeOf<z.output<typeof criterionCell>>()
 expectTypeOf<ListsItem>().toEqualTypeOf<z.output<typeof criterionCell>>()
-// the item is NOT the raw `ListItem` — the typing actually flowed through
+// the item is not the raw `ListItem`
 expectTypeOf<ReadItem>().not.toEqualTypeOf<ListItem>()
 
-// Type level: a list with NO `everyItem` keeps the raw `ListItem` default (raw otherwise).
+// Type level: a list with no `everyItem` keeps the raw `ListItem` default.
 const plainListSpec = contract({
   body: sections({}, [section('Notes', { content: list({}) })]),
 })
@@ -643,7 +641,7 @@ describe('repeatable slot → an array in the model', () => {
       PATH,
     )
     const body = doc.body as any
-    // Both dual-key paths reach the same array; length N; positionally indexable.
+    // Both key paths reach the same array, of length N, indexed by position.
     expect(Array.isArray(body.entry)).toBe(true)
     expect(body.entry).toBe(body['Entry'])
     expect(body.entry).toHaveLength(3)
@@ -651,9 +649,9 @@ describe('repeatable slot → an array in the model', () => {
     expect(body.entry[0].text()).toBe('first')
     expect(body.entry[1].text()).toBe('second')
     expect(body.entry[2].text()).toBe('third')
-    // `.section(name)` keeps returning the FIRST occurrence's SectionView (byExact first-wins).
+    // `.section(name)` returns the first occurrence's SectionView.
     expect(body.section('Entry').text()).toBe('first')
-    // The repeated declared heading is NOT an unknown.
+    // The repeated declared heading is not in unknown.
     expect(body.unknown).toEqual([])
   })
 
@@ -702,9 +700,9 @@ describe('repeatable slot → an array in the model', () => {
 })
 
 // ── Type-level assertions ─────────────────────────────────────
-// Compile-time proof that a `repeatable: true` slot binds an ARRAY of the inner value — a
-// `SectionView[]` for a prose slot, a `TableView<Row>[]` for a promoted-table slot — through both
-// `read()` and `Infer`. `Resolve` is defined above.
+// Type checks: a `repeatable: true` slot binds an array of the inner value, through both `read()`
+// and `Infer`. That is `SectionView[]` for a prose slot and `TableView<Row>[]` for a slot promoted to
+// its table. `Resolve` is defined above.
 const repeatProseSpec = contract({
   body: sections({ order: 'none', allowUnknown: true }, [section('Entry', { repeatable: true })]),
 })
@@ -720,7 +718,7 @@ const repeatTableSpec = contract({
 })
 type ReadRelease = ReturnType<typeof repeatTableSpec.read>['body']['Release']
 expectTypeOf<ReadRelease>().toEqualTypeOf<TableView<Record<string, string>>[]>()
-// A non-repeatable prose slot still binds a single `SectionView` (not an array) — no regression.
+// A non-repeatable prose slot still binds a single `SectionView`, not an array.
 const nonRepeatSpec = contract({
   body: sections({ order: 'none', allowUnknown: true }, [section('Entry')]),
 })

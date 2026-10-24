@@ -1,27 +1,27 @@
 /**
- * rake — tasks from a Rakefile, listed by rake itself when that is allowed and
- * scanned out of the source when it is not.
+ * rake: tasks from a Rakefile. rake lists them itself when that is allowed;
+ * otherwise they are scanned from the source.
  *
- * Two paths, the same shape as `just.ts`:
+ * Two paths, as in `just.ts`:
  *
- *   exec    `rake -AT` asks rake to enumerate its own tasks. rake EVALUATES the
+ *   exec    `rake -AT` asks rake to list its own tasks. rake evaluates the
  *           Rakefile to do it, so this runs only when the caller passed
- *           `allowExec` — which, with the calling CLI's repository-trust gate,
- *           is the user's explicit consent to run this repository's own tools.
+ *           `allowExec`. With the calling CLI's repository-trust check, that
+ *           is the user's explicit consent to run this repository's tools.
  *   parse   a regex over the source. A Rakefile is Ruby, not data, so a scanner
- *           sees `task :name do … end` and `namespace :ns do … end` literally
- *           written down and nothing else. Tasks built by a loop
+ *           sees only `task :name do … end` and `namespace :ns do … end` as
+ *           written. It cannot see tasks built by a loop
  *           (`%w[a b c].each { |n| task n }`), by metaprogramming, by
- *           `Rake::TestTask.new` and friends, by `import`ing or `load`ing
- *           another file, or by `Dir.glob`bing a directory of task files are
- *           invisible to it — which is what `DYNAMIC_CONSTRUCTS` watches for, so
- *           the runner says so instead of silently under-reporting.
+ *           `Rake::TestTask.new` and similar classes, by `import` or `load` of
+ *           another file, or by `Dir.glob` over a directory of task files.
+ *           `DYNAMIC_CONSTRUCTS` looks for these, so the runner warns instead
+ *           of silently reporting too few tasks.
  *
- * The parse path is the floor: it is why this can be a `parse` runner at all,
- * and it is what runs on a box with no ruby, or for a caller that never opted
- * into execution. Which path ran is always in the diagnostics — and the
- * parsing-ceiling warning is NOT emitted on the exec path, because rake
- * enumerated the dynamic tasks there and the warning would be a lie.
+ * The parse path is the fallback. It is why this can be a `parse` runner, and
+ * it runs on a machine with no ruby or for a caller that did not allow
+ * execution. The diagnostics always say which path ran. The warnings about
+ * dynamic tasks are not emitted on the exec path: rake listed those tasks
+ * there, so the warnings would be false.
  */
 
 import { firstLine, stderrOrError } from '@osdlc/command-seam'
@@ -41,19 +41,18 @@ const CHAIN = [
 ]
 
 /**
- * The exact set rake itself searches for, copied from
+ * Rakefile names, in the order rake resolves its entry point. Copied from
  * `Rake::Application::DEFAULT_RAKEFILES` (rake 13.3.1,
- * lib/rake/application.rb) rather than guessed — rake tries them in this
- * order and stops at the first match.
+ * lib/rake/application.rb). rake tries them in this order and stops at the
+ * first match.
  */
-/** Rakefile names, in the order rake resolves its entry point. */
 export const RAKEFILE_NAMES = ['rakefile', 'Rakefile', 'rakefile.rb', 'Rakefile.rb']
 
 /** Task files a Rakefile loads. */
 export const RAKE_TASK_FILES = '*.rake'
 
 /**
- * The listing invocation. Every flag verified against `rake --help` on rake
+ * The listing invocation. Each flag checked against `rake --help` on rake
  * 13.3.1:
  *
  *   -A, --all        "Show all tasks, even uncommented ones (in combination
@@ -65,25 +64,25 @@ export const RAKE_TASK_FILES = '*.rake'
  *   -G, --no-system  "Use standard project Rakefile search paths, ignore
  *                     system wide rakefiles."
  *
- * `-AT` is rake's own documented spelling of the pair. `-N` and `-G` are the
- * containment: without them rake climbs out of the directory it was pointed
- * at, or reaches into `~/.rake`, and would then evaluate and report a Rakefile
- * that is not in the tree this package was asked to describe.
+ * `-AT` is rake's documented form of the pair. `-N` and `-G` keep rake inside
+ * the tree. Without them rake searches parent directories or reads `~/.rake`,
+ * and would then evaluate and report a Rakefile outside the tree this package
+ * was asked to describe.
  *
- * The invocation runs with `cwd: ctx.root` rather than `-C <dir>` because the
- * only rakefile it is ever pointed at is the root one; see `collect`.
+ * The invocation runs with `cwd: ctx.root`, not `-C <dir>`, because it only
+ * ever runs the root rakefile; see `collect`.
  *
- * Deliberately no `RAKE_COLUMNS` in the environment: rake truncates task
+ * No `RAKE_COLUMNS` in the environment, on purpose. rake truncates task
  * descriptions only when writing to a TTY or when that variable is set
- * (`Rake::Application#truncate_output?`, application.rb). Captured through a
- * pipe with the variable unset, descriptions come back whole.
+ * (`Rake::Application#truncate_output?`, application.rb). Read through a pipe
+ * with the variable unset, descriptions come back whole.
  */
 const EXEC_ARGV = ['-AT', '-N', '-G']
 
 /**
  * Evaluating a Rakefile can load a whole Rails environment, so the cap is
- * generous — but it is a cap: a Rakefile that hangs must not hang the caller,
- * and a timeout degrades to the parse path like any other failure.
+ * long. But a Rakefile that hangs must not hang the caller. A timeout falls
+ * back to the parse path like any other failure.
  */
 const EXEC_TIMEOUT_MS = 30_000
 
@@ -93,17 +92,17 @@ const EXEC_TIMEOUT_MS = 30_000
  * `Rake::Application#display_tasks_and_comments`, application.rb). `name` there
  * is the literal `"rake"` the application initializes itself with.
  *
- * Strict on purpose. A loose expression turns a Rakefile's own `puts` output,
- * or a Ruby warning printed on stdout during evaluation, into tasks. This
- * requires the whole shape: the `rake ` prefix, a task name of the characters
- * rake task names actually use, an optional `[arg,arg]` argument list
- * (`Rake::Task#name_with_args`, task.rb), the two-space gutter, and the `#`.
+ * Strict on purpose. A loose pattern would turn a Rakefile's own `puts`
+ * output, or a Ruby warning printed on stdout during evaluation, into tasks.
+ * It requires the whole line: the `rake ` prefix, a name made of the
+ * characters rake task names use, an optional `[arg,arg]` argument list
+ * (`Rake::Task#name_with_args`, task.rb), at least two spaces, and the `#`.
  */
 const LISTING_LINE = /^rake ([A-Za-z0-9_][A-Za-z0-9_.:/-]*)(?:\[([^\]\n]*)\])? {2,}# ?(.*)$/
 
 /**
- * Constructs that generate tasks a regex cannot see. Each one is reason
- * enough to emit the parsing-ceiling diagnostic — on the parse path only.
+ * Constructs that create tasks a regex cannot see. Each one found adds a
+ * warning, on the parse path only.
  */
 const DYNAMIC_CONSTRUCTS: Array<{ pattern: RegExp; label: string }> = [
   {
@@ -123,12 +122,10 @@ const DYNAMIC_CONSTRUCTS: Array<{ pattern: RegExp; label: string }> = [
 ]
 
 /**
- * A hand-drawn substitute glyph: simple-icons ships no mark for rake (Ruby's
- * task runner is not one of its slugs, and the `rake.com`/`Rake` finance apps
- * that do appear there are unrelated), so an MIT package never has to carry
- * someone else's CC-BY-SA/proprietary artwork. Ruby's own community color
- * (used on ruby-lang.org and by rbenv) is this red; rake itself publishes no
- * brand color of its own.
+ * A glyph drawn here. simple-icons has no mark for rake (the `rake.com` and
+ * `Rake` finance apps it lists are unrelated), so there is no third-party
+ * artwork to license. The red is Ruby's community color, used on ruby-lang.org
+ * and by rbenv. rake has no brand color of its own.
  */
 const BRAND: RunnerBrand = {
   icon: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="11" y="9" width="2" height="13" rx="1"/><path d="M5 3h2l1.2 5H7L5.8 4H5V3Zm12 0h-2l-1.2 5H15l1.2-4H17V3ZM11 3h2l.6 5h-3.2L11 3Z"/><rect x="4" y="8" width="16" height="2.4" rx="1.2"/></svg>',
@@ -136,8 +133,8 @@ const BRAND: RunnerBrand = {
 }
 
 export const rakeRunner: RunnerRole = {
-  // `parse`, not `exec`: the scan means this runner always has something to
-  // offer. It uses the binary when allowed, and says when it did not.
+  // `parse`, not `exec`: the scan means this runner always has tasks to offer.
+  // It runs rake when allowed, and says when it did not.
   kind: 'parse',
   chain: CHAIN,
   brand: BRAND,
@@ -152,14 +149,13 @@ export const rakeRunner: RunnerRole = {
         if (named.has(file)) continue
         named.add(file)
         rakefiles.push(file)
-        // First match wins, in RAKEFILE_NAMES order — the same order rake
-        // itself resolves the entry point in.
+        // First match wins, in RAKEFILE_NAMES order, the order rake uses.
         if (rootRakefile === undefined && dirOf(file) === '.') rootRakefile = file
       }
     }
 
-    // `*.rake` matches by basename across the whole tree, not only Rails'
-    // `lib/tasks/`, so every `.rake` file is scanned the way a Rakefile is.
+    // `*.rake` matches by basename across the whole tree, not only in Rails'
+    // `lib/tasks/`. Every `.rake` file is scanned like a Rakefile.
     const dotRake = new Set<string>()
     for (const file of await ctx.files(RAKE_TASK_FILES)) {
       dotRake.add(file)
@@ -175,23 +171,22 @@ export const rakeRunner: RunnerRole = {
     const tasks: Task[] = []
     const diagnostics: Diagnostic[] = []
 
-    // `ctx.which`, not a `--version` probe: a PATH lookup answers the same
-    // question with no subprocess, which is cheaper and correct under a
-    // `parse` runner's posture.
+    // `ctx.which`, not a `--version` call: a PATH lookup answers the same
+    // question without starting a process.
     const usable = ctx.allowExec && ctx.which('rake') !== null
 
-    // ONE invocation, not one per file. rake loads the root Rakefile and
-    // everything that Rakefile pulls in (`import`, `load`, a `Dir.glob` over
-    // `lib/tasks/*.rake`) into a single task namespace, then prints the lot;
-    // there is no per-file invocation that would not lie about which file a
-    // task came from. So the exec path is scoped to the ROOT rakefile: its
-    // tasks carry `source: rootRakefile`, the entry point rake was actually
-    // given, and everything below stays on the parse path.
+    // One invocation, not one per file. rake loads the root Rakefile and
+    // everything it pulls in (`import`, `load`, a `Dir.glob` over
+    // `lib/tasks/*.rake`) into one task namespace, then prints it all. No
+    // per-file invocation could say correctly which file a task came from. So
+    // the exec path covers only the root rakefile. Its tasks get
+    // `source: rootRakefile`, the entry point rake was given, and every other
+    // file stays on the parse path.
     //
-    // No root rakefile means no exec path at all — running `rake` in a
-    // directory that has none would either fail or, with parent search on,
-    // evaluate a Rakefile outside the tree being described. `-N` forbids the
-    // second; this check makes the first moot.
+    // With no root rakefile there is no exec path. Running `rake` in a
+    // directory without one would fail, or, with parent search on, evaluate a
+    // Rakefile outside the tree. `-N` prevents the second case; this check
+    // avoids the first.
     let listed: ListedTask[] | undefined
     if (usable && rootRakefile !== undefined) {
       const outcome = await listViaRake(ctx)
@@ -248,38 +243,35 @@ export const rakeRunner: RunnerRole = {
       const scanned = scanTasks(text)
       const dir = dirOf(file)
 
-      // Did the root invocation already enumerate this file's tasks?
+      // Did the root invocation already list this file's tasks?
       //
       // `rake -AT` prints one flat namespace and never says which file a task
-      // came from, so this is evidence, not knowledge — and it has to be
-      // FILE-scoped. Dropping any parsed name that appears anywhere in the
-      // listing deletes real tasks: an unrelated `tools/plugin/tasks.rake`
-      // declaring its own `test` would lose it to the root Rakefile's `test`,
-      // even though the two have different argv, ids and sources. Turning
-      // execution on must never thin the list.
+      // came from, so this is a guess, and it must be made per file. Dropping
+      // every parsed name that appears anywhere in the listing would delete
+      // real tasks: an unrelated `tools/plugin/tasks.rake` with its own `test`
+      // would lose it to the root Rakefile's `test`, though the two have
+      // different argv, ids and sources. Turning execution on must never make
+      // the list shorter.
       //
-      // The evidence used instead: EVERY task this file declares appears in
-      // the listing. A `.rake` file the root Rakefile loaded satisfies that by
-      // construction; one it never loaded fails it as soon as it declares a
-      // single name of its own. `scanned.length > 0` keeps it from being
-      // vacuously true — a file with no statically visible task offers no
-      // evidence either way, so it is treated as unloaded and keeps both its
-      // tasks and its warnings.
+      // The rule used instead: every task this file declares appears in the
+      // listing. A `.rake` file the root Rakefile loaded always meets it. One
+      // it never loaded fails as soon as it declares one name of its own.
+      // `scanned.length > 0` stops the rule being true for an empty file: a
+      // file with no visible task gives no signal, so it is treated as not
+      // loaded and keeps its tasks and warnings.
       //
-      // The residual case is a `.rake` file that nothing loads and whose every
-      // declared name happens to collide with a root task. It is dropped, and
-      // that is a deliberate trade: the alternative rule (never dedupe) shows
-      // the very common Rails `lib/tasks/*.rake` twice, once with the broken
-      // `-C lib/tasks` addressing.
+      // The remaining case is a `.rake` file that nothing loads and whose every
+      // name happens to match a root task. It is dropped, on purpose. The other
+      // rule (never dedupe) would show the very common Rails `lib/tasks/*.rake`
+      // twice, once with the wrong `-C lib/tasks` form.
       if (
         listed !== undefined &&
         dotRake.has(file) &&
         scanned.length > 0 &&
         scanned.every((t) => listedNames.has(t.path))
       ) {
-        // The whole file is superseded — its tasks AND its parsing-ceiling
-        // warnings, which describe nothing that happened when rake itself
-        // enumerated these tasks.
+        // Skip the whole file: its tasks and its dynamic-task warnings, which
+        // do not apply when rake itself listed these tasks.
         continue
       }
 
@@ -349,11 +341,11 @@ interface ListedTask {
 /**
  * Ask rake for its own task list.
  *
- * Never throws and never rejects: `AsyncCommandRunner.run` flattens a missing
- * binary, a timeout kill and an abort into a non-zero `exitCode`
- * (`spawnRunnerAsync`, `async.ts` in @osdlc/command-seam), so every failure
- * mode arrives here as data and leaves as an `error` string the caller turns
- * into a diagnostic before falling back to the parse path.
+ * Never throws and never rejects. `AsyncCommandRunner.run` turns a missing
+ * binary, a timeout and an abort into a non-zero `exitCode`
+ * (`spawnRunnerAsync`, `async.ts` in @osdlc/command-seam). So every failure
+ * comes back as an `error` string, which the caller turns into a diagnostic
+ * before falling back to the parse path.
  */
 async function listViaRake(ctx: ProviderContext): Promise<{ tasks: ListedTask[]; error?: string }> {
   const res = await ctx.runner('rake').run(EXEC_ARGV, {
@@ -366,9 +358,9 @@ async function listViaRake(ctx: ProviderContext): Promise<{ tasks: ListedTask[];
   }
   const tasks = parseListing(res.stdout)
   if (tasks.length === 0) {
-    // A rake that exits 0 having printed nothing this parser recognizes is
-    // not a repository with no tasks — a Rakefile that defines none would not
-    // have been discovered. Treat it as a failed listing so the floor runs.
+    // rake exiting 0 with no line this parser recognizes does not mean the
+    // repository has no tasks. Treat it as a failed listing so the parse path
+    // runs.
     return { tasks: [], error: 'no task lines in the output' }
   }
   return { tasks }
@@ -393,11 +385,11 @@ export function parseListing(stdout: string): ListedTask[] {
 }
 
 /**
- * `source` is the root rakefile: the entry point rake was handed. It is the
- * honest answer for a single invocation that folded every loaded file into one
- * namespace — a per-file attribution here would be invented. `id`, `path`,
- * `argv`, `display` and `cwd` keep the parse path's shapes, so a task does not
- * change identity when a caller turns execution on.
+ * `source` is the root rakefile, the entry point rake was given. One
+ * invocation merged every loaded file into one namespace, so a per-file source
+ * would be made up. `id`, `path`, `argv`, `display` and `cwd` match the parse
+ * path's forms, so a task keeps its identity when a caller turns execution
+ * on.
  */
 function fromListing(item: ListedTask, rootRakefile: string): Task {
   const argv = ['rake', item.name]
@@ -408,7 +400,7 @@ function fromListing(item: ListedTask, rootRakefile: string): Task {
     path: ['rake', '.', item.name],
     argv,
     cwd: '.',
-    // Placeholders live ONLY here. `argv` above is executable as-is.
+    // Placeholders appear only here. `argv` above runs as it is.
     display: `${argv.join(' ')}${parameters.length > 0 ? `[${item.args.join(',')}]` : ''}`,
     parameters,
     source: rootRakefile,
@@ -421,9 +413,8 @@ function fromListing(item: ListedTask, rootRakefile: string): Task {
 }
 
 /**
- * rake arguments are positional and always optional — an unsupplied one
- * arrives as `nil` rather than an error — and rake has no variadic form, so
- * both flags are fixed.
+ * rake arguments are positional and always optional (a missing one arrives as
+ * `nil`, not an error). rake has no variadic form. So both flags are fixed.
  */
 function toParam(name: string): Param {
   return { name, required: false, variadic: false }
@@ -437,9 +428,9 @@ interface ScannedTask {
 
 /**
  * `task :name`, `task "name"`, `task 'name'`, optionally followed by a `=>`
- * or `name:` dependency clause. Captures only the name; dependencies are not
- * modeled as `Task.parameters` because rake dependencies are not runtime
- * inputs the way a just parameter is.
+ * or `name:` dependency clause. Captures only the name. Dependencies are not
+ * `Task.parameters`, because rake dependencies are not runtime inputs the way
+ * a just parameter is.
  */
 const TASK_DECL = /^\s*task\s*\(?\s*(?::([A-Za-z0-9_]+)|"([^"]+)"|'([^']+)')/
 
@@ -457,24 +448,22 @@ const OTHER_BLOCK_KEYWORD = /^\s*(if|unless|case|begin|while|until|def|class|mod
 /** A line ending in a bare `do` (with optional block params), e.g. `task :t do |t|`. */
 const ENDS_WITH_DO = /\bdo\s*(\|[^|]*\|)?\s*(#.*)?$/
 
-/** One entry on the block stack: a namespace (which contributes to the task
- * path) or some other Ruby block (`if`, `def`, a `task … do`) that a later
- * `end` closes without affecting the path. Tracking both, rather than
- * popping the namespace stack on every `end`, is what keeps nesting correct
- * once a Rakefile has ordinary multi-line task bodies — `task :t do … end`
- * closes with `end` exactly like `namespace :ns do … end` does, so an
- * `end`-means-pop-namespace scanner would desync on the very first
- * multi-line task.
+/**
+ * One entry on the block stack: a namespace (part of the task path) or some
+ * other Ruby block (`if`, `def`, a `task … do`) that a later `end` closes
+ * without changing the path. Both are tracked so nesting stays correct with
+ * multi-line task bodies. `task :t do … end` closes with `end` just like
+ * `namespace :ns do … end`, so a scanner that popped a namespace on every
+ * `end` would go wrong at the first multi-line task.
  */
 type BlockEntry = { kind: 'namespace'; name: string } | { kind: 'other' }
 
 /**
- * Walk a Rakefile's lines tracking open blocks and the most recent `desc`, so
- * a `task` sees both its enclosing namespaces and its doc when declared.
+ * Walk a Rakefile's lines, tracking open blocks and the most recent `desc`, so
+ * each `task` gets its enclosing namespaces and its doc.
  *
- * `desc` is consumed by the very next `task` only — it does not leak forward
- * onto a second, unrelated task the way it would if we kept it around after a
- * match.
+ * A `desc` applies only to the next `task`. It is cleared after a match, so it
+ * cannot attach to a later, unrelated task.
  */
 export function scanTasks(text: string): ScannedTask[] {
   const out: ScannedTask[] = []
@@ -490,10 +479,10 @@ export function scanTasks(text: string): ScannedTask[] {
     const nsOpen = NAMESPACE_OPEN.exec(raw)
     if (nsOpen) {
       const ns = nsOpen[1] ?? nsOpen[2] ?? nsOpen[3]
-      // Only open the block when the line truly ends with `do` (optionally
-      // block params/a comment) — `namespace :db do; end` closes on the same
-      // line, and pushing here regardless would desync the stack, silently
-      // namespacing every task for the rest of the file under `db`.
+      // Open the block only when the line ends with `do` (optionally followed
+      // by block params or a comment). `namespace :db do; end` closes on the
+      // same line. Pushing it anyway would put every later task in the file
+      // under `db`.
       if (ns !== undefined && ENDS_WITH_DO.test(raw)) stack.push({ kind: 'namespace', name: ns })
       pendingDesc = undefined
       continue
@@ -526,9 +515,9 @@ export function scanTasks(text: string): ScannedTask[] {
     const trimmed = raw.trim()
     if (trimmed === '' || trimmed.startsWith('#')) continue
 
-    // Any other non-blank, non-comment line clears a dangling `desc` — it was
-    // for something this scanner does not (or will not) recognize as a task,
-    // and must not silently attach to whatever task comes next.
+    // Any other non-blank, non-comment line clears a pending `desc`. It
+    // belonged to something this scanner does not treat as a task, and must
+    // not attach to the next task.
     pendingDesc = undefined
 
     if (OTHER_BLOCK_KEYWORD.test(raw) || ENDS_WITH_DO.test(raw)) {

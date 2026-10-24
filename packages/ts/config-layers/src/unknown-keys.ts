@@ -1,12 +1,12 @@
 /**
  * Unknown keys, removed and reported instead of refused.
  *
- * A strict schema (`.strict()` at every level) names every key it does not
+ * A strict schema (`.strict()` at every level) reports every key it does not
  * define as an `unrecognized_keys` issue. {@link stripUnknownKeys} turns those
- * issues into a copy of the input without the keys, plus the dotted path of
- * each one removed. The input is never touched. Both the machine config's
- * salvage (`./machine.ts`) and the project loader's `'warn'` mode
- * (`./loader.ts`) go through it, so the two read an unknown key the same way.
+ * issues into a copy of the input without the keys, plus the path of each
+ * removed key. The input is never changed. The machine config's salvage
+ * (`./machine.ts`) and the project loader's `'warn'` mode (`./loader.ts`) both
+ * use it, so the two treat an unknown key the same way.
  */
 
 import type { z } from 'zod'
@@ -21,10 +21,11 @@ interface Unrecognized {
 }
 
 /**
- * The `unrecognized_keys` issues among `issues`, with a union looked into: a
- * union reports one issue holding each branch's own issues, and a branch whose
- * only fault is unknown keys is the one the input was meant for (the one
- * missing the fewest keys; the first on a tie). Paths are made absolute.
+ * The `unrecognized_keys` issues among `issues`, including those inside a
+ * union. A union reports one issue that holds each branch's issues. A branch
+ * whose only fault is unknown keys is taken as the one the input was meant
+ * for. Among several, the one with the fewest unknown keys wins, the first on
+ * a tie. Paths are made absolute.
  */
 function unrecognizedIn(
   issues: readonly z.core.$ZodIssue[],
@@ -67,10 +68,10 @@ export interface StrippedKeys {
 
 /**
  * Remove every key `schema` does not define, at any depth, from a copy of
- * `raw`. A parse reports an unknown key only where it got that far, so it
- * repeats until a pass finds none (bounded: each pass removes at least one
- * key, and a key nested in a union branch the parse never entered stays and
- * fails the real parse as an invalid value). `schema` must be strict.
+ * `raw`. A parse reports an unknown key only where it got that far, so this
+ * repeats until a pass finds none. The loop ends because each pass removes at
+ * least one key. A key nested in a union branch the parse never entered stays,
+ * and fails the real parse as an invalid value. `schema` must be strict.
  *
  * @experimental
  */
@@ -79,8 +80,8 @@ export function stripUnknownKeys(
   raw: Record<string, unknown>,
   /**
    * Whether the object at this path (array indexes as strings) keeps its
-   * unknown keys, so the real parse fails on them: for a matcher or selector,
-   * where dropping a key widens what it matches.
+   * unknown keys, so the real parse fails on them. Use it for a matcher or
+   * selector, where dropping a key widens what it matches.
    */
   keepStrict?: (path: readonly string[]) => boolean,
 ): StrippedKeys {
@@ -114,10 +115,10 @@ export function stripUnknownKeys(
 }
 
 /**
- * A predicate over key paths from dotted patterns, where `*` stands for
- * exactly one segment (an array index or a key) and a trailing `**` for any
- * number of further segments, including none: the `keepStrict` argument of
- * {@link stripUnknownKeys}.
+ * Build a predicate over key paths from dotted patterns, for the `keepStrict`
+ * argument of {@link stripUnknownKeys}. `*` stands for exactly one segment (an
+ * array index or a key). A trailing `**` stands for any number of further
+ * segments, including none.
  *
  * @experimental
  */

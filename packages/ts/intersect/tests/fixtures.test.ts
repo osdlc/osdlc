@@ -1,17 +1,16 @@
 /**
- * Fixture-driven harness for the Intersect corpus.
+ * Runs the fixture corpus.
  *
- * Loads every `fixtures/*.cases.json` through the loader, then for each case
- * dispatches by its (effective) op to the public API. A `pending` case
- * registers as `test.todo`; an active case runs and asserts the return
- * deep-equals `expect` (or that the call throws/rejects when `throws` is set).
- * A schema-lint block asserts every corpus file passes the shape guard.
+ * Loads every `fixtures/*.cases.json` through the loader, then calls the
+ * public API for each case by its effective op. A `pending` case registers as
+ * `test.todo`. An active case runs and checks that the result deep-equals
+ * `expect`, or that the call throws or rejects when `throws` is set. A schema
+ * block checks that every corpus file passes the shape check.
  *
- * The `fs.*` namespace is DELIBERATELY skipped here (see the dispatch loop):
- * those cases need a materialized temp tree on disk, so they run only through
- * `tests/fs.test.ts`. Keeping them out of this harness also keeps it free of
- * the globber — this file never imports `../src/fs.ts` — so nothing here pulls
- * `tinyglobby`. fs cases are still schema-linted below like every other file.
+ * `fs.*` cases are skipped here on purpose (see the dispatch loop). They need
+ * a temp tree on disk, so they run only in `tests/fs.test.ts`. That also keeps
+ * this file from importing `../src/fs.ts`, so it never loads `tinyglobby`. fs
+ * cases still get the schema check below like every other file.
  */
 import { describe, expect, test } from 'vitest'
 import { readFileSync } from 'node:fs'
@@ -75,8 +74,8 @@ for (const cf of loadCaseFiles()) {
   describe(`${cf.file} [${cf.op}]`, () => {
     for (const c of cf.cases) {
       const op = effectiveOp(cf, c)
-      // Skipping (rather than registering test.todo) keeps the fs todo count
-      // at 0 and guarantees no case is double-run; fs cases run in fs.test.ts.
+      // Skipping, rather than registering test.todo, keeps the fs todo count at
+      // 0 and ensures no case runs twice. fs cases run in fs.test.ts.
       if (op.startsWith('fs.')) continue
       const body = async (): Promise<void> => {
         if (c.throws) {
@@ -95,8 +94,8 @@ for (const cf of loadCaseFiles()) {
           expect(await runCase(op, c)).toEqual(c.expect)
         }
       }
-      // The body is attached even for a `pending` case, so
-      // dropping `pending` exercises the spec.
+      // The body is attached even for a `pending` case, so removing `pending`
+      // runs the case.
       if (c.pending) test.todo(c.name, body)
       else test(c.name, body)
     }

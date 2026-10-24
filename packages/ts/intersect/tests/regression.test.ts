@@ -1,12 +1,11 @@
 /**
- * Regression pins that the shared corpus cannot express.
+ * Regression tests that the shared corpus cannot express.
  *
- * `fixtures/*.cases.json` is the cross-tier conformance spec — the Rust peer
- * `include_str!`s the same files (packages/rust/intersect/tests/conformance.rs)
- * — and every fixed defect that IS a single input/output case is pinned there,
- * so both tiers go red together. What lands here instead is what a case cannot
- * state: an expectation over a temp directory's absolute paths, and a property
- * swept across a generated pattern space.
+ * `fixtures/*.cases.json` is the conformance spec that this package and the
+ * Rust peer crate `intersect` (in sksizer/dev) both run. A fixed bug that fits
+ * one input/output case goes there, so both packages fail together. This file
+ * holds what a case cannot state: an expectation over a temp directory's
+ * absolute paths, and a property checked across a generated set of patterns.
  */
 import { describe, expect, test } from 'vitest'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
@@ -36,9 +35,9 @@ async function withTree(
 
 describe("fs: onlyFiles:false does not leak the globber's trailing slash", () => {
   // The relative form of this is corpus case "filesInScope: onlyFiles:false
-  // returns directories as plain paths"; only the absolute form (whose expected
-  // values are the temp dir's own) has to live here — a trailing slash survives
-  // `join()`, so it is worth its own assertion.
+  // returns directories as plain paths". Only the absolute form, whose expected
+  // values depend on the temp dir, has to live here. A trailing slash survives
+  // `join()`, so it gets its own assertion.
   test('an absolutized directory entry has no trailing separator', async () => {
     await withTree(['src/api/user.ts'], async (cwd) => {
       expect(await fs.filesInScope(['src/**'], { cwd, onlyFiles: false, absolute: true })).toEqual([
@@ -52,11 +51,10 @@ describe("fs: onlyFiles:false does not leak the globber's trailing slash", () =>
 
 describe('witness: the returned path matches both sides', () => {
   /**
-   * The property the primitive exists for: "these overlap at X" is worthless if
-   * X matches neither side. Swept across a generated space rather than a case
-   * list, because the failures were structural — an empty common segment lands
-   * at the end of the path, where `parse` normalizes it away — and any pattern
-   * whose segments can be empty reproduces it.
+   * A witness is useless if it matches neither side. This is checked across a
+   * generated set of patterns rather than a case list, because the failure is
+   * structural: an empty common segment at the end of the path, which `parse`
+   * drops. Any pattern whose segments can be empty can cause it.
    */
   test('no pair in a metacharacter-dense pattern space yields a lying witness', () => {
     const tokens = ['*', '**', 'a', '.a', '{,a}', '{,.a}', '*.env', '?', '']
@@ -84,8 +82,9 @@ describe('witness: the returned path matches both sides', () => {
 })
 
 describe('unclosed `{` and `[` finish fast', () => {
-  // Each unclosed `{` used to re-parse everything after it, so time doubled per
-  // brace (about 20 s at 28). Unclosed `[` scanned to the end every time.
+  // Without the parse cache, each unclosed `{` re-parses everything after it,
+  // so time doubles per brace (about 20 s at 28). Without `lastClose`, each
+  // unclosed `[` scans to the end.
   test('28 unclosed `{` against themselves finishes under 1s', () => {
     const p = '{'.repeat(28)
     const t0 = performance.now()

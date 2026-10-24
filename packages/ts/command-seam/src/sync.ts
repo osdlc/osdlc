@@ -38,20 +38,20 @@ export interface CommandResult<Stdout extends string | Buffer = string> {
   stdout: Stdout
   /**
    * Everything the child wrote to stderr, decoded as UTF-8, on the bytes
-   * runners too. Only the child's
-   * output: the runner's own message, such as a failed spawn or a timeout, is
-   * in `error`. `failureText` reads both.
+   * runners too. It holds only the child's output. The runner's own message,
+   * such as a failed spawn or a timeout, is in `error`. `failureText` reads
+   * both.
    */
   stderr: string
   /**
    * `true` when the child never reported an exit status: the spawn failed, a
-   * timeout or an abort killed it, a signal took it down, or the sync runner
-   * killed it at the output cap. `exitCode` is
-   * then a stand-in `1`, not the command's answer. Absent otherwise.
+   * timeout or an abort killed it, a signal ended it, or the runner killed it
+   * at the output cap. `exitCode` is then a stand-in `1`, not the command's
+   * answer. Absent otherwise.
    *
    * Check this before reading an exit code as an answer. `grep` exits 1 for
-   * "no matches" and `git config --get` exits 1 for an unset key; without
-   * this check, a binary missing from `PATH` reads as a confident "no".
+   * "no matches" and `git config --get` exits 1 for an unset key. Without
+   * this check, a binary missing from `PATH` reads as a plain "no".
    * `reason` says which of those causes it was.
    */
   neverExited?: boolean | undefined
@@ -106,17 +106,18 @@ export interface CommandResult<Stdout extends string | Buffer = string> {
 /**
  * Why a child never reported an exit status (`neverExited: true`):
  *
- * - `spawn`: it never started: a missing binary, no permission, a bad `cwd`.
- *   Retrying will not help.
+ * - `spawn`: it never started, because of a missing binary, no permission
+ *   or a bad `cwd`. Retrying will not help.
  * - `timeout`: `timeoutMs` ran out and the runner killed it.
  * - `abort`: the caller stopped it: an `AbortSignal` (async runner), an
- *   `onSpawn` that threw, or `kill()` on a managed process. Or a
- *   `processGroup` run was refused because signal forwarding is stopping the
- *   host; it never started, and `error` carries the refusal message.
+ *   `onSpawn` that threw, or `kill()` on a managed process. Also a
+ *   `processGroup` run that was refused because signal forwarding is
+ *   stopping the host. That run never started, and `error` holds the
+ *   refusal message.
  * - `signal`: a signal from elsewhere ended it.
- * - `output`: the runner killed it for passing the output cap: `maxOutputBytes`,
- *   or the sync runner's default of 256 MB. The same run will fail the same
- *   way. The async runner has no default cap, and the `bun test` capture path
+ * - `output`: the runner killed it for passing the output cap
+ *   (`maxOutputBytes`, or the sync runner's default of 256 MB). The same run
+ *   will fail the same way. The async runner has no default cap, and the `bun test` capture path
  *   writes to files, so neither reports this unless `maxOutputBytes` is set
  *   (the `bun test` path never does).
  */
@@ -126,10 +127,10 @@ export type NeverExitedReason = 'spawn' | 'timeout' | 'abort' | 'signal' | 'outp
 export interface CommandRunOptions {
   /** Working directory for the child. Required: the runner has no default. */
   cwd: string
-  // Optional fields are `?: T | undefined` rather than `?: T`: options are
-  // normally built by spreading a caller's own optionals, and under
-  // `exactOptionalPropertyTypes` a present-but-undefined property is not the
-  // same as an absent one. Both mean "not given" here.
+  // Optional fields are `?: T | undefined`, not `?: T`. Callers often build
+  // options by spreading their own optional fields. Under
+  // `exactOptionalPropertyTypes` a property set to `undefined` differs from an
+  // absent one. Here both mean "not given".
   /**
    * Kill the child with `SIGKILL` after this many milliseconds. The result
    * then has a non-zero `exitCode`, `neverExited: true` and
@@ -142,11 +143,11 @@ export interface CommandRunOptions {
    * runners and rejected by the async ones. A value that is not a number is
    * a `TypeError`, the same way.
    *
-   * The sync runners (`spawnRunner`, `runShell`, `shellRunner`) and
-   * `streamRunner` kill the direct child only. Processes it started keep
-   * running. Only the async runners (`spawnRunnerAsync`, `runShellAsync`,
-   * `shellRunnerAsync`) can kill the whole process group, with
-   * `processGroup`.
+   * The sync runners (`spawnRunner`, `spawnRunnerBytes`, `runShell`,
+   * `shellRunner`) and `streamRunner` kill the direct child only. Processes it
+   * started keep running. Only the async runners (`spawnRunnerAsync`,
+   * `spawnRunnerBytesAsync`, `runShellAsync`, `shellRunnerAsync`) can kill the
+   * whole process group, with `processGroup`.
    */
   timeoutMs?: number | undefined
   /** Text written to the child's stdin. Stdin is closed after it, or at once when omitted. */
@@ -157,12 +158,12 @@ export interface CommandRunOptions {
    * with `processGroup`), and the result has `neverExited: true`,
    * `reason: 'output'`, and that stream cut to the cap on a character
    * boundary (a bytes runner's stdout is cut at exactly the cap). The cap
-   * counts the bytes the child wrote, not the decoded text:
-   * bytes that are not valid UTF-8 decode to U+FFFD, which is 3 bytes, so the
-   * string can be longer than the cap in UTF-8. A child that exits before the
+   * counts the bytes the child wrote, not the decoded text. Bytes that are not
+   * valid UTF-8 decode to U+FFFD, which is 3 bytes, so the string can be
+   * longer than the cap in UTF-8. A child that exits before the
    * kill lands keeps its exit code and gets `outputIncomplete: true` instead.
    *
-   * The sync runners default to 256 MB per stream; the async runners have no
+   * The sync runners default to 256 MB per stream. The async runners have no
    * default cap. `undefined` keeps the default and `Infinity` means no cap. A
    * fraction rounds up. `0`, a negative value and `NaN` are a `RangeError`,
    * and a value that is not a number is a `TypeError`, thrown or rejected as
@@ -177,7 +178,7 @@ export interface CommandRunOptions {
   env?: EnvOverrides | undefined
 }
 
-/** Env vars to set on a child, merged over the parent's; an `undefined` value unsets that var. */
+/** Env vars to set on a child, merged over the parent's. An `undefined` value unsets that var. */
 export type EnvOverrides = Record<string, string | undefined>
 
 /**
@@ -191,10 +192,10 @@ export type EnvOverrides = Record<string, string | undefined>
  *   as one from `fs.openSync`. Stdin is `/dev/null`. Pass the same fd for
  *   both to get one log in the order the child wrote it. `1` and `2` are the
  *   parent's own stdout and stderr. The child gets its own copy of each fd
- *   when it starts, so the caller may close its fd once `run` returns; the
+ *   when it starts, so the caller may close its fd once `run` returns. The
  *   runner never closes it.
  *
- * Each fd must be a whole number, 0 or more: anything else is a programmer
+ * Each fd must be a whole number, 0 or more. Anything else is a programmer
  * error (`TypeError` for a value that is not a number, `RangeError` for
  * the rest), thrown before spawning. An fd that is not open is a failed
  * spawn (`reason: 'spawn'`, `EBADF` in `error`).
@@ -277,19 +278,17 @@ export interface BytesCommandRunner {
 
 /**
  * `{ env }`: `process.env` merged with `opts.env`, minus any key whose
- * override is `undefined`. Always an explicit object built from the current
- * `process.env` at call time — never `undefined`, never an omitted key, and
- * never `process.env` handed through verbatim either.
+ * override is `undefined`. It is always a new object built from `process.env`
+ * at call time. It is never `undefined`, never left out, and never
+ * `process.env` itself.
  *
- * Node's `child_process.spawnSync` inherits live `process.env` whether
- * `env` is omitted, `undefined`, or `process.env` itself. Bun's does not:
- * all three instead take a snapshot — of exactly when is unclear, but
- * empirically it misses anything set on `process.env` after the process
- * started, even as the very first spawn — so a test that points an env var
- * at a fresh temp dir right before spawning would silently see the real,
- * unwritten default instead. Only spreading `process.env`'s current
- * key/values into a brand-new plain object at the call site sidesteps
- * whatever Bun is snapshotting.
+ * Node's `spawnSync` reads the live `process.env` when `env` is omitted,
+ * `undefined` or `process.env` itself. Bun's uses a snapshot in all three
+ * cases. When the snapshot is taken is unclear, but it misses variables set
+ * on `process.env` after the process started, even on the first spawn. A test
+ * that points a variable at a new temp dir just before spawning would then
+ * see the old value. Copying `process.env` into a new plain object at the
+ * call avoids the snapshot.
  */
 export function mergedEnv(opts: Pick<CommandRunOptions, 'env'>): { env: NodeJS.ProcessEnv } {
   const env: NodeJS.ProcessEnv = { ...process.env, ...opts.env }
@@ -297,7 +296,7 @@ export function mergedEnv(opts: Pick<CommandRunOptions, 'env'>): { env: NodeJS.P
   return { env }
 }
 
-/** The largest delay `setTimeout` honours; a longer one fires at once. */
+/** The largest delay `setTimeout` accepts. A longer one fires at once. */
 const MAX_TIMER_MS = 2 ** 31 - 1
 
 /**
@@ -376,9 +375,9 @@ export function timerMs(name: string, ms: number, min: 'positive' | 'zero'): num
 
 /**
  * A spawn error message when `cwd` is missing or not a directory, else
- * `undefined`. Checked before spawning: a spawn reports a missing `cwd` as
- * `spawn <binary> ENOENT`, which reads as a missing binary, and Node's async
- * `spawn` throws for a `cwd` that is a file.
+ * `undefined`. It is checked before spawning for two reasons. A spawn
+ * reports a missing `cwd` as `spawn <binary> ENOENT`, which reads as a
+ * missing binary. And Node's async `spawn` throws for a `cwd` that is a file.
  *
  * @param spawnName - The message prefix: `spawn` or `spawnSync`, then the binary.
  * @throws `TypeError` for a NUL byte in `binary`, `argv` or `opts.env`, as the
@@ -487,15 +486,14 @@ export class CommandFailed extends FailureError<CommandFailure> {
    * stderr. Empty when there is no text at all. The same as
    * `failureText(e.result, { both: true })`.
    *
-   * `message` interpolates stderr only, and several commands write the
-   * sentence that explains the failure to stdout instead — a rejecting git
-   * hook, `git commit` on a clean tree, `git apply --check`. Read this rather
-   * than picking a stream at the call site.
+   * `message` holds stderr only. Several commands explain the failure on
+   * stdout instead, such as a rejecting git hook, `git commit` on a clean
+   * tree, or `git apply --check`. Read this rather than picking a stream at
+   * the call site.
    *
-   * Both are joined rather than one preferred, because a rejecting hook is
-   * the case where both carry a distinct half: git's own "commit failed" on
-   * stderr, the hook's reason on stdout. Preferring either drops the half
-   * the reader needs.
+   * Both streams are joined because a rejecting hook puts a different half
+   * on each: git's own "commit failed" on stderr, and the hook's reason on
+   * stdout. Picking one stream drops the half the reader needs.
    */
   get detail(): string {
     return failureText(this.result, { both: true })
@@ -633,23 +631,20 @@ export function catchFailed<T, R>(fn: () => T, onFailed: (failed: CommandFailed)
   }
 }
 
-// Bun's `bun test` runtime mis-wires child-process stdio once a large module
-// graph is loaded in the test process: the child runs — its own `<in >out`
-// redirects work, filesystem side effects land — but the stdin/stdout/stderr
-// the parent hands it come back empty. Confirmed for sync and async spawns,
-// pipes and parent-opened fds, across every Bun 1.2.x-1.3.x; not reproducible
-// under `bun run`. A suite that shells out after importing a heavy module
-// graph hits it on every run.
+// Under `bun test`, once a large module graph is loaded in the test process,
+// child-process stdio breaks. The child runs, its own `<in >out` redirects
+// work, and its file changes land. But the stdin, stdout and stderr the parent
+// gives it come back empty. Seen for sync and async spawns, pipes and
+// parent-opened fds, on every Bun 1.2.x-1.3.x. It does not happen under
+// `bun run`. A suite that runs commands after importing a large module graph
+// hits it on every run.
 // Only Bun's test runner is affected, so the workaround needs both the Bun
 // runtime and `NODE_ENV=test` (which `bun test` sets). Jest and Vitest also
 // set `NODE_ENV=test`, but they run on Node and keep the pipe path below.
 const CHILD_STDIO_CORRUPTED =
   process.versions['bun'] !== undefined && process.env['NODE_ENV'] === 'test'
 
-/**
- * Folds a finished `spawnSync` into a {@link CommandResult}. Exported for
- * tests.
- */
+/** Turns a finished `spawnSync` into a {@link CommandResult}. Exported for tests. */
 export function fromSpawnSync<S extends string | Buffer>(
   proc: { status: number | null; signal: NodeJS.Signals | null; error?: Error | undefined },
   stdout: S,
@@ -677,12 +672,12 @@ export function fromSpawnSync<S extends string | Buffer>(
 }
 
 /**
- * Capture output the one way Bun does not corrupt: let the child do its own
- * `<in >out 2>err` redirects to temp files, then read the files back. `binary`
- * and `argv` ride as separate `sh` positional args — never parsed as shell — so
- * arguments containing spaces, metacharacters, or `$()` are inert. `exec`
- * replaces `sh`, so the reported exit status (and the cwd/env/timeout) all
- * belong to the child, matching the pipe path's contract.
+ * Capture output the one way that works under `bun test`. The child does its
+ * own `<in >out 2>err` redirects to temp files, and the runner reads the files
+ * back. `binary` and `argv` are passed as separate `sh` positional parameters
+ * and never parsed by the shell, so spaces, shell characters and `$()` in an
+ * argument have no effect. `exec` replaces `sh`, so the exit status, cwd, env
+ * and timeout all belong to the child, as on the pipe path.
  */
 function runViaChildRedirect(
   binary: string,
@@ -723,18 +718,18 @@ function runViaChildRedirect(
       {
         cwd: opts.cwd,
         timeout: timeoutMs,
-        // SIGKILL, not spawnSync's default SIGTERM: the contract is a hard
-        // cap, and a child that ignores TERM is left to run to completion —
-        // spawnSync signals on expiry and then keeps waiting for an exit.
+        // SIGKILL, not spawnSync's default SIGTERM. The timeout is a hard
+        // cap. spawnSync sends the signal on expiry and then keeps waiting for
+        // an exit, so a child that ignores SIGTERM would run to completion.
         killSignal: 'SIGKILL',
         env,
       },
     )
-    // The redirect files are created by the child's `>` / `2>`, so neither
-    // exists when `sh` itself never ran — a spawn that fails with EAGAIN under
-    // a saturated process table is the case that matters, and it must not turn
-    // into an ENOENT thrown from the capture layer. Missing reads as empty,
-    // matching what the pipe path reports for a child that produced nothing.
+    // The child's `>` and `2>` create the redirect files, so neither exists
+    // when `sh` itself never ran. The case that matters is a spawn that fails
+    // with EAGAIN when the process table is full. It must not throw ENOENT
+    // here. A missing file reads as empty, as the pipe path reports for a
+    // child that wrote nothing.
     const readOrEmpty = (p: string): Buffer => {
       try {
         return readFileSync(p)
@@ -742,8 +737,7 @@ function runViaChildRedirect(
         return Buffer.alloc(0)
       }
     }
-    // Output goes to a file, so there is no maxBuffer: it is bounded only by
-    // disk.
+    // Output goes to a file, so there is no maxBuffer. Only the disk limits it.
     const stdout = readOrEmpty(outFile)
     return fromSpawnSync(proc, bytes ? stdout : stdout.toString(), readOrEmpty(errFile).toString())
   } finally {
@@ -763,8 +757,8 @@ export function resolveRunner(binary: string, injected?: CommandRunner | undefin
 
 /**
  * The default {@link CommandRunner}: runs `binary` with `spawnSync`, so each
- * call blocks until the child exits. On timeout the child gets `SIGKILL`;
- * processes it started keep running, so a run that may start background work
+ * call blocks until the child exits. On timeout the child gets `SIGKILL`.
+ * Processes it started keep running, so a run that may start background work
  * (an install with postinstall scripts, a daemon) belongs on
  * `spawnRunnerAsync` with `processGroup: true`. Captured output is capped at
  * 256 MB per stream, or `maxOutputBytes`. Under `bun test` (the Bun

@@ -2,14 +2,14 @@
 title: Overlap, matches, witness
 sidebar:
   order: 3
-description: The path-API primitives — intersects, matches, whichMatch, overlapping, witness, compile.
+description: The path API functions intersects, matches, whichMatch, overlapping, witness and compile.
 ---
 
-The path API is a small set of primitives, all shapes over the same pairwise question. Each
-coerces its `Patterns` argument (a string or a set) to segment-patterns, then defers to the
-core.
+The path API is a small set of functions. All of them answer the same question about two
+patterns. Each parses its `Patterns` argument (a string or an array) into segment patterns,
+then calls the segment core.
 
-| Primitive | Shape | Returns |
+| Function | Compares | Returns |
 |---|---|---|
 | `intersects(a, b)` | set ↔ set | `true` if some path matches both. |
 | `matches(path, patterns)` | path ↔ set | `true` if the path matches any pattern. |
@@ -46,11 +46,11 @@ whichMatch("src/api/user.ts", ["src/api/**", "src/**", "docs/**"]);
 |---|---|---|---|
 | `src/api/user.ts` | `["src/api/**", "src/**", "docs/**"]` | `["src/api/**", "src/**"]` | `docs/**` does not match |
 
-## overlapping — mind which side is filtered
+## overlapping: check which side is filtered
 
-`overlapping` has two forms that filter **opposite** sides. The free function returns a
-subset of its first argument, `query`, in query order. A compiled `Matcher.overlapping`
-returns a subset of ITS argument, `candidates`.
+`overlapping` has two forms that filter opposite sides. The free function returns a subset of
+its first argument, `query`, in query order. A compiled `Matcher.overlapping` returns a subset
+of its own argument, `candidates`.
 
 ```ts
 import { overlapping, compile } from "@osdlc/intersect";
@@ -67,11 +67,11 @@ compile(taskA).overlapping(taskB);
 | `overlapping(taskA, taskB)` | `["src/api/**"]` | the `query` (first arg) subset |
 | `compile(taskA).overlapping(taskB)` | `["src/api/routes/*.ts"]` | the `candidates` (argument) subset |
 
-## witness — make an overlap explainable
+## witness: show where two sets overlap
 
-A witness is a concrete path both sets match, or `null` when they are disjoint. It is free:
-the reachability path the engine already walked to prove the overlap. It turns "these
-overlap" into "these overlap *at* `X`".
+A witness is a concrete path both sets match, or `null` when they are disjoint. It costs
+nothing extra: it is the path the search already found to show the overlap. It lets you say
+where two sets overlap, not only that they do.
 
 ```ts
 import { witness } from "@osdlc/intersect";
@@ -84,20 +84,20 @@ witness("src/api/**", "src/web/**");
 |---|---|---|---|
 | `src/api/**` | `src/**/handler.ts` | `"src/api/handler.ts"` | a concrete path both match |
 | `src/api/**` | `src/web/**` | `null` | no common path |
-| `*/*` | `*/{,.a}` | `null` | the only common path has no spelling |
+| `*/*` | `*/{,.a}` | `null` | no string can write the only common path |
 
-The last row is the one edge: the witness is always a path that really matches both sides. When the
-first common path ends in an empty segment, no string spells it (`parse` normalizes a trailing
-separator off), so the search goes on to a longer path. `witness("a//**", "**")` is `"a//a"`. Only
-when no spellable common path exists does the witness stay `null`: in `*/{,.a}` against `*/*`, `*`
-will not match `.a`, so the empty branch is the only shared segment and it lands at the end.
-`intersects`, which answers over segment vectors rather than strings, still reports `true` for such
+The last row is the one exception. A witness is always a path that matches both sides. When the
+first common path ends in an empty segment, no string can write it, because `parse` drops a
+trailing separator. So the search goes on to a longer path: `witness("a//**", "**")` is `"a//a"`.
+The witness is `null` only when no common path can be written as a string. In `*/{,.a}` against
+`*/*`, `*` does not match `.a`, so the empty branch is the only shared second segment, and it comes
+last. `intersects` works on segment arrays rather than strings, so it still returns `true` for such
 a pair.
 
-## compile — amortize a fixed scope
+## compile: reuse one scope
 
-For a scope tested against many paths or patterns, `compile` parses each pattern once; every
-method reuses that parsed set.
+For a scope tested against many paths or patterns, `compile` parses each pattern once. Every
+method reuses the parsed set.
 
 ```ts
 import { compile } from "@osdlc/intersect";
@@ -115,4 +115,4 @@ scope.witness("src/**/*.ts");
 | `scope.matches("src/api/user.ts")` | `true` |
 | `scope.matches("test/api/user.test.ts")` | `false` |
 | `scope.overlapping(["docs/**", "src/db/pool.ts"])` | `["src/db/pool.ts"]` |
-| `scope.witness("src/**/*.ts")` | e.g. `"src/api/user.ts"` |
+| `scope.witness("src/**/*.ts")` | `"src/api/a.ts"` |

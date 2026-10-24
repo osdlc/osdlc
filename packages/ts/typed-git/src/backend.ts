@@ -1,18 +1,18 @@
 /**
- * The backend seam — what `AsyncGit` talks to, and the thing you swap when
- * git should not come from a subprocess.
+ * The backend interface: what `AsyncGit` calls, and what you replace when git
+ * should not run as a subprocess.
  *
- * A backend takes a {@link GitRequest} — a plain, serializable description of
- * one git operation — and returns its typed result. That is deliberately not
- * argv: argv is a CLI detail, and a backend built on a pure-JavaScript git
- * implementation has no argv to receive. Describing the operation instead of
- * the invocation is what lets the same client drive either.
+ * A backend takes a {@link GitRequest}, a plain, serializable description of
+ * one git operation, and returns its typed result. The request is not argv on
+ * purpose. argv is a CLI detail, and a backend built on a pure-JavaScript git
+ * has no argv to receive. Describing the operation, not the command line, lets
+ * the same client work with either.
  *
- * It also means a request can be logged, queued, or replayed as data. The one
- * request that cannot cross that line is `raw`, which is argv by definition; a
- * non-CLI backend rejects it with {@link UnsupportedRequest}.
+ * It also means a request can be logged, queued, or replayed as data. The
+ * exception is `raw`, which is argv by definition. A non-CLI backend rejects
+ * it with {@link UnsupportedRequest}.
  *
- * The seam is experimental: `GitBackend`, `GitRequest`, `GitResults` and
+ * The interface is experimental: `GitBackend`, `GitRequest`, `GitResults` and
  * `partialBackend`. Each new verb adds a request kind, which breaks a backend
  * written as an exhaustive switch. Such a change can land in a minor release.
  * `cliBackend` and `AsyncGit` are stable.
@@ -79,24 +79,24 @@ import {
 /** Per-call concerns that are not part of the operation itself. */
 export interface GitCallOptions {
   /**
-   * Hard cap on the call; a backend that cannot enforce one may ignore it.
-   * Without it there is no cap, and the default async runner has no output
+   * Time limit for the call. A backend that cannot enforce one may ignore it.
+   * Without it there is no limit, and the default async runner has no output
    * cap either. An invalid value throws (sync) or rejects (async), as in command-seam:
    * `RangeError` for 0, a negative value or `NaN`; `TypeError` for a
    * non-number.
    */
   timeoutMs?: number | undefined
-  /** Mid-flight cancellation, where the backend supports it. */
+  /** Cancels the call while it runs, where the backend supports it. */
   signal?: AbortSignal | undefined
   /**
-   * Entries merged over the parent environment for this call only. Per-call
-   * rather than part of the request, like `timeoutMs`: it describes how the
-   * invocation runs, not what operation was asked for.
+   * Entries merged over the parent environment for this call only. It is a
+   * call option, not part of the request, like `timeoutMs`: it describes how
+   * the command runs, not which operation was asked for.
    */
   env?: Record<string, string> | undefined
   /**
    * Cap on each output stream, in bytes. Past it the runner kills the child
-   * and the call throws (sync) or rejects (async) with `CommandFailed`, so
+   * and the call throws (sync) or rejects (async) with the classified failure, so
    * cut-short output is never read as an answer. A backend that cannot
    * enforce it may ignore it. Without it the async runner has no cap and the
    * sync runner caps at 256 MB.
@@ -142,9 +142,9 @@ export type GitRequest =
   | { kind: 'checkIgnoreVerbose'; relPaths: string[] }
   | { kind: 'isAncestor'; a: string; b: string }
   | { kind: 'aheadBehind'; base: string; tip: string }
-  // The Tier 1 queries carry their verb's option bag rather than restating
-  // its fields: the option types live in `verbs.ts` beside the argv they
-  // build, and a request that spread them by hand would drift from it.
+  // These requests reuse their verb's options type rather than restating its
+  // fields. The option types live in `verbs.ts` beside the argv they build,
+  // and a copy written out by hand would drift from it.
   | ({ kind: 'lsFiles' } & LsFilesOptions)
   | { kind: 'lsFilesTagged' }
   | ({ kind: 'forEachRef'; pattern: string | string[] } & ForEachRefOptions)
@@ -460,9 +460,8 @@ function toVerb(request: GitRequest): GitVerb<unknown> {
     case 'raw': {
       const verb: GitVerb<CommandResult> = {
         argv: request.argv,
-        // Unchecked `raw` bypasses the gate entirely (see `execute`), so this
-        // declaration only matters for the checked door, where nothing is
-        // absence.
+        // Unchecked `raw` skips `gate` (see `execute`), so this only matters
+        // for `rawChecked`, where no exit code is an absence.
         absent: [],
         parse: (r) => r,
       }
@@ -481,18 +480,17 @@ export function cliBackend(
   opts: {
     runner?: AsyncCommandRunner | undefined
     /**
-     * Which repository to drive, as `--git-dir` / `--work-tree` prefixed onto
-     * every invocation. They live on the backend rather than on `GitRequest`
-     * because they are CLI flags: a backend built on a pure-JavaScript git has
-     * no `--git-dir` to receive, so "which repository" binds the thing that
-     * spawns git.
+     * The repository to work on, added to every call as `--git-dir` /
+     * `--work-tree`. They are set on the backend, not on `GitRequest`, because
+     * they are CLI flags. A backend built on a pure-JavaScript git has no
+     * `--git-dir` to receive.
      */
     gitDir?: string | undefined
     workTree?: string | undefined
     /**
      * Entries merged over the parent environment on every call this backend
-     * makes, under any per-call `env`. Binds an identity or a
-     * `GIT_SSH_COMMAND` once, rather than threading it through call sites.
+     * makes, under any per-call `env`. Use it to set an identity or a
+     * `GIT_SSH_COMMAND` once, instead of passing it on every call.
      */
     env?: Record<string, string> | undefined
   } = {},
@@ -518,15 +516,15 @@ export function cliBackend(
       if (verb.env !== undefined) runOpts.env = { ...runOpts.env, ...verb.env }
       const argv = prefix.length === 0 ? verb.argv : [...prefix, ...verb.argv]
       const result = await runner.run(argv, runOpts)
-      // Unchecked `raw` is the one door outside the gate: it hands back
-      // whatever came out, at any exit code. Everything else uses the same
-      // gate the sync client does.
+      // Unchecked `raw` is the only request that skips `gate`: it returns the
+      // result at any exit code. Everything else goes through the same `gate`
+      // the sync client uses.
       const req: GitRequest = request
       const gated = req.kind !== 'raw' || req.checked === true
       // The prefixed argv is what ran, so it is what a `CommandFailed` reports.
       const value = gated ? gate(verb, result, argv) : verb.parse(result, argv)
-      // `GitResults` restates the verb table's return types for callers; the
-      // two are kept in step by hand, which this cast is the seam for.
+      // `GitResults` restates the verb table's return types for callers. The
+      // two are kept in step by hand, and this cast is where they meet.
       return value as GitResults[R['kind']]
     },
   }
@@ -535,10 +533,9 @@ export function cliBackend(
 /**
  * Wrap a partial implementation: any request kind the object does not handle
  * rejects with {@link UnsupportedRequest} instead of failing as `undefined`.
- * The way to ship a backend that covers the operations it can and says so
- * about the rest.
+ * Use it for a backend that covers only some operations.
  *
- * @experimental Part of the backend seam; see {@link GitBackend}.
+ * @experimental Part of the backend interface; see {@link GitBackend}.
  */
 export function partialBackend(
   name: string,

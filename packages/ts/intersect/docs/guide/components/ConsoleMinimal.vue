@@ -1,11 +1,11 @@
 <script setup>
-// Plain-unix-shell playground for Intersect: type two patterns, see whether
-// their match-sets intersect and one concrete path that witnesses it.
-// Pure L1 surface only — imported by name via the Vite alias, never `intersect/fs`.
+// Shell-style playground: type two patterns, see whether they match a path in
+// common, and one such path.
+// Imports only the root entry, by package name, never `@osdlc/intersect/fs`.
 import { ref, computed } from 'vue'
 import { intersects, witness } from '@osdlc/intersect'
 
-// --- Two patterns, pre-filled so the shell demos itself ----------------------
+// --- Two patterns, pre-filled with an example ---------------------------------
 const patternA = ref('src/api/**')
 const patternB = ref('src/**/*.ts')
 

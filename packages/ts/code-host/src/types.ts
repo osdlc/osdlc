@@ -1,27 +1,28 @@
 /**
- * The CodeHost port: what a code host (GitHub, Forgejo, ...) must answer so
+ * The CodeHost port: what a code host (GitHub, Forgejo, ...) must answer, so
  * a classifier or router never calls `gh` or a code host's REST API directly.
- * GitHub (`./github.ts`) and Forgejo (`./forgejo.ts`) are the adapters;
+ * GitHub (`./github.ts`) and Forgejo (`./forgejo.ts`) are the adapters.
  * `listPrDetails` is the bulk read for a survey.
  *
- * The port was first sketched as `Forge`. Three deliberate choices, made once
- * here rather than re-argued at every call site:
+ * Four design choices hold for every method:
  *
  *   - A query that can fail returns a `Result<T, CodeHostFailure>`
- *     (`@osdlc/result`), never `null` for a failure: the failure carries a
- *     `kind` (not signed in, no network, a missing tool, ...), a sentence and a
+ *     (`@osdlc/result`), never `null` for a failure. The failure carries a
+ *     `kind` (not signed in, no network, a missing tool, ...), a message and a
  *     hint, the same for both adapters. A declared absence is still a success:
  *     `{ ok: true, value: null }` for "no PR for that branch". A mutation throws
  *     on failure (a `FailureError` carrying the failure, or `CommandFailed`).
- *   - Every method is SYNCHRONOUS. Callers hold `CommandRunner`s over
- *     `spawnRunner` (`@osdlc/command-seam`) and are sync end to end; going
- *     async here would color the whole call graph for no caller that needs it.
- *   - `Activity` carries `id`/`editedAt` and a third `kind: 'review-comment'`
- *     (with an optional `location`) beside `comment | review`, so a caller can
- *     sign every feedback item by id and tell a per-line diff comment (GitHub's
- *     REST `pulls/<n>/comments`) from a top-level comment or review.
- *   - `PrFacts.behind`/`ahead` are assembled by `./facts.ts` from local git:
- *     drift is not a code-host field, so no adapter ever sets them.
+ *   - Every method is synchronous. Callers hold `CommandRunner`s over
+ *     `spawnRunner` (`@osdlc/command-seam`) and are synchronous throughout.
+ *     An async port would force every caller to become async, and no caller
+ *     needs that.
+ *   - `Activity` has an `id`, an `editedAt`, and a third kind,
+ *     `'review-comment'` (with an optional `location`), beside `comment` and
+ *     `review`. A caller can then sign every feedback item by id, and tell a
+ *     per-line diff comment (GitHub's REST `pulls/<n>/comments`) from a
+ *     top-level comment or review.
+ *   - `PrFacts.behind` and `ahead` come from local git, in `./facts.ts`. Drift
+ *     is not a code host field, so no adapter sets them.
  */
 
 import { z } from 'zod'
@@ -54,10 +55,10 @@ export interface Actor {
 }
 
 /**
- * One comment, review, or inline review comment newer than the `getPr`
- * caller's `since` cursor — unfiltered. The caller applies any
- * bot/self/recency filter, once, for every code host; this type carries only
- * what such a filter and a signature over the entry need.
+ * One comment, review, or inline review comment on the PR, unfiltered. The
+ * caller applies any bot, self or recency filter, once, for every code host.
+ * This type carries only what such a filter and a signature over the entry
+ * need.
  */
 export interface Activity {
   /** A stable identity for the entry, suitable for signing or de-duplicating. */
@@ -66,12 +67,12 @@ export interface Activity {
   author: Actor | null
   /** Created/submitted timestamp. */
   at: string | null
-  /** Last-edited timestamp, when the code host reports one; null when it doesn't track or wasn't asked for. */
+  /** Last-edited timestamp. Null when the code host does not report one. */
   editedAt: string | null
   body: string
   /** Only set for `kind: 'review'` (e.g. `APPROVED`, `CHANGES_REQUESTED`). */
   reviewState: string | null
-  /** Only set for `kind: 'review-comment'` — where in the diff it sits. */
+  /** Only set for `kind: 'review-comment'`: where in the diff it sits. */
   location: { file?: string; line?: number; threadId?: string; url?: string } | null
 }
 
@@ -79,19 +80,17 @@ export interface CheckSummary {
   rollup: 'none' | 'pending' | 'success' | 'failure'
   /** Failing check names, in the code host's own rollup order. */
   failing: string[]
-  /** Failing checks' log/details URLs, when the code host gives one — same order as `failing`, may be shorter (a check with no URL is skipped, not padded with undefined). */
+  /** Log or details URLs of failing checks, in the same order as `failing`. A check with no URL is left out, so this list may be shorter. */
   failingUrls: { name: string; url: string }[]
   /**
-   * The subset of `failing` whose run never actually started — GitHub billed
-   * or spending-limit-blocked the account, so the check reports
-   * `conclusion: failure` with no steps, and the real reason ("The job was
-   * not started because...") lives only in the check run's annotations
-   * (`./github.ts`'s `detectBlockedChecks`, fetched only for checks
-   * already known to be failing). A caller reads this to tell
-   * an account-level block apart from a real code failure instead of
-   * conflating the two. Always `[]` for a
-   * code host with no such concept (Forgejo has no billing-block failure mode
-   * documented) or when `failing` is empty (nothing to check).
+   * The checks in `failing` whose run never started, because GitHub blocked
+   * the account for billing or a spending limit. Such a check reports
+   * `conclusion: failure` with no steps. The reason ("The job was not started
+   * because...") is only in the check run's annotations, which
+   * `./github.ts`'s `detectBlockedChecks` reads for failing checks only. A
+   * caller uses this to tell an account block from a real code failure.
+   * Always `[]` on Forgejo, which documents no such failure, and when
+   * `failing` is empty.
    */
   blocked: string[]
 }
@@ -115,21 +114,21 @@ export interface CodeHostPr {
   activity: Activity[]
 }
 
-/** `CodeHostPr` plus drift, measured locally (`./facts.ts`) — never a code host field. */
+/** `CodeHostPr` plus drift, measured locally (`./facts.ts`). Drift is never a code host field. */
 export interface PrFacts extends CodeHostPr {
   behind: number | null
   ahead: number | null
 }
 
-/** The cheap listing shape — enough to filter/triage without the heavy fields (mirrors `PR_REF_FIELDS`'s role in `@osdlc/typed-gh`). */
+/** The cheap listing shape: enough to filter PRs without fetching the expensive fields. It plays the role of `PR_REF_FIELDS` in `@osdlc/typed-gh`. */
 export interface CodeHostPrSummary {
   number: number
   headRef: string
   author: Actor | null
   labels: string[]
-  /** Whether the PR is a draft — `orchestrator.pr_filters.exclude_drafts` (`ticks/_pr_filters.ts`) reads this to skip it before classification. */
+  /** Whether the PR is a draft, so a caller can skip drafts before a full fetch. */
   isDraft: boolean
-  /** Last-activity time; the `prs` tick skips the full fetch while it is unchanged. `null` when the code host omitted it. */
+  /** Last-activity time. A caller can skip the full fetch while it is unchanged. `null` when the code host omitted it. */
   updatedAt: string | null
 }
 
@@ -208,14 +207,17 @@ export interface CodeHost {
     limit?: number
     repo?: string
   }): Result<CodeHostPrDetail[], CodeHostFailure>
-  /** One PR with every field a classifier or router needs. A success of `null` when it doesn't exist; a failure when the call failed. `since` is accepted for a future incremental fetch; every adapter today ignores it and returns full state. */
+  /**
+   * One PR with every field a classifier or router needs. A success of `null` when it does not
+   * exist, and a failure when the call failed. `since` is reserved for an incremental fetch.
+   * Every adapter ignores it and returns the full state.
+   */
   getPr(number: number, opts: { since: string | null }): Result<CodeHostPr | null, CodeHostFailure>
-  /** Posts a comment; throws on failure (a mutation, per the tri-modal convention — see `Gh`/`Git`). */
+  /** Posts a comment. Throws on failure, like every mutation here (the same rule as `Gh` and `Git`). */
   postComment(number: number, body: string): { id: string; createdAt: string }
   /**
-   * Rewrites the body of comment `commentId` (an id `postComment` returned) on the PR; throws on
+   * Rewrites the body of comment `commentId` (an id `postComment` returned) on the PR. Throws on
    * failure, and throws {@link CommentNotFoundError} when the comment no longer exists (HTTP 404).
-   * The run-end reconcile edits its one failure comment through it.
    */
   updateComment(number: number, commentId: string, body: string): void
   /**
@@ -226,24 +228,24 @@ export interface CodeHost {
   listComments?(
     number: number,
   ): Result<{ id: string; createdAt: string; body: string }[], CodeHostFailure>
-  /** Marks the PR ready for review (`draft: false`) or converts it to a draft (`draft: true`); throws on failure, or `CodeHostUnsupported` where the code host has no draft toggle. */
+  /** Marks the PR ready for review (`draft: false`) or converts it to a draft (`draft: true`). Throws on failure, or `CodeHostUnsupported` when the code host has no draft toggle. */
   setDraft(number: number, draft: boolean): void
-  /** Brings the PR's head up to date with its base; throws on failure. */
+  /** Brings the PR's head up to date with its base. Throws on failure. */
   updateBranch(number: number, style: 'merge' | 'rebase'): void
   /**
-   * Every review thread on the PR. A failure when they cannot be read in full (a
-   * failed call, too many threads, or a code host with no thread model, which
-   * is `unsupported`): a caller gating a merge on this must treat a failure as
+   * Every review thread on the PR. A failure when they cannot be read in full: a
+   * failed call, too many threads, or a code host with no review threads
+   * (`unsupported`). A caller that blocks a merge on this must treat a failure as
    * "unknown", never as "none".
    */
   reviewThreads(number: number): Result<ReviewThreadState[], CodeHostFailure>
   /**
-   * Merges the PR. `opts.headSha` is the head the caller judged; the code host
-   * refuses (this throws) when the head has since moved, so an unreviewed push
-   * cannot ride in on a stale verdict. The head branch is left in place.
+   * Merges the PR. `opts.headSha` is the head the caller checked. The code host
+   * refuses, and this throws, when the head has moved since, so a push nobody
+   * reviewed is not merged. The head branch is left in place.
    */
   mergePr(number: number, opts: { headSha: string; method: MergeMethod }): void
-  /** Opens a PR; throws on failure, like `postComment`. */
+  /** Opens a PR. Throws on failure, like `postComment`. */
   createPr(input: CreatePrInput): { number: number; url: string }
   /** `null` when `url` names no PR this code host recognizes. */
   parsePrUrl(url: string): PrRef | null
@@ -253,7 +255,7 @@ export interface CodeHost {
 
 /**
  * Thrown by `CodeHost.updateComment` when the comment is gone (the code host answered 404). The
- * adapters decide it from the HTTP status or the client's stderr, never from the request, which
+ * adapters detect it from the HTTP status or the client's stderr, never from the request, which
  * carries the comment body.
  */
 export class CommentNotFoundError extends Error {

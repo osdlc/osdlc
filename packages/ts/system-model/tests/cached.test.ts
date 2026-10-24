@@ -226,7 +226,7 @@ describe('runners.readCached', () => {
       })
       // Runners whose tools sit in one package share its detection evidence,
       // so `beta` is not asserted: an edit may stale both.
-      // The stale report is still served: that is the whole point.
+      // The stale report is still served, by design.
       expect(cached.catalog?.reports).toHaveLength(2)
       expect(cached.catalog?.reports[0]?.tasks[0]?.display).toBe('alpha build')
     } finally {
@@ -272,7 +272,7 @@ describe('runners.readCached', () => {
 
       const cached = await s.project.runners.readCached(profile, cache, s.options)
       // The parse runner read every byte it depends on through `ctx`, so its
-      // digest is a proof and the clock adds nothing.
+      // digest is enough and the clock adds nothing.
       expect(stateOf(cached.runners, 'alpha')).toBe('fresh')
       expect(cached.runners.find((r) => r.runner === 'gamma')).toMatchObject({
         state: 'stale',
@@ -424,11 +424,10 @@ describe('runners.readCached', () => {
   })
 
   test('a NEW file matching a pattern the runner queried makes the entry stale', async () => {
-    // A fingerprint built only from recorded reads describes the world as it
-    // was. `one.job` was read and hashed; `two.job` did not exist, was never
-    // read, and so moved nothing: the runner would report a task the cache
-    // could not know about, indefinitely, because a parse entry has no
-    // max-age backstop.
+    // A fingerprint built only from recorded reads describes the files as they
+    // were. `one.job` was read and hashed. `two.job` did not exist and was
+    // never read, so it changed nothing. The cache would then never show its
+    // task, because a parse entry has no max-age limit.
     const root = await fixtureRoot({ 'one.job': 'x' })
     const cache = await fixtureRoot({})
     try {
@@ -658,7 +657,7 @@ describe('a changed exclusion set', () => {
   const jobsRoot = () => fixtureRoot({ 'real.job': 'x', 'tests/mini-repo/fake.job': 'x' })
 
   test('stales an entry the excluded files are baked into', async () => {
-    // The case no digest can catch. Excluding a tree changes nothing ON DISK:
+    // The case no digest can catch. Excluding a tree changes nothing on disk:
     // every path the probe recorded still exists with the same bytes, so the
     // fingerprint matches, the entry reads fresh, and the tasks just excluded
     // go on being served out of the store.

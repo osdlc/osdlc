@@ -13,7 +13,7 @@ export interface Registry {
   ecosystemById: ReadonlyMap<string, EcosystemDef>
 }
 
-/** A marker after the role files are folded in. */
+/** A marker: one the tool declares, or one from its role's lockfiles or configs. */
 export interface MarkerEntry {
   files: string
   tier: EvidenceKind
@@ -39,7 +39,7 @@ export function buildRegistry(tools: readonly ToolDef[]): Registry {
   return { tools, byId, ecosystems: [...ecosystemById.values()], ecosystemById }
 }
 
-/** Every file pattern that shows `tool` is in use: its markers and its role files. */
+/** Every file pattern that indicates `tool` is in use: its markers and its role files. */
 export function markersOf(tool: ToolDef): MarkerEntry[] {
   const out: MarkerEntry[] = (tool.markers ?? []).map((m) => ({
     files: m.files,

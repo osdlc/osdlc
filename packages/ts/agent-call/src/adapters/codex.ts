@@ -27,9 +27,9 @@ const LAST_MESSAGE_FILE = 'last-message.txt'
 const SCHEMA_FILE = 'output-schema.json'
 
 /**
- * OpenAI Codex CLI (`codex exec`). Sandbox modes map cleanly onto the
- * canonical permission postures; structured output is native via
- * `--output-schema`; tool-level rules are not expressible.
+ * OpenAI Codex CLI (`codex exec`). Its sandbox modes map onto the permission
+ * modes. Structured output uses `--output-schema`. Per-tool rules cannot be
+ * expressed.
  */
 export function codexAdapter(options: CodexAdapterOptions = {}): AgentAdapter {
   const command = commandPrefix(options, 'codex')
@@ -52,8 +52,8 @@ export function codexAdapter(options: CodexAdapterOptions = {}): AgentAdapter {
 
 /**
  * `-c model_reasoning_effort="<level>"`, quoted as codex's TOML override
- * expects. The level passes through as given; which levels a model takes
- * is the caller's to know (`codex debug models` lists them).
+ * expects. The level passes through as given. The caller must know which
+ * levels a model takes (`codex debug models` lists them).
  */
 export function codexEffortArgv(effort: string): string[] {
   return ['-c', `model_reasoning_effort="${effort}"`]
@@ -85,8 +85,8 @@ function planCodex(command: readonly string[], spec: AgentCallSpec): PlannedCall
     note(notes, 'session.persist', 'native', '--ephemeral')
   }
 
-  // Requested format → CLI reality: `--json` is a JSONL event stream, so it
-  // backs both "json" (we aggregate) and "stream-json" (events exposed).
+  // `--json` prints a JSONL event stream. It is used for both "json" (the events
+  // are combined into one result) and "stream-json" (the events are returned).
   const format: OutputFormat = spec.output?.format ?? 'json'
   if (format !== 'text') {
     argv.push('--json')
@@ -106,12 +106,12 @@ function planCodex(command: readonly string[], spec: AgentCallSpec): PlannedCall
       'codex text output interleaves progress logs; final answer read from --output-last-message',
     )
   }
-  // Clean final answer regardless of format.
+  // Read the final answer from a file, whatever the format.
   argv.push('--output-last-message', `${TMP_TOKEN}/${LAST_MESSAGE_FILE}`)
   tempFiles.push({ name: LAST_MESSAGE_FILE, content: '', readBack: true })
   argv.push('--color', 'never')
-  // The canonical spec is directory-driven, not git-driven; don't refuse
-  // to run in non-repo working directories.
+  // A spec names a directory, not a git repository. Run outside a repository
+  // too.
   argv.push('--skip-git-repo-check')
 
   if (spec.model !== undefined) argv.push(...modelFlag(spec.model))
@@ -205,7 +205,7 @@ function planCodex(command: readonly string[], spec: AgentCallSpec): PlannedCall
   argv.push(...(spec.extraArgs ?? []))
 
   const prompt = buildEffectivePrompt(spec, { schemaNative: true }, notes)
-  // `-` reads the prompt from stdin — avoids argv length limits.
+  // `-` reads the prompt from stdin, which avoids argv length limits.
   argv.push('-')
 
   return {
@@ -279,7 +279,7 @@ function parseCodex(planned: PlannedCall, raw: RawProcessOutput): ParsedOutput {
     } else if (type === 'error') {
       errorDetail = asString(get(event, 'message')) ?? 'codex reported an error'
     } else {
-      // Legacy event shape: {"id": ..., "msg": {"type": "agent_message", ...}}
+      // Older event shape: {"id": ..., "msg": {"type": "agent_message", ...}}
       const msgType = get(event, 'msg', 'type')
       if (msgType === 'agent_message') {
         const legacyText = asString(get(event, 'msg', 'message'))
@@ -295,8 +295,8 @@ function parseCodex(planned: PlannedCall, raw: RawProcessOutput): ParsedOutput {
     }
   }
 
-  // codex emits warning-level `error` items (e.g. config deprecations) on
-  // runs that still answer; only fail when the turn failed or nothing came back.
+  // codex prints warning-level `error` items (such as config deprecations) on
+  // runs that still answer. Fail only when the turn failed or no answer came.
   const isError = turnFailed || (errorDetail !== undefined && !answered)
   return withStructured(planned, {
     text,

@@ -5,13 +5,13 @@ dependencies.
 
 ## Why
 
-A function that can fail in a way its caller should handle has two honest
-choices: throw, or return the failure. Throwing is right for bugs and for
+A function that can fail in a way its caller should handle has two choices:
+throw, or return the failure. Throwing is right for bugs and for
 "stop here". Returning is right when the caller will look at the failure and
 decide: retry, show a hint, fall back. This library is for the second case. It
-gives every layer of a program the same small vocabulary, so a failure that
-starts in a subprocess can travel up through a git client and a code-host
-adapter and still end as one plain sentence for a person.
+gives every layer of a program the same few types. A failure that starts in a
+subprocess can pass up through a git client and a code-host adapter and still
+end as one plain sentence for a person.
 
 - A `Result` is a plain object, `{ ok: true, value }` or `{ ok: false, error }`.
   No classes, so it survives JSON, structured clone and a test's `toEqual`.
@@ -20,9 +20,9 @@ adapter and still end as one plain sentence for a person.
   `cause` is what produced it.
 - Async results are just `Promise<Result<…>>`. There is no `ResultAsync`.
 
-When not to use it: you want a full effect system (use Effect), or railway
-chains with dozens of combinators (use neverthrow or fp-ts). This is eleven
-small functions.
+When not to use it: you want a full effect system (use Effect), or long
+method chains with dozens of combinators (use neverthrow or fp-ts). This
+package is fourteen small functions and one error class.
 
 ## Install
 
@@ -148,7 +148,7 @@ Types: `Ok<T>`, `Err<E>`, `Result<T, E = Failure>`, `Failure<K extends string = 
 
 ## Stability
 
-Pre-1.0. The API above is small and intended to stay; a minor version may
+Pre-1.0. The API above is small and meant to stay, but a minor version may
 change it. See [docs/planning](./docs/planning/README.md) for why it has this
 shape.
 

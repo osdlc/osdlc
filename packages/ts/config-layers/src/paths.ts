@@ -1,17 +1,16 @@
 /**
  * Named directories, and the `{name}` substitution over them.
  *
- * A `paths:` map — name → directory — lives in both config files, and the
- * machine's entry wins per name, since a directory is a fact about a
- * machine. Any other path-valued setting then refers to an entry as
- * `{name}`, so `~/Developer` is written once however many settings need it.
+ * Both config files can carry a `paths:` map from name to directory. The
+ * machine file's entry wins per name, since a directory is a fact about a
+ * machine. Any other path-valued setting refers to an entry as `{name}`, so
+ * `~/Developer` is written once however many settings need it.
  *
- * Also home to {@link resolveConfigPath}, the one `~` and relative expansion
- * every config path value goes through. This module imports nothing else
- * from the package, so a schema can use its pieces without a cycle.
+ * {@link resolveConfigPath} is here too. Every config path value goes through
+ * it for `~` and relative-path expansion. This module imports nothing else
+ * from the package, so a schema can use it without an import cycle.
  */
 
-// os.homedir() is the fallback when HOME is unset.
 import { homedir } from 'node:os'
 import { isAbsolute, resolve } from 'node:path'
 
@@ -36,13 +35,14 @@ export interface ResolveConfigPathOptions {
 /**
  * Expand a single config path value relative to `baseDir`.
  *
- * URLs (`scheme://…`) and bare words that do not look like paths pass
- * through untouched — a value may legitimately be a name rather than a
- * place. A leading `~` expands to `opts.home` (default `$HOME`, else `os.homedir()`; if that is empty, `~` is left as written). Only `~` and
- * `~/…` expand; a `~user/…` form is not expanded and resolves as a relative
- * path. A relative path resolves against `baseDir`, which is the project root for a project file
- * and, for a machine file, whatever the reading tool considers its working
- * root.
+ * URLs (`scheme://…`) and bare words that do not look like paths are
+ * returned unchanged, because a value may be a name rather than a place. A
+ * leading `~` expands to `opts.home` (default `$HOME`, else `os.homedir()`).
+ * If that is empty, `~` is left as written. Only `~` and `~/…` expand. A
+ * `~user/…` form is not expanded and resolves as a relative path. A relative
+ * path resolves against `baseDir`. For a project file that is the project
+ * root. For a machine file it is whatever directory the reading tool uses as
+ * its base.
  * @experimental
  */
 export function resolveConfigPath(
@@ -103,7 +103,7 @@ export class PathNameError extends Error {}
 export interface SubstituteOptions {
   /**
    * How the message tells a person to define a missing name. Defaults to
-   * "define it under `paths:`"; a tool that has two files names them.
+   * "define it under paths:". A tool that has two files names them.
    */
   defineHint?: string | undefined
 }
@@ -111,11 +111,10 @@ export interface SubstituteOptions {
 /**
  * `value` with every `{name}` replaced from `names`, the {@link PathNames} map.
  *
- * A name nothing defines is a {@link PathNameError} rather than an empty
- * string: a setting that silently expands to `/repo` instead of
- * `/Users/me/dev/repo` fails somewhere far from the typo. The message says
- * where the name was found (`where`, e.g. `repos:`), how to define it, and
- * what is available.
+ * A name nothing defines is a {@link PathNameError}, not an empty string. A
+ * setting that silently expands to `/repo` instead of `/Users/me/dev/repo`
+ * fails somewhere far from the typo. The message says where the name was
+ * found (`where`, e.g. `repos:`), how to define it, and what is available.
  * @experimental
  */
 export function substitutePathNames(
@@ -144,8 +143,8 @@ export function substitutePathNames(
  */
 export interface PathsSchemaOptions {
   /**
-   * Names a consuming setting defines itself, which `paths:` may not
-   * shadow — `host`, `owner`, `repo` for a checkout layout, say.
+   * Names that a consuming setting defines itself, which `paths:` may not
+   * reuse. For example `host`, `owner` and `repo` for a checkout layout.
    */
   reserved?: readonly string[] | undefined
 }

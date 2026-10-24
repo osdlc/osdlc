@@ -4,7 +4,7 @@
  *
  * It compiles the **frontmatter** schema (a JSON Schema subset, `schema-v2.ts` → Zod), the
  * **body grammar** (`body-v2.ts` → the builders) and the root `description` (the outermost
- * finding hint). `mcVersion: 2` is the only supported version. Custom `rule` / `docRule`
+ * hint for findings). `mcVersion: 2` is the only supported version. Custom `rule` / `docRule`
  * functions have no YAML form.
  */
 import { readFileSync } from 'node:fs'
@@ -96,7 +96,7 @@ export function compileContractObject(raw: Record<string, unknown>): Contract {
   return contract(def)
 }
 
-/** The contract root is closed: only the envelope plus the three contract planes. */
+/** Throws on any top-level key other than the envelope, `frontmatter`, `body` and `description`. */
 function assertContractKeys(raw: Record<string, unknown>): void {
   const allowed = new Set(['mcVersion', 'kind', 'frontmatter', 'body', 'description'])
   for (const key of Object.keys(raw)) {
@@ -107,10 +107,9 @@ function assertContractKeys(raw: Record<string, unknown>): void {
 }
 
 /**
- * `requires:` / `forbids:` on the body root (sibling of `sections:`) → one document-scoped
- * `textRule` docRule. The body grammar (`SectionSeq` / `LevelOpts`) cannot carry it, so it
- * attaches at the contract level. The body compiler has
- * already verified `body` is a mapping.
+ * Compiles `requires:` and `forbids:` on the body (next to `sections:`) into one `textRule`
+ * document rule. The body grammar (`SectionSeq`, `LevelOpts`) has no place for it, so it goes in
+ * the contract's `rules`. `compileBodyV2` has already checked that `body` is a mapping.
  */
 function attachBodyTextRule(def: ContractDef, body: unknown): void {
   if (body !== null && typeof body === 'object' && !Array.isArray(body)) {

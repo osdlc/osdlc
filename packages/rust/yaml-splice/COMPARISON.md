@@ -19,15 +19,13 @@ The harness is the crate in [compare/](./compare/README.md). It loads a document
 result. The same edit runs through yaml-splice's `edit_yaml`.
 
 1. 19 hand-picked cases. yaml-edit gives the expected mapping on 16 (on 0.3.2 and on main). Three
-   are real failures (examples 1 to 3). The harness once marked the BOM case wrong on both crates.
-   That was a checker fault, now fixed.
+   are real failures (examples 1 to 3).
 2. A sweep over the document shapes of `tests/neighbours.rs`: 25 value shapes, every pair in `first`
    and `second`, three separators between them, then `last: end # t`; LF and CRLF. On each of the
-   three keys: one Remove and six Sets (`Z`, three multi-line strings, `1.5`, `7`).
-   78,750 edits. `tests/neighbours.rs` sets 7 values: it also sets a sequence and a mapping, and
-   it does not set the integer 7. The harness sets scalars only, so it has 6 values.
-   With the Remove that is 7 edits per key instead of 8. 3,750 documents x 3 keys x 8 = 90,000
-   becomes 3,750 x 3 x 7 = 78,750.
+   three keys: one Remove and six Sets (`Z`, three multi-line strings, `1.5`, `7`). That is
+   3,750 documents x 3 keys x 7 edits = 78,750 edits. The harness sets scalars only.
+   `tests/neighbours.rs` runs 8 edits per key: it also sets a sequence and a mapping, and it does
+   not set the integer 7.
 
 An edit is "correct" when the result parses, with yaml-splice's parser, to the original mapping
 with only the addressed key changed. A leading BOM is stripped before the check. Run against
@@ -53,8 +51,7 @@ parses them.
 
 No-op check: `Set` of `last` to its current value `end` in 3,750 documents. The result was
 byte-identical in 3,456 on 0.3.2 (the other 294 are the documents 0.3.2 fails to parse) and in all
-3,750 on main. A quoted value was re-written without its
-quotes on both (example 5).
+3,750 on main. On both, a quoted value was rewritten without its quotes (example 5).
 
 ## Caveats
 

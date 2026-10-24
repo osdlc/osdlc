@@ -289,7 +289,7 @@ describe('pi parse', () => {
   })
 
   test('an aborted run is an error', () => {
-    // Built from the documented agent_settled shape; not captured.
+    // Built from the documented agent_settled shape, not captured.
     const planned = adapter.plan({ prompt: 'say hi' })
     const parsed = adapter.parseResult(
       planned,
@@ -359,7 +359,7 @@ describe('pi conversation', () => {
   })
 
   test('thinking blocks become reasoning parts', () => {
-    // Built from the documented ThinkingContent shape; the mock emits no thinking.
+    // Built from the documented ThinkingContent shape. The mock sends no thinking.
     const line =
       '{"type":"message_end","message":{"role":"assistant","content":[{"type":"thinking","thinking":"plan it"},{"type":"text","text":"ok"}],"model":"m","usage":{"input":1,"output":1,"cacheRead":0,"cacheWrite":0,"totalTokens":2,"cost":{"total":0}},"stopReason":"stop","timestamp":1}}'
     const conversation = adapter.toConversation?.(adapter.plan({ prompt: 'x' }), raw(line))

@@ -85,16 +85,17 @@ interface Calls {
 }
 
 /**
- * Canonicalise as much of `path` as exists and keep the rest lexically, in `/`
+ * Canonicalise as much of `path` as exists and keep the rest as written, in `/`
  * form. A `..` is resolved physically where the filesystem can, and behind a
  * missing name it is folded against the real path of the existing part, never
  * against the spelling. On Windows every `..` folds as text first, as Windows
- * does. A dangling symlink is followed to its target. Null when the walk follows
- * more than {@link MAX_LINK_HOPS} links or would spend more resolver calls than
- * a fixed allowance per link plus a few per segment of `path`. The empty path,
- * which no caller takes as absolute, when the resolver gives an answer that is
- * not canonical: relative, or with a `.` or `..` segment. The answer holds no
- * `..`.
+ * does. A dangling symlink is followed to its target. The answer holds no `..`.
+ *
+ * Returns null when the walk follows more than {@link MAX_LINK_HOPS} links or
+ * would spend more resolver calls than a fixed allowance per link plus a few
+ * per segment of `path`. Returns the empty path, which no caller takes as
+ * absolute, when the resolver gives an answer that is not canonical: relative,
+ * or with a `.` or `..` segment.
  */
 export function existingPrefix(resolver: Resolver, path: string): string | null {
   const calls = {

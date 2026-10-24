@@ -1,87 +1,81 @@
 /**
- * The text-match predicate core and the `text/*` finding area.
+ * Text matching and the `text/*` findings. Every text check uses this module. It does three
+ * things:
  *
- * This is the runtime foundation every declarative text constraint emits through. It has
- * three responsibilities, all facets of one feature — matching a literal/regex over a bound
- * scope's rendered text and turning the result into findings:
+ *   1. {@link matchText}: `(text, spec) → { count, positions }`. It matches a literal `pattern`
+ *      or a `regex`, counts every occurrence, and gives each hit's 1-based line and column in
+ *      `text`. With `normalize` (default true) a phrase split across a wrapped line still
+ *      matches. `normalize: false` matches the exact text. `ignoreCase` ignores case. Inline code
+ *      and code blocks are matched too. Text checks do not skip code on purpose.
+ *   2. {@link buildTextFindings}: turns a match result and the entry's `min` and `max` into
+ *      findings. `text/requires` is a miss, placed on the scope's heading or on the document.
+ *      `text/forbids` is a hit, placed on its line. `text/count` reads "found N times,
+ *      expected …". Each message ends with the spec's `note`.
+ *   3. {@link synthesizeTextId}: the id of an entry, `text/<kind>/<scopeKey>/<patternHash>`. The
+ *      hash comes from the pattern, not the entry's position, so reordering entries keeps the
+ *      ids. An entry's explicit `id` is used when set.
  *
- *   1. {@link matchText} — a pure matcher: `(text, spec) → { count, positions }`. It matches a
- *      literal `pattern` or a `regex`, counts every occurrence, and pins each hit's source
- *      position (1-based line / col within `text`). `normalize` (default true) lets a phrase
- *      split across a wrapped line still match; `normalize: false` is exact bytes; `ignoreCase`
- *      folds case. It matches the raw text INCLUDING inline code spans and fenced blocks — text
- *      constraints deliberately do not skip code.
- *   2. {@link buildTextFindings} — maps a match result + the entry's `min` / `max` bound to
- *      `text/requires` (a miss, positioned at the scope's heading / document level),
- *      `text/forbids` (a hit, positioned at the offending line), and `text/count`
- *      (`found N times, expected …`) findings — each with the spec's `note` appended.
- *   3. {@link synthesizeTextId} — the stable per-entry id: `text/<kind>/<scopeKey>/<patternHash>`,
- *      a short hash of the normalized pattern (NOT index-based, so it survives entry reordering);
- *      returns the entry's explicit `id` when set.
- *
- * This module is the matcher and finding plumbing only. The combinator builders
- * (`requires` / `forbids` / `textRule`), scope binding and the YAML surface are downstream.
- * Nothing here knows about a `DocTree`, a section or YAML.
+ * The builders (`requires`, `forbids`, `textRule`) and the choice of scope text are in
+ * `text-constraints.ts`. Nothing here knows about a `DocTree`, a section or YAML.
  */
 import type { Ctx, Finding, FindingLevel, SourcePos } from './types.js'
 
 // ── The match spec & result ──────────────────────────────────────────────────────────
 
 /**
- * One match spec — the closed text-match vocabulary. Exactly one of
- * `pattern` (a literal substring) or `regex` (a regular-expression source) supplies the needle.
- * `min` / `max` are the count bound the finding-builder reads (`requires` defaults `min: 1`,
- * unbounded `max`; `forbids` defaults `max: 0`). `id` pins the finding identity across pattern
- * edits; `note` is appended to the message; `level` overrides the registry default.
+ * One text check. Exactly one of `pattern` (a literal substring) or `regex` (a regular expression
+ * source) gives the text to find. `min` and `max` bound the count. `requires` defaults to
+ * `min: 1` with no `max`. `forbids` defaults to `max: 0`. `id` keeps the finding id fixed when
+ * the pattern changes. `note` is added to the message. `level` overrides the default level.
  */
 export interface TextMatchSpec {
-  /** the literal substring to find (one of `pattern` / `regex` is required) */
+  /** The literal substring to find. One of `pattern` or `regex` is required. */
   pattern?: string
-  /** a regular-expression source to find (alternative to `pattern`) */
+  /** A regular expression source to find, instead of `pattern`. */
   regex?: string
-  /** collapse runs of whitespace before matching, so prose line-wrapping is tolerated (default true) */
+  /** Treat any run of whitespace in `pattern` as matching any run, so wrapped lines match. Default true. */
   normalize?: boolean
-  /** case-insensitive match (default false) */
+  /** Ignore case. Default false. */
   ignoreCase?: boolean
-  /** minimum occurrences */
+  /** The fewest occurrences. */
   min?: number
-  /** maximum occurrences */
+  /** The most occurrences. */
   max?: number
-  /** an explicit, author-supplied finding id — pins identity across pattern edits */
+  /** A finding id to use instead of the generated one. It stays the same when the pattern changes. */
   id?: string
-  /** author rationale, appended to the finding message */
+  /** The reason for the check, added to the finding message. */
   note?: string
-  /** finding severity, `error` or `warn`; overrides the default level */
+  /** The finding level, `error` or `warn`. Overrides the default level. */
   level?: Extract<FindingLevel, 'error' | 'warn'>
 }
 
-/** The result of {@link matchText} — the occurrence count and each hit's source position. */
+/** The result of {@link matchText}: the number of hits and where each starts. */
 export interface TextMatchResult {
   count: number
-  /** one entry per hit, in document order; each is the 1-based line / col of the match start */
+  /** One entry per hit, in order: the 1-based line and column where the match starts. */
   positions: SourcePos[]
 }
 
-/** The entry kind a text constraint is authored as — presence (`requires`) or absence (`forbids`). */
+/** The kind of a text check: presence (`requires`) or absence (`forbids`). */
 export type TextKind = 'requires' | 'forbids'
 
 /**
- * The finding-id discriminator. `requires` / `forbids` are the pure presence / absence findings;
- * `count` is a `min` / `max` bound violation (a shortfall or an overflow).
+ * The kind part of a text finding id. `requires` and `forbids` are the presence and absence
+ * findings. `count` means a `min` or `max` was not met.
  */
 export type TextFindingKind = 'requires' | 'forbids' | 'count'
 
-// ── The pure matcher ─────────────────────────────────────────────────────────────────
+// ── The matcher ─────────────────────────────────────────────────────────────────
 
-/** Escape every regex metacharacter in a literal so it matches itself. */
+/** Escapes every regex special character in a literal so it matches itself. */
 function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 /**
- * Turn a literal pattern into a regex source whose internal whitespace runs match any run of
- * whitespace — so a phrase wrapped across a line (a newline + indentation between words) still
- * matches. Leading / trailing whitespace is dropped; each word is escaped literally.
+ * Turns a literal pattern into a regex source in which each run of whitespace matches any run of
+ * whitespace. So a phrase wrapped across lines still matches. Leading and trailing whitespace is
+ * dropped. Each word is escaped.
  */
 function normalizedPatternSource(pattern: string): string {
   const trimmed = pattern.trim()
@@ -109,11 +103,10 @@ function positionMapper(text: string): (offset: number) => SourcePos {
 }
 
 /**
- * Match a spec against `text`, returning the occurrence count and each hit's source position.
- * A literal `pattern` is matched with `normalize` (default true → whitespace-run flexible) or
- * exactly (`normalize: false`); a `regex` is matched as given. `ignoreCase` folds case in both.
- * Matching is over the raw text including code spans and fenced blocks. Throws when
- * the spec supplies neither `pattern` nor `regex`.
+ * Matches a spec against `text` and returns the number of hits and where each starts. A literal
+ * `pattern` is matched with `normalize` (default true, any whitespace run matches) or exactly
+ * (`normalize: false`). A `regex` is used as given. `ignoreCase` applies to both. Code is
+ * matched too. Throws when the spec has neither `pattern` nor `regex`.
  */
 export function matchText(text: string, spec: TextMatchSpec): TextMatchResult {
   let source: string
@@ -125,7 +118,7 @@ export function matchText(text: string, spec: TextMatchSpec): TextMatchResult {
   } else {
     throw new Error('matchText: a spec must supply one of `pattern` or `regex`')
   }
-  // An empty needle never matches (avoids a zero-width regex looping over every position).
+  // An empty pattern never matches. Otherwise it would match at every position.
   if (source === '') return { count: 0, positions: [] }
 
   const flags = spec.ignoreCase ? 'gi' : 'g'
@@ -135,15 +128,15 @@ export function matchText(text: string, spec: TextMatchSpec): TextMatchResult {
   let m: RegExpExecArray | null
   while ((m = re.exec(text)) !== null) {
     positions.push(posAt(m.index))
-    // Guard against a zero-width match (e.g. a `regex` that can match empty) looping forever.
+    // A regex that can match the empty string would otherwise loop forever.
     if (m.index === re.lastIndex) re.lastIndex++
   }
   return { count: positions.length, positions }
 }
 
-// ── Stable finding-id synthesis ──────────────────────────────────────────────────────
+// ── Finding ids ──────────────────────────────────────────────────────
 
-/** A short, stable, deterministic hash (FNV-1a → base36). No crypto dep; pure. */
+/** A short, stable hash (FNV-1a, in base 36). It needs no crypto module. */
 function shortHash(s: string): string {
   let h = 0x811c9dc5
   for (let i = 0; i < s.length; i++) {
@@ -154,11 +147,11 @@ function shortHash(s: string): string {
 }
 
 /**
- * The canonical identity of a spec's *matcher* — what the synthesized id hashes over. It folds in
- * the needle (the normalized literal, or the regex source) and the flags that change what matches
- * (`normalize`, `ignoreCase`), so two genuinely different checks get different ids while the same
- * check is stable across reordering. The count bound (`min` / `max`) is deliberately NOT part of
- * the key — it changes the finding *message*, not which text the entry is about.
+ * The text the generated id hashes. It holds the search text (the normalized literal, or the
+ * regex source) and the flags that change what matches (`normalize`, `ignoreCase`). So two
+ * different checks get different ids, and one check keeps its id when entries are reordered.
+ * `min` and `max` are left out on purpose. They change the message, not which text the check is
+ * about.
  */
 function patternKey(spec: TextMatchSpec): string {
   const fold = spec.ignoreCase ? 'i' : ''
@@ -169,11 +162,10 @@ function patternKey(spec: TextMatchSpec): string {
 }
 
 /**
- * The stable finding id for one text-constraint entry: `text/<kind>/<scopeKey>/<patternHash>`,
- * where `patternHash` is a short hash of the spec's normalized pattern. It is stable across entry
- * REORDERING (not index-based) and unique across scopes; it changes only when the section is
- * renamed (`scopeKey`) or the pattern is edited. An entry that sets an explicit `id` gets exactly
- * that id back (pinning identity across pattern edits).
+ * The finding id for one text check: `text/<kind>/<scopeKey>/<patternHash>`, where
+ * `patternHash` is a short hash of the pattern and its match flags. Reordering entries does not
+ * change it, and it differs between scopes. It changes when the section is renamed (`scopeKey`)
+ * or the pattern or its flags change. An entry with an explicit `id` gets that id back.
  */
 export function synthesizeTextId(
   kind: TextFindingKind,
@@ -184,56 +176,56 @@ export function synthesizeTextId(
   return `text/${kind}/${scopeKey}/${shortHash(patternKey(spec))}`
 }
 
-// ── The finding-builder ──────────────────────────────────────────────────────────────
+// ── Building findings ──────────────────────────────────────────────────────────────
 
-/** The needle as it reads in a finding message — `"literal"` for a pattern, `/source/` for a regex. */
+/** The search text for a finding message: `"literal"` for a pattern, `/source/` for a regex. */
 function specRepr(spec: TextMatchSpec): string {
   if (spec.regex !== undefined) return `/${spec.regex}/`
   return `"${spec.pattern ?? ''}"`
 }
 
-/** A human label for the scope a finding fires in — `doc` renders as `document`. */
+/** The scope's name for messages. `doc` reads as `document`. */
 function scopeLabel(scopeKey: string, scope: string | undefined): string {
   if (scope !== undefined) return scope
   return scopeKey === 'doc' ? 'document' : scopeKey
 }
 
-/** The count bound the builder evaluates against, with the kind's defaults applied. */
+/** The `min` and `max` to check, with the kind's defaults applied. */
 function boundsFor(kind: TextKind, spec: TextMatchSpec): { min: number; max: number | undefined } {
   if (kind === 'requires') return { min: spec.min ?? 1, max: spec.max }
   return { min: spec.min ?? 0, max: spec.max ?? 0 }
 }
 
-/** The inputs to {@link buildTextFindings} — one entry's match result plus its scope. */
+/** The input to {@link buildTextFindings}: one entry's match result and its scope. */
 export interface TextFindingInput {
-  /** the entry kind — presence (`requires`) or absence (`forbids`) */
+  /** Presence (`requires`) or absence (`forbids`). */
   kind: TextKind
-  /** the spec the entry matched */
+  /** The entry's spec. */
   spec: TextMatchSpec
-  /** the result of {@link matchText} for this entry over the bound scope's text */
+  /** The result of {@link matchText} for this entry over the scope's text. */
   match: TextMatchResult
-  /** the scope's stable key, for id synthesis (`doc` for the whole document) */
+  /** The scope's key, used in the id (`doc` for the whole document). */
   scopeKey: string
-  /** a human label for the scope in messages; defaults from `scopeKey` (`doc` → `document`) */
+  /** The scope's name in messages. Defaults from `scopeKey` (`doc` → `document`). */
   scope?: string
-  /** the scope's heading position — a `requires` miss / `count` violation pins here; omit ⇒ document-level */
+  /** The scope's heading position, for a `requires` miss or a `count` finding. Omit for the whole document. */
   scopePos?: SourcePos
-  /** the registry-backed finding factory (stamps `path`, fills the default `level`) */
+  /** Makes the findings. It sets `path` and the default `level`. */
   ctx: Ctx
 }
 
 /**
- * Turn one entry's match result into its findings:
+ * Turns one entry's match result into findings:
  *
- *   - `requires` with no hit (`min: 1`) → one `text/requires` "required phrase … not found in …",
- *     positioned at `scopePos` (the section heading) or document-level when `scopePos` is omitted.
- *   - `forbids` with hits (`max: 0`) → one `text/forbids` "forbidden phrase … present" PER hit,
- *     each positioned at the offending match's line.
- *   - a `min` / `max` bound violation (a `requires` shortfall, or any `max` overflow) → one
- *     `text/count` "… found N times, expected …", positioned at `scopePos`.
+ *   - `requires` with no hit (`min: 1`): one `text/requires`, "required phrase … not found in …",
+ *     at `scopePos` (the section heading), or with no position when `scopePos` is omitted.
+ *   - `forbids` with hits (`max: 0`): one `text/forbids`, "forbidden phrase … present", for each
+ *     hit, on that hit's line.
+ *   - Any other `min` or `max` not met: one `text/count`, "… found N times, expected …", at
+ *     `scopePos`.
  *
- * Each message gets the spec's `note` appended. `level` rides from the spec when set, else the
- * registry default (`error`) via `ctx.finding`. A satisfied entry yields no findings.
+ * Each message ends with the spec's `note`. The level is the spec's `level` when set, else the
+ * default (`error`) from `ctx.finding`. An entry that passes gives no findings.
  */
 export function buildTextFindings(input: TextFindingInput): Finding[] {
   const { kind, spec } = input
@@ -248,7 +240,7 @@ export function buildTextFindings(input: TextFindingInput): Finding[] {
   return kind === 'requires' ? requiresFindings(derived) : forbidsFindings(derived)
 }
 
-/** {@link TextFindingInput} plus the bound / message pieces both branches share. */
+/** {@link TextFindingInput} plus the bounds and message parts both kinds use. */
 interface DerivedTextFinding extends TextFindingInput {
   min: number
   max: number | undefined
@@ -256,17 +248,17 @@ interface DerivedTextFinding extends TextFindingInput {
   note: string
 }
 
-/** The spec's `level`, as a key to spread; absent when the spec leaves the default. */
+/** The spec's `level` as an object to spread, or `{}` when it is not set. */
 function levelOf(spec: TextMatchSpec): { level?: 'error' | 'warn' } {
   return spec.level === undefined ? {} : { level: spec.level }
 }
 
-/** A position, as a key to spread; absent when there is none. */
+/** A position as an object to spread, or `{}` when there is none. */
 function posOf(pos: SourcePos | undefined): { pos?: SourcePos } {
   return pos === undefined ? {} : { pos }
 }
 
-/** A `text/count` finding (`… found N times, expected …`), pinned at the scope heading. */
+/** A `text/count` finding (`… found N times, expected …`), at the scope heading. */
 function countFinding(d: DerivedTextFinding, expected: string): Finding {
   return d.ctx.finding({
     id: synthesizeTextId('count', d.scopeKey, d.spec),
@@ -276,7 +268,7 @@ function countFinding(d: DerivedTextFinding, expected: string): Finding {
   })
 }
 
-/** The `requires` findings: a `text/requires` miss (`min: 1`), else a `text/count` bound violation. */
+/** The `requires` findings: `text/requires` for a miss with `min: 1`, else `text/count`. */
 function requiresFindings(d: DerivedTextFinding): Finding[] {
   const count = d.match.count
   if (count < d.min) {
@@ -298,7 +290,7 @@ function requiresFindings(d: DerivedTextFinding): Finding[] {
   return []
 }
 
-/** The `forbids` findings: a `text/forbids` per hit (`max: 0`), else a `text/count` overflow. */
+/** The `forbids` findings: one `text/forbids` per hit when `max` is 0, else `text/count`. */
 function forbidsFindings(d: DerivedTextFinding): Finding[] {
   const max = d.max ?? 0
   if (d.match.count <= max) return []

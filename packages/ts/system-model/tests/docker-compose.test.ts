@@ -24,9 +24,8 @@ async function root(files: Record<string, string>): Promise<string> {
 }
 
 /**
- * Fixture roots are not repositories, so discovery is pinned to the walk. The
- * provider is passed explicitly rather than selected with `only:` because
- * registration in `builtinProviders` is a separate change.
+ * Fixture roots are not repositories, so discovery is pinned to the walk. Only
+ * the docker-compose tool is registered.
  */
 function opts(extra: Record<string, unknown> = {}) {
   return { discovery: 'walk' as const, tools: [dockerCompose], ...extra }
@@ -97,8 +96,8 @@ describe('docker-compose runner', () => {
     expect(web?.parameters).toEqual([])
     expect(web?.tags).toEqual(['docker-compose', '.'])
 
-    // `image:` and a scalar `build:` are both cheap to read; a mapping-valued
-    // one would be skipped rather than guessed at.
+    // `image:` and a scalar `build:` are both cheap to read. A mapping-valued
+    // `build:` is skipped rather than guessed at.
     expect(web?.detail).toBe('image: nginx:alpine')
     expect(byName(list, 'api')?.detail).toBe('build: ./api')
     expect(byName(list, 'db')?.detail).toBe('image: postgres:16')
@@ -120,10 +119,10 @@ describe('docker-compose runner', () => {
       // Not "local": what the command starts runs in a container. The
       // detection posture (parse) is a different axis and says nothing here.
       expect(t.executes).toBe('container')
-      // `value: true` is the right default — `worker` and `db` would both
-      // read as non-persistent to the name heuristic, and both are servers.
-      // `declared: false` because Compose never states persistence: this is
-      // the provider inferring it from `up`, and the inference is wrong for a
+      // `value: true` is the right default. The name heuristic would call
+      // `worker` and `db` non-persistent, and both are servers.
+      // `declared: false` because Compose never states persistence. The
+      // provider infers it from `up`, and the inference is wrong for a
       // one-shot service (see the test below).
       expect(t.persistent).toEqual({ value: true, declared: false })
     }
@@ -133,10 +132,9 @@ describe('docker-compose runner', () => {
     // The counterexample the flag exists for. `docker compose up oneshot` on
     // this file prints `hello` and exits 0 immediately (Docker 29.6.2), so
     // `value: true` is wrong here. The provider keeps the default because it
-    // is right for most services and it cannot tell which case it is in from
-    // `command:` alone — and marks it `declared: false` so a consumer that
-    // only trusts what a runner actually said filters this out rather than
-    // believing it.
+    // is right for most services and `command:` alone cannot tell the cases
+    // apart. It marks the value `declared: false`, so a consumer that only
+    // trusts what a runner actually said can filter it out.
     const dir = await root({
       'compose.yaml': [
         'services:',
@@ -189,13 +187,12 @@ describe('docker-compose runner', () => {
   })
 
   test('a hostile service name survives into argv verbatim, as one element', async () => {
-    // The invariant is NOT that service names are free of shell
-    // metacharacters — a Compose key can hold any of them, as this fixture
-    // does. It is that `argv` is an array spawned directly and never joined
-    // into a shell command line, so a name carrying `$( )`, `;` or a space
-    // arrives at `docker` as a single opaque element: nothing is split on the
-    // space, nothing is escaped, nothing is expanded. If a future change ever
-    // built argv by string concatenation, this is the test that would fail.
+    // The invariant is not that service names are free of shell
+    // metacharacters. A Compose key can hold any of them, as this fixture does.
+    // The invariant is that `argv` is an array spawned directly and never
+    // joined into a shell command line. A name carrying `$( )`, `;` or a space
+    // arrives at `docker` as a single element: nothing is split, escaped or
+    // expanded. If argv were built by string concatenation, this test would fail.
     const dir = await root({
       'compose.yaml': [
         'services:',
@@ -220,10 +217,9 @@ describe('docker-compose runner', () => {
       expect(task?.argv.filter((a) => a === name).length).toBe(1)
     }
 
-    // `display` is the read-only twin and is allowed to be ambiguous — it is
-    // never executed. Nothing here asserts it is shell-safe, because it is
-    // not: `docker compose -f compose.yaml up x y` would be two arguments if
-    // anyone pasted it, which is exactly why `argv` is the executed form.
+    // `display` is for reading and may be ambiguous, since it is never
+    // executed. It is not shell-safe: pasted, `docker compose -f compose.yaml
+    // up x y` would pass two arguments. That is why `argv` is the executed form.
     expect(byName(list, 'x y')?.display).toBe('docker compose -f compose.yaml up x y')
   })
 
@@ -304,9 +300,9 @@ describe('docker-compose filename precedence', () => {
   })
 
   test('docker-compose.yml beats docker-compose.yaml — the empirically surprising case', async () => {
-    // The `compose` prefix prefers `.yaml`; the `docker-compose` prefix
-    // prefers `.yml`. That reversal is real, not a transcription slip:
-    // verified against Docker 29.6.2 by deleting winners one at a time and
+    // The `compose` prefix prefers `.yaml`. The `docker-compose` prefix
+    // prefers `.yml`. That reversal is real, not a typo. It was verified
+    // against Docker 29.6.2 by deleting the winning file one at a time and
     // re-running `docker compose config --services`.
     const dir = await root({
       'docker-compose.yml': FOUR['docker-compose.yml'] ?? '',
@@ -417,10 +413,9 @@ describe('docker-compose diagnostics for unreadable YAML constructs', () => {
   })
 
   test('a comment header before `---` opens the file, it does not end it', async () => {
-    // That `---` is the directives-end marker of the FIRST document, and YAML
-    // allows comments before it. Deciding opener-versus-separator on line
-    // index cost the entire file and then blamed a second document that was
-    // never there.
+    // That `---` is the directives-end marker of the first document, and YAML
+    // allows comments before it. Deciding opener or separator by line index
+    // would drop the whole file and blame a second document that is not there.
     const dir = await root({
       'compose.yaml': [
         '# my compose file',
@@ -506,7 +501,7 @@ describe('docker-compose diagnostics for unreadable YAML constructs', () => {
     const catalog = await collect(dir, opts())
     const list = tasks(catalog)
 
-    // Naming a profiled service explicitly on `up` starts it — Compose
+    // Naming a profiled service explicitly on `up` starts it. Compose
     // auto-enables the profile. Verified against Docker 29.6.2 with
     // `docker compose -f compose.yaml --dry-run up debugger`, which created
     // the container while `config --services` listed only `web`. So the task
@@ -524,9 +519,9 @@ describe('docker-compose diagnostics for unreadable YAML constructs', () => {
 
   test('an indented `---` inside a block scalar is content, not a separator', async () => {
     // `docker compose config --services` on this file reports `db` and `web`
-    // (Docker 29.6.2). Read as a separator, the `---` truncated the file at
-    // `echo two`: `db` vanished with no sign it had ever been there, and the
-    // multi-document warning claimed a second document that does not exist.
+    // (Docker 29.6.2). Read as a separator, the `---` would truncate the file
+    // at `echo two`. `db` would vanish with no sign, and the multi-document
+    // warning would claim a second document that does not exist.
     const dir = await root({
       'compose.yaml': [
         'services:',
@@ -594,11 +589,11 @@ describe('docker-compose diagnostics for unreadable YAML constructs', () => {
   })
 
   test('a leading UTF-8 BOM does not swallow the file', async () => {
-    // Docker accepts a BOM'd compose file and reports `web`. Left in place the
-    // BOM bound to the `services` key, so no service matched and — the worst
-    // part — no diagnostic was raised either: the report was `absent` with an
-    // aspect and an empty `diagnostics`, which is precisely the silent
-    // under-reporting the module docblock promises never happens.
+    // Docker accepts a BOM'd compose file and reports `web`. Left in place, the
+    // BOM binds to the `services` key, so no service matches and no diagnostic
+    // is raised. The report would be `absent` with an aspect and empty
+    // `diagnostics`: the silent under-reporting the module docblock promises
+    // never happens.
     const dir = await root({ 'compose.yaml': '\uFEFFservices:\n  web:\n    image: alpine\n' })
     const catalog = await collect(dir, opts())
     expect(report(catalog)?.status).toBe('ok')
@@ -612,7 +607,7 @@ describe('docker-compose diagnostics for unreadable YAML constructs', () => {
 
   test('a glob in a command value is not mistaken for a YAML alias', async () => {
     // `*tmp` sits inside a plain scalar, which runs to end of line, so it
-    // cannot be an alias — YAML aliases are whole nodes. The file contains no
+    // cannot be an alias. YAML aliases are whole nodes. The file contains no
     // anchor and no alias, and a warning saying otherwise is a false alarm on
     // a file that parsed perfectly.
     const dir = await root({
@@ -630,8 +625,8 @@ describe('docker-compose diagnostics for unreadable YAML constructs', () => {
   })
 
   test('aliases in value, list-item and flow positions are still caught', async () => {
-    // The counterweight to the test above: tightening must not cost a real
-    // detection. Each of these is an alias in a position where one is legal.
+    // The other side of the test above: the stricter check must not miss a
+    // real alias. Each of these is an alias in a position where one is legal.
     for (const field of ['image: *base', 'ports:\n      - *portref', 'x-extra: [*a, *b]']) {
       const { warnings } = readCompose(`services:\n  web:\n    ${field}\n`)
       expect(warnings.join('\n')).toMatch(/anchors and aliases/)
@@ -661,7 +656,7 @@ describe('readCompose', () => {
     const catalog = await collect(dir, opts())
     expect(report(catalog)?.status).toBe('absent')
     expect(report(catalog)?.tasks).toEqual([])
-    // The file IS there, and a caller asking "is this a Compose project"
+    // The file is there, and a caller asking "is this a Compose project"
     // should be told yes even though it declares no services.
     expect(await evidenceOf(dir)).toEqual(['compose.yaml'])
   })

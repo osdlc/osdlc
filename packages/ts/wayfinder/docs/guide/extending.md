@@ -21,7 +21,7 @@ use, and the roles it plays:
 - `packageManager`: installs dependencies. Feeds the Dependencies group.
 - `toolManager`: installs and runs other tools at pinned versions, such as
   mise. Feeds the Tools group.
-- `hookManager`: arms git hooks, such as lefthook. Feeds the Git hooks group.
+- `hookManager`: installs git hooks, such as lefthook. Feeds the Git hooks group.
 
 `way providers` lists every registered tool with its roles, kind, binary,
 whether the binary is on `PATH`, and whether it is built-in or custom.

@@ -1,6 +1,6 @@
 /**
- * Need: run a batch of checks and print one status line each, and give the
- * full story when a required step fails.
+ * Need: run a batch of checks and print one status line each, and show all
+ * of the output when a required step fails.
  *
  * `failureText` picks the stream that explains a failure: stderr, else the
  * runner's own `error` (a missing binary, a timeout), else stdout, else
@@ -59,7 +59,7 @@ function stagedDiff(cwd: string, git: CommandRunner): string {
   return r.stdout
 }
 
-/** Commit, or throw with both streams: a rejecting hook explains itself on stdout. */
+/** Commit, or throw with both streams, since a rejecting hook explains itself on stdout. */
 function commit(message: string, cwd: string, git: CommandRunner): void {
   mapFailed(
     () => runChecked(git, ['commit', '-m', message], { cwd }),

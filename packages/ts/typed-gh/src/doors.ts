@@ -1,21 +1,23 @@
 /**
- * The three doors, as `@osdlc/typed-git` has them: the plain verb (checked),
- * `gh.try.*` and `gh.soft.*`.
+ * The three call styles, as `@osdlc/typed-git` has them: the method that
+ * throws, `gh.try.*` and `gh.soft.*`.
  *
- *   - **Plain / checked**: a value, or a throw. A failed `gh` throws a
+ *   - The method that throws returns a value or throws. A failed `gh` throws a
  *     `FailureError` carrying the classified `GhFailure` (its `cause` is the
- *     `CommandFailed`), so a caller that reports it, such as `runMain`, reads
- *     "signed out" or "rate limited" and not a bare exit; output that exited 0
- *     but could not be read throws one of kind `unreadable`. A verb that
- *     reads one thing (`prView`, `issueView`, `repoView`) answers `null` when
- *     GitHub says there is no such thing: absence is an answer.
- *   - **`try`**: the same call, with the failure returned as
- *     `Result<T, GhFailure>`. It catches a thrown failure (a `FailureError`, or a
- *     `CommandFailed` from `raw`-level code) and nothing else: a `RangeError` for a bad argument still throws.
- *   - **`soft`**: the same call, with `null` for a failure. Only the queries
- *     have a soft form; no mutation does.
+ *     `CommandFailed`). So a caller that reports it, such as `runMain`, shows
+ *     "signed out" or "rate limited" and not a bare exit code. Output that
+ *     exited 0 but could not be read throws one of kind `unreadable`. A verb
+ *     that reads one thing (`prView`, `issueView`, `repoView`) returns `null`
+ *     when GitHub says there is no such thing.
+ *   - `try` makes the same call and returns the failure as
+ *     `Result<T, GhFailure>`. It catches a thrown failure (a `FailureError`, or
+ *     a `CommandFailed` from `raw`-level code) and nothing else. A `RangeError`
+ *     for a bad argument still throws.
+ *   - `soft` makes the same call and returns `null` for a failure. Only the
+ *     queries have a soft form. No mutation does.
  *
- * Both are facades over the whole client, so a new method costs nothing here.
+ * `try` and `soft` are proxies over the whole client, so a new method needs no
+ * change here.
  */
 
 import {
@@ -35,13 +37,13 @@ import { classifyGhFailure, type GhFailure, unreadableFailure } from './failure.
 import type { GhVerb } from './verbs.ts'
 
 /**
- * Read the result of running `verb` as the plain door does.
+ * Read the result of running `verb` as the methods that throw do.
  *
  * A checked verb has already thrown on a non-zero exit (the runner is
- * `runChecked`), and a probe (`installed`, `authStatus`, `api`) carries its
- * failure in its value. A read that exited non-zero throws `CommandFailed`,
- * unless the verb's `absent` says gh's answer was "there is no such thing",
- * which `parse` turns into `null`. A read that exited 0 but parsed to `null`
+ * `runChecked`). A probe (`installed`, `authStatus`, `api`) carries its
+ * failure in its value. A read that exited non-zero throws the classified
+ * failure, unless the verb's `absent` says gh's answer was "there is no such
+ * thing", which `parse` turns into `null`. A read that exited 0 but parsed to `null`
  * could not be read completely, and throws.
  *
  * @throws `FailureError` carrying the classified {@link GhFailure} for a failed run.
@@ -61,7 +63,7 @@ export function settle<T>(verb: GhVerb<T>, result: CommandResult, binary: string
 }
 
 /**
- * The error the plain door throws for a failed run: a `FailureError` carrying
+ * The error the methods that throw raise for a failed run: a `FailureError` carrying
  * the {@link GhFailure} that {@link classifyGhFailure} reads from it, with the
  * `CommandFailed` as its `cause`. Anything else is returned as it is.
  */
@@ -95,7 +97,7 @@ export async function runCheckedGhAsync(
   }
 }
 
-/** The methods the doors leave out: the escape hatches, pure helpers and plain properties. */
+/** The members `try` and `soft` leave out: `raw`, `rawChecked`, helpers that run nothing, and properties. */
 type Triable<C> = Omit<
   C,
   | 'raw'
@@ -125,8 +127,8 @@ export type TriedAsync<C> = {
 }
 
 /**
- * The queries that have a soft form. A mutation has none: swallowing the failure
- * of a write is how a caller ends up believing it worked.
+ * The queries that have a soft form. A mutation has none. If a write's failure
+ * were dropped, the caller would believe the write worked.
  */
 export const SOFT_METHODS = [
   'prList',
@@ -158,9 +160,9 @@ export type Soft<C> = {
 }
 
 /**
- * Whether `error` carries a failure to hand back rather than a bug to let
- * through. By shape, not `instanceof`: two installed copies of command-seam or
- * result each have their own classes.
+ * Whether `error` carries a failure to return, rather than a bug to rethrow.
+ * Checked by shape, not `instanceof`, because two installed copies of
+ * command-seam or result each have their own classes.
  */
 function isGhFailure(error: unknown): error is { failure: Failure } {
   return (
@@ -182,8 +184,8 @@ function facade<C extends object>(
 ): unknown {
   return new Proxy(client, {
     get(target, prop) {
-      // Read from the target, not the proxy: a getter (`try` itself) must run
-      // against the real client rather than recursing through the facade.
+      // Read from the target, not the proxy. A getter (`try` itself) must run
+      // against the real client, not recurse through the proxy.
       const value: unknown = Reflect.get(target, prop)
       if (typeof value !== 'function') return value
       const method = value as (...a: unknown[]) => unknown

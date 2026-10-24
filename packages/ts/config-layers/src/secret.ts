@@ -2,15 +2,15 @@
  * The `secret` flag: keys the project file must not carry.
  *
  * A key is marked secret by `.meta({ secret: true })` on its schema (a nested
- * field) or `secret: true` in a section's meta (the whole section) — see
- * `./meta.ts`. This module is the nested-meta convention's reader: it walks a
- * section schema through its wrappers (optional, default, pipe), records,
- * arrays, unions and objects, collects the path of every field the registry
- * flags, and checks a parsed layer against those paths. `./section.ts` runs the
- * check on the project layer: `defineConfigSection` (`./section.ts`) gives
- * every section a layer check that refuses its secret keys in the project file.
- * The overlay, the machine file and env sources are not checked, which is what
- * "may hold it" means.
+ * field) or by `secret: true` in a section's meta (the whole section). See
+ * `./meta.ts`. This module reads the nested flags. It walks a section schema
+ * through its wrappers (optional, default, pipe), records, arrays, unions and
+ * objects, and collects the path of every field the registry flags. It then
+ * checks a parsed layer against those paths. `defineConfigSection`
+ * (`./section.ts`) gives a section with secret keys a layer check that refuses
+ * them in the project file. The overlay, the machine file and env sources are
+ * not checked. Those are the layers that may hold a secret
+ * ({@link SECRET_ALLOWED_LAYERS}).
  */
 
 import { z } from 'zod'
@@ -83,9 +83,9 @@ function isSecret(schema: z.core.$ZodType): boolean {
 }
 
 /**
- * Collect the path of every secret field under `schema`. Fails closed: a node
- * kind that is neither a leaf nor one this walk can descend into throws, naming
- * the path, so a `secret` flag under it can never be silently skipped.
+ * Collect the path of every secret field under `schema`. A node kind that is
+ * neither a leaf nor one this walk can descend into throws, naming the path.
+ * So a `secret` flag under it is never skipped without notice.
  */
 function walk(
   schema: z.core.$ZodType,

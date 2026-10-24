@@ -1,21 +1,22 @@
 /**
  * The body of a bin shim.
  *
- * A CLI's `main` returns an exit code and never ends the process; this is the
- * one place that turns that number into the process's fate. It assigns
- * `process.exitCode` rather than calling `process.exit`, because exiting
- * outright truncates buffered stdout — a piped run can lose its last lines,
- * and the bug only shows up under a pipe.
+ * A CLI's `main` returns an exit code and never ends the process. This is the
+ * one place that turns that number into the process exit code. It assigns
+ * `process.exitCode` rather than calling `process.exit`, because exiting at
+ * once truncates buffered stdout. A piped run can lose its last lines, and the
+ * bug only shows up under a pipe.
  *
  * A thrown error becomes one line on stderr and {@link EXIT.error}. A thrown
  * failure (a `FailureError`, which includes `CommandFailed`) is rendered by
  * {@link renderFailure} and exits with the code {@link exitCodeFor} gives its
- * kind, so a missing tool, a signed-out `gh` and a dead network read the same
- * in every tool that throws the classified failure (`@osdlc/typed-git`,
- * `@osdlc/typed-gh` and `@osdlc/code-host` do). A bare `CommandFailed` carries only command-seam's
- * kinds, so its generic `exit` is exit 1. A stack trace is the wrong default for a command someone
- * typed: it says where the code was, not what they should do. A tool wanting
- * traces can catch inside its own `main`.
+ * kind. So a missing tool, a signed-out `gh` and a network failure read the
+ * same in every tool that throws the classified failure (`@osdlc/typed-git`,
+ * `@osdlc/typed-gh` and `@osdlc/code-host` do). A bare `CommandFailed` carries
+ * only command-seam's kinds, so its generic `exit` kind exits 1. A stack trace
+ * is the wrong default for a command someone typed. It says where the code
+ * was, not what the person should do. A tool that wants traces can catch
+ * inside its own `main`.
  */
 
 import { EXIT } from './exit.ts'
@@ -23,7 +24,8 @@ import { exitCodeFor, failureOf, renderFailure } from './failure.ts'
 import { processContext, type CliContext } from './io.ts'
 
 /**
- * Options for running a main function: the tool's name, and the context and arguments to use in place of the process's own.
+ * Options for running a main function: the tool's name, and the context and
+ * arguments to use in place of the process's own.
  */
 export interface RunMainOptions {
   /** Prefixes the error line, so a message says which tool produced it. */
@@ -35,7 +37,8 @@ export interface RunMainOptions {
 }
 
 /**
- * A tool's main function: takes the arguments and the context and returns the exit code, directly or in a promise.
+ * A tool's main function. It takes the arguments and the context and returns
+ * the exit code, directly or in a promise.
  */
 export type MainFn = (argv: readonly string[], ctx: CliContext) => number | Promise<number>
 

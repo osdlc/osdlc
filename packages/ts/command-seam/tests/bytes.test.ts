@@ -1,8 +1,8 @@
 /**
  * The bytes runners, `spawnRunnerBytes` and `spawnRunnerBytesAsync`: stdout
  * as the bytes the child wrote, stderr decoded, and the helpers that read a
- * result. The sync runner runs its `bun test` capture path here; its pipe path
- * is in `pipe-path.test.ts`.
+ * result. The suite runs on Node, so the sync runner takes its pipe path
+ * here.
  *
  * POSIX-only (`sh`, `printf`, `head`).
  */

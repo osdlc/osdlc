@@ -1,6 +1,6 @@
 /**
  * The rendered bash launcher and `resolve()` must pick the same checkout for
- * the same world. A fake `bun` on PATH records what it was asked to run, so
+ * the same files and environment. A fake `bun` on PATH records what it was asked to run, so
  * each layer is driven through the real script.
  */
 
@@ -330,10 +330,10 @@ describe('bash launcher agrees with resolve()', () => {
 
   test('node_modules present but bun ABSENT still takes the built entry under node (dev_checkout needs BOTH)', () => {
     // The `beforeEach` above puts a fake `bun` on PATH for every other test
-    // in this file, so none of them exercise this branch — a partial/
-    // interrupted dev checkout (installed, but bun not yet on PATH) must
-    // still fall through to the built entry rather than the dev_checkout
-    // guard wrongly treating "node_modules present" alone as enough.
+    // in this file, so none of them reach this branch. A partly set up dev
+    // checkout (installed, but bun not yet on PATH) must still use the built
+    // entry. The dev_checkout check must not treat "node_modules present"
+    // alone as enough.
     const a = seedCheckout(join(sb.root, 'a'))
     mkdirSync(join(a, 'node_modules'), { recursive: true })
     writeFileSync(join(a, SPEC.launcher), renderLauncher(SPEC, { builtEntry: 'bin/tooly.js' }))

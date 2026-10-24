@@ -90,11 +90,11 @@ describe('turbo runner', () => {
   })
 
   test('a nested turbo.json names its directory with --cwd', async () => {
-    // argv is run from the catalog root. Without `--cwd` it addresses the ROOT
-    // turbo project: with no root turbo.json turbo exits "Could not find
-    // turbo.json", and with one it silently runs every package's build.
-    // `--cwd` is turbo's global working-directory flag, and running turbo from
-    // inside a package directory scopes the task to that package
+    // argv runs from the catalog root. Without `--cwd` it targets the root turbo
+    // project. With no root turbo.json, turbo exits "Could not find turbo.json".
+    // With one, it silently runs every package's build. `--cwd` is turbo's
+    // global working-directory flag. Running turbo inside a package directory
+    // scopes the task to that package
     // (turborepo.dev/docs/crafting-your-repository/running-tasks, "Automatic
     // Package Scoping").
     const dir = await root({

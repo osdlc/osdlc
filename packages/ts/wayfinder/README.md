@@ -34,10 +34,10 @@ Node.js `^22.22.2 || ^24.15.0 || >=26.0.0`, the range of its dependency
 
 ## Running from a checkout
 
-An installed `way` follows the source you are working on, over
-[`@osdlc/cli-tool/devlink`](https://www.npmjs.com/package/@osdlc/cli-tool). Standing
-inside a wayfinder checkout runs that checkout; `way dev link` makes one the
-checkout every `way` on the machine runs; every link is remembered.
+An installed `way` can run the source of a checkout instead, through
+[`@osdlc/cli-tool/devlink`](https://www.npmjs.com/package/@osdlc/cli-tool).
+Inside a wayfinder checkout, `way` runs that checkout. `way dev link` makes one
+checkout the one every `way` on the machine runs. Every link is remembered.
 
 ```sh
 way dev install          # once: put shims for this checkout on PATH as way and wayfinder
@@ -48,12 +48,13 @@ way dev use canonical    # … or to the install itself
 way dev status           # which checkout runs now, and why
 ```
 
-First hit wins: `WAY_HOME`, a checkout above the cwd (`WAY_CWD_DEV=0` turns
-that off), the linked checkout, then the install. The shim says which entry
-it chose on stderr; `WAY_QUIET=1` silences it. State lives in
-`<config>/way/`: `~/Library/Application Support/way` on macOS,
-`${XDG_CONFIG_HOME:-~/.config}/way` elsewhere. A checkout runs from source, so
-it needs [Bun](https://bun.sh) on PATH and a `pnpm install` in the checkout.
+The first match wins, in this order: `WAY_HOME`, a checkout above the cwd
+(`WAY_CWD_DEV=0` turns that off), the linked checkout, then the install. The
+shim prints which one it chose on stderr, and `WAY_QUIET=1` silences it. State
+is kept in `<config>/way/`, which is `~/Library/Application Support/way` on
+macOS and `${XDG_CONFIG_HOME:-~/.config}/way` elsewhere. A checkout runs from
+source, so it needs [Bun](https://bun.sh) on PATH and a `pnpm install` in the
+checkout.
 
 ## Why
 
@@ -62,8 +63,8 @@ answers only for itself. `just --list` shows recipes. `moon query tasks` shows
 moon tasks. Neither helps when the question is "how do I start that app" and you
 do not yet know which tool owns it.
 
-`wayfinder` puts all of them in one searchable list, keyed by the call chain you would
-actually type, and — unlike anything a browser can do — lets you press Enter.
+`wayfinder` puts all of them in one searchable list. Each row shows the command
+you would type, and in the terminal UI, Enter runs it.
 
 ## Groups
 
@@ -96,24 +97,24 @@ tab    next runner (all · just · node-scripts │ dependencies │ tools …)
 esc    quit
 ```
 
-`^s` asks before it grants: the status line becomes `trust this repository?
-y/n`, and only `y` records anything. One keystroke is not a decision when the
-thing being decided is whether this repository's code may run.
+`^s` asks first. The status line becomes `trust this repository? y/n`, and
+only `y` records a grant. A single key press should not decide whether this
+repository's code may run.
 
-A recipe that takes arguments collects them first. Enter on `just deploy <env>`
-turns the key line into a command line with the command already on it and the
-cursor after it — type `staging`, Enter runs
-`just deploy staging`, `esc` goes back. A task that takes nothing is unchanged:
-Enter still runs it, with nothing to dismiss.
+A recipe that takes arguments asks for them first. Enter on
+`just deploy <env>` turns the key line into a command line, with the command
+already on it and the cursor after it. Type `staging` and press Enter to run
+`just deploy staging`, or press `esc` to go back. A task with no arguments
+runs as soon as you press Enter.
 
 Fuzzy by default. Terms are ANDed, so `photo dev` narrows to a photo app's dev
 server. A leading `'` forces one term to match exactly.
 
-The four keystrokes worth knowing: **`^t`, then the app's name, then Enter.**
+To start an app: press `^t`, type the app's name, then press Enter.
 
-What Enter will run is always on screen above the key line, so it is never a
-surprise. Tasks are spawned from an argument vector, never through a shell, so a
-recipe with `<placeholders>` cannot be mangled into something else on the way.
+The command Enter will run is always shown above the key line. Tasks are
+spawned from an argument list, never through a shell, so a shell cannot
+reinterpret a recipe that has `<placeholders>`.
 
 ## Searching from the shell
 
@@ -129,39 +130,36 @@ way query dev --json      the matching tasks, rather than their command lines
 ```
 
 A leading `'` forces one term to match exactly, as it does in the UI. A search
-that matched nothing exits **1**, so `way query dev && …` is usable from a
-script; a bare `way query` searched for nothing, matches everything, and is
-`way --list`. Every collection flag applies — `-C`, `--only`, `--exclude`,
-`--cached` and the rest — and, like `--list` and `--json`, it re-probes unless
-you ask for the store.
+that matches nothing exits 1, so `way query dev && …` works in a script. A bare
+`way query` matches everything, the same as `way --list`. Every collection
+flag applies (`-C`, `--only`, `--exclude`, `--cached` and the rest). Like
+`--list` and `--json`, it re-probes unless you pass `--cached`.
 
 ## The web view
 
 `way --serve` opens a page with the same catalog: a collapsible tree by call
 chain, sticky group headers, fuzzy and exact search, and copy buttons.
 
-It is a server rather than a generated file on purpose. A file would be a
-snapshot — add a task and the page is quietly wrong. Here the server re-probes
-and the page refreshes on focus and on a slow poll, so what you are looking at
-is what the repository currently has.
+It is a server, not a generated file, on purpose. A file goes out of date as
+soon as you add a task. The server re-probes, and the page refreshes when it
+gets focus and on a slow poll, so it shows what the repository has now.
 
-The very first request is answered from the [stored probe](#the-cache) with a
-real probe already running behind it, so the page appears at once on a
-repository whose slowest runner takes seconds; the rows update in place when
-the probe lands. Refresh is always a real probe.
+The first request is answered from the [stored probe](#the-cache) while a real
+probe runs in the background. So the page appears at once, even when the
+slowest runner takes seconds. The rows update in place when the probe
+finishes. Refresh always runs a real probe.
 
 ## Execution, and trust
 
 Some runners can only be read by running them. `moon query tasks` evaluates the
-repository's own toolchain configuration, and `mise tasks` can fire its
-`[hooks]`. Pointing a task browser at a repository you did not write is
-therefore code execution: you may choose to run nothing, and merely looking
-already ran that repository's code.
+repository's own toolchain configuration, and `mise tasks` can run its
+`[hooks]`. So opening a task browser on a repository you did not write runs
+that repository's code, even if you run no task.
 
-`wayfinder` is willing in principle: its `allowExec` default is `true`, because you
-reach for a task browser standing in your own repository and one that cannot see
-the build graph is not much of a browser. But willingness is not the gate. Trust
-is, asked once and remembered per repository:
+`wayfinder`'s `allowExec` default is `true`. You usually open a task browser in
+your own repository, and one that cannot see the build graph is of little use.
+But `allowExec` alone does not allow execution. The repository must also be
+trusted. You grant trust once per repository, and it is remembered:
 
 ```text
 way trust                 trust the repository at the resolved root
@@ -172,15 +170,16 @@ way trust --json          the same answer as one JSON object
 way trust --help          this list
 ```
 
-Every one of these answers in the machine form too. `--json` gives one object
-per invocation — `{"root": …, "trusted": …, "changed": …, "by": …, "rule": …}`
-for the three root-scoped modes, so a caller never has to branch on the flag
-it just passed, and `{"trusted": [paths]}` for `--list`. `by` is
-`"marker" | "path" | "owner" | null` — which layer decided, see "The policy"
-below — and `rule` is the matching `trust.paths`/`trust.owners` entry, present
-only when `by` is `"path"` or `"owner"`. A `--untrust` that found nothing still
-prints its document and reports the miss through exit 1 and stderr, so a parser
-is never handed an empty stdout to interpret.
+Each mode also has a JSON form, and `--json` prints one object per run. The
+three modes that act on the root (the plain grant, `--untrust` and `--show`)
+all print `{"root": …, "trusted": …, "changed": …, "by": …, "rule": …}`, so a
+caller does not have to branch on the flag it passed. `--list` prints
+`{"trusted": [paths]}`. `by` is `"marker" | "path" | "owner" | null` and names
+the layer that decided (see [The policy](#the-policy) below). `rule` is the
+matching `trust.paths` or `trust.owners` entry, present only when `by` is
+`"path"` or `"owner"`. A `--untrust` that finds no marker to remove still
+prints its object, and reports the miss with exit 1 and a line on stderr. So a
+parser never gets an empty stdout.
 
 `-C` applies here too. Trust, with execution allowed, also lets the project
 file load tool modules; see
@@ -188,9 +187,9 @@ file load tool modules; see
 
 ### The policy
 
-A root can also be trusted with no marker at all, through a `trust` block in
-the USER layer of the config file (never the project layer — a repository
-cannot grant itself trust, same as `allowExec: true`):
+A root can also be trusted without a marker, through a `trust` block in the
+user config file. The project file cannot hold one: a repository cannot grant
+itself trust, just as it cannot set `allowExec: true`.
 
 ```jsonc
 // ~/.config/wayfinder/config.json
@@ -202,24 +201,24 @@ cannot grant itself trust, same as `allowExec: true`):
 }
 ```
 
-`@osdlc/trust-repo`'s `policyExecGate` decides trust in order — a marker in
-the store, then `trust.paths` (a glob over the resolved, symlink-free root),
-then `trust.owners` (the owner in the `origin` remote's URL, read from
-`.git/config` without running git). The precedence and the glob dialect are
-documented in `@osdlc/trust-repo`'s README. wayfinder adds no vocabulary of its
-own beyond expanding a leading `~` in a `trust.paths` entry against `$HOME`.
-An owner match trusts every repository whose remote names that owner, so list
-only owners whose repositories you would run. `way trust --show` reports which layer decided (`by`/`rule`);
-the plain grant still writes a marker on a policy-trusted root — a standing
-policy can change out from under a repository, and the marker is the more
-durable of the two — and `--untrust` says when the policy still covers the
-root after the marker is gone.
+`@osdlc/trust-repo`'s `policyExecGate` checks, in order: a marker in the
+store, then `trust.paths` (a glob over the root, with symlinks resolved), then
+`trust.owners` (the owner in the `origin` remote's URL, which wayfinder asks
+git for). `@osdlc/trust-repo`'s README documents the order and the glob
+dialect. wayfinder adds only one thing: a leading `~` in a `trust.paths` entry
+expands to `$HOME`. An owner match trusts every repository whose remote names
+that owner, so list only owners whose repositories you would run.
+
+`way trust --show` reports which layer decided (`by` and `rule`). A plain
+`way trust` still writes a marker on a root the policy already trusts, because
+the policy can change later and the marker stays. `--untrust` tells you when
+the policy still covers the root after the marker is removed.
 
 ### Removing what it has stored
 
-Three things live outside your repositories, and `clean` is how they go away.
-Bare `clean` reports them and removes nothing — a command whose subject is
-deleting should not delete by default.
+wayfinder stores three things outside your repositories, and `way clean`
+removes them. Bare `way clean` only reports them, so it deletes nothing by
+default.
 
 ```text
 way clean                  show each store, where it is, and what it holds
@@ -230,46 +229,47 @@ way clean --all --yes      all three
 way clean --json           the same answer as one JSON object
 ```
 
-`--json` answers the same thing as one object: a `stores` array of
-`{key, flag, what, path, bytes, removed}`, all three on a bare report and only
-the ones you named on a removal. `bytes` is null when nothing was stored, which
-is what separates "there was nothing to remove" from "it would not delete" —
-both are `removed: false`. The closing note about trust being asked for again
-goes to stderr under `--json`, so stdout stays one parseable document.
+`--json` prints one object with a `stores` array of
+`{key, flag, what, path, bytes, removed}`. A bare report lists every store. A
+removal lists only the ones you named. `bytes` is null when nothing was stored.
+That tells "nothing to remove" apart from "could not remove", since both have
+`removed: false`. Under `--json`, the closing note that trust will be asked for
+again goes to stderr, so stdout stays one JSON document.
 
-`--config` and `--all` want `--yes` because the three are not equally
-replaceable: the cache is derived and costs one slow probe, trust costs
-re-answering a question per repository, and the configuration is the only thing
-here you wrote by hand. Nothing inside a repository is ever touched — a
-project's own `wayfinder.config.json` belongs to that project.
+`--config` and `--all` need `--yes` because the three stores are not equally
+easy to replace. The cache is rebuilt by one slow probe. Losing trust means
+answering the trust question again for each repository. The configuration is
+the only one you wrote by hand. `clean` never touches anything inside a
+repository: a project's own `wayfinder.config.json` belongs to that project.
 
-The store is a directory of marker files at `$XDG_STATE_HOME/wayfinder/trusted/`, or
-`~/.local/state/wayfinder/trusted/` when that variable is unset. XDG **state**, not
-config: trust is state a program maintains, not configuration a person
-hand-edits, and a consent record that travels in a dotfiles repo onto a new
-machine has stopped being consent. Grants made under the old waypost name, in
-`~/.local/state/waypost/trusted/`, still count.
+The trust store is a directory of marker files at
+`$XDG_STATE_HOME/wayfinder/trusted/`, or `~/.local/state/wayfinder/trusted/`
+when that variable is unset. It is XDG state, not config. The program
+maintains trust, and a person does not edit it by hand. A consent record
+copied to a new machine in a dotfiles repository is no longer consent. Grants
+made under the old waypost name, in `~/.local/state/waypost/trusted/`, still
+count.
 
-**A repository cannot trust itself.** `allowExec: true` in `wayfinder.config.json` is
-ignored with a warning, because that file lives inside the repository being
-scanned. The project layer may still lower `allowExec` to `false`. A
-project-layer `trust` block is rejected outright, the same way — trust has no
-"lower" state to honour from inside the repository.
+**A repository cannot trust itself.** `allowExec: true` in
+`wayfinder.config.json` is ignored with a warning, because that file lives
+inside the repository being scanned. The project file may still lower
+`allowExec` to `false`. A `trust` block in the project file is ignored with a
+warning too. Unlike `allowExec`, trust has no lower setting a repository could
+choose.
 
-`--exec` is the escape hatch and records nothing — consent for one run, which is
-what a script or a CI job wants. `--no-exec` turns execution off however trusted
-the repository is. Both hold on every surface, the web view included: its
-`POST /api/trust` refuses with `409` whenever a grant would not apply, so
-`--no-exec` cannot be lifted from the page and `--exec` cannot be persisted by
-it. The page hides its button in those states, and the server refuses the
-request anyway — the session token says who is asking, never that asking made
-sense.
+`--exec` allows execution for one run and records nothing, which suits a
+script or a CI job. `--no-exec` turns execution off, however trusted the
+repository is. Both flags apply on every surface, including the web view. Its
+`POST /api/trust` returns `409` whenever a grant would have no effect, so the
+page cannot lift `--no-exec` or make an `--exec` run permanent. The page hides
+its trust button in those states, and the server refuses the request anyway.
+The session token proves who is asking, not that the request makes sense.
 
-When runners are withheld, every surface says so and offers the grant where it
-says it: `--list` and `--json` print one line on stderr, the terminal UI notes
-`N hidden — repo not trusted (^s to trust)` beside the counts, and the web view
-puts a **Trust this repository** button in each held-back runner's info panel
-and in the runner picker.
+When runners are withheld, every surface says so and offers a way to grant
+trust. `--list` and `--json` print one line on stderr. The terminal UI shows
+`N hidden — repo not trusted (^s to trust)` beside the counts. The web view
+shows a **Trust this repository** button in a bar above the list, in each
+withheld runner's info panel and in the runner picker.
 
 ### What decides
 
@@ -283,26 +283,27 @@ and in the runner picker.
 | `true` | no | none | `false` | willing in principle, but this repository has not been trusted |
 | `true` | yes | none | `true` | the only combination that runs a subprocess |
 
-A decision is keyed on the absolute, symlink-resolved repository PATH, not on a
-hash of its contents — the same tradeoff mise makes. A repository you trusted
-that later pulls hostile changes stays trusted, and `way trust --untrust` is the
-only remedy. Content-hashing every runner config instead would re-prompt on
-ordinary edits, training people to approve without reading.
+Trust is keyed on the repository's absolute path, with symlinks resolved, not
+on a hash of its contents. mise makes the same tradeoff. A trusted repository
+that later pulls hostile changes stays trusted, and `way trust --untrust` is
+the only remedy. Hashing every runner config instead would ask again after
+ordinary edits, and people would learn to approve without reading.
 
 ## The cache
 
-Some runners are slow to ask — moon starts its toolchain, sbt starts a JVM — and
-a browser that waits for them looks broken. `wayfinder` keeps the last answer per
-(root, runner) so the UI has something to paint at once.
+Some runners are slow to ask (moon starts its toolchain, sbt starts a JVM),
+and a browser that waits for them looks broken. `wayfinder` stores the last
+answer for each root and runner, so the UI can show rows at once.
 
-**The two surfaces you look at always start from the store.** The terminal UI
-and `--serve` read it, paint, then probe behind you and update in place. **The
-two you pipe do not.** `--json` and `--list` re-probe every run, because a script
-or an agent reading them must get what the repository has right now; those runs
-also write the store, so the next UI start is instant. `--cached` inverts it for
+The terminal UI and `--serve` always start from the store. They read it, show
+the rows, then probe in the background and update in place. `--json` and
+`--list` re-probe on every run, because a script or an agent reading them needs
+what the repository has right now. Those runs also write the store, so the next
+UI start is instant. `--cached` makes `--json` and `--list` read the store for
 one run.
 
-Three states, and each surface shows them the same way:
+A stored answer is in one of three states, and every surface shows them the
+same way:
 
 - **Fresh** — the stored answer still holds, and nothing is said.
 - **Stale** — the answer was used and is out of date. The terminal UI marks the
@@ -310,21 +311,21 @@ Three states, and each surface shows them the same way:
   (~149ms)` beside the counts, or `cached rows: just 35s old — ^r to re-probe`
   once the refresh is over and the rows are still the stored ones; the page
   shows `cached: just 35s old - re-probing`.
-- **Stale and slow to probe here** — the case the cache exists for, called out
-  louder in red rather than in the same voice as a 200ms refresh:
+- **Stale and slow to probe here** — the case the cache exists for. It is
+  shown in red, to set it apart from a 200ms refresh:
   `cached rows — moon (~2.4s) is slow to probe here, so this takes a moment`.
 
-Slowness is measured in THIS repository, from a rolling window of the last five
-probe durations reported as their median. A runner that is quick here is never
-called slow because it is slow somewhere else, and where a repository has no
-measurement yet the surface says so rather than inventing a number.
+Slowness is measured in this repository: the median of the last five probe
+durations. A runner that is quick here is never called slow because it is slow
+elsewhere. When a repository has no measurement yet, the surface says so
+instead of guessing a number.
 
-`^r` in the terminal UI and Refresh on the page are always real probes — the one
-action that guarantees accuracy never answers from the store.
+`^r` in the terminal UI and Refresh on the page always run a real probe. They
+never answer from the store.
 
-If a row you run turns out not to exist — a task renamed since the stored probe —
-both surfaces say where the row came from instead of leaving you with a bare
-spawn failure.
+If you run a row whose task no longer exists, such as a task renamed since the
+stored probe, both surfaces tell you the row came from the store, instead of
+showing only a spawn failure.
 
 For the pipeable surfaces, `--cached` names the stale runners on stderr, so
 `--list` stays pipeable and `--json` stays parseable:
@@ -334,27 +335,29 @@ wayfinder: --cached: stale: just (35s old, refresh usually about 149ms)
 wayfinder: --cached: not cached, probed now: github-actions
 ```
 
-`--cached` against an empty store is not an error: it probes, stores the result,
-and says so. `--json --cached` gains a `cache` array beside the catalog, one
-entry per selected runner; over HTTP the page always receives it.
+`--cached` with an empty store is not an error. It probes, stores the result,
+and says so. `--json --cached` adds a `cache` array beside the catalog, with
+one entry per selected runner. Over HTTP the page always receives this array.
 
-The store is at `$XDG_CACHE_HOME/wayfinder/`, or `~/.cache/wayfinder/`. XDG **cache**,
-deliberately not the `~/.local/state/wayfinder/` [trust](#execution-and-trust) uses:
-losing this costs one slow probe, while losing the trust store would silently
-un-trust repositories. The cache is no part of the execution gate — a cached
-answer is never a trust grant, clearing the cache never changes what is trusted,
-and a runner withheld for want of trust is never stored at all. Invalidation is a
-content hash over the files a probe depended on, never an mtime; the
+The cache is at `$XDG_CACHE_HOME/wayfinder/`, or `~/.cache/wayfinder/`. It is
+XDG cache, not the `~/.local/state/wayfinder/` directory that
+[trust](#execution-and-trust) uses. Losing the cache costs one slow probe.
+Losing the trust store would silently un-trust repositories. The cache plays no
+part in deciding execution. A cached answer is never a trust grant, clearing
+the cache never changes what is trusted, and a runner withheld for lack of
+trust is never stored. A stored answer is invalidated by a content hash over
+the files its probe read, never by mtime. The
 [`@osdlc/system-model` README](https://www.npmjs.com/package/@osdlc/system-model)
-sets out its limits.
+describes the limits of this.
 
 ## Configuration
 
-The options you would otherwise retype on every invocation live in a file:
-which runners to skip, what order to show them in, whether execution is
-allowed, how files are discovered. Layers, lowest precedence first — built-in
-defaults, `$XDG_CONFIG_HOME/wayfinder/config.json` (or `~/.config/wayfinder/config.json`),
-`wayfinder.config.json` at the project root, then the flags on this command line.
+Options you would otherwise type on every run can live in a file: which
+runners to skip, what order to show them in, whether execution is allowed, and
+how files are discovered. The layers, lowest precedence first: built-in
+defaults, `$XDG_CONFIG_HOME/wayfinder/config.json` (or
+`~/.config/wayfinder/config.json`), `wayfinder.config.json` at the project
+root, then the flags on the command line.
 
 The keys are `runners.disabled`, `runners.order`, `allowExec`, `discovery`,
 `excludePaths`, `trust.paths`, `trust.owners` and `tools`. `WAYFINDER_CONFIG`
@@ -375,28 +378,29 @@ way config --help                                 this list
 ```
 
 `-C` applies here too, so `way config path -C /elsewhere` reports that
-directory's files rather than this one's. An exit code of 2 means the command
-as typed cannot run — an unknown key, a wrong-typed value — and 1 means it was
-well formed but failed against the state it found.
+directory's files rather than this one's. Exit code 2 means the command as
+typed cannot run, such as an unknown key or a value of the wrong type. Exit
+code 1 means the command was valid but failed against the state it found.
 
-`runners.order` sets the report order everywhere — `--json`, `--list`, the
-terminal UI's tab cycle, and the web view, where your own drag-reordering
-(persisted in the browser) still layers on top of it.
+`runners.order` sets the runner order everywhere: `--json`, `--list`, the
+terminal UI's tab order, and the web view. In the web view, an order you set by
+dragging is saved in the browser and overrides it.
 
 ### `allowExec` here
 
-wayfinder's execution default is `true`, below any file. Highest precedence first:
+wayfinder's execution default is `true`, and any file overrides it. Highest
+precedence first:
 
 1. `--exec` or `--no-exec` on this command line
-2. `allowExec` in the user file, then `allowExec: false` in `wayfinder.config.json`
+2. `allowExec: false` in `wayfinder.config.json`, then `allowExec` in the user file
 3. wayfinder's own default, `true`
 
 A file has to say `false` for execution to be off. `way config list` and
 `way config get allowExec` report that default, labelled `(default)`.
 
-This settles willingness, not execution: [trust](#execution-and-trust) is the
-gate above it, so a `true` here still collects nothing until the repository is
-trusted.
+This setting alone does not allow execution. The repository must also be
+[trusted](#execution-and-trust), so with `true` here, runners that must run to
+be read are still skipped until then.
 
 ## Options
 
@@ -433,9 +437,9 @@ guide                how to use and extend this tool, in Markdown
 dev                  link a checkout of this tool over the installed copy
 ```
 
-A subcommand is claimed before the flag parse, so the flags above are the
-top-level command's, not theirs. `-C` is the exception: the subcommands whose
-answer depends on which repository you are asking about take it.
+A subcommand is matched before flags are parsed, so the flags above belong to
+the top-level command, not to the subcommands. `-C` is the exception. The
+subcommands whose answer depends on the repository take it.
 
 | Subcommand | `-C, --dir` | Why |
 |---|---|---|
@@ -446,15 +450,15 @@ answer depends on which repository you are asking about take it.
 | `guide` | no | its argument is a topic name |
 | `dev` | no | its state is devlink's, keyed on the tool name |
 
-`way --help` is the short form: the ways in, the two flags most invocations
-pass, and the names of everything below it. `way --help --all` is the complete
-flag list — the block above — and each subcommand answers for itself with its
-own `--help`. `way guide` is the long form, by topic. A tool that answers a
-mistyped flag with its whole surface makes the reader hunt for the error, so a
-usage error prints the short form too.
+`way --help` is the short form: the main ways to run it, the flags most runs
+pass, and the names of the subcommands. `way --help --all` is the full flag
+list shown above. Each subcommand has its own `--help`. `way guide` is the long
+form, by topic. A usage error, such as a mistyped flag, prints the short form,
+so the error is not lost in the full list.
 
-`way guide` prints usage-and-extension instructions for people and for agents;
-`guide extend` is how to add a tool and `guide trust` the exec gate.
+`way guide` prints instructions on using and extending the tool, for people
+and for agents. `way guide extend` covers adding a tool, and `way guide trust`
+covers when runners may run.
 
 The directory is resolved upward to the project root, so running from a
 subdirectory still inspects the whole repository.
@@ -477,7 +481,7 @@ repository is trusted and execution is allowed (`allowExec` not `false`, no
 `--no-exec`); otherwise wayfinder prints a warning and loads nothing from it.
 `way guide extend` prints a complete example. A tool's runner may define
 `invoke(task, args)` to say where typed arguments go, such as after `--` for
-`npm run`; the default appends them.
+`npm run`. By default they are appended.
 
 `way providers` lists every registered tool: its roles, its runner kind
 (`parse` reads files, `exec` must run the tool and needs trust), its binary,

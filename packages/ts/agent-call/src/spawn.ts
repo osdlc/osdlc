@@ -3,7 +3,7 @@ import { StringDecoder } from 'node:string_decoder'
 
 import type { RawProcessOutput } from './adapters/types.js'
 
-/** Grace period between SIGTERM and SIGKILL on timeout/abort. */
+/** Wait between SIGTERM and SIGKILL on timeout or abort. */
 const KILL_GRACE_MS = 5_000
 
 export interface SpawnOptions {
@@ -34,10 +34,10 @@ export function incompleteUtf8Tail(buf: Uint8Array): number {
 }
 
 /**
- * One output stream: decoded as it arrives, with an optional byte cap that
- * truncates on a character boundary. Decoding goes through the stream, not per
- * chunk: a UTF-8 sequence straddling two reads is held over the boundary
- * instead of becoming two U+FFFD.
+ * One output stream, decoded as it arrives, with an optional byte cap that
+ * truncates on a character boundary. The whole stream uses one decoder, so
+ * a UTF-8 sequence split across two reads is decoded whole instead of
+ * becoming two U+FFFD.
  */
 class StreamCollector {
   text = ''
@@ -92,7 +92,7 @@ class StreamCollector {
   }
 }
 
-/** Spawn, collect output, honor timeout and abort. @internal */
+/** Spawn the process, collect its output, and apply the timeout and abort signal. @internal */
 export function spawnCollect(argv: string[], options: SpawnOptions): Promise<RawProcessOutput> {
   return new Promise((resolve) => {
     const [binary, ...args] = argv
@@ -107,9 +107,9 @@ export function spawnCollect(argv: string[], options: SpawnOptions): Promise<Raw
       return
     }
 
-    // An already-aborted signal never fires `abort` again, so it has to be
-    // honored before spawn — otherwise the agent runs the full turn. The
-    // result mirrors a mid-run abort: cut short, with no exit code.
+    // An already-aborted signal never fires `abort` again, so check it before
+    // the spawn. Otherwise the agent runs the full turn. The result matches a
+    // mid-run abort: cut short, with no exit code.
     if (options.signal?.aborted === true) {
       resolve({
         stdout: '',
@@ -128,16 +128,16 @@ export function spawnCollect(argv: string[], options: SpawnOptions): Promise<Raw
       cwd: options.cwd,
       env: options.env,
       stdio: ['pipe', 'pipe', 'pipe'],
-      // Own process group, so a timeout/abort can kill the whole tree. Without
-      // it, a shell child (e.g. `sh -c "sleep 30"`) leaves its grandchild
-      // orphaned holding the stdio pipe open, and `close` never fires — the
-      // call hangs until the real command ends instead of honoring timeoutMs.
+      // Own process group, so a timeout or abort can kill the whole tree.
+      // Without it, a shell child (such as `sh -c "sleep 30"`) leaves its
+      // grandchild running with the stdio pipe open, and `close` never fires.
+      // The call then waits until the real command ends, past timeoutMs.
       detached: true,
     })
 
-    // A caller's callback must not take the run down: the first throw, or
-    // the first rejection of a promise it returns, is swallowed and stops
-    // later calls, and the output is still collected.
+    // A caller's callback must not end the run. The first throw, or the first
+    // rejection of a promise it returns, is swallowed and stops later calls.
+    // The output is still collected.
     let onOutput = options.onOutput
     const stopOutput = (): void => {
       onOutput = undefined
@@ -147,8 +147,8 @@ export function spawnCollect(argv: string[], options: SpawnOptions): Promise<Raw
       (text: string): void => {
         if (onOutput === undefined) return
         try {
-          // Typed `void`, which an async function satisfies: an unhandled
-          // rejection would take a Node host down.
+          // Typed `void`, which an async function also satisfies. An unhandled
+          // rejection would crash a Node host.
           const returned: unknown = onOutput(text, stream)
           if (isThenable(returned)) returned.then(undefined, stopOutput)
         } catch {
@@ -168,10 +168,10 @@ export function spawnCollect(argv: string[], options: SpawnOptions): Promise<Raw
     const killTree = (signal: NodeJS.Signals): void => {
       const pid = child.pid
       try {
-        // Negative pid targets the whole process group (child is a group
-        // leader via `detached`), so grandchildren die too and release the
+        // A negative pid targets the whole process group (`detached` makes the
+        // child a group leader), so grandchildren die too and release the
         // stdio pipe. Fall back to a direct kill if the group is already gone
-        // or the platform lacks process groups.
+        // or the platform has no process groups.
         if (pid !== undefined) process.kill(-pid, signal)
         else child.kill(signal)
       } catch {
@@ -236,7 +236,7 @@ export function spawnCollect(argv: string[], options: SpawnOptions): Promise<Raw
     const onData = (collector: StreamCollector, stream: 'stdout' | 'stderr') => (chunk: Buffer) => {
       if (!collector.push(chunk)) return
       // The first stream past the cap. A timeout or abort that came first
-      // stays the cause (`timedOut`); either way the group is stopped.
+      // stays the cause (`timedOut`). Either way the group is stopped.
       outputLimit ??= stream
       terminate()
     }
@@ -245,15 +245,14 @@ export function spawnCollect(argv: string[], options: SpawnOptions): Promise<Raw
     child.on('error', (err) => settle(null, err))
     child.on('close', (code, signal) => settle(code, undefined, signal))
 
-    // The child may exit before draining stdin (bad flag, auth failure, or a
-    // kill from the timeout/abort path), which fails the write with EPIPE, or
-    // ENOTCONN under some timings.
-    // Without a listener that stream error is an uncaught exception that takes
-    // the host process down. It is recorded rather than dropped: the failure
-    // means the agent saw a truncated prompt, and nothing else reveals that
-    // when the child still exits 0. Recorded at `settle` so the diagnostic
-    // rides on the resolved value; node closes stdin before emitting `close`,
-    // so the error always lands first.
+    // The child may exit before it reads all of stdin (a bad flag, an auth
+    // failure, or a timeout or abort kill). The write then fails with EPIPE,
+    // or ENOTCONN under some timings. Without a listener, that stream error
+    // is an uncaught exception that crashes the host process. It is recorded,
+    // not dropped: it means the agent saw a truncated prompt, and nothing else
+    // shows that when the child still exits 0. `settle` puts it on the
+    // resolved value. Node closes stdin before it emits `close`, so the error
+    // is always recorded first.
     child.stdin.on('error', (err: Error) => {
       stdinError ??= err.message
     })

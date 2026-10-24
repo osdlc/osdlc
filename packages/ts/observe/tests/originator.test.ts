@@ -1,6 +1,6 @@
 /**
  * Who launched a session: git `user.name` first, the OS login second, `null`
- * only when neither is readable; the hostname and zone ride along.
+ * only when neither is readable. The hostname and time zone are reported too.
  */
 
 import { describe, expect, test } from 'vitest'

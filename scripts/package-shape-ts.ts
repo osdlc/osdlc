@@ -16,17 +16,18 @@
 //   - `author` is `sksizer`.
 //   - `engines.node` is a subset of `>=22` and of every workspace dependency's
 //     range, so a package never claims a runtime its dependency refuses.
-//   - `typecheck` checks the source and the build config; `smoke` runs
+//   - `typecheck` checks the source and the build config. `smoke` runs
 //     `tests/smoke.mjs`, which exists.
 //   - Source lives in `src/` (no TypeScript at the package root but
 //     vitest.config.ts), tests in `tests/` (no `*.test.ts` under `src/`), and
 //     `examples/` holds at least one `*.test.ts`. tsconfig.build.json emits
 //     `src` with `rootDir: "src"`, so `dist/` mirrors `src/`.
-//   - `docs/` holds only `planning/`, which has a README index.
-//   - CHANGELOG.md starts `# @osdlc/<name>`; README.md has `## Install` and
-//     `## Licence` sections; `.gitignore` lists node_modules/, dist/, coverage/.
+//   - `docs/` holds only `planning/` and `guide/`. `planning/` has a README
+//     index.
+//   - CHANGELOG.md starts `# @osdlc/<name>`. README.md has `## Install` and
+//     `## Licence` sections. `.gitignore` lists node_modules/, dist/, coverage/.
 //   - A third-party dependency listed in pnpm-workspace.yaml's `catalog:` is
-//     written `catalog:`; the packed manifest has no `catalog:` or
+//     written `catalog:`. The packed manifest has no `catalog:` or
 //     `workspace:` range left.
 //   - No per-package .oxlintrc.json: the one at the repository root applies.
 //   - The two config packages (tsconfig, prettier-config) ship no code, so they
@@ -320,7 +321,7 @@ export function docsProblems(files: string[]): string[] {
   return problems
 }
 
-/** What is wrong with the first line of CHANGELOG.md, or null when there is no changelog. */
+/** What is wrong with the first line of CHANGELOG.md. Nothing when there is no changelog. */
 export function changelogProblems(name: string, changelog: string | null): string[] {
   if (changelog === null) return []
   const first = changelog.split('\n')[0]!
@@ -348,7 +349,7 @@ export function readmeProblems(name: string, readme: string): string[] {
   return problems
 }
 
-/** What is wrong with .gitignore, or null when the package has none. */
+/** What is wrong with .gitignore. `gitignore` is null when the file is missing, which is a problem. */
 export function gitignoreProblems(gitignore: string | null): string[] {
   if (gitignore === null) return ['.gitignore is missing; list node_modules/, dist/ and coverage/']
   const lines = gitignore.split('\n').map((l) => l.trim())
@@ -405,11 +406,13 @@ export function configPackageProblems(pkg: PackageJson, files: string[]): string
 /**
  * The convention problems of one package.
  *
- * `dir` is the package's directory name, such as `typed-git`; `files` its
- * files relative to it; `tsconfigs` its parsed tsconfig files by file name;
- * `readme`, `changelog` (null when none) and `gitignore` (null when none) are
- * file texts; `catalog` is the pnpm catalog; `engines` is the `engines.node`
- * of each workspace package, by name.
+ * - `dir`: the package's directory name, such as `typed-git`.
+ * - `files`: its files, relative to it.
+ * - `tsconfigs`: its parsed tsconfig files, by file name.
+ * - `readme`, `changelog` (null when none) and `gitignore` (null when none):
+ *   file texts.
+ * - `catalog`: the pnpm catalog.
+ * - `engines`: the `engines.node` of each workspace package, by name.
  */
 export function conventionProblems({
   dir,

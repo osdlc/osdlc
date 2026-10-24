@@ -1,12 +1,13 @@
 /**
- * The canonical, agent-agnostic description of one headless agent call.
+ * The description of one headless agent call, the same for every agent.
  *
- * A spec says WHAT you want — prompt, permission posture, context, output
- * shape, session behavior — never HOW a particular CLI expresses it. Each
- * built-in adapter translates the spec into a concrete invocation on a
+ * A spec says what you want: prompt, permission posture, context, output
+ * shape and session behavior. It does not say how a particular CLI expresses
+ * it. Each built-in adapter translates the spec into a command line on a
  * best-effort basis and records every approximation as a `CapabilityNote` (see
- * plan.ts). Custom and template adapters note the fields they fold into the prompt and
- * `permissions.mode`; any other field the `args` builder leaves out is not noted.
+ * plan.ts). Custom and template adapters note `permissions.mode` and the
+ * fields they fold into the prompt. They do not note other fields that the
+ * `args` builder leaves out.
  */
 
 import type { EffortLevel } from './models.js'
@@ -25,45 +26,45 @@ export type AgentName =
   | 'deepseek'
 
 /**
- * Canonical permission posture, ordered from most to least restricted.
+ * Permission posture, ordered from most to least restricted.
  *
- * - `read-only`  — the agent may inspect but not mutate anything.
- * - `default`    — whatever the agent's own default posture is.
- * - `edits`      — file edits are pre-approved; shell/network still gated
- *                  (gated means denied under headless runs — nothing prompts).
- * - `full-auto`  — edits and workspace-scoped commands pre-approved, inside
- *                  whatever sandbox the agent offers.
- * - `bypass`     — skip all approvals and sandboxing. Dangerous; intended for
- *                  externally sandboxed environments only.
+ * - `read-only`  — the agent may read but not change anything.
+ * - `default`    — the agent's own default posture.
+ * - `edits`      — file edits are pre-approved. Shell and network still need
+ *                  approval, which a headless run denies since nothing prompts.
+ * - `full-auto`  — edits and workspace-scoped commands are pre-approved,
+ *                  inside whatever sandbox the agent offers.
+ * - `bypass`     — skip all approvals and sandboxing. Dangerous. Use it only
+ *                  in an environment sandboxed from outside.
  */
 export type PermissionMode = 'read-only' | 'default' | 'edits' | 'full-auto' | 'bypass'
 
-/** Permission posture for a call: a canonical mode, plus per-tool rules where the CLI has them. */
+/** Permission posture for a call: a mode, plus per-tool rules where the CLI has them. */
 export interface PermissionSpec {
   mode?: PermissionMode | undefined
   /**
    * Tool patterns to pre-approve. Passed through verbatim where the agent
-   * supports tool rules (claude's `--allowedTools "Bash(git *) Edit"`,
-   * copilot's `--allow-tool`, qwen's `--allowed-tools`; pi and droid take tool
-   * names); recorded as dropped by the other built-in adapters. Each agent
+   * supports tool rules: claude's `--allowedTools "Bash(git *) Edit"`,
+   * copilot's `--allow-tool` and qwen's `--allowed-tools`. pi and droid take
+   * tool names. The other built-in adapters record it as dropped. Each agent
    * has its own tool names.
    */
   allowTools?: string[] | undefined
-  /** Tool patterns to deny. Same passthrough semantics as `allowTools`. */
+  /** Tool patterns to deny. Passed through the same way as `allowTools`. */
   denyTools?: string[] | undefined
 }
 
 /** What the agent should know about beyond the prompt: files, directories, free text. */
 export interface ContextSpec {
   /**
-   * Files the agent should consider. Attached natively where the CLI supports
-   * it (opencode `-f`), otherwise emulated with a prompt preamble that lists
-   * the paths (and `@path` references for agents with @-inclusion syntax).
+   * Files the agent should consider. Attached with a flag where the CLI has
+   * one (opencode `-f`). Otherwise a prompt preamble lists the paths, as
+   * `@path` references for agents that read `@path` in the prompt.
    */
   files?: string[] | undefined
-  /** Extra directories the agent may access (`--add-dir` and friends). */
+  /** Extra directories the agent may access (`--add-dir` or the agent's equivalent). */
   dirs?: string[] | undefined
-  /** Freeform context prepended to the prompt on every agent. */
+  /** Free text prepended to the prompt on every agent. */
   text?: string | undefined
 }
 
@@ -77,16 +78,16 @@ export interface OutputSpec {
    * - `json`        — one machine-readable envelope with metadata.
    * - `stream-json` — line-delimited JSON events as the run progresses.
    *
-   * When omitted, adapters default to their richest aggregate format so
-   * usage/cost/session metadata can be captured; `AgentResult.text` always
-   * carries the final answer regardless.
+   * When omitted, adapters default to their richest aggregate format, so
+   * usage, cost and session metadata can be captured. `AgentResult.text`
+   * carries the final answer either way.
    */
   format?: OutputFormat | undefined
   /**
-   * JSON Schema the final answer must satisfy. Native where supported
-   * (claude `--json-schema`, codex `--output-schema`), otherwise emulated by
-   * appending a strict respond-only-with-JSON instruction to the prompt.
-   * The parsed value lands in `AgentResult.structured`.
+   * JSON Schema the final answer must satisfy. Passed with a flag where the
+   * CLI has one (claude `--json-schema`, codex `--output-schema`). Otherwise
+   * the prompt gets an instruction to respond only with matching JSON.
+   * The parsed value goes in `AgentResult.structured`.
    */
   schema?: Record<string, unknown> | undefined
 }
@@ -95,11 +96,11 @@ export interface OutputSpec {
 export interface SessionSpec {
   /** Pin the new session's id (claude, copilot, pi, qwen; droid approximates it). */
   id?: string | undefined
-  /** Resume an existing session/thread by id. */
+  /** Resume an existing session or thread by id. */
   resume?: string | undefined
   /** Resume the most recent session instead of naming one. */
   continueLast?: boolean | undefined
-  /** Set false to keep the run off disk where supported (default: agent's own). */
+  /** Set false to keep the run off disk where supported. Defaults to the agent's own behavior. */
   persist?: boolean | undefined
 }
 
@@ -107,30 +108,31 @@ export interface SessionSpec {
 export interface McpSpec {
   /**
    * MCP servers to expose to the agent, in the common `mcpServers` config
-   * shape: name → `{command, args?, env?}` or `{url}`. Native on claude
-   * (`--mcp-config`), qwen and copilot (both from a temp file), rendered to
-   * `-c mcp_servers.*` overrides on codex and to a `--patch` overlay on
-   * deepseek, config-file-only (dropped, with a note) on the others.
+   * shape: name → `{command, args?, env?}` or `{url}`. Passed with a flag on
+   * claude (`--mcp-config`), qwen and copilot (each from a temp file).
+   * Written as `-c mcp_servers.*` overrides on codex and as a `--patch`
+   * overlay on deepseek. The other agents read MCP servers only from their
+   * config files, so it is dropped there, with a note.
    */
   servers?: Record<string, Record<string, unknown>> | undefined
   /**
-   * Use ONLY these servers, ignoring user/project config (claude, qwen;
-   * copilot approximates it).
+   * Use only these servers and ignore user and project config (claude and
+   * qwen. copilot approximates it).
    */
   strict?: boolean | undefined
 }
 
 /**
- * Plugins for this session only (claude; copilot and cursor load `dirs` only). `dirs`
- * load with `--plugin-dir`; `disable` lists installed plugin ids
- * (`name@marketplace`) turned off through `--settings`.
+ * Plugins for this session only (claude. copilot and cursor load `dirs` only).
+ * `dirs` load with `--plugin-dir`. `disable` lists installed plugin ids
+ * (`name@marketplace`) to turn off through `--settings`.
  */
 export interface PluginSpec {
   dirs: string[]
   disable: string[]
 }
 
-/** The canonical call. Only `prompt` is required. */
+/** One agent call. Only `prompt` is required. */
 export interface AgentCallSpec {
   prompt: string
   /** Concrete model id or alias for the target agent, passed through as given. */
@@ -138,9 +140,9 @@ export interface AgentCallSpec {
   effort?: EffortLevel | undefined
   mcp?: McpSpec | undefined
   plugins?: PluginSpec | undefined
-  /** Replace the agent's system prompt (native on claude; else emulated). */
+  /** Replace the agent's system prompt. See the README capability map for how each agent does it. */
   systemPrompt?: string | undefined
-  /** Append to the agent's system prompt (native on claude; else emulated). */
+  /** Append to the agent's system prompt. See the README capability map for how each agent does it. */
   appendSystemPrompt?: string | undefined
   permissions?: PermissionSpec | undefined
   context?: ContextSpec | undefined
@@ -160,13 +162,13 @@ export interface AgentCallSpec {
    * then SIGKILL after 5s), and the result is `ok: false` with reason
    * `output-limit`. The output read so far is kept in `raw`, cut to the cap on
    * a UTF-8 character boundary. The cap counts the bytes the agent wrote, not
-   * the decoded text: bytes that are not valid UTF-8 decode to U+FFFD, which
+   * the decoded text. Bytes that are not valid UTF-8 decode to U+FFFD, which
    * is 3 bytes, so a string can be longer than the cap in UTF-8. `Infinity`
-   * means no cap, and a fraction rounds up. `0`, a negative value or `NaN` makes `callAgent`
-   * reject with a `RangeError`, and a value that is not a number with a
-   * `TypeError`.
+   * means no cap, and a fraction rounds up. `0`, a negative value or `NaN`
+   * makes `callAgent` reject with a `RangeError`, and a value that is not a
+   * number with a `TypeError`.
    */
   maxOutputBytes?: number | undefined
-  /** Escape hatch: appended verbatim to the built argv, after everything. */
+  /** Appended verbatim to the end of the built argv. */
   extraArgs?: string[] | undefined
 }

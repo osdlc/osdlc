@@ -1,5 +1,5 @@
 /**
- * `@osdlc/detect-harness` — find the coding-agent harnesses on a machine and in
+ * `@osdlc/detect-harness`: find the coding-agent harnesses on a machine and in
  * a project, and read what each has configured.
  *
  * `./model` (experimental) reads one plugin folder.

@@ -1,17 +1,16 @@
-//! The shared parity fixture, driven from this side.
+//! The Rust side of the shared parity fixture.
 //!
-//! `tests/fixtures/parity.json` is the contract between this crate and its
-//! TypeScript twin, which reads the same file from the repository: same input,
-//! same `relative`, byte for byte. Base
-//! directories are stubbed so the comparison is about path shape; `env_cases`
-//! pin the absolute base directories the override variables resolve to, and
-//! `convention_cases` pin the XDG layout under one home. The TS
-//! twin's `tests/parity.test.ts` drives the same file with the same
-//! assertions; a case added on either side goes in the fixture, never in one
-//! twin's own suite.
+//! `tests/fixtures/parity.json` is the contract between this crate and the
+//! TypeScript package, which reads the same file from the repository: same
+//! input, same `relative`, byte for byte. Base directories are stubbed so the
+//! comparison is about path shape. `env_cases` fix the absolute base
+//! directories the override variables resolve to, and `convention_cases` fix
+//! the XDG layout under one home. The TypeScript package's
+//! `tests/parity.test.ts` runs the same file with the same assertions. A new
+//! case goes in the fixture, never in one package's own suite.
 //!
-//! An integration test, not a unit one, so it reaches the fixture only through
-//! the public API — whatever a consumer can express, this pins.
+//! An integration test, not a unit test, so it uses only the public API. It
+//! checks what a consumer can express.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -47,8 +46,9 @@ struct Fixture {
 }
 
 /// Base directories resolved from the environment. `expected` maps a home
-/// name (or `scratch`) to an absolute path; an omitted one is the same
-/// resolution under the default convention with no override variable set.
+/// name (or `scratch`) to an absolute path. An omitted one is expected to
+/// resolve as it would under the default convention with no override variable
+/// set.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct EnvCase {
@@ -63,7 +63,7 @@ struct EnvCase {
     windows_native: bool,
 }
 
-/// The XDG layout under `home`, from `XDG_*` variables only. `expected` pins
+/// The XDG layout under `home`, from `XDG_*` variables only. `expected` gives
 /// every home.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -87,7 +87,7 @@ struct Case {
     relative: String,
 }
 
-/// `TieredDirs::scratch` is untiered and has no home, so its cases carry neither.
+/// `TieredDirs::scratch` has no tier and no home, so its cases carry neither.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ScratchCase {
@@ -133,7 +133,7 @@ fn fixture() -> Fixture {
     serde_json::from_str(FIXTURE_JSON).expect("parity fixture is valid JSON")
 }
 
-/// The TS twin stubs with `rootedBaseDirs('/stub')`. Same layout here.
+/// The TypeScript package stubs with `rootedBaseDirs('/stub')`. Same layout here.
 fn dirs() -> TieredDirs {
     TieredDirs::with_base_dirs(&fixture().vendor, BaseDirs::rooted("/stub"))
         .expect("the fixture's vendor is a valid segment")
@@ -182,8 +182,8 @@ fn resolve(dirs: &TieredDirs, case: &Case) -> Result<PathBuf, Error> {
 }
 
 /// `<base>/<relative>`, with `relative` split on `/` so the join is the host's
-/// separator rather than the fixture's. An empty `relative` is the base itself
-/// — the shape `TieredDirs::scratch()` takes before it is narrowed.
+/// separator rather than the fixture's. An empty `relative` is the base itself,
+/// the shape `TieredDirs::scratch()` takes before it is narrowed.
 fn expected_path(base: &Path, relative: &str) -> PathBuf {
     let mut path = base.to_path_buf();
     if relative.is_empty() {
@@ -195,9 +195,10 @@ fn expected_path(base: &Path, relative: &str) -> PathBuf {
     path
 }
 
-/// What the fixture pins: the segments below the home's base directory, always
-/// `/`-separated. The TS twin reads this straight off `Dir.relative`;
-/// here it comes off the resolved path, since `Dir` holds only the join.
+/// What the fixture checks: the segments below the home's base directory,
+/// always `/`-separated. The TypeScript package reads this from
+/// `Dir.relative`. Here it comes from the resolved path, since `Dir` holds only
+/// the joined path.
 fn relative_of(base: &Path, resolved: &Path) -> String {
     resolved
         .strip_prefix(base)
@@ -238,9 +239,9 @@ fn every_scratch_case_resolves_to_its_fixture_path() {
     }
 }
 
-/// The architectural invariant, not just a shape: a standalone tool installed
-/// in a third party's repository must not write under the vendor's namespace,
-/// and scratch belongs to no vendor at all.
+/// An invariant, not just a shape. A standalone tool installed in a third
+/// party's repository must not write under the vendor's directory, and scratch
+/// belongs to no vendor at all.
 #[test]
 fn nothing_outside_the_suite_carries_the_vendor_segment() {
     let fixture = fixture();
@@ -273,7 +274,7 @@ fn nothing_outside_the_suite_carries_the_vendor_segment() {
 }
 
 // Coverage, so a new axis value with no case fails here rather than going
-// untested. The TS twin asserts the same products over the same file.
+// untested. The TypeScript package checks the same combinations over the same file.
 #[test]
 fn every_tier_by_home_pair_has_a_case() {
     let fixture = fixture();

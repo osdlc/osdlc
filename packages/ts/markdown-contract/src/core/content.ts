@@ -1,27 +1,22 @@
 /**
- * The content plane — Zod leaves over projected blocks.
+ * The content plane: the frontmatter schema and the content leaves.
  *
- * `matchContent(tree, def, ctx)` runs AFTER the structure plane. It walks the SAME body
- * grammar the structure plane walks, finds each declared section's `content` leaf and the
- * block that fills it, and validates that block's DATA — columns, row count, cell values,
- * list-item shape, code language, paragraph word count. Presence and kind are the structure
- * plane's kind-gate, so
- * this plane never re-reports `structure/block-missing` / `structure/block-kind`:
+ * `matchContent(tree, def, ctx)` runs after the structure plane. It walks the same body grammar,
+ * finds each declared section's `content` leaf and the block that fills it, and checks that
+ * block's data: columns, row count, cell values, list items, code language and paragraph word
+ * count. A leaf is checked only when a block of the right kind is present. A missing or
+ * wrong-kind block is reported by the structure plane (`structure/block-missing`,
+ * `structure/block-kind`), so this plane does not report it again.
  *
- *   - the content leaf runs only when a block of the expected kind is present; a
- *     wrong-kind or absent block defers to the structure plane's finding.
+ * A table cell finding is placed on its row (`node.rowPos(i)`). A frontmatter finding is placed
+ * on its key's line (`tree.frontmatter.lineForPath(path)`). The leaf options come from
+ * `LeafSpec.config`, as the builders in `leaves.ts` store them. They may hold Zod schemas, such
+ * as a table's `cells`.
  *
- * Cell-level table findings localize to the offending row via `node.rowPos(i)`, and
- * frontmatter findings remap the Zod issue path to its key's source line via
- * `tree.frontmatter.lineForPath(path)`. The leaf config is read off `LeafSpec.config`
- * (stashed inert by the `leaves.ts` builders); raw `z.*` may ride inside a leaf (e.g. a
- * table's typed `cells`).
- *
- * Hints: the walk threads the nearest enclosing authored `description` (leaf config →
- * section opts → ancestor levels → contract root) and stamps it on each finding as `hint`.
- * Frontmatter findings resolve the failing field's `.describe()` text by walking the compiled
- * Zod shape along the issue path, falling back to the contract-root description. A
- * description-free contract mints byte-identical findings (no `hint` key).
+ * Hints: each finding carries as `hint` the nearest `description` (leaf, section, parent levels,
+ * then the contract). A frontmatter finding uses the failing field's `.describe()` text, found by
+ * walking the Zod schema along the issue path, else the contract's description. A contract with
+ * no descriptions gives findings with no `hint` key.
  */
 import type { ZodType } from 'zod'
 
@@ -49,7 +44,7 @@ import type {
 
 // ── The runtime shape of a Zod schema, as this module reads it ──
 
-/** A Zod issue, narrowed to the fields the remap and the message builder need. */
+/** A Zod issue, with only the fields this module reads. */
 interface ZodIssue {
   path: (string | number)[]
   code: string
@@ -63,17 +58,17 @@ interface ZodIssue {
   format?: string
 }
 
-/** The runtime face of a zod schema: `safeParse` plus the parsed `data` / issue stream. */
+/** The part of a Zod schema this module calls: `safeParse`. */
 interface RuntimeZod {
   safeParse(value: unknown): { success: boolean; data?: unknown; error?: { issues: ZodIssue[] } }
 }
 
-/** View a zod schema through the narrow shape this module reads. */
+/** Casts a Zod schema to `RuntimeZod`. */
 function asZod(schema: ZodType): RuntimeZod {
   return schema as unknown as RuntimeZod
 }
 
-// ── Leaf config shapes (the inert `LeafSpec.config` the builders stash) ───────────
+// ── Leaf options (`LeafSpec.config`, as the builders store them) ───────────
 
 interface TableConfig {
   columns: string[]
@@ -94,21 +89,21 @@ interface MaxWordsConfig {
   maxWords: number
 }
 
-// ── Spec walking (mirrors the structure plane's slot resolution) ──────────────────
+// ── Walking the specs (matches how the structure plane finds slots) ──────────────────
 
-/** A declared section slot carrying content, after `optional(...)` is unwrapped. */
+/** A declared section slot with options, after `optional(...)` is unwrapped. */
 interface ContentSlot {
   names: string[]
   opts: SectionOpts
 }
 
-/** Unwrap `optional(spec)` to its inner spec. */
+/** Unwraps `optional(spec)` to the spec inside it. */
 function innerOf(spec: Spec): SectionSpec | OneOfSpec | GapSpec {
   if (spec.kind === 'optional') return innerOf((spec as OptionalSpec).spec)
   return spec
 }
 
-/** The section/oneOf slots at one level that carry a `SectionOpts` (content / children). */
+/** The `section` and `oneOf` slots at one level that have options (content or children). */
 function contentSlots(specs: readonly Spec[]): ContentSlot[] {
   const slots: ContentSlot[] = []
   for (const spec of specs) {
@@ -125,8 +120,8 @@ function contentSlots(specs: readonly Spec[]): ContentSlot[] {
 }
 
 /**
- * The doc sections at this level that fill a slot: every occurrence of a repeatable slot, else
- * the first one (a second occurrence is the structure plane's `duplicate-section`).
+ * The sections at this level that fill a slot: every occurrence for a repeatable slot, else the
+ * first one. The structure plane reports a second occurrence as `duplicate-section`.
  */
 function sectionsFor(nodes: SectionNode[], slot: ContentSlot): SectionNode[] {
   const hits = nodes.filter((n) => slot.names.includes(n.name))
@@ -134,9 +129,9 @@ function sectionsFor(nodes: SectionNode[], slot: ContentSlot): SectionNode[] {
 }
 
 /**
- * Walk one level: pair each content slot with the doc section filling it, validate that
- * section's content leaf(s), then recurse into declared children. `inheritedHint` is the
- * nearest enclosing description above this level.
+ * Checks one level: pairs each slot with the section that fills it, checks that section's
+ * content leaves, then checks its declared children. `inheritedHint` is the nearest description
+ * above this level.
  */
 function matchLevel(
   nodes: SectionNode[],
@@ -148,7 +143,7 @@ function matchLevel(
 ): void {
   const levelHint = seq.opts.description ?? inheritedHint
   for (const slot of contentSlots(seq.specs)) {
-    // An absent section is the structure plane's concern (structure/section-missing).
+    // The structure plane reports a missing section (structure/section-missing).
     for (const node of sectionsFor(nodes, slot)) {
       const sectionHint = slot.opts.description ?? levelHint
       validateSectionContent(node, slot.opts, ctx, out, values, sectionHint)
@@ -159,7 +154,7 @@ function matchLevel(
   }
 }
 
-/** Validate a section's content leaf(s): a single leaf, or named leaves bound by `^anchor`. */
+/** Checks a section's content: a single leaf, or named leaves bound by `^anchor`. */
 function validateSectionContent(
   node: SectionNode,
   opts: SectionOpts,
@@ -178,14 +173,14 @@ function validateSectionContent(
   }
 }
 
-/** Structural guard: a single `LeafSpec` vs a `Record<string, LeafSpec>`. */
+/** True for a single `LeafSpec`, false for a `Record<string, LeafSpec>`. */
 function isLeafSpec(c: LeafSpec | Record<string, LeafSpec>): c is LeafSpec {
   return typeof (c as LeafSpec).kind === 'string'
 }
 
 /**
- * The block a content slot addresses: when `anchor` is set, the block carrying that anchor;
- * otherwise the section's first block (a single-leaf slot owns the section's sole block).
+ * The block a leaf checks: the block with `anchor` when it is set, otherwise the section's
+ * first block.
  */
 function pickBlock(node: SectionNode, anchor: string | undefined): BlockNode | null {
   if (anchor !== undefined) return node.blocks.find((b) => b.anchor === anchor) ?? null
@@ -193,10 +188,9 @@ function pickBlock(node: SectionNode, anchor: string | undefined): BlockNode | n
 }
 
 /**
- * Validate one leaf against the block that fills it. The leaf runs ONLY when a block of the
- * expected kind is present: an absent block (→ `structure/block-missing`) or a
- * wrong-kind block (→ `structure/block-kind`) is the structure plane's to report, so the
- * content plane stays silent and never double-reports.
+ * Checks one leaf against the block that fills it, only when a block of the right kind is
+ * present. The structure plane reports a missing block (`structure/block-missing`) or a block of
+ * the wrong kind (`structure/block-kind`).
  */
 function validateLeaf(
   node: SectionNode,
@@ -211,7 +205,7 @@ function validateLeaf(
   if (!block) return // structure/block-missing
   if (block.kind !== leaf.kind) return // structure/block-kind
 
-  // The leaf's effective hint: its config's authored description, else the section's.
+  // The leaf's own description, else the section's.
   const ctx = withHint(baseCtx, leafHintOf(leaf, sectionHint))
 
   switch (leaf.kind) {
@@ -255,14 +249,13 @@ function validateLeaf(
 // ── Table ─────────────────────────────────────────────────────────────────────────
 
 /**
- * Validate a `table` block's data:
- *   - every declared column present in `node.columns`     → `content/table/column-missing`
- *   - `extraColumns: "error"` for each undeclared column  → `content/table/column-extra`
+ * Checks a `table` block's data:
+ *   - each declared column is in `node.columns`            → `content/table/column-missing`
+ *   - with `extraColumns: "error"`, no undeclared column   → `content/table/column-extra`
  *   - `minRows`                                            → `content/table/min-rows`
- *   - typed `cells` over each row's value, localized to    → `content/table/cell`
- *     the offending row via `node.rowPos(i)`
- * Each is independent; a table can fire several. Column / row-count findings pin the table's
- * header position; cell findings pin the offending row.
+ *   - each `cells` schema on each row's value              → `content/table/cell`
+ * The checks are independent, so one table can get several findings. Column and row-count
+ * findings are placed on the header. Cell findings are placed on the row (`node.rowPos(i)`).
  */
 function validateTable(
   node: Extract<BlockNode, { kind: 'table' }>,
@@ -276,14 +269,14 @@ function validateTable(
   checkTableCells(node, cfg, ctx, out, values)
 }
 
-/** Missing declared columns and (when `extraColumns: "error"`) undeclared columns. */
+/** Reports missing declared columns and, with `extraColumns: "error"`, undeclared ones. */
 function checkTableColumns(
   node: Extract<BlockNode, { kind: 'table' }>,
   cfg: TableConfig,
   ctx: Ctx,
   out: Finding[],
 ): void {
-  // Declared columns must all be present (one finding per missing column).
+  // One finding per missing column.
   for (const col of cfg.columns) {
     if (!node.columns.includes(col)) {
       out.push(
@@ -296,7 +289,6 @@ function checkTableColumns(
     }
   }
 
-  // Extra (undeclared) columns, when locked with extraColumns: "error".
   if (cfg.extraColumns === 'error') {
     for (const col of node.columns) {
       if (!cfg.columns.includes(col)) {
@@ -312,7 +304,7 @@ function checkTableColumns(
   }
 }
 
-/** Row-count floor → `content/table/min-rows`. */
+/** Reports too few rows (`content/table/min-rows`). */
 function checkTableMinRows(
   node: Extract<BlockNode, { kind: 'table' }>,
   cfg: TableConfig,
@@ -330,7 +322,7 @@ function checkTableMinRows(
   }
 }
 
-/** Typed cells — run each declared cell schema over every row's value in that column. */
+/** Runs each `cells` schema on every row's value in that column. */
 function checkTableCells(
   node: Extract<BlockNode, { kind: 'table' }>,
   cfg: TableConfig,
@@ -341,20 +333,20 @@ function checkTableCells(
   if (!cfg.cells) return
   for (const [col, schema] of Object.entries(cfg.cells)) {
     const colIdx = node.columns.indexOf(col)
-    if (colIdx === -1) continue // a declared cell on a missing column → column-missing covers it
+    if (colIdx === -1) continue // column-missing already reports this
     const zod = asZod(schema)
     node.rows.forEach((row, i) => {
       const value = row[colIdx] ?? ''
       const res = zod.safeParse(value)
       if (res.success) {
-        // Keep the parsed output for the typed model, from this same `safeParse`.
+        // Keep the output for the typed model.
         values.setCell(node, i, col, res.data)
       } else {
         out.push(
           ctx.finding({
             id: 'content/table/cell',
             message: `cell ‘${value}’ in column ‘${col}’ is invalid`,
-            pos: node.rowPos(i), // localize to the offending row
+            pos: node.rowPos(i),
           }),
         )
       }
@@ -365,11 +357,12 @@ function checkTableCells(
 // ── List ────────────────────────────────────────────────────────────────────────
 
 /**
- * Validate a `list` block's data:
- *   - `everyItem: "checkbox"`  → every item carries `checked`, else `content/list/item-kind`
- *                                 per offending item (pinned to the item's source line)
- *   - `everyItem: ZodType`     → run the schema over each item's `text` → `content/list/item-kind`
- *   - `minItems`               → item-count floor → `content/list/min-items`
+ * Checks a `list` block's data:
+ *   - `everyItem: "checkbox"`: each item without a checkbox gets `content/list/item-kind`, on
+ *     the item's line.
+ *   - `everyItem: ZodType`: each item whose `text` fails the schema gets
+ *     `content/list/item-kind`.
+ *   - `minItems`: too few items gives `content/list/min-items`.
  */
 function validateList(
   node: Extract<BlockNode, { kind: 'list' }>,
@@ -395,7 +388,7 @@ function validateList(
     node.items.forEach((item, i) => {
       const res = zod.safeParse(item.text)
       if (res.success) {
-        // Keep the parsed output for the typed model, from this same `safeParse`.
+        // Keep the output for the typed model.
         values.setItem(node, i, res.data)
       } else {
         out.push(
@@ -422,7 +415,7 @@ function validateList(
 
 // ── Code ───────────────────────────────────────────────────────────────────────
 
-/** Validate a `code` block's language matches the declared `lang` → `content/code/lang`. */
+/** Reports a `code` block whose language is not the declared `lang` (`content/code/lang`). */
 function validateCode(
   node: Extract<BlockNode, { kind: 'code' }>,
   cfg: CodeConfig,
@@ -443,7 +436,7 @@ function validateCode(
 
 // ── Paragraph (maxWords) ──────────────────────────────────────────────────────────
 
-/** Validate a `paragraph` block's word count ≤ `maxWords` → `content/max-words`. */
+/** Reports a `paragraph` block with more than `maxWords` words (`content/max-words`). */
 function validateParagraph(
   node: Extract<BlockNode, { kind: 'paragraph' }>,
   cfg: MaxWordsConfig,
@@ -465,7 +458,7 @@ function validateParagraph(
 // ── Frontmatter ────────────────────────────────────────────────────────────────
 
 /**
- * Map a Zod issue code to its frontmatter-plane finding id: `frontmatter/enum`,
+ * Maps a Zod issue code to a frontmatter finding id: `frontmatter/enum`,
  * `frontmatter/unknown-key`, `frontmatter/type`, `frontmatter/required` or `frontmatter/refine`.
  * Any other code falls back to `frontmatter/type`.
  */
@@ -477,17 +470,18 @@ function frontmatterIdFor(issue: ZodIssue): string {
     case 'unrecognized_keys':
       return 'frontmatter/unknown-key'
     case 'custom':
-      // a `.refine()` / `.superRefine()` cross-field predicate.
+      // a failed `.refine()` or `.superRefine()` check
       return 'frontmatter/refine'
     case 'invalid_type':
-      // zod v4 reports a missing required key as invalid_type (received undefined).
+      // zod v4 reports a missing required key as invalid_type. The caller maps that case to
+      // frontmatter/required.
       return 'frontmatter/type'
     default:
       return 'frontmatter/type'
   }
 }
 
-/** Render a Zod issue path as a readable key reference: `[]` → "", `["a","b"]` → "a.b", `["related",0]` → "related[0]". */
+/** A Zod issue path as text: `[]` → "", `["a","b"]` → "a.b", `["related",0]` → "related[0]". */
 function formatKeyPath(path: (string | number)[]): string {
   let s = ''
   for (const seg of path) {
@@ -497,14 +491,14 @@ function formatKeyPath(path: (string | number)[]): string {
   return s
 }
 
-/** The JS type name of a value, for "(got number)" hints — distinguishing null and array from object. */
+/** The JS type name of a value, for "(got number)" text. `null` and arrays get their own names. */
 function typeName(v: unknown): string {
   if (v === null) return 'null'
   if (Array.isArray(v)) return 'array'
   return typeof v
 }
 
-/** The value addressed by `path` within `data` (undefined when any segment is absent). */
+/** The value at `path` in `data`, or `undefined` when any segment is absent. */
 function valueAt(data: unknown, path: (string | number)[]): unknown {
   let node: unknown = data
   for (const seg of path) {
@@ -515,14 +509,13 @@ function valueAt(data: unknown, path: (string | number)[]): unknown {
 }
 
 /**
- * Build a field-qualified message for a frontmatter Zod issue. Zod's own message names a
- * type or a literal but never the offending key, so a report reads "expected string, received
- * undefined" with no clue which field is wrong. Every message here instead leads with the
- * field — `frontmatter field ‘<key>’ …` — so the report names exactly what to fix.
+ * The message for a frontmatter Zod issue. Zod's own message names a type or a value but not the
+ * key, such as "expected string, received undefined". These messages start with the field
+ * (`frontmatter field ‘<key>’ …`), so the reader knows what to fix.
  *
- * `id` is the already-resolved finding id, so a missing-required key (an `invalid_type` whose
- * value is undefined) reads "is required" rather than "must be a string". `data` is the parsed
- * frontmatter, used to report the actual type on a wrong-type mismatch (zod v4 drops `received`).
+ * `id` is the finding id already chosen, so a missing required key reads "is required", not
+ * "must be a string". `data` is the parsed frontmatter. It gives the actual type for a wrong-type
+ * message, because zod v4 does not report it.
  */
 function frontmatterMessage(issue: ZodIssue, id: string, data: unknown): string {
   const field = formatKeyPath(issue.path)
@@ -549,7 +542,7 @@ function frontmatterMessage(issue: ZodIssue, id: string, data: unknown): string 
   }
 }
 
-/** zod v4 literal/enum mismatch — `values` is the allowed set (one entry for a literal). */
+/** A value that is not the literal or enum value expected. `values` holds the allowed values. */
 function invalidValueMessage(at: string, issue: ZodIssue): string {
   const values = Array.isArray(issue.values) ? issue.values : []
   if (values.length === 1) return `${at} must be ‘${String(values[0])}’`
@@ -558,7 +551,7 @@ function invalidValueMessage(at: string, issue: ZodIssue): string {
   return `${at} has an invalid value`
 }
 
-/** A wrong-type mismatch — name the expected type and the actual type (zod v4 drops `received`). */
+/** A value of the wrong type. Names the expected type and the actual type. */
 function invalidTypeMessage(at: string, issue: ZodIssue, data: unknown): string {
   const got = typeName(valueAt(data, issue.path))
   return issue.expected
@@ -566,7 +559,7 @@ function invalidTypeMessage(at: string, issue: ZodIssue, data: unknown): string 
     : `${at} has the wrong type (got ${got})`
 }
 
-/** A `pattern` / `format` constraint — name the format, else "pattern". */
+/** A failed `pattern` or `format`. Names the format, or says "pattern" for a regex. */
 function invalidFormatMessage(at: string, issue: ZodIssue): string {
   return issue.format && issue.format !== 'regex'
     ? `${at} is not a valid ${issue.format}`
@@ -574,14 +567,14 @@ function invalidFormatMessage(at: string, issue: ZodIssue): string {
 }
 
 /**
- * A `.refine()` / `.superRefine()` predicate speaks its own rule — keep its message,
- * field-qualified when it addresses a key, verbatim when it is document-level.
+ * A failed `.refine()` or `.superRefine()` check. Keeps its message, with the field in front
+ * when the issue is about one key, and as it is when it is about the whole frontmatter.
  */
 function customMessage(at: string, field: string, issue: ZodIssue): string {
   return field && issue.message ? `${at}: ${issue.message}` : (issue.message ?? `${at} is invalid`)
 }
 
-/** An unhandled Zod code: lead with the field but keep Zod's detail rather than discard it. */
+/** Any other Zod code: the field, then Zod's own message. */
 function unhandledMessage(at: string, field: string, issue: ZodIssue): string {
   return field
     ? `${at}: ${issue.message ?? 'is invalid'}`
@@ -589,10 +582,9 @@ function unhandledMessage(at: string, field: string, issue: ZodIssue): string {
 }
 
 /**
- * The (tiny) introspection face of a compiled zod v4 schema — just enough to walk an object
- * shape along a Zod issue path and read the `.describe()` text at each node. `description`
- * reads through zod's registry; `_zod.def` carries the wrapper (`innerType`), object (`shape`),
- * and array (`element`) structure.
+ * The fields of a zod v4 schema needed to walk it along an issue path and read the
+ * `.describe()` text at each node. `description` reads from zod's registry. `_zod.def` holds
+ * the wrapped schema (`innerType`), an object's `shape` and an array's `element`.
  */
 interface ZodIntrospect {
   description?: string
@@ -606,8 +598,8 @@ interface ZodIntrospect {
 }
 
 /**
- * Unwrap a schema's optional/nullable/default wrapper chain, returning the innermost schema
- * and the outermost `.describe()` description seen anywhere on the chain (one logical node).
+ * Unwraps a schema's optional, nullable and default wrappers. Returns the innermost schema and
+ * the outermost `.describe()` text found on the way.
  */
 function unwrapDescribed(start: unknown): { node: unknown; description?: string } {
   let node = start
@@ -624,7 +616,7 @@ function unwrapDescribed(start: unknown): { node: unknown; description?: string 
   return description === undefined ? { node } : { node, description }
 }
 
-/** Descend one issue-path segment: object `shape` by key, array `element` by numeric index. */
+/** Follows one path segment: a key into an object's `shape`, or an index into an array's `element`. */
 function descend(node: unknown, seg: string | number): unknown {
   if (node === null || typeof node !== 'object') return undefined
   const def = (node as ZodIntrospect)._zod?.def
@@ -632,11 +624,9 @@ function descend(node: unknown, seg: string | number): unknown {
 }
 
 /**
- * The nearest `.describe()` description along a Zod issue path: walk the compiled
- * shape from the root, descending by each path segment and unwrapping wrappers as they
- * appear; the DEEPEST description reachable wins (nearest-enclosing). Returns `undefined`
- * when no node on the path carries one — the caller falls back to the contract-root
- * description.
+ * The nearest `.describe()` text along a Zod issue path. Walks the schema from the root by each
+ * path segment, unwrapping wrappers. The deepest description found wins. Returns `undefined`
+ * when no node on the path has one, and the caller then uses the contract's description.
  */
 function zodHintAt(schema: ZodType, path: (string | number)[]): string | undefined {
   let hint: string | undefined
@@ -654,14 +644,13 @@ function zodHintAt(schema: ZodType, path: (string | number)[]): string | undefin
 }
 
 /**
- * Validate the document frontmatter against a declared Zod schema, remapping each Zod issue
- * to its key's source line via `tree.frontmatter.lineForPath(issue.path)`. When the
- * schema rejects an unrecognized key (a strict object), Zod reports one issue whose `keys`
- * list the offending keys; each is emitted as a `frontmatter/unknown-key` localized to that
- * key's line. A missing-required key surfaces as `frontmatter/required` (an `invalid_type`
- * whose received value is undefined). When no frontmatter block is present, the schema runs
- * over `{}` so required-key findings still fire. Each finding's `hint` is the failing field's
- * `.describe()` text (nearest along the issue path), else `rootHint`.
+ * Checks the frontmatter against the contract's Zod schema. Each issue is placed on its key's
+ * line (`tree.frontmatter.lineForPath(issue.path)`). A strict object that rejects unknown keys
+ * gives one Zod issue listing them in `keys`. Each key becomes its own `frontmatter/unknown-key`
+ * on that key's line. A missing required key (an `invalid_type` on an undefined value) becomes
+ * `frontmatter/required`. With no frontmatter block, the schema runs on `{}`, so missing
+ * required keys are still reported. Each finding's `hint` is the nearest `.describe()` text on
+ * the issue path, else `rootHint`.
  */
 function matchFrontmatter(
   tree: DocTree,
@@ -687,8 +676,6 @@ function matchFrontmatter(
     withHint(ctx, zodHintAt(schema, path) ?? rootHint)
 
   for (const issue of res.error.issues) {
-    // A strict-object rejection lists every offending key under `issue.keys`; each becomes its
-    // own unknown-key finding. Anything else is a generic field issue.
     if (issue.code === 'unrecognized_keys' && Array.isArray(issue.keys)) {
       emitUnknownKeys(issue, lineFor, ctxFor(issue.path), out)
     } else {
@@ -697,10 +684,10 @@ function matchFrontmatter(
   }
 }
 
-/** Whether a Zod issue path maps to a source position via the frontmatter CST. */
+/** Maps a Zod issue path to its source position, or `undefined` when it has none. */
 type LineForPath = (path: (string | number)[]) => SourcePos | undefined
 
-/** Emit one `frontmatter/unknown-key` per offending key, each at that key's source line. */
+/** Adds one `frontmatter/unknown-key` per unknown key, on that key's line. */
 function emitUnknownKeys(issue: ZodIssue, lineFor: LineForPath, ctx: Ctx, out: Finding[]): void {
   for (const key of issue.keys ?? []) {
     const pos = lineFor([...issue.path, key])
@@ -714,7 +701,7 @@ function emitUnknownKeys(issue: ZodIssue, lineFor: LineForPath, ctx: Ctx, out: F
   }
 }
 
-/** Emit one finding for a generic frontmatter issue (required / type / enum / …), at its key's line. */
+/** Adds one finding for any other frontmatter issue (required, type, enum and so on), on its key's line. */
 function emitFrontmatterIssue(
   issue: ZodIssue,
   data: unknown,
@@ -722,7 +709,6 @@ function emitFrontmatterIssue(
   ctx: Ctx,
   out: Finding[],
 ): void {
-  // A missing required key reads as an invalid_type whose input is undefined.
   const id =
     issue.code === 'invalid_type' && isMissingRequired(data, issue.path)
       ? 'frontmatter/required'
@@ -738,17 +724,17 @@ function emitFrontmatterIssue(
   )
 }
 
-/** Whether the value addressed by `path` is absent from `data` (a missing required key). */
+/** True when `data` has no value at `path` (a missing required key). */
 function isMissingRequired(data: unknown, path: (string | number)[]): boolean {
   return valueAt(data, path) === undefined
 }
 
-// ── Public entry ─────────────────────────────────────────────────────────────────
+// ── Entry point ─────────────────────────────────────────────────────────────────
 
 /**
- * Emit one `frontmatter/yaml` finding per YAML error in the frontmatter block, at the error's
- * line. Returns whether the YAML is sound; the schema is not run over a broken block, since its
- * findings would only echo the syntax error.
+ * Adds one `frontmatter/yaml` finding per YAML error in the frontmatter block, on the error's
+ * line. Returns true when the YAML has no errors. The caller does not run the schema on broken
+ * YAML, since its findings would only repeat the syntax error.
  */
 function checkFrontmatterYaml(tree: DocTree, ctx: Ctx, out: Finding[]): boolean {
   if (!tree.frontmatter) return true
@@ -766,10 +752,9 @@ function checkFrontmatterYaml(tree: DocTree, ctx: Ctx, out: Finding[]): boolean 
 }
 
 /**
- * Run the content plane: frontmatter Zod (if declared) plus every section's content leaf.
- * Returns findings in emission order; `validate()` applies the deterministic cross-plane sort.
- * The values the schemas parse (frontmatter, transformed cells and items) go into `values`, for
- * the typed model.
+ * Runs the content plane: the frontmatter schema (if declared) and every section's content leaf.
+ * Returns findings in the order they were made. `validate()` sorts them. The values the schemas
+ * produce (frontmatter, cells and items) go into `values`, for the typed model.
  */
 export function matchContent(
   tree: DocTree,

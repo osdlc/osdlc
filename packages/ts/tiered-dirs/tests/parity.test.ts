@@ -18,16 +18,16 @@ import {
 import type { BaseDirs, Convention, Dir, Home, TierKind } from '../src/index.ts'
 
 /**
- * The shared parity fixture, driven from this side.
+ * The TypeScript side of the shared parity fixture.
  *
  * `packages/rust/tiered-dirs/tests/fixtures/parity.json` is the contract
- * between this package and the Rust `tiered-dirs` crate: same input, same `relative`, byte for byte. Base
- * directories are stubbed so the comparison is about path shape; `env_cases`
- * pin the absolute base directories the override variables resolve to, and
- * `convention_cases` pin the XDG layout under one home.
- * `tests/parity.rs` in the crate drives the same file with the same
- * assertions; a case added on either side goes in the fixture, never in one
- * twin's own suite.
+ * between this package and the Rust `tiered-dirs` crate: same input, same
+ * `relative`, byte for byte. Base directories are stubbed so the comparison is
+ * about path shape. `env_cases` fix the absolute base directories the override
+ * variables resolve to, and `convention_cases` fix the XDG layout under one
+ * home. `tests/parity.rs` in the crate runs the same file with the same
+ * assertions. A new case goes in the fixture, never in one package's own
+ * suite.
  */
 
 interface Narrowing {
@@ -50,9 +50,9 @@ interface ScratchCase extends Narrowing {
 }
 
 /**
- * Base directories resolved from the environment. `expected` pins absolute
- * paths; a base directory it omits is the resolution under the default
- * convention with no override variable set.
+ * Base directories resolved from the environment. `expected` gives absolute
+ * paths. A base directory it omits is expected to resolve as it would under
+ * the default convention with no override variable set.
  */
 interface EnvCase {
   name: string
@@ -207,9 +207,9 @@ describe('parity fixture', () => {
     expect(dir.path).toBe(expectedPath(BASES.scratch, c.relative))
   })
 
-  // The architectural invariant, not just a shape: a standalone tool installed
-  // in a third party's repository must not write under the vendor's
-  // namespace, and scratch belongs to no vendor at all.
+  // An invariant, not just a shape. A standalone tool installed in a third
+  // party's repository must not write under the vendor's directory, and
+  // scratch belongs to no vendor at all.
   test('nothing outside the suite carries the vendor segment', () => {
     for (const c of cases.filter((x) => x.tier === 'standalone')) {
       expect(c.relative).not.toContain(VENDOR)
@@ -221,7 +221,7 @@ describe('parity fixture', () => {
   })
 
   // Coverage, so a new axis value with no case fails here rather than going
-  // untested. The Rust twin asserts the same products over the same file.
+  // untested. The Rust crate checks the same combinations over the same file.
   test('every tier x home pair has a case', () => {
     const covered = new Set(cases.map((c) => `${c.tier}/${c.home}`))
     for (const tier of TIER_KINDS) {

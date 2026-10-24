@@ -7,11 +7,11 @@ import { validationFixtures } from './fixtures/validation/index.js'
 import type { ExpectedFinding } from './harness.js'
 
 /**
- * The corpus manifest (`corpus/corpus-manifest.json`) is the entry point another engine's
- * harness walks: per fixture, the `.contract.yaml` peer, the `shared` flag (true iff the YAML
- * peer fully expresses the contract — no `# GAP:`, not `peerless`), and each case's `.md`
- * source with its `.expected.json` golden. This suite pins the manifest to the TS fixture
- * modules so the two cannot drift.
+ * The corpus manifest (`corpus/corpus-manifest.json`) is what another engine's tests read. For
+ * each fixture it names the `.contract.yaml` peer, the `shared` flag (true when the YAML peer
+ * fully expresses the contract: no `# GAP:` and not `peerless`), and each case's `.md` source
+ * with its `.expected.json` file. This suite checks that the manifest matches the TS fixture
+ * modules.
  */
 
 interface ManifestCase {
@@ -48,7 +48,7 @@ describe('corpus manifest — every validation fixture, no drift', () => {
       expect(entry, `manifest entry for ${fx.id}`).toBeDefined()
       if (!entry) return
 
-      // Contract peer: `shared` requires a fully declarative twin (present, gap-free).
+      // `shared` needs a YAML peer that exists and has no `# GAP:`.
       if (fx.peerless) {
         expect(entry.contract, 'peerless fixture has no contract peer').toBeNull()
         expect(entry.shared, 'peerless fixture is ts-only').toBe(false)
@@ -62,8 +62,8 @@ describe('corpus manifest — every validation fixture, no drift', () => {
         expect(yaml.includes('# GAP:'), `${entry.contract} is gap-free`).toBe(false)
       }
 
-      // Cases: same count/order; the named source is byte-identical to what the module
-      // loaded, and the named golden parses to the module's expected findings.
+      // Cases: same count and order. Each source file has the exact text the module loaded, and
+      // each expected file parses to the module's expected findings.
       expect(entry.cases.length, 'case count').toBe(fx.cases.length)
       entry.cases.forEach((c, i) => {
         const tsCase = fx.cases[i]

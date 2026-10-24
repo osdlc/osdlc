@@ -1,7 +1,7 @@
 /**
  * A synchronous y/N prompt on the terminal, for `--confirm-push`.
  *
- * Synchronous because the executor is: the prompt runs between building an
+ * Synchronous because the executor is. The prompt runs between building an
  * update and pushing it, inside `updateOne`.
  */
 

@@ -1,9 +1,9 @@
 /**
  * The default code host for a survey: GitHub, reached through `gh`.
  *
- * The one place `pr-update` names a concrete code host. Everything else reads
- * PRs through the `CodeHost` port (`@osdlc/code-host`), so a different
- * adapter reaches the survey by supplying `SurveyEnv.codeHost` instead.
+ * This is the one place `pr-update` names a concrete code host. Everything else
+ * reads PRs through the `CodeHost` port (`@osdlc/code-host`). To survey through
+ * another adapter, supply `SurveyEnv.codeHost`.
  */
 
 import { GithubCodeHost, selectCodeHost, type CodeHost, type CodeHostName } from '@osdlc/code-host'
@@ -20,10 +20,10 @@ export function githubCodeHostFor(
 /**
  * A `SurveyEnv.codeHost` factory that picks GitHub or Forgejo from the
  * checkout's `origin` remote (or `override`), as `selectCodeHost` does. The
- * standalone CLI uses this; a library caller that injects its own `codeHost`
- * never reaches it. A host that cannot be built (no remote, a remote that names
+ * standalone CLI uses this. A library caller that passes its own `codeHost`
+ * never calls it. A host that cannot be built (no remote, a remote that names
  * no repository, no Forgejo token) throws a `FailureError` carrying the code
- * host's own failure, which `@osdlc/cli-tool` renders and numbers.
+ * host's own failure, which `@osdlc/cli-tool` prints with its exit code.
  */
 export function selectedCodeHostFor(deps: {
   git: CommandRunner

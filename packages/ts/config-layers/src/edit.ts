@@ -1,29 +1,29 @@
 /**
- * Span-preserving edits of a dotted key path in a config YAML document
- * (`tooly.yaml`-shaped) — the write path under a tool's `config set|unset`.
+ * Edits a dotted key path in a config YAML document (shaped like
+ * `tooly.yaml`) and keeps every byte outside the edited value. A tool's
+ * `config set|unset` writes through this module.
  *
- * `@osdlc/yaml-splice` edits TOP-LEVEL fields only, byte-for-byte outside
- * the edited span. A nested path (`server.limits.timeout`) is
- * reduced to that primitive by recursion: find the parent key's block-mapping
- * value with the `yaml` package's source ranges, cut exactly those lines out,
- * strip their common indent so they form a top-level mapping of their own,
- * edit that sub-document (recursing for deeper paths), re-indent, and splice
- * the lines back. Every byte outside the innermost edited field — comments,
- * blank lines, key order, quoting in sibling sections — is left untouched.
+ * `@osdlc/yaml-splice` edits top-level fields only, and keeps every byte
+ * outside the edited span. A nested path (`server.limits.timeout`) is reduced
+ * to that by recursion. Find the parent key's block-mapping value with the
+ * `yaml` package's source ranges. Cut exactly those lines out. Strip their
+ * common indent so they form a top-level mapping of their own. Edit that
+ * sub-document (recursing for deeper paths), re-indent it, and put the lines
+ * back. Every byte outside the innermost edited field is left unchanged:
+ * comments, blank lines, key order, and quoting in sibling sections.
  *
  * Fallbacks, each of which rewrites only the one section involved:
- *   - the parent key is absent → `Set` it to a freshly nested value;
- *   - the parent value is not a block mapping (a flow map `{a: 1}`, a bare
- *     `key:` null, a scalar) or its lines cannot be dedented (a comment
- *     outdented below the block's indent) → `Set` the top-level section to
- *     its merged plain value, which re-renders that section alone.
+ *   - The parent key is absent: `Set` it to a new nested value.
+ *   - The parent value is not a block mapping (a flow map `{a: 1}`, a bare
+ *     `key:` null, a scalar), or its lines cannot be dedented (a comment
+ *     indented less than the block): `Set` the top-level section to its
+ *     merged plain value, which re-renders that section alone.
  *
- * Pure: text in, text out. Validation against the config schema is the
- * caller's job.
+ * Pure: text in, text out. The caller validates against the config schema.
  *
- * Imports the `yaml` package directly: span-preserving editing needs its
- * CST/AST primitives (`isAlias`, `isMap`, `isScalar`, `parseDocument`, `visit`)
- * to find and cut an exact sub-range out of the source text.
+ * Imports the `yaml` package directly. It needs its node helpers (`isAlias`,
+ * `isMap`, `isScalar`, `parseDocument`, `visit`) to find and cut an exact
+ * range out of the source text.
  */
 
 import { editYaml, type EditValue, type FieldEdit } from '@osdlc/yaml-splice'
@@ -57,19 +57,16 @@ export function setPath(text: string, path: readonly string[], value: unknown): 
 }
 
 /**
- * Remove `path` from `text`. A path that was never set — the key is absent,
- * or an intermediate segment resolves to something other than a mapping (a
- * scalar, a sequence) so there is nothing to descend into — is a no-op (the
- * text comes back unchanged). A parent mapping left with no keys is removed
- * too, so the result never carries a bare `key:` (which reads back as
+ * Remove `path` from `text`. When the path was never set, the text comes back
+ * unchanged. That covers an absent key, and a middle segment that is not a
+ * mapping (a scalar, a sequence). A parent mapping left with no keys is
+ * removed too, so the result never has a bare `key:` (which reads back as
  * `null`).
  *
- * Span-preserving means comment-blind: a comment block immediately preceding
- * the removed key (or the whole section, when the parent is removed too) is
- * NOT removed along with it — it is not part of the key's own span — and is
- * left dangling, now describing a setting that is no longer there. There is
- * no comment-ownership model here; a caller that cares tidies the orphaned
- * comment itself.
+ * The edit ignores comments. A comment block just before the removed key (or
+ * before the whole section, when the parent is removed too) is not part of the
+ * key's span, so it stays. It then describes a setting that is no longer
+ * there. A caller that cares removes that comment itself.
  * @experimental
  */
 export function unsetPath(text: string, path: readonly string[]): string {
@@ -125,11 +122,10 @@ function edit(text: string, path: readonly string[], op: Op): string {
   // Fallback: re-render the whole top-level section from its merged value.
   const current: unknown = node === null || node === undefined ? undefined : doc.toJS()[head]
   if (op.kind === 'unset' && !isPlainRecord(current)) {
-    // Nothing to descend into (a scalar, sequence, or absent value) — the
-    // nested path was never set, so there is nothing to unset. Recursing
-    // through `applyPlain` here would build a fresh `{}` from scratch and,
-    // finding no keys left, delete `head` itself: a plain `a: 1` would lose
-    // `a` entirely when unsetting `a.x`. Leave the text untouched instead.
+    // Nothing to descend into (a scalar, sequence, or absent value), so the
+    // nested path was never set. Recursing through `applyPlain` here would
+    // build a new `{}`, find no keys left, and delete `head` itself: a plain
+    // `a: 1` would lose `a` when unsetting `a.x`. Return the text unchanged.
     return text
   }
   const next = applyPlain(current, rest, op)
@@ -143,16 +139,15 @@ function isPlainRecord(current: unknown): current is Record<string, unknown> {
 }
 
 /**
- * The name of an anchor an alias or merge key (`<<: *anchor`) inside `node`'s
- * subtree points to that is NOT itself defined inside that same subtree —
- * `null` when every alias in the subtree resolves locally. `spliceBlock`
- * dedents a node's lines into a standalone document to edit it; an alias
- * whose anchor lives outside that range would come along as a dangling
- * reference once cut out, which the underlying YAML parser rejects (or, for
- * an already-fallback-shaped subtree, resolves to a JS `ReferenceError` at
- * `doc.toJS()` time) with an unclear message. Detecting it here, before any
- * splicing happens, lets `edit` fail with a clear message instead — and
- * since nothing has been spliced yet, the source text is never touched.
+ * The name of an anchor that an alias or merge key (`<<: *anchor`) inside
+ * `node`'s subtree points to, when that anchor is defined outside the
+ * subtree. `null` when every alias in the subtree resolves inside it.
+ * `spliceBlock` dedents a node's lines into a standalone document to edit it.
+ * An alias whose anchor is outside that range would then point at nothing.
+ * The YAML parser rejects that with an unclear message (or `doc.toJS()` throws
+ * a `ReferenceError`). Checking here, before any splicing, lets `edit` fail
+ * with a clear message. Nothing has been spliced yet, so the source text is
+ * never changed.
  */
 function externalAliasIn(node: object): string | null {
   const local = new Set<string>()
@@ -217,7 +212,7 @@ function spliceBlock(
   const lineStart = text.lastIndexOf('\n', start - 1) + 1
   const indent = start - lineStart
   if (indent === 0 || !/^ *$/.test(text.slice(lineStart, start))) return null
-  // `end` is the value end — just past the last value's newline for a block
+  // `end` is the value end: just past the last value's newline for a block
   // map, or mid-line when the document has no trailing newline.
   let lineEnd = end
   if (lineEnd > 0 && text[lineEnd - 1] !== '\n') {

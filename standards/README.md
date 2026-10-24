@@ -49,6 +49,7 @@ The standards are delivered three ways:
 The verb rules generalize `S-0013-baseline-task-vocabulary` from the
 development repository, with its monorepo details (moon, Tauri, file counts)
 removed. The review standard builds on that repository's
-`S-0017-code-review-rubric` and `S-0018-review-response-policy`. The `sdlc.yaml` schema itself is documented in the `sdlc` plugin at
-`conventions/sdlc-yaml.md`. These standards say what the file should hold;
-that document says how the current CLI reads it.
+`S-0017-code-review-rubric` and `S-0018-review-response-policy`. The
+`sdlc.yaml` schema itself is documented in the `sdlc` plugin at
+`conventions/sdlc-yaml.md`. These standards say what the file should hold.
+That document says how the current CLI reads it.

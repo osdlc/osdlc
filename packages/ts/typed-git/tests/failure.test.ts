@@ -283,8 +283,8 @@ suite('against a real git', () => {
 })
 
 suite('a CommandFailed from another installed copy', () => {
-  // Another copy of command-seam has its own class, so `instanceof` is false;
-  // the doors go by shape.
+  // Another copy of command-seam has its own class, so `instanceof` is false.
+  // The throwing methods, `try` and `soft` recognise it by shape.
   const foreign = (): Error =>
     Object.assign(new Error('boom'), {
       failure: { kind: 'exit', message: 'x' },

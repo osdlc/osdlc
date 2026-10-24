@@ -3,8 +3,8 @@ import { lstat, open, realpath, type FileHandle } from 'node:fs/promises'
 import { isAbsolute, relative, sep } from 'node:path'
 
 // The race-checked helpers of the `./node` entry. They call Node `fs` directly
-// and take no `Resolver`, so they cannot be faked. Unlike `PathGuard`, they keep
-// the 0.2 contract: a relative path is resolved against the working directory.
+// and take no `Resolver`, so they cannot be faked. Unlike `PathGuard`, they
+// resolve a relative path against the working directory.
 
 /**
  * `path` is `root` or lies under it once both are normalized by `node:path`.
@@ -42,16 +42,19 @@ export interface ContainedFile {
 
 /**
  * Opens `path` when it resolves inside `realRoot`. A target outside is not opened, so an outside
- * FIFO cannot hang the call. After the open, `path` is resolved again and the handle is accepted
- * only when it is the file `lstat` finds at that real path (same device and inode), so a file or
+ * FIFO cannot hang the call. After the open, `path` is resolved again, and the handle is accepted
+ * only when it is the file `lstat` finds at that real path (same device and inode). So a file or
  * parent directory swapped for a symlink before the open is refused.
- * Remaining window: a parent directory swapped out, back, and out again across the open, the
+ *
+ * One gap remains: a parent directory swapped out, back, and out again across the open, the
  * re-resolve and the `lstat` still passes. Node has no per-component no-follow open to close it.
- * The open is non-blocking, so a FIFO cannot hang the call, but it also succeeds for a directory
- * and for any other non-regular file: the handle can be one. The caller checks `stats.isFile()`
- * before it reads.
+ *
+ * The open is non-blocking, so a FIFO inside the root cannot hang the call either. It also
+ * succeeds for a directory or any other file that is not regular, so check `stats.isFile()`
+ * before reading.
+ *
  * Returns null when a check fails. On a failed check or a throw, this function closes the
- * handle. On success it does not: the caller closes `handle`.
+ * handle. On success the caller closes `handle`.
  *
  * @throws {Error} What `fs.realpath`, `fs.open`, `FileHandle.stat` or `fs.lstat` throws, such as
  * `ENOENT`, when `path` does not exist or vanishes during the check.

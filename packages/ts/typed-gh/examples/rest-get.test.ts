@@ -1,5 +1,5 @@
 /**
- * A REST GET through `gh api`. It never throws: the result says whether it
+ * A REST GET through `gh api`. It never throws. The result says whether it
  * worked. Pass an `etag` to make the request conditional.
  */
 

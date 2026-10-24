@@ -42,9 +42,10 @@ check:packages` and `pnpm run check:crates` fail a package that drifts from it.
 
 The development loop is `pnpm -r build` (or `pnpm --filter <package>... build`
 for a library and what it depends on), then `pnpm -r typecheck` and
-`pnpm -r test`. CI runs the same order: install, build, typecheck, package-specific checks
-(`check:extra`), test, smoke, lint, then the package checks. A typecheck or test on a tree with no
-`dist/` fails on unresolved imports; build first.
+`pnpm -r test`. CI runs the same order: install, build, typecheck,
+package-specific checks (`check:extra`), test, smoke, lint, then the package
+checks. A typecheck or test on a tree with no `dist/` fails on unresolved
+imports, so build first.
 
 ## Why one repository
 
@@ -59,15 +60,16 @@ A twin is two separate implementations of one library, one in Rust and one
 in TypeScript, such as the `tiered-dirs` crate and `@osdlc/tiered-dirs`. A
 build of one implementation for another runtime, such as `@osdlc/yaml-splice`
 (the crate built to WebAssembly), is not a twin and keeps its own version.
-The rules below apply when both halves are hosted here. A twin whose other
-half lives elsewhere, such as `@osdlc/frontmatter-lossless`, adopts them when
-that half moves here. Twins keep semantic parity, not literal parity.
+The rules below apply when both halves are hosted here. Twins keep the same
+behaviour, not the same code.
 
 - **Same behaviour.** For the same input, both twins return the same result
   or refuse it with the same error kind. A shared fixture of cases checks
   it: `packages/rust/<name>/tests/fixtures/parity.json`, run by both twins'
-  tests. `tiered-dirs` and `path-guard` have one. `etag-write` does not
-  have one yet.
+  tests. `tiered-dirs`, `path-guard` and `config-layers` have one.
+  `frontmatter-lossless` uses its crate's `tests/fixtures/conformance.json`,
+  with a copy in the TypeScript package. `etag-write` has no shared fixture
+  yet.
 - **Each language's idiom.** A twin does not copy the other's names or
   signatures when that breaks its own language's habits. Rust uses
   snake_case, `Result`, traits and the standard library's words. TypeScript
@@ -112,7 +114,9 @@ Developed here, in this repository:
 - `packages/ts/gfm-table` (`@osdlc/gfm-table`)
 - `packages/rust/config-layers` (`config-layers` on crates.io)
 - `packages/rust/etag-write` (`etag-write` on crates.io)
+- `packages/rust/frontmatter-lossless` (`frontmatter-lossless` on crates.io)
 - `packages/rust/path-guard` (`path-guard` on crates.io)
+- `packages/rust/slug-collate` (`slug-collate` on crates.io)
 - `packages/rust/tiered-dirs` (`tiered-dirs` on crates.io)
 - `packages/rust/yaml-splice` (`yaml-splice` on crates.io)
 - `packages/rust/yaml-splice-wasm`, the WebAssembly build of `yaml-splice`
@@ -121,8 +125,7 @@ Developed here, in this repository:
   WebAssembly, with the built `wasm/` committed)
 - `packages/ts/etag-write` (`@osdlc/etag-write` on npm, the crate's TypeScript twin)
 - `packages/ts/frontmatter-lossless` (`@osdlc/frontmatter-lossless` on npm,
-  the TypeScript twin of the `frontmatter-lossless` crate, which has not moved
-  here yet)
+  the TypeScript twin of the `frontmatter-lossless` crate)
 - `packages/ts/color` (`@osdlc/color` on npm, sRGB colour arithmetic for
   contrast checks)
 - `packages/ts/agent-call` (`@osdlc/agent-call` on npm, one call spec for
@@ -145,7 +148,7 @@ Developed here, in this repository:
   `Failure` shape for people: `kind`, `message`, `hint`, `detail`, `cause`)
 - `packages/ts/typed-gh` (`@osdlc/typed-gh` on npm, a typed GitHub client for
   TypeScript over the gh CLI; a total PullRequest, Review and CheckRun model,
-  pure argv builders and parsers, and a client with the same three doors:
+  pure argv builders and parsers, and a client with three ways to call:
   a call returns a value or throws, `try` returns a classified `Result`, and
   `soft` returns `null` for a failed query)
 - `packages/ts/intersect` (`@osdlc/intersect` on npm, a path-pattern overlap
@@ -215,8 +218,8 @@ Then release a fixed version through the normal flow.
 npm refuses `npm unpublish` once another public package depends on the
 package. Even without dependents, npm allows an unpublish after 72 hours only
 for a package with fewer than 300 downloads in the last week and a single
-owner. A version number that has been
-published cannot be used again, even after an unpublish. Unpublishing is for a
+owner. A version number that has been published cannot be used again, even
+after an unpublish. Unpublishing is for a
 mistake caught within hours, such as a leaked secret, and the owner does it.
 
 ### Publishing a new library for the first time
@@ -224,8 +227,8 @@ mistake caught within hours, such as a leaked secret, and the owner does it.
 npm can only set up trusted publishing on a package that already exists, so
 CI cannot publish a new library's first version. Before its first release
 the owner does the two steps below.
-`node scripts/stage-npm-package.ts packages/ts/<name>` does both.
-It skips a step that is already done. `--dry-run` builds the package and
+`node scripts/stage-npm-package.ts packages/ts/<name>` does both, and skips a
+step that is already done. `--dry-run` builds the package and
 shows what it would publish, without changing anything on npm.
 
 1. The owner publishes a real build as a placeholder version, `0.0.1-stage`:
@@ -337,10 +340,10 @@ in erasable syntax only (no `enum`, `namespace` or parameter properties).
 support Node 22.
 
 `.github/workflows/packages-ci.yml` runs these and the smoke checks on Linux
-and macOS, on Node 22 and 24, and `pnpm run check:packages` on Node 24 only. On a pull
-request it checks only the libraries the pull request changed and the ones
-that depend on them. `scripts/affected-packages.ts` picks them, and
-says which shared files make it check every library. path-guard also runs on
+and macOS, on Node 22 and 24, and `pnpm run check:packages` on Node 24 only.
+On a pull request it checks only the libraries the pull request changed and
+the ones that depend on them. `scripts/affected-packages.ts` picks them, and
+lists the shared files that make it check every library. path-guard also runs on
 Windows. The `verify` jobs always report, so they are the checks to require.
 
 A library can have a smoke check: `tests/smoke.mjs`. It runs the built package
@@ -364,7 +367,7 @@ after `typecheck` (`pnpm --filter ... --if-present run check:extra`). The shared
 shape pins `typecheck`, so anything package-specific goes here. typed-git uses
 it to type-check its source under TypeScript 5.9: `"check:extra": "pnpm run
 typecheck:ts59"`. A library without the script is skipped. The script passes or
-fails by its exit code; a misspelt name is skipped silently.
+fails by its exit code. A misspelt script name is skipped without a warning.
 
 ### Rust
 
@@ -376,9 +379,9 @@ pins the compiler, and rustup installs it on first use.
 and Windows, and the format check, docs and `cargo package` on Linux. It
 also tests on the MSRV and with minimal dependency versions, and rebuilds
 the `yaml-splice` wasm with `build.sh` and checks that it equals the one
-committed in `packages/ts/yaml-splice/wasm/`. On a pull request it
-checks that a breaking change bumps the version. Its `rust` job
-is the one check to require.
+committed in `packages/ts/yaml-splice/wasm/`. On a pull request it checks
+that a breaking change bumps the version. Its `rust` job is the one check to
+require.
 
 ```sh
 cd packages/rust

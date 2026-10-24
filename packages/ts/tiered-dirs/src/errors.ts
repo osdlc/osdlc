@@ -1,5 +1,5 @@
 /**
- * What went wrong, one value per variant of the Rust twin's `Error`:
+ * What went wrong, one value per variant of the Rust crate's `Error`:
  *
  * - `MISSING_BASE_DIR`: a base directory needs a home directory and none can
  *   be found.
@@ -28,9 +28,9 @@ export type TieredDirsErrorCode =
  * directory-resolution problem from an unrelated `Error`. {@link code} says
  * which failure it is, so a caller need not match on the message.
  *
- * Nothing here ever aborts the process. Base directories can fail to resolve —
- * headless CI and sandboxes do not always have a home — so resolution throws a
- * catchable error and never asserts.
+ * Nothing here aborts the process. Base directories can fail to resolve,
+ * because headless CI and sandboxes do not always have a home. So resolution
+ * throws a catchable error and never asserts.
  *
  * Stable in 0.x.
  */

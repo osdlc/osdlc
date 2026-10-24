@@ -1,36 +1,35 @@
 /**
- * The layered config loader: {@link assembleConfig} builds a config handle from
- * a list of sections, reads the project file and its overlay, deep-merges the
- * overlay over the file BEFORE validation, validates once, and memoizes.
+ * The layered config loader. {@link assembleConfig} builds a config handle from
+ * a list of sections. The handle reads the project file and its overlay,
+ * deep-merges the overlay over the file before validation, validates once, and
+ * memoizes the result.
  *
- * Whoever runs a tool mounts the sections it needs. `unknownTopLevel` says what
- * a top-level key no mounted section owns means:
+ * A tool mounts the sections it needs. `unknownTopLevel` says what happens to a
+ * top-level key that no mounted section owns:
  *
- *   - `'warn'` (a host that mounts every section): an unknown key at ANY depth
+ *   - `'warn'` (a host that mounts every section): an unknown key at any depth
  *     is removed from the parsed copy and reported ({@link UnknownKeyUse}, and
- *     one stderr line per file and key per handle), so a newer tool's key does
- *     not break an older one that reads the same file; the file on disk is
- *     never rewritten;
- *     Objects named in `strictAt` (matchers, where a dropped key widens the
- *     match) keep failing on an unknown key;
- *   - `'reject'`: an unknown top-level key fails the file;
+ *     one stderr line per file and key per handle). A newer tool's key then
+ *     does not break an older tool that reads the same file. The file on disk
+ *     is never rewritten. Objects named in `strictAt` still fail on an unknown
+ *     key. These are matchers, where a dropped key widens the match.
+ *   - `'reject'`: an unknown top-level key fails the file.
  *   - `'ignore'` (a standalone tool that mounts a few): the key is dropped
- *     unparsed, however malformed its contents, with no warning, so the tool
- *     runs on a file the host would reject.
+ *     unparsed, however malformed its contents, with no warning. The tool runs
+ *     on a file the host would reject.
  *
- * Whatever the mode, a mounted section that is present but invalid is an error
- * ({@link ConfigInvalidError}, exit {@link CONFIG_INVALID_EXIT}) and a key
- * nested inside a mounted section that the section does not define is an error
- * under `'reject'` and `'ignore'` (every section is `.strict()` at every
- * level; `'warn'` is the only mode that drops it), and a file that is
- * unreadable, not YAML or not a mapping is an error for every reader. A file
- * that does not exist is not: with neither file present the result is the
- * all-defaults object.
+ * In every mode these are errors ({@link ConfigInvalidError}, exit
+ * {@link CONFIG_INVALID_EXIT}): a mounted section that is present but invalid,
+ * and a file that is unreadable, not YAML or not a mapping. Under `'reject'`
+ * and `'ignore'`, a key nested inside a mounted section that the section does
+ * not define is also an error, given that the section is `.strict()` at every
+ * level. Only `'warn'` drops it. A file that does not exist is not an error.
+ * With neither file present the result is the all-defaults object.
  *
- * Where the files are is {@link resolveConfigFile}'s decision and no one
- * else's. The memo is keyed by the resolved project file, so two files never
- * share an entry, and each entry records the stat signature of the pair so a
- * long-running host sees an edit at its next call.
+ * Only {@link resolveConfigFile} decides where the files are. The memo is keyed
+ * by the resolved project file, so two files never share an entry. Each entry
+ * records the stat signature of both files, so a long-running host sees an edit
+ * at its next call.
  */
 
 import { readFileSync, statSync } from 'node:fs'
@@ -44,10 +43,10 @@ import { deprecatedKeysSet, deprecationMessage } from './deprecation.ts'
 
 /**
  * Whether a loaded handle re-reads its files when their stat signature
- * changes, so a long-running host sees an edit at its next call. It is the
- * switch `loadLayers` consults, not a report of it: turn it off and a cached
- * entry is returned until the cache is cleared. A host can show it, for example
- * to label a key `live` or `restart needed`.
+ * changes, so a long-running host sees an edit at its next call. `loadLayers`
+ * reads this flag to decide. With it off, a cached entry is returned until the
+ * cache is cleared. A host can show it, for example to label a key `live` or
+ * `restart needed`.
  * @experimental
  */
 export const RELOADS_ON_CHANGE = true
@@ -115,13 +114,14 @@ function parseYamlText(text: string): unknown {
 }
 
 /**
- * Read and parse one config file, with no opinion on the shape of what it
- * holds: absent (the normal case, never an error), unreadable, unparsable, or
- * parsed to a value of any type. The tool decides what a value that is not a
- * mapping means and how to word each failure; {@link readMappingFile} is the
- * mapping-only layer over this. This is the one read of a config file's bytes.
+ * Read and parse one config file. It does not check the shape of the value.
+ * The result is absent (the normal case, never an error), unreadable,
+ * unparsable, or a parsed value of any type. The tool decides what a value
+ * that is not a mapping means and how to word each failure.
+ * {@link readMappingFile} is the mapping-only layer over this. Every config
+ * file read goes through this function.
  *
- * YAML text reads as the README's "Rust twin" section describes.
+ * YAML text is read as the README's "The Rust crate" section describes.
  * @experimental
  */
 export function readParsedFile(path: string, format: 'yaml' | 'json' = 'yaml'): ParsedFileRead {
@@ -167,9 +167,9 @@ export interface ReadMappingOptions {
 
 /**
  * Read one config file as a mapping, without validating it. An absent file is
- * `exists: false`; a file that cannot be read, parsed, or whose top level is not
- * a mapping carries a `problem` and `data: null`. An empty document is `{}`.
- * This is the one read of a config file's bytes; every reader goes through it.
+ * `exists: false`. A file that cannot be read or parsed, or whose top level is
+ * not a mapping, carries a `problem` and `data: null`. An empty document is
+ * `{}`. It reads through {@link readParsedFile}.
  * @experimental
  */
 export function readMappingFile(path: string, opts: ReadMappingOptions = {}): RawLayer {
@@ -282,18 +282,18 @@ export interface ConfigLayers<C> {
  * @experimental
  */
 export interface ConfigHandle<S extends readonly ConfigSection[]> {
-  /** The schema over every mounted section (`.strict()` under `'reject'`). */
+  /** The schema over every mounted section (`.strict()` unless `unknownTopLevel` is `'ignore'`). */
   readonly schema: z.ZodObject<ShapeOf<S>>
   /**
-   * The schema for validating ONE file alone: the same shape with each section
-   * that declares a `fileSchema` swapped for it.
+   * The schema for validating one file alone: the same shape, with each
+   * section's `fileSchema` in place of its schema where the section has one.
    */
   readonly fileSchema: z.ZodObject<ShapeOf<S>>
   /**
    * Load and type-check the project file deep-merged with its overlay (when
    * present), returning the config with all defaults filled. Neither file
-   * present is not an error. Memoized per resolved file (successes only); a
-   * read whose files differ from the recorded stat signature reloads. When a
+   * present is not an error. Memoized per resolved file, successes only. A
+   * call whose files differ from the recorded stat signature reloads. When a
    * reload throws, the entry is left unchanged and every call throws until the
    * files are valid again.
    */
@@ -301,9 +301,9 @@ export interface ConfigHandle<S extends readonly ConfigSection[]> {
   /** {@link load}, with the two raw layers and the resolved files alongside. Same memo, same throws. */
   loadLayers(projectRoot: string): ConfigLayers<ConfigOf<S>>
   /**
-   * The two layer files as raw mappings, with NO validation and no memo: `null`
-   * for an absent or unusable file. For the diagnostic surfaces that must look
-   * at a broken config.
+   * The two layer files as raw mappings, with no validation and no memo. `null`
+   * for an absent or unusable file. For diagnostics that must look at a broken
+   * config.
    */
   readLayers(projectRoot: string): {
     project: Record<string, unknown> | null
@@ -315,13 +315,13 @@ export interface ConfigHandle<S extends readonly ConfigSection[]> {
 }
 
 /**
- * `mtimeMs:ctimeMs:size:ino` of a file, or `absent`; changes when the file is
- * edited, replaced, created or removed. `ctimeMs` moves on every write and the
- * kernel sets it, so a same-size edit inside one mtime tick (or one that
- * restores mtime with `utimes`) is still seen; `ino` catches an atomic
- * rename-over. One `stat` per file, never a read. Only ENOENT reads as absent;
- * any other stat error (EACCES, EIO) is rethrown rather than mapped to a state
- * the read might disagree with.
+ * `mtimeMs:ctimeMs:size:ino` of a file, or `absent`. It changes when the file
+ * is edited, replaced, created or removed. The kernel sets `ctimeMs` on every
+ * write, so a same-size edit inside one mtime tick (or one that restores mtime
+ * with `utimes`) is still seen. `ino` catches an atomic rename over the file.
+ * One `stat` per file, never a read. Only ENOENT reads as absent. Any other
+ * stat error (EACCES, EIO) is rethrown, so the token never claims a state the
+ * read might disagree with.
  */
 function statToken(path: string): string {
   try {
@@ -358,8 +358,8 @@ export function assembleConfig<const S extends readonly ConfigSection[]>(
   const keepStrict = pathMatcher(options.strictAt ?? [])
   const mounted = new Set<string>(sections.map((s) => s.key))
 
-  // One entry per `project\0root` key, never evicted: a host sees a handful of config files
-  // (the root pair or the relocation variable's target per project), so the map stays small.
+  // One entry per `project\0root` key, never evicted. A host sees only a few config files
+  // (per project, the root pair or the file the env var names), so the map stays small.
   const cache = new Map<string, { layers: ConfigLayers<ConfigOf<S>>; signature: string }>()
   // `<project file>\0<key>` already warned about, so a reload of an edited file does not repeat the line.
   const warned = new Set<string>()
@@ -389,8 +389,8 @@ export function assembleConfig<const S extends readonly ConfigSection[]>(
       )
     }
 
-    // `'warn'`: each layer loses its unknown keys on its own, against the per-file schema, so
-    // every removal is attributed to the file that set it; the merge sees only known keys.
+    // `'warn'`: unknown keys are stripped from each layer separately, against the per-file
+    // schema, so each removal names the file that set it. The merge sees only known keys.
     const unknownKeys: UnknownKeyUse[] = []
     const known = (layer: RawLayer): Record<string, unknown> => {
       if (unknownTopLevel !== 'warn' || layer.data === null) return layer.data ?? {}
@@ -424,8 +424,8 @@ export function assembleConfig<const S extends readonly ConfigSection[]>(
       }),
     )
     if (issues.length > 0) throw new ConfigInvalidError(existing, issues, label)
-    // A deprecated key passed validation above; warn only once the config is known good. Keyed by
-    // the project file too, so a host loading several projects through one handle warns for each.
+    // Warn about deprecated keys only once the config is known good. The id includes the project
+    // file, so a host loading several projects through one handle warns for each.
     for (const { key, deprecated, layer } of deprecatedKeysSet(sections, [
       projectLayer.data,
       localLayer.data,
@@ -455,8 +455,8 @@ export function assembleConfig<const S extends readonly ConfigSection[]>(
   function loadLayers(projectRoot: string): ConfigLayers<ConfigOf<S>> {
     const files = resolveConfigFile(projectRoot, resolveOpts())
     const signature = `${statToken(files.project)}|${statToken(files.local)}`
-    // The resolved file is the key, so two files never share an entry; the root rides along
-    // because a section's layer check reads the project the file belongs to.
+    // The key holds the resolved file, so two files never share an entry. It also holds the
+    // root, because a section's layer check reads the project the file belongs to.
     const key = `${files.project}\0${resolve(projectRoot)}`
     const cached = cache.get(key)
     if (cached !== undefined && (!RELOADS_ON_CHANGE || cached.signature === signature)) {

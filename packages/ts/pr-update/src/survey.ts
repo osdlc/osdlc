@@ -1,46 +1,45 @@
 /**
- * `pr-update survey` — every open PR's drift from its base, the stack it sits
- * in, and how it would be brought up to date.
+ * `pr-update survey`: every open PR's drift from its base, the stack it is in,
+ * and how it would be brought up to date.
  *
  * Read-only: it fetches, then reads. No checkout, no worktree, no index, and
- * nothing is pushed. `pr-update update` is what acts on this.
+ * nothing is pushed. `pr-update update` acts on this.
  *
- * Three things it knows that a per-PR check cannot.
+ * It knows three things that a per-PR check cannot.
  *
- * **Drift is measured locally.** GitHub only reports
- * `mergeStateStatus: BEHIND` when branch protection requires an up-to-date
- * branch; without it the field stays silent however far a branch has drifted.
- * So behind-ness comes from `rev-list --left-right --count` over the
- * remote-tracking refs, and `mergeStateStatus` is a corroborating hint.
+ * Drift is measured locally. GitHub reports `mergeStateStatus: BEHIND` only
+ * when branch protection requires an up-to-date branch. Without that rule the
+ * field says nothing, however far a branch has drifted. So the count of
+ * commits behind comes from `rev-list --left-right --count` over the
+ * remote-tracking refs.
  *
- * **Staleness is transitive.** When PR A targets PR B's head branch, A is
- * stacked on B, and updating A before B is wasted work — A's base is about to
- * move. A PR can read zero-behind and still be blocked, so the survey builds
- * the stack graph, sorts it parent-first, and marks a child `blocked` on the
- * nearest ancestor that is itself behind.
+ * Being out of date passes down a stack. When PR A targets PR B's head branch,
+ * A is stacked on B. Updating A before B is wasted work, because A's base is
+ * about to move. A PR can be zero commits behind and still be blocked, so the
+ * survey builds the stack graph, sorts it parent first, and marks a child
+ * `blocked` on the nearest ancestor that is itself behind.
  *
- * **A rebase is not always safe.** Each row carries the strategy it would be
- * updated with and the rule that chose it, so the plan is auditable before
- * anything runs. See `./strategy.ts` for why the unpushed-work guard outranks
- * everything else.
+ * A rebase is not always safe. Each row carries the strategy it would be
+ * updated with and the rule that chose it, so the plan can be checked before
+ * anything runs. See `./strategy.ts` for why the unpushed-work guard comes
+ * before everything else.
  *
  * Conflicts are predicted with `merge-tree`, which merges in the object
- * database and never touches a working tree. That is what makes surveying
- * every PR affordable: the alternative is a full checkout each, and most of
- * them turn out to merge cleanly. A conflict prediction also carries
- * `conflictBaseSha` — the base ref's resolved sha at the moment it was
- * measured — so a caller (a router keying a delivery signature on it, say)
- * can tell whether the prediction is still fresh.
+ * database and never touches a working tree. That is what makes a survey of
+ * every PR cheap. The alternative is a full checkout per PR, and most of them
+ * merge cleanly. A conflict prediction also carries `conflictBaseSha`, the sha
+ * the base ref pointed at when it was measured. A caller can use it to tell
+ * whether the prediction is still current.
  *
- * **A scoped run measures only what it needs.** `--pr` (or `--branch`) names
- * the PRs a caller cares about. Those PRs and their stack parents are the only
- * ones fetched and merge-treed, because a host that updates one PR at a time
- * cannot afford a fifty-PR survey per call. The code host is still listed once,
- * since the stack graph (and so blocked-parent detection) comes from the whole
- * listing.
+ * A scoped run measures only what it needs. `--pr` (or `--branch`) names the
+ * PRs a caller cares about. Only those PRs and their stack parents are fetched
+ * and run through `merge-tree`, because a host that updates one PR at a time
+ * cannot afford a fifty-PR survey per call. The code host is still listed
+ * once, since the stack graph, and so the blocked-parent check, comes from the
+ * whole listing.
  *
  * Scope defaults come from `PrUpdateConfig`, and every key there has a
- * default — so the verb works with no config at all. Flags override config;
+ * default, so the command works with no config. Flags override config, and
  * config overrides the built-in defaults.
  */
 
@@ -61,8 +60,7 @@ import type { Ports } from './ports.ts'
 // ---------------------------------------------------------------------------
 
 /** Where a PR stands relative to its base, and to its stack. Declared once so
- *  the `status` zod enum below can't drift from this type — see its own
- *  `SurveyStatus` reference. */
+ *  the `status` zod enum below always matches this type. */
 const SURVEY_STATUSES = ['up-to-date', 'behind', 'blocked', 'unknown'] as const
 export type SurveyStatus = (typeof SURVEY_STATUSES)[number]
 
@@ -72,9 +70,10 @@ const MERGE_PREDICTIONS = ['clean', 'conflict', 'unknown'] as const
 export type MergePrediction = (typeof MERGE_PREDICTIONS)[number]
 
 /**
- * A scope the run cannot honour: `--branch` named a branch no open PR has as
- * its head. A usage error, not an empty result: a caller that asked to update
- * "the PR of this branch" and heard nothing back would assume it was current.
+ * A scope the run cannot honour: `--branch` named a branch that is the head of
+ * no open PR. It is a usage error, not an empty result. A caller that asked to
+ * update "the PR of this branch" and got nothing back would assume it was
+ * current.
  */
 export class SurveyUsageError extends Error {
   override name = 'SurveyUsageError'
@@ -82,12 +81,12 @@ export class SurveyUsageError extends Error {
 
 /** A repository to survey, and the checkout its drift is measured in. */
 export interface RepoTarget {
-  /** `owner/name`, as GitHub knows it. */
+  /** `owner/name`, as the code host knows it. */
   slug: string
   /**
    * Local checkout, or null when this machine has none. Drift and conflict
    * prediction read git objects, so a target with no path is listed and
-   * reported unmeasurable rather than guessed at.
+   * reported unmeasurable, not guessed at.
    */
   path: string | null
 }
@@ -103,9 +102,9 @@ export interface SurveyRow {
   /** True when the head branch lives in a fork. */
   crossRepo: boolean
   /**
-   * The head sha GitHub reports right now. A rebase force-push is pinned to
-   * it, so a PR someone pushes to between the survey and the update is
-   * refused rather than overwritten.
+   * The head sha the code host reports now. A rebase force-push is pinned to
+   * it, so if someone pushes to the PR between the survey and the update, the
+   * push is refused instead of overwriting their work.
    */
   headOid: string | null
   /** The base's remote-tracking sha when measured. Null when unmeasurable. */
@@ -116,7 +115,7 @@ export interface SurveyRow {
   behind: number | null
   /** The open PR this one is stacked on, if any. */
   parent: number | null
-  /** Nearest ancestor that is itself behind — the one to update first. */
+  /** Nearest ancestor that is itself behind, which is the one to update first. */
   blockedBy: number | null
   status: SurveyStatus
   merge: MergePrediction
@@ -127,7 +126,7 @@ export interface SurveyRow {
    * itself could not be resolved.
    */
   conflictBaseSha: string | null
-  /** Submitted reviews; a rewrite would outdate the threads anchored to them. */
+  /** Submitted reviews. A rewrite would outdate the threads anchored to them. */
   reviews: number
   /** The head branch is checked out somewhere holding unpushed commits. */
   unpushedLocal: boolean
@@ -143,11 +142,11 @@ export interface SurveyRow {
 /**
  * Order PRs parent-first, so a stack is updated from its root down.
  *
- * A Kahn walk over the "A's base is B's head" edges. PRs at the same depth
- * keep PR-number order so two runs over the same state print the same list.
- * Anything still unemitted at the end sits in a cycle — impossible through
- * the GitHub UI, but a survey that silently dropped those PRs would be
- * lying, so they are returned separately.
+ * A topological sort (Kahn's algorithm) over the "A's base is B's head" edges.
+ * PRs at the same depth keep PR-number order, so two runs over the same state
+ * print the same list. Anything left at the end is in a cycle. The GitHub UI
+ * cannot make one, but a survey that dropped those PRs would report the wrong
+ * thing, so they are returned separately.
  */
 export function topoOrder(prs: readonly CodeHostPrDetail[]): {
   order: CodeHostPrDetail[]
@@ -189,11 +188,11 @@ export function parentEdges(prs: readonly CodeHostPrDetail[]): Map<number, numbe
 }
 
 /**
- * The nearest ancestor that is behind — the PR to update before this one.
+ * The nearest ancestor that is behind: the PR to update before this one.
  *
- * Walks up the stack rather than checking only the immediate parent: a
- * grandparent's drift reaches every descendant, and stopping at one level
- * would report a child as ready when its base is still about to move.
+ * Walks up the whole stack, not only to the parent. A grandparent's drift
+ * reaches every descendant, and stopping at one level would report a child as
+ * ready when its base is still about to move.
  */
 export function nearestBehindAncestor(
   prNumber: number,
@@ -225,9 +224,9 @@ export function statusFor(behind: number | null, blockedBy: number | null): Surv
 /**
  * Drift and predicted merge for one PR, read from the remote-tracking refs.
  *
- * Every git call goes through `try`: a ref this checkout has never fetched is
- * a legitimate "not known", and one unmeasurable PR must not sink the survey.
- * Null and zero are kept distinct — only zero means up to date.
+ * Every git call goes through `try`. A ref this checkout has never fetched is
+ * a valid "not known", and one unmeasurable PR must not fail the survey. Null
+ * and zero are kept apart: only zero means up to date.
  */
 export function measure(
   git: Git,
@@ -236,8 +235,8 @@ export function measure(
   const base = `origin/${pr.baseRef}`
   const head = `origin/${pr.headRef}`
 
-  // `resolveRef` answers `null` for a ref that does not resolve; `soft` also
-  // answers `null` for a broken object store.
+  // `resolveRef` returns `null` for a ref that does not resolve. `soft` also
+  // returns `null` for a broken object store.
   const baseOid = git.soft.resolveRef(base)
 
   const counts = git.try.aheadBehind(base, head)
@@ -245,8 +244,8 @@ export function measure(
   const behind = counts.ok ? counts.value.behind : null
   const quiet = { baseOid, ahead, behind, conflicts: [], conflictBaseSha: null }
 
-  // Nothing to merge when the head already contains the base, and merge-tree
-  // on an up-to-date pair is a wasted subprocess per PR.
+  // Nothing to merge when the head already contains the base, so skip the
+  // merge-tree subprocess.
   if (behind === 0) return { ...quiet, merge: 'clean' }
 
   const predicted = git.try.mergeTree(head, base)
@@ -263,14 +262,13 @@ export function measure(
 /**
  * Does a checkout of `head` hold commits the remote has not seen?
  *
- * The one question a force-push cannot ask for itself. `--force-with-lease`
- * compares against the remote ref, which a local-only commit leaves
- * untouched, so it reports everything as safe right up until it discards
- * someone's afternoon.
+ * A force-push cannot check this for itself. `--force-with-lease` compares
+ * against the remote ref, which a local-only commit does not change, so it
+ * reports the push as safe even when it will discard local work.
  *
- * Unknown counts as unsafe. A safety interlock that cannot read the refs has
- * not established that rewriting is fine, and the cost of being wrong here is
- * asymmetric: a needless merge commit versus unrecoverable work.
+ * Unknown counts as unsafe. A check that cannot read the refs has not shown
+ * that a rewrite is fine. Being wrong one way costs a needless merge commit.
+ * Being wrong the other way loses work that cannot be recovered.
  */
 export function unpushedLocalWork(git: Git, worktrees: readonly Worktree[], head: string): boolean {
   const wt = worktrees.find((w) => w.branch === head)
@@ -351,8 +349,8 @@ export function surveyRows(
  * The PRs named by `wanted`, plus every stack ancestor of each.
  *
  * Ancestors are kept because a PR whose parent is behind is `blocked`, and
- * saying so needs the parent measured. Order of `prs` is preserved. A number
- * `prs` does not hold is ignored: reporting it missing is the caller's job.
+ * reporting that needs the parent measured. The order of `prs` is kept. A
+ * number not in `prs` is ignored. Reporting it missing is the caller's job.
  */
 export function scopeToPrs(
   prs: readonly CodeHostPrDetail[],
@@ -379,17 +377,17 @@ export function scopeToPrs(
  * Which repositories to survey, and where each is checked out.
  *
  * The repository at `--project-root` is always the default target and needs
- * no config at all. `--repo owner/name` names others, and `ports.locate`
- * finds each one's checkout (the host's own `repos:`-container scan, or
- * whatever a standalone run wires up — see `defaults.ts`).
+ * no config. `--repo owner/name` names others, and `ports.locate` finds each
+ * one's checkout, through the host's own registry or what a standalone run
+ * provides (see `defaults.ts`).
  *
- * `--repo` is what puts a repository in this verb's scope; nothing about a
- * host's own repo registry does, so a bare invocation stays local and never
- * fans out across the machine.
+ * Only `--repo` puts a repository in scope. A host's repository registry does
+ * not, so a bare run stays on the local repository and never spreads to every
+ * repository on the machine.
  *
  * A named slug with no checkout on this machine is kept and reported
- * unmeasurable rather than dropped: silently surveying fewer repositories
- * than were asked for is the worse failure.
+ * unmeasurable, not dropped. Quietly surveying fewer repositories than were
+ * asked for would be worse.
  */
 export function resolveTargets(
   localSlug: string | null,
@@ -415,9 +413,9 @@ export function resolveTargets(
 // ---------------------------------------------------------------------------
 
 /**
- * The scope flags. Exported as a shape rather than a schema because `update`
- * takes all of them plus its own, and a shape composes where a built schema
- * does not.
+ * The scope flags. Exported as a zod shape, not a schema, because `update`
+ * takes all of them plus its own, and shapes can be combined where built
+ * schemas cannot.
  */
 export const SCOPE_SHAPE = {
   author: z
@@ -561,7 +559,7 @@ export interface SurveyEnv {
   projectRoot: string
   dryRun: boolean
   git: CommandRunner
-  /** Runs `gh` for the default GitHub code host; unused when `codeHost` is given. */
+  /** Runs `gh` for the default GitHub code host. Unused when `codeHost` is given. */
   gh: CommandRunner
   /**
    * The code host for one surveyed repository: `cwd` is the checkout to run
@@ -574,7 +572,7 @@ export interface SurveyEnv {
 
 /**
  * Refspecs that update just the remote-tracking refs of these PRs' heads and
- * bases. A fork's head is not a branch of this remote and asking for it would
+ * bases. A fork's head is not a branch of this remote, and asking for it would
  * fail the whole fetch, so only its base is requested.
  */
 function scopedRefspecs(prs: readonly CodeHostPrDetail[], remote: string): string[] {
@@ -586,8 +584,8 @@ function scopedRefspecs(prs: readonly CodeHostPrDetail[], remote: string): strin
 
 /**
  * `owner/name` from a git remote reference, or null when it names no project.
- * A host the hosted-git library knows (GitHub, GitLab, ...) first, then any
- * other `host/owner/repo` remote, which is what a self-hosted Forgejo is.
+ * It tries `parseGitUrl`, for the hosts it knows (GitHub, GitLab, ...), first, then
+ * any other `host/owner/repo` remote, which is the form of a self-hosted Forgejo.
  */
 export function remoteSlug(url: string): string | null {
   const info = parseGitUrl(url)
@@ -600,9 +598,8 @@ export function remoteSlug(url: string): string | null {
  * Run the survey.
  *
  * Kept separate from `update` so `update` plans from exactly what `survey`
- * reports, rather than a second implementation that could drift from it. An
- * update is the survey plus an apply step, and this is the seam that keeps
- * that true.
+ * reports, not from a second implementation that could differ. An update is
+ * the survey plus an apply step, and this function keeps that true.
  */
 export function runSurvey(args: SurveyArgs, env: SurveyEnv): SurveyReport {
   const { cfg } = env
@@ -633,10 +630,10 @@ export function runSurvey(args: SurveyArgs, env: SurveyEnv): SurveyReport {
       ...(author !== undefined ? { author } : {}),
     })
     // A failed listing (the tool is missing, not signed in, no network) is not
-    // an empty one: reading it as "no open PRs" would hide the failure. With
+    // an empty one. Reading it as "no open PRs" would hide the failure. With
     // one repository it is thrown as the code host's own classified failure.
-    // With several, the others are still surveyed: the failure is recorded on
-    // this repository's entry and the caller reports it and exits with its code.
+    // With several, the others are still surveyed. The failure is recorded on
+    // this repository's entry, and the caller reports it and exits with its code.
     if (!listed.ok) {
       const { error } = listed
       if (targets.length === 1) throw new FailureError(error)
@@ -668,8 +665,8 @@ export function runSurvey(args: SurveyArgs, env: SurveyEnv): SurveyReport {
     const prs = scoped ? scopeToPrs(filtered, wanted) : filtered
 
     // After the listing, so a scoped run knows which branches to ask for.
-    // `try`: an unreachable remote means the survey reports what the last
-    // fetch left behind, flagged, rather than failing the whole run.
+    // `try`: when the remote cannot be reached, the survey reports what the
+    // last fetch left, flagged, instead of failing the whole run.
     const fetched =
       measurable && !args.noFetch && !env.dryRun
         ? scoped
@@ -737,8 +734,8 @@ function pad(text: string, width: number): string {
 /** Render a survey report as the same aligned text `pr-update survey` prints. */
 export function renderSurveyText(out: SurveyReport): string {
   const lines: string[] = []
-  // Before the rows, and before any early return: a repository we could
-  // not reach listing zero PRs must not read as a repository with none.
+  // Before the rows, and before any early return: a repository that could not
+  // be reached must not read as a repository with no PRs.
   const unmeasured = out.repos.filter((r) => !r.measurable)
   for (const r of unmeasured) {
     lines.push(`${r.slug}: no local checkout — drift not measured`)
@@ -765,9 +762,9 @@ export function renderSurveyText(out: SurveyReport): string {
       `${pad('AHEAD', 5)}  ${pad('PLAN', w.plan)}  ${pad('HEAD', w.head)}  BASE`,
   )
   for (const p of out.prs) {
-    // Each note changes what to do about the PR, and more than one can be
-    // true at once — a conflicted PR inside a stale stack, updated by a
-    // strategy a guard picked rather than the project default.
+    // Each note changes what to do about the PR, and more than one can be true
+    // at once. For example, a conflicted PR in an out-of-date stack, updated by
+    // a strategy a guard picked instead of the project default.
     const notes: string[] = []
     if (p.blockedBy !== null) notes.push(`blocked on #${p.blockedBy}`)
     if (p.merge === 'conflict') {

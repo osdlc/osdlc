@@ -19,7 +19,7 @@ And a test suite must never write into the developer's real home directory.
 - **home**: how long the state must last. `durable`, `config`, `cache`,
   `state`, `logs` or `runtime`.
 
-`scratch()` sits outside both axes: the platform temp directory.
+`scratch()` is on neither axis. It is the platform temp directory.
 
 A **convention** picks the per-OS table the homes come from: `native` (the
 default) or `xdg`. They differ on macOS only.
@@ -27,8 +27,8 @@ default) or `xdg`. They differ on macOS only.
 It is for a vendor with more than one program, or one program with tests that
 must not touch the real home. It computes paths only: it creates, reads and
 deletes nothing on disk. It has no dependencies. The
-[Rust crate `tiered-dirs`](https://crates.io/crates/tiered-dirs) is its twin
-and gives the same relative paths.
+[Rust crate `tiered-dirs`](https://crates.io/crates/tiered-dirs) gives the same
+relative paths.
 
 ## When not to use it
 
@@ -50,7 +50,7 @@ and gives the same relative paths.
 They give per-app or XDG directories for one tool. None of them has shared
 vendor and suite tiers, separate state and runtime homes that are never the
 cache, one override variable per root, a scratch root for tests, or a Rust
-twin held to the same paths.
+crate tested against the same paths.
 
 ## Install
 
@@ -77,7 +77,7 @@ dirs.suite('notes').cache().scoped('vaults', 'v7').app('search').path
 // /home/ada/.cache/com.example.notes/vaults/v7/search
 ```
 
-A real program leaves out `platform` and `env`; they are there so the paths
+A real program leaves out `platform` and `env`. They are there so the paths
 above do not depend on the machine. `examples/usage.test.ts` runs every export
 of this package.
 
@@ -104,7 +104,7 @@ not here. An app framework usually resolves it, and this package takes no
 framework dependency. `TieredDirs.isVendorBundleId(bundleId)` lets a layer
 above check that a product's bundle id sits under the vendor.
 `isVendorBundleId(vendor, bundleId)` is the same check for a caller with no
-`TieredDirs`. Both are a bare prefix test, as in the Rust twin.
+`TieredDirs`. Both are a bare prefix test, as in the Rust crate.
 
 Tiers are distinct addresses and there is no merge. `vendor().durable()`,
 `suite(k).durable()` and `standalone(t).durable()` are different locations.
@@ -113,10 +113,10 @@ exactly one tier and the caller names the tier it means.
 
 ### A general tool supplies its own root
 
-The vendor and suite tiers govern a suite: products that share one owner. A
+The vendor and suite tiers are for a suite: products that share one owner. A
 general tool the vendor ships into other people's repositories is not in that
-suite, and `suite('tool')` would write the vendor's namespace onto a stranger's
-machine.
+suite. `suite('tool')` would create a vendor-named directory on the machine of
+someone who does not use the suite.
 
 `standalone(tool)` is the tier for that tool. Its segment is the bare tool
 name, with no vendor composition. Its config directory is `~/.config/<tool>` on
@@ -147,13 +147,13 @@ cli.standalone('tool').config().path
 | runtime | `$XDG_RUNTIME_DIR`, `<durable>/run` | `<durable>/run` | `$XDG_RUNTIME_DIR`, `<durable>/run` | `<durable>/run` |
 
 `logs` and `state` never fall back to `cache`, because the OS purges cache. On
-Windows `state` is `%LOCALAPPDATA%\state`: under the same root as each tier's
-cache folder and beside it, never the same folder. `state`, `logs` and `run`
-are reserved segment names, in any case, so no tier can land on another home's
-root: `standalone('state')` throws `TieredDirsError`. `runtime` sits under
-`durable` for the same reason: the OS may purge cache while the process a
-pidfile describes is still alive. Under XDG, logs and state share one
-directory, so keep their file names apart. A relative `XDG_*` value is
+Windows `state` is `%LOCALAPPDATA%\state`. That is under the same root as each
+tier's cache folder and beside it, never the same folder. `state`, `logs` and
+`run` are reserved segment names in any letter case, so no tier can land on
+another home's root. `standalone('state')` throws `TieredDirsError`. `runtime`
+is under `durable`, not `cache`, for the same reason: the OS may purge cache
+while the process a pidfile describes is still alive. Under XDG, logs and
+state share one directory, so keep their file names apart. A relative `XDG_*` value is
 ignored, as the XDG spec says, and `~` is not expanded. On Windows, `xdg`
 means `native`.
 
@@ -167,10 +167,10 @@ means `native`.
   owns it, under that program's convention.
 
 Pass `{ convention: 'xdg' }` to `systemBaseDirs` or `TieredDirs.fromEnv`.
-`<P>_CONVENTION=native` or `xdg` overrides the caller's choice; any other value
+`<P>_CONVENTION=native` or `xdg` overrides the caller's choice. Any other value
 throws `TieredDirsError`. The value is trimmed, then must match exactly, in
 lower case. `parseConvention(value)` parses a convention from anywhere else,
-such as a flag: exactly `native` or `xdg`, untrimmed, like the Rust twin's
+such as a flag: exactly `native` or `xdg`, untrimmed, like the Rust crate's
 `FromStr`. `xdgBaseDirs(home, env)` builds the XDG table under any home, on
 any host.
 
@@ -182,8 +182,8 @@ can run a whole app inside one scratch root. The caller picks the names:
 `EXAMPLE_SCRATCH_DIR`, `EXAMPLE_REQUIRE_OVERRIDE` and `EXAMPLE_CONVENTION`.
 `overrideVars(vars)` lists the ones that move a directory, and
 `isOverridden(vars, env)` says whether any of them is set to a non-empty value
-(`env` defaults to `process.env`). Per base directory,
-the first answer wins:
+(`env` defaults to `process.env`). For each base directory, the first source
+that is set wins:
 
 | order | source | effect |
 |---|---|---|
@@ -192,9 +192,9 @@ the first answer wins:
 | 3 | the OS default | the table above, for `<P>_CONVENTION` when set, else `opts.convention`, else `native` |
 
 Runtime follows durable: when `<P>_RUNTIME_DIR` is unset but durable is moved by
-step 1 or 2, runtime is `<durable>/run`. An empty variable counts as unset; a
-relative one is an error. `opts.overrides` on `systemBaseDirs` sits ahead of all
-three. `rootedBaseDirs(root)` builds the layout of step 2 directly.
+step 1 or 2, runtime is `<durable>/run`. An empty variable counts as unset. A
+relative one is an error. `opts.overrides` on `systemBaseDirs` takes precedence
+over all three. `rootedBaseDirs(root)` builds the layout of step 2 directly.
 
 ### Tests never resolve a real home
 
@@ -203,23 +203,22 @@ first:
 
 - In a test runner process where `<P>_ROOT` is unset and `HOME` is not moved,
   `<P>_ROOT` reads as `<tmp>/tiered-dirs-test-<pid>-<start ms>`. "HOME moved"
-  means `HOME` differs from the passwd home. The Rust twin has no such
-  condition. It is kept so a test that points `HOME` at a fixture keeps its
-  paths. `{ testRoot: false }` turns the test-root default off explicitly. A CI
-  job that sets `HOME` itself, such as a GitHub Actions container job
+  means `HOME` differs from the passwd home. The Rust crate has no such
+  condition. It exists so a test that points `HOME` at a fixture keeps its
+  paths. `{ testRoot: false }` turns the test-root default off. A CI job that
+  sets `HOME` itself, such as a GitHub Actions container job
   (`HOME=/github/home`, passwd home `/root`), therefore gets no test-root
-  default: set `<P>_ROOT` there. A test runner
-  process is one with a test file as its entry point that runs with
-  `NODE_ENV=test`, `NODE_TEST_CONTEXT` (set by `node --test`) or under Bun.
-  A Vitest worker is detected too. A test that points `HOME` at a fixture
-  keeps it. A child process a test spawns gets no default, because its entry
-  point is neither a test file nor a Vitest worker.
+  default. Set `<P>_ROOT` there. A test runner process is one with a test file
+  as its entry point that runs with `NODE_ENV=test`, `NODE_TEST_CONTEXT` (set
+  by `node --test`) or under Bun. A Vitest worker counts too. A child process
+  a test spawns gets no default, because its entry point is neither a test
+  file nor a Vitest worker.
 - With `<P>_REQUIRE_OVERRIDE` set, a root that would fall back to the per-OS
   table throws a `TieredDirsError` naming the fix.
 
-`testRoot()` returns that root, cached per module instance (per test file under
-Vitest's default isolation), in a test runner process, and
-`undefined` elsewhere. A layer that reads its own variables, such as a
+In a test runner process, `testRoot()` returns that root, cached per module
+instance (per test file under Vitest's default isolation). Elsewhere it returns
+`undefined`. A layer that reads its own variables, such as a
 product tier, uses it to apply the same default. Pass `{ testRoot: false }`
 to `systemBaseDirs` or `TieredDirs.fromEnv` to skip the first rule only.
 `<P>_ROOT` and `<P>_REQUIRE_OVERRIDE` still apply.
@@ -227,8 +226,9 @@ to `systemBaseDirs` or `TieredDirs.fromEnv` to skip the first rule only.
 ## Scratch
 
 `scratch()` returns the platform temp directory: `$TMPDIR` or `/tmp`, and
-`%TEMP%` / `%TMP%` on Windows. It adds nothing to the platform answer, so "no
-direct OS path call outside this package" can be checked with a search.
+`%TEMP%` / `%TMP%` on Windows. It adds nothing to the platform's value. It
+exists so that "no direct OS path call outside this package" can be checked
+with a search.
 
 Scratch is not a `Home` and not a tier. It holds state that does not outlive a
 single call. The `runtime` home holds state that does and describes a live
@@ -260,21 +260,21 @@ dirs.vendor().cache().path
 Every `BaseDirs` field is `readonly`. To change a root, build a new object, for
 example `{ ...bases, cache: '/srv/other' }`.
 
-Tests use the same seam to assert exact paths without touching a real home
-directory.
+Tests use the same constructor to check exact paths without touching a real
+home directory.
 
 ## Failure
 
-Every base directory can fail to resolve; headless CI and sandboxes do not
-always have a home. `systemBaseDirs` and `TieredDirs.fromEnv` throw
-`TieredDirsError` rather than assert, and `overrides` rescues an environment
-with no home at all. `vendor`, `suiteKey`, `tool`, `kind`, `key` and `app` are
+Every base directory can fail to resolve, because headless CI and sandboxes
+do not always have a home. `systemBaseDirs` and `TieredDirs.fromEnv` throw
+`TieredDirsError` rather than assert. In an environment with no home at all,
+pass the roots through `overrides`. `vendor`, `suiteKey`, `tool`, `kind`, `key` and `app` are
 each checked as a single path segment: non-empty, no separator, no `..`,
 matching `/^[a-z0-9][a-z0-9._-]*$/i`, and not `state`, `logs` or `run`.
 `isValidSegment(key)` is that rule. An invalid one throws `TieredDirsError`.
 
 `TieredDirsError.code` says which failure it is, one code per variant of the
-Rust twin's `Error`. Its type is `TieredDirsErrorCode`:
+Rust crate's `Error`. Its type is `TieredDirsErrorCode`:
 
 | code | when |
 |---|---|
@@ -378,14 +378,14 @@ class TieredDirsError extends Error {
 
 ## Parity
 
-This package is the twin of the Rust `tiered-dirs` crate.
+This package matches the Rust `tiered-dirs` crate.
 `packages/rust/tiered-dirs/tests/fixtures/parity.json` in the repository is
 the contract between them: a table of (tier, home, scope, app) to expected
 relative path, a `scratch_cases` list for the scratch root, `env_cases` for the
 override order, `convention_cases` for the XDG layout under a stub home and
 `rejected_conventions`. Both suites read that one file with base directories
 stubbed: `rootedBaseDirs('/stub')` here, `BaseDirs::rooted("/stub")` there.
-Neither twin may add a path shape the other lacks.
+Neither package may add a path shape the other lacks.
 
 ## Stability
 
@@ -398,11 +398,11 @@ Every export is stable in 0.x, and its TSDoc says so: `TieredDirs`,
 breaking change to one of them ships only in a new 0.x minor release, with a
 CHANGELOG entry that starts with `Breaking:`.
 
-Some of them may grow in a minor release, as their Rust twins are
+Some of them may grow in a minor release, because the matching Rust types are
 `#[non_exhaustive]`: `TierKind` and `Convention` may gain a member,
 `TieredDirsErrorCode` a code, and `EnvVars` a name. A `switch` over one of the
 unions needs a `default` arm. Build `EnvVars` with `envVars()`, not by hand,
-so a new name is filled in. `Home` is exhaustive on purpose: a new home
+so a new name is filled in. `Home` is exhaustive on purpose. A new home
 changes every caller's layout, so adding one is a breaking release.
 
 ## Runtimes and platforms

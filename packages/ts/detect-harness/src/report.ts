@@ -160,8 +160,8 @@ export const McpServerSchema = z.object({
   /**
    * False when the harness would not start the server: an unapproved or
    * rejected `.mcp.json` server, a server turned off by `managed-mcp.json`, a
-   * disabled Codex server, or a same-named server from a higher scope replaces
-   * it.
+   * disabled Codex server, or a server replaced by a same-named one from a
+   * higher scope.
    */
   active: z.boolean(),
 })

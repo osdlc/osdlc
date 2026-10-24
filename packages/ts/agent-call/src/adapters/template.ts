@@ -14,8 +14,9 @@ export interface TemplateAdapterOptions {
   binary: string
   /**
    * Arguments after the binary. `{prompt}`, `{model}` and `{effort}` are
-   * slots: an argument equal to one is replaced whole by its value; any other
-   * argument passes as written, so a value never lands inside a larger one.
+   * slots. An argument equal to a slot is replaced whole by its value. Any
+   * other argument passes as written, so a value is never put inside a larger
+   * argument.
    */
   args: readonly string[]
   /** Whether the prompt fills the `{prompt}` slot or goes on stdin. */
@@ -48,7 +49,7 @@ export function templateRefusal(args: readonly string[], choice: ModelChoice): s
 /**
  * A headless call through an argument template for any one-shot CLI: the slots
  * are filled and the prompt goes in `{prompt}` or on stdin. Context, system
- * prompt and schema are folded into the prompt; `permissions.mode` is noted
+ * prompts and schema are folded into the prompt. `permissions.mode` is noted
  * as dropped. Any other field the template cannot express (budget, session,
  * mcp, plugins, dirs, tool rules) is left out with no note, as
  * {@link customAdapter} does.

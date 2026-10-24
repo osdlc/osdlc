@@ -1,8 +1,8 @@
 /**
- * The managed-process runner: real-spawn cases prove the handle's `pid`,
- * `kill()`, and `exited` promise against an actual child (including the
- * `processGroup` kill); the fake-injection case proves the `ManagedProcessRunner` shape a call site
- * takes is usable with no real process at all.
+ * The managed-process runner. Real-spawn cases check the handle's `pid`,
+ * `kill()` and `exited` against a real child, including the `processGroup`
+ * kill. The fake case checks that a call site can use the
+ * `ManagedProcessRunner` type with no real process.
  */
 
 import { describe, expect, test } from 'vitest'
@@ -23,9 +23,8 @@ const CWD = process.cwd()
 
 describe('managedProcessRunner', () => {
   test('run() returns synchronously with a real pid, without waiting for the child', () => {
-    // `run` itself never awaits anything — its return is on the same
-    // synchronous call stack as this line, before the 0.3s sleep could ever
-    // have fired an exit event.
+    // `run` awaits nothing. It returns on the same synchronous call stack as
+    // this line, before the 0.3s sleep could fire an exit event.
     const handle = managedProcessRunner('sh').run(['-c', 'sleep 0.3; exit 0'], { cwd: CWD })
     expect(handle.pid).toBeGreaterThan(0)
     return handle.exited.then((r) => {
@@ -80,9 +79,9 @@ describe('managedProcessRunner', () => {
   test('processGroup: true makes kill() reap a grandchild the child itself forked', async () => {
     // The direct child forks a grandchild that writes its own pid to a file
     // and then sleeps, like a hung tool that forks a survivor. Killing just the
-    // direct pid would leave the grandchild running; `processGroup: true` makes
+    // direct pid would leave the grandchild running. `processGroup: true` makes
     // the child a process-group leader, so `kill()` (which negates the pid
-    // for a process-group handle) reaps both in one signal.
+    // for a process-group handle) ends both with one signal.
     const { mkdtempSync, readFileSync, rmSync } = await import('node:fs')
     const { tmpdir } = await import('node:os')
     const { join } = await import('node:path')
