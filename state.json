@@ -159,9 +159,9 @@
       "line": 54,
       "title": "node-scripts uses detect-time package.json facts, so a re-collect misses edits and collectAndCache poisons the cache",
       "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365781525",
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "99aa56dbb4cda793b1f4f25dd01dac94e74f7c7c"
     },
     {
       "id": "r2-3",
