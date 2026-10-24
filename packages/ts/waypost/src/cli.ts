@@ -382,6 +382,12 @@ export function parseArgs(
  */
 const WAYPOST_DEFAULTS: Partial<TaskConfig> = { allowExec: true }
 
+/** `allowExec` from the config files, or waypost's default when none sets it. */
+function configuredAllowExec(cfg: LoadedConfig): boolean {
+  if (cfg.sources.get('allowExec') === 'default') return WAYPOST_DEFAULTS.allowExec ?? true
+  return cfg.effective.allowExec ?? WAYPOST_DEFAULTS.allowExec ?? true
+}
+
 /**
  * The single stderr line `--cached` prints, or null when there is nothing to
  * say. Where this repo has never measured a runner's probe cost it says so
@@ -420,7 +426,7 @@ async function projectFor(
   toolModules: readonly string[],
   cfg: LoadedConfig,
   home: string,
-  trusted: boolean,
+  projectAllowed: boolean,
 ): Promise<{ project: Project; tools: LoadedTool[]; warnings: string[] } | { error: string }> {
   try {
     const { tools, warnings } = await loadTools({
@@ -428,13 +434,11 @@ async function projectFor(
       cwd: process.cwd(),
       config: cfg,
       home,
-      trusted,
+      projectAllowed,
     })
     return { project: makeProject(tools.map((t) => t.def)), tools, warnings }
   } catch (err) {
     if (err instanceof ToolModuleError) return { error: err.message }
-    // createProject refuses two tools with one id.
-    if (err instanceof Error && /\bid\b/.test(err.message)) return { error: err.message }
     throw err
   }
 }
@@ -476,7 +480,8 @@ export async function main(
       ...io,
       env,
       home,
-      load: async (cfg, modules, trusted) => projectFor(modules, cfg, home, trusted),
+      configuredAllowExec,
+      load: async (cfg, modules, projectAllowed) => projectFor(modules, cfg, home, projectAllowed),
     })
   }
 
@@ -513,9 +518,7 @@ export async function main(
   // Precedence for allowExec, highest first: --exec / --no-exec; allowExec in
   // the project file, then the user file; waypost's own default (true). Only
   // `sources` separates "a file said false" from "nobody said anything".
-  const configuredAllowExec =
-    cfg.sources.get('allowExec') === 'default' ? undefined : cfg.effective.allowExec
-  const configured = configuredAllowExec ?? WAYPOST_DEFAULTS.allowExec ?? true
+  const configured = configuredAllowExec(cfg)
 
   // The trust seam. Collection never reads the store.
   const trustStoreInstance = trustStore({ tool: TRUST_STORE_TOOL, env, home })
@@ -526,7 +529,11 @@ export async function main(
     trustPolicyOptions(home),
   )
 
-  const built = await projectFor(parsed.toolModules, cfg, home, gate.trusted)
+  // A project module runs code on import, so it needs execution allowed as
+  // well as trust.
+  const projectAllowed = gate.trusted && gate.allowExec
+  const built = await projectFor(parsed.toolModules, cfg, home, projectAllowed)
+  const projectToolsPending = !projectAllowed && (cfg.layers.project?.tools?.length ?? 0) > 0
   if ('error' in built) {
     io.stderr(`${APP}: ${built.error}\n`)
     return EXIT.error
@@ -616,6 +623,7 @@ export async function main(
     case 'serve':
       return serve({
         project,
+        projectToolsPending,
         root,
         collectOptions: options,
         pinnedByFlag,
@@ -672,7 +680,16 @@ export async function main(
       return queryTerms.length > 0 && hits.length === 0 ? 1 : 0
     }
     case 'tui':
-      return runTui({ project, root, options, runnerOrder: order, gate, env, home })
+      return runTui({
+        project,
+        projectToolsPending,
+        root,
+        options,
+        runnerOrder: order,
+        gate,
+        env,
+        home,
+      })
   }
 }
 

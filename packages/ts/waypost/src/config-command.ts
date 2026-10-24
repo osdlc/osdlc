@@ -370,7 +370,7 @@ async function setCommand(
   // warning, which they may never read, would say otherwise.
   if (taken.target === 'project' && key === 'allowExec' && getConfigValue(next, key) === true) {
     io.stderr(
-      `${toolName}: warning: allowExec: true in a project file is ignored — a repository cannot grant itself permission to run subprocesses; run "${toolName} trust" to trust this repository\n`,
+      `${toolName}: warning: allowExec: true in a project file is ignored — a repository cannot grant itself permission to run subprocesses; run "${BIN} trust" to trust this repository\n`,
     )
   }
   if (taken.target === 'project' && (key === 'trust.paths' || key === 'trust.owners')) {
