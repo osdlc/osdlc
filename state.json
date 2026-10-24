@@ -71,9 +71,9 @@
       "line": 76,
       "title": "python runner re-reads pyproject.toml and re-derives the manager instead of using the profile",
       "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365462121",
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "e46a1997bba8c5323423e4b59d27d3a17ceaa7e9"
     },
     {
       "id": "r1-7",
