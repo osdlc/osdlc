@@ -148,9 +148,9 @@
       "line": 72,
       "title": "python runner uses detect-time pyproject facts, so a re-collect misses edits and collectAndCache stores stale tasks under a fresh fingerprint",
       "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365781520",
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "99aa56dbb4cda793b1f4f25dd01dac94e74f7c7c"
     },
     {
       "id": "r2-2",
