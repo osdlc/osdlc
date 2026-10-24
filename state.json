@@ -16,9 +16,9 @@
       "line": 116,
       "title": "collect reuses detect's memoized reads and listing on every later call, so a re-collect is stale",
       "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365462100",
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "38b29eb469ebeec5810d2f3017fb9e2190085030"
     },
     {
       "id": "r1-2",
