@@ -72,12 +72,12 @@ await runMain(main, { name: 'sweep' })
 
 | Import | What it holds |
 |---|---|
-| `@osdlc/cli-tool` | The substrate below — output seam, context, exit codes, flag declaration, bin shim |
+| `@osdlc/cli-tool` | The basics described below: output interface, context, exit codes, flag declaration, bin shim |
 | [`@osdlc/cli-tool/devlink`](./devlink/README.md) | Running a system-installed tool from a development checkout, with link history |
 
 The tool's project and machine config files are a separate package,
-`@osdlc/config-layers`. The root re-exports
-its directory and did-you-mean helpers (`systemDirs`, `TieredDirs`,
+`@osdlc/config-layers`. The root re-exports its directory and did-you-mean
+helpers (`systemDirs`, `TieredDirs`,
 `envVars`, `closestMatches`, `didYouMean`) and their types, taken from the
 light `@osdlc/config-layers/dirs` and `/did-you-mean` subpaths so importing the
 root does not load yaml or zod.
@@ -85,11 +85,10 @@ root does not load yaml or zod.
 To import only what a tool uses, the root's modules are also subpaths:
 `@osdlc/cli-tool/define-cli`, `/io`, `/prompt` and `/exit`.
 
-A bin shim asks devlink which checkout should answer and then hands control to
-`main`; `main` reads its config and
-writes through the io seam.
+A bin shim asks devlink which checkout should run and then calls `main`.
+`main` reads its config and writes through `CliIo`.
 
-## The substrate
+## The basics
 
 ### Output goes through `CliIo`
 
@@ -101,12 +100,12 @@ export interface CliIo {
 ```
 
 `processIo` writes to the real streams and is the only thing that names one.
-`captureIo()` accumulates instead, so a test asserts on output without
-monkeypatching a global — a patch that leaks on a missed `finally` corrupts
-every other test in the process.
+`captureIo()` collects the text instead, so a test checks output without
+monkeypatching a global. A patch that leaks on a missed `finally` breaks every
+other test in the process.
 
-Exit codes are not part of this seam; they are return values. There is no
-`stdin` member. Ambient values a command needs beyond output travel in
+Exit codes are not part of `CliIo`. They are return values. There is no
+`stdin` member. Other values a command needs beyond output are passed in
 `CliContext`:
 
 ```ts
@@ -117,10 +116,10 @@ export interface CliContext {
 }
 ```
 
-`cwd` and `env` arrive as values rather than being read from the process,
-which is what lets a test drive a whole command against a temporary
-directory. `processContext()` is the real one; `captureContext()` is the
-test one.
+`cwd` and `env` are passed as values rather than read from the process. That
+lets a test run a whole command against a temporary directory.
+`processContext()` is the real context. `captureContext()` is the one for
+tests.
 
 ### Exit codes
 
@@ -129,25 +128,25 @@ test one.
 | `EXIT.ok` (0) | The command did what it was asked |
 | `EXIT.error` (1) | A well-formed command that failed against the state it found |
 | `EXIT.usage` (2) | The command cannot run as typed |
-| `EXIT_FAILURE` (22-25) | A classified failure, the same in every tool; see below |
-| 10-63 | This tool's own outcomes — `isDomainExit` checks the band; avoid 22-25 |
-| 64+ | Not available: `sysexits.h` claims 64-78, the shell claims 126+ |
+| `EXIT_FAILURE` (22-25) | A classified failure, the same in every tool. See below |
+| 10-63 | This tool's own outcomes. `isDomainExit` checks the range. Avoid 22-25 |
+| 64+ | Not available. `sysexits.h` uses 64-78 and the shell uses 126+ |
 
-A script can act on the split: 2 means fix the command line, 1 means look at
-the state. A malformed command — an unknown flag or subcommand, a wrong
-argument count, a wrong-typed value — is decided from the argument list and
-the tool's own schema with nothing read, so re-running it can only fail the
-same way. It is the same 2 in every tool, and 2 is the conventional choice:
-argparse and most GNU tools already use it.
+A script can act on the difference. 2 means fix the command line, and 1 means
+look at the state. A malformed command (an unknown flag or subcommand, a wrong
+argument count, a value of the wrong type) is decided from the argument list
+and the tool's own schema with nothing read, so running it again can only fail
+the same way. It is the same 2 in every tool. 2 is the usual choice: argparse
+and most GNU tools already use it.
 
-The band is for outcomes of the work — "nothing to sweep" as against
-"something failed to delete" — declared by the tool and documented at its own
-`main`. It is not a second spelling of the three universal codes above.
+The 10-63 range is for outcomes of the work ("nothing to sweep" versus
+"something failed to delete"), declared by the tool and documented at its own
+`main`. It is not another spelling of the three universal codes above.
 
 ### Failures
 
-A library below the CLI reports a missing tool, a signed-out `gh` or a dead
-network as a `Failure` from [`@osdlc/result`](../result#readme): a `kind`, a
+A library below the CLI reports a missing tool, a signed-out `gh` or a network
+failure as a `Failure` from [`@osdlc/result`](../result#readme): a `kind`, a
 `message` and a `hint`. This package turns one into a line on stderr and an exit
 code, the same in every tool built on it. Four categories get a code each, the
 ones a script acts on differently:
@@ -163,31 +162,32 @@ Any other kind (`exit`, `spawn`, `signal`, ...) is an ordinary failed run and
 exits 1. `FAILURE_EXIT` is the table by kind and `exitCodeFor(failure)` reads it.
 
 `runMain` does this for a thrown failure (a `FailureError`, which includes
-`CommandFailed`): it prints `<name>: <message> <hint>` and sets the category's
+`CommandFailed`). It prints `<name>: <message> <hint>` and sets the category's
 exit code. The code follows the `kind` the thrown failure carries, so it is only
-as specific as the layer that threw it: `@osdlc/typed-git`, `@osdlc/typed-gh` and
-`@osdlc/code-host` throw the classified failure (a signed-out `gh` or `git push`
-is 23), while a bare `CommandFailed` from elsewhere carries only command-seam's
-kinds (`not-installed`, `timeout`, ... and a generic `exit`, which is 1).
-Classify before throwing if you want more. A `main` that holds a `Result` returns instead of throwing:
+as specific as the layer that threw it. `@osdlc/typed-git`, `@osdlc/typed-gh`
+and `@osdlc/code-host` throw the classified failure (a signed-out `gh` or
+`git push` is 23). A bare `CommandFailed` from elsewhere carries only
+command-seam's kinds (`not-installed`, `timeout`, ... and a generic `exit`,
+which is 1). Classify before throwing if you want more. A `main` that holds a
+`Result` returns instead of throwing:
 
 ```ts
 const listed = host.listPrs({})
 if (!listed.ok) return failWith(ctx, listed.error, { name: 'sweep' })
 ```
 
-`failWith` prints the same line and returns the code. The line carries the
-message and the hint only; the raw `detail` (a tool's stderr) is left to a
+`failWith` prints the same line and returns the code. The line carries only
+the message and the hint. The raw `detail` (a tool's stderr) is left to a
 caller that asks for it, since this package has no verbose switch. Any other
-thrown error keeps the old behaviour: its message and exit 1.
+thrown error prints its message and exits 1.
 
 ### Flags are declared, not parsed
 
 `defineCli` builds a [commander](https://github.com/tj/commander.js) command
 underneath, so `--flag=value`, short flags, `--no-x` negation and
-required-value checking are not reimplemented here. What it adds is the house
-contract: nothing writes to a process stream, nothing calls `process.exit`,
-and a usage error comes back as a value.
+required-value checking are not reimplemented here. It adds three rules:
+nothing writes to a process stream, nothing calls `process.exit`, and a usage
+error comes back as a value.
 
 | Kind | Parses to | Notes |
 |---|---|---|
@@ -199,18 +199,18 @@ and a usage error comes back as a value.
 | `tristate` | `boolean \| undefined` | `--x`, `--no-x`, or neither |
 
 Keys are camelCase and the flag is the kebab of the key: `binDir` is
-`--bin-dir`. `parse` returns one of three states — `ok` with typed values and
+`--bin-dir`. `parse` returns one of three states: `ok` with typed values and
 positionals, `help` when `--help` was asked for and already written, or
-`error` carrying commander's own wording with no prefix, so the caller
-decides how to present it.
+`error` with commander's own wording and no prefix, so the caller decides how
+to present it.
 
 A flag with no default parses to `undefined` when the command line does not
-mention it, and that is load-bearing: a `tristate` or an undefaulted `list` is
-how a configuration layer underneath the flags gets to answer. A flag that is
+mention it, and this matters. A `tristate` or a `list` with no default lets a
+value from a configuration file apply when the flag is absent. A flag that is
 always present would overwrite the configured value on every run.
 
-The declaration is also the help text. A hand-written usage string beside a
-hand-rolled `switch` is two things to keep in step, and they drift.
+The declaration is also the help text. A hand-written usage string next to a
+hand-written `switch` are two things to keep in step, and they drift apart.
 
 ### Two help tiers
 
@@ -224,10 +224,10 @@ so a flag cannot be in the parser and missing from the complete help.
 | `shortEpilogue` | Used instead of `epilogue` in the short tier |
 | `autoHelp: false` | Commander stops owning `-h, --help`, so the tool can render the tier itself |
 
-`autoHelp: false` is what makes the second tier reachable at all. Commander
-acts the moment it reads `--help`, so it can never see `--help --all` as one
-thing; a two-tier tool turns it off, declares `help` and its modifier as
-ordinary flags, and picks the tier after parsing:
+`autoHelp: false` is what makes the second tier possible. Commander acts as
+soon as it reads `--help`, so it can never see `--help --all` together. A
+two-tier tool turns it off, declares `help` and its modifier as ordinary
+flags, and picks the tier after parsing:
 
 ```ts
 const cli = defineCli({ name: 'tooly', autoHelp: false, flags: {
@@ -248,19 +248,19 @@ commander own `--help`.
 ### `runMain`
 
 Assigns `process.exitCode` rather than calling `process.exit`, because
-exiting outright truncates buffered stdout and the bug only shows under a
-pipe. A thrown error becomes one line on stderr and exit 1, and a thrown
-failure becomes its line and its category's exit code (see Failures); a stack
-trace says where the code was, not what the person who typed the command should
-do.
+exiting at once truncates buffered stdout, and the bug only shows under a
+pipe. A thrown error becomes one line on stderr and exit 1. A thrown failure
+becomes its line and its category's exit code (see Failures). It prints no
+stack trace, because a trace says where the code was, not what the person who
+typed the command should do.
 
 ### Asking yes or no
 
 `askYesNo(question, { defaultYes })` writes the question to stderr with a
 `[y/N]` or `[Y/n]` hint and reads one line from stdin. An empty answer takes
-the default; otherwise only `y` or `yes` is yes. It is synchronous, so a
+the default. Otherwise only `y` or `yes` is yes. It is synchronous, so a
 caller inside a synchronous loop can ask between two steps. Check
-`canPrompt()` first: it is true only when stdin and stderr are both terminals.
+`canPrompt()` first. It is true only when stdin and stderr are both terminals.
 
 ### Whose directories
 
@@ -278,9 +278,9 @@ const vendorDirs = { vendor: 'com.example', envVars: envVars('EXAMPLE') }
 
 ## Runtime
 
-The bin of a CLI built on this runs under **node** over its built `dist/`,
-with `engines.node` declared. A bun program can import the library too: it
-loads the same compiled `dist/`.
+The bin of a CLI built on this runs under node over its built `dist/`, with
+`engines.node` declared. A bun program can import the library too. It loads
+the same compiled `dist/`.
 
 Nothing in this package touches a `Bun.*` global, because every node-run bin
 imports it.
@@ -296,7 +296,6 @@ What they do not cover, as far as their documentation shows:
 - A stated exit-code rule: 0 for success, 1 for a failed run, 2 for a command
   that cannot run as typed, and a band for the tool's own outcomes.
 - Running an installed tool from a development checkout, with link history.
-- A per-repository consent store for running a repository's own scripts.
 
 Where they overlap, the difference is the default. commander offers
 `exitOverride` and `configureOutput`, yargs offers `exitProcess(false)`, and
@@ -318,8 +317,9 @@ export is stable or experimental. A breaking change to a stable export is
 listed in the CHANGELOG under "Breaking". Any release may change or remove an
 experimental export.
 
-Stable: the substrate in the root entry, which is the output seam, the context,
-the exit codes, `defineCli` and its types, `runMain` and the yes/no prompt.
+Stable: the basics in the root entry, which are the output interface, the
+context, the exit codes, `defineCli` and its types, `runMain` and the yes/no
+prompt.
 
 Experimental: the whole `devlink` entry, and
 `systemDirs`, `VendorDirs`, `closestMatches` and `didYouMean`, which the root

@@ -1,6 +1,6 @@
 /**
  * The root entry used the way a consumer uses it: through the package name
- * only. Every export of `@osdlc/cli-tool` appears here at least once;
+ * only. Every export of `@osdlc/cli-tool` appears here at least once.
  * `tests/exports.test.ts` checks that.
  */
 

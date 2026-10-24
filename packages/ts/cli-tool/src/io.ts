@@ -1,20 +1,19 @@
 /**
- * The output seam every CLI writes through, instead of naming
+ * The output interface every CLI writes through, instead of naming
  * `process.stdout` / `process.stderr` itself.
  *
  * A handler that writes to a process stream directly cannot be tested without
- * monkeypatching a global, and a patch that leaks on a missed `finally`
- * corrupts every other test in the process. An injected sink is captured
+ * monkeypatching a global. A patch that leaks on a missed `finally` breaks
+ * every other test in the process. An injected `CliIo` can be captured
  * instead.
  *
- * Exit codes are NOT part of this seam. They stay ordinary return values —
- * `CliIo` covers what gets printed, not whether the run succeeded.
+ * Exit codes are not part of this interface. They stay ordinary return
+ * values. `CliIo` covers what gets printed, not whether the run succeeded.
  *
- * There is no `stdin` member, and ambient values a command needs beyond
- * output live in {@link CliContext} rather than widening this. An interactive
- * surface owning the terminal — raw mode, keystrokes, handing the terminal to
- * a spawned task — is a different thing, and folding it into a seam meant for
- * one-shot output would blur both.
+ * There is no `stdin` member. Other values a command needs beyond output are
+ * in {@link CliContext}. An interactive program that controls the terminal
+ * (raw mode, keystrokes, handing the terminal to a spawned task) needs a
+ * different interface, so it is not added here.
  */
 export interface CliIo {
   stdout(text: string): void
@@ -22,13 +21,12 @@ export interface CliIo {
 }
 
 /**
- * The real thing: writes to the actual process streams. This is the only
- * place a CLI names one.
+ * Writes to the real process streams. This is the only place a CLI names one.
  *
  * Declared as arrow-function properties, not methods, so `processIo` still
  * works when its members are destructured or spread (`{ ...processIo }`,
- * `{ stdout: processIo.stdout }`) — a method relying on `this` would break
- * the moment it left the object literal.
+ * `{ stdout: processIo.stdout }`). A method that used `this` would break once
+ * it was taken off the object.
  */
 export const processIo: CliIo = {
   stdout: (text) => {
@@ -58,12 +56,12 @@ export function captureIo(): CliIo & { out: string; err: string } {
 }
 
 /**
- * Everything ambient a `main` needs, beyond where its output goes.
+ * What a `main` needs from its environment, beyond where its output goes.
  *
- * `cwd` and `env` arrive as values rather than being read from the process,
- * which is what lets a test drive a whole command in process against a
- * temporary directory. They sit here rather than on {@link CliIo} because
- * that seam is about output and widening it blurs what it promises.
+ * `cwd` and `env` are passed in as values rather than read from the process.
+ * That lets a test run a whole command in process against a temporary
+ * directory. They are here rather than on {@link CliIo} because `CliIo` is
+ * only about output.
  */
 export interface CliContext {
   io: CliIo
@@ -77,7 +75,7 @@ export function processContext(): CliContext {
 }
 
 /**
- * A context wired to a capturing sink, for tests. `cwd` and `env` default to
+ * A context that captures output, for tests. `cwd` and `env` default to
  * the real ones because most tests only care about the output.
  */
 export function captureContext(

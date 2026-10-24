@@ -6,8 +6,8 @@ const src = (path: string) => fileURLToPath(new URL(path, import.meta.url))
 
 export default defineConfig({
   resolve: {
-    // The examples import the package by name; run them on the source.
-    // The longer subpaths come first so they win over the bare name.
+    // The examples import the package by name. Point it at the source.
+    // The longer subpath comes first so it wins over the bare name.
     alias: [
       { find: '@osdlc/cli-tool/devlink', replacement: src('./src/devlink/index.ts') },
       { find: /^@osdlc\/cli-tool$/, replacement: src('./src/index.ts') },

@@ -1,7 +1,7 @@
 /**
- * Declaring a CLI's flags over commander:
- * nothing writes to a process stream, nothing calls `process.exit`, and a
- * usage error comes back as a value. Help renders from the same declaration
+ * Declaring a CLI's flags, built on commander. Nothing writes to a process
+ * stream, nothing calls `process.exit`, and a usage error comes back as a
+ * value. Help renders from the same declaration
  * the parser reads, so the two cannot disagree.
  */
 
@@ -29,9 +29,9 @@ export interface BooleanFlag extends FlagCommon {
 
 /**
  * A flag with three states: `--exec` true, `--no-exec` false, absent
- * `undefined`. A boolean defaulting either way cannot say "the command line
- * did not mention this", so a configuration layer underneath it could never
- * win.
+ * `undefined`. A boolean with a default cannot say "the command line did not
+ * mention this", so a value from a configuration layer could never take
+ * effect.
  */
 export interface TristateFlag extends FlagCommon {
   kind: 'tristate'
@@ -59,7 +59,7 @@ export interface EnumFlag<C extends string = string> extends FlagCommon {
   required?: boolean
 }
 
-/** A flag taking several values — comma-joined, repeated, or both. */
+/** A flag taking several values: comma-joined, repeated, or both. */
 export interface ListFlag extends FlagCommon {
   kind: 'list'
   valueName?: string
@@ -79,7 +79,8 @@ export interface CountFlag extends FlagCommon {
 }
 
 /**
- * The declaration of one flag, of any kind: boolean, tristate, string, enum, list or count.
+ * The declaration of one flag, of any kind: boolean, tristate, string, enum,
+ * list or count.
  */
 export type FlagDecl = BooleanFlag | TristateFlag | StringFlag | EnumFlag | ListFlag | CountFlag
 
@@ -91,11 +92,11 @@ export type FlagSpec = Record<string, FlagDecl>
 /**
  * What one declaration parses to.
  *
- * A `default` or `required: true` makes the value certain: commander fills the
- * first in and refuses the run over the second, so neither can reach a handler
- * as `undefined`. Without either, the type has to say the flag may be absent —
- * that is the whole point of {@link TristateFlag} and of an undefaulted
- * {@link ListFlag}.
+ * A `default` or `required: true` makes the value certain. Commander fills in
+ * a default and refuses a run that lacks a required flag, so neither reaches a
+ * handler as `undefined`. Without either, the type must say the flag may be
+ * absent. That is the purpose of {@link TristateFlag} and of a
+ * {@link ListFlag} with no default.
  */
 type FlagValue<D extends FlagDecl> = D extends BooleanFlag
   ? boolean
@@ -132,7 +133,8 @@ export interface PositionalDecl {
 }
 
 /**
- * The declaration of a command line: its name, summary, flags and positional arguments.
+ * The declaration of a command line: its name, summary, flags and positional
+ * arguments.
  */
 export interface CliDecl<F extends FlagSpec> {
   /** The binary's name, as it appears in help and error messages. */
@@ -141,7 +143,7 @@ export interface CliDecl<F extends FlagSpec> {
   summary: string
   flags: F
   positionals?: readonly PositionalDecl[]
-  /** Text after the options list — examples, config-file locations. */
+  /** Text after the options list, such as examples and config-file locations. */
   epilogue?: string
   /**
    * Used instead of {@link epilogue} in the short help. Omit it and the short
@@ -151,15 +153,16 @@ export interface CliDecl<F extends FlagSpec> {
   /**
    * Let commander own `-h, --help`: it prints and the parse reports `help`.
    *
-   * Set it false for a tool with two help tiers — commander acts the moment
-   * it reads `--help`, so it can never see `--help --all` as a whole. The
+   * Set it false for a tool with two help tiers. Commander acts as soon as it
+   * reads `--help`, so it can never see `--help --all` together. The
    * tool then declares `help` in `flags` and renders the tier itself.
    */
   autoHelp?: boolean
 }
 
 /**
- * What parsing an argv gives: the values, a request for help that was already written, or an error message.
+ * What parsing an argv gives: the values, a request for help that was already
+ * written, or an error message.
  */
 export type ParseResult<F extends FlagSpec> =
   | { status: 'ok'; values: FlagValues<F>; positionals: string[] }
@@ -167,13 +170,14 @@ export type ParseResult<F extends FlagSpec> =
   | { status: 'error'; message: string }
 
 /**
- * A declared command line: parse an argv into typed values, and render its help and usage text.
+ * A declared command line: parse an argv into typed values, and render its
+ * help and usage text.
  */
 export interface Cli<F extends FlagSpec> {
   /**
-   * Read `argv` — the arguments after the binary name, never `process.argv`.
+   * Read `argv`: the arguments after the binary name, never `process.argv`.
    *
-   * `help` means `--help` was asked for and already written to `io`; the
+   * `help` means `--help` was asked for and already written to `io`. The
    * caller returns {@link EXIT.ok} without doing anything else. `error`
    * carries commander's own wording, with no prefix and no trailing newline,
    * so the caller decides how to present it.
@@ -221,7 +225,7 @@ function optionFlags(name: string, decl: Exclude<FlagDecl, TristateFlag>): strin
   return `${short}--${long} <${value}>`
 }
 
-/** A tristate becomes two options with no default on either — see {@link TristateFlag}. */
+/** A tristate becomes two options with no default on either. See {@link TristateFlag}. */
 function buildOptions(name: string, decl: FlagDecl): Option[] {
   assertNotNegated(name)
   if (decl.kind === 'tristate') {
@@ -251,9 +255,9 @@ function buildOption(name: string, decl: Exclude<FlagDecl, TristateFlag>): Optio
     }
     case 'list': {
       const split = decl.commaSeparated !== false
-      // No `.default()`: commander hands a custom argParser the option's
-      // current value as `previous`, so a declared default would arrive on the
-      // first occurrence and be appended to rather than replaced. `parse`
+      // No `.default()`. Commander passes a custom argParser the option's
+      // current value as `previous`, so a declared default would be present on
+      // the first occurrence and be appended to rather than replaced. `parse`
       // fills the default in afterwards, where an explicitly given flag has
       // already won.
       return option.argParser((value: string, previous: string[] | undefined) => [
@@ -273,9 +277,9 @@ function buildOption(name: string, decl: Exclude<FlagDecl, TristateFlag>): Optio
 /**
  * Build a CLI from its declaration.
  *
- * The commander command is rebuilt per `parse` call rather than held: a
- * `Command` accumulates parsed state, so a reused one leaks the previous
- * run's values into the next.
+ * The commander command is rebuilt on each `parse` call rather than kept. A
+ * `Command` keeps parsed state, so a reused one leaks the previous run's
+ * values into the next.
  */
 export function defineCli<F extends FlagSpec>(decl: CliDecl<F>): Cli<F> {
   const build = (io: CliIo, all = true): Command => {
@@ -283,7 +287,7 @@ export function defineCli<F extends FlagSpec>(decl: CliDecl<F>): Cli<F> {
       .description(decl.summary)
       .exitOverride()
       // Commander tolerates excess arguments by default once a positional is
-      // declared, which silently swallows a typo'd flag value.
+      // declared, which silently drops a mistyped flag value.
       .allowExcessArguments(false)
       .helpOption(decl.autoHelp === false ? false : '-h, --help', 'show this message')
       .configureOutput({
@@ -316,8 +320,8 @@ export function defineCli<F extends FlagSpec>(decl: CliDecl<F>): Cli<F> {
         if (!(err instanceof CommanderError)) throw err
         // Commander has already written the help text.
         if (err.code.startsWith('commander.help')) return { status: 'help' }
-        // Commander prefixes its messages with `error: `; the caller adds its
-        // own, and both would read as "tooly: error: unknown option".
+        // Commander prefixes its messages with `error: `. The caller adds its
+        // own prefix, and both together would read "tooly: error: unknown option".
         return { status: 'error', message: err.message.replace(/^error:\s*/, '') }
       }
       // Fill in the defaults `buildOption` deliberately withheld. A negatable
@@ -338,7 +342,7 @@ export function defineCli<F extends FlagSpec>(decl: CliDecl<F>): Cli<F> {
       }
     },
     help(options) {
-      // `outputHelp`, not `helpInformation`: the latter renders only the
+      // `outputHelp`, not `helpInformation`. The latter renders only the
       // generated body and drops anything added with `addHelpText`, so the
       // epilogue would be missing from the string a caller prints after a
       // usage error.

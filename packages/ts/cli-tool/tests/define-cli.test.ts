@@ -1,5 +1,5 @@
 /**
- * The substrate's own behaviour, which is mostly about what commander is NOT
+ * `defineCli`'s own behaviour, which is mostly about what commander is not
  * allowed to do: exit the process, write to a real stream, or print an error
  * the caller has not decided how to present.
  */
@@ -163,9 +163,9 @@ describe('errors are values, not exits', () => {
     })
     const unmentioned = listy.parse([], captureIo())
     expect(unmentioned.status === 'ok' && unmentioned.values.only).toEqual(['a', 'b'])
-    // Commander hands a custom argParser the option's CURRENT value as
-    // `previous`, so a default declared on the Option arrives on the first
-    // occurrence and used to be concatenated onto.
+    // Commander passes a custom argParser the option's current value as
+    // `previous`. A default declared on the Option would be present on the
+    // first occurrence and get appended to.
     const given = listy.parse(['--only', 'z'], captureIo())
     expect(given.status === 'ok' && given.values.only).toEqual(['z'])
     const twice = listy.parse(['--only', 'z', '--only', 'y'], captureIo())
@@ -178,7 +178,7 @@ describe('errors are values, not exits', () => {
       summary: 'declares --no-cache the wrong way',
       flags: { noCache: { kind: 'boolean', help: 'skip the cache' } },
     })
-    // Commander would file the value under `cache` and leave `noCache` at its
+    // Commander would store the value under `cache` and leave `noCache` at its
     // default forever, so the declaration is rejected rather than silently
     // parsed under a different key.
     expect(() => bad.parse([], captureIo())).toThrow(/reads as a negation/)
@@ -196,7 +196,7 @@ describe('errors are values, not exits', () => {
     const result = listy.parse([], captureIo())
     expect(result.status).toBe('ok')
     if (result.status !== 'ok') return
-    // The distinction a config layer underneath needs: "not mentioned" is not
+    // A config layer needs this difference: "not mentioned" is not
     // "mentioned as empty".
     expect(result.values.only).toBeUndefined()
     expect(result.values.skip).toEqual([])
@@ -360,12 +360,12 @@ describe('two help tiers from one declaration', () => {
 
 describe('help text stays readable', () => {
   test('a boolean does not carry a "(default: false)" annotation', () => {
-    // Commander prints the default after the help when one is declared, which
-    // on a present-or-absent flag is noise on every line.
+    // Commander prints the default after the help when one is declared. On a
+    // present-or-absent flag that adds noise to every line.
     const text = cli.help()
     expect(text).not.toContain('(default: false)')
     expect(text).not.toContain('(default: 0)')
-    // A value flag's default is genuinely useful and stays.
+    // A value flag's default is useful and stays.
     expect(text).toContain('(default: "origin")')
   })
 })

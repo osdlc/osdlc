@@ -1,23 +1,23 @@
 /**
  * The bash launcher a tool commits, rendered from its spec.
  *
- * A launcher on PATH runs before any JavaScript runtime is chosen — the
- * canonical install may be a compiled binary and the linked checkout runs
- * under Bun — so the resolution walk in `resolve.ts` is restated here in
- * bash. The template is the single source; a tool renders it into its repo
- * and a test asserts the committed file still matches (`launcherDrift`).
+ * A launcher on PATH runs before any JavaScript runtime is chosen. The
+ * canonical install may be a compiled binary, and the linked checkout runs
+ * under Bun. So the resolution checks in `resolve.ts` are written again here
+ * in bash. The template is the single source. A tool renders it into its repo,
+ * and a test checks that the committed file still matches (`launcherDrift`).
  *
  * The per-OS config directory is inlined for the same reason: the launcher
- * cannot call the SDK. It mirrors `@osdlc/tiered-dirs`' `config` home for
- * darwin and XDG; a launcher is not a Windows artefact.
+ * cannot call TypeScript code. It matches `@osdlc/tiered-dirs`' `config` home
+ * for darwin and XDG. The launcher does not run on Windows.
  *
- * The local tail: a built entry beside the launcher (`<launcherDir>/<name>.js`)
- * runs under Node when present, else the source entry runs under Bun. A dev
- * checkout — installed (`node_modules`) and with Bun on PATH — skips the built
- * entry so a committed bundle never shadows the source being edited. That
- * is the canonical-install shape for a tool that ships built JavaScript; a
- * tool whose canonical install is elsewhere (an npm shim) points `install`
- * at that shim instead and never renders this.
+ * The `local` case: a built entry beside the launcher
+ * (`<launcherDir>/<name>.js`) runs under Node when present, else the source
+ * entry runs under Bun. A dev checkout (installed with `node_modules`, and
+ * with Bun on PATH) skips the built entry, so a committed bundle never hides
+ * the source being edited. This is the canonical-install shape for a tool
+ * that ships built JavaScript. A tool whose canonical install is elsewhere
+ * (an npm shim) points `install` at that shim instead and never renders this.
  */
 
 import { readFileSync, realpathSync } from 'node:fs'
@@ -50,9 +50,9 @@ const AWK_DEPS = [
 ].join(' ')
 
 /**
- * The checkout root a launcher at `launcherPath` belongs to: the launcher's real
- * directory, up the `..` hops the rendered launcher uses for `self`
- * (`spec.launcher`'s depth). This is the `self` to pass to `resolve` to learn
+ * The checkout root a launcher at `launcherPath` belongs to: the launcher's
+ * real directory, up the same number of `..` steps the rendered launcher uses
+ * for `self` (`spec.launcher`'s depth). This is the `self` to pass to `resolve` to learn
  * what that launcher would run. Null when the launcher cannot be resolved.
  * @experimental
  */
@@ -75,7 +75,7 @@ export function renderLauncher(spec: ToolSpec, opts: LauncherOptions = {}): stri
   const marker = spec.marker
   const entry = entryOf(spec)
   const launcherDir = posix.dirname(spec.launcher)
-  // From the launcher's directory back to the checkout root, as `..` hops.
+  // From the launcher's directory back to the checkout root, as `..` steps.
   const hops = launcherDir === '.' ? 0 : launcherDir.split('/').length
   const rootFromHere = hops === 0 ? '$here' : `$here/${Array(hops).fill('..').join('/')}`
   const suppressors = spec.suppressors ?? []
@@ -235,8 +235,8 @@ export function renderLauncher(spec: ToolSpec, opts: LauncherOptions = {}): stri
   p('# ── local: what sits beside this launcher ───────────────────────────────')
   if (built !== undefined) {
     const builtRel = posix.relative(launcherDir === '.' ? '' : launcherDir, built)
-    // `node_modules` is the tell: a plugin harness's clone of the repo carries
-    // the source but was never installed, so it takes the built entry.
+    // `node_modules` is the sign. A plugin harness's clone of the repo has the
+    // source but was never installed, so it uses the built entry.
     p('# A dev checkout (installed, with bun) runs its source, so a committed')
     p('# built entry never shadows the code being edited. Anything else — an')
     p('# install, or an uninstalled clone — runs the built entry.')
@@ -269,7 +269,7 @@ export function renderLauncher(spec: ToolSpec, opts: LauncherOptions = {}): stri
 
 /**
  * The committed launcher versus a fresh render: null when identical, else a
- * one-line description for a test assertion or a guard.
+ * one-line description for a test assertion or a check.
  * @experimental
  */
 export function launcherDrift(

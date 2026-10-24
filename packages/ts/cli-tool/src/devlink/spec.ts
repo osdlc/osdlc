@@ -9,19 +9,20 @@
 import type { VendorDirs } from '@osdlc/config-layers/dirs'
 
 /**
- * What describes a tool that is run from a development checkout: its name, launcher, marker file and vendor directories.
+ * What describes a tool that is run from a development checkout: its name,
+ * launcher, marker file and vendor directories.
  * @experimental
  */
 export interface ToolSpec {
   /**
-   * The command name — `tooly`, `ty`. It is the PATH name `install` writes,
+   * The command name, such as `tooly`. It is the PATH name `install` writes,
    * the standalone segment the state lives under (`<config>/<name>/`),
    * and the stem of every environment variable.
    */
   name: string
   /**
    * A path, relative to a checkout root, that exists in every checkout of this
-   * tool and in nothing else — the test for "is this directory a checkout".
+   * tool and in nothing else. It is the test for "is this directory a checkout".
    * Usually the source entry itself, e.g. `src/cli.ts`.
    */
   marker: string
@@ -31,9 +32,10 @@ export interface ToolSpec {
    */
   entry?: string
   /**
-   * The executable the PATH shim from `install` runs, relative to the checkout root.
-   * The tool's own launcher: a bash script that resolves before any runtime is
-   * chosen, or a shebang JavaScript shim that calls {@link execSelection}.
+   * The executable the PATH shim from `install` runs, relative to the checkout
+   * root. It is the tool's own launcher: a bash script that resolves before any
+   * runtime is chosen, or a shebang JavaScript shim that calls
+   * {@link execSelection}.
    */
   launcher: string
   /**
@@ -42,10 +44,10 @@ export interface ToolSpec {
    */
   aliases?: readonly string[]
   /**
-   * Environment variables whose PRESENCE turns off the cwd layer and the link
-   * redirect. The explicit `<NAME>_HOME` override still applies. A tool that is run by a host program names that
-   * host's root variable here, so a machine-wide link never changes which code
-   * the host runs.
+   * Environment variables whose presence turns off the cwd layer and the link
+   * layer. The explicit `<NAME>_HOME` override still applies. A tool that is
+   * run by a host program names that host's root variable here, so a
+   * machine-wide link never changes which code the host runs.
    */
   suppressors?: readonly string[]
   /**

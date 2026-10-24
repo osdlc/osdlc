@@ -10,7 +10,8 @@ import { DevlinkError, history, install, link, off, status, use, type OpOptions 
 import type { ToolSpec } from './spec.ts'
 
 /**
- * The output seam the dev command writes through: one function for stdout and one for stderr.
+ * The output interface the dev command writes through: one function for stdout
+ * and one for stderr.
  * @experimental
  */
 export interface CliIo {
@@ -19,7 +20,7 @@ export interface CliIo {
 }
 
 /**
- * The output seam backed by the real process streams.
+ * The output interface backed by the real process streams.
  * @experimental
  */
 export const processIo: CliIo = {
@@ -60,7 +61,7 @@ function envStemOf(name: string): string {
 }
 
 /**
- * Options for running the `dev` command, including the output seam.
+ * Options for running the `dev` command, including the output interface.
  * @experimental
  */
 export interface RunOptions extends OpOptions {
@@ -70,7 +71,7 @@ export interface RunOptions extends OpOptions {
 /**
  * Run `argv` (the words after `dev`). Returns the exit code.
  *
- * `opts.self` is the checkout the running code belongs to; `install` and a
+ * `opts.self` is the checkout the running code belongs to. `install` and a
  * bare `link` need it when the cwd is elsewhere.
  * @experimental
  */

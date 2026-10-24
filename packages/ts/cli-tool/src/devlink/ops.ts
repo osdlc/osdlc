@@ -1,7 +1,7 @@
 /**
  * The verbs, as functions returning typed results. A tool mounts them under
- * its own `dev` noun with whatever CLI framework it has; `cli.ts` is the
- * framework-free mount for a tool that has none.
+ * its own `dev` noun with whatever CLI framework it has. `cli.ts` mounts them
+ * for a tool that has no framework.
  *
  *   install [--bin-dir]   put a shim for this checkout's launcher onto PATH
  *   link [checkout]       make a checkout the machine-wide one; recorded
@@ -43,7 +43,8 @@ import {
 import { cwdDevVar, entryOf, homeVar, pathNames, type ToolSpec } from './spec.ts'
 
 /**
- * Options shared by the link operations, including a dry-run flag and a clock for tests.
+ * Options shared by the link operations, including a dry-run flag and a clock
+ * for tests.
  * @experimental
  */
 export interface OpOptions extends ResolveOptions {
@@ -77,17 +78,18 @@ function stamp(opts: OpOptions): string {
 // ── install ───────────────────────────────────────────────────────────────────
 
 /**
- * `${XDG_BIN_HOME:-$HOME/.local/bin}` — the default install destination. Only an absolute
- * `XDG_BIN_HOME` counts.
+ * `${XDG_BIN_HOME:-$HOME/.local/bin}`, the default install destination. Only
+ * an absolute `XDG_BIN_HOME` counts.
  *
- * Not a tiered-dirs home, deliberately: this is a directory on the user's PATH, not
- * a place the tool stores anything. The contract is "a shell finds an
- * executable here", which no tiered directory satisfies.
+ * Not a tiered-dirs home, on purpose. This is a directory on the user's PATH,
+ * not a place the tool stores anything. What it must provide is "a shell
+ * finds an executable here", which no tiered directory does.
  * @experimental
  */
 export function defaultBinDir(env: Record<string, string | undefined> = process.env): string {
   const xdg = env['XDG_BIN_HOME']
-  // A relative XDG_BIN_HOME is ignored, as the XDG spec says; an empty HOME falls back to the account's home.
+  // A relative XDG_BIN_HOME is ignored, as the XDG spec says. An empty HOME
+  // falls back to the account's home.
   return xdg && isAbsolute(xdg) ? xdg : join(env['HOME'] || homedir(), '.local', 'bin')
 }
 
@@ -136,7 +138,8 @@ export function findOnPath(
 export type LinkStatus = 'created' | 'exists' | 'replaced'
 
 /**
- * One shim that `install` handled, and whether it was created, left as it was or replaced.
+ * One shim that `install` handled, and whether it was created, left as it was
+ * or replaced.
  * @experimental
  */
 export interface InstalledLink {
@@ -146,7 +149,8 @@ export interface InstalledLink {
 }
 
 /**
- * What `install` did: the directory, the launcher, each shim and whether the directory is on the path.
+ * What `install` did: the directory, the launcher, each shim and whether the
+ * directory is on the path.
  * @experimental
  */
 export interface InstallResult {
@@ -159,17 +163,19 @@ export interface InstallResult {
 }
 
 /**
- * Input to `install`: the checkout whose launcher to use, and an optional directory for the shims.
+ * Input to `install`: the checkout whose launcher to use, and an optional
+ * directory for the shims.
  * @experimental
  */
 export interface InstallInput {
-  /** The checkout whose launcher to install. Required: the caller knows where it runs from. */
+  /** The checkout whose launcher to install. Required, because only the caller knows where it runs from. */
   checkout: string
   binDir?: string | undefined
 }
 
 /**
- * Put a shim for each of the tool's names on the path, pointing at a checkout's launcher.
+ * Put a shim for each of the tool's names on the path, pointing at a
+ * checkout's launcher.
  * @experimental
  */
 export function install(spec: ToolSpec, input: InstallInput, opts: OpOptions = {}): InstallResult {
@@ -194,7 +200,7 @@ export function install(spec: ToolSpec, input: InstallInput, opts: OpOptions = {
   return { binDir, target, links, onPath: isOnPath(binDir, env), dryRun }
 }
 
-/** Second line of every shim; how `install` and `readShimTarget` recognise one. */
+/** Second line of every shim. `install` and `readShimTarget` recognise a shim by it. */
 const SHIM_MARKER = '# devlink-shim v1'
 
 function shellQuote(value: string): string {
@@ -229,7 +235,8 @@ function parseShimTarget(content: string): string | null {
 }
 
 /**
- * The launcher the devlink shim at `path` points at, or null when `path` is not one.
+ * The launcher the devlink shim at `path` points at, or null when `path` is
+ * not a devlink shim.
  *
  * @experimental
  */
@@ -255,7 +262,7 @@ function placeShim(linkPath: string, shim: string, dryRun: boolean): LinkStatus 
       `refusing to overwrite ${linkPath}: not a symlink or a devlink shim — move it aside first`,
     )
   }
-  // Atomic, not in place: sh reads a running script lazily, so an in-place
+  // Atomic, not in place. sh reads a running script as it goes, so an in-place
   // rewrite could break a run already in progress.
   if (!dryRun) atomicWrite(linkPath, shim, { mode: 0o755 })
   return existing === null ? 'created' : 'replaced'
@@ -264,7 +271,8 @@ function placeShim(linkPath: string, shim: string, dryRun: boolean): LinkStatus 
 // ── link / use / off ──────────────────────────────────────────────────────────
 
 /**
- * What `link` did: the checkout and entry now linked, the previous link and the branch.
+ * What `link` did: the checkout and entry now linked, the previous link and
+ * the branch.
  * @experimental
  */
 export interface LinkResult {
@@ -286,7 +294,7 @@ export interface LinkResult {
 export interface LinkInput {
   /**
    * The checkout to link. Default: the checkout above the cwd, else `self`.
-   * A missing default is an error — there is nothing to link.
+   * A missing default is an error, because there is nothing to link.
    */
   checkout?: string | undefined
   label?: string | undefined
@@ -321,7 +329,8 @@ function activate(
 }
 
 /**
- * Make a checkout the active link, record it in the history, and report what it replaced.
+ * Make a checkout the active link, record it in the history, and report what
+ * it replaced.
  * @experimental
  */
 export function link(spec: ToolSpec, input: LinkInput = {}, opts: OpOptions = {}): LinkResult {
@@ -375,7 +384,8 @@ export function off(spec: ToolSpec, opts: OpOptions = {}): OffResult {
 export type UseResult = ({ kind: 'checkout' } & LinkResult) | ({ kind: 'canonical' } & OffResult)
 
 /**
- * Input to `use`: the target, which is a path, a history number or `canonical`, and an optional label.
+ * Input to `use`: the target, which is a path, a history number or
+ * `canonical`, and an optional label.
  * @experimental
  */
 export interface UseInput {
@@ -388,7 +398,8 @@ export interface UseInput {
 }
 
 /**
- * Select a checkout by path, by history number, or switch the link off with `canonical`.
+ * Select a checkout by path or by history number, or switch the link off with
+ * `canonical`.
  * @experimental
  */
 export function use(spec: ToolSpec, input: UseInput, opts: OpOptions = {}): UseResult {
@@ -422,7 +433,8 @@ export function use(spec: ToolSpec, input: UseInput, opts: OpOptions = {}): UseR
 // ── history ───────────────────────────────────────────────────────────────────
 
 /**
- * One entry of the link history as listed: its number, checkout, whether the checkout is still valid and whether it is the active link.
+ * One entry of the link history as listed: its number, checkout, whether the
+ * checkout is still valid and whether it is the active link.
  * @experimental
  */
 export interface HistoryEntry {
@@ -481,7 +493,8 @@ export function history(spec: ToolSpec, opts: OpOptions = {}): HistoryEntry[] {
 // ── status ────────────────────────────────────────────────────────────────────
 
 /**
- * What `status` reports: the selection and the state of each source that can pick a checkout.
+ * What `status` reports: the selection and the state of each source that can
+ * pick a checkout.
  * @experimental
  */
 export interface StatusResult {
@@ -493,12 +506,13 @@ export interface StatusResult {
   self: string | null
   history: { path: string; entries: number }
   path: { names: Array<{ name: string; found: string | null }> }
-  /** The first PATH hit for `spec.name` when it is a devlink shim, else null. */
+  /** The first PATH match for `spec.name` when it is a devlink shim, else null. */
   shim: ShimStatus | null
 }
 
 /**
- * The state of one shim on the path: where it points, whether the target exists and which checkout holds it.
+ * The state of one shim on the path: where it points, whether the target
+ * exists and which checkout holds it.
  * @experimental
  */
 export interface ShimStatus {
@@ -527,7 +541,8 @@ function shimStatus(spec: ToolSpec, path: string | null): ShimStatus | null {
 }
 
 /**
- * Report which checkout would run now and why, with the state of the environment variable, the working directory, the link and the shims.
+ * Report which checkout would run now and why, with the state of the
+ * environment variable, the working directory, the link and the shims.
  * @experimental
  */
 export function status(spec: ToolSpec, opts: OpOptions = {}): StatusResult {

@@ -1,14 +1,14 @@
 /**
- * `@osdlc/cli-tool/devlink` — run a system-installed CLI tool from a development
- * checkout, and keep a history of which checkouts have been linked.
+ * `@osdlc/cli-tool/devlink`: run a system-installed CLI tool from a
+ * development checkout, and keep a history of which checkouts have been linked.
  *
  * A tool declares a {@link ToolSpec} once. Its launcher calls {@link resolve}
  * (or is rendered by {@link renderLauncher} when it must decide before a
  * JavaScript runtime exists) and runs whichever checkout wins: the explicit
  * `<NAME>_HOME` env, the checkout above the cwd, the linked checkout, or
- * itself. The `dev` verbs — {@link install}, {@link link}, {@link use},
- * {@link off}, {@link status}, {@link history} — manage the link; every
- * selection is appended to a per-tool history so `use #n` can return to any
+ * itself. The `dev` verbs ({@link install}, {@link link}, {@link use},
+ * {@link off}, {@link status}, {@link history}) manage the link. Every
+ * selection is appended to a per-tool history, so `use #n` can return to any
  * earlier checkout and `use canonical` to the install.
  */
 
