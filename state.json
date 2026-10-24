@@ -1,12 +1,112 @@
 {
   "schema": 1,
   "pr": 426,
-  "head": null,
-  "base": null,
-  "round": 0,
+  "head": "bad37fdf5c1fc041f9cabfc30d2bad3a74c9a618",
+  "base": "e46a1997bba8c5323423e4b59d27d3a17ceaa7e9",
+  "round": 1,
   "claim": {
     "owner": "Mac.local:claude-w7p2rk",
     "at": "2026-10-24T03:51:14.490Z"
   },
-  "findings": []
+  "findings": [
+    {
+      "id": "r1-1",
+      "round": 1,
+      "path": "packages/ts/waypost/src/cli.ts",
+      "line": 529,
+      "title": "Project-file tools load when allowExec is false in the user config",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-2",
+      "round": 1,
+      "path": "packages/ts/waypost/src/cli.ts",
+      "line": 437,
+      "title": "Duplicate tool id crashes with a stack trace: the /\\bid\\b/ match never fires",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-3",
+      "round": 1,
+      "path": "packages/ts/waypost/src/http.ts",
+      "line": 70,
+      "title": "Client disconnect leaves writeResponse waiting forever and never cancels the body stream",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-4",
+      "round": 1,
+      "path": "packages/ts/waypost/src/http.ts",
+      "line": 87,
+      "title": "Request body is buffered with no size limit before any auth check",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-5",
+      "round": 1,
+      "path": "packages/ts/waypost/src/config-command.ts",
+      "line": 373,
+      "title": "Hint says \"waypost trust\": toolName is APP, not BIN",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-6",
+      "round": 1,
+      "path": "packages/ts/waypost/src/serve.ts",
+      "line": 570,
+      "title": "Granting trust from the page does not load the project file's tools",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-7",
+      "round": 1,
+      "path": "packages/ts/waypost/src/http.ts",
+      "line": 53,
+      "title": "Comment is wrong: pull runs before the chunk is written",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-8",
+      "round": 1,
+      "path": "packages/ts/waypost/src/serve.ts",
+      "line": 647,
+      "title": "Comment is wrong: a pull does not mean the payload went out",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-9",
+      "round": 1,
+      "path": "packages/ts/waypost/src/serve.ts",
+      "line": 213,
+      "title": "No test for the settings screen refusing tools",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    }
+  ]
 }
