@@ -167,6 +167,27 @@ describe('moon runner', () => {
     ])
   })
 
+  test('described keeps each fact’s directory when it has no package of its own', async () => {
+    const dir = await root({ '.moon/workspace.yml': 'projects: []\n' })
+    const projects = moonProjectsJson([
+      { id: 'web', source: 'apps/web', layer: 'application' },
+      { id: 'api', source: 'apps/api', layer: 'library' },
+    ])
+    const { options } = opts([
+      { binary: 'moon', argv: ['query', 'tasks'], stdout: TASKS },
+      { binary: 'moon', argv: ['query', 'projects'], stdout: projects },
+    ])
+    const { profile } = await detectAndCollect(dir, { ...options, only: ['moon'], allowExec: true })
+
+    // Neither directory has a manifest, so both facts land on the root package.
+    const moon = profile.packages.find((p) => p.dir === '.')?.tools.find((t) => t.tool === 'moon')
+    expect(moon?.described?.map((f) => [f.dir, f.fact, f.evidence.source])).toEqual([
+      ['apps/web', { id: 'web', layer: 'application' }, 'apps/web/moon.yml'],
+      ['apps/api', { id: 'api', layer: 'library' }, 'apps/api/moon.yml'],
+    ])
+    expect(moon?.facts).toEqual(moon?.described?.map((f) => f.fact))
+  })
+
   test('describe adds no facts, and runs nothing, without allowExec', async () => {
     const dir = await root({ '.moon/workspace.yml': 'projects: []\n' })
     const { options, calls } = opts(CANNED)

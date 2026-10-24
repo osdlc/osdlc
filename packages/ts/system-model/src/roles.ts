@@ -51,11 +51,11 @@ export function packageAt(profile: ProjectProfile, dir: string): Package | undef
 /**
  * The package manager for each ecosystem of the package at `dir`.
  *
- * Looks at `dir`, then at the workspace root that lists it as a member, and
- * so on up, and stops at the first package that chooses a manager for that
- * ecosystem, because a workspace keeps its lockfile at its root. Within one
- * package the most direct evidence wins (a `packageManager` field over a
- * lockfile), then the ecosystem's precedence order.
+ * Looks at `dir`, then at each workspace root that covers it, nearest first,
+ * and stops at the first package that chooses a manager for that ecosystem,
+ * because a workspace keeps its lockfile at its root. Within one package the
+ * most direct evidence wins (a `packageManager` field over a lockfile), then
+ * the ecosystem's precedence order.
  */
 export function choosePackageManagers(
   registry: Registry,
@@ -112,9 +112,9 @@ type Found = Omit<PackageManagerChoice, 'ecosystem' | 'fallback'>
  * chooses one of `managers`. A manifest that merely implies a tool (a
  * `Cargo.toml` implies cargo) does not choose here.
  *
- * In an ecosystem with workspaces, the walk steps up only to the workspace
- * root that lists `dir` as a member, so a nested package outside the
- * workspace does not take the root's lockfile. An ecosystem without a
+ * In an ecosystem with workspaces, the walk visits only the workspace roots
+ * that cover `dir` (see `workspaceRoots`), so a nested package outside every
+ * workspace does not take a lockfile from above. An ecosystem without a
  * `workspace` hook takes the nearest package above.
  */
 function chosenAbove(
@@ -124,13 +124,18 @@ function chosenAbove(
   dir: string,
   managers: readonly string[],
 ): Found | null {
-  for (let current: string | null = dir; current !== null;) {
+  if (eco.workspace !== undefined) {
+    for (const current of [dir, ...workspaceRoots(profile, eco, dir)]) {
+      const found = bestAt(registry, profile, current, managers, chooses)
+      if (found !== null) return found
+    }
+    return null
+  }
+  for (let current = dir; ; current = dirOf(current)) {
     const found = bestAt(registry, profile, current, managers, chooses)
     if (found !== null) return found
     if (current === '.') return null
-    current = eco.workspace === undefined ? dirOf(current) : workspaceRoot(profile, eco, current)
   }
-  return null
 }
 
 /**
@@ -162,21 +167,53 @@ function bestAt(
   return { tool: found.t.tool, dir, source: best.source, locked }
 }
 
-/**
- * The nearest package above `dir` whose manifest declares `dir` a workspace
- * member, or whose workspace members could not be read.
- */
+/** The nearest workspace root that covers `dir`, if any. */
 function workspaceRoot(profile: ProjectProfile, eco: EcosystemDef, dir: string): string | null {
-  if (eco.workspace === undefined || dir === '.') return null
+  return workspaceRoots(profile, eco, dir)[0] ?? null
+}
+
+/**
+ * Every workspace root that covers `dir`, nearest first. A root covers `dir`
+ * when it lists `dir` as a member, or lists a root that covers `dir` (a
+ * nested root that is itself a member). Several roots can list the same
+ * package: `a/` may list `b/*` while the root lists `a/b/*` directly.
+ */
+function workspaceRoots(profile: ProjectProfile, eco: EcosystemDef, dir: string): string[] {
+  const roots = new Set<string>()
+  const pending = [dir]
+  for (let next = pending.pop(); next !== undefined; next = pending.pop()) {
+    for (const r of listingRoots(profile, eco, next)) {
+      if (!roots.has(r)) {
+        roots.add(r)
+        pending.push(r)
+      }
+    }
+  }
+  // All are ancestors of `dir`, so the longer path is the nearer one.
+  return [...roots].sort((a, b) => depth(b) - depth(a))
+}
+
+/**
+ * Each package above `dir` whose manifest declares `dir` a workspace member,
+ * or whose workspace members could not be read.
+ */
+function listingRoots(profile: ProjectProfile, eco: EcosystemDef, dir: string): string[] {
+  if (eco.workspace === undefined || dir === '.') return []
+  const out: string[] = []
   for (let current = dirOf(dir); ; current = dirOf(current)) {
     const pkg = packageAt(profile, current)
     const members = pkg === undefined ? undefined : eco.workspace(pkg)
     const rel = current === '.' ? dir : dir.slice(current.length + 1)
     // Unknown members: treat `dir` as one, as the nearest-above walk would.
-    if (members === null) return current
-    if (members !== undefined && memberMatches(members, rel)) return current
-    if (current === '.') return null
+    if (members === null || (members !== undefined && memberMatches(members, rel))) {
+      out.push(current)
+    }
+    if (current === '.') return out
   }
+}
+
+function depth(dir: string): number {
+  return dir === '.' ? 0 : dir.split('/').length
 }
 
 /**

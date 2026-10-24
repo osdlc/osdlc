@@ -242,6 +242,14 @@ export interface Detected {
   evidence: Evidence[]
   /** What `describe` learned, when the tool has one. */
   facts?: unknown[] | undefined
+  /**
+   * The same facts as `facts`, in the same order, each with the directory it
+   * is about and its evidence. A fact's `dir` can sit below this package when
+   * that directory has no manifest of its own.
+   *
+   * @experimental
+   */
+  described?: ToolFact[] | undefined
 }
 
 /**
