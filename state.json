@@ -192,9 +192,9 @@
       "line": 48,
       "title": "wrong: bundler has --gemfile",
       "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365781537",
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "e46a1997bba8c5323423e4b59d27d3a17ceaa7e9"
     },
     {
       "id": "r2-6",
