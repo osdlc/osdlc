@@ -563,3 +563,34 @@ describe('api with headers reads the last header block', () => {
     expect(r).toMatchObject({ ok: true, status: 200, etag: 'W/"a"', body: [1] })
   })
 })
+
+describe('api keeps the error body when the request fails', () => {
+  const errBody = '{"message":"Not Found","documentation_url":"https://docs.github.com"}'
+
+  test('a failed call without -i still decodes body and message', () => {
+    const r = api('repos/o/r').parse({ exitCode: 1, stdout: errBody, stderr: '' })
+    expect(r).toMatchObject({
+      ok: false,
+      status: 0,
+      body: { message: 'Not Found' },
+      message: 'Not Found',
+      malformed: false,
+    })
+  })
+
+  test('a failed call with -i reads the status and the error body', () => {
+    const stdout = `HTTP/2.0 404 Not Found\r\n\r\n${errBody}`
+    const r = api('repos/o/r', { includeHeaders: true }).parse({ exitCode: 1, stdout, stderr: '' })
+    expect(r).toMatchObject({ ok: false, status: 404, message: 'Not Found' })
+  })
+
+  test('a non-JSON failure body is malformed, with no message', () => {
+    const r = api('repos/o/r').parse({ exitCode: 1, stdout: 'oops', stderr: 'x' })
+    expect(r).toMatchObject({ ok: false, body: null, malformed: true, message: null })
+  })
+
+  test('message is null for a success body without one', () => {
+    const r = api('repos/o/r').parse({ exitCode: 0, stdout: '[1]', stderr: '' })
+    expect(r.message).toBeNull()
+  })
+})

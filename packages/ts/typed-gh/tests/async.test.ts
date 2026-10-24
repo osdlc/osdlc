@@ -196,7 +196,7 @@ describe('new verbs — argv', () => {
     const junk = verb.parse(ok('HTTP/2.0 200 OK\n\nnot json'))
     expect(junk).toMatchObject({ ok: true, body: null, malformed: true })
     const bad = verb.parse({ exitCode: 1, stdout: 'HTTP/2.0 404 Not Found\n\n{}', stderr: 'nf' })
-    expect(bad).toMatchObject({ ok: false, status: 404, body: null })
+    expect(bad).toMatchObject({ ok: false, status: 404, body: {} })
   })
 })
 
