@@ -143,7 +143,7 @@ export type SoftKinds<C> = {
  * awaitable method already returns a `Promise`.
  */
 export type Soft<C> = {
-  [K in keyof SoftKinds<C>]: Triable<C>[K] extends (...a: infer A) => infer R
+  [K in keyof SoftKinds<C>]: Triable<C>[K & keyof Triable<C>] extends (...a: infer A) => infer R
     ? (...a: A) => R
     : never
 }

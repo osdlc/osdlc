@@ -193,7 +193,8 @@ export class Git {
    * runtime, though the type leaves them out.
    */
   get soft(): Soft<Git> {
-    return (this.softened ??= softSync(this, SOFT_TABLE))
+    // Explicit type argument: otherwise TS 5.x infers the polymorphic `this`.
+    return (this.softened ??= softSync<Git>(this, SOFT_TABLE))
   }
 
   // ── escape hatch ──────────────────────────────────────────────────────────
