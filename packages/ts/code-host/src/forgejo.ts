@@ -1,29 +1,22 @@
 /**
- * `ForgejoCodeHost` — the `CodeHost` port over Forgejo's REST API.
+ * `ForgejoCodeHost`: the `CodeHost` port over Forgejo's REST API.
  *
- * `CodeHost` (`./types.ts`) is deliberately SYNCHRONOUS — see that file's own
- * top-of-file doc comment: every current caller is sync end to end, and going async here would
- * color the whole call graph for no caller that needs it. A `fetch`-based
- * REST client cannot satisfy that: `fetch` always returns a `Promise`, with
- * no synchronous escape hatch. So this adapter reaches Forgejo the same way
- * `./github.ts` reaches GitHub — by shelling out, through the command seam,
- * to a CLI that does the network I/O in a subprocess this adapter blocks on.
- * `gh` is that CLI for GitHub; Forgejo has no equivalent, so this uses `curl`
- * directly (`-sS -w '<marker><code>'`, parsed by `parseCurlResponse` below).
+ * `CodeHost` (`./types.ts`) is synchronous, and `fetch` always returns a
+ * `Promise`. So this adapter reaches Forgejo the way `./github.ts` reaches
+ * GitHub: it runs a CLI through the command seam and waits for it. GitHub has
+ * `gh`. Forgejo has no such CLI, so this runs `curl` directly
+ * (`-sS -w '<marker><code>'`, parsed by `parseCurlResponse` below).
  *
- * Auth: a Forgejo personal access token, `Authorization: token <token>`
- * (per the Forgejo API docs). This adapter takes the
- * token as a plain constructor argument — where it comes from is
- * `./select.ts#selectCodeHost`'s job (an environment variable), not this
- * file's; an adapter that manages its own secret lookup is harder to test
- * and harder to reuse from a second host.
+ * Auth is a Forgejo personal access token, sent as
+ * `Authorization: token <token>` (per the Forgejo API docs). The token is a
+ * constructor argument. `./select.ts#selectCodeHost` reads it from an
+ * environment variable. An adapter that looked up its own secret would be
+ * harder to test and to reuse.
  *
- * `host`/`owner`/`repo` are also constructor arguments rather than
- * discovered here: unlike `gh`, which infers the current repository from
- * its own git-aware config, there is no Forgejo CLI to ask, and a
- * self-hosted instance has no fixed hostname to guess. `./select.ts`
- * resolves all three from the `origin` remote once, before constructing
- * this adapter.
+ * `host`, `owner` and `repo` are constructor arguments too. `gh` finds the
+ * current repository itself, but there is no Forgejo CLI to ask, and a
+ * self-hosted instance has no fixed hostname. `./select.ts` reads all three
+ * from the `origin` remote before it builds this adapter.
  */
 
 import { classifyFailure, type CommandFailure, type CommandRunner } from '@osdlc/command-seam'
@@ -45,8 +38,8 @@ import type {
 
 /**
  * The default env var a Forgejo personal access token is read from. Forgejo has
- * no `gh`-equivalent CLI to manage its own auth, so the caller must hold this
- * itself. A caller can name another variable via the `forgejoTokenEnv` option.
+ * no CLI like `gh` that manages its own auth, so the caller supplies the token.
+ * A caller can name another variable with the `forgejoTokenEnv` option.
  */
 export const DEFAULT_FORGEJO_TOKEN_ENV = 'FORGEJO_TOKEN'
 
@@ -74,7 +67,7 @@ export function parseCurlResponse(stdout: string): { status: number; body: strin
   return { status, body: stdout.slice(0, at) }
 }
 
-/** Raw shapes off Forgejo's REST responses — only the fields this adapter reads. */
+/** Raw shapes of Forgejo's REST responses, with only the fields this adapter reads. */
 interface RawUser {
   login?: unknown
 }
@@ -113,7 +106,7 @@ interface RawReview {
   body?: unknown
   state?: unknown
   submitted_at?: unknown
-  /** Confirmed fields on `PullReview` per the Forgejo API docs. */
+  /** Fields of `PullReview` in the Forgejo API docs. */
   dismissed?: unknown
   stale?: unknown
 }
@@ -140,16 +133,16 @@ function str(v: unknown): string | null {
   return typeof v === 'string' ? v : null
 }
 
-/** No `[bot]`-suffix (or any other bot-marking) convention is documented for Forgejo — plain passthrough. */
+/** Forgejo documents no way to mark a bot login, so the login is used as is. */
 function toActor(login: string | null): Actor | null {
   return login === null || login === '' ? null : { login, isBot: false }
 }
 
 /**
- * Combined-status `state` vocabulary (`pending|success|error|failure|warning|
- * skipped`, per the Forgejo API docs) mapped onto the same
- * rollup priority `github.ts`'s `checksSummaryFrom` uses: a clear failure
- * wins, then a clear in-progress state, else it's passing.
+ * Maps the combined-status `state` values (`pending|success|error|failure|
+ * warning|skipped`, per the Forgejo API docs) to a rollup, in the same order
+ * as `github.ts`'s `checksSummaryFrom`: any failure wins, then any pending
+ * state, else success.
  */
 function checksSummaryFrom(statuses: readonly RawStatus[]): CheckSummary {
   const states = statuses.map((s) => str(s.state) ?? 'pending')
@@ -167,28 +160,26 @@ function checksSummaryFrom(statuses: readonly RawStatus[]): CheckSummary {
       return str(s.context) !== null && str(s.target_url) !== null
     })
     .map((s) => ({ name: s.context, url: s.target_url }))
-  // Forgejo has no documented billing/spending-limit failure mode analogous
-  // to GitHub Actions' "job was not started" — `blocked` is always empty here.
+  // Forgejo documents no billing block like GitHub Actions' "job was not
+  // started", so `blocked` is always empty.
   return { rollup, failing, failingUrls, blocked: [] }
 }
 
 /**
- * Forgejo has no `reviewDecision` field — derive it from the review list:
- * each reviewer's most-recently-submitted review wins, then GitHub's own
- * rule applies to that reduced set. The `ReviewStateType` string values
- * below (`APPROVED`/`REQUEST_CHANGES`) are **inferred, not confirmed** by
- * the spec — an
- * unrecognized state still counts toward "a review exists" for
- * `review_required`, but never toward an approve/reject verdict.
+ * Forgejo has no `reviewDecision` field, so this derives one from the review
+ * list. Each reviewer's latest review counts. Any `REQUEST_CHANGES` gives
+ * `changes_requested`, then any `APPROVED` gives `approved`, else
+ * `review_required`. The `ReviewStateType` values `APPROVED` and
+ * `REQUEST_CHANGES` are inferred, not confirmed by the spec. An unrecognized
+ * state still counts as a review for `review_required`, but never as an
+ * approval or a rejection.
  *
- * `dismissed`/`stale` ARE confirmed fields (same doc, Reviews section) — a
- * review flagged either way is excluded before "most-recently-submitted"
- * even looks at it, the same as Forgejo's own UI treats a dismissed or
- * stale review as no longer standing. What deliberately stays unhandled:
- * whether a later COMMENT/PENDING/REQUEST_REVIEW review should retract an
- * earlier APPROVED from the same reviewer — GitHub's own reset rule for
- * that case isn't in the confirmed field list either, and guessing it wrong
- * would be worse than this function's honest fallback to `review_required`.
+ * `dismissed` and `stale` are documented fields (Reviews section). A review
+ * with either set is skipped before the latest review is picked, as Forgejo's
+ * own UI treats it as no longer standing. One case is left unhandled on
+ * purpose: whether a later COMMENT, PENDING or REQUEST_REVIEW review from the
+ * same reviewer cancels an earlier APPROVED. That rule is not documented, and
+ * a wrong guess is worse than the current result.
  */
 function reviewDecisionFrom(reviews: readonly RawReview[]): CodeHostPr['reviewDecision'] {
   const latestByUser = new Map<string, RawReview>()
@@ -272,19 +263,14 @@ export function forgejoPrFrom(
   reviewComments: readonly RawReviewComment[],
   statuses: readonly RawStatus[],
 ): CodeHostPr {
-  // A plain boolean, not GitHub's 3-state enum — see this module's top doc,
-  // and the Forgejo API docs, which confirms
-  // Forgejo's own API "collapses CONFLICTING and the merge-ineligible half
-  // of UNKNOWN into one `false`" with no further field to tell them apart.
-  // That's a real API limitation this adapter can't see past for a PR still
-  // being checked or one whose check errored — those stay `'conflicting'`
-  // for now, a documented simplification, not a bug this diff can fix.
+  // Forgejo's `mergeable` is a boolean, not GitHub's three-state enum. Its
+  // `false` covers both a conflict and "cannot merge yet", and no other field
+  // tells them apart. So a PR still being checked, or whose check errored,
+  // reads as `'conflicting'`. This is a limit of the API.
   //
-  // A draft is the one merge-ineligible case the payload DOES let us tell
-  // apart (`draft` is its own field) — Forgejo returns `mergeable: false`
-  // for drafts (they're not merge-ready by definition) but that is never a
-  // real conflict, so a classifier would otherwise mislabel every
-  // draft PR as conflicting. Treat a draft's `false` as `'unknown'` instead.
+  // Drafts are the one case the payload does separate, through `draft`.
+  // Forgejo returns `mergeable: false` for a draft, which is not a conflict,
+  // so a draft's `false` reads as `'unknown'`.
   const mergeable: CodeHostPr['mergeable'] =
     pr.draft === true
       ? 'unknown'
@@ -352,16 +338,15 @@ export class ForgejoCodeHost implements CodeHost {
   }
 
   /**
-   * The `Authorization` header, as a `curl` config-file line (see
-   * `-K`/`--config` in `curl(1)`) rather than a `-H` argv entry — an argv
-   * value sits in that process's command line for the rest of its life
-   * (`ps`, `/proc/<pid>/cmdline`, any process-listing tool on a shared box),
-   * while `-K -` reads this off a pipe the seam's `input` option feeds
-   * through stdin, the same place a plain `curl -u user:pass` (or `git`'s
-   * own credential helpers) already keep secrets out of. Quoting per
-   * `curl(1)`'s config-file syntax: a value with a space needs double
-   * quotes, and `\`/`"` inside it need escaping or they would end the quoted
-   * value early.
+   * The `Authorization` header as a `curl` config-file line (see
+   * `-K`/`--config` in `curl(1)`), not a `-H` argument. An argument stays in
+   * the process's command line, where `ps`, `/proc/<pid>/cmdline` and other
+   * process listings can read it. `-K -` reads this line from stdin instead,
+   * which the seam's `input` option feeds.
+   *
+   * Quoting follows `curl(1)`'s config-file syntax: a value with a space needs
+   * double quotes, and `\` and `"` inside it must be escaped, or they would end
+   * the quoted value early.
    */
   private authConfig(): string {
     const escaped = this.token.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
@@ -369,9 +354,9 @@ export class ForgejoCodeHost implements CodeHost {
   }
 
   /**
-   * One authenticated `curl` call against `/api/v1/<path>`. Fails for a curl
-   * that did not run or could not reach the host; an HTTP status is the
-   * caller's to read ({@link call} turns an error status into a failure).
+   * One authenticated `curl` call against `/api/v1/<path>`. Fails when curl
+   * did not run or could not reach the host. The caller reads the HTTP status
+   * ({@link call} turns an error status into a failure).
    */
   private request(
     method: 'GET' | 'POST' | 'PATCH',
@@ -379,9 +364,9 @@ export class ForgejoCodeHost implements CodeHost {
     body?: unknown,
   ): Result<{ status: number; body: string }, CodeHostFailure> {
     const argv = [
-      // Must be the very first argument to take effect: skips `~/.curlrc`,
-      // so a config file the caller does not control cannot inject its own
-      // headers, proxy, or `-K` onto every request this adapter makes.
+      // Must be the first argument to take effect. It skips `~/.curlrc`, so a
+      // config file the caller does not control cannot add headers, a proxy
+      // or a `-K` to every request.
       '-q',
       '-sS',
       '-w',
@@ -396,10 +381,9 @@ export class ForgejoCodeHost implements CodeHost {
     }
     const url = `https://${this.host}/api/v1/${path}`
     argv.push(url)
-    // `cwd` is irrelevant to a `curl` call's outcome (every argument is a
-    // full URL) but `CommandRunOptions.cwd` is not optional — the command
-    // seam always spawns relative to a working directory. `input` is the
-    // `-K -` config text above, carrying the token off argv and onto stdin.
+    // `cwd` does not affect curl (every URL is absolute), but
+    // `CommandRunOptions.cwd` is required. `input` is the `-K -` config text
+    // above, which keeps the token out of argv.
     const result = this.runner.run(argv, { cwd: this.cwd, input: this.authConfig() })
     // The failure names the URL, never the argv: a request body is the caller's text.
     const failed = classifyFailure(result, { binary: 'curl', argv: [url] })
@@ -575,9 +559,9 @@ export class ForgejoCodeHost implements CodeHost {
     const details: CodeHostPrDetail[] = []
     for (const pr of rows.value) {
       const number = typeof pr.number === 'number' ? pr.number : 0
-      // One request per PR: the listing carries no review count. A failed
-      // request fails the whole listing rather than reading as "no reviews",
-      // which would let the rebase guard rewrite a reviewed PR.
+      // One request per PR, because the listing has no review count. A failed
+      // request fails the whole listing. Reading it as "no reviews" would let
+      // a caller rewrite a PR that has reviews.
       const reviews = this.getArrayResult(`repos/${target}/pulls/${number}/reviews`)
       if (!reviews.ok) return reviews
       const headRepo = str(pr.head?.repo?.full_name)
@@ -615,10 +599,10 @@ export class ForgejoCodeHost implements CodeHost {
       return err(this.unreadable())
     }
 
-    // Every enrichment call below fails the whole `getPr` when it fails. A
-    // failed status call read as "no statuses" is `rollup: 'none'`, which looks
-    // like a PR with no checks and so merge-eligible; a failed reviews call
-    // reads as no reviews. The caller gets the failure and decides.
+    // If any call below fails, the whole `getPr` fails. A failed status call
+    // read as "no statuses" would give `rollup: 'none'`, which looks like a PR
+    // with no checks that can be merged. A failed reviews call would read as
+    // no reviews. The caller gets the failure and decides.
     const commentsRes = this.getArrayResult(
       `repos/${this.owner}/${this.repo}/issues/${number}/comments`,
     )
@@ -630,11 +614,9 @@ export class ForgejoCodeHost implements CodeHost {
     if (!reviewsRes.ok) return reviewsRes
     const reviews = reviewsRes.value as RawReview[]
 
-    // Forgejo has no flat per-line-comment endpoint like GitHub's REST
-    // `pulls/<n>/comments` — inline comments are nested under each review,
-    // so folding them into one `activity` list costs one request per
-    // review (N+1). Documented tradeoff, same shape as `github.ts`'s own
-    // per-PR REST cost for its equivalent fetch.
+    // Forgejo has no single endpoint for per-line comments like GitHub's REST
+    // `pulls/<n>/comments`. Inline comments sit under each review, so this
+    // costs one request per review.
     const reviewComments: RawReviewComment[] = []
     for (const r of reviews) {
       if (typeof r.id !== 'number' && typeof r.id !== 'string') continue
@@ -713,9 +695,9 @@ export class ForgejoCodeHost implements CodeHost {
   }
 
   /**
-   * Forgejo exposes review comments but no thread-resolution grouping this
-   * adapter reads, so a merge gate cannot learn whether threads are settled:
-   * an `unsupported` failure ("unknown"), which a gating caller treats as a
+   * This adapter reads no thread resolution state from Forgejo, so it cannot
+   * say whether threads are resolved. It returns an `unsupported` failure
+   * ("unknown"), which a caller that blocks merges on threads treats as a
    * refusal.
    */
   reviewThreads(_number: number): Result<ReviewThreadState[], CodeHostFailure> {
@@ -726,22 +708,21 @@ export class ForgejoCodeHost implements CodeHost {
     })
   }
 
-  /** Not supported yet: merging on Forgejo is not part of the orchestrator's 1.0 path. */
+  /** Not supported yet. */
   mergePr(_number: number, _opts: { headSha: string; method: MergeMethod }): void {
     throw new CodeHostUnsupported('forgejo', 'mergePr')
   }
 
-  /** Not supported yet: opening a PR on Forgejo is a later code-host milestone. */
+  /** Not supported yet. */
   createPr(_input: CreatePrInput): { number: number; url: string } {
     throw new CodeHostUnsupported('forgejo', 'createPr')
   }
 
   /**
-   * A Forgejo PR URL is `https://<host>/<owner>/<repo>/pulls/<n>` —
-   * `pulls`, not GitHub's `pull`. Only a URL naming THIS instance's host
-   * counts, per `CodeHost.parsePrUrl`'s own contract ("null when `url` names
-   * no PR this code host recognizes") — a URL from a different Forgejo
-   * instance is a real PR, just not one this adapter can act on.
+   * A Forgejo PR URL is `https://<host>/<owner>/<repo>/pulls/<n>`, with
+   * `pulls`, not GitHub's `pull`. Only a URL on this instance's host counts,
+   * per `CodeHost.parsePrUrl`. A URL from another Forgejo instance is a real
+   * PR, but not one this adapter can act on.
    */
   parsePrUrl(url: string): PrRef | null {
     const m = /^(?:https?:\/\/)?([^/\s]+)\/([^/\s]+)\/([^/\s]+)\/pulls\/(\d+)(?:[/?#].*)?$/i.exec(

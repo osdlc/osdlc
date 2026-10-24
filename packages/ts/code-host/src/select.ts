@@ -1,18 +1,16 @@
 /**
- * Choosing a `CodeHost` for the repository at `cwd`, from its `origin` remote.
+ * Chooses a `CodeHost` for the repository at `cwd`, from its `origin` remote.
  *
- * A GitHub remote is the only case this package can name outright — a
- * self-hosted Forgejo instance lives at an operator-chosen domain, so "not
- * github.com" is the whole positive test for Forgejo. The `code_host.override`
- * config key exists for the cases this heuristic gets wrong (a GitHub
- * Enterprise host) or cannot answer at all (no `origin` remote configured,
- * which falls back to GitHub — this port's only adapter before this task,
- * so a repository this heuristic can't read a remote for keeps behaving
- * exactly as it did).
+ * GitHub is the only host this package can recognize by its domain. A
+ * self-hosted Forgejo instance can live at any domain, so any remote that does
+ * not contain `github.com` is taken as Forgejo. With no `origin` remote the
+ * answer is GitHub. The `code_host.override` config key covers the cases this
+ * rule gets wrong, such as a GitHub Enterprise host.
  *
- * Callers use `selectCodeHost` instead of constructing `GithubCodeHost`
- * directly — this is the one place that decision gets made, so no caller ever branches on a `CodeHost`'s name. A doctor command uses
- * `resolveCodeHost` and `authChecksFor` to run the chosen backend's auth checks.
+ * Callers use `selectCodeHost` instead of constructing an adapter directly.
+ * This is the one place the choice is made, so no caller branches on a
+ * `CodeHost`'s name. A doctor command uses `resolveCodeHost` and
+ * `authChecksFor` to run the chosen backend's auth checks.
  */
 
 import { Git, parseRemoteUrl, type RemoteCoordinate } from '@osdlc/typed-git'
@@ -27,8 +25,8 @@ import { githubAuthChecks } from './github-auth.ts'
 import type { AuthCheck, CodeHost, CodeHostAuthCheckDeps, CodeHostName } from './types.ts'
 
 /**
- * Pure: which code host `url` (an `origin` remote, or null when this checkout
- * has none) names, honoring an explicit `override` first.
+ * Which code host `url` names. `url` is the `origin` remote, or null when the
+ * checkout has none. An explicit `override` wins. Pure.
  */
 export function codeHostNameForRemote(
   url: string | null,
@@ -40,14 +38,12 @@ export function codeHostNameForRemote(
 }
 
 /**
- * Strips embedded `user:pass@`/`user@` userinfo from a `https://`/`ssh://`
- * remote URL before it goes anywhere this run might log or surface it (a
- * thrown error's `message` ends up in a terminal, a crash report, an
- * orchestrator log line — none of them the credential's intended audience).
- * A remote that failed {@link parseRemoteUrl} is exactly the shape most
- * likely to carry one: `parseRemoteUrl` already strips a plain `user@` for
- * the shapes it DOES recognize, so what reaches here is whatever it could
- * not make sense of, embedded credentials included.
+ * Strips `user:pass@` or `user@` from a `scheme://` remote URL before it is
+ * shown or logged. An error's `message` can end up in a terminal, a crash
+ * report or a log line, and none of those should see a credential. A remote
+ * that {@link parseRemoteUrl} could not read is the one most likely to still
+ * carry credentials, because `parseRemoteUrl` strips `user@` only from the
+ * forms it recognizes.
  */
 function redactRemoteUrl(url: string): string {
   return url.replace(/(^[a-z][a-z0-9+.-]*:\/\/)[^/@]+@/i, '$1***@')
@@ -55,9 +51,9 @@ function redactRemoteUrl(url: string): string {
 
 /**
  * `ForgejoCodeHost` takes one `host` string and builds `https://${host}/...`.
- * Folding the port in here makes that URL hit a non-default port, and it is
- * the shape `ForgejoCodeHost.parsePrUrl`'s host compare expects (a PR URL's
- * authority includes `:port` too).
+ * Adding the port here makes that URL reach a non-default port. It is also the
+ * form `ForgejoCodeHost.parsePrUrl` compares hosts in, since a PR URL's
+ * authority includes `:port` too.
  */
 function forgejoHost(ref: RemoteCoordinate): string {
   return ref.port !== null ? `${ref.host}:${ref.port}` : ref.host
@@ -122,20 +118,19 @@ export function badRemoteFailure(host: CodeHostName, remote: string, url: string
 }
 
 /**
- * Build the `CodeHost` for the repository at `cwd`. A Forgejo adapter that
+ * Builds the `CodeHost` for the repository at `cwd`. A Forgejo adapter that
  * cannot be built is a failure, not a throw: `no-remote` (no `origin`),
- * `bad-remote` (a remote that names no host/owner/repo) or `missing-token`.
- * Building is a query about the checkout and the environment, so it answers
- * the way the port's queries do, with a `Result<CodeHost, CodeHostFailure>`.
+ * `bad-remote` (a remote that names no host, owner and repo) or
+ * `missing-token`. Building is a query about the checkout and the
+ * environment, so it returns a `Result<CodeHost, CodeHostFailure>` like the
+ * port's queries.
  *
- * Two SEPARATE runners in, not one: `git`/`gh`/`curl` are each bound to a
- * specific binary in this package (`spawnRunner('git')`, `spawnRunner('gh')`,
- * ...), unlike a generic subprocess runner that takes the binary name as
- * part of its argv. `opts.git` resolves the `origin` remote; `opts.gh`
- * becomes `GithubCodeHost`'s runner when that is the answer; `opts.curl`
- * (optional — a real one is spawned when omitted) becomes `ForgejoCodeHost`'s,
- * so a test can fake the one call this function makes to a binary neither
- * `ctx.git` nor `ctx.gh` already covers, with no real subprocess.
+ * Each runner is bound to one binary (`spawnRunner('git')`,
+ * `spawnRunner('gh')`, ...), so there is one option per binary. `opts.git`
+ * reads the `origin` remote. `opts.gh` becomes `GithubCodeHost`'s runner.
+ * `opts.curl` becomes `ForgejoCodeHost`'s runner. It is optional, and a real
+ * `curl` runner is used when it is omitted. A test passes a fake to run
+ * without a subprocess.
  */
 export function selectCodeHost(
   cwd: string,

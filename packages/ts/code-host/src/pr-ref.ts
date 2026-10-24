@@ -1,22 +1,23 @@
 /**
  * What a `[target]` positional or `--pr` flag names, across every PR command.
  *
- * Four spellings, one answer: a bare number (`1937`, `#1937`) is a PR in the
- * repository the command runs in; `owner/repo#1937` names a PR in another
- * repository; a PR URL names the repository too; no target at all means the
- * PR for the branch checked out here.
+ * There are four forms:
  *
- * `parsePrInput` is code-host-agnostic (only its URL branch is GitHub-specific today,
- * via `@osdlc/typed-gh`'s `parsePrUrl` — a second code host's URL shape is a
- * second branch here, not a rewrite).
+ * - a bare number (`1937`, `#1937`) is a PR in the repository the command runs in;
+ * - `owner/repo#1937` names a PR in another repository;
+ * - a PR URL names the repository too;
+ * - no target means the PR for the branch checked out here.
+ *
+ * `parsePrInput` works for any code host except for URLs. Only GitHub URLs are
+ * parsed, through `@osdlc/typed-gh`'s `parsePrUrl`. Another host's URL form would
+ * be one more branch here.
  */
 
 import { parsePrUrl } from '@osdlc/typed-gh'
 
 import type { PrInput } from './types.ts'
 
-// Captures an `owner/repo#N` PR reference — not a slug, so not to be confused
-// with a plain kebab-case-slug matcher.
+// Matches an `owner/repo#N` PR reference.
 const OWNER_REPO_PR_RE = /^([\w.-]+)\/([\w.-]+)#(\d+)$/
 
 /** Parse the positional/flag value; null when it is none of the four shapes. */

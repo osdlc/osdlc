@@ -1,15 +1,12 @@
 /**
- * `GithubCodeHost` — the `CodeHost` port over `@osdlc/typed-gh`'s `Gh` client.
+ * `GithubCodeHost`: the `CodeHost` port over `@osdlc/typed-gh`'s `Gh` client.
  *
- * `getPr` avoids a duplication: callers used to hand-roll their own "re-ask `gh pr view` while mergeability is UNKNOWN" retry
- * loop (`fetchLiveState`/`mergeStateUnsettled`) against the raw `CommandRunner`
- * — the exact thing `Gh.prViewSettled`/`needsMergeStateRetry` already do.
- * This adapter calls them.
+ * `getPr` reads through `Gh.prViewSettled`, which asks `gh pr view` again
+ * while mergeability is `UNKNOWN`.
  *
- * Per-line/inline review comments have no GraphQL equivalent (`gh pr view
- * --json` has no `reviewThreads`/per-line field), so `getPr` fetches them over
- * REST (`repos/{owner}/{repo}/pulls/<n>/comments`) through `Gh.api` and folds
- * them into `activity` as `kind: 'review-comment'`.
+ * `gh pr view --json` has no field for per-line review comments, so `getPr`
+ * fetches them over REST (`repos/{owner}/{repo}/pulls/<n>/comments`) through
+ * `Gh.api` and adds them to `activity` as `kind: 'review-comment'`.
  */
 
 import {
@@ -62,11 +59,10 @@ interface RestReviewComment {
 }
 
 /**
- * The REST per-line-comments endpoint returns a `[bot]`-suffixed login
- * (`github-actions[bot]`), unlike the GraphQL-sourced `Actor`s `typed-gh`
- * already normalizes for `pr.comments`/`pr.reviews` above — fold
- * it the same way here, or a `review-comment`'s displayed author would be the
- * only `Activity` entry showing the raw suffixed form.
+ * The REST per-line comments endpoint returns logins with a `[bot]` suffix
+ * (`github-actions[bot]`). `typed-gh` already normalizes the logins on
+ * `pr.comments` and `pr.reviews`. This normalizes REST logins the same way, so
+ * every `Activity` author has the same form.
  */
 function toActor(login: string | null | undefined): Actor | null {
   if (login === null || login === undefined || login === '') return null
@@ -87,25 +83,21 @@ function checksSummaryFrom(checks: readonly CheckRun[]): CheckSummary {
   const failingUrls = failed
     .filter((c): c is CheckRun & { url: string } => c.url !== null)
     .map((c) => ({ name: c.name, url: c.url }))
-  // `blocked` is never populated here — this function is pure (no network
-  // access), and detecting a billing/spending-limit block needs a `gh api`
-  // annotations fetch per failing check. `GithubCodeHost.getPr` fills it in,
-  // after this call, only when `failing.length > 0` — see `detectBlockedChecks`.
+  // `blocked` stays empty here because this function makes no network calls.
+  // Detecting a billing block needs one `gh api` call per failing check, so
+  // `GithubCodeHost.getPr` fills it in afterwards (see `detectBlockedChecks`).
   return { rollup, failing, failingUrls, blocked: [] }
 }
 
 /**
- * A GitHub Actions check run's numeric REST id, recovered from its
- * `detailsUrl` (`.../actions/runs/<runId>/job/<jobId>`) — the one place it's
- * available at all: `gh pr view --json statusCheckRollup`'s GraphQL payload
- * never includes `databaseId`, and for an Actions-backed check the job id
- * embedded in that URL IS the check run's REST id (verified against a live
- * failing PR: `gh api repos/{o}/{r}/commits/{sha}/check-runs`
- * reports the same id `detailsUrl`'s `/job/<id>` names). A check whose URL
- * isn't shaped like an Actions job link (a third-party CI status, a legacy
- * `StatusContext`) yields `null` and is left alone by `detectBlockedChecks`
- * below — this can only ever narrow a CI-FAILED verdict to CI-BLOCKED for a
- * check it CAN inspect, never misclassify one it can't.
+ * A GitHub Actions check run's numeric REST id, read from its `detailsUrl`
+ * (`.../actions/runs/<runId>/job/<jobId>`). The URL is the only place it
+ * appears, because `gh pr view --json statusCheckRollup` never includes
+ * `databaseId`. For an Actions check the job id in that URL is the check
+ * run's REST id (checked against `gh api repos/{o}/{r}/commits/{sha}/check-runs`
+ * on a real failing PR). A check whose URL is not an Actions job link (a
+ * third-party CI status, a legacy `StatusContext`) yields `null`, and
+ * `detectBlockedChecks` leaves it counted as failing.
  */
 export function actionsJobId(url: string): string | null {
   const m = /\/actions\/runs\/\d+\/job\/(\d+)(?:[/?#]|$)/.exec(url)
@@ -113,39 +105,35 @@ export function actionsJobId(url: string): string | null {
 }
 
 /**
- * The fixed prefix GitHub's own system annotation uses for an account-level
- * block ("The job was not started because recent account payments have
- * failed or your spending limit needs to be increased. Please check the
- * 'Billing & plans' section in your settings" — verified against a real
- * blocked check run via `gh api
- * repos/<owner>/<repo>/check-runs/<id>/annotations`). Anchored at the start:
- * `/\bwas not started\b/i` (the prior pattern) also matched a user step's own
- * `::error::` output — Actions turns those into annotations too — so a test
- * step logging e.g. "Error: dev server was not started within 30s" would
- * downgrade a real failure to CI-BLOCKED. Never for a real code/test
- * failure, which always has at least one step that actually ran.
+ * The fixed prefix of GitHub's system annotation for an account block: "The
+ * job was not started because recent account payments have failed or your
+ * spending limit needs to be increased. Please check the 'Billing & plans'
+ * section in your settings" (checked against a real blocked check run via
+ * `gh api repos/<owner>/<repo>/check-runs/<id>/annotations`).
+ *
+ * The pattern is anchored at the start. Actions also turns a step's own
+ * `::error::` output into annotations, so an unanchored match on "was not
+ * started" would treat a step that logs "Error: dev server was not started
+ * within 30s" as blocked, when it is a real failure.
  */
 const BLOCKED_ANNOTATION_PATTERN = /^The job was not started because\b/
 
 interface RawAnnotation {
   message?: unknown
-  /** GitHub's system annotation for this block is always `failure`, `path: '.github'` — checked alongside the message prefix so a user-step annotation can never match on message text alone. */
+  /** GitHub's system annotation for this block always has level `failure` and `path: '.github'`. Both are checked with the message prefix, so a step's annotation cannot match on its text alone. */
   annotation_level?: unknown
   path?: unknown
 }
 
 /**
- * Which of `failingUrls`' checks failed because GitHub never started the
- * job — fetched from each check run's annotations
- * (`repos/{owner}/{repo}/check-runs/{id}/annotations`), ONLY for checks
- * already known to be failing, never the whole rollup: a green PR costs zero
- * extra `gh api` calls, and a red PR costs exactly one call per failing
- * Actions-backed check (a third-party/legacy check with no recoverable id is
- * skipped, not charged a call that could never resolve). Degrades to "not
- * blocked" (excluded from the returned list) on any transport/parse failure
- * for that one check: a fetch or parse failure simply leaves that check
- * counted as failing (CI-FAILED), so an annotations-fetch hiccup never
- * silently downgrades a real failure to CI-BLOCKED or drops it entirely.
+ * Which checks in `failingUrls` failed because GitHub never started the job.
+ * Read from each check run's annotations
+ * (`repos/{owner}/{repo}/check-runs/{id}/annotations`), only for failing
+ * checks. A PR with no failing checks costs no extra call. A failing PR costs
+ * one call per failing Actions check. A check with no Actions job id is
+ * skipped. When the fetch or parse fails for a check, that check is left out
+ * of the result and stays counted as failing, so a failed fetch never hides
+ * a real failure.
  */
 export function detectBlockedChecks(
   gh: Gh,
@@ -174,11 +162,9 @@ export function detectBlockedChecks(
 }
 
 /**
- * Per-line review comments via the REST endpoint, through `Gh.api`. Degrades
- * to `[]` on any failure (non-zero exit, parse error) rather than throwing —
- * matches `feedback.ts`'s old `fetchReviewComments`: a review-comments fetch
- * failure means "no per-line comments this round," not a reason to fail the
- * whole `getPr` call.
+ * Per-line review comments from the REST endpoint, through `Gh.api`. Returns
+ * `[]` on any failure (non-zero exit, parse error) instead of throwing. A
+ * failed fetch of these comments should not fail the whole `getPr` call.
  */
 function fetchReviewComments(gh: Gh, prNumber: number): RestReviewComment[] {
   const result = gh.api(`repos/{owner}/{repo}/pulls/${prNumber}/comments`)
@@ -192,7 +178,7 @@ function reviewCommentActivity(entries: readonly RestReviewComment[]): CodeHostP
     if (typeof raw.id !== 'number' && typeof raw.id !== 'string') continue
     const login = typeof raw.user?.login === 'string' ? raw.user.login : null
     const path = typeof raw.path === 'string' ? raw.path : undefined
-    // `line` is null when the comment sits on an outdated diff position — fall back to `original_line`.
+    // `line` is null when the comment is on an outdated diff position, so fall back to `original_line`.
     const line =
       typeof raw.line === 'number'
         ? raw.line
@@ -200,8 +186,8 @@ function reviewCommentActivity(entries: readonly RestReviewComment[]): CodeHostP
           ? raw.original_line
           : undefined
     const inReplyToId = raw.in_reply_to_id
-    // No true thread-node-id is available through this REST endpoint;
-    // `in_reply_to_id ?? id` is the pragmatic per-thread grouping id.
+    // This REST endpoint gives no thread id, so `in_reply_to_id ?? id` groups
+    // comments by thread.
     const threadId = String(
       typeof inReplyToId === 'number' || typeof inReplyToId === 'string' ? inReplyToId : raw.id,
     )
@@ -228,21 +214,18 @@ function reviewCommentActivity(entries: readonly RestReviewComment[]): CodeHostP
 }
 
 /**
- * Exported for an async caller (a dashboard fan-out, say) that fetches via `@osdlc/typed-gh`'s pure
- * `prView` verb directly (this whole port is deliberately synchronous, see
- * this module's top-of-file doc), then maps the result through this same
- * function so a classifier's verdict logic runs identically for both callers.
+ * Maps a typed-gh `PullRequest` to a `CodeHostPr`. Exported for an async
+ * caller that fetches with `@osdlc/typed-gh`'s `prView` verb itself (the port
+ * is synchronous, see `./types.ts`). Both paths then produce the same shape.
  */
 export function codeHostPrFrom(
   pr: PullRequest,
   reviewComments: CodeHostPr['activity'],
 ): CodeHostPr {
   const mergeable: CodeHostPr['mergeable'] =
-    // Either field alone signals a conflict (`mergeable === 'CONFLICTING'
-    // || mergeStateStatus === 'DIRTY'`, independent of the other field) —
-    // this OR must be checked before falling back to `mergeable` alone, or a
-    // PR GitHub reports as `MERGEABLE` with a stale-DIRTY merge-state (a real
-    // combination) silently loses its conflict signal.
+    // Either field alone means a conflict. Check both before `mergeable`
+    // alone: GitHub can report `MERGEABLE` with a stale `DIRTY` merge state,
+    // and that PR must still read as conflicting.
     pr.mergeable === 'CONFLICTING' || pr.mergeStateStatus === 'DIRTY'
       ? 'conflicting'
       : pr.mergeable === 'MERGEABLE'
@@ -303,7 +286,7 @@ export function codeHostPrFrom(
 /**
  * The classified failure of a failed `gh api` write, for a mutation to throw. The
  * argv is passed without the `-f body=…` pair, so the comment text is not carried
- * on the failure; a signed-out `gh` is `not-authenticated`, not a bare `exit`.
+ * on the failure. A signed-out `gh` is `not-authenticated`, not a bare `exit`.
  */
 function writeFailure(argv: string[], res: CommandResult): CodeHostFailure {
   return fromGhFailure(classifyGhFailure(new CommandFailed(argv, res, 'gh')))
@@ -311,8 +294,8 @@ function writeFailure(argv: string[], res: CommandResult): CodeHostFailure {
 
 export class GithubCodeHost implements CodeHost {
   readonly name = 'github' as const
-  // The port's queries return a `Result`, which is `Gh`'s `try` door; a
-  // mutation throws, which is its plain door.
+  // Queries return a `Result`, so they call `gh.try.*`. Mutations throw, so
+  // they call the throwing `gh` methods.
   private readonly gh: Gh
 
   constructor(cwd: string, opts: { runner: CommandRunner }) {
@@ -359,7 +342,7 @@ export class GithubCodeHost implements CodeHost {
         author: q.author,
         limit: q.limit,
         repo: q.repo,
-        // `reviews` is not in the default listing, and the rebase guard needs it.
+        // `reviews` is not in the default listing, and `reviewCount` needs it.
         fields: [...PR_LIST_FIELDS, 'reviews'],
       }),
     )
@@ -384,18 +367,14 @@ export class GithubCodeHost implements CodeHost {
     number: number,
     _opts: { since: string | null },
   ): Result<CodeHostPr | null, CodeHostFailure> {
-    // No caller does an incremental "since" fetch today — always the
-    // full state — so `since` is accepted for interface-parity with a future
-    // caller and ignored here, same as every current call site.
+    // `since` is ignored: this always fetches the full state.
     const viewed = tried(this.gh.try.prViewSettled(number, { fields: PR_VIEW_FIELDS }))
     if (!viewed.ok) return viewed
     const pr = viewed.value
     if (pr === null) return ok(null)
     const reviewComments = reviewCommentActivity(fetchReviewComments(this.gh, number))
     const codeHostPr = codeHostPrFrom(pr, reviewComments)
-    // Billing/spending-limit block detection: only when there's at least one
-    // failing check to inspect — see `detectBlockedChecks`'s doc for why this
-    // never costs a green PR anything.
+    // Look for billing blocks only when a check is failing.
     if (codeHostPr.checks.failing.length === 0) return ok(codeHostPr)
     const blocked = detectBlockedChecks(this.gh, codeHostPr.checks.failingUrls)
     if (blocked.length === 0) return ok(codeHostPr)
@@ -490,10 +469,6 @@ export class GithubCodeHost implements CodeHost {
   }
 
   updateBranch(number: number, style: 'merge' | 'rebase'): void {
-    // `--rebase` for rebase is per the design doc's own note on
-    // `gh pr update-branch` ("inferred", not verified against a real `gh`
-    // install) — unverified here too; no existing call site to cross-check
-    // against.
     this.gh.prUpdateBranch(number, style)
   }
 

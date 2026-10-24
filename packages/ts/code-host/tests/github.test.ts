@@ -1,8 +1,8 @@
 /**
- * Tests for `GithubCodeHost` (`../src/github.ts`) — the mapping from `@osdlc/typed-gh`'s
- * `PullRequest` shape onto `CodeHostPr`/`PrFacts`, and the one raw-argv call this
- * whole port makes (the per-line review-comments REST fetch). All calls go
- * through a fake `CommandRunner`; nothing here touches the network.
+ * Tests for `GithubCodeHost` (`../src/github.ts`): the mapping from `@osdlc/typed-gh`'s
+ * `PullRequest` shape to `CodeHostPr` and `PrFacts`, and the REST calls the adapter
+ * makes through `gh api`. All calls go through a fake `CommandRunner`, so nothing
+ * touches the network.
  */
 
 import { describe, expect, test } from 'vitest'
@@ -194,8 +194,8 @@ describe('GithubCodeHost.getPr', () => {
       },
     })
     const pr = unwrap(new GithubCodeHost('/repo', { runner }).getPr(42, { since: null }))!
-    // No Actions-job-shaped URL to resolve an id from — no annotations call
-    // is even attempted, so `blocked` stays empty (never a network failure).
+    // The URL is not an Actions job link, so there is no id and no
+    // annotations call is made. `blocked` stays empty.
     expect(pr.checks.failingUrls).toEqual([{ name: 'build', url: 'https://x/build' }])
     expect(pr.checks.blocked).toEqual([])
   })
@@ -216,9 +216,8 @@ describe('GithubCodeHost.getPr', () => {
       },
       restResponses: [
         ok('[]'), // review-comments
-        // The real shape GitHub sends for this system annotation, verified
-        // against a live blocked check run on acme/widgets via `gh api
-        // repos/acme/widgets/check-runs/<id>/annotations`.
+        // The shape GitHub sends for this system annotation, copied from a
+        // real blocked check run (`gh api repos/<owner>/<repo>/check-runs/<id>/annotations`).
         ok(
           JSON.stringify([
             {
@@ -240,11 +239,10 @@ describe('GithubCodeHost.getPr', () => {
   })
 
   test('a user-step annotation that merely mentions "was not started" is NOT blocked', () => {
-    // A test step's own `::error::` output becomes an annotation too — this
-    // is exactly the shape that downgraded a real failure to CI-BLOCKED
-    // under the old `/\bwas not started\b/i` pattern (matches anywhere in
-    // the message, no annotation_level/path check). The anchored prefix plus
-    // the `annotation_level`/`path` check both fail it now.
+    // A test step's own `::error::` output becomes an annotation too. A
+    // pattern that matched "was not started" anywhere in the message would
+    // read this real failure as blocked. The anchored prefix and the
+    // `annotation_level` and `path` checks each reject it.
     const jobUrl = 'https://github.com/o/r/actions/runs/999/job/12345'
     const { runner } = fakeGh({
       view: {
@@ -355,11 +353,9 @@ describe('GithubCodeHost.listPrs', () => {
       },
       { number: 2, headRef: 'b', author: null, labels: [], isDraft: false, updatedAt: null },
     ])
-    // Regression guard: `fakeGh` scripts `pr list`'s payload regardless of
-    // which `--json` fields the call actually asked for, so a fixture
-    // carrying the listing fields alone can't catch a `fields` list
-    // that forgot to request them from the real `gh` — real `gh` returns
-    // only the keys it was asked for. Assert the argv itself names them.
+    // `fakeGh` returns the same `pr list` payload whatever `--json` fields
+    // were asked for, but the real `gh` returns only the fields it was asked
+    // for. So the payload alone cannot catch a missing field. Check the argv.
     const listCall = calls.find((c) => c[0] === 'pr' && c[1] === 'list')
     const jsonFlagIdx = listCall?.indexOf('--json') ?? -1
     const requested = jsonFlagIdx >= 0 ? listCall![jsonFlagIdx + 1] : undefined
@@ -445,7 +441,7 @@ describe('GithubCodeHost.parsePrUrl / prForBranch', () => {
   })
 })
 
-/** Minimal already-parsed `PullRequest` (the `@osdlc/typed-gh` shape `codeHostPrFrom` actually takes — unlike `BASE_PR` above, which mimics `gh`'s raw `--json` payload for the `fakeGh`-driven tests). */
+/** A minimal parsed `PullRequest`, the `@osdlc/typed-gh` shape `codeHostPrFrom` takes. `BASE_PR` above is `gh`'s raw `--json` payload instead, for the `fakeGh` tests. */
 const PARSED_PR: PullRequest = {
   number: 42,
   state: 'OPEN',
