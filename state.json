@@ -225,9 +225,9 @@
       "line": 176,
       "title": "memberMatches re-implements segmentRegExp from pattern.ts and builds a RegExp per recursive step",
       "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365781547",
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "99aa56dbb4cda793b1f4f25dd01dac94e74f7c7c"
     },
     {
       "id": "r2-9",
