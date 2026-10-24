@@ -1,5 +1,18 @@
 # @osdlc/typed-gh
 
+## 0.9.0
+
+### Minor Changes
+
+- cc2abe4: `api` now keeps GitHub's error body when a request fails. `body` is parsed even when gh exits with an error, and a new `message` field holds `body.message`. `ApiResponse` gains this `message` field as required. `malformed` is now also set when a failed call prints something that is not JSON. The docs now say that `status` is only filled in when headers were requested.
+
+### Patch Changes
+
+- 72f5049: `prList` always requests the `number` field. Before, a `fields` list without `number` returned no rows.
+- Updated dependencies [b5aac07]
+- Updated dependencies [41ef520]
+  - @osdlc/typed-git@0.7.0
+
 ## 0.8.0
 
 ### Minor Changes
