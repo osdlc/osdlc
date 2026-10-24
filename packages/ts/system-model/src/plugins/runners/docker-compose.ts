@@ -1,35 +1,34 @@
 /**
  * Docker Compose (compose.yaml) — https://docs.docker.com/compose/
  *
- * `kind: "parse"`, and unlike just/go-task/gradle it is parse ONLY: this
- * runner never calls `ctx.runner()`. Compose's own listing —
- * `docker compose config --services` — is not a read. It resolves the file,
- * which means interpolating `${…}` from the environment and `.env`, following
- * `include:` and `extends:` into other files, and evaluating a Dockerfile
- * reference; and it hides any service behind a `profiles:` key, so it would
- * report FEWER services than the file declares. So the hand-written reader
- * below is the whole runner: every limitation it declares is permanent, not
- * lifted when the binary is present.
+ * `kind: "parse"`, and unlike just/go-task/gradle it has no exec path: this
+ * runner never calls `ctx.runner()`. Compose's own listing,
+ * `docker compose config --services`, is not a plain read. It resolves the
+ * file: it fills in `${…}` from the environment and `.env`, follows
+ * `include:` and `extends:` into other files, and evaluates a Dockerfile
+ * reference. It also hides any service behind a `profiles:` key, so it would
+ * report fewer services than the file declares. So the hand-written reader
+ * below is the whole runner. Its limits stay even when the binary is present.
  *
- * FILENAME PRECEDENCE. Compose looks for four names and uses exactly one per
- * directory. The order was established EMPIRICALLY on this machine (Docker
- * 29.6.2, Compose plugin v5.3.1) by putting all four in one directory, running
- * `docker compose config --services`, and deleting the winner one at a time:
+ * Filename precedence. Compose looks for four names and uses exactly one per
+ * directory. The order was found by testing (Docker 29.6.2, Compose plugin
+ * v5.3.1): put all four in one directory, run
+ * `docker compose config --services`, and delete the winner one at a time:
  *
  *     compose.yaml  >  compose.yml  >  docker-compose.yml  >  docker-compose.yaml
  *
- * Note the asymmetry — not a typo: for the `compose` prefix `.yaml` beats
- * `.yml`, and for the `docker-compose` prefix `.yml` beats `.yaml`. Compose's
- * own warning lists the candidates in that same order, and names its pick:
+ * The order differs by prefix, and this is not a typo. For `compose`, `.yaml`
+ * beats `.yml`. For `docker-compose`, `.yml` beats `.yaml`. Compose's own
+ * warning lists the candidates in the same order and names its pick:
  *
  *     level=warning msg="Found multiple config files with supported names: …"
  *     level=warning msg="Using …/compose.yaml"
  *
- * This runner mirrors both: one file wins per directory, and a `warning`
- * diagnostic names the siblings it ignored. Files in DIFFERENT directories are
- * independent Compose projects and all count.
+ * This runner does the same: one file wins per directory, and a `warning`
+ * diagnostic names the other files it ignored. Files in different directories
+ * are separate Compose projects and all count.
  *
- * THE READER'S CEILING. It reads:
+ * What the reader handles:
  *   - the top-level `services:` key (block-style only) and the service names
  *     nested one level under it
  *   - each service's `image:`, `build:` scalar and `profiles:` key, one level
@@ -38,8 +37,8 @@
  *   - `#` comments (outside quoted strings) and single/double-quoted keys and
  *     values
  *
- * It does NOT attempt, and emits a `warning` Diagnostic (source: the file)
- * when it detects one of these:
+ * It does not handle the following. When it finds one, it emits a `warning`
+ * Diagnostic (source: the file):
  *   - YAML anchors/aliases (`&`/`*`)
  *   - merge keys (`<<`)
  *   - multiple YAML documents — a `---` separator or a `...` end marker at
@@ -49,21 +48,22 @@
  *   - `include:` and `extends:` pulling in other Compose files — services they
  *     contribute are never enumerated, only this file's own `services:`
  *
- * A `profiles:` key is a sixth diagnostic but NOT a limitation: see PROFILES.
+ * A `profiles:` key adds a sixth diagnostic, but it is not a limit: see
+ * PROFILES.
  *
- * Two classes of file fall outside those diagnostics. First, a leading UTF-8
- * BOM: Compose accepts one, and left in place it would bind to the `services`
- * key and drop the whole file with no diagnostic, so it is stripped before
- * anything else reads the text. Second, files Compose itself REJECTS — a
- * `services:` given a block scalar, sibling keys at inconsistent indentation,
- * tab indentation. Those get no diagnostic and whatever the line scanner
- * happens to find, which may be nothing.
+ * Two kinds of file get none of these diagnostics. First, a file with a
+ * leading UTF-8 BOM. Compose accepts one. Left in place, it would stick to the
+ * `services` key and drop the whole file with no diagnostic, so it is
+ * stripped before anything reads the text. Second, files Compose itself
+ * rejects: a `services:` given a block scalar, sibling keys at different
+ * indents, tab indentation. These get no diagnostic, and only whatever the
+ * line scanner happens to find, which may be nothing.
  *
- * The lexing layer lives in `yaml-lite.ts`, shared with `go-task.ts` and
+ * The lexing is in `yaml-lite.ts`, shared with `go-task.ts` and
  * `github-actions.ts`: BOM strip, comment strip, quoting, indent, block-scalar
- * masking, anchor/merge flagging, and truncation at the first document marker.
- * What stays here is the `services:` reader — the two-pass walk below — and
- * every diagnostic string, whose wording names Compose's own consequences.
+ * masking, anchor/merge detection, and truncation at the first document
+ * marker. This file keeps the `services:` reader (the two-pass walk below)
+ * and every diagnostic string, whose wording describes the effect in Compose.
  */
 
 import type { ProviderContext } from '../../contract.ts'
@@ -86,8 +86,8 @@ const CHAIN = [
 
 /**
  * The four config filenames, in Compose's own priority order (see the file
- * header). Order is load-bearing: `pickWinners` takes the first of these
- * present in a directory.
+ * header). The order matters: `pickWinners` takes the first of these present
+ * in a directory.
  */
 export const CONFIG_NAMES = [
   'compose.yaml',
@@ -109,23 +109,22 @@ const EXTENDS =
   "`extends:` pulling a service definition from another Compose file is not supported — the extended service is listed under this file's own name, and fields it inherits were not read"
 
 /**
- * Not a limitation of the reader — a fact about the emitted command.
+ * Not a limit of the reader, but a fact about the emitted command.
  *
- * A service behind `profiles:` is excluded from a bare `docker compose up`,
- * and Compose's own `config --services` does not even list it. But naming a
- * profiled service explicitly on `up` DOES start it: Compose auto-enables the
- * profile it belongs to. Verified on this machine (Docker 29.6.2) with a
- * two-service file where `debugger` sat behind `profiles: [debug]` —
- * `docker compose config --services` printed only `web`, while
- * `docker compose -f compose.yaml --dry-run up debugger` created the
- * container. So the task this runner emits is correct as written and the
- * service is listed like any other; the diagnostic exists so a reader of the
- * catalog is not surprised that `docker compose up` on its own skips it.
+ * A bare `docker compose up` skips a service behind `profiles:`, and
+ * Compose's own `config --services` does not list it. But naming the service
+ * on `up` does start it: Compose turns on its profile automatically. Tested
+ * with Docker 29.6.2 on a two-service file where `debugger` had
+ * `profiles: [debug]`. `docker compose config --services` printed only `web`,
+ * while `docker compose -f compose.yaml --dry-run up debugger` created the
+ * container. So the emitted task is correct, and the service is listed like
+ * any other. The diagnostic tells a reader of the catalog that a bare
+ * `docker compose up` skips it.
  */
 const PROFILES = (names: string[]): string =>
   `${names.length === 1 ? 'service' : 'services'} behind a \`profiles:\` key (${names.join(', ')}) — a bare \`docker compose up\` does not start ${names.length === 1 ? 'it' : 'them'}; the task emitted here names the service explicitly, which starts it by auto-enabling its profile`
 
-/** A directory holding more than one config filename — Compose ignores all but one. */
+/** A directory with more than one config filename. Compose ignores all but one. */
 const multipleConfigs = (winner: string, ignored: string[]): string =>
   `found multiple Compose config files with supported names in this directory — \`${winner}\` wins by Compose's own filename precedence and ${ignored.length === 1 ? 'the other is' : 'the others are'} ignored entirely: ${ignored.join(', ')}. Compose warns about this itself ("Found multiple config files with supported names") and reads only the winner, so services declared solely in the ignored ${ignored.length === 1 ? 'file' : 'files'} are not enumerated.`
 
@@ -179,7 +178,7 @@ export function readCompose(text: string): ReadResult {
   }
 
   // Pass 2: everything indented under `services:`. The first indent level seen
-  // is the service-name level; the first indent level seen under ONE service
+  // is the service-name level. The first indent level seen under one service
   // is that service's field level. Anything deeper (ports:, environment:, …)
   // is skipped.
   let serviceNameIndent = -1
@@ -217,9 +216,9 @@ export function readCompose(text: string): ReadResult {
     if (entry === undefined) continue
 
     if (m.key === 'image' || m.key === 'build') {
-      // `image:` wins: a service declaring both builds an image and tags it,
-      // and the tag is the more recognizable of the two. `build:` as a
-      // mapping has an empty scalar here and is correctly skipped.
+      // `image:` wins. A service with both builds an image and tags it, and
+      // the tag is easier to recognize. A `build:` mapping has no scalar value
+      // here, so it is skipped.
       const v = unquoteValue(m.value)
       if (v !== undefined && (m.key === 'image' || entry.detail === undefined)) {
         entry.detail = `${m.key}: ${v}`
@@ -239,8 +238,8 @@ export function readCompose(text: string): ReadResult {
 }
 
 /**
- * Group discovered files by directory and keep the one Compose would actually
- * read, reporting the siblings it shadows.
+ * Group discovered files by directory and keep the one Compose would read,
+ * with the other files it ignores.
  */
 export function pickWinners(files: string[]): Array<{ file: string; ignored: string[] }> {
   const byDir = new Map<string, string[]>()
@@ -265,22 +264,21 @@ export function pickWinners(files: string[]): Array<{ file: string; ignored: str
 
 function makeTask(file: string, service: string, detail: string | undefined): Task {
   const dir = dirOf(file)
-  // `-f`/`--file` is Compose's own file flag — "-f, --file stringArray
-  // Compose configuration files", quoted from `docker compose --help` on this
-  // machine. It accepts a path, not just a name, and resolves it relative to
-  // the invocation directory: verified from a parent directory that
-  // `docker compose -f sub/compose.yaml config --services` reads the nested
-  // file. So the directory is expressed in argv and `cwd` stays "." for every
-  // task, per this package's argv/cwd policy.
+  // `-f`/`--file` is Compose's file flag ("-f, --file stringArray Compose
+  // configuration files", from `docker compose --help`). It takes a path, not
+  // just a name, relative to the directory it runs in. Tested from a parent
+  // directory: `docker compose -f sub/compose.yaml config --services` reads
+  // the nested file. So the directory goes in argv, and `cwd` stays "." for
+  // every task, as everywhere in this package.
   //
-  // `up`, not `run`: `docker compose --help` describes `run` as "Run a
-  // one-off command on a service" — an ad-hoc invocation that generally wants
-  // a command to append — and `up` as "Create and start containers".
+  // `up`, not `run`. `docker compose --help` describes `run` as "Run a
+  // one-off command on a service" (a one-off call that usually needs a
+  // command appended) and `up` as "Create and start containers".
   //
   // The binary is `docker` and the subcommand is `compose`: Compose v2+ is a
-  // Docker CLI plugin, not a program of its own. The standalone
-  // `docker-compose` v1 binary is a different product this runner does not
-  // target — only the filenames it bequeathed survive.
+  // Docker CLI plugin, not a separate program. The standalone `docker-compose`
+  // v1 binary is a different product this runner does not target. Only its
+  // filenames are still in use.
   const argv = ['docker', 'compose', '-f', file, 'up', service]
   return {
     id: taskId('docker-compose', file, service),
@@ -294,33 +292,32 @@ function makeTask(file: string, service: string, detail: string | undefined): Ta
     origin: 'declared',
     ...(detail === undefined ? {} : { detail }),
     tags: ['docker-compose', dir],
-    // `value: true` because a Compose service usually is a long-lived process
-    // — that is what a container in a `services:` map normally holds — and
-    // this is a better-grounded default than `looksPersistent`, which is
-    // deliberately NOT used here: it would read `worker` and `db` as one-shot.
+    // `value: true` because a Compose service is usually a long-lived
+    // process; that is what a container in a `services:` map normally runs.
+    // That is a better default than `looksPersistent`, which is not used
+    // here on purpose: it would treat `worker` and `db` as one-shot.
     //
-    // `declared: false` because Compose states nothing about persistence
-    // anywhere in the file, so this is THIS package inferring from the `up`
-    // verb, not the runner telling us. The inference is wrong for a real and
-    // common shape — migration, seed and lint services:
+    // `declared: false` because the file says nothing about persistence.
+    // This package infers it from the `up` verb. The guess is wrong for a
+    // real and common case, migration, seed and lint services:
     //
     //     services:
     //       oneshot:
     //         image: alpine
     //         command: echo hello
     //
-    // `docker compose up oneshot` prints `hello` and exits 0 immediately
-    // (Docker 29.6.2). Per `Task.persistent` in model.ts, `declared` exists so
-    // a consumer can choose to trust only what a runner actually said.
+    // `docker compose up oneshot` prints `hello` and exits 0 at once
+    // (Docker 29.6.2). Per `Task.persistent` in model.ts, `declared` lets a
+    // consumer trust only what a runner stated.
     persistent: { value: true, declared: false },
-    // The command runs on this machine, but what it starts is a container,
-    // and that is what a consumer deciding whether it can run this needs.
+    // The command runs on this machine, but it starts a container. A
+    // consumer deciding whether it can run this needs to know that.
     executes: 'container',
   }
 }
 
 export const dockerComposeRunner: RunnerRole = {
-  // `parse`, and parse only: `collect` below never touches `ctx.runner()`.
+  // `parse`, with no exec path: `collect` below never calls `ctx.runner()`.
   kind: 'parse',
   chain: CHAIN,
 
@@ -335,9 +332,8 @@ export const dockerComposeRunner: RunnerRole = {
 
     for (const { file, ignored } of winners) {
       if (ignored.length > 0) {
-        // Sourced to the winner: that is the file a reader of this catalog
-        // will go and open, and the one whose contents the diagnostic
-        // qualifies.
+        // The source is the winner: that is the file a reader of this catalog
+        // will open, and the one the diagnostic is about.
         diagnostics.push({
           severity: 'warning',
           message: multipleConfigs(file, ignored),

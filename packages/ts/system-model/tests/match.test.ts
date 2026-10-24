@@ -31,8 +31,8 @@ describe('fuzzy', () => {
   })
 
   test('rejects a subsequence smeared across a long string', () => {
-    // The bug this closes: "photo" is a subsequence of the absolute path moon
-    // expands into sdf:dev's command line, and matched it before the span gate.
+    // "photo" is a subsequence of the absolute path moon expands into sdf:dev's
+    // command line. A match spread that thin must be rejected.
     const path =
       'bun run /Users/someone/Developer/dev/solutions/ontological/cli/sdlc.ts dashboard start'
     expect(fuzzy(path, 'photo')).toBeNull()
@@ -73,8 +73,8 @@ describe('matchEntry', () => {
   })
 
   test('a leading quote forces one term exact even in fuzzy mode', () => {
-    // "pohto" is a subsequence of nothing here, but nor is it a substring —
-    // the point is that the quoted form cannot fall back to subsequence.
+    // "pohto" is a subsequence of `p-o-h-t-o` but not a substring of it. The
+    // quoted form must not fall back to subsequence matching.
     expect(matchEntry(entry(), terms("'photo"), 'fuzzy')).not.toBeNull()
     expect(
       matchEntry(entry({ path: ['moon', 'x', 'p-o-h-t-o', 'dev'] }), terms("'pohto"), 'fuzzy'),
@@ -111,8 +111,8 @@ describe('matchEntry', () => {
   })
 
   test('an empty query matches nothing, since callers skip matching entirely', () => {
-    // terms("") is [], and every term trivially passes — the views treat an
-    // empty query as "show all" without calling this at all.
+    // terms("") is [], so every term trivially passes. The views treat an empty
+    // query as "show all" and never call this.
     expect(matchEntry(entry(), terms(''), 'fuzzy')).toEqual({ score: 0, labelHits: null })
   })
 })

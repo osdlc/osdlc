@@ -79,7 +79,7 @@ describe('rake runner', () => {
     expect(test?.display).toBe('rake test')
     expect(test?.cwd).toBe('.')
 
-    // `default` has no desc immediately before it — no doc leaks onto it.
+    // `default` has no desc immediately before it, so no doc leaks onto it.
     const def = found.find((t) => t.path[2] === 'default')
     expect(def?.doc).toBeUndefined()
   })
@@ -231,9 +231,9 @@ Dir.glob("lib/tasks/**/*.rake").each { |r| load r }
 /**
  * `rake -AT` output, recorded from rake 13.3.1 against a Rakefile with one
  * statically declared task, one `Rake::TestTask.new`, and a pair built by a
- * loop — the shapes a parser cannot see. rake's own format string is
- * `"#{name} %-#{width}s  # %s"`, so the gutter is the name padding plus two
- * spaces.
+ * loop. A parser cannot see the last two shapes. rake's own format string is
+ * `"#{name} %-#{width}s  # %s"`, so the gap before `#` is the name padding plus
+ * two spaces.
  */
 const LISTING = [
   'rake alpha       # gen alpha',
@@ -271,8 +271,8 @@ describe('rake provider — the exec upgrade', () => {
   test('the parse floor is untouched when execution is not allowed, and nothing is run', async () => {
     const dir = await root({ Rakefile: DYNAMIC_RAKEFILE })
     const { options, calls } = opts(CANNED_LISTING, {
-      // Present on the PATH and still not used: consent, not availability, is
-      // what gates the exec path.
+      // On the PATH and still not used. The exec path needs the caller's
+      // permission, not just an available binary.
       which: fakeWhich({ rake: '/usr/bin/rake' }),
     })
     const result = await collect(dir, { ...options, tools: [rake] })
@@ -297,7 +297,7 @@ describe('rake provider — the exec upgrade', () => {
     expect(tasks(result).map((t) => t.path[2])).toEqual(['test'])
     const diags = diagnostics(result).filter((d) => d.runner === 'rake')
     expect(diags.some((d) => d.message.includes('not on the PATH'))).toBe(true)
-    // The parsing ceiling is still real on this path, so it is still reported.
+    // The parser's limit still applies on this path, so it is still reported.
     expect(diags.some((d) => d.message.includes('Rake::*Task.new'))).toBe(true)
     expect(calls.filter((c) => c.binary === 'rake')).toEqual([])
   })
@@ -323,7 +323,7 @@ describe('rake provider — the exec upgrade', () => {
     // The loop-built and Rake::TestTask-built tasks the regex misses.
     expect(found.find((t) => t.path[2] === 'alpha')?.doc).toBe('gen alpha')
     expect(found.find((t) => t.path[2] === 'spec')?.doc).toBe('Run tests for spec')
-    // An uncommented task prints a bare `# ` — that is no doc, not an empty one.
+    // An uncommented task prints a bare `# `. That means no doc, not an empty one.
     expect(found.find((t) => t.path[2] === 'default')?.doc).toBeUndefined()
 
     // Shapes match the parse path exactly.
@@ -336,8 +336,8 @@ describe('rake provider — the exec upgrade', () => {
     expect(one.origin).toBe('declared')
 
     const diags = diagnostics(result).filter((d) => d.runner === 'rake')
-    // The lie that must not be told: rake enumerated these, so nothing was
-    // "invisible to a parser".
+    // rake listed these tasks, so no diagnostic may call them "invisible to a
+    // parser".
     expect(diags.some((d) => d.message.includes('invisible to a parser'))).toBe(false)
     const honest = diags.find((d) => d.message.includes('rake -AT -N -G'))
     expect(honest?.severity).toBe('info')
@@ -367,8 +367,8 @@ describe('rake provider — the exec upgrade', () => {
     const run = calls.find((c) => c.binary === 'rake')!
 
     // A Rakefile that hangs must not hang the caller, and a cancelled collect
-    // must take the subprocess with it. Both are silently deletable from the
-    // provider without these assertions.
+    // must stop the subprocess. Without these assertions, either could be
+    // removed from the provider and no test would fail.
     expect(run.opts.timeoutMs).toBeGreaterThan(0)
     expect(run.opts.signal).toBe(controller.signal)
     // rake is pointed at the catalog root, which is why the invocation needs
@@ -395,13 +395,13 @@ describe('rake provider — the exec upgrade', () => {
       allowExec: true,
     })
 
-    // Never an empty list: the floor is still there.
+    // Never an empty list: the parsed tasks are still returned.
     expect(tasks(result).map((t) => t.path[2])).toEqual(['test'])
     const diags = diagnostics(result).filter((d) => d.runner === 'rake')
     const failure = diags.find((d) => d.message.includes('failed'))
     expect(failure?.severity).toBe('warning')
     expect(failure?.message).toContain('rake aborted!')
-    // Back on the parse path, the parsing-ceiling warning is true again.
+    // Back on the parse path, the parser-limit warning applies again.
     expect(diags.some((d) => d.message.includes('Rake::*Task.new'))).toBe(true)
   })
 
@@ -482,11 +482,9 @@ describe('rake provider — the exec upgrade', () => {
   })
 
   test('an unloaded .rake file keeps a task whose name collides with a root task', async () => {
-    // The regression: dedup used to compare bare names against a flat set
-    // drawn from the whole listing, so this file's `test` was deleted by the
-    // root Rakefile's `test` — a different task, with different argv, a
-    // different id and a different source. Turning execution on made the list
-    // SHORTER, which the floor rule forbids.
+    // Dedup must compare tasks, not bare names. This file's `test` and the root
+    // Rakefile's `test` are different tasks, with different argv, id and source.
+    // Turning execution on must never make the list shorter than the parse path.
     const dir = await root({
       Rakefile: 'desc "Run the test suite"\ntask :test do\nend\n',
       'tools/plugin/tasks.rake':
@@ -508,7 +506,7 @@ describe('rake provider — the exec upgrade', () => {
       'rake -C tools/plugin unique',
       'rake test',
     ])
-    // rake never evaluated this file, so its parsing ceiling is still real.
+    // rake never evaluated this file, so the parser's limit still applies to it.
     expect(
       diagnostics(result).some(
         (d) =>

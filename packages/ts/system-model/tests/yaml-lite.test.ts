@@ -40,8 +40,8 @@ describe('BOM', () => {
   })
 
   test('without the strip the first key would be unmatchable', () => {
-    // Guards the reason the strip exists: JS `\s` matches U+FEFF, so the byte
-    // binds to the key and `services` never matches `services`.
+    // Why the BOM strip exists: JS `\s` matches U+FEFF, so without the strip the
+    // byte binds to the key and `services` never matches `services`.
     expect(matchKey(`${BOM}services:`, 0)?.key).not.toBe('services')
   })
 })
@@ -77,7 +77,7 @@ describe('anchors, aliases and merge keys', () => {
   })
 
   test('a `*` in a shell glob is not an alias', () => {
-    // The whole reason `plainScalarStart` exists.
+    // The case `plainScalarStart` exists for.
     const line = scanLine('    command: rm -rf *tmp')
     expect(line.anchor).toBe(false)
     expect(line.merge).toBe(false)
@@ -148,7 +148,7 @@ describe('document markers', () => {
   })
 
   test('a marker with a trailing comment still counts', () => {
-    // The case a `line.trim() === "---"` test used to miss.
+    // A plain `line.trim() === "---"` test would miss this.
     const out = prepass(['a: 1', '--- # second document', 'b: 2', ''].join('\n'))
     expect(out.multiDoc).toBe(true)
     expect(out.lines).toEqual(['a: 1'])
@@ -182,7 +182,7 @@ describe('document markers', () => {
   })
 
   test('a marker followed by real content DOES set multiDoc and truncates', () => {
-    // The guard against over-correcting the trailing-marker case.
+    // The trailing-marker rule must not go too far.
     const out = prepass(['a: 1', '---', '', 'b: 2', ''].join('\n'))
     expect(out.multiDoc).toBe(true)
     expect(out.lines).toEqual(['a: 1'])
@@ -203,16 +203,16 @@ describe('document markers', () => {
   })
 
   test('`---` then `---`: the first is the opener, the second a separator', () => {
-    // Nothing follows the second marker, which is what makes this fixture
-    // discriminate: the pre-fix reader returned multiDoc true here. Retaining
-    // exactly one line is the separator half — an opener would have been kept.
+    // Nothing follows the second marker, so multiDoc must be false. Exactly one
+    // line is retained: the second marker is a separator, since an opener would
+    // have been kept.
     const out = prepass(['---', '---', ''].join('\n'))
     expect(out.multiDoc).toBe(false)
     expect(out.lines).toEqual(['---'])
   })
 
   test('a comment-only tail after a marker does NOT set multiDoc', () => {
-    // The test is on the CLEANED line: a trailing comment is not a document.
+    // The check runs on the cleaned line, so a trailing comment is not a document.
     const out = prepass(
       ['services:', '  web:', '    image: nginx', '---', '# end of file', ''].join('\n'),
     )

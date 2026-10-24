@@ -2,14 +2,14 @@
  * deno.json / deno.jsonc `tasks` — Deno's built-in task runner.
  *
  * `kind: "parse"`: the `tasks` map is data, not code, so this reads it
- * directly rather than shelling out to `deno task`.
+ * directly instead of running `deno task`.
  *
- * Deno config files may be named `deno.json` but still carry JSONC comments
- * (`//` and `/* … *\/`) — this is common in the wild and Deno's own parser
- * tolerates it regardless of extension. `ctx.readJson` (`collect.ts`'s
- * `safeParse`) does a strict `JSON.parse` and returns `null` on failure, which
- * would silently drop every commented config. So this runner reads the raw
- * text via `ctx.readText` and strips comments itself before parsing.
+ * A file named `deno.json` can still hold JSONC comments (`//` and
+ * `/* … *\/`). This is common, and Deno's own parser accepts them whatever the
+ * extension. `ctx.readJson` (`context.ts`'s `safeParse`) runs a strict
+ * `JSON.parse` and returns `null` on failure, so it would silently drop every
+ * config with comments. This runner reads the raw text with `ctx.readText`
+ * and strips the comments itself before parsing.
  */
 
 import type { ProviderContext } from '../../contract.ts'
@@ -24,11 +24,10 @@ const CHAIN = [
   { label: 'task', hint: 'The key under `tasks`.' },
 ]
 
-// No `brand`: simple-icons' `deno` entry carries a per-icon `license: MIT`
-// override (Deno's own logo license), not the aggregate package's CC0-1.0 —
-// same situation `cargo.ts` documents for the `rust` icon. A runner is
-// complete without a brand (see `contract.ts`), so this omits one rather than
-// ship a non-CC0 mark or invent a substitute glyph.
+// No `brand`: simple-icons' `deno` icon has its own `license: MIT` (Deno's
+// logo license), not the set's CC0-1.0. `cargo.ts` notes the same problem for
+// the `rust` icon. `brand` is optional (see `RunnerRole` in `tool.ts`), so this
+// omits it rather than ship a non-CC0 mark or make up a substitute glyph.
 
 interface DenoTaskObject {
   command?: unknown
@@ -39,14 +38,14 @@ interface DenoTaskObject {
 type DenoTaskValue = string | DenoTaskObject
 
 /**
- * Strip `//` line comments and `/* … *\/` block comments from JSONC text,
- * without touching either sequence when it appears inside a `"..."` string
- * literal. Scans char-by-char tracking string state (respecting `\"`
- * escapes) so `"echo http://example.com"` survives untouched.
+ * Strip `//` line comments and `/* … *\/` block comments from JSONC text.
+ * Either sequence inside a `"..."` string is left alone. The scan goes char by
+ * char and tracks string state (including `\"` escapes), so
+ * `"echo http://example.com"` stays intact.
  *
- * Minimal on purpose — no dependency, no support for JSON5 extras (trailing
- * commas, single quotes) beyond comments, which is all Deno's config format
- * needs.
+ * Minimal on purpose: no dependency, and only comments are handled. JSON5
+ * extras (trailing commas, single quotes) are not supported. Deno's config
+ * format needs only comments.
  */
 export function stripJsonComments(text: string): string {
   let out = ''
@@ -111,9 +110,8 @@ export const denoTasksRunner: RunnerRole = {
   chain: CHAIN,
 
   async collect(ctx: ProviderContext): Promise<ProviderResult> {
-    // Both extensions are valid Deno config names. A directory carrying both
-    // is a real-world edge case (Deno itself picks one); this runner does
-    // not try to dedupe cleverly and just processes each file it finds.
+    // Both names are valid Deno configs. A directory with both is a rare case
+    // (Deno itself picks one). This runner does not dedupe; it reads each file.
     const [jsonFiles, jsoncFiles] = await Promise.all([ctx.files(DENO_JSON), ctx.files(DENO_JSONC)])
     const configs = [...jsonFiles, ...jsoncFiles].sort()
     if (configs.length === 0) return { status: 'absent', tasks: [], diagnostics: [] }

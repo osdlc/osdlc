@@ -1,15 +1,15 @@
 /**
- * The stored runner results: one file per (root, runner) under a directory
- * the caller names. A layer above `collect`, never inside it.
+ * Stored runner results: one file per (root, runner) under a directory the
+ * caller names. This sits above `collect`, never inside it.
  *
  * Layout: `<dir>/reports/v<CACHE_FORMAT_VERSION>/<basename>-<hash>/<runner>.json`.
- * One file per runner, so every write is one atomic rename that cannot lose a
+ * One file per runner, so each write is one atomic rename and cannot lose a
  * concurrent write for another runner. The format version is in the path and
- * in each file: a bump abandons the old tree, and an entry that arrives some
- * other way is still rejected.
+ * in each file. A version bump leaves the old tree unused, and an old-version
+ * entry that reaches the new path some other way is still rejected.
  *
  * A broken entry (missing, truncated, unparseable, old version) is a miss,
- * never an error: the fallback is always to probe.
+ * never an error. The fallback is always to probe.
  */
 
 import { createHash } from 'node:crypto'
@@ -22,28 +22,28 @@ import type { ProviderKind } from './contract.ts'
 import type { Fingerprint } from './fingerprint.ts'
 import type { RunnerReport } from './model.ts'
 
-/** Bumped whenever a stored entry's shape — including `Task`'s — changes. */
+/** Bumped whenever a stored entry's shape changes, including `Task`'s shape. */
 export const CACHE_FORMAT_VERSION = 4
 
 /** How many probe durations are kept per entry. */
 export const DURATION_WINDOW = 5
 
 /**
- * A repo-measured probe at or above this is "slow" for that repo.
+ * A probe measured in a repo at or above this time is "slow" for that repo.
  *
- * Measured, never declared. The same runner is fast against a small
- * repository and slow against a large one, so a per-runner constant would be
- * wrong for half its users; what matters is how long it took HERE.
+ * Measured, never declared. The same runner is fast in a small repository and
+ * slow in a large one, so a per-runner constant would be wrong for half its
+ * users. What matters is how long it took in this repo.
  */
 export const SLOW_PROBE_MS = 1500
 
 /**
- * Backstop for exec entries whose fingerprint cannot see the merge inputs.
+ * Maximum age for exec entries, whose fingerprint cannot see the merged inputs.
  *
- * An exec runner reads its markers, not the files its tool merges (see
- * `fingerprint.ts`), so a matching fingerprint is a good signal rather than a
- * proof. Four hours bounds how long a change the fingerprint cannot see can go
- * unnoticed, without re-paying a JVM start every few minutes.
+ * An exec runner's fingerprint covers its markers, not the files its tool
+ * merges (see `fingerprint.ts`). So a matching fingerprint is a good sign, not
+ * a proof. Four hours limits how long such a change can go unnoticed, without
+ * paying for a JVM start every few minutes.
  */
 export const EXEC_MAX_AGE_MS = 4 * 60 * 60 * 1000
 
@@ -68,7 +68,7 @@ export function entryPath(dir: string, root: string, runnerId: string): string {
   return join(dir, 'reports', `v${CACHE_FORMAT_VERSION}`, rootKey(root), `${runnerId}.json`)
 }
 
-/** `basename-hash`: the hash keeps same-named roots apart, the name keeps `ls` legible. */
+/** `basename-hash`: the hash keeps same-named roots apart, and the name keeps `ls` readable. */
 function rootKey(root: string): string {
   const digest = createHash('sha256').update(root).digest('hex').slice(0, 16)
   const raw = basename(root)
@@ -104,19 +104,19 @@ export async function readEntry(
 /**
  * Store one entry, or refuse to.
  *
- * Two reports are never stored, and the refusal lives HERE rather than in each
- * caller so it cannot be forgotten by the next surface that adds caching:
+ * Two kinds of report are never stored. The check is here, not in each
+ * caller, so a new caller that adds caching cannot forget it:
  *
- *   - `status: "error"`. Serving an error out of a cache turns a transient
- *     failure — a tool mid-upgrade, a lock held for a second — into a sticky
+ *   - `status: "error"`. Serving an error from a cache turns a short-lived
+ *     failure (a tool mid-upgrade, a lock held for a second) into a lasting
  *     one that outlives its cause and that nobody can explain.
- *   - `skippedForExec: true`. A report withheld for want of execution is not a
- *     probe result at all; nothing was measured, and storing it would let an
- *     untrusted run poison the answer a later trusted run should have given.
+ *   - `skippedForExec: true`. A report withheld because exec was not allowed
+ *     is not a probe result. Nothing was measured. Storing it would let a run
+ *     without exec replace the answer a later run with exec should give.
  *
- * Returns whether anything was written. A write failure — read-only home, full
- * disk — is also `false` rather than a throw: failing to cache must never fail
- * the collection the cache was meant to speed up.
+ * Returns whether anything was written. A write failure (read-only home, full
+ * disk) also returns `false` rather than throwing. Failing to cache must never
+ * fail the collection the cache was meant to speed up.
  */
 export async function writeEntry(dir: string, entry: CacheEntry): Promise<boolean> {
   if (entry.report.status === 'error') return false
@@ -132,12 +132,12 @@ export async function writeEntry(dir: string, entry: CacheEntry): Promise<boolea
 }
 
 /**
- * The expected probe cost, as the MEDIAN of the window.
+ * The expected probe cost, as the median of the window.
  *
- * A median, not a mean: one cold JVM start is several times a warm probe, and a
- * mean lets that single outlier dominate the estimate for as long as it stays
- * in the window. `null` when nothing has been measured — an unknown cost is not
- * a cost of zero, and a caller must be able to tell the difference.
+ * A median, not a mean. One cold JVM start takes several times as long as a
+ * warm probe, and a mean lets that one outlier dominate the estimate while it
+ * stays in the window. `null` when nothing has been measured. An unknown cost
+ * is not a cost of zero, and a caller must be able to tell them apart.
  */
 export function estimateMs(durations: readonly number[]): number | null {
   if (durations.length === 0) return null

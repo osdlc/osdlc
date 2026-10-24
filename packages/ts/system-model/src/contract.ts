@@ -1,14 +1,16 @@
 /**
- * What a runner and a `detect` function are handed, and the options of the
- * two calls that hand it to them.
+ * The context a runner and a `detect` function receive, and the options of
+ * the two calls that pass it to them.
  *
- * Two rules keep runners honest and testable:
+ * Two rules keep runners correct and testable:
  *
- *   1. They never spawn. `ctx.runner(binary)` hands back an injected runner,
- *      so a test supplies canned output instead of needing moon on the PATH.
+ *   1. They never spawn a process. `ctx.runner(binary)` returns an injected
+ *      runner, so a test supplies canned output instead of needing moon on
+ *      the PATH.
  *   2. They never read the filesystem for discovery. `ctx.files()` applies the
- *      chosen strategy (git-tracked or a directory walk); a runner reaching
- *      past it would disagree with every other runner about which files exist.
+ *      chosen strategy (git-tracked or a directory walk). A runner that went
+ *      around it would disagree with every other runner about which files
+ *      exist.
  */
 
 import type { AsyncCommandRunner } from '@osdlc/command-seam'
@@ -20,11 +22,11 @@ import type { ProjectProfile, ToolDef } from './tool.ts'
 /**
  * Whether a runner must run subprocesses to list its tasks.
  *
- * A trust boundary, not an optimization: `moon query tasks` runs the
- * repository's toolchain config. With execution withheld only `parse`
+ * This is a trust boundary, not an optimization. `moon query tasks` runs the
+ * repository's toolchain config. With execution withheld, only `parse`
  * runners run. A `parse` runner may still ask its own tool when execution is
- * allowed and the binary is there (just, rake, go-task, gradle do); the kind
- * promises it has an honest answer without.
+ * allowed and the binary is present (just, rake, go-task and gradle do). The
+ * `parse` kind promises a correct answer without running anything.
  */
 export type ProviderKind = 'parse' | 'exec'
 
@@ -37,11 +39,11 @@ export interface ProviderContext {
   /**
    * Root-relative paths matching a pattern, memoized for the call.
    *
-   * The pattern language is `.gitignore`'s anchoring: a pattern with no `/`
-   * matches a basename at any depth (`justfile`, `*.mk`); a pattern with a
-   * `/` at the start or in the middle is a path from the root
-   * (`/mise.toml`, `.github/workflows/*.yml`); a trailing `/` matches every
-   * file under that directory. `*` matches within one path segment.
+   * Patterns use `.gitignore`'s anchoring. A pattern with no `/` matches a
+   * basename at any depth (`justfile`, `*.mk`). A pattern with a `/` at the
+   * start or in the middle is a path from the root (`/mise.toml`,
+   * `.github/workflows/*.yml`). A trailing `/` matches every file under that
+   * directory. `*` matches within one path segment.
    */
   files(pattern: string): Promise<string[]>
   /** Read and parse a JSON file, root-relative. `null` when absent or malformed. */
@@ -53,9 +55,9 @@ export interface ProviderContext {
   /** PATH lookup for a binary, with no subprocess. */
   which(binary: string): string | null
   /**
-   * Whether subprocesses are permitted. An `exec` runner never sees `false`:
-   * it is withheld. A `parse` runner or a `detect` function must not spawn
-   * when this is `false`.
+   * Whether subprocesses are allowed. An `exec` runner never sees `false`,
+   * because it is withheld instead. A `parse` runner or a `detect` function
+   * must not spawn a process when this is `false`.
    */
   allowExec: boolean
   discovery: DiscoveryMode
@@ -79,19 +81,19 @@ export interface RunnerContext extends ProviderContext {
 /** Options for `Project.detect`. */
 export interface DetectOptions {
   /**
-   * Permit `describe` functions that run a subprocess, such as moon's project
+   * Allow `describe` functions that run a subprocess, such as moon's project
    * roles. Defaults to `false`.
    */
   allowExec?: boolean | undefined
   /**
-   * `git` lists tracked plus untracked-but-not-ignored files; `walk` walks
-   * the tree, skipping well-known directories. `auto` (the default) picks git
-   * when the root is a repository and git is on the PATH.
+   * `git` lists tracked files plus untracked files that are not ignored.
+   * `walk` walks the tree, skipping well-known directories. `auto` (the
+   * default) picks git when the root is a repository and git is on the PATH.
    */
   discovery?: DiscoveryMode | 'auto' | undefined
   /**
    * Extra paths to skip, on top of the built-in list. A bare name matches a
-   * path segment at any depth; a value with a slash matches a root-relative
+   * path segment at any depth. A value with a slash matches a root-relative
    * prefix. Use it for trees that are data, such as test-fixture repositories.
    */
   excludePaths?: string[] | undefined
@@ -100,7 +102,7 @@ export interface DetectOptions {
    * `false` when `excludePaths` must be the whole list.
    */
   useBuiltinExcludes?: boolean | undefined
-  /** Build the runner for a binary. Defaults to the subprocess seam. */
+  /** Build the runner for a binary. Defaults to `spawnRunnerAsync` from `@osdlc/command-seam`. */
   makeRunner?: ((binary: string) => AsyncCommandRunner) | undefined
   /** PATH lookup. Defaults to a `node:fs` PATH walk. */
   which?: ((binary: string) => string | null) | undefined
@@ -114,16 +116,17 @@ export interface CollectOptions {
   /** Skip these runner ids. */
   exclude?: string[] | undefined
   /**
-   * Permit subprocesses. Defaults to `false`: a library that shells out by
-   * default runs unknown code when pointed somewhere new.
+   * Allow subprocesses. Defaults to `false`, because a library that runs
+   * subprocesses by default runs unknown code when pointed at a new repo.
    */
   allowExec?: boolean | undefined
   /**
-   * Appended to the diagnostic on a runner withheld for want of execution,
-   * such as the sentence a CLI wants a user to read about trust.
+   * Appended to the diagnostic of a runner withheld because execution is not
+   * allowed. For example, a CLI's sentence telling the user how to trust the
+   * repo.
    */
   execWithheldHint?: string | undefined
-  /** Build the runner for a binary. Defaults to the subprocess seam. */
+  /** Build the runner for a binary. Defaults to `spawnRunnerAsync` from `@osdlc/command-seam`. */
   makeRunner?: ((binary: string) => AsyncCommandRunner) | undefined
   /** PATH lookup. Defaults to a `node:fs` PATH walk. */
   which?: ((binary: string) => string | null) | undefined

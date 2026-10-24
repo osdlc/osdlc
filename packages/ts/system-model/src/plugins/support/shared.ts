@@ -12,11 +12,10 @@ export { dirOf, joinRel } from '../../pattern.ts'
 /**
  * Names that start something you then look at or interact with.
  *
- * The negative half matters as much as the positive: `storybook-build` and
- * `dev-check` both open with a runnable word and are neither. This is a GUESS —
- * `Task.persistent.declared` records whether the runner said so itself, so a
- * consumer that wants only authoritative answers can ignore this function's
- * output entirely.
+ * The exclusion list matters as much as the match: `storybook-build` and
+ * `dev-check` both start with a runnable word and are neither. This is a
+ * guess. `Task.persistent.declared` records whether the runner itself said
+ * so, so a consumer that wants only stated answers can ignore this function.
  */
 const RUNNABLE_NAME = /^(dev|web|serve|start|run|preview|watch|tauri|storybook)\b/
 const NOT_RUNNABLE_NAME = /\b(build|check|test|lint|fmt|format|typecheck|generate|clean)\b/
@@ -28,21 +27,21 @@ export function looksPersistent(name: string): boolean {
 /**
  * A task's stable identity: runner, declaring file, and name.
  *
- * Stable across a re-collect so a UI keeps its selection through a refresh, and
- * so callers hold a reference rather than an index into a list that is about to
- * be rebuilt. Includes `source` because the same recipe name legitimately
- * appears in several justfiles.
+ * Stable across a re-collect, so a UI keeps its selection through a refresh
+ * and callers can hold an id instead of an index into a list that will be
+ * rebuilt. Includes `source` because the same recipe name can appear in
+ * several justfiles.
  */
 export function taskId(runner: string, source: string, name: string): string {
   return `${runner}:${source}:${name}`
 }
 
 /**
- * The grouping tier a source path belongs to — its parent directory.
+ * The grouping tier of a source path: its parent directory.
  *
- * What makes a large monorepo scannable: `solutions/determined/apps` collects
- * that fleet under one heading instead of ninety-five names in a flat list.
- * The root itself groups under ".".
+ * This keeps a large monorepo readable: `solutions/determined/apps` puts those
+ * apps under one heading instead of ninety-five names in a flat list. The root
+ * groups under ".".
  *
  * Only a `./` prefix is stripped, never a bare leading dot: `.github/actions/x`
  * is a real directory and must group under `.github/actions`.

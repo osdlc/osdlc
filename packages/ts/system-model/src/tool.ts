@@ -2,8 +2,9 @@
  * The registry types: a tool described once with the roles it plays, an
  * ecosystem as data, and the profile detection returns.
  *
- * Store by tool, ask by role. One `ToolDef` holds everything known about a
- * tool; callers ask a narrow question by role through `Project`.
+ * Data is stored per tool and queried per role. One `ToolDef` holds everything
+ * known about a tool. Callers ask a specific question by role through
+ * `Project`.
  */
 
 import type { Evidence, EvidenceKind } from './aspect.ts'
@@ -12,8 +13,8 @@ import type { ManifestFacts } from './manifests.ts'
 import type { ChainSegment, DiscoveryMode, ProviderResult, RunnerBrand, Task } from './model.ts'
 
 /**
- * A file pattern that shows a tool is in use, and the evidence kind a match
- * counts as. The pattern language is `ProviderContext.files`'s.
+ * A file pattern that indicates a tool is in use, and the evidence kind a
+ * match counts as. The pattern language is `ProviderContext.files`'s.
  */
 export interface Marker {
   files: string
@@ -48,7 +49,7 @@ export interface PackageManagerRole {
    * it, a synthesized install task runs in `cwd`.
    */
   inDir?: ((argv: readonly string[], dir: string) => string[]) | undefined
-  /** Directories an install leaves in the package; any one present means installed. */
+  /** Directories an install leaves in the package. Any one present means installed. */
   depsDirs?: readonly string[] | undefined
   /** The version a package pins this manager to, if it pins one. */
   pin?: ((pkg: Package) => string | undefined) | undefined
@@ -163,16 +164,16 @@ export interface ToolDef {
   /** Other first words of a command that mean this tool (`bunx`, `pip3`). */
   commandWords?: readonly string[] | undefined
   ecosystem?: EcosystemDef | undefined
-  /** Files that show the tool is in use. Lockfiles and configs in roles count too. */
+  /** Files that indicate the tool is in use. Lockfiles and configs in roles count too. */
   markers?: readonly Marker[] | undefined
   /**
    * Evidence a file name cannot give, such as a `packageManager` field. Reads
-   * files only; never spawns.
+   * files only and never spawns a process.
    */
   detect?: ((ctx: ProviderContext, packages: readonly Package[]) => Promise<Evidence[]>) | undefined
   /**
    * Facts about a detected tool that may need its own binary, such as moon's
-   * project roles. Must not spawn unless `ctx.allowExec`.
+   * project roles. Must not spawn a process unless `ctx.allowExec` is true.
    *
    * @experimental
    */
@@ -201,7 +202,7 @@ export interface ManifestDef {
 
 /**
  * A language label an ecosystem gives a package. The first rule that matches
- * wins; a rule with no condition always matches.
+ * wins. A rule with no condition always matches.
  */
 export interface LanguageRule {
   id: string
@@ -224,9 +225,9 @@ export interface EcosystemDef {
   fallback?: string | undefined
   /**
    * The member globs a package's manifest declares as a workspace, relative to
-   * the package (`["crates/*"]`); a `!` glob removes a member. `undefined`
-   * when it declares no workspace, and `null` when it is a workspace root
-   * whose members could not be read, so every package below counts as one.
+   * the package (`["crates/*"]`). A `!` glob removes a member. `undefined`
+   * when it declares no workspace. `null` when it is a workspace root whose
+   * members could not be read, so every package below counts as a member.
    * A member takes its workspace root's lockfile, and with no lockfile
    * installs at that root.
    */
@@ -242,7 +243,7 @@ export interface Detected {
   evidence: Evidence[]
   /**
    * What `describe` learned, when the tool has one: each fact with the
-   * directory it is about and its evidence. A fact's `dir` can sit below this
+   * directory it is about and its evidence. A fact's `dir` can be below this
    * package when that directory has no manifest of its own.
    */
   facts?: ToolFact[] | undefined
@@ -254,7 +255,7 @@ export interface Detected {
  * directory, or the nearest one above it.
  */
 export interface Package {
-  /** Root-relative; `.` for the root. */
+  /** Root-relative. `.` for the root. */
   dir: string
   ecosystems: string[]
   languages: string[]

@@ -1,21 +1,20 @@
 /**
- * A named view of a system graph, and the port a host satisfies to keep them.
+ * A named view of a system graph, and the port a host implements to store them.
  *
  * A saved view is the whole configuration of a drawing: which rendering, what
- * is filtered, what is folded, and — once anything has been dragged — where
- * particular things were put. Restoring one puts the surface back exactly as
- * it was left.
+ * is filtered, what is folded, and where nodes were dragged to, if any.
+ * Restoring one puts the viewer back exactly as it was left.
  *
- * THE SPEC IS OPAQUE HERE. `spec` is an unread bag of keys rather than a typed
- * shape: the viewer owns what a view MEANS, and this package is the contract a
+ * This package does not read `spec`. It is an untyped record of keys. The
+ * viewer decides what a view means, and this package is the contract that a
  * Rust desktop app and a Nitro server both depend on. Typing thirty view
  * options here would make every new control a breaking change to both.
  *
- * It also decides what happens to old saves. The viewer writes a MINIMAL DIFF
- * against its own defaults, so a view saved today restores correctly after a
- * new option is added (it takes the new default) and after one is removed (the
- * stale key is ignored by the merge). Storing the full spec would freeze every
- * saved view at the moment it was written.
+ * This also decides what happens to old saves. The viewer writes only the
+ * keys that differ from its own defaults. So a view saved today restores
+ * correctly after a new option is added (it takes the new default) and after
+ * one is removed (the merge ignores the stale key). Storing the full spec
+ * would fix every saved view at the options that existed when it was written.
  */
 
 /** Where one node was put, in the layout's own coordinates. */
@@ -32,26 +31,26 @@ export interface SavedView {
   title: string
   description: string | null
   /**
-   * The view options, as the viewer's own minimal diff against its defaults.
-   * Opaque to the store and to this contract — see the note on this module.
+   * The view options that differ from the viewer's defaults. The store and
+   * this contract do not read it. See the note on this module.
    */
   spec: Record<string, unknown>
   /**
-   * Hand-placed positions, by node id. SPARSE, and a map rather than a
-   * document: the node set changes with every fold and filter, so an override
-   * has to survive nodes appearing and disappearing rather than describe a
-   * fixed canvas. A node with no entry follows the layout.
+   * Hand-placed positions, by node id. Sparse, and a map rather than a full
+   * layout. The node set changes with every fold and filter, so an override
+   * must still apply as nodes appear and disappear. A node with no entry
+   * follows the layout.
    */
   overlay: Record<string, PositionOverride>
 }
 
 /**
- * Where saved views live. A host implements this against whatever it already
- * has — the desktop app its vault, the standalone product a directory beside
- * the project it walked.
+ * Where saved views are stored. A host implements this with the storage it
+ * already has. The desktop app uses its vault. The standalone product uses a
+ * directory beside the project it walked.
  *
  * `save` is an upsert keyed by slug, because "save" and "save again after
- * moving something" are the same act to the person doing it.
+ * moving something" are the same action to the user.
  */
 export interface SavedViewStore {
   list(): Promise<SavedView[]>
@@ -59,13 +58,13 @@ export interface SavedViewStore {
   remove(slug: string): Promise<void>
 }
 
-/** The slug shape every implementation must accept, and reject outside of. */
+/** The slug shape every implementation must accept. Anything else is rejected. */
 export const SLUG_PATTERN = /^[a-z0-9][a-z0-9-]*$/
 
 /**
- * A title turned into a slug: lowercase, non-alphanumerics folded to a single
- * dash, ends trimmed. Returns `''` when nothing survives, which the caller has
- * to handle rather than save under a meaningless key.
+ * A title turned into a slug: lowercase, each run of non-alphanumerics replaced
+ * by one dash, and dashes trimmed from the ends. Returns `''` when nothing is
+ * left. The caller must handle that case, not save under an empty key.
  */
 export function slugify(title: string): string {
   return title

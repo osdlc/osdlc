@@ -2,9 +2,9 @@
  * The one file-pattern language, shared by markers, `ctx.files()` and the
  * cache fingerprint. It follows `.gitignore`'s anchoring:
  *
- *   - no `/` (ignoring a trailing one): matches a basename at any depth;
- *   - a `/` at the start or in the middle: a path from the root;
- *   - a trailing `/`: every file under that directory;
+ *   - No `/` (ignoring a trailing one): matches a basename at any depth.
+ *   - A `/` at the start or in the middle: a path from the root.
+ *   - A trailing `/`: every file under that directory.
  *   - `*` matches any run of characters within one segment.
  */
 
@@ -17,7 +17,7 @@ export interface CompiledPattern {
   literal: boolean
   /** Matches a directory's contents rather than a file. */
   directory: boolean
-  /** The path the pattern names, without slashes at either end. Meaningful when `literal`. */
+  /** The path the pattern names, without slashes at either end. Only meaningful when `literal`. */
   path: string
   /**
    * The directory a matching path is relative to: `.` for an anchored
@@ -47,8 +47,8 @@ export function compilePattern(pattern: string): CompiledPattern {
       }
       return segments.every((re, i) => re.test(parts[i]!)) ? '.' : null
     }
-    // Unanchored: one segment, matched against the basename, or for a
-    // directory pattern, against any directory segment above the file.
+    // Unanchored: one segment, matched against the basename. For a directory
+    // pattern, it is matched against any directory segment above the file.
     const re = segments[0]!
     if (!directory) {
       return re.test(parts[parts.length - 1]!) ? dirOfParts(parts.slice(0, -1)) : null

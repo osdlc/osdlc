@@ -141,9 +141,9 @@ describe('go-task runner', () => {
   })
 
   test('a lower-priority Taskfile in the same directory is pinned with --taskfile', async () => {
-    // go-task reads exactly ONE Taskfile per directory, chosen by its own
-    // filename priority. `Taskfile.dist.yml` loses to `Taskfile.yml`, so
-    // neither the bare root form nor `--dir` can reach its tasks — running
+    // go-task reads exactly one Taskfile per directory, chosen by its own
+    // filename priority. `Taskfile.yml` wins over `Taskfile.dist.yml`, so
+    // neither the bare root form nor `--dir` can reach the latter's tasks.
     // `task dist-only` resolves Taskfile.yml and errors "Task \"dist-only\"
     // does not exist". Only `--taskfile` addresses it.
     const dir = await root({
@@ -158,11 +158,11 @@ describe('go-task runner', () => {
     })
     const list = tasks(await collect(dir, opts()))
 
-    // The priority winner in each directory keeps the addressing go-task's own
-    // search reaches.
+    // The highest-priority Taskfile in each directory keeps the address that
+    // go-task's own search finds.
     expect(byName(list, 'build')?.argv).toEqual(['task', 'build'])
     expect(byName(list, 'fmt')?.argv).toEqual(['task', '--dir', 'sub', 'fmt'])
-    // The losers are pinned to the file that declares them.
+    // The other Taskfiles are addressed by file with `--taskfile`.
     expect(byName(list, 'dist-only')?.argv).toEqual([
       'task',
       '--taskfile',
@@ -372,13 +372,12 @@ describe('readTaskfile', () => {
 })
 
 /**
- * The listing path — `task --list-all --json`.
+ * The listing path: `task --list-all --json`.
  *
- * `task` is NOT installed on the machine these were written on and no test
- * here requires it: presence is `fakeWhich`, output is canned through
- * `makeRunner`. A change in go-task's JSON shape therefore shows up as a
- * deliberate fixture update, never as a suite that passes on one box and
- * fails on another.
+ * No test here needs `task` installed. Presence comes from `fakeWhich` and
+ * output is canned through `makeRunner`. A change in go-task's JSON shape
+ * shows up as a deliberate fixture update, not as a suite that passes on one
+ * machine and fails on another.
  */
 describe('go-task listing path', () => {
   /** A Taskfile the reader can only partly read: `includes:` and an anchor. */
@@ -466,7 +465,7 @@ describe('go-task listing path', () => {
         stdout: listing(
           [
             { name: 'build', desc: 'Build the binary', taskfile: `${dir}/Taskfile.yml` },
-            // Resolved from `includes:` — a file discovery never saw, so this
+            // Resolved from `includes:`. Discovery never saw this file, so this
             // listing is the only place it exists.
             { name: 'docs:build', desc: 'Build the docs', taskfile: `${dir}/docs/Taskfile.yml` },
           ],
@@ -482,7 +481,7 @@ describe('go-task listing path', () => {
     expect(byName(list, 'docs:build')?.doc).toBe('Build the docs')
     expect(byName(list, 'docs:build')?.argv).toEqual(['task', 'docs:build'])
 
-    // Every one of the five: none applies once go-task did the parsing.
+    // None of the five reader-limit warnings applies once go-task did the parsing.
     const messages = (report?.diagnostics ?? [])
       .filter((d) => d.severity !== 'info')
       .map((d) => d.message)
@@ -540,9 +539,9 @@ describe('go-task listing path', () => {
     expect(calls.length).toBe(1)
     expect(calls[0]?.binary).toBe('task')
     expect(calls[0]?.argv).toEqual(['--list-all', '--json', '--taskfile', 'apps/api/Taskfile.yml'])
-    // The run options are part of the promise, not decoration: without the
-    // cap a Taskfile whose includes reach the network hangs a `parse`-kind
-    // provider, and without the signal a cancelled collect keeps running.
+    // The run options matter. Without the timeout, a Taskfile whose includes
+    // reach the network hangs a `parse`-kind provider. Without the signal, a
+    // cancelled collect keeps running.
     expect(calls[0]?.opts.cwd).toBe(dir)
     expect(typeof calls[0]?.opts.timeoutMs).toBe('number')
     expect(calls[0]?.opts.timeoutMs).toBeGreaterThan(0)
@@ -593,10 +592,10 @@ describe('go-task listing path', () => {
   })
 
   test('an aggregator root that owns no tasks of its own is a success, not a fallback', async () => {
-    // The common shape this got wrong: a root Taskfile carrying only
-    // `version:` and `includes:`. Its listing answers correctly and every
-    // task in it belongs to the included file, so the root emits nothing —
-    // and must NOT re-emit the `includes:` warning the listing just made false.
+    // A common shape: a root Taskfile with only `version:` and `includes:`.
+    // Its listing answers correctly and every task belongs to the included
+    // file, so the root emits nothing. It must not re-emit the `includes:`
+    // warning, which the listing has just shown to be false.
     const dir = await root({
       'Taskfile.yml': ["version: '3'", '', 'includes:', '  docs: ./docs', ''].join('\n'),
       'docs/Taskfile.yml': ['tasks:', '  build:', '    desc: Build the docs', ''].join('\n'),
@@ -640,7 +639,7 @@ describe('go-task listing path', () => {
     const catalog = await collect(dir, options)
     const report = catalog.reports.find((r) => r.runner === 'go-task')
 
-    // The floor held: the reader's tasks and the reader's warnings are back.
+    // The fallback held: the reader's tasks and warnings are back.
     expect(byName(tasks(catalog), 'build')?.doc).toBe('Build the binary')
     const messages = report?.diagnostics.map((d) => d.message).join('\n') ?? ''
     expect(messages).toMatch(/did not answer for this file/)
@@ -699,10 +698,10 @@ describe('go-task listing path', () => {
 })
 
 /**
- * The two cases the shared `yaml-lite.ts` lexer settles before the reader
- * runs. Each was a silent false negative paired with a diagnostic that
- * claimed the opposite of what happened, so each test asserts the ABSENCE of
- * the lying warning as well as the presence of the tasks.
+ * Two cases the shared `yaml-lite.ts` lexer handles before the reader runs.
+ * Lexed wrongly, each one drops tasks silently and emits a diagnostic that
+ * says the opposite. So each test asserts that the tasks are present and that
+ * the false warning is absent.
  */
 describe('go-task reader lexing', () => {
   test("a BOM'd `tasks:` on the first line still yields its tasks", async () => {

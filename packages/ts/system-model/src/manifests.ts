@@ -68,7 +68,7 @@ export interface CargoFact {
   manifestPath: string
   /** Whether it declares a `[workspace]` table. */
   workspace: boolean
-  /** `[package].name`; absent for a virtual workspace root. */
+  /** `[package].name`. Absent for a virtual workspace root. */
   name?: string | undefined
   version?: string | undefined
   /** `[package].publish = false`. */
@@ -81,7 +81,7 @@ export interface CargoFact {
   /** `[[bin]]` sections present. */
   hasBin?: boolean | undefined
   deps?: DepFact[] | undefined
-  /** Set when the file could not be read or parsed; `workspace` is then `false` or regex-derived. */
+  /** Set when the file could not be read or parsed. `workspace` is then `false`, or found by a regex. */
   error?: string | undefined
 }
 
@@ -127,7 +127,7 @@ export interface GoModFact {
  */
 export interface GemfileFact {
   manifestPath: string
-  /** `gem '<name>'` lines; group blocks make a gem `dev`. */
+  /** `gem '<name>'` lines. A gem inside a group block is `dev`. */
   deps?: DepFact[] | undefined
 }
 

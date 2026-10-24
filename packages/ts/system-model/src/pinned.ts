@@ -1,17 +1,17 @@
 /**
- * The install command for a package manager a package pins to one version,
- * through the first executable that has that version: PATH, then each tool
- * manager detected at the root that can run a tool (proto, then mise,
- * in registration order).
+ * The install command for a package manager that a package pins to one
+ * version. It uses the first executable that has that version: PATH first,
+ * then each tool manager detected at the root that can run a tool (proto, then
+ * mise, in registration order).
  *
- * A stale `bun` on PATH can rewrite a lockfile the pinned `bun` wrote, so the
- * version is checked before the command is chosen. With no match the first
+ * An older `bun` on PATH can rewrite a lockfile the pinned `bun` wrote, so the
+ * version is checked before the command is chosen. If none matches, the first
  * executable found is used, and the command carries a warning.
  *
- * Trust: `allowExec` gates the tool-manager probes, since both read config the
- * repository controls. The PATH probe always runs, from a neutral directory,
- * because a corepack shim reads the current directory's `package.json` to
- * decide what to run.
+ * Trust: `allowExec` controls the tool-manager probes, since proto and mise
+ * both read config the repository controls. The PATH probe always runs, from
+ * a neutral directory, because a corepack shim reads the current directory's
+ * `package.json` to decide what to run.
  */
 
 import { tmpdir } from 'node:os'
@@ -38,8 +38,8 @@ export interface PinnedInstall {
   /** The frozen install argv through the resolved executable. */
   argv: string[]
   /**
-   * `argv` as one shell string; on a version mismatch, prefixed with an
-   * `echo … >&2;` warning so whoever runs it later sees the mismatch.
+   * `argv` as one shell string. On a version mismatch it starts with an
+   * `echo … >&2;` warning, so whoever runs it later sees the mismatch.
    */
   command: string
   source: PinnedSource
@@ -54,7 +54,7 @@ export interface PinnedInstall {
  * @experimental
  */
 export interface PinnedInstallOptions {
-  /** Permit the tool-manager probes. Pass the caller's own trust decision. */
+  /** Allow the tool-manager probes. Pass the caller's own trust decision. */
   allowExec: boolean
   /** Defaults to `spawnRunner`. Tests inject a fake per binary. */
   runnerFor?: ((binary: string) => CommandRunner) | undefined

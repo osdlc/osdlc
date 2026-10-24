@@ -1,12 +1,11 @@
 /**
  * Test support: fake runners, fixture roots, and a detect-then-collect helper.
  *
- * The point of injecting `ctx.runner` is visible here: the moon and just
- * runners are tested against RECORDED output, so their suites need no moon
- * binary, no `.moon/` fixture workspace, and no coupling to whatever moon
- * version happens to be installed. A format change in moon's JSON then shows up
- * as a deliberate fixture update rather than as a suite that passes on one
- * machine and fails on another.
+ * `ctx.runner` is injected so the moon and just runners can be tested against
+ * recorded output. Their suites need no moon binary, no `.moon/` fixture
+ * workspace, and do not depend on the installed moon version. A format change
+ * in moon's JSON then shows up as a deliberate fixture update, not as a suite
+ * that passes on one machine and fails on another.
  */
 
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
@@ -36,20 +35,20 @@ export interface Canned {
 export interface FakeRunners {
   make: (binary: string) => AsyncCommandRunner
   /**
-   * Every call made, in order — so a test can assert what was NOT run.
+   * Every call made, in order, so a test can assert what was not run.
    *
-   * `opts` is recorded alongside the argv because the run options are part of
-   * what a runner promises: a probe that drops `timeoutMs` or `signal` still
-   * returns the right tasks in a test, and the caller only finds out when a
-   * real tool hangs. Recording them is what lets a suite assert they were sent.
+   * `opts` is recorded with the argv because the run options are part of what a
+   * runner promises. A probe that drops `timeoutMs` or `signal` still returns
+   * the right tasks in a test, and the caller only finds out when a real tool
+   * hangs. Recording them lets a suite assert they were sent.
    */
   calls: Array<{ binary: string; argv: string[]; opts: AsyncCommandRunOptions }>
 }
 
 /**
  * A runner factory backed by canned responses. An unmatched call resolves to a
- * non-zero exit rather than throwing, which is what a missing binary looks
- * like — the case the just runner's fallback exists for.
+ * non-zero exit rather than throwing. That is what a missing binary looks
+ * like, the case the just runner's fallback exists for.
  */
 export function fakeRunners(canned: Canned[]): FakeRunners {
   const calls: Array<{ binary: string; argv: string[]; opts: AsyncCommandRunOptions }> = []

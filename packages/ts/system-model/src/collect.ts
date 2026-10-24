@@ -1,20 +1,18 @@
 /**
- * `runners.collect`: run each detected tool's runner and assemble the
- * catalog.
+ * `runners.collect`: run each detected tool's runner and build the catalog.
  *
- * A runner runs only when its tool was detected, and gets the packages where
- * it was found. An `exec` runner is withheld unless execution is allowed, and
- * its withheld row appears only when its tool was detected. Runners run
- * concurrently; one throwing does not lose the others' work.
+ * A runner runs only when its tool was detected. It gets the packages where
+ * the tool was found. An `exec` runner is withheld unless execution is
+ * allowed, and its withheld report appears only when its tool was detected.
+ * Runners run concurrently. One that throws does not lose the others' work.
  *
- * Each call lists and reads the repository afresh, with the discovery
- * settings recorded on the profile, and runners re-read the files they
- * report on, so a second collect sees edits to them and a profile copied
- * through JSON collects the same way. Which packages and tools exist, and
- * which package manager each package uses, come from the profile: detect
- * again after adding or removing a manifest, lockfile or marker.
- * The cache is a layer above this (`cached.ts`), reached through
- * `probeObserver`.
+ * Each call lists and reads the repository again, with the discovery
+ * settings recorded on the profile. Runners re-read the files they report on.
+ * So a second collect sees edits to them, and a profile copied through JSON
+ * collects the same way. Which packages and tools exist, and which package
+ * manager each package uses, come from the profile. Detect again after adding
+ * or removing a manifest, lockfile or marker.
+ * The cache (`cached.ts`) sits above this and uses `probeObserver`.
  */
 
 import { spawnRunnerAsync } from '@osdlc/command-seam'
@@ -35,7 +33,7 @@ export interface RunnerSpec {
   role: RunnerRole
   binary?: string | undefined
   packages: readonly Package[]
-  /** Patterns that showed the tool, re-checked by the cache fingerprint. */
+  /** Patterns that detected the tool, re-checked by the cache fingerprint. */
   patterns: string[]
 }
 
@@ -96,7 +94,7 @@ export function selectRunners(
   return out
 }
 
-/** Fresh read state for one call, listing the way the profile was detected. */
+/** New read state for one call, listing files the same way the profile was detected. */
 export function stateFor(
   profile: ProjectProfile,
   makeGit: () => ReturnType<typeof spawnRunnerAsync>,
@@ -187,7 +185,7 @@ export async function collectRunners(
   }
 }
 
-/** Every file the detection of these packages rests on. */
+/** Every file the detection of these packages depends on. */
 function evidencePaths(packages: readonly Package[]): string[] {
   const out = new Set<string>()
   for (const pkg of packages) {
@@ -214,9 +212,9 @@ function reportHead(
 }
 
 /**
- * The report an `exec` runner gets when execution is withheld. Reported
- * rather than dropped, so a surface can say why moon is missing. The cached
- * path uses the same function so both describe it the same way.
+ * The report an `exec` runner gets when execution is withheld. It is
+ * reported, not dropped, so a caller can say why moon is missing. The cached
+ * path uses the same function, so both describe it the same way.
  */
 export function execWithheldReport(
   spec: RunnerSpec,
@@ -239,7 +237,7 @@ export function execWithheldReport(
   }
 }
 
-/** A view of a context that notes every path read and pattern listed through it. */
+/** A copy of a context that records every path read and pattern listed through it. */
 function recordReads<C extends ProviderContext>(
   ctx: C,
   reads: Set<string>,
@@ -276,7 +274,7 @@ function toolStatus(
   return path === null ? { binary, found: false } : { binary, found: true, path }
 }
 
-/** The argv that runs `task` with `args`, by the owning runner's rule; appended by default. */
+/** The argv that runs `task` with `args`, by the owning runner's rule. By default `args` are appended. */
 export function invokeTask(registry: Registry, task: Task, args: readonly string[]): string[] {
   const invoke = registry.byId.get(task.runner)?.roles.runner?.invoke
   if (invoke !== undefined) return invoke(task, args)

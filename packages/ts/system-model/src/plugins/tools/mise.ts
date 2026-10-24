@@ -1,20 +1,20 @@
 /**
  * mise — https://mise.jdx.dev
  *
- * `kind: "exec"`. mise tasks come from several places at
- * once — `[tasks.*]` tables across `mise.toml`, `.mise.toml`, `mise.local.toml`
- * and `.config/mise/config.toml`, plus executable file tasks under
- * `mise-tasks/` and `.mise/tasks/` — and mise merges, layers and templates them
- * before you see the result. Reading one TOML file would report a fraction of
- * the truth. `mise tasks --json` asks the tool that knows.
+ * `kind: "exec"`. mise tasks come from several places at once: `[tasks.*]`
+ * tables across `mise.toml`, `.mise.toml`, `mise.local.toml` and
+ * `.config/mise/config.toml`, plus executable file tasks under `mise-tasks/`,
+ * `.mise/tasks/` and `.config/mise/tasks/`. mise merges, layers and templates
+ * them before you see the result. Reading one TOML file would report only part
+ * of the list. `mise tasks --json` asks the tool that knows.
  *
- * That does mean evaluating the target repository's mise configuration, which
- * can carry `[hooks]` that run commands. Correctly classified as `exec`, and so
- * withheld unless the caller opts in.
+ * That evaluates the target repository's mise configuration, which can have
+ * `[hooks]` that run commands. So this is `exec`, and is left out unless the
+ * caller opts in.
  *
- * Unlike `just`, there is no parse fallback: nothing depends on reading mise
- * without running it, and a partial answer assembled from one config file would
- * be worse than an honest absence.
+ * Unlike `just`, there is no parse fallback. Nothing needs to read mise
+ * without running it, and a partial answer built from one config file would
+ * be worse than reporting nothing.
  */
 
 import { relative } from 'node:path'
@@ -57,7 +57,7 @@ interface MiseTask {
   /** Commands the task runs, one per line in the config. */
   run?: string[]
   depends?: string[]
-  /** Hidden from listings — mise's equivalent of a private recipe. */
+  /** Hidden from listings: mise's version of a private recipe. */
   hide?: boolean
   /** From the user's global config rather than this project. */
   global?: boolean
@@ -67,8 +67,8 @@ interface MiseTask {
 
 /**
  * Three narrowing layers, for how mise merges config files and task dirs into
- * one task set — an original glyph, kept because simple-icons has no `mise`
- * icon. Color is `--vp-c-brand-1` from mise.jdx.dev's stylesheet.
+ * one task set. A glyph drawn here, because simple-icons has no `mise` icon.
+ * Color is `--vp-c-brand-1` from mise.jdx.dev's stylesheet.
  */
 const BRAND: RunnerBrand = {
   icon: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="3.5" y="4.2" width="17" height="4" rx="1.6"/><rect x="5.5" y="10" width="13" height="4" rx="1.6"/><rect x="7.5" y="15.8" width="9" height="4" rx="1.6"/></svg>',
@@ -84,9 +84,9 @@ export const miseRunner: RunnerRole = {
   async collect(ctx): Promise<ProviderResult> {
     const res = await ctx.runner('mise').run(['tasks', '--json'], { cwd: ctx.root })
     if (res.exitCode !== 0) {
-      // An untrusted config is the common case, and it is a diagnostic rather
-      // than a failure: mise declines to read a config it has not been told to
-      // trust, which is the tool working correctly.
+      // An untrusted config is the common cause. mise refuses to read a config
+      // it has not been told to trust, which is correct behavior, so the
+      // error message adds how to trust it.
       const message = firstLine(stderrOrError(res), 'unknown failure')
       return {
         status: 'error',
@@ -124,19 +124,19 @@ export const miseRunner: RunnerRole = {
 
     for (const task of parsed) {
       if (task.hide) continue
-      // A global task lives in the user's own config and follows them between
-      // repositories. It is real, but it is not this project's, and listing it
-      // as though it were would make the catalog a description of the machine.
+      // A global task lives in the user's own config and applies in every
+      // repository. It is real, but it is not this project's. Listing it would
+      // make the catalog describe the machine, not the project.
       if (task.global) {
         skippedGlobal++
         continue
       }
       const source = sourceOf(task, ctx.root)
-      // `-C <dir>` rather than a cwd, per the policy on Task.cwd: `mise run`
-      // finds tasks by walking up from where it starts, so a nested task's
-      // command fails outright when pasted at the repository root. The task's
-      // own `dir` is NOT what goes here — mise applies that itself, relative
-      // to the config it loaded — this is the directory the config lives in.
+      // `-C <dir>`, not a cwd, per the rule on Task.cwd. `mise run` finds
+      // tasks by searching up from where it starts, so a nested task's command
+      // would fail when pasted at the repository root. This is the directory
+      // the config is in, not the task's own `dir`: mise applies that itself,
+      // relative to the config it loaded.
       const dir = dirOf(source)
       const argv = dir === '.' ? ['mise', 'run', task.name] : ['mise', '-C', dir, 'run', task.name]
       tasks.push({
@@ -173,10 +173,10 @@ export const miseRunner: RunnerRole = {
 }
 
 /**
- * Where a task is declared, root-relative. `file` wins for a file task — that
- * is the script itself, which is more useful than the directory that collected
- * it. mise reports absolute paths; anything outside the root stays absolute so
- * a global config does not masquerade as a local file.
+ * Where a task is declared, relative to the root. For a file task, `file`
+ * wins: it is the script itself, which is more useful than the directory that
+ * holds it. mise reports absolute paths. Anything outside the root stays
+ * absolute, so a global config does not look like a local file.
  */
 function sourceOf(task: MiseTask, root: string): string {
   const absolute = task.file ?? task.source

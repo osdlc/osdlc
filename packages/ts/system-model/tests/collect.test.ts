@@ -188,8 +188,7 @@ describe('collect', () => {
     expect(justReport.brand?.color).toMatch(/^#[0-9a-f]{6}$/)
     expect(justReport.brand?.icon).toContain('<svg')
 
-    // A brandless runner reports without the key entirely: an absent key is
-    // the honest serialization, and consumers must not require it.
+    // A runner with no brand omits the `brand` key. Consumers must not require it.
     const plain = await collect(
       await root({ 'bare.txt': '' }),
       walkOpts({ tools: [toolOf('bare')] }),
@@ -208,8 +207,7 @@ describe('collect', () => {
         expect(task.path[0]).toBe(report.runner)
         expect(task.argv.length).toBeGreaterThan(0)
         expect(task.id).toContain(report.runner)
-        // The invariant the whole model exists to hold: nothing executable
-        // carries a shell metacharacter.
+        // The model's core invariant: no argv element carries a shell metacharacter.
         for (const arg of task.argv) expect(arg).not.toMatch(/[<>*?|&;$`()[\]{}!~\\]/)
       }
     }
@@ -229,8 +227,7 @@ describe('collect', () => {
   })
 
   test('walk discovery works with no repository at all', async () => {
-    // The extracted-from code listed git-tracked files and returned nothing
-    // outside a checkout.
+    // Walk discovery must not depend on git-tracked files.
     const dir = await root({ 'nested/deep/justfile': 'go:\n    echo\n' })
     const catalog = await collect(dir, walkOpts())
     expect(tasks(catalog).map((t) => t.source)).toEqual(['nested/deep/justfile'])

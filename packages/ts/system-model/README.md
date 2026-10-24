@@ -2,9 +2,9 @@
 
 A repository's system model, in two halves.
 
-- **The wire contract**: a project's structure as it crosses the wire
+- **The wire contract**: a project's structure in its wire format
   (`SystemGraph`, `SystemNode`, `SystemEdge`, aspects with tiered evidence),
-  plus the ports a host satisfies to serve it. Types and small pure helpers,
+  plus the ports a host implements to serve it. Types and small pure helpers,
   with no runtime dependencies. This is the root entry, `@osdlc/system-model`,
   and it is safe to import in browser code.
 - **Detection and tools**: what a repository contains (its packages,
@@ -57,29 +57,28 @@ answers every question from it.
 import type { SystemGraph, SystemGraphClient, SystemNode } from '@osdlc/system-model'
 ```
 
-Four things independently declared this shape before this package did: the
-Rust schema, ontogen's generated TypeScript, the experience layer's
-hand-restated copy, and the TypeScript walker. They agreed, but only because
-someone kept checking, and nothing would have failed if they stopped.
+The Rust schema is the authority on this shape. This package states it once
+for TypeScript, so the producers, the hosts and the viewer all use the same
+types instead of keeping their own copies.
 
 **`./graph`**: `SystemGraph`, `SystemNode`, `SystemEdge`, and the string
 unions (`NodeKind`, `DepKind`, `SpecifierKind`, `Ecosystem`) with their
 `ALL_*` rosters.
 
-Field names are snake_case because that is what crosses. The enum-shaped
-fields are typed `string` rather than as those unions, deliberately, so a
-consumer that meets a sixth node kind shows it instead of breaking. The unions
-are exported for the places that want to narrow on purpose. `Ecosystem` here
-is the graph's packaging ecosystem (`node` or `rust`); detection's ecosystems
-are `EcosystemDef`s, a wider set.
+Field names are snake_case because that is the wire format. The enum-shaped
+fields are typed `string` rather than as those unions, on purpose. A consumer
+that meets a new node kind shows it instead of breaking. The unions are
+exported for code that wants to narrow. `Ecosystem` here is the graph's
+packaging ecosystem (`node` or `rust`). Detection's ecosystems are
+`EcosystemDef`s, a wider set.
 
 **`./aspect`**: `Aspect`, `Evidence`, `EvidenceKind` and `EVIDENCE_TIERS`.
 Detection uses the same `Evidence` for every claim it makes.
 
 **`./client`**: `SystemGraphClient`, the port. One method, because the
-surface needs one thing: the whole graph. Folding a container is an
-interaction, not a query, so the aggregation runs client-side over one payload
-and there is no second call for "the graph, but collapsed".
+viewer needs one thing: the whole graph. Folding a container is an
+interaction, not a query. So the aggregation runs on the client over one
+payload, and there is no second call for "the graph, but collapsed".
 
 **`./saved-view`**: `SavedView` and the `SavedViewStore` port that keeps
 named views of a graph, with `slugify` and `SLUG_PATTERN`.
@@ -94,21 +93,22 @@ cannot say, joined to graph nodes by directory.
 |---|---|
 | **Authority on the shape** | `solutions/ontological/desktop/src-tauri/src/schema/system_graph.rs` in the development repository |
 | **Producers** | the `manifest-graph` crate (via SDF's service) and `@osdlc/manifest-graph` (via `buildSystemGraph`) |
-| **Hosts satisfying the port** | SDF, over ontogen's generated transport; `product-system-graph`, over a Nitro route |
+| **Hosts implementing the port** | SDF, over ontogen's generated transport; `product-system-graph`, over a Nitro route |
 | **Consumer** | `@sdlc/exp-system-graph`, which knows only this contract |
 
-Two hosts satisfy the port today and share no code, which is the property
-worth protecting: it is why the same viewer runs against a Rust service and
-against an in-process TypeScript call without noticing.
+Two hosts implement the port and share no code. Keep it that way: it is why
+the same viewer works against a Rust service and against an in-process
+TypeScript call without any change.
 
-Changing the wire means changing the Rust schema and this package together.
+Changing the wire format means changing the Rust schema and this package
+together.
 
 ### What is deliberately not here
 
-The **view** model (`ViewSpec`, `select`, `encode`, `derive`, and the
-layouts) lives in `@sdlc/exp-system-graph`'s `app/lib/`. It is not a contract
-between components; it is one viewer's internals, and putting it here would
-make every host carry a viewer's opinions.
+The view model (`ViewSpec`, `select`, `encode`, `derive`, and the layouts)
+lives in `@sdlc/exp-system-graph`'s `app/lib/`. It is not a contract between
+components. It is one viewer's internals, and putting it here would make
+every host depend on one viewer's choices.
 
 ## The model
 
@@ -122,7 +122,7 @@ make every host carry a viewer's opinions.
 
 Evidence tiers run from the most direct to the least: `manifest` (1),
 `dependency` (2), `files` (3), `content` (4). A `packageManager` field in
-`package.json` is tier 1; a lockfile is tier 3.
+`package.json` is tier 1. A lockfile is tier 3.
 
 ## Entries
 
@@ -159,13 +159,14 @@ browser bundle can use them. A test walks each one's imports to check.
 
 `project.detect(root, options)` returns a `ProjectProfile`:
 
-1. It lists the repository's files once: tracked and untracked-but-not-ignored
-   files through git when the root is a repository, else a directory walk.
+1. It lists the repository's files once. When the root is a git repository,
+   it uses git (tracked files plus untracked files that are not ignored).
+   Otherwise it walks the directory.
 2. It matches every ecosystem manifest and every tool marker against the list.
 3. The root and each directory with a manifest or a lockfile become packages.
    Any other marker belongs to the nearest package above it.
 4. It parses each manifest once. A file that does not parse goes to
-   `profile.malformed`; its package still exists.
+   `profile.malformed`. Its package still exists.
 5. Each tool's `detect` function adds evidence a file name cannot give, such
    as a `packageManager` field.
 6. Each detected tool's `describe` function adds facts that may need the tool
@@ -181,12 +182,12 @@ browser bundle can use them. A test walks each one's imports to check.
 | `excludePaths` | `[]` | extra names or root-relative prefixes to skip |
 | `useBuiltinExcludes` | `true` | add `DEFAULT_EXCLUDES` (`node_modules`, `target`, `dist`, ...) |
 | `allowExec` | `false` | let `describe` functions run the repository's tools |
-| `makeRunner`, `which`, `signal` | the subprocess seam, a PATH walk, none | injection for tests and cancellation |
+| `makeRunner`, `which`, `signal` | `@osdlc/command-seam`, a PATH walk, none | injection for tests and cancellation |
 
 `project.findRoot(from)` walks up from a directory. A repository marker
-(`.git`, or a marker a tool flags as a workspace root, such as moon's
-`.moon/workspace.yml`) anywhere above wins over a package manifest, so a
-monorepo member resolves to the monorepo.
+anywhere above wins over a package manifest. A repository marker is `.git`,
+or a marker a tool flags as a workspace root, such as moon's
+`.moon/workspace.yml`. So a monorepo member resolves to the monorepo.
 
 ### Patterns
 
@@ -208,19 +209,19 @@ only the files discovery listed.
 
 `project.runners.collect(profile, options)` runs the runner of each detected
 tool and returns a `Catalog` of reports, in registry order. A tool that was not
-detected produces no report. Each call lists and reads the repository afresh,
+detected produces no report. Each call lists and reads the repository again,
 with the discovery settings the profile records (`discovery`, `excludePaths`,
-`useBuiltinExcludes`), and runners re-read the files they report on. So a
+`useBuiltinExcludes`). Runners re-read the files they report on. So a
 second collect sees later edits to a `package.json` script or a justfile
 recipe, and a profile copied through JSON collects the same way. Which
 packages and tools exist, and which package manager each package uses, come
-from the profile: detect again after adding or removing a manifest, lockfile
+from the profile. Detect again after adding or removing a manifest, lockfile
 or marker.
 
 A runner is `parse` or `exec`. A `parse` runner reads files. An `exec` runner,
 such as moon or mise, has to run the repository's own configuration to list
 its tasks, so it is withheld unless `allowExec` is true. A withheld runner
-leaves a report with `skippedForExec: true` and a diagnostic; pass
+leaves a report with `skippedForExec: true` and a diagnostic. Pass
 `execWithheldHint` to append your own sentence about how to allow it.
 
 Every `Task` carries an executable `argv`, a `display` string, the `source`
@@ -237,8 +238,9 @@ Three synthesized runners turn role actions into tasks:
 | `hook-manager` | arming (`lefthook install`), and each configured hook (`lefthook run pre-push`) |
 
 `project.runners.invoke(task, args)` returns the argv that runs a task with
-arguments, bound the way its tool expects: after `--` for npm run, cargo run,
-moon, turbo, go-task and composer; `name[a,b]` for rake; appended otherwise.
+arguments, bound the way its tool expects. Arguments go after `--` for npm
+run, cargo run, moon, turbo, go-task and composer, and in `name[a,b]` form for
+rake. Otherwise they are appended.
 
 `project.runners.search(catalog, query)` ranks tasks against a query.
 
@@ -265,20 +267,23 @@ detection evidence changes, or, for an `exec` runner, after a maximum age.
 | `toolForCommand(command)` | the tool a command's first word names (`bunx` is bun) |
 
 The package manager is chosen at the package itself, then at each workspace
-root that covers it, nearest first: the first package whose lockfile, marker
+root that covers it, nearest first. The first package whose lockfile, marker
 or pin chooses one wins. A root covers a package when it lists the package as
 a member, or lists a nested root that covers it. So when `a/` lists `b/*` and
 has no lockfile, and the root lists `a/b/*` and holds `bun.lock`, `a/b/x`
-takes bun from the root. Members come from
-`package.json#workspaces`, `pnpm-workspace.yaml` `packages`, and cargo's
-`[workspace] members` less `exclude`; a `!` glob removes a member. A
-`pnpm-workspace.yaml` that lists no package leaves the members unknown, and
-every package below it counts as one. A nested
+takes bun from the root.
+
+Members come from `package.json#workspaces`, `pnpm-workspace.yaml`
+`packages`, and cargo's `[workspace] members` minus `exclude`. A `!` glob
+removes a member. A `pnpm-workspace.yaml` that lists no package leaves the
+members unknown, and every package below it counts as a member. A nested
 package outside every workspace does not take the root's lockfile. An
 ecosystem with no `workspace` hook (python, go, ruby, ...) takes the nearest
-package above. Within a package the most direct evidence wins, then the
-ecosystem's order (node: bun, pnpm, yarn, npm). With nothing found, node falls
-back to `npm install`.
+package above.
+
+Within a package the most direct evidence wins, then the ecosystem's order
+(node: bun, pnpm, yarn, npm). With nothing found, node falls back to
+`npm install`.
 
 ## Your own tools
 
@@ -307,7 +312,7 @@ const project = createProject({ tools: [...builtins, bashScripts] })
 ```
 
 Registering two tools with one id throws. A runner never spawns a process or
-reads the filesystem itself: it goes through `ctx`, so a test can hand it
+reads the filesystem itself. It goes through `ctx`, so a test can give it
 canned output.
 
 ## Runtime
@@ -321,7 +326,7 @@ parses TOML with `smol-toml`.
 The package is 0.x, so any minor release may break the API. The task model,
 `createProject`, detection, the runner contract and the plugin entries are
 stable for the 0.x line. The role answers, the manifest facts, pinned installs
-and the cache are experimental: their shapes are new, and they may change in
+and the cache are experimental. Their shapes are new, and they may change in
 any release.
 
 The experimental exports of `@osdlc/system-model/detect`:

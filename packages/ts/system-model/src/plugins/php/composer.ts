@@ -1,10 +1,10 @@
 /**
  * composer.json `scripts` — PHP's Composer.
  *
- * The PHP analogue of `node-scripts.ts`: a script is user-declared, can be a
- * single command string or an array of command steps run in sequence, and
- * either form is one task. Composer's own convention for one script calling
- * another (`"@test"`) is filtered out of `detail`.
+ * Works like `node-scripts.ts`. A script is declared by the user. It is a
+ * single command string or an array of steps run in order, and either form is
+ * one task. Steps that call another script (`"@test"`, Composer's syntax) are
+ * left out of `detail`.
  */
 
 import type { ProviderContext } from '../../contract.ts'
@@ -23,8 +23,8 @@ const CHAIN = [
 ]
 
 /**
- * The Composer mark. Composer is a trademark of its contributors; used here
- * nominatively, to identify the tool. Icon path: simple-icons (CC0-1.0),
+ * The Composer mark. Composer is a trademark of its contributors, used here
+ * only to identify the tool. Icon path: simple-icons (CC0-1.0),
  * slug `composer`. Color: simple-icons' canonical hex for the same slug.
  */
 const BRAND: RunnerBrand = {
@@ -49,8 +49,8 @@ export const composerRunner: RunnerRole = {
     for (const file of manifests.sort()) {
       const parsed = await ctx.readJson(file)
       if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
-        // Test suites keep deliberately malformed manifests; a real one failing
-        // to parse is worth surfacing, a fixture doing so is noise.
+        // Test suites keep malformed manifests on purpose. Warn only for a real
+        // manifest, not a fixture.
         if (!/(^|\/)(fixtures|__fixtures__)\//.test(file)) {
           diagnostics.push({ severity: 'warning', message: 'unparseable manifest', source: file })
         }
@@ -70,18 +70,16 @@ export const composerRunner: RunnerRole = {
       const dir = dirOf(file)
 
       for (const [name, body] of entries) {
-        // `--working-dir` is a global Composer CLI option, so it precedes the
-        // subcommand (`run-script`) — Composer's docs list it among the options
-        // that come before the command name.
+        // `--working-dir` is a global Composer option, so it goes before the
+        // `run-script` subcommand.
         const argv =
           dir === '.'
             ? ['composer', 'run-script', name]
             : ['composer', '--working-dir', dir, 'run-script', name]
 
         const steps = Array.isArray(body) ? body : [body]
-        // "@test" is Composer's syntax for calling another script — it still
-        // runs as part of this one task, it just does not add anything to the
-        // detail text over the task's own name.
+        // "@test" calls another script. It still runs as part of this task, but
+        // it adds nothing useful to the detail text.
         const detailSteps = steps.filter((s) => !s.startsWith('@'))
         const detail = detailSteps.length > 0 ? detailSteps.join(' && ') : undefined
 

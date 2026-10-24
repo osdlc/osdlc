@@ -7,7 +7,8 @@
  *      lockfile. Every other marker belongs to the nearest package above it.
  *   4. Parse each manifest once.
  *   5. Run each tool's `detect` (files only), then each detected tool's
- *      `describe` (which may spawn only when execution is allowed).
+ *      `describe` (which may spawn a process only when execution is allowed).
+ *   6. Work out each package's ecosystems and languages.
  *
  * No step runs a repository's own tools unless `allowExec` is set.
  */
@@ -172,7 +173,8 @@ export async function detectProject(
 
   for (const hit of markerHits) addEvidence(nearest(hit.base), hit.tool, hit.ev)
 
-  // `detect` functions read manifests only, which no loop below changes.
+  // One snapshot serves every `detect`: they read only manifests, and no later
+  // loop changes those.
   const beforeDetect = snapshot(registry, builders, all)
   for (const tool of registry.tools) {
     if (tool.detect === undefined) continue
@@ -234,7 +236,7 @@ async function describeTools(
   }
 }
 
-/** The packages as they stand, in `dir` order with the root first. */
+/** The packages as they are now, in `dir` order with the root first. */
 function snapshot(
   registry: Registry,
   builders: Map<string, Builder>,

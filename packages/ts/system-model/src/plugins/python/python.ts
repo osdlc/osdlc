@@ -1,19 +1,17 @@
 /**
- * Python — `[tool.*]` sections in a pyproject.toml, and declared scripts.
+ * Python: `[tool.*]` sections in a pyproject.toml, and declared scripts.
  *
- * The `[tool.*]` half is `synthesized`: declaring `[tool.ruff]` configures
- * ruff, it does not declare a task called "ruff". The convention that a
- * configured tool is a tool you run is the runner's inference, not the
- * repo's statement.
+ * Tasks from `[tool.*]` are `synthesized`. `[tool.ruff]` configures ruff; it
+ * does not declare a task called "ruff". Treating a configured tool as a tool
+ * you run is this runner's guess, not something the repo states.
  *
- * The `[project.scripts]` / `[tool.poetry.scripts]` half is `declared`: the
- * project itself names these commands. What is inferred there is only how to
- * invoke them — `uv run <name>` or `poetry run <name>` — chosen from the
- * package's python manager, since a bare `pip install`'s
- * entry points are not reliably invocable without knowing which venv they
- * landed in.
+ * Tasks from `[project.scripts]` / `[tool.poetry.scripts]` are `declared`: the
+ * project names these commands. Only the way to run them is inferred:
+ * `uv run <name>` or `poetry run <name>`, picked from the package's python
+ * manager. A plain `pip install` gives no reliable way to run the entry points
+ * without knowing which venv they went into.
  *
- * Both halves re-read `pyproject.toml` through `ctx` and parse it with the
+ * Both kinds re-read `pyproject.toml` through `ctx` and parse it with the
  * parser detection uses, so a second collect sees edits. The script manager
  * comes from `ctx.packageManagers`, so the profile and the task list agree.
  */
@@ -36,11 +34,10 @@ const CHAIN = [
 
 /**
  * Configured tool → the argv that runs it in check mode against a directory.
- * All five take a path positional, so the directory rides in `argv` and
- * `cwd` stays "." — the command is correct pasted from the repository root.
- * `pytest`/`pyright` take no path today (they default to the cwd they run
- * in); giving them the directory explicitly is equivalent at the root and
- * correct elsewhere.
+ * All five accept a path argument, so the directory goes in `argv` and `cwd`
+ * stays ".". The command then works when pasted at the repository root.
+ * `pytest` and `pyright` default to the directory they run in, so passing the
+ * directory changes nothing at the root and is correct elsewhere.
  */
 const TOOL_VERBS: ReadonlyArray<{ name: string; argv: (dir: string) => string[] }> = [
   { name: 'black', argv: (dir) => ['black', '--check', dir] },
@@ -52,7 +49,7 @@ const TOOL_VERBS: ReadonlyArray<{ name: string; argv: (dir: string) => string[] 
 
 /**
  * The Python two-snake mark, a trademark of the Python Software
- * Foundation; it is used here nominatively, to identify the tool. Icon
+ * Foundation, used here only to identify the tool. Icon
  * path: simple-icons v16 (CC0), slug `python`. Color is the same Python
  * brand blue simple-icons lists for it.
  */
@@ -123,11 +120,10 @@ export const pythonRunner: RunnerRole = {
       }
 
       for (const name of names) {
-        // `uv run --project <dir>` and `poetry --directory <dir> run` both
-        // put the directory in argv via the tool's own flag, so `cwd` stays
-        // "." and the displayed command is correct pasted from the
-        // repository root. Poetry's `--directory` is a global option, so it
-        // precedes the `run` subcommand.
+        // `uv run --project <dir>` and `poetry --directory <dir> run` put the
+        // directory in argv with the tool's own flag. `cwd` stays ".", so the
+        // displayed command works when pasted at the repository root.
+        // Poetry's `--directory` is a global option, so it goes before `run`.
         const argv =
           dir === '.'
             ? [manager, 'run', name]

@@ -123,7 +123,7 @@ export function synthesizedRunners(registry: Registry, profile: ProjectProfile):
         chain: chain('hook managers'),
         async collect(ctx) {
           const tasks: Task[] = []
-          // Named `arm`, not `install`, so it reads apart from a package
+          // Named `arm`, not `install`, so it is not confused with a package
           // manager's install.
           for (const action of armActions(registry, ctx.profile)) {
             tasks.push(synthTask(id, action, 'arm'))
@@ -153,7 +153,7 @@ function act(tool: string, argv: string[], source: string): ToolAction {
 
 /**
  * A role action as a task. The directory goes into `argv` through `inDir`
- * when the tool has a directory flag; only a tool without one runs in `cwd`.
+ * when the tool has a directory flag. Only a tool without one runs in `cwd`.
  */
 function synthTask(
   runner: string,

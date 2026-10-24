@@ -1,50 +1,49 @@
 /**
  * A content digest over the files a cached answer depends on.
  *
- * The question this answers is narrow: given a stored probe result, have the
- * inputs that produced it changed? A digest that matches means serving the
- * stored report; a digest that differs means re-probing.
+ * It answers one question: have the inputs that produced a stored probe
+ * result changed? A matching digest means the stored report is used. A
+ * different digest means the runner probes again.
  *
  * ## Content, never mtime
  *
- * Files are hashed by their bytes. `touch`ing a justfile does not invalidate,
- * and neither does a rewrite to identical bytes — which is what a formatter, a
- * `git checkout` of the same content, or a rebuild of a generated file does all
- * day. An mtime-keyed cache would miss on all of those and re-pay a JVM start
- * for nothing.
+ * Files are hashed by their bytes. `touch`ing a justfile does not invalidate
+ * the entry. Nor does rewriting a file with identical bytes, which formatters,
+ * a `git checkout` of the same content, and generated-file rebuilds do often.
+ * An mtime-based cache would miss on all of those and pay for a JVM start for
+ * nothing.
  *
  * ## What it covers
  *
- * For a `parse` runner, exactly what it read: every read goes through `ctx`,
- * and the files detection rested on are added. For an `exec` runner, only its
- * markers: the files its tool merges (moon's per-project `moon.yml`, nested
- * `mise.toml`) are never read here, which is why `RunnerRole.watch` exists
+ * For a `parse` runner, exactly what it read. Every read goes through `ctx`,
+ * and the files detection used are added. For an `exec` runner, only its
+ * markers. The files its tool merges (moon's per-project `moon.yml`, nested
+ * `mise.toml`) are never read here. That is why `RunnerRole.watch` exists,
  * and why exec entries also expire with age.
  *
- * ## Why a recorded DIRECTORY hashes its entries
+ * ## Why a recorded directory hashes its entries
  *
- * `ctx.exists()` on a directory is nearly worthless as a fingerprint input.
- * `mise-tasks/` exists before a task file is added inside it and exists after,
- * so an existence bit never changes and the cache never invalidates. A
- * directory therefore hashes the sorted list of its immediate entry NAMES: a
- * new task file, or a removed one, moves the digest. Entry names only, not a
- * recursive content walk — the names are what decides the task set for a
- * file-task directory, and a recursive hash of an arbitrary tree is an
- * unbounded cost on the read path.
+ * Whether a directory exists says almost nothing as a fingerprint input.
+ * `mise-tasks/` exists before a task file is added inside it and after, so
+ * an existence check never changes and the cache never invalidates. So a
+ * directory hashes the sorted list of its immediate entry names. A new or
+ * removed task file changes the digest. Only entry names are hashed, not the
+ * contents of the whole tree. The names decide the task set for a file-task
+ * directory, and hashing an arbitrary tree recursively has no cost limit.
  *
  * ## Patterns
  *
- * `watch` and the recorded queries use `ctx.files()`'s pattern language, and
- * are re-expanded on every read, so a file that appears later matching the
- * same pattern moves the digest.
+ * `watch` and the recorded queries use `ctx.files()`'s pattern language. They
+ * are expanded again on every read, so a new file that matches the same
+ * pattern changes the digest.
  *
- * ## The honest residual limit
+ * ## Known limit
  *
  * A task set can change with no watched file changing: a plugin version
  * resolving differently, a global `~/.config/mise/config.toml`, an environment
- * variable read by a build script. The watch set is a good signal, not a proof.
- * Every consumer of this digest must be able to tolerate a stale hit — which is
- * what the reported staleness and the exec max age are for.
+ * variable read by a build script. The watch set is a good sign, not a proof.
+ * Every user of this digest must accept that a hit can be stale. The reported
+ * staleness and the exec maximum age exist for that.
  */
 
 import { createHash } from 'node:crypto'
@@ -52,14 +51,13 @@ import { join } from 'node:path'
 import { readdir, readFile, stat } from 'node:fs/promises'
 
 /**
- * Ceiling on how many paths one fingerprint hashes.
+ * The maximum number of paths one fingerprint hashes.
  *
- * A repository can hold thousands of `build.gradle` files, and hashing all of
- * them on every read would cost more than the probe the cache exists to avoid.
- * Hitting the cap is not silent: {@link Fingerprint.truncated} says so, and the
- * caller reports it as a diagnostic — a truncated fingerprint can miss a change
- * beyond the cap, and a user seeing an occasional stale answer deserves to be
- * told why.
+ * A repository can hold thousands of `build.gradle` files. Hashing all of them
+ * on every read would cost more than the probe the cache exists to avoid.
+ * Reaching the cap is not silent. {@link Fingerprint.truncated} says so, and
+ * the caller reports it as a diagnostic. A truncated fingerprint can miss a
+ * change beyond the cap, and a user who sees a stale answer should be told why.
  */
 export const MAX_FINGERPRINT_FILES = 256
 
@@ -69,10 +67,10 @@ export interface Fingerprint {
   /** The paths actually hashed, sorted, after the cap. */
   paths: string[]
   /**
-   * The patterns re-expanded to build the candidate set, sorted. Stored so the
-   * read path can ask the same questions again without the runner having run
-   * — a stored path list describes the world as it was, and the patterns are
-   * what notice a file that has appeared since.
+   * The patterns expanded to build the candidate set, sorted. Stored so the
+   * read path can expand them again without running the runner. A stored path
+   * list only describes the files as they were. The patterns find a file that
+   * has appeared since.
    */
   patterns: string[]
   /** True when the candidate set exceeded {@link MAX_FINGERPRINT_FILES}. */
@@ -80,20 +78,19 @@ export interface Fingerprint {
   /**
    * The exclusion set the patterns were expanded under, sorted.
    *
-   * Stored because it is part of what the digest MEANS, not part of what it
-   * covers. Every other input here is a file whose bytes the digest hashes; an
-   * exclusion changes which files the patterns can see at all, and it lives
-   * outside the tree in a config file, so no amount of hashing the repository
-   * notices it.
+   * Stored because it is part of what the digest means, not part of what it
+   * covers. Every other input here is a file whose bytes the digest hashes. An
+   * exclusion changes which files the patterns can see at all. It lives in a
+   * config file outside the tree, so hashing the repository never detects it.
    *
-   * Without this, adding an exclusion leaves every entry `fresh` — the recorded
-   * paths still exist with the same bytes — and the tasks just excluded go on
-   * being served out of the store until something unrelated changes.
+   * Without this, adding an exclusion leaves every entry `fresh`, because the
+   * recorded paths still exist with the same bytes. The tasks just excluded
+   * would still be served from the store until something unrelated changes.
    */
   excludes: string[]
 }
 
-/** A path that is not there hashes to this, so a DELETION moves the digest. */
+/** A missing path hashes to this, so a deletion changes the digest. */
 const MISSING = 'missing'
 
 export async function fingerprint(args: {
@@ -101,15 +98,15 @@ export async function fingerprint(args: {
   /** Paths the runner actually read, root-relative. */
   paths: readonly string[]
   /**
-   * Patterns to re-expand: the runner's declared `watch` together with every
-   * pattern it queried through `ctx.files()`. The two get identical treatment
-   * on purpose — a queried pattern IS a watch the runner never had to write
-   * down, and a runner that discovers by listing depends on the answer to its
-   * query rather than only on the files that answer happened to name.
+   * Patterns to expand again: the runner's declared `watch` plus every
+   * pattern it queried through `ctx.files()`. Both are treated the same on
+   * purpose. A queried pattern is a watch the runner did not have to declare.
+   * A runner that finds files by listing depends on the result of its query,
+   * not only on the files that result named.
    */
   patterns: readonly string[]
   /**
-   * The exclusion set in force, recorded rather than hashed. See
+   * The exclusion set in use, recorded rather than hashed. See
    * {@link Fingerprint.excludes}.
    */
   excludes?: readonly string[]
@@ -119,16 +116,15 @@ export async function fingerprint(args: {
   const excludes = [...(args.excludes ?? [])].sort()
 
   const candidates = new Set<string>(paths)
-  // Re-expanded on every call, never taken from the stored entry: the whole
-  // point of a pattern is to catch a file that did not exist when the recorded
-  // reads were recorded, and a stored path list can only ever describe the
-  // world as it was.
+  // Expanded on every call, never taken from the stored entry. A pattern is
+  // there to catch a file that did not exist when the reads were recorded,
+  // and a stored path list only describes the files as they were.
   const expanded = new Set<string>(patterns)
   for (const pattern of expanded) {
     for (const path of await files(pattern)) candidates.add(path)
   }
 
-  // Sort BEFORE the cap so the cap is deterministic: the same repository must
+  // Sort before the cap so the cap is deterministic. The same repository must
   // hash the same 256 paths on every run, or the digest changes for reasons
   // that have nothing to do with the files.
   const sorted = [...candidates].sort()
@@ -165,9 +161,9 @@ async function hashPath(abs: string): Promise<string> {
         .update(`dir\n${entries.join('\n')}`)
         .digest('hex')
     } catch {
-      // Readable as a directory a moment ago, unreadable now — treat it as gone
-      // rather than throwing. A fingerprint that throws turns a permissions
-      // quirk into a crash on the read path.
+      // It was a directory a moment ago but cannot be read now. Treat it as
+      // gone rather than throwing. A fingerprint that throws turns a
+      // permissions problem into a crash on the read path.
       return MISSING
     }
   }

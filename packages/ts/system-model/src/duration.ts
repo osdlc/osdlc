@@ -1,26 +1,26 @@
 /**
- * Durations and ages a person reads, not numbers of milliseconds.
+ * Durations and ages formatted for people, not raw milliseconds.
  *
- * These format the two numbers `cache.ts` measures — how long a probe takes
- * ({@link humanMs}) and how old a stored answer is ({@link humanAge}) — and
- * every surface that reports on the cache (both CLIs, the TUI, the web view)
- * prints one or both of them.
+ * These format the two numbers `cache.ts` measures: how long a probe takes
+ * ({@link humanMs}) and how old a stored answer is ({@link humanAge}). Every
+ * caller that reports on the cache (both CLIs, the TUI, the web view) prints
+ * one or both.
  *
- * They are NOT in `cache.ts`, for the same reason `match.ts` is not: the web
- * view is bundled for the browser, and `cache.ts` reaches for `node:fs`,
- * `node:crypto` and `node:os`. This module has its own `./duration` export
- * subpath and must stay free of DOM and of node builtins.
+ * They are not in `cache.ts`, for the same reason `match.ts` is not. The web
+ * view is bundled for the browser, and `cache.ts` imports `node:fs`,
+ * `node:path` and `node:crypto`. This module has its own `./duration` export
+ * subpath and must not use the DOM or Node built-ins.
  *
- * What a surface does NOT get from here is the sentence around the number. The
- * CLIs say "35s old, refresh usually about 149ms", the TUI says "~149ms", the
- * page says "never timed here" — four voices, deliberately, each written for
- * where it is read. Only the number's spelling is shared.
+ * Callers do not get the sentence around the number from here. The CLIs say
+ * "35s old, refresh usually about 149ms", the TUI says "~149ms", and the page
+ * says "never timed here". Each caller words it for where it is read, on
+ * purpose. Only the number's format is shared.
  */
 
 /**
  * A duration, at a precision that suits its size: milliseconds under a second,
  * one decimal of a second under ten, then whole seconds and whole minutes. A
- * probe cost is a rough expectation, and `1.4s` reads where `1423ms` does not.
+ * probe cost is a rough estimate, and `1.4s` is easier to read than `1423ms`.
  */
 export function humanMs(ms: number): string {
   if (ms < 1000) return `${Math.round(ms)}ms`
@@ -30,13 +30,13 @@ export function humanMs(ms: number): string {
 }
 
 /**
- * How old a cached answer is. `undefined` is a miss, which has no age at all —
- * and says so rather than reading as "0s old", which would claim a freshness
+ * How old a cached answer is. `undefined` is a miss, which has no age. It
+ * returns "of unknown age" rather than "0s old", which would claim a freshness
  * nothing measured.
  *
- * The floor of one second is deliberate: an answer read out of the store
- * moments after it was written is still an answer from the store, and "0s old"
- * invites the reader to think it is live.
+ * The minimum of one second is deliberate. An answer read from the store
+ * moments after it was written is still a stored answer, and "0s old" would
+ * suggest it is live.
  */
 export function humanAge(ms: number | undefined): string {
   if (ms === undefined) return 'of unknown age'

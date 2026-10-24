@@ -1,4 +1,4 @@
-/** The `package.json` parser, and the dependency helpers its siblings share. */
+/** The `package.json` parser. */
 
 import type {
   DepFact,

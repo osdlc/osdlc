@@ -23,7 +23,7 @@ function executable(path: string): boolean {
  * relative result.
  *
  * A name containing a separator is checked as a path, not searched for on
- * PATH — `./bin/tool` names a file. On Windows, PATHEXT suffixes are tried in
+ * PATH: `./bin/tool` names a file. On Windows, PATHEXT suffixes are tried in
  * turn, because the file on disk is `git.exe` while callers ask for `git`.
  */
 export function which(

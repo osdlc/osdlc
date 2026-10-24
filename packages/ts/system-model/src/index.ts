@@ -2,8 +2,8 @@
  * `@osdlc/system-model`: the wire contract, as one browser-safe entry.
  *
  * Everything here is types and small pure helpers from `./graph`,
- * `./aspect`, `./client` and `./saved-view`, with no Node built-in and no
- * dependency. Detection, tools and runners are in `@osdlc/system-model/detect`.
+ * `./aspect`, `./client`, `./saved-view` and `./project-facets`, with no Node
+ * built-in and no dependency. Detection, tools and runners are in `@osdlc/system-model/detect`.
  */
 
 export {

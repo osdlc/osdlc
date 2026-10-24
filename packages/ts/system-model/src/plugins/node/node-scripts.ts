@@ -30,7 +30,7 @@ const CHAIN = [
 
 /**
  * The Node.js hexagonal mark. Node.js is a trademark of the OpenJS
- * Foundation; it is used here nominatively, to identify the tool. Icon
+ * Foundation, used here only to identify the tool. Icon
  * path and color: simple-icons v16 (CC0), slug `nodedotjs`.
  */
 const BRAND: RunnerBrand = {
@@ -58,8 +58,8 @@ export const nodeScriptsRunner: RunnerRole = {
       if (text === null) continue
       const fact = parseOrUndefined(text, file)
       if (fact === undefined) {
-        // Test suites keep deliberately malformed manifests; a real one failing
-        // to parse is worth surfacing, a fixture doing so is noise.
+        // Test suites keep malformed manifests on purpose. Warn only for a real
+        // manifest, not a fixture.
         if (!/(^|\/)(fixtures|__fixtures__)\//.test(file)) {
           diagnostics.push({ severity: 'warning', message: 'unparseable manifest', source: file })
         }
@@ -74,8 +74,8 @@ export const nodeScriptsRunner: RunnerRole = {
       const label = fact.name !== undefined && fact.name !== '' ? fact.name : dir
 
       for (const [script, body] of entries) {
-        // The manager's own directory flag addresses any manifest and keeps the
-        // command correct when run from the root.
+        // The manager's own directory flag reaches any manifest, so the command
+        // works when run from the root.
         const argv =
           dir === '.' ? [...manager.verb, script] : [...manager.verb, manager.dirFlag, dir, script]
         tasks.push({

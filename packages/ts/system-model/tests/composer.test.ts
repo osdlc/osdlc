@@ -66,7 +66,8 @@ describe('composer runner', () => {
     expect(checkTask).toBeDefined()
     expect(checkTask?.argv).toEqual(['composer', 'run-script', 'check'])
     expect(checkTask?.display).toBe('composer run-script check')
-    // "@test" is skipped from the joined detail text but the task is one task.
+    // "@test" calls another script, so it is left out of the detail text.
+    // The script is still one task.
     expect(checkTask?.detail).toBe('phpstan analyse && phpcs')
   })
 

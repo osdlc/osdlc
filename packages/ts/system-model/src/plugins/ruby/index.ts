@@ -5,7 +5,7 @@ import type { EcosystemDef, ToolDef } from '../../tool.ts'
 import { flagAtEnd, joinRel } from '../support/shared.ts'
 import { RAKE_TASK_FILES, RAKEFILE_NAMES, rakeRunner } from './rake.ts'
 
-/** `gem 'name'` lines; a gem inside a `group` block that names only dev or test groups is `dev`. */
+/** `gem 'name'` lines. A gem inside a `group` block that names neither `:production` nor `:default` is `dev`. */
 function parseGemfile(text: string, path: string): GemfileFact {
   const deps: DepFact[] = []
   const groups: boolean[] = []

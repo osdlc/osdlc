@@ -79,7 +79,7 @@ describe('maven runner', () => {
       'verify',
     ])
 
-    // deterministic: same collection run again yields the same order
+    // A second collect yields the same order.
     const again = tasks(await collect(dir, { ...options, tools: [maven] }))
     expect(again.map((t) => t.id)).toEqual(found.map((t) => t.id))
   })

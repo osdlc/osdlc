@@ -1,19 +1,19 @@
 /**
  * moon — https://moonrepo.dev
  *
- * The only built-in that must shell out, and the reason `ProviderKind` exists.
- * moon owns a build graph with task inheritance (`.moon/tasks/*.yml` applies
- * tasks to projects by language, layer, stack or tag), so a task a project runs
- * is frequently declared nowhere near it. Reading the yml files would reproduce
- * moon's inheritance engine and get it subtly wrong; `moon query` asks moon.
+ * A runner that must run its tool, like sbt and mise. moon owns a build graph
+ * with task inheritance (`.moon/tasks/*.yml` applies tasks to projects by
+ * language, layer, stack or tag), so a project's task is often declared far
+ * from it. Reading the yml files would mean copying moon's inheritance rules
+ * and getting them slightly wrong. `moon query` asks moon instead.
  *
- * That means running the repo's own toolchain configuration, which is why this
- * is `kind: "exec"` and excluded unless the caller opts in.
+ * That runs the repo's own toolchain configuration, so this is
+ * `kind: "exec"` and is left out unless the caller opts in.
  *
  * `moonDescribe` asks moon for its projects once at detect time, when
- * execution is allowed, so a profile carries each project's id and role.
- * The runner asks again: it needs each project's source directory alongside
- * its tasks, and a cached profile may predate the moon config.
+ * execution is allowed, so a profile holds each project's id and role. The
+ * runner asks again: it needs each project's source directory with its tasks,
+ * and a cached profile may be older than the moon config.
  */
 
 import { stderrOrError } from '@osdlc/command-seam'
@@ -66,8 +66,8 @@ interface MoonProject {
 }
 
 /**
- * moonrepo's moon mark, a trademark of moonrepo; it is used here
- * nominatively, to identify the tool. Icon path and color: simple-icons
+ * moonrepo's moon mark, a trademark of moonrepo, used here only to identify
+ * the tool. Icon path and color: simple-icons
  * v16 (CC0), slug `moonrepo`.
  */
 const BRAND: RunnerBrand = {
@@ -118,7 +118,7 @@ export const moonRunner: RunnerRole = {
       const m = meta.get(projectId)
       const tier = tierOf(m?.source ?? '.')
       for (const task of Object.values(projectTasks)) {
-        // Internal tasks exist only as dependencies — never typed by a human.
+        // Internal tasks exist only as dependencies; nobody types them.
         if (task.options?.internal) continue
         const target = task.target ?? `${projectId}:${task.id}`
         const argv = ['moon', 'run', target]
@@ -163,7 +163,7 @@ export const moonRunner: RunnerRole = {
   invoke: afterSeparator,
 }
 
-/** Project metadata is a nice-to-have: a failure costs facets, not tasks. */
+/** Project metadata is optional: a failure loses tags and grouping, not tasks. */
 async function projectMeta(
   ctx: ProviderContext,
   env: Record<string, string>,
@@ -201,12 +201,13 @@ async function projectMeta(
 }
 
 /**
- * What a moon task runs — moon carries no task descriptions, so this stands in.
+ * What a moon task runs. moon has no task descriptions, so this is used
+ * instead.
  *
- * moon expands `$workspaceRoot` before reporting, so the line arrives carrying
- * this machine's absolute path. It is shortened back to a relative one: an
- * absolute path is noise in every view, and it soaks up fuzzy-search matches
- * that belong to real command names.
+ * moon expands `$workspaceRoot` before reporting, so the line holds this
+ * machine's absolute path. It is made relative again. An absolute path is
+ * noise in every view, and it takes fuzzy-search matches that belong to real
+ * command names.
  */
 function describeTask(task: MoonTask, root: string): string {
   const raw = task.script ?? [task.command ?? '', ...(task.args ?? [])].join(' ')
@@ -214,9 +215,10 @@ function describeTask(task: MoonTask, root: string): string {
 }
 
 /**
- * A probe's stderr, minus its log noise — the whole diagnostic, not its first
- * line. moon reports through miette: the headline names only the error CLASS,
- * and every fact needed to act on it is in the lines beneath.
+ * A moon call's stderr without its log lines: the whole diagnostic, not its
+ * first line. moon reports errors through miette. The first line names only
+ * the error class, and the details needed to act on it are in the lines
+ * below.
  */
 function probeError(stderr: string): string {
   const lines = stderr
@@ -249,9 +251,9 @@ export interface MoonProjectFact {
 }
 
 /**
- * Each moon project's id and role. Asks moon only when execution is allowed;
- * a failure yields no facts rather than an error, since detection must not
- * fail on a tool's own trouble.
+ * Each moon project's id and role. Asks moon only when execution is allowed.
+ * A failure gives no facts, not an error, because detection must not fail
+ * when a tool fails.
  */
 export async function moonDescribe(ctx: ProviderContext): Promise<ToolFact[]> {
   if (!ctx.allowExec) return []

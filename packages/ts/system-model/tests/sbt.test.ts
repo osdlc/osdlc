@@ -37,9 +37,9 @@ function opts(canned: Canned[] = [], extra: Record<string, unknown> = {}) {
 
 describe('sbt runner', () => {
   /**
-   * `sbt -batch projects tasks` as it comes off the console: two listings in one
-   * session, every line behind sbt's `[info]` log tag. sbt offers no JSON, so
-   * this is the contract the parser is written against; a format change should
+   * `sbt -batch projects tasks` output as printed to the console: two listings in
+   * one session, every line prefixed with sbt's `[info]` log tag. sbt offers no
+   * JSON, so the parser is written against this text. A format change should
    * land here as a deliberate edit.
    */
   const LISTING = [
@@ -101,8 +101,8 @@ describe('sbt runner', () => {
     const coreTest = found.find((t) => t.path[1] === 'core' && t.path[2] === 'test')!
     expect(rootTest.argv).toEqual(['sbt', 'test'])
     expect(rootTest.origin).toBe('declared')
-    // sbt listed tasks for the current project only; the sibling's copy is a
-    // claim this runner made, and says so.
+    // sbt lists tasks for the current project only. The runner infers the
+    // sibling's copy, so it is marked synthesized.
     expect(coreTest.argv).toEqual(['sbt', 'core/test'])
     expect(coreTest.origin).toBe('synthesized')
     expect(report.diagnostics.some((d) => /sibling project/.test(d.message))).toBe(true)
@@ -157,7 +157,7 @@ describe('sbt runner', () => {
 
   test('a failed spawn is named as a missing binary', async () => {
     const dir = await root({ 'build.sbt': 'name := "demo"\n' })
-    // The seam's own message is in `error`; the child wrote no stderr.
+    // The command seam's message is in `error`. The child wrote no stderr.
     const { options } = opts([
       { binary: 'sbt', argv: ['-batch'], exitCode: 1, error: 'spawn sbt ENOENT' },
     ])
