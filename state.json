@@ -1,9 +1,9 @@
 {
   "schema": 1,
   "pr": 424,
-  "head": "38b29eb469ebeec5810d2f3017fb9e2190085030",
+  "head": "99aa56dbb4cda793b1f4f25dd01dac94e74f7c7c",
   "base": "51b874db252ff90edd6960c8d72be1aa298a1af6",
-  "round": 2,
+  "round": 3,
   "claim": {
     "owner": "Mac.local:claude-p4w8zt",
     "at": "2026-10-24T03:27:18.003Z"
@@ -247,6 +247,39 @@
       "line": null,
       "title": "D-PRJM and the dev LIBRARIES.md system-model row no longer match the shipped package",
       "comment": "https://github.com/osdlc/osdlc/pull/424#pullrequestreview-5636540285",
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r3-1",
+      "round": 3,
+      "path": "packages/ts/system-model/src/plugins/node/pnpm-workspace.ts",
+      "line": 30,
+      "title": "pnpm-workspace parser drops zero-indent and multi-line flow package lists, so pnpm members fall back to npm",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r3-2",
+      "round": 3,
+      "path": "packages/ts/system-model/src/collect.ts",
+      "line": 208,
+      "title": "chain copy covers only DEFAULT_CHAIN; a runner's own chain is still shared across reports",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r3-3",
+      "round": 3,
+      "path": "packages/ts/system-model/README.md",
+      "line": 271,
+      "title": "README says python and go have no workspace notion",
+      "comment": null,
       "status": "open",
       "reason": null,
       "fixedIn": null
