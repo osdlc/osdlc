@@ -140,6 +140,14 @@ describe('Gh — argv', () => {
     ])
   })
 
+  test('prList asks for number even when fields leaves it out, so rows are not dropped', () => {
+    const { runner, calls } = recorder([json([{ number: 3, title: 'a', url: 'u' }])])
+    const result = new Gh('/repo', { runner }).prList({ fields: ['title', 'url'] })
+    expect(calls[0]).toContain('number,title,url')
+    expect(result?.rows).toHaveLength(1)
+    expect(result?.rows[0]?.number).toBe(3)
+  })
+
   test("a head filter becomes gh's exact --head, base becomes an exact flag", () => {
     const { runner, calls } = recorder([json([])])
     new Gh('/repo', { runner }).prList({ head: 'feature/x', base: 'main', limit: 5 })
