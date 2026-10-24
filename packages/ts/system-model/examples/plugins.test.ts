@@ -133,7 +133,7 @@ test('moon describes its projects when execution is allowed', async () => {
   })
   const profile = await project.detect(root, { discovery: 'walk', allowExec: true, makeRunner })
   const web = profile.packages.flatMap((p) => p.tools).find((t) => t.facts !== undefined)
-  const fact = web?.facts?.[0] as MoonProjectFact
+  const fact = web?.facts?.[0]?.fact as MoonProjectFact
   expect([fact.id, fact.layer]).toEqual(['web', 'application'])
 })
 

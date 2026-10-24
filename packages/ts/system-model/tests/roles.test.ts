@@ -849,6 +849,47 @@ describe('workspaces, unlocked installs and install directories', () => {
     ])
   })
 
+  test('with no lockfile anywhere, a chained member installs at the nearest covering root', async () => {
+    const dir = await root({
+      'package.json': JSON.stringify({ workspaces: ['a', 'a/b/*'] }),
+      'a/package.json': JSON.stringify({ workspaces: ['b/*'] }),
+      'a/b/x/package.json': '{}',
+    })
+    const profile = await detect(dir)
+    expect(project.packageManagers(profile, 'a/b/x')).toMatchObject([
+      { tool: 'npm', dir: 'a', source: 'a/package.json', locked: false, fallback: true },
+    ])
+  })
+
+  test('a root with unknown members covers everything under a nested root', async () => {
+    const dir = await root({
+      'package.json': '{}',
+      'pnpm-lock.yaml': '',
+      'pnpm-workspace.yaml': 'catalog:\n  react: ^19\n',
+      'a/package.json': JSON.stringify({ workspaces: ['b/*'] }),
+      'a/b/x/package.json': '{}',
+      'a/c/package.json': '{}',
+    })
+    const profile = await detect(dir)
+    for (const pkg of ['a/b/x', 'a/c']) {
+      expect(project.packageManagers(profile, pkg)).toMatchObject([
+        { tool: 'pnpm', dir: '.', locked: true },
+      ])
+    }
+  })
+
+  test('a nested root with unknown members chooses before the outer root', async () => {
+    const dir = await root({
+      'package.json': JSON.stringify({ workspaces: ['a'] }),
+      'bun.lock': '',
+      'a/package.json': '{}',
+      'a/pnpm-workspace.yaml': 'catalog:\n  react: ^19\n',
+      'a/z/q/package.json': '{}',
+    })
+    const profile = await detect(dir)
+    expect(project.packageManagers(profile, 'a/z/q')).toMatchObject([{ tool: 'pnpm', dir: 'a' }])
+  })
+
   test('a pnpm member, listed in pnpm-workspace.yaml, takes the root lockfile', async () => {
     const dir = await root({
       'package.json': '{}',

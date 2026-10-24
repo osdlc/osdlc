@@ -253,9 +253,7 @@ function snapshot(
           ...(tool.ecosystem ? { ecosystem: tool.ecosystem.id } : {}),
           roles: rolesOf(tool),
           evidence: [...entry.evidence],
-          ...(entry.facts.length > 0
-            ? { facts: entry.facts.map((f) => f.fact), described: [...entry.facts] }
-            : {}),
+          ...(entry.facts.length > 0 ? { facts: [...entry.facts] } : {}),
         })
       }
       const ecoIds = new Set(b.ecosystems)

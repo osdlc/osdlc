@@ -394,7 +394,10 @@ describe('detect', () => {
         },
       ])
       const profile = await detect(dir, { allowExec: true, makeRunner: runners.make })
-      const facts = (dir: string) => pkg(profile, dir).tools.find((t) => t.tool === 'moon')?.facts
+      const facts = (dir: string) =>
+        pkg(profile, dir)
+          .tools.find((t) => t.tool === 'moon')
+          ?.facts?.map((f) => f.fact)
       expect(facts('.')).toEqual([{ id: 'root', layer: 'tool' }])
       expect(facts('apps/web')).toEqual([
         { id: 'web', layer: 'application', stack: 'frontend', language: 'typescript' },
@@ -420,7 +423,18 @@ describe('detect', () => {
       ])
       const profile = await detect(dir, { allowExec: true, makeRunner: runners.make })
       expect(profile.packages.map((p) => p.dir)).toEqual(['.'])
-      expect(pkg(profile, '.').tools.find((t) => t.tool === 'moon')?.facts).toEqual([{ id: 'app' }])
+      expect(pkg(profile, '.').tools.find((t) => t.tool === 'moon')?.facts).toEqual([
+        {
+          dir: 'apps/bare',
+          fact: { id: 'app' },
+          evidence: {
+            kind: 'content',
+            tier: 4,
+            source: 'apps/bare/moon.yml',
+            found: 'moon query projects',
+          },
+        },
+      ])
     })
 
     test('a failed query yields no moon facts rather than throwing', async () => {

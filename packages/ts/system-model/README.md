@@ -171,9 +171,8 @@ browser bundle can use them. A test walks each one's imports to check.
 6. Each detected tool's `describe` function adds facts that may need the tool
    itself, such as moon's project roles. It runs a subprocess only when
    `allowExec` is set. A fact goes on the package of its directory, or the
-   nearest one above. `Detected.facts` holds the facts. `Detected.described`
-   holds the same facts in the same order as `ToolFact`s, each with the
-   directory it is about and its evidence.
+   nearest one above. `Detected.facts` holds them as `ToolFact`s, each with
+   the directory it is about and its evidence.
 7. Each package gets its ecosystems and languages. The profile gets the union.
 
 | Option | Default | Does |
@@ -340,8 +339,8 @@ The experimental exports of `@osdlc/system-model/runners`:
 The `Project` members `packageManagers`, `install`, `frozenInstall`,
 `missingDeps`, `pinnedInstall`, `toolManagers`, `execPrefix`, `trust`,
 `hookManagers` and `armHooks`, the `Runners` members `readCached` and
-`collectAndCache`, `RunnerContext.packageManagers`, `ToolDef.describe` and
-`Detected.described` are experimental too. A test compares the lists above with the `@experimental`
+`collectAndCache`, `RunnerContext.packageManagers` and `ToolDef.describe` are
+experimental too. A test compares the lists above with the `@experimental`
 tags in the source.
 
 ## Platforms and runtimes

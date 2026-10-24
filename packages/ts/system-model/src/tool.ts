@@ -240,16 +240,12 @@ export interface Detected {
   roles: RoleName[]
   /** Never empty. */
   evidence: Evidence[]
-  /** What `describe` learned, when the tool has one. */
-  facts?: unknown[] | undefined
   /**
-   * The same facts as `facts`, in the same order, each with the directory it
-   * is about and its evidence. A fact's `dir` can sit below this package when
-   * that directory has no manifest of its own.
-   *
-   * @experimental
+   * What `describe` learned, when the tool has one: each fact with the
+   * directory it is about and its evidence. A fact's `dir` can sit below this
+   * package when that directory has no manifest of its own.
    */
-  described?: ToolFact[] | undefined
+  facts?: ToolFact[] | undefined
 }
 
 /**

@@ -161,13 +161,14 @@ describe('moon runner', () => {
     const facts = profile.packages
       .flatMap((p) => p.tools)
       .filter((t) => t.tool === 'moon')
-      .flatMap((t) => t.facts ?? []) as MoonProjectFact[]
+      .flatMap((t) => t.facts ?? [])
+      .map((f) => f.fact) as MoonProjectFact[]
     expect(facts).toEqual([
       { id: 'web', layer: 'application', stack: 'frontend', language: 'typescript' },
     ])
   })
 
-  test('described keeps each fact’s directory when it has no package of its own', async () => {
+  test('a fact keeps its directory when it has no package of its own', async () => {
     const dir = await root({ '.moon/workspace.yml': 'projects: []\n' })
     const projects = moonProjectsJson([
       { id: 'web', source: 'apps/web', layer: 'application' },
@@ -181,11 +182,10 @@ describe('moon runner', () => {
 
     // Neither directory has a manifest, so both facts land on the root package.
     const moon = profile.packages.find((p) => p.dir === '.')?.tools.find((t) => t.tool === 'moon')
-    expect(moon?.described?.map((f) => [f.dir, f.fact, f.evidence.source])).toEqual([
+    expect(moon?.facts?.map((f) => [f.dir, f.fact, f.evidence.source])).toEqual([
       ['apps/web', { id: 'web', layer: 'application' }, 'apps/web/moon.yml'],
       ['apps/api', { id: 'api', layer: 'library' }, 'apps/api/moon.yml'],
     ])
-    expect(moon?.facts).toEqual(moon?.described?.map((f) => f.fact))
   })
 
   test('describe adds no facts, and runs nothing, without allowExec', async () => {

@@ -63,7 +63,7 @@ export async function describePnpmWorkspaces(
  * with no such file, `null` when the file lists no readable member.
  */
 export function pnpmWorkspacePackages(pkg: Package): string[] | null | undefined {
-  for (const fact of pkg.tools.find((t) => t.tool === 'pnpm')?.facts ?? []) {
+  for (const { fact } of pkg.tools.find((t) => t.tool === 'pnpm')?.facts ?? []) {
     if (fact !== null && typeof fact === 'object' && 'pnpmWorkspacePackages' in fact) {
       return (fact as PnpmWorkspaceFact).pnpmWorkspacePackages
     }
