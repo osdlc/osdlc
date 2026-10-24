@@ -1,22 +1,20 @@
 /**
- * Home-relative path resolution for the trust store's state directory.
+ * Resolves the trust store's state directory relative to the home directory.
  *
- * ## Why the tilde is expanded at all
+ * ## Why the tilde is expanded
  *
- * A shell expands `~` before exec, so a path that arrives through the
- * environment has usually been expanded already. The case that matters is
- * the one where nothing did: direnv, `.env` loaders and CI YAML hand the
- * LITERAL tilde through. `XDG_STATE_HOME=~/.local/state` set in a `.env`
- * file then becomes `<cwd>/~/.local/state` — a real directory, created
- * without complaint, in the wrong place. Expanding here is what stops that
- * being the silent wrong answer.
+ * A shell expands `~` before it runs a program, so a path from the
+ * environment is usually expanded already. But direnv, `.env` loaders and CI
+ * YAML pass a literal `~` through. `XDG_STATE_HOME=~/.local/state` in a
+ * `.env` file would then become `<cwd>/~/.local/state`, a real directory in
+ * the wrong place, created with no error. Expanding `~` here prevents that.
  *
- * `home` is a parameter, never read from `node:os` here: every caller
- * injects it so a test cannot read or write the developer's real home
+ * `home` is a parameter and is never read from `node:os` here. Every caller
+ * passes it, so a test cannot read or write the developer's real home
  * directory.
  *
- * It handles only the one variable {@link trustStoreDir} needs
- * (`XDG_STATE_HOME`).
+ * Only `XDG_STATE_HOME`, the one variable {@link trustStoreDir} needs, is
+ * handled.
  */
 
 import { join, resolve } from 'node:path'
@@ -29,19 +27,18 @@ export function expandTilde(path: string, home: string): string {
 }
 
 /**
- * An XDG base directory out of the environment, with a home-relative
- * fallback.
+ * An XDG base directory from the environment, with a fallback under `home`.
  *
- * `env[varName]` wins when it is set and non-blank; it is tilde-expanded and
- * `resolve()`d, so a relative value becomes absolute rather than being
- * joined onto something later and landing somewhere nobody predicted.
- * Otherwise the fallback segments are joined onto `home` —
+ * `env[varName]` is used when it is set and not blank. It is tilde-expanded
+ * and passed through `resolve()`, so a relative value becomes absolute and
+ * does not end up joined to some other path later. Otherwise the fallback
+ * segments are joined to `home`:
  * `xdgHome(env, home, "XDG_STATE_HOME", ".local", "state")` is
  * `~/.local/state`.
  *
- * XDG on every platform, macOS included — one story on every platform, no
- * storage-related branch on `process.platform` anywhere in this package,
- * matching the config home resolution in `@osdlc/config-layers`.
+ * XDG paths are used on every platform, macOS included. Nothing in this
+ * package branches on `process.platform` for storage. This matches the
+ * config home lookup in `@osdlc/config-layers`.
  * @experimental
  */
 export function xdgHome(

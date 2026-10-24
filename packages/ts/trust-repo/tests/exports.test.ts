@@ -1,7 +1,7 @@
 /**
- * Checks on the public surface as a whole, for the entry:
- * every export has a documentation comment, every export is used in examples/, and the README's experimental list
- * matches the `@experimental` tags.
+ * Checks on the package's public exports: every export has a documentation
+ * comment, every export is used in examples/, and the README's experimental
+ * list matches the `@experimental` tags.
  */
 
 import { readdirSync, readFileSync } from 'node:fs'

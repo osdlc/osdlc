@@ -1,64 +1,61 @@
 /**
  * Per-repository consent to run a repository's own scripts.
  *
- * {@link trustStore} answers "has a person consented to running THIS
- * repository's scripts?" for any CLI tool, one store per tool name.
+ * {@link trustStore} answers "has a person agreed to run this repository's
+ * scripts?" for any CLI tool, with one store per tool name.
  *
- * Why it exists at all: some things a tool does to a repository it did not
- * write are code execution in disguise — running that repository's own
- * scripts, evaluating its build config, firing its hooks. A setting the
- * repository itself can write (its own config file, its own build config) cannot
- * be the thing that authorizes that, because a setting a repository can
- * write is a setting a repository can grant itself. So the tool asks a
- * person once, per repository, and remembers the answer here.
+ * Why it exists: some things a tool does to a repository it did not write
+ * run that repository's code: its own scripts, its build config, its hooks.
+ * A setting inside the repository (its config file, its build config)
+ * cannot authorize this, because the repository could grant itself that
+ * setting. So the tool asks a person once per repository and stores the
+ * answer here.
  *
  * ## Where the store lives
  *
  * `$XDG_STATE_HOME/<tool>/trusted/`, or `~/.local/state/<tool>/trusted/`
- * when the variable is unset — XDG **state**, not config: trust is state a
- * program maintains, not configuration a person hand-edits. It deliberately
- * does not sit beside a tool's `config.yaml`. A trust grant living in a file
- * people edit and sync between machines would travel with a dotfiles repo,
- * and a per-machine consent record that follows you onto a new machine has
- * stopped being consent.
+ * when the variable is unset. This is the XDG state directory, not the
+ * config directory. Trust is state a program keeps, not configuration a
+ * person edits, so it is not stored next to a tool's `config.yaml`. People
+ * sync config files between machines, for example in a dotfiles repo. A
+ * consent record for one machine that is copied to another is no longer
+ * consent.
  *
- * XDG is used on every platform, macOS included, matching the config
- * layer's paths (`@osdlc/config-layers`). A leading `~` in the environment variable is expanded the same way
- * too — direnv, `.env` loaders and CI YAML hand the literal tilde through.
+ * XDG paths are used on every platform, macOS included, as in
+ * `@osdlc/config-layers`. A leading `~` in the variable is expanded, because
+ * direnv, `.env` loaders and CI YAML pass a literal `~` through.
  *
  * ## What a trust decision is keyed on
  *
- * The absolute, symlink-resolved repository root. Two paths that name one
- * repository — a symlinked checkout, a `/tmp` that is really `/private/tmp`
- * — are one decision, because a person answering the question answered it
- * about the repository, not about the spelling they used to reach it.
+ * The absolute, symlink-resolved repository root. Two paths that lead to one
+ * repository (a symlinked checkout, or a `/tmp` that is really
+ * `/private/tmp`) share one decision. The person answered about the
+ * repository, not about the path they typed.
  *
- * The key is a PATH, not a hash of the repository's contents (mise does the
- * same). A repository trusted once that later pulls hostile changes stays
- * trusted; {@link TrustStore.untrust} is the only remedy. The alternative is
- * worse: content-hashing every config file in a monorepo would re-prompt on
- * ordinary edits, and a prompt that fires on every edit trains people to
- * approve without reading, which is weaker security than an honest weaker
- * rule.
+ * The key is a path, not a hash of the repository's contents. mise does the
+ * same. A trusted repository stays trusted if it later pulls hostile
+ * changes, and {@link TrustStore.untrust} is the only way to remove the
+ * grant. A hash of every config file in a monorepo would ask again after
+ * ordinary edits. People asked that often learn to approve without reading,
+ * which is less safe than a simple path rule.
  *
  * ## How it is stored
  *
- * A directory of marker files, one per trusted root, mirroring mise.
- * Creating and unlinking a file are atomic and independent, so two
- * processes trusting two different repositories at the same moment cannot
- * lose each other's write. A single JSON document would need
- * read-modify-write under a lock, and the failure mode of getting that
- * wrong is a trust record that silently vanishes. The cost is that the
- * store is a directory of opaque names rather than one readable file, which
- * is what {@link TrustStore.list} is for.
+ * A directory of marker files, one per trusted root, as mise does it.
+ * Creating and deleting a file are atomic and independent, so two processes
+ * that trust two repositories at the same time cannot lose each other's
+ * write. A single JSON file would need a locked read-modify-write, and a bug
+ * there would silently drop a trust record. The cost is a directory of
+ * opaque names instead of one readable file. {@link TrustStore.list} reads
+ * them back.
  *
  * A marker is named `${basename(root)}-${sha256(root).slice(0, 16)}`. The
- * hash disambiguates same-named repositories; the basename keeps an `ls` of
- * the store legible. Its CONTENTS are the resolved absolute path and a
- * newline. mise symlinks to the path instead, which becomes a dangling link
- * once the repository is deleted; a plain file keeps {@link TrustStore.list}
- * exact and keeps the store readable by eye. The write is atomic, so a
- * partial write can never be read as a trust grant.
+ * hash tells apart repositories with the same name. The basename keeps an
+ * `ls` of the store readable. The file contains the resolved absolute path
+ * and a newline. mise uses a symlink to the path instead, which breaks once
+ * the repository is deleted. A plain file keeps {@link TrustStore.list}
+ * exact and readable by eye. The write is atomic, so a partial write is
+ * never read as a grant.
  */
 
 import { createHash } from 'node:crypto'
@@ -79,10 +76,9 @@ import { xdgHome } from './xdg.ts'
 export const TRUST_MARKER_DIR = 'trusted'
 
 /**
- * Where a tool's store lives. Pure — `env` and `home` are injectable
- * because a test that consulted the real environment would read the
- * developer's own trust store, and one that wrote would grant trust on
- * their machine.
+ * Where a tool's store lives. Pure. `env` and `home` are parameters because
+ * a test that read the real environment would read the developer's own
+ * trust store, and a test that wrote would grant trust on their machine.
  * @experimental
  */
 export function trustStoreDir(
@@ -97,15 +93,14 @@ export function trustStoreDir(
 /**
  * The absolute, symlink-resolved key for a root.
  *
- * A root that does not exist still has to resolve: `untrust` and a
- * `--show`-style listing must answer for a root that has since been
- * deleted, and refusing to resolve it would leave its marker unreachable.
- * `resolve()` alone is not enough there, because it expands no symlinks — a
- * deleted repository under a symlinked ANCESTOR (`/var` -> `/private/var`
- * on macOS, so every `$TMPDIR` path) would key on a different string than
- * the one {@link TrustStore.trust} hashed, and its marker would be
- * unreachable in exactly the case this fallback exists for. So resolve the
- * deepest ancestor that does exist and re-attach the missing tail.
+ * A root that does not exist must still resolve. `untrust` and a
+ * `--show`-style listing must work for a root that has been deleted, or its
+ * marker could never be reached. `resolve()` alone is not enough, because it
+ * does not follow symlinks. A deleted repository under a symlinked ancestor
+ * (`/var` -> `/private/var` on macOS, which covers every `$TMPDIR` path)
+ * would then get a different key than the one {@link TrustStore.trust}
+ * hashed. So this resolves the deepest ancestor that exists and appends the
+ * missing rest of the path.
  * @experimental
  */
 export async function resolveTrustRoot(root: string): Promise<string> {
@@ -132,12 +127,10 @@ export interface TrustStoreOptions {
   /** Injected for tests; defaults to `os.homedir()`. */
   home?: string
   /**
-   * Overrides the store's directory outright, bypassing the `tool` + XDG
-   * derivation entirely. For a consumer that mirrors a machine-config-style
-   * env var pointing straight at the marker directory (for
-   * example a `TOOLY_TRUST_STATE` variable, the same shape as the machine-config
-   * override) rather than
-   * at an `XDG_STATE_HOME` to join `tool` and `trusted` onto.
+   * Sets the store's directory directly and skips the `tool` and XDG lookup.
+   * For a tool with its own environment variable (for example
+   * `TOOLY_TRUST_STATE`) that names the marker directory itself, not an
+   * `XDG_STATE_HOME` to add `tool` and `trusted` to.
    */
   dir?: string
 }
@@ -153,10 +146,9 @@ export interface TrustResult {
   /** The marker file's path. */
   marker: string
   /**
-   * Whether the root was already trusted before this call. Idempotent:
-   * trusting an already-trusted root leaves the marker as it was, so a
-   * caller can tell a person nothing changed rather than implying they
-   * just granted something.
+   * Whether the root was already trusted before this call. Trusting a
+   * trusted root leaves the marker as it was, so a caller can tell the
+   * person that nothing changed.
    */
   alreadyTrusted: boolean
 }
@@ -173,14 +165,13 @@ export interface TrustStore {
   /** The absolute, symlink-resolved key a root's grant is stored under. */
   resolveRoot(root: string): Promise<string>
   /**
-   * The marker file's path for `root`, without creating it — for a `--show`
-   * surface that reports where a grant WOULD live, trusted or not.
+   * The marker file's path for `root`, without creating it. For a `--show`
+   * command that reports where a grant would be stored, trusted or not.
    */
   markerPath(root: string): Promise<string>
   /**
-   * Whether a root has been trusted. An empty or blank marker is NOT a
-   * grant, matching {@link list} — see the module docblock on why that
-   * asymmetry matters.
+   * Whether a root has been trusted. An empty or blank marker is not a
+   * grant. {@link list} skips such markers too, so the two always agree.
    */
   isTrusted(root: string): Promise<boolean>
   /** Record trust for a root. See {@link TrustResult.alreadyTrusted}. */
@@ -229,11 +220,10 @@ export function trustStore(opts: TrustStoreOptions): TrustStore {
       return isTrustedResolved(resolved)
     },
 
-    // Idempotency is read-then-write, not atomic: overlapping calls for one
-    // root can each report `alreadyTrusted: false`. The store still ends
-    // with exactly one marker, so a caller counting newly granted roots —
-    // not one asking whether a root is trusted — is the only one that needs
-    // to care.
+    // The check and the write are separate steps, not one atomic step.
+    // Overlapping calls for one root can each report `alreadyTrusted: false`.
+    // The store still ends with one marker. Only a caller that counts newly
+    // granted roots needs to care.
     async trust(root) {
       const resolved = await resolveTrustRoot(root)
       const marker = markerPath(resolved)
@@ -253,9 +243,8 @@ export function trustStore(opts: TrustStoreOptions): TrustStore {
       return true
     },
 
-    // A missing store directory is an empty list, not an error — nothing
-    // has ever been trusted on this machine is a normal state, and the
-    // first listing must not look like a failure.
+    // A missing store directory is an empty list, not an error. A machine
+    // where nothing has been trusted yet is normal.
     async list() {
       const d = dir()
       let names: string[]
@@ -267,15 +256,14 @@ export function trustStore(opts: TrustStoreOptions): TrustStore {
 
       const paths: string[] = []
       for (const name of names) {
-        // A half-written marker left by a killed process is not a grant;
-        // skip it rather than reporting a path nothing will ever match.
+        // A temp file left by a killed process is not a grant.
         if (name.endsWith('.tmp')) continue
         try {
           const text = await readFile(join(d, name), 'utf-8')
           const path = text.trim()
           if (path !== '') paths.push(path)
         } catch {
-          // A marker that vanished between readdir and read is simply gone.
+          // The marker was deleted between readdir and read.
         }
       }
       return paths.sort()

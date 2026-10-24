@@ -33,9 +33,9 @@ async function root(): Promise<string> {
 }
 
 /**
- * A throwaway state home. Every test takes one: a test that reached the
- * real `~` would read the developer's own trust store, and one that wrote
- * would grant trust on their machine.
+ * A throwaway state home. Every test uses one. A test that reached the real
+ * `~` would read the developer's own trust store, and one that wrote would
+ * grant trust on their machine.
  */
 async function home(): Promise<{ env: Record<string, string | undefined>; home: string }> {
   const dir = await root()
@@ -54,8 +54,8 @@ describe('trustStoreDir', () => {
   })
 
   test('treats an empty XDG_STATE_HOME as unset', () => {
-    // An exported-but-empty variable is a common shell accident, and joining
-    // onto "" would point the store at /tooly/trusted.
+    // An exported but empty variable is a common shell mistake. Joining onto
+    // "" would put the store at /tooly/trusted.
     expect(trustStoreDir('tooly', { XDG_STATE_HOME: '' }, '/home/dev')).toBe(
       '/home/dev/.local/state/tooly/trusted',
     )
@@ -68,8 +68,8 @@ describe('trustStoreDir', () => {
   })
 
   test('never consults the real home when one is injected', () => {
-    // The guarantee every test in this file depends on: no code path here may
-    // fall back to os.homedir() once a home has been supplied.
+    // Every test in this file depends on this: once a home is supplied, no
+    // code path falls back to os.homedir().
     const dir = trustStoreDir('tooly', {}, '/injected/home')
     expect(dir.startsWith('/injected/home/')).toBe(true)
   })
@@ -357,8 +357,7 @@ describe('resolveExecGate', () => {
       expect(gate.allowExec).toBe(true)
       expect(gate.trusted).toBe(true)
       expect(gate.reason).toBe('allowed')
-      // Untouched — the caller's decision was handed through, not derived
-      // from a marker written here.
+      // No marker was written. The gate used the caller's decision as given.
       expect(await store.isTrusted(repo)).toBe(false)
     })
 
