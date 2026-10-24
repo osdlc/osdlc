@@ -170,9 +170,9 @@
       "line": 121,
       "title": "a nested package that is not a workspace member takes the root lockfile's install",
       "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365781528",
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "99aa56dbb4cda793b1f4f25dd01dac94e74f7c7c"
     },
     {
       "id": "r2-4",
