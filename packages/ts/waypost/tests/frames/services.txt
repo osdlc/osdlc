@@ -1,0 +1,22 @@
+ all 9  just 4  make 2  node-scripts 3                         fuzzy services
+> █
+2/9  checked HH:MM:SS   
+> * just > . > dev
+  * node-scripts > . > showcase > start
+
+
+
+
+
+
+
+
+
+
+
+
+
+------------------------------------------------------------------------------
+just dev                                           runner > justfile > recipe
+Serve the app until you stop it.
+enter run  ^y copy  tab runner  ^e exact  ^t services  ^s trust  ^r refresh  …

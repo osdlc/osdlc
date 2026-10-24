@@ -1,0 +1,22 @@
+# The showcase fixture's just recipes.
+#
+# Small on purpose: a screenshot of two hundred rows shows nothing. These are
+# chosen to exercise the shapes the page has to render — a plain recipe, one
+# with a doc comment, a service, and a parameterised one, which is the only
+# way to photograph the run bar.
+
+# Build the thing.
+build:
+    echo building
+
+# Run the test suite.
+test:
+    echo testing
+
+# Serve the app until you stop it.
+dev:
+    echo serving
+
+# Ship a build to an environment.
+deploy env tag="latest":
+    echo deploying {{env}} {{tag}}

@@ -12,6 +12,7 @@ import {
   changelogProblems,
   configPackageProblems,
   conventionProblems,
+  DECLARES_EXPORT,
   docsProblems,
   enginesProblems,
   gitignoreProblems,
@@ -311,4 +312,13 @@ test('P15: a per-package .oxlintrc.json fails', () => {
   const problems = conventionProblems({ ...code, files: [...FILES, '.oxlintrc.json'] })
   assert.equal(problems.length, 1)
   assert.match(problems[0]!, /\.oxlintrc\.json: delete it/)
+})
+
+test('a types-only entry counts only when its .d.ts exports something', () => {
+  // tsc's output for a module with no exports.
+  assert.equal(DECLARES_EXPORT.test('export {};\n'), false)
+  assert.equal(DECLARES_EXPORT.test('export {}\n'), false)
+  assert.equal(DECLARES_EXPORT.test('export interface Client {\n  graph(): void\n}\n'), true)
+  assert.equal(DECLARES_EXPORT.test('export type { A } from "./a.js";\n'), true)
+  assert.equal(DECLARES_EXPORT.test('export declare const x: number;\n'), true)
 })

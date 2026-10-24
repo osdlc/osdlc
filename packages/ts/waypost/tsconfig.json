@@ -1,0 +1,11 @@
+{
+  // Typechecks the source and tests. The build has its own include.
+  // Workspace siblings resolve through `exports` to their built `dist/`, so
+  // run the build before the typecheck.
+  "extends": "@osdlc/tsconfig/node-lib",
+  "compilerOptions": {
+    // The web view renders in a browser.
+    "lib": ["ES2022", "DOM"]
+  },
+  "include": ["src", "tests", "examples", "vitest.config.ts"]
+}

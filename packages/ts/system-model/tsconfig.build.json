@@ -1,0 +1,11 @@
+{
+  // Emit config for the published dist/ — the dev tsconfig.json stays noEmit.
+  // `include` keeps tests/ out of dist/.
+  "extends": ["./tsconfig.json", "@osdlc/tsconfig/build"],
+  "compilerOptions": {
+    "rootDir": "src",
+    // src/ is not published, so a declaration map would point at nothing.
+    "declarationMap": false
+  },
+  "include": ["src"]
+}

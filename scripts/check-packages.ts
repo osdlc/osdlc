@@ -39,6 +39,7 @@ import { tmpdir } from 'node:os'
 import { basename, join, relative, resolve } from 'node:path'
 
 import {
+  DECLARES_EXPORT,
   conventionProblems,
   packedManifestProblems,
   parseCatalog,
@@ -98,7 +99,8 @@ function entryPoints(pkg: Pkg): string[] {
 }
 
 /** Installs `tarball` into an empty project and loads each entry point the
- * way a Node consumer would: code through `import()`; a JSON entry (a config
+ * way a Node consumer would: code through `import()`, where an entry with no
+ * values passes if its `.d.ts` exports something; a JSON entry (a config
  * preset, possibly with comments) is resolved and read, since its consumer
  * is a tool rather than Node. Then copies in the package's smoke check, if
  * it has one, and runs it there. */
@@ -126,9 +128,20 @@ function cleanConsumer(
       import { fileURLToPath } from 'node:url'
       for (const spec of ${JSON.stringify(specs)}) {
         const resolved = fileURLToPath(import.meta.resolve(spec))
+        // A types-only entry (interfaces, no values) loads empty; its
+        // declaration file beside the JavaScript must still export something.
+        const typesOnly = () => {
+          try {
+            return new RegExp(${JSON.stringify(DECLARES_EXPORT.source)}, 'm').test(
+              readFileSync(resolved.replace(/\\.js$/, '.d.ts'), 'utf8'),
+            )
+          } catch {
+            return false
+          }
+        }
         const ok = resolved.endsWith('.json')
           ? readFileSync(resolved, 'utf8').trim().length > 0
-          : Object.keys(await import(spec)).length > 0
+          : Object.keys(await import(spec)).length > 0 || typesOnly()
         if (!ok) throw new Error(spec + ' loaded empty')
         console.log('consumer: loaded ' + spec)
       }
