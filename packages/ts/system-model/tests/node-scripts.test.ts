@@ -76,8 +76,10 @@ describe('node-scripts runner', () => {
     for (const [lockfile, kind, argv] of cases) {
       const dir = await root({
         [lockfile]: '',
-        'package.json': JSON.stringify({ name: 'root' }),
+        'package.json': JSON.stringify({ name: 'root', workspaces: ['packages/*'] }),
         'packages/leaf/package.json': JSON.stringify({ name: 'leaf', scripts: { build: 'tsc' } }),
+        // pnpm reads its members from here, not from `workspaces`.
+        ...(kind === 'pnpm' ? { 'pnpm-workspace.yaml': "packages:\n  - 'packages/*'\n" } : {}),
       })
       const { options } = opts()
       const found = tasks(await collect(dir, { ...options, only: ['node-scripts'] }))

@@ -14,8 +14,15 @@ export const rustEcosystem: EcosystemDef = {
   manifests: [{ files: CARGO_TOML, tool: 'cargo', slot: 'cargo', parse: parseCargo }],
   languages: [{ id: 'rust' }],
   tools: ['cargo'],
-  workspace: (pkg) =>
-    pkg.manifests.cargo?.workspace ? (pkg.manifests.cargo.workspaceMembers ?? []) : undefined,
+  // `exclude` entries become `!` negations, as in a node workspace glob list.
+  workspace: (pkg) => {
+    const cargo = pkg.manifests.cargo
+    if (!cargo?.workspace) return undefined
+    return [
+      ...(cargo.workspaceMembers ?? []),
+      ...(cargo.workspaceExclude ?? []).map((e) => `!${e}`),
+    ]
+  },
 }
 
 const CARGO_DEP_TABLES: ReadonlyArray<[string, DepFactKind]> = [
@@ -47,9 +54,10 @@ export function parseCargo(text: string, path: string): CargoFact {
   }
   const pkg = isTable(doc['package']) ? doc['package'] : {}
   const workspace = isTable(doc['workspace']) ? doc['workspace'] : {}
-  const members = Array.isArray(workspace['members'])
-    ? (workspace['members'] as unknown[]).filter((m): m is string => typeof m === 'string')
-    : []
+  const strings = (v: unknown): string[] =>
+    Array.isArray(v) ? v.filter((m): m is string => typeof m === 'string') : []
+  const members = strings(workspace['members'])
+  const exclude = strings(workspace['exclude'])
   return {
     ...fact,
     ...(typeof pkg['name'] === 'string' ? { name: pkg['name'] } : {}),
@@ -57,6 +65,7 @@ export function parseCargo(text: string, path: string): CargoFact {
     ...(pkg['publish'] === false ? { private: true } : {}),
     ...(typeof pkg['description'] === 'string' ? { description: pkg['description'] } : {}),
     ...(members.length > 0 ? { workspaceMembers: members } : {}),
+    ...(exclude.length > 0 ? { workspaceExclude: exclude } : {}),
     ...(Array.isArray(doc['bin']) && doc['bin'].length > 0 ? { hasBin: true } : {}),
     ...(deps.length > 0 ? { deps } : {}),
   }

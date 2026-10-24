@@ -39,6 +39,7 @@ import { tmpdir } from 'node:os'
 import { basename, join, relative, resolve } from 'node:path'
 
 import {
+  DECLARES_EXPORT,
   conventionProblems,
   packedManifestProblems,
   parseCatalog,
@@ -131,7 +132,9 @@ function cleanConsumer(
         // declaration file beside the JavaScript must still export something.
         const typesOnly = () => {
           try {
-            return /^export /m.test(readFileSync(resolved.replace(/\\.js$/, '.d.ts'), 'utf8'))
+            return new RegExp(${JSON.stringify(DECLARES_EXPORT.source)}, 'm').test(
+              readFileSync(resolved.replace(/\\.js$/, '.d.ts'), 'utf8'),
+            )
           } catch {
             return false
           }

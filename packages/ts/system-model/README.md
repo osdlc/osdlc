@@ -208,8 +208,12 @@ only the files discovery listed.
 tool and returns a `Catalog` of reports, in registry order. A tool that was not
 detected produces no report. Each call lists and reads the repository afresh,
 with the discovery settings the profile records (`discovery`, `excludePaths`,
-`useBuiltinExcludes`), so a second collect sees later edits and a profile
-copied through JSON collects the same way.
+`useBuiltinExcludes`), and runners re-read the files they report on. So a
+second collect sees later edits to a `package.json` script or a justfile
+recipe, and a profile copied through JSON collects the same way. Which
+packages and tools exist, and which package manager each package uses, come
+from the profile: detect again after adding or removing a manifest, lockfile
+or marker.
 
 A runner is `parse` or `exec`. A `parse` runner reads files. An `exec` runner,
 such as moon or mise, has to run the repository's own configuration to list
@@ -258,10 +262,16 @@ detection evidence changes, or, for an `exec` runner, after a maximum age.
 | `hookManagers(profile)`, `armHooks(profile)` | lefthook, husky and pre-commit |
 | `toolForCommand(command)` | the tool a command's first word names (`bunx` is bun) |
 
-The package manager is chosen by walking from the package to the root and
-stopping at the first package whose lockfile, marker or pin chooses one. Within
-a package the most direct evidence wins, then the ecosystem's order (node:
-bun, pnpm, yarn, npm). With nothing found, node falls back to `npm install`.
+The package manager is chosen at the package itself, then at the workspace
+root that lists it as a member, and so on up: the first package whose
+lockfile, marker or pin chooses one wins. Members come from
+`package.json#workspaces`, `pnpm-workspace.yaml` `packages`, and cargo's
+`[workspace] members` less `exclude`; a `!` glob removes a member. A nested
+package outside every workspace does not take the root's lockfile. An
+ecosystem with no workspace notion (python, go, ruby, ...) takes the nearest
+package above. Within a package the most direct evidence wins, then the
+ecosystem's order (node: bun, pnpm, yarn, npm). With nothing found, node falls
+back to `npm install`.
 
 ## Your own tools
 

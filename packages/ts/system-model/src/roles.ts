@@ -6,7 +6,7 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { compilePattern, dirOf, joinRel } from './pattern.ts'
+import { compilePattern, dirOf, joinRel, segmentRegExp } from './pattern.ts'
 import type { Registry } from './registry.ts'
 import type { Evidence } from './aspect.ts'
 import type { Detected, EcosystemDef, Package, ProjectProfile, ToolDef } from './tool.ts'
@@ -51,10 +51,11 @@ export function packageAt(profile: ProjectProfile, dir: string): Package | undef
 /**
  * The package manager for each ecosystem of the package at `dir`.
  *
- * Walks from `dir` up to the root and stops at the first package that has a
- * manager for that ecosystem, because a workspace keeps its lockfile at its
- * root. Within one package the most direct evidence wins (a `packageManager`
- * field over a lockfile), then the ecosystem's precedence order.
+ * Looks at `dir`, then at the workspace root that lists it as a member, and
+ * so on up, and stops at the first package that chooses a manager for that
+ * ecosystem, because a workspace keeps its lockfile at its root. Within one
+ * package the most direct evidence wins (a `packageManager` field over a
+ * lockfile), then the ecosystem's precedence order.
  */
 export function choosePackageManagers(
   registry: Registry,
@@ -73,7 +74,7 @@ export function choosePackageManagers(
   for (const eco of registry.ecosystems) {
     if (!ecoIds.has(eco.id)) continue
     const managers = eco.tools.filter((id) => registry.byId.get(id)?.roles.packageManager)
-    const choice = chosenAbove(registry, profile, dir, managers)
+    const choice = chosenAbove(registry, profile, eco, dir, managers)
     if (choice !== null) {
       out.push({ ...choice, ecosystem: eco.id, fallback: false })
       continue
@@ -110,18 +111,26 @@ type Found = Omit<PackageManagerChoice, 'ecosystem' | 'fallback'>
  * The nearest package at or above `dir` whose lockfile, marker or pin
  * chooses one of `managers`. A manifest that merely implies a tool (a
  * `Cargo.toml` implies cargo) does not choose here.
+ *
+ * In an ecosystem with workspaces, the walk steps up only to the workspace
+ * root that lists `dir` as a member, so a nested package outside the
+ * workspace does not take the root's lockfile. An ecosystem without a
+ * `workspace` hook takes the nearest package above.
  */
 function chosenAbove(
   registry: Registry,
   profile: ProjectProfile,
+  eco: EcosystemDef,
   dir: string,
   managers: readonly string[],
 ): Found | null {
-  for (let current = dir; ; current = dirOf(current)) {
+  for (let current: string | null = dir; current !== null;) {
     const found = bestAt(registry, profile, current, managers, chooses)
     if (found !== null) return found
     if (current === '.') return null
+    current = eco.workspace === undefined ? dirOf(current) : workspaceRoot(profile, eco, current)
   }
+  return null
 }
 
 /**
@@ -160,26 +169,42 @@ function workspaceRoot(profile: ProjectProfile, eco: EcosystemDef, dir: string):
     const pkg = packageAt(profile, current)
     const members = pkg === undefined ? undefined : eco.workspace(pkg)
     const rel = current === '.' ? dir : dir.slice(current.length + 1)
-    if (members?.some((glob) => memberMatches(glob, rel))) return current
+    if (members !== undefined && memberMatches(members, rel)) return current
     if (current === '.') return null
   }
 }
 
-/** A workspace member glob against a relative path: `*` is one segment, `**` any. */
-function memberMatches(glob: string, rel: string): boolean {
-  const g = glob.replace(/^\.\//, '').replace(/\/$/, '').split('/')
+/**
+ * Whether `rel` is a member under a workspace glob list: it matches a
+ * positive glob and no `!` negation. In a glob, `*` is within one segment and
+ * `**` is any number of segments.
+ */
+function memberMatches(globs: readonly string[], rel: string): boolean {
+  let member = false
+  for (const glob of globs) {
+    const negated = glob.startsWith('!')
+    if (negated === member && globMatches(negated ? glob.slice(1) : glob, rel)) member = !negated
+  }
+  return member
+}
+
+function globMatches(glob: string, rel: string): boolean {
+  const g = glob
+    .replace(/^\.\//, '')
+    .replace(/\/$/, '')
+    .split('/')
+    .map((seg) => (seg === '**' ? ANY_DEPTH : segmentRegExp(seg)))
   const r = rel.split('/')
   const match = (i: number, j: number): boolean => {
     if (i === g.length) return j === r.length
-    if (g[i] === '**') return match(i + 1, j) || (j < r.length && match(i, j + 1))
-    if (j === r.length) return false
-    const re = new RegExp(
-      `^${g[i]!.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[^/]*')}$`,
-    )
-    return re.test(r[j]!) && match(i + 1, j + 1)
+    const seg = g[i]!
+    if (seg === ANY_DEPTH) return match(i + 1, j) || (j < r.length && match(i, j + 1))
+    return j < r.length && seg.test(r[j]!) && match(i + 1, j + 1)
   }
   return match(0, 0)
 }
+
+const ANY_DEPTH = Symbol('**')
 
 /** Evidence that chooses a manager, as opposed to a manifest that only implies it. */
 function chooses(e: Evidence): boolean {

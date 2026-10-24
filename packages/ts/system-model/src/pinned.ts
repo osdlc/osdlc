@@ -1,7 +1,7 @@
 /**
  * The install command for a package manager a package pins to one version,
  * through the first executable that has that version: PATH, then each tool
- * manager detected in the repository that can run a tool (proto, then mise,
+ * manager detected at the root that can run a tool (proto, then mise,
  * in registration order).
  *
  * A stale `bun` on PATH can rewrite a lockfile the pinned `bun` wrote, so the

@@ -35,7 +35,7 @@ const chain = (what: string): ChainSegment[] => [
     label: 'role',
     hint: `Commands the detected ${what} offer, synthesized from the files that show them.`,
   },
-  { label: 'directory', hint: 'The directory the command runs in. `.` is the root.' },
+  { label: 'directory', hint: 'The package the command is for. `.` is the root.' },
   { label: 'tool', hint: 'The tool that runs the command.' },
   { label: 'action', hint: 'What the command does.' },
 ]
@@ -123,8 +123,10 @@ export function synthesizedRunners(registry: Registry, profile: ProjectProfile):
         chain: chain('hook managers'),
         async collect(ctx) {
           const tasks: Task[] = []
+          // Named `arm`, not `install`, so it reads apart from a package
+          // manager's install.
           for (const action of armActions(registry, ctx.profile)) {
-            tasks.push(synthTask(id, action, 'install'))
+            tasks.push(synthTask(id, action, 'arm'))
           }
           for (const { def, detected } of hms) {
             const read = def.roles.hookManager!.hooks

@@ -71,7 +71,8 @@ export function compilePattern(pattern: string): CompiledPattern {
   return compiled
 }
 
-function segmentRegExp(segment: string): RegExp {
+/** One path segment as a regex: `*` matches within the segment, everything else is literal. */
+export function segmentRegExp(segment: string): RegExp {
   const escaped = segment.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[^/]*')
   return new RegExp(`^${escaped}$`)
 }

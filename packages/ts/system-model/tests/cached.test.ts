@@ -14,6 +14,7 @@ import { EXEC_MAX_AGE_MS, entryPath, type CacheEntry } from '../src/cache.ts'
 import type { CollectOptions, DetectOptions } from '../src/contract.ts'
 import type { ProviderResult, Task } from '../src/model.ts'
 import { nodeScripts, pnpm } from '../src/plugins/node/index.ts'
+import { pythonTools } from '../src/plugins/python/index.ts'
 import { createProject } from '../src/project.ts'
 import type { ProjectProfile, ToolDef } from '../src/tool.ts'
 import { fakeRunners, fixtureRoot, removeRoot } from './support.ts'
@@ -553,6 +554,67 @@ describe('marker files the runner never read', () => {
       await removeRoot(root)
       await removeRoot(cache)
     }
+  })
+})
+
+describe('a manifest edit after detect', () => {
+  /** Detect, cache, edit the manifest, cache again with the held profile, then read with a new one. */
+  async function recache(
+    runner: string,
+    tools: ToolDef[],
+    files: Record<string, string>,
+    edit: [string, string],
+  ): Promise<{ held: string[]; fresh: { state: string | undefined; tasks: string[] } }> {
+    const root = await fixtureRoot(files)
+    const cache = await fixtureRoot({})
+    try {
+      const s = setup(tools)
+      const profile = await detect(s, root)
+      await s.project.runners.collectAndCache(profile, cache, s.options)
+      await writeFile(join(root, edit[0]), edit[1], 'utf-8')
+      const again = await s.project.runners.collectAndCache(profile, cache, s.options)
+      const read = await s.project.runners.readCached(await detect(s, root), cache, s.options)
+      const displays = (c: typeof again | null) =>
+        (c?.reports ?? [])
+          .filter((r) => r.runner === runner)
+          .flatMap((r) => r.tasks)
+          .map((t) => t.display)
+      return {
+        held: displays(again),
+        fresh: {
+          state: read.runners.find((r) => r.runner === runner)?.state,
+          tasks: displays(read.catalog),
+        },
+      }
+    } finally {
+      await removeRoot(root)
+      await removeRoot(cache)
+    }
+  }
+
+  test('node-scripts: the held profile collects the new script, and the cache does not keep the old list', async () => {
+    const result = await recache(
+      'node-scripts',
+      [nodeScripts, pnpm],
+      {
+        'package.json': JSON.stringify({ name: 'x', scripts: { build: 'tsc' } }),
+        'pnpm-lock.yaml': 'lockfileVersion: 9\n',
+      },
+      ['package.json', JSON.stringify({ name: 'x', scripts: { build: 'tsc', deploy: 'x' } })],
+    )
+    expect(result.held).toEqual(['pnpm run build', 'pnpm run deploy'])
+    expect(result.fresh).toEqual({ state: 'fresh', tasks: ['pnpm run build', 'pnpm run deploy'] })
+  })
+
+  test('python: the held profile collects the new script, and the cache does not keep the old list', async () => {
+    const result = await recache(
+      'python',
+      [...pythonTools],
+      { 'pyproject.toml': '[project.scripts]\na = "m:a"\n', 'uv.lock': '' },
+      ['pyproject.toml', '[project.scripts]\na = "m:a"\nb = "m:b"\n'],
+    )
+    expect(result.held).toEqual(['uv run a', 'uv run b'])
+    expect(result.fresh).toEqual({ state: 'fresh', tasks: ['uv run a', 'uv run b'] })
   })
 })
 

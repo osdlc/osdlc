@@ -27,11 +27,11 @@ import {
   collectRunners,
   execWithheldReport,
   selectRunners,
-  effectiveExcludes,
   stateFor,
   type ProbeRecord,
 } from './collect.ts'
 import type { CollectOptions } from './contract.ts'
+import { excludeList } from './discovery.ts'
 import { MAX_FINGERPRINT_FILES, fingerprint } from './fingerprint.ts'
 import type { Catalog, RunnerReport } from './model.ts'
 import type { Registry } from './registry.ts'
@@ -135,7 +135,7 @@ export async function readCachedCatalog(
         root: profile.root,
         paths: entry.fingerprint?.paths ?? [],
         patterns: [...(spec.role.watch ?? []), ...(entry.fingerprint?.patterns ?? [])],
-        excludes: effectiveExcludes(profile),
+        excludes: excludeList(profile.excludePaths, profile.useBuiltinExcludes),
         files,
       })
 
@@ -208,7 +208,7 @@ export async function collectAndCache(
         root: catalog.root,
         paths: probe.reads,
         patterns: [...probe.watch, ...probe.queries],
-        excludes: effectiveExcludes(profile),
+        excludes: excludeList(profile.excludePaths, profile.useBuiltinExcludes),
         files: probe.files,
       })
       if (print.truncated) truncated.add(probe.runner)

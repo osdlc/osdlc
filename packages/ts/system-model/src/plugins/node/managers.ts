@@ -10,6 +10,7 @@ import { evidence } from '../../model.ts'
 import type { Package, PackageManagerRole, ToolDef } from '../../tool.ts'
 import { flagAfterBinary } from '../support/shared.ts'
 import { nodeEcosystem } from './ecosystem.ts'
+import { describePnpmWorkspaces, PNPM_WORKSPACE } from './pnpm-workspace.ts'
 
 /** The `packageManager` field names this manager: the strongest evidence there is. */
 function pinDetect(id: string): ToolDef['detect'] {
@@ -65,8 +66,9 @@ export const pnpm: ToolDef = {
   id: 'pnpm',
   binary: 'pnpm',
   ecosystem: nodeEcosystem,
-  markers: [{ files: 'pnpm-workspace.yaml', tier: 'files' }],
+  markers: [{ files: PNPM_WORKSPACE, tier: 'files' }],
   detect: pinDetect('pnpm'),
+  describe: describePnpmWorkspaces,
   roles: {
     packageManager: {
       lockfiles: ['pnpm-lock.yaml'],

@@ -76,6 +76,8 @@ export interface CargoFact {
   description?: string | undefined
   /** `[workspace].members`. Omitted when empty. */
   workspaceMembers?: string[] | undefined
+  /** `[workspace].exclude`. Omitted when empty. */
+  workspaceExclude?: string[] | undefined
   /** `[[bin]]` sections present. */
   hasBin?: boolean | undefined
   deps?: DepFact[] | undefined

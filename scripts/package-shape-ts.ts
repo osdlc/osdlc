@@ -454,3 +454,9 @@ export function conventionProblems({
   }
   return problems
 }
+
+/**
+ * A `.d.ts` line that exports something. tsc writes `export {};` for a module
+ * with no exports, so that line alone does not count.
+ */
+export const DECLARES_EXPORT = /^export (?!\{\s*\};?\s*$)/m

@@ -191,6 +191,11 @@ export interface Lister {
   all(): Promise<string[]>
 }
 
+/** The exclude list discovery applies: `DEFAULT_EXCLUDES` first when `useBuiltinExcludes`, then `extra`. */
+export function excludeList(extra: readonly string[], useBuiltinExcludes: boolean): string[] {
+  return useBuiltinExcludes ? [...DEFAULT_EXCLUDES, ...extra] : [...extra]
+}
+
 /**
  * A file lister for one root, resolved once and memoized. `useBuiltinExcludes`
  * (default `true`) adds {@link DEFAULT_EXCLUDES} to `extraExcludes`.
@@ -202,9 +207,7 @@ export function createLister(
   extraExcludes: readonly string[] = [],
   useBuiltinExcludes = true,
 ): Lister {
-  const excludes = normalizeExcludes(
-    useBuiltinExcludes ? [...DEFAULT_EXCLUDES, ...extraExcludes] : extraExcludes,
-  )
+  const excludes = normalizeExcludes(excludeList(extraExcludes, useBuiltinExcludes))
   let all: Promise<string[]> | null = null
   // The exclusions apply to both strategies, so the two modes agree about a
   // `fixtures/` tree whether or not the root is a repository.

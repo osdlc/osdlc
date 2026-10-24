@@ -13,14 +13,15 @@
  * entry points are not reliably invocable without knowing which venv they
  * landed in.
  *
- * Both halves read the `pyproject.toml` facts detection parsed once, and the
- * script manager comes from `ctx.packageManagers`, so the profile and the
- * task list agree.
+ * Both halves re-read `pyproject.toml` through `ctx` and parse it with the
+ * parser detection uses, so a second collect sees edits. The script manager
+ * comes from `ctx.packageManagers`, so the profile and the task list agree.
  */
 
 import type { Diagnostic, ProviderResult, RunnerBrand, Task } from '../../model.ts'
 import type { RunnerRole } from '../../tool.ts'
 import { taskId } from '../support/shared.ts'
+import { parsePyproject } from './ecosystem.ts'
 
 const CHAIN = [
   { label: 'runner', hint: 'Python tooling configured in a pyproject.toml.' },
@@ -69,9 +70,13 @@ export const pythonRunner: RunnerRole = {
     const diagnostics: Diagnostic[] = []
 
     for (const pkg of packages) {
-      const fact = pkg.manifests.pyproject
-      if (fact === undefined) continue
-      const file = fact.manifestPath
+      const file = pkg.manifests.pyproject?.manifestPath
+      if (file === undefined) continue
+      // Read through ctx, not the profile's facts, so a second collect sees
+      // edits and the cache records what was read.
+      const text = await ctx.readText(file)
+      if (text === null) continue
+      const fact = parsePyproject(text, file)
       if (fact.error !== undefined) {
         diagnostics.push({ severity: 'warning', message: fact.error, source: file })
         continue

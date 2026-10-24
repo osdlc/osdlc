@@ -2,16 +2,17 @@
  * package.json `scripts`, run through the package's own manager.
  *
  * The run verb comes from the package manager chosen for the package (its
- * `packageManager` field, then the nearest lockfile at or above it, else
- * npm), so a nested package in a workspace runs through the workspace's
- * manager.
+ * `packageManager` field, then its own lockfile or its workspace root's,
+ * else npm), so a workspace member runs through the workspace's manager.
  */
 
 import type { RunnerContext } from '../../contract.ts'
 import type { Diagnostic, ProviderResult, RunnerBrand, Task } from '../../model.ts'
+import type { PackageJsonFact } from '../../manifests.ts'
 import type { Package, RunnerRole } from '../../tool.ts'
 import { looksPersistent, taskId, tierOf } from '../support/shared.ts'
 import { PACKAGE_JSON } from './ecosystem.ts'
+import { parsePackageJson } from './package-json.ts'
 import { NODE_MANAGERS, npm } from './managers.ts'
 
 const CHAIN = [
@@ -51,7 +52,11 @@ export const nodeScriptsRunner: RunnerRole = {
         (f) => f === PACKAGE_JSON || f.endsWith(`/${PACKAGE_JSON}`),
       )
       if (file === undefined) continue
-      const fact = pkg.manifests.packageJson
+      // Read through ctx, not the profile's facts, so a second collect sees
+      // edits and the cache records what was read.
+      const text = await ctx.readText(file)
+      if (text === null) continue
+      const fact = parseOrUndefined(text, file)
       if (fact === undefined) {
         // Test suites keep deliberately malformed manifests; a real one failing
         // to parse is worth surfacing, a fixture doing so is noise.
@@ -119,4 +124,12 @@ function managerFor(ctx: RunnerContext, dir: string): RunVerb {
   const tool = ctx.tools.find((t) => t.id === choice?.tool) ?? npm
   const run = tool.roles.packageManager?.run ?? npm.roles.packageManager!.run!
   return { id: tool.id, verb: run.verb, dirFlag: run.dirFlag }
+}
+
+function parseOrUndefined(text: string, file: string): PackageJsonFact | undefined {
+  try {
+    return parsePackageJson(text, file)
+  } catch {
+    return undefined
+  }
 }

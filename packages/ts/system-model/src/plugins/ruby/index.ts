@@ -2,6 +2,7 @@
 
 import type { DepFact, GemfileFact } from '../../manifests.ts'
 import type { EcosystemDef, ToolDef } from '../../tool.ts'
+import { flagAtEnd, joinRel } from '../support/shared.ts'
 import { RAKE_TASK_FILES, RAKEFILE_NAMES, rakeRunner } from './rake.ts'
 
 /** `gem 'name'` lines; a gem inside a `group` block that names only dev or test groups is `dev`. */
@@ -45,8 +46,12 @@ export const bundler: ToolDef = {
   binary: 'bundle',
   ecosystem: rubyEcosystem,
   roles: {
-    // No `inDir`: bundler takes its Gemfile from the environment, not a flag.
-    packageManager: { lockfiles: ['Gemfile.lock'], install: ['bundle', 'install'] },
+    packageManager: {
+      lockfiles: ['Gemfile.lock'],
+      install: ['bundle', 'install'],
+      // Bundler finds `Gemfile.lock` beside the Gemfile it is given.
+      inDir: flagAtEnd('--gemfile', (dir) => joinRel(dir, 'Gemfile')),
+    },
   },
 }
 

@@ -8,8 +8,11 @@
  * concurrently; one throwing does not lose the others' work.
  *
  * Each call lists and reads the repository afresh, with the discovery
- * settings recorded on the profile, so a second collect sees edits made
- * since the first and a profile copied through JSON collects the same way.
+ * settings recorded on the profile, and runners re-read the files they
+ * report on, so a second collect sees edits to them and a profile copied
+ * through JSON collects the same way. Which packages and tools exist, and
+ * which package manager each package uses, come from the profile: detect
+ * again after adding or removing a manifest, lockfile or marker.
  * The cache is a layer above this (`cached.ts`), reached through
  * `probeObserver`.
  */
@@ -18,7 +21,7 @@ import { spawnRunnerAsync } from '@osdlc/command-seam'
 
 import { createContext, createContextState, type ContextState } from './context.ts'
 import type { CollectOptions, ProviderContext, ProviderKind, RunnerContext } from './contract.ts'
-import { createLister, DEFAULT_EXCLUDES } from './discovery.ts'
+import { createLister } from './discovery.ts'
 import type { Catalog, ChainSegment, RunnerBrand, RunnerReport, Task } from './model.ts'
 import { manifestsOf, markersOf, type Registry } from './registry.ts'
 import { choosePackageManagers } from './roles.ts'
@@ -54,10 +57,10 @@ export interface InternalCollectOptions extends CollectOptions {
   probeObserver?: ((probe: ProbeRecord) => void) | undefined
 }
 
-const DEFAULT_CHAIN: ChainSegment[] = [
-  { label: 'runner', hint: 'The tool that runs the task.' },
-  { label: 'task', hint: 'The task name.' },
-]
+const DEFAULT_CHAIN: readonly Readonly<ChainSegment>[] = Object.freeze([
+  Object.freeze({ label: 'runner', hint: 'The tool that runs the task.' }),
+  Object.freeze({ label: 'task', hint: 'The task name.' }),
+])
 
 /** The runners one call runs, in registry order, after `only` and `exclude`. */
 export function selectRunners(
@@ -107,13 +110,6 @@ export function stateFor(
       profile.useBuiltinExcludes,
     ),
   )
-}
-
-/** The whole exclude list a profile was listed with, for the cache fingerprint. */
-export function effectiveExcludes(profile: ProjectProfile): string[] {
-  return profile.useBuiltinExcludes
-    ? [...DEFAULT_EXCLUDES, ...profile.excludePaths]
-    : [...profile.excludePaths]
 }
 
 export async function collectRunners(
@@ -209,7 +205,8 @@ function reportHead(
 ): Pick<RunnerReport, 'runner' | 'chain' | 'brand' | 'tool'> {
   return {
     runner: spec.id,
-    chain: spec.role.chain ?? DEFAULT_CHAIN,
+    // A copy, so a caller editing one report's chain changes no other report.
+    chain: spec.role.chain ?? DEFAULT_CHAIN.map((segment) => ({ ...segment })),
     ...(spec.role.brand ? { brand: spec.role.brand as RunnerBrand } : {}),
     ...(spec.binary ? { tool: toolStatus(spec.binary, which) } : {}),
   }

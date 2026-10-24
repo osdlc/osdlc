@@ -78,7 +78,13 @@ describe('packageManagers', () => {
   })
 
   test('walks up to the nearest lockfile', async () => {
-    const profile = await profileOf(['bun.lock', 'packages/ts/leaf/package.json'])
+    const profile = await detect(
+      await root({
+        'package.json': '{"workspaces":["packages/ts/*"]}',
+        'bun.lock': '',
+        'packages/ts/leaf/package.json': '{}',
+      }),
+    )
     expect(project.packageManagers(profile, 'packages/ts/leaf')).toEqual([
       {
         tool: 'bun',
@@ -92,7 +98,15 @@ describe('packageManagers', () => {
   })
 
   test('the nearest lockfile wins over a farther one', async () => {
-    const profile = await profileOf(['bun.lock', 'sub/yarn.lock', 'sub/leaf/package.json'])
+    const profile = await detect(
+      await root({
+        'package.json': '{"workspaces":["sub"]}',
+        'bun.lock': '',
+        'sub/package.json': '{"workspaces":["leaf"]}',
+        'sub/yarn.lock': '',
+        'sub/leaf/package.json': '{}',
+      }),
+    )
     const [choice] = project.packageManagers(profile, 'sub/leaf')
     expect(choice?.tool).toBe('yarn')
     expect(choice?.dir).toBe('sub')
@@ -168,7 +182,13 @@ describe('packageManagers', () => {
   })
 
   test('a manifest that implies a manager defers to a workspace root that chose one', async () => {
-    const profile = await profileOf(['Cargo.toml', 'Cargo.lock', 'crates/a/Cargo.toml'])
+    const profile = await detect(
+      await root({
+        'Cargo.toml': '[workspace]\nmembers = ["crates/*"]\n',
+        'Cargo.lock': '',
+        'crates/a/Cargo.toml': '[package]\nname = "a"\n',
+      }),
+    )
     expect(project.packageManagers(profile, 'crates/a')).toEqual([
       {
         tool: 'cargo',
@@ -272,7 +292,13 @@ describe('install', () => {
   })
 
   test('a workspace member installs at the workspace root', async () => {
-    const profile = await profileOf(['package.json', 'bun.lock', 'packages/a/package.json'])
+    const profile = await detect(
+      await root({
+        'package.json': '{"workspaces":["packages/*"]}',
+        'bun.lock': '',
+        'packages/a/package.json': '{}',
+      }),
+    )
     expect(project.install(profile, 'packages/a')).toEqual([
       { tool: 'bun', ecosystem: 'node', dir: '.', argv: ['bun', 'install'], source: 'bun.lock' },
     ])
@@ -548,7 +574,7 @@ describe('hook managers', () => {
       })
       const { catalog } = await collectWalk(dir)
       expect(hookTasks(catalog)).toEqual([
-        ['install', 'lefthook install'],
+        ['arm', 'lefthook install'],
         ['pre-commit', 'lefthook run pre-commit'],
         ['pre-push', 'lefthook run pre-push'],
       ])
@@ -560,12 +586,12 @@ describe('hook managers', () => {
     test('lefthook json and toml', async () => {
       const json = await root({ 'lefthook.json': JSON.stringify({ 'commit-msg': {} }) })
       expect(hookTasks((await collectWalk(json)).catalog)).toEqual([
-        ['install', 'lefthook install'],
+        ['arm', 'lefthook install'],
         ['commit-msg', 'lefthook run commit-msg'],
       ])
       const toml = await root({ 'lefthook.toml': '[pre-commit.commands.lint]\nrun = "x"\n' })
       expect(hookTasks((await collectWalk(toml)).catalog)).toEqual([
-        ['install', 'lefthook install'],
+        ['arm', 'lefthook install'],
         ['pre-commit', 'lefthook run pre-commit'],
       ])
     })
@@ -579,7 +605,7 @@ describe('hook managers', () => {
       })
       const { catalog } = await collectWalk(dir)
       expect(hookTasks(catalog)).toEqual([
-        ['install', 'npx husky'],
+        ['arm', 'npx husky'],
         ['commit-msg', 'sh .husky/commit-msg'],
         ['pre-commit', 'sh .husky/pre-commit'],
       ])
@@ -592,7 +618,7 @@ describe('hook managers', () => {
       })
       const { catalog } = await collectWalk(dir)
       expect(hookTasks(catalog)).toEqual([
-        ['install', 'pre-commit install'],
+        ['arm', 'pre-commit install'],
         ['eslint', 'pre-commit run eslint --all-files'],
         ['ruff', 'pre-commit run ruff --all-files'],
       ])
@@ -625,7 +651,7 @@ describe('the package-manager runner', () => {
 
   test('a workspace member’s install is the root’s, listed once', async () => {
     const dir = await root({
-      'package.json': '{}',
+      'package.json': '{"workspaces":["packages/*"]}',
       'bun.lock': '',
       'packages/a/package.json': '{}',
       'packages/b/package.json': '{}',
@@ -724,6 +750,69 @@ describe('workspaces, unlocked installs and install directories', () => {
       ['.', ['pnpm', '--dir', 'apps/web', 'install', '--frozen-lockfile']],
       ['.', ['cargo', 'fetch', '--manifest-path', 'crates/x/Cargo.toml']],
       ['.', ['cargo', 'fetch', '--locked', '--manifest-path', 'crates/x/Cargo.toml']],
+    ])
+  })
+
+  test('each manager with a directory flag puts it in argv', async () => {
+    const cases: Array<[Record<string, string>, string[]]> = [
+      [{ 'w/package.json': '{}', 'w/package-lock.json': '' }, ['npm', '--prefix', 'w', 'ci']],
+      [{ 'w/package.json': '{}', 'w/bun.lock': '' }, ['bun', '--cwd', 'w', 'install']],
+      [{ 'w/package.json': '{}', 'w/yarn.lock': '' }, ['yarn', '--cwd', 'w', 'install']],
+      [{ 'w/pyproject.toml': '', 'w/uv.lock': '' }, ['uv', 'sync', '--project', 'w']],
+      [{ 'w/pyproject.toml': '', 'w/poetry.lock': '' }, ['poetry', '--directory', 'w', 'install']],
+      [{ 'w/Gemfile': '', 'w/Gemfile.lock': '' }, ['bundle', 'install', '--gemfile', 'w/Gemfile']],
+    ]
+    for (const [files, argv] of cases) {
+      const { catalog } = await collectWalk(await root(files))
+      const first = report(catalog, 'package-manager')?.tasks.find(
+        (t) => t.path.at(-1) === 'install',
+      )
+      expect([first?.cwd, first?.argv]).toEqual(['.', argv])
+    }
+  })
+
+  test('a nested package that is not a workspace member does not take the root lockfile', async () => {
+    const dir = await root({
+      'package.json': '{}',
+      'package-lock.json': '',
+      'tools/x/package.json': JSON.stringify({ dependencies: { left: '1' } }),
+    })
+    const profile = await detect(dir)
+    expect(project.install(profile, 'tools/x').map((a) => [a.dir, a.argv.join(' ')])).toEqual([
+      ['tools/x', 'npm install'],
+    ])
+    expect(project.missingDeps(profile, 'tools/x')).toEqual([])
+  })
+
+  test('a pnpm member, listed in pnpm-workspace.yaml, takes the root lockfile', async () => {
+    const dir = await root({
+      'package.json': '{}',
+      'pnpm-lock.yaml': '',
+      'pnpm-workspace.yaml': "packages:\n  - 'apps/*'\n  - '!apps/legacy'\n",
+      'apps/web/package.json': '{}',
+      'apps/legacy/package.json': '{}',
+    })
+    const profile = await detect(dir)
+    expect(project.packageManagers(profile, 'apps/web')).toMatchObject([
+      { tool: 'pnpm', dir: '.', locked: true },
+    ])
+    // Negated, so not a member: it falls back to installing on its own.
+    expect(project.packageManagers(profile, 'apps/legacy')).toMatchObject([
+      { tool: 'npm', dir: 'apps/legacy', fallback: true },
+    ])
+  })
+
+  test('a crate in [workspace] exclude does not take the workspace lockfile', async () => {
+    const dir = await root({
+      'Cargo.toml': '[workspace]\nmembers = ["crates/*"]\nexclude = ["crates/old"]\n',
+      'Cargo.lock': '',
+      'crates/a/Cargo.toml': '[package]\nname = "a"\n',
+      'crates/old/Cargo.toml': '[package]\nname = "old"\n',
+    })
+    const profile = await detect(dir)
+    expect(project.packageManagers(profile, 'crates/a')).toMatchObject([{ dir: '.', locked: true }])
+    expect(project.packageManagers(profile, 'crates/old')).toMatchObject([
+      { tool: 'cargo', dir: 'crates/old', locked: false },
     ])
   })
 })
