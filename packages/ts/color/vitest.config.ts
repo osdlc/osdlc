@@ -4,7 +4,7 @@ import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
   resolve: {
-    // The tests and examples import the package by name; run them on the source.
+    // The tests and examples import the package by name. Point the name at the source.
     alias: { '@osdlc/color': fileURLToPath(new URL('./src/index.ts', import.meta.url)) },
   },
   test: {

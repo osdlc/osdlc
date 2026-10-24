@@ -45,8 +45,8 @@ pnpm run format:check
 ## The browser fixture
 
 `tests/fixtures/browser.json` holds what headless Chromium computes for the
-inputs the tests use. `tests/fixtures/record-browser.mjs` records it again;
-its header says how. Review the diff before you commit a new recording.
+inputs the tests use. `tests/fixtures/record-browser.mjs` records it again.
+Its header says how. Review the diff before you commit a new recording.
 
 ## Code style
 
@@ -60,5 +60,5 @@ its header says how. Review the diff before you commit a new recording.
   README's Stability section. A test checks that the two agree.
 - For a change users can see, add a changeset: run `pnpm changeset` at the
   repository root. Start a breaking change's summary with `**Breaking:**`.
-  Do not edit `CHANGELOG.md` or `version` by hand; the release writes them.
+  Do not edit `CHANGELOG.md` or `version` by hand. The release writes them.
   See [packages/README.md](https://github.com/osdlc/osdlc/blob/main/packages/README.md).

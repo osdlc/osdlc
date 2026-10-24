@@ -1,6 +1,6 @@
 /**
  * Contract tests against a real browser. fixtures/browser.json holds what
- * headless Chromium computed for each input; fixtures/record-browser.mjs
+ * headless Chromium computed for each input. fixtures/record-browser.mjs
  * recorded it and says how to record it again. Three claims are checked:
  *
  * - parseColor reads each input as the browser computes it, with one
@@ -8,7 +8,7 @@
  *   the computed value keeps (see CLAMPED). The canvas cases below check that
  *   the clamped colour is what the browser paints. parseColor rejects every
  *   input the browser rejects. The syntaxes it does not support (named
- *   colours, `hsl()`, `none`, other colour spaces) are listed below; the
+ *   colours, `hsl()`, `none`, other colour spaces) are listed below. The
  *   browser reads those and parseColor throws.
  * - mixColors(base, overlay, p / 100) gives what
  *   `color-mix(in srgb, base, overlay p%)` computes, for opaque colours.
