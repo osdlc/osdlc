@@ -6,7 +6,7 @@
  * call. Nothing here touches the filesystem.
  */
 
-import type { VendorDirs } from '@osdlc/config-layers'
+import type { VendorDirs } from '@osdlc/config-layers/dirs'
 
 /**
  * What describes a tool that is run from a development checkout: its name, launcher, marker file and vendor directories.

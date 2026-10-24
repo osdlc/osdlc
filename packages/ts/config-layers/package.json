@@ -28,6 +28,14 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./dirs": {
+      "types": "./dist/dirs.d.ts",
+      "default": "./dist/dirs.js"
+    },
+    "./did-you-mean": {
+      "types": "./dist/did-you-mean.d.ts",
+      "default": "./dist/did-you-mean.js"
     }
   },
   "files": [
