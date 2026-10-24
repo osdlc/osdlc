@@ -48,7 +48,7 @@ pnpm run format:check
 
 `packages/rust/path-guard/tests/fixtures/parity.json` is read by this
 package's `tests/parity.test.ts` and by the Rust crate's `tests/parity.rs`.
-A new case goes into that file first, so both suites cover it. Neither twin
+A new case goes into that file first, so both suites cover it. Neither package
 may add a case the other lacks.
 
 ## Code style

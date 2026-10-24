@@ -459,9 +459,9 @@ fn to_relative_uses_forward_slashes() {
 
 #[test]
 fn contains_sees_a_path_that_only_lands_inside_after_dots_fold() {
-    // The spelling that used to defeat the check: `nope` does not exist,
-    // so every `canonicalize` fails and the walk stops on the trailing
-    // `..` — `Path::file_name` is `None` there. Left unfolded, the raw
+    // A spelling that can defeat the check: `nope` does not exist, so
+    // every `canonicalize` fails and the walk stops on the trailing `..`,
+    // where `Path::file_name` is `None`. Left unfolded, the raw
     // `/var/…` spelling compares unequal to the canonical `/private/var/…`
     // root and the check passes a path that materialises inside it.
     let dir = tempfile::tempdir().unwrap();
@@ -505,11 +505,11 @@ fn contains_resolves_a_root_reached_through_a_symlink() {
     assert!(contains(&alias, &vault.join("out")));
 }
 
-/// A `..` behind an existing SYMLINK is the case textual folding gets
-/// wrong, and gets wrong in the unsafe direction: `x/link/../y` with
-/// `link -> v/deep` materialises inside `v`, and a folded answer of `x/y`
-/// would report it as outside. Asserted against what the filesystem
-/// actually does rather than against a hand-computed expectation.
+/// A `..` behind an existing symlink is the case textual folding gets
+/// wrong, in the unsafe direction: `x/link/../y` with `link -> v/deep`
+/// is created inside `v`, and a folded answer of `x/y` would report it as
+/// outside. Asserted against what the filesystem does rather than against a
+/// hand-computed expectation.
 #[cfg(unix)]
 #[test]
 fn a_dotdot_behind_a_symlink_resolves_the_way_the_filesystem_does() {
