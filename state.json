@@ -115,9 +115,9 @@
       "line": 114,
       "title": "createProject doc omits the duplicate-ecosystem throw",
       "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365462131",
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "e46a1997bba8c5323423e4b59d27d3a17ceaa7e9"
     },
     {
       "id": "r1-11",
