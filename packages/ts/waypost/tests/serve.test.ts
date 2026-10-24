@@ -996,7 +996,9 @@ describe('POST /api/trust — project tools', () => {
       const res = await post(s.address, await pageToken(s.address, s.bootToken))
       expect(res.status).toBe(200)
       const body = (await res.json()) as { note?: string }
-      expect(body.note).toBe('the tools waypost.config.json names load the next time way starts')
+      expect(body.note).toBe(
+        'the tools waypost.config.json names load the next time way starts with execution allowed',
+      )
     } finally {
       s.stop()
     }

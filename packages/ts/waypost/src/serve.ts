@@ -269,7 +269,7 @@ export interface ServeOptions {
   /** The registered tools, built-ins plus any loaded. */
   project: Project
   /**
-   * The project file names tools that were not loaded for want of trust.
+   * The project file names tools that were not loaded because the repository is untrusted or execution is off.
    * A grant from the page does not load them; the response says so.
    */
   projectToolsPending?: boolean | undefined
@@ -580,7 +580,7 @@ export async function startServer(options: ServeOptions): Promise<{
         const granted = await catalog(true)
         // Tool modules are code; this handler does not import them.
         const note = options.projectToolsPending
-          ? `the tools ${PROJECT_CONFIG_FILENAME} names load the next time ${BIN} starts`
+          ? `the tools ${PROJECT_CONFIG_FILENAME} names load the next time ${BIN} starts with execution allowed`
           : undefined
         return Response.json(
           {

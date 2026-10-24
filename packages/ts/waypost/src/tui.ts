@@ -106,7 +106,7 @@ interface State {
   catalog: Catalog | null
   /** The registered tools, built-ins plus any loaded. */
   project: Project
-  /** The project file names tools that were not loaded for want of trust. */
+  /** The project file names tools that were not loaded because the repository is untrusted or execution is off. */
   projectToolsPending: boolean
   root: string
   options: WayOptions
@@ -793,7 +793,7 @@ async function grantTrust(): Promise<void> {
   if (state.gate) state.gate = { ...state.gate, allowExec: true, trusted: true, reason: 'allowed' }
   // Tool modules are code; they load at the next start, not mid-session.
   state.message = state.projectToolsPending
-    ? `trusted — re-probing; the project's tools load the next time ${BIN} starts`
+    ? `trusted — re-probing; the project's tools load the next time ${BIN} starts with execution allowed`
     : 'trusted — re-probing'
   // A probe started before the grant was collected under the old gate, and
   // `refresh` drops a request while one is running — so the grant would be
