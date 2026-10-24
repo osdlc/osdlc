@@ -1,7 +1,8 @@
 /**
  * The session model: the state machine as a table, the `done`, `resumed` and
- * `pid_recorded` events, the read functions over a session directory, a log
- * that will not settle, and two processes appending to one log.
+ * `pid_recorded` events, the task a session serves, the read functions over a
+ * session directory, a log that will not settle, and two processes appending to
+ * one log.
  */
 
 import { appendFileSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs'
@@ -226,6 +227,27 @@ describe('the pid_recorded event', () => {
     const r = model.reduceSessionEvents(stamp(launched, { kind: 'ended' }, pid))
     expect(r.record?.pid).toBeNull()
     expect(r.ignored.map((i) => i.reason)).toEqual(['after_ended'])
+  })
+})
+
+describe('the task a session serves', () => {
+  test('the launched event carries it onto the record and record.json', () => {
+    const record = model.recordSessionEventIn(
+      dir,
+      { ...launched, task: 'fix-login' },
+      '2026-10-09T10:00:00.000Z',
+    )
+    expect(record?.task).toBe('fix-login')
+    expect(model.readSessionRecordIn(dir)?.task).toBe('fix-login')
+    expect(JSON.parse(readFileSync(join(dir, RECORD_FILE), 'utf-8')).task).toBe('fix-login')
+  })
+
+  test('a null task, or a log written before tasks were recorded, leaves it absent', () => {
+    for (const event of [{ ...launched, task: null }, launched]) {
+      const { record } = model.reduceSessionEvents(stamp(event))
+      expect(record).not.toBeNull()
+      expect(record && 'task' in record).toBe(false)
+    }
   })
 })
 

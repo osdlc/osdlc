@@ -267,6 +267,8 @@ export interface SessionRecordOf<H extends string, Ho extends string, F> {
   run?: string | undefined
   /** The task or PR the session is about. */
   subject?: string | undefined
+  /** The basename of the task the session serves; absent when it serves none (or on a log written before tasks were recorded). */
+  task?: string | undefined
   /** The session and op invocation that launched this one; absent for a root session. */
   parent?: SessionParent | undefined
   /** Length in bytes of the event log this record was projected from; readers re-reduce when the log's length differs. */
@@ -439,6 +441,8 @@ export function defineSessionModel<H extends string, Ho extends string, F>(
         run: z.string().nullable().optional(),
         /** The task or PR the run is about; absent when none was known. */
         subject: z.string().nullable().optional(),
+        /** The basename of the task the session serves; absent when it serves none. */
+        task: z.string().nullable().optional(),
         /** The machine that wrote the log, as the journal's `writer`; absent on an older log. */
         writer: z.string().optional(),
         /** The session and op invocation that launched this one; `null`/absent for a root. */
@@ -563,6 +567,7 @@ export function defineSessionModel<H extends string, Ho extends string, F>(
       tz: z.string().optional(),
       run: z.string().optional(),
       subject: z.string().optional(),
+      task: z.string().optional(),
       parent: SessionParentSchema.optional(),
       logBytes: z.number().int().optional(),
     }),
@@ -618,6 +623,7 @@ export function defineSessionModel<H extends string, Ho extends string, F>(
           ...(event.tz !== undefined ? { tz: event.tz } : {}),
           ...(event.run != null ? { run: event.run } : {}),
           ...(event.subject != null ? { subject: event.subject } : {}),
+          ...(event.task != null ? { task: event.task } : {}),
           ...(event.parent != null ? { parent: event.parent } : {}),
           ...(event.launchFlags !== undefined ? { launchFlags: event.launchFlags } : {}),
           ...(event.pin !== undefined ? { pin: event.pin } : {}),
