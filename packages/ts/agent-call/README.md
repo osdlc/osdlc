@@ -205,9 +205,9 @@ handling.
 
 `callAgent` does not throw when the agent fails. It resolves with `ok: false`
 and an `error`: `{ reason, detail }`. The reasons today are `spawn-failed`,
-`timeout`, `nonzero-exit`, `agent-error` and `output-limit`. The set of
-reasons is open. A minor release may add one, so handle the reasons you know
-and keep a default branch.
+`timeout`, `nonzero-exit`, `agent-error` and `output-limit`.
+**The set of reasons is open.** A minor release may add one, so handle the
+reasons you know and keep a default branch.
 
 It rejects with a `RangeError` when `maxOutputBytes` is `0`, negative or `NaN`,
 and a `TypeError` when it is not a number. A fraction rounds up. It also
