@@ -157,7 +157,7 @@ export function classifyGitFailure(failed: CommandFailed): GitFailure {
   return base
 }
 
-/** The git verb a failure ran, past any leading `-c <k=v>` / `-C <dir>` options; `undefined` when argv has none. */
+/** The git verb a failure ran, past any leading `-c <k=v>` / `-C <dir>` options (other global options are expected in their `--opt=value` form); `undefined` when argv has none. */
 function gitVerb(argv: readonly string[]): string | undefined {
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!
@@ -191,6 +191,7 @@ export function describeGitFailure(failure: GitFailure): string {
 export function gitFailureError(error: unknown): unknown {
   if (!isCommandFailed(error)) return error
   const failure = classifyGitFailure(error)
+  // FailureError's message is the bare sentence; this door adds the command.
   const thrown = new FailureError(failure)
   thrown.message = describeGitFailure(failure)
   return thrown
