@@ -1,7 +1,8 @@
 # @osdlc/tsconfig
 
-Strict TypeScript compiler presets: one shared bar, plus the package shapes
-that recur on top of it. Consumed through `extends`; ships no code.
+Strict TypeScript compiler presets: one shared strictness bar, plus presets for
+the common package kinds built on it. You use them through `extends`. The
+package ships no code.
 
 ## Install
 
@@ -23,16 +24,16 @@ and the `${configDir}` template).
 | `node-lib` | `source-shipped` + the ES2022 runtime and node globals. |
 | `bun-lib` | `node-lib` + bun's globals, for a package whose tests or runtime are Bun. |
 | `vue` | `source-shipped` + the modern browser, the DOM, `jsx: preserve`, and no ambient types. |
-| `build` | The emit block, as a mixin. Not a standalone config — see below. |
+| `build` | The emit options, as a mixin. Not a standalone config. See below. |
 
 ## Use
 
-`base` and `source-shipped` differ by two options, and TypeScript couples them:
-`allowImportingTsExtensions` is rejected unless `noEmit`, `emitDeclarationOnly`
-or `rewriteRelativeImportExtensions` is set (TS5096). A package consumed as
-TypeScript source, importing `./x.ts`, wants `source-shipped` (directly or
-through `node-lib`, `bun-lib` or `vue`). A package that builds with tsc and
-imports `./x.js` wants `base`.
+`base` and `source-shipped` differ by two options, and TypeScript requires them
+together. It rejects `allowImportingTsExtensions` unless `noEmit`,
+`emitDeclarationOnly` or `rewriteRelativeImportExtensions` is set (TS5096). A
+package consumed as TypeScript source, importing `./x.ts`, uses
+`source-shipped` (directly or through `node-lib`, `bun-lib` or `vue`). A package
+that builds with tsc and imports `./x.js` uses `base`.
 
 ```jsonc
 // tsconfig.json — the family preset, then your own per-package facts
@@ -42,11 +43,11 @@ imports `./x.js` wants `base`.
 }
 ```
 
-`lib`, `types`, `jsx` and `include` are genuine per-package facts, so a package
-still states the ones where it really differs from its preset. What it should
-not restate is anything the preset already says.
+`lib`, `types`, `jsx` and `include` differ between packages, so a package
+still sets the ones where it differs from its preset. It should not repeat
+anything the preset already sets.
 
-The emit mixin goes **last in an array**, on top of the package's own config:
+The emit mixin goes last in an array, after the package's own config:
 
 ```jsonc
 // tsconfig.build.json
@@ -57,24 +58,24 @@ The emit mixin goes **last in an array**, on top of the package's own config:
 ```
 
 TypeScript applies array entries left to right, and the extending file's own
-`compilerOptions` last — so `build`'s `noEmit: false` lands on top of the dev
-config's `noEmit: true`, while `rootDir` and `include` stay where they belong.
-`build` deliberately declares no `extends` and no `include`; `presets/build.json`
-explains why each of those would break silently.
+`compilerOptions` last. So `build`'s `noEmit: false` overrides the dev config's
+`noEmit: true`, while `rootDir` and `include` come from the package. `build`
+declares no `extends` and no `include` on purpose. `presets/build.json` explains
+how each would break the build without an error.
 
 ## Adding a preset
 
-Add the file under `presets/`, **and add both its `exports` keys** (the
-extensionless and `.json` spellings) to `package.json`. Then add it to
-`tests/resolve.json`. Skipping the `exports` entry still resolves from inside
-this package and breaks every consumer; `npm run typecheck` (tsc over
-`tests/resolve.json`) is what catches that.
+Add the file under `presets/`, and add both its `exports` keys (with and
+without `.json`) to `package.json`. Then add it to `tests/resolve.json`. Without
+the `exports` entry the preset still resolves from inside this package, but
+every consumer breaks. `npm run typecheck` (tsc over `tests/resolve.json`)
+catches that.
 
 ## Not for framework-generated configs
 
-A config that extends `./.nuxt/tsconfig.json` or `astro/tsconfigs/*` must stay
-that way. Layering this bar on top would clobber the `paths`, `types`,
-`moduleResolution` and `jsx` the generator computed.
+A config that extends `./.nuxt/tsconfig.json` or `astro/tsconfigs/*` should
+keep extending only that. Adding these presets on top would overwrite the
+`paths`, `types`, `moduleResolution` and `jsx` the generator computed.
 
 ## Source and releases
 

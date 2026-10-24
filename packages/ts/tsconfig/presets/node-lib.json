@@ -1,11 +1,9 @@
 {
   // A node library: the ES2022 runtime, node globals, no DOM.
   //
-  // `customConditions: ["bun"]` is deliberately not here — it is a per-package
-  // decision rather than a property of this shape, so it stays a stated line in
-  // the packages that need it. See ./bun-lib.json for what the setting decides
-  // and how getting it wrong turns into a TS2307 nothing reports until the
-  // importing package is next checked.
+  // `customConditions: ["bun"]` is not set here. Packages differ on it, so each
+  // package that needs it sets it. See ./bun-lib.json for what the setting
+  // decides and how a wrong value causes a TS2307 that shows up late.
   "extends": "./source-shipped.json",
   "compilerOptions": {
     "lib": ["ES2022"],
