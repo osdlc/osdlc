@@ -1,0 +1,1514 @@
+/* The page's colour tokens, under the --d-* names. It is a standalone page
+     with no shell, so the values are inlined here. */
+:root {
+  color-scheme: light dark;
+  --d-bg-base: #f8f8fa;
+  --d-bg-surface: #ffffff;
+  --d-bg-hover: #ededf1;
+  --d-text-primary: #1a1a1c;
+  --d-text-secondary: #45454b;
+  --d-text-muted: #585860;
+  --d-border: #e0e0e6;
+  --d-border-subtle: #ebebf0;
+  --d-accent: #1d59d8;
+  --d-accent-hover: #1a4fbe;
+  /* The label laid ON an accent fill. It follows the ground scale rather
+       than being a fixed white, so a pressed control reads dark-on-hue in
+       dark mode — white on the dark accent is 2.56:1 and fails AA. */
+  --d-accent-fg: #ffffff;
+  --d-status-success: #188a46;
+  --d-status-error: #d70015;
+  --d-status-warning: #b06a00;
+  --d-font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  --d-radius-xs: 4px;
+  --d-radius-sm: 6px;
+  --d-radius-md: 10px;
+  --d-radius-lg: 14px;
+  /* Theme-independent: a pill is a shape, not a colour, so it is declared once. */
+  --d-radius-pill: 999px;
+  /* The match highlight is the accent at low strength, not a fifth hue. One
+       declaration serves both themes because it mixes from --d-accent. */
+  --d-accent-wash: color-mix(in srgb, var(--d-accent) 18%, transparent);
+  --head-h: 28px; /* group-header height; the sticky stack counts in these */
+  --chrome-h: 0px; /* measured at runtime — see measureChrome() */
+}
+/* Dark is declared twice, on purpose. The media query is the SYSTEM default,
+     which is what applies while `data-theme` is absent; the attribute selector
+     is the explicit choice, which has to win in both directions — so light must
+     also be reachable on a machine set to dark. Defining the dark palette only
+     inside the media query would make "Light" a no-op there. The two blocks
+     must stay value-identical. */
+:root[data-theme='dark'],
+:root:not([data-theme='light']) {
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --d-bg-base: #1a1b20;
+    --d-bg-surface: #1d1e25;
+    --d-bg-hover: #31323c;
+    --d-text-primary: #eaeaee;
+    --d-text-secondary: #bcbcc4;
+    --d-text-muted: #a4a5ae;
+    --d-border: #31323c;
+    --d-border-subtle: #272831;
+    --d-accent: #6a9bff;
+    --d-accent-hover: #85adff;
+    --d-accent-fg: #24252d;
+    --d-status-success: #3fb27f;
+    --d-status-error: #f7768e;
+    --d-status-warning: #e0af68;
+  }
+}
+:root[data-theme='dark'] {
+  --d-bg-base: #1a1b20;
+  --d-bg-surface: #1d1e25;
+  --d-bg-hover: #31323c;
+  --d-text-primary: #eaeaee;
+  --d-text-secondary: #bcbcc4;
+  --d-text-muted: #a4a5ae;
+  --d-border: #31323c;
+  --d-border-subtle: #272831;
+  --d-accent: #6a9bff;
+  --d-accent-hover: #85adff;
+  --d-accent-fg: #24252d;
+  --d-status-success: #3fb27f;
+  --d-status-error: #f7768e;
+  --d-status-warning: #e0af68;
+}
+:root[data-theme='light'] {
+  color-scheme: light;
+}
+:root[data-theme='dark'] {
+  color-scheme: dark;
+}
+* {
+  box-sizing: border-box;
+}
+/* Text for assistive tech only. It stays IN the accessibility tree — clipped
+     to a pixel rather than `display: none` — which is what gives an element
+     whose whole meaning is an icon a name to announce. */
+.sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+body {
+  margin: 0;
+  background: var(--d-bg-surface);
+  color: var(--d-text-primary);
+  font:
+    13px/1.5 system-ui,
+    -apple-system,
+    'Segoe UI',
+    sans-serif;
+}
+/* Status, search box and tabs travel together: the group headers
+     stick BELOW this block, and they need one measurable height to offset by. */
+#chrome {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: var(--d-bg-base);
+  border-bottom: 1px solid var(--d-border);
+}
+header {
+  padding: 12px 16px 0;
+}
+/* Wraps rather than crushes: below about 1100px the clusters drop to a second
+     line instead of squeezing the search field down to a few characters. */
+.searchrow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+/* The only flexible item in the row, so every pixel the toolbar does not need
+     goes to the query. It is also the positioning context for the inline
+     Fuzzy/Exact toggle, which sits against the field's right inside edge. */
+/* The min-width is what decides when the row wraps. 260 is the short
+     placeholder plus the inline toggle's 112px reserve, so the field never
+     shows a clipped word: below that the clusters drop to a second line
+     instead. */
+.searchbox {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-width: 260px;
+}
+#q {
+  flex: 1;
+  font: 13px/1.4 var(--d-font-mono);
+  padding: 9px 12px;
+  /* An input's default intrinsic width plus the 112px reserve below is a
+       min-content width of about 290px, which is more than the box above will
+       ever be — and a flex item's default `min-width: auto` refuses to go below
+       it. The field then painted OUT of its own box, over the Scope cluster
+       beside it. The box's min-width is what decides when the row wraps; the
+       field just has to fit whatever the box turns out to be. */
+  min-width: 0;
+  /* Room for the inline mode toggle. It renders 94px wide and is inset 6px
+       from the field's right edge, so 112px leaves about 12px of clear space
+       and text never slides under it. Measured, not guessed: change the
+       toggle's font or padding and this number has to be re-measured. */
+  padding-right: 112px;
+  background: var(--d-bg-surface);
+  color: var(--d-text-primary);
+  border: 1px solid var(--d-border);
+  border-radius: var(--d-radius-sm);
+}
+#q:focus {
+  outline: 2px solid var(--d-accent);
+  outline-offset: -1px;
+}
+
+/* Groups of related controls, named quietly. The label is chrome, not a
+     control: a span, so it takes no tab stop and announces nothing. */
+.cluster {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding-left: 10px;
+  border-left: 1px solid var(--d-border-subtle);
+}
+.cluster-label {
+  font: 600 10px/1 system-ui;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--d-text-muted);
+  user-select: none;
+}
+
+/* Only the search box had a focus style, so tabbing through the toolbar put
+     focus on buttons that gave no sign of having it — the controls looked
+     skipped rather than merely unmarked. One visible ring, on everything
+     focusable, offset outward so it is not swallowed by the button's own
+     border. `:focus-visible` rather than `:focus` keeps it off a mouse click. */
+:where(button, input, [tabindex]):focus-visible {
+  outline: 2px solid var(--d-accent);
+  outline-offset: 2px;
+  border-radius: var(--d-radius-sm);
+}
+/* A tab is flush against its neighbours, so its ring sits inside instead. */
+.tabs button[data-runner]:focus-visible {
+  outline-offset: -2px;
+}
+/* `overflow: visible`, so the outward focus ring on a segment's button is not
+     clipped away by the group box. Visible overflow means the group's own
+     rounding no longer clips its buttons, so the end buttons round themselves
+     below — otherwise a square button corner would sit in a rounded group. */
+.seg {
+  display: flex;
+  border: 1px solid var(--d-border);
+  border-radius: var(--d-radius-sm);
+  overflow: visible;
+}
+.seg button {
+  font: 12px/1 system-ui;
+  padding: 9px 11px;
+  border: 0;
+  cursor: pointer;
+  background: var(--d-bg-surface);
+  color: var(--d-text-secondary);
+}
+.seg button:first-child {
+  border-radius: var(--d-radius-sm) 0 0 var(--d-radius-sm);
+}
+.seg button:last-child {
+  border-radius: 0 var(--d-radius-sm) var(--d-radius-sm) 0;
+}
+.seg button[aria-pressed='true'] {
+  background: var(--d-accent);
+  color: var(--d-accent-fg);
+}
+/* How a query matches belongs to the query, so the toggle lives in the field
+     it governs. Smaller than a toolbar seg and ringed, so it reads as a control
+     sitting in the box rather than as trailing text. */
+/* The 6px inset from the field's right edge is what leaves room for this
+     toggle's focus ring to be drawn outside it. */
+.seg.inline {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  border-color: var(--d-border);
+}
+.seg.inline button {
+  font: 11px/1 system-ui;
+  padding: 4px 8px;
+}
+/* One button, showing the current colour scheme rather than three showing the
+     choices. Squared to the toolbar's height so the glyph is not cramped. */
+.toolbtn.iconbtn {
+  font-size: 14px;
+  line-height: 1;
+  width: 30px;
+  padding: 0;
+  text-align: center;
+}
+.toolbtn {
+  font: 12px/1 system-ui;
+  padding: 9px 11px;
+  cursor: pointer;
+  background: var(--d-bg-surface);
+  color: var(--d-text-secondary);
+  border: 1px solid var(--d-border);
+  border-radius: var(--d-radius-sm);
+}
+.toolbtn[aria-pressed='true'] {
+  background: var(--d-accent);
+  color: var(--d-accent-fg);
+  border-color: var(--d-accent);
+}
+/* 10px, which is what each tab's `i` button needs to the right of it for a
+     24px hit target that stops 2px SHORT of the next tab. At 8px the overlay's
+     right edge met that tab's left edge exactly, and on a fractionally
+     positioned row pixel snapping put the overlay on both sides of every tab
+     boundary — a click just inside a tab opened the previous runner's modal.
+
+     It wraps rather than overflowing: below about 926px the strip had a hard
+     floor and the whole PAGE scrolled sideways to hold it. A second line costs
+     nothing (the chrome is measured, not assumed) and keeps every tab visible,
+     which a scroller inside the strip would not. */
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 10px;
+  align-items: center;
+}
+/* Positioning context for the drop-down, which hangs below the button. The
+     picker sits in the toolbar's Scope cluster, so it takes its place in that
+     flex row and needs no margin of its own. */
+.picker {
+  position: relative;
+}
+/* The slot render() writes the picker into. A div, because the picker it
+     holds is block-level and cannot legally nest in a span. */
+#pickerhost {
+  display: flex;
+}
+/* Capped against the VIEWPORT and scrolled inside itself. It hangs out of a
+     sticky #chrome, so an over-long menu simply ran off the bottom of the
+     window with nothing able to bring it back: scrolling the page moves the
+     chrome not at all. Thirteen runners passed that point below about 570px of
+     window height. The chrome's own measured height is the offset, which is
+     more than the menu's real top — deliberately conservative, so the cap is
+     never the thing that overflows. */
+.pickmenu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 200;
+  min-width: 220px;
+  padding: 6px;
+  border-radius: var(--d-radius-md);
+  background: var(--d-bg-base);
+  border: 1px solid var(--d-border);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  max-height: calc(100vh - var(--chrome-h) - 16px);
+  overflow-y: auto;
+}
+.pickmenu[hidden] {
+  display: none;
+}
+.pick {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: var(--d-radius-xs);
+  font: 12px/1.3 var(--d-font-mono);
+  color: var(--d-text-primary);
+}
+.pick:hover {
+  background: var(--d-bg-hover);
+}
+/* The row itself is a plain div now, not a <label>: the info button rides
+     beside it (see view.ts), and a label wrapping the whole row would also
+     forward that button's click to the checkbox. Only this inner label,
+     around the checkbox/name/count, still toggles the runner on click. */
+.pick-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+.pick .grip {
+  color: var(--d-text-muted);
+  font-size: 11px;
+  cursor: grab;
+  user-select: none;
+}
+.pick:active .grip {
+  cursor: grabbing;
+}
+.tabs button[data-runner][draggable] {
+  cursor: grab;
+}
+.tabs button[data-runner][draggable]:active {
+  cursor: grabbing;
+}
+
+/* The drag image: a SOLID copy of what is being dragged, lifted off the page.
+     The browser's own ghost is near-transparent and reads as a rendering
+     accident rather than as the thing in hand. It is parked off-screen because
+     setDragImage only needs it rendered, not seen, and it inherits none of its
+     surface's context there - so it carries its own card styling, and the
+     affordances that belong to the row rather than to its identity (the grip,
+     the info button) are dropped from the copy. */
+[data-drag-ghost] {
+  position: fixed;
+  left: 0;
+  top: -1000px;
+  z-index: 500;
+  opacity: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  pointer-events: none;
+  font: 13px/1 system-ui;
+  /* An accent wash over the surface tone, not the page ground: --d-bg-base
+       IS the ground in both themes, so a card painted in it read as an
+       outlined rectangle rather than as something picked up. Mixing toward the
+       accent lifts it off either ground and says the card is in hand.
+
+       Two shadows, because one cannot serve both themes: black carries the
+       lift on white and is invisible on #14161a, so an accent halo carries it
+       there. Each is harmless where the other is doing the work. */
+  background: color-mix(in srgb, var(--d-accent) 14%, var(--d-bg-surface));
+  color: var(--d-text-primary);
+  border: 1px solid var(--d-accent);
+  border-radius: var(--d-radius-sm);
+  box-shadow:
+    0 12px 28px rgba(0, 0, 0, 0.45),
+    0 6px 18px color-mix(in srgb, var(--d-accent) 40%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--d-accent) 45%, transparent);
+}
+[data-drag-ghost] button,
+[data-drag-ghost] label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  padding: 0;
+}
+[data-drag-ghost] .tabinfo,
+[data-drag-ghost] .grip {
+  display: none;
+}
+[data-drag-ghost] .count {
+  color: var(--d-text-muted);
+  font-size: 11px;
+}
+/* The dragged element itself, faded because the ghost is the copy the eye is
+     following. The preview MOVES it, so this fades wherever it has slid to —
+     it marks the slot the drop would take, not the one it started in. */
+.dragging {
+  opacity: 0.4;
+}
+/* The siblings the preview displaces slide to their new places. The
+     transform is set from input.ts as a FLIP; this is only how long it takes.
+     Reduced motion takes the jump instead. */
+.tabs .tab,
+.pickmenu .pick {
+  transition: transform 0.12s ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tabs .tab,
+  .pickmenu .pick {
+    transition: none;
+  }
+}
+.pick .count {
+  margin-left: auto;
+  color: var(--d-text-muted);
+  font-size: 11px;
+}
+/* The picker's sort header. It reorders the one persisted order, so it reads
+     as a table head over the rows it governs rather than as a second control:
+     quiet, uppercase, on the menu's own ground.
+
+     Pinned, because the menu scrolls now: a header that scrolled away would
+     leave the rows it governs with nothing naming their order. It pins below
+     the menu's own 6px padding, and the shadow repaints that band in the
+     menu's ground so rows do not show through the sliver above it. */
+.pickhead {
+  /* 8px, not 4px: the same gap `.pick` uses, so the header's first column
+       lands over the row's first control rather than 4px short of it. */
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 2px 8px 6px;
+  border-bottom: 1px solid var(--d-border);
+  margin-bottom: 4px;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--d-bg-base);
+  box-shadow: 0 -6px 0 var(--d-bg-base);
+}
+/* A stand-in for the row's drag handle: present so it takes up the handle's
+     width, invisible because there is nothing to drag in a header. */
+.pickhead .grip {
+  visibility: hidden;
+}
+/* The shown column sits directly over the checkboxes it orders by, so it
+     takes no horizontal padding that would push it out of that line, and its
+     content is left-aligned rather than centred so the glyph's left edge meets
+     the checkbox's. The width is fixed and roomy enough for the direction
+     arrow, so activating the sort cannot shift the two columns beside it. */
+.picksort[data-sort-runners='shown'] {
+  flex: 0 0 24px;
+  padding-left: 0;
+  padding-right: 0;
+  justify-content: flex-start;
+}
+.picksort {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex: 1;
+  font: 600 10px/1 system-ui;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 4px 6px;
+  cursor: pointer;
+  border-radius: var(--d-radius-xs);
+  background: transparent;
+  color: var(--d-text-muted);
+  border: 1px solid transparent;
+}
+.picksort:last-child {
+  flex: none;
+  margin-left: auto;
+}
+.picksort:hover {
+  color: var(--d-accent-hover);
+  border-color: var(--d-border);
+}
+/* Pressed means "the order on screen IS this sort", which is derived every
+     render - so it clears itself the moment a drag breaks the sort. */
+.picksort[aria-pressed='true'] {
+  color: var(--d-text-primary);
+}
+.sortdir {
+  font-size: 9px;
+}
+
+.pickactions {
+  display: flex;
+  gap: 4px;
+  padding: 6px 8px 2px;
+  border-top: 1px solid var(--d-border);
+  margin-top: 4px;
+}
+.pickactions button {
+  font: 11px/1 system-ui;
+  padding: 5px 9px;
+  cursor: pointer;
+  flex: 1;
+  background: var(--d-bg-surface);
+  color: var(--d-text-secondary);
+  border: 1px solid var(--d-border);
+  border-radius: var(--d-radius-sm);
+}
+.pickactions button:hover {
+  color: var(--d-accent-hover);
+  border-color: var(--d-accent);
+}
+/* Scoped to [data-runner]: the tab row also hosts .tabinfo, and a bare
+     `.tabs button` outranks its own single-class rule — it was stripping
+     .tabinfo's size. Only real tabs carry data-runner.
+
+     `nowrap`, or a long label breaks across two lines inside its own button
+     while the strip still has room to wrap instead. */
+.tabs button[data-runner] {
+  font: 13px/1 system-ui;
+  padding: 9px 14px;
+  cursor: pointer;
+  background: transparent;
+  color: var(--d-text-secondary);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+}
+.tabs button[data-runner][aria-pressed='true'] {
+  color: var(--d-text-primary);
+  border-bottom-color: var(--d-accent);
+}
+.tabs button[data-runner] .ricon {
+  margin-right: 6px;
+}
+.tabs .count {
+  color: var(--d-text-muted);
+  font-size: 11px;
+  margin-left: 5px;
+}
+/* A runner held back because execution is off. Quiet, in the count's own
+     voice: nothing failed, so it must not read like the error marker. */
+.tabs .count.exec {
+  margin-left: 4px;
+  padding: 1px 5px;
+  border-radius: var(--d-radius-pill);
+  border: 1px solid var(--d-border);
+  font-size: 10px;
+}
+/* `flex: none`, so a full strip wraps rather than squeezing its tabs: a
+     shrunken tab pulls its label out from under its own hit geometry. */
+.tab {
+  display: flex;
+  align-items: center;
+  flex: none;
+}
+/* Where one group of rows ends and the next begins: Dependencies, Tools,
+     Git hooks. */
+.tabgroup {
+  flex: none;
+  align-self: center;
+  margin-left: 10px;
+  padding-left: 10px;
+  border-left: 1px solid var(--d-border);
+  color: var(--d-text-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+/* Runner icons come from each report's `brand`. The SVG ships with a viewBox
+     and no fixed size, so each surface sizes it here. */
+.ricon {
+  display: inline-flex;
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+.ricon svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.head .ricon {
+  width: 15px;
+  height: 15px;
+}
+/* Quiet, not dead. An affordance drawn at .35 opacity is the platform
+     convention for DISABLED, so this button read as unavailable rather than
+     merely secondary. Full opacity in the muted text colour on a subtle ring
+     is quiet without making a false claim. The modal stays reachable by Tab:
+     the tab row's roving group is scoped to `button[data-runner]`, so .tabinfo
+     keeps its own natural tab stop.
+
+     `flex: none`, or a crowded row shrinks the button: 16px became 14.4px at
+     1000px and 12.2px at 900px while the 24px overlay below stayed put, so the
+     overlay reached almost 4px past the NEXT tab's left edge and swallowed
+     clicks meant for it. The strip wraps now instead of crowding, and this
+     keeps the ring itself from degrading either way. */
+.tabinfo {
+  font: 600 11px/1 var(--d-font-mono);
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  margin-left: 0;
+  cursor: pointer;
+  position: relative;
+  flex: none;
+  background: transparent;
+  color: var(--d-text-muted);
+  border: 1px solid var(--d-border-subtle);
+  border-radius: 50%;
+}
+/* The visible ring is 16px, under the 24px minimum target size. A
+     transparent overlay grows what the pointer can hit without growing the
+     ring, so the tab row keeps its density. Out of flow, so the glyph inside
+     does not move.
+
+     It grows OUTWARD, not from the centre: a centred 24px box reached back
+     over the tab it belongs to, and clicking that tab's right edge opened the
+     info modal instead of selecting the runner. Anchored at the button's left
+     edge it spans the button and 8 of the 10px of gap after it — 24px of
+     target with 2px of clear space before the next tab, which is what keeps a
+     click at that tab's own edge landing on the tab. Both numbers are needed:
+     24 is the minimum target, so the slack comes out of the gap rather than
+     out of the target. */
+.tabinfo::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 24px;
+  height: 24px;
+  transform: translateY(-50%);
+}
+.tabinfo:hover {
+  color: var(--d-accent-hover);
+  border-color: var(--d-accent);
+}
+/* In the picker the count runs up to the row's right edge, so the button
+     needs its own breathing room; its hit overlay reaches into the row's own
+     padding, where nothing else is. */
+.pick .tabinfo {
+  margin-left: 4px;
+}
+/* The trust grant, where the picker row names the withholding. Sized down to
+     the row rather than given a look of its own: it is a toolbar button in an
+     unusually small place, not a new kind of control. */
+.pick .toolbtn {
+  margin-left: 4px;
+  font-size: 11px;
+  padding: 3px 7px;
+  white-space: nowrap;
+}
+
+/* The chip standing in for every empty runner's tab. Quiet on purpose —
+     folding these was the point, so the chip should read as calmer than a
+     real tab, not as a louder one. It carries no `data-runner`, so the tab
+     row's roving-tabindex group (scoped to `button[data-runner]`) leaves it
+     its own natural tab stop. */
+.tab-folded {
+  font: 11px/1 system-ui;
+  padding: 6px 10px;
+  margin-left: 8px;
+  cursor: pointer;
+  background: transparent;
+  color: var(--d-text-muted);
+  border: 1px solid var(--d-border-subtle);
+  border-radius: var(--d-radius-pill);
+}
+.tab-folded:hover,
+.tab-folded:focus-visible {
+  color: var(--d-accent-hover);
+  border-color: var(--d-accent);
+}
+/* The first strip in the chrome. It was between the column heads and the
+     rows, where a count read as a table row and broke the header away from its
+     body; above everything it reads as a caption for the whole view. Outside
+     `header`, so it carries its own horizontal padding. */
+.status {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 7px 16px;
+  font-size: 11px;
+  color: var(--d-text-muted);
+  background: var(--d-bg-surface);
+  border-bottom: 1px solid var(--d-border);
+}
+.status .err {
+  color: var(--d-status-error);
+}
+/* The trust bar. Its own row above everything, because it asks for a
+     decision rather than reporting a number: in the status strip it sat
+     between the clock and the keyboard hints, where a button reads as one
+     more piece of chrome. Warning colour, not error — nothing failed,
+     something was declined — and a tinted ground so the row is visibly a
+     different KIND of thing from the counts below it. */
+.trustbar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 8px 16px;
+  font-size: 12px;
+  color: var(--d-status-warning);
+  background: color-mix(in srgb, var(--d-status-warning) 10%, var(--d-bg-surface));
+  border-bottom: 1px solid color-mix(in srgb, var(--d-status-warning) 35%, transparent);
+}
+.trustbar[hidden] {
+  display: none;
+}
+/* The runners are the subject of the sentence, so they carry the weight the
+     surrounding explanation does not. */
+.trustbar .who {
+  font-weight: 600;
+}
+/* Withheld runners are not an error — nothing failed, something was
+     declined — so they take the warning colour rather than the error one. */
+.status .warn {
+  color: var(--d-status-warning);
+}
+main {
+  padding: 0 16px 40vh;
+}
+.banner {
+  margin: 12px 0;
+  padding: 10px 12px;
+  border-radius: var(--d-radius-sm);
+  border: 1px solid var(--d-status-error);
+  color: var(--d-status-error);
+  font: 12px/1.5 var(--d-font-mono);
+  white-space: pre-wrap;
+}
+.banner.warn {
+  border-color: var(--d-status-warning);
+  color: var(--d-status-warning);
+}
+.empty {
+  padding: 48px 0;
+  text-align: center;
+  color: var(--d-text-muted);
+}
+
+/* The call-chain tree: each level indents one step, leaves are table rows.
+     Every header sticks under the chrome and under its own ancestors, at a top
+     offset this depth's inline style sets. Sticking stops where the header's
+     `.node` ends, so the next group at the same depth pushes it off screen
+     rather than piling up on it — which is why the height must be FIXED, and
+     why the whole stack has to agree on it (--head-h).
+
+     z-index is set INLINE, per depth, and descends: a shallower header pins
+     higher on screen, so it has to paint above the deeper ones still
+     travelling up through its band. With one shared z-index the deeper header
+     wins on DOM order and scrolls straight over its own parent. */
+.node > .head {
+  position: sticky;
+  background: var(--d-bg-base);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: var(--head-h);
+  box-sizing: border-box;
+  padding: 0 0 1px;
+  cursor: pointer;
+  user-select: none;
+  border-bottom: 1px solid var(--d-border);
+}
+.node > .head:hover .seg-name {
+  color: var(--d-accent-hover);
+}
+.twisty {
+  color: var(--d-text-muted);
+  font: 11px/1 var(--d-font-mono);
+  width: 10px;
+  flex: none;
+}
+.chain {
+  color: var(--d-text-muted);
+  font: 12px/1 var(--d-font-mono);
+}
+.seg-name {
+  font: 600 13px/1.3 var(--d-font-mono);
+}
+.node-count {
+  color: var(--d-text-muted);
+  font-size: 11px;
+}
+.seg-kind {
+  color: var(--d-text-muted);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+/* One level of nesting costs exactly 25px, and that number is duplicated in
+     view.ts as INDENT_PER_LEVEL: `outdent()` and `colgroup()` both compute
+     pixel positions from it, so if this margin and padding stop adding up to
+     25 every table's left edge drifts away from the Command column. The 1px
+     `border-left` that used to stand in for nesting was part of that 25; the
+     connectors replaced it, so the padding grew by 1 to give the pixel back. */
+.kids {
+  margin-left: 14px;
+  padding-left: 11px;
+}
+.node[data-collapsed='true'] > .kids {
+  display: none;
+}
+
+/* File-tree connectors. Each child group draws its own two segments rather
+     than the parent drawing one long rule: a vertical trunk down the child's
+     full height, and a horizontal arm reaching the child's header at its
+     midline. Because the trunk belongs to the CHILD and spans the child's own
+     box, a collapsed group shrinks to just its header and its line stops
+     there without any rule of its own. Scoped to `.kids > .node`, so a root
+     node — which has no parent to connect to — gets nothing.
+
+     The trunk sits at -11px, the x the old `.kids` border-left occupied, so
+     the tree's vertical rhythm is unchanged.
+
+     `--d-border` rather than `--d-border-subtle`: subtle is #eceff3 on white,
+     which at 1px reads as a smudge, and these lines now carry structure
+     rather than only separating. --d-border stays quiet in both themes.
+
+     `.node` is only `position: relative` — no z-index — so it creates no
+     stacking context and the pseudo-elements stay at layer 0. The sticky
+     headers carry an inline z-index of 20 - depth, so a pinned header always
+     paints over any connector scrolling under it.
+
+     Nothing connects to the leaf `<table>`: it is deliberately outdented back
+     out of the tree indentation by `outdent()` so the Command column lands at
+     one x at every depth, which leaves it no left edge inside the indentation
+     for an arm to reach. The connectors join a container to its child group
+     HEADERS and stop there. */
+.kids > .node {
+  position: relative;
+}
+.kids > .node::before {
+  content: '';
+  position: absolute;
+  left: -11px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--d-border);
+}
+/* The last group ends the trunk at its own header, which is what turns the
+     tee into an elbow. `:last-of-type` and not `:last-child`, because the
+     leaf table is emitted after the child groups. */
+.kids > .node:last-of-type::before {
+  bottom: auto;
+  height: calc(var(--head-h) / 2);
+}
+.kids > .node::after {
+  content: '';
+  position: absolute;
+  left: -11px;
+  top: calc(var(--head-h) / 2);
+  width: 8px;
+  height: 1px;
+  background: var(--d-border);
+}
+
+/* `fixed` is what makes the columns line up: with `auto`, every group is its
+     own table and each sizes to its own widest chain, so the command column
+     lands somewhere different in each one. */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+tbody tr {
+  border-bottom: 1px solid var(--d-border-subtle);
+}
+tbody tr:hover {
+  background: var(--d-bg-hover);
+}
+/* A whisper of the runner's brand color down the row's left edge — enough to
+     tell moon rows from cargo rows at a glance, not enough to read as state.
+     Declared BEFORE .enter-target and .copied so those win the box-shadow
+     channel at equal specificity: the tint must never fight the "Enter takes
+     this row" bar or the copied flash. color-mix against transparent lets one
+     rule sit correctly on both themes' row backgrounds. A report without a
+     brand color sets no --rb, so its rows render exactly as before. */
+tbody tr.branded {
+  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--rb) 50%, transparent);
+}
+/* Enter takes this row, so it says so across its whole width — a lone
+     highlighted button was easy to miss and easy to misread as hover. While
+     focus is in the list this follows the focused row; otherwise it is the top
+     hit. See markEnterTarget(). */
+tbody tr.enter-target {
+  background: var(--d-bg-hover);
+  box-shadow: inset 2px 0 0 var(--d-accent);
+}
+/* The darker accent stop, not the base one: the base accent on this row's
+     lifted background is 4.26:1 and misses AA. The trade is that this one
+     Copy button does not shift colour on hover — the rule outranks
+     `.copy:hover`, and its resting state is already the hover colour.
+     A solid base ground and a heavier weight make it read as the primary
+     action on the row rather than as one more quiet button. */
+tbody tr.enter-target .copy {
+  color: var(--d-accent-hover);
+  border-color: var(--d-accent);
+  background: var(--d-bg-base);
+  font-weight: 600;
+}
+/* The Enter affordance IS this button — the glyph is not a separate chip on
+     the left of the row, which truncated. It is a pseudo-element rather than
+     part of the button's text because the click handler swaps that text to
+     `copied`; drawn as content the confirmation would read `↵ copied`. The
+     `.done` exclusion drops the glyph for exactly that moment. */
+tbody tr.enter-target .copy:not(.done)::before {
+  content: '↵ ';
+}
+/* Rows are flush against each other, so an outward ring on one is drawn over
+     the text of the rows above and below it. The focused row takes the ring
+     inset instead. `outline-offset` is the only thing that changes; the colour
+     and width stay the page's one focus style. */
+tbody tr:focus-visible {
+  outline-offset: -2px;
+}
+
+/* And the confirmation when Enter is actually pressed: the row glows and
+     settles. A green flash rather than the accent, so "it happened" reads
+     differently from "this is the one it would take". */
+@keyframes copied-glow {
+  0% {
+    background: var(--d-status-success);
+    box-shadow:
+      inset 3px 0 0 var(--d-status-success),
+      0 0 0 1px var(--d-status-success);
+  }
+  100% {
+    background: transparent;
+    box-shadow:
+      inset 3px 0 0 transparent,
+      0 0 0 1px transparent;
+  }
+}
+tbody tr.copied {
+  animation: copied-glow 0.7s ease-out;
+}
+tbody tr.copied td {
+  color: var(--d-text-primary);
+}
+@media (prefers-reduced-motion: reduce) {
+  tbody tr.copied {
+    animation: none;
+    background: var(--d-bg-hover);
+  }
+}
+/* One line-height for every cell, so no cell's own metrics decide the row
+     height. */
+td {
+  padding: 5px 8px 5px 0;
+  vertical-align: top;
+  line-height: 1.5;
+}
+/* The leading gutter is a slot for row indicators, not a service column.
+     The brand tint stays OUTBOARD, on the row's own left edge, because it
+     belongs to the whole row rather than to this cell; the icons are inset
+     from it by centring in a 30px gutter, which leaves about 8px of clear
+     space so an icon never sits on the 2px bar. */
+td.ind {
+  padding: 5px 0;
+}
+/* A flex row so a second indicator can join without moving the first. It is
+     block-level, so it makes no line box of its own: an indicator row is
+     exactly as tall as a plain one, whose 13px/1.5 text is taller than this
+     box. The margin drops the icons onto that text's optical centre. */
+.inds {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  margin-top: 3px;
+}
+/* Icons ship with a viewBox and no size, like .ricon, so the box is set
+     here and currentColor carries the theme token into the SVG. An inferred
+     service keeps the softer voice the chip had: the hollow glyph, drawn in
+     the muted text colour rather than the success green. */
+/* `relative` so the clipped `.sr` name inside anchors here rather than to the
+     page, which would give the document a stray 1px box at its top left. */
+.ind-svc {
+  display: flex;
+  position: relative;
+  width: 13px;
+  height: 13px;
+  cursor: help;
+  color: var(--d-status-success);
+}
+.ind-svc svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.ind-svc.inferred {
+  color: var(--d-text-muted);
+}
+td.name,
+td.run {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+td.name {
+  font: 600 13px/1.5 var(--d-font-mono);
+}
+td.run {
+  font: 12px/1.5 var(--d-font-mono);
+  color: var(--d-text-secondary);
+}
+td.doc {
+  font-size: 12px;
+  color: var(--d-text-secondary);
+  overflow: hidden;
+}
+td.doc .detail {
+  font: 11px/1.4 var(--d-font-mono);
+  color: var(--d-text-muted);
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* `relative` so the 409 note can hang under the buttons without adding a
+     line to the row — the tables are fixed-layout and a taller cell would
+     move every row below it. */
+td.act {
+  text-align: right;
+  position: relative;
+  white-space: nowrap;
+}
+.seg-hit {
+  cursor: help;
+}
+.copy,
+.runbtn {
+  font: 11px/1 system-ui;
+  padding: 4px 8px;
+  cursor: pointer;
+  background: transparent;
+  color: var(--d-text-muted);
+  border: 1px solid var(--d-border);
+  border-radius: var(--d-radius-sm);
+}
+.runbtn {
+  margin-right: 4px;
+}
+.copy:hover,
+.runbtn:hover {
+  color: var(--d-accent-hover);
+  border-color: var(--d-accent);
+}
+.copy.done {
+  color: var(--d-status-success);
+  border-color: var(--d-status-success);
+}
+.runbtn:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+/* Out of flow, right-aligned under the row's own buttons, so the message
+     lands where the click did without disturbing the table. */
+.runerr {
+  position: absolute;
+  right: 8px;
+  top: 100%;
+  z-index: 2;
+  font: 11px/1.4 system-ui;
+  color: var(--d-status-warning);
+  background: var(--d-bg-base);
+  border: 1px solid var(--d-border);
+  border-radius: var(--d-radius-sm);
+  padding: 3px 6px;
+}
+
+/* Arguments for a parameterised task. A bar at the foot rather than a modal:
+     the row that opened it stays visible, and Esc is the whole dismissal —
+     there is no overlay to click past. The command prefix is static text; only
+     the field is yours to type, because only the tail is what the server will
+     accept. */
+#runbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 400;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 14px;
+  background: var(--d-bg-base);
+  border-top: 1px solid var(--d-border);
+}
+.runbar-line {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.runbar-sigil {
+  color: var(--d-text-secondary);
+  font: 13px/1.5 var(--d-font-mono);
+}
+.runbar-cmd {
+  font: 13px/1.5 var(--d-font-mono);
+  color: var(--d-text-primary);
+  white-space: pre;
+}
+.runbar-args {
+  flex: 1;
+  min-width: 0;
+  padding: 2px 4px;
+  font: 13px/1.5 var(--d-font-mono);
+  color: var(--d-text-primary);
+  background: var(--d-bg-base);
+  border: 1px solid var(--d-border);
+  border-radius: var(--d-radius-sm);
+}
+.runbar-args:focus {
+  outline: none;
+  border-color: var(--d-accent);
+}
+.runbar-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font: 11px/1.4 system-ui;
+  color: var(--d-text-secondary);
+}
+.runbar-shape {
+  font-family: var(--d-font-mono);
+}
+
+/* The end state: the terminal has the task and this page has nothing left to
+     do, so it says so over everything rather than beside it. */
+#handoff {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px;
+  text-align: center;
+  background: var(--d-bg-base);
+  color: var(--d-text-primary);
+}
+#handoff h2 {
+  margin: 0;
+  font: 600 18px/1.3 system-ui;
+}
+#handoff p {
+  margin: 0;
+  max-width: 44ch;
+  color: var(--d-text-secondary);
+}
+#handoff .handoff-cmd {
+  margin: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  font: 13px/1.5 var(--d-font-mono);
+  color: var(--d-text-primary);
+  background: var(--d-bg-surface);
+  border: 1px solid var(--d-border);
+  border-radius: var(--d-radius-md);
+  padding: 10px 14px;
+}
+.helpbtn {
+  font: 12px/1 system-ui;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  cursor: pointer;
+  background: var(--d-bg-surface);
+  color: var(--d-text-secondary);
+  border: 1px solid var(--d-border);
+  border-radius: 50%;
+}
+.helpbtn:hover {
+  color: var(--d-accent-hover);
+  border-color: var(--d-accent);
+}
+
+/* The column heads live in the chrome, not in each group's table: with one
+     table per group they would repeat down the page. They are a table of their
+     own using the same depth-0 colgroup, which lines up because every table's
+     command column starts at the same x by construction. */
+.colheads {
+  padding: 0 16px;
+  background: var(--d-bg-base);
+  border-top: 1px solid var(--d-border);
+}
+.colheads table {
+  border-collapse: collapse;
+}
+.colheads th {
+  font: 600 11px/1 system-ui;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--d-text-muted);
+  text-align: left;
+  padding: 5px 8px 5px 0;
+  cursor: help;
+  white-space: nowrap;
+}
+
+dialog#help,
+dialog#settings {
+  max-width: 640px;
+  border: 1px solid var(--d-border);
+  border-radius: var(--d-radius-lg);
+  padding: 20px 24px;
+  background: var(--d-bg-base);
+  color: var(--d-text-primary);
+}
+dialog#help::backdrop,
+dialog#settings::backdrop {
+  background: rgba(0, 0, 0, 0.45);
+}
+
+/* The settings screen. Reading only — every value here is reported, none is
+     editable yet, so nothing in this block styles a control. */
+.set-head h2 {
+  font: 600 15px/1.3 system-ui;
+  margin: 0;
+}
+.set-file {
+  margin: 2px 0 16px;
+  font: 11px var(--d-font-mono);
+  color: var(--d-text-muted);
+  overflow-wrap: anywhere;
+}
+.set-section {
+  margin: 0 0 18px;
+}
+.set-section h3 {
+  font: 600 12px/1.3 system-ui;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--d-text-muted);
+  margin: 0 0 6px;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+/* Which layer supplied the value — the question this screen exists to
+     answer, so it is on every section rather than only the surprising ones. */
+.set-layer {
+  font: 400 10px/1 system-ui;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--d-text-muted);
+  border: 1px solid var(--d-border);
+  border-radius: var(--d-radius-xs);
+  padding: 2px 5px;
+  white-space: nowrap;
+}
+.set-layer[data-layer='project'] {
+  color: var(--d-text-secondary);
+  border-color: var(--d-accent);
+}
+.set-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.set-table td {
+  padding: 3px 8px 3px 0;
+}
+.set-table td:first-child {
+  width: 1.4em;
+  color: var(--d-text-muted);
+}
+.set-state {
+  color: var(--d-text-muted);
+  font-size: 12px;
+  text-align: right;
+}
+.set-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+}
+.set-sub {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--d-text-secondary);
+}
+.set-empty {
+  margin: 0;
+  font-size: 13px;
+  color: var(--d-text-muted);
+}
+.set-foot {
+  margin-top: 18px;
+  padding-top: 12px;
+  border-top: 1px solid var(--d-border);
+}
+.set-warnings {
+  margin: 0 0 16px;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--d-status-warning);
+  border: 1px solid var(--d-status-warning);
+  border-radius: var(--d-radius-sm);
+}
+.set-warnings p {
+  margin: 0;
+}
+/* An edit that has not been written. Named on the section it belongs to as
+     well as in the title, so a scrolled screen still says which key is dirty. */
+.set-layer[data-layer='staged'] {
+  color: var(--d-accent);
+  border-color: var(--d-accent);
+}
+.set-dirty {
+  font: 400 11px/1 system-ui;
+  color: var(--d-accent);
+  border: 1px solid var(--d-accent);
+  border-radius: var(--d-radius-xs);
+  padding: 2px 6px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+/* The picker's own footnote: the checkbox above it filters the session, and
+     the durable setting is a click away. Quiet — it is a signpost, not a
+     control. */
+.picknote {
+  margin: 0;
+  padding: 8px 10px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--d-text-secondary);
+  border-top: 1px solid var(--d-border-subtle);
+}
+.linkish {
+  font: inherit;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  color: var(--d-accent);
+  text-decoration: underline;
+}
+/* An action that belongs to the paragraph explaining it, rather than to the
+     dialog's footer. */
+.set-actions.set-inline {
+  margin: 8px 0 0;
+  padding: 0;
+  border: 0;
+  justify-content: flex-start;
+}
+.set-override {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.set-override button {
+  font: 11px/1 system-ui;
+  padding: 4px 8px;
+  cursor: pointer;
+  background: var(--d-bg-surface);
+  color: var(--d-text-primary);
+  border: 1px solid var(--d-border);
+  border-radius: var(--d-radius-sm);
+}
+.set-notice {
+  margin: 0 0 12px;
+  font-size: 12px;
+}
+.set-notice[data-kind='ok'] {
+  color: var(--d-text-secondary);
+}
+.set-notice[data-kind='err'] {
+  color: var(--d-status-warning);
+}
+.set-radios {
+  display: flex;
+  gap: 14px;
+  font-size: 13px;
+}
+.set-radios label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+}
+.set-list li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.set-x {
+  font: 12px/1 system-ui;
+  padding: 0 4px;
+  cursor: pointer;
+  background: none;
+  border: none;
+  color: var(--d-text-muted);
+}
+.set-x:hover {
+  color: var(--d-status-warning);
+}
+.set-add {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+.set-add input {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 6px;
+  font: 12px var(--d-font-mono);
+  background: var(--d-bg-surface);
+  color: var(--d-text-primary);
+  border: 1px solid var(--d-border);
+  border-radius: var(--d-radius-sm);
+}
+.set-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 18px;
+  padding-top: 12px;
+  border-top: 1px solid var(--d-border);
+}
+.set-actions button,
+.set-add button {
+  font: 12px/1 system-ui;
+  padding: 6px 10px;
+  cursor: pointer;
+  background: var(--d-bg-surface);
+  color: var(--d-text-primary);
+  border: 1px solid var(--d-border);
+  border-radius: var(--d-radius-sm);
+}
+.set-actions button:disabled {
+  opacity: 0.5;
+  cursor: default;
+  color: var(--d-text-muted);
+}
+.set-actions button[data-settings-save]:not(:disabled) {
+  border-color: var(--d-accent);
+  color: var(--d-accent);
+}
+.settings-body code {
+  font: 12px var(--d-font-mono);
+  background: var(--d-bg-surface);
+  padding: 1px 4px;
+  border-radius: var(--d-radius-xs);
+}
+.help-body h3 {
+  font: 600 13px/1.3 system-ui;
+  margin: 18px 0 6px;
+}
+.help-body h3:first-child {
+  margin-top: 0;
+}
+.help-body p {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--d-text-secondary);
+}
+.help-body dt {
+  font: 600 12px var(--d-font-mono);
+  margin-top: 8px;
+}
+.help-body dd {
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--d-text-secondary);
+}
+.help-body code {
+  font: 12px var(--d-font-mono);
+  background: var(--d-bg-surface);
+  padding: 1px 4px;
+  border-radius: var(--d-radius-xs);
+}
+mark {
+  background: var(--d-accent-wash);
+  color: inherit;
+  border-radius: 2px;
+}
+kbd {
+  font: 11px/1 var(--d-font-mono);
+  padding: 2px 5px;
+  border: 1px solid var(--d-border);
+  border-bottom-width: 2px;
+  border-radius: var(--d-radius-xs);
+  color: var(--d-text-muted);
+}
