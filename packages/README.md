@@ -42,8 +42,8 @@ check:packages` and `pnpm run check:crates` fail a package that drifts from it.
 
 The development loop is `pnpm -r build` (or `pnpm --filter <package>... build`
 for a library and what it depends on), then `pnpm -r typecheck` and
-`pnpm -r test`. CI runs the same order: install, build, typecheck, test,
-smoke, lint, then the package checks. A typecheck or test on a tree with no
+`pnpm -r test`. CI runs the same order: install, build, typecheck, package-specific checks
+(`check:extra`), test, smoke, lint, then the package checks. A typecheck or test on a tree with no
 `dist/` fails on unresolved imports; build first.
 
 ## Why one repository
@@ -358,6 +358,13 @@ Two things run it:
   repository.
 
 The name has no `.test.` part, so the test runner does not pick it up.
+
+A library can add checks of its own with a `check:extra` script, which CI runs
+after `typecheck` (`pnpm --filter ... --if-present run check:extra`). The shared
+shape pins `typecheck`, so anything package-specific goes here. typed-git uses
+it to type-check its source under TypeScript 5.9: `"check:extra": "pnpm run
+typecheck:ts59"`. A library without the script is skipped. The script passes or
+fails by its exit code; a misspelt name is skipped silently.
 
 ### Rust
 
