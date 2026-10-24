@@ -181,9 +181,9 @@
       "line": 134,
       "title": "types-only check passes an empty entry, since tsc emits export {} for an empty module",
       "comment": "https://github.com/osdlc/osdlc/pull/424#discussion_r4365781534",
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "e46a1997bba8c5323423e4b59d27d3a17ceaa7e9"
     },
     {
       "id": "r2-5",
