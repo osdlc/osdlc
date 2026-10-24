@@ -30,7 +30,12 @@ export {
   type GitResults,
 } from './backend.ts'
 
-export { classifyGitFailure, type GitFailure, type GitFailureKind } from './failure.ts'
+export {
+  classifyGitFailure,
+  describeGitFailure,
+  type GitFailure,
+  type GitFailureKind,
+} from './failure.ts'
 export { type Soft, type TriedAsync, type TriedSync } from './outcome.ts'
 
 export {

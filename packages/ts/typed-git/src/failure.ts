@@ -15,7 +15,7 @@ import {
   type CommandFailed,
   type CommandFailureKind,
 } from '@osdlc/command-seam'
-import { FailureError, isFailure, type Failure } from '@osdlc/result'
+import { describe, FailureError, isFailure, type Failure } from '@osdlc/result'
 
 /**
  * Why a git call failed:
@@ -157,16 +157,44 @@ export function classifyGitFailure(failed: CommandFailed): GitFailure {
   return base
 }
 
+/** The git verb a failure ran, past any leading `-c <k=v>` / `-C <dir>` options (other global options are expected in their `--opt=value` form); `undefined` when argv has none. */
+function gitVerb(argv: readonly string[]): string | undefined {
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i]!
+    if (arg === '-c' || arg === '-C') i++
+    else if (!arg.startsWith('-')) return arg
+  }
+  return undefined
+}
+
+/**
+ * One line for a person that names the git command: `git <verb>: <message>`,
+ * then the hint when there is one. The classified `message` alone does not say
+ * which command failed, so use this when the failure reaches a log or a status
+ * file without its surrounding code.
+ */
+export function describeGitFailure(failure: GitFailure): string {
+  const verb = gitVerb(failure.argv)
+  const line = describe(failure)
+  return verb === undefined ? `git: ${line}` : `git ${verb}: ${line}`
+}
+
 /**
  * What the plain door throws for a failed git call: a `FailureError` carrying
  * the {@link GitFailure} that {@link classifyGitFailure} reads from it, with the
- * `CommandFailed` as its `cause`. Anything else is returned as it is. The
+ * `CommandFailed` as its `cause`. Its `message` is {@link describeGitFailure},
+ * so it names the command that failed. Anything else is returned as it is. The
  * classified kind (a signed-out remote, an unreachable one) is what lets a CLI
  * that reports a thrown failure number it, which a bare `CommandFailed` with
  * only command-seam's kinds cannot.
  */
 export function gitFailureError(error: unknown): unknown {
-  return isCommandFailed(error) ? new FailureError(classifyGitFailure(error)) : error
+  if (!isCommandFailed(error)) return error
+  const failure = classifyGitFailure(error)
+  // FailureError's message is the bare sentence; this door adds the command.
+  const thrown = new FailureError(failure)
+  thrown.message = describeGitFailure(failure)
+  return thrown
 }
 
 /**
