@@ -1,18 +1,17 @@
 /**
  * What a host must supply that this package cannot know for itself.
  *
- * The three required ports name a concern the host owns and this package
- * deliberately does not: where a named repository's checkout lives on this
- * machine, how to run a shell verb, and whether a project-sourced verb list
- * may run at all in this repository (a trust decision). The two optional ports
- * extend the conflict ladder: `generators` rebuild artifacts in process, and
- * `repair` is the last rung, called only when nothing deterministic resolved
- * the problem. The conflict repair is offered only on a merge (a rebase falls
- * back to a merge first); a verify repair runs for either strategy. The
- * optional `attempts` port records failed updates across runs, and
- * `confirmPush` asks before each rebase force-push. A standalone run (see
- * `defaults.ts`) supplies simple, host-agnostic implementations of the same
- * shapes.
+ * The three required ports each answer a question the host owns and this
+ * package does not: where a named repository's checkout is on this machine,
+ * how to run a shell verb, and whether a verb list from the project may run in
+ * this repository at all (a trust decision). Two optional ports add conflict
+ * resolvers. `generators` rebuild artifacts in process. `repair` is the last
+ * step, called only when no fixed rule resolved the problem. The conflict
+ * repair is offered only on a merge (a rebase falls back to a merge first). A
+ * verify repair runs for either strategy. The optional `attempts` port records
+ * failed updates across runs, and `confirmPush` asks before each rebase
+ * force-push. A standalone run (see `defaults.ts`) supplies simple versions of
+ * the same ports that work with any host.
  */
 
 import type { CommandResult } from '@osdlc/command-seam'
@@ -21,7 +20,7 @@ import type { CommandResult } from '@osdlc/command-seam'
 export type RunVerb = (verb: string, cwd: string) => CommandResult
 
 /**
- * A host-supplied rebuild step for the paths it claims. A ladder rung after
+ * A host-supplied rebuild step for the paths it claims. It runs after
  * `PrUpdateConfig.resolvers` and before repair.
  */
 export interface Generator {
@@ -107,17 +106,16 @@ export type ConfirmPush = (preview: PushPreview) => boolean
 export interface Ports {
   /**
    * Resolve `owner/name` to a local checkout path, or null when this machine
-   * has none. Only ever asked about a repository this run was explicitly
-   * pointed at (`--repo`) — never used to widen scope on its own.
+   * has none. Only asked about a repository the run was pointed at with
+   * `--repo`, never used to widen the scope.
    */
   locate: (slug: string) => string | null
-  /** The resolver/verify shell-out seam — see {@link RunVerb}. */
+  /** Runs the shell verbs of resolvers and verify. See {@link RunVerb}. */
   runVerb: RunVerb
   /**
    * Resolve the verb list `pr_update.verify: <which>` runs before a push,
-   * applying whatever trust policy the host enforces on a project-sourced
-   * verb list. Rejects (throwing) when the list is missing or may not run in
-   * this repository for this run.
+   * applying the host's trust rules for a verb list from the project. Throws
+   * when the list is missing or may not run in this repository for this run.
    */
   resolveVerifyVerbs: (opts: { which: VerifyWhich; trust: boolean }) => Promise<readonly string[]>
   generators?: readonly Generator[] | undefined

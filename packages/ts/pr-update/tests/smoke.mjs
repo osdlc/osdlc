@@ -1,4 +1,4 @@
-// Runs the BUILT package under Node. The unit tests run the TypeScript source
+// Runs the built package under Node. The unit tests run the TypeScript source
 // (vitest.config.ts aliases the package name to it), so dist/ is compiled but
 // never run anywhere else. A broken emit passes every other check and fails on
 // the consumer's machine.

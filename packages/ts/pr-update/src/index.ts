@@ -1,10 +1,10 @@
 /**
- * `@osdlc/pr-update` — survey and update out-of-date, stacked pull
- * requests, as a library. A host builds a `PrUpdateConfig` and a `Ports` and
- * calls `runSurvey`/`runUpdate` directly; the `pr-update` binary
- * (`src/cli.ts`) is one particular host, not a required layer in front of
- * these. A host that keeps this package's config blocks in its own file passes
- * that file's `{ name, envVar }` to `loadConfigLayers`.
+ * `@osdlc/pr-update`: survey and update out-of-date, stacked pull requests, as
+ * a library. A host builds a `PrUpdateConfig` and a `Ports` and calls
+ * `runSurvey` or `runUpdate` directly. The `pr-update` binary (`src/cli.ts`) is
+ * one host, not a required layer in front of these. A host that keeps this
+ * package's config blocks in its own file passes that file's
+ * `{ name, envVar }` to `loadConfigLayers`.
  */
 
 export {

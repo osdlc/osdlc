@@ -1,15 +1,15 @@
 /**
  * The executor, against real git.
  *
- * Every assertion here is about what git actually does, so these run a real
- * repository rather than a fake `CommandRunner`. The whole value of this code
- * is in the cases a stubbed runner cannot reproduce: what a conflicted rebase
- * leaves in the index, whether `--force-with-lease` pinned to a stale sha is
- * refused, whether the ephemeral worktree really goes away.
+ * Every assertion here is about what git actually does, so these tests use a
+ * real repository, not a fake `CommandRunner`. The cases that matter are the
+ * ones a fake runner cannot reproduce: what a conflicted rebase leaves in the
+ * index, whether `--force-with-lease` pinned to an old sha is refused, whether
+ * the temporary worktree is really removed.
  *
- * The origin is a **bare** store. A non-bare one refuses a push to whatever
- * branch it has checked out, which would make `main` — the base every fixture
- * advances — the one branch the tests could not move.
+ * The origin is a bare repository. A non-bare one refuses a push to the branch
+ * it has checked out. That would make `main`, the base every fixture moves
+ * forward, the one branch the tests could not move.
  */
 
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
@@ -80,7 +80,7 @@ describe('the executor against real git', () => {
 
   beforeEach(() => {
     fx = makeBareAndWorker({ initialBranch: 'main' })
-    // A bare store starts empty; `main` has to exist before a branch can leave it.
+    // A bare repository starts empty. `main` has to exist before a branch can start from it.
     fx.worker.commit('initial', { 'README.md': 'fixture\n' })
     fx.worker.git.push('origin', 'main')
     fx.worker.git.fetch('origin')
@@ -90,7 +90,7 @@ describe('the executor against real git', () => {
 
   /**
    * A PR branch off `main`, plus `n` commits landed on `main` afterwards so
-   * the branch is genuinely behind. Returns the branch's pushed head sha.
+   * the branch is really behind. Returns the branch's pushed head sha.
    */
   function makeBehindPr(
     branch: string,
@@ -228,8 +228,8 @@ describe('the executor against real git', () => {
   test('a configured resolver rebuilds the artifact and the merge lands', async () => {
     makeBehindPr('gen', { 'build/out.txt': 'branch\n' }, { 'build/out.txt': 'main\n' })
 
-    // Stands in for a real generator: it rewrites the artifact wholesale,
-    // which is exactly why its output is the resolution.
+    // Stands in for a real generator. It rewrites the whole artifact, which
+    // is why its output is the resolution.
     const regen: RunVerb = (verb, cwd) => {
       if (verb === 'regen') writeFileSync(join(cwd, 'build', 'out.txt'), 'regenerated\n')
       return ok
@@ -291,8 +291,8 @@ describe('the executor against real git', () => {
   })
 
   test('a rebase with no known head sha is refused rather than force-pushed blind', async () => {
-    // Without a sha there is nothing for the lease to mean. Force-pushing
-    // anyway on someone's behalf is not a call this makes.
+    // Without a sha the lease has nothing to check. The executor does not
+    // force-push on someone's behalf without one.
     makeBehindPr('nopin', { 'a.txt': 'a\n' }, { 'b.txt': 'b\n' })
     const { git } = fx.worker
     const before = git.resolveRef('origin/nopin')
@@ -367,7 +367,7 @@ describe('the executor against real git', () => {
     )
     expect(out.status).toBe('failed')
 
-    // Their commit survives — the whole reason the lease is pinned.
+    // Their commit survives. That is why the lease is pinned.
     git.fetch('origin')
     expect(git.resolveRef('origin/raced')).toBe(theirs)
   })
@@ -478,7 +478,7 @@ describe('the executor against real git', () => {
       expect(result!.strategy).toBe('merge')
       expect(toResult(result!)).toMatchObject({ strategy: 'merge' })
       expect(toResult(result!).strategyFallback).toContain('shared.ts')
-      // Never mid-rebase: the repair saw an open merge.
+      // Never during a rebase: the repair saw an open merge.
       expect(repair.calls).toHaveLength(1)
       expect(repair.midMerge[0]).not.toBeNull()
       git.fetch('origin')
@@ -1026,7 +1026,7 @@ describe('the executor against real git', () => {
       const { git } = fx.worker
       git.fetch('origin')
       expect(git.showAtRev('origin/rebrep', 'shared.ts')).toBe('both\n')
-      // Judgement is never offered mid-rebase, so the rebase was abandoned for a merge.
+      // Repair is never called during a rebase, so the rebase was abandoned for a merge.
       expect(r.out).toHaveProperty('strategyFallback')
       expect(git.logSubject('origin/rebrep')).toBe('Merge main into rebrep')
       expect(git.isAncestor(git.resolveRef('origin/main')!, git.resolveRef('origin/rebrep')!)).toBe(
@@ -1086,7 +1086,7 @@ describe('updateAll', () => {
       },
     )
     expect(results.map((r) => r.outcome.status)).toEqual(['conflict', 'updated'])
-    // Streamed as they land, so a caller can render progress across minutes.
+    // Reported as each PR finishes, so a caller can show progress during a long run.
     expect(streamed).toEqual([1, 2])
     expect(tally(results)).toEqual({ updated: 1, 'up-to-date': 0, conflict: 1, failed: 0 })
   })
@@ -1175,7 +1175,7 @@ describe('isStalePush', () => {
   })
 
   test('a permission failure is not stale', async () => {
-    // Re-running would not help, and saying so would send the user the wrong way.
+    // Running again would not help, and saying it would mislead the user.
     expect(isStalePush('remote: Permission to o/r.git denied')).toBe(false)
   })
 })

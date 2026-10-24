@@ -1,36 +1,38 @@
 /**
- * `pr-update` — the standalone CLI.
+ * `pr-update`: the standalone CLI.
  *
- * Subcommands `survey`, `update`, `config` and `trust`, each declared to `defineCli`
- * separately (there is no subcommand primitive in `defineCli` itself — the
- * dispatch on `argv[0]` below is the whole of it, same as every other
- * multi-command tool in this workspace).
+ * The subcommands `survey`, `update`, `config` and `trust` are each declared to
+ * `defineCli` separately. `defineCli` has no subcommands, so the dispatch on
+ * `argv[0]` below does that job.
  *
- * Config layers: a flag beats `pr-update.local.yaml`, which beats
- * `pr-update.yaml` (the `pr_update:` and `code_host:` blocks;
- * `PR_UPDATE_CONFIG` relocates the pair), which beats the built-in defaults
- * (see `config-file.ts`) — every `PrUpdateConfig` key has a default, so
- * `survey` and `update` work with no config file at all. The binary reads no
- * other file. `config` reads and edits those files, and `trust` records
- * consent to the commands a project's config names.
+ * Config layers, highest first: a flag, `pr-update.local.yaml`,
+ * `pr-update.yaml` (the `pr_update:` and `code_host:` blocks), the built-in
+ * defaults (see `config-file.ts`). `PR_UPDATE_CONFIG` points the two files at
+ * another path. Every `PrUpdateConfig` key has a default, so `survey` and
+ * `update` work with no config file. The binary reads no other file. `config`
+ * reads and edits those files, and `trust` records consent to the commands a
+ * project's config names.
  *
- * Exit code: `0` on a fully clean run (`survey`, always; `update` only when
- * every target ended `updated`/`up-to-date`/deliberately skipped), `1` when
- * the command ran to completion but didn't fully succeed against the state it
- * found (an unexpected thrown error, caught by `runMain`; or, for `update`,
- * any target left `conflict`/`failed` — read `results`/`counts` for which),
- * `2` on a malformed command line, `14` when the config file is unusable
- * (invalid or unreadable), `21` when `update` was refused for want of
- * repository trust, and the failure codes every `@osdlc/cli-tool` tool shares
- * (`EXIT_FAILURE`): `22` when a tool the run needs (`git`, and `gh` or `curl`
- * for the code host) is not installed, `23` when the code host refused the
- * caller or answered unusably (not signed in, no Forgejo token, not found),
- * `24` when there is no repository or git remote to read, and `25` when the
- * code host could not be reached or rate-limited.
+ * Exit codes:
  *
- * The code host is chosen by `selectCodeHost` from the `origin` remote, or
- * `code_host.override`; a failed PR listing is an error, never "no open PRs".
- * Every classified failure is printed and numbered by `@osdlc/cli-tool`.
+ * - `0`: a clean run. `survey` always; `update` when every target ended
+ *   `updated`, `up-to-date` or skipped on purpose.
+ * - `1`: the command ran but did not fully succeed. Either an unexpected error
+ *   (caught by `runMain`), or, for `update`, a target left `conflict` or
+ *   `failed` (`results` and `counts` say which).
+ * - `2`: a malformed command line.
+ * - `14`: the config file is invalid or unreadable.
+ * - `21`: `update` was refused because the repository is not trusted.
+ * - `22` to `25`: the codes every `@osdlc/cli-tool` tool shares
+ *   (`EXIT_FAILURE`). `22`: a tool the run needs (`git`, and `gh` or `curl`)
+ *   is not installed. `23`: the code host refused the caller or answered
+ *   unusably (not signed in, no Forgejo token, not found). `24`: there is no
+ *   repository or git remote to read. `25`: the code host could not be
+ *   reached or rate-limited the caller.
+ *
+ * `selectCodeHost` chooses the code host from the `origin` remote, or from
+ * `code_host.override`. A failed PR listing is an error, never "no open PRs".
+ * `@osdlc/cli-tool` prints every classified failure and picks its exit code.
  */
 
 import { mkdirSync, rmSync } from 'node:fs'
@@ -84,9 +86,9 @@ function parseIntFlag(name: string, raw: string): number | { error: string } {
 /**
  * Give a bare `--branch` the branch checked out in `cwd`.
  *
- * The flag parser has no optional-value flag, so a `--branch` that ends the
- * line or is followed by another flag gets the current branch spliced in as its
- * value. `{ error }` when the checkout is not on a branch.
+ * The flag parser has no flag with an optional value. So when `--branch` ends
+ * the line or is followed by another flag, the current branch is inserted as
+ * its value. Returns `{ error }` when the checkout is not on a branch.
  */
 function expandBranchFlag(argv: readonly string[], cwd: string): string[] | { error: string } {
   const out: string[] = []
@@ -283,7 +285,7 @@ Commands:
 
 Run 'pr-update <command> --help' for a command's own flags.`
 
-/** What a test substitutes for the real `gh`, or a host re-points; production runs pass none. */
+/** Replacements for the real tools and config file, for a test or a host. A normal run passes none. */
 export interface CliSeams {
   gh?: CommandRunner
   git?: CommandRunner
@@ -349,7 +351,7 @@ function runSurveyCommand(argv: readonly string[], ctx: CliContext, seams: CliSe
   const { io } = ctx
   const expanded = expandBranchFlag(argv, ctx.cwd)
   if ('error' in expanded) {
-    // A bare `--branch` asks git for the current branch; with git missing say so.
+    // A bare `--branch` asks git for the current branch, so report a missing git first.
     const noGit = gitMissingFailure(ctx.cwd, seams.which)
     if (noGit !== null) return failWith(ctx, noGit, { name: 'pr-update' })
     io.stderr(`pr-update survey: ${expanded.error}\n`)
@@ -395,7 +397,7 @@ function runSurveyCommand(argv: readonly string[], ctx: CliContext, seams: CliSe
       env,
     )
   } catch (e) {
-    // A classified failure (a failed listing) is rendered and numbered by `main`.
+    // `main` prints a classified failure (a failed listing) and picks its exit code.
     if (!(e instanceof SurveyUsageError)) throw e
     io.stderr(`pr-update survey: ${e.message}\n`)
     return EXIT.usage
@@ -408,8 +410,8 @@ function runSurveyCommand(argv: readonly string[], ctx: CliContext, seams: CliSe
 
 /**
  * Print each repository of a several-repository run that could not be listed,
- * and return the exit code of the first, or null when none failed. The others
- * were surveyed; the failure is not hidden by their rows.
+ * and return the exit code of the first, or null when none failed. The other
+ * repositories were surveyed, and their rows do not hide the failure.
  */
 function reportRepoFailures(
   ctx: CliContext,
@@ -463,7 +465,7 @@ async function runUpdateCommand(
   const { io } = ctx
   const expanded = expandBranchFlag(argv, ctx.cwd)
   if ('error' in expanded) {
-    // A bare `--branch` asks git for the current branch; with git missing say so.
+    // A bare `--branch` asks git for the current branch, so report a missing git first.
     const noGit = gitMissingFailure(ctx.cwd, seams.which)
     if (noGit !== null) return failWith(ctx, noGit, { name: 'pr-update' })
     io.stderr(`pr-update update: ${expanded.error}\n`)
@@ -504,7 +506,7 @@ async function runUpdateCommand(
     io.stderr('pr-update update: --repair-agent and --repair-command are mutually exclusive\n')
     return EXIT.usage
   }
-  // A repair chosen on the command line is the person's own consent and
+  // A repair chosen on the command line is the person's own consent. It
   // replaces whatever the project file names, which then never runs.
   const repairFlag = v.repairAgent !== undefined || v.repairCommand !== undefined
   const refusal = await untrustedMessage({
@@ -549,10 +551,10 @@ async function runUpdateCommand(
       try {
         writeErrorReport(reportFile, e)
       } catch {
-        // The original error is the one worth surfacing.
+        // Report the original error, not this one.
       }
     }
-    // A classified failure (a failed listing) is rendered and numbered by `main`.
+    // `main` prints a classified failure (a failed listing) and picks its exit code.
     if (!(e instanceof SurveyUsageError)) throw e
     io.stderr(`pr-update update: ${e.message}\n`)
     return EXIT.usage
@@ -568,11 +570,10 @@ async function runUpdateCommand(
   io.stdout(
     resolveOutput(v) === 'json' ? `${JSON.stringify(out, null, 2)}\n` : renderUpdateText(out),
   )
-  // Exit `1` is a well-formed command that failed against the state it found:
-  // the run itself completed (every target was at least attempted and nothing
-  // was left half-applied), but a conflict or push failure means some PR did
-  // not end up updated. A script driving this in a loop needs that distinction
-  // in its exit code, not just in the JSON `counts`.
+  // Exit `1` means the command was well formed and the run completed: every
+  // target was attempted and nothing was left half applied. But a conflict or
+  // push failure left some PR not updated. A script that runs this in a loop
+  // needs that in the exit code, not only in the JSON `counts`.
   const listingFailure = reportRepoFailures(ctx, {
     repos: (out.repoFailures ?? []).map(({ repo, ...failure }) => ({
       slug: repo,
@@ -596,7 +597,7 @@ async function runTrustCommand(argv: readonly string[], ctx: CliContext): Promis
   return EXIT.ok
 }
 
-/** `main(argv, ctx)`: returns, never exits, reads nothing ambient. */
+/** `main(argv, ctx)`: returns an exit code and never exits. It reads nothing outside `ctx` and `seams`. */
 export async function main(
   argv: readonly string[],
   ctx: CliContext,
@@ -610,7 +611,7 @@ export async function main(
       return CONFIG_INVALID_EXIT
     }
     // A classified failure (a missing tool, a failed listing) gets the shared
-    // line and exit code; anything else is a bug and goes to `runMain`.
+    // message and exit code. Anything else is a bug and goes to `runMain`.
     const failure = failureOf(e)
     if (failure !== null) return failWith(ctx, failure, { name: 'pr-update' })
     throw e

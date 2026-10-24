@@ -4,10 +4,10 @@
  * Five `pr_update` keys make the tool run a command, or an agent that can run
  * tools, chosen by the repository it is acting on: `lockfile_install`,
  * `resolvers[].run`, `repair.command`, `repair.agent` and `test_command`. A
- * setting the repository can write cannot be what authorizes running it, so a
- * value that came from the PROJECT config file needs consent: `--trust` for
- * one run, or a repo trust recorded with `pr-update trust`. A value from the `.local` overlay is the person's own and
- * needs none.
+ * setting the repository itself can write cannot authorize running it. So a
+ * value from the project config file needs consent: `--trust` for one run, or
+ * a trust recorded with `pr-update trust`. A value from the `.local` overlay is
+ * the person's own and needs no consent.
  */
 
 import { getIn } from '@osdlc/config-layers'
@@ -45,8 +45,9 @@ export function projectSourcedCommands(
 
 /**
  * `project` without the repair choice, for a run whose command line already
- * made it. A flag is the person's own consent, so the project file's
- * `repair.command` or `repair.agent` it overrides is never run and needs none.
+ * made it. A flag is the person's own consent. The project file's
+ * `repair.command` or `repair.agent` that it overrides never runs, so it needs
+ * no consent.
  */
 export function withoutRepairChoice(
   project: Record<string, unknown> | null,

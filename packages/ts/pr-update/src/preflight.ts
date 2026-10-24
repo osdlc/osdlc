@@ -1,14 +1,14 @@
 /**
  * What the standalone CLI checks before it lists a single PR: that the tools
  * the run will shell out to exist, that the git remote can be read, and which
- * code host the remote names. A missing tool otherwise surfaces as a failed
- * listing, which used to read as "no open PRs".
+ * code host the remote names. Without this check a missing tool would show up
+ * only as a failed listing.
  *
- * Nothing here words a failure. A missing tool, an unreadable remote and a
- * remote that names no repository are the same `Failure`s the libraries
- * report (`@osdlc/typed-git`, `@osdlc/code-host`), so the message is the one
- * the run would have printed after the call failed. `@osdlc/cli-tool` renders
- * and numbers them.
+ * Nothing here writes its own failure message. A missing tool, an unreadable
+ * remote and a remote that names no repository are the same `Failure`s the
+ * libraries report (`@osdlc/typed-git`, `@osdlc/code-host`), so the message is
+ * the one the run would have printed after the call failed. `@osdlc/cli-tool`
+ * prints them with their exit codes.
  */
 
 import { CommandFailed, which as whichOnPath, type CommandRunner } from '@osdlc/command-seam'

@@ -1,7 +1,7 @@
 /**
- * `survey` — the stack graph, the drift measurement, and the ordering.
+ * `survey`: the stack graph, the drift measurement, and the ordering.
  *
- * The graph cases are drawn from shapes this repository actually produced:
+ * The graph cases are taken from stacks that occurred in a real repository:
  * a three-deep chain where the blocking ancestor is not the immediate
  * parent, and a root whose base is a branch with no open PR of its own.
  */
@@ -172,8 +172,8 @@ describe('nearestBehindAncestor', () => {
   })
 
   test('an unmeasurable ancestor does not count as behind', () => {
-    // Null is "not known"; treating it as drift would block the whole stack
-    // on a ref this checkout simply never fetched.
+    // Null is "not known". Treating it as drift would block the whole stack
+    // on a ref this checkout never fetched.
     const behind = new Map<number, number | null>([
       [1437, null],
       [1444, 0],
@@ -236,7 +236,7 @@ describe('measure', () => {
     const { git } = fakeGit({
       'rev-list --left-right --count origin/main...origin/topic': counts(12, 1),
       'merge-tree --write-tree --name-only -z origin/topic origin/main': conflictTree('a.ts'),
-      // No reply configured for `rev-parse` — falls to the 128 default.
+      // No reply configured for `rev-parse`, so it gets the default exit 128.
     })
     expect(measure(git, pr(1, 'topic', 'main')).conflictBaseSha).toBeNull()
   })
@@ -313,8 +313,9 @@ describe('resolveTargets', () => {
   })
 
   test('a bare run stays local, however many containers are configured', () => {
-    // The host's registry says where checkouts live, not that all of them are
-    // in scope. Fanning out across ~/Developer by default would be a surprise.
+    // The host's registry says where checkouts are, not that all of them are
+    // in scope. Surveying every checkout on the machine by default would be a
+    // surprise.
     const out = resolveTargets('o/r', '/repo', [], locate({ 'x/y': '/x', 'a/b': '/a' }))
     expect(out).toEqual([{ slug: 'o/r', path: '/repo' }])
   })
@@ -325,7 +326,7 @@ describe('resolveTargets', () => {
   })
 
   test('the local checkout is used for its own slug without a scan', () => {
-    // Standing in the repository is the answer; no container need list it.
+    // Running inside the repository is enough. No registry needs to list it.
     expect(resolveTargets('o/r', '/repo', ['o/r'], locate({}))).toEqual([
       { slug: 'o/r', path: '/repo' },
     ])
@@ -337,7 +338,7 @@ describe('resolveTargets', () => {
   })
 
   test('a named repository with no checkout is listed, not dropped', () => {
-    // Surveying fewer repositories than asked for is the worse failure: the
+    // Surveying fewer repositories than asked for is the worse failure. The
     // caller would read a short list as "nothing to do there".
     expect(resolveTargets('o/r', '/repo', ['far/away'], locate({}))).toEqual([
       { slug: 'far/away', path: null },
@@ -435,9 +436,9 @@ describe('surveyRows carries the plan', () => {
 // ---------------------------------------------------------------------------
 
 /**
- * The one check whose failure mode is unrecoverable, so it is pinned against
- * real git rather than a fake runner. A fake proves the branching; only real
- * git proves the refs mean what the code assumes.
+ * The one check whose failure loses work for good, so it is tested against
+ * real git, not a fake runner. A fake tests the branching. Only real git shows
+ * that the refs mean what the code assumes.
  */
 describe('unpushedLocalWork — real git', () => {
   let fx: ReturnType<typeof makeOriginAndCheckout>
@@ -458,8 +459,8 @@ describe('unpushedLocalWork — real git', () => {
     // The clone's own worktree is on `topic`, in sync with the remote.
     expect(unpushedLocalWork(git, worktrees, 'topic')).toBe(false)
 
-    // One commit that never left this machine — exactly what a lease cannot
-    // see, because the remote ref has not moved.
+    // One commit that never left this machine. A lease cannot see it, because
+    // the remote ref has not moved.
     fx.checkout.commit('local only', { 'a.txt': 'two\n' })
     expect(unpushedLocalWork(git, git.worktrees(), 'topic')).toBe(true)
   })

@@ -2,10 +2,10 @@
  * The `Ports` a standalone `pr-update` run supplies for itself, with no host
  * (a repository registry, a trust store, an agent runner) in front of it.
  *
- * A library consumer builds its own `Ports` instead: it binds `locate` to its
- * registry, `runVerb` to its shell seam, `resolveVerifyVerbs` to its own
- * trust-gated command lists and `repair` to its own agent runner, none of
- * which this package depends on.
+ * A library consumer builds its own `Ports` instead. It binds `locate` to its
+ * registry, `runVerb` to its own shell runner, `resolveVerifyVerbs` to its own
+ * command lists and trust check, and `repair` to its own agent runner. This
+ * package depends on none of them.
  */
 
 import { runShell, runShellAsync, stderrOrError } from '@osdlc/command-seam'
@@ -16,11 +16,11 @@ import { agentRepair } from './repair/agents.ts'
 import { attemptsDir, fileAttemptStore } from './update/attempts.ts'
 
 /**
- * A `Repair` that runs `command` with `sh -c` in the update worktree, killed
- * after `timeoutSeconds` when given (a killed command is not exit 0, so it
- * reads as giving up). The request arrives as JSON on stdin and as
- * `PR_UPDATE_*` variables; exit 0 claims success, and the note is the
- * command's last line of output.
+ * A `Repair` that runs `command` with `sh -c` in the update worktree. With
+ * `timeoutSeconds`, the command is killed after that long. A killed command
+ * does not exit 0, so it counts as giving up. The request arrives as JSON on
+ * stdin and as `PR_UPDATE_*` variables. Exit 0 claims success, and the note is
+ * the command's last line of output.
  */
 export function commandRepair(command: string, timeoutSeconds: number | null = null): Repair {
   return async (req) => {
@@ -44,9 +44,9 @@ export function commandRepair(command: string, timeoutSeconds: number | null = n
 }
 
 /**
- * A standalone run has no repository registry to scan, so `--repo` naming
- * anything other than the local checkout always comes back unmeasurable —
- * honest, since there is nothing here to guess a path from.
+ * A standalone run has no repository registry, so a `--repo` that names
+ * anything other than the local checkout always comes back unmeasurable.
+ * There is nothing to find its path from.
  *
  * With `projectRoot`, failed updates are recorded in
  * `<projectRoot>/.pr-update/attempts/`.
@@ -59,9 +59,9 @@ export function standalonePorts(cfg?: PrUpdateStandaloneConfig, projectRoot?: st
   return {
     locate: () => null,
     runVerb: (verb, cwd) => runShell(verb, { cwd }),
-    // A standalone run has no host registry to resolve `check` from, and runs
-    // `test` only from `test_command`. Failing loudly beats running zero verbs
-    // and reporting a push as verified when it was not checked at all.
+    // A standalone run has no host registry to look up `check` in, and runs
+    // `test` only from `test_command`. Failing is better than running no verbs
+    // and reporting a push as verified when nothing was checked.
     async resolveVerifyVerbs({ which }) {
       if (which === 'check') {
         throw new Error(

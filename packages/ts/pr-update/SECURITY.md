@@ -31,8 +31,8 @@ are in scope.
 - **No shell is involved for git and the code host.** Each value is passed as
   one argument.
 - **Commands from config run in a shell.** `lockfile_install`,
-  `resolvers[].run`, `repair.command`, `repair.agent` and `test_command` start
-  processes. A value read from the project file needs trust: the run exits `21`
+  `resolvers[].run`, `repair.command` and `test_command` run in a shell, and
+  `repair.agent` starts an agent CLI. A value read from the project file needs trust: the run exits `21`
   until you pass `--trust` or run `pr-update trust`. Values from your local
   overlay or the command line are your own consent.
 - **A repair agent can run tools.** It edits the update worktree. The engine

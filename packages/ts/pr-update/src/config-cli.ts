@@ -1,20 +1,20 @@
 /**
- * `pr-update config list|get|set|unset|explain|scaffold` — the config
- * subcommands, derived from the mounted sections (`STANDALONE_SECTIONS`) with
- * the pieces `@osdlc/config-layers` exports.
+ * `pr-update config list|get|set|unset|explain|scaffold`: the config
+ * subcommands, built from the mounted sections (`STANDALONE_SECTIONS`) with
+ * the functions `@osdlc/config-layers` exports.
  *
  * pr-update mounts one section of its own, so `pr_update` is the default
- * namespace: a key whose first segment is not a mounted section name gets
- * `pr_update.` prefixed (`config set strategy merge` is
- * `config set pr_update.strategy merge`). Output and
- * messages name a key qualified.
+ * namespace. A key whose first segment is not a mounted section name gets a
+ * `pr_update.` prefix (`config set strategy merge` is
+ * `config set pr_update.strategy merge`). Output and messages always show the
+ * full key.
  *
  * The caller names the config file (a `ConfigFileSpec`). Writes go to the file
- * `resolveConfigFile` names for it (the file and its overlay under the project
- * root, or the file its env variable names and that file's overlay) through the
- * library's span-preserving `setPath`/`unsetPath`, and only after the merged
- * result validates; an invalid result is a `ConfigInvalidError` (exit 14) and
- * the file is left untouched.
+ * `resolveConfigFile` names for it: the file and its overlay under the project
+ * root, or the file its env variable names and that file's overlay. They go
+ * through the library's `setPath`/`unsetPath`, which keep the rest of the file
+ * as it was, and only after the merged result validates. An invalid result is
+ * a `ConfigInvalidError` (exit 14), and the file is left untouched.
  */
 
 import { existsSync, mkdirSync, readFileSync } from 'node:fs'

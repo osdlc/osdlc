@@ -1,10 +1,9 @@
 /**
  * The rebase/merge decision.
  *
- * The config comes from `prUpdateConfigSchema.parse({})` rather than a
- * literal, so these assert against the real shipped defaults — if a default
- * changes, the test that depended on it fails rather than quietly testing a
- * stale copy.
+ * The config comes from `prUpdateConfigSchema.parse({})`, not a literal, so
+ * these tests check the real shipped defaults. If a default changes, the test
+ * that depends on it fails, instead of testing an old copy.
  */
 
 import { describe, expect, test } from 'vitest'
@@ -55,8 +54,8 @@ describe('the shipped defaults', () => {
 
 describe('a fork PR is never planned', () => {
   test('it outranks every other rule, including an override', () => {
-    // We have no write access to the contributor's branch, so any plan but
-    // skip is one that cannot run.
+    // The run cannot push to the contributor's branch, so any plan but skip
+    // is one that cannot run.
     const out = chooseStrategy(
       signals({ crossRepo: true }),
       cfg({ overrides: [{ base: 'main', strategy: 'rebase' }] }),

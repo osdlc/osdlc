@@ -1,20 +1,20 @@
 /**
  * How to bring one out-of-date PR up to date: rebase, merge, or leave alone.
  *
- * Rebase is the default because on a repository whose PRs carry no review
- * threads it costs nothing and keeps each PR's diff exactly its own commits —
- * which matters most in a stack, where a merge leaves every descendant
- * carrying one merge commit per ancestor update.
+ * Rebase is the default. On a repository whose PRs have no review threads it
+ * costs nothing, and it keeps each PR's diff to exactly its own commits. That
+ * matters most in a stack, where a merge leaves every descendant with one
+ * merge commit per ancestor update.
  *
- * What rebase does cost is a force-push, and that is what the guards are
- * about. `--force-with-lease` compares against the *remote*, so it does not
- * notice a checkout holding commits nobody has pushed; rebasing over that
- * orphans the work with no warning. So the unpushed-work guard is checked
- * before anything else and no override defeats it. The other two guards are
- * preferences, and an explicit override beats them.
+ * The cost of a rebase is a force-push, and the guards are about that.
+ * `--force-with-lease` compares against the remote, so it does not notice a
+ * checkout holding commits nobody has pushed. Rebasing over that loses the
+ * work with no warning. So the unpushed-work guard is checked before anything
+ * else, and no override turns it off. The other two guards are preferences,
+ * and an explicit override beats them.
  *
- * Guards only ever step down from rebase. Nothing here turns a configured
- * `merge` into a rebase.
+ * Guards only step down, from rebase to merge or to skip. No guard turns a
+ * configured `merge` into a rebase.
  */
 
 import type { PrUpdateConfig } from './config.ts'
@@ -27,7 +27,7 @@ export interface StrategySignals {
   /** The PR's base branch name, matched against an override's `base` glob. */
   base: string
   labels: readonly string[]
-  /** Commits ahead of base — how many a rebase would replay. Null when unknown. */
+  /** Commits ahead of base, which is how many a rebase would replay. Null when unknown. */
   ahead: number | null
   /** Submitted reviews. Rebasing outdates the threads anchored to them. */
   reviews: number
@@ -35,14 +35,14 @@ export interface StrategySignals {
   unpushedLocal: boolean
   /**
    * The head branch lives in a fork, so it is not on this repository's
-   * `origin` and we have no write access to it.
+   * `origin` and this run cannot push to it.
    */
   crossRepo: boolean
 }
 
 export interface StrategyDecision {
   strategy: Strategy
-  /** Which rule decided, so every outcome in the report is auditable. */
+  /** Which rule decided, so the report shows why for every outcome. */
   rule:
     | 'guard:fork'
     | 'guard:unpushed-local'
@@ -59,10 +59,9 @@ const RX_SPECIAL = /[.+?^${}()|[\]\\]/g
  * Glob match for a branch name: `*` spans a path segment, `**` spans any.
  *
  * So `release/*` matches `release/1.2` but not `release/1.2/hotfix`, which is
- * what a caller pinning a release line expects.
+ * what a caller naming a release line expects.
  *
- * Named for branches rather than the shorter `globMatches` because a same-
- * named filesystem-glob matcher next to it would be a trap.
+ * The name says "branch" so it is not confused with a filesystem glob matcher.
  */
 export function branchMatchesGlob(pattern: string, value: string): boolean {
   let rx = ''
@@ -89,8 +88,8 @@ export function matchOverride(
   overrides: readonly OverrideRule[],
 ): OverrideRule | null {
   for (const rule of overrides) {
-    // A rule declaring neither field would match every PR. Treat it as inert
-    // rather than as a silent global default nobody wrote on purpose.
+    // A rule with neither field would match every PR. Ignore it, rather than
+    // treat it as a global default nobody wrote on purpose.
     if (rule.base === undefined && rule.label === undefined) continue
     if (rule.base !== undefined && !branchMatchesGlob(rule.base, signals.base)) continue
     if (rule.label !== undefined && !signals.labels.includes(rule.label)) continue
@@ -101,10 +100,10 @@ export function matchOverride(
 
 /** Decide what to do with one PR. Pure. */
 export function chooseStrategy(signals: StrategySignals, cfg: PrUpdateConfig): StrategyDecision {
-  // 0. Capability, before safety and preference alike. A fork's head branch
-  //    is on the contributor's remote, not ours; neither a rebase nor a merge
-  //    can be pushed there. Deciding anything else would be a plan that
-  //    cannot run.
+  // 0. What can be pushed at all, before safety and preference. A fork's head
+  //    branch is on the contributor's remote, not this one, so neither a
+  //    rebase nor a merge can be pushed there. Any other decision would be a
+  //    plan that cannot run.
   if (signals.crossRepo) {
     return {
       strategy: 'skip',
@@ -113,8 +112,8 @@ export function chooseStrategy(signals: StrategySignals, cfg: PrUpdateConfig): S
     }
   }
 
-  // 1. Data safety, ahead of every preference. A force-push cannot be undone
-  //    from here, and the work it would orphan is not in any remote.
+  // 1. Data safety, before every preference. A force-push cannot be undone
+  //    from here, and the work it would lose is not on any remote.
   if (signals.unpushedLocal) {
     return {
       strategy: cfg.guards.unpushed_local,
@@ -133,7 +132,7 @@ export function chooseStrategy(signals: StrategySignals, cfg: PrUpdateConfig): S
     return { strategy: override.strategy, rule: 'override', reason: `override on ${on}` }
   }
 
-  // 3. Preferences. They only ever step down from a rebase.
+  // 3. Preferences. They only step down from a rebase.
   if (cfg.strategy === 'rebase') {
     if (signals.reviews > 0) {
       const noun = signals.reviews === 1 ? 'review' : 'reviews'

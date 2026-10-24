@@ -1,38 +1,36 @@
 /**
  * Resolving a conflict without asking anyone.
  *
- * Most conflicts in a repository that regenerates artifacts are not judgement
- * calls. Measured over the last 400 merges here, the conflicted files are
- * dominated by lockfiles and generated output — files nobody edits by hand and
- * whose correct content is whatever the generator says it is. For those the
- * answer is mechanical: take a side to get a tree, re-run the tool, stage what
- * it wrote.
+ * Most conflicts in a repository that regenerates artifacts need no judgement.
+ * Over 400 merges in the repository this was built in, most conflicted files
+ * were lockfiles and generated output. Nobody edits those by hand, and their
+ * correct content is whatever the generator produces. For those the answer is
+ * mechanical: take a side to get a tree, re-run the tool, stage what it wrote.
  *
- * That is the whole idea of the ladder. Each rung claims paths it knows how to
- * rebuild, and a rung that claims a path owns the result. A conflict no rung
- * claims is left alone — an update that guessed at a source file would be
- * worse than one that reported it needed a human.
+ * The resolvers are tried in order. Each claims the paths it knows how to
+ * rebuild, and the resolver that claims a path is responsible for the result.
+ * A conflict no resolver claims is left alone. An update that guessed at a
+ * source file would be worse than one that reported it needed a person.
  *
- * The rungs, in order:
+ * The resolvers, in order:
  *
- *   0. **rerere** — git replayed a resolution recorded earlier in this run.
- *      Free, and the reason a stack of siblings sharing a base costs one
- *      resolution rather than one per PR.
- *   1. **lockfile** — recognized built in, because every ecosystem has one and
- *      the resolution is always the same shape: take a side, re-derive from
- *      the merged manifest. The re-derivation needs a command only the host
- *      knows (`PrUpdateConfig.lockfile_install`); without one the path is left
- *      unclaimed rather than resolved to a lockfile that disagrees with its
+ *   0. rerere: git replayed a resolution recorded earlier in this run. It
+ *      costs nothing, and it is why a stack of sibling PRs on one base needs
+ *      one resolution, not one per PR.
+ *   1. lockfile: built in, because every ecosystem has lockfiles and the
+ *      resolution always has the same form: take a side, then regenerate from
+ *      the merged manifest. Regenerating needs a command only the host knows
+ *      (`PrUpdateConfig.lockfile_install`). Without one the path is left
+ *      unclaimed, rather than resolved to a lockfile that disagrees with its
  *      own manifest.
- *   2. **regenerate** — `PrUpdateConfig.resolvers`. A host's own codegen
- *      (`docs/index.md`, say) lives in that config, not in this file: this
- *      package is a reusable product and a consumer's own codegen is not its
- *      business.
- *   3. **generator** — `Ports.generators`, the same idea supplied in code by a
- *      host that runs its generator in process rather than as a shell verb.
- *   4. **repair** — `Ports.repair`, opt-in through `PrUpdateConfig.repair`.
- *      It is not a path plan: the executor calls it once for whatever the
- *      rungs above left unclaimed, then checks its result (`execute.ts`).
+ *   2. regenerate: `PrUpdateConfig.resolvers`. A host's own codegen
+ *      (`docs/index.md`, say) is set in that config, not in this file. This
+ *      package is reusable, and a consumer's codegen does not belong in it.
+ *   3. generator: `Ports.generators`, the same idea supplied in code by a host
+ *      that runs its generator in process instead of as a shell verb.
+ *   4. repair: `Ports.repair`, opt-in through `PrUpdateConfig.repair`. It
+ *      does not claim paths. The executor calls it once for whatever the
+ *      resolvers above left unclaimed, then checks its result (`execute.ts`).
  *
  * Without a repair, an unclaimed conflict ends the attempt for that PR and the
  * run moves on.
@@ -44,11 +42,11 @@ import { branchMatchesGlob } from '../strategy.ts'
 /**
  * Lockfiles, by exact basename.
  *
- * Matching on basename rather than a full path is deliberate: a monorepo has
- * one per workspace and they are all equally derived.
+ * Matching on the basename, not the full path, is on purpose. A monorepo has
+ * one per workspace, and all of them are generated.
  *
- * `go.sum` is here for the same reason even though it is append-only: its
- * conflicts are two independent additions, and `go mod tidy` is the arbiter.
+ * `go.sum` is here too, even though it is append-only. Its conflicts are two
+ * independent additions, and `go mod tidy` settles them.
  */
 const LOCKFILES = new Set([
   'bun.lock',
@@ -95,11 +93,11 @@ export type PathPlan =
   | { kind: 'unclaimed'; path: string; why: string }
 
 /**
- * Assign every conflicted path to a rung.
+ * Assign every conflicted path to a resolver.
  *
- * Lockfiles are checked before the configured rules so a project cannot
- * accidentally shadow the built-in with a broad `**` glob — and so that the
- * common case needs no configuration at all.
+ * Lockfiles are checked before the configured rules, so a project cannot hide
+ * the built-in rule by accident with a broad `**` glob, and so the common case
+ * needs no configuration.
  */
 export function planPaths(
   conflicts: readonly string[],
@@ -109,8 +107,8 @@ export function planPaths(
 ): PathPlan[] {
   return conflicts.map((path): PathPlan => {
     if (isLockfile(path)) {
-      // Taking a side without re-deriving would push a lockfile that
-      // disagrees with its own manifest — worse than not updating at all.
+      // Taking a side without regenerating would push a lockfile that
+      // disagrees with its own manifest, which is worse than not updating.
       return lockfileInstall === null
         ? { kind: 'unclaimed', path, why: 'lockfile, but no lockfile_install configured' }
         : { kind: 'lockfile', path, run: lockfileInstall }
@@ -127,11 +125,10 @@ export function planPaths(
 /**
  * The distinct shell verbs a plan needs, in first-seen order.
  *
- * One rule usually claims several paths — `docs/index.md` and
- * `docs/glossary.md` are both `make docs`, every lockfile in a
- * workspace is one `bun install` — and running a generator once per file it
- * owns would be wasted work and, for a tool that rewrites a whole directory,
- * actively misleading.
+ * One rule usually claims several paths. `docs/index.md` and
+ * `docs/glossary.md` are both `make docs`, and every lockfile in a workspace
+ * is one `bun install`. Running a generator once per file would be wasted
+ * work, and wrong for a tool that rewrites a whole directory.
  */
 export function rebuildVerbs(plans: readonly PathPlan[]): string[] {
   return [
@@ -146,7 +143,7 @@ export function generatorNames(plans: readonly PathPlan[]): string[] {
   return [...new Set(plans.flatMap((p) => (p.kind === 'generator' ? [p.generator] : [])))]
 }
 
-/** Paths no rung claimed, with why. Non-empty means the PR needs a human. */
+/** Paths no resolver claimed, with the reason. Non-empty means the PR needs a person. */
 export function unclaimed(plans: readonly PathPlan[]): { path: string; why: string }[] {
   return plans
     .filter((p): p is Extract<PathPlan, { kind: 'unclaimed' }> => p.kind === 'unclaimed')
