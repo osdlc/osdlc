@@ -1,8 +1,9 @@
 <script setup>
 // Guided-scenarios playground for Intersect: pick a workflow, edit the
 // pre-filled inputs, read a verdict that updates live.
-// Pure L1 surface only — imported by name via the Vite alias, never `intersect/fs`.
-// Everything here is synchronous and SSR-safe: no window/document at setup top level.
+// Imports only the root entry, by package name, never `@osdlc/intersect/fs`.
+// Everything here is synchronous and safe to render on the server: no window or
+// document at the top level of setup.
 import { reactive, ref, computed } from 'vue'
 import { overlapping, witness, index, matches } from '@osdlc/intersect'
 
@@ -34,7 +35,7 @@ const activeTab = computed(() => tabs.find((t) => t.key === active.value))
 /* ------------------------------------------------ helpers */
 
 // Globs may contain commas inside `{a,b}` alternation, so never split on commas.
-// Whitespace is safe: real path globs don't contain spaces.
+// Splitting on whitespace is safe: real path globs do not contain spaces.
 function splitPatterns(str) {
   return str
     .split(/\s+/)

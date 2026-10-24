@@ -1,17 +1,17 @@
 /**
- * Intersect L0 — segment core (`intersect/segments`).
+ * The segment core (`@osdlc/intersect/segments`).
  *
- * The pure, primitive engine. It reasons over patterns already split into
- * path segments (`SegmentPattern`); it never parses strings and never touches
- * the filesystem. Pairwise and minimal.
+ * The engine. It works on patterns already split into path segments
+ * (`SegmentPattern`). It never parses strings and never touches the
+ * filesystem. It compares two patterns at a time.
  *
- * The type surface is the contract the fixture corpus specifies. The engine is
- * a synchronized product of two per-pattern sequence automata plus reachability
- * (`./automaton.ts`, `./product.ts`); it has zero runtime dependencies.
+ * The fixture corpus specifies these types and their behaviour. The engine
+ * builds an automaton for each pattern and searches the product of the two
+ * (`./automaton.ts`, `./product.ts`). It has no runtime dependencies.
  *
  * `intersects`, `matches` and `witness` share their names with the path API in
  * the package root. Here they take segment arrays, not strings, and `matches`
- * reads its path as a pattern. The import path says which layer you call.
+ * reads its path as a pattern. The import path says which one you call.
  *
  * @module segments
  */
@@ -22,13 +22,12 @@ export type { IntersectErrorCode } from '../errors.ts'
 
 /**
  * One pattern already split into path segments, e.g. `["src","**","*.vue"]`.
- * The core's unit: no separators, no strings to parse. Each element is a glob
- * token taken verbatim; a concrete path is just a `SegmentPattern` with no
- * wildcards.
+ * It holds no separators. Each element is a glob, kept as written. A concrete
+ * path is a `SegmentPattern` with no wildcards.
  */
 export type SegmentPattern = readonly string[]
 
-/** Matching semantics, shared by the segment core and the path API. */
+/** Matching options, shared by the segment core and the path API. */
 export interface Options {
   /** Match paths ignoring ASCII case: only `A`-`Z` and `a`-`z` fold; `Ä` and `ä` differ. Default `false`. */
   caseInsensitive?: boolean
@@ -39,17 +38,17 @@ export interface Options {
 }
 
 /**
- * Do two segment-patterns share a common matching path? The load-bearing
- * primitive: every other question in the library is a shape over it.
+ * Do two segment patterns share a matching path? Every other function in the
+ * package builds on this question.
  *
- * @param a - The first segment-pattern.
- * @param b - The second segment-pattern.
- * @param opts - Matching semantics ({@link Options}); defaults apply when omitted.
+ * @param a - The first segment pattern.
+ * @param b - The second segment pattern.
+ * @param opts - Matching options ({@link Options}). Defaults apply when omitted.
  * @returns `true` when some path matches both `a` and `b`, else `false`.
  * @throws {@link IntersectError} with code `UNSUPPORTED_SYNTAX` or `PATTERN_TOO_DEEP`.
- * @remarks Takes segment arrays; the root `intersects` takes path-like strings.
- * A pattern with no wildcards is an exact-path match, so two literal
- * segment arrays intersect only when equal. Subtrees are opted into with `**`.
+ * @remarks Takes segment arrays. The root `intersects` takes strings. A pattern
+ * with no wildcards matches only that exact path, so two literal segment
+ * arrays intersect only when they are equal. A subtree is written with `**`.
  * @example
  * ```ts
  * intersects(["src", "**", "*.vue"], ["src", "siteA", "components", "Button.vue"]); // true
@@ -61,16 +60,16 @@ export function intersects(a: SegmentPattern, b: SegmentPattern, opts?: Options)
 }
 
 /**
- * Does a concrete segmented path match a segment-pattern? The degenerate case
- * of {@link intersects}: a concrete path is a literal `SegmentPattern`, so it
+ * Does a path, split into segments, match a segment pattern? This is
+ * {@link intersects} with a literal pattern on one side: a concrete path
  * intersects `pattern` exactly when it matches it.
  *
  * @param path - The concrete path, already split into segments.
- * @param pattern - The segment-pattern to test against.
- * @param opts - Matching semantics ({@link Options}); defaults apply when omitted.
+ * @param pattern - The segment pattern to test against.
+ * @param opts - Matching options ({@link Options}). Defaults apply when omitted.
  * @returns `true` when `path` falls within `pattern`, else `false`.
  * @remarks Unlike the root `matches`, `path` is read as a pattern here, not as
- * a literal name: escape glob characters in it yourself.
+ * a literal name. Escape glob characters in it yourself.
  * @example
  * ```ts
  * matches(["src", "api", "user.ts"], ["src", "**", "*.ts"]); // true
@@ -82,19 +81,19 @@ export function matches(path: SegmentPattern, pattern: SegmentPattern, opts?: Op
 }
 
 /**
- * An example common path (the reachability witness), or `null` when disjoint.
- * Turns "these overlap" into "these overlap at X". The witness is free — it is
- * the path the engine already walked to prove {@link intersects}.
+ * An example path both patterns match, or `null` when they are disjoint. It
+ * lets a caller say where two patterns overlap. It costs nothing extra: it is
+ * the path the search already found to answer {@link intersects}.
  *
- * @param a - The first segment-pattern.
- * @param b - The second segment-pattern.
- * @param opts - Matching semantics ({@link Options}); defaults apply when omitted.
+ * @param a - The first segment pattern.
+ * @param b - The second segment pattern.
+ * @param opts - Matching options ({@link Options}). Defaults apply when omitted.
  * @returns A `SegmentPattern` both `a` and `b` match, or `null` if none exists.
- * @remarks Takes segment arrays; the root `witness` takes path-like strings.
- * A segment of the witness may be the empty string — legal here, since
- * this layer answers in segment vectors. The path API's `witness` stringifies,
- * and searches on past a vector whose LAST segment is empty: `parse` normalizes
- * a trailing separator back off, so no path string spells it.
+ * @remarks Takes segment arrays. The root `witness` takes strings. A segment of
+ * the result may be the empty string, which is valid for segment arrays. The
+ * root `witness` joins the segments into a string. It skips a result whose
+ * last segment is empty and keeps searching, because `parse` drops a trailing
+ * separator, so no path string can write that result.
  * @example
  * ```ts
  * witness(["src", "api", "**"], ["src", "**", "handler.ts"]); // ["src", "api", "handler.ts"]

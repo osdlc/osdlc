@@ -3,10 +3,10 @@
  *
  *   1. `package.json` exposes exactly the three subpaths `.`, `./segments` and
  *      `./fs`. Each has `types` and `default` conditions that point into `dist/`.
- *   2. Dependency isolation: the `.` and `./segments` entries pull no external
- *      runtime dependency, while `./fs` pulls `tinyglobby`. The positive control
- *      (fs does reach the globber) shows the walker can detect a dependency, so
- *      the empty result for the core is real.
+ *   2. Dependency isolation: the `.` and `./segments` entries load no external
+ *      runtime dependency, while `./fs` loads `tinyglobby`. The check that fs
+ *      does reach `tinyglobby` shows the walker can find a dependency, so the
+ *      empty result for the other entries is real.
  *   3. Corpus sweep: no `*.cases.json` case is left `pending: true`.
  */
 import { existsSync, readFileSync } from 'node:fs'

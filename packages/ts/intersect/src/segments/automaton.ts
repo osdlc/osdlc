@@ -1,21 +1,21 @@
 /**
- * Intersect L0 — per-segment glob automaton.
+ * The glob automaton for one segment.
  *
- * Compiles a single glob segment (`*`, `?`, `[...]` classes incl. negated
- * `[!...]`, `{a,b}` alternation) into a character-level NFA, and answers the
- * primitive question the sequence product needs: do two segment matchers share
- * a common concrete string, and if so what is one such string
- * ({@link commonSegment})?
+ * Compiles a single glob segment (`*`, `?`, `[...]` classes including negated
+ * `[!...]`, `{a,b}` alternation) into a character-level NFA. It then answers
+ * the question the segment search needs: do two segment matchers share a
+ * concrete string, and if so, what is one ({@link commonSegment})?
  *
- * `*` is a run of characters (zero or more); `?` is exactly one; `{a,b}` is NFA
- * alternation — never eager string expansion. `Options` (`caseInsensitive`,
- * `dot`) apply at this character level: a leading-dot input is matchable only by
- * a branch that BEGINS WITH A LITERAL DOT TOKEN (or has `dot` set) — carried per
- * edge ({@link CharEdge.dotAtStart}) and enforced at position 0 of the product,
- * so it survives a zero-width `*` without letting one `{...}` branch decide the
- * question for its siblings.
+ * `*` is a run of zero or more characters. `?` is exactly one. `{a,b}` is
+ * alternation inside the NFA. Branches are never expanded into strings. The
+ * `caseInsensitive` and `dot` options apply here, per character. A segment
+ * that starts with `.` can match only a branch that starts with a literal `.`
+ * (or any branch when `dot` is set). Each edge records this
+ * ({@link CharEdge.dotAtStart}), and {@link commonSegment} checks it at the
+ * first character. So a `*` that matches nothing cannot let a dot through, and
+ * one `{...}` branch cannot decide the rule for its siblings.
  *
- * Zero runtime dependencies — standard library only.
+ * No runtime dependencies.
  */
 import { IntersectError } from '../errors.ts'
 import type { Options } from './index.ts'
@@ -45,11 +45,12 @@ type CharPred =
 /**
  * A character NFA edge that consumes one input character satisfying `pred`.
  *
- * `dotAtStart` answers, for THIS edge: if it fires as the segment's first
- * character, may that character be a `.`? True only for a literal token that
- * begins its branch (or under `dot`) — the standard glob leading-dot rule. It is
- * per-edge, not per-segment, so a `{.x,*.env}` branch that begins with a literal
- * dot does not unlock dotfiles for the sibling branch that begins with `*`.
+ * `dotAtStart` answers, for this edge: if it consumes the segment's first
+ * character, may that character be a `.`? It is true only for a literal token
+ * that begins its branch, or when `dot` is set. This is the usual glob rule for
+ * a leading dot. It is set per edge, not per segment, so in `{.x,*.env}` the
+ * branch that begins with a literal dot does not allow dotfiles for the
+ * branch that begins with `*`.
  */
 interface CharEdge {
   readonly pred: CharPred
@@ -58,15 +59,16 @@ interface CharEdge {
 }
 
 /**
- * A compiled single-segment glob as a character NFA. States are indices;
- * `epsOut`/`charOut` are per-state adjacency; `start`/`accept` are single
- * states (concatenation and alternation funnel into one accept).
+ * A compiled single-segment glob as a character NFA. States are indices.
+ * `epsOut` and `charOut` list each state's outgoing edges. `start` and
+ * `accept` are single states (concatenation and alternation lead into one
+ * accept state).
  *
- * The leading-dot rule rides on the edges ({@link CharEdge.dotAtStart}), because
- * it must survive a zero-width `*` — the rule is about the first *emitted*
- * character (position 0), which a zero-width `*` can hand off to a following
- * literal — while still being decided branch by branch. {@link commonSegment}
- * enforces it at the segment-start position.
+ * The leading-dot rule is stored on the edges ({@link CharEdge.dotAtStart}).
+ * The rule is about the first character of the matched string. A `*` that
+ * matches nothing leaves that character to the next token, so the rule cannot
+ * be decided by the first token alone. It is still decided branch by branch.
+ * {@link commonSegment} checks it at the first character.
  */
 export interface SegmentMatcher {
   readonly epsOut: number[][]
@@ -110,8 +112,8 @@ function unsupported(what: string, glob: string): IntersectError {
 }
 
 /**
- * Parse a glob segment into tokens. Unterminated `[`/`{` degrade to literals,
- * except where that hides unsupported syntax: a `{a..b}` number range, an
+ * Parse a glob segment into tokens. An unclosed `[` or `{` is read as a literal,
+ * except where that would hide unsupported syntax: a `{a..b}` number range, an
  * extglob such as `+(a|b)`, and (checked across the segments of one pattern via
  * `state`) a `{...}` group or `[...]` class that holds a `/`.
  */
@@ -130,9 +132,10 @@ function tokenize(glob: string, state: SyntaxState): Token[] {
 }
 
 /**
- * The glob plus per-call memo tables. `parseAlt(i)` depends only on the string
- * and `i`, so each `{` is parsed once; without that, unclosed `{` nest the work
- * exponentially. `lastClose` lets an unclosed `[` fail without a scan.
+ * The glob plus per-call caches. `parseAlt(i)` depends only on the string and
+ * `i`, so each `{` is parsed once. Without the cache, the work grows
+ * exponentially with the number of unclosed `{`. `lastClose` lets an unclosed
+ * `[` fail without a scan.
  */
 class Scan {
   readonly s: string
@@ -151,8 +154,8 @@ class Scan {
 }
 
 /**
- * The whole character at index `i` — one code point, so an astral character
- * (two UTF-16 code units) stays a single token. `?` and `[...]` are specified in
+ * The whole character at index `i`: one code point, so a character outside the
+ * BMP (two UTF-16 code units) stays one token. `?` and `[...]` match
  * characters, not code units.
  */
 function charAt(s: string, i: number): string {
@@ -170,8 +173,8 @@ function hasCloseParen(s: string, from: number): boolean {
 
 /**
  * Parse a token sequence from `start`. When `insideBrace`, stop at a top-level
- * `,` or `}` (the delimiter is left for the caller). Returns the tokens and the
- * index of the stop character (or the string length). `depth` counts the `{`
+ * `,` or `}` and leave it for the caller. Returns the tokens and the index of
+ * the stop character (or the string length). `depth` counts the `{`
  * groups being parsed around this sequence.
  */
 function parseSeq(sc: Scan, start: number, insideBrace: boolean, depth: number): [Token[], number] {
@@ -353,13 +356,13 @@ function buildFragment(b: NfaBuilder, tokens: Token[], atStart: boolean, dot: bo
 
 function buildToken(b: NfaBuilder, tok: Token, atStart: boolean, dot: boolean): Frag {
   const excludeDot = atStart && !dot
-  // Position 0 of the segment accepts a `.` only from a literal token that
-  // begins this branch (or with `dot` on). Recorded per edge so a sibling
-  // `{...}` branch cannot answer for this one.
+  // The segment's first character can be a `.` only from a literal token that
+  // begins this branch, or with `dot` on. Recorded per edge, so a sibling
+  // `{...}` branch cannot decide for this one.
   const dotAtStart = dot || (tok.t === 'lit' && atStart)
   switch (tok.t) {
     case 'lit': {
-      // A literal (including a literal `.`) always matches its character — this
+      // A literal (including a literal `.`) always matches its character. This
       // is how `.env` matches a dotfile while `*` does not.
       const s = b.newState()
       const e = b.newState()
@@ -380,10 +383,10 @@ function buildToken(b: NfaBuilder, tok: Token, atStart: boolean, dot: boolean): 
       return { start: s, accept: e }
     }
     case 'star': {
-      // Zero-or-more characters. `excludeDot` keeps a *directly* consumed first
-      // character off a dot; the zero-width case — where the star consumes
-      // nothing and a following literal would otherwise emit position 0 — is
-      // covered by that literal's own `dotAtStart` being false.
+      // Zero or more characters. `excludeDot` stops the star's own first
+      // character from being a dot. When the star matches nothing, the next
+      // literal supplies the first character, and that literal's `dotAtStart`
+      // is false, which covers that case.
       const s = b.newState()
       const e = b.newState()
       const p = b.newState()
@@ -516,18 +519,17 @@ function firstOwnChar(pred: CharPred, ok: (c: string) => boolean): string | null
 }
 
 /**
- * A single character both predicates accept, or `null`. Tests every literal /
- * range endpoint mentioned by either side plus a fixed fallback alphabet — that
- * pool covers literals, classes, negated classes, and the any∩any case. When
- * `disallowDot` is set (the segment-start position where a leading `.` is not
- * permitted), `.` is skipped as a candidate so a non-dot common character is
- * still found when one exists.
+ * A single character both predicates accept, or `null`. It tests every literal
+ * and range endpoint either side names, then a fixed fallback alphabet. That
+ * covers literals, classes, negated classes, and two `any` predicates. When
+ * `disallowDot` is set (at the first character, where a leading `.` is not
+ * allowed), `.` is skipped, so a common character that is not a dot is still
+ * found when one exists.
  *
- * The pool is walked LAZILY, in the order the two tiers agree on (this side's
- * own characters, then the other side's, then the fallback alphabet). Since the
- * first accepted candidate wins, a repeat can never change the answer, so the
- * de-duplicating `Set` the eager version built — 65 fallback insertions on every
- * edge pair, on the engine's hottest path — buys nothing.
+ * The candidates are tried in order: the first side's own characters, then the
+ * other side's, then the fallback alphabet. The first accepted candidate wins,
+ * so repeats cannot change the answer, and no set is built to remove them.
+ * This matters because the function runs for every pair of edges.
  *
  * If none is accepted, the characters just outside each class range are tried
  * ({@link boundaryChars}). That finds a common character for negated classes
@@ -592,19 +594,19 @@ function epsClosure(m: SegmentMatcher, from: number): Set<number> {
 }
 
 /**
- * One concrete string accepted by BOTH segment matchers, or `null` when they
- * share none. Runs a BFS over the synchronized product of the two character
- * NFAs, recording predecessors so the shortest common string is reconstructed.
- * A literal on either side pins the character, so common substrings driven by a
- * literal are exact (which is what witness reconstruction relies on).
+ * One concrete string both segment matchers accept, or `null` when they share
+ * none. It walks the product of the two character NFAs breadth-first and
+ * records predecessors, so the shortest common string can be rebuilt. A
+ * literal on either side fixes the character, so the rebuilt string is exact.
+ * The witness depends on that.
  *
- * The shortest common string is preferred EXCEPT for the empty one: two
- * zero-width-capable matchers (`*` ∩ `*`) both accept `""`, but no real path
- * segment is empty, and an empty FINAL witness segment round-trips through
- * `parse` and vanishes — yielding a path that matches neither side. So `""` is
- * held back as a fallback and returned only when the two share nothing else
- * (which a pattern segment that can only be empty, such as `{,x}` or the empty
- * segment of `a//b`, still needs).
+ * The shortest common string wins, except the empty one. Two matchers that can
+ * match nothing (`*` and `*`) both accept `""`, but a path segment is
+ * normally not empty. An empty last segment in a witness is also dropped by `parse`,
+ * which would give a path that matches neither side. So `""` is kept as a
+ * fallback and returned only when the two share nothing else. A segment that
+ * can only be empty, such as `{,x}` or the empty segment of `a//b`, still
+ * needs it.
  */
 export function commonSegment(
   m1: SegmentMatcher,
@@ -630,7 +632,7 @@ export function commonSegment(
     if (ca.has(m1.accept) && cb.has(m2.accept)) {
       if (st === start) {
         // Both sides accept the empty string. Note it and keep searching for a
-        // non-empty common string, which every real path segment is.
+        // non-empty common string.
         emptyAccepted = true
       } else {
         const chars: string[] = []
@@ -644,13 +646,12 @@ export function commonSegment(
       }
     }
 
-    // At the segment-start product state nothing has been consumed yet, so the
-    // next character emitted is position 0 of the shared segment. A leading `.`
-    // is permitted there only when BOTH edges about to fire allow one —
-    // otherwise a zero-width `*` on either side could let a following literal
-    // `.` slip a dotfile through (`*.env` must not match `.env` under
-    // `dot:false`, and must not start doing so because a sibling brace branch
-    // begins with a dot).
+    // At the start state nothing has been consumed yet, so the next character
+    // is the first of the shared segment. It may be a `.` only when both edges
+    // about to be taken allow one. Otherwise a `*` that matches nothing, on
+    // either side, could let the literal `.` after it match a dotfile.
+    // (`*.env` must not match `.env` with `dot: false`, even when a sibling
+    // brace branch begins with a dot.)
     const atSegmentStart = st === start
 
     for (const ua of ca) {

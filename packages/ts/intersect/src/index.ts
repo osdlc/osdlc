@@ -1,22 +1,22 @@
 /**
- * Intersect L1 — path API (`intersect`, the package root).
+ * The path API, the package root (`@osdlc/intersect`).
  *
- * Parses path-like glob strings into `SegmentPattern`s (via `./parse`), adds
- * set-awareness (`string | string[]`), and exposes the registry. Pure — no
- * filesystem. Each primitive coerces `Patterns` to a set of `SegmentPattern`s,
- * then defers to the segment core (`./segments`).
+ * Parses glob strings into `SegmentPattern`s (via `./parse`), accepts one
+ * pattern or an array of them (`string | string[]`), and exports the registry.
+ * It does not touch the filesystem. Each function turns its `Patterns` into a
+ * list of `SegmentPattern`s, then calls the segment core (`./segments`).
  *
- * No inference: a path-like string is the glob it literally is. A pattern with
- * NO wildcards is an exact-path match (`src/siteA/components` matches only that
- * path); a subtree is written explicitly (`src/siteA/components/**`).
+ * A string is read as the glob it is. A pattern with no wildcards matches only
+ * that exact path (`src/siteA/components`). A subtree is written with `**`
+ * (`src/siteA/components/**`).
  *
- * Patterns are globs; a concrete path you pass to `matches`, `whichMatch`,
- * {@link Matcher.matches} or `Registry.matching` is read as the literal name it
- * is, so `pages/[id].vue` is that file and not a character class.
+ * Patterns are globs. A concrete path passed to `matches`, `whichMatch`,
+ * {@link Matcher.matches} or `Registry.matching` is read as a literal name, so
+ * `pages/[id].vue` is that file and not a character class.
  *
- * The functions here take path-like STRINGS. The `./segments` entry point has
- * functions with the same names (`intersects`, `matches`, `witness`) that take
- * pre-split segment arrays; the import path says which layer you call.
+ * The functions here take strings. The `./segments` entry point has functions
+ * with the same names (`intersects`, `matches`, `witness`) that take
+ * pre-split segment arrays. The import path says which one you call.
  *
  * Unsupported syntax and bad arguments throw {@link IntersectError}.
  *
@@ -29,7 +29,6 @@ import { search } from './segments/product.ts'
 import { IntersectError } from './errors.ts'
 import { describe, literal, parse } from './parse.ts'
 
-// Re-export the shared core types and the registry surface from the package root.
 export type { Options, SegmentPattern } from './segments/index.ts'
 export { IntersectError } from './errors.ts'
 export type { IntersectErrorCode } from './errors.ts'
@@ -38,27 +37,27 @@ export { index } from './registry.ts'
 export { parse } from './parse.ts'
 
 /**
- * Path-like glob string(s) the friendly API accepts. A single string is a
- * one-element set; an array is a set — its union.
+ * One glob string or an array of them. A single string is a set of one. An
+ * array matches the union of its patterns.
  */
 export type Patterns = string | readonly string[]
 
 /**
- * A compiled pattern-set for amortized queries against many paths/patterns.
- * Built by {@link compile}, which parses each pattern once; every method reuses
- * that parsed set. Its `overlapping` filters the ARGUMENT (contrast the free
- * {@link overlapping}, which filters its first argument).
+ * A compiled set of patterns, for testing one scope against many paths or
+ * patterns. Built by {@link compile}, which parses each pattern once. Every
+ * method reuses the parsed set. Its `overlapping` filters its argument. The
+ * free function {@link overlapping} filters its first argument instead.
  *
  * A `Matcher` passed as an argument is used for its pattern strings only. They
- * are parsed again, and this matcher's options apply to the whole comparison;
- * the argument's own options are ignored.
+ * are parsed again, and this matcher's options apply to the whole comparison.
+ * The argument's own options are ignored.
  */
 export interface Matcher {
   /** The source patterns, normalized to an array. */
   readonly patterns: readonly string[]
   /** Does a concrete path match this set? The path is read literally, not as a glob. */
   matches(path: string): boolean
-  /** Does this set overlap another pattern-set or matcher? */
+  /** Does this set overlap another set of patterns or a matcher? */
   intersects(other: Patterns | Matcher): boolean
   /** Which of `candidates` overlap this set, in the order given (filters the argument). */
   overlapping(candidates: Patterns): string[]
@@ -66,7 +65,7 @@ export interface Matcher {
   witness(other: Patterns | Matcher): string | null
 }
 
-/** The separator used to stringify a witness back into a path. */
+/** The separator used to join a witness's segments into a path. */
 const WITNESS_SEPARATOR = '/'
 
 /** Check `patterns` is a string or an array of strings, and return it as an array. */
@@ -81,7 +80,7 @@ function asList(patterns: unknown): readonly string[] {
   )
 }
 
-/** A `Matcher` is an object that carries a `patterns` array; everything else is `Patterns`. */
+/** A `Matcher` is an object with a `patterns` array. Anything else is `Patterns`. */
 function isMatcher(value: unknown): value is Matcher {
   return (
     typeof value === 'object' &&
@@ -91,7 +90,7 @@ function isMatcher(value: unknown): value is Matcher {
   )
 }
 
-/** The pattern strings behind `Patterns` or a `Matcher` — reused when the other side is compiled. */
+/** The pattern strings of `Patterns` or of a `Matcher`. */
 function patternStrings(value: unknown): readonly string[] {
   return isMatcher(value) ? asList(value.patterns) : asList(value)
 }
@@ -112,12 +111,12 @@ function parsePath(path: unknown): SegmentPattern {
 }
 
 /**
- * Compile a pattern-set once, then query it many times. Parses each pattern
- * into a `SegmentPattern` up front; every method reuses that parsed set.
- * Amortizes the parse when a fixed scope is tested against many paths/patterns.
+ * Compile a set of patterns once, then query it many times. Each pattern is
+ * parsed into a `SegmentPattern` up front, and every method reuses the parsed
+ * set. Use it when one scope is tested against many paths or patterns.
  *
- * @param patterns - The pattern-set to compile ({@link Patterns}).
- * @param opts - Matching semantics ({@link Options}) baked into every query.
+ * @param patterns - The patterns to compile ({@link Patterns}).
+ * @param opts - Matching options ({@link Options}) used by every query.
  * @returns A {@link Matcher} bound to `patterns` and `opts`.
  * @throws {@link IntersectError} with code `UNSUPPORTED_SYNTAX`, `PATTERN_TOO_DEEP` or
  * `INVALID_ARGUMENT`, raised here and not at the first query.
@@ -168,29 +167,30 @@ export function compile(patterns: Patterns, opts?: Options): Matcher {
 }
 
 /**
- * Do two pattern-sets share a common matching path? The load-bearing primitive.
+ * Do two sets of patterns share a matching path? Every other function in the
+ * package builds on this question.
  *
- * @param a - The first pattern-set ({@link Patterns}).
- * @param b - The second pattern-set ({@link Patterns}).
- * @param opts - Matching semantics ({@link Options}); defaults apply when omitted.
+ * @param a - The first patterns ({@link Patterns}).
+ * @param b - The second patterns ({@link Patterns}).
+ * @param opts - Matching options ({@link Options}). Defaults apply when omitted.
  * @returns `true` when some path matches both `a` and `b`, else `false`.
  * @throws {@link IntersectError} for unsupported syntax or a bad argument.
- * @remarks Takes path-like strings. The `./segments` function of the same name
- * takes pre-split segment arrays.
- * A pattern with no wildcards is an EXACT-path match, so
- * `src/x` and `src/x/y` are disjoint (a child is not the path); opt into a
- * subtree with a trailing `**`. Dotfiles are excluded unless `{ dot: true }`.
+ * @remarks Takes strings. The `./segments` function of the same name takes
+ * pre-split segment arrays. A pattern with no wildcards matches only that exact
+ * path, so `src/x` and `src/x/y` are disjoint (a child is not the path). To
+ * match a subtree, end the pattern with `**`. Dotfiles are excluded unless
+ * `{ dot: true }`.
  * @example
  * ```ts
- * intersects("src/api/**", "src/api/handler.ts"); // true  — the file is inside the subtree
- * intersects("src/api/**", "src/web/**");         // false — disjoint subtrees
+ * intersects("src/api/**", "src/api/handler.ts"); // true  (the file is inside the subtree)
+ * intersects("src/api/**", "src/web/**");         // false (disjoint subtrees)
  *
  * // Exact-match rule (no wildcards):
  * intersects("src/siteA/components", "src/siteA/components");            // true  (same path)
  * intersects("src/siteA/components", "src/siteA/components/Button.vue"); // false (a child, not the path)
  *
- * // Dot default:
- * intersects("*", ".env");               // false — dotfiles excluded by default
+ * // Dotfiles:
+ * intersects("*", ".env");               // false (dotfiles excluded by default)
  * intersects("*", ".env", { dot: true }); // true
  * ```
  */
@@ -202,10 +202,10 @@ export function intersects(a: Patterns, b: Patterns, opts?: Options): boolean {
  * Does a concrete path match any pattern in the set?
  *
  * @param path - The concrete path to test. It is read literally: `*`, `?`, `[`, `]`,
- * `{`, `}` and `\` in it are ordinary characters, so `pages/[id].vue` is that
+ * `{`, `}`, `(` and `\` in it are ordinary characters, so `pages/[id].vue` is that
  * file name. (The patterns are globs.)
- * @param patterns - The pattern-set to test against ({@link Patterns}).
- * @param opts - Matching semantics ({@link Options}); defaults apply when omitted.
+ * @param patterns - The patterns to test against ({@link Patterns}).
+ * @param opts - Matching options ({@link Options}). Defaults apply when omitted.
  * @returns `true` when `path` matches at least one pattern, else `false`.
  * @remarks The `./segments` function of the same name takes a pre-split path
  * and reads it as a pattern.
@@ -223,8 +223,8 @@ export function matches(path: string, patterns: Patterns, opts?: Options): boole
  * Which patterns in the set match a concrete path, in the order given.
  *
  * @param path - The concrete path to test, read literally (see {@link matches}).
- * @param patterns - The pattern-set to filter ({@link Patterns}).
- * @param opts - Matching semantics ({@link Options}); defaults apply when omitted.
+ * @param patterns - The patterns to filter ({@link Patterns}).
+ * @param opts - Matching options ({@link Options}). Defaults apply when omitted.
  * @returns The subset of `patterns` that match `path`, in input order.
  * @example
  * ```ts
@@ -238,29 +238,29 @@ export function whichMatch(path: string, patterns: Patterns, opts?: Options): st
 }
 
 /**
- * Which patterns in `query` overlap the `candidates` set, in `query` order —
- * the conflict-detection primitive.
+ * Which patterns in `query` overlap the `candidates`, in `query` order. Use it
+ * to detect conflicts between two sets of claimed paths.
  *
- * @param query - The pattern-set to filter and return a subset of ({@link Patterns}).
- * @param candidates - The patterns to test `query` against for overlap
- * ({@link Patterns}; a single string is a one-element set).
- * @param opts - Matching semantics ({@link Options}); defaults apply when omitted.
+ * @param query - The patterns to filter ({@link Patterns}).
+ * @param candidates - The patterns to test `query` against ({@link Patterns}).
+ * A single string is a set of one.
+ * @param opts - Matching options ({@link Options}). Defaults apply when omitted.
  * @returns The subset of `query` (in query order) that overlaps some candidate.
  * @throws {@link IntersectError} for unsupported syntax or a bad argument.
- * @remarks Returns a subset of the FIRST argument, `query`. Contrast
- * {@link Matcher.overlapping}, which returns a subset of ITS argument — the two
- * conventions filter opposite sides.
+ * @remarks Returns a subset of the first argument, `query`.
+ * {@link Matcher.overlapping} returns a subset of its argument instead, so the
+ * two filter opposite sides.
  * @example
  * ```ts
  * const taskA = ["src/api/**", "src/db/schema.ts"];
  * const taskB = ["src/api/routes/*.ts", "docs/**"];
  *
- * overlapping(taskA, taskB);        // ["src/api/**"]  — the overlapping claim → predicted conflict
- * overlapping(["docs/**"], taskA);  // []              — no overlap
+ * overlapping(taskA, taskB);        // ["src/api/**"]  (the claim that overlaps: a likely conflict)
+ * overlapping(["docs/**"], taskA);  // []              (no overlap)
  *
  * // The two directions, on the same data:
- * overlapping(taskA, taskB);                // ["src/api/**"]            — a subset of taskA
- * compile(taskA).overlapping(taskB);        // ["src/api/routes/*.ts"]   — a subset of taskB
+ * overlapping(taskA, taskB);                // ["src/api/**"]            (a subset of taskA)
+ * compile(taskA).overlapping(taskB);        // ["src/api/routes/*.ts"]   (a subset of taskB)
  * ```
  */
 export function overlapping(query: Patterns, candidates: Patterns, opts?: Options): string[] {
@@ -273,12 +273,12 @@ export function overlapping(query: Patterns, candidates: Patterns, opts?: Option
 }
 
 /**
- * An example path common to both sets (turns "overlap" into "overlap at X"), or
- * `null` when disjoint.
+ * An example path that both sets match, or `null` when they are disjoint. It
+ * lets a caller say where two sets overlap, not only that they do.
  *
- * @param a - The first pattern-set ({@link Patterns}).
- * @param b - The second pattern-set ({@link Patterns}).
- * @param opts - Matching semantics ({@link Options}); defaults apply when omitted.
+ * @param a - The first patterns ({@link Patterns}).
+ * @param b - The second patterns ({@link Patterns}).
+ * @param opts - Matching options ({@link Options}). Defaults apply when omitted.
  * @returns A concrete path matching both sets, or `null` if none exists.
  * @throws {@link IntersectError} for unsupported syntax or a bad argument.
  * @remarks The returned string always matches both sets. The search skips a
@@ -290,8 +290,8 @@ export function overlapping(query: Patterns, candidates: Patterns, opts?: Option
  * inside a brace such as `{,x}` can produce such a pair.
  * @example
  * ```ts
- * witness("src/api/**", "src/api/handler.ts"); // "src/api/handler.ts" — a path both match
- * witness("src/api/**", "src/web/**");         // null                 — no common path
+ * witness("src/api/**", "src/api/handler.ts"); // "src/api/handler.ts" (a path both match)
+ * witness("src/api/**", "src/web/**");         // null                 (no common path)
  * ```
  */
 export function witness(a: Patterns, b: Patterns, opts?: Options): string | null {

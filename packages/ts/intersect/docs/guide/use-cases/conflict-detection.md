@@ -1,22 +1,22 @@
 ---
 title: Conflict detection
-description: Predict edit conflicts between two work items from their path claims — pure, no disk.
+description: Predict edit conflicts between two work items from the paths they claim, without reading the disk.
 ---
 
-Two work items that touch the same files collide at merge. If each item declares the paths
-it is likely to touch — as globs, not a fixed file list — then two items *probably* conflict
-when their claimed pattern-sets overlap. That is a pattern-vs-pattern question, distinct from
-the after-the-fact "do these concrete changed files hit a reserved pattern?" a git hook asks
+Two work items that touch the same files conflict at merge. Say each item declares the paths
+it is likely to touch, as globs rather than a fixed file list. Then two items probably conflict
+when their claimed patterns overlap. That compares pattern with pattern. A git hook asks a
+different question after the fact: do these changed files match a reserved pattern?
 ([[DR-0012]]).
 
-Knowing two ready items overlap *before* dispatch lets a scheduler serialize them or warn,
-rather than discovering the collision at merge. This is pure L0 pattern algebra: no
-filesystem, and the claimed paths need not exist yet.
+If a scheduler knows two ready items overlap before it starts them, it can run them one after
+the other, or warn, instead of finding the conflict at merge. This needs only the patterns. It
+does not read the disk, and the claimed paths need not exist yet.
 
 ## overlapping predicts, witness explains
 
-`overlapping` returns the claim(s) that collide; `witness` turns that into a concrete path
-you can name in the warning.
+`overlapping` returns the claims that overlap. `witness` gives a concrete path you can name
+in the warning.
 
 ```ts
 import { overlapping, witness } from "@osdlc/intersect";
@@ -30,7 +30,7 @@ overlapping(["docs/**"], taskA);
 
 | Call | Returns | Why |
 |---|---|---|
-| `overlapping(taskA, taskB)` | `["src/api/**"]` | the overlapping claim → predicted conflict |
+| `overlapping(taskA, taskB)` | `["src/api/**"]` | the claim that overlaps: a likely conflict |
 | `overlapping(["docs/**"], taskA)` | `[]` | no overlap |
 
 ## End to end
@@ -51,9 +51,9 @@ conflict(
 );
 ```
 
-That call returns `{ overlaps: ["src/api/**"], example: "src/api/routes/list.ts" }` — the
-scheduler serializes T-1 and T-2, or warns, before dispatch. Pure L0, no disk.
+That call returns `{ overlaps: ["src/api/**"], example: "src/api/routes/a.ts" }`. The
+scheduler runs T-1 and T-2 one after the other, or warns, before it starts them.
 
-Because it never reads disk, this runs at scheduling time on claims alone. It complements a
-lease system, which prevents collisions on the *same* task but says nothing about two
-different tasks whose scopes intersect.
+Because it never reads the disk, this runs at scheduling time on the claims alone. It adds to a
+lease system, which stops two runs of the same task from colliding but says nothing about two
+different tasks whose scopes overlap.

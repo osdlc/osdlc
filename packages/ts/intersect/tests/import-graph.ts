@@ -1,12 +1,12 @@
 /**
- * Static transitive-import-graph walker for the dependency-isolation tests
- * (`fs.test.ts`, `exports.test.ts`). It resolves an entry's import graph by
- * reading only the source files this package owns and collecting every bare
- * (non-relative, non-`node:`) module specifier reachable from it.
+ * Reads an entry's import graph for the dependency-isolation tests
+ * (`fs.test.ts`, `exports.test.ts`). It reads only this package's source files
+ * and collects every bare (non-relative, non-`node:`) module specifier
+ * reachable from the entry.
  *
- * It is a static reader, not a runtime resolver: imports in this package carry
- * explicit `.ts` extensions, so a plain `resolve` against the importing file's
- * directory yields the target file without touching Node's resolution.
+ * It reads source text and does not use Node's module resolution. Imports in
+ * this package carry explicit `.ts` extensions, so a plain `resolve` against
+ * the importing file's directory gives the target file.
  */
 import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
@@ -30,7 +30,7 @@ export function specifiersOf(src: string): string[] {
 
 /**
  * The set of bare (non-relative, non-`node:`) specifiers transitively reachable
- * from `entryFile` — i.e. the external runtime dependencies that entry pulls.
+ * from `entryFile`: the external runtime dependencies that entry loads.
  */
 export function reachableBareImports(entryFile: string): Set<string> {
   const visited = new Set<string>()
@@ -52,7 +52,7 @@ export function reachableBareImports(entryFile: string): Set<string> {
   return bare
 }
 
-/** Whether `specs` includes the fs layer's globber (`tinyglobby`). */
+/** Whether `specs` includes the fs entry's dependency, `tinyglobby`. */
 export function importsGlobber(specs: Set<string>): boolean {
   return [...specs].some((s) => s === 'tinyglobby' || s.startsWith('tinyglobby/'))
 }

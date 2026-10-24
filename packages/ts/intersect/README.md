@@ -137,7 +137,8 @@ Things to know about `./fs`:
   skip folders the patterns cannot reach, so point `cwd` at the folder you need.
 - Symbolic links are neither followed nor listed.
 - `ignore` follows the same rules as the patterns. `ignore: ["node_modules"]`
-  excludes only a path named exactly `node_modules`; write `node_modules/**`.
+  excludes only a path named exactly `node_modules`. To exclude the folder's
+  contents, write `node_modules/**`.
   A pattern that starts with `./` or `/` matches no file, and `!` is not negation.
 - Results are sorted by code point. With `absolute: true` they are
   `resolve(cwd, path)`, also when `cwd` is relative.

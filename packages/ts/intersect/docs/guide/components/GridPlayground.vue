@@ -1,6 +1,6 @@
 <script setup>
 // Visual match-grid playground for Intersect.
-// Pure L1 surface only — imported by name via the Vite alias, never `intersect/fs`.
+// Imports only the root entry, by package name, never `@osdlc/intersect/fs`.
 import { ref, computed } from 'vue'
 import { matches, whichMatch, overlapping, witness, intersects } from '@osdlc/intersect'
 

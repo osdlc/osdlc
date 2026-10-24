@@ -1,34 +1,34 @@
 /**
- * Intersect fixture convention — types, loader, and shape guard.
+ * The fixture format: types, loader, and shape check.
  *
- * The corpus is data-driven: each `fixtures/*.cases.json` file specifies one
- * area's intended behavior as a list of cases. The harness
- * (`tests/fixtures.test.ts`) loads every file through {@link loadCaseFiles} and
- * dispatches each case by its (effective) op to the public API.
+ * Each `fixtures/*.cases.json` file specifies one area's intended behaviour as
+ * a list of cases. `tests/fixtures.test.ts` loads every file through
+ * {@link loadCaseFiles} and calls the public API for each case by its
+ * effective op.
  *
  * See `fixtures/README.md` for the human-readable schema.
  */
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-/** Every operation a case may target, across all three layers plus the registry. */
+/** Every operation a case may target, across the three entry points and the registry. */
 export const OP_NAMES = [
-  // L1 path parsing (string -> segment array)
+  // Path parsing (string -> segment array)
   'parse',
-  // L0 segment core (array inputs)
+  // Segment core (array inputs)
   'segments.intersects',
   'segments.matches',
   'segments.witness',
-  // L1 path API (string / string[] inputs)
+  // Path API (string / string[] inputs)
   'intersects',
   'matches',
   'whichMatch',
   'overlapping',
   'witness',
-  // L1 registry
+  // Registry
   'registry.applicableTo',
   'registry.matching',
-  // L2 filesystem (async, reads disk)
+  // Filesystem (async, reads disk)
   'fs.filesInScope',
   'fs.resolveIntersection',
 ] as const
@@ -36,7 +36,7 @@ export const OP_NAMES = [
 /** The name of an Intersect operation a case can exercise. */
 export type OpName = (typeof OP_NAMES)[number]
 
-/** The input fields each operation reads off a case. The shape guard requires them. */
+/** The input fields each operation reads from a case. The shape check requires them. */
 export const OP_INPUTS: Record<OpName, readonly string[]> = {
   parse: ['path'],
   'segments.intersects': ['a', 'b'],
@@ -54,8 +54,8 @@ export const OP_INPUTS: Record<OpName, readonly string[]> = {
 }
 
 /**
- * One test case. Input fields are op-specific (see {@link OP_INPUTS}); they are
- * typed `unknown` here and cast at dispatch. Every case states an expectation:
+ * One test case. Input fields depend on the op (see {@link OP_INPUTS}). They
+ * are typed `unknown` here and cast when the case runs. Every case states an expectation:
  * an `expect` value, or `throws: true`.
  */
 export interface Case {
@@ -77,11 +77,11 @@ export interface Case {
   opts?: unknown
   /**
    * fs cases only: the relative file paths to materialize under a temp dir
-   * before the op runs. Read by the integration harness (`tests/fs.test.ts`);
-   * ignored by the pure-op harness, which skips the `fs.*` namespace.
+   * before the op runs. Read by `tests/fs.test.ts`. Ignored by
+   * `tests/fixtures.test.ts`, which skips `fs.*` cases.
    */
   tree?: unknown
-  /** The intended return value; deep-equality is asserted against it. */
+  /** The intended return value. The result must deep-equal it. */
   expect?: unknown
   /** The call is expected to throw (sync) or reject (async). */
   throws?: boolean
@@ -102,11 +102,11 @@ export interface Case {
   symlinks?: unknown
   /**
    * fs cases only: directories of the `tree` to make unreadable (mode 000)
-   * before the op runs. POSIX only; the harness skips the case when it cannot
-   * make a directory unreadable (Windows, or running as root).
+   * before the op runs. POSIX only. `tests/fs.test.ts` skips the case when it
+   * cannot make a directory unreadable (Windows, or running as root).
    */
   unreadable?: unknown
-  /** Register as `test.todo` — unimplemented. */
+  /** Register as `test.todo`: not implemented yet. */
   pending?: boolean
 }
 

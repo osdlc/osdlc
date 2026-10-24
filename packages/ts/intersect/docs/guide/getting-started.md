@@ -2,21 +2,20 @@
 title: Getting started
 sidebar:
   order: 1
-description: The three entry points, their dependency posture, and a first intersects call.
+description: The three entry points, their dependencies, and a first intersects call.
 ---
 
-Intersect ships three import subpaths, layered so dependencies point down. Reach for the
-one that matches the question you have.
+Intersect has three entry points. Each builds on the one below it. Use the one that fits
+the question you have.
 
-| Import | Reach for it when | Runtime deps |
+| Import | Use it when | Runtime deps |
 |---|---|---|
-| `@osdlc/intersect` | You hold glob strings and want the friendly, set-aware surface. | none |
-| `@osdlc/intersect/segments` | You already have pre-split segment arrays and want the pure core. | none |
-| `@osdlc/intersect/fs` | You need the concrete files on disk that fall in a scope. | `tinyglobby` |
+| `@osdlc/intersect` | You have glob strings, one or an array. | none |
+| `@osdlc/intersect/segments` | You already have patterns split into segment arrays. | none |
+| `@osdlc/intersect/fs` | You need the files on disk that fall in a scope. | `tinyglobby` |
 
-The dependency boundary is the entry-point split itself. The path API and the segment core
-pull **zero** runtime dependencies; only `@osdlc/intersect/fs` — the sole layer that reads disk —
-pulls a globber. Import it only when you need real files.
+The path API and the segment core have no runtime dependencies. Only `@osdlc/intersect/fs`
+reads the disk, and only it loads `tinyglobby`. Import it only when you need real files.
 
 ## A first call
 
@@ -32,13 +31,12 @@ intersects("src/api/**", "src/web/**");
 | `src/**/*.ts` | `src/api/handler.ts` | `true` | the file is inside the glob |
 | `src/api/**` | `src/web/**` | `false` | disjoint subtrees |
 
-`intersects` is the load-bearing primitive. Every other question in the library is a shape
-over it.
+Every other function in the package builds on `intersects`.
 
-## One string or a set — on either side
+## One string or an array, on either side
 
-An array is the union of its patterns; a single string is a one-element set. The same
-primitives take whichever shape you already hold, on either argument.
+An array matches the union of its patterns. A single string is a set of one. Each function
+takes either form, for either argument.
 
 ```ts
 import { intersects } from "@osdlc/intersect";
@@ -54,6 +52,7 @@ intersects(["a/**"], ["b/**", "c/**"]);
 | `["src/api/**"]` | `["docs/**", "src/**/*.md"]` | `true` | `src/api/x.md` is common |
 | `["a/**"]` | `["b/**", "c/**"]` | `false` | no shared path anywhere |
 
-The pairwise question (`A` vs. `B`) is polynomial, so the API stays pairwise and
-one-vs-set — it never asks the intractable many-pattern question. Next: the [pattern
-dialect](./patterns.md) and the [primitives](./overlap-matches-witness.md).
+Comparing two patterns takes polynomial time. So the API only compares two patterns, or one
+pattern against each member of a set. It never asks whether many patterns all overlap at
+once, which is much more expensive. Next: the [pattern syntax](./patterns.md) and the
+[functions](./overlap-matches-witness.md).
