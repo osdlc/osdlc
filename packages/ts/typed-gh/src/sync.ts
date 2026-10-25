@@ -205,7 +205,7 @@ export class Gh {
       limit: opts.limit ?? 5,
       fields: opts.fields ?? v.PR_REF_FIELDS,
     })
-    return v.pickPrForBranch(rows.rows, branch)
+    return v.pickPrForBranch(rows, branch)
   }
 
   /**

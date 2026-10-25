@@ -174,7 +174,7 @@ export class AsyncGh {
       timeoutMs: opts.timeoutMs,
       signal: opts.signal,
     })
-    return v.pickPrForBranch(rows.rows, branch)
+    return v.pickPrForBranch(rows, branch)
   }
 
   /** {@link prView}, asked again until GitHub has computed the merge state. See `Gh.prViewSettled`. */

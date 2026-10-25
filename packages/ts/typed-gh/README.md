@@ -525,7 +525,8 @@ Each verb takes an optional `GhTarget` last. Each client method has a verb of th
   `editLabel`, `issueCommentEdit`, `repoList`, `repoView`, `searchPrs`, `api`, `graphql`,
   `installed` and `authStatus`.
 - `pickPrForBranch`: the first row whose head branch is exactly the one you name, for rows that
-  came from somewhere other than `prList({ head })`, such as a `head:` search.
+  came from somewhere other than `prList({ head })`, such as a `head:` search. It takes the rows or
+  the `ListResult` that `openPrsForBranch` and `prList` return.
 - `nodesAt`: one connection's nodes, joined across `graphql` pages.
 - Field lists: `PR_REF_FIELDS` (enough to identify a PR), `PR_LIST_FIELDS` (for triage),
   `PR_VIEW_FIELDS` (the full set), `REPO_FIELDS` and `SEARCH_PR_FIELDS`.
