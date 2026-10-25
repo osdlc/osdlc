@@ -6,22 +6,6 @@
 import { z } from 'zod'
 
 /**
- * A failed run as JSON. `code` is a stable name a script can branch on:
- * `usage` for a command line that cannot run as typed, a failure's kind (such
- * as `not-installed`) for a classified failure, the `code` a `CommandError`
- * was given, or else `error`.
- * @experimental
- */
-export interface ErrorDocument {
-  schemaVersion: 1
-  kind: 'error'
-  code: string
-  message: string
-  exit: number
-  hint?: string
-}
-
-/**
  * The Zod schema of {@link ErrorDocument}.
  * @experimental
  */
@@ -33,6 +17,15 @@ export const ErrorDocumentSchema = z.object({
   exit: z.number().int(),
   hint: z.string().optional(),
 })
+
+/**
+ * A failed run as JSON. `code` is a stable name a script can branch on:
+ * `usage` for a command line that cannot run as typed, a failure's kind (such
+ * as `not-installed`) for a classified failure, the `code` a `CommandError`
+ * was given, or else `error`.
+ * @experimental
+ */
+export type ErrorDocument = z.infer<typeof ErrorDocumentSchema>
 
 /**
  * An {@link ErrorDocument}. An empty or blank hint is left out.

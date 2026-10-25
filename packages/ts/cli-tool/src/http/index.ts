@@ -174,9 +174,13 @@ function failureBody(result: Exclude<CallResult, { status: 'ok' }>): Record<stri
       },
     )
   }
-  return errorDoc(result.code, result.exit, result.message, result.hint, {
-    ...(result.stderr !== '' ? { stderr: result.stderr } : {}),
-  })
+  return errorDoc(
+    result.code,
+    result.exit,
+    result.message,
+    result.hint,
+    result.stderr !== '' ? { stderr: result.stderr } : {},
+  )
 }
 
 /**
