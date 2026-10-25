@@ -63,6 +63,8 @@ export interface StateOptions {
   /**
    * The directories to resolve against. Defaults to `spec.vendorDirs` on the
    * running system. Tests inject a rooted one so files go under a temp dir.
+   * The bash launcher cannot see this option. To move the state for real
+   * use, set the vendor's `<P>_CONFIG_DIR` or `<P>_ROOT`, which both read.
    */
   dirs?: TieredDirs
   /**

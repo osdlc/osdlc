@@ -218,18 +218,22 @@ describe('bash launcher agrees with resolve()', () => {
       const cases: [string, Record<string, string>][] = [
         ['config dir', { TOOLY_CONFIG_DIR: join(sb.root, 'cfg') }],
         ['root', { TOOLY_ROOT: join(sb.root, 'vroot') }],
+        // An empty CONFIG_DIR falls through to ROOT on both sides.
+        ['empty config dir, then root', { TOOLY_CONFIG_DIR: '', TOOLY_ROOT: join(sb.root, 'r2') }],
         ['config dir over root', { TOOLY_CONFIG_DIR: join(sb.root, 'c2'), TOOLY_ROOT: '/nope' }],
       ]
       for (const [what, env] of cases) {
         vi.unstubAllEnvs()
         vi.stubEnv('TOOLY_CONFIG_DIR', env['TOOLY_CONFIG_DIR'] ?? '')
         vi.stubEnv('TOOLY_ROOT', env['TOOLY_ROOT'] ?? '')
+        // Bash gets the same values, empty ones included.
+        const shellEnv = { TOOLY_CONFIG_DIR: '', TOOLY_ROOT: '', ...env }
         // Where `dev link` writes, resolved as the tool resolves it.
         const file = homePath(SPEC)
         expect(file.startsWith(sb.root), what).toBe(true)
         mkdirSync(join(file, '..'), { recursive: true })
         writeFileSync(file, `${b}\n`)
-        const r = runLinux(join(a, SPEC.launcher), sb.home, env)
+        const r = runLinux(join(a, SPEC.launcher), sb.home, shellEnv)
         expect(r.out, what).toBe(`${BUN_RUN} ${b}/src/cli.ts`)
       }
       vi.unstubAllEnvs()
@@ -241,6 +245,15 @@ describe('bash launcher agrees with resolve()', () => {
       mkdirSync(join(sb.root, 'rel', 'tooly'), { recursive: true })
       writeFileSync(join(sb.root, 'rel', 'tooly', 'home'), `${b}\n`)
       const r = runLinux(join(a, SPEC.launcher), sb.home, { TOOLY_CONFIG_DIR: 'rel' })
+      expect(r.out).toBe(`${BUN_RUN} ${a}/src/cli.ts`)
+    })
+
+    test('a relative TOOLY_ROOT reads no link', () => {
+      const a = checkoutWithLauncher(join(sb.root, 'a'))
+      const b = seedCheckout(join(sb.root, 'b'))
+      mkdirSync(join(sb.root, 'rel', 'config', 'tooly'), { recursive: true })
+      writeFileSync(join(sb.root, 'rel', 'config', 'tooly', 'home'), `${b}\n`)
+      const r = runLinux(join(a, SPEC.launcher), sb.home, { TOOLY_ROOT: 'rel' })
       expect(r.out).toBe(`${BUN_RUN} ${a}/src/cli.ts`)
     })
 
