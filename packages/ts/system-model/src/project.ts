@@ -52,7 +52,8 @@ export interface Runners {
   search(catalog: Catalog, query: string, mode?: Mode): Task[]
   /**
    * What the cache under `cacheDir` holds for this profile, with a fresh,
-   * stale or miss state per runner, without probing.
+   * stale or miss state per runner, without probing. Rejects only with the
+   * abort reason when `options.signal` aborts.
    *
    * @experimental
    */
