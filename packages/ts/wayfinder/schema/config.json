@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://unpkg.com/@osdlc/wayfinder@0.8/schema/config.json",
+  "title": "wayfinder configuration",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "The JSON Schema this file follows. Ignored by wayfinder."
+    },
+    "runners": {
+      "type": "object",
+      "properties": {
+        "disabled": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Runner ids to skip entirely."
+        },
+        "order": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Preferred display order. Runners not named follow alphabetically."
+        }
+      },
+      "description": "Which runners are read, and in what order they are shown."
+    },
+    "allowExec": {
+      "type": "boolean",
+      "description": "Whether runners that must run a subprocess may be read. Execution also needs a trusted repository. A project file may only set false."
+    },
+    "discovery": {
+      "type": "string",
+      "enum": [
+        "git",
+        "walk",
+        "auto"
+      ],
+      "description": "How directories are found: git-tracked files, a directory walk, or auto."
+    },
+    "excludePaths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Paths to leave out of discovery. A bare name matches any path segment; a value with a slash matches a path from the root and the tree beneath it."
+    },
+    "trust": {
+      "type": "object",
+      "properties": {
+        "paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Glob patterns over the repository root, symlinks resolved: *, ?, ** and a trailing /** for descendants only. A leading ~ is your home."
+        },
+        "owners": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Origin remote owners, as host/owner, or a bare owner for github.com/owner. Case-insensitive."
+        },
+        "tools": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "minLength": 1
+          },
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "paths": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Glob patterns over the repository root, symlinks resolved: *, ?, ** and a trailing /** for descendants only. A leading ~ is your home."
+              },
+              "owners": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Origin remote owners, as host/owner, or a bare owner for github.com/owner. Case-insensitive."
+              }
+            }
+          },
+          "description": "Rules that trust one tool each, keyed by tool id. They are checked after the top-level rules."
+        }
+      },
+      "description": "Repositories trusted without a marker. User config only: a project file cannot set it."
+    },
+    "tools": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Modules that export extra tools. A relative path resolves against the file that names it."
+    },
+    "open": {
+      "type": "string",
+      "enum": [
+        "tui",
+        "web"
+      ],
+      "description": "What the bare way command opens: the terminal UI or the web view. User config only."
+    },
+    "theme": {
+      "type": "string",
+      "enum": [
+        "system",
+        "light",
+        "dark"
+      ],
+      "description": "The web view theme. User config only."
+    }
+  },
+  "description": "wayfinder configuration: wayfinder.config.json or the user config file."
+}

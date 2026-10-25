@@ -7,6 +7,7 @@ import { expandTrustPath, resolveTrustRoot } from '@osdlc/trust-repo'
 
 import {
   CONFIG_ENV_VAR,
+  CONFIG_SCHEMA_URL,
   ConfigError,
   DEFAULT_CONFIG,
   collectOptionsFromConfig,
@@ -98,14 +99,15 @@ describe('configLocations', () => {
   test('a relative WAYFINDER_CONFIG never names a file in the root, even when the cwd is the root', async () => {
     // The usual way to run `way` is from the repository root. A repository
     // file named this way would be the user layer, which can turn exec on.
-    const dir = await root({ 'cfg.json': '{"allowExec": true}' })
+    const dir = await root({ 'cfg.json': '{"allowExec": false}' })
     const home = await root()
     const saved = process.cwd()
     process.chdir(dir)
     try {
       const loaded = await loadConfig(dir, env({ [CONFIG_ENV_VAR]: 'cfg.json' }), home)
       expect(loaded.locations.user).toBe(join(home, '.config', 'wayfinder', 'config.json'))
-      expect(loaded.effective.allowExec).toBe(false)
+      // The repository file was not read: its false did not reach the merge.
+      expect(loaded.effective.allowExec).toBe(true)
       expect(loaded.warnings.some((w) => w.includes(`${CONFIG_ENV_VAR}=cfg.json is ignored`))).toBe(
         true,
       )
@@ -136,11 +138,10 @@ describe('configLocations', () => {
   test('a relative XDG_CONFIG_HOME cannot make a file in the repository the user layer', async () => {
     const home = await root()
     const project = await root({
-      '.config/wayfinder/config.json': JSON.stringify({ allowExec: true, tools: ['./x.mjs'] }),
+      '.config/wayfinder/config.json': JSON.stringify({ tools: ['./x.mjs'] }),
     })
     const loaded = await loadConfig(project, env({ XDG_CONFIG_HOME: '.config' }), home)
     expect(loaded.layers.user).toBeNull()
-    expect(loaded.effective.allowExec).not.toBe(true)
     expect(loaded.effective.tools ?? []).toEqual([])
   })
 
@@ -200,7 +201,7 @@ describe('mergeConfig', () => {
   test('mutating the result never reaches back into DEFAULT_CONFIG', () => {
     const merged = mergeConfig(DEFAULT_CONFIG, {})
     merged.runners?.order?.push('moon')
-    expect(DEFAULT_CONFIG.runners.order).toEqual([])
+    expect(DEFAULT_CONFIG.runners?.order).toEqual([])
   })
 })
 
@@ -300,8 +301,10 @@ describe('loadConfig', () => {
       allowExec: true,
       discovery: 'auto',
       excludePaths: [],
-      trust: { paths: [], owners: [] },
+      trust: { paths: [], owners: [], tools: {} },
       tools: [],
+      open: 'tui',
+      theme: 'system',
     })
     expect(loaded.sources.get('runners.order')).toBe('project')
     expect(loaded.sources.get('runners.disabled')).toBe('user')
@@ -387,7 +390,7 @@ describe('loadConfig', () => {
 
     const loaded = await loadConfig(project, env(), home)
 
-    expect(loaded.effective.trust).toEqual({ paths: [], owners: [] })
+    expect(loaded.effective.trust).toEqual({ paths: [], owners: [], tools: {} })
     expect(loaded.layers.project?.trust).toBeUndefined()
     expect(loaded.warnings.join('\n')).toContain(join(project, 'wayfinder.config.json'))
     expect(loaded.warnings.join('\n')).toContain('cannot grant itself trust')
@@ -401,7 +404,7 @@ describe('loadConfig', () => {
 
     const loaded = await loadConfig(project, env(), home)
 
-    expect(loaded.effective.trust).toEqual({ paths: [], owners: [] })
+    expect(loaded.effective.trust).toEqual({ paths: [], owners: [], tools: {} })
     expect(loaded.warnings.join('\n')).toContain('cannot grant itself trust')
   })
 
@@ -428,7 +431,11 @@ describe('loadConfig', () => {
     })
 
     const loaded = await loadConfig(project, env(), home)
-    expect(loaded.effective.trust).toEqual({ paths: ['/home/me/work/**'], owners: ['my-org'] })
+    expect(loaded.effective.trust).toEqual({
+      paths: ['/home/me/work/**'],
+      owners: ['my-org'],
+      tools: {},
+    })
     expect(loaded.layers.project?.trust).toBeUndefined()
     expect(loaded.warnings).toEqual([])
   })
@@ -444,7 +451,11 @@ describe('loadConfig', () => {
     const project = await root()
 
     const loaded = await loadConfig(project, env(), home)
-    expect(loaded.effective.trust).toEqual({ paths: ['/home/me/work/**'], owners: ['my-org'] })
+    expect(loaded.effective.trust).toEqual({
+      paths: ['/home/me/work/**'],
+      owners: ['my-org'],
+      tools: {},
+    })
     expect(loaded.sources.get('trust.paths')).toBe('user')
     expect(loaded.sources.get('trust.owners')).toBe('user')
     expect(loaded.warnings).toEqual([])
@@ -518,7 +529,11 @@ describe('get / set / unset', () => {
     await writeConfigFile(file, setConfigValue(raw ?? {}, 'allowExec', true))
 
     const after = await readRawConfigFile(file)
-    expect(after).toEqual({ futureThing: { keep: true }, allowExec: true })
+    expect(after).toEqual({
+      $schema: CONFIG_SCHEMA_URL,
+      futureThing: { keep: true },
+      allowExec: true,
+    })
   })
 
   test('refuses an unknown setting or a wrong-typed value', () => {
@@ -575,6 +590,7 @@ describe('writeConfigFile', () => {
     expect(text.endsWith('\n')).toBe(true)
     expect(text).toBe(
       `{
+  "$schema": "${CONFIG_SCHEMA_URL}",
   "runners": {
     "disabled": [
       "cargo"

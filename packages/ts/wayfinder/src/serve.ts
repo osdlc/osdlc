@@ -58,6 +58,7 @@ import {
   collectOptionsFromConfig,
   configLocations,
   loadConfig,
+  projectWriteRefusal,
   readRawConfigFile,
   setConfigValue,
   trustPolicyFromConfig,
@@ -210,28 +211,11 @@ async function writeProjectConfig(req: Request, options: ServeOptions): Promise<
   if ('tools' in body.set)
     return bad(`tools cannot be written from the page; use "${BIN} config set tools"`)
 
-  // A project file may never hold this value. `loadConfig` already drops it on
-  // read, but writing it would put it in the file, where a reader would take
-  // it as allowing execution. A repository cannot grant itself permission to
-  // run its own code. That is the trust store's job.
-  if (body.set['allowExec'] === true) {
-    return bad(
-      'allowExec: true cannot be written to a project file — a repository cannot grant itself ' +
-        'permission to run subprocesses. Trust this repository instead.',
-    )
-  }
-
-  // The same rule, for the same reason: a project file must not
-  // pre-authorize itself (or a group of repositories, through trust.owners).
-  // Refused even when empty. `loadConfig` drops the whole block anyway, so
-  // the write could only mislead a reader of the file.
-  for (const key of ['trust.paths', 'trust.owners']) {
-    if (key in body.set) {
-      return bad(
-        `${key} cannot be written to a project file — a repository cannot grant itself trust. ` +
-          'Set it in your user config instead.',
-      )
-    }
+  // What a project file may not hold (`allowExec: true`, trust, personal
+  // settings) is refused by the same rule `way config set --project` uses.
+  for (const [key, value] of Object.entries(body.set)) {
+    const refused = projectWriteRefusal(key, value)
+    if (refused !== null) return bad(refused)
   }
 
   const file = configLocations(options.root, options.env, options.home).project

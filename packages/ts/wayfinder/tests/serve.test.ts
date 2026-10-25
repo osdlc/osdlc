@@ -28,6 +28,7 @@ import { makeGitFixture } from '@osdlc/typed-git/testing'
 
 import { cacheDir } from '../src/cache.ts'
 import { collectAndCache, makeProject } from '../src/catalog.ts'
+import { CONFIG_SCHEMA_URL } from '../src/config.ts'
 import { groupOf } from '../src/groups.ts'
 import { startServer, type ServeOptions } from '../src/serve.ts'
 
@@ -347,8 +348,8 @@ describe('GET /api/config — what the settings screen reads', () => {
       }
 
       // Every leaf of the schema, so the screen can render a section per key
-      // without asking whether the key exists.
-      expect(body.effective['allowExec']).toBe(false)
+      // without asking whether the key exists. The built-in allowExec is true.
+      expect(body.effective['allowExec']).toBe(true)
       expect(body.effective['discovery']).toBe('auto')
       expect(body.effective['excludePaths']).toEqual([])
       expect(body.effective['runners']).toEqual({ disabled: [], order: [] })
@@ -423,7 +424,7 @@ describe('GET /api/config — what the settings screen reads', () => {
         sources: Record<string, string>
         warnings: string[]
       }
-      expect(body.effective['allowExec']).toBe(false)
+      expect(body.effective['allowExec']).toBe(true)
       expect(body.sources['allowExec']).toBe('default')
       expect(body.warnings.join(' ')).toContain('allowExec: true is ignored in a project file')
     } finally {
@@ -540,11 +541,12 @@ describe('POST /api/config — what the settings screen may write', () => {
     return res
   }
 
+  /** The file, without the `$schema` every written file starts with. */
   async function fileAt(root: string): Promise<Record<string, unknown>> {
-    return JSON.parse(await readFile(join(root, 'wayfinder.config.json'), 'utf-8')) as Record<
-      string,
-      unknown
-    >
+    const { $schema: _schema, ...rest } = JSON.parse(
+      await readFile(join(root, 'wayfinder.config.json'), 'utf-8'),
+    ) as Record<string, unknown>
+    return rest
   }
 
   test('a patch is written, and the response is the config as it now is', async () => {
@@ -560,6 +562,9 @@ describe('POST /api/config — what the settings screen may write', () => {
       }
       expect(body.effective['runners']).toEqual({ disabled: ['make'], order: [] })
       expect(body.sources['runners.disabled']).toBe('project')
+      expect(
+        JSON.parse(await readFile(join(s.root, 'wayfinder.config.json'), 'utf-8')),
+      ).toMatchObject({ $schema: CONFIG_SCHEMA_URL })
       expect(await fileAt(s.root)).toEqual({
         runners: { disabled: ['make'] },
         excludePaths: ['vendor'],
@@ -649,8 +654,8 @@ describe('POST /api/config — what the settings screen may write', () => {
       const res = await save(s, { allowExec: true })
       expect(res.status).toBe(400)
       const detail = await res.text()
-      expect(detail).toContain('cannot grant itself')
-      expect(detail).toContain('Trust this repository')
+      expect(detail).toContain('a repository cannot turn execution on')
+      expect(detail).toContain('way trust')
       expect(existsSync(join(s.root, 'wayfinder.config.json'))).toBe(false)
     } finally {
       s.stop()
