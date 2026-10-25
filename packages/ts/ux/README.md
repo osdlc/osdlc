@@ -133,23 +133,35 @@ cssSheet({ prefix: 'app' }).includes('--app-accent: #1d59d8;') // true
 `detectColorLevel(input)` returns a `ColorLevel`: `none`, `ansi16`,
 `ansi256` or `truecolor`. `COLOR_LEVELS` lists them, fewest colors first.
 The input, a `ColorDetectInput`, is `env`, `isTTY` and an optional
-`override`. The function reads nothing else. The first rule that applies
-decides:
+`override`. The function reads nothing else.
 
-1. `override`, for a `--color` or `--no-color` flag: `false` gives `none`,
-   a level gives that level, and `true` turns color on at the `FORCE_COLOR`
-   level when it names one, or else at the terminal's level.
-2. `FORCE_COLOR`, read as Node.js reads it: `0` or `false` gives `none`;
-   `1`, `true` or empty gives `ansi16`; `2` gives `ansi256`; `3` gives
-   `truecolor`. Another value turns color on at the terminal's level. As in
-   Node.js, it wins over `NO_COLOR`.
-3. `NO_COLOR` set to anything but the empty string gives `none`.
-4. `TERM=dumb` gives `none`.
-5. A stream that is not a TTY gives `none`.
-6. The terminal's level: `truecolor` when `COLORTERM` is `truecolor` or
-   `24bit`, `TERM` ends in `-direct`, `WT_SESSION` is set, or `TERM_PROGRAM`
-   is iTerm.app, WezTerm or ghostty; `ansi256` when `TERM` contains
-   `256color`; `ansi16` otherwise.
+The rules follow [no-color.org](https://no-color.org) and the
+`FORCE_COLOR` convention of supports-color and Node.js. The first row that
+applies decides:
+
+| Order | When | Level |
+| --- | --- | --- |
+| 1 | `override` is `false` (`--no-color`) | `none` |
+| 1 | `override` is a level | that level |
+| 1 | `override` is `true` (`--color`) | the level `FORCE_COLOR` asks for in row 3, when it asks for one; else the terminal's level |
+| 2 | `NO_COLOR` is set and not empty | `none` |
+| 3 | `FORCE_COLOR` is `0` or `false` | `none` |
+| 3 | `FORCE_COLOR` is empty, `true` or `1` | `ansi16` |
+| 3 | `FORCE_COLOR` is `2` | `ansi256` |
+| 3 | `FORCE_COLOR` is `3` or a larger number | `truecolor` |
+| 3 | `FORCE_COLOR` has any other value | the terminal's level |
+| 4 | `TERM` is `dumb` | `none` |
+| 5 | `isTTY` is not `true` | `none` |
+| 6 | otherwise | the terminal's level |
+
+So a flag wins over every variable, `NO_COLOR` wins over `FORCE_COLOR`, and
+`FORCE_COLOR` turns color on in a pipe and under `TERM=dumb`. Values are
+case-sensitive: `FORCE_COLOR=FALSE` turns color on.
+
+The terminal's level is `truecolor` when `COLORTERM` is `truecolor` or
+`24bit`, `TERM` ends in `-direct`, `WT_SESSION` is set, or `TERM_PROGRAM`
+is iTerm.app, WezTerm or ghostty; `ansi256` when `TERM` contains
+`256color`; and `ansi16` otherwise.
 
 ```ts
 import { detectColorLevel } from '@osdlc/ux'
@@ -157,6 +169,7 @@ import { detectColorLevel } from '@osdlc/ux'
 detectColorLevel({ env: { TERM: 'xterm-256color' }, isTTY: true }) // 'ansi256'
 detectColorLevel({ env: { NO_COLOR: '1' }, isTTY: true }) // 'none'
 detectColorLevel({ env: { FORCE_COLOR: '3' }, isTTY: false }) // 'truecolor'
+detectColorLevel({ env: { NO_COLOR: '1', FORCE_COLOR: '1' }, isTTY: true }) // 'none'
 detectColorLevel({ env: {}, isTTY: true, override: false }) // 'none'
 ```
 
@@ -262,8 +275,8 @@ Each export has TSDoc in the source, with `@throws`. Your editor shows it.
 
 - [supports-color](https://github.com/chalk/supports-color) detects the
   level from the process itself. `detectColorLevel` takes the environment,
-  TTY state and flag as arguments, and reads `FORCE_COLOR` as Node.js does,
-  where `FORCE_COLOR=1` sets 16 colors exactly.
+  TTY state and flag as arguments, and it honours `NO_COLOR`, which
+  supports-color leaves to the caller.
 - [strip-ansi](https://github.com/chalk/strip-ansi) removes the escape
   sequences that color and move text. `stripControls` also removes the
   other C0 and C1 controls, DEL and the bidirectional controls, so its

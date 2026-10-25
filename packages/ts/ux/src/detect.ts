@@ -28,17 +28,6 @@ export interface ColorDetectInput {
   readonly override?: boolean | ColorLevel | undefined
 }
 
-/** `FORCE_COLOR`'s numeric levels, as Node.js reads them. */
-const FORCED: Readonly<Record<string, ColorLevel>> = {
-  '0': 'none',
-  false: 'none',
-  '': 'ansi16',
-  '1': 'ansi16',
-  true: 'ansi16',
-  '2': 'ansi256',
-  '3': 'truecolor',
-}
-
 /** Terminals that report truecolor through `TERM_PROGRAM` without `COLORTERM`. */
 const TRUECOLOR_PROGRAMS = new Set(['iTerm.app', 'WezTerm', 'ghostty'])
 
@@ -60,19 +49,36 @@ function terminalLevel(env: ColorDetectInput['env']): ColorLevel {
 }
 
 /**
+ * The level `FORCE_COLOR` asks for. `0` and `false` ask for `none`. Empty,
+ * `true` and `1` ask for `ansi16`, `2` for `ansi256`, and `3` or a larger
+ * number for `truecolor`. Any other value turns color on at the terminal's
+ * level. Values are case-sensitive, as in supports-color.
+ */
+function forcedLevel(value: string, env: ColorDetectInput['env']): ColorLevel {
+  if (value === 'false') return 'none'
+  if (value === '' || value === 'true') return 'ansi16'
+  if (!/^\d+$/.test(value)) return terminalLevel(env)
+  const n = Number(value)
+  if (n === 0) return 'none'
+  if (n === 1) return 'ansi16'
+  if (n === 2) return 'ansi256'
+  return 'truecolor'
+}
+
+/**
  * The color level for one output stream. It reads only its argument, so it
  * is the same function in a test and in a program.
  *
  * In order, the first rule that applies decides:
  *
  * 1. `override`: `false` gives `none`, a level gives that level, and `true`
- *    turns color on at the `FORCE_COLOR` level when it names one, or else
- *    the terminal's level.
- * 2. `FORCE_COLOR`, as Node.js reads it: `0` or `false` gives `none`; `1`,
- *    `true` or empty gives `ansi16`; `2` gives `ansi256`; `3` gives
- *    `truecolor`. Any other value turns color on at the terminal's level.
- *    It wins over `NO_COLOR`, as in Node.js.
- * 3. `NO_COLOR` set to anything but the empty string gives `none`.
+ *    turns color on at the level `FORCE_COLOR` asks for, or else at the
+ *    terminal's level.
+ * 2. `NO_COLOR` set to anything but the empty string gives `none`.
+ * 3. `FORCE_COLOR`: `0` or `false` gives `none`; empty, `true` or `1` gives
+ *    `ansi16`; `2` gives `ansi256`; `3` or more gives `truecolor`. Any other
+ *    value turns color on at the terminal's level. It applies off a
+ *    terminal and under `TERM=dumb`.
  * 4. `TERM=dumb` gives `none`.
  * 5. A stream that is not a terminal gives `none`.
  * 6. Otherwise the terminal's level: `truecolor` when `COLORTERM` is
@@ -86,19 +92,19 @@ function terminalLevel(env: ColorDetectInput['env']): ColorLevel {
 export function detectColorLevel(input: ColorDetectInput): ColorLevel {
   const { env, isTTY, override } = input
   const force = env['FORCE_COLOR']
-  const forced = force === undefined ? undefined : FORCED[force.toLowerCase()]
   if (override !== undefined) {
     if (override === false) return 'none'
     if (override === true) {
-      return forced !== undefined && forced !== 'none' ? forced : terminalLevel(env)
+      const forced = force === undefined ? 'none' : forcedLevel(force, env)
+      return forced !== 'none' ? forced : terminalLevel(env)
     }
     if (!COLOR_LEVELS.includes(override)) {
       throw new RangeError(`ux: override ${JSON.stringify(override)} is not a color level`)
     }
     return override
   }
-  if (force !== undefined) return forced ?? terminalLevel(env)
   if ((env['NO_COLOR'] ?? '') !== '') return 'none'
+  if (force !== undefined) return forcedLevel(force, env)
   if (env['TERM'] === 'dumb') return 'none'
   if (isTTY !== true) return 'none'
   return terminalLevel(env)
