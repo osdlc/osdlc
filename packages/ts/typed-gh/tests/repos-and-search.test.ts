@@ -64,6 +64,11 @@ describe('repoList', () => {
     expect(verb.parse(FAIL)).toBeNull()
   })
 
+  test("owner comes from nameWithOwner, in GitHub's casing, not as passed", () => {
+    const result = repoList('ACME').parse(out([{ nameWithOwner: 'acme/Widgets' }]))
+    expect(result?.rows[0]).toMatchObject({ owner: 'acme', name: 'Widgets' })
+  })
+
   test('an owner that reads as a flag throws RangeError', () => {
     expect(() => repoList('--web')).toThrow(RangeError)
   })

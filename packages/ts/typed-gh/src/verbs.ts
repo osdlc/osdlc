@@ -852,7 +852,9 @@ export interface RepoListOptions {
 
 /**
  * `gh repo list <owner> --json …`: an owner's repositories. The host comes
- * from the target (`GH_HOST`). The target's repo is not used.
+ * from the target (`GH_HOST`). The target's repo is not used. Each row's
+ * `owner` is in GitHub's casing, not as passed. To build paths that match
+ * your config, use your own value.
  */
 export function repoList(
   owner: string,
@@ -879,7 +881,8 @@ export function repoList(
 
 /**
  * `gh repo view [<[host/]owner/name>] --json …`: one repository. That is `repo`,
- * else the target's repo, else the clone at the client's cwd.
+ * else the target's repo, else the clone at the client's cwd. The result's
+ * `owner` and `name` are in GitHub's casing, not as passed.
  */
 export function repoView(
   repo?: string | undefined,
