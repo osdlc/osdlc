@@ -172,7 +172,7 @@ export const vscodeTasksRunner: RunnerRole = {
           cwd: run.cwd,
           display: run.argv.join(' '),
           parameters: [],
-          ...(run.argv.some((a) => /\$\{[^}]*\}/.test(a))
+          ...(run.argv.some((a) => /\$\{[^{}]*\}/.test(a))
             ? { parametersUnknown: 'editor-variable' as const }
             : {}),
           source: file,
@@ -234,7 +234,7 @@ function runOf(
   if (type === 'npm') {
     const script = entry['script']
     if (typeof script !== 'string') return null
-    const rel = typeof entry['path'] === 'string' ? entry['path'].replace(/\/+$/, '') : ''
+    const rel = typeof entry['path'] === 'string' ? entry['path'].replace(/(?<!\/)\/+$/, '') : ''
     const dir = rel === '' ? folder : joinRel(folder, rel)
     return { argv: npmScript(ctx, dir, script), cwd: '.', type, detail: `npm script ${script}` }
   }
@@ -249,7 +249,7 @@ function runOf(
   if (type === 'process') return { argv: [...command, ...literal].map(expand), cwd, type }
   // A shell task's command is a command line; its args are words VS Code quotes.
   const line = command.join(' ')
-  const plain = line.replace(KNOWN, '').replace(/\$\{[^}]*\}/g, '')
+  const plain = line.replace(KNOWN, '').replace(/\$\{[^{}]*\}/g, '')
   // A line of plain words, an editor variable aside, is split. A shell would
   // read `${file}` as a variable of its own, so such a word is not quoted
   // into a shell line unless the line needs a shell anyway.
@@ -297,7 +297,7 @@ function cwdOf(
   const root = join(ctx.root)
   if (abs === root) return '.'
   if (!abs.startsWith(`${root}/`)) return null
-  return abs.slice(root.length + 1).replace(/\/+$/, '')
+  return abs.slice(root.length + 1).replace(/(?<!\/)\/+$/, '')
 }
 
 /** The argv that runs a package script, through the manager chosen for `dir`. */

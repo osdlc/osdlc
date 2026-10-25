@@ -1,36 +1,9 @@
 /** `@osdlc/system-model/ruby`: the ruby ecosystem, bundler and rake. */
 
-import type { DepFact, GemfileFact } from '../../manifests.ts'
 import type { EcosystemDef, ToolDef } from '../../tool.ts'
 import { flagAtEnd, joinRel } from '../support/shared.ts'
+import { parseGemfile } from './gemfile.ts'
 import { RAKE_TASK_FILES, RAKEFILE_NAMES, rakeRunner, RAKE_BRAND } from './rake.ts'
-
-/** `gem 'name'` lines. A gem inside a `group` block that names neither `:production` nor `:default` is `dev`. */
-function parseGemfile(text: string, path: string): GemfileFact {
-  const deps: DepFact[] = []
-  const groups: boolean[] = []
-  for (const raw of text.split(/\r?\n/)) {
-    const line = raw.replace(/#.*$/, '').trim()
-    if (/^group\b.*\bdo\s*(\|.*\|)?$/.test(line)) {
-      groups.push(!/:(production|default)\b/.test(line))
-      continue
-    }
-    if (line === 'end' && groups.length > 0) {
-      groups.pop()
-      continue
-    }
-    const m = /^gem\s+['"]([^'"]+)['"]\s*(?:,\s*['"]([^'"]+)['"])?/.exec(line)
-    if (m === null) continue
-    const dev = groups.some(Boolean)
-    deps.push({
-      name: m[1]!,
-      kind: dev ? 'dev' : 'prod',
-      specifier: m[2] ?? '',
-      specifierKind: 'registry',
-    })
-  }
-  return { manifestPath: path, ...(deps.length > 0 ? { deps } : {}) }
-}
 
 /** The ruby ecosystem. */
 export const rubyEcosystem: EcosystemDef = {

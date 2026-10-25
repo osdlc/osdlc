@@ -111,22 +111,31 @@ const LISTING_LINE = /^rake ([A-Za-z0-9_][A-Za-z0-9_.:/-]*)(?:\[([^\]\n]*)\])? {
  * Constructs that create tasks a regex cannot see. Each one found adds a
  * warning, on the parse path only.
  */
-const DYNAMIC_CONSTRUCTS: Array<{ pattern: RegExp; label: string }> = [
+const DYNAMIC_CONSTRUCTS: Array<{ found: (text: string) => boolean; label: string }> = [
   {
-    pattern: /\bRake::\w+Task\.new\b/,
+    found: (text) => /\bRake::\w+Task\.new\b/.test(text),
     label: 'a Rake::*Task.new (e.g. Rake::TestTask) declaration',
   },
-  { pattern: /^\s*import\s/m, label: 'an `import` of another rake file' },
-  { pattern: /^\s*load\s+["']/m, label: 'a `load` of another file' },
+  { found: (text) => /^[ \t]*import\s/m.test(text), label: 'an `import` of another rake file' },
+  { found: (text) => /^[ \t]*load\s+["']/m.test(text), label: 'a `load` of another file' },
   {
-    pattern: /\bDir\.\[?glob\b|\bDir\[/,
+    found: (text) => /\bDir\.\[?glob\b|\bDir\[/.test(text),
     label: 'a `Dir.glob` (or `Dir[...]`) building tasks dynamically',
   },
-  {
-    pattern: /\.each\s*(do|\{)\s*\|[^|]*\|[^\n]*\btask\b/,
-    label: 'a loop (`.each`) defining tasks dynamically',
-  },
+  { found: eachDefinesTask, label: 'a loop (`.each`) defining tasks dynamically' },
 ]
+
+/**
+ * A line with an `.each` block that names `task` after its `|params|`. Only the
+ * first `.each` on a line needs checking, so the scan stays linear.
+ */
+export function eachDefinesTask(text: string): boolean {
+  for (const line of text.split('\n')) {
+    const each = /\.each\s*(?:do|\{)\s*\|[^|]*\|/.exec(line)
+    if (each !== null && /\btask\b/.test(line.slice(each.index + each[0].length))) return true
+  }
+  return false
+}
 
 /**
  * A glyph drawn here. simple-icons has no mark for rake (the `rake.com` and
@@ -321,7 +330,7 @@ export const rakeRunner: RunnerRole = {
       }
 
       for (const construct of DYNAMIC_CONSTRUCTS) {
-        if (construct.pattern.test(text)) {
+        if (construct.found(text)) {
           diagnostics.push({
             severity: 'warning',
             message:
@@ -488,7 +497,8 @@ interface ScannedTask {
  * Dependencies are not `Task.parameters`, because rake dependencies are not
  * runtime inputs the way a just parameter is.
  */
-const TASK_DECL = /^\s*task\s*\(?\s*(?::([A-Za-z0-9_]+)|"([^"]+)"|'([^']+)'|([A-Za-z0-9_]+):(?!:))/
+const TASK_DECL =
+  /^\s*task\s*(?:\(\s*)?(?::([A-Za-z0-9_]+)|"([^"]+)"|'([^']+)'|([A-Za-z0-9_]+):(?!:))/
 
 /** One dependency name: `:sym`, `"str"` or `'str'`. */
 const DEP_NAME = /:([A-Za-z0-9_:]+)|"([^"]+)"|'([^']+)'/g
@@ -512,7 +522,8 @@ function scanDeps(rest: string, keyForm: boolean): string[] {
 }
 
 /** `namespace :name do` / `namespace "name" do` — a namespace always opens a `do` block. */
-const NAMESPACE_OPEN = /^\s*namespace\s*\(?\s*(?::([A-Za-z0-9_]+)|"([^"]+)"|'([^']+)')\)?\s*do\b/
+const NAMESPACE_OPEN =
+  /^\s*namespace\s*(?:\(\s*)?(?::([A-Za-z0-9_]+)|"([^"]+)"|'([^']+)')\)?\s*do\b/
 
 /** `desc "..."` / `desc '...'`, the line immediately before a `task`. */
 const DESC_DECL = /^\s*desc\s+"([^"]*)"|^\s*desc\s+'([^']*)'/
@@ -523,7 +534,7 @@ const END_LINE = /^\s*end\b/
 /** A line that opens some OTHER Ruby block a later `end` will close. */
 const OTHER_BLOCK_KEYWORD = /^\s*(if|unless|case|begin|while|until|def|class|module|for)\b/
 /** A line ending in a bare `do` (with optional block params), e.g. `task :t do |t|`. */
-const ENDS_WITH_DO = /\bdo\s*(\|[^|]*\|)?\s*(#.*)?$/
+const ENDS_WITH_DO = /\bdo\s*(?:\|[^|]*\|\s*)?(?:#.*)?$/
 
 /**
  * One entry on the block stack: a namespace (part of the task path) or some
@@ -533,6 +544,9 @@ const ENDS_WITH_DO = /\bdo\s*(\|[^|]*\|)?\s*(#.*)?$/
  * `namespace :ns do … end`, so a scanner that popped a namespace on every
  * `end` would go wrong at the first multi-line task.
  */
+/** The longest task path `scanTasks` reports. */
+const MAX_TASK_PATH = 4096
+
 type BlockEntry = { kind: 'namespace'; name: string } | { kind: 'other' }
 
 /**
@@ -545,12 +559,11 @@ type BlockEntry = { kind: 'namespace'; name: string } | { kind: 'other' }
 export function scanTasks(text: string): ScannedTask[] {
   const out: ScannedTask[] = []
   const stack: BlockEntry[] = []
+  // The names of the namespaces on `stack`, kept beside it so a task does not
+  // walk the whole stack.
+  const namespaces: string[] = []
+  let prefixLength = 0
   let pendingDesc: string | undefined
-
-  const namespacePath = (): string[] =>
-    stack
-      .filter((e): e is { kind: 'namespace'; name: string } => e.kind === 'namespace')
-      .map((e) => e.name)
 
   for (const raw of text.split(/\r?\n/)) {
     const nsOpen = NAMESPACE_OPEN.exec(raw)
@@ -560,7 +573,11 @@ export function scanTasks(text: string): ScannedTask[] {
       // by block params or a comment). `namespace :db do; end` closes on the
       // same line. Pushing it anyway would put every later task in the file
       // under `db`.
-      if (ns !== undefined && ENDS_WITH_DO.test(raw)) stack.push({ kind: 'namespace', name: ns })
+      if (ns !== undefined && ENDS_WITH_DO.test(raw)) {
+        stack.push({ kind: 'namespace', name: ns })
+        namespaces.push(ns)
+        prefixLength += ns.length + 1
+      }
       pendingDesc = undefined
       continue
     }
@@ -574,8 +591,10 @@ export function scanTasks(text: string): ScannedTask[] {
     const taskMatch = TASK_DECL.exec(raw)
     if (taskMatch) {
       const name = taskMatch[1] ?? taskMatch[2] ?? taskMatch[3] ?? taskMatch[4]
-      if (name !== undefined) {
-        const path = [...namespacePath(), name].join(':')
+      // A path longer than MAX_TASK_PATH is left out, so deep nesting cannot
+      // make the output grow with the square of the file.
+      if (name !== undefined && prefixLength + name.length <= MAX_TASK_PATH) {
+        const path = [...namespaces, name].join(':')
         const deps = scanDeps(raw.slice(taskMatch[0].length), taskMatch[4] !== undefined)
         out.push({ path, ...(pendingDesc ? { doc: pendingDesc } : {}), deps })
       }
@@ -585,7 +604,7 @@ export function scanTasks(text: string): ScannedTask[] {
     }
 
     if (END_LINE.test(raw)) {
-      stack.pop()
+      if (stack.pop()?.kind === 'namespace') prefixLength -= namespaces.pop()!.length + 1
       pendingDesc = undefined
       continue
     }

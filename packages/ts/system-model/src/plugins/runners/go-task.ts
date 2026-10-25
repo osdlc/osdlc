@@ -247,9 +247,9 @@ export function readTaskfile(text: string): ReadResult {
  * `- {task: name, vars: {...}}`. Anything else gives none.
  */
 function blockDep(line: string): string | undefined {
-  const m = /^\s*-\s*(.*?)\s*$/.exec(line.replace(/\s#.*$/, ''))
+  const m = /^\s*-(.*)$/.exec(line.replace(/\s#.*$/, ''))
   if (m === null) return undefined
-  return depItem(m[1]!)
+  return depItem(m[1]!.trim())
 }
 
 /** The names in a flow `deps: [a, "b", {task: c, vars: {X: 1}}]`. Anything else gives none. */

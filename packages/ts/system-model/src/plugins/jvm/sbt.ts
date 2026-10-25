@@ -271,18 +271,18 @@ function parseProjects(output: string): SbtProject[] {
  * required description keeps project ids out, since they have none. This is
  * scraped text, and a looser pattern would turn sentences into tasks.
  */
-function parseTaskRows(output: string): TaskRow[] {
+export function parseTaskRows(output: string): TaskRow[] {
   const out: TaskRow[] = []
   const seen = new Set<string>()
   for (const raw of output.split(/\r?\n/)) {
     const line = strip(raw)
     if (line === null) continue
-    const m = /^\s+([A-Za-z][A-Za-z0-9_-]*)\s{2,}(\S.*?)\s*$/.exec(line)
+    const m = /^\s+([A-Za-z][A-Za-z0-9_-]*)\s{2,}(\S.*)$/.exec(line)
     if (m === null) continue
     const name = m[1]!
     if (seen.has(name)) continue
     seen.add(name)
-    out.push({ name, description: m[2]! })
+    out.push({ name, description: m[2]!.trimEnd() })
   }
   return out
 }
