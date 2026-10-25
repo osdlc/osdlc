@@ -5,8 +5,8 @@
  * decided (`by`, `rule`).
  *
  * `--scope <tool>` grants, removes or shows one tool's trust instead of the
- * whole repository's. Granting is `cli-only`: the MCP and HTTP adapters
- * refuse it.
+ * whole repository's. Granting is `cli-only`: the web view's server refuses
+ * it.
  */
 
 import { CommandError, type CommandContext, type DataCommand } from '@osdlc/cli-tool/command'
@@ -46,7 +46,7 @@ function entryOf(gate: PolicyExecGate, scope: string | undefined): TrustEntry {
 }
 
 /** wayfinder's {@link TrustService}. */
-export function trustService(opts: CommandEnvOptions = {}): TrustService {
+function trustService(opts: CommandEnvOptions = {}): TrustService {
   const env = commandEnv(opts)
   const setup = async (ctx: CommandContext) => {
     const home = env.home(ctx)

@@ -4,7 +4,6 @@
  * for how the CLI, the terminal UI and the web view use it.
  */
 
-import { stat } from 'node:fs/promises'
 import { isAbsolute, resolve } from 'node:path'
 
 import { closestMatches } from '@osdlc/config-layers/did-you-mean'
@@ -20,11 +19,13 @@ import {
 
 import { BIN, PROJECT_CONFIG_FILENAME } from '../app.ts'
 import { cacheDir } from '../cache.ts'
+import { settingLayer } from '../config-keys.ts'
 import {
   collectAndCache,
   fromStore,
   makeProject,
   orderedCatalog,
+  projectRootFor,
   readCachedCatalog,
   runnerIds,
   type WayOptions,
@@ -34,6 +35,7 @@ import {
   collectOptionsFromConfig,
   readSettings,
   trustPolicyFromConfig,
+  writeSetting,
   trustPolicyOptions,
   type LoadedConfig,
   type Settings,
@@ -147,6 +149,18 @@ export interface SettingsSnapshot {
   trustedTools: string[]
 }
 
+/** What {@link Session.saveSetting} wrote. */
+export interface SavedSetting {
+  key: string
+  /** The file it was written to. */
+  file: string
+  layer: 'user' | 'project'
+  /** A command-line flag decides this setting for the rest of this session. */
+  pinned: boolean
+  /** The settings as read back after the write. */
+  snapshot: SettingsSnapshot
+}
+
 /** What a trust grant or revoke changed. */
 export interface TrustChange {
   /** False when the store already said so. */
@@ -170,6 +184,7 @@ export interface RunPlan {
 export interface Session {
   /** The project root the start directory is in. */
   readonly root: string
+  /** The config as last read: at start, then after {@link reloadSettings} or {@link saveSetting}. */
   readonly config: LoadedConfig
   /** Warnings from the config files and the tool modules, for stderr. */
   readonly warnings: readonly string[]
@@ -179,8 +194,8 @@ export interface Session {
   /** The tools loaded from modules, beside the built-ins. */
   readonly tools: readonly LoadedTool[]
   /**
-   * The collect options. A trust grant and a saved setting change them in
-   * place, so a probe always uses the current ones.
+   * The collect options. A trust grant, a saved setting and a reload change
+   * them in place, so a probe always uses the current ones.
    */
   readonly options: WayOptions
   /** The project file names tools that were not loaded, because execution is not allowed. */
@@ -191,7 +206,7 @@ export interface Session {
   readonly store: string
   readonly env: Record<string, string | undefined>
   readonly home: string
-  /** `runners.order` from config. */
+  /** `runners.order` from the config as last read. */
   runnerOrder(): string[] | undefined
   /** Why withheld runners are withheld, or null when execution is allowed. */
   withheldReason(): WithheldReason | null
@@ -202,6 +217,12 @@ export interface Session {
    * stops this call's probes as well as the session's own signal.
    */
   catalog(opts?: { cached?: boolean; signal?: AbortSignal | undefined }): Promise<CatalogSnapshot>
+  /**
+   * The catalog from the store alone, probing nothing: for a first paint
+   * before a probe. Null when the store has no answer for this project. A
+   * runner missing from the store is missing from the catalog.
+   */
+  storedCatalog(): Promise<CatalogSnapshot | null>
   /** The tasks of `catalog` that pass `filter`, best first when there is a query. */
   search(catalog: Catalog, filter: TaskFilter): TaskHit[]
   /** The skills that pass `filter`, matched as {@link search} matches tasks. */
@@ -232,21 +253,29 @@ export interface Session {
    * apply (the repository is trusted, or execution is off).
    */
   missingScopes(runner: string): string[] | undefined
+  /** The settings as last read, with this session's execution and trust. */
   settings(): SettingsSnapshot
+  /**
+   * Read the config files again, so {@link settings} shows edits made
+   * elsewhere. The collect options and the `skills` setting follow, except
+   * where a flag decided. Throws {@link SessionError} `config`.
+   */
+  reloadSettings(): Promise<SettingsSnapshot>
+  /**
+   * Save one setting, as a settings screen does, then read the files back as
+   * {@link reloadSettings} does. The file comes from `settingLayer`: the
+   * user file for a user-only key, the file that sets `runners.order`, else
+   * the project file. Throws {@link SessionError} `config` for a value the
+   * key does not take or a file that cannot be written or read back; the
+   * message starts with `not saved:` or `saved to <file>, but`.
+   */
+  saveSetting(key: string, value: unknown): Promise<SavedSetting>
   /**
    * The task `id` names, with `args` bound the way its tool expects. The
    * same rules as the terminal UI and the web view. Throws
    * {@link SessionError}: `task-not-found`, `not-runnable` or `bad-arguments`.
    */
   resolveRun(catalog: Catalog, id: string, args?: readonly string[]): RunPlan
-}
-
-async function isDirectory(path: string): Promise<boolean> {
-  try {
-    return (await stat(path)).isDirectory()
-  } catch {
-    return false
-  }
 }
 
 /**
@@ -315,6 +344,19 @@ function parseScope(scope: string): string {
   }
 }
 
+/** The collect option a flag sets, for each setting a settings screen saves. */
+const FLAG_OF_SETTING: Readonly<Record<string, string>> = {
+  'runners.disabled': 'exclude',
+  discovery: 'discovery',
+  excludePaths: 'excludePaths',
+}
+
+/** A config error as a session error; anything else unchanged. */
+function asSessionError(err: unknown, prefix = ''): unknown {
+  if (err instanceof ConfigError) return new SessionError('config', prefix + err.message)
+  return err
+}
+
 /** Fresh states for a catalog probed just now, with each runner's measured time. */
 function probedStates(catalog: Catalog, times: ReadonlyMap<string, number>): CacheState[] {
   return catalog.reports.map((r) => {
@@ -341,18 +383,16 @@ export async function createSession(opts: SessionOptions): Promise<Session> {
   const home = opts.home ?? homeDir()
   const flags = opts.flags ?? {}
   const start = isAbsolute(opts.dir) ? opts.dir : resolve(opts.cwd, opts.dir)
-  if (!(await isDirectory(start))) {
+  const root = await projectRootFor(start)
+  if (root === null) {
     throw new SessionError('no-such-directory', `${opts.dir}: no such directory`)
   }
-  // The root is found with the built-in tools only.
-  const root = await makeProject().findRoot(start)
 
   let settings: Settings
   try {
     settings = await readSettings(root, env, home)
   } catch (err) {
-    if (err instanceof ConfigError) throw new SessionError('config', err.message)
-    throw err
+    throw asSessionError(err)
   }
   const config = settings.loaded
 
@@ -424,11 +464,29 @@ export async function createSession(opts: SessionOptions): Promise<Session> {
       },
     }
   }
-  const skillsSetting = settings.skills.value
   const skills = (): Promise<SkillRow[]> =>
-    readSkills(root, { setting: skillsSetting, home, env, signal: opts.signal })
+    readSkills(root, { setting: settings.skills.value, home, env, signal: opts.signal })
   const store = cacheDir(env, home)
-  const runnerOrder = (): string[] | undefined => config.effective.runners?.order
+  const runnerOrder = (): string[] | undefined => settings.loaded.effective.runners?.order
+
+  /** Take `next` as the settings: the collect options follow, except where a flag decided. */
+  const adopt = (next: Settings): void => {
+    settings = next
+    const derived = collectOptionsFromConfig(next.loaded.effective) as Record<string, unknown>
+    const target = options as unknown as Record<string, unknown>
+    for (const key of ['exclude', 'discovery', 'excludePaths'] as const) {
+      if (pinnedByFlag.includes(key)) continue
+      if (derived[key] === undefined) delete target[key]
+      else target[key] = derived[key]
+    }
+  }
+  const reread = async (prefix = ''): Promise<void> => {
+    try {
+      adopt(await readSettings(root, env, home))
+    } catch (err) {
+      throw asSessionError(err, prefix)
+    }
+  }
   const trustable = (): boolean => options.execWithheldHint !== undefined
 
   /** Probe the runners `only` names (all when absent), timing each. */
@@ -455,7 +513,9 @@ export async function createSession(opts: SessionOptions): Promise<Session> {
   const { project, tools } = built
   const session: Session = {
     root,
-    config,
+    get config() {
+      return settings.loaded
+    },
     warnings: [...config.warnings, ...built.warnings],
     get gate() {
       return gate
@@ -511,6 +571,16 @@ export async function createSession(opts: SessionOptions): Promise<Session> {
           runnerOrder(),
         ),
         cache: stored.runners.map((r) => fresh.get(r.runner) ?? r),
+        skills: await skills(),
+        origin: 'store',
+      }
+    },
+    async storedCatalog() {
+      const stored = await readCachedCatalog(project, root, options, store)
+      if (stored.catalog === null || !fromStore(stored)) return null
+      return {
+        catalog: orderedCatalog(stored.catalog, runnerOrder()),
+        cache: stored.runners,
         skills: await skills(),
         origin: 'store',
       }
@@ -583,6 +653,30 @@ export async function createSession(opts: SessionOptions): Promise<Session> {
         trustable: trustable(),
         tools: project.tools.map(toolSummary),
         trustedTools: gate.allowExec ? [] : [...toolTrusted],
+      }
+    },
+    async reloadSettings() {
+      await reread()
+      return session.settings()
+    },
+    async saveSetting(key, value) {
+      const source = settings.settings.find((s) => s.key === key)?.source ?? 'default'
+      const layer = settingLayer(key, source)
+      let file: string
+      try {
+        ;({ file } = await writeSetting({ layer, root, env, home }, key, value))
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        throw new SessionError('config', `not saved: ${message}`)
+      }
+      await reread(`saved to ${file}, but it cannot be read back: `)
+      const flag = FLAG_OF_SETTING[key]
+      return {
+        key,
+        file,
+        layer,
+        pinned: flag !== undefined && pinnedByFlag.includes(flag),
+        snapshot: session.settings(),
       }
     },
     resolveRun(catalog, id, args = []) {

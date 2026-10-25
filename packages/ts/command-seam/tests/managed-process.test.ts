@@ -80,6 +80,22 @@ describe('managedProcessRunner', () => {
     expect(r.signal).toBe('SIGKILL')
   })
 
+  // Every platform. Windows has no process groups, so kill() falls back to
+  // the direct child; POSIX signals the group.
+  test('processGroup: true kill() ends a running node child on every platform', async () => {
+    const handle = managedProcessRunner(process.execPath).run(
+      ['-e', 'setInterval(() => {}, 1e3)'],
+      {
+        cwd: CWD,
+        processGroup: true,
+      },
+    )
+    expect(handle.pid).toBeGreaterThan(0)
+    handle.kill()
+    // A signal this handle sent is reported as an abort.
+    expect(await handle.exited).toMatchObject({ signal: 'SIGTERM', reason: 'abort' })
+  })
+
   // POSIX only: sessions and process groups are POSIX.
   test.skipIf(process.platform === 'win32')(
     'processGroup: true makes kill() reap a grandchild the child itself forked',

@@ -18,7 +18,7 @@
  */
 
 /** How long the boot token stays usable once the URL is shown. */
-export const BOOT_TTL_MS = 60_000
+const BOOT_TTL_MS = 60_000
 
 /** 128 bits, hex, from a secure source. */
 function secret(): string {

@@ -1,7 +1,8 @@
 /**
  * Every command in the tree, found from `way schema` rather than a list kept
  * here: each answers `--help`, and each that prints a document answers
- * `--json` with `schemaVersion` and its `kind`.
+ * `--json` with `schemaVersion` and its `kind`, in the shape the schema
+ * `@osdlc/wayfinder/schema` exports for that kind says.
  */
 
 import { afterAll, describe, expect, test, vi } from 'vitest'
@@ -9,6 +10,7 @@ import { afterAll, describe, expect, test, vi } from 'vitest'
 import { captureIo } from '@osdlc/cli-tool'
 
 import { main } from '../src/cli.ts'
+import { documentZod, type DocumentKind } from '../src/schema.ts'
 import { fixtureRoot, removeRoot } from './support.ts'
 
 // Each data command probes or reads the fixture repository.
@@ -104,6 +106,8 @@ describe('the command tree', () => {
       const doc = JSON.parse(ran.out) as Record<string, unknown>
       expect(Object.keys(doc).slice(0, 2)).toEqual(['schemaVersion', 'kind'])
       expect(doc['kind']).toBe(entry.kind)
+      const checked = documentZod(entry.kind as DocumentKind).safeParse(doc)
+      expect(checked.success, checked.error?.message).toBe(true)
     },
   )
 
@@ -115,6 +119,8 @@ describe('the command tree', () => {
     const dir = await root(FILES)
     const ran = await way([...entry.path, '--json'], dir)
     expect(ran.code).not.toBe(0)
-    expect(JSON.parse(ran.out)).toMatchObject({ schemaVersion: 1, kind: 'error' })
+    const doc = JSON.parse(ran.out) as unknown
+    expect(doc).toMatchObject({ schemaVersion: 1, kind: 'error' })
+    expect(documentZod('error').safeParse(doc).success).toBe(true)
   })
 })

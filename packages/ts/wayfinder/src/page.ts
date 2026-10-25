@@ -18,14 +18,14 @@ import { fileURLToPath } from 'node:url'
 
 import { cssSheet } from '@osdlc/ux'
 
-import { APP } from './app.ts'
+import { APP, BIN } from './app.ts'
 import type { Theme } from './config-keys.ts'
 
 const DIR = new URL('./web/', import.meta.url)
 const path = (name: string): string => fileURLToPath(new URL(name, DIR))
 
 /** The custom-property prefix of the page's tokens: `--wf-bg-base`. */
-export const TOKEN_PREFIX = 'wf'
+const TOKEN_PREFIX = 'wf'
 
 /** What the page is built with. */
 export interface PageOptions {
@@ -79,7 +79,7 @@ async function buildScript(): Promise<string> {
     // Fail loudly in the page rather than serve a stale or empty script.
     const detail = err instanceof Error ? err.message : String(err)
     return `document.body.innerHTML = "<pre></pre>";document.querySelector("pre").textContent = ${JSON.stringify(
-      `${APP}: the page script failed to build\n\n${detail}`,
+      `${BIN}: the page script failed to build\n\n${detail}`,
     )};`
   }
 }

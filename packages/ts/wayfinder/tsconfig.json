@@ -7,5 +7,5 @@
     // The web view renders in a browser.
     "lib": ["ES2022", "DOM"]
   },
-  "include": ["src", "tests", "examples", "vitest.config.ts"]
+  "include": ["src", "tests", "examples", "scripts/*.ts", "vitest.config.ts"]
 }

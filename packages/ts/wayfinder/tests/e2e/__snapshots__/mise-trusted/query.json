@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "kind": "query",
+  "root": "<root>",
+  "filter": {
+    "query": "build",
+    "mode": "fuzzy"
+  },
+  "tasks": [
+    {
+      "id": "mise:mise.toml:build",
+      "runner": "mise",
+      "path": [
+        "mise",
+        ".",
+        "build"
+      ],
+      "argv": [
+        "mise",
+        "run",
+        "build"
+      ],
+      "cwd": ".",
+      "display": "mise run build",
+      "parameters": [],
+      "source": "mise.toml",
+      "origin": "declared",
+      "detail": "npm run build",
+      "tags": [
+        "mise",
+        "."
+      ],
+      "persistent": {
+        "value": false,
+        "declared": false
+      },
+      "executes": "local"
+    }
+  ],
+  "skills": [],
+  "cache": [
+    {
+      "runner": "mise",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    },
+    {
+      "runner": "tool-manager",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    }
+  ],
+  "unknowns": []
+}

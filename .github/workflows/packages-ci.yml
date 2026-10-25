@@ -212,8 +212,10 @@ jobs:
   windows-tier2:
     name: windows tier 2 (windows-latest, node ${{ matrix.node }})
     # A hung test process must not hold the job for the default six hours.
-    # A full run takes about 2.5 minutes.
-    timeout-minutes: 10
+    # A full run takes about 2.5 minutes. The limit is the sum of the step
+    # limits below (install 5, build 5, six tests at 4, smoke 3) plus 3 for
+    # setup, so a hung step never cancels the steps after it.
+    timeout-minutes: 40
     needs: changes
     if: >-
       contains(fromJSON(needs.changes.outputs.packages), 'packages/ts/command-seam') ||
@@ -269,12 +271,14 @@ jobs:
 
       # $FILTER and $BUILD are several flags, so they are left unquoted.
       - name: Install
+        timeout-minutes: 5
         env:
           BUILD: ${{ steps.pick.outputs.build }}
         run: pnpm install --frozen-lockfile $BUILD
 
       - name: Build
         id: build
+        timeout-minutes: 5
         env:
           BUILD: ${{ steps.pick.outputs.build }}
         run: pnpm $BUILD --if-present run build
@@ -313,6 +317,7 @@ jobs:
 
       - name: Smoke the built packages under Node
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        timeout-minutes: 3
         env:
           FILTER: ${{ steps.pick.outputs.filter }}
         run: pnpm $FILTER --no-bail --if-present run smoke

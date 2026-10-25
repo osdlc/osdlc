@@ -6,8 +6,9 @@
  * Each run gets a fresh HOME, XDG and Windows profile directories, so no user
  * config, trust grant or cache leaks in. `PATH` is one directory of stub
  * programs, one per tool binary, so "is the tool installed" reads the same on
- * every machine. Execution is off unless a case says otherwise; with no trust
- * grant, nothing a fixture declares ever runs.
+ * every machine. Execution is off unless a case says otherwise. A trusted
+ * case grants trust first, and its runner then runs a stub that prints a
+ * fixed answer; nothing a fixture declares ever runs.
  *
  * Absolute paths, times and durations are replaced with placeholders before
  * the compare. Regenerate the golden files after an intended change:
@@ -96,7 +97,39 @@ interface Case {
   absent?: string
   /** Skip on Windows, with the reason. */
   posixOnly?: string
+  /**
+   * Shell scripts that replace a binary's stub, by binary, so an exec runner
+   * prints a fixed answer the case can parse. POSIX only.
+   */
+  canned?: Record<string, string>
+  /** Trust the repository with `way trust` before listing. */
+  trusted?: boolean
 }
+
+/**
+ * A stub that prints `answers[args]` for the arguments it is given, and fails
+ * otherwise. PATH holds only the stubs, so it uses the shell's own `printf`.
+ * An answer must not hold a single quote.
+ */
+function cannedStub(answers: Record<string, string>): string {
+  const arms = Object.entries(answers)
+    .map(([args, out]) => {
+      const lines = out.split('\n').map((l) => `'${l}'`)
+      return `  ${JSON.stringify(args)}) printf '%s\\n' ${lines.join(' ')} ;;\n`
+    })
+    .join('')
+  return `#!/bin/sh\ncase "$*" in\n${arms}  *) exit 1 ;;\nesac\n`
+}
+
+/** `mise tasks --json` names each task's source by absolute path, so the stub prints $PWD's. */
+const MISE_TASKS = `#!/bin/sh
+case "$*" in
+  "tasks --json") printf '[{"name":"build","description":"","source":"%s/mise.toml","run":["npm run build"],"global":false}]\\n' "$PWD" ;;
+  *) exit 1 ;;
+esac
+`
+
+const CANNED_POSIX = 'the canned tool answers are POSIX shell scripts'
 
 const RUNNERS: Case[] = [
   { name: 'node-scripts', runner: 'node-scripts', query: 'build' },
@@ -114,6 +147,26 @@ const RUNNERS: Case[] = [
   { name: 'maven', runner: 'maven', query: 'package' },
   { name: 'gradle', runner: 'gradle', query: 'build' },
   { name: 'sbt', runner: 'sbt', query: 'compile' },
+  {
+    name: 'sbt-trusted',
+    fixture: 'sbt',
+    runner: 'sbt',
+    query: 'compile',
+    flags: [],
+    trusted: true,
+    posixOnly: CANNED_POSIX,
+    canned: {
+      sbt: cannedStub({
+        '-batch -Dsbt.log.noformat=true projects tasks': [
+          '[info] In file:/x/',
+          '[info]   * app',
+          '[info] This is a list of tasks defined for the current project.',
+          '[info]   compile  Compiles sources.',
+          '[info]   test     Executes all tests.',
+        ].join('\n'),
+      }),
+    },
+  },
   { name: 'swiftpm', runner: 'swiftpm', query: 'build' },
   { name: 'go-task', runner: 'go-task', query: 'test' },
   { name: 'rake', runner: 'rake', query: 'build' },
@@ -125,8 +178,38 @@ const RUNNERS: Case[] = [
   { name: 'procfile', runner: 'procfile', query: 'worker' },
   { name: 'cmake-presets', runner: 'cmake-presets', query: 'debug' },
   { name: 'dotnet', runner: 'dotnet', query: 'run' },
+  // Each exec runner has two cases. The bare one runs untrusted, so the runner
+  // is withheld and its stub never runs. The trusted one has its stub print a
+  // fixed answer, so the case parses real process output end to end.
   { name: 'moon', runner: 'moon', query: 'build' },
+  {
+    name: 'moon-trusted',
+    fixture: 'moon',
+    runner: 'moon',
+    query: 'build',
+    flags: [],
+    trusted: true,
+    posixOnly: CANNED_POSIX,
+    canned: {
+      moon: cannedStub({
+        'query tasks':
+          '{"tasks":{"web":{"build":{"id":"build","target":"web:build","command":"vite","args":["build"]}}}}',
+        'query projects':
+          '{"projects":[{"id":"web","source":"apps/web","layer":"application","language":"typescript"}]}',
+      }),
+    },
+  },
   { name: 'mise', runner: 'mise', query: 'build' },
+  {
+    name: 'mise-trusted',
+    fixture: 'mise',
+    runner: 'mise',
+    query: 'build',
+    flags: [],
+    trusted: true,
+    posixOnly: CANNED_POSIX,
+    canned: { mise: MISE_TASKS },
+  },
   { name: 'toolchain', query: 'lint' },
 ]
 
@@ -233,9 +316,9 @@ function way(args: string[], env: Record<string, string>): Run {
 }
 
 /** Replaces each absolute path, time and duration with a placeholder. */
-function normalizer(root: string, dir: string): (text: string) => string {
+function normalizer(root: string, dir: string, bin = stubs): (text: string) => string {
   const swaps: Array<[string, string]> = [
-    [join(stubs, ''), '<bin>'],
+    [join(bin, ''), '<bin>'],
     [root, '<root>'],
     [dir, '<base>'],
   ]
@@ -291,10 +374,23 @@ async function check(c: Case): Promise<void> {
   // A repository marker, so the root search stops here and not in a parent.
   mkdirSync(join(root, '.git'))
   c.setup?.(root, dir)
-  const env = environment(dir, c.path === 'empty' ? empty : stubs)
+  let bin = c.path === 'empty' ? empty : stubs
+  if (c.canned !== undefined) {
+    bin = join(dir, 'bin')
+    cpSync(stubs, bin, { recursive: true })
+    for (const [name, script] of Object.entries(c.canned)) {
+      writeFileSync(join(bin, name), script)
+      chmodSync(join(bin, name), 0o755)
+    }
+  }
+  const env = environment(dir, bin)
   const flags = c.flags ?? ['--no-exec']
-  const normalize = normalizer(root, dir)
+  const normalize = normalizer(root, dir, bin)
   const snap = (file: string) => `./__snapshots__/${c.name}/${file}`
+  if (c.trusted === true) {
+    const trust = way(['trust', '-C', root], env)
+    expect(trust.status, trust.stderr).toBe(0)
+  }
 
   const list = way(['list', '--json', ...flags, '-C', root], env)
   const listDoc = document(list, normalize)

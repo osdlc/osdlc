@@ -5,7 +5,7 @@
  * directory and the project root).
  *
  * `trust`, `allowExec` and `tools` are written from the command line only
- * ({@link CLI_ONLY_KEYS}): the MCP and HTTP adapters refuse them.
+ * ({@link CLI_ONLY_KEYS}): the web view's server refuses them.
  */
 
 import { stat } from 'node:fs/promises'
@@ -21,7 +21,7 @@ import {
 import type { FlagSpec } from '@osdlc/cli-tool/define-cli'
 import { homeDir } from '@osdlc/trust-repo'
 
-import { makeProject } from './catalog.ts'
+import { projectRootFor } from './catalog.ts'
 import {
   CLI_ONLY_KEYS,
   CONFIG_KEYS,
@@ -56,7 +56,7 @@ export interface CommandEnvOptions {
 }
 
 /** The home directory for `ctx`: an absolute `HOME`, else the OS account's home. */
-export function homeOf(ctx: Pick<CommandContext, 'env'>): string {
+function homeOf(ctx: Pick<CommandContext, 'env'>): string {
   const home = ctx.env['HOME']
   return home !== undefined && isAbsolute(home) ? home : homeDir()
 }
@@ -66,12 +66,12 @@ export function homeOf(ctx: Pick<CommandContext, 'env'>): string {
  * else `ctx.cwd`, resolved upward to the project root. A directory that does
  * not exist is an error, so a typo never edits the enclosing repository.
  */
-export async function projectRootOf(ctx: CommandContext): Promise<string> {
+async function projectRootOf(ctx: CommandContext): Promise<string> {
   const named = ctx.globals['dir']
   const dir = resolve(ctx.cwd, typeof named === 'string' && named !== '' ? named : '.')
-  const info = await stat(dir).catch(() => null)
-  if (info === null || !info.isDirectory()) throw new CommandError(`no such directory: ${dir}`)
-  return makeProject().findRoot(dir)
+  const root = await projectRootFor(dir)
+  if (root === null) throw new CommandError(`no such directory: ${dir}`)
+  return root
 }
 
 /** {@link homeOf} and {@link projectRootOf}, or the caller's own. */
@@ -92,7 +92,7 @@ function asCommandError(err: unknown): never {
  * wayfinder's {@link ConfigStore}: the user and project files, with the
  * project file the default for `set` and `unset`.
  */
-export function configStore(opts: CommandEnvOptions = {}): ConfigStore {
+function configStore(opts: CommandEnvOptions = {}): ConfigStore {
   const env = commandEnv(opts)
   const load = async (ctx: CommandContext): Promise<LoadedConfig> =>
     loadConfig(await env.root(ctx), ctx.env, env.home(ctx)).catch(asCommandError)

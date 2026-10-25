@@ -16,8 +16,8 @@ import { fitWidth } from '@osdlc/ux'
 
 import { BIN } from '../app.ts'
 import { splitArgs } from '../args.ts'
-import { fromStore, orderedCatalog, readCachedCatalog } from '../catalog.ts'
-import { collectOptionsFromConfig, readSettings, writeSetting, type Settings } from '../config.ts'
+import { orderedCatalog } from '../catalog.ts'
+import type { Settings } from '../config.ts'
 import type { TaskHit } from '../core/filter.ts'
 import type { HandOffResult } from '../core/run.ts'
 import { SessionError, type CacheState, type RunPlan, type Session } from '../core/session.ts'
@@ -929,15 +929,10 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
     // The store first: a few file hashes rather than a full probe, so the
     // tasks show at once, marked as cached, even when a runner is slow.
     try {
-      const stored = await readCachedCatalog(
-        session.project,
-        session.root,
-        session.options,
-        session.store,
-      )
-      if (stored.catalog !== null && fromStore(stored)) {
+      const stored = await session.storedCatalog()
+      if (stored !== null) {
         state.catalog = orderedCatalog(stored.catalog, state.runnerOrder)
-        state.cache = stored.runners
+        state.cache = stored.cache
       }
     } catch {
       // A store that cannot be read is the same as an empty one.
@@ -1055,26 +1050,16 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
 
   // -------------------------------------------------------------- settings
 
-  /** `session.options` follows the saved config, except where a flag decided. */
+  /** Show `settings`, which the session has just read. */
   function adoptSettings(settings: Settings): void {
-    const derived = collectOptionsFromConfig(settings.loaded.effective) as Record<string, unknown>
-    const target = session.options as Record<string, unknown>
-    for (const key of ['exclude', 'discovery', 'excludePaths'] as const) {
-      if (session.pinnedByFlag.includes(key)) continue
-      if (derived[key] === undefined) delete target[key]
-      else target[key] = derived[key]
-    }
     state.runnerOrder = settings.runnerOrder.value
     if (state.catalog !== null) state.catalog = orderedCatalog(state.catalog, state.runnerOrder)
   }
 
-  const readCurrentSettings = (): Promise<Settings> =>
-    readSettings(session.root, session.env, session.home)
-
   async function openSettings(): Promise<void> {
     let settings: Settings
     try {
-      settings = await readCurrentSettings()
+      settings = (await session.reloadSettings()).settings
     } catch (err) {
       say(`settings unavailable: ${errorText(err)}`, 'error')
       return
@@ -1126,33 +1111,19 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
   }
 
   async function applyEdit(edit: SettingsEdit): Promise<void> {
-    let file: string
+    let saved: string
     try {
-      ;({ file } = await writeSetting(
-        { layer: edit.layer, root: session.root, env: session.env, home: session.home },
-        edit.key,
-        edit.value,
-      ))
+      const result = await session.saveSetting(edit.key, edit.value)
+      adoptSettings(result.snapshot.settings)
+      if (state.settings !== null) state.settings.settings = result.snapshot.settings
+      saved = `saved ${edit.key} to ${result.file}`
+      if (result.pinned) {
+        say(`${saved}; a command-line flag decides it for this run`, 'warning')
+        return
+      }
     } catch (err) {
-      say(`not saved: ${errorText(err)}`, 'error')
-      return
-    }
-    let settings: Settings
-    try {
-      settings = await readCurrentSettings()
-    } catch (err) {
-      say(`saved to ${file}, but it cannot be read back: ${errorText(err)}`, 'error')
-      return
-    }
-    adoptSettings(settings)
-    if (state.settings !== null) state.settings.settings = settings
-    const pinned =
-      (edit.key === 'runners.disabled' && session.pinnedByFlag.includes('exclude')) ||
-      (edit.key === 'discovery' && session.pinnedByFlag.includes('discovery')) ||
-      (edit.key === 'excludePaths' && session.pinnedByFlag.includes('excludePaths'))
-    const saved = `saved ${edit.key} to ${file}`
-    if (pinned) {
-      say(`${saved}; a command-line flag decides it for this run`, 'warning')
+      // The session's message says whether the write or the read back failed.
+      say(errorText(err), 'error')
       return
     }
     if (edit.key === 'runners.order') {

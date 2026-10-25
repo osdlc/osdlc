@@ -17,7 +17,7 @@ import {
   terminalSafe,
   type CatalogDocument,
 } from '@osdlc/wayfinder'
-import { DOCUMENT_SCHEMAS } from '@osdlc/wayfinder/schema'
+import { DOCUMENT_SCHEMAS, documentZod } from '@osdlc/wayfinder/schema'
 
 const dirs: string[] = []
 afterAll(async () => {
@@ -55,6 +55,9 @@ test('buildCatalog gives the catalog document, filtered like the CLI', async () 
     '/review',
   ])
   expect(doc.groups.map((g) => g.id)).toContain('skills')
+  // The repository is not trusted, and no tool is trusted on its own.
+  const trusted: string[] = doc.trustedTools
+  expect(trusted).toEqual([])
 })
 
 test('buildCatalog takes the CLI filter, and refuses a directory that does not exist', async () => {
@@ -66,4 +69,21 @@ test('buildCatalog takes the CLI filter, and refuses a directory that does not e
   await expect(buildCatalog({ dir: join(dir, 'missing'), env: {}, home })).rejects.toBeInstanceOf(
     SessionError,
   )
+})
+
+test('buildCatalog passes on config warnings', async () => {
+  const { dir, home } = await repo()
+  await writeFile(join(dir, 'wayfinder.config.json'), '{"skills":"all"}')
+  const warnings: string[] = []
+  await buildCatalog({ dir, env: {}, home, onWarning: (w) => warnings.push(w) })
+  expect(warnings.join('\n')).toContain('skills')
+})
+
+test('documentZod parses a document, as the README shows', async () => {
+  const { dir, home } = await repo()
+  const output = JSON.stringify(await buildCatalog({ dir, env: {}, home }))
+  const doc = documentZod('catalog').parse(JSON.parse(output))
+  expect(doc).toMatchObject({ kind: 'catalog', root: dir })
+  expect(DOCUMENT_SCHEMAS.trust).toHaveProperty('properties.kind.const', 'trust')
+  expect(() => documentZod('catalog').parse({ kind: 'catalog' })).toThrow()
 })

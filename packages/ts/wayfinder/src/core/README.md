@@ -2,7 +2,8 @@
 
 One run of wayfinder over one repository is a `Session`. The CLI, the
 terminal UI and the web view's server all start one and call it, so they
-read the same catalog, filter it the same way, grant trust the same way and
+read the same catalog, filter it the same way, decide trust with the same
+store and policy (`way trust` uses them too, without a session) and
 run a task with the same argument rules.
 
 | Module | Holds | Browser-safe |
@@ -30,6 +31,7 @@ decides execution against the trust store and loads tool modules. It throws
 |---|---|
 | `session.catalog()` | probes every runner and stores the result. `cache[].probeMs` is each runner's measured time. `skills` holds the agent skills the `skills` setting chooses |
 | `session.catalog({ cached: true })` | reads the store and probes only the runners missing from it. `origin` says which happened |
+| `session.storedCatalog()` | the store alone, probing nothing, or null when it has no answer. The terminal UI paints it before its first probe |
 | `session.search(catalog, filter)` | `filterTasks` over the catalog, best first with a query |
 | `session.searchSkills(skills, filter)` | the same for `snapshot.skills` |
 | `session.unknowns(snapshot)` | what could not be read, each with its `label` |
@@ -38,13 +40,18 @@ decides execution against the trust store and loads tool modules. It throws
 | `session.grantTrust(scope)` | trusts one tool. A runner runs once its id and each wrapping tool manager are trusted; the next probe applies it |
 | `session.revokeTrust(scope?)` | removes the grant, or one tool's. A whole-repository revoke leaves this session's execution as it is |
 | `session.missingScopes(runner)` | the tool grants a runner still needs; a withheld unknown carries the same list as `missing` |
-| `session.settings()` | every setting and its source (from `readSettings`, the reader `way config` uses), the effective `allowExec`, the gate's reason and trust, each tool's `homepage`, `description` and `language` (`tools`), and the tools trusted on their own (`trustedTools`) |
+| `session.settings()` | every setting and its source as last read (by `readSettings`, the reader `way config` uses), the effective `allowExec`, the gate's reason and trust, each tool's `homepage`, `description` and `language` (`tools`), and the tools trusted on their own (`trustedTools`) |
+| `session.reloadSettings()` | reads the config files again; the collect options and the `skills` setting follow, except where a flag decided |
+| `session.saveSetting(key, value)` | writes one setting to the file `settingLayer` (in `../config-keys.ts`) picks, then reloads. `pinned` says a flag decides it for this session |
+| `session.withheldReason()` | why withheld runners are withheld: `untrusted`, `exec-off`, or null |
+| `session.runnerOrder()` | `runners.order` from the config as last read |
 | `session.resolveRun(catalog, id, args)` | the `RunPlan` (`argv`, `env`, `cwd`) for a task id, or a `command line` only one task has. Throws `task-not-found`, `not-runnable` (an editor variable) or `bad-arguments` |
 
-`session.options` is the collect options object. A grant and a saved
-setting change it in place, so a probe always uses the current ones.
+`session.options` is the collect options object. A grant, a saved setting
+and a reload change it in place, so a probe always uses the current ones.
 `session.pinnedByFlag` names the options a flag set, which a saved setting
-must leave alone.
+leaves alone. `session.gate` is the execution decision, `session.project`
+the tool registry, and `session.store` the directory probes are stored in.
 
 ## How a surface uses it
 
@@ -52,12 +59,13 @@ must leave alone.
   `commands/shared.ts`), which maps the global flags onto `createSession` and
   turns a `SessionError` into a `CommandError`.
 - The terminal UI: `runTui(session)` in `src/tui/` takes the `Session` and
-  calls `catalog`, `search`, `grantTrust`, `revokeTrust`, `settings` and
-  `resolveRun`. A run hands off with `handOff(plan)` after the terminal is
-  released.
+  calls `storedCatalog`, `catalog`, `search`, `grantTrust`, `revokeTrust`,
+  `settings`, `reloadSettings`, `saveSetting` and `resolveRun`. A run hands
+  off with `handOff(plan)` after the terminal is released.
 - The web view's server (`src/serve/`) takes the `Session` and the command
   tree. The page calls commands over HTTP, so each request opens its own
-  session, as a CLI run does. A run resolves with `run --dry-run` and hands
+  session, as a CLI run does. Its settings screen saves with `config set`,
+  to the file `settingLayer` picks, the rule `saveSetting` uses. A run resolves with `run --dry-run` and hands
   off with `handOff(plan)` after the server has stopped.
 - The page: `filterTasks`, `unknownsOf`, `unknownLine` and the vocabulary
   module are browser-safe, so the page imports them directly.

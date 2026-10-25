@@ -57,11 +57,11 @@ notes any that were withheld or failed.
 
 ### Reordering tabs
 
-Drag a tab to reorder it. The order is saved as `runners.order` in your user
-config, so `list`, `query` and the terminal UI use it too. It applies to the
-tab row, the runner picker and the top of the combined tree. A project's
-`runners.order` wins over yours; the page says so when you drag. A saved
-order applies within a group. Groups always keep their own order. A runner
+Drag a tab to reorder it. The order is saved as `runners.order`, so `list`,
+`query` and the terminal UI use it too. It goes to the project file when that
+file sets `runners.order`, else to your user config, as the terminal UI's
+settings screen saves it. It applies to the tab row, the runner picker and the
+top of the combined tree. A saved order applies within a group. Groups always keep their own order. A runner
 missing from the saved order goes at the end of its group.
 
 ## Skills

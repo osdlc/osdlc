@@ -59,11 +59,6 @@ export async function signIn(boot: string): Promise<boolean> {
   }
 }
 
-/** Whether the page has signed in. */
-export function signedIn(): boolean {
-  return token !== ''
-}
-
 /** For tests: set the token without a server. */
 export function setTokenForTest(value: string): void {
   token = value
@@ -192,7 +187,7 @@ export async function load(opts: { cached?: boolean } = {}): Promise<void> {
 // ---------------------------------------------------------------- trust
 
 /** What the person is asked before a grant is sent. */
-export const TRUST_QUESTION =
+const TRUST_QUESTION =
   'Trust this repository? Its runners will be read by running them, now and on every later visit, until you untrust it.'
 
 /** What the person is asked before one tool's grant is sent. */

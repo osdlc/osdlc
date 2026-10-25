@@ -23,7 +23,7 @@
 
 import { EXIT, type CliIo } from '@osdlc/cli-tool'
 
-import { APP } from './app.ts'
+import { BIN } from './app.ts'
 
 /**
  * C0 (tab and newline included), DEL, C1, and the bidi controls: the marks
@@ -108,7 +108,7 @@ export async function guardedExit(
     return await run()
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    stderr(`${APP}: ${terminalSafe(message)}\n`)
+    stderr(`${BIN}: ${terminalSafe(message)}\n`)
     return EXIT.error
   }
 }

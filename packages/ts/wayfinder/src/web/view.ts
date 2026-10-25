@@ -507,7 +507,7 @@ function measureRows(rows: readonly Row[], flat: boolean, skills: readonly Skill
  * longer version of anything a tooltip cannot hold. This is the full list;
  * `renderColHeads` drops Runs when the width does.
  */
-export const COLUMNS = [
+const COLUMNS = [
   {
     label: '',
     tip: "Row indicators. A filled dot marks a service — a task that runs until you stop it, such as a dev server, a watcher or a preview. An outlined dot means that was inferred from the task's name rather than declared by the runner. A ? means its parameters could not be read, so Run asks for arguments.",
@@ -1521,7 +1521,7 @@ export function taskRows(): HTMLElement[] {
  * A focused row whose task no longer exists (a filter dropped it) clears
  * `focusedId` rather than leaving the list marked with a row that is gone.
  */
-export function markEnterTarget(): void {
+function markEnterTarget(): void {
   const rows = listRows()
   for (const r of rows) {
     r.classList.remove('enter-target')
@@ -1559,7 +1559,7 @@ export function setFocusedRow(id: string | null): void {
  * description and homepage of a custom tool are repository text, so both
  * are escaped, and the homepage is a link only when it is http or https.
  */
-export function toolAboutHtml(tool: ToolInfo): string {
+function toolAboutHtml(tool: ToolInfo): string {
   const link = homepageLink(tool.homepage)
   return (
     (tool.description !== null

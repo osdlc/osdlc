@@ -3,7 +3,7 @@ import type { Mode } from '@osdlc/system-model/match'
 
 import { $, ALL, allTasks, OPEN, SHUT, SKILLS, state } from './state.ts'
 import { splitArgs } from '../args.ts'
-import type { Theme } from '../config-keys.ts'
+import { settingLayer, type Theme } from '../config-keys.ts'
 import { parametersUnknownLabel } from '../vocabulary.ts'
 import {
   escapeHtml,
@@ -43,33 +43,22 @@ function statusLine(html: string): void {
 }
 
 /**
- * Use `order` as the runner order and save it as `runners.order` in the user
- * config, as `way config set runners.order <json> --user` does. A project
- * file's order wins over the user's, so the page says so when one is set.
+ * Use `order` as the runner order and save it as `runners.order`, to the
+ * file `settingLayer` picks: the project file when it sets the order, else
+ * the user file. The terminal UI saves it the same way.
  */
 export async function saveRunnerOrder(order: string[]): Promise<void> {
   state.runnerOrder = order
   render()
-  const result = await setSetting('runners.order', order, 'user')
+  const layer = settingLayer('runners.order', state.runnerOrderSource)
+  const result = await setSetting('runners.order', order, layer)
   if (!result.ok) {
     statusLine(
       '<span class="err">' + escapeHtml('order not saved: ' + failureText(result)) + '</span>',
     )
     return
   }
-  if (state.runnerOrderSource === 'project') {
-    statusLine(
-      '<span>' +
-        escapeHtml(
-          'Order saved to ' +
-            result.doc.file +
-            ". This project's config also sets runners.order, and it wins on the next start.",
-        ) +
-        '</span>',
-    )
-  } else {
-    state.runnerOrderSource = 'user'
-  }
+  state.runnerOrderSource = layer
 }
 
 /**

@@ -3,7 +3,7 @@
  * derives from here. Browser-safe: the page imports it too.
  */
 
-/** The product name: config directory, cache directory, trust store key, message prefix. */
+/** The product name: config directory, cache directory and trust store key. Messages start with {@link BIN}. */
 export const APP = 'wayfinder'
 
 /** The installed command. */

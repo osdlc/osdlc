@@ -4,16 +4,26 @@
  */
 
 import { readFile } from 'node:fs/promises'
-import { basename } from 'node:path'
+import { basename, join } from 'node:path'
 
 import { afterAll, describe, expect, test, vi } from 'vitest'
 
 import { captureIo } from '@osdlc/cli-tool'
 import { checkApp } from '@osdlc/cli-tool/testing'
 
+import { GENERATED_FILE, generatedSource } from '../scripts/write-document-schemas.ts'
 import { main } from '../src/cli.ts'
 import { createWayApp } from '../src/commands/index.ts'
-import { DOCUMENT_SCHEMAS, catalogSchema, documentZod, type DocumentKind } from '../src/schema.ts'
+import {
+  DOCUMENT_KINDS,
+  DOCUMENT_SCHEMAS,
+  DOCUMENT_VERSIONS,
+  catalogSchema,
+  cleanDocumentSchema,
+  documentZod,
+  trustDocumentSchema,
+  type DocumentKind,
+} from '../src/schema.ts'
 import { fixtureRoot, removeRoot } from './support.ts'
 
 // Each case probes a fixture repository, some several times.
@@ -105,15 +115,30 @@ describe('every command answers --json with schemaVersion and kind', () => {
 describe('./schema', () => {
   test('each exported schema is the one `way schema` prints for that command', () => {
     const { app } = createWayApp({ home: '/' })
-    const byKind: Record<DocumentKind, string[]> = {
-      catalog: ['list'],
-      query: ['query'],
-      providers: ['providers'],
-      run: ['run'],
+    const kinds = new Set<string>()
+    for (const entry of app.schema()) {
+      if (entry.kind === undefined) continue
+      kinds.add(entry.kind)
+      expect(DOCUMENT_KINDS, entry.kind).toContain(entry.kind)
+      expect(app.documentSchema(entry.path), entry.kind).toEqual(
+        DOCUMENT_SCHEMAS[entry.kind as DocumentKind],
+      )
+      expect(DOCUMENT_VERSIONS[entry.kind as DocumentKind]).toBe(entry.schemaVersion)
     }
-    for (const [kind, path] of Object.entries(byKind) as [DocumentKind, string[]][]) {
-      expect(app.documentSchema(path)).toEqual(DOCUMENT_SCHEMAS[kind])
-    }
+    // Beside the commands' documents: a failure and --version.
+    expect([...DOCUMENT_KINDS].sort()).toEqual([...kinds, 'error', 'version'].sort())
+    expect(DOCUMENT_SCHEMAS.trust).toBe(trustDocumentSchema)
+    expect(DOCUMENT_SCHEMAS.clean).toBe(cleanDocumentSchema)
+  })
+
+  test('the generated schemas are what the command tree gives now', async () => {
+    // When this fails, run `node scripts/write-document-schemas.ts` and commit the file.
+    expect(await readFile(GENERATED_FILE, 'utf8')).toBe(generatedSource())
+  })
+
+  test('--version and an error validate as their documents', async () => {
+    validates('version', JSON.parse((await way(['--version', '--json'])).out))
+    validates('error', (await way(['run', 'nothing-here', '--json'], await root(SCRIPTS))).json())
   })
 
   test("the catalog document's tasks and reports are system-model's", () => {
@@ -237,7 +262,7 @@ describe('the command line', () => {
     expect((await way(['list', '/no/such/dir'])).code).toBe(1)
   })
 
-  test('a command word after global flags is the command, for legacy commands too', async () => {
+  test('a command word after global flags is the command, for shared commands too', async () => {
     const dir = await root(SCRIPTS)
     const home = await root({})
     for (const argv of [
@@ -253,16 +278,40 @@ describe('the command line', () => {
     expect(io.out).toContain(basename(dir))
   })
 
-  test('a legacy command refuses a directory that does not exist', async () => {
+  test('a shared command refuses a directory that does not exist', async () => {
     const io = captureIo()
     expect(await main(['trust', '--show', '-C', '/no/such/dir'], {}, '/', io)).toBe(1)
     expect(io.err).toContain('no such directory')
+  })
+
+  test('a WAYFINDER_CONFIG that names a missing file stops a command with exit 1', async () => {
+    const dir = await root(SCRIPTS)
+    const io = captureIo()
+    const env = { WAYFINDER_CONFIG: join(dir, 'missing.json') }
+    expect(await main(['list', '-C', dir], env, dir, io)).toBe(1)
+    expect(io.err).toContain('names a file that does not exist')
+    expect(io.out).toBe('')
   })
 
   test('two surface flags are refused', async () => {
     const ran = await way(['--serve', '--list'])
     expect(ran.code).toBe(2)
     expect(ran.err).toContain('each choose a surface')
+    expect(ran.out).toBe('')
+  })
+
+  test('two surface flags with --json print the error document too', async () => {
+    const ran = await way(['--list', '--json'])
+    expect(ran.code).toBe(2)
+    expect(ran.err).toContain('--list and --json each choose a surface')
+    expect(JSON.parse(ran.out)).toEqual({
+      schemaVersion: 1,
+      kind: 'error',
+      code: 'usage',
+      message: '--list and --json each choose a surface; give one',
+      exit: 2,
+      hint: '"way --help" lists the commands',
+    })
   })
 
   test('the help lists the commands but not the contributor ones', async () => {

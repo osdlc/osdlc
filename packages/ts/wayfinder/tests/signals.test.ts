@@ -6,7 +6,7 @@
  */
 
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { constants, tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { afterAll, describe, expect, test } from 'vitest'
@@ -91,6 +91,8 @@ describe.skipIf(process.platform === 'win32')('signals', () => {
       process.kill(wayPid, signal)
       const res = await run
       expect(res.reason).toBeUndefined()
+      // 128 + the signal: 130 for SIGINT, 143 for SIGTERM, 129 for SIGHUP.
+      expect(res.exitCode).toBe(128 + constants.signals[signal])
       expect(await until(() => probe.every((p) => !alive(p)), 5_000)).toBe(true)
     },
     40_000,

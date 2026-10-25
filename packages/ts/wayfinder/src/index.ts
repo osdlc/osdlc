@@ -19,7 +19,7 @@ import type { TaskFilter } from './core/filter.ts'
 import { createSession, type CacheState, type SessionFlags } from './core/session.ts'
 import type { SkillRow } from './core/skills.ts'
 import type { Unknown } from './core/unknowns.ts'
-import { CATALOG_DOCUMENT_VERSION } from './documents.ts'
+import { CATALOG_DOCUMENT_VERSION, type CatalogDocumentBody } from './documents.ts'
 import type { DocumentGroup } from './groups.ts'
 
 export { SessionError, type CacheState, type SessionFlags } from './core/session.ts'
@@ -27,7 +27,7 @@ export { filterTasks, hasQuery, keepsTask, sourceDepth } from './core/filter.ts'
 export type { TaskFilter, TaskHit } from './core/filter.ts'
 export { filterSkills, skillLine, SKILLS_SETTING_VALUES } from './core/skills.ts'
 export type { SkillHit, SkillRow, SkillsSetting } from './core/skills.ts'
-export { unknownLine, unknownsOf, type Unknown } from './core/unknowns.ts'
+export { unknownLine, unknownsOf, type Unknown, type UnknownsInput } from './core/unknowns.ts'
 export {
   GROUPS,
   SKILLS_GROUP,
@@ -42,7 +42,18 @@ export { jsonText, terminalSafe } from './terminal-text.ts'
 export { toolSummary, type ToolSummary } from './tool-info.ts'
 export { ANY_LANGUAGE, languageLabel, runnerLabel, withheldLabel } from './vocabulary.ts'
 export type { WithheldReason } from './vocabulary.ts'
-export type { Catalog, DiscoveryMode, Param, RunnerReport, Task } from '@osdlc/system-model/detect'
+export type {
+  Catalog,
+  DiscoveryMode,
+  Param,
+  ParametersUnknownReason,
+  RunnerCacheState,
+  RunnerReport,
+  StaleReason,
+  Task,
+  ToolDef,
+} from '@osdlc/system-model/detect'
+export type { Mode } from '@osdlc/system-model/match'
 
 /** What {@link buildCatalog} reads, and the choices the CLI makes with flags. */
 export interface BuildCatalogOptions {
@@ -65,6 +76,11 @@ export interface BuildCatalogOptions {
   filter?: TaskFilter | undefined
   /** Stops every probe. */
   signal?: AbortSignal | undefined
+  /**
+   * Called with each warning from the config files and tool modules, such
+   * as a project file key that is ignored. The CLI prints these on stderr.
+   */
+  onWarning?: ((message: string) => void) | undefined
 }
 
 /** The catalog document: what `way list --json` prints. */
@@ -86,9 +102,25 @@ export interface CatalogDocument {
   cache: CacheState[]
   /** What could not be read, each with the label every surface shows. */
   unknowns: Unknown[]
+  /**
+   * The tool ids trusted on their own here. Empty when the repository is
+   * trusted as a whole, or trust does not decide execution.
+   */
+  trustedTools: string[]
   /** The filter applied. Absent fields were not given. */
   filter: Pick<TaskFilter, 'servicesOnly' | 'declaredOnly' | 'maxDepth'>
 }
+
+/** True when `A` and `B` have the same field names. */
+type SameKeys<A, B> = [Exclude<keyof A, keyof B>, Exclude<keyof B, keyof A>] extends [never, never]
+  ? true
+  : false
+// Fails to compile when CatalogDocument and the document schema name different fields.
+const catalogFieldsMatch: SameKeys<
+  CatalogDocument,
+  CatalogDocumentBody & { schemaVersion: number; kind: 'catalog' }
+> = true
+void catalogFieldsMatch
 
 /**
  * The catalog for `dir`, as `way list --json` builds it: the same config,
@@ -112,6 +144,7 @@ export async function buildCatalog(options: BuildCatalogOptions): Promise<Catalo
     flags: options.flags,
     signal: options.signal,
   })
+  for (const warning of session.warnings) options.onWarning?.(warning)
   const snapshot = await session.catalog({ cached: options.cached === true })
   const body = catalogDocument(
     snapshot,
@@ -119,5 +152,5 @@ export async function buildCatalog(options: BuildCatalogOptions): Promise<Catalo
     options.filter ?? {},
     session.settings().trustedTools,
   )
-  return { schemaVersion: CATALOG_DOCUMENT_VERSION, kind: 'catalog', ...body } as CatalogDocument
+  return { schemaVersion: CATALOG_DOCUMENT_VERSION, kind: 'catalog', ...body }
 }

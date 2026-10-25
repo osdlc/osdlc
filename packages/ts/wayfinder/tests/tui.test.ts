@@ -9,7 +9,7 @@ import { chmod, mkdir, readFile, realpath, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { afterAll, describe, expect, test } from 'vitest'
+import { afterAll, describe, expect, test, vi } from 'vitest'
 
 import {
   CATALOG_SCHEMA_VERSION,
@@ -25,7 +25,7 @@ import { configLocations } from '../src/config.ts'
 import { KEY_TABLE, keysFor } from '../src/keys.ts'
 import { refreshNote } from '../src/tui/app.ts'
 import { clipboardCommands, copyText, writeClipboard } from '../src/tui/copy.ts'
-import { installQuitHandlers } from '../src/tui/index.ts'
+import { installQuitHandlers, runTui } from '../src/tui/index.ts'
 import { makeStyles, stylesFor, terminalTheme } from '../src/tui/style.ts'
 import { cleanupAll, lineOf, screen, temp, testTui } from './tui-support.ts'
 
@@ -526,18 +526,31 @@ describe('copy', () => {
     'a clipboard program that leaves a child holding its output does not hold up the copy',
     async () => {
       const bin = await temp('wayfinder-clip-')
+      const pidFile = join(bin, 'child.pid')
       // As xclip does: fork a child that keeps the selection, and the pipes, then exit.
-      await writeFile(join(bin, 'xclip'), '#!/bin/sh\ncat > /dev/null\nsleep 20 &\nexit 0\n')
+      await writeFile(
+        join(bin, 'xclip'),
+        `#!/bin/sh\ncat > /dev/null\nsleep 30 &\necho $! > '${pidFile}'\nexit 0\n`,
+      )
       await chmod(join(bin, 'xclip'), 0o755)
-      const saved = process.env['PATH']
-      process.env['PATH'] = `${bin}:/usr/bin:/bin`
+      // The clipboard program is looked up on the process PATH.
+      vi.stubEnv('PATH', `${bin}:/usr/bin:/bin`)
+      let child = 0
       try {
-        const started = Date.now()
         const ok = await writeClipboard('hello', { cwd: bin, platform: 'linux', env: {} })
         expect(ok).toBe(true)
-        expect(Date.now() - started).toBeLessThan(1500)
+        child = Number((await readFile(pidFile, 'utf-8')).trim())
+        // The copy returned while the child still holds the pipes.
+        expect(() => process.kill(child, 0)).not.toThrow()
       } finally {
-        process.env['PATH'] = saved
+        vi.unstubAllEnvs()
+        if (child > 0) {
+          try {
+            process.kill(child, 'SIGKILL')
+          } catch {
+            // Already gone.
+          }
+        }
       }
     },
   )
@@ -715,6 +728,17 @@ describe('the settings screen', () => {
     expect(screen(tui)[5]).toMatch(/^> on {3}make/)
   })
 
+  test('] writes the order to the project file when that file sets it', async () => {
+    const { tui, root } = await showing(catalog(['build'], [report('just', [task('just', 'x')])]))
+    await writeFile(join(root, 'wayfinder.config.json'), '{"runners":{"order":["make","just"]}}')
+    tui.handle(',')
+    await tui.idle()
+    tui.handle(']')
+    await tui.idle()
+    expect(await projectFile(root)).toMatchObject({ runners: { order: ['just', 'make'] } })
+    expect(tui.state.message?.text).toContain('saved runners.order to')
+  })
+
   test('a write that fails is reported, and nothing else changes', async () => {
     const { tui, root } = await open()
     await mkdir(join(root, 'wayfinder.config.json'))
@@ -781,6 +805,21 @@ describe('quitting', () => {
     expect(codes).toEqual([code])
     uninstall()
     expect(target.listenerCount(signal)).toBe(0)
+  })
+
+  test('without a TTY it refuses on stderr, with the way: prefix', async () => {
+    const { tui } = await testTui()
+    const was = Object.getOwnPropertyDescriptor(process.stdin, 'isTTY')
+    Object.defineProperty(process.stdin, 'isTTY', { value: false, configurable: true })
+    const write = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+    try {
+      expect(await runTui(tui.session)).toBe(2)
+      expect(String(write.mock.calls[0]?.[0])).toMatch(/^way: the terminal UI needs a TTY/)
+    } finally {
+      write.mockRestore()
+      if (was === undefined) delete (process.stdin as { isTTY?: boolean }).isTTY
+      else Object.defineProperty(process.stdin, 'isTTY', was)
+    }
   })
 })
 
