@@ -15,6 +15,7 @@ import {
   settingValue,
   signIn,
   signedIn,
+  tokenWorks,
 } from './api.ts'
 
 async function start(): Promise<void> {
@@ -26,9 +27,11 @@ async function start(): Promise<void> {
     url.searchParams.delete('boot')
     history.replaceState(null, '', url.pathname + url.search + url.hash)
   }
-  // A boot token signs a new tab in. Without one, a reload uses the token
-  // this tab kept; the first call answers 401 if the server has restarted.
-  const ok = (boot !== null && (await signIn(boot))) || signedIn()
+  // A reload uses the token this tab kept. A boot token is spent only when
+  // the tab has no working token: redeeming one twice stops the server. The
+  // first call answers 401 if the server has restarted since.
+  const kept = signedIn() && (boot === null || (await tokenWorks()))
+  const ok = kept || (boot !== null && (await signIn(boot)))
   if (!ok) {
     showSignedOut()
     return

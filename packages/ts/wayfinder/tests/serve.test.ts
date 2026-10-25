@@ -256,6 +256,15 @@ describe('the boot token', () => {
 })
 
 describe('the command routes', () => {
+  test('config path answers a signed-in page, which the page uses to check a kept token', async () => {
+    const s = await start()
+    try {
+      expect((await s.call(['config', 'path'])).status).toBe(200)
+    } finally {
+      await s.web.stop()
+    }
+  })
+
   test('no bearer token is 401', async () => {
     const s = await start()
     try {

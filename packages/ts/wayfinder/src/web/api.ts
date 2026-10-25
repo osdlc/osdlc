@@ -78,6 +78,26 @@ export function signedIn(): boolean {
 }
 
 /**
+ * Whether the kept token still works, asked without signing out on a 401.
+ * The page asks before it spends a boot token, so a tab that is already
+ * signed in never redeems one a second time.
+ */
+export async function tokenWorks(): Promise<boolean> {
+  if (token === '') return false
+  try {
+    const res = await fetch('/api/commands/config/path', {
+      method: 'POST',
+      headers: authHeaders({ 'content-type': 'application/json' }),
+      body: '{}',
+      cache: 'no-store',
+    })
+    return res.status !== 401
+  } catch {
+    return false
+  }
+}
+
+/**
  * Forget the token and show the signed-out page. For a 401: the server was
  * restarted, so the kept token is not its token.
  */

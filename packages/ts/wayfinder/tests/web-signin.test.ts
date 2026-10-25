@@ -8,7 +8,7 @@ import { mountPage } from './dom.ts'
 
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
-import { TOKEN_KEY, call, setTokenForTest, signIn, signedIn } from '../src/web/api.ts'
+import { TOKEN_KEY, call, setTokenForTest, signIn, signedIn, tokenWorks } from '../src/web/api.ts'
 
 beforeEach(() => {
   mountPage()
@@ -74,5 +74,22 @@ describe('the session token', () => {
     expect(text).toContain('not signed in')
     expect(text).toContain('press Enter')
     expect(text).toContain('serve')
+  })
+
+  test('tokenWorks checks the kept token without signing the tab out', async () => {
+    expect(await tokenWorks()).toBe(false)
+    setTokenForTest('kept')
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('unauthorized', { status: 401 })),
+    )
+    expect(await tokenWorks()).toBe(false)
+    expect(signedIn()).toBe(true)
+    expect(document.body.textContent).not.toContain('not signed in')
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => Response.json({})),
+    )
+    expect(await tokenWorks()).toBe(true)
   })
 })
