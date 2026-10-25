@@ -78,7 +78,8 @@ export { CONFIG_ENV_VAR, PROJECT_CONFIG_FILENAME, USER_CONFIG_FILENAME }
 
 /**
  * The URL a written file's `$schema` names: the schema this release line ships
- * in `schema/config.json`. Raise it with each minor release.
+ * in `schema/config.json`. Raise it with each minor release, here, in
+ * `schema/config.json` and in the configuration guide; tests check all three.
  */
 export const CONFIG_SCHEMA_URL = 'https://unpkg.com/@osdlc/wayfinder@0.9/schema/config.json'
 
