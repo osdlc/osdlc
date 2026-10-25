@@ -48,18 +48,21 @@ async function start(): Promise<void> {
   ;($('q') as HTMLInputElement).focus()
 
   // The server's held catalog first, so the page has rows at once; then a
-  // fresh read, which joins the probe the server started.
+  // fresh read, which joins the probe the server started. With nothing
+  // held, the first read is that probe, and each runner shows as it answers.
   // The catalog arrives in the configured runner order. The setting itself
   // is read beside it, so a drag knows which layer set it. The tool info is
   // for the runner info and settings, which are opened later.
-  const [config] = await Promise.all([readConfig(), load({ cached: true }), loadTools()])
+  const config = readConfig().then((config) => {
+    const order = settingValue(config, 'runners.order')
+    if (Array.isArray(order)) {
+      state.runnerOrder = order.filter((r): r is string => typeof r === 'string')
+    }
+    state.runnerOrderSource = settingSource(config, 'runners.order')
+  })
+  await Promise.all([config, load({ cached: true }), loadTools()])
   if (!signedIn()) return
-  const order = settingValue(config, 'runners.order')
-  if (Array.isArray(order)) {
-    state.runnerOrder = order.filter((r): r is string => typeof r === 'string')
-  }
-  state.runnerOrderSource = settingSource(config, 'runners.order')
-  await load({ join: true })
+  if (state.catalog?.source !== 'fresh') await load({ join: true })
 }
 
 void start()

@@ -9,12 +9,17 @@ import type { Catalog } from '@osdlc/system-model/detect'
 import { documentGroups } from '../groups.ts'
 import { filterTasks, type TaskFilter } from '../core/filter.ts'
 import { filterSkills, skillLine, type SkillRow } from '../core/skills.ts'
-import type { CatalogSnapshot, Session } from '../core/session.ts'
+import type { CatalogProgress, CatalogSnapshot, Session } from '../core/session.ts'
 import type { Unknown } from '../core/unknowns.ts'
-import { CATALOG_DOCUMENT_VERSION, CatalogOutput, type CatalogDocumentBody } from '../documents.ts'
+import {
+  CATALOG_DOCUMENT_VERSION,
+  CatalogOutput,
+  CatalogProgressOutput,
+  type CatalogDocumentBody,
+} from '../documents.ts'
 import type { CatalogDocument } from '../index.ts'
 import { taskLine } from '../core/copy-text.ts'
-import type { CatalogShare } from '../serve/catalog-share.ts'
+import type { CatalogShare, ProgressSink } from '../serve/catalog-share.ts'
 import { terminalSafe } from '../terminal-text.ts'
 import { FILTER_FLAGS, filterFrom, kit, noteUnknowns, openSession } from './shared.ts'
 
@@ -73,6 +78,27 @@ export function sourceOf(snapshot: Pick<CatalogSnapshot, 'catalog' | 'origin'>):
     : { source: 'fresh', storedAt: null }
 }
 
+/**
+ * A {@link CatalogProgress} that sends `session`'s probe as progress lines:
+ * the runners first, then each runner as it answers, with its unknowns.
+ */
+export function progressLines(session: Session, emit: ProgressSink): CatalogProgress {
+  let pending: string[] = []
+  let total = 0
+  return {
+    onRunners(runners) {
+      pending = [...runners]
+      total = runners.length
+      emit({ pending: [...pending], total })
+    },
+    onRunner(report, cache) {
+      pending = pending.filter((r) => r !== report.runner)
+      const unknowns = session.unknowns({ catalog: { reports: [report] }, cache: [cache] })
+      emit({ pending: [...pending], total, report, cache, unknowns })
+    },
+  }
+}
+
 /** Every task in the document, in catalog order. */
 function documentTasks(doc: CatalogDocumentBody): Catalog['reports'][number]['tasks'] {
   return (doc.reports as Catalog['reports']).flatMap((r) => r.tasks)
@@ -110,10 +136,16 @@ export function listCommand(home: string, share?: CatalogShare) {
         hidden: true,
         help: 'in the web view, answer with a probe already running for the same catalog',
       },
+      progress: {
+        kind: 'boolean',
+        hidden: true,
+        help: 'in the web view, send a catalog-progress event for each runner as it answers',
+      },
     },
     output: CatalogOutput,
     kind: 'catalog',
     schemaVersion: CATALOG_DOCUMENT_VERSION,
+    events: { schema: CatalogProgressOutput, kind: 'catalog-progress' },
     items: { field: 'reports', kind: 'report' },
     readOnly: true,
     examples: ['list', 'list --json', 'list --services', '-C ../repo list --cached --json'],
@@ -129,21 +161,39 @@ export function listCommand(home: string, share?: CatalogShare) {
         home,
         positionals[0],
       )
-      const read = async (cached: boolean, signal?: AbortSignal): Promise<CatalogBody> => {
-        const snapshot = await session.catalog({ cached, signal })
+      // Progress lines only when asked for, so --output jsonl is unchanged.
+      const own: ProgressSink | undefined = flags.progress ? (line) => ctx.emit(line) : undefined
+      const read = async (
+        cached: boolean,
+        signal?: AbortSignal,
+        emit?: ProgressSink,
+      ): Promise<CatalogBody> => {
+        const snapshot = await session.catalog({
+          cached,
+          signal,
+          ...(emit !== undefined ? { progress: progressLines(session, emit) } : {}),
+        })
         const unknowns = session.unknowns(snapshot)
         noteUnknowns(ctx, session, snapshot, unknowns)
         return catalogDocument(snapshot, unknowns, filter, session.settings().trustedTools)
       }
       if (sharing) {
         const key = session.viewKey()
-        if (flags.cached) return share.cached(key) ?? read(true, ctx.signal)
-        return share.fresh(key, (signal) => read(false, signal), {
-          join: flags.join,
-          signal: ctx.signal,
-        })
+        const shared = (join: boolean): Promise<CatalogBody> =>
+          share.fresh(key, (signal, emit) => read(false, signal, emit), {
+            join,
+            signal: ctx.signal,
+            onEvent: own,
+          })
+        if (flags.cached) {
+          // With nothing held yet, the probe serve started is the answer.
+          const held = share.cached(key)
+          if (held !== null) return held
+          return share.probing(key) ? shared(true) : read(true, ctx.signal, own)
+        }
+        return shared(flags.join)
       }
-      return read(flags.cached)
+      return read(flags.cached, undefined, own)
     },
     text(doc) {
       const lines = [

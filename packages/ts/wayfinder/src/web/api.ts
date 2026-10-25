@@ -6,11 +6,16 @@
  * command each action is lives in `../actions.ts`, where a test checks it.
  */
 
+import type { RunnerCacheState, RunnerReport } from '@osdlc/system-model/detect'
+import { CATALOG_SCHEMA_VERSION } from '@osdlc/system-model/schema'
+
 import type { Unknown } from '../core/unknowns.ts'
+import type { CatalogProgressBody } from '../documents.ts'
 import { APP } from '../app.ts'
 import { $, state, type CatalogDocument, type ToolInfo } from './state.ts'
 import {
   escapeHtml,
+  refreshStatus,
   render,
   renderStatus,
   renderTrustBar,
@@ -20,6 +25,9 @@ import {
 } from './view.ts'
 
 // ---------------------------------------------------------------- auth
+
+/** The media type of a streamed answer: one JSON line per event, then the document. */
+const NDJSON = 'application/x-ndjson'
 
 /** Where the bearer token is kept for this tab. */
 export const TOKEN_KEY = `${APP}.token`
@@ -126,14 +134,60 @@ export type CallResult<T> =
   | { ok: true; doc: T }
   | { ok: false; status: number; message: string; hint?: string; code?: string; nonce?: string }
 
+/** The events a streamed call asks for: their `kind`, and what gets each one. */
+export interface EventListener {
+  kind: string
+  on(line: Record<string, unknown>): void
+}
+
+/**
+ * Read an NDJSON body: each line of the events' kind goes to `events` as it
+ * comes, and the other line, the document or the error, is the result. Null
+ * when the stream ends without one.
+ */
+async function readLines(
+  body: ReadableStream<Uint8Array>,
+  events: EventListener,
+): Promise<Record<string, unknown> | null> {
+  const reader = body.getReader()
+  const decoder = new TextDecoder()
+  let buffered = ''
+  let last: Record<string, unknown> | null = null
+  const take = (text: string): void => {
+    if (text.trim() === '') return
+    const line = JSON.parse(text) as Record<string, unknown>
+    if (line['kind'] === events.kind) events.on(line)
+    else last = line
+  }
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffered += decoder.decode(value, { stream: true })
+      let at: number
+      while ((at = buffered.indexOf('\n')) !== -1) {
+        take(buffered.slice(0, at))
+        buffered = buffered.slice(at + 1)
+      }
+    }
+    take(buffered + decoder.decode())
+  } catch {
+    return null
+  }
+  return last
+}
+
 /**
  * Run `way <words...>` with `args`, the JSON form of its flags and
- * positionals. `confirm` is the nonce of a confirmed 428.
+ * positionals. `confirm` is the nonce of a confirmed 428. With `events`,
+ * the answer streams as NDJSON: each event line goes to `events.on` as it
+ * comes, and the document is the last line.
  */
 export async function call<T>(
   words: readonly string[],
   args: Record<string, unknown> = {},
   confirm?: string,
+  events?: EventListener,
 ): Promise<CallResult<T>> {
   let res: Response
   try {
@@ -142,6 +196,7 @@ export async function call<T>(
       headers: authHeaders({
         'content-type': 'application/json',
         ...(confirm !== undefined ? { 'x-confirm': confirm } : {}),
+        ...(events !== undefined ? { accept: NDJSON } : {}),
       }),
       body: JSON.stringify(args),
       cache: 'no-store',
@@ -150,6 +205,23 @@ export async function call<T>(
     return { ok: false, status: 0, message: 'the server is gone' }
   }
   if (res.status === 401) signOut()
+  // A call that sent no event answers with one JSON document, even when asked to stream.
+  const streamed =
+    events !== undefined &&
+    res.ok &&
+    res.body !== null &&
+    (res.headers.get('content-type') ?? '').includes(NDJSON)
+  if (streamed) {
+    const last = await readLines(res.body!, events!)
+    if (last === null) return { ok: false, status: 0, message: 'the server is gone' }
+    if (last['kind'] !== 'error') return { ok: true, doc: last as T }
+    return {
+      ok: false,
+      status: 500,
+      message: typeof last['message'] === 'string' ? last['message'] : 'the command failed',
+      ...(typeof last['hint'] === 'string' ? { hint: last['hint'] } : {}),
+    }
+  }
   const body = (await res.json().catch(() => null)) as Record<string, unknown> | null
   if (res.ok && body !== null) return { ok: true, doc: body as T }
   const text = (key: string): string | undefined =>
@@ -235,15 +307,88 @@ export async function load(opts: { cached?: boolean; join?: boolean } = {}): Pro
   }
 }
 
+/**
+ * One progress line of a probe. While nothing else is on screen, the runner
+ * that answered joins the catalog and the page draws it; otherwise only the
+ * count of runners still loading moves.
+ */
+function onProgress(line: Record<string, unknown>): void {
+  const event = line as unknown as CatalogProgressBody
+  state.pending = event.pending
+  state.expected = event.total
+  if (!state.live) return
+  const report = event.report as RunnerReport | undefined
+  const base: CatalogDocument = state.catalog ?? {
+    kind: 'catalog',
+    schemaVersion: CATALOG_SCHEMA_VERSION,
+    root: '',
+    generatedAt: new Date().toISOString(),
+    discovery: 'git',
+    allowExec: false,
+    reports: [],
+    cache: [],
+    unknowns: [],
+    skills: [],
+  }
+  if (report === undefined) {
+    state.catalog = base
+  } else {
+    const others = <T extends { runner: string }>(list: readonly T[] | undefined): T[] =>
+      (list ?? []).filter((r) => r.runner !== report.runner)
+    state.catalog = {
+      ...base,
+      reports: [...others(base.reports), report],
+      cache: [...others(base.cache), ...(event.cache ? [event.cache as RunnerCacheState] : [])],
+      unknowns: [...others(base.unknowns), ...((event.unknowns ?? []) as Unknown[])],
+    }
+    state.cache = state.catalog.cache ?? []
+    state.unknowns = state.catalog.unknowns ?? []
+    state.trustable = trustableFrom(state.unknowns)
+  }
+  scheduleRender()
+}
+
+/** Set while a render for progress lines waits, so a burst of lines draws once. */
+let renderQueued = false
+
+/**
+ * Draw the progress lines that arrived, once per 50 ms at most: a render
+ * rebuilds every row, and runners often answer together. Skipped when the
+ * load has ended, since its own render drew the whole answer.
+ */
+function scheduleRender(): void {
+  if (renderQueued) return
+  renderQueued = true
+  setTimeout(() => {
+    renderQueued = false
+    if (state.live) render()
+  }, 50)
+}
+
 async function loadOnce(opts: { cached?: boolean; join?: boolean }): Promise<void> {
+  // With nothing on screen, each runner is drawn as it answers.
+  const live = state.catalog === null
   const args = {
     ...(opts.cached === true ? { cached: true } : {}),
     ...(opts.join === true ? { join: true } : {}),
+    ...(live ? { progress: true } : {}),
   }
   state.loading = true
-  const result = await call<CatalogDocument>(['list'], args)
+  state.live = live
+  state.pending = []
+  if (live) render()
+  refreshStatus()
+  const result = await call<CatalogDocument>(
+    ['list'],
+    args,
+    undefined,
+    live ? { kind: 'catalog-progress', on: onProgress } : undefined,
+  )
   state.loading = false
+  state.live = false
+  state.pending = []
   if (!result.ok) {
+    // Rows a failed probe already sent stay on screen; the status says it failed.
     showError(
       'refresh failed',
       result.status === 0 ? 'the server is gone (is it still running?)' : failureText(result),

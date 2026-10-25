@@ -68,6 +68,33 @@ function validates(kind: DocumentKind, doc: unknown): void {
   expect(checked.success, checked.success ? '' : checked.error.message).toBe(true)
 }
 
+describe('list progress lines', () => {
+  test('list --json is one document, and --output jsonl has no progress lines', async () => {
+    const dir = await root(SCRIPTS)
+    const json = await way(['list', '--json'], dir)
+    expect(json.json()['kind']).toBe('catalog')
+    const lines = (await way(['list', '--output', 'jsonl'], dir)).out.trim().split('\n')
+    expect(lines.map((l) => (JSON.parse(l) as { kind: string }).kind)).toEqual(
+      lines.map(() => 'report'),
+    )
+  })
+
+  test('the hidden --progress sends a line per runner before the reports', async () => {
+    const dir = await root(SCRIPTS)
+    const lines = (await way(['list', '--progress', '--output', 'jsonl'], dir)).out
+      .trim()
+      .split('\n')
+      .map((l) => JSON.parse(l) as Record<string, unknown>)
+    const progress = lines.filter((l) => l['kind'] === 'catalog-progress')
+    const reports = lines.filter((l) => l['kind'] === 'report')
+    expect(progress.length).toBe(reports.length + 1)
+    expect(lines.indexOf(progress.at(-1)!)).toBeLessThan(lines.indexOf(reports[0]!))
+    // A withheld runner's line carries its reason.
+    const mise = progress.find((l) => (l['report'] as { runner?: string })?.runner === 'mise')
+    expect((mise!['unknowns'] as { kind: string }[]).map((u) => u.kind)).toContain('withheld')
+  })
+})
+
 describe('every command answers --json with schemaVersion and kind', () => {
   test('list, query, providers and run --dry-run each print a document that validates', async () => {
     const dir = await root(SCRIPTS)

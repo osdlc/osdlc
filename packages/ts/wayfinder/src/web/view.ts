@@ -1012,10 +1012,51 @@ function hasInfo(runner: string): boolean {
   return chainOf(runner).length > 0 || toolInfo(runner) !== undefined
 }
 
+/** The runners the first probe will report but has not heard from, in display order. */
+function stillLoading(reports: readonly RunnerReport[]): string[] {
+  if (!state.live) return []
+  const answered = new Set(reports.map((r) => r.runner))
+  return state.pending.filter((r) => !answered.has(r)).sort((a, b) => groupRank(a) - groupRank(b))
+}
+
+/**
+ * A quiet tab for each runner still loading, after the runners that
+ * answered. It is not a button: there is nothing to select yet.
+ */
+function loadingTabs(reports: readonly RunnerReport[]): string {
+  return stillLoading(reports)
+    .map(
+      (r) =>
+        '<span class="tab tab-loading" aria-busy="true" title="' +
+        escapeHtml(runnerLabel(r)) +
+        ' is loading">' +
+        escapeHtml(runnerLabel(r)) +
+        '<span class="spinner" aria-hidden="true"></span></span>',
+    )
+    .join('')
+}
+
+/** A row for each runner still loading, after the rows of those that answered. */
+function loadingRows(runners: readonly string[]): string {
+  if (runners.length === 0) return ''
+  return (
+    '<div class="loading-rows" aria-busy="true">' +
+    runners
+      .map(
+        (r) =>
+          '<div class="loading-row"><span class="spinner" aria-hidden="true"></span>' +
+          escapeHtml(runnerLabel(r)) +
+          ' <span class="muted">loading…</span></div>',
+      )
+      .join('') +
+    '</div>'
+  )
+}
+
 export function render(): void {
   const cat = state.catalog
   if (!cat) {
-    $('out').innerHTML = '<div class="empty">Loading...</div>'
+    $('out').innerHTML = '<div class="empty">Loading…</div>'
     return
   }
   // Column widths are computed from this, so it must be measured before the
@@ -1139,6 +1180,7 @@ export function render(): void {
         return header + '<span class="tab">' + btn + info + '</span>'
       })
       .join('') +
+    loadingTabs(cat.reports) +
     skillsTab(skillsTotal) +
     foldedChip(foldable)
   keepSelectedTabInView()
@@ -1208,12 +1250,15 @@ export function render(): void {
     }
   }
   const onSkills = state.runner === SKILLS
+  const loading = state.runner === ALL ? stillLoading(cat.reports) : []
   if (rows.length === 0 && skills.length === 0) {
     const noun = onSkills ? SKILL_NOUN.one : TASK_NOUN.one
-    html +=
-      '<div class="empty">' +
-      (inScope || skillCounts.total ? 'No ' + noun + ' matches.' : 'Nothing collected.') +
-      '</div>'
+    if (loading.length === 0) {
+      html +=
+        '<div class="empty">' +
+        (inScope || skillCounts.total ? 'No ' + noun + ' matches.' : 'Nothing collected.') +
+        '</div>'
+    }
   } else if (terms.length) {
     // Searching ranks results, best first, so the tree gives way to a flat
     // list. Tasks and skills are scored by the same matcher, so they merge.
@@ -1236,6 +1281,7 @@ export function render(): void {
   } else {
     html += renderNode(buildTree(rows), []) + (skills.length > 0 ? skillsNode(skills) : '')
   }
+  html += loadingRows(loading)
   // Whether focus is in the list must be read before the html is replaced,
   // because replacing it moves focus to <body>. Focus is restored only if it
   // was in the list. Restoring it always would take focus from the search box
@@ -1800,7 +1846,32 @@ export function renderTrustBar(): void {
  * look like nothing happened, and the timestamp would show data as older than
  * it is.
  */
+/** The counts the status line showed last, for {@link refreshStatus}. */
+let lastCounts = { shown: 0, total: 0 }
+
+/** The status line again with the counts it showed last: a load started or ended. */
+export function refreshStatus(): void {
+  renderStatus(lastCounts.shown, lastCounts.total)
+}
+
+/** What the status line says about a probe running: what is still loading, or that it refreshes. */
+function loadingText(): string {
+  if (state.live) {
+    if (state.pending.length === 0) return 'loading…'
+    return (
+      'loading ' +
+      state.pending.length +
+      ' of ' +
+      state.expected +
+      ': ' +
+      escapeHtml(state.pending.map(runnerLabel).join(', '))
+    )
+  }
+  return state.loading ? ' - refreshing…' : ''
+}
+
 export function renderStatus(shown: number, total: number): void {
+  lastCounts = { shown, total }
   const errs = (state.catalog?.reports || [])
     .filter((s) => s.status === 'error')
     .map((s) => s.runner)
@@ -1816,10 +1887,12 @@ export function renderStatus(shown: number, total: number): void {
           ? ', ' + skillCounts.shown + ' of ' + escapeHtml(countSkills(skillCounts.total))
           : '')) +
     '</span>' +
-    '<span>checked ' +
-    new Date(state.checkedAt).toLocaleTimeString() +
-    (state.loading ? ' - refreshing' : '') +
-    '</span>' +
+    (state.live
+      ? '<span class="loading-note" role="status">' + loadingText() + '</span>'
+      : '<span>checked ' +
+        new Date(state.checkedAt).toLocaleTimeString() +
+        loadingText() +
+        '</span>') +
     cacheSpan(state.cache) +
     (errs.length
       ? '<span class="err">probe failed: ' +

@@ -137,6 +137,23 @@ export const CatalogOutput = z.object({
   filter: FilterZ,
 })
 
+/**
+ * One line `list --progress` sends while it probes, before the catalog
+ * document: which runners have not answered, and the one that just did.
+ */
+export const CatalogProgressOutput = z.object({
+  pending: z.array(z.string()).describe('The runners that have not answered yet, in report order.'),
+  total: z.number().int().describe('How many runners the probe reports.'),
+  report: RunnerReportZ.optional().describe(
+    'The runner that answered. Absent on the first line, which only names the runners.',
+  ),
+  cache: CacheStateZ.optional().describe("The answered runner's cache verdict."),
+  unknowns: z
+    .array(UnknownZ)
+    .optional()
+    .describe('What could not be read about the answered runner.'),
+})
+
 /** The catalog document's `schemaVersion`: the catalog's own. */
 export const CATALOG_DOCUMENT_VERSION = CATALOG_SCHEMA_VERSION
 
@@ -197,6 +214,7 @@ export const RunOutput = z.object({
 })
 
 export type CatalogDocumentBody = z.input<typeof CatalogOutput>
+export type CatalogProgressBody = z.input<typeof CatalogProgressOutput>
 export type QueryDocumentBody = z.input<typeof QueryOutput>
 export type ProvidersDocumentBody = z.input<typeof ProvidersOutput>
 export type RunDocumentBody = z.input<typeof RunOutput>

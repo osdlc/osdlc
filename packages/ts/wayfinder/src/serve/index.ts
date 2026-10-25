@@ -16,7 +16,7 @@ import { humanAge } from '@osdlc/system-model/duration'
 
 import { APP, BIN } from '../app.ts'
 import { handOff as defaultHandOff, type HandOffResult } from '../core/run.ts'
-import { catalogDocument } from '../commands/list.ts'
+import { catalogDocument, progressLines } from '../commands/list.ts'
 import type { CatalogSnapshot, Session } from '../core/session.ts'
 import type { RunDocumentBody } from '../documents.ts'
 import { buildPage } from '../page.ts'
@@ -225,12 +225,22 @@ export async function startServer(options: ServeOptions): Promise<WebServer> {
 
 /**
  * The first lines `serve` prints: the address, the root, what was collected
- * and what came from the store. Repository text in them is terminal-safe.
+ * and what came from the store. With nothing saved (`first` null), `root`
+ * and that the page shows each runner as it answers. Repository text in them
+ * is terminal-safe.
  */
 export function startupSummary(
   address: string,
-  first: Omit<CatalogSnapshot, 'origin'> & { origin?: CatalogSnapshot['origin'] },
+  first: (Omit<CatalogSnapshot, 'origin'> & { origin?: CatalogSnapshot['origin'] }) | null,
+  root = first?.catalog.root ?? '',
 ): string {
+  if (first === null) {
+    return (
+      `${APP}  ${address}\n` +
+      `  root       ${terminalSafe(root)}\n` +
+      `  collected  nothing yet; the page shows each runner as it answers\n`
+    )
+  }
   // A withheld runner reports `absent`. It is named withheld here, because
   // absent means the repository does not have it.
   const counts = first.catalog.reports
@@ -274,28 +284,33 @@ export async function serve(options: ServeOptions): Promise<number | null> {
   const web = await startServer(options)
   const address = web.server.url
   const bootUrl = (): string => `${address}/?boot=${web.signIn.bootToken}`
-  // The saved view when there is one, else the store, so the address shows
-  // at once. A probe starts now; the page's first fresh read joins it.
+  // The saved view when there is one, so the address shows at once. A probe
+  // starts now; the page's first reads join it, and without a saved view
+  // the page shows each runner as it answers. Without a share (tests), the
+  // store, then a probe.
   const session = options.session
-  const first = (await session.savedCatalog()) ?? (await session.catalog({ cached: true }))
   const share = options.share
+  const saved = await session.savedCatalog()
+  const first = saved ?? (share === undefined ? await session.catalog({ cached: true }) : null)
   if (share !== undefined) {
     const key = session.viewKey()
     const documentOf = (snapshot: CatalogSnapshot) =>
       catalogDocument(snapshot, session.unknowns(snapshot), {}, session.settings().trustedTools)
-    share.remember(key, documentOf(first))
+    if (first !== null) share.remember(key, documentOf(first))
     share.activate()
     // It waits on the share's own signal, so it runs to the end unless the
     // server stops, as on a hand-off.
     void share
-      .fresh(key, async (signal) => documentOf(await session.catalog({ signal })), {
-        join: true,
-        signal: share.signal,
-      })
+      .fresh(
+        key,
+        async (signal, emit) =>
+          documentOf(await session.catalog({ signal, progress: progressLines(session, emit) })),
+        { join: true, signal: share.signal },
+      )
       .catch(() => {})
   }
   web.signIn.arm()
-  options.stdout(startupSummary(address, first))
+  options.stdout(startupSummary(address, first, session.root))
   options.stdout(`  live       the page refreshes on focus and every 15s; Refresh re-reads\n`)
   options.stdout(`  stop       Ctrl-C\n`)
   /** Open the current link, or print it when there is no browser to open. */

@@ -682,6 +682,52 @@ main {
   color: var(--wf-text-muted);
 }
 
+/* A runner the first probe has not heard from yet: a quiet tab and a row,
+     each with a spinner, until its rows arrive. */
+.tab-loading {
+  font: 13px/1 system-ui;
+  padding: 9px 14px;
+  color: var(--wf-text-muted);
+  white-space: nowrap;
+  gap: 6px;
+}
+.loading-rows {
+  padding: 8px 0;
+}
+.loading-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  color: var(--wf-text-secondary);
+}
+.loading-row .muted {
+  color: var(--wf-text-muted);
+}
+.loading-note {
+  color: var(--wf-text-secondary);
+}
+.spinner {
+  width: 10px;
+  height: 10px;
+  flex: none;
+  border-radius: 50%;
+  border: 2px solid var(--wf-control-border);
+  border-top-color: var(--wf-accent);
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+    border-top-color: var(--wf-control-border);
+  }
+}
+
 /* The call-chain tree: each level indents one step, and leaves are table
      rows. Every header sticks below the sticky header and below its own
      parents, at a top offset this depth's inline style sets. A header stops
