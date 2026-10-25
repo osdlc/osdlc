@@ -13,6 +13,9 @@ import {
   createProject,
   DEFAULT_EXCLUDES,
   evidence,
+  MAX_READ_BYTES,
+  MAX_WALK_DEPTH,
+  MAX_WALK_FILES,
   type CargoFact,
   type DepFact,
   type DepFactKind,
@@ -124,6 +127,16 @@ test('excludes skip data trees', async () => {
   expect(DEFAULT_EXCLUDES).toContain('node_modules')
   const profile = await project.detect(root, { ...walk, excludePaths: ['fixtures'] })
   expect(profile.ecosystems).toEqual(['node'])
+})
+
+test('reads and the walk are bounded', async () => {
+  // A file over MAX_READ_BYTES is not read. A walk that reaches MAX_WALK_FILES
+  // or MAX_WALK_DEPTH says so in `profile.diagnostics`.
+  const root = repo({ 'package.json': ' '.repeat(MAX_READ_BYTES + 1) })
+  const profile = await project.detect(root, walk)
+  expect(profile.malformed[0]?.error).toMatch(/larger than/)
+  expect(profile.diagnostics).toEqual([])
+  expect([MAX_WALK_FILES, MAX_WALK_DEPTH]).toEqual([50_000, 32])
 })
 
 test('findRoot walks up to the repository root', async () => {

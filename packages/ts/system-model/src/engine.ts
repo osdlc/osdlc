@@ -69,5 +69,6 @@ export type { PackageManagerChoice, ToolAction } from './roles.ts'
 export type { PinnedInstall, PinnedInstallOptions, PinnedSource } from './pinned.ts'
 export type { CachedCatalog, RunnerCacheState, StaleReason } from './cached.ts'
 
-export { DEFAULT_EXCLUDES } from './discovery.ts'
+export { DEFAULT_EXCLUDES, MAX_WALK_DEPTH, MAX_WALK_FILES } from './discovery.ts'
+export { MAX_READ_BYTES } from './read.ts'
 export { SYNTHESIZED_RUNNERS } from './synthesized.ts'

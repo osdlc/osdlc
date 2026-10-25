@@ -10,7 +10,14 @@
 import type { Evidence, EvidenceKind } from './aspect.ts'
 import type { ProviderContext, ProviderKind, RunnerContext } from './contract.ts'
 import type { ManifestFacts } from './manifests.ts'
-import type { ChainSegment, DiscoveryMode, ProviderResult, RunnerBrand, Task } from './model.ts'
+import type {
+  ChainSegment,
+  Diagnostic,
+  DiscoveryMode,
+  ProviderResult,
+  RunnerBrand,
+  Task,
+} from './model.ts'
 
 /**
  * A file pattern that indicates a tool is in use, and the evidence kind a
@@ -292,4 +299,10 @@ export interface ProjectProfile {
   languages: string[]
   tools: string[]
   malformed: MalformedManifest[]
+  /**
+   * What detection could not cover, such as a directory walk that stopped at
+   * `MAX_WALK_FILES` or `MAX_WALK_DEPTH`. Always set by `detect`; optional so
+   * a profile stored by an older version still reads.
+   */
+  diagnostics?: Diagnostic[] | undefined
 }

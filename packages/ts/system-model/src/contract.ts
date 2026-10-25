@@ -46,9 +46,13 @@ export interface ProviderContext {
    * directory. `*` matches within one path segment.
    */
   files(pattern: string): Promise<string[]>
-  /** Read and parse a JSON file, root-relative. `null` when absent or malformed. */
+  /** Read and parse a JSON file, root-relative. `null` when `readText` gives `null` or the JSON is malformed. */
   readJson(relPath: string): Promise<unknown>
-  /** Read a text file, root-relative. `null` when absent. */
+  /**
+   * Read a text file, root-relative. `null` when it is absent, is not a
+   * regular file, is a symlink that leaves the root, or is larger than
+   * `MAX_READ_BYTES`.
+   */
   readText(relPath: string): Promise<string | null>
   /** True when a root-relative path exists. */
   exists(relPath: string): Promise<boolean>
