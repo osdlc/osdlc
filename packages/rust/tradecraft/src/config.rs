@@ -213,8 +213,10 @@ fn machine_file() -> MachineConfigFile<TradecraftConfig> {
 static MACHINE_CONFIG_OVERRIDE: Mutex<Option<PathBuf>> = Mutex::new(None);
 
 /// Set or clear the machine-file override for this process and return the
-/// previous one. For tests only: a test that sets it must hold its own lock
-/// for as long as the override is in place.
+/// previous one. For tests only, behind the `test-support` feature: a test
+/// that sets it must hold its own lock for as long as the override is in
+/// place. Not part of the API.
+#[cfg(any(test, feature = "test-support"))]
 #[doc(hidden)]
 pub fn replace_machine_config_override(path: Option<PathBuf>) -> Option<PathBuf> {
     let mut slot = MACHINE_CONFIG_OVERRIDE
@@ -224,7 +226,8 @@ pub fn replace_machine_config_override(path: Option<PathBuf>) -> Option<PathBuf>
 }
 
 /// `<config-home>/agent-pants/config.yaml`, unless [`MACHINE_CONFIG_ENV`]
-/// says otherwise.
+/// says otherwise. A test override, set with the `test-support` feature,
+/// comes before both.
 pub fn machine_config_path() -> PathBuf {
     let over = MACHINE_CONFIG_OVERRIDE
         .lock()

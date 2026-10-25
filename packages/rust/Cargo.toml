@@ -25,12 +25,12 @@ unsafe_code = "forbid"
 missing_docs = "warn"
 
 [workspace.dependencies]
-# Pinned exactly: the line numbers markdown-contract reports are part of its
-# contract with @osdlc/markdown-contract, and a comrak release can move them.
 # `derive` for the tradecraft CLI's argument structs.
 clap = { version = "4.5.40", features = ["derive"] }
 # The RFC 3339 timestamps tradecraft writes.
 chrono = { version = "0.4.41", default-features = false, features = ["clock", "std"] }
+# Pinned exactly: the line numbers markdown-contract reports are part of its
+# contract with @osdlc/markdown-contract, and a comrak release can move them.
 comrak = { version = "=0.53.0", default-features = false }
 globset = { version = "0.4", default-features = false }
 # js-sys 0.3.103 is the release that pairs with wasm-bindgen 0.2.126.
