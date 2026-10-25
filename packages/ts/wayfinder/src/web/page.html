@@ -1,12 +1,7 @@
 <!doctype html>
 <meta charset="utf-8" />
-<title>wayfinder</title>
+<title>@APP@</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<!-- buildPage does not fill in this meta tag. It injects the session token
-     as an inline script at the TOKEN placeholder at the end of this file.
-     Every request carries the token (see authFetch in web/api.ts), and a
-     page from another origin cannot read it. -->
-<meta name="wayfinder-token" content="@TOKEN@" />
 <!-- @STYLE@ -->
 
 <div id="chrome">
@@ -24,7 +19,7 @@
           autocomplete="off"
           spellcheck="false"
           autofocus
-          placeholder="Search commands - terms are ANDed, a leading quote forces an exact term"
+          placeholder="Search tasks - terms are ANDed, a leading quote forces an exact term"
         />
         <div
           class="seg inline"
@@ -35,7 +30,17 @@
           <button data-mode="exact" aria-pressed="false">Exact</button>
         </div>
       </div>
-      <div class="cluster" role="group" aria-labelledby="scope-label">
+      <!-- At phone width the filters fold behind this one button. -->
+      <button
+        class="toolbtn"
+        id="filtersbtn"
+        aria-expanded="false"
+        aria-controls="filters"
+        title="Scope, Services, Declared and Runners"
+      >
+        Filters
+      </button>
+      <div class="cluster filters" id="filters" role="group" aria-labelledby="scope-label">
         <span class="cluster-label" id="scope-label">Scope</span>
         <div
           class="seg"
@@ -70,26 +75,28 @@
         <button class="toolbtn" id="expand" title="Expand or collapse every group">Collapse</button>
         <button class="toolbtn" id="refresh" title="Re-probe every runner now">Refresh</button>
       </div>
-      <button
-        class="toolbtn iconbtn"
-        id="theme"
-        data-theme-choice="system"
-        title="Colour scheme: System (follows your OS). Click for Light."
-        aria-label="Colour scheme: System. Click for Light."
-      >
-        ◐
-      </button>
-      <button
-        class="helpbtn"
-        id="settingsbtn"
-        title="This project's wayfinder configuration"
-        aria-label="Settings"
-      >
-        ⚙
-      </button>
-      <button class="helpbtn" id="helpbtn" title="What all of this means" aria-label="Help">
-        ?
-      </button>
+      <div class="cluster tools">
+        <button
+          class="toolbtn iconbtn"
+          id="theme"
+          data-theme-choice="system"
+          title="Colour scheme: System (follows your OS). Click for Light."
+          aria-label="Colour scheme: System. Click for Light."
+        >
+          ◐
+        </button>
+        <button
+          class="helpbtn"
+          id="settingsbtn"
+          title="This project's @APP@ configuration"
+          aria-label="Settings"
+        >
+          ⚙
+        </button>
+        <button class="helpbtn" id="helpbtn" title="What all of this means" aria-label="Help">
+          ?
+        </button>
+      </div>
     </div>
     <div class="tabs" id="tabs"></div>
   </header>
@@ -97,15 +104,14 @@
 </div>
 <main id="out"></main>
 
-<dialog id="help">
-  <div class="help-body" id="help-body"></div>
+<dialog id="help" aria-labelledby="help-title">
+  <div class="help-body" id="help-body" tabindex="-1"></div>
   <form method="dialog"><button class="toolbtn">Close</button></form>
 </dialog>
 
-<dialog id="settings">
-  <div class="settings-body" id="settings-body"></div>
+<dialog id="settings" aria-label="Settings">
+  <div class="settings-body" id="settings-body" tabindex="-1"></div>
   <form method="dialog"><button class="toolbtn">Close</button></form>
 </dialog>
 
-<!-- @TOKEN@ -->
 <!-- @SCRIPT@ -->

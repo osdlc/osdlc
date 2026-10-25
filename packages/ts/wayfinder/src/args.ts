@@ -16,7 +16,7 @@ import type { Project, Task } from '@osdlc/system-model/detect'
  * `--`.
  *
  * The binary is always `task.argv[0]`, from a catalog this process built by
- * reading the repository, never from a request. `/api/run` is reachable by any
+ * reading the repository, never from a request. The web view's `/run` is reachable by any
  * process on the machine and any site the browser visits, so a caller that
  * could set element 0 could run anything. A tool whose `invoke` changes the
  * binary is refused.

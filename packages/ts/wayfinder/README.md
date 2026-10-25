@@ -165,10 +165,12 @@ It is a server, not a generated file, on purpose. A file goes out of date as
 soon as you add a task. The server re-probes, and the page refreshes when it
 gets focus and on a slow poll, so it shows what the repository has now.
 
-The first request is answered from the [stored probe](#the-cache) while a real
-probe runs in the background. So the page appears at once, even when the
-slowest runner takes seconds. The rows update in place when the probe
-finishes. Refresh always runs a real probe.
+Every action on the page is a command of `way` called over HTTP: the list
+is `way list`, a trust grant is `way trust`, a saved setting is `way config
+set`. The page first asks for the [stored probe](#the-cache), then for a
+real one. So the page appears at once, even when the slowest runner takes
+seconds. The rows update in place when the probe finishes. Refresh always
+runs a real probe.
 
 ## Execution, and trust
 
@@ -300,11 +302,10 @@ choose.
 
 `--exec` allows execution for one run and records nothing, which suits a
 script or a CI job. `--no-exec` turns execution off, however trusted the
-repository is. Both flags apply on every surface, including the web view. Its
-`POST /api/trust` returns `409` whenever a grant would have no effect, so the
-page cannot lift `--no-exec` or make an `--exec` run permanent. The page hides
-its trust button in those states, and the server refuses the request anyway.
-The session token proves who is asking, not that the request makes sense.
+repository is. Both flags apply on every surface, including the web view,
+whose every command runs with the flags `way serve` started with. The page
+offers a trust grant only when one would change what is read, and asks
+before it sends it.
 
 When runners are withheld, every surface says so and offers a way to grant
 trust. `list` and `query` print one line on stderr. The terminal UI shows
@@ -446,8 +447,8 @@ typed cannot run, such as an unknown key or a value of the wrong type. Exit
 code 1 means the command was valid but failed against the state it found.
 
 `runners.order` sets the runner order everywhere: `list`, `query`, the
-terminal UI's tab order, and the web view. In the web view, an order you set by
-dragging is saved in the browser and overrides it.
+terminal UI's tab order, and the web view. Dragging a tab in the web view saves
+the order to your user config. A project's order wins over the user's.
 
 ### `allowExec` here
 

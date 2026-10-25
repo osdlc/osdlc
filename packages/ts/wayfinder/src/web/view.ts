@@ -1,5 +1,5 @@
 import { humanAge, humanMs } from '@osdlc/system-model/duration'
-import { matchEntry, terms as splitTerms } from '@osdlc/system-model/match'
+import { terms as splitTerms } from '@osdlc/system-model/match'
 import type {
   Catalog,
   ChainSegment,
@@ -10,14 +10,28 @@ import type {
 } from '@osdlc/system-model/detect'
 import { paramShape } from '@osdlc/system-model/params'
 
-import { groupOf, groupRank, runnerLabel } from '../groups.ts'
+import { filterTasks } from '../core/filter.ts'
+import { groupOf, groupRank } from '../groups.ts'
+import { keysFor } from '../keys.ts'
 import { terminalSafe } from '../terminal-text.ts'
+import {
+  APP,
+  BIN,
+  TASK_NOUN,
+  WITHHELD,
+  countRunners,
+  countTasks,
+  parametersUnknownLabel,
+  runnerLabel,
+  staleLabel,
+  withheldLabel,
+} from '../vocabulary.ts'
 
-import { $, ALL, OPEN, persistRunnerOrder, SEP, SHUT, state } from './state.ts'
+import { $, ALL, OPEN, SEP, SHUT, state } from './state.ts'
 import type { Row, TreeNode } from './state.ts'
 
-// The matcher is system-model's, bundled into the page, so the page and the
-// TUI rank a query identically.
+// The search is the core's `filterTasks`, bundled into the page, so the page,
+// the terminal UI and `way query` keep and rank the same tasks.
 
 export function escapeHtml(s: string): string {
   return s.replace(
@@ -152,7 +166,7 @@ function renderNode(node: TreeNode, prefix: string[]): string {
       '<span class="seg-name"' +
       (meta ? ' title="' + escapeHtml(meta.label + ' - ' + meta.hint) + '"' : '') +
       '>' +
-      escapeHtml(seg) +
+      escapeHtml(treeStart() === 0 && depth === 0 ? runnerLabel(seg) : seg) +
       '</span>' +
       (meta ? '<span class="seg-kind">' + escapeHtml(meta.label) + '</span>' : '') +
       '<span class="node-count">' +
@@ -223,11 +237,34 @@ export function copyText(task: Task): string {
 
 /** What Run does, stated up front: the page ends and the task takes the terminal. */
 function runTip(task: Task): string {
+  if (task.parametersUnknown === 'editor-variable') {
+    return task.display + ': ' + parametersUnknownLabel('editor-variable') + '.'
+  }
   return (
     'Run ' +
     task.display +
-    ' in the terminal wayfinder is serving from. ' +
+    ' in the terminal ' +
+    APP +
+    ' is serving from. ' +
     'The server exits and this page is finished.'
+  )
+}
+
+/**
+ * The marker for a task whose parameters could not be read, with the one
+ * label every surface shows for it. Run asks for arguments before such a
+ * task runs, since it may need some.
+ */
+function paramsMark(task: Task): string {
+  const reason = task.parametersUnknown
+  if (reason === undefined) return ''
+  const label = parametersUnknownLabel(reason)
+  return (
+    '<span class="ind-params" title="' +
+    escapeHtml(label) +
+    '">?<span class="sr">' +
+    escapeHtml(label) +
+    '</span></span>'
   )
 }
 
@@ -276,6 +313,7 @@ function cells(e: Task, nameHtml: string, depth = 0): string {
   return (
     '<td class="ind"><span class="inds">' +
     service +
+    paramsMark(e) +
     '</span></td>' +
     spacerCell(depth) +
     '<td class="name" title="' +
@@ -306,6 +344,8 @@ function cells(e: Task, nameHtml: string, depth = 0): string {
     // row's actions as a group that Tab moves into. Run hands the task to the
     // server's terminal. Copy's title says when it copies more than the
     // Command column shows, so the extra `cd` is not a surprise.
+    // Each button is named for its task, so a list of them reads as a list
+    // of different actions, not "copy, copy, copy".
     '<td class="act">' +
     '<button class="runbtn" data-run-id="' +
     escapeHtml(e.id) +
@@ -313,9 +353,13 @@ function cells(e: Task, nameHtml: string, depth = 0): string {
     escapeHtml(runTip(e)) +
     '" aria-label="' +
     escapeHtml('Run ' + e.display + ' in the terminal') +
-    '">run</button>' +
+    '"' +
+    (e.parametersUnknown === 'editor-variable' ? ' disabled' : '') +
+    '>run</button>' +
     '<button class="copy" title="' +
     escapeHtml(copyTip(e)) +
+    '" aria-label="' +
+    escapeHtml('Copy ' + copyText(e)) +
     '" data-run="' +
     escapeHtml(copyText(e)) +
     '">copy</button>' +
@@ -334,17 +378,16 @@ function outdent(depth: number): string {
 
 /**
  * The action column. Wide enough for `run` beside the enter-target row's
- * `↵ copy`, the widest the column gets. The plain `copy` on other rows leaves
- * 14px more. Measured in Chromium at 1700px and 1100px, which agree: `run`
- * 35.23 + a 4px gap + `↵ copy` 57.89 + the cell's 8px right padding is 105.12.
- *
- * 112 rather than 106, because 106 leaves only 0.88px. A fallback font or one
- * more pixel of button padding would then clip, and silently: the row's
- * actions would lose their right edge. The 6.88px is spare room.
+ * `↵ copy`, the widest the column gets, with a few pixels to spare so a
+ * fallback font does not clip the buttons.
  */
 const ACT_W = 112
-/** The indicator gutter: one icon wide, with room to centre a second later. */
+/** The action column at phone width, where the buttons are smaller. */
+const ACT_W_NARROW = 96
+/** The indicator gutter: room for the service dot and the parameters mark. */
 const IND_W = 30
+/** Below this table width the page is laid out for a phone. */
+const NARROW_W = 600
 /**
  * Below this the Runs column is dropped. Runs is cut off too much to be useful
  * below a 1100px viewport. `main` pads 16px on each side, so that is about
@@ -353,19 +396,73 @@ const IND_W = 30
  */
 const RUNS_MIN_W = 1068
 
+/**
+ * Sizes measured from the rows of the last render: whether any row has
+ * text for the Runs column, and how wide the Task column must be for the
+ * longest name, indent included. null when it could not be measured.
+ */
+let measured: { runsHaveText: boolean; nameW: number | null } = {
+  runsHaveText: true,
+  nameW: null,
+}
+
 /** The width every table's columns are measured against. */
 function availWidth(): number {
-  return Math.max(320, state.mainWidth || 1000)
+  return Math.max(300, state.mainWidth || 1000)
+}
+
+function actWidth(): number {
+  return availWidth() < NARROW_W ? ACT_W_NARROW : ACT_W
 }
 
 /**
- * Whether the Runs column is shown right now. `colgroup`, `cells` and
+ * Whether the Runs column is shown right now: the table is wide enough, and
+ * some row has something to put in it. `colgroup`, `cells` and
  * `renderColHeads` all call this, because if a table's colgroup, head row and
  * body rows disagree on the number of columns, every column after the first
  * is misaligned.
  */
 function showRuns(): boolean {
-  return availWidth() >= RUNS_MIN_W
+  return availWidth() >= RUNS_MIN_W && measured.runsHaveText
+}
+
+/** The width of `text` in the Task column's font, or null without a canvas. */
+let measureCtx: CanvasRenderingContext2D | null | undefined
+function textWidth(text: string): number | null {
+  if (measureCtx === undefined) {
+    try {
+      measureCtx = document.createElement('canvas').getContext('2d')
+    } catch {
+      measureCtx = null
+    }
+    if (measureCtx) {
+      const mono = getComputedStyle(document.documentElement).getPropertyValue('--wf-font-mono')
+      measureCtx.font = '600 13px ' + (mono.trim() || 'monospace')
+    }
+  }
+  return measureCtx ? measureCtx.measureText(text).width : null
+}
+
+/** Measure the rows a render is about to draw. See {@link measured}. */
+function measureRows(rows: readonly Row[], flat: boolean): void {
+  let nameW: number | null = 0
+  for (const row of rows) {
+    const e = row.entry
+    // A search hit shows its whole chain at depth 0. A tree row shows the
+    // part below its group headers, indented once per header.
+    const depth = flat ? 0 : Math.max(0, e.path.length - 1 - treeStart())
+    const text = flat ? e.path.join(SEP) : (e.path.at(-1) ?? '')
+    const w = textWidth(text)
+    if (w === null) {
+      nameW = null
+      break
+    }
+    nameW = Math.max(nameW, w + depth * INDENT_PER_LEVEL)
+  }
+  measured = {
+    runsHaveText: rows.some((r) => (r.entry.doc ?? '') !== '' || (r.entry.detail ?? '') !== ''),
+    nameW,
+  }
 }
 
 /**
@@ -376,7 +473,7 @@ function showRuns(): boolean {
 export const COLUMNS = [
   {
     label: '',
-    tip: "Row indicators. A filled dot marks a service — a task that runs until you stop it, such as a dev server, a watcher or a preview. An outlined dot means that was inferred from the task's name rather than declared by the runner.",
+    tip: "Row indicators. A filled dot marks a service — a task that runs until you stop it, such as a dev server, a watcher or a preview. An outlined dot means that was inferred from the task's name rather than declared by the runner. A ? means its parameters could not be read, so Run asks for arguments.",
   },
   {
     label: 'Task',
@@ -392,7 +489,10 @@ export const COLUMNS = [
   },
   {
     label: '',
-    tip: 'Row actions. Run hands the task to the terminal wayfinder is serving from, and ends this page. Copy puts the command on the clipboard, with the cd that a task bound to its own directory needs; on the row Enter would take it reads \u21b5 copy.',
+    tip:
+      'Row actions. Run hands the task to the terminal ' +
+      APP +
+      ' is serving from, and ends this page. Copy puts the command on the clipboard, with the cd that a task bound to its own directory needs; on the row Enter would take it reads \u21b5 copy.',
   },
 ]
 
@@ -405,37 +505,32 @@ export const COLUMNS = [
  * A leading spacer column as wide as the outdent puts the content back under
  * its group header, and the name column gives up the same amount. So the
  * command column starts at the same x at every depth, and no row text lands
- * in the strip left of the headers. Text there would show through beside a
- * header as rows scroll under it, because a header's background stops at its
- * own indented box.
+ * in the strip left of the headers.
  *
- * Which columns exist depends on the width: under RUNS_MIN_W the Runs column
- * is dropped and its space goes to Task and Command. That has to happen here
- * rather than in a media query, because the widths are computed pixels. A
- * media query can hide cells but cannot recompute the other widths.
+ * Task is sized to its longest name, up to a share of the width; Command
+ * takes what is left, shared with Runs when Runs is shown. The sized columns
+ * add up to the table's width exactly, because `table-layout: fixed` would
+ * spread any leftover across the columns and move the command column at
+ * every depth.
  */
 function colgroup(depth: number): string {
   const indent = depth * INDENT_PER_LEVEL
   const avail = availWidth()
+  const act = actWidth()
   const wide = showRuns()
-  // When wide, Runs is the one flexible column and takes whatever the sized
-  // columns leave. When narrow, Runs is gone and nothing is flexible, so the
-  // sized columns must add up to `avail` exactly. `table-layout: fixed`
-  // spreads any leftover across the columns in proportion, which would move
-  // the command column at every depth. So the space left after the two fixed
-  // columns is split explicitly, keeping the wide layout's 0.4 : 0.34 ratio,
-  // rescaled to 0.54 : 0.46.
-  const rest = avail - IND_W - ACT_W
-  const name = wide
-    ? Math.max(80, Math.round(avail * 0.4) - indent)
-    : Math.max(80, Math.round(rest * 0.54) - indent)
-  const run = wide ? Math.round(avail * 0.34) : rest - indent - name
+  const rest = avail - IND_W - act
+  // Room for the cell's right padding and a bold glyph's overhang.
+  const content = measured.nameW === null ? null : Math.ceil(measured.nameW) + 16
+  const cap = Math.round(rest * (wide ? 0.4 : 0.5))
+  const nameTotal = Math.max(90, Math.min(cap, content ?? Math.round(rest * 0.45)))
+  const name = Math.max(40, nameTotal - indent)
+  const left = rest - nameTotal
+  const run = wide ? Math.round(left * 0.55) : left
   return (
     '<colgroup>' +
     // The indicator column comes first and is fixed, so an icon sits at the
     // same x in every row. The depth spacer comes after it and indents only
-    // the Task text. A spacer before it would move the icons right as the
-    // tree got deeper.
+    // the Task text.
     '<col style="width:' +
     IND_W +
     'px" />' +
@@ -448,7 +543,7 @@ function colgroup(depth: number): string {
     'px" />' +
     (wide ? '<col />' : '') +
     '<col style="width:' +
-    ACT_W +
+    act +
     'px" />' +
     '</colgroup>'
   )
@@ -529,39 +624,20 @@ function renderSearchRow(row: Row): string {
 // ---------------------------------------------------------------- render
 
 /**
- * How deep in the repository a task is declared: the number of directories
- * above its source file. `justfile` and `moon.yml` at the root are 0;
- * `apps/web/client/moon.yml` is 3.
- *
- * This is where a task is declared, not how the tree draws it. The Depth
- * control filters on it, so "Root" is the few commands the repository itself
- * declares, not the ones its packages do.
- */
-function sourceDepth(task: Task): number {
-  const at = task.source.lastIndexOf('/')
-  return at === -1 ? 0 : task.source.slice(0, at).split('/').length
-}
-
-/**
  * The one runner order, used by the tabs, the picker and the tree's top level.
  * All three must agree, or the tab bar no longer matches the page below it.
  *
- * Grouped first (tasks, dependencies, tools, git hooks), then alphabetical
- * within a group. An order the user dragged (on either surface) is kept in
- * localStorage and wins within its group. A runner not in the saved order is
- * placed alphabetically after it rather than left out.
+ * Grouped first (tasks, dependencies, tools, git hooks), then by
+ * `runners.order` within a group. A drag writes `runners.order` to the user
+ * config. The server sends the catalog in the configured order, so a runner
+ * not in the order keeps its catalog place after the ones that are.
  */
 export function runnerOrder(): string[] {
   const present = (state.catalog?.reports || []).map((r) => r.runner)
   const saved = state.runnerOrder.filter((r) => present.includes(r))
-  const unsaved = present.filter((r) => !saved.includes(r)).sort()
+  // The catalog is already in the configured order, so the rest keep it.
+  const unsaved = present.filter((r) => !saved.includes(r))
   return [...saved, ...unsaved].sort((a, b) => groupRank(a) - groupRank(b))
-}
-
-export function saveRunnerOrder(order: string[]): void {
-  state.runnerOrder = order
-  persistRunnerOrder(order)
-  render()
 }
 
 /** The three keys the picker's header can sort the runner order by. */
@@ -618,10 +694,10 @@ function activeSort(): { key: SortKey; dir: 1 | -1 } | null {
   return null
 }
 
-/** Sorting reorders the one saved order, so the tab bar updates at once. */
-export function sortRunners(key: SortKey, dir: 1 | -1): void {
+/** The runner order sorted by `key`, remembered as the sort last asked for. */
+export function sortRunners(key: SortKey, dir: 1 | -1): string[] {
   requestedSort = { key, dir }
-  saveRunnerOrder(sortedRunnerOrder(key, dir))
+  return sortedRunnerOrder(key, dir)
 }
 
 export function scopedReports(): RunnerReport[] {
@@ -646,21 +722,16 @@ function treeStart(): number {
 }
 
 /**
- * Why a runner reports nothing when execution is off. Defined once because
- * three places show it: the tab's tooltip, the picker's note and the
- * per-runner modal.
- *
- * Two sentences, for two reasons. Either way, reading this runner means
- * running it. Whether the page can fix that depends on whether trust is what
- * is missing, which only the server knows (see `state.trustable`).
+ * Why a runner reports nothing when execution is off, in the words every
+ * surface uses. Three places show it: the tab's tooltip, the picker's note
+ * and the per-runner modal.
  */
-const EXEC_NOTE_OFF =
-  'This runner can only be read by running it, and execution is off for this session.'
-const EXEC_NOTE_UNTRUSTED =
-  'This runner can only be read by running it, and this repository is not trusted yet.'
-
 function execNote(): string {
-  return state.trustable ? EXEC_NOTE_UNTRUSTED : EXEC_NOTE_OFF
+  return (
+    'This runner can only be read by running it. ' +
+    withheldLabel(state.trustable ? 'untrusted' : 'exec-off') +
+    '.'
+  )
 }
 
 /**
@@ -806,7 +877,7 @@ export function render(): void {
           t.count +
           (t.error ? ' !' : '') +
           '</span>' +
-          (t.exec ? '<span class="count exec">exec</span>' : '') +
+          (t.exec ? '<span class="count exec">' + WITHHELD + '</span>' : '') +
           '</button>'
         // The info button sits beside the tab, not inside it. A button cannot
         // be inside a button, and the tab must stay one click target that
@@ -848,24 +919,16 @@ export function render(): void {
   const scope = scopedReports()
   const inScope = scope.reduce((n, s) => n + s.tasks.length, 0)
   const terms = splitTerms(state.query)
-  const rows: Row[] = []
-  for (const sec of scope) {
-    for (const entry of sec.tasks) {
-      if (state.servicesOnly && !entry.persistent.value) continue
-      // `synthesized` tasks are inferred from a convention rather than
-      // written down: `cargo test` for every Cargo.toml, `ruff check .` for
-      // every configured ruff. They are useful but many, so they can be
-      // hidden.
-      if (state.declaredOnly && entry.origin !== 'declared') continue
-      if (sourceDepth(entry) > state.depth) continue
-      if (terms.length === 0) {
-        rows.push({ entry, score: 0, labelHits: null })
-        continue
-      }
-      const m = matchEntry(entry, terms, state.mode)
-      if (m) rows.push({ entry, score: m.score, labelHits: m.labelHits })
-    }
-  }
+  // The same filter `way list` and `way query` apply: Services is
+  // --services, Declared is --declared and Scope is --depth.
+  const rows: Row[] = filterTasks(scope, {
+    query: state.query,
+    mode: state.mode,
+    servicesOnly: state.servicesOnly,
+    declaredOnly: state.declaredOnly,
+    ...(state.depth < 99 ? { maxDepth: state.depth } : {}),
+  }).map((hit) => ({ entry: hit.task, score: hit.score, labelHits: hit.labelHits }))
+  measureRows(rows, terms.length > 0)
 
   let html = ''
   for (const sec of scope) {
@@ -888,10 +951,11 @@ export function render(): void {
   }
   if (rows.length === 0) {
     html +=
-      '<div class="empty">' + (inScope ? 'No command matches.' : 'Nothing collected.') + '</div>'
+      '<div class="empty">' +
+      (inScope ? 'No ' + TASK_NOUN.one + ' matches.' : 'Nothing collected.') +
+      '</div>'
   } else if (terms.length) {
-    // Searching ranks results, so the tree gives way to a flat best-first list.
-    rows.sort((a, b) => b.score - a.score)
+    // Searching ranks results, best first, so the tree gives way to a flat list.
     html +=
       '<table>' +
       colgroup(0) +
@@ -956,50 +1020,104 @@ function pickerFocusSelector(el: HTMLElement): string | null {
   return null
 }
 
+/** The web view's list keys as help rows, from the table in `keys.ts`. */
+function keyRows(): string {
+  return keysFor('web', 'list')
+    .map(
+      (k) =>
+        '<dt>' +
+        k.keys.map((key) => '<kbd>' + escapeHtml(key) + '</kbd>').join(' ') +
+        '</dt><dd>' +
+        escapeHtml(k.action) +
+        '</dd>',
+    )
+    .join('')
+}
+
 /**
- * The longer explanation, for what a tooltip is too small to hold. Mainly the
- * two points that surprise people: part of a task's chain is grouping this
- * page adds, and a task can be declared by a runner or only implied by a
- * convention.
+ * The help: what each part of the page is, named as the page names it, with
+ * the command each action is. The two points that surprise people come
+ * first: part of a task's chain is grouping this page adds, and a task can be
+ * declared by a runner or only implied by a convention.
  */
-export const HELP = [
-  '<h3>What this is</h3>',
-  '<p>Every task this repository can run, from every runner it uses, in one searchable list. ',
-  'The runners answer only for themselves — <code>just --list</code> knows nothing about moon — so this asks each of them and merges the answers.</p>',
+export function helpHtml(): string {
+  return [
+    '<h3 id="help-title">What this is</h3>',
+    '<p>Every ' +
+      TASK_NOUN.one +
+      ' this repository can run, from every runner it uses, in one searchable list. ',
+    'The runners answer only for themselves — <code>just --list</code> knows nothing about moon — so ' +
+      APP +
+      ' asks each of them and merges the answers. ',
+    'The page and <code>' +
+      BIN +
+      '</code> on the command line do the same things: each action below names its command.</p>',
 
-  '<h3>The columns</h3>',
-  '<dl>',
-  "<dt>Task</dt><dd>The call chain. The first segment is the runner, the last is the task's own name. ",
-  'The middle is <strong>grouping this page adds</strong> so hundreds of names stay scannable — it is not part of any command. ',
-  'Hover a segment to see what that position means for its runner.</dd>',
-  '<dt>Command</dt><dd>Exactly what to type. Nearly every command is written to run <strong>from the repository root</strong>, which is why you see flags like ',
-  '<code>--cwd</code>, <code>-C</code> and <code>--justfile</code>. Where a task can only run from its own directory, Copy prefixes the <code>cd</code> for you.</dd>',
-  '<dt>Runs</dt><dd>What the task actually executes, or the summary its runner documents where there is one. ',
-  'It is dropped on a narrow window, where it has too little room to say anything useful.</dd>',
-  '<dt>Service</dt><dd>The leftmost column carries row indicators. A filled green dot marks a service: a task that runs until you stop it — a dev server, a watcher. An outlined dot means that was inferred from the name rather than declared by the runner.</dd>',
-  '</dl>',
+    '<h3>Keys</h3>',
+    '<dl class="keys">' + keyRows() + '</dl>',
 
-  '<h3>The controls</h3>',
-  '<dl>',
-  '<dt>Depth</dt><dd>How far into the repository to look, by <strong>where a task is declared</strong>. ',
-  '<em>Root</em> is the handful the repository declares itself — its own justfile, package.json and moon project. Everything else belongs to one of its packages.</dd>',
-  '<dt>Services</dt><dd>Only services — tasks that run until you stop them: dev servers, watchers, previews. Marked with a dot in the leftmost column.</dd>',
-  '<dt>Declared</dt><dd>Drops tasks no file declares. <code>cargo test</code> and <code>ruff check .</code> are written down nowhere — they are what a crate, or a ruff-configured project, runs by convention.</dd>',
-  '<dt>Collapse</dt><dd>Folds the groups. Presentation only; it changes nothing about which tasks exist.</dd>',
-  '<dt>Runners</dt><dd>Which runners this page shows. Unchecking one drops it from the search and from every tab; it is still collected, so its count is current the moment you turn it back on.</dd>',
-  "<dt>Fuzzy / Exact</dt><dd>Terms are ANDed, so <code>photo dev</code> narrows to a photo app's dev server. A leading quote forces one term to match exactly, even in fuzzy mode.</dd>",
-  '</dl>',
+    '<h3>The columns</h3>',
+    '<dl>',
+    "<dt>Task</dt><dd>The call chain. The first segment is the runner, the last is the task's own name. ",
+    'The middle is <strong>grouping this page adds</strong> so hundreds of names stay scannable — it is not part of any command. ',
+    'Hover a segment to see what that position means for its runner.</dd>',
+    '<dt>Command</dt><dd>Exactly what to type. Nearly every command is written to run <strong>from the repository root</strong>. ',
+    'Where a task can only run from its own directory, Copy adds the <code>cd</code> for you.</dd>',
+    '<dt>Runs</dt><dd>What the task runs, or the summary its runner documents. It is shown on a wide window when some task has one.</dd>',
+    '<dt>Marks</dt><dd>A filled dot marks a service: a task that runs until you stop it, such as a dev server or a watcher. An outlined dot means that was inferred from the name. ',
+    'A <code>?</code> means the parameters could not be read; Run then asks for arguments, which may be left empty.</dd>',
+    '</dl>',
 
-  '<h3>Why a runner might show nothing</h3>',
-  "<p>Some runners can only be read by running them — <code>moon query tasks</code> evaluates this repository's own toolchain configuration. ",
-  'Those keep their tab, marked <code>exec</code> beside the count, so a runner held back that way says so rather than pretending to be absent.</p>',
-  "<p>Reading them therefore needs your consent, remembered once per repository. Open a held-back runner's <code>i</code> button, or the Runners picker, for a button that records it. ",
-  'A repository cannot grant itself that: <code>allowExec</code> in <code>wayfinder.config.json</code> cannot raise the gate.</p>',
+    '<h3>The controls</h3>',
+    '<dl>',
+    '<dt>Scope</dt><dd>How far into the repository to look, by <strong>where a task is declared</strong>. ',
+    '<em>Root</em> is what the repository declares itself — its own justfile, package.json and moon project. <code>' +
+      BIN +
+      ' list --depth N</code> is the same filter.</dd>',
+    '<dt>Services</dt><dd>Only services. <code>' + BIN + ' list --services</code>.</dd>',
+    '<dt>Declared</dt><dd>Drops tasks no file declares, such as <code>cargo test</code> for a crate. <code>' +
+      BIN +
+      ' list --declared</code>.</dd>',
+    '<dt>Runners</dt><dd>Which runners this page shows, for this visit. Drag a runner, here or in the tab row, to reorder; the order is saved as <code>runners.order</code> in your user config.</dd>',
+    "<dt>Fuzzy / Exact</dt><dd>Terms are ANDed, so <code>photo dev</code> narrows to a photo app's dev server. A leading quote forces one term to match exactly.</dd>",
+    '<dt>Filters</dt><dd>On a narrow window, Scope, Services, Declared and Runners fold into this one menu.</dd>',
+    '<dt>Collapse, Refresh</dt><dd>Collapse folds the groups. Refresh reads every runner again (<code>' +
+      BIN +
+      ' list</code>).</dd>',
+    '<dt>Theme</dt><dd>Cycles System, Light and Dark, and saves <code>theme</code> in your user config.</dd>',
+    '</dl>',
 
-  '<h3>Staying current</h3>',
-  '<p>The page refreshes when you focus it and on a slow poll, and <b>Refresh</b> always re-reads every runner for real \u2014 an explicit refresh that could be answered from a stored listing is not a refresh.</p>',
-  '<p>The very first paint may come from a stored listing so the page appears at once on a repository whose slowest runner takes seconds. When it does, the status bar names those runners after <code>cached:</code> and marks their tabs with <code>~</code>, and a fresh read is already running behind the page. Rows never come from a store without saying so.</p>',
-].join('')
+    '<h3>Run and Copy</h3>',
+    '<p><b>Run</b> hands the task to the terminal ' +
+      APP +
+      ' is serving from, as <code>' +
+      BIN +
+      ' run &lt;id&gt; -- &lt;arguments&gt;</code> does. The server stops and this page is done. ',
+    'A task that takes parameters, or whose parameters could not be read, asks for its arguments first. ',
+    '<b>Copy</b> puts the command on the clipboard.</p>',
+
+    '<h3>Settings</h3>',
+    "<p>The gear opens this project's settings (<code>" +
+      BIN +
+      ' config list</code>). Edits are staged until Save, which writes each one with <code>' +
+      BIN +
+      ' config set</code> and names the file it wrote. ',
+    'Trust, <code>allowExec</code> and <code>tools</code> are changed from the command line only; the screen shows the command for each.</p>',
+
+    '<h3>Why a runner might show nothing</h3>',
+    "<p>Some runners can only be read by running them — <code>moon query tasks</code> evaluates this repository's own toolchain configuration. ",
+    'Until the repository is trusted they are ' +
+      WITHHELD +
+      ', and their tab says so. Trust this repository asks you to confirm, then runs <code>' +
+      BIN +
+      ' trust</code>. ',
+    'A repository cannot grant itself that: <code>allowExec</code> in its own config file cannot raise the gate.</p>',
+
+    '<h3>Staying current</h3>',
+    '<p>The page reads the repository again when you focus it and every 15 seconds. ',
+    'The first view may come from the stored probe, so it appears at once; the status line then names the stale runners, and a fresh read follows.</p>',
+  ].join('')
+}
 
 /**
  * The header for the selection column: a checkbox mark, sized to match the
@@ -1094,13 +1212,7 @@ function renderRunnerPicker(cat: Catalog): string {
     .map((s) => {
       const on = enabled.has(s.runner)
       const note =
-        s.status === 'error'
-          ? ' (failed)'
-          : s.skippedForExec
-            ? state.trustable
-              ? ' (not trusted)'
-              : ' (needs --exec)'
-            : ''
+        s.status === 'error' ? ' (failed)' : s.skippedForExec ? ' (' + WITHHELD + ')' : ''
       // The button sits next to the note, where the problem is named. One
       // button per withheld row is fine: they all grant the same thing, and
       // the click is confirmed before anything happens.
@@ -1131,7 +1243,7 @@ function renderRunnerPicker(cat: Catalog): string {
         (on ? ' checked' : '') +
         ' /> ' +
         iconHtml(s.runner) +
-        escapeHtml(s.runner) +
+        escapeHtml(runnerLabel(s.runner)) +
         '<span class="count">' +
         s.tasks.length +
         escapeHtml(note) +
@@ -1246,8 +1358,8 @@ export function showRunnerInfo(runner: string): void {
     notes.push('<p>' + escapeHtml(d.message) + '</p>')
   }
   $('help-body').innerHTML =
-    '<h3>' +
-    escapeHtml(runner) +
+    '<h3 id="help-title">' +
+    escapeHtml(runnerLabel(runner)) +
     '</h3>' +
     '<p>A task from this runner reads <code>' +
     escapeHtml(shape) +
@@ -1257,9 +1369,9 @@ export function showRunnerInfo(runner: string): void {
     '</dl>' +
     notes.join('') +
     '<p>' +
-    escapeHtml(String(report.tasks.length)) +
-    ' task(s) found.</p>'
-  ;($('help') as HTMLDialogElement).showModal()
+    escapeHtml(countTasks(report.tasks.length)) +
+    ' found.</p>'
+  openDialogAtTop('help')
 }
 
 /**
@@ -1299,61 +1411,50 @@ export function cacheSpan(rows: readonly RunnerCacheState[]): string {
     return (
       '<span class="err">cached: ' +
       escapeHtml(
-        slow.map((r) => r.runner + ' (' + humanAge(r.ageMs) + ', ' + cost(r) + ')').join(', '),
+        slow
+          .map((r) => runnerLabel(r.runner) + ' (' + humanAge(r.ageMs) + ', ' + cost(r) + ')')
+          .join(', '),
       ) +
       ' - slow to probe here, so re-reading takes a moment</span>'
     )
   }
   return (
     '<span>cached: ' +
-    escapeHtml(stale.map((r) => r.runner + ' ' + humanAge(r.ageMs)).join(', ')) +
+    escapeHtml(
+      stale
+        .map((r) => runnerLabel(r.runner) + ' (' + staleLabel(r.reason, r.ageMs) + ')')
+        .join(', '),
+    ) +
     ' - re-probing</span>'
   )
 }
 
 /**
  * Runners withheld because execution is off, shown in the page's own bar
- * above everything. It matches the CLI's "N runners not collected" line.
+ * above everything, in the words the CLI's note uses: `2 runners withheld:
+ * this repository is not trusted`.
  *
- * Without it, the page would mention withheld runners only on the tab badge,
- * in its tooltip, in the per-runner modal and in the picker, all behind a
- * hover or a click. Someone would see a shorter catalog with nothing saying
- * that anything was missing, which this tool must never do quietly.
+ * Without it, the page would mention withheld runners only behind a hover or
+ * a click, and someone would see a shorter catalog with nothing saying that
+ * anything was missing.
  *
- * It is its own bar rather than a span in the status strip. The status strip
- * reports numbers about what you are looking at, and this asks for a decision
- * about what you are not. A button in a row of counts looks like one more
- * control.
- *
- * It names the runners rather than only counting them, so the reader does not
- * have to ask which. The trust button is included only when trust is what is
- * missing. Otherwise execution is off for the session and trusting the
- * repository would change nothing.
+ * It names the runners rather than only counting them. The trust button is
+ * included only when trust is what is missing. Otherwise execution is off
+ * for the session and trusting the repository would change nothing.
  */
 export function withheldBar(reports: readonly RunnerReport[]): string {
   const held = reports.filter((s) => s.skippedForExec)
   if (held.length === 0) return ''
-  const names = held.map((s) => s.runner).join(', ')
-  // The count and the names come first, because they are the news. The
-  // explanation is a separate sentence, which keeps singular and plural
-  // agreement simple.
-  const one = held.length === 1
-  const lead = held.length + (one ? ' runner was' : ' runners were') + ' not read: '
-  const why = one
-    ? 'It can only be read by running it, and '
-    : 'They can only be read by running them, and '
-  const gate = state.trustable
-    ? 'this repository is not trusted yet.'
-    : 'execution is off for this session.'
+  const names = held.map((s) => runnerLabel(s.runner)).join(', ')
+  const label = withheldLabel(state.trustable ? 'untrusted' : 'exec-off')
   return (
     '<span>' +
-    lead +
-    '<span class="who">' +
+    escapeHtml(countRunners(held.length)) +
+    ' ' +
+    escapeHtml(label) +
+    ': <span class="who">' +
     escapeHtml(names) +
-    '</span>. ' +
-    why +
-    gate +
-    '</span>' +
+    '</span>.</span>' +
     (state.trustable ? TRUST_BUTTON : '')
   )
 }
@@ -1380,19 +1481,21 @@ export function renderStatus(shown: number, total: number): void {
     '<span>' +
     shown +
     ' of ' +
-    total +
-    ' ' +
-    (state.runner === ALL ? 'commands, all runners' : state.runner + ' commands') +
+    escapeHtml(countTasks(total)) +
+    (state.runner === ALL ? ', all runners' : ' in ' + escapeHtml(runnerLabel(state.runner))) +
     '</span>' +
     '<span>checked ' +
     new Date(state.checkedAt).toLocaleTimeString() +
     (state.loading ? ' - refreshing' : '') +
     '</span>' +
     cacheSpan(state.cache) +
-    (errs.length ? '<span class="err">probe failed: ' + errs.join(', ') + '</span>' : '') +
-    '<span><kbd>/</kbd> search &middot; <kbd>Enter</kbd> copy top hit &middot; ' +
-    '<kbd>&uarr;</kbd><kbd>&darr;</kbd> move &middot; ' +
-    '<kbd>Esc</kbd> back to search, again to clear it</span>'
+    (errs.length
+      ? '<span class="err">probe failed: ' +
+        escapeHtml(errs.map(runnerLabel).join(', ')) +
+        '</span>'
+      : '') +
+    '<span class="keyhint"><kbd>Enter</kbd> copy &middot; <kbd>Shift+Enter</kbd> run &middot; ' +
+    '<kbd>?</kbd> all keys</span>'
 }
 
 /**
@@ -1412,7 +1515,12 @@ export function showRunBar(task: Task): HTMLInputElement {
   el.id = 'runbar'
   el.setAttribute('role', 'group')
   el.setAttribute('aria-label', 'Arguments for ' + task.display)
-  const shape = paramShape(task.parameters)
+  // A task whose parameters could not be read may still need some, so the
+  // bar says why it asked, and Enter with nothing typed runs it as it is.
+  const shape =
+    task.parametersUnknown !== undefined
+      ? parametersUnknownLabel(task.parametersUnknown) + '; arguments are optional'
+      : 'takes ' + paramShape(task.parameters)
   el.innerHTML =
     '<div class="runbar-line">' +
     '<span class="runbar-sigil" aria-hidden="true">$</span>' +
@@ -1423,7 +1531,7 @@ export function showRunBar(task: Task): HTMLInputElement {
     ' aria-label="Arguments" />' +
     '</div>' +
     '<div class="runbar-foot">' +
-    '<span class="runbar-shape">takes ' +
+    '<span class="runbar-shape">' +
     escapeHtml(shape) +
     '</span>' +
     '<span class="runbar-keys"><kbd>Enter</kbd> run &middot; <kbd>Esc</kbd> back</span>' +
@@ -1457,7 +1565,9 @@ export function showHandoff(command: string): void {
     '<pre class="handoff-cmd">' +
     escapeHtml(command) +
     '</pre>' +
-    '<p>It is running in the shell wayfinder was started from. This page is done — you can close it.</p>'
+    '<p>It is running in the shell ' +
+    escapeHtml(APP) +
+    ' was started from. This page is done — you can close it.</p>'
   document.body.append(el)
   el.tabIndex = -1
   el.focus()
@@ -1482,8 +1592,76 @@ export function showRunTaken(button: HTMLElement): void {
  * sticky header or leave a gap under it.
  */
 export function measureChrome(): void {
+  const chrome = $('chrome')
+  // At phone width the header is not sticky, so group headers stick at the top.
+  const sticky = getComputedStyle(chrome).position === 'sticky'
   document.documentElement.style.setProperty(
     '--chrome-h',
-    Math.round($('chrome').getBoundingClientRect().height) + 'px',
+    (sticky ? Math.round(chrome.getBoundingClientRect().height) : 0) + 'px',
   )
+}
+
+/**
+ * Open a dialog with its body scrolled to the top and focused. `showModal`
+ * focuses the first control, the Close button at the end, which would scroll
+ * a long body to the bottom.
+ */
+export function openDialogAtTop(id: 'help' | 'settings'): void {
+  const dialog = $(id) as HTMLDialogElement
+  if (!dialog.open) dialog.showModal()
+  const body = $(id + '-body')
+  body.scrollTop = 0
+  body.focus({ preventScroll: true })
+}
+
+/**
+ * The page when it could not sign in: the boot token was used, expired or
+ * missing, as after a reload. Only the terminal can hand out a new one.
+ */
+export function showSignedOut(): void {
+  document.body.innerHTML =
+    '<main class="signedout">' +
+    '<h1>This browser is not signed in.</h1>' +
+    '<p>' +
+    escapeHtml(APP) +
+    ' needs a fresh link, and only your terminal can hand one out.</p>' +
+    '<p>Go to the terminal ' +
+    escapeHtml(APP) +
+    ' is running in, stop it with <code>Ctrl-C</code> and start it again with <code>' +
+    escapeHtml(BIN) +
+    ' serve</code>: it prints a new link that signs this browser in.</p>' +
+    '</main>'
+}
+
+/** The colour-scheme cycle: what a click on the theme button moves to. */
+export const THEME_CYCLE: Record<string, string> = {
+  system: 'light',
+  light: 'dark',
+  dark: 'system',
+}
+
+/** How the button shows each scheme when it is the one in use. */
+const THEME_FACE: Record<string, { glyph: string; name: string; note: string }> = {
+  system: { glyph: '◐', name: 'System', note: ' (follows your OS)' },
+  light: { glyph: '☀', name: 'Light', note: '' },
+  dark: { glyph: '☾', name: 'Dark', note: '' },
+}
+
+/**
+ * Update the theme button for the choice now in use.
+ *
+ * The button shows the current scheme, so both the title and the accessible
+ * name must say two things: what is on, and what a click does next. A single
+ * cycling button has nowhere else to say the second, and a screen-reader user
+ * would otherwise not know what the press does. Startup calls this too, so
+ * the button matches the restored preference from the first frame.
+ */
+export function setThemeButton(choice: string): void {
+  const btn = $('theme')
+  const face = THEME_FACE[choice] ?? THEME_FACE['system']!
+  const next = THEME_FACE[THEME_CYCLE[choice] ?? 'light']!
+  btn.dataset.themeChoice = choice
+  btn.textContent = face.glyph
+  btn.title = 'Colour scheme: ' + face.name + face.note + '. Click for ' + next.name + '.'
+  btn.setAttribute('aria-label', 'Colour scheme: ' + face.name + '. Click for ' + next.name + '.')
 }

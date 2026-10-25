@@ -241,14 +241,21 @@ export const KEY_TABLE: readonly KeyBinding[] = Object.freeze([
 
   // The web view.
   { surface: 'web', view: 'list', keys: ['/'], action: 'search' },
-  { surface: 'web', view: 'list', keys: ['enter'], action: "copy the top hit's command line" },
-  { surface: 'web', view: 'list', keys: ['↑', '↓'], action: 'move between rows' },
   {
     surface: 'web',
     view: 'list',
-    keys: ['esc'],
-    action: 'back to the search box; again to clear it',
+    keys: ['enter'],
+    action: 'copy the top hit, or the focused task',
   },
+  {
+    surface: 'web',
+    view: 'list',
+    keys: ['shift+enter'],
+    action: 'run the top hit, or the focused task',
+  },
+  { surface: 'web', view: 'list', keys: ['↑', '↓'], action: 'move through the tasks' },
+  { surface: 'web', view: 'list', keys: ['esc'], action: 'back to search; again to clear it' },
+  { surface: 'web', view: 'list', keys: ['?'], action: 'this help' },
   { surface: 'web', view: 'arguments', keys: ['enter'], action: 'run with what you typed' },
   { surface: 'web', view: 'arguments', keys: ['esc'], action: 'close the run bar; nothing runs' },
 ] satisfies KeyBinding[])

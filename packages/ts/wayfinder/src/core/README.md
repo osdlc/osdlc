@@ -51,8 +51,10 @@ must leave alone.
   calls `catalog`, `search`, `grantTrust`, `revokeTrust`, `settings` and
   `resolveRun`. A run hands off with `handOff(plan)` after the terminal is
   released.
-- The web view's server: today `commands/browse.ts` passes it the session's
-  parts (`project`, `root`, `options`, `runnerOrder()`, `env`, `home`).
+- The web view's server (`src/serve/`) takes the `Session` and the command
+  tree. The page calls commands over HTTP, so each request opens its own
+  session, as a CLI run does. A run resolves with `run --dry-run` and hands
+  off with `handOff(plan)` after the server has stopped.
 - The page: `filterTasks`, `unknownsOf`, `unknownLine` and the vocabulary
   module are browser-safe, so the page imports them directly.
   `tests/web-bundle.test.ts` fails if the page's bundle imports a Node

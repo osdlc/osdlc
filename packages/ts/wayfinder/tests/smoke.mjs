@@ -59,10 +59,10 @@ try {
   assert.equal(providers.status, 0, providers.stderr)
   assert.ok(JSON.parse(providers.stdout).some((p) => p.id === 'npm' && p.source === 'built-in'))
 
-  // The web view's page, built from dist/ the way `way --serve` builds it.
+  // The web view's page, built from dist/ the way `way serve` builds it.
   const { buildPage } = await import(pathToFileURL(join(packageDir(), 'dist', 'page.js')).href)
-  const html = await buildPage('tok')
-  assert.ok(html.includes('window.__WAYFINDER_TOKEN__ = "tok"'))
+  const html = await buildPage({ theme: 'dark' })
+  assert.ok(html.includes('<html lang="en" data-theme="dark">'))
   assert.ok(!html.includes('<!-- @SCRIPT@ -->') && !html.includes('<!-- @STYLE@ -->'))
   assert.ok(!html.includes('the page script failed to build'), 'dist/web/main.js is missing')
   assert.match(html, /<script type="module">\n.{1000,}/s)

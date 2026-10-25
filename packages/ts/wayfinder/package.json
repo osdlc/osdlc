@@ -74,6 +74,7 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@osdlc/color": "workspace:^",
     "@osdlc/prettier-config": "workspace:^",
     "@osdlc/tsconfig": "workspace:^",
     "@types/node": "catalog:",

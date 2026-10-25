@@ -15,6 +15,7 @@ import { beforeEach, describe, expect, test } from 'vitest'
 import type { RunnerReport } from '@osdlc/system-model/detect'
 
 import { state } from '../src/web/state.ts'
+import { withheldLabel } from '../src/vocabulary.ts'
 import { cacheSpan, renderSortHead, withheldBar } from '../src/web/view.ts'
 
 function report(runner: string, skippedForExec: boolean): RunnerReport {
@@ -40,38 +41,25 @@ describe('withheldBar', () => {
   test('names the runners, not just how many', () => {
     // "3 runners" invites exactly the question the sentence should answer.
     const html = withheldBar([report('moon', true), report('just', false), report('sbt', true)])
-    expect(html).toContain('2 runners were not read')
+    expect(html).toContain('2 runners withheld')
     expect(html).toContain('moon, sbt')
     expect(html).not.toContain('just')
   })
 
   test('agrees with itself about one runner', () => {
-    expect(withheldBar([report('moon', true)])).toContain('1 runner was not read')
+    expect(withheldBar([report('moon', true)])).toContain('1 runner withheld')
   })
 
   test('offers the grant only when trust is what is missing', () => {
     // Execution off for the session: trusting the repository would change
     // nothing, so offering it would be a wrong instruction.
     expect(withheldBar([report('moon', true)])).not.toContain('data-trust-repo')
-    expect(withheldBar([report('moon', true)])).toContain('execution is off for this session')
+    expect(withheldBar([report('moon', true)])).toContain(withheldLabel('exec-off'))
 
     state.trustable = true
     const html = withheldBar([report('moon', true)])
     expect(html).toContain('data-trust-repo')
-    expect(html).toContain('not trusted yet')
-  })
-
-  test('agrees with itself about number', () => {
-    // One sentence with only the noun swapped produces "so runner that can
-    // only be read by running it were skipped".
-    state.trustable = true
-    const one = withheldBar([report('moon', true)])
-    expect(one).toContain('1 runner was not read')
-    expect(one).toContain('It can only be read by running it')
-
-    const many = withheldBar([report('moon', true), report('sbt', true)])
-    expect(many).toContain('2 runners were not read')
-    expect(many).toContain('They can only be read by running them')
+    expect(html).toContain(withheldLabel('untrusted'))
   })
 
   test('marks the runners as the subject of the sentence', () => {
