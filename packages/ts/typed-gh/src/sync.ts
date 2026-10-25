@@ -297,7 +297,11 @@ export class Gh {
     return this.read(v.repoList(owner, opts, this.target), opts.timeoutMs)
   }
 
-  /** One repository: `repo`, else the client's repo, else the clone at `cwd`. Null when there is no such repository. */
+  /**
+   * One repository: `repo`, else the client's repo, else the clone at `cwd`.
+   * Null when there is no such repository. `owner` and `name` are in
+   * GitHub's casing, not as passed.
+   */
   repoView(
     repo?: string | undefined,
     opts: { fields?: readonly string[] | undefined; timeoutMs?: number | undefined } = {},

@@ -452,9 +452,12 @@ const hits: ListResult<PrSearchHit> = gh.searchPrs('TICKET-123', { owner: 'acme'
 A `Repository` carries `nameWithOwner`, `owner`, `name`, `description`, `defaultBranch`,
 `visibility`, `isArchived` and `url`. `owner` and `name` are cut from `nameWithOwner`, so they
 come back in GitHub's casing, not as you wrote them: `repoList('ACME')` gives `owner: 'acme'` when
-the account is `acme`. To build paths that match your own config, use your own value. `gh search prs` has its own field set. A `PrSearchHit` names
-its `repository` but has no head or base branch, so it is not a `PullRequest`. Its `state` is
-upper-cased to match. The query takes GitHub's search syntax and may start with `-`.
+the account is `acme`, and `repoView` works the same way. To build paths that match your own
+config, use your own value.
+
+`gh search prs` has its own field set. A `PrSearchHit` names its `repository`, also in GitHub's
+casing, but has no head or base branch, so it is not a `PullRequest`. Its `state` is upper-cased to
+match. The query takes GitHub's search syntax and may start with `-`.
 
 ## Passing your own runner
 

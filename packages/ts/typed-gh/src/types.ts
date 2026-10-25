@@ -221,6 +221,7 @@ export interface PrSearchHit {
   state: PullRequestState
   url: string
   isDraft: boolean
+  /** Cut from the hit's `nameWithOwner`, so in GitHub's casing. */
   repository: OwnerRepo | null
   author: Actor | null
   labels: Label[]

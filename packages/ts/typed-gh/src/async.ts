@@ -248,7 +248,10 @@ export class AsyncGh {
     return this.read(v.repoList(owner, opts, this.target), opts)
   }
 
-  /** One repository, or null when there is no such repository. See `Gh.repoView`. */
+  /**
+   * One repository, or null when there is no such repository. `owner` and
+   * `name` are in GitHub's casing, not as passed. See `Gh.repoView`.
+   */
   repoView(
     repo?: string | undefined,
     opts: { fields?: readonly string[] | undefined } & AsyncCallOptions = {},
