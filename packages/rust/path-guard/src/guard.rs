@@ -163,7 +163,7 @@ impl<R: Resolver> Guard<R> {
         // A real root that is not absolute, such as the empty path
         // `existing_prefix` answers for a broken resolver, would hold every
         // path.
-        if !real_root.is_absolute() || !real.starts_with(&real_root) {
+        if !is_absolute(&real_root) || !real.starts_with(&real_root) {
             return Err(PathError::Escapes(raw.to_string(), real_root));
         }
         if let Some(handler) = &self.on_warning {
@@ -209,7 +209,7 @@ impl<R: Resolver> Guard<R> {
             ) {
                 // As in `resolve`, a real `outer` that is not absolute holds
                 // nothing.
-                (Some(outer), Some(inner)) => outer.is_absolute() && inner.starts_with(&outer),
+                (Some(outer), Some(inner)) => is_absolute(&outer) && inner.starts_with(&outer),
                 _ => false,
             },
         )
@@ -252,7 +252,7 @@ impl<R: Resolver> Guard<R> {
     pub fn real_path(&self, path: &Path) -> Result<PathBuf, PathError> {
         check_absolute(path, "path")?;
         Ok(existing_prefix(&self.resolver, path)
-            .filter(|real| real.is_absolute())
+            .filter(|real| is_absolute(real))
             .unwrap_or_else(|| fold_text(path)))
     }
 }
@@ -267,9 +267,19 @@ fn check_root(root: &Path, argument: &'static str) -> Result<(), PathError> {
     check_absolute(root, argument)
 }
 
+/// Is `p` absolute?
+///
+/// `Path::is_absolute` is always false on a target with neither Unix nor
+/// Windows paths, such as `wasm32-unknown-unknown`, because no path there has a
+/// prefix. A rooted path is the absolute form on such a target. A host that
+/// runs the guard there supplies the filesystem, and its paths are `/`-rooted.
+fn is_absolute(p: &Path) -> bool {
+    p.is_absolute() || (cfg!(not(any(unix, windows, target_os = "wasi"))) && p.has_root())
+}
+
 /// [`PathError::NotAbsolute`] unless `p` is absolute.
 fn check_absolute(p: &Path, argument: &'static str) -> Result<(), PathError> {
-    if p.is_absolute() {
+    if is_absolute(p) {
         Ok(())
     } else {
         Err(PathError::NotAbsolute {
@@ -341,7 +351,7 @@ pub(crate) fn existing_prefix<R: Resolver + ?Sized>(resolver: &R, p: &Path) -> O
 /// so `/v/./x` would pass. A Windows prefix is skipped, so `\\.\COM1` and
 /// `\\?\C:\` still pass.
 pub(crate) fn canonical(p: &Path) -> bool {
-    if !p.is_absolute() {
+    if !is_absolute(p) {
         return false;
     }
     let text = p.as_os_str().as_encoded_bytes();
