@@ -17,7 +17,7 @@ Safety fixes for running `way` in a repository you do not control.
 - On Windows, a user config at `~\.config\wayfinder\config.json`, where 0.7 kept it, is no longer read: 0.8 reads `%APPDATA%\wayfinder\config.json`. Every run warns until you move it. `way clean --legacy` finds the 0.7 Windows stores, and computes every old path the way old releases did, ignoring the `WAYFINDER_*` overrides.
 - A `__proto__` key in a config map is ignored with a warning. A leading `~\` is expanded on Windows.
 
-Breaking:
+Breaking changes, and what to do:
 
 - `way clean --user-config` removes a file `WAYFINDER_CONFIG` names only when its `$schema` names wayfinder's config schema, as every file `way config set` writes does. Add the `$schema` line, or remove the file yourself.
 - Over HTTP, a command given a directory positional (`{"dir": ...}`) is refused with `400`. The web view reads the directory `way serve` started in.

@@ -4,7 +4,7 @@
 
 The web view now runs every action as a command of `way` over HTTP, so the page and the command line read and write the same files with the same rules.
 
-Breaking changes:
+Breaking changes, and what to do:
 
 - The page's own API routes are gone (`/api/catalog`, `/api/trust`, `/api/config`, `/api/run`). The page calls `POST /api/commands/<command>` (`list`, `trust`, `config list`, `config set`, `config unset`), and Run uses `POST /run`.
 - The `x-wayfinder-token` header is replaced by `Authorization: Bearer`. The page gets the token by sending the boot token to `POST /session`; it is no longer embedded in the page.

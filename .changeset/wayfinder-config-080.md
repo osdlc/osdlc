@@ -24,7 +24,7 @@ New:
 - `way clean` prunes empty parent directories, and names a config file that
   `WAYFINDER_CONFIG` chose before removing it.
 
-Breaking:
+Breaking changes, and what to do:
 
 - The old `waypost` names are no longer read: `WAYPOST_CONFIG`,
   `~/.config/waypost/config.json`, `waypost.config.json` and the old trust
