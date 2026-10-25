@@ -138,12 +138,12 @@ export async function startServer(options: ServeOptions): Promise<WebServer> {
   handler = createRoutes({
     api,
     signIn,
-    async page() {
+    async page(nonce) {
       const theme = await readSettings(session.root, session.env, session.home).then(
         (s) => s.theme.value,
         () => 'system' as const,
       )
-      return buildPage({ theme })
+      return buildPage({ theme, nonce })
     },
     resolveRun,
     handOff(plan) {

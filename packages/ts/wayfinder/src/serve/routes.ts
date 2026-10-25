@@ -17,6 +17,8 @@
  * Every route passes the adapter's Host and Origin checks first.
  */
 
+import { randomBytes } from 'node:crypto'
+
 import type { HttpApi } from '@osdlc/cli-tool/http'
 
 import type { SignIn } from './auth.ts'
@@ -28,6 +30,24 @@ const HEADERS = {
 
 /** The largest body `/session` and `/run` read. Both take a few short strings. */
 const MAX_BODY = 64 * 1024
+
+/**
+ * The page's content security policy. Only the page's own script runs, and
+ * it may talk only to this server. The page builds HTML from repository text,
+ * so a missed escape must not run a script that could read the bearer token.
+ * Styles stay inline: the page sets `style` attributes as it lays out rows.
+ */
+export function pagePolicy(nonce: string): string {
+  return [
+    "default-src 'none'",
+    `script-src 'nonce-${nonce}'`,
+    "style-src 'unsafe-inline'",
+    "connect-src 'self'",
+    "base-uri 'none'",
+    "form-action 'none'",
+    "frame-ancestors 'none'",
+  ].join('; ')
+}
 
 function json(body: unknown, status = 200): Response {
   return Response.json(body, { status, headers: HEADERS })
@@ -97,8 +117,11 @@ export type RunResolution =
 export interface RoutesOptions {
   api: HttpApi
   signIn: SignIn
-  /** The page's HTML. Built per request, so a checkout's edit needs a reload, not a restart. */
-  page(): Promise<string>
+  /**
+   * The page's HTML, its script tagged with `nonce`. Built per request, so a
+   * checkout's edit needs a reload, not a restart.
+   */
+  page(nonce: string): Promise<string>
   /** Resolve task `id` with `args` the way `run --dry-run` does. */
   resolveRun(id: string, args: string[]): Promise<RunResolution>
   /**
@@ -170,11 +193,12 @@ export function createRoutes(opts: RoutesOptions): (request: Request) => Promise
 
     if (path === '/' || path === '/index.html') {
       if (method !== 'GET' && method !== 'HEAD') return text('use GET', 405, { allow: 'GET' })
-      return new Response(await opts.page(), {
+      const nonce = randomBytes(16).toString('base64')
+      return new Response(await opts.page(nonce), {
         headers: {
           ...HEADERS,
           'content-type': 'text/html; charset=utf-8',
-          'content-security-policy': "frame-ancestors 'none'",
+          'content-security-policy': pagePolicy(nonce),
         },
       })
     }

@@ -138,6 +138,32 @@ describe('the page', () => {
     }
   })
 
+  test('runs only its own script, with a fresh nonce per load', async () => {
+    const s = await start()
+    try {
+      const nonces: string[] = []
+      for (let i = 0; i < 2; i++) {
+        const res = await fetch(`${s.address}/`)
+        const policy = res.headers.get('content-security-policy') ?? ''
+        for (const part of [
+          "default-src 'none'",
+          "connect-src 'self'",
+          "base-uri 'none'",
+          "form-action 'none'",
+        ]) {
+          expect(policy).toContain(part)
+        }
+        const nonce = /script-src 'nonce-([^']+)'/.exec(policy)?.[1]
+        expect(nonce).toBeDefined()
+        expect(await res.text()).toContain(`<script type="module" nonce="${nonce}">`)
+        nonces.push(nonce!)
+      }
+      expect(nonces[0]).not.toBe(nonces[1])
+    } finally {
+      await s.web.stop()
+    }
+  })
+
   test('a Host that is not loopback is refused with 403', async () => {
     const s = await start()
     try {
