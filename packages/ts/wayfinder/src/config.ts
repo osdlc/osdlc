@@ -52,12 +52,12 @@
  * problem. `$schema` is accepted and ignored.
  */
 
-import { existsSync } from 'node:fs'
+import { constants, existsSync } from 'node:fs'
+import { open, type FileHandle } from 'node:fs/promises'
 import { isAbsolute, join as joinPath, resolve } from 'node:path'
 
 import { z } from 'zod'
 
-import { readParsedFile } from '@osdlc/config-layers'
 import { closestMatches } from '@osdlc/config-layers/did-you-mean'
 import { atomicWriteAsync } from '@osdlc/etag-write'
 import {
@@ -535,26 +535,61 @@ export const DEFAULT_CONFIG: Required<WayfinderConfig> = {
 
 // ── Files ───────────────────────────────────────────────────────────────────
 
+/** The largest config file read. A real one is a few kilobytes. */
+const MAX_CONFIG_BYTES = 1024 * 1024
+
+/**
+ * One layer file's text, or null when it does not exist. The project file is
+ * repository content, so only a regular file of at most
+ * {@link MAX_CONFIG_BYTES} is read: a committed link to `/dev/zero` or a FIFO
+ * must not hang or fill memory. Opened non-blocking, so a FIFO does not wait
+ * for a writer.
+ */
+async function readConfigText(file: string): Promise<string | null> {
+  let handle: FileHandle
+  try {
+    handle = await open(file, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0))
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null
+    throw new ConfigError(`${file}: cannot be read — ${(err as Error).message}`, file)
+  }
+  try {
+    const info = await handle.stat()
+    if (!info.isFile()) {
+      throw new ConfigError(`${file}: cannot be read — it is not a regular file`, file)
+    }
+    const buffer = Buffer.alloc(MAX_CONFIG_BYTES + 1)
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0)
+    if (bytesRead > MAX_CONFIG_BYTES) {
+      throw new ConfigError(`${file}: cannot be read — it is larger than 1 MB`, file)
+    }
+    return buffer.subarray(0, bytesRead).toString('utf8')
+  } catch (err) {
+    if (err instanceof ConfigError) throw err
+    throw new ConfigError(`${file}: cannot be read — ${(err as Error).message}`, file)
+  } finally {
+    await handle.close()
+  }
+}
+
 /**
  * One layer file as a plain object. `null` when the file does not exist. A
  * file that is unreadable, not JSON, or not an object throws
  * {@link ConfigError} naming it.
  */
 async function readJsonFile(file: string): Promise<Record<string, unknown> | null> {
-  const read = readParsedFile(file, 'json')
-  switch (read.kind) {
-    case 'absent':
-      return null
-    case 'unreadable':
-      throw new ConfigError(`${file}: cannot be read — ${read.message}`, file)
-    case 'unparsable':
-      throw new ConfigError(`${file}: invalid JSON — ${read.message}`, file)
-    case 'ok':
-      if (!isPlainObject(read.value)) {
-        throw new ConfigError(`${file}: expected a JSON object, got ${describe(read.value)}`, file)
-      }
-      return read.value
+  const text = await readConfigText(file)
+  if (text === null) return null
+  let value: unknown
+  try {
+    value = JSON.parse(text)
+  } catch (err) {
+    throw new ConfigError(`${file}: invalid JSON — ${(err as Error).message}`, file)
   }
+  if (!isPlainObject(value)) {
+    throw new ConfigError(`${file}: expected a JSON object, got ${describe(value)}`, file)
+  }
+  return value
 }
 
 /**

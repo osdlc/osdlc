@@ -1,5 +1,6 @@
 import { afterAll, describe, expect, test } from 'vitest'
-import { mkdir, readFile } from 'node:fs/promises'
+import { spawnSync } from 'node:child_process'
+import { mkdir, readFile, symlink } from 'node:fs/promises'
 import { userInfo } from 'node:os'
 import { join } from 'node:path'
 
@@ -314,6 +315,23 @@ describe('readConfigFile', () => {
   test('returns null for a file that does not exist, since absence is normal', async () => {
     const dir = await root()
     expect(await readConfigFile(join(dir, 'wayfinder.config.json'))).toBeNull()
+  })
+
+  test.skipIf(WINDOWS)('refuses a link to a device and a FIFO, without reading them', async () => {
+    const dir = await root()
+    const device = join(dir, 'wayfinder.config.json')
+    await symlink('/dev/zero', device)
+    await expect(readConfigFile(device)).rejects.toThrow(/not a regular file/)
+    const fifo = join(dir, 'fifo.json')
+    expect(spawnSync('mkfifo', [fifo]).status).toBe(0)
+    await expect(readConfigFile(fifo)).rejects.toThrow(/not a regular file/)
+  })
+
+  test('refuses a file larger than 1 MB', async () => {
+    const dir = await root({ 'wayfinder.config.json': `{"x": "${'a'.repeat(1024 * 1024)}"}` })
+    await expect(readConfigFile(join(dir, 'wayfinder.config.json'))).rejects.toThrow(
+      /larger than 1 MB/,
+    )
   })
 
   test('names the file and the parse problem when the JSON is malformed', async () => {
