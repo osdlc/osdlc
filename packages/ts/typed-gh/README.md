@@ -228,13 +228,17 @@ after the merge still finds it.
 
 ## Two payload differences it handles
 
-A bot's login is spelled three ways. GraphQL, and a comment's author in
-`gh pr view --json`, give the bare login (`github-actions`). gh's `--json`
+A bot's login is spelled three ways. GraphQL, and comment and review authors
+in `gh pr view --json`, give the bare login (`github-actions`). gh's `--json`
 export of a pull request's author prefixes it (`app/github-actions`). REST
-(`gh api`) suffixes it (`github-actions[bot]`). Comparing one with another
+(`gh api`) and `gh search` suffix it (`github-actions[bot]`). Comparing one with another
 never matches, and no error shows it. Then a bot's comments are treated as
 human review feedback. Logins are cut to the bare form once, when a payload is
 parsed, and the prefix or suffix marks the author as a bot.
+
+gh's `--author` filter does not take the bare form of a bot's login: pass
+`app/<login>` or `<login>[bot]` to `prList({ author })` to list a bot's pull
+requests.
 
 `statusCheckRollup` holds two node types. A modern `CheckRun` carries
 `name`/`status`/`conclusion`. A legacy `StatusContext` carries

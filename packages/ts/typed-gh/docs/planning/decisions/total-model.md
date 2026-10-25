@@ -13,8 +13,9 @@ created: 2026-10-19
   `UNKNOWN`, `null`, `false` or an empty array.
 - `number` is the one field without a "not known" value. A payload with no
   usable number is not a pull request, and `parsePullRequest` returns `null`.
-- The parser folds the two transports onto one shape. A `[bot]` suffix on a
-  login is removed and sets `isBot`. A legacy `StatusContext` and a `CheckRun`
+- The parser folds the transports onto one shape. A `[bot]` suffix (REST,
+  search) or an `app/` prefix (gh's `--json` PR author) on a login is
+  removed and sets `isBot`. A legacy `StatusContext` and a `CheckRun`
   both become a `CheckRun` with a `verdict`.
 - A check that is still running has the verdict `pending`, not `success`.
 - `gh`'s empty `reviewDecision` string becomes `null`.
