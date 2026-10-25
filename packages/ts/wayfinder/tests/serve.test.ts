@@ -229,7 +229,8 @@ describe('POST /session', () => {
       const again = await session(s.address, { boot: s.web.signIn.bootToken })
       expect(again.status).toBe(401)
       expect(s.err.join('')).toContain('way: warning: the sign-in link was used again')
-      expect(s.err.join('')).toContain('press Enter here for a new link')
+      expect(s.err.join('')).toContain('stop the server (Ctrl-C) and start it again')
+      expect(s.err.join('')).not.toContain('press Enter')
       const res = await fetch(`${s.address}/api/commands/config/path`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },

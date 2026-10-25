@@ -263,8 +263,8 @@ runs, so another local user could redeem it first. If the right boot token
 arrives a second time, it is refused with a `401` and `way` prints a warning
 in its terminal. The server keeps running, and pages already signed in stay
 signed in. Opening the old link in a second tab does this. If you did not,
-press Enter for a new link. A program that signed in first keeps its session
-until the server stops, so stop `way serve` if your own page was refused.
+stop `way serve` (Ctrl-C) and start it again. A new link does not help: a
+program that signed in first keeps its session until the server stops.
 
 **The bearer token** is what `POST /session` answers. It is also 128 random
 bits, one per server process. It never appears in a URL, an argv or the

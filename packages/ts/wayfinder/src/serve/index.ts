@@ -101,11 +101,14 @@ export async function startServer(options: ServeOptions): Promise<WebServer> {
     settle = resolve
   })
   // The redeem is refused, so a replay cannot sign in. Warn in case it was
-  // not the person, and keep serving the sessions already signed in.
+  // not the person, and keep serving the sessions already signed in. There
+  // is one bearer token per server, so only a restart signs out whoever
+  // redeemed the link first.
   const signIn = createSignIn(Date.now, () => {
     options.stderr(
       `${BIN}: warning: the sign-in link was used again and refused. ` +
-        `If you did not open it twice, press Enter here for a new link\n`,
+        `If that was not you, stop the server (Ctrl-C) and start it again: ` +
+        `a new link does not sign out whoever used this one\n`,
     )
   })
 

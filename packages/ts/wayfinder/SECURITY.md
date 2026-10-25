@@ -79,14 +79,18 @@ making `way` run code the user did not choose to run are in scope.
   bearer token protects every command and `/run`. The boot token is in the
   URL the server opens or prints; it works once and expires a minute after
   it is shown. Sent again, it is refused and the server warns in its
-  terminal; sessions already signed in keep working. A program that redeemed
-  it first keeps its session until the server stops. The bearer token is never in a URL or a cookie: the page keeps
-  it in `sessionStorage`, which belongs to one tab, survives a reload and is
-  never sent with a request. A script running in the page could read it, so
-  the page loads no third-party code. A new tab needs a new boot token:
-  Enter in the `way serve` terminal makes one and retires the previous one. `/run` takes a task id from
-  the server's own catalog, never a command. Commands keep the flags `way
-  serve` started with, so `--no-exec` cannot be lifted from the page, and a
-  write of `allowExec`, a trust setting or `tools` is refused.
+  terminal; sessions already signed in keep working. There is one bearer
+  token per server, so a program that redeemed the link first keeps its
+  session until the server stops, and a new link does not sign it out. If
+  you did not open the link twice, stop the server and start it again. The
+  bearer token is never in a URL or a cookie: the page keeps it in
+  `sessionStorage`, which belongs to one tab, survives a reload and is never
+  sent with a request. A script running in the page could read it, so the
+  page loads no third-party code. A new tab needs a new boot token: Enter in
+  the `way serve` terminal makes one and retires the previous one. `/run`
+  takes a task id from the server's own catalog, never a command. Commands
+  keep the flags `way serve` started with, so `--no-exec` cannot be lifted
+  from the page, and a write of `allowExec`, a trust setting or `tools` is
+  refused.
 - **Trust is keyed on the resolved path.** A trusted repository that later
   pulls hostile changes stays trusted until `way trust --untrust`.

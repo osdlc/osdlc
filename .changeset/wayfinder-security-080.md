@@ -9,7 +9,7 @@ Safety fixes for running `way` in a repository you do not control.
 - The web view shows repository text with control characters replaced, as the terminal does, so a bidi override cannot make a row read differently from what runs.
 - The web page is served with a strict content security policy: only its own script runs, and it talks only to the server.
 - `POST /session` and `/run` read their bodies as a stream and stop at 64 KB.
-- A boot token redeemed a second time, such as the old link opened in a second tab, is refused with `401`. `way serve` prints a warning and keeps running; pages already signed in stay signed in. If you did not open the link twice, press Enter for a new one, or stop the server to end every session.
+- A boot token redeemed a second time, such as the old link opened in a second tab, is refused with `401`. `way serve` prints a warning and keeps running; pages already signed in stay signed in. If you did not open the link twice, stop the server (Ctrl-C) and start it again: a new link does not sign out a program that used the old one.
 - The browser opener no longer blocks the server, and `way serve` opens a browser on Windows.
 - A config file must be a regular file of at most 1 MB.
 - Writing a user config that is a symbolic link writes the link's target, so a dotfiles link stays a link.
