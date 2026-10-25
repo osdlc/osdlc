@@ -24,6 +24,21 @@ import { WAYFINDER_SPEC, checkoutRoot } from './devlink.ts'
 import type { GuideTool } from './guide.ts'
 import { safeJsonStdout, safeStderr, safeStdout } from './terminal-text.ts'
 
+/**
+ * Exit quietly when the reader of `stream` goes away, as `way list --json |
+ * head -1` does: the rest of the output has nowhere to go, which is not an
+ * error. Any other write error is thrown as before.
+ */
+export function quietOnBrokenPipe(
+  stream: Pick<NodeJS.WriteStream, 'on'>,
+  exit: (code: number) => void = (code) => process.exit(code),
+): void {
+  stream.on('error', (err: NodeJS.ErrnoException) => {
+    if (err.code !== 'EPIPE') throw err
+    exit(0)
+  })
+}
+
 function usageError(io: CliIo, message: string): number {
   io.stderr(`${BIN}: ${message}\n  "${BIN} --help" lists the commands\n`)
   return EXIT.usage
@@ -135,6 +150,7 @@ export async function main(
   // group and exits with 128 + the signal. Only the real process installs it:
   // a test that passes its own io keeps the process's signal handling.
   if (real) installGroupSignalForwarding()
+  if (real) quietOnBrokenPipe(process.stdout)
   // Every stderr line is human text that can quote repository content.
   io = safeStderr(io)
   const cwd = process.cwd()
