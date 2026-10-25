@@ -1,6 +1,11 @@
 [package]
 name = "markdown-relink"
 version = "0.1.5"
+# Held back from crates.io: first-release step 2 of 3. `cargo publish` needs
+# markdown-link and markdown-vault-fs on crates.io first. Remove this line and
+# the entry in packages/rust/release-plz.toml in a pull request of their own,
+# once step 1 is out.
+publish = false
 edition.workspace = true
 rust-version.workspace = true
 description = "Rename and move a note without breaking the vault: the inbound-wikilink rewrite set, computed as a reviewable plan and applied under per-file compare-and-swap"

@@ -305,6 +305,17 @@ Rust crates are released by `.github/workflows/release-plz.yml` with
    `publish = false` in its `Cargo.toml` and `release = false` for it in
    `packages/rust/release-plz.toml`. The workflow and release-plz then skip
    it.
+7. A crate whose first release needs another new crate is held back until
+   that crate is on crates.io. `cargo publish` cannot verify it before then,
+   so the `release-plz` dry run in `rust-ci.yml` fails. Hold it with
+   `publish = false` in its `Cargo.toml` and a `[[package]]` entry with
+   `publish = false` and `release = false` in `packages/rust/release-plz.toml`.
+   Once its dependencies are out, remove both in a pull request of its own.
+   Held now, in three steps (each crate's `Cargo.toml` names its step):
+   - Step 1, after agent-adapt 0.19.1 is out: `typed-git`, `markdown-link`,
+     `markdown-vault-fs`.
+   - Step 2, after step 1: `markdown-relink`, `tradecraft-core`.
+   - Step 3, after step 2: `tradecraft`.
 
 #### Versions and breaking changes
 

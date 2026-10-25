@@ -1,6 +1,12 @@
 [package]
 name = "typed-git"
 version = "0.4.0"
+# Held back from crates.io: first-release step 1 of 3. A first release needs
+# CARGO_REGISTRY_TOKEN, agent-adapt's new version needs trusted publishing,
+# and one release-plz run uses one credential. Remove this line and the entry
+# in packages/rust/release-plz.toml in a pull request of their own, once
+# agent-adapt 0.19.1 is on crates.io.
+publish = false
 edition.workspace = true
 rust-version.workspace = true
 description = "Typed functions over the git command line: repository queries and a parsed status, commits and reverts limited to named paths, push to the upstream, cache clones, worktrees, and a command builder for everything else."

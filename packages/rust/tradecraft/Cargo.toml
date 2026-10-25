@@ -1,6 +1,11 @@
 [package]
 name = "tradecraft"
 version = "0.3.5"
+# Held back from crates.io: first-release step 3 of 3. `cargo publish` needs
+# tradecraft-core and markdown-relink on crates.io first. Remove this line and
+# the entry in packages/rust/release-plz.toml in a pull request of their own,
+# once step 2 is out.
+publish = false
 edition.workspace = true
 rust-version.workspace = true
 description = "A command-line tool that publishes a vault of markdown skill notes into the formats of coding-agent tools (Claude Code, Codex, Cursor and Pi), checks them for drift, and authors and reorganises the vault."
