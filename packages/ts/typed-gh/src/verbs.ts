@@ -336,6 +336,14 @@ export interface PrListOptions {
    * apart.
    */
   head?: string | undefined
+  /**
+   * Every PR whose head branch starts with this prefix, such as `task/`.
+   * Sent as a `head:<prefix>` search term, ahead of any `search`, and the rows
+   * are filtered again on `headRefName`, as GitHub's `head:` matching is
+   * looser than a prefix. Passing it with `head` throws `RangeError`, as does
+   * an empty prefix or one with whitespace.
+   */
+  headPrefix?: string | undefined
   /** Raw `--search` query, for anything the flags do not cover. */
   search?: string | undefined
   author?: string | undefined
@@ -351,28 +359,42 @@ export function prList(
 ): GhVerb<ListResult<PullRequest> | null> {
   const limit = opts.limit ?? 100
   checkLimit(limit)
+  const { head, headPrefix } = opts
+  if (headPrefix !== undefined) {
+    if (head !== undefined) throw new RangeError('prList: pass head or headPrefix, not both')
+    if (headPrefix === '' || /\s/.test(headPrefix)) {
+      throw new RangeError(
+        `prList: headPrefix must be a non-empty branch prefix, got ${JSON.stringify(headPrefix)}`,
+      )
+    }
+  }
   const argv = ['pr', 'list', '--state', opts.state ?? 'open', ...repoArgs(target, opts.repo)]
   if (opts.base !== undefined) argv.push('--base', opts.base)
-  if (opts.head !== undefined) argv.push('--head', opts.head)
-  if (opts.search !== undefined) argv.push('--search', opts.search)
+  if (head !== undefined) argv.push('--head', head)
+  const search = [headPrefix === undefined ? undefined : `head:${headPrefix}`, opts.search]
+    .filter((s) => s !== undefined)
+    .join(' ')
+  if (search !== '' || opts.search !== undefined) argv.push('--search', search)
   if (opts.author !== undefined) argv.push('--author', opts.author)
   // A row without `number` does not parse and is dropped, so always ask for it.
-  // The exact-head filter below also reads `headRefName`.
+  // The head filters below also read `headRefName`.
+  const filtered = head !== undefined || headPrefix !== undefined
   const asked = withFields(opts.fields ?? PR_LIST_FIELDS, [
     'number',
-    ...(opts.head === undefined ? [] : ['headRefName']),
+    ...(filtered ? ['headRefName'] : []),
   ])
   argv.push('--json', asked.join(','))
   argv.push('--limit', String(limit + 1))
-  const head = opts.head
+  const keep = (name: string): boolean =>
+    head !== undefined ? name === head : headPrefix === undefined || name.startsWith(headPrefix)
   return {
     argv,
     checked: false,
     readOnly: true,
     parse(r) {
       const result = limited(manyOrNull(r), limit)
-      if (result === null || head === undefined) return result
-      return { ...result, rows: result.rows.filter((pr) => pr.headRefName === head) }
+      if (result === null || !filtered) return result
+      return { ...result, rows: result.rows.filter((pr) => keep(pr.headRefName)) }
     },
   }
 }

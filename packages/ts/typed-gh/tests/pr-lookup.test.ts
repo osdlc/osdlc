@@ -96,6 +96,45 @@ describe('prList with head', () => {
     expect(verb.parse(FAIL)).toBeNull()
   })
 
+  test('headPrefix searches head:, asks for headRefName and keeps only the prefix', () => {
+    const verb = prList({ headPrefix: 'task/', fields: ['number'] })
+    expect(verb.argv[verb.argv.indexOf('--search') + 1]).toBe('head:task/')
+    expect(verb.argv).not.toContain('--head')
+    expect(verb.argv[verb.argv.indexOf('--json') + 1]).toBe('headRefName,number')
+    const rows = verb.parse(
+      ok([
+        { number: 1, headRefName: 'task/foo' },
+        { number: 2, headRefName: 'other/task/foo' },
+        { number: 3, headRefName: 'task/bar' },
+      ]),
+    )
+    expect(rows?.rows.map((r) => r.number)).toEqual([1, 3])
+    expect(verb.parse(FAIL)).toBeNull()
+  })
+
+  test("headPrefix composes with the caller's own search", () => {
+    const argv = prList({ headPrefix: 'task/', search: 'label:bug is:draft' }).argv
+    expect(argv.filter((a) => a === '--search')).toHaveLength(1)
+    expect(argv[argv.indexOf('--search') + 1]).toBe('head:task/ label:bug is:draft')
+  })
+
+  test('headPrefix refuses head, an empty prefix and whitespace', () => {
+    expect(() => prList({ head: 'task/foo', headPrefix: 'task/' })).toThrow(RangeError)
+    expect(() => prList({ headPrefix: '' })).toThrow(RangeError)
+    expect(() => prList({ headPrefix: 'task/ is:open' })).toThrow(RangeError)
+  })
+
+  test('headPrefix works through the clients', async () => {
+    const answer = ok([
+      { number: 1, headRefName: 'task/a' },
+      { number: 2, headRefName: 'main' },
+    ])
+    const gh = new Gh('/repo', { runner: { run: () => answer } })
+    expect(gh.prList({ headPrefix: 'task/' }).rows.map((r) => r.number)).toEqual([1])
+    const agh = new AsyncGh('/repo', { runner: { run: async () => answer } })
+    expect((await agh.prList({ headPrefix: 'task/' })).rows.map((r) => r.number)).toEqual([1])
+  })
+
   test('without head, the rows are untouched', () => {
     const rows = prList().parse(ok([{ number: 1, headRefName: 'a' }]))
     expect(rows?.rows.length).toBe(1)

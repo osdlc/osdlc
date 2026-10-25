@@ -226,6 +226,10 @@ after the merge still finds it.
 `task/foo-2`. Two forks can share a branch name. Ask for
 `headRepositoryOwner` to tell them apart.
 
+`prList({ headPrefix: 'task/' })` lists every PR whose head branch starts
+with `task/`. It sends a `head:task/` search term ahead of your own `search`
+and filters the rows on `headRefName`. It cannot be combined with `head`.
+
 ## Two payload differences it handles
 
 Author logins differ between GraphQL and REST. GraphQL (`gh pr view --json`)
