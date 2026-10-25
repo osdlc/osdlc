@@ -72,12 +72,15 @@ pub enum BlockNode {
         /// where the list starts
         pos: SourcePos,
     },
-    /// A fenced code block.
+    /// A fenced or indented code block.
     Code {
         /// the info-string language, if any
         lang: Option<String>,
         /// the code, without the fences
         value: String,
+        /// `true` for a fenced block, whose `value` starts on the line after `pos`; an
+        /// indented block's `value` starts on `pos.line`
+        fenced: bool,
         /// the `^block-id` bound to the block, if any
         anchor: Option<String>,
         /// where the block starts
@@ -178,8 +181,8 @@ impl SectionNode {
 
 /// The frontmatter block. `data` is the parsed YAML in the JSON value shape the TS
 /// `yaml` package's `toJS()` gives, or `None` when the YAML does not parse. `pos` is
-/// the opening `---` fence (line 1). The frontmatter plane finds the line of a key by
-/// reading `raw`.
+/// the opening `---` fence (line 1). The frontmatter plane finds the line of a key, and
+/// the error of YAML that does not parse, by reading `raw`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Frontmatter {
     /// inter-fence YAML text, fences stripped
@@ -188,15 +191,6 @@ pub struct Frontmatter {
     pub data: Option<serde_json::Value>,
     /// the opening `---` fence
     pub pos: SourcePos,
-    /// the YAML parse error, for the `frontmatter/yaml` finding
-    pub(crate) yaml_error: Option<YamlError>,
-}
-
-/// A frontmatter YAML error: its 1-based line within `raw` and its message.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct YamlError {
-    pub(crate) line: u32,
-    pub(crate) message: String,
 }
 
 /// The projected document: the frontmatter block (when present), the verbatim body

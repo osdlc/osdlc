@@ -13,7 +13,7 @@ use super::errors::DeclarativeError;
 use super::parse::{DeclarativeKind, parse_declarative_doc};
 use super::schema_v2::compile_frontmatter_v2;
 use super::text::compile_body_text_rule;
-use super::yaml::{get, render};
+use super::yaml::render;
 use crate::contract::{Contract, FrontmatterSpec};
 
 /// The keys a contract mapping may hold.
@@ -34,7 +34,7 @@ pub fn load_contract(yaml_text: &str) -> Result<Contract, DeclarativeError> {
 /// envelope, as an inline config contract is written. An `mcVersion` other than 2 and
 /// any other key are rejected.
 pub fn compile_contract_object(raw: &serde_yaml::Mapping) -> Result<Contract, DeclarativeError> {
-    if let Some(v) = get(raw, "mcVersion")
+    if let Some(v) = raw.get("mcVersion")
         && v.as_f64() != Some(2.0)
     {
         return Err(DeclarativeError::InvalidDocument(format!(
@@ -53,7 +53,7 @@ pub fn compile_contract_object(raw: &serde_yaml::Mapping) -> Result<Contract, De
 
     let mut contract = Contract::new();
 
-    if let Some(d) = get(raw, "description") {
+    if let Some(d) = raw.get("description") {
         let Some(d) = d.as_str() else {
             return Err(DeclarativeError::InvalidDocument(
                 "contract: description must be a string".into(),
@@ -62,13 +62,13 @@ pub fn compile_contract_object(raw: &serde_yaml::Mapping) -> Result<Contract, De
         contract.description = Some(d.to_string());
     }
 
-    if let Some(fm) = get(raw, "frontmatter") {
+    if let Some(fm) = raw.get("frontmatter") {
         contract.frontmatter = Some(FrontmatterSpec {
             schema: compile_frontmatter_v2(fm)?,
         });
     }
 
-    if let Some(body) = get(raw, "body") {
+    if let Some(body) = raw.get("body") {
         contract.body = Some(compile_body_v2(body, "body")?);
         // The body root's `requires:` / `forbids:` become one document rule. As in TS,
         // its findings take the contract's description as their hint, not the body's.

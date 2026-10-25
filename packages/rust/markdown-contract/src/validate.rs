@@ -21,7 +21,7 @@ use crate::content::match_content;
 use crate::contract::Contract;
 use crate::finding::Finding;
 use crate::parse::parse_document;
-use crate::registry::{Ctx, Registry};
+use crate::registry::{Ctx, Registry, takes_hint};
 use crate::structure::{match_structure, scan_heading_depth_jumps};
 use crate::tree::DocTree;
 
@@ -80,10 +80,10 @@ pub fn validate_tree(tree: &DocTree, contract: &Contract, path: &str) -> Vec<Fin
     }
 
     // The outermost hint fallback: a finding with no nearer description in scope takes
-    // the contract root's. `frontmatter/yaml` is outside every description scope.
+    // the contract root's, unless its id never takes a hint.
     if let Some(root_hint) = &contract.description {
         for finding in &mut findings {
-            if finding.hint.is_none() && finding.id != "frontmatter/yaml" {
+            if finding.hint.is_none() && takes_hint(&finding.id) {
                 finding.hint = Some(root_hint.clone());
             }
         }
@@ -211,6 +211,23 @@ mod tests {
                 .map(|x| (x.id.as_str(), x.level))
                 .collect::<Vec<_>>(),
             vec![("structure/heading-depth-jump", FindingLevel::Warn)]
+        );
+    }
+
+    // A YAML error is outside every description's scope, so the contract's description
+    // is not its hint. Other findings still take it.
+    #[test]
+    fn a_yaml_error_takes_no_hint_from_the_contract_description() {
+        let contract = crate::declarative::load_contract(
+            "mcVersion: 2\nkind: contract\ndescription: d\nbody:\n  sections:\n    - section: A\n",
+        )
+        .unwrap();
+        let out = validate("---\ntitle: 'x\n---\n", &contract, "n.md");
+        let hint = |id: &str| out.iter().find(|f| f.id == id).map(|f| f.hint.clone());
+        assert_eq!(hint("frontmatter/yaml"), Some(None));
+        assert_eq!(
+            hint("structure/section-missing"),
+            Some(Some("d".to_string()))
         );
     }
 }

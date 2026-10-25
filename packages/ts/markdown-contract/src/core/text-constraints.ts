@@ -26,6 +26,7 @@
  */
 import { toCamelKey } from './camel.js'
 import { ContractBuildError } from './grammar.js'
+import { codeTextLine } from './projection.js'
 import type { TextMatchSpec } from './text-match.js'
 import { buildTextFindings, matchText } from './text-match.js'
 import type { BlockNode, Ctx, Doc, DocRule, DocTree, Finding, Rule, SectionNode } from './types.js'
@@ -111,7 +112,7 @@ function placeBlock(buf: LineBuffer, block: BlockNode): void {
       for (const item of block.items) buf.place(item.pos.line, item.text)
       break
     case 'code':
-      buf.place(block.pos.line, block.value)
+      buf.place(codeTextLine(block), block.value)
       break
     case 'table':
       buf.place(block.pos.line, block.columns.join(' '))

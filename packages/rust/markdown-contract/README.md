@@ -110,7 +110,14 @@ the [`regex`](https://docs.rs/regex) crate, not as JavaScript regexes:
 - lookaround (`(?=`, `(?!`, `(?<=`, `(?<!`) and backreferences are not
   supported;
 - `\w`, `\d` and `\b` match Unicode letters and digits, where JavaScript
-  matches ASCII only.
+  matches ASCII only;
+- a regex matches code points, where the TypeScript package (no `u` flag)
+  matches UTF-16 units. Outside the Basic Multilingual Plane, `.` and a
+  negated class match a whole character where JavaScript matches half of it,
+  and an empty match before such a character is counted once where
+  JavaScript counts it twice;
+- `ignoreCase` folds case by Unicode rules, so `k` also matches the Kelvin
+  sign (U+212A). JavaScript without the `u` flag does not.
 
 `load_contract` rejects a source the crate cannot compile and names its key.
 For a text rule's `regex`, the TypeScript package instead accepts the

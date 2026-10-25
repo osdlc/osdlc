@@ -3,7 +3,8 @@ import type { ValidationFixture } from '../../harness.js'
 import { loadCorpusSource, loadExpected } from '../../harness.js'
 
 // A code block's text ends at its last line, with no newline before the closing fence, so
-// a regex anchored with `$` matches a word at the end of the block.
+// a regex anchored with `$` matches a word at the end of the block. The text starts on the
+// line after the opening fence, so the hit is reported on its own line.
 const v37: ValidationFixture = {
   id: 'v37',
   title: 'A code block value has no trailing newline',

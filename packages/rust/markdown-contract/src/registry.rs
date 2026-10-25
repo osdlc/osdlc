@@ -2,7 +2,8 @@
 //!
 //! The tables mirror the TS `registry.ts`: the structure, content, text and rule
 //! defaults. An unregistered id defaults to `"error"`. A rule can set another level for
-//! one finding with [`FindingSpec::level`].
+//! one finding with [`FindingSpec::level`]. A short list names the ids that never take a
+//! `description` as their hint.
 //!
 //! [`Ctx`] is the rule-author finding factory: `ctx.finding(spec)` stamps the document
 //! `path`, fills `level` from the registry when the caller does not supply one, and
@@ -60,6 +61,15 @@ pub(crate) const RULE_LEVELS: &[(&str, FindingLevel)] = &[
     ("summary/mentions-outcome", FindingLevel::Error),
     ("summary/names-contract", FindingLevel::Warn),
 ];
+
+/// The finding ids that never take a `description` as their hint, because they report
+/// on something outside every description's scope.
+const UNHINTED: &[&str] = &["frontmatter/yaml"];
+
+/// Whether a finding with `id` can take a `description` as its hint.
+pub(crate) fn takes_hint(id: &str) -> bool {
+    !UNHINTED.contains(&id)
+}
 
 /// The id → default-level registry, seeded with every plane's defaults.
 #[derive(Debug, Clone)]

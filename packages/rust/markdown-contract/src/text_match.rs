@@ -12,7 +12,8 @@
 //!    base 36), because the corpus goldens pin these ids.
 //!
 //! `regex` sources use the `regex` crate's dialect, not JS's: there is no lookaround or
-//! backreference, and `\w`, `\d` and `\b` are Unicode-aware.
+//! backreference, `\w`, `\d` and `\b` are Unicode-aware, matching works on code points
+//! rather than UTF-16 units, and `ignoreCase` folds case by Unicode rules.
 
 use regex::{Regex, RegexBuilder};
 
@@ -189,8 +190,10 @@ impl PositionMapper<'_> {
     }
 }
 
-/// Every occurrence of `re` in `text`, as JS's global `exec` loop finds them: after an
-/// empty match the search moves on one character. `None` (an empty needle) never matches.
+/// Every occurrence of `re` in `text`, as JS's global `exec` loop finds them in BMP text:
+/// after an empty match the search moves on one character. Before a character outside
+/// the BMP, JS steps one UTF-16 unit and counts one more empty match; this does not.
+/// `None` (an empty needle) never matches.
 pub(crate) fn match_text(text: &str, re: Option<&Regex>) -> TextMatchResult {
     let Some(re) = re else {
         return TextMatchResult::default();

@@ -12,12 +12,12 @@
 //! needle, or a `regex` the `regex` crate rejects. The declarative compiler screens the
 //! same errors out first as a `DeclarativeError`.
 
+use regex::Regex;
+
 use crate::camel::to_camel_key;
 use crate::contract::{DocRule, Rule};
 use crate::finding::Finding;
 use crate::registry::Ctx;
-use regex::Regex;
-
 use crate::text_match::{
     TextFindingInput, TextKind, TextMatchSpec, build_regex_or_panic, build_text_findings,
     match_text,
@@ -91,7 +91,9 @@ fn place_block(buf: &mut LineBuffer, block: &BlockNode) {
                 buf.place(item.pos.line, &item.text);
             }
         }
-        BlockNode::Code { value, pos, .. } => buf.place(pos.line, value),
+        BlockNode::Code {
+            value, fenced, pos, ..
+        } => buf.place(pos.line + u32::from(*fenced), value),
         BlockNode::Table {
             columns,
             rows,
@@ -132,8 +134,10 @@ fn doc_scope_text(tree: &DocTree) -> String {
 
 // ── The builders ──────────────────────────────────────────────────────────────────────
 
-/// Each spec with its needle compiled once at construction.
-type Compiled = Vec<(TextMatchSpec, Option<Regex>)>;
+/// A spec with its needle compiled.
+pub(crate) type CompiledSpec = (TextMatchSpec, Option<Regex>);
+
+type Compiled = Vec<CompiledSpec>;
 
 /// # Panics
 /// When a spec has no needle or its `regex` does not compile.
@@ -189,10 +193,15 @@ impl Rule for TextNodeRule {
 /// no needle, or a `regex` the `regex` crate rejects.
 pub fn requires(specs: Vec<TextMatchSpec>) -> Box<dyn Rule> {
     assert_requires_purity(&specs);
+    requires_compiled(compile(specs))
+}
+
+/// [`requires`] over specs the declarative loader has already screened and compiled.
+pub(crate) fn requires_compiled(specs: Compiled) -> Box<dyn Rule> {
     Box::new(TextNodeRule {
         kind: TextKind::Requires,
         id: "text/requires",
-        specs: compile(specs),
+        specs,
     })
 }
 
@@ -203,10 +212,15 @@ pub fn requires(specs: Vec<TextMatchSpec>) -> Box<dyn Rule> {
 /// # Panics
 /// On an entry with no needle, or a `regex` the `regex` crate rejects.
 pub fn forbids(specs: Vec<TextMatchSpec>) -> Box<dyn Rule> {
+    forbids_compiled(compile(specs))
+}
+
+/// [`forbids`] over specs the declarative loader has already compiled.
+pub(crate) fn forbids_compiled(specs: Compiled) -> Box<dyn Rule> {
     Box::new(TextNodeRule {
         kind: TextKind::Forbids,
         id: "text/forbids",
-        specs: compile(specs),
+        specs,
     })
 }
 
@@ -271,10 +285,12 @@ impl DocRule for TextDocRule {
 /// As [`requires`] and [`forbids`] do.
 pub fn text_rule(spec: TextRuleSpec) -> Box<dyn DocRule> {
     assert_requires_purity(&spec.requires);
-    Box::new(TextDocRule {
-        requires: compile(spec.requires),
-        forbids: compile(spec.forbids),
-    })
+    text_rule_compiled(compile(spec.requires), compile(spec.forbids))
+}
+
+/// [`text_rule`] over specs the declarative loader has already screened and compiled.
+pub(crate) fn text_rule_compiled(requires: Compiled, forbids: Compiled) -> Box<dyn DocRule> {
+    Box::new(TextDocRule { requires, forbids })
 }
 
 #[cfg(test)]
@@ -361,6 +377,18 @@ mod tests {
         assert_eq!(lines[6], "item one"); // line 7
         assert_eq!(lines[9], "A B"); // line 10 (table header)
         assert_eq!(lines[11], "x y"); // line 12 (data row; separator line stays empty)
+    }
+
+    #[test]
+    fn code_text_starts_after_the_fence_and_on_the_line_of_indented_code() {
+        let line_of_todo = |src: &str| {
+            let tree = crate::parse::parse_document(src);
+            let text = section_scope_text(&tree.root.sections[0]);
+            text.split('\n').position(|l| l == "TODO").map(|i| i + 1)
+        };
+        assert_eq!(line_of_todo("## N\n\n```sh\nok\nTODO\n```\n"), Some(5));
+        assert_eq!(line_of_todo("## N\n\n~~~\nTODO\n~~~\n"), Some(4));
+        assert_eq!(line_of_todo("## N\n\n    ok\n    TODO\n"), Some(4));
     }
 
     #[test]

@@ -10,10 +10,6 @@ use super::errors::DeclarativeError;
 /// Builds a [`DeclarativeError`] of the caller's variant from a message.
 pub(super) type ErrFn = fn(String) -> DeclarativeError;
 
-pub(super) fn get<'a>(map: &'a Mapping, key: &str) -> Option<&'a Value> {
-    map.get(key)
-}
-
 /// A value as JSON text, for error messages (`undefined` when absent).
 pub(super) fn render(v: Option<&Value>) -> String {
     match v {
@@ -43,7 +39,7 @@ pub(super) fn num(
     path: &str,
     err: ErrFn,
 ) -> Result<Option<f64>, DeclarativeError> {
-    get(map, key)
+    map.get(key)
         .map(|v| {
             v.as_f64()
                 .ok_or_else(|| err(format!("{path}.{key} must be a number")))
@@ -58,7 +54,7 @@ pub(super) fn string<'a>(
     path: &str,
     err: ErrFn,
 ) -> Result<Option<&'a str>, DeclarativeError> {
-    get(map, key)
+    map.get(key)
         .map(|v| {
             v.as_str()
                 .ok_or_else(|| err(format!("{path}.{key} must be a string")))
@@ -73,7 +69,7 @@ pub(super) fn boolean(
     path: &str,
     err: ErrFn,
 ) -> Result<Option<bool>, DeclarativeError> {
-    get(map, key)
+    map.get(key)
         .map(|v| {
             v.as_bool()
                 .ok_or_else(|| err(format!("{path}.{key} must be a boolean")))
@@ -83,7 +79,7 @@ pub(super) fn boolean(
 
 /// `map[key]` as a list of strings, or `None` when it is absent or not one.
 pub(super) fn strings(map: &Mapping, key: &str) -> Option<Vec<String>> {
-    get(map, key)?
+    map.get(key)?
         .as_sequence()?
         .iter()
         .map(|v| v.as_str().map(str::to_string))

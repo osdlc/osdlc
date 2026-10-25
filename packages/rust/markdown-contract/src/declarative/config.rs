@@ -14,7 +14,6 @@ use serde_yaml::Value;
 use super::errors::DeclarativeError;
 use super::load::{compile_contract_object, load_contract};
 use super::parse::{DeclarativeKind, parse_declarative_doc};
-use super::yaml::get;
 use crate::contract::Contract;
 use crate::runner::{CorpusConfig, CorpusRule};
 
@@ -44,11 +43,11 @@ fn compile_config(
     raw: &serde_yaml::Mapping,
     resolver: &mut ContractResolver<'_>,
 ) -> Result<CorpusConfig, DeclarativeError> {
-    let contracts = match get(raw, "contracts") {
+    let contracts = match raw.get("contracts") {
         Some(Value::Mapping(m)) => m.clone(),
         _ => serde_yaml::Mapping::new(),
     };
-    let Some(Value::Sequence(rules)) = get(raw, "rules") else {
+    let Some(Value::Sequence(rules)) = raw.get("rules") else {
         return Err(err(
             "config.rules must be a list of { include, exclude?, contract }".into(),
         ));
@@ -76,7 +75,7 @@ fn compile_rule(
     let Value::Mapping(map) = rule else {
         return Err(err(format!("{path}: a rule must be a mapping")));
     };
-    let include = match glob_list(get(map, "include")) {
+    let include = match glob_list(map.get("include")) {
         Some(globs) if !globs.is_empty() => globs,
         _ => {
             return Err(err(format!(
@@ -84,13 +83,13 @@ fn compile_rule(
             )));
         }
     };
-    let exclude = match get(map, "exclude") {
+    let exclude = match map.get("exclude") {
         None => Vec::new(),
         some => {
             glob_list(some).ok_or_else(|| err(format!("{path}.exclude must be a list of globs")))?
         }
     };
-    let contract_ref = get(map, "contract");
+    let contract_ref = map.get("contract");
     let contract = resolve_contract(
         contract_ref,
         &format!("{path}.contract"),

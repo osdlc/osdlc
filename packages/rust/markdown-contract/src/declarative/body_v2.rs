@@ -16,7 +16,7 @@ use serde_yaml::Value;
 use super::errors::DeclarativeError;
 use super::schema_v2::compile_schema_v2;
 use super::text::{compile_section_text_rules, has_text_keys};
-use super::yaml::{self, boolean, get, num, scalar_string, string};
+use super::yaml::{self, boolean, num, scalar_string, string, strings};
 use crate::camel::to_camel_key;
 use crate::contract::{
     CodeConfig, EveryItem, ExtraColumns, GapSpec, LeafSpec, LevelOpts, ListConfig, OneOfSpec,
@@ -120,7 +120,7 @@ pub(super) fn compile_body_v2(node: &Value, path: &str) -> Result<SectionSeq, De
 /// Parse a level's `order` / `additionalSections`.
 fn level_opts(map: &serde_yaml::Mapping, path: &str) -> Result<LevelOpts, DeclarativeError> {
     let mut opts = LevelOpts::default();
-    if let Some(order) = get(map, "order") {
+    if let Some(order) = map.get("order") {
         opts.order = match order.as_str() {
             Some("none") => Order::None,
             Some("recognized-relative") => Order::RecognizedRelative,
@@ -178,7 +178,7 @@ fn unwrap_inner(spec: &Spec) -> &Spec {
 
 /// Compile a `sections:` list (required) into specs, running the key-collision guard.
 fn compile_sections(map: &serde_yaml::Mapping, path: &str) -> Result<Vec<Spec>, DeclarativeError> {
-    let Some(Value::Sequence(nodes)) = get(map, "sections") else {
+    let Some(Value::Sequence(nodes)) = map.get("sections") else {
         return Err(err(format!("{path}.sections must be a list of nodes")));
     };
     let specs: Vec<Spec> = nodes
@@ -198,7 +198,7 @@ fn compile_node(node: &Value, path: &str) -> Result<Spec, DeclarativeError> {
     };
     let selectors: Vec<&str> = ["section", "oneOf", "gap"]
         .into_iter()
-        .filter(|k| get(map, k).is_some())
+        .filter(|k| map.get(k).is_some())
         .collect();
     match selectors.as_slice() {
         ["gap"] => {
@@ -227,7 +227,7 @@ fn compile_node(node: &Value, path: &str) -> Result<Spec, DeclarativeError> {
 /// The bounds count sections, so a fractional or negative bound is rejected (TS
 /// accepts any number there).
 fn compile_gap(map: &serde_yaml::Mapping, path: &str) -> Result<Spec, DeclarativeError> {
-    let g = match get(map, "gap") {
+    let g = match map.get("gap") {
         None | Some(Value::Null) => return Ok(Spec::Gap(GapSpec::default())),
         Some(Value::Mapping(g)) => g,
         Some(_) => {
@@ -265,11 +265,7 @@ fn compile_gap(map: &serde_yaml::Mapping, path: &str) -> Result<Spec, Declarativ
 
 /// Compile a `oneOf: [...]` node.
 fn compile_one_of(map: &serde_yaml::Mapping, path: &str) -> Result<Spec, DeclarativeError> {
-    let names: Option<Vec<String>> = get(map, "oneOf")
-        .and_then(Value::as_sequence)
-        .map(|seq| seq.iter().map(|v| v.as_str().map(str::to_string)).collect())
-        .unwrap_or(None);
-    let names = match names {
+    let names = match strings(map, "oneOf") {
         Some(n) if !n.is_empty() => n,
         _ => {
             return Err(err(format!(
@@ -288,18 +284,14 @@ fn compile_one_of(map: &serde_yaml::Mapping, path: &str) -> Result<Spec, Declara
 
 /// Compile a `section: <name>` node (with optional `aliases`).
 fn compile_section_node(map: &serde_yaml::Mapping, path: &str) -> Result<Spec, DeclarativeError> {
-    let Some(name) = get(map, "section").and_then(Value::as_str) else {
+    let Some(name) = map.get("section").and_then(Value::as_str) else {
         return Err(err(format!(
             "{path}.section must be a heading name (string)"
         )));
     };
     let mut names = vec![name.to_string()];
-    if let Some(aliases) = get(map, "aliases") {
-        let list: Option<Vec<String>> = aliases
-            .as_sequence()
-            .map(|seq| seq.iter().map(|v| v.as_str().map(str::to_string)).collect())
-            .unwrap_or(None);
-        match list {
+    if map.get("aliases").is_some() {
+        match strings(map, "aliases") {
             Some(mut l) => names.append(&mut l),
             None => {
                 return Err(err(format!(
@@ -356,8 +348,8 @@ fn occurrence(
     map: &serde_yaml::Mapping,
     path: &str,
 ) -> Result<Option<(usize, Option<usize>)>, DeclarativeError> {
-    let min_v = get(map, "minContains");
-    let max_v = get(map, "maxContains");
+    let min_v = map.get("minContains");
+    let max_v = map.get("maxContains");
     if min_v.is_none() && max_v.is_none() {
         return Ok(None);
     }
@@ -407,20 +399,20 @@ fn section_opts(
 ) -> Result<Option<SectionOpts>, DeclarativeError> {
     let mut opts = SectionOpts::default();
     let mut any = false;
-    if let Some(anchor) = get(map, "anchor") {
+    if let Some(anchor) = map.get("anchor") {
         opts.anchor = Some(scalar_string(anchor));
         any = true;
     }
-    if let Some(content) = get(map, "content") {
+    if let Some(content) = map.get("content") {
         opts.content = Some(compile_content(content, &format!("{path}.content"))?);
         any = true;
     }
-    if get(map, "sections").is_some() {
+    if map.get("sections").is_some() {
         opts.children = Some(nested_level(map, path)?);
         any = true;
     } else if let Some(key) = ["order", "additionalSections"]
         .into_iter()
-        .find(|k| get(map, k).is_some())
+        .find(|k| map.get(k).is_some())
     {
         return Err(err(format!(
             "{path}: '{key}' requires a nested 'sections' list on the node"
@@ -544,11 +536,7 @@ fn table_leaf(cfg: &Value, path: &str) -> Result<LeafSpec, DeclarativeError> {
         ],
         &format!("{path}.table"),
     )?;
-    let columns: Option<Vec<String>> = get(map, "columns")
-        .and_then(Value::as_sequence)
-        .map(|seq| seq.iter().map(|v| v.as_str().map(str::to_string)).collect())
-        .unwrap_or(None);
-    let Some(columns) = columns else {
+    let Some(columns) = strings(map, "columns") else {
         return Err(err(format!(
             "{path}.table.columns must be a list of column names"
         )));
@@ -557,12 +545,12 @@ fn table_leaf(cfg: &Value, path: &str) -> Result<LeafSpec, DeclarativeError> {
         columns,
         ..Default::default()
     };
-    if let Some(anchor) = get(map, "anchor") {
+    if let Some(anchor) = map.get("anchor") {
         out.anchor = Some(scalar_string(anchor));
     }
     let table_path = format!("{path}.table");
     out.min_rows = num(map, "minRows", &table_path, err)?;
-    out.extra_columns = match get(map, "extraColumns").map(Value::as_str) {
+    out.extra_columns = match map.get("extraColumns").map(Value::as_str) {
         None | Some(Some("ignore")) => ExtraColumns::Ignore,
         Some(Some("error")) => ExtraColumns::Error,
         Some(_) => {
@@ -571,7 +559,7 @@ fn table_leaf(cfg: &Value, path: &str) -> Result<LeafSpec, DeclarativeError> {
             )));
         }
     };
-    if let Some(cells) = get(map, "cells") {
+    if let Some(cells) = map.get("cells") {
         let Value::Mapping(cells) = cells else {
             return Err(err(format!(
                 "{path}.table.cells must be a mapping of column → schema"
@@ -608,7 +596,7 @@ fn list_leaf(cfg: &Value, path: &str) -> Result<LeafSpec, DeclarativeError> {
         min_items: num(map, "minItems", &list_path, err)?,
         every_item: None,
     };
-    if let Some(items) = get(map, "items") {
+    if let Some(items) = map.get("items") {
         out.every_item = Some(if items.as_str() == Some("checkbox") {
             EveryItem::Checkbox
         } else {

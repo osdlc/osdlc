@@ -1,8 +1,9 @@
 // Barrel of validation fixtures, in numeric order.
 // v01 is the worked sample; the rest are in two parts (01a–11, 12–21b). The declarative
 // text-constraint fixtures sit beside their peers here. v27–v28 are the mcVersion 2 parity
-// fixtures: description→hint and minContains/maxContains. v29–v38 pin behaviour the Rust
-// engine once got wrong.
+// fixtures: description→hint and minContains/maxContains. v29–v38 pin a second H1,
+// repeated-section content, frontmatter YAML errors and lines, structure and leaf hints, a
+// null-first type union, and code-block values and lines.
 import type { ValidationFixture } from '../../harness.js'
 import { partA } from './_part-a.js'
 import { partB } from './_part-b.js'

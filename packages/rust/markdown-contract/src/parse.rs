@@ -23,7 +23,7 @@ use comrak::{Arena, Options};
 
 use crate::dialect::{extract_trailing_anchor, is_standalone_anchor};
 use crate::finding::SourcePos;
-use crate::frontmatter::{yaml_error, yaml_to_json};
+use crate::frontmatter::yaml_to_json;
 use crate::js;
 use crate::tree::{BlockNode, DocTree, Frontmatter, ListItem, SectionNode};
 
@@ -103,8 +103,7 @@ pub fn split_frontmatter(source: &str) -> FrontmatterSplit {
 /// Parse raw markdown (frontmatter + body) into the positioned projection. Positions in
 /// the returned tree are absolute document lines, matching the TS engine. The
 /// frontmatter's `data` mirrors the TS `yaml` package's `toJS()` value shape; it is
-/// `None` when the YAML does not parse, and the parse error is kept for the
-/// `frontmatter/yaml` finding.
+/// `None` when the YAML does not parse.
 pub fn parse_document(source: &str) -> DocTree {
     let split = split_frontmatter(source);
     // `body` is a suffix of `source`; the lines before it shift every body sourcepos.
@@ -112,13 +111,11 @@ pub fn parse_document(source: &str) -> DocTree {
     let line_offset = source[..prefix_len].bytes().filter(|&b| b == b'\n').count() as u32;
 
     let frontmatter = split.raw.map(|raw| {
-        let (data, yaml_error) = match serde_yaml::from_str::<serde_yaml::Value>(&raw) {
-            Ok(v) => (Some(yaml_to_json(v)), None),
-            Err(e) => (None, Some(yaml_error(&raw, &e))),
-        };
+        let data = serde_yaml::from_str::<serde_yaml::Value>(&raw)
+            .ok()
+            .map(yaml_to_json);
         Frontmatter {
             data,
-            yaml_error,
             raw,
             pos: SourcePos::at(1, 1),
         }
@@ -218,7 +215,7 @@ fn project_list<'a>(node: &'a AstNode<'a>, ordered: bool, off: u32) -> BlockNode
 }
 
 fn project_code<'a>(node: &'a AstNode<'a>, off: u32) -> BlockNode {
-    let (lang, value) = match &node.data.borrow().value {
+    let (lang, value, fenced) = match &node.data.borrow().value {
         // mdast's `value` drops the final line break that comrak's `literal` keeps.
         NodeValue::CodeBlock(cb) => (
             cb.info.split_whitespace().next().map(str::to_string),
@@ -227,12 +224,14 @@ fn project_code<'a>(node: &'a AstNode<'a>, off: u32) -> BlockNode {
                 .map(|v| v.strip_suffix('\r').unwrap_or(v))
                 .unwrap_or(&cb.literal)
                 .to_string(),
+            cb.fenced,
         ),
-        _ => (None, String::new()),
+        _ => (None, String::new(), true),
     };
     BlockNode::Code {
         lang,
         value,
+        fenced,
         anchor: None,
         pos: pos_of(node, off),
     }
@@ -575,7 +574,11 @@ mod tests {
         let sec = &tree.root.sections[0];
         assert_eq!(sec.sections.len(), 0); // the ## inside the fence is verbatim
         let BlockNode::Code {
-            lang, value, pos, ..
+            lang,
+            value,
+            fenced,
+            pos,
+            ..
         } = &sec.blocks[0]
         else {
             panic!("expected code");
@@ -583,6 +586,22 @@ mod tests {
         assert_eq!(lang.as_deref(), Some("ts"));
         // As mdast does, the value drops the newline before the closing fence.
         assert_eq!(value, "const x = 1;\n## not a heading");
+        assert!(fenced);
+        assert_eq!(pos.line, 3);
+    }
+
+    #[test]
+    fn indented_code_is_not_fenced() {
+        let tree = parse_document(
+            "## Example
+
+    let x = 1;
+",
+        );
+        let BlockNode::Code { fenced, pos, .. } = &tree.root.sections[0].blocks[0] else {
+            panic!("expected code");
+        };
+        assert!(!fenced);
         assert_eq!(pos.line, 3);
     }
 
@@ -606,16 +625,20 @@ mod tests {
         assert_eq!(tree.root.sections[0].pos.line, 5);
     }
 
-    // Only a row that is a lone `^id` in the source is lifted as the anchor.
+    // Only a row that is a lone `^id` in the source is lifted as the anchor. comrak pads
+    // `| ^x |` and `| ^x | |` to the same cells, so only the source line tells them apart.
     #[test]
     fn a_two_cell_row_with_an_anchor_is_a_data_row() {
-        let src = "## T\n\n| A | B |\n| - | - |\n| 1 | 2 |\n| ^x | y |\n";
-        let tree = parse_document(src);
-        let BlockNode::Table { rows, anchor, .. } = &tree.root.sections[0].blocks[0] else {
-            panic!("expected a table");
+        let table = |last: &str| {
+            let src = format!("## T\n\n| A | B |\n| - | - |\n| 1 | 2 |\n{last}\n");
+            let tree = parse_document(&src);
+            let BlockNode::Table { rows, anchor, .. } = &tree.root.sections[0].blocks[0] else {
+                panic!("expected a table");
+            };
+            (rows.len(), anchor.clone())
         };
-        assert_eq!(anchor, &None);
-        assert_eq!(rows.len(), 2);
+        assert_eq!(table("| ^x | |"), (2, None));
+        assert_eq!(table("| ^x |"), (1, Some("x".to_string())));
     }
 
     // ── Anchors ──────────────────────────────────────────────────────────────────────

@@ -15,7 +15,7 @@ use regex::Regex;
 use serde_yaml::Value;
 
 use super::errors::DeclarativeError;
-use super::yaml::{self, describe, get, num, render, string, strings};
+use super::yaml::{self, describe, num, render, string, strings};
 use crate::schema::{ConstValue, STRING_FORMATS, Schema, StringFormat};
 
 fn err(msg: String) -> DeclarativeError {
@@ -97,7 +97,7 @@ pub(super) fn compile_schema_v2(node: &Value, path: &str) -> Result<Schema, Decl
     // Exactly one of type / enum / const supplies the base.
     let bases: Vec<&str> = ["type", "enum", "const"]
         .into_iter()
-        .filter(|k| get(n, k).is_some())
+        .filter(|k| n.get(k).is_some())
         .collect();
     if bases.len() != 1 {
         let got = if bases.len() > 1 {
@@ -124,7 +124,7 @@ pub(super) fn compile_schema_v2(node: &Value, path: &str) -> Result<Schema, Decl
 
     // Wrappers outward: (nullable is applied by `compile_typed` for the null union),
     // then `default`, then the stored `description`.
-    if get(n, "default").is_some() {
+    if n.get("default").is_some() {
         schema = Schema::Default(Box::new(schema));
     }
     if let Some(description) = yaml::description_of(n, path, err)? {
@@ -147,7 +147,7 @@ fn compile_enum(n: &serde_yaml::Mapping, path: &str) -> Result<Schema, Declarati
 
 /// `const`: a string, number or boolean.
 fn compile_const(n: &serde_yaml::Mapping, path: &str) -> Result<Schema, DeclarativeError> {
-    let value = match get(n, "const").expect("base checked") {
+    let value = match n.get("const").expect("base checked") {
         Value::String(s) => ConstValue::String(s.clone()),
         Value::Number(x) => ConstValue::Number(x.as_f64().unwrap_or(f64::NAN)),
         Value::Bool(b) => ConstValue::Bool(*b),
@@ -169,7 +169,7 @@ fn resolve_type<'a>(
     n: &'a serde_yaml::Mapping,
     path: &str,
 ) -> Result<(&'a str, bool), DeclarativeError> {
-    let ty = get(n, "type").expect("base checked");
+    let ty = n.get("type").expect("base checked");
     match ty {
         Value::String(t) if TYPE_NAMES.contains(&t.as_str()) => Ok((t, false)),
         Value::String(t) => Err(err(format!(
@@ -243,7 +243,7 @@ fn compile_typed(n: &serde_yaml::Mapping, path: &str) -> Result<Schema, Declarat
                 ],
                 path,
             )?;
-            let Some(items) = get(n, "items") else {
+            let Some(items) = n.get("items") else {
                 return Err(err(format!(
                     "{path}: an array schema needs an 'items' element schema"
                 )));
@@ -315,7 +315,7 @@ fn string_schema(n: &serde_yaml::Mapping, path: &str) -> Result<Schema, Declarat
 /// property is optional unless listed in `required`, and each `required` entry must name
 /// a declared property. `additionalProperties: false` rejects unknown keys.
 fn object_schema(n: &serde_yaml::Mapping, path: &str) -> Result<Schema, DeclarativeError> {
-    let properties = match get(n, "properties") {
+    let properties = match n.get("properties") {
         None => {
             return Err(err(format!(
                 "{path}: an object schema needs a 'properties' map of key → schema"
@@ -329,20 +329,20 @@ fn object_schema(n: &serde_yaml::Mapping, path: &str) -> Result<Schema, Declarat
         }
     };
 
-    let required: Vec<String> = match get(n, "required") {
+    let required: Vec<String> = match n.get("required") {
         None => Vec::new(),
         Some(_) => strings(n, "required")
             .ok_or_else(|| err(format!("{path}.required must be a list of property names")))?,
     };
     for name in &required {
-        if get(properties, name).is_none() {
+        if properties.get(name).is_none() {
             return Err(err(format!(
                 "{path}.required names '{name}', which is not declared in properties"
             )));
         }
     }
 
-    let strict = match get(n, "additionalProperties") {
+    let strict = match n.get("additionalProperties") {
         None => false,
         Some(Value::Bool(b)) => !b,
         Some(_) => {
@@ -369,7 +369,7 @@ fn object_schema(n: &serde_yaml::Mapping, path: &str) -> Result<Schema, Declarat
 /// Compile the `frontmatter:` block: a schema node that must be an explicit
 /// `type: object`, as the TS `compileObjectSchemaV2` requires.
 pub(super) fn compile_frontmatter_v2(fm: &Value) -> Result<Schema, DeclarativeError> {
-    let is_object = matches!(fm, Value::Mapping(node) if get(node, "type").and_then(Value::as_str) == Some("object"));
+    let is_object = matches!(fm, Value::Mapping(node) if node.get("type").and_then(Value::as_str) == Some("object"));
     if !is_object {
         return Err(err("frontmatter: a v2 frontmatter is an object schema — a mapping with an explicit 'type: object' (plus 'properties' / 'required' / 'additionalProperties'); the v1 'strict' / 'fields' form is not v2 (markdown-contract migrate rewrites v1 files)".into()));
     }

@@ -24,7 +24,7 @@ use crate::registry::{Ctx, FindingSpec};
 use crate::schema::{
     Issue, IssueKind, PathSeg, Schema, description_along_path, format_key_path, type_name,
 };
-use crate::tree::{DocTree, YamlError};
+use crate::tree::DocTree;
 
 // ── YAML → the TS `toJS()` value shape ────────────────────────────────────────────────
 
@@ -295,6 +295,12 @@ fn location_suffix() -> &'static Regex {
     RE.get_or_init(|| Regex::new(r" at line \d+ column \d+").expect("static regex"))
 }
 
+/// A frontmatter YAML error: its 1-based line within `raw` and its message.
+pub(crate) struct YamlError {
+    pub(crate) line: u32,
+    pub(crate) message: String,
+}
+
 /// The `frontmatter/yaml` error for a block serde_yaml rejected: its line within
 /// `raw` and its message. The line is serde_yaml's, except for a duplicate key, which
 /// is placed on the repeated key as the TS engine does.
@@ -385,15 +391,17 @@ fn frontmatter_message(issue: &Issue, id: &str, data: Option<&serde_json::Value>
 }
 
 /// Report a frontmatter block whose YAML does not parse as `frontmatter/yaml`, on the
-/// error's line. Returns true when the YAML parsed. The finding has no hint: the TS
-/// engine reports it outside every `description` scope.
+/// error's line. Returns true when the YAML parsed. `parse_document` leaves `data` as
+/// `None` for such a block, so only then is `raw` parsed again for the error. The
+/// finding has no hint: the TS engine reports it outside every `description` scope.
 pub(crate) fn match_frontmatter_yaml(tree: &DocTree, ctx: &Ctx, out: &mut Vec<Finding>) -> bool {
-    let Some(fm) = &tree.frontmatter else {
+    let Some(fm) = tree.frontmatter.as_ref().filter(|fm| fm.data.is_none()) else {
         return true;
     };
-    let Some(err) = &fm.yaml_error else {
+    let Err(e) = serde_yaml::from_str::<serde_yaml::Value>(&fm.raw) else {
         return true;
     };
+    let err = yaml_error(&fm.raw, &e);
     out.push(
         ctx.finding(
             FindingSpec::new(
