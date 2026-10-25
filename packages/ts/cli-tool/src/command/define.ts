@@ -41,6 +41,13 @@ export interface CommandContext extends CliContext {
   app: App
   /** The words that selected this command, such as `['config', 'get']`. */
   path: readonly string[]
+  /**
+   * The app's global flag values, keyed as declared, such as `dir` for `-C`.
+   * The same values as `input.globals`, here so a shared command's store or
+   * service can read them. Through an adapter they are the values the server
+   * was started with.
+   */
+  globals: Readonly<Record<string, unknown>>
   /** Whether the answer is JSON: `--json`, `--output json` or `--output jsonl`, or a call through an adapter. */
   json: boolean
   /** The output mode. A call through an adapter is `json`. */

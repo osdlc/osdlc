@@ -33,7 +33,7 @@ describe('--output', () => {
           summary: 'rows',
           output: z.object({ rows: z.array(z.object({ n: z.number() })) }),
           items: { field: 'rows', kind: 'row' },
-          run: () => ({ rows: [{ n: 1, kind: 'mine', schemaVersion: 9 }] as { n: number }[] }),
+          run: () => ({ rows: [{ n: 1, kind: 'mine', schemaVersion: 9 }] }) as never,
         }),
         tick: defineCommand({
           summary: 'tick',

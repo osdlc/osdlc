@@ -37,7 +37,8 @@ A tool built on its command tree gets every rule below without writing it.
 | `<tool> help`, `<tool> --help` | the top-level commands, one line each, and the global flags |
 | `<tool> help <command> [<sub> ...]`, `<tool> <command> --help` | that command: usage, flags, arguments and its subcommands one level down |
 | `<tool> help --depth <n>`, `--depth all` | that many levels of subcommands |
-| `<tool> help <command> --full`, `<tool> <command> --help --all` | also the long description, hidden flags, exit codes and examples |
+| `<tool> help <command> --full` | also the long description, hidden flags, exit codes and examples |
+| `<tool> help <command> --all`, `<tool> <command> --help --all` | `--full` for the whole subtree: every level, with the long form |
 | `<tool> help ... --json` | the same content as one JSON document |
 
 Help is wrapped to the terminal width when it is rendered, between 40 and 100
@@ -272,7 +273,8 @@ Each of these was a choice. Overturn any of them in review.
 3. **`schemaVersion` starts at 1 per document.** Each kind is versioned on its
    own, so a change to one document does not move the others.
 4. **`help` is a command and `--help` is its shorthand.** `<tool> x --help` and
-   `<tool> help x` print the same thing.
+   `<tool> help x` print the same thing, and `<tool> x --help --all` is
+   `<tool> help x --all`.
 5. **Streams are NDJSON, not Server-Sent Events.** `EventSource` can only send
    GET and cannot send the token header. `fetch` can read NDJSON line by line
    from a POST, and the lines are the same as `--output jsonl`.

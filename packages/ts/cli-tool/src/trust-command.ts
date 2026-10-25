@@ -44,7 +44,8 @@ export interface TrustRequest {
 
 /**
  * What `trust` needs from a tool. Each method receives the command context,
- * so it can resolve the root from `ctx.cwd` or the tool's `-C` flag.
+ * so it can resolve the root from `ctx.cwd`, or from the tool's `-C` flag in
+ * `ctx.globals`.
  * @experimental
  */
 export interface TrustService {

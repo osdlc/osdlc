@@ -386,3 +386,56 @@ describe('guide', () => {
     ).toEqual([])
   })
 })
+
+describe('global flags reach the shared commands', () => {
+  const GLOBALS = {
+    dir: { kind: 'string', short: 'C', valueName: 'path', help: 'the directory' },
+  } as const
+  const rootOf = (ctx: { cwd: string; globals: Readonly<Record<string, unknown>> }): string =>
+    typeof ctx.globals['dir'] === 'string' ? ctx.globals['dir'] : ctx.cwd
+
+  test('trust and config see -C through ctx.globals', async () => {
+    const roots: string[] = []
+    const service: TrustService = {
+      async trust(ctx) {
+        roots.push(rootOf(ctx))
+        return { root: rootOf(ctx), trusted: true, by: 'marker', changed: true }
+      },
+      async untrust(ctx) {
+        return { root: rootOf(ctx), trusted: false, by: null, changed: true }
+      },
+      async show(ctx) {
+        return { root: rootOf(ctx), trusted: false, by: null }
+      },
+      async list() {
+        return []
+      },
+    }
+    const store = memoryStore()
+    const list = store.list.bind(store)
+    store.list = async (ctx) => {
+      roots.push(`config:${rootOf(ctx)}`)
+      return list(ctx)
+    }
+    const app = defineApp({
+      name: 't',
+      version: '0',
+      summary: 's',
+      globals: GLOBALS,
+      commands: {
+        trust: trustCommand(service, { globals: GLOBALS }),
+        config: configCommands(store, { globals: GLOBALS }),
+      },
+    })
+    const ctx = { cwd: '/repo-a', env: {} }
+    const r = await runApp(app, ['-C', '/repo-b', 'trust'], ctx)
+    expect(r.out).toBe('trusted /repo-b\n')
+    await runApp(app, ['config', 'list', '--dir', '/repo-c'], ctx)
+    const called = await app.call(['trust'], { show: true }, ctx, {
+      surface: 'mcp',
+      globals: { dir: '/repo-d' },
+    })
+    expect(called).toMatchObject({ document: { roots: [{ root: '/repo-d' }] } })
+    expect(roots).toEqual(['/repo-b', 'config:/repo-c'])
+  })
+})

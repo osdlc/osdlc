@@ -409,7 +409,7 @@ describe('declaration checks', () => {
   test('a flag named after an Object.prototype member is not taken for a builtin', () => {
     const c = defineCommand({
       summary: 'x',
-      flags: { constructor: { kind: 'string', help: 'h' } },
+      flags: { constructor: { kind: 'string', help: 'h' } } as const,
       output: z.object({}),
       run: () => ({}),
     })

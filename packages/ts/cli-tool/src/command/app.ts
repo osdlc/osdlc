@@ -305,10 +305,9 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
     }),
     kind: 'help',
     readOnly: true,
-    run({ flags, positionals }, ctx) {
-      const all = (ctx as CommandContext & { all?: boolean }).all === true
+    run({ flags, positionals }) {
       let depth = 1
-      if (all || flags.depth === 'all') depth = Number.POSITIVE_INFINITY
+      if (flags.depth === 'all') depth = Number.POSITIVE_INFINITY
       else if (flags.depth !== undefined) {
         if (!/^\d+$/.test(flags.depth)) throw new UsageError('--depth needs a number or "all"')
         depth = Number(flags.depth)
@@ -316,7 +315,7 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
       const node = mustFind(positionals)
       return {
         tool: { name: spec.name, version: spec.version },
-        help: helpEntry(node, scope, { depth, full: all || flags.full }),
+        help: helpEntry(node, scope, { depth, full: flags.full }),
       }
     },
     text(output, ctx) {
@@ -425,7 +424,7 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
       throw new Error(`defineApp: '${[spec.name, ...node.path].join(' ')}' has no summary`)
     }
     if (node.command === undefined) continue
-    for (const [key, decl] of Object.entries(node.command.flags ?? {})) {
+    for (const [key, decl] of Object.entries((node.command.flags ?? {}) as FlagSpec)) {
       const where = [spec.name, ...node.path].join(' ')
       if (Object.hasOwn(globals, key)) {
         throw new Error(`defineApp: '${where}' declares '${key}', which is a global flag`)
@@ -533,7 +532,7 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
       all: boolean
       output?: string
     }
-    // `help --all` reads it; anywhere else it only modifies `--help`.
+    // `--all` modifies `--help` only. `help --all` is `help --depth all --full`.
     if (values.all && command !== helpCommand) {
       return usageFail('--all goes with --help: "--help --all"')
     }
@@ -546,6 +545,7 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
     const globalValues: Record<string, unknown> = {}
     for (const key of Object.keys(command.flags ?? {})) own[key] = values[key]
     for (const key of Object.keys(globals)) globalValues[key] = values[key]
+    if (values.all) Object.assign(own, { depth: 'all', full: true })
     const commandName = [spec.name, ...node.path].join(' ')
     if (isInteractive(command) && json) {
       return usageFail(`'${commandName}' is interactive and has no JSON form`)
@@ -555,17 +555,17 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
         return usageFail(`'${commandName}' prints one document; use --json`)
       }
     }
-    const ctx: CommandContext & { all: boolean } = {
+    const ctx: CommandContext = {
       ...base,
       app,
       path: node.path,
+      globals: globalValues,
       json,
       output: mode,
       surface: 'cli',
       signal: base.signal ?? new AbortController().signal,
       color: colorEnabled(base, { json }),
       width,
-      all: values.all,
       warn: (message) => base.io.stderr(`${spec.name}: warning: ${message}\n`),
       note: (message) => base.io.stderr(`${spec.name}: ${message}\n`),
       emit: noEvents(commandName),
@@ -588,7 +588,7 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
         if (command.items !== undefined) {
           const list = (output as Record<string, unknown>)[command.items.field] as unknown[]
           for (const item of list) {
-            const line = envelope(item, doc.schemaVersion, command.items.kind)
+            const line = envelope(item, doc.schemaVersion as number, command.items.kind)
             base.io.stdout(`${JSON.stringify(line)}\n`)
           }
         } else base.io.stdout(`${JSON.stringify(doc)}\n`)
@@ -703,6 +703,7 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
         io: { stdout: capture, stderr: capture },
         app,
         path: node.path,
+        globals: input.globals,
         json: true,
         output: 'json',
         surface: options.surface,

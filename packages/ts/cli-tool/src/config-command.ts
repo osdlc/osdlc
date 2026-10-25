@@ -81,7 +81,7 @@ export class ConfigUsageError extends Error {
 /**
  * What the `config` commands need from a tool. Each method receives the
  * command context, so it can read `ctx.cwd`, `ctx.env` and the tool's global
- * flags (such as `-C`) from `ctx`. A method that cannot read a file throws a
+ * flag values (such as `-C`) from `ctx.globals`. A method that cannot read a file throws a
  * `CommandError` or an `Error`; the command reports it and exits 1.
  * @experimental
  */

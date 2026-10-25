@@ -382,7 +382,7 @@ What a command declares:
 
 `input` holds `flags`, `globals` (typed by the kit), `positionals` and `rest`,
 the words after `--`. `ctx` is the `CliContext` plus `app` (the `App`),
-`path`, `json`, `output`, `surface` (`cli`, `mcp` or `http`), `signal`,
+`path`, `globals` (the same values as `input.globals`), `json`, `output`, `surface` (`cli`, `mcp` or `http`), `signal`,
 `color`, `width`, `emit`, and `warn`/`note`, which write `<name>: ...` lines to
 stderr. A command writes nothing to stdout itself.
 
@@ -452,7 +452,9 @@ a list, for a bundler that collects the modules itself.
 | `guide` | `guide: guideCommand(topics, { title })` | `GuideTopic`s: `{ id, title, summary, body(ctx) }` |
 
 Each store method receives the command context, so it can read `ctx.cwd`,
-`ctx.env` and the tool's global flags.
+`ctx.env` and the tool's global flag values in `ctx.globals` (`-C <dir>` is
+`ctx.globals.dir`). Pass the app's globals to the command too
+(`configCommands(store, { globals })`), so its input is typed against them.
 
 - `config explain <key>` (when the store has `explain`) shows each layer from
   the default up, the value it sets, which layer won and why. A layer marked
