@@ -37,7 +37,8 @@ export interface ManagedProcessRunOptions {
    * Run the child as its own process-group leader. {@link
    * ManagedProcessHandle.kill} then signals the whole group instead of just
    * the direct child, so processes the child started die with it. The group
-   * no longer gets the terminal's Ctrl-C. POSIX only.
+   * no longer gets the terminal's Ctrl-C. POSIX only: on Windows `kill()`
+   * stops the direct child alone.
    *
    * `installGroupSignalForwarding` kills live groups when the host is
    * signalled. Once forwarding is stopping the host, a new group run is
@@ -244,17 +245,26 @@ export function managedProcessRunner(binary: string): ManagedProcessRunner {
         pid,
         kill(signal: NodeJS.Signals | number = 'SIGTERM'): void {
           if (pid === -1) return
-          try {
-            // A negative pid signals the whole process group (see
-            // `processGroup`). The direct child goes through `child.kill`,
-            // which does nothing once the child has been reaped, so a reused
-            // pid is never signalled.
-            const delivered = group ? process.kill(-pid, signal) : child.kill(signal)
-            const name = typeof signal === 'number' ? signalName(signal) : signal
-            if (delivered && name !== undefined) sent.add(name)
-          } catch {
-            // Already gone.
+          // A negative pid signals the whole process group (see
+          // `processGroup`). The direct child goes through `child.kill`,
+          // which does nothing once the child has been reaped, so a reused
+          // pid is never signalled.
+          let delivered = false
+          if (group) {
+            try {
+              delivered = process.kill(-pid, signal)
+            } catch {
+              // The group is gone, or the OS has no groups (Windows). Signal
+              // the direct child instead.
+            }
           }
+          try {
+            if (!delivered) delivered = child.kill(signal)
+          } catch {
+            // A signal this OS cannot send.
+          }
+          const name = typeof signal === 'number' ? signalName(signal) : signal
+          if (delivered && name !== undefined) sent.add(name)
         },
         exited,
       }
