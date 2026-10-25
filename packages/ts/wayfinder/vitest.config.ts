@@ -1,6 +1,21 @@
+import { fileURLToPath } from 'node:url'
+
 import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
+  resolve: {
+    // The examples import the package by name. Point its entries at the source.
+    alias: [
+      {
+        find: /^@osdlc\/wayfinder\/schema$/,
+        replacement: fileURLToPath(new URL('./src/schema.ts', import.meta.url)),
+      },
+      {
+        find: /^@osdlc\/wayfinder$/,
+        replacement: fileURLToPath(new URL('./src/index.ts', import.meta.url)),
+      },
+    ],
+  },
   test: {
     include: ['tests/**/*.test.ts', 'examples/**/*.test.ts'],
     // Some tests build throwaway git repositories and commit in them.
