@@ -6,6 +6,7 @@
 
 import { isAbsolute, resolve } from 'node:path'
 
+import { commandString } from '@osdlc/command-seam/quote'
 import { closestMatches } from '@osdlc/config-layers/did-you-mean'
 import type { Catalog, Project, RunnerCacheState, Task } from '@osdlc/system-model/detect'
 import {
@@ -45,6 +46,7 @@ import { toolSummary, type ToolSummary } from '../tool-info.ts'
 import { loadTools, ToolModuleError, type LoadedTool } from '../tools.ts'
 import { appTrustStore } from '../trust-store.ts'
 import { EDITOR_VARIABLE_LABEL, type WithheldReason } from '../vocabulary.ts'
+import { taskCopyText } from './copy-text.ts'
 import { filterTasks, type TaskFilter, type TaskHit } from './filter.ts'
 import { filterSkills, type SkillHit, type SkillRow } from './skills.ts'
 import { execOffSource, unknownsOf, type Unknown } from './unknowns.ts'
@@ -272,7 +274,8 @@ export interface Session {
    */
   saveSetting(key: string, value: unknown): Promise<SavedSetting>
   /**
-   * The task `id` names, with `args` bound the way its tool expects. The
+   * The task `id` names (an id, or a line from `list` or a `display` only
+   * one task has), with `args` bound the way its tool expects. The
    * same rules as the terminal UI and the web view. Throws
    * {@link SessionError}: `task-not-found`, `ambiguous-task`, `not-runnable` or
    * `bad-arguments`.
@@ -689,22 +692,37 @@ export async function createSession(opts: SessionOptions): Promise<Session> {
   return session
 }
 
-/** The task `id` names: by id, else by a `display` only one task has. */
+/**
+ * The task `id` names: by id, else by the line `list` prints for it (the
+ * copied form, with its `cd` and quoting), else by its `display`. A line or
+ * a display names a task only when no other task has it.
+ */
 function findTask(catalog: Catalog, id: string): Task | undefined {
   const all = catalog.reports.flatMap((r) => r.tasks)
+  const only = (tasks: Task[]): Task | undefined => (tasks.length === 1 ? tasks[0] : undefined)
+  const lineOf = (t: Task): string | null => taskCopyText(t, process.platform)
+  const byId = all.filter((t) => t.id === id)
+  if (byId.length === 1) return byId[0]
+  const byLine = only(all.filter((t) => lineOf(t) === id))
+  if (byLine !== undefined) return byLine
   // Ids are `runner:source:name`, and a name may hold a `:`, so two tasks can
   // share one. Running the first would run a task the caller did not pick.
-  const byId = all.filter((t) => t.id === id)
   if (byId.length > 1) {
+    const lines = byId.map(lineOf)
+    const usable = lines.every(
+      (line) => line !== null && all.filter((t) => lineOf(t) === line).length === 1,
+    )
     throw new SessionError(
       'ambiguous-task',
       `'${id}' is the id of ${byId.length} tasks`,
-      `run one by its command line: ${byId.map((t) => `"${t.display}"`).join(', ')}`,
+      usable
+        ? `run one by its line from "${BIN} list": ` +
+            lines.map((line) => commandString([BIN, 'run', line!])).join(' or ')
+        : `they have the same line in "${BIN} list", so ${BIN} cannot tell them apart; ` +
+            'run the command yourself',
     )
   }
-  if (byId.length === 1) return byId[0]
-  const byDisplay = all.filter((t) => t.display === id)
-  return byDisplay.length === 1 ? byDisplay[0] : undefined
+  return only(all.filter((t) => t.display === id))
 }
 
 /** See {@link Session.resolveRun}. */

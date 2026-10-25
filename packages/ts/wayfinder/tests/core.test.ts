@@ -5,17 +5,19 @@
  */
 
 import { readFile, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 
 import { afterAll, describe, expect, test } from 'vitest'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
+import { commandString } from '@osdlc/command-seam/quote'
 import type { Catalog, RunnerReport, Task } from '@osdlc/system-model/detect'
 
 import { CONFIG_ENV_VAR } from '../src/app.ts'
 import { makeProject } from '../src/catalog.ts'
 import { settingLayer } from '../src/config-keys.ts'
+import { taskCopyText } from '../src/core/copy-text.ts'
 import { filterTasks, sourceDepth } from '../src/core/filter.ts'
 import { handOff } from '../src/core/run.ts'
 import { SessionError, createSession, resolveRun } from '../src/core/session.ts'
@@ -276,17 +278,45 @@ describe('resolveRun', () => {
     }
   })
 
-  test('an id two tasks share is refused, naming both', () => {
+  test('an id two tasks share is refused, naming the line that runs each', () => {
+    const two = task({ id: 'a:b:c', argv: ['npm', 'run', 'two'] })
+    const catalog = catalogOf([
+      report('npm', [task({ id: 'a:b:c', argv: ['npm', 'run', 'one'] }), two]),
+    ])
+    expect(() => resolveRun(project, '/repo', catalog, 'a:b:c')).toThrow(
+      expect.objectContaining({
+        code: 'ambiguous-task',
+        hint: expect.stringContaining(
+          commandString(['way', 'run', taskCopyText(two, process.platform)!]),
+        ),
+      }),
+    )
+    // The line the hint names runs that task.
+    expect(
+      resolveRun(project, '/repo', catalog, taskCopyText(two, process.platform)!).argv,
+    ).toEqual(['npm', 'run', 'two'])
+  })
+
+  test('two tasks with the same id and the same display run by the line list prints', () => {
+    const sub = task({ id: 'a:b:c', display: 'npm run x', argv: ['npm', 'run', 'x'], cwd: 'sub' })
+    const catalog = catalogOf([
+      report('npm', [task({ id: 'a:b:c', display: 'npm run x', argv: ['npm', 'run', 'x'] }), sub]),
+    ])
+    const plan = resolveRun(project, '/repo', catalog, taskCopyText(sub, process.platform)!)
+    expect(plan.cwd).toBe(resolve('/repo', 'sub'))
+  })
+
+  test('two tasks with the same id and the same line say they cannot be told apart', () => {
     const catalog = catalogOf([
       report('npm', [
-        task({ id: 'a:b:c', display: 'npm run one' }),
-        task({ id: 'a:b:c', display: 'npm run two' }),
+        task({ id: 'a:b:c', argv: ['npm', 'run', 'x'] }),
+        task({ id: 'a:b:c', argv: ['npm', 'run', 'x'] }),
       ]),
     ])
     expect(() => resolveRun(project, '/repo', catalog, 'a:b:c')).toThrow(
       expect.objectContaining({
         code: 'ambiguous-task',
-        hint: expect.stringContaining('npm run two'),
+        hint: expect.stringContaining('cannot tell them apart'),
       }),
     )
   })

@@ -5,13 +5,11 @@
 
 import { CommandError, UsageError, outcome } from '@osdlc/cli-tool/command'
 import { commandString } from '@osdlc/command-seam'
-import type { Catalog } from '@osdlc/system-model/detect'
 
 import { handOff } from '../core/run.ts'
 import { SessionError, type RunPlan } from '../core/session.ts'
 import { RunOutput, type RunDocumentBody } from '../documents.ts'
 import { terminalSafe } from '../terminal-text.ts'
-import { taskCopyText } from '../core/copy-text.ts'
 import { parametersUnknownLabel } from '../vocabulary.ts'
 import { kit, openSession } from './shared.ts'
 
@@ -32,18 +30,6 @@ function runDocument(
     exit,
     unknowns,
   }
-}
-
-/**
- * The id `word` names. A line `list` prints (the copied form, with its `cd`
- * and quoting) names the one task it is the line of; anything else is passed
- * on as it is.
- */
-function taskIdFor(catalog: Catalog, word: string): string {
-  const tasks = catalog.reports.flatMap((r) => r.tasks)
-  if (tasks.some((t) => t.id === word)) return word
-  const byLine = tasks.filter((t) => taskCopyText(t, process.platform) === word)
-  return byLine.length === 1 ? byLine[0]!.id : word
 }
 
 /** Make the `run` command. */
@@ -87,11 +73,7 @@ export function runCommand(home: string) {
       const snapshot = await session.catalog({ cached: flags.cached })
       let plan: RunPlan
       try {
-        plan = session.resolveRun(
-          snapshot.catalog,
-          taskIdFor(snapshot.catalog, positionals[0]!),
-          rest,
-        )
+        plan = session.resolveRun(snapshot.catalog, positionals[0]!, rest)
       } catch (err) {
         const skill = snapshot.skills.find(
           (s) => s.id === positionals[0] || s.invoke === positionals[0],

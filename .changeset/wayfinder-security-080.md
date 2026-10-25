@@ -21,4 +21,4 @@ Breaking changes, and what to do:
 
 - `way clean --user-config` removes a file `WAYFINDER_CONFIG` names only when its `$schema` names wayfinder's config schema, as every file `way config set` writes does. Add the `$schema` line, or remove the file yourself.
 - Over HTTP, a command given a directory positional (`{"dir": ...}`) is refused with `400`. The web view reads the directory `way serve` started in.
-- `way run <id>` refuses an id that two tasks share (`ambiguous-task`, `409` over HTTP) and names each task's command line. Run the task by its command line instead.
+- `way run <id>` refuses an id that two tasks share (`ambiguous-task`, `409` over HTTP) and names the line `way list` prints for each. Run the task by that line instead, as in `way run 'npm run build'`. The web view sends only the id, so it cannot run such a task.
