@@ -110,6 +110,10 @@
     "./duration": {
       "types": "./dist/duration.d.ts",
       "default": "./dist/duration.js"
+    },
+    "./groups": {
+      "types": "./dist/groups.d.ts",
+      "default": "./dist/groups.js"
     }
   },
   "files": [

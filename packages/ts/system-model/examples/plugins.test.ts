@@ -31,6 +31,7 @@ import {
   type ToolDef,
   type ToolFact,
   type ToolManagerRole,
+  validateToolDef,
 } from '@osdlc/system-model/detect'
 import { denoEcosystem, denoTasks, denoTools } from '@osdlc/system-model/deno'
 import { go, goEcosystem, goTools } from '@osdlc/system-model/go'
@@ -194,6 +195,9 @@ const nimbleInstall: PackageManagerRole = {
 
 const bashScripts: ToolDef = {
   id: 'bash-scripts',
+  homepage: 'https://www.gnu.org/software/bash/',
+  description: 'Shell scripts kept under scripts/.',
+  brand: { color: '#4eaa25' },
   binary: 'bash',
   markers: [SCRIPTS],
   // Evidence a file name cannot give: a script with a bash shebang outside scripts/.
@@ -214,6 +218,11 @@ const nimble: ToolDef = {
 }
 
 test('a downstream tool registered beside the built-ins', async () => {
+  // A host loading tools from a module checks their shape first.
+  expect(validateToolDef(bashScripts)).toEqual([])
+  expect(validateToolDef({ id: 'broken', roles: { runner: {} } })).toContain(
+    'roles.runner.collect is not a function',
+  )
   const project = createProject({ tools: [bashScripts, nimble] })
   const root = repo({
     'scripts/deploy.sh': 'echo deploy\n',

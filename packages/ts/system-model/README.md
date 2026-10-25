@@ -149,11 +149,12 @@ Evidence tiers run from the most direct to the least: `manifest` (1),
 | `@osdlc/system-model/match` | fuzzy and exact matching of a query against tasks |
 | `@osdlc/system-model/params` | `paramShape`, a task's parameters as one string |
 | `@osdlc/system-model/duration` | `humanMs` and `humanAge` |
+| `@osdlc/system-model/groups` | `GROUPS`, `groupOf`, `catalogGroups` and `SYNTHESIZED_RUNNERS`: which group a report falls in |
 
 The core knows no tool. A plugin imports only the core, never another plugin.
 The root entry, `./graph`, `./aspect`, `./client`, `./saved-view`, `./match`,
-`./params` and `./duration` import no Node built-in and no dependency, so a
-browser bundle can use them. A test walks each one's imports to check.
+`./params`, `./duration` and `./groups` import no Node built-in and no
+dependency, so a browser bundle can use them. A test walks each one's imports to check.
 
 ## Detection
 
@@ -336,6 +337,10 @@ The experimental exports of `@osdlc/system-model/detect`:
 `PackageJsonFact`, `PackageManagerChoice`, `PackageManagerRole`, `PinnedInstall`,
 `PinnedInstallOptions`, `PinnedSource`, `PyprojectFact`, `RunnerCacheState`,
 `SYNTHESIZED_RUNNERS`, `StaleReason`, `ToolAction`, `ToolFact`, `ToolManagerRole`
+
+The experimental exports of `@osdlc/system-model/groups`:
+
+`GROUPS`, `Group`, `GroupId`, `SYNTHESIZED_RUNNERS`, `catalogGroups`, `groupOf`
 
 The experimental exports of `@osdlc/system-model/runners`:
 

@@ -25,7 +25,7 @@ export default defineConfig({
       { find: /^@osdlc\/system-model$/, replacement: src('./src/index.ts') },
       { find: /^@osdlc\/system-model\/detect$/, replacement: src('./src/engine.ts') },
       { find: /^@osdlc\/system-model\/builtins$/, replacement: src('./src/builtins.ts') },
-      ...['match', 'params', 'duration', 'graph', 'aspect', 'client', 'saved-view'].map(
+      ...['match', 'params', 'duration', 'groups', 'graph', 'aspect', 'client', 'saved-view'].map(
         (entry) => ({
           find: new RegExp(`^@osdlc/system-model/${entry}$`),
           replacement: src(`./src/${entry}.ts`),

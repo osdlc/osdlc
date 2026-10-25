@@ -46,6 +46,14 @@ import {
   type Mode,
 } from '@osdlc/system-model/match'
 import { bindParams, paramShape, type BoundParams } from '@osdlc/system-model/params'
+import {
+  catalogGroups,
+  GROUPS,
+  groupOf,
+  SYNTHESIZED_RUNNERS as GROUP_RUNNERS,
+  type Group,
+  type GroupId,
+} from '@osdlc/system-model/groups'
 
 const roots: string[] = []
 afterEach(() => {
@@ -92,6 +100,13 @@ test('collect lists every runner that was found, then the synthesized groups', a
   const install = all.find((t) => t.runner === 'package-manager')!
   expect(install.argv).toEqual(['npm', 'ci'])
   expect(install.origin).toBe('synthesized')
+
+  // Browser-safe grouping: tasks first, then each synthesized group.
+  const groups = catalogGroups(reports)
+  const ids: GroupId[] = groups.map((g) => g.id)
+  expect(ids).toEqual(['tasks', 'dependencies'])
+  const deps: Group = groupOf(GROUP_RUNNERS.packageManager)
+  expect(deps).toBe(GROUPS[1])
 
   const chain: ChainSegment[] = reports[0]!.chain
   const brand: RunnerBrand | undefined = reports[0]!.brand
