@@ -1,0 +1,161 @@
+{
+  "schemaVersion": 1,
+  "kind": "catalog",
+  "root": "<root>",
+  "generatedAt": "<time>",
+  "discovery": "walk",
+  "allowExec": false,
+  "reports": [
+    {
+      "runner": "pdm",
+      "chain": [
+        {
+          "label": "runner",
+          "hint": "PDM runs the scripts under `tool.pdm.scripts`."
+        },
+        {
+          "label": "project",
+          "hint": "The directory holding the pyproject.toml. `.` is the root."
+        },
+        {
+          "label": "script",
+          "hint": "The key under `tool.pdm.scripts`."
+        }
+      ],
+      "brand": {
+        "icon": "<svg>",
+        "color": "#ac75d7"
+      },
+      "tool": {
+        "binary": "pdm",
+        "found": true,
+        "path": "<bin>/pdm"
+      },
+      "status": "ok",
+      "tasks": [
+        {
+          "id": "pdm:pyproject.toml:start",
+          "runner": "pdm",
+          "path": [
+            "pdm",
+            ".",
+            "start"
+          ],
+          "argv": [
+            "pdm",
+            "run",
+            "start"
+          ],
+          "cwd": ".",
+          "display": "pdm run start",
+          "parameters": [],
+          "source": "pyproject.toml",
+          "origin": "declared",
+          "detail": "flask run",
+          "tags": [
+            "pdm",
+            ".",
+            "cmd"
+          ],
+          "persistent": {
+            "value": true,
+            "declared": false
+          },
+          "executes": "local"
+        },
+        {
+          "id": "pdm:pyproject.toml:test",
+          "runner": "pdm",
+          "path": [
+            "pdm",
+            ".",
+            "test"
+          ],
+          "argv": [
+            "pdm",
+            "run",
+            "test"
+          ],
+          "cwd": ".",
+          "display": "pdm run test",
+          "parameters": [],
+          "source": "pyproject.toml",
+          "origin": "declared",
+          "doc": "Run the tests",
+          "detail": "pytest",
+          "tags": [
+            "pdm",
+            ".",
+            "cmd"
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        }
+      ],
+      "diagnostics": [],
+      "skippedForExec": false
+    },
+    {
+      "runner": "python",
+      "chain": [
+        {
+          "label": "runner",
+          "hint": "Python tooling configured in a pyproject.toml."
+        },
+        {
+          "label": "project",
+          "hint": "The directory holding the pyproject.toml."
+        },
+        {
+          "label": "tool",
+          "hint": "A tool the project configures (synthesized from its `[tool.*]` section), or a script it declares in `[project.scripts]` / `[tool.poetry.scripts]`."
+        }
+      ],
+      "brand": {
+        "icon": "<svg>",
+        "color": "#3776ab"
+      },
+      "status": "absent",
+      "tasks": [],
+      "diagnostics": [],
+      "skippedForExec": false
+    }
+  ],
+  "source": "fresh",
+  "storedAt": null,
+  "groups": [
+    {
+      "id": "tasks",
+      "title": "Tasks",
+      "runners": [
+        "pdm",
+        "python"
+      ]
+    }
+  ],
+  "skills": [],
+  "cache": [
+    {
+      "runner": "python",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    },
+    {
+      "runner": "pdm",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    }
+  ],
+  "unknowns": [],
+  "trustedTools": [],
+  "filter": {}
+}

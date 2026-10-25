@@ -79,7 +79,7 @@ describe('the unchanged-poll status line', () => {
   })
 
   test('counts the commands on screen, not every table row in the document', async () => {
-    await load(false)
+    await load()
     expect($('status').textContent).toContain('2 of 2')
 
     // The settings dialog is open behind the poll, and it draws its runner
@@ -88,7 +88,55 @@ describe('the unchanged-poll status line', () => {
       '<table class="set-table"><tbody><tr><td>a</td></tr><tr><td>b</td></tr>' +
       '<tr><td>c</td></tr></tbody></table>'
 
-    await load(false)
+    await load()
     expect($('status').textContent).toContain('2 of 2')
+  })
+})
+
+describe('a load asked for while one runs', () => {
+  const nativeFetch = globalThis.fetch
+  afterAll(() => {
+    globalThis.fetch = nativeFetch
+  })
+
+  test('settles only once its own read has run, and a plain load wins over a join', async () => {
+    mountPage()
+    state.catalog = null
+    state.fingerprint = ''
+    const bodies: string[] = []
+    let first: (r: Response) => void = () => {}
+    let calls = 0
+    globalThis.fetch = ((_url: string, init: RequestInit) => {
+      bodies.push(String(init.body))
+      calls++
+      const answer = new Response(JSON.stringify(catalog(calls === 1 ? ['old'] : ['new'])), {
+        headers: { 'content-type': 'application/json' },
+      })
+      if (calls === 1) return new Promise<Response>((ok) => (first = ok))
+      return Promise.resolve(answer)
+    }) as unknown as typeof fetch
+
+    const poll = load({ join: true })
+    // A save, then the read that should show it; and another poll.
+    let saved = false
+    const afterSave = load().then(() => {
+      saved = true
+    })
+    const again = load({ join: true })
+    await new Promise((ok) => setTimeout(ok, 10))
+    expect(saved).toBe(false)
+    first(
+      new Response(JSON.stringify(catalog(['old'])), {
+        headers: { 'content-type': 'application/json' },
+      }),
+    )
+    await poll
+    await afterSave
+    await again
+    expect(calls).toBe(2)
+    // The queued read was the plain one, not the join.
+    expect(bodies[1]).not.toContain('join')
+    const shown = state.catalog as { reports: Catalog['reports'] } | null
+    expect(shown?.reports[0]?.tasks.map((t) => t.id)).toEqual(['make:new'])
   })
 })

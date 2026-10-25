@@ -251,7 +251,12 @@ export function helpEntry(node: Placed, scope: HelpScope, opts: HelpDepth = {}):
   const positionals = cmd?.positionals ?? []
   if (cmd !== undefined) {
     const sub = children.length > 0 ? ' [<command>]' : ''
-    entry.usage = [command + sub, '[options]', ...positionals.map(positionalUsage)].join(' ')
+    entry.usage = [
+      command + sub,
+      '[options]',
+      ...positionals.map(positionalUsage),
+      ...(cmd.rest !== undefined ? [`[-- <${cmd.rest.name}>...]`] : []),
+    ].join(' ')
     entry.positionals = positionals.map((p) => ({
       name: p.name,
       help: p.help ?? '',

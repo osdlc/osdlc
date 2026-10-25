@@ -1,0 +1,128 @@
+{
+  "schemaVersion": 1,
+  "kind": "catalog",
+  "root": "<root>",
+  "generatedAt": "<time>",
+  "discovery": "walk",
+  "allowExec": false,
+  "reports": [
+    {
+      "runner": "vscode-tasks",
+      "chain": [
+        {
+          "label": "runner",
+          "hint": "VS Code runs the tasks a `.vscode/tasks.json` declares."
+        },
+        {
+          "label": "folder",
+          "hint": "The workspace folder holding `.vscode/`. `.` is the root."
+        },
+        {
+          "label": "task",
+          "hint": "The task's `label`."
+        }
+      ],
+      "brand": {
+        "icon": "<svg>",
+        "color": "#007acc"
+      },
+      "status": "ok",
+      "tasks": [
+        {
+          "id": "vscode-tasks:.vscode/tasks.json:build",
+          "runner": "vscode-tasks",
+          "path": [
+            "vscode-tasks",
+            ".",
+            "build"
+          ],
+          "argv": [
+            "make",
+            "build"
+          ],
+          "cwd": ".",
+          "display": "make build",
+          "parameters": [],
+          "source": ".vscode/tasks.json",
+          "origin": "declared",
+          "tags": [
+            "vscode-tasks",
+            ".",
+            "shell"
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        },
+        {
+          "id": "vscode-tasks:.vscode/tasks.json:open file",
+          "runner": "vscode-tasks",
+          "path": [
+            "vscode-tasks",
+            ".",
+            "open file"
+          ],
+          "argv": [
+            "cat",
+            "${file}"
+          ],
+          "cwd": ".",
+          "display": "cat ${file}",
+          "parameters": [],
+          "parametersUnknown": "editor-variable",
+          "source": ".vscode/tasks.json",
+          "origin": "declared",
+          "tags": [
+            "vscode-tasks",
+            ".",
+            "shell"
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        }
+      ],
+      "diagnostics": [],
+      "skippedForExec": false
+    }
+  ],
+  "source": "fresh",
+  "storedAt": null,
+  "groups": [
+    {
+      "id": "tasks",
+      "title": "Tasks",
+      "runners": [
+        "vscode-tasks"
+      ]
+    }
+  ],
+  "skills": [],
+  "cache": [
+    {
+      "runner": "vscode-tasks",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    }
+  ],
+  "unknowns": [
+    {
+      "kind": "parameters",
+      "runner": "vscode-tasks",
+      "reason": "editor-variable",
+      "tasks": [
+        "vscode-tasks:.vscode/tasks.json:open file"
+      ],
+      "label": "cannot run here: the task uses an editor variable"
+    }
+  ],
+  "trustedTools": [],
+  "filter": {}
+}

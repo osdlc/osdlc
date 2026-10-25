@@ -1,0 +1,596 @@
+{
+  "schemaVersion": 1,
+  "kind": "providers",
+  "providers": [
+    {
+      "id": "moon",
+      "roles": [
+        "runner"
+      ],
+      "kind": "exec",
+      "binary": "moon",
+      "onPath": true,
+      "source": "built-in",
+      "homepage": "https://moonrepo.dev",
+      "description": "A build system and monorepo tool that runs project tasks.",
+      "ecosystem": null,
+      "language": "any language"
+    },
+    {
+      "id": "proto",
+      "roles": [
+        "toolManager"
+      ],
+      "kind": null,
+      "binary": "proto",
+      "onPath": true,
+      "source": "built-in",
+      "homepage": "https://moonrepo.dev/proto",
+      "description": "A version manager for languages and tools.",
+      "ecosystem": null,
+      "language": "any language"
+    },
+    {
+      "id": "mise",
+      "roles": [
+        "runner",
+        "toolManager"
+      ],
+      "kind": "exec",
+      "binary": "mise",
+      "onPath": true,
+      "source": "built-in",
+      "homepage": "https://mise.jdx.dev",
+      "description": "A tool version manager, environment manager and task runner.",
+      "ecosystem": null,
+      "language": "any language"
+    },
+    {
+      "id": "just",
+      "roles": [
+        "runner"
+      ],
+      "kind": "parse",
+      "binary": "just",
+      "onPath": true,
+      "source": "built-in",
+      "homepage": "https://just.systems",
+      "description": "A command runner for the recipes a justfile declares.",
+      "ecosystem": null,
+      "language": "any language"
+    },
+    {
+      "id": "node-scripts",
+      "roles": [
+        "runner"
+      ],
+      "kind": "parse",
+      "binary": null,
+      "onPath": null,
+      "source": "built-in",
+      "homepage": "https://docs.npmjs.com/cli/using-npm/scripts/",
+      "description": "The scripts a package.json declares, run through the package's own manager.",
+      "ecosystem": "node",
+      "language": "JavaScript"
+    },
+    {
+      "id": "make",
+      "roles": [
+        "runner"
+      ],
+      "kind": "parse",
+      "binary": "make",
+      "onPath": true,
+      "source": "built-in",
+      "homepage": "https://www.gnu.org/software/make/",
+      "description": "A build tool that runs the targets a Makefile declares.",
+      "ecosystem": null,
+      "language": "any language"
+    },
+    {
+      "id": "cargo",
+      "roles": [
+        "runner",
+        "packageManager"
+      ],
+      "kind": "parse",
+      "binary": "cargo",
+      "onPath": true,
+      "source": "built-in",
+      "homepage": "https://doc.rust-lang.org/cargo/",
+      "description": "Rust's package manager and build tool.",
+      "ecosystem": "rust",
+      "language": "Rust"
+    },
+    {
+      "id": "sbt",
+      "roles": [
+        "runner"
+      ],
+      "kind": "exec",
+      "binary": "sbt",
+      "onPath": true,
+      "source": "built-in",
+      "homepage": "https://www.scala-sbt.org",
+      "description": "A build tool for Scala and Java.",
+      "ecosystem": "jvm",
+      "language": "Java"
+    },
+    {
+      "id": "python",
+      "roles": [
+        "runner"
+      ],
+      "kind": "parse",
+      "binary": null,
+      "onPath": null,
+      "source": "built-in",
+      "homepage": "https://packaging.python.org/en/latest/specifications/pyproject-toml/",
+      "description": "The scripts and tool tables a pyproject.toml declares.",
+      "ecosystem": "python",
+      "language": "Python"
+    },
+    {
+      "id": "composer",
+      "roles": [
+        "runner"
+      ],
+      "kind": "parse",
+      "binary": "composer",
+      "onPath": true,
+      "source": "built-in",
+      "homepage": "https://getcomposer.org",
+      "description": "A dependency manager for PHP that also runs composer.json scripts.",
+      "ecosystem": "php",
+      "language": "PHP"
+    },
+    {
+      "id": "deno-tasks",
+      "roles": [
+        "runner"
+      ],
+      "kind": "parse",
+      "binary": "deno",
+      "onPath": true,
+      "source": "built-in",
+      "homepage": "https://docs.deno.com/runtime/reference/cli/task/",
+      "description": "The tasks a deno.json declares, run with `deno task`.",
+      "ecosystem": "deno",
+      "language": "JavaScript"
+    },
+    {
+      "id": "turbo",
+      "roles": [
+        "runner"
+      ],
+      "kind": "parse",
+      "binary": "turbo",
+      "onPath": true,
+      "source": "built-in",
+      "homepage": "https://turborepo.dev",
+      "description": "A build system for JavaScript and TypeScript monorepos.",
+      "ecosystem": null,
+      "language": "any language"
+    },
+    {
+      "id": "maven",
+      "roles": [
+        "runner"
+      ],
+      "kind": "parse",
+      "binary": "mvn",
+      "onPath": true,
+      "source": "built-in",
+      "homepage": "https://maven.apache.org",
+      "description": "A build tool and dependency manager for Java.",
+      "ecosystem": "jvm",
+      "language": "Java"
+    },
+    {
+      "id": "swiftpm",
+      "roles": [
+        "runner"
+      ],
+      "kind": "parse",
+      "binary": "swift",
+      "onPath": true,
+      "source": "built-in",
+      "homepage": "https://www.swift.org/documentation/package-manager/",
+      "description": "Swift's package manager and build tool.",
+      "ecosystem": "swift",
+      "language": "Swift"
+    },
+    {
+      "id": "gradle",
+      "roles": [
+        "runner"
+      ],
+      "kind": "parse",
+      "binary": "gradle",
+      "onPath": true,
+      "source": "built-in",
+      "homepage": "https://gradle.org",
+      "description": "A build tool for the JVM, Android and other platforms.",
+      "ecosystem": "jvm",
+      "language": "Java"
+    },
+    {
+      "id": "go-task",
+      "roles": [
+        "runner"
+      ],
+      "kind": "parse",
+      "binary": "task",
+      "onPath": true,
+      "source": "built-in",
+      "homepage": "https://taskfile.dev",
+      "description": "A task runner for the tasks a Taskfile declares.",
+      "ecosystem": null,
+      "language": "any language"
+    },
+    {
+      "id": "rake",
+      "roles": [
+        "runner"
+      ],
+      "kind": "parse",
+      "binary": "rake",
+      "onPath": true,
+      "source": "built-in",
+      "homepage": "https://ruby.github.io/rake/",
+      "description": "A Ruby build tool for the tasks a Rakefile declares.",
+      "ecosystem": "ruby",
+      "language": "Ruby"
+    },
+    {
+      "id": "docker-compose",
+      "roles": [
+        "runner"
+      ],
+      "kind": "parse",
+      "binary": "docker",
+      "onPath": true,
+      "source": "built-in",
+      "homepage": "https://docs.docker.com/compose/",
+      "description": "Defines and runs multi-container applications from a compose file.",
+      "ecosystem": null,
+      "language": "any language"
+    },
+    {
+      "id": "github-actions",
+      "roles": [
+        "runner"
+      ],
+      "kind": "parse",
+      "binary": "gh",
+      "onPath": true,
+      "source": "built-in",
+      "homepage": "https://docs.github.com/en/actions",
+      "description": "GitHub CI workflows, dispatched with the gh CLI.",
+      "ecosystem": null,
+      "language": "any language"
+    },
+    {
+      "id": "poe",
+      "roles": [
+        "runner"
+      ],
+      "kind": "parse",
+      "binary": "poe",
+      "onPath": true,
+      "source": "built-in",
+      "homepage": "https://poethepoet.natn.io",
+      "description": "A task runner for the tasks a pyproject.toml or poe_tasks file declares.",
+      "ecosystem": "python",
+      "language": "Python"
+    },
+    {
+      "id": "pdm",
+      "roles": [
+        "runner"
+      ],
+      "kind": "parse",
+      "binary": "pdm",
+      "onPath": true,
+      "source": "built-in",
+      "homepage": "https://pdm-project.org",
+      "description": "A Python package and dependency manager that runs the scripts a project declares.",
+      "ecosystem": "python",
+      "language": "Python"
+    },
+    {
+      "id": "hatch",
+      "roles": [
+        "runner"
+      ],
+      "kind": "parse",
+      "binary": "hatch",
+      "onPath": true,
+      "source": "built-in",
+      "homepage": "https://hatch.pypa.io",
+      "description": "A Python project manager that runs scripts in its environments.",
+      "ecosystem": "python",
+      "language": "Python"
+    },
+    {
+      "id": "cargo-aliases",
+      "roles": [
+        "runner"
+      ],
+      "kind": "parse",
+      "binary": "cargo",
+      "onPath": true,
+      "source": "built-in",
+      "homepage": "https://doc.rust-lang.org/cargo/reference/config.html#alias",
+      "description": "The command aliases a .cargo/config.toml declares for cargo.",
+      "ecosystem": "rust",
+      "language": "Rust"
+    },
+    {
+      "id": "nx",
+      "roles": [
+        "runner"
+      ],
+      "kind": "parse",
+      "binary": "nx",
+      "onPath": true,
+      "source": "built-in",
+      "homepage": "https://nx.dev",
+      "description": "A build system for monorepos that runs the targets its projects declare.",
+      "ecosystem": null,
+      "language": "any language"
+    },
+    {
+      "id": "vscode-tasks",
+      "roles": [
+        "runner"
+      ],
+      "kind": "parse",
+      "binary": null,
+      "onPath": null,
+      "source": "built-in",
+      "homepage": "https://code.visualstudio.com/docs/debugtest/tasks",
+      "description": "The tasks a VS Code workspace declares in .vscode/tasks.json.",
+      "ecosystem": null,
+      "language": "any language"
+    },
+    {
+      "id": "devbox",
+      "roles": [
+        "runner"
+      ],
+      "kind": "parse",
+      "binary": "devbox",
+      "onPath": true,
+      "source": "built-in",
+      "homepage": "https://www.jetify.com/devbox",
+      "description": "Isolated development shells from Nix packages, with the scripts a devbox.json declares.",
+      "ecosystem": null,
+      "language": "any language"
+    },
+    {
+      "id": "procfile",
+      "roles": [
+        "runner"
+      ],
+      "kind": "parse",
+      "binary": null,
+      "onPath": null,
+      "source": "built-in",
+      "homepage": "https://devcenter.heroku.com/articles/procfile",
+      "description": "The long-running processes a Procfile declares, run by a process manager.",
+      "ecosystem": null,
+      "language": "any language"
+    },
+    {
+      "id": "cmake-presets",
+      "roles": [
+        "runner"
+      ],
+      "kind": "parse",
+      "binary": "cmake",
+      "onPath": true,
+      "source": "built-in",
+      "homepage": "https://cmake.org/cmake/help/latest/manual/cmake-presets.7.html",
+      "description": "The configure, build and test presets a CMakePresets.json declares.",
+      "ecosystem": null,
+      "language": "any language"
+    },
+    {
+      "id": "dotnet",
+      "roles": [
+        "runner"
+      ],
+      "kind": "parse",
+      "binary": "dotnet",
+      "onPath": true,
+      "source": "built-in",
+      "homepage": "https://dotnet.microsoft.com",
+      "description": "The .NET command line, which builds, tests and runs .NET projects.",
+      "ecosystem": "dotnet",
+      "language": ".NET"
+    },
+    {
+      "id": "bun",
+      "roles": [
+        "packageManager"
+      ],
+      "kind": null,
+      "binary": "bun",
+      "onPath": true,
+      "source": "built-in",
+      "homepage": "https://bun.com",
+      "description": "A JavaScript runtime, package manager and script runner.",
+      "ecosystem": "node",
+      "language": "JavaScript"
+    },
+    {
+      "id": "pnpm",
+      "roles": [
+        "packageManager"
+      ],
+      "kind": null,
+      "binary": "pnpm",
+      "onPath": true,
+      "source": "built-in",
+      "homepage": "https://pnpm.io",
+      "description": "A package manager for Node.js.",
+      "ecosystem": "node",
+      "language": "JavaScript"
+    },
+    {
+      "id": "yarn",
+      "roles": [
+        "packageManager"
+      ],
+      "kind": null,
+      "binary": "yarn",
+      "onPath": true,
+      "source": "built-in",
+      "homepage": "https://yarnpkg.com",
+      "description": "A package manager for Node.js.",
+      "ecosystem": "node",
+      "language": "JavaScript"
+    },
+    {
+      "id": "npm",
+      "roles": [
+        "packageManager"
+      ],
+      "kind": null,
+      "binary": "npm",
+      "onPath": true,
+      "source": "built-in",
+      "homepage": "https://www.npmjs.com",
+      "description": "The package manager that ships with Node.js.",
+      "ecosystem": "node",
+      "language": "JavaScript"
+    },
+    {
+      "id": "uv",
+      "roles": [
+        "packageManager"
+      ],
+      "kind": null,
+      "binary": "uv",
+      "onPath": true,
+      "source": "built-in",
+      "homepage": "https://docs.astral.sh/uv/",
+      "description": "A Python package and project manager.",
+      "ecosystem": "python",
+      "language": "Python"
+    },
+    {
+      "id": "poetry",
+      "roles": [
+        "packageManager"
+      ],
+      "kind": null,
+      "binary": "poetry",
+      "onPath": true,
+      "source": "built-in",
+      "homepage": "https://python-poetry.org",
+      "description": "A Python packaging and dependency manager.",
+      "ecosystem": "python",
+      "language": "Python"
+    },
+    {
+      "id": "pip",
+      "roles": [
+        "packageManager"
+      ],
+      "kind": null,
+      "binary": "pip",
+      "onPath": true,
+      "source": "built-in",
+      "homepage": "https://pip.pypa.io",
+      "description": "The package installer for Python.",
+      "ecosystem": "python",
+      "language": "Python"
+    },
+    {
+      "id": "go",
+      "roles": [
+        "packageManager"
+      ],
+      "kind": null,
+      "binary": "go",
+      "onPath": true,
+      "source": "built-in",
+      "homepage": "https://go.dev",
+      "description": "Go's toolchain: builds, tests and manages modules.",
+      "ecosystem": "go",
+      "language": "Go"
+    },
+    {
+      "id": "bundler",
+      "roles": [
+        "packageManager"
+      ],
+      "kind": null,
+      "binary": "bundle",
+      "onPath": true,
+      "source": "built-in",
+      "homepage": "https://bundler.io",
+      "description": "A dependency manager for Ruby gems.",
+      "ecosystem": "ruby",
+      "language": "Ruby"
+    },
+    {
+      "id": "direnv",
+      "roles": [
+        "toolManager"
+      ],
+      "kind": null,
+      "binary": "direnv",
+      "onPath": true,
+      "source": "built-in",
+      "homepage": "https://direnv.net",
+      "description": "Loads and unloads environment variables by directory.",
+      "ecosystem": null,
+      "language": "any language"
+    },
+    {
+      "id": "lefthook",
+      "roles": [
+        "hookManager"
+      ],
+      "kind": null,
+      "binary": "lefthook",
+      "onPath": true,
+      "source": "built-in",
+      "homepage": "https://lefthook.dev",
+      "description": "A git hooks manager.",
+      "ecosystem": null,
+      "language": "any language"
+    },
+    {
+      "id": "husky",
+      "roles": [
+        "hookManager"
+      ],
+      "kind": null,
+      "binary": "husky",
+      "onPath": true,
+      "source": "built-in",
+      "homepage": "https://typicode.github.io/husky/",
+      "description": "A git hooks manager for Node.js projects.",
+      "ecosystem": null,
+      "language": "any language"
+    },
+    {
+      "id": "pre-commit",
+      "roles": [
+        "hookManager"
+      ],
+      "kind": null,
+      "binary": "pre-commit",
+      "onPath": true,
+      "source": "built-in",
+      "homepage": "https://pre-commit.com",
+      "description": "A framework for managing git pre-commit hooks.",
+      "ecosystem": null,
+      "language": "any language"
+    }
+  ]
+}

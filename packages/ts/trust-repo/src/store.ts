@@ -464,7 +464,13 @@ export function trustStore(opts: TrustStoreOptions): TrustStore {
         if (scope !== WHOLE_REPO_SCOPE)
           await mkdir(scopesDir(resolved), { mode: DIR_MODE }).catch(() => {})
         // A marker that exists is a grant, so it must never be observable half-written.
-        await atomicWriteAsync(marker, markerText(resolved, scope), { mode: MARKER_MODE })
+        // On Windows a rename onto a marker another call is writing can fail
+        // with EPERM. The other call wrote the same grant, so that is success.
+        await atomicWriteAsync(marker, markerText(resolved, scope), { mode: MARKER_MODE }).catch(
+          async (error: unknown) => {
+            if (!(await hasGrant(resolved, scope))) throw error
+          },
+        )
       }
       await tighten()
       return { root: resolved, scope, marker, alreadyTrusted }

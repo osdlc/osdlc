@@ -1,0 +1,122 @@
+{
+  "schemaVersion": 1,
+  "kind": "catalog",
+  "root": "<root>",
+  "generatedAt": "<time>",
+  "discovery": "walk",
+  "allowExec": true,
+  "reports": [
+    {
+      "runner": "sbt",
+      "chain": [
+        {
+          "label": "runner",
+          "hint": "sbt builds Scala and Java projects. Its tasks come from the build definition and from the plugins the build enables."
+        },
+        {
+          "label": "project",
+          "hint": "Which subproject the task runs in. The build's default project is addressed bare; any other is addressed `project/task`."
+        },
+        {
+          "label": "task",
+          "hint": "The task name, as sbt's own `tasks` command lists it."
+        }
+      ],
+      "brand": {
+        "icon": "<svg>",
+        "color": "#dc322f"
+      },
+      "tool": {
+        "binary": "sbt",
+        "found": true,
+        "path": "<bin>/sbt"
+      },
+      "status": "ok",
+      "tasks": [
+        {
+          "id": "sbt:build.sbt:app/compile",
+          "runner": "sbt",
+          "path": [
+            "sbt",
+            "app",
+            "compile"
+          ],
+          "argv": [
+            "sbt",
+            "compile"
+          ],
+          "cwd": ".",
+          "display": "sbt compile",
+          "parameters": [],
+          "source": "build.sbt",
+          "origin": "declared",
+          "doc": "Compiles sources.",
+          "tags": [
+            "sbt",
+            "app"
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        },
+        {
+          "id": "sbt:build.sbt:app/test",
+          "runner": "sbt",
+          "path": [
+            "sbt",
+            "app",
+            "test"
+          ],
+          "argv": [
+            "sbt",
+            "test"
+          ],
+          "cwd": ".",
+          "display": "sbt test",
+          "parameters": [],
+          "source": "build.sbt",
+          "origin": "declared",
+          "doc": "Executes all tests.",
+          "tags": [
+            "sbt",
+            "app"
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        }
+      ],
+      "diagnostics": [],
+      "skippedForExec": false
+    }
+  ],
+  "source": "fresh",
+  "storedAt": null,
+  "groups": [
+    {
+      "id": "tasks",
+      "title": "Tasks",
+      "runners": [
+        "sbt"
+      ]
+    }
+  ],
+  "skills": [],
+  "cache": [
+    {
+      "runner": "sbt",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    }
+  ],
+  "unknowns": [],
+  "trustedTools": [],
+  "filter": {}
+}

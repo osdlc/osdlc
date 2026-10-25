@@ -12,7 +12,7 @@ Grants for one tool, a private store, Windows path matching, and the path expand
 - The store directory is created 0700 and markers are written 0600.
 - New `expandTrustPath(raw, home)`: the `expandPath` most tools want. It expands `~` and resolves symlinks in the glob's static prefix. Remove your own copy and use this one.
 - New entry point `@osdlc/trust-repo/git` with `originOwner(root)`, the git-backed `ownerOf` for `policy.owners`. The package now depends on `@osdlc/command-seam` and `@osdlc/typed-git`. The main entry point still runs no program.
-- Trust paths match on Windows. Keys and `paths` globs use `/` and a lower-case drive letter, and `~\` expands. New `normalizeTrustPath` and `expandTilde`. Windows was not supported before, so no Windows marker from an older release exists to move.
+- Trust paths match on Windows. Keys and `paths` globs use `/` and a lower-case drive letter, and `~\` expands. New `normalizeTrustPath` and `expandTilde`. Windows was not supported before, so no Windows marker from an older release exists to move. Concurrent grants for one root no longer fail with `EPERM` on Windows.
 
 **Breaking changes**
 

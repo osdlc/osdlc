@@ -1,33 +1,65 @@
 /**
- * Startup only: restore saved preferences, attach every listener, draw the
- * first frame. Rendering, data loading and event handling live in `view.ts`,
- * `api.ts` and `input.ts`. This module starts them in the order the page needs.
+ * Startup only: sign in, read the preferences, attach every listener, draw
+ * the first frame. Rendering, data loading and event handling live in
+ * `view.ts`, `api.ts` and `input.ts`. This module starts them in the order
+ * the page needs.
  */
-import { $, restoreRunnerOrder, restoreTheme, state } from './state.ts'
-import { measureChrome } from './view.ts'
-import { setThemeButton, wireInput } from './input.ts'
-import { load } from './api.ts'
+import { $, state } from './state.ts'
+import { measureChrome, setThemeButton, showSignedOut } from './view.ts'
+import { wireInput } from './input.ts'
+import {
+  load,
+  loadTools,
+  readConfig,
+  settingSource,
+  settingValue,
+  signIn,
+  signedIn,
+  tokenWorks,
+} from './api.ts'
 
-// Drop the boot token from the address bar. It is already used by the time
-// this runs, but a copied URL should not carry a credential at all.
-if (new URL(location.href).searchParams.has('boot')) {
-  const clean = new URL(location.href)
-  clean.searchParams.delete('boot')
-  history.replaceState(null, '', clean.pathname + clean.search + clean.hash)
+async function start(): Promise<void> {
+  // Take the boot token out of the address bar first: it is spent by the
+  // sign-in below, and a copied URL should not carry a credential at all.
+  const url = new URL(location.href)
+  const boot = url.searchParams.get('boot')
+  if (boot !== null) {
+    url.searchParams.delete('boot')
+    history.replaceState(null, '', url.pathname + url.search + url.hash)
+  }
+  // A reload uses the token this tab kept. A boot token is spent only when
+  // the tab has no working token, since it works once and a second redeem
+  // is refused with a warning. The first call answers 401 if the server has
+  // restarted since.
+  const kept = signedIn() && (boot === null || (await tokenWorks()))
+  const ok = kept || (boot !== null && (await signIn(boot)))
+  if (!ok) {
+    showSignedOut()
+    return
+  }
+
+  // The server set `data-theme` from the `theme` setting before the first
+  // paint. The button shows the scheme in use.
+  const theme = document.documentElement.getAttribute('data-theme')
+  setThemeButton(theme === 'light' || theme === 'dark' ? theme : 'system')
+
+  wireInput()
+  measureChrome()
+  ;($('q') as HTMLInputElement).focus()
+
+  // The server's held catalog first, so the page has rows at once; then a
+  // fresh read, which joins the probe the server started.
+  // The catalog arrives in the configured runner order. The setting itself
+  // is read beside it, so a drag knows which layer set it. The tool info is
+  // for the runner info and settings, which are opened later.
+  const [config] = await Promise.all([readConfig(), load({ cached: true }), loadTools()])
+  if (!signedIn()) return
+  const order = settingValue(config, 'runners.order')
+  if (Array.isArray(order)) {
+    state.runnerOrder = order.filter((r): r is string => typeof r === 'string')
+  }
+  state.runnerOrderSource = settingSource(config, 'runners.order')
+  await load({ join: true })
 }
 
-// Restore a saved runner arrangement; absent, alphabetical stands.
-state.runnerOrder = restoreRunnerOrder()
-
-// Restore an explicit theme choice; absent, the system default stands. The
-// button is updated either way, so it shows the scheme in use rather than the
-// markup's static default.
-const savedTheme = restoreTheme()
-if (savedTheme) document.documentElement.setAttribute('data-theme', savedTheme)
-setThemeButton(savedTheme ?? 'system')
-
-wireInput()
-
-measureChrome()
-;($('q') as HTMLInputElement).focus()
-load(false)
+void start()

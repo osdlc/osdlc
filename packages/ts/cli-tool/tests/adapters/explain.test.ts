@@ -109,3 +109,13 @@ test('explain: when only a layer that may not set the key sets it, the reason sa
     reason: 'no layer allowed to set it sets it; project is ignored (user only)',
   })
 })
+
+test('explain: when only the default sets the key, the reason says the default applies', async () => {
+  const { app } = fixture()
+  expect((await runApp(app, ['config', 'unset', 'discovery', '--project'])).exit).toBe(0)
+  const run = await runApp(app, ['config', 'explain', 'discovery', '--json'])
+  expect(run.json()).toMatchObject({
+    source: 'default',
+    reason: 'no file, environment variable or flag sets it, so the default applies',
+  })
+})

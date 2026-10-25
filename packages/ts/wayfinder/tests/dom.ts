@@ -22,5 +22,8 @@ const SKELETON = readFileSync(
 
 /** Put the real page markup in the document — the same file the server serves. */
 export function mountPage(): void {
+  // jsdom has no canvas and logs an error when asked for one. The page then
+  // sizes its columns without measuring text.
+  HTMLCanvasElement.prototype.getContext = (() => null) as never
   document.body.innerHTML = SKELETON.slice(SKELETON.indexOf('<div id="chrome">'))
 }

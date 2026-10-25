@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "kind": "query",
+  "root": "<root>",
+  "filter": {
+    "query": "build",
+    "mode": "fuzzy"
+  },
+  "source": "fresh",
+  "storedAt": null,
+  "tasks": [
+    {
+      "id": "moon:apps/web:web:build",
+      "runner": "moon",
+      "path": [
+        "moon",
+        "apps",
+        "web",
+        "build"
+      ],
+      "argv": [
+        "moon",
+        "run",
+        "web:build"
+      ],
+      "cwd": ".",
+      "display": "moon run web:build",
+      "parameters": [],
+      "source": "apps/web/moon.yml",
+      "origin": "declared",
+      "detail": "vite build",
+      "tags": [
+        "moon",
+        "application",
+        "typescript"
+      ],
+      "persistent": {
+        "value": false,
+        "declared": false
+      },
+      "executes": "local"
+    }
+  ],
+  "skills": [],
+  "cache": [
+    {
+      "runner": "moon",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    }
+  ],
+  "unknowns": []
+}

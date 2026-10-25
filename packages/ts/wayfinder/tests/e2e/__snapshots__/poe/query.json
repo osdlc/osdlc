@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "kind": "query",
+  "root": "<root>",
+  "filter": {
+    "query": "lint",
+    "mode": "fuzzy"
+  },
+  "source": "fresh",
+  "storedAt": null,
+  "tasks": [
+    {
+      "id": "poe:pyproject.toml:lint",
+      "runner": "poe",
+      "path": [
+        "poe",
+        ".",
+        "lint"
+      ],
+      "argv": [
+        "poe",
+        "lint"
+      ],
+      "cwd": ".",
+      "display": "poe lint",
+      "parameters": [],
+      "source": "pyproject.toml",
+      "origin": "declared",
+      "doc": "Lint the code",
+      "detail": "ruff check .",
+      "tags": [
+        "poe",
+        ".",
+        "cmd"
+      ],
+      "persistent": {
+        "value": false,
+        "declared": false
+      },
+      "executes": "local"
+    }
+  ],
+  "skills": [],
+  "cache": [
+    {
+      "runner": "python",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    },
+    {
+      "runner": "poe",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    }
+  ],
+  "unknowns": []
+}

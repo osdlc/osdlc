@@ -52,7 +52,8 @@ let repo: string
 let options: TrustStoreOptions
 let store: TrustStore
 beforeEach(() => {
-  home = realpathSync(mkdtempSync(join(tmpdir(), 'trust-example-')))
+  // `.native` gives the long form of a Windows 8.3 name, as the store's resolve does.
+  home = realpathSync.native(mkdtempSync(join(tmpdir(), 'trust-example-')))
   repo = join(home, 'work', 'app')
   mkdirSync(repo, { recursive: true })
   // Inject env and home so the example never touches the real trust store.

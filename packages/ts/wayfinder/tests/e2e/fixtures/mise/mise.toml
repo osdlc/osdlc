@@ -1,0 +1,5 @@
+[tools]
+node = "22"
+
+[tasks.build]
+run = "npm run build"

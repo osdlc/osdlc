@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "kind": "query",
+  "root": "<root>",
+  "filter": {
+    "query": "worker",
+    "mode": "fuzzy"
+  },
+  "source": "fresh",
+  "storedAt": null,
+  "tasks": [
+    {
+      "id": "procfile:Procfile:worker",
+      "runner": "procfile",
+      "path": [
+        "procfile",
+        "Procfile",
+        "worker"
+      ],
+      "argv": [
+        "sh",
+        "-c",
+        "bundle exec sidekiq"
+      ],
+      "cwd": ".",
+      "display": "sh -c bundle exec sidekiq",
+      "parameters": [],
+      "source": "Procfile",
+      "origin": "declared",
+      "detail": "bundle exec sidekiq",
+      "tags": [
+        "procfile",
+        ".",
+        "sh"
+      ],
+      "persistent": {
+        "value": true,
+        "declared": true
+      },
+      "executes": "local"
+    }
+  ],
+  "skills": [],
+  "cache": [
+    {
+      "runner": "procfile",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    }
+  ],
+  "unknowns": []
+}

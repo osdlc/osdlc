@@ -53,8 +53,10 @@ the active checkout with `*` and a deleted one as `missing`.
 
 ## Where the state lives
 
-In the per-OS config directory for `way`: `~/Library/Application Support/way`
-on macOS, `${XDG_CONFIG_HOME:-~/.config}/way` elsewhere. `WAY_ROOT` or
-`WAY_CONFIG_DIR` move the base directory. `home` holds the active link.
+In `${XDG_CONFIG_HOME:-~/.config}/way` on Linux and macOS, and
+`%APPDATA%\way` on Windows. `WAYFINDER_ROOT` moves it to
+`$WAYFINDER_ROOT/config/way`, and `WAYFINDER_CONFIG_DIR` moves the config
+directory it sits in. `way dev status` says how to move a link it finds in
+the old macOS place, `~/Library/Application Support/way`. `home` holds the active link.
 `history.jsonl` is the record `history` and `use '#n'` read. Both are safe to
 delete. Losing them costs the link, not the install.

@@ -1,0 +1,178 @@
+{
+  "schemaVersion": 1,
+  "kind": "catalog",
+  "root": "<root>",
+  "generatedAt": "<time>",
+  "discovery": "walk",
+  "allowExec": false,
+  "reports": [
+    {
+      "runner": "maven",
+      "chain": [
+        {
+          "label": "runner",
+          "hint": "mvn builds, tests and packages Java projects."
+        },
+        {
+          "label": "project",
+          "hint": "The directory holding the pom.xml. `.` is the root manifest."
+        },
+        {
+          "label": "verb",
+          "hint": "A conventional Maven lifecycle phase. Synthesized — not declared in the manifest."
+        }
+      ],
+      "brand": {
+        "icon": "<svg>",
+        "color": "#C71A36"
+      },
+      "tool": {
+        "binary": "mvn",
+        "found": true,
+        "path": "<bin>/mvn"
+      },
+      "status": "ok",
+      "tasks": [
+        {
+          "id": "maven:pom.xml:test",
+          "runner": "maven",
+          "path": [
+            "maven",
+            ".",
+            "test"
+          ],
+          "argv": [
+            "mvn",
+            "test"
+          ],
+          "cwd": ".",
+          "display": "mvn test",
+          "parameters": [],
+          "source": "pom.xml",
+          "origin": "synthesized",
+          "tags": [
+            "maven",
+            "java",
+            "."
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        },
+        {
+          "id": "maven:pom.xml:package",
+          "runner": "maven",
+          "path": [
+            "maven",
+            ".",
+            "package"
+          ],
+          "argv": [
+            "mvn",
+            "package"
+          ],
+          "cwd": ".",
+          "display": "mvn package",
+          "parameters": [],
+          "source": "pom.xml",
+          "origin": "synthesized",
+          "tags": [
+            "maven",
+            "java",
+            "."
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        },
+        {
+          "id": "maven:pom.xml:install",
+          "runner": "maven",
+          "path": [
+            "maven",
+            ".",
+            "install"
+          ],
+          "argv": [
+            "mvn",
+            "install"
+          ],
+          "cwd": ".",
+          "display": "mvn install",
+          "parameters": [],
+          "source": "pom.xml",
+          "origin": "synthesized",
+          "tags": [
+            "maven",
+            "java",
+            "."
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        },
+        {
+          "id": "maven:pom.xml:verify",
+          "runner": "maven",
+          "path": [
+            "maven",
+            ".",
+            "verify"
+          ],
+          "argv": [
+            "mvn",
+            "verify"
+          ],
+          "cwd": ".",
+          "display": "mvn verify",
+          "parameters": [],
+          "source": "pom.xml",
+          "origin": "synthesized",
+          "tags": [
+            "maven",
+            "java",
+            "."
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        }
+      ],
+      "diagnostics": [],
+      "skippedForExec": false
+    }
+  ],
+  "source": "fresh",
+  "storedAt": null,
+  "groups": [
+    {
+      "id": "tasks",
+      "title": "Tasks",
+      "runners": [
+        "maven"
+      ]
+    }
+  ],
+  "skills": [],
+  "cache": [
+    {
+      "runner": "maven",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    }
+  ],
+  "unknowns": [],
+  "trustedTools": [],
+  "filter": {}
+}

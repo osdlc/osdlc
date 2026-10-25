@@ -209,6 +209,24 @@ describe('runners.readCached', () => {
     }
   })
 
+  test('an aborted signal stops the read with its reason, rather than reading all misses', async () => {
+    const root = await fixtureRoot({ 'alpha.txt': 'build\n' })
+    const cache = await fixtureRoot({})
+    try {
+      const s = setup([parseTool('alpha')])
+      const profile = await detect(s, root)
+      await s.project.runners.collectAndCache(profile, cache, s.options)
+      const closed = new AbortController()
+      closed.abort(new Error('the caller left'))
+      await expect(
+        s.project.runners.readCached(profile, cache, { ...s.options, signal: closed.signal }),
+      ).rejects.toThrow('the caller left')
+    } finally {
+      await removeRoot(root)
+      await removeRoot(cache)
+    }
+  })
+
   test("editing one runner's file stales that runner", async () => {
     const root = await fixtureRoot({ 'alpha.txt': 'build\n', 'beta.txt': 'test\n' })
     const cache = await fixtureRoot({})

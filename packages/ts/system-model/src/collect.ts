@@ -198,10 +198,12 @@ export async function collectRunners(
         }
       }
 
+      const durationMs = performance.now() - startedAt
+      options.onProbe?.({ runner: spec.id, durationMs })
       observer?.({
         runner: spec.id,
         kind: spec.role.kind,
-        durationMs: performance.now() - startedAt,
+        durationMs,
         reads: [...reads, ...evidencePaths(spec.packages)],
         queries: [...queries, ...spec.patterns],
         lookups: Object.fromEntries([...lookups].sort(([a], [b]) => (a < b ? -1 : 1))),

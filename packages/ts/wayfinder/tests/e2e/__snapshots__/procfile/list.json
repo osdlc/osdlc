@@ -1,0 +1,121 @@
+{
+  "schemaVersion": 1,
+  "kind": "catalog",
+  "root": "<root>",
+  "generatedAt": "<time>",
+  "discovery": "walk",
+  "allowExec": false,
+  "reports": [
+    {
+      "runner": "procfile",
+      "chain": [
+        {
+          "label": "runner",
+          "hint": "A process manager runs the processes a Procfile declares."
+        },
+        {
+          "label": "file",
+          "hint": "The Procfile, root-relative."
+        },
+        {
+          "label": "process",
+          "hint": "The name before the colon."
+        }
+      ],
+      "brand": {
+        "icon": "<svg>",
+        "color": "#79589f"
+      },
+      "status": "ok",
+      "tasks": [
+        {
+          "id": "procfile:Procfile:web",
+          "runner": "procfile",
+          "path": [
+            "procfile",
+            "Procfile",
+            "web"
+          ],
+          "argv": [
+            "sh",
+            "-c",
+            "bundle exec puma -p $PORT"
+          ],
+          "cwd": ".",
+          "display": "sh -c bundle exec puma -p $PORT",
+          "parameters": [],
+          "source": "Procfile",
+          "origin": "declared",
+          "detail": "bundle exec puma -p $PORT",
+          "tags": [
+            "procfile",
+            ".",
+            "sh"
+          ],
+          "persistent": {
+            "value": true,
+            "declared": true
+          },
+          "executes": "local"
+        },
+        {
+          "id": "procfile:Procfile:worker",
+          "runner": "procfile",
+          "path": [
+            "procfile",
+            "Procfile",
+            "worker"
+          ],
+          "argv": [
+            "sh",
+            "-c",
+            "bundle exec sidekiq"
+          ],
+          "cwd": ".",
+          "display": "sh -c bundle exec sidekiq",
+          "parameters": [],
+          "source": "Procfile",
+          "origin": "declared",
+          "detail": "bundle exec sidekiq",
+          "tags": [
+            "procfile",
+            ".",
+            "sh"
+          ],
+          "persistent": {
+            "value": true,
+            "declared": true
+          },
+          "executes": "local"
+        }
+      ],
+      "diagnostics": [],
+      "skippedForExec": false
+    }
+  ],
+  "source": "fresh",
+  "storedAt": null,
+  "groups": [
+    {
+      "id": "tasks",
+      "title": "Tasks",
+      "runners": [
+        "procfile"
+      ]
+    }
+  ],
+  "skills": [],
+  "cache": [
+    {
+      "runner": "procfile",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    }
+  ],
+  "unknowns": [],
+  "trustedTools": [],
+  "filter": {}
+}

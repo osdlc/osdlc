@@ -27,6 +27,14 @@ const get = kit.command({
 
 const ui = kit.command({ summary: 'the UI', interactive: true, run: () => 0 })
 
+const exec = kit.command({
+  summary: 'run a thing',
+  positionals: [{ name: 'id', required: true }],
+  rest: { name: 'args' },
+  output: z.object({ rest: z.array(z.string()) }),
+  run: ({ rest }) => ({ rest }),
+})
+
 const app = defineApp({
   name: 'tooly',
   version: '1.0.0',
@@ -46,6 +54,14 @@ const app = defineApp({
   },
 })
 
+const execApp = defineApp({
+  name: 'tooly',
+  version: '1.0.0',
+  summary: 'a test tool',
+  globals: kit.globals,
+  commands: { exec, config: kit.group({ summary: 'settings', commands: { get } }) },
+})
+
 describe('help', () => {
   test('help alone lists the top-level commands, one line each', async () => {
     const r = await runApp(app, ['help'])
@@ -61,6 +77,13 @@ describe('help', () => {
     expect(r.out).toContain('    deep  deeper (1 command)')
     const all = await runApp(app, ['help', '--depth', 'all'])
     expect(all.out).toContain('      leaf')
+  })
+
+  test('a declared rest shows in the usage line after the positionals', async () => {
+    const r = await runApp(execApp, ['help', 'exec'])
+    expect(r.out).toContain('usage: tooly exec [options] <id> [-- <args>...]')
+    const get = await runApp(execApp, ['help', 'config', 'get'])
+    expect(get.out).not.toContain('[--')
   })
 
   test('help <command> shows that node; --help on a command is the same', async () => {

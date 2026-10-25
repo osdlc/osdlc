@@ -10,6 +10,7 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 import { describe, expect, test } from 'vitest'
 
@@ -190,9 +191,10 @@ describe('spawnRunnerAsync', () => {
   })
 
   test('onSpawn reports the live child pid before the command finishes, and is skipped when the spawn fails', async () => {
-    const sh = spawnRunnerAsync('sh')
+    // A Node child prints its own pid, so the check holds on every OS.
+    const node = spawnRunnerAsync(process.execPath)
     let seen: number | null = null
-    const r = await sh.run(['-c', 'echo $$'], {
+    const r = await node.run(['-e', 'console.log(process.pid)'], {
       cwd: CWD,
       onSpawn: (pid) => {
         seen = pid
@@ -424,45 +426,60 @@ describe('spawnRunnerAsync — processGroup', () => {
   // then execs `sleep`, so the printed pid is the grandchild's.
   const GRANDCHILD = ['-c', `sh -c 'echo $$; exec sleep 30'; echo after`]
 
-  test('a timeout kills the grandchild too', async () => {
-    const sh = spawnRunnerAsync('sh')
-    const r = await sh.run(GRANDCHILD, { cwd: CWD, timeoutMs: 500, processGroup: true })
-    const pid = Number(r.stdout.trim())
-    try {
-      expect(r.neverExited).toBe(true)
-      expect(pid).toBeGreaterThan(0)
-      expect(await gone(pid)).toBe(true)
-    } finally {
-      reap(pid)
-    }
-  }, 10_000)
+  // POSIX only: `processGroup` is POSIX only, and a `sh` pid is not a Windows pid.
+  test.skipIf(process.platform === 'win32')(
+    'a timeout kills the grandchild too',
+    async () => {
+      const sh = spawnRunnerAsync('sh')
+      const r = await sh.run(GRANDCHILD, { cwd: CWD, timeoutMs: 500, processGroup: true })
+      const pid = Number(r.stdout.trim())
+      try {
+        expect(r.neverExited).toBe(true)
+        expect(pid).toBeGreaterThan(0)
+        expect(await gone(pid)).toBe(true)
+      } finally {
+        reap(pid)
+      }
+    },
+    10_000,
+  )
 
-  test('an abort kills the grandchild too', async () => {
-    const sh = spawnRunnerAsync('sh')
-    const ac = new AbortController()
-    setTimeout(() => ac.abort(), 500)
-    const r = await sh.run(GRANDCHILD, { cwd: CWD, signal: ac.signal, processGroup: true })
-    const pid = Number(r.stdout.trim())
-    try {
-      expect(r.exitCode).not.toBe(0)
-      expect(pid).toBeGreaterThan(0)
-      expect(await gone(pid)).toBe(true)
-    } finally {
-      reap(pid)
-    }
-  }, 10_000)
+  // POSIX only: `processGroup` is POSIX only, and a `sh` pid is not a Windows pid.
+  test.skipIf(process.platform === 'win32')(
+    'an abort kills the grandchild too',
+    async () => {
+      const sh = spawnRunnerAsync('sh')
+      const ac = new AbortController()
+      setTimeout(() => ac.abort(), 500)
+      const r = await sh.run(GRANDCHILD, { cwd: CWD, signal: ac.signal, processGroup: true })
+      const pid = Number(r.stdout.trim())
+      try {
+        expect(r.exitCode).not.toBe(0)
+        expect(pid).toBeGreaterThan(0)
+        expect(await gone(pid)).toBe(true)
+      } finally {
+        reap(pid)
+      }
+    },
+    10_000,
+  )
 
-  test('without it, a timeout leaves the grandchild running', async () => {
-    const sh = spawnRunnerAsync('sh')
-    const r = await sh.run(GRANDCHILD, { cwd: CWD, timeoutMs: 500 })
-    const pid = Number(r.stdout.trim())
-    try {
-      expect(pid).toBeGreaterThan(0)
-      expect(() => process.kill(pid, 0)).not.toThrow()
-    } finally {
-      reap(pid)
-    }
-  }, 10_000)
+  // POSIX only: it checks a POSIX grandchild with `kill(pid, 0)` on a `sh` pid.
+  test.skipIf(process.platform === 'win32')(
+    'without it, a timeout leaves the grandchild running',
+    async () => {
+      const sh = spawnRunnerAsync('sh')
+      const r = await sh.run(GRANDCHILD, { cwd: CWD, timeoutMs: 500 })
+      const pid = Number(r.stdout.trim())
+      try {
+        expect(pid).toBeGreaterThan(0)
+        expect(() => process.kill(pid, 0)).not.toThrow()
+      } finally {
+        reap(pid)
+      }
+    },
+    10_000,
+  )
 
   test('a normal exit is unchanged', async () => {
     const sh = spawnRunnerAsync('sh')
@@ -470,93 +487,113 @@ describe('spawnRunnerAsync — processGroup', () => {
     expect(r).toEqual({ exitCode: 3, stdout: 'ok\n', stderr: '' })
   })
 
-  test('a background member still holding the pipes is killed after the exit grace', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'seam-group-'))
-    const pidFile = join(dir, 'pid')
-    let pid = 0
-    try {
-      const sh = spawnRunnerAsync('sh')
-      const r = await sh.run(['-c', `sleep 30 & echo $! > "${pidFile}"; exit 0`], {
-        cwd: CWD,
-        timeoutMs: 5_000,
-        processGroup: true,
-      })
-      pid = Number(readFileSync(pidFile, 'utf8').trim())
-      expect(r.exitCode).toBe(0)
-      expect(pid).toBeGreaterThan(0)
-      expect(await gone(pid)).toBe(true)
-    } finally {
-      reap(pid)
-      rmSync(dir, { recursive: true, force: true })
-    }
-  }, 10_000)
+  // POSIX only: `processGroup` is POSIX only, and a `sh` pid is not a Windows pid.
+  test.skipIf(process.platform === 'win32')(
+    'a background member still holding the pipes is killed after the exit grace',
+    async () => {
+      const dir = mkdtempSync(join(tmpdir(), 'seam-group-'))
+      const pidFile = join(dir, 'pid')
+      let pid = 0
+      try {
+        const sh = spawnRunnerAsync('sh')
+        const r = await sh.run(['-c', `sleep 30 & echo $! > "${pidFile}"; exit 0`], {
+          cwd: CWD,
+          timeoutMs: 5_000,
+          processGroup: true,
+        })
+        pid = Number(readFileSync(pidFile, 'utf8').trim())
+        expect(r.exitCode).toBe(0)
+        expect(pid).toBeGreaterThan(0)
+        expect(await gone(pid)).toBe(true)
+      } finally {
+        reap(pid)
+        rmSync(dir, { recursive: true, force: true })
+      }
+    },
+    10_000,
+  )
 })
 
 describe('spawnRunnerAsync — abort', () => {
-  test('sends SIGTERM first, so a child can clean up', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'seam-abort-'))
-    const marker = join(dir, 'cleaned')
-    try {
+  // POSIX only: Windows has no SIGTERM handler; a kill ends the child at once.
+  test.skipIf(process.platform === 'win32')(
+    'sends SIGTERM first, so a child can clean up',
+    async () => {
+      const dir = mkdtempSync(join(tmpdir(), 'seam-abort-'))
+      const marker = join(dir, 'cleaned')
+      try {
+        const ac = new AbortController()
+        const pending = spawnRunnerAsync('sh').run(
+          ['-c', `trap 'echo cleaned > "${marker}"; exit 0' TERM; while :; do sleep 0.05; done`],
+          { cwd: CWD, signal: ac.signal },
+        )
+        setTimeout(() => ac.abort(), 200)
+        const r = await pending
+        expect(r.neverExited).toBe(true)
+        expect(r.error).toBe('The operation was aborted')
+        for (let i = 0; i < 40 && !existsSync(marker); i++) {
+          await new Promise((res) => setTimeout(res, 25))
+        }
+        expect(readFileSync(marker, 'utf8')).toBe('cleaned\n')
+      } finally {
+        rmSync(dir, { recursive: true, force: true })
+      }
+    },
+    10_000,
+  )
+
+  // POSIX only: Windows has no SIGTERM handler; a kill ends the child at once.
+  test.skipIf(process.platform === 'win32')(
+    'resolves at once and sends SIGKILL later to a child that ignores SIGTERM',
+    async () => {
+      const ac = new AbortController()
+      let pid = 0
+      const pending = spawnRunnerAsync('sh').run(['-c', "trap '' TERM; exec sleep 10"], {
+        cwd: CWD,
+        signal: ac.signal,
+        onSpawn: (p) => {
+          pid = p
+        },
+      })
+      setTimeout(() => ac.abort(), 200)
+      const t0 = performance.now()
+      const r = await pending
+      try {
+        expect(performance.now() - t0).toBeLessThan(500)
+        expect(r.neverExited).toBe(true)
+        // Still alive inside the grace, gone after it.
+        expect(await gone(pid, 500)).toBe(false)
+        expect(await gone(pid)).toBe(true)
+      } finally {
+        reap(pid)
+      }
+    },
+    10_000,
+  )
+
+  // POSIX only: Windows has no SIGTERM handler; a kill ends the child at once.
+  test.skipIf(process.platform === 'win32')(
+    'with processGroup, a member that ignores SIGTERM gets SIGKILL after the grace',
+    async () => {
       const ac = new AbortController()
       const pending = spawnRunnerAsync('sh').run(
-        ['-c', `trap 'echo cleaned > "${marker}"; exit 0' TERM; while :; do sleep 0.05; done`],
-        { cwd: CWD, signal: ac.signal },
+        ['-c', "(trap '' TERM; exec sleep 30) & echo $!; wait"],
+        { cwd: CWD, signal: ac.signal, processGroup: true },
       )
-      setTimeout(() => ac.abort(), 200)
+      setTimeout(() => ac.abort(), 300)
       const r = await pending
-      expect(r.neverExited).toBe(true)
-      expect(r.error).toBe('The operation was aborted')
-      for (let i = 0; i < 40 && !existsSync(marker); i++) {
-        await new Promise((res) => setTimeout(res, 25))
+      const pid = Number(r.stdout.trim())
+      try {
+        expect(r.neverExited).toBe(true)
+        expect(pid).toBeGreaterThan(0)
+        expect(await gone(pid, 500)).toBe(false)
+        expect(await gone(pid)).toBe(true)
+      } finally {
+        reap(pid)
       }
-      expect(readFileSync(marker, 'utf8')).toBe('cleaned\n')
-    } finally {
-      rmSync(dir, { recursive: true, force: true })
-    }
-  }, 10_000)
-
-  test('resolves at once and sends SIGKILL later to a child that ignores SIGTERM', async () => {
-    const ac = new AbortController()
-    let pid = 0
-    const pending = spawnRunnerAsync('sh').run(['-c', "trap '' TERM; exec sleep 10"], {
-      cwd: CWD,
-      signal: ac.signal,
-      onSpawn: (p) => {
-        pid = p
-      },
-    })
-    setTimeout(() => ac.abort(), 200)
-    const t0 = performance.now()
-    const r = await pending
-    try {
-      expect(performance.now() - t0).toBeLessThan(500)
-      expect(r.neverExited).toBe(true)
-      // Still alive inside the grace, gone after it.
-      expect(await gone(pid, 500)).toBe(false)
-      expect(await gone(pid)).toBe(true)
-    } finally {
-      reap(pid)
-    }
-  }, 10_000)
-
-  test('with processGroup, a member that ignores SIGTERM gets SIGKILL after the grace', async () => {
-    const ac = new AbortController()
-    const pending = spawnRunnerAsync('sh').run(
-      ['-c', "(trap '' TERM; exec sleep 30) & echo $!; wait"],
-      { cwd: CWD, signal: ac.signal, processGroup: true },
-    )
-    setTimeout(() => ac.abort(), 300)
-    const r = await pending
-    const pid = Number(r.stdout.trim())
-    try {
-      expect(r.neverExited).toBe(true)
-      expect(pid).toBeGreaterThan(0)
-      expect(await gone(pid, 500)).toBe(false)
-      expect(await gone(pid)).toBe(true)
-    } finally {
-      reap(pid)
-    }
-  }, 10_000)
+    },
+    10_000,
+  )
 })
 
 describe('spawnRunnerAsync — stdin failure contract', () => {
@@ -583,7 +620,7 @@ describe('spawnRunnerAsync — stdin failure contract', () => {
         probe,
         [
           `import { writeFileSync } from "node:fs";`,
-          `import { spawnRunnerAsync } from ${JSON.stringify(join(import.meta.dirname, '../src/index.ts'))};`,
+          `import { spawnRunnerAsync } from ${JSON.stringify(pathToFileURL(join(import.meta.dirname, '../src/index.ts')).href)};`,
           `const r = await spawnRunnerAsync("sh").run(["-c", "exec 0<&-; sleep 0.3"], {`,
           `  cwd: process.cwd(),`,
           `  input: "x".repeat(4 * 1024 * 1024),`,
@@ -599,8 +636,11 @@ describe('spawnRunnerAsync — stdin failure contract', () => {
       // ...but the input it never read is not ignored. The write failure is
       // in `error`.
       // EPIPE, or ENOTCONN with some timings. Both are a write to a closed
-      // peer. Node words it "write EPIPE", Bun "EPIPE: …, write".
-      expect(res.error).toMatch(/^((EPIPE|ENOTCONN): [^\n]*, write|write (EPIPE|ENOTCONN))$/)
+      // peer. Node words it "write EPIPE", Bun "EPIPE: …, write". Windows
+      // reports EOF.
+      expect(res.error).toMatch(
+        /^((EPIPE|ENOTCONN|EOF): [^\n]*, write|write (EPIPE|ENOTCONN|EOF))$/,
+      )
       expect(res.stderr).toBe('')
     } finally {
       rmSync(dir, { recursive: true, force: true })
@@ -622,7 +662,7 @@ describe('spawnRunner — production pipe path', () => {
         probe,
         [
           `import { writeFileSync } from "node:fs";`,
-          `import { spawnRunner } from ${JSON.stringify(join(import.meta.dirname, '../src/index.ts'))};`,
+          `import { spawnRunner } from ${JSON.stringify(pathToFileURL(join(import.meta.dirname, '../src/index.ts')).href)};`,
           `const r = spawnRunner("definitely-not-a-real-binary-xyzzy").run([], { cwd: process.cwd() });`,
           `writeFileSync(${JSON.stringify(outFile)}, JSON.stringify(r));`,
         ].join('\n'),
@@ -674,27 +714,31 @@ describe('resolveRunner', () => {
 })
 
 describe('timeoutMs: the cap fires on the deadline', () => {
-  test('a hung child that ignores stdin is killed within a bound, and reported as a timeout', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'seam-bound-'))
-    const pidfile = join(dir, 'grandchild.pid')
-    let grandchild = 0
-    try {
-      const started = Date.now()
-      const r = await spawnRunnerAsync('sh').run(
-        ['-c', `sleep 301 & echo $! > ${pidfile}; exec sleep 302`],
-        { cwd: CWD, timeoutMs: 300, processGroup: true },
-      )
-      const elapsed = Date.now() - started
-      for (let i = 0; i < 100 && !existsSync(pidfile); i++)
-        await new Promise((r) => setTimeout(r, 20))
-      grandchild = Number(readFileSync(pidfile, 'utf-8').trim())
-      expect(r).toMatchObject({ exitCode: 1, neverExited: true, reason: 'timeout' })
-      expect(elapsed).toBeGreaterThanOrEqual(250)
-      expect(elapsed).toBeLessThan(3000)
-      expect(await gone(grandchild, 3000)).toBe(true)
-    } finally {
-      reap(grandchild)
-      rmSync(dir, { recursive: true, force: true })
-    }
-  })
+  // POSIX only: `processGroup` is POSIX only.
+  test.skipIf(process.platform === 'win32')(
+    'a hung child that ignores stdin is killed within a bound, and reported as a timeout',
+    async () => {
+      const dir = mkdtempSync(join(tmpdir(), 'seam-bound-'))
+      const pidfile = join(dir, 'grandchild.pid')
+      let grandchild = 0
+      try {
+        const started = Date.now()
+        const r = await spawnRunnerAsync('sh').run(
+          ['-c', `sleep 301 & echo $! > ${pidfile}; exec sleep 302`],
+          { cwd: CWD, timeoutMs: 300, processGroup: true },
+        )
+        const elapsed = Date.now() - started
+        for (let i = 0; i < 100 && !existsSync(pidfile); i++)
+          await new Promise((r) => setTimeout(r, 20))
+        grandchild = Number(readFileSync(pidfile, 'utf-8').trim())
+        expect(r).toMatchObject({ exitCode: 1, neverExited: true, reason: 'timeout' })
+        expect(elapsed).toBeGreaterThanOrEqual(250)
+        expect(elapsed).toBeLessThan(3000)
+        expect(await gone(grandchild, 3000)).toBe(true)
+      } finally {
+        reap(grandchild)
+        rmSync(dir, { recursive: true, force: true })
+      }
+    },
+  )
 })

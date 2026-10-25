@@ -81,7 +81,7 @@ export async function detectProject(
     discovery,
     state,
   })
-  const all = await lister.all()
+  const { files: all, index } = await lister.index()
   const listed = new Set(all)
   const diagnostics: Diagnostic[] = []
   const limit = lister.limit()
@@ -91,7 +91,8 @@ export async function detectProject(
     const compiled = compilePattern(pattern)
     const out: Hit[] = []
     const seen = new Set<string>()
-    for (const path of all) {
+    for (const i of index.candidates(compiled)) {
+      const path = all[i]!
       const base = compiled.base(path)
       if (base === null) continue
       // A directory pattern is one piece of evidence, not one per file under it.

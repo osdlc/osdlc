@@ -11,6 +11,8 @@ import ts from 'typescript'
 import { expect, test } from 'vitest'
 
 const SRC = join(import.meta.dirname, '..', 'src')
+// The compiler names files with `/`, also on Windows.
+const SRC_PREFIX = SRC.replaceAll('\\', '/')
 
 const COMPILER_OPTIONS: ts.CompilerOptions = {
   allowImportingTsExtensions: true,
@@ -28,7 +30,7 @@ function packageSpecifiers(...entries: string[]): Set<string> {
   )
   const out = new Set<string>()
   for (const sf of program.getSourceFiles()) {
-    if (!sf.fileName.startsWith(SRC)) continue
+    if (!sf.fileName.startsWith(SRC_PREFIX)) continue
     const source = readFileSync(sf.fileName, 'utf-8')
     const parsed = ts.preProcessFile(source, true, true)
     for (const ref of parsed.importedFiles) {

@@ -35,7 +35,8 @@ file('b/plain', 0o755)
 mkdirSync(join(root, 'a/dir-tool'), { recursive: true })
 const PATH = `${join(root, 'a')}:${join(root, 'b')}`
 
-describe('which', () => {
+// POSIX only: the stand-ins have no `.exe` or `.cmd` extension and `PATH` uses `:`; which-windows.test.ts covers Windows.
+describe.skipIf(process.platform === 'win32')('which', () => {
   test('the first executable match on PATH wins', () => {
     expect(which('tool', { env: { PATH } })).toBe(first)
     expect(which('tool', { env: { PATH: `${join(root, 'b')}:${join(root, 'a')}` } })).toBe(second)
@@ -85,7 +86,8 @@ describe('which', () => {
   })
 })
 
-describe('which with absolutePathOnly', () => {
+// POSIX only: the stand-ins have no `.exe` or `.cmd` extension and `PATH` uses `:`; which-windows.test.ts covers Windows.
+describe.skipIf(process.platform === 'win32')('which with absolutePathOnly', () => {
   const a = join(root, 'a')
 
   test('skips relative and empty PATH entries, and never searches cwd', () => {
@@ -158,7 +160,8 @@ describe('runners with absolutePathOnly', () => {
     expect(classifyFailure(async_, { binary: 'tool', argv: [] })?.kind).toBe('not-installed')
   })
 
-  test('the absolute match runs', async () => {
+  // POSIX only: the stand-ins have no `.exe` or `.cmd` extension and `PATH` uses `:`; which-windows.test.ts covers Windows.
+  test.skipIf(process.platform === 'win32')('the absolute match runs', async () => {
     const env = { PATH: `.:${join(root, 'b')}` }
     expect(spawnRunner('tool', { absolutePathOnly: true }).run([], { cwd: a, env }).stdout).toBe(
       'ran\n',

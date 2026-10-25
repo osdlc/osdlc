@@ -17,7 +17,7 @@
  * be worse than reporting nothing.
  */
 
-import { relative } from 'node:path'
+import path from 'node:path'
 
 import { firstLine, stderrOrError } from '@osdlc/command-seam'
 
@@ -183,8 +183,24 @@ export const miseRunner: RunnerRole = {
 function sourceOf(task: MiseTask, root: string): string {
   const absolute = task.file ?? task.source
   if (absolute === undefined || absolute === null) return 'mise.toml'
-  const rel = relative(root, absolute)
-  return rel.startsWith('..') ? absolute : rel.split('\\').join('/')
+  return rootRelative(root, absolute)
+}
+
+/**
+ * `absolute` relative to `root`, with `/` separators. A path outside `root`
+ * is returned as given: one above it, or one on another drive, for which
+ * `relative` returns an absolute path. `paths` is for tests.
+ *
+ * Internal: exported for its tests, and not in the package index.
+ */
+export function rootRelative(
+  root: string,
+  absolute: string,
+  paths: Pick<typeof path.posix, 'relative' | 'isAbsolute'> = path,
+): string {
+  const rel = paths.relative(root, absolute)
+  const outside = rel === '..' || /^\.\.[\\/]/.test(rel) || paths.isAbsolute(rel)
+  return outside ? absolute : rel.split('\\').join('/')
 }
 
 function unique(values: string[]): string[] {

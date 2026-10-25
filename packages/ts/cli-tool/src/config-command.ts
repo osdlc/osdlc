@@ -483,9 +483,11 @@ function explained(key: string, layers: readonly ConfigLayerValue[]) {
       ? ignored.length > 0
         ? 'no layer allowed to set it sets it'
         : 'no layer sets it'
-      : won === counted.length - 1 || counted.slice(won + 1).every((l) => !l.set)
-        ? `${winner.layer} is the highest layer that sets it`
-        : `${winner.layer} is the highest layer allowed to set it`
+      : winner.layer === 'default' && counted.every((l, i) => i === won || !l.set)
+        ? 'no file, environment variable or flag sets it, so the default applies'
+        : won === counted.length - 1 || counted.slice(won + 1).every((l) => !l.set)
+          ? `${winner.layer} is the highest layer that sets it`
+          : `${winner.layer} is the highest layer allowed to set it`
   for (const l of ignored) {
     reason += `; ${l.layer} is ignored${l.note !== undefined ? ` (${l.note})` : ''}`
   }

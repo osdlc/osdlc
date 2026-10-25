@@ -1,0 +1,133 @@
+{
+  "schemaVersion": 1,
+  "kind": "catalog",
+  "root": "<root>",
+  "generatedAt": "<time>",
+  "discovery": "walk",
+  "allowExec": false,
+  "reports": [
+    {
+      "runner": "just",
+      "chain": [
+        {
+          "label": "runner",
+          "hint": "just runs recipes declared in a justfile — the deterministic command tails a repo shares between humans, hooks and CI."
+        },
+        {
+          "label": "justfile",
+          "hint": "Which justfile declares the recipe. `.` is the one at the root; others are addressed with -f and -d."
+        },
+        {
+          "label": "recipe",
+          "hint": "The recipe name. Any <required> / [optional] / *variadic parameters follow it."
+        }
+      ],
+      "brand": {
+        "icon": "<svg>",
+        "color": "#384d54"
+      },
+      "tool": {
+        "binary": "just",
+        "found": true,
+        "path": "<bin>/just"
+      },
+      "status": "ok",
+      "tasks": [
+        {
+          "id": "just:justfile:build",
+          "runner": "just",
+          "path": [
+            "just",
+            ".",
+            "build"
+          ],
+          "argv": [
+            "just",
+            "build"
+          ],
+          "cwd": ".",
+          "display": "just build",
+          "parameters": [],
+          "parametersUnknown": "exec-withheld",
+          "source": "justfile",
+          "origin": "declared",
+          "tags": [
+            "just",
+            "root"
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        },
+        {
+          "id": "just:justfile:deploy",
+          "runner": "just",
+          "path": [
+            "just",
+            ".",
+            "deploy"
+          ],
+          "argv": [
+            "just",
+            "deploy"
+          ],
+          "cwd": ".",
+          "display": "just deploy",
+          "parameters": [],
+          "parametersUnknown": "exec-withheld",
+          "source": "justfile",
+          "origin": "declared",
+          "tags": [
+            "just",
+            "root"
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        }
+      ],
+      "diagnostics": [],
+      "skippedForExec": false
+    }
+  ],
+  "source": "fresh",
+  "storedAt": null,
+  "groups": [
+    {
+      "id": "tasks",
+      "title": "Tasks",
+      "runners": [
+        "just"
+      ]
+    }
+  ],
+  "skills": [],
+  "cache": [
+    {
+      "runner": "just",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    }
+  ],
+  "unknowns": [
+    {
+      "kind": "parameters",
+      "runner": "just",
+      "reason": "exec-withheld",
+      "tasks": [
+        "just:justfile:build",
+        "just:justfile:deploy"
+      ],
+      "label": "parameters unknown: reading them needs execution, which is withheld"
+    }
+  ],
+  "trustedTools": [],
+  "filter": {}
+}

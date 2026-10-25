@@ -498,7 +498,8 @@ Each store method receives the command context, so it can read `ctx.cwd`,
   did-you-mean. A `get` with no value or an `unset` of a key not set in that
   layer exits 1.
 - `trust` answers `{ action, changed, roots }` for every mode, so a script does
-  not branch on the flag it passed. Granting trust is `cli-only`; `--show`,
+  not branch on the flag it passed. `action` names the mode: `trust`,
+  `untrust`, `untrust-all`, `show` or `list`. Granting trust is `cli-only`; `--show`,
   `--list`, `--untrust` and `--untrust-all` are open to the adapters.
   `--untrust` removes one grant: the whole-repository one, or with `--scope`
   that scope's. `--untrust-all` (when the service has `untrustAll`) removes

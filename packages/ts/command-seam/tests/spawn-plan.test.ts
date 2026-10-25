@@ -246,7 +246,8 @@ describe('spawnPlan', () => {
   )
 
   test('win32 refuses a batch file whose path holds a %', () => {
-    const gradlew = file('x%PATH:a=b%/gradlew.bat')
+    // No `:` in the name: Windows forbids it in a path.
+    const gradlew = file('x%PATH%/gradlew.bat')
     const plan = spawnPlan(gradlew, ['build'], win)
     expect(plan).toEqual({ refusal: expect.stringContaining('batch file path') })
   })

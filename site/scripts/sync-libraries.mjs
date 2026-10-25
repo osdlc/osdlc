@@ -5,13 +5,17 @@
 //
 // A library with a docs/guide/ folder gets it published under its page:
 // markdown and MDX pages, which may import components from beside them.
-import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+//
+// An app (APPS) gets its own top-level section instead: a landing page built
+// from its README, its guide pages, and a library page that links there.
+import { copyFile, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, posix } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const siteRoot = join(dirname(fileURLToPath(import.meta.url)), '..')
 const packages = join(siteRoot, '..', 'packages')
-const target = join(siteRoot, 'src', 'content', 'docs', 'libraries')
+const docs = join(siteRoot, 'src', 'content', 'docs')
+const target = join(docs, 'libraries')
 const base = '/osdlc'
 const repo = 'https://github.com/osdlc/osdlc'
 
@@ -19,6 +23,10 @@ const repo = 'https://github.com/osdlc/osdlc'
 // package is the Rust crate compiled to WebAssembly.
 const BUILT_FROM_RUST = new Set(['yaml-splice'])
 const LANG = { ts: 'TypeScript', rust: 'Rust' }
+
+// TypeScript packages that are apps. `runners` names the package whose README
+// holds the runner table the landing page shows.
+const APPS = { wayfinder: { runners: 'system-model' } }
 
 const ts = await readTs()
 const rust = await readRust()
@@ -31,6 +39,7 @@ await mkdir(join(target, 'rust'), { recursive: true })
 for (const lib of ts.values()) await writePage(lib, rust.get(lib.name))
 for (const lib of rust.values()) await writePage(lib, ts.get(lib.name))
 await writeFile(join(target, 'index.md'), overview())
+for (const name of Object.keys(APPS)) await writeApp(ts.get(name))
 
 console.log(`synced ${ts.size} TypeScript and ${rust.size} Rust libraries into ${target}`)
 
@@ -109,7 +118,10 @@ async function writePage(lib, twin) {
     ['API reference', lib.hasApi ? `[${lib.lang === 'ts' ? 'TypeDoc' : 'rustdoc'}](${apiUrl(lib)})` : 'none (config only)'],
     ['Source', `[${lib.dir}](${repo}/tree/main/${lib.dir})`],
   ]
-  if (lib.guide.length) facts.splice(3, 0, ['Guide', `${lib.guide.length} pages, in the sidebar under ${lib.name}`])
+  const app = isApp(lib)
+  if (app) facts.splice(3, 0, ['Guide', `[${lib.name}](${appUrl(lib)}), with ${lib.guide.length} guide pages`])
+  else if (lib.guide.length) facts.splice(3, 0, ['Guide', `${lib.guide.length} pages, in the sidebar under ${lib.name}`])
+  const guide = app ? [] : lib.guide
   const aside = !rel
     ? ''
     : rel === 'twin'
@@ -122,9 +134,9 @@ async function writePage(lib, twin) {
     '---',
     `title: ${JSON.stringify(lib.name)}`,
     `description: ${JSON.stringify(lib.description ?? '')}`,
-    rel || lib.guide.length ? 'sidebar:' : null,
+    rel || guide.length ? 'sidebar:' : null,
     // With a guide the page becomes the index of the library's sidebar group.
-    lib.guide.length ? '  label: Overview\n  order: 0' : null,
+    guide.length ? '  label: Overview\n  order: 0' : null,
     rel ? `  badge:\n    text: ${rel}\n    variant: ${rel === 'twin' ? 'tip' : 'note'}` : null,
     `editUrl: ${JSON.stringify(`${repo}/edit/main/${lib.dir}/README.md`)}`,
     '---',
@@ -138,10 +150,10 @@ async function writePage(lib, twin) {
 
   const table = ['| | |', '|---|---|', ...facts.map(([k, v]) => `| ${k} | ${v} |`)].join('\n')
   const body = rewriteLinks(dropH1(lib.readme), lib.dir)
-  const file = lib.guide.length ? join(lib.name, 'index.md') : `${lib.name}.md`
+  const file = guide.length ? join(lib.name, 'index.md') : `${lib.name}.md`
   await mkdir(dirname(join(target, lib.lang, file)), { recursive: true })
   await writeFile(join(target, lib.lang, file), `${frontmatter}${aside}${table}\n\n${body}`)
-  for (const page of lib.guide) await copyGuidePage(lib, page)
+  for (const page of guide) await copyGuidePage(lib, page, join(target, lib.lang, lib.name), pageUrl(lib))
 }
 
 async function listGuide(libRoot) {
@@ -151,9 +163,9 @@ async function listGuide(libRoot) {
 }
 
 // A guide page keeps its own frontmatter. Its relative imports are made
-// absolute, links to sibling pages go to their site URLs, and any other
-// relative link goes to GitHub.
-async function copyGuidePage(lib, page) {
+// absolute, links to sibling pages go to their site URLs (under `url`), and
+// any other relative link goes to GitHub.
+async function copyGuidePage(lib, page, outDir, url) {
   const source = join(packages, '..', lib.dir, 'docs', 'guide', page)
   const pageDir = posix.dirname(page)
   let text = await readFile(source, 'utf8')
@@ -165,7 +177,7 @@ async function copyGuidePage(lib, page) {
     const hash = anchor ? `#${anchor}` : ''
     const resolved = posix.normalize(posix.join(pageDir, path))
     if (/\.mdx?$/.test(path) && lib.guide.includes(resolved)) {
-      return `](${pageUrl(lib)}${resolved.replace(/\.mdx?$/, '')}/${hash})`
+      return `](${url}${resolved.replace(/\.mdx?$/, '')}/${hash})`
     }
     return `](${new URL(posix.join('docs/guide', resolved), `${repo}/blob/main/${lib.dir}/`).href}${hash})`
   })
@@ -173,9 +185,164 @@ async function copyGuidePage(lib, page) {
   const comment = page.endsWith('.mdx') ? `{/* ${note} */}` : `<!-- ${note} -->`
   const editUrl = `editUrl: ${JSON.stringify(`${repo}/edit/main/${lib.dir}/docs/guide/${page}`)}`
   text = text.replace(/^---\n([\s\S]*?)\n---\n/, (m, fm) => `---\n${fm}\n${editUrl}\n---\n\n${comment}\n`)
-  const out = join(target, lib.lang, lib.name, page)
+  const out = join(outDir, page)
   await mkdir(dirname(out), { recursive: true })
   await writeFile(out, text)
+}
+
+function isApp(lib) {
+  return lib.lang === 'ts' && Object.hasOwn(APPS, lib.name)
+}
+
+function appUrl(lib) {
+  return `${base}/${lib.name}/`
+}
+
+// The app's section: its guide pages, its screenshots, and a landing page made
+// from parts of its README. Every part is copied, so the page matches the
+// package's own docs.
+async function writeApp(lib) {
+  const out = join(docs, lib.name)
+  const images = join(siteRoot, 'public', lib.name)
+  await rm(out, { recursive: true, force: true })
+  await rm(images, { recursive: true, force: true })
+  await mkdir(out, { recursive: true })
+  for (const page of lib.guide) await copyGuidePage(lib, page, out, appUrl(lib))
+
+  const shots = ['list-light.png', 'list-dark.png']
+  const imageDir = join(packages, '..', lib.dir, 'docs', 'guide', 'images')
+  await mkdir(images, { recursive: true })
+  for (const shot of shots) await copyFile(join(imageDir, shot), join(images, shot))
+
+  const readme = sections(lib.readme)
+  const need = (heading) => {
+    const text = readme.get(heading)
+    if (text === undefined) throw new Error(`${lib.dir}/README.md has no "${heading}" section`)
+    return appLinks(text, lib)
+  }
+  const intro = need('')
+  const fence = /```[\s\S]*?```\n/.exec(intro)
+  const prose = intro.replace(fence?.[0] ?? '', '').replace(/\n{3,}/g, '\n\n').trim()
+  const guidePage = (page, label) => {
+    if (!lib.guide.includes(page)) throw new Error(`${lib.dir}/docs/guide has no ${page}`)
+    return `[${label}](${appUrl(lib)}${page.replace(/\.mdx?$/, '')}/)`
+  }
+  const runners = await readFile(join(packages, 'ts', APPS[lib.name].runners, 'README.md'), 'utf8')
+  const table = /^\| Runner \| .*\n(?:\|.*\n)+/m.exec(runners)
+  if (table === null) throw new Error(`no runner table in ${APPS[lib.name].runners}'s README`)
+
+  const page = [
+    '---',
+    `title: ${JSON.stringify(lib.name)}`,
+    `description: ${JSON.stringify(lib.description ?? '')}`,
+    'sidebar:',
+    '  label: Overview',
+    '  order: 0',
+    `editUrl: ${JSON.stringify(`${repo}/edit/main/${lib.dir}/README.md`)}`,
+    '---',
+    '',
+    `<!-- Generated from ${lib.dir} by scripts/sync-libraries.mjs. Edit its README and docs/guide/. -->`,
+    '',
+    prose,
+    '',
+    `<img class="dark:sl-hidden" src="${base}/${lib.name}/list-light.png" alt="The ${lib.name} web view: the task list grouped by runner" />`,
+    `<img class="light:sl-hidden" src="${base}/${lib.name}/list-dark.png" alt="The ${lib.name} web view in dark mode" />`,
+    '',
+    '## Install',
+    '',
+    need('Install'),
+    '',
+    '## Quick start',
+    '',
+    fence?.[0].trim() ?? '',
+    '',
+    `${guidePage('getting-started.md', 'Getting started')} walks through each command.`,
+    '',
+    '## Three surfaces',
+    '',
+    `- **The terminal UI.** ${await guideLead(lib, 'terminal-ui.md')} See ${guidePage('terminal-ui.md', 'The terminal UI')}.`,
+    `- **The web view.** ${firstParagraph(need('The web view'))} See ${guidePage('web-view.mdx', 'The web view')}.`,
+    `- **The shell.** ${firstParagraph(need('Searching from the shell'))}`,
+    '',
+    '## Trust',
+    '',
+    firstParagraph(need('Execution, and trust')),
+    '',
+    `See ${guidePage('trust.md', 'Trust and execution')}.`,
+    '',
+    '## Configuration',
+    '',
+    firstParagraph(need('Configuration')),
+    '',
+    `See ${guidePage('configuration.md', 'Configuration')}.`,
+    '',
+    '## JSON for scripts and agents',
+    '',
+    need('Documents'),
+    '',
+    `See ${guidePage('task-model.md', 'The task model and JSON')}.`,
+    '',
+    '## Runners',
+    '',
+    table[0].trim(),
+    '',
+    '`way providers` lists every tool, built in or your own, and whether its binary is on `PATH`.',
+    '',
+  ].join('\n')
+  await writeFile(join(out, 'index.md'), page)
+}
+
+// A README split by heading: '' is the text before the first `## `; each `##`
+// and `###` heading maps to the text up to the next heading of its level or
+// higher.
+function sections(text) {
+  const body = dropH1(text)
+  const out = new Map()
+  const lines = body.split('\n')
+  let fenced = false
+  const heads = []
+  lines.forEach((line, i) => {
+    if (line.startsWith('```')) fenced = !fenced
+    const m = !fenced && /^(##+) (.+)$/.exec(line)
+    if (m) heads.push({ i, level: m[1].length, title: m[2] })
+  })
+  out.set('', lines.slice(0, heads[0]?.i ?? lines.length).join('\n').trim())
+  heads.forEach((h, n) => {
+    const end = heads.slice(n + 1).find((o) => o.level <= h.level)?.i ?? lines.length
+    out.set(h.title, lines.slice(h.i + 1, end).join('\n').trim())
+  })
+  return out
+}
+
+// The first paragraph of a guide page, after its frontmatter and imports.
+async function guideLead(lib, page) {
+  const text = await readFile(join(packages, '..', lib.dir, 'docs', 'guide', page), 'utf8')
+  return firstParagraph(text.replace(/^---\n[\s\S]*?\n---\n/, '').replace(/^import .*$/gm, ''))
+}
+
+// The first paragraph of prose: no code block, table or heading.
+function firstParagraph(text) {
+  const prose = text
+    .replace(/```[\s\S]*?```/g, '')
+    .split(/\n\s*\n/)
+    .map((p) => p.trim())
+    .find((p) => p !== '' && !/^[|#<]/.test(p))
+  return (prose ?? '').replace(/\n/g, ' ')
+}
+
+// README links on the app page: guide files go to the app's guide pages, the
+// README's own anchors to its library page, and the rest to GitHub.
+function appLinks(text, lib) {
+  return text.replace(/\]\((?!https?:|mailto:)([^)\s]+)\)/g, (match, href) => {
+    const [path, anchor] = href.split('#')
+    const hash = anchor ? `#${anchor}` : ''
+    if (path === '') return `](${pageUrl(lib)}${hash})`
+    const page = path.replace(/^(\.\/)?docs\/guide\//, '')
+    if (page !== path && lib.guide.includes(page)) {
+      return `](${appUrl(lib)}${page.replace(/\.mdx?$/, '')}/${hash})`
+    }
+    return `](${new URL(path, `${repo}/blob/main/${lib.dir}/`).href}${hash})`
+  })
 }
 
 function overview() {

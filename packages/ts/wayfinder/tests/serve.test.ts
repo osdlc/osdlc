@@ -1,1026 +1,1065 @@
 /**
- * The web view's mutating endpoint, over real HTTP.
+ * The web view's server, over real HTTP: sign-in, the command routes the page
+ * calls, the confirmed trust grant and the run hand-off.
  *
- * `POST /api/trust` is the only thing in this repository that grants standing
- * permission to run a repository's code from a request. The page hides its
- * button when a grant would not apply, but a hidden button does not stop a
- * request. The server must refuse it, or `--no-exec` could be overridden from
- * the browser and a one-run `--exec` could be stored as a grant.
- *
- * Every case injects `env` and `home` at a temp directory. A test that granted
- * trust in the developer's own `~/.local/state/wayfinder/` would be worse than
- * a failure, so one case also asserts the real store is untouched.
- *
- * The token is read out of the served page the way the page reads it, so the
- * injection path in `page.ts` is covered rather than assumed.
+ * HOME is a throwaway directory in every case, so no test grants trust or
+ * writes config on the developer's machine. The hand-off is injected, so no
+ * task runs.
  */
 
-import { afterAll, describe, expect, test } from 'vitest'
-import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { afterAll, describe, expect, test, vi } from 'vitest'
+import { PassThrough } from 'node:stream'
+import { request as httpRequest } from 'node:http'
+import { readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { setTimeout as sleep } from 'node:timers/promises'
 
-import type { ToolDef } from '@osdlc/system-model/detect'
-import { resolveTrustRoot, trustStore, withheldHint } from '@osdlc/trust-repo'
-import { makeGitFixture } from '@osdlc/typed-git/testing'
+import type { HttpApi } from '@osdlc/cli-tool/http'
+import { resolveTrustRoot } from '@osdlc/trust-repo'
 
-import { cacheDir } from '../src/cache.ts'
-import { collectAndCache, makeProject } from '../src/catalog.ts'
-import { groupOf } from '../src/groups.ts'
-import { startServer, type ServeOptions } from '../src/serve.ts'
+import { abortOnSignals } from '../src/commands/browse.ts'
+import type { CatalogBody } from '../src/commands/list.ts'
+import { createWayApp } from '../src/commands/index.ts'
+import { createSession } from '../src/core/session.ts'
+import { createSignIn } from '../src/serve/auth.ts'
+import { createCatalogShare } from '../src/serve/catalog-share.ts'
+import { viewPath } from '../src/core/saved-view.ts'
+import { createRoutes } from '../src/serve/routes.ts'
+import { browserOpener, serve, startServer, type WebServer } from '../src/serve/index.ts'
+import { appTrustStore } from '../src/trust-store.ts'
+import { fixtureRoot, removeRoot } from './support.ts'
 
-const dirs: string[] = []
+const roots: string[] = []
 afterAll(async () => {
-  await Promise.all(dirs.map((d) => rm(d, { recursive: true, force: true })))
+  await Promise.all(roots.map(removeRoot))
 })
 
-async function temp(prefix: string): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), prefix))
-  dirs.push(dir)
-  return dir
-}
-
-/**
- * The same store `serve()` builds — the literal tool name `'wayfinder'`, keyed
- * on an injected home so a test can never read or write the real one.
- */
-function trustStoreFor(home: string) {
-  return trustStore({ tool: 'wayfinder', env: {}, home })
-}
-
-/** A project with parse-only runners; the endpoint's behaviour is what is under test. */
-async function project(): Promise<string> {
-  const dir = await temp('wayfinder-serve-')
-  await writeFile(
-    join(dir, 'package.json'),
-    JSON.stringify({ name: 'p', scripts: { build: 'echo b' } }),
-    'utf-8',
-  )
+async function root(files: Record<string, string> = {}): Promise<string> {
+  const dir = await fixtureRoot(files)
+  roots.push(dir)
   return dir
 }
 
 interface Started {
+  web: WebServer
   address: string
-  /** The one-shot token that signs a browser in; spent by `pageToken`. */
-  bootToken: string
-  /** Injected trust store home; `trustStoreFor(home).list()` reads it. */
+  dir: string
   home: string
-  root: string
-  stop(): void
+  /** Every plan the server handed off. */
+  handed: { argv: string[]; cwd: string }[]
+  /** What the server wrote to stderr. */
+  err: string[]
+  /** Sign in and return the bearer token. */
+  token(): Promise<string>
+  /** `POST /api/commands/<words>` with the bearer token. */
+  call(words: string[], body?: unknown, headers?: Record<string, string>): Promise<Response>
 }
 
-/**
- * Start a server in one of the three shapes the CLI can hand it.
- *
- *   "untrusted"  the gate came out `untrusted` — the only shape in which a
- *                grant applies, and the only one the page offers a button in
- *   "no-exec"    `--no-exec`, which must stay off however trusted the repo is
- *   "exec"       `--exec`, consent for one run that must record nothing
- */
-async function start(
-  shape: 'untrusted' | 'no-exec' | 'exec',
-  // "stale" warms the store and then edits the file the probe read, so the
-  // server's first request is answered from a cache it knows is out of date —
-  // the real state a slow runner leaves behind on a boot, reached the real way
-  // rather than by reaching into the server's internals.
-  cache: 'cold' | 'stale' = 'cold',
-  projectToolsPending = false,
-): Promise<Started> {
-  const root = await project()
-  const home = await temp('wayfinder-serve-home-')
-  const options: ServeOptions = {
-    project: makeProject(),
-    projectToolsPending,
-    root,
-    collectOptions: {
-      allowExec: shape === 'exec',
-      ...(shape === 'untrusted' ? { execWithheldHint: withheldHint('wayfinder') } : {}),
-    },
+async function start(files: Record<string, string> = {}): Promise<Started> {
+  const dir = await root({
+    'package.json': JSON.stringify({ name: 'p', scripts: { build: 'echo b' } }),
+    ...files,
+  })
+  const home = await root()
+  const env = { HOME: home, PATH: process.env['PATH'] }
+  const { app } = createWayApp({ home })
+  const session = await createSession({ dir, cwd: dir, env, home })
+  const handed: Started['handed'] = []
+  const err: string[] = []
+  const web = await startServer({
+    session,
+    app,
+    globals: {},
+    cwd: dir,
     port: 0,
     open: false,
-    env: {},
-    home,
-  }
-  if (cache === 'stale') {
-    await collectAndCache(options.project, root, options.collectOptions, cacheDir({}, home))
-    await writeFile(
-      join(root, 'package.json'),
-      JSON.stringify({ name: 'p', scripts: { build: 'echo b', ship: 'echo s' } }),
-      'utf-8',
-    )
-  }
-  const { server, bootToken } = await startServer(options)
-  return {
-    address: `http://127.0.0.1:${server.port}`,
-    bootToken,
-    home,
-    root,
-    stop: () => void server.stop(),
-  }
-}
-
-/**
- * The session token, obtained the way the page itself obtains it: spend the
- * one-shot boot token on the page route, then read the token the server
- * embedded in the document. This call uses up the boot token, as the real
- * flow does. The page cannot be fetched without a token.
- */
-async function pageToken(address: string, bootToken: string): Promise<string> {
-  const html = await (await fetch(`${address}/?boot=${bootToken}`)).text()
-  const match = /window\.__WAYFINDER_TOKEN__ = "([^"]*)"/.exec(html)
-  expect(match).not.toBeNull()
-  return match![1]!
-}
-
-function post(address: string, token?: string): Promise<Response> {
-  return fetch(`${address}/api/trust`, {
-    method: 'POST',
-    ...(token === undefined ? {} : { headers: { 'x-wayfinder-token': token } }),
+    stdout: () => {},
+    stderr: (text) => err.push(text),
+    handOff: (plan) => {
+      handed.push({ argv: plan.argv, cwd: plan.cwd })
+      return { exit: 0 }
+    },
   })
-}
-
-describe('POST /api/trust — method', () => {
-  test('every other method is 405, including the GET a link or an <img> makes', async () => {
-    const s = await start('untrusted')
-    try {
-      // DELETE is absent because it is a real route, for revoking. It is still
-      // unreachable from a link or an <img>, which is what this test is about.
-      // Its own auth is covered below.
-      for (const method of ['GET', 'HEAD', 'PUT', 'OPTIONS']) {
-        const res = await fetch(`${s.address}/api/trust`, { method })
-        expect(res.status).toBe(405)
-      }
-      expect(await trustStoreFor(s.home).list()).toEqual([])
-    } finally {
-      s.stop()
-    }
-  })
-})
-
-describe('POST /api/trust — token', () => {
-  test('no token, an empty one, and a wrong one are all 401, and grant nothing', async () => {
-    const s = await start('untrusted')
-    try {
-      const real = await pageToken(s.address, s.bootToken)
-      const wrongSameLength = '0'.repeat(real.length)
-      const wrongOtherLength = 'short'
-
-      const bodies: string[] = []
-      for (const token of [undefined, '', wrongSameLength, wrongOtherLength]) {
-        const res = await post(s.address, token)
-        expect(res.status).toBe(401)
-        const body = await res.text()
-        // Nothing of what was sent comes back, and the length does not vary:
-        // a caller that guessed must learn nothing from the reply.
-        expect(body).not.toContain(real)
-        if (token !== undefined && token !== '') expect(body).not.toContain(token)
-        bodies.push(body)
-        expect(await trustStoreFor(s.home).list()).toEqual([])
-      }
-      expect(new Set(bodies).size).toBe(1)
-    } finally {
-      s.stop()
-    }
-  })
-
-  test('the right token on an applicable root grants, and the store records it', async () => {
-    const s = await start('untrusted')
-    try {
-      const res = await post(s.address, await pageToken(s.address, s.bootToken))
-      expect(res.status).toBe(200)
-
-      const body = (await res.json()) as { allowExec: boolean; trustable: boolean }
-      expect(body.allowExec).toBe(true)
-      // The grant applied, so the offer is withdrawn. The page must not keep
-      // telling the user to do what they just did.
-      expect(body.trustable).toBe(false)
-      expect(await trustStoreFor(s.home).list()).toEqual([await resolveTrustRoot(s.root)])
-    } finally {
-      s.stop()
-    }
-  })
-})
-
-describe('POST /api/trust — applicability', () => {
-  test('--no-exec refuses the grant, and the store stays empty', async () => {
-    // Method and token alone must not be enough to grant. Otherwise a server
-    // started with --no-exec could be made to run moon from the browser.
-    // --no-exec wins however trusted the repo is.
-    const s = await start('no-exec')
-    try {
-      const res = await post(s.address, await pageToken(s.address, s.bootToken))
-      expect(res.status).toBe(409)
-      expect(await trustStoreFor(s.home).list()).toEqual([])
-    } finally {
-      s.stop()
-    }
-  })
-
-  test('--exec refuses the grant, so consent for one run is never persisted', async () => {
-    // --exec records nothing in the CLIs and the TUI. This endpoint must not
-    // turn a deliberate single run into a standing grant nobody remembers
-    // giving.
-    const s = await start('exec')
-    try {
-      const res = await post(s.address, await pageToken(s.address, s.bootToken))
-      expect(res.status).toBe(409)
-      expect(await trustStoreFor(s.home).list()).toEqual([])
-    } finally {
-      s.stop()
-    }
-  })
-})
-
-/**
- * The cache the page is served from.
- *
- * `start()` injects `env: {}` and a temp `home`, so the store is
- * `<temp home>/.cache/wayfinder`. Nothing here reads or writes the real
- * `~/.cache/wayfinder`, the same rule the trust cases follow.
- */
-describe('GET /api/catalog — cache', () => {
-  test('carries a cache array beside trustable, one entry per runner', async () => {
-    const s = await start('untrusted')
-    try {
-      const token = await pageToken(s.address, s.bootToken)
-      const res = await fetch(`${s.address}/api/catalog`, {
-        headers: { 'x-wayfinder-token': token },
-      })
-      expect(res.status).toBe(200)
-
-      const body = (await res.json()) as {
-        cache: Array<{ runner: string; state: string; estimateMs: number | null; slow: boolean }>
-        trustable: boolean
-      }
-      expect(Array.isArray(body.cache)).toBe(true)
-      expect(body.cache.length).toBeGreaterThan(0)
-      for (const row of body.cache) {
-        expect(['fresh', 'stale', 'miss']).toContain(row.state)
-        // Never invented: an unmeasured cost is null, not a plausible number.
-        expect(row.estimateMs === null || typeof row.estimateMs === 'number').toBe(true)
-        expect(typeof row.slow).toBe('boolean')
-      }
-    } finally {
-      s.stop()
-    }
-  })
-})
-
-describe('POST /api/run — a row that is no longer there', () => {
-  test("names the staleness rather than answering a bare 'not found'", async () => {
-    // The problem this prevents: a row is on screen, the user clicks it, and
-    // the server says it does not exist, with nothing linking the two facts.
-    // The listing came from the store. Saying so, with its age, gives the user
-    // something to act on.
-    const s = await start('untrusted', 'stale')
-    try {
-      const token = await pageToken(s.address, s.bootToken)
-      const res = await fetch(`${s.address}/api/run`, {
-        method: 'POST',
-        headers: { 'x-wayfinder-token': token, 'content-type': 'application/json' },
-        body: JSON.stringify({ id: 'make:vanished' }),
-      })
-      expect(res.status).toBe(404)
-      const body = await res.text()
-      expect(body).toContain('cached probe')
-      expect(body).toContain('node-scripts')
-      expect(body).not.toBe('not found')
-    } finally {
-      s.stop()
-    }
-  })
-
-  test("a fresh listing still answers the bare 'not found'", async () => {
-    // Nothing to explain when the catalog really is current: the id is simply
-    // wrong, and inventing a cache story would be the opposite failure.
-    const s = await start('untrusted')
-    try {
-      const token = await pageToken(s.address, s.bootToken)
-      const res = await fetch(`${s.address}/api/run`, {
-        method: 'POST',
-        headers: { 'x-wayfinder-token': token, 'content-type': 'application/json' },
-        body: JSON.stringify({ id: 'make:vanished' }),
-      })
-      expect(res.status).toBe(404)
-      expect(await res.text()).toBe('not found')
-    } finally {
-      s.stop()
-    }
-  })
-})
-
-describe('POST /api/trust — the injected seam', () => {
-  test('a granting run writes to the injected home and leaves the real one alone', async () => {
-    // Read-only against the developer's machine. This is why `env` and `home`
-    // are passed into serve(): if they defaulted, the test above would grant
-    // trust on the machine that ran it.
-    const before = await trustStore({ tool: 'wayfinder' }).list()
-    const s = await start('untrusted')
-    try {
-      expect((await post(s.address, await pageToken(s.address, s.bootToken))).status).toBe(200)
-      expect(await trustStoreFor(s.home).list()).toHaveLength(1)
-      expect(await trustStore({ tool: 'wayfinder' }).list()).toEqual(before)
-    } finally {
-      s.stop()
-    }
-  })
-})
-
-describe('GET /api/config — what the settings screen reads', () => {
-  test('answers the merged config, the layers behind it, and where each value came from', async () => {
-    const s = await start('untrusted')
-    try {
-      const token = await pageToken(s.address, s.bootToken)
-      const res = await fetch(`${s.address}/api/config`, {
-        headers: { 'x-wayfinder-token': token },
-      })
-      expect(res.status).toBe(200)
-      const body = (await res.json()) as {
-        effective: Record<string, unknown>
-        project: unknown
-        sources: Record<string, string>
-        locations: { project: string; user: string }
-        trusted: boolean
-        trustable: boolean
-      }
-
-      // Every leaf of the schema, so the screen can render a section per key
-      // without asking whether the key exists.
-      expect(body.effective['allowExec']).toBe(false)
-      expect(body.effective['discovery']).toBe('auto')
-      expect(body.effective['excludePaths']).toEqual([])
-      expect(body.effective['runners']).toEqual({ disabled: [], order: [] })
-
-      // `sources` is the reason this endpoint exists rather than the page
-      // reading a file: it says which layer supplied each value. It is a Map
-      // on the server, and a Map serialises as `{}`, so this asserts it
-      // survived serialisation.
-      expect(body.sources['allowExec']).toBe('default')
-      expect(body.sources['runners.disabled']).toBe('default')
-
-      // This project has no wayfinder.config.json, so the layer is absent
-      // rather than empty — a distinction the screen shows.
-      expect(body.project).toBeNull()
-      expect(body.locations.project).toContain('wayfinder.config.json')
-
-      // Nothing has been trusted in the injected home, and the gate says a
-      // grant is what would change that.
-      expect(body.trusted).toBe(false)
-      expect(body.trustable).toBe(true)
-    } finally {
-      s.stop()
-    }
-  })
-
-  test("a project file's values are reported, and attributed to the project layer", async () => {
-    const s = await start('untrusted')
-    try {
-      await writeFile(
-        join(s.root, 'wayfinder.config.json'),
-        JSON.stringify({ runners: { disabled: ['make'] }, excludePaths: ['vendor'] }),
-        'utf-8',
-      )
-      const token = await pageToken(s.address, s.bootToken)
-      const res = await fetch(`${s.address}/api/config`, {
-        headers: { 'x-wayfinder-token': token },
-      })
-      const body = (await res.json()) as {
-        effective: Record<string, unknown>
-        sources: Record<string, string>
-      }
-      expect(body.effective['runners']).toEqual({ disabled: ['make'], order: [] })
-      expect(body.effective['excludePaths']).toEqual(['vendor'])
-      expect(body.sources['runners.disabled']).toBe('project')
-      expect(body.sources['excludePaths']).toBe('project')
-      // Untouched keys still attribute to the layer that really supplied them.
-      expect(body.sources['discovery']).toBe('default')
-    } finally {
-      s.stop()
-    }
-  })
-
-  test('a project file that tries to raise allowExec is reported as ignored, with the reason', async () => {
-    // The documented vulnerability, and the reason this screen must not draw
-    // allowExec as a symmetric toggle: a repository cannot grant itself
-    // permission to run its own code. The endpoint has to carry the warning
-    // or the screen would show `false` with no explanation of why the file
-    // saying `true` did nothing.
-    const s = await start('untrusted')
-    try {
-      await writeFile(
-        join(s.root, 'wayfinder.config.json'),
-        JSON.stringify({ allowExec: true }),
-        'utf-8',
-      )
-      const token = await pageToken(s.address, s.bootToken)
-      const res = await fetch(`${s.address}/api/config`, {
-        headers: { 'x-wayfinder-token': token },
-      })
-      const body = (await res.json()) as {
-        effective: Record<string, unknown>
-        sources: Record<string, string>
-        warnings: string[]
-      }
-      expect(body.effective['allowExec']).toBe(false)
-      expect(body.sources['allowExec']).toBe('default')
-      expect(body.warnings.join(' ')).toContain('allowExec: true is ignored in a project file')
-    } finally {
-      s.stop()
-    }
-  })
-
-  test('no token is a 401', async () => {
-    const s = await start('untrusted')
-    try {
-      const res = await fetch(`${s.address}/api/config`)
-      expect(res.status).toBe(401)
-    } finally {
-      s.stop()
-    }
-  })
-
-  test('the BOOT token does not open it — API routes take the session token only', async () => {
-    // The boot token is in a URL, which any process on this machine can read
-    // for as long as the command line exists. It signs a browser in
-    // on the page route and is accepted nowhere else; a new endpoint that
-    // forgot this would widen that.
-    const s = await start('untrusted')
-    try {
-      const res = await fetch(`${s.address}/api/config?boot=${s.bootToken}`)
-      expect(res.status).toBe(401)
-    } finally {
-      s.stop()
-    }
-  })
-
-  test('a policy-trusted root reads as trusted, with no marker ever written', async () => {
-    // A user-layer trust.paths entry covering this root, in place of a
-    // `way trust` grant — the policy `@osdlc/trust-repo`'s `policyExecGate`
-    // adds on top of the marker store. `trusted` must reflect it, or a
-    // person who configured the policy would see the settings screen call
-    // their own repository untrusted.
-    const root = await project()
-    const home = await temp('wayfinder-serve-home-')
-    await mkdir(join(home, '.config', 'wayfinder'), { recursive: true })
-    await writeFile(
-      join(home, '.config', 'wayfinder', 'config.json'),
-      JSON.stringify({ trust: { paths: [`${root}/**`, root] } }),
-      'utf-8',
-    )
-    const options: ServeOptions = {
-      project: makeProject(),
-      root,
-      collectOptions: { allowExec: true },
-      port: 0,
-      open: false,
-      env: {},
-      home,
-    }
-    const { server, bootToken } = await startServer(options)
-    const address = `http://127.0.0.1:${server.port}`
-    try {
-      const token = await pageToken(address, bootToken)
-      const res = await fetch(`${address}/api/config`, { headers: { 'x-wayfinder-token': token } })
-      const body = (await res.json()) as { trusted: boolean }
-      expect(body.trusted).toBe(true)
-      // Genuinely policy-only: this case never posted to /api/trust.
-      expect(await trustStoreFor(home).list()).toEqual([])
-    } finally {
-      void server.stop()
-    }
-  })
-})
-
-describe('GET /api/config — owner-trusted root', () => {
-  test('a root whose origin owner is in trust.owners reads as trusted, with no marker', async () => {
-    const base = await temp('wayfinder-serve-owner-')
-    const repo = makeGitFixture({ dir: join(base, 'repo') })
-    repo.git.remoteAdd('origin', 'https://github.com/AcmeOwner/dev.git')
-    const home = await temp('wayfinder-serve-home-')
-    await mkdir(join(home, '.config', 'wayfinder'), { recursive: true })
-    await writeFile(
-      join(home, '.config', 'wayfinder', 'config.json'),
-      JSON.stringify({ trust: { owners: ['acmeowner'] } }),
-      'utf-8',
-    )
-    const options: ServeOptions = {
-      project: makeProject(),
-      root: repo.dir,
-      collectOptions: { allowExec: true },
-      port: 0,
-      open: false,
-      env: {},
-      home,
-    }
-    const { server, bootToken } = await startServer(options)
-    const address = `http://127.0.0.1:${server.port}`
-    try {
-      const token = await pageToken(address, bootToken)
-      const res = await fetch(`${address}/api/config`, { headers: { 'x-wayfinder-token': token } })
-      const body = (await res.json()) as { trusted: boolean }
-      expect(body.trusted).toBe(true)
-      expect(await trustStoreFor(home).list()).toEqual([])
-    } finally {
-      void server.stop()
-    }
-  })
-})
-
-describe('POST /api/config — what the settings screen may write', () => {
-  /** Save a patch and hand back the response plus the file it produced. */
-  async function save(s: Started, set: Record<string, unknown>) {
-    const token = await pageToken(s.address, s.bootToken)
-    const res = await fetch(`${s.address}/api/config`, {
+  const address = `http://127.0.0.1:${web.server.port}`
+  let bearer: string | undefined
+  const token = async (): Promise<string> => {
+    if (bearer !== undefined) return bearer
+    const res = await fetch(`${address}/session`, {
       method: 'POST',
-      headers: { 'x-wayfinder-token': token, 'content-type': 'application/json' },
-      body: JSON.stringify({ set }),
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ boot: web.signIn.bootToken }),
     })
-    return res
+    bearer = ((await res.json()) as { token: string }).token
+    return bearer
   }
-
-  async function fileAt(root: string): Promise<Record<string, unknown>> {
-    return JSON.parse(await readFile(join(root, 'wayfinder.config.json'), 'utf-8')) as Record<
-      string,
-      unknown
-    >
-  }
-
-  test('a patch is written, and the response is the config as it now is', async () => {
-    const s = await start('untrusted')
-    try {
-      const res = await save(s, { 'runners.disabled': ['make'], excludePaths: ['vendor'] })
-      expect(res.status).toBe(200)
-      // Answered with the state the save produced, not the state it hoped for,
-      // so the screen re-renders from one round trip.
-      const body = (await res.json()) as {
-        effective: Record<string, unknown>
-        sources: Record<string, string>
-      }
-      expect(body.effective['runners']).toEqual({ disabled: ['make'], order: [] })
-      expect(body.sources['runners.disabled']).toBe('project')
-      expect(await fileAt(s.root)).toEqual({
-        runners: { disabled: ['make'] },
-        excludePaths: ['vendor'],
+  return {
+    web,
+    address,
+    dir,
+    home,
+    handed,
+    err,
+    token,
+    async call(words, body = {}, headers = {}) {
+      return fetch(`${address}/api/commands/${words.join('/')}`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${await token()}`,
+          ...headers,
+        },
+        body: JSON.stringify(body),
       })
-    } finally {
-      s.stop()
-    }
-  })
+    },
+  }
+}
 
-  test('a key this version does not know SURVIVES the save', async () => {
-    // The reason the endpoint takes a patch and applies it to the raw file
-    // rather than writing a validated document: validateConfig returns only
-    // the keys it recognises, so writing its output would delete a setting
-    // from a newer wayfinder without saying so.
-    const s = await start('untrusted')
+/** A GET with a Host header, which fetch does not let a caller set. */
+function getWithHost(address: string, host: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const req = httpRequest(`${address}/`, { headers: { host } }, (res) => {
+      res.resume()
+      resolve(res.statusCode ?? 0)
+    })
+    req.on('error', reject)
+    req.end()
+  })
+}
+
+describe('the page', () => {
+  test('is served with no token in it, with the app name and the saved theme', async () => {
+    const s = await start()
     try {
-      await writeFile(
-        join(s.root, 'wayfinder.config.json'),
-        JSON.stringify({ futureSetting: { deep: true }, excludePaths: ['old'] }),
-        'utf-8',
+      await s.call(['config', 'set'], { key: 'theme', value: '"dark"', user: true })
+      const res = await fetch(`${s.address}/`)
+      expect(res.status).toBe(200)
+      expect(res.headers.get('cache-control')).toBe('no-store')
+      expect(res.headers.get('content-security-policy')).toContain("frame-ancestors 'none'")
+      const html = await res.text()
+      expect(html).toContain('<title>wayfinder</title>')
+      expect(html).toContain(
+        `<html lang="en" data-theme="dark" data-platform="${process.platform}">`,
       )
-      expect((await save(s, { excludePaths: ['new'] })).status).toBe(200)
-      const file = await fileAt(s.root)
-      expect(file['excludePaths']).toEqual(['new'])
-      expect(file['futureSetting']).toEqual({ deep: true })
+      expect(html).not.toContain(await s.token())
+      expect(html).not.toContain(s.web.signIn.bootToken)
     } finally {
-      s.stop()
+      await s.web.stop()
     }
   })
 
-  test('tools are refused: the page never writes a code path into the project file', async () => {
-    const s = await start('untrusted')
+  test('runs only its own script, with a fresh nonce per load', async () => {
+    const s = await start()
     try {
-      await writeFile(
-        join(s.root, 'wayfinder.config.json'),
-        JSON.stringify({ excludePaths: ['a'] }),
-      )
-      const res = await save(s, { tools: ['./evil.mjs'] })
-      expect(res.status).toBe(400)
-      expect(await res.text()).toContain('way config set tools')
-      expect(await fileAt(s.root)).toEqual({ excludePaths: ['a'] })
-    } finally {
-      s.stop()
-    }
-  })
-
-  test('a key that is not a setting is refused, not silently dropped', async () => {
-    const s = await start('untrusted')
-    try {
-      const res = await save(s, { notASetting: 1 })
-      expect(res.status).toBe(400)
-      expect(await res.text()).toContain('notASetting is not a setting')
-      // And nothing was written.
-      expect(existsSync(join(s.root, 'wayfinder.config.json'))).toBe(false)
-    } finally {
-      s.stop()
-    }
-  })
-
-  test('trust.paths / trust.owners are refused in a project write, even empty', async () => {
-    // Same boundary as allowExec: loadConfig drops a project-layer trust block
-    // whole, so a write that accepted one could only mislead a reader.
-    // One server per case: the page token `save` reads is issued once per boot.
-    for (const set of [
-      { 'trust.paths': ['/anywhere/**'] },
-      { 'trust.owners': ['some-org'] },
-      { 'trust.paths': [] },
-    ]) {
-      const s = await start('untrusted')
-      try {
-        const res = await save(s, set)
-        expect(res.status).toBe(400)
-        expect(await res.text()).toContain('cannot grant itself trust')
-        expect(existsSync(join(s.root, 'wayfinder.config.json'))).toBe(false)
-      } finally {
-        s.stop()
+      const nonces: string[] = []
+      for (let i = 0; i < 2; i++) {
+        const res = await fetch(`${s.address}/`)
+        const policy = res.headers.get('content-security-policy') ?? ''
+        for (const part of [
+          "default-src 'none'",
+          "connect-src 'self'",
+          "base-uri 'none'",
+          "form-action 'none'",
+        ]) {
+          expect(policy).toContain(part)
+        }
+        const nonce = /script-src 'nonce-([^']+)'/.exec(policy)?.[1]
+        expect(nonce).toBeDefined()
+        expect(await res.text()).toContain(`<script type="module" nonce="${nonce}">`)
+        nonces.push(nonce!)
       }
-    }
-  })
-
-  test('allowExec: true is refused, with the trust instruction', async () => {
-    // The documented vulnerability. loadConfig strips it after the fact, but a
-    // write path that accepted it would put it in the file, where a reader
-    // would see it and be wrong about the execution boundary.
-    const s = await start('untrusted')
-    try {
-      const res = await save(s, { allowExec: true })
-      expect(res.status).toBe(400)
-      const detail = await res.text()
-      expect(detail).toContain('cannot grant itself')
-      expect(detail).toContain('Trust this repository')
-      expect(existsSync(join(s.root, 'wayfinder.config.json'))).toBe(false)
+      expect(nonces[0]).not.toBe(nonces[1])
     } finally {
-      s.stop()
+      await s.web.stop()
     }
   })
 
-  test('allowExec: false IS allowed — a project may always lower execution', async () => {
-    const s = await start('untrusted')
+  test('a Host that is not loopback is refused with 403', async () => {
+    const s = await start()
     try {
-      expect((await save(s, { allowExec: false })).status).toBe(200)
-      expect(await fileAt(s.root)).toEqual({ allowExec: false })
+      expect(await getWithHost(s.address, 'evil.example')).toBe(403)
+      expect(await getWithHost(s.address, `127.0.0.1:${s.web.server.port}`)).toBe(200)
     } finally {
-      s.stop()
+      await s.web.stop()
     }
   })
 
-  test('a value of the wrong type is refused and the file is untouched', async () => {
-    const s = await start('untrusted')
+  test('an Origin from another site is refused with 403', async () => {
+    const s = await start()
     try {
-      await writeFile(
-        join(s.root, 'wayfinder.config.json'),
-        JSON.stringify({ excludePaths: ['kept'] }),
-        'utf-8',
-      )
-      const res = await save(s, { excludePaths: 'not-an-array' })
-      expect(res.status).toBe(400)
-      expect(await fileAt(s.root)).toEqual({ excludePaths: ['kept'] })
+      const res = await fetch(`${s.address}/`, { headers: { origin: 'https://evil.example' } })
+      expect(res.status).toBe(403)
     } finally {
-      s.stop()
+      await s.web.stop()
     }
   })
 
-  test('no token is a 401, and writes nothing', async () => {
-    const s = await start('untrusted')
+  test('an unknown path is 404', async () => {
+    const s = await start()
     try {
-      const res = await fetch(`${s.address}/api/config`, {
+      expect((await fetch(`${s.address}/nope`)).status).toBe(404)
+    } finally {
+      await s.web.stop()
+    }
+  })
+})
+
+describe('POST /session', () => {
+  async function session(address: string, body: unknown): Promise<Response> {
+    return fetch(`${address}/session`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+  }
+
+  test('trades the boot token for the bearer token once', async () => {
+    const s = await start()
+    try {
+      const first = await session(s.address, { boot: s.web.signIn.bootToken })
+      expect(first.status).toBe(200)
+      const { token } = (await first.json()) as { token: string }
+      expect(token).toMatch(/^[0-9a-f]{32}$/)
+      const again = await session(s.address, { boot: s.web.signIn.bootToken })
+      expect(again.status).toBe(401)
+    } finally {
+      await s.web.stop()
+    }
+  })
+
+  test('the boot token redeemed twice is refused with a warning, and the server keeps serving', async () => {
+    const s = await start()
+    try {
+      const token = await s.token()
+      const again = await session(s.address, { boot: s.web.signIn.bootToken })
+      expect(again.status).toBe(401)
+      expect(s.err.join('')).toContain('way: warning: the sign-in link was used again')
+      expect(s.err.join('')).toContain('stop the server (Ctrl-C) and start it again')
+      expect(s.err.join('')).not.toContain('press Enter')
+      const res = await fetch(`${s.address}/api/commands/config/path`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: '{}',
+      })
+      expect(res.status).toBe(200)
+    } finally {
+      await s.web.stop()
+    }
+    expect(await s.web.finished).toBe(null)
+  })
+
+  test('a wrong boot token is 401, and leaves the right one usable', async () => {
+    const s = await start()
+    try {
+      expect((await session(s.address, { boot: 'f'.repeat(32) })).status).toBe(401)
+      expect((await session(s.address, {})).status).toBe(401)
+      expect((await session(s.address, { boot: s.web.signIn.bootToken })).status).toBe(200)
+    } finally {
+      await s.web.stop()
+    }
+  })
+
+  test('a body that is not JSON is refused', async () => {
+    const s = await start()
+    try {
+      const res = await fetch(`${s.address}/session`, {
+        method: 'POST',
+        headers: { 'content-type': 'text/plain' },
+        body: s.web.signIn.bootToken,
+      })
+      expect(res.status).toBe(415)
+    } finally {
+      await s.web.stop()
+    }
+  })
+
+  test('a chunked body past the limit is refused without reading it all', async () => {
+    const routes = createRoutes({
+      api: {
+        handles: () => false,
+        checkOrigin: () => null,
+        hasToken: () => false,
+        token: 't',
+      } as unknown as HttpApi,
+      signIn: createSignIn(),
+      page: async () => '',
+      resolveRun: async () => ({ ok: false, status: 500, error: {} }),
+      handOff: () => {},
+    })
+    // 16 MB in 64 KB chunks. Reading stops soon after the 64 KB limit.
+    let pulled = 0
+    const endless = new ReadableStream<Uint8Array>({
+      pull: (c) => {
+        if (pulled >= 16 * 1024 * 1024) return c.close()
+        pulled += 64 * 1024
+        c.enqueue(new Uint8Array(64 * 1024))
+      },
+    })
+    const res = await routes(
+      new Request('http://127.0.0.1/session', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ set: { excludePaths: ['sneaked'] } }),
-      })
-      expect(res.status).toBe(401)
-      expect(existsSync(join(s.root, 'wayfinder.config.json'))).toBe(false)
-    } finally {
-      s.stop()
-    }
+        body: endless,
+        duplex: 'half',
+      } as RequestInit),
+    )
+    expect(res.status).toBe(413)
+    expect(pulled).toBeLessThan(1024 * 1024)
   })
 
-  test('an unsupported method is a 405 rather than a silent read', async () => {
-    const s = await start('untrusted')
+  test('GET is 405', async () => {
+    const s = await start()
     try {
-      const token = await pageToken(s.address, s.bootToken)
-      const res = await fetch(`${s.address}/api/config`, {
-        method: 'DELETE',
-        headers: { 'x-wayfinder-token': token },
-      })
-      expect(res.status).toBe(405)
+      expect((await fetch(`${s.address}/session`)).status).toBe(405)
     } finally {
-      s.stop()
+      await s.web.stop()
     }
   })
 })
 
-describe('DELETE /api/trust — revoking', () => {
-  test('removes the grant, and the store says so', async () => {
-    const s = await start('untrusted')
-    try {
-      const token = await pageToken(s.address, s.bootToken)
-      // Grant first, through the real route, so what is revoked is a real
-      // grant rather than an assumption about the store's contents.
-      expect((await post(s.address, token)).status).toBe(200)
-      expect(await trustStoreFor(s.home).list()).toHaveLength(1)
+describe('the boot token', () => {
+  test('expires a minute after it is armed', () => {
+    let now = 1_000
+    const signIn = createSignIn(() => now)
+    signIn.arm()
+    now += 60_001
+    expect(signIn.redeem(signIn.bootToken)).toBe(false)
+  })
 
-      const res = await fetch(`${s.address}/api/trust`, {
-        method: 'DELETE',
-        headers: { 'x-wayfinder-token': token },
-      })
-      expect(res.status).toBe(200)
-      expect(((await res.json()) as { removed: boolean }).removed).toBe(true)
-      expect(await trustStoreFor(s.home).list()).toHaveLength(0)
+  test('the right token sent again reports a replay; a wrong one does not', () => {
+    let replays = 0
+    const signIn = createSignIn(Date.now, () => replays++)
+    expect(signIn.redeem('f'.repeat(32))).toBe(false)
+    expect(signIn.redeem(signIn.bootToken)).toBe(true)
+    expect(signIn.redeem('f'.repeat(32))).toBe(false)
+    expect(replays).toBe(0)
+    expect(signIn.redeem(signIn.bootToken)).toBe(false)
+    expect(replays).toBe(1)
+  })
+
+  test('renew replaces the boot token, armed, and the old one stops working', () => {
+    let now = 1_000
+    const signIn = createSignIn(() => now)
+    const old = signIn.bootToken
+    const fresh = signIn.renew()
+    expect(fresh).not.toBe(old)
+    expect(signIn.bootToken).toBe(fresh)
+    expect(signIn.redeem(old)).toBe(false)
+    expect(signIn.redeem(fresh)).toBe(true)
+    // Once more after a redeem: a second tab gets its own link.
+    const third = signIn.renew()
+    now += 60_001
+    expect(signIn.redeem(third)).toBe(false)
+  })
+
+  test('does not expire before it is armed', () => {
+    let now = 1_000
+    const signIn = createSignIn(() => now)
+    now += 10 * 60_000
+    expect(signIn.redeem(signIn.bootToken)).toBe(true)
+  })
+})
+
+describe('the command routes', () => {
+  test('config path answers a signed-in page, which the page uses to check a kept token', async () => {
+    const s = await start()
+    try {
+      expect((await s.call(['config', 'path'])).status).toBe(200)
     } finally {
-      s.stop()
+      await s.web.stop()
     }
   })
 
-  test('revoking what was never granted is not an error', async () => {
-    // Idempotent on purpose: the caller wants the store to say "no", and it
-    // already does. `removed` reports which of the two happened.
-    const s = await start('untrusted')
+  test('no bearer token is 401', async () => {
+    const s = await start()
     try {
-      const token = await pageToken(s.address, s.bootToken)
-      const res = await fetch(`${s.address}/api/trust`, {
-        method: 'DELETE',
-        headers: { 'x-wayfinder-token': token },
+      const res = await fetch(`${s.address}/api/commands/list`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: '{}',
       })
-      expect(res.status).toBe(200)
-      expect(((await res.json()) as { removed: boolean }).removed).toBe(false)
-    } finally {
-      s.stop()
-    }
-  })
-
-  test('is NOT gated on applicability, unlike the grant', async () => {
-    // A grant is refused under --no-exec because it would be permission
-    // nobody asked for. Removing permission has no matching harm, so the
-    // same shape that refuses a POST must accept a DELETE.
-    const s = await start('no-exec')
-    try {
-      const token = await pageToken(s.address, s.bootToken)
-      expect((await post(s.address, token)).status).toBe(409)
-      const res = await fetch(`${s.address}/api/trust`, {
-        method: 'DELETE',
-        headers: { 'x-wayfinder-token': token },
-      })
-      expect(res.status).toBe(200)
-    } finally {
-      s.stop()
-    }
-  })
-
-  test('no token is a 401, and the store is untouched', async () => {
-    const s = await start('untrusted')
-    try {
-      const token = await pageToken(s.address, s.bootToken)
-      expect((await post(s.address, token)).status).toBe(200)
-      const res = await fetch(`${s.address}/api/trust`, { method: 'DELETE' })
       expect(res.status).toBe(401)
-      expect(await trustStoreFor(s.home).list()).toHaveLength(1)
     } finally {
-      s.stop()
+      await s.web.stop()
+    }
+  })
+
+  test('list refuses a directory of its own: the served one is fixed', async () => {
+    const s = await start()
+    const other = await root({ justfile: 'secret:\n  echo s\n' })
+    try {
+      const res = await s.call(['list'], { dir: other })
+      expect(res.status).toBe(400)
+      expect(JSON.stringify(await res.json())).toContain('fixed when the web view starts')
+      expect((await s.call(['list'], {})).status).toBe(200)
+    } finally {
+      await s.web.stop()
+    }
+  })
+
+  test('the boot token is not a bearer token', async () => {
+    const s = await start()
+    try {
+      const res = await s.call(['list'], {}, { authorization: `Bearer ${s.web.signIn.bootToken}` })
+      expect(res.status).toBe(401)
+    } finally {
+      await s.web.stop()
+    }
+  })
+
+  test('list answers the catalog for the served root', async () => {
+    const s = await start()
+    try {
+      const res = await s.call(['list'])
+      expect(res.status).toBe(200)
+      const doc = (await res.json()) as { reports: { tasks: { display: string }[] }[] }
+      const displays = doc.reports.flatMap((r) => r.tasks.map((t) => t.display))
+      expect(displays).toContain('npm run build')
+    } finally {
+      await s.web.stop()
+    }
+  })
+
+  test('a trust grant answers 428, then grants with the nonce', async () => {
+    const s = await start()
+    try {
+      const store = appTrustStore({ env: {}, home: s.home })
+      const first = await s.call(['trust'])
+      expect(first.status).toBe(428)
+      const { nonce } = (await first.json()) as { nonce: string }
+      expect(await store.list()).toEqual([])
+      const second = await s.call(['trust'], {}, { 'x-confirm': nonce })
+      expect(second.status).toBe(200)
+      expect(await store.list()).toEqual([await resolveTrustRoot(s.dir)])
+      // A nonce works once.
+      const replay = await s.call(['trust'], {}, { 'x-confirm': nonce })
+      expect(replay.status).toBe(403)
+    } finally {
+      await s.web.stop()
+    }
+  })
+
+  test('a tool grant answers 428, then grants that scope with the nonce', async () => {
+    const s = await start()
+    try {
+      const store = appTrustStore({ env: {}, home: s.home })
+      const first = await s.call(['trust'], { scope: 'mise' })
+      expect(first.status).toBe(428)
+      const { nonce } = (await first.json()) as { nonce: string }
+      expect(await store.listGrants()).toEqual([])
+      const second = await s.call(['trust'], { scope: 'mise' }, { 'x-confirm': nonce })
+      expect(second.status).toBe(200)
+      expect((await store.listGrants()).map((g) => g.scope)).toEqual(['mise'])
+    } finally {
+      await s.web.stop()
+    }
+  })
+
+  test("a tool grant's nonce does not confirm a whole-repository grant", async () => {
+    const s = await start()
+    try {
+      const store = appTrustStore({ env: {}, home: s.home })
+      const first = await s.call(['trust'], { scope: 'mise' })
+      const { nonce } = (await first.json()) as { nonce: string }
+      const other = await s.call(['trust'], {}, { 'x-confirm': nonce })
+      expect(other.status).toBe(403)
+      expect(await store.listGrants()).toEqual([])
+    } finally {
+      await s.web.stop()
+    }
+  })
+
+  test("a tool's untrust runs without a confirmation and leaves other grants", async () => {
+    const s = await start()
+    try {
+      const store = appTrustStore({ env: {}, home: s.home })
+      const resolved = await resolveTrustRoot(s.dir)
+      await store.trust(resolved, 'mise')
+      await store.trust(resolved)
+      const res = await s.call(['trust'], { untrust: true, scope: 'mise' })
+      expect(res.status).toBe(200)
+      expect((await store.listGrants()).map((g) => g.scope ?? '*')).toEqual(['*'])
+    } finally {
+      await s.web.stop()
+    }
+  })
+
+  test('providers answers each tool with its homepage, description and language', async () => {
+    const s = await start()
+    try {
+      const res = await s.call(['providers'])
+      expect(res.status).toBe(200)
+      const doc = (await res.json()) as {
+        providers: { id: string; homepage: string | null; language: string }[]
+      }
+      const npm = doc.providers.find((p) => p.id === 'npm')!
+      expect(npm.homepage).toMatch(/^https:\/\//)
+      expect(typeof npm.language).toBe('string')
+    } finally {
+      await s.web.stop()
+    }
+  })
+
+  test('untrust runs without a confirmation', async () => {
+    const s = await start()
+    try {
+      const store = appTrustStore({ env: {}, home: s.home })
+      await store.trust(await resolveTrustRoot(s.dir))
+      const res = await s.call(['trust'], { untrust: true })
+      expect(res.status).toBe(200)
+      expect(await store.list()).toEqual([])
+    } finally {
+      await s.web.stop()
+    }
+  })
+
+  test('allowExec and trust settings cannot be written over HTTP', async () => {
+    const s = await start()
+    try {
+      const exec = await s.call(['config', 'set'], { key: 'allowExec', value: 'true', user: true })
+      expect(exec.status).toBe(403)
+      const paths = await s.call(['config', 'set'], {
+        key: 'trust.paths',
+        value: '["/"]',
+        user: true,
+      })
+      expect(paths.status).toBe(403)
+    } finally {
+      await s.web.stop()
+    }
+  })
+
+  test('tools cannot be set, and trust cannot be unset, over HTTP', async () => {
+    const s = await start()
+    try {
+      const tools = await s.call(['config', 'set'], {
+        key: 'tools',
+        value: '["./evil.js"]',
+        user: true,
+      })
+      expect(tools.status).toBe(403)
+      const trust = await s.call(['config', 'unset'], { key: 'trust', user: true })
+      expect(trust.status).toBe(403)
+      const exec = await s.call(['config', 'unset'], { key: 'allowExec', user: true })
+      expect(exec.status).toBe(403)
+    } finally {
+      await s.web.stop()
+    }
+  })
+
+  test('a project setting is written to the project file', async () => {
+    const s = await start()
+    try {
+      const res = await s.call(['config', 'set'], {
+        key: 'discovery',
+        value: '"walk"',
+        project: true,
+      })
+      expect(res.status).toBe(200)
+      const written = JSON.parse(await readFile(join(s.dir, 'wayfinder.config.json'), 'utf-8'))
+      expect(written).toMatchObject({ discovery: 'walk' })
+    } finally {
+      await s.web.stop()
     }
   })
 })
 
-/**
- * A forced probe must be a probe taken AFTER whatever forced it.
- *
- * `?force` and the grant route both exist to answer with the world as it is
- * now. Joining a probe that was already running answers with the world as it
- * was when that probe started — before the grant, before the save.
- */
-describe('a forced probe with one already in flight', () => {
-  test('the grant answers with the post-grant catalog, not the one already collecting', async () => {
-    const root = await project()
-    const home = await temp('wayfinder-serve-home-')
+describe('POST /run', () => {
+  async function run(s: Started, body: unknown, token?: string): Promise<Response> {
+    return fetch(`${s.address}/run`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${token ?? (await s.token())}`,
+      },
+      body: JSON.stringify(body),
+    })
+  }
 
-    // A provider that blocks the FIRST collect and no other, so "a probe is in
-    // flight" is a fact the test holds rather than a race it hopes for.
-    let release!: () => void
+  async function taskId(s: Started): Promise<string> {
+    const doc = (await (await s.call(['list'])).json()) as {
+      reports: { tasks: { id: string; display: string }[] }[]
+    }
+    return doc.reports.flatMap((r) => r.tasks).find((t) => t.display === 'npm run build')!.id
+  }
+
+  test('hands the terminal to the task, then a second run is 409', async () => {
+    const s = await start()
+    try {
+      const id = await taskId(s)
+      // Sent together: the server stops once a run is handed off, so only a
+      // request already in flight can be answered 409.
+      const [first, second] = await Promise.all([run(s, { id, args: ['--watch'] }), run(s, { id })])
+      expect(first.status).toBe(200)
+      const answer = (await first.json()) as { ok: boolean; argv: string[] }
+      expect(answer.ok).toBe(true)
+      expect(answer.argv.slice(-1)).toEqual(['--watch'])
+      expect(second.status).toBe(409)
+      expect(await s.web.finished).toBe(0)
+      expect(s.handed).toEqual([{ argv: answer.argv, cwd: expect.any(String) }])
+    } finally {
+      await s.web.stop()
+    }
+  })
+
+  test('runs a task from the saved listing once its runner, probed again, agrees', async () => {
+    const s = await start()
+    try {
+      const id = await taskId(s)
+      // The stored probes are gone: the run reads the saved listing, then
+      // probes node-scripts alone.
+      await rm(join(s.home, '.cache', 'wayfinder', 'reports'), { recursive: true, force: true })
+      const res = await run(s, { id })
+      expect(res.status).toBe(200)
+      expect(await s.web.finished).toBe(0)
+      expect(s.handed).toHaveLength(1)
+    } finally {
+      await s.web.stop()
+    }
+  })
+
+  test('refuses a task that changed since the listing, with the command it runs now', async () => {
+    const s = await start({ Procfile: 'web: echo one\n' })
+    try {
+      await s.call(['list'])
+      const id = 'procfile:Procfile:web'
+      // The id is the same; the command it runs is not.
+      await writeFile(join(s.dir, 'Procfile'), 'web: echo two\n')
+      const changed = await run(s, { id })
+      expect(changed.status).toBe(412)
+      const body = (await changed.json()) as { code: string; message: string }
+      expect(body.code).toBe('task-changed')
+      expect(body.message).toContain('changed since the listing')
+      expect(body.message).toContain('echo two')
+      await s.call(['list'])
+      await writeFile(join(s.dir, 'Procfile'), 'worker: echo w\n')
+      const gone = await run(s, { id })
+      expect(gone.status).toBe(412)
+      expect(((await gone.json()) as { message: string }).message).toContain('not found')
+      expect(s.handed).toEqual([])
+    } finally {
+      await s.web.stop()
+    }
+  })
+
+  test('an unknown id is 404, and a later run still works', async () => {
+    const s = await start()
+    try {
+      const res = await run(s, { id: 'nope:nothing' })
+      expect(res.status).toBe(404)
+      expect(await res.json()).toMatchObject({ code: 'task-not-found' })
+      expect(s.handed).toEqual([])
+      expect((await run(s, { id: await taskId(s) })).status).toBe(200)
+    } finally {
+      await s.web.stop()
+    }
+  })
+
+  test('a malformed body is 400', async () => {
+    const s = await start()
+    try {
+      expect((await run(s, { id: 3 })).status).toBe(400)
+      expect((await run(s, { id: 'x', args: [1] })).status).toBe(400)
+    } finally {
+      await s.web.stop()
+    }
+  })
+
+  test('a wrong bearer token is 401', async () => {
+    const s = await start()
+    try {
+      expect((await run(s, { id: 'x' }, 'wrong')).status).toBe(401)
+    } finally {
+      await s.web.stop()
+    }
+  })
+})
+
+describe('the browser opener', () => {
+  test('is open, xdg-open, or rundll32 on Windows', () => {
+    expect(browserOpener('darwin')).toEqual({ binary: 'open', args: [] })
+    expect(browserOpener('linux')).toEqual({ binary: 'xdg-open', args: [] })
+    expect(browserOpener('win32')).toEqual({
+      binary: 'rundll32',
+      args: ['url.dll,FileProtocolHandler'],
+    })
+  })
+})
+
+describe('stopping', () => {
+  test('an aborted signal stops the server and settles null', async () => {
+    const dir = await root({ 'package.json': JSON.stringify({ name: 'p', scripts: {} }) })
+    const home = await root()
+    const env = { HOME: home, PATH: process.env['PATH'] }
+    const { app } = createWayApp({ home })
+    const session = await createSession({ dir, cwd: dir, env, home })
+    const aborter = new AbortController()
+    const web = await startServer({
+      session,
+      app,
+      globals: {},
+      cwd: dir,
+      signal: aborter.signal,
+      stdout: () => {},
+      stderr: () => {},
+    })
+    const address = `http://127.0.0.1:${web.server.port}`
+    expect((await fetch(`${address}/`)).status).toBe(200)
+    aborter.abort(130)
+    expect(await web.finished).toBeNull()
+    await expect(fetch(`${address}/`)).rejects.toThrow()
+  })
+})
+
+describe('the held catalog', () => {
+  test("the page's first reads wait on neither a store read nor a second probe", async () => {
+    const dir = await root({
+      'package.json': JSON.stringify({ name: 'p', scripts: { build: 'echo b' } }),
+    })
+    const home = await root()
+    const env = { HOME: home, PATH: process.env['PATH'] }
+    const { app, share } = createWayApp({ home })
+    const session = await createSession({ dir, cwd: dir, env, home })
+    // An earlier run saved its view.
+    await session.catalog()
+    // The probe serve starts waits until the test lets it go.
+    let release: () => void = () => {}
     const gate = new Promise<void>((resolve) => {
       release = resolve
     })
-    let collects = 0
-    const gated: ToolDef = {
-      id: 'gated',
-      markers: [{ files: '/package.json', tier: 'files' }],
-      roles: {
-        runner: {
-          kind: 'parse',
-          chain: [{ label: 'task', hint: 'the task' }],
-          async collect() {
-            if (++collects === 1) await gate
-            return { status: 'absent', tasks: [], diagnostics: [] }
-          },
+    const probe = session.catalog.bind(session)
+    Object.assign(session, {
+      catalog: async (opts?: { cached?: boolean }) => {
+        if (opts?.cached !== true) await gate
+        return probe(opts)
+      },
+    })
+    const probes: string[] = []
+    const fresh = share.fresh.bind(share)
+    share.fresh = (key, run, opts) =>
+      fresh(
+        key,
+        (signal) => {
+          probes.push(key)
+          return run(signal)
         },
-      },
-    }
+        opts,
+      )
 
-    const options: ServeOptions = {
-      project: makeProject([gated]),
-      root,
-      collectOptions: {
-        only: ['gated'],
-        allowExec: false,
-        execWithheldHint: withheldHint('wayfinder'),
-      },
-      port: 0,
+    const aborter = new AbortController()
+    let out = ''
+    const finished = serve({
+      session,
+      app,
+      share,
+      globals: {},
+      cwd: dir,
       open: false,
-      env: {},
-      home,
-    }
-    const { server, bootToken } = await startServer(options)
-    const address = `http://127.0.0.1:${server.port}`
-    try {
-      const token = await pageToken(address, bootToken)
-      // The page's first catalog request: a probe starts, and blocks.
-      const first = fetch(`${address}/api/catalog`, { headers: { 'x-wayfinder-token': token } })
-      while (collects === 0) await sleep(5)
+      signal: aborter.signal,
+      stdout: (text) => {
+        out += text
+      },
+      stderr: () => {},
+    })
+    await vi.waitFor(() => expect(out).toMatch(/\?boot=[0-9a-f]+/))
+    expect(out).toContain('the last listing')
+    const address = out.match(/(http:\/\/127\.0\.0\.1:\d+)/)![1]!
+    const boot = out.match(/\?boot=([0-9a-f]+)/)![1]!
+    const signed = await fetch(`${address}/session`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ boot }),
+    })
+    const { token } = (await signed.json()) as { token: string }
+    const list = (body: object): Promise<Response> =>
+      fetch(`${address}/api/commands/list`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify(body),
+      })
 
-      const granted = post(address, token)
-      // The grant is recorded before the forced probe is asked for, so a
-      // non-empty store means the route has reached it.
-      while ((await trustStoreFor(home).list()).length === 0) await sleep(5)
-      await sleep(20)
-      release()
-
-      const body = (await (await granted).json()) as { allowExec: boolean }
-      expect(body.allowExec).toBe(true)
-      await first
-    } finally {
-      void server.stop()
+    // Answered while serve's probe is still held: from the held catalog.
+    const cached = (await (await list({ cached: true })).json()) as { source: string }
+    expect(cached.source).toBe('cached')
+    // The page's first fresh read joins serve's probe rather than starting its own.
+    const pending = list({ join: true })
+    // serve itself and the request both wait on it before it is let go.
+    await vi.waitFor(() => expect(share.waiting(session.viewKey())).toBe(2))
+    release()
+    const doc = (await (await pending).json()) as {
+      source: string
+      reports: { tasks: { display: string }[] }[]
     }
+    expect(doc.source).toBe('fresh')
+    expect(doc.reports.flatMap((r) => r.tasks.map((t) => t.display))).toContain('npm run build')
+    expect(probes).toHaveLength(1)
+    aborter.abort(130)
+    expect(await finished).toBeNull()
   })
-})
 
-/**
- * Saving a setting has to change what the server collects.
- *
- * The dialog writes the file and says "Saved." A save that the running process
- * ignores is worse than a refusal: the file and the screen agree with each
- * other and neither describes the catalog the page is showing.
- */
-describe('POST /api/config — the running server adopts what it saved', () => {
-  async function twoRunners(): Promise<string> {
-    const dir = await temp('wayfinder-config-')
-    await writeFile(
-      join(dir, 'package.json'),
-      JSON.stringify({ name: 'p', scripts: { build: 'echo b' } }),
-      'utf-8',
-    )
-    await writeFile(join(dir, 'Makefile'), 'ship:\n\techo s\n', 'utf-8')
-    return dir
+  const body = (generatedAt: string): CatalogBody => ({ generatedAt }) as never
+  const held = (): {
+    promise: Promise<CatalogBody>
+    resolve: (b: CatalogBody) => void
+    reject: (e: unknown) => void
+  } => {
+    let resolve: (b: CatalogBody) => void = () => {}
+    let reject: (e: unknown) => void = () => {}
+    const promise = new Promise<CatalogBody>((ok, fail) => {
+      resolve = ok
+      reject = fail
+    })
+    return { promise, resolve, reject }
   }
 
-  test('disabling a runner takes it out of the next forced probe', async () => {
-    const root = await twoRunners()
-    const home = await temp('wayfinder-config-home-')
-    const options: ServeOptions = {
-      project: makeProject(),
-      root,
-      collectOptions: { allowExec: false },
-      port: 0,
-      open: false,
-      env: {},
-      home,
+  test('a failed shared probe fails every waiter, and the next request probes again', async () => {
+    const share = createCatalogShare()
+    share.activate()
+    const first = held()
+    let probes = 0
+    const probe = (): Promise<CatalogBody> => {
+      probes++
+      return probes === 1 ? first.promise : Promise.resolve(body('second'))
     }
-    const { server, bootToken } = await startServer(options)
-    const address = `http://127.0.0.1:${server.port}`
-    try {
-      const token = await pageToken(address, bootToken)
-      const runners = async (): Promise<string[]> => {
-        const res = await fetch(`${address}/api/catalog?force`, {
-          headers: { 'x-wayfinder-token': token },
-        })
-        return ((await res.json()) as { reports: { runner: string }[] }).reports.map(
-          (r) => r.runner,
-        )
-      }
-      expect(await runners()).toContain('make')
-
-      const saved = await fetch(`${address}/api/config`, {
-        method: 'POST',
-        headers: { 'x-wayfinder-token': token, 'content-type': 'application/json' },
-        body: JSON.stringify({ set: { 'runners.disabled': ['make'] } }),
-      })
-      expect(saved.status).toBe(200)
-
-      expect(await runners()).not.toContain('make')
-    } finally {
-      void server.stop()
-    }
+    const a = share.fresh('k', probe, { join: true })
+    const b = share.fresh('k', probe, { join: true })
+    expect(share.waiting('k')).toBe(2)
+    first.reject(new Error('moon failed'))
+    await expect(a).rejects.toThrow('moon failed')
+    await expect(b).rejects.toThrow('moon failed')
+    expect(share.waiting('k')).toBe(0)
+    expect(share.cached('k')).toBeNull()
+    await expect(share.fresh('k', probe, { join: true })).resolves.toEqual(body('second'))
+    expect(probes).toBe(2)
   })
 
-  test('a saved runner order reorders the next forced probe', async () => {
-    // `runners.order` is config-only — no flag sets it — so saving it is the
-    // ONLY way it ever changes. A server that snapshotted it at boot can never
-    // honour one, which is the same "the dialog said Saved and nothing moved"
-    // defect as the collect options, hidden in one setting instead of all.
-    const root = await twoRunners()
-    const home = await temp('wayfinder-config-home-')
-    const options: ServeOptions = {
-      project: makeProject(),
-      root,
-      collectOptions: { allowExec: false },
-      port: 0,
-      open: false,
-      env: {},
-      home,
+  test('a waiter that leaves does not stop the probe for the others; the last one does', async () => {
+    const share = createCatalogShare()
+    share.activate()
+    const gate = held()
+    let seen: AbortSignal | undefined
+    const probe = (signal: AbortSignal): Promise<CatalogBody> => {
+      seen = signal
+      return gate.promise
     }
-    const { server, bootToken } = await startServer(options)
-    const address = `http://127.0.0.1:${server.port}`
-    try {
-      const token = await pageToken(address, bootToken)
-      const runners = async (): Promise<string[]> => {
-        const res = await fetch(`${address}/api/catalog?force`, {
-          headers: { 'x-wayfinder-token': token },
-        })
-        return ((await res.json()) as { reports: { runner: string }[] }).reports.map(
-          (r) => r.runner,
-        )
-      }
-      // Read rather than named, so the case does not depend on which runner
-      // ids this fixture happens to detect. The order applies within a group,
-      // so the pick is the last task runner.
-      const before = (await runners()).filter((r) => groupOf(r).id === 'tasks')
-      expect(before.length).toBeGreaterThan(1)
-      const last = before[before.length - 1]!
+    const tabA = new AbortController()
+    const tabB = new AbortController()
+    const a = share.fresh('k', probe, { join: true, signal: tabA.signal })
+    const b = share.fresh('k', probe, { join: true, signal: tabB.signal })
+    await vi.waitFor(() => expect(seen).toBeDefined())
+    tabA.abort(new Error('tab closed'))
+    await expect(a).rejects.toThrow('tab closed')
+    expect(seen!.aborted).toBe(false)
+    gate.resolve(body('one'))
+    await expect(b).resolves.toEqual(body('one'))
 
-      const saved = await fetch(`${address}/api/config`, {
-        method: 'POST',
-        headers: { 'x-wayfinder-token': token, 'content-type': 'application/json' },
-        body: JSON.stringify({ set: { 'runners.order': [last] } }),
-      })
-      expect(saved.status).toBe(200)
-
-      expect((await runners())[0]).toBe(last)
-    } finally {
-      void server.stop()
-    }
+    const gate2 = held()
+    let seen2: AbortSignal | undefined
+    const c = share.fresh(
+      'k',
+      (signal) => {
+        seen2 = signal
+        return gate2.promise
+      },
+      { join: false, signal: tabB.signal },
+    )
+    await vi.waitFor(() => expect(seen2).toBeDefined())
+    tabB.abort(new Error('tab closed'))
+    await expect(c).rejects.toThrow('tab closed')
+    expect(seen2!.aborted).toBe(true)
   })
 
-  test('a runner excluded on the command line stays excluded across a save', async () => {
-    // The save must not take back a flag. `--exclude make` is the user's most
-    // recent explicit instruction about make, and a settings write that
-    // touches another key cannot revoke it.
-    const root = await twoRunners()
-    const home = await temp('wayfinder-config-home-')
-    const options: ServeOptions = {
-      project: makeProject(),
-      root,
-      collectOptions: { allowExec: false, exclude: ['make'] },
-      pinnedByFlag: ['exclude'],
-      port: 0,
-      open: false,
-      env: {},
-      home,
-    }
-    const { server, bootToken } = await startServer(options)
-    const address = `http://127.0.0.1:${server.port}`
-    try {
-      const token = await pageToken(address, bootToken)
-      const saved = await fetch(`${address}/api/config`, {
-        method: 'POST',
-        headers: { 'x-wayfinder-token': token, 'content-type': 'application/json' },
-        body: JSON.stringify({ set: { 'runners.order': ['make'] } }),
-      })
-      expect(saved.status).toBe(200)
+  test('a refresh does not join a probe that began earlier, and an older probe never replaces a newer answer', async () => {
+    const share = createCatalogShare()
+    share.activate()
+    const older = held()
+    const poll = share.fresh('k', () => older.promise, { join: true })
+    // The user edits a file, then clicks Refresh.
+    let probes = 0
+    const refresh = share.fresh(
+      'k',
+      () => {
+        probes++
+        return Promise.resolve(body('after the edit'))
+      },
+      { join: false },
+    )
+    await expect(refresh).resolves.toEqual(body('after the edit'))
+    expect(probes).toBe(1)
+    older.resolve(body('before the edit'))
+    await expect(poll).resolves.toEqual(body('before the edit'))
+    expect(share.cached('k')).toMatchObject({ generatedAt: 'after the edit' })
+  })
 
-      const res = await fetch(`${address}/api/catalog?force`, {
-        headers: { 'x-wayfinder-token': token },
-      })
-      const reports = ((await res.json()) as { reports: { runner: string }[] }).reports
-      expect(reports.map((r) => r.runner)).not.toContain('make')
-    } finally {
-      void server.stop()
-    }
+  test('stop aborts a running shared probe', async () => {
+    const share = createCatalogShare()
+    share.activate()
+    let seen: AbortSignal | undefined
+    const run = share.fresh(
+      'k',
+      (signal) => {
+        seen = signal
+        return new Promise<CatalogBody>((_, reject) => {
+          signal.addEventListener('abort', () => reject(signal.reason))
+        })
+      },
+      { join: true, signal: share.signal },
+    )
+    await vi.waitFor(() => expect(seen).toBeDefined())
+    share.stop()
+    expect(seen!.aborted).toBe(true)
+    await expect(run).rejects.toThrow()
+    expect(share.active).toBe(false)
+  })
+
+  test('a malformed saved view does not stop serve from starting; the store answers', async () => {
+    const dir = await root({
+      'package.json': JSON.stringify({ name: 'p', scripts: { build: 'echo b' } }),
+    })
+    const home = await root()
+    const env = { HOME: home, PATH: process.env['PATH'] }
+    const { app, share } = createWayApp({ home })
+    const session = await createSession({ dir, cwd: dir, env, home })
+    await session.catalog()
+    expect(await session.savedCatalog()).not.toBeNull()
+    const file = viewPath(session.store, session.root, session.viewKey())
+    await writeFile(file, JSON.stringify({ version: 1, key: session.viewKey(), cache: 3 }), 'utf-8')
+
+    const aborter = new AbortController()
+    let out = ''
+    const finished = serve({
+      session,
+      app,
+      share,
+      globals: {},
+      cwd: dir,
+      open: false,
+      signal: aborter.signal,
+      stdout: (text) => {
+        out += text
+      },
+      stderr: () => {},
+    })
+    await vi.waitFor(() => expect(out).toMatch(/\?boot=[0-9a-f]+/))
+    expect(out).not.toContain('the last listing')
+    expect(share.cached(session.viewKey())).not.toBeNull()
+    aborter.abort(130)
+    expect(await finished).toBeNull()
+  })
+
+  test('a request under other trust or settings does not get the held catalog', () => {
+    const share = createCatalogShare()
+    share.activate()
+    share.remember('a', { generatedAt: 't' } as never)
+    expect(share.cached('a')).toMatchObject({ source: 'cached', storedAt: 't' })
+    expect(share.cached('b')).toBeNull()
   })
 })
 
-describe('POST /api/trust — project tools', () => {
-  test("a grant says the project file's tools load at the next start", async () => {
-    const s = await start('untrusted', 'cold', true)
-    try {
-      const res = await post(s.address, await pageToken(s.address, s.bootToken))
-      expect(res.status).toBe(200)
-      const body = (await res.json()) as { note?: string }
-      expect(body.note).toBe(
-        'the tools wayfinder.config.json names load the next time way starts with execution allowed',
-      )
-    } finally {
-      s.stop()
-    }
+describe('a new sign-in link', () => {
+  const postSession = (address: string, body: unknown): Promise<Response> =>
+    fetch(`${address}/session`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+
+  test('Enter in the terminal prints a new link, and stops being read once the server stops', async () => {
+    const dir = await root({ 'package.json': JSON.stringify({ name: 'p', scripts: {} }) })
+    const home = await root()
+    const env = { HOME: home, PATH: process.env['PATH'] }
+    const { app } = createWayApp({ home })
+    const session = await createSession({ dir, cwd: dir, env, home })
+    const aborter = new AbortController()
+    const input = new PassThrough()
+    let out = ''
+    const finished = serve({
+      session,
+      app,
+      globals: {},
+      cwd: dir,
+      open: false,
+      input,
+      foreground: async () => true,
+      jobSignals: null,
+      signal: aborter.signal,
+      stdout: (text) => {
+        out += text
+      },
+      stderr: () => {},
+    })
+    const links = (): string[] => [...out.matchAll(/\?boot=([0-9a-f]+)/g)].map((m) => m[1]!)
+    await vi.waitFor(() => expect(links()).toHaveLength(1))
+    expect(out).toContain('press Enter here for a new sign-in link')
+    const address = out.match(/(http:\/\/127\.0\.0\.1:\d+)/)![1]!
+    input.write('\n')
+    await vi.waitFor(() => expect(links()).toHaveLength(2))
+    const [first, second] = links()
+    expect(second).not.toBe(first)
+    expect((await postSession(address, { boot: first })).status).toBe(401)
+    expect((await postSession(address, { boot: second })).status).toBe(200)
+    aborter.abort(130)
+    expect(await finished).toBeNull()
+    expect(input.listenerCount('data')).toBe(0)
+  })
+  test('in the background the terminal is not read, so SIGTTIN cannot stop the server', async () => {
+    const dir = await root({ 'package.json': JSON.stringify({ name: 'p', scripts: {} }) })
+    const home = await root()
+    const env = { HOME: home, PATH: process.env['PATH'] }
+    const { app } = createWayApp({ home })
+    const session = await createSession({ dir, cwd: dir, env, home })
+    const aborter = new AbortController()
+    const input = new PassThrough()
+    let out = ''
+    const finished = serve({
+      session,
+      app,
+      globals: {},
+      cwd: dir,
+      open: false,
+      input,
+      foreground: async () => false,
+      jobSignals: null,
+      signal: aborter.signal,
+      stdout: (text) => {
+        out += text
+      },
+      stderr: () => {},
+    })
+    await vi.waitFor(() => expect(out).toContain('?boot='))
+    expect(out).not.toContain('press Enter')
+    expect(input.listenerCount('data')).toBe(0)
+    const address = out.match(/(http:\/\/127\.0\.0\.1:\d+)/)![1]!
+    expect((await fetch(`${address}/`)).status).toBe(200)
+    aborter.abort(130)
+    expect(await finished).toBeNull()
+  })
+})
+
+describe('abortOnSignals', () => {
+  /** The listener `abortOnSignals` added for `name`, called without signalling the process. */
+  function added(name: 'SIGINT' | 'SIGTERM', before: readonly unknown[]): () => void {
+    const fresh = process.listeners(name).filter((l) => !before.includes(l))
+    expect(fresh).toHaveLength(1)
+    return fresh[0] as () => void
+  }
+
+  test.each([
+    ['SIGINT', 130],
+    ['SIGTERM', 143],
+  ] as const)('%s aborts with exit code %i, and dispose removes the listener', (name, code) => {
+    const before = process.listeners(name)
+    const stopper = abortOnSignals(new AbortController().signal)
+    added(name, before)()
+    expect(stopper.signal.aborted).toBe(true)
+    expect(stopper.signal.reason).toBe(code)
+    stopper.dispose()
+    expect(process.listeners(name)).toEqual(before)
   })
 
-  test('without pending tools the grant carries no note', async () => {
-    const s = await start('untrusted')
-    try {
-      const res = await post(s.address, await pageToken(s.address, s.bootToken))
-      expect(((await res.json()) as { note?: string }).note).toBeUndefined()
-    } finally {
-      s.stop()
-    }
+  test('the parent aborting aborts it with the same reason', () => {
+    const parent = new AbortController()
+    const stopper = abortOnSignals(parent.signal)
+    parent.abort('done')
+    expect(stopper.signal.reason).toBe('done')
+    stopper.dispose()
   })
 })

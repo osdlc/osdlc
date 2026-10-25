@@ -1,0 +1,123 @@
+{
+  "schemaVersion": 1,
+  "kind": "catalog",
+  "root": "<root>",
+  "generatedAt": "<time>",
+  "discovery": "walk",
+  "allowExec": false,
+  "reports": [
+    {
+      "runner": "deno-tasks",
+      "chain": [
+        {
+          "label": "runner",
+          "hint": "Deno runs tasks declared in a deno.json's `tasks` map."
+        },
+        {
+          "label": "project",
+          "hint": "The directory holding the deno.json/deno.jsonc. `.` is the root."
+        },
+        {
+          "label": "task",
+          "hint": "The key under `tasks`."
+        }
+      ],
+      "tool": {
+        "binary": "deno",
+        "found": true,
+        "path": "<bin>/deno"
+      },
+      "status": "ok",
+      "tasks": [
+        {
+          "id": "deno-tasks:deno.json:dev",
+          "runner": "deno-tasks",
+          "path": [
+            "deno-tasks",
+            ".",
+            "dev"
+          ],
+          "argv": [
+            "deno",
+            "task",
+            "dev"
+          ],
+          "cwd": ".",
+          "display": "deno task dev",
+          "parameters": [],
+          "source": "deno.json",
+          "origin": "declared",
+          "detail": "deno run --watch main.ts",
+          "tags": [
+            "deno-tasks",
+            "deno",
+            "."
+          ],
+          "persistent": {
+            "value": true,
+            "declared": false
+          },
+          "executes": "local"
+        },
+        {
+          "id": "deno-tasks:deno.json:test",
+          "runner": "deno-tasks",
+          "path": [
+            "deno-tasks",
+            ".",
+            "test"
+          ],
+          "argv": [
+            "deno",
+            "task",
+            "test"
+          ],
+          "cwd": ".",
+          "display": "deno task test",
+          "parameters": [],
+          "source": "deno.json",
+          "origin": "declared",
+          "doc": "Run the tests",
+          "detail": "deno test",
+          "tags": [
+            "deno-tasks",
+            "deno",
+            "."
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        }
+      ],
+      "diagnostics": [],
+      "skippedForExec": false
+    }
+  ],
+  "source": "fresh",
+  "storedAt": null,
+  "groups": [
+    {
+      "id": "tasks",
+      "title": "Tasks",
+      "runners": [
+        "deno-tasks"
+      ]
+    }
+  ],
+  "skills": [],
+  "cache": [
+    {
+      "runner": "deno-tasks",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    }
+  ],
+  "unknowns": [],
+  "trustedTools": [],
+  "filter": {}
+}

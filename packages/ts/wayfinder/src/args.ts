@@ -16,7 +16,7 @@ import type { Project, Task } from '@osdlc/system-model/detect'
  * `--`.
  *
  * The binary is always `task.argv[0]`, from a catalog this process built by
- * reading the repository, never from a request. `/api/run` is reachable by any
+ * reading the repository, never from a request. The web view's `/run` is reachable by any
  * process on the machine and any site the browser visits, so a caller that
  * could set element 0 could run anything. A tool whose `invoke` changes the
  * binary is refused.
@@ -46,11 +46,16 @@ export function acceptArgs(value: unknown): string[] {
  * Split typed arguments into words the way a shell does, and do nothing else
  * a shell does.
  *
- * Quotes group and a backslash escapes the next character. There is no
- * globbing, no variable expansion, no operators and no substitution. The
- * result goes to an `execvp`-style spawn as separate argv entries, never to a
- * shell, so `*.log` is passed through as the five characters typed. This is
- * the same rule that keeps `argv` separate from `display`.
+ * Quotes group words as in sh. Outside quotes a backslash escapes the next
+ * character. Inside single quotes every character is literal, a backslash
+ * too, so `'C:\tmp'` stays as typed. Inside double quotes a backslash escapes
+ * only `"`, `\`, `$` and a backtick, and is kept before anything else.
+ *
+ * There is no globbing, no variable expansion, no operators and no
+ * substitution. The result goes to an `execvp`-style spawn as separate argv
+ * entries, never to a shell, so `*.log` is passed through as the five
+ * characters typed. This is the same rule that keeps `argv` separate from
+ * `display`.
  *
  * This is not `.split(/\s+/)` for one reason: a quoted `"two words"` must stay
  * one argument.
@@ -62,8 +67,19 @@ export function splitArgs(input: string): string[] {
   let quote: '"' | "'" | null = null
   for (let i = 0; i < input.length; i++) {
     const ch = input[i]!
+    if (quote === "'") {
+      if (ch === "'") quote = null
+      else current += ch
+      continue
+    }
     if (ch === '\\' && i + 1 < input.length) {
-      current += input[++i]!
+      const next = input[i + 1]!
+      if (quote === '"' && !'"\\$`'.includes(next)) {
+        current += ch
+        continue
+      }
+      current += next
+      i++
       started = true
       continue
     }

@@ -1,12 +1,19 @@
+/**
+ * `way trust`: cli-tool's shared `trust` command over wayfinder's store and
+ * the user file's policy. HOME is a throwaway directory in every case, so no
+ * test grants trust on the developer's machine.
+ */
+
 import { afterAll, describe, expect, test } from 'vitest'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
-import { resolveTrustRoot, trustStore } from '@osdlc/trust-repo'
+import { resolveTrustRoot } from '@osdlc/trust-repo'
 import { makeGitFixture } from '@osdlc/typed-git/testing'
 
-import { runTrustCommand } from '../src/trust-command.ts'
-import { fixtureRoot, removeRoot } from './support.ts'
+import { appTrustStore } from '../src/trust-store.ts'
+import { runWay, wayApp } from './app-support.ts'
+import { CONFIG_HOME, STATE_HOME, fixtureRoot, removeRoot } from './support.ts'
 
 const roots: string[] = []
 afterAll(async () => {
@@ -19,387 +26,223 @@ async function root(): Promise<string> {
   return dir
 }
 
-/**
- * The same store `runTrustCommand` builds — the literal tool name
- * `'wayfinder'`, shared with the wayfinder CLI; see `trust-command.ts`'s module
- * docblock.
- */
-function trustStoreFor(env: Record<string, string | undefined>, home: string) {
-  return trustStore({ tool: 'wayfinder', env, home })
+/** Write a user-layer trust policy at `home`. */
+async function userTrust(home: string, trust: Record<string, unknown>): Promise<void> {
+  await mkdir(join(home, CONFIG_HOME, 'wayfinder'), { recursive: true })
+  await writeFile(join(home, CONFIG_HOME, 'wayfinder', 'config.json'), JSON.stringify({ trust }))
 }
 
-/** Write a USER-layer trust.paths/trust.owners policy at `home`. */
-async function writeUserTrustPolicy(
-  home: string,
-  trust: { paths?: string[]; owners?: string[] },
-): Promise<void> {
-  await mkdir(join(home, '.config', 'wayfinder'), { recursive: true })
-  await writeFile(
-    join(home, '.config', 'wayfinder', 'config.json'),
-    JSON.stringify({ trust }),
-    'utf-8',
-  )
-}
-
-interface Run {
-  code: number
-  out: string
-  err: string
-  env: Record<string, string | undefined>
-  home: string
-}
-
-/**
- * One invocation against a throwaway state home. Every test goes through this:
- * a test that let `env` or `home` default would read the developer's own trust
- * store, and one that wrote would grant trust on their machine.
- */
-async function run(
-  dir: string,
-  argv: string[],
-  store?: { env: Record<string, string | undefined>; home: string },
-): Promise<Run> {
-  const home = store?.home ?? (await root())
-  const env = store?.env ?? { XDG_STATE_HOME: join(home, '.local', 'state') }
-  let out = ''
-  let err = ''
-  const code = await runTrustCommand('wayfinder', dir, argv, {
-    stdout: (t) => {
-      out += t
-    },
-    stderr: (t) => {
-      err += t
-    },
-    env,
+async function setup() {
+  const dir = await root()
+  const home = await root()
+  return {
+    dir,
     home,
-  })
-  return { code, out, err, env, home }
+    key: await resolveTrustRoot(dir),
+    store: appTrustStore({ env: {}, home }),
+    run: (argv: string[], at: string = dir) => runWay(argv, { cwd: at, home }),
+  }
 }
 
 describe('way trust', () => {
-  test('trusts the root and names the path it was keyed on', async () => {
-    const dir = await root()
-    const result = await run(dir, [])
-
-    expect(result.code).toBe(0)
-    expect(result.out).toBe(`trusted ${await resolveTrustRoot(dir)}\n`)
-    expect(result.err).toBe('')
-    expect(await trustStoreFor(result.env, result.home).list()).toEqual([
-      await resolveTrustRoot(dir),
-    ])
+  test('grants, names the root it keyed on, and says when it was already trusted', async () => {
+    const s = await setup()
+    const first = await s.run(['trust'])
+    expect(first).toMatchObject({ exit: 0, out: `trusted ${s.key}\n` })
+    expect(await s.store.list()).toEqual([s.key])
+    expect((await s.run(['trust'])).out).toBe(`already trusted ${s.key}\n`)
   })
 
-  test('says so rather than implying a fresh grant when it was already trusted', async () => {
-    const dir = await root()
-    const first = await run(dir, [])
-    const second = await run(dir, [], { env: first.env, home: first.home })
+  test('the store is under the state home', async () => {
+    const s = await setup()
+    await s.run(['trust'])
+    expect(s.store.dir()).toBe(join(s.home, STATE_HOME, 'wayfinder', 'trusted'))
+  })
 
-    expect(second.code).toBe(0)
-    expect(second.out).toBe(`already trusted ${await resolveTrustRoot(dir)}\n`)
+  test('--json answers { action, changed, roots } with what decided', async () => {
+    const s = await setup()
+    const ran = await s.run(['trust', '--json'])
+    expect(ran.json()).toEqual({
+      schemaVersion: 1,
+      kind: 'trust',
+      action: 'trust',
+      changed: true,
+      roots: [{ root: s.key, trusted: true, by: 'marker' }],
+    })
+  })
+
+  test('-C names the repository', async () => {
+    const s = await setup()
+    const elsewhere = await root()
+    expect((await s.run(['trust', '-C', s.dir], elsewhere)).exit).toBe(0)
+    expect(await s.store.list()).toEqual([s.key])
+  })
+
+  test('a project config that will not parse fails the grant, writing nothing', async () => {
+    const s = await setup()
+    await writeFile(join(s.dir, 'wayfinder.config.json'), '{ not json')
+    const ran = await s.run(['trust'])
+    expect(ran.exit).toBe(1)
+    expect(ran.err).toContain('invalid JSON')
+    expect(await s.store.list()).toEqual([])
   })
 })
 
 describe('way trust --untrust', () => {
-  test('removes a trust grant', async () => {
-    const dir = await root()
-    const granted = await run(dir, [])
-    const result = await run(dir, ['--untrust'], { env: granted.env, home: granted.home })
-
-    expect(result.code).toBe(0)
-    expect(result.out).toBe(`untrusted ${await resolveTrustRoot(dir)}\n`)
-    expect(await trustStoreFor(result.env, result.home).list()).toEqual([])
+  test('removes the grant', async () => {
+    const s = await setup()
+    await s.store.trust(s.dir)
+    expect(await s.run(['trust', '--untrust'])).toMatchObject({
+      exit: 0,
+      out: `untrusted ${s.key}\n`,
+    })
+    expect(await s.store.list()).toEqual([])
   })
 
-  test('exits 1 when the root was never trusted', async () => {
-    // A well-formed command that failed against the state it found: exit 1,
-    // not 2. It is reported because a silent success reads as "it is no longer
-    // trusted", which is wrong if it never was.
-    const dir = await root()
-    const result = await run(dir, ['--untrust'])
-
-    expect(result.code).toBe(1)
-    expect(result.out).toBe('')
-    expect(result.err).toBe(`wayfinder: not trusted: ${await resolveTrustRoot(dir)}\n`)
+  test('exits 1 when there was nothing to remove, still answering under --json', async () => {
+    const s = await setup()
+    const ran = await s.run(['trust', '--untrust', '--json'])
+    expect(ran.exit).toBe(1)
+    expect(ran.json()).toMatchObject({ action: 'untrust', changed: false })
+    expect(ran.err).toContain(`not trusted: ${s.key}`)
   })
 
-  test('a policy that still covers the root notes so, even though the marker is gone', async () => {
-    // Mirrors `sdlc repo untrust`: removing the marker does not change the
-    // answer when a policy rule covers the root regardless.
-    const dir = await root()
-    const home = await root()
-    await writeUserTrustPolicy(home, { paths: [`${dir}/**`, dir] })
-    const env = { XDG_STATE_HOME: join(home, '.local', 'state') }
-    const granted = await run(dir, [], { env, home })
-
-    const result = await run(dir, ['--untrust'], { env: granted.env, home: granted.home })
-    expect(result.code).toBe(0)
-    expect(result.out).toBe(`untrusted ${await resolveTrustRoot(dir)}\n`)
-    expect(result.err).toContain('is still trusted by')
-    expect(result.err).toContain('trust.paths')
-    // The marker really is gone — only the policy still trusts it.
-    expect(await trustStoreFor(env, home).list()).toEqual([])
-  })
-})
-
-describe('way trust with a trust.owners policy', () => {
-  async function ownedRepo(): Promise<{ dir: string; home: string; env: Record<string, string> }> {
+  test('notes when the owner policy still trusts the root', async () => {
     const base = await root()
     const repo = makeGitFixture({ dir: join(base, 'repo') })
     repo.git.remoteAdd('origin', 'https://github.com/AcmeOwner/dev.git')
     const home = await root()
-    await writeUserTrustPolicy(home, { owners: ['acmeowner'] })
-    return { dir: repo.dir, home, env: { XDG_STATE_HOME: join(home, '.local', 'state') } }
-  }
-
-  test('--untrust notes that the owner policy still trusts the root', async () => {
-    const { dir, home, env } = await ownedRepo()
-    await run(dir, [], { env, home })
-
-    const result = await run(dir, ['--untrust'], { env, home })
-    expect(result.code).toBe(0)
-    expect(result.err).toContain('is still trusted by')
-    expect(result.err).toContain('trust.owners')
-    expect(await trustStoreFor(env, home).list()).toEqual([])
+    await userTrust(home, { owners: ['acmeowner'] })
+    await runWay(['trust'], { cwd: repo.dir, home })
+    const ran = await runWay(['trust', '--untrust'], { cwd: repo.dir, home })
+    expect(ran.exit).toBe(0)
+    expect(ran.err).toContain("is still trusted by owner ('acmeowner')")
   })
 })
 
 describe('way trust --show', () => {
-  test('reports either answer on stdout and exits 0', async () => {
-    // "not trusted" is the fact this command was asked for, not a failure to
-    // report it, so a script can read the line without branching on the code.
-    const dir = await root()
-    const before = await run(dir, ['--show'])
-    expect(before.code).toBe(0)
-    expect(before.out).toBe(`not trusted ${await resolveTrustRoot(dir)}\n`)
-
-    await trustStoreFor(before.env, before.home).trust(dir)
-    const after = await run(dir, ['--show'], { env: before.env, home: before.home })
-    expect(after.code).toBe(0)
-    expect(after.out).toBe(`trusted ${await resolveTrustRoot(dir)}\n`)
+  test('reports either answer and exits 0', async () => {
+    const s = await setup()
+    expect((await s.run(['trust', '--show'])).out).toBe(`not trusted ${s.key}\n`)
+    await s.store.trust(s.dir)
+    expect((await s.run(['trust', '--show'])).out).toBe(`trusted ${s.key} (by marker)\n`)
   })
 
-  test('a marker wins over a matching policy — by reports "marker", not "path"', async () => {
-    // Precedence: marker, then trust.paths, then trust.owners.
-    const dir = await root()
-    const home = await root()
-    await writeUserTrustPolicy(home, { paths: [`${dir}/**`, dir] })
-    const env = { XDG_STATE_HOME: join(home, '.local', 'state') }
-
-    // The policy alone already covers it — proven independently above — so a
-    // granted marker must still take precedence in what `by` reports.
-    const beforeMarker = await run(dir, ['--show', '--json'], { env, home })
-    expect(JSON.parse(beforeMarker.out)).toMatchObject({ trusted: true, by: 'path' })
-
-    await trustStoreFor(env, home).trust(dir)
-    const afterMarker = await run(dir, ['--show', '--json'], { env, home })
-    expect(JSON.parse(afterMarker.out)).toEqual({
-      root: await resolveTrustRoot(dir),
-      trusted: true,
-      changed: false,
-      by: 'marker',
-    })
+  test('a trust.paths policy trusts with no marker, and a marker wins once there is one', async () => {
+    const s = await setup()
+    await userTrust(s.home, { paths: [s.dir] })
+    const policy = await s.run(['trust', '--show', '--json'])
+    expect(policy.json()).toMatchObject({ roots: [{ trusted: true, by: 'path', rule: s.dir }] })
+    await s.store.trust(s.dir)
+    const marker = await s.run(['trust', '--show', '--json'])
+    expect(marker.json()).toMatchObject({ roots: [{ trusted: true, by: 'marker' }] })
   })
 
   test('a trust.owners policy covers a root by its origin owner', async () => {
-    const dir = await root()
-    const repo = makeGitFixture({ dir: join(dir, 'repo') })
+    const base = await root()
+    const repo = makeGitFixture({ dir: join(base, 'repo') })
     repo.git.remoteAdd('origin', 'https://github.com/AcmeOwner/dev.git')
     const home = await root()
-    await writeUserTrustPolicy(home, { owners: ['acmeowner'] })
-    const env = { XDG_STATE_HOME: join(home, '.local', 'state') }
-
-    const result = await run(repo.dir, ['--show', '--json'], { env, home })
-    expect(JSON.parse(result.out)).toMatchObject({ trusted: true, by: 'owner', rule: 'acmeowner' })
-  })
-
-  test('a project config that will not parse fails the command, not silently', async () => {
-    const dir = await root()
-    await writeFile(join(dir, 'wayfinder.config.json'), '{ not json', 'utf-8')
-    const result = await run(dir, ['--show'])
-    expect(result.code).toBe(1)
-    expect(result.err).toContain('invalid JSON')
-    // The plain grant reads the same policy, so it fails the same way rather
-    // than writing a marker under a config it could not read.
-    const grant = await run(dir, [])
-    expect(grant.code).toBe(1)
-    expect(grant.err).toContain('invalid JSON')
+    await userTrust(home, { owners: ['acmeowner'] })
+    const ran = await runWay(['trust', '--show', '--json'], { cwd: repo.dir, home })
+    expect(ran.json()).toMatchObject({
+      roots: [{ trusted: true, by: 'owner', rule: 'acmeowner' }],
+    })
   })
 })
 
-describe('way trust --list', () => {
-  test('prints every trusted path, one per line', async () => {
-    const a = await root()
-    const b = await root()
-    const first = await run(a, [])
-    await run(b, [], { env: first.env, home: first.home })
-
-    const result = await run(a, ['--list'], { env: first.env, home: first.home })
-    expect(result.code).toBe(0)
-    expect(result.out.trimEnd().split('\n')).toEqual(
-      [await resolveTrustRoot(a), await resolveTrustRoot(b)].sort(),
+describe('way trust --scope', () => {
+  test('grants one tool, which leaves the whole repository untrusted', async () => {
+    const s = await setup()
+    const ran = await s.run(['trust', '--scope', 'mise', '--json'])
+    expect(ran.json()).toMatchObject({
+      changed: true,
+      roots: [{ root: s.key, trusted: true, by: 'marker', scope: 'mise' }],
+    })
+    expect(await s.store.isTrusted(s.dir, 'mise')).toBe(true)
+    expect(await s.store.isTrusted(s.dir)).toBe(false)
+    expect((await s.run(['trust', '--show', '--scope', 'mise'])).out).toBe(
+      `trusted ${s.key} (by marker)\n`,
     )
   })
 
-  test('prints nothing when nothing is trusted', async () => {
-    const result = await run(await root(), ['--list'])
-    expect(result.code).toBe(0)
-    expect(result.out).toBe('')
+  test('trust.tools.<tool> trusts that tool alone, with no marker', async () => {
+    const s = await setup()
+    await userTrust(s.home, { tools: { just: { paths: [s.dir] } } })
+    const just = await s.run(['trust', '--show', '--scope', 'just', '--json'])
+    expect(just.json()).toMatchObject({
+      roots: [{ trusted: true, by: 'path', rule: s.dir, scope: 'just' }],
+    })
+    const mise = await s.run(['trust', '--show', '--scope', 'mise', '--json'])
+    expect(mise.json()).toMatchObject({ roots: [{ trusted: false, by: null, scope: 'mise' }] })
   })
 
-  test('needs no config, so a broken project file does not break it', async () => {
-    const dir = await root()
-    await writeFile(join(dir, 'wayfinder.config.json'), '{ not json', 'utf-8')
-    const result = await run(dir, ['--list'])
-    expect(result.code).toBe(0)
+  test('--untrust --scope removes that scope only', async () => {
+    const s = await setup()
+    await s.store.trust(s.dir)
+    await s.store.trust(s.dir, 'mise')
+    expect((await s.run(['trust', '--untrust', '--scope', 'mise'])).exit).toBe(0)
+    expect(await s.store.isTrusted(s.dir)).toBe(true)
+    expect((await s.store.listGrants()).map((g) => g.scope)).toEqual(['*'])
+  })
+
+  test("'*' and an empty scope are usage errors", async () => {
+    const s = await setup()
+    expect((await s.run(['trust', '--scope', '*'])).exit).toBe(2)
+    expect((await s.run(['trust', '--scope', ''])).exit).toBe(2)
+    expect(await s.store.listGrants()).toEqual([])
   })
 })
 
-describe('way trust usage errors', () => {
-  test('--help goes to stdout with exit 0', async () => {
-    const result = await run(await root(), ['--help'])
-    expect(result.code).toBe(0)
-    expect(result.out).toContain('usage: way trust')
-    expect(result.err).toBe('')
+describe('way trust --list and --untrust-all', () => {
+  test('--list prints every grant, scopes named', async () => {
+    const s = await setup()
+    expect((await s.run(['trust', '--list'])).out).toBe('')
+    await s.store.trust(s.dir)
+    await s.store.trust(s.dir, 'mise')
+    expect((await s.run(['trust', '--list'])).out).toBe(`${s.key}\n${s.key} (mise)\n`)
   })
 
-  test('refuses two mode flags rather than picking one', async () => {
-    const result = await run(await root(), ['--show', '--list'])
-    expect(result.code).toBe(2)
-    expect(result.err).toContain('give at most one')
-    expect(result.out).toBe('')
+  test('--list needs no config, so a broken project file does not break it', async () => {
+    const s = await setup()
+    await writeFile(join(s.dir, 'wayfinder.config.json'), '{ nope')
+    expect((await s.run(['trust', '--list'])).exit).toBe(0)
   })
 
-  test('refuses an unknown option', async () => {
-    const result = await run(await root(), ['--nope'])
-    expect(result.code).toBe(2)
-    expect(result.err).toContain('unknown option: --nope')
+  test('--untrust-all removes every grant of the root', async () => {
+    const s = await setup()
+    await s.store.trust(s.dir)
+    await s.store.trust(s.dir, 'just')
+    const ran = await s.run(['trust', '--untrust-all', '--json'])
+    expect(ran.exit).toBe(0)
+    expect(ran.json()).toMatchObject({ action: 'untrust-all', changed: true })
+    expect(await s.store.listGrants()).toEqual([])
+    expect((await s.run(['trust', '--untrust-all'])).exit).toBe(1)
   })
 
-  test('refuses a positional argument', async () => {
-    // -C is stripped by the caller, so a bare path here is a user who expected
-    // `trust <dir>` to work. Saying so beats trusting the current directory.
-    const result = await run(await root(), ['/some/repo'])
-    expect(result.code).toBe(2)
-    expect(result.err).toContain('takes no arguments')
-    expect(await trustStoreFor(result.env, result.home).list()).toEqual([])
+  test('two modes together are a usage error', async () => {
+    const s = await setup()
+    expect((await s.run(['trust', '--show', '--list'])).exit).toBe(2)
   })
 })
 
-/**
- * The machine form.
- *
- * The command answers three different questions, and a caller that had to
- * branch on which flag it passed to know which JSON shape came back would be
- * doing the tool's job for it. So the three root-scoped modes share one shape
- * (including `by`/`rule`) and only `--list` differs.
- */
-describe('way trust --json', () => {
-  test('every root-scoped mode answers in the same shape, with by="marker" once granted', async () => {
-    const dir = await root()
-    const resolved = await resolveTrustRoot(dir)
-
-    const granted = await run(dir, ['--json'])
-    expect(granted.code).toBe(0)
-    expect(JSON.parse(granted.out)).toEqual({
-      root: resolved,
-      trusted: true,
-      changed: true,
-      by: 'marker',
+describe('way trust over the adapters', () => {
+  test('a grant is refused over MCP and HTTP; show, list and untrust are open', async () => {
+    const s = await setup()
+    const app = wayApp()
+    const ctx = { cwd: s.dir, env: { HOME: s.home } }
+    for (const surface of ['mcp', 'http'] as const) {
+      expect(await app.call(['trust'], {}, ctx, { surface })).toMatchObject({
+        status: 'refused',
+        reason: 'cli-only',
+      })
+      expect(await app.call(['trust'], { scope: 'mise' }, ctx, { surface })).toMatchObject({
+        status: 'refused',
+      })
+    }
+    expect(await s.store.listGrants()).toEqual([])
+    expect(await app.call(['trust'], { show: true }, ctx, { surface: 'mcp' })).toMatchObject({
+      status: 'ok',
     })
-
-    // Same store, so the grant is a no-op: still trusted, nothing changed.
-    const again = await run(dir, ['--json'], { env: granted.env, home: granted.home })
-    expect(JSON.parse(again.out)).toEqual({
-      root: resolved,
-      trusted: true,
-      changed: false,
-      by: 'marker',
-    })
-
-    const shown = await run(dir, ['--show', '--json'], { env: granted.env, home: granted.home })
-    expect(JSON.parse(shown.out)).toEqual({
-      root: resolved,
-      trusted: true,
-      changed: false,
-      by: 'marker',
-    })
-
-    const removed = await run(dir, ['--untrust', '--json'], {
-      env: granted.env,
-      home: granted.home,
-    })
-    expect(removed.code).toBe(0)
-    expect(JSON.parse(removed.out)).toEqual({
-      root: resolved,
-      trusted: false,
-      changed: true,
-      by: null,
-    })
-  })
-
-  test('--show reports an untrusted root as a fact, not a failure, with by: null', async () => {
-    const dir = await root()
-    const shown = await run(dir, ['--show', '--json'])
-    expect(shown.code).toBe(0)
-    expect(JSON.parse(shown.out)).toMatchObject({ trusted: false, changed: false, by: null })
-    expect(shown.err).toBe('')
-  })
-
-  test('a policy hit reports by/rule with no marker at all', async () => {
-    const dir = await root()
-    const home = await root()
-    await writeUserTrustPolicy(home, { paths: [`${dir}/**`, dir] })
-    const env = { XDG_STATE_HOME: join(home, '.local', 'state') }
-
-    const shown = await run(dir, ['--show', '--json'], { env, home })
-    expect(shown.code).toBe(0)
-    expect(JSON.parse(shown.out)).toEqual({
-      root: await resolveTrustRoot(dir),
-      trusted: true,
-      changed: false,
-      by: 'path',
-      rule: dir,
-    })
-    // Genuinely policy-only.
-    expect(await trustStoreFor(env, home).list()).toEqual([])
-  })
-
-  test('a failed --untrust still answers on stdout, and fails through the exit code', async () => {
-    // A parser that got exit 1 and an empty stdout would have to guess what the
-    // store held. The document says; the exit code and stderr say it failed.
-    const dir = await root()
-    const missed = await run(dir, ['--untrust', '--json'])
-    expect(missed.code).toBe(1)
-    expect(JSON.parse(missed.out)).toMatchObject({ trusted: false, changed: false, by: null })
-    expect(missed.err).toContain('not trusted')
-  })
-
-  test('--list is the one different shape, because it answers a different question', async () => {
-    const dir = await root()
-    const granted = await run(dir, [])
-    const listed = await run(dir, ['--list', '--json'], {
-      env: granted.env,
-      home: granted.home,
-    })
-
-    expect(listed.code).toBe(0)
-    expect(JSON.parse(listed.out)).toEqual({
-      trusted: await trustStoreFor(granted.env, granted.home).list(),
-    })
-  })
-
-  test('nothing trusted is an empty array rather than no output', async () => {
-    // The line form prints nothing, which is right for a pipe and useless to a
-    // parser: `{"trusted":[]}` is the answer.
-    const listed = await run(await root(), ['--list', '--json'])
-    expect(JSON.parse(listed.out)).toEqual({ trusted: [] })
-  })
-
-  test('combines with each mode rather than contradicting them', async () => {
-    // --json is not a fourth mode: pairing it with one must not fail the
-    // two-modes check.
-    const dir = await root()
-    expect((await run(dir, ['--show', '--json'])).code).toBe(0)
-    expect((await run(dir, ['--list', '--json'])).code).toBe(0)
   })
 })
