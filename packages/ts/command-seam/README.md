@@ -458,14 +458,23 @@ import { which } from '@osdlc/command-seam'
 const harnesses = ['codex', 'claude', 'cursor-agent'].filter((b) => which(b) !== undefined)
 ```
 
-It looks a binary up the way the runners' spawn does: a name with a `/` is
-resolved against `cwd`, a bare name is searched on `PATH`, and a match must
-be an executable file. `opts` takes `cwd` (default `process.cwd()`) and
-`env`, merged over the parent's as the runners take it, so
-`which('tool', { env: { PATH: binDir } })` checks a test's own `PATH`.
-An empty `PATH` entry means `cwd`, as it does for Node's spawn. Bun's spawn
-skips empty entries, so under Bun `which` can find a binary there that a
-spawn would not.
+It looks a binary up the way the runners' spawn does. `opts` takes `cwd`
+(default `process.cwd()`), `env`, merged over the parent's as the runners
+take it, so `which('tool', { env: { PATH: binDir } })` checks a test's own
+`PATH`, and `platform` (default `process.platform`), so a test can run the
+Windows rules on any OS.
+
+| Rule              | POSIX                                     | Windows (`platform: 'win32'`)                                   |
+| ----------------- | ----------------------------------------- | --------------------------------------------------------------- |
+| A path            | a name with `/`, resolved against `cwd`   | a name with `\` or `/`, resolved against `cwd`                  |
+| `PATH` separator  | `:`                                       | `;`                                                             |
+| Empty entry       | means `cwd`, as for Node's spawn          | skipped; `cwd` is searched only when `PATH` names it            |
+| `PATH` unset      | `/usr/bin:/bin`                           | nothing is searched                                             |
+| Extensions        | none                                      | a name ending in a `PATHEXT` extension is tried as given; any other name with each one appended, in order. Default `.COM;.EXE;.BAT;.CMD`. Any case. |
+| A match           | an executable file                        | a file                                                          |
+
+Bun's spawn skips empty `PATH` entries, so under Bun `which` can find a
+binary there that a spawn would not.
 
 ## Reading results
 
@@ -926,7 +935,7 @@ are settled, and Windows support has landed, if that is feasible.
 | `withDefaults`                                                  | function  | Bind default options to any runner                             |
 | `DefaultedRunner`                                               | interface | The runner `withDefaults` returns                              |
 | `which`                                                         | function  | The path a spawn of a binary would run, without running it     |
-| `WhichOptions`                                                  | interface | `cwd`, `env`                                                   |
+| `WhichOptions`                                                  | interface | `cwd`, `env`, `platform`                                       |
 | `fakeRunner`                                                    | function  | `/testing`: a `CommandRunner` that answers from a table, with async and bytes forms |
 | `fakeNeverExited`                                               | function  | `/testing`: a fake answer for a run that never exited          |
 | `fakeProcess`                                                   | function  | `/testing`: a `ManagedProcessHandle` the test ends by hand     |
