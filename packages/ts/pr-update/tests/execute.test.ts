@@ -401,6 +401,29 @@ describe('the executor against real git', () => {
     expect(git.resolveRef('origin/leased')).toBe(theirs)
   })
 
+  test('a push a remote hook declines is a failure to inspect, not a race', async () => {
+    const oid = makeBehindPr('guarded', { 'a.txt': 'a\n' }, { 'b.txt': 'b\n' })
+    const hook = join(fx.bare.dir, 'hooks', 'pre-receive')
+    writeFileSync(hook, '#!/bin/sh\necho "no pushes today" >&2\nexit 1\n')
+    chmodSync(hook, 0o755)
+
+    const out = await inWorktree((wt) =>
+      updateOne(
+        wt,
+        target({ head: 'guarded', headOid: oid, strategy: 'rebase' }),
+        SETTINGS,
+        recorder(),
+        { apply: true, worktree: wtRoot },
+      ),
+    )
+    expect(out.status).toBe('failed')
+    if (out.status !== 'failed') throw new Error('unreachable')
+    expect(out.reason).toMatch(/^push guarded: rejected \(.*hook declined: no pushes today\)$/)
+    expect(out.reason).not.toContain('re-run')
+    fx.worker.git.fetch('origin')
+    expect(fx.worker.git.resolveRef('origin/guarded')).toBe(oid)
+  })
+
   describe('the fallback chain', () => {
     /** Two commits that both touch `build/out.txt`; `main` moves it too. Returns the pushed head. */
     function makeTwoStopPr(branch: string, secondFile: string): string {
@@ -1234,14 +1257,18 @@ describe('updateAll', () => {
 
 describe('isStalePush', () => {
   test('recognizes the rejections that mean "re-run", not "go look"', async () => {
-    expect(isStalePush('! [rejected] main -> main (non-fast-forward)')).toBe(true)
-    expect(isStalePush('! [rejected] topic -> topic (stale info)')).toBe(true)
-    expect(isStalePush('! [rejected] x -> x (fetch first)')).toBe(true)
+    expect(isStalePush('stale')).toBe(true)
+    expect(isStalePush('non-fast-forward')).toBe(true)
+    expect(isStalePush('lock-failed')).toBe(true)
+    expect(isStalePush('already-exists')).toBe(true)
   })
 
-  test('a permission failure is not stale', async () => {
+  test('a rejection that fails the same way on every run is not stale', async () => {
     // Running again would not help, and saying it would mislead the user.
-    expect(isStalePush('remote: Permission to o/r.git denied')).toBe(false)
+    expect(isStalePush('ref-conflict')).toBe(false)
+    expect(isStalePush('hook-declined')).toBe(false)
+    expect(isStalePush('tag-exists')).toBe(false)
+    expect(isStalePush('other')).toBe(false)
   })
 })
 
