@@ -99,7 +99,7 @@ export async function startServer(options: ServeOptions): Promise<WebServer> {
   // bearer token. Stop rather than serve them.
   const signIn = createSignIn(Date.now, () => {
     options.stderr(
-      `${APP}: the sign-in link was used twice, so another program signed in first; ` +
+      `${BIN}: the sign-in link was used twice, so another program signed in first; ` +
         `stopping. Run "${BIN} serve" again\n`,
     )
     void stop().then(() => settle(1))
