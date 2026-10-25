@@ -176,11 +176,28 @@ Name a repository, a host, or both, and every call targets them instead. No
 clone is needed:
 
 ```ts
-const acme = new Gh(process.cwd(), { repo: 'acme/widgets', hostname: 'github.acme.com' })
+const acme = new Gh({ repo: 'acme/widgets', hostname: 'github.acme.com' })
 
 acme.prView(42)
 acme.withRepo('acme/gadgets').prList()
 acme.api('repos/{owner}/{repo}/branches')
+```
+
+A client has two forms. `new Gh(cwd, options?)` runs every call in `cwd`, and
+without `repo` gh reads the repository from the clone there.
+`new Gh({ repo, hostname?, runner? })` names a repository and no directory.
+`repo` is required in that form: `new Gh({})` and `new Gh({ hostname })` do
+not typecheck and throw `TypeError`, so a client that reads a clone always
+says which one. Its calls run in `process.cwd()`, read when each call is made,
+since nothing they do depends on it. `gh.cwd` is that directory, a `string` in
+both forms. `AsyncGh` takes the same two forms.
+
+```ts
+const local = new Gh('/path/to/clone') // reads acme/widgets from the clone's remote
+const remote = new Gh({ repo: 'acme/widgets' }) // needs no clone
+
+remote.at('/path/to/clone') // a client rooted at the clone, still naming acme/widgets
+local.searchPrs('is:open author:@me') // a host-only call works on either form
 ```
 
 The target goes into the argv, so a failure's `argv` shows which repository a
@@ -188,7 +205,8 @@ call hit. `pr`, `issue` and `label` calls get `--repo github.acme.com/acme/widge
 `api` calls get `--hostname` and a filled `{owner}/{repo}`. `authStatus`
 asks about that host. `repoList` and `searchPrs` have no host flag in gh, so
 they get `GH_HOST` in the environment. `withRepo` and `at` keep the runner and
-the rest of the target.
+the rest of the target. `at` on a client with no directory gives one rooted
+at that directory. `withRepo` keeps the client's form.
 
 `hostname` is any GitHub host: `github.com`, a GitHub Enterprise Server host,
 or a `<tenant>.ghe.com` host. An empty string means no host, so a value read
@@ -486,10 +504,12 @@ experimental.
 
 ### Clients
 
-- `Gh`: the synchronous client, bound to one working directory, and optionally a repository and
-  host.
+- `Gh`: the synchronous client, bound to one working directory or one repository, and optionally a
+  host. `new Gh(cwd, options?)` or `new Gh({ repo, hostname?, runner? })`.
 - `AsyncGh`: the awaitable client, with the same methods.
 - `GhOptions` and `AsyncGhOptions`: the runner, `repo` and `hostname` a client is built with.
+- `GhRepoOptions` and `AsyncGhRepoOptions`: the same with `repo` required, for a client built
+  without a directory.
 - `AsyncCallOptions`: `timeoutMs` and `signal`, accepted by sixteen methods of `AsyncGh`.
 - `defaultRunnerFactory` and `RunnerFactory`: how a client makes its default runner for `gh`.
 - `runVerb` and `runVerbAsync`, with `RunVerbOptions` and `RunVerbAsyncOptions`: run one verb through

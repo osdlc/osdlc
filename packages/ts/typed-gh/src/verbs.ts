@@ -108,6 +108,18 @@ export function checkTarget(target: GhTarget | undefined): void {
   }
 }
 
+/**
+ * Throws `TypeError` unless `opts.repo` is set: the options-only form names
+ * a repository, so a missing one would silently read the process's own clone.
+ */
+export function requireRepo(client: string, opts: GhTarget | undefined): void {
+  if (typeof opts !== 'object' || opts === null || opts.repo === undefined) {
+    throw new TypeError(
+      `new ${client}(options) needs options.repo; pass a directory, as new ${client}(cwd, options), for a clone`,
+    )
+  }
+}
+
 /** `--repo [host/]owner/name` for `pr`, `issue` and `label` verbs. `repo` overrides the target's. */
 function repoArgs(target: GhTarget | undefined, repo?: string | undefined): string[] {
   checkTarget(target)

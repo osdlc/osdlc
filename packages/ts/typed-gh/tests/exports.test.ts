@@ -153,9 +153,11 @@ describe('the examples', () => {
         n !== 'constructor' &&
         n !== 'exec' &&
         n !== 'read' &&
-        // `try` and `soft` are getters. examples/ calls them through their methods.
+        // `try`, `soft` and `cwd` are getters. examples/ calls `try` and `soft`
+        // through their methods and reads `cwd`.
         n !== 'try' &&
         n !== 'soft' &&
+        n !== 'cwd' &&
         !WAITING.has(n),
     )
     expect(methods.length).toBeGreaterThan(0)
