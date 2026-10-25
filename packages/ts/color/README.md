@@ -2,7 +2,7 @@
 
 sRGB colour arithmetic for checking colour contrast. Parse the colours a
 browser reports, mix and composite them as a browser does, and measure WCAG 2
-contrast. No dependencies.
+contrast and the sRGB distance between two colours. No dependencies.
 
 ## Why
 
@@ -90,17 +90,23 @@ No function changes its arguments.
 - `relativeLuminance(color)` is the WCAG 2 relative luminance, 0-1.
 - `contrastRatio(a, b)` is the WCAG 2 contrast ratio, 1-21. Each side is an
   `Rgba` or a CSS string.
+- `colorDistance(a, b)` is the Euclidean distance over the 0-255 `r`, `g`
+  and `b` channels: 0 for the same colour, about 441.7 for black to white.
+  Each side is an `Rgba` or a CSS string. Use it to pick the nearest colour of
+  a fixed palette, such as a terminal's 256 colours. It is not a perceptual
+  difference.
 
-`relativeLuminance` and `contrastRatio` ignore alpha. Composite a translucent
+`relativeLuminance`, `contrastRatio` and `colorDistance` ignore alpha. Composite a translucent
 colour with `compositeOver` first.
 
 ```ts
-import { fromPixel, parseColor, relativeLuminance, withAlpha } from '@osdlc/color'
+import { colorDistance, fromPixel, parseColor, relativeLuminance, withAlpha } from '@osdlc/color'
 
 parseColor('color(srgb 0.5 0.5 0.5 / 50%)') // { r: 127.5, g: 127.5, b: 127.5, a: 0.5 }
 withAlpha(parseColor('#1a73e8'), 0.5) // { r: 26, g: 115, b: 232, a: 0.5 }
 fromPixel(new Uint8ClampedArray([0, 0, 0, 255])) // { r: 0, g: 0, b: 0, a: 1 }
 relativeLuminance(parseColor('#ffffff')) // 1
+colorDistance('#000000', 'rgb(3 4 0)') // 5
 ```
 
 ### Errors
@@ -108,7 +114,7 @@ relativeLuminance(parseColor('#ffffff')) // 1
 There is no error class. Every message starts with `color:`.
 
 - `parseColor` throws an `Error` for input it cannot read. So does
-  `contrastRatio` for a string side, and `fromPixel` for fewer than 4 entries.
+  `contrastRatio` and `colorDistance` for a string side, and `fromPixel` for fewer than 4 entries.
 - `mixColors` and `withAlpha` throw a `RangeError` when `amount` or `alpha` is
   `NaN` or infinite. A finite value outside 0-1 is clamped.
 - `compositeOver` throws a `RangeError` when `ground.a` is below 1. Composite
@@ -139,6 +145,7 @@ more. These results are from culori 4.0.2 on Node.js 24:
 | Mix in sRGB | `mixColors` | `interpolate([a, b], 'rgb')(t)` |
 | Composite | `compositeOver`, rounded to 8 bits: 50% black on white gives 128 | `blend`, not rounded: 0.5 (127.5 of 255); also takes a translucent ground |
 | Luminance and contrast | `relativeLuminance`, `contrastRatio` | `wcagLuminance`, `wcagContrast`, with the same results: `#777777` on white is 4.4781 in both |
+| Distance | `colorDistance`, over 0-255 channels | `differenceEuclidean('rgb')`, over 0-1 channels |
 | Canvas pixels | `fromPixel` | none |
 | Hex out | `formatHex` | `formatHex`, `formatHex8` |
 
