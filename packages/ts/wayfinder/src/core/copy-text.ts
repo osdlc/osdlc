@@ -47,8 +47,17 @@ export function skillCopyText(skill: Pick<SkillRow, 'invoke'>): string | null {
 
 /**
  * The line `list` and `query` print for `task`: what Copy gives, which `run`
- * accepts. When Copy refuses, the task's `display` with its controls replaced.
+ * accepts. When Copy refuses, the same quoted line with its controls
+ * replaced, or the `display` of a task with no argv.
  */
 export function taskLine(task: Pick<Task, 'argv' | 'cwd' | 'display'>): string {
-  return taskCopyText(task, process.platform) ?? terminalSafe(task.display)
+  const copied = taskCopyText(task, process.platform)
+  if (copied !== null) return copied
+  if (task.argv.length === 0) return terminalSafe(task.display)
+  return terminalSafe(
+    commandString(task.argv, {
+      platform: process.platform,
+      ...(task.cwd === '.' ? {} : { cwd: task.cwd }),
+    }),
+  )
 }
