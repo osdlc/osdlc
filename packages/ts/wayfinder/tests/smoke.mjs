@@ -63,11 +63,11 @@ try {
 
   // The web view's page, built from dist/ the way `way serve` builds it.
   const { buildPage } = await import(pathToFileURL(join(packageDir(), 'dist', 'page.js')).href)
-  const html = await buildPage({ theme: 'dark' })
-  assert.ok(html.includes('<html lang="en" data-theme="dark">'))
+  const html = await buildPage({ theme: 'dark', platform: 'linux', nonce: 'abc' })
+  assert.ok(html.includes('<html lang="en" data-theme="dark" data-platform="linux">'))
   assert.ok(!html.includes('<!-- @SCRIPT@ -->') && !html.includes('<!-- @STYLE@ -->'))
   assert.ok(!html.includes('the page script failed to build'), 'dist/web/main.js is missing')
-  assert.match(html, /<script type="module">\n.{1000,}/s)
+  assert.match(html, /<script type="module" nonce="abc">\n.{1000,}/s)
 
   // The library entry, built: the same catalog document as `way list --json`.
   const { buildCatalog } = await import(pathToFileURL(join(packageDir(), 'dist', 'index.js')).href)
