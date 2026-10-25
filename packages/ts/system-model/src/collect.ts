@@ -15,7 +15,7 @@
  * The cache (`cached.ts`) sits above this and uses `probeObserver`.
  */
 
-import { spawnRunnerAsync, type AsyncCommandRunner } from '@osdlc/command-seam'
+import type { AsyncCommandRunner } from '@osdlc/command-seam'
 
 import {
   boundRunners,
