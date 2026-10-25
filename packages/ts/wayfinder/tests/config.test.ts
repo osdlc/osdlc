@@ -15,6 +15,7 @@ import {
   getConfigValue,
   loadConfig,
   mergeConfig,
+  movedUserConfigWarning,
   orderRunners,
   parseConfigValue,
   readConfigFile,
@@ -176,6 +177,31 @@ describe('configLocations', () => {
       expect(at.user).toBe('/abs/mine.json')
     },
   )
+})
+
+describe('movedUserConfigWarning', () => {
+  test('on Windows, names a pre-0.8 user config when none is at the new path', async () => {
+    const home = await root({ '.config/wayfinder/config.json': '{"allowExec": false}' })
+    const user = join(home, 'AppData', 'Roaming', 'wayfinder', 'config.json')
+    const at = { ...configLocations(home, env(), home), user }
+    const warning = movedUserConfigWarning(at, env(), home, 'win32')
+    expect(warning).toContain(join(home, '.config', 'wayfinder', 'config.json'))
+    expect(warning).toContain(`move it to ${user}`)
+    expect(movedUserConfigWarning(at, env(), home, 'linux')).toBeNull()
+  })
+
+  test('says nothing once the new file exists, or with no old one', async () => {
+    const home = await root({
+      '.config/wayfinder/config.json': '{}',
+      'AppData/Roaming/wayfinder/config.json': '{}',
+    })
+    const user = join(home, 'AppData', 'Roaming', 'wayfinder', 'config.json')
+    const at = { ...configLocations(home, env(), home), user }
+    expect(movedUserConfigWarning(at, env(), home, 'win32')).toBeNull()
+    const empty = await root()
+    const none = { ...configLocations(empty, env(), empty), user: join(empty, 'x.json') }
+    expect(movedUserConfigWarning(none, env(), empty, 'win32')).toBeNull()
+  })
 })
 
 describe('mergeConfig', () => {

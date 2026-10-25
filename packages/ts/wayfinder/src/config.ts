@@ -52,7 +52,8 @@
  * problem. `$schema` is accepted and ignored.
  */
 
-import { isAbsolute, resolve } from 'node:path'
+import { existsSync } from 'node:fs'
+import { isAbsolute, join as joinPath, resolve } from 'node:path'
 
 import { z } from 'zod'
 
@@ -67,9 +68,9 @@ import {
 } from '@osdlc/trust-repo'
 import { originOwner } from '@osdlc/trust-repo/git'
 
-import { BIN, CONFIG_ENV_VAR, PROJECT_CONFIG_FILENAME } from './app.ts'
+import { APP, BIN, CONFIG_ENV_VAR, PROJECT_CONFIG_FILENAME } from './app.ts'
 import { THEME_VALUES, type Theme } from './config-keys.ts'
-import { appDirs, expandTilde, USER_CONFIG_FILENAME } from './xdg.ts'
+import { appDirs, expandTilde, pre08Bases, USER_CONFIG_FILENAME } from './xdg.ts'
 import type { WayOptions } from './catalog.ts'
 import { SKILLS_SETTING_VALUES, type SkillsSetting } from './core/skills.ts'
 
@@ -349,6 +350,28 @@ export function configLocations(
       named !== null && envPath === null ? { variable: CONFIG_ENV_VAR, value: named } : null,
     project: resolve(root, PROJECT_CONFIG_FILENAME),
   }
+}
+
+/**
+ * The warning for a Windows user config left where releases before 0.8 kept
+ * it (`~\.config\wayfinder\config.json`), when there is none at the new
+ * path. That file is not read, so its settings, `allowExec: false` among
+ * them, no longer apply. Null when there is nothing to say.
+ */
+export function movedUserConfigWarning(
+  locations: ConfigLocations,
+  env: Record<string, string | undefined>,
+  home: string,
+  platform: NodeJS.Platform = process.platform,
+): string | null {
+  if (platform !== 'win32' || locations.userFromEnv) return null
+  const old = joinPath(pre08Bases(env, home).config, APP, USER_CONFIG_FILENAME)
+  if (resolve(old) === resolve(locations.user) || !existsSync(old)) return null
+  if (existsSync(locations.user)) return null
+  return (
+    `${old}: this user config is from before 0.8 and is no longer read, so none of its ` +
+    `settings apply; move it to ${locations.user}`
+  )
 }
 
 /** The warning for a relative {@link CONFIG_ENV_VAR} that was ignored, or null. */
@@ -690,6 +713,8 @@ export async function loadConfig(
   const warnings: string[] = []
   const ignored = envIgnoredWarning(locations)
   if (ignored !== null) warnings.push(ignored)
+  const moved = movedUserConfigWarning(locations, env, home)
+  if (moved !== null) warnings.push(moved)
   warnings.push(...(userRead?.warnings ?? []), ...(projectRead?.warnings ?? []))
 
   const user = userRead?.config ?? null
