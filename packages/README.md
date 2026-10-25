@@ -68,8 +68,9 @@ behaviour, not the same code.
   it: `packages/rust/<name>/tests/fixtures/parity.json`, run by both twins'
   tests. `tiered-dirs`, `path-guard` and `config-layers` have one.
   `frontmatter-lossless` uses its crate's `tests/fixtures/conformance.json`,
-  with a copy in the TypeScript package. `etag-write` has no shared fixture
-  yet.
+  with a copy in the TypeScript package. `markdown-contract` runs the
+  TypeScript package's `corpus/` directly, with no copy. `etag-write` has no
+  shared fixture yet.
 - **Each language's idiom.** A twin does not copy the other's names or
   signatures when that breaks its own language's habits. Rust uses
   snake_case, `Result`, traits and the standard library's words. TypeScript
@@ -115,6 +116,9 @@ Developed here, in this repository:
 - `packages/rust/config-layers` (`config-layers` on crates.io)
 - `packages/rust/etag-write` (`etag-write` on crates.io)
 - `packages/rust/frontmatter-lossless` (`frontmatter-lossless` on crates.io)
+- `packages/rust/markdown-contract` (`markdown-contract` on crates.io, the Rust twin
+  of `@osdlc/markdown-contract`: contracts for markdown documents, checked
+  against the package's corpus)
 - `packages/rust/path-guard` (`path-guard` on crates.io)
 - `packages/rust/slug-collate` (`slug-collate` on crates.io)
 - `packages/rust/tiered-dirs` (`tiered-dirs` on crates.io)
