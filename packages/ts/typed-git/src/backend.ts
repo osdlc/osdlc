@@ -25,6 +25,13 @@ import {
   type CommandResult,
 } from '@osdlc/command-seam'
 
+import { versionedVerb } from './features.ts'
+import {
+  pinnedGitVersion,
+  probeGitVersionAsync,
+  versionVerb,
+  type GitVersion,
+} from './git-version.ts'
 import * as v from './verbs.ts'
 import {
   gate,
@@ -117,6 +124,9 @@ export interface GitCallOptions {
  * @experimental Each new verb adds a kind, in a minor release.
  */
 export type GitRequest =
+  // The git the backend runs. `cliBackend` answers it from `git --version`,
+  // probed once per runner.
+  | { kind: 'version' }
   | { kind: 'showAtRev'; rev: string; relPath: string }
   | { kind: 'revParse'; args: string[] }
   | { kind: 'resolveRef'; ref: string }
@@ -215,6 +225,7 @@ export type GitRequest =
  * @experimental It grows with {@link GitRequest}.
  */
 export interface GitResults {
+  version: GitVersion
   showAtRev: string | null
   revParse: string | null
   resolveRef: string | null
@@ -299,6 +310,12 @@ export type GitRequestKind = GitRequest['kind']
  * config key. It rejects with the classified failure — or whatever error the backend
  * considers equivalent — when git failed rather than answered.
  *
+ * The git version check is `cliBackend`'s: it probes `git --version` before
+ * a request whose verb needs a newer git (see `features.ts`) and rejects with
+ * the `unsupported-git` failure when the git is too old. Another backend has
+ * no git version to check, so it gets every request and decides itself. It
+ * may reject one with that same failure, or with {@link UnsupportedRequest}.
+ *
  * @experimental New request kinds land in minor releases. Use
  * {@link partialBackend} rather than an exhaustive switch.
  */
@@ -323,6 +340,8 @@ export class UnsupportedRequest extends Error {
 /** Translate a request into the CLI verb that performs it. */
 function toVerb(request: GitRequest): GitVerb<unknown> {
   switch (request.kind) {
+    case 'version':
+      return versionVerb()
     case 'showAtRev':
       return v.showAtRev(request.rev, request.relPath)
     case 'revParse':
@@ -501,9 +520,19 @@ export function cliBackend(
      * `GIT_SSH_COMMAND` once, instead of passing it on every call.
      */
     env?: Record<string, string> | undefined
+    /**
+     * Pins the git version: `'2.55.0'`, or a whole `git version …` line.
+     * Version-gated requests then use it and never run `git --version`, and
+     * the `version` request returns it. Set it with a fake runner. An
+     * unparsable value throws a `RangeError` here.
+     */
+    gitVersion?: string | undefined
   } = {},
 ): GitBackend {
   const runner = opts.runner ?? spawnRunnerAsync('git', { absolutePathOnly: true })
+  const pinned = pinnedGitVersion(opts.gitVersion)
+  const versionOf = (run: AsyncCommandRunOptions): Promise<GitVersion> =>
+    pinned === undefined ? probeGitVersionAsync(runner, run) : Promise.resolve(pinned)
   const prefix = repoPrefix(opts.gitDir, opts.workTree)
   return {
     async execute<R extends GitRequest>(
@@ -511,7 +540,7 @@ export function cliBackend(
       request: R,
       callOpts: GitCallOptions = {},
     ): Promise<GitResults[R['kind']]> {
-      const verb = toVerb(request)
+      const gated = toVerb(request)
       const runOpts: AsyncCommandRunOptions = { cwd }
       if (callOpts.timeoutMs !== undefined) runOpts.timeoutMs = callOpts.timeoutMs
       if (callOpts.signal !== undefined) runOpts.signal = callOpts.signal
@@ -519,6 +548,16 @@ export function cliBackend(
       // Per-call entries win over the backend's, matching `Git`.
       const env = mergeEnv(opts.env, callOpts.env)
       if (env !== undefined) runOpts.env = env
+      const req: GitRequest = request
+      // `version` is answered from the per-runner cache, like the probe a
+      // version-gated verb makes.
+      if (req.kind === 'version') {
+        return (await versionOf(runOpts)) as GitResults[R['kind']]
+      }
+      // A verb that needs a git feature runs in the form this git supports,
+      // or rejects as `unsupported-git`. Others never probe.
+      const verb =
+        gated.needs === undefined ? gated : versionedVerb(gated, await versionOf(runOpts), prefix)
       if (verb.input !== undefined) runOpts.input = verb.input
       // The verb's own entries (the C locale) win over the backend's and the call's.
       if (verb.env !== undefined) runOpts.env = { ...runOpts.env, ...verb.env }
@@ -527,10 +566,9 @@ export function cliBackend(
       // Unchecked `raw` is the only request that skips `gate`: it returns the
       // result at any exit code. Everything else goes through the same `gate`
       // the sync client uses.
-      const req: GitRequest = request
-      const gated = req.kind !== 'raw' || req.checked === true
+      const checked = req.kind !== 'raw' || req.checked === true
       // The prefixed argv is what ran, so it is what a `CommandFailed` reports.
-      const value = gated ? gate(verb, result, argv) : verb.parse(result, argv)
+      const value = checked ? gate(verb, result, argv) : verb.parse(result, argv)
       // `GitResults` restates the verb table's return types for callers. The
       // two are kept in step by hand, and this cast is where they meet.
       return value as GitResults[R['kind']]

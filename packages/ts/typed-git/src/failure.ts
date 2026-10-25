@@ -7,6 +7,10 @@
  * non-English locale git translates its messages. Those keep command-seam's
  * kind, so an unrecognised failure is still an `exit` with git's first stderr
  * line as its message, never a wrong git kind.
+ *
+ * One kind is not read from git's output: `unsupported-git`, which a client
+ * reports before it runs a verb the local git is too old for (see
+ * `./features.ts`).
  */
 
 import {
@@ -16,6 +20,8 @@ import {
   type CommandFailureKind,
 } from '@osdlc/command-seam'
 import { describe, FailureError, isFailure, type Failure } from '@osdlc/result'
+
+import type { UnsupportedGit } from './features.ts'
 
 /**
  * Why a git call failed:
@@ -36,7 +42,11 @@ import { describe, FailureError, isFailure, type Failure } from '@osdlc/result'
  * - `tls`: the TLS handshake failed ("unable to access … SSL certificate
  *   problem"). The host was reached, so this is not `remote-unreachable`, and
  *   retrying will not help until the clock, the CA certificates or the remote's
- *   certificate is fixed.
+ *   certificate is fixed;
+ * - `unsupported-git`: the local git is older than the verb needs ("merge-tree
+ *   --write-tree needs git 2.38 or later; found 2.34.1"), or older than the
+ *   2.34 floor. The verb did not run. `unsupported` says which feature, and
+ *   which git it needs and found.
  */
 export type GitFailureKind =
   | CommandFailureKind
@@ -46,6 +56,7 @@ export type GitFailureKind =
   | 'not-authenticated'
   | 'not-found'
   | 'tls'
+  | 'unsupported-git'
 
 /** A failed git call. `message` is one line for a person; `detail` is git's own output. */
 export interface GitFailure extends Failure<GitFailureKind> {
@@ -57,8 +68,13 @@ export interface GitFailure extends Failure<GitFailureKind> {
   exitCode: number | null
   /** The signal that ended git, when the runner knows it. */
   signal?: NodeJS.Signals | null | undefined
-  /** The `CommandFailed` this was classified from. */
-  cause: CommandFailed
+  /**
+   * The `CommandFailed` this was classified from. Absent for
+   * `unsupported-git`, where the verb never ran.
+   */
+  cause?: CommandFailed | undefined
+  /** For `unsupported-git`: the feature, the git it needs, and the git found. */
+  unsupported?: UnsupportedGit | undefined
 }
 
 const INSTALL_HINT = 'Install git from https://git-scm.com.'

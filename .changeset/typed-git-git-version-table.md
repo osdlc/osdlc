@@ -1,0 +1,13 @@
+---
+'@osdlc/typed-git': minor
+---
+
+typed-git knows which git it runs, and which features need a newer one. The supported floor is git 2.34 (Ubuntu 22.04 LTS). One table, `GIT_FEATURES`, lists the features newer than that: `merge-tree --write-tree` (git 2.38), `merge-tree --merge-base` (2.40) and `worktree list -z` (2.36). The README's new "Git versions" section is checked against it.
+
+- A verb that uses one of these features runs `git --version` first, once per runner, and caches it. Other verbs never run it. `git.version()` and `await asyncGit.version()` return the parsed version, `{ major, minor, patch, text }`, for plain, Apple (`2.39.3 (Apple Git-146)`), Windows (`2.45.1.windows.1`) and rc builds.
+- **Breaking:** new `GitFailureKind` `unsupported-git`. On a git older than the feature, `mergeTree` fails with it before git runs ("merge-tree --write-tree needs git 2.38 or later; found 2.34.1."), where it failed as a generic `exit` with git's usage error. Below 2.34 every version-gated verb fails that way with the feature `typed-git`. The failure carries `unsupported: { feature, needs, have }`. An exhaustive `switch` over `GitFailureKind` needs the new case. `git.try` returns it and `git.soft` falls back on it, like any other failure.
+- **Breaking:** `GitFailure.cause` is now optional (`CommandFailed | undefined`), as in `@osdlc/typed-gh`. It is absent only for `unsupported-git`, where git did not run. Read `error.cause?.result`.
+- `worktrees()` runs `worktree list --porcelain -z` on git 2.36 or later (#381). A path holding a newline parses, and `lockReason` is the reason as written, where it came back C-quoted. Older git runs the newline form as before.
+- **Breaking for fake runners:** a `CommandRunner` behind `worktrees()` or `mergeTree()` is now also asked for `["--version"]`. To migrate, pin the version with the new `gitVersion` option: `new Git(cwd, { runner, gitVersion: '2.55.0' })` or `cliBackend({ runner, gitVersion: '2.55.0' })`. Gated verbs then use it and never run `git --version`, `version()` returns it, and `at()` keeps it. It takes `'2.55.0'` or a whole `git version …` line, and throws a `RangeError` at construction for anything else. A fake without the pin must answer `--version` with `git version <x.y.z>`; output that is not a version line fails as `exit`.
+- `cliBackend` does the version check. A backend other than the CLI gets every request unchecked, and answers the new `version` request kind itself (`partialBackend` rejects it with `UnsupportedRequest` when it is not implemented).
+- New exports: `GIT_FEATURES`, `GIT_FLOOR`, `gitSupports`, `parseGitVersion`, `compareGitVersions`, and the types `GitVersion`, `GitFeature`, `GitFeatureSpec`, `GitRelease` and `UnsupportedGit`.

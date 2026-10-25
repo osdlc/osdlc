@@ -5,6 +5,9 @@ import { join } from 'node:path'
 
 import { makeGitFixture } from '@osdlc/typed-git/testing'
 
+/** `mergeTree` needs git 2.38. On an older git, `run-all.test.ts` skips this example. */
+export const needs = ['merge-tree --write-tree'] as const
+
 export function run(): void {
   const fx = makeGitFixture()
   try {

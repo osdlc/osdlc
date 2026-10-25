@@ -53,6 +53,13 @@ function pr(
 }
 
 /** Answers `rev-list`, `merge-tree` and `rev-parse` from a table keyed by joined argv. */
+/**
+ * `git --version`, which typed-git runs before a version-gated verb such as
+ * `mergeTree`. `runSurvey` builds its own clients from the runner, so the
+ * runner there answers it; `fakeGit` pins the version instead.
+ */
+const GIT_VERSION: CommandResult = { exitCode: 0, stdout: 'git version 2.50.1\n', stderr: '' }
+
 function fakeGit(replies: Record<string, CommandResult>): { git: Git; calls: string[][] } {
   const calls: string[][] = []
   const runner: CommandRunner = {
@@ -61,7 +68,7 @@ function fakeGit(replies: Record<string, CommandResult>): { git: Git; calls: str
       return replies[argv.join(' ')] ?? { exitCode: 128, stdout: '', stderr: 'no reply' }
     },
   }
-  return { git: new Git('/repo', { runner }), calls }
+  return { git: new Git('/repo', { runner, gitVersion: '2.50.1' }), calls }
 }
 
 const counts = (behind: number, ahead: number): CommandResult => ({
@@ -589,6 +596,7 @@ describe('runSurvey scoped by --pr', () => {
         }
         if (argv[0] === 'rev-list') return counts(2, 1)
         if (argv[0] === 'merge-tree') return cleanTree
+        if (argv[0] === '--version') return GIT_VERSION
         if (argv[0] === 'rev-parse') return resolved('b'.repeat(40))
         return { exitCode: 0, stdout: '', stderr: '' }
       },
