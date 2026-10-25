@@ -2,14 +2,25 @@
  * `@osdlc/system-model/runners`: task runners that belong to no one ecosystem.
  */
 
+import { evidence } from '../../model.ts'
 import type { Marker, ToolDef } from '../../tool.ts'
+import {
+  CMAKE_BRAND,
+  cmakePresetsRunner,
+  PRESETS_FILE,
+  USER_PRESETS_FILE,
+} from './cmake-presets.ts'
+import { DEVBOX_BRAND, DEVBOX_JSON, devboxRunner } from './devbox.ts'
 import { CONFIG_NAMES as COMPOSE_FILES, dockerComposeRunner } from './docker-compose.ts'
 import { githubActionsRunner, WORKFLOW_FILES } from './github-actions.ts'
 import { CONFIG_NAMES as TASKFILE_NAMES, goTaskRunner, GO_TASK_BRAND } from './go-task.ts'
 import { JUSTFILE_NAMES, justRunner, JUST_BRAND } from './just.ts'
 import { MAKEFILE_NAMES, makeRunner, MAKE_BRAND } from './make.ts'
 import { moonDescribe, moonRunner, MOON_BRAND } from './moon.ts'
+import { NX_BRAND, NX_JSON, nxRunner } from './nx.ts'
+import { PROCFILE_BRAND, PROCFILE_NAMES, procfileRunner } from './procfile.ts'
 import { TURBO_JSON, TURBO_JSONC, turboRunner, TURBO_BRAND } from './turbo.ts'
+import { tasksFiles, VSCODE_TASKS_BRAND, vscodeTasksRunner } from './vscode-tasks.ts'
 
 export type { MoonProjectFact } from './moon.ts'
 
@@ -96,6 +107,64 @@ export const githubActions: ToolDef = {
   roles: { runner: githubActionsRunner },
 }
 
+/** Nx: the targets `project.json` and `package.json` declare, without running nx. */
+export const nx: ToolDef = {
+  id: 'nx',
+  homepage: 'https://nx.dev',
+  description: 'A build system for monorepos that runs the targets its projects declare.',
+  brand: NX_BRAND,
+  binary: 'nx',
+  markers: [{ files: `/${NX_JSON}`, tier: 'files', workspaceRoot: true }],
+  roles: { runner: nxRunner },
+}
+
+/** VS Code tasks: the tasks of each `.vscode/tasks.json`. No `binary`: each task runs its own command. */
+export const vscodeTasks: ToolDef = {
+  id: 'vscode-tasks',
+  homepage: 'https://code.visualstudio.com/docs/debugtest/tasks',
+  description: 'The tasks a VS Code workspace declares in .vscode/tasks.json.',
+  brand: VSCODE_TASKS_BRAND,
+  detect: async (ctx) =>
+    (await tasksFiles(ctx)).map((file) => evidence('files', file, '.vscode/tasks.json')),
+  roles: { runner: vscodeTasksRunner },
+}
+
+/** Devbox: the scripts of each `devbox.json`. */
+export const devbox: ToolDef = {
+  id: 'devbox',
+  homepage: 'https://www.jetify.com/devbox',
+  description:
+    'Isolated development shells from Nix packages, with the scripts a devbox.json declares.',
+  brand: DEVBOX_BRAND,
+  binary: 'devbox',
+  markers: files([DEVBOX_JSON]),
+  roles: { runner: devboxRunner },
+}
+
+/**
+ * Procfile: one service per process, through overmind, foreman or honcho.
+ * No `binary`: the process manager is the first one found on the PATH.
+ */
+export const procfile: ToolDef = {
+  id: 'procfile',
+  homepage: 'https://devcenter.heroku.com/articles/procfile',
+  description: 'The long-running processes a Procfile declares, run by a process manager.',
+  brand: PROCFILE_BRAND,
+  markers: files(PROCFILE_NAMES),
+  roles: { runner: procfileRunner },
+}
+
+/** CMake presets: configure, build and test presets. */
+export const cmakePresets: ToolDef = {
+  id: 'cmake-presets',
+  homepage: 'https://cmake.org/cmake/help/latest/manual/cmake-presets.7.html',
+  description: 'The configure, build and test presets a CMakePresets.json declares.',
+  brand: CMAKE_BRAND,
+  binary: 'cmake',
+  markers: files([PRESETS_FILE, USER_PRESETS_FILE]),
+  roles: { runner: cmakePresetsRunner },
+}
+
 /** Every tool this plugin defines. */
 export const runnerTools: readonly ToolDef[] = [
   moon,
@@ -105,4 +174,9 @@ export const runnerTools: readonly ToolDef[] = [
   goTask,
   dockerCompose,
   githubActions,
+  nx,
+  vscodeTasks,
+  devbox,
+  procfile,
+  cmakePresets,
 ]

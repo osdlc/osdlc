@@ -34,6 +34,7 @@ import {
   validateToolDef,
 } from '@osdlc/system-model/detect'
 import { denoEcosystem, denoTasks, denoTools } from '@osdlc/system-model/deno'
+import { dotnet, dotnetEcosystem, dotnetTools } from '@osdlc/system-model/dotnet'
 import { go, goEcosystem, goTools } from '@osdlc/system-model/go'
 import { gradle, jvmEcosystem, jvmTools, maven, sbt } from '@osdlc/system-model/jvm'
 import {
@@ -46,20 +47,35 @@ import {
   yarn,
 } from '@osdlc/system-model/node'
 import { composer, phpEcosystem, phpTools } from '@osdlc/system-model/php'
-import { pip, poetry, python, pythonEcosystem, pythonTools, uv } from '@osdlc/system-model/python'
+import {
+  hatch,
+  pdm,
+  pip,
+  poe,
+  poetry,
+  python,
+  pythonEcosystem,
+  pythonTools,
+  uv,
+} from '@osdlc/system-model/python'
 import { bundler, rake, rubyEcosystem, rubyTools } from '@osdlc/system-model/ruby'
 import {
+  cmakePresets,
+  devbox,
   dockerCompose,
   githubActions,
   goTask,
   just,
   make,
   moon,
+  nx,
+  procfile,
   runnerTools,
   turbo,
+  vscodeTasks,
   type MoonProjectFact,
 } from '@osdlc/system-model/runners'
-import { cargo, rustEcosystem, rustTools } from '@osdlc/system-model/rust'
+import { cargo, cargoAliases, rustEcosystem, rustTools } from '@osdlc/system-model/rust'
 import { swiftEcosystem, swiftpm, swiftTools } from '@osdlc/system-model/swift'
 import {
   direnv,
@@ -102,15 +118,33 @@ test('register only the plugins you need', async () => {
 test('each plugin exports its tools and its ecosystem', () => {
   const groups: Array<[readonly ToolDef[], ToolDef[], EcosystemDef | undefined]> = [
     [nodeTools, [bun, pnpm, yarn, npm, nodeScripts], nodeEcosystem],
-    [rustTools, [cargo], rustEcosystem],
-    [pythonTools, [uv, poetry, pip, python], pythonEcosystem],
+    [rustTools, [cargo, cargoAliases], rustEcosystem],
+    [pythonTools, [uv, poetry, pip, python, poe, pdm, hatch], pythonEcosystem],
     [jvmTools, [gradle, maven, sbt], jvmEcosystem],
     [phpTools, [composer], phpEcosystem],
     [swiftTools, [swiftpm], swiftEcosystem],
     [rubyTools, [bundler, rake], rubyEcosystem],
     [goTools, [go], goEcosystem],
     [denoTools, [denoTasks], denoEcosystem],
-    [runnerTools, [moon, just, make, turbo, goTask, dockerCompose, githubActions], undefined],
+    [dotnetTools, [dotnet], dotnetEcosystem],
+    [
+      runnerTools,
+      [
+        moon,
+        just,
+        make,
+        turbo,
+        goTask,
+        dockerCompose,
+        githubActions,
+        nx,
+        vscodeTasks,
+        devbox,
+        procfile,
+        cmakePresets,
+      ],
+      undefined,
+    ],
     [toolTools, [mise, proto, direnv, lefthook, husky, preCommit], undefined],
   ]
   for (const [all, named, ecosystem] of groups) {
