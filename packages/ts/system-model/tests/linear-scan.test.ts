@@ -3,6 +3,9 @@
  * take time linear in the input. Each case feeds a shape that made an earlier
  * regex backtrack with the square (or worse) of its length, and must finish
  * well inside BOUND_MS.
+ *
+ * BOUND_MS scales with this machine's speed, measured on a known linear pass
+ * over the same input size, so a slow runner does not fail a linear scan.
  */
 
 import { describe, expect, test } from 'vitest'
@@ -24,8 +27,21 @@ import { detectAndCollect, fixtureRoot, removeRoot } from './support.ts'
 
 /** Each input is about this long. The old regexes took seconds to minutes. */
 const N = 200_000
-const BOUND_MS = 300
 const spaces = ' '.repeat(N)
+
+/** The fastest of a few runs of one linear pass over N characters. */
+function baselineMs(): number {
+  let best = Infinity
+  for (let i = 0; i < 5; i++) {
+    const start = performance.now()
+    spaces.replace(/ /g, '_').split('_').length
+    best = Math.min(best, performance.now() - start)
+  }
+  return best
+}
+
+/** 300 ms on a fast machine, more on a slow one; a quadratic scan takes seconds or more. */
+const BOUND_MS = Math.max(300, baselineMs() * 40)
 
 function timed<T>(f: () => T): T {
   const start = performance.now()
