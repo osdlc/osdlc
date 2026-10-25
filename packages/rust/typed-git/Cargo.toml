@@ -1,0 +1,32 @@
+[package]
+name = "typed-git"
+version = "0.4.0"
+edition.workspace = true
+rust-version.workspace = true
+description = "Typed functions over the git command line: repository queries and a parsed status, commits and reverts limited to named paths, push to the upstream, cache clones, worktrees, and a command builder for everything else."
+license.workspace = true
+repository.workspace = true
+homepage = "https://github.com/osdlc/osdlc/tree/main/packages/rust/typed-git"
+readme = "README.md"
+keywords = ["git", "vcs", "worktree", "commit", "cli"]
+categories = ["development-tools"]
+include = [
+  "src/**/*.rs",
+  "examples/**/*.rs",
+  "README.md",
+  "CHANGELOG.md",
+  "LICENSE-MIT",
+  "LICENSE-APACHE",
+]
+
+[dependencies]
+log = "0.4.17"
+thiserror = { workspace = true }
+which = "8.0.2"
+
+[dev-dependencies]
+serial_test = "3.4.0"
+tempfile = { workspace = true }
+
+[lints]
+workspace = true
