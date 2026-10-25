@@ -30,3 +30,17 @@ changelog_update = true
 name = "yaml-splice-wasm"
 publish = false
 release = false
+
+# The wasm-bindgen wrapper over tradecraft-core, built for a future npm
+# package. Never released as a crate.
+[[package]]
+name = "tradecraft-wasm"
+publish = false
+release = false
+
+# A build tool that writes the TypeScript declarations for tradecraft-wasm.
+# Never released as a crate.
+[[package]]
+name = "tradecraft-typegen"
+publish = false
+release = false

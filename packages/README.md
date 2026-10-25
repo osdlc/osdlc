@@ -126,6 +126,15 @@ Developed here, in this repository:
 - `packages/rust/path-guard` (`path-guard` on crates.io)
 - `packages/rust/slug-collate` (`slug-collate` on crates.io)
 - `packages/rust/tiered-dirs` (`tiered-dirs` on crates.io)
+- `packages/rust/tradecraft` (`tradecraft` on crates.io, a command-line tool
+  that publishes a vault of markdown skill notes into the formats of
+  coding-agent tools; `cargo install tradecraft`)
+- `packages/rust/tradecraft-core` (`tradecraft-core` on crates.io, the library
+  behind `tradecraft`)
+- `packages/rust/tradecraft-typegen`, the generator of the TypeScript
+  declarations for `tradecraft-wasm` (not published to crates.io)
+- `packages/rust/tradecraft-wasm`, the WebAssembly build of `tradecraft-core`
+  for a future npm package (not published to crates.io)
 - `packages/rust/typed-git` (`typed-git` on crates.io, the Rust twin of
   `@osdlc/typed-git`: a typed git client)
 - `packages/rust/yaml-splice` (`yaml-splice` on crates.io)
@@ -291,7 +300,8 @@ Rust crates are released by `.github/workflows/release-plz.yml` with
    `git push origin etag-write/v0.1.0`, then
    `gh release create etag-write/v0.1.0 --title "etag-write v0.1.0"` with
    the CHANGELOG section as the notes.
-6. A crate that is never released, such as `yaml-splice-wasm`, has
+6. A crate that is never released, such as `yaml-splice-wasm`,
+   `tradecraft-wasm` or `tradecraft-typegen`, has
    `publish = false` in its `Cargo.toml` and `release = false` for it in
    `packages/rust/release-plz.toml`. The workflow and release-plz then skip
    it.
