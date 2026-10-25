@@ -171,7 +171,7 @@ describe('duplicate tool ids', () => {
     await writeFile(file, "export const tools = [{ id: 'npm', roles: {} }]\n")
     const ran = await run(['--list', '--config', file, '-C', dir])
     expect(ran.code).toBe(1)
-    expect(ran.err).toBe(`wayfinder: ${file}: tool "npm" is already a built-in tool\n`)
+    expect(ran.err).toBe(`way: ${file}: tool "npm" is already a built-in tool\n`)
   })
 
   test('a module whose ecosystem id a built-in uses is an error naming the module', async () => {
@@ -183,7 +183,7 @@ describe('duplicate tool ids', () => {
     )
     const ran = await run(['--list', '--config', file, '-C', dir])
     expect(ran.code).toBe(1)
-    expect(ran.err).toMatch(/^wayfinder: .*"node".*\(from a tool module: .*eco\.mjs\)\n$/)
+    expect(ran.err).toMatch(/^way: .*"node".*\(from a tool module: .*eco\.mjs\)\n$/)
     expect(ran.err).not.toContain('    at ')
   })
 
@@ -192,9 +192,7 @@ describe('duplicate tool ids', () => {
     const second = await acmeModule(dir)
     const ran = await run(['--list', '--config', EXAMPLE, '--config', second, '-C', dir])
     expect(ran.code).toBe(1)
-    expect(ran.err).toBe(
-      `wayfinder: tool "acme" is defined twice: in ${EXAMPLE} and in ${second}\n`,
-    )
+    expect(ran.err).toBe(`way: tool "acme" is defined twice: in ${EXAMPLE} and in ${second}\n`)
   })
 })
 
@@ -212,7 +210,7 @@ describe('way providers', () => {
   test('--json marks a tool from --config as custom, with its module', async () => {
     const ran = await run(['providers', '--json', '--config', EXAMPLE, '-C', await temp()])
     expect(ran.code).toBe(0)
-    const rows = JSON.parse(ran.out) as ProviderRow[]
+    const rows = (JSON.parse(ran.out) as { providers: ProviderRow[] }).providers
     expect(rows.find((r) => r.id === 'acme')).toEqual({
       id: 'acme',
       roles: ['runner'],

@@ -5,11 +5,12 @@ scripts, just, make, cargo, moon, mise and the rest, plus the install, tool and
 git-hook commands your package managers and tool managers imply.
 
 ```sh
-way               # the terminal UI; Enter runs the selected task
-way --serve       # the same catalog as a live page
-way query dev     # the tasks matching a search, best match first
-way --json        # the data, for anything else
-way providers     # every tool it knows, and whether its binary is on PATH
+way                  # the terminal UI; Enter runs the selected task
+way serve            # the same catalog as a live page
+way query dev        # the tasks matching a search, best match first
+way run 'just build' # run one task by its id or command line
+way list --json      # the data, for anything else
+way providers        # every tool it knows, and whether its binary is on PATH
 ```
 
 It is for people who move between repositories and do not want to learn each
@@ -135,11 +136,11 @@ way query dev --json      the matching tasks, rather than their command lines
 
 A leading `'` forces one term to match exactly, as it does in the UI. A search
 that matches nothing exits 1, so `way query dev && …` works in a script. A bare
-`way query` matches everything, the same as `way --list`. Every collection
+`way query` matches everything, the same as `way list`. Every collection
 flag applies (`-C`, `--only`, `--exclude`, `--cached` and the rest). Like
-`--list` and `--json`, it re-probes unless you pass `--cached`.
+`list`, it re-probes unless you pass `--cached`.
 
-`--list`, `query` and the terminal UI replace each control character and bidi
+`list`, `query` and the terminal UI replace each control character and bidi
 control in repository text with U+FFFD, so a task name cannot send escape
 sequences to your terminal or read in a different order from what runs.
 `--json` keeps the text exact, writing DEL, C1 and bidi controls as `\u`
@@ -147,7 +148,7 @@ escapes, so it is safe to print too.
 
 ## The web view
 
-`way --serve` opens a page with the same catalog: a collapsible tree by call
+`way serve` opens a page with the same catalog: a collapsible tree by call
 chain, sticky group headers, fuzzy and exact search, and copy buttons.
 
 It is a server, not a generated file, on purpose. A file goes out of date as
@@ -284,7 +285,7 @@ its trust button in those states, and the server refuses the request anyway.
 The session token proves who is asking, not that the request makes sense.
 
 When runners are withheld, every surface says so and offers a way to grant
-trust. `--list` and `--json` print one line on stderr. The terminal UI shows
+trust. `list` and `query` print one line on stderr. The terminal UI shows
 `N hidden — repo not trusted (^s to trust)` beside the counts. The web view
 shows a **Trust this repository** button in a bar above the list, in each
 withheld runner's info panel and in the runner picker.
@@ -313,11 +314,11 @@ Some runners are slow to ask (moon starts its toolchain, sbt starts a JVM),
 and a browser that waits for them looks broken. `wayfinder` stores the last
 answer for each root and runner, so the UI can show rows at once.
 
-The terminal UI and `--serve` always start from the store. They read it, show
-the rows, then probe in the background and update in place. `--json` and
-`--list` re-probe on every run, because a script or an agent reading them needs
+The terminal UI and `serve` always start from the store. They read it, show
+the rows, then probe in the background and update in place. `list` and
+`query` re-probe on every run, because a script or an agent reading them needs
 what the repository has right now. Those runs also write the store, so the next
-UI start is instant. `--cached` makes `--json` and `--list` read the store for
+UI start is instant. `--cached` makes `list` and `query` read the store for
 one run.
 
 A stored answer is in one of three states, and every surface shows them the
@@ -346,16 +347,16 @@ stored probe, both surfaces tell you the row came from the store, instead of
 showing only a spawn failure.
 
 For the pipeable surfaces, `--cached` names the stale runners on stderr, so
-`--list` stays pipeable and `--json` stays parseable:
+`list` stays pipeable and `--json` stays parseable:
 
 ```text
-wayfinder: --cached: stale: just (35s old, refresh usually about 149ms)
-wayfinder: --cached: not cached, probed now: github-actions
+way: --cached: just (stale: its files changed, 35s old; refresh usually about 149ms); not cached, probed now: github-actions
 ```
 
 `--cached` with an empty store is not an error. It probes, stores the result,
-and says so. `--json --cached` adds a `cache` array beside the catalog, with
-one entry per selected runner. Over HTTP the page always receives this array.
+and says so. Every `--json` document has a `cache` array, with one entry per
+selected runner. After a fresh probe each entry's `probeMs` is the time that
+runner took. Over HTTP the page always receives this array.
 
 The cache is at `$XDG_CACHE_HOME/wayfinder/`, or `~/.cache/wayfinder/`. It is
 XDG cache, not the `~/.local/state/wayfinder/` directory that
@@ -404,7 +405,7 @@ directory's files rather than this one's. Exit code 2 means the command as
 typed cannot run, such as an unknown key or a value of the wrong type. Exit
 code 1 means the command was valid but failed against the state it found.
 
-`runners.order` sets the runner order everywhere: `--json`, `--list`, the
+`runners.order` sets the runner order everywhere: `list`, `query`, the
 terminal UI's tab order, and the web view. In the web view, an order you set by
 dragging is saved in the browser and overrides it.
 
@@ -424,17 +425,89 @@ This setting alone does not allow execution. The repository must also be
 [trusted](#execution-and-trust), so with `true` here, runners that must run to
 be read are still skipped until then.
 
+## Commands
+
+```text
+way [dir]                the terminal UI (the default command)
+way list [dir]           print one command line per task; --json for the catalog
+way query <terms>        the tasks matching a search, best match first
+way run <id> [-- args]   run one task, with its exit code; --dry-run for the plan
+way serve                the same catalog as a live page
+way providers            the registered tools, built-in and your own
+way config | trust | clean | guide
+way help [command]       help for a command; --all for every flag
+way schema <command>     the JSON Schema of a command's --json document
+way --version
+```
+
+`run` takes a task's `id` or its command line, when only one task has it, such
+as `way run 'npm run build'`. Arguments after `--` are bound the way the tool
+expects, as the terminal UI and the page bind them. A task that ends on a
+signal exits 128 plus the signal number. `--dry-run --json` prints the
+`argv`, `cwd` and `env` it would run. A plain `run --json` is refused,
+because the task owns stdout.
+
+Global flags go before or after the command word: `way -C ../app list` and
+`way list -C ../app` are the same. A start directory that does not exist is an
+error, so a mistyped command (`way lsit`) is reported with the closest one.
+Messages on stderr start with `way:`.
+
+### Filters
+
+`list` and `query` take the same filters, in text and in JSON:
+
+```text
+--services           only tasks that run until you stop them
+--declared           only tasks a file declares, not ones from a convention
+--depth N            only tasks whose source is at most N directories deep
+--cached             answer from the last stored probe
+```
+
+### Documents
+
+Every `--json` answer is one object with `schemaVersion` and `kind`:
+`catalog` (`list`), `query`, `run`, `providers`, and the framework's `help`,
+`version` and `error`. `way schema list` prints a document's JSON Schema. The
+same schemas are exported from `@osdlc/wayfinder/schema`:
+
+```ts
+import { catalogDocumentSchema, documentZod } from '@osdlc/wayfinder/schema'
+
+const doc = documentZod('catalog').parse(JSON.parse(output))
+```
+
+| Export | Is |
+|---|---|
+| `catalogSchema`, `taskSchema`, `runnerReportSchema`, `CATALOG_SCHEMA_VERSION` | system-model's catalog schemas |
+| `catalogDocumentSchema`, `queryDocumentSchema`, `runDocumentSchema`, `providersDocumentSchema` | the JSON Schema of each document |
+| `DOCUMENT_SCHEMAS`, `DOCUMENT_VERSIONS` | the same, by `kind` |
+| `documentZod(kind)` | a Zod schema that parses a document |
+
+The `catalog` and `query` documents carry `cache`, `filter` and `unknowns`.
+`unknowns` lists what could not be read, each with the `label` the stderr note
+prints: a runner withheld for trust, tasks whose parameters are unknown and
+why, a stale stored answer, a tool missing from `PATH`.
+
+### Old flags
+
+These still work in this release and will be removed in a later one:
+
+```text
+way --serve          way serve
+way --list           way list
+way --json           way list --json
+way query --list     way query
+```
+
+Two of them at once are refused.
+
 ## Options
 
 ```text
-query <terms>        the tasks matching a search, best match first
 --exact              with query: terms match as substrings, not subsequences
---services           with query: only tasks that run until you stop them
---serve              a page instead of the terminal UI
---port N             fixed port for --serve
---no-open            print the URL rather than opening a browser
---json | --list      print the catalog and exit
---cached             answer those two from the last stored probe
+--port N             with serve: a fixed port
+--no-open            with serve: print the URL rather than opening a browser
+--json               with a data command: print its document
 
 --no-exec            skip runners that must run a subprocess
 --exec               allow them for this run only, without recording trust
@@ -446,21 +519,11 @@ query <terms>        the tasks matching a search, best match first
 --discovery M        git | walk | auto (default: auto)
 -C, --dir PATH       directory to inspect (default: cwd)
 --config MODULE      load extra tools from a module, this run only; repeatable
--h, --help           the short form: the ways in, and where the rest is
---help --all         the block above, every default and every note
-
-config               read and write the layered settings; `config --help`
-trust                allow this repository's runners to be read by running
-                     them; `trust --help`
-providers            the registered tools, built-in and your own;
-                     `providers --help`
-clean                remove what this tool has stored; `clean --help`
-guide                how to use and extend this tool, in Markdown
 ```
 
-A subcommand is matched before flags are parsed, so the flags above belong to
-the top-level command, not to the subcommands. `-C` is the exception. The
-subcommands whose answer depends on the repository take it.
+`config`, `trust`, `clean` and `guide` read their own flags. Of the global
+flags they take only `-C`, and only where the answer depends on the
+repository:
 
 | Subcommand | `-C, --dir` | Why |
 |---|---|---|
@@ -471,9 +534,9 @@ subcommands whose answer depends on the repository take it.
 | `guide` | no | its argument is a topic name |
 | `dev` | no | its state is devlink's, keyed on the tool name; not listed in the help |
 
-`way --help` is the short form: the main ways to run it, the flags most runs
-pass, and the names of the subcommands. `way --help --all` is the full flag
-list shown above. Each subcommand has its own `--help`. `way guide` is the long
+`way help` lists the commands and the global flags. `way help <command>` and
+`way <command> --help` show one command, and `--all` adds every note. `way
+--help --all` is the full flag list shown above. `way guide` is the long
 form, by topic. A usage error, such as a mistyped flag, prints the short form,
 so the error is not lost in the full list.
 
@@ -491,7 +554,7 @@ built-ins. A module that exports `tools`, an array of them, can be loaded three
 ways:
 
 ```sh
-way --config ./acme-tools.ts --list                  # this run only
+way --config ./acme-tools.ts list                   # this run only
 way config set --user tools '["~/acme-tools.mjs"]'   # every run, from your user file
 way config set tools '["./tools/acme.mjs"]'          # this repository, once trusted with exec on
 ```

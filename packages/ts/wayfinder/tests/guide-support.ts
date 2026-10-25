@@ -27,9 +27,10 @@ export type GuideMain = (
  * a reason: subcommand flags, parsed by their own command.
  */
 export const FLAG_SKIP: readonly string[] = [
-  // `way trust --untrust` / `--show`, parsed by trust-command.ts.
+  // `way trust --untrust` / `--show` / `--list`, parsed by trust-command.ts.
   '--untrust',
   '--show',
+  '--list',
   // `way config set ... --user`, parsed by config-command.ts.
   '--user',
 ]
@@ -52,16 +53,19 @@ export function flagTokens(text: string): Set<string> {
   return new Set(text.match(/(?<![\w-])(?:--[A-Za-z][A-Za-z0-9-]*|-[A-Za-z](?![\w-]))/g) ?? [])
 }
 
-/** Every flag the tool's rendered help lists in its options block. */
+/** Every flag the tool's rendered help lists in its options blocks. */
 export function acceptedFlags(usage: string): Set<string> {
-  // The tool's own rendered help, which `defineCli` generates from the flag
-  // declaration. So this compares the guide against what the parser really
-  // takes, not against a second list that could disagree with it. Only the
-  // options block is scanned: the prose below it names flags of the
-  // subcommands, which this tool's top-level parser does not accept.
-  const options = usage.split(/^Options:$/m)[1] ?? ''
-  const upTo = options.split(/\n\n/)[0] ?? ''
-  return new Set([...upTo.matchAll(/(?<![\w-])(--?[A-Za-z][\w-]*)/g)].map((m) => m[1] as string))
+  // The tool's own rendered help, which the command tree generates from the
+  // flag declarations. So this compares the guide against what the parser
+  // really takes, not against a second list that could disagree with it.
+  // Only the options blocks are scanned (`options:` and `global options:`):
+  // the prose names flags of commands that parse their own arguments.
+  const flags = new Set<string>()
+  for (const block of usage.split(/^(?:global )?options:$/m).slice(1)) {
+    const upTo = block.split(/\n\n/)[0] ?? ''
+    for (const m of upTo.matchAll(/(?<![\w-])(--?[A-Za-z][\w-]*)/g)) flags.add(m[1] as string)
+  }
+  return flags
 }
 
 export function backticked(text: string): string[] {
