@@ -80,7 +80,11 @@ describe('mise runner', () => {
   test('reads config tasks and file tasks, dropping hidden ones', async () => {
     const dir = await root({ 'mise.toml': CONFIG })
     const { options } = opts([
-      { binary: 'mise', argv: ['tasks', '--json'], stdout: TASKS.replaceAll('%ROOT%', inJson(dir)) },
+      {
+        binary: 'mise',
+        argv: ['tasks', '--json'],
+        stdout: TASKS.replaceAll('%ROOT%', inJson(dir)),
+      },
     ])
     const found = tasks(await collect(dir, { ...options, only: ['mise'], allowExec: true }))
 
@@ -118,7 +122,11 @@ describe('mise runner', () => {
   test('omits global tasks: they belong to the machine, not the project', async () => {
     const dir = await root({ 'mise.toml': CONFIG })
     const { options } = opts([
-      { binary: 'mise', argv: ['tasks', '--json'], stdout: TASKS.replaceAll('%ROOT%', inJson(dir)) },
+      {
+        binary: 'mise',
+        argv: ['tasks', '--json'],
+        stdout: TASKS.replaceAll('%ROOT%', inJson(dir)),
+      },
     ])
     const report = (await collect(dir, { ...options, only: ['mise'], allowExec: true })).reports[0]!
 
@@ -216,7 +224,11 @@ describe('mise runner', () => {
   test('invoke appends arguments to the task', async () => {
     const dir = await root({ 'mise.toml': CONFIG })
     const { options } = opts([
-      { binary: 'mise', argv: ['tasks', '--json'], stdout: TASKS.replaceAll('%ROOT%', inJson(dir)) },
+      {
+        binary: 'mise',
+        argv: ['tasks', '--json'],
+        stdout: TASKS.replaceAll('%ROOT%', inJson(dir)),
+      },
     ])
     const { project, catalog } = await detectAndCollect(dir, {
       ...options,

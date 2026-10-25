@@ -181,37 +181,40 @@ describe('vscode-tasks runner', () => {
   })
 
   // POSIX only: Windows forbids `"` in a folder name, and a `sh -c` line is POSIX.
-  test.skipIf(process.platform === 'win32')('a variable is quoted for where it sits in a sh -c line', async () => {
-    const base = await fixtureRoot({})
-    roots.push(base)
-    // A checkout path with every character a shell reads inside quotes.
-    const dir = join(base, 'back\\slash', 'ws $HOME "q\' `b` dir')
-    await mkdir(join(dir, '.vscode'), { recursive: true })
-    await mkdir(join(dir, 'src'))
-    await writeFile(join(dir, 'src/hello'), '')
-    await writeFile(
-      join(dir, '.vscode/tasks.json'),
-      JSON.stringify({
-        tasks: [
-          {
-            label: 'show',
-            type: 'shell',
-            command:
-              'printf "%s\\n" "${workspaceFolder}" \'${workspaceFolder}\' ${workspaceFolder} "x \\"${workspaceFolderBasename}\\""',
-          },
-          { label: 'list', type: 'shell', command: 'ls "${workspaceFolder}/src"' },
-        ],
-      }),
-    )
-    const { catalog } = await detectAndCollect(dir, { discovery: 'walk', tools: TOOLS })
-    const run = (name: string) => {
-      const [binary, ...argv] = named(tasks(catalog), name).argv
-      return runChecked(spawnRunner(binary!), argv, { cwd: dir }).stdout
-    }
-    const lines = run('show').split('\n')
-    expect(lines.slice(0, 4)).toEqual([dir, dir, dir, 'x "ws $HOME "q\' `b` dir"'])
-    expect(run('list')).toBe('hello\n')
-  })
+  test.skipIf(process.platform === 'win32')(
+    'a variable is quoted for where it sits in a sh -c line',
+    async () => {
+      const base = await fixtureRoot({})
+      roots.push(base)
+      // A checkout path with every character a shell reads inside quotes.
+      const dir = join(base, 'back\\slash', 'ws $HOME "q\' `b` dir')
+      await mkdir(join(dir, '.vscode'), { recursive: true })
+      await mkdir(join(dir, 'src'))
+      await writeFile(join(dir, 'src/hello'), '')
+      await writeFile(
+        join(dir, '.vscode/tasks.json'),
+        JSON.stringify({
+          tasks: [
+            {
+              label: 'show',
+              type: 'shell',
+              command:
+                'printf "%s\\n" "${workspaceFolder}" \'${workspaceFolder}\' ${workspaceFolder} "x \\"${workspaceFolderBasename}\\""',
+            },
+            { label: 'list', type: 'shell', command: 'ls "${workspaceFolder}/src"' },
+          ],
+        }),
+      )
+      const { catalog } = await detectAndCollect(dir, { discovery: 'walk', tools: TOOLS })
+      const run = (name: string) => {
+        const [binary, ...argv] = named(tasks(catalog), name).argv
+        return runChecked(spawnRunner(binary!), argv, { cwd: dir }).stdout
+      }
+      const lines = run('show').split('\n')
+      expect(lines.slice(0, 4)).toEqual([dir, dir, dir, 'x "ws $HOME "q\' `b` dir"'])
+      expect(run('list')).toBe('hello\n')
+    },
+  )
 
   test('top-level options and the current platform override apply', async () => {
     const key =

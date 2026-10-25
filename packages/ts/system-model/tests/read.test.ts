@@ -40,14 +40,17 @@ describe('readBounded', () => {
   })
 
   // POSIX only: named pipes (`mkfifo`) and `/dev/zero` are POSIX.
-  test.skipIf(process.platform === 'win32')('skips a symlink that leaves the root, without opening its target', async () => {
-    const dir = await root({})
-    await symlink('/dev/zero', join(dir, 'justfile'))
+  test.skipIf(process.platform === 'win32')(
+    'skips a symlink that leaves the root, without opening its target',
+    async () => {
+      const dir = await root({})
+      await symlink('/dev/zero', join(dir, 'justfile'))
 
-    expect(await readBounded(dir, 'justfile')).toEqual({
-      skipped: 'a symlink that leaves the repository',
-    })
-  })
+      expect(await readBounded(dir, 'justfile')).toEqual({
+        skipped: 'a symlink that leaves the repository',
+      })
+    },
+  )
 
   // POSIX only: named pipes (`mkfifo`) and `/dev/zero` are POSIX.
   test.skipIf(process.platform === 'win32')('skips a directory and a pipe', async () => {
@@ -170,11 +173,14 @@ describe('containment', () => {
   })
 
   // POSIX only: named pipes (`mkfifo`) and `/dev/zero` are POSIX.
-  test.skipIf(process.platform === 'win32')('readRegular refuses a pipe on the handle as well as the path', async () => {
-    const dir = await root({})
-    runChecked(spawnRunner('mkfifo'), [join(dir, 'pipe')], { cwd: dir })
-    expect(await readRegular(join(dir, 'pipe'))).toEqual({ skipped: 'not a regular file' })
-  })
+  test.skipIf(process.platform === 'win32')(
+    'readRegular refuses a pipe on the handle as well as the path',
+    async () => {
+      const dir = await root({})
+      runChecked(spawnRunner('mkfifo'), [join(dir, 'pipe')], { cwd: dir })
+      expect(await readRegular(join(dir, 'pipe'))).toEqual({ skipped: 'not a regular file' })
+    },
+  )
 
   test('the fingerprint does not hash a file behind a symlinked parent', async () => {
     const outside = await root({ 'sub/justfile': 'one' })
