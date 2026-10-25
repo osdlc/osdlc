@@ -2,6 +2,11 @@
 
 What a standalone CLI needs before it does anything of its own.
 
+It implements the osdlc [CLI interface standard](../../../standards/cli-interface.md):
+help with progressive disclosure, `--json` on every command as a versioned
+document, a `schema` command, `--version`, fixed exit codes, and stream
+discipline.
+
 A command-line tool written in TypeScript tends to repeat the same groundwork:
 a way to write output that a test can capture, one rule for exit codes, flags
 and help text that agree with each other, and a launcher that can run the tool from
@@ -13,8 +18,8 @@ without spawning a process.
 
 When not to use it:
 
-- You want a framework that discovers and routes subcommands. This package
-  declares one command's flags; routing is yours.
+- You want plugins: commands loaded from other packages at run time. The
+  command tree here is the tool's own.
 - You need Windows support today. See Platforms.
 - You are writing a one-off script. `node:util` `parseArgs` is enough.
 - You do not want `commander` in your dependency tree. `defineCli` builds on it.
@@ -68,12 +73,19 @@ import { main } from '../dist/cli.js'
 await runMain(main, { name: 'sweep' })
 ```
 
-## Two entries
+## Entries
 
 | Import | What it holds |
 |---|---|
-| `@osdlc/cli-tool` | The basics described below: output interface, context, exit codes, flag declaration, bin shim |
+| `@osdlc/cli-tool` | The basics described below: output interface, context, exit codes, flag declaration, help wrapping, bin shim |
+| `@osdlc/cli-tool/command` | A CLI as a tree of declared commands, with `help`, `schema`, `--json` and `--version` generated from it |
+| `@osdlc/cli-tool/config-command` | `config list/get/set/unset/path` over a tool's own config store |
+| `@osdlc/cli-tool/trust-command` | `trust`, `--untrust`, `--show`, `--list` over a tool's trust store |
+| `@osdlc/cli-tool/guide` | `guide [topic]` from a list of topics |
+| `@osdlc/cli-tool/testing` | Running an app in process and the checks every tool's tests share |
 | [`@osdlc/cli-tool/devlink`](./devlink/README.md) | Running a system-installed tool from a development checkout, with link history |
+
+The command entries load `zod`, a peer dependency. The root entry does not.
 
 The tool's project and machine config files are a separate package,
 `@osdlc/config-layers`. The root re-exports its directory and did-you-mean
@@ -83,7 +95,7 @@ light `@osdlc/config-layers/dirs` and `/did-you-mean` subpaths so importing the
 root does not load yaml or zod.
 
 To import only what a tool uses, the root's modules are also subpaths:
-`@osdlc/cli-tool/define-cli`, `/io`, `/prompt` and `/exit`.
+`@osdlc/cli-tool/define-cli`, `/io`, `/prompt`, `/exit` and `/wrap`.
 
 A bin shim asks devlink which checkout should run and then calls `main`.
 `main` reads its config and writes through `CliIo`.
@@ -245,6 +257,25 @@ the short tier, because answering a mistyped flag with the whole surface makes
 the reader hunt for the error. A one-tier tool declares neither and lets
 commander own `--help`.
 
+### Help is wrapped when it is rendered
+
+`defineCli` reflows its epilogues to `width` (default 80) each time it renders
+help. `wrapText(text, width)` does the same for any text. A line that starts at
+column 0 is prose and is filled again. An indented line, a table row, a usage
+line or a fenced block is kept as written. So prose with names interpolated
+into it never comes out ragged. `helpWidth(columns)` picks the width for a
+terminal: its width kept between 40 and 100, or 80 when stdout is not a
+terminal. `columns(rows, width)` lays out a two-column list.
+
+### Terminals and color
+
+`CliContext.terminal` says which streams are terminals and how wide stdout is.
+`processContext()` fills it in. A context without it reads as "no terminal".
+`colorEnabled(ctx, { json })` is the color rule: `NO_COLOR` (non-empty) turns
+color off and wins, `FORCE_COLOR` (not `0` or `false`) turns it on, `TERM=dumb`
+turns it off, and otherwise color follows whether stdout is a terminal. A JSON
+answer is never colored.
+
 ### `runMain`
 
 Assigns `process.exitCode` rather than calling `process.exit`, because
@@ -276,6 +307,143 @@ const vendorDirs = { vendor: 'com.example', envVars: envVars('EXAMPLE') }
 
 `systemDirs(vendorDirs)` resolves them through `@osdlc/tiered-dirs`.
 
+## The command tree
+
+`@osdlc/cli-tool/command` declares a CLI as a tree. Each command declares its
+flags, its arguments and its output once. The app routes a command line to the
+command, parses it with `defineCli`, runs it, and prints the answer.
+
+```ts
+import { z } from 'zod'
+import { commandKit, defineApp, outcome } from '@osdlc/cli-tool/command'
+import { runMain } from '@osdlc/cli-tool'
+
+const GLOBALS = {
+  dir: { kind: 'string', short: 'C', valueName: 'path', help: 'the repository (default: cwd)' },
+} as const
+const { command, group } = commandKit({ globals: GLOBALS })
+
+const list = command({
+  summary: 'the branches, and which are merged',
+  flags: { merged: { kind: 'boolean', help: 'only merged branches' } },
+  output: z.object({ branches: z.array(z.object({ name: z.string(), merged: z.boolean() })) }),
+  kind: 'branches',
+  run: async ({ flags, globals }, ctx) => ({ branches: await read(globals.dir ?? ctx.cwd, flags.merged) }),
+  text: (o) => o.branches.map((b) => `${b.name}\n`).join(''),
+})
+
+const app = defineApp({
+  name: 'sweep',
+  version: '0.3.0',
+  summary: 'say what has been merged and can go away',
+  globals: GLOBALS,
+  commands: { branch: group({ summary: 'work with branches', default: list, commands: { list } }) },
+})
+
+await runMain(app.main, { name: 'sweep' })
+```
+
+| A command line | Does |
+|---|---|
+| `sweep branch` | runs `list`, the group's default, and prints its `text` |
+| `sweep -C ../x branch list --json` | prints `{ "schemaVersion": 1, "kind": "branches", "branches": [...] }` |
+| `sweep help`, `sweep --help` | lists the top-level commands, one line each |
+| `sweep help branch`, `sweep branch --help` | one node: its usage, flags and subcommands |
+| `sweep help --depth 2`, `--depth all` | expands that many levels of subcommands |
+| `sweep help branch list --full`, `sweep branch list --help --all` | adds the long description, hidden flags, exit codes and examples |
+| `sweep help --json` | the same help as one JSON document |
+| `sweep schema [command...]` | each command's input JSON Schema (from its flags) and output JSON Schema (from its Zod output) |
+| `sweep --version` | `sweep 0.3.0`, or a `version` document with `--json` |
+
+What a command declares:
+
+| Field | Meaning |
+|---|---|
+| `summary` | one line, for lists |
+| `description` | the long explanation, for `help --full`, wrapped at render time |
+| `flags`, `positionals` | as for `defineCli`. `json`, `help`, `all` and `version` are the app's |
+| `output` | a `z.object`: the `--json` contract and the `schema` output. It may not declare `schemaVersion` or `kind` |
+| `kind`, `schemaVersion` | the document's `kind` (default: the path joined with `-`) and version (default 1) |
+| `run(input, ctx)` | returns the output, or `outcome(output, exit)` to print it and exit non-zero |
+| `text(output, ctx)` | the text form. Default: the output as indented JSON |
+| `exits` | the command's own exit codes (1 or 10-63) and their meanings |
+| `examples`, `hidden`, `readOnly` | shown under `help --full`; left out of lists; changes nothing |
+| `interactive: true` | for a terminal UI or a server: no `output`, and `--json` is refused with exit 2 |
+
+`input` holds `flags`, `globals` (typed by the kit), `positionals` and `rest`,
+the words after `--`. `ctx` is the `CliContext` plus `app`, `path`, `json`,
+`color`, `width`, and `warn`/`note`, which write `<name>: ...` lines to stderr.
+A command writes nothing to stdout itself.
+
+Global flags may come before or after the command word: `sweep -C x branch`
+and `sweep branch -C x` are the same. A group's `default` command takes any
+word that names no subcommand as a positional, so a root default can take a
+directory: `sweep ../repo`.
+
+Errors:
+
+| Thrown from `run` | Prints on stderr | Exit |
+|---|---|---|
+| a parse error, or `UsageError` | `<name>: <message>`, the usage line and where the help is | 2 |
+| `CommandError(message, { exit, hint })` | `<name>: <message>` and the hint | `exit`, default 1 |
+| a `Failure`, or an error carrying one | the failure line | its category code (22-25), else 1 |
+| anything else | nothing; it propagates to `runMain` | 1 |
+
+`checkOutput: true` on the app checks each output against its schema before
+printing it. `runApp` in `@osdlc/cli-tool/testing` always checks a `--json`
+answer.
+
+### Commands as files
+
+`loadCommandTree(dir, { summary })` builds the tree from a directory: the
+directory tree is the command tree.
+
+| File | Is |
+|---|---|
+| `commands/serve.ts` | `serve`: its default export, from `defineCommand` |
+| `commands/config/get.ts` | `config get` |
+| `commands/config/index.ts` | the `config` group's `defineGroup` (summary, order, no commands), or a command that runs as `config` |
+| `commands/index.ts` | the root's group declaration, or the root's default command |
+| `_helpers.ts`, `.d.ts`, `*.test.ts` | ignored |
+
+```ts
+const tree = await loadCommandTree(new URL('./commands/', import.meta.url), { summary: 'sweep' })
+const app = defineApp({ name: 'sweep', version, summary: 'sweep', commands: tree })
+```
+
+It imports the tool's own files only. `treeFromFiles` takes the same files as
+a list, for a bundler that collects the modules itself.
+
+### Shared commands
+
+| Entry | Mount it as | The tool supplies |
+|---|---|---|
+| `config-command` | `config: configCommands(store)` | a `ConfigStore`: `layers`, `defaultLayer`, `keys`, `list`, `locations`, `set`, `unset` |
+| `trust-command` | `trust: trustCommand(service)` | a `TrustService`: `trust`, `untrust`, `show`, `list`, and `scopes` for `--scope` |
+| `guide` | `guide: guideCommand(topics, { title })` | `GuideTopic`s: `{ id, title, summary, body(ctx) }` |
+
+Each store method receives the command context, so it can read `ctx.cwd`,
+`ctx.env` and the tool's global flags.
+
+- `config` with no subcommand lists. Each writable layer is a flag
+  (`--user`, `--project`). A value is read as JSON, else as the bare string.
+  An unknown key or a wrong value (`ConfigUsageError` from `set`) exits 2 with a
+  did-you-mean. A `get` with no value or an `unset` of a key not set in that
+  layer exits 1.
+- `trust` answers `{ action, changed, roots }` for every mode, so a script does
+  not branch on the flag it passed. `--untrust` with no marker prints the answer
+  and exits 1.
+- `guide` prints every topic; `guide topics` lists them; `guide <topic>` prints
+  one. An unknown topic exits 2.
+
+### Testing
+
+`runApp(app, argv, { cwd, env, terminal })` runs in process and returns
+`{ exit, out, err, json() }`. `checkApp(app)` reports a node whose help does
+not render or a data command with no output schema. `checkGuide(app)` runs the
+checks every guide shares: each topic prints, an unknown topic exits 2,
+`guide --help` works, and the prose names no flag that no command takes.
+
 ## Runtime
 
 The bin of a CLI built on this runs under node over its built `dist/`, with
@@ -296,6 +464,8 @@ What they do not cover, as far as their documentation shows:
 - A stated exit-code rule: 0 for success, 1 for a failed run, 2 for a command
   that cannot run as typed, and a band for the tool's own outcomes.
 - Running an installed tool from a development checkout, with link history.
+- A JSON document with `schemaVersion` and `kind` for every command, and the
+  JSON Schema of each one, generated from the same declaration as the parser.
 
 Where they overlap, the difference is the default. commander offers
 `exitOverride` and `configureOutput`, yargs offers `exitProcess(false)`, and
@@ -303,9 +473,9 @@ clipanion passes streams in through its context. Each is a setting you turn on.
 Here, no stream is written and no `process.exit` is called by default, and a
 usage error comes back as a value.
 
-Pick one of the others when you want routing, plugins or shell completion. Pick
-this package, alone or under a router, when you want a CLI you can test end to
-end in-process, whose flags, help and exit codes follow one stated rule.
+Pick one of the others when you want plugins or shell completion. Pick this
+package when you want a CLI you can test end to end in-process, whose flags,
+help, JSON output, schemas and exit codes follow one stated rule.
 
 This comparison is from each project's public documentation and may be out of
 date. Check their current documentation before you decide.
@@ -321,14 +491,42 @@ Stable: the basics in the root entry, which are the output interface, the
 context, the exit codes, `defineCli` and its types, `runMain` and the yes/no
 prompt.
 
-Experimental: the whole `devlink` entry, and
+Experimental: the `devlink`, `command`, `config-command`, `trust-command`,
+`guide` and `testing` entries; the wrapping and color helpers; and
 `systemDirs`, `VendorDirs`, `closestMatches` and `didYouMean`, which the root
 re-exports from `@osdlc/config-layers`. `TieredDirs`, `envVars` and their types
 follow `@osdlc/tiered-dirs`.
 
 The experimental exports of `@osdlc/cli-tool`:
 
-`VendorDirs`, `closestMatches`, `didYouMean`, `systemDirs`
+`DEFAULT_WIDTH`, `MAX_WIDTH`, `Terminal`, `VendorDirs`, `closestMatches`, `colorEnabled`, `columns`,
+`didYouMean`, `helpWidth`, `systemDirs`, `wrapText`
+
+The experimental exports of `@osdlc/cli-tool/command`:
+
+`App`, `AppSpec`, `BUILTIN_FLAGS`, `Command`, `CommandCommon`, `CommandContext`, `CommandError`,
+`CommandFile`, `CommandInput`, `CommandKit`, `CommandResult`, `DataCommand`, `DataCommandSpec`,
+`Group`, `GroupSpec`, `HelpEntry`, `HelpEntrySchema`, `HelpExit`, `HelpFlag`, `HelpPositional`,
+`InteractiveCommand`, `InteractiveCommandSpec`, `JsonSchema`, `Node`, `Outcome`, `OutputSchema`,
+`SchemaEntry`, `UNIVERSAL_EXITS`, `UsageError`, `commandKit`, `defineApp`, `defineCommand`,
+`defineGroup`, `isGroup`, `isInteractive`, `loadCommandTree`, `outcome`, `treeFromFiles`
+
+The experimental exports of `@osdlc/cli-tool/config-command`:
+
+`ConfigLocation`, `ConfigSetting`, `ConfigStore`, `ConfigUsageError`, `configCommands`,
+`parseConfigValue`
+
+The experimental exports of `@osdlc/cli-tool/trust-command`:
+
+`TrustEntry`, `TrustOutputSchema`, `TrustRequest`, `TrustService`, `trustCommand`
+
+The experimental exports of `@osdlc/cli-tool/guide`:
+
+`GuideOptions`, `GuideOutputSchema`, `GuideTopic`, `guideCommand`
+
+The experimental exports of `@osdlc/cli-tool/testing`:
+
+`AppRun`, `CheckGuideOptions`, `acceptedFlags`, `checkApp`, `checkGuide`, `flagTokens`, `runApp`
 
 The experimental exports of `@osdlc/cli-tool/devlink`:
 
@@ -349,7 +547,8 @@ A test compares each list with the `@experimental` tags in the source.
 ## Platforms and runtimes
 
 Linux and macOS for the 0.x line. Windows support is planned before 1.0. The
-devlink launcher is a POSIX shell script, so it does not run on Windows today.
+devlink launcher is a POSIX shell script, so `<tool> dev` reports itself
+unavailable on Windows and exits 1.
 
 Node.js 22 or later, ESM only. Bun also runs it, through the compiled `dist/`. The tests run
 on Vitest under Node.
