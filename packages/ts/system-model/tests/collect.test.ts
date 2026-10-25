@@ -109,6 +109,21 @@ describe('collect', () => {
     ).toEqual(['just', 'make'])
   })
 
+  test('onProbe gets each probed runner and its time, but not a withheld one', async () => {
+    const dir = await root({ 'quick.txt': '', 'held.txt': '' })
+    const probes: { runner: string; durationMs: number }[] = []
+    await collect(
+      dir,
+      walkOpts({
+        tools: [toolOf('quick'), toolOf('held', { kind: 'exec' })],
+        allowExec: false,
+        onProbe: (probe: { runner: string; durationMs: number }) => probes.push(probe),
+      }),
+    )
+    expect(probes.map((p) => p.runner)).toEqual(['quick'])
+    expect(probes[0]!.durationMs).toBeGreaterThanOrEqual(0)
+  })
+
   test('`only` can name a tool that was not detected, and gets nothing for it', async () => {
     const dir = await root({ justfile: 'build:\n    echo\n' })
     expect((await collect(dir, walkOpts({ only: ['make'] }))).reports).toEqual([])
