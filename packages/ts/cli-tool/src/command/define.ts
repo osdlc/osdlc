@@ -176,6 +176,11 @@ export interface CommandCommon<F extends FlagSpec> {
   flags?: F
   positionals?: readonly PositionalDecl[]
   /**
+   * The words after `--`, named for the usage line: `{ name: 'args' }` shows
+   * `[-- <args>...]`. Every command gets them as `rest`; this only documents them.
+   */
+  rest?: { name: string }
+  /**
    * The command's own exit codes beyond 0, 1 and 2, with what each means:
    * `{ 10: 'nothing to do' }`. A code must be 1 or in 10-63.
    */
