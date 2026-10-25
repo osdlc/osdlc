@@ -2,7 +2,7 @@
 // check-packages.ts reads from disk and from the packed tarball:
 //
 //   - `exports` has no `bun` condition. Every entry is `types` and `default`,
-//     both under dist/.
+//     both under dist/, except a stylesheet (`./X.css`), which is a plain path.
 //   - The tarball ships no TypeScript source. A hand-written `.d.ts` is fine.
 //   - The tarball ships no source maps: they would point at the unshipped source.
 //   - No script invokes bun, and `@types/bun` is not a dependency.

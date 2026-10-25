@@ -2,12 +2,13 @@
  * Unit tests for every export. The cases that matter are the boundary ones:
  * the syntaxes a browser reports, what parseColor rejects and clamps, the
  * RangeErrors, the 8-bit rounding that makes a composite the pixel a browser
- * paints, and the WCAG luminance breakpoint. tests/browser-contract.test.ts
+ * paints, the WCAG luminance breakpoint, and colour distance. tests/browser-contract.test.ts
  * checks the same functions against values recorded in a browser.
  */
 import { describe, expect, test } from 'vitest'
 
 import {
+  colorDistance,
   compositeOver,
   contrastRatio,
   formatHex,
@@ -347,5 +348,28 @@ describe('contrastRatio', () => {
 
   test('a string that does not parse throws', () => {
     expect(() => contrastRatio('red', WHITE)).toThrow(/unsupported colour syntax/)
+  })
+})
+
+describe('colorDistance', () => {
+  test('a colour is 0 from itself', () => {
+    expect(colorDistance(WHITE, WHITE)).toBe(0)
+  })
+
+  test('black to white is the diagonal of the 0-255 cube', () => {
+    expect(colorDistance(BLACK, WHITE)).toBeCloseTo(Math.sqrt(3) * 255, 10)
+  })
+
+  test('it is the Euclidean distance over r, g and b', () => {
+    expect(colorDistance('#000000', 'rgb(3 4 0)')).toBe(5)
+    expect(colorDistance('rgb(3 4 0)', '#000000')).toBe(5)
+  })
+
+  test('alpha is ignored', () => {
+    expect(colorDistance('rgba(0,0,0,0)', BLACK)).toBe(0)
+  })
+
+  test('a string that does not parse throws', () => {
+    expect(() => colorDistance('red', WHITE)).toThrow(/unsupported colour syntax/)
   })
 })

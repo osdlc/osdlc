@@ -13,7 +13,9 @@ each. This standard says what that shape is.
   library already ships). No TypeScript source ships; a hand-written `.d.ts`
   is the one exception. Each `exports` entry is exactly
   `{ "types": "./dist/X.d.ts", "default": "./dist/X.js" }`, with no `bun`
-  condition. Bun still works, through the compiled `dist/`. The tarball ships
+  condition. A stylesheet is the one other entry: a plain
+  `"./X.css": "./dist/X.css"`, which the package check reads and does not
+  import. Bun still works, through the compiled `dist/`. The tarball ships
   no source maps, since they would point at the unshipped source.
 - **Node 22 or later**, as each library's `engines.node` says. A library's
   range is never wider than a workspace dependency's, so the ones that depend on

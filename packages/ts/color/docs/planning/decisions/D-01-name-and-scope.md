@@ -13,7 +13,9 @@ created: 2026-10-18
   `packages/ts/color`.
 - It does one job: colour arithmetic in sRGB for checking contrast. It reads
   hex, `rgb()`, `rgba()` and `color(srgb …)` strings, mixes and composites
-  colours, and gives WCAG 2 relative luminance and contrast. It does not read
+  colours, and gives WCAG 2 relative luminance and contrast. It also gives the
+  sRGB distance between two colours, so a tool can pick the nearest colour of
+  a fixed palette without its own colour arithmetic. It does not read
   named colours, `hsl()` or other colour spaces, and it does not convert
   between spaces.
 
