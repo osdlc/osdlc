@@ -73,7 +73,7 @@ export interface CommandStringOptions {
  * @param opts - `platform`, `shell` and `cwd`.
  * @returns The command line.
  * @throws `RangeError` for an empty `argv`, or for `'cmd'` when a word or
- * `cwd` holds a line break, which `cmd.exe` cannot quote.
+ * `cwd` holds a line break or a `%`, which `cmd.exe` cannot quote.
  * @experimental
  *
  * @example
@@ -101,9 +101,15 @@ export function commandString(argv: readonly string[], opts: CommandStringOption
       return `if (Set-Location -LiteralPath ${psWord(cwd)} -PassThru) { ${line} }`
     }
     case 'cmd': {
-      const unsafe = [...argv, ...(cwd === undefined ? [] : [cwd])].find((w) => /[\r\n]/.test(w))
-      if (unsafe !== undefined) {
-        throw new RangeError(`cmd.exe cannot quote a line break: ${JSON.stringify(unsafe)}`)
+      const words = [...argv, ...(cwd === undefined ? [] : [cwd])]
+      const broken = words.find((w) => /[\r\n]/.test(w))
+      if (broken !== undefined) {
+        throw new RangeError(`cmd.exe cannot quote a line break: ${JSON.stringify(broken)}`)
+      }
+      // `cmd.exe` expands `%NAME%` and `%NAME:a=b%` before it reads any `^`.
+      const percent = words.find((w) => w.includes('%'))
+      if (percent !== undefined) {
+        throw new RangeError(`cmd.exe cannot quote a %: ${JSON.stringify(percent)}`)
       }
       const line = argv.map((w, i) => (CMD_INERT.test(w) ? w : i === 0 ? cmdCommand(w) : cmdArg(w)))
       return cwd === undefined ? line.join(' ') : `cd /d ${cmdCommand(cwd)} && ${line.join(' ')}`
@@ -136,16 +142,15 @@ const CMD_META = /[()[\]%!^"`<>&|;, *?]/g
  *    in `"`.
  * 2. `cmd.exe` escaping: each of ``()[]%!^"`<>&|;,*?`` and space gets a `^`.
  *    The quotes are escaped too, so `cmd.exe` never enters a quoted section
- *    and every `^` applies. This is what stops `%VAR%` and `!VAR!` expanding:
- *    `^%VAR^%` names the variable `VAR^`, which is not set, so the text
- *    passes through and the carets are then removed.
+ *    and every `^` applies.
  *
  * `doubleEscape` applies step 2 twice, for a batch file that passes its
  * arguments on with `%*` or `%1`, which `cmd.exe` parses again. The runners
  * use it for every batch file.
  *
- * A line break cannot be passed: `cmd.exe` ends the command there. Callers
- * refuse one before calling this.
+ * A line break or a `%` cannot be passed. `cmd.exe` ends the command at a
+ * line break, and it expands `%NAME%`, `%NAME:a=b%` and `%NAME:~n,m%` before
+ * it reads any `^`. Callers refuse both before calling this.
  */
 export function cmdArg(arg: string, doubleEscape = false): string {
   const msvcrt = `"${arg.replace(/(\\*)"/g, '$1$1\\"').replace(/(\\*)$/, '$1$1')}"`

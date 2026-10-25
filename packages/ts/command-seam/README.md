@@ -509,7 +509,8 @@ PowerShell's `;` does not stop on an error, so its form tests the result of
 `Set-Location -PassThru` instead. Windows PowerShell 5.1, and PowerShell before
 7.3, drop an empty argument and mangle one holding `"` when they call a
 program. `commandString` throws `RangeError` for an empty `argv`, and for
-`cmd` when a word or `cwd` holds a line break, which `cmd.exe` cannot quote.
+`cmd` when a word or `cwd` holds a line break or a `%`, which `cmd.exe` cannot
+quote. `cmd.exe` expands `%NAME%` in a pasted line before it reads any `^`.
 
 ## Platforms
 
@@ -546,11 +547,6 @@ even when the registry turns it on. Each argument is quoted in two steps:
    space gets a `^`. The quotes are escaped too, so `cmd.exe` never enters a
    quoted section and every `^` applies.
 
-Step 2 is what keeps `%VAR%` from expanding. `cmd.exe` expands `%VAR%` even
-inside quotes, and a `^` does not help there. With every quote escaped,
-`%PATH%` is written `^%PATH^%`, which names the variable `PATH^`; that is
-not set, so the text passes through and the carets are removed.
-
 Step 2 is applied twice for every batch file. A batch file passes its
 arguments on with `%*` or `%1`, and `cmd.exe` parses that line a second
 time. The npm, pnpm and yarn shims do this, in `node_modules/.bin` and in the
@@ -558,10 +554,10 @@ global `%APPDATA%\npm`, and so do `gradlew.bat` and `mvnw.cmd`. With one
 escape, a `"` in an argument would end the quoted text on the second parse,
 and a `&` or `|` after it would run as a command.
 
-A `%` in an argument to a batch file is refused, as a failed spawn with an
-`EINVAL` message. `cmd.exe` expands `%NAME%`, `%NAME:a=b%` and `%NAME:~n,m%`
-before it reads any `^`, so the escaping above cannot protect a form that
-holds a `:`, and no quoting makes a `%` safe there. Pass the value through an
+A `%` in an argument to a batch file, or in the batch file's path, is
+refused, as a failed spawn with an `EINVAL` message. `cmd.exe` expands
+`%NAME%`, `%NAME:a=b%` and `%NAME:~n,m%` before it reads any `^`, even inside
+quotes, so the escaping above cannot protect a `%`. Pass the value through an
 environment variable or a file. A `.exe` gets its argv directly and takes any
 `%`.
 
@@ -906,9 +902,9 @@ console.log(await server.exited) // { exitCode: 0, signal: null }
   takes it too, so `kill()` signals the group.
 - `killTree: true` on the async runners kills the child's process tree when
   the run is stopped, on every platform. On POSIX it is `processGroup: true`.
-  On Windows the runner runs `taskkill /pid <pid> /t /f` (found on absolute
-  `PATH` entries only) while the child is still running, then kills the
-  child. Pass it for a command that forks, such as a build tool.
+  On Windows the runner runs `taskkill /pid <pid> /t /f` from
+  `%SystemRoot%\System32`, by absolute path, while the child is still running,
+  then kills the child. Pass it for a command that forks, such as a build tool.
 - A `streamRunner` timeout prints its line to the parent's stderr, as a failed
   spawn or a signal does, unless `quiet` is set. With `stdio` set to an fd, the
   line still goes to the parent's stderr, not to the fd.

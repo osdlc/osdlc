@@ -90,8 +90,8 @@ describe('commandString', () => {
 
   test('cmd leaves inert words bare and escapes the rest', () => {
     expect(commandString(['git', 'log', '-n', '5'], { shell: 'cmd' })).toBe('git log -n 5')
-    expect(commandString(['echo', 'a&b', '%PATH%', ''], { shell: 'cmd' })).toBe(
-      'echo ^"a^&b^" ^"^%PATH^%^" ^"^"',
+    expect(commandString(['echo', 'a&b', '!x!', ''], { shell: 'cmd' })).toBe(
+      'echo ^"a^&b^" ^"^!x^!^" ^"^"',
     )
     expect(commandString(['C:\\Program Files\\x.exe', 'a=b'], { shell: 'cmd' })).toBe(
       'C:\\Program^ Files\\x.exe ^"a=b^"',
@@ -103,6 +103,17 @@ describe('commandString', () => {
       'cd /d C:\\my^ repo && dir',
     )
   })
+
+  test.each(['%PATH%', '%PATH:a=b%', '%PATH:~0,2%', 'a%b'])(
+    'cmd refuses %j, which cmd.exe expands before it reads any ^',
+    (w) => {
+      expect(() => commandString(['echo', w], { shell: 'cmd' })).toThrow(/cannot quote a %/)
+      expect(() => commandString([w], { shell: 'cmd' })).toThrow(/cannot quote a %/)
+      expect(() => commandString(['dir'], { shell: 'cmd', cwd: `C:\\${w}` })).toThrow(
+        /cannot quote a %/,
+      )
+    },
+  )
 
   test('cmd refuses a line break; an empty argv is refused everywhere', () => {
     expect(() => commandString(['echo', 'a\nb'], { shell: 'cmd' })).toThrow(RangeError)

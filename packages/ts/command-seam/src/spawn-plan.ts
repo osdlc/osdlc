@@ -48,13 +48,18 @@ export function spawnPlan(
     }
   }
   // `cmd.exe` expands `%NAME%`, `%NAME:a=b%` and `%NAME:~n,m%` before it reads
-  // any `^`, and a `^` inside such a form does not stop it, so no quoting makes
-  // a `%` safe in a batch file's argument. Refuse it, as an argument Rust's std
-  // would also not pass on unquoted. An `.exe` gets argv directly.
+  // any `^`, and a `^` inside such a form does not stop it, so `^` escaping
+  // cannot make a `%` safe. Refuse it in the arguments and in the batch file's
+  // path. An `.exe` gets argv directly.
   const percent = argv.findIndex((a) => a.includes('%'))
   if (percent !== -1) {
     return {
       refusal: `spawn ${binary} EINVAL: argv[${percent}] holds a %, which cmd.exe would expand inside a batch file; pass it through an environment variable or a file instead`,
+    }
+  }
+  if (resolved.includes('%')) {
+    return {
+      refusal: `spawn ${binary} EINVAL: the batch file path ${JSON.stringify(resolved)} holds a %, which cmd.exe would expand`,
     }
   }
   // Every batch file is escaped twice. Most pass their arguments on with

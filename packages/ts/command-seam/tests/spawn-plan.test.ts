@@ -244,6 +244,12 @@ describe('spawnPlan', () => {
       expect(spawnPlan('git', [arg], win)).toEqual({ file: exe, args: [arg] })
     },
   )
+
+  test('win32 refuses a batch file whose path holds a %', () => {
+    const gradlew = file('x%PATH:a=b%/gradlew.bat')
+    const plan = spawnPlan(gradlew, ['build'], win)
+    expect(plan).toEqual({ refusal: expect.stringContaining('batch file path') })
+  })
 })
 
 describe('runners on this host', () => {
