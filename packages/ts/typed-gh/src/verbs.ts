@@ -338,10 +338,20 @@ export interface PrListOptions {
   head?: string | undefined
   /**
    * Every PR whose head branch starts with this prefix, such as `task/`.
-   * Sent as a `head:<prefix>` search term, ahead of any `search`, and the rows
-   * are filtered again on `headRefName`, as GitHub's `head:` matching is
-   * looser than a prefix. Passing it with `head` throws `RangeError`, as does
-   * an empty prefix or one with whitespace.
+   *
+   * Sent as a `head:<prefix>` term of a GitHub search, with any `search`
+   * grouped after it in parentheses, so an `OR` there cannot escape the
+   * prefix. The rows are filtered again on `headRefName`, since GitHub's
+   * `head:` match ignores case and git branch names do not.
+   *
+   * Going through search brings search's limits: a short index lag after a
+   * push, the search rate limit, and at most 1000 results, so a `limit` over
+   * 999 throws `RangeError`. `truncated` counts the rows gh returned before
+   * the case filter, so it can be true with fewer than `limit` rows.
+   *
+   * Passing it with `head` throws `RangeError`, as does an empty prefix or
+   * one holding whitespace, `"`, `(` or `)`, which GitHub search would read
+   * as syntax.
    */
   headPrefix?: string | undefined
   /** Raw `--search` query, for anything the flags do not cover. */
@@ -362,7 +372,12 @@ export function prList(
   const { head, headPrefix } = opts
   if (headPrefix !== undefined) {
     if (head !== undefined) throw new RangeError('prList: pass head or headPrefix, not both')
-    if (headPrefix === '' || /\s/.test(headPrefix)) {
+    if (limit > 999) {
+      throw new RangeError(
+        `prList: headPrefix goes through GitHub search, which returns at most 1000 results; limit ${limit} is over 999`,
+      )
+    }
+    if (headPrefix === '' || /[\s"()]/.test(headPrefix)) {
       throw new RangeError(
         `prList: headPrefix must be a non-empty branch prefix, got ${JSON.stringify(headPrefix)}`,
       )
@@ -371,10 +386,16 @@ export function prList(
   const argv = ['pr', 'list', '--state', opts.state ?? 'open', ...repoArgs(target, opts.repo)]
   if (opts.base !== undefined) argv.push('--base', opts.base)
   if (head !== undefined) argv.push('--head', head)
-  const search = [headPrefix === undefined ? undefined : `head:${headPrefix}`, opts.search]
-    .filter((s) => s !== undefined)
-    .join(' ')
-  if (search !== '' || opts.search !== undefined) argv.push('--search', search)
+  // The caller's search is grouped so its `OR` cannot escape the prefix:
+  // GitHub search binds AND tighter than OR.
+  const own = opts.search?.trim()
+  const search =
+    headPrefix === undefined
+      ? opts.search
+      : own === undefined || own === ''
+        ? `head:${headPrefix}`
+        : `head:${headPrefix} (${own})`
+  if (search !== undefined) argv.push('--search', search)
   if (opts.author !== undefined) argv.push('--author', opts.author)
   // A row without `number` does not parse and is dropped, so always ask for it.
   // The head filters below also read `headRefName`.
