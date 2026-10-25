@@ -100,11 +100,17 @@ function entryPoints(pkg: Pkg): string[] {
     .map((k) => (k === '.' ? pkg.name : `${pkg.name}/${k.slice(2)}`))
 }
 
-/** The `exports` subpaths that name a stylesheet. A stylesheet is a file a
- * tool reads, not a module, so it has no types and is not imported. */
+/** The `exports` subpaths that name a stylesheet: a `./*.css` key whose value
+ * is a `./dist/*.css` path. A stylesheet is a file a tool reads, not a module,
+ * so it has no types and is not imported. Any other `.css` key is judged as
+ * code, so attw fails it. */
 function stylesheetEntries(pkg: Pkg): string[] {
   if (pkg.exports === null || typeof pkg.exports !== 'object') return []
-  return Object.keys(pkg.exports).filter((k) => k.startsWith('./') && k.endsWith('.css'))
+  const exports = pkg.exports as Record<string, unknown>
+  return Object.keys(exports).filter((k) => {
+    const value = exports[k]
+    return k.startsWith('./') && k.endsWith('.css') && typeof value === 'string' && /^\.\/dist\/[^*]+\.css$/.test(value)
+  })
 }
 
 /** Installs `tarball` into an empty project and loads each entry point the

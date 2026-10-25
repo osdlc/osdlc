@@ -119,3 +119,10 @@ test('./tokens.css is exported and the build writes it from tokensCss', () => {
   const script = readFileSync(join(PACKAGE_DIR, 'scripts', 'build-css.mjs'), 'utf-8')
   expect(script).toContain('tokensCss')
 })
+
+test('the stylesheet is marked as a side effect, so a bundler keeps its import', () => {
+  // With "sideEffects": false, webpack drops `import '@osdlc/ux/tokens.css'`.
+  expect(MANIFEST['sideEffects']).toEqual(['*.css'])
+  const exports = MANIFEST['exports'] as Record<string, unknown>
+  expect(exports['./tokens.css']).toBe('./dist/tokens.css')
+})
