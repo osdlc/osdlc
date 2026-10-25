@@ -1,7 +1,7 @@
 /**
  * Repository text never reaches the terminal as a control sequence: the
  * helpers themselves, then `--list`, `query`, `trust`, `config`, `providers`,
- * the `--serve` summary, the terminal UI, the copied text and
+ * the `serve` summary, the terminal UI, the copied text and
  * stderr, with `--json` keeping every value exact.
  */
 
@@ -14,7 +14,7 @@ import { captureIo } from '@osdlc/cli-tool'
 import { CATALOG_SCHEMA_VERSION, type Catalog, type Task } from '@osdlc/system-model/detect'
 
 import { main } from '../src/cli.ts'
-import { startupSummary } from '../src/serve.ts'
+import { startupSummary } from '../src/serve/index.ts'
 import {
   guardedExit,
   jsonText,
@@ -223,7 +223,7 @@ describe('trust, config and providers output', () => {
   })
 })
 
-describe('the --serve summary', () => {
+describe('the serve summary', () => {
   test('prints the root and runner names without control characters', () => {
     const text = startupSummary('http://127.0.0.1:1', {
       catalog: {

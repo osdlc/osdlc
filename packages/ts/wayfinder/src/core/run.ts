@@ -1,6 +1,6 @@
 /**
- * Handing the terminal to a task. The CLI's `run` uses it now; the terminal
- * UI and the web view's server hand off the same way.
+ * Handing the terminal to a task. The CLI's `run`, the terminal UI and the
+ * web view's server hand off the same way.
  */
 
 import { constants } from 'node:os'
@@ -34,7 +34,7 @@ const TERMINAL_SIGNALS: readonly NodeJS.Signals[] =
  * terminal's foreground group. This process ignores it while the task runs,
  * so it can report how the task ended, as a shell does.
  */
-export function handOff(plan: RunPlan): HandOffResult {
+export function handOff(plan: Pick<RunPlan, 'argv' | 'env' | 'cwd'>): HandOffResult {
   const ignore = (): void => {}
   for (const signal of TERMINAL_SIGNALS) process.on(signal, ignore)
   try {

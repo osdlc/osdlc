@@ -4,9 +4,35 @@
 
 import { UsageError } from '@osdlc/cli-tool/command'
 
-import { serve } from '../serve.ts'
+import { serve } from '../serve/index.ts'
 import { runTui } from '../tui.ts'
 import { kit, openSession } from './shared.ts'
+
+/** The exit code for each signal that stops `serve`: 128 + its number. */
+const STOP_SIGNALS = { SIGINT: 130, SIGTERM: 143 } as const
+
+/**
+ * An abort signal that fires on SIGINT or SIGTERM, with the exit code as its
+ * reason, linked to `parent`. `dispose` removes the listeners.
+ */
+export function abortOnSignals(parent: AbortSignal): { signal: AbortSignal; dispose(): void } {
+  const aborter = new AbortController()
+  const handlers = Object.entries(STOP_SIGNALS).map(([name, code]) => {
+    const handler = (): void => aborter.abort(code)
+    process.on(name, handler)
+    return [name, handler] as const
+  })
+  const onParent = (): void => aborter.abort(parent.reason)
+  if (parent.aborted) onParent()
+  else parent.addEventListener('abort', onParent, { once: true })
+  return {
+    signal: aborter.signal,
+    dispose() {
+      for (const [name, handler] of handlers) process.off(name, handler)
+      parent.removeEventListener('abort', onParent)
+    },
+  }
+}
 
 /** Make the terminal UI command, the root's default. */
 export function browseCommand(home: string) {
@@ -39,8 +65,9 @@ export function serveCommand(home: string) {
     summary: 'the same catalog as a live page in the browser',
     description:
       'Serves 127.0.0.1 only, on an OS-assigned port unless --port gives one, and opens a ' +
-      'browser signed in to it. --no-open prints the URL instead. It starts from the stored ' +
-      'probe, then refreshes. Ctrl-C stops it.',
+      'browser signed in to it. --no-open prints the URL instead. Every action on the page is ' +
+      'a command of this tool, called over HTTP with a token made for this run. It starts from ' +
+      'the stored probe, then refreshes. Ctrl-C stops it, and any probe it is running.',
     positionals: [{ name: 'dir', help: 'the directory to inspect (beats -C)' }],
     flags: {
       port: { kind: 'string', valueName: 'N', help: 'a fixed port (default: an OS-assigned one)' },
@@ -53,19 +80,32 @@ export function serveCommand(home: string) {
     interactive: true,
     async run({ flags, globals, positionals }, ctx) {
       const port = flags.port === undefined ? undefined : parsePort(flags.port)
-      const session = await openSession(globals, ctx, home, positionals[0])
-      return serve({
-        project: session.project,
-        projectToolsPending: session.projectToolsPending,
-        root: session.root,
-        collectOptions: session.options,
-        pinnedByFlag: session.pinnedByFlag,
-        open: flags.open,
-        runnerOrder: session.runnerOrder(),
-        env: session.env,
-        home: session.home,
-        ...(port !== undefined ? { port } : {}),
-      })
+      // Ctrl-C aborts the session's probes and stops the server.
+      const stopper = abortOnSignals(ctx.signal)
+      try {
+        const session = await openSession(
+          globals,
+          { ...ctx, signal: stopper.signal },
+          home,
+          positionals[0],
+        )
+        const exit = await serve({
+          session,
+          app: ctx.app,
+          globals: globals as Record<string, unknown>,
+          cwd: ctx.cwd,
+          open: flags.open,
+          signal: stopper.signal,
+          stdout: (text) => ctx.io.stdout(text),
+          stderr: (text) => ctx.io.stderr(text),
+          ...(port !== undefined ? { port } : {}),
+        })
+        if (exit !== null) return exit
+        const reason: unknown = stopper.signal.reason
+        return typeof reason === 'number' ? reason : 0
+      } finally {
+        stopper.dispose()
+      }
     },
   })
 }

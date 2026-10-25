@@ -1,6 +1,8 @@
 import type { Catalog, RunnerCacheState, Task } from '@osdlc/system-model/detect'
 import type { Mode } from '@osdlc/system-model/match'
 
+import type { Unknown } from '../core/unknowns.ts'
+
 export const SEP = ' › ' // the chain separator shown between segments
 export const OPEN = '▾' // twisty, expanded
 export const SHUT = '▸' // twisty, collapsed
@@ -15,6 +17,15 @@ export const ALL = 'all'
  */
 export function $(id: string): HTMLElement {
   return document.getElementById(id)!
+}
+
+/**
+ * What `way list --json` answers: the catalog, with where each runner's rows
+ * came from and what could not be read.
+ */
+export type CatalogDocument = Catalog & {
+  cache?: RunnerCacheState[]
+  unknowns?: Unknown[]
 }
 
 /**
@@ -36,14 +47,20 @@ export interface TreeNode {
 }
 
 export interface AppState {
-  catalog: Catalog | null
+  catalog: CatalogDocument | null
   runner: string
   query: string
   mode: Mode
   /** Show only services — tasks that run until you stop them. */
   servicesOnly: boolean
   declaredOnly: boolean
+  /** `runners.order` from config, or a drag made in this page. */
   runnerOrder: string[]
+  /**
+   * The layer that set `runners.order`, as `way config list` names it. A
+   * project's order wins over a user's.
+   */
+  runnerOrderSource: string
   depth: number
   // null until the first catalog arrives; then a Set of enabled runner ids.
   enabled: Set<string> | null
@@ -55,18 +72,20 @@ export interface AppState {
   checkedAt: number | string
   loading: boolean
   /**
-   * Whether the server says a trust grant would collect the withheld runners.
-   * False when execution is off for another reason, such as a config file. Then
-   * trusting the repository would change nothing, so the page does not offer it.
+   * Whether a trust grant would collect the withheld runners: the catalog
+   * says a runner is withheld because the repository is not trusted. False
+   * when execution is off for another reason, such as `--no-exec`, where a
+   * grant would change nothing.
    */
   trustable: boolean
   /**
-   * Where each runner's rows came from, as the server reports it, one entry per
-   * selected runner. The server may answer the first request from its store so
-   * the page appears at once, so a row on screen can be older than the clock
-   * beside it. This records which rows are, and `renderStatus` shows it.
+   * Where each runner's rows came from, one entry per selected runner. The
+   * first view may come from the store, so a row on screen can be older than
+   * the clock beside it. `renderStatus` says so.
    */
   cache: RunnerCacheState[]
+  /** What the catalog could not read, each with the label every surface shows. */
+  unknowns: Unknown[]
   /**
    * The row in the results list that has keyboard focus, held as the task's
    * `id` rather than its position. render() rebuilds all of #out on a resize,
@@ -87,6 +106,7 @@ export const state: AppState = {
   servicesOnly: false,
   declaredOnly: false,
   runnerOrder: [],
+  runnerOrderSource: 'default',
   depth: 99,
   enabled: null,
   collapsed: new Set(),
@@ -98,61 +118,11 @@ export const state: AppState = {
   loading: false,
   trustable: false,
   cache: [],
+  unknowns: [],
   focusedId: null,
 }
 
-// ------------------------------------------------------------ persistence
-
-export function persistTheme(choice: string): void {
-  try {
-    localStorage.setItem('wayfinder:theme', choice)
-  } catch {
-    /* private window */
-  }
-}
-
-/** The saved theme choice, or null when there is none — the system default stands. */
-export function restoreTheme(): 'light' | 'dark' | null {
-  try {
-    const saved = localStorage.getItem('wayfinder:theme')
-    if (saved === 'light' || saved === 'dark') return saved
-  } catch {
-    /* private window: the system default is a fine fallback */
-  }
-  return null
-}
-
-export function persistRunnerOrder(order: string[]): void {
-  try {
-    localStorage.setItem('wayfinder:runner-order', JSON.stringify(order))
-  } catch {
-    /* private window */
-  }
-}
-
-/**
- * Drop the saved arrangement, so the configured order applies again.
- *
- * Once a tab has been dragged, `runners.order` from the project config can
- * never take effect again in this browser. This is the way back.
- */
-export function clearRunnerOrder(): void {
-  try {
-    localStorage.removeItem('wayfinder:runner-order')
-  } catch {
-    /* private window */
-  }
-  state.runnerOrder = []
-}
-
-/** The saved runner arrangement, or `[]` when there is none — alphabetical stands. */
-export function restoreRunnerOrder(): string[] {
-  try {
-    const savedOrder: unknown = JSON.parse(localStorage.getItem('wayfinder:runner-order') ?? '[]')
-    if (Array.isArray(savedOrder))
-      return savedOrder.filter((r): r is string => typeof r === 'string')
-  } catch {
-    /* private window or corrupt value: alphabetical is fine */
-  }
-  return []
+/** Every task in the catalog, in catalog order. */
+export function allTasks(): Task[] {
+  return (state.catalog?.reports ?? []).flatMap((r) => r.tasks)
 }

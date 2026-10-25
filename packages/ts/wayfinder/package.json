@@ -70,9 +70,11 @@
     "@osdlc/tiered-dirs": "workspace:^",
     "@osdlc/trust-repo": "workspace:^",
     "@osdlc/typed-git": "workspace:^",
+    "@osdlc/ux": "workspace:^",
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@osdlc/color": "workspace:^",
     "@osdlc/prettier-config": "workspace:^",
     "@osdlc/tsconfig": "workspace:^",
     "@types/node": "catalog:",

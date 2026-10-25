@@ -47,12 +47,16 @@ must leave alone.
 - The CLI: each command in `src/commands/` calls `openSession` (in
   `commands/shared.ts`), which maps the global flags onto `createSession` and
   turns a `SessionError` into a `CommandError`.
-- The terminal UI and the web view's server: today `commands/browse.ts`
-  passes them the session's parts (`project`, `root`, `options`, `gate`,
-  `runnerOrder()`, `env`, `home`). They should take the `Session` itself and
-  call `catalog`, `search`, `grantTrust`, `revokeTrust`, `settings`,
-  `unknowns` and `resolveRun` instead of their own copies. A run hands off
-  with `handOff(plan)` after the surface has released the terminal.
+- The web view's server (`src/serve/`) takes the `Session` and the command
+  tree. The page calls commands over HTTP, so each request opens its own
+  session, as a CLI run does. A run resolves with `run --dry-run` and hands
+  off with `handOff(plan)` after the server has stopped.
+- The terminal UI: today `commands/browse.ts` passes it the session's parts
+  (`project`, `root`, `options`, `gate`, `runnerOrder()`, `env`, `home`). It
+  should take the `Session` itself and call `catalog`, `search`,
+  `grantTrust`, `revokeTrust`, `settings`, `unknowns` and `resolveRun`
+  instead of its own copies. A run hands off with `handOff(plan)` after the
+  surface has released the terminal.
 - The page: `filterTasks`, `unknownsOf`, `unknownLine` and the vocabulary
   module are browser-safe, so the page imports them directly.
   `tests/web-bundle.test.ts` fails if the page's bundle imports a Node
