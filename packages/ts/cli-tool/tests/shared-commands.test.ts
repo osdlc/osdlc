@@ -1,3 +1,5 @@
+import { tmpdir } from 'node:os'
+
 import { describe, expect, test } from 'vitest'
 
 import { defineApp } from '../src/command/index.ts'
@@ -537,5 +539,49 @@ describe('config edge cases', () => {
     const r = await runApp(appWith(store), ['config', 'get', 'a', '--json'])
     expect(r.json()).toMatchObject({ key: 'a', value: { ['__proto__']: 1 } })
     expect(Object.hasOwn(r.json<{ value: object }>().value, '__proto__')).toBe(true)
+  })
+})
+
+describe('runApp', () => {
+  test('a run without overrides sees a scratch home and directory, not the real ones', async () => {
+    const seen: { cwd: string; home: string | undefined }[] = []
+    const store = memoryStore()
+    store.list = async (ctx) => {
+      seen.push({ cwd: ctx.cwd, home: ctx.env['HOME'] })
+      return { settings: [] }
+    }
+    await runApp(appWith(store), ['config', 'list'])
+    expect(seen[0]!.cwd).not.toBe(process.cwd())
+    expect(seen[0]!.home).toBeDefined()
+    expect(seen[0]!.home).not.toBe(process.env['HOME'])
+    expect(seen[0]!.home!.startsWith(tmpdir()) || seen[0]!.home!.includes('cli-tool-run-')).toBe(
+      true,
+    )
+  })
+
+  test('picks the schema by path when two commands share a kind', async () => {
+    const { defineCommand } = await import('../src/command/index.ts')
+    const { z } = await import('zod')
+    const app = defineApp({
+      name: 't',
+      version: '0',
+      summary: 's',
+      commands: {
+        a: defineCommand({
+          summary: 'a',
+          kind: 'same',
+          output: z.object({ n: z.number() }),
+          run: () => ({ n: 1 }),
+        }),
+        b: defineCommand({
+          summary: 'b',
+          kind: 'same',
+          output: z.object({ s: z.string() }),
+          run: () => ({ s: 'x' }),
+        }),
+      },
+    })
+    await expect(runApp(app, ['b', '--json'])).resolves.toMatchObject({ exit: 0 })
+    await expect(runApp(app, ['a', '--json'])).resolves.toMatchObject({ exit: 0 })
   })
 })

@@ -133,9 +133,9 @@ const spec: AppSpec<typeof GLOBALS> = {
 const app: App = defineApp(spec)
 
 test('a data command answers as text, or as one JSON document', async () => {
-  const text = await runApp(app, ['branch', '--merged'])
+  const text = await runApp(app, ['branch', '--merged'], { cwd: '/work', env: {} })
   expect(text.out).toBe('* old-fix\n')
-  expect(text.err).toBe('sweep: 1 branch(es) in ' + process.cwd() + '\n')
+  expect(text.err).toBe('sweep: 1 branch(es) in /work\n')
 
   const json = await runApp(app, ['-C', '/repo', 'branch', 'list', '--json'])
   expect(json.json()).toEqual({ schemaVersion: 1, kind: 'branches', branches })
