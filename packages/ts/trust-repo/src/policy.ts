@@ -14,7 +14,8 @@
  *
  *   1. A marker grant in the caller's {@link TrustStore}.
  *   2. `policy.paths`: a glob over the resolved repo root.
- *   3. `policy.owners`: a case-insensitive match on the owner `ownerOf` returns.
+ *   3. `policy.owners`: a case-insensitive match on the host and owner
+ *      `ownerOf` returns. See {@link TrustPolicy.owners}.
  *
  * The caller also expands path tokens (`~`, `{name}`, and any others its own
  * paths format defines), through {@link PolicyDecisionOptions.expandPath}.
@@ -73,7 +74,11 @@ export function pathGlobToRegExp(pattern: string): RegExp {
 export interface TrustPolicy {
   /** Glob patterns (see {@link pathGlobToRegExp}'s dialect) over the resolved, symlink-free repo root. */
   paths: string[]
-  /** Owners matched case-insensitively against the owner {@link PolicyDecisionOptions.ownerOf} returns. */
+  /**
+   * Owners, each `host/owner` (`gitlab.com/acme`) or a bare `owner`, which
+   * means `github.com/owner`. Matched case-insensitively against what
+   * {@link PolicyDecisionOptions.ownerOf} returns, host and owner both.
+   */
   owners: string[]
 }
 
@@ -127,8 +132,10 @@ export interface PolicyDecisionOptions {
    */
   expandPath?: (raw: string) => Promise<string> | string
   /**
-   * The owner of `root`'s `origin` remote, or null when there is none to read.
-   * This package does not use git, so without it `policy.owners` never matches.
+   * The host and owner of `root`'s `origin` remote as `host/owner`
+   * (`github.com/acme`), or null when there is none to read. A bare owner
+   * is read as `github.com/owner`. This package does not use git, so without
+   * it `policy.owners` never matches.
    */
   ownerOf?: (root: string) => string | null
   /**
@@ -167,11 +174,21 @@ export async function policyDecision(
   if (policy.owners.length > 0 && opts.ownerOf !== undefined) {
     const owner = opts.ownerOf(root)
     if (owner !== null) {
-      const hit = policy.owners.find((o) => o.toLowerCase() === owner.toLowerCase())
+      const key = ownerKey(owner)
+      const hit = policy.owners.find((o) => ownerKey(o) === key)
       if (hit !== undefined) return { trusted: true, by: 'owner', rule: hit }
     }
   }
   return { trusted: false, by: null }
+}
+
+/**
+ * `host/owner` in lower case. A bare owner is a GitHub owner, which is what
+ * an `owners` entry meant before it could name a host.
+ */
+function ownerKey(value: string): string {
+  const v = value.trim().toLowerCase()
+  return v.includes('/') ? v : `github.com/${v}`
 }
 
 /**

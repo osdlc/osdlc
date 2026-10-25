@@ -200,7 +200,7 @@ const repo = substitutePathNames('{dev}/work', names, 'repos:')
 | `pathsSchema({ reserved })` | the map as a schema: a name (letters, digits, `_`, starting with a letter) → a directory. Refuses any `reserved` name, which a consuming setting defines itself |
 | `pathNames(baseDir, machine, project, opts?)` | the effective map: machine entries over project ones, each `~`-expanded and absolute. `opts.home` is what `~` expands to |
 | `substitutePathNames(value, names, where, opts?)` | `value` with every `{name}` replaced. Throws `PathNameError` for a name nothing defines. The message names `where` it appeared, what is available, and `opts.defineHint` |
-| `resolveConfigPath(value, baseDir, opts?)` | the `~` and relative-path expansion every config path value goes through. `opts.home` defaults to `$HOME`, or `os.homedir()` when `HOME` is unset or empty. An empty home leaves `~` unexpanded. Only `~` and `~/…` expand |
+| `resolveConfigPath(value, baseDir, opts?)` | the `~` and relative-path expansion every config path value goes through. `opts.home` defaults to `$HOME`, or the OS account's home when `HOME` is unset, empty or relative. An empty home leaves `~` unexpanded. Only `~` and `~/…` expand |
 
 An unknown path name is an error, not an empty string. A setting that quietly
 becomes `/repo` instead of `/Users/me/dev/repo` fails somewhere far from the
@@ -357,7 +357,7 @@ share is left out of the fixture and listed in this table.
 | Project file | `assembleConfig` loads, validates and memoizes it, with a `.local` overlay deep-merged first | `read_mapping` reads it; `overlay_top_level` fills a missing or unset top-level key from the machine file, one level deep |
 | Finding the project file | the caller passes the project root (`resolveConfigFile(projectRoot, ...)`); there is no `findUp` | `find_up(cwd, file_name)` |
 | `substitutePathNames` | `substitutePathNames(value, names, where, { defineHint })`: one function, with the hint in an options object | `substitute_path_names(value, names, setting)` and `substitute_path_names_with_hint(value, names, setting, define_hint)` |
-| Home for `~` | `home` option, default `$HOME`, else `os.homedir()` (unset or empty) | `home` argument, required |
+| Home for `~` | `home` option, default `$HOME`, else the OS account's home (unset, empty or relative) | `home` argument, required |
 | An empty home | `~/x` is left unexpanded and resolves as a relative path | `~/x` becomes `/x` |
 | `1_000` and `0b11` | read as the strings `1_000` and `0b11` | read as the numbers 1000 and 3 |
 | Integers beyond 2^53 | read as a number and lose precision | read as `u64`, then as a lossy float |

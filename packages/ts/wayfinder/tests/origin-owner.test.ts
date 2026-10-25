@@ -4,7 +4,7 @@
  */
 
 import { afterEach, describe, expect, test } from 'vitest'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -35,8 +35,50 @@ const withGit = { ownerOf: originOwner }
 describe('originOwner', () => {
   test('reads the origin remote owner', () => {
     expect(originOwner(repoWithOrigin('https://github.com/AcmeOwner/dev.git').dir)).toBe(
-      'AcmeOwner',
+      'github.com/AcmeOwner',
     )
+  })
+
+  test('names the host, so an owner on another host is told apart', () => {
+    expect(originOwner(repoWithOrigin('https://gitlab.com/AcmeOwner/dev.git').dir)).toBe(
+      'gitlab.com/AcmeOwner',
+    )
+    expect(originOwner(repoWithOrigin('git@bitbucket.org:AcmeOwner/dev.git').dir)).toBe(
+      'bitbucket.org/AcmeOwner',
+    )
+  })
+
+  test('never runs a git the repository ships on a relative PATH entry', () => {
+    const repo = repoWithOrigin('https://github.com/AcmeOwner/dev.git')
+    mkdirSync(join(repo.dir, 'bin'))
+    const planted = join(repo.dir, 'bin', 'git')
+    writeFileSync(
+      planted,
+      `#!/bin/sh\ntouch "${join(repo.dir, 'ran')}"\necho https://github.com/trusted/x.git\n`,
+    )
+    chmodSync(planted, 0o755)
+    const saved = process.env['PATH']
+    process.env['PATH'] = `bin:.:${saved ?? ''}`
+    try {
+      expect(originOwner(repo.dir)).toBe('github.com/AcmeOwner')
+    } finally {
+      process.env['PATH'] = saved
+    }
+    expect(existsSync(join(repo.dir, 'ran'))).toBe(false)
+  })
+
+  test('runs git with core.fsmonitor off', () => {
+    const calls: string[][] = []
+    const git = {
+      binary: 'git',
+      run: (argv: string[]) => {
+        calls.push(argv)
+        return { exitCode: 0, stdout: 'https://github.com/a/b.git\n', stderr: '' }
+      },
+    }
+    expect(originOwner(tmp(), git)).toBe('github.com/a')
+    expect(calls).toHaveLength(1)
+    expect(calls[0]?.slice(0, 2)).toEqual(['-c', 'core.fsmonitor=false'])
   })
 
   test('is null for a root with no origin remote', () => {
@@ -53,7 +95,7 @@ describe('originOwner', () => {
     ['https, no .git suffix', 'https://github.com/AcmeOwner/dev'],
     ['https with embedded userinfo', 'https://user:token@github.com/AcmeOwner/dev.git'],
   ])('reads every origin URL shape — %s', (_label, url) => {
-    expect(originOwner(repoWithOrigin(url).dir)).toBe('AcmeOwner')
+    expect(originOwner(repoWithOrigin(url).dir)).toBe('github.com/AcmeOwner')
   })
 
   test('is null for a self-hosted/enterprise origin — hosted-git-info does not know the host', () => {
@@ -81,6 +123,18 @@ describe('originOwner as ownerOf', () => {
       trusted: true,
       by: 'owner',
       rule: 'acmeowner',
+    })
+  })
+
+  test('policy.owners does not match the same owner name on another host', async () => {
+    const repo = repoWithOrigin('https://gitlab.com/AcmeOwner/dev.git')
+    const decide = (owners: string[]) => policyDecision(repo.dir, { paths: [], owners }, withGit)
+    expect((await decide(['acmeowner'])).trusted).toBe(false)
+    expect((await decide(['github.com/acmeowner'])).trusted).toBe(false)
+    expect(await decide(['gitlab.com/acmeowner'])).toEqual({
+      trusted: true,
+      by: 'owner',
+      rule: 'gitlab.com/acmeowner',
     })
   })
 

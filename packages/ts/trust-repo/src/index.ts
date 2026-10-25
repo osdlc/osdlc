@@ -21,6 +21,7 @@ export { TRUST_MARKER_DIR, resolveTrustRoot, trustStore, trustStoreDir } from '.
 export type { TrustResult, TrustStore, TrustStoreOptions } from './store.ts'
 
 export { xdgHome } from './xdg.ts'
+export { homeDir } from './home.ts'
 
 export { resolveExecGate, withheldHint } from './gate.ts'
 export type { ExecGate, ResolveExecGateArgs } from './gate.ts'

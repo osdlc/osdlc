@@ -5,13 +5,13 @@
  */
 
 import { access } from 'node:fs/promises'
-import { homedir } from 'node:os'
 
 import { BIN } from './app.ts'
 import {
   CONFIG_ENV_VAR,
   ConfigError,
   configLocations,
+  envIgnoredWarning,
   DEFAULT_CONFIG,
   getConfigValue,
   loadConfig,
@@ -26,7 +26,9 @@ import {
   type LoadedConfig,
   type TaskConfig,
 } from './config.ts'
+import { jsonText, terminalSafe } from './terminal-text.ts'
 import { EXIT, type CliIo } from '@osdlc/cli-tool'
+import { homeDir } from '@osdlc/trust-repo'
 
 /**
  * `CliIo` plus the environment this command needs injected.
@@ -37,7 +39,7 @@ export interface ConfigCommandIO extends CliIo {
    * `WAYPOST_CONFIG`) and `XDG_CONFIG_HOME`.
    */
   env?: Record<string, string | undefined>
-  /** Defaults to `os.homedir()`. The base for the non-XDG user path. */
+  /** Defaults to `homeDir()` from `@osdlc/trust-repo`. The base for the non-XDG user path. */
   home?: string
   /**
    * wayfinder's own defaults, between `DEFAULT_CONFIG` and the user file
@@ -110,7 +112,7 @@ async function exists(file: string): Promise<boolean> {
 
 /** `<path> (exists)` or `<path> (missing)`, which is what `config path` reports. */
 async function describeFile(file: string): Promise<string> {
-  return `${file} ${(await exists(file)) ? '(exists)' : '(missing)'}`
+  return `${terminalSafe(file)} ${(await exists(file)) ? '(exists)' : '(missing)'}`
 }
 
 function pad(text: string, width: number): string {
@@ -199,7 +201,7 @@ export async function runConfigCommand(
   io: ConfigCommandIO,
 ): Promise<number> {
   const env = io.env ?? process.env
-  const home = io.home ?? homedir()
+  const home = io.home ?? homeDir()
   const fail = (message: string): number => {
     io.stderr(`${toolName}: ${message}\n`)
     return EXIT.error
@@ -261,12 +263,14 @@ async function listCommand(
     const sources: Record<string, ConfigLayer> = {}
     for (const [key, layer] of loaded.sources) sources[key] = layer
     io.stdout(
-      `${JSON.stringify({ effective: loaded.effective, sources, locations: loaded.locations }, null, 2)}\n`,
+      `${jsonText({ effective: loaded.effective, sources, locations: loaded.locations }, 2)}\n`,
     )
   } else {
+    // JSON.stringify leaves DEL and C1 characters raw, so the human listing
+    // still goes through terminalSafe.
     const rows = [...loaded.sources].map(([key, layer]) => ({
-      key,
-      value: JSON.stringify(getConfigValue(loaded.effective, key)),
+      key: terminalSafe(key),
+      value: terminalSafe(JSON.stringify(getConfigValue(loaded.effective, key))),
       layer,
     }))
     const keyWidth = rows.reduce((n, r) => Math.max(n, r.key.length), 0)
@@ -310,7 +314,7 @@ async function getCommand(
     io.stderr(`${toolName}: no value for ${key}\n`)
     return EXIT.error
   }
-  io.stdout(`${JSON.stringify(value)}\n`)
+  io.stdout(`${jsonText(value)}\n`)
   return EXIT.ok
 }
 
@@ -383,7 +387,7 @@ async function setCommand(
     }
   }
 
-  io.stdout(`${file}: ${key} = ${JSON.stringify(getConfigValue(next, key))}\n`)
+  io.stdout(terminalSafe(`${file}: ${key} = ${JSON.stringify(getConfigValue(next, key))}`) + '\n')
   return EXIT.ok
 }
 
@@ -420,7 +424,7 @@ async function unsetCommand(
 
   const next = unsetConfigValue(document, key)
   await writeConfigFile(file, next)
-  io.stdout(`${file}: removed ${key}\n`)
+  io.stdout(terminalSafe(`${file}: removed ${key}`) + '\n')
   return EXIT.ok
 }
 
@@ -443,6 +447,8 @@ async function pathCommand(
   // existence is checked. You use `config path` when a file will not load, so
   // it must not fail on the file it names.
   const locations = configLocations(root, env, home)
+  const ignored = envIgnoredWarning(locations)
+  if (ignored !== null) io.stderr(`warning: ${ignored}\n`)
   io.stdout(`user:    ${await describeFile(locations.user)}\n`)
   if (locations.userEnvVar !== null) io.stdout(`         (from ${locations.userEnvVar})\n`)
   io.stdout(`project: ${await describeFile(locations.project)}\n`)

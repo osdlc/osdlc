@@ -1,16 +1,13 @@
 /**
  * `way providers`: every registered tool, built-in or loaded from a module,
  * with its roles, its runner kind, its binary and whether that binary is on
- * the PATH. Reads files only; runs nothing.
+ * an absolute PATH entry. Reads files only; runs nothing.
  */
 
-import { accessSync, constants, statSync } from 'node:fs'
-import { homedir } from 'node:os'
-import { delimiter, join } from 'node:path'
-
 import { EXIT, type CliIo } from '@osdlc/cli-tool'
+import { which } from '@osdlc/command-seam'
 import type { Project, RoleName, ToolDef } from '@osdlc/system-model/detect'
-import { policyExecGate } from '@osdlc/trust-repo'
+import { homeDir, policyExecGate } from '@osdlc/trust-repo'
 
 import { APP, BIN } from './app.ts'
 import {
@@ -20,6 +17,7 @@ import {
   trustPolicyOptions,
   type LoadedConfig,
 } from './config.ts'
+import { jsonText, terminalSafe } from './terminal-text.ts'
 import { appTrustStore } from './trust-store.ts'
 import type { LoadedTool } from './tools.ts'
 
@@ -69,19 +67,10 @@ role's: parse reads files, exec runs the repository's tools and needs trust.
 `
 }
 
+/** Found on an absolute PATH entry, as detection finds a binary. */
 function onPath(binary: string, env: Record<string, string | undefined>): boolean {
-  for (const dir of (env['PATH'] ?? '').split(delimiter)) {
-    if (dir === '') continue
-    try {
-      const file = join(dir, binary)
-      if (!statSync(file).isFile()) continue
-      accessSync(file, constants.X_OK)
-      return true
-    } catch {
-      // Not here.
-    }
-  }
-  return false
+  const lookup = { absolutePathOnly: true, env: { PATH: env['PATH'], PATHEXT: env['PATHEXT'] } }
+  return which(binary, lookup) !== undefined
 }
 
 /** One row per registered tool, in registry order. */
@@ -105,14 +94,17 @@ export function providerRows(
 }
 
 function table(rows: ProviderRow[]): string {
-  const cells = rows.map((r) => [
-    r.id,
-    r.roles.join(',') || '-',
-    r.kind ?? '-',
-    r.binary ?? '-',
-    r.onPath === null ? '-' : r.onPath ? 'yes' : 'no',
-    r.source === 'custom' && r.module !== undefined ? `custom ${r.module}` : r.source,
-  ])
+  // Tool ids and module paths can come from a project's config.
+  const cells = rows.map((r) =>
+    [
+      r.id,
+      r.roles.join(',') || '-',
+      r.kind ?? '-',
+      r.binary ?? '-',
+      r.onPath === null ? '-' : r.onPath ? 'yes' : 'no',
+      r.source === 'custom' && r.module !== undefined ? `custom ${r.module}` : r.source,
+    ].map((cell) => terminalSafe(cell)),
+  )
   const head = ['tool', 'roles', 'kind', 'binary', 'on PATH', 'source']
   const widths = head.map((h, i) => Math.max(h.length, ...cells.map((c) => c[i]!.length)))
   const fmt = (c: string[]) =>
@@ -130,7 +122,7 @@ export async function runProvidersCommand(
   io: ProvidersCommandIO,
 ): Promise<number> {
   const env = io.env ?? process.env
-  const home = io.home ?? homedir()
+  const home = io.home ?? homeDir()
   let json = false
   const modules: string[] = []
   for (let i = 0; i < argv.length; i++) {
@@ -179,6 +171,6 @@ export async function runProvidersCommand(
   for (const warning of built.warnings) io.stderr(`warning: ${warning}\n`)
 
   const rows = providerRows(built.project.tools, built.tools, env)
-  io.stdout(json ? `${JSON.stringify(rows, null, 2)}\n` : table(rows))
+  io.stdout(json ? `${jsonText(rows, 2)}\n` : table(rows))
   return EXIT.ok
 }

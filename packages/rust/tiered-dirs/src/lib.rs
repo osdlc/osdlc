@@ -984,6 +984,26 @@ impl From<BaseDirs> for OsDefaults {
     }
 }
 
+/// The user's home directory, or `None` when `dirs` finds none or reports a
+/// relative one. A relative `HOME` counts as unset: every path built on it
+/// would land in the working directory. An empty `HOME` is already unset in
+/// `dirs`. Unlike the TypeScript package, this does not then ask the OS
+/// account for its home, because that lookup needs `unsafe` code.
+#[cfg(not(windows))]
+#[allow(
+    clippy::disallowed_methods,
+    reason = "this is the one place that resolves the home directory"
+)]
+fn home_dir() -> Option<PathBuf> {
+    absolute_home(dirs::home_dir())
+}
+
+/// `home`, unless it is relative.
+#[cfg(not(windows))]
+fn absolute_home(home: Option<PathBuf>) -> Option<PathBuf> {
+    home.filter(|home| home.is_absolute())
+}
+
 /// The XDG table under the platform's home directory. With no home, only the
 /// `XDG_*` variables that hold absolute paths give directories.
 #[cfg(not(windows))]
@@ -992,7 +1012,7 @@ impl From<BaseDirs> for OsDefaults {
     reason = "this is the one place that resolves platform base directories"
 )]
 fn xdg_defaults(var: impl Fn(&str) -> Option<OsString>) -> OsDefaults {
-    if let Some(home) = dirs::home_dir() {
+    if let Some(home) = home_dir() {
         return BaseDirs::xdg(home, var).into();
     }
     let state = xdg_var(&var, "XDG_STATE_HOME");
@@ -1016,14 +1036,20 @@ fn xdg_defaults(var: impl Fn(&str) -> Option<OsString>) -> OsDefaults {
 )]
 fn os_defaults(convention: Convention, var: impl Fn(&str) -> Option<OsString>) -> OsDefaults {
     match convention {
-        Convention::Native => OsDefaults {
-            durable: dirs::data_dir(),
-            config: dirs::config_dir(),
-            cache: dirs::cache_dir(),
-            state: dirs::data_dir(),
-            logs: dirs::home_dir().map(|home| home.join("Library").join("Logs")),
-            runtime: None,
-        },
+        Convention::Native => {
+            // `dirs` builds these from `HOME`, so they come from the checked
+            // home here, as `dirs` would build them.
+            let library = home_dir().map(|home| home.join("Library"));
+            let in_library = |name: &str| library.as_ref().map(|library| library.join(name));
+            OsDefaults {
+                durable: in_library("Application Support"),
+                config: in_library("Application Support"),
+                cache: in_library("Caches"),
+                state: in_library("Application Support"),
+                logs: in_library("Logs"),
+                runtime: None,
+            }
+        }
         Convention::Xdg => xdg_defaults(var),
     }
 }
@@ -1976,6 +2002,21 @@ mod tests {
         assert_eq!(from_vars(&[("EXAMPLE_ROOT", "")]).unwrap(), os);
     }
 
+    /// A relative home (`HOME=.`) counts as unset. An empty one is unset in
+    /// `dirs` already.
+    #[cfg(not(windows))]
+    #[test]
+    fn a_relative_home_counts_as_unset() {
+        for relative in [".", "home", "../h", "./h"] {
+            assert_eq!(absolute_home(Some(PathBuf::from(relative))), None);
+        }
+        assert_eq!(absolute_home(None), None);
+        assert_eq!(
+            absolute_home(Some(PathBuf::from("/h"))),
+            Some(PathBuf::from("/h"))
+        );
+    }
+
     /// The Native table off Linux comes from `dirs` and Apple's places.
     #[cfg(target_os = "macos")]
     #[test]
@@ -1984,7 +2025,7 @@ mod tests {
         reason = "checks resolution against the OS defaults"
     )]
     fn the_native_table_on_macos_is_apples() {
-        let (Some(home), Ok(base)) = (dirs::home_dir(), from_vars(&[])) else {
+        let (Some(home), Ok(base)) = (home_dir(), from_vars(&[])) else {
             return;
         };
         let support = home.join("Library").join("Application Support");

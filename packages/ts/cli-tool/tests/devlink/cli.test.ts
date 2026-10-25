@@ -63,6 +63,15 @@ describe('runDevCli', () => {
     expect(runDevCli(SPEC, ['status', '--nope'], { ...base(), io: capture() })).toBe(2)
   })
 
+  test('status shows the cwd line only for a spec with the cwd layer', () => {
+    let io = capture()
+    expect(runDevCli(SPEC, ['status'], { ...base(), io })).toBe(0)
+    expect(io.out).toContain('  cwd:')
+    io = capture()
+    expect(runDevCli({ ...SPEC, cwdLayer: false }, ['status'], { ...base(), io })).toBe(0)
+    expect(io.out).not.toContain('cwd:')
+  })
+
   test('link → status → history → use #2 → off, text and --json', () => {
     const a = seedCheckout(join(sb.root, 'a'))
     const b = seedCheckout(join(sb.root, 'b'))

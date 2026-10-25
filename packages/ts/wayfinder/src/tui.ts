@@ -45,6 +45,7 @@ import {
 import { loadConfig } from './config.ts'
 import { appTrustStore } from './trust-store.ts'
 import { groupOf, runnerLabel } from './groups.ts'
+import { terminalSafe } from './terminal-text.ts'
 
 // ---------------------------------------------------------------- ansi
 
@@ -76,14 +77,16 @@ interface Chunk {
 /**
  * Compose chunks into one line of exactly `width` columns. Truncation happens
  * on the PLAIN text — measuring a string that already carries escape sequences
- * counts the escapes as columns and wraps the line.
+ * counts the escapes as columns and wraps the line. Every chunk's text goes
+ * through {@link terminalSafe} first, so repository text never writes a
+ * control sequence; only `paint` adds escapes.
  */
 function line(chunks: Chunk[], width: number): string {
   let used = 0
   let out = ''
   for (const chunk of chunks) {
     if (used >= width) break
-    let text = chunk.text
+    let text = terminalSafe(chunk.text)
     if (used + text.length > width) text = text.slice(0, Math.max(0, width - used - 1)) + '…'
     used += text.length
     out += chunk.paint ? chunk.paint(text) : text
@@ -651,10 +654,14 @@ async function settingsLines(): Promise<string[]> {
  */
 function copy(task: Task): boolean {
   const dir = /^[\w.\-/@+]+$/.test(task.cwd) ? task.cwd : `'${task.cwd.replace(/'/g, "'\\''")}'`
-  const text = task.cwd === '.' ? task.display : `cd ${dir} && ${task.display}`
+  // The text shown, so a control character in it cannot reach the paste.
+  const text = terminalSafe(task.cwd === '.' ? task.display : `cd ${dir} && ${task.display}`)
   const bin = process.platform === 'darwin' ? 'pbcopy' : 'xclip'
   const args = process.platform === 'darwin' ? [] : ['-selection', 'clipboard']
-  const res = spawnRunner(bin).run(args, { input: text, cwd: state.root })
+  const res = spawnRunner(bin, { absolutePathOnly: true }).run(args, {
+    input: text,
+    cwd: state.root,
+  })
   return res.exitCode === 0
 }
 
@@ -688,14 +695,16 @@ function runAndExit(task: Task, args: readonly string[] = []): never {
   try {
     argv = runArgv(state.project, task, args)
   } catch (err) {
-    process.stderr.write(`${APP}: ${err instanceof Error ? err.message : String(err)}\n`)
+    process.stderr.write(
+      `${APP}: ${terminalSafe(err instanceof Error ? err.message : String(err))}\n`,
+    )
     process.exit(1)
   }
-  process.stdout.write(`${dim('$')} ${bold(argv.join(' '))}\n`)
+  process.stdout.write(`${dim('$')} ${bold(terminalSafe(argv.join(' ')))}\n`)
   // Show the parameters only when none were given. A task run with its
   // arguments has just shown them on the line above.
   if (task.parameters.length > 0 && args.length === 0) {
-    process.stdout.write(`${dim(`  takes ${paramShape(task.parameters)}`)}\n`)
+    process.stdout.write(`${dim(`  takes ${terminalSafe(paramShape(task.parameters))}`)}\n`)
   }
 
   const [binary, ...rest] = argv
@@ -707,11 +716,13 @@ function runAndExit(task: Task, args: readonly string[] = []): never {
   // be out of date. It came from the store, and its task may have been
   // renamed or deleted since. Saying so gives the user something to act on.
   if (res.reason === 'spawn') {
-    process.stderr.write(`${APP}: ${binary}: ${res.error ?? 'could not start'}\n`)
+    process.stderr.write(
+      terminalSafe(`${APP}: ${binary}: ${res.error ?? 'could not start'}`) + '\n',
+    )
     const from = cacheFor(task.runner)
     if (from !== undefined && from.state === 'stale') {
       process.stderr.write(
-        `${APP}: that row came from a cached listing of ${task.runner} taken ${humanAge(from.ageMs)}` +
+        `${APP}: that row came from a cached listing of ${terminalSafe(task.runner)} taken ${humanAge(from.ageMs)}` +
           ` — the task may no longer exist; start ${BIN} again to re-probe\n`,
       )
     }

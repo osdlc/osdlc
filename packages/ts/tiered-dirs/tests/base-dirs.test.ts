@@ -1,3 +1,4 @@
+import { userInfo } from 'node:os'
 import { join, normalize } from 'node:path'
 
 import { describe, expect, test } from 'vitest'
@@ -103,6 +104,17 @@ describe('Linux', () => {
     expect([bases.durable, bases.config, bases.cache, bases.logs].map(normalize)).toEqual(
       ['/d', '/c', '/k', '/s'].map(normalize),
     )
+  })
+
+  test('a relative HOME counts as unset, so the account home is used', () => {
+    const saved = process.env['HOME']
+    process.env['HOME'] = '.'
+    try {
+      const bases = systemBaseDirs(ENV, { platform: 'darwin', testRoot: false })
+      expect(bases.durable).toBe(join(userInfo().homedir, 'Library', 'Application Support'))
+    } finally {
+      process.env['HOME'] = saved
+    }
   })
 
   test('a relative XDG value is invalid and ignored', () => {

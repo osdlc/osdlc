@@ -126,7 +126,9 @@ come from the `dirs` crate. These rules of this crate apply to every cell:
   `standalone("logs").durable()` the Windows logs root.
 - Under XDG, logs and state share one directory. Keep their file names apart.
 - A missing base directory is `Error::MissingBaseDir`, never a panic.
-  Headless CI and sandboxes do not always have a home directory.
+  Headless CI and sandboxes do not always have a home directory. A relative
+  `HOME` counts as unset, so no path lands in the working directory. Unlike the
+  TypeScript package, the crate does not then fall back to the OS account's home.
 
 ## Choosing a convention
 

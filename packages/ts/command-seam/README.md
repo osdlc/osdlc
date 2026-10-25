@@ -467,6 +467,29 @@ An empty `PATH` entry means `cwd`, as it does for Node's spawn. Bun's spawn
 skips empty entries, so under Bun `which` can find a binary there that a
 spawn would not.
 
+### Running a command inside an untrusted folder
+
+A relative or empty `PATH` entry is looked up from the child's `cwd`. On
+Windows, a spawn of a bare name searches `cwd` before `PATH`. So when `cwd`
+is a folder someone else wrote, such as a cloned repository, a file there
+named `git` can run in place of git. Pass `absolutePathOnly: true` to
+`spawnRunner` or `spawnRunnerAsync`. The runner then looks the bare name up
+on absolute `PATH` entries only, using `PATHEXT` on Windows, and spawns the
+absolute path it finds. When there is none, the run fails as a missing
+binary does (`ENOENT`, kind `not-installed`). A name with a separator, such
+as `./gradlew`, is a path and runs as given.
+
+```ts
+import { spawnRunnerAsync } from '@osdlc/command-seam'
+
+const git = spawnRunnerAsync('git', { absolutePathOnly: true })
+const r = await git.run(['rev-parse', '--is-inside-work-tree'], { cwd: '/tmp/clone' })
+```
+
+`which(binary, { absolutePathOnly: true })` does the same lookup without
+running anything. `absolutePathCandidates(binary, { path, pathext, platform })`
+returns the paths that lookup checks, in order, without reading the disk.
+
 ## Reading results
 
 Small helpers that never throw for a failed command (a programmer error,
@@ -875,7 +898,8 @@ The experimental exports:
 - `firstLine`, `stderrOrError`
 - `runJson`, `runJsonAsync`, `parseJsonResult`, `JsonRun`, `JsonFailure`, `RunJsonOptions`
 - `withDefaults`, `DefaultedRunner`
-- `which`, `WhichOptions`
+- `which`, `WhichOptions`, `absolutePathCandidates`, `PathCandidateOptions`
+- `SpawnRunnerOptions`
 - `stopProcess`
 - `installGroupSignalForwarding`, `GroupSignalForwardingOptions`
 - `liveProcessGroups`, `forwardedSignal`, `forwardedExitCode`

@@ -9,10 +9,11 @@ import {
   symlink,
   writeFile,
 } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { basename, join } from 'node:path'
+import { tmpdir, userInfo } from 'node:os'
+import { basename, isAbsolute, join } from 'node:path'
 
 import {
+  homeDir,
   resolveExecGate,
   resolveTrustRoot,
   trustStore,
@@ -59,6 +60,28 @@ describe('trustStoreDir', () => {
     expect(trustStoreDir('tooly', { XDG_STATE_HOME: '' }, '/home/dev')).toBe(
       '/home/dev/.local/state/tooly/trusted',
     )
+  })
+
+  test('a relative HOME is treated as unset, and the account home is used', () => {
+    const saved = process.env['HOME']
+    process.env['HOME'] = '.'
+    try {
+      expect(homeDir()).toBe(userInfo().homedir)
+      expect(isAbsolute(trustStoreDir('tooly', {}))).toBe(true)
+      expect(isAbsolute(trustStore({ tool: 'tooly', env: {} }).dir())).toBe(true)
+    } finally {
+      process.env['HOME'] = saved
+    }
+  })
+
+  test('ignores a relative XDG_STATE_HOME, as the XDG spec says', () => {
+    // Resolved against the cwd, `.state` would put the store inside the
+    // repository being judged, where it could ship its own marker.
+    for (const value of ['.state', 'state/x', './s']) {
+      expect(trustStoreDir('tooly', { XDG_STATE_HOME: value }, '/home/dev')).toBe(
+        '/home/dev/.local/state/tooly/trusted',
+      )
+    }
   })
 
   test('expands a leading ~ rather than making a literal directory', () => {

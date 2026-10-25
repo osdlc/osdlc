@@ -37,6 +37,7 @@ export {
   type CommandRunOptions,
   type EnvOverrides,
   type NeverExitedReason,
+  type SpawnRunnerOptions,
   type StdioOption,
 } from './sync.ts'
 
@@ -115,4 +116,9 @@ export {
 
 export { withDefaults, type DefaultedRunner } from './defaults.ts'
 
-export { which, type WhichOptions } from './which.ts'
+export {
+  absolutePathCandidates,
+  which,
+  type PathCandidateOptions,
+  type WhichOptions,
+} from './which.ts'

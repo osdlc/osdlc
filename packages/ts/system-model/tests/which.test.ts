@@ -54,6 +54,18 @@ describe('which', () => {
     expect(which('faketool', {})).toBeNull()
   })
 
+  test('a relative or empty PATH entry is never searched', () => {
+    const saved = process.cwd()
+    process.chdir(dir)
+    try {
+      expect(which('faketool', env('.'))).toBeNull()
+      expect(which('faketool', env(['', '.'].join(delimiter)))).toBeNull()
+      expect(which('faketool', env(['.', other].join(delimiter)))).toBe(shadowed)
+    } finally {
+      process.chdir(saved)
+    }
+  })
+
   test('a name with a separator is a path, not a PATH search', () => {
     expect(which(tool, env(''))).toBe(tool)
     expect(which(join(dir, 'nope'), env(dir))).toBeNull()

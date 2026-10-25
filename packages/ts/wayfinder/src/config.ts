@@ -8,7 +8,7 @@
  *
  *   1. `DEFAULT_CONFIG` — the built-in defaults.
  *   2. USER — `$XDG_CONFIG_HOME/wayfinder/config.json`, or `~/.config/wayfinder/config.json`
- *      when `XDG_CONFIG_HOME` is unset.
+ *      when `XDG_CONFIG_HOME` is unset or relative.
  *   3. PROJECT — `wayfinder.config.json` at the root `findRoot` resolves.
  *   4. CLI flags, applied by the caller. {@link collectOptionsFromConfig}
  *      returns the options a caller spreads its own flags on top of.
@@ -43,7 +43,8 @@
  * from. The named file is read instead of the XDG path. The project layer is
  * still read from the project root and still merges on top. Naming a file that
  * does not exist is an error, not an empty layer: an env var that points at
- * nothing is a typo.
+ * nothing is a typo. A relative value is ignored with a warning, and the XDG
+ * path is read instead.
  *
  * ## The old waypost names
  *
@@ -80,11 +81,15 @@
 
 import { existsSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
-import { homedir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, isAbsolute, join, resolve } from 'node:path'
 
 import { readParsedFile } from '@osdlc/config-layers'
-import { resolveTrustRoot, type PolicyDecisionOptions, type TrustPolicy } from '@osdlc/trust-repo'
+import {
+  homeDir,
+  resolveTrustRoot,
+  type PolicyDecisionOptions,
+  type TrustPolicy,
+} from '@osdlc/trust-repo'
 
 import type { DiscoveryMode } from '@osdlc/system-model/detect'
 
@@ -137,7 +142,10 @@ export interface TrustConfig {
    * A leading `~` expands against `home`. There are no `{name}` tokens.
    */
   paths?: string[]
-  /** Origin remote owners (case-insensitive) that trust a root without a marker. */
+  /**
+   * Origin remote owners that trust a root without a marker: `host/owner`, or
+   * a bare `owner` for `github.com/owner`. Case-insensitive.
+   */
   owners?: string[]
 }
 
@@ -206,6 +214,11 @@ export interface ConfigLocations {
   userLegacy: boolean
   /** The old waypost user file, when it exists beside the new one and is ignored. */
   userIgnored: string | null
+  /**
+   * A relative {@link CONFIG_ENV_VAR} (or old-name) value, which is ignored:
+   * the variable and its value. Null when none was ignored.
+   */
+  userEnvIgnored: { variable: string; value: string } | null
   /**
    * Absolute path of `<root>/wayfinder.config.json`, whether or not it exists,
    * or of `<root>/waypost.config.json` when only that one exists.
@@ -340,24 +353,24 @@ function unknownKeyWarning(file: string, key: string): string {
  * whether a file exists, which picks between a new name and its old waypost
  * name (see the module docblock).
  *
- * Two rules for a path taken from the environment:
+ * Rules for a path taken from the environment:
  *
  * A leading `~` is expanded against `home`. A shell expands it before exec, but
  * `.env` loaders, direnv and CI YAML pass the literal tilde through. Without
  * this, `~/config.json` would silently become `<somewhere>/~/config.json`.
  *
- * A relative path resolves against `root`, not the process working directory.
- * Reading `process.cwd()` would give a library caller that scans another
- * directory a user-layer path unrelated to that directory, while the project
- * layer followed it.
+ * A relative `XDG_CONFIG_HOME` is ignored, as the XDG spec says. A relative
+ * `WAYFINDER_CONFIG` is ignored too, and `userEnvIgnored` says so. Resolved
+ * against the root, or against the cwd, which is usually the root, it would
+ * name a file inside the repository being scanned, and the user layer can
+ * turn execution on and load tools.
  */
 export function configLocations(
   root: string,
   env: Record<string, string | undefined> = process.env,
-  home: string = homedir(),
+  home: string = homeDir(),
 ): ConfigLocations {
   const base = resolve(root)
-  const absolute = (path: string): string => resolve(base, expandTilde(path, home))
 
   const fromVar = (name: string): string | null => {
     const value = env[name]?.trim()
@@ -365,12 +378,19 @@ export function configLocations(
   }
   const named = fromVar(CONFIG_ENV_VAR)
   const legacyNamed = named === null ? fromVar(LEGACY_CONFIG_ENV_VAR) : null
-  const userEnvVar =
+  const namedVar =
     named !== null ? CONFIG_ENV_VAR : legacyNamed !== null ? LEGACY_CONFIG_ENV_VAR : null
-  const envPath = named ?? legacyNamed
+  const envValue = named ?? legacyNamed
+  const expanded = envValue === null ? null : expandTilde(envValue, home)
+  const envPath = expanded !== null && isAbsolute(expanded) ? expanded : null
+  const userEnvVar = envPath !== null ? namedVar : null
+  const userEnvIgnored =
+    namedVar !== null && envValue !== null && envPath === null
+      ? { variable: namedVar, value: envValue }
+      : null
 
-  const xdg = env['XDG_CONFIG_HOME']?.trim()
-  const configHome = xdg !== undefined && xdg !== '' ? absolute(xdg) : join(home, '.config')
+  const xdg = expandTilde(env['XDG_CONFIG_HOME']?.trim() ?? '', home)
+  const configHome = isAbsolute(xdg) ? xdg : join(home, '.config')
 
   const xdgUser = preferNew(
     join(configHome, USER_CONFIG_DIR, USER_CONFIG_FILENAME),
@@ -382,11 +402,12 @@ export function configLocations(
   )
 
   return {
-    user: envPath !== null ? absolute(envPath) : xdgUser.path,
+    user: envPath !== null ? resolve(envPath) : xdgUser.path,
     userFromEnv: envPath !== null,
     userEnvVar,
     userLegacy: envPath === null && xdgUser.legacy,
     userIgnored: envPath === null ? xdgUser.ignored : null,
+    userEnvIgnored,
     project: project.path,
     projectLegacy: project.legacy,
     projectIgnored: project.ignored,
@@ -648,7 +669,7 @@ function leafPaths(value: unknown, prefix: string): string[] {
 export async function loadConfig(
   root: string,
   env: Record<string, string | undefined> = process.env,
-  home: string = homedir(),
+  home: string = homeDir(),
 ): Promise<LoadedConfig> {
   const locations = configLocations(root, env, home)
 
@@ -722,9 +743,21 @@ export async function loadConfig(
   }
 }
 
-/** One warning per old waypost name in use, naming the new one. */
+/** The warning for a relative `WAYFINDER_CONFIG` that was ignored, or null. */
+export function envIgnoredWarning(locations: ConfigLocations): string | null {
+  if (locations.userEnvIgnored === null) return null
+  const { variable, value } = locations.userEnvIgnored
+  return (
+    `${variable}=${value} is ignored because it is not an absolute path; ` +
+    `use an absolute path or ~/. Reading ${locations.user} instead`
+  )
+}
+
+/** One warning per old waypost name in use, naming the new one, and one for an ignored env path. */
 function legacyWarnings(locations: ConfigLocations): string[] {
   const out: string[] = []
+  const ignored = envIgnoredWarning(locations)
+  if (ignored !== null) out.push(ignored)
   if (locations.userEnvVar === LEGACY_CONFIG_ENV_VAR) {
     out.push(`${LEGACY_CONFIG_ENV_VAR} is the old name; set ${CONFIG_ENV_VAR} instead`)
   }

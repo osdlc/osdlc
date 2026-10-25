@@ -5,8 +5,8 @@
  * A tool declares a {@link ToolSpec} once. Its launcher calls {@link resolve}
  * (or is rendered by {@link renderLauncher} when it must decide before a
  * JavaScript runtime exists) and runs whichever checkout wins: the explicit
- * `<NAME>_HOME` env, the checkout above the cwd, the linked checkout, or
- * itself. The `dev` verbs ({@link install}, {@link link}, {@link use},
+ * `<NAME>_HOME` env, the checkout above the cwd (only when the spec sets
+ * `cwdLayer`), the linked checkout, or itself. The `dev` verbs ({@link install}, {@link link}, {@link use},
  * {@link off}, {@link status}, {@link history}) manage the link. Every
  * selection is appended to a per-tool history, so `use #n` can return to any
  * earlier checkout and `use canonical` to the install.

@@ -10,6 +10,8 @@
  */
 
 import { afterAll, describe, expect, test } from 'vitest'
+import { chmodSync, existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 import { CommandFailed, runChecked, spawnRunner, spawnRunnerAsync } from '@osdlc/command-seam'
 
@@ -153,7 +155,7 @@ describe('createLister exclusions', () => {
 })
 
 describe('gitAvailable', () => {
-  const probe = ['rev-parse', '--is-inside-work-tree']
+  const probe = ['-c', 'core.fsmonitor=false', 'rev-parse', '--is-inside-work-tree']
 
   test('true inside a working tree, and asks git in the right directory', async () => {
     const runners = fakeRunners([{ binary: 'git', argv: probe, stdout: 'true\n' }])
@@ -186,7 +188,15 @@ describe('gitAvailable', () => {
 })
 
 describe('createLister in git mode', () => {
-  const lsFiles = ['ls-files', '-z', '--cached', '--others', '--exclude-standard']
+  const lsFiles = [
+    '-c',
+    'core.fsmonitor=false',
+    'ls-files',
+    '-z',
+    '--cached',
+    '--others',
+    '--exclude-standard',
+  ]
 
   test('lists what git reports, still applying the exclusions', async () => {
     // Tracked AND untracked-but-not-ignored: a justfile written a minute ago
@@ -331,6 +341,48 @@ describe('detect and anchored literal markers', () => {
     const dir = await gitRepo({ 'README.md': '' })
     const project = createProject({ tools: [localConfig('/local.cfg')] })
     expect((await project.detect(dir, { discovery: 'git' })).tools).toEqual([])
+  })
+
+  test("detection never runs the repository's core.fsmonitor command", async () => {
+    // `.git/config` comes with the directory, before any trust. A hook that
+    // ran would create `ran`.
+    const dir = await gitRepo({ 'package.json': '{"scripts":{"x":"true"}}' })
+    const hook = join(dir, 'fsmonitor.sh')
+    writeFileSync(hook, `#!/bin/sh\ntouch "${join(dir, 'ran')}"\n`)
+    chmodSync(hook, 0o755)
+    runChecked(spawnRunner('git'), ['config', 'core.fsmonitor', hook], { cwd: dir })
+
+    const project = createProject({ tools: builtins })
+    const profile = await project.detect(dir, { discovery: 'auto' })
+    await project.runners.collect(profile, { allowExec: false })
+    const cacheDir = await root({})
+    await project.runners.readCached(await project.detect(dir), cacheDir)
+
+    expect(profile.discovery).toBe('git')
+    expect(existsSync(join(dir, 'ran'))).toBe(false)
+  })
+
+  test('detection never runs a git the repository ships on a relative PATH entry', async () => {
+    // With `bin` on PATH, a spawn of a bare `git` from the repository root
+    // would find `<root>/bin/git` first.
+    const dir = await gitRepo({ 'package.json': '{"scripts":{"x":"true"}}' })
+    mkdirSync(join(dir, 'bin'))
+    const planted = join(dir, 'bin', 'git')
+    writeFileSync(planted, `#!/bin/sh\ntouch "${join(dir, 'ran')}"\nexit 1\n`)
+    chmodSync(planted, 0o755)
+
+    const saved = process.env['PATH']
+    process.env['PATH'] = `bin:.:${saved ?? ''}`
+    try {
+      const project = createProject({ tools: builtins })
+      const profile = await project.detect(dir, { discovery: 'auto' })
+      await project.runners.collect(profile, { allowExec: false })
+      expect(profile.discovery).toBe('git')
+      expect(profile.tools).toContain('node-scripts')
+    } finally {
+      process.env['PATH'] = saved
+    }
+    expect(existsSync(join(dir, 'ran'))).toBe(false)
   })
 
   test('walk discovery sees an ignored file without the disk check', async () => {

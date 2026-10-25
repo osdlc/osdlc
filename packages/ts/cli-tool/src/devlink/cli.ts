@@ -50,10 +50,18 @@ usage: ${n} dev <verb> [options]
 
   --json      machine output      --dry-run   report, write nothing
 
-Resolution order, first hit wins: \$${envStemOf(n)}_HOME, a checkout above the
-cwd (\$${envStemOf(n)}_CWD_DEV=0 turns that off), the linked checkout, the local
-install.
+${order(spec)}
 `
+}
+
+function order(spec: ToolSpec): string {
+  const stem = envStemOf(spec.name)
+  return spec.cwdLayer === true
+    ? `Resolution order, first hit wins: \$${stem}_HOME, a checkout above the
+cwd (\$${stem}_CWD_DEV=0 turns that off), the linked checkout, the local
+install.`
+    : `Resolution order, first hit wins: \$${stem}_HOME, the linked checkout, the
+local install.`
 }
 
 function envStemOf(name: string): string {
@@ -174,7 +182,7 @@ export function runDevCli(spec: ToolSpec, argv: readonly string[], opts: RunOpti
       }
       case 'status': {
         const out = status(spec, o)
-        emit(out, () => renderStatus(out))
+        emit(out, () => renderStatus(spec, out))
         return EXIT.ok
       }
       case 'history': {
@@ -219,7 +227,7 @@ function renderOff(spec: ToolSpec, previous: string | null, suffix: string): str
     : `unlinked ${previous}${suffix}\n${spec.name} runs the local install.\n`
 }
 
-function renderStatus(s: ReturnType<typeof status>): string {
+function renderStatus(spec: ToolSpec, s: ReturnType<typeof status>): string {
   const sel = s.selection
   const active =
     sel.source === 'local'
@@ -237,7 +245,8 @@ function renderStatus(s: ReturnType<typeof status>): string {
   return (
     `active: ${active}\n` +
     `  ${s.env.var}: ${s.env.value ?? '(unset)'}\n` +
-    `  cwd:      ${cwdLine}\n` +
+    // A spec without the cwd layer never looks there, so the line is left out.
+    (spec.cwdLayer === true ? `  cwd:      ${cwdLine}\n` : '') +
     `  link:     ${s.link.path} = ${linkLine}\n` +
     `  self:     ${s.self ?? '(not inside a checkout)'}\n` +
     `  history:  ${s.history.entries} checkout(s) in ${s.history.path}\n` +

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { homedir } from 'node:os'
+import { homedir, userInfo } from 'node:os'
 import { join, resolve } from 'node:path'
 
 import {
@@ -29,15 +29,29 @@ describe('resolveConfigPath', () => {
     expect(resolveConfigPath('~bob/x', ROOT, { home: '/home/me' })).toBe(resolve(ROOT, '~bob/x'))
   })
 
-  test('with HOME unset or empty, ~ falls back to os.homedir()', () => {
+  test('with HOME unset or empty, ~ falls back to the account home', () => {
     const prev = process.env['HOME']
     try {
       delete process.env['HOME']
       expect(resolveConfigPath('~/x', ROOT)).toBe(join(homedir(), 'x'))
       process.env['HOME'] = ''
-      // Under Node, os.homedir() reads the empty HOME too and returns ''. `~` stays unexpanded.
-      expect(resolveConfigPath('~/x', ROOT)).toBe(resolve(ROOT, '~/x'))
+      expect(resolveConfigPath('~/x', ROOT)).toBe(join(userInfo().homedir, 'x'))
+      // An explicit empty home leaves `~` unexpanded.
       expect(resolveConfigPath('~/x', ROOT, { home: '' })).toBe(resolve(ROOT, '~/x'))
+    } finally {
+      if (prev === undefined) delete process.env['HOME']
+      else process.env['HOME'] = prev
+    }
+  })
+
+  test('a relative HOME counts as unset, so ~ never resolves against the cwd', () => {
+    const prev = process.env['HOME']
+    try {
+      for (const relative of ['.', 'home', '../h']) {
+        process.env['HOME'] = relative
+        expect(resolveConfigPath('~/x', ROOT)).toBe(join(userInfo().homedir, 'x'))
+        expect(resolveConfigPath('~', ROOT)).toBe(userInfo().homedir)
+      }
     } finally {
       if (prev === undefined) delete process.env['HOME']
       else process.env['HOME'] = prev

@@ -38,6 +38,13 @@ export interface LauncherOptions {
 }
 
 /**
+ * Bun reads `.env*` and `bunfig.toml` from the cwd, which can be a repository
+ * the user does not control. These flags stop both; `bunRunArgs` in
+ * `exec.ts` explains why.
+ */
+const BUN_FLAGS = '--no-env-file --config=/dev/null'
+
+/**
  * Prints the keys of a package.json `dependencies` object, one per line.
  * Handles the block opening, holding entries, and closing on one line or
  * several: each segment is split on commas and its first quoted string is the
@@ -67,11 +74,18 @@ export function launcherCheckout(spec: ToolSpec, launcherPath: string): string |
 }
 
 /**
- * Produce the text of the launcher script for a tool.
+ * Produce the text of the launcher script for a tool. Throws when the spec
+ * sets `packageName`, which the bash checks cannot read.
  * @experimental
  */
 export function renderLauncher(spec: ToolSpec, opts: LauncherOptions = {}): string {
+  if (spec.packageName !== undefined) {
+    throw new Error(
+      'devlink: renderLauncher cannot check packageName in bash; use a JavaScript launcher that calls execSelection',
+    )
+  }
   const name = spec.name
+  const cwdLayer = spec.cwdLayer === true
   const marker = spec.marker
   const entry = entryOf(spec)
   const launcherDir = posix.dirname(spec.launcher)
@@ -93,14 +107,25 @@ export function renderLauncher(spec: ToolSpec, opts: LauncherOptions = {}): stri
   p('# regenerate rather than edit (the drift test compares the two).')
   p('#')
   p('# Picks which checkout answers, in this order:')
-  p(`#   ${homeVar(spec)} env → checkout above cwd → linked checkout → local.`)
-  p('# Explicit env always applies. The cwd and link layers are off when a')
-  if (suppressors.length > 0) {
-    p(`# suppressor is set (${suppressors.join(', ')}) — a harness that invokes this`)
-    p('# launcher must never have its code silently swapped — and the cwd layer')
-    p(`# alone is off under ${cwdDevVar(spec)}=0. \`${name} dev\` manages the link.`)
+  if (cwdLayer) {
+    p(`#   ${homeVar(spec)} env → checkout above cwd → linked checkout → local.`)
+    p('# Explicit env always applies. The cwd and link layers are off when a')
+    if (suppressors.length > 0) {
+      p(`# suppressor is set (${suppressors.join(', ')}) — a harness that invokes this`)
+      p('# launcher must never have its code silently swapped — and the cwd layer')
+      p(`# alone is off under ${cwdDevVar(spec)}=0. \`${name} dev\` manages the link.`)
+    } else {
+      p(`# cwd layer is off under ${cwdDevVar(spec)}=0. \`${name} dev\` manages the link.`)
+    }
   } else {
-    p(`# cwd layer is off under ${cwdDevVar(spec)}=0. \`${name} dev\` manages the link.`)
+    p(`#   ${homeVar(spec)} env → linked checkout → local.`)
+    if (suppressors.length > 0) {
+      p('# Explicit env always applies. The link layer is off when a suppressor is')
+      p(`# set (${suppressors.join(', ')}) — a harness that invokes this launcher must`)
+      p(`# never have its code silently swapped. \`${name} dev\` manages the link.`)
+    } else {
+      p(`# Explicit env always applies. \`${name} dev\` manages the link.`)
+    }
   }
   p('#')
   p('# Says which entry runs, and why, on stderr before anything else, so with')
@@ -120,6 +145,22 @@ export function renderLauncher(spec: ToolSpec, opts: LauncherOptions = {}): stri
   p()
   p('announce() {')
   p(`  [ "\${${quietVar(spec)}:-0}" = "1" ] || echo "${name}: running $1 ($2)" >&2`)
+  p('}')
+  p()
+  p('# Prints the path of $1 on the absolute PATH entries, as execSelection finds')
+  p('# bun. A relative or empty entry is searched from the cwd, which can be a')
+  p('# repository, so it is skipped. Git Bash, MSYS and Cygwin give PATH in')
+  p('# /c/x form with ":" between entries, so a drive form cannot appear.')
+  p('find_abs() {')
+  p('  local rest="${PATH:-}" dir')
+  p('  while [ -n "$rest" ]; do')
+  p('    dir="${rest%%:*}"')
+  p('    case "$rest" in *:*) rest="${rest#*:}" ;; *) rest="" ;; esac')
+  p('    case "$dir" in')
+  p('      /*) if [ -f "$dir/$1" ] && [ -x "$dir/$1" ]; then echo "$dir/$1"; return 0; fi ;;')
+  p('    esac')
+  p('  done')
+  p('  return 1')
   p('}')
   p()
   p('is_checkout() {')
@@ -168,37 +209,57 @@ export function renderLauncher(spec: ToolSpec, opts: LauncherOptions = {}): stri
   p('layer="local"')
   p()
   p(`# ── env: ${homeVar(spec)} ───────────────────────────────────────────────`)
-  p(`if is_checkout "\${${homeVar(spec)}:-}"; then`)
+  p('# Only an absolute path counts, as in resolve(). A drive path counts only')
+  p('# under Windows (Git Bash, MSYS, Cygwin); elsewhere it is relative.')
+  p('abs=0')
+  p(`case "\${${homeVar(spec)}:-}" in`)
+  p('  /*) abs=1 ;;')
+  p('  [A-Za-z]:[/\\\\]*) case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) abs=1 ;; esac ;;')
+  p('esac')
+  p(`if [ "$abs" = "1" ] && is_checkout "\${${homeVar(spec)}}"; then`)
   p(`  home="\${${homeVar(spec)}}"; via="${homeVar(spec)}"; layer="env"`)
   p('fi')
   p()
-  p('# ── cwd: a checkout above the working directory ─────────────────────────')
-  p('# Walks the physical directory (`pwd -P`), as resolve() walks process.cwd().')
-  p(`if [ -z "$home" ]${guard} && [ "\${${cwdDevVar(spec)}:-1}" != "0" ]; then`)
-  p('  probe="$(pwd -P)"')
-  p('  while :; do')
-  p(
-    '    if is_checkout "$probe"; then home="$probe"; via="dev checkout above cwd"; layer="cwd"; break; fi',
-  )
-  p('    parent="$(dirname "$probe")"')
-  p('    [ "$parent" = "$probe" ] && break')
-  p('    probe="$parent"')
-  p('  done')
-  p('fi')
-  p()
+  if (cwdLayer) {
+    p('# ── cwd: a checkout above the working directory ─────────────────────────')
+    p('# Walks the physical directory (`pwd -P`), as resolve() walks process.cwd().')
+    p(`if [ -z "$home" ]${guard} && [ "\${${cwdDevVar(spec)}:-1}" != "0" ]; then`)
+    p('  probe="$(pwd -P)"')
+    p('  while :; do')
+    p(
+      '    if is_checkout "$probe"; then home="$probe"; via="dev checkout above cwd"; layer="cwd"; break; fi',
+    )
+    p('    parent="$(dirname "$probe")"')
+    p('    [ "$parent" = "$probe" ] && break')
+    p('    probe="$parent"')
+    p('  done')
+    p('fi')
+    p()
+  }
   p('# ── link: `<config>/' + name + '/home`, written by `' + name + ' dev link|use` ─────')
   p('# Mirrors @osdlc/tiered-dirs standalone("' + name + '").config(): the launcher runs')
-  p('# before a runtime exists, so it cannot call the SDK. With no usable config')
-  p('# directory (HOME unset or empty) the layer is skipped.')
+  p('# before a runtime exists, so it cannot call the SDK. A HOME that is unset or')
+  p("# relative counts as unset, and the account's home is used, as there. With no")
+  p('# usable home the layer is skipped.')
   p(`if [ -z "$home" ]${guard}; then`)
+  p('  user_home="${HOME:-}"')
+  p('  case "$user_home" in')
+  p('    /*) ;;')
+  p('    *)')
+  p('      user_home=""')
+  p('      u="$(id -un 2>/dev/null || true)"')
+  p('      # A plain account name only, since it goes through eval for ~name.')
+  p('      case "$u" in ""|-*|*[!A-Za-z0-9._-]*) ;; *) eval "user_home=~$u" ;; esac')
+  p('      case "$user_home" in /*) ;; *) user_home="" ;; esac ;;')
+  p('  esac')
   p('  cfg=""')
   p('  case "$(uname -s)" in')
-  p(`    Darwin) [ -z "\${HOME:-}" ] || cfg="$HOME/Library/Application Support/${name}" ;;`)
+  p(`    Darwin) [ -z "$user_home" ] || cfg="$user_home/Library/Application Support/${name}" ;;`)
   p('    *)')
   p('      # Only an absolute XDG_CONFIG_HOME counts, as in @osdlc/tiered-dirs.')
   p('      case "${XDG_CONFIG_HOME:-}" in')
   p(`        /*) cfg="$XDG_CONFIG_HOME/${name}" ;;`)
-  p(`        *) [ -z "\${HOME:-}" ] || cfg="$HOME/.config/${name}" ;;`)
+  p(`        *) [ -z "$user_home" ] || cfg="$user_home/.config/${name}" ;;`)
   p('      esac ;;')
   p('  esac')
   p('  linked=""')
@@ -212,9 +273,9 @@ export function renderLauncher(spec: ToolSpec, opts: LauncherOptions = {}): stri
   p('if [ -n "$home" ]; then')
   p('  home_real="$(cd -P "$home" && pwd)"')
   p('  if [ "$home_real" != "$self" ]; then')
-  p('    if ! command -v bun >/dev/null 2>&1; then')
+  p('    if ! bun="$(find_abs bun)"; then')
   p(
-    `      echo "${name}: the selected checkout ($home_real) runs from source and needs bun on PATH." >&2`,
+    `      echo "${name}: the selected checkout ($home_real) runs from source and needs bun on an absolute PATH entry." >&2`,
   )
   p(
     `      echo "      Install Bun (https://bun.sh), or run '${name} dev off' to use the local install." >&2`,
@@ -224,7 +285,7 @@ export function renderLauncher(spec: ToolSpec, opts: LauncherOptions = {}): stri
   p(`    need_deps "$home_real" "$home_real/${entry}"`)
   p(`    announce "$home_real/${entry}" "$via"`)
   p(`    export ${layerVar}="$layer"`)
-  p(`    exec bun run "$home_real/${entry}" "$@"`)
+  p(`    exec "$bun" ${BUN_FLAGS} run "$home_real/${entry}" "$@"`)
   p('  fi')
   p(
     "  # The selected checkout is this launcher's own: it reads as the install, not as a dev selection.",
@@ -242,28 +303,30 @@ export function renderLauncher(spec: ToolSpec, opts: LauncherOptions = {}): stri
     p('# install, or an uninstalled clone — runs the built entry.')
     p('dev_checkout=0')
     p(
-      'if is_checkout "$self" && [ -d "$self/node_modules" ] && command -v bun >/dev/null 2>&1; then dev_checkout=1; fi',
+      'if is_checkout "$self" && [ -d "$self/node_modules" ] && find_abs bun >/dev/null; then dev_checkout=1; fi',
     )
     p(`if [ "$dev_checkout" = "0" ] && [ -f "$here/${builtRel}" ]; then`)
-    p('  if ! command -v node >/dev/null 2>&1; then')
+    p('  if ! node="$(find_abs node)"; then')
     p(
-      `    echo "${name}: the built entry '${posix.basename(built)}' is present but 'node' is not on PATH." >&2`,
+      `    echo "${name}: the built entry '${posix.basename(built)}' is present but 'node' is not on an absolute PATH entry." >&2`,
     )
     p('    exit 1')
     p('  fi')
     p(`  announce "$here/${builtRel}" "local, node"`)
     p(`  export ${layerVar}="$layer"`)
-    p(`  exec node "$here/${builtRel}" "$@"`)
+    p(`  exec "$node" "$here/${builtRel}" "$@"`)
     p('fi')
   }
-  p('if ! command -v bun >/dev/null 2>&1; then')
-  p(`  echo "${name}: the source entry needs bun on PATH. Install Bun (https://bun.sh)." >&2`)
+  p('if ! bun="$(find_abs bun)"; then')
+  p(
+    `  echo "${name}: the source entry needs bun on an absolute PATH entry. Install Bun (https://bun.sh)." >&2`,
+  )
   p('  exit 1')
   p('fi')
   p(`need_deps "$self" "$self/${entry}"`)
   p(`announce "$self/${entry}" "local, bun"`)
   p(`export ${layerVar}="$layer"`)
-  p(`exec bun run "$self/${entry}" "$@"`)
+  p(`exec "$bun" ${BUN_FLAGS} run "$self/${entry}" "$@"`)
   return lines.join('\n') + '\n'
 }
 

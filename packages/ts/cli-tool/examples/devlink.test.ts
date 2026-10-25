@@ -99,6 +99,7 @@ const SPEC: ToolSpec = validateSpec({
   launcher: 'bin/tooly',
   aliases: ['ty'],
   suppressors: ['TOOLY_HOST'],
+  cwdLayer: true,
   vendorDirs: { vendor: 'com.example', envVars: envVars('TOOLY') },
 })
 

@@ -107,6 +107,9 @@ importers:
 
   packages/ts/cli-tool:
     dependencies:
+      '@osdlc/command-seam':
+        specifier: workspace:^
+        version: link:../command-seam
       '@osdlc/config-layers':
         specifier: workspace:^
         version: link:../config-layers
@@ -120,9 +123,6 @@ importers:
         specifier: ^12.1.0
         version: 12.1.0
     devDependencies:
-      '@osdlc/command-seam':
-        specifier: workspace:^
-        version: link:../command-seam
       '@osdlc/prettier-config':
         specifier: workspace:^
         version: link:../prettier-config

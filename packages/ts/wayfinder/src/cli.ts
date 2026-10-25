@@ -13,8 +13,6 @@
  * trusted the repository is.
  */
 
-import { homedir } from 'node:os'
-
 import { EXIT, defineCli, processIo, type CliIo } from '@osdlc/cli-tool'
 import { runDevCli } from '@osdlc/cli-tool/devlink'
 import {
@@ -26,7 +24,7 @@ import {
 } from '@osdlc/system-model/detect'
 import { humanAge, humanMs } from '@osdlc/system-model/duration'
 import { matchEntry, terms as searchTerms, type Mode } from '@osdlc/system-model/match'
-import { policyExecGate, withheldHint } from '@osdlc/trust-repo'
+import { homeDir, policyExecGate, withheldHint } from '@osdlc/trust-repo'
 
 import { APP, BIN, PROJECT_CONFIG_FILENAME } from './app.ts'
 import { cacheDir } from './cache.ts'
@@ -58,6 +56,7 @@ import { runProvidersCommand } from './providers-command.ts'
 import { serve } from './serve.ts'
 import { loadTools, ToolModuleError, type LoadedTool } from './tools.ts'
 import { runTrustCommand } from './trust-command.ts'
+import { jsonText, safeJsonStdout, safeStderr, safeStdout, terminalSafe } from './terminal-text.ts'
 import { runTui } from './tui.ts'
 
 /** The prose under the flag list in the complete help. */
@@ -105,8 +104,7 @@ subcommands
   trust      allow this repository's runners to be read by running them; see trust --help
   providers  the registered tools, built-in and your own; see providers --help
   guide      how to use and extend this tool, in Markdown; see guide --help
-  clean      remove the data this tool stores outside your repositories; see clean --help
-  dev        run the installed ${BIN} from a development checkout; see dev --help`
+  clean      remove the data this tool stores outside your repositories; see clean --help`
 
 /**
  * wayfinder's own `true` default for exec is applied in {@link main}, below
@@ -457,9 +455,11 @@ async function projectFor(
 export async function main(
   argv: string[],
   env: Record<string, string | undefined> = process.env,
-  home: string = homedir(),
+  home: string = homeDir(),
   io: CliIo = processIo,
 ): Promise<number> {
+  // Every stderr line is human text that can quote repository content.
+  io = safeStderr(io)
   // Subcommands are matched before the flags are parsed, because their
   // arguments are not this parser's flags. The root is found with the
   // built-in tools only.
@@ -495,10 +495,15 @@ export async function main(
 
   if (argv[0] === 'clean') return runCleanCommand(APP, argv.slice(1), { ...io, env, home })
   if (argv[0] === 'guide') return runGuideCommand(GUIDE_TOOL, argv.slice(1), io)
-  // `self` is this checkout, so `dev install` and a bare `dev link` know what
-  // to point at.
+  // `dev` is a contributor tool, so the help does not list it. `self` is this
+  // checkout, so `dev install` and a bare `dev link` know what to point at.
   if (argv[0] === 'dev') {
-    return runDevCli(WAYFINDER_SPEC, argv.slice(1), { io, env, self: checkoutRoot() })
+    const devArgs = argv.slice(1)
+    return runDevCli(WAYFINDER_SPEC, devArgs, {
+      io: devArgs.includes('--json') ? safeJsonStdout(io) : safeStdout(io),
+      env,
+      self: checkoutRoot(),
+    })
   }
 
   const parsed = parseArgs(argv, io)
@@ -644,13 +649,13 @@ export async function main(
       })
     case 'json': {
       const { catalog, cache } = await dataCatalog()
-      io.stdout(`${JSON.stringify(catalogJson(catalog, cache), null, 2)}\n`)
+      io.stdout(`${jsonText(catalogJson(catalog, cache), 2)}\n`)
       reportWithheld(catalog)
       return EXIT.ok
     }
     case 'list': {
       const { catalog } = await dataCatalog()
-      const lines = allTasks(catalog).map((t) => t.display)
+      const lines = allTasks(catalog).map((t) => terminalSafe(t.display))
       if (lines.length > 0) io.stdout(`${lines.join('\n')}\n`)
       reportWithheld(catalog)
       return EXIT.ok
@@ -675,14 +680,13 @@ export async function main(
 
       if (parsed.json) {
         io.stdout(
-          `${JSON.stringify(
+          `${jsonText(
             hits.map((h) => h.task),
-            null,
             2,
           )}\n`,
         )
       } else if (hits.length > 0) {
-        io.stdout(`${hits.map((h) => h.task.display).join('\n')}\n`)
+        io.stdout(`${hits.map((h) => terminalSafe(h.task.display)).join('\n')}\n`)
       }
       reportWithheld(catalog)
       // As with grep, a search with terms that matched nothing exits 1.

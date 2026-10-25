@@ -54,12 +54,28 @@ export const DEFAULT_EXCLUDES: readonly string[] = [
   'vendor',
 ]
 
+/**
+ * Config set on every discovery git call. Discovery runs before the
+ * repository is trusted, and `.git/config` belongs to whoever made the
+ * directory. `core.fsmonitor` names a command that `ls-files --others` runs,
+ * so it is turned off. The other config keys that run commands (hooks,
+ * `diff.external`, `filter.*`, `core.sshCommand`, `core.pager`) do not apply
+ * to `rev-parse` or `ls-files` without a TTY.
+ *
+ * Which `git` binary runs is a separate exposure. The default runner finds it
+ * on absolute PATH entries only (see `defaultRunner` in `which.ts`), so a
+ * `git` the repository ships is never run.
+ */
+const SAFE_GIT_CONFIG: readonly string[] = ['-c', 'core.fsmonitor=false']
+
 /** Whether `root` is inside a git working tree and git can be run. */
 export async function gitAvailable(root: string, git: AsyncCommandRunner): Promise<boolean> {
   // A failure is the answer here. Outside a repository git exits 128, and a
   // missing binary also comes back from `@osdlc/command-seam` as a non-zero
   // exit. Both mean "not usable", so the exit code is read, not thrown.
-  const res = await git.run(['rev-parse', '--is-inside-work-tree'], { cwd: root })
+  const res = await git.run([...SAFE_GIT_CONFIG, 'rev-parse', '--is-inside-work-tree'], {
+    cwd: root,
+  })
   return res.exitCode === 0 && res.stdout.trim() === 'true'
 }
 
@@ -87,7 +103,7 @@ async function gitFiles(root: string, git: AsyncCommandRunner): Promise<string[]
   // because without it git quotes any path with a space or a non-ASCII byte.
   const res = await runCheckedAsync(
     git,
-    ['ls-files', '-z', '--cached', '--others', '--exclude-standard'],
+    [...SAFE_GIT_CONFIG, 'ls-files', '-z', '--cached', '--others', '--exclude-standard'],
     { cwd: root },
   )
   return res.stdout.split('\0').filter((f) => f !== '')

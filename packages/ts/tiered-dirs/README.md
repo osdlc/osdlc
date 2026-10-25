@@ -155,7 +155,10 @@ is under `durable`, not `cache`, for the same reason: the OS may purge cache
 while the process a pidfile describes is still alive. Under XDG, logs and
 state share one directory, so keep their file names apart. A relative `XDG_*` value is
 ignored, as the XDG spec says, and `~` is not expanded. On Windows, `xdg`
-means `native`.
+means `native`. `~` is `HOME` (`USERPROFILE` on Windows). A relative value
+counts as unset, so a path built on it never lands in the working directory:
+the OS account's home is used, or, with an injected `env`,
+`MISSING_BASE_DIR` is thrown.
 
 ## Choosing a convention
 

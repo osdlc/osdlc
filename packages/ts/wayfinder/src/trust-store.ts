@@ -15,7 +15,7 @@ import { LEGACY_TRUST_STORE_TOOL, TRUST_STORE_TOOL } from './config.ts'
 export interface AppTrustStoreOptions {
   /** Defaults to `process.env`. Supplies `XDG_STATE_HOME`. */
   env?: Record<string, string | undefined>
-  /** Defaults to `os.homedir()`. The base for the non-XDG state path. */
+  /** Defaults to `homeDir()` from `@osdlc/trust-repo`. The base for the non-XDG state path. */
   home?: string
 }
 

@@ -185,12 +185,12 @@ Layers, lowest precedence first:
 Files. The project file is \`${PROJECT_CONFIG_FILENAME}\` at the project root, the
 root this tool resolved, not the working directory. The user file is
 \`$XDG_CONFIG_HOME/${APP}/config.json\`, or \`~/.config/${APP}/config.json\` when
-that variable is unset.
+that variable is unset or relative.
 
 \`${CONFIG_ENV_VAR}\` replaces the USER file's location and nothing else. It does
 not move the project file and it does not add a layer. A path in it may start
-with a tilde, which is expanded, and a relative path resolves against the
-project root rather than the working directory.
+with a tilde, which is expanded. A relative path is ignored with a warning,
+because from the project root it would name a file in the repository.
 
 Old names. The tool was called ${LEGACY_APP} before its first release.
 \`${LEGACY_CONFIG_ENV_VAR}\`, \`$XDG_CONFIG_HOME/${LEGACY_APP}/config.json\` and
@@ -338,7 +338,8 @@ this root, \`--list\` prints every trusted path. \`-C PATH\` reaches all of them
 
 A root can also be trusted with no marker, by a trust block in the USER
 config: \`trust.paths\` (a glob over the resolved root) and \`trust.owners\`
-(the \`origin\` remote's owner), decided in that order after the marker.
+(the \`origin\` remote's \`host/owner\`; a bare owner means github.com), decided in
+that order after the marker.
 \`--show\` and \`--json\` name which layer decided (\`by\`:
 \`marker\`/\`path\`/\`owner\`, plus the matching \`rule\` for a policy hit).
 `

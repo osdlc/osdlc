@@ -91,6 +91,24 @@ describe('policyDecision', () => {
       await policyDecision(root, { paths: [], owners: ['acmeowner'] }, { ownerOf: () => null }),
     ).toEqual({ trusted: false, by: null })
   })
+
+  test('owners: an entry matches the host as well as the owner', async () => {
+    const root = tmp()
+    const owners = async (entries: string[], owner: string): Promise<boolean> =>
+      (await policyDecision(root, { paths: [], owners: entries }, { ownerOf: () => owner })).trusted
+    // A bare entry is a GitHub owner, and a bare ownerOf answer is too.
+    expect(await owners(['acme'], 'github.com/Acme')).toBe(true)
+    expect(await owners(['acme'], 'acme')).toBe(true)
+    expect(await owners(['GitHub.com/acme'], 'acme')).toBe(true)
+    // The same owner name on another host is someone else.
+    expect(await owners(['acme'], 'gitlab.com/acme')).toBe(false)
+    expect(await owners(['github.com/acme'], 'bitbucket.org/acme')).toBe(false)
+    expect(await owners(['gitlab.com/acme'], 'gitlab.com/ACME')).toBe(true)
+    expect(await owners(['gitlab.com/acme'], 'github.com/acme')).toBe(false)
+    // Entries are trimmed and compared without case, host included.
+    expect(await owners(['  GitLab.COM/Acme  '], 'gitlab.com/acme')).toBe(true)
+    expect(await owners([' Acme '], 'GITHUB.COM/acme')).toBe(true)
+  })
 })
 
 describe('trustDecision and policyExecGate', () => {

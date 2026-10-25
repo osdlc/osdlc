@@ -16,7 +16,7 @@ Lowest precedence first:
 | Layer    | Where                                                                                                   |
 | -------- | ------------------------------------------------------------------------------------------------------- |
 | defaults | built in                                                                                                |
-| user     | `$XDG_CONFIG_HOME/wayfinder/config.json`, or `~/.config/wayfinder/config.json` when that variable is unset |
+| user     | `$XDG_CONFIG_HOME/wayfinder/config.json`, or `~/.config/wayfinder/config.json` when that variable is unset or relative |
 | project  | `wayfinder.config.json` at the project root                                                               |
 | flags    | the command line                                                                                        |
 
@@ -25,8 +25,17 @@ the working directory. XDG paths are used on every platform, macOS included.
 
 `WAYFINDER_CONFIG=/path/to/file` replaces the user file's location and nothing
 else. It does not move the project file and does not add a layer. A leading
-`~` is expanded, and a relative path resolves against the project root.
-Naming a file that does not exist is an error.
+`~` is expanded. A relative path is ignored with a warning, and the XDG
+path is read instead: you usually run `way` from the project root, so a
+relative path would name a file in the repository. Naming a file that does not
+exist is an error.
+
+A relative `XDG_CONFIG_HOME` is ignored, as the XDG spec says, and the user
+file falls back to `~/.config/wayfinder/config.json`. The same holds for
+`XDG_STATE_HOME` (the trust store) and `XDG_CACHE_HOME` (the cache). A relative
+`HOME` counts as unset, and your account's home is used. The user
+file can turn execution on and load tools, so it must never be a file inside a
+repository.
 
 `way config path` prints where each layer's file lives.
 

@@ -1,5 +1,6 @@
 import { afterAll, describe, expect, test } from 'vitest'
 import { mkdir, readFile } from 'node:fs/promises'
+import { userInfo } from 'node:os'
 import { join } from 'node:path'
 
 import { resolveTrustRoot } from '@osdlc/trust-repo'
@@ -85,11 +86,63 @@ describe('configLocations', () => {
     expect(at.user).toBe('/home/dev/cfg.json')
   })
 
-  test('anchors a relative WAYFINDER_CONFIG to the root, not the process directory', () => {
-    // Keeps the process directory out of it: a consumer scanning some
-    // other directory must not get a user layer resolved against its own cwd.
-    const at = configLocations('/repo', env({ [CONFIG_ENV_VAR]: 'cfg/mine.json' }), '/home/dev')
-    expect(at.user).toBe('/repo/cfg/mine.json')
+  test('ignores a relative WAYFINDER_CONFIG and says so', () => {
+    for (const value of ['cfg/mine.json', './cfg.json', 'cfg.json']) {
+      const at = configLocations('/repo', env({ [CONFIG_ENV_VAR]: value }), '/home/dev')
+      expect(at.user).toBe('/home/dev/.config/wayfinder/config.json')
+      expect(at.userFromEnv).toBe(false)
+      expect(at.userEnvVar).toBeNull()
+      expect(at.userEnvIgnored).toEqual({ variable: CONFIG_ENV_VAR, value })
+    }
+  })
+
+  test('a relative WAYFINDER_CONFIG never names a file in the root, even when the cwd is the root', async () => {
+    // The usual way to run `way` is from the repository root. A repository
+    // file named this way would be the user layer, which can turn exec on.
+    const dir = await root({ 'cfg.json': '{"allowExec": true}' })
+    const home = await root()
+    const saved = process.cwd()
+    process.chdir(dir)
+    try {
+      const loaded = await loadConfig(dir, env({ [CONFIG_ENV_VAR]: 'cfg.json' }), home)
+      expect(loaded.locations.user).toBe(join(home, '.config', 'wayfinder', 'config.json'))
+      expect(loaded.effective.allowExec).toBe(false)
+      expect(loaded.warnings.some((w) => w.includes(`${CONFIG_ENV_VAR}=cfg.json is ignored`))).toBe(
+        true,
+      )
+    } finally {
+      process.chdir(saved)
+    }
+  })
+
+  test('a relative HOME is treated as unset, so the user file is never under the cwd', () => {
+    const saved = process.env['HOME']
+    process.env['HOME'] = '.'
+    try {
+      expect(configLocations('/repo', env()).user).toBe(
+        join(userInfo().homedir, '.config', 'wayfinder', 'config.json'),
+      )
+    } finally {
+      process.env['HOME'] = saved
+    }
+  })
+
+  test('ignores a relative XDG_CONFIG_HOME, as the XDG spec says', () => {
+    for (const value of ['.config', 'cfg/x', './c']) {
+      const at = configLocations('/repo', env({ XDG_CONFIG_HOME: value }), '/home/dev')
+      expect(at.user).toBe('/home/dev/.config/wayfinder/config.json')
+    }
+  })
+
+  test('a relative XDG_CONFIG_HOME cannot make a file in the repository the user layer', async () => {
+    const home = await root()
+    const project = await root({
+      '.config/wayfinder/config.json': JSON.stringify({ allowExec: true, tools: ['./x.mjs'] }),
+    })
+    const loaded = await loadConfig(project, env({ XDG_CONFIG_HOME: '.config' }), home)
+    expect(loaded.layers.user).toBeNull()
+    expect(loaded.effective.allowExec).not.toBe(true)
+    expect(loaded.effective.tools ?? []).toEqual([])
   })
 
   test('trims a padded env value instead of resolving the whitespace into the path', () => {

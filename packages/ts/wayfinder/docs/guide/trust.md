@@ -85,7 +85,7 @@ user config file:
 {
   "trust": {
     "paths": ["/home/me/work/**"], // a glob over the resolved root
-    "owners": ["my-org"], // origin remote owners, case-insensitive
+    "owners": ["my-org", "gitlab.com/other-org"], // origin remote owners; bare means github.com
   },
 }
 ```
@@ -99,10 +99,18 @@ documents the glob dialect: `*`, `?`, `**`, and a trailing `/**` that does not
 match the directory itself. wayfinder expands a leading `~` in a `trust.paths`
 entry against `$HOME`.
 
-`trust.owners` reads the owner from the `origin` remote URL in the local
-`.git/config`. Nothing verifies that file, so this trusts whoever a
-repository was cloned from, not who wrote it. Prefer `trust.paths` for
-repositories you keep under one directory. The lookup ignores `GIT_DIR`,
+`trust.owners` reads the host and owner from the `origin` remote URL in the
+local `.git/config`. An entry is `host/owner` (`gitlab.com/my-org`) or a bare
+`owner`, which means `github.com/owner`. Both the host and the owner must
+match, ignoring case, so `my-org` does not trust a clone from
+`gitlab.com/my-org`. Nothing verifies that file. It comes with the
+directory, so a folder unpacked from an archive, copied from a shared drive or
+cloned by someone else can name any owner, directly or through an
+`insteadOf` rewrite in the same file. Owner trust fits clones you made
+yourself, and even then it trusts whoever a repository was cloned from, not
+who wrote it. `trust.paths` is the stronger form: a repository cannot choose
+where it sits on your disk. Prefer it for repositories you keep under one
+directory. The lookup ignores `GIT_DIR`,
 `GIT_WORK_TREE`, `GIT_INDEX_FILE`, `GIT_COMMON_DIR` and the `GIT_CONFIG_*`
 variables that rewrite config for one command.
 

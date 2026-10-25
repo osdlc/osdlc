@@ -36,8 +36,9 @@ Node.js `^22.22.2 || ^24.15.0 || >=26.0.0`, the range of its dependency
 
 An installed `way` can run the source of a checkout instead, through
 [`@osdlc/cli-tool/devlink`](https://www.npmjs.com/package/@osdlc/cli-tool).
-Inside a wayfinder checkout, `way` runs that checkout. `way dev link` makes one
-checkout the one every `way` on the machine runs. Every link is remembered.
+`way dev link` makes one checkout the one every `way` on the machine runs, and
+`WAY_HOME` names one for a shell. Every link is remembered. `way dev` is a
+contributor tool, so `way --help` does not list it.
 
 ```sh
 way dev install          # once: put shims for this checkout on PATH as way and wayfinder
@@ -48,13 +49,16 @@ way dev use canonical    # … or to the install itself
 way dev status           # which checkout runs now, and why
 ```
 
-The first match wins, in this order: `WAY_HOME`, a checkout above the cwd
-(`WAY_CWD_DEV=0` turns that off), the linked checkout, then the install. The
-shim prints which one it chose on stderr, and `WAY_QUIET=1` silences it. State
+The first match wins, in this order: `WAY_HOME`, the linked checkout, then the
+install. `way` never picks a checkout from the cwd, so a repository you run it
+in cannot choose the code that runs. A checkout must hold `src/cli.ts` and a
+`package.json` named `@osdlc/wayfinder`; anything else is skipped. The shim
+prints which one it chose on stderr, and `WAY_QUIET=1` silences it. State
 is kept in `<config>/way/`, which is `~/Library/Application Support/way` on
 macOS and `${XDG_CONFIG_HOME:-~/.config}/way` elsewhere. A checkout runs from
-source, so it needs [Bun](https://bun.sh) on PATH and a `pnpm install` in the
-checkout.
+source, so it needs [Bun](https://bun.sh) on an absolute PATH entry and a
+`pnpm install` in the checkout. A `bun` found only through a relative entry
+such as `bin` or `.` is not used.
 
 ## Why
 
@@ -135,6 +139,12 @@ that matches nothing exits 1, so `way query dev && …` works in a script. A bar
 flag applies (`-C`, `--only`, `--exclude`, `--cached` and the rest). Like
 `--list` and `--json`, it re-probes unless you pass `--cached`.
 
+`--list`, `query` and the terminal UI replace each control character and bidi
+control in repository text with U+FFFD, so a task name cannot send escape
+sequences to your terminal or read in a different order from what runs.
+`--json` keeps the text exact, writing DEL, C1 and bidi controls as `\u`
+escapes, so it is safe to print too.
+
 ## The web view
 
 `way --serve` opens a page with the same catalog: a collapsible tree by call
@@ -196,18 +206,26 @@ itself trust, just as it cannot set `allowExec: true`.
 {
   "trust": {
     "paths": ["/home/me/work/**"], // @osdlc/trust-repo's glob dialect
-    "owners": ["my-org"] // case-insensitive `origin` remote owners
+    "owners": ["my-org", "gitlab.com/other-org"] // `origin` remote owners; bare means github.com
   }
 }
 ```
 
 `@osdlc/trust-repo`'s `policyExecGate` checks, in order: a marker in the
 store, then `trust.paths` (a glob over the root, with symlinks resolved), then
-`trust.owners` (the owner in the `origin` remote's URL, which wayfinder asks
-git for). `@osdlc/trust-repo`'s README documents the order and the glob
+`trust.owners` (the host and owner in the `origin` remote's URL, which
+wayfinder asks git for). An entry is `host/owner`, or a bare `owner`, which
+means `github.com/owner`. Matching ignores case, and the host must match too:
+`my-org` does not trust a clone from `gitlab.com/my-org`. `@osdlc/trust-repo`'s README documents the order and the glob
 dialect. wayfinder adds only one thing: a leading `~` in a `trust.paths` entry
 expands to `$HOME`. An owner match trusts every repository whose remote names
 that owner, so list only owners whose repositories you would run.
+
+Owner trust believes the repository's own git config. The `origin` URL comes
+from the repository's `.git/config`, which arrives with the directory, so a
+folder unpacked from an archive or copied from a shared drive can name any
+owner. Owner trust fits clones you made yourself. `trust.paths` is the
+stronger form: a repository cannot choose where it sits on your disk.
 
 `way trust --show` reports which layer decided (`by` and `rule`). A plain
 `way trust` still writes a marker on a root the policy already trusts, because
@@ -361,7 +379,11 @@ root, then the flags on the command line.
 
 The keys are `runners.disabled`, `runners.order`, `allowExec`, `discovery`,
 `excludePaths`, `trust.paths`, `trust.owners` and `tools`. `WAYFINDER_CONFIG`
-names a different user file and changes nothing else.
+names a different user file and changes nothing else. A relative
+`WAYFINDER_CONFIG` is ignored with a warning: from the repository root it
+would name a file in the repository. Use an absolute path or `~/`. A relative
+`HOME` counts as unset, and the account's home is used. A relative `XDG_CONFIG_HOME`, `XDG_STATE_HOME` or `XDG_CACHE_HOME` is
+ignored, as the XDG spec says.
 
 The tool was called waypost before its first release. `WAYPOST_CONFIG`,
 `~/.config/waypost/config.json` and `waypost.config.json` are still read when
@@ -434,7 +456,6 @@ providers            the registered tools, built-in and your own;
                      `providers --help`
 clean                remove what this tool has stored; `clean --help`
 guide                how to use and extend this tool, in Markdown
-dev                  link a checkout of this tool over the installed copy
 ```
 
 A subcommand is matched before flags are parsed, so the flags above belong to
@@ -448,7 +469,7 @@ subcommands whose answer depends on the repository take it.
 | `providers` | yes | a trusted project file can add tools when execution is allowed |
 | `clean` | no | resolves every path from the environment and the home directory |
 | `guide` | no | its argument is a topic name |
-| `dev` | no | its state is devlink's, keyed on the tool name |
+| `dev` | no | its state is devlink's, keyed on the tool name; not listed in the help |
 
 `way --help` is the short form: the main ways to run it, the flags most runs
 pass, and the names of the subcommands. `way --help --all` is the full flag
@@ -486,7 +507,10 @@ repository is trusted and execution is allowed (`allowExec` not `false`, no
 `way providers` lists every registered tool: its roles, its runner kind
 (`parse` reads files, `exec` must run the tool and needs trust), its binary,
 whether that binary is on PATH, and whether it is built in or custom.
-`--json` gives the same rows as data.
+`--json` gives the same rows as data. Only absolute PATH entries count, as in
+detection: a tool found only through a relative entry (`bin`, `.`,
+`node_modules/.bin`) reads as not installed. Put an absolute entry for it on
+PATH.
 
 ## How it compares
 
