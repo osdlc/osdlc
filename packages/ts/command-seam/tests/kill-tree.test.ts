@@ -41,11 +41,16 @@ async function stopped(opts: { killTree?: boolean; abort?: boolean }): Promise<n
 }
 
 describe('killTree', () => {
-  test('a timeout without it leaves the grandchild running', async () => {
-    const pid = await stopped({})
-    await new Promise((res) => setTimeout(res, 300))
-    expect(alive(pid)).toBe(true)
-  }, 15_000)
+  // POSIX only: on Windows a Node parent kills its children when it dies (libuv job object), so nothing survives.
+  test.skipIf(process.platform === 'win32')(
+    'a timeout without it leaves the grandchild running',
+    async () => {
+      const pid = await stopped({})
+      await new Promise((res) => setTimeout(res, 300))
+      expect(alive(pid)).toBe(true)
+    },
+    15_000,
+  )
 
   test('a timeout with it kills the grandchild', async () => {
     const pid = await stopped({ killTree: true })

@@ -175,11 +175,15 @@ describe('posix', () => {
         expect(r.neverExited).toBeUndefined()
       })
 
-      test('is set when a signal takes the child down', async () => {
-        const r = await runner.exec('kill -9 $$', { cwd: CWD })
-        expect(r.exitCode).toBe(1)
-        expect(r.neverExited).toBe(true)
-      })
+      // POSIX only: Windows has no signals; `sh` reports `kill -9 $$` as an exit code.
+      test.skipIf(process.platform === 'win32')(
+        'is set when a signal takes the child down',
+        async () => {
+          const r = await runner.exec('kill -9 $$', { cwd: CWD })
+          expect(r.exitCode).toBe(1)
+          expect(r.neverExited).toBe(true)
+        },
+      )
     })
   })
 
@@ -307,7 +311,8 @@ describe('posix', () => {
   // ── cwd ───────────────────────────────────────────────────────────────────
   describe('cwd', () => {
     eachRunner((runner) => {
-      test('is the directory the child runs in', async () => {
+      // POSIX only: Git for Windows `sh` prints a POSIX-style path (`/c/...`).
+      test.skipIf(process.platform === 'win32')('is the directory the child runs in', async () => {
         const r = await runner.exec('pwd -P', { cwd: scratch })
         expect(r.stdout.trim()).toBe(scratch)
       })
@@ -320,7 +325,8 @@ describe('posix', () => {
       })
     })
 
-    test('stream and managed runners run in cwd', async () => {
+    // POSIX only: Git for Windows `sh` prints a POSIX-style path (`/c/...`).
+    test.skipIf(process.platform === 'win32')('stream and managed runners run in cwd', async () => {
       expect(
         streamRunner('sh').run(['-c', `test "$(pwd -P)" = "${scratch}"`], { cwd: scratch })
           .exitCode,
@@ -344,19 +350,22 @@ describe('posix', () => {
     const EXPECTED = NASTY.map((a) => `[${a}]`).join('')
     const noFiles = (): string[] => readdirSync(scratch).filter((f) => f === 'pwned')
 
-    test('sync runner', async () => {
+    // POSIX only: Git for Windows `sh` re-parses its command line with its own quote rules. The Node-child test below covers Windows.
+    test.skipIf(process.platform === 'win32')('sync runner', async () => {
       const r = spawnRunner('sh').run(['-c', PRINT, 'sh', ...NASTY], { cwd: scratch })
       expect(r.stdout).toBe(EXPECTED)
       expect(noFiles()).toEqual([])
     })
 
-    test('async runner', async () => {
+    // POSIX only: Git for Windows `sh` re-parses its command line with its own quote rules. The Node-child test below covers Windows.
+    test.skipIf(process.platform === 'win32')('async runner', async () => {
       const r = await spawnRunnerAsync('sh').run(['-c', PRINT, 'sh', ...NASTY], { cwd: scratch })
       expect(r.stdout).toBe(EXPECTED)
       expect(noFiles()).toEqual([])
     })
 
-    test('shell runners: positionals stay data', async () => {
+    // POSIX only: Git for Windows `sh` re-parses its command line with its own quote rules. The Node-child test below covers Windows.
+    test.skipIf(process.platform === 'win32')('shell runners: positionals stay data', async () => {
       const verb = 'for a in "$@"; do printf "[%s]" "$a"; done'
       const s = runShell(verb, { cwd: scratch, args: NASTY })
       const a = await runShellAsync(verb, { cwd: scratch, args: NASTY })
@@ -365,7 +374,8 @@ describe('posix', () => {
       expect(noFiles()).toEqual([])
     })
 
-    test('stream runner', () => {
+    // POSIX only: Git for Windows `sh` re-parses its command line with its own quote rules. The Node-child test below covers Windows.
+    test.skipIf(process.platform === 'win32')('stream runner', () => {
       const r = streamRunner('sh').run(
         ['-c', 'test "$#" = 6 && test "$2" = \'$(touch pwned)\'', 'sh', ...NASTY],
         { cwd: scratch },
@@ -374,7 +384,8 @@ describe('posix', () => {
       expect(noFiles()).toEqual([])
     })
 
-    test('managed runner', async () => {
+    // POSIX only: Git for Windows `sh` re-parses its command line with its own quote rules. The Node-child test below covers Windows.
+    test.skipIf(process.platform === 'win32')('managed runner', async () => {
       const r = await managedProcessRunner('sh').run(
         ['-c', 'test "$#" = 6 && test "$2" = \'$(touch pwned)\'', 'sh', ...NASTY],
         { cwd: scratch },
@@ -593,19 +604,24 @@ describe('posix', () => {
       ],
     ]
     for (const [name, run] of cases) {
-      test(`${name}: the grandchild survives a timeout`, () => {
-        const pidFile = join(scratch, `direct-child-${name}`)
-        let pid = 0
-        try {
-          const r = run(`sleep 30 & echo $! > "${pidFile}"; wait`)
-          pid = Number(readFileSync(pidFile, 'utf8').trim())
-          expect(r.neverExited).toBe(true)
-          expect(pid).toBeGreaterThan(0)
-          expect(alive(pid)).toBe(true)
-        } finally {
-          reap(pid)
-        }
-      }, 15_000)
+      // POSIX only: the grandchild pid comes from `sh`, which Windows cannot signal.
+      test.skipIf(process.platform === 'win32')(
+        `${name}: the grandchild survives a timeout`,
+        () => {
+          const pidFile = join(scratch, `direct-child-${name}`)
+          let pid = 0
+          try {
+            const r = run(`sleep 30 & echo $! > "${pidFile}"; wait`)
+            pid = Number(readFileSync(pidFile, 'utf8').trim())
+            expect(r.neverExited).toBe(true)
+            expect(pid).toBeGreaterThan(0)
+            expect(alive(pid)).toBe(true)
+          } finally {
+            reap(pid)
+          }
+        },
+        15_000,
+      )
     }
   })
 
@@ -617,8 +633,11 @@ describe('posix', () => {
         const r = await runner.exec('exec 0<&-; sleep 0.3', { cwd: CWD, input: BIG })
         expect(r.exitCode).toBe(0)
         // EPIPE, or ENOTCONN with some timings. Both are a write to a closed
-        // peer. Node words it "write EPIPE", Bun "EPIPE: …, write".
-        expect(r.error).toMatch(/^((EPIPE|ENOTCONN): [^\n]*, write|write (EPIPE|ENOTCONN))$/)
+        // peer. Node words it "write EPIPE", Bun "EPIPE: …, write". Windows
+        // reports EOF.
+        expect(r.error).toMatch(
+          /^((EPIPE|ENOTCONN|EOF): [^\n]*, write|write (EPIPE|ENOTCONN|EOF))$/,
+        )
         expect(r.stderr).toBe('')
       }, 15_000)
     }
@@ -765,6 +784,42 @@ describe('posix', () => {
 })
 
 // ── Managed process ─────────────────────────────────────────────────────────
+// ── argv to a Node child, on every OS ─────────────────────────────────────────
+describe('argv reaches a Node child unchanged', () => {
+  const NASTY = [
+    'a b',
+    '"quoted"',
+    'back\\slash\\',
+    '$(touch pwned)',
+    "it's",
+    '*',
+    '%PATH%',
+    '^&|<>',
+  ]
+  const PRINT = 'process.stdout.write(JSON.stringify(process.argv.slice(1)))'
+  const SAVE = 'require("fs").writeFileSync(process.argv[1], JSON.stringify(process.argv.slice(2)))'
+  const node = process.execPath
+
+  test('sync and async runners', async () => {
+    const s = spawnRunner(node).run(['-e', PRINT, ...NASTY], { cwd: scratch })
+    const a = await spawnRunnerAsync(node).run(['-e', PRINT, ...NASTY], { cwd: scratch })
+    expect(JSON.parse(s.stdout)).toEqual(NASTY)
+    expect(JSON.parse(a.stdout)).toEqual(NASTY)
+  })
+
+  test('stream and managed runners', async () => {
+    const streamed = join(scratch, 'argv-stream.json')
+    const managed = join(scratch, 'argv-managed.json')
+    const s = streamRunner(node).run(['-e', SAVE, streamed, ...NASTY], { cwd: scratch })
+    const m = await managedProcessRunner(node).run(['-e', SAVE, managed, ...NASTY], {
+      cwd: scratch,
+    }).exited
+    expect([s.exitCode, m.exitCode]).toEqual([0, 0])
+    expect(JSON.parse(readFileSync(streamed, 'utf-8'))).toEqual(NASTY)
+    expect(JSON.parse(readFileSync(managed, 'utf-8'))).toEqual(NASTY)
+  })
+})
+
 describe('managedProcessRunner — kill and exit shape', () => {
   test('kill() defaults to SIGTERM', async () => {
     const h = managedProcessRunner('sh').run(['-c', 'exec sleep 4'], { cwd: CWD })
@@ -798,51 +853,61 @@ describe('managedProcessRunner — kill and exit shape', () => {
     await h.exited
   })
 
-  test('processGroup: kill() reaps a grandchild too', async () => {
-    const marker = join(scratch, 'managed-grandchild-pid')
-    const h = managedProcessRunner('sh').run(
-      ['-c', `sh -c 'echo $$ > "${marker}"; exec sleep 30' & wait`],
-      { cwd: CWD, processGroup: true },
-    )
-    let pid = 0
-    for (let i = 0; i < 40 && pid === 0; i++) {
-      await new Promise((res) => setTimeout(res, 50))
-      try {
-        pid = Number(readFileSync(marker, 'utf-8').trim()) || 0
-      } catch {
-        pid = 0
+  // POSIX only: `processGroup` is POSIX only.
+  test.skipIf(process.platform === 'win32')(
+    'processGroup: kill() reaps a grandchild too',
+    async () => {
+      const marker = join(scratch, 'managed-grandchild-pid')
+      const h = managedProcessRunner('sh').run(
+        ['-c', `sh -c 'echo $$ > "${marker}"; exec sleep 30' & wait`],
+        { cwd: CWD, processGroup: true },
+      )
+      let pid = 0
+      for (let i = 0; i < 40 && pid === 0; i++) {
+        await new Promise((res) => setTimeout(res, 50))
+        try {
+          pid = Number(readFileSync(marker, 'utf-8').trim()) || 0
+        } catch {
+          pid = 0
+        }
       }
-    }
-    try {
-      expect(pid).toBeGreaterThan(0)
-      h.kill('SIGKILL')
-      await h.exited
-      expect(await gone(pid)).toBe(true)
-    } finally {
-      reap(pid)
-    }
-  }, 15_000)
+      try {
+        expect(pid).toBeGreaterThan(0)
+        h.kill('SIGKILL')
+        await h.exited
+        expect(await gone(pid)).toBe(true)
+      } finally {
+        reap(pid)
+      }
+    },
+    15_000,
+  )
 
-  test('processGroup: kill() after the leader exits still signals the rest of the group', async () => {
-    // The leader backgrounds a `sleep` in its own group, records its pid, and
-    // exits. `kill()` signals the group, not the reaped leader, so it still
-    // reaches the `sleep`.
-    const marker = join(scratch, 'managed-leftover-pid')
-    const h = managedProcessRunner('sh').run(['-c', `sleep 30 & echo $! > "${marker}"`], {
-      cwd: CWD,
-      processGroup: true,
-    })
-    expect(await h.exited).toEqual({ exitCode: 0, signal: null })
-    const pid = Number(readFileSync(marker, 'utf-8').trim())
-    try {
-      expect(pid).toBeGreaterThan(0)
-      expect(alive(pid)).toBe(true)
-      h.kill('SIGKILL')
-      expect(await gone(pid)).toBe(true)
-    } finally {
-      reap(pid)
-    }
-  }, 15_000)
+  // POSIX only: `processGroup` is POSIX only.
+  test.skipIf(process.platform === 'win32')(
+    'processGroup: kill() after the leader exits still signals the rest of the group',
+    async () => {
+      // The leader backgrounds a `sleep` in its own group, records its pid, and
+      // exits. `kill()` signals the group, not the reaped leader, so it still
+      // reaches the `sleep`.
+      const marker = join(scratch, 'managed-leftover-pid')
+      const h = managedProcessRunner('sh').run(['-c', `sleep 30 & echo $! > "${marker}"`], {
+        cwd: CWD,
+        processGroup: true,
+      })
+      expect(await h.exited).toEqual({ exitCode: 0, signal: null })
+      const pid = Number(readFileSync(marker, 'utf-8').trim())
+      try {
+        expect(pid).toBeGreaterThan(0)
+        expect(alive(pid)).toBe(true)
+        h.kill('SIGKILL')
+        expect(await gone(pid)).toBe(true)
+      } finally {
+        reap(pid)
+      }
+    },
+    15_000,
+  )
 })
 
 // ── Streaming runner ──────────────────────────────────────────────────────────
@@ -851,7 +916,8 @@ describe('streamRunner — exit shape', () => {
     expect(streamRunner('sh').run(['-c', 'exit 1'], { cwd: CWD })).toEqual({ exitCode: 1 })
   })
 
-  test('a signal death is neverExited', () => {
+  // POSIX only: Windows has no signals; `sh` reports `kill -9 $$` as an exit code.
+  test.skipIf(process.platform === 'win32')('a signal death is neverExited', () => {
     const r = streamRunner('sh').run(['-c', 'kill -9 $$'], { cwd: CWD })
     expect(r).toEqual({ exitCode: 1, neverExited: true, reason: 'signal', signal: 'SIGKILL' })
   })

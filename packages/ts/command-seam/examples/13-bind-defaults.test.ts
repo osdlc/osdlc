@@ -197,9 +197,14 @@ test('the types catch an unbound cwd and a misspelt key', () => {
 
 // ---- The real runner -------------------------------------------------------
 
-test('bound options reach a real process', () => {
-  const sh = withDefaults(spawnRunner('sh'), { cwd: '/', env: { X: 'bound' } })
+// POSIX only: `/` and `/usr` are POSIX paths.
+test.skipIf(process.platform === 'win32')(
+  'bound options reach a real process',
+  () => {
+    const sh = withDefaults(spawnRunner('sh'), { cwd: '/', env: { X: 'bound' } })
 
-  expect(sh.run(['-c', 'pwd -P; echo "$X"']).stdout).toBe('/\nbound\n')
-  expect(sh.run(['-c', 'pwd -P'], { cwd: '/usr' }).stdout).toBe('/usr\n')
-}, 15_000)
+    expect(sh.run(['-c', 'pwd -P; echo "$X"']).stdout).toBe('/\nbound\n')
+    expect(sh.run(['-c', 'pwd -P'], { cwd: '/usr' }).stdout).toBe('/usr\n')
+  },
+  15_000,
+)

@@ -38,22 +38,26 @@ describe('managedProcessRunner', () => {
     expect((await handle.exited).exitCode).toBe(3)
   })
 
-  test('detached puts the child in its own session and process group, away from the parent', async () => {
-    const out = join(mkdtempSync(join(tmpdir(), 'mp-')), 'ids')
-    const ids = (pid: string): string => `ps -o pgid= -p ${pid} | tr -s ' '`
-    const handle = managedProcessRunner('sh').run(['-c', `${ids('$$')} > "${out}"`], {
-      cwd: CWD,
-      processGroup: true,
-      unref: true,
-    })
-    await handle.exited
-    const child = readFileSync(out, 'utf-8').trim().split(' ')
-    const parent = spawnSync('sh', ['-c', ids(String(process.pid))], { encoding: 'utf-8' })
-      .stdout.trim()
-      .split(' ')
-    expect(child[0]).not.toBe(parent[0])
-    expect(child[0]).toBe(String(handle.pid))
-  })
+  // POSIX only: sessions and process groups are POSIX.
+  test.skipIf(process.platform === 'win32')(
+    'detached puts the child in its own session and process group, away from the parent',
+    async () => {
+      const out = join(mkdtempSync(join(tmpdir(), 'mp-')), 'ids')
+      const ids = (pid: string): string => `ps -o pgid= -p ${pid} | tr -s ' '`
+      const handle = managedProcessRunner('sh').run(['-c', `${ids('$$')} > "${out}"`], {
+        cwd: CWD,
+        processGroup: true,
+        unref: true,
+      })
+      await handle.exited
+      const child = readFileSync(out, 'utf-8').trim().split(' ')
+      const parent = spawnSync('sh', ['-c', ids(String(process.pid))], { encoding: 'utf-8' })
+        .stdout.trim()
+        .split(' ')
+      expect(child[0]).not.toBe(parent[0])
+      expect(child[0]).toBe(String(handle.pid))
+    },
+  )
 
   test('exited resolves with the real exit code', async () => {
     const handle = managedProcessRunner('sh').run(['-c', 'exit 7'], { cwd: CWD })
@@ -76,52 +80,57 @@ describe('managedProcessRunner', () => {
     expect(r.signal).toBe('SIGKILL')
   })
 
-  test('processGroup: true makes kill() reap a grandchild the child itself forked', async () => {
-    // The direct child forks a grandchild that writes its own pid to a file
-    // and then sleeps, like a hung tool that forks a survivor. Killing just the
-    // direct pid would leave the grandchild running. `processGroup: true` makes
-    // the child a process-group leader, so `kill()` (which negates the pid
-    // for a process-group handle) ends both with one signal.
-    const { mkdtempSync, readFileSync, rmSync } = await import('node:fs')
-    const { tmpdir } = await import('node:os')
-    const { join } = await import('node:path')
-    const dir = mkdtempSync(join(tmpdir(), 'managed-process-group-'))
-    const pidFile = join(dir, 'grandchild.pid')
-    try {
-      const handle = managedProcessRunner('sh').run(
-        ['-c', 'sleep 30 & echo $! > "$1"; wait', 'sh', pidFile],
-        { cwd: CWD, processGroup: true },
-      )
-      // Wait for the grandchild's pid file to appear.
-      let grandchildPid = 0
-      for (let i = 0; i < 40; i++) {
-        try {
-          grandchildPid = Number(readFileSync(pidFile, 'utf-8').trim())
-          if (grandchildPid > 0) break
-        } catch {
-          // Not written yet.
+  // POSIX only: sessions and process groups are POSIX.
+  test.skipIf(process.platform === 'win32')(
+    'processGroup: true makes kill() reap a grandchild the child itself forked',
+    async () => {
+      // The direct child forks a grandchild that writes its own pid to a file
+      // and then sleeps, like a hung tool that forks a survivor. Killing just the
+      // direct pid would leave the grandchild running. `processGroup: true` makes
+      // the child a process-group leader, so `kill()` (which negates the pid
+      // for a process-group handle) ends both with one signal.
+      const { mkdtempSync, readFileSync, rmSync } = await import('node:fs')
+      const { tmpdir } = await import('node:os')
+      const { join } = await import('node:path')
+      const dir = mkdtempSync(join(tmpdir(), 'managed-process-group-'))
+      const pidFile = join(dir, 'grandchild.pid')
+      try {
+        const handle = managedProcessRunner('sh').run(
+          ['-c', 'sleep 30 & echo $! > "$1"; wait', 'sh', pidFile],
+          { cwd: CWD, processGroup: true },
+        )
+        // Wait for the grandchild's pid file to appear.
+        let grandchildPid = 0
+        for (let i = 0; i < 40; i++) {
+          try {
+            grandchildPid = Number(readFileSync(pidFile, 'utf-8').trim())
+            if (grandchildPid > 0) break
+          } catch {
+            // Not written yet.
+          }
+          await new Promise((r) => setTimeout(r, 50))
         }
-        await new Promise((r) => setTimeout(r, 50))
-      }
-      expect(grandchildPid).toBeGreaterThan(0)
+        expect(grandchildPid).toBeGreaterThan(0)
 
-      handle.kill('SIGKILL')
-      await handle.exited
+        handle.kill('SIGKILL')
+        await handle.exited
 
-      let alive = true
-      for (let i = 0; i < 40 && alive; i++) {
-        await new Promise((r) => setTimeout(r, 50))
-        try {
-          process.kill(grandchildPid, 0)
-        } catch {
-          alive = false
+        let alive = true
+        for (let i = 0; i < 40 && alive; i++) {
+          await new Promise((r) => setTimeout(r, 50))
+          try {
+            process.kill(grandchildPid, 0)
+          } catch {
+            alive = false
+          }
         }
+        expect(alive).toBe(false)
+      } finally {
+        rmSync(dir, { recursive: true, force: true })
       }
-      expect(alive).toBe(false)
-    } finally {
-      rmSync(dir, { recursive: true, force: true })
-    }
-  }, 10_000)
+    },
+    10_000,
+  )
 })
 
 describe('stopProcess', () => {
@@ -140,18 +149,23 @@ describe('stopProcess', () => {
     return { handle, cleanup: () => rmSync(dir, { recursive: true, force: true }) }
   }
 
-  test('a child that ignores SIGTERM gets SIGKILL after the grace period', async () => {
-    const { handle, cleanup } = await stubborn()
-    try {
-      const started = performance.now()
-      const exit = await stopProcess(handle, { graceMs: 200 })
-      expect(exit).toEqual({ exitCode: 1, signal: 'SIGKILL', neverExited: true, reason: 'abort' })
-      expect(performance.now() - started).toBeGreaterThanOrEqual(150)
-    } finally {
-      handle.kill('SIGKILL')
-      cleanup()
-    }
-  }, 10_000)
+  // POSIX only: Windows has no SIGTERM handler; a kill ends the child at once.
+  test.skipIf(process.platform === 'win32')(
+    'a child that ignores SIGTERM gets SIGKILL after the grace period',
+    async () => {
+      const { handle, cleanup } = await stubborn()
+      try {
+        const started = performance.now()
+        const exit = await stopProcess(handle, { graceMs: 200 })
+        expect(exit).toEqual({ exitCode: 1, signal: 'SIGKILL', neverExited: true, reason: 'abort' })
+        expect(performance.now() - started).toBeGreaterThanOrEqual(150)
+      } finally {
+        handle.kill('SIGKILL')
+        cleanup()
+      }
+    },
+    10_000,
+  )
 
   test('a child that exits on SIGTERM gets no SIGKILL', async () => {
     const handle = managedProcessRunner('sh').run(['-c', 'exec sleep 30'], { cwd: CWD })
