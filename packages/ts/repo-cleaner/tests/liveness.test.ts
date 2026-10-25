@@ -561,6 +561,9 @@ describe('default probe: ps', () => {
       'Oct 25 2026',
       '1761416',
       '2026-01',
+      // No zone: Date.parse would read local time and shift a UTC writer's value.
+      '2026-01-01T00:00:00',
+      '2026-01-01 00:00:00',
     ]) {
       expect(startMs(vague), vague).toBeNaN()
       expect(probe.alive(321, vague), vague).toBe(true)

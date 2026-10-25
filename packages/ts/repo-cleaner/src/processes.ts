@@ -97,7 +97,10 @@ export function busyHolders(holders: readonly ProcessHolder[]): ProcessHolder[] 
 /** Allowed difference between a lock's start time and the process's, in ms. */
 const START_TOLERANCE_MS = 2000
 
-const ISO_WITH_TIME = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?$/
+// A zone is required: without one Date.parse reads local time, and a writer that
+// emitted UTC with no `Z` would shift the start time by hours and make a live owner
+// look like a reused pid.
+const ISO_WITH_TIME = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})$/
 /** `ps -o lstart`: `Sat Oct 25 18:22:19 2026`, the day space-padded on Linux. */
 const PS_LSTART = /^[A-Z][a-z]{2}\s+[A-Z][a-z]{2}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}\s+\d{4}$/
 

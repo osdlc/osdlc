@@ -81,7 +81,7 @@ reason, so a free-form reason such as `keep, build running` always blocks.
 - The owner is alive, or cannot be ruled out: `locked-worktree`.
 - A lock writes `pid <N>` and, to guard against pid reuse, `start <time>`. The
   time must be precise to the second: a full ISO-8601 timestamp with a time of
-  day (`2026-10-25T18:22:19Z`), epoch seconds (9-10 digits), epoch milliseconds
+  day and a zone (`2026-10-25T18:22:19Z`; one with no zone is not accepted), epoch seconds (9-10 digits), epoch milliseconds
   (12-13 digits), or the `ps -o lstart` form (`Sat Oct 25 18:22:19 2026`). With
   one of those, a live pid whose own start time differs by more than two
   seconds is a reused pid and counts as dead. Anything else, a date alone, a
