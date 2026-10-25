@@ -10,6 +10,7 @@ import { join } from 'node:path'
 
 import { renderShim } from '@osdlc/cli-tool/devlink'
 
+import { CONFIG_SCHEMA_URL } from '../src/config.ts'
 import { WAYFINDER_SPEC } from '../src/devlink.ts'
 import { runWay, wayApp } from './app-support.ts'
 import { fixtureRoot, removeRoot } from './support.ts'
@@ -119,7 +120,7 @@ describe('way clean', () => {
   test('a config WAYFINDER_CONFIG names is named in the report, the refusal and before removal', async () => {
     const p = await populated()
     const own = join(p.home, 'dotfiles', 'way.json')
-    await put(own)
+    await put(own, JSON.stringify({ $schema: CONFIG_SCHEMA_URL }))
     const env = { WAYFINDER_CONFIG: own }
     expect((await clean(p.home, [], env)).out).toContain('from WAYFINDER_CONFIG')
     const refused = await clean(p.home, ['--user-config'], env)
@@ -130,6 +131,44 @@ describe('way clean', () => {
     // Nothing above a file the variable names is removed.
     expect(await exists(join(p.home, 'dotfiles'))).toBe(true)
     expect(await exists(p.config)).toBe(true)
+  })
+
+  test('a WAYFINDER_CONFIG that names the home or a directory is not removed', async () => {
+    // '/' is left out: a regression would then remove the real filesystem.
+    for (const named of ['~', '~/', 'dir']) {
+      const p = await populated()
+      const sentinel = join(p.home, 'keep.txt')
+      await put(sentinel, 'mine')
+      const dir = join(p.home, 'somedir')
+      await put(join(dir, 'inside.txt'), 'mine')
+      const value = named === 'dir' ? dir : named
+      const ran = await clean(p.home, ['--user-config', '--yes'], { WAYFINDER_CONFIG: value })
+      expect(ran.exit, named).toBe(1)
+      expect(ran.err).toContain('not removing')
+      expect(await exists(sentinel)).toBe(true)
+      expect(await exists(join(dir, 'inside.txt'))).toBe(true)
+    }
+  })
+
+  test('a WAYFINDER_CONFIG file wayfinder did not write is not removed', async () => {
+    const p = await populated()
+    const own = join(p.home, 'notes.json')
+    await put(own, '{"mine": true}')
+    const ran = await clean(p.home, ['--user-config', '--yes'], { WAYFINDER_CONFIG: own })
+    expect(ran.exit).toBe(1)
+    expect(ran.err).toContain('did not write it')
+    expect(await exists(own)).toBe(true)
+  })
+
+  test('a user config path that is a directory is not removed', async () => {
+    const home = await fixtureRoot({})
+    roots.push(home)
+    const config = join(home, '.config', 'wayfinder', 'config.json')
+    await put(join(config, 'inside.txt'))
+    const ran = await clean(home, ['--user-config', '--yes'])
+    expect(ran.exit).toBe(1)
+    expect(ran.err).toContain('it is not a file')
+    expect(await exists(join(config, 'inside.txt'))).toBe(true)
   })
 
   test('--dev removes link state and the marked shims, and leaves other files on PATH', async () => {

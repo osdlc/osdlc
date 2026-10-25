@@ -20,10 +20,16 @@
  * the project. A user config that `WAYFINDER_CONFIG` names is named with the
  * variable in the report and again before it is removed, since it may live in
  * a dotfiles repository.
+ *
+ * Clean removes only what it owns. A file store must be a file (a symbolic
+ * link is removed, not its target), a directory store a directory, and no
+ * store may be the home directory, a directory above it or a filesystem root.
+ * A file `WAYFINDER_CONFIG` names is removed only when its `$schema` names
+ * wayfinder's config schema, which every file wayfinder writes has.
  */
 
-import { lstat, readdir, rm, rmdir } from 'node:fs/promises'
-import { dirname, join, relative, isAbsolute } from 'node:path'
+import { lstat, readFile, readdir, rm, rmdir, stat } from 'node:fs/promises'
+import { dirname, join, relative, isAbsolute, resolve } from 'node:path'
 
 import { z } from 'zod'
 
@@ -101,16 +107,58 @@ export const CleanOutputSchema = z.object({
 
 type StoreReport = z.infer<typeof StoreReportSchema>
 
-/** Bytes under a path, or null when it does not exist. Symbolic links are not followed. */
-async function weigh(path: string): Promise<number | null> {
+/**
+ * Bytes under a path, or null when it does not exist. Symbolic links are not
+ * followed. With `shallow`, a directory is not walked: a file store's path
+ * may name one by mistake.
+ */
+async function weigh(path: string, shallow = false): Promise<number | null> {
   const info = await lstat(path).catch(() => null)
   if (info === null) return null
-  if (!info.isDirectory()) return info.size
+  if (!info.isDirectory() || shallow) return info.size
   let total = 0
   for (const entry of await readdir(path, { withFileTypes: true }).catch(() => [])) {
     total += (await weigh(join(path, entry.name))) ?? 0
   }
   return total
+}
+
+/** The largest user config clean reads to look for the `$schema` marker. */
+const MARKER_READ_LIMIT = 1024 * 1024
+
+/** True when the JSON file at `path` has a `$schema` naming wayfinder's config schema. */
+async function writtenByWayfinder(path: string): Promise<boolean> {
+  const info = await stat(path).catch(() => null)
+  if (info === null || !info.isFile() || info.size > MARKER_READ_LIMIT) return false
+  try {
+    const value: unknown = JSON.parse(await readFile(path, 'utf8'))
+    const schema = (value as { $schema?: unknown } | null)?.$schema
+    return typeof schema === 'string' && SCHEMA_MARKER.test(schema)
+  } catch {
+    return false
+  }
+}
+
+/** A `$schema` URL for any release of wayfinder's config schema. */
+const SCHEMA_MARKER = /\/@osdlc\/wayfinder@[^/]+\/schema\/config\.json$/
+
+/** Why clean will not remove `store`, which exists, or null when it may. */
+async function refusal(store: Store, home: string): Promise<string | null> {
+  const path = resolve(store.path)
+  const up = relative(path, resolve(home))
+  if (dirname(path) === path || up === '' || (!up.startsWith('..') && !isAbsolute(up))) {
+    return 'it is the home directory, a directory above it or a filesystem root'
+  }
+  const info = await lstat(path)
+  if (store.file) {
+    if (!info.isFile() && !info.isSymbolicLink()) return 'it is not a file'
+    if (store.envVar !== undefined && !(await writtenByWayfinder(path))) {
+      return `its "$schema" does not name ${APP}'s config schema, so ${APP} did not write it; remove it yourself`
+    }
+  } else if (!info.isDirectory()) {
+    return 'it is not a directory'
+  }
+  return null
 }
 
 function humanBytes(bytes: number): string {
@@ -280,12 +328,13 @@ export function cleanCommand<G extends FlagSpec = Record<never, never>>(
     exposureOf: ({ flags }) => (chosenOf(flags).size > 0 ? 'cli-only' : 'all'),
     async run({ flags }, ctx: CommandContext) {
       const chosen = chosenOf(flags)
-      const stores = storesFor(ctx.env, env.home(ctx), platform)
+      const home = env.home(ctx)
+      const stores = storesFor(ctx.env, home, platform)
 
       if (chosen.size === 0) {
         const reports: StoreReport[] = []
         for (const store of stores) {
-          const bytes = await weigh(store.path)
+          const bytes = await weigh(store.path, store.file)
           if (store.optional === true && bytes === null) continue
           reports.push(reportOf(store, bytes, false))
         }
@@ -302,16 +351,22 @@ export function cleanCommand<G extends FlagSpec = Record<never, never>>(
       const reports: StoreReport[] = []
       for (const store of stores) {
         if (!chosen.has(store.key)) continue
-        const size = await weigh(store.path)
+        const size = await weigh(store.path, store.file)
         if (size === null) {
           if (store.optional !== true) reports.push(reportOf(store, null, false))
           continue
+        }
+        const refused = await refusal(store, home)
+        if (refused !== null) {
+          ctx.warn(`not removing ${store.path}: ${refused}`)
+          reports.push(reportOf(store, size, false))
+          return outcome({ mode: 'remove' as const, stores: reports }, EXIT.error)
         }
         if (store.envVar !== undefined) {
           ctx.note(`removing ${store.path}, which ${store.envVar} names`)
         }
         try {
-          await rm(store.path, { recursive: true, force: true })
+          await rm(store.path, store.file ? { force: true } : { recursive: true, force: true })
         } catch (err) {
           ctx.warn(
             `could not remove ${store.path}: ${err instanceof Error ? err.message : String(err)}`,
