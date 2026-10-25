@@ -25,16 +25,12 @@ import type { CommandRunner } from '@osdlc/command-seam'
 import { Git } from '@osdlc/typed-git'
 import { IDENTITY, makeGitFixture, makeOriginAndCheckout } from '@osdlc/typed-git/testing'
 
+import { git } from './helpers.ts'
 import { localDeleteCommand, remoteDeleteCommand } from '../src/branches.ts'
 import { renderJson, renderRepo, renderScan, renderText } from '../src/render.ts'
 import { resolveEntries } from '../src/resolve.ts'
 import { sweepRepo, sweepRepos } from '../src/sweep.ts'
 import type { RepoSweep, SweepItem } from '../src/types.ts'
-
-function git(args: string[], cwd: string): string {
-  const result = new Git(cwd, { env: { ...IDENTITY } }).raw(args)
-  return result.exitCode === 0 ? result.stdout.trim() : ''
-}
 
 function commit(cwd: string, message: string): void {
   git(['add', '-A'], cwd)

@@ -13,8 +13,9 @@ import { chmodSync, existsSync, readFileSync, realpathSync, rmSync, writeFileSyn
 import { join } from 'node:path'
 
 import { Git } from '@osdlc/typed-git'
-import { IDENTITY, makeBareAndWorker } from '@osdlc/typed-git/testing'
+import { makeBareAndWorker } from '@osdlc/typed-git/testing'
 
+import { sh } from './helpers.ts'
 import { applyPlan, type Grant } from '../src/apply.ts'
 import { PLAN_VERSION, planRepo, readPlan, writePlan, type Plan } from '../src/plan.ts'
 import type { Receipt, RowRef } from '../src/receipt.ts'
@@ -24,10 +25,6 @@ const cleanups: Array<() => void> = []
 afterEach(() => {
   while (cleanups.length > 0) cleanups.pop()!()
 })
-
-function sh(cwd: string, args: string[]): string {
-  return new Git(cwd, { env: { ...IDENTITY } }).rawChecked(args).stdout.trim()
-}
 
 interface Fixture {
   root: string

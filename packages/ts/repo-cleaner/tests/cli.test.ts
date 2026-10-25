@@ -18,9 +18,9 @@ import { join } from 'node:path'
 
 import { captureContext } from '@osdlc/cli-tool'
 import { spawnRunner } from '@osdlc/command-seam'
-import { Git } from '@osdlc/typed-git'
-import { IDENTITY, makeBareAndWorker } from '@osdlc/typed-git/testing'
+import { makeBareAndWorker } from '@osdlc/typed-git/testing'
 
+import { sh } from './helpers.ts'
 import { main } from '../src/cli.ts'
 import { CONFIG_ENV, clearConfigCache } from '../src/config.ts'
 import type { Receipt } from '../src/receipt.ts'
@@ -32,10 +32,6 @@ const cleanups: Array<() => void> = []
 afterEach(() => {
   while (cleanups.length > 0) cleanups.pop()!()
 })
-
-function sh(cwd: string, args: string[]): string {
-  return new Git(cwd, { env: { ...IDENTITY } }).rawChecked(args).stdout.trim()
-}
 
 function tempDir(): string {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), 'repo-cleaner-cli-')))
