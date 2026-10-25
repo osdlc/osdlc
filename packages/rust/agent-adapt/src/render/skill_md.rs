@@ -131,7 +131,7 @@ pub fn render_skill_md(
 /// # Errors
 ///
 /// The same one [`render_skill_md`] raises, for the same reason.
-pub fn render_skill_md_reporting(
+pub(crate) fn render_skill_md_reporting(
     skill: &Skill,
     runtime: RuntimeId,
     dialect: &FrontmatterDialect,

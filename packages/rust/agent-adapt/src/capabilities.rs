@@ -4,7 +4,7 @@
 //! and returns one [`RuntimeCapabilities`]: a [`Claim`] per asset kind,
 //! frontmatter field, tool name, permission concept and hook event. What
 //! those subjects *are* is runtime-independent and lives in [`concepts`].
-//! [`all`] collects every declaration; [`matrix`] is one view of them and
+//! [`all_declarations`] collects every declaration; [`matrix`] is one view of them and
 //! [`CapabilityMatrix::to_markdown`] its readable form.
 //!
 //! # The one map keyed by the harness's own words
@@ -12,15 +12,15 @@
 //! [`RuntimeCapabilities::overrides`] is the exception to all of that —
 //! keyed by what the *harness* calls a key (`permissionMode`, `permission`,
 //! `policy.allow_implicit_invocation`), not a runtime-independent concept;
-//! see its own doc for why. [`override_keys`] assembles one from the half
+//! see its own doc for why. `override_keys` assembles one from the half
 //! the dialect already decides and the half an adapter seeds.
 //!
 //! # Why half of a declaration is derived and half is seeded
 //!
 //! Half of the answer is already in this crate's code, so an adapter reads
-//! it rather than retyping it: [`derived_fields`] reads its own
-//! [`crate::FrontmatterDialect::omit_fields`], [`derived_assets`] the six
-//! per-capability lookups, [`derived_tools`] its
+//! it rather than retyping it: `derived_fields` reads its own
+//! [`crate::FrontmatterDialect::omit_fields`], `derived_assets` the six
+//! per-capability lookups, `derived_tools` its
 //! [`ToolRegistry::translate_tool_name`]. Those claims cannot drift from the
 //! renderers, and `derived_claims_match_their_source` checks it.
 //!
@@ -213,6 +213,7 @@ impl AssetKind {
 /// Keyed by concept, never by position: a consumer asking "what does this
 /// runtime do with the `model` field" reads `declaration.fields["model"]`.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct RuntimeCapabilities {
     /// Whose declaration this is.
     pub runtime: RuntimeId,
@@ -236,7 +237,7 @@ pub struct RuntimeCapabilities {
     ///
     /// It is the whole oracle for "does this harness know this key" — an
     /// `ap-overrides` key absent from it is refused, naming the target and
-    /// the key. See [`override_keys`] for how a declaration assembles one.
+    /// the key. See `override_keys` for how a declaration assembles one.
     pub overrides: BTreeMap<String, Claim>,
     /// One claim per [`BEHAVIOURS`] key: what the harness does with a hook's
     /// output, rather than which events it fires.
@@ -244,6 +245,21 @@ pub struct RuntimeCapabilities {
 }
 
 impl RuntimeCapabilities {
+    /// An empty declaration for `runtime`: every map is empty. A custom
+    /// runtime fills the maps it has claims for.
+    pub fn new(runtime: RuntimeId) -> Self {
+        Self {
+            runtime,
+            assets: BTreeMap::new(),
+            fields: BTreeMap::new(),
+            tools: BTreeMap::new(),
+            permissions: BTreeMap::new(),
+            hook_events: BTreeMap::new(),
+            overrides: BTreeMap::new(),
+            behaviours: BTreeMap::new(),
+        }
+    }
+
     /// This runtime's claim about one concept, whatever kind it is — the
     /// generic form of indexing the typed map directly.
     pub fn claim(&self, kind: ConceptKind, key: &str) -> Option<&Claim> {
@@ -356,7 +372,7 @@ pub const STOP_CONTINUE: &str = "stop-continue";
 
 /// A declaration's [`RuntimeCapabilities::behaviours`], one claim per
 /// [`BEHAVIOURS`] entry.
-pub fn behaviours(stop_continue: Claim) -> BTreeMap<String, Claim> {
+pub(crate) fn behaviours(stop_continue: Claim) -> BTreeMap<String, Claim> {
     BTreeMap::from([(STOP_CONTINUE.to_owned(), stop_continue)])
 }
 
@@ -440,7 +456,7 @@ pub const CLAUDE_HOOK_EVENTS: &[(&str, &str)] = &[
 ];
 
 /// The one hook event only Codex CLI documents, with no Claude Code
-/// equivalent. Sourced from [`CODEX_ONLY_HOOK_EVENT_VOCABULARY`].
+/// equivalent. Sourced from `CODEX_ONLY_HOOK_EVENT_VOCABULARY`.
 pub const CODEX_ONLY_HOOK_EVENTS: &[(&str, &str)] = &[(
     "Interrupt",
     "when the user interrupts an active turn on the main thread",
@@ -580,25 +596,25 @@ pub fn concepts() -> Vec<Concept> {
 // ── Evidence shared across adapters ─────────────────────────────────────
 
 /// The date the live documentation pages cited in this crate were read.
-pub const OBSERVED: &str = "2026-09-08";
+pub(crate) const OBSERVED: &str = "2026-09-08";
 
 /// The date the plugin-hooks survey read the hooks pages: Codex and Cursor
 /// plugin hooks, and every harness's `Stop` output.
-pub const HOOKS_OBSERVED: &str = "2026-10-05";
+pub(crate) const HOOKS_OBSERVED: &str = "2026-10-05";
 
 /// What [`Evidence::version`] says for a docs page that carries no version
 /// of its own — most of them.
-pub const UNVERSIONED: &str = "unversioned documentation page";
+pub(crate) const UNVERSIONED: &str = "unversioned documentation page";
 
 /// The date the harness pages behind the harness-only override keys were
 /// read. Separate from [`OBSERVED`] because those three readings are their
 /// own survey, and a later sweep of the live pages moves one date and not
 /// the other.
-pub const OVERRIDE_KEYS_OBSERVED: &str = "2026-09-07";
+pub(crate) const OVERRIDE_KEYS_OBSERVED: &str = "2026-09-07";
 
 /// The specification the portable target renders to, and the definition of
 /// every [`AGENT_SKILLS_FIELDS`] concept.
-pub const AGENT_SKILLS_SPEC: Evidence = Evidence {
+pub(crate) const AGENT_SKILLS_SPEC: Evidence = Evidence {
     url: "https://agentskills.io/specification",
     observed_on: OBSERVED,
     version: "the specification carries no version number",
@@ -606,7 +622,7 @@ pub const AGENT_SKILLS_SPEC: Evidence = Evidence {
 
 /// The page that defines the canonical hook event names — Claude Code's,
 /// which is the vocabulary this crate treats as canonical.
-pub const HOOK_EVENT_VOCABULARY: Evidence = Evidence {
+pub(crate) const HOOK_EVENT_VOCABULARY: Evidence = Evidence {
     url: "https://code.claude.com/docs/en/hooks",
     observed_on: OBSERVED,
     version: UNVERSIONED,
@@ -614,7 +630,7 @@ pub const HOOK_EVENT_VOCABULARY: Evidence = Evidence {
 
 /// The page that defines [`CODEX_ONLY_HOOK_EVENTS`] — Codex CLI's own
 /// `Interrupt` event, which Claude Code does not document.
-pub const CODEX_ONLY_HOOK_EVENT_VOCABULARY: Evidence = Evidence {
+pub(crate) const CODEX_ONLY_HOOK_EVENT_VOCABULARY: Evidence = Evidence {
     url: "https://learn.chatgpt.com/docs/hooks",
     observed_on: OBSERVED,
     version: UNVERSIONED,
@@ -623,7 +639,7 @@ pub const CODEX_ONLY_HOOK_EVENT_VOCABULARY: Evidence = Evidence {
 /// The in-repo harness survey. Its own header dates the research and warns
 /// that the field churns weekly, so it is cited with that date rather than
 /// with the date this module was written.
-pub const HARNESS_SURVEY: Evidence = Evidence {
+pub(crate) const HARNESS_SURVEY: Evidence = Evidence {
     url: "solutions/agent-pants/docs/vault/reference/harness-comparison.md",
     observed_on: "2026-08-08",
     version: "surveyed 2026-08-08 from each vendor's official documentation",
@@ -635,7 +651,7 @@ pub const HARNESS_SURVEY: Evidence = Evidence {
 /// [`FrontmatterDialect::omit_fields`]: an omitted field is
 /// [`Support::Ignored`], every other is [`Support::Native`] under the
 /// spelling the dialect's [`FieldNaming`] gives it.
-pub fn derived_fields(dialect: &FrontmatterDialect) -> BTreeMap<String, Claim> {
+pub(crate) fn derived_fields(dialect: &FrontmatterDialect) -> BTreeMap<String, Claim> {
     AGENT_SKILLS_FIELDS
         .iter()
         .chain(AGENT_SKILLS_EXTENSION_FIELDS.iter())
@@ -678,7 +694,7 @@ fn spell(canonical: &str, naming: FieldNaming) -> String {
 /// A lookup answering `Some` is [`Support::Native`]; `None` is
 /// [`Support::Rejected`], because a destination with no renderer refuses by
 /// name rather than writing a file the harness never loads.
-pub fn derived_assets(runtime: RuntimeId) -> BTreeMap<AssetKind, Claim> {
+pub(crate) fn derived_assets(runtime: RuntimeId) -> BTreeMap<AssetKind, Claim> {
     AssetKind::ALL
         .iter()
         .map(|kind| {
@@ -726,7 +742,7 @@ pub fn derived_assets(runtime: RuntimeId) -> BTreeMap<AssetKind, Claim> {
 /// nobody loads, and a refusal that says so is more use than a silent write.
 /// It is also what makes the `codex`/`argument-hint` case a refusal while the
 /// `claude`/`allowed-tools` case is merely redundant.
-pub fn derived_override_keys(dialect: &FrontmatterDialect) -> BTreeMap<String, Claim> {
+pub(crate) fn derived_override_keys(dialect: &FrontmatterDialect) -> BTreeMap<String, Claim> {
     AGENT_SKILLS_FIELDS
         .iter()
         .chain(AGENT_SKILLS_EXTENSION_FIELDS.iter())
@@ -751,7 +767,7 @@ pub fn derived_override_keys(dialect: &FrontmatterDialect) -> BTreeMap<String, C
 /// its own [`Evidence`]. A harness-only key wins over a derived one of the
 /// same name: the adapter's own reading of its documentation is the better
 /// answer.
-pub fn override_keys(
+pub(crate) fn override_keys(
     dialect: &FrontmatterDialect,
     harness_only: impl IntoIterator<Item = (String, Claim)>,
 ) -> BTreeMap<String, Claim> {
@@ -762,7 +778,7 @@ pub fn override_keys(
 
 /// One harness-only override key: the name the harness reads, a note saying
 /// what it does there, and where that was read.
-pub fn harness_key(key: &str, note: &'static str, evidence: Evidence) -> (String, Claim) {
+pub(crate) fn harness_key(key: &str, note: &'static str, evidence: Evidence) -> (String, Claim) {
     (
         key.to_owned(),
         Claim::observed(Support::Native, evidence)
@@ -775,7 +791,10 @@ pub fn harness_key(key: &str, note: &'static str, evidence: Evidence) -> (String
 /// [`ToolRegistry::translate_tool_name`]: a name that comes back unchanged
 /// is [`Support::Native`], a renamed one [`Support::Translated`] carrying the
 /// runtime's own spelling.
-pub fn derived_tools(registry: &ToolRegistry, runtime: RuntimeId) -> BTreeMap<String, Claim> {
+pub(crate) fn derived_tools(
+    registry: &ToolRegistry,
+    runtime: RuntimeId,
+) -> BTreeMap<String, Claim> {
     registry
         .tools
         .iter()
@@ -807,7 +826,7 @@ pub fn derived_tools(registry: &ToolRegistry, runtime: RuntimeId) -> BTreeMap<St
 // ── Every declaration ───────────────────────────────────────────────────
 
 /// Every runtime's declaration, in [`RuntimeId::ALL`] order.
-pub fn all() -> Vec<RuntimeCapabilities> {
+pub fn all_declarations() -> Vec<RuntimeCapabilities> {
     RuntimeId::ALL
         .iter()
         .copied()
@@ -915,7 +934,7 @@ mod tests {
 
     #[test]
     fn every_runtime_declares() {
-        let declared: Vec<RuntimeId> = all().iter().map(|d| d.runtime).collect();
+        let declared: Vec<RuntimeId> = all_declarations().iter().map(|d| d.runtime).collect();
         for id in RuntimeId::ALL.iter().copied() {
             // Exhaustive on purpose: a new variant breaks this line until it
             // is given an arm, and the assertion until it declares.
@@ -943,7 +962,7 @@ mod tests {
     /// treat a missing key as an implicit verdict.
     #[test]
     fn every_declaration_answers_every_concept() {
-        for declaration in all() {
+        for declaration in all_declarations() {
             for concept in concepts() {
                 assert!(
                     declaration.claim(concept.kind, &concept.key).is_some(),
@@ -961,7 +980,7 @@ mod tests {
     #[test]
     fn derived_claims_match_their_source() {
         let registry = ToolRegistry::default();
-        for declaration in all() {
+        for declaration in all_declarations() {
             let id = declaration.runtime;
             let runtime = runtimes::for_id(id).expect("every runtime resolves");
 
@@ -1010,7 +1029,7 @@ mod tests {
     /// record and a note.
     #[test]
     fn every_seeded_claim_carries_evidence() {
-        for declaration in all() {
+        for declaration in all_declarations() {
             let seeded = declaration
                 .permissions
                 .iter()
@@ -1046,7 +1065,7 @@ mod tests {
 
     #[test]
     fn every_declaration_answers_every_behaviour_with_evidence() {
-        for declaration in all() {
+        for declaration in all_declarations() {
             assert_eq!(
                 declaration.behaviours.len(),
                 BEHAVIOURS.len(),
@@ -1085,7 +1104,7 @@ mod tests {
     /// [`crate::runtimes::cursor`]'s "Frontmatter".
     #[test]
     fn claude_only_fields_are_ignored_everywhere_else() {
-        for declaration in all() {
+        for declaration in all_declarations() {
             for field in AGENT_SKILLS_EXTENSION_FIELDS {
                 let cursor_reads_it =
                     matches!(declaration.runtime, RuntimeId::Cursor | RuntimeId::Pi)
@@ -1199,7 +1218,7 @@ mod tests {
     /// reviewer the whole matrix without a second tool.
     #[test]
     fn renders_as_a_markdown_table() {
-        let matrix = matrix(&all());
+        let matrix = matrix(&all_declarations());
         let markdown = matrix.to_markdown();
         println!("{markdown}");
         assert!(markdown.starts_with("# Harness capability matrix\n"));

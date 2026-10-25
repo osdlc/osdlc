@@ -12,7 +12,7 @@ use crate::capabilities::{AGENT_SKILLS_SPEC, Evidence, UNVERSIONED};
 
 /// The date the call syntaxes below were read. Pi's syntax carries
 /// `runtimes::pi::OBSERVED`, the date of the one Pi source reading.
-pub const SKILL_CALL_OBSERVED: &str = "2026-10-01";
+pub(crate) const SKILL_CALL_OBSERVED: &str = "2026-10-01";
 
 /// One runtime's call syntax.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

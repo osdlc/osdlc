@@ -49,6 +49,9 @@ impl std::fmt::Display for Severity {
 ///
 /// Seeded with the codes render diagnostics need; the read-scope codes join
 /// them as the read path moves onto this channel.
+///
+/// **Experimental.** New codes will be added, and existing ones may change,
+/// in a minor release.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum DiagnosticCode {

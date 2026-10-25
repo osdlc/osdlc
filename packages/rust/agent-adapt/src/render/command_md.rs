@@ -74,7 +74,7 @@ pub fn render_command_md(
 /// The sibling exists for the same reason [`crate::render::skill_md`]'s does:
 /// a diagnostic is not a file, so a caller that wants bytes calls the plain
 /// function and a caller that wants the report calls this one.
-pub fn render_command_md_reporting(
+pub(crate) fn render_command_md_reporting(
     command: &Command,
     runtime: RuntimeId,
     fields: &CommandFields,

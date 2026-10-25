@@ -14,11 +14,52 @@ assets (skills, agents, commands, hooks, scripts and MCP server config) in one
 host-neutral model. It renders that model into the on-disk format each supported
 runtime expects.
 
+### Added
+
+- Constructors for the types that are now `#[non_exhaustive]`:
+  `Hook::new`, `RuntimePaths::new` and `RuntimeCapabilities::new`, beside the
+  existing `Skill::new`, `Command::new` and `Hook::command`.
+
+### Changed
+
+- **Breaking:** `Error`, `RuntimeId`, `RuntimePaths`, `Skill`, `Command`, `Hook`
+  and `RuntimeCapabilities` are `#[non_exhaustive]`. Outside the crate, build
+  them with their constructors rather than struct literals, and give a `match`
+  on `Error` or `RuntimeId` a `_` arm. New fields and variants are then not
+  breaking changes.
+- **Breaking:** `capabilities::all()` is now `capabilities::all_declarations()`,
+  so it no longer clashes with `runtimes::all()` in a `use`.
+- **Breaking:** the `install::install_skill`, `install_agent`, `install_hooks`,
+  `install_script` and `install_mcp_server` helpers honour their `scope`
+  argument. `Scope::User` writes under the home directory (`install::user_anchor`)
+  at the runtime's user-scope path and ignores `project_root`. It is an error
+  when no home directory is set. Before, every call installed at project scope.
+- `Marketplace` and `DiagnosticCode` are marked experimental. They may change in
+  a minor release.
+
+### Removed
+
+- **Breaking:** the helpers the built-in runtimes share are no longer public:
+  the `runtimes::standard` module, and `render::render_command_md_reporting`,
+  `render::render_hooks_json_reporting` and `render::render_skill_md_reporting`.
+  The runtime renderers give the same output.
+- **Breaking:** the items the runtimes build their capability declarations from
+  are no longer public: `capabilities::behaviours`, `derived_fields`,
+  `derived_assets`, `derived_tools`, `derived_override_keys`, `override_keys`,
+  `harness_key`, `OBSERVED`, `HOOKS_OBSERVED`, `UNVERSIONED`,
+  `OVERRIDE_KEYS_OBSERVED`, `AGENT_SKILLS_SPEC`, `HOOK_EVENT_VOCABULARY`,
+  `CODEX_ONLY_HOOK_EVENT_VOCABULARY` and `HARNESS_SURVEY`, and
+  `skill_call::SKILL_CALL_OBSERVED`. Every claim, with its evidence, is still
+  read through `capabilities::all_declarations()` and `capabilities::matrix`.
+- `runtimes::redundant_skill_overrides` is hidden from the docs and is outside
+  the semver promise.
+
 ### Fixed
 
 - `RuntimeId::skill_call` refuses a name or namespace holding any character
-  outside `[A-Za-z0-9_.-]`, not only `:` or whitespace. A caller passing such a
-  name now gets an error and must change the name.
+  outside `[A-Za-z0-9_.-]`, not only `:` or whitespace. Its documented contract
+  was always a valid skill name, and these characters were never valid in one,
+  so the looser check was the bug. A caller passing such a name gets an error.
 
 ## History before the first public release
 

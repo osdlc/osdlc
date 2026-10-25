@@ -115,7 +115,7 @@ pub fn render_hooks_json(
 /// # Errors
 ///
 /// The same refusal and serialization failures [`render_hooks_json`] raises.
-pub fn render_hooks_json_reporting(
+pub(crate) fn render_hooks_json_reporting(
     hooks: &[Hook],
     runtime: RuntimeId,
     registry: &ToolRegistry,
@@ -165,7 +165,7 @@ pub fn render_hooks_json_reporting(
 }
 
 /// Render `hooks` in Cursor's `{ "version": 1, "hooks": { "<event>": [{…}] } }`
-/// shape, plus the redundant-override report [`render_hooks_json_reporting`]
+/// shape, plus the redundant-override report `render_hooks_json_reporting`
 /// returns.
 ///
 /// Each entry is flat: `command`, `timeout` in seconds, and `matcher`, with no
@@ -258,7 +258,7 @@ fn apply_overrides(entry: &mut Map<String, Value>, hook: &Hook, redundant: &mut 
 }
 
 /// One hook as a flat map — the hook object's own keys plus `matcher`, which
-/// [`render_hooks_json_reporting`] lifts onto the group once the override has
+/// `render_hooks_json_reporting` lifts onto the group once the override has
 /// had its say.
 fn hook_entry(hook: &Hook, runtime: RuntimeId, registry: &ToolRegistry) -> Map<String, Value> {
     let mut entry = Map::new();

@@ -92,6 +92,7 @@ impl FromStr for HookType {
 ///   `None` reads as [`HookType::Command`] — see [`Hook::command`] for why
 ///   that is the default.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct Hook {
     /// Human-readable name.
     pub name: String,
@@ -140,17 +141,18 @@ pub struct Hook {
 }
 
 impl Hook {
-    /// A command hook — the shape every harness that reads a `hooks.json`
-    /// documents first, and the one every other field is optional around.
-    pub fn command(name: &str, slug: &str, event: &str, command: &str) -> Self {
+    /// A hook with no type and no payload yet. Set `r#type` and its field
+    /// (`command`, `url` or `prompt`) afterwards; with no type it renders as
+    /// a [`HookType::Command`] hook.
+    pub fn new(name: &str, slug: &str, event: &str) -> Self {
         Self {
             name: name.to_owned(),
             slug: slug.to_owned(),
             description: None,
             event: event.to_owned(),
             matcher: None,
-            r#type: Some(HookType::Command),
-            command: Some(command.to_owned()),
+            r#type: None,
+            command: None,
             url: None,
             prompt: None,
             r#if: None,
@@ -161,6 +163,16 @@ impl Hook {
             category: None,
             is_template: false,
             overrides: serde_json::Map::new(),
+        }
+    }
+
+    /// A command hook — the shape every harness that reads a `hooks.json`
+    /// documents first, and the one every other field is optional around.
+    pub fn command(name: &str, slug: &str, event: &str, command: &str) -> Self {
+        Self {
+            r#type: Some(HookType::Command),
+            command: Some(command.to_owned()),
+            ..Self::new(name, slug, event)
         }
     }
 

@@ -49,6 +49,7 @@ use crate::Argument;
 ///   (scripts, templates, references). Render impls emit each one under
 ///   the same slug directory as the `SKILL.md`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct Skill {
     /// Human-readable name, e.g. `"Requirements Interview"`.
     pub name: String,
@@ -88,7 +89,7 @@ pub struct Skill {
     pub license: Option<String>,
     /// The specification's `compatibility:` — what environment this skill
     /// needs. Capped at 500 characters by the spec; the cap is enforced
-    /// where an author can act on it (`agent-adapt-core`'s discovery),
+    /// where an author can act on it (`tradecraft-core`'s discovery),
     /// never in the renderer, which has no way to report it.
     #[serde(default)]
     pub compatibility: Option<String>,
@@ -137,7 +138,7 @@ pub struct Skill {
     ///
     /// Deliberately **not** keyed by target: which destination this is
     /// rendering for is the caller's answer, and folding every accepted
-    /// spelling of a destination name onto one is `agent-adapt-core`'s job.
+    /// spelling of a destination name onto one is `tradecraft-core`'s job.
     /// A renderer holding the whole map would need that vocabulary too, and
     /// two places folding target names is two places to disagree.
     ///

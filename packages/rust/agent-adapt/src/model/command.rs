@@ -15,6 +15,7 @@ use crate::Argument;
 /// command takes arguments at the point of invocation, and the hint is what
 /// the harness shows the person typing it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct Command {
     /// Human-readable name.
     pub name: String,

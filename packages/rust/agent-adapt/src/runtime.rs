@@ -19,6 +19,7 @@ use crate::{Agent, Command, ExportedFile, Hook, Result, Script, Skill};
 /// Closed enum of every runtime the crate knows about.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
+#[non_exhaustive]
 pub enum RuntimeId {
     /// Anthropic's Claude Code CLI.
     ClaudeCode,
@@ -52,7 +53,7 @@ impl RuntimeId {
     ///
     /// The enum is closed, but Rust has no reflection over it, so any
     /// caller that needs "every runtime, whatever it can render" —
-    /// [`crate::capabilities::all`] is the first — would otherwise retype
+    /// [`crate::capabilities::all_declarations`] is the first — would otherwise retype
     /// the list. The exhaustive `match` in this module's
     /// `every_variant_is_in_all` test is the compile-time guard: a new
     /// variant fails to compile there until it is added here too.
@@ -203,6 +204,7 @@ impl ScopedRelative {
 /// Skills shared convention) but its MCP config under `.codex/config.toml`.
 /// Representing every path explicitly removes that ambiguity.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct RuntimePaths {
     /// Directory where [`Skill`]s are installed.
     pub skills_dir: ScopedRelative,
@@ -227,6 +229,24 @@ pub struct RuntimePaths {
 }
 
 impl RuntimePaths {
+    /// Paths for a runtime with skills, agents and scripts, and no commands,
+    /// hooks file or MCP config. Set those fields afterwards when the runtime
+    /// has them.
+    pub fn new(
+        skills_dir: ScopedRelative,
+        agents_dir: ScopedRelative,
+        scripts_dir: ScopedRelative,
+    ) -> Self {
+        Self {
+            skills_dir,
+            agents_dir,
+            commands_dir: None,
+            scripts_dir,
+            hooks_file: None,
+            mcp_config_file: None,
+        }
+    }
+
     /// Resolved skills directory, anchored against `anchor`.
     pub fn skills_dir_for(&self, anchor: &Path, scope: Scope) -> PathBuf {
         anchor.join(self.skills_dir.for_scope(scope))

@@ -11,6 +11,7 @@ use thiserror::Error as ThisError;
 
 /// All errors the crate can produce.
 #[derive(Debug, ThisError)]
+#[non_exhaustive]
 pub enum Error {
     /// Filesystem I/O failed. Primarily produced by the helpers in
     /// [`crate::install`]; kept at the top level so the [`crate::Result`]

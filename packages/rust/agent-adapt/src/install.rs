@@ -16,9 +16,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::mcp::{McpCapability, McpServer};
+use crate::runtime::{Scope, ScopedRelative};
 use crate::{
-    Agent, AgentCapability, ExportedFile, ExportedTree, Hook, HookCapability, PluginBundle, Result,
-    Script, ScriptCapability, Skill, SkillCapability, compose, runtime::Scope,
+    Agent, AgentCapability, Error, ExportedFile, ExportedTree, Hook, HookCapability, PluginBundle,
+    Result, Script, ScriptCapability, Skill, SkillCapability, compose,
 };
 
 impl ExportedTree {
@@ -104,76 +105,196 @@ pub fn user_anchor() -> Option<PathBuf> {
     Some(PathBuf::from(home))
 }
 
-/// Render and install a single [`Skill`] onto `project_root`.
+/// The anchor an install at `scope` joins its paths onto: `project_root`
+/// for [`Scope::Project`], [`user_anchor`] for [`Scope::User`].
 ///
-/// Returns the absolute paths written.
+/// # Errors
 ///
-/// The `scope` parameter is informational — path resolution uses the
-/// runtime's project-scope paths; `Scope::User` is not yet honored.
+/// [`Error::Validation`] for [`Scope::User`] when no home directory is set.
+fn scope_anchor(project_root: &Path, scope: Scope) -> Result<PathBuf> {
+    match scope {
+        Scope::Project => Ok(project_root.to_path_buf()),
+        Scope::User => user_anchor().ok_or_else(|| {
+            Error::validation("a user-scope install needs HOME or USERPROFILE to be set")
+        }),
+    }
+}
+
+/// Move rendered files from the project-scope layout to `scope`'s.
+///
+/// Every render lays its files out at project scope. For [`Scope::User`] each
+/// path under `dir`'s project path is moved under its user path. A file
+/// outside `dir` has no user-scope place, so it is refused.
+fn rebase(files: Vec<ExportedFile>, dir: &ScopedRelative, scope: Scope) -> Result<ExportedTree> {
+    if scope == Scope::Project || dir.project == dir.user {
+        return Ok(files.into_iter().collect());
+    }
+    files
+        .into_iter()
+        .map(|mut file| {
+            let rest = file.path.strip_prefix(&dir.project).map_err(|_| {
+                Error::render(format!(
+                    "{} is outside {}, so it has no user-scope path",
+                    file.path.display(),
+                    dir.project.display()
+                ))
+            })?;
+            // A file that is the scoped path itself (a hooks or MCP file)
+            // has an empty rest, and joining "" would add a trailing slash.
+            file.path = if rest.as_os_str().is_empty() {
+                dir.user.clone()
+            } else {
+                dir.user.join(rest)
+            };
+            Ok(file)
+        })
+        .collect()
+}
+
+/// Render and install a single [`Skill`].
+///
+/// [`Scope::Project`] writes under `project_root`. [`Scope::User`] writes
+/// under [`user_anchor`] at the runtime's user-scope skills directory, and
+/// ignores `project_root`. Returns the absolute paths written.
+///
+/// # Errors
+///
+/// A render failure, an I/O failure, or a user-scope install with no home
+/// directory set.
 pub fn install_skill<R: SkillCapability>(
     runtime: &R,
     project_root: &Path,
-    _scope: Scope,
+    scope: Scope,
+    skill: &Skill,
+) -> Result<Vec<PathBuf>> {
+    install_skill_at(runtime, &scope_anchor(project_root, scope)?, scope, skill)
+}
+
+fn install_skill_at<R: SkillCapability>(
+    runtime: &R,
+    anchor: &Path,
+    scope: Scope,
     skill: &Skill,
 ) -> Result<Vec<PathBuf>> {
     let files = runtime.render_skill(skill)?;
-    let tree: ExportedTree = files.into_iter().collect();
-    write_tree(&tree, project_root)
+    write_tree(&rebase(files, &runtime.paths().skills_dir, scope)?, anchor)
 }
 
-/// Render and install a single [`Agent`] onto `project_root`.
+/// Render and install a single [`Agent`]. Scope works as in
+/// [`install_skill`], with the runtime's agents directory.
+///
+/// # Errors
+///
+/// As [`install_skill`].
 pub fn install_agent<R: AgentCapability>(
     runtime: &R,
     project_root: &Path,
-    _scope: Scope,
+    scope: Scope,
+    agent: &Agent,
+) -> Result<Vec<PathBuf>> {
+    install_agent_at(runtime, &scope_anchor(project_root, scope)?, scope, agent)
+}
+
+fn install_agent_at<R: AgentCapability>(
+    runtime: &R,
+    anchor: &Path,
+    scope: Scope,
     agent: &Agent,
 ) -> Result<Vec<PathBuf>> {
     let files = runtime.render_agent(agent)?;
-    let tree: ExportedTree = files.into_iter().collect();
-    write_tree(&tree, project_root)
+    write_tree(&rebase(files, &runtime.paths().agents_dir, scope)?, anchor)
 }
 
-/// Render and install a collection of [`Hook`]s onto `project_root`.
+/// Render and install a collection of [`Hook`]s. Scope works as in
+/// [`install_skill`], with the runtime's hooks file.
 ///
 /// Empty slice or runtimes with no hooks file produce a no-op
 /// (returning an empty `Vec`), not an error.
+///
+/// # Errors
+///
+/// As [`install_skill`].
 pub fn install_hooks<R: HookCapability>(
     runtime: &R,
     project_root: &Path,
-    _scope: Scope,
+    scope: Scope,
+    hooks: &[Hook],
+) -> Result<Vec<PathBuf>> {
+    install_hooks_at(runtime, &scope_anchor(project_root, scope)?, scope, hooks)
+}
+
+fn install_hooks_at<R: HookCapability>(
+    runtime: &R,
+    anchor: &Path,
+    scope: Scope,
     hooks: &[Hook],
 ) -> Result<Vec<PathBuf>> {
     let files = runtime.render_hooks(hooks)?;
-    let tree: ExportedTree = files.into_iter().collect();
-    write_tree(&tree, project_root)
+    let tree = match &runtime.paths().hooks_file {
+        Some(file) => rebase(files, file, scope)?,
+        None => files.into_iter().collect(),
+    };
+    write_tree(&tree, anchor)
 }
 
-/// Render and install a single [`Script`] onto `project_root`.
+/// Render and install a single [`Script`]. Scope works as in
+/// [`install_skill`], with the runtime's scripts directory.
+///
+/// # Errors
+///
+/// As [`install_skill`].
 pub fn install_script<R: ScriptCapability>(
     runtime: &R,
     project_root: &Path,
-    _scope: Scope,
+    scope: Scope,
+    script: &Script,
+) -> Result<PathBuf> {
+    install_script_at(runtime, &scope_anchor(project_root, scope)?, scope, script)
+}
+
+fn install_script_at<R: ScriptCapability>(
+    runtime: &R,
+    anchor: &Path,
+    scope: Scope,
     script: &Script,
 ) -> Result<PathBuf> {
     let file = runtime.render_script(script)?;
-    let written = write_one(&file, project_root)?;
-    Ok(written)
+    let tree = rebase(vec![file], &runtime.paths().scripts_dir, scope)?;
+    let file = tree.iter().next().expect("rebase keeps every file");
+    write_one(file, anchor)
 }
 
-/// Render and install a single [`McpServer`] onto `project_root`.
+/// Render and install a single [`McpServer`]. Scope works as in
+/// [`install_skill`], with the runtime's MCP config file.
 ///
 /// Writes a **standalone** config file containing only this server.
 /// Merging into an existing user-owned config (preserving entries the
 /// user added manually) is not supported yet.
+///
+/// # Errors
+///
+/// As [`install_skill`].
 pub fn install_mcp_server<R: McpCapability>(
     runtime: &R,
     project_root: &Path,
-    _scope: Scope,
+    scope: Scope,
+    server: &McpServer,
+) -> Result<Vec<PathBuf>> {
+    install_mcp_server_at(runtime, &scope_anchor(project_root, scope)?, scope, server)
+}
+
+fn install_mcp_server_at<R: McpCapability>(
+    runtime: &R,
+    anchor: &Path,
+    scope: Scope,
     server: &McpServer,
 ) -> Result<Vec<PathBuf>> {
     let files = runtime.render_mcp_server(server)?;
-    let tree: ExportedTree = files.into_iter().collect();
-    write_tree(&tree, project_root)
+    let tree = match &runtime.paths().mcp_config_file {
+        Some(file) => rebase(files, file, scope)?,
+        None => files.into_iter().collect(),
+    };
+    write_tree(&tree, anchor)
 }
 
 /// Render and install an entire [`PluginBundle`] onto `project_root`.
@@ -314,6 +435,102 @@ mod tests {
                 .any(|p| p.ends_with(".claude/skills/two/SKILL.md"))
         );
         assert!(written.iter().any(|p| p.ends_with("MANIFEST.md")));
+    }
+
+    #[test]
+    fn user_scope_moves_a_skill_to_the_user_skills_dir() {
+        use crate::runtimes::Antigravity;
+        let home = TempDir::new().unwrap();
+        let skill = Skill::new("My Skill", "desc", "body");
+        let written = install_skill_at(&Antigravity, home.path(), Scope::User, &skill).unwrap();
+        assert_eq!(
+            written,
+            [home
+                .path()
+                .join(".gemini/antigravity-cli/skills/my-skill/SKILL.md")]
+        );
+    }
+
+    #[test]
+    fn user_scope_moves_an_mcp_config_to_the_user_file() {
+        use crate::runtimes::Antigravity;
+        let home = TempDir::new().unwrap();
+        let server = McpServer::http("example", "http://localhost:4243/mcp");
+        let written =
+            install_mcp_server_at(&Antigravity, home.path(), Scope::User, &server).unwrap();
+        assert_eq!(
+            written,
+            [home.path().join(".gemini/config/mcp_config.json")]
+        );
+    }
+
+    #[test]
+    fn rebase_refuses_a_file_outside_the_scoped_dir() {
+        let dir = ScopedRelative {
+            project: ".agents/skills".into(),
+            user: ".home/skills".into(),
+        };
+        let file = ExportedFile::text_file("elsewhere/x.md", "x", crate::ExportedFileType::Skill);
+        assert!(rebase(vec![file.clone()], &dir, Scope::User).is_err());
+        let tree = rebase(vec![file], &dir, Scope::Project).unwrap();
+        assert_eq!(tree.as_slice()[0].path, PathBuf::from("elsewhere/x.md"));
+    }
+
+    #[test]
+    fn project_scope_anchors_at_the_project_root() {
+        let root = Path::new("/work/repo");
+        assert_eq!(scope_anchor(root, Scope::Project).unwrap(), root);
+    }
+
+    #[test]
+    fn install_agent_hooks_and_script_write_to_runtime_convention() {
+        let dir = TempDir::new().unwrap();
+        let agent = Agent::new("Reviewer", "reviewer");
+        let written = install_agent(&ClaudeCode, dir.path(), Scope::Project, &agent).unwrap();
+        assert_eq!(written, [dir.path().join(".claude/agents/reviewer.md")]);
+
+        let hooks = [Hook::command("Lint", "lint", "PreToolUse", "make lint")];
+        let written = install_hooks(&ClaudeCode, dir.path(), Scope::Project, &hooks).unwrap();
+        assert_eq!(written, [dir.path().join(".claude/hooks.json")]);
+
+        let script = Script {
+            name: "Run".into(),
+            slug: "run".into(),
+            description: None,
+            language: crate::ScriptLanguage::Bash,
+            body: "echo hi".into(),
+            timeout_ms: 0,
+            tags: vec![],
+            category: None,
+            is_template: false,
+        };
+        let written = install_script(&ClaudeCode, dir.path(), Scope::Project, &script).unwrap();
+        assert_eq!(written, dir.path().join(".claude/scripts/run.sh"));
+        let written = install_script_at(&ClaudeCode, dir.path(), Scope::User, &script).unwrap();
+        assert_eq!(written, dir.path().join(".claude/scripts/run.sh"));
+    }
+
+    #[test]
+    fn install_plugin_no_mcp_no_hooks_writes_the_skills() {
+        use crate::runtimes::NpmPackage;
+        let dir = TempDir::new().unwrap();
+        let mut bundle = PluginBundle::new(Plugin {
+            name: "P".into(),
+            slug: "p".into(),
+            namespace: None,
+            description: None,
+            version_label: "1.0.0".into(),
+            author: None,
+            license: None,
+            tags: vec![],
+            category: None,
+        });
+        bundle.skills.push(Skill::new("One", "d", "b"));
+        let written = install_plugin_no_mcp_no_hooks(&NpmPackage, dir.path(), &bundle).unwrap();
+        assert!(
+            written.iter().any(|p| p.ends_with("one/SKILL.md")),
+            "{written:?}"
+        );
     }
 
     #[test]

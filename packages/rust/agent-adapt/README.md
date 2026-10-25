@@ -26,7 +26,7 @@ cargo add agent-adapt
 | `naming` | Slugging and tool-name deduplication |
 | `output` | `ExportedFile`, `ExportedFileType`, `ExportedTree` — what a render returns |
 | `compose` | Whole-plugin rendering |
-| `install` | The only module that touches the filesystem |
+| `install` | The only module that touches the filesystem. Writes at project scope under a project root, or at user scope under the home directory |
 
 ## Use
 
@@ -56,6 +56,17 @@ conformant everywhere else.
 ## Stability
 
 This is a 0.x crate. Breaking changes are possible between minor versions and are listed in the [changelog](CHANGELOG.md).
+
+These items are experimental. They may change in a minor release:
+
+- `Marketplace`. No manifest is rendered from it yet.
+- `DiagnosticCode`. New codes will be added.
+
+`Error`, `RuntimeId`, `RuntimePaths`, `Skill`, `Command`, `Hook` and
+`RuntimeCapabilities` are `#[non_exhaustive]`. Build them with their
+constructors (`Skill::new`, `Command::new`, `Hook::new`, `Hook::command`,
+`RuntimePaths::new`, `RuntimeCapabilities::new`), and give a `match` on
+`Error` or `RuntimeId` a `_` arm.
 
 ## Platforms
 

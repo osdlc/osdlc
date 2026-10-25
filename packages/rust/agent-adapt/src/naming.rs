@@ -203,7 +203,7 @@ mod tests {
 
     #[test]
     fn slugify_skill_name_cap_matches_discover_rs_validate_name() {
-        // `agent-adapt-core`'s `discover.rs#validate_name` admits a name up
+        // `tradecraft-core`'s `discover.rs#validate_name` admits a name up
         // to 64 characters; `SKILL_NAME_MAX_LEN` must agree, so nothing this
         // function hands back can fail that scan on length alone.
         let cap = "a".repeat(SKILL_NAME_MAX_LEN);

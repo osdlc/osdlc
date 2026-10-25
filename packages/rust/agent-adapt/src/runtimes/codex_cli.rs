@@ -44,13 +44,12 @@
 //! (<https://learn.chatgpt.com/docs/custom-prompts>, retrieved 2026-09-06;
 //! the page opens "Deprecated. Use skills for reusable prompts", so this is
 //! Codex's own describe-then-deprecate account of the format, not a
-//! moving target). This crate's whole [`crate::RuntimePaths`] contract is
-//! project-anchored — `Scope::User` is declared but "not yet honored"
-//! ([`crate::install`]) — so `.codex/prompts/` here is written under the
-//! destination root the same way `.codex/hooks.json` and `.codex/config.toml`
-//! already are, one directory below where Codex itself would actually load
-//! it from. That divergence is not new; this adapter's other two files
-//! already carry it.
+//! moving target). Renders are laid out at project scope, and this
+//! adapter's [`crate::RuntimePaths`] gives the same path for both scopes, so
+//! `.codex/prompts/` here is written under the destination root the same way
+//! `.codex/hooks.json` and `.codex/config.toml` already are, one directory
+//! below where Codex itself would actually load it from. That divergence is
+//! not new; this adapter's other two files already carry it.
 //!
 //! Frontmatter is `description` and `argument-hint` only — the same source:
 //! "Description: Shown under the command name in the popup. Set it in YAML

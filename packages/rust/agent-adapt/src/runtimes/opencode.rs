@@ -30,8 +30,9 @@
 //! layout above, per
 //! <https://opencode.ai/docs/commands/> retrieved 2026-09-06: "Global:
 //! `~/.config/opencode/commands/`", "Per-project: `.opencode/commands/`" —
-//! this crate follows every other adapter's precedent of rendering
-//! [`crate::Scope::Project`] only, so that asymmetry does not surface yet).
+//! renders are laid out at [`crate::Scope::Project`], and commands have no
+//! install helper that moves them to user scope, so that asymmetry does not
+//! surface yet).
 //! Frontmatter fields are `description`, `agent`, `model`, `subtask` (same
 //! source, "Options"); this crate models `description` and `model` on
 //! [`crate::Command`] and has no field for `agent` or `subtask`, so neither

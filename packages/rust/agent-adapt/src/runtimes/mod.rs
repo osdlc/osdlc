@@ -37,7 +37,7 @@
 //! agents and scripts but has no hooks and no MCP config.
 //!
 //! Together they are the whole "which runtime renders what" answer, and
-//! [`crate::capabilities::derived_assets`] reads all six rather than
+//! `capabilities::derived_assets` reads all six rather than
 //! restating them.
 //!
 //! Every adapter also implements [`crate::capabilities::DeclaresCapabilities`],
@@ -54,7 +54,7 @@ pub mod npm_package;
 pub mod opencode;
 pub mod pi;
 pub mod portable;
-pub mod standard;
+pub(crate) mod standard;
 
 pub use amp::Amp;
 pub use antigravity::Antigravity;
@@ -153,6 +153,10 @@ pub fn declaration_for(id: RuntimeId) -> RuntimeCapabilities {
 ///
 /// The refusal [`crate::render::render_skill_md`] raises for a name with no
 /// legal slug.
+///
+/// Hidden from the docs and outside the semver promise: an internal helper
+/// that `tradecraft-core` calls.
+#[doc(hidden)]
 pub fn redundant_skill_overrides(
     id: RuntimeId,
     skill: &crate::Skill,

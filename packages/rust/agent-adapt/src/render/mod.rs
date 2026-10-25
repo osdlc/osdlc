@@ -48,12 +48,11 @@ pub use agent_md::render_agent_md;
 pub use arguments::{
     ArgumentSite, derive_argument_hint, derive_argument_names, render_arguments_section,
 };
-pub use command_md::{CommandFields, render_command_md, render_command_md_reporting};
+pub use command_md::{CommandFields, render_command_md};
 pub use frontmatter::FrontmatterBuilder;
-pub use hooks_json::{
-    hook_refusal, render_cursor_hooks_json, render_hooks_json, render_hooks_json_reporting,
-};
+pub use hooks_json::{hook_refusal, render_cursor_hooks_json, render_hooks_json};
 pub use manifest::render_plugin_manifest;
 pub use role_md::{render_role_md, role_path};
 pub use script_body::{render_script_body, script_filename};
-pub use skill_md::{render_skill_md, render_skill_md_reporting};
+pub use skill_md::render_skill_md;
+pub(crate) use skill_md::render_skill_md_reporting;
