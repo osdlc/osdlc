@@ -2,7 +2,7 @@
 "@osdlc/wayfinder": minor
 ---
 
-wayfinder is now a command tree: `way list`, `way query`, `way run`, `way serve` and `way providers`, with `way help`, `way schema <command>` and `way --version` from `@osdlc/cli-tool`. Every `--json` answer is a document with `schemaVersion` and `kind`, and `@osdlc/wayfinder/schema` exports the JSON Schema of each document plus `documentZod(kind)` to parse one.
+wayfinder is now a command tree: `way list`, `way query`, `way run`, `way serve` and `way providers`, with `way help`, `way schema <command>` and `way --version` from `@osdlc/cli-tool`. Every `--json` answer is a document with `schemaVersion` and `kind`, and `@osdlc/wayfinder/schema` exports the JSON Schema of every document (`trust`, `clean`, `config-*`, `error` and the rest included) plus `documentZod(kind)` to parse one.
 
 New:
 

@@ -1,6 +1,6 @@
 /**
- * The README's `way query dev` example. The package ships only the `way`
- * binary, so this calls the CLI's `main` the binary runs.
+ * The README's `way query dev` example. It calls the CLI's `main`, the
+ * function the `way` binary runs.
  */
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'

@@ -528,9 +528,11 @@ Messages on stderr start with `way:`.
 ### Documents
 
 Every `--json` answer is one object with `schemaVersion` and `kind`:
-`catalog` (`list`), `query`, `run`, `providers`, and the framework's `help`,
-`version` and `error`. `way schema list` prints a document's JSON Schema. The
-same schemas are exported from `@osdlc/wayfinder/schema`:
+`catalog` (`list`), `query`, `run`, `providers`, `trust`, `clean`, `guide`,
+`config-<name>` for each `config` subcommand (`config-list`, `config-set` and
+the rest), and the framework's `help`, `schema`, `version` and `error`.
+`way schema list` prints a command's input and document schemas. Every
+document's schema is exported from `@osdlc/wayfinder/schema`:
 
 ```ts
 import { catalogDocumentSchema, documentZod } from '@osdlc/wayfinder/schema'
@@ -540,9 +542,10 @@ const doc = documentZod('catalog').parse(JSON.parse(output))
 
 | Export | Is |
 |---|---|
-| `catalogSchema`, `taskSchema`, `runnerReportSchema`, `CATALOG_SCHEMA_VERSION` | system-model's catalog schemas |
-| `catalogDocumentSchema`, `queryDocumentSchema`, `runDocumentSchema`, `providersDocumentSchema` | the JSON Schema of each document |
-| `DOCUMENT_SCHEMAS`, `DOCUMENT_VERSIONS` | the same, by `kind` |
+| `catalogSchema`, `taskSchema`, `runnerReportSchema`, `paramSchema`, `toolInfoSchema`, `CATALOG_SCHEMA_VERSION` | system-model's catalog schemas |
+| `catalogDocumentSchema`, `queryDocumentSchema`, `runDocumentSchema`, `providersDocumentSchema`, `trustDocumentSchema`, `cleanDocumentSchema` | the JSON Schema of each document |
+| `DOCUMENT_SCHEMAS`, `DOCUMENT_VERSIONS`, `DOCUMENT_KINDS` | every document's schema and `schemaVersion`, by `kind`, and the kinds |
+| `JsonSchema`, `DocumentKind` | the types of a schema and of a `kind` |
 | `documentZod(kind)` | a Zod schema that parses a document |
 
 The `catalog` and `query` documents carry `cache`, `filter` and `unknowns`.
