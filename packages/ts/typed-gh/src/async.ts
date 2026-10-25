@@ -237,7 +237,10 @@ export class AsyncGh {
     return this.exec(v.issueView(number, this.target), opts)
   }
 
-  /** An owner's repositories. Rejects when gh fails. See `Gh.repoList`. */
+  /**
+   * An owner's repositories. Rejects when gh fails. Each row's `owner` is in
+   * GitHub's casing, not as passed. See `Gh.repoList`.
+   */
   repoList(
     owner: string,
     opts: v.RepoListOptions & AsyncCallOptions = {},

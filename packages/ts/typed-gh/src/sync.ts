@@ -286,7 +286,10 @@ export class Gh {
     return this.exec(v.issueView(number, this.target), opts.timeoutMs)
   }
 
-  /** An owner's repositories (up to `opts.limit`, default 100). Throws when gh fails. */
+  /**
+   * An owner's repositories (up to `opts.limit`, default 100). Throws when gh
+   * fails. Each row's `owner` is in GitHub's casing, not as passed.
+   */
   repoList(
     owner: string,
     opts: v.RepoListOptions & { timeoutMs?: number | undefined } = {},

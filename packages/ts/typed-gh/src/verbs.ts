@@ -852,7 +852,10 @@ export interface RepoListOptions {
 
 /**
  * `gh repo list <owner> --json …`: an owner's repositories. The host comes
- * from the target (`GH_HOST`). The target's repo is not used.
+ * from the target (`GH_HOST`). The target's repo is not used. Each row's
+ * `owner` is GitHub's casing, not `owner` as passed: a caller that needs its
+ * own spelling, such as to build paths that match its config, should use its
+ * own value.
  */
 export function repoList(
   owner: string,
