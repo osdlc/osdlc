@@ -38,13 +38,32 @@ describe('rewriteAliases', () => {
   test('maps each old surface flag onto its command', () => {
     expect(rewriteAliases(['--serve', '--port', '8080'], WORDS)).toEqual({
       argv: ['serve', '--port', '8080'],
+      alias: '--serve',
     })
-    expect(rewriteAliases(['--list', '-C', 'x'], WORDS)).toEqual({ argv: ['list', '-C', 'x'] })
-    expect(rewriteAliases(['--json'], WORDS)).toEqual({ argv: ['list', '--json'] })
+    expect(rewriteAliases(['--list', '-C', 'x'], WORDS)).toEqual({
+      argv: ['list', '-C', 'x'],
+      alias: '--list',
+    })
+    expect(rewriteAliases(['--json'], WORDS)).toEqual({ argv: ['list', '--json'], alias: '--json' })
     // A directory positional is not a command word, so the flag still applies.
     expect(rewriteAliases(['--json', 'some/dir'], WORDS)).toEqual({
       argv: ['list', '--json', 'some/dir'],
+      alias: '--json',
     })
+  })
+
+  test('an old surface flag still works, with a deprecation warning on stderr', async () => {
+    const io = captureIo()
+    const dir = await mkdtemp(join(tmpdir(), 'wayfinder-alias-'))
+    await writeFile(join(dir, 'package.json'), JSON.stringify({ name: 'p', scripts: { b: 'x' } }))
+    try {
+      expect(await main(['--list', '-C', dir, '--no-exec'], {}, dir, io)).toBe(0)
+      expect(io.out).toContain('npm run b')
+      expect(io.err).toContain('way: warning: --list is deprecated')
+      expect(io.err).toContain('use "way list"')
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
   })
 
   test('two surface flags are refused, since each chooses a surface', () => {
@@ -61,6 +80,7 @@ describe('rewriteAliases', () => {
     // -C takes the next word, so `list` here is a value, not a command.
     expect(rewriteAliases(['-C', 'list', '--json'], WORDS)).toEqual({
       argv: ['list', '--json', '-C', 'list'],
+      alias: '--json',
     })
   })
 

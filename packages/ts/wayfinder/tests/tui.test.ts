@@ -9,7 +9,7 @@ import { chmod, mkdir, readFile, realpath, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { afterAll, describe, expect, test } from 'vitest'
+import { afterAll, describe, expect, test, vi } from 'vitest'
 
 import {
   CATALOG_SCHEMA_VERSION,
@@ -25,7 +25,7 @@ import { configLocations } from '../src/config.ts'
 import { KEY_TABLE, keysFor } from '../src/keys.ts'
 import { refreshNote } from '../src/tui/app.ts'
 import { clipboardCommands, copyText, writeClipboard } from '../src/tui/copy.ts'
-import { installQuitHandlers } from '../src/tui/index.ts'
+import { installQuitHandlers, runTui } from '../src/tui/index.ts'
 import { makeStyles, stylesFor, terminalTheme } from '../src/tui/style.ts'
 import { cleanupAll, lineOf, screen, temp, testTui } from './tui-support.ts'
 
@@ -769,6 +769,25 @@ describe('boot', () => {
     expect(tui.state.probed).toBe(true)
     expect(tui.state.rows.map((r) => r.task.id)).toContain('node-scripts:package.json:build')
     expect(lineOf(tui, 2)).toMatch(/probed in/)
+  })
+})
+
+describe('without a terminal', () => {
+  test('refuses with exit 2 and a way: line naming the commands to use', async () => {
+    const original = process.stdin.isTTY
+    const writes: string[] = []
+    const spy = vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+      writes.push(String(chunk))
+      return true
+    })
+    Object.defineProperty(process.stdin, 'isTTY', { configurable: true, value: false })
+    try {
+      expect(await runTui({} as never)).toBe(2)
+    } finally {
+      spy.mockRestore()
+      Object.defineProperty(process.stdin, 'isTTY', { configurable: true, value: original })
+    }
+    expect(writes.join('')).toMatch(/^way: the terminal UI needs a TTY; use "way serve"/)
   })
 })
 

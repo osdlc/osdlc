@@ -109,12 +109,13 @@ const SURFACE_FLAGS: Readonly<Record<string, readonly string[]>> = {
  * Map the old surface flags onto commands, for this release: `--serve` is
  * `serve`, `--list` is `list`, and `--json` alone is `list --json`. They
  * apply only where no command word is given. Two of them together are
- * refused, since each chooses a surface.
+ * refused, since each chooses a surface. `alias` names the flag that was
+ * mapped, so the caller can say it is deprecated.
  */
 export function rewriteAliases(
   argv: readonly string[],
   commandWords: readonly string[],
-): { argv: string[] } | { error: string } {
+): { argv: string[]; alias?: string } | { error: string } {
   const at = commandWordIndex(argv)
   const word = at === -1 ? undefined : argv[at]
   if (word !== undefined && commandWords.includes(word)) {
@@ -130,7 +131,7 @@ export function rewriteAliases(
   if (given.length === 0) return { argv: [...argv] }
   if (given.length > 1) return { error: `${given.join(' and ')} each choose a surface; give one` }
   const flag = given[0]!
-  return { argv: [...SURFACE_FLAGS[flag]!, ...argv.filter((w) => w !== flag)] }
+  return { argv: [...SURFACE_FLAGS[flag]!, ...argv.filter((w) => w !== flag)], alias: flag }
 }
 
 /**
@@ -171,6 +172,12 @@ export async function main(
   const { app, words } = createWayApp({ home, guide: () => GUIDE_TOOL })
   const aliased = rewriteAliases(argv, words)
   if ('error' in aliased) return usageError(io, aliased.error)
+  if (aliased.alias !== undefined) {
+    const now = SURFACE_FLAGS[aliased.alias]!.join(' ')
+    io.stderr(
+      `${BIN}: warning: ${aliased.alias} is deprecated and goes away in a later release; use "${BIN} ${now}"\n`,
+    )
+  }
 
   return app.run(aliased.argv, {
     // JSON keeps every value exact, with DEL, C1 and bidi controls escaped.

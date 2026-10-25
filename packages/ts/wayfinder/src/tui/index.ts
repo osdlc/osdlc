@@ -14,7 +14,7 @@
 
 import { constants } from 'node:os'
 
-import { APP } from '../app.ts'
+import { BIN } from '../app.ts'
 import { handOff } from '../core/run.ts'
 import type { Session } from '../core/session.ts'
 import { createTui, type Tui, type TuiHost } from './app.ts'
@@ -62,7 +62,7 @@ export function installQuitHandlers(
 export async function runTui(session: Session): Promise<number> {
   if (!process.stdin.isTTY) {
     process.stderr.write(
-      `${APP}: the terminal UI needs a TTY; use "serve" for the page, or "list --json" for data.\n`,
+      `${BIN}: the terminal UI needs a TTY; use "${BIN} serve" for the page, or "${BIN} list --json" for data.\n`,
     )
     return 2
   }
