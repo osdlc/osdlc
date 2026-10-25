@@ -2055,7 +2055,7 @@ mod tests {
         reason = "checks resolution against the OS defaults"
     )]
     fn the_xdg_convention_is_the_xdg_table_off_windows() {
-        let (Some(home), Ok(native)) = (home_dir(), from_vars(&[])) else {
+        let (Some(home), Ok(native)) = (dirs::home_dir(), from_vars(&[])) else {
             return;
         };
         let xdg = from_vars_in(Convention::Xdg, &[]).unwrap();
