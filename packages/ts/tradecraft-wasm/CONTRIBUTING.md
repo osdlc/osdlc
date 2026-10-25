@@ -65,6 +65,8 @@ The `wasm` job in `.github/workflows/rust-ci.yml` rebuilds `wasm/` on every
 pull request that touches the Rust crates or `wasm/`, and fails when the
 result differs from what is committed. When it fails, it uploads the rebuilt
 files as the `tradecraft-wasm` artifact.
+The compiler can emit different bytes on macOS and on Linux, so commit the
+Linux build from that artifact when you build on another system.
 
 A change that changes the WebAssembly changes what this package does, so it
 needs a changeset for `@osdlc/tradecraft-wasm` (see below), even when no file
