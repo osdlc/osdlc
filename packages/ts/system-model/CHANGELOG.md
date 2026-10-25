@@ -1,5 +1,16 @@
 # @osdlc/system-model
 
+## 0.6.0
+
+### Minor Changes
+
+- f6993bf: `CollectOptions` has two new callbacks, so a host can show each runner as it answers instead of waiting for the whole catalog. `onRunners` is called once, before any probe, with the runners the collect will report. `onReport` is called once per runner as its report is ready, withheld runners included. `collect` and `collectAndCache` still return the whole catalog.
+
+### Patch Changes
+
+- Updated dependencies [f013f38]
+  - @osdlc/command-seam@0.12.1
+
 ## 0.5.0
 
 ### Minor Changes
