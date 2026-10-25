@@ -124,7 +124,10 @@ function shellLineProblem(line: string): string | undefined {
     }
     if (c === "'" || c === '"') quote = c
     else if (c === '#' && (i === 0 || /\s/.test(line[i - 1]!))) return 'it ends in a # comment'
-    else if (c === ';' || c === '&' || c === '|' || c === '\n') {
+    else if (c === '&' && (line[i - 1] === '>' || line[i - 1] === '<' || line[i + 1] === '>')) {
+      // A redirection (`2>&1`, `<&3`, `&>log`), not a command separator.
+      continue
+    } else if (c === ';' || c === '&' || c === '|' || c === '\n') {
       return 'it has more than one command'
     }
   }
