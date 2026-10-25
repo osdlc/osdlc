@@ -73,3 +73,21 @@ function stripJsonc(text: string): string {
   }
   return out + pendingComma
 }
+
+/**
+ * Read `file` through `ctx` and parse it as JSONC. `null` when it cannot be
+ * read (missing, outside the root, too large); `{ error }` when it does not
+ * parse.
+ */
+export async function readJsonc(
+  ctx: { readText(relPath: string): Promise<string | null> },
+  file: string,
+): Promise<{ value: unknown } | { error: string } | null> {
+  const text = await ctx.readText(file)
+  if (text === null) return null
+  try {
+    return { value: parseJsonc(text) }
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) }
+  }
+}

@@ -285,7 +285,7 @@ The built-in runners, and where their tasks come from:
 | `composer` | `composer.json` `scripts` | `composer run-script <name>` |
 | `deno-tasks` | `deno.json` `tasks` | `deno task <name>` |
 | `turbo` | `turbo.json` `tasks` | `turbo run <task>` |
-| `nx` | `project.json` targets, `package.json` `nx.targets`, `nx.json` `targetDefaults` | `nx run <project>:<target>` |
+| `nx` | `project.json` targets, `package.json` `nx.targets`, `nx.json` `targetDefaults`, all read as JSONC | `nx run <project>:<target>` |
 | `maven` | each `pom.xml` (synthesized) | `mvn <phase>` |
 | `gradle` | `gradle tasks --all`, else the build files | `gradle <task>` |
 | `swiftpm` | each `Package.swift` (synthesized) | `swift build`, ... |

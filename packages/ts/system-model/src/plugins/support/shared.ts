@@ -93,6 +93,16 @@ export function afterSeparator(task: Task, args: readonly string[]): string[] {
   return args.length === 0 ? [...task.argv] : [...task.argv, '--', ...args]
 }
 
+/** The last segment of a `/` or `\\` path. */
+export function baseName(path: string): string {
+  return (
+    path
+      .split(/[\\/]/)
+      .filter((s) => s !== '')
+      .pop() ?? path
+  )
+}
+
 /** `text` without a leading byte-order mark. */
 export function stripBom(text: string): string {
   return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text

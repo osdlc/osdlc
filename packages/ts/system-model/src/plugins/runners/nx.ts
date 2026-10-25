@@ -8,6 +8,10 @@
  * `nx.json`'s `targetDefaults` give a target its `dependsOn` when it declares
  * none, matched by target name and then by executor.
  *
+ * Both files are read as JSONC, as Nx reads them: comments and trailing
+ * commas are allowed. When two projects share a name, the first by directory
+ * is kept and the other gets a diagnostic.
+ *
  * Targets that Nx plugins infer (from a `vite.config.ts`, a package.json
  * script, ...) are not listed: only Nx's project graph knows them, and
  * building it runs the workspace's plugins and the Nx daemon.
@@ -16,8 +20,10 @@
 import type { RunnerContext } from '../../contract.ts'
 import type { Diagnostic, ProviderResult, RunnerBrand, Task } from '../../model.ts'
 import type { RunnerRole } from '../../tool.ts'
+import { readJsonc } from '../support/jsonc.ts'
 import {
   afterSeparator,
+  baseName,
   dependencies,
   dirOf,
   isTable,
@@ -58,13 +64,19 @@ export const nxRunner: RunnerRole = {
 
   async collect(ctx: RunnerContext): Promise<ProviderResult> {
     const diagnostics: Diagnostic[] = []
-    const nxJson = await ctx.readJson(NX_JSON)
-    if (nxJson === null) {
-      if (await ctx.exists(NX_JSON)) {
-        diagnostics.push({ severity: 'warning', message: 'unparseable nx.json', source: NX_JSON })
+    const read = await readJsonc(ctx, NX_JSON)
+    if (read === null || 'error' in read) {
+      if (read !== null || (await ctx.exists(NX_JSON))) {
+        const why = read === null ? '' : `: ${read.error}`
+        diagnostics.push({
+          severity: 'warning',
+          message: `unparseable nx.json${why}`,
+          source: NX_JSON,
+        })
       }
       return { status: 'absent', tasks: [], diagnostics }
     }
+    const nxJson = read.value
     const defaults =
       isTable(nxJson) && isTable(nxJson['targetDefaults']) ? nxJson['targetDefaults'] : {}
     const projects = await readProjects(ctx, diagnostics)
@@ -125,7 +137,8 @@ async function readProjects(ctx: RunnerContext, diagnostics: Diagnostic[]): Prom
     const project = files.includes(projectFile)
       ? await readTable(ctx, projectFile, diagnostics)
       : undefined
-    const pkg = files.includes(packageFile) ? await ctx.readJson(packageFile) : null
+    const pkgRead = files.includes(packageFile) ? await readJsonc(ctx, packageFile) : null
+    const pkg = pkgRead !== null && 'value' in pkgRead ? pkgRead.value : null
     const nx = isTable(pkg) && isTable(pkg['nx']) ? pkg['nx'] : undefined
     if (project === undefined && nx === undefined) continue
 
@@ -143,11 +156,17 @@ async function readProjects(ctx: RunnerContext, diagnostics: Diagnostic[]): Prom
     const name = [project?.['name'], nx?.['name'], isTable(pkg) ? pkg['name'] : undefined].find(
       (n): n is string => typeof n === 'string' && n !== '',
     )
-    out.push({
-      name: name ?? (dir === '.' ? baseName(ctx.root) : baseName(dir)),
-      dir,
-      targets: [...targets.values()],
-    })
+    const projectName = name ?? (dir === '.' ? baseName(ctx.root) : baseName(dir))
+    const first = out.find((p) => p.name === projectName)
+    if (first !== undefined) {
+      diagnostics.push({
+        severity: 'warning',
+        message: `project ${projectName} is also declared in ${first.dir}; this one is skipped`,
+        source: project !== undefined ? projectFile : packageFile,
+      })
+      continue
+    }
+    out.push({ name: projectName, dir, targets: [...targets.values()] })
   }
   return out
 }
@@ -157,9 +176,10 @@ async function readTable(
   file: string,
   diagnostics: Diagnostic[],
 ): Promise<Record<string, unknown> | undefined> {
-  const value = await ctx.readJson(file)
-  if (isTable(value)) return value
-  diagnostics.push({ severity: 'warning', message: 'unparseable project.json', source: file })
+  const read = await readJsonc(ctx, file)
+  if (read !== null && 'value' in read && isTable(read.value)) return read.value
+  const why = read !== null && 'error' in read ? `: ${read.error}` : ''
+  diagnostics.push({ severity: 'warning', message: `unparseable project.json${why}`, source: file })
   return undefined
 }
 
@@ -202,13 +222,4 @@ function detailOf(def: Record<string, unknown>, executor: string | undefined): {
     if (text.length > 0) return { detail: text.join('; ') }
   }
   return executor === undefined ? {} : { detail: executor }
-}
-
-function baseName(path: string): string {
-  return (
-    path
-      .split(/[\\/]/)
-      .filter((s) => s !== '')
-      .pop() ?? path
-  )
 }

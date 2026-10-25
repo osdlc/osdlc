@@ -31,7 +31,7 @@ import type { RunnerContext } from '../../contract.ts'
 import type { Diagnostic, ProviderResult, RunnerBrand, Task } from '../../model.ts'
 import type { RunnerRole } from '../../tool.ts'
 import { parseJsonc } from '../support/jsonc.ts'
-import { dependencies, dirOf, isTable, joinRel, taskId } from '../support/shared.ts'
+import { baseName, dependencies, dirOf, isTable, joinRel, taskId } from '../support/shared.ts'
 
 const CHAIN = [
   { label: 'runner', hint: 'VS Code runs the tasks a `.vscode/tasks.json` declares.' },
@@ -248,13 +248,4 @@ function npmScript(ctx: RunnerContext, dir: string, script: string): string[] {
   if (run.dirFlagFirst !== true) return [...run.verb, run.dirFlag, dir, script]
   const [binary, ...rest] = run.verb
   return [binary!, run.dirFlag, dir, ...rest, script]
-}
-
-function baseName(path: string): string {
-  return (
-    path
-      .split(/[\\/]/)
-      .filter((s) => s !== '')
-      .pop() ?? path
-  )
 }
