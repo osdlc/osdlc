@@ -78,7 +78,10 @@ export function ghResult(payload: unknown): CommandResult {
 
 // ── actors, labels ──────────────────────────────────────────────────────────
 
-/** An `author` node as `gh --json` prints it. */
+/**
+ * A pull request's or search hit's `author` as `gh --json` prints it. A bot
+ * is `{ is_bot: true, login: 'app/<name>' }`.
+ */
 export interface GhActorJson {
   login: string
   is_bot?: boolean
@@ -86,11 +89,18 @@ export interface GhActorJson {
   id?: string
 }
 
-const OCTOCAT: GhActorJson = {
-  id: 'MDQ6VXNlcjU4MzIzMQ==',
-  is_bot: false,
-  login: 'octocat',
-  name: 'The Octocat',
+/**
+ * A comment's or review's `author` as `gh --json` prints it: only `login`.
+ * gh leaves out `id`, `name` and `is_bot` there, so a bot comment does not
+ * read as a bot unless its login ends in `[bot]`.
+ */
+export interface GhCommentAuthorJson {
+  login: string
+}
+
+/** A new object each call, so a test that edits one row's author edits only that row. */
+function octocat(): GhActorJson {
+  return { id: 'MDQ6VXNlcjU4MzIzMQ==', is_bot: false, login: 'octocat', name: 'The Octocat' }
 }
 
 /** One entry of a `labels` field, or one row of `gh label list --json name,color,description`. */
@@ -169,7 +179,7 @@ export function statusContextRow(
 export interface GhCommentJson {
   /** The GraphQL node id. */
   id: string
-  author: GhActorJson | null
+  author: GhCommentAuthorJson | null
   authorAssociation: string
   body: string
   createdAt: string
@@ -181,7 +191,7 @@ export function commentRow(overrides: RowOverrides<GhCommentJson> = {}): GhComme
   return build<GhCommentJson>(
     {
       id: 'IC_kwDOAbCdEf5xYz12',
-      author: OCTOCAT,
+      author: { login: 'octocat' },
       authorAssociation: 'MEMBER',
       body: 'Looks good to me.',
       createdAt: UPDATED_AT,
@@ -195,7 +205,7 @@ export function commentRow(overrides: RowOverrides<GhCommentJson> = {}): GhComme
 export interface GhReviewJson {
   /** The GraphQL node id. */
   id: string
-  author: GhActorJson | null
+  author: GhCommentAuthorJson | null
   authorAssociation: string
   body: string
   state: ReviewState
@@ -208,7 +218,7 @@ export function reviewRow(overrides: RowOverrides<GhReviewJson> = {}): GhReviewJ
   return build<GhReviewJson>(
     {
       id: 'PRR_kwDOAbCdEf5xYz34',
-      author: OCTOCAT,
+      author: { login: 'octocat' },
       authorAssociation: 'MEMBER',
       body: '',
       state: 'APPROVED',
@@ -271,7 +281,7 @@ export function prRow(overrides: RowOverrides<GhPrJson> = {}): GhPrJson {
       mergeable: 'MERGEABLE',
       mergeStateStatus: 'CLEAN',
       reviewDecision: '',
-      author: OCTOCAT,
+      author: octocat(),
       labels: [],
       comments: [],
       reviews: [],
@@ -318,7 +328,7 @@ export interface GhRepoJson {
   /** Required: `owner/name`, both parts non-empty, or the row is dropped. */
   nameWithOwner: string
   description: string
-  /** `null` for an empty repository. */
+  /** `{ name: '' }` for an empty repository, as gh prints it. `null` parses the same. */
   defaultBranchRef: { name: string } | null
   visibility: RepositoryVisibility
   isArchived: boolean
@@ -357,6 +367,10 @@ export interface GhSearchPrJson {
   labels: GhLabelJson[]
   createdAt: string
   updatedAt: string
+  /**
+   * gh prints `0001-01-01T00:00:00Z`, Go's zero time, for a hit that is not
+   * closed. The parser reads that as `null`.
+   */
   closedAt: string | null
 }
 
@@ -379,7 +393,7 @@ export function searchPrRow(overrides: RowOverrides<GhSearchPrJson> = {}): GhSea
       labels: [],
       createdAt: CREATED_AT,
       updatedAt: UPDATED_AT,
-      closedAt: null,
+      closedAt: '0001-01-01T00:00:00Z',
     },
     overrides,
   )

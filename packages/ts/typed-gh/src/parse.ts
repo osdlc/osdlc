@@ -295,6 +295,15 @@ export function parsePrSearchHit(raw: unknown): PrSearchHit | null {
     labels: parseLabels(raw['labels']),
     createdAt: strOrNull(raw['createdAt']),
     updatedAt: strOrNull(raw['updatedAt']),
-    closedAt: strOrNull(raw['closedAt']),
+    closedAt: searchTime(raw['closedAt']),
   }
+}
+
+/**
+ * gh search prints Go's zero time (`0001-01-01T00:00:00Z`) for a time that is
+ * not set, such as `closedAt` on an open pull request. That is no time.
+ */
+function searchTime(x: unknown): string | null {
+  const s = strOrNull(x)
+  return s === null || s.startsWith('0001-01-01') ? null : s
 }

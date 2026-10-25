@@ -619,7 +619,7 @@ The experimental items:
 - `GraphqlVariable`
 
 Every other export and method is stable, `prDiff` included. So is `@osdlc/typed-gh/testing`: its
-builders and their row types, but not their default values.
+builders and their row types. Their default values may change in any minor release.
 
 ## Platforms
 
