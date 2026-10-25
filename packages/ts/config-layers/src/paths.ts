@@ -11,7 +11,7 @@
  * from the package, so a schema can use it without an import cycle.
  */
 
-import { homedir } from 'node:os'
+import { homedir, userInfo } from 'node:os'
 import { isAbsolute, resolve } from 'node:path'
 
 import { z } from 'zod'
@@ -28,7 +28,7 @@ export const PATH_NAME = /^[A-Za-z][A-Za-z0-9_]*$/
  * @experimental
  */
 export interface ResolveConfigPathOptions {
-  /** What a leading `~` expands to. Defaults to `$HOME`, or `os.homedir()` when `HOME` is unset or empty. An empty home leaves `~` unexpanded. */
+  /** What a leading `~` expands to. Defaults to `$HOME`, or the OS account's home when `HOME` is unset, empty or relative. An empty home leaves `~` unexpanded. */
   home?: string | undefined
 }
 
@@ -37,8 +37,8 @@ export interface ResolveConfigPathOptions {
  *
  * URLs (`scheme://…`) and bare words that do not look like paths are
  * returned unchanged, because a value may be a name rather than a place. A
- * leading `~` expands to `opts.home` (default `$HOME`, else `os.homedir()`).
- * If that is empty, `~` is left as written. Only `~` and `~/…` expand. A
+ * leading `~` expands to `opts.home` (default `$HOME`, else the OS account's home;
+ * a relative `HOME` counts as unset). If that is empty, `~` is left as written. Only `~` and `~/…` expand. A
  * `~user/…` form is not expanded and resolves as a relative path. A relative
  * path resolves against `baseDir`. For a project file that is the project
  * root. For a machine file it is whatever directory the reading tool uses as
@@ -56,11 +56,32 @@ export function resolveConfigPath(
   let p = value
   if (p === '~' || p.startsWith('~/')) {
     // An empty home leaves `~` as it is: expanding it would give the filesystem root.
-    const home = opts.home ?? (process.env['HOME'] || homedir())
+    const home = opts.home ?? defaultHome()
     if (home !== '') p = `${home}${p.slice(1)}`
   }
   if (!isAbsolute(p)) p = resolve(baseDir, p)
   return p
+}
+
+/**
+ * `$HOME` when it is absolute. A relative `HOME` counts as unset, because `~`
+ * would then resolve against the working directory, which can be the
+ * repository being read. The OS account's home is used instead. '' when
+ * neither is absolute.
+ */
+function defaultHome(): string {
+  const fromEnv = process.env['HOME']
+  if (fromEnv && isAbsolute(fromEnv)) return fromEnv
+  const candidates = [() => userInfo().homedir, homedir]
+  for (const read of candidates) {
+    try {
+      const home = read()
+      if (home && isAbsolute(home)) return home
+    } catch {
+      // No account entry. Try the next source.
+    }
+  }
+  return ''
 }
 
 /**
