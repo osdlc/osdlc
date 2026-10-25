@@ -1,5 +1,12 @@
 # @osdlc/observe
 
+## 0.3.11
+
+### Patch Changes
+
+- Updated dependencies [0cf31de]
+  - @osdlc/command-seam@0.11.0
+
 ## 0.3.10
 
 ### Patch Changes

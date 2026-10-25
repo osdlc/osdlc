@@ -1,5 +1,14 @@
 # @osdlc/code-host
 
+## 0.4.4
+
+### Patch Changes
+
+- Updated dependencies [0cf31de]
+  - @osdlc/command-seam@0.11.0
+  - @osdlc/typed-gh@0.9.3
+  - @osdlc/typed-git@0.7.2
+
 ## 0.4.3
 
 ### Patch Changes
