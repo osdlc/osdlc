@@ -146,6 +146,12 @@ export function baseName(path: string): string {
   )
 }
 
+/** A command or a list of commands, as hatch and devbox scripts take; `null` for anything else. */
+export function commandList(body: unknown): string[] | null {
+  const commands = typeof body === 'string' ? [body] : Array.isArray(body) ? body : null
+  return commands !== null && commands.every((c) => typeof c === 'string') ? commands : null
+}
+
 /** `text` without a leading byte-order mark. */
 export function stripBom(text: string): string {
   return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text

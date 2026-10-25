@@ -16,7 +16,7 @@
 import type { ProviderContext } from '../../contract.ts'
 import type { Diagnostic, ProviderResult, RunnerBrand, Task } from '../../model.ts'
 import type { RunnerRole } from '../../tool.ts'
-import { dirOf, looksPersistent, taskId } from '../support/shared.ts'
+import { commandList, dirOf, looksPersistent, taskId } from '../support/shared.ts'
 import { PYPROJECT_TOML } from './ecosystem.ts'
 import { readConfig, tableAt } from './read-config.ts'
 
@@ -51,8 +51,8 @@ export const hatchRunner: RunnerRole = {
         const scripts = tableAt(def, 'scripts')
         if (scripts === undefined) continue
         for (const [script, body] of Object.entries(scripts)) {
-          const commands = typeof body === 'string' ? [body] : Array.isArray(body) ? body : null
-          if (commands === null || !commands.every((c) => typeof c === 'string')) {
+          const commands = commandList(body)
+          if (commands === null) {
             diagnostics.push({
               severity: 'warning',
               message: `hatch script ${env}:${script} is not a command or a list of commands, so it was skipped`,
