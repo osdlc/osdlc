@@ -27,7 +27,7 @@ export { filterTasks, hasQuery, keepsTask, sourceDepth } from './core/filter.ts'
 export type { TaskFilter, TaskHit } from './core/filter.ts'
 export { filterSkills, skillLine, SKILLS_SETTING_VALUES } from './core/skills.ts'
 export type { SkillHit, SkillRow, SkillsSetting } from './core/skills.ts'
-export { unknownLine, unknownsOf, type Unknown } from './core/unknowns.ts'
+export { unknownLine, unknownsOf, type Unknown, type UnknownsInput } from './core/unknowns.ts'
 export {
   GROUPS,
   SKILLS_GROUP,
@@ -42,7 +42,18 @@ export { jsonText, terminalSafe } from './terminal-text.ts'
 export { toolSummary, type ToolSummary } from './tool-info.ts'
 export { ANY_LANGUAGE, languageLabel, runnerLabel, withheldLabel } from './vocabulary.ts'
 export type { WithheldReason } from './vocabulary.ts'
-export type { Catalog, DiscoveryMode, Param, RunnerReport, Task } from '@osdlc/system-model/detect'
+export type {
+  Catalog,
+  DiscoveryMode,
+  Param,
+  ParametersUnknownReason,
+  RunnerCacheState,
+  RunnerReport,
+  StaleReason,
+  Task,
+  ToolDef,
+} from '@osdlc/system-model/detect'
+export type { Mode } from '@osdlc/system-model/match'
 
 /** What {@link buildCatalog} reads, and the choices the CLI makes with flags. */
 export interface BuildCatalogOptions {
@@ -65,6 +76,11 @@ export interface BuildCatalogOptions {
   filter?: TaskFilter | undefined
   /** Stops every probe. */
   signal?: AbortSignal | undefined
+  /**
+   * Called with each warning from the config files and tool modules, such
+   * as a project file key that is ignored. The CLI prints these on stderr.
+   */
+  onWarning?: ((message: string) => void) | undefined
 }
 
 /** The catalog document: what `way list --json` prints. */
@@ -128,6 +144,7 @@ export async function buildCatalog(options: BuildCatalogOptions): Promise<Catalo
     flags: options.flags,
     signal: options.signal,
   })
+  for (const warning of session.warnings) options.onWarning?.(warning)
   const snapshot = await session.catalog({ cached: options.cached === true })
   const body = catalogDocument(
     snapshot,

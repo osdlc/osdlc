@@ -71,6 +71,14 @@ test('buildCatalog takes the CLI filter, and refuses a directory that does not e
   )
 })
 
+test('buildCatalog passes on config warnings', async () => {
+  const { dir, home } = await repo()
+  await writeFile(join(dir, 'wayfinder.config.json'), '{"skills":"all"}')
+  const warnings: string[] = []
+  await buildCatalog({ dir, env: {}, home, onWarning: (w) => warnings.push(w) })
+  expect(warnings.join('\n')).toContain('skills')
+})
+
 test('documentZod parses a document, as the README shows', async () => {
   const { dir, home } = await repo()
   const output = JSON.stringify(await buildCatalog({ dir, env: {}, home }))

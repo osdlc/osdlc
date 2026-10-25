@@ -661,19 +661,20 @@ reads the same config files, applies the same trust gate and writes the same
 probe store. Nothing in the repository runs unless it is trusted and
 execution is allowed. It throws `SessionError` with a `code` for a directory
 that does not exist, a config file that cannot be used, or a tool module that
-cannot be loaded.
+cannot be loaded. `onWarning` gets each warning the CLI prints on stderr,
+such as a project file key that is ignored.
 
 | Export | Is |
 |---|---|
-| `buildCatalog`, `BuildCatalogOptions`, `CatalogDocument` | the catalog for a directory |
-| `filterTasks`, `keepsTask`, `sourceDepth`, `hasQuery`, `TaskFilter`, `TaskHit` | the search and filters every surface uses |
-| `filterSkills`, `skillLine`, `SkillRow`, `SkillHit`, `SkillsSetting` | the Skills group |
-| `GROUPS`, `SKILLS_GROUP`, `groupOf`, `catalogGroups`, `documentGroups` | the groups and their order |
-| `unknownsOf`, `unknownLine`, `Unknown` | what could not be read, with its label |
-| `runnerLabel`, `withheldLabel`, `languageLabel`, `toolSummary` | the words a person reads |
+| `buildCatalog`, `BuildCatalogOptions`, `CatalogDocument`, `SessionFlags`, `CacheState` | the catalog for a directory, the flags it takes and each runner's cache verdict |
+| `filterTasks`, `keepsTask`, `sourceDepth`, `hasQuery`, `TaskFilter`, `TaskHit`, `Mode` | the search and filters every surface uses |
+| `filterSkills`, `skillLine`, `SkillRow`, `SkillHit`, `SkillsSetting`, `SKILLS_SETTING_VALUES` | the Skills group |
+| `GROUPS`, `SKILLS_GROUP`, `groupOf`, `catalogGroups`, `documentGroups`, `Group`, `GroupId`, `DocumentGroup` | the groups and their order |
+| `unknownsOf`, `unknownLine`, `Unknown`, `UnknownsInput`, `WithheldReason` | what could not be read, with its label |
+| `runnerLabel`, `withheldLabel`, `languageLabel`, `ANY_LANGUAGE`, `toolSummary`, `ToolSummary` | the words a person reads |
 | `terminalSafe`, `jsonText` | repository text made safe for a terminal |
 | `SessionError` | why a catalog could not be built |
-| `Catalog`, `RunnerReport`, `Task`, `Param` | system-model's types |
+| `Catalog`, `RunnerReport`, `Task`, `Param`, `ToolDef`, `DiscoveryMode`, `RunnerCacheState`, `ParametersUnknownReason`, `StaleReason` | system-model's types |
 
 Repository text (task names, skill descriptions, paths) can hold terminal
 control characters. Pass it through `terminalSafe` before printing it.
