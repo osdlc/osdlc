@@ -3,9 +3,11 @@
  *
  * Each command declares its flags, arguments and output once. {@link defineApp}
  * routes a command line to it, parses the input, and prints the output as text
- * or, under `--json`, as one document with `schemaVersion` and `kind`. The app
- * adds a `help` command with progressive disclosure, a `schema` command, and
- * `--help`, `--json` and `--version` everywhere. {@link loadCommandTree} builds
+ * or, under `--json`, as one document with `schemaVersion` and `kind`, and a
+ * list as JSON lines under `--output jsonl`. The app adds a `help` command
+ * with progressive disclosure, a `schema` command, and `--help`, `--json`,
+ * `--output` and `--version` everywhere. `App.call` runs a command from a JSON
+ * object, for the MCP and HTTP adapters. {@link loadCommandTree} builds
  * the tree from a directory of command files.
  */
 
@@ -29,17 +31,21 @@ export type {
   CommandResult,
   DataCommand,
   DataCommandSpec,
+  EventsSpec,
+  Exposure,
   Group,
   GroupSpec,
   InteractiveCommand,
   InteractiveCommandSpec,
   Node,
   Outcome,
+  OutputMode,
   OutputSchema,
+  Surface,
 } from './define.ts'
 
 export { defineApp } from './app.ts'
-export type { App, AppSpec, SchemaEntry } from './app.ts'
+export type { App, AppSpec, CallOptions, CallResult, SchemaEntry } from './app.ts'
 
 export { HelpEntrySchema, UNIVERSAL_EXITS } from './help.ts'
 export type { HelpEntry, HelpExit, HelpFlag, HelpPositional } from './help.ts'

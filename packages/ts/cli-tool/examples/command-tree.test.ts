@@ -165,8 +165,8 @@ test('help is progressive, and its JSON says the same', async () => {
   const flags: HelpFlag[] = entry.flags ?? []
   const exits: HelpExit[] = entry.exits ?? []
   const positionals: HelpPositional[] = entry.positionals ?? []
-  expect(flags.map((f) => f.name)).toEqual(['force', 'dir', 'json', 'help', 'all'])
-  expect(Object.keys(BUILTIN_FLAGS)).toEqual(['json', 'help', 'all'])
+  expect(flags.map((f) => f.name)).toEqual(['force', 'dir', 'json', 'output', 'help', 'all'])
+  expect(Object.keys(BUILTIN_FLAGS)).toEqual(['json', 'output', 'help', 'all'])
   expect(exits.slice(0, UNIVERSAL_EXITS.length)).toEqual(UNIVERSAL_EXITS)
   expect(positionals).toEqual([])
 })

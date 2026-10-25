@@ -9,9 +9,11 @@ import { expect, test } from 'vitest'
 
 import { defineApp } from '@osdlc/cli-tool/command'
 import {
+  ConfigExplainSchema,
   ConfigUsageError,
   configCommands,
   parseConfigValue,
+  type ConfigLayerValue,
   type ConfigLocation,
   type ConfigSetting,
   type ConfigStore,
@@ -45,6 +47,8 @@ const store: ConfigStore = {
   layers: ['user', 'project'],
   defaultLayer: 'project',
   keys: ['color', 'paths'],
+  // The adapters (MCP, HTTP) may not write these; the command line may.
+  cliOnlyKeys: ['paths'],
   async list() {
     const settings: ConfigSetting[] = ['color', 'paths'].map((key) => {
       const layer = ['project', 'user'].find((l) => key in files[l]!)
@@ -72,6 +76,26 @@ const store: ConfigStore = {
     const removed = key in files[layer]!
     delete files[layer]![key]
     return { file: `${layer}.json`, removed }
+  },
+  // Each layer's part, lowest precedence first. `paths` is user-only here.
+  async explain(ctx, key) {
+    if (key !== 'color' && key !== 'paths') throw new ConfigUsageError(`unknown setting ${key}`)
+    const layers: ConfigLayerValue[] = [
+      { layer: 'default', set: true, value: key === 'color' ? 'auto' : [] },
+      { layer: 'user', set: key in files['user']!, value: files['user']![key] },
+      {
+        layer: 'project',
+        set: key in files['project']!,
+        value: files['project']![key],
+        ...(key === 'paths' ? { allowed: false, note: 'user-only' } : {}),
+      },
+      {
+        layer: 'env',
+        set: ctx.env['TOOLY_COLOR'] !== undefined && key === 'color',
+        value: ctx.env['TOOLY_COLOR'],
+      },
+    ]
+    return { layers }
   },
 }
 
@@ -129,6 +153,17 @@ test('config reads and writes through the store', async () => {
   const run: AppRun = await runApp(app, ['config', 'get', 'color', '--json'])
   expect(run.json()).toMatchObject({ kind: 'config-get', value: 'always', source: 'project' })
   expect((await runApp(app, ['config', 'set', 'colour', 'x'])).exit).toBe(2)
+})
+
+test('config explain shows which layer won and why', async () => {
+  await runApp(app, ['config', 'set', 'paths', '["/a"]', '--user'])
+  await runApp(app, ['config', 'set', 'paths', '["/b"]', '--project'])
+  const run = await runApp(app, ['config', 'explain', 'paths', '--json'])
+  const doc = ConfigExplainSchema.parse(run.json())
+  expect(doc).toMatchObject({ value: ['/a'], source: 'user' })
+  expect(doc.reason).toBe(
+    'user is the highest layer allowed to set it; project is ignored (user-only)',
+  )
 })
 
 test('trust records consent, with one JSON shape for every mode', async () => {
