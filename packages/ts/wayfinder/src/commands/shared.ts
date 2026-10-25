@@ -6,6 +6,7 @@
 import { commandKit, CommandError, UsageError, type CommandContext } from '@osdlc/cli-tool/command'
 import type { FlagValues } from '@osdlc/cli-tool/define-cli'
 import { closestMatches } from '@osdlc/config-layers/did-you-mean'
+import { humanAge } from '@osdlc/system-model/duration'
 
 import { BIN } from '../app.ts'
 import type { TaskFilter } from '../core/filter.ts'
@@ -67,7 +68,7 @@ export type Globals = FlagValues<typeof GLOBALS>
 export const FILTER_FLAGS = {
   cached: {
     kind: 'boolean',
-    help: 'answer from the last stored probe, not a new one; the document says source: cached',
+    help: 'answer from the last saved listing, not a new probe; files are not checked; the document says source: cached',
   },
   services: { kind: 'boolean', help: 'only tasks that run until you stop them' },
   declared: {
@@ -166,6 +167,11 @@ export async function openSession(
  * were stale and which had nothing stored and were probed now.
  */
 function cacheNote(snapshot: CatalogSnapshot): string | null {
+  if (snapshot.origin === 'saved') {
+    const ages = snapshot.cache.flatMap((c) => (c.ageMs !== undefined ? [c.ageMs] : []))
+    const age = ages.length > 0 ? `, ${humanAge(Math.max(...ages))}` : ''
+    return `--cached: the last listing${age}; files changed since storedAt are not checked`
+  }
   if (snapshot.origin === 'empty-store') {
     return '--cached: nothing cached for this repository yet; probed it now and stored the result'
   }

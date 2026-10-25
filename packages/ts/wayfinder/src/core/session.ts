@@ -219,8 +219,10 @@ export interface Session {
   withheldReason(): WithheldReason | null
   /**
    * The catalog. Probed fresh by default, since a script must not get an old
-   * answer without being told. `cached` reads the store first and probes only
-   * the runners missing from it. A probe always writes the store. `signal`
+   * answer without being told. `cached` answers with {@link savedCatalog}
+   * when there is one, which checks nothing; else it reads the store, which
+   * checks each runner's files, and probes only the runners missing from it.
+   * A probe always writes the store. `signal`
    * stops this call's probes as well as the session's own signal.
    */
   catalog(opts?: { cached?: boolean; signal?: AbortSignal | undefined }): Promise<CatalogSnapshot>
@@ -594,6 +596,8 @@ export async function createSession(opts: SessionOptions): Promise<Session> {
           origin: 'probe',
         })
       }
+      const view = await session.savedCatalog()
+      if (view !== null) return view
       const stored = await readCachedCatalog(project, root, options, store)
       if (stored.catalog === null || !fromStore(stored)) {
         const { catalog, times } = await probe(undefined, opts.signal)

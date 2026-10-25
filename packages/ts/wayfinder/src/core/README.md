@@ -30,7 +30,7 @@ decides execution against the trust store and loads tool modules. It throws
 | Call | Does |
 |---|---|
 | `session.catalog()` | probes every runner and stores the result. `cache[].probeMs` is each runner's measured time. `skills` holds the agent skills the `skills` setting chooses |
-| `session.catalog({ cached: true })` | reads the store and probes only the runners missing from it. `origin` says which happened |
+| `session.catalog({ cached: true })` | answers with `savedCatalog()` when there is one (`origin: 'saved'`, files unchecked); else reads the store and probes only the runners missing from it. `origin` says which happened |
 | `session.storedCatalog()` | the store alone, probing nothing, or null when it has no answer. It still detects the project and hashes each runner's files |
 | `session.savedCatalog()` | the catalog the last `catalog()` call showed, in any process, from one file (`saved-view.ts`), unchecked; null unless it was saved under the same `viewKey()`. The terminal UI and `serve` draw it first, and fall back to the store |
 | `session.viewKey()` | what decides which rows a probe returns: trust, the collect options, the `skills` setting and the tools |

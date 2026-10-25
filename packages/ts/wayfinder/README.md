@@ -370,8 +370,10 @@ the same trust and settings that produced it. Without it they read the store,
 which needs no probe but detects the project and hashes each runner's files.
 Then they probe in the background and update in place. `list` and `query`
 re-probe on every run, because a script or an agent reading them needs what
-the repository has right now. `--cached` makes `list` and `query` read the
-store for one run, without probing again.
+the repository has right now. `--cached` makes `list`, `query` and `run`
+answer at once from the same saved listing the UIs draw. It does not check
+whether files changed since its `storedAt`. With no saved listing, `--cached`
+reads the store, which does check.
 
 A stored answer is in one of three states, and every surface shows them the
 same way:
@@ -399,8 +401,14 @@ If you run a row whose task no longer exists, such as a task renamed since the
 stored probe, both surfaces tell you the row came from the store, instead of
 showing only a spawn failure.
 
-For the pipeable surfaces, `--cached` names the stale runners on stderr, so
-`list` stays pipeable and `--json` stays parseable:
+For the pipeable surfaces, `--cached` says on stderr what it answered from, so
+`list` stays pipeable and `--json` stays parseable. From the saved listing:
+
+```text
+way: --cached: the last listing, 35s old; files changed since storedAt are not checked
+```
+
+From the store, it names the stale runners:
 
 ```text
 way: --cached: just (stale: its files changed, 35s old; refresh usually about 149ms); not cached, probed now: github-actions
@@ -484,7 +492,7 @@ Messages on stderr start with `way:`.
 --services           only tasks that run until you stop them
 --declared           only tasks a file declares, not ones from a convention
 --depth N            only tasks whose source is at most N directories deep
---cached             answer from the last stored probe; the document says source: cached
+--cached             answer from the last saved listing; files are not checked
 ```
 
 ### Documents

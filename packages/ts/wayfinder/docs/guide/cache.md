@@ -20,8 +20,16 @@ interactive surfaces can show something at once.
   project and hashes each runner's files: seconds on a large repository.
 - **`way list` and `way query`** re-probe on every run, so a script
   gets what the repository has now. These runs also write the store.
-- **`--cached`** makes `list`, `query` or `run` answer from the store.
-  It names the stale runners on stderr:
+- **`--cached`** makes `list`, `query` or `run` answer at once from the
+  saved listing, without checking whether files changed since its
+  `storedAt`, and says so on stderr:
+
+```text
+way: --cached: the last listing, 35s old; files changed since storedAt are not checked
+```
+
+  With no saved listing it reads the store, checks each runner's files, and
+  names the stale runners:
 
 ```text
 way: --cached: just (stale: its files changed, 35s old; refresh usually about 149ms); not cached, probed now: github-actions

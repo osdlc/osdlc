@@ -91,11 +91,13 @@ export function listCommand(home: string, share?: CatalogShare) {
       'its own directory, so it pastes into a shell; "run" takes that line or the task id, which ' +
       '--json shows. --output jsonl prints one runner report per line; "query" with no terms ' +
       'prints one task per line. ' +
-      'Probes every runner, so a script gets what the repository has now. --cached answers from ' +
-      'the last stored probe without probing again and names the stale runners on stderr; a ' +
-      'runner with nothing stored is probed now, and with nothing stored at all it probes every ' +
-      'runner. The document says which it was: "source" is "fresh" or "cached", and "storedAt" ' +
-      'is when the oldest stored rows were probed. --services, --declared and ' +
+      'Probes every runner, so a script gets what the repository has now. --cached answers at ' +
+      'once with the last listing saved under the same trust and settings, and does not check ' +
+      'whether files changed since its storedAt. With no saved listing it reads the stored ' +
+      'probes, checks their files and names the stale runners on stderr; a runner with nothing ' +
+      'stored is probed now, and with nothing stored at all it probes every runner. The document ' +
+      'says which it was: "source" is "fresh" or "cached", and "storedAt" is when the oldest ' +
+      'stored rows were probed. --services, --declared and ' +
       '--depth keep only some tasks; with --json each report keeps only those tasks. Notes on what ' +
       'could not be read (withheld runners, unknown parameters, missing tools) go to stderr; ' +
       'under --json the same notes are in "unknowns". Agent skills follow the tasks as /<name> ' +

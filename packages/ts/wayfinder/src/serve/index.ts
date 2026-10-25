@@ -244,7 +244,7 @@ export function startupSummary(
     out += `  cached     ${terminalSafe(aged)}; the page re-reads it\n`
   } else if (first.origin === 'saved') {
     const ages = first.cache.flatMap((c) => (c.ageMs !== undefined ? [c.ageMs] : []))
-    const age = ages.length > 0 ? ` from ${humanAge(Math.max(...ages))}` : ''
+    const age = ages.length > 0 ? `, ${humanAge(Math.max(...ages))}` : ''
     out += `  cached     the last listing${age}; the page re-reads it\n`
   }
   return out

@@ -68,7 +68,7 @@ aliases for `way serve`, `way list` and `way list --json`.
   per line, with any control character in repository text replaced by
   U+FFFD; `list --json` prints the whole catalog, with the text kept exact, as `\u`
   escapes where needed. `list` and `query` re-probe on every run. `--cached`
-  answers them from the last stored probe instead. Both take `--services`,
+  answers them from the last saved listing instead, without checking files. Both take `--services`,
   `--declared` and `--depth N`. See [The task model and JSON](task-model.md) and
   [The cache](cache.md).
 
@@ -93,7 +93,7 @@ ends and the next begins. `--json` carries a `groups` array.
 ```text
 --json              with list, query, run --dry-run or providers: print the
                     command's document
---cached            with list, query or run: answer from the last stored probe
+--cached            with list, query or run: answer from the last saved listing
 --exact             with query: terms match as substrings, not subsequences
 --services          with list or query: only tasks that run until you stop them
 --declared          with list or query: only tasks a file declares

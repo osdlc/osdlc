@@ -483,8 +483,21 @@ describe('--cached', () => {
 
     expect(cached.out).toBe(warm.out)
     expect(cached.code).toBe(0)
-    // Nothing moved between the runs, so nothing is stale and nothing is said.
-    expect(cacheLines(cached.err)).toEqual([])
+    // The saved listing answers, and stderr says its files were not checked.
+    expect(cacheLines(cached.err)).toEqual([
+      expect.stringMatching(/^way: --cached: the last listing, .*not checked$/),
+    ])
+  })
+
+  test('with a saved listing, a changed file is not checked', async () => {
+    const home = await temp()
+    const dir = await project()
+    await run(['--list'], dir, home)
+    await writeFile(join(dir, 'Makefile'), 'lint:\n\techo l\nship:\n\techo s\n', 'utf-8')
+    const cached = await run(['--list', '--cached'], dir, home)
+    expect(cached.out).toContain('make lint')
+    expect(cached.out).not.toContain('make ship')
+    expect(cacheLines(cached.err)[0]).toContain('files changed since storedAt are not checked')
   })
 
   test('a changed file makes a runner stale, named on stderr and nowhere else', async () => {
@@ -492,6 +505,8 @@ describe('--cached', () => {
     const dir = await project()
     await run(['--list'], dir, home)
     await writeFile(join(dir, 'Makefile'), 'lint:\n\techo l\nship:\n\techo s\n', 'utf-8')
+    // Without the saved listing, --cached reads the stored probes and checks them.
+    await rm(join(cacheDir({}, home), 'views'), { recursive: true, force: true })
 
     const cached = await run(['--list', '--cached'], dir, home)
     expect(cached.code).toBe(0)

@@ -10,7 +10,7 @@
 import { afterAll, describe, expect, test, vi } from 'vitest'
 import { PassThrough } from 'node:stream'
 import { request as httpRequest } from 'node:http'
-import { readFile } from 'node:fs/promises'
+import { readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
 import type { HttpApi } from '@osdlc/cli-tool/http'
@@ -593,6 +593,23 @@ describe('POST /run', () => {
       expect(second.status).toBe(409)
       expect(await s.web.finished).toBe(0)
       expect(s.handed).toEqual([{ argv: answer.argv, cwd: expect.any(String) }])
+    } finally {
+      await s.web.stop()
+    }
+  })
+
+  test('resolves the task from the saved listing, without the stored probes', async () => {
+    const s = await start()
+    try {
+      // The listing saves the view. Then the stored probes go, and a new
+      // probe would not find the task.
+      const id = await taskId(s)
+      await rm(join(s.home, '.cache', 'wayfinder', 'reports'), { recursive: true, force: true })
+      await writeFile(join(s.dir, 'package.json'), JSON.stringify({ name: 'p', scripts: {} }))
+      const res = await run(s, { id })
+      expect(res.status).toBe(200)
+      expect(await s.web.finished).toBe(0)
+      expect(s.handed).toHaveLength(1)
     } finally {
       await s.web.stop()
     }

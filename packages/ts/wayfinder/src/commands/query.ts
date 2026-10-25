@@ -23,7 +23,7 @@ export function queryCommand(home: string) {
       '--exact does that to all of them. No terms is every task. Matching agent skills follow ' +
       'the tasks as /<name> lines. Each task line is the one "list" prints. --output jsonl ' +
       'prints one task per line, every task when there are no terms. Exits 1 when terms ' +
-      'matched nothing, as grep does. --cached reads the stored probe as "list --cached" does; ' +
+      'matched nothing, as grep does. --cached answers from the last saved listing as "list --cached" does; ' +
       '"source" and "storedAt" in the document say which it was.',
     positionals: [{ name: 'terms', variadic: true, help: 'the search terms' }],
     flags: {

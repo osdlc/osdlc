@@ -4,7 +4,7 @@
  * tested here once rather than through each surface.
  */
 
-import { readFile, writeFile } from 'node:fs/promises'
+import { readFile, rm, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 
 import { afterAll, describe, expect, test } from 'vitest'
@@ -20,6 +20,7 @@ import { settingLayer } from '../src/config-keys.ts'
 import { taskCopyText } from '../src/core/copy-text.ts'
 import { filterTasks, sourceDepth } from '../src/core/filter.ts'
 import { handOff } from '../src/core/run.ts'
+import { viewPath } from '../src/core/saved-view.ts'
 import { SessionError, createSession, resolveRun } from '../src/core/session.ts'
 import { execOffSource, unknownLine, unknownsOf } from '../src/core/unknowns.ts'
 import { withheldTrustHint } from '../src/commands/shared.ts'
@@ -431,6 +432,12 @@ describe('createSession', () => {
     expect(typeof npm?.probeMs).toBe('number')
     expect(npm?.estimateMs).toBe(npm?.probeMs)
 
+    const saved = await session.catalog({ cached: true })
+    expect(saved.origin).toBe('saved')
+    expect(saved.cache.find((c) => c.runner === 'node-scripts')?.probeMs).toBeUndefined()
+
+    // With no saved listing, the store answers.
+    await rm(viewPath(session.store, session.root), { force: true })
     const stored = await session.catalog({ cached: true })
     expect(stored.origin).toBe('store')
     expect(stored.cache.find((c) => c.runner === 'node-scripts')?.probeMs).toBeUndefined()

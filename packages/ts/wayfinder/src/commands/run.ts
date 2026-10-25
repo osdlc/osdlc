@@ -53,7 +53,10 @@ export function runCommand(home: string) {
     ],
     rest: { name: 'args' },
     flags: {
-      cached: { kind: 'boolean', help: 'find the task in the last stored probe, not a new one' },
+      cached: {
+        kind: 'boolean',
+        help: 'find the task in the last saved listing, not a new probe; files are not checked',
+      },
       dryRun: { kind: 'boolean', help: 'print what would run, and run nothing' },
     },
     output: RunOutput,
