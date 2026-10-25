@@ -27,8 +27,10 @@ parameter.
 
 ## When not to use it
 
-- **You need Windows.** This package is tested only on Linux and macOS. See
-  Requirements below.
+- **You need the shell or process-group runners on Windows.** `runShell`,
+  `shellRunner` and the `processGroup` options are POSIX only. The argv
+  runners start programs on Windows, but CI runs the Windows tests in a job
+  that does not block a release. See [Platforms](#platforms).
 - **You want shell-script ergonomics** (template strings, piping, globbing).
   Use [`zx`](https://www.npmjs.com/package/zx) or
   [`execa`](https://www.npmjs.com/package/execa).
@@ -491,7 +493,7 @@ const argv = ['git', 'commit', '-m', "it's done"]
 commandString(argv, { platform: 'linux', cwd: '/my repo' })
 // cd '/my repo' && git commit -m 'it'\''s done'
 commandString(argv, { platform: 'win32', cwd: 'C:\\my repo' })
-// Set-Location -LiteralPath 'C:\my repo'; & git commit -m 'it''s done'
+// if (Set-Location -LiteralPath 'C:\my repo' -PassThru) { & git commit -m 'it''s done' }
 commandString(argv, { platform: 'win32', shell: 'cmd' })
 // git commit -m ^"it's^ done^"
 ```
@@ -499,11 +501,12 @@ commandString(argv, { platform: 'win32', shell: 'cmd' })
 | Shell        | Words                                                                                                                                                | With `cwd`                            |
 | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
 | `posix`      | `shellJoin`: bare when only `A-Za-z0-9_@%+=:,./-`, else single-quoted with `'` written `'\''`                                                          | `cd <dir> && <line>` (`cd --` for a folder starting with `-`) |
-| `powershell` | `&` first, always. Bare when it starts with a letter or `_-./\` and holds only letters, digits and `_-./\:=`; else single-quoted, each `'` (and `‘ ’ ‚ ‛`) doubled | `Set-Location -LiteralPath <dir>; <line>` |
+| `powershell` | `&` first, always. Bare when it starts with a letter or `_-./\` and holds only letters, digits and `_-./\:=`; else single-quoted, each `'` (and `‘ ’ ‚ ‛`) doubled | `if (Set-Location -LiteralPath <dir> -PassThru) { <line> }` |
 | `cmd`        | Bare when only `A-Za-z0-9_@+:./\-`; else quoted and `^`-escaped as in [Starting a program on Windows](#starting-a-program-on-windows). The program gets `^` escapes without quotes | `cd /d <dir> && <line>`               |
 
-In PowerShell the command runs even when `Set-Location` fails, since `;`
-does not stop on an error. Windows PowerShell 5.1, and PowerShell before
+In every shell the command runs only when the change of folder works.
+PowerShell's `;` does not stop on an error, so its form tests the result of
+`Set-Location -PassThru` instead. Windows PowerShell 5.1, and PowerShell before
 7.3, drop an empty argument and mangle one holding `"` when they call a
 program. `commandString` throws `RangeError` for an empty `argv`, and for
 `cmd` when a word or `cwd` holds a line break, which `cmd.exe` cannot quote.
@@ -517,20 +520,24 @@ These parts stay POSIX only:
 
 - `runShell` and `shellRunner` need `sh` on `PATH`.
 - The `processGroup` options and `installGroupSignalForwarding` use POSIX
-  process groups. Signals follow POSIX rules.
+  process groups. Signals follow POSIX rules. To kill a process tree on
+  Windows too, use `killTree`.
 - The `bun test` capture path runs through `/bin/sh`.
 
 ### Starting a program on Windows
 
 On Windows each runner looks the binary up with `which` and its Windows
 rules. An `.exe` or `.com` it finds is spawned by that path, with argv
-passed directly. A binary it cannot find is spawned as given, so the
-failure is `ENOENT` and `classifyFailure` reports `not-installed`, as on
-POSIX.
+passed directly. A binary it cannot find is not spawned at all: a Windows
+spawn of a bare name searches the current folder first, which is often the
+repository being worked on. The run fails as a missing binary does
+(`spawn <binary> ENOENT`), and `classifyFailure` reports `not-installed`, as
+on POSIX.
 
 Node will not spawn a `.cmd` or `.bat` file directly. The runner starts
-`cmd.exe /d /s /c "<line>"` instead (`ComSpec` when set), with
-`windowsVerbatimArguments`, and quotes each argument in two steps:
+`cmd.exe /d /v:off /s /c "<line>"` instead (`ComSpec` when set), with
+`windowsVerbatimArguments`. `/v:off` keeps delayed expansion (`!VAR!`) off
+even when the registry turns it on. Each argument is quoted in two steps:
 
 1. Microsoft C runtime quoting: backslashes before a `"` are doubled and the
    `"` becomes `\"`, trailing backslashes are doubled, and the argument is
@@ -544,11 +551,18 @@ inside quotes, and a `^` does not help there. With every quote escaped,
 `%PATH%` is written `^%PATH^%`, which names the variable `PATH^`; that is
 not set, so the text passes through and the carets are removed.
 
-A shim in `node_modules/.bin` (the `.cmd` files npm writes) passes its
-arguments on with `%*`, which `cmd.exe` parses a second time, so step 2 is
-applied twice for it. Another batch file that passes `%*` on gets one
-escape, so a `"` or a special character in an argument can reach its
-second parse unprotected.
+Step 2 is applied twice for every batch file. A batch file passes its
+arguments on with `%*` or `%1`, and `cmd.exe` parses that line a second
+time. The npm, pnpm and yarn shims do this, in `node_modules/.bin` and in the
+global `%APPDATA%\npm`, and so do `gradlew.bat` and `mvnw.cmd`. With one
+escape, a `"` in an argument would end the quoted text on the second parse,
+and a `&` or `|` after it would run as a command.
+
+Two limits remain. A batch file that parses its arguments a third time (it
+stores `%*` in a variable and expands that later, or passes it through
+`call`) can still be broken by an argument holding `"`. A batch file that
+uses an argument without parsing it again gets the extra carets in its
+value.
 
 An argument with a line break cannot be passed to a batch file: `cmd.exe`
 ends the command there. The run is refused before anything starts, as a
@@ -879,6 +893,11 @@ console.log(await server.exited) // { exitCode: 0, signal: null }
   `runShellAsync`, `shellRunnerAsync`) take `processGroup: true` to kill the
   child's whole process group on timeout or abort. `managedProcessRunner`
   takes it too, so `kill()` signals the group.
+- `killTree: true` on the async runners kills the child's process tree when
+  the run is stopped, on every platform. On POSIX it is `processGroup: true`.
+  On Windows the runner runs `taskkill /pid <pid> /t /f` (found on absolute
+  `PATH` entries only) while the child is still running, then kills the
+  child. Pass it for a command that forks, such as a build tool.
 - A `streamRunner` timeout prints its line to the parent's stderr, as a failed
   spawn or a signal does, unless `quiet` is set. With `stdio` set to an fd, the
   line still goes to the parent's stderr, not to the fd.
@@ -1018,7 +1037,7 @@ are settled, and Windows support has landed, if that is feasible.
 | `BytesCommandRunner`, `AsyncBytesCommandRunner`                 | interface | The same, with stdout as a `Buffer`                            |
 | `CommandResult`                                                 | interface | `exitCode`, `stdout`, `stderr`, `neverExited`, `reason`, `signal`, `outputIncomplete`, `error`; `CommandResult<Buffer>` for bytes |
 | `NeverExitedReason`                                             | type      | `'spawn' \| 'timeout' \| 'abort' \| 'signal' \| 'output'`       |
-| `CommandRunOptions`, `AsyncCommandRunOptions`                   | interface | `cwd`, `timeoutMs`, `input`, `env`, `maxOutputBytes`; async adds `signal`, `onSpawn`, `processGroup` |
+| `CommandRunOptions`, `AsyncCommandRunOptions`                   | interface | `cwd`, `timeoutMs`, `input`, `env`, `maxOutputBytes`; async adds `signal`, `onSpawn`, `processGroup`, `killTree` |
 | `EnvOverrides`                                                  | type      | `Record<string, string \| undefined>`                          |
 | `ran`, `failureText`, `firstLine`, `stderrOrError`              | function  | Read a result                                                  |
 | `FailureTextOptions`                                            | interface | `both`: join both streams in `failureText`                     |

@@ -3,9 +3,11 @@
  * every branch runs on every OS.
  */
 
+import { join } from 'node:path'
+
 import { describe, expect, test } from 'vitest'
 
-import { commandString, shellJoin } from '../src/index.ts'
+import { commandString, shellJoin, spawnRunner, which } from '../src/index.ts'
 
 const HOSTILE = [
   '',
@@ -69,9 +71,9 @@ describe('commandString', () => {
     ).toBe("& 'C:\\Program Files\\Git\\bin\\git.exe' status")
   })
 
-  test('PowerShell cwd prefixes Set-Location -LiteralPath', () => {
+  test('PowerShell cwd runs the command only when Set-Location works', () => {
     expect(commandString(['git', 'status'], { platform: 'win32', cwd: 'C:\\my repo' })).toBe(
-      "Set-Location -LiteralPath 'C:\\my repo'; & git status",
+      "if (Set-Location -LiteralPath 'C:\\my repo' -PassThru) { & git status }",
     )
   })
 
@@ -115,4 +117,24 @@ describe('commandString', () => {
     expect(commandString(['a b'], { platform: 'linux', shell: 'powershell' })).toBe("& 'a b'")
     expect(commandString(['a b'], { platform: 'win32', shell: 'posix' })).toBe("'a b'")
   })
+})
+
+const powershell = which('pwsh') ?? which('powershell')
+
+describe.skipIf(powershell === undefined)('a real PowerShell', () => {
+  const shell = spawnRunner(powershell ?? 'pwsh')
+  const run = (cwd: string) => {
+    const line = commandString(['node', '-e', 'console.log("ran")'], { shell: 'powershell', cwd })
+    return shell.run(['-NoProfile', '-NonInteractive', '-Command', line], { cwd: process.cwd() })
+  }
+
+  test('runs the command after a change of folder that works', () => {
+    expect(run(process.cwd()).stdout).toContain('ran')
+  }, 30_000)
+
+  test('does not run the command when Set-Location fails', () => {
+    const r = run(join(process.cwd(), 'no-such-folder-for-command-string'))
+    expect(r.stdout).not.toContain('ran')
+    expect(r.stderr).not.toBe('')
+  }, 30_000)
 })

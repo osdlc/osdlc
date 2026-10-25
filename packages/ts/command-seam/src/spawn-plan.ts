@@ -17,13 +17,11 @@ export interface SpawnPlan {
   windowsVerbatimArguments?: true
 }
 
-/** An `npm`-style shim, whose `%*` makes `cmd.exe` parse the arguments twice. */
-const NPM_SHIM = /node_modules[\\/]\.bin[\\/][^\\/]+\.cmd$/i
-
 /**
  * The plan for running `binary` with `argv`, or a spawn error message when
- * the arguments cannot be passed safely. A binary not found on Windows is
- * spawned as given, so the spawn reports `ENOENT` as it does on POSIX.
+ * it cannot be run safely. On Windows a binary `which` does not find is
+ * refused with an `ENOENT` message and never spawned: a spawn of the bare
+ * name would search the current folder first.
  *
  * @param opts.platform - Default `process.platform`; tests pass `'win32'`.
  * @param opts.comspec - The `cmd.exe` to use. Default `ComSpec`, else `cmd.exe`.
@@ -41,7 +39,7 @@ export function spawnPlan(
   const platform = opts.platform ?? process.platform
   if (platform !== 'win32') return { file: binary, args: [...argv] }
   const resolved = which(binary, { cwd: opts.cwd, env: opts.env, platform })
-  if (resolved === undefined) return { file: binary, args: [...argv] }
+  if (resolved === undefined) return { refusal: `spawn ${binary} ENOENT` }
   if (!/\.(cmd|bat)$/i.test(resolved)) return { file: resolved, args: [...argv] }
   const broken = argv.findIndex((a) => /[\r\n]/.test(a))
   if (broken !== -1) {
@@ -49,11 +47,15 @@ export function spawnPlan(
       refusal: `spawn ${binary} EINVAL: argv[${broken}] holds a line break, which cmd.exe cannot pass to a batch file`,
     }
   }
-  const twice = NPM_SHIM.test(resolved)
-  const line = [cmdCommand(resolved), ...argv.map((a) => cmdArg(a, twice))].join(' ')
+  // Every batch file is escaped twice. Most pass their arguments on with
+  // `%*` or `%1`, which `cmd.exe` parses a second time: npm, pnpm and yarn
+  // shims, global ones included, and `gradlew.bat`.
+  const line = [cmdCommand(resolved), ...argv.map((a) => cmdArg(a, true))].join(' ')
   return {
     file: opts.comspec ?? process.env['ComSpec'] ?? 'cmd.exe',
-    args: ['/d', '/s', '/c', `"${line}"`],
+    // `/v:off` keeps `!VAR!` from expanding even when the registry turns
+    // delayed expansion on.
+    args: ['/d', '/v:off', '/s', '/c', `"${line}"`],
     windowsVerbatimArguments: true,
   }
 }

@@ -163,8 +163,11 @@ describe('Windows', () => {
 
 describe('conventions', () => {
   const env = { HOME: '/Users/x', XDG_CONFIG_HOME: '/xc' }
-  const on = (platform: string, opts: { convention?: 'native' | 'xdg' }, extra = {}) =>
-    systemBaseDirs(ENV, { platform, env: { ...env, ...extra }, ...opts })
+  const on = (
+    platform: string,
+    opts: { convention?: 'native' | 'xdg'; conventionFromEnv?: boolean },
+    extra = {},
+  ) => systemBaseDirs(ENV, { platform, env: { ...env, ...extra }, ...opts })
 
   test('xdg on macOS is the XDG table', () => {
     const bases = on('darwin', { convention: 'xdg' })
@@ -200,6 +203,17 @@ describe('conventions', () => {
       on('darwin', {}),
     )
     expect(on('darwin', { convention: 'xdg' }, { EXAMPLE_CONVENTION: '' })).toEqual(
+      on('darwin', { convention: 'xdg' }),
+    )
+  })
+
+  test("conventionFromEnv: false pins the caller's convention and ignores the variable", () => {
+    const pinned = { convention: 'xdg' as const, conventionFromEnv: false }
+    expect(on('darwin', pinned, { EXAMPLE_CONVENTION: 'native' })).toEqual(
+      on('darwin', { convention: 'xdg' }),
+    )
+    // Not read at all, so a bad value does not throw either.
+    expect(on('darwin', pinned, { EXAMPLE_CONVENTION: 'apple' })).toEqual(
       on('darwin', { convention: 'xdg' }),
     )
   })

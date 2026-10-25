@@ -195,7 +195,14 @@ export async function policyDecision(
 ): Promise<PolicyDecision> {
   const scope = opts.scope ?? WHOLE_REPO_SCOPE
   const layers: [string, TrustRules][] = [[WHOLE_REPO_SCOPE, policy]]
-  const scoped = scope === WHOLE_REPO_SCOPE ? undefined : policy.scopes?.[scope]
+  // An own key only, so a scope named `constructor` or `__proto__` does not
+  // read the prototype chain.
+  const scoped =
+    scope === WHOLE_REPO_SCOPE ||
+    policy.scopes === undefined ||
+    !Object.hasOwn(policy.scopes, scope)
+      ? undefined
+      : policy.scopes[scope]
   if (scoped !== undefined) layers.push([scope, scoped])
 
   let resolvedRoot: string | undefined
@@ -321,7 +328,8 @@ export async function policyExecGate(
             return owner
           },
         }
-  const decisions: Record<string, TrustDecision> = {}
+  // No prototype, so a scope named `__proto__` is an ordinary key.
+  const decisions: Record<string, TrustDecision> = Object.create(null)
   for (const scope of scopes) {
     decisions[scope] ??= await trustDecision(store, args.root, policy, { ...shared, scope })
   }
