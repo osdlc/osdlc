@@ -384,6 +384,9 @@ describe('against real git', () => {
       worker.git.push(remoteName, 'main')
       worker.git.fetch(remoteName)
       const ref = `refs/remotes/${remoteName}/HEAD`
+      // git 2.48+ sets origin/HEAD on fetch (remote.<name>.followRemoteHEAD),
+      // older git does not, so start from no ref either way.
+      worker.git.remoteSetHead(remoteName, { delete: true })
       expect(worker.git.symbolicRef(ref)).toBeNull()
 
       worker.git.remoteSetHead(remoteName, { branch: 'main' })
