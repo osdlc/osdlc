@@ -207,7 +207,7 @@ export async function collectAndCache(
 ): Promise<Catalog> {
   const profile = await detect(project, root, options)
   const granted = grantedRunners(project, profile, options)
-  const collect = async (opts: ReturnType<typeof collectOptions>): Promise<Catalog> => {
+  const collect = async (opts: CollectOptions): Promise<Catalog> => {
     const { catalog, stored } = await project.runners.collectAndStore(profile, store, opts)
     void trackWrite(stored)
     return catalog

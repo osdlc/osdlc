@@ -232,7 +232,7 @@ export async function collectRunners(
       const answer = await Promise.race([work, timedOut])
       clearTimeout(timer)
       const report = answer ?? failed(timedOutMessage(limit))
-      if (answer === null) stop.abort(new Error(report.diagnostics[0]!.message))
+      if (answer === null) stop.abort(new Error(timedOutMessage(limit)))
 
       const durationMs = performance.now() - startedAt
       options.onProbe?.({ runner: spec.id, durationMs })
