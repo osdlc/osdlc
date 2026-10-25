@@ -42,6 +42,8 @@ interface Started {
   home: string
   /** Every plan the server handed off. */
   handed: { argv: string[]; cwd: string }[]
+  /** What the server wrote to stderr. */
+  err: string[]
   /** Sign in and return the bearer token. */
   token(): Promise<string>
   /** `POST /api/commands/<words>` with the bearer token. */
@@ -58,6 +60,7 @@ async function start(files: Record<string, string> = {}): Promise<Started> {
   const { app } = createWayApp({ home })
   const session = await createSession({ dir, cwd: dir, env, home })
   const handed: Started['handed'] = []
+  const err: string[] = []
   const web = await startServer({
     session,
     app,
@@ -66,7 +69,7 @@ async function start(files: Record<string, string> = {}): Promise<Started> {
     port: 0,
     open: false,
     stdout: () => {},
-    stderr: () => {},
+    stderr: (text) => err.push(text),
     handOff: (plan) => {
       handed.push({ argv: plan.argv, cwd: plan.cwd })
       return { exit: 0 }
@@ -90,6 +93,7 @@ async function start(files: Record<string, string> = {}): Promise<Started> {
     dir,
     home,
     handed,
+    err,
     token,
     async call(words, body = {}, headers = {}) {
       return fetch(`${address}/api/commands/${words.join('/')}`, {
@@ -217,6 +221,16 @@ describe('POST /session', () => {
     }
   })
 
+  test('the boot token redeemed twice stops the server and says why', async () => {
+    const s = await start()
+    const first = await session(s.address, { boot: s.web.signIn.bootToken })
+    expect(first.status).toBe(200)
+    const again = await session(s.address, { boot: s.web.signIn.bootToken })
+    expect(again.status).toBe(401)
+    expect(await s.web.finished).toBe(1)
+    expect(s.err.join('')).toContain('the sign-in link was used twice')
+  })
+
   test('a wrong boot token is 401, and leaves the right one usable', async () => {
     const s = await start()
     try {
@@ -293,6 +307,17 @@ describe('the boot token', () => {
     signIn.arm()
     now += 60_001
     expect(signIn.redeem(signIn.bootToken)).toBe(false)
+  })
+
+  test('the right token sent again reports a replay; a wrong one does not', () => {
+    let replays = 0
+    const signIn = createSignIn(Date.now, () => replays++)
+    expect(signIn.redeem('f'.repeat(32))).toBe(false)
+    expect(signIn.redeem(signIn.bootToken)).toBe(true)
+    expect(signIn.redeem('f'.repeat(32))).toBe(false)
+    expect(replays).toBe(0)
+    expect(signIn.redeem(signIn.bootToken)).toBe(false)
+    expect(replays).toBe(1)
   })
 
   test('does not expire before it is armed', () => {

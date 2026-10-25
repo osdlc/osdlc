@@ -6,12 +6,16 @@
  * how its own page gets that token.
  *
  * Other local users can reach 127.0.0.1 and can read a process's argv while
- * it runs. So the token never appears in a URL, an argv or the page itself.
- * The URL the server prints or opens carries a boot token instead. The page
- * sends it once, in a JSON body to `POST /session`, and gets the bearer token
- * back. The boot token works once and expires a minute after the URL is
- * shown, so it is only usable between opening the browser and the page
- * loading.
+ * it runs. So the bearer token never appears in a URL, an argv or the page
+ * itself. The URL the server prints or opens carries a boot token instead.
+ * The page sends it once, in a JSON body to `POST /session`, and gets the
+ * bearer token back. The boot token works once and expires a minute after
+ * the URL is shown, so it is only usable between opening the browser and the
+ * page loading.
+ *
+ * The boot token is in the browser opener's argv while it runs, so another
+ * local user could redeem it first. The right boot token sent a second time
+ * means that happened: the server says so and stops (see `onReplay`).
  *
  * A JSON body from another origin needs a CORS preflight, which the server
  * never answers, so a website cannot redeem the boot token either.
@@ -47,10 +51,15 @@ export interface SignIn {
   redeem(candidate: unknown): boolean
 }
 
-/** Make a boot token. `now` is injectable for tests. */
-export function createSignIn(now: () => number = Date.now): SignIn {
+/**
+ * Make a boot token. `now` is injectable for tests. `onReplay` is called when
+ * the right boot token arrives after it was redeemed: someone else signed in
+ * with it first.
+ */
+export function createSignIn(now: () => number = Date.now, onReplay?: () => void): SignIn {
   const bootToken = secret()
   let live = true
+  let redeemed = false
   let expiresAt = Number.POSITIVE_INFINITY
   return {
     bootToken,
@@ -58,13 +67,16 @@ export function createSignIn(now: () => number = Date.now): SignIn {
       expiresAt = now() + BOOT_TTL_MS
     },
     redeem(candidate) {
-      if (!live || typeof candidate !== 'string') return false
+      if (typeof candidate !== 'string') return false
+      if (redeemed && tokenEquals(candidate, bootToken)) onReplay?.()
+      if (!live) return false
       if (now() > expiresAt) {
         live = false
         return false
       }
       if (!tokenEquals(candidate, bootToken)) return false
       live = false
+      redeemed = true
       return true
     },
   }

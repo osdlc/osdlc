@@ -258,7 +258,10 @@ header, when present, must be this server's own. Either failing is a `403`.
 appears only in the URL `way` opens (`/?boot=…`). The page removes it from
 the address bar and sends it once, in a JSON body to `POST /session`. The
 first request that presents it uses it up, and it expires 60 seconds after
-the URL is shown.
+the URL is shown. The URL is in the browser opener's argv while the opener
+runs, so another local user could redeem it first. If the right boot token
+arrives a second time, `way` says the link was used twice and stops the
+server, exit code 1.
 
 **The bearer token** is what `POST /session` answers. It is also 128 random
 bits, one per server process. It never appears in a URL, an argv or the

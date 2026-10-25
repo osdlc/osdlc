@@ -12,7 +12,7 @@ import type { App } from '@osdlc/cli-tool/command'
 import { createHttpApi, serveHttp, type HttpServer } from '@osdlc/cli-tool/http'
 import { commandString, spawnRunner } from '@osdlc/command-seam'
 
-import { APP } from '../app.ts'
+import { APP, BIN } from '../app.ts'
 import { readSettings } from '../config.ts'
 import { handOff as defaultHandOff, type HandOffResult } from '../core/run.ts'
 import type { CatalogSnapshot, Session } from '../core/session.ts'
@@ -65,7 +65,8 @@ export interface WebServer {
   signIn: SignIn
   /**
    * Settles when the server has stopped: with the task's exit code after a
-   * run took the terminal, or null when it was stopped otherwise.
+   * run took the terminal, 1 when the sign-in link was used twice, or null
+   * when it was stopped otherwise.
    */
   finished: Promise<number | null>
   /** Stop the server. */
@@ -81,12 +82,20 @@ export async function startServer(options: ServeOptions): Promise<WebServer> {
   const { session, app } = options
   const globals = { ...options.globals, dir: session.root }
   const context = { cwd: options.cwd, env: session.env }
-  const signIn = createSignIn()
   const runHandOff = options.handOff ?? defaultHandOff
 
   let settle: (exit: number | null) => void = () => {}
   const finished = new Promise<number | null>((resolve) => {
     settle = resolve
+  })
+  // The browser was beaten to the boot token, so someone else holds the
+  // bearer token. Stop rather than serve them.
+  const signIn = createSignIn(Date.now, () => {
+    options.stderr(
+      `${APP}: the sign-in link was used twice, so another program signed in first; ` +
+        `stopping. Run "${BIN} serve" again\n`,
+    )
+    void stop().then(() => settle(1))
   })
 
   const resolveRun = async (id: string, args: string[]): Promise<RunResolution> => {
