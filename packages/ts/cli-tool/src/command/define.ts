@@ -420,12 +420,17 @@ interface SchemaDef {
  * The object schemas an items element can be: itself, each option of a
  * union, both sides of an intersection, the input of a pipe, the target of a
  * lazy. Null when some branch is not an object, since a jsonl line adds
- * `schemaVersion` and `kind` to the element's own fields.
+ * `schemaVersion` and `kind` to the element's own fields. A schema seen
+ * before on this walk, as in a recursive lazy, adds nothing: it is already
+ * being checked.
  */
 function elementObjects(
   schema: { def?: SchemaDef; shape?: unknown } | undefined,
+  seen = new Set<object>(),
 ): OutputSchema[] | null {
   if (schema === undefined) return null
+  if (seen.has(schema)) return []
+  seen.add(schema)
   if (schema.shape !== undefined) return [schema as OutputSchema]
   const def = schema.def ?? {}
   const all = (
@@ -433,7 +438,7 @@ function elementObjects(
   ): OutputSchema[] | null => {
     const out: OutputSchema[] = []
     for (const part of parts) {
-      const found = elementObjects(part)
+      const found = elementObjects(part, seen)
       if (found === null) return null
       out.push(...found)
     }
@@ -441,8 +446,8 @@ function elementObjects(
   }
   if (def.type === 'union') return all(def.options ?? [])
   if (def.type === 'intersection') return all([def.left, def.right])
-  if (def.type === 'pipe') return elementObjects(def.in)
-  if (def.type === 'lazy') return elementObjects(def.getter?.())
+  if (def.type === 'pipe') return elementObjects(def.in, seen)
+  if (def.type === 'lazy') return elementObjects(def.getter?.(), seen)
   return null
 }
 

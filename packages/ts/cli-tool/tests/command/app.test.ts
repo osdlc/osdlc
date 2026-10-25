@@ -534,6 +534,11 @@ describe('declaration checks', () => {
     expect(() => rows(z.lazy(() => tagged))).toThrow("may not declare 'kind'")
     expect(() => rows(z.string())).toThrow("items.field 'rows' must hold objects")
     expect(() => rows(z.union([a, z.object({ s: z.string() })]))).not.toThrow()
+    // A recursive element is checked once, not followed forever.
+    const node: z.ZodType = z.lazy(() => z.union([a, node]))
+    expect(() => rows(node)).not.toThrow()
+    const bad: z.ZodType = z.lazy(() => z.union([tagged, bad]))
+    expect(() => rows(bad)).toThrow("may not declare 'kind'")
   })
 
   test('a global may not be a builtin', () => {
