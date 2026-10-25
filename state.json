@@ -1,12 +1,134 @@
 {
   "schema": 1,
   "pr": 464,
-  "head": null,
-  "base": null,
-  "round": 0,
+  "head": "d23d2d70883b58a69be60c2a4bbbb37c18d47e1c",
+  "base": "b9df2d4918d2b9fc5e6a8d3805a359268893c51c",
+  "round": 1,
   "claim": {
     "owner": "Mac.local:claude-r7m2qx",
     "at": "2026-10-25T08:12:51.055Z"
   },
-  "findings": []
+  "findings": [
+    {
+      "id": "r1-1",
+      "round": 1,
+      "path": "packages/ts/markdown-contract/corpus/37-code-block-value.fail.expected.json",
+      "line": 5,
+      "title": "Fixture 37 pins an off-by-one line for a hit inside a fenced code block",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-2",
+      "round": 1,
+      "path": "packages/rust/markdown-contract/src/text_match.rs",
+      "line": 214,
+      "title": "Empty-match stepping over an astral character counts one fewer hit than JS",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-3",
+      "round": 1,
+      "path": "packages/rust/markdown-contract/src/parse.rs",
+      "line": 612,
+      "title": "Two-cell anchor row test passes on main too; it does not cover the fix",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-4",
+      "round": 1,
+      "path": "packages/rust/markdown-contract/src/validate.rs",
+      "line": 86,
+      "title": "frontmatter/yaml hint exclusion has no test",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-5",
+      "round": 1,
+      "path": "packages/rust/markdown-contract/src/declarative/text.rs",
+      "line": 70,
+      "title": "Declarative text regexes are compiled twice; error names .regex for a pattern",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-6",
+      "round": 1,
+      "path": "packages/rust/markdown-contract/src/declarative/body_v2.rs",
+      "line": 280,
+      "title": "oneOf and aliases still hand-roll the list-of-strings reader yaml::strings provides",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-7",
+      "round": 1,
+      "path": "packages/rust/markdown-contract/src/declarative/yaml.rs",
+      "line": 13,
+      "title": "yaml::get is a pass-through to Mapping::get",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-8",
+      "round": 1,
+      "path": "packages/ts/markdown-contract/tests/fixtures/validation/index.ts",
+      "line": 5,
+      "title": "Barrel comment records history instead of what v29-v38 pin",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-9",
+      "round": 1,
+      "path": "packages/rust/markdown-contract/src/text_constraints.rs",
+      "line": 19,
+      "title": "External import placed among crate imports",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-10",
+      "round": 1,
+      "path": "packages/rust/markdown-contract/src/dialect/wikilinks.rs",
+      "line": 268,
+      "title": "Wall-clock assertion in a unit test can flake",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-11",
+      "round": 1,
+      "path": "packages/rust/markdown-contract/src/tree.rs",
+      "line": 192,
+      "title": "Private field makes the public Frontmatter struct unconstructible outside the crate",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    }
+  ]
 }
