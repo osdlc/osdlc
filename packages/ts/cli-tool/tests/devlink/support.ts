@@ -16,6 +16,7 @@ export const SPEC: ToolSpec = {
   launcher: 'bin/tooly',
   aliases: ['tooly-long'],
   suppressors: ['TOOLY_HARNESS'],
+  cwdLayer: true,
   vendorDirs: { vendor: 'com.example', envVars: envVars('TOOLY') },
 }
 

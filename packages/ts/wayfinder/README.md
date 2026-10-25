@@ -36,8 +36,9 @@ Node.js `^22.22.2 || ^24.15.0 || >=26.0.0`, the range of its dependency
 
 An installed `way` can run the source of a checkout instead, through
 [`@osdlc/cli-tool/devlink`](https://www.npmjs.com/package/@osdlc/cli-tool).
-Inside a wayfinder checkout, `way` runs that checkout. `way dev link` makes one
-checkout the one every `way` on the machine runs. Every link is remembered.
+`way dev link` makes one checkout the one every `way` on the machine runs, and
+`WAY_HOME` names one for a shell. Every link is remembered. `way dev` is a
+contributor tool, so `way --help` does not list it.
 
 ```sh
 way dev install          # once: put shims for this checkout on PATH as way and wayfinder
@@ -48,9 +49,11 @@ way dev use canonical    # … or to the install itself
 way dev status           # which checkout runs now, and why
 ```
 
-The first match wins, in this order: `WAY_HOME`, a checkout above the cwd
-(`WAY_CWD_DEV=0` turns that off), the linked checkout, then the install. The
-shim prints which one it chose on stderr, and `WAY_QUIET=1` silences it. State
+The first match wins, in this order: `WAY_HOME`, the linked checkout, then the
+install. `way` never picks a checkout from the cwd, so a repository you run it
+in cannot choose the code that runs. A checkout must hold `src/cli.ts` and a
+`package.json` named `@osdlc/wayfinder`; anything else is skipped. The shim
+prints which one it chose on stderr, and `WAY_QUIET=1` silences it. State
 is kept in `<config>/way/`, which is `~/Library/Application Support/way` on
 macOS and `${XDG_CONFIG_HOME:-~/.config}/way` elsewhere. A checkout runs from
 source, so it needs [Bun](https://bun.sh) on PATH and a `pnpm install` in the
@@ -434,7 +437,6 @@ providers            the registered tools, built-in and your own;
                      `providers --help`
 clean                remove what this tool has stored; `clean --help`
 guide                how to use and extend this tool, in Markdown
-dev                  link a checkout of this tool over the installed copy
 ```
 
 A subcommand is matched before flags are parsed, so the flags above belong to
@@ -448,7 +450,7 @@ subcommands whose answer depends on the repository take it.
 | `providers` | yes | a trusted project file can add tools when execution is allowed |
 | `clean` | no | resolves every path from the environment and the home directory |
 | `guide` | no | its argument is a topic name |
-| `dev` | no | its state is devlink's, keyed on the tool name |
+| `dev` | no | its state is devlink's, keyed on the tool name; not listed in the help |
 
 `way --help` is the short form: the main ways to run it, the flags most runs
 pass, and the names of the subcommands. `way --help --all` is the full flag

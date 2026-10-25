@@ -27,6 +27,22 @@ export interface ToolSpec {
    */
   marker: string
   /**
+   * The `name` a checkout's `package.json` must have. When set, a directory
+   * is a checkout only when it has both the marker and this name. A common
+   * marker such as `src/cli.ts` alone matches many unrelated projects.
+   * `renderLauncher` rejects a spec that sets it, because the bash launcher
+   * cannot read JSON.
+   */
+  packageName?: string
+  /**
+   * Turns on the cwd layer: a checkout above the working directory runs
+   * instead of the install. Off by default. When on, standing in any
+   * directory that passes the checkout test runs that directory's code, so
+   * turn it on only when the marker (with {@link packageName}) cannot match a
+   * project you did not choose.
+   */
+  cwdLayer?: boolean
+  /**
    * The source entry to run under Bun inside a selected checkout, relative to
    * the checkout root. Defaults to {@link marker}.
    */
@@ -77,7 +93,8 @@ export function homeVar(spec: ToolSpec): string {
 }
 
 /**
- * Set to `0` to turn the cwd layer off for a shell.
+ * Set to `0` to turn the cwd layer off for a shell. It has no effect unless
+ * the spec sets `cwdLayer`.
  *
  * @experimental
  */
@@ -144,6 +161,9 @@ export function validateSpec(spec: ToolSpec): ToolSpec {
         `devlink: ${field} must be a relative path inside the checkout, got ${JSON.stringify(value)}`,
       )
     }
+  }
+  if (spec.packageName !== undefined && spec.packageName.length === 0) {
+    throw new Error('devlink: packageName must not be empty')
   }
   return spec
 }

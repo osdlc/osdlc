@@ -59,6 +59,27 @@ describe('renderLauncher', () => {
   })
 })
 
+describe('bash launcher without the cwd layer', () => {
+  // SPEC with `cwdLayer` left unset, the default.
+  const { cwdLayer: _on, ...OFF } = SPEC
+
+  test('standing in another checkout runs self, as resolve() does', () => {
+    const a = seedCheckout(join(sb.root, 'a'))
+    writeFileSync(join(a, OFF.launcher), renderLauncher(OFF))
+    chmodSync(join(a, OFF.launcher), 0o755)
+    const b = seedCheckout(join(sb.root, 'b'))
+    const r = run(join(a, OFF.launcher), join(b, 'src'))
+    expect(r.out).toBe(`BUN run ${a}/src/cli.ts arg1 arg two`)
+    expect(resolve(OFF, { dirs: sb.dirs, env: {}, cwd: join(b, 'src'), self: a }).source).toBe(
+      'local',
+    )
+  })
+
+  test('renderLauncher rejects a spec with packageName', () => {
+    expect(() => renderLauncher({ ...SPEC, packageName: '@example/tooly' })).toThrow(/packageName/)
+  })
+})
+
 describe('bash launcher agrees with resolve()', () => {
   test('local: nothing set runs self under bun', () => {
     const a = checkoutWithLauncher(join(sb.root, 'a'))

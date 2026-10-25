@@ -17,8 +17,8 @@ tooly dev status             # which checkout runs now, and why
 ## Why
 
 A CLI you develop is also a CLI you use, and the two need different code. The
-installed one should run the source in your current directory without a link
-step, follow one linked checkout from anywhere on the machine, and go back to
+installed one should follow one linked checkout from anywhere on the machine,
+optionally run the checkout you are standing in, and go back to
 the published install with one verb. Every tool that ships as an installable
 binary builds this again, with a `HOME` override in one tool and a config file
 in another. None of them remembers where it pointed last week.
@@ -34,9 +34,18 @@ Four layers. The first that matches wins. `<NAME>` is the tool name upper-cased
 | Layer | Wins when | Off when |
 |---|---|---|
 | env | `<NAME>_HOME` names a checkout | never. An explicit value always applies |
-| cwd | the cwd is inside a checkout of this tool | a suppressor is set, or `<NAME>_CWD_DEV=0` |
+| cwd | the spec sets `cwdLayer: true` and the cwd is inside a checkout of this tool | the spec leaves `cwdLayer` unset, a suppressor is set, or `<NAME>_CWD_DEV=0` |
 | link | `<config>/<name>/home` names a checkout | a suppressor is set |
 | local | none of the above | never |
+
+The cwd layer is off unless the spec turns it on. With it on, running the tool
+in any directory that passes the checkout test runs that directory's code. A
+marker such as `src/cli.ts` is in many projects, so a cloned repository could
+pick the code. Turn it on only with a marker no other project has, and set
+`packageName` too.
+
+A checkout is a directory that has the marker file. When the spec sets
+`packageName`, its `package.json` must also have that `name`.
 
 A layer naming a directory that is no longer a checkout is skipped, not an
 error. Deleting a linked checkout must not break the installed tool. A layer
@@ -74,6 +83,8 @@ export const SPEC: ToolSpec = validateSpec({
   entry: 'src/cli.ts',    // what a selected checkout runs under bun (default: marker)
   launcher: 'bin/tooly.js', // what the PATH shim from `install` runs
   aliases: ['ty'],         // extra PATH names
+  packageName: '@example/tooly', // optional: package.json name a checkout must have
+  cwdLayer: false,        // optional: true runs a checkout above the cwd
   suppressors: [],        // env vars whose presence turns off cwd + link
   vendorDirs: { vendor: 'com.example', envVars: envVars('EXAMPLE') }, // where state lives
 })
@@ -104,7 +115,9 @@ program the user invoked.
 
 A bash launcher is for a tool whose canonical install is a compiled binary or
 built JavaScript, so the choice must be made before any runtime exists.
-`renderLauncher(spec)` writes the same four-layer check in bash. The tool
+`renderLauncher(spec)` writes the same layer checks in bash. It throws for a
+spec that sets `packageName`, because bash cannot read JSON reliably; use a
+JavaScript shim for such a tool. The tool
 commits the result, and `launcherDrift(spec, checkout)` in its test suite
 fails when the committed file no longer matches the rendered one. Pass
 `{ builtEntry }` to prefer a built file under Node. A dev checkout of the

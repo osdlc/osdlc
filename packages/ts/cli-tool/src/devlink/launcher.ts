@@ -67,11 +67,18 @@ export function launcherCheckout(spec: ToolSpec, launcherPath: string): string |
 }
 
 /**
- * Produce the text of the launcher script for a tool.
+ * Produce the text of the launcher script for a tool. Throws when the spec
+ * sets `packageName`, which the bash checks cannot read.
  * @experimental
  */
 export function renderLauncher(spec: ToolSpec, opts: LauncherOptions = {}): string {
+  if (spec.packageName !== undefined) {
+    throw new Error(
+      'devlink: renderLauncher cannot check packageName in bash; use a JavaScript launcher that calls execSelection',
+    )
+  }
   const name = spec.name
+  const cwdLayer = spec.cwdLayer === true
   const marker = spec.marker
   const entry = entryOf(spec)
   const launcherDir = posix.dirname(spec.launcher)
@@ -93,14 +100,25 @@ export function renderLauncher(spec: ToolSpec, opts: LauncherOptions = {}): stri
   p('# regenerate rather than edit (the drift test compares the two).')
   p('#')
   p('# Picks which checkout answers, in this order:')
-  p(`#   ${homeVar(spec)} env → checkout above cwd → linked checkout → local.`)
-  p('# Explicit env always applies. The cwd and link layers are off when a')
-  if (suppressors.length > 0) {
-    p(`# suppressor is set (${suppressors.join(', ')}) — a harness that invokes this`)
-    p('# launcher must never have its code silently swapped — and the cwd layer')
-    p(`# alone is off under ${cwdDevVar(spec)}=0. \`${name} dev\` manages the link.`)
+  if (cwdLayer) {
+    p(`#   ${homeVar(spec)} env → checkout above cwd → linked checkout → local.`)
+    p('# Explicit env always applies. The cwd and link layers are off when a')
+    if (suppressors.length > 0) {
+      p(`# suppressor is set (${suppressors.join(', ')}) — a harness that invokes this`)
+      p('# launcher must never have its code silently swapped — and the cwd layer')
+      p(`# alone is off under ${cwdDevVar(spec)}=0. \`${name} dev\` manages the link.`)
+    } else {
+      p(`# cwd layer is off under ${cwdDevVar(spec)}=0. \`${name} dev\` manages the link.`)
+    }
   } else {
-    p(`# cwd layer is off under ${cwdDevVar(spec)}=0. \`${name} dev\` manages the link.`)
+    p(`#   ${homeVar(spec)} env → linked checkout → local.`)
+    if (suppressors.length > 0) {
+      p('# Explicit env always applies. The link layer is off when a suppressor is')
+      p(`# set (${suppressors.join(', ')}) — a harness that invokes this launcher must`)
+      p(`# never have its code silently swapped. \`${name} dev\` manages the link.`)
+    } else {
+      p(`# Explicit env always applies. \`${name} dev\` manages the link.`)
+    }
   }
   p('#')
   p('# Says which entry runs, and why, on stderr before anything else, so with')
@@ -172,20 +190,22 @@ export function renderLauncher(spec: ToolSpec, opts: LauncherOptions = {}): stri
   p(`  home="\${${homeVar(spec)}}"; via="${homeVar(spec)}"; layer="env"`)
   p('fi')
   p()
-  p('# ── cwd: a checkout above the working directory ─────────────────────────')
-  p('# Walks the physical directory (`pwd -P`), as resolve() walks process.cwd().')
-  p(`if [ -z "$home" ]${guard} && [ "\${${cwdDevVar(spec)}:-1}" != "0" ]; then`)
-  p('  probe="$(pwd -P)"')
-  p('  while :; do')
-  p(
-    '    if is_checkout "$probe"; then home="$probe"; via="dev checkout above cwd"; layer="cwd"; break; fi',
-  )
-  p('    parent="$(dirname "$probe")"')
-  p('    [ "$parent" = "$probe" ] && break')
-  p('    probe="$parent"')
-  p('  done')
-  p('fi')
-  p()
+  if (cwdLayer) {
+    p('# ── cwd: a checkout above the working directory ─────────────────────────')
+    p('# Walks the physical directory (`pwd -P`), as resolve() walks process.cwd().')
+    p(`if [ -z "$home" ]${guard} && [ "\${${cwdDevVar(spec)}:-1}" != "0" ]; then`)
+    p('  probe="$(pwd -P)"')
+    p('  while :; do')
+    p(
+      '    if is_checkout "$probe"; then home="$probe"; via="dev checkout above cwd"; layer="cwd"; break; fi',
+    )
+    p('    parent="$(dirname "$probe")"')
+    p('    [ "$parent" = "$probe" ] && break')
+    p('    probe="$parent"')
+    p('  done')
+    p('fi')
+    p()
+  }
   p('# ── link: `<config>/' + name + '/home`, written by `' + name + ' dev link|use` ─────')
   p('# Mirrors @osdlc/tiered-dirs standalone("' + name + '").config(): the launcher runs')
   p('# before a runtime exists, so it cannot call the SDK. With no usable config')

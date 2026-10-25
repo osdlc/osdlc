@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // The installed `way`. Before running its own code it asks devlink which
-// checkout should answer: `WAY_HOME`, a wayfinder checkout above the cwd, or one
-// linked by `way dev link`. Any of those other than this one runs there
-// instead, so an installed `way` follows the source you are working on.
+// checkout should answer: the one `WAY_HOME` names, or the one `way dev link`
+// linked. A checkout other than this one runs there instead. The cwd is never
+// searched, so a repository you stand in cannot choose the code that runs.
 // Requires the built dist/ (`pnpm run build`).
 import { execSelection, resolve } from '@osdlc/cli-tool/devlink'
 

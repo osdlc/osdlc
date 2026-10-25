@@ -12,15 +12,18 @@ own code. This uses `@osdlc/cli-tool/devlink`.
 
 First hit wins.
 
-| Layer | Wins when                                            | Off when        |
-| ----- | ---------------------------------------------------- | --------------- |
-| env   | `WAY_HOME` names a wayfinder checkout                  | never           |
-| cwd   | the current directory is inside a wayfinder checkout   | `WAY_CWD_DEV=0` |
-| link  | `way dev link` has pointed the machine at a checkout | `way dev off`   |
-| local | none of the above: the installed package             |                 |
+| Layer | Wins when                                            | Off when      |
+| ----- | ---------------------------------------------------- | ------------- |
+| env   | `WAY_HOME` names a wayfinder checkout                | never         |
+| link  | `way dev link` has pointed the machine at a checkout | `way dev off` |
+| local | none of the above: the installed package             |               |
 
-A checkout is a directory that holds the wayfinder source (`src/cli.ts`). The
-installed package ships only `dist/`, so it never counts as one. A layer
+`way` never picks a checkout from the current directory. A repository you run
+it in cannot choose the code that runs.
+
+A checkout is a directory that holds the wayfinder source (`src/cli.ts`) and a
+`package.json` whose `name` is `@osdlc/wayfinder`. The installed package ships
+only `dist/`, so it never counts as one. A layer
 naming a directory that is no longer a checkout is skipped. The shim prints
 which entry it chose on stderr. `WAY_QUIET=1` silences that.
 

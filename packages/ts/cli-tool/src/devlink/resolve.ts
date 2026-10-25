@@ -6,12 +6,14 @@
  *   env    `<NAME>_HOME` names a checkout. It is explicit, so it always
  *          applies, even when a suppressor is set.
  *   cwd    the cwd is inside a checkout of this tool, so run that source.
- *          Off when a suppressor is set or `<NAME>_CWD_DEV=0`.
+ *          Only when the spec sets `cwdLayer`. Off when a suppressor is set
+ *          or `<NAME>_CWD_DEV=0`.
  *   link   the `home` file names a checkout. Off when a suppressor is set.
  *   local  none of the above. The launcher runs the code next to it, which
  *          is the canonical install.
  *
- * A layer that names an invalid checkout (no marker) is skipped, not an
+ * A layer that names an invalid checkout (no marker, or the wrong
+ * `package.json` name when the spec sets `packageName`) is skipped, not an
  * error. A deleted checkout must not break the installed tool. A layer that
  * names the launcher's own checkout resolves to `local`, so a link to the
  * installed checkout never re-execs itself.
@@ -21,7 +23,7 @@
  * checks that the two give the same answer.
  */
 
-import { realpathSync, statSync } from 'node:fs'
+import { readFileSync, realpathSync, statSync } from 'node:fs'
 import { join, resolve as resolvePath } from 'node:path'
 
 import { readActive, type StateOptions } from './state.ts'
@@ -87,13 +89,25 @@ export interface ResolveOptions extends StateOptions {
 
 /**
  * True when `dir` carries the tool's marker as a file (following symlinks),
- * the same test as the launcher's `[ -f ]`.
+ * the same test as the launcher's `[ -f ]`. When the spec sets
+ * `packageName`, `dir/package.json` must also have that `name`.
  *
  * @experimental
  */
 export function isCheckout(spec: ToolSpec, dir: string): boolean {
   try {
-    return statSync(join(dir, spec.marker)).isFile()
+    if (!statSync(join(dir, spec.marker)).isFile()) return false
+  } catch {
+    return false
+  }
+  if (spec.packageName === undefined) return true
+  try {
+    const pkg: unknown = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf-8'))
+    return (
+      typeof pkg === 'object' &&
+      pkg !== null &&
+      (pkg as { name?: unknown }).name === spec.packageName
+    )
   } catch {
     return false
   }
@@ -165,7 +179,7 @@ export function resolve(spec: ToolSpec, opts: ResolveOptions = {}): Selection {
     if (hit !== null) return hit
   }
 
-  if (!isSuppressed && env[cwdDevVar(spec)] !== '0') {
+  if (spec.cwdLayer === true && !isSuppressed && env[cwdDevVar(spec)] !== '0') {
     const above = cwdCheckout(spec, cwd)
     if (above !== null) {
       const hit = pick('cwd', above, 'dev checkout above cwd')

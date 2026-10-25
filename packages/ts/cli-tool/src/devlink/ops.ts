@@ -66,7 +66,11 @@ function checkoutOrThrow(spec: ToolSpec, path: string, cwd: string | undefined):
   // A relative path is relative to the caller's cwd, which `opts.cwd` may override.
   const abs = resolvePath(cwd ?? process.cwd(), path)
   if (!isCheckout(spec, abs)) {
-    throw new DevlinkError(`not a ${spec.name} checkout (missing ${spec.marker}): ${abs}`)
+    const want =
+      spec.packageName === undefined
+        ? spec.marker
+        : `${spec.marker}, or package.json name ${spec.packageName}`
+    throw new DevlinkError(`not a ${spec.name} checkout (missing ${want}): ${abs}`)
   }
   return abs
 }
@@ -500,6 +504,10 @@ export function history(spec: ToolSpec, opts: OpOptions = {}): HistoryEntry[] {
 export interface StatusResult {
   selection: Selection
   env: { var: string; value: string | null }
+  /**
+   * `suppressed` is true when the cwd layer is off: the spec does not set
+   * `cwdLayer`, a suppressor is set, or `<NAME>_CWD_DEV=0`.
+   */
   cwd: { var: string; checkout: string | null; suppressed: boolean }
   link: { path: string; value: string | null; valid: boolean; suppressed: boolean }
   /** The launcher's own checkout, when it has one. */
@@ -557,7 +565,7 @@ export function status(spec: ToolSpec, opts: OpOptions = {}): StatusResult {
     cwd: {
       var: cwdDevVar(spec),
       checkout: cwdCheckout(spec, cwd),
-      suppressed: isSuppressed || env[cwdDevVar(spec)] === '0',
+      suppressed: spec.cwdLayer !== true || isSuppressed || env[cwdDevVar(spec)] === '0',
     },
     link: {
       path: homePath(spec, opts),

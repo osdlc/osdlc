@@ -105,8 +105,7 @@ subcommands
   trust      allow this repository's runners to be read by running them; see trust --help
   providers  the registered tools, built-in and your own; see providers --help
   guide      how to use and extend this tool, in Markdown; see guide --help
-  clean      remove the data this tool stores outside your repositories; see clean --help
-  dev        run the installed ${BIN} from a development checkout; see dev --help`
+  clean      remove the data this tool stores outside your repositories; see clean --help`
 
 /**
  * wayfinder's own `true` default for exec is applied in {@link main}, below
@@ -495,8 +494,8 @@ export async function main(
 
   if (argv[0] === 'clean') return runCleanCommand(APP, argv.slice(1), { ...io, env, home })
   if (argv[0] === 'guide') return runGuideCommand(GUIDE_TOOL, argv.slice(1), io)
-  // `self` is this checkout, so `dev install` and a bare `dev link` know what
-  // to point at.
+  // `dev` is a contributor tool, so the help does not list it. `self` is this
+  // checkout, so `dev install` and a bare `dev link` know what to point at.
   if (argv[0] === 'dev') {
     return runDevCli(WAYFINDER_SPEC, argv.slice(1), { io, env, self: checkoutRoot() })
   }

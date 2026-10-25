@@ -50,10 +50,18 @@ usage: ${n} dev <verb> [options]
 
   --json      machine output      --dry-run   report, write nothing
 
-Resolution order, first hit wins: \$${envStemOf(n)}_HOME, a checkout above the
-cwd (\$${envStemOf(n)}_CWD_DEV=0 turns that off), the linked checkout, the local
-install.
+${order(spec)}
 `
+}
+
+function order(spec: ToolSpec): string {
+  const stem = envStemOf(spec.name)
+  return spec.cwdLayer === true
+    ? `Resolution order, first hit wins: \$${stem}_HOME, a checkout above the
+cwd (\$${stem}_CWD_DEV=0 turns that off), the linked checkout, the local
+install.`
+    : `Resolution order, first hit wins: \$${stem}_HOME, the linked checkout, the
+local install.`
 }
 
 function envStemOf(name: string): string {
