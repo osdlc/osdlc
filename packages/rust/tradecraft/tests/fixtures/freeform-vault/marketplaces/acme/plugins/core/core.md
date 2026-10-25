@@ -1,7 +1,7 @@
 ---
 name: core
 description: A plugin with a note.
-ap-keywords:
+tc-keywords:
   - review
   - automation
 ---

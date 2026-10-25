@@ -9,7 +9,7 @@
 //!
 //! Nothing about the marketplace is decided here. Which skills are
 //! publishable, how they group into plugins, what each manifest says, which
-//! root a skill's `ap-targets` admits it to, what counts as stale, and
+//! root a skill's `tc-targets` admits it to, what counts as stale, and
 //! whether the swap is safe all live in [`tradecraft_core::export`]. This
 //! file resolves flags against configuration, calls once, and renders.
 //!
@@ -67,7 +67,7 @@ pub struct ExportFlags {
     /// Which marketplace to build. Refused by name if the vault holds no
     /// such one.
     pub marketplace: Option<String>,
-    /// The plugin a note with no `ap-plugin` belongs to. Overrides
+    /// The plugin a note with no `tc-plugin` belongs to. Overrides
     /// `marketplace.default_plugin`.
     pub default_plugin: Option<String>,
     /// The global `--vault`, `--config` and `--namespace` flags.
@@ -354,7 +354,7 @@ pub fn run_export(verb: ExportVerb, flags: &ExportFlags, ctx: &mut CommandContex
         );
     }
 
-    // A plugin whose members drifted with its own `ap-version` unmoved since
+    // A plugin whose members drifted with its own `tc-version` unmoved since
     // is a `check`-only callout — `build` just swapped the drift away, so
     // there is nothing left to suggest bumping. Stderr, never stdout: the
     // human table and `--json` already carry this fact (the report's own
@@ -371,7 +371,7 @@ pub fn run_export(verb: ExportVerb, flags: &ExportFlags, ctx: &mut CommandContex
             {
                 let _ = writeln!(
                     ctx.err,
-                    "advisory: {root}/{name} ap-version {} unmoved since members changed — `tradecraft bump {name}` is available",
+                    "advisory: {root}/{name} tc-version {} unmoved since members changed — `tradecraft bump {name}` is available",
                     vbs.current_version
                 );
             }

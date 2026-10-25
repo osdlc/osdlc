@@ -97,7 +97,7 @@ pub struct NewSkillFlags {
     pub plugin: Option<String>,
     /// The description written into the new note.
     pub description: Option<String>,
-    /// Targets written to `ap-targets`.
+    /// Targets written to `tc-targets`.
     pub targets: Vec<String>,
     /// The global `--vault`, `--config` and `--namespace` flags.
     pub common: CommonFlags,
@@ -700,7 +700,7 @@ fn report_success(
 
 /// [`Outcome::entries`] grouped by path, in first-occurrence order, each
 /// path's facts joined into one reason — so a rename's link rewrite and a
-/// move's dropped `ap-plugin` land as one row each, exactly as
+/// move's dropped `tc-plugin` land as one row each, exactly as
 /// the CLI spec's transcripts show them.
 ///
 /// A [`Applied::Skipped`] fact is the one status word this file adds beyond
@@ -843,9 +843,9 @@ fn label_delete(applied: &Applied) -> Option<String> {
 
 /// `convert`'s own labeller, closed over the kind key and the target kind:
 /// [`Applied::FieldSet`] only ever carries the key it set, never the value,
-/// so the value shown (`ap-kind: plugin`) is this verb's own, not read back
+/// so the value shown (`tc-kind: plugin`) is this verb's own, not read back
 /// off the outcome. The physical relocation a conversion into or out of a
-/// container kind makes is not reported on its own line — `ap-kind: <k>` is
+/// container kind makes is not reported on its own line — `tc-kind: <k>` is
 /// the fact the CLI spec asks this verb to lead with, and the move is
 /// what becoming that kind implies.
 fn label_convert(kind_key: String, to_kind: EntityKind) -> impl Fn(&Applied) -> Option<String> {

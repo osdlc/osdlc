@@ -1,13 +1,13 @@
 //! Configuration.
 //!
-//! **The project file** is `agent-pants.yaml`, committed, found by walking
+//! **The project file** is `tradecraft.yaml`, committed, found by walking
 //! up from the working directory — or named outright with `--config`. It
 //! holds what belongs to a vault and its distribution: the vault path, the
 //! frontmatter namespace, the destinations, the marketplace block.
 //!
-//! **The machine file** is `<config-home>/agent-pants/config.yaml` in the
+//! **The machine file** is `<config-home>/tradecraft/config.yaml` in the
 //! standalone tier of [`crate::dirs`], never committed, relocated by
-//! `AGENT_PANTS_MACHINE_CONFIG`. It has the same shape and stands in, key by
+//! `TRADECRAFT_MACHINE_CONFIG`. It has the same shape and stands in, key by
 //! key, where the project file is silent.
 //!
 //! Both may carry a `paths:` map, and every path-valued setting may refer to
@@ -34,15 +34,16 @@ use config_layers::paths::{self, PathNames};
 use serde::{Deserialize, Serialize};
 
 /// The tool's standalone name for its config directory segment and env stem.
-/// It keeps the earlier `agent-pants` spelling so existing machine files are
-/// still found.
-pub const TOOL: &str = "agent-pants";
+pub const TOOL: &str = "tradecraft";
 /// The command name the configuration messages print.
 const COMMAND: &str = "tradecraft";
 /// The committed project file, looked for from the working directory upward.
 pub const PROJECT_FILE: &str = tradecraft_core::PROJECT_FILE;
+/// The project file's earlier name. Only its presence is checked, to say how to
+/// rename it.
+const OLD_PROJECT_FILE: &str = "agent-pants.yaml";
 /// Env var that relocates the machine file, for tests and one-off runs.
-pub const MACHINE_CONFIG_ENV: &str = "AGENT_PANTS_MACHINE_CONFIG";
+pub const MACHINE_CONFIG_ENV: &str = "TRADECRAFT_MACHINE_CONFIG";
 
 /// Where `publish` writes when `--to` is not given.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Default)]
@@ -77,7 +78,7 @@ pub struct DeclaredFolders {
 /// reads the same block. See [`tradecraft_core::settings`].
 pub use tradecraft_core::MarketplaceSettings;
 
-/// The shape of both files: the committed `agent-pants.yaml` and the
+/// The shape of both files: the committed `tradecraft.yaml` and the
 /// machine file.
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, Default)]
 #[serde(deny_unknown_fields)]
@@ -89,8 +90,8 @@ pub struct TradecraftConfig {
     /// one run.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub vault: Option<String>,
-    /// The frontmatter namespace as a stem — the `ap` of `ap-kind`. Absent
-    /// means `ap`.
+    /// The frontmatter namespace as a stem — the `tc` of `tc-kind`. Absent
+    /// means `tc`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub namespace: Option<String>,
     /// Where the vault keeps skills, references and snippets.
@@ -225,7 +226,7 @@ pub fn replace_machine_config_override(path: Option<PathBuf>) -> Option<PathBuf>
     std::mem::replace(&mut *slot, path)
 }
 
-/// `<config-home>/agent-pants/config.yaml`, unless [`MACHINE_CONFIG_ENV`]
+/// `<config-home>/tradecraft/config.yaml`, unless [`MACHINE_CONFIG_ENV`]
 /// says otherwise. A test override, set with the `test-support` feature,
 /// comes before both.
 pub fn machine_config_path() -> PathBuf {
@@ -594,6 +595,14 @@ fn load_config_at(
     };
 
     let Some(project_path) = found else {
+        if let Some(old) = file::find_up(cwd, OLD_PROJECT_FILE) {
+            return ConfigLoad::Malformed {
+                path: old,
+                detail: format!(
+                    "rename it to `{PROJECT_FILE}` and change its `ap-` keys, and those in the vault's notes, to `tc-`"
+                ),
+            };
+        }
         let machine_config: TradecraftConfig = if machine_exists {
             serde_json::from_value(serde_json::Value::Object(machine_mapping.clone()))
                 .unwrap_or_default()
@@ -685,7 +694,7 @@ pub static NEEDS: LazyLock<Needs> = LazyLock::new(|| {
         KeySpec {
             key: "namespace",
             scope: Scope::Both,
-            description: "The frontmatter namespace as a stem — the `ap` of `ap-kind`. Absent means `ap`.",
+            description: "The frontmatter namespace as a stem — the `tc` of `tc-kind`. Absent means `tc`.",
         },
         KeySpec {
             key: "declared_folders",
@@ -745,7 +754,7 @@ pub static NEEDS: LazyLock<Needs> = LazyLock::new(|| {
         KeySpec {
             key: "marketplace.default_plugin",
             scope: Scope::Both,
-            description: "The plugin a note with no `ap-plugin` belongs to. `build` and `check` need it.",
+            description: "The plugin a note with no `tc-plugin` belongs to. `build` and `check` need it.",
         },
         KeySpec {
             key: "marketplace.plugins",
@@ -796,7 +805,7 @@ mod tests {
         .unwrap();
         let project = tmp.path().join("project");
         std::fs::create_dir_all(&project).unwrap();
-        std::fs::write(project.join(PROJECT_FILE), "namespace: ap\n").unwrap();
+        std::fs::write(project.join(PROJECT_FILE), "namespace: tc\n").unwrap();
 
         let ConfigLoad::Loaded { config, .. } = load_config_at(None, &project, machine_path, &home)
         else {

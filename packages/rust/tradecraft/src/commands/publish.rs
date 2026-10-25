@@ -347,6 +347,22 @@ pub fn run_publish(flags: &PublishFlags, ctx: &mut CommandContext<'_>) -> i32 {
     // Whether any pair produced a report at all — see the warning below.
     let mut reported = false;
 
+    // A destination written by an earlier build keeps its manifest under the
+    // old folder name. Say how to move it rather than publish over it.
+    for dest in &destinations {
+        if dest.root.join(".agent-pants/manifest.json").exists()
+            && !dest.root.join(".tradecraft/manifest.json").exists()
+        {
+            return usage_error(
+                ctx.err,
+                &format!(
+                    "{} has .agent-pants/manifest.json: rename .agent-pants/ to .tradecraft/",
+                    dest.root.display()
+                ),
+            );
+        }
+    }
+
     'outer: for note_path in &note_paths {
         let skill_label = relative_path(&run.vault, note_path).display().to_string();
         for dest in &destinations {
@@ -397,7 +413,7 @@ pub fn run_publish(flags: &PublishFlags, ctx: &mut CommandContext<'_>) -> i32 {
                             target: dest.target.clone(),
                         });
                     }
-                    // The note's `ap-targets` excluded this destination. Not
+                    // The note's `tc-targets` excluded this destination. Not
                     // a failure and not an outcome.
                     if let Some(reason) = report.not_published {
                         excluded.push(AttributedExclusion {

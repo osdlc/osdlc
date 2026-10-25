@@ -1,7 +1,7 @@
 //! Configuration loading, plus a conformance test against a checked-in
-//! `agent-pants.yaml`.
+//! `tradecraft.yaml`.
 //!
-//! Every case that touches `AGENT_PANTS_MACHINE_CONFIG` — which is every
+//! Every case that touches `TRADECRAFT_MACHINE_CONFIG` — which is every
 //! `load_config`/`machine_config_path` case — runs under
 //! [`common::with_machine_env`].
 
@@ -47,7 +47,7 @@ impl Fixture {
         fs::write(self.project_file(), yaml).unwrap();
     }
 
-    /// Run `f` with `AGENT_PANTS_MACHINE_CONFIG` relocated to this
+    /// Run `f` with `TRADECRAFT_MACHINE_CONFIG` relocated to this
     /// fixture's machine file.
     fn run<T>(&self, f: impl FnOnce() -> T) -> T {
         with_machine_env(Some(&self.machine_path), f)
@@ -66,7 +66,7 @@ mod machine_config_path_tests {
         with_machine_env(None, || {
             let expected = tradecraft::dirs::system()
                 .unwrap()
-                .standalone("agent-pants")
+                .standalone("tradecraft")
                 .unwrap()
                 .config()
                 .path()
@@ -140,7 +140,7 @@ mod find_project_file_tests {
     use super::*;
 
     #[test]
-    fn walks_up_from_cwd_to_the_nearest_agent_pants_yaml() {
+    fn walks_up_from_cwd_to_the_nearest_tradecraft_yaml() {
         let fx = Fixture::new();
         let nested = fx.path().join("a").join("b").join("c");
         fs::create_dir_all(&nested).unwrap();
@@ -614,7 +614,7 @@ mod load_config_tests {
     }
 }
 
-/// Conformance: the fixture project file `tests/fixtures/agent-pants.yaml`
+/// Conformance: the fixture project file `tests/fixtures/tradecraft.yaml`
 /// deserializes cleanly with its real values.
 #[test]
 fn the_fixture_project_file_loads_cleanly() {

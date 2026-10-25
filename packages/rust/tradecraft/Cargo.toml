@@ -41,7 +41,7 @@ config-layers = { workspace = true }
 typed-git = { workspace = true }
 # The cache and config directories.
 tiered-dirs = { workspace = true }
-# `bump` sets `ap-version` with `FieldEdit::set`, whose value is a
+# `bump` sets `tc-version` with `FieldEdit::set`, whose value is a
 # `yaml_splice::Value`.
 yaml-splice = { workspace = true }
 # The authoring executor: `apply` turns a core `AuthoringOp` into writes, with

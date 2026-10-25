@@ -76,7 +76,7 @@ pub struct AdoptFlags {
     pub from_git: Vec<String>,
     /// The plugin group adopted skills are stamped with.
     pub plugin: Option<String>,
-    /// Repeatable. What lands in `ap-targets`.
+    /// Repeatable. What lands in `tc-targets`.
     pub set_targets: Vec<String>,
     /// Repeatable. Adopt only these skills, by name or source-relative path.
     pub only: Vec<String>,

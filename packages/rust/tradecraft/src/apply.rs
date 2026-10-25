@@ -891,14 +891,14 @@ mod tests {
             frontmatter: vec![FieldEdit::set("name", Value::Str("gear".to_owned()))],
             members: vec![(
                 "plugins/tools/skills/keyed.md".to_owned(),
-                vec![FieldEdit::set("ap-plugin", Value::Str("gear".to_owned()))],
+                vec![FieldEdit::set("tc-plugin", Value::Str("gear".to_owned()))],
             )],
         };
         apply(v.path(), &op).unwrap();
 
         assert!(!v.path().join("plugins/tools").exists());
         assert!(read(v.path(), "plugins/gear/gear.md").contains("name: gear"));
-        assert!(read(v.path(), "plugins/gear/skills/keyed.md").contains("ap-plugin: gear"));
+        assert!(read(v.path(), "plugins/gear/skills/keyed.md").contains("tc-plugin: gear"));
     }
 
     #[test]
@@ -918,7 +918,7 @@ mod tests {
             frontmatter: vec![],
             members: vec![(
                 "plugins/other/skills/stray.md".to_owned(),
-                vec![FieldEdit::set("ap-plugin", Value::Str("gear".to_owned()))],
+                vec![FieldEdit::set("tc-plugin", Value::Str("gear".to_owned()))],
             )],
         };
         let err = apply(v.path(), &op).unwrap_err();
@@ -950,7 +950,7 @@ mod tests {
             // once the bundle has moved.
             members: vec![(
                 "plugins/tools/skills/missing.md".to_owned(),
-                vec![FieldEdit::set("ap-plugin", Value::Str("gear".to_owned()))],
+                vec![FieldEdit::set("tc-plugin", Value::Str("gear".to_owned()))],
             )],
         };
         let err = apply(v.path(), &op).unwrap_err();

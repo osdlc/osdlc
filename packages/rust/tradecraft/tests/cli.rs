@@ -4,7 +4,7 @@
 //! working directory on the context rather than the process — so these run in
 //! parallel without changing the process's directory.
 //!
-//! `AGENT_PANTS_MACHINE_CONFIG` is still process-wide, so every run
+//! `TRADECRAFT_MACHINE_CONFIG` is still process-wide, so every run
 //! relocates it under [`common::with_machine_env`].
 
 mod common;
@@ -408,7 +408,7 @@ fn list_with_no_configuration_and_no_vault_is_exit_4_naming_both_files() {
     let dir = tempfile::tempdir().unwrap();
     let run = run(&["list"], dir.path());
     assert_eq!(run.code, 4);
-    assert!(run.stderr.contains("agent-pants.yaml"), "{}", run.stderr);
+    assert!(run.stderr.contains("tradecraft.yaml"), "{}", run.stderr);
     assert!(
         run.stderr.contains("no-machine-config.yaml"),
         "{}",
@@ -444,10 +444,52 @@ fn list_over_a_vault_that_is_not_there_is_exit_2() {
 #[test]
 fn a_project_file_above_the_working_directory_supplies_the_vault() {
     let (dir, _vault) = fixture();
-    fs::write(dir.path().join("agent-pants.yaml"), "vault: ./vault\n").unwrap();
+    fs::write(dir.path().join("tradecraft.yaml"), "vault: ./vault\n").unwrap();
     let run = run(&["list"], dir.path());
     assert_eq!(run.code, 0);
     assert!(run.stdout.contains("code-review"));
+}
+
+#[test]
+fn an_old_agent_pants_yaml_without_a_tradecraft_yaml_says_to_rename_it() {
+    let (dir, _vault) = fixture();
+    fs::write(dir.path().join("agent-pants.yaml"), "vault: ./vault\n").unwrap();
+    let run = run(&["list"], dir.path());
+    assert_eq!(run.code, 4, "{}", run.stderr);
+    assert!(run.stderr.contains("agent-pants.yaml"), "{}", run.stderr);
+    assert!(
+        run.stderr.contains("rename it to `tradecraft.yaml`"),
+        "{}",
+        run.stderr
+    );
+    assert!(run.stderr.contains("`tc-`"), "{}", run.stderr);
+}
+
+#[test]
+fn a_destination_with_an_old_agent_pants_manifest_says_to_rename_the_folder() {
+    let (dir, vault) = fixture();
+    let dest = dest_of(dir.path());
+    fs::create_dir_all(dest.join(".agent-pants")).unwrap();
+    fs::write(dest.join(".agent-pants").join("manifest.json"), "{}").unwrap();
+    let run = run(
+        &[
+            "publish",
+            "--vault",
+            &vault.display().to_string(),
+            "--to",
+            &dest.display().to_string(),
+            "--target",
+            "claude",
+            "--yes",
+        ],
+        dir.path(),
+    );
+    assert_eq!(run.code, 3, "{}", run.stderr);
+    assert!(
+        run.stderr.contains("rename .agent-pants/ to .tradecraft/"),
+        "{}",
+        run.stderr
+    );
 }
 
 // --- build and check ---------------------------------------------------------
@@ -455,7 +497,7 @@ fn a_project_file_above_the_working_directory_supplies_the_vault() {
 #[test]
 fn a_missing_default_plugin_is_a_usage_error_that_says_where_to_set_it() {
     let (dir, _vault) = fixture();
-    fs::write(dir.path().join("agent-pants.yaml"), "vault: ./vault\n").unwrap();
+    fs::write(dir.path().join("tradecraft.yaml"), "vault: ./vault\n").unwrap();
     let out = dir.path().join("market").display().to_string();
     let run = run(&["check", "--out", &out], dir.path());
     assert_eq!(run.code, 3);
@@ -467,7 +509,7 @@ fn a_missing_default_plugin_is_a_usage_error_that_says_where_to_set_it() {
     assert!(run.stderr.contains("--default-plugin"), "{}", run.stderr);
     assert!(
         run.stderr
-            .contains(&dir.path().join("agent-pants.yaml").display().to_string()),
+            .contains(&dir.path().join("tradecraft.yaml").display().to_string()),
         "{}",
         run.stderr
     );
@@ -574,7 +616,7 @@ fn the_project_files_marketplace_license_reaches_the_pack_manifest() {
     let dir = tempfile::tempdir().unwrap();
     let market = dir.path().join("market");
     fs::write(
-        dir.path().join("agent-pants.yaml"),
+        dir.path().join("tradecraft.yaml"),
         format!(
             "vault: {}\nmarketplace:\n  default_plugin: tools\n  out: {}\n  license: MIT\n",
             donor_vault(),
@@ -1101,14 +1143,14 @@ fn adopt_imports_the_bundle_rewrites_links_and_stamps_provenance_exit_0() {
 
     let note = fs::read_to_string(adopted_note(&vault, "adopted")).unwrap();
     assert!(note.contains("name: code-review"));
-    assert!(note.contains("ap-plugin: adopted"));
-    // The provenance the donor's adopt did not record. `ap-also-at` is the
+    assert!(note.contains("tc-plugin: adopted"));
+    // The provenance the donor's adopt did not record. `tc-also-at` is the
     // sixth and is absent here on purpose: nothing was cross-referenced.
-    assert!(note.contains("ap-source:"));
-    assert!(note.contains("ap-format:"));
-    assert!(note.contains("ap-source-hash:"));
-    assert!(note.contains("ap-adopted-hash:"));
-    assert!(note.contains("ap-adopted-at:"));
+    assert!(note.contains("tc-source:"));
+    assert!(note.contains("tc-format:"));
+    assert!(note.contains("tc-source-hash:"));
+    assert!(note.contains("tc-adopted-hash:"));
+    assert!(note.contains("tc-adopted-at:"));
     // A relative markdown link became a wikilink.
     assert!(note.contains("[[checklist|the review checklist]]"));
     assert!(!note.contains("](references/checklist.md)"));
@@ -1309,8 +1351,8 @@ fn plugin_groups_the_adoption_and_set_targets_narrows_what_it_will_publish_to() 
     assert_eq!(result.code, 0, "{}", result.stderr);
 
     let note = fs::read_to_string(adopted_note(&vault, "reviewing")).unwrap();
-    assert!(note.contains("ap-plugin: reviewing"));
-    assert!(note.contains("ap-targets"));
+    assert!(note.contains("tc-plugin: reviewing"));
+    assert!(note.contains("tc-targets"));
     assert!(note.contains("claude"));
 }
 
@@ -1401,7 +1443,7 @@ fn namespace_decides_how_the_provenance_is_spelled() {
     let note = fs::read_to_string(adopted_note(&vault, "adopted")).unwrap();
     assert!(note.contains("x-source:"));
     assert!(note.contains("x-plugin: adopted"));
-    assert!(!note.contains("ap-source:"));
+    assert!(!note.contains("tc-source:"));
 }
 
 #[test]
@@ -1637,7 +1679,7 @@ fn from_git_stamps_the_repository_and_the_commit_never_the_checkout_path() {
         );
 
         let note = fs::read_to_string(adopted_note(&vault, "adopted")).unwrap();
-        assert!(note.contains("ap-source:"));
+        assert!(note.contains("tc-source:"));
         // The repository and the commit, which still name the same bytes
         // after the cache is purged — not the checkout directory, which does
         // not.
@@ -1990,7 +2032,7 @@ fn an_unreadable_manifest_is_unknown_with_a_reason_not_an_error() {
     let dest = dest_of(dir.path());
     publish(&vault, &dest, "skills/code-review/code-review.md");
     fs::write(
-        dest.join(".agent-pants").join("manifest.json"),
+        dest.join(".tradecraft").join("manifest.json"),
         "{ truncated",
     )
     .unwrap();
@@ -2179,7 +2221,7 @@ fn a_named_note_collapses_dot_segments_the_way_resolve_path_does() {
 #[test]
 fn a_config_naming_a_directory_is_unreadable_not_missing() {
     let dir = tempfile::tempdir().unwrap();
-    let as_dir = dir.path().join("agent-pants.yaml");
+    let as_dir = dir.path().join("tradecraft.yaml");
     fs::create_dir_all(&as_dir).unwrap();
     // Existence, not "is a file": the path is there, so the failure is the
     // read, and that is a blocker (2) rather than "--config names a file that
@@ -2716,7 +2758,7 @@ fn name_only_project(strict: bool) -> tempfile::TempDir {
         ""
     };
     fs::write(
-        dir.path().join("agent-pants.yaml"),
+        dir.path().join("tradecraft.yaml"),
         format!(
             "vault: vault\nmarketplace:\n  name: demo\n  default_plugin: tools\n  out: out\n{strict}"
         ),

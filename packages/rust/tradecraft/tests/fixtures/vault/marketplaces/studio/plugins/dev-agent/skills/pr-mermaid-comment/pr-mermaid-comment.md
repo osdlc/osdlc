@@ -14,8 +14,8 @@ allowed-tools:
 - Read
 - Write
 trigger: /pr-mermaid-comment
-ap-kind: skill
-ap-plugin: dev-agent
+tc-kind: skill
+tc-plugin: dev-agent
 ---
 
 # /[[pr-mermaid-comment]]

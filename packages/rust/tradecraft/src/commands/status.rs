@@ -158,7 +158,7 @@ pub fn run_status(flags: &StatusFlags, ctx: &mut CommandContext<'_>) -> i32 {
 
     // --- the rows -----------------------------------------------------------
     let mut rows: Vec<AttributedState> = Vec::new();
-    // A plugin whose members drifted with its own `ap-version` unmoved since,
+    // A plugin whose members drifted with its own `tc-version` unmoved since,
     // one entry per (skill, destination) row that carries the suggestion —
     // printed after the report as a stderr advisory, never folded into
     // `AttributedState` itself, which `--json` serializes and must not grow a
@@ -299,7 +299,7 @@ pub fn run_status(flags: &StatusFlags, ctx: &mut CommandContext<'_>) -> i32 {
                 .unwrap_or(skill.as_str());
             let _ = writeln!(
                 ctx.err,
-                "advisory: {skill} ap-version {} unmoved since members changed — `tradecraft bump {plugin}` is available",
+                "advisory: {skill} tc-version {} unmoved since members changed — `tradecraft bump {plugin}` is available",
                 suggestion.current_version
             );
         }

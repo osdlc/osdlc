@@ -160,13 +160,13 @@ struct ReadOnlyGlobals {
     #[arg(
         long,
         value_name = "path",
-        help = "Read this project file instead of the nearest `agent-pants.yaml` above the working directory."
+        help = "Read this project file instead of the nearest `tradecraft.yaml` above the working directory."
     )]
     config: Option<String>,
     #[arg(
         long,
         value_name = "stem",
-        help = "Frontmatter namespace stem — the `ap` of `ap-kind`. Overrides the configuration for this run."
+        help = "Frontmatter namespace stem — the `tc` of `tc-kind`. Overrides the configuration for this run."
     )]
     namespace: Option<String>,
     #[arg(long, help = "Emit the report on stdout as one JSON document.")]
@@ -297,7 +297,7 @@ enum Verb {
     /// Remove a note's files from a destination.
     #[command(before_help = stub_help("unpublish"))]
     Unpublish(UnpublishArgs),
-    /// Raise a plugin's `ap-version` by one semver level: `--major`, `--minor`, or `--patch` (default).
+    /// Raise a plugin's `tc-version` by one semver level: `--major`, `--minor`, or `--patch` (default).
     Bump(BumpArgs),
     /// Author a new marketplace, plugin, or skill note.
     New {
@@ -362,7 +362,7 @@ struct ExportArgs {
     /// The marketplace's name. Overrides `marketplace.name`.
     #[arg(long, value_name = "name")]
     marketplace: Option<String>,
-    /// The plugin a note with no `ap-plugin` belongs to. Overrides `marketplace.default_plugin`.
+    /// The plugin a note with no `tc-plugin` belongs to. Overrides `marketplace.default_plugin`.
     #[arg(long, value_name = "name")]
     default_plugin: Option<String>,
     #[command(flatten)]
