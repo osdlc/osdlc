@@ -100,8 +100,9 @@
  *
  * Inputs are not modelled. A `workflow_dispatch.inputs:` map would become
  * `-f key=value` parameters. This reader does not read into it, so every task
- * has `parameters: []`. `argv` has no placeholders either way, so a task
- * cannot inject arguments. It runs the workflow with its declared defaults.
+ * has `parameters: []` and `parametersUnknown: 'not-read'`. `argv` has no
+ * placeholders either way, so a task cannot inject arguments. It runs the
+ * workflow with its declared defaults.
  */
 
 import type { ProviderContext } from '../../contract.ts'
@@ -392,6 +393,7 @@ function makeTask(file: string, doc: string): Task {
     // never re-joined.
     display: argv.join(' '),
     parameters: [],
+    parametersUnknown: 'not-read',
     source: file,
     origin: 'declared',
     doc,

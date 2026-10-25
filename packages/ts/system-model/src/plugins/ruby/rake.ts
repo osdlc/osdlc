@@ -27,7 +27,14 @@
 import { firstLine, stderrOrError } from '@osdlc/command-seam'
 
 import type { ProviderContext } from '../../contract.ts'
-import type { Diagnostic, Param, ProviderResult, RunnerBrand, Task } from '../../model.ts'
+import type {
+  Diagnostic,
+  Param,
+  ParametersUnknownReason,
+  ProviderResult,
+  RunnerBrand,
+  Task,
+} from '../../model.ts'
 import type { RunnerRole } from '../../tool.ts'
 import { dirOf, taskId } from '../support/shared.ts'
 
@@ -189,9 +196,16 @@ export const rakeRunner: RunnerRole = {
     // Rakefile outside the tree. `-N` prevents the second case; this check
     // avoids the first.
     let listed: ListedTask[] | undefined
+    // Why a scanned task's arguments are unknown: only rake lists them.
+    let unknown: ParametersUnknownReason = !ctx.allowExec
+      ? 'exec-withheld'
+      : usable
+        ? 'not-read'
+        : 'tool-missing'
     if (usable && rootRakefile !== undefined) {
       const outcome = await listViaRake(ctx)
       if (outcome.error !== undefined) {
+        unknown = 'tool-failed'
         diagnostics.push({
           severity: 'warning',
           message:
@@ -286,6 +300,7 @@ export const rakeRunner: RunnerRole = {
           cwd: '.',
           display: argv.join(' '),
           parameters: [],
+          parametersUnknown: unknown,
           source: file,
           origin: 'declared',
           ...(name.doc ? { doc: name.doc } : {}),

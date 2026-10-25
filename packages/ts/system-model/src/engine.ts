@@ -20,6 +20,7 @@ export type {
   Param,
   ParamBinding,
   ParamValues,
+  ParametersUnknownReason,
   ProviderResult,
   RunnerBrand,
   RunnerReport,

@@ -58,6 +58,19 @@ export interface Invocation {
 }
 
 /**
+ * Why a task's parameters are not known. `parameters` is then empty, but the
+ * task may still take arguments:
+ *
+ *   - `exec-withheld`: only the tool can list them, and execution was not
+ *     allowed (a just recipe scanned from source).
+ *   - `tool-missing`: execution was allowed, but the tool is not on the PATH.
+ *   - `tool-failed`: the tool ran and gave no usable answer.
+ *   - `not-read`: the file declares them, and this runner does not read them
+ *     (GitHub Actions dispatch inputs).
+ */
+export type ParametersUnknownReason = 'exec-withheld' | 'tool-missing' | 'tool-failed' | 'not-read'
+
+/**
  * Where a task came from: declared in a file, or synthesized from a
  * convention (`cargo test` for a crate, `pnpm install` for a lockfile).
  */
@@ -92,7 +105,13 @@ export interface Task {
   cwd: string
   /** Human form for showing and copying. May hold parameter placeholders. */
   display: string
+  /** The parameters, in order. Empty when there are none or when they are unknown. */
   parameters: Param[]
+  /**
+   * Set when the parameters could not be read, so an empty `parameters` does
+   * not mean "takes none". Absent when `parameters` is the full list.
+   */
+  parametersUnknown?: ParametersUnknownReason | undefined
   /** File that declares it, relative to the profile root. */
   source: string
   origin: TaskOrigin

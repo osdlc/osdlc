@@ -22,6 +22,7 @@ import {
   type Param,
   type ParamBinding,
   type ParamValues,
+  type ParametersUnknownReason,
   type RunnerBrand,
   type RunnerCacheState,
   type RunnerReport,
@@ -122,8 +123,11 @@ test('invoke binds arguments the way each tool expects', async () => {
   // npm run reads its own flags up to `--`.
   expect(runners.invoke(test, ['--watch'])).toEqual(['npm', 'run', 'test', '--', '--watch'])
 
-  // Without running just, recipes are scanned from source and carry no
-  // parameters; `paramShape` renders them when they are known.
+  // Without running just, recipes are scanned from source. Their parameters
+  // are unknown, which is not the same as having none.
+  const why: ParametersUnknownReason | undefined = deploy.parametersUnknown
+  expect([deploy.parameters, why]).toEqual([[], 'exec-withheld'])
+  // `paramShape` renders parameters when they are known.
   const params: Param[] = [{ name: 'env', required: true, variadic: false }]
   expect(paramShape(params)).toBe('<env>')
 })

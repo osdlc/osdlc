@@ -23,7 +23,14 @@ import { dirname } from 'node:path'
 import { firstLine, stderrOrError } from '@osdlc/command-seam'
 
 import type { ProviderContext } from '../../contract.ts'
-import type { Diagnostic, Param, ProviderResult, RunnerBrand, Task } from '../../model.ts'
+import type {
+  Diagnostic,
+  Param,
+  ParametersUnknownReason,
+  ProviderResult,
+  RunnerBrand,
+  Task,
+} from '../../model.ts'
 import { paramShape } from '../../params.ts'
 import type { RunnerRole } from '../../tool.ts'
 import { looksPersistent, onePerDir, sourcesOf, taskId } from '../support/shared.ts'
@@ -97,6 +104,7 @@ export const justRunner: RunnerRole = {
 
     for (const file of justfiles) {
       const dir = dirname(file) === '.' ? '.' : dirname(file)
+      let unknown: ParametersUnknownReason = ctx.allowExec ? 'tool-missing' : 'exec-withheld'
       if (usable) {
         const parsed = await dumpRecipes(ctx, file)
         if (parsed.error === undefined) {
@@ -115,6 +123,7 @@ export const justRunner: RunnerRole = {
           message: `\`just --dump\` did not answer for this file (${parsed.error}) — recipes were parsed from source, so docs, parameters and private flags are missing`,
           source: file,
         })
+        unknown = 'tool-failed'
       }
 
       const text = await ctx.readText(file)
@@ -123,7 +132,7 @@ export const justRunner: RunnerRole = {
         continue
       }
       for (const name of scanRecipeNames(text)) {
-        tasks.push(fromScan(name, file, dir))
+        tasks.push(fromScan(name, file, dir, unknown))
       }
     }
 
@@ -188,7 +197,7 @@ function fromDump(recipe: JustRecipe, file: string, dir: string): Task {
   }
 }
 
-function fromScan(name: string, file: string, dir: string): Task {
+function fromScan(name: string, file: string, dir: string, unknown: ParametersUnknownReason): Task {
   const argv = [...baseArgv(file, dir), name]
   return {
     id: taskId('just', file, name),
@@ -197,9 +206,9 @@ function fromScan(name: string, file: string, dir: string): Task {
     argv,
     cwd: '.',
     display: argv.join(' '),
-    // Empty, not absent: the regex path cannot see parameters, and an empty
-    // list means "none known".
+    // The scan cannot see parameters, so it says so.
     parameters: [],
+    parametersUnknown: unknown,
     source: file,
     origin: 'declared',
     tags: ['just', dir === '.' ? 'root' : dir],
