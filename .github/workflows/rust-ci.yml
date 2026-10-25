@@ -139,9 +139,16 @@ jobs:
           RUSTDOCFLAGS='-D warnings' cargo doc --no-deps -p yaml-splice --no-default-features --locked
 
       # Builds each crate from its packaged files only, so a file missing from
-      # a crate's `include` list fails here and not on crates.io.
+      # a crate's `include` list fails here and not on crates.io. Crates with
+      # `publish = false` are left out: they never ship, and a crate held back
+      # for a staged first release cannot be packaged while it depends on
+      # another held crate (see packages/README.md).
       - name: Package
-        run: cargo package --workspace --locked
+        run: |
+          set -euo pipefail
+          unpublished="$(cargo metadata --no-deps --format-version 1 --locked | jq -r '.packages[] | select(.publish == []) | "--exclude=" + .name')"
+          # shellcheck disable=SC2086 # one flag per word
+          cargo package --workspace --locked $unpublished
 
   rust-test:
     needs: changes

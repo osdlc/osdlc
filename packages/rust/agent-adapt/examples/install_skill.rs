@@ -13,7 +13,9 @@ fn main() {
     let written =
         install_skill(&ClaudeCode, project.path(), Scope::Project, &skill).expect("installs");
     for path in written {
-        let relative = path.strip_prefix(project.path()).expect("under the project");
+        let relative = path
+            .strip_prefix(project.path())
+            .expect("under the project");
         println!("wrote {}", relative.display());
     }
 }
