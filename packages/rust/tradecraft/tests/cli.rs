@@ -456,13 +456,66 @@ fn an_old_agent_pants_yaml_without_a_tradecraft_yaml_says_to_rename_it() {
     fs::write(dir.path().join("agent-pants.yaml"), "vault: ./vault\n").unwrap();
     let run = run(&["list"], dir.path());
     assert_eq!(run.code, 2, "{}", run.stderr);
-    assert!(run.stderr.contains("agent-pants.yaml"), "{}", run.stderr);
+    assert_eq!(
+        run.stderr,
+        format!(
+            "old project file: {} (rename it to `tradecraft.yaml`, set `namespace: tc` or drop \
+             the line, and change the vault notes' `ap-` keys to `tc-`)\n",
+            dir.path().join("agent-pants.yaml").display()
+        )
+    );
+}
+
+#[test]
+fn an_old_project_file_in_a_parent_folder_is_found_by_the_same_search() {
+    let (dir, _vault) = fixture();
+    fs::write(dir.path().join("agent-pants.yaml"), "vault: ./vault\n").unwrap();
+    let nested = dir.path().join("a").join("b");
+    fs::create_dir_all(&nested).unwrap();
+    let run = run(&["list"], &nested);
+    assert_eq!(run.code, 2, "{}", run.stderr);
     assert!(
-        run.stderr.contains("rename it to `tradecraft.yaml`"),
+        run.stderr.starts_with("old project file: "),
         "{}",
         run.stderr
     );
-    assert!(run.stderr.contains("`tc-`"), "{}", run.stderr);
+}
+
+#[test]
+fn a_tradecraft_yaml_wins_over_an_old_project_file_nearer_the_working_directory() {
+    let (dir, _vault) = fixture();
+    fs::write(dir.path().join("tradecraft.yaml"), "vault: ./vault\n").unwrap();
+    let nested = dir.path().join("a");
+    fs::create_dir_all(&nested).unwrap();
+    fs::write(nested.join("agent-pants.yaml"), "vault: ./nowhere\n").unwrap();
+    for cwd in [dir.path(), nested.as_path()] {
+        let run = run(&["list"], cwd);
+        assert_eq!(run.code, 0, "{}", run.stderr);
+        assert!(run.stdout.contains("code-review"), "{}", run.stdout);
+    }
+}
+
+#[test]
+fn an_explicit_config_ignores_an_old_project_file() {
+    let (dir, _vault) = fixture();
+    fs::write(dir.path().join("agent-pants.yaml"), "vault: ./nowhere\n").unwrap();
+    let config = dir.path().join("explicit.yaml");
+    fs::write(&config, "vault: ./vault\n").unwrap();
+    let run = run(
+        &["list", "--config", &config.display().to_string()],
+        dir.path(),
+    );
+    assert_eq!(run.code, 0, "{}", run.stderr);
+    assert!(run.stdout.contains("code-review"), "{}", run.stdout);
+}
+
+#[test]
+fn an_explicit_vault_ignores_an_old_project_file() {
+    let (dir, vault) = fixture();
+    fs::write(dir.path().join("agent-pants.yaml"), "vault: ./nowhere\n").unwrap();
+    let run = run(&["list", "--vault", &vault_str(&vault)], dir.path());
+    assert_eq!(run.code, 0, "{}", run.stderr);
+    assert!(run.stdout.contains("code-review"), "{}", run.stdout);
 }
 
 #[test]
@@ -485,6 +538,54 @@ fn a_destination_with_an_old_agent_pants_manifest_says_to_rename_the_folder() {
         dir.path(),
     );
     assert_eq!(run.code, 1, "{}", run.stderr);
+    let expected = format!(
+        "{} is under the old .agent-pants/ folder: rename .agent-pants/ to .tradecraft/",
+        dest.join(".agent-pants").join("manifest.json").display()
+    );
+    assert!(run.stdout.contains(&expected), "{}", run.stdout);
+    // One line for the destination, not one per file.
+    assert_eq!(
+        run.stdout.matches("bad-manifest").count(),
+        1,
+        "{}",
+        run.stdout
+    );
+}
+
+#[test]
+fn both_manifest_folders_present_publishes_without_the_rename_error() {
+    let (dir, vault) = fixture();
+    let dest = dest_of(dir.path());
+    publish(&vault, &dest, "skills/code-review/code-review.md");
+    fs::create_dir_all(dest.join(".agent-pants")).unwrap();
+    fs::write(dest.join(".agent-pants").join("manifest.json"), "{ junk").unwrap();
+    let run = run(
+        &[
+            "publish",
+            "--vault",
+            &vault_str(&vault),
+            "--to",
+            &dest.display().to_string(),
+            "--target",
+            "claude",
+            "--yes",
+        ],
+        dir.path(),
+    );
+    assert_eq!(run.code, 0, "{}{}", run.stdout, run.stderr);
+    assert!(!run.stdout.contains("bad-manifest"), "{}", run.stdout);
+    assert!(!run.stdout.contains(".agent-pants"), "{}", run.stdout);
+}
+
+#[test]
+fn status_on_a_destination_with_only_the_old_folder_is_unknown_with_the_rename_hint() {
+    let (dir, vault) = fixture();
+    let config = status_config(dir.path(), &vault);
+    let dest = dest_of(dir.path());
+    fs::create_dir_all(dest.join(".agent-pants")).unwrap();
+    fs::write(dest.join(".agent-pants").join("manifest.json"), "{}").unwrap();
+    let run = run(&["status", "--config", &config], dir.path());
+    assert!(run.stdout.contains("unknown"), "{}", run.stdout);
     assert!(
         run.stdout.contains("rename .agent-pants/ to .tradecraft/"),
         "{}",

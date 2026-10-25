@@ -36,3 +36,47 @@ pub fn system() -> Result<TieredDirs, tiered_dirs::Error> {
 pub fn with_base_dirs(base: BaseDirs) -> TieredDirs {
     TieredDirs::with_base_dirs(VENDOR, base).expect("VENDOR is a valid path segment")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_vendor_is_dev_osdlc() {
+        assert_eq!(VENDOR, "dev.osdlc");
+    }
+
+    #[test]
+    fn the_overrides_use_the_tradecraft_stem() {
+        assert_eq!(ENV_VARS.root, "TRADECRAFT_ROOT");
+        assert_eq!(ENV_VARS.scratch, "TRADECRAFT_SCRATCH_DIR");
+        assert_eq!(ENV_VARS.require_override, "TRADECRAFT_REQUIRE_OVERRIDE");
+        assert_eq!(ENV_VARS.convention, "TRADECRAFT_CONVENTION");
+        for var in [
+            ENV_VARS.durable,
+            ENV_VARS.config,
+            ENV_VARS.cache,
+            ENV_VARS.state,
+            ENV_VARS.logs,
+            ENV_VARS.runtime,
+        ] {
+            assert!(
+                var.starts_with("TRADECRAFT_") && var.ends_with("_DIR"),
+                "{var}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_checkout_cache_is_under_dev_osdlc_tradecraft() {
+        let dirs = with_base_dirs(BaseDirs::rooted(std::path::PathBuf::from("/root")));
+        let cache = dirs.suite("tradecraft").unwrap().cache().into_path();
+        assert!(
+            cache
+                .components()
+                .any(|c| c.as_os_str() == "dev.osdlc.tradecraft"),
+            "{}",
+            cache.display()
+        );
+    }
+}

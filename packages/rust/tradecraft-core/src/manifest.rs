@@ -52,6 +52,9 @@ use crate::vfs::Vfs;
 /// The pre-release manifest folder. Only named to refuse it with a rename hint.
 const OLD_FOLDER: &str = ".agent-pants";
 
+/// The old manifest's path under a destination root, for the old-folder error.
+pub(crate) const OLD_MANIFEST_RELATIVE_PATH: &str = ".agent-pants/manifest.json";
+
 /// Where the manifest sits under a destination root.
 ///
 /// Namespaced under a dot-directory of our own rather than dropped at the
@@ -180,9 +183,9 @@ struct Wire {
     entries: Vec<ManifestEntry>,
 }
 
-/// Why a manifest that exists cannot be used.
+/// Why a destination's manifest cannot be used.
 ///
-/// Both readings block writing at that destination and both degrade status to
+/// Every reading blocks writing at that destination and degrades status to
 /// `unknown`; they are separate because the recovery differs and a report has
 /// to say which happened.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -197,7 +200,8 @@ pub enum Unusable {
         found: u32,
     },
     /// The destination has a manifest under the old `.agent-pants/` folder and
-    /// none under `.tradecraft/`. Not read; the owner renames the folder.
+    /// none under `.tradecraft/`, so there is no manifest to be unusable.
+    /// The old one is not read; the owner renames the folder.
     OldFolder,
 }
 
@@ -218,10 +222,25 @@ impl Unusable {
             ),
             Self::OldFolder => format!(
                 "{} is under the old .agent-pants/ folder: rename .agent-pants/ to .tradecraft/",
-                path.display()
+                old_manifest_path_beside(path).display()
             ),
         }
     }
+}
+
+/// The old manifest's path, from the new manifest's path
+/// (`<root>/.tradecraft/manifest.json`): the same file name one folder over.
+fn old_manifest_path_beside(manifest: &Path) -> PathBuf {
+    let root = manifest
+        .parent()
+        .and_then(Path::parent)
+        .unwrap_or_else(|| Path::new(""));
+    root.join(OLD_FOLDER).join("manifest.json")
+}
+
+/// The path the old-folder error names for a destination.
+pub(crate) fn old_manifest_path(destination_root: &Path) -> PathBuf {
+    destination_root.join(OLD_FOLDER).join("manifest.json")
 }
 
 /// What reading a destination's manifest found.
@@ -281,8 +300,7 @@ pub fn manifest_path(destination_root: &Path) -> PathBuf {
 pub fn read_manifest(vfs: &dyn Vfs, destination_root: &Path) -> ManifestState {
     let path = manifest_path(destination_root);
     if !vfs.exists(&path) {
-        let old = destination_root.join(OLD_FOLDER).join("manifest.json");
-        if vfs.exists(&old) {
+        if vfs.exists(&old_manifest_path(destination_root)) {
             return ManifestState::Unusable(Unusable::OldFolder);
         }
         return ManifestState::Missing;
@@ -421,12 +439,23 @@ mod tests {
         let ManifestState::Unusable(why) = state else {
             unreachable!()
         };
-        assert!(
-            why.message(root())
-                .contains("rename .agent-pants/ to .tradecraft/"),
-            "{}",
-            why.message(root())
+        assert_eq!(
+            why.message(&manifest_path(root())),
+            "/dest/.agent-pants/manifest.json is under the old .agent-pants/ folder: \
+             rename .agent-pants/ to .tradecraft/"
         );
+    }
+
+    // The new folder wins: the old one is not looked at, and nothing errors.
+    #[test]
+    fn both_manifest_folders_present_reads_the_new_one() {
+        let vfs = MemVfs::new();
+        vfs.create_dir_all(Path::new("/dest/.agent-pants")).unwrap();
+        vfs.write_file(Path::new("/dest/.agent-pants/manifest.json"), b"{ junk")
+            .unwrap();
+        write_manifest(&vfs, root(), &DestinationManifest::new()).unwrap();
+        let state = read_manifest(&vfs, root());
+        assert!(matches!(state, ManifestState::Ok { .. }), "{state:?}");
     }
 
     // Corrupt is a partial fact — possibly a truncated file we wrote —

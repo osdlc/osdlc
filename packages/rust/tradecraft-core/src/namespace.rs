@@ -317,7 +317,7 @@ mod tests {
     }
 
     #[test]
-    fn the_default_is_ap_and_behaves_as_the_constants_did() {
+    fn the_default_is_tc_and_behaves_as_the_constants_did() {
         let ns = Namespace::default();
         assert_eq!(ns.stem(), "tc");
         assert_eq!(ns.prefix(), "tc-");
@@ -328,7 +328,8 @@ mod tests {
         assert!(ns.is_ours("tc-kind"));
         assert!(ns.is_ours("tc-anything-at-all"));
         assert!(ns.is_ours("tc"));
-        assert!(!ns.is_ours("apex"));
+        assert!(!ns.is_ours("tcx"));
+        assert!(!ns.is_ours("tcs-kind"));
         assert!(!ns.is_ours("kind"));
         assert!(!ns.is_ours("TC-KIND"), "the prefix is not case-folded");
     }

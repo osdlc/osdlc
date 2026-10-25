@@ -35,9 +35,9 @@ use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
 
-/// The suite segment of the checkout cache (`dev.osdlc.tradecraft`),
-/// shared with other tools that use the same cache. Changing it splits the
-/// caches. The digest half of the key is the same for every tool.
+/// The suite segment of the checkout cache, which lives under
+/// `dev.osdlc.tradecraft`. Changing it moves the cache, and checkouts already
+/// there are fetched again.
 const SUITE_KEY: &str = "tradecraft";
 
 /// The host a bare `owner/repo` means.

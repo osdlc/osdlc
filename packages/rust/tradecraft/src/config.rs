@@ -39,8 +39,8 @@ pub const TOOL: &str = "tradecraft";
 const COMMAND: &str = "tradecraft";
 /// The committed project file, looked for from the working directory upward.
 pub const PROJECT_FILE: &str = tradecraft_core::PROJECT_FILE;
-/// The project file's earlier name. Only its presence is checked, to say how to
-/// rename it.
+/// The project file's earlier name. Only its presence is checked, by
+/// [`old_project_file`], to say how to rename it.
 const OLD_PROJECT_FILE: &str = "agent-pants.yaml";
 /// Env var that relocates the machine file, for tests and one-off runs.
 pub const MACHINE_CONFIG_ENV: &str = "TRADECRAFT_MACHINE_CONFIG";
@@ -544,6 +544,27 @@ fn finish(
     }
 }
 
+/// The old project file a run would otherwise miss: the nearest
+/// `agent-pants.yaml` above `cwd`, but only when the same upward search finds
+/// no `tradecraft.yaml`.
+///
+/// The caller asks only for a run that searches at all, that is one with
+/// neither `--config` nor `--vault`.
+pub fn old_project_file(cwd: &Path) -> Option<PathBuf> {
+    if file::find_up(cwd, PROJECT_FILE).is_some() {
+        return None;
+    }
+    file::find_up(cwd, OLD_PROJECT_FILE)
+}
+
+/// What to do about an old project file, for the error line.
+pub fn old_project_file_hint() -> String {
+    format!(
+        "rename it to `{PROJECT_FILE}`, set `namespace: tc` or drop the line, and change the \
+         vault notes' `ap-` keys to `tc-`"
+    )
+}
+
 /// Read the configuration for this run: the project file `--config` names
 /// or the nearest one above `cwd`, over the machine file.
 ///
@@ -595,14 +616,6 @@ fn load_config_at(
     };
 
     let Some(project_path) = found else {
-        if let Some(old) = file::find_up(cwd, OLD_PROJECT_FILE) {
-            return ConfigLoad::Malformed {
-                path: old,
-                detail: format!(
-                    "rename it to `{PROJECT_FILE}` and change its `ap-` keys, and those in the vault's notes, to `tc-`"
-                ),
-            };
-        }
         let machine_config: TradecraftConfig = if machine_exists {
             serde_json::from_value(serde_json::Value::Object(machine_mapping.clone()))
                 .unwrap_or_default()
