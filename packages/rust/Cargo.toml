@@ -45,8 +45,8 @@ saphyr-parser = "0.0.11"
 # 1.0.220 is the first serde that pins its own serde_derive (see config-layers).
 serde = { version = "1.0.220", features = ["derive"] }
 serde_json = "1.0.40"
-serde_yaml = "0.9.34"
-sha2 = "0.10.9"
+serde_yaml = "0.9"
+sha2 = "0.10"
 # `full` for function bodies, `extra-traits` for `Debug` on `syn::Type`.
 syn = { version = "2.0.100", features = ["full", "extra-traits"] }
 tempfile = "3"
@@ -77,7 +77,7 @@ slug-collate = { path = "slug-collate", version = "0.1.1" }
 tiered-dirs = { path = "tiered-dirs", version = "0.3" }
 tradecraft-core = { path = "tradecraft-core", version = "0.39.1" }
 typed-git = { path = "typed-git", version = "0.4" }
-yaml-splice = { path = "yaml-splice", version = "0.3.1" }
+yaml-splice = { path = "yaml-splice", version = "0.3.2" }
 
 # The size profile tradecraft-wasm/build.sh builds with. A named profile
 # applies only to a build that asks for it, so no other crate, test run or
