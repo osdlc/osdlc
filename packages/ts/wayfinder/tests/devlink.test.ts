@@ -17,21 +17,26 @@ import { checkoutRoot, WAYFINDER_SPEC } from '../src/devlink.ts'
 
 let tmp: string
 let home: string
-let savedHome: string | undefined
+const MOVED = ['HOME', 'XDG_CONFIG_HOME'] as const
+let saved: Record<string, string | undefined> = {}
 
 beforeEach(() => {
   tmp = realpathSync(mkdtempSync(join(tmpdir(), 'wayfinder-dev-')))
   home = join(tmp, 'home')
   mkdirSync(home, { recursive: true })
-  // devlink's state goes through the fleet SDK, which reads HOME from the
-  // process environment; the injected `home` argument is wayfinder's own.
-  savedHome = process.env['HOME']
+  // devlink's state goes through the fleet SDK, which reads HOME and
+  // XDG_CONFIG_HOME from the process environment; the injected `home`
+  // argument is wayfinder's own. CI runners set XDG_CONFIG_HOME, so both move.
+  saved = Object.fromEntries(MOVED.map((name) => [name, process.env[name]]))
   process.env['HOME'] = home
+  process.env['XDG_CONFIG_HOME'] = join(home, '.config')
 })
 
 afterEach(() => {
-  if (savedHome === undefined) delete process.env['HOME']
-  else process.env['HOME'] = savedHome
+  for (const name of MOVED) {
+    if (saved[name] === undefined) delete process.env[name]
+    else process.env[name] = saved[name]
+  }
   rmSync(tmp, { recursive: true, force: true })
 })
 
