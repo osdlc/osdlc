@@ -1057,15 +1057,13 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
         draw()
       },
       onRunner(report: RunnerReport, cache: CacheState): void {
-        if (!current()) return
+        if (!current() || state.partial === null) return
         state.pending = state.pending.filter((r) => r !== report.runner)
-        if (live && state.partial !== null) {
-          state.partial = inDisplayOrder(
-            [...state.partial.filter((r) => r.runner !== report.runner), report],
-            state.runnerOrder,
-          )
-          state.cache = [...state.cache.filter((c) => c.runner !== report.runner), cache]
-        }
+        state.partial = inDisplayOrder(
+          [...state.partial.filter((r) => r.runner !== report.runner), report],
+          state.runnerOrder,
+        )
+        state.cache = [...state.cache.filter((c) => c.runner !== report.runner), cache]
         draw()
       },
     }
@@ -1073,7 +1071,10 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
     try {
       // Always a real probe. ^r means "ask again", and an answer from the
       // store would look the same as doing nothing.
-      const snapshot = await session.catalog({ signal: controller.signal, progress })
+      const snapshot = await session.catalog({
+        signal: controller.signal,
+        ...(live ? { progress } : {}),
+      })
       if (generation !== state.generation) return
       state.catalog = orderedCatalog(snapshot.catalog, state.runnerOrder)
       state.partial = null

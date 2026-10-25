@@ -640,11 +640,15 @@ export async function createSession(opts: SessionOptions): Promise<Session> {
     },
     async catalog(opts = {}) {
       if (opts.cached !== true) {
-        const { catalog, times } = await probe(undefined, opts.signal, opts.progress)
+        // The skills are read beside the probe, so the answer does not wait for both in turn.
+        const [{ catalog, times }, skillRows] = await Promise.all([
+          probe(undefined, opts.signal, opts.progress),
+          skills(),
+        ])
         return saved({
           catalog: orderedCatalog(catalog, runnerOrder()),
           cache: probedStates(catalog, times),
-          skills: await skills(),
+          skills: skillRows,
           origin: 'probe',
         })
       }

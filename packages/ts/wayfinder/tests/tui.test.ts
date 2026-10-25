@@ -1006,12 +1006,11 @@ describe('step-by-step loading', () => {
     const probe = stepped(tui)
     const booted = tui.boot()
     await vi.waitFor(() => expect(probe.probe).toHaveBeenCalled())
-    probe.runners(['make', 'just'])
-    const make = report('make', [task('make', 'new')])
-    probe.answer(make)
+    // Nothing on screen changes until the end, so it does not listen.
+    expect(probe.probe.mock.calls[0]![0].progress).toBeUndefined()
     expect(tui.state.rows.map((r) => r.task.id)).toEqual(['make:old'])
     expect(lineOf(tui, 2)).toContain('refreshing…')
-    expect(lineOf(tui, 0)).not.toContain('just')
+    const make = report('make', [task('make', 'new')])
     probe.finish([make])
     await booted
     expect(tui.state.rows.map((r) => r.task.id)).toEqual(['make:new'])
