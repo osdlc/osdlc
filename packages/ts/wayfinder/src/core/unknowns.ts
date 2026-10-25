@@ -20,8 +20,10 @@ import {
   runnerLabel,
   staleLabel,
   withheldLabel,
+  type ExecOffSource,
   type WithheldReason,
 } from '../vocabulary.ts'
+import type { Settings } from '../config.ts'
 
 /**
  * One thing wayfinder could not know. `label` is the wording every surface
@@ -73,6 +75,8 @@ export interface UnknownsInput {
   cache?: readonly RunnerCacheState[] | undefined
   /** Why withheld runners were withheld. Default `untrusted`. */
   withheld?: WithheldReason | undefined
+  /** For `exec-off`: what turned execution off. */
+  execOff?: ExecOffSource | undefined
   /** The trust scopes a runner still needs, when per-tool trust is known. */
   missingScopes?: ((runner: string) => string[] | undefined) | undefined
 }
@@ -90,7 +94,7 @@ export function unknownsOf(input: UnknownsInput): Unknown[] {
         runner,
         reason: withheld,
         ...(missing !== undefined ? { missing } : {}),
-        label: withheldLabel(withheld, missing),
+        label: withheldLabel(withheld, missing, input.execOff),
       })
     }
     if (report.tool !== undefined && !report.tool.found) {
@@ -119,6 +123,15 @@ export function unknownsOf(input: UnknownsInput): Unknown[] {
     }
   }
   return out
+}
+
+/**
+ * What turned execution off for a gate that is not `untrusted`: a config
+ * file's `allowExec: false`, else the `--no-exec` flag.
+ */
+export function execOffSource(settings: Pick<Settings, 'allowExec'>): ExecOffSource {
+  const { value, source } = settings.allowExec
+  return value === false && (source === 'user' || source === 'project') ? source : 'flag'
 }
 
 /**

@@ -45,7 +45,7 @@ import { appTrustStore } from '../trust-store.ts'
 import type { WithheldReason } from '../vocabulary.ts'
 import { filterTasks, type TaskFilter, type TaskHit } from './filter.ts'
 import { filterSkills, type SkillHit, type SkillRow } from './skills.ts'
-import { unknownsOf, type Unknown } from './unknowns.ts'
+import { execOffSource, unknownsOf, type Unknown } from './unknowns.ts'
 
 /**
  * Why a session could not start, or an operation was refused. `code` is
@@ -530,6 +530,7 @@ export async function createSession(opts: SessionOptions): Promise<Session> {
         reports: snapshot.catalog.reports,
         cache: snapshot.cache,
         withheld,
+        ...(withheld === 'exec-off' ? { execOff: execOffSource(settings) } : {}),
         missingScopes: (runner) => session.missingScopes(runner),
       })
     },

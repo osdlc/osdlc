@@ -12,10 +12,11 @@ import type { RunnerReport } from '@osdlc/system-model/detect'
 import type { ExecGate } from '@osdlc/trust-repo'
 
 import { DISCOVERY_VALUES, type ConfigLayer, type Settings, type WritableLayer } from '../config.ts'
-import type { Unknown } from '../core/unknowns.ts'
+import { execOffSource, type Unknown } from '../core/unknowns.ts'
 import { terminalSafe } from '../terminal-text.ts'
 import type { ToolSummary } from '../tool-info.ts'
 import {
+  execOffLabel,
   missingBinaryLabel,
   runnerLabel,
   withheldLabel,
@@ -105,9 +106,7 @@ export function toolNote(tools: readonly ToolSummary[], runner: string): string 
 /** Why execution is off, in words, for the screen and the status line. */
 export function execOffCause(settings: Settings, gate: Pick<ExecGate, 'reason'>): string {
   if (gate.reason === 'untrusted') return 'this repository is not trusted'
-  const configured = valueOf<boolean | undefined>(settings, 'allowExec')
-  if (configured.value === false) return `allowExec is false in ${layerWords(configured.source)}`
-  return '--no-exec was given'
+  return execOffLabel(execOffSource(settings))
 }
 
 /** The screen's lines. */

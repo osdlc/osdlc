@@ -232,14 +232,22 @@ describe('main trust gate', () => {
     expect(await trustStoreFor(home).list()).toEqual([])
   })
 
-  test('--list says once, on stderr, how many runners trust would collect', async () => {
+  test('--list warns on stderr for each withheld runner, then says once how to trust', async () => {
     const ran = await run(['--list'], await project())
 
     expect(ran.code).toBe(0)
-    expect(ran.err).toContain('1 runner withheld')
-    expect(ran.err).toContain('run "way trust" to trust it')
-    // Once, not once per runner.
-    expect(ran.err.split('withheld —').length - 1).toBe(1)
+    expect(ran.err).toContain('way: warning: mise: withheld: this repository is not trusted')
+    expect(ran.err).toContain('run "way trust" to trust this repository')
+    // The hint once, not once per runner.
+    expect(ran.err.split('run "way trust"').length - 1).toBe(1)
+  })
+
+  test('a runner withheld by --no-exec is named on stderr too, with the cause', async () => {
+    const ran = await run(['list', '--no-exec'], await project())
+
+    expect(ran.code).toBe(0)
+    expect(ran.err).toContain('way: warning: mise: withheld: --no-exec was given')
+    expect(ran.err).not.toContain('way trust')
   })
 
   test('--exec collects them for this run only, recording nothing', async () => {

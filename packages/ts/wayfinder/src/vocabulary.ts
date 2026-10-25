@@ -60,13 +60,36 @@ function listWords(words: readonly string[]): string {
 }
 
 /**
- * `withheld: this repository is not trusted`. For `tool-untrusted` with the
- * missing tool ids: `withheld: mise is not trusted`.
+ * What turned execution off: the `--no-exec` flag, or `allowExec: false` in
+ * the user or the project config.
  */
-export function withheldLabel(reason: WithheldReason, missing: readonly string[] = []): string {
+export type ExecOffSource = 'flag' | 'user' | 'project'
+
+const EXEC_OFF: Record<ExecOffSource, string> = {
+  flag: '--no-exec was given',
+  user: 'allowExec is false in your user config',
+  project: 'allowExec is false in this project',
+}
+
+/** Why execution is off, in words: `--no-exec was given`. */
+export function execOffLabel(source: ExecOffSource | undefined): string {
+  return source === undefined ? WITHHELD_REASONS['exec-off'] : EXEC_OFF[source]
+}
+
+/**
+ * `withheld: this repository is not trusted`. For `tool-untrusted` with the
+ * missing tool ids: `withheld: mise is not trusted`. For `exec-off` with what
+ * turned it off: `withheld: --no-exec was given`.
+ */
+export function withheldLabel(
+  reason: WithheldReason,
+  missing: readonly string[] = [],
+  execOff?: ExecOffSource,
+): string {
   if (reason === 'tool-untrusted' && missing.length > 0) {
     return `${WITHHELD}: ${listWords(missing)} ${missing.length === 1 ? 'is' : 'are'} not trusted`
   }
+  if (reason === 'exec-off') return `${WITHHELD}: ${execOffLabel(execOff)}`
   return `${WITHHELD}: ${WITHHELD_REASONS[reason]}`
 }
 
