@@ -73,6 +73,13 @@ use crate::{ByteEdit, FileEtag, RenameResult, Skip};
 /// **everything**, because a rename of a note that is not the note the user was
 /// looking at is not a rename they consented to. `expect` compare-and-swaps
 /// each linking note independently: a mismatch there skips that one file.
+///
+/// # Errors
+///
+/// Returns [`TransformError::Path`] when `from`, `to` or `vault_dir` fails the
+/// path guard, and [`TransformError::Io`] when a filesystem step fails. A
+/// refused rename is not an error: it comes back as `Ok` with
+/// [`RenameResult::conflict`] set.
 pub fn execute(
     vault_dir: &Path,
     facts: &VaultFacts,

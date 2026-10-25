@@ -128,6 +128,12 @@ pub fn bundle_members(vault_dir: &Path, dir: &str) -> Vec<String> {
 /// `from` names the bundle's entry note (`review/review.md`), never the
 /// directory — the directory is implied by it, the same way a single-file
 /// rename names a file and not its parent.
+///
+/// # Errors
+///
+/// Returns [`TransformError::Path`] when `from`, `to` or `vault_dir` fails the
+/// path guard. A refused plan is not an error: it comes back as `Ok` with
+/// [`RenamePlan::conflict`] set.
 pub fn plan_bundle(
     vault_dir: &Path,
     facts: &VaultFacts,
@@ -407,6 +413,18 @@ pub fn plan_bundle(
 /// the meantime. What is left is the bundle sitting at its new directory with
 /// its entry note still under its OLD leaf name; [`RenameResult::new_etag`]
 /// names that file so a caller can find and re-rename it.
+///
+/// # Errors
+///
+/// Returns [`TransformError::Path`] when a path fails the path guard, and
+/// [`TransformError::Io`] when creating the destination's parent folder or
+/// moving the directory fails. A refused move, and a failed entry-file rename,
+/// come back as `Ok` with [`RenameResult::conflict`] set.
+///
+/// # Panics
+///
+/// Does not panic for any input. The two `expect` calls on [`bundle_entry`]
+/// run only after [`plan_bundle`] has already checked both paths.
 pub fn execute_bundle(
     vault_dir: &Path,
     facts: &VaultFacts,
