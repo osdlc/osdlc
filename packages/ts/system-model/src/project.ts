@@ -6,7 +6,13 @@
  * discovered or loaded by name.
  */
 
-import { readCachedCatalog, collectAndCache, type CachedCatalog } from './cached.ts'
+import {
+  readCachedCatalog,
+  collectAndCache,
+  collectAndStore,
+  type CachedCatalog,
+  type StoringCatalog,
+} from './cached.ts'
 import { collectRunners, invocationOf, invokeTask } from './collect.ts'
 import type { CollectOptions, DetectOptions } from './contract.ts'
 import { detectProject } from './detect.ts'
@@ -72,6 +78,19 @@ export interface Runners {
     cacheDir: string,
     options?: CollectOptions,
   ): Promise<Catalog>
+  /**
+   * `collect`, then store each runner's result under `cacheDir` in the
+   * background: the catalog comes as soon as every runner has answered, and
+   * `stored` settles once the store is written. Await `stored` before the
+   * process exits.
+   *
+   * @experimental
+   */
+  collectAndStore(
+    profile: ProjectProfile,
+    cacheDir: string,
+    options?: CollectOptions,
+  ): Promise<StoringCatalog>
 }
 
 /**
@@ -138,6 +157,7 @@ export function createProject(options: ProjectOptions): Project {
       search: (catalog, query, mode = 'fuzzy') => search(catalog, query, mode),
       readCached: (profile, dir, opts) => readCachedCatalog(registry, profile, dir, opts),
       collectAndCache: (profile, dir, opts) => collectAndCache(registry, profile, dir, opts),
+      collectAndStore: (profile, dir, opts) => collectAndStore(registry, profile, dir, opts),
     },
     toolForCommand: (command) => toolForCommand(registry, command),
     packageManagers: (profile, dir) => choosePackageManagers(registry, profile, dir),

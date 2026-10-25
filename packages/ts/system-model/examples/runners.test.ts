@@ -30,6 +30,7 @@ import {
   type Runners,
   type Severity,
   type StaleReason,
+  type StoringCatalog,
   type Task,
   type TaskExecutionTarget,
   type TaskOrigin,
@@ -258,4 +259,17 @@ test('a cache directory you choose keeps results between runs', async () => {
   expect(reason).toBe('changed')
   expect(humanMs(stale.runners[0]!.estimateMs ?? 0)).toMatch(/ms|s/)
   expect(humanAge(stale.runners[0]!.ageMs)).toMatch(/old$/)
+})
+
+test('collectAndStore answers first and stores in the background', async () => {
+  const root = repo(FILES)
+  const cacheDir = realpathSync(mkdtempSync(join(tmpdir(), 'project-cache-')))
+  roots.push(cacheDir)
+  const profile = await project.detect(root, { discovery: 'walk' })
+
+  const { catalog, stored }: StoringCatalog = await runners.collectAndStore(profile, cacheDir)
+  expect(catalog.reports.length).toBeGreaterThan(0)
+  // Await it before the process exits, or the store keeps the last probe.
+  await stored
+  expect((await runners.readCached(profile, cacheDir)).allFresh).toBe(true)
 })

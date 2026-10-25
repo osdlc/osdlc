@@ -84,8 +84,9 @@ export type ProbeCost = 'cheap' | 'slow'
 /** How a runner's probe is run. */
 export interface RunnerProbe {
   /**
-   * The timeout for each subprocess the runner starts, in ms. Defaults to
-   * `DEFAULT_PROBE_TIMEOUT_MS`. `CollectOptions.timeouts` overrides it.
+   * The timeout for the probe and each subprocess it starts, in ms. Defaults
+   * to `DEFAULT_PROBE_TIMEOUT_MS`. `CollectOptions.timeouts` and
+   * `CollectOptions.probeTimeoutMs` override it.
    */
   timeoutMs?: number | undefined
   cost?: ProbeCost | undefined

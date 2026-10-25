@@ -144,9 +144,20 @@ export interface CollectOptions {
   execWithheldHint?: string | undefined
   /**
    * Probe timeouts in ms, by runner id. Each replaces that runner's
-   * `RunnerRole.probe.timeoutMs`.
+   * `RunnerRole.probe.timeoutMs` and {@link probeTimeoutMs}.
+   *
+   * A probe timeout bounds each subprocess the runner starts and the whole
+   * probe. A runner still running at its timeout is stopped: the processes
+   * it started are killed with their trees, and it reports `status: 'error'`
+   * with the diagnostic `timed out after <n> s`. The other runners go on.
    */
   timeouts?: Readonly<Record<string, number>> | undefined
+  /**
+   * The probe timeout in ms of every runner {@link timeouts} does not name,
+   * replacing `RunnerRole.probe.timeoutMs`. Unset, each runner has its own,
+   * else `DEFAULT_PROBE_TIMEOUT_MS`.
+   */
+  probeTimeoutMs?: number | undefined
   /**
    * Build the runner for a binary. Defaults to `spawnRunnerAsync` from
    * `@osdlc/command-seam` with `absolutePathOnly`, so a bare name runs only

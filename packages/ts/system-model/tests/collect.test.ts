@@ -3,6 +3,10 @@ import { join } from 'node:path'
 
 import { afterAll, describe, expect, test } from 'vitest'
 
+import { spawnRunner } from '@osdlc/command-seam'
+
+import { timedOutMessage } from '../src/collect.ts'
+
 import type { RunnerContext } from '../src/contract.ts'
 import { diagnostics, tasks, type ProviderResult, type RunnerReport } from '../src/model.ts'
 import { just, make, moon } from '../src/plugins/runners/index.ts'
@@ -527,5 +531,140 @@ describe('each collect reads afresh', () => {
     }
     const catalog = await project.runners.collect(profile, walkOpts())
     expect(tasks(catalog).map((t) => t.display)).toEqual(['just build'])
+  })
+})
+
+describe('a probe past its timeout', () => {
+  test('is cut off and reported, and the other runners are unaffected', async () => {
+    const dir = await root({ 'hang.txt': '', 'quick.txt': '' })
+    const hang = toolOf('hang', { collect: () => new Promise<ProviderResult>(() => {}) })
+    const reports: RunnerReport[] = []
+    const probed: string[] = []
+    const started = Date.now()
+    const catalog = await collect(
+      dir,
+      walkOpts({
+        tools: [hang, toolOf('quick')],
+        timeouts: { hang: 200 },
+        onReport: (report: RunnerReport) => reports.push(report),
+        onProbe: ({ runner }: { runner: string }) => probed.push(runner),
+      }),
+    )
+    expect(Date.now() - started).toBeLessThan(5_000)
+    const cut = catalog.reports.find((r) => r.runner === 'hang')!
+    expect(cut.status).toBe('error')
+    expect(cut.tasks).toEqual([])
+    expect(cut.diagnostics).toEqual([{ severity: 'error', message: 'timed out after 200 ms' }])
+    expect(catalog.reports.find((r) => r.runner === 'quick')!.status).toBe('absent')
+    // Each runner is reported once, the cut one included.
+    expect(reports.map((r) => r.runner).sort()).toEqual(['hang', 'quick'])
+    expect(probed.sort()).toEqual(['hang', 'quick'])
+  })
+
+  test('a probe that answers after its timeout is not reported again', async () => {
+    const dir = await root({ 'late.txt': '' })
+    let finish: () => void = () => {}
+    const late = toolOf('late', {
+      collect: () =>
+        new Promise<ProviderResult>((resolve) => {
+          finish = () => resolve({ status: 'ok', tasks: [], diagnostics: [] })
+        }),
+    })
+    const reports: RunnerReport[] = []
+    const catalog = await collect(
+      dir,
+      walkOpts({
+        tools: [late],
+        probeTimeoutMs: 100,
+        onReport: (report: RunnerReport) => reports.push(report),
+      }),
+    )
+    finish()
+    await new Promise((r) => setTimeout(r, 20))
+    expect(catalog.reports[0]!.diagnostics[0]!.message).toBe('timed out after 100 ms')
+    expect(reports).toHaveLength(1)
+  })
+
+  test('the timeout aborts the signal the runner was given', async () => {
+    const dir = await root({ 'watch.txt': '' })
+    let seen: AbortSignal | undefined
+    const watch = toolOf('watch', {
+      collect: (ctx: RunnerContext) => {
+        seen = ctx.signal
+        return new Promise<ProviderResult>(() => {})
+      },
+    })
+    await collect(dir, walkOpts({ tools: [watch], probeTimeoutMs: 100 }))
+    expect(seen?.aborted).toBe(true)
+  })
+
+  test('probeTimeoutMs sets every subprocess timeout; timeouts still wins by id', async () => {
+    const dir = await root({ justfile: 'build:\n    true\n', 'mise-tasks/lint': '#!/bin/sh\n' })
+    const fake = fakeRunners([])
+    await collect(dir, {
+      discovery: 'walk',
+      allowExec: true,
+      makeRunner: fake.make,
+      which: fakeWhich({ just: '/bin/just', mise: '/bin/mise' }),
+      probeTimeoutMs: 4_000,
+      timeouts: { just: 1_234 },
+    })
+    const byBinary = Object.fromEntries(fake.calls.map((c) => [c.binary, c.opts.timeoutMs]))
+    expect(byBinary).toEqual({ just: 1_234, mise: 4_000 })
+  })
+
+  test('a timed-out runner is not stored', async () => {
+    const dir = await root({ 'hang.txt': '' })
+    const cacheDir = await root({})
+    const hang = toolOf('hang', { collect: () => new Promise<ProviderResult>(() => {}) })
+    const project = createProject({ tools: [hang] })
+    const profile = await project.detect(dir, { discovery: 'walk' })
+    await project.runners.collectAndCache(profile, cacheDir, { probeTimeoutMs: 100 })
+    const cached = await project.runners.readCached(profile, cacheDir)
+    expect(cached.runners.map((r) => r.state)).toEqual(['miss'])
+  })
+
+  // Uses sh, sleep and pgrep, so it runs on POSIX only. command-seam's own
+  // tests cover the Windows tree kill.
+  test.skipIf(process.platform === 'win32')(
+    'kills the processes the runner started, with their children',
+    async () => {
+      const dir = await root({ 'spawner.txt': '' })
+      const tag = `${40 + Math.floor(Math.random() * 1000)}.${process.pid % 1000}3`
+      const spawner = toolOf('spawner', {
+        kind: 'exec',
+        collect: async (ctx: RunnerContext) => {
+          // Its own subprocess timeout is long: only the probe timeout stops it.
+          await ctx
+            .runner('sh')
+            .run(['-c', `sleep ${tag} & sleep ${tag}1; wait`], { cwd: ctx.root, timeoutMs: 60_000 })
+          return new Promise<ProviderResult>(() => {})
+        },
+      })
+      const project = createProject({ tools: [spawner, toolOf('quick')] })
+      const profile = await project.detect(dir, { discovery: 'walk' })
+      const catalog = await project.runners.collect(profile, {
+        allowExec: true,
+        probeTimeoutMs: 300,
+      })
+      expect(catalog.reports[0]!.diagnostics[0]!.message).toBe('timed out after 300 ms')
+      // Give the kill a moment to land.
+      let left = 'running'
+      for (let i = 0; i < 20 && left !== ''; i++) {
+        await new Promise((r) => setTimeout(r, 100))
+        left = spawnRunner('pgrep')
+          .run(['-f', `sleep ${tag}`], { cwd: '.' })
+          .stdout.trim()
+      }
+      expect(left).toBe('')
+    },
+  )
+})
+
+describe('timedOutMessage', () => {
+  test('says the limit in ms under a second, else in seconds', () => {
+    expect(timedOutMessage(250)).toBe('timed out after 250 ms')
+    expect(timedOutMessage(10_000)).toBe('timed out after 10 s')
+    expect(timedOutMessage(1_500)).toBe('timed out after 1.5 s')
   })
 })

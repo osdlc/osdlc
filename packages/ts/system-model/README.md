@@ -320,7 +320,11 @@ Each subprocess a runner starts gets the caller's `signal` and a timeout. A
 runner declares its timeout and a cost hint (`cheap` or `slow`) in
 `RunnerRole.probe`. A runner that declares none gets `DEFAULT_PROBE_TIMEOUT_MS`.
 `CollectOptions.timeouts` replaces a runner's timeout by id, such as
-`{ moon: 300_000 }`. `CollectOptions.onProbe` is called once for each runner
+`{ moon: 300_000 }`, and `CollectOptions.probeTimeoutMs` replaces it for every
+runner `timeouts` does not name. The timeout bounds the whole probe too. A
+runner still running at its timeout is stopped: the processes it started are
+killed, and it reports `status: 'error'` with the diagnostic
+`timed out after 10 s`. The other runners go on. `CollectOptions.onProbe` is called once for each runner
 probed, with how long the probe took, so a host can report it.
 `CollectOptions.onRunners` is called once, before any probe, with the runners
 the collect reports, and `CollectOptions.onReport` once per runner as its
@@ -392,6 +396,10 @@ then `dependencies`, `tools` and `hooks`, one per synthesized runner.
 
 `project.runners.collectAndCache(profile, dir)` collects and stores each
 runner's result under a directory you choose.
+`project.runners.collectAndStore(profile, dir)` returns `{ catalog, stored }`
+as soon as every runner has answered, then hashes the files and writes the
+store in the background. `stored` settles when the writes end; await it
+before the process exits.
 `project.runners.readCached(profile, dir)` reads it back without running
 anything, and says per runner whether the entry is `fresh`, `stale` or a
 `miss`. An entry goes stale when a file it read or matched changes, when its
@@ -494,7 +502,8 @@ The experimental exports of `@osdlc/system-model/detect`:
 `GemfileFact`, `GoModFact`, `HookDef`, `HookManagerRole`, `ManifestFacts`,
 `PackageJsonFact`, `PackageManagerChoice`, `PackageManagerRole`, `ParamBinding`,
 `PinnedInstall`, `PinnedInstallOptions`, `PinnedSource`, `PyprojectFact`, `RunnerCacheState`,
-`SYNTHESIZED_RUNNERS`, `StaleReason`, `ToolAction`, `ToolFact`, `ToolManagerRole`
+`SYNTHESIZED_RUNNERS`, `StaleReason`, `StoringCatalog`, `ToolAction`, `ToolFact`,
+`ToolManagerRole`
 
 The experimental exports of `@osdlc/system-model/groups`:
 
@@ -506,8 +515,8 @@ The experimental exports of `@osdlc/system-model/runners`:
 
 The `Project` members `packageManagers`, `install`, `frozenInstall`,
 `missingDeps`, `pinnedInstall`, `toolManagers`, `execPrefix`, `trust`,
-`hookManagers` and `armHooks`, the `Runners` members `readCached` and
-`collectAndCache`, `RunnerContext.packageManagers`, `ToolDef.describe` and the `Param` fields
+`hookManagers` and `armHooks`, the `Runners` members `readCached`,
+`collectAndCache` and `collectAndStore`, `RunnerContext.packageManagers`, `ToolDef.describe` and the `Param` fields
 `binding`, `doc` and `choices` are experimental too. A test compares the lists above with the `@experimental`
 tags in the source.
 
