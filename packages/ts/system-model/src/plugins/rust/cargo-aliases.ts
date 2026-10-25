@@ -13,7 +13,8 @@
  * repository root. The task runs in that directory, because cargo has no
  * stable flag that names a directory to read config from. Config in
  * `$CARGO_HOME` is outside the repository and not read. An alias named after
- * a built-in command is skipped, as cargo ignores it.
+ * a built-in command is skipped, as cargo ignores it. An alias named after an
+ * external command such as `clippy` or `fmt` is listed, as cargo runs it.
  */
 
 import { parse as parseToml } from 'smol-toml'
@@ -35,20 +36,24 @@ const CHAIN = [
   { label: 'alias', hint: 'The key under `[alias]`.' },
 ]
 
-/** cargo's own commands, which an alias cannot replace. */
+/**
+ * cargo's built-in commands, which an alias cannot replace: the list in
+ * cargo's `commands::builtin()` (cargo 0.100, Rust 1.95). `clippy`, `fmt` and
+ * `miri` are not in it. They are external `cargo-*` binaries, and an alias
+ * with one of those names wins over the binary.
+ */
 const BUILT_IN = new Set([
   'add',
   'bench',
   'build',
   'check',
   'clean',
-  'clippy',
   'config',
   'doc',
   'fetch',
   'fix',
-  'fmt',
   'generate-lockfile',
+  'git-checkout',
   'help',
   'info',
   'init',
@@ -57,12 +62,12 @@ const BUILT_IN = new Set([
   'login',
   'logout',
   'metadata',
-  'miri',
   'new',
   'owner',
   'package',
   'pkgid',
   'publish',
+  'read-manifest',
   'remove',
   'report',
   'run',
