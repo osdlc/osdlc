@@ -18,6 +18,7 @@ import {
   settleGroup,
   spawnTrackedGroup,
 } from './groups.ts'
+import { planOptions, spawnPlan } from './spawn-plan.ts'
 import {
   CommandFailed,
   cwdError,
@@ -145,7 +146,8 @@ const ABORT_KILL_GRACE_MS = 1000
  * return empty output from child pipes.
  * The sync `spawnRunner` works around this; this runner does not.
  *
- * @param binary - A name looked up on `PATH`, or a path.
+ * @param binary - A name looked up on `PATH`, or a path. On Windows a `.cmd`
+ *   or `.bat` file runs through `cmd.exe` (see the README's Platforms section).
  * @returns A runner for that binary.
  *
  * @example
@@ -174,7 +176,8 @@ export function spawnRunnerAsync(binary: string): AsyncCommandRunner {
  * `maxOutputBytes` cuts stdout at exactly the cap. Everything else is as for
  * `spawnRunnerAsync`. The sync form is `spawnRunnerBytes`.
  *
- * @param binary - A name looked up on `PATH`, or a path.
+ * @param binary - A name looked up on `PATH`, or a path. On Windows a `.cmd`
+ *   or `.bat` file runs through `cmd.exe` (see the README's Platforms section).
  * @returns A runner for that binary.
  *
  * @example
@@ -241,6 +244,11 @@ function runAsync(
       resolve(emptyStdout(spawnFailure(cwdMessage), bytes))
       return
     }
+    const plan = spawnPlan(binary, argv, opts)
+    if ('refusal' in plan) {
+      resolve(emptyStdout(spawnFailure(plan.refusal), bytes))
+      return
+    }
     const group = opts.processGroup === true
     const refusal = group ? groupStartRefusal() : undefined
     if (refusal !== undefined) {
@@ -259,7 +267,8 @@ function runAsync(
     // which sends one SIGTERM to the direct child only: no SIGKILL
     // follow-up and no group.
     const start = () =>
-      spawn(binary, argv, {
+      spawn(plan.file, plan.args, {
+        ...planOptions(plan),
         cwd: opts.cwd,
         detached: group,
         ...mergedEnv(opts),
