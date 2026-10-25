@@ -181,8 +181,9 @@ for that probe. The page first asks for `way list --cached`, which the server
 answers with the newest catalog it holds, then for `way list --join`, which
 joins the probe already running or starts one; the polls do the same. The
 rows update in place when the probe finishes, and until then the status says
-`refreshing…`. After 3 seconds it names the runners still out:
-`refreshing… waiting on moon`.
+`refreshing…`. On that first read and on **Refresh**, after 3 seconds it
+names the runners still out: `refreshing… waiting on moon`. The polls do not,
+since they would stream every runner's report again.
 
 With nothing saved, the page's first read is the server's probe itself, and
 each runner is drawn as it answers. A runner still out has a quiet tab and a

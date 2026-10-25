@@ -62,7 +62,7 @@ async function start(): Promise<void> {
   })
   await Promise.all([config, load({ cached: true }), loadTools()])
   if (!signedIn()) return
-  if (state.catalog?.source !== 'fresh') await load({ join: true })
+  if (state.catalog?.source !== 'fresh') await load({ join: true, progress: true })
 }
 
 void start()

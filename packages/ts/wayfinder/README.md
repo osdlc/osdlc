@@ -535,7 +535,7 @@ why, a stale stored answer, a tool missing from `PATH`.
 runner answers, then the reports. The first line names every runner in
 `pending`, in display order. Each later line carries the runner that answered
 in `report`, with its `cache` verdict and `unknowns`, and the runners still
-out in `pending`. A report too large for one line (over 1 MiB) is named in
+out in `pending`. A report too large for one line (about 1 MiB) is named in
 `omitted` instead and comes with the reports. Over HTTP, `way serve` sends the
 same lines as NDJSON when the request asks for `application/x-ndjson`, with
 the catalog document last. `way schema` describes the line.

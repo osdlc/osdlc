@@ -295,7 +295,8 @@ describe('step-by-step loading in the page', () => {
     await load({ cached: true })
     const poll = load({ join: true })
     await vi.waitFor(() => expect(bodies).toHaveLength(2))
-    expect(bodies[1]).toEqual({ join: true, progress: true })
+    // A poll streams no progress: each line would carry a full report.
+    expect(bodies[1]).toEqual({ join: true })
     expect($('status').textContent).toContain('refreshing…')
     expect($('out').textContent).toContain('old')
     answer(
@@ -317,8 +318,10 @@ describe('step-by-step loading in the page', () => {
       )) as unknown as typeof fetch
     await load({ cached: true })
     const server = streaming()
-    const poll = load({ join: true })
+    // The first fresh read over the held catalog asks for progress; a Refresh does too.
+    const poll = load({ join: true, progress: true })
     await vi.waitFor(() => expect(server.bodies).toHaveLength(1))
+    expect(server.bodies[0]).toEqual({ join: true, progress: true })
     server.line({ pending: ['make', 'hang'], total: 2 })
     await drawn()
     expect($('status').textContent).toContain('refreshing…')
@@ -337,5 +340,28 @@ describe('step-by-step loading in the page', () => {
     server.finish(doc([report('hang', ['old']), report('make', ['new'])]))
     await poll
     expect($('status').textContent).not.toContain('refreshing')
+  })
+
+  test('a poll over rows on screen asks for no progress; a Refresh does', async () => {
+    globalThis.fetch = (() =>
+      Promise.resolve(
+        new Response(JSON.stringify(doc([report('make', ['old'])])), {
+          headers: { 'content-type': 'application/json' },
+        }),
+      )) as unknown as typeof fetch
+    await load({ cached: true })
+    const server = streaming()
+    const poll = load({ join: true })
+    await vi.waitFor(() => expect(server.bodies).toHaveLength(1))
+    expect(server.bodies[0]).toEqual({ join: true })
+    expect(server.accepts[0]).toBe('')
+    server.finish(doc([report('make', ['old'])]))
+    await poll
+    const refresh = load()
+    await vi.waitFor(() => expect(server.bodies).toHaveLength(2))
+    expect(server.bodies[1]).toEqual({ progress: true })
+    expect(server.accepts[1]).toBe('application/x-ndjson')
+    server.finish(doc([report('make', ['new'])]))
+    await refresh
   })
 })

@@ -262,10 +262,18 @@ function trustableFrom(unknowns: readonly Unknown[]): boolean {
  * `done` settles when it has run, for every caller that asked for it.
  */
 let again: {
-  opts: { cached?: boolean; join?: boolean }
+  opts: LoadOptions
   done: Promise<void>
   resolve: () => void
 } | null = null
+/** How {@link load} reads the catalog. */
+export interface LoadOptions {
+  cached?: boolean
+  join?: boolean
+  /** Stream progress over rows on screen, so a long read can name what it waits on. */
+  progress?: boolean
+}
+
 /** True while a load runs. `state.loading` is the part the status line shows. */
 let busy = false
 
@@ -277,14 +285,16 @@ let busy = false
  * slowest runner takes seconds. `join` lets the answer be a probe the server
  * is already running, for the first fresh read and the polls. Without it (a
  * Refresh, or a read after a change) the server starts a probe, so the
- * answer is never from before the click. A load asked for while one runs
+ * answer is never from before the click. Progress streams with nothing on
+ * screen, for a plain load, and with `progress`; a joining poll asks for none,
+ * since each line carries a full report. A load asked for while one runs
  * runs after it, so a Refresh during a poll is not lost, and its promise
  * settles only once that later read has run.
  *
  * The fingerprint check stops an unchanged poll from resetting the scroll
  * position and open groups.
  */
-export async function load(opts: { cached?: boolean; join?: boolean } = {}): Promise<void> {
+export async function load(opts: LoadOptions = {}): Promise<void> {
   if (busy) {
     if (again === null) {
       let resolve: () => void = () => {}
@@ -349,7 +359,11 @@ function onProgress(line: Record<string, unknown>): void {
   } else {
     const others = <T extends { runner: string }>(list: readonly T[] | undefined): T[] =>
       (list ?? []).filter((r) => r.runner !== report.runner)
-    const rank = (r: RunnerReport): number => state.order.indexOf(r.runner)
+    // A runner the first line did not name goes last.
+    const rank = (r: RunnerReport): number => {
+      const at = state.order.indexOf(r.runner)
+      return at === -1 ? state.order.length : at
+    }
     state.catalog = {
       ...base,
       reports: [...others(base.reports), report].sort((a, b) => rank(a) - rank(b)),
@@ -383,14 +397,15 @@ function scheduleRender(): void {
 /** How long a first load waits before it says Loading, so a held catalog shows with no flash. */
 const LOADING_AFTER_MS = 200
 
-async function loadOnce(opts: { cached?: boolean; join?: boolean }): Promise<void> {
-  // With nothing on screen, each runner is drawn as it answers. A refresh
+async function loadOnce(opts: LoadOptions): Promise<void> {
+  // With nothing on screen, each runner is drawn as it answers. A Refresh
   // asks for progress too, so a long one can name what it waits on.
   const live = state.catalog === null
+  const progress = live || opts.progress === true || opts.join !== true
   const args = {
     ...(opts.cached === true ? { cached: true } : {}),
     ...(opts.join === true ? { join: true } : {}),
-    progress: true,
+    ...(progress ? { progress: true } : {}),
   }
   state.loading = true
   state.live = live
@@ -410,10 +425,12 @@ async function loadOnce(opts: { cached?: boolean; join?: boolean }): Promise<voi
     }, WAITING_AFTER_MS),
   ]
   if (!live) refreshStatus()
-  const result = await call<CatalogDocument>(['list'], args, undefined, {
-    kind: 'catalog-progress',
-    on: onProgress,
-  })
+  const result = await call<CatalogDocument>(
+    ['list'],
+    args,
+    undefined,
+    progress ? { kind: 'catalog-progress', on: onProgress } : undefined,
+  )
   for (const timer of timers) clearTimeout(timer)
   state.loading = false
   state.live = false
