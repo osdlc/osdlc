@@ -15,7 +15,7 @@
 
 import type { AsyncCommandRunner } from '@osdlc/command-seam'
 
-import type { DiscoveryMode } from './model.ts'
+import type { DiscoveryMode, RunnerReport } from './model.ts'
 import type { PackageManagerChoice } from './roles.ts'
 import type { ProjectProfile, ToolDef } from './tool.ts'
 
@@ -163,4 +163,18 @@ export interface CollectOptions {
    * A callback that throws rejects the whole collect.
    */
   onProbe?: ((probe: { runner: string; durationMs: number }) => void) | undefined
+  /**
+   * Called once, before any runner is probed, with the id of each runner
+   * this collect reports, in report order. A callback that throws rejects
+   * the whole collect.
+   */
+  onRunners?: ((runners: readonly string[]) => void) | undefined
+  /**
+   * Called once for each runner as its report is ready, a withheld runner
+   * included, so a host can show each runner as it answers. The catalog
+   * still holds every report. `collectAndCache` may add a diagnostic to the
+   * catalog's copy that this one lacks. A callback that throws rejects the
+   * whole collect.
+   */
+  onReport?: ((report: RunnerReport) => void) | undefined
 }

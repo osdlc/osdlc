@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { afterAll, describe, expect, test } from 'vitest'
 
 import type { RunnerContext } from '../src/contract.ts'
-import { diagnostics, tasks, type ProviderResult } from '../src/model.ts'
+import { diagnostics, tasks, type ProviderResult, type RunnerReport } from '../src/model.ts'
 import { just, make, moon } from '../src/plugins/runners/index.ts'
 import { nodeScripts } from '../src/plugins/node/index.ts'
 import { createProject } from '../src/project.ts'
@@ -122,6 +122,68 @@ describe('collect', () => {
     )
     expect(probes.map((p) => p.runner)).toEqual(['quick'])
     expect(probes[0]!.durationMs).toBeGreaterThanOrEqual(0)
+  })
+
+  test('onRunners names every reported runner before onReport gets the first report', async () => {
+    const dir = await root({ 'quick.txt': '', 'held.txt': '' })
+    const seen: string[] = []
+    const catalog = await collect(
+      dir,
+      walkOpts({
+        tools: [toolOf('quick'), toolOf('held', { kind: 'exec' })],
+        allowExec: false,
+        onRunners: (runners: readonly string[]) => seen.push(`runners ${runners.join(',')}`),
+        onReport: (report: RunnerReport) => seen.push(`report ${report.runner}`),
+      }),
+    )
+    const ids = catalog.reports.map((r) => r.runner)
+    expect(seen[0]).toBe(`runners ${ids.join(',')}`)
+    // The withheld runner is reported too, and each runner exactly once.
+    expect(seen.slice(1).sort()).toEqual(ids.map((id) => `report ${id}`).sort())
+    const held = catalog.reports.find((r) => r.runner === 'held')!
+    expect(held.skippedForExec).toBe(true)
+  })
+
+  test('onReport gets each report as it is ready, before slower runners finish', async () => {
+    let release: () => void = () => {}
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const slow = toolOf('slow', {
+      collect: async () => {
+        await gate
+        return absent
+      },
+    })
+    const dir = await root({ 'quick.txt': '', 'slow.txt': '' })
+    const order: string[] = []
+    const done = collect(
+      dir,
+      walkOpts({
+        tools: [toolOf('quick'), slow],
+        onReport: (report: RunnerReport) => {
+          order.push(report.runner)
+          if (report.runner === 'quick') release()
+        },
+      }),
+    )
+    await done
+    expect(order).toEqual(['quick', 'slow'])
+  })
+
+  test('a throwing onReport rejects the collect', async () => {
+    const dir = await root({ 'quick.txt': '' })
+    await expect(
+      collect(
+        dir,
+        walkOpts({
+          tools: [toolOf('quick')],
+          onReport: () => {
+            throw new Error('listener failed')
+          },
+        }),
+      ),
+    ).rejects.toThrow('listener failed')
   })
 
   test('`only` can name a tool that was not detected, and gets nothing for it', async () => {
