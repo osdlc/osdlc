@@ -160,7 +160,8 @@ function storesFor(
     {
       key: 'config',
       what: 'your user configuration',
-      path: user.user,
+      // `dirs` and not `user.user`, so an injected platform moves this store too.
+      path: user.userFromEnv ? user.user : dirs.userConfig,
       file: true,
       // A file the variable names is not under wayfinder's directories, so
       // nothing above it is removed.

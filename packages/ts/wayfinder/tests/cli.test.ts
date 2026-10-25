@@ -9,11 +9,12 @@ import { cacheDir } from '../src/cache.ts'
 import { makeProject, readCachedCatalog } from '../src/catalog.ts'
 
 const findRoot = (dir: string): Promise<string> => makeProject().findRoot(dir)
-import { resolveTrustRoot, trustStore } from '@osdlc/trust-repo'
+import { resolveTrustRoot } from '@osdlc/trust-repo'
 
 import { acceptedFlags } from './guide-support.ts'
 import { makeGitFixture } from '@osdlc/typed-git/testing'
 import { main, rewriteAliases } from '../src/cli.ts'
+import { appTrustStore } from '../src/trust-store.ts'
 import { CONFIG_HOME } from './support.ts'
 
 const WORDS = ['list', 'query', 'run', 'serve', 'providers', 'config', 'trust', 'help']
@@ -85,7 +86,7 @@ async function temp(): Promise<string> {
  * on an injected `home` so a test can never read or write the real one.
  */
 function trustStoreFor(home: string) {
-  return trustStore({ tool: 'wayfinder', env: {}, home })
+  return appTrustStore({ env: {}, home })
 }
 
 /** A project with three parse-only runners: cargo, make, node scripts. */
