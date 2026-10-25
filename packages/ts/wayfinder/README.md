@@ -54,8 +54,9 @@ install. `way` never picks a checkout from the cwd, so a repository you run it
 in cannot choose the code that runs. A checkout must hold `src/cli.ts` and a
 `package.json` named `@osdlc/wayfinder`; anything else is skipped. The shim
 prints which one it chose on stderr, and `WAY_QUIET=1` silences it. State
-is kept in `<config>/way/`, which is `~/Library/Application Support/way` on
-macOS and `${XDG_CONFIG_HOME:-~/.config}/way` elsewhere. A checkout runs from
+is kept in `${XDG_CONFIG_HOME:-~/.config}/way` on every platform, or under
+`$WAYFINDER_ROOT/config/way` when that is set. `way clean --dev` removes it,
+with the shims `way dev install` wrote. A checkout runs from
 source, so it needs [Bun](https://bun.sh) on an absolute PATH entry and a
 `pnpm install` in the checkout. A `bun` found only through a relative entry
 such as `bin` or `.` is not used.
@@ -173,23 +174,28 @@ trusted. You grant trust once per repository, and it is remembered:
 
 ```text
 way trust                 trust the repository at the resolved root
-way trust --untrust       remove this repository's trust
-way trust --show          report this root's trust status
-way trust --list          every trusted path, one per line
+way trust --untrust       remove this repository's whole-repository grant
+way trust --untrust-all   remove every grant of this repository
+way trust --show          report this root's trust and what decided it
+way trust --list          every grant, one per line
+way trust --scope <tool>  with a mode above: one tool's grant, such as mise
 way trust --json          the same answer as one JSON object
 way trust --help          this list
 ```
 
-Each mode also has a JSON form, and `--json` prints one object per run. The
-three modes that act on the root (the plain grant, `--untrust` and `--show`)
-all print `{"root": …, "trusted": …, "changed": …, "by": …, "rule": …}`, so a
-caller does not have to branch on the flag it passed. `--list` prints
-`{"trusted": [paths]}`. `by` is `"marker" | "path" | "owner" | null` and names
-the layer that decided (see [The policy](#the-policy) below). `rule` is the
-matching `trust.paths` or `trust.owners` entry, present only when `by` is
-`"path"` or `"owner"`. A `--untrust` that finds no marker to remove still
-prints its object, and reports the miss with exit 1 and a line on stderr. So a
-parser never gets an empty stdout.
+Every mode prints the same JSON shape under `--json`:
+`{"action": …, "changed": …, "roots": [{"root": …, "trusted": …, "by": …, "rule": …, "scope": …}]}`.
+A caller does not have to branch on the flag it passed. `--list` gives one
+entry per grant. `by` is `"marker" | "path" | "owner" | null` and names the
+layer that decided (see [The policy](#the-policy) below). `rule` is the
+matching policy entry, present only when `by` is `"path"` or `"owner"`.
+`scope` is present for a one-tool grant. A `--untrust` that finds nothing to
+remove still prints its object, and reports the miss with exit 1 and a line
+on stderr. So a parser never gets an empty stdout.
+
+A run needs every tool it runs trusted, such as mise for a mise task.
+`--scope mise` grants or removes mise's trust alone. A grant is made from the
+command line only: the MCP and HTTP adapters refuse it.
 
 `-C` applies here too. Trust, with execution allowed, also lets the project
 file load tool modules; see
@@ -206,10 +212,14 @@ itself trust, just as it cannot set `allowExec: true`.
 {
   "trust": {
     "paths": ["/home/me/work/**"], // @osdlc/trust-repo's glob dialect
-    "owners": ["my-org", "gitlab.com/other-org"] // `origin` remote owners; bare means github.com
+    "owners": ["my-org", "gitlab.com/other-org"], // `origin` remote owners; bare means github.com
+    "tools": { "mise": { "paths": ["/home/me/scratch/**"] } } // one tool only
   }
 }
 ```
+
+`trust.tools.<tool>` takes the same `paths` and `owners` and trusts that one
+tool only.
 
 `@osdlc/trust-repo`'s `policyExecGate` checks, in order: a marker in the
 store, then `trust.paths` (a glob over the root, with symlinks resolved), then
@@ -234,39 +244,42 @@ the policy still covers the root after the marker is removed.
 
 ### Removing what it has stored
 
-wayfinder stores three things outside your repositories, and `way clean`
-removes them. Bare `way clean` only reports them, so it deletes nothing by
-default.
+`way clean` removes what wayfinder stores outside your repositories. Bare
+`way clean` only reports, so it deletes nothing by default.
 
 ```text
-way clean                  show each store, where it is, and what it holds
-way clean --cache          stored probe results
-way clean --trust          forget which repositories you have trusted
-way clean --config --yes   your user configuration file
-way clean --all --yes      all three
-way clean --json           the same answer as one JSON object
+way clean                    show each store, where it is, and what it holds
+way clean --cache            stored probe results
+way clean --trust            forget which repositories you have trusted
+way clean --config --yes     your user configuration file
+way clean --dev              way dev link state and the shims way dev install wrote
+way clean --legacy           files left under the tool's name before its first release
+way clean --everything --yes every store above
+way clean --json             the same answer as one JSON object
 ```
 
-`--json` prints one object with a `stores` array of
-`{key, flag, what, path, bytes, removed}`. A bare report lists every store. A
-removal lists only the ones you named. `bytes` is null when nothing was stored.
+`--json` prints `{mode, stores}`, where each store is
+`{key, flag, what, path, bytes, removed, envVar}`. A bare report lists every
+store; `dev` shims and `legacy` files appear only when present. A removal
+lists only the stores you named. `bytes` is null when nothing was stored.
 That tells "nothing to remove" apart from "could not remove", since both have
-`removed: false`. Under `--json`, the closing note that trust will be asked for
-again goes to stderr, so stdout stays one JSON document.
+`removed: false`. `envVar` names the variable that chose the path, such as
+`WAYFINDER_CONFIG`. Notes go to stderr, so stdout stays one JSON document.
 
-`--config` and `--all` need `--yes` because the three stores are not equally
-easy to replace. The cache is rebuilt by one slow probe. Losing trust means
-answering the trust question again for each repository. The configuration is
-the only one you wrote by hand. `clean` never touches anything inside a
-repository: a project's own `wayfinder.config.json` belongs to that project.
+`--config` and `--everything` need `--yes`. The cache is rebuilt by one slow
+probe. Losing trust means answering the trust question again for each
+repository. The configuration is the only store you wrote by hand. A config
+that `WAYFINDER_CONFIG` names is named again before it is removed, since it
+may live in a dotfiles repository. Once a store is gone, empty directories
+above it are removed, up to the base such as `~/.config`. `clean` never
+touches anything inside a repository: a project's own `wayfinder.config.json`
+belongs to that project. The MCP and HTTP adapters get the report only.
 
 The trust store is a directory of marker files at
 `$XDG_STATE_HOME/wayfinder/trusted/`, or `~/.local/state/wayfinder/trusted/`
-when that variable is unset. It is XDG state, not config. The program
-maintains trust, and a person does not edit it by hand. A consent record
-copied to a new machine in a dotfiles repository is no longer consent. Grants
-made under the old waypost name, in `~/.local/state/waypost/trusted/`, still
-count.
+when that variable is unset. It is state, not config. The program maintains
+trust, and a person does not edit it by hand. A consent record copied to a
+new machine in a dotfiles repository is no longer consent.
 
 **A repository cannot trust itself.** `allowExec: true` in
 `wayfinder.config.json` is ignored with a warning, because that file lives
@@ -358,7 +371,7 @@ and says so. `--json --cached` adds a `cache` array beside the catalog, with
 one entry per selected runner. Over HTTP the page always receives this array.
 
 The cache is at `$XDG_CACHE_HOME/wayfinder/`, or `~/.cache/wayfinder/`. It is
-XDG cache, not the `~/.local/state/wayfinder/` directory that
+cache, not the `~/.local/state/wayfinder/` directory that
 [trust](#execution-and-trust) uses. Losing the cache costs one slow probe.
 Losing the trust store would silently un-trust repositories. The cache plays no
 part in deciding execution. A cached answer is never a trust grant, clearing
@@ -378,17 +391,29 @@ defaults, `$XDG_CONFIG_HOME/wayfinder/config.json` (or
 root, then the flags on the command line.
 
 The keys are `runners.disabled`, `runners.order`, `allowExec`, `discovery`,
-`excludePaths`, `trust.paths`, `trust.owners` and `tools`. `WAYFINDER_CONFIG`
-names a different user file and changes nothing else. A relative
-`WAYFINDER_CONFIG` is ignored with a warning: from the repository root it
-would name a file in the repository. Use an absolute path or `~/`. A relative
-`HOME` counts as unset, and the account's home is used. A relative `XDG_CONFIG_HOME`, `XDG_STATE_HOME` or `XDG_CACHE_HOME` is
-ignored, as the XDG spec says.
+`excludePaths`, `trust.paths`, `trust.owners`, `trust.tools`, `tools`, `open`
+and `theme`. `open` (`tui` or `web`) is what a bare `way` opens. `theme`
+(`system`, `light` or `dark`) is the web view's colour scheme. `trust`, `open`
+and `theme` count only in the user file: a project file's value is dropped
+with a warning. An unknown key is a warning that names the closest known key.
 
-The tool was called waypost before its first release. `WAYPOST_CONFIG`,
-`~/.config/waypost/config.json` and `waypost.config.json` are still read when
-the new name is absent, with a warning. See the
-[configuration guide](docs/guide/configuration.md#files-from-the-waypost-name).
+The package ships the file's JSON Schema at `schema/config.json`, built from
+the same Zod schema that validates the file. `way config set` writes
+`$schema` into a file that has none, keeps the keys in the schema's order,
+and replaces the file in one atomic write.
+
+`WAYFINDER_CONFIG` names a different user file and changes nothing else. A
+relative `WAYFINDER_CONFIG` is ignored with a warning: from the repository
+root it would name a file in the repository. Use an absolute path or `~/`.
+Every command reads it the same way.
+
+The config, state and cache directories follow XDG on every platform.
+`WAYFINDER_ROOT=/dir` moves all three under one directory, and
+`WAYFINDER_CONFIG_DIR`, `WAYFINDER_STATE_DIR` and `WAYFINDER_CACHE_DIR` move
+one each. A relative value there is an error. A relative `HOME` counts as
+unset, and the account's home is used. A relative `XDG_*` value is ignored,
+as the XDG spec says, and a `~` in one is not expanded. See
+[Paths](docs/guide/configuration.md#paths).
 
 ```text
 way config list [--json]                          every setting, and the layer it came from
@@ -396,8 +421,13 @@ way config get <key>                              one setting's effective value,
 way config set <key> <value> [--user|--project]   write a setting (default --project)
 way config unset <key> [--user|--project]         remove a setting (default --project)
 way config path                                   where each layer's file lives
+way config explain <key>                          how a setting got its value, layer by layer
 way config --help                                 this list
 ```
+
+`set --project` refuses what a project file may not hold: `allowExec: true`,
+`trust`, `open` and `theme`. The web view refuses the same writes. The MCP and
+HTTP adapters cannot change `trust`, `allowExec` or `tools` at all.
 
 `-C` applies here too, so `way config path -C /elsewhere` reports that
 directory's files rather than this one's. Exit code 2 means the command as
@@ -467,8 +497,8 @@ subcommands whose answer depends on the repository take it.
 | `config` | yes | reports the configuration THAT directory resolves |
 | `trust` | yes | the grant keys on that directory's project root |
 | `providers` | yes | a trusted project file can add tools when execution is allowed |
-| `clean` | no | resolves every path from the environment and the home directory |
-| `guide` | no | its argument is a topic name |
+| `clean` | accepted, unused | resolves every path from the environment and the home directory |
+| `guide` | accepted, unused | its argument is a topic name |
 | `dev` | no | its state is devlink's, keyed on the tool name; not listed in the help |
 
 `way --help` is the short form: the main ways to run it, the flags most runs
