@@ -426,7 +426,8 @@ describe('spawnRunnerAsync — processGroup', () => {
   // then execs `sleep`, so the printed pid is the grandchild's.
   const GRANDCHILD = ['-c', `sh -c 'echo $$; exec sleep 30'; echo after`]
 
-  test('a timeout kills the grandchild too', async () => {
+  // POSIX only: `processGroup` is POSIX only, and a `sh` pid is not a Windows pid.
+  test.skipIf(process.platform === 'win32')('a timeout kills the grandchild too', async () => {
     const sh = spawnRunnerAsync('sh')
     const r = await sh.run(GRANDCHILD, { cwd: CWD, timeoutMs: 500, processGroup: true })
     const pid = Number(r.stdout.trim())
@@ -439,7 +440,8 @@ describe('spawnRunnerAsync — processGroup', () => {
     }
   }, 10_000)
 
-  test('an abort kills the grandchild too', async () => {
+  // POSIX only: `processGroup` is POSIX only, and a `sh` pid is not a Windows pid.
+  test.skipIf(process.platform === 'win32')('an abort kills the grandchild too', async () => {
     const sh = spawnRunnerAsync('sh')
     const ac = new AbortController()
     setTimeout(() => ac.abort(), 500)
@@ -477,7 +479,8 @@ describe('spawnRunnerAsync — processGroup', () => {
     expect(r).toEqual({ exitCode: 3, stdout: 'ok\n', stderr: '' })
   })
 
-  test('a background member still holding the pipes is killed after the exit grace', async () => {
+  // POSIX only: `processGroup` is POSIX only, and a `sh` pid is not a Windows pid.
+  test.skipIf(process.platform === 'win32')('a background member still holding the pipes is killed after the exit grace', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'seam-group-'))
     const pidFile = join(dir, 'pid')
     let pid = 0

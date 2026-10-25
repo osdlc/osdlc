@@ -438,7 +438,8 @@ describe('posix', () => {
   })
 
   // ── processGroup ──────────────────────────────────────────────────────────
-  describe('processGroup kills grandchildren', () => {
+  // POSIX only: `processGroup` is POSIX only.
+  describe.skipIf(process.platform === 'win32')('processGroup kills grandchildren', () => {
     // `sh` is not exec'd, so killing it alone leaves the inner `sleep`. The
     // inner sh prints its pid and execs sleep, so the printed pid is the
     // grandchild's.

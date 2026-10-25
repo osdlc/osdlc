@@ -101,7 +101,8 @@ describe('spawnRunnerAsync maxOutputBytes', () => {
     expect(r).toEqual({ exitCode: 0, stdout: 'x'.repeat(1000), stderr: '' })
   })
 
-  test('with processGroup, the whole group is killed', async () => {
+  // POSIX only: `processGroup` is POSIX only.
+  test.skipIf(process.platform === 'win32')('with processGroup, the whole group is killed', async () => {
     const pidFile = join(tmpdir(), `seam-cap-pid-${process.pid}`)
     let pid = 0
     try {
