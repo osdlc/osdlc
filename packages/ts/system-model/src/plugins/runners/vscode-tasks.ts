@@ -257,11 +257,48 @@ function runOf(
     const words = line.split(/\s+/).filter((w) => w !== '')
     return { argv: [...words, ...literal].map(expand), cwd, type }
   }
-  const full = [
-    line.replace(KNOWN, (m) => shellQuote(expand(m))),
-    ...literal.map((a) => shellQuote(expand(a))),
-  ]
+  const full = [substituteInShell(line, expand), ...literal.map((a) => shellQuote(expand(a)))]
   return { argv: ['sh', '-c', full.join(' ')], cwd, type, detail: full.join(' ') }
+}
+
+const KNOWN_AT = new RegExp(KNOWN.source, 'y')
+
+/**
+ * `line` with each known variable replaced by its value, quoted for where it
+ * sits: a whole word outside quotes, escaped inside `"…"`, and spliced between
+ * a closed and a reopened `'…'`. An escaped character (`\\$`) is left alone.
+ */
+function substituteInShell(line: string, expand: (s: string) => string): string {
+  let out = ''
+  let quote: '"' | "'" | null = null
+  for (let i = 0; i < line.length;) {
+    const c = line[i]!
+    if (c === '$') {
+      KNOWN_AT.lastIndex = i
+      const m = KNOWN_AT.exec(line)
+      if (m !== null) {
+        const value = expand(m[0])
+        out +=
+          quote === '"'
+            ? value.replace(/[\\$`"]/g, '\\$&')
+            : quote === "'"
+              ? `'${shellQuote(value)}'`
+              : shellQuote(value)
+        i += m[0].length
+        continue
+      }
+    }
+    if (c === '\\' && quote !== "'") {
+      out += line.slice(i, i + 2)
+      i += 2
+      continue
+    }
+    if (c === "'" && quote !== '"') quote = quote === null ? "'" : null
+    else if (c === '"' && quote !== "'") quote = quote === null ? '"' : null
+    out += c
+    i++
+  }
+  return out
 }
 
 /** `word` as one POSIX shell word. */
