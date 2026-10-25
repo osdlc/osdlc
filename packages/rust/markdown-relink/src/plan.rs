@@ -14,7 +14,7 @@
 //! 4. **Enumerate** the inbound links — the [`VaultFacts`] snapshot says which
 //!    notes to look at, and each of those notes is then re-read and re-scanned,
 //!    because the snapshot is a filter and the file is the truth.
-//! 5. **Re-express** each one ([`crate::rewrite`]) and record the byte edit,
+//! 5. **Re-express** each one (the `rewrite` module) and record the byte edit,
 //!    or record that no edit is needed.
 //!
 //! # Scope: bodies, not frontmatter
@@ -45,7 +45,7 @@ use crate::{ByteEdit, Diagnostic, DiagnosticCode, FileEdits, FileEtag, RenamePla
 /// bulk restructure arrives the only change is how many
 /// entries go in — not how anything reads it.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct PathMap {
+pub(crate) struct PathMap {
     entries: BTreeMap<String, String>,
 }
 
@@ -70,16 +70,6 @@ impl PathMap {
         self.entries.get(path).map(String::as_str)
     }
 
-    /// Every moved path and where it went, in path order.
-    pub fn iter(&self) -> impl Iterator<Item = (&str, &str)> {
-        self.entries.iter().map(|(k, v)| (k.as_str(), v.as_str()))
-    }
-
-    /// Whether no path moved.
-    pub fn is_empty(&self) -> bool {
-        self.entries.is_empty()
-    }
-
     /// The corpus as it will be once the map is applied.
     ///
     /// This is the hypothetical the whole planner runs against: "given the
@@ -99,7 +89,7 @@ impl PathMap {
 
 /// What a link target names in one corpus.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Resolution {
+pub(crate) enum Resolution {
     /// Nothing in the corpus answers to it.
     None,
     /// Exactly one file does.
@@ -147,7 +137,7 @@ impl Resolution {
 /// [`Self::resolve_lenient`] keeps the fallback for the one job that wants it:
 /// deciding which existing links point at the rename subject.
 #[derive(Debug, Clone, Default)]
-pub struct Corpus {
+pub(crate) struct Corpus {
     by_key: HashMap<String, Vec<String>>,
 }
 
@@ -297,6 +287,7 @@ impl Corpus {
     }
 
     /// The shortest suffix of `path` that names it and nothing else.
+    #[cfg(test)]
     pub fn shortest_unambiguous(&self, path: &str) -> String {
         suffix_at_depth(&key_path(path), self.minimum_unambiguous_depth(path))
     }

@@ -7,6 +7,7 @@
 
 /// Everything a plan or an apply can fail with.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum TransformError {
     /// A path was not vault-relative, escaped the vault, or was not UTF-8.
     #[error(transparent)]

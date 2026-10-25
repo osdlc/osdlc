@@ -34,7 +34,7 @@
 //!   paths in the request.
 //!
 //! So every link is **resolved to an identity, looked up in the path map, and
-//! re-expressed** — never matched as text. The path map ([`PathMap`]) is the
+//! re-expressed** — never matched as text. The internal path map is the
 //! single source of truth for where things went; v1 puts exactly one entry in
 //! it, and every type below is shaped so a multi-entry map (a folder move, a
 //! bulk restructure) needs no reshaping to arrive.
@@ -53,7 +53,7 @@
 //! normalisation is that module's too. A second answer to "is this a link"
 //! would mean splicing bytes that are not one, so the offset scanner lives in
 //! `markdown-link` and is never copied up. The only index built here is
-//! [`plan::Corpus`], and its docs argue why it is a different *question*
+//! the planner's internal corpus, and its docs argue why it is a different *question*
 //! rather than a second implementation.
 //!
 //! Nor is there a cache. [`VaultFacts`] is a snapshot a caller supplies —
@@ -91,9 +91,8 @@ pub mod apply;
 pub mod bundle;
 pub mod error;
 pub mod facts;
-pub mod path;
 pub mod plan;
-pub mod rewrite;
+mod rewrite;
 
 #[cfg(test)]
 mod tests;
@@ -102,8 +101,7 @@ pub use apply::{execute, splice};
 pub use bundle::{execute_bundle, plan_bundle};
 pub use error::TransformError;
 pub use facts::{FrontmatterRef, VaultFacts};
-pub use path::to_vault_relative;
-pub use plan::{Corpus, PathMap, Resolution, plan, plan_redirect};
+pub use plan::{plan, plan_redirect};
 
 /// One file's byte edits, with the etag they were computed against.
 ///
@@ -176,6 +174,7 @@ pub struct BundlePeer {
 /// loud. Every one of these is reported whether or not the plan is applied —
 /// silence is the failure mode this whole surface exists to avoid.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum DiagnosticCode {
     /// A bare name stopped being unique after the move, so the rewrite
     /// qualified it with the shortest path that is.
@@ -294,7 +293,9 @@ pub struct Skip {
     /// Vault-relative path of the file that was skipped.
     pub path: String,
     /// A short stable reason: `drifted`, `not_previewed`, `unreadable`,
-    /// `write_failed`.
+    /// `write_failed`, or `entry_rename_failed` (a bundle's entry file did not
+    /// take its new name after the directory moved; the filesystem error is in
+    /// [`RenameResult::conflict`]).
     pub reason: String,
 }
 
@@ -319,7 +320,10 @@ pub struct RenameResult {
     /// The etag of the note at its new path. Empty when nothing moved.
     pub new_etag: String,
     /// Why the rename was refused, when it was. Same success-channel
-    /// discipline as [`RenamePlan::conflict`].
+    /// discipline as [`RenamePlan::conflict`]. Also set, with `ok` still
+    /// `true`, when a bundle's entry file failed to rename after the directory
+    /// moved: it then holds the filesystem error behind the
+    /// `entry_rename_failed` skip.
     pub conflict: Option<String>,
     /// For a bundle rename, every peer file that moved. Since the move is one
     /// `fs::rename` on the whole directory, this is either all of

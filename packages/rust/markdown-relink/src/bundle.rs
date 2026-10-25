@@ -7,9 +7,9 @@
 //! peer, and every inbound link to any of them (a wikilink to the entry note,
 //! an embed of a peer image, a markdown link to a peer script).
 //!
-//! # Same rewrite machinery, a bigger [`PathMap`]
+//! # Same rewrite machinery, a bigger `PathMap`
 //!
-//! [`plan::plan`]'s algorithm is "build a [`PathMap`], build the corpus as it
+//! [`plan::plan`]'s algorithm is "build a `PathMap`, build the corpus as it
 //! will be once the map is applied, find every link that resolves into the
 //! map, re-express it". Nothing about that is one-entry-specific — the type
 //! says so in its own docs — so a bundle rename is the SAME algorithm run
@@ -18,7 +18,7 @@
 //! first. [`bundle_entry`]'s structural refusals and the peer enumeration in
 //! [`bundle_members`] are what is actually new; the per-link decision
 //! (unchanged / rewrite / qualify) is
-//! [`rewrite::plan_link`], reused unchanged.
+//! `rewrite::plan_link`, reused unchanged.
 //!
 //! # Why the entry note's own diagnostics, not every peer's
 //!
@@ -74,6 +74,17 @@ use crate::{RenamePlan, RenameResult, Skip};
 /// code-review/code-review.md` is a bundle entry exactly as `code-review/
 /// code-review.md` is, which is what lets a bundle move to a different
 /// parent while keeping its own name.
+///
+/// ```
+/// use markdown_relink::bundle::bundle_entry;
+///
+/// assert_eq!(
+///     bundle_entry("components/review/review.md"),
+///     Some(("components/review", "review.md")),
+/// );
+/// assert_eq!(bundle_entry("components/review/notes.md"), None);
+/// assert_eq!(bundle_entry("review.md"), None);
+/// ```
 pub fn bundle_entry(path: &str) -> Option<(&str, &str)> {
     if !plan::is_note(path) {
         return None;
@@ -87,6 +98,19 @@ pub fn bundle_entry(path: &str) -> Option<(&str, &str)> {
 /// Every file under `dir` (vault-relative), notes and attachments alike —
 /// what a bundle's directory rename or delete moves as one unit. Includes the
 /// entry note itself; callers that want peers only filter it out.
+///
+/// ```
+/// use markdown_relink::bundle::bundle_members;
+///
+/// let vault = tempfile::tempdir().unwrap();
+/// std::fs::create_dir_all(vault.path().join("review/scripts")).unwrap();
+/// std::fs::write(vault.path().join("review/review.md"), "# Review\n").unwrap();
+/// std::fs::write(vault.path().join("review/scripts/run.sh"), "x\n").unwrap();
+///
+/// let mut members = bundle_members(vault.path(), "review");
+/// members.sort();
+/// assert_eq!(members, ["review/review.md", "review/scripts/run.sh"]);
+/// ```
 pub fn bundle_members(vault_dir: &Path, dir: &str) -> Vec<String> {
     let opts = markdown_vault_fs::walk::WalkOptions {
         roots: vec![dir.to_string()],
@@ -375,7 +399,9 @@ pub fn plan_bundle(
 /// `to`'s directory or none of it moved. The entry file's own rename (step 3)
 /// is a second, independent filesystem call, so it is the one step that can
 /// fail **after** the bundle has already relocated. When it does, this
-/// reports it in [`RenameResult::skipped`] rather than moving the directory
+/// reports it in [`RenameResult::skipped`] with the reason
+/// `entry_rename_failed`, and the filesystem error in
+/// [`RenameResult::conflict`], rather than moving the directory
 /// back — there is no journal to roll back with, and undoing
 /// the directory move would risk losing whatever else changed inside it in
 /// the meantime. What is left is the bundle sitting at its new directory with
@@ -516,8 +542,11 @@ pub fn execute_bundle(
         // See this function's docs: no rollback of the directory move.
         result.skipped.push(Skip {
             path: from,
-            reason: format!("entry file rename failed after the directory moved: {e}"),
+            reason: "entry_rename_failed".to_string(),
         });
+        result.conflict = Some(format!(
+            "entry file rename failed after the directory moved: {e}"
+        ));
         result.new_etag = crate::apply::etag_after_move(&moved_entry_abs);
         return Ok(result);
     }

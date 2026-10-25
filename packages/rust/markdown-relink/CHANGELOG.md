@@ -18,7 +18,19 @@ it under per-file compare-and-swap.
 
 - Every function that takes a `vault_dir` needs an absolute path, because the `path-guard` 0.3
   guard reads no current directory. A relative one is refused with `TransformError::Path`.
-  `to_vault_relative` still takes a relative `path` and resolves it against the current directory.
+- `TransformError` and `DiagnosticCode` are `#[non_exhaustive]`. A `match` on either needs a
+  `_` arm, and a new variant is no longer a breaking change.
+- A bundle whose entry file fails to rename after its directory moved is reported with the
+  stable `Skip.reason` `entry_rename_failed`. The filesystem error is in
+  `RenameResult::conflict`, not in the reason.
+
+### Removed
+
+- The planner's internals are no longer public: `PathMap`, `Corpus`, `Resolution`,
+  `rewrite::LinkOutcome`, `rewrite::target_span`, `rewrite::plan_link` and
+  `rewrite::encode_md_url`. `splice`, `bundle::bundle_entry` and `bundle::bundle_members`
+  stay public.
+- `to_vault_relative`. It had no caller outside the crate and none inside it.
 
 ### Fixed
 

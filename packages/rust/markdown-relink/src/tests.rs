@@ -1137,6 +1137,26 @@ fn a_bundle_move_across_parents_keeps_the_leaf_name_and_skips_the_entry_rename()
 }
 
 #[test]
+fn a_failed_entry_rename_is_skipped_with_a_stable_reason() {
+    // A non-empty folder already named like the new entry file blocks the
+    // second rename, after the directory has moved.
+    let f = Fixture::new(&[
+        ("review/review.md", "# Review\n"),
+        ("review/code-review.md/keep.txt", "x\n"),
+    ]);
+    let plan = f.plan_bundle("review/review.md", "code-review/code-review.md");
+    assert!(plan.ok(), "{:?}", plan.conflict);
+
+    let result = f.apply_bundle(&plan);
+    assert!(result.ok && !result.renamed, "{result:?}");
+    assert_eq!(result.skipped.len(), 1, "{:?}", result.skipped);
+    assert_eq!(result.skipped[0].reason, "entry_rename_failed");
+    let detail = result.conflict.unwrap_or_default();
+    assert!(detail.contains("entry file rename failed"), "{detail:?}");
+    assert!(f.exists("code-review/review.md"));
+}
+
+#[test]
 fn a_bundle_rename_refuses_a_folder_name_that_does_not_match_the_file_stem() {
     let f = Fixture::new(&[("review/review.md", "# Review\n")]);
     let plan = f.plan_bundle("review/review.md", "code-review/other.md");

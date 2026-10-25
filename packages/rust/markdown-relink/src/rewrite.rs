@@ -32,7 +32,7 @@ use crate::plan::{Corpus, Resolution};
 
 /// What to do with one inbound link.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum LinkOutcome {
+pub(crate) enum LinkOutcome {
     /// The link already says the right thing. Not an absence of an answer — a
     /// *verified* one: the text was resolved against the post-move corpus and
     /// found to still name the moved file on its own.
@@ -53,7 +53,7 @@ pub enum LinkOutcome {
 /// `strip_code` blanks by character and a blanked multi-byte character is one
 /// byte shorter than it was. A missed link is reported; a splice at a guessed
 /// offset would corrupt the note.
-pub fn target_span(body: &str, link: &BodyLink) -> Option<Range<usize>> {
+pub(crate) fn target_span(body: &str, link: &BodyLink) -> Option<Range<usize>> {
     match link.kind {
         BodyLinkKind::Wikilink | BodyLinkKind::Embed => {
             // `body_links` puts an embed's `!` inside the span, because a
@@ -94,7 +94,7 @@ pub fn target_span(body: &str, link: &BodyLink) -> Option<Range<usize>> {
 ///
 /// `post` is the corpus **as it will be**, `to` the destination path, and
 /// `current` the exact bytes [`target_span`] picked out.
-pub fn plan_link(post: &Corpus, to: &str, link: &BodyLink, current: &str) -> LinkOutcome {
+pub(crate) fn plan_link(post: &Corpus, to: &str, link: &BodyLink, current: &str) -> LinkOutcome {
     // The no-edit rule, and the only one that needs the hypothetical corpus to
     // state at all: does the text the author wrote still name the moved file,
     // on its own, unambiguously? A pure folder move that keeps the basename
@@ -136,7 +136,7 @@ pub fn plan_link(post: &Corpus, to: &str, link: &BodyLink, current: &str) -> Lin
 /// vault full of Cyrillic and CJK note names reads better unencoded, every
 /// consumer here decodes UTF-8 fine, and encoding it would churn every
 /// such link the first time one is touched.
-pub fn encode_md_url(path: &str) -> String {
+pub(crate) fn encode_md_url(path: &str) -> String {
     let mut out = String::with_capacity(path.len());
     for ch in path.chars() {
         match ch {

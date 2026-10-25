@@ -296,6 +296,19 @@ pub(crate) fn etag_after_move(path: &Path) -> String {
 ///
 /// Shared by [`crate::bundle`] and by callers that apply a
 /// [`crate::plan::plan_redirect`] plan themselves.
+///
+/// ```
+/// use markdown_relink::{ByteEdit, splice};
+///
+/// let edits = [ByteEdit {
+///     offset: 6,
+///     delete_count: 5,
+///     insert: "Beta".to_string(),
+///     old_text: "Alpha".to_string(),
+///     line: 1,
+/// }];
+/// assert_eq!(splice(b"See [[Alpha]].", &edits), b"See [[Beta]].");
+/// ```
 pub fn splice(bytes: &[u8], edits: &[ByteEdit]) -> Vec<u8> {
     let mut out = bytes.to_vec();
     for edit in edits.iter().rev() {
