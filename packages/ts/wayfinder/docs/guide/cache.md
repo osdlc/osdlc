@@ -16,8 +16,9 @@ interactive surfaces can show something at once.
   refresh saves the catalog it showed in one file
   (`<cache>/views/v1/`), and a start draws it before reading anything else.
   It is drawn only under the same trust and settings that produced it.
-  Without it, a start reads the store, which probes nothing but detects the
-  project and hashes each runner's files: seconds on a large repository.
+  Without it, a start probes and shows each runner as it answers. The store
+  is not read first: that detects the project and hashes each runner's
+  files, which takes as long as the probe's own detection.
 - **`way list` and `way query`** re-probe on every run, so a script
   gets what the repository has now. These runs also write the store.
 - **`--cached`** makes `list`, `query` or `run` answer at once from the
