@@ -13,6 +13,7 @@ import { spawn } from 'node:child_process'
 import { constants } from 'node:os'
 
 import { groupStartRefusal, releaseWhenEmpty, settleGroup, spawnTrackedGroup } from './groups.ts'
+import { planOptions, spawnPlan } from './spawn-plan.ts'
 import {
   childStdio,
   cwdError,
@@ -136,7 +137,8 @@ export interface ManagedProcessRunner {
  * child's output reaches the terminal. It does not capture output and has
  * no timeout of its own.
  *
- * @param binary - A name looked up on `PATH`, or a path.
+ * @param binary - A name looked up on `PATH`, or a path. On Windows a `.cmd`
+ *   or `.bat` file runs through `cmd.exe` (see the README's Platforms section).
  * @returns A runner for that binary.
  *
  * @example
@@ -165,13 +167,18 @@ export function managedProcessRunner(binary: string): ManagedProcessRunner {
       if (cwdMessage !== undefined) {
         return { pid: -1, kill: () => {}, exited: Promise.resolve(spawnExit(cwdMessage)) }
       }
+      const plan = spawnPlan(binary, argv, opts)
+      if ('refusal' in plan) {
+        return { pid: -1, kill: () => {}, exited: Promise.resolve(spawnExit(plan.refusal)) }
+      }
       const group = opts.processGroup === true
       const refusal = group ? groupStartRefusal() : undefined
       if (refusal !== undefined) {
         return { pid: -1, kill: () => {}, exited: Promise.resolve(refusedExit(refusal)) }
       }
       const start = () =>
-        spawn(binary, argv, {
+        spawn(plan.file, plan.args, {
+          ...planOptions(plan),
           cwd: opts.cwd,
           detached: group,
           stdio,

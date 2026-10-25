@@ -58,9 +58,7 @@ These are the facts today, not a support promise.
   runtime.
 - **Bun** also works, through the compiled `dist/`.
 - **ESM only.** There is no CommonJS build.
-- **POSIX only (Linux, macOS).** `runShell` needs `sh` on `PATH`. The
-  `processGroup` options use POSIX process groups. Signals
-  follow POSIX rules. Windows is untested and not supported for now.
+- **Linux and macOS, and spawning on Windows.** See [Platforms](#platforms).
 - **TypeScript 5.4 or later.** The types use the `NodeJS` namespace, so
   install `@types/node` (an optional peer dependency).
 
@@ -476,6 +474,53 @@ Windows rules on any OS.
 Bun's spawn skips empty `PATH` entries, so under Bun `which` can find a
 binary there that a spawn would not.
 
+## Platforms
+
+Linux and macOS are supported in full. On Windows the argv runners
+(`spawnRunner`, `spawnRunnerAsync`, the bytes runners, `streamRunner` and
+`managedProcessRunner`) start programs, `.cmd` and `.bat` files included.
+These parts stay POSIX only:
+
+- `runShell` and `shellRunner` need `sh` on `PATH`.
+- The `processGroup` options and `installGroupSignalForwarding` use POSIX
+  process groups. Signals follow POSIX rules.
+- The `bun test` capture path runs through `/bin/sh`.
+
+### Starting a program on Windows
+
+On Windows each runner looks the binary up with `which` and its Windows
+rules. An `.exe` or `.com` it finds is spawned by that path, with argv
+passed directly. A binary it cannot find is spawned as given, so the
+failure is `ENOENT` and `classifyFailure` reports `not-installed`, as on
+POSIX.
+
+Node will not spawn a `.cmd` or `.bat` file directly. The runner starts
+`cmd.exe /d /s /c "<line>"` instead (`ComSpec` when set), with
+`windowsVerbatimArguments`, and quotes each argument in two steps:
+
+1. Microsoft C runtime quoting: backslashes before a `"` are doubled and the
+   `"` becomes `\"`, trailing backslashes are doubled, and the argument is
+   wrapped in `"`.
+2. `cmd.exe` escaping: each of ``( ) [ ] % ! ^ " ` < > & | ; , * ?`` and
+   space gets a `^`. The quotes are escaped too, so `cmd.exe` never enters a
+   quoted section and every `^` applies.
+
+Step 2 is what keeps `%VAR%` from expanding. `cmd.exe` expands `%VAR%` even
+inside quotes, and a `^` does not help there. With every quote escaped,
+`%PATH%` is written `^%PATH^%`, which names the variable `PATH^`; that is
+not set, so the text passes through and the carets are removed.
+
+A shim in `node_modules/.bin` (the `.cmd` files npm writes) passes its
+arguments on with `%*`, which `cmd.exe` parses a second time, so step 2 is
+applied twice for it. Another batch file that passes `%*` on gets one
+escape, so a `"` or a special character in an argument can reach its
+second parse unprotected.
+
+An argument with a line break cannot be passed to a batch file: `cmd.exe`
+ends the command there. The run is refused before anything starts, as a
+failed spawn (`reason: 'spawn'`, `classifyFailure` kind `spawn`). A NUL
+byte throws, as on every platform.
+
 ## Reading results
 
 Small helpers that never throw for a failed command (a programmer error,
@@ -813,6 +858,8 @@ console.log(await server.exited) // { exitCode: 0, signal: null }
   `cwd`.
 - **`argv` is never parsed by a shell.** Spaces, quotes and `$()` in an
   argument reach the binary unchanged. Only `runShell` runs a shell string.
+  On Windows a `.cmd` or `.bat` file runs through `cmd.exe`, with each
+  argument quoted for it (see [Platforms](#platforms)).
 - **`env` merges over `process.env`**, read at call time. A value of
   `undefined` removes that variable from the child's environment.
 - **Early stdin close.** If the child closes stdin before `input` is fully
