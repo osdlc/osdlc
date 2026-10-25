@@ -142,6 +142,32 @@ describe('the Skills tab', () => {
     expect(($('q') as HTMLInputElement).placeholder).toBe('Search tasks')
   })
 
+  test('stays in view in a scrolling tab strip after a render', () => {
+    const strip = $('tabs')
+    Object.defineProperty(strip, 'scrollWidth', { configurable: true, value: 900 })
+    Object.defineProperty(strip, 'clientWidth', { configurable: true, value: 300 })
+    strip.getBoundingClientRect = () => ({ left: 0, right: 300 }) as DOMRect
+    const real = HTMLElement.prototype.getBoundingClientRect
+    HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
+      return (
+        this.getAttribute('data-runner') === SKILLS
+          ? { left: 700 - strip.scrollLeft, right: 780 - strip.scrollLeft }
+          : { left: 0, right: 0 }
+      ) as DOMRect
+    }
+    try {
+      strip.scrollLeft = 0
+      state.runner = SKILLS
+      render()
+      expect(strip.scrollLeft).toBe(488)
+    } finally {
+      HTMLElement.prototype.getBoundingClientRect = real
+      delete (strip as unknown as Record<string, unknown>)['scrollWidth']
+      delete (strip as unknown as Record<string, unknown>)['clientWidth']
+      state.runner = 'all'
+    }
+  })
+
   test('is not offered in the runner picker', () => {
     expect($('pickerhost').querySelector(`[data-toggle-runner="${SKILLS}"]`)).toBeNull()
   })

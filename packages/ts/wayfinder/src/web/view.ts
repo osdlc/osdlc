@@ -553,7 +553,8 @@ export const SKILL_COLUMNS = [
  * command column starts at the same x at every depth, and no row text lands
  * in the strip left of the headers.
  *
- * Task is sized to its longest name, up to a share of the width; Command
+ * Task is sized to its longest name, up to a share of the width (a larger
+ * share at phone width); Command
  * takes what is left, shared with Runs when Runs is shown. The sized columns
  * add up to the table's width exactly, because `table-layout: fixed` would
  * spread any leftover across the columns and move the command column at
@@ -567,7 +568,9 @@ function colgroup(depth: number): string {
   const rest = avail - IND_W - act
   // Room for the cell's right padding and a bold glyph's overhang.
   const content = measured.nameW === null ? null : Math.ceil(measured.nameW) + 16
-  const cap = Math.round(rest * (wide ? 0.4 : 0.5))
+  // At phone width the tree's indent eats most of a deep row's name, and the
+  // name is what a person scans for; the command is one tap away in Copy.
+  const cap = Math.round(rest * (wide ? 0.4 : avail < NARROW_W ? 0.62 : 0.5))
   const nameTotal = Math.max(90, Math.min(cap, content ?? Math.round(rest * 0.45)))
   const name = Math.max(40, nameTotal - indent)
   const left = rest - nameTotal
@@ -977,6 +980,20 @@ function skillsTab(total: number): string {
   )
 }
 
+/**
+ * Scroll the tab strip, where it scrolls (phone width), so the selected tab
+ * is in view: after a resize or a rebuild it could sit off the edge.
+ */
+function keepSelectedTabInView(): void {
+  const strip = $('tabs')
+  const selected = strip.querySelector('button[aria-pressed="true"]')
+  if (selected === null || strip.scrollWidth <= strip.clientWidth) return
+  const box = strip.getBoundingClientRect()
+  const tab = selected.getBoundingClientRect()
+  if (tab.left < box.left) strip.scrollLeft += tab.left - box.left - 8
+  else if (tab.right > box.right) strip.scrollLeft += tab.right - box.right + 8
+}
+
 /** Whether a runner has an info button: path segments to explain, or tool info. */
 function hasInfo(runner: string): boolean {
   return chainOf(runner).length > 0 || toolInfo(runner) !== undefined
@@ -1111,6 +1128,7 @@ export function render(): void {
       .join('') +
     skillsTab(skillsTotal) +
     foldedChip(foldable)
+  keepSelectedTabInView()
   // The picker is a toolbar control, not a tab, so it renders into the Scope
   // cluster in the search row rather than at the end of the tab strip.
   //
