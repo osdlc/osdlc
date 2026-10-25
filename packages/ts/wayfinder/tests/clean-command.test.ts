@@ -6,7 +6,7 @@
 
 import { afterAll, describe, expect, test } from 'vitest'
 import { mkdir, readdir, stat, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 
 import { renderShim } from '@osdlc/cli-tool/devlink'
 
@@ -273,44 +273,52 @@ describe('way clean', () => {
   })
 
   describe("a store that overlaps another flag's store needs --yes", () => {
+    /** The host's store paths with no override, so each case can aim one store at another. */
+    async function defaults(home: string): Promise<Record<string, string>> {
+      const ran = await runWay(['clean', '--json'], { cwd: home, home, app: wayApp() })
+      const { stores } = ran.json() as { stores: { key: string; path: string }[] }
+      return Object.fromEntries(stores.map((s) => [s.key, s.path]))
+    }
+
+    // The host platform, so each variable is read by the rules it is written in.
     test.each([
-      // [flag, env, the store it would also touch, the path that must survive]
+      // [flag, how it overlaps, the override, the store that must survive]
       [
         '--cache',
         'holds the user config',
-        (h: string) => ({ WAYFINDER_CACHE_DIR: join(h, '.config') }),
+        (d: Record<string, string>) => ({ WAYFINDER_CACHE_DIR: dirname(dirname(d['config']!)) }),
         'config',
       ],
       [
         '--cache',
         'holds the trust store',
-        (h: string) => ({ WAYFINDER_CACHE_DIR: join(h, '.local', 'state') }),
+        (d: Record<string, string>) => ({
+          WAYFINDER_CACHE_DIR: dirname(dirname(d['trust']!)),
+        }),
         'trust',
       ],
       [
         '--trust',
         'sits in the cache',
-        (h: string) => ({ WAYFINDER_STATE_DIR: join(h, '.cache', 'wayfinder') }),
+        (d: Record<string, string>) => ({ WAYFINDER_STATE_DIR: d['cache']! }),
         'cache',
       ],
       [
         '--trust',
         'holds the user config',
-        (h: string) => ({
-          WAYFINDER_CONFIG: join(h, '.local', 'state', 'wayfinder', 'trusted', 'c.json'),
-        }),
+        (d: Record<string, string>) => ({ WAYFINDER_CONFIG: join(d['trust']!, 'c.json') }),
         'config',
       ],
       [
         '--dev',
         'holds the cache',
-        (h: string) => ({ WAYFINDER_CACHE_DIR: join(h, '.config', 'way') }),
+        (d: Record<string, string>) => ({ WAYFINDER_CACHE_DIR: d['dev']! }),
         'cache',
       ],
     ] as const)('%s when it %s', async (flag, _what, envOf, kept) => {
       const p = await populated()
-      const env = envOf(p.home)
-      const app = wayApp({ platform: 'linux' })
+      const env = envOf(await defaults(p.home))
+      const app = wayApp()
       const report = (
         await runWay(['clean', '--json'], { cwd: p.home, home: p.home, env, app })
       ).json() as {
