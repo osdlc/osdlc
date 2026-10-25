@@ -498,6 +498,16 @@ describe('branch matching and owner/repo', () => {
     expect(pickPrForBranch({ rows: [], truncated: false }, 'feature/foo')).toBeNull()
   })
 
+  test('filters a ListResult exactly, as it does plain rows', () => {
+    // A `head:` search through prList keeps the prefix match, so the filter still matters.
+    const rows = [
+      parsePullRequest({ number: 1, headRefName: 'feature/foo-2' })!,
+      parsePullRequest({ number: 2, headRefName: 'feature/foo' })!,
+    ]
+    expect(pickPrForBranch({ rows, truncated: true }, 'feature/foo')?.number).toBe(2)
+    expect(pickPrForBranch({ rows, truncated: false }, 'feature/nope')).toBeNull()
+  })
+
   test('every remote shape resolves to the same coordinate', () => {
     const expected = { owner: 'acme', repo: 'widgets' }
     for (const url of [

@@ -53,6 +53,9 @@ test("pick the exact branch from gh's prefix search", () => {
   expect(pickPrForBranch(rows, 'feature/foo')?.number).toBe(2)
   expect(pickPrForBranch(rows, 'feature/missing')).toBeNull()
   expect(pickPrForBranch(null, 'feature/foo')).toBeNull()
+
+  // The ListResult from prList or openPrsForBranch passes straight in.
+  expect(pickPrForBranch({ rows, truncated: false }, 'feature/foo')?.number).toBe(2)
 })
 
 test('a client aimed at a repository, with no clone', () => {
