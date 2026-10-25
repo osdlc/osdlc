@@ -160,9 +160,7 @@ export const catalogSchema: JsonSchema = {
       allowExec: bool,
       reports: { type: 'array', items: withoutDraft(runnerReportSchema) },
     },
-    // `kind` and `schemaVersion` are optional, as in the `Catalog` type:
-    // `collect` always sets them, but a catalog built by hand may not.
-    ['root', 'generatedAt', 'discovery', 'allowExec', 'reports'],
+    ['kind', 'schemaVersion', 'root', 'generatedAt', 'discovery', 'allowExec', 'reports'],
     'Every runner report for one profile.',
   ),
 }

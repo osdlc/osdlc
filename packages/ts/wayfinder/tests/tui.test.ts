@@ -21,7 +21,12 @@ import { tmpdir } from 'node:os'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { join } from 'node:path'
 
-import type { Catalog, RunnerCacheState, Task } from '@osdlc/system-model/detect'
+import {
+  CATALOG_SCHEMA_VERSION,
+  type Catalog,
+  type RunnerCacheState,
+  type Task,
+} from '@osdlc/system-model/detect'
 import { cacheDir } from '../src/cache.ts'
 import { trustStore } from '@osdlc/trust-repo'
 
@@ -46,6 +51,8 @@ function task(runner: string, name: string): Task {
 
 function catalog(names: string[]): Catalog {
   return {
+    kind: 'catalog',
+    schemaVersion: CATALOG_SCHEMA_VERSION,
     root: '/tmp/repo',
     generatedAt: new Date(0).toISOString(),
     discovery: 'walk',

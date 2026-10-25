@@ -112,15 +112,18 @@ describe('the catalog schema', () => {
         .success,
     ).toBe(false)
     expect(parse(catalogSchema, { kind: 'catalog', schemaVersion: 99 }).success).toBe(false)
-    // kind and schemaVersion are optional, as in the Catalog type.
+    // kind and schemaVersion are required, as in the Catalog type.
+    const body = {
+      root: '/r',
+      generatedAt: '2026-01-01T00:00:00.000Z',
+      discovery: 'walk',
+      allowExec: false,
+      reports: [],
+    }
+    expect(parse(catalogSchema, body).success).toBe(false)
     expect(
-      parse(catalogSchema, {
-        root: '/r',
-        generatedAt: '2026-01-01T00:00:00.000Z',
-        discovery: 'walk',
-        allowExec: false,
-        reports: [],
-      }).success,
+      parse(catalogSchema, { kind: 'catalog', schemaVersion: CATALOG_SCHEMA_VERSION, ...body })
+        .success,
     ).toBe(true)
   })
 })

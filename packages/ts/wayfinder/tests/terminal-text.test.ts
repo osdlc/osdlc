@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { captureIo } from '@osdlc/cli-tool'
-import type { Catalog, Task } from '@osdlc/system-model/detect'
+import { CATALOG_SCHEMA_VERSION, type Catalog, type Task } from '@osdlc/system-model/detect'
 
 import { main } from '../src/cli.ts'
 import { startupSummary } from '../src/serve.ts'
@@ -291,6 +291,8 @@ describe('terminal UI', () => {
 
   test('a frame holds no control sequence from a task name, doc or path', () => {
     const catalog: Catalog = {
+      kind: 'catalog',
+      schemaVersion: CATALOG_SCHEMA_VERSION,
       root: `/tmp/repo${TITLE}`,
       generatedAt: new Date(0).toISOString(),
       discovery: 'walk',

@@ -251,10 +251,10 @@ export const CATALOG_SCHEMA_VERSION = 1
  * Every runner report for one profile.
  */
 export interface Catalog {
-  /** `catalog`, so a JSON reader can tell the document apart. Always set by `collect`. */
-  kind?: 'catalog' | undefined
-  /** {@link CATALOG_SCHEMA_VERSION} when the catalog was built. Always set by `collect`. */
-  schemaVersion?: number | undefined
+  /** `catalog`, so a JSON reader can tell the document apart. */
+  kind: 'catalog'
+  /** {@link CATALOG_SCHEMA_VERSION} when the catalog was built. */
+  schemaVersion: number
   /** Absolute path. Every `cwd` and `source` is relative to it. */
   root: string
   generatedAt: string
