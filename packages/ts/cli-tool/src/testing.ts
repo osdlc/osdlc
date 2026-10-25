@@ -33,7 +33,7 @@ export async function runApp(
   const ctx = captureContext(overrides)
   const exit = await app.run(argv, ctx)
   const { out, err } = ctx.io
-  if (argv.includes('--json') && out.trim() !== '' && !argv.includes('--version')) {
+  if (argv.includes('--json') && out.trimStart().startsWith('{') && !argv.includes('--version')) {
     const doc = JSON.parse(out) as { kind?: string }
     const path = app.paths().find((p) => {
       try {

@@ -143,6 +143,48 @@ describe('routing and output', () => {
     expect(seen.rest).toEqual(['--not-a-flag', 'x'])
   })
 
+  test('a missing required positional takes a dash-leading word after --', async () => {
+    const r = await runApp(app, ['config', 'get', '--', '-5'])
+    expect(r).toMatchObject({ exit: 0, out: '-5=42\n' })
+    expect(seen.rest).toEqual([])
+    await runApp(app, ['config', 'get', '--', '-5', '--more'])
+    expect(seen.rest).toEqual(['--more'])
+  })
+
+  test('the value of a flag is not read as --help or --json', async () => {
+    const echo = defineApp({
+      name: 't',
+      version: '0',
+      summary: 's',
+      commands: {
+        echo: defineCommand({
+          summary: 'echo',
+          flags: { name: { kind: 'string', help: 'a name' } },
+          output: z.object({ name: z.string().nullable() }),
+          run: ({ flags }) => ({ name: flags.name ?? null }),
+          text: (o) => `${o.name}\n`,
+        }),
+      },
+    })
+    expect(await runApp(echo, ['echo', '--name', '--help'])).toMatchObject({
+      exit: 0,
+      out: '--help\n',
+    })
+    expect(await runApp(echo, ['echo', '--name', '--json'])).toMatchObject({
+      exit: 0,
+      out: '--json\n',
+    })
+  })
+
+  test('an unknown command with --help is still a usage error', async () => {
+    const r = await runApp(app, ['nested', 'nosuch', '--help'])
+    expect(r.exit).toBe(2)
+    expect(r.err).toContain("unknown command 'nested nosuch'")
+    const under = await runApp(app, ['config', 'nosuch'])
+    expect(under.exit).toBe(2)
+    expect(under.err).toContain("unknown command 'config nosuch'")
+  })
+
   test('the root default takes a word that names no command', async () => {
     const r = await runApp(app, ['somedir'])
     expect(r).toMatchObject({ exit: 0, out: 'ui somedir\n' })

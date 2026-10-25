@@ -41,7 +41,7 @@ import {
   type HelpScope,
   type Placed,
 } from './help.ts'
-import { documentSchema, documentZod, inputSchema, type JsonSchema } from './schema.ts'
+import { documentSchema, documentZod, inputSchema, kebab, type JsonSchema } from './schema.ts'
 
 /**
  * What an app declares.
@@ -232,7 +232,7 @@ function valueTaking(flags: FlagSpec): Set<string> {
   const out = new Set<string>()
   for (const [name, decl] of Object.entries(flags)) {
     if (decl.kind === 'string' || decl.kind === 'enum' || decl.kind === 'list') {
-      out.add(`--${name.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}`)
+      out.add(`--${kebab(name)}`)
       if (decl.short !== undefined) out.add(`-${decl.short}`)
     }
   }
@@ -462,12 +462,21 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
   }
 
   const run = async (argv: readonly string[], base: CliContext): Promise<number> => {
-    const { node, words, rest } = route(argv)
-    const wantsHelp = words.includes('--help') || words.includes('-h')
+    const { node, words, rest: afterDash } = route(argv)
+    const command = node.command
+    const flags: FlagSpec = {
+      ...command?.flags,
+      ...globals,
+      ...(node.path.length === 0 ? VERSION_FLAGS : {}),
+      ...BUILTIN_FLAGS,
+    }
+    // The builtins are read from flag positions only, so `--name --help` gives
+    // `--name` the value `--help` rather than asking for help.
+    const scanned = scanWords(words, valueTaking(flags))
+    const has = (word: string): boolean => scanned.flags.includes(word)
+    const wantsHelp = has('--help') || has('-h')
     const wantsJson =
-      words.includes('--json') ||
-      words.includes('--output=json') ||
-      words.some((w, i) => w === '--output' && words[i + 1] === 'json')
+      has('--json') || scanned.values.get('--output') === 'json' || has('--output=json')
     const width = helpWidth(base.terminal?.stdout === true ? base.terminal.columns : undefined)
     const fail = (message: string, exit: ExitCode, hint?: string): number => {
       base.io.stderr(`${spec.name}: ${message}\n${hint ?? ''}`)
@@ -476,14 +485,24 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
     const usageFail = (message: string): number =>
       fail(message, EXIT.usage, usageHint(helpEntry(node, scope, { depth: 0 }), spec.name))
 
+    // A word that names no subcommand, where nothing takes a positional.
+    const takesWords = (command?.positionals ?? []).length > 0
+    const stray = scanned.operands[0]
+    if (stray !== undefined && node.children.length > 0 && !takesWords) {
+      const names = node.children.filter((c) => !c.hidden).map((c) => c.name)
+      const close = closestMatches(stray, names)
+      return usageFail(
+        `unknown command '${[...node.path, stray].join(' ')}'${close.length > 0 ? `; did you mean ${close.join(', ')}?` : ''}`,
+      )
+    }
     if (wantsHelp) {
-      const all = words.includes('--all')
+      const all = has('--all')
       return run(
         ['help', ...node.path, ...(all ? ['--all'] : []), ...(wantsJson ? ['--json'] : [])],
         base,
       )
     }
-    if (node.path.length === 0 && words.includes('--version')) {
+    if (node.path.length === 0 && has('--version')) {
       if (wantsJson) {
         base.io.stdout(
           `${JSON.stringify({ schemaVersion: 1, kind: 'version', name: spec.name, version: spec.version }, null, 2)}\n`,
@@ -492,31 +511,12 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
       return EXIT.ok
     }
 
-    const command = node.command
     if (command === undefined) {
-      let k = 0
-      while (k < words.length && words[k]!.startsWith('-')) {
-        k += globalValueFlags.has(words[k]!) ? 2 : 1
-      }
-      const word = words[k]
-      if (word !== undefined) {
-        const names = node.children.filter((c) => !c.hidden).map((c) => c.name)
-        const close = closestMatches(word, names)
-        return usageFail(
-          `unknown command '${[...node.path, word].join(' ')}'${close.length > 0 ? `; did you mean ${close.join(', ')}?` : ''}`,
-        )
-      }
       // A group with no default: name a command.
       base.io.stderr(renderHelp(helpEntry(node, scope), width, spec.name))
       return EXIT.usage
     }
 
-    const flags: FlagSpec = {
-      ...command.flags,
-      ...globals,
-      ...(node.path.length === 0 ? VERSION_FLAGS : {}),
-      ...BUILTIN_FLAGS,
-    }
     const cli = defineCli({
       name: [spec.name, ...node.path].join(' '),
       summary: node.summary,
@@ -524,7 +524,20 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
       positionals: [...(command.positionals ?? [])],
       autoHelp: false,
     })
-    const parsed = cli.parse(words, base.io)
+    // A required positional still missing takes the next word after `--`, so
+    // a value that starts with a dash can be given: `config set n -- -5`.
+    const required = (command.positionals ?? []).filter((p) => p.required === true).length
+    let parsed = cli.parse(words, base.io)
+    let taken = 0
+    while (
+      parsed.status === 'error' &&
+      parsed.message.startsWith('missing required argument') &&
+      taken < Math.min(required, afterDash.length)
+    ) {
+      taken += 1
+      parsed = cli.parse([...words, '--', ...afterDash.slice(0, taken)], base.io)
+    }
+    const rest = afterDash.slice(parsed.status === 'ok' ? taken : 0)
     if (parsed.status === 'help') return EXIT.ok
     if (parsed.status === 'error') return usageFail(parsed.message)
     const values = parsed.values as FlagValues<FlagSpec> & {
@@ -775,6 +788,33 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
     },
   }
   return app
+}
+
+/**
+ * The words of a command line split into flags (with the value each
+ * value-taking flag was given) and operands. The value after a value-taking
+ * flag is neither.
+ */
+function scanWords(
+  words: readonly string[],
+  valueFlags: ReadonlySet<string>,
+): { flags: string[]; values: Map<string, string>; operands: string[] } {
+  const flags: string[] = []
+  const values = new Map<string, string>()
+  const operands: string[] = []
+  for (let i = 0; i < words.length; i++) {
+    const word = words[i]!
+    if (!word.startsWith('-') || word === '-') {
+      operands.push(word)
+      continue
+    }
+    flags.push(word)
+    if (valueFlags.has(word) && i + 1 < words.length) {
+      values.set(word, words[i + 1]!)
+      i += 1
+    }
+  }
+  return { flags, values, operands }
 }
 
 /**
