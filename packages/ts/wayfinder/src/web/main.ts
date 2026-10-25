@@ -28,8 +28,9 @@ async function start(): Promise<void> {
     history.replaceState(null, '', url.pathname + url.search + url.hash)
   }
   // A reload uses the token this tab kept. A boot token is spent only when
-  // the tab has no working token: redeeming one twice stops the server. The
-  // first call answers 401 if the server has restarted since.
+  // the tab has no working token, since it works once and a second redeem
+  // is refused with a warning. The first call answers 401 if the server has
+  // restarted since.
   const kept = signedIn() && (boot === null || (await tokenWorks()))
   const ok = kept || (boot !== null && (await signIn(boot)))
   if (!ok) {
