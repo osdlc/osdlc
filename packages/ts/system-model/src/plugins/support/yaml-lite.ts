@@ -71,6 +71,8 @@ export function scanLine(line: string): { cleaned: string; anchor: boolean; merg
   let out = ''
   let inSingle = false
   let inDouble = false
+  // The previous character was an unescaped `\` inside a double-quoted string.
+  let escaped = false
   let anchor = false
 
   for (let i = 0; i < line.length; i++) {
@@ -84,7 +86,9 @@ export function scanLine(line: string): { cleaned: string; anchor: boolean; merg
     }
     if (inDouble) {
       out += ch
-      if (ch === '"' && prev !== '\\') inDouble = false
+      if (escaped) escaped = false
+      else if (ch === '\\') escaped = true
+      else if (ch === '"') inDouble = false
       continue
     }
     if (ch === "'") {

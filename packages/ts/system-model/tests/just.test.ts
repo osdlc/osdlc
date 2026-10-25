@@ -107,6 +107,31 @@ describe('just runner', () => {
     ])
   })
 
+  test('an expression default is optional but carries no literal into argv', async () => {
+    // just dumps a non-literal default as a tagged array, e.g. ["variable","v"].
+    const dump = JSON.stringify({
+      recipes: {
+        deploy: {
+          name: 'deploy',
+          parameters: [
+            { name: 'env', kind: 'singular', default: ['variable', 'v'] },
+            { name: 'region', kind: 'singular', default: 'eu' },
+          ],
+        },
+      },
+    })
+    const dir = await root({ justfile: 'v := "prod"\ndeploy env=v region="eu":\n    echo\n' })
+    const { options } = opts([{ binary: 'just', argv: ['--justfile'], stdout: dump }])
+    const found = tasks(
+      await collect(dir, { ...options, ...withJust, only: ['just'], allowExec: true }),
+    )
+
+    expect(byName(found, 'deploy')?.parameters).toEqual([
+      { name: 'env', required: false, variadic: false },
+      { name: 'region', required: false, variadic: false, default: 'eu' },
+    ])
+  })
+
   test('falls back to scanning when the binary is missing, and says so', async () => {
     const dir = await root({ justfile: JUSTFILE })
     const { options } = opts()

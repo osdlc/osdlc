@@ -155,6 +155,18 @@ export async function readEntry(
   if (typeof parsed !== 'object' || parsed === null) return null
   const entry = parsed as CacheEntry
   if (entry.version !== CACHE_FORMAT_VERSION) return null
+  // A foreign or hand-edited file with the right version but no usable report
+  // is a miss too, so `undefined` never reaches a catalog's reports.
+  const report = entry.report as Partial<CacheEntry['report']> | null | undefined
+  if (
+    typeof report !== 'object' ||
+    report === null ||
+    typeof report.runner !== 'string' ||
+    !Array.isArray(report.tasks) ||
+    !Array.isArray(report.diagnostics)
+  ) {
+    return null
+  }
   return entry
 }
 
