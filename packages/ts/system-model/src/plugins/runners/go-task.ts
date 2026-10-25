@@ -111,7 +111,7 @@ export const CONFIG_NAMES = [
  * (`https://taskfile.dev/img/logo.svg`). It also matches simple-icons' hex for
  * the mark, which has no per-icon license override.
  */
-const BRAND: RunnerBrand = {
+export const GO_TASK_BRAND: RunnerBrand = {
   icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="2"/><path d="M7 8.5h5M7 12h7M7 15.5h4"/><path d="m15 14.5 1.6 1.6L20 12.5"/></svg>',
   color: '#29beb0',
 }
@@ -485,7 +485,6 @@ export const goTaskRunner: RunnerRole = {
   kind: 'parse',
   probe: { timeoutMs: LIST_TIMEOUT_MS, cost: 'cheap' },
   chain: CHAIN,
-  brand: BRAND,
 
   async collect(ctx: ProviderContext): Promise<ProviderResult> {
     const found = await Promise.all(CONFIG_NAMES.map((name) => ctx.files(name)))

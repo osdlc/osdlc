@@ -41,7 +41,7 @@ const TARGET = /^([A-Za-z0-9_][A-Za-z0-9_./-]*)\s*:(?!=)/
  * about 14.7KB. GNU has no official color; this is the deep red usually used
  * for GNU marks.
  */
-const BRAND: RunnerBrand = {
+export const MAKE_BRAND: RunnerBrand = {
   icon: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="10.9" y="2" width="2.2" height="5" rx="1"/><rect x="10.9" y="2" width="2.2" height="5" rx="1" transform="rotate(45 12 12)"/><rect x="10.9" y="2" width="2.2" height="5" rx="1" transform="rotate(90 12 12)"/><rect x="10.9" y="2" width="2.2" height="5" rx="1" transform="rotate(135 12 12)"/><rect x="10.9" y="2" width="2.2" height="5" rx="1" transform="rotate(180 12 12)"/><rect x="10.9" y="2" width="2.2" height="5" rx="1" transform="rotate(225 12 12)"/><rect x="10.9" y="2" width="2.2" height="5" rx="1" transform="rotate(270 12 12)"/><rect x="10.9" y="2" width="2.2" height="5" rx="1" transform="rotate(315 12 12)"/><path fill-rule="evenodd" d="M12 5a7 7 0 1 0 0 14 7 7 0 0 0 0-14Zm0 4a3 3 0 1 1 0 6 3 3 0 0 1 0-6Z"/></svg>',
   color: '#a42e2b',
 }
@@ -49,7 +49,6 @@ const BRAND: RunnerBrand = {
 export const makeRunner: RunnerRole = {
   kind: 'parse',
   chain: CHAIN,
-  brand: BRAND,
 
   async collect(ctx, packages): Promise<ProviderResult> {
     const makefiles = onePerDir(sourcesOf(packages, 'make', MAKEFILE_NAMES))

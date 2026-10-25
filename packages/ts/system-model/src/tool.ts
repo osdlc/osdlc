@@ -100,6 +100,11 @@ export interface RunnerRole {
   probe?: RunnerProbe | undefined
   /** What each position of this runner's `Task.path` means. */
   chain?: ChainSegment[] | undefined
+  /**
+   * Used when the tool sets no `ToolDef.brand`.
+   *
+   * @deprecated Set `ToolDef.brand`, so the tool has one brand whatever role it plays.
+   */
   brand?: RunnerBrand | undefined
   /**
    * Patterns whose files decide whether a cached result is still good, for
@@ -187,6 +192,12 @@ export interface ToolFact {
 export interface ToolDef {
   /** Stable id: `pnpm`, `cargo`, `mise`. */
   id: string
+  /** The project's official site, `https://...`. Every built-in has one. */
+  homepage?: string | undefined
+  /** One sentence on what the tool is, for a reader who does not know it. Every built-in has one. */
+  description?: string | undefined
+  /** An icon and colour for views that show more than text. `RunnerReport.brand` comes from here. */
+  brand?: RunnerBrand | undefined
   /** The binary its commands run through, for a PATH check. */
   binary?: string | undefined
   /** Other first words of a command that mean this tool (`bunx`, `pip3`). */

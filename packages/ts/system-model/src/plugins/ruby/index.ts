@@ -3,7 +3,7 @@
 import type { DepFact, GemfileFact } from '../../manifests.ts'
 import type { EcosystemDef, ToolDef } from '../../tool.ts'
 import { flagAtEnd, joinRel } from '../support/shared.ts'
-import { RAKE_TASK_FILES, RAKEFILE_NAMES, rakeRunner } from './rake.ts'
+import { RAKE_TASK_FILES, RAKEFILE_NAMES, rakeRunner, RAKE_BRAND } from './rake.ts'
 
 /** `gem 'name'` lines. A gem inside a `group` block that names neither `:production` nor `:default` is `dev`. */
 function parseGemfile(text: string, path: string): GemfileFact {
@@ -43,6 +43,8 @@ export const rubyEcosystem: EcosystemDef = {
 /** bundler: installs a Gemfile's gems. */
 export const bundler: ToolDef = {
   id: 'bundler',
+  homepage: 'https://bundler.io',
+  description: 'A dependency manager for Ruby gems.',
   binary: 'bundle',
   ecosystem: rubyEcosystem,
   roles: {
@@ -58,6 +60,9 @@ export const bundler: ToolDef = {
 /** rake: tasks from a Rakefile. */
 export const rake: ToolDef = {
   id: 'rake',
+  homepage: 'https://ruby.github.io/rake/',
+  description: 'A Ruby build tool for the tasks a Rakefile declares.',
+  brand: RAKE_BRAND,
   binary: 'rake',
   ecosystem: rubyEcosystem,
   markers: [...RAKEFILE_NAMES, RAKE_TASK_FILES].map((files) => ({ files, tier: 'files' as const })),

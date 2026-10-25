@@ -71,7 +71,7 @@ interface JustRecipe {
  * path: simple-icons v16 (CC0), slug `just`. simple-icons lists plain
  * black for it, so the color stays GitHub Linguist's Just color.
  */
-const BRAND: RunnerBrand = {
+export const JUST_BRAND: RunnerBrand = {
   icon: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0m0 2.35a3.25 3.35 0 0 1 3.25 3.35A3.25 3.35 0 0 1 12 9.05 3.25 3.35 0 0 1 8.75 5.7 3.25 3.35 0 0 1 12 2.35m0 12.6a3.25 3.35 0 0 1 3.25 3.35A3.25 3.35 0 0 1 12 21.65a3.25 3.35 0 0 1-3.25-3.35A3.25 3.35 0 0 1 12 14.95"/></svg>',
   color: '#384d54',
 }
@@ -82,7 +82,6 @@ export const justRunner: RunnerRole = {
   kind: 'parse',
   probe: { timeoutMs: 10_000, cost: 'cheap' },
   chain: CHAIN,
-  brand: BRAND,
 
   async collect(ctx, packages): Promise<ProviderResult> {
     const justfiles = onePerDir(sourcesOf(packages, 'just', JUSTFILE_NAMES))

@@ -170,8 +170,8 @@ export interface Diagnostic {
 }
 
 /**
- * A runner's icon and colour, for views that show more than text. Kept on
- * the report rather than on each task.
+ * A tool's icon and colour, for views that show more than text. Set on
+ * `ToolDef.brand`, and copied to each runner report rather than to each task.
  */
 export interface RunnerBrand {
   /** Inline SVG markup, viewBox only, `currentColor` where monochrome. */

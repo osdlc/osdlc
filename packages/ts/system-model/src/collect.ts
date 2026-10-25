@@ -48,6 +48,7 @@ export interface RunnerSpec {
   id: string
   role: RunnerRole
   binary?: string | undefined
+  brand?: RunnerBrand | undefined
   packages: readonly Package[]
   /** Patterns that detected the tool, re-checked by the cache fingerprint. */
   patterns: string[]
@@ -92,6 +93,7 @@ export function selectRunners(
       id: tool.id,
       role,
       binary: tool.binary,
+      brand: tool.brand ?? role.brand,
       packages,
       patterns: [...markersOf(tool).map((m) => m.files), ...manifestsOf(tool)],
     })
@@ -232,7 +234,7 @@ function reportHead(
     // A copy of every chain, so a caller editing one report's chain changes
     // no other report and no later collect.
     chain: (spec.role.chain ?? DEFAULT_CHAIN).map((segment) => ({ ...segment })),
-    ...(spec.role.brand ? { brand: spec.role.brand as RunnerBrand } : {}),
+    ...(spec.brand ? { brand: spec.brand } : {}),
     ...(spec.binary ? { tool: toolStatus(spec.binary, which) } : {}),
   }
 }

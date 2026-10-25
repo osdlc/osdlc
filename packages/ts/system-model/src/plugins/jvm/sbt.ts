@@ -66,7 +66,7 @@ export const VERSION_MARKER = 'project/build.properties'
  * identify the ecosystem. Icon path: simple-icons v16 (CC0), slug `scala`. Color is
  * the same Scala brand red simple-icons lists for it.
  */
-const BRAND: RunnerBrand = {
+export const SBT_BRAND: RunnerBrand = {
   icon: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4.589 24c4.537 0 13.81-1.516 14.821-3v-5.729c-.957 1.408-10.284 2.912-14.821 2.912V24zM4.589 16.365c4.537 0 13.81-1.516 14.821-3V7.636c-.957 1.408-10.284 2.912-14.821 2.912v5.817zM4.589 8.729c4.537 0 13.81-1.516 14.821-3V0C18.453 1.408 9.126 2.912 4.589 2.912v5.817z"/></svg>',
   color: '#dc322f',
 }
@@ -76,7 +76,6 @@ export const sbtRunner: RunnerRole = {
   // A cold sbt start compiles the build definition and can take minutes.
   probe: { timeoutMs: 300_000, cost: 'slow' },
   chain: CHAIN,
-  brand: BRAND,
   // Watch every `*.sbt`, not only the root ones this runner reads. sbt also
   // loads nested ones, so a new subproject `.sbt` changes the task set.
   // `project/**` (plugins and build definitions) has no basename to watch, so

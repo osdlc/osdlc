@@ -134,7 +134,7 @@ const DYNAMIC_CONSTRUCTS: Array<{ pattern: RegExp; label: string }> = [
  * artwork to license. The red is Ruby's community color, used on ruby-lang.org
  * and by rbenv. rake has no brand color of its own.
  */
-const BRAND: RunnerBrand = {
+export const RAKE_BRAND: RunnerBrand = {
   icon: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="11" y="9" width="2" height="13" rx="1"/><path d="M5 3h2l1.2 5H7L5.8 4H5V3Zm12 0h-2l-1.2 5H15l1.2-4H17V3ZM11 3h2l.6 5h-3.2L11 3Z"/><rect x="4" y="8" width="16" height="2.4" rx="1.2"/></svg>',
   color: '#cc342d',
 }
@@ -145,7 +145,6 @@ export const rakeRunner: RunnerRole = {
   kind: 'parse',
   probe: { timeoutMs: EXEC_TIMEOUT_MS, cost: 'slow' },
   chain: CHAIN,
-  brand: BRAND,
 
   async collect(ctx: ProviderContext): Promise<ProviderResult> {
     const named = new Set<string>()
