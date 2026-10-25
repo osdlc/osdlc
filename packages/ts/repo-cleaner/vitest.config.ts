@@ -23,5 +23,10 @@ export default defineConfig({
       GIT_COMMITTER_EMAIL: 'fixture@example.invalid',
     },
     include: ['tests/**/*.test.ts', 'examples/**/*.test.ts'],
+    coverage: {
+      provider: 'v8',
+      include: ['src/**/*.ts'],
+      reporter: ['text'],
+    },
   },
 })

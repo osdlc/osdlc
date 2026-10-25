@@ -15,6 +15,7 @@ npm is 0.5.0, and the entry for it is added above this section when it is releas
 
 - Stops depending on an internal wrapper for its directory names.
 - The directory vendor is `repo-cleaner` and the override variables are `REPO_CLEANER_*`, in place of an internal vendor name.
+- The `FLEET_ROOT`, `FLEET_*` and `FLEET_MACHINE_CONFIG` variables are no longer read; there is no fallback, and the replacements are `REPO_CLEANER_ROOT`, `REPO_CLEANER_*` and `REPO_CLEANER_MACHINE_CONFIG`. The config directory paths themselves do not change.
 - Compiled JavaScript with `.d.ts` for Node, in place of TypeScript source for Bun.
 
 #### Fixed
