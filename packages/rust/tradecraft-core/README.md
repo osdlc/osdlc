@@ -104,8 +104,8 @@ in the [CHANGELOG](CHANGELOG.md).
 
 ## Platforms
 
-The crate is written for Linux, macOS and Windows. Paths cross the `Vfs` seam
-in `/` form on every platform. The minimum supported Rust version is 1.89.
+The crate is tested on Linux and macOS. Windows is not supported yet: its
+tests fail there. Paths cross the `Vfs` seam in `/` form. The minimum supported Rust version is 1.89.
 
 ## License
 

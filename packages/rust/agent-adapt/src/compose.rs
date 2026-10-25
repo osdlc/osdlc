@@ -165,7 +165,7 @@ mod tests {
         let tree = render_plugin(&ClaudeCode, &sample_bundle()).unwrap();
         let paths: Vec<_> = tree
             .iter()
-            .map(|f| f.path.to_string_lossy().into_owned())
+            .map(|f| f.path.to_string_lossy().replace('\\', "/"))
             .collect();
         assert!(paths.iter().any(|p| p.contains("skills/my-skill/SKILL.md")));
         assert!(paths.iter().any(|p| p.contains("agents/reviewer.md")));
@@ -182,7 +182,7 @@ mod tests {
         let tree = render_plugin(&ClaudeCode, &sample_bundle()).unwrap();
         let paths: Vec<_> = tree
             .iter()
-            .map(|f| f.path.to_string_lossy().into_owned())
+            .map(|f| f.path.to_string_lossy().replace('\\', "/"))
             .collect();
         assert!(!paths.iter().any(|p| p == ".mcp.json"));
     }
@@ -222,7 +222,7 @@ mod tests {
         let tree = render_plugin_no_mcp_no_hooks(&NpmPackage, &sample_bundle()).unwrap();
         let paths: Vec<_> = tree
             .iter()
-            .map(|f| f.path.to_string_lossy().into_owned())
+            .map(|f| f.path.to_string_lossy().replace('\\', "/"))
             .collect();
         assert!(!paths.iter().any(|p| p.contains("hooks.json")));
         assert!(paths.iter().any(|p| p.contains("skills/my-skill")));
@@ -238,7 +238,7 @@ mod tests {
         tree.extend(ClaudeCode.render_mcp_server(&server).unwrap());
         let paths: Vec<_> = tree
             .iter()
-            .map(|f| f.path.to_string_lossy().into_owned())
+            .map(|f| f.path.to_string_lossy().replace('\\', "/"))
             .collect();
         assert!(paths.iter().any(|p| p == ".mcp.json"));
     }

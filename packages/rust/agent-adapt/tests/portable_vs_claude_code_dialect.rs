@@ -104,13 +104,15 @@ fn both_targets_write_the_skill_where_their_convention_says() {
     assert_eq!(
         ClaudeCode.render_skill(&skill).unwrap()[0]
             .path
-            .to_string_lossy(),
+            .to_string_lossy()
+            .replace('\\', "/"),
         ".claude/skills/code-review/SKILL.md"
     );
     assert_eq!(
         Portable.render_skill(&skill).unwrap()[0]
             .path
-            .to_string_lossy(),
+            .to_string_lossy()
+            .replace('\\', "/"),
         ".agents/skills/code-review/SKILL.md"
     );
 }

@@ -111,16 +111,17 @@ fn check_relative(relative: &str) -> std::result::Result<(), &'static str> {
     if relative.is_empty() {
         return Err("it is empty");
     }
-    let as_path = Path::new(relative);
-    if as_path.is_absolute() || as_path.has_root() {
-        return Err("it is absolute — joining it would replace the destination directory");
-    }
     // A Windows drive prefix is only `Component::Prefix` on Windows. Catch
-    // it everywhere: content validated on one platform gets written on
+    // it everywhere, and before the absolute check, so every platform gives
+    // the same reason: content validated on one platform gets written on
     // another.
     let bytes = relative.as_bytes();
     if bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' {
         return Err("it carries a drive-letter prefix");
+    }
+    let as_path = Path::new(relative);
+    if as_path.is_absolute() || as_path.has_root() {
+        return Err("it is absolute — joining it would replace the destination directory");
     }
     for segment in relative.split(['/', '\\']) {
         match segment {

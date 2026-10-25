@@ -77,7 +77,7 @@ constructors (`Skill::new`, `Command::new`, `Hook::new`, `Hook::command`,
 
 ## Platforms
 
-The crate is written for Linux, macOS and Windows. The minimum supported Rust version is 1.89.
+The crate is tested on Linux, macOS and Windows. The minimum supported Rust version is 1.89.
 
 ## License
 

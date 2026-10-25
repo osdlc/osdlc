@@ -112,6 +112,8 @@ fn read_note(rel: &str) -> String {
     let path = fixture_root().join(rel);
     std::fs::read_to_string(&path)
         .unwrap_or_else(|e| panic!("fixture note unreadable at {}: {e}", path.display()))
+        // A Windows checkout may turn the fixtures' line endings into CRLF.
+        .replace("\r\n", "\n")
 }
 
 /// The targets `body_links` harvests from a fixture note, in order.

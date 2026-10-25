@@ -53,7 +53,7 @@ This is a 0.x crate. Breaking changes are possible between minor versions and ar
 
 ## Platforms
 
-The code uses only the standard library, `walkdir`, `regex` and `path-guard`. It is written for Linux, macOS and Windows, and the path guard is tested on all three. The minimum supported Rust version is 1.89.
+The code uses only the standard library, `walkdir`, `regex` and `path-guard`. It is tested on Linux and macOS. Windows is not supported yet: the walk tests fail there. The minimum supported Rust version is 1.89.
 
 ## License
 

@@ -57,6 +57,13 @@ fn init_repo(path: &Path) {
         .args(&["config", "user.name", "Test"])
         .run()
         .unwrap();
+    // A Windows runner sets core.autocrlf, which would turn the `\n` these
+    // tests write into `\r\n` on checkout.
+    test_git(path)
+        .dir(path)
+        .args(&["config", "core.autocrlf", "false"])
+        .run()
+        .unwrap();
 
     test_git(path)
         .dir(path)

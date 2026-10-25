@@ -59,7 +59,7 @@ This is a 0.x crate. Breaking changes are possible between minor versions and ar
 
 ## Platforms
 
-The crate is written for Linux, macOS and Windows. The minimum supported Rust version is 1.89.
+The crate is tested on Linux and macOS. Windows is not supported yet, because markdown-vault-fs is not. The minimum supported Rust version is 1.89.
 
 ## License
 

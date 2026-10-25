@@ -203,7 +203,8 @@ working:
 
 ## Platforms
 
-The crate is written for Linux, macOS and Windows. `adopt --from-git` and the
+The crate is tested on Linux and macOS. Windows is not supported yet: its
+tests fail there. `adopt --from-git` and the
 `harness` verbs run `git` and each harness's own command, so those must be on
 `PATH`. The minimum supported Rust version is 1.89.
 
