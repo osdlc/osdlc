@@ -325,6 +325,12 @@ pub(crate) fn suffix_at_depth(path_no_ext: &str, depth: usize) -> String {
 /// a cached snapshot is responsible for having refreshed it, because a plan
 /// computed against the vault as it was half a second ago is exactly the window
 /// a user who just saved a note is standing in.
+///
+/// # Errors
+///
+/// Returns [`TransformError::Path`] when `from`, `to` or `vault_dir` fails the
+/// path guard. A refused plan is not an error: it comes back as `Ok` with
+/// [`RenamePlan::conflict`] set.
 pub fn plan(
     vault_dir: &Path,
     facts: &VaultFacts,
@@ -499,6 +505,12 @@ pub fn plan(
 ///
 /// Refused on the same grounds as [`plan`], and when `to` does not exist.
 /// Links are resolved against the vault as it will be, with `from` gone.
+///
+/// # Errors
+///
+/// Returns [`TransformError::Path`] when `from`, `to` or `vault_dir` fails the
+/// path guard. A refused plan is not an error: it comes back as `Ok` with
+/// [`RenamePlan::conflict`] set.
 pub fn plan_redirect(
     vault_dir: &Path,
     facts: &VaultFacts,
