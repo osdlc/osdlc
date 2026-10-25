@@ -106,7 +106,8 @@ describe('walk caps', () => {
       depth: 32,
     })
 
-    expect(await list.all()).toHaveLength(2)
+    // In name order, so the same files are kept on every machine.
+    expect(await list.all()).toEqual(['a', 'b'])
     expect(list.limit()).toEqual({ cap: 'files', value: 2 })
   })
 

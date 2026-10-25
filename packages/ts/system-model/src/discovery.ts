@@ -194,7 +194,8 @@ export interface WalkCaps {
  *
  * The walk stops at {@link MAX_WALK_FILES} files and does not enter a
  * directory deeper than {@link MAX_WALK_DEPTH}. `limit` records the first cap
- * reached.
+ * reached. Entries are visited in name order, so a capped walk keeps the same
+ * files on every machine. git mode has no cap: it lists what git lists.
  */
 async function walkFiles(
   root: string,
@@ -206,7 +207,9 @@ async function walkFiles(
   async function walk(dir: string, depth: number): Promise<void> {
     let entries
     try {
-      entries = await readdir(dir, { withFileTypes: true })
+      entries = (await readdir(dir, { withFileTypes: true })).sort((a, b) =>
+        a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
+      )
     } catch {
       return
     }

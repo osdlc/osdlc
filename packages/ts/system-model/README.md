@@ -180,11 +180,13 @@ and no dependency, so a browser bundle can use them. A test walks each one's imp
 7. Each package gets its ecosystems and languages. The profile gets the union.
 
 Reads are bounded, because a repository is untrusted input. A read skips a
-symlink whose target is outside the root, anything that is not a regular file
-(a device such as `/dev/zero`, a pipe), and a file larger than
-`MAX_READ_BYTES` (4 MiB). A directory walk stops at `MAX_WALK_FILES` files and
-does not enter a directory deeper than `MAX_WALK_DEPTH`. When it stops early,
-`profile.diagnostics` says so.
+path whose real location is outside the root (through a symlinked file or
+parent directory, `..`, or an absolute path), anything that is not a regular
+file (a device such as `/dev/zero`, a pipe), and a file larger than
+`MAX_READ_BYTES` (4 MiB). A directory walk visits entries in name order, stops
+at `MAX_WALK_FILES` files and does not enter a directory deeper than
+`MAX_WALK_DEPTH`. When it stops early, `profile.diagnostics` says so. git
+discovery has no cap: it lists what `git ls-files` lists.
 
 | Option | Default | Does |
 |---|---|---|
