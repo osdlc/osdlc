@@ -68,8 +68,8 @@ export interface ToolSpec {
   suppressors?: readonly string[]
   /**
    * Whose config home the state lives in: the vendor and its override
-   * variables. The bash launcher reads the `xdg` default and ignores the
-   * override variables.
+   * variables. The bash launcher reads the same path: the vendor's
+   * `<P>_CONFIG_DIR`, then `<P>_ROOT`, then the `xdg` default.
    */
   vendorDirs: VendorDirs
 }
