@@ -234,6 +234,16 @@ describe('spawnPlan', () => {
     // An .exe gets argv directly, so a line break is fine there.
     expect(spawnPlan('git', ['a\nb'], win)).toEqual({ file: exe, args: ['a\nb'] })
   })
+
+  test.each(['%PATH%', '%NAME:a=b%', '%NAME:~1,2%', 'a%b'])(
+    'win32 refuses %j in an argument to a batch file',
+    (arg) => {
+      const plan = spawnPlan('build', ['ok', arg], win)
+      expect(plan).toEqual({ refusal: expect.stringContaining('argv[1] holds a %') })
+      // An .exe gets argv directly, so a % is fine there.
+      expect(spawnPlan('git', [arg], win)).toEqual({ file: exe, args: [arg] })
+    },
+  )
 })
 
 describe('runners on this host', () => {
@@ -253,11 +263,31 @@ describe.skipIf(process.platform !== 'win32')('a real .cmd shim (Windows hosts o
   test.each([npmShim, plainBat])(
     'every hostile argument reaches node unchanged through %s',
     async (target) => {
-      const sync = spawnRunner(target).run(HOSTILE, { cwd: root })
+      const args = HOSTILE.filter((a) => !a.includes('%'))
+      const sync = spawnRunner(target).run(args, { cwd: root })
       expect(sync.error).toBeUndefined()
-      expect(JSON.parse(sync.stdout)).toEqual(HOSTILE)
-      const later = await spawnRunnerAsync(target).run(HOSTILE, { cwd: root })
-      expect(JSON.parse(later.stdout)).toEqual(HOSTILE)
+      expect(JSON.parse(sync.stdout)).toEqual(args)
+      const later = await spawnRunnerAsync(target).run(args, { cwd: root })
+      expect(JSON.parse(later.stdout)).toEqual(args)
+    },
+  )
+
+  // A batch file that only echoes its argument, with no node in between.
+  const echoBat = file('real/bin/echo-one.bat', '@echo off\r\necho [%~1]\r\n')
+
+  test('a plain .bat echoes its argument', () => {
+    for (const arg of ['plain', 'a b']) {
+      const r = spawnRunner(echoBat).run([arg], { cwd: root })
+      expect(r.stdout.trim()).toBe(`[${arg}]`)
+    }
+  })
+
+  test.each(['%COMSPEC%', '%COMSPEC:~0,2%', '%COMSPEC:C=X%'])(
+    'a % form %s is refused, not expanded by cmd.exe',
+    (arg) => {
+      const r = spawnRunner(echoBat).run([arg], { cwd: root })
+      expect(r).toMatchObject({ neverExited: true, reason: 'spawn' })
+      expect(r.stdout).not.toContain('[')
     },
   )
 

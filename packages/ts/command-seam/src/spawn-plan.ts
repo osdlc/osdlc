@@ -47,6 +47,16 @@ export function spawnPlan(
       refusal: `spawn ${binary} EINVAL: argv[${broken}] holds a line break, which cmd.exe cannot pass to a batch file`,
     }
   }
+  // `cmd.exe` expands `%NAME%`, `%NAME:a=b%` and `%NAME:~n,m%` before it reads
+  // any `^`, and a `^` inside such a form does not stop it, so no quoting makes
+  // a `%` safe in a batch file's argument. Refuse it, as an argument Rust's std
+  // would also not pass on unquoted. An `.exe` gets argv directly.
+  const percent = argv.findIndex((a) => a.includes('%'))
+  if (percent !== -1) {
+    return {
+      refusal: `spawn ${binary} EINVAL: argv[${percent}] holds a %, which cmd.exe would expand inside a batch file; pass it through an environment variable or a file instead`,
+    }
+  }
   // Every batch file is escaped twice. Most pass their arguments on with
   // `%*` or `%1`, which `cmd.exe` parses a second time: npm, pnpm and yarn
   // shims, global ones included, and `gradlew.bat`.

@@ -558,6 +558,13 @@ global `%APPDATA%\npm`, and so do `gradlew.bat` and `mvnw.cmd`. With one
 escape, a `"` in an argument would end the quoted text on the second parse,
 and a `&` or `|` after it would run as a command.
 
+A `%` in an argument to a batch file is refused, as a failed spawn with an
+`EINVAL` message. `cmd.exe` expands `%NAME%`, `%NAME:a=b%` and `%NAME:~n,m%`
+before it reads any `^`, so the escaping above cannot protect a form that
+holds a `:`, and no quoting makes a `%` safe there. Pass the value through an
+environment variable or a file. A `.exe` gets its argv directly and takes any
+`%`.
+
 Two limits remain. A batch file that parses its arguments a third time (it
 stores `%*` in a variable and expands that later, or passes it through
 `call`) can still be broken by an argument holding `"`. A batch file that
