@@ -52,6 +52,8 @@ import { defaultRunner, which as whichOnPath } from './which.ts'
  *   - `version`: another `@osdlc/system-model` version probed it.
  *   - `tool`: the tool's binary resolves to another file or its size or
  *     mtime changed, such as after an upgrade, or it was installed or removed.
+ *     Also when a binary the runner looked up through `ctx.which` (a Procfile
+ *     manager) is found elsewhere, or appears or goes.
  *
  * @experimental
  */
@@ -197,6 +199,13 @@ export async function readCachedCatalog(
       ) {
         state = 'stale'
         reason = 'tool'
+      } else if (
+        Object.entries(entry.lookups ?? {}).some(([binary, found]) => which(binary) !== found)
+      ) {
+        // A runner that chose a tool by what is on the PATH (a Procfile
+        // manager) gives another answer once that changes.
+        state = 'stale'
+        reason = 'tool'
       } else if (!sameExcludes(current.excludes, entry.fingerprint?.excludes)) {
         // Checked before the digest. A changed exclude list explains a changed
         // digest, and widening the list can leave the digest unchanged.
@@ -287,6 +296,7 @@ export async function collectAndCache(
         report: probe.report,
         allowExec: catalog.allowExec,
         modelVersion: MODEL_VERSION,
+        lookups: probe.lookups,
         ...(probe.report.tool === undefined
           ? {}
           : toolFields(resolveToolPath(probe.report.tool.path ?? null))),

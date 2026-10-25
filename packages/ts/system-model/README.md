@@ -305,13 +305,13 @@ Every other runner reads files only, so it needs no trust. Known gaps:
 
 - nx lists declared targets only. Targets its plugins infer need Nx's project
   graph, which runs the workspace's plugins and the Nx daemon.
-- poe does not list a `boolean` argument, which is a flag with no value, and
-  does not read `include` files.
+- poe does not read `include` files.
 - VS Code tasks of other types (`gulp`, an extension's) and tasks that only
   run their `dependsOn` are skipped with a diagnostic. Platform overrides are
   not applied.
-- procfile picks its process manager at collect time, so a cached result
-  keeps the old one after you install another. A Procfile process takes no
+- procfile picks its process manager at collect time. A cached result reads
+  as stale (`tool`) once another manager is installed or removed, as for any
+  binary a runner looks up through `ctx.which`. A Procfile process takes no
   arguments through a manager.
 - CMake package and workflow presets are not read.
 

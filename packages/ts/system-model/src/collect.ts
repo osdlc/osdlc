@@ -64,6 +64,12 @@ export interface ProbeRecord {
   reads: string[]
   /** Every pattern passed to `ctx.files()`, plus the tool's own markers. */
   queries: string[]
+  /**
+   * Every binary looked up through `ctx.which`, with what it found. A runner
+   * that picks a tool by what is installed (Procfile's manager, poe's `uv run`)
+   * gives another answer once that changes.
+   */
+  lookups: Record<string, string | null>
   watch: string[]
   report: RunnerReport
   files: (pattern: string) => Promise<string[]>
@@ -170,11 +176,12 @@ export async function collectRunners(
       const head = reportHead(spec, which)
       const reads = new Set<string>()
       const queries = new Set<string>()
+      const lookups = new Map<string, string | null>()
       const own: RunnerContext = {
         ...ctx,
         runner: boundRunners(makeRunner, signal, probeTimeout(spec, options)),
       }
-      const recording = observer === undefined ? own : recordReads(own, reads, queries)
+      const recording = observer === undefined ? own : recordReads(own, reads, queries, lookups)
 
       const startedAt = performance.now()
       let report: RunnerReport
@@ -197,6 +204,7 @@ export async function collectRunners(
         durationMs: performance.now() - startedAt,
         reads: [...reads, ...evidencePaths(spec.packages)],
         queries: [...queries, ...spec.patterns],
+        lookups: Object.fromEntries([...lookups].sort(([a], [b]) => (a < b ? -1 : 1))),
         watch: spec.role.watch ?? [],
         report,
         files: ctx.files,
@@ -268,14 +276,20 @@ export function execWithheldReport(
   }
 }
 
-/** A copy of a context that records every path read and pattern listed through it. */
+/** A copy of a context that records every path read, pattern listed and binary looked up through it. */
 function recordReads<C extends ProviderContext>(
   ctx: C,
   reads: Set<string>,
   queries: Set<string>,
+  lookups: Map<string, string | null>,
 ): C {
   return {
     ...ctx,
+    which: (binary: string) => {
+      const found = ctx.which(binary)
+      lookups.set(binary, found)
+      return found
+    },
     files: async (pattern: string) => {
       const found = await ctx.files(pattern)
       queries.add(pattern)

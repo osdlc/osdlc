@@ -78,6 +78,8 @@ export interface CacheEntry {
    * cannot be read. Absent when the runner has no binary.
    */
   toolStamp?: string | null | undefined
+  /** Each binary the runner looked up through `ctx.which`, and what it found. */
+  lookups?: Record<string, string | null> | undefined
 }
 
 /** This package's version, or `unknown` when its package.json cannot be read. */

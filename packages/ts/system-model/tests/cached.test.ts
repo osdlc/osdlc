@@ -15,6 +15,7 @@ import type { CollectOptions, DetectOptions } from '../src/contract.ts'
 import type { ProviderResult, Task } from '../src/model.ts'
 import { nodeScripts, pnpm } from '../src/plugins/node/index.ts'
 import { pythonTools } from '../src/plugins/python/index.ts'
+import { procfile } from '../src/plugins/runners/index.ts'
 import { createProject } from '../src/project.ts'
 import type { ProjectProfile, ToolDef } from '../src/tool.ts'
 import { fakeRunners, fixtureRoot, removeRoot } from './support.ts'
@@ -805,6 +806,29 @@ describe('how an entry was probed', () => {
       const removed = { ...s.options, which: () => null }
       const gone = await s.project.runners.readCached(profile, cache, removed)
       expect(gone.runners[0]).toMatchObject({ state: 'stale', reason: 'tool' })
+    } finally {
+      await removeRoot(root)
+      await removeRoot(cache)
+    }
+  })
+
+  test('an entry is stale when a binary the runner looked up appears', async () => {
+    // A Procfile picks its manager by what is on the PATH.
+    const root = await fixtureRoot({ Procfile: 'web: node server.js\n' })
+    const cache = await fixtureRoot({})
+    try {
+      const s = setup([procfile])
+      const profile = await detect(s, root)
+      const first = await s.project.runners.collectAndCache(profile, cache, s.options)
+      expect(first.reports[0]?.tasks[0]?.argv).toEqual(['sh', '-c', 'node server.js'])
+      expect((await s.project.runners.readCached(profile, cache, s.options)).allFresh).toBe(true)
+
+      const installed = {
+        ...s.options,
+        which: (b: string) => (b === 'overmind' ? '/bin/overmind' : null),
+      }
+      const after = await s.project.runners.readCached(profile, cache, installed)
+      expect(after.runners[0]).toMatchObject({ state: 'stale', reason: 'tool' })
     } finally {
       await removeRoot(root)
       await removeRoot(cache)
