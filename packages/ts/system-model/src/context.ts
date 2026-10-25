@@ -28,20 +28,21 @@ export const DEFAULT_PROBE_TIMEOUT_MS = 60_000
 export const GIT_TIMEOUT_MS = 30_000
 
 /**
- * `makeRunner` with `signal`, `timeoutMs` and `processGroup: true` bound to
- * every call. A call's own option replaces the bound one.
+ * `makeRunner` with `signal`, `timeoutMs` and `killTree: true` bound to every
+ * call. A call's own option replaces the bound one.
  *
- * `processGroup` makes a timeout or an abort kill the processes the child
- * started too (moon, gradle and sbt fork). On POSIX the child leads its own
- * group, so it no longer gets the terminal's Ctrl-C: a host stops it through
- * `signal`, or calls command-seam's `installGroupSignalForwarding` once.
+ * `killTree` makes a timeout or an abort kill the processes the child started
+ * too (moon, gradle and sbt fork): the process group on POSIX, `taskkill /t`
+ * on Windows. On POSIX the child leads its own group, so it no longer gets the
+ * terminal's Ctrl-C. A host stops it by aborting `signal` on `SIGINT`, or by
+ * calling command-seam's `installGroupSignalForwarding` once.
  */
 export function boundRunners(
   makeRunner: (binary: string) => AsyncCommandRunner,
   signal: AbortSignal,
   timeoutMs: number,
 ): (binary: string) => AsyncCommandRunner {
-  return (binary) => withDefaults(makeRunner(binary), { signal, timeoutMs, processGroup: true })
+  return (binary) => withDefaults(makeRunner(binary), { signal, timeoutMs, killTree: true })
 }
 
 export function createContextState(lister: Lister): ContextState {

@@ -322,12 +322,12 @@ runner declares its timeout and a cost hint (`cheap` or `slow`) in
 `CollectOptions.timeouts` replaces a runner's timeout by id, such as
 `{ moon: 300_000 }`.
 
-Each subprocess also runs with command-seam's `processGroup: true`, so a
-timeout or an abort kills the processes it started as well (moon, gradle and
-sbt fork). On POSIX the child then leads its own process group and no longer
-gets the terminal's Ctrl-C. A CLI host should stop it through `signal`, or call
-`installGroupSignalForwarding` from `@osdlc/command-seam` once at start-up. On
-Windows only the direct child is killed today.
+Each subprocess also runs with command-seam's `killTree: true`, so a timeout
+or an abort kills the processes it started as well (moon, gradle and sbt
+fork): the process group on POSIX, `taskkill /t` on Windows. On POSIX the
+child then leads its own process group and no longer gets the terminal's
+Ctrl-C. A CLI host should abort `signal` on `SIGINT`, or call
+`installGroupSignalForwarding` from `@osdlc/command-seam` once at start-up.
 
 A catalog carries `kind: 'catalog'` and `schemaVersion`
 (`CATALOG_SCHEMA_VERSION`). `@osdlc/system-model/schema` has JSON Schemas for

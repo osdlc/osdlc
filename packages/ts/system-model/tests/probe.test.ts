@@ -149,11 +149,11 @@ describe('git and describe calls', () => {
     expect(fake.calls[0]?.opts).toMatchObject({
       signal: cancel.signal,
       timeoutMs: 120_000,
-      processGroup: true,
+      killTree: true,
     })
   })
 
-  test('every bound call runs in its own process group', async () => {
+  test('every bound call kills its whole tree when stopped', async () => {
     const dir = await root(ALL)
     const fake = fakeRunners([])
     await detectAndCollect(dir, {
@@ -163,14 +163,13 @@ describe('git and describe calls', () => {
       which: fakeWhich({ moon: '/bin/moon', just: '/bin/just' }),
     })
     expect(fake.calls.length).toBeGreaterThan(0)
-    for (const call of fake.calls) expect(call.opts.processGroup).toBe(true)
+    for (const call of fake.calls) expect(call.opts.killTree).toBe(true)
   })
 })
 
 describe('a timed-out probe', () => {
-  // On POSIX, processGroup kills the whole group. On Windows the kill of a
-  // whole process tree belongs to command-seam; until it kills the tree there,
-  // this cannot pass.
+  // Uses sh, sleep and pgrep, so it runs on POSIX only. command-seam's own
+  // tests cover the Windows tree kill.
   test.skipIf(process.platform === 'win32')(
     'kills the processes the child started, not only the child',
     async () => {
@@ -179,6 +178,22 @@ describe('a timed-out probe', () => {
       const res = await run.run(['-c', `sleep ${tag} & sleep ${tag}1; wait`], { cwd: '.' })
       expect(res.neverExited).toBe(true)
       // Give the kill a moment to land.
+      await new Promise((r) => setTimeout(r, 300))
+      const left = spawnRunner('pgrep').run(['-f', `sleep ${tag}`], { cwd: '.' })
+      expect(left.stdout.trim()).toBe('')
+    },
+  )
+
+  test.skipIf(process.platform === 'win32')(
+    'an abort of the caller signal, as a host does on Ctrl-C, kills the tree too',
+    async () => {
+      const tag = `${40 + Math.floor(Math.random() * 1000)}.${process.pid % 1000}7`
+      const cancel = new AbortController()
+      const run = boundRunners(spawnRunnerAsync, cancel.signal, 60_000)('sh')
+      const pending = run.run(['-c', `sleep ${tag} & sleep ${tag}1; wait`], { cwd: '.' })
+      setTimeout(() => cancel.abort(), 200)
+      const res = await pending
+      expect(res.reason).toBe('abort')
       await new Promise((r) => setTimeout(r, 300))
       const left = spawnRunner('pgrep').run(['-f', `sleep ${tag}`], { cwd: '.' })
       expect(left.stdout.trim()).toBe('')
