@@ -195,7 +195,7 @@ a command the CLI lacks or answer a different shape.
 - **Output.** A call answers the same document `--json` prints. A failure
   carries the exit code, the message and the hint.
 - **MCP** (`<tool> mcp`, stdio). Each data command is a tool: its name is the
-  command path joined with `_`, its input schema comes from the flags and
+  command path joined with `_`, unique across the tree, its input schema comes from the flags and
   positionals, its output schema and `structuredContent` are the `--json`
   document, and `readOnlyHint` and `destructiveHint` come from the command's
   declaration. Interactive commands are not tools. Events are progress

@@ -163,13 +163,33 @@ describe('tools/call', () => {
     expect(f.config['user']!['trust.paths']).toEqual(['/home/**'])
   })
 
-  test('a cli-only command cannot be called by name', async () => {
+  test('a cli-only command cannot be called by name: an unknown tool is a request error', async () => {
     const { client } = await connect()
-    const result = await client.callTool({ name: 'secret', arguments: {} })
-    expect(result).toMatchObject({
-      isError: true,
-      content: [{ type: 'text', text: "no tool 'secret'" }],
+    await expect(client.callTool({ name: 'secret', arguments: {} })).rejects.toMatchObject({
+      code: -32602,
+      message: expect.stringContaining("no tool 'secret'"),
     })
+  })
+
+  test('two commands that join to the same tool name are refused', async () => {
+    const { defineApp, defineCommand, defineGroup } = await import('../../src/command/index.ts')
+    const { z } = await import('zod')
+    const c = () => defineCommand({ summary: 'c', output: z.object({}), run: () => ({}) })
+    const clash = defineApp({
+      name: 't',
+      version: '0',
+      summary: 's',
+      commands: { a: defineGroup({ summary: 'a', commands: { b: c() } }), a_b: c() },
+    })
+    expect(() => mcpTools(clash)).toThrow("'t a b' and 't a_b' are both the tool 'a_b'")
+    const root = defineApp({
+      name: 't',
+      version: '0',
+      summary: 's',
+      default: c(),
+      commands: { t: c() },
+    })
+    expect(() => createMcpServer(root, CTX)).toThrow("are both the tool 't'")
   })
 
   test('events arrive as progress notifications', async () => {

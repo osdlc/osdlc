@@ -529,6 +529,11 @@ Each data command is a tool:
 | `outputSchema`, `structuredContent` | the `--json` document |
 | `readOnlyHint`, `destructiveHint` | `readOnly`, `destructive` |
 
+Tool names must be unique once joined: a group `a` with a command `b` and a
+root command `a_b`, or a command named after the app, make `mcpTools` and
+`createMcpServer` throw, naming both commands. A call to a name that is no
+tool is a JSON-RPC request error (`-32602`), as the protocol says.
+
 A failed run is an error result with the exit code and the hint. A document
 with a non-zero exit is an error result that keeps `structuredContent`; the
 exit code is in `_meta.exitCode`. Events go to the client as progress
