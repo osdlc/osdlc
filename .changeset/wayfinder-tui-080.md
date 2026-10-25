@@ -7,11 +7,13 @@ The terminal UI gets a help screen, editable settings and clearer marks.
 New:
 
 - `?` lists every key and what each mark means. The footer fits the width and always keeps `? help` and `esc quit`. `way --help --all` prints the same key list.
-- The settings screen (`,`) edits runners (on or off, and their order), discovery and excluded paths, and grants or removes trust. Each change is saved at once and the list is probed again. The screen scrolls. Each runner shows its homepage, or why it has no rows.
+- The settings screen (`,`) edits runners (on or off, and their order), discovery and excluded paths, and grants or removes trust. Each change is saved at once and the list is probed again. The screen scrolls. Each runner shows why it has no rows, or its tool's language, homepage and description.
 - `^d` keeps declared tasks only and `^o` cycles the scope (all, root, +2, +3), as the web view's Declared and Scope filters do.
 - A task whose parameters could not be read is marked `?`, names the reason, and Enter asks for arguments; an empty line runs it as it is. A VS Code task that uses an editor variable is not run, and says why.
 - The bare `way` opens the web view when the user config sets `"open": "web"`. `way browse` always opens the terminal UI.
 - The status line shows the measured probe time after a probe.
+- A `skills` tab lists the repository's agent skills, which the `all` tab shows after the tasks. Enter and `^y` copy `/<name>`; nothing runs.
+- The settings screen shows each tool's language, homepage and description, and a TOOL TRUST section that grants or removes trust for one tool (`t`, then `y`; `u`).
 
 Changed:
 

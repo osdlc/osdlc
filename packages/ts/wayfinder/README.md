@@ -105,8 +105,8 @@ repository's own, `all` adds yours and your plugins' from the home folder, and
 ```text
 enter  run the selected task, handing it this terminal
        (a task that takes arguments asks for them first)
-^y     copy its command line
-tab    next runner tab (all · just · node-scripts │ dependencies │ tools …)
+^y     copy its command line (on a skill: /<name>)
+tab    next tab (all · just · node-scripts │ dependencies │ tools … │ skills)
 ,      settings: runners, discovery, excluded paths and trust
 ^s     trust this repository, when runners are withheld for want of it
 ^r     re-probe (always a real probe, never the store)

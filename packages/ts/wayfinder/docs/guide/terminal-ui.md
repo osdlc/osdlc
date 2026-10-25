@@ -135,7 +135,7 @@ list`. Each section names the layer that supplied its value.
 | `[` / `]`          | move a runner earlier / later in the order                 |
 | `a`                | add an excluded path                                       |
 | `x`                | remove the selected excluded path                          |
-| `t` / `u`          | trust this repository (after a `y`/`n` question) / untrust |
+| `t` / `u`          | trust the repository or the selected tool (after a `y`/`n` question) / untrust |
 | `Esc` / `,`        | back to the list                                           |
 
 Each change is saved at once. Runners, discovery and excluded paths go to
@@ -146,8 +146,23 @@ such as `--exclude`, is saved but keeps the flag's value until `way` starts
 again.
 
 Each runner shows `on` or `off`, and why it has no rows when it has none:
-withheld, or its tool is not installed. Removing trust with `u` keeps this
+withheld, or its tool is not installed. Otherwise it shows its tool's
+language, homepage and description. Removing trust with `u` keeps this
 run's execution setting; the next `way` withholds what needs trust.
+
+When runners are withheld for want of trust, a TOOL TRUST section lists each
+tool they need (`way trust --scope <tool>`), and each tool trusted on its own.
+`t` on a tool asks `trust mise here? y/n` and grants that tool only; a runner
+runs once it and each tool manager that wraps it are trusted. `u` on a trusted
+tool removes its grant, and the list is probed again.
+
+## Skills
+
+When the repository ships agent skills, a `skills` tab follows the runner
+tabs, and the `all` tab lists them after the tasks, as `/<name> [hint]`. The
+query matches them as it matches tasks; `^t` hides them. A skill runs in an
+agent, not here, so Enter and `^y` copy `/<name>` and nothing is spawned. The
+`skills` setting chooses which skills are listed.
 
 ## Startup and the cache
 

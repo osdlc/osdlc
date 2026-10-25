@@ -21,7 +21,8 @@ import { collectOptionsFromConfig, readSettings, writeSetting, type Settings } f
 import type { TaskHit } from '../core/filter.ts'
 import type { HandOffResult } from '../core/run.ts'
 import { SessionError, type CacheState, type RunPlan, type Session } from '../core/session.ts'
-import { groupOf } from '../groups.ts'
+import { skillLine, type SkillHit, type SkillRow } from '../core/skills.ts'
+import { groupOf, SKILLS_GROUP } from '../groups.ts'
 import { footerHints, keyLines, keysFor } from '../keys.ts'
 import { terminalSafe } from '../terminal-text.ts'
 import {
@@ -44,6 +45,7 @@ import {
   type SettingsFacts,
   type SettingsItem,
   type SettingsLine,
+  type WithheldRunner,
 } from './settings.ts'
 import { CLEAR_EOL, chunksWidth, line, type Chunk, type Styles } from './style.ts'
 
@@ -96,16 +98,27 @@ export interface SettingsScreen {
 /** The `all` tab. */
 export const ALL = 'all'
 
+/**
+ * The Skills tab. Its rows are agent skills, not a runner's tasks. The `#`
+ * keeps it apart from any runner id.
+ */
+export const SKILLS_TAB = `#${SKILLS_GROUP.id}`
+
+/** A row of the list: a task, or an agent skill. */
+export type ListEntry = { task: TaskHit; skill?: undefined } | { skill: SkillHit; task?: undefined }
+
 /** Everything the screen shows. */
 export interface TuiState {
   catalog: Catalog | null
   /** Where each runner's rows came from, one entry per selected runner. */
   cache: CacheState[]
+  /** The agent skills from the last probe. */
+  skills: SkillRow[]
   /** `runners.order`, applied to every catalog. */
   runnerOrder: string[] | undefined
   /** True once a probe has finished, so an empty list is an answer. */
   probed: boolean
-  /** The selected tab: `all` or a runner id. */
+  /** The selected tab: `all`, a runner id or {@link SKILLS_TAB}. */
   runner: string
   query: string
   mode: Mode
@@ -113,7 +126,7 @@ export interface TuiState {
   declaredOnly: boolean
   /** Index into {@link SCOPES}. */
   scope: number
-  /** Held by task id, not row index, so a refresh cannot move it to another task. */
+  /** Held by task or skill id, not row index, so a refresh cannot move it to another row. */
   selectedId: string | null
   scroll: number
   message: Message | null
@@ -123,6 +136,8 @@ export interface TuiState {
    * one key cannot grant it; `^s` is also flow control on many terminals.
    */
   confirmingTrust: boolean
+  /** The tool the pending grant is for, or null for the whole repository. */
+  trustScope: string | null
   /** The task whose arguments are being typed, and the text so far. */
   entering: { task: Task; text: string } | null
   view: 'list' | 'settings' | 'help'
@@ -135,7 +150,10 @@ export interface TuiState {
   /** Increased on each refresh, so an older result cannot overwrite a newer one. */
   generation: number
   inFlight: AbortController | null
+  /** The tasks that pass the filters, in the selected tab. */
   rows: TaskHit[]
+  /** The skills that pass the filters, listed after the tasks. */
+  skillRows: SkillHit[]
 }
 
 /** One terminal UI. */
@@ -152,6 +170,8 @@ export interface Tui {
   recompute(): void
   /** Index of the selected row. */
   cursor(): number
+  /** The list's rows: the tasks, then the skills. */
+  entries(): ListEntry[]
   /** Write a frame to the host. */
   draw(): void
   /** Show the stored probe, then probe. */
@@ -221,6 +241,7 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
   const state: TuiState = {
     catalog: null,
     cache: [],
+    skills: [],
     runnerOrder: session.runnerOrder(),
     probed: false,
     runner: ALL,
@@ -234,6 +255,7 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
     message: null,
     loading: false,
     confirmingTrust: false,
+    trustScope: null,
     entering: null,
     view: 'list',
     helpFrom: 'list',
@@ -243,6 +265,7 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
     generation: 0,
     inFlight: null,
     rows: [],
+    skillRows: [],
   }
   const pending = new Set<Promise<unknown>>()
   const track = (work: Promise<unknown>): void => {
@@ -263,58 +286,86 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
 
   const reports = () => state.catalog?.reports ?? []
   const reportFor = (runner: string) => reports().find((r) => r.runner === runner)
-  const tabs = (): string[] => [ALL, ...reports().map((r) => r.runner)]
+  const tabs = (): string[] => [
+    ALL,
+    ...reports().map((r) => r.runner),
+    ...(state.skills.length > 0 ? [SKILLS_TAB] : []),
+  ]
+  const showsSkills = (): boolean => state.runner === ALL || state.runner === SKILLS_TAB
   const cacheFor = (runner: string) => state.cache.find((c) => c.runner === runner)
   const chainOf = (runner: string): ChainSegment[] => reportFor(runner)?.chain ?? []
+
+  /** Each withheld runner, with its label and the scopes it needs. */
+  const withheldRunners = (): WithheldRunner[] =>
+    state.catalog === null
+      ? []
+      : session
+          .unknowns({ catalog: state.catalog, cache: state.cache })
+          .filter((u): u is WithheldRunner => u.kind === 'withheld')
 
   /** The withheld runners, and why, or null when execution is allowed. */
   const withheld = (): { count: number; cause: string; trustable: boolean } | null => {
     const reason = session.withheldReason()
-    const count = reports().filter((r) => r.skippedForExec).length
-    if (reason === null || count === 0) return null
-    const cause =
-      reason === 'untrusted'
-        ? withheldLabel('untrusted')
-        : `withheld: ${execOffCause(session.settings().settings, session.gate)}`
-    return { count, cause, trustable: session.trustable() }
+    const held = withheldRunners()
+    if (reason === null || held.length === 0) return null
+    let cause: string
+    if (reason === 'exec-off') {
+      cause = `withheld: ${execOffCause(session.settings().settings, session.gate)}`
+    } else if (held.some((w) => w.reason === 'tool-untrusted')) {
+      const missing = [...new Set(held.flatMap((w) => w.missing ?? []))]
+      cause = withheldLabel('tool-untrusted', missing)
+    } else {
+      cause = withheldLabel('untrusted')
+    }
+    return { count: held.length, cause, trustable: session.trustable() }
   }
 
   const tabTasks = (): readonly Task[] =>
     state.runner === ALL
       ? reports().flatMap((r) => r.tasks)
       : (reportFor(state.runner)?.tasks ?? [])
+  /** How many rows the selected tab has before filtering. */
+  const tabTotal = (): number => tabTasks().length + (showsSkills() ? state.skills.length : 0)
+
+  const entries = (): ListEntry[] => [
+    ...state.rows.map((task) => ({ task })),
+    ...state.skillRows.map((skill) => ({ skill })),
+  ]
+  const entryId = (e: ListEntry | undefined): string | null =>
+    e === undefined ? null : e.task !== undefined ? e.task.task.id : e.skill.skill.id
 
   function recompute(): void {
-    if (state.catalog === null) {
+    const filter = {
+      query: state.query,
+      mode: state.mode,
+      servicesOnly: state.servicesOnly,
+      declaredOnly: state.declaredOnly,
+      maxDepth: SCOPES[state.scope]!.maxDepth,
+    }
+    if (state.catalog === null || state.runner === SKILLS_TAB) {
       state.rows = []
     } else {
       const scoped =
         state.runner === ALL ? reports() : reports().filter((r) => r.runner === state.runner)
-      state.rows = session.search(
-        { ...state.catalog, reports: scoped },
-        {
-          query: state.query,
-          mode: state.mode,
-          servicesOnly: state.servicesOnly,
-          declaredOnly: state.declaredOnly,
-          maxDepth: SCOPES[state.scope]!.maxDepth,
-        },
-      )
+      state.rows = session.search({ ...state.catalog, reports: scoped }, filter)
     }
-    if (state.selectedId !== null && !state.rows.some((r) => r.task.id === state.selectedId)) {
-      state.selectedId = state.rows[0]?.task.id ?? null
+    state.skillRows = showsSkills() ? session.searchSkills(state.skills, filter) : []
+    const all = entries()
+    if (state.selectedId !== null && !all.some((e) => entryId(e) === state.selectedId)) {
+      state.selectedId = entryId(all[0])
     }
   }
 
   function cursor(): number {
     if (state.selectedId === null) return 0
-    const at = state.rows.findIndex((r) => r.task.id === state.selectedId)
+    const at = entries().findIndex((e) => entryId(e) === state.selectedId)
     return at === -1 ? 0 : at
   }
 
   function select(index: number): void {
-    const clamped = Math.max(0, Math.min(index, state.rows.length - 1))
-    state.selectedId = state.rows[clamped]?.task.id ?? null
+    const all = entries()
+    const clamped = Math.max(0, Math.min(index, all.length - 1))
+    state.selectedId = entryId(all[clamped])
   }
 
   const resetSelection = (): void => {
@@ -355,6 +406,28 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
   }
 
   /**
+   * A skill's line, `/name [hint]`, with matched name characters marked and
+   * its origin dimmed after it. Skill text is repository text, so it is
+   * filtered; `terminalSafe` keeps its length, so the offsets still fit.
+   */
+  function skillChunks(hit: SkillHit): Chunk[] {
+    const marks = new Set((hit.labelHits ?? []).map((i) => i + 1)) // after the `/`
+    const text = terminalSafe(skillLine(hit.skill))
+    const nameEnd = hit.skill.invoke.length
+    const paintAt = (i: number) => (marks.has(i) ? s.match : i < nameEnd ? s.bold : undefined)
+    const chunks: Chunk[] = []
+    let from = 0
+    for (let i = 1; i <= text.length; i++) {
+      if (i === text.length || paintAt(i) !== paintAt(from)) {
+        chunks.push({ text: text.slice(from, i), paint: paintAt(from) })
+        from = i
+      }
+    }
+    chunks.push({ text: `  ${terminalSafe(hit.skill.origin)}`, paint: s.dim })
+    return chunks
+  }
+
+  /**
    * The tab row: each tab's chunks, scrolled so the selected tab is in view,
    * with `‹` and `›` where tabs are cut off. The mode flags keep their room
    * at the right.
@@ -364,8 +437,10 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
     const segments: Chunk[][] = names.map((name, i) => {
       const count =
         name === ALL
-          ? reports().reduce((n, r) => n + r.tasks.length, 0)
-          : (reportFor(name)?.tasks.length ?? 0)
+          ? reports().reduce((n, r) => n + r.tasks.length, 0) + state.skills.length
+          : name === SKILLS_TAB
+            ? state.skills.length
+            : (reportFor(name)?.tasks.length ?? 0)
       // A leading `~` marks rows from the store that are out of date. A `–`
       // in place of the count marks a withheld runner. Both show without color.
       const stale =
@@ -373,11 +448,13 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
           ? state.cache.some((c) => c.state === 'stale')
           : cacheFor(name)?.state === 'stale'
       const held = name !== ALL && reportFor(name)?.skippedForExec === true
-      const label = `${stale ? '~' : ''}${name === ALL ? ALL : runnerLabel(name)} ${held ? '–' : count}`
+      const title = name === ALL ? ALL : name === SKILLS_TAB ? SKILLS_GROUP.id : runnerLabel(name)
+      const label = `${stale ? '~' : ''}${title} ${held ? '–' : count}`
       const selected = name === state.runner
       const chunks: Chunk[] = []
       const prev = names[i - 1]
-      if (name !== ALL && prev !== undefined && prev !== ALL && groupOf(prev) !== groupOf(name)) {
+      const newGroup = name === SKILLS_TAB || groupOf(prev ?? ALL) !== groupOf(name)
+      if (name !== ALL && prev !== undefined && prev !== ALL && newGroup) {
         chunks.push({ text: '│', paint: s.dim })
       }
       // Brackets mark the selected tab in the same width as the spaces
@@ -428,8 +505,8 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
   }
 
   function statusLine(width: number): string {
-    const total = tabTasks().length
-    const chunks: Chunk[] = [{ text: `${state.rows.length}/${total}`, paint: s.dim }]
+    const shown = state.rows.length + state.skillRows.length
+    const chunks: Chunk[] = [{ text: `${shown}/${tabTotal()}`, paint: s.dim }]
     if (state.catalog === null) {
       chunks.push({ text: '  collecting', paint: s.dim })
     } else {
@@ -458,7 +535,8 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
     }
     const held = withheld()
     if (state.confirmingTrust) {
-      chunks.push({ text: '  trust this repository? y/n', paint: s.warning })
+      const what = state.trustScope === null ? 'this repository' : `${state.trustScope} here`
+      chunks.push({ text: `  trust ${what}? y/n`, paint: s.warning })
     } else if (held !== null) {
       chunks.push({
         text: `  ${countRunners(held.count)} ${held.cause}${held.trustable ? ' (^s to trust)' : ''}`,
@@ -505,10 +583,15 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
       { text: '  ?        parameters unknown; Enter asks for arguments' },
       { text: '  ~        a tab whose rows came from the store and are out of date' },
       { text: '  –        a withheld runner: reading it means running it' },
+      { text: '' },
+      { text: 'SKILLS', heading: true },
+      { text: '  An agent skill is typed in the agent as /<name>. Enter and ^y copy it;' },
+      { text: '  nothing runs here.' },
     ]
   }
 
   function settingsFacts(screen: SettingsScreen): SettingsFacts {
+    const snapshot = session.settings()
     return {
       settings: screen.settings,
       gate: session.gate,
@@ -516,7 +599,9 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
       revoked: state.revoked,
       reports: reports(),
       withheld: session.withheldReason(),
-      tools: session.project.tools,
+      withheldRunners: withheldRunners(),
+      tools: snapshot.tools,
+      trustedTools: snapshot.trustedTools,
     }
   }
 
@@ -594,16 +679,31 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
     // the key hints it replaces, so the list gives up a row while arguments
     // are typed.
     const at = cursor()
+    const list = entries()
     const listHeight = Math.max(1, height - out.length - (state.entering ? 5 : 4))
     if (at < state.scroll) state.scroll = at
     if (at >= state.scroll + listHeight) state.scroll = at - listHeight + 1
     if (state.scroll < 0) state.scroll = 0
     for (let i = 0; i < listHeight; i++) {
-      const row = state.rows[state.scroll + i]
-      if (!row) {
+      const entry = list[state.scroll + i]
+      if (!entry) {
         out.push(i === 0 ? emptyList(width) : CLEAR_EOL)
         continue
       }
+      if (entry.skill !== undefined) {
+        out.push(
+          line(
+            [
+              { text: state.scroll + i === at ? '>' : ' ', paint: s.accent },
+              { text: '   ' },
+              ...skillChunks(entry.skill),
+            ],
+            width,
+          ),
+        )
+        continue
+      }
+      const row = entry.task
       out.push(
         line(
           [
@@ -619,9 +719,34 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
     }
 
     // What Enter would run, always on screen.
-    const current = state.rows[at]
+    const currentEntry = list[at]
+    const current = currentEntry?.task
     out.push(line([{ text: RULE.repeat(width), paint: s.dim }], width))
-    if (current) {
+    if (currentEntry?.skill !== undefined) {
+      const skill = currentEntry.skill.skill
+      const text = terminalSafe(skillLine(skill))
+      const where = terminalSafe(`skill for ${skill.harnesses.join(', ')}`)
+      const gap = width - text.length - where.length - 1
+      out.push(
+        line(
+          gap >= 3
+            ? [{ text, paint: s.bold }, { text: ' '.repeat(gap) }, { text: where, paint: s.dim }]
+            : [{ text, paint: s.bold }],
+          width,
+        ),
+      )
+      out.push(
+        line(
+          [
+            {
+              text: terminalSafe(`${skill.description ?? ''}  ${skill.path}`.trim()),
+              paint: s.dim,
+            },
+          ],
+          width,
+        ),
+      )
+    } else if (current) {
       const shape = chainOf(current.task.runner)
         .map((c) => c.label)
         .join(' > ')
@@ -678,7 +803,8 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
   /** The first list line when there are no rows: why. */
   function emptyList(width: number): string {
     let text: string
-    if (state.catalog === null) text = state.probed ? 'nothing collected' : 'collecting…'
+    if (state.runner === SKILLS_TAB) text = state.query !== '' ? 'no match' : 'no skills'
+    else if (state.catalog === null) text = state.probed ? 'nothing collected' : 'collecting…'
     else if (state.runner !== ALL && reportFor(state.runner)?.skippedForExec === true) {
       const held = withheld()
       text = held === null ? 'withheld' : `${held.cause}${held.trustable ? ' — ^s to trust' : ''}`
@@ -783,6 +909,8 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
       if (generation !== state.generation) return
       state.catalog = orderedCatalog(snapshot.catalog, state.runnerOrder)
       state.cache = snapshot.cache
+      state.skills = snapshot.skills
+      if (state.runner === SKILLS_TAB && state.skills.length === 0) state.runner = ALL
     } catch (err) {
       if (generation === state.generation && !controller.signal.aborted) {
         say(`refresh failed: ${errorText(err)}`, 'error')
@@ -819,11 +947,14 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
     draw()
   }
 
-  /** Grant trust, then probe again so the withheld runners appear. */
-  async function grantTrust(): Promise<void> {
+  /**
+   * Grant trust, to the repository or with `scope` to one tool, then probe
+   * again so the withheld runners appear.
+   */
+  async function grantTrust(scope?: string): Promise<void> {
     let note: string | undefined
     try {
-      note = (await session.grantTrust()).note
+      note = (await session.grantTrust(scope)).note
     } catch (err) {
       // Never silent: the user must know why the runners are still withheld.
       say(`trust failed: ${errorText(err)}`, 'error')
@@ -836,10 +967,34 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
     state.inFlight?.abort()
     state.inFlight = null
     state.loading = false
+    const trusted = scope === undefined ? 'trusted' : `trusted ${scope}`
     await refresh({
-      text: note ? `trusted — re-probing; ${note}` : 'trusted — re-probing',
+      text: note ? `${trusted} — re-probing; ${note}` : `${trusted} — re-probing`,
       tone: 'note',
     })
+  }
+
+  /** Remove one tool's grant; it is withheld again from the next probe. */
+  async function revokeToolTrust(scope: string): Promise<void> {
+    let changed: boolean
+    try {
+      changed = (await session.revokeTrust(scope)).changed
+    } catch (err) {
+      say(`untrust failed: ${errorText(err)}`, 'error')
+      return
+    }
+    if (!changed) {
+      say(
+        `${scope} has no grant to remove; trust rules in your user config may trust it`,
+        'warning',
+      )
+      return
+    }
+    state.inFlight?.abort()
+    state.inFlight = null
+    state.loading = false
+    await refresh({ text: `removed trust for ${scope} — re-probing`, tone: 'note' })
+    if (state.message === null) say(`removed trust for ${scope}`)
   }
 
   async function revokeTrust(): Promise<void> {
@@ -858,22 +1013,37 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
     }
   }
 
-  function askTrust(): void {
-    if (session.trustable()) state.confirmingTrust = true
-    else if (withheld() !== null)
+  /** Ask `y/n` before a grant: for the repository, or with `scope` for one tool. */
+  function askTrust(scope: string | null = null): void {
+    if (session.trustable()) {
+      state.trustScope = scope
+      state.confirmingTrust = true
+    } else if (withheld() !== null)
       say('trust would not change this run: execution is off', 'warning')
     else say('nothing is withheld')
   }
 
   async function copy(task: Task): Promise<void> {
+    await toClipboard(copyText(task, host.platform), 'copied')
+  }
+
+  /** A skill runs in an agent, so its action copies `/<name>` and spawns nothing. */
+  async function copySkill(skill: SkillRow): Promise<void> {
+    await toClipboard(
+      skill.invoke,
+      terminalSafe(`copied ${skill.invoke}; type it in ${skill.harnesses.join(', ')}`),
+    )
+  }
+
+  async function toClipboard(text: string, done: string): Promise<void> {
     say('copying…')
     let ok = false
     try {
-      ok = await host.clipboard(copyText(task, host.platform))
+      ok = await host.clipboard(text)
     } catch {
       ok = false
     }
-    say(ok ? 'copied' : 'clipboard unavailable', ok ? 'note' : 'warning')
+    say(ok ? done : 'clipboard unavailable', ok ? 'note' : 'warning')
   }
 
   function cycleRunner(step: number): void {
@@ -1051,8 +1221,11 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
         else if (item?.kind === 'discovery') track(applyEdit(cycleDiscovery(screen.settings)))
         else if (item?.kind === 'add-path') screen.adding = ''
         else if (item?.kind === 'trust') {
-          if (session.trustable()) state.confirmingTrust = true
+          if (session.trustable()) askTrust()
           else if (session.gate.trusted && !state.revoked) track(revokeTrust())
+        } else if (item?.kind === 'tool') {
+          if (item.trusted) track(revokeToolTrust(item.tool))
+          else askTrust(item.tool)
         }
         return
       case '[':
@@ -1078,9 +1251,13 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
       }
       case 't':
       case '\x13':
-        askTrust()
+        askTrust(item?.kind === 'tool' && !item.trusted ? item.tool : null)
         return
       case 'u':
+        if (item?.kind === 'tool') {
+          if (item.trusted) track(revokeToolTrust(item.tool))
+          return
+        }
         track(revokeTrust())
         return
     }
@@ -1092,9 +1269,11 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
     // The trust question takes exactly one key. `y` grants; any other key
     // cancels and is used up, so it does not also do its usual job.
     if (state.confirmingTrust) {
+      const scope = state.trustScope ?? undefined
       state.confirmingTrust = false
+      state.trustScope = null
       state.message = null
-      if (key === 'y' || key === 'Y') track(grantTrust())
+      if (key === 'y' || key === 'Y') track(grantTrust(scope))
       return
     }
 
@@ -1155,14 +1334,16 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
         return
       case '\r':
       case '\n': {
-        const row = state.rows[cursor()]
-        if (row) activate(row.task)
+        const entry = entries()[cursor()]
+        if (entry?.skill !== undefined) track(copySkill(entry.skill.skill))
+        else if (entry?.task !== undefined) activate(entry.task.task)
         return
       }
       case '\x19': {
         // ctrl-y
-        const row = state.rows[cursor()]
-        if (row) track(copy(row.task))
+        const entry = entries()[cursor()]
+        if (entry?.skill !== undefined) track(copySkill(entry.skill.skill))
+        else if (entry?.task !== undefined) track(copy(entry.task.task))
         return
       }
       case '\x05': // ctrl-e
@@ -1220,7 +1401,7 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
         select(0)
         return
       case 'end':
-        select(state.rows.length - 1)
+        select(entries().length - 1)
         return
       case '\x7f':
       case '\x08':
@@ -1256,6 +1437,7 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
     feed,
     recompute,
     cursor,
+    entries,
     draw,
     boot,
     refresh: () => refresh(),

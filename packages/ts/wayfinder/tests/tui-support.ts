@@ -81,6 +81,8 @@ export async function testTui(
     flags?: Parameters<typeof createSession>[0]['flags']
     style?: StyleInput
     size?: { columns: number; rows: number }
+    /** The session's environment. Default: this process's PATH only. */
+    env?: Record<string, string | undefined>
   } = {},
 ): Promise<{ tui: Tui; host: FakeHost; root: string; home: string }> {
   const root = await temp('wayfinder-tui-')
@@ -89,9 +91,10 @@ export async function testTui(
     'package.json': JSON.stringify({ name: 'p', scripts: { build: 'echo b' } }),
   }
   for (const [name, content] of Object.entries(files)) {
+    await mkdir(dirname(join(root, name)), { recursive: true })
     await writeFile(join(root, name), content, 'utf-8')
   }
-  const env = { PATH: process.env['PATH'] }
+  const env = opts.env ?? { PATH: process.env['PATH'] }
   if (opts.userConfig !== undefined) {
     const file = configLocations(root, env, home).user
     await mkdir(dirname(file), { recursive: true })

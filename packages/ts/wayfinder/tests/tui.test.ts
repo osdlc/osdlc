@@ -655,7 +655,9 @@ describe('the settings screen', () => {
 
   test('space turns a runner off in the project file, and the session stops collecting it', async () => {
     const { tui, root } = await open()
-    expect(screen(tui)[4]).toBe('> on   make  https://www.gnu.org/software/make/')
+    expect(screen(tui)[4]).toMatch(
+      /^> on {3}make {2}https:\/\/www\.gnu\.org\/software\/make\/ {2}A build/,
+    )
     tui.handle(' ')
     await tui.idle()
     expect(await projectFile(root)).toMatchObject({ runners: { disabled: ['make'] } })

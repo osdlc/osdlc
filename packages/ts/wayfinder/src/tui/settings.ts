@@ -8,16 +8,22 @@
  * user file.
  */
 
-import type { RunnerReport, ToolDef } from '@osdlc/system-model/detect'
+import type { RunnerReport } from '@osdlc/system-model/detect'
 import type { ExecGate } from '@osdlc/trust-repo'
 
 import { DISCOVERY_VALUES, type ConfigLayer, type Settings, type WritableLayer } from '../config.ts'
+import type { Unknown } from '../core/unknowns.ts'
+import { terminalSafe } from '../terminal-text.ts'
+import type { ToolSummary } from '../tool-info.ts'
 import {
   missingBinaryLabel,
   runnerLabel,
   withheldLabel,
   type WithheldReason,
 } from '../vocabulary.ts'
+
+/** A withheld runner, as the session's unknowns describe it. */
+export type WithheldRunner = Extract<Unknown, { kind: 'withheld' }>
 
 /** A line the cursor can stop on, and what its keys change. */
 export type SettingsItem =
@@ -26,6 +32,8 @@ export type SettingsItem =
   | { kind: 'path'; path: string }
   | { kind: 'add-path' }
   | { kind: 'trust' }
+  /** A trust scope: a tool trusted on its own, or one a withheld runner needs. */
+  | { kind: 'tool'; tool: string; trusted: boolean }
 
 /** One line of the screen. */
 export interface SettingsLine {
@@ -48,8 +56,12 @@ export interface SettingsFacts {
   reports: readonly RunnerReport[]
   /** Why withheld runners are withheld, or null when nothing is. */
   withheld: WithheldReason | null
-  /** The registered tools, for a runner's description and homepage. */
-  tools: readonly ToolDef[]
+  /** Each withheld runner, with its label and the trust scopes it still needs. */
+  withheldRunners: readonly WithheldRunner[]
+  /** The registered tools, for a runner's language, description and homepage. */
+  tools: readonly ToolSummary[]
+  /** The tool ids trusted on their own here. */
+  trustedTools: readonly string[]
 }
 
 const LAYER_WORDS: Record<ConfigLayer, string> = {
@@ -77,12 +89,17 @@ export function knownRunners(facts: Pick<SettingsFacts, 'settings' | 'reports'>)
 
 /**
  * What the settings screen says about a runner beyond on or off: its
- * ecosystem and homepage, when its tool declares them.
+ * language when it has one, homepage and description, from its tool's
+ * summary. A custom tool's text is repository text, so it is filtered.
  */
-export function runnerInfo(tools: readonly ToolDef[], runner: string): string {
+export function toolNote(tools: readonly ToolSummary[], runner: string): string {
   const tool = tools.find((t) => t.id === runner)
   if (tool === undefined) return ''
-  return [tool.ecosystem?.id, tool.homepage].filter((s) => s !== undefined && s !== '').join('  ')
+  return terminalSafe(
+    [tool.ecosystem === null ? null : tool.language, tool.homepage, tool.description]
+      .filter((s) => s !== null && s !== '')
+      .join('  '),
+  )
 }
 
 /** Why execution is off, in words, for the screen and the status line. */
@@ -108,13 +125,14 @@ export function settingsLines(facts: SettingsFacts): SettingsLine[] {
   for (const runner of runners) {
     const report = facts.reports.find((r) => r.runner === runner)
     const off = disabled.has(runner)
+    const held = facts.withheldRunners.find((w) => w.runner === runner)
     const note = off
       ? 'not collected'
       : report?.skippedForExec === true && facts.withheld !== null
-        ? withheldLabel(facts.withheld)
+        ? (held?.label ?? withheldLabel(facts.withheld))
         : report?.tool !== undefined && !report.tool.found
           ? missingBinaryLabel(report.tool.binary)
-          : runnerInfo(facts.tools, runner)
+          : toolNote(facts.tools, runner)
     out.push({
       text: `${off ? 'off' : 'on '}  ${runnerLabel(runner).padEnd(pad)}  ${note}`.trimEnd(),
       item: { kind: 'runner', runner },
@@ -136,6 +154,7 @@ export function settingsLines(facts: SettingsFacts): SettingsLine[] {
   })
   out.push({ text: '  a project file can only turn execution off; trust is what turns it on' })
   out.push({ text: '' })
+  out.push(...toolTrustLines(facts))
 
   const discovery = valueOf<string>(settings, 'discovery')
   out.push({ text: `DISCOVERY  (${layerWords(discovery.source)})`, heading: true })
@@ -151,6 +170,40 @@ export function settingsLines(facts: SettingsFacts): SettingsLine[] {
   out.push({ text: `project file: ${settings.loaded.locations.project}` })
   out.push({ text: `user file: ${settings.loaded.locations.user}` })
   for (const warning of settings.warnings) out.push({ text: `warning: ${warning}` })
+  return out
+}
+
+/**
+ * The TOOL TRUST section: each tool trusted on its own, then each scope a
+ * withheld runner still needs. Empty when per-tool trust does not apply.
+ */
+function toolTrustLines(facts: SettingsFacts): SettingsLine[] {
+  const needed = new Map<string, string[]>()
+  for (const w of facts.withheldRunners) {
+    for (const scope of w.missing ?? []) {
+      if (facts.trustedTools.includes(scope)) continue
+      needed.set(scope, [...(needed.get(scope) ?? []), w.runner])
+    }
+  }
+  if (facts.trustedTools.length === 0 && needed.size === 0) return []
+  const out: SettingsLine[] = [{ text: 'TOOL TRUST  (one tool at a time)', heading: true }]
+  const pad = Math.max(...[...facts.trustedTools, ...needed.keys()].map((t) => t.length))
+  for (const tool of facts.trustedTools) {
+    out.push({
+      text: `trusted      ${tool.padEnd(pad)}  (u removes)`,
+      item: { kind: 'tool', tool, trusted: true },
+    })
+  }
+  for (const [tool, runners] of needed) {
+    const by = runners.map(runnerLabel).join(', ')
+    out.push({
+      text:
+        `not trusted  ${tool.padEnd(pad)}  needed by ${by}` +
+        (facts.trustable ? ' (t trusts it)' : ''),
+      item: { kind: 'tool', tool, trusted: false },
+    })
+  }
+  out.push({ text: '' })
   return out
 }
 
