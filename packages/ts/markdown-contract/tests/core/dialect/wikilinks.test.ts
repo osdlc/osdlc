@@ -1,0 +1,120 @@
+import { describe, expect, test } from 'vitest'
+
+import { extractVaultRefs } from '../../../src/core/dialect/wikilinks.js'
+
+// wikilinks.ts recognizes `[[wikilink]]` and `![[transclusion]]` references in already-flattened
+// text. Each case is an input string and the exact VaultRef[] it returns.
+
+describe('extractVaultRefs — recognize [[wikilink]] and ![[transclusion]]', () => {
+  test('a plain [[wikilink]] → one wikilink ref whose target is the inner text', () => {
+    expect(extractVaultRefs('see [[D-0002]] for the decision')).toEqual([
+      { kind: 'wikilink', target: 'D-0002', raw: '[[D-0002]]' },
+    ])
+  })
+
+  test('a leading ! marks a ![[transclusion]]', () => {
+    expect(extractVaultRefs('![[Diagram]]')).toEqual([
+      { kind: 'transclusion', target: 'Diagram', raw: '![[Diagram]]' },
+    ])
+  })
+
+  test('`target|alias` splits the display alias off the target', () => {
+    expect(extractVaultRefs('[[Note|see this]]')).toEqual([
+      { kind: 'wikilink', target: 'Note', alias: 'see this', raw: '[[Note|see this]]' },
+    ])
+  })
+
+  test('`target#fragment` splits the heading/^block fragment off the target', () => {
+    expect(extractVaultRefs('[[Note#Section]]')).toEqual([
+      { kind: 'wikilink', target: 'Note', fragment: 'Section', raw: '[[Note#Section]]' },
+    ])
+  })
+
+  test('`target#^block` keeps the leading `^` in the fragment value', () => {
+    expect(extractVaultRefs('[[Note#^block-id]]')).toEqual([
+      { kind: 'wikilink', target: 'Note', fragment: '^block-id', raw: '[[Note#^block-id]]' },
+    ])
+  })
+
+  test('multiple refs in one string are all recognized, in order', () => {
+    expect(extractVaultRefs('[[A]] and then ![[B]]').map((r) => `${r.kind}:${r.target}`)).toEqual([
+      'wikilink:A',
+      'transclusion:B',
+    ])
+  })
+
+  test('alias and fragment together: `[[Note#Section|alias]]` and `![[Note#^id|alias]]`', () => {
+    expect(extractVaultRefs('[[Note#Section|alias]] ![[Note#^id|alias]]')).toEqual([
+      {
+        kind: 'wikilink',
+        target: 'Note',
+        alias: 'alias',
+        fragment: 'Section',
+        raw: '[[Note#Section|alias]]',
+      },
+      {
+        kind: 'transclusion',
+        target: 'Note',
+        alias: 'alias',
+        fragment: '^id',
+        raw: '![[Note#^id|alias]]',
+      },
+    ])
+  })
+
+  test('a same-document link `[[#^id]]` has an empty target', () => {
+    expect(extractVaultRefs('[[#^id]]')).toEqual([
+      { kind: 'wikilink', target: '', fragment: '^id', raw: '[[#^id]]' },
+    ])
+  })
+
+  test('one backslash before each bracket, as remark-stringify writes them, is recognized', () => {
+    expect(extractVaultRefs('\\[\\[Note]] and !\\[\\[Embed]]')).toEqual([
+      { kind: 'wikilink', target: 'Note', raw: '\\[\\[Note]]' },
+      { kind: 'transclusion', target: 'Embed', raw: '!\\[\\[Embed]]' },
+    ])
+  })
+
+  test('`target|alias#frag` reads `alias#frag` as the alias, with no fragment', () => {
+    expect(extractVaultRefs('[[Note|alias#frag]]')).toEqual([
+      { kind: 'wikilink', target: 'Note', alias: 'alias#frag', raw: '[[Note|alias#frag]]' },
+    ])
+  })
+
+  test('the text between the brackets cannot contain `[`', () => {
+    expect(extractVaultRefs('[[a[[b]]')).toEqual([{ kind: 'wikilink', target: 'b', raw: '[[b]]' }])
+    expect(extractVaultRefs('[[[a]]')).toEqual([{ kind: 'wikilink', target: 'a', raw: '[[a]]' }])
+    expect(extractVaultRefs('[[Note [draft]]]')).toEqual([])
+  })
+
+  test('two backslashes before a bracket are not an escape', () => {
+    expect(extractVaultRefs('\\\\[[a]]')).toEqual([
+      { kind: 'wikilink', target: 'a', raw: '\\[[a]]' },
+    ])
+    expect(extractVaultRefs('[\\\\[a]]')).toEqual([])
+  })
+
+  test('text with no vault refs → empty array', () => {
+    expect(extractVaultRefs('nothing to see here')).toEqual([])
+  })
+})
+
+describe('extractVaultRefs on large hostile input', () => {
+  // Each input is about 200 KB. A pattern that backtracks takes tens of seconds on these.
+  const LIMIT_MS = 1000
+  const inputs: Record<string, string> = {
+    'many `[[a` with no close': '[[a'.repeat(70_000),
+    'a long run of backslashes': '\\'.repeat(200_000),
+    'backslashes before an open bracket': '\\'.repeat(100_000) + '[[a',
+    'an unclosed link with a long body': '[[' + 'a'.repeat(200_000),
+    'many open brackets': '['.repeat(200_000),
+  }
+
+  for (const [name, text] of Object.entries(inputs)) {
+    test(`${name} finishes in under ${LIMIT_MS} ms`, () => {
+      const start = performance.now()
+      expect(extractVaultRefs(text)).toEqual([])
+      expect(performance.now() - start).toBeLessThan(LIMIT_MS)
+    })
+  }
+})

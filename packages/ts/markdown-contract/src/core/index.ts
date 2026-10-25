@@ -28,6 +28,10 @@ export { forbids, requires, textRule } from './text-constraints.js'
 export type { TextRuleSpec } from './text-constraints.js'
 export type { TextMatchSpec } from './text-match.js'
 
+// Find `[[wikilinks]]` and `![[transclusions]]` in flattened text.
+export { extractVaultRefs } from './dialect/index.js'
+export type { VaultRef } from './dialect/index.js'
+
 // Findings.
 export { ContractError } from './finding.js'
 export {
