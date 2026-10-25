@@ -34,7 +34,10 @@ export type ProviderKind = 'parse' | 'exec'
 export interface ProviderContext {
   /** Absolute. Every path a runner returns is relative to this. */
   root: string
-  /** A runner for one binary, injected. */
+  /**
+   * A runner for one binary, injected. When `allowExec` is false, every call
+   * resolves as a spawn failure and runs nothing.
+   */
   runner(binary: string): AsyncCommandRunner
   /**
    * Root-relative paths matching a pattern, memoized for the call.
@@ -54,7 +57,11 @@ export interface ProviderContext {
    * `MAX_READ_BYTES`.
    */
   readText(relPath: string): Promise<string | null>
-  /** True when a root-relative path exists. */
+  /**
+   * True when a root-relative path exists inside the root. A path with `..`,
+   * an absolute path, and a path through a symlink that leaves the root are
+   * false.
+   */
   exists(relPath: string): Promise<boolean>
   /** PATH lookup for a binary, with no subprocess. */
   which(binary: string): string | null

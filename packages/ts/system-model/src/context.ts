@@ -7,9 +7,9 @@
 import { withDefaults, type AsyncCommandRunner } from '@osdlc/command-seam'
 
 import type { ProviderContext } from './contract.ts'
-import { pathExists, type Lister } from './discovery.ts'
+import type { Lister } from './discovery.ts'
 import type { DiscoveryMode } from './model.ts'
-import { readBounded } from './read.ts'
+import { readBounded, resolveInside } from './read.ts'
 
 /** The listing and file caches behind one context, for one detect or one collect. */
 export interface ContextState {
@@ -43,6 +43,26 @@ export function boundRunners(
   timeoutMs: number,
 ): (binary: string) => AsyncCommandRunner {
   return (binary) => withDefaults(makeRunner(binary), { signal, timeoutMs, killTree: true })
+}
+
+/**
+ * The runner a context hands out when execution is not allowed. Every call
+ * fails the way a missing binary does, so a parse runner that asks its tool
+ * anyway runs nothing.
+ */
+function refusedRunner(binary: string): AsyncCommandRunner {
+  return {
+    binary,
+    run: () =>
+      Promise.resolve({
+        exitCode: 1,
+        stdout: '',
+        stderr: '',
+        neverExited: true,
+        reason: 'spawn',
+        error: `${binary} was not run: execution is not allowed for this repository`,
+      }),
+  }
 }
 
 export function createContextState(lister: Lister): ContextState {
@@ -80,11 +100,11 @@ export function createContext(args: {
 
   return {
     root: absRoot,
-    runner: makeRunner,
+    runner: allowExec ? makeRunner : refusedRunner,
     files: state.lister,
     readJson,
     readText,
-    exists: (relPath) => pathExists(absRoot, relPath),
+    exists: async (relPath) => 'real' in (await resolveInside(absRoot, relPath)),
     which,
     allowExec,
     discovery,
