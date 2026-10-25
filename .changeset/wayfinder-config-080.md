@@ -35,8 +35,11 @@ Breaking:
   global flag that loads tool modules.
 - `way config set --project` refuses `allowExec: true`, `trust`, `open` and
   `theme`, as the web view does. Set them with `--user`.
-- The MCP and HTTP adapters cannot grant trust, run `clean` removals, or
-  change `trust`, `allowExec` or `tools`. Use the command line.
+- The MCP adapter cannot grant trust. Over HTTP a grant needs a
+  confirmation: the server answers `428` with a nonce, and the web page asks
+  the person before it sends the grant again with that nonce. Neither
+  adapter can run `clean` removals or change `trust`, `allowExec` or
+  `tools`. Use the command line.
 - `way trust --json` now prints
   `{action, changed, roots: [{root, trusted, by, rule?, scope?}]}` for every
   mode, `--list` included. Read `roots[0]` where you read the top-level
