@@ -3,12 +3,13 @@
  *
  * Grants live in `$XDG_STATE_HOME/wayfinder/trusted/`. A grant made before the
  * rename sits in `$XDG_STATE_HOME/waypost/trusted/` and still counts:
- * `isTrusted` and `list` read both stores, `trust` writes only the new one,
- * and `untrust` removes the root from both, so a revoked grant cannot survive
- * in the old store. The other members read only the new store.
+ * `isTrusted`, `list` and `listGrants` read both stores, `trust` writes only
+ * the new one, and `untrust`, `untrustAll` and `tighten` act on both, so a
+ * revoked grant cannot survive in the old store. `dir`, `resolveRoot` and
+ * `markerPath` name the new store.
  */
 
-import { trustStore, type TrustStore } from '@osdlc/trust-repo'
+import { WHOLE_REPO_SCOPE, trustStore, type TrustGrant, type TrustStore } from '@osdlc/trust-repo'
 
 import { LEGACY_TRUST_STORE_TOOL, TRUST_STORE_TOOL } from './config.ts'
 
@@ -45,9 +46,31 @@ export function appTrustStore(opts: AppTrustStoreOptions = {}): TrustStore {
       const removedLegacy = await legacy.untrust(root, scope)
       return removedCurrent || removedLegacy
     },
+    async untrustAll(root) {
+      const removed = new Set([
+        ...(await current.untrustAll(root)),
+        ...(await legacy.untrustAll(root)),
+      ])
+      return [...removed].sort()
+    },
     async list() {
       const paths = new Set([...(await current.list()), ...(await legacy.list())])
       return [...paths].sort()
+    },
+    async listGrants() {
+      // The wayfinder grant wins when both stores hold one, so its marker is reported.
+      const key = (g: TrustGrant): string =>
+        `${g.root}\0${g.scope === WHOLE_REPO_SCOPE ? '' : g.scope}`
+      const grants = new Map<string, TrustGrant>()
+      for (const grant of [...(await legacy.listGrants()), ...(await current.listGrants())]) {
+        grants.set(key(grant), grant)
+      }
+      return [...grants.entries()]
+        .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+        .map(([, g]) => g)
+    },
+    async tighten() {
+      return [...(await current.tighten()), ...(await legacy.tighten())]
     },
   }
 }

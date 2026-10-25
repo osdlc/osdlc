@@ -9,7 +9,7 @@
 
 import { afterAll, describe, expect, test } from 'vitest'
 import { existsSync } from 'node:fs'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
 import { captureIo } from '@osdlc/cli-tool'
@@ -269,6 +269,41 @@ describe('trust store', () => {
     expect(await legacy.isTrusted(repo)).toBe(false)
     expect(await current.isTrusted(repo)).toBe(false)
     expect(await app.untrust(repo)).toBe(false)
+  })
+
+  test('untrustAll removes every grant from both stores', async () => {
+    const { app, current, legacy, repo } = await stores()
+    await legacy.trust(repo)
+    await legacy.trust(repo, 'build')
+    await current.trust(repo, 'test')
+    expect(await app.untrustAll(repo)).toEqual(['*', 'build', 'test'])
+    expect(await app.isTrusted(repo)).toBe(false)
+    expect(await app.isTrusted(repo, 'build')).toBe(false)
+    expect(await app.listGrants()).toEqual([])
+  })
+
+  test('listGrants lists the grants of both stores once each', async () => {
+    const { app, current, legacy, repo } = await stores()
+    await legacy.trust(repo)
+    await legacy.trust(repo, 'build')
+    await current.trust(repo)
+    const key = await app.resolveRoot(repo)
+    const grants = await app.listGrants()
+    expect(grants.map((g) => [g.root, g.scope])).toEqual([
+      [key, '*'],
+      [key, 'build'],
+    ])
+    // A grant in both stores is reported by its wayfinder marker.
+    expect(grants[0]!.marker.startsWith(current.dir())).toBe(true)
+    expect(grants[1]!.marker.startsWith(legacy.dir())).toBe(true)
+  })
+
+  test.skipIf(process.platform === 'win32')('tighten covers the waypost store too', async () => {
+    const { app, legacy, repo } = await stores()
+    const { marker } = await legacy.trust(repo)
+    await chmod(marker, 0o644)
+    expect(await app.tighten()).toContain(marker)
+    expect((await stat(marker)).mode & 0o777).toBe(0o600)
   })
 
   test('a root in both stores is listed once', async () => {
