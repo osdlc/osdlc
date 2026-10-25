@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "kind": "query",
+  "root": "<root>",
+  "filter": {
+    "query": "run",
+    "mode": "fuzzy"
+  },
+  "tasks": [
+    {
+      "id": "dotnet:src/App/App.csproj:run",
+      "runner": "dotnet",
+      "path": [
+        "dotnet",
+        "src/App/App.csproj",
+        "run"
+      ],
+      "argv": [
+        "dotnet",
+        "run",
+        "--project",
+        "src/App/App.csproj"
+      ],
+      "cwd": ".",
+      "display": "dotnet run --project src/App/App.csproj",
+      "parameters": [],
+      "source": "src/App/App.csproj",
+      "origin": "synthesized",
+      "tags": [
+        "dotnet",
+        "project"
+      ],
+      "persistent": {
+        "value": false,
+        "declared": false
+      },
+      "executes": "local"
+    }
+  ],
+  "cache": [
+    {
+      "runner": "dotnet",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    }
+  ],
+  "unknowns": []
+}

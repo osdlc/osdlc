@@ -1,0 +1,145 @@
+{
+  "schemaVersion": 1,
+  "kind": "query",
+  "root": "<root>",
+  "filter": {
+    "query": "build",
+    "mode": "fuzzy"
+  },
+  "tasks": [
+    {
+      "id": "node-scripts:package.json:build",
+      "runner": "node-scripts",
+      "path": [
+        "node-scripts",
+        ".",
+        "mono",
+        "build"
+      ],
+      "argv": [
+        "pnpm",
+        "run",
+        "build"
+      ],
+      "cwd": ".",
+      "display": "pnpm run build",
+      "parameters": [],
+      "source": "package.json",
+      "origin": "declared",
+      "detail": "pnpm -r run build",
+      "tags": [
+        "node-scripts",
+        "pnpm",
+        "."
+      ],
+      "persistent": {
+        "value": false,
+        "declared": false
+      },
+      "executes": "local"
+    },
+    {
+      "id": "node-scripts:packages/api/package.json:build",
+      "runner": "node-scripts",
+      "path": [
+        "node-scripts",
+        "packages",
+        "@mono/api",
+        "build"
+      ],
+      "argv": [
+        "pnpm",
+        "run",
+        "--dir",
+        "packages/api",
+        "build"
+      ],
+      "cwd": ".",
+      "display": "pnpm run --dir packages/api build",
+      "parameters": [],
+      "source": "packages/api/package.json",
+      "origin": "declared",
+      "detail": "tsc",
+      "tags": [
+        "node-scripts",
+        "pnpm",
+        "packages/api"
+      ],
+      "persistent": {
+        "value": false,
+        "declared": false
+      },
+      "executes": "local"
+    },
+    {
+      "id": "node-scripts:packages/ui/package.json:build",
+      "runner": "node-scripts",
+      "path": [
+        "node-scripts",
+        "packages",
+        "@mono/ui",
+        "build"
+      ],
+      "argv": [
+        "pnpm",
+        "run",
+        "--dir",
+        "packages/ui",
+        "build"
+      ],
+      "cwd": ".",
+      "display": "pnpm run --dir packages/ui build",
+      "parameters": [],
+      "source": "packages/ui/package.json",
+      "origin": "declared",
+      "detail": "vite build",
+      "tags": [
+        "node-scripts",
+        "pnpm",
+        "packages/ui"
+      ],
+      "persistent": {
+        "value": false,
+        "declared": false
+      },
+      "executes": "local"
+    }
+  ],
+  "cache": [
+    {
+      "runner": "just",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    },
+    {
+      "runner": "node-scripts",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    },
+    {
+      "runner": "package-manager",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    }
+  ],
+  "unknowns": [
+    {
+      "kind": "parameters",
+      "runner": "just",
+      "reason": "exec-withheld",
+      "tasks": [
+        "just:packages/ui/justfile:storybook"
+      ],
+      "label": "parameters unknown: reading them needs execution, which is withheld"
+    }
+  ]
+}

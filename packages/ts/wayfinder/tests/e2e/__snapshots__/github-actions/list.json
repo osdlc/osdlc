@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 1,
+  "kind": "catalog",
+  "root": "<root>",
+  "generatedAt": "<time>",
+  "discovery": "walk",
+  "allowExec": false,
+  "reports": [
+    {
+      "runner": "github-actions",
+      "chain": [
+        {
+          "label": "runner",
+          "hint": "gh dispatches workflows declared under .github/workflows/."
+        },
+        {
+          "label": "workflow",
+          "hint": "The workflow file, named as GitHub Actions names it."
+        }
+      ],
+      "tool": {
+        "binary": "gh",
+        "found": true,
+        "path": "<bin>/gh"
+      },
+      "status": "ok",
+      "tasks": [
+        {
+          "id": "github-actions:.github/workflows/release.yml:release.yml",
+          "runner": "github-actions",
+          "path": [
+            "github-actions",
+            "release.yml"
+          ],
+          "argv": [
+            "gh",
+            "workflow",
+            "run",
+            "release.yml"
+          ],
+          "cwd": ".",
+          "display": "gh workflow run release.yml",
+          "parameters": [],
+          "parametersUnknown": "not-read",
+          "source": ".github/workflows/release.yml",
+          "origin": "declared",
+          "doc": "release",
+          "tags": [
+            "github-actions",
+            "ci",
+            "remote"
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "remote"
+        }
+      ],
+      "diagnostics": [],
+      "skippedForExec": false
+    }
+  ],
+  "groups": [
+    {
+      "id": "tasks",
+      "title": "Tasks",
+      "runners": [
+        "github-actions"
+      ]
+    }
+  ],
+  "cache": [
+    {
+      "runner": "github-actions",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    }
+  ],
+  "unknowns": [
+    {
+      "kind": "parameters",
+      "runner": "github-actions",
+      "reason": "not-read",
+      "tasks": [
+        "github-actions:.github/workflows/release.yml:release.yml"
+      ],
+      "label": "parameters unknown: this runner does not read them"
+    }
+  ],
+  "filter": {}
+}

@@ -1,0 +1,101 @@
+{
+  "schemaVersion": 1,
+  "kind": "query",
+  "root": "<root>",
+  "filter": {
+    "query": "build",
+    "mode": "fuzzy"
+  },
+  "tasks": [
+    {
+      "id": "node-scripts:package.json:build",
+      "runner": "node-scripts",
+      "path": [
+        "node-scripts",
+        ".",
+        "turbo-root",
+        "build"
+      ],
+      "argv": [
+        "npm",
+        "run",
+        "build"
+      ],
+      "cwd": ".",
+      "display": "npm run build",
+      "parameters": [],
+      "source": "package.json",
+      "origin": "declared",
+      "detail": "turbo run build",
+      "tags": [
+        "node-scripts",
+        "npm",
+        "."
+      ],
+      "persistent": {
+        "value": false,
+        "declared": false
+      },
+      "executes": "local"
+    },
+    {
+      "id": "turbo:turbo.json:build",
+      "runner": "turbo",
+      "path": [
+        "turbo",
+        ".",
+        "build"
+      ],
+      "argv": [
+        "turbo",
+        "run",
+        "build"
+      ],
+      "cwd": ".",
+      "display": "turbo run build",
+      "parameters": [],
+      "source": "turbo.json",
+      "origin": "declared",
+      "detail": "depends on: ^build",
+      "dependsOnUnresolved": [
+        "^build"
+      ],
+      "tags": [
+        "turbo",
+        "."
+      ],
+      "persistent": {
+        "value": false,
+        "declared": false
+      },
+      "executes": "local"
+    }
+  ],
+  "cache": [
+    {
+      "runner": "node-scripts",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    },
+    {
+      "runner": "turbo",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    },
+    {
+      "runner": "package-manager",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    }
+  ],
+  "unknowns": []
+}

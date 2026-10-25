@@ -1,0 +1,7 @@
+[project]
+name = "poe-app"
+version = "0.1.0"
+
+[tool.poe.tasks]
+test = "pytest"
+lint = { cmd = "ruff check .", help = "Lint the code" }

@@ -1,0 +1,449 @@
+{
+  "schemaVersion": 1,
+  "kind": "catalog",
+  "root": "<root>",
+  "generatedAt": "<time>",
+  "discovery": "walk",
+  "allowExec": false,
+  "reports": [
+    {
+      "runner": "node-scripts",
+      "chain": [
+        {
+          "label": "runner",
+          "hint": "The package manager runs the `scripts` entries declared in a package.json."
+        },
+        {
+          "label": "directory",
+          "hint": "The directory the package sits in. A grouping this catalog adds, not part of the command."
+        },
+        {
+          "label": "package",
+          "hint": "The package's declared name, or its path when it has none."
+        },
+        {
+          "label": "script",
+          "hint": "The key under `scripts` in that package.json."
+        }
+      ],
+      "brand": {
+        "icon": "<svg>",
+        "color": "#5fa04e"
+      },
+      "status": "ok",
+      "tasks": [
+        {
+          "id": "node-scripts:package.json:lint",
+          "runner": "node-scripts",
+          "path": [
+            "node-scripts",
+            ".",
+            "toolchain",
+            "lint"
+          ],
+          "argv": [
+            "npm",
+            "run",
+            "lint"
+          ],
+          "cwd": ".",
+          "display": "npm run lint",
+          "parameters": [],
+          "source": "package.json",
+          "origin": "declared",
+          "detail": "eslint .",
+          "tags": [
+            "node-scripts",
+            "npm",
+            "."
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        }
+      ],
+      "diagnostics": [],
+      "skippedForExec": false
+    },
+    {
+      "runner": "package-manager",
+      "chain": [
+        {
+          "label": "role",
+          "hint": "Commands the detected package managers offer, synthesized from the files that show them."
+        },
+        {
+          "label": "directory",
+          "hint": "The package the command is for. `.` is the root."
+        },
+        {
+          "label": "tool",
+          "hint": "The tool that runs the command."
+        },
+        {
+          "label": "action",
+          "hint": "What the command does."
+        }
+      ],
+      "status": "ok",
+      "tasks": [
+        {
+          "id": "package-manager:package.json:npm:install",
+          "runner": "package-manager",
+          "path": [
+            "package-manager",
+            ".",
+            "npm",
+            "install"
+          ],
+          "argv": [
+            "npm",
+            "install"
+          ],
+          "cwd": ".",
+          "display": "npm install",
+          "parameters": [],
+          "source": "package.json",
+          "origin": "synthesized",
+          "tags": [
+            "package-manager",
+            "npm",
+            "node",
+            "."
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        }
+      ],
+      "diagnostics": [],
+      "skippedForExec": false
+    },
+    {
+      "runner": "tool-manager",
+      "chain": [
+        {
+          "label": "role",
+          "hint": "Commands the detected tool managers offer, synthesized from the files that show them."
+        },
+        {
+          "label": "directory",
+          "hint": "The package the command is for. `.` is the root."
+        },
+        {
+          "label": "tool",
+          "hint": "The tool that runs the command."
+        },
+        {
+          "label": "action",
+          "hint": "What the command does."
+        }
+      ],
+      "status": "ok",
+      "tasks": [
+        {
+          "id": "tool-manager:.prototools:proto:install",
+          "runner": "tool-manager",
+          "path": [
+            "tool-manager",
+            ".",
+            "proto",
+            "install"
+          ],
+          "argv": [
+            "proto",
+            "install"
+          ],
+          "cwd": ".",
+          "display": "proto install",
+          "parameters": [],
+          "source": ".prototools",
+          "origin": "synthesized",
+          "tags": [
+            "tool-manager",
+            "proto",
+            "."
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        },
+        {
+          "id": "tool-manager:.envrc:direnv:trust",
+          "runner": "tool-manager",
+          "path": [
+            "tool-manager",
+            ".",
+            "direnv",
+            "trust"
+          ],
+          "argv": [
+            "direnv",
+            "allow"
+          ],
+          "cwd": ".",
+          "display": "direnv allow",
+          "parameters": [],
+          "source": ".envrc",
+          "origin": "synthesized",
+          "tags": [
+            "tool-manager",
+            "direnv",
+            "."
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        }
+      ],
+      "diagnostics": [],
+      "skippedForExec": false
+    },
+    {
+      "runner": "hook-manager",
+      "chain": [
+        {
+          "label": "role",
+          "hint": "Commands the detected hook managers offer, synthesized from the files that show them."
+        },
+        {
+          "label": "directory",
+          "hint": "The package the command is for. `.` is the root."
+        },
+        {
+          "label": "tool",
+          "hint": "The tool that runs the command."
+        },
+        {
+          "label": "action",
+          "hint": "What the command does."
+        }
+      ],
+      "status": "ok",
+      "tasks": [
+        {
+          "id": "hook-manager:lefthook.yml:lefthook:arm",
+          "runner": "hook-manager",
+          "path": [
+            "hook-manager",
+            ".",
+            "lefthook",
+            "arm"
+          ],
+          "argv": [
+            "lefthook",
+            "install"
+          ],
+          "cwd": ".",
+          "display": "lefthook install",
+          "parameters": [],
+          "source": "lefthook.yml",
+          "origin": "synthesized",
+          "tags": [
+            "hook-manager",
+            "lefthook",
+            "."
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        },
+        {
+          "id": "hook-manager:.husky:husky:arm",
+          "runner": "hook-manager",
+          "path": [
+            "hook-manager",
+            ".",
+            "husky",
+            "arm"
+          ],
+          "argv": [
+            "npx",
+            "husky"
+          ],
+          "cwd": ".",
+          "display": "npx husky",
+          "parameters": [],
+          "source": ".husky",
+          "origin": "synthesized",
+          "tags": [
+            "hook-manager",
+            "husky",
+            "."
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        },
+        {
+          "id": "hook-manager:.pre-commit-config.yaml:pre-commit:arm",
+          "runner": "hook-manager",
+          "path": [
+            "hook-manager",
+            ".",
+            "pre-commit",
+            "arm"
+          ],
+          "argv": [
+            "pre-commit",
+            "install"
+          ],
+          "cwd": ".",
+          "display": "pre-commit install",
+          "parameters": [],
+          "source": ".pre-commit-config.yaml",
+          "origin": "synthesized",
+          "tags": [
+            "hook-manager",
+            "pre-commit",
+            "."
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        },
+        {
+          "id": "hook-manager:lefthook.yml:lefthook:pre-commit",
+          "runner": "hook-manager",
+          "path": [
+            "hook-manager",
+            ".",
+            "lefthook",
+            "pre-commit"
+          ],
+          "argv": [
+            "lefthook",
+            "run",
+            "pre-commit"
+          ],
+          "cwd": ".",
+          "display": "lefthook run pre-commit",
+          "parameters": [],
+          "source": "lefthook.yml",
+          "origin": "synthesized",
+          "tags": [
+            "hook-manager",
+            "lefthook",
+            "git-hook"
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        },
+        {
+          "id": "hook-manager:.husky/pre-push:husky:pre-push",
+          "runner": "hook-manager",
+          "path": [
+            "hook-manager",
+            ".",
+            "husky",
+            "pre-push"
+          ],
+          "argv": [
+            "sh",
+            ".husky/pre-push"
+          ],
+          "cwd": ".",
+          "display": "sh .husky/pre-push",
+          "parameters": [],
+          "source": ".husky/pre-push",
+          "origin": "synthesized",
+          "tags": [
+            "hook-manager",
+            "husky",
+            "git-hook"
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        }
+      ],
+      "diagnostics": [],
+      "skippedForExec": false
+    }
+  ],
+  "groups": [
+    {
+      "id": "tasks",
+      "title": "Tasks",
+      "runners": [
+        "node-scripts"
+      ]
+    },
+    {
+      "id": "dependencies",
+      "title": "Dependencies",
+      "runners": [
+        "package-manager"
+      ]
+    },
+    {
+      "id": "tools",
+      "title": "Tools",
+      "runners": [
+        "tool-manager"
+      ]
+    },
+    {
+      "id": "hooks",
+      "title": "Git hooks",
+      "runners": [
+        "hook-manager"
+      ]
+    }
+  ],
+  "cache": [
+    {
+      "runner": "node-scripts",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    },
+    {
+      "runner": "package-manager",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    },
+    {
+      "runner": "tool-manager",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    },
+    {
+      "runner": "hook-manager",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    }
+  ],
+  "unknowns": [],
+  "filter": {}
+}

@@ -1,0 +1,229 @@
+{
+  "schemaVersion": 1,
+  "kind": "catalog",
+  "root": "<root>",
+  "generatedAt": "<time>",
+  "discovery": "walk",
+  "allowExec": false,
+  "reports": [
+    {
+      "runner": "node-scripts",
+      "chain": [
+        {
+          "label": "runner",
+          "hint": "The package manager runs the `scripts` entries declared in a package.json."
+        },
+        {
+          "label": "directory",
+          "hint": "The directory the package sits in. A grouping this catalog adds, not part of the command."
+        },
+        {
+          "label": "package",
+          "hint": "The package's declared name, or its path when it has none."
+        },
+        {
+          "label": "script",
+          "hint": "The key under `scripts` in that package.json."
+        }
+      ],
+      "brand": {
+        "icon": "<svg>",
+        "color": "#5fa04e"
+      },
+      "status": "absent",
+      "tasks": [],
+      "diagnostics": [],
+      "skippedForExec": false
+    },
+    {
+      "runner": "nx",
+      "chain": [
+        {
+          "label": "runner",
+          "hint": "Nx runs the targets its projects declare."
+        },
+        {
+          "label": "project",
+          "hint": "The Nx project name."
+        },
+        {
+          "label": "target",
+          "hint": "A key under the project's `targets`."
+        }
+      ],
+      "brand": {
+        "icon": "<svg>",
+        "color": "#143055"
+      },
+      "tool": {
+        "binary": "nx",
+        "found": true,
+        "path": "<bin>/nx"
+      },
+      "status": "ok",
+      "tasks": [
+        {
+          "id": "nx:apps/site/project.json:build",
+          "runner": "nx",
+          "path": [
+            "nx",
+            "site",
+            "build"
+          ],
+          "argv": [
+            "nx",
+            "run",
+            "site:build"
+          ],
+          "cwd": ".",
+          "display": "nx run site:build",
+          "parameters": [],
+          "source": "apps/site/project.json",
+          "origin": "declared",
+          "detail": "vite build",
+          "tags": [
+            "nx",
+            "apps/site"
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        },
+        {
+          "id": "nx:apps/site/project.json:serve",
+          "runner": "nx",
+          "path": [
+            "nx",
+            "site",
+            "serve"
+          ],
+          "argv": [
+            "nx",
+            "run",
+            "site:serve"
+          ],
+          "cwd": ".",
+          "display": "nx run site:serve",
+          "parameters": [],
+          "source": "apps/site/project.json",
+          "origin": "declared",
+          "detail": "vite",
+          "tags": [
+            "nx",
+            "apps/site"
+          ],
+          "persistent": {
+            "value": true,
+            "declared": false
+          },
+          "executes": "local"
+        }
+      ],
+      "diagnostics": [],
+      "skippedForExec": false
+    },
+    {
+      "runner": "package-manager",
+      "chain": [
+        {
+          "label": "role",
+          "hint": "Commands the detected package managers offer, synthesized from the files that show them."
+        },
+        {
+          "label": "directory",
+          "hint": "The package the command is for. `.` is the root."
+        },
+        {
+          "label": "tool",
+          "hint": "The tool that runs the command."
+        },
+        {
+          "label": "action",
+          "hint": "What the command does."
+        }
+      ],
+      "status": "ok",
+      "tasks": [
+        {
+          "id": "package-manager:package.json:npm:install",
+          "runner": "package-manager",
+          "path": [
+            "package-manager",
+            ".",
+            "npm",
+            "install"
+          ],
+          "argv": [
+            "npm",
+            "install"
+          ],
+          "cwd": ".",
+          "display": "npm install",
+          "parameters": [],
+          "source": "package.json",
+          "origin": "synthesized",
+          "tags": [
+            "package-manager",
+            "npm",
+            "node",
+            "."
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        }
+      ],
+      "diagnostics": [],
+      "skippedForExec": false
+    }
+  ],
+  "groups": [
+    {
+      "id": "tasks",
+      "title": "Tasks",
+      "runners": [
+        "node-scripts",
+        "nx"
+      ]
+    },
+    {
+      "id": "dependencies",
+      "title": "Dependencies",
+      "runners": [
+        "package-manager"
+      ]
+    }
+  ],
+  "cache": [
+    {
+      "runner": "node-scripts",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    },
+    {
+      "runner": "nx",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    },
+    {
+      "runner": "package-manager",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    }
+  ],
+  "unknowns": [],
+  "filter": {}
+}

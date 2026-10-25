@@ -1,0 +1,192 @@
+{
+  "schemaVersion": 1,
+  "kind": "catalog",
+  "root": "<root>",
+  "generatedAt": "<time>",
+  "discovery": "walk",
+  "allowExec": false,
+  "reports": [
+    {
+      "runner": "go-task",
+      "chain": [
+        {
+          "label": "runner",
+          "hint": "go-task runs tasks declared in a Taskfile's `tasks:` map."
+        },
+        {
+          "label": "directory",
+          "hint": "The directory holding the Taskfile. `.` is the root manifest."
+        },
+        {
+          "label": "task",
+          "hint": "The key under `tasks:` in that Taskfile."
+        }
+      ],
+      "brand": {
+        "icon": "<svg>",
+        "color": "#29beb0"
+      },
+      "tool": {
+        "binary": "task",
+        "found": true,
+        "path": "<bin>/task"
+      },
+      "status": "ok",
+      "tasks": [
+        {
+          "id": "go-task:Taskfile.yml:build",
+          "runner": "go-task",
+          "path": [
+            "go-task",
+            ".",
+            "build"
+          ],
+          "argv": [
+            "task",
+            "build"
+          ],
+          "cwd": ".",
+          "display": "task build",
+          "parameters": [],
+          "source": "Taskfile.yml",
+          "origin": "declared",
+          "doc": "Build the binary",
+          "tags": [
+            "go-task",
+            "."
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        },
+        {
+          "id": "go-task:Taskfile.yml:test",
+          "runner": "go-task",
+          "path": [
+            "go-task",
+            ".",
+            "test"
+          ],
+          "argv": [
+            "task",
+            "test"
+          ],
+          "cwd": ".",
+          "display": "task test",
+          "parameters": [],
+          "source": "Taskfile.yml",
+          "origin": "declared",
+          "tags": [
+            "go-task",
+            "."
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local",
+          "dependsOn": [
+            "go-task:Taskfile.yml:build"
+          ]
+        }
+      ],
+      "diagnostics": [],
+      "skippedForExec": false
+    },
+    {
+      "runner": "package-manager",
+      "chain": [
+        {
+          "label": "role",
+          "hint": "Commands the detected package managers offer, synthesized from the files that show them."
+        },
+        {
+          "label": "directory",
+          "hint": "The package the command is for. `.` is the root."
+        },
+        {
+          "label": "tool",
+          "hint": "The tool that runs the command."
+        },
+        {
+          "label": "action",
+          "hint": "What the command does."
+        }
+      ],
+      "status": "ok",
+      "tasks": [
+        {
+          "id": "package-manager:go.mod:go:install",
+          "runner": "package-manager",
+          "path": [
+            "package-manager",
+            ".",
+            "go",
+            "install"
+          ],
+          "argv": [
+            "go",
+            "mod",
+            "download"
+          ],
+          "cwd": ".",
+          "display": "go mod download",
+          "parameters": [],
+          "source": "go.mod",
+          "origin": "synthesized",
+          "tags": [
+            "package-manager",
+            "go",
+            "go",
+            "."
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        }
+      ],
+      "diagnostics": [],
+      "skippedForExec": false
+    }
+  ],
+  "groups": [
+    {
+      "id": "tasks",
+      "title": "Tasks",
+      "runners": [
+        "go-task"
+      ]
+    },
+    {
+      "id": "dependencies",
+      "title": "Dependencies",
+      "runners": [
+        "package-manager"
+      ]
+    }
+  ],
+  "cache": [
+    {
+      "runner": "go-task",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    },
+    {
+      "runner": "package-manager",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    }
+  ],
+  "unknowns": [],
+  "filter": {}
+}

@@ -1,0 +1,6 @@
+{
+  "version": 6,
+  "configurePresets": [{ "name": "debug", "binaryDir": "build/debug" }],
+  "buildPresets": [{ "name": "debug", "configurePreset": "debug" }],
+  "testPresets": [{ "name": "debug", "configurePreset": "debug" }]
+}

@@ -1,0 +1,9 @@
+{
+  "name": "hostile\u001b]0;pwned\u0007",
+  "scripts": {
+    "build\u001b[2J": "echo \u001b[31mred\u001b[0m",
+    "rev‮esrever": "echo bidi",
+    "bell\u0007": "printf '\\a'",
+    "c1\u009bcontrol": "true"
+  }
+}

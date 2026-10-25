@@ -1,0 +1,9 @@
+{
+  "packages": ["nodejs@20"],
+  "shell": {
+    "scripts": {
+      "setup": "npm install",
+      "test": ["npm test"]
+    }
+  }
+}

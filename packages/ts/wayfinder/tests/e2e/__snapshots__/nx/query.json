@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "kind": "query",
+  "root": "<root>",
+  "filter": {
+    "query": "serve",
+    "mode": "fuzzy"
+  },
+  "tasks": [
+    {
+      "id": "nx:apps/site/project.json:serve",
+      "runner": "nx",
+      "path": [
+        "nx",
+        "site",
+        "serve"
+      ],
+      "argv": [
+        "nx",
+        "run",
+        "site:serve"
+      ],
+      "cwd": ".",
+      "display": "nx run site:serve",
+      "parameters": [],
+      "source": "apps/site/project.json",
+      "origin": "declared",
+      "detail": "vite",
+      "tags": [
+        "nx",
+        "apps/site"
+      ],
+      "persistent": {
+        "value": true,
+        "declared": false
+      },
+      "executes": "local"
+    }
+  ],
+  "cache": [
+    {
+      "runner": "node-scripts",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    },
+    {
+      "runner": "nx",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    },
+    {
+      "runner": "package-manager",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    }
+  ],
+  "unknowns": []
+}

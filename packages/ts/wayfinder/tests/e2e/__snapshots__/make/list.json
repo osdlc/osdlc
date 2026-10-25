@@ -1,0 +1,143 @@
+{
+  "schemaVersion": 1,
+  "kind": "catalog",
+  "root": "<root>",
+  "generatedAt": "<time>",
+  "discovery": "walk",
+  "allowExec": false,
+  "reports": [
+    {
+      "runner": "make",
+      "chain": [
+        {
+          "label": "runner",
+          "hint": "make builds targets declared in a Makefile."
+        },
+        {
+          "label": "makefile",
+          "hint": "Which makefile declares the target. `.` is the one at the root."
+        },
+        {
+          "label": "target",
+          "hint": "The target name, as written at column 0 before the colon."
+        }
+      ],
+      "brand": {
+        "icon": "<svg>",
+        "color": "#a42e2b"
+      },
+      "tool": {
+        "binary": "make",
+        "found": true,
+        "path": "<bin>/make"
+      },
+      "status": "ok",
+      "tasks": [
+        {
+          "id": "make:Makefile:build",
+          "runner": "make",
+          "path": [
+            "make",
+            ".",
+            "build"
+          ],
+          "argv": [
+            "make",
+            "build"
+          ],
+          "cwd": ".",
+          "display": "make build",
+          "parameters": [],
+          "source": "Makefile",
+          "origin": "declared",
+          "tags": [
+            "make",
+            "."
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        },
+        {
+          "id": "make:Makefile:clean",
+          "runner": "make",
+          "path": [
+            "make",
+            ".",
+            "clean"
+          ],
+          "argv": [
+            "make",
+            "clean"
+          ],
+          "cwd": ".",
+          "display": "make clean",
+          "parameters": [],
+          "source": "Makefile",
+          "origin": "declared",
+          "tags": [
+            "make",
+            "."
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        },
+        {
+          "id": "make:Makefile:test",
+          "runner": "make",
+          "path": [
+            "make",
+            ".",
+            "test"
+          ],
+          "argv": [
+            "make",
+            "test"
+          ],
+          "cwd": ".",
+          "display": "make test",
+          "parameters": [],
+          "source": "Makefile",
+          "origin": "declared",
+          "tags": [
+            "make",
+            "."
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        }
+      ],
+      "diagnostics": [],
+      "skippedForExec": false
+    }
+  ],
+  "groups": [
+    {
+      "id": "tasks",
+      "title": "Tasks",
+      "runners": [
+        "make"
+      ]
+    }
+  ],
+  "cache": [
+    {
+      "runner": "make",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    }
+  ],
+  "unknowns": [],
+  "filter": {}
+}

@@ -1,0 +1,207 @@
+{
+  "schemaVersion": 1,
+  "kind": "catalog",
+  "root": "<root>",
+  "generatedAt": "<time>",
+  "discovery": "walk",
+  "allowExec": false,
+  "reports": [
+    {
+      "runner": "rake",
+      "chain": [
+        {
+          "label": "runner",
+          "hint": "rake runs tasks declared in a Rakefile."
+        },
+        {
+          "label": "rakefile",
+          "hint": "Which Rakefile declares the task. `.` is the one at the root."
+        },
+        {
+          "label": "task",
+          "hint": "The task name, namespaced with `:` when declared inside a `namespace` block."
+        }
+      ],
+      "brand": {
+        "icon": "<svg>",
+        "color": "#cc342d"
+      },
+      "tool": {
+        "binary": "rake",
+        "found": true,
+        "path": "<bin>/rake"
+      },
+      "status": "ok",
+      "tasks": [
+        {
+          "id": "rake:Rakefile:test",
+          "runner": "rake",
+          "path": [
+            "rake",
+            ".",
+            "test"
+          ],
+          "argv": [
+            "rake",
+            "test"
+          ],
+          "cwd": ".",
+          "display": "rake test",
+          "parameters": [],
+          "parametersUnknown": "exec-withheld",
+          "source": "Rakefile",
+          "origin": "declared",
+          "doc": "Run the tests",
+          "tags": [
+            "rake",
+            "ruby",
+            "."
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        },
+        {
+          "id": "rake:Rakefile:build",
+          "runner": "rake",
+          "path": [
+            "rake",
+            ".",
+            "build"
+          ],
+          "argv": [
+            "rake",
+            "build"
+          ],
+          "cwd": ".",
+          "display": "rake build",
+          "parameters": [],
+          "parametersUnknown": "exec-withheld",
+          "source": "Rakefile",
+          "origin": "declared",
+          "doc": "Build the gem",
+          "dependsOn": [
+            "rake:Rakefile:test"
+          ],
+          "tags": [
+            "rake",
+            "ruby",
+            "."
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        }
+      ],
+      "diagnostics": [],
+      "skippedForExec": false
+    },
+    {
+      "runner": "package-manager",
+      "chain": [
+        {
+          "label": "role",
+          "hint": "Commands the detected package managers offer, synthesized from the files that show them."
+        },
+        {
+          "label": "directory",
+          "hint": "The package the command is for. `.` is the root."
+        },
+        {
+          "label": "tool",
+          "hint": "The tool that runs the command."
+        },
+        {
+          "label": "action",
+          "hint": "What the command does."
+        }
+      ],
+      "status": "ok",
+      "tasks": [
+        {
+          "id": "package-manager:Gemfile.lock:bundler:install",
+          "runner": "package-manager",
+          "path": [
+            "package-manager",
+            ".",
+            "bundler",
+            "install"
+          ],
+          "argv": [
+            "bundle",
+            "install"
+          ],
+          "cwd": ".",
+          "display": "bundle install",
+          "parameters": [],
+          "source": "Gemfile.lock",
+          "origin": "synthesized",
+          "tags": [
+            "package-manager",
+            "bundler",
+            "ruby",
+            "."
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        }
+      ],
+      "diagnostics": [],
+      "skippedForExec": false
+    }
+  ],
+  "groups": [
+    {
+      "id": "tasks",
+      "title": "Tasks",
+      "runners": [
+        "rake"
+      ]
+    },
+    {
+      "id": "dependencies",
+      "title": "Dependencies",
+      "runners": [
+        "package-manager"
+      ]
+    }
+  ],
+  "cache": [
+    {
+      "runner": "rake",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    },
+    {
+      "runner": "package-manager",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    }
+  ],
+  "unknowns": [
+    {
+      "kind": "parameters",
+      "runner": "rake",
+      "reason": "exec-withheld",
+      "tasks": [
+        "rake:Rakefile:test",
+        "rake:Rakefile:build"
+      ],
+      "label": "parameters unknown: reading them needs execution, which is withheld"
+    }
+  ],
+  "filter": {}
+}

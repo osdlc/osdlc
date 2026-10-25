@@ -1,0 +1,164 @@
+{
+  "schemaVersion": 1,
+  "kind": "query",
+  "root": "<root>",
+  "filter": {
+    "query": "lint",
+    "mode": "fuzzy"
+  },
+  "tasks": [
+    {
+      "id": "node-scripts:package.json:lint",
+      "runner": "node-scripts",
+      "path": [
+        "node-scripts",
+        ".",
+        "toolchain",
+        "lint"
+      ],
+      "argv": [
+        "npm",
+        "run",
+        "lint"
+      ],
+      "cwd": ".",
+      "display": "npm run lint",
+      "parameters": [],
+      "source": "package.json",
+      "origin": "declared",
+      "detail": "eslint .",
+      "tags": [
+        "node-scripts",
+        "npm",
+        "."
+      ],
+      "persistent": {
+        "value": false,
+        "declared": false
+      },
+      "executes": "local"
+    },
+    {
+      "id": "tool-manager:.prototools:proto:install",
+      "runner": "tool-manager",
+      "path": [
+        "tool-manager",
+        ".",
+        "proto",
+        "install"
+      ],
+      "argv": [
+        "proto",
+        "install"
+      ],
+      "cwd": ".",
+      "display": "proto install",
+      "parameters": [],
+      "source": ".prototools",
+      "origin": "synthesized",
+      "tags": [
+        "tool-manager",
+        "proto",
+        "."
+      ],
+      "persistent": {
+        "value": false,
+        "declared": false
+      },
+      "executes": "local"
+    },
+    {
+      "id": "tool-manager:.envrc:direnv:trust",
+      "runner": "tool-manager",
+      "path": [
+        "tool-manager",
+        ".",
+        "direnv",
+        "trust"
+      ],
+      "argv": [
+        "direnv",
+        "allow"
+      ],
+      "cwd": ".",
+      "display": "direnv allow",
+      "parameters": [],
+      "source": ".envrc",
+      "origin": "synthesized",
+      "tags": [
+        "tool-manager",
+        "direnv",
+        "."
+      ],
+      "persistent": {
+        "value": false,
+        "declared": false
+      },
+      "executes": "local"
+    },
+    {
+      "id": "hook-manager:lefthook.yml:lefthook:arm",
+      "runner": "hook-manager",
+      "path": [
+        "hook-manager",
+        ".",
+        "lefthook",
+        "arm"
+      ],
+      "argv": [
+        "lefthook",
+        "install"
+      ],
+      "cwd": ".",
+      "display": "lefthook install",
+      "parameters": [],
+      "source": "lefthook.yml",
+      "origin": "synthesized",
+      "tags": [
+        "hook-manager",
+        "lefthook",
+        "."
+      ],
+      "persistent": {
+        "value": false,
+        "declared": false
+      },
+      "executes": "local"
+    }
+  ],
+  "cache": [
+    {
+      "runner": "node-scripts",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    },
+    {
+      "runner": "package-manager",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    },
+    {
+      "runner": "tool-manager",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    },
+    {
+      "runner": "hook-manager",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    }
+  ],
+  "unknowns": []
+}

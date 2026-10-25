@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "kind": "query",
+  "root": "<root>",
+  "filter": {
+    "query": "test",
+    "mode": "fuzzy"
+  },
+  "tasks": [
+    {
+      "id": "go-task:Taskfile.yml:test",
+      "runner": "go-task",
+      "path": [
+        "go-task",
+        ".",
+        "test"
+      ],
+      "argv": [
+        "task",
+        "test"
+      ],
+      "cwd": ".",
+      "display": "task test",
+      "parameters": [],
+      "source": "Taskfile.yml",
+      "origin": "declared",
+      "tags": [
+        "go-task",
+        "."
+      ],
+      "persistent": {
+        "value": false,
+        "declared": false
+      },
+      "executes": "local",
+      "dependsOn": [
+        "go-task:Taskfile.yml:build"
+      ]
+    }
+  ],
+  "cache": [
+    {
+      "runner": "go-task",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    },
+    {
+      "runner": "package-manager",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    }
+  ],
+  "unknowns": []
+}

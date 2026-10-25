@@ -1,0 +1,155 @@
+{
+  "schemaVersion": 1,
+  "kind": "catalog",
+  "root": "<root>",
+  "generatedAt": "<time>",
+  "discovery": "walk",
+  "allowExec": false,
+  "reports": [
+    {
+      "runner": "poe",
+      "chain": [
+        {
+          "label": "runner",
+          "hint": "Poe the Poet runs the tasks under `tool.poe.tasks`."
+        },
+        {
+          "label": "project",
+          "hint": "The directory holding the config. `.` is the root."
+        },
+        {
+          "label": "task",
+          "hint": "The key under `tasks`."
+        }
+      ],
+      "brand": {
+        "icon": "<svg>",
+        "color": "#3776ab"
+      },
+      "tool": {
+        "binary": "poe",
+        "found": true,
+        "path": "<bin>/poe"
+      },
+      "status": "ok",
+      "tasks": [
+        {
+          "id": "poe:pyproject.toml:test",
+          "runner": "poe",
+          "path": [
+            "poe",
+            ".",
+            "test"
+          ],
+          "argv": [
+            "poe",
+            "test"
+          ],
+          "cwd": ".",
+          "display": "poe test",
+          "parameters": [],
+          "source": "pyproject.toml",
+          "origin": "declared",
+          "detail": "pytest",
+          "tags": [
+            "poe",
+            ".",
+            "cmd"
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        },
+        {
+          "id": "poe:pyproject.toml:lint",
+          "runner": "poe",
+          "path": [
+            "poe",
+            ".",
+            "lint"
+          ],
+          "argv": [
+            "poe",
+            "lint"
+          ],
+          "cwd": ".",
+          "display": "poe lint",
+          "parameters": [],
+          "source": "pyproject.toml",
+          "origin": "declared",
+          "doc": "Lint the code",
+          "detail": "ruff check .",
+          "tags": [
+            "poe",
+            ".",
+            "cmd"
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        }
+      ],
+      "diagnostics": [],
+      "skippedForExec": false
+    },
+    {
+      "runner": "python",
+      "chain": [
+        {
+          "label": "runner",
+          "hint": "Python tooling configured in a pyproject.toml."
+        },
+        {
+          "label": "project",
+          "hint": "The directory holding the pyproject.toml."
+        },
+        {
+          "label": "tool",
+          "hint": "A tool the project configures (synthesized from its `[tool.*]` section), or a script it declares in `[project.scripts]` / `[tool.poetry.scripts]`."
+        }
+      ],
+      "brand": {
+        "icon": "<svg>",
+        "color": "#3776ab"
+      },
+      "status": "absent",
+      "tasks": [],
+      "diagnostics": [],
+      "skippedForExec": false
+    }
+  ],
+  "groups": [
+    {
+      "id": "tasks",
+      "title": "Tasks",
+      "runners": [
+        "poe",
+        "python"
+      ]
+    }
+  ],
+  "cache": [
+    {
+      "runner": "python",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    },
+    {
+      "runner": "poe",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    }
+  ],
+  "unknowns": [],
+  "filter": {}
+}

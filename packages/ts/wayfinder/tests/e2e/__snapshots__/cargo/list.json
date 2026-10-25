@@ -1,0 +1,333 @@
+{
+  "schemaVersion": 1,
+  "kind": "catalog",
+  "root": "<root>",
+  "generatedAt": "<time>",
+  "discovery": "walk",
+  "allowExec": false,
+  "reports": [
+    {
+      "runner": "cargo",
+      "chain": [
+        {
+          "label": "runner",
+          "hint": "cargo builds, tests and lints Rust crates."
+        },
+        {
+          "label": "crate",
+          "hint": "The directory holding the Cargo.toml. `.` is the root manifest."
+        },
+        {
+          "label": "verb",
+          "hint": "A conventional cargo verb. Synthesized — not declared in the manifest."
+        }
+      ],
+      "brand": {
+        "icon": "<svg>",
+        "color": "#dea584"
+      },
+      "tool": {
+        "binary": "cargo",
+        "found": true,
+        "path": "<bin>/cargo"
+      },
+      "status": "ok",
+      "tasks": [
+        {
+          "id": "cargo:Cargo.toml:test",
+          "runner": "cargo",
+          "path": [
+            "cargo",
+            ".",
+            "test"
+          ],
+          "argv": [
+            "cargo",
+            "test"
+          ],
+          "cwd": ".",
+          "display": "cargo test",
+          "parameters": [],
+          "source": "Cargo.toml",
+          "origin": "synthesized",
+          "tags": [
+            "cargo",
+            "rust",
+            "."
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        },
+        {
+          "id": "cargo:Cargo.toml:clippy",
+          "runner": "cargo",
+          "path": [
+            "cargo",
+            ".",
+            "clippy"
+          ],
+          "argv": [
+            "cargo",
+            "clippy"
+          ],
+          "cwd": ".",
+          "display": "cargo clippy",
+          "parameters": [],
+          "source": "Cargo.toml",
+          "origin": "synthesized",
+          "tags": [
+            "cargo",
+            "rust",
+            "."
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        },
+        {
+          "id": "cargo:Cargo.toml:fmt",
+          "runner": "cargo",
+          "path": [
+            "cargo",
+            ".",
+            "fmt"
+          ],
+          "argv": [
+            "cargo",
+            "fmt"
+          ],
+          "cwd": ".",
+          "display": "cargo fmt",
+          "parameters": [],
+          "source": "Cargo.toml",
+          "origin": "synthesized",
+          "tags": [
+            "cargo",
+            "rust",
+            "."
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        },
+        {
+          "id": "cargo:Cargo.toml:fmt-check",
+          "runner": "cargo",
+          "path": [
+            "cargo",
+            ".",
+            "fmt-check"
+          ],
+          "argv": [
+            "cargo",
+            "fmt",
+            "--check"
+          ],
+          "cwd": ".",
+          "display": "cargo fmt --check",
+          "parameters": [],
+          "source": "Cargo.toml",
+          "origin": "synthesized",
+          "tags": [
+            "cargo",
+            "rust",
+            "."
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        },
+        {
+          "id": "cargo:Cargo.toml:build",
+          "runner": "cargo",
+          "path": [
+            "cargo",
+            ".",
+            "build"
+          ],
+          "argv": [
+            "cargo",
+            "build"
+          ],
+          "cwd": ".",
+          "display": "cargo build",
+          "parameters": [],
+          "source": "Cargo.toml",
+          "origin": "synthesized",
+          "tags": [
+            "cargo",
+            "rust",
+            "."
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        },
+        {
+          "id": "cargo:Cargo.toml:clean",
+          "runner": "cargo",
+          "path": [
+            "cargo",
+            ".",
+            "clean"
+          ],
+          "argv": [
+            "cargo",
+            "clean"
+          ],
+          "cwd": ".",
+          "display": "cargo clean",
+          "parameters": [],
+          "source": "Cargo.toml",
+          "origin": "synthesized",
+          "tags": [
+            "cargo",
+            "rust",
+            "."
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        }
+      ],
+      "diagnostics": [],
+      "skippedForExec": false
+    },
+    {
+      "runner": "package-manager",
+      "chain": [
+        {
+          "label": "role",
+          "hint": "Commands the detected package managers offer, synthesized from the files that show them."
+        },
+        {
+          "label": "directory",
+          "hint": "The package the command is for. `.` is the root."
+        },
+        {
+          "label": "tool",
+          "hint": "The tool that runs the command."
+        },
+        {
+          "label": "action",
+          "hint": "What the command does."
+        }
+      ],
+      "status": "ok",
+      "tasks": [
+        {
+          "id": "package-manager:Cargo.lock:cargo:install",
+          "runner": "package-manager",
+          "path": [
+            "package-manager",
+            ".",
+            "cargo",
+            "install"
+          ],
+          "argv": [
+            "cargo",
+            "fetch"
+          ],
+          "cwd": ".",
+          "display": "cargo fetch",
+          "parameters": [],
+          "source": "Cargo.lock",
+          "origin": "synthesized",
+          "tags": [
+            "package-manager",
+            "cargo",
+            "rust",
+            "."
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        },
+        {
+          "id": "package-manager:Cargo.lock:cargo:install-frozen",
+          "runner": "package-manager",
+          "path": [
+            "package-manager",
+            ".",
+            "cargo",
+            "install-frozen"
+          ],
+          "argv": [
+            "cargo",
+            "fetch",
+            "--locked"
+          ],
+          "cwd": ".",
+          "display": "cargo fetch --locked",
+          "parameters": [],
+          "source": "Cargo.lock",
+          "origin": "synthesized",
+          "tags": [
+            "package-manager",
+            "cargo",
+            "rust",
+            "."
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        }
+      ],
+      "diagnostics": [],
+      "skippedForExec": false
+    }
+  ],
+  "groups": [
+    {
+      "id": "tasks",
+      "title": "Tasks",
+      "runners": [
+        "cargo"
+      ]
+    },
+    {
+      "id": "dependencies",
+      "title": "Dependencies",
+      "runners": [
+        "package-manager"
+      ]
+    }
+  ],
+  "cache": [
+    {
+      "runner": "cargo",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    },
+    {
+      "runner": "package-manager",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    }
+  ],
+  "unknowns": [],
+  "filter": {}
+}

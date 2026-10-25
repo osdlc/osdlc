@@ -53,6 +53,7 @@
     "build": "tsc -p tsconfig.build.json && node scripts/build-web.mjs && node scripts/write-config-schema.mjs",
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "test": "vitest run",
+    "test:e2e": "vitest run tests/e2e",
     "smoke": "node tests/smoke.mjs",
     "coverage": "vitest run --coverage",
     "prepublishOnly": "npm run clean && npm run build",

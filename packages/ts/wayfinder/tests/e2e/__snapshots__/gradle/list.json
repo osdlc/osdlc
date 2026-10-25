@@ -1,0 +1,202 @@
+{
+  "schemaVersion": 1,
+  "kind": "catalog",
+  "root": "<root>",
+  "generatedAt": "<time>",
+  "discovery": "walk",
+  "allowExec": false,
+  "reports": [
+    {
+      "runner": "gradle",
+      "chain": [
+        {
+          "label": "runner",
+          "hint": "gradle builds, tests and packages JVM projects."
+        },
+        {
+          "label": "project",
+          "hint": "The directory holding the build script. `.` is the root project."
+        },
+        {
+          "label": "verb",
+          "hint": "A Gradle task. Read from `gradle tasks --all` when the build's own tool could be run; otherwise one of the conventional lifecycle verbs a Gradle build answers to."
+        }
+      ],
+      "brand": {
+        "icon": "<svg>",
+        "color": "#02303A"
+      },
+      "tool": {
+        "binary": "gradle",
+        "found": true,
+        "path": "<bin>/gradle"
+      },
+      "status": "ok",
+      "tasks": [
+        {
+          "id": "gradle:build.gradle.kts:build",
+          "runner": "gradle",
+          "path": [
+            "gradle",
+            ".",
+            "build"
+          ],
+          "argv": [
+            "gradle",
+            "build"
+          ],
+          "cwd": ".",
+          "display": "gradle build",
+          "parameters": [],
+          "source": "build.gradle.kts",
+          "origin": "synthesized",
+          "tags": [
+            "gradle",
+            "jvm",
+            "."
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        },
+        {
+          "id": "gradle:build.gradle.kts:test",
+          "runner": "gradle",
+          "path": [
+            "gradle",
+            ".",
+            "test"
+          ],
+          "argv": [
+            "gradle",
+            "test"
+          ],
+          "cwd": ".",
+          "display": "gradle test",
+          "parameters": [],
+          "source": "build.gradle.kts",
+          "origin": "synthesized",
+          "tags": [
+            "gradle",
+            "jvm",
+            "."
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        },
+        {
+          "id": "gradle:build.gradle.kts:clean",
+          "runner": "gradle",
+          "path": [
+            "gradle",
+            ".",
+            "clean"
+          ],
+          "argv": [
+            "gradle",
+            "clean"
+          ],
+          "cwd": ".",
+          "display": "gradle clean",
+          "parameters": [],
+          "source": "build.gradle.kts",
+          "origin": "synthesized",
+          "tags": [
+            "gradle",
+            "jvm",
+            "."
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        },
+        {
+          "id": "gradle:build.gradle.kts:assemble",
+          "runner": "gradle",
+          "path": [
+            "gradle",
+            ".",
+            "assemble"
+          ],
+          "argv": [
+            "gradle",
+            "assemble"
+          ],
+          "cwd": ".",
+          "display": "gradle assemble",
+          "parameters": [],
+          "source": "build.gradle.kts",
+          "origin": "synthesized",
+          "tags": [
+            "gradle",
+            "jvm",
+            "."
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        },
+        {
+          "id": "gradle:build.gradle.kts:check",
+          "runner": "gradle",
+          "path": [
+            "gradle",
+            ".",
+            "check"
+          ],
+          "argv": [
+            "gradle",
+            "check"
+          ],
+          "cwd": ".",
+          "display": "gradle check",
+          "parameters": [],
+          "source": "build.gradle.kts",
+          "origin": "synthesized",
+          "tags": [
+            "gradle",
+            "jvm",
+            "."
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        }
+      ],
+      "diagnostics": [],
+      "skippedForExec": false
+    }
+  ],
+  "groups": [
+    {
+      "id": "tasks",
+      "title": "Tasks",
+      "runners": [
+        "gradle"
+      ]
+    }
+  ],
+  "cache": [
+    {
+      "runner": "gradle",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    }
+  ],
+  "unknowns": [],
+  "filter": {}
+}

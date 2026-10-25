@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "kind": "query",
+  "root": "<root>",
+  "filter": {
+    "query": "build",
+    "mode": "fuzzy"
+  },
+  "tasks": [
+    {
+      "id": "cargo:Cargo.toml:build",
+      "runner": "cargo",
+      "path": [
+        "cargo",
+        ".",
+        "build"
+      ],
+      "argv": [
+        "cargo",
+        "build"
+      ],
+      "cwd": ".",
+      "display": "cargo build",
+      "parameters": [],
+      "source": "Cargo.toml",
+      "origin": "synthesized",
+      "tags": [
+        "cargo",
+        "rust",
+        "."
+      ],
+      "persistent": {
+        "value": false,
+        "declared": false
+      },
+      "executes": "local"
+    }
+  ],
+  "cache": [
+    {
+      "runner": "cargo",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    },
+    {
+      "runner": "package-manager",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    }
+  ],
+  "unknowns": []
+}

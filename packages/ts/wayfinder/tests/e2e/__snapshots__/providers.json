@@ -1,0 +1,428 @@
+{
+  "schemaVersion": 1,
+  "kind": "providers",
+  "providers": [
+    {
+      "id": "moon",
+      "roles": [
+        "runner"
+      ],
+      "kind": "exec",
+      "binary": "moon",
+      "onPath": true,
+      "source": "built-in"
+    },
+    {
+      "id": "proto",
+      "roles": [
+        "toolManager"
+      ],
+      "kind": null,
+      "binary": "proto",
+      "onPath": true,
+      "source": "built-in"
+    },
+    {
+      "id": "mise",
+      "roles": [
+        "runner",
+        "toolManager"
+      ],
+      "kind": "exec",
+      "binary": "mise",
+      "onPath": true,
+      "source": "built-in"
+    },
+    {
+      "id": "just",
+      "roles": [
+        "runner"
+      ],
+      "kind": "parse",
+      "binary": "just",
+      "onPath": true,
+      "source": "built-in"
+    },
+    {
+      "id": "node-scripts",
+      "roles": [
+        "runner"
+      ],
+      "kind": "parse",
+      "binary": null,
+      "onPath": null,
+      "source": "built-in"
+    },
+    {
+      "id": "make",
+      "roles": [
+        "runner"
+      ],
+      "kind": "parse",
+      "binary": "make",
+      "onPath": true,
+      "source": "built-in"
+    },
+    {
+      "id": "cargo",
+      "roles": [
+        "runner",
+        "packageManager"
+      ],
+      "kind": "parse",
+      "binary": "cargo",
+      "onPath": true,
+      "source": "built-in"
+    },
+    {
+      "id": "sbt",
+      "roles": [
+        "runner"
+      ],
+      "kind": "exec",
+      "binary": "sbt",
+      "onPath": true,
+      "source": "built-in"
+    },
+    {
+      "id": "python",
+      "roles": [
+        "runner"
+      ],
+      "kind": "parse",
+      "binary": null,
+      "onPath": null,
+      "source": "built-in"
+    },
+    {
+      "id": "composer",
+      "roles": [
+        "runner"
+      ],
+      "kind": "parse",
+      "binary": "composer",
+      "onPath": true,
+      "source": "built-in"
+    },
+    {
+      "id": "deno-tasks",
+      "roles": [
+        "runner"
+      ],
+      "kind": "parse",
+      "binary": "deno",
+      "onPath": true,
+      "source": "built-in"
+    },
+    {
+      "id": "turbo",
+      "roles": [
+        "runner"
+      ],
+      "kind": "parse",
+      "binary": "turbo",
+      "onPath": true,
+      "source": "built-in"
+    },
+    {
+      "id": "maven",
+      "roles": [
+        "runner"
+      ],
+      "kind": "parse",
+      "binary": "mvn",
+      "onPath": true,
+      "source": "built-in"
+    },
+    {
+      "id": "swiftpm",
+      "roles": [
+        "runner"
+      ],
+      "kind": "parse",
+      "binary": "swift",
+      "onPath": true,
+      "source": "built-in"
+    },
+    {
+      "id": "gradle",
+      "roles": [
+        "runner"
+      ],
+      "kind": "parse",
+      "binary": "gradle",
+      "onPath": true,
+      "source": "built-in"
+    },
+    {
+      "id": "go-task",
+      "roles": [
+        "runner"
+      ],
+      "kind": "parse",
+      "binary": "task",
+      "onPath": true,
+      "source": "built-in"
+    },
+    {
+      "id": "rake",
+      "roles": [
+        "runner"
+      ],
+      "kind": "parse",
+      "binary": "rake",
+      "onPath": true,
+      "source": "built-in"
+    },
+    {
+      "id": "docker-compose",
+      "roles": [
+        "runner"
+      ],
+      "kind": "parse",
+      "binary": "docker",
+      "onPath": true,
+      "source": "built-in"
+    },
+    {
+      "id": "github-actions",
+      "roles": [
+        "runner"
+      ],
+      "kind": "parse",
+      "binary": "gh",
+      "onPath": true,
+      "source": "built-in"
+    },
+    {
+      "id": "poe",
+      "roles": [
+        "runner"
+      ],
+      "kind": "parse",
+      "binary": "poe",
+      "onPath": true,
+      "source": "built-in"
+    },
+    {
+      "id": "pdm",
+      "roles": [
+        "runner"
+      ],
+      "kind": "parse",
+      "binary": "pdm",
+      "onPath": true,
+      "source": "built-in"
+    },
+    {
+      "id": "hatch",
+      "roles": [
+        "runner"
+      ],
+      "kind": "parse",
+      "binary": "hatch",
+      "onPath": true,
+      "source": "built-in"
+    },
+    {
+      "id": "cargo-aliases",
+      "roles": [
+        "runner"
+      ],
+      "kind": "parse",
+      "binary": "cargo",
+      "onPath": true,
+      "source": "built-in"
+    },
+    {
+      "id": "nx",
+      "roles": [
+        "runner"
+      ],
+      "kind": "parse",
+      "binary": "nx",
+      "onPath": true,
+      "source": "built-in"
+    },
+    {
+      "id": "vscode-tasks",
+      "roles": [
+        "runner"
+      ],
+      "kind": "parse",
+      "binary": null,
+      "onPath": null,
+      "source": "built-in"
+    },
+    {
+      "id": "devbox",
+      "roles": [
+        "runner"
+      ],
+      "kind": "parse",
+      "binary": "devbox",
+      "onPath": true,
+      "source": "built-in"
+    },
+    {
+      "id": "procfile",
+      "roles": [
+        "runner"
+      ],
+      "kind": "parse",
+      "binary": null,
+      "onPath": null,
+      "source": "built-in"
+    },
+    {
+      "id": "cmake-presets",
+      "roles": [
+        "runner"
+      ],
+      "kind": "parse",
+      "binary": "cmake",
+      "onPath": true,
+      "source": "built-in"
+    },
+    {
+      "id": "dotnet",
+      "roles": [
+        "runner"
+      ],
+      "kind": "parse",
+      "binary": "dotnet",
+      "onPath": true,
+      "source": "built-in"
+    },
+    {
+      "id": "bun",
+      "roles": [
+        "packageManager"
+      ],
+      "kind": null,
+      "binary": "bun",
+      "onPath": true,
+      "source": "built-in"
+    },
+    {
+      "id": "pnpm",
+      "roles": [
+        "packageManager"
+      ],
+      "kind": null,
+      "binary": "pnpm",
+      "onPath": true,
+      "source": "built-in"
+    },
+    {
+      "id": "yarn",
+      "roles": [
+        "packageManager"
+      ],
+      "kind": null,
+      "binary": "yarn",
+      "onPath": true,
+      "source": "built-in"
+    },
+    {
+      "id": "npm",
+      "roles": [
+        "packageManager"
+      ],
+      "kind": null,
+      "binary": "npm",
+      "onPath": true,
+      "source": "built-in"
+    },
+    {
+      "id": "uv",
+      "roles": [
+        "packageManager"
+      ],
+      "kind": null,
+      "binary": "uv",
+      "onPath": true,
+      "source": "built-in"
+    },
+    {
+      "id": "poetry",
+      "roles": [
+        "packageManager"
+      ],
+      "kind": null,
+      "binary": "poetry",
+      "onPath": true,
+      "source": "built-in"
+    },
+    {
+      "id": "pip",
+      "roles": [
+        "packageManager"
+      ],
+      "kind": null,
+      "binary": "pip",
+      "onPath": true,
+      "source": "built-in"
+    },
+    {
+      "id": "go",
+      "roles": [
+        "packageManager"
+      ],
+      "kind": null,
+      "binary": "go",
+      "onPath": true,
+      "source": "built-in"
+    },
+    {
+      "id": "bundler",
+      "roles": [
+        "packageManager"
+      ],
+      "kind": null,
+      "binary": "bundle",
+      "onPath": true,
+      "source": "built-in"
+    },
+    {
+      "id": "direnv",
+      "roles": [
+        "toolManager"
+      ],
+      "kind": null,
+      "binary": "direnv",
+      "onPath": true,
+      "source": "built-in"
+    },
+    {
+      "id": "lefthook",
+      "roles": [
+        "hookManager"
+      ],
+      "kind": null,
+      "binary": "lefthook",
+      "onPath": true,
+      "source": "built-in"
+    },
+    {
+      "id": "husky",
+      "roles": [
+        "hookManager"
+      ],
+      "kind": null,
+      "binary": "husky",
+      "onPath": true,
+      "source": "built-in"
+    },
+    {
+      "id": "pre-commit",
+      "roles": [
+        "hookManager"
+      ],
+      "kind": null,
+      "binary": "pre-commit",
+      "onPath": true,
+      "source": "built-in"
+    }
+  ]
+}

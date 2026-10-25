@@ -1,0 +1,287 @@
+{
+  "schemaVersion": 1,
+  "kind": "catalog",
+  "root": "<root>",
+  "generatedAt": "<time>",
+  "discovery": "walk",
+  "allowExec": false,
+  "reports": [
+    {
+      "runner": "dotnet",
+      "chain": [
+        {
+          "label": "runner",
+          "hint": "dotnet builds, tests and runs solutions and projects."
+        },
+        {
+          "label": "file",
+          "hint": "The solution or project file, root-relative."
+        },
+        {
+          "label": "verb",
+          "hint": "A conventional dotnet verb. Synthesized, not declared in the file."
+        }
+      ],
+      "brand": {
+        "icon": "<svg>",
+        "color": "#512bd4"
+      },
+      "tool": {
+        "binary": "dotnet",
+        "found": true,
+        "path": "<bin>/dotnet"
+      },
+      "status": "ok",
+      "tasks": [
+        {
+          "id": "dotnet:App.sln:build",
+          "runner": "dotnet",
+          "path": [
+            "dotnet",
+            "App.sln",
+            "build"
+          ],
+          "argv": [
+            "dotnet",
+            "build",
+            "App.sln"
+          ],
+          "cwd": ".",
+          "display": "dotnet build App.sln",
+          "parameters": [],
+          "source": "App.sln",
+          "origin": "synthesized",
+          "tags": [
+            "dotnet",
+            "solution"
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        },
+        {
+          "id": "dotnet:App.sln:test",
+          "runner": "dotnet",
+          "path": [
+            "dotnet",
+            "App.sln",
+            "test"
+          ],
+          "argv": [
+            "dotnet",
+            "test",
+            "App.sln"
+          ],
+          "cwd": ".",
+          "display": "dotnet test App.sln",
+          "parameters": [],
+          "source": "App.sln",
+          "origin": "synthesized",
+          "tags": [
+            "dotnet",
+            "solution"
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        },
+        {
+          "id": "dotnet:App.sln:restore",
+          "runner": "dotnet",
+          "path": [
+            "dotnet",
+            "App.sln",
+            "restore"
+          ],
+          "argv": [
+            "dotnet",
+            "restore",
+            "App.sln"
+          ],
+          "cwd": ".",
+          "display": "dotnet restore App.sln",
+          "parameters": [],
+          "source": "App.sln",
+          "origin": "synthesized",
+          "tags": [
+            "dotnet",
+            "solution"
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        },
+        {
+          "id": "dotnet:App.sln:publish",
+          "runner": "dotnet",
+          "path": [
+            "dotnet",
+            "App.sln",
+            "publish"
+          ],
+          "argv": [
+            "dotnet",
+            "publish",
+            "App.sln"
+          ],
+          "cwd": ".",
+          "display": "dotnet publish App.sln",
+          "parameters": [],
+          "source": "App.sln",
+          "origin": "synthesized",
+          "tags": [
+            "dotnet",
+            "solution"
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        },
+        {
+          "id": "dotnet:src/App/App.csproj:build",
+          "runner": "dotnet",
+          "path": [
+            "dotnet",
+            "src/App/App.csproj",
+            "build"
+          ],
+          "argv": [
+            "dotnet",
+            "build",
+            "src/App/App.csproj"
+          ],
+          "cwd": ".",
+          "display": "dotnet build src/App/App.csproj",
+          "parameters": [],
+          "source": "src/App/App.csproj",
+          "origin": "synthesized",
+          "tags": [
+            "dotnet",
+            "project"
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        },
+        {
+          "id": "dotnet:src/App/App.csproj:run",
+          "runner": "dotnet",
+          "path": [
+            "dotnet",
+            "src/App/App.csproj",
+            "run"
+          ],
+          "argv": [
+            "dotnet",
+            "run",
+            "--project",
+            "src/App/App.csproj"
+          ],
+          "cwd": ".",
+          "display": "dotnet run --project src/App/App.csproj",
+          "parameters": [],
+          "source": "src/App/App.csproj",
+          "origin": "synthesized",
+          "tags": [
+            "dotnet",
+            "project"
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        },
+        {
+          "id": "dotnet:src/App/App.csproj:restore",
+          "runner": "dotnet",
+          "path": [
+            "dotnet",
+            "src/App/App.csproj",
+            "restore"
+          ],
+          "argv": [
+            "dotnet",
+            "restore",
+            "src/App/App.csproj"
+          ],
+          "cwd": ".",
+          "display": "dotnet restore src/App/App.csproj",
+          "parameters": [],
+          "source": "src/App/App.csproj",
+          "origin": "synthesized",
+          "tags": [
+            "dotnet",
+            "project"
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        },
+        {
+          "id": "dotnet:src/App/App.csproj:publish",
+          "runner": "dotnet",
+          "path": [
+            "dotnet",
+            "src/App/App.csproj",
+            "publish"
+          ],
+          "argv": [
+            "dotnet",
+            "publish",
+            "src/App/App.csproj"
+          ],
+          "cwd": ".",
+          "display": "dotnet publish src/App/App.csproj",
+          "parameters": [],
+          "source": "src/App/App.csproj",
+          "origin": "synthesized",
+          "tags": [
+            "dotnet",
+            "project"
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        }
+      ],
+      "diagnostics": [],
+      "skippedForExec": false
+    }
+  ],
+  "groups": [
+    {
+      "id": "tasks",
+      "title": "Tasks",
+      "runners": [
+        "dotnet"
+      ]
+    }
+  ],
+  "cache": [
+    {
+      "runner": "dotnet",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    }
+  ],
+  "unknowns": [],
+  "filter": {}
+}

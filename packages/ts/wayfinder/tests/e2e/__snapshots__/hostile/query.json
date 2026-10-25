@@ -1,0 +1,141 @@
+{
+  "schemaVersion": 1,
+  "kind": "query",
+  "root": "<root>",
+  "filter": {
+    "query": "b",
+    "mode": "fuzzy"
+  },
+  "tasks": [
+    {
+      "id": "node-scripts:package.json:build\u001b[2J",
+      "runner": "node-scripts",
+      "path": [
+        "node-scripts",
+        ".",
+        "hostile\u001b]0;pwned\u0007",
+        "build\u001b[2J"
+      ],
+      "argv": [
+        "npm",
+        "run",
+        "build\u001b[2J"
+      ],
+      "cwd": ".",
+      "display": "npm run build\u001b[2J",
+      "parameters": [],
+      "source": "package.json",
+      "origin": "declared",
+      "detail": "echo \u001b[31mred\u001b[0m",
+      "tags": [
+        "node-scripts",
+        "npm",
+        "."
+      ],
+      "persistent": {
+        "value": false,
+        "declared": false
+      },
+      "executes": "local"
+    },
+    {
+      "id": "node-scripts:package.json:bell\u0007",
+      "runner": "node-scripts",
+      "path": [
+        "node-scripts",
+        ".",
+        "hostile\u001b]0;pwned\u0007",
+        "bell\u0007"
+      ],
+      "argv": [
+        "npm",
+        "run",
+        "bell\u0007"
+      ],
+      "cwd": ".",
+      "display": "npm run bell\u0007",
+      "parameters": [],
+      "source": "package.json",
+      "origin": "declared",
+      "detail": "printf '\\a'",
+      "tags": [
+        "node-scripts",
+        "npm",
+        "."
+      ],
+      "persistent": {
+        "value": false,
+        "declared": false
+      },
+      "executes": "local"
+    },
+    {
+      "id": "node-scripts:package.json:rev\u202eesrever",
+      "runner": "node-scripts",
+      "path": [
+        "node-scripts",
+        ".",
+        "hostile\u001b]0;pwned\u0007",
+        "rev\u202eesrever"
+      ],
+      "argv": [
+        "npm",
+        "run",
+        "rev\u202eesrever"
+      ],
+      "cwd": ".",
+      "display": "npm run rev\u202eesrever",
+      "parameters": [],
+      "source": "package.json",
+      "origin": "declared",
+      "detail": "echo bidi",
+      "tags": [
+        "node-scripts",
+        "npm",
+        "."
+      ],
+      "persistent": {
+        "value": false,
+        "declared": false
+      },
+      "executes": "local"
+    }
+  ],
+  "cache": [
+    {
+      "runner": "just",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    },
+    {
+      "runner": "node-scripts",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    },
+    {
+      "runner": "package-manager",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    }
+  ],
+  "unknowns": [
+    {
+      "kind": "parameters",
+      "runner": "just",
+      "reason": "exec-withheld",
+      "tasks": [
+        "just:justfile:safe"
+      ],
+      "label": "parameters unknown: reading them needs execution, which is withheld"
+    }
+  ]
+}

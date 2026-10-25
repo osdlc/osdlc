@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "kind": "query",
+  "root": "<root>",
+  "filter": {
+    "query": "build",
+    "mode": "fuzzy"
+  },
+  "tasks": [],
+  "cache": [
+    {
+      "runner": "moon",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": null,
+      "slow": false
+    }
+  ],
+  "unknowns": [
+    {
+      "kind": "withheld",
+      "runner": "moon",
+      "reason": "exec-off",
+      "label": "withheld: execution is off"
+    }
+  ]
+}

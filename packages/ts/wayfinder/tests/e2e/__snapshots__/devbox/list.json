@@ -1,0 +1,120 @@
+{
+  "schemaVersion": 1,
+  "kind": "catalog",
+  "root": "<root>",
+  "generatedAt": "<time>",
+  "discovery": "walk",
+  "allowExec": false,
+  "reports": [
+    {
+      "runner": "devbox",
+      "chain": [
+        {
+          "label": "runner",
+          "hint": "Devbox runs the scripts under `shell.scripts` in a devbox.json."
+        },
+        {
+          "label": "project",
+          "hint": "The directory holding the devbox.json. `.` is the root."
+        },
+        {
+          "label": "script",
+          "hint": "The key under `shell.scripts`."
+        }
+      ],
+      "brand": {
+        "icon": "<svg>",
+        "color": "#280459"
+      },
+      "tool": {
+        "binary": "devbox",
+        "found": true,
+        "path": "<bin>/devbox"
+      },
+      "status": "ok",
+      "tasks": [
+        {
+          "id": "devbox:devbox.json:setup",
+          "runner": "devbox",
+          "path": [
+            "devbox",
+            ".",
+            "setup"
+          ],
+          "argv": [
+            "devbox",
+            "run",
+            "setup"
+          ],
+          "cwd": ".",
+          "display": "devbox run setup",
+          "parameters": [],
+          "source": "devbox.json",
+          "origin": "declared",
+          "detail": "npm install",
+          "tags": [
+            "devbox",
+            "."
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        },
+        {
+          "id": "devbox:devbox.json:test",
+          "runner": "devbox",
+          "path": [
+            "devbox",
+            ".",
+            "test"
+          ],
+          "argv": [
+            "devbox",
+            "run",
+            "test"
+          ],
+          "cwd": ".",
+          "display": "devbox run test",
+          "parameters": [],
+          "source": "devbox.json",
+          "origin": "declared",
+          "detail": "npm test",
+          "tags": [
+            "devbox",
+            "."
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        }
+      ],
+      "diagnostics": [],
+      "skippedForExec": false
+    }
+  ],
+  "groups": [
+    {
+      "id": "tasks",
+      "title": "Tasks",
+      "runners": [
+        "devbox"
+      ]
+    }
+  ],
+  "cache": [
+    {
+      "runner": "devbox",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    }
+  ],
+  "unknowns": [],
+  "filter": {}
+}

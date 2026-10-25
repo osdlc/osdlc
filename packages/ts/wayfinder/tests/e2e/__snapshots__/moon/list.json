@@ -1,0 +1,76 @@
+{
+  "schemaVersion": 1,
+  "kind": "catalog",
+  "root": "<root>",
+  "generatedAt": "<time>",
+  "discovery": "walk",
+  "allowExec": false,
+  "reports": [
+    {
+      "runner": "moon",
+      "chain": [
+        {
+          "label": "runner",
+          "hint": "moon owns the build graph, its cache and task inheritance."
+        },
+        {
+          "label": "directory",
+          "hint": "The directory the project sits in. A grouping this catalog adds, not part of the command — a flat list of project names does not scan."
+        },
+        {
+          "label": "project",
+          "hint": "The moon project id — the half before the colon in `moon run <project>:<task>`."
+        },
+        {
+          "label": "task",
+          "hint": "The task id — the half after the colon. Tasks may be inherited from .moon/tasks/ as well as declared per project."
+        }
+      ],
+      "brand": {
+        "icon": "<svg>",
+        "color": "#6f53f3"
+      },
+      "tool": {
+        "binary": "moon",
+        "found": true,
+        "path": "<bin>/moon"
+      },
+      "status": "absent",
+      "tasks": [],
+      "skippedForExec": true,
+      "diagnostics": [
+        {
+          "severity": "info",
+          "message": "moon needs to run a subprocess; re-run with execution allowed to include it"
+        }
+      ]
+    }
+  ],
+  "groups": [
+    {
+      "id": "tasks",
+      "title": "Tasks",
+      "runners": [
+        "moon"
+      ]
+    }
+  ],
+  "cache": [
+    {
+      "runner": "moon",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": null,
+      "slow": false
+    }
+  ],
+  "unknowns": [
+    {
+      "kind": "withheld",
+      "runner": "moon",
+      "reason": "exec-off",
+      "label": "withheld: execution is off"
+    }
+  ],
+  "filter": {}
+}
