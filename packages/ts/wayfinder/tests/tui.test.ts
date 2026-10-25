@@ -715,6 +715,17 @@ describe('the settings screen', () => {
     expect(screen(tui)[5]).toMatch(/^> on {3}make/)
   })
 
+  test('] writes the order to the project file when that file sets it', async () => {
+    const { tui, root } = await showing(catalog(['build'], [report('just', [task('just', 'x')])]))
+    await writeFile(join(root, 'wayfinder.config.json'), '{"runners":{"order":["make","just"]}}')
+    tui.handle(',')
+    await tui.idle()
+    tui.handle(']')
+    await tui.idle()
+    expect(await projectFile(root)).toMatchObject({ runners: { order: ['just', 'make'] } })
+    expect(tui.state.message?.text).toContain('saved runners.order to')
+  })
+
   test('a write that fails is reported, and nothing else changes', async () => {
     const { tui, root } = await open()
     await mkdir(join(root, 'wayfinder.config.json'))

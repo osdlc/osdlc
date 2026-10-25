@@ -13,7 +13,6 @@ import { createHttpApi, serveHttp, type HttpServer } from '@osdlc/cli-tool/http'
 import { commandString, spawnRunner } from '@osdlc/command-seam'
 
 import { APP } from '../app.ts'
-import { readSettings } from '../config.ts'
 import { handOff as defaultHandOff, type HandOffResult } from '../core/run.ts'
 import type { CatalogSnapshot, Session } from '../core/session.ts'
 import type { RunDocumentBody } from '../documents.ts'
@@ -139,8 +138,8 @@ export async function startServer(options: ServeOptions): Promise<WebServer> {
     api,
     signIn,
     async page() {
-      const theme = await readSettings(session.root, session.env, session.home).then(
-        (s) => s.theme.value,
+      const theme = await session.reloadSettings().then(
+        (s) => s.settings.theme.value,
         () => 'system' as const,
       )
       return buildPage({ theme })

@@ -8,6 +8,7 @@ import { mountPage } from './dom.ts'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import { setTokenForTest, type ConfigView } from '../src/web/api.ts'
+import { saveRunnerOrder } from '../src/web/input.ts'
 import { commit, handleSettingsClick, openSettings } from '../src/web/settings.ts'
 import { state } from '../src/web/state.ts'
 
@@ -162,5 +163,18 @@ describe('Save', () => {
       'Saved discovery to /repo/wayfinder.config.json. Not saved: excludePaths: refused',
     )
     expect(document.querySelector('.set-dirty')!.textContent).toBe('1 unsaved')
+  })
+
+  test('a reorder goes to the project file when it sets the order, else the user file', async () => {
+    state.runnerOrderSource = 'project'
+    await saveRunnerOrder(['make', 'just'])
+    state.runnerOrderSource = 'default'
+    await saveRunnerOrder(['just', 'make'])
+    const sets = calls.filter((c) => c.path.endsWith('/config/set')).map((c) => c.body)
+    expect(sets).toEqual([
+      { key: 'runners.order', value: '["make","just"]', project: true },
+      { key: 'runners.order', value: '["just","make"]', user: true },
+    ])
+    expect(state.runnerOrderSource).toBe('user')
   })
 })

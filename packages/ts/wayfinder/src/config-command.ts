@@ -21,7 +21,7 @@ import {
 import type { FlagSpec } from '@osdlc/cli-tool/define-cli'
 import { homeDir } from '@osdlc/trust-repo'
 
-import { makeProject } from './catalog.ts'
+import { projectRootFor } from './catalog.ts'
 import {
   CLI_ONLY_KEYS,
   CONFIG_KEYS,
@@ -69,9 +69,9 @@ export function homeOf(ctx: Pick<CommandContext, 'env'>): string {
 export async function projectRootOf(ctx: CommandContext): Promise<string> {
   const named = ctx.globals['dir']
   const dir = resolve(ctx.cwd, typeof named === 'string' && named !== '' ? named : '.')
-  const info = await stat(dir).catch(() => null)
-  if (info === null || !info.isDirectory()) throw new CommandError(`no such directory: ${dir}`)
-  return makeProject().findRoot(dir)
+  const root = await projectRootFor(dir)
+  if (root === null) throw new CommandError(`no such directory: ${dir}`)
+  return root
 }
 
 /** {@link homeOf} and {@link projectRootOf}, or the caller's own. */

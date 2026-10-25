@@ -17,3 +17,16 @@ export const CLI_ONLY_KEYS: readonly string[] = ['trust', 'allowExec', 'tools']
 
 /** The top-level keys only the user layer may set. */
 export const USER_ONLY_KEYS: readonly string[] = ['trust', 'open', 'theme', 'skills']
+
+/**
+ * The file a settings screen writes `key` to, given where its value comes
+ * from now (`default`, `user` or `project`). A user-only key goes to the
+ * user file. `runners.order` goes to the file that sets it, else the user
+ * file, so a reorder always takes effect. Every other key goes to the
+ * project file.
+ */
+export function settingLayer(key: string, source: string): 'user' | 'project' {
+  if (USER_ONLY_KEYS.includes(key.split('.')[0]!)) return 'user'
+  if (key === 'runners.order') return source === 'project' ? 'project' : 'user'
+  return 'project'
+}

@@ -19,7 +19,7 @@
  * dialog and mean nothing once it closes.
  */
 
-import { CLI_ONLY_KEYS, THEME_VALUES, type Theme } from '../config-keys.ts'
+import { CLI_ONLY_KEYS, THEME_VALUES, settingLayer, type Theme } from '../config-keys.ts'
 import { APP, BIN, WITHHELD, runnerLabel } from '../vocabulary.ts'
 import {
   failureText,
@@ -61,13 +61,9 @@ let staged: Record<string, unknown> = {}
 /** A message from the last Save, shown until the next render clears it. */
 let notice: { kind: 'err' | 'ok'; text: string } | null = null
 
-/** The file each editable key is written to. Personal settings go to the user's file. */
-const LAYER_OF: Record<string, 'user' | 'project'> = {
-  'runners.disabled': 'project',
-  discovery: 'project',
-  excludePaths: 'project',
-  theme: 'user',
-  open: 'user',
+/** The file `key` is written to: the rule the terminal UI's session uses. */
+function layerOf(key: string): 'user' | 'project' {
+  return settingLayer(key, settingSource(loaded, key))
 }
 
 // ------------------------------------------------------------------ values
@@ -458,7 +454,7 @@ function screen(): string {
         '">' +
         escapeHtml(notice.text) +
         '</p>'
-  const files = [...new Set(Object.keys(staged).map((k) => LAYER_OF[k] ?? 'project'))]
+  const files = [...new Set(Object.keys(staged).map((k) => layerOf(k)))]
   return (
     '<div class="set-head"><h2 id="settings-title">Settings' +
     (dirty ? ' <span class="set-dirty">' + Object.keys(staged).length + ' unsaved</span>' : '') +
@@ -660,7 +656,7 @@ export async function commit(): Promise<void> {
   const written = new Map<string, string[]>()
   let failure: string | null = null
   for (const [key, value] of Object.entries(staged)) {
-    const result = await setSetting(key, value, LAYER_OF[key] ?? 'project')
+    const result = await setSetting(key, value, layerOf(key))
     if (!result.ok) {
       failure = key + ': ' + failureText(result)
       break

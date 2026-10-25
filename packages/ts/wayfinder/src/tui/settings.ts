@@ -1,17 +1,16 @@
 /**
  * The settings screen: what it shows, and the edits its keys make.
  *
- * Values come from `readSettings`, the reader `way config` and the web view
- * use, so all three show the same answer. Edits go through `writeSetting`.
- * Runners, discovery and excluded paths go to the project file, as the web
- * view saves them. The runner order goes to the layer that sets it, else the
- * user file.
+ * Values come from the session, which reads them as `way config` does, so
+ * the screen, `way config` and the web view show the same answer. Edits go
+ * through `session.saveSetting`, which picks the file with `settingLayer`,
+ * the rule the web view uses too.
  */
 
 import type { RunnerReport } from '@osdlc/system-model/detect'
 import type { ExecGate } from '@osdlc/trust-repo'
 
-import { DISCOVERY_VALUES, type ConfigLayer, type Settings, type WritableLayer } from '../config.ts'
+import { DISCOVERY_VALUES, type ConfigLayer, type Settings } from '../config.ts'
 import type { Unknown } from '../core/unknowns.ts'
 import { terminalSafe } from '../terminal-text.ts'
 import type { ToolSummary } from '../tool-info.ts'
@@ -214,10 +213,9 @@ function trustText(facts: SettingsFacts): string {
   return 'trust: not trusted'
 }
 
-/** A write the screen makes: which key, which layer, and the new value. */
+/** A write the screen makes: which key, and the new value. */
 export interface SettingsEdit {
   key: string
-  layer: WritableLayer
   value: unknown
 }
 
@@ -227,7 +225,7 @@ export function toggleRunner(settings: Settings, runner: string): SettingsEdit {
   const value = disabled.includes(runner)
     ? disabled.filter((d) => d !== runner)
     : [...disabled, runner]
-  return { key: 'runners.disabled', layer: 'project', value }
+  return { key: 'runners.disabled', value }
 }
 
 /** The edit that moves `runner` by `step` places in the display order, or null at an end. */
@@ -242,8 +240,7 @@ export function moveRunner(
   if (at === -1 || to < 0 || to >= order.length) return null
   order.splice(at, 1)
   order.splice(to, 0, runner)
-  const source = valueOf(facts.settings, 'runners.order').source
-  return { key: 'runners.order', layer: source === 'project' ? 'project' : 'user', value: order }
+  return { key: 'runners.order', value: order }
 }
 
 /** The edit that moves discovery to its next value. */
@@ -252,7 +249,6 @@ export function cycleDiscovery(settings: Settings): SettingsEdit {
   const at = DISCOVERY_VALUES.indexOf(now as (typeof DISCOVERY_VALUES)[number])
   return {
     key: 'discovery',
-    layer: 'project',
     value: DISCOVERY_VALUES[(at + 1) % DISCOVERY_VALUES.length],
   }
 }
@@ -272,5 +268,5 @@ export function editPaths(
     if (!now.includes(change.remove)) return null
     value = now.filter((p) => p !== change.remove)
   }
-  return { key: 'excludePaths', layer: 'project', value }
+  return { key: 'excludePaths', value }
 }

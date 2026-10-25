@@ -4,6 +4,8 @@
  * resolved from flags, config and trust.
  */
 
+import { stat } from 'node:fs/promises'
+
 import { builtins } from '@osdlc/system-model/builtins'
 import {
   createProject,
@@ -55,6 +57,16 @@ export interface ToolTrust {
   trusted: ReadonlySet<string>
   /** Called on every collection with each runner's scopes, once detection knows the wrappers. */
   onScopes?: ((scopes: ReadonlyMap<string, readonly string[]>) => void) | undefined
+}
+
+/**
+ * The project root `dir` is in, found with the built-in tools only. Null when
+ * `dir` is not a directory, so a typo never names the enclosing repository.
+ */
+export async function projectRootFor(dir: string): Promise<string | null> {
+  const info = await stat(dir).catch(() => null)
+  if (info === null || !info.isDirectory()) return null
+  return makeProject().findRoot(dir)
 }
 
 /** The built-in tools plus `extra`. Throws when two tools share an id. */

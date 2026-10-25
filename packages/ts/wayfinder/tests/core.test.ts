@@ -4,12 +4,16 @@
  * tested here once rather than through each surface.
  */
 
+import { readFile, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
+
 import { afterAll, describe, expect, test } from 'vitest'
 
 import type { Catalog, RunnerReport, Task } from '@osdlc/system-model/detect'
 
 import { CONFIG_ENV_VAR } from '../src/app.ts'
 import { makeProject } from '../src/catalog.ts'
+import { settingLayer } from '../src/config-keys.ts'
 import { filterTasks, sourceDepth } from '../src/core/filter.ts'
 import { handOff } from '../src/core/run.ts'
 import { SessionError, createSession, resolveRun } from '../src/core/session.ts'
@@ -375,5 +379,94 @@ describe('createSession', () => {
     })
     expect(session.withheldReason()).toBe('exec-off')
     await expect(session.grantTrust()).rejects.toMatchObject({ code: 'not-trustable' })
+  })
+
+  test('storedCatalog answers from the store alone, and is null before a probe', async () => {
+    const dir = await root({ 'package.json': '{"name":"p","scripts":{"b":"x"}}' })
+    const session = await createSession({ dir, cwd: dir, env: {}, home: dir })
+    expect(await session.storedCatalog()).toBeNull()
+    await session.catalog()
+    const stored = await session.storedCatalog()
+    expect(stored?.origin).toBe('store')
+    expect(stored?.catalog.reports.map((r) => r.runner)).toContain('node-scripts')
+  })
+
+  test('saveSetting writes the file settingLayer picks and the options follow', async () => {
+    const dir = await root({ 'package.json': '{"name":"p"}' })
+    const session = await createSession({ dir, cwd: dir, env: {}, home: dir })
+    const saved = await session.saveSetting('runners.disabled', ['make'])
+    expect(saved).toMatchObject({ layer: 'project', pinned: false })
+    expect(saved.file).toBe(join(dir, 'wayfinder.config.json'))
+    expect(session.options.exclude).toEqual(['make'])
+    expect(saved.snapshot.settings.settings).toContainEqual(
+      expect.objectContaining({ key: 'runners.disabled', value: ['make'], source: 'project' }),
+    )
+    // No file sets the order, so it goes to the user file.
+    expect((await session.saveSetting('runners.order', ['npm'])).layer).toBe('user')
+    expect(session.runnerOrder()).toEqual(['npm'])
+  })
+
+  test('saveSetting writes runners.order to the project file when that file sets it', async () => {
+    const dir = await root({
+      'package.json': '{"name":"p"}',
+      'wayfinder.config.json': '{"runners":{"order":["just"]}}',
+    })
+    const session = await createSession({ dir, cwd: dir, env: {}, home: dir })
+    const saved = await session.saveSetting('runners.order', ['make', 'just'])
+    expect(saved.layer).toBe('project')
+    expect(JSON.parse(await readFile(join(dir, 'wayfinder.config.json'), 'utf-8'))).toMatchObject({
+      runners: { order: ['make', 'just'] },
+    })
+    expect(session.runnerOrder()).toEqual(['make', 'just'])
+  })
+
+  test('saveSetting leaves an option a flag set, and says so', async () => {
+    const dir = await root({ 'package.json': '{"name":"p"}' })
+    const session = await createSession({
+      dir,
+      cwd: dir,
+      env: {},
+      home: dir,
+      flags: { discovery: 'walk' },
+    })
+    const saved = await session.saveSetting('discovery', 'git')
+    expect(saved.pinned).toBe(true)
+    expect(session.options.discovery).toBe('walk')
+  })
+
+  test('saveSetting refuses a value the key does not take', async () => {
+    const dir = await root({ 'package.json': '{"name":"p"}' })
+    const session = await createSession({ dir, cwd: dir, env: {}, home: dir })
+    const refused = session.saveSetting('discovery', 'sideways')
+    await expect(refused).rejects.toBeInstanceOf(SessionError)
+    await expect(refused).rejects.toMatchObject({
+      code: 'config',
+      message: expect.stringMatching(/^not saved: /),
+    })
+  })
+
+  test('reloadSettings picks up an edit made outside the session', async () => {
+    const dir = await root({ 'package.json': '{"name":"p"}' })
+    const session = await createSession({ dir, cwd: dir, env: {}, home: dir })
+    await writeFile(join(dir, 'wayfinder.config.json'), '{"excludePaths":["vendor"]}', 'utf-8')
+    const snapshot = await session.reloadSettings()
+    expect(snapshot.settings.settings).toContainEqual(
+      expect.objectContaining({ key: 'excludePaths', value: ['vendor'] }),
+    )
+    expect(session.options.excludePaths).toEqual(['vendor'])
+    await writeFile(join(dir, 'wayfinder.config.json'), '{ not json', 'utf-8')
+    await expect(session.reloadSettings()).rejects.toMatchObject({ code: 'config' })
+  })
+})
+
+describe('settingLayer', () => {
+  test('user-only keys go to the user file, runners.order to the file that sets it', () => {
+    expect(settingLayer('theme', 'default')).toBe('user')
+    expect(settingLayer('skills', 'project')).toBe('user')
+    expect(settingLayer('runners.order', 'project')).toBe('project')
+    expect(settingLayer('runners.order', 'user')).toBe('user')
+    expect(settingLayer('runners.order', 'default')).toBe('user')
+    expect(settingLayer('runners.disabled', 'user')).toBe('project')
+    expect(settingLayer('discovery', 'default')).toBe('project')
   })
 })
