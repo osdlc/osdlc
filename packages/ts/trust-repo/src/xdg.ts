@@ -19,12 +19,7 @@
 
 import { isAbsolute, join } from 'node:path'
 
-/** Expand a leading `~` against `home`; anything else is returned unchanged. */
-export function expandTilde(path: string, home: string): string {
-  if (path === '~') return home
-  if (path.startsWith('~/')) return join(home, path.slice(2))
-  return path
-}
+import { expandTilde } from './paths.ts'
 
 /**
  * An XDG base directory from the environment, with a fallback under `home`.

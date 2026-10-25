@@ -32,7 +32,7 @@
  * or any group of repositories that includes it. Only the user layer's `trust`
  * reaches `@osdlc/trust-repo`'s `policyExecGate`, which combines it with the
  * marker store that `way trust` writes to. See that package's README for the
- * glob dialect, and `origin-owner.ts` for the origin-remote lookup that
+ * glob dialect, and `@osdlc/trust-repo/git` for the origin-remote lookup that
  * `trust.owners` uses.
  *
  * XDG paths are used on every platform, macOS included, as `gh` does. A
@@ -85,7 +85,8 @@ import { homedir } from 'node:os'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 
 import { readParsedFile } from '@osdlc/config-layers'
-import { resolveTrustRoot, type PolicyDecisionOptions, type TrustPolicy } from '@osdlc/trust-repo'
+import { expandTrustPath, type PolicyDecisionOptions, type TrustPolicy } from '@osdlc/trust-repo'
+import { originOwner } from '@osdlc/trust-repo/git'
 
 import type { DiscoveryMode } from '@osdlc/system-model/detect'
 
@@ -98,7 +99,6 @@ import {
   LEGACY_PROJECT_CONFIG_FILENAME,
   PROJECT_CONFIG_FILENAME,
 } from './app.ts'
-import { originOwner } from './origin-owner.ts'
 import { expandTilde } from './xdg.ts'
 import type { WayOptions } from './catalog.ts'
 
@@ -866,27 +866,8 @@ export function trustPolicyFromConfig(config: TaskConfig): TrustPolicy {
 }
 
 /**
- * Expand a `trust.paths` entry's leading `~` against `home`, then resolve
- * symlinks in the pattern's static prefix (the part before the first glob
- * character) with `resolveTrustRoot`.
- *
- * This is the `expandPath` that `policyExecGate` and `policyDecision` take.
- * Without it, a pattern written as a person typed it (`/tmp/…`, which on macOS
- * is really `/private/tmp/…`) would never match the resolved root that
- * `policyDecision` compares it with.
- */
-export async function expandTrustPath(raw: string, home: string): Promise<string> {
-  const abs = resolve(expandTilde(raw, home))
-  const globAt = abs.search(/[*?]/)
-  if (globAt === -1) return resolveTrustRoot(abs)
-  const slash = abs.lastIndexOf('/', globAt)
-  const prefix = await resolveTrustRoot(slash <= 0 ? '/' : abs.slice(0, slash))
-  return prefix + abs.slice(slash)
-}
-
-/**
- * The options every `@osdlc/trust-repo` gate call takes: {@link expandTrustPath}
- * against `home`, and the {@link originOwner} lookup that `trust.owners` needs.
+ * The options every `@osdlc/trust-repo` gate call takes: `expandTrustPath`
+ * against `home`, and the git-backed `originOwner` lookup that `trust.owners` needs.
  * Built in one place, so a call site cannot leave out `ownerOf` and silently
  * stop honouring `trust.owners`.
  */

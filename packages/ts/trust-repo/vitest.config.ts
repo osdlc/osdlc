@@ -7,7 +7,10 @@ const src = (path: string) => fileURLToPath(new URL(path, import.meta.url))
 export default defineConfig({
   resolve: {
     // The examples import the package by name; run them on the source.
-    alias: [{ find: /^@osdlc\/trust-repo$/, replacement: src('./src/index.ts') }],
+    alias: [
+      { find: /^@osdlc\/trust-repo$/, replacement: src('./src/index.ts') },
+      { find: /^@osdlc\/trust-repo\/git$/, replacement: src('./src/git.ts') },
+    ],
   },
   test: {
     include: ['tests/**/*.test.ts', 'examples/**/*.test.ts'],
