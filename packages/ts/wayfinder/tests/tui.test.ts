@@ -481,6 +481,15 @@ describe('arguments', () => {
     expect(tui.state.message?.text).toContain('editor variable')
   })
 
+  test('the run line quotes the argv as the command line prints it', async () => {
+    const { tui, host } = await showing({
+      ...catalog([]),
+      reports: [report('npm', [task('npm', 'x', { argv: ['npm', 'run', 'a b'] })])],
+    })
+    tui.handle('\r')
+    expect(host.written.join('')).toContain("$ npm run 'a b'\n")
+  })
+
   test('a task that will not start is reported after the terminal is given back', async () => {
     const { tui, host } = await showing(catalog(['build']))
     host.handOffResult = { exit: 1, error: 'not found' }

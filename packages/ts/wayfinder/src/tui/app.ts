@@ -8,6 +8,7 @@
  * arrive during a refresh, and a row can be stale.
  */
 
+import { commandString } from '@osdlc/command-seam'
 import type { Catalog, ChainSegment, RunnerCacheState, Task } from '@osdlc/system-model/detect'
 import { humanAge, humanMs } from '@osdlc/system-model/duration'
 import type { Mode } from '@osdlc/system-model/match'
@@ -238,6 +239,9 @@ const errorText = (err: unknown): string => (err instanceof Error ? err.message 
 
 /** Make a terminal UI. Nothing is drawn or probed until {@link Tui.boot}. */
 export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
+  /** `argv` quoted for the shell, as the CLI prints the run line. */
+  const commandLine = (argv: readonly string[]): string =>
+    commandString(argv, { platform: host.platform })
   const state: TuiState = {
     catalog: null,
     cache: [],
@@ -775,7 +779,7 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
         line(
           [
             { text: '$ ', paint: s.dim },
-            { text: task.argv.join(' ') + ' ', paint: s.bold },
+            { text: terminalSafe(commandLine(task.argv)) + ' ', paint: s.bold },
             { text },
             { text: '█', paint: s.accent },
           ],
@@ -860,7 +864,7 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
     }
     state.inFlight?.abort()
     host.release()
-    host.write(`$ ${terminalSafe(plan.argv.join(' '))}\n`)
+    host.write(`$ ${terminalSafe(commandLine(plan.argv))}\n`)
     if (task.parameters.length > 0 && args.length === 0) {
       host.write(`  takes ${terminalSafe(paramShape(task.parameters))}\n`)
     }
