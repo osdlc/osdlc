@@ -1,5 +1,5 @@
 ---
-'@osdlc/system-model': minor
+'@osdlc/system-model': patch
 ---
 
 Two fixes for running detection inside a repository that is not yet trusted.

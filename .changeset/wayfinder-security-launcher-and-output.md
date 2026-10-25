@@ -1,5 +1,5 @@
 ---
-'@osdlc/wayfinder': minor
+'@osdlc/wayfinder': patch
 ---
 
 Security fixes. Upgrade if you run `way` in repositories you did not write.
