@@ -70,7 +70,7 @@ harness, in a fixed order. Options:
 | `exclude`       | none               | Harness ids to skip.                                                      |
 | `providers`     | built-ins          | Replace or add providers.                                                 |
 | `binaries`      | the table's        | Binary name per harness id, for a setup that renames one.                 |
-| `which`         | walks `env.PATH`   | `PATH` lookup. Tests inject this.                                         |
+| `which`         | walks `env.PATH`   | `PATH` lookup, absolute entries only. Tests inject this.                  |
 | `makeRunner`    | command seam       | Builds the runner for `--version`. Tests inject this.                     |
 | `platform`      | `process.platform` | Chooses the managed-settings folder.                                      |
 | `signal`        | none               | An `AbortSignal` that stops the `--version` run; providers see it too.    |
@@ -342,6 +342,8 @@ The author's own related libraries:
 ## Platforms
 
 - Linux and macOS are supported. CI tests them on Node 22 and 24.
+- `PATH` lookup searches absolute entries only. A relative or empty entry is
+  skipped, so a binary the project ships is never reported or run.
 - Windows is handled in the code but is not tested. `PATH` lookup tries the
   `PATHEXT` suffixes, and the system root is the system drive. On Windows the
   execute bit does not exist, so an install is found by the file's name and

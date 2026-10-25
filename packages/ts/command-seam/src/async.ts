@@ -18,17 +18,15 @@ import {
   settleGroup,
   spawnTrackedGroup,
 } from './groups.ts'
-import { planOptions, spawnPlan } from './spawn-plan.ts'
+import { planOptions } from './spawn-plan.ts'
 import {
   CommandFailed,
-  cwdError,
   emptyStdout,
   isCommandFailed,
-  lookupBinary,
   mergedEnv,
   normalizeOutputCap,
   normalizeTimeout,
-  notOnAbsolutePath,
+  prepareSpawn,
   spawnFailure,
   type BytesCommandRunner,
   type CommandResult,
@@ -187,11 +185,7 @@ export function spawnRunnerAsync(
 ): AsyncCommandRunner {
   return {
     binary,
-    run: async (argv, opts) => {
-      const target = lookupBinary(binary, options, opts)
-      if (target === undefined) return spawnFailure(notOnAbsolutePath('spawn', binary))
-      return (await runAsync(target, argv, opts, false)) as CommandResult
-    },
+    run: (argv, opts) => runAsync(binary, argv, opts, false, options) as Promise<CommandResult>,
   }
 }
 
@@ -199,12 +193,13 @@ export function spawnRunnerAsync(
  * An {@link AsyncBytesCommandRunner}: {@link spawnRunnerAsync} with stdout
  * returned as the bytes the child wrote, never decoded. Stderr is decoded as
  * UTF-8, so `failureText` and `CommandFailed` read as they do for text.
- * `maxOutputBytes` cuts stdout at exactly the cap. It takes no
- * `SpawnRunnerOptions`, so no `absolutePathOnly`. Everything else is as for
- * `spawnRunnerAsync`. The sync form is `spawnRunnerBytes`.
+ * `maxOutputBytes` cuts stdout at exactly the cap. Everything else is as for
+ * `spawnRunnerAsync`, including `SpawnRunnerOptions`. The sync form is
+ * `spawnRunnerBytes`.
  *
  * @param binary - A name looked up on `PATH`, or a path. On Windows a `.cmd`
  *   or `.bat` file runs through `cmd.exe` (see the README's Platforms section).
+ * @param options - See `SpawnRunnerOptions`.
  * @returns A runner for that binary.
  *
  * @example
@@ -216,10 +211,14 @@ export function spawnRunnerAsync(
  *
  * @experimental
  */
-export function spawnRunnerBytesAsync(binary: string): AsyncBytesCommandRunner {
+export function spawnRunnerBytesAsync(
+  binary: string,
+  options: SpawnRunnerOptions = {},
+): AsyncBytesCommandRunner {
   return {
     binary,
-    run: (argv, opts) => runAsync(binary, argv, opts, true) as Promise<CommandResult<Buffer>>,
+    run: (argv, opts) =>
+      runAsync(binary, argv, opts, true, options) as Promise<CommandResult<Buffer>>,
   }
 }
 
@@ -260,22 +259,19 @@ function runAsync(
   argv: string[],
   opts: AsyncCommandRunOptions,
   bytes: boolean,
+  options: SpawnRunnerOptions,
 ): Promise<CommandResult<string | Buffer>> {
   return new Promise((resolve) => {
     // Inside the executor, so an invalid timeoutMs (or a programmer error
     // that spawn throws, such as a NUL byte) rejects and nothing is spawned.
     const timeoutMs = normalizeTimeout(opts.timeoutMs)
     const cap = normalizeOutputCap(opts.maxOutputBytes) ?? Infinity
-    const cwdMessage = cwdError(`spawn ${binary}`, binary, argv, opts)
-    if (cwdMessage !== undefined) {
-      resolve(emptyStdout(spawnFailure(cwdMessage), bytes))
+    const prepared = prepareSpawn('spawn', binary, argv, opts, options)
+    if ('refusal' in prepared) {
+      resolve(emptyStdout(spawnFailure(prepared.refusal), bytes))
       return
     }
-    const plan = spawnPlan(binary, argv, opts)
-    if ('refusal' in plan) {
-      resolve(emptyStdout(spawnFailure(plan.refusal), bytes))
-      return
-    }
+    const { plan } = prepared
     const windowsTree = opts.killTree === true && process.platform === 'win32'
     const group =
       opts.processGroup === true || (opts.killTree === true && process.platform !== 'win32')

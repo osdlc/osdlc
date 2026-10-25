@@ -18,6 +18,7 @@ import { existsSync, lstatSync, readFileSync, realpathSync, type Stats } from 'n
 import { homedir, userInfo } from 'node:os'
 import { isAbsolute, join, resolve as resolvePath } from 'node:path'
 
+import { which } from '@osdlc/command-seam'
 import { atomicWrite } from '@osdlc/etag-write'
 
 import { gitHead } from './git-head.ts'
@@ -125,7 +126,10 @@ export function isOnPath(
 }
 
 /**
- * The first `name` found on PATH, or null.
+ * The first executable `name` on an absolute entry of `env`'s PATH, or null.
+ * A relative or empty entry is skipped, so a file in the repository the user
+ * stands in is never reported as what runs. Null when PATH is unset or empty.
+ * The lookup is `@osdlc/command-seam`'s `which` with `absolutePathOnly`.
  *
  * @experimental
  */
@@ -135,17 +139,8 @@ export function findOnPath(
 ): string | null {
   const raw = env['PATH']
   if (!raw) return null
-  for (const dir of raw.split(':')) {
-    if (dir.length === 0) continue
-    const candidate = join(dir, name)
-    try {
-      lstatSync(candidate)
-      return candidate
-    } catch {
-      // keep looking
-    }
-  }
-  return null
+  const lookup = { absolutePathOnly: true, env: { PATH: raw, PATHEXT: env['PATHEXT'] } }
+  return which(name, lookup) ?? null
 }
 
 /**

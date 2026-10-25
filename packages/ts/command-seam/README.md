@@ -177,8 +177,8 @@ return stdout as the `Buffer` the child wrote. Their result type is
 `CommandResult<Buffer>`, so the compiler knows `stdout` is a `Buffer`. Stderr
 is still decoded as UTF-8: it is diagnostics, and `failureText`,
 `runChecked` and `CommandFailed` read it as they do for text. Each run takes
-the same options as its text form, but the factories take no
-`SpawnRunnerOptions`, so no `absolutePathOnly`. `maxOutputBytes` cuts stdout at exactly the
+the same options as its text form, and the factories take the same
+`SpawnRunnerOptions`. `maxOutputBytes` cuts stdout at exactly the
 cap, since there is no character to keep whole.
 
 ```ts
@@ -589,7 +589,8 @@ A relative or empty `PATH` entry is looked up from the child's `cwd`. On
 Windows, a spawn of a bare name searches `cwd` before `PATH`. So when `cwd`
 is a folder someone else wrote, such as a cloned repository, a file there
 named `git` can run in place of git. Pass `absolutePathOnly: true` to
-`spawnRunner` or `spawnRunnerAsync`. The runner then looks the bare name up
+any runner factory: `spawnRunner`, `spawnRunnerBytes`, their async forms,
+`streamRunner` or `managedProcessRunner`. The runner then looks the bare name up
 on absolute `PATH` entries only, using `PATHEXT` on Windows, and spawns the
 absolute path it finds. When there is none, the run fails as a missing
 binary does (`ENOENT`, kind `not-installed`). With `PATH` unset, POSIX

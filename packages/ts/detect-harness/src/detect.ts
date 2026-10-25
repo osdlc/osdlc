@@ -191,8 +191,10 @@ export async function detect(options: DetectOptions = {}): Promise<HarnessCatalo
     allowExec,
     readContents: options.readContents ?? false,
     includeValues: options.includeValues ?? false,
-    which: options.which ?? ((binary) => whichOnPath(binary, env, platform, projectRoot)),
-    makeRunner: options.makeRunner ?? ((binary) => spawnRunnerAsync(binary)),
+    which: options.which ?? ((binary) => whichOnPath(binary, env, platform)),
+    // `--version` runs in the project, so a bare name runs only from an absolute PATH entry.
+    makeRunner:
+      options.makeRunner ?? ((binary) => spawnRunnerAsync(binary, { absolutePathOnly: true })),
     signal: options.signal ?? new AbortController().signal,
   })
 

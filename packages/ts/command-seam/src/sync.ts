@@ -29,8 +29,8 @@ import { FailureError, isFailure } from '@osdlc/result'
 import { buildFailure, type CommandFailure } from './failure.ts'
 import { shellJoin } from './quote.ts'
 import { failureText, stderrOrError } from './result.ts'
-import { planOptions, spawnPlan } from './spawn-plan.ts'
-import { which } from './which.ts'
+import { planOptions, spawnPlan, type SpawnPlan } from './spawn-plan.ts'
+import { hasSeparator, which } from './which.ts'
 
 /**
  * Result of running an external command through a `CommandRunner`.
@@ -815,16 +815,13 @@ export function resolveRunner(binary: string, injected?: CommandRunner | undefin
 export function spawnRunner(binary: string, options: SpawnRunnerOptions = {}): CommandRunner {
   return {
     binary,
-    run: (argv, opts) => {
-      const target = lookupBinary(binary, options, opts)
-      if (target === undefined) return spawnFailure(notOnAbsolutePath('spawnSync', binary))
-      return runSync(target, argv, opts, false) as CommandResult
-    },
+    run: (argv, opts) => runSync(binary, argv, opts, false, options) as CommandResult,
   }
 }
 
 /**
- * Options for {@link spawnRunner} and `spawnRunnerAsync`.
+ * Options for {@link spawnRunner}, {@link spawnRunnerBytes}, their async
+ * forms, `streamRunner` and `managedProcessRunner`.
  *
  * @experimental
  */
@@ -851,10 +848,7 @@ export function lookupBinary(
   options: SpawnRunnerOptions,
   opts: Pick<CommandRunOptions, 'env'>,
 ): string | undefined {
-  if (options.absolutePathOnly !== true) return binary
-  if (binary.includes('/') || (process.platform === 'win32' && binary.includes('\\'))) {
-    return binary
-  }
+  if (options.absolutePathOnly !== true || hasSeparator(binary, process.platform)) return binary
   return which(binary, { env: opts.env, absolutePathOnly: true })
 }
 
@@ -864,17 +858,41 @@ export function notOnAbsolutePath(spawnName: string, binary: string): string {
 }
 
 /**
+ * The checks every runner makes before it spawns, in order: the
+ * `absolutePathOnly` lookup ({@link lookupBinary}), the `cwd` check
+ * ({@link cwdError}) and the {@link spawnPlan}. Returns the file found and
+ * the plan, or the spawn error message of the first check that fails.
+ *
+ * @param spawnName - The message prefix: `spawn` or `spawnSync`.
+ * @throws `TypeError` for a NUL byte, as {@link cwdError} does.
+ */
+export function prepareSpawn(
+  spawnName: 'spawn' | 'spawnSync',
+  binary: string,
+  argv: readonly string[],
+  opts: { cwd: string; env?: EnvOverrides | undefined },
+  options: SpawnRunnerOptions,
+): { target: string; plan: SpawnPlan } | { refusal: string } {
+  const target = lookupBinary(binary, options, opts)
+  if (target === undefined) return { refusal: notOnAbsolutePath(spawnName, binary) }
+  const cwdMessage = cwdError(`${spawnName} ${target}`, target, argv, opts)
+  if (cwdMessage !== undefined) return { refusal: cwdMessage }
+  const plan = spawnPlan(target, argv, opts)
+  return 'refusal' in plan ? plan : { target, plan }
+}
+
+/**
  * A {@link BytesCommandRunner}: {@link spawnRunner} with stdout returned as
  * the bytes the child wrote, never decoded. Use it where decoding would
  * change the data: invalid UTF-8 decodes to U+FFFD, so a hash of decoded
  * output is not the hash of the bytes. Stderr is decoded as UTF-8, so
  * `failureText` and `CommandFailed` read as they do for text. `maxOutputBytes`
- * cuts stdout at exactly the cap. It takes no {@link SpawnRunnerOptions}, so
- * no `absolutePathOnly`. Everything else is as for `spawnRunner`, including
- * the `bun test` capture path.
+ * cuts stdout at exactly the cap. Everything else is as for `spawnRunner`,
+ * including {@link SpawnRunnerOptions} and the `bun test` capture path.
  *
  * @param binary - A name looked up on `PATH`, or a path. On Windows a `.cmd`
  *   or `.bat` file runs through `cmd.exe` (see the README's Platforms section).
+ * @param options - See {@link SpawnRunnerOptions}.
  * @returns A runner for that binary.
  *
  * @example
@@ -886,10 +904,13 @@ export function notOnAbsolutePath(spawnName: string, binary: string): string {
  *
  * @experimental
  */
-export function spawnRunnerBytes(binary: string): BytesCommandRunner {
+export function spawnRunnerBytes(
+  binary: string,
+  options: SpawnRunnerOptions = {},
+): BytesCommandRunner {
   return {
     binary,
-    run: (argv, opts) => runSync(binary, argv, opts, true) as CommandResult<Buffer>,
+    run: (argv, opts) => runSync(binary, argv, opts, true, options) as CommandResult<Buffer>,
   }
 }
 
@@ -899,14 +920,15 @@ function runSync(
   argv: string[],
   opts: CommandRunOptions,
   bytes: boolean,
+  options: SpawnRunnerOptions,
 ): CommandResult<string | Buffer> {
   const timeoutMs = normalizeTimeout(opts.timeoutMs)
   const cap = normalizeOutputCap(opts.maxOutputBytes) ?? DEFAULT_SYNC_OUTPUT_CAP
-  const cwdMessage = cwdError(`spawnSync ${binary}`, binary, argv, opts)
-  if (cwdMessage !== undefined) return emptyStdout(spawnFailure(cwdMessage), bytes)
-  if (CHILD_STDIO_CORRUPTED) return runViaChildRedirect(binary, argv, opts, timeoutMs, bytes)
-  const plan = spawnPlan(binary, argv, opts)
-  if ('refusal' in plan) return emptyStdout(spawnFailure(plan.refusal), bytes)
+  const prepared = prepareSpawn('spawnSync', binary, argv, opts, options)
+  if ('refusal' in prepared) return emptyStdout(spawnFailure(prepared.refusal), bytes)
+  const { target, plan } = prepared
+  // Off Windows the plan is the target and argv unchanged.
+  if (CHILD_STDIO_CORRUPTED) return runViaChildRedirect(target, argv, opts, timeoutMs, bytes)
   const proc = spawnSync(plan.file, plan.args, {
     ...planOptions(plan),
     cwd: opts.cwd,

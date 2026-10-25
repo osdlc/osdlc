@@ -137,7 +137,7 @@ export interface DetectOptions {
   readContents?: boolean | undefined
   /** Keep MCP values as written: `env` and header values, URL credentials and secret-looking `args`. Default `false`; see README, Secrets. */
   includeValues?: boolean | undefined
-  /** `PATH` lookup. Default walks `env.PATH`. Tests inject this. */
+  /** `PATH` lookup. Default walks the absolute entries of `env.PATH`. Tests inject this. */
   which?: ((binary: string) => string | null) | undefined
   /** Build the runner for a binary path. Default `spawnRunnerAsync`. Tests inject this. */
   makeRunner?: ((binary: string) => AsyncCommandRunner) | undefined

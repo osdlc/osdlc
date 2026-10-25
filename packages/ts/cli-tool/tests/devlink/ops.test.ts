@@ -12,14 +12,16 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { userInfo } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, join, relative } from 'node:path'
 
+import { shellQuote } from '@osdlc/command-seam/quote'
 import { systemDirs } from '@osdlc/config-layers/dirs'
 
 import { gitHead } from '../../src/devlink/git-head.ts'
 import {
   DevlinkError,
   defaultBinDir,
+  findOnPath,
   history,
   install,
   link,
@@ -362,6 +364,21 @@ describe('shim', () => {
   })
 })
 
+describe.skipIf(process.platform === 'win32')('findOnPath', () => {
+  test('finds an executable on an absolute entry, and skips a relative one or a plain file', () => {
+    const bin = join(sb.root, 'bin')
+    mkdirSync(bin)
+    writeFileSync(join(bin, 'tooly'), '#!/bin/sh\n')
+    chmodSync(join(bin, 'tooly'), 0o755)
+    writeFileSync(join(bin, 'plain'), '')
+    expect(findOnPath('tooly', { PATH: bin })).toBe(join(bin, 'tooly'))
+    expect(findOnPath('plain', { PATH: bin })).toBeNull()
+    // The same folder named relative to the cwd is not searched.
+    expect(findOnPath('tooly', { PATH: relative(process.cwd(), bin) })).toBeNull()
+    expect(findOnPath('tooly', {})).toBeNull()
+  })
+})
+
 describe('status', () => {
   test('points at a pre-0.8 macOS link file when the current one is missing', () => {
     const legacyDirs = systemDirs(SPEC.vendorDirs, {
@@ -378,7 +395,7 @@ describe('status', () => {
     const io = captureIo()
     runDevCli(SPEC, ['status'], { ...opts({ legacyDirs }), io, platform: 'darwin' })
     expect(io.out).toContain(`note: an old link file is at ${old}`)
-    expect(io.out).toContain(`mv '${old}' '${s.link.path}'`)
+    expect(io.out).toContain(`mv ${shellQuote(old)} ${shellQuote(s.link.path)}`)
     link(SPEC, { checkout: seedCheckout(join(sb.root, 'c')) }, opts())
     expect(status(SPEC, opts({ legacyDirs })).link.legacy).toBeNull()
   })

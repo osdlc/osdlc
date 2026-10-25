@@ -356,36 +356,17 @@ describe('opencode, pi and antigravity', () => {
   })
 })
 
-describe('which', () => {
-  test('a relative PATH entry resolves against the given folder to an absolute path', () => {
-    const f = fixture()
-    try {
-      f.binary('tool')
-      const found = which('tool', { PATH: 'bin' }, 'linux', f.root)
-      expect(found).toBe(join(f.root, 'bin', 'tool'))
-      expect(which('tool', { PATH: 'bin' }, 'linux', f.project)).toBeNull()
-    } finally {
-      f.cleanup()
-    }
+// POSIX rules on a POSIX host: the stand-ins are found by their execute bit and `PATH` uses `:`.
+describe.skipIf(process.platform === 'win32')('which', () => {
+  test('a relative PATH entry is skipped, so a file the project ships is never found', () => {
+    f.binary('tool')
+    expect(which('tool', { PATH: 'bin' }, 'linux', f.root)).toBeNull()
+    expect(which('tool', { PATH: `bin:${f.bin}` }, 'linux', f.root)).toBe(join(f.bin, 'tool'))
   })
 
-  test('win32 tries each PATHEXT suffix, and the default list when PATHEXT is unset', () => {
+  test('a name is looked up as given', () => {
     f.binary('tool.CMD')
-    f.binary('other.EXE')
-    expect(which('tool', { PATH: f.bin, PATHEXT: '.EXE;.CMD' }, 'win32')).toBe(
-      join(f.bin, 'tool.CMD'),
-    )
-    expect(which('tool', { PATH: f.bin, PATHEXT: '.EXE' }, 'win32')).toBeNull()
-    expect(which('other', { PATH: f.bin }, 'win32')).toBe(join(f.bin, 'other.EXE'))
     expect(which('tool.CMD', { PATH: f.bin }, 'linux')).toBe(join(f.bin, 'tool.CMD'))
-  })
-
-  test('win32 finds a name that already carries a PATHEXT extension', () => {
-    f.binary('cursor-agent.exe')
-    f.binary('notes.txt')
-    const env = { PATH: f.bin, PATHEXT: '.COM;.EXE' }
-    expect(which('cursor-agent.exe', env, 'win32')).toBe(join(f.bin, 'cursor-agent.exe'))
-    expect(which('notes.txt', env, 'win32')).toBeNull()
   })
 
   test('a name with a separator is checked as an absolute path only', () => {
@@ -403,5 +384,35 @@ describe('which', () => {
     expect(which('tool', {}, 'linux', f.bin)).toBeNull()
     mkdirSync(join(f.bin, 'dir'))
     expect(which('dir', { PATH: f.bin }, 'linux')).toBeNull()
+  })
+})
+
+// Windows rules count only a drive or UNC entry as absolute, so a match needs a
+// Windows host. command-seam's `absolutePathCandidates` tests cover the rules anywhere.
+describe.skipIf(process.platform !== 'win32')('which under Windows rules', () => {
+  test('tries each PATHEXT suffix, and the default list when PATHEXT is unset', () => {
+    f.binary('tool.CMD')
+    f.binary('other.EXE')
+    expect(which('tool', { PATH: f.bin, PATHEXT: '.EXE;.CMD' }, 'win32')).toBe(
+      join(f.bin, 'tool.CMD'),
+    )
+    expect(which('tool', { PATH: f.bin, PATHEXT: '.EXE' }, 'win32')).toBeNull()
+    expect(which('other', { PATH: f.bin }, 'win32')).toBe(join(f.bin, 'other.EXE'))
+  })
+
+  test('finds a name that already carries a PATHEXT extension', () => {
+    f.binary('cursor-agent.exe')
+    f.binary('notes.txt')
+    const env = { PATH: f.bin, PATHEXT: '.COM;.EXE' }
+    expect(which('cursor-agent.exe', env, 'win32')).toBe(join(f.bin, 'cursor-agent.exe'))
+    expect(which('notes.txt', env, 'win32')).toBeNull()
+  })
+
+  test('reads Path in any case, strips quotes, falls back on an empty PATHEXT', () => {
+    f.binary('tool.EXE')
+    expect(which('tool', { Path: `"${f.bin}"`, PATHEXT: '' }, 'win32')).toBe(
+      join(f.bin, 'tool.EXE'),
+    )
+    expect(which('tool', { Path: 'bin' }, 'win32', f.root)).toBeNull()
   })
 })

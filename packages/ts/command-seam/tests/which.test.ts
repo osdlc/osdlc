@@ -12,8 +12,12 @@ import { afterAll, describe, expect, test } from 'vitest'
 import {
   absolutePathCandidates,
   classifyFailure,
+  managedProcessRunner,
   spawnRunner,
   spawnRunnerAsync,
+  spawnRunnerBytes,
+  spawnRunnerBytesAsync,
+  streamRunner,
   which,
 } from '../src/index.ts'
 
@@ -173,4 +177,47 @@ describe('runners with absolutePathOnly', () => {
     const r = await spawnRunnerAsync('tool', { absolutePathOnly: true }).run([], { cwd: a, env })
     expect(r.stdout).toBe('ran\n')
   })
+
+  test('the bytes, stream and managed-process runners refuse a relative PATH entry too', async () => {
+    const opts = { cwd: a, env: { PATH: '.' } }
+    const notFound = /ENOENT: not found on an absolute PATH entry/
+    expect(spawnRunnerBytes('tool', { absolutePathOnly: true }).run([], opts).error).toMatch(
+      notFound,
+    )
+    const bytes = await spawnRunnerBytesAsync('tool', { absolutePathOnly: true }).run([], opts)
+    expect(bytes).toMatchObject({ neverExited: true, reason: 'spawn' })
+    expect(bytes.error).toMatch(notFound)
+    const streamed = streamRunner('tool', { absolutePathOnly: true }).run([], {
+      ...opts,
+      quiet: true,
+    })
+    expect(streamed).toMatchObject({ neverExited: true, reason: 'spawn' })
+    expect(streamed.error).toMatch(notFound)
+    const managed = managedProcessRunner('tool', { absolutePathOnly: true }).run([], opts)
+    expect(managed.pid).toBe(-1)
+    const exit = await managed.exited
+    expect(exit).toMatchObject({ neverExited: true, reason: 'spawn' })
+    expect(exit.error).toMatch(notFound)
+  })
+
+  test.skipIf(process.platform === 'win32')(
+    'the bytes, stream and managed-process runners run the absolute match',
+    async () => {
+      const opts = { cwd: a, env: { PATH: `.:${join(root, 'b')}` } }
+      const out = spawnRunnerBytes('tool', { absolutePathOnly: true }).run([], opts).stdout
+      expect(out.toString()).toBe('ran\n')
+      const bytes = await spawnRunnerBytesAsync('tool', { absolutePathOnly: true }).run([], opts)
+      expect(bytes.stdout.toString()).toBe('ran\n')
+      const streamed = streamRunner('tool', { absolutePathOnly: true }).run([], {
+        ...opts,
+        stdio: 'ignore',
+      })
+      expect(streamed.exitCode).toBe(0)
+      const managed = managedProcessRunner('tool', { absolutePathOnly: true }).run([], {
+        ...opts,
+        stdio: 'ignore',
+      })
+      expect((await managed.exited).exitCode).toBe(0)
+    },
+  )
 })

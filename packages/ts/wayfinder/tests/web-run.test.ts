@@ -136,6 +136,19 @@ describe('requestRun', () => {
     })
     expect(sent).toEqual({ id: 'make:build', args: ['X=1'] })
   })
+
+  test('the handed-off command quotes a word that holds a space', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({ ok: true, display: 'make build', argv: ['make', 'X=a b'] }),
+      ),
+    )
+    expect(await requestRun('make:build', ['X=a b'])).toEqual({
+      outcome: 'handed-off',
+      command: "make 'X=a b'",
+    })
+  })
 })
 
 describe("the row's Run button", () => {

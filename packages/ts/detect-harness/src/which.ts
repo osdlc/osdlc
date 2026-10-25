@@ -1,32 +1,28 @@
 /**
  * Find a binary on `PATH` without running anything, with the environment passed
- * in. This is not `@osdlc/command-seam`'s `which`, because that one has no
- * `PATHEXT` support, reads an empty `PATH` entry as the working directory and
- * falls back to a default list when `PATH` is missing. Here an empty entry is
- * skipped and a missing `PATH` finds nothing.
+ * in. A bare name goes through `@osdlc/command-seam`'s `which` with
+ * `absolutePathOnly`, so the `PATH` and `PATHEXT` rules are that package's.
+ * What this adds: only the passed `env` is read, never `process.env`, and a
+ * missing `PATH` finds nothing.
  *
  * Runtime-agnostic: `node:` APIs only.
  */
 
-import { accessSync, constants, statSync } from 'node:fs'
-import { delimiter, isAbsolute, resolve } from 'node:path'
+import { isAbsolute } from 'node:path'
 
-function executable(path: string): boolean {
-  try {
-    if (!statSync(path).isFile()) return false
-    accessSync(path, constants.X_OK)
-    return true
-  } catch {
-    return false
-  }
-}
+import { which as seamWhich } from '@osdlc/command-seam'
 
 /**
- * The resolved path of `binary` on `env.PATH`, or `null`. A name with a path
- * separator is checked as a path. On Windows the `PATHEXT` suffixes are tried,
- * after the name as given when it already ends in one (`tool.exe`).
- * A relative `PATH` entry is resolved against `cwd`, so the result is always
- * absolute and names the file a process started in `cwd` would run.
+ * The resolved path of `binary` on `env.PATH`, or `null`.
+ *
+ * Only absolute `PATH` entries are searched. Detection runs inside a project
+ * that may not be trusted, and a relative or empty entry would find a file
+ * the project ships. On Windows the `PATHEXT` suffixes are tried, unless the
+ * name already ends in one (`tool.exe`), a quoted entry counts without its
+ * quotes, and `Path` is read in any case.
+ *
+ * A name with a path separator is checked as a path, and only when it is
+ * absolute. `cwd` is kept for compatibility: no lookup reads it any more.
  */
 export function which(
   binary: string,
@@ -35,25 +31,18 @@ export function which(
   cwd: string = process.cwd(),
 ): string | null {
   if (binary.includes('/') || binary.includes('\\')) {
-    return isAbsolute(binary) && executable(binary) ? binary : null
+    return isAbsolute(binary) ? (seamWhich(binary, { cwd, platform }) ?? null) : null
   }
-  const pathExts =
+  const read = (name: string): string | undefined =>
     platform === 'win32'
-      ? (env['PATHEXT'] ?? '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean)
-      : null
-  const lower = binary.toLowerCase()
-  const exts =
-    pathExts === null
-      ? ['']
-      : pathExts.some((e) => lower.endsWith(e.toLowerCase()))
-        ? ['', ...pathExts]
-        : pathExts
-  for (const dir of (env['PATH'] ?? '').split(delimiter)) {
-    if (dir === '') continue
-    for (const ext of exts) {
-      const candidate = resolve(cwd, dir, binary + ext)
-      if (executable(candidate)) return candidate
-    }
-  }
-  return null
+      ? Object.entries(env).find(([k]) => k.toUpperCase() === name)?.[1]
+      : env[name]
+  const path = read('PATH')
+  if (path === undefined) return null
+  const found = seamWhich(binary, {
+    env: { PATH: path, PATHEXT: read('PATHEXT') },
+    platform,
+    absolutePathOnly: true,
+  })
+  return found ?? null
 }
