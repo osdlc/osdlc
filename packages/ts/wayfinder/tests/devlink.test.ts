@@ -18,6 +18,7 @@ import { checkoutRoot, WAYFINDER_SPEC } from '../src/devlink.ts'
 let tmp: string
 let home: string
 let savedHome: string | undefined
+let savedXdgConfig: string | undefined
 
 beforeEach(() => {
   tmp = realpathSync(mkdtempSync(join(tmpdir(), 'wayfinder-dev-')))
@@ -27,11 +28,16 @@ beforeEach(() => {
   // process environment; the injected `home` argument is wayfinder's own.
   savedHome = process.env['HOME']
   process.env['HOME'] = home
+  // devlink state follows XDG_CONFIG_HOME when set; the test must use HOME.
+  savedXdgConfig = process.env['XDG_CONFIG_HOME']
+  delete process.env['XDG_CONFIG_HOME']
 })
 
 afterEach(() => {
   if (savedHome === undefined) delete process.env['HOME']
   else process.env['HOME'] = savedHome
+  if (savedXdgConfig === undefined) delete process.env['XDG_CONFIG_HOME']
+  else process.env['XDG_CONFIG_HOME'] = savedXdgConfig
   rmSync(tmp, { recursive: true, force: true })
 })
 
