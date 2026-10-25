@@ -15,6 +15,7 @@ import {
   type CommandContext,
   type DataCommand,
 } from './command/index.ts'
+import { kebab } from './command/schema.ts'
 import type { FlagSpec } from './define-cli.ts'
 import { EXIT } from './exit.ts'
 import { safe } from './safe.ts'
@@ -58,9 +59,38 @@ export interface TrustService {
   show(ctx: CommandContext, req: TrustRequest): Promise<TrustEntry>
   /** Every recorded grant. */
   list(ctx: CommandContext, req: TrustRequest): Promise<TrustEntry[]>
+  /**
+   * Remove every grant of the current root, each scope's included, and
+   * return the root and the grants removed. Supplying it adds
+   * `--untrust-all`.
+   */
+  untrustAll?(ctx: CommandContext): Promise<{ root: string; removed: TrustEntry[] }>
   /** Whether `--scope` is offered. */
   scopes?: boolean
 }
+
+/** The longest scope name `--scope` takes. */
+const MAX_SCOPE = 200
+
+/**
+ * Refuse a `--scope` the store cannot take, as a usage error: empty, too
+ * long, with a control character or with space at either end, or `*`, which
+ * is the whole-repository grant that no `--scope` asks for.
+ */
+function checkScope(scope: string): void {
+  if (scope === '*') {
+    throw new UsageError("--scope '*' is the whole repository; leave out --scope for that")
+  }
+  const control = [...scope].some((c) => c.charCodeAt(0) < 0x20 || c.charCodeAt(0) === 0x7f)
+  if (scope === '' || scope.length > MAX_SCOPE || control || scope.trim() !== scope) {
+    throw new UsageError(
+      `--scope needs 1-${MAX_SCOPE} characters with no control characters and no space at either end`,
+    )
+  }
+}
+
+/** The mode flags, at most one per run. Granting trust is the run with none. */
+const MODES = ['untrust', 'untrustAll', 'show', 'list'] as const
 
 const EntrySchema = z.object({
   root: z.string(),
@@ -87,17 +117,20 @@ export const TrustOutputSchema = z.object({
  * | Command line | Does | Exit 1 when |
  * |---|---|---|
  * | `trust` | record trust in this root | a config file will not parse |
- * | `trust --untrust` | remove this root's marker | there was no marker |
+ * | `trust --untrust` | remove this root's marker (with `--scope`, that scope's) | there was no marker |
+ * | `trust --untrust-all` | remove every grant of this root, each scope's too | there was none |
  * | `trust --show` | report this root's trust | never: "not trusted" is an answer |
  * | `trust --list` | every recorded root | never |
  *
- * Two of the mode flags together are a usage error. The JSON answer has one
- * shape for every mode: `{ action, changed, roots }`. `--untrust` on a root
- * with no marker still prints it, then exits 1.
+ * Two of the mode flags together are a usage error, and so is a `--scope`
+ * that is empty, `*`, or has controls or space at either end. The JSON answer
+ * has one shape for every mode: `{ action, changed, roots }`. `--untrust` on a
+ * root with no marker still prints it, then exits 1. `--untrust-all` is there
+ * when the service has `untrustAll`.
  *
  * Granting trust is `cli-only`: the MCP and HTTP adapters refuse it, so an
- * agent or a web page cannot grant itself trust. `--show`, `--list` and
- * `--untrust` are open to them.
+ * agent or a web page cannot grant itself trust. `--show`, `--list`,
+ * `--untrust` and `--untrust-all` are open to them.
  * @experimental
  */
 export function trustCommand<G extends FlagSpec = Record<never, never>>(
@@ -105,11 +138,25 @@ export function trustCommand<G extends FlagSpec = Record<never, never>>(
   options: { globals?: G; summary?: string; description?: string } = {},
 ): DataCommand {
   const kit = commandKit({ globals: options.globals ?? ({} as G) })
+  const scoped = service.scopes === true
   const flags: FlagSpec = {
-    untrust: { kind: 'boolean', help: "remove this repository's trust" },
+    untrust: {
+      kind: 'boolean',
+      help: scoped
+        ? "remove this repository's whole-repository grant, or with --scope that scope's; other scopes' grants stay"
+        : "remove this repository's trust marker",
+    },
+    ...(service.untrustAll !== undefined
+      ? {
+          untrustAll: {
+            kind: 'boolean',
+            help: "remove every grant of this repository, each scope's included",
+          },
+        }
+      : {}),
     show: { kind: 'boolean', help: "report this repository's trust and what decided it" },
     list: { kind: 'boolean', help: 'every trusted repository' },
-    ...(service.scopes === true
+    ...(scoped
       ? {
           scope: {
             kind: 'string',
@@ -125,16 +172,22 @@ export function trustCommand<G extends FlagSpec = Record<never, never>>(
     flags,
     output: TrustOutputSchema,
     kind: 'trust',
-    exposureOf: ({ flags: f }) =>
-      f['untrust'] === true || f['show'] === true || f['list'] === true ? 'all' : 'cli-only',
+    exposureOf: ({ flags: f }) => (MODES.some((m) => f[m] === true) ? 'all' : 'cli-only'),
     async run({ flags: f }, ctx) {
-      const modes = (['untrust', 'show', 'list'] as const).filter((m) => f[m] === true)
+      const modes = MODES.filter((m) => f[m] === true)
       if (modes.length > 1) {
         throw new UsageError(
-          `${modes.map((m) => `--${m}`).join(' and ')} ask different things; give at most one`,
+          `${modes.map((m) => `--${kebab(m)}`).join(' and ')} ask different things; give at most one`,
         )
       }
-      const req: TrustRequest = typeof f['scope'] === 'string' ? { scope: f['scope'] } : {}
+      const scope = f['scope']
+      if (typeof scope === 'string') {
+        checkScope(scope)
+        if (modes[0] === 'untrustAll') {
+          throw new UsageError('--untrust-all removes every scope; leave out --scope')
+        }
+      }
+      const req: TrustRequest = typeof scope === 'string' ? { scope } : {}
       const strip = ({ changed: _c, ...entry }: TrustEntry & { changed: boolean }): TrustEntry =>
         entry
       switch (modes[0]) {
@@ -142,6 +195,15 @@ export function trustCommand<G extends FlagSpec = Record<never, never>>(
           return { action: 'list' as const, changed: false, roots: await service.list(ctx, req) }
         case 'show':
           return { action: 'show' as const, changed: false, roots: [await service.show(ctx, req)] }
+        case 'untrustAll': {
+          const { root, removed } = await service.untrustAll!(ctx)
+          const output = { action: 'untrust' as const, changed: removed.length > 0, roots: removed }
+          if (removed.length === 0) {
+            ctx.note(`no grants to remove: ${root}`)
+            return outcome(output, EXIT.error)
+          }
+          return output
+        }
         case 'untrust': {
           const result = await service.untrust(ctx, req)
           const output = {
@@ -150,7 +212,11 @@ export function trustCommand<G extends FlagSpec = Record<never, never>>(
             roots: [strip(result)],
           }
           if (!result.changed) {
-            ctx.note(`not trusted: ${result.root}`)
+            ctx.note(
+              result.trusted
+                ? `${result.root} has no marker to remove; it is trusted by ${result.by ?? 'policy'}${result.rule !== undefined ? ` ('${result.rule}')` : ''}, which --untrust does not change`
+                : `not trusted: ${result.root}`,
+            )
             return outcome(output, EXIT.error)
           }
           if (result.trusted) {
@@ -181,7 +247,11 @@ function trustText(output: z.infer<typeof TrustOutputSchema>): string {
     case 'show':
       return `${first!.trusted ? 'trusted' : 'not trusted'} ${first!.root}${first!.by !== null && first!.trusted ? ` (by ${first!.by})` : ''}\n`
     case 'untrust':
-      return output.changed ? `untrusted ${first!.root}\n` : ''
+      return output.changed
+        ? output.roots
+            .map((r) => `untrusted ${r.root}${r.scope !== undefined ? ` (${r.scope})` : ''}\n`)
+            .join('')
+        : ''
     case 'trust':
       return `${output.changed ? 'trusted' : 'already trusted'} ${first!.root}\n`
   }

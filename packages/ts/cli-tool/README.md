@@ -455,7 +455,7 @@ a list, for a bundler that collects the modules itself.
 | Entry | Mount it as | The tool supplies |
 |---|---|---|
 | `config-command` | `config: configCommands(store)` | a `ConfigStore`: `layers`, `defaultLayer`, `keys`, `list`, `locations`, `set`, `unset`, and optionally `cliOnlyKeys` and `explain` |
-| `trust-command` | `trust: trustCommand(service)` | a `TrustService`: `trust`, `untrust`, `show`, `list`, and `scopes` for `--scope` |
+| `trust-command` | `trust: trustCommand(service)` | a `TrustService`: `trust`, `untrust`, `show`, `list`, and optionally `untrustAll` and `scopes` for `--scope` |
 | `guide` | `guide: guideCommand(topics, { title })` | `GuideTopic`s: `{ id, title, summary, body(ctx) }` |
 
 Each store method receives the command context, so it can read `ctx.cwd`,
@@ -477,8 +477,12 @@ Each store method receives the command context, so it can read `ctx.cwd`,
   layer exits 1.
 - `trust` answers `{ action, changed, roots }` for every mode, so a script does
   not branch on the flag it passed. Granting trust is `cli-only`; `--show`,
-  `--list` and `--untrust` are open to the adapters. `--untrust` with no marker prints the answer
-  and exits 1.
+  `--list`, `--untrust` and `--untrust-all` are open to the adapters.
+  `--untrust` removes one grant: the whole-repository one, or with `--scope`
+  that scope's. `--untrust-all` (when the service has `untrustAll`) removes
+  every grant of the root. Either one with nothing to remove prints the answer
+  and exits 1. A `--scope` that is empty, `*` or has controls or space at
+  either end is a usage error.
 - `guide` prints every topic; `guide topics` lists them; `guide <topic>` prints
   one. An unknown topic exits 2.
 
@@ -587,7 +591,7 @@ whose risk depends on it. Interactive commands are never exposed.
 
 Changing trust is `cli-only`, because an agent or a web page must not grant
 itself trust. The shared `trust` command refuses a grant through the
-adapters and allows `--show`, `--list` and `--untrust`. `config set` and
+adapters and allows `--show`, `--list`, `--untrust` and `--untrust-all`. `config set` and
 `config unset` refuse a key in the store's `cliOnlyKeys`.
 
 A person-facing page may need to grant trust. Its mount lists the command in

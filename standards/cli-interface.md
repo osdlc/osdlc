@@ -163,7 +163,7 @@ Where a tool has them, these commands work the same in every tool:
 |---|---|
 | `config [list]`, `config get <key>`, `config set <key> <value>`, `config unset <key>`, `config path` | read and write the tool's layered settings. `--user` or `--project` picks the file |
 | `config explain <key>` | show each layer from the default up (default, user file, project file, environment, flags), the value each sets, which one won and why, including a layer that may not set the key. `--json` has the same |
-| `trust`, `trust --untrust`, `trust --show`, `trust --list` | record, remove, show or list consent to run a repository's own code |
+| `trust`, `trust --untrust`, `trust --untrust-all`, `trust --show`, `trust --list` | record, remove, show or list consent to run a repository's own code |
 | `guide [topic]`, `guide topics` | long-form help in Markdown |
 
 ### 10. Adapters: MCP and local HTTP

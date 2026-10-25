@@ -303,6 +303,64 @@ describe('trust', () => {
     expect(r.err).toContain('--show and --list ask different things')
   })
 
+  test('--untrust with no marker on a root a policy trusts says so', async () => {
+    const r = await runApp(appWith(), ['trust', '--untrust'], { cwd: '/policy/x' })
+    expect(r.exit).toBe(1)
+    expect(r.err).toBe(
+      "t: /policy/x has no marker to remove; it is trusted by path ('/policy/**'), which --untrust does not change\n",
+    )
+  })
+
+  test('a bad --scope is a usage error, and * is refused', async () => {
+    const app = appWith()
+    for (const scope of ['*', '', ' moon', 'a\u0007b']) {
+      const r = await runApp(app, ['trust', '--scope', scope], { cwd: '/repo' })
+      expect(r.exit).toBe(2)
+    }
+    const star = await runApp(app, ['trust', '--scope', '*'], { cwd: '/repo' })
+    expect(star.err).toContain("--scope '*' is the whole repository")
+    const called = await app.call(
+      ['trust'],
+      { show: true, scope: '' },
+      { cwd: '/r', env: {} },
+      {
+        surface: 'mcp',
+      },
+    )
+    expect(called).toMatchObject({ status: 'error', exit: 2 })
+  })
+
+  test('--untrust-all removes every grant, when the service can', async () => {
+    const svc = trustService()
+    svc.untrustAll = async (ctx) => ({
+      root: ctx.cwd,
+      removed: svc.marked.delete(ctx.cwd)
+        ? [
+            { root: ctx.cwd, trusted: false, by: null },
+            { root: ctx.cwd, trusted: false, by: null, scope: 'moon' },
+          ]
+        : [],
+    })
+    svc.marked.add('/repo')
+    const app = appWith(memoryStore(), svc)
+    const r = await runApp(app, ['trust', '--untrust-all'], { cwd: '/repo' })
+    expect(r).toMatchObject({ exit: 0, out: 'untrusted /repo\nuntrusted /repo (moon)\n' })
+    const again = await runApp(app, ['trust', '--untrust-all'], { cwd: '/repo' })
+    expect(again).toMatchObject({ exit: 1, err: 't: no grants to remove: /repo\n' })
+    const both = await runApp(app, ['trust', '--untrust-all', '--scope', 'moon'], { cwd: '/repo' })
+    expect(both.exit).toBe(2)
+    const viaMcp = await app.call(
+      ['trust'],
+      { untrustAll: true },
+      { cwd: '/repo', env: {} },
+      {
+        surface: 'mcp',
+      },
+    )
+    expect(viaMcp.status).not.toBe('refused')
+    expect((await runApp(appWith(), ['trust', '--untrust-all'])).exit).toBe(2)
+  })
+
   test('without scopes there is no --scope flag', async () => {
     const svc = { ...trustService(), scopes: false }
     expect((await runApp(appWith(memoryStore(), svc), ['trust', '--scope', 'x'])).exit).toBe(2)
