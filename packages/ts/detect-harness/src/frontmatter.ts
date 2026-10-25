@@ -31,18 +31,70 @@ export function splitFrontmatter(text: string): [string | null, string] {
 }
 
 /**
+ * Top-level `argument-hint: <value>` lines with an unquoted value on the same
+ * line. Claude Code reads the value as text, but forms such as
+ * `[pr-number] [priority]` or `[--fix] <path>` are not valid YAML.
+ */
+const HINT_LINE = /^argument-hint:[ \t]+(?!['"|>])(\S.*?)[ \t]*$/gm
+
+/** `raw` with every unquoted `argument-hint` value quoted, so YAML reads it as the text the author typed. */
+function quoteArgumentHint(raw: string): string {
+  return raw.replace(HINT_LINE, (_, value: string) => {
+    // A ` #` starts a YAML comment, as it does after a quoted value.
+    const text = value.replace(/[ \t]+#.*$/, '')
+    return `argument-hint: ${JSON.stringify(text)}`
+  })
+}
+
+/** The keys {@link rawFields} reads when the block is not valid YAML. */
+const RAW_KEYS = ['name', 'description', 'argument-hint'] as const
+
+/**
+ * `name`, `description` and `argument-hint` read line by line from a block
+ * that is not valid YAML. A value is the rest of its `key:` line, without
+ * matching outer quotes; a `|` or `>` value is the indented lines below it.
+ */
+function rawFields(raw: string): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  const lines = raw.split(/\r?\n/)
+  for (let i = 0; i < lines.length; i++) {
+    const match = /^([A-Za-z][\w-]*):(?:[ \t]+(.*?))?[ \t]*$/.exec(lines[i]!)
+    const key = match?.[1]
+    if (key === undefined || !(RAW_KEYS as readonly string[]).includes(key) || key in out) continue
+    const value = match![2] ?? ''
+    if (/^[|>][+-]?$/.test(value)) {
+      const block: string[] = []
+      while (i + 1 < lines.length && (/^[ \t]/.test(lines[i + 1]!) || lines[i + 1] === '')) {
+        block.push(lines[++i]!.trim())
+      }
+      out[key] = block.join(value.startsWith('>') ? ' ' : '\n').trim()
+      continue
+    }
+    const quoted = /^(['"])(.*)\1$/.exec(value)
+    out[key] = quoted ? quoted[2] : value.replace(/[ \t]+#.*$/, '')
+  }
+  return out
+}
+
+/**
  * Parse the leading frontmatter block into a plain object, or null when it is
- * absent, malformed or not a mapping. An empty block yields `{}`. Values are the
- * raw YAML types, uncoerced.
+ * absent or not a mapping. An empty block yields `{}`. Values are the raw
+ * YAML types, uncoerced.
+ *
+ * Claude Code accepts some front matter that is not valid YAML, so the parse
+ * is lenient in two steps. An unquoted `argument-hint` value is always read
+ * as text. When the block is still not valid YAML, `name`, `description`
+ * and `argument-hint` are read from their raw lines and the other keys are
+ * dropped.
  */
 export function parseFrontmatter(text: string): Record<string, unknown> | null {
   const raw = splitLenient(text)?.yaml
   if (raw === undefined) return null
   let data: unknown
   try {
-    data = parseYaml(raw)
+    data = parseYaml(quoteArgumentHint(raw))
   } catch {
-    return null
+    return rawFields(raw)
   }
   if (data === null || data === undefined) return {}
   return asObject(data)
@@ -56,16 +108,13 @@ export function frontmatterString(value: unknown): string {
 }
 
 /**
- * The `argument-hint` field, trimmed, or null when it is unset or blank.
- *
- * An unquoted `argument-hint: [message]`, the form Claude Code's docs use, is
- * a YAML list. It is written back as `[message]`, so the hint reads as the
- * author typed it.
+ * The `argument-hint` field, trimmed, or null when it is unset, blank or not
+ * text. {@link parseFrontmatter} reads an unquoted value such as
+ * `[pr-number] [priority]` as text, so the hint reads as the author typed it.
  */
 export function argumentHintOf(fm: Record<string, unknown>): string | null {
   const value = fm['argument-hint']
-  const hint = Array.isArray(value)
-    ? `[${value.map(frontmatterString).join(', ')}]`
-    : frontmatterString(value)
-  return hint === '' || hint === '[]' ? null : hint
+  if (typeof value !== 'string') return null
+  const hint = value.trim()
+  return hint === '' ? null : hint
 }

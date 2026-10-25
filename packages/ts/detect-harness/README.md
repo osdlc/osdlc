@@ -118,9 +118,19 @@ release does not read yet, reports it empty.
 | `diagnostics`  | Unreadable files and other things worth a look.                                        |
 
 Each skill, command and agent has an `argumentHint`: the `argument-hint`
-front matter field, such as `[pr-number]`, or `null`. An unquoted
-`argument-hint: [message]` is a YAML list; it is reported as `[message]`. The
-`./model` entry point reads the field the same way.
+front matter field, such as `[pr-number]`, or `null`. Claude Code reads the
+field as text, so an unquoted value is reported as written:
+`argument-hint: [pr-number] [priority]` gives `[pr-number] [priority]`,
+though it is not valid YAML. A value that is not text, such as a block
+list, gives `null`. When front matter is still not valid YAML (for example
+`description: Use when: ...`), `name`, `description` and `argument-hint`
+are read from their raw lines and the other keys are dropped. The `./model`
+entry point reads the front matter the same way.
+
+Names, descriptions, hints and other strings in the report come from files
+in the repository and the user's config. They can hold terminal control
+characters. Strip them before printing to a terminal, for example with
+`stripControls` from `@osdlc/ux`.
 
 Each skill, command, agent, hook and server has an `origin`: `user`,
 `project`, `local`, `managed`, or `plugin:<id>` for one a plugin brought.
