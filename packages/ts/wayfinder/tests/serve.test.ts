@@ -922,6 +922,95 @@ describe('the held catalog', () => {
     expect(early).toHaveLength(3)
   })
 
+  test('a listener that throws gets no more lines; the probe and the other waiters go on', async () => {
+    const share = createCatalogShare()
+    share.activate()
+    const done = held()
+    let emit: ProgressSink = () => {}
+    const probe = (_signal: AbortSignal, sink: ProgressSink): Promise<CatalogBody> => {
+      emit = sink
+      return done.promise
+    }
+    let thrown = 0
+    const good: number[] = []
+    const bad = share.fresh('k', probe, {
+      join: true,
+      onEvent: () => {
+        thrown++
+        throw new Error('the tab went away')
+      },
+    })
+    const fine = share.fresh('k', probe, { join: true, onEvent: (l) => good.push(l.total) })
+    await vi.waitFor(() => expect(share.probing('k')).toBe(true))
+    await Promise.resolve()
+    emit({ pending: ['a'], total: 1 })
+    emit({ pending: [], total: 1 })
+    expect(thrown).toBe(1)
+    expect(good).toEqual([1, 1])
+    expect(share.waiting('k')).toBe(2)
+    done.resolve(body('done'))
+    await expect(bad).resolves.toEqual(body('done'))
+    await expect(fine).resolves.toEqual(body('done'))
+    expect(share.waiting('k')).toBe(0)
+  })
+
+  test('a late joiner whose listener throws on the replay is not left counted', async () => {
+    const share = createCatalogShare()
+    share.activate()
+    const done = held()
+    let emit: ProgressSink = () => {}
+    const probe = (_signal: AbortSignal, sink: ProgressSink): Promise<CatalogBody> => {
+      emit = sink
+      return done.promise
+    }
+    const first = share.fresh('k', probe, { join: true })
+    await vi.waitFor(() => expect(share.probing('k')).toBe(true))
+    await Promise.resolve()
+    emit({ pending: ['a'], total: 1 })
+    const late = share.fresh('k', probe, {
+      join: true,
+      onEvent: () => {
+        throw new Error('broken')
+      },
+    })
+    expect(share.waiting('k')).toBe(2)
+    done.resolve(body('done'))
+    await Promise.all([first, late])
+    expect(share.waiting('k')).toBe(0)
+  })
+
+  test('a tab that leaves mid-stream stops getting lines; the boot probe goes on', async () => {
+    const share = createCatalogShare()
+    share.activate()
+    const done = held()
+    let emit: ProgressSink = () => {}
+    let seen: AbortSignal | undefined
+    const probe = (signal: AbortSignal, sink: ProgressSink): Promise<CatalogBody> => {
+      seen = signal
+      emit = sink
+      return done.promise
+    }
+    // serve starts the first probe under its own signal.
+    const boot = share.fresh('k', probe, { join: true, signal: share.signal })
+    const tab = new AbortController()
+    const lines: number[] = []
+    const page = share.fresh('k', probe, {
+      join: true,
+      signal: tab.signal,
+      onEvent: (l) => lines.push(l.pending.length),
+    })
+    await vi.waitFor(() => expect(seen).toBeDefined())
+    emit({ pending: ['a', 'b'], total: 2 })
+    tab.abort(new Error('tab closed'))
+    await expect(page).rejects.toThrow('tab closed')
+    emit({ pending: ['b'], total: 2 })
+    expect(lines).toEqual([2])
+    expect(share.waiting('k')).toBe(1)
+    expect(seen!.aborted).toBe(false)
+    done.resolve(body('done'))
+    await expect(boot).resolves.toEqual(body('done'))
+  })
+
   test('a failed shared probe fails every waiter, and the next request probes again', async () => {
     const share = createCatalogShare()
     share.activate()

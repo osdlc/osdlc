@@ -12,8 +12,10 @@ import { CATALOG_SCHEMA_VERSION } from '@osdlc/system-model/schema'
 import type { Unknown } from '../core/unknowns.ts'
 import type { CatalogProgressBody } from '../documents.ts'
 import { APP } from '../app.ts'
+import { countRunners, countTasks, WAITING_AFTER_MS } from '../vocabulary.ts'
 import { $, state, type CatalogDocument, type ToolInfo } from './state.ts'
 import {
+  announce,
   escapeHtml,
   refreshStatus,
   render,
@@ -220,6 +222,7 @@ export async function call<T>(
       status: 500,
       message: typeof last['message'] === 'string' ? last['message'] : 'the command failed',
       ...(typeof last['hint'] === 'string' ? { hint: last['hint'] } : {}),
+      ...(typeof last['code'] === 'string' ? { code: last['code'] } : {}),
     }
   }
   const body = (await res.json().catch(() => null)) as Record<string, unknown> | null
@@ -314,9 +317,20 @@ export async function load(opts: { cached?: boolean; join?: boolean } = {}): Pro
  */
 function onProgress(line: Record<string, unknown>): void {
   const event = line as unknown as CatalogProgressBody
+  // The first line names every runner, in display order.
+  const first = state.expected < 0
   state.pending = event.pending
   state.expected = event.total
-  if (!state.live) return
+  if (!state.live) {
+    // A refresh draws no rows; the status names the runners it still waits on.
+    if (Date.now() - state.loadStarted >= WAITING_AFTER_MS) refreshStatus()
+    return
+  }
+  if (first) {
+    state.order = [...event.pending]
+    announce('loading ' + countRunners(event.total))
+  }
+  // A runner whose report was too large for a line stays loading until the document.
   const report = event.report as RunnerReport | undefined
   const base: CatalogDocument = state.catalog ?? {
     kind: 'catalog',
@@ -335,9 +349,10 @@ function onProgress(line: Record<string, unknown>): void {
   } else {
     const others = <T extends { runner: string }>(list: readonly T[] | undefined): T[] =>
       (list ?? []).filter((r) => r.runner !== report.runner)
+    const rank = (r: RunnerReport): number => state.order.indexOf(r.runner)
     state.catalog = {
       ...base,
-      reports: [...others(base.reports), report],
+      reports: [...others(base.reports), report].sort((a, b) => rank(a) - rank(b)),
       cache: [...others(base.cache), ...(event.cache ? [event.cache as RunnerCacheState] : [])],
       unknowns: [...others(base.unknowns), ...((event.unknowns ?? []) as Unknown[])],
     }
@@ -365,29 +380,47 @@ function scheduleRender(): void {
   }, 50)
 }
 
+/** How long a first load waits before it says Loading, so a held catalog shows with no flash. */
+const LOADING_AFTER_MS = 200
+
 async function loadOnce(opts: { cached?: boolean; join?: boolean }): Promise<void> {
-  // With nothing on screen, each runner is drawn as it answers.
+  // With nothing on screen, each runner is drawn as it answers. A refresh
+  // asks for progress too, so a long one can name what it waits on.
   const live = state.catalog === null
   const args = {
     ...(opts.cached === true ? { cached: true } : {}),
     ...(opts.join === true ? { join: true } : {}),
-    ...(live ? { progress: true } : {}),
+    progress: true,
   }
   state.loading = true
   state.live = live
   state.pending = []
-  if (live) render()
-  refreshStatus()
-  const result = await call<CatalogDocument>(
-    ['list'],
-    args,
-    undefined,
-    live ? { kind: 'catalog-progress', on: onProgress } : undefined,
-  )
+  state.expected = -1
+  state.order = []
+  state.loadStarted = Date.now()
+  const timers = [
+    setTimeout(() => {
+      if (state.live && state.catalog === null) {
+        render()
+        refreshStatus()
+      }
+    }, LOADING_AFTER_MS),
+    setTimeout(() => {
+      if (state.loading && !state.live) refreshStatus()
+    }, WAITING_AFTER_MS),
+  ]
+  if (!live) refreshStatus()
+  const result = await call<CatalogDocument>(['list'], args, undefined, {
+    kind: 'catalog-progress',
+    on: onProgress,
+  })
+  for (const timer of timers) clearTimeout(timer)
   state.loading = false
   state.live = false
   state.pending = []
+  state.order = []
   if (!result.ok) {
+    if (live) announce('loading failed')
     // Rows a failed probe already sent stay on screen; the status says it failed.
     showError(
       'refresh failed',
@@ -421,6 +454,18 @@ async function loadOnce(opts: { cached?: boolean; join?: boolean }): Promise<voi
   state.fingerprint = fp
   state.catalog = cat
   render()
+  if (live) announce(loadedText(cat))
+}
+
+/** What a screen reader hears when the first load ends. */
+function loadedText(cat: CatalogDocument): string {
+  const tasks = cat.reports.reduce((n, r) => n + r.tasks.length, 0)
+  const failed = cat.reports.filter((r) => r.status === 'error').length
+  return (
+    countTasks(tasks) +
+    ' loaded' +
+    (failed > 0 ? ', ' + failed + (failed === 1 ? ' runner failed' : ' runners failed') : '')
+  )
 }
 
 // ---------------------------------------------------------------- trust

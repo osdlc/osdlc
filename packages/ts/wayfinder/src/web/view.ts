@@ -30,6 +30,7 @@ import {
   parametersUnknownLabel,
   runnerLabel,
   staleLabel,
+  WAITING_AFTER_MS,
   withheldLabel,
 } from '../vocabulary.ts'
 
@@ -156,16 +157,26 @@ function buildTree(rows: Row[]): TreeNode {
   return root
 }
 
-function renderNode(node: TreeNode, prefix: string[]): string {
+/**
+ * The tree under `node`. `loading` names runners still loading; the combined
+ * index's top level shows a row for each in the place its group will take.
+ */
+function renderNode(node: TreeNode, prefix: string[], loading: readonly string[] = []): string {
   let html = ''
   // Alphabetical everywhere except the combined index's top level, which
   // follows the user's runner order so the tree matches the tab bar.
   const order = runnerOrder()
   const topLevel = treeStart() === 0 && prefix.length === 0
-  const groups = [...node.kids.entries()].sort((a, b) =>
+  const groups: [string, TreeNode | null][] = [...node.kids.entries()]
+  if (topLevel) for (const r of loading) if (!node.kids.has(r)) groups.push([r, null])
+  groups.sort((a, b) =>
     topLevel ? order.indexOf(a[0]) - order.indexOf(b[0]) : a[0].localeCompare(b[0]),
   )
   for (const [seg, kid] of groups) {
+    if (kid === null) {
+      html += loadingRow(seg)
+      continue
+    }
     const key = prefix.concat(seg).join(' ')
     const collapsed = state.collapsed.has(key)
     // A header at tree depth d sits at path index d + treeStart(). In the
@@ -823,7 +834,11 @@ let skillCounts = { shown: 0, total: 0 }
  * not in the order keeps its catalog place after the ones that are.
  */
 export function runnerOrder(): string[] {
-  const present = (state.catalog?.reports || []).map((r) => r.runner)
+  const reported = (state.catalog?.reports || []).map((r) => r.runner)
+  // While runners load, the ones still out keep their final places.
+  const present = state.live
+    ? [...state.order, ...reported.filter((r) => !state.order.includes(r))]
+    : reported
   const saved = state.runnerOrder.filter((r) => present.includes(r))
   // The catalog is already in the configured order, so the rest keep it.
   const unsaved = present.filter((r) => !saved.includes(r))
@@ -1012,45 +1027,40 @@ function hasInfo(runner: string): boolean {
   return chainOf(runner).length > 0 || toolInfo(runner) !== undefined
 }
 
-/** The runners the first probe will report but has not heard from, in display order. */
+/** The runners the first probe will report but has not answered with rows, in display order. */
 function stillLoading(reports: readonly RunnerReport[]): string[] {
   if (!state.live) return []
   const answered = new Set(reports.map((r) => r.runner))
-  return state.pending.filter((r) => !answered.has(r)).sort((a, b) => groupRank(a) - groupRank(b))
+  return runnerOrder().filter((r) => !answered.has(r))
 }
 
 /**
- * A quiet tab for each runner still loading, after the runners that
- * answered. It is not a button: there is nothing to select yet.
+ * A quiet tab for a runner still loading, in the place its tab will take.
+ * It is not a button: there is nothing to select yet.
  */
-function loadingTabs(reports: readonly RunnerReport[]): string {
-  return stillLoading(reports)
-    .map(
-      (r) =>
-        '<span class="tab tab-loading" aria-busy="true" title="' +
-        escapeHtml(runnerLabel(r)) +
-        ' is loading">' +
-        escapeHtml(runnerLabel(r)) +
-        '<span class="spinner" aria-hidden="true"></span></span>',
-    )
-    .join('')
+function loadingTab(r: string): string {
+  return (
+    '<span class="tab tab-loading" aria-busy="true" title="' +
+    escapeHtml(runnerLabel(r)) +
+    ' is loading">' +
+    escapeHtml(runnerLabel(r)) +
+    '<span class="spinner" aria-hidden="true"></span></span>'
+  )
 }
 
-/** A row for each runner still loading, after the rows of those that answered. */
+/** A row for a runner still loading. */
+function loadingRow(r: string): string {
+  return (
+    '<div class="loading-row" aria-busy="true"><span class="spinner" aria-hidden="true"></span>' +
+    escapeHtml(runnerLabel(r)) +
+    ' <span class="muted">loading…</span></div>'
+  )
+}
+
+/** A row for each runner still loading, for the views that are not the tree. */
 function loadingRows(runners: readonly string[]): string {
   if (runners.length === 0) return ''
-  return (
-    '<div class="loading-rows" aria-busy="true">' +
-    runners
-      .map(
-        (r) =>
-          '<div class="loading-row"><span class="spinner" aria-hidden="true"></span>' +
-          escapeHtml(runnerLabel(r)) +
-          ' <span class="muted">loading…</span></div>',
-      )
-      .join('') +
-    '</div>'
-  )
+  return '<div class="loading-rows">' + runners.map(loadingRow).join('') + '</div>'
 }
 
 export function render(): void {
@@ -1089,6 +1099,7 @@ export function render(): void {
     state.runner = ALL
 
   const byOrder = runnerOrder()
+  const loadingSet = new Set(stillLoading(cat.reports))
   const on = byOrder
     .map((id) => cat.reports.find((s) => s.runner === id))
     .filter((s): s is RunnerReport => s !== undefined && enabled.has(s.runner))
@@ -1109,14 +1120,25 @@ export function render(): void {
       !(s.diagnostics || []).some((d) => d.severity === 'warning') &&
       s.runner !== state.runner,
   )
-  const shown = on.filter((s) => !foldable.includes(s))
-  const tabs = [{ runner: ALL, count: total, error: anyError, exec: false }].concat(
-    shown.map((s) => ({
-      runner: s.runner,
-      count: s.tasks.length,
-      error: s.status === 'error',
-      exec: s.skippedForExec,
-    })),
+  type Tab = { runner: string; count: number; error: boolean; exec: boolean; loading: boolean }
+  const tabs: Tab[] = [
+    { runner: ALL, count: total, error: anyError, exec: false, loading: false },
+  ].concat(
+    byOrder.flatMap((id): Tab[] => {
+      if (loadingSet.has(id))
+        return [{ runner: id, count: 0, error: false, exec: false, loading: true }]
+      const s = on.find((r) => r.runner === id)
+      if (s === undefined || foldable.includes(s)) return []
+      return [
+        {
+          runner: s.runner,
+          count: s.tasks.length,
+          error: s.status === 'error',
+          exec: s.skippedForExec,
+          loading: false,
+        },
+      ]
+    }),
   )
   const chainOfRunner = (id: string): ChainSegment[] =>
     cat.reports.find((r) => r.runner === id)?.chain ?? []
@@ -1136,6 +1158,7 @@ export function render(): void {
           runnerLabel(t.runner) !== group.title.toLowerCase()
             ? '<span class="tabgroup">' + escapeHtml(group.title) + '</span>'
             : ''
+        if (t.loading) return header + loadingTab(t.runner)
         const chain = chainOfRunner(t.runner)
         const shape = chain.map((c, i) => (i === 0 ? runnerLabel(t.runner) : c.label)).join(' › ')
         // The `all` tab is an aggregate, pinned first, and not draggable.
@@ -1180,7 +1203,6 @@ export function render(): void {
         return header + '<span class="tab">' + btn + info + '</span>'
       })
       .join('') +
-    loadingTabs(cat.reports) +
     skillsTab(skillsTotal) +
     foldedChip(foldable)
   keepSelectedTabInView()
@@ -1251,6 +1273,7 @@ export function render(): void {
   }
   const onSkills = state.runner === SKILLS
   const loading = state.runner === ALL ? stillLoading(cat.reports) : []
+  let inTree = false
   if (rows.length === 0 && skills.length === 0) {
     const noun = onSkills ? SKILL_NOUN.one : TASK_NOUN.one
     if (loading.length === 0) {
@@ -1279,9 +1302,11 @@ export function render(): void {
   } else if (onSkills) {
     html += skillTable(skills, 0)
   } else {
-    html += renderNode(buildTree(rows), []) + (skills.length > 0 ? skillsNode(skills) : '')
+    inTree = true
+    html += renderNode(buildTree(rows), [], loading) + (skills.length > 0 ? skillsNode(skills) : '')
   }
-  html += loadingRows(loading)
+  // The tree places these among its groups; the other views list them last.
+  if (!inTree) html += loadingRows(loading)
   // Whether focus is in the list must be read before the html is replaced,
   // because replacing it moves focus to <body>. Focus is restored only if it
   // was in the list. Restoring it always would take focus from the search box
@@ -1840,12 +1865,11 @@ export function renderTrustBar(): void {
   host.hidden = html === ''
 }
 
-/**
- * Kept separate from the table so an unchanged poll can update the clock
- * without touching the table. Otherwise Refresh on an unchanged repo would
- * look like nothing happened, and the timestamp would show data as older than
- * it is.
- */
+/** Say `text` to a screen reader, through the page's one polite live region. */
+export function announce(text: string): void {
+  $('announce').textContent = text
+}
+
 /** The counts the status line showed last, for {@link refreshStatus}. */
 let lastCounts = { shown: 0, total: 0 }
 
@@ -1857,6 +1881,7 @@ export function refreshStatus(): void {
 /** What the status line says about a probe running: what is still loading, or that it refreshes. */
 function loadingText(): string {
   if (state.live) {
+    if (state.expected < 0) return 'detecting the project…'
     if (state.pending.length === 0) return 'loading…'
     return (
       'loading ' +
@@ -1867,9 +1892,20 @@ function loadingText(): string {
       escapeHtml(state.pending.map(runnerLabel).join(', '))
     )
   }
-  return state.loading ? ' - refreshing…' : ''
+  if (!state.loading) return ''
+  const waiting =
+    state.pending.length > 0 && Date.now() - state.loadStarted >= WAITING_AFTER_MS
+      ? ' waiting on ' + escapeHtml(state.pending.map(runnerLabel).join(', '))
+      : ''
+  return ' - refreshing…' + waiting
 }
 
+/**
+ * Kept separate from the table so an unchanged poll can update the clock
+ * without touching the table. Otherwise Refresh on an unchanged repo would
+ * look like nothing happened, and the timestamp would show data as older than
+ * it is.
+ */
 export function renderStatus(shown: number, total: number): void {
   lastCounts = { shown, total }
   const errs = (state.catalog?.reports || [])
@@ -1888,7 +1924,7 @@ export function renderStatus(shown: number, total: number): void {
           : '')) +
     '</span>' +
     (state.live
-      ? '<span class="loading-note" role="status">' + loadingText() + '</span>'
+      ? '<span class="loading-note">' + loadingText() + '</span>'
       : '<span>checked ' +
         new Date(state.checkedAt).toLocaleTimeString() +
         loadingText() +

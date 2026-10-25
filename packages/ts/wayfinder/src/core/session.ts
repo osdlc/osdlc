@@ -35,6 +35,7 @@ import {
   projectRootFor,
   readCachedCatalog,
   runnerIds,
+  settledBoth,
   type WayOptions,
 } from '../catalog.ts'
 import {
@@ -640,11 +641,12 @@ export async function createSession(opts: SessionOptions): Promise<Session> {
     },
     async catalog(opts = {}) {
       if (opts.cached !== true) {
-        // The skills are read beside the probe, so the answer does not wait for both in turn.
-        const [{ catalog, times }, skillRows] = await Promise.all([
+        // The skills are read beside the probe, so the answer does not wait
+        // for both in turn. Both settle before a failure is thrown.
+        const [{ catalog, times }, skillRows] = await settledBoth(
           probe(undefined, opts.signal, opts.progress),
           skills(),
-        ])
+        )
         return saved({
           catalog: orderedCatalog(catalog, runnerOrder()),
           cache: probedStates(catalog, times),
@@ -675,7 +677,9 @@ export async function createSession(opts: SessionOptions): Promise<Session> {
           origin: 'store',
         })
       }
-      const { catalog: probed, times } = await probe(missing, opts.signal, opts.progress)
+      // No progress here: it would name only the missing runners, while the
+      // stored ones wait for the document.
+      const { catalog: probed, times } = await probe(missing, opts.signal)
       const fresh = new Map(probedStates(probed, times).map((s) => [s.runner, s]))
       return saved({
         catalog: orderedCatalog(

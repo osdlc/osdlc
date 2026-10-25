@@ -2,8 +2,9 @@
 /**
  * Step-by-step loading in the page. With nothing on screen, `list` is asked
  * for progress lines and each runner is drawn as its line arrives, with a
- * loading row and tab for each runner still out. Over rows already on
- * screen, the page asks for no lines and says it is refreshing.
+ * loading row and tab for each runner still out, in the place its rows
+ * and tab will take. Over rows already on screen, the lines only move the
+ * status, which names the runners a long refresh still waits on.
  */
 import { mountPage } from './dom.ts'
 
@@ -103,6 +104,18 @@ function streaming() {
 /** Wait for the coalesced render of the lines sent so far. */
 const drawn = () => new Promise((resolve) => setTimeout(resolve, 80))
 
+/** The tab labels in the strip, loading ones included, in order. */
+const tabNames = () =>
+  [...$('tabs').querySelectorAll('button[data-runner], .tab-loading')].map((el) =>
+    (el.textContent ?? '').replace(/[0-9!…\s]+$/, ''),
+  )
+
+/** The combined tree's top level, loading rows included, in order. */
+const treeNames = () =>
+  [...$('out').querySelectorAll(':scope > .node > .head .seg-name, :scope > .loading-row')].map(
+    (el) => (el.textContent ?? '').replace(/ loading…$/, ''),
+  )
+
 describe('step-by-step loading in the page', () => {
   const nativeFetch = globalThis.fetch
   afterAll(() => {
@@ -116,6 +129,8 @@ describe('step-by-step loading in the page', () => {
     state.loading = false
     state.live = false
     state.pending = []
+    state.expected = 0
+    state.order = []
     state.enabled = null
     state.knownRunners = new Set()
     state.query = ''
@@ -129,11 +144,15 @@ describe('step-by-step loading in the page', () => {
     await vi.waitFor(() => expect(server.bodies).toHaveLength(1))
     expect(server.bodies[0]).toEqual({ cached: true, progress: true })
     expect(server.accepts[0]).toBe('application/x-ndjson')
-    expect($('out').textContent).toContain('Loading…')
+    // Not at once: a held catalog usually answers first, with no flash.
+    expect($('out').textContent).not.toContain('Loading…')
+    await vi.waitFor(() => expect($('out').textContent).toContain('Loading…'))
+    expect($('status').textContent).toContain('detecting the project…')
 
     server.line({ pending: ['just', 'make'], total: 2 })
     await drawn()
     expect($('status').textContent).toContain('loading 2 of 2: just, make')
+    expect($('announce').textContent).toBe('loading 2 runners')
 
     server.line({
       pending: ['just'],
@@ -164,6 +183,88 @@ describe('step-by-step loading in the page', () => {
     expect($('status').textContent).toContain('checked')
     expect($('status').textContent).not.toContain('loading')
     expect(state.catalog?.source).toBe('fresh')
+    expect($('announce').textContent).toBe('2 tasks loaded')
+  })
+
+  test('tabs and groups take their final places while they load', async () => {
+    const server = streaming()
+    const loaded = load({ cached: true })
+    await vi.waitFor(() => expect(server.bodies).toHaveLength(1))
+    // The server sends the runners in display order: here, not by name.
+    server.line({ pending: ['make', 'just', 'zed'], total: 3 })
+    await drawn()
+    expect(tabNames()).toEqual(['all', 'make', 'just', 'zed'])
+
+    const answer = (runner: string, pending: string[]) =>
+      server.line({
+        pending,
+        total: 3,
+        report: report(runner, ['build']),
+        cache: fresh(runner),
+        unknowns: [],
+      })
+    answer('zed', ['make', 'just'])
+    await drawn()
+    expect(tabNames()).toEqual(['all', 'make', 'just', 'zed'])
+    expect(treeNames()).toEqual(['make', 'just', 'zed'])
+    answer('just', ['make'])
+    await drawn()
+    expect(tabNames()).toEqual(['all', 'make', 'just', 'zed'])
+    expect(treeNames()).toEqual(['make', 'just', 'zed'])
+    answer('make', [])
+    server.finish(
+      doc([report('make', ['build']), report('just', ['build']), report('zed', ['build'])]),
+    )
+    await loaded
+    expect(tabNames()).toEqual(['all', 'make', 'just', 'zed'])
+    expect(treeNames()).toEqual(['make', 'just', 'zed'])
+  })
+
+  test('a runner whose report is too large for a line stays loading until the document', async () => {
+    const server = streaming()
+    const loaded = load({ cached: true })
+    await vi.waitFor(() => expect(server.bodies).toHaveLength(1))
+    server.line({ pending: ['big'], total: 1 })
+    server.line({ pending: [], total: 1, omitted: 'big' })
+    await drawn()
+    expect($('tabs').querySelector('.tab-loading')?.textContent).toContain('big')
+    expect($('status').textContent).toContain('loading…')
+    server.finish(doc([report('big', ['build'])]))
+    await loaded
+    expect($('tabs').querySelector('.tab-loading')).toBeNull()
+    expect($('out').textContent).toContain('build')
+  })
+
+  test('a repository with no runners loads to an empty view', async () => {
+    const server = streaming()
+    const loaded = load({ cached: true })
+    await vi.waitFor(() => expect(server.bodies).toHaveLength(1))
+    server.line({ pending: [], total: 0 })
+    await drawn()
+    expect($('tabs').querySelector('.tab-loading')).toBeNull()
+    expect($('status').textContent).toContain('loading…')
+    server.finish(doc([]))
+    await loaded
+    expect($('out').textContent).toContain('Nothing collected.')
+    expect($('announce').textContent).toBe('0 tasks loaded')
+  })
+
+  test('a failed runner is counted when the load ends', async () => {
+    const server = streaming()
+    const loaded = load({ cached: true })
+    await vi.waitFor(() => expect(server.bodies).toHaveLength(1))
+    const boom: RunnerReport = {
+      ...report('boom', []),
+      status: 'error',
+      diagnostics: [{ severity: 'error', message: 'boom exploded' }],
+    }
+    server.line({ pending: ['boom'], total: 1 })
+    server.line({ pending: [], total: 1, report: boom, cache: fresh('boom'), unknowns: [] })
+    await drawn()
+    expect($('out').textContent).toContain('boom: boom exploded')
+    server.finish(doc([boom]))
+    await loaded
+    expect($('announce').textContent).toBe('0 tasks loaded, 1 runner failed')
   })
 
   test('a failure after the first line keeps the rows and says it failed', async () => {
@@ -177,7 +278,7 @@ describe('step-by-step loading in the page', () => {
     expect(state.loading).toBe(false)
   })
 
-  test('over rows on screen, no lines are asked for and the status says refreshing', async () => {
+  test('over rows on screen, the status says refreshing', async () => {
     let answer: (r: Response) => void = () => {}
     const bodies: Record<string, unknown>[] = []
     globalThis.fetch = ((_url: string, init: RequestInit) => {
@@ -194,7 +295,7 @@ describe('step-by-step loading in the page', () => {
     await load({ cached: true })
     const poll = load({ join: true })
     await vi.waitFor(() => expect(bodies).toHaveLength(2))
-    expect(bodies[1]).toEqual({ join: true })
+    expect(bodies[1]).toEqual({ join: true, progress: true })
     expect($('status').textContent).toContain('refreshing…')
     expect($('out').textContent).toContain('old')
     answer(
@@ -204,6 +305,37 @@ describe('step-by-step loading in the page', () => {
     )
     await poll
     expect($('out').textContent).toContain('new')
+    expect($('status').textContent).not.toContain('refreshing')
+  })
+
+  test('a long refresh names the runners it still waits on', async () => {
+    globalThis.fetch = (() =>
+      Promise.resolve(
+        new Response(JSON.stringify(doc([report('hang', ['old'])])), {
+          headers: { 'content-type': 'application/json' },
+        }),
+      )) as unknown as typeof fetch
+    await load({ cached: true })
+    const server = streaming()
+    const poll = load({ join: true })
+    await vi.waitFor(() => expect(server.bodies).toHaveLength(1))
+    server.line({ pending: ['make', 'hang'], total: 2 })
+    await drawn()
+    expect($('status').textContent).toContain('refreshing…')
+    expect($('status').textContent).not.toContain('waiting on')
+    state.loadStarted = Date.now() - 5000
+    server.line({
+      pending: ['hang'],
+      total: 2,
+      report: report('make', ['new']),
+      cache: fresh('make'),
+      unknowns: [],
+    })
+    await vi.waitFor(() => expect($('status').textContent).toContain('refreshing… waiting on hang'))
+    // A refresh draws no rows from its lines.
+    expect($('out').textContent).not.toContain('new')
+    server.finish(doc([report('hang', ['old']), report('make', ['new'])]))
+    await poll
     expect($('status').textContent).not.toContain('refreshing')
   })
 })

@@ -81,6 +81,19 @@ interface Running {
   listeners: Set<ProgressSink>
 }
 
+/**
+ * Give `line` to one waiter's listener. False when it throws: that waiter
+ * gets no more lines, and the probe and the other waiters go on.
+ */
+function tell(listener: ProgressSink, line: CatalogProgressBody): boolean {
+  try {
+    listener(line)
+    return true
+  } catch {
+    return false
+  }
+}
+
 export function createCatalogShare(): CatalogShare {
   let active = false
   const stopper = new AbortController()
@@ -100,7 +113,9 @@ export function createCatalogShare(): CatalogShare {
     const emit: ProgressSink = (line) => {
       if (run.settled) return
       events.push(line)
-      for (const listener of listeners) listener(line)
+      for (const listener of listeners) {
+        if (!tell(listener, line)) listeners.delete(listener)
+      }
     }
     const run: Running = {
       key,
@@ -135,10 +150,6 @@ export function createCatalogShare(): CatalogShare {
     new Promise<CatalogBody>((resolve, reject) => {
       let left = false
       run.waiters++
-      if (onEvent !== undefined) {
-        for (const line of run.events) onEvent(line)
-        run.listeners.add(onEvent)
-      }
       const leave = (): void => {
         if (left) return
         left = true
@@ -153,6 +164,10 @@ export function createCatalogShare(): CatalogShare {
       }
       if (signal?.aborted === true) return onAbort()
       signal?.addEventListener('abort', onAbort, { once: true })
+      // After `leave` is set up, so a listener that throws cannot leak this waiter.
+      if (onEvent !== undefined && run.events.every((line) => tell(onEvent, line))) {
+        run.listeners.add(onEvent)
+      }
       run.promise.then(
         (body) => {
           leave()

@@ -6,6 +6,7 @@
 
 import type { Catalog } from '@osdlc/system-model/detect'
 
+import { inDisplayOrder } from '../catalog.ts'
 import { documentGroups } from '../groups.ts'
 import { filterTasks, type TaskFilter } from '../core/filter.ts'
 import { filterSkills, skillLine, type SkillRow } from '../core/skills.ts'
@@ -79,22 +80,42 @@ export function sourceOf(snapshot: Pick<CatalogSnapshot, 'catalog' | 'origin'>):
 }
 
 /**
- * A {@link CatalogProgress} that sends `session`'s probe as progress lines:
- * the runners first, then each runner as it answers, with its unknowns.
+ * The largest progress line, in UTF-16 code units of its JSON. A runner
+ * whose line would be larger is sent without its report, as `omitted`; its
+ * rows come with the catalog document.
  */
-export function progressLines(session: Session, emit: ProgressSink): CatalogProgress {
+export const MAX_PROGRESS_LINE = 1024 * 1024
+
+/**
+ * A {@link CatalogProgress} that sends `session`'s probe as progress lines:
+ * the runners first, in the order the catalog will list them, then each
+ * runner as it answers, with its unknowns.
+ */
+export function progressLines(
+  session: Session,
+  emit: ProgressSink,
+  maxLine = MAX_PROGRESS_LINE,
+): CatalogProgress {
   let pending: string[] = []
   let total = 0
   return {
     onRunners(runners) {
-      pending = [...runners]
+      pending = inDisplayOrder(
+        runners.map((runner) => ({ runner })),
+        session.runnerOrder(),
+      ).map((r) => r.runner)
       total = runners.length
       emit({ pending: [...pending], total })
     },
     onRunner(report, cache) {
       pending = pending.filter((r) => r !== report.runner)
       const unknowns = session.unknowns({ catalog: { reports: [report] }, cache: [cache] })
-      emit({ pending: [...pending], total, report, cache, unknowns })
+      const line = { pending: [...pending], total, report, cache, unknowns }
+      emit(
+        JSON.stringify(line).length <= maxLine
+          ? line
+          : { pending: [...pending], total, omitted: report.runner },
+      )
     },
   }
 }
@@ -115,7 +136,8 @@ export function listCommand(home: string, share?: CatalogShare) {
     description:
       'Each task line is the command Copy gives, quoted and with a cd when the task runs from ' +
       'its own directory, so it pastes into a shell; "run" takes that line or the task id, which ' +
-      '--json shows. --output jsonl prints one runner report per line; "query" with no terms ' +
+      '--json shows. --output jsonl prints one runner report per line; with --progress it first ' +
+      'prints a catalog-progress line as each runner answers. "query" with no terms ' +
       'prints one task per line. ' +
       'Probes every runner, so a script gets what the repository has now. --cached answers at ' +
       'once with the last listing saved under the same trust and settings, and does not check ' +
@@ -138,8 +160,9 @@ export function listCommand(home: string, share?: CatalogShare) {
       },
       progress: {
         kind: 'boolean',
-        hidden: true,
-        help: 'in the web view, send a catalog-progress event for each runner as it answers',
+        help:
+          'send a catalog-progress line as each runner answers, before the document: with ' +
+          '--output jsonl, or as NDJSON over HTTP',
       },
     },
     output: CatalogOutput,

@@ -9,11 +9,15 @@ import { basename, join } from 'node:path'
 import { afterAll, describe, expect, test, vi } from 'vitest'
 
 import { captureIo } from '@osdlc/cli-tool'
+import type { RunnerReport } from '@osdlc/system-model/detect'
 import { checkApp } from '@osdlc/cli-tool/testing'
 
 import { GENERATED_FILE, generatedSource } from '../scripts/write-document-schemas.ts'
 import { main } from '../src/cli.ts'
 import { createWayApp } from '../src/commands/index.ts'
+import { progressLines } from '../src/commands/list.ts'
+import type { Session } from '../src/core/session.ts'
+import type { CatalogProgressBody } from '../src/documents.ts'
 import {
   DOCUMENT_KINDS,
   DOCUMENT_SCHEMAS,
@@ -79,7 +83,38 @@ describe('list progress lines', () => {
     )
   })
 
-  test('the hidden --progress sends a line per runner before the reports', async () => {
+  test('--progress is in the help', async () => {
+    const help = await way(['list', '--help'])
+    expect(help.out).toContain('--progress')
+  })
+
+  test('a failed runner gets a line, and a report too large for one is named, not sent', () => {
+    const session = { runnerOrder: () => [], unknowns: () => [] } as unknown as Session
+    const lines: CatalogProgressBody[] = []
+    const progress = progressLines(session, (l) => lines.push(l), 400)
+    progress.onRunners!(['make', 'boom'])
+    const failed: RunnerReport = {
+      runner: 'boom',
+      status: 'error',
+      chain: [],
+      tasks: [],
+      skippedForExec: false,
+      diagnostics: [{ severity: 'error', message: 'boom exploded' }],
+    }
+    const cache = { runner: 'boom', state: 'fresh', ageMs: 0, estimateMs: 1, slow: false } as const
+    progress.onRunner!(failed, cache)
+    const big: RunnerReport = { ...failed, runner: 'make', status: 'ok', diagnostics: [] }
+    big.diagnostics = [{ severity: 'warning', message: 'x'.repeat(500) }]
+    progress.onRunner!(big, { ...cache, runner: 'make' })
+    expect(lines[0]).toEqual({ pending: ['boom', 'make'], total: 2 })
+    expect(lines[1]).toMatchObject({
+      pending: ['make'],
+      report: { runner: 'boom', status: 'error' },
+    })
+    expect(lines[2]).toEqual({ pending: [], total: 2, omitted: 'make' })
+  })
+
+  test('--progress sends a line per runner before the reports', async () => {
     const dir = await root(SCRIPTS)
     const lines = (await way(['list', '--progress', '--output', 'jsonl'], dir)).out
       .trim()

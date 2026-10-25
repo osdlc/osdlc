@@ -529,6 +529,17 @@ The `catalog` and `query` documents carry `cache`, `filter` and `unknowns`.
 prints: a runner withheld for trust, tasks whose parameters are unknown and
 why, a stale stored answer, a tool missing from `PATH`.
 
+### Progress lines
+
+`way list --progress --output jsonl` prints a `catalog-progress` line as each
+runner answers, then the reports. The first line names every runner in
+`pending`, in display order. Each later line carries the runner that answered
+in `report`, with its `cache` verdict and `unknowns`, and the runners still
+out in `pending`. A report too large for one line (over 1 MiB) is named in
+`omitted` instead and comes with the reports. Over HTTP, `way serve` sends the
+same lines as NDJSON when the request asks for `application/x-ndjson`, with
+the catalog document last. `way schema` describes the line.
+
 ### Old flags
 
 These still work in this release and will be removed in a later one:

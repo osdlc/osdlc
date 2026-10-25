@@ -145,8 +145,14 @@ export const CatalogProgressOutput = z.object({
   pending: z.array(z.string()).describe('The runners that have not answered yet, in report order.'),
   total: z.number().int().describe('How many runners the probe reports.'),
   report: RunnerReportZ.optional().describe(
-    'The runner that answered. Absent on the first line, which only names the runners.',
+    'The runner that answered. Absent on the first line, which only names the runners, and when omitted is set.',
   ),
+  omitted: z
+    .string()
+    .optional()
+    .describe(
+      'A runner that answered with a report too large for one line. Its rows come with the catalog document.',
+    ),
   cache: CacheStateZ.optional().describe("The answered runner's cache verdict."),
   unknowns: z
     .array(UnknownZ)

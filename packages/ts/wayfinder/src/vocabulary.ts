@@ -14,6 +14,9 @@ import type { StaleReason } from '@osdlc/system-model/detect'
 
 export { APP, BIN } from './app.ts'
 
+/** How long a refresh runs before the status names the runners it still waits on. */
+export const WAITING_AFTER_MS = 3000
+
 /** What one row is called on every surface. */
 export const TASK_NOUN = { one: 'task', many: 'tasks' } as const
 

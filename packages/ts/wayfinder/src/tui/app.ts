@@ -42,6 +42,7 @@ import {
   probeTimeLabel,
   runnerLabel,
   withheldLabel,
+  WAITING_AFTER_MS,
 } from '../vocabulary.ts'
 import { isText, namedKey, splitKeys } from './keys-input.ts'
 import {
@@ -127,8 +128,10 @@ export interface TuiState {
   partial: RunnerReport[] | null
   /** The runners the running probe has not heard from yet. */
   pending: string[]
-  /** How many runners the running probe reports. */
+  /** How many runners the running probe reports; -1 until it names them. */
   expected: number
+  /** When the running probe started, in ms, so a long refresh can name what it waits on. */
+  loadStarted: number
   /** Where each runner's rows came from, one entry per selected runner. */
   cache: CacheState[]
   /** The agent skills from the last probe. */
@@ -282,6 +285,15 @@ const RULE = '─'
 
 const errorText = (err: unknown): string => (err instanceof Error ? err.message : String(err))
 
+/** At most this many failed runners get a line above the rows. */
+const MAX_FAILURE_LINES = 3
+
+/** A failed runner's reason, as the web view words it: `runner: message`. */
+function failureText(r: RunnerReport): string {
+  const message = r.diagnostics.find((d) => d.severity === 'error')?.message ?? 'probe failed'
+  return terminalSafe(`${r.runner}: ${message}`)
+}
+
 /** Make a terminal UI. Nothing is drawn or probed until {@link Tui.boot}. */
 export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
   /** `argv` quoted for the shell, as the CLI prints the run line. */
@@ -292,6 +304,7 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
     partial: null,
     pending: [],
     expected: 0,
+    loadStarted: 0,
     cache: [],
     skills: [],
     runnerOrder: session.runnerOrder(),
@@ -421,6 +434,9 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
     if (state.selectedId !== null && !all.some((e) => entryId(e) === state.selectedId)) {
       state.selectedId = entryId(all[0])
     }
+    // While rows arrive, Enter runs the row on screen, not whatever lands
+    // at the top after it was drawn.
+    if (state.loading && state.selectedId === null) state.selectedId = entryId(all[0])
   }
 
   function cursor(): number {
@@ -527,8 +543,9 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
           : cacheFor(name)?.state === 'stale'
       const held = name !== ALL && reportFor(name)?.skippedForExec === true
       const loading = name !== ALL && name !== SKILLS_TAB && reportFor(name) === undefined
+      const failed = name !== ALL && reportFor(name)?.status === 'error'
       const title = name === ALL ? ALL : name === SKILLS_TAB ? SKILLS_GROUP.id : runnerLabel(name)
-      const label = `${stale ? '~' : ''}${title} ${held ? '–' : loading ? '…' : count}`
+      const label = `${stale ? '~' : ''}${title} ${held ? '–' : loading ? '…' : count}${failed ? ' !' : ''}`
       const selected = name === state.runner
       const chunks: Chunk[] = []
       const prev = names[i - 1]
@@ -540,7 +557,7 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
       // around the others, so it shows without color or inverse.
       chunks.push({
         text: selected ? `[${label}]` : ` ${label} `,
-        paint: selected ? s.selected : stale || held ? s.warning : s.dim,
+        paint: selected ? s.selected : failed ? s.error : stale || held ? s.warning : s.dim,
       })
       return chunks
     })
@@ -589,15 +606,18 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
     // The clock and the probe time give way first when the line is too long,
     // so a warning after them is not cut.
     const clock: Chunk[] = []
+    // The names give way after the clock, so the warnings after them stay.
+    let named: { chunk: Chunk; short: string } | null = null
+    const left = state.pending
     if (state.catalog === null) {
-      const left = state.pending
       if (state.loading && state.partial !== null && left.length > 0) {
-        chunks.push({
-          text: `  loading ${left.length} of ${state.expected}: ${left.map(runnerLabel).join(', ')}`,
-          paint: s.note,
-        })
+        const short = `  loading ${left.length} of ${state.expected}`
+        const chunk = { text: `${short}: ${left.map(runnerLabel).join(', ')}`, paint: s.note }
+        named = { chunk, short }
+        chunks.push(chunk)
       } else if (state.loading) {
-        chunks.push({ text: '  collecting', paint: s.dim })
+        const text = state.expected < 0 ? '  detecting the project…' : '  loading…'
+        chunks.push({ text, paint: s.dim })
       }
     } else {
       clock.push({
@@ -612,7 +632,17 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
     }
     const note = refreshNote(state.cache, state.loading)
     if (state.loading && note === null && state.catalog !== null) {
-      chunks.push({ text: '  refreshing…', paint: s.note })
+      const short = '  refreshing…'
+      if (left.length > 0 && Date.now() - state.loadStarted >= WAITING_AFTER_MS) {
+        const chunk = {
+          text: `${short} waiting on ${left.map(runnerLabel).join(', ')}`,
+          paint: s.note,
+        }
+        named = { chunk, short }
+        chunks.push(chunk)
+      } else {
+        chunks.push({ text: short, paint: s.note })
+      }
     }
     if (note !== null) {
       chunks.push({ text: `  ${note.text}`, paint: note.slow ? s.error : s.warning })
@@ -639,6 +669,7 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
     }
     const length = (list: readonly Chunk[]): number => list.reduce((n, c) => n + c.text.length, 0)
     const fitted = length(chunks) > width ? chunks.filter((c) => !clock.includes(c)) : chunks
+    if (named !== null && length(fitted) > width) named.chunk.text = named.short
     return line(fitted, width)
   }
 
@@ -778,6 +809,13 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
     // The list, in the rows left over. The entry line takes one more row than
     // the key hints it replaces, so the list gives up a row while arguments
     // are typed.
+    // A failed runner's reason, above the rows, as the web view shows it.
+    const failures = (state.runner === ALL ? reports() : [reportFor(state.runner)])
+      .filter((r): r is RunnerReport => r?.status === 'error')
+      .slice(0, MAX_FAILURE_LINES)
+    for (const r of failures) {
+      out.push(line([{ text: `  ${failureText(r)}`, paint: s.error }], width))
+    }
     const at = cursor()
     const list = entries()
     const listHeight = Math.max(1, height - out.length - (state.entering ? 5 : 4))
@@ -785,14 +823,13 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
     if (at >= state.scroll + listHeight) state.scroll = at - listHeight + 1
     if (state.scroll < 0) state.scroll = 0
     // A runner the first probe has not heard from yet holds a line after the rows.
-    const placeholders =
-      state.runner === ALL ? waiting() : waiting().filter((r) => r === state.runner)
+    const placeholders = state.runner === ALL ? waiting() : []
     for (let i = 0; i < listHeight; i++) {
       const entry = list[state.scroll + i]
       if (!entry) {
         const at = state.scroll + i - list.length
         const held = placeholders[at]
-        if (held !== undefined && state.runner === ALL) {
+        if (held !== undefined) {
           out.push(line([{ text: `    … ${runnerLabel(held)}  loading`, paint: s.dim }], width))
         } else {
           out.push(i === 0 ? emptyList(width) : CLEAR_EOL)
@@ -915,13 +952,15 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
     if (state.runner === SKILLS_TAB) text = state.query !== '' ? 'no match' : 'no skills'
     else if (state.runner !== ALL && waiting().includes(state.runner)) {
       text = `… loading ${runnerLabel(state.runner)}`
-    } else if (shown() === null) text = state.probed ? 'nothing collected' : 'collecting…'
-    else if (state.runner !== ALL && reportFor(state.runner)?.skippedForExec === true) {
+    } else if (shown() === null) text = state.probed ? 'nothing collected' : 'loading…'
+    else if (state.runner !== ALL && reportFor(state.runner)?.status === 'error') {
+      text = 'probe failed'
+    } else if (state.runner !== ALL && reportFor(state.runner)?.skippedForExec === true) {
       const held = withheld()
       text = held === null ? 'withheld' : `${held.cause}${held.trustable ? ' — ^s to trust' : ''}`
     } else if (state.query !== '') text = 'no match'
     else if (tabTasks().length > 0) text = 'no task passes the filters'
-    else text = state.probed || !state.loading ? 'nothing collected' : 'collecting…'
+    else text = state.probed || !state.loading ? 'nothing collected' : 'loading…'
     return line([{ text: `    ${text}`, paint: s.dim }], width)
   }
 
@@ -939,7 +978,10 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
     return chunks
   }
 
+  /** Set once the terminal is given back: nothing may draw over the shell after that. */
+  let ended = false
   function draw(): void {
+    if (ended) return
     recompute()
     host.write(frame(host.columns() || 100, host.rows() || 30))
   }
@@ -948,6 +990,7 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
 
   function quit(code: number): void {
     state.inFlight?.abort()
+    ended = true
     host.release()
     host.exit(code)
   }
@@ -997,6 +1040,7 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
   /** Hand the terminal to `plan`'s task and exit with its code. */
   function handOver(task: Task, plan: RunPlan, args: readonly string[]): void {
     state.inFlight?.abort()
+    ended = true
     host.release()
     host.write(`$ ${terminalSafe(commandLine(plan.argv))}\n`)
     if (task.parameters.length > 0 && args.length === 0) {
@@ -1040,12 +1084,18 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
     state.loading = true
     state.message = note ?? null
     state.pending = []
-    state.expected = 0
+    state.expected = -1
+    state.loadStarted = Date.now()
     // With nothing on screen, each runner is drawn as it answers. Rows
-    // already on screen stay until the whole answer replaces them.
+    // already on screen stay until the whole answer replaces them; then the
+    // progress only names, after a while, the runners still out.
     const live = state.catalog === null
     state.partial = live ? [] : null
     const current = (): boolean => generation === state.generation
+    const waitingShown = (): boolean => Date.now() - state.loadStarted >= WAITING_AFTER_MS
+    const waitTimer = setTimeout(() => {
+      if (current() && state.loading) draw()
+    }, WAITING_AFTER_MS)
     const progress = {
       onRunners(runners: readonly string[]): void {
         if (!current()) return
@@ -1054,11 +1104,15 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
           state.runnerOrder,
         ).map((r) => r.runner)
         state.expected = runners.length
-        draw()
+        if (live || waitingShown()) draw()
       },
       onRunner(report: RunnerReport, cache: CacheState): void {
-        if (!current() || state.partial === null) return
+        if (!current()) return
         state.pending = state.pending.filter((r) => r !== report.runner)
+        if (state.partial === null) {
+          if (waitingShown()) draw()
+          return
+        }
         state.partial = inDisplayOrder(
           [...state.partial.filter((r) => r.runner !== report.runner), report],
           state.runnerOrder,
@@ -1071,10 +1125,7 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
     try {
       // Always a real probe. ^r means "ask again", and an answer from the
       // store would look the same as doing nothing.
-      const snapshot = await session.catalog({
-        signal: controller.signal,
-        ...(live ? { progress } : {}),
-      })
+      const snapshot = await session.catalog({ signal: controller.signal, progress })
       if (generation !== state.generation) return
       state.catalog = orderedCatalog(snapshot.catalog, state.runnerOrder)
       state.partial = null
@@ -1087,6 +1138,7 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
         say(`refresh failed: ${errorText(err)}`, 'error')
       }
     } finally {
+      clearTimeout(waitTimer)
       if (generation === state.generation) {
         state.loading = false
         state.inFlight = null

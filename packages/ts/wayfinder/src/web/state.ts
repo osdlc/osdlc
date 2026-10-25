@@ -104,8 +104,15 @@ export interface AppState {
   live: boolean
   /** The runners the running probe has not heard from yet. */
   pending: string[]
-  /** How many runners the running probe reports. */
+  /** How many runners the running probe reports; -1 until its first line. */
   expected: number
+  /**
+   * Every runner the live probe reports, in display order, from its first
+   * line. Tabs and groups take their final places from it while they load.
+   */
+  order: string[]
+  /** When the running load started, in ms, so a long refresh can name what it waits on. */
+  loadStarted: number
   /**
    * Whether a trust grant would collect the withheld runners: the catalog
    * says a runner is withheld because the repository is not trusted. False
@@ -156,6 +163,8 @@ export const state: AppState = {
   live: false,
   pending: [],
   expected: 0,
+  order: [],
+  loadStarted: 0,
   trustable: false,
   cache: [],
   unknowns: [],

@@ -223,6 +223,23 @@ describe('collect', () => {
     expect(tasks(catalog).length).toBeGreaterThan(0)
   })
 
+  test('a runner that throws is reported to onReport as an error', async () => {
+    const exploding = toolOf('boom', {
+      collect: () => {
+        throw new Error('runner blew up')
+      },
+    })
+    const dir = await root({ 'boom.txt': '' })
+    const heard: RunnerReport[] = []
+    await collect(
+      dir,
+      walkOpts({ tools: [exploding], onReport: (r: RunnerReport) => heard.push(r) }),
+    )
+    expect(heard.map((r) => [r.runner, r.status, r.diagnostics[0]?.message])).toEqual([
+      ['boom', 'error', 'runner blew up'],
+    ])
+  })
+
   test("a caller's own tool is a first-class citizen", async () => {
     const mine = toolOf('house', {
       chain: [

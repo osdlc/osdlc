@@ -151,25 +151,32 @@ function grantedRunners(project: Project, profile: ProjectProfile, o: WayOptions
  * no report before it.
  */
 function splitOptions(o: WayOptions, granted: string[]) {
-  const lists: (readonly string[])[] = []
+  // Granted first, then the others, whichever answers first.
+  const lists: [(readonly string[])?, (readonly string[])?] = []
   const early: RunnerReport[] = []
-  const joined = {
-    onRunners: (ids: readonly string[]): void => {
-      lists.push(ids)
-      if (lists.length < 2) return
-      o.onRunners?.(lists.flat())
-      for (const report of early.splice(0)) o.onReport?.(report)
-    },
-    onReport: (report: RunnerReport): void => {
-      if (lists.length < 2) early.push(report)
-      else o.onReport?.(report)
-    },
+  const ready = (): boolean => lists[0] !== undefined && lists[1] !== undefined
+  const onReport = (report: RunnerReport): void => {
+    if (ready()) o.onReport?.(report)
+    else early.push(report)
   }
-  const base = { ...collectOptions(o), ...joined }
+  const onRunners =
+    (slot: 0 | 1) =>
+    (ids: readonly string[]): void => {
+      lists[slot] = ids
+      if (!ready()) return
+      o.onRunners?.([...(lists[0] ?? []), ...(lists[1] ?? [])])
+      for (const report of early.splice(0)) o.onReport?.(report)
+    }
+  const base = collectOptions(o)
   const { execWithheldHint: _hint, exclude: _exclude, ...rest } = base
   return {
-    granted: { ...rest, allowExec: true, only: granted },
-    others: { ...base, exclude: [...(o.exclude ?? []), ...granted] },
+    granted: { ...rest, onReport, onRunners: onRunners(0), allowExec: true, only: granted },
+    others: {
+      ...base,
+      onReport,
+      onRunners: onRunners(1),
+      exclude: [...(o.exclude ?? []), ...granted],
+    },
   }
 }
 
@@ -177,7 +184,11 @@ function mergeCatalogs(granted: Catalog, others: Catalog): Catalog {
   return { ...others, reports: [...granted.reports, ...others.reports] }
 }
 
-/** Detect, collect, and store each runner's result under `store`. */
+/**
+ * Detect, collect, and store each runner's result under `store`. When a tool
+ * grant splits the runners in two, both collections settle before a failure
+ * is thrown.
+ */
 export async function collectAndCache(
   project: Project,
   root: string,
@@ -191,10 +202,10 @@ export async function collectAndCache(
   }
   const split = splitOptions(options, granted)
   // At the same time, so a progress count covers both from the start.
-  const [a, b] = await Promise.all([
+  const [a, b] = await settledBoth(
     project.runners.collectAndCache(profile, store, split.granted),
     project.runners.collectAndCache(profile, store, split.others),
-  ])
+  )
   return mergeCatalogs(a, b)
 }
 
@@ -220,6 +231,14 @@ export async function readCachedCatalog(
         ? a.catalog
         : mergeCatalogs(a.catalog, b.catalog)
   return { catalog, runners: [...a.runners, ...b.runners], allFresh: a.allFresh && b.allFresh }
+}
+
+/** Both results once both have settled; the first failure, if any, after both. */
+export async function settledBoth<A, B>(a: Promise<A>, b: Promise<B>): Promise<[A, B]> {
+  const [ra, rb] = await Promise.allSettled([a, b])
+  if (ra.status === 'rejected') throw ra.reason
+  if (rb.status === 'rejected') throw rb.reason
+  return [ra.value, rb.value]
 }
 
 /** True when something came out of the store, not only withheld reports. */
