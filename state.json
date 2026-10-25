@@ -1,12 +1,90 @@
 {
   "schema": 1,
   "pr": 461,
-  "head": null,
-  "base": null,
-  "round": 0,
+  "head": "206973d952b190cea5d58a95765a877322507b15",
+  "base": "6a0d3a2f041f79f3b32574bde926d1130b33a13e",
+  "round": 1,
   "claim": {
     "owner": "Mac.local:claude-r7v2kq",
     "at": "2026-10-25T06:57:48.742Z"
   },
-  "findings": []
+  "findings": [
+    {
+      "id": "r1-1",
+      "round": 1,
+      "path": "packages/ts/markdown-contract/src/core/dialect/wikilinks.ts",
+      "line": 27,
+      "title": "VAULT_REF_RE backtracks quadratically on unclosed [[ and long backslash runs",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-2",
+      "round": 1,
+      "path": "packages/ts/markdown-contract/tests/core/dialect/wikilinks.test.ts",
+      "line": 72,
+      "title": "escaped-bracket case asserts only kind, not target or raw",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-3",
+      "round": 1,
+      "path": "packages/ts/markdown-contract/src/core/dialect/wikilinks.ts",
+      "line": 31,
+      "title": "TSDoc names the form target|alias#fragment; the code parses target#fragment|alias",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-4",
+      "round": 1,
+      "path": "packages/ts/markdown-contract/src/core/dialect/index.ts",
+      "line": 6,
+      "title": "'It is a public export.' restates the export lines",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-5",
+      "round": 1,
+      "path": "packages/ts/markdown-contract/src/core/dialect/wikilinks.ts",
+      "line": 4,
+      "title": "file header repeats the function TSDoc",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-6",
+      "round": 1,
+      "path": "packages/ts/markdown-contract/examples/parse-tree.test.ts",
+      "line": 3,
+      "title": "152-character doc line",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-7",
+      "round": 1,
+      "path": "packages/ts/markdown-contract/docs/planning/decisions/D-07-vault-reference-recognition.md",
+      "line": 18,
+      "title": "Rust peer claim depends on unmerged #460",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    }
+  ]
 }
