@@ -422,7 +422,8 @@ mod tests {
             unreachable!()
         };
         assert!(
-            why.message(root()).contains("rename .agent-pants/ to .tradecraft/"),
+            why.message(root())
+                .contains("rename .agent-pants/ to .tradecraft/"),
             "{}",
             why.message(root())
         );
