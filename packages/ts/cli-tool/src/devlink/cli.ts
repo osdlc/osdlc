@@ -262,9 +262,14 @@ function renderStatus(spec: ToolSpec, s: ReturnType<typeof status>): string {
     `  PATH:     ${names}\n` +
     (s.link.legacy !== null
       ? `note: an old link file is at ${s.link.legacy}; this release reads ${s.link.path}.\n` +
-        `  move it: mkdir -p '${dirname(s.link.path)}' && mv '${s.link.legacy}' '${s.link.path}'\n`
+        `  move it: mkdir -p ${sq(dirname(s.link.path))} && mv ${sq(s.link.legacy)} ${sq(s.link.path)}\n`
       : '')
   )
+}
+
+/** `text` as one single-quoted POSIX shell word. */
+function sq(text: string): string {
+  return `'${text.replaceAll("'", "'\\''")}'`
 }
 
 function renderHistory(rows: ReturnType<typeof history>): string {

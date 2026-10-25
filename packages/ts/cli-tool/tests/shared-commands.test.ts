@@ -615,6 +615,26 @@ describe('runApp', () => {
     )
   })
 
+  test('checks the document under --output json as under --json', async () => {
+    const { defineCommand } = await import('../src/command/index.ts')
+    const { z } = await import('zod')
+    const app = defineApp({
+      name: 't',
+      version: '0',
+      summary: 's',
+      commands: {
+        lie: defineCommand({
+          summary: 'lie',
+          output: z.object({ n: z.number() }),
+          run: () => ({ n: 'one' as unknown as number }),
+        }),
+      },
+    })
+    for (const mode of [['--json'], ['--output', 'json'], ['--output=json']]) {
+      await expect(runApp(app, ['lie', ...mode])).rejects.toThrow('does not match its schema')
+    }
+  })
+
   test('picks the schema by path when two commands share a kind', async () => {
     const { defineCommand } = await import('../src/command/index.ts')
     const { z } = await import('zod')

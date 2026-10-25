@@ -440,7 +440,7 @@ document on stdout, where a caller reads data:
 `App.call` and the HTTP adapter answer a failed call with the same fields.
 
 `checkOutput: true` on the app checks each output against its schema before
-printing it. `runApp` in `@osdlc/cli-tool/testing` always checks a `--json`
+printing it. `runApp` in `@osdlc/cli-tool/testing` always checks a `--json` (or `--output json`)
 answer.
 
 ### Commands as files
