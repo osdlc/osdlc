@@ -979,6 +979,35 @@ describe('the held catalog', () => {
     expect(share.waiting('k')).toBe(0)
   })
 
+  test('a tab that leaves mid-stream stops the probe it started', async () => {
+    const share = createCatalogShare()
+    share.activate()
+    let emit: ProgressSink = () => {}
+    let seen: AbortSignal | undefined
+    const probe = (signal: AbortSignal, sink: ProgressSink): Promise<CatalogBody> => {
+      seen = signal
+      emit = sink
+      return new Promise<CatalogBody>((_, reject) => {
+        signal.addEventListener('abort', () => reject(signal.reason))
+      })
+    }
+    const tab = new AbortController()
+    const lines: number[] = []
+    const page = share.fresh('k', probe, {
+      join: false,
+      signal: tab.signal,
+      onEvent: (l) => lines.push(l.pending.length),
+    })
+    await vi.waitFor(() => expect(seen).toBeDefined())
+    emit({ pending: ['a'], total: 1 })
+    tab.abort(new Error('tab closed'))
+    await expect(page).rejects.toThrow('tab closed')
+    expect(seen!.aborted).toBe(true)
+    expect(share.waiting('k')).toBe(0)
+    emit({ pending: [], total: 1 })
+    expect(lines).toEqual([1])
+  })
+
   test('a tab that leaves mid-stream stops getting lines; the boot probe goes on', async () => {
     const share = createCatalogShare()
     share.activate()
