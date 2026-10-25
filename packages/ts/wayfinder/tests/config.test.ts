@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, test } from 'vitest'
 import { spawnSync } from 'node:child_process'
-import { mkdir, readFile, symlink } from 'node:fs/promises'
+import { lstat, mkdir, readFile, symlink } from 'node:fs/promises'
 import { userInfo } from 'node:os'
 import { join } from 'node:path'
 
@@ -21,11 +21,13 @@ import {
   parseConfigValue,
   readConfigFile,
   readRawConfigFile,
+  removeSetting,
   setConfigValue,
   trustPolicyFromConfig,
   unsetConfigValue,
   validateConfig,
   writeConfigFile,
+  writeSetting,
 } from '../src/config.ts'
 import { CONFIG_HOME, USER_CONFIG, fixtureRoot, removeRoot } from './support.ts'
 
@@ -567,6 +569,42 @@ describe('loadConfig', () => {
     expect(loaded.layers.user).toBeNull()
     expect(loaded.layers.project).toBeNull()
   })
+})
+
+describe('writeSetting through a link', () => {
+  test.skipIf(WINDOWS)(
+    'a linked user config is written at its target, and stays a link',
+    async () => {
+      const home = await root({ 'dotfiles/way.json': '{}' })
+      const target = join(home, 'dotfiles', 'way.json')
+      const user = join(home, '.config', 'wayfinder', 'config.json')
+      await mkdir(join(home, '.config', 'wayfinder'), { recursive: true })
+      await symlink(target, user)
+      await writeSetting({ layer: 'user', root: home, env: env(), home }, 'theme', 'dark')
+      expect((await lstat(user)).isSymbolicLink()).toBe(true)
+      expect(JSON.parse(await readFile(target, 'utf8'))).toMatchObject({ theme: 'dark' })
+      await removeSetting({ layer: 'user', root: home, env: env(), home }, 'theme')
+      expect((await lstat(user)).isSymbolicLink()).toBe(true)
+      expect(JSON.parse(await readFile(target, 'utf8'))).not.toHaveProperty('theme')
+    },
+  )
+
+  test.skipIf(WINDOWS)(
+    'a linked project file is replaced, and its target is not written',
+    async () => {
+      const outside = await root({ 'elsewhere.json': '{}' })
+      const repo = await root()
+      const project = join(repo, 'wayfinder.config.json')
+      await symlink(join(outside, 'elsewhere.json'), project)
+      await writeSetting(
+        { layer: 'project', root: repo, env: env(), home: repo },
+        'discovery',
+        'walk',
+      )
+      expect((await lstat(project)).isSymbolicLink()).toBe(false)
+      expect(await readFile(join(outside, 'elsewhere.json'), 'utf8')).toBe('{}')
+    },
+  )
 })
 
 describe('get / set / unset', () => {

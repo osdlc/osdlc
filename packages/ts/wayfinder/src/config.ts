@@ -53,8 +53,8 @@
  */
 
 import { constants, existsSync } from 'node:fs'
-import { open, type FileHandle } from 'node:fs/promises'
-import { isAbsolute, join as joinPath, resolve } from 'node:path'
+import { lstat, open, readlink, realpath, type FileHandle } from 'node:fs/promises'
+import { dirname, isAbsolute, join as joinPath, resolve } from 'node:path'
 
 import { z } from 'zod'
 
@@ -900,7 +900,7 @@ export async function writeSetting(
   // The whole document is checked before it is written. A failure here is a
   // bad value already in the file, so the error names the file.
   validateConfig(document, file)
-  await writeConfigFile(file, document)
+  await writeConfigFile(await writePath(target, file), document)
   return { file, value: checked, warnings }
 }
 
@@ -914,8 +914,22 @@ export async function removeSetting(
   if (document === null || getConfigValue(document, key) === undefined) {
     return { file, removed: false }
   }
-  await writeConfigFile(file, unsetConfigValue(document, key))
+  await writeConfigFile(await writePath(target, file), unsetConfigValue(document, key))
   return { file, removed: true }
+}
+
+/**
+ * Where a write to `file` goes. The atomic write renames a new file into
+ * place, which would replace a link with a regular file. A user config is
+ * often a link into a dotfiles repository, so for the user layer the write
+ * goes to the link's target. A project file that is a link is replaced, not
+ * followed: the repository chose the link, and its target may be outside it.
+ */
+async function writePath(target: WriteTarget, file: string): Promise<string> {
+  if (target.layer !== 'user') return file
+  const info = await lstat(file).catch(() => null)
+  if (info === null || !info.isSymbolicLink()) return file
+  return realpath(file).catch(async () => resolve(dirname(file), await readlink(file)))
 }
 
 function fileOf(target: WriteTarget): string {
