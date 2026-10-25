@@ -236,6 +236,36 @@ describe('cmake-presets runner', () => {
     expect(found.find((t) => key(t) === 'configure:here')!.tags).not.toContain('conditional')
   })
 
+  test('a condition is inherited from a hidden parent', async () => {
+    const { catalog } = await run({
+      'CMakePresets.json': JSON.stringify({
+        version: 6,
+        configurePresets: [
+          {
+            name: 'plan9-base',
+            hidden: true,
+            condition: { type: 'equals', lhs: '${hostSystemName}', rhs: 'Plan9' },
+          },
+          { name: 'plan9', inherits: 'plan9-base' },
+          { name: 'own', inherits: 'plan9-base', condition: null },
+          {
+            name: 'maybe-base',
+            hidden: true,
+            condition: { type: 'matches', string: 'x', regex: 'x' },
+          },
+          { name: 'maybe', inherits: ['missing', 'maybe-base'] },
+        ],
+        buildPresets: [
+          { name: 'b9', configurePreset: 'plan9', inherits: 'b9-base' },
+          { name: 'b9-base', hidden: true, condition: false },
+        ],
+      }),
+    })
+    const found = tasks(catalog)
+    expect(found.map(key)).toEqual(['configure:own', 'configure:maybe'])
+    expect(found.find((t) => key(t) === 'configure:maybe')!.tags).toContain('conditional')
+  })
+
   test('absent without a presets file', async () => {
     const { catalog } = await run({ 'CMakeLists.txt': 'project(x)\n' })
     expect(catalog.reports).toEqual([])
