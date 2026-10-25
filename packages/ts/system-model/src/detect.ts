@@ -27,7 +27,7 @@ import { createLister, resolveDiscovery, type WalkLimit } from './discovery.ts'
 import type { ManifestFacts } from './manifests.ts'
 import type { Evidence } from './aspect.ts'
 import { evidence, type Diagnostic } from './model.ts'
-import { compilePattern, dirOf, joinRel } from './pattern.ts'
+import { compilePattern, dirOf, joinRel, pathIndex } from './pattern.ts'
 import { readBounded } from './read.ts'
 import { markersOf, rolesOf, type Registry } from './registry.ts'
 import type {
@@ -83,6 +83,7 @@ export async function detectProject(
   })
   const all = await lister.all()
   const listed = new Set(all)
+  const index = pathIndex(all)
   const diagnostics: Diagnostic[] = []
   const limit = lister.limit()
   if (limit !== undefined) diagnostics.push(walkLimitDiagnostic(limit))
@@ -91,7 +92,8 @@ export async function detectProject(
     const compiled = compilePattern(pattern)
     const out: Hit[] = []
     const seen = new Set<string>()
-    for (const path of all) {
+    for (const i of index.candidates(compiled)) {
+      const path = all[i]!
       const base = compiled.base(path)
       if (base === null) continue
       // A directory pattern is one piece of evidence, not one per file under it.

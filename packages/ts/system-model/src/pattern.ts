@@ -122,3 +122,45 @@ export function dirOf(relPath: string): string {
 export function joinRel(dir: string, name: string): string {
   return dir === '.' ? name : `${dir}/${name}`
 }
+
+/**
+ * The paths a pattern can match, found without testing every path: by
+ * basename for an unanchored file pattern, by depth for an anchored one.
+ * Detection tests about a hundred patterns against every listed file, which
+ * took over a second on a repository of 30,000 files.
+ */
+export interface PathIndex {
+  /**
+   * The positions in the indexed list of every path `pattern` may match, in
+   * list order. A superset: test each with `base`. Every position for a
+   * directory pattern.
+   */
+  candidates(pattern: CompiledPattern): readonly number[]
+}
+
+export function pathIndex(paths: readonly string[]): PathIndex {
+  const byName = new Map<string, number[]>()
+  const byDepth = new Map<number, number[]>()
+  const push = <K>(map: Map<K, number[]>, key: K, i: number): void => {
+    const list = map.get(key)
+    if (list === undefined) map.set(key, [i])
+    else list.push(i)
+  }
+  paths.forEach((path, i) => {
+    const parts = path.split('/')
+    push(byName, parts[parts.length - 1]!, i)
+    push(byDepth, parts.length, i)
+  })
+  let every: number[] | undefined
+  return {
+    candidates(pattern) {
+      if (pattern.directory) return (every ??= paths.map((_, i) => i))
+      if (pattern.anchored) return byDepth.get(pattern.path.split('/').length) ?? []
+      if (pattern.literal) return byName.get(pattern.path) ?? []
+      const out: number[] = []
+      const name = segmentMatcher(pattern.path)
+      for (const [basename, list] of byName) if (name.test(basename)) out.push(...list)
+      return out.sort((a, b) => a - b)
+    },
+  }
+}

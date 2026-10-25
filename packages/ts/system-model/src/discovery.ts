@@ -16,7 +16,7 @@ import { join, relative, sep } from 'node:path'
 import { runCheckedAsync, type AsyncCommandRunner } from '@osdlc/command-seam'
 
 import type { DiscoveryMode } from './model.ts'
-import { compilePattern } from './pattern.ts'
+import { compilePattern, pathIndex, type PathIndex } from './pattern.ts'
 
 /**
  * Paths to skip: build output, dependency trees and tool caches. All of them
@@ -271,9 +271,18 @@ export function createLister(
       (files) => files.filter((f) => !matchesExclude(f, excludes)),
     ))
 
+  let indexed: Promise<{ files: string[]; index: PathIndex }> | null = null
   const lister = async (pattern: string): Promise<string[]> => {
     const compiled = compilePattern(pattern)
-    return (await list()).filter((f) => compiled.base(f) !== null)
+    const { files, index } = await (indexed ??= list().then((files) => ({
+      files,
+      index: pathIndex(files),
+    })))
+    const out: string[] = []
+    for (const i of index.candidates(compiled)) {
+      if (compiled.base(files[i]!) !== null) out.push(files[i]!)
+    }
+    return out
   }
   return Object.assign(lister, { all: list, limit: () => limit.hit })
 }
