@@ -27,6 +27,7 @@
  */
 
 import {
+  errorDocument,
   type App,
   type CallOptions,
   type CallResult,
@@ -116,8 +117,15 @@ function json(body: unknown, status = 200, extra: Record<string, string> = {}): 
   return Response.json(body, { status, headers: { ...HEADERS, ...extra } })
 }
 
-function errorDoc(exit: number, message: string, more: Record<string, unknown> = {}) {
-  return { schemaVersion: 1, kind: 'error', exit, message, ...more }
+/** The error document, with fields beyond it after. */
+function errorDoc(
+  code: string,
+  exit: number,
+  message: string,
+  hint?: string,
+  more: Record<string, unknown> = {},
+) {
+  return { ...errorDocument(code, message, exit, hint), ...more }
 }
 
 /** Read at most `max` bytes of `request`'s body, or null when it is larger. */
@@ -149,12 +157,17 @@ function statusOf(result: Exclude<CallResult, { status: 'ok' }>): number {
 
 function failureBody(result: Exclude<CallResult, { status: 'ok' }>): Record<string, unknown> {
   if (result.status === 'refused') {
-    return errorDoc(result.reason === 'cli-only' ? 1 : 2, result.message, {
-      refused: result.reason,
-    })
+    return errorDoc(
+      result.reason,
+      result.reason === 'cli-only' ? 1 : 2,
+      result.message,
+      undefined,
+      {
+        refused: result.reason,
+      },
+    )
   }
-  return errorDoc(result.exit, result.message, {
-    ...(result.hint !== undefined ? { hint: result.hint } : {}),
+  return errorDoc(result.code, result.exit, result.message, result.hint, {
     ...(result.stderr !== '' ? { stderr: result.stderr } : {}),
   })
 }
@@ -238,26 +251,27 @@ export function createHttpApi(app: App, options: HttpApiOptions): HttpApi {
   const runCommand = async (request: Request, words: string[]): Promise<Response> => {
     const name = words.join(' ')
     if (!callablePaths.has(name)) {
-      return json(errorDoc(2, `no command '${[app.name, ...words].join(' ')}'`), 404)
+      return json(errorDoc('not-found', 2, `no command '${[app.name, ...words].join(' ')}'`), 404)
     }
     const type = request.headers.get('content-type') ?? ''
     if (!/^application\/json\b/i.test(type)) {
-      return json(errorDoc(2, 'send the arguments as application/json'), 415)
+      return json(errorDoc('usage', 2, 'send the arguments as application/json'), 415)
     }
     const raw = await readBody(request, maxBody)
-    if (raw === null) return json(errorDoc(2, `the body is larger than ${maxBody} bytes`), 413)
+    if (raw === null)
+      return json(errorDoc('usage', 2, `the body is larger than ${maxBody} bytes`), 413)
     let args: unknown
     try {
       args = raw.trim() === '' ? {} : JSON.parse(raw)
     } catch {
-      return json(errorDoc(2, 'the body is not JSON'), 400)
+      return json(errorDoc('usage', 2, 'the body is not JSON'), 400)
     }
 
     const key = `${name}\n${raw}`
     const confirmHeader = request.headers.get('x-confirm')
     const confirmed = confirmHeader !== null && spendNonce(confirmHeader, key)
     if (confirmHeader !== null && !confirmed) {
-      return json(errorDoc(1, 'the confirmation is not valid; ask again'), 403)
+      return json(errorDoc('cli-only', 1, 'the confirmation is not valid; ask again'), 403)
     }
 
     const stream = (request.headers.get('accept') ?? '').includes(NDJSON)
@@ -331,7 +345,8 @@ export function createHttpApi(app: App, options: HttpApiOptions): HttpApi {
         push = write
         void done.then(
           (result) => end(result.status === 'ok' ? result.document : failureBody(result)),
-          (err: unknown) => end(errorDoc(1, err instanceof Error ? err.message : String(err))),
+          (err: unknown) =>
+            end(errorDoc('error', 1, err instanceof Error ? err.message : String(err))),
         )
       },
       cancel() {
@@ -355,7 +370,7 @@ export function createHttpApi(app: App, options: HttpApiOptions): HttpApi {
       })
     }
     const url = new URL(request.url)
-    if (!handles(request)) return json(errorDoc(2, 'not found'), 404)
+    if (!handles(request)) return json(errorDoc('not-found', 2, 'not found'), 404)
     const rest = url.pathname.slice(prefix.length)
     let words: string[]
     try {
@@ -364,12 +379,12 @@ export function createHttpApi(app: App, options: HttpApiOptions): HttpApi {
         .filter((w) => w !== '')
         .map((w) => decodeURIComponent(w))
     } catch {
-      return json(errorDoc(2, 'the path is not valid'), 400)
+      return json(errorDoc('usage', 2, 'the path is not valid'), 400)
     }
     const [route, ...path] = words
     const method = request.method
     const only = (allowed: string): Response =>
-      json(errorDoc(2, `use ${allowed}`), 405, { allow: allowed })
+      json(errorDoc('usage', 2, `use ${allowed}`), 405, { allow: allowed })
 
     if (route === 'schema' && path.length === 0) {
       if (method !== 'GET') return only('GET')
@@ -406,14 +421,14 @@ export function createHttpApi(app: App, options: HttpApiOptions): HttpApi {
           help,
         })
       } catch (err) {
-        return json(errorDoc(2, (err as Error).message), 404)
+        return json(errorDoc('not-found', 2, (err as Error).message), 404)
       }
     }
     if (route === 'commands') {
       if (method !== 'POST') return only('POST')
       return runCommand(request, path)
     }
-    return json(errorDoc(2, 'not found'), 404)
+    return json(errorDoc('not-found', 2, 'not found'), 404)
   }
 
   return { token, prefix, handles, fetch, checkOrigin, hasToken }

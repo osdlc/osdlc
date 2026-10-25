@@ -10,6 +10,7 @@ import { z } from 'zod'
 import {
   BUILTIN_FLAGS,
   CommandError,
+  ErrorDocumentSchema,
   HelpEntrySchema,
   UNIVERSAL_EXITS,
   UsageError,
@@ -17,6 +18,7 @@ import {
   defineApp,
   defineCommand,
   defineGroup,
+  errorDocument,
   isGroup,
   isInteractive,
   loadCommandTree,
@@ -33,6 +35,7 @@ import {
   type CommandResult,
   type DataCommand,
   type DataCommandSpec,
+  type ErrorDocument,
   type Group,
   type GroupSpec,
   type HelpEntry,
@@ -79,7 +82,7 @@ const listSpec: DataCommandSpec<
     ctx: CommandContext,
   ) {
     if (input.globals.dir === '/nowhere')
-      throw new CommandError('not a repository', { hint: 'pass -C' })
+      throw new CommandError('not a repository', { hint: 'pass -C', code: 'not-a-repo' })
     const shown = branches.filter((b) => !input.flags.merged || b.merged)
     ctx.note(`${shown.length} branch(es) in ${input.globals.dir ?? ctx.cwd}`)
     return { branches: shown }
@@ -148,6 +151,13 @@ test('errors pick the exit code', async () => {
   })
   expect((await runApp(app, ['--json'])).exit).toBe(2)
   expect((await runApp(app, ['--version'])).out).toBe('sweep 0.3.0\n')
+})
+
+test('under --json an error is also a document on stdout', async () => {
+  const run = await runApp(app, ['branch', '-C', '/nowhere', '--json'])
+  const doc: ErrorDocument = ErrorDocumentSchema.parse(run.json())
+  expect(doc).toEqual(errorDocument('not-a-repo', 'not a repository', 1, 'pass -C'))
+  expect(run.err).toBe('sweep: not a repository\npass -C\n')
 })
 
 test('help is progressive, and its JSON says the same', async () => {

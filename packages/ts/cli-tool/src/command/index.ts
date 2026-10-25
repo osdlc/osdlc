@@ -44,6 +44,9 @@ export type {
   Surface,
 } from './define.ts'
 
+export { ErrorDocumentSchema, errorDocument } from './error.ts'
+export type { ErrorDocument } from './error.ts'
+
 export { defineApp } from './app.ts'
 export type { App, AppSpec, CallOptions, CallResult, SchemaEntry } from './app.ts'
 

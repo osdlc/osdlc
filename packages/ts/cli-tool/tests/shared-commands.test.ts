@@ -218,11 +218,8 @@ describe('config', () => {
       '/project.json: removed discovery\n',
     )
     const again = await runApp(app, ['config', 'unset', 'discovery', '--json'])
-    expect(again).toMatchObject({
-      exit: 1,
-      out: '',
-      err: 't: discovery is not set in /project.json\n',
-    })
+    expect(again).toMatchObject({ exit: 1, err: 't: discovery is not set in /project.json\n' })
+    expect(again.json()).toMatchObject({ kind: 'error', code: 'error', exit: 1 })
   })
 
   test('config path names each file', async () => {

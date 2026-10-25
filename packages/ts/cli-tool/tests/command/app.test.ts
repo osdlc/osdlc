@@ -193,7 +193,7 @@ describe('routing and output', () => {
   test('an interactive command refuses --json with exit 2', async () => {
     const r = await runApp(app, ['--json'])
     expect(r.exit).toBe(2)
-    expect(r.out).toBe('')
+    expect(r.json()).toMatchObject({ kind: 'error', code: 'usage', exit: 2 })
     expect(r.err).toContain('is interactive and has no JSON form')
   })
 
@@ -245,7 +245,28 @@ describe('errors', () => {
   test('a UsageError from run is exit 2', async () => {
     const r = await runApp(app, ['fails', '--usage', '--json'])
     expect(r.exit).toBe(2)
-    expect(r.out).toBe('')
+    expect(r.json()).toMatchObject({ kind: 'error', code: 'usage', message: 'bad combination' })
+  })
+
+  test('under --json or jsonl an error is also a document on stdout', async () => {
+    const text = await runApp(app, ['fails'])
+    expect(text.out).toBe('')
+    const json = await runApp(app, ['fails', '--json'])
+    expect(json).toMatchObject({ exit: 12, err: 'tooly: it broke\ntry again\n' })
+    expect(json.json()).toEqual({
+      schemaVersion: 1,
+      kind: 'error',
+      code: 'error',
+      message: 'it broke',
+      exit: 12,
+      hint: 'try again',
+    })
+    const jsonl = await runApp(app, ['config', 'get', '--output', 'jsonl'])
+    expect(jsonl.exit).toBe(2)
+    expect(jsonl.out.trimEnd().split('\n')).toHaveLength(1)
+    expect(JSON.parse(jsonl.out)).toMatchObject({ kind: 'error', code: 'usage' })
+    const unknown = await runApp(app, ['nosuch', '--json'])
+    expect(JSON.parse(unknown.out)).toMatchObject({ kind: 'error', code: 'usage' })
   })
 
   test('a thrown failure exits with its category code', async () => {
@@ -266,6 +287,14 @@ describe('errors', () => {
     const r = await runApp(broken, ['x'])
     expect(r.exit).toBe(22)
     expect(r.err).toContain('t: git is not installed')
+    const json = await runApp(broken, ['x', '--json'])
+    expect(json.json()).toEqual({
+      schemaVersion: 1,
+      kind: 'error',
+      code: 'not-installed',
+      message: 'git is not installed',
+      exit: 22,
+    })
   })
 
   test('any other thrown error propagates to runMain', async () => {
@@ -548,7 +577,10 @@ describe('context', () => {
     ]
     for (const env of envs) {
       for (const stdout of [true, false]) {
-        const ctx = { ...captureContext({ env }), terminal: { stdin: stdout, stdout, stderr: stdout } }
+        const ctx = {
+          ...captureContext({ env }),
+          terminal: { stdin: stdout, stdout, stderr: stdout },
+        }
         expect(colorEnabled(ctx)).toBe(detectColorLevel({ env, isTTY: stdout }) !== 'none')
       }
     }

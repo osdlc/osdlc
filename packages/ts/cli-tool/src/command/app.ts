@@ -42,6 +42,7 @@ import {
   type HelpScope,
   type Placed,
 } from './help.ts'
+import { errorDocument } from './error.ts'
 import { documentSchema, documentZod, inputSchema, kebab, type JsonSchema } from './schema.ts'
 
 /**
@@ -132,6 +133,8 @@ export type CallResult =
   | {
       status: 'error'
       exit: number
+      /** The error document's `code`: `usage`, a failure kind, a `CommandError`'s code, or `error`. */
+      code: string
       message: string
       hint?: string
       usage?: true
@@ -478,13 +481,24 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
     const wantsHelp = has('--help') || has('-h')
     const wantsJson =
       has('--json') || scanned.values.get('--output') === 'json' || has('--output=json')
+    const wantsJsonl = scanned.values.get('--output') === 'jsonl' || has('--output=jsonl')
     const width = helpWidth(base.terminal?.stdout === true ? base.terminal.columns : undefined)
-    const fail = (message: string, exit: ExitCode, hint?: string): number => {
+    // How an error is reported: as read from the words, then as parsed.
+    let errorMode: OutputMode = wantsJson ? 'json' : wantsJsonl ? 'jsonl' : 'text'
+    /**
+     * Report a failure: a line on stderr, and under `--json` or `jsonl` an
+     * error document on stdout too, since that is where a caller reads data.
+     */
+    const fail = (code: string, message: string, exit: ExitCode, hint?: string): number => {
       base.io.stderr(`${spec.name}: ${safe(message)}\n${safe(hint ?? '')}`)
+      if (errorMode !== 'text') {
+        const doc = errorDocument(code, message, exit, hint)
+        base.io.stdout(`${JSON.stringify(doc, null, errorMode === 'json' ? 2 : undefined)}\n`)
+      }
       return exit
     }
     const usageFail = (message: string): number =>
-      fail(message, EXIT.usage, usageHint(helpEntry(node, scope, { depth: 0 }), spec.name))
+      fail('usage', message, EXIT.usage, usageHint(helpEntry(node, scope, { depth: 0 }), spec.name))
 
     // A word that names no subcommand, where nothing takes a positional.
     const takesWords = (command?.positionals ?? []).length > 0
@@ -554,6 +568,7 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
     const both = values.json && values.output !== undefined && values.output !== 'json'
     if (both) return usageFail(`--json and --output ${values.output} ask for different forms`)
     const mode: OutputMode = values.json ? 'json' : ((values.output as OutputMode) ?? 'text')
+    errorMode = mode
     const json = mode !== 'text'
     const own: Record<string, unknown> = {}
     const globalValues: Record<string, unknown> = {}
@@ -612,11 +627,20 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
     } catch (err) {
       if (err instanceof UsageError) return usageFail(err.message)
       if (err instanceof CommandError) {
-        return fail(err.message, err.exit, err.hint !== undefined ? `${err.hint}\n` : '')
+        return fail(err.code, err.message, err.exit, err.hint !== undefined ? `${err.hint}\n` : '')
       }
       const failure = failureOf(err)
       if (failure !== null) {
         base.io.stderr(safe(renderFailure(failure, spec.name)))
+        if (errorMode !== 'text') {
+          const doc = errorDocument(
+            failure.kind,
+            failure.message,
+            exitCodeFor(failure),
+            failure.hint,
+          )
+          base.io.stdout(`${JSON.stringify(doc, null, errorMode === 'json' ? 2 : undefined)}\n`)
+        }
         return exitCodeFor(failure)
       }
       throw err
@@ -688,9 +712,10 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
     const capture = (text: string): void => {
       stderr += text
     }
-    const failed = (exit: number, message: string, hint?: string): CallResult => ({
+    const failed = (code: string, exit: number, message: string, hint?: string): CallResult => ({
       status: 'error',
       exit,
+      code,
       message,
       ...(hint !== undefined ? { hint } : {}),
       stderr,
@@ -698,6 +723,7 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
     const usageFailed = (message: string): CallResult => ({
       status: 'error',
       exit: EXIT.usage,
+      code: 'usage',
       message,
       usage: true,
       stderr,
@@ -735,12 +761,12 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
       return { status: 'ok', exit, document: doc, stderr }
     } catch (err) {
       if (err instanceof UsageError) return usageFailed(err.message)
-      if (err instanceof CommandError) return failed(err.exit, err.message, err.hint)
+      if (err instanceof CommandError) return failed(err.code, err.exit, err.message, err.hint)
       const failure = failureOf(err)
       if (failure !== null) {
-        return failed(exitCodeFor(failure), renderFailure(failure, spec.name).trimEnd())
+        return failed(failure.kind, exitCodeFor(failure), failure.message, failure.hint)
       }
-      return failed(EXIT.error, err instanceof Error ? err.message : String(err))
+      return failed('error', EXIT.error, err instanceof Error ? err.message : String(err))
     }
   }
 

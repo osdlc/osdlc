@@ -232,12 +232,19 @@ describe('routes', () => {
     const usage = await post(server, '/commands/items/add', {}, auth)
     expect([usage.status, usage.json()]).toEqual([
       400,
-      { schemaVersion: 1, kind: 'error', exit: 2, message: "'name' is required" },
+      { schemaVersion: 1, kind: 'error', code: 'usage', exit: 2, message: "'name' is required" },
     ])
     const failed = await post(server, '/commands/fails', {}, auth)
     expect([failed.status, failed.json()]).toEqual([
       422,
-      { schemaVersion: 1, kind: 'error', exit: 1, message: 'it broke', hint: 'try again' },
+      {
+        schemaVersion: 1,
+        kind: 'error',
+        code: 'error',
+        exit: 1,
+        message: 'it broke',
+        hint: 'try again',
+      },
     ])
     expect((await post(server, '/commands/nope', {}, auth)).status).toBe(404)
     expect((await post(server, '/commands/tui', {}, auth)).status).toBe(404)
@@ -277,6 +284,7 @@ describe('cli-only commands', () => {
       {
         schemaVersion: 1,
         kind: 'error',
+        code: 'cli-only',
         exit: 1,
         message: "'tooly trust' runs from the command line only",
         refused: 'cli-only',

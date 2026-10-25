@@ -421,9 +421,16 @@ Errors:
 | Thrown from `run` | Prints on stderr | Exit |
 |---|---|---|
 | a parse error, or `UsageError` | `<name>: <message>`, the usage line and where the help is | 2 |
-| `CommandError(message, { exit, hint })` | `<name>: <message>` and the hint | `exit`, default 1 |
+| `CommandError(message, { exit, hint, code })` | `<name>: <message>` and the hint | `exit`, default 1 |
 | a `Failure`, or an error carrying one | the failure line | its category code (22-25), else 1 |
 | anything else | nothing; it propagates to `runMain` | 1 |
+
+Under `--json` or `--output jsonl`, each of the first three also prints an
+error document on stdout, where a caller reads data:
+`{ schemaVersion: 1, kind: "error", code, message, exit, hint }`. `code` is
+`usage` for exit 2, the failure's kind for a `Failure`, the `CommandError`'s
+`code`, or else `error`. `ErrorDocumentSchema` is its Zod schema, and
+`App.call` and the HTTP adapter answer a failed call with the same fields.
 
 `checkOutput: true` on the app checks each output against its schema before
 printing it. `runApp` in `@osdlc/cli-tool/testing` always checks a `--json`
@@ -679,10 +686,10 @@ The experimental exports of `@osdlc/cli-tool/command`:
 
 `App`, `AppSpec`, `BUILTIN_FLAGS`, `CallOptions`, `CallResult`, `Command`, `CommandCommon`, `CommandContext`, `CommandError`,
 `CommandFile`, `CommandInput`, `CommandKit`, `CommandResult`, `DataCommand`, `DataCommandSpec`,
-`EventsSpec`, `Exposure`, `Group`, `GroupSpec`, `HelpEntry`, `HelpEntrySchema`, `HelpExit`, `HelpFlag`, `HelpPositional`,
+`ErrorDocument`, `ErrorDocumentSchema`, `EventsSpec`, `Exposure`, `Group`, `GroupSpec`, `HelpEntry`, `HelpEntrySchema`, `HelpExit`, `HelpFlag`, `HelpPositional`,
 `InteractiveCommand`, `InteractiveCommandSpec`, `JsonSchema`, `Node`, `Outcome`, `OutputMode`,
 `OutputSchema`, `SchemaEntry`, `Surface`, `UNIVERSAL_EXITS`, `UsageError`, `commandKit`, `defineApp`, `defineCommand`,
-`defineGroup`, `isGroup`, `isInteractive`, `loadCommandTree`, `outcome`, `treeFromFiles`
+`defineGroup`, `errorDocument`, `isGroup`, `isInteractive`, `loadCommandTree`, `outcome`, `treeFromFiles`
 
 The experimental exports of `@osdlc/cli-tool/config-command`:
 

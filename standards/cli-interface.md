@@ -10,6 +10,7 @@ Status: draft.
 - Every command answers `--json` with one document on stdout. The document is
   an object that starts with `schemaVersion` and `kind`. A list also answers
   `--output jsonl`: one object per line, each with `schemaVersion` and `kind`.
+  A failure under either is an error document with `kind: "error"`.
 - A `schema` command prints each command's input and output as JSON Schema,
   generated from the same declaration the parser and the renderer use.
 - `<tool> --version` prints the name and version.
@@ -71,6 +72,19 @@ JSON document on stdout:
   a server) has no JSON form. It refuses `--json` with exit 2.
 - `--json` does not change the exit code. A search that matched nothing prints
   its empty document and exits 1, as it would without `--json`.
+- A run that fails under `--json` prints an error document on stdout instead,
+  since stdout is where a caller reads data, and its usual line on stderr for
+  a person:
+
+  ```json
+  { "schemaVersion": 1, "kind": "error", "code": "usage", "message": "unknown command 'nosuch'", "exit": 2, "hint": "See \"tooly help\"." }
+  ```
+
+  `code` is a stable name to branch on: `usage` for exit 2, a classified
+  failure's kind (such as `not-installed`) for 22-25, or a name the command
+  chose, else `error`. `exit` is the exit code. Under `--output jsonl` the
+  error document is the last line. An adapter answers a failed call with the
+  same document.
 
 ### 2a. `--output text|json|jsonl`
 
@@ -129,8 +143,9 @@ return. Code uses named constants, never bare numbers.
 
 - stdout carries the answer: the text form or the JSON document. Nothing else.
 - stderr carries everything else: errors, warnings, progress, notes, and
-  context such as which file was read. Each line starts with `<tool>:`, and a
-  warning with `<tool>: warning:`.
+  context such as which file was read. Each message starts with `<tool>:`,
+  and a warning with `<tool>: warning:`. The lines that follow a message
+  (its hint, a usage line, where the help is) are printed as they are.
 - An error prints one line saying what went wrong, then a hint when there is
   one. No stack trace.
 - A run that prints a document and then fails (exit 1 or a domain code) still
@@ -268,20 +283,17 @@ Each of these was a choice. Overturn any of them in review.
    command's own object with `schemaVersion` and `kind` added in front, not
    `{ "schemaVersion", "kind", "data": {...} }`. Callers read `.tasks`, not
    `.data.tasks`. The cost is that a command's output may not use either name.
-2. **Errors are not JSON.** Under `--json`, an error is a line on stderr and an
-   exit code, the same as without it. A structured error document can come
-   later if callers need one.
-3. **`schemaVersion` starts at 1 per document.** Each kind is versioned on its
+2. **`schemaVersion` starts at 1 per document.** Each kind is versioned on its
    own, so a change to one document does not move the others.
-4. **`help` is a command and `--help` is its shorthand.** `<tool> x --help` and
+3. **`help` is a command and `--help` is its shorthand.** `<tool> x --help` and
    `<tool> help x` print the same thing, and `<tool> x --help --all` is
    `<tool> help x --all`.
-5. **Streams are NDJSON, not Server-Sent Events.** `EventSource` can only send
+4. **Streams are NDJSON, not Server-Sent Events.** `EventSource` can only send
    GET and cannot send the token header. `fetch` can read NDJSON line by line
    from a POST, and the lines are the same as `--output jsonl`.
-6. **Globals are fixed per server.** An adapter does not let a caller set
+5. **Globals are fixed per server.** An adapter does not let a caller set
    `-C <dir>` or another global flag, so a server answers for the directory it
    was started in.
-7. **A non-zero exit with a document is still an answer.** HTTP sends 200 with
+6. **A non-zero exit with a document is still an answer.** HTTP sends 200 with
    the exit code in `X-Exit-Code`; MCP marks the result an error and keeps the
    document.

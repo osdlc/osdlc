@@ -278,6 +278,7 @@ describe('App.call', () => {
     expect(await app.call(['fails'], {}, CTX, { surface: 'mcp' })).toEqual({
       status: 'error',
       exit: 1,
+      code: 'error',
       message: 'it broke',
       hint: 'try again',
       stderr: '',

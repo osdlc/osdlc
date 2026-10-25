@@ -133,17 +133,21 @@ export function isOutcome(value: unknown): value is Outcome<unknown> {
 /**
  * A command that cannot do what it was asked. The app prints
  * `<app>: <message>` and the hint on stderr and exits with `exit`
- * ({@link EXIT.error} unless given).
+ * ({@link EXIT.error} unless given). Under `--json` it also prints an error
+ * document whose `code` is `code` (default `error`).
  * @experimental
  */
 export class CommandError extends Error {
   readonly exit: ExitCode
   readonly hint: string | undefined
-  constructor(message: string, options: { exit?: ExitCode; hint?: string } = {}) {
+  /** A stable name for the error, for the error document. */
+  readonly code: string
+  constructor(message: string, options: { exit?: ExitCode; hint?: string; code?: string } = {}) {
     super(message)
     this.name = 'CommandError'
     this.exit = options.exit ?? 1
     this.hint = options.hint
+    this.code = options.code ?? 'error'
   }
 }
 
@@ -155,7 +159,7 @@ export class CommandError extends Error {
  */
 export class UsageError extends CommandError {
   constructor(message: string) {
-    super(message, { exit: 2 })
+    super(message, { exit: 2, code: 'usage' })
     this.name = 'UsageError'
   }
 }
