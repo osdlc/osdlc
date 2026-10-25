@@ -40,7 +40,8 @@ export function runCommand(home: string) {
       'terminal with the arguments after --, bound the way its tool expects (npm run x -- a, ' +
       'just x a). The same rules as Enter in the terminal UI and Run in the web view. Exits ' +
       "with the task's exit code. --dry-run prints what would run instead; with --json it is " +
-      'the run document. A task that uses an editor variable is not run.',
+      'the run document. A task that uses an editor variable is not run, and neither is an ' +
+      'agent skill: type its /<name> in the agent.',
     positionals: [{ name: 'id', required: true, help: 'the task id, as "list --json" shows it' }],
     flags: {
       cached: { kind: 'boolean', help: 'find the task in the last stored probe, not a new one' },
@@ -65,6 +66,15 @@ export function runCommand(home: string) {
       try {
         plan = session.resolveRun(snapshot.catalog, positionals[0]!, rest)
       } catch (err) {
+        const skill = snapshot.skills.find(
+          (s) => s.id === positionals[0] || s.invoke === positionals[0],
+        )
+        if (err instanceof SessionError && err.code === 'task-not-found' && skill !== undefined) {
+          throw new CommandError(`${skill.invoke}: a skill runs in an agent, not here`, {
+            code: 'not-runnable',
+            hint: `type ${skill.invoke} in ${skill.harnesses.join(', ')}`,
+          })
+        }
         if (err instanceof SessionError) {
           throw new CommandError(err.message, {
             code: err.code,

@@ -934,6 +934,9 @@ importers:
       '@osdlc/config-layers':
         specifier: workspace:^
         version: link:../config-layers
+      '@osdlc/detect-harness':
+        specifier: workspace:^
+        version: link:../detect-harness
       '@osdlc/etag-write':
         specifier: workspace:^
         version: link:../etag-write

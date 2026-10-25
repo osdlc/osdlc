@@ -37,6 +37,24 @@ export interface WayOptions {
   signal?: AbortSignal | undefined
   /** Called with each probed runner's measured time. */
   onProbe?: ((probe: { runner: string; durationMs: number }) => void) | undefined
+  /**
+   * Per-tool trust, for a repository that is not trusted as a whole. Used
+   * only while `allowExec` is false. See {@link ToolTrust}.
+   */
+  toolTrust?: ToolTrust | undefined
+}
+
+/**
+ * Trust grants for single tools. A runner may run its tool when its own id
+ * and each tool manager that wraps commands at the root (mise, proto) are
+ * trusted: `mise exec -- just` runs mise as well as just. Detection itself
+ * runs no tool under a tool grant.
+ */
+export interface ToolTrust {
+  /** The trusted scopes: runner and tool ids. Read on every collection. */
+  trusted: ReadonlySet<string>
+  /** Called on every collection with each runner's scopes, once detection knows the wrappers. */
+  onScopes?: ((scopes: ReadonlyMap<string, readonly string[]>) => void) | undefined
 }
 
 /** The built-in tools plus `extra`. Throws when two tools share an id. */
@@ -64,6 +82,65 @@ function collectOptions(o: WayOptions) {
   }
 }
 
+/**
+ * The tool managers detected at the root that run commands through
+ * themselves (`mise exec -- <binary>`), as trust scopes.
+ */
+export function wrapperScopes(project: Project, profile: ProjectProfile): string[] {
+  const exec = new Set(
+    project.tools.filter((t) => t.roles.toolManager?.exec !== undefined).map((t) => t.id),
+  )
+  return project
+    .toolManagers(profile)
+    .map((d) => d.tool)
+    .filter((id) => exec.has(id))
+}
+
+/** Every scope `runner` needs trusted: its own id, then each wrapper. */
+export function runnerScopes(runner: string, wrappers: readonly string[]): string[] {
+  return [runner, ...wrappers.filter((w) => w !== runner)]
+}
+
+/** The ids of every registered tool with a runner role. */
+export function runnerIds(project: Project): string[] {
+  return project.tools.filter((t) => t.roles.runner !== undefined).map((t) => t.id)
+}
+
+/**
+ * The runners a tool grant lets run, or null when collection is not split:
+ * execution is allowed for all, or there is no per-tool trust. Reports each
+ * runner's scopes through `onScopes` first.
+ */
+function grantedRunners(project: Project, profile: ProjectProfile, o: WayOptions): string[] | null {
+  const trust = o.toolTrust
+  if (o.allowExec === true || trust === undefined) return null
+  const wrappers = wrapperScopes(project, profile)
+  const scopes = new Map(runnerIds(project).map((r) => [r, runnerScopes(r, wrappers)]))
+  trust.onScopes?.(scopes)
+  const granted = [...scopes]
+    .filter(([runner, needs]) => {
+      if (o.only !== undefined && !o.only.includes(runner)) return false
+      if (o.exclude?.includes(runner) === true) return false
+      return needs.every((s) => trust.trusted.has(s))
+    })
+    .map(([runner]) => runner)
+  return granted.length > 0 ? granted : null
+}
+
+/** The collect options for the runners a tool grant covers, and for the rest. */
+function splitOptions(o: WayOptions, granted: string[]) {
+  const base = collectOptions(o)
+  const { execWithheldHint: _hint, exclude: _exclude, ...rest } = base
+  return {
+    granted: { ...rest, allowExec: true, only: granted },
+    others: { ...base, exclude: [...(o.exclude ?? []), ...granted] },
+  }
+}
+
+function mergeCatalogs(granted: Catalog, others: Catalog): Catalog {
+  return { ...others, reports: [...granted.reports, ...others.reports] }
+}
+
 /** Detect, collect, and store each runner's result under `store`. */
 export async function collectAndCache(
   project: Project,
@@ -72,7 +149,14 @@ export async function collectAndCache(
   store: string,
 ): Promise<Catalog> {
   const profile = await detect(project, root, options)
-  return project.runners.collectAndCache(profile, store, collectOptions(options))
+  const granted = grantedRunners(project, profile, options)
+  if (granted === null) {
+    return project.runners.collectAndCache(profile, store, collectOptions(options))
+  }
+  const split = splitOptions(options, granted)
+  const a = await project.runners.collectAndCache(profile, store, split.granted)
+  const b = await project.runners.collectAndCache(profile, store, split.others)
+  return mergeCatalogs(a, b)
 }
 
 /** Detect, then read what `store` holds, without running any runner. */
@@ -83,7 +167,20 @@ export async function readCachedCatalog(
   store: string,
 ): Promise<CachedCatalog> {
   const profile = await detect(project, root, options)
-  return project.runners.readCached(profile, store, collectOptions(options))
+  const granted = grantedRunners(project, profile, options)
+  if (granted === null) {
+    return project.runners.readCached(profile, store, collectOptions(options))
+  }
+  const split = splitOptions(options, granted)
+  const a = await project.runners.readCached(profile, store, split.granted)
+  const b = await project.runners.readCached(profile, store, split.others)
+  const catalog =
+    a.catalog === null
+      ? b.catalog
+      : b.catalog === null
+        ? a.catalog
+        : mergeCatalogs(a.catalog, b.catalog)
+  return { catalog, runners: [...a.runners, ...b.runners], allFresh: a.allFresh && b.allFresh }
 }
 
 /** Every report in `catalog`, marked fresh: the verdict right after a probe. */

@@ -118,6 +118,15 @@
         "dark"
       ],
       "description": "The web view theme. User config only."
+    },
+    "skills": {
+      "type": "string",
+      "enum": [
+        "project",
+        "all",
+        "off"
+      ],
+      "description": "Which agent skills the Skills group lists: the repository's (project), those and your own and your plugins' (all), or none (off). User config only."
     }
   },
   "description": "wayfinder configuration: wayfinder.config.json or the user config file."

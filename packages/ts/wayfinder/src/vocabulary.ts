@@ -41,19 +41,67 @@ export function runnerLabel(runner: string): string {
 export const WITHHELD = 'withheld'
 
 /**
- * Why a runner was withheld: the repository is not trusted, or execution is
- * off by a flag or a config file.
+ * Why a runner was withheld: the repository is not trusted, a tool the runner
+ * runs has no trust grant while others in the repository have one, or
+ * execution is off by a flag or a config file.
  */
-export type WithheldReason = 'untrusted' | 'exec-off'
+export type WithheldReason = 'untrusted' | 'tool-untrusted' | 'exec-off'
 
 const WITHHELD_REASONS: Record<WithheldReason, string> = {
   untrusted: 'this repository is not trusted',
+  'tool-untrusted': 'a tool it runs is not trusted',
   'exec-off': 'execution is off',
 }
 
-/** `withheld: this repository is not trusted`. */
-export function withheldLabel(reason: WithheldReason): string {
+/** `a`, `a and b`, `a, b and c`. */
+function listWords(words: readonly string[]): string {
+  if (words.length <= 1) return words.join('')
+  return `${words.slice(0, -1).join(', ')} and ${words.at(-1)}`
+}
+
+/**
+ * `withheld: this repository is not trusted`. For `tool-untrusted` with the
+ * missing tool ids: `withheld: mise is not trusted`.
+ */
+export function withheldLabel(reason: WithheldReason, missing: readonly string[] = []): string {
+  if (reason === 'tool-untrusted' && missing.length > 0) {
+    return `${WITHHELD}: ${listWords(missing)} ${missing.length === 1 ? 'is' : 'are'} not trusted`
+  }
   return `${WITHHELD}: ${WITHHELD_REASONS[reason]}`
+}
+
+/** What a tool with no single language reports as its language. */
+export const ANY_LANGUAGE = 'any language'
+
+const LANGUAGES: Record<string, string> = {
+  node: 'JavaScript',
+  deno: 'JavaScript',
+  python: 'Python',
+  rust: 'Rust',
+  go: 'Go',
+  ruby: 'Ruby',
+  php: 'PHP',
+  jvm: 'Java',
+  dotnet: '.NET',
+  swift: 'Swift',
+}
+
+/**
+ * The language a person reads for a tool's ecosystem id: `node` is
+ * `JavaScript`. An id with no entry is shown as it is. No ecosystem is
+ * {@link ANY_LANGUAGE}: make, just and moon serve every language.
+ */
+export function languageLabel(ecosystem: string | null | undefined): string {
+  if (ecosystem === null || ecosystem === undefined) return ANY_LANGUAGE
+  return LANGUAGES[ecosystem] ?? ecosystem
+}
+
+/** What the Skills group's rows are called. */
+export const SKILL_NOUN = { one: 'skill', many: 'skills' } as const
+
+/** `1 skill`, `3 skills`. */
+export function countSkills(n: number): string {
+  return `${n} ${n === 1 ? SKILL_NOUN.one : SKILL_NOUN.many}`
 }
 
 const PARAMETERS_UNKNOWN: Record<ParametersUnknownReason, string> = {

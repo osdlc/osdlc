@@ -65,6 +65,7 @@
     "@osdlc/cli-tool": "workspace:^",
     "@osdlc/command-seam": "workspace:^",
     "@osdlc/config-layers": "workspace:^",
+    "@osdlc/detect-harness": "workspace:^",
     "@osdlc/etag-write": "workspace:^",
     "@osdlc/system-model": "workspace:^",
     "@osdlc/tiered-dirs": "workspace:^",

@@ -26,7 +26,7 @@
  *     raise it. Run `way trust` to give a repository lasting permission.
  *   - `trust`, whole. A repository must not pre-authorize itself, or any group
  *     of repositories that includes it.
- *   - `open` and `theme`, which say how a person likes to work.
+ *   - `open`, `theme` and `skills`, which say how a person likes to work.
  *
  * `tools` is gated too, because a tool module is code. User-layer entries
  * always load; project-layer entries load only when the repository is trusted
@@ -70,6 +70,7 @@ import { originOwner } from '@osdlc/trust-repo/git'
 import { BIN, CONFIG_ENV_VAR, PROJECT_CONFIG_FILENAME } from './app.ts'
 import { appDirs, expandTilde, USER_CONFIG_FILENAME } from './xdg.ts'
 import type { WayOptions } from './catalog.ts'
+import { SKILLS_SETTING_VALUES, type SkillsSetting } from './core/skills.ts'
 
 export { CONFIG_ENV_VAR, PROJECT_CONFIG_FILENAME, USER_CONFIG_FILENAME }
 
@@ -152,6 +153,12 @@ export const WayfinderConfigSchema = z
         'What the bare way command opens: the terminal UI or the web view. User config only.',
       ),
     theme: z.enum(THEME_VALUES).describe('The web view theme. User config only.'),
+    skills: z
+      .enum(SKILLS_SETTING_VALUES)
+      .describe(
+        "Which agent skills the Skills group lists: the repository's (project), those and your " +
+          "own and your plugins' (all), or none (off). User config only.",
+      ),
   })
   .partial()
   .describe('wayfinder configuration: wayfinder.config.json or the user config file.')
@@ -258,7 +265,7 @@ export const CONFIG_KEYS: readonly string[] = leafKeys(WayfinderConfigSchema, ''
 export const CLI_ONLY_KEYS: readonly string[] = ['trust', 'allowExec', 'tools']
 
 /** The top-level keys only the user layer may set. */
-export const USER_ONLY_KEYS: readonly string[] = ['trust', 'open', 'theme']
+export const USER_ONLY_KEYS: readonly string[] = ['trust', 'open', 'theme', 'skills']
 
 /** Whether `key` is `top` or a key under it. */
 function under(key: string, top: string): boolean {
@@ -271,7 +278,9 @@ function under(key: string, top: string): boolean {
  */
 export function projectIgnoreReason(key: string, value: unknown): string | null {
   if (under(key, 'trust')) return 'a repository cannot grant itself trust'
-  if (under(key, 'open') || under(key, 'theme')) return 'a personal setting, for the user config'
+  if (under(key, 'open') || under(key, 'theme') || under(key, 'skills')) {
+    return 'a personal setting, for the user config'
+  }
   if (key === 'allowExec' && value === true) return 'a repository cannot turn execution on'
   return null
 }
@@ -508,6 +517,7 @@ export const DEFAULT_CONFIG: Required<WayfinderConfig> = {
   tools: [],
   open: 'tui',
   theme: 'system',
+  skills: 'project',
 }
 
 // ── Files ───────────────────────────────────────────────────────────────────
@@ -655,7 +665,7 @@ function projectRules(
     }
     delete out['trust']
   }
-  for (const key of ['open', 'theme'] as const) {
+  for (const key of ['open', 'theme', 'skills'] as const) {
     if (project[key] !== undefined) {
       warnings.push(
         `${locations.project}: ${key} is ignored in a project file — it is a personal setting; ` +
@@ -755,6 +765,8 @@ export interface Settings {
   theme: SettingValue<Theme>
   /** The runner display order. */
   runnerOrder: SettingValue<string[]>
+  /** Which agent skills the Skills group lists. */
+  skills: SettingValue<SkillsSetting>
   warnings: string[]
 }
 
@@ -795,6 +807,7 @@ export function settingsFrom(loaded: LoadedConfig): Settings {
     open: settingOf<OpenSurface>(loaded, 'open'),
     theme: settingOf<Theme>(loaded, 'theme'),
     runnerOrder: settingOf<string[]>(loaded, 'runners.order'),
+    skills: settingOf<SkillsSetting>(loaded, 'skills'),
     warnings: loaded.warnings,
   }
 }

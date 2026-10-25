@@ -7,6 +7,7 @@ import { outcome } from '@osdlc/cli-tool/command'
 import type { Task } from '@osdlc/system-model/detect'
 
 import { hasQuery } from '../core/filter.ts'
+import { skillLine, type SkillRow } from '../core/skills.ts'
 import { QueryOutput } from '../documents.ts'
 import { terminalSafe } from '../terminal-text.ts'
 import { FILTER_FLAGS, filterFrom, kit, noteUnknowns, openSession } from './shared.ts'
@@ -17,8 +18,8 @@ export function queryCommand(home: string) {
     summary: 'the tasks matching a search, best match first',
     description:
       "Terms are ANDed and matched fuzzily; a leading ' makes one term match exactly, and " +
-      '--exact does that to all of them. No terms is every task. Exits 1 when terms matched ' +
-      'nothing, as grep does.',
+      '--exact does that to all of them. No terms is every task. Matching agent skills follow ' +
+      'the tasks as /<name> lines. Exits 1 when terms matched nothing, as grep does.',
     positionals: [{ name: 'terms', variadic: true, help: 'the search terms' }],
     flags: {
       ...FILTER_FLAGS,
@@ -42,6 +43,7 @@ export function queryCommand(home: string) {
       const unknowns = session.unknowns(snapshot)
       noteUnknowns(ctx, session, snapshot, unknowns)
       const tasks: Task[] = session.search(snapshot.catalog, filter).map((h) => h.task)
+      const skills = session.searchSkills(snapshot.skills, filter).map((h) => h.skill)
       const doc = {
         root: snapshot.catalog.root,
         filter: {
@@ -52,13 +54,18 @@ export function queryCommand(home: string) {
           ...(filter.maxDepth !== undefined ? { maxDepth: filter.maxDepth } : {}),
         },
         tasks,
+        skills,
         cache: snapshot.cache,
         unknowns,
       }
-      return hasQuery(filter) && tasks.length === 0 ? outcome(doc, 1) : doc
+      const none = tasks.length === 0 && skills.length === 0
+      return hasQuery(filter) && none ? outcome(doc, 1) : doc
     },
     text(doc) {
-      const lines = (doc.tasks as Task[]).map((t) => terminalSafe(t.display))
+      const lines = [
+        ...(doc.tasks as Task[]).map((t) => terminalSafe(t.display)),
+        ...(doc.skills as SkillRow[]).map((s) => terminalSafe(skillLine(s))),
+      ]
       return lines.length > 0 ? `${lines.join('\n')}\n` : ''
     },
   })

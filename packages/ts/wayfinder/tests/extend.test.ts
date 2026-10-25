@@ -201,10 +201,13 @@ describe('way providers', () => {
     const ran = await run(['providers', '-C', await temp()])
     expect(ran.code).toBe(0)
     const [head, ...rows] = ran.out.trimEnd().split('\n')
-    expect(head).toMatch(/^tool\s+roles\s+kind\s+binary\s+on PATH\s+source$/)
-    expect(rows.find((r) => r.startsWith('just '))).toMatch(
-      /runner\s+parse\s+just\s+no\s+built-in$/,
+    expect(head).toMatch(
+      /^tool\s+roles\s+kind\s+binary\s+on PATH\s+language\s+source\s+homepage$/,
     )
+    expect(rows.find((r) => r.startsWith('just '))).toMatch(
+      /runner\s+parse\s+just\s+no\s+any language\s+built-in\s+https:\/\/just\.systems/,
+    )
+    expect(rows.find((r) => r.startsWith('npm '))).toMatch(/\sJavaScript\s/)
   })
 
   test('--json marks a tool from --config as custom, with its module', async () => {
@@ -219,6 +222,10 @@ describe('way providers', () => {
       onPath: false,
       source: 'custom',
       module: EXAMPLE,
+      homepage: null,
+      description: null,
+      ecosystem: null,
+      language: 'any language',
     })
     expect(rows.find((r) => r.id === 'npm')?.source).toBe('built-in')
   })

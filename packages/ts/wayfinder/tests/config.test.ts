@@ -305,6 +305,7 @@ describe('loadConfig', () => {
       tools: [],
       open: 'tui',
       theme: 'system',
+      skills: 'project',
     })
     expect(loaded.sources.get('runners.order')).toBe('project')
     expect(loaded.sources.get('runners.disabled')).toBe('user')
