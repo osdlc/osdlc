@@ -292,6 +292,19 @@ describe('the command routes', () => {
     }
   })
 
+  test('list refuses a directory of its own: the served one is fixed', async () => {
+    const s = await start()
+    const other = await root({ justfile: 'secret:\n  echo s\n' })
+    try {
+      const res = await s.call(['list'], { dir: other })
+      expect(res.status).toBe(400)
+      expect(JSON.stringify(await res.json())).toContain('fixed when the web view starts')
+      expect((await s.call(['list'], {})).status).toBe(200)
+    } finally {
+      await s.web.stop()
+    }
+  })
+
   test('the boot token is not a bearer token', async () => {
     const s = await start()
     try {

@@ -3,7 +3,7 @@
  * with them, and the step that turns the parsed flags into a session.
  */
 
-import { commandKit, CommandError, type CommandContext } from '@osdlc/cli-tool/command'
+import { commandKit, CommandError, UsageError, type CommandContext } from '@osdlc/cli-tool/command'
 import type { FlagValues } from '@osdlc/cli-tool/define-cli'
 import { closestMatches } from '@osdlc/config-layers/did-you-mean'
 import { withheldHint } from '@osdlc/trust-repo'
@@ -126,6 +126,13 @@ export async function openSession(
   home: string,
   positionalDir?: string,
 ): Promise<Session> {
+  // Over HTTP every command keeps the directory `way serve` started with, so
+  // a caller holding the token cannot read another directory's catalog.
+  if (positionalDir !== undefined && ctx.surface === 'http') {
+    throw new UsageError(
+      'the directory is fixed when the web view starts; restart it to read another one',
+    )
+  }
   const dir = positionalDir ?? globals.dir ?? ctx.cwd
   let session: Session
   try {

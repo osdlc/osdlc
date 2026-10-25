@@ -273,4 +273,5 @@ not, and it forces a CORS preflight the server never answers.
 Commands that only the command line may run, such as a write of
 `allowExec`, are refused with `403`. A trust grant needs the confirmation
 described above. The page cannot lift `--no-exec`: every command the server
-runs carries the flags `way serve` started with.
+runs carries the flags `way serve` started with, and reads the directory it
+started in. A directory named in the body is refused with `400`.
