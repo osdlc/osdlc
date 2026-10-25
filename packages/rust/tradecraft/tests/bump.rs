@@ -97,7 +97,7 @@ fn dry_run_prints_old_arrow_new_and_leaves_the_note_untouched() {
 }
 
 #[test]
-fn a_real_bump_rewrites_only_the_ap_version_line() {
+fn a_real_bump_rewrites_only_the_tc_version_line() {
     let (dir, vault) = fixture(Some("tc-version: 0.2.1"));
     let path = note_path(&vault);
     let before = fs::read_to_string(&path).unwrap();
@@ -140,7 +140,7 @@ fn a_real_bump_rewrites_only_the_ap_version_line() {
 }
 
 #[test]
-fn no_ap_version_at_all_bumps_from_the_core_default() {
+fn no_tc_version_at_all_bumps_from_the_core_default() {
     let (dir, vault) = fixture(None);
     let path = note_path(&vault);
     let before = fs::read_to_string(&path).unwrap();
@@ -187,7 +187,7 @@ fn no_ap_version_at_all_bumps_from_the_core_default() {
 }
 
 #[test]
-fn a_non_semver_ap_version_is_refused_and_the_note_is_untouched() {
+fn a_non_semver_tc_version_is_refused_and_the_note_is_untouched() {
     // Quoted: unquoted `0.3` is a YAML float, and `tc-version` must be a
     // string at discovery time (`frontmatter::take_string` on
     // `ContainerIdentity.version`) — a float there fails the whole note's

@@ -455,7 +455,7 @@ fn an_old_agent_pants_yaml_without_a_tradecraft_yaml_says_to_rename_it() {
     let (dir, _vault) = fixture();
     fs::write(dir.path().join("agent-pants.yaml"), "vault: ./vault\n").unwrap();
     let run = run(&["list"], dir.path());
-    assert_eq!(run.code, 4, "{}", run.stderr);
+    assert_eq!(run.code, 2, "{}", run.stderr);
     assert!(run.stderr.contains("agent-pants.yaml"), "{}", run.stderr);
     assert!(
         run.stderr.contains("rename it to `tradecraft.yaml`"),
@@ -484,11 +484,11 @@ fn a_destination_with_an_old_agent_pants_manifest_says_to_rename_the_folder() {
         ],
         dir.path(),
     );
-    assert_eq!(run.code, 3, "{}", run.stderr);
+    assert_eq!(run.code, 1, "{}", run.stderr);
     assert!(
-        run.stderr.contains("rename .agent-pants/ to .tradecraft/"),
+        run.stdout.contains("rename .agent-pants/ to .tradecraft/"),
         "{}",
-        run.stderr
+        run.stdout
     );
 }
 
@@ -1774,12 +1774,12 @@ fn widen_vault(vault: &Path) {
     fs::create_dir_all(vault.join("commands").join("tidy")).unwrap();
     fs::write(
         vault.join("commands").join("tidy").join("tidy.md"),
-        "---\nname: tidy\ndescription: tidies up\nap-kind: skill\nap-targets: []\n---\nTidy.\n",
+        "---\nname: tidy\ndescription: tidies up\ntc-kind: skill\ntc-targets: []\n---\nTidy.\n",
     )
     .unwrap();
     fs::write(
         vault.join("skills").join("code-review").join("code-review.md"),
-        "---\nname: code-review\ndescription: reviews code\nap-targets: [claude-code, codex]\n---\nReview the diff.\n",
+        "---\nname: code-review\ndescription: reviews code\ntc-targets: [claude-code, codex]\n---\nReview the diff.\n",
     )
     .unwrap();
 }
@@ -2044,12 +2044,12 @@ fn an_unreadable_manifest_is_unknown_with_a_reason_not_an_error() {
 }
 
 #[test]
-fn a_destination_the_notes_ap_targets_excludes_reads_as_not_published() {
+fn a_destination_the_notes_tc_targets_excludes_reads_as_not_published() {
     let (dir, vault) = fixture();
     let config = status_config(dir.path(), &vault);
     fs::write(
         vault.join("skills").join("code-review").join("code-review.md"),
-        "---\nname: code-review\ndescription: reviews code\nap-targets:\n  - codex\n---\nReview the diff.\n",
+        "---\nname: code-review\ndescription: reviews code\ntc-targets:\n  - codex\n---\nReview the diff.\n",
     )
     .unwrap();
 
@@ -2114,7 +2114,7 @@ fn a_hook_is_n_a_rather_than_unknown_and_status_check_still_passes() {
     .unwrap();
     fs::write(
         plugin.join("review.md"),
-        "---\nname: review\ndescription: Skills for reviewing a change.\nap-version: 1.0.0\n---\n\nThe review plugin.\n",
+        "---\nname: review\ndescription: Skills for reviewing a change.\ntc-version: 1.0.0\n---\n\nThe review plugin.\n",
     )
     .unwrap();
     fs::write(
@@ -2722,7 +2722,7 @@ fn a_run_that_projected_nothing_blames_the_flag_for_nothing() {
     // needs.
     fs::write(
         vault.join("skills").join("code-review").join("code-review.md"),
-        "---\nname: code-review\ndescription: the review pack\nap-kind: plugin\n---\nReview the diff.\n",
+        "---\nname: code-review\ndescription: the review pack\ntc-kind: plugin\n---\nReview the diff.\n",
     )
     .unwrap();
 
