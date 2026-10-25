@@ -75,6 +75,19 @@ export function dependencies(
   }
 }
 
+/**
+ * {@link dependencies} for names that resolve to tasks of `runner` declared
+ * in the same `file`, when `names` holds them.
+ */
+export function dependenciesIn(
+  runner: string,
+  file: string,
+  deps: readonly string[],
+  names: ReadonlySet<string>,
+): Pick<Task, 'dependsOn' | 'dependsOnUnresolved'> {
+  return dependencies(deps, (dep) => (names.has(dep) ? taskId(runner, file, dep) : undefined))
+}
+
 /** Bind arguments after a `--`, for tools that read their own flags up to it. */
 export function afterSeparator(task: Task, args: readonly string[]): string[] {
   return args.length === 0 ? [...task.argv] : [...task.argv, '--', ...args]

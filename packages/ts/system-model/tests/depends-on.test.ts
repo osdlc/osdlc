@@ -116,6 +116,25 @@ describe('go-task', () => {
     expect(read.get('test')?.deps).toEqual(['build', 'docs:build'])
   })
 
+  test('reads block items at the same indent as `deps:`, and mappings with nested braces', () => {
+    const { tasks: read } = readTaskfile(
+      [
+        'tasks:',
+        '  build:',
+        '    deps:',
+        '    - lint',
+        '    - {task: gen, vars: {A: 1}}',
+        '    cmds:',
+        '    - go build',
+        '  test:',
+        '    deps: [lint, {task: test-unit, vars: {X: 1, Y: "a,b"}}, "c"] # note',
+        '',
+      ].join('\n'),
+    )
+    expect(read.get('build')?.deps).toEqual(['lint', 'gen'])
+    expect(read.get('test')?.deps).toEqual(['lint', 'test-unit', 'c'])
+  })
+
   test('resolves within the Taskfile', async () => {
     const dir = await root({
       'Taskfile.yml': 'tasks:\n  lint: {}\n  build:\n    deps: [lint, docs:build]\n',
@@ -136,6 +155,13 @@ describe('just', () => {
       { name: 'test', deps: ['build', 'lint'] },
       { name: 'build', deps: [] },
       { name: 'lint', deps: [] },
+    ])
+  })
+
+  test('a colon inside a quoted default is not the header colon', () => {
+    expect(scanRecipes('deploy env="a:b" port=\'1:2\': build\nbuild:\n')).toEqual([
+      { name: 'deploy', deps: ['build'] },
+      { name: 'build', deps: [] },
     ])
   })
 

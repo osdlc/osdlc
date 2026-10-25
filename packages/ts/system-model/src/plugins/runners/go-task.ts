@@ -76,7 +76,13 @@ import { firstLine, stderrOrError } from '@osdlc/command-seam'
 import type { ProviderContext } from '../../contract.ts'
 import type { Diagnostic, ProviderResult, RunnerBrand, Task } from '../../model.ts'
 import type { RunnerRole } from '../../tool.ts'
-import { afterSeparator, dependencies, dirOf, looksPersistent, taskId } from '../support/shared.ts'
+import {
+  afterSeparator,
+  dependenciesIn,
+  dirOf,
+  looksPersistent,
+  taskId,
+} from '../support/shared.ts'
 import { leadingSpaces, matchKey, prepass, unquote, unquoteValue } from '../support/yaml-lite.ts'
 
 const CHAIN = [
@@ -209,10 +215,11 @@ export function readTaskfile(text: string): ReadResult {
     if (entry === undefined) continue
 
     if (currentFieldIndent === -1) currentFieldIndent = indent
-    if (indent !== currentFieldIndent) {
-      // Deeper than the task's own fields: read only a `deps:` block list.
-      const item = inDeps ? DEP_ITEM.exec(line) : null
-      if (item !== null) entry.deps.push(unquote(item[1]!))
+    if (indent !== currentFieldIndent || (inDeps && line.trimStart().startsWith('-'))) {
+      // Deeper than the task's own fields, or a `- item` at the same indent
+      // as `deps:` (valid YAML): read only a `deps:` block list.
+      const dep = inDeps ? blockDep(line) : undefined
+      if (dep !== undefined) entry.deps.push(dep)
       continue
     }
 
@@ -235,19 +242,62 @@ export function readTaskfile(text: string): ReadResult {
   return { tasks, warnings: [...warnings] }
 }
 
-/** `- name` or `- task: name` in a `deps:` block list. */
-const DEP_ITEM = /^\s*-\s*(?:task\s*:\s*)?([^\s#{][^#]*?)\s*$/
+/**
+ * The task a `deps:` block item names: `- name`, `- task: name` or
+ * `- {task: name, vars: {...}}`. Anything else gives none.
+ */
+function blockDep(line: string): string | undefined {
+  const m = /^\s*-\s*(.*?)\s*$/.exec(line.replace(/\s#.*$/, ''))
+  if (m === null) return undefined
+  return depItem(m[1]!)
+}
 
-/** The names in a flow `deps: [a, "b", {task: c}]`. Anything else gives none. */
+/** The names in a flow `deps: [a, "b", {task: c, vars: {X: 1}}]`. Anything else gives none. */
 function flowDeps(value: string): string[] {
-  const t = value.trim()
+  const t = value.replace(/\s#.*$/, '').trim()
   if (!t.startsWith('[') || !t.endsWith(']')) return []
-  return t
-    .slice(1, -1)
-    .split(',')
-    .map((part) => part.trim().replace(/^\{\s*task\s*:\s*(.*?)\s*\}$/, '$1'))
-    .filter((part) => part !== '' && !part.startsWith('{'))
-    .map((part) => unquote(part))
+  return splitTopLevel(t.slice(1, -1))
+    .map(depItem)
+    .filter((dep): dep is string => dep !== undefined)
+}
+
+/** One dependency item: a name, `task: name`, or a `{task: name, ...}` mapping. */
+function depItem(raw: string): string | undefined {
+  let item = raw.trim()
+  if (item.startsWith('{') && item.endsWith('}')) {
+    const task = splitTopLevel(item.slice(1, -1))
+      .map((part) => /^task\s*:\s*(.*)$/.exec(part.trim()))
+      .find((m) => m !== null)
+    if (task === undefined) return undefined
+    item = task[1]!.trim()
+  } else {
+    item = item.replace(/^task\s*:\s*/, '')
+  }
+  if (item === '' || /^[{[]/.test(item) || item.endsWith(':')) return undefined
+  return unquote(item)
+}
+
+/** Split on commas outside brackets, braces and quotes. */
+function splitTopLevel(text: string): string[] {
+  const parts: string[] = []
+  let depth = 0
+  let quote: string | null = null
+  let start = 0
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i]!
+    if (quote !== null) {
+      if (c === '\\' && quote === '"') i++
+      else if (c === quote) quote = null
+    } else if (c === '"' || c === "'") quote = c
+    else if (c === '[' || c === '{') depth++
+    else if (c === ']' || c === '}') depth--
+    else if (c === ',' && depth === 0) {
+      parts.push(text.slice(start, i))
+      start = i + 1
+    }
+  }
+  parts.push(text.slice(start))
+  return parts.map((part) => part.trim()).filter((part) => part !== '')
 }
 
 /**
@@ -428,14 +478,6 @@ function priorityWinners(files: string[]): Set<string> {
  * A dependency resolves to a task of the same Taskfile. One with a `:`
  * names a task of an included file, and stays unresolved.
  */
-function depsIn(
-  deps: readonly string[],
-  names: ReadonlySet<string>,
-  file: string,
-): Pick<Task, 'dependsOn' | 'dependsOnUnresolved'> {
-  return dependencies(deps, (dep) => (names.has(dep) ? taskId('go-task', file, dep) : undefined))
-}
-
 function makeTask(
   file: string,
   name: string,
@@ -543,7 +585,7 @@ export const goTaskRunner: RunnerRole = {
             // The listing has no dependencies, so they come from the reader.
             tasks.push({
               ...makeTask(file, name, doc, winners.has(file)),
-              ...depsIn(parsed.get(name)?.deps ?? [], names, file),
+              ...dependenciesIn('go-task', file, parsed.get(name)?.deps ?? [], names),
             })
           }
           continue
@@ -567,7 +609,7 @@ export const goTaskRunner: RunnerRole = {
         if (entry.internal) continue
         tasks.push({
           ...makeTask(file, name, entry.desc ?? entry.summary, winners.has(file)),
-          ...depsIn(entry.deps, names, file),
+          ...dependenciesIn('go-task', file, entry.deps, names),
         })
       }
     }
