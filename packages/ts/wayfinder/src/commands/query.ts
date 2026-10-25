@@ -1,6 +1,6 @@
 /**
  * `way query <terms>`: the terminal UI's search from a shell. The same
- * matcher and ranking, one command line per match.
+ * matcher and ranking, one command line per match, as `list` prints it.
  */
 
 import { outcome } from '@osdlc/cli-tool/command'
@@ -9,6 +9,7 @@ import type { Task } from '@osdlc/system-model/detect'
 import { hasQuery } from '../core/filter.ts'
 import { skillLine, type SkillRow } from '../core/skills.ts'
 import { QueryOutput } from '../documents.ts'
+import { taskLine } from '../core/copy-text.ts'
 import { terminalSafe } from '../terminal-text.ts'
 import { FILTER_FLAGS, filterFrom, kit, noteUnknowns, openSession } from './shared.ts'
 
@@ -19,7 +20,9 @@ export function queryCommand(home: string) {
     description:
       "Terms are ANDed and matched fuzzily; a leading ' makes one term match exactly, and " +
       '--exact does that to all of them. No terms is every task. Matching agent skills follow ' +
-      'the tasks as /<name> lines. Exits 1 when terms matched nothing, as grep does.',
+      'the tasks as /<name> lines. Each task line is the one "list" prints. --output jsonl ' +
+      'prints one task per line, every task when there are no terms. Exits 1 when terms ' +
+      'matched nothing, as grep does.',
     positionals: [{ name: 'terms', variadic: true, help: 'the search terms' }],
     flags: {
       ...FILTER_FLAGS,
@@ -63,7 +66,7 @@ export function queryCommand(home: string) {
     },
     text(doc) {
       const lines = [
-        ...(doc.tasks as Task[]).map((t) => terminalSafe(t.display)),
+        ...(doc.tasks as Task[]).map((t) => taskLine(t)),
         ...(doc.skills as SkillRow[]).map((s) => terminalSafe(skillLine(s))),
       ]
       return lines.length > 0 ? `${lines.join('\n')}\n` : ''

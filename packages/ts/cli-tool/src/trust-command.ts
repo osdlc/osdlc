@@ -161,7 +161,13 @@ export const TrustOutputSchema = z.object({
  */
 export function trustCommand<G extends FlagSpec = Record<never, never>>(
   service: TrustService,
-  options: { globals?: G; summary?: string; description?: string } = {},
+  options: {
+    globals?: G
+    summary?: string
+    description?: string
+    /** The `--scope` flag's help, to name the scopes this tool has. */
+    scopeHelp?: string
+  } = {},
 ): DataCommand {
   const kit = commandKit({ globals: options.globals ?? ({} as G) })
   const scoped = service.scopes === true
@@ -187,7 +193,7 @@ export function trustCommand<G extends FlagSpec = Record<never, never>>(
           scope: {
             kind: 'string',
             valueName: 'name',
-            help: 'the scope of the grant, such as one tool',
+            help: options.scopeHelp ?? 'the scope of the grant, such as one tool',
           },
         }
       : {}),

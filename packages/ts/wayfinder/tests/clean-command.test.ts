@@ -63,6 +63,12 @@ describe('way clean', () => {
     for (const flag of ['--cache', '--trust', '--user-config', '--dev'])
       expect(ran.out).toContain(flag)
     expect(ran.out).toContain('Nothing was removed.')
+    // Every store's text starts in one column, --user-config's too.
+    const starts = ran.out
+      .split('\n')
+      .filter((l) => /^ {2}--/.test(l))
+      .map((l) => l.search(/(?<=^ {2}--\S+ +)\S/))
+    expect(new Set(starts).size).toBe(1)
     expect(await exists(p.cache)).toBe(true)
     expect(await exists(p.config)).toBe(true)
   })

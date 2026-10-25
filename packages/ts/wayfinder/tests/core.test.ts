@@ -19,7 +19,8 @@ import { settingLayer } from '../src/config-keys.ts'
 import { filterTasks, sourceDepth } from '../src/core/filter.ts'
 import { handOff } from '../src/core/run.ts'
 import { SessionError, createSession, resolveRun } from '../src/core/session.ts'
-import { unknownLine, unknownsOf } from '../src/core/unknowns.ts'
+import { execOffSource, unknownLine, unknownsOf } from '../src/core/unknowns.ts'
+import { withheldTrustHint } from '../src/commands/shared.ts'
 import {
   countTasks,
   parametersUnknownLabel,
@@ -191,6 +192,46 @@ describe('vocabulary', () => {
   test('the withheld wording names the reason', () => {
     expect(withheldLabel('untrusted')).toBe('withheld: this repository is not trusted')
     expect(withheldLabel('exec-off')).toBe('withheld: execution is off')
+  })
+
+  test('an editor variable reads as cannot run, not as unknown parameters', () => {
+    expect(parametersUnknownLabel('editor-variable')).toBe(
+      'cannot run here: the task uses an editor variable',
+    )
+    expect(parametersUnknownLabel('not-read')).toMatch(/^parameters unknown: /)
+  })
+
+  test('exec-off names what turned execution off', () => {
+    expect(withheldLabel('exec-off', [], 'flag')).toBe('withheld: --no-exec was given')
+    expect(withheldLabel('exec-off', [], 'user')).toBe(
+      'withheld: allowExec is false in your user config',
+    )
+    const setting = (value: boolean, source: 'default' | 'user' | 'project') =>
+      ({ allowExec: { key: 'allowExec', value, source } }) as never
+    expect(execOffSource(setting(false, 'project'))).toBe('project')
+    expect(execOffSource(setting(true, 'default'))).toBe('flag')
+    const [held] = unknownsOf({
+      reports: [report('moon', [], { skippedForExec: true })],
+      withheld: 'exec-off',
+      execOff: 'flag',
+    })
+    expect(held?.label).toBe('withheld: --no-exec was given')
+  })
+
+  test('the trust hint names the command a grant needs, and is absent when trust would not help', () => {
+    const held = (reason: 'untrusted' | 'tool-untrusted' | 'exec-off', missing?: string[]) => ({
+      kind: 'withheld' as const,
+      runner: 'moon',
+      reason,
+      ...(missing !== undefined ? { missing } : {}),
+      label: withheldLabel(reason, missing),
+    })
+    expect(withheldTrustHint([held('untrusted')])).toContain('"way trust"')
+    expect(withheldTrustHint([held('tool-untrusted', ['moon', 'mise'])])).toBe(
+      'run "way trust --scope moon", "way trust --scope mise" to trust each, or pass --exec for this run only',
+    )
+    expect(withheldTrustHint([held('exec-off')])).toBeNull()
+    expect(withheldTrustHint([])).toBeNull()
   })
 })
 

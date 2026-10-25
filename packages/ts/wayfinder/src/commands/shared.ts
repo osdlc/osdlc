@@ -6,20 +6,12 @@
 import { commandKit, CommandError, UsageError, type CommandContext } from '@osdlc/cli-tool/command'
 import type { FlagValues } from '@osdlc/cli-tool/define-cli'
 import { closestMatches } from '@osdlc/config-layers/did-you-mean'
-import { withheldHint } from '@osdlc/trust-repo'
 
 import { BIN } from '../app.ts'
 import type { TaskFilter } from '../core/filter.ts'
 import { SessionError, createSession, type CatalogSnapshot, type Session } from '../core/session.ts'
 import { unknownLine, type Unknown } from '../core/unknowns.ts'
-import {
-  NOT_CACHED,
-  WITHHELD,
-  countRunners,
-  refreshCostLabel,
-  runnerLabel,
-  staleLabel,
-} from '../vocabulary.ts'
+import { NOT_CACHED, refreshCostLabel, runnerLabel, staleLabel } from '../vocabulary.ts'
 
 /**
  * The flags every command takes, before or after the command word. They
@@ -196,9 +188,26 @@ function cacheNote(snapshot: CatalogSnapshot): string | null {
 }
 
 /**
- * Write the notes a listing leaves on stderr: one line for the runners trust
- * would add, the `--cached` note, and a line for each other unknown. stdout
- * stays the listing, so it can be piped.
+ * How to read the withheld runners, when a trust grant would: `way trust`, or
+ * `way trust --scope <tool>` for each tool still missing. Null when trust
+ * would not help, as under `--no-exec`.
+ */
+export function withheldTrustHint(withheld: readonly Unknown[]): string | null {
+  const held = withheld.filter((u) => u.kind === 'withheld')
+  if (held.some((u) => u.reason === 'untrusted')) {
+    return `run "${BIN} trust" to trust this repository, or pass --exec for this run only`
+  }
+  const missing = [...new Set(held.flatMap((u) => u.missing ?? []))]
+  if (missing.length === 0) return null
+  const each = missing.map((tool) => `"${BIN} trust --scope ${tool}"`).join(', ')
+  return `run ${each} to trust ${missing.length === 1 ? 'it' : 'each'}, or pass --exec for this run only`
+}
+
+/**
+ * Write the warnings a listing leaves on stderr: a line for each withheld
+ * runner and why, with how to trust it when trust would help; the `--cached`
+ * note; and a line for each other unknown. stdout stays the listing, so it
+ * can be piped.
  */
 export function noteUnknowns(
   ctx: CommandContext,
@@ -207,12 +216,12 @@ export function noteUnknowns(
   unknowns: readonly Unknown[],
 ): void {
   const withheld = unknowns.filter((u) => u.kind === 'withheld')
-  if (withheld.length > 0 && session.withheldReason() === 'untrusted') {
-    ctx.note(`${countRunners(withheld.length)} ${WITHHELD} — ${withheldHint(BIN)}`)
-  }
+  for (const unknown of withheld) ctx.warn(unknownLine(unknown))
+  const hint = withheldTrustHint(withheld)
+  if (hint !== null) ctx.io.stderr(`  ${hint}\n`)
   const cache = cacheNote(snapshot)
   if (cache !== null) ctx.note(cache)
   for (const unknown of unknowns) {
-    if (unknown.kind === 'parameters' || unknown.kind === 'binary') ctx.note(unknownLine(unknown))
+    if (unknown.kind === 'parameters' || unknown.kind === 'binary') ctx.warn(unknownLine(unknown))
   }
 }

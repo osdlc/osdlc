@@ -24,7 +24,7 @@ import {
   safeStdout,
   terminalSafe,
 } from '../src/terminal-text.ts'
-import { skillCopyText, taskCopyText } from '../src/core/copy-text.ts'
+import { skillCopyText, taskCopyText, taskLine } from '../src/core/copy-text.ts'
 import { cleanupAll, testTui } from './tui-support.ts'
 
 /** OSC 52: put "echo hi" on the clipboard. */
@@ -289,6 +289,15 @@ describe('copied text', () => {
   test('a skill with a control character is refused', () => {
     expect(skillCopyText({ invoke: '/ok\u001b[201~\necho PWNED\n' })).toBeNull()
     expect(skillCopyText({ invoke: '/review' })).toBe('/review')
+  })
+
+  test('the list line is the copied line, or the display with controls replaced', () => {
+    expect(taskLine({ argv: ['npm', 'run', 'x y'], cwd: '.', display: 'npm run x y' })).toBe(
+      taskCopyText({ argv: ['npm', 'run', 'x y'], cwd: '.' }, process.platform),
+    )
+    const line = taskLine({ argv: ['echo', 'a\nb'], cwd: '.', display: 'echo a\u001bb' })
+    expect(line).not.toMatch(/[\u0000-\u001f]/)
+    expect(line).toContain('echo a')
   })
 
   test('a task line quotes each word', () => {

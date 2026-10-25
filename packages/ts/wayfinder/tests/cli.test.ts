@@ -13,23 +13,57 @@ import { resolveTrustRoot } from '@osdlc/trust-repo'
 
 import { acceptedFlags } from './guide-support.ts'
 import { makeGitFixture } from '@osdlc/typed-git/testing'
-import { main, rewriteAliases } from '../src/cli.ts'
+import { main, quietOnBrokenPipe, rewriteAliases } from '../src/cli.ts'
+import { EventEmitter } from 'node:events'
 import { appTrustStore } from '../src/trust-store.ts'
 import { CONFIG_HOME } from './support.ts'
 
 const WORDS = ['list', 'query', 'run', 'serve', 'providers', 'config', 'trust', 'help']
 
+describe('quietOnBrokenPipe', () => {
+  test('EPIPE on stdout exits 0 with nothing printed; another error is thrown', () => {
+    const stream = new EventEmitter()
+    const exits: number[] = []
+    quietOnBrokenPipe(stream as never, (code) => exits.push(code))
+    stream.emit('error', Object.assign(new Error('write EPIPE'), { code: 'EPIPE' }))
+    expect(exits).toEqual([0])
+    expect(() =>
+      stream.emit('error', Object.assign(new Error('write EIO'), { code: 'EIO' })),
+    ).toThrow('EIO')
+    expect(exits).toEqual([0])
+  })
+})
+
 describe('rewriteAliases', () => {
   test('maps each old surface flag onto its command', () => {
     expect(rewriteAliases(['--serve', '--port', '8080'], WORDS)).toEqual({
       argv: ['serve', '--port', '8080'],
+      alias: '--serve',
     })
-    expect(rewriteAliases(['--list', '-C', 'x'], WORDS)).toEqual({ argv: ['list', '-C', 'x'] })
-    expect(rewriteAliases(['--json'], WORDS)).toEqual({ argv: ['list', '--json'] })
+    expect(rewriteAliases(['--list', '-C', 'x'], WORDS)).toEqual({
+      argv: ['list', '-C', 'x'],
+      alias: '--list',
+    })
+    expect(rewriteAliases(['--json'], WORDS)).toEqual({ argv: ['list', '--json'], alias: '--json' })
     // A directory positional is not a command word, so the flag still applies.
     expect(rewriteAliases(['--json', 'some/dir'], WORDS)).toEqual({
       argv: ['list', '--json', 'some/dir'],
+      alias: '--json',
     })
+  })
+
+  test('an old surface flag still works, with a deprecation warning on stderr', async () => {
+    const io = captureIo()
+    const dir = await mkdtemp(join(tmpdir(), 'wayfinder-alias-'))
+    await writeFile(join(dir, 'package.json'), JSON.stringify({ name: 'p', scripts: { b: 'x' } }))
+    try {
+      expect(await main(['--list', '-C', dir, '--no-exec'], {}, dir, io)).toBe(0)
+      expect(io.out).toContain('npm run b')
+      expect(io.err).toContain('way: warning: --list is deprecated')
+      expect(io.err).toContain('use "way list"')
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
   })
 
   test('two surface flags are refused, since each chooses a surface', () => {
@@ -46,6 +80,7 @@ describe('rewriteAliases', () => {
     // -C takes the next word, so `list` here is a value, not a command.
     expect(rewriteAliases(['-C', 'list', '--json'], WORDS)).toEqual({
       argv: ['list', '--json', '-C', 'list'],
+      alias: '--json',
     })
   })
 
@@ -232,14 +267,22 @@ describe('main trust gate', () => {
     expect(await trustStoreFor(home).list()).toEqual([])
   })
 
-  test('--list says once, on stderr, how many runners trust would collect', async () => {
+  test('--list warns on stderr for each withheld runner, then says once how to trust', async () => {
     const ran = await run(['--list'], await project())
 
     expect(ran.code).toBe(0)
-    expect(ran.err).toContain('1 runner withheld')
-    expect(ran.err).toContain('run "way trust" to trust it')
-    // Once, not once per runner.
-    expect(ran.err.split('withheld —').length - 1).toBe(1)
+    expect(ran.err).toContain('way: warning: mise: withheld: this repository is not trusted')
+    expect(ran.err).toContain('run "way trust" to trust this repository')
+    // The hint once, not once per runner.
+    expect(ran.err.split('run "way trust"').length - 1).toBe(1)
+  })
+
+  test('a runner withheld by --no-exec is named on stderr too, with the cause', async () => {
+    const ran = await run(['list', '--no-exec'], await project())
+
+    expect(ran.code).toBe(0)
+    expect(ran.err).toContain('way: warning: mise: withheld: --no-exec was given')
+    expect(ran.err).not.toContain('way trust')
   })
 
   test('--exec collects them for this run only, recording nothing', async () => {

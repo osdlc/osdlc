@@ -37,6 +37,15 @@ export function runnerLabel(runner: string): string {
   return group.runner === runner ? group.title.toLowerCase() : runner
 }
 
+/**
+ * A task's path as a person reads it: a runner id at its head becomes the
+ * runner's label, so `package-manager > . > npm > install` reads
+ * `dependencies > . > npm > install`.
+ */
+export function displayPath(path: readonly string[], runner: string): string[] {
+  return path[0] === runner ? [runnerLabel(runner), ...path.slice(1)] : [...path]
+}
+
 /** The word for a runner that was not read because reading it means running it. */
 export const WITHHELD = 'withheld'
 
@@ -60,13 +69,36 @@ function listWords(words: readonly string[]): string {
 }
 
 /**
- * `withheld: this repository is not trusted`. For `tool-untrusted` with the
- * missing tool ids: `withheld: mise is not trusted`.
+ * What turned execution off: the `--no-exec` flag, or `allowExec: false` in
+ * the user or the project config.
  */
-export function withheldLabel(reason: WithheldReason, missing: readonly string[] = []): string {
+export type ExecOffSource = 'flag' | 'user' | 'project'
+
+const EXEC_OFF: Record<ExecOffSource, string> = {
+  flag: '--no-exec was given',
+  user: 'allowExec is false in your user config',
+  project: 'allowExec is false in this project',
+}
+
+/** Why execution is off, in words: `--no-exec was given`. */
+export function execOffLabel(source: ExecOffSource | undefined): string {
+  return source === undefined ? WITHHELD_REASONS['exec-off'] : EXEC_OFF[source]
+}
+
+/**
+ * `withheld: this repository is not trusted`. For `tool-untrusted` with the
+ * missing tool ids: `withheld: mise is not trusted`. For `exec-off` with what
+ * turned it off: `withheld: --no-exec was given`.
+ */
+export function withheldLabel(
+  reason: WithheldReason,
+  missing: readonly string[] = [],
+  execOff?: ExecOffSource,
+): string {
   if (reason === 'tool-untrusted' && missing.length > 0) {
     return `${WITHHELD}: ${listWords(missing)} ${missing.length === 1 ? 'is' : 'are'} not trusted`
   }
+  if (reason === 'exec-off') return `${WITHHELD}: ${execOffLabel(execOff)}`
   return `${WITHHELD}: ${WITHHELD_REASONS[reason]}`
 }
 
@@ -104,17 +136,25 @@ export function countSkills(n: number): string {
   return `${n} ${n === 1 ? SKILL_NOUN.one : SKILL_NOUN.many}`
 }
 
-const PARAMETERS_UNKNOWN: Record<ParametersUnknownReason, string> = {
+const PARAMETERS_UNKNOWN: Record<Exclude<ParametersUnknownReason, 'editor-variable'>, string> = {
   'exec-withheld': 'reading them needs execution, which is withheld',
   'tool-missing': 'the tool is not installed',
   'tool-failed': 'the tool could not list them',
   'not-read': 'this runner does not read them',
-  'editor-variable': 'the task uses an editor variable, so it cannot run here',
 }
 
-/** The label for a task whose parameters could not be read. */
+/** The label for a task that uses an editor variable: it cannot run outside the editor. */
+export const EDITOR_VARIABLE_LABEL = 'cannot run here: the task uses an editor variable'
+
+/**
+ * The label for a task whose parameters could not be read. An editor
+ * variable is not a gap in what is known: the task cannot run here at all,
+ * and the label says that ({@link EDITOR_VARIABLE_LABEL}).
+ */
 export function parametersUnknownLabel(reason: ParametersUnknownReason): string {
-  return `parameters unknown: ${PARAMETERS_UNKNOWN[reason]}`
+  return reason === 'editor-variable'
+    ? EDITOR_VARIABLE_LABEL
+    : `parameters unknown: ${PARAMETERS_UNKNOWN[reason]}`
 }
 
 const STALE_REASONS: Record<StaleReason, string> = {

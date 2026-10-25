@@ -14,7 +14,7 @@
 import { commandString } from '@osdlc/command-seam/quote'
 import type { Task } from '@osdlc/system-model/detect'
 
-import { hasControls } from '../terminal-text.ts'
+import { hasControls, terminalSafe } from '../terminal-text.ts'
 import type { SkillRow } from './skills.ts'
 
 /** Why a copy was refused, as every surface says it. */
@@ -43,4 +43,12 @@ export function taskCopyText(
 /** `/<name>` for `skill`, or null when it holds a control character. */
 export function skillCopyText(skill: Pick<SkillRow, 'invoke'>): string | null {
   return clipboardText(skill.invoke)
+}
+
+/**
+ * The line `list` and `query` print for `task`: what Copy gives, which `run`
+ * accepts. When Copy refuses, the task's `display` with its controls replaced.
+ */
+export function taskLine(task: Pick<Task, 'argv' | 'cwd' | 'display'>): string {
+  return taskCopyText(task, process.platform) ?? terminalSafe(task.display)
 }

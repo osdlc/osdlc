@@ -96,6 +96,8 @@ async function serveSession(
     signal,
     stdout: (text) => ctx.io.stdout(text),
     stderr: (text) => ctx.io.stderr(text),
+    // Enter in the terminal prints a new sign-in link.
+    ...(ctx.terminal?.stdin === true ? { input: process.stdin } : {}),
     ...(opts.port !== undefined ? { port: opts.port } : {}),
   })
   if (exit !== null) return exit
@@ -109,7 +111,8 @@ export function serveCommand(home: string) {
     summary: 'the same catalog as a live page in the browser',
     description:
       'Serves 127.0.0.1 only, on an OS-assigned port unless --port gives one, and opens a ' +
-      'browser signed in to it. --no-open prints the URL instead. Every action on the page is ' +
+      'browser signed in to it. --no-open prints the URL instead. A reload stays signed in; for a ' +
+      'new tab or another browser, press Enter in the terminal for a new sign-in link. Every action on the page is ' +
       'a command of this tool, called over HTTP with a token made for this run. It starts from ' +
       'the stored probe, then refreshes. Ctrl-C stops it, and any probe it is running.',
     positionals: [{ name: 'dir', help: 'the directory to inspect (beats -C)' }],

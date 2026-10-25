@@ -26,6 +26,7 @@ import {
   countRunners,
   countSkills,
   countTasks,
+  displayPath,
   parametersUnknownLabel,
   runnerLabel,
   staleLabel,
@@ -131,13 +132,6 @@ export function homepageLink(url: string | null, text = url ?? ''): string {
     escapeHtml(text) +
     '</a>'
   )
-}
-
-/** A tool's language, with its ecosystem id when that says more: `JavaScript (node)`. */
-export function languageText(tool: ToolInfo): string {
-  return tool.ecosystem !== null && tool.ecosystem.toLowerCase() !== tool.language.toLowerCase()
-    ? tool.language + ' (' + tool.ecosystem + ')'
-    : tool.language
 }
 
 // ---------------------------------------------------------------- tree
@@ -369,7 +363,7 @@ function cells(e: Task, nameHtml: string, depth = 0): string {
     '</span></td>' +
     spacerCell(depth) +
     '<td class="name" title="' +
-    shown(e.path.join(SEP)) +
+    shown(displayPath(e.path, e.runner).join(SEP)) +
     '">' +
     nameHtml +
     '</td>' +
@@ -507,7 +501,7 @@ function measureRows(rows: readonly Row[], flat: boolean, skills: readonly Skill
     // A search hit shows its whole chain at depth 0. A tree row shows the
     // part below its group headers, indented once per header.
     const depth = flat ? 0 : Math.max(0, e.path.length - 1 - treeStart())
-    const text = flat ? e.path.join(SEP) : (e.path.at(-1) ?? '')
+    const text = flat ? displayPath(e.path, e.runner).join(SEP) : (e.path.at(-1) ?? '')
     const w = textWidth(text)
     if (w === null) {
       nameW = null
@@ -555,6 +549,21 @@ const COLUMNS = [
 ]
 
 /**
+ * The columns on the Skills tab, in the same slots as {@link COLUMNS}: a
+ * skill row holds its name, what it does and where it comes from.
+ */
+export const SKILL_COLUMNS = [
+  { label: '', tip: '' },
+  {
+    label: SKILL_NOUN.one[0]!.toUpperCase() + SKILL_NOUN.one.slice(1),
+    tip: 'The /name to type to an agent, with the arguments it takes.',
+  },
+  { label: 'About', tip: 'The agents that read it, and what it does.' },
+  { label: 'From', tip: 'Where it comes from: the project or your user folder, and its file.' },
+  { label: '', tip: 'Copy puts the /name on the clipboard, ready to type to an agent.' },
+]
+
+/**
  * Column widths, in pixels rather than percentages, because the tables have
  * different widths. Each is outdented by its depth (see `outdent`) so their
  * left edges agree, so a percentage would be a different number of pixels at
@@ -565,7 +574,8 @@ const COLUMNS = [
  * command column starts at the same x at every depth, and no row text lands
  * in the strip left of the headers.
  *
- * Task is sized to its longest name, up to a share of the width; Command
+ * Task is sized to its longest name, up to a share of the width (a larger
+ * share at phone width); Command
  * takes what is left, shared with Runs when Runs is shown. The sized columns
  * add up to the table's width exactly, because `table-layout: fixed` would
  * spread any leftover across the columns and move the command column at
@@ -579,7 +589,9 @@ function colgroup(depth: number): string {
   const rest = avail - IND_W - act
   // Room for the cell's right padding and a bold glyph's overhang.
   const content = measured.nameW === null ? null : Math.ceil(measured.nameW) + 16
-  const cap = Math.round(rest * (wide ? 0.4 : 0.5))
+  // At phone width the tree's indent eats most of a deep row's name, and the
+  // name is what a person scans for; the command is one tap away in Copy.
+  const cap = Math.round(rest * (wide ? 0.4 : avail < NARROW_W ? 0.62 : 0.5))
   const nameTotal = Math.max(90, Math.min(cap, content ?? Math.round(rest * 0.45)))
   const name = Math.max(40, nameTotal - indent)
   const left = rest - nameTotal
@@ -620,7 +632,8 @@ function renderTreeRow(row: Row, depth: number): string {
   // its chain, so nothing is lost by grouping less.
   const covered = treeStart() + depth
   const rest = e.path.slice(covered)
-  const shown = rest.join(SEP)
+  const restShown = displayPath(e.path, e.runner).slice(covered)
+  const shown = restShown.join(SEP)
   // labelHits index into path.join(" "); shift them onto the shown remainder,
   // accounting for SEP being wider than the single space they were built on.
   const skipped = covered > 0 ? e.path.slice(0, covered).join(' ').length + 1 : 0
@@ -628,10 +641,13 @@ function renderTreeRow(row: Row, depth: number): string {
   let html = ''
   let at = skipped
   for (let i = 0; i < rest.length; i++) {
-    html += highlight(
-      rest[i]!,
-      [...marks].map((m) => m - at).filter((m) => m >= 0 && m < rest[i]!.length),
-    )
+    html +=
+      restShown[i] !== rest[i]
+        ? escapeHtml(restShown[i]!)
+        : highlight(
+            rest[i]!,
+            [...marks].map((m) => m - at).filter((m) => m >= 0 && m < rest[i]!.length),
+          )
     at += rest[i]!.length + 1
     if (i < rest.length - 1) html += '<span class="chain">' + SEP + '</span>'
   }
@@ -642,6 +658,7 @@ function renderTreeRow(row: Row, depth: number): string {
 function renderSearchRow(row: Row): string {
   const e = row.entry
   const chain = chainOf(e.runner)
+  const shownPath = displayPath(e.path, e.runner)
   const idx = new Set(row.labelHits || [])
   let out = '',
     cursor = 0,
@@ -653,6 +670,16 @@ function renderSearchRow(row: Row): string {
     out += seg
       ? '<span class="seg-hit" title="' + escapeHtml(seg.label + ' - ' + seg.hint) + '">'
       : '<span>'
+    if (shownPath[p] !== e.path[p]) {
+      // A runner id shown as its label: the hits index the id, so none apply.
+      out += escapeHtml(shownPath[p]!) + '</span>'
+      cursor += e.path[p]!.length
+      if (p < e.path.length - 1) {
+        out += '<span class="chain">' + SEP + '</span>'
+        cursor++
+      }
+      continue
+    }
     for (const ch of e.path[p]!) {
       const on = idx.has(cursor)
       if (on && !open) {
@@ -920,7 +947,7 @@ const TRUST_BUTTON =
  */
 function foldedChip(reports: RunnerReport[]): string {
   if (reports.length === 0) return ''
-  const names = reports.map((s) => s.runner)
+  const names = reports.map((s) => runnerLabel(s.runner))
   const label = names.length + (names.length === 1 ? ' empty runner' : ' empty runners')
   const list =
     names.length === 1
@@ -947,14 +974,13 @@ function foldedChip(reports: RunnerReport[]): string {
 }
 
 /**
- * The Skills tab, after the runners' tabs under its own group label. It is
- * not a runner: it is not dragged, has no info button and is not in the
- * picker.
+ * The Skills tab, after the runners' tabs. It has no group label: the tab
+ * itself is named Skills. It is not a runner: it is not dragged, has no info
+ * button and is not in the picker.
  */
-function skillsTab(total: number, labelled: boolean): string {
+function skillsTab(total: number): string {
   if (total === 0) return ''
   return (
-    (labelled ? '<span class="tabgroup">' + escapeHtml(SKILLS_GROUP.title) + '</span>' : '') +
     '<span class="tab"><button data-runner="' +
     SKILLS +
     '" aria-pressed="' +
@@ -965,6 +991,20 @@ function skillsTab(total: number, labelled: boolean): string {
     total +
     '</span></button></span>'
   )
+}
+
+/**
+ * Scroll the tab strip, where it scrolls (phone width), so the selected tab
+ * is in view: after a resize or a rebuild it could sit off the edge.
+ */
+function keepSelectedTabInView(): void {
+  const strip = $('tabs')
+  const selected = strip.querySelector('button[aria-pressed="true"]')
+  if (selected === null || strip.scrollWidth <= strip.clientWidth) return
+  const box = strip.getBoundingClientRect()
+  const tab = selected.getBoundingClientRect()
+  if (tab.left < box.left) strip.scrollLeft += tab.left - box.left - 8
+  else if (tab.right > box.right) strip.scrollLeft += tab.right - box.right + 8
 }
 
 /** Whether a runner has an info button: path segments to explain, or tool info. */
@@ -1045,15 +1085,18 @@ export function render(): void {
         // A labelled break where one group ends and the next begins.
         const prev = tabs[i - 1]
         const group = groupOf(t.runner)
+        // Left out when the tab already says it: the Dependencies group's one
+        // tab is `dependencies`.
         const header =
           t.runner !== ALL &&
           prev !== undefined &&
           prev.runner !== ALL &&
-          groupOf(prev.runner) !== group
+          groupOf(prev.runner) !== group &&
+          runnerLabel(t.runner) !== group.title.toLowerCase()
             ? '<span class="tabgroup">' + escapeHtml(group.title) + '</span>'
             : ''
         const chain = chainOfRunner(t.runner)
-        const shape = chain.map((c, i) => (i === 0 ? t.runner : c.label)).join(' › ')
+        const shape = chain.map((c, i) => (i === 0 ? runnerLabel(t.runner) : c.label)).join(' › ')
         // The `all` tab is an aggregate, pinned first, and not draggable.
         const draggable = t.runner !== ALL ? ' draggable="true"' : ''
         // A runner withheld for exec keeps its tab so it can say so, through
@@ -1088,16 +1131,17 @@ export function render(): void {
           ? '<button class="tabinfo" data-info-runner="' +
             escapeHtml(t.runner) +
             '" title="About ' +
-            escapeHtml(t.runner) +
+            escapeHtml(runnerLabel(t.runner)) +
             ': the tool and its path segments" aria-label="About ' +
-            escapeHtml(t.runner) +
+            escapeHtml(runnerLabel(t.runner)) +
             '">i</button>'
           : ''
         return header + '<span class="tab">' + btn + info + '</span>'
       })
       .join('') +
-    skillsTab(skillsTotal, shown.length > 0) +
+    skillsTab(skillsTotal) +
     foldedChip(foldable)
+  keepSelectedTabInView()
   // The picker is a toolbar control, not a tab, so it renders into the Scope
   // cluster in the search row rather than at the end of the tab strip.
   //
@@ -1201,9 +1245,18 @@ export function render(): void {
   markEnterTarget()
   if (focusWasInList) restoreListFocus()
   renderColHeads()
+  searchPlaceholder()
   renderStatus(rows.length, inScope)
   renderTrustBar()
   measureChrome()
+}
+
+/** The search box names what the tab lists: `Search tasks`, or `Search skills` on Skills. */
+function searchPlaceholder(): void {
+  const q = document.getElementById('q') as HTMLInputElement | null
+  if (q === null) return
+  const noun = state.runner === SKILLS ? SKILL_NOUN.many : TASK_NOUN.many
+  q.placeholder = 'Search ' + noun
 }
 
 /**
@@ -1579,7 +1632,7 @@ function toolAboutHtml(tool: ToolInfo): string {
       ? '<p class="tool-desc">' + escapeHtml(tool.description) + '</p>'
       : '') +
     '<dl class="tool-facts"><dt>Language</dt><dd>' +
-    escapeHtml(languageText(tool)) +
+    escapeHtml(tool.language) +
     '</dd>' +
     (link !== '' ? '<dt>Homepage</dt><dd>' + link + '</dd>' : '') +
     '</dl>'
@@ -1646,7 +1699,9 @@ export function showRunnerInfo(runner: string): void {
 function renderColHeads(): void {
   // A column with no label still needs a box to hover, so an empty label
   // renders a nonbreaking space and keeps its tooltip reachable.
-  const cells = COLUMNS.filter((c) => c.label !== 'Runs' || showRuns())
+  const columns = state.runner === SKILLS ? SKILL_COLUMNS : COLUMNS
+  const cells = columns
+    .filter((c, i) => i !== 3 || showRuns())
     .map(
       (c) => '<th title="' + escapeHtml(c.tip) + '">' + (escapeHtml(c.label) || '&#160;') + '</th>',
     )
@@ -1723,9 +1778,9 @@ export function withheldBar(reports: readonly RunnerReport[]): string {
           escapeHtml(countRunners(names.length)) +
           ' ' +
           escapeHtml(label) +
-          ': <span class="who">' +
+          ' (<span class="who">' +
           escapeHtml(names.join(', ')) +
-          '</span>.</span>',
+          '</span>).</span>',
       )
       .join(' ') + (state.trustable ? TRUST_BUTTON : '')
   )
@@ -1771,8 +1826,10 @@ export function renderStatus(shown: number, total: number): void {
         escapeHtml(errs.map(runnerLabel).join(', ')) +
         '</span>'
       : '') +
-    '<span class="keyhint"><kbd>Enter</kbd> copy &middot; <kbd>Shift+Enter</kbd> run &middot; ' +
-    '<kbd>?</kbd> all keys</span>'
+    (state.runner === SKILLS
+      ? '<span class="keyhint"><kbd>Enter</kbd> copy /name &middot; <kbd>?</kbd> all keys</span>'
+      : '<span class="keyhint"><kbd>Enter</kbd> copy &middot; <kbd>Shift+Enter</kbd> run &middot; ' +
+        '<kbd>?</kbd> all keys</span>')
 }
 
 /**
@@ -1892,21 +1949,22 @@ export function openDialogAtTop(id: 'help' | 'settings'): void {
 }
 
 /**
- * The page when it could not sign in: the boot token was used, expired or
- * missing, as after a reload. Only the terminal can hand out a new one.
+ * The page when it could not sign in: a new tab with no boot token, a used
+ * or expired one, or a server restarted since this tab signed in. Only the
+ * terminal can hand out a new link.
  */
 export function showSignedOut(): void {
   document.body.innerHTML =
     '<main class="signedout">' +
-    '<h1>This browser is not signed in.</h1>' +
-    '<p>' +
-    escapeHtml(APP) +
-    ' needs a fresh link, and only your terminal can hand one out.</p>' +
+    '<h1>This browser tab is not signed in.</h1>' +
+    '<p>A sign-in link works once, in one tab. A reload keeps the tab signed in; a new tab, ' +
+    'another browser or a restarted server needs a new link.</p>' +
     '<p>Go to the terminal ' +
     escapeHtml(APP) +
-    ' is running in, stop it with <code>Ctrl-C</code> and start it again with <code>' +
+    ' is running in and press <code>Enter</code>: it opens or prints a new link. If it has ' +
+    'stopped, start it again with <code>' +
     escapeHtml(BIN) +
-    ' serve</code>: it prints a new link that signs this browser in.</p>' +
+    ' serve</code>.</p>' +
     '</main>'
 }
 

@@ -114,12 +114,58 @@ beforeEach(() => {
 })
 
 describe('the Skills tab', () => {
-  test('follows the runner tabs under its group label, with the skill count', () => {
+  test('follows the runner tabs with the skill count, and no group label that repeats it', () => {
     const tab = $('tabs').querySelector(`button[data-runner="${SKILLS}"]`)!
     expect(tab.textContent).toBe('Skills2')
     expect(tab.hasAttribute('draggable')).toBe(false)
     const labels = [...$('tabs').querySelectorAll('.tabgroup')].map((e) => e.textContent)
-    expect(labels.at(-1)).toBe('Skills')
+    expect(labels).not.toContain('Skills')
+  })
+
+  test('has its own column headers, status keys and search placeholder', () => {
+    state.runner = SKILLS
+    render()
+    const heads = [...$('colheads').querySelectorAll('th')].map((th) => th.textContent)
+    expect(heads).toContain('Skill')
+    expect(heads).toContain('About')
+    expect(heads).not.toContain('Command')
+    const status = $('status').textContent ?? ''
+    expect(status).toContain('Enter copy /name')
+    expect(status).not.toContain('Shift+Enter')
+    expect(($('q') as HTMLInputElement).placeholder).toBe('Search skills')
+    state.runner = 'all'
+    render()
+    expect([...$('colheads').querySelectorAll('th')].map((th) => th.textContent)).toContain(
+      'Command',
+    )
+    expect($('status').textContent).toContain('Shift+Enter run')
+    expect(($('q') as HTMLInputElement).placeholder).toBe('Search tasks')
+  })
+
+  test('stays in view in a scrolling tab strip after a render', () => {
+    const strip = $('tabs')
+    Object.defineProperty(strip, 'scrollWidth', { configurable: true, value: 900 })
+    Object.defineProperty(strip, 'clientWidth', { configurable: true, value: 300 })
+    strip.getBoundingClientRect = () => ({ left: 0, right: 300 }) as DOMRect
+    const real = HTMLElement.prototype.getBoundingClientRect
+    HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
+      return (
+        this.getAttribute('data-runner') === SKILLS
+          ? { left: 700 - strip.scrollLeft, right: 780 - strip.scrollLeft }
+          : { left: 0, right: 0 }
+      ) as DOMRect
+    }
+    try {
+      strip.scrollLeft = 0
+      state.runner = SKILLS
+      render()
+      expect(strip.scrollLeft).toBe(488)
+    } finally {
+      HTMLElement.prototype.getBoundingClientRect = real
+      delete (strip as unknown as Record<string, unknown>)['scrollWidth']
+      delete (strip as unknown as Record<string, unknown>)['clientWidth']
+      state.runner = 'all'
+    }
   })
 
   test('is not offered in the runner picker', () => {

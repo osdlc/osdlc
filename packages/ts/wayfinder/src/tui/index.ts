@@ -62,7 +62,7 @@ export function installQuitHandlers(
 export async function runTui(session: Session): Promise<number> {
   if (!process.stdin.isTTY) {
     process.stderr.write(
-      `${BIN}: the terminal UI needs a TTY; use "serve" for the page, or "list --json" for data.\n`,
+      `${BIN}: the terminal UI needs a TTY; use "${BIN} serve" for the page, or "${BIN} list --json" for data.\n`,
     )
     return 2
   }

@@ -29,6 +29,7 @@ import { footerHints, keyLines, keysFor } from '../keys.ts'
 import { terminalSafe } from '../terminal-text.ts'
 import {
   countRunners,
+  displayPath,
   parametersUnknownLabel,
   probeTimeLabel,
   runnerLabel,
@@ -190,6 +191,27 @@ export interface CreateTuiOptions {
   session: Session
   host: TuiHost
   styles: Styles
+}
+
+/**
+ * `text` wrapped at word breaks to `width` columns. Each later line is
+ * indented to where the text after a key column starts (the first run of two
+ * spaces after the first word), so a key's action lines up under itself.
+ */
+export function wrapHanging(text: string, width: number): string[] {
+  if (text.length <= width || width < 20) return [text]
+  const column = /^(\s*\S+(?: \S+)*?\s{2,})/.exec(text)?.[1]?.length
+  const hang = ' '.repeat(Math.min(column ?? /^\s*/.exec(text)![0].length, Math.floor(width / 2)))
+  const out: string[] = []
+  let rest = text
+  while (rest.length > width) {
+    let cut = rest.lastIndexOf(' ', width)
+    if (cut <= hang.length) cut = width
+    out.push(rest.slice(0, cut).trimEnd())
+    rest = hang + rest.slice(cut).trimStart()
+  }
+  out.push(rest)
+  return out
 }
 
 /**
@@ -382,12 +404,23 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
   /** The chain, dimmed except for the leaf, with matched characters marked. */
   function chainChunks(row: TaskHit): Chunk[] {
     const { path } = row.task
+    const shown = displayPath(path, row.task.runner)
     const marks = new Set(row.labelHits ?? [])
     const chunks: Chunk[] = []
     let at = 0
     for (let p = 0; p < path.length; p++) {
       const leaf = p === path.length - 1
       const plain = leaf ? s.bold : s.dim
+      if (shown[p] !== path[p]) {
+        // A runner id shown as its label: the marks index the id, so none apply.
+        chunks.push({ text: shown[p]!, paint: plain })
+        at += path[p]!.length
+        if (!leaf) {
+          chunks.push({ text: ' > ', paint: s.dim })
+          at++
+        }
+        continue
+      }
       let run = ''
       let marked = marks.has(at)
       for (const ch of path[p]!) {
@@ -511,17 +544,21 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
   function statusLine(width: number): string {
     const shown = state.rows.length + state.skillRows.length
     const chunks: Chunk[] = [{ text: `${shown}/${tabTotal()}`, paint: s.dim }]
+    // The clock and the probe time give way first when the line is too long,
+    // so a warning after them is not cut.
+    const clock: Chunk[] = []
     if (state.catalog === null) {
       chunks.push({ text: '  collecting', paint: s.dim })
     } else {
-      chunks.push({
+      clock.push({
         text: `  checked ${new Date(state.catalog.generatedAt).toLocaleTimeString()}`,
         paint: s.dim,
       })
       const times = state.cache.map((c) => c.probeMs).filter((n) => n !== undefined)
       if (times.length > 0 && !state.loading) {
-        chunks.push({ text: `, ${probeTimeLabel(Math.max(...times))}`, paint: s.dim })
+        clock.push({ text: `, ${probeTimeLabel(Math.max(...times))}`, paint: s.dim })
       }
+      chunks.push(...clock)
     }
     const note = refreshNote(state.cache, state.loading)
     if (state.loading && note === null && state.catalog !== null) {
@@ -550,7 +587,9 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
     for (const r of reports().filter((r) => r.status === 'error')) {
       chunks.push({ text: `  ${runnerLabel(r.runner)} failed`, paint: s.error })
     }
-    return line(chunks, width)
+    const length = (list: readonly Chunk[]): number => list.reduce((n, c) => n + c.text.length, 0)
+    const fitted = length(chunks) > width ? chunks.filter((c) => !clock.includes(c)) : chunks
+    return line(fitted, width)
   }
 
   function queryLine(width: number): string {
@@ -566,17 +605,21 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
     )
   }
 
-  const footer = (view: 'list' | 'arguments' | 'settings' | 'help', width: number): string =>
-    line([{ text: footerHints(keysFor('tui', view), width), paint: s.dim }], width)
+  const footer = (
+    view: 'list' | 'arguments' | 'settings' | 'help',
+    width: number,
+    row: 'task' | 'skill' = 'task',
+  ): string =>
+    line([{ text: footerHints(keysFor('tui', view), width, '  ', row), paint: s.dim }], width)
 
   /** The lines of the help screen. */
-  function helpLines(): { text: string; heading?: boolean }[] {
+  function helpLines(width: number): { text: string; heading?: boolean }[] {
     const section = (title: string, view: 'list' | 'arguments' | 'settings') => [
       { text: title, heading: true },
       ...keyLines('tui', view).map((text) => ({ text })),
       { text: '' },
     ]
-    return [
+    const lines: { text: string; heading?: boolean }[] = [
       ...section('LIST', 'list'),
       ...section('ARGUMENTS', 'arguments'),
       ...section('SETTINGS', 'settings'),
@@ -592,6 +635,9 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
       { text: '  An agent skill is typed in the agent as /<name>. Enter and ^y copy it;' },
       { text: '  nothing runs here.' },
     ]
+    return lines.flatMap((l) =>
+      l.heading === true ? [l] : wrapHanging(l.text, width).map((text) => ({ text })),
+    )
   }
 
   function settingsFacts(screen: SettingsScreen): SettingsFacts {
@@ -643,7 +689,7 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
     const out: string[] = [tabRow(width), queryLine(width), statusLine(width)]
 
     if (state.view === 'help') {
-      const lines = helpLines()
+      const lines = helpLines(width)
       const room = Math.max(1, height - out.length - 2)
       state.helpScroll = Math.max(0, Math.min(state.helpScroll, lines.length - room))
       out.push(...body(lines, state.helpScroll, room, null, width))
@@ -799,7 +845,7 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
         ),
       )
     } else {
-      out.push(footer('list', width))
+      out.push(footer('list', width, currentEntry?.skill !== undefined ? 'skill' : 'task'))
     }
     return HOME + out.join('\r\n') + CLEAR_BELOW
   }

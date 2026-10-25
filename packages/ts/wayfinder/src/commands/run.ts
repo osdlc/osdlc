@@ -5,11 +5,13 @@
 
 import { CommandError, UsageError, outcome } from '@osdlc/cli-tool/command'
 import { commandString } from '@osdlc/command-seam'
+import type { Catalog } from '@osdlc/system-model/detect'
 
 import { handOff } from '../core/run.ts'
 import { SessionError, type RunPlan } from '../core/session.ts'
 import { RunOutput, type RunDocumentBody } from '../documents.ts'
 import { terminalSafe } from '../terminal-text.ts'
+import { taskCopyText } from '../core/copy-text.ts'
 import { parametersUnknownLabel } from '../vocabulary.ts'
 import { kit, openSession } from './shared.ts'
 
@@ -23,6 +25,7 @@ function runDocument(
     task: plan.task.id,
     display: plan.task.display,
     argv: plan.argv,
+    command: commandString(plan.argv, plan.task.cwd === '.' ? {} : { cwd: plan.task.cwd }),
     cwd: plan.cwd,
     env: plan.env,
     ran,
@@ -31,18 +34,38 @@ function runDocument(
   }
 }
 
+/**
+ * The id `word` names. A line `list` prints (the copied form, with its `cd`
+ * and quoting) names the one task it is the line of; anything else is passed
+ * on as it is.
+ */
+function taskIdFor(catalog: Catalog, word: string): string {
+  const tasks = catalog.reports.flatMap((r) => r.tasks)
+  if (tasks.some((t) => t.id === word)) return word
+  const byLine = tasks.filter((t) => taskCopyText(t, process.platform) === word)
+  return byLine.length === 1 ? byLine[0]!.id : word
+}
+
 /** Make the `run` command. */
 export function runCommand(home: string) {
   return kit.command({
     summary: 'run one task by id; arguments after --',
     description:
-      'Finds the task by its id, or by a command line only one task has, and runs it in this ' +
+      'Finds the task by its id ("list --json" shows ids), or by a command line only one task ' +
+      'has, as "list" prints it, and runs it in this ' +
       'terminal with the arguments after --, bound the way its tool expects (npm run x -- a, ' +
       'just x a). The same rules as Enter in the terminal UI and Run in the web view. Exits ' +
       "with the task's exit code. --dry-run prints what would run instead; with --json it is " +
       'the run document. A task that uses an editor variable is not run, and neither is an ' +
       'agent skill: type its /<name> in the agent.',
-    positionals: [{ name: 'id', required: true, help: 'the task id, as "list --json" shows it' }],
+    positionals: [
+      {
+        name: 'id',
+        required: true,
+        help: 'the task id, as "list --json" shows it, or its line from "list"',
+      },
+    ],
+    rest: { name: 'args' },
     flags: {
       cached: { kind: 'boolean', help: 'find the task in the last stored probe, not a new one' },
       dryRun: { kind: 'boolean', help: 'print what would run, and run nothing' },
@@ -64,7 +87,11 @@ export function runCommand(home: string) {
       const snapshot = await session.catalog({ cached: flags.cached })
       let plan: RunPlan
       try {
-        plan = session.resolveRun(snapshot.catalog, positionals[0]!, rest)
+        plan = session.resolveRun(
+          snapshot.catalog,
+          taskIdFor(snapshot.catalog, positionals[0]!),
+          rest,
+        )
       } catch (err) {
         const skill = snapshot.skills.find(
           (s) => s.id === positionals[0] || s.invoke === positionals[0],
@@ -110,7 +137,7 @@ export function runCommand(home: string) {
     },
     text(doc) {
       // After a real run the task has printed its own output.
-      return doc.ran ? '' : `${terminalSafe(commandString(doc.argv))}\n`
+      return doc.ran ? '' : `${terminalSafe(doc.command)}\n`
     },
   })
 }

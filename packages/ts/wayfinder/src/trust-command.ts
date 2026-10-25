@@ -25,7 +25,7 @@ import {
   type TrustPolicy,
 } from '@osdlc/trust-repo'
 
-import { APP, PROJECT_CONFIG_FILENAME } from './app.ts'
+import { APP, BIN, PROJECT_CONFIG_FILENAME } from './app.ts'
 import { commandEnv, type CommandEnvOptions } from './config-command.ts'
 import { ConfigError, loadConfig, trustPolicyFromConfig, trustPolicyOptions } from './config.ts'
 import { appTrustStore } from './trust-store.ts'
@@ -139,7 +139,7 @@ const DESCRIPTION = `Some runners can only be read by running them: reading moon
 
 Trust is one of two conditions: execution must also be allowed. ${APP} allows it by default, so trust is enough unless a config file sets allowExec: false. A repository cannot trust itself: allowExec and trust in ${PROJECT_CONFIG_FILENAME} cannot raise the gate. Pass --exec to allow one run without recording anything.
 
-A root can also be trusted with no marker, by trust.paths and trust.owners in the user config, and one tool by trust.tools.<tool>. --show names what decided: by marker, path or owner, with the rule that matched. --scope <tool> grants or removes one tool's trust; a run needs every tool it runs trusted, such as mise for a mise task.`
+A root can also be trusted with no marker, by trust.paths and trust.owners in the user config, and one tool by trust.tools.<tool>. --show names what decided: by marker, path or owner, with the rule that matched. --scope <tool> grants or removes one tool's trust; a run needs every tool it runs trusted, such as mise for a mise task. A tool's name is its id as "${BIN} providers" lists it (moon, mise, sbt). "${BIN} list" names the tools each withheld runner still needs, and "${BIN} list --json" has them as "missing" in "unknowns".`
 
 /**
  * The `trust` command. Mount it as `trust: trustCommand({ globals })`, with
@@ -153,5 +153,6 @@ export function trustCommand<G extends FlagSpec = Record<never, never>>(
     ...(globals !== undefined ? { globals } : {}),
     summary: "allow this repository's runners to be read by running them",
     description: DESCRIPTION,
+    scopeHelp: `one tool, by its id in "${BIN} providers", such as moon or mise`,
   })
 }

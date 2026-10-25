@@ -1,6 +1,7 @@
 /**
- * `way list`: the whole catalog. Text is one command line per task, then one
- * `/<name>` line per agent skill; `--json` is the catalog document.
+ * `way list`: the whole catalog. Text is one command line per task, the line
+ * Copy puts on the clipboard, then one `/<name>` line per agent skill;
+ * `--json` is the catalog document.
  */
 
 import type { Catalog } from '@osdlc/system-model/detect'
@@ -12,6 +13,7 @@ import type { CatalogSnapshot, Session } from '../core/session.ts'
 import type { Unknown } from '../core/unknowns.ts'
 import { CATALOG_DOCUMENT_VERSION, CatalogOutput, type CatalogDocumentBody } from '../documents.ts'
 import type { CatalogDocument } from '../index.ts'
+import { taskLine } from '../core/copy-text.ts'
 import { terminalSafe } from '../terminal-text.ts'
 import { FILTER_FLAGS, filterFrom, kit, noteUnknowns, openSession } from './shared.ts'
 
@@ -63,8 +65,13 @@ function documentTasks(doc: CatalogDocumentBody): Catalog['reports'][number]['ta
 /** Make the `list` command. `home` is the base for config, trust and cache paths. */
 export function listCommand(home: string) {
   return kit.command({
-    summary: 'the whole catalog: one command line per task, or the catalog document with --json',
+    summary:
+      'the whole catalog: one pasteable command line per task, or the catalog document with --json',
     description:
+      'Each task line is the command Copy gives, quoted and with a cd when the task runs from ' +
+      'its own directory, so it pastes into a shell; "run" takes that line or the task id, which ' +
+      '--json shows. --output jsonl prints one runner report per line; "query" with no terms ' +
+      'prints one task per line. ' +
       'Probes every runner, so a script gets what the repository has now. --cached answers from ' +
       'the last stored probe and names the stale runners on stderr. --services, --declared and ' +
       '--depth keep only some tasks; with --json each report keeps only those tasks. Notes on what ' +
@@ -89,7 +96,7 @@ export function listCommand(home: string) {
     },
     text(doc) {
       const lines = [
-        ...documentTasks(doc).map((t) => terminalSafe(t.display)),
+        ...documentTasks(doc).map((t) => taskLine(t)),
         ...(doc.skills as SkillRow[]).map((s) => terminalSafe(skillLine(s))),
       ]
       return lines.length > 0 ? `${lines.join('\n')}\n` : ''

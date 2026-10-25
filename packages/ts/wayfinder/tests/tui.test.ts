@@ -23,7 +23,7 @@ import { appTrustStore } from '../src/trust-store.ts'
 import { openSurface } from '../src/commands/browse.ts'
 import { configLocations } from '../src/config.ts'
 import { KEY_TABLE, keysFor } from '../src/keys.ts'
-import { refreshNote } from '../src/tui/app.ts'
+import { refreshNote, wrapHanging } from '../src/tui/app.ts'
 import { taskCopyText } from '../src/core/copy-text.ts'
 import { clipboardCommands, writeClipboard } from '../src/tui/copy.ts'
 import { installQuitHandlers, runTui } from '../src/tui/index.ts'
@@ -233,6 +233,24 @@ describe('the status line and tabs', () => {
     expect(lineOf(tui, 0)).toContain(' make 1 │ dependencies 1 │ git hooks 1 ')
   })
 
+  test("a row's chain names a group runner by its label, not its id", async () => {
+    const { tui } = await showing(
+      catalog(
+        [],
+        [
+          report('package-manager', [
+            task('package-manager', 'install', {
+              path: ['package-manager', '.', 'npm', 'install'],
+            }),
+          ]),
+        ],
+      ),
+    )
+    const text = screen(tui).join('\n')
+    expect(text).toContain('dependencies > . > npm > install')
+    expect(text).not.toContain('package-manager >')
+  })
+
   test('the selected tab is marked with brackets, which show without color', async () => {
     const { tui } = await showing(catalog(['build']))
     expect(lineOf(tui, 0)).toMatch(/^\[all 1\] make 1 /)
@@ -279,6 +297,17 @@ describe('the status line and tabs', () => {
     const status = lineOf(tui, 2)
     expect(status).toContain('1 runner withheld: --no-exec was given')
     expect(status).not.toContain('^s')
+  })
+
+  test('a narrow status line drops the clock before it cuts the withheld cause', async () => {
+    const { tui } = await showing(
+      catalog(['build'], [report('moon', [], { skippedForExec: true })]),
+      { flags: { allowExec: false } },
+    )
+    const status = screen(tui, 50)[2]!
+    expect(status).toContain('1 runner withheld: --no-exec was given')
+    expect(status).not.toContain('checked')
+    expect(screen(tui, 120)[2]).toContain('checked')
   })
 })
 
@@ -787,6 +816,45 @@ describe('boot', () => {
     expect(tui.state.probed).toBe(true)
     expect(tui.state.rows.map((r) => r.task.id)).toContain('node-scripts:package.json:build')
     expect(lineOf(tui, 2)).toMatch(/probed in/)
+  })
+})
+
+describe('the help screen', () => {
+  test('wraps a long action under its own column instead of cutting it', () => {
+    const lines = wrapHanging('  ^y      copy the selected task command line, or a skill name', 40)
+    expect(lines).toEqual([
+      '  ^y      copy the selected task command',
+      '          line, or a skill name',
+    ])
+    expect(lines.every((l) => l.length <= 40)).toBe(true)
+    expect(wrapHanging('short', 40)).toEqual(['short'])
+  })
+
+  test('at 60 columns every key line is whole', async () => {
+    const { tui } = await testTui({ size: { columns: 60, rows: 200 } })
+    tui.handle('?')
+    const text = screen(tui, 60, 200).join('\n')
+    expect(text).not.toContain('…')
+    expect(text).toContain("skill's /name")
+  })
+})
+
+describe('without a terminal', () => {
+  test('refuses with exit 2 and a way: line naming the commands to use', async () => {
+    const original = process.stdin.isTTY
+    const writes: string[] = []
+    const spy = vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+      writes.push(String(chunk))
+      return true
+    })
+    Object.defineProperty(process.stdin, 'isTTY', { configurable: true, value: false })
+    try {
+      expect(await runTui({} as never)).toBe(2)
+    } finally {
+      spy.mockRestore()
+      Object.defineProperty(process.stdin, 'isTTY', { configurable: true, value: original })
+    }
+    expect(writes.join('')).toMatch(/^way: the terminal UI needs a TTY; use "way serve"/)
   })
 })
 

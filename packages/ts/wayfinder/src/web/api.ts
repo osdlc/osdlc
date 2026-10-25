@@ -1,22 +1,13 @@
 /**
  * The page's calls to the server. Every action but Run is a command of the
  * tree, sent to `POST /api/commands/<command>` with a JSON body of its flags
- * and positionals, exactly as `way <command> --json` would run it:
- *
- * | Page action | Command |
- * |---|---|
- * | the list, Refresh, the poll | `way list` (`--cached` for the first view) |
- * | Trust this repository | `way trust`, confirmed by the person |
- * | Trust one tool | `way trust --scope <tool>`, confirmed by the person |
- * | Untrust | `way trust --untrust`, with `--scope <tool>` for one tool |
- * | Settings | `way config list`, `way trust --show` |
- * | Tool info | `way providers` |
- * | Run on a skill | nothing is sent: the page copies `/<name>` |
- * | Save, theme, a dragged runner order | `way config set` / `way config unset` |
- * | Run | `POST /run`, which resolves the task with `way run --dry-run` |
+ * and positionals, exactly as `way <command> --json` would run it. Run is
+ * `POST /run`, which resolves the task with `way run --dry-run`. Which
+ * command each action is lives in `../actions.ts`, where a test checks it.
  */
 
 import type { Unknown } from '../core/unknowns.ts'
+import { APP } from '../app.ts'
 import { $, state, type CatalogDocument, type ToolInfo } from './state.ts'
 import {
   escapeHtml,
@@ -24,18 +15,40 @@ import {
   renderStatus,
   renderTrustBar,
   scopedReports,
+  showSignedOut,
   taskRows,
 } from './view.ts'
 
 // ---------------------------------------------------------------- auth
 
+/** Where the bearer token is kept for this tab. */
+export const TOKEN_KEY = `${APP}.token`
+
 /**
- * The bearer token, from `POST /session`. Kept in module state only:
- * storage and cookies outlive the tab or are sent with requests the page did
- * not make. Module state ends with the page, which is the lifetime the token
- * should have.
+ * The bearer token, from `POST /session`. Kept in `sessionStorage` as well,
+ * so a reload stays signed in: it is per tab, ends with the tab, and is never
+ * sent with a request or put in a URL. A cookie would be sent with every
+ * request, and `localStorage` would outlive the tab.
  */
-let token = ''
+let token = stored()
+
+function stored(): string {
+  try {
+    return globalThis.sessionStorage?.getItem(TOKEN_KEY) ?? ''
+  } catch {
+    return ''
+  }
+}
+
+function keep(value: string): void {
+  token = value
+  try {
+    if (value === '') globalThis.sessionStorage?.removeItem(TOKEN_KEY)
+    else globalThis.sessionStorage?.setItem(TOKEN_KEY, value)
+  } catch {
+    // Storage off: the token lasts until a reload.
+  }
+}
 
 /**
  * Trade the one-shot boot token for the bearer token. False when the boot
@@ -52,16 +65,50 @@ export async function signIn(boot: string): Promise<boolean> {
     if (!res.ok) return false
     const body = (await res.json()) as { token?: unknown }
     if (typeof body.token !== 'string') return false
-    token = body.token
+    keep(body.token)
     return true
   } catch {
     return false
   }
 }
 
+/** Whether the page holds a token: from a sign-in, or kept from before a reload. */
+export function signedIn(): boolean {
+  return token !== ''
+}
+
+/**
+ * Whether the kept token still works, asked without signing out on a 401.
+ * The page asks before it spends a boot token, so a tab that is already
+ * signed in never redeems one a second time.
+ */
+export async function tokenWorks(): Promise<boolean> {
+  if (token === '') return false
+  try {
+    const res = await fetch('/api/commands/config/path', {
+      method: 'POST',
+      headers: authHeaders({ 'content-type': 'application/json' }),
+      body: '{}',
+      cache: 'no-store',
+    })
+    return res.status !== 401
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Forget the token and show the signed-out page. For a 401: the server was
+ * restarted, so the kept token is not its token.
+ */
+export function signOut(): void {
+  keep('')
+  showSignedOut()
+}
+
 /** For tests: set the token without a server. */
 export function setTokenForTest(value: string): void {
-  token = value
+  keep(value)
 }
 
 function authHeaders(extra: Record<string, string> = {}): Headers {
@@ -102,6 +149,7 @@ export async function call<T>(
   } catch {
     return { ok: false, status: 0, message: 'the server is gone' }
   }
+  if (res.status === 401) signOut()
   const body = (await res.json().catch(() => null)) as Record<string, unknown> | null
   if (res.ok && body !== null) return { ok: true, doc: body as T }
   const text = (key: string): string | undefined =>
@@ -383,6 +431,7 @@ export async function requestRun(id: string, args: readonly string[] = []): Prom
     return { outcome: 'gone' }
   }
   if (res.status === 409) return { outcome: 'taken' }
+  if (res.status === 401) signOut()
   const body = (await res.json().catch(() => null)) as {
     argv?: string[]
     display?: string

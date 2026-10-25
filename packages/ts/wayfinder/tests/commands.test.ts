@@ -240,6 +240,38 @@ describe('run', () => {
     expect(ran.json()['argv']).toEqual(['npm', 'run', 'build', '--', '--watch'])
   })
 
+  test('list prints the line Copy gives, quoted so it pastes as one command', async () => {
+    const dir = await root({
+      ...SCRIPTS,
+      Procfile: 'web: bundle exec puma -p $PORT\n',
+    })
+    const listed = await way(['list'], dir)
+    const lines = listed.out.split('\n')
+    expect(lines).toContain("sh -c 'bundle exec puma -p $PORT'")
+    expect(lines).not.toContain('sh -c bundle exec puma -p $PORT')
+    const queried = await way(['query', 'puma'], dir)
+    expect(queried.out).toBe("sh -c 'bundle exec puma -p $PORT'\n")
+  })
+
+  test('run takes a line list printed, and --dry-run prints it back', async () => {
+    const dir = await root({ ...SCRIPTS, Procfile: 'web: bundle exec puma -p $PORT\n' })
+    const ran = await way(['run', "sh -c 'bundle exec puma -p $PORT'", '--dry-run'], dir)
+    expect(ran.code).toBe(0)
+    expect(ran.out).toBe("sh -c 'bundle exec puma -p $PORT'\n")
+    const json = await way(['run', 'just deploy', '--dry-run', '--json', '--', 'prod'], dir)
+    expect(json.json()).toMatchObject({ display: 'just deploy', command: 'just deploy prod' })
+  })
+
+  test('the run usage line shows the arguments after --', async () => {
+    const help = await way(['help', 'run'])
+    expect(help.out).toContain('way run [options] <id> [-- <args>...]')
+  })
+
+  test('trust --scope help names where the tool ids come from', async () => {
+    const help = await way(['help', 'trust'])
+    expect(help.out).toContain('way providers')
+  })
+
   test('a task with unknown parameters says so before it runs', async () => {
     const dir = await root(SCRIPTS)
     const ran = await way(['run', 'just deploy', '--dry-run'], dir)

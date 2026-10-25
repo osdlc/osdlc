@@ -76,7 +76,13 @@ making `way` run code the user did not choose to run are in scope.
 - **The web view listens on 127.0.0.1.** Any local process and any page the
   browser visits can reach the port. Requests must name a loopback `Host` and
   carry no foreign `Origin`. A one-shot boot token signs the page in, and a
-  bearer token protects every command and `/run`. `/run` takes a task id from
+  bearer token protects every command and `/run`. The boot token is in the
+  URL the server opens or prints; it works once and expires a minute after
+  it is shown. The bearer token is never in a URL or a cookie: the page keeps
+  it in `sessionStorage`, which belongs to one tab, survives a reload and is
+  never sent with a request. A script running in the page could read it, so
+  the page loads no third-party code. A new tab needs a new boot token:
+  Enter in the `way serve` terminal makes one and retires the previous one. `/run` takes a task id from
   the server's own catalog, never a command. Commands keep the flags `way
   serve` started with, so `--no-exec` cannot be lifted from the page, and a
   write of `allowExec`, a trust setting or `tools` is refused.

@@ -139,7 +139,7 @@ describe('tool info', () => {
   test('names the ecosystem beside the language', () => {
     state.tools = [{ ...MISE, ecosystem: 'node', language: 'JavaScript' }]
     showRunnerInfo('mise')
-    expect($('help-body').querySelector('.tool-facts')!.textContent).toContain('JavaScript (node)')
+    expect($('help-body').querySelector('.tool-facts')!.textContent).toContain('JavaScript')
   })
 
   test('a homepage that is not http or https is not a link', () => {

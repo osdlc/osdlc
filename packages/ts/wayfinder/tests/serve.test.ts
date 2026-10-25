@@ -7,7 +7,8 @@
  * task runs.
  */
 
-import { afterAll, describe, expect, test } from 'vitest'
+import { afterAll, describe, expect, test, vi } from 'vitest'
+import { PassThrough } from 'node:stream'
 import { request as httpRequest } from 'node:http'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -20,7 +21,7 @@ import { createWayApp } from '../src/commands/index.ts'
 import { createSession } from '../src/core/session.ts'
 import { createSignIn } from '../src/serve/auth.ts'
 import { createRoutes } from '../src/serve/routes.ts'
-import { browserOpener, startServer, type WebServer } from '../src/serve/index.ts'
+import { browserOpener, serve, startServer, type WebServer } from '../src/serve/index.ts'
 import { appTrustStore } from '../src/trust-store.ts'
 import { fixtureRoot, removeRoot } from './support.ts'
 
@@ -320,6 +321,21 @@ describe('the boot token', () => {
     expect(replays).toBe(1)
   })
 
+  test('renew replaces the boot token, armed, and the old one stops working', () => {
+    let now = 1_000
+    const signIn = createSignIn(() => now)
+    const old = signIn.bootToken
+    const fresh = signIn.renew()
+    expect(fresh).not.toBe(old)
+    expect(signIn.bootToken).toBe(fresh)
+    expect(signIn.redeem(old)).toBe(false)
+    expect(signIn.redeem(fresh)).toBe(true)
+    // Once more after a redeem: a second tab gets its own link.
+    const third = signIn.renew()
+    now += 60_001
+    expect(signIn.redeem(third)).toBe(false)
+  })
+
   test('does not expire before it is armed', () => {
     let now = 1_000
     const signIn = createSignIn(() => now)
@@ -329,6 +345,15 @@ describe('the boot token', () => {
 })
 
 describe('the command routes', () => {
+  test('config path answers a signed-in page, which the page uses to check a kept token', async () => {
+    const s = await start()
+    try {
+      expect((await s.call(['config', 'path'])).status).toBe(200)
+    } finally {
+      await s.web.stop()
+    }
+  })
+
   test('no bearer token is 401', async () => {
     const s = await start()
     try {
@@ -627,6 +652,52 @@ describe('stopping', () => {
     aborter.abort(130)
     expect(await web.finished).toBeNull()
     await expect(fetch(`${address}/`)).rejects.toThrow()
+  })
+})
+
+describe('a new sign-in link', () => {
+  const postSession = (address: string, body: unknown): Promise<Response> =>
+    fetch(`${address}/session`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+
+  test('Enter in the terminal prints a new link, and stops being read once the server stops', async () => {
+    const dir = await root({ 'package.json': JSON.stringify({ name: 'p', scripts: {} }) })
+    const home = await root()
+    const env = { HOME: home, PATH: process.env['PATH'] }
+    const { app } = createWayApp({ home })
+    const session = await createSession({ dir, cwd: dir, env, home })
+    const aborter = new AbortController()
+    const input = new PassThrough()
+    let out = ''
+    const finished = serve({
+      session,
+      app,
+      globals: {},
+      cwd: dir,
+      open: false,
+      input,
+      signal: aborter.signal,
+      stdout: (text) => {
+        out += text
+      },
+      stderr: () => {},
+    })
+    const links = (): string[] => [...out.matchAll(/\?boot=([0-9a-f]+)/g)].map((m) => m[1]!)
+    await vi.waitFor(() => expect(links()).toHaveLength(1))
+    expect(out).toContain('press Enter here for a new sign-in link')
+    const address = out.match(/(http:\/\/127\.0\.0\.1:\d+)/)![1]!
+    input.write('\n')
+    await vi.waitFor(() => expect(links()).toHaveLength(2))
+    const [first, second] = links()
+    expect(second).not.toBe(first)
+    expect((await postSession(address, { boot: first })).status).toBe(401)
+    expect((await postSession(address, { boot: second })).status).toBe(200)
+    aborter.abort(130)
+    expect(await finished).toBeNull()
+    expect(input.listenerCount('data')).toBe(0)
   })
 })
 
