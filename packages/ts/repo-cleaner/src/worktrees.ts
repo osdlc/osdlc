@@ -14,7 +14,7 @@ import { nodeGuard } from '@osdlc/path-guard/node'
 import type { Git } from '@osdlc/typed-git'
 
 import { gapSentence, recordPr } from './branches.ts'
-import { isIdleShell, parseLockOwner, defaultProcessProbe, type ProcessProbe } from './processes.ts'
+import { busyHolders, isIdleHolder, parseLockOwner, type ProcessProbe } from './processes.ts'
 import {
   authorizationsFor,
   landedRef,
@@ -63,6 +63,7 @@ function isDir(path: string): boolean {
 export type WorktreeBlocker =
   | 'locked-worktree'
   | 'live-process'
+  | 'process-probe-failed'
   | 'hidden-index-flags'
   | 'nested-repository'
   | 'branch-in-other-worktree'
@@ -112,11 +113,12 @@ function readBlockers(opts: {
 
   if (onDisk) {
     // A process working in the directory blocks removal, lock or not. Shells
-    // only sit there, so they are listed and let the removal through.
+    // with nothing running under them only sit there, so they are listed and
+    // let the removal through.
     try {
       const live = probe.holders(path).sort((a, b) => a.pid - b.pid)
-      const shells = live.filter((h) => isIdleShell(h.command))
-      const busy = live.filter((h) => !isIdleShell(h.command))
+      const shells = live.filter(isIdleHolder)
+      const busy = busyHolders(live)
       if (shells.length > 0) facts['idle_shells'] = shells
       if (busy.length > 0) {
         facts['live_processes'] = busy
@@ -126,9 +128,14 @@ function readBlockers(opts: {
         ])
       }
     } catch (err) {
-      // No process table to read (a host without `lsof`): the other blockers
-      // still hold, and the report says the check did not run.
-      facts['process_probe_error'] = err instanceof Error ? err.message : String(err)
+      // No process table to read (a host without `lsof`, a timeout): nobody
+      // can say the directory is idle, so the worktree is held back.
+      const message = err instanceof Error ? err.message : String(err)
+      facts['process_probe_error'] = message
+      out.push([
+        'process-probe-failed',
+        `Could not tell whether a process is running in the worktree (${message}); check by hand, or fix the probe and sweep again.`,
+      ])
     }
 
     const at = git.at(path)
@@ -181,8 +188,8 @@ export function gatherWorktrees(
   prs: Map<string, PRInfo>,
   cwd: string,
   git: Git,
-  only?: string,
-  probe: ProcessProbe = defaultProcessProbe(),
+  only: string | undefined,
+  probe: ProcessProbe,
 ): [SweepItem[], Set<string>] {
   const all = git.at(repo.root).worktrees()
   const pathsByBranch = new Map<string, string[]>()
@@ -234,8 +241,8 @@ export function classifyWorktree(opts: {
   prs: Map<string, PRInfo>
   cwd: string
   git: Git
-  /** Answers lock-owner and working-directory questions. Defaults to `ps` and `lsof`. */
-  probe?: ProcessProbe | undefined
+  /** Answers lock-owner and working-directory questions. One per sweep: it caches the process table. */
+  probe: ProcessProbe
 }): SweepItem {
   const { path, branch, head, isBare, isDetached, isPrimary, repo, prs, cwd, git } = opts
   const facts: Record<string, unknown> = {
@@ -315,7 +322,6 @@ export function classifyWorktree(opts: {
     ...opts,
     onDisk,
     facts,
-    probe: opts.probe ?? defaultProcessProbe(),
   })
   const kinds = blockers.map(([kind]) => kind)
   // `git worktree remove` and `prune` both skip a locked worktree, so a stale

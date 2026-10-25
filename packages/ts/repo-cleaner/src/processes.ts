@@ -22,6 +22,12 @@ export interface ProcessHolder {
   pid: number
   /** The command name as the OS reports it, without a path. */
   command: string
+  /**
+   * Whether the process has child processes. Read only for shells: a shell
+   * counts as idle only when this is `false`; absent means unknown, which is
+   * not idle.
+   */
+  hasChildren?: boolean | undefined
 }
 
 /** What the engine asks of the process table. */
@@ -33,8 +39,12 @@ export interface ProcessProbe {
    * as a time must answer "alive" (the owner cannot be ruled out).
    */
   alive(pid: number, startedAt?: string): boolean
-  /** Processes whose current directory is `path` or below it. */
-  holders(path: string): ProcessHolder[]
+  /**
+   * Processes whose current directory is `path` or below it. Throws when the
+   * process table cannot be read; the caller must treat that as "unknown".
+   * With `fresh`, a probe that caches its table reads it again.
+   */
+  holders(path: string, opts?: { fresh?: boolean }): ProcessHolder[]
 }
 
 /** The owner a lock reason claims. */
@@ -62,25 +72,49 @@ export function parseLockOwner(reason: string | null): LockOwner | null {
 /** Shells that sit idle in a directory and do not make a worktree live. */
 const IDLE_SHELLS: ReadonlySet<string> = new Set(['sh', 'bash', 'zsh', 'fish'])
 
-/** True for an interactive shell's command name; a login shell's leading `-` is ignored. */
+/**
+ * True when `command` is the name of a shell (`sh`, `bash`, `zsh`, `fish`); a
+ * login shell's leading `-` is ignored. The name alone does not make a shell
+ * idle: see {@link busyHolders}. Not for names longer than lsof's 9 characters.
+ */
 export function isIdleShell(command: string): boolean {
   return IDLE_SHELLS.has(command.replace(/^-/, ''))
+}
+
+/**
+ * Whether a holder is a shell with nothing running under it. A shell whose
+ * children are unknown, or that has any, is not idle: it may be running a script.
+ */
+export function isIdleHolder(h: ProcessHolder): boolean {
+  return isIdleShell(h.command) && h.hasChildren === false
+}
+
+/** The holders that make a worktree live: everything but idle shells. */
+export function busyHolders(holders: readonly ProcessHolder[]): ProcessHolder[] {
+  return holders.filter((h) => !isIdleHolder(h))
 }
 
 /** Allowed difference between a lock's start time and the process's, in ms. */
 const START_TOLERANCE_MS = 2000
 
+const ISO_WITH_TIME = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?$/
+/** `ps -o lstart`: `Sat Oct 25 18:22:19 2026`, the day space-padded on Linux. */
+const PS_LSTART = /^[A-Z][a-z]{2}\s+[A-Z][a-z]{2}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}\s+\d{4}$/
+
 /**
- * Epoch milliseconds of a start time written as a date, or as epoch seconds
- * or milliseconds; NaN when it is neither.
+ * Epoch milliseconds of a start time, or NaN when the text is not precise to
+ * the second. Accepted: a full ISO-8601 timestamp with a time of day, epoch
+ * seconds (9-10 digits), epoch milliseconds (12-13 digits), or the `lstart`
+ * form. A date alone, a short digit string or a partial date such as `Oct 25`
+ * is NaN, so the owner is treated as alive: the comparison would otherwise
+ * call a live owner dead.
  */
-function startMs(text: string): number {
+export function startMs(text: string): number {
   const trimmed = text.trim()
-  if (/^\d+$/.test(trimmed)) {
-    const n = Number(trimmed)
-    return trimmed.length > 11 ? n : n * 1000
-  }
-  return Date.parse(trimmed)
+  if (/^\d{9,10}$/.test(trimmed)) return Number(trimmed) * 1000
+  if (/^\d{12,13}$/.test(trimmed)) return Number(trimmed)
+  if (ISO_WITH_TIME.test(trimmed) || PS_LSTART.test(trimmed)) return Date.parse(trimmed)
+  return Number.NaN
 }
 
 /**
@@ -122,9 +156,10 @@ const answered = (r: CommandResult): boolean => r.neverExited !== true
  * through the command seam.
  *
  * `holders` reads the whole table once, on first use, and answers every later
- * call from that snapshot, so one sweep of many worktrees runs `lsof` once.
- * Make a new probe for a new sweep. When `ps` or `lsof` cannot be run, `alive`
- * answers true (the owner cannot be ruled out) and `holders` throws.
+ * call from that snapshot, so one sweep of many worktrees runs `lsof` once;
+ * `fresh` reads it again. Make a new probe for a new sweep. Whenever `ps` or
+ * `lsof` cannot give a clear answer, `alive` answers true (the owner cannot be
+ * ruled out) and `holders` throws.
  */
 export function defaultProcessProbe(opts: DefaultProbeOptions = {}): ProcessProbe {
   const ps = opts.ps ?? spawnRunner('ps')
@@ -138,7 +173,10 @@ export function defaultProcessProbe(opts: DefaultProbeOptions = {}): ProcessProb
       const r = ps.run(['-o', 'lstart=', '-p', String(pid)], { cwd: '/', timeoutMs })
       if (!answered(r)) return true
       const started = r.stdout.trim()
-      if (r.exitCode !== 0 || started === '') return false
+      // Only exit 1 with nothing printed is ps saying "no such pid". Any other
+      // failure (usage error, permission, a diagnostic) cannot rule the owner out.
+      if (r.exitCode === 1 && started === '' && r.stderr.trim() === '') return false
+      if (r.exitCode !== 0 || started === '') return true
       if (startedAt === undefined) return true
       const claimed = startMs(startedAt)
       const actual = Date.parse(started)
@@ -146,14 +184,22 @@ export function defaultProcessProbe(opts: DefaultProbeOptions = {}): ProcessProb
       return Math.abs(claimed - actual) <= START_TOLERANCE_MS
     },
 
-    holders(path) {
-      if (table === null) {
+    holders(path, holdersOpts) {
+      if (table === null || holdersOpts?.fresh === true) {
         // `-a -d cwd`: only the working-directory entry of each process.
         // lsof exits 1 when it could not read some processes yet still lists
-        // the rest, so the output is read whatever the status.
+        // the rest, so a listing is read whatever the status. No listing at
+        // all with a failure status is an error, not an empty table.
         const r = lsof.run(['-n', '-P', '-a', '-d', 'cwd', '-Fpcn'], { cwd: '/', timeoutMs })
         if (!answered(r)) throw new Error(`lsof did not run: ${r.error ?? r.stderr.trim()}`)
-        table = parseLsofCwd(r.stdout).filter((row) => row.pid !== process.pid)
+        if ((r.exitCode !== 0 && r.stdout.trim() === '') || r.exitCode > 1) {
+          throw new Error(`lsof failed (exit ${r.exitCode}): ${r.stderr.trim() || 'no output'}`)
+        }
+        const rows = parseLsofCwd(r.stdout).filter((row) => row.pid !== process.pid)
+        const parents = rows.some((row) => isIdleShell(row.command))
+          ? parentPids()
+          : new Set<number>()
+        table = rows.map((row) => ({ ...row, hasChildren: parents.has(row.pid) }))
       }
       const roots = new Set([path])
       try {
@@ -163,7 +209,22 @@ export function defaultProcessProbe(opts: DefaultProbeOptions = {}): ProcessProb
       }
       return table
         .filter((row) => [...roots].some((root) => nodeGuard.contains(root, row.cwd)))
-        .map(({ pid, command }) => ({ pid, command }))
+        .map(({ pid, command, hasChildren }) => ({ pid, command, hasChildren }))
     },
+  }
+
+  /** Pids that are the parent of some process. Throws when `ps` gives no table. */
+  function parentPids(): Set<number> {
+    const r = ps.run(['-A', '-o', 'pid=,ppid='], { cwd: '/', timeoutMs })
+    if (!answered(r)) throw new Error(`ps did not run: ${r.error ?? r.stderr.trim()}`)
+    if (r.exitCode !== 0 || r.stdout.trim() === '') {
+      throw new Error(`ps failed (exit ${r.exitCode}): ${r.stderr.trim() || 'no output'}`)
+    }
+    const parents = new Set<number>()
+    for (const line of r.stdout.split('\n')) {
+      const m = /^\s*(\d+)\s+(\d+)\s*$/.exec(line)
+      if (m !== null) parents.add(Number(m[2]))
+    }
+    return parents
   }
 }

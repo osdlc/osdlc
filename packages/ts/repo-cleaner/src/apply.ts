@@ -2,10 +2,17 @@
  * Apply an approved cleanup plan.
  *
  * Re-sweeps each repository and drops selected rows that are gone, no longer
- * deletable, changed, or lack a grant. Deletes the rest in a fixed order
- * (worktrees, each unlocked first when its lock's owner is dead, local branches, remote branches, then one prune per repository)
- * and stops at the first failure. Branch deletes are compare-and-swap on the
- * planned sha. Every step is verified, and the receipt is rewritten after each.
+ * deletable, changed, or lack a grant. Deletes the rest in a fixed order and
+ * stops at the first failure:
+ *
+ * 1. worktrees, each unlocked first when its lock's owner is dead, and each
+ *    checked again for live processes just before it is unlocked or removed;
+ * 2. local branches;
+ * 3. remote branches;
+ * 4. one prune per repository.
+ *
+ * Branch deletes are compare-and-swap on the planned sha. Every step is
+ * verified, and the receipt is rewritten after each.
  */
 
 import { existsSync } from 'node:fs'
@@ -16,7 +23,7 @@ import { CommandFailed, Git } from '@osdlc/typed-git'
 
 import { localDeleteCommand, remoteDeleteCommand } from './branches.ts'
 import type { HostHooks } from './hooks.ts'
-import { defaultProcessProbe, parseLockOwner, type ProcessProbe } from './processes.ts'
+import { busyHolders, defaultProcessProbe, parseLockOwner, type ProcessProbe } from './processes.ts'
 import {
   PLAN_CATEGORIES,
   fingerprint,
@@ -43,7 +50,8 @@ export interface ApplyOptions extends HostHooks {
   gh?: CommandRunner | undefined
   /**
    * Answers lock-owner and working-directory questions, for the re-sweep and
-   * for the check just before an unlock. Defaults to `ps` and `lsof`.
+   * for the checks just before an unlock and a remove. Defaults to `ps` and
+   * `lsof`.
    */
   probe?: ProcessProbe | undefined
   /** The caller's directory; the sweep never offers the worktree holding it. */
@@ -247,6 +255,24 @@ function stepsFor({ repo, item, force }: Accepted): Step[] {
   }
 }
 
+/**
+ * Refuse while a process other than an idle shell works inside `path`. Reads
+ * the process table afresh; a table that cannot be read refuses too.
+ */
+function assertNoLiveProcess(path: string, probe: ProcessProbe): void {
+  let busy
+  try {
+    busy = busyHolders(probe.holders(path, { fresh: true }))
+  } catch (err) {
+    throw new Error(`refused: cannot tell whether a process runs in ${path}: ${errorText(err)}`)
+  }
+  if (busy.length > 0) {
+    throw new Error(
+      `refused: running in ${path}: ${busy.map((h) => `${h.command} (pid ${h.pid})`).join(', ')}`,
+    )
+  }
+}
+
 /** Run one step, then confirm it took. Throws with the reason on failure. */
 function execute(step: Step, row: Accepted | null, git: Git, probe: ProcessProbe): string {
   const at = git.at(step.repo)
@@ -264,6 +290,7 @@ function execute(step: Step, row: Accepted | null, git: Git, probe: ProcessProbe
       if (probe.alive(owner.pid, owner.startedAt)) {
         throw new Error(`refused: lock owner pid ${owner.pid} is alive`)
       }
+      if (row!.item.facts['on_disk'] !== false) assertNoLiveProcess(path, probe)
       at.worktreeUnlock(path)
       const entry = at.worktrees().find((w) => resolve(w.path) === resolve(path))
       if (entry?.locked === true) throw new Error(`still locked: ${path}`)
@@ -276,6 +303,7 @@ function execute(step: Step, row: Accepted | null, git: Git, probe: ProcessProbe
     }
     case 'remove-worktree': {
       const path = row!.item.id
+      assertNoLiveProcess(path, probe)
       at.worktreeRemove(path, { force: row!.force })
       if (existsSync(path)) throw new Error(`directory still exists: ${path}`)
       if (registered(path)) throw new Error(`still registered: ${path}`)
@@ -360,13 +388,20 @@ export function applyPlan(
   save()
   const git = new Git(opts.callerCwd, { runner: opts.git })
   const probe = opts.probe ?? defaultProcessProbe()
+  // Worktrees whose lock this run cleared. typed-git has no `worktree lock`
+  // verb, so a failed remove cannot put the lock back; the receipt says so.
+  const unlocked = new Set<string>()
   for (const [step, row] of plannedSteps) {
     try {
       step.verification = execute(step, row, git, probe)
       step.result = 'ok'
+      if (step.action === 'unlock-worktree') unlocked.add(row!.item.id)
     } catch (err) {
       step.result = 'failed'
       step.error = errorText(err)
+      if (row !== null && step.action !== 'unlock-worktree' && unlocked.has(row.item.id)) {
+        step.error += `; the lock on ${row.item.id} was cleared earlier in this run and is not restored`
+      }
       receipt.status = 'failed'
       receipt.finished_at = now().toISOString()
       save()

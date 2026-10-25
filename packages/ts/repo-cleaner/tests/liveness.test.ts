@@ -21,6 +21,7 @@ import { PLAN_VERSION, planRepo, type Plan } from '../src/plan.ts'
 import {
   defaultProcessProbe,
   isIdleShell,
+  startMs,
   parseLockOwner,
   parseLsofCwd,
   type ProcessHolder,
@@ -30,7 +31,8 @@ import type { Receipt, RowRef } from '../src/receipt.ts'
 import { sweepRepo } from '../src/sweep.ts'
 import type { SweepItem } from '../src/types.ts'
 
-const LOCK = 'claude agent agent-x (pid 99999 start 2026-01-01)'
+const STARTED = '2026-01-01T00:00:00Z'
+const LOCK = `claude agent agent-x (pid 99999 start ${STARTED})`
 
 interface FakeProbe extends ProcessProbe {
   aliveCalls: Array<[number, string | undefined]>
@@ -127,12 +129,12 @@ describe('lock owner', () => {
     expect(item.deletable).toBe(true)
     expect(item.facts['stale_lock']).toBe(true)
     expect(item.facts['blockers']).toEqual([])
-    expect(item.facts['lock_owner']).toEqual({ pid: 99999, started_at: '2026-01-01' })
+    expect(item.facts['lock_owner']).toEqual({ pid: 99999, started_at: STARTED })
     // The row shows the unlock before the remove that would otherwise refuse.
     expect(item.commands).toHaveLength(2)
     expect(item.commands[0]).toContain('worktree unlock')
     expect(item.commands[1]).toContain('worktree remove')
-    expect(probe.aliveCalls).toEqual([[99999, '2026-01-01']])
+    expect(probe.aliveCalls).toEqual([[99999, STARTED]])
   })
 
   test('AC-2: a lock whose owner is alive still blocks', () => {
@@ -208,8 +210,8 @@ describe('live processes', () => {
   test('AC-5: only shells do not block, and are listed in idle_shells', () => {
     const fx = buildFixture()
     const shells = [
-      { pid: 10, command: 'zsh' },
-      { pid: 11, command: '-bash' },
+      { pid: 10, command: 'zsh', hasChildren: false },
+      { pid: 11, command: '-bash', hasChildren: false },
     ]
     const item = worktreeItem(fx, fakeProbe({ holders: shells }))
     expect(item.classification).toBe('safe-to-delete')
@@ -223,13 +225,13 @@ describe('live processes', () => {
       fx,
       fakeProbe({
         holders: [
-          { pid: 10, command: 'fish' },
+          { pid: 10, command: 'fish', hasChildren: false },
           { pid: 11, command: 'claude' },
         ],
       }),
     )
     expect(item.facts['blockers']).toEqual(['live-process'])
-    expect(item.facts['idle_shells']).toEqual([{ pid: 10, command: 'fish' }])
+    expect(item.facts['idle_shells']).toEqual([{ pid: 10, command: 'fish', hasChildren: false }])
   })
 
   test('a live process blocks a stale-locked worktree too', () => {
@@ -243,7 +245,22 @@ describe('live processes', () => {
     expect(item.facts['blockers']).toEqual(['live-process'])
   })
 
-  test('a probe that cannot read the process table leaves a note and does not block', () => {
+  test('a shell with child processes, or with unknown children, blocks', () => {
+    const fx = buildFixture()
+    const item = worktreeItem(
+      fx,
+      fakeProbe({
+        holders: [
+          { pid: 10, command: 'bash', hasChildren: true },
+          { pid: 11, command: 'zsh' },
+        ],
+      }),
+    )
+    expect(item.facts['blockers']).toEqual(['live-process'])
+    expect(item.facts['idle_shells']).toBeUndefined()
+  })
+
+  test('a probe that cannot read the process table blocks the worktree', () => {
     const fx = buildFixture()
     const probe: ProcessProbe = {
       alive: () => false,
@@ -253,7 +270,9 @@ describe('live processes', () => {
     }
     const item = worktreeItem(fx, probe)
     expect(item.facts['process_probe_error']).toBe('lsof did not run')
-    expect(item.classification).toBe('safe-to-delete')
+    expect(item.facts['blockers']).toEqual(['process-probe-failed'])
+    expect(item.classification).toBe('needs-investigation')
+    expect(item.deletable).toBe(false)
   })
 
   test('isIdleShell', () => {
@@ -349,6 +368,63 @@ describe('apply', () => {
     expect(existsSync(fx.worktree)).toBe(true)
   })
 
+  test('a process that appears after the sweep stops the remove', () => {
+    const fx = buildFixture()
+    const plan = makePlan(fx, fakeProbe())
+    const seen: Array<boolean | undefined> = []
+    const probe: ProcessProbe = {
+      alive: () => false,
+      holders: (_path, o) => {
+        seen.push(o?.fresh)
+        // Quiet for the re-sweep, busy when asked afresh before the remove.
+        return o?.fresh === true ? [{ pid: 4242, command: 'node' }] : []
+      },
+    }
+    const receipt = apply(fx, plan, probe)
+    expect(receipt.status).toBe('failed')
+    expect(receipt.steps[0]!.action).toBe('remove-worktree')
+    expect(receipt.steps[0]!.error).toContain('node (pid 4242)')
+    expect(seen).toContain(true)
+    expect(existsSync(fx.worktree)).toBe(true)
+  })
+
+  test('a process table that cannot be read before the remove stops it', () => {
+    const fx = buildFixture()
+    const plan = makePlan(fx, fakeProbe())
+    const probe: ProcessProbe = {
+      alive: () => false,
+      holders: (_path, o) => {
+        if (o?.fresh === true) throw new Error('lsof timed out')
+        return []
+      },
+    }
+    const receipt = apply(fx, plan, probe)
+    expect(receipt.steps[0]!.result).toBe('failed')
+    expect(receipt.steps[0]!.error).toContain('lsof timed out')
+    expect(existsSync(fx.worktree)).toBe(true)
+  })
+
+  test('a remove that fails after the unlock says the lock stays cleared', () => {
+    const fx = buildFixture()
+    lock(fx, LOCK)
+    const plan = makePlan(fx, fakeProbe({ alive: false }))
+    // Busy only for the check before the remove (the unlock step checks first).
+    let fresh = 0
+    const probe: ProcessProbe = {
+      alive: () => false,
+      holders: (_path, o) =>
+        o?.fresh === true && ++fresh > 1 ? [{ pid: 7, command: 'node' }] : [],
+    }
+    const receipt = apply(fx, plan, probe)
+    expect(receipt.steps.map((s) => [s.action, s.result])).toEqual([
+      ['unlock-worktree', 'ok'],
+      ['remove-worktree', 'failed'],
+      ['prune-worktrees', 'pending'],
+    ])
+    expect(receipt.steps[1]!.error).toContain('not restored')
+    expect(locked(fx)).toBe(false)
+  })
+
   test('a lock taken after planning drops the row', () => {
     const fx = buildFixture()
     const probe = fakeProbe({ alive: false })
@@ -403,6 +479,9 @@ function fakePs(table: Record<number, string>): CommandRunner & { calls: string[
   })
 }
 
+/** A `ps -A -o pid=,ppid=` where nothing has children. */
+const noChildren = canned(() => ({ stdout: '1 0\n' }))
+
 // Output of `ps -o lstart= -p N`. macOS pads nothing; procps on Linux pads a
 // one-digit day with a space and ends the line with a newline.
 const PS_MACOS = 'Sat Oct 25 18:22:19 2026\n'
@@ -456,7 +535,49 @@ describe('default probe: ps', () => {
   test('AC-4: a live pid whose start time differs from the lock counts as dead', () => {
     const probe = defaultProcessProbe({ ps: fakePs({ 321: PS_MACOS }) })
     expect(probe.alive(321, 'Sat Oct 25 08:00:00 2026')).toBe(false)
-    expect(probe.alive(321, '2026-01-01')).toBe(false)
+    expect(probe.alive(321, '2026-01-01T00:00:00Z')).toBe(false)
+  })
+
+  test('a full ISO timestamp that matches is alive; the 2 s tolerance edges', () => {
+    const probe = defaultProcessProbe({ ps: fakePs({ 321: PS_MACOS }) })
+    const base = Date.parse('Sat Oct 25 18:22:19 2026')
+    const iso = (offsetS: number): string => new Date(base + offsetS * 1000).toISOString()
+    expect(probe.alive(321, iso(0))).toBe(true)
+    expect(probe.alive(321, iso(1))).toBe(true)
+    expect(probe.alive(321, iso(-1))).toBe(true)
+    expect(probe.alive(321, iso(3))).toBe(false)
+    expect(probe.alive(321, iso(-3))).toBe(false)
+    expect(probe.alive(321, String(base / 1000 + 3))).toBe(false)
+    expect(probe.alive(321, String(base + 1000))).toBe(true)
+  })
+
+  test('a start time that is not precise to the second cannot rule the owner out', () => {
+    const probe = defaultProcessProbe({ ps: fakePs({ 321: PS_MACOS }) })
+    for (const vague of [
+      '2026-01-01',
+      '2026',
+      '12345',
+      'Oct 25',
+      'Oct 25 2026',
+      '1761416',
+      '2026-01',
+    ]) {
+      expect(startMs(vague), vague).toBeNaN()
+      expect(probe.alive(321, vague), vague).toBe(true)
+    }
+  })
+
+  test('a date-only start keeps the lock a blocker', () => {
+    const fx = buildFixture()
+    lock(fx, 'agent (pid 99999 start 2026-01-01)')
+    // The real probe over a ps that knows the pid, started on some other day.
+    const probe = defaultProcessProbe({
+      ps: fakePs({ 99999: PS_MACOS }),
+      lsof: canned(() => ({ stdout: '' })),
+    })
+    const item = worktreeItem(fx, probe)
+    expect(item.facts['blockers']).toEqual(['locked-worktree'])
+    expect(item.facts['stale_lock']).toBeUndefined()
   })
 
   test('a start time given as epoch seconds is compared as one', () => {
@@ -477,6 +598,15 @@ describe('default probe: ps', () => {
     expect(probe.alive(99999, '2026-01-01')).toBe(false)
   })
 
+  test('only exit 1 with no output is a missing pid; any other failure is alive', () => {
+    const ps = (r: Partial<CommandResult>) => defaultProcessProbe({ ps: canned(() => r) })
+    expect(ps({ exitCode: 1 }).alive(321)).toBe(false)
+    expect(ps({ exitCode: 1, stderr: 'ps: Operation not permitted' }).alive(321)).toBe(true)
+    expect(ps({ exitCode: 2 }).alive(321)).toBe(true)
+    expect(ps({ exitCode: 127, stderr: 'usage: ps' }).alive(321)).toBe(true)
+    expect(ps({ exitCode: 0, stdout: '' }).alive(321)).toBe(true)
+  })
+
   test('a ps that cannot run cannot rule the owner out', () => {
     const ps = canned(() => ({ neverExited: true, reason: 'spawn', error: 'ENOENT' }))
     expect(defaultProcessProbe({ ps }).alive(321)).toBe(true)
@@ -495,33 +625,62 @@ describe('default probe: lsof', () => {
 
   test('macOS: processes at or below the path, and not a sibling that shares its prefix', () => {
     const lsof = canned(() => ({ stdout: LSOF_MACOS }))
-    const probe = defaultProcessProbe({ lsof })
+    const probe = defaultProcessProbe({ lsof, ps: noChildren })
     expect(probe.holders('/private/var/folders/ab/T/work/wt-a')).toEqual([
-      { pid: 2001, command: 'zsh' },
-      { pid: 2002, command: 'node' },
+      { pid: 2001, command: 'zsh', hasChildren: false },
+      { pid: 2002, command: 'node', hasChildren: false },
     ])
     expect(lsof.calls[0]).toEqual(['-n', '-P', '-a', '-d', 'cwd', '-Fpcn'])
   })
 
   test('Linux: processes at or below the path', () => {
-    const probe = defaultProcessProbe({ lsof: canned(() => ({ stdout: LSOF_LINUX })) })
+    const probe = defaultProcessProbe({
+      lsof: canned(() => ({ stdout: LSOF_LINUX })),
+      ps: noChildren,
+    })
     expect(probe.holders('/home/u/work/wt-a')).toEqual([
-      { pid: 3001, command: 'bash' },
-      { pid: 3002, command: 'claude' },
+      { pid: 3001, command: 'bash', hasChildren: false },
+      { pid: 3002, command: 'claude', hasChildren: false },
     ])
   })
 
   test('lsof exits 1 with partial output when it cannot read some processes; the rest count', () => {
     const lsof = canned(() => ({ exitCode: 1, stdout: LSOF_LINUX, stderr: 'lsof: WARNING: ...' }))
-    expect(defaultProcessProbe({ lsof }).holders('/home/u/work/wt-a')).toHaveLength(2)
+    expect(defaultProcessProbe({ lsof, ps: noChildren }).holders('/home/u/work/wt-a')).toHaveLength(
+      2,
+    )
   })
 
   test('one lsof run answers every path in a sweep', () => {
     const lsof = canned(() => ({ stdout: LSOF_LINUX }))
-    const probe = defaultProcessProbe({ lsof })
+    const probe = defaultProcessProbe({ lsof, ps: noChildren })
     probe.holders('/home/u/work/wt-a')
     probe.holders('/home/u/work/wt-b')
     expect(lsof.calls).toHaveLength(1)
+    probe.holders('/home/u/work/wt-a', { fresh: true })
+    expect(lsof.calls).toHaveLength(2)
+  })
+
+  test('lsof exiting 1 with no listing is an error, not an empty table', () => {
+    const lsof = canned(() => ({ exitCode: 1, stdout: '', stderr: 'lsof: permission denied' }))
+    expect(() => defaultProcessProbe({ lsof }).holders('/x')).toThrow('lsof failed')
+  })
+
+  test('a shell with a child process is marked as having children', () => {
+    const lsof = canned(() => ({ stdout: LSOF_LINUX }))
+    // pid 3001 (bash) is the parent of 4000.
+    const ps = canned(() => ({ stdout: '  1 0\n3001 1\n4000 3001\n' }))
+    expect(defaultProcessProbe({ lsof, ps }).holders('/home/u/work/wt-a')).toEqual([
+      { pid: 3001, command: 'bash', hasChildren: true },
+      { pid: 3002, command: 'claude', hasChildren: false },
+    ])
+    expect(ps.calls[0]).toEqual(['-A', '-o', 'pid=,ppid='])
+  })
+
+  test('a shell holder with an unreadable process tree is an error', () => {
+    const lsof = canned(() => ({ stdout: LSOF_LINUX }))
+    const ps = canned(() => ({ exitCode: 1, stderr: 'ps: nope' }))
+    expect(() => defaultProcessProbe({ lsof, ps }).holders('/x')).toThrow('ps failed')
   })
 
   test('an lsof that cannot run is an error, not an empty answer', () => {
