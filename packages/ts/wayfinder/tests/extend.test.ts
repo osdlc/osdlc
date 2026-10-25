@@ -201,9 +201,7 @@ describe('way providers', () => {
     const ran = await run(['providers', '-C', await temp()])
     expect(ran.code).toBe(0)
     const [head, ...rows] = ran.out.trimEnd().split('\n')
-    expect(head).toMatch(
-      /^tool\s+roles\s+kind\s+binary\s+on PATH\s+language\s+source\s+homepage$/,
-    )
+    expect(head).toMatch(/^tool\s+roles\s+kind\s+binary\s+on PATH\s+language\s+source\s+homepage$/)
     expect(rows.find((r) => r.startsWith('just '))).toMatch(
       /runner\s+parse\s+just\s+no\s+any language\s+built-in\s+https:\/\/just\.systems/,
     )
