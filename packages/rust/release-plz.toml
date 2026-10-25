@@ -45,16 +45,6 @@ name = "tradecraft-typegen"
 publish = false
 release = false
 
-# First releases, held back in three steps; see the note in each Cargo.toml.
-# `release = false` also stops a tag being cut for a version that was not
-# published. packages/README.md lists the steps.
-#
-# Step 3: needs step 2.
-[[package]]
-name = "tradecraft"
-publish = false
-release = false
-
 # Held back until the parity fixes from the review of
 # https://github.com/osdlc/osdlc/pull/460 land; see its Cargo.toml.
 [[package]]

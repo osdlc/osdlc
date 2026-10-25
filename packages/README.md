@@ -323,8 +323,7 @@ Rust crates are released by `.github/workflows/release-plz.yml` with
    entry with `publish = false` and `release = false` in
    `packages/rust/release-plz.toml`.
    Once what it waits for is out, remove both in a pull request of its own.
-   Held now, in three steps (each crate's `Cargo.toml` names its step):
-   - Step 3, after step 2: `tradecraft`.
+   Held now (each crate's `Cargo.toml` names what it waits for):
    - `markdown-contract`, until the parity fixes from the review of
      [#460](https://github.com/osdlc/osdlc/pull/460) land.
 
