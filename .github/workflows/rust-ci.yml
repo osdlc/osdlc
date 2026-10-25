@@ -1,6 +1,7 @@
 # Checks the Cargo workspace under packages/rust/, and the wasm built from it
 # that packages/ts/yaml-splice/ commits, on every pull request and push to
-# main.
+# main. It also runs when the markdown-contract corpus changes, because the
+# markdown-contract crate's tests read that corpus.
 #
 # The workflow always runs, so its final `rust` job always reports. That job
 # is the one to require in the "Protect main" ruleset. A workflow-level
@@ -86,7 +87,7 @@ jobs:
               files='*'
               ;;
           esac
-          if [ "$files" = '*' ] || grep -qE '^(packages/rust/|packages/ts/yaml-splice/wasm/|\.github/workflows/(rust-ci|release-plz)\.yml$|\.github/actions/rust-|scripts/(crates-io-|semver-|package-shape-rs))' <<<"$files"; then
+          if [ "$files" = '*' ] || grep -qE '^(packages/rust/|packages/ts/yaml-splice/wasm/|packages/ts/markdown-contract/corpus/|\.github/workflows/(rust-ci|release-plz)\.yml$|\.github/actions/rust-|scripts/(crates-io-|semver-|package-shape-rs))' <<<"$files"; then
             echo "rust=true" >> "$GITHUB_OUTPUT"
           else
             echo "rust=false" >> "$GITHUB_OUTPUT"

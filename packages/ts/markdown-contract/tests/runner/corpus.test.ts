@@ -11,13 +11,13 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { afterAll, describe, expect, it } from 'vitest'
-import { extractVaultRefs } from '../support/wikilinks.js'
 import {
   type Contract,
   contract,
   type DocTree,
   docRule,
   type Finding,
+  extractVaultRefs,
   optional,
   section,
   sections,
@@ -265,7 +265,7 @@ describe('runCorpus — docRule findings aggregate across documents into finding
 })
 
 /**
- * Links between documents: a `docRule` uses `extractVaultRefs` (the test's wikilink helper) and
+ * Links between documents: a `docRule` uses `extractVaultRefs` and
  * a set of known pages to emit a `warn` finding for a wikilink whose target page does not exist.
  *
  * `runCorpus` validates each document on its own, so it has no view of the whole folder. The

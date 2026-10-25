@@ -23,8 +23,7 @@ import remarkStringify from 'remark-stringify'
 import { unified } from 'unified'
 import { describe, expect, test } from 'vitest'
 import type { BlockNode } from '../../src/index.js'
-import { parse } from '../../src/index.js'
-import { extractVaultRefs } from '../support/wikilinks.js'
+import { extractVaultRefs, parse } from '../../src/index.js'
 
 /** Narrow a BlockNode to a specific kind for typed assertions. */
 function blockOf<K extends BlockNode['kind']>(

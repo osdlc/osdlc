@@ -238,6 +238,10 @@ Node.
 - Read the parse tree: `findSection`, `sectionsAt`, `sectionForLine`,
   `sectionSpans` with `SectionSpan`, `blocksOfKind`, `codeBlockLines`,
   `tableRowLines`, `rawTableRow` and `rawTableRows`.
+- Wikilinks: `extractVaultRefs(text)` finds the `[[wikilink]]` and
+  `![[transclusion]]` references in flattened text and returns a `VaultRef`
+  for each, with its `target`, `alias` and `fragment`. `parse()` leaves them
+  as text in the tree.
 - Folders, from the root entry: `runCorpus`, `defineConfig`, `CorpusConfig`
   and `RunStats`.
 - YAML, from `./declarative`: `loadContract`, `loadContractFile`,

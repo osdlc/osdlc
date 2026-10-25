@@ -1,13 +1,15 @@
 /**
- * The parse tree on its own: `parse()`, the frontmatter split, and the read helpers that find
- * sections, blocks and source lines. These need no contract, and they live in the `./core`
- * entry, which imports no Node module.
+ * The parse tree on its own: `parse()`, the frontmatter split, the read helpers that find
+ * sections, blocks and source lines, and `extractVaultRefs`, which finds `[[wikilinks]]` in
+ * text. These need no contract, and they live in the `./core` entry, which imports no Node
+ * module.
  */
 import { describe, expect, test } from 'vitest'
 
 import {
   blocksOfKind,
   codeBlockLines,
+  extractVaultRefs,
   findSection,
   parse,
   rawTableRow,
@@ -26,6 +28,7 @@ import {
   type SectionNode,
   type SectionSpan,
   type SourcePos,
+  type VaultRef,
 } from '@osdlc/markdown-contract/core'
 
 const source = [
@@ -115,5 +118,27 @@ describe('read helpers', () => {
       header: ['Command', 'Does'],
       rows: [['`pnpm build`', 'compiles']],
     })
+  })
+})
+
+describe('wikilinks', () => {
+  test('parse leaves [[wikilinks]] as text, and extractVaultRefs finds them', () => {
+    const tree = parse(
+      '## Related\n\nSee [[Build notes#^commands|the commands]] and ![[Diagram]].\n',
+    )
+    const paragraph = tree.root.sections[0]!.blocks[0]!
+    if (paragraph.kind !== 'paragraph') throw new Error('expected a paragraph')
+
+    const refs: VaultRef[] = extractVaultRefs(paragraph.text)
+    expect(refs).toEqual([
+      {
+        kind: 'wikilink',
+        target: 'Build notes',
+        alias: 'the commands',
+        fragment: '^commands',
+        raw: '[[Build notes#^commands|the commands]]',
+      },
+      { kind: 'transclusion', target: 'Diagram', raw: '![[Diagram]]' },
+    ])
   })
 })

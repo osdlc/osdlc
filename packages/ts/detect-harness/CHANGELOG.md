@@ -1,5 +1,12 @@
 # @osdlc/detect-harness
 
+## 0.4.5
+
+### Patch Changes
+
+- Updated dependencies [0cf31de]
+  - @osdlc/command-seam@0.11.0
+
 ## 0.4.4
 
 ### Patch Changes

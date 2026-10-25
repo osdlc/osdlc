@@ -1,6 +1,6 @@
 {
   "name": "@osdlc/config-layers",
-  "version": "0.7.1",
+  "version": "0.7.2",
   "description": "A CLI tool's project and machine config files: the sections the project file is built from, the loader that reads them, the per-OS config directories, the `paths:` map, and the check a command runs before it starts.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",

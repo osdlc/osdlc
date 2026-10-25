@@ -1,5 +1,12 @@
 # @osdlc/system-model
 
+## 0.4.2
+
+### Patch Changes
+
+- Updated dependencies [0cf31de]
+  - @osdlc/command-seam@0.11.0
+
 ## 0.4.1
 
 ### Patch Changes
