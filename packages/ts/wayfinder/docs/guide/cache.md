@@ -11,20 +11,19 @@ interactive surfaces can show something at once.
 
 ## Who reads the store
 
-- **The terminal UI and `--serve`** always start from the store, then probe
+- **The terminal UI and `way serve`** always start from the store, then probe
   in the background and update in place.
-- **`--json`, `--list` and `way query`** re-probe on every run, so a script
+- **`way list` and `way query`** re-probe on every run, so a script
   gets what the repository has now. These runs also write the store.
-- **`--cached`** makes `--json`, `--list` or `query` answer from the store.
+- **`--cached`** makes `list`, `query` or `run` answer from the store.
   It names the stale runners on stderr:
 
 ```text
-wayfinder: --cached: stale: just (35s old, refresh usually about 149ms)
-wayfinder: --cached: not cached, probed now: github-actions
+way: --cached: just (stale: its files changed, 35s old; refresh usually about 149ms); not cached, probed now: github-actions
 ```
 
 `--cached` against an empty store probes, stores the result, and says so.
-With `--json`, it adds a `cache` array beside the catalog. See
+Every `--json` document carries a `cache` array beside the catalog. See
 [The task model and JSON](task-model.md#the-cache-array).
 
 `Ctrl+R` in the terminal UI and **Refresh** in the web view always run a

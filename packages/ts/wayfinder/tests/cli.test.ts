@@ -13,123 +13,50 @@ import { resolveTrustRoot, trustStore } from '@osdlc/trust-repo'
 
 import { acceptedFlags } from './guide-support.ts'
 import { makeGitFixture } from '@osdlc/typed-git/testing'
-import { main, parseArgs } from '../src/cli.ts'
+import { main, rewriteAliases } from '../src/cli.ts'
 
-// The io sink is where commander's messages would land; these cases assert on
-// the returned value, not on what was printed.
-const parse = (argv: string[]) => parseArgs(argv, captureIo(), '/fixture-cwd')
+const WORDS = ['list', 'query', 'run', 'serve', 'providers', 'config', 'trust', 'help']
 
-describe('parseArgs', () => {
-  test('defaults to the terminal UI', () => {
-    expect(parse([])).toMatchObject({ mode: 'tui', open: true })
-  })
-
-  test('allowExec is absent unless a flag said so, so the config file can answer', () => {
-    // An `allowExec: true` here would make every run look like the flag was
-    // given and would overwrite a configured `allowExec: false`. wayfinder's own
-    // `true` default lives in main(), applied only when no config layer
-    // supplied a value.
-    expect((parse([]) as Record<string, unknown>)['allowExec']).toBeUndefined()
-  })
-
-  test('--no-exec and --exec are both present when given, and beat the config', () => {
-    expect(parse(['--no-exec'])).toMatchObject({ allowExec: false })
-    expect(parse(['--exec'])).toMatchObject({ allowExec: true })
-  })
-
-  test('selects a surface', () => {
-    expect(parse(['--serve'])).toMatchObject({ mode: 'serve' })
-    expect(parse(['--json'])).toMatchObject({ mode: 'json' })
-    expect(parse(['--list'])).toMatchObject({ mode: 'list' })
-  })
-
-  test('--cached is off unless given, because the data surfaces are fresh by default', () => {
-    // The posture in one line: --json and --list are read by scripts and
-    // agents, so they re-probe unless somebody opts out.
-    expect(parse([])).toMatchObject({ cached: false })
-    expect(parse(['--json', '--cached'])).toMatchObject({ mode: 'json', cached: true })
-  })
-
-  test('--discovery overrides the configured discovery', () => {
-    expect(parse(['--discovery', 'walk'])).toMatchObject({ discovery: 'walk' })
-    expect((parse([]) as Record<string, unknown>)['discovery']).toBeUndefined()
-    const bad = parse(['--discovery', 'sideways']) as { error?: string }
-    expect(bad.error).toContain('sideways')
-  })
-
-  test('reads the runner filters and the directory in either form', () => {
-    expect(parse(['--only', 'moon,just'])).toMatchObject({ only: ['moon', 'just'] })
-    expect(parse(['--exclude', 'cargo'])).toMatchObject({ exclude: ['cargo'] })
-    expect(parse(['-C', '/tmp/x'])).toMatchObject({ dir: '/tmp/x' })
-    expect(parse(['/tmp/y'])).toMatchObject({ dir: '/tmp/y' })
-  })
-
-  test('--port takes a port, and rejects anything that is not one', () => {
-    expect(parse(['--port', '8080'])).toMatchObject({ port: 8080 })
-    expect(parse(['--port', '0'])).toMatchObject({ port: 0 })
-    expect(parse(['--port', 'notaport'])).toEqual({ error: '--port needs a port number' })
-    expect(parse(['--port', '70000'])).toEqual({ error: '--port needs a port number' })
-    // A missing value gets commander's message, but it is still refused and
-    // still names the flag.
-    expect((parse(['--port']) as { error?: string }).error).toContain('--port')
-  })
-
-  test('query takes its positionals as terms, and -C still names the directory', () => {
-    // The one thing the subcommand changes about the parse: everywhere else a
-    // positional is a directory, and here it is a search term.
-    expect(parse(['query', 'dep', 'env'])).toMatchObject({
-      mode: 'query',
-      terms: ['dep', 'env'],
+describe('rewriteAliases', () => {
+  test('maps each old surface flag onto its command', () => {
+    expect(rewriteAliases(['--serve', '--port', '8080'], WORDS)).toEqual({
+      argv: ['serve', '--port', '8080'],
     })
-    expect(parse(['query', 'dep', '-C', '/tmp/x'])).toMatchObject({
-      terms: ['dep'],
-      dir: '/tmp/x',
-    })
-    expect((parse(['--list']) as Record<string, unknown>)['terms']).toBeUndefined()
-  })
-
-  test('under query, --json chooses the output form rather than the surface', () => {
-    // Letting it set the mode would silently drop the terms.
-    expect(parse(['query', 'dep', '--json'])).toMatchObject({
-      mode: 'query',
-      json: true,
-      terms: ['dep'],
-    })
-    expect(parse(['--json'])).toMatchObject({ mode: 'json', json: false })
-  })
-
-  test('the query-only flags are rejected where they would do nothing', () => {
-    expect(parse(['query', '--exact', '--services'])).toMatchObject({
-      matchMode: 'exact',
-      servicesOnly: true,
-    })
-    expect(parse([])).toMatchObject({ matchMode: 'fuzzy', servicesOnly: false })
-    expect(parse(['--exact'])).toEqual({ error: '--exact only applies to query' })
-    expect(parse(['--list', '--services'])).toEqual({
-      error: '--services only applies to query',
+    expect(rewriteAliases(['--list', '-C', 'x'], WORDS)).toEqual({ argv: ['list', '-C', 'x'] })
+    expect(rewriteAliases(['--json'], WORDS)).toEqual({ argv: ['list', '--json'] })
+    // A directory positional is not a command word, so the flag still applies.
+    expect(rewriteAliases(['--json', 'some/dir'], WORDS)).toEqual({
+      argv: ['list', '--json', 'some/dir'],
     })
   })
 
-  test('--all says which help to print, and means nothing on its own', () => {
-    expect(parse(['--help', '--all'])).toMatchObject({ help: true, all: true })
-    expect(parse([])).toMatchObject({ all: false })
-    expect(parse(['--all'])).toEqual({
-      error: `--all says which help to print; pass it as "--help --all"`,
+  test('two surface flags are refused, since each chooses a surface', () => {
+    expect(rewriteAliases(['--serve', '--json'], WORDS)).toEqual({
+      error: '--serve and --json each choose a surface; give one',
+    })
+    expect('error' in rewriteAliases(['--list', '--json'], WORDS)).toBe(true)
+  })
+
+  test('a command word after global flags is left alone', () => {
+    expect(rewriteAliases(['-C', 'x', 'list', '--json'], WORDS)).toEqual({
+      argv: ['-C', 'x', 'list', '--json'],
+    })
+    // -C takes the next word, so `list` here is a value, not a command.
+    expect(rewriteAliases(['-C', 'list', '--json'], WORDS)).toEqual({
+      argv: ['list', '--json', '-C', 'list'],
     })
   })
 
-  test('rejects bad input rather than guessing', () => {
-    // The wording of the first two is commander's. What matters is that each
-    // is refused and names what was wrong.
-    for (const [argv, mentions] of [
-      [['--only'], '--only'],
-      [['--nope'], '--nope'],
-    ] as const) {
-      const result = parse([...argv]) as { error?: string }
-      expect(result.error).toContain(mentions)
-    }
-    // This one is wayfinder's own: a second positional is a directory too many.
-    expect(parse(['a', 'b'])).toEqual({ error: 'expected at most one directory' })
+  test('query --list is plain query, its default form', () => {
+    expect(rewriteAliases(['query', 'build', '--list'], WORDS)).toEqual({
+      argv: ['query', 'build'],
+    })
+  })
+
+  test('words after -- are not read as flags', () => {
+    expect(rewriteAliases(['run', 'x', '--', '--json'], WORDS)).toEqual({
+      argv: ['run', 'x', '--', '--json'],
+    })
   })
 })
 
@@ -308,10 +235,10 @@ describe('main trust gate', () => {
     const ran = await run(['--list'], await project())
 
     expect(ran.code).toBe(0)
-    expect(ran.err).toContain('not collected')
+    expect(ran.err).toContain('1 runner withheld')
     expect(ran.err).toContain('run "way trust" to trust it')
-    // Once, not once per runner: three exec providers, one sentence.
-    expect(ran.err.split('not collected').length - 1).toBe(1)
+    // Once, not once per runner.
+    expect(ran.err.split('withheld —').length - 1).toBe(1)
   })
 
   test('--exec collects them for this run only, recording nothing', async () => {
@@ -528,7 +455,9 @@ describe('--cached', () => {
     // pipeable because the note goes to stderr.
     expect(cached.out).not.toContain('make ship')
     expect(cacheLines(cached.err)).toHaveLength(1)
-    expect(cacheLines(cached.err)[0]).toMatch(/^wayfinder: --cached: stale: .*\bmake \(/)
+    expect(cacheLines(cached.err)[0]).toMatch(
+      /^way: --cached: .*\bmake \(stale: its files changed, /,
+    )
   })
 
   test('a runner missing from the store is probed, not dropped', async () => {
@@ -542,11 +471,17 @@ describe('--cached', () => {
     expect(cacheLines(cached.err)[0]).toContain('not cached, probed now:')
   })
 
-  test('--json --cached carries the cache array; --json alone does not', async () => {
+  test('--json always carries the cache array, with the probe time after a fresh probe', async () => {
     const home = await temp()
     const dir = await project()
-    const fresh = JSON.parse((await run(['--json'], dir, home)).out) as Record<string, unknown>
-    expect(fresh['cache']).toBeUndefined()
+    const fresh = JSON.parse((await run(['--json'], dir, home)).out) as {
+      cache: Array<{ runner: string; state: string; ageMs: number; probeMs?: number }>
+    }
+    const make = fresh.cache.find((r) => r.runner === 'make')
+    expect(make).toMatchObject({ state: 'fresh', ageMs: 0 })
+    expect(typeof make?.probeMs).toBe('number')
+    // mise is withheld, so it was not probed and has no time.
+    expect(fresh.cache.find((r) => r.runner === 'mise')?.probeMs).toBeUndefined()
 
     const cached = JSON.parse((await run(['--json', '--cached'], dir, home)).out) as {
       cache: Array<{ runner: string; state: string; estimateMs: number | null; slow: boolean }>
@@ -623,7 +558,13 @@ describe('query', () => {
   test('--json prints the matching tasks rather than their command lines', async () => {
     const ran = await run(['query', 'ploy', '--json'], await scripts())
     expect(ran.code).toBe(0)
-    const tasks = JSON.parse(ran.out) as Array<{ display: string; argv: string[] }>
+    const doc = JSON.parse(ran.out) as {
+      kind: string
+      schemaVersion: number
+      tasks: Array<{ display: string; argv: string[] }>
+    }
+    expect(doc).toMatchObject({ kind: 'query', schemaVersion: 1 })
+    const tasks = doc.tasks
     expect(tasks.map((t) => t.display)).toEqual(['npm run deploy'])
     // The whole task, not a summary: argv is what a caller would spawn.
     expect(tasks[0]?.argv).toEqual(['npm', 'run', 'deploy'])
@@ -634,7 +575,7 @@ describe('query', () => {
     // The mise.toml fixture also brings a synthesized `mise install` row.
     expect(ran.out.split('\n')[0]).toBe('make lint')
     expect(ran.out).not.toContain('mise hello')
-    expect(ran.err).toContain('not collected')
+    expect(ran.err).toContain('withheld')
   })
 })
 
@@ -650,7 +591,7 @@ describe('help tiers', () => {
 
     expect(short.split('\n').length).toBeLessThan(45)
     // The short help says where the rest is.
-    expect(short).toContain('--help --all')
+    expect(short).toContain('help --all')
     expect(short).toContain('guide')
     // Trust hides runners by default. Without this line a reader sees a
     // shorter catalog and no reason why.
@@ -660,7 +601,7 @@ describe('help tiers', () => {
   })
 
   test('--help --all is the complete tier: every flag the parser accepts is in it', async () => {
-    // Derived from the complete help, which `defineCli` renders from the flag
+    // Derived from the complete help, which the command tree renders from the flag
     // declaration, so a flag added to the parser is always in tier 2. What
     // this still checks is that tier 2 contains tier 1 and is longer.
     const all = (await run(['--help', '--all'])).out
@@ -679,7 +620,7 @@ describe('help tiers', () => {
     expect(ran.code).toBe(2)
     expect(ran.out).toBe('')
     expect(ran.err).toContain("unknown option '--nope'")
-    expect(ran.err).toContain('--help --all')
+    expect(ran.err).toContain('way help')
     expect(ran.err).not.toContain('--exclude-path')
   })
 

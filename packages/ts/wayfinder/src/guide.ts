@@ -107,6 +107,8 @@ export const tools: ToolDef[] = [
 `
 
 const JSON_EXAMPLE = `{
+  "schemaVersion": 1,
+  "kind": "catalog",
   "root": "/home/you/repo",
   "generatedAt": "2026-01-01T00:00:00.000Z",
   "discovery": "git",
@@ -138,7 +140,10 @@ const JSON_EXAMPLE = `{
       "skippedForExec": false
     }
   ],
-  "groups": [{ "id": "tasks", "title": "Tasks", "runners": ["just"] }]
+  "groups": [{ "id": "tasks", "title": "Tasks", "runners": ["just"] }],
+  "cache": [{ "runner": "just", "state": "fresh", "ageMs": 0, "probeMs": 12, "estimateMs": 12, "slow": false }],
+  "unknowns": [],
+  "filter": {}
 }`
 
 function usageSection(tool: GuideTool): string {
@@ -232,7 +237,10 @@ configured \`allowExec\` of true and a trusted repository.
 function jsonSection(): string {
   return `## json
 
-\`--json\` prints the catalog as one JSON document. Field by field:
+Every command answers \`--json\` with one JSON document whose first fields are
+\`schemaVersion\` and \`kind\`. \`${BIN} schema\` prints each one's JSON Schema, and
+\`@osdlc/wayfinder/schema\` exports them. \`${BIN} list --json\` prints the
+catalog document (\`kind\` "catalog"). Field by field:
 
 \`Catalog\`
 - \`root\`: absolute path the collection ran against. Every \`cwd\` and
@@ -277,17 +285,24 @@ ${groupList()}
 - \`skippedForExec\`: true when the runner was withheld because it needed to
   shell out.
 
-\`cache\`: present only with \`--cached\`. One entry per runner:
+\`cache\`: one entry per runner:
 - \`state\`: "fresh", "stale" (used, and out of date) or "miss" (nothing was
-  stored, so it was probed now).
-- \`reason\`: "changed", "max-age" or "excludes", on a stale row only.
-- \`ageMs\`: how old the stored answer is. Absent on a miss.
-- \`estimateMs\`: the median re-probe cost measured in this repository, or null.
+  stored).
+- \`reason\`: why a stale row is stale, such as "changed".
+- \`ageMs\`: how old the stored answer is; 0 when probed just now.
+- \`probeMs\`: how long the probe took, when it ran in this call.
+- \`estimateMs\`: the expected re-probe cost, or null when never measured.
 - \`slow\`: true when those measurements say this runner is slow here.
+
+\`unknowns\`: what could not be read, each with the \`label\` the terminal
+shows: \`withheld\` runners, tasks whose \`parameters\` are unknown, \`stale\`
+stored answers and a \`binary\` not on the PATH.
+
+\`filter\`: the filters \`--services\`, \`--declared\` and \`--depth\` applied.
 
 A cached \`generatedAt\` is the OLDEST contributing probe time.
 
-Over HTTP, \`${BIN} --serve\` adds \`trustable\`, the server's own reading of
+Over HTTP, \`${BIN} serve\` adds \`trustable\`, the server's own reading of
 the gate it resolved.
 
 Trimmed example:

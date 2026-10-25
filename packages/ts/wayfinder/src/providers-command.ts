@@ -4,37 +4,15 @@
  * an absolute PATH entry. Reads files only; runs nothing.
  */
 
-import { EXIT, type CliIo } from '@osdlc/cli-tool'
 import { which } from '@osdlc/command-seam'
-import type { Project, RoleName, ToolDef } from '@osdlc/system-model/detect'
-import { homeDir, policyExecGate } from '@osdlc/trust-repo'
+import type { RoleName, ToolDef } from '@osdlc/system-model/detect'
 
-import { APP, BIN } from './app.ts'
-import {
-  ConfigError,
-  loadConfig,
-  trustPolicyFromConfig,
-  trustPolicyOptions,
-  type LoadedConfig,
-} from './config.ts'
-import { jsonText, terminalSafe } from './terminal-text.ts'
-import { appTrustStore } from './trust-store.ts'
+import { kit, openSession } from './commands/shared.ts'
+import { ProvidersOutput } from './documents.ts'
+import { terminalSafe } from './terminal-text.ts'
 import type { LoadedTool } from './tools.ts'
 
-export interface ProvidersCommandIO extends CliIo {
-  env?: Record<string, string | undefined>
-  home?: string
-  /** The configured `allowExec`, with wayfinder's default; `main` supplies it. */
-  configuredAllowExec: (cfg: LoadedConfig) => boolean
-  /** Load the tool modules and build the project; `main` supplies it. */
-  load: (
-    cfg: LoadedConfig,
-    modules: readonly string[],
-    projectAllowed: boolean,
-  ) => Promise<{ project: Project; tools: LoadedTool[]; warnings: string[] } | { error: string }>
-}
-
-/** One row of the listing, as `--json` prints it. */
+/** One row of the listing, as `--json` prints it in `providers`. */
 export interface ProviderRow {
   id: string
   roles: RoleName[]
@@ -49,23 +27,6 @@ export interface ProviderRow {
 }
 
 const ROLE_ORDER: RoleName[] = ['runner', 'packageManager', 'toolManager', 'hookManager']
-
-function usage(): string {
-  return `${BIN} providers — the tools ${APP} knows, built-in and your own
-
-usage: ${BIN} providers [options]
-
-  --config MODULE     also load the tools a module exports; repeatable
-  --json              the same rows as a JSON array
-  -C, --dir PATH      the project whose config to read (default: cwd)
-  -h, --help          this text
-
-A custom tool comes from --config, from "tools" in the user config, or from
-"tools" in the project file when the repository is trusted and execution is
-allowed. kind is the runner
-role's: parse reads files, exec runs the repository's tools and needs trust.
-`
-}
 
 /** Found on an absolute PATH entry, as detection finds a binary. */
 function onPath(binary: string, env: Record<string, string | undefined>): boolean {
@@ -115,62 +76,25 @@ function table(rows: ProviderRow[]): string {
   return [fmt(head), ...cells.map(fmt)].join('\n') + '\n'
 }
 
-/** `way providers …`. Returns the exit code. */
-export async function runProvidersCommand(
-  root: string,
-  argv: string[],
-  io: ProvidersCommandIO,
-): Promise<number> {
-  const env = io.env ?? process.env
-  const home = io.home ?? homeDir()
-  let json = false
-  const modules: string[] = []
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i]!
-    if (arg === '-h' || arg === '--help') {
-      io.stdout(usage())
-      return EXIT.ok
-    } else if (arg === '--json') json = true
-    else if (arg === '--config' || arg.startsWith('--config=')) {
-      const value = arg === '--config' ? argv[++i] : arg.slice('--config='.length)
-      if (value === undefined || value === '') {
-        io.stderr(`${APP}: --config needs a module path\n\n${usage()}`)
-        return EXIT.usage
-      }
-      modules.push(value)
-    } else {
-      io.stderr(`${APP}: unknown option: ${arg}\n\n${usage()}`)
-      return EXIT.usage
-    }
-  }
-
-  let cfg: LoadedConfig
-  try {
-    cfg = await loadConfig(root, env, home)
-  } catch (err) {
-    if (err instanceof ConfigError) {
-      io.stderr(`${APP}: ${err.message}\n`)
-      return EXIT.error
-    }
-    throw err
-  }
-  for (const warning of cfg.warnings) io.stderr(`warning: ${warning}\n`)
-
-  // The same gate `way` applies: project modules need trust and execution allowed.
-  const gate = await policyExecGate(
-    appTrustStore({ env, home }),
-    trustPolicyFromConfig(cfg.effective),
-    { root, configured: io.configuredAllowExec(cfg) },
-    trustPolicyOptions(home),
-  )
-  const built = await io.load(cfg, modules, gate.trusted && gate.allowExec)
-  if ('error' in built) {
-    io.stderr(`${APP}: ${built.error}\n`)
-    return EXIT.error
-  }
-  for (const warning of built.warnings) io.stderr(`warning: ${warning}\n`)
-
-  const rows = providerRows(built.project.tools, built.tools, env)
-  io.stdout(json ? `${jsonText(rows, 2)}\n` : table(rows))
-  return EXIT.ok
+/** Make the `providers` command. */
+export function providersCommand(home: string) {
+  return kit.command({
+    summary: 'the registered tools, built-in and your own',
+    description:
+      'Every tool wayfinder knows, with its roles, its runner kind, its binary and whether that ' +
+      'binary is on an absolute PATH entry. Reads files only; runs nothing. A custom tool comes ' +
+      'from --config, from "tools" in the user config, or from "tools" in the project file when ' +
+      "the repository is trusted and execution is allowed. kind is the runner role's: parse " +
+      "reads files, exec runs the repository's tools and needs trust.",
+    output: ProvidersOutput,
+    kind: 'providers',
+    readOnly: true,
+    async run({ globals }, ctx) {
+      const session = await openSession(globals, ctx, home)
+      return { providers: providerRows(session.project.tools, session.tools, ctx.env) }
+    },
+    text(output) {
+      return table(output.providers as ProviderRow[])
+    },
+  })
 }
