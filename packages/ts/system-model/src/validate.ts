@@ -25,7 +25,7 @@ export function validateToolDef(value: unknown): string[] {
   optionalStrings(value, 'commandWords', '', out)
   optionalFunction(value, 'detect', '', out)
   optionalFunction(value, 'describe', '', out)
-  if (value['brand'] !== undefined && !isObject(value['brand'])) out.push('brand is not an object')
+  brandProblems(value['brand'], 'brand', out)
 
   const markers = value['markers']
   if (markers !== undefined) {
@@ -65,6 +65,7 @@ export function validateToolDef(value: unknown): string[] {
     if (r['kind'] !== 'parse' && r['kind'] !== 'exec') out.push(`${at}kind is not parse or exec`)
     if (typeof r['collect'] !== 'function') out.push(`${at}collect is not a function`)
     optionalFunction(r, 'invoke', at, out)
+    brandProblems(r['brand'], `${at}brand`, out)
     if (r['optionsEndAtTask'] !== undefined && typeof r['optionsEndAtTask'] !== 'boolean')
       out.push(`${at}optionsEndAtTask is not a boolean`)
     if (r['chain'] !== undefined && !Array.isArray(r['chain']))
@@ -92,6 +93,22 @@ export function validateToolDef(value: unknown): string[] {
     optionalFunction(r, 'hooks', at, out)
   })
   return out
+}
+
+/** A brand's `icon` is markup a web view injects, and `color` a `#rrggbb` the schema enforces. */
+function brandProblems(brand: unknown, at: string, out: string[]): void {
+  if (brand === undefined) return
+  if (!isObject(brand)) {
+    out.push(`${at} is not an object`)
+    return
+  }
+  if (brand['icon'] !== undefined && typeof brand['icon'] !== 'string') {
+    out.push(`${at}.icon is not a string`)
+  }
+  const color = brand['color']
+  if (color !== undefined && !(typeof color === 'string' && /^#[0-9a-fA-F]{6}$/.test(color))) {
+    out.push(`${at}.color is not a #rrggbb color`)
+  }
 }
 
 function role(
