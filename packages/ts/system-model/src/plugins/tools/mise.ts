@@ -190,6 +190,8 @@ function sourceOf(task: MiseTask, root: string): string {
  * `absolute` relative to `root`, with `/` separators. A path outside `root`
  * is returned as given: one above it, or one on another drive, for which
  * `relative` returns an absolute path. `paths` is for tests.
+ *
+ * Internal: exported for its tests, and not in the package index.
  */
 export function rootRelative(
   root: string,
