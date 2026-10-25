@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from 'vitest'
 import { mkdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
-import { resolveTrustRoot } from '@osdlc/trust-repo'
+import { expandTrustPath, resolveTrustRoot } from '@osdlc/trust-repo'
 
 import {
   CONFIG_ENV_VAR,
@@ -10,7 +10,6 @@ import {
   DEFAULT_CONFIG,
   collectOptionsFromConfig,
   configLocations,
-  expandTrustPath,
   getConfigValue,
   loadConfig,
   mergeConfig,

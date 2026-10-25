@@ -376,7 +376,15 @@ describe('keys that reach disk', () => {
     state.root = root
     state.home = home
     state.store = cacheDir({}, home)
-    state.gate = { allowExec: false, trusted: false, reason: 'untrusted', configured: true, root }
+    state.gate = {
+      allowExec: false,
+      trusted: false,
+      reason: 'untrusted',
+      configured: true,
+      root,
+      scopes: ['*'],
+      missing: ['*'],
+    }
     state.loading = true
     state.inFlight = new AbortController()
     state.confirmingTrust = true
@@ -395,7 +403,15 @@ describe('keys that reach disk', () => {
     state.root = root
     state.home = home
     state.store = cacheDir({}, home)
-    state.gate = { allowExec: false, trusted: false, reason: 'untrusted', configured: true, root }
+    state.gate = {
+      allowExec: false,
+      trusted: false,
+      reason: 'untrusted',
+      configured: true,
+      root,
+      scopes: ['*'],
+      missing: ['*'],
+    }
     state.loading = true
     state.inFlight = new AbortController()
     state.confirmingTrust = true
@@ -417,7 +433,15 @@ describe('keys that reach disk', () => {
     state.root = root
     state.home = home
     state.store = cacheDir({}, home)
-    state.gate = { allowExec: true, trusted: true, reason: 'allowed', configured: true, root }
+    state.gate = {
+      allowExec: true,
+      trusted: true,
+      reason: 'allowed',
+      configured: true,
+      root,
+      scopes: ['*'],
+      missing: [],
+    }
     state.catalog = catalog(['build'])
     recompute()
 

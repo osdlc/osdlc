@@ -1,7 +1,7 @@
 /**
  * Scan skill, command and agent folders, and instruction files, into report
- * entries. Names and frontmatter descriptions only; a body only when the caller
- * set `readContents`.
+ * entries. Names, frontmatter descriptions and argument hints only; a body only
+ * when the caller set `readContents`.
  *
  * Runtime-agnostic: pure over the {@link ProviderContext}.
  */
@@ -9,7 +9,7 @@
 import { join } from 'node:path'
 
 import type { ProviderContext } from '../contract.ts'
-import { parseFrontmatter, splitFrontmatter } from '../frontmatter.ts'
+import { argumentHintOf, parseFrontmatter, splitFrontmatter } from '../frontmatter.ts'
 import type { Scope } from '../locations.ts'
 import type { Artifact, Instruction } from '../report.ts'
 import type { Located } from './sources.ts'
@@ -37,6 +37,7 @@ function artifactOf(
   return {
     name,
     description,
+    argumentHint: argumentHintOf(fm),
     path,
     scope: from.scope,
     origin: from.origin,

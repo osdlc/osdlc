@@ -50,6 +50,31 @@ describe('detect', () => {
     }
   })
 
+  test('the skills a repository ships, for a task catalog', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'detect-harness-example-'))
+    try {
+      const projectRoot = join(root, 'project')
+      mkdirSync(join(projectRoot, '.claude', 'skills', 'review'), { recursive: true })
+      writeFileSync(
+        join(projectRoot, '.claude', 'skills', 'review', 'SKILL.md'),
+        '---\ndescription: Review a PR.\nargument-hint: "[pr-number]"\n---\n\nReview it.\n',
+      )
+      const catalog = await detect({ projectRoot, mode: 'project' })
+      const skills = catalog.reports.flatMap((r) => r.skills)
+      // [{ name: 'review', description: 'Review a PR.', argumentHint: '[pr-number]', origin: 'project', ... }]
+      expect(skills).toEqual([
+        expect.objectContaining({
+          name: 'review',
+          description: 'Review a PR.',
+          argumentHint: '[pr-number]',
+          origin: 'project',
+        }),
+      ])
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   test('selectProviders applies only and exclude', () => {
     const ids = selectProviders({ only: ['claude', 'codex'], exclude: ['codex'] }).map((p) => p.id)
     expect(ids).toEqual(['claude'])

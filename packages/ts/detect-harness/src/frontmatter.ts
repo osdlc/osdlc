@@ -47,3 +47,25 @@ export function parseFrontmatter(text: string): Record<string, unknown> | null {
   if (data === null || data === undefined) return {}
   return asObject(data)
 }
+
+/** Coerce a frontmatter value to a trimmed string (block scalars arrive parsed). */
+export function frontmatterString(value: unknown): string {
+  if (typeof value === 'string') return value.trim()
+  if (value === undefined || value === null) return ''
+  return String(value).trim()
+}
+
+/**
+ * The `argument-hint` field, trimmed, or null when it is unset or blank.
+ *
+ * An unquoted `argument-hint: [message]`, the form Claude Code's docs use, is
+ * a YAML list. It is written back as `[message]`, so the hint reads as the
+ * author typed it.
+ */
+export function argumentHintOf(fm: Record<string, unknown>): string | null {
+  const value = fm['argument-hint']
+  const hint = Array.isArray(value)
+    ? `[${value.map(frontmatterString).join(', ')}]`
+    : frontmatterString(value)
+  return hint === '' || hint === '[]' ? null : hint
+}

@@ -21,6 +21,7 @@ import {
   trustStoreDir,
   withheldHint,
 } from '@osdlc/trust-repo'
+import { originOwner } from '@osdlc/trust-repo/git'
 
 // A throwaway home and env, so the smoke never touches a real trust store.
 const home = realpathSync(mkdtempSync(join(tmpdir(), 'trust-repo-smoke-')))
@@ -49,6 +50,20 @@ try {
   assert.deepEqual(await store.list(), [])
   const withheld = await resolveExecGate(store, { root: repo, configured: true })
   assert.deepEqual([withheld.allowExec, withheld.reason], [false, 'untrusted'])
+
+  // A grant for one tool, and a gate over two.
+  await store.trust(repo, 'just')
+  const scoped = await resolveExecGate(store, {
+    root: repo,
+    configured: true,
+    scopes: ['just', 'mise'],
+  })
+  assert.deepEqual(scoped.missing, ['mise'])
+  assert.deepEqual(
+    (await store.listGrants()).map((g) => g.scope),
+    ['just'],
+  )
+  assert.equal(originOwner(repo), null)
 
   assert.equal(pathGlobToRegExp('src/**/*.ts').test('src/a/b.ts'), true)
   assert.equal(pathGlobToRegExp('src/*.ts').test('src/a/b.ts'), false)

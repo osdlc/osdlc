@@ -1,6 +1,6 @@
 /**
- * Tests for `src/origin-owner.ts`: the origin-owner lookup, the hostile git
- * environment it must ignore, and its use as `@osdlc/trust-repo`'s `ownerOf`.
+ * Tests for `src/git.ts`: the origin-owner lookup, the hostile git
+ * environment it must ignore, and its use as the policy's `ownerOf`.
  */
 
 import { afterEach, describe, expect, test } from 'vitest'
@@ -8,14 +8,14 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { policyDecision, trustDecision, trustStore } from '@osdlc/trust-repo'
+import { policyDecision, trustDecision, trustStore } from '../src/index.ts'
 import { makeGitFixture } from '@osdlc/typed-git/testing'
 
-import { originOwner } from '../src/origin-owner.ts'
+import { originOwner } from '../src/git.ts'
 
 const dirs: string[] = []
 function tmp(): string {
-  const d = mkdtempSync(join(tmpdir(), 'wayfinder-owner-'))
+  const d = mkdtempSync(join(tmpdir(), 'trust-repo-owner-'))
   dirs.push(d)
   return d
 }
@@ -104,6 +104,7 @@ describe('originOwner as ownerOf', () => {
       trusted: true,
       by: 'owner',
       rule: 'acmeowner',
+      scope: '*',
     })
   })
 
@@ -116,15 +117,16 @@ describe('originOwner as ownerOf', () => {
       trusted: true,
       by: 'owner',
       rule: 'gitlab.com/acmeowner',
+      scope: '*',
     })
   })
 
   test('trustDecision falls through to the owner rule when there is no marker', async () => {
-    const store = trustStore({ tool: 'wayfinder-test', dir: tmp() })
+    const store = trustStore({ tool: 'tooly', dir: tmp() })
     const repo = repoWithOrigin('https://github.com/AcmeOwner/dev.git')
     expect(
       await trustDecision(store, repo.dir, { paths: [], owners: ['acmeowner'] }, withGit),
-    ).toEqual({ trusted: true, by: 'owner', rule: 'acmeowner' })
+    ).toEqual({ trusted: true, by: 'owner', rule: 'acmeowner', scope: '*' })
   })
 })
 
@@ -145,7 +147,7 @@ async function withEnv(vars: Record<string, string>, fn: () => Promise<void>): P
 describe('originOwner — hostile git environment', () => {
   const owners = { paths: [], owners: ['mine'] }
   const untrusted = { trusted: false, by: null }
-  const trusted = { trusted: true, by: 'owner' as const, rule: 'mine' }
+  const trusted = { trusted: true, by: 'owner' as const, rule: 'mine', scope: '*' }
 
   test("GIT_DIR cannot lend another repository's owner to a root", async () => {
     const mine = repoWithOrigin('https://github.com/mine/x.git')

@@ -747,12 +747,18 @@ importers:
 
   packages/ts/trust-repo:
     dependencies:
+      '@osdlc/command-seam':
+        specifier: workspace:^
+        version: link:../command-seam
       '@osdlc/etag-write':
         specifier: workspace:^
         version: link:../etag-write
       '@osdlc/path-guard':
         specifier: workspace:^
         version: link:../path-guard
+      '@osdlc/typed-git':
+        specifier: workspace:^
+        version: link:../typed-git
     devDependencies:
       '@osdlc/prettier-config':
         specifier: workspace:^
