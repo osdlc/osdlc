@@ -9,7 +9,7 @@ import { prUpdateConfigSchema, runSurvey, standalonePorts } from "@osdlc/pr-upda
 import { spawnRunner } from "@osdlc/command-seam";
 
 const report = runSurvey(
-  { repo: [], noFetch: false, noDrafts: false, limit: 100, remote: "origin" },
+  { repo: [], pr: [], noFetch: false, noDrafts: false, limit: 100, remote: "origin" },
   {
     projectRoot: process.cwd(),
     dryRun: false,
@@ -186,8 +186,9 @@ refused with exit `14`.
 | `pi` | the pi coding agent (`pi`) |
 
 Each preset is one [`@osdlc/agent-call`](https://www.npmjs.com/package/@osdlc/agent-call)
-call, run in the update worktree with file edits allowed, no shell and no
-permission prompts, and the repair timeout. agent-call builds every CLI's
+call, run in the update worktree with file edits allowed, no permission
+prompts, and the repair timeout. Shell is off for claude, cursor and pi; codex's
+`--sandbox workspace-write` also allows workspace commands. agent-call builds every CLI's
 argument list, so this package writes no per-agent flags. The agent CLI must be
 installed and signed in. `repair.model` passes a model name to it. The exit
 status gives `ok`, and the agent's final line gives the note. All presets share
@@ -327,7 +328,8 @@ confirmation:
 | `attempts` (optional) | The failed-update record: `get(key)`, `recordFailure(key, reason)`, `clear(repo, head, base)` |
 | `confirmPush(preview)` (optional) | Under `confirmPush: true`, whether to make one rebase force-push; the terminal prompt when absent |
 
-`standalonePorts(cfg, projectRoot)` gives a `pr-update` CLI run defaults for the first two ports.
+`standalonePorts(cfg, projectRoot)` gives a `pr-update` CLI run defaults for the three required ports
+(locate, runVerb, resolveVerifyVerbs) and for repair and attempts.
 It builds `repair` from `repair.agent` or `repair.command`, stores attempts in
 `<projectRoot>/.pr-update/attempts/` (`fileAttemptStore`), answers `verify: test` with
 `test_command`, and refuses `verify: check`. A standalone run has no host registry to look up

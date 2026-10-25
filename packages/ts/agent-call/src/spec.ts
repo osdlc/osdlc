@@ -94,7 +94,7 @@ export interface OutputSpec {
 
 /** Session behaviour: pin an id, resume, continue the last session, or keep the run off disk. */
 export interface SessionSpec {
-  /** Pin the new session's id (claude, copilot, pi, qwen; droid approximates it). */
+  /** Pin the new session's id (claude, copilot, pi, qwen; droid and cursor approximate it). */
   id?: string | undefined
   /** Resume an existing session or thread by id. */
   resume?: string | undefined
@@ -111,8 +111,10 @@ export interface McpSpec {
    * shape: name → `{command, args?, env?}` or `{url}`. Passed with a flag on
    * claude (`--mcp-config`), qwen and copilot (each from a temp file).
    * Written as `-c mcp_servers.*` overrides on codex and as a `--patch`
-   * overlay on deepseek. The other agents read MCP servers only from their
-   * config files, so it is dropped there, with a note.
+   * overlay on deepseek, and as a session-only `--plugin-dir` plugin on
+   * cursor (approximated: user and project servers still load). The other
+   * agents read MCP servers only from their config files, so it is dropped
+   * there, with a note.
    */
   servers?: Record<string, Record<string, unknown>> | undefined
   /**

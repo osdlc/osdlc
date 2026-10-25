@@ -242,7 +242,12 @@ take a machine id, so a caller can avoid the implicit call.
   (below).
 
 ```ts
-import { decideReconcile, DEFAULT_GRACE_MS, type ReconcileEvidence } from '@osdlc/observe/session'
+import {
+  decideReconcile,
+  DEFAULT_GRACE_MS,
+  type ReconcileDecision,
+  type ReconcileEvidence,
+} from '@osdlc/observe/session'
 
 const evidence: ReconcileEvidence = {
   process: false, // no running process carries the session id

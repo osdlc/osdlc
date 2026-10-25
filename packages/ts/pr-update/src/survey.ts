@@ -445,7 +445,10 @@ export const SCOPE_SHAPE = {
     .int()
     .default(100)
     .describe('Maximum number of open PRs to list per repository.'),
-  remote: z.string().default('origin').describe('Remote to fetch from and measure against.'),
+  remote: z
+    .string()
+    .default('origin')
+    .describe('Remote to fetch from. Measurement always reads `origin/*` remote-tracking refs.'),
   pr: z
     .array(z.coerce.number().int())
     .default([])

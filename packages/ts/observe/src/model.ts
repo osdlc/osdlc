@@ -802,7 +802,9 @@ export function defineSessionModel<H extends string, Ho extends string, F>(
    * covers (`logBytes`). The log can grow while this process reduces it (a hook
    * process appending). So the length is checked again after the write and the
    * reduction is repeated. If the log never stops growing, the call throws
-   * {@link SessionLogError} and does not leave a projection it cannot trust.
+   * {@link SessionLogError}. The `record.json` it last wrote may not cover the
+   * whole log; its `logBytes` marks it stale, so {@link readSessionRecordIn}
+   * reduces the log instead.
    * Returns `null` when the log has no usable `launched` event yet.
    *
    * @throws {@link SessionLogError} when the log keeps growing, or a `ZodError`

@@ -73,7 +73,11 @@ it is `@osdlc/command-seam`'s `CommandFailure` for a curl that failed.
 A mutation (`postComment`, `updateBranch`, ...) throws on failure instead. It
 throws a `FailureError` carrying the same `CodeHostFailure`, or a
 `CommandFailed`. Both are `FailureError`s, so `@osdlc/cli-tool`'s `runMain`
-prints them the same way.
+prints them the same way. Three throws are plain `Error`s instead:
+`setDraft`, `mergePr` and `createPr` throw `CodeHostUnsupported` on Forgejo,
+`updateComment` throws `CommentNotFoundError` when the comment is gone (HTTP
+404), and GitHub's `createPr` throws an `Error` when `gh` prints a URL naming
+no PR.
 
 `selectCodeHost` returns a `Result<CodeHost, CodeHostFailure>` too (see
 [D-01](docs/planning/decisions/D-01-port-queries-return-a-result.md)).
@@ -92,6 +96,7 @@ platforms.
 | --- | --- |
 | `CodeHost` | The port: `listPrs`, `listPrDetails`, `getPr`, `postComment`, `updateComment`, `listComments` (optional), `setDraft`, `updateBranch`, `reviewThreads`, `mergePr`, `createPr`, `parsePrUrl`, `prForBranch`. Every method is synchronous. Queries return a `Result` |
 | `CodeHostFailure`, `CodeHostFailureKind` | The classified failure the queries report (see Failures) |
+| `CodeHostUnsupported`, `CommentNotFoundError` | The `Error`s a mutation throws for a verb the code host lacks, and for a deleted comment |
 | `CodeHostPr`, `PrFacts`, `Activity`, `PrInput`, ... | The normalized shapes the port speaks (`types.ts`) |
 | `GithubCodeHost`, `codeHostPrFrom` | GitHub adapter over `@osdlc/typed-gh` |
 | `ForgejoCodeHost`, `forgejoPrFrom` | Forgejo adapter over `curl` and the Forgejo REST API. Reads its token from `FORGEJO_TOKEN` by default. `forgejoTokenEnv` names another variable |
@@ -112,8 +117,9 @@ platforms.
 ## Not here yet
 
 The port has no write verbs beyond `postComment`, `updateBranch`, `createPr`,
-`setDraft`, `updateComment` and `mergePr`. `editPrBody`, `postReview` and
-`replyToThread` are the next additions.
+`setDraft`, `updateComment` and `mergePr`. The Forgejo adapter does not
+implement `createPr`, `setDraft` or `mergePr` yet. `editPrBody`, `postReview`
+and `replyToThread` are the next additions.
 
 ## When not to use
 

@@ -2,7 +2,7 @@
 //! [`CorpusConfig`], mirroring the TS `loadConfig`. A `rules` list maps `include` /
 //! `exclude` globs to a contract, with an optional `contracts` name map.
 //!
-//! A contract ref is a `.yaml` contract file or an inline contract object. Any other
+//! A contract ref is a `.yaml` / `.yml` contract file or an inline contract object. Any other
 //! file, such as a `.ts` module, is rejected with [`DeclarativeError::CodeContractRef`].
 //!
 //! The core loader does no I/O: a file ref resolves through the caller's `resolver`
@@ -17,7 +17,7 @@ use super::parse::{DeclarativeKind, parse_declarative_doc};
 use crate::contract::Contract;
 use crate::runner::{CorpusConfig, CorpusRule};
 
-/// Resolves a contract-file ref (a `.yaml` path, possibly relative) to its YAML text.
+/// Resolves a contract-file ref (a `.yaml` / `.yml` path, possibly relative) to its YAML text.
 pub type ContractResolver<'a> = dyn FnMut(&str) -> Result<String, String> + 'a;
 
 fn err(msg: String) -> DeclarativeError {
@@ -25,7 +25,7 @@ fn err(msg: String) -> DeclarativeError {
 }
 
 /// Compile a declarative YAML config (text) into a [`CorpusConfig`]. `resolver` reads a
-/// referenced `.yaml` contract file's text (the fs seam).
+/// referenced `.yaml` / `.yml` contract file's text (the fs seam).
 pub fn load_config(
     yaml_text: &str,
     resolver: &mut ContractResolver<'_>,

@@ -11,7 +11,8 @@ npm install @osdlc/trust-repo
 
 `pnpm add @osdlc/trust-repo` and `yarn add @osdlc/trust-repo` work too.
 
-ESM only. Node.js 22 or later. Bun also works.
+ESM only. Node.js `^22.22.2 || ^24.15.0 || >=26.0.0`, the range of its
+dependency `@osdlc/typed-git`. Bun also works.
 
 ## Quick start
 
@@ -253,8 +254,11 @@ const expandPath = (raw: string) => expandTrustPath(raw, home)
 `owners` rule. It returns the host and owner of `root`'s `origin` remote as
 `host/owner`, or `null`. It runs `git remote get-url origin` with
 `core.fsmonitor` off and with the caller's `GIT_DIR`, `GIT_WORK_TREE`,
-`GIT_INDEX_FILE`, `GIT_COMMON_DIR` and `GIT_CONFIG_*` variables removed, so
-they cannot point git at another repository. A remote that is a local path, a
+`GIT_INDEX_FILE`, `GIT_COMMON_DIR`, `GIT_CONFIG`, `GIT_CONFIG_PARAMETERS`,
+`GIT_CONFIG_COUNT` and `GIT_CONFIG_KEY_n`/`GIT_CONFIG_VALUE_n` variables
+removed, so they cannot point git at another repository. `GIT_CONFIG_GLOBAL`,
+`GIT_CONFIG_SYSTEM` and `GIT_CONFIG_NOSYSTEM` are kept on purpose, as user
+setup, so they can still change how the remote URL is read. A remote that is a local path, a
 `github:` style shortcut or an unknown host has no owner.
 
 ```ts
@@ -321,7 +325,7 @@ paths), and those rules are tested on every platform. The store still uses XDG
 state paths on Windows, under `%USERPROFILE%\.local\state`, and file modes do
 not apply there. Full Windows support is planned before 1.0.
 
-Node.js 22 or later, ESM only. Bun also runs it, through the compiled `dist/`. The tests run
+Node.js `^22.22.2 || ^24.15.0 || >=26.0.0`, ESM only. Bun also runs it, through the compiled `dist/`. The tests run
 on Vitest under Node.
 
 ## Licence

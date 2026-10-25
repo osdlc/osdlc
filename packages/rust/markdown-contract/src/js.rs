@@ -39,7 +39,7 @@ pub(crate) fn words(s: &str) -> impl Iterator<Item = &str> {
 }
 
 /// JS `String(n)`: `Infinity`, `NaN`, `0` for `-0`, and exponent form outside
-/// `1e-7 < |n| < 1e21`.
+/// `1e-6 <= |n| < 1e21`.
 pub(crate) fn num(n: f64) -> String {
     if n.is_nan() {
         return "NaN".into();

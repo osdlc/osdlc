@@ -24,7 +24,8 @@
 //!
 //! # The shape of the returned text
 //!
-//! Every function here returns the block in split form: the last line is
+//! Every function here except [`remove_key`] (see its doc) returns the
+//! block in split form: the last line is
 //! not terminated, because the terminator is the caller's framing and not
 //! the block's content. That is the text between the `---` fences of a
 //! Markdown file, without the line ending before the closing fence. Under
@@ -211,6 +212,9 @@ pub(crate) fn apply_eol(text: &str, eol: &'static str) -> String {
 
 /// Removes a top-level key and the whole lines it occupied. An absent key
 /// returns `yaml` unchanged. The key is matched exactly.
+///
+/// Unlike the rest of this module, the result is not always in split form:
+/// removing the last key leaves the line ending of the line before it.
 ///
 /// # Errors
 ///

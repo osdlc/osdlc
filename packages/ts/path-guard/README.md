@@ -287,7 +287,7 @@ say why.
 
 ## Twin
 
-The Rust crate [`path-guard`](https://crates.io/crates/path-guard) 0.3.0 has the
+The Rust crate [`path-guard`](https://crates.io/crates/path-guard) 0.3.x has the
 same shape: a `lexical` module and a `Guard` bound to one `Resolver`. Its source
 is in
 [`packages/rust/path-guard`](https://github.com/osdlc/osdlc/tree/main/packages/rust/path-guard).

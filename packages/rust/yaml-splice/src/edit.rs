@@ -201,12 +201,14 @@ pub enum EditError {
         message: String,
     },
 
-    /// The edited document no longer parses, or an edit would change a key it
-    /// does not address. The batch is discarded rather than returning damaged
-    /// bytes.
+    /// The edited document no longer parses, an edit would change a key it
+    /// does not address, or the edited key would not read back as asked. The
+    /// batch is discarded rather than returning damaged bytes. The Display
+    /// text says "no longer parses" in every case.
     #[error("the edited document no longer parses: {message}")]
     InvalidResult {
-        /// The parser's message on the edited bytes.
+        /// Why the result was refused: the parser's message, or the check
+        /// that failed.
         message: String,
     },
 }

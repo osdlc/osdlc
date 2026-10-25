@@ -40,7 +40,11 @@ export interface ExecGate {
   allowExec: boolean
   /** The layered/flagged configured value, before trust. */
   configured: boolean
-  /** Whether every scope in {@link scopes} is trusted. */
+  /**
+   * Whether every scope in {@link scopes} is trusted. Always `false` when an
+   * explicit `flag: false` meant the store was not read ({@link missing} is
+   * empty then).
+   */
   trusted: boolean
   /** Why {@link allowExec} came out the way it did. */
   reason: 'allowed' | 'allowed-by-flag' | 'untrusted' | 'configured-off'
