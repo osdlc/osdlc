@@ -24,8 +24,10 @@ We will credit you in the release notes if you want that.
 
 ## Scope
 
-- The client runs the `git` found on `PATH`. It builds argument arrays and
-  starts no shell.
+- The client runs the `git` found on an absolute `PATH` entry, by its
+  absolute path, so a file named `git` in the checkout cannot run in its
+  place. It builds argument arrays and starts no shell. A runner you inject
+  replaces this lookup.
 - Starting the process is the job of `@osdlc/command-seam`. Report problems
   in how a process is started there.
 - `@osdlc/typed-git/testing` makes and deletes temporary directories. It is

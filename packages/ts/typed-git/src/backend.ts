@@ -19,7 +19,7 @@
  */
 
 import {
-  resolveRunnerAsync,
+  spawnRunnerAsync,
   type AsyncCommandRunner,
   type AsyncCommandRunOptions,
   type CommandResult,
@@ -480,7 +480,9 @@ function toVerb(request: GitRequest): GitVerb<unknown> {
 /**
  * The default backend: every request becomes a `git` subprocess, run through
  * an {@link AsyncCommandRunner} so the caller decides how spawning happens
- * (and tests inject a fake).
+ * (and tests inject a fake). The default runner spawns the `git` found on an
+ * absolute `PATH` entry, so a `git` file in the checkout cannot run in its
+ * place.
  */
 export function cliBackend(
   opts: {
@@ -501,7 +503,7 @@ export function cliBackend(
     env?: Record<string, string> | undefined
   } = {},
 ): GitBackend {
-  const runner = resolveRunnerAsync('git', opts.runner)
+  const runner = opts.runner ?? spawnRunnerAsync('git', { absolutePathOnly: true })
   const prefix = repoPrefix(opts.gitDir, opts.workTree)
   return {
     async execute<R extends GitRequest>(

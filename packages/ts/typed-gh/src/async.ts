@@ -11,11 +11,7 @@
  * block the event loop, such as many per-PR queries at once.
  */
 
-import {
-  resolveRunnerAsync,
-  type AsyncCommandRunner,
-  type CommandResult,
-} from '@osdlc/command-seam'
+import { spawnRunnerAsync, type AsyncCommandRunner, type CommandResult } from '@osdlc/command-seam'
 
 import { runCheckedGhAsync, softAsync, triedAsync, type Soft, type TriedAsync } from './doors.ts'
 import { runVerbAsync } from './run.ts'
@@ -76,7 +72,7 @@ export class AsyncGh {
     this.repo = opts.repo
     this.hostname = opts.hostname
     this.target = { repo: opts.repo, hostname: opts.hostname }
-    this.runner = resolveRunnerAsync('gh', opts.runner)
+    this.runner = opts.runner ?? spawnRunnerAsync('gh', { absolutePathOnly: true })
   }
 
   /** The same client rooted at a different directory (same runner, repo and host). */
