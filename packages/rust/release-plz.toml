@@ -49,7 +49,8 @@ release = false
 # `release = false` also stops a tag being cut for a version that was not
 # published. packages/README.md lists the steps.
 #
-# Step 1: no unpublished dependencies.
+# Step 1: after the trusted-publishing run that publishes agent-adapt 0.19.1
+# and yaml-splice 0.3.2. One run uses one credential.
 [[package]]
 name = "typed-git"
 publish = false
@@ -79,5 +80,12 @@ release = false
 # Step 3: needs step 2.
 [[package]]
 name = "tradecraft"
+publish = false
+release = false
+
+# Held back until the parity fixes from the review of
+# https://github.com/osdlc/osdlc/pull/460 land; see its Cargo.toml.
+[[package]]
+name = "markdown-contract"
 publish = false
 release = false
