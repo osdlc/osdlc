@@ -4,7 +4,7 @@
  * tested here once rather than through each surface.
  */
 
-import { readFile, rm, stat, truncate, writeFile } from 'node:fs/promises'
+import { lstat, readFile, rm, stat, symlink, truncate, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 
 import { afterAll, describe, expect, test } from 'vitest'
@@ -20,7 +20,7 @@ import { settingLayer } from '../src/config-keys.ts'
 import { taskCopyText } from '../src/core/copy-text.ts'
 import { filterTasks, sourceDepth } from '../src/core/filter.ts'
 import { handOff } from '../src/core/run.ts'
-import { MAX_VIEW_BYTES, viewPath } from '../src/core/saved-view.ts'
+import { MAX_VIEW_BYTES, flushViews, viewPath } from '../src/core/saved-view.ts'
 import { SessionError, createSession, resolveRun } from '../src/core/session.ts'
 import { execOffSource, unknownLine, unknownsOf } from '../src/core/unknowns.ts'
 import { withheldTrustHint } from '../src/commands/shared.ts'
@@ -624,6 +624,54 @@ describe('createSession', () => {
       code: 'task-changed',
       message: expect.stringContaining('not found'),
     })
+  })
+
+  test('a view file that is a symlink is not followed; the link is removed', async () => {
+    const dir = await root({ 'package.json': '{"name":"p","scripts":{"b":"x"}}' })
+    const session = await createSession({ dir, cwd: dir, env: {}, home: dir })
+    await session.catalog()
+    await flushViews()
+    const file = viewPath(session.store, session.root, session.viewKey())
+    const elsewhere = join(dir, 'elsewhere.json')
+    await writeFile(elsewhere, await readFile(file, 'utf-8'), 'utf-8')
+    await rm(file)
+    await symlink(elsewhere, file)
+    expect(await session.savedCatalog()).toBeNull()
+    await expect(lstat(file)).rejects.toThrow()
+    expect((await stat(elsewhere)).isFile()).toBe(true)
+  })
+
+  test('flushViews settles once every view write has ended', async () => {
+    const dir = await root({ 'package.json': '{"name":"p","scripts":{"b":"x"}}' })
+    const session = await createSession({ dir, cwd: dir, env: {}, home: dir })
+    await session.catalog()
+    await flushViews()
+    const file = viewPath(session.store, session.root, session.viewKey())
+    expect((await stat(file)).isFile()).toBe(true)
+  })
+
+  test('confirmRun says so when the runner could not be read again', async () => {
+    const dir = await root({ 'package.json': '{"name":"p","scripts":{"b":"x"}}' })
+    const session = await createSession({ dir, cwd: dir, env: {}, home: dir })
+    const { catalog } = await session.catalog()
+    const id = catalog.reports.flatMap((r) => r.tasks)[0]!.id
+    const plan = resolveRun(session.project, session.root, catalog, id)
+    await writeFile(join(dir, 'package.json'), '{ not json', 'utf-8')
+    await expect(session.confirmRun(plan)).rejects.toMatchObject({
+      code: 'task-changed',
+      message: expect.stringContaining('could not be read again'),
+    })
+  })
+
+  test("--cached stops reading the store when the call's signal aborts", async () => {
+    const dir = await root({ 'package.json': '{"name":"p","scripts":{"b":"x"}}' })
+    const session = await createSession({ dir, cwd: dir, env: {}, home: dir })
+    await session.catalog()
+    await flushViews()
+    await rm(viewPath(session.store, session.root, session.viewKey()))
+    const closed = new AbortController()
+    closed.abort(new Error('tab closed'))
+    await expect(session.catalog({ cached: true, signal: closed.signal })).rejects.toThrow()
   })
 
   test('saveSetting writes the file settingLayer picks and the options follow', async () => {

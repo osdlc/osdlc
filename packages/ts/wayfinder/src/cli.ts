@@ -23,6 +23,7 @@ import { createWayApp } from './commands/index.ts'
 import { GLOBALS } from './commands/shared.ts'
 import { WAYFINDER_SPEC, checkoutRoot } from './devlink.ts'
 import type { GuideTool } from './guide.ts'
+import { flushViews } from './core/saved-view.ts'
 import { safeJsonStdout, safeStderr, safeStdout } from './terminal-text.ts'
 
 /**
@@ -190,7 +191,7 @@ export async function main(
     )
   }
 
-  return app.run(aliased.argv, {
+  const code = await app.run(aliased.argv, {
     // JSON keeps every value exact, with DEL, C1 and bidi controls escaped.
     // Each command makes its own text output terminal-safe.
     io: safeJsonStdout(io),
@@ -198,6 +199,9 @@ export async function main(
     env,
     ...(real ? { terminal: processContext().terminal! } : {}),
   })
+  // The output is out; the saved view a command wrote ends before main does.
+  await flushViews()
+  return code
 }
 
 // Runs when executed directly (devlink runs a checkout's `src/cli.ts` under

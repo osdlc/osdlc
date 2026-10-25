@@ -15,7 +15,7 @@
  */
 
 import { createHash } from 'node:crypto'
-import { readFile, rm, stat } from 'node:fs/promises'
+import { lstat, readFile, rm } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 
 import { atomicWriteAsync } from '@osdlc/etag-write'
@@ -73,8 +73,9 @@ export function viewKey(parts: Record<string, unknown>): string {
 
 /**
  * The view saved for `root` under `key`, or null. A file that is too large,
- * not valid JSON or not a view is deleted, so the next read goes to the
- * store at once. Never throws.
+ * not valid JSON, not a view, or not a plain file (a symlink is not
+ * followed) is deleted, so the next read goes to the store at once. Never
+ * throws.
  */
 export async function readView(
   store: string,
@@ -90,9 +91,9 @@ export async function readView(
     return null
   }
   try {
-    const info = await stat(file).catch(() => null)
-    if (info === null || !info.isFile()) return null
-    if (info.size > MAX_VIEW_BYTES) return discard()
+    const info = await lstat(file).catch(() => null)
+    if (info === null) return null
+    if (!info.isFile() || info.size > MAX_VIEW_BYTES) return discard()
     let raw: unknown
     try {
       raw = JSON.parse(await readFile(file, 'utf8'))
@@ -111,6 +112,15 @@ export async function readView(
 
 /** The writes this process has in flight, by file. */
 const writing = new Map<string, Promise<void>>()
+
+/**
+ * Settles when every view write this process started has ended. Call it
+ * before `process.exit`, which would drop a write in flight, and before a
+ * test removes the cache directory.
+ */
+export async function flushViews(): Promise<void> {
+  while (writing.size > 0) await Promise.all(writing.values())
+}
 
 /**
  * Save the view, without waiting: the caller answers first. A failed write

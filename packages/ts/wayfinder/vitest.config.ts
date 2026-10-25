@@ -18,6 +18,7 @@ export default defineConfig({
   },
   test: {
     include: ['tests/**/*.test.ts', 'examples/**/*.test.ts'],
+    setupFiles: ['tests/setup.ts'],
     // Some tests build throwaway git repositories and commit in them.
     env: {
       GIT_AUTHOR_NAME: 'Fixture',

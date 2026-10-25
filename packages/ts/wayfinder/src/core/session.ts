@@ -523,20 +523,24 @@ export async function createSession(opts: SessionOptions): Promise<Session> {
   }
   const trustable = (): boolean => options.execWithheldHint !== undefined
 
+  /** The options, stopped by this call's `signal` as well as the session's. */
+  const withSignal = (signal?: AbortSignal): WayOptions => {
+    const signals = [options.signal, signal].filter((s) => s !== undefined)
+    return signals.length > 0 ? { ...options, signal: AbortSignal.any(signals) } : options
+  }
+
   /** Probe the runners `only` names (all when absent), timing each. */
   const probe = async (
     only?: string[],
     signal?: AbortSignal,
   ): Promise<{ catalog: Catalog; times: Map<string, number> }> => {
     const times = new Map<string, number>()
-    const signals = [options.signal, signal].filter((s) => s !== undefined)
     const catalog = await collectAndCache(
       project,
       root,
       {
-        ...options,
+        ...withSignal(signal),
         ...(only !== undefined ? { only } : {}),
-        ...(signals.length > 0 ? { signal: AbortSignal.any(signals) } : {}),
         onProbe: ({ runner, durationMs }) => times.set(runner, durationMs),
       },
       store,
@@ -607,7 +611,8 @@ export async function createSession(opts: SessionOptions): Promise<Session> {
       }
       const view = await session.savedCatalog()
       if (view !== null) return view
-      const stored = await readCachedCatalog(project, root, options, store)
+      // The call's signal too: a closed tab stops hashing the store.
+      const stored = await readCachedCatalog(project, root, withSignal(opts.signal), store)
       if (stored.catalog === null || !fromStore(stored)) {
         const { catalog, times } = await probe(undefined, opts.signal)
         return saved({
@@ -679,8 +684,25 @@ export async function createSession(opts: SessionOptions): Promise<Session> {
     },
     async confirmRun(plan, args = [], signal) {
       const { catalog } = await probe([plan.task.runner], signal)
-      const now = catalog.reports.flatMap((r) => r.tasks).filter((t) => t.id === plan.task.id)
       const shown = plan.task.display
+      const report = catalog.reports.find((r) => r.runner === plan.task.runner)
+      const now = report?.tasks.filter((t) => t.id === plan.task.id) ?? []
+      // A runner that failed, was withheld, or lost the task with a complaint
+      // (an unparseable file) did not read the task's file cleanly.
+      const complaint = report?.diagnostics.find((d) => d.severity !== 'info')
+      const failed =
+        report === undefined ||
+        report.status === 'error' ||
+        report.skippedForExec ||
+        (now.length !== 1 && complaint !== undefined)
+      if (failed) {
+        const why = complaint === undefined ? '' : ` (${complaint.message})`
+        throw new SessionError(
+          'task-changed',
+          `${shown}: not run; ${plan.task.runner} could not be read again${why}`,
+          `"${BIN} list" shows what it reports now`,
+        )
+      }
       if (now.length !== 1) {
         throw new SessionError(
           'task-changed',

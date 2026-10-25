@@ -182,8 +182,15 @@ function trustableFrom(unknowns: readonly Unknown[]): boolean {
   )
 }
 
-/** A load that was asked for while another ran, to run once that one is done. */
-let again: { cached?: boolean; join?: boolean } | null = null
+/**
+ * A load that was asked for while another ran, to run once that one is done.
+ * `done` settles when it has run, for every caller that asked for it.
+ */
+let again: {
+  opts: { cached?: boolean; join?: boolean }
+  done: Promise<void>
+  resolve: () => void
+} | null = null
 /** True while a load runs. `state.loading` is the part the status line shows. */
 let busy = false
 
@@ -196,26 +203,36 @@ let busy = false
  * is already running, for the first fresh read and the polls. Without it (a
  * Refresh, or a read after a change) the server starts a probe, so the
  * answer is never from before the click. A load asked for while one runs
- * runs after it, so a Refresh during a poll is not lost.
+ * runs after it, so a Refresh during a poll is not lost, and its promise
+ * settles only once that later read has run.
  *
  * The fingerprint check stops an unchanged poll from resetting the scroll
  * position and open groups.
  */
 export async function load(opts: { cached?: boolean; join?: boolean } = {}): Promise<void> {
   if (busy) {
-    // A plain load wins over a joining one: it is the one that must not be stale.
-    if (again === null || opts.join !== true) again = opts
-    return
+    if (again === null) {
+      let resolve: () => void = () => {}
+      const done = new Promise<void>((ok) => {
+        resolve = ok
+      })
+      again = { opts, done, resolve }
+    } else if (opts.join !== true) {
+      // A plain load wins over a joining one: it is the one that must not be stale.
+      again.opts = opts
+    }
+    return again.done
   }
   busy = true
   try {
     await loadOnce(opts)
   } finally {
     busy = false
+    const next = again
+    again = null
+    // Started before this returns, so it holds `busy` before anyone else.
+    if (next !== null) void load(next.opts).finally(next.resolve)
   }
-  const next = again
-  again = null
-  if (next !== null) await load(next)
 }
 
 async function loadOnce(opts: { cached?: boolean; join?: boolean }): Promise<void> {

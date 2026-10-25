@@ -16,6 +16,7 @@ import type { DiscoveryMode, RunnerReport } from '@osdlc/system-model/detect'
 
 import { catalogDocument } from './commands/list.ts'
 import type { TaskFilter } from './core/filter.ts'
+import { flushViews } from './core/saved-view.ts'
 import { createSession, type CacheState, type SessionFlags } from './core/session.ts'
 import type { SkillRow } from './core/skills.ts'
 import type { Unknown } from './core/unknowns.ts'
@@ -158,6 +159,8 @@ export async function buildCatalog(options: BuildCatalogOptions): Promise<Catalo
   })
   for (const warning of session.warnings) options.onWarning?.(warning)
   const snapshot = await session.catalog({ cached: options.cached === true })
+  // A library caller gets a call whose writes are done.
+  await flushViews()
   const body = catalogDocument(
     snapshot,
     session.unknowns(snapshot),

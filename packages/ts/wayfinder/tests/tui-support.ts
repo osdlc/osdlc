@@ -11,6 +11,7 @@ import { dirname, join } from 'node:path'
 
 import { configLocations } from '../src/config.ts'
 
+import { flushViews } from '../src/core/saved-view.ts'
 import { createSession } from '../src/core/session.ts'
 import type { RunPlan } from '../src/core/session.ts'
 import type { HandOffResult } from '../src/core/run.ts'
@@ -69,6 +70,7 @@ export async function temp(prefix: string): Promise<string> {
 }
 
 export async function cleanupAll(): Promise<void> {
+  await flushViews()
   await Promise.all(dirs.splice(0).map((d) => rm(d, { recursive: true, force: true })))
 }
 
