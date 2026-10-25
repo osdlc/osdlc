@@ -331,6 +331,27 @@ describe('status', () => {
     expect(status(SPEC, opts({ legacyDirs })).link.legacy).toBeNull()
   })
 
+  test("the printed mv quotes a path that holds a '", () => {
+    const home = join(sb.root, "it's home")
+    const legacyDirs = systemDirs(SPEC.vendorDirs, {
+      home,
+      env: {},
+      platform: 'darwin',
+      convention: 'native',
+    })
+    const old = join(legacyDirs.standalone(SPEC.name).config().path, 'home')
+    mkdirSync(dirname(old), { recursive: true })
+    writeFileSync(old, `${sb.root}\n`)
+    const io = captureIo()
+    runDevCli(SPEC, ['status'], { ...opts({ legacyDirs }), io, platform: 'darwin' })
+    const line = io.out.split('\n').find((l) => l.includes('move it:'))!
+    const quoted = `'${old.replaceAll("'", "'\\''")}'`
+    expect(line).toContain(`mv ${quoted} `)
+    // The shell reads the quoted word back as the path.
+    const echoed = spawnSync('sh', ['-c', `printf %s ${quoted}`], { encoding: 'utf-8' })
+    expect(echoed.stdout).toBe(old)
+  })
+
   test('the state path ignores <PREFIX>_CONVENTION', () => {
     vi.stubEnv('HOME', sb.home)
     vi.stubEnv('XDG_CONFIG_HOME', '')

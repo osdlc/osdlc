@@ -9,7 +9,8 @@
  *
  * The config directory is inlined for the same reason: the launcher cannot
  * call TypeScript code. It matches `@osdlc/tiered-dirs`' `config` home under
- * the `xdg` convention. The launcher does not run on Windows.
+ * the `xdg` convention, including the vendor's `<P>_CONFIG_DIR` and `<P>_ROOT`
+ * overrides. The launcher does not run on Windows.
  *
  * The `local` case: a built entry beside the launcher
  * (`<launcherDir>/<name>.js`) runs under Node when present, else the source
@@ -97,6 +98,15 @@ export function renderLauncher(spec: ToolSpec, opts: LauncherOptions = {}): stri
   const guard = suppressorGuard.length > 0 ? ` && ${suppressorGuard}` : ''
   const built = opts.builtEntry
   const layerVar = launchLayerVar(spec)
+  const configVar = spec.vendorDirs.envVars.dirs.config
+  const rootVar = spec.vendorDirs.envVars.root
+  for (const v of [configVar, rootVar]) {
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(v)) {
+      throw new Error(
+        `devlink: renderLauncher needs a shell variable name, got ${JSON.stringify(v)}`,
+      )
+    }
+  }
 
   const lines: string[] = []
   const p = (s = ''): void => {
@@ -253,11 +263,20 @@ export function renderLauncher(spec: ToolSpec, opts: LauncherOptions = {}): stri
   p('      case "$user_home" in /*) ;; *) user_home="" ;; esac ;;')
   p('  esac')
   p('  cfg=""')
-  p('  # The xdg convention on every POSIX system. Only an absolute XDG_CONFIG_HOME')
-  p('  # counts, as in @osdlc/tiered-dirs.')
-  p('  case "${XDG_CONFIG_HOME:-}" in')
-  p(`    /*) cfg="$XDG_CONFIG_HOME/${name}" ;;`)
-  p(`    *) [ -z "$user_home" ] || cfg="$user_home/.config/${name}" ;;`)
+  p(`  # ${configVar}, then ${rootVar}/config, then the xdg convention, as in`)
+  p('  # @osdlc/tiered-dirs. A relative override is an error there, so it reads')
+  p('  # nothing here. Only an absolute XDG_CONFIG_HOME counts.')
+  p(`  case "\${${configVar}:-}" in`)
+  p(`    /*) cfg="$${configVar}/${name}" ;;`)
+  p('    "")')
+  p(`      case "\${${rootVar}:-}" in`)
+  p(`        /*) cfg="$${rootVar}/config/${name}" ;;`)
+  p('        "")')
+  p('          case "${XDG_CONFIG_HOME:-}" in')
+  p(`            /*) cfg="$XDG_CONFIG_HOME/${name}" ;;`)
+  p(`            *) [ -z "$user_home" ] || cfg="$user_home/.config/${name}" ;;`)
+  p('          esac ;;')
+  p('      esac ;;')
   p('  esac')
   p('  linked=""')
   p('  [ -z "$cfg" ] || linked="$(cat "$cfg/home" 2>/dev/null || true)"')

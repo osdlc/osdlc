@@ -61,7 +61,7 @@ function sandbox(): { cwd: string; env: Record<string, string> } {
  * process and shared by every run that does not pass its own, so a test that
  * needs a clean store passes its own `env`.
  *
- * With `--json` in `argv`, a stdout that holds a JSON object is also checked
+ * With `--json` or `--output json` in `argv`, a stdout that holds a JSON object is also checked
  * against the command's document schema, and the run throws when it does not
  * match. An error document is checked against `ErrorDocumentSchema`.
  * @experimental
@@ -75,7 +75,11 @@ export async function runApp(
   const ctx = captureContext({ cwd: box.cwd, env: { ...box.env }, ...overrides })
   const exit = await app.run(argv, ctx)
   const { out, err } = ctx.io
-  if (argv.includes('--json') && out.trimStart().startsWith('{') && !argv.includes('--version')) {
+  const json =
+    argv.includes('--json') ||
+    argv.includes('--output=json') ||
+    argv.some((word, i) => word === '--output' && argv[i + 1] === 'json')
+  if (json && out.trimStart().startsWith('{') && !argv.includes('--version')) {
     const doc = JSON.parse(out) as { kind?: string }
     const checked =
       doc.kind === 'error'

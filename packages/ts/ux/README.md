@@ -137,7 +137,7 @@ The input, a `ColorDetectInput`, is `env`, `isTTY` and an optional
 `override`. The function reads nothing else.
 
 The rules follow [no-color.org](https://no-color.org) and the
-`FORCE_COLOR` convention of supports-color and Node.js. The first row that
+`FORCE_COLOR` convention of supports-color. The first row that
 applies decides:
 
 | Order | When | Level |

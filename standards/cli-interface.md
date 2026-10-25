@@ -27,7 +27,8 @@ Status: draft.
   web page can grant itself trust.
 
 [`@osdlc/cli-tool`](../packages/ts/cli-tool#readme) implements this standard.
-A tool built on its command tree gets every rule below without writing it.
+A tool built on its command tree gets every rule below without writing it,
+except the `--color` flag of rule 7, which the tool declares itself.
 
 ## Rules
 
@@ -153,11 +154,17 @@ return. Code uses named constants, never bare numbers.
 
 ### 7. Non-TTY and color
 
-- Color only when stdout is a terminal. A `--color` or `--no-color` flag wins.
-  Then `NO_COLOR` set to anything but the empty string turns color off. Then
-  `FORCE_COLOR` decides by its exact value: `0` or `false` turns color off,
-  `1` to `3` turn it on, in a pipe too. Then `TERM=dumb` turns it off. A JSON
-  document is never colored. `@osdlc/ux`'s `detectColorLevel` is this rule.
+- The first of these that applies decides whether stdout is colored:
+  1. A `--color` or `--no-color` flag, when the tool has one.
+  2. `NO_COLOR` set to anything but the empty string turns color off.
+  3. `FORCE_COLOR` set: `0` or `false` turns color off. Any other value,
+     the empty string included, turns it on, in a pipe too.
+  4. `TERM=dumb` turns color off.
+  5. Otherwise, color only when stdout is a terminal.
+
+  A JSON document is never colored. `@osdlc/ux`'s `detectColorLevel` is this
+  rule, with the flag as its `override`. `@osdlc/cli-tool` adds no color
+  flag: a tool that has one passes it to `colorEnabled` as `override`.
 - No prompt unless stdin and stderr are both terminals. A command that would
   ask takes a flag instead, and without the flag it fails with exit 2 and
   names the flag.

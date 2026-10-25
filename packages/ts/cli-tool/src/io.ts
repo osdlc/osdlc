@@ -113,12 +113,23 @@ export function processContext(): CliContext {
  * `detectColorLevel` for stdout, from `ctx.env` and `ctx.terminal`, is not
  * `none`. That reads `NO_COLOR`, `FORCE_COLOR`, `TERM=dumb` and whether stdout
  * is a terminal. A JSON answer is never colored; the caller passes
- * `json: true` for one.
+ * `json: true` for one. `override` is the tool's own `--color` or
+ * `--no-color` flag, which wins over the environment; cli-tool adds no such
+ * flag itself.
  * @experimental
  */
-export function colorEnabled(ctx: CliContext, opts: { json?: boolean } = {}): boolean {
+export function colorEnabled(
+  ctx: CliContext,
+  opts: { json?: boolean; override?: boolean } = {},
+): boolean {
   if (opts.json === true) return false
-  return detectColorLevel({ env: ctx.env, isTTY: ctx.terminal?.stdout === true }) !== 'none'
+  return (
+    detectColorLevel({
+      env: ctx.env,
+      isTTY: ctx.terminal?.stdout === true,
+      ...(opts.override !== undefined ? { override: opts.override } : {}),
+    }) !== 'none'
+  )
 }
 
 /**

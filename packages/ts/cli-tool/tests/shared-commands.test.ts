@@ -1,8 +1,12 @@
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 import { describe, expect, test } from 'vitest'
 
 import { defineApp } from '../src/command/index.ts'
+import { captureContext } from '../src/io.ts'
+import { runMain } from '../src/run-main.ts'
 import {
   ConfigUsageError,
   configCommands,
@@ -208,9 +212,8 @@ describe('config', () => {
     store.set = async () => {
       throw new Error('cannot write /project.json')
     }
-    await expect(runApp(appWith(store), ['config', 'set', 'discovery', 'x'])).rejects.toThrow(
-      'cannot write',
-    )
+    const r = await runApp(appWith(store), ['config', 'set', 'discovery', 'x'])
+    expect(r).toMatchObject({ exit: 1, out: '', err: 't: cannot write /project.json\n' })
   })
 
   test('config unset removes a key, and exits 1 when it was not set there', async () => {
@@ -524,6 +527,59 @@ describe('text output drops terminal controls', () => {
   })
 })
 
+describe('a plain Error that quotes a repository file', () => {
+  const ESC = '\u001b'
+  const C1_CSI = '\u009b'
+  // V8's JSON.parse message quotes the bad text, escape sequences and all.
+  function fileStore() {
+    const dir = mkdtempSync(join(tmpdir(), 'cli-tool-config-'))
+    const file = join(dir, 'config.json')
+    writeFileSync(file, `{"a": tru${ESC}]0;pwned${ESC}\\${ESC}[2J${C1_CSI}31m}`)
+    const store = memoryStore()
+    store.list = async () => {
+      JSON.parse(readFileSync(file, 'utf8'))
+      return { settings: [] }
+    }
+    return store
+  }
+
+  test('prints a safe line on stderr, exit 1', async () => {
+    const r = await runApp(appWith(fileStore()), ['config', 'list'])
+    expect(r.exit).toBe(1)
+    expect(r.out).toBe('')
+    expect(r.err).toMatch(/^t: Unexpected token/)
+    expect(r.err).not.toContain(ESC)
+    expect(r.err).not.toContain(C1_CSI)
+  })
+
+  test('under --json and --output jsonl, also prints a safe error document', async () => {
+    for (const mode of [['--json'], ['--output', 'json']]) {
+      const r = await runApp(appWith(fileStore()), ['config', 'list', ...mode])
+      expect(r.exit).toBe(1)
+      const doc = r.json<{ kind: string; code: string; message: string }>()
+      expect(doc).toMatchObject({ kind: 'error', code: 'error', exit: 1 })
+      expect(doc.message).not.toContain(ESC)
+      expect(doc.message).not.toContain(C1_CSI)
+      expect(r.out).not.toContain(C1_CSI)
+      expect(r.err).not.toContain(ESC)
+    }
+  })
+
+  test('runMain strips controls from an error that escapes main', async () => {
+    const ctx = captureContext()
+    const saved = process.exitCode
+    await runMain(
+      () => {
+        throw new Error(`bad ${ESC}]0;pwned${ESC}\\ ${C1_CSI}2J file`)
+      },
+      { name: 't', context: ctx, argv: [] },
+    )
+    expect(process.exitCode).toBe(1)
+    process.exitCode = saved
+    expect(ctx.io.err).toBe('t: bad   file\n')
+  })
+})
+
 describe('config edge cases', () => {
   test('a number too large for JSON is a usage error', async () => {
     const r = await runApp(appWith(), ['config', 'set', 'discovery', '1e400'])
@@ -557,6 +613,26 @@ describe('runApp', () => {
     expect(seen[0]!.home!.startsWith(tmpdir()) || seen[0]!.home!.includes('cli-tool-run-')).toBe(
       true,
     )
+  })
+
+  test('checks the document under --output json as under --json', async () => {
+    const { defineCommand } = await import('../src/command/index.ts')
+    const { z } = await import('zod')
+    const app = defineApp({
+      name: 't',
+      version: '0',
+      summary: 's',
+      commands: {
+        lie: defineCommand({
+          summary: 'lie',
+          output: z.object({ n: z.number() }),
+          run: () => ({ n: 'one' as unknown as number }),
+        }),
+      },
+    })
+    for (const mode of [['--json'], ['--output', 'json'], ['--output=json']]) {
+      await expect(runApp(app, ['lie', ...mode])).rejects.toThrow('does not match its schema')
+    }
   })
 
   test('picks the schema by path when two commands share a kind', async () => {

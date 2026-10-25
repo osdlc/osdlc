@@ -411,8 +411,8 @@ export function trustStore(opts: TrustStoreOptions): TrustStore {
           if (inner.endsWith('.tmp')) continue
           const grant = await readGrant(join(path, inner))
           // A per-scope marker must name its scope, and its file name must be
-          // the one that scope maps to. A marker an older release wrote for
-          // `'just '` reads as `just` but sits under another name, so
+          // the one that scope maps to. A marker written for `'just '`
+          // without trimming reads as `just` but sits under another name, so
           // `isTrusted` never finds it; it is not listed either.
           if (
             grant !== null &&
@@ -476,8 +476,8 @@ export function trustStore(opts: TrustStoreOptions): TrustStore {
     },
 
     // Removes by path, not by scope name: the root's marker and its whole
-    // `.scopes` folder. A marker whose name no scope maps to (an older
-    // release's `'just '`) goes too.
+    // `.scopes` folder. A marker whose name no scope maps to (one written
+    // for `'just '` without trimming) goes too.
     async untrustAll(root) {
       const resolved = await resolveTrustRoot(root)
       const removed = (await listGrants()).filter((g) => g.root === resolved).map((g) => g.scope)

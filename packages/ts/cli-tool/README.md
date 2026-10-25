@@ -270,7 +270,7 @@ terminal's, or 80) and the epilogues print as written, as before.
 `wrapText(text, width)` reflows any text. Lines of prose are joined and filled
 again, and a line ending in `:` ends its paragraph. These are kept as written:
 an indented line, a list item (`- a`, `1. a`), a shell example (`$ cmd`), a
-table row (`| a |`) and a fenced block (``` or ~~~, indented or not). So prose
+table row (`| a |`), a heading (`# a`), a quote line (`> a`) and a fenced block (``` or ~~~, indented or not). So prose
 with names interpolated into it never comes out ragged. Widths are terminal
 columns: a wide character counts 2 and an escape sequence nothing, through
 `@osdlc/ux`'s `displayWidth`. `helpWidth(columns)` picks the width for a
@@ -285,8 +285,10 @@ than `width`.
 `colorEnabled(ctx, { json })` says whether stdout gets color. It is
 `@osdlc/ux`'s `detectColorLevel` for stdout, which reads `NO_COLOR`,
 `FORCE_COLOR`, `TERM=dumb` and whether stdout is a terminal, so a tool and its
-terminal UI follow one rule. A JSON answer is never colored. For the color
-level as well, call `detectColorLevel` directly.
+terminal UI follow one rule. A JSON answer is never colored. cli-tool adds no
+`--color` flag: a tool that declares one passes it as
+`colorEnabled(ctx, { override })`, and it wins over the environment. For the
+color level as well, call `detectColorLevel` directly.
 
 ### `runMain`
 
@@ -423,17 +425,22 @@ Errors:
 | a parse error, or `UsageError` | `<name>: <message>`, the usage line and where the help is | 2 |
 | `CommandError(message, { exit, hint, code })` | `<name>: <message>` and the hint | `exit`, default 1 |
 | a `Failure`, or an error carrying one | the failure line | its category code (22-25), else 1 |
-| anything else | nothing; it propagates to `runMain` | 1 |
+| anything else, such as a plain `Error` | `<name>: <message>` | 1 |
 
-Under `--json` or `--output jsonl`, each of the first three also prints an
-error document on stdout, where a caller reads data:
+A group with no default, run with no command word, is a usage error too
+(exit 2): `<name>: '<group>' needs a command` and the group's help. Every
+message and hint has terminal controls removed before it is printed, since it
+often quotes a file from the repository.
+
+Under `--json` or `--output jsonl`, each of these also prints an error
+document on stdout, where a caller reads data:
 `{ schemaVersion: 1, kind: "error", code, message, exit, hint }`. `code` is
 `usage` for exit 2, the failure's kind for a `Failure`, the `CommandError`'s
 `code`, or else `error`. `ErrorDocumentSchema` is its Zod schema, and
 `App.call` and the HTTP adapter answer a failed call with the same fields.
 
 `checkOutput: true` on the app checks each output against its schema before
-printing it. `runApp` in `@osdlc/cli-tool/testing` always checks a `--json`
+printing it. `runApp` in `@osdlc/cli-tool/testing` always checks a `--json` (or `--output json`)
 answer.
 
 ### Commands as files
@@ -534,7 +541,10 @@ root command `a_b`, or a command named after the app, make `mcpTools` and
 `createMcpServer` throw, naming both commands. A call to a name that is no
 tool is a JSON-RPC request error (`-32602`), as the protocol says.
 
-A failed run is an error result with the exit code and the hint. A document
+A failed run is an error result whose text is the error document as JSON
+(`code`, `message`, `exit`, `hint`), with `code` and the exit code in `_meta`.
+It is not `structuredContent`, because the SDK client checks that against the
+tool's output schema even when `isError` is set. A document
 with a non-zero exit is an error result that keeps `structuredContent`; the
 exit code is in `_meta.exitCode`. Events go to the client as progress
 notifications when it asked for progress, and a cancel aborts `ctx.signal`.

@@ -50,6 +50,8 @@ import {
   parseCatalog,
   parseJsonc,
   shapeProblems,
+  stylesheetEntries,
+  stylesheetProblems,
 } from './package-shape-ts.ts'
 import type { PackageJson, Tsconfig } from './package-shape-ts.ts'
 
@@ -101,32 +103,6 @@ function entryPoints(pkg: Pkg): string[] {
   return keys
     .filter((k) => !k.includes('*') && k !== './package.json')
     .map((k) => (k === '.' ? pkg.name : `${pkg.name}/${k.slice(2)}`))
-}
-
-/** The `exports` subpaths that name a stylesheet: a `./*.css` key whose value
- * is a `./dist/*.css` path. A stylesheet is a file a tool reads, not a module,
- * so it has no types and is not imported. Any other `.css` key is judged as
- * code, so attw fails it. */
-function stylesheetEntries(pkg: Pkg): string[] {
-  if (pkg.exports === null || typeof pkg.exports !== 'object') return []
-  const exports = pkg.exports as Record<string, unknown>
-  return Object.keys(exports).filter((k) => {
-    const value = exports[k]
-    return k.startsWith('./') && k.endsWith('.css') && typeof value === 'string' && /^\.\/dist\/[^*]+\.css$/.test(value)
-  })
-}
-
-/** A stylesheet export whose target is not one `./dist/*.css` file. Such an
- * entry is skipped by attw and only read by the consumer step, so its value
- * is checked here. */
-function stylesheetProblems(pkg: Pkg): string[] {
-  const exports = pkg.exports as Record<string, unknown>
-  return stylesheetEntries(pkg)
-    .filter((key) => {
-      const target = exports[key]
-      return typeof target !== 'string' || !/^\.\/dist\/[^*]+\.css$/.test(target)
-    })
-    .map((key) => `exports["${key}"] must be a "./dist/<name>.css" path`)
 }
 
 /** The peers `peerDependenciesMeta` marks optional, as `name@range`. npm
@@ -332,7 +308,7 @@ for (const pkgDir of dirs) {
         engines,
       }),
       ...packedManifestProblems(packedManifest(tarball)),
-      ...stylesheetProblems(pkg),
+      ...stylesheetProblems(pkg.exports),
     ]
     if (shape.length > 0) {
       throw Object.assign(
@@ -344,7 +320,8 @@ for (const pkgDir of dirs) {
     if (shipsTypes(pkg)) {
       // An ESM-only package is not judged on CommonJS resolution.
       const profile = pkg.type === 'module' ? 'esm-only' : 'node16'
-      const sheets = stylesheetEntries(pkg)
+      // A stylesheet is a file a tool reads, not a module: it has no types.
+      const sheets = stylesheetEntries(pkg.exports)
       const exclude = sheets.length > 0 ? ['--exclude-entrypoints', ...sheets] : []
       process.stdout.write(run(bin('attw'), [tarball, '--profile', profile, ...exclude], root))
     } else {

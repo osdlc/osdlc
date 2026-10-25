@@ -528,7 +528,11 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
 
     if (command === undefined) {
       // A group with no default: name a command.
-      base.io.stderr(renderHelp(helpEntry(node, scope), width, spec.name))
+      const message = `'${[spec.name, ...node.path].join(' ')}' needs a command`
+      if (errorMode !== 'text') return usageFail(message)
+      base.io.stderr(
+        `${spec.name}: ${message}\n\n${renderHelp(helpEntry(node, scope), width, spec.name)}`,
+      )
       return EXIT.usage
     }
 
@@ -643,7 +647,7 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
         }
         return exitCodeFor(failure)
       }
-      throw err
+      return fail('error', err instanceof Error ? err.message : String(err), EXIT.error)
     }
   }
 
@@ -712,19 +716,20 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
     const capture = (text: string): void => {
       stderr += text
     }
+    // An adapter's caller may print these, so they are made safe as on the command line.
     const failed = (code: string, exit: number, message: string, hint?: string): CallResult => ({
       status: 'error',
       exit,
       code,
-      message,
-      ...(hint !== undefined ? { hint } : {}),
+      message: safe(message),
+      ...(hint !== undefined ? { hint: safe(hint) } : {}),
       stderr,
     })
     const usageFailed = (message: string): CallResult => ({
       status: 'error',
       exit: EXIT.usage,
       code: 'usage',
-      message,
+      message: safe(message),
       usage: true,
       stderr,
     })
@@ -750,8 +755,8 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
         signal: options.signal ?? base.signal ?? new AbortController().signal,
         color: false,
         width: helpWidth(undefined),
-        warn: (message) => capture(`${spec.name}: warning: ${message}\n`),
-        note: (message) => capture(`${spec.name}: ${message}\n`),
+        warn: (message) => capture(`${spec.name}: warning: ${safe(message)}\n`),
+        note: (message) => capture(`${spec.name}: ${safe(message)}\n`),
         emit:
           command.events === undefined
             ? noEvents(name)

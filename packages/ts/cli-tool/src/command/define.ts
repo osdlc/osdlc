@@ -407,6 +407,45 @@ function checkReserved(schema: OutputSchema, what: string): void {
   }
 }
 
+interface SchemaDef {
+  type?: string
+  options?: { def?: SchemaDef; shape?: unknown }[]
+  left?: { def?: SchemaDef; shape?: unknown }
+  right?: { def?: SchemaDef; shape?: unknown }
+  in?: { def?: SchemaDef; shape?: unknown }
+  getter?: () => { def?: SchemaDef; shape?: unknown }
+}
+
+/**
+ * The object schemas an items element can be: itself, each option of a
+ * union, both sides of an intersection, the input of a pipe, the target of a
+ * lazy. Null when some branch is not an object, since a jsonl line adds
+ * `schemaVersion` and `kind` to the element's own fields.
+ */
+function elementObjects(
+  schema: { def?: SchemaDef; shape?: unknown } | undefined,
+): OutputSchema[] | null {
+  if (schema === undefined) return null
+  if (schema.shape !== undefined) return [schema as OutputSchema]
+  const def = schema.def ?? {}
+  const all = (
+    parts: ({ def?: SchemaDef; shape?: unknown } | undefined)[],
+  ): OutputSchema[] | null => {
+    const out: OutputSchema[] = []
+    for (const part of parts) {
+      const found = elementObjects(part)
+      if (found === null) return null
+      out.push(...found)
+    }
+    return out
+  }
+  if (def.type === 'union') return all(def.options ?? [])
+  if (def.type === 'intersection') return all([def.left, def.right])
+  if (def.type === 'pipe') return elementObjects(def.in)
+  if (def.type === 'lazy') return elementObjects(def.getter?.())
+  return null
+}
+
 function checkCommand(
   spec: CommandCommon<FlagSpec> & {
     output?: OutputSchema
@@ -431,7 +470,7 @@ function checkCommand(
     if (spec.items !== undefined) {
       const shape = spec.output.shape as Record<
         string,
-        { def?: { type?: string; element?: { shape?: unknown } } }
+        { def?: { type?: string; element?: unknown } }
       >
       const field = Object.hasOwn(shape, spec.items.field) ? shape[spec.items.field] : undefined
       if (field?.def?.type !== 'array') {
@@ -440,8 +479,13 @@ function checkCommand(
         )
       }
       // Each jsonl line is an element with `schemaVersion` and `kind` set by the app.
-      const element = field.def.element
-      if (element?.shape !== undefined) checkReserved(element as OutputSchema, 'an items element')
+      const objects = elementObjects(field.def.element as { def?: SchemaDef; shape?: unknown })
+      if (objects === null) {
+        throw new Error(
+          `defineCommand: items.field '${spec.items.field}' must hold objects, or unions of objects`,
+        )
+      }
+      for (const element of objects) checkReserved(element, 'an items element')
     }
   }
   if (spec.events !== undefined) checkReserved(spec.events.schema, 'events.schema')

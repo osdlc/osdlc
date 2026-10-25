@@ -30,6 +30,7 @@ import {
 
 import {
   commandKit,
+  errorDocument,
   type App,
   type CallResult,
   type InteractiveCommand,
@@ -135,15 +136,21 @@ function text(value: string): { type: 'text'; text: string } {
   return { type: 'text', text: value }
 }
 
-/** A call's answer as a tool result. A document is `structuredContent`; anything else is an error. */
+/**
+ * A call's answer as a tool result. A document is `structuredContent`. A
+ * failed run is the error document as JSON text, with its `code` and exit in
+ * `_meta`. It is not `structuredContent`: the SDK client checks that against
+ * the tool's output schema even on an error result.
+ */
 function toolResult(result: CallResult): CallToolResult {
   if (result.status === 'refused') return { content: [text(result.message)], isError: true }
   const notes = result.stderr !== '' ? [text(result.stderr)] : []
   if (result.status === 'error') {
-    const hint = result.hint !== undefined ? `\n${result.hint}` : ''
+    const doc = errorDocument(result.code, result.message, result.exit, result.hint)
     return {
-      content: [text(`exit ${result.exit}: ${result.message}${hint}`), ...notes],
+      content: [text(JSON.stringify(doc)), ...notes],
       isError: true,
+      _meta: { exitCode: result.exit, code: result.code },
     }
   }
   return {

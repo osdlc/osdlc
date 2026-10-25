@@ -5,6 +5,8 @@
 
 import { z } from 'zod'
 
+import { safe } from '../safe.ts'
+
 /**
  * The Zod schema of {@link ErrorDocument}.
  * @experimental
@@ -28,7 +30,9 @@ export const ErrorDocumentSchema = z.object({
 export type ErrorDocument = z.infer<typeof ErrorDocumentSchema>
 
 /**
- * An {@link ErrorDocument}. An empty or blank hint is left out.
+ * An {@link ErrorDocument}. An empty or blank hint is left out. The message
+ * and hint have terminal controls removed: they often quote a file from the
+ * repository, and `JSON.stringify` keeps C1 controls as they are.
  * @experimental
  */
 export function errorDocument(
@@ -37,12 +41,12 @@ export function errorDocument(
   exit: number,
   hint?: string,
 ): ErrorDocument {
-  const trimmed = hint?.trim()
+  const trimmed = hint === undefined ? undefined : safe(hint).trim()
   return {
     schemaVersion: 1,
     kind: 'error',
     code,
-    message,
+    message: safe(message),
     exit,
     ...(trimmed !== undefined && trimmed !== '' ? { hint: trimmed } : {}),
   }

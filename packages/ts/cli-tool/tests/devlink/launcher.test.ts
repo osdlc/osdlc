@@ -4,14 +4,14 @@
  * each layer is driven through the real script.
  */
 
-import { afterEach, beforeEach, describe, expect, test } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { spawnSync } from 'node:child_process'
 import { chmodSync, mkdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { launcherCheckout, launcherDrift, renderLauncher } from '../../src/devlink/launcher.ts'
 import { resolve } from '../../src/devlink/resolve.ts'
-import { writeActive } from '../../src/devlink/state.ts'
+import { homePath, writeActive } from '../../src/devlink/state.ts'
 import { SPEC, sandbox, seedCheckout, type Sandbox } from './support.ts'
 
 /** What the fake bun prints for a run: the flags that keep Bun off the cwd's config. */
@@ -209,6 +209,38 @@ describe('bash launcher agrees with resolve()', () => {
       mkdirSync(join(sb.root, 'rel', 'tooly'), { recursive: true })
       writeFileSync(join(sb.root, 'rel', 'tooly', 'home'), `${b}\n`)
       const r = runLinux(join(a, SPEC.launcher), sb.home, { XDG_CONFIG_HOME: 'rel' })
+      expect(r.out).toBe(`${BUN_RUN} ${a}/src/cli.ts`)
+    })
+
+    test('TOOLY_CONFIG_DIR and TOOLY_ROOT move the link in dev link and in bash alike', () => {
+      const a = checkoutWithLauncher(join(sb.root, 'a'))
+      const b = seedCheckout(join(sb.root, 'b'))
+      const cases: [string, Record<string, string>][] = [
+        ['config dir', { TOOLY_CONFIG_DIR: join(sb.root, 'cfg') }],
+        ['root', { TOOLY_ROOT: join(sb.root, 'vroot') }],
+        ['config dir over root', { TOOLY_CONFIG_DIR: join(sb.root, 'c2'), TOOLY_ROOT: '/nope' }],
+      ]
+      for (const [what, env] of cases) {
+        vi.unstubAllEnvs()
+        vi.stubEnv('TOOLY_CONFIG_DIR', env['TOOLY_CONFIG_DIR'] ?? '')
+        vi.stubEnv('TOOLY_ROOT', env['TOOLY_ROOT'] ?? '')
+        // Where `dev link` writes, resolved as the tool resolves it.
+        const file = homePath(SPEC)
+        expect(file.startsWith(sb.root), what).toBe(true)
+        mkdirSync(join(file, '..'), { recursive: true })
+        writeFileSync(file, `${b}\n`)
+        const r = runLinux(join(a, SPEC.launcher), sb.home, env)
+        expect(r.out, what).toBe(`${BUN_RUN} ${b}/src/cli.ts`)
+      }
+      vi.unstubAllEnvs()
+    })
+
+    test('a relative TOOLY_CONFIG_DIR reads no link', () => {
+      const a = checkoutWithLauncher(join(sb.root, 'a'))
+      const b = seedCheckout(join(sb.root, 'b'))
+      mkdirSync(join(sb.root, 'rel', 'tooly'), { recursive: true })
+      writeFileSync(join(sb.root, 'rel', 'tooly', 'home'), `${b}\n`)
+      const r = runLinux(join(a, SPEC.launcher), sb.home, { TOOLY_CONFIG_DIR: 'rel' })
       expect(r.out).toBe(`${BUN_RUN} ${a}/src/cli.ts`)
     })
 
