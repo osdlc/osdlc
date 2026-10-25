@@ -100,11 +100,18 @@ function entryPoints(pkg: Pkg): string[] {
     .map((k) => (k === '.' ? pkg.name : `${pkg.name}/${k.slice(2)}`))
 }
 
+/** The `exports` subpaths that name a stylesheet. A stylesheet is a file a
+ * tool reads, not a module, so it has no types and is not imported. */
+function stylesheetEntries(pkg: Pkg): string[] {
+  if (pkg.exports === null || typeof pkg.exports !== 'object') return []
+  return Object.keys(pkg.exports).filter((k) => k.startsWith('./') && k.endsWith('.css'))
+}
+
 /** Installs `tarball` into an empty project and loads each entry point the
  * way a Node consumer would. Code loads through `import()`. An entry with no
  * values passes if its `.d.ts` exports something. A JSON entry (a config
- * preset, possibly with comments) is only resolved and read, because its
- * consumer is a tool, not Node. Then copies in the package's smoke check, if
+ * preset, possibly with comments) or a stylesheet is only resolved and read,
+ * because its consumer is a tool, not Node. Then copies in the package's smoke check, if
  * it has one, and runs it there. */
 function cleanConsumer(
   pkg: Pkg,
@@ -141,7 +148,7 @@ function cleanConsumer(
             return false
           }
         }
-        const ok = resolved.endsWith('.json')
+        const ok = resolved.endsWith('.json') || resolved.endsWith('.css')
           ? readFileSync(resolved, 'utf8').trim().length > 0
           : Object.keys(await import(spec)).length > 0 || typesOnly()
         if (!ok) throw new Error(spec + ' loaded empty')
@@ -273,7 +280,9 @@ for (const pkgDir of dirs) {
     if (shipsTypes(pkg)) {
       // An ESM-only package is not judged on CommonJS resolution.
       const profile = pkg.type === 'module' ? 'esm-only' : 'node16'
-      process.stdout.write(run(bin('attw'), [tarball, '--profile', profile], root))
+      const sheets = stylesheetEntries(pkg)
+      const exclude = sheets.length > 0 ? ['--exclude-entrypoints', ...sheets] : []
+      process.stdout.write(run(bin('attw'), [tarball, '--profile', profile, ...exclude], root))
     } else {
       console.log('attw: skipped, the package ships no types')
     }
