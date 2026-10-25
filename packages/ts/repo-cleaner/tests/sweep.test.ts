@@ -73,7 +73,7 @@ function buildFixture(root: string): void {
 }
 
 /**
- * Four git fixtures, two of them with worktrees, is more than bun's 5s
+ * Four git fixtures, two of them with worktrees, is more than the runner's 5s
  * default allows for on a cold or loaded machine — and a suite that passes
  * locally and times out in CI is worse than a slow one.
  */

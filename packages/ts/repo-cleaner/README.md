@@ -234,8 +234,8 @@ reaches on its own evidence outranks anything a host could contribute, so a
 host never has to veto one. It only sharpens the rows left at `safe-to-keep`
 or `needs-investigation`.
 
-SDLC's `sdlc project cleanup` and `sdlc project apply-cleanup` are this sweep
-and `applyPlan` with its task corpus applied that way.
+An issue tracker's linkage, applied this way, is a host's own layer over the
+sweep and `applyPlan`.
 
 ## Runtime dependencies
 
