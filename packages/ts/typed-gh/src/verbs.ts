@@ -78,6 +78,14 @@ export interface GhTarget {
   hostname?: string | undefined
 }
 
+/**
+ * A bare host, with an optional port: letters, digits, dots and hyphens, that
+ * starts and ends with a letter or digit, then optionally `:` and digits
+ * (`github.com`, `ghe.acme.com`, `localhost:8080`). No scheme, path, spaces or
+ * leading `-`, so the value cannot be read by gh as a flag or a URL. It does
+ * not check that the host exists or that its labels are well formed, and it
+ * does not accept IPv6 literals.
+ */
 const HOSTNAME = /^[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?(?::\d+)?$/
 
 /** The target's host, or `undefined` when it has none. `''` is "not set". */
