@@ -617,6 +617,10 @@ describe('context', () => {
           terminal: { stdin: stdout, stdout, stderr: stdout },
         }
         expect(colorEnabled(ctx)).toBe(detectColorLevel({ env, isTTY: stdout }) !== 'none')
+        // A tool's own --color / --no-color wins over the environment.
+        expect(colorEnabled(ctx, { override: true })).toBe(true)
+        expect(colorEnabled(ctx, { override: false })).toBe(false)
+        expect(colorEnabled(ctx, { override: true, json: true })).toBe(false)
       }
     }
   })

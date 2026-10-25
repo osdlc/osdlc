@@ -285,8 +285,10 @@ than `width`.
 `colorEnabled(ctx, { json })` says whether stdout gets color. It is
 `@osdlc/ux`'s `detectColorLevel` for stdout, which reads `NO_COLOR`,
 `FORCE_COLOR`, `TERM=dumb` and whether stdout is a terminal, so a tool and its
-terminal UI follow one rule. A JSON answer is never colored. For the color
-level as well, call `detectColorLevel` directly.
+terminal UI follow one rule. A JSON answer is never colored. cli-tool adds no
+`--color` flag: a tool that declares one passes it as
+`colorEnabled(ctx, { override })`, and it wins over the environment. For the
+color level as well, call `detectColorLevel` directly.
 
 ### `runMain`
 
