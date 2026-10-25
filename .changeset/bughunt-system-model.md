@@ -1,5 +1,5 @@
 ---
-'@osdlc/system-model': patch
+'@osdlc/system-model': minor
 ---
 
 The make runner reads one makefile per directory in GNU make's order (`GNUmakefile`, then `makefile`, then `Makefile`), so a directory holding several now reports a different file's targets. It also lists every target on a multi-target line (`build test:`). A go-task include outside the root is no longer attributed to the root `Taskfile.yml`. A just parameter whose default is an expression is optional and puts no literal in the argv. A crate a workspace excludes gets its own cargo aliases, including when an inner workspace excludes it but an outer one lists it. A workspace root whose TOML does not parse still covers its crates.

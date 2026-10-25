@@ -1,5 +1,5 @@
 ---
-'@osdlc/cli-tool': patch
+'@osdlc/cli-tool': minor
 ---
 
 A hyphenated flag key (`'project-local'`) is read back under its own key, not commander's camelCased one. `--output json` before the command word routes like `--json`. `captureContext` passes the abort `signal` through. `failWith` strips terminal control characters from what it prints. A command that is both a file and a directory in the command tree is an error.

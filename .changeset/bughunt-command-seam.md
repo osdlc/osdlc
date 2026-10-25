@@ -1,5 +1,5 @@
 ---
-'@osdlc/command-seam': patch
+'@osdlc/command-seam': minor
 ---
 
 A working directory that cannot be entered (no search permission) is now classified `bad-cwd`, with a "cannot be entered" message, instead of `not-executable`. An argument list over the OS limit (E2BIG) is now a `spawn` failure instead of a throw.

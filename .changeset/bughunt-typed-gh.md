@@ -1,5 +1,5 @@
 ---
-'@osdlc/typed-gh': patch
+'@osdlc/typed-gh': minor
 ---
 
 Behaviour change: output that the runner cut short (`outputIncomplete`, at the output cap or a timeout) now fails as `CommandFailed` for every verb but a probe, and in `runCheckedGh`/`runCheckedGhAsync`, instead of being parsed as whole. Behaviour change: every `AsyncGh` method that builds a verb now rejects its Promise on a bad argument (a verb's `RangeError`) instead of throwing at the call site.

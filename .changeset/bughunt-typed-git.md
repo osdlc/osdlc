@@ -1,5 +1,5 @@
 ---
-'@osdlc/typed-git': patch
+'@osdlc/typed-git': minor
 ---
 
 Behaviour change: `mainCheckout()` now answers null for a bare store with no main checkout, instead of the store's parent folder. When the common dir is not `<checkout>/.git` (a submodule, a `--separate-git-dir` clone), it reads `core.worktree`, this checkout when the cwd is the main worktree, or the first non-bare `worktree list` entry.

@@ -1,5 +1,5 @@
 ---
-'@osdlc/code-host': patch
+'@osdlc/code-host': minor
 ---
 
 Behaviour change: a Forgejo PR whose head repository is unknown is now reported `isCrossRepository: true` by `listPrDetails`, as `getPr` already read it as a fork. A caller never takes such a PR's branch for a branch of this repository.

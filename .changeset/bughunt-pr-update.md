@@ -1,5 +1,5 @@
 ---
-'@osdlc/pr-update': patch
+'@osdlc/pr-update': minor
 ---
 
 Behaviour change: `--remote` (and the `remote` input) is now the remote measured against, not only the one fetched. Drift, conflict prediction and the unpushed-work guard read `<remote>/<branch>`; before, they always read `origin/*`. With the default `origin` nothing changes. The code host is still chosen from `origin`.

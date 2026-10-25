@@ -1,5 +1,5 @@
 ---
-'@osdlc/config-layers': patch
+'@osdlc/config-layers': minor
 ---
 
 Behaviour change: a secret key set to a scalar in the project file is now refused, as an object value already was; before, only an object value was checked. Behaviour change: scaffold output changed. Array defaults render each element as its own value (a number or boolean is no longer quoted), a string starting with `+` or `.` is quoted, and a nested object under a `.default({...})` renders the values in that default, with keys it lacks commented out, instead of the children's own schema defaults.
