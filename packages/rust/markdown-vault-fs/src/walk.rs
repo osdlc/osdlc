@@ -11,11 +11,10 @@
 //! same sequence, and nothing more is promised. Callers that need a collation
 //! state it themselves.
 
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
 use crate::hide::HideRules;
-use crate::path::lexical::to_relative;
 
 /// Which entries a walk can see.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -263,13 +262,13 @@ fn walk_one(
         }
         if entry.file_type().is_dir() {
             if let Some(hide) = hide
-                && to_relative(vault_dir, entry.path()).is_ok_and(|rel| hide.hides(&rel, true))
+                && vault_relative(vault_dir, entry.path()).is_some_and(|rel| hide.hides(&rel, true))
             {
                 walker.skip_current_dir();
             }
             continue;
         }
-        let Ok(rel) = to_relative(vault_dir, entry.path()) else {
+        let Some(rel) = vault_relative(vault_dir, entry.path()) else {
             continue;
         };
         // Folders above a root are never visited, so a rooted walk checks them here.
@@ -334,6 +333,24 @@ fn walk_one(
             is_symlink: entry.file_type().is_symlink(),
         });
     }
+}
+
+/// `path` relative to `vault_dir`, `/`-separated on every platform. `None`
+/// when it is not under `vault_dir`, has a `..` segment, or is not UTF-8.
+///
+/// Compares path components, not text, so a Windows path such as
+/// `C:\vault\Notes\a.md` works the same as `/vault/Notes/a.md`.
+fn vault_relative(vault_dir: &Path, path: &Path) -> Option<String> {
+    let rest = path.strip_prefix(vault_dir).ok()?;
+    let mut names = Vec::new();
+    for component in rest.components() {
+        match component {
+            Component::Normal(name) => names.push(name.to_str()?),
+            Component::CurDir => {}
+            _ => return None,
+        }
+    }
+    Some(names.join("/"))
 }
 
 /// The one-line form of [`walk`] for the common case: the content notes of a

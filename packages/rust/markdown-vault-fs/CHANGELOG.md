@@ -34,6 +34,11 @@ Markdown. Versions 0.1.0 to 0.3.0 below were never published.
 - A relative vault root passed to `walk`, `walk_notes` and `walk_reporting` is made absolute
   first, so it walks the same as an absolute one.
 
+### Fixed
+
+- The walk works on Windows. It keyed each entry with a POSIX-only text check, so on Windows it
+  dropped every file and returned an empty result.
+
 ## History before the first public release
 
 These versions were never published. They are rebuilt from the git history.
