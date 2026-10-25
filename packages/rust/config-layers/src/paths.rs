@@ -25,9 +25,8 @@ const DEFAULT_DEFINE_HINT: &str = "define it under paths:";
 /// expanded and resolves as a relative path. If `home` is empty, `~` is left
 /// as written, because expanding it would give the file system root. `home`
 /// is used as given; this crate never reads `$HOME`. A relative path resolves
-/// against `base_dir`. For a project
-/// file that is the project root. For a machine file it is whatever directory
-/// the reading tool uses as its base.
+/// against `base_dir`. For a project file that is the project root. For a
+/// machine file it is whatever directory the reading tool uses as its base.
 ///
 /// This never touches the file system. A relative path is joined and its `.`
 /// and `..` parts removed as text, not canonicalized, so the result is the
@@ -225,15 +224,6 @@ mod tests {
             assert_eq!(resolve("~/Developer"), home().join("Developer"));
             assert_eq!(resolve("./checkouts"), root().join("checkouts"));
             assert_eq!(resolve("/srv/repos"), PathBuf::from("/srv/repos"));
-        }
-
-        #[test]
-        fn expands_only_tilde_and_tilde_slash_and_not_into_an_empty_home() {
-            let resolve = |v: &str, h: &str| resolve_config_path(v, &root(), Path::new(h));
-            assert_eq!(resolve("~user/x", "/home/me"), "/work/app/~user/x");
-            assert_eq!(resolve("~", "/home/me"), "/home/me");
-            assert_eq!(resolve("~/x", ""), "/work/app/~/x");
-            assert_eq!(resolve("~", ""), "/work/app/~");
         }
 
         #[test]

@@ -346,9 +346,10 @@ The crate has no zod to read, so a Rust tool lists its keys in a static `KeySpec
 The two share one test fixture,
 [`packages/rust/config-layers/tests/fixtures/parity.json`](https://github.com/osdlc/osdlc/blob/main/packages/rust/config-layers/tests/fixtures/parity.json).
 This package's `tests/parity.test.ts` and the crate's `tests/parity.rs` read it. It covers
-`valueIsSet`, `valueAt`, the YAML reading rules above, `resolveConfigPath` with a `home` (including `~user/x`, an empty home and a relative one),
-`substitutePathNames` and its error text, and the unmet-need message. Behaviour the two do not
-share is left out of the fixture and listed in this table.
+`valueIsSet`, `valueAt`, the YAML reading rules above, `resolveConfigPath` with a `home`
+(including `~user/x`, an empty home and a relative one), `substitutePathNames` and its error text,
+and the unmet-need message. Behaviour the two do not share is left out of the fixture and listed in
+this table.
 
 | | TypeScript | Rust |
 |---|---|---|

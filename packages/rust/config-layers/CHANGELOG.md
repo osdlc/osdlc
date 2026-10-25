@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [0.7.0](https://github.com/osdlc/osdlc/compare/config-layers/v0.6.0...config-layers/v0.7.0) - 2026-10-25
+## [0.7.0] - Unreleased
 
 Aligned with `@osdlc/config-layers` 0.7.1. The twins share the major and minor
 version, so the crate skips 0.6.1 and goes to 0.7.0. The TypeScript 0.7.0 split
