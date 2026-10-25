@@ -160,6 +160,11 @@ export const RunOutput = z.object({
   task: z.string().describe('The task id.'),
   display: z.string(),
   argv: z.array(z.string()).min(1),
+  command: z
+    .string()
+    .describe(
+      'argv as one shell line, after a cd for a task with its own directory: what the text form prints.',
+    ),
   cwd: z.string().describe('Absolute.'),
   env: z.record(z.string(), z.string()).describe('Variables the arguments set.'),
   ran: z.boolean(),
