@@ -242,6 +242,7 @@ describe('routes', () => {
     expect((await post(server, '/commands/nope', {}, auth)).status).toBe(404)
     expect((await post(server, '/commands/tui', {}, auth)).status).toBe(404)
     expect((await send(server, { path: '/nope', headers: auth })).status).toBe(404)
+    expect((await send(server, { path: '/help/%E0%A4%A', headers: auth })).status).toBe(400)
   })
 
   test('a non-zero exit with a document is 200 with the exit code', async () => {

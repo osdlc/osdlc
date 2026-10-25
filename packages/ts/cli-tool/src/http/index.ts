@@ -357,10 +357,15 @@ export function createHttpApi(app: App, options: HttpApiOptions): HttpApi {
     const url = new URL(request.url)
     if (!handles(request)) return json(errorDoc(2, 'not found'), 404)
     const rest = url.pathname.slice(prefix.length)
-    const words = rest
-      .split('/')
-      .filter((w) => w !== '')
-      .map((w) => decodeURIComponent(w))
+    let words: string[]
+    try {
+      words = rest
+        .split('/')
+        .filter((w) => w !== '')
+        .map((w) => decodeURIComponent(w))
+    } catch {
+      return json(errorDoc(2, 'the path is not valid'), 400)
+    }
     const [route, ...path] = words
     const method = request.method
     const only = (allowed: string): Response =>
