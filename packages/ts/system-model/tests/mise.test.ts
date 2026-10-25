@@ -1,7 +1,10 @@
+import { posix, win32 } from 'node:path'
+
 import { afterAll, describe, expect, test } from 'vitest'
 
 import { tasks, type Task } from '../src/model.ts'
 import { mise } from '../src/plugins/tools/index.ts'
+import { rootRelative } from '../src/plugins/tools/mise.ts'
 import {
   type Canned,
   collect,
@@ -223,5 +226,26 @@ describe('mise runner', () => {
     const build = byName(tasks(catalog), 'build')!
 
     expect(project.runners.invoke(build, ['a', 'b'])).toEqual(['mise', 'run', 'build', 'a', 'b'])
+  })
+})
+
+describe('rootRelative', () => {
+  test('a path inside the root is relative, with / separators', () => {
+    expect(rootRelative('/repo', '/repo/sub/mise.toml', posix)).toBe('sub/mise.toml')
+    expect(rootRelative('C:\\repo', 'C:\\repo\\sub\\mise.toml', win32)).toBe('sub/mise.toml')
+  })
+
+  test('a path above the root is kept absolute', () => {
+    expect(rootRelative('/repo', '/home/me/.config/mise/config.toml', posix)).toBe(
+      '/home/me/.config/mise/config.toml',
+    )
+  })
+
+  test('a path on another drive is kept absolute', () => {
+    expect(rootRelative('C:\\repo', 'D:\\tasks\\mise.toml', win32)).toBe('D:\\tasks\\mise.toml')
+  })
+
+  test('a name that starts with two dots is inside the root', () => {
+    expect(rootRelative('/repo', '/repo/..tasks/build', posix)).toBe('..tasks/build')
   })
 })

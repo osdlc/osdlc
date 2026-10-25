@@ -54,6 +54,7 @@ describe('the schema', () => {
       'tools',
       'open',
       'theme',
+      'skills',
     ])
   })
 

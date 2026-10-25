@@ -1,12 +1,13 @@
 /**
- * `way list`: the whole catalog. Text is one command line per task; `--json`
- * is the catalog document.
+ * `way list`: the whole catalog. Text is one command line per task, then one
+ * `/<name>` line per agent skill; `--json` is the catalog document.
  */
 
 import type { Catalog } from '@osdlc/system-model/detect'
 
-import { catalogGroups } from '../groups.ts'
+import { documentGroups } from '../groups.ts'
 import { filterTasks, type TaskFilter } from '../core/filter.ts'
+import { filterSkills, skillLine, type SkillRow } from '../core/skills.ts'
 import type { CatalogSnapshot, Session } from '../core/session.ts'
 import type { Unknown } from '../core/unknowns.ts'
 import { CATALOG_DOCUMENT_VERSION, CatalogOutput, type CatalogDocumentBody } from '../documents.ts'
@@ -19,7 +20,7 @@ import { FILTER_FLAGS, filterFrom, kit, noteUnknowns, openSession } from './shar
  * that pass it. The CLI and the web view send the same document.
  */
 export function catalogDocument(
-  snapshot: Pick<CatalogSnapshot, 'catalog' | 'cache'>,
+  snapshot: Pick<CatalogSnapshot, 'catalog' | 'cache' | 'skills'>,
   unknowns: Unknown[],
   filter: TaskFilter = {},
 ): CatalogDocumentBody {
@@ -31,10 +32,12 @@ export function catalogDocument(
         tasks: filterTasks([r], filter).map((h) => h.task),
       }))
     : catalog.reports
+  const skills = filterSkills(snapshot.skills, filter).map((h) => h.skill)
   return {
     ...catalog,
     reports,
-    groups: catalogGroups(catalog.reports),
+    groups: documentGroups(catalog.reports, skills.length),
+    skills,
     cache: snapshot.cache,
     unknowns,
     filter: {
@@ -59,7 +62,8 @@ export function listCommand(home: string) {
       'the last stored probe and names the stale runners on stderr. --services, --declared and ' +
       '--depth keep only some tasks; with --json each report keeps only those tasks. Notes on what ' +
       'could not be read (withheld runners, unknown parameters, missing tools) go to stderr; ' +
-      'under --json the same notes are in "unknowns".',
+      'under --json the same notes are in "unknowns". Agent skills follow the tasks as /<name> ' +
+      'lines; the skills setting chooses which (project, all or off).',
     positionals: [{ name: 'dir', help: 'the directory to inspect (beats -C)' }],
     flags: FILTER_FLAGS,
     output: CatalogOutput,
@@ -77,7 +81,10 @@ export function listCommand(home: string) {
       return catalogDocument(snapshot, unknowns, filter)
     },
     text(doc) {
-      const lines = documentTasks(doc).map((t) => terminalSafe(t.display))
+      const lines = [
+        ...documentTasks(doc).map((t) => terminalSafe(t.display)),
+        ...(doc.skills as SkillRow[]).map((s) => terminalSafe(skillLine(s))),
+      ]
       return lines.length > 0 ? `${lines.join('\n')}\n` : ''
     },
   })

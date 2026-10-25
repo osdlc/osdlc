@@ -10,6 +10,7 @@ run a task with the same argument rules.
 | `session.ts` | `createSession`, `Session`, `SessionError`, `resolveRun` | no |
 | `run.ts` | `handOff`: give the terminal to a task and wait for it | no |
 | `filter.ts` | `filterTasks`, `keepsTask`, `sourceDepth`, `TaskFilter` | yes |
+| `skills.ts` | `SkillRow`, `filterSkills`, `skillLine`: the Skills group | yes |
 | `unknowns.ts` | `unknownsOf`, `unknownLine`, `Unknown` | yes |
 | `../vocabulary.ts` | every label a person reads: `TASK_NOUN`, `runnerLabel`, `withheldLabel`, `parametersUnknownLabel`, `staleLabel` and the rest | yes |
 | `../app.ts` | the names: `APP` (`wayfinder`) and `BIN` (`way`) | yes |
@@ -27,14 +28,17 @@ decides execution against the trust store and loads tool modules. It throws
 
 | Call | Does |
 |---|---|
-| `session.catalog()` | probes every runner and stores the result. `cache[].probeMs` is each runner's measured time |
+| `session.catalog()` | probes every runner and stores the result. `cache[].probeMs` is each runner's measured time. `skills` holds the agent skills the `skills` setting chooses |
 | `session.catalog({ cached: true })` | reads the store and probes only the runners missing from it. `origin` says which happened |
 | `session.search(catalog, filter)` | `filterTasks` over the catalog, best first with a query |
+| `session.searchSkills(skills, filter)` | the same for `snapshot.skills` |
 | `session.unknowns(snapshot)` | what could not be read, each with its `label` |
 | `session.trustable()` | whether a grant would change this session's execution |
 | `session.grantTrust()` | writes the grant, turns execution on for this session and drops the withheld hint. Probe again after it. Throws `not-trustable` when trust is not what withholds execution |
-| `session.revokeTrust()` | removes the grant. This session's execution stays as it is |
-| `session.settings()` | every setting and its source (from `readSettings`, the reader `way config` uses), the effective `allowExec`, the gate's reason and trust |
+| `session.grantTrust(scope)` | trusts one tool. A runner runs once its id and each wrapping tool manager are trusted; the next probe applies it |
+| `session.revokeTrust(scope?)` | removes the grant, or one tool's. A whole-repository revoke leaves this session's execution as it is |
+| `session.missingScopes(runner)` | the tool grants a runner still needs; a withheld unknown carries the same list as `missing` |
+| `session.settings()` | every setting and its source (from `readSettings`, the reader `way config` uses), the effective `allowExec`, the gate's reason and trust, each tool's `homepage`, `description` and `language` (`tools`), and the tools trusted on their own (`trustedTools`) |
 | `session.resolveRun(catalog, id, args)` | the `RunPlan` (`argv`, `env`, `cwd`) for a task id, or a `command line` only one task has. Throws `task-not-found`, `not-runnable` (an editor variable) or `bad-arguments` |
 
 `session.options` is the collect options object. A grant and a saved

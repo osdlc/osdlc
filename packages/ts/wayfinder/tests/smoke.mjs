@@ -12,8 +12,8 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
-// The package has no `exports`, so its files resolve by path once installed.
-// In this repo nothing installs it, so fall back to the directory above.
+// Installed, the package resolves by name. In this repo nothing installs it,
+// so fall back to the directory above.
 function packageDir() {
   try {
     return dirname(fileURLToPath(import.meta.resolve('@osdlc/wayfinder/package.json')))
@@ -68,6 +68,12 @@ try {
   assert.ok(!html.includes('<!-- @SCRIPT@ -->') && !html.includes('<!-- @STYLE@ -->'))
   assert.ok(!html.includes('the page script failed to build'), 'dist/web/main.js is missing')
   assert.match(html, /<script type="module">\n.{1000,}/s)
+
+  // The library entry, built: the same catalog document as `way list --json`.
+  const { buildCatalog } = await import(pathToFileURL(join(packageDir(), 'dist', 'index.js')).href)
+  const doc = await buildCatalog({ dir, env, home: env.HOME })
+  assert.equal(doc.kind, 'catalog')
+  assert.ok(doc.reports.some((r) => r.tasks.some((t) => t.display === 'npm run dev')))
 } finally {
   rmSync(base, { recursive: true, force: true })
 }

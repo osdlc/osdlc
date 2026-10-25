@@ -33,6 +33,12 @@ export type Unknown =
       kind: 'withheld'
       runner: string
       reason: WithheldReason
+      /**
+       * The trust scopes this runner still needs: its own id and each tool
+       * manager that wraps it. A grant for each (`way trust --scope <id>`)
+       * lets it run. Absent when trust is not what withholds it.
+       */
+      missing?: string[] | undefined
       label: string
     }
   | {
@@ -67,6 +73,8 @@ export interface UnknownsInput {
   cache?: readonly RunnerCacheState[] | undefined
   /** Why withheld runners were withheld. Default `untrusted`. */
   withheld?: WithheldReason | undefined
+  /** The trust scopes a runner still needs, when per-tool trust is known. */
+  missingScopes?: ((runner: string) => string[] | undefined) | undefined
 }
 
 /** Every unknown in a catalog, in report order. */
@@ -76,7 +84,14 @@ export function unknownsOf(input: UnknownsInput): Unknown[] {
   for (const report of input.reports) {
     const runner = report.runner
     if (report.skippedForExec) {
-      out.push({ kind: 'withheld', runner, reason: withheld, label: withheldLabel(withheld) })
+      const missing = withheld === 'exec-off' ? undefined : input.missingScopes?.(runner)
+      out.push({
+        kind: 'withheld',
+        runner,
+        reason: withheld,
+        ...(missing !== undefined ? { missing } : {}),
+        label: withheldLabel(withheld, missing),
+      })
     }
     if (report.tool !== undefined && !report.tool.found) {
       const binary = report.tool.binary

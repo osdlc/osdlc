@@ -9,7 +9,14 @@ import { isAbsolute, resolve } from 'node:path'
 
 import { closestMatches } from '@osdlc/config-layers/did-you-mean'
 import type { Catalog, Project, RunnerCacheState, Task } from '@osdlc/system-model/detect'
-import { homeDir, policyExecGate, withheldHint, type ExecGate } from '@osdlc/trust-repo'
+import {
+  homeDir,
+  parseTrustScope,
+  policyExecGate,
+  withheldHint,
+  type ExecGate,
+  type PolicyDecisionOptions,
+} from '@osdlc/trust-repo'
 
 import { BIN, PROJECT_CONFIG_FILENAME } from '../app.ts'
 import { cacheDir } from '../cache.ts'
@@ -19,6 +26,7 @@ import {
   makeProject,
   orderedCatalog,
   readCachedCatalog,
+  runnerIds,
   type WayOptions,
 } from '../catalog.ts'
 import {
@@ -30,10 +38,13 @@ import {
   type LoadedConfig,
   type Settings,
 } from '../config.ts'
+import { readSkills } from '../skills.ts'
+import { toolSummary, type ToolSummary } from '../tool-info.ts'
 import { loadTools, ToolModuleError, type LoadedTool } from '../tools.ts'
 import { appTrustStore } from '../trust-store.ts'
 import type { WithheldReason } from '../vocabulary.ts'
 import { filterTasks, type TaskFilter, type TaskHit } from './filter.ts'
+import { filterSkills, type SkillHit, type SkillRow } from './skills.ts'
 import { unknownsOf, type Unknown } from './unknowns.ts'
 
 /**
@@ -104,6 +115,8 @@ export interface CatalogSnapshot {
   catalog: Catalog
   /** One entry per selected runner. */
   cache: CacheState[]
+  /** The agent skills for the Skills group, as the `skills` setting chooses. */
+  skills: SkillRow[]
   /**
    * `probe`: every runner was probed now. `store`: from the stored probe,
    * with any runner missing from it probed now. `empty-store`: a stored
@@ -124,6 +137,14 @@ export interface SettingsSnapshot {
   trusted: boolean
   /** Whether a trust grant would change this session's execution. */
   trustable: boolean
+  /** Every registered tool's description, homepage and language, in registry order. */
+  tools: ToolSummary[]
+  /**
+   * The tool ids trusted on their own, by a `--scope` grant or `trust.tools`
+   * in the user config. Empty when the repository is trusted as a whole, or
+   * trust does not decide execution.
+   */
+  trustedTools: string[]
 }
 
 /** What a trust grant or revoke changed. */
@@ -183,21 +204,34 @@ export interface Session {
   catalog(opts?: { cached?: boolean; signal?: AbortSignal | undefined }): Promise<CatalogSnapshot>
   /** The tasks of `catalog` that pass `filter`, best first when there is a query. */
   search(catalog: Catalog, filter: TaskFilter): TaskHit[]
+  /** The skills that pass `filter`, matched as {@link search} matches tasks. */
+  searchSkills(skills: readonly SkillRow[], filter: TaskFilter): SkillHit[]
   /** Everything this session could not know about `snapshot`. */
   unknowns(snapshot: Pick<CatalogSnapshot, 'catalog' | 'cache'>): Unknown[]
   /** Whether a trust grant would change this session's execution. */
   trustable(): boolean
   /**
    * Trust the repository and allow execution for the rest of this session.
-   * Throws {@link SessionError} `not-trustable` when trust is not what
-   * withholds execution. Probe again afterwards.
+   * With `scope`, a tool or runner id, trust only that tool: a runner runs
+   * once it and each tool manager that wraps it are trusted (see the
+   * `missing` of a withheld unknown). Throws {@link SessionError}
+   * `not-trustable` when trust is not what withholds execution, and
+   * `bad-arguments` for a scope that cannot be a grant. Probe again
+   * afterwards.
    */
-  grantTrust(): Promise<TrustChange>
+  grantTrust(scope?: string): Promise<TrustChange>
   /**
-   * Remove the repository's trust grant. This session's execution setting
-   * stays as it is until it ends.
+   * Remove the repository's trust grant, or with `scope` that tool's. A
+   * whole-repository revoke leaves this session's execution as it is until
+   * it ends; a tool revoke applies to the next probe.
    */
-  revokeTrust(): Promise<TrustChange>
+  revokeTrust(scope?: string): Promise<TrustChange>
+  /**
+   * The trust scopes `runner` needs that are not trusted, as of the last
+   * probe. Empty when it may run; undefined when per-tool trust does not
+   * apply (the repository is trusted, or execution is off).
+   */
+  missingScopes(runner: string): string[] | undefined
   settings(): SettingsSnapshot
   /**
    * The task `id` names, with `args` bound the way its tool expects. The
@@ -241,6 +275,43 @@ async function projectFor(
     const modules = [...new Set(loaded.tools.map((t) => t.module))].join(', ')
     const message = err instanceof Error ? err.message : String(err)
     throw new SessionError('tool-module', `${message} (from a tool module: ${modules})`)
+  }
+}
+
+/**
+ * Every scope a tool grant can name for `project`: each runner's id, and
+ * each tool manager that wraps commands (`mise exec`), since a runner it
+ * wraps needs it trusted too.
+ */
+function toolTrustScopes(project: Project): string[] {
+  const wrappers = project.tools.filter((t) => t.roles.toolManager?.exec !== undefined)
+  return [...new Set([...runnerIds(project), ...wrappers.map((t) => t.id)])]
+}
+
+/** `opts` with an `ownerOf` that runs git at most once per root. */
+function onceOwner(opts: PolicyDecisionOptions): PolicyDecisionOptions {
+  const ownerOf = opts.ownerOf
+  if (ownerOf === undefined) return opts
+  const seen = new Map<string, ReturnType<typeof ownerOf>>()
+  return {
+    ...opts,
+    ownerOf: (root) => {
+      let owner = seen.get(root)
+      if (owner === undefined) {
+        owner = ownerOf(root)
+        seen.set(root, owner)
+      }
+      return owner
+    },
+  }
+}
+
+/** A scope a person typed, checked as `way trust --scope` checks it. */
+function parseScope(scope: string): string {
+  try {
+    return parseTrustScope(scope)
+  } catch (err) {
+    throw new SessionError('bad-arguments', err instanceof Error ? err.message : String(err))
   }
 }
 
@@ -291,11 +362,13 @@ export async function createSession(opts: SessionOptions): Promise<Session> {
   // reads the trust store.
   const configured = settings.allowExec.value
   const trustStore = appTrustStore({ env, home })
+  const policy = trustPolicyFromConfig(config.effective)
+  const policyOptions = onceOwner(trustPolicyOptions(home))
   let gate = await policyExecGate(
     trustStore,
-    trustPolicyFromConfig(config.effective),
+    policy,
     { root, configured, flag: flags.allowExec },
-    trustPolicyOptions(home),
+    policyOptions,
   )
 
   // A project module runs code on import, so it needs execution allowed as
@@ -324,6 +397,36 @@ export async function createSession(opts: SessionOptions): Promise<Session> {
     ...(flags.excludePaths ? ['excludePaths'] : []),
     ...(flags.discovery !== undefined ? ['discovery'] : []),
   ]
+  // Per-tool trust applies only when the repository's own trust is what
+  // withholds execution. The set is read on every probe, so a tool grant in
+  // this session applies to the next one.
+  const toolTrusted = new Set<string>()
+  let scopesByRunner: ReadonlyMap<string, readonly string[]> = new Map()
+  const toolScopes = gate.reason === 'untrusted' ? toolTrustScopes(built.project) : ([] as string[])
+  const decideTools = async (): Promise<void> => {
+    toolTrusted.clear()
+    if (toolScopes.length === 0) return
+    const decided = await policyExecGate(
+      trustStore,
+      policy,
+      { root, configured: true, scopes: toolScopes },
+      policyOptions,
+    )
+    for (const [scope, d] of Object.entries(decided.decisions))
+      if (d.trusted) toolTrusted.add(scope)
+  }
+  await decideTools()
+  if (toolScopes.length > 0) {
+    options.toolTrust = {
+      trusted: toolTrusted,
+      onScopes: (scopes) => {
+        scopesByRunner = scopes
+      },
+    }
+  }
+  const skillsSetting = settings.skills.value
+  const skills = (): Promise<SkillRow[]> =>
+    readSkills(root, { setting: skillsSetting, home, env, signal: opts.signal })
   const store = cacheDir(env, home)
   const runnerOrder = (): string[] | undefined => config.effective.runners?.order
   const trustable = (): boolean => options.execWithheldHint !== undefined
@@ -376,6 +479,7 @@ export async function createSession(opts: SessionOptions): Promise<Session> {
         return {
           catalog: orderedCatalog(catalog, runnerOrder()),
           cache: probedStates(catalog, times),
+          skills: await skills(),
           origin: 'probe',
         }
       }
@@ -385,6 +489,7 @@ export async function createSession(opts: SessionOptions): Promise<Session> {
         return {
           catalog: orderedCatalog(catalog, runnerOrder()),
           cache: probedStates(catalog, times),
+          skills: await skills(),
           origin: 'empty-store',
         }
       }
@@ -394,6 +499,7 @@ export async function createSession(opts: SessionOptions): Promise<Session> {
         return {
           catalog: orderedCatalog(stored.catalog, runnerOrder()),
           cache: stored.runners,
+          skills: await skills(),
           origin: 'store',
         }
       }
@@ -405,23 +511,46 @@ export async function createSession(opts: SessionOptions): Promise<Session> {
           runnerOrder(),
         ),
         cache: stored.runners.map((r) => fresh.get(r.runner) ?? r),
+        skills: await skills(),
         origin: 'store',
       }
     },
     search(catalog, filter) {
       return filterTasks(catalog.reports, filter)
     },
+    searchSkills(list, filter) {
+      return filterSkills(list, filter)
+    },
     unknowns(snapshot) {
-      const withheld = session.withheldReason() ?? 'untrusted'
-      return unknownsOf({ reports: snapshot.catalog.reports, cache: snapshot.cache, withheld })
+      let withheld = session.withheldReason() ?? 'untrusted'
+      // Once any tool is trusted here, a withheld runner is one whose own
+      // tools are not.
+      if (withheld === 'untrusted' && toolTrusted.size > 0) withheld = 'tool-untrusted'
+      return unknownsOf({
+        reports: snapshot.catalog.reports,
+        cache: snapshot.cache,
+        withheld,
+        missingScopes: (runner) => session.missingScopes(runner),
+      })
+    },
+    missingScopes(runner) {
+      if (gate.allowExec || toolScopes.length === 0) return undefined
+      const needs = scopesByRunner.get(runner) ?? [runner]
+      return needs.filter((s) => !toolTrusted.has(s))
     },
     trustable,
-    async grantTrust() {
+    async grantTrust(scope) {
       if (!trustable()) {
         throw new SessionError(
           'not-trustable',
           "a trust grant would not change this run's execution gate",
         )
+      }
+      if (scope !== undefined) {
+        const parsed = parseScope(scope)
+        const result = await trustStore.trust(root, parsed)
+        toolTrusted.add(parsed)
+        return { changed: !result.alreadyTrusted }
       }
       const result = await trustStore.trust(root)
       options.allowExec = true
@@ -434,7 +563,13 @@ export async function createSession(opts: SessionOptions): Promise<Session> {
         : undefined
       return { changed: !result.alreadyTrusted, ...(note !== undefined ? { note } : {}) }
     },
-    async revokeTrust() {
+    async revokeTrust(scope) {
+      if (scope !== undefined) {
+        const removed = await trustStore.untrust(root, parseScope(scope))
+        // The user config's trust.tools may still trust it.
+        await decideTools()
+        return { changed: removed }
+      }
       const removed = await trustStore.untrust(root)
       return { changed: removed }
     },
@@ -446,6 +581,8 @@ export async function createSession(opts: SessionOptions): Promise<Session> {
         reason: gate.reason,
         trusted: gate.trusted,
         trustable: trustable(),
+        tools: project.tools.map(toolSummary),
+        trustedTools: gate.allowExec ? [] : [...toolTrusted],
       }
     },
     resolveRun(catalog, id, args = []) {

@@ -16,4 +16,4 @@ export type Theme = (typeof THEME_VALUES)[number]
 export const CLI_ONLY_KEYS: readonly string[] = ['trust', 'allowExec', 'tools']
 
 /** The top-level keys only the user layer may set. */
-export const USER_ONLY_KEYS: readonly string[] = ['trust', 'open', 'theme']
+export const USER_ONLY_KEYS: readonly string[] = ['trust', 'open', 'theme', 'skills']
