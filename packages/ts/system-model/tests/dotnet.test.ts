@@ -33,8 +33,11 @@ describe('dotnet runner', () => {
   test('a solution and its projects get the conventional verbs', async () => {
     const { profile, catalog } = await run({
       'App.sln': '',
-      'src/App/App.csproj': '<Project Sdk="Microsoft.NET.Sdk" />',
+      'src/App/App.csproj':
+        '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType></PropertyGroup></Project>',
       'src/Lib/Lib.fsproj': '<Project Sdk="Microsoft.NET.Sdk" />',
+      'tests/T/T.csproj':
+        '<Project Sdk="Microsoft.NET.Sdk"><ItemGroup><PackageReference Include="Microsoft.NET.Test.Sdk" /></ItemGroup></Project>',
     })
     expect(profile.ecosystems).toEqual(['dotnet'])
     const found = tasks(catalog)
@@ -44,13 +47,11 @@ describe('dotnet runner', () => {
       'restore',
       'publish',
     ])
-    expect(found.filter((t) => t.source === 'src/App/App.csproj').map((t) => t.path[2])).toEqual([
-      'build',
-      'test',
-      'run',
-      'restore',
-      'publish',
-    ])
+    const verbs = (source: string) => found.filter((t) => t.source === source).map((t) => t.path[2])
+    expect(verbs('src/App/App.csproj')).toEqual(['build', 'run', 'restore', 'publish'])
+    // A class library neither runs nor tests.
+    expect(verbs('src/Lib/Lib.fsproj')).toEqual(['build', 'restore', 'publish'])
+    expect(verbs('tests/T/T.csproj')).toEqual(['build', 'test', 'restore', 'publish'])
     expect(found.every((t) => t.origin === 'synthesized' && t.cwd === '.')).toBe(true)
     expect(
       named(
@@ -61,7 +62,8 @@ describe('dotnet runner', () => {
   })
 
   test('run takes --project and passes arguments after --', async () => {
-    const { project, catalog } = await run({ 'tool/Tool.csproj': '<Project />' })
+    // An unreadable project file gets every verb.
+    const { project, catalog } = await run({ 'tool/Tool.csproj': ' '.repeat(4 * 1024 * 1024 + 1) })
     const runTask = named(tasks(catalog), 'run')
     expect(runTask.argv).toEqual(['dotnet', 'run', '--project', 'tool/Tool.csproj'])
     expect(project.runners.invoke(runTask, ['--port', '5000'])).toEqual([
@@ -81,10 +83,26 @@ describe('dotnet runner', () => {
     ])
   })
 
-  test('a .slnx solution counts, and the file is never read', async () => {
+  test('a .slnx solution counts, and a solution file is never read', async () => {
     const { catalog } = await run({ 'App.slnx': '<<< not xml' })
     expect(tasks(catalog).map((t) => t.argv.join(' '))).toContain('dotnet build App.slnx')
     expect(catalog.reports[0]!.diagnostics).toEqual([])
+  })
+
+  test('in Microsoft.Testing.Platform mode, test takes --project or --solution', async () => {
+    const { catalog } = await run({
+      'global.json': JSON.stringify({ test: { runner: 'Microsoft.Testing.Platform' } }),
+      'App.sln': '',
+      'T/T.csproj':
+        '<Project><PropertyGroup><IsTestProject>true</IsTestProject></PropertyGroup></Project>',
+    })
+    const tests = tasks(catalog)
+      .filter((t) => t.path[2] === 'test')
+      .map((t) => t.argv)
+    expect(tests).toEqual([
+      ['dotnet', 'test', '--solution', 'App.sln'],
+      ['dotnet', 'test', '--project', 'T/T.csproj'],
+    ])
   })
 
   test('absent without a solution or project file', async () => {

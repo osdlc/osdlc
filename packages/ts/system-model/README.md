@@ -289,7 +289,7 @@ The built-in runners, and where their tasks come from:
 | `maven` | each `pom.xml` (synthesized) | `mvn <phase>` |
 | `gradle` | `gradle tasks --all`, else the build files | `gradle <task>` |
 | `swiftpm` | each `Package.swift` (synthesized) | `swift build`, ... |
-| `dotnet` | each `.sln`, `.slnx`, `.csproj`, `.fsproj`, `.vbproj` (synthesized) | `dotnet build <file>`, `dotnet run --project <file>`, ... |
+| `dotnet` | each `.sln`, `.slnx`, `.csproj`, `.fsproj`, `.vbproj` (synthesized; `run` for a program, `test` for a test project) | `dotnet build <file>`, `dotnet run --project <file>`, ... |
 | `go-task` | `task --list-all --json`, else the Taskfile | `task <name>` |
 | `rake` | `rake -AT`, else the Rakefile | `rake <task>` |
 | `cmake-presets` | `CMakePresets.json`, `CMakeUserPresets.json` and their includes | `cmake --preset`, `cmake --build --preset`, `ctest --preset` |
