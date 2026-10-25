@@ -24,6 +24,19 @@
             "type": "string"
           },
           "description": "Preferred display order. Runners not named follow alphabetically."
+        },
+        "timeout": {
+          "anyOf": [
+            {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 3600
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Seconds one runner may take to list its tasks, its subprocesses included. A runner still running then is stopped and shows \"timed out\". null (the default): each runner has its own limit, 10 for just and task, 30 for mise and rake, 120 for moon, 300 for gradle and sbt, 60 for the rest."
         }
       },
       "description": "Which runners are read, and in what order they are shown."

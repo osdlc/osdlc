@@ -98,6 +98,9 @@ const TrustRulesSchema = z.object({
 /** The `discovery` values. */
 export const DISCOVERY_VALUES = ['git', 'walk', 'auto'] as const
 
+/** The largest `runners.timeout`, in seconds: one hour. */
+export const MAX_RUNNER_TIMEOUT_S = 3600
+
 /** The `open` values: what the bare `way` command opens. */
 export const OPEN_VALUES = ['tui', 'web'] as const
 /** What the bare `way` command opens. */
@@ -116,6 +119,17 @@ export const WayfinderConfigSchema = z
       .object({
         disabled: strings('Runner ids to skip entirely.'),
         order: strings('Preferred display order. Runners not named follow alphabetically.'),
+        timeout: z
+          .number()
+          .positive()
+          .max(MAX_RUNNER_TIMEOUT_S)
+          .nullable()
+          .describe(
+            'Seconds one runner may take to list its tasks, its subprocesses included. A runner ' +
+              'still running then is stopped and shows "timed out". null (the default): each ' +
+              'runner has its own limit, 10 for just and task, 30 for mise and rake, 120 for ' +
+              'moon, 300 for gradle and sbt, 60 for the rest.',
+          ),
       })
       .partial()
       .describe('Which runners are read, and in what order they are shown.'),
@@ -208,6 +222,8 @@ function describe(value: unknown): string {
 function expectation(schema: z.ZodType): string {
   const s = unwrap(schema)
   if (s instanceof z.ZodBoolean) return 'true or false'
+  if (s instanceof z.ZodNullable) return `${expectation(s.unwrap() as z.ZodType)}, or null`
+  if (s instanceof z.ZodNumber) return `a number above 0, at most ${MAX_RUNNER_TIMEOUT_S}`
   if (s instanceof z.ZodEnum) return `one of ${s.options.join(', ')}`
   if (s instanceof z.ZodArray) return 'an array of strings'
   if (s instanceof z.ZodString) return 'a string'
@@ -458,7 +474,8 @@ function check(
       file,
     )
   }
-  const got = s instanceof z.ZodEnum ? JSON.stringify(value) : describe(value)
+  const got =
+    s instanceof z.ZodEnum || typeof value === 'number' ? JSON.stringify(value) : describe(value)
   throw new ConfigError(`${where}${key} must be ${expectation(s)}, got ${got}`, file)
 }
 
@@ -527,7 +544,7 @@ export function mergeConfig(base: WayfinderConfig, over: WayfinderConfig): Wayfi
  * execution.
  */
 export const DEFAULT_CONFIG: Required<WayfinderConfig> = {
-  runners: { disabled: [], order: [] },
+  runners: { disabled: [], order: [], timeout: null },
   allowExec: true,
   discovery: 'auto',
   excludePaths: [],
@@ -1041,10 +1058,15 @@ export function resolveConfigKey(key: string): string | undefined {
  */
 export function collectOptionsFromConfig(
   config: WayfinderConfig,
-): Pick<WayOptions, 'exclude' | 'allowExec' | 'discovery' | 'excludePaths'> {
-  const options: Pick<WayOptions, 'exclude' | 'allowExec' | 'discovery' | 'excludePaths'> = {}
+): Pick<WayOptions, 'exclude' | 'allowExec' | 'discovery' | 'excludePaths' | 'probeTimeoutMs'> {
+  const options: Pick<
+    WayOptions,
+    'exclude' | 'allowExec' | 'discovery' | 'excludePaths' | 'probeTimeoutMs'
+  > = {}
   const disabled = config.runners?.disabled
   if (disabled !== undefined) options.exclude = [...disabled]
+  const timeout = config.runners?.timeout
+  if (timeout !== undefined && timeout !== null) options.probeTimeoutMs = Math.round(timeout * 1000)
   if (config.allowExec !== undefined) options.allowExec = config.allowExec
   if (config.discovery !== undefined) options.discovery = config.discovery
   if (config.excludePaths !== undefined) options.excludePaths = [...config.excludePaths]

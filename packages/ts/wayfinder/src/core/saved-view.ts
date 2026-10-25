@@ -25,6 +25,7 @@ import { z } from 'zod'
 import { CacheStateZ, CatalogZ, SkillZ } from '../documents.ts'
 import type { CacheState } from './session.ts'
 import type { SkillRow } from './skills.ts'
+import { trackWrite } from './writes.ts'
 
 const VIEW_FORMAT_VERSION = 1
 
@@ -110,22 +111,14 @@ export async function readView(
   }
 }
 
-/** The writes this process has in flight, by file. */
+/** The view writes in flight, by file: a write waits for the one before it. */
 const writing = new Map<string, Promise<void>>()
-
-/**
- * Settles when every view write this process started has ended. Call it
- * before `process.exit`, which would drop a write in flight, and before a
- * test removes the cache directory.
- */
-export async function flushViews(): Promise<void> {
-  while (writing.size > 0) await Promise.all(writing.values())
-}
 
 /**
  * Save the view, without waiting: the caller answers first. A failed write
  * only makes the next first paint slower. The returned promise settles when
- * the file is written, for a caller that must wait.
+ * the file is written, for a caller that must wait; `flushWrites` waits for
+ * it too.
  */
 export function writeView(store: string, view: Omit<SavedView, 'version'>): Promise<void> {
   const file = viewPath(store, view.catalog.root, view.key)
@@ -143,5 +136,5 @@ export function writeView(store: string, view: Omit<SavedView, 'version'>): Prom
       if (writing.get(file) === done) writing.delete(file)
     })
   writing.set(file, done)
-  return done
+  return trackWrite(done)
 }

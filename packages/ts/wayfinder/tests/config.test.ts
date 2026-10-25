@@ -338,6 +338,22 @@ describe('validateConfig', () => {
   test('rejects a discovery mode that is not one of the three', () => {
     expect(() => validateConfig({ discovery: 'sideways' }, '/cfg.json')).toThrow(/git, walk, auto/)
   })
+
+  test('runners.timeout takes seconds above 0 up to an hour, or null', () => {
+    expect(validateConfig({ runners: { timeout: 2.5 } }, '/cfg.json').config.runners).toEqual({
+      timeout: 2.5,
+    })
+    expect(validateConfig({ runners: { timeout: null } }, '/cfg.json').config.runners).toEqual({
+      timeout: null,
+    })
+    expect(() => validateConfig({ runners: { timeout: 0 } }, '/cfg.json')).toThrow(
+      /runners\.timeout must be a number above 0, at most 3600, or null, got 0/,
+    )
+    expect(() => validateConfig({ runners: { timeout: 7200 } }, '/cfg.json')).toThrow(/got 7200/)
+    expect(() => validateConfig({ runners: { timeout: '10' } }, '/cfg.json')).toThrow(
+      /runners\.timeout must be a number above 0, at most 3600, or null, got a string/,
+    )
+  })
 })
 
 describe('readConfigFile', () => {
@@ -393,7 +409,7 @@ describe('loadConfig', () => {
     const loaded = await loadConfig(project, env(), home)
 
     expect(loaded.effective).toEqual({
-      runners: { disabled: ['cargo'], order: ['just'] },
+      runners: { disabled: ['cargo'], order: ['just'], timeout: null },
       allowExec: true,
       discovery: 'auto',
       excludePaths: [],
@@ -786,6 +802,13 @@ describe('collectOptionsFromConfig', () => {
 
   test('omits what the config does not set, so spread flags win cleanly', () => {
     expect(collectOptionsFromConfig({})).toEqual({})
+    expect(collectOptionsFromConfig({ runners: { timeout: null } })).toEqual({})
+  })
+
+  test('maps runners.timeout, in seconds, onto probeTimeoutMs', () => {
+    expect(collectOptionsFromConfig({ runners: { timeout: 2.5 } })).toEqual({
+      probeTimeoutMs: 2500,
+    })
   })
 })
 

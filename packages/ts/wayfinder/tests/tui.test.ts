@@ -25,6 +25,7 @@ import { configLocations } from '../src/config.ts'
 import { KEY_TABLE, keysFor } from '../src/keys.ts'
 import { refreshNote, wrapHanging } from '../src/tui/app.ts'
 import type { CacheState, CatalogProgress, CatalogSnapshot } from '../src/core/session.ts'
+import type { SkillRow } from '../src/core/skills.ts'
 import { taskCopyText } from '../src/core/copy-text.ts'
 import { viewPath } from '../src/core/saved-view.ts'
 import { clipboardCommands, writeClipboard } from '../src/tui/copy.ts'
@@ -99,6 +100,20 @@ async function showing(cat: Catalog, opts: Parameters<typeof testTui>[0] = {}) {
 }
 
 const clock = new Date(new Date(0).toISOString()).toLocaleTimeString()
+
+function skillRow(name: string): SkillRow {
+  return {
+    id: `skill:.claude/skills/${name}/SKILL.md`,
+    name,
+    description: null,
+    argumentHint: null,
+    path: `.claude/skills/${name}/SKILL.md`,
+    scope: 'project',
+    origin: 'project',
+    harnesses: ['claude'],
+    invoke: `/${name}`,
+  }
+}
 
 describe('selection across a refresh', () => {
   test('survives rows being reordered and dropped underneath it', async () => {
@@ -930,11 +945,12 @@ describe('step-by-step loading', () => {
       probe,
       runners: (ids: string[]) => progress!.onRunners!(ids),
       answer: (r: RunnerReport) => progress!.onRunner!(r, fresh(r.runner)),
-      finish: (reports: RunnerReport[]) =>
+      skills: (rows: SkillRow[]) => progress!.onSkills!(rows),
+      finish: (reports: RunnerReport[], skills: SkillRow[] = []) =>
         finish({
           catalog: { ...catalog([]), reports },
           cache: reports.map((r) => fresh(r.runner)),
-          skills: [],
+          skills,
           origin: 'probe',
         }),
     }
@@ -1049,6 +1065,87 @@ describe('step-by-step loading', () => {
     tui.recompute()
     expect(lineOf(tui, 3)).toBe('  boom: boom exploded')
     expect(lineOf(tui, 4)).toBe('    probe failed')
+  })
+
+  test('skills read before any task show with the first task, below it, with their tab', async () => {
+    const { tui } = await testTui()
+    Object.assign(tui.session, { savedCatalog: async () => null })
+    const probe = stepped(tui)
+    const booted = tui.boot()
+    await vi.waitFor(() => expect(probe.probe).toHaveBeenCalled())
+    probe.skills([skillRow('review')])
+    // Held: a task landing in its place would change what Enter does.
+    expect(tui.state.skills).toEqual([])
+    probe.runners(['make', 'just'])
+    probe.answer(report('just', [], { status: 'absent' }))
+    expect(tui.state.skills).toEqual([])
+    const make = report('make', [task('make', 'build')])
+    probe.answer(make)
+    expect(lineOf(tui, 0)).toMatch(/ make 1 .* skills 1 /)
+    expect(lineOf(tui, 2)).toContain('loading')
+    expect(lineOf(tui, 3)).toBe('>   make > build')
+    expect(screen(tui)).toContainEqual(expect.stringMatching(/^ {4}\/review {2}project$/))
+    expect(tui.state.selectedId).toBe('make:build')
+    probe.finish([make], [skillRow('review')])
+    await booted
+    expect(tui.state.selectedId).toBe('make:build')
+    expect(tui.state.skills.map((r) => r.name)).toEqual(['review'])
+  })
+
+  test('skills read after a task show at once', async () => {
+    const { tui } = await testTui()
+    Object.assign(tui.session, { savedCatalog: async () => null })
+    const probe = stepped(tui)
+    void tui.boot()
+    await vi.waitFor(() => expect(probe.probe).toHaveBeenCalled())
+    probe.runners(['make', 'just'])
+    probe.answer(report('make', [task('make', 'build')]))
+    probe.skills([skillRow('review')])
+    expect(lineOf(tui, 2)).toContain('loading 1 of 2: just')
+    expect(lineOf(tui, 0)).toContain(' skills 1 ')
+  })
+
+  test('over a saved view, the skills come with the whole answer', async () => {
+    const { tui } = await testTui()
+    Object.assign(tui.session, {
+      savedCatalog: async () => ({
+        catalog: catalog(['old']),
+        cache: [{ runner: 'make', state: 'fresh', ageMs: 1000, estimateMs: null, slow: false }],
+        skills: [],
+        origin: 'saved',
+      }),
+    })
+    const probe = stepped(tui)
+    const booted = tui.boot()
+    await vi.waitFor(() => expect(probe.probe).toHaveBeenCalled())
+    probe.runners(['make'])
+    probe.skills([skillRow('review')])
+    expect(tui.state.skills).toEqual([])
+    const make = report('make', [task('make', 'new')])
+    probe.answer(make)
+    expect(tui.state.skills).toEqual([])
+    probe.finish([make], [skillRow('review')])
+    await booted
+    expect(tui.state.skills.map((r) => r.name)).toEqual(['review'])
+  })
+
+  test('a runner cut off at its timeout shows the reason in place', async () => {
+    const { tui } = await testTui()
+    Object.assign(tui.session, { savedCatalog: async () => null })
+    const probe = stepped(tui)
+    void tui.boot()
+    await vi.waitFor(() => expect(probe.probe).toHaveBeenCalled())
+    probe.runners(['hang', 'make'])
+    probe.answer(
+      report('hang', [], {
+        status: 'error',
+        diagnostics: [{ severity: 'error', message: 'timed out after 10 s' }],
+      }),
+    )
+    tui.recompute()
+    expect(lineOf(tui, 0)).toContain(' hang 0 ! ')
+    expect(lineOf(tui, 3)).toBe('  hang: timed out after 10 s')
+    expect(lineOf(tui, 2)).toContain('loading 1 of 2: make')
   })
 
   test('a repository with no runners loads to an empty list', async () => {

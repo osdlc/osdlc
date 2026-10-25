@@ -11,6 +11,7 @@ import {
   createProject,
   type CachedCatalog,
   type Catalog,
+  type CollectOptions,
   type DiscoveryMode,
   type Project,
   type ProjectProfile,
@@ -19,6 +20,7 @@ import {
 } from '@osdlc/system-model/detect'
 
 import { orderRunners } from './config.ts'
+import { trackWrite } from './core/writes.ts'
 import { groupRank } from './groups.ts'
 
 /**
@@ -36,6 +38,12 @@ export interface WayOptions {
   execWithheldHint?: string | undefined
   discovery?: DiscoveryMode | 'auto' | undefined
   excludePaths?: string[] | undefined
+  /**
+   * How long one runner may take to answer, its subprocesses included, in
+   * ms. Unset, each runner has its own limit. A runner past it is stopped
+   * and reports `timed out after <n> s`.
+   */
+  probeTimeoutMs?: number | undefined
   signal?: AbortSignal | undefined
   /** Called with each probed runner's measured time. */
   onProbe?: ((probe: { runner: string; durationMs: number }) => void) | undefined
@@ -87,12 +95,13 @@ function detect(project: Project, root: string, o: WayOptions): Promise<ProjectP
   })
 }
 
-function collectOptions(o: WayOptions) {
+function collectOptions(o: WayOptions): CollectOptions {
   return {
     only: o.only,
     exclude: o.exclude,
     allowExec: o.allowExec ?? false,
     execWithheldHint: o.execWithheldHint,
+    probeTimeoutMs: o.probeTimeoutMs,
     signal: o.signal,
     onProbe: o.onProbe,
     onRunners: o.onRunners,
@@ -185,9 +194,10 @@ function mergeCatalogs(granted: Catalog, others: Catalog): Catalog {
 }
 
 /**
- * Detect, collect, and store each runner's result under `store`. When a tool
- * grant splits the runners in two, both collections settle before a failure
- * is thrown.
+ * Detect, collect, and store each runner's result under `store`. The catalog
+ * comes once every runner has answered; the store is written after, in the
+ * background, and `flushWrites` waits for it. When a tool grant splits the
+ * runners in two, both collections settle before a failure is thrown.
  */
 export async function collectAndCache(
   project: Project,
@@ -197,15 +207,15 @@ export async function collectAndCache(
 ): Promise<Catalog> {
   const profile = await detect(project, root, options)
   const granted = grantedRunners(project, profile, options)
-  if (granted === null) {
-    return project.runners.collectAndCache(profile, store, collectOptions(options))
+  const collect = async (opts: ReturnType<typeof collectOptions>): Promise<Catalog> => {
+    const { catalog, stored } = await project.runners.collectAndStore(profile, store, opts)
+    void trackWrite(stored)
+    return catalog
   }
+  if (granted === null) return collect(collectOptions(options))
   const split = splitOptions(options, granted)
   // At the same time, so a progress count covers both from the start.
-  const [a, b] = await settledBoth(
-    project.runners.collectAndCache(profile, store, split.granted),
-    project.runners.collectAndCache(profile, store, split.others),
-  )
+  const [a, b] = await settledBoth(collect(split.granted), collect(split.others))
   return mergeCatalogs(a, b)
 }
 
