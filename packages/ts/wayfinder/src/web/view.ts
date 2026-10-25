@@ -1879,21 +1879,22 @@ export function openDialogAtTop(id: 'help' | 'settings'): void {
 }
 
 /**
- * The page when it could not sign in: the boot token was used, expired or
- * missing, as after a reload. Only the terminal can hand out a new one.
+ * The page when it could not sign in: a new tab with no boot token, a used
+ * or expired one, or a server restarted since this tab signed in. Only the
+ * terminal can hand out a new link.
  */
 export function showSignedOut(): void {
   document.body.innerHTML =
     '<main class="signedout">' +
-    '<h1>This browser is not signed in.</h1>' +
-    '<p>' +
-    escapeHtml(APP) +
-    ' needs a fresh link, and only your terminal can hand one out.</p>' +
+    '<h1>This browser tab is not signed in.</h1>' +
+    '<p>A sign-in link works once, in one tab. A reload keeps the tab signed in; a new tab, ' +
+    'another browser or a restarted server needs a new link.</p>' +
     '<p>Go to the terminal ' +
     escapeHtml(APP) +
-    ' is running in, stop it with <code>Ctrl-C</code> and start it again with <code>' +
+    ' is running in and press <code>Enter</code>: it opens or prints a new link. If it has ' +
+    'stopped, start it again with <code>' +
     escapeHtml(BIN) +
-    ' serve</code>: it prints a new link that signs this browser in.</p>' +
+    ' serve</code>.</p>' +
     '</main>'
 }
 

@@ -36,7 +36,7 @@ function tokenEquals(a: string, b: string): boolean {
 
 /** The one-shot boot token. */
 export interface SignIn {
-  /** Put this in the URL the person opens. */
+  /** Put this in the URL the person opens. The latest one {@link renew} made. */
   readonly bootToken: string
   /**
    * Start the expiry timer. Call it when the URL is shown: the first probe
@@ -45,15 +45,22 @@ export interface SignIn {
   arm(): void
   /** True once, for the first unexpired `candidate` that matches. */
   redeem(candidate: unknown): boolean
+  /**
+   * Replace the boot token with a new one, armed, and return it. The old one
+   * stops working. Bearer tokens already handed out keep working.
+   */
+  renew(): string
 }
 
 /** Make a boot token. `now` is injectable for tests. */
 export function createSignIn(now: () => number = Date.now): SignIn {
-  const bootToken = secret()
+  let bootToken = secret()
   let live = true
   let expiresAt = Number.POSITIVE_INFINITY
   return {
-    bootToken,
+    get bootToken() {
+      return bootToken
+    },
     arm() {
       expiresAt = now() + BOOT_TTL_MS
     },
@@ -66,6 +73,12 @@ export function createSignIn(now: () => number = Date.now): SignIn {
       if (!tokenEquals(candidate, bootToken)) return false
       live = false
       return true
+    },
+    renew() {
+      bootToken = secret()
+      live = true
+      expiresAt = now() + BOOT_TTL_MS
+      return bootToken
     },
   }
 }

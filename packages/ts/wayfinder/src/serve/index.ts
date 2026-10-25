@@ -54,6 +54,11 @@ export interface ServeOptions {
   stdout(text: string): void
   /** Where the handed-off command line goes, as `way run` prints it. */
   stderr(text: string): void
+  /**
+   * The terminal's input, when stdin is a terminal. Each line read from it
+   * (Enter) prints a new sign-in link, for a new tab or another browser.
+   */
+  input?: NodeJS.ReadableStream | undefined
   /** Gives the terminal to a task. Tests inject one. Default: the core's `handOff`. */
   handOff?: ((plan: Pick<RunDocumentBody, 'argv' | 'env' | 'cwd'>) => HandOffResult) | undefined
 }
@@ -68,6 +73,8 @@ export interface WebServer {
    * run took the terminal, or null when it was stopped otherwise.
    */
   finished: Promise<number | null>
+  /** Settles as soon as the server stops listening, before a run starts. */
+  stopped: Promise<void>
   /** Stop the server. */
   stop(): Promise<void>
 }
@@ -129,10 +136,15 @@ export async function startServer(options: ServeOptions): Promise<WebServer> {
   })
 
   let stopped = false
+  let markStopped: () => void = () => {}
+  const stoppedPromise = new Promise<void>((resolve) => {
+    markStopped = resolve
+  })
   const stop = async (): Promise<void> => {
     if (stopped) return
     stopped = true
     await server.stop()
+    markStopped()
   }
 
   handler = createRoutes({
@@ -171,6 +183,7 @@ export async function startServer(options: ServeOptions): Promise<WebServer> {
     server,
     signIn,
     finished,
+    stopped: stoppedPromise,
     stop: async () => {
       await stop()
       settle(null)
@@ -211,7 +224,7 @@ export function startupSummary(address: string, first: Omit<CatalogSnapshot, 'or
 export async function serve(options: ServeOptions): Promise<number | null> {
   const web = await startServer(options)
   const address = web.server.url
-  const bootUrl = `${address}/?boot=${web.signIn.bootToken}`
+  const bootUrl = (): string => `${address}/?boot=${web.signIn.bootToken}`
   // From the store when it has an answer, so the address shows at once. The
   // page reads the repository again as soon as it loads.
   const first = await options.session.catalog({ cached: true })
@@ -219,19 +232,43 @@ export async function serve(options: ServeOptions): Promise<number | null> {
   options.stdout(startupSummary(address, first))
   options.stdout(`  live       the page refreshes on focus and every 15s; Refresh re-reads\n`)
   options.stdout(`  stop       Ctrl-C\n`)
+  if (options.input !== undefined) {
+    options.stdout(`  new tab    press Enter here for a new sign-in link\n`)
+  }
 
-  if (options.open === false) {
-    options.stdout(`  open       ${bootUrl}\n`)
-    options.stdout(`             signs the browser in once; it expires in 60 seconds if unused\n`)
-  } else {
+  /** Open the current link, or print it when there is no browser to open. */
+  const show = (): void => {
+    if (options.open === false) {
+      options.stdout(`  open       ${bootUrl()}\n`)
+      options.stdout(
+        `             signs one browser tab in once; it expires in 60 seconds if unused\n`,
+      )
+      return
+    }
     // Best effort: a headless or remote shell has no browser.
     const opener = process.platform === 'darwin' ? 'open' : 'xdg-open'
-    const proc = spawnRunner(opener, { absolutePathOnly: true }).run([bootUrl], {
+    const proc = spawnRunner(opener, { absolutePathOnly: true }).run([bootUrl()], {
       cwd: options.session.root,
     })
     if (proc.exitCode !== 0) {
-      options.stdout(`  (could not open a browser; visit ${bootUrl} within 60 seconds)\n`)
+      options.stdout(`  (could not open a browser; visit ${bootUrl()} within 60 seconds)\n`)
     }
+  }
+  show()
+
+  const input = options.input
+  if (input !== undefined) {
+    const onData = (chunk: Buffer | string): void => {
+      if (!String(chunk).includes('\n')) return
+      web.signIn.renew()
+      show()
+    }
+    input.on('data', onData)
+    // Stop reading before a task gets the terminal, and when the server stops.
+    void web.stopped.then(() => {
+      input.off('data', onData)
+      input.pause()
+    })
   }
   return web.finished
 }
