@@ -30,6 +30,7 @@ import {
   prSetDraft,
   prUpdateBranch,
   prView,
+  repoList,
   setIssueLabel,
   type AsyncCommandRunner,
   type CommandRunner,
@@ -128,6 +129,29 @@ describe('a target on an api verb', () => {
   test('authStatus asks about the target host', () => {
     expect(authStatus(TARGET).argv).toEqual(['auth', 'status', '--hostname', 'ghe.acme.com'])
     expect(authStatus().argv).toEqual(['auth', 'status'])
+  })
+})
+
+describe("an empty hostname ''", () => {
+  const empty = { repo: 'acme/widgets', hostname: '' }
+  const none = { repo: 'acme/widgets' }
+
+  test('builds the same argv and env as no hostname', () => {
+    const wire = (v: { argv: string[]; env?: Record<string, string> | undefined }) => ({
+      argv: v.argv,
+      env: v.env,
+    })
+    expect(wire(prBody(7, empty))).toEqual(wire(prBody(7, none)))
+    expect(wire(api('repos/{owner}/{repo}', {}, empty))).toEqual(
+      wire(api('repos/{owner}/{repo}', {}, none)),
+    )
+    expect(wire(authStatus(empty))).toEqual(wire(authStatus(none)))
+    expect(wire(repoList('acme', {}, empty))).toEqual(wire(repoList('acme', {}, none)))
+  })
+
+  test('clients accept it', () => {
+    expect(() => new Gh('/repo', empty)).not.toThrow()
+    expect(() => new AsyncGh('/repo', empty)).not.toThrow()
   })
 })
 

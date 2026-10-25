@@ -72,12 +72,26 @@ export interface GhTarget {
   /**
    * A GitHub host: `github.com`, a GitHub Enterprise Server host such as
    * `github.acme.com`, or a `<tenant>.ghe.com` host. Other forges are not
-   * supported, because gh supports only GitHub's API.
+   * supported, because gh supports only GitHub's API. `''` means the same as
+   * `undefined`, so a value read from config can be passed as it is.
    */
   hostname?: string | undefined
 }
 
+/**
+ * A bare host, with an optional port: letters, digits, dots and hyphens, that
+ * starts and ends with a letter or digit, then optionally `:` and digits
+ * (`github.com`, `ghe.acme.com`, `localhost:8080`). No scheme, path, spaces or
+ * leading `-`, so the value cannot be read by gh as a flag or a URL. It does
+ * not check that the host exists or that its labels are well formed, and it
+ * does not accept IPv6 literals.
+ */
 const HOSTNAME = /^[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?(?::\d+)?$/
+
+/** The target's host, or `undefined` when it has none. `''` is "not set". */
+function hostOf(target: GhTarget | undefined): string | undefined {
+  return target?.hostname === '' ? undefined : target?.hostname
+}
 
 /**
  * Throw `RangeError` unless `target.repo` is `owner/name` and
@@ -88,8 +102,9 @@ export function checkTarget(target: GhTarget | undefined): void {
   if (target?.repo !== undefined && !isRepoSlug(target.repo)) {
     throw new RangeError(`repo must be owner/name, got ${JSON.stringify(target.repo)}`)
   }
-  if (target?.hostname !== undefined && !HOSTNAME.test(target.hostname)) {
-    throw new RangeError(`hostname must be a bare host, got ${JSON.stringify(target.hostname)}`)
+  const hostname = hostOf(target)
+  if (hostname !== undefined && !HOSTNAME.test(hostname)) {
+    throw new RangeError(`hostname must be a bare host, got ${JSON.stringify(hostname)}`)
   }
 }
 
@@ -99,19 +114,22 @@ function repoArgs(target: GhTarget | undefined, repo?: string | undefined): stri
   const slug = repo ?? target?.repo
   if (slug === undefined) return []
   if (repo !== undefined) checkTarget({ repo })
-  return ['--repo', target?.hostname === undefined ? slug : `${target.hostname}/${slug}`]
+  const hostname = hostOf(target)
+  return ['--repo', hostname === undefined ? slug : `${hostname}/${slug}`]
 }
 
 /** `--hostname <host>` for `api` and `auth` verbs. */
 function hostArgs(target: GhTarget | undefined): string[] {
   checkTarget(target)
-  return target?.hostname === undefined ? [] : ['--hostname', target.hostname]
+  const hostname = hostOf(target)
+  return hostname === undefined ? [] : ['--hostname', hostname]
 }
 
 /** `GH_HOST` for the verbs gh gives no host flag. */
 function hostEnv(target: GhTarget | undefined): Record<string, string> | undefined {
   checkTarget(target)
-  return target?.hostname === undefined ? undefined : { GH_HOST: target.hostname }
+  const hostname = hostOf(target)
+  return hostname === undefined ? undefined : { GH_HOST: hostname }
 }
 
 /**
