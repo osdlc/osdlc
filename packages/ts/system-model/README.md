@@ -194,8 +194,9 @@ does not enter a directory deeper than `MAX_WALK_DEPTH`. When it stops early,
 | `allowExec` | `false` | let `describe` functions run the repository's tools |
 | `makeRunner`, `which`, `signal` | `@osdlc/command-seam`, a PATH walk, none | injection for tests and cancellation |
 
-Every subprocess detection starts gets `signal`. A `describe` call gets a
-timeout of `DEFAULT_PROBE_TIMEOUT_MS` (60 s), and each discovery git call 30 s.
+Every subprocess detection starts gets `signal`. A `describe` call gets its
+runner's probe timeout, else `DEFAULT_PROBE_TIMEOUT_MS` (60 s), and each
+discovery git call 30 s.
 
 `project.findRoot(from)` walks up from a directory. A repository marker
 anywhere above wins over a package manifest. A repository marker is `.git`,
@@ -316,6 +317,13 @@ runner declares its timeout and a cost hint (`cheap` or `slow`) in
 `RunnerRole.probe`. A runner that declares none gets `DEFAULT_PROBE_TIMEOUT_MS`.
 `CollectOptions.timeouts` replaces a runner's timeout by id, such as
 `{ moon: 300_000 }`.
+
+Each subprocess also runs with command-seam's `processGroup: true`, so a
+timeout or an abort kills the processes it started as well (moon, gradle and
+sbt fork). On POSIX the child then leads its own process group and no longer
+gets the terminal's Ctrl-C. A CLI host should stop it through `signal`, or call
+`installGroupSignalForwarding` from `@osdlc/command-seam` once at start-up. On
+Windows only the direct child is killed today.
 
 A catalog carries `kind: 'catalog'` and `schemaVersion`
 (`CATALOG_SCHEMA_VERSION`). `@osdlc/system-model/schema` has JSON Schemas for
