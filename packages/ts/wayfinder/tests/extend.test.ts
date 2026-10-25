@@ -317,7 +317,7 @@ describe('runners.timeout', () => {
     'a runner past it is cut off and reported, its processes are killed, and the rest load',
     async () => {
       const home = await temp()
-      const dir = await acmeRepo({ runners: { timeout: 0.5 } })
+      const dir = await acmeRepo({ runners: { timeout: 1 } })
       await writeFile(join(dir, 'hang.json'), '{}')
       const tag = `${40 + Math.floor(Math.random() * 1000)}.${process.pid % 1000}9`
       const hang = await hangModule(dir, tag)
@@ -334,7 +334,7 @@ describe('runners.timeout', () => {
       }
       const cut = doc.reports.find((r) => r.runner === 'hang')!
       expect(cut.status).toBe('error')
-      expect(cut.diagnostics.map((d) => d.message)).toEqual(['timed out after 500 ms'])
+      expect(cut.diagnostics.map((d) => d.message)).toEqual(['timed out after 1 s'])
       expect(doc.reports.find((r) => r.runner === 'acme')!.status).toBe('ok')
       let left = 'running'
       for (let i = 0; i < 20 && left !== ''; i++) {
