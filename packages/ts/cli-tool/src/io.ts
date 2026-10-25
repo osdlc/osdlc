@@ -72,6 +72,11 @@ export interface CliContext {
    * is the safe reading: no color, no prompt, help wrapped at 80 columns.
    */
   terminal?: Terminal
+  /**
+   * Aborted to stop the run, such as a long-running server command. Absent
+   * means nothing stops it but the process ending.
+   */
+  signal?: AbortSignal
 }
 
 /**

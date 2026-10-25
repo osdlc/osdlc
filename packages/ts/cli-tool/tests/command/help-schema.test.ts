@@ -108,6 +108,7 @@ describe('help', () => {
       '-C, --dir <path>',
       '--version',
       '--json',
+      '--output <mode>',
       '-h, --help',
       '--all',
     ])

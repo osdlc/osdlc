@@ -27,7 +27,10 @@ import {
   type DataCommand,
   type Group,
   type Node,
+  type OutputMode,
+  type Surface,
 } from './define.ts'
+import { inputFromArgs } from './args.ts'
 import {
   HelpEntrySchema,
   helpEntry,
@@ -77,7 +80,62 @@ export interface SchemaEntry {
   schemaVersion?: number
   input?: JsonSchema
   output?: JsonSchema
+  /** The command's long description, when it has one. */
+  description?: string
+  /** True when the command changes nothing. */
+  readOnly?: boolean
+  /** True when the command deletes or overwrites something that cannot be got back. */
+  destructive?: boolean
+  /** Who may call it: `all`, `cli-only`, or `by-input` when some inputs are `cli-only`. */
+  exposure?: 'all' | 'cli-only' | 'by-input'
+  /** For a list command: the field `--output jsonl` prints a line per element of, and each line's kind. */
+  items?: { field: string; kind: string }
+  /** For a command that sends events: their kind and the JSON Schema of one event line. */
+  events?: { kind: string; schema: JsonSchema }
 }
+
+/**
+ * How an adapter calls a command with {@link App.call}.
+ * @experimental
+ */
+export interface CallOptions {
+  /** The adapter calling. Commands read it as `ctx.surface`. */
+  surface: Exclude<Surface, 'cli'>
+  /** The app's global flags, fixed by the adapter when it started. A caller cannot set them. */
+  globals?: Record<string, unknown>
+  /** Aborted when the caller cancels. Commands read it as `ctx.signal`. */
+  signal?: AbortSignal
+  /** Receives each event line a command with `events` sends, as it is sent. */
+  onEvent?(line: Record<string, unknown>): void
+  /**
+   * Run a `cli-only` command or input anyway. Only for a caller that has
+   * confirmed with the person, such as the HTTP adapter's confirmation step.
+   */
+  allowCliOnly?: boolean
+}
+
+/**
+ * What {@link App.call} gives.
+ *
+ * - `ok`: the command ran and answered with its document. `exit` may still be
+ *   non-zero, as on the command line.
+ * - `error`: the command failed or the arguments were wrong (`usage`, exit 2).
+ * - `refused`: no such command, an interactive one, or a `cli-only` one.
+ *
+ * `stderr` holds the notes and warnings the command wrote.
+ * @experimental
+ */
+export type CallResult =
+  | { status: 'ok'; exit: number; document: Record<string, unknown>; stderr: string }
+  | {
+      status: 'error'
+      exit: number
+      message: string
+      hint?: string
+      usage?: true
+      stderr: string
+    }
+  | { status: 'refused'; reason: 'not-found' | 'interactive' | 'cli-only'; message: string }
 
 /**
  * A declared app.
@@ -91,6 +149,20 @@ export interface App {
   run(argv: readonly string[], ctx: CliContext): Promise<number>
   /** {@link run} as a `MainFn`, for `runMain(app.main, { name })`. */
   readonly main: (argv: readonly string[], ctx: CliContext) => Promise<number>
+  /**
+   * Run the data command at `path` with `args`, one JSON object with a
+   * property per flag and positional (see {@link argsSchema}), and return its
+   * document. For adapters: nothing is written to the process streams, and a
+   * command's `exposure` is enforced.
+   */
+  call(
+    path: readonly string[],
+    args: unknown,
+    ctx: Omit<CliContext, 'io'>,
+    options: CallOptions,
+  ): Promise<CallResult>
+  /** The JSON Schema of the `args` {@link call} takes for the command at `path`. */
+  argsSchema(path: readonly string[]): JsonSchema
   /** The help for the node at `path`, as data. Throws for a path that names nothing. */
   help(path?: readonly string[], opts?: { depth?: number; full?: boolean }): HelpEntry
   /** The help for the node at `path`, as text wrapped to `width` (default 80). */
@@ -268,11 +340,28 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
       if (node.command === undefined) return base
       const flags = { ...node.command.flags, ...globals, ...BUILTIN_FLAGS }
       base.input = inputSchema(flags, node.command.positionals)
-      if (!isInteractive(node.command)) {
-        const kind = kindOf(node.command, node.path, spec.name)
+      const c = node.command
+      if (c.description !== undefined) base.description = c.description
+      if (c.readOnly === true) base.readOnly = true
+      if (c.destructive === true) base.destructive = true
+      base.exposure =
+        c.exposure === 'cli-only' ? 'cli-only' : c.exposureOf !== undefined ? 'by-input' : 'all'
+      if (!isInteractive(c)) {
+        const kind = kindOf(c, node.path, spec.name)
+        const schemaVersion = c.schemaVersion ?? 1
         base.kind = kind
-        base.schemaVersion = node.command.schemaVersion ?? 1
-        base.output = documentSchema(node.command, kind)
+        base.schemaVersion = schemaVersion
+        base.output = documentSchema(c, kind)
+        if (c.items !== undefined) base.items = { ...c.items }
+        if (c.events !== undefined) {
+          base.events = {
+            kind: c.events.kind,
+            schema: z.toJSONSchema(documentZod(c.events.schema, c.events.kind, schemaVersion), {
+              io: 'input',
+              unrepresentable: 'any',
+            }) as JsonSchema,
+          }
+        }
       }
       return base
     })
@@ -297,6 +386,14 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
           schemaVersion: z.number().int().optional(),
           input: z.record(z.string(), z.unknown()).optional(),
           output: z.record(z.string(), z.unknown()).optional(),
+          description: z.string().optional(),
+          readOnly: z.boolean().optional(),
+          destructive: z.boolean().optional(),
+          exposure: z.enum(['all', 'cli-only', 'by-input']).optional(),
+          items: z.object({ field: z.string(), kind: z.string() }).optional(),
+          events: z
+            .object({ kind: z.string(), schema: z.record(z.string(), z.unknown()) })
+            .optional(),
         }),
       ),
     }),
@@ -368,7 +465,10 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
   const run = async (argv: readonly string[], base: CliContext): Promise<number> => {
     const { node, words, rest } = route(argv)
     const wantsHelp = words.includes('--help') || words.includes('-h')
-    const wantsJson = words.includes('--json')
+    const wantsJson =
+      words.includes('--json') ||
+      words.includes('--output=json') ||
+      words.some((w, i) => w === '--output' && words[i + 1] === 'json')
     const width = helpWidth(base.terminal?.stdout === true ? base.terminal.columns : undefined)
     const fail = (message: string, exit: ExitCode, hint?: string): number => {
       base.io.stderr(`${spec.name}: ${message}\n${hint ?? ''}`)
@@ -428,53 +528,75 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
     const parsed = cli.parse(words, base.io)
     if (parsed.status === 'help') return EXIT.ok
     if (parsed.status === 'error') return usageFail(parsed.message)
-    const values = parsed.values as FlagValues<FlagSpec> & { json: boolean; all: boolean }
+    const values = parsed.values as FlagValues<FlagSpec> & {
+      json: boolean
+      all: boolean
+      output?: string
+    }
     // `help --all` reads it; anywhere else it only modifies `--help`.
     if (values.all && command !== helpCommand) {
       return usageFail('--all goes with --help: "--help --all"')
     }
 
-    const json = values.json
+    const both = values.json && values.output !== undefined && values.output !== 'json'
+    if (both) return usageFail(`--json and --output ${values.output} ask for different forms`)
+    const mode: OutputMode = values.json ? 'json' : ((values.output as OutputMode) ?? 'text')
+    const json = mode !== 'text'
     const own: Record<string, unknown> = {}
     const globalValues: Record<string, unknown> = {}
     for (const key of Object.keys(command.flags ?? {})) own[key] = values[key]
     for (const key of Object.keys(globals)) globalValues[key] = values[key]
+    const commandName = [spec.name, ...node.path].join(' ')
+    if (isInteractive(command) && json) {
+      return usageFail(`'${commandName}' is interactive and has no JSON form`)
+    }
+    if (!isInteractive(command) && mode === 'jsonl') {
+      if (command.items === undefined && command.events === undefined) {
+        return usageFail(`'${commandName}' prints one document; use --json`)
+      }
+    }
     const ctx: CommandContext & { all: boolean } = {
       ...base,
-      app: { name: spec.name, version: spec.version },
+      app,
       path: node.path,
       json,
+      output: mode,
+      surface: 'cli',
+      signal: base.signal ?? new AbortController().signal,
       color: colorEnabled(base, { json }),
       width,
       all: values.all,
       warn: (message) => base.io.stderr(`${spec.name}: warning: ${message}\n`),
       note: (message) => base.io.stderr(`${spec.name}: ${message}\n`),
+      emit: noEvents(commandName),
     }
     const input = { flags: own, globals: globalValues, positionals: parsed.positionals, rest }
 
     try {
-      if (isInteractive(command)) {
-        if (json)
-          return usageFail(
-            `'${[spec.name, ...node.path].join(' ')}' is interactive and has no JSON form`,
-          )
-        return (await command.run(input as never, ctx)) ?? EXIT.ok
-      }
-      const result = await command.run(input as never, ctx)
-      const output = isOutcome(result) ? result.output : result
-      const exit = isOutcome(result) ? result.exit : EXIT.ok
-      const kind = kindOf(command, node.path, spec.name)
-      const doc = { schemaVersion: command.schemaVersion ?? 1, kind, ...(output as object) }
-      if (spec.checkOutput === true) {
-        const checked = documentZod(command.output, kind, doc.schemaVersion).safeParse(doc)
-        if (!checked.success) {
-          throw new Error(
-            `'${[spec.name, ...node.path].join(' ')}' output does not match its schema: ${checked.error.message}`,
-          )
+      if (isInteractive(command)) return (await command.run(input as never, ctx)) ?? EXIT.ok
+      const events = command.events
+      if (events !== undefined) {
+        ctx.emit = (event) => {
+          const line = eventLine(command, event, commandName)
+          if (mode === 'jsonl') base.io.stdout(`${JSON.stringify(line)}\n`)
+          else if (mode === 'text' && events.text !== undefined) base.io.stdout(events.text(event))
         }
       }
-      if (json) base.io.stdout(`${JSON.stringify(doc, null, 2)}\n`)
-      else if (command.text !== undefined) base.io.stdout(command.text(output, ctx))
+      const { output, exit, doc } = await execute(command, node.path, input, ctx)
+      if (mode === 'json') base.io.stdout(`${JSON.stringify(doc, null, 2)}\n`)
+      else if (mode === 'jsonl') {
+        if (command.items !== undefined) {
+          const list = (output as Record<string, unknown>)[command.items.field] as unknown[]
+          for (const item of list) {
+            const line = {
+              schemaVersion: doc.schemaVersion,
+              kind: command.items.kind,
+              ...(item as object),
+            }
+            base.io.stdout(`${JSON.stringify(line)}\n`)
+          }
+        } else base.io.stdout(`${JSON.stringify(doc)}\n`)
+      } else if (command.text !== undefined) base.io.stdout(command.text(output, ctx))
       else base.io.stdout(`${JSON.stringify(output, null, 2)}\n`)
       return exit
     } catch (err) {
@@ -491,12 +613,138 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
     }
   }
 
-  return {
+  /** The event `ctx.emit` sends, as one line: `schemaVersion` and `kind` in front. */
+  const eventLine = (
+    command: DataCommand,
+    event: Record<string, unknown>,
+    name: string,
+  ): Record<string, unknown> => {
+    const events = command.events!
+    const line = { schemaVersion: command.schemaVersion ?? 1, kind: events.kind, ...event }
+    if (spec.checkOutput === true) {
+      const checked = documentZod(events.schema, events.kind, line.schemaVersion).safeParse(line)
+      if (!checked.success) {
+        throw new Error(`'${name}' event does not match its schema: ${checked.error.message}`)
+      }
+    }
+    return line
+  }
+
+  /** Run a data command and build its document. Errors propagate. */
+  const execute = async (
+    command: DataCommand,
+    path: readonly string[],
+    input: unknown,
+    ctx: CommandContext,
+  ): Promise<{ output: unknown; exit: ExitCode; doc: Record<string, unknown> }> => {
+    const result = await command.run(input as never, ctx)
+    const output = isOutcome(result) ? result.output : result
+    const exit = isOutcome(result) ? result.exit : EXIT.ok
+    const kind = kindOf(command, path, spec.name)
+    const doc = { schemaVersion: command.schemaVersion ?? 1, kind, ...(output as object) }
+    if (spec.checkOutput === true) {
+      const checked = documentZod(command.output, kind, doc.schemaVersion).safeParse(doc)
+      if (!checked.success) {
+        throw new Error(
+          `'${[spec.name, ...path].join(' ')}' output does not match its schema: ${checked.error.message}`,
+        )
+      }
+    }
+    return { output, exit, doc }
+  }
+
+  const call = async (
+    path: readonly string[],
+    args: unknown,
+    base: Omit<CliContext, 'io'>,
+    options: CallOptions,
+  ): Promise<CallResult> => {
+    const node = findPlaced(path)
+    const name = [spec.name, ...path].join(' ')
+    const command = node?.command
+    if (node === undefined || command === undefined) {
+      return { status: 'refused', reason: 'not-found', message: `no command '${name}'` }
+    }
+    if (isInteractive(command)) {
+      return { status: 'refused', reason: 'interactive', message: `'${name}' is interactive` }
+    }
+    const cliOnly = (): CallResult => ({
+      status: 'refused',
+      reason: 'cli-only',
+      message: `'${name}' runs from the command line only`,
+    })
+    if (command.exposure === 'cli-only' && options.allowCliOnly !== true) return cliOnly()
+    let stderr = ''
+    const capture = (text: string): void => {
+      stderr += text
+    }
+    const failed = (exit: number, message: string, hint?: string): CallResult => ({
+      status: 'error',
+      exit,
+      message,
+      ...(hint !== undefined ? { hint } : {}),
+      stderr,
+    })
+    const usageFailed = (message: string): CallResult => ({
+      status: 'error',
+      exit: EXIT.usage,
+      message,
+      usage: true,
+      stderr,
+    })
+    try {
+      const own = inputFromArgs(command.flags ?? {}, command.positionals ?? [], args)
+      const fixed = inputFromArgs(globals, [], stripUndefined(options.globals ?? {}))
+      const input = { ...own, globals: fixed.flags }
+      if (command.exposureOf?.(input as never) === 'cli-only' && options.allowCliOnly !== true) {
+        return cliOnly()
+      }
+      // Only the directory and environment carry over: a call has no terminal.
+      const ctx: CommandContext = {
+        cwd: base.cwd,
+        env: base.env,
+        // Nothing an adapter runs may write to stdout: under MCP it is the protocol stream.
+        io: { stdout: capture, stderr: capture },
+        app,
+        path: node.path,
+        json: true,
+        output: 'json',
+        surface: options.surface,
+        signal: options.signal ?? base.signal ?? new AbortController().signal,
+        color: false,
+        width: helpWidth(undefined),
+        warn: (message) => capture(`${spec.name}: warning: ${message}\n`),
+        note: (message) => capture(`${spec.name}: ${message}\n`),
+        emit:
+          command.events === undefined
+            ? noEvents(name)
+            : (event) => options.onEvent?.(eventLine(command, event, name)),
+      }
+      const { exit, doc } = await execute(command, node.path, input, ctx)
+      return { status: 'ok', exit, document: doc, stderr }
+    } catch (err) {
+      if (err instanceof UsageError) return usageFailed(err.message)
+      if (err instanceof CommandError) return failed(err.exit, err.message, err.hint)
+      const failure = failureOf(err)
+      if (failure !== null) {
+        return failed(exitCodeFor(failure), renderFailure(failure, spec.name).trimEnd())
+      }
+      return failed(EXIT.error, err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  const app: App = {
     name: spec.name,
     version: spec.version,
     summary: spec.summary,
     run,
     main: run,
+    call,
+    argsSchema(path) {
+      const node = findPlaced(path)
+      if (node?.command === undefined) throw new Error(`no command '${path.join(' ')}'`)
+      return inputSchema(node.command.flags ?? {}, node.command.positionals)
+    },
     help(path = [], opts = {}) {
       const node = findPlaced(path)
       if (node === undefined) throw new Error(`no command '${path.join(' ')}'`)
@@ -529,4 +777,15 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
         .map((n) => [...n.path])
     },
   }
+  return app
+}
+
+function noEvents(name: string): (event: Record<string, unknown>) => void {
+  return () => {
+    throw new Error(`'${name}' declares no events; it cannot emit one`)
+  }
+}
+
+function stripUndefined(values: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(values).filter(([, v]) => v !== undefined))
 }

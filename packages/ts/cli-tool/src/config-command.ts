@@ -12,10 +12,12 @@ import {
   CommandError,
   UsageError,
   commandKit,
+  outcome,
   type CommandContext,
   type Group,
 } from './command/index.ts'
 import type { FlagSpec } from './define-cli.ts'
+import { EXIT } from './exit.ts'
 
 /**
  * One setting and the layer its effective value came from.
@@ -39,6 +41,29 @@ export interface ConfigLocation {
   exists: boolean
   /** The environment variable that moved the file, when one did. */
   envVar?: string | null | undefined
+}
+
+/**
+ * One layer's part in a setting's effective value, for `config explain`.
+ * @experimental
+ */
+export interface ConfigLayerValue {
+  /** The layer: `default`, a file layer such as `user` or `project`, `env`, or `flag`. */
+  layer: string
+  /** Whether this layer has a value for the key. */
+  set: boolean
+  value?: unknown
+  /**
+   * False when the layer may not set this key, so its value is ignored: a
+   * user-only key in a project file. Default true.
+   */
+  allowed?: boolean
+  /** Why the value is ignored, or another note on this layer. */
+  note?: string
+  /** The file the layer read, for a file layer. */
+  file?: string
+  /** The environment variable, for the `env` layer. */
+  envVar?: string
 }
 
 /**
@@ -71,6 +96,22 @@ export interface ConfigStore {
   defaultLayer: string
   /** The keys a tool knows, for did-you-mean and the help. */
   keys?: readonly string[]
+  /**
+   * Keys that `set` and `unset` may write from the command line only, such as
+   * the trust policy. The MCP and HTTP adapters refuse a write of one of
+   * these keys, of a key under one, or of a key above one. Read access is not
+   * limited.
+   */
+  cliOnlyKeys?: readonly string[]
+  /**
+   * How `key`'s effective value was resolved, layer by layer. Supplying it
+   * adds `config explain <key>`. Throws {@link ConfigUsageError} for an
+   * unknown key.
+   */
+  explain?(
+    ctx: CommandContext,
+    key: string,
+  ): Promise<{ layers: ConfigLayerValue[]; warnings?: string[] }>
   /** Every setting with its effective value and source, and the warnings loading produced. */
   list(ctx: CommandContext): Promise<{ settings: ConfigSetting[]; warnings?: string[] }>
   /** Where each layer's file is. Must not fail on a file that will not parse. */
@@ -107,6 +148,39 @@ export function parseConfigValue(raw: string): unknown {
   }
 }
 
+const ExplainLayerSchema = z.object({
+  layer: z.string(),
+  set: z.boolean(),
+  /** Absent when the layer does not set the key. */
+  value: z.unknown().optional(),
+  allowed: z.boolean(),
+  won: z.boolean(),
+  note: z.string().optional(),
+  file: z.string().optional(),
+  envVar: z.string().optional(),
+})
+
+/**
+ * The `config explain` command's output.
+ * @experimental
+ */
+export const ConfigExplainSchema = z.object({
+  key: z.string(),
+  /** The effective value. Absent when no layer sets the key. */
+  value: z.unknown().optional(),
+  /** The layer whose value won, or null when no layer sets the key. */
+  source: z.string().nullable(),
+  /** Why that layer won, in one sentence. */
+  reason: z.string(),
+  /** Every layer, lowest precedence first. */
+  layers: z.array(ExplainLayerSchema),
+})
+
+/** Whether writing `key` touches one of `keys`: the key itself, one under it, or one above it. */
+function touches(key: string, keys: readonly string[]): boolean {
+  return keys.some((k) => k === key || key.startsWith(`${k}.`) || k.startsWith(`${key}.`))
+}
+
 const SettingSchema = z.object({ key: z.string(), value: z.unknown(), source: z.string() })
 const LocationSchema = z.object({
   layer: z.string(),
@@ -137,9 +211,12 @@ function layerLines(locations: readonly ConfigLocation[]): string {
  * | `config set <key> <value>` | `{ key, value, layer, file }` | a file will not parse or write |
  * | `config unset <key>` | `{ key, layer, file }` | the key is not set in that layer |
  * | `config path` | `{ locations }` | never |
+ * | `config explain <key>` | `{ key, value, source, reason, layers }` | no layer sets the key |
  *
- * An unknown key or a value of the wrong type is a usage error (exit 2).
- * Warnings go to stderr.
+ * `explain` is added when the store has an `explain` method. An unknown key
+ * or a value of the wrong type is a usage error (exit 2). Warnings go to
+ * stderr. A write of one of the store's `cliOnlyKeys` is refused by the MCP
+ * and HTTP adapters.
  * @experimental
  */
 export function configCommands<G extends FlagSpec = Record<never, never>>(
@@ -173,6 +250,8 @@ export function configCommands<G extends FlagSpec = Record<never, never>>(
     const close = closestMatches(key, store.keys ?? [])
     return close.length > 0 ? `; did you mean ${close.join(', ')}?` : ''
   }
+  const cliOnly = (key: string | undefined): 'all' | 'cli-only' =>
+    key !== undefined && touches(key, store.cliOnlyKeys ?? []) ? 'cli-only' : 'all'
   const warnAll = (ctx: CommandContext, warnings: readonly string[] | undefined): void => {
     for (const w of warnings ?? []) ctx.warn(w)
   }
@@ -237,6 +316,7 @@ export function configCommands<G extends FlagSpec = Record<never, never>>(
     ],
     output: z.object({ key: z.string(), value: z.unknown(), layer: z.string(), file: z.string() }),
     kind: 'config-set',
+    exposureOf: ({ positionals }) => cliOnly(positionals[0]),
     async run({ flags, positionals }, ctx) {
       const layer = pickLayer(flags)
       const [key, raw] = positionals as [string, string]
@@ -259,6 +339,7 @@ export function configCommands<G extends FlagSpec = Record<never, never>>(
     positionals: [{ name: 'key', required: true, help: 'a dotted key' }],
     output: z.object({ key: z.string(), layer: z.string(), file: z.string() }),
     kind: 'config-unset',
+    exposureOf: ({ positionals }) => cliOnly(positionals[0]),
     async run({ flags, positionals }, ctx) {
       const layer = pickLayer(flags)
       const key = positionals[0]!
@@ -281,12 +362,103 @@ export function configCommands<G extends FlagSpec = Record<never, never>>(
     text: (o) => layerLines(o.locations),
   })
 
+  const explainStore = store.explain?.bind(store)
+  const explain =
+    explainStore === undefined
+      ? undefined
+      : kit.command({
+          summary: 'how a setting got its value, layer by layer',
+          description:
+            'Shows each layer from the built-in default up, the value each one sets, which one won ' +
+            'and why. A layer that may not set the key, such as a user-only key in a project ' +
+            `file, is shown and marked ignored.${keyHelp}`,
+          positionals: [{ name: 'key', required: true, help: 'a dotted key' }],
+          output: ConfigExplainSchema,
+          kind: 'config-explain',
+          readOnly: true,
+          exits: { 1: 'no layer sets the key' },
+          async run({ positionals }, ctx) {
+            const key = positionals[0]!
+            let found: Awaited<ReturnType<typeof explainStore>>
+            try {
+              found = await explainStore(ctx, key)
+            } catch (err) {
+              if (err instanceof ConfigUsageError) {
+                throw new UsageError(`${err.message}${unknownKey(key)}`)
+              }
+              throw err
+            }
+            warnAll(ctx, found.warnings)
+            return explained(key, found.layers)
+          },
+          text(o) {
+            const rows = o.layers.map((l) => ({
+              layer: l.layer,
+              value: l.set ? (JSON.stringify(l.value) ?? 'undefined') : '-',
+              mark: l.won
+                ? 'wins'
+                : !l.allowed && l.set
+                  ? `ignored${l.note !== undefined ? `: ${l.note}` : ''}`
+                  : l.set
+                    ? 'overridden'
+                    : '',
+            }))
+            const lw = Math.max(...rows.map((r) => r.layer.length))
+            const vw = Math.max(...rows.map((r) => r.value.length))
+            const head = `${o.key} = ${JSON.stringify(o.value) ?? 'undefined'}  (${o.reason})\n`
+            return (
+              head +
+              rows
+                .map((r) => `  ${r.layer.padEnd(lw)}  ${r.value.padEnd(vw)}  ${r.mark}`.trimEnd())
+                .join('\n') +
+              '\n'
+            )
+          },
+        })
+
   return kit.group({
     summary: 'read and write the layered settings files',
     description:
       `Layers, lowest precedence first: built-in defaults, then ${store.layers.join(', then ')}, ` +
       'then the flags of a run. With no subcommand, config lists every setting.',
     default: list,
-    commands: { list, get, set, unset, path },
+    commands: { list, get, set, unset, path, ...(explain !== undefined ? { explain } : {}) },
   })
+}
+
+/** The `config explain` answer for `layers`: the winner is the last layer that sets the key and may. */
+function explained(key: string, layers: readonly ConfigLayerValue[]) {
+  const counted = layers.map((l) => ({ ...l, allowed: l.allowed !== false }))
+  let won = -1
+  counted.forEach((l, i) => {
+    if (l.set && l.allowed) won = i
+  })
+  const winner = won === -1 ? undefined : counted[won]!
+  const ignored = counted.slice(won + 1).filter((l) => l.set && !l.allowed)
+  let reason =
+    winner === undefined
+      ? 'no layer sets it'
+      : won === counted.length - 1 || counted.slice(won + 1).every((l) => !l.set)
+        ? `${winner.layer} is the highest layer that sets it`
+        : `${winner.layer} is the highest layer allowed to set it`
+  for (const l of ignored) {
+    reason += `; ${l.layer} is ignored${l.note !== undefined ? ` (${l.note})` : ''}`
+  }
+  const output = {
+    key,
+    ...(winner !== undefined ? { value: winner.value } : {}),
+    source: winner?.layer ?? null,
+    reason,
+    layers: counted.map((l, i) => ({
+      layer: l.layer,
+      set: l.set,
+      ...(l.set ? { value: l.value } : {}),
+      allowed: l.allowed,
+      won: i === won,
+      ...(l.note !== undefined ? { note: l.note } : {}),
+      ...(l.file !== undefined ? { file: l.file } : {}),
+      ...(l.envVar !== undefined ? { envVar: l.envVar } : {}),
+    })),
+  }
+  return winner === undefined ? outcome(output, EXIT.error) : output
 }

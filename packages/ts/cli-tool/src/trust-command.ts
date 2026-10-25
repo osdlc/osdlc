@@ -92,6 +92,10 @@ export const TrustOutputSchema = z.object({
  * Two of the mode flags together are a usage error. The JSON answer has one
  * shape for every mode: `{ action, changed, roots }`. `--untrust` on a root
  * with no marker still prints it, then exits 1.
+ *
+ * Granting trust is `cli-only`: the MCP and HTTP adapters refuse it, so an
+ * agent or a web page cannot grant itself trust. `--show`, `--list` and
+ * `--untrust` are open to them.
  * @experimental
  */
 export function trustCommand<G extends FlagSpec = Record<never, never>>(
@@ -119,6 +123,8 @@ export function trustCommand<G extends FlagSpec = Record<never, never>>(
     flags,
     output: TrustOutputSchema,
     kind: 'trust',
+    exposureOf: ({ flags: f }) =>
+      f['untrust'] === true || f['show'] === true || f['list'] === true ? 'all' : 'cli-only',
     async run({ flags: f }, ctx) {
       const modes = (['untrust', 'show', 'list'] as const).filter((m) => f[m] === true)
       if (modes.length > 1) {

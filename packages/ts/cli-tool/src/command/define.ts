@@ -10,6 +10,7 @@ import type { z } from 'zod'
 import type { FlagSpec, FlagValues, PositionalDecl } from '../define-cli.ts'
 import type { ExitCode } from '../exit.ts'
 import type { CliContext } from '../io.ts'
+import type { App } from './app.ts'
 
 /**
  * The output contract of a data command: a Zod object schema.
@@ -36,12 +37,24 @@ export interface CommandInput<F extends FlagSpec, G extends FlagSpec> {
  * @experimental
  */
 export interface CommandContext extends CliContext {
-  /** The app's name and version. */
-  app: { name: string; version: string }
+  /** The app this command runs in. An adapter command, such as `mcp`, serves its tree. */
+  app: App
   /** The words that selected this command, such as `['config', 'get']`. */
   path: readonly string[]
-  /** Whether `--json` was given. */
+  /** Whether the answer is JSON: `--json`, `--output json` or `--output jsonl`, or a call through an adapter. */
   json: boolean
+  /** The output mode. A call through an adapter is `json`. */
+  output: OutputMode
+  /** Where the command was called from: the command line, or an adapter. */
+  surface: Surface
+  /** Aborted when the caller cancels: an MCP cancel, or an HTTP client that disconnects. */
+  signal: AbortSignal
+  /**
+   * Send one event of a command that declares `events`. The command line
+   * prints it as it comes; the HTTP adapter streams it; the MCP adapter sends
+   * it as progress. Throws for a command that declares no `events`.
+   */
+  emit(event: Record<string, unknown>): void
   /** Whether stdout may be colored. Always false under `--json`. */
   color: boolean
   /** The width text output is wrapped to. */
@@ -51,6 +64,28 @@ export interface CommandContext extends CliContext {
   /** Write `<app>: <message>` to stderr. */
   note(message: string): void
 }
+
+/**
+ * The output modes of `--output`. `json` is the same as `--json`. `jsonl`
+ * prints one JSON object per line, each with `schemaVersion` and `kind`.
+ * @experimental
+ */
+export type OutputMode = 'text' | 'json' | 'jsonl'
+
+/**
+ * Where a command was called from: `cli` for a command line, `mcp` or `http`
+ * for an adapter.
+ * @experimental
+ */
+export type Surface = 'cli' | 'mcp' | 'http'
+
+/**
+ * Who may call a command. `all`: the command line and the MCP and HTTP
+ * adapters. `cli-only`: the command line only. A command that changes trust is
+ * `cli-only`, because an agent or a web page must not grant itself trust.
+ * @experimental
+ */
+export type Exposure = 'all' | 'cli-only'
 
 /**
  * What a data command returns: its output, or its output with an exit code.
@@ -138,8 +173,21 @@ export interface CommandCommon<F extends FlagSpec> {
   examples?: readonly string[]
   /** Left out of help lists. It still runs and still has a schema. */
   hidden?: boolean
-  /** True when the command changes nothing. A later MCP adapter exposes these by default. */
+  /** True when the command changes nothing. The MCP adapter marks it with `readOnlyHint`. */
   readOnly?: boolean
+  /**
+   * True when the command deletes or overwrites something that cannot be got
+   * back. The MCP adapter marks it with `destructiveHint`. Ignored with `readOnly`.
+   */
+  destructive?: boolean
+  /** Who may call the command. Default `all`. Interactive commands are never exposed to adapters. */
+  exposure?: Exposure
+  /**
+   * The exposure of one call, for a command whose risk depends on its input,
+   * such as `config set` of a trust key. Checked by the adapters after the
+   * input is parsed. A `cli-only` from here refuses that call only.
+   */
+  exposureOf?(input: CommandInput<F, FlagSpec>): Exposure
 }
 
 /**
@@ -161,6 +209,19 @@ export interface DataCommandSpec<
   kind?: string
   /** The document's `schemaVersion`. Raise it when the output changes incompatibly. Defaults to 1. */
   schemaVersion?: number
+  /**
+   * For a command whose output is a list: the array field that
+   * `--output jsonl` prints one line per element of, and the `kind` of each
+   * line. Each element must be an object. Other fields of the output are not
+   * printed under `jsonl`.
+   */
+  items?: { field: string; kind: string }
+  /**
+   * For a long-running command that reports as it goes: the shape of each
+   * event `ctx.emit` sends and its `kind`. `text` renders one event for the
+   * text form; without it, events print nothing in text mode.
+   */
+  events?: EventsSpec
   /** Compute the output. It writes nothing to stdout itself. Notes go through `ctx.note` and `ctx.warn`. */
   run(
     input: CommandInput<F, G>,
@@ -171,6 +232,19 @@ export interface DataCommandSpec<
    * The returned string is written as is, so end it with a newline.
    */
   text?(output: z.input<S>, ctx: CommandContext): string
+}
+
+/**
+ * The events a long-running data command sends with `ctx.emit`.
+ * @experimental
+ */
+export interface EventsSpec {
+  /** The shape of one event. It may not declare `schemaVersion` or `kind`. */
+  schema: OutputSchema
+  /** Each event's `kind`. */
+  kind: string
+  /** The text form of one event, written to stdout as it comes. End it with a newline. */
+  text?(event: Record<string, unknown>): string
 }
 
 /**
@@ -259,6 +333,12 @@ export type Node = Command | Group
  */
 export const BUILTIN_FLAGS = {
   json: { kind: 'boolean', help: 'answer as one JSON document on stdout' },
+  output: {
+    kind: 'enum',
+    choices: ['text', 'json', 'jsonl'],
+    valueName: 'mode',
+    help: 'text, json (the same as --json), or jsonl: one JSON object per line',
+  },
   help: { kind: 'boolean', short: 'h', help: 'show help for this command' },
   all: {
     kind: 'boolean',
@@ -287,7 +367,23 @@ export interface CommandKit<G extends FlagSpec> {
 
 const RESERVED_KEYS = ['schemaVersion', 'kind'] as const
 
-function checkCommand(spec: CommandCommon<FlagSpec> & { output?: OutputSchema }): void {
+function checkReserved(schema: OutputSchema, what: string): void {
+  const shape = schema.shape as Record<string, unknown> | undefined
+  if (shape === undefined) throw new Error(`defineCommand: ${what} must be a z.object`)
+  for (const key of RESERVED_KEYS) {
+    if (key in shape) {
+      throw new Error(`defineCommand: ${what} may not declare '${key}'; the app adds it`)
+    }
+  }
+}
+
+function checkCommand(
+  spec: CommandCommon<FlagSpec> & {
+    output?: OutputSchema
+    items?: { field: string; kind: string }
+    events?: EventsSpec
+  },
+): void {
   if (spec.summary.trim() === '') throw new Error('defineCommand: summary is empty')
   for (const key of Object.keys(spec.flags ?? {})) {
     if (key in BUILTIN_FLAGS || key === 'version') {
@@ -300,14 +396,19 @@ function checkCommand(spec: CommandCommon<FlagSpec> & { output?: OutputSchema })
     }
   }
   if (spec.output !== undefined) {
-    const shape = spec.output.shape as Record<string, unknown> | undefined
-    if (shape === undefined) throw new Error('defineCommand: output must be a z.object')
-    for (const key of RESERVED_KEYS) {
-      if (key in shape) {
-        throw new Error(`defineCommand: output may not declare '${key}'; the app adds it`)
+    checkReserved(spec.output, 'output')
+    if (spec.items !== undefined) {
+      const field = (spec.output.shape as Record<string, { def?: { type?: string } }>)[
+        spec.items.field
+      ]
+      if (field?.def?.type !== 'array') {
+        throw new Error(
+          `defineCommand: items.field '${spec.items.field}' is not an array of the output`,
+        )
       }
     }
   }
+  if (spec.events !== undefined) checkReserved(spec.events.schema, 'events.schema')
 }
 
 /**
@@ -322,7 +423,7 @@ export function commandKit<G extends FlagSpec>(options: { globals: G }): Command
     command(
       spec: DataCommandSpec<FlagSpec, G, OutputSchema> | InteractiveCommandSpec<FlagSpec, G>,
     ) {
-      checkCommand(spec as CommandCommon<FlagSpec> & { output?: OutputSchema })
+      checkCommand(spec as Parameters<typeof checkCommand>[0])
       if ('interactive' in spec && spec.interactive === true) {
         return { ...spec, type: 'command' } as InteractiveCommand<FlagSpec, G>
       }
