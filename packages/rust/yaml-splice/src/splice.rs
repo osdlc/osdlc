@@ -117,20 +117,39 @@ pub fn splice_key(
 /// The result is in split form whether or not anything was appended (see the
 /// module docs).
 ///
+/// A key named more than once is written once: the last edit for it wins.
+///
 /// # Errors
 ///
 /// The same as [`splice_key`].
 pub fn splice_keys(yaml: &str, edits: Vec<(String, Replacement)>) -> Result<String, SpliceError> {
     let parsed = parse::parse_with_spans(yaml)?;
+    let eol = block_eol(yaml);
+
+    // One entry per key, the last edit winning, at the key's first position.
+    // Every range comes from the one parse above, so two edits for the same
+    // key would both be applied at offsets the first one already shifted.
+    let mut unique: Vec<(String, Replacement)> = Vec::with_capacity(edits.len());
+    for (key, replacement) in edits {
+        match unique.iter_mut().find(|(k, _)| *k == key) {
+            Some(slot) => slot.1 = replacement,
+            None => unique.push((key, replacement)),
+        }
+    }
 
     let mut applied: Vec<(std::ops::Range<usize>, String)> = Vec::new();
     let mut appended: Vec<(String, Replacement)> = Vec::new();
 
-    for (key, replacement) in edits {
+    for (key, replacement) in unique {
         match parsed.top_level.iter().find(|k| k.key == key) {
             Some(span) => {
                 let key_indent = line_indent(yaml, span.key_range.start);
                 let text = render_assignment(&replacement, &key_indent)?;
+                // The emitter always writes `\n`, as on the append path below.
+                let text = match replacement {
+                    Replacement::Raw(_) => text,
+                    Replacement::Value(_) => apply_eol(&text, eol),
+                };
                 // From just past the `:`. See `KeySpan::assign_end` for why
                 // the separator has to be part of the replaced range.
                 applied.push(fit_assignment(
@@ -151,7 +170,6 @@ pub fn splice_keys(yaml: &str, edits: Vec<(String, Replacement)>) -> Result<Stri
     }
 
     if !appended.is_empty() {
-        let eol = block_eol(yaml);
         for (key, replacement) in appended {
             // Finish the block's last line so the new entry starts on one of
             // its own. In split form that line is missing exactly its `\n`
@@ -456,6 +474,51 @@ alpha: 2
         )
         .unwrap();
         assert_eq!(out, "# hi\na: 10\nb: 2\nc: three\n");
+    }
+
+    #[test]
+    fn a_key_named_twice_is_written_once_with_the_last_value() {
+        let out = splice_keys(
+            "a: 1\nb: 2",
+            vec![
+                ("a".into(), Value::Int(10).into()),
+                ("a".into(), Value::Int(2000).into()),
+            ],
+        )
+        .unwrap();
+        assert_eq!(out, "a: 2000\nb: 2");
+
+        // A multi-byte first value must not leave a stale range behind.
+        let out = splice_keys(
+            "a: 1\nb: 2",
+            vec![
+                ("a".into(), s("éé").into()),
+                ("a".into(), Value::Int(3).into()),
+            ],
+        )
+        .unwrap();
+        assert_eq!(out, "a: 3\nb: 2");
+
+        let out = splice_keys(
+            "a: 1",
+            vec![
+                ("z".into(), Value::Int(1).into()),
+                ("z".into(), Value::Int(2).into()),
+            ],
+        )
+        .unwrap();
+        assert_eq!(out, "a: 1\nz: 2");
+    }
+
+    #[test]
+    fn a_crlf_block_gets_a_replaced_collection_in_crlf() {
+        let src = "a: 1\r\ntags: []\r\nb: 2\r";
+        let out = splice_key(src, "tags", Value::Seq(vec![s("x")])).unwrap();
+        assert_eq!(out, "a: 1\r\ntags:\r\n  - x\r\nb: 2\r");
+        assert!(
+            !out.replace("\r\n", "").contains('\n'),
+            "a lone LF leaked into a CRLF block: {out:?}"
+        );
     }
 
     #[test]

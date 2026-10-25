@@ -154,7 +154,7 @@ const surveyCli = defineCli({
       kind: 'string',
       valueName: 'name',
       default: 'origin',
-      help: 'Remote to fetch from (measurement reads origin/*).',
+      help: 'Remote to fetch from and measure against.',
     },
     pr: {
       kind: 'list',
@@ -215,7 +215,7 @@ const updateCli = defineCli({
       kind: 'string',
       valueName: 'name',
       default: 'origin',
-      help: 'Remote to fetch from and push to (measurement reads origin/*).',
+      help: 'Remote to fetch from, measure against and push to.',
     },
     apply: { kind: 'boolean', help: 'Push the updates. Without it, nothing is written.' },
     confirmPush: {

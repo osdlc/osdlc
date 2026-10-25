@@ -231,6 +231,9 @@ export async function updateOne(
   } catch (e) {
     return { status: 'failed', reason: `checkout ${head}: ${errorLine(e)}` }
   }
+  // A forced checkout keeps untracked files. Whatever the previous PR left (a
+  // verify verb's report, say) would otherwise be committed by this PR's `add .`.
+  git.try.clean({ directories: true })
 
   // The push lease pins `target.headOid`, the code host's view of the head. A
   // tracking ref behind it (after a skipped or failed fetch) would build on an

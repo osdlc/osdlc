@@ -360,3 +360,44 @@ describe('repair agent presets in config', () => {
     }
   })
 })
+
+describe('config set/unset --dry-run, get on an unset key, unknown subcommands', () => {
+  test('set --dry-run reports what it would create and writes nothing', async () => {
+    const { dir, env } = project()
+    const r = await run(dir, env, 'config', 'set', 'strategy', 'merge', '--dry-run')
+    expect(r.code).toBe(EXIT.ok)
+    expect(r.out).toMatch(/^pr_update\.strategy: would create .*pr-update\.yaml\n$/)
+    expect(existsSync(join(dir, PR_UPDATE_CONFIG_FILE_NAME))).toBe(false)
+  })
+
+  test('setting the value a key already has reports it unchanged', async () => {
+    const { dir, env } = project()
+    expect((await run(dir, env, 'config', 'set', 'strategy', 'merge')).code).toBe(EXIT.ok)
+    const again = await run(dir, env, 'config', 'set', 'strategy', 'merge')
+    expect(again.out).toMatch(/^pr_update\.strategy: unchanged \(/)
+  })
+
+  test('unset --dry-run leaves the file as it was', async () => {
+    const { dir, env } = project()
+    await run(dir, env, 'config', 'set', 'strategy', 'merge')
+    const before = readFileSync(join(dir, PR_UPDATE_CONFIG_FILE_NAME), 'utf8')
+    const r = await run(dir, env, 'config', 'unset', 'strategy', '--dry-run')
+    expect(r.code).toBe(EXIT.ok)
+    expect(r.out).toContain('would update')
+    expect(readFileSync(join(dir, PR_UPDATE_CONFIG_FILE_NAME), 'utf8')).toBe(before)
+  })
+
+  test('get on a key no layer file sets is an error', async () => {
+    const { dir, env } = project()
+    const r = await run(dir, env, 'config', 'get', 'strategy', '--layer', 'local')
+    expect(r.code).toBe(EXIT.error)
+    expect(r.err).toContain('is not set in that layer')
+  })
+
+  test('an unknown config subcommand is a usage error', async () => {
+    const { dir, env } = project()
+    const r = await run(dir, env, 'config', 'bogus')
+    expect(r.code).toBe(EXIT.usage)
+    expect(r.err).toContain("unknown command 'bogus'")
+  })
+})

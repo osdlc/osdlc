@@ -2,10 +2,10 @@
  * Chooses a `CodeHost` for the repository at `cwd`, from its `origin` remote.
  *
  * GitHub is the only host this package can recognize by its domain. A
- * self-hosted Forgejo instance can live at any domain, so any remote that does
- * not contain `github.com` is taken as Forgejo. With no `origin` remote the
- * answer is GitHub. The `code_host.override` config key covers the cases this
- * rule gets wrong, such as a GitHub Enterprise host.
+ * self-hosted Forgejo instance can live at any domain, so any remote whose host
+ * is not `github.com` or a subdomain of it is taken as Forgejo. With no
+ * `origin` remote the answer is GitHub. The `code_host.override` config key
+ * covers the cases this rule gets wrong, such as a GitHub Enterprise host.
  *
  * Callers use `selectCodeHost` instead of constructing an adapter directly.
  * This is the one place the choice is made, so no caller branches on a
@@ -34,7 +34,13 @@ export function codeHostNameForRemote(
 ): CodeHostName {
   if (override !== null) return override
   if (url === null) return 'github'
-  return url.includes('github.com') ? 'github' : 'forgejo'
+  // Match the host, not the whole URL: a path such as `/github.com-mirror/r`
+  // or a host such as `notgithub.com` names no GitHub repository. A remote
+  // `parseRemoteUrl` cannot read falls back to the substring test.
+  const ref = parseRemoteUrl(url)
+  if (ref === null) return url.includes('github.com') ? 'github' : 'forgejo'
+  const host = ref.host.toLowerCase()
+  return host === 'github.com' || host.endsWith('.github.com') ? 'github' : 'forgejo'
 }
 
 /**

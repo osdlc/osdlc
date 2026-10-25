@@ -884,6 +884,69 @@ mod frontmatter_tests {
     }
 
     #[test]
+    fn a_set_on_an_empty_block_returns_just_the_entry() {
+        let edits = [FieldEdit::Set {
+            key: "kind".to_string(),
+            value: Value::from("note"),
+        }];
+        assert_eq!(out(edit_frontmatter("", &edits)), "kind: note");
+    }
+
+    #[test]
+    fn appending_to_a_crlf_block_in_split_form_keeps_crlf() {
+        let edits = [FieldEdit::Set {
+            key: "b".to_string(),
+            value: Value::Int(2),
+        }];
+        assert_eq!(out(edit_frontmatter("a: 1\r", &edits)), "a: 1\r\nb: 2\r");
+    }
+
+    #[test]
+    fn an_already_terminated_block_keeps_its_terminator() {
+        let set = |v: i64| {
+            [FieldEdit::Set {
+                key: "a".to_string(),
+                value: Value::Int(v),
+            }]
+        };
+        assert_eq!(out(edit_frontmatter("a: 1\n", &set(2))), "a: 2\n");
+        let same = edit_frontmatter("a: 1\n", &set(1)).unwrap();
+        assert!(!same.changed);
+        assert_eq!(same.bytes, b"a: 1\n");
+        let remove = [FieldEdit::Remove {
+            key: "b".to_string(),
+        }];
+        assert_eq!(out(edit_frontmatter("a: 1\nb: 2\n", &remove)), "a: 1\n");
+    }
+
+    #[test]
+    fn a_rename_that_only_changes_case_is_a_re_spelling() {
+        let rename = |from: &str, to: &str| {
+            [FieldEdit::Rename {
+                from: from.to_string(),
+                to: to.to_string(),
+            }]
+        };
+        let r = edit_yaml(b"title: x\n", &rename("title", "Title")).unwrap();
+        assert!(r.changed);
+        assert_eq!(r.bytes, b"Title: x\n");
+
+        let same = edit_yaml(b"a: 1\n", &rename("a", "a")).unwrap();
+        assert!(!same.changed);
+        assert_eq!(same.bytes, b"a: 1\n");
+
+        // A destination that folds to a different key conflicts by default ...
+        assert!(matches!(
+            edit_yaml(b"a: 1\nB: 2\n", &rename("a", "b")),
+            Err(EditError::KeyConflict { ref key, .. }) if key == "b"
+        ));
+        // ... and not when keys match exactly.
+        let exact = EditOptions::default().case_sensitive(true);
+        let r = edit_yaml_with(b"a: 1\nB: 2\n", &rename("a", "b"), &exact).unwrap();
+        assert_eq!(r.bytes, b"b: 1\nB: 2\n");
+    }
+
+    #[test]
     fn an_edit_that_would_change_a_neighbour_is_refused() {
         // The blank line after `b`'s block scalar would join `a`'s keep-chomped
         // (`|+`) value once `b` is gone, changing `a`.

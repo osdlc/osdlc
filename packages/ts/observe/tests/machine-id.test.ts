@@ -100,7 +100,7 @@ describe('resolveMachineId', () => {
       })
       const first = resolveMachineId(counting, path)
       expect(first).toBe(derived('uuid-y'))
-      expect(readFileSync(path, 'utf8').trim()).toBe(first)
+      expect(readFileSync(path, 'utf8').trim().split(' ')[0]).toBe(first)
       expect(resolveMachineId(counting, path)).toBe(first)
       expect(probes).toBe(1)
     } finally {
@@ -115,6 +115,35 @@ describe('resolveMachineId', () => {
       writeFileSync(path, 'my-raw-hostname\n')
       const id = resolveMachineId(probe({ platform: 'linux', readFile: () => 'uuid-z' }), path)
       expect(id).toBe(derived('uuid-z'))
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test("a cache written on another host is not this host's id: it derives again", () => {
+    // Two machines sharing one home directory, so one cache file.
+    const dir = mkdtempSync(join(tmpdir(), 'machine-id-'))
+    try {
+      const path = join(dir, 'machine-id')
+      const hostA = probe({ platform: 'linux', readFile: () => 'uuid-a', hostname: () => 'a' })
+      const hostB = probe({ platform: 'linux', readFile: () => 'uuid-b', hostname: () => 'b' })
+      expect(resolveMachineId(hostA, path)).toBe(derived('uuid-a'))
+      expect(resolveMachineId(hostB, path)).toBe(derived('uuid-b'))
+      expect(resolveMachineId(hostA, path)).toBe(derived('uuid-a'))
+      // The file names neither host.
+      expect(readFileSync(path, 'utf8')).not.toMatch(/\b[ab]\b/)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('an id-only cache from before the host key is derived again', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'machine-id-'))
+    try {
+      const path = join(dir, 'machine-id')
+      writeFileSync(path, `${derived('someone-else')}\n`)
+      const id = resolveMachineId(probe({ platform: 'linux', readFile: () => 'uuid-w' }), path)
+      expect(id).toBe(derived('uuid-w'))
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }

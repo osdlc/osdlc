@@ -13,7 +13,7 @@
 use serde_yaml::Value;
 
 use super::errors::DeclarativeError;
-use super::yaml::render;
+use super::yaml::{self, render};
 use crate::contract::{DocRule, Rule};
 use crate::finding::FindingLevel;
 use crate::text_constraints::{
@@ -96,20 +96,12 @@ fn assign_needle(
         (None, None) => Err(err(format!(
             "{path}: a match spec needs one of 'pattern' (a literal) or 'regex' (a source)"
         ))),
-        (Some(p), None) => {
-            spec.pattern = Some(
-                p.as_str()
-                    .ok_or_else(|| err(format!("{path}.pattern must be a string")))?
-                    .to_string(),
-            );
+        (Some(_), None) => {
+            spec.pattern = yaml::string(map, "pattern", path, err)?.map(str::to_string);
             Ok(())
         }
-        (None, Some(r)) => {
-            spec.regex = Some(
-                r.as_str()
-                    .ok_or_else(|| err(format!("{path}.regex must be a string")))?
-                    .to_string(),
-            );
+        (None, Some(_)) => {
+            spec.regex = yaml::string(map, "regex", path, err)?.map(str::to_string);
             Ok(())
         }
     }
@@ -121,44 +113,12 @@ fn assign_scalar_fields(
     spec: &mut TextMatchSpec,
     path: &str,
 ) -> Result<(), DeclarativeError> {
-    if let Some(v) = map.get("normalize") {
-        spec.normalize = Some(
-            v.as_bool()
-                .ok_or_else(|| err(format!("{path}.normalize must be a boolean")))?,
-        );
-    }
-    if let Some(v) = map.get("ignoreCase") {
-        spec.ignore_case = Some(
-            v.as_bool()
-                .ok_or_else(|| err(format!("{path}.ignoreCase must be a boolean")))?,
-        );
-    }
-    if let Some(v) = map.get("min") {
-        spec.min = Some(
-            v.as_f64()
-                .ok_or_else(|| err(format!("{path}.min must be a number")))?,
-        );
-    }
-    if let Some(v) = map.get("max") {
-        spec.max = Some(
-            v.as_f64()
-                .ok_or_else(|| err(format!("{path}.max must be a number")))?,
-        );
-    }
-    if let Some(v) = map.get("id") {
-        spec.id = Some(
-            v.as_str()
-                .ok_or_else(|| err(format!("{path}.id must be a string")))?
-                .to_string(),
-        );
-    }
-    if let Some(v) = map.get("note") {
-        spec.note = Some(
-            v.as_str()
-                .ok_or_else(|| err(format!("{path}.note must be a string")))?
-                .to_string(),
-        );
-    }
+    spec.normalize = yaml::boolean(map, "normalize", path, err)?;
+    spec.ignore_case = yaml::boolean(map, "ignoreCase", path, err)?;
+    spec.min = yaml::num(map, "min", path, err)?;
+    spec.max = yaml::num(map, "max", path, err)?;
+    spec.id = yaml::string(map, "id", path, err)?.map(str::to_string);
+    spec.note = yaml::string(map, "note", path, err)?.map(str::to_string);
     Ok(())
 }
 

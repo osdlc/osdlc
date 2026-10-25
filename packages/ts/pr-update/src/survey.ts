@@ -176,8 +176,11 @@ export function topoOrder(prs: readonly CodeHostPrDetail[]): {
 
 /** The `parent` edge for each PR, by number. */
 export function parentEdges(prs: readonly CodeHostPrDetail[]): Map<number, number | null> {
+  // A fork's head is a branch of another repository. A PR whose base has the
+  // same name targets this repository's branch, not the fork's, so a fork PR
+  // is never anyone's parent.
   const byHead = new Map<string, number>()
-  for (const pr of prs) byHead.set(pr.headRef, pr.number)
+  for (const pr of prs) if (!pr.isCrossRepository) byHead.set(pr.headRef, pr.number)
   const edges = new Map<number, number | null>()
   for (const pr of prs) {
     const parent = byHead.get(pr.baseRef) ?? null
@@ -231,9 +234,10 @@ export function statusFor(behind: number | null, blockedBy: number | null): Surv
 export function measure(
   git: Git,
   pr: CodeHostPrDetail,
+  remote = 'origin',
 ): Pick<SurveyRow, 'baseOid' | 'ahead' | 'behind' | 'merge' | 'conflicts' | 'conflictBaseSha'> {
-  const base = `origin/${pr.baseRef}`
-  const head = `origin/${pr.headRef}`
+  const base = `${remote}/${pr.baseRef}`
+  const head = `${remote}/${pr.headRef}`
 
   // `resolveRef` returns `null` for a ref that does not resolve. `soft` also
   // returns `null` for a broken object store.
@@ -270,11 +274,16 @@ export function measure(
  * that a rewrite is fine. Being wrong one way costs a needless merge commit.
  * Being wrong the other way loses work that cannot be recovered.
  */
-export function unpushedLocalWork(git: Git, worktrees: readonly Worktree[], head: string): boolean {
+export function unpushedLocalWork(
+  git: Git,
+  worktrees: readonly Worktree[],
+  head: string,
+  remote = 'origin',
+): boolean {
   const wt = worktrees.find((w) => w.branch === head)
   if (wt === undefined) return false
   if (wt.head === null) return true
-  const counts = git.try.aheadBehind(`origin/${head}`, wt.head)
+  const counts = git.try.aheadBehind(`${remote}/${head}`, wt.head)
   if (!counts.ok) return true
   return counts.value.ahead > 0
 }
@@ -283,8 +292,16 @@ export function unpushedLocalWork(git: Git, worktrees: readonly Worktree[], head
 export function surveyRows(
   git: Git,
   prs: readonly CodeHostPrDetail[],
-  opts: { repo: string; worktrees: readonly Worktree[]; cfg: PrUpdateConfig; measurable: boolean },
+  opts: {
+    repo: string
+    worktrees: readonly Worktree[]
+    cfg: PrUpdateConfig
+    measurable: boolean
+    /** The remote whose tracking refs are read. Defaults to `origin`. */
+    remote?: string
+  },
 ): { rows: SurveyRow[]; cycles: number[] } {
+  const remote = opts.remote ?? 'origin'
   const { order, cycles } = topoOrder(prs)
   const edges = parentEdges(prs)
 
@@ -298,7 +315,10 @@ export function surveyRows(
   }
   const measured = new Map<number, ReturnType<typeof measure>>()
   for (const pr of order) {
-    measured.set(pr.number, opts.measurable ? measure(git, pr) : unmeasured)
+    // A fork's head is not a branch of this remote, so `<remote>/<head>` is at
+    // best an unrelated branch of the same name. Its drift is not known here.
+    const measurable = opts.measurable && !pr.isCrossRepository
+    measured.set(pr.number, measurable ? measure(git, pr, remote) : unmeasured)
   }
 
   const behindOf = new Map<number, number | null>()
@@ -309,7 +329,9 @@ export function surveyRows(
     rows: order.map((pr) => {
       const m = measured.get(pr.number)!
       const blockedBy = nearestBehindAncestor(pr.number, edges, behindOf)
-      const unpushed = opts.measurable ? unpushedLocalWork(git, opts.worktrees, pr.headRef) : false
+      const unpushed = opts.measurable
+        ? unpushedLocalWork(git, opts.worktrees, pr.headRef, remote)
+        : false
       const decision = chooseStrategy(
         {
           base: pr.baseRef,
@@ -445,10 +467,7 @@ export const SCOPE_SHAPE = {
     .int()
     .default(100)
     .describe('Maximum number of open PRs to list per repository.'),
-  remote: z
-    .string()
-    .default('origin')
-    .describe('Remote to fetch from. Measurement always reads `origin/*` remote-tracking refs.'),
+  remote: z.string().default('origin').describe('Remote to fetch from and measure against.'),
   pr: z
     .array(z.coerce.number().int())
     .default([])
@@ -598,6 +617,24 @@ export function remoteSlug(url: string): string | null {
 }
 
 /**
+ * The repositories a run covers and where each is checked out, from the
+ * `remote` and `repo` scope flags. `update` reads the same answer to know
+ * which checkout each target's PRs are updated in.
+ */
+export function surveyTargets(
+  args: Pick<SurveyArgs, 'remote' | 'repo'>,
+  env: Pick<SurveyEnv, 'projectRoot' | 'git' | 'ports'>,
+): { localSlug: string | null; targets: RepoTarget[] } {
+  const localGit = new Git(env.projectRoot, { runner: env.git })
+  const localUrl = localGit.soft.remoteGetUrl(args.remote)
+  const localSlug = localUrl !== null ? remoteSlug(localUrl) : null
+  return {
+    localSlug,
+    targets: resolveTargets(localSlug, env.projectRoot, args.repo, env.ports.locate),
+  }
+}
+
+/**
  * Run the survey.
  *
  * Kept separate from `update` so `update` plans from exactly what `survey`
@@ -606,12 +643,9 @@ export function remoteSlug(url: string): string | null {
  */
 export function runSurvey(args: SurveyArgs, env: SurveyEnv): SurveyReport {
   const { cfg } = env
-  const localGit = new Git(env.projectRoot, { runner: env.git })
-  const localUrl = localGit.soft.remoteGetUrl(args.remote)
-  const localSlug = localUrl !== null ? remoteSlug(localUrl) : null
+  const { localSlug, targets } = surveyTargets(args, env)
   const codeHostFor = env.codeHost ?? githubCodeHostFor(env.gh)
 
-  const targets = resolveTargets(localSlug, env.projectRoot, args.repo, env.ports.locate)
   // Flags beat config; config beats the built-in default.
   const author = args.author ?? cfg.author ?? undefined
   const includeDrafts = args.noDrafts ? false : cfg.include_drafts
@@ -683,6 +717,7 @@ export function runSurvey(args: SurveyArgs, env: SurveyEnv): SurveyReport {
       worktrees,
       cfg,
       measurable,
+      remote: args.remote,
     })
     repos.push({ slug: target.slug, measurable, fetched })
     allRows.push(...rows)

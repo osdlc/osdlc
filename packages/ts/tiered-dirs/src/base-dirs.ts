@@ -399,9 +399,13 @@ function guardedEnv(
     return { ...env, [vars.root]: root }
   }
   if (env[vars.requireOverride]) {
-    // Runtime follows a moved durable, so it needs no variable of its own.
-    const required = BASE_DIR_KEYS.filter((key) => key !== 'runtime' && !overrides[key])
-    const missing = required.find((key) => !env[vars.dirs[key]])
+    // Runtime follows a durable the environment moves, so then it needs no
+    // variable of its own. A durable moved only by `overrides` is not followed
+    // (`envOverrides` never sees it), so runtime is then required like the rest.
+    const required = BASE_DIR_KEYS.filter((key) => !overrides[key])
+    const missing = required.find(
+      (key) => !env[vars.dirs[key]] && !(key === 'runtime' && env[vars.dirs.durable]),
+    )
     if (missing !== undefined) {
       throw new TieredDirsError(
         'OVERRIDE_REQUIRED',

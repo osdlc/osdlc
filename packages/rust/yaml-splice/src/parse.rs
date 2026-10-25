@@ -409,10 +409,11 @@ pub(crate) fn is_string_key(src: &str, span: &KeySpan) -> bool {
     matches!(resolve_plain(raw, ScalarStyle::Plain), Value::Str(_))
 }
 
-/// The integer spellings the core schema accepts: decimal, `0x`, `0o`.
+/// The integer spellings the core schema accepts: signed decimal, and unsigned
+/// `0x` / `0o` (yaml@2 takes no sign on those, so `-0x1F` is a string, as
+/// [`render`](crate::render)'s quoting rule assumes).
 fn parse_int(text: &str) -> Option<i64> {
     let unsigned = text.strip_prefix(['-', '+']).unwrap_or(text);
-    let negative = text.starts_with('-');
     if !unsigned.is_empty()
         && unsigned.bytes().all(|c| c.is_ascii_digit())
         && let Ok(i) = text.parse::<i64>()
@@ -420,14 +421,15 @@ fn parse_int(text: &str) -> Option<i64> {
         return Some(i);
     }
     for (prefix, radix) in [("0x", 16), ("0o", 8)] {
-        let Some(digits) = unsigned.strip_prefix(prefix) else {
+        let Some(digits) = text.strip_prefix(prefix) else {
             continue;
         };
-        if digits.is_empty() {
+        // Checked here so `from_str_radix`'s own sign handling (`0x-1`) never runs.
+        if digits.is_empty() || !digits.chars().all(|c| c.is_digit(radix)) {
             continue;
         }
         if let Ok(i) = i64::from_str_radix(digits, radix) {
-            return Some(if negative { -i } else { i });
+            return Some(i);
         }
     }
     None
@@ -950,6 +952,19 @@ mod tests {
         assert_eq!(m.get("f"), Some(&Value::Str("1.0".into())));
         // `yes` is a string in YAML 1.2, not a boolean.
         assert_eq!(m.get("g"), Some(&Value::Str("yes".into())));
+    }
+
+    #[test]
+    fn hex_and_octal_take_no_sign() {
+        // yaml@2's core schema: /^0x[0-9a-fA-F]+$/ and /^0o[0-7]+$/, unsigned.
+        let v = parse("a: 0x1F\nb: 0o17\nc: -0x1F\nd: +0o7\ne: 0x-1\nf: -12\n").unwrap();
+        let m = v.as_mapping().unwrap();
+        assert_eq!(m.get("a"), Some(&Value::Int(31)));
+        assert_eq!(m.get("b"), Some(&Value::Int(15)));
+        assert_eq!(m.get("c"), Some(&Value::Str("-0x1F".into())));
+        assert_eq!(m.get("d"), Some(&Value::Str("+0o7".into())));
+        assert_eq!(m.get("e"), Some(&Value::Str("0x-1".into())));
+        assert_eq!(m.get("f"), Some(&Value::Int(-12)));
     }
 
     #[test]

@@ -29,6 +29,7 @@ import {
   type CommandRunner,
 } from '@osdlc/command-seam'
 import { err, FailureError, mapErr, ok, type Result } from '@osdlc/result'
+import { rollupChecks } from './checks.ts'
 import { fromGhFailure, type CodeHostFailure } from './failure.ts'
 import { CommentNotFoundError } from './types.ts'
 import type {
@@ -71,22 +72,10 @@ function toActor(login: string | null | undefined): Actor | null {
 }
 
 function checksSummaryFrom(checks: readonly CheckRun[]): CheckSummary {
-  const rollup = checks.some((c) => c.verdict === 'failure')
-    ? 'failure'
-    : checks.some((c) => c.verdict === 'pending')
-      ? 'pending'
-      : checks.length === 0
-        ? 'none'
-        : 'success'
-  const failed = checks.filter((c) => c.verdict === 'failure')
-  const failing = failed.map((c) => c.name)
-  const failingUrls = failed
-    .filter((c): c is CheckRun & { url: string } => c.url !== null)
-    .map((c) => ({ name: c.name, url: c.url }))
   // `blocked` stays empty here because this function makes no network calls.
   // Detecting a billing block needs one `gh api` call per failing check, so
   // `GithubCodeHost.getPr` fills it in afterwards (see `detectBlockedChecks`).
-  return { rollup, failing, failingUrls, blocked: [] }
+  return rollupChecks(checks)
 }
 
 /**
@@ -162,12 +151,15 @@ export function detectBlockedChecks(
 }
 
 /**
- * Per-line review comments from the REST endpoint, through `Gh.api`. Returns
- * `[]` on any failure (non-zero exit, parse error) instead of throwing. A
- * failed fetch of these comments should not fail the whole `getPr` call.
+ * Per-line review comments from the REST endpoint, through `Gh.api`, every
+ * page of them (the endpoint returns 30 per page by default). Returns `[]` on
+ * any failure (non-zero exit, parse error) instead of throwing. A failed fetch
+ * of these comments should not fail the whole `getPr` call.
  */
 function fetchReviewComments(gh: Gh, prNumber: number): RestReviewComment[] {
-  const result = gh.api(`repos/{owner}/{repo}/pulls/${prNumber}/comments`)
+  const result = gh.api(`repos/{owner}/{repo}/pulls/${prNumber}/comments?per_page=100`, {
+    paginate: true,
+  })
   if (!result.ok) return []
   return Array.isArray(result.body) ? (result.body as RestReviewComment[]) : []
 }
@@ -430,9 +422,15 @@ export class GithubCodeHost implements CodeHost {
   listComments(
     number: number,
   ): Result<{ id: string; createdAt: string; body: string }[], CodeHostFailure> {
-    const argv = ['api', `repos/{owner}/{repo}/issues/${number}/comments?per_page=100`]
+    const argv = [
+      'api',
+      '--paginate',
+      '--slurp',
+      `repos/{owner}/{repo}/issues/${number}/comments?per_page=100`,
+    ]
     const res = this.gh.raw(argv)
     // `gh api` through `raw`, not `gh.api`: the failure needs the whole run to be classified.
+    // `--slurp` prints every page as one array of pages, flattened below.
     if (classifyFailure(res, { binary: 'gh', argv }) !== null) {
       return {
         ok: false,
@@ -445,15 +443,20 @@ export class GithubCodeHost implements CodeHost {
     } catch {
       body = null
     }
-    if (!Array.isArray(body)) {
+    if (!Array.isArray(body) || !body.every(Array.isArray)) {
       return err({
         kind: 'unreadable',
         message: 'GitHub answered, but its comment list could not be read.',
         host: 'github',
       })
     }
+    const rows = (body as unknown[][]).flat() as {
+      id?: unknown
+      body?: unknown
+      created_at?: unknown
+    }[]
     const out: { id: string; createdAt: string; body: string }[] = []
-    for (const c of body as { id?: unknown; body?: unknown; created_at?: unknown }[]) {
+    for (const c of rows) {
       if (typeof c.id !== 'number' && typeof c.id !== 'string') continue
       out.push({
         id: String(c.id),

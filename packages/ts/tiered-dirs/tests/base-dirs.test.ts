@@ -157,6 +157,33 @@ describe('Windows', () => {
     expect(win(base).scratch.endsWith('Temp')).toBe(true)
   })
 
+  test('an override must be absolute by Windows rules: drive-relative and rooted-only throw', () => {
+    const win = (env: Record<string, string>) =>
+      systemBaseDirs(ENV, { platform: 'win32', env: { USERPROFILE: 'C:\\Users\\x', ...env } })
+    const code = (env: Record<string, string>): string | undefined => {
+      try {
+        win(env)
+        return undefined
+      } catch (error) {
+        return (error as TieredDirsError).code
+      }
+    }
+    for (const root of ['C:scratch', '/r', 'scratch']) {
+      expect([root, code({ EXAMPLE_ROOT: root })]).toEqual([root, 'RELATIVE_OVERRIDE'])
+    }
+    for (const root of ['C:\\r', 'C:/r', '\\\\srv\\share', '//srv/share']) {
+      expect(win({ EXAMPLE_ROOT: root }).durable).toBe(rootedBaseDirs(root).durable)
+    }
+  })
+
+  test('a relative APPDATA is ignored for the AppData default under the home', () => {
+    const bases = systemBaseDirs(ENV, {
+      platform: 'win32',
+      env: { USERPROFILE: 'C:\\Users\\x', APPDATA: 'rel' },
+    })
+    expect(bases.durable).toBe(join('C:\\Users\\x', 'AppData', 'Roaming'))
+  })
+
   test('with no OS home for either, logs and runtime derive from durable', () => {
     const bases = systemBaseDirs(ENV, { platform: 'win32', env: { USERPROFILE: 'C:/Users/x' } })
     expect(bases.logs.endsWith('logs')).toBe(true)

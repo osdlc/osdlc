@@ -268,4 +268,116 @@ mod tests {
         };
         assert!(e.to_string().contains("expected a config document"));
     }
+
+    // The same shapes the TS `loadConfig` accepts or rejects: a `contracts` map entry
+    // that is not a string is ignored, so the name is read as a path.
+    #[test]
+    fn malformed_rule_fields_are_config_errors() {
+        let config_err = |yaml: &str| match load_config(yaml, &mut no_files) {
+            Err(DeclarativeError::InvalidConfig(msg)) => msg,
+            Err(e) => panic!("expected InvalidConfig, got {e:?}"),
+            Ok(_) => panic!("expected InvalidConfig, got a config"),
+        };
+        assert_eq!(
+            config_err(
+                "mcVersion: 2\nkind: config\nrules:\n  - include: ['**/*.md']\n    exclude: x\n    contract: {}\n"
+            ),
+            "rules[0].exclude must be a list of globs"
+        );
+        assert_eq!(
+            config_err(
+                "mcVersion: 2\nkind: config\nrules:\n  - include: ['**/*.md']\n    contract: 5\n"
+            ),
+            "rules[0].contract: contract must be a name, a .yaml path, or an inline contract"
+        );
+        let Err(e) = load_config(
+            "mcVersion: 2\nkind: config\ncontracts:\n  decision: 5\nrules:\n  - include: ['**/*.md']\n    contract: decision\n",
+            &mut no_files,
+        ) else {
+            panic!("expected a DeclarativeError")
+        };
+        assert!(
+            matches!(&e, DeclarativeError::CodeContractRef { target, .. } if target == "decision"),
+            "{e:?}"
+        );
+    }
+
+    #[cfg(feature = "native")]
+    fn scratch(name: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "markdown-contract-config-{name}-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[cfg(feature = "native")]
+    const CONTRACT: &str =
+        "mcVersion: 2\nkind: contract\nbody:\n  sections:\n    - section: Summary\n";
+
+    // A relative ref resolves against the config file's directory, not the cwd; an
+    // absolute ref is read as it is.
+    #[cfg(feature = "native")]
+    #[test]
+    fn load_config_file_resolves_refs_against_the_config_dir() {
+        let dir = scratch("refs");
+        std::fs::create_dir_all(dir.join("contracts")).unwrap();
+        std::fs::write(dir.join("contracts/a.contract.yaml"), CONTRACT).unwrap();
+        let abs = dir.join("contracts/a.contract.yaml");
+        let config = format!(
+            "mcVersion: 2\nkind: config\nrules:\n  - include: ['a/**']\n    contract: ./contracts/a.contract.yaml\n  - include: ['b/**']\n    contract: '{}'\n",
+            abs.display()
+        );
+        std::fs::write(dir.join("config.yaml"), config).unwrap();
+        let cfg = load_config_file(&dir.join("config.yaml")).unwrap();
+        assert_eq!(cfg.rules.len(), 2);
+        assert!(cfg.rules.iter().all(|r| r.contract.body.is_some()));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[cfg(feature = "native")]
+    #[test]
+    fn missing_files_name_what_could_not_be_read() {
+        let dir = scratch("missing");
+        std::fs::write(
+            dir.join("config.yaml"),
+            "mcVersion: 2\nkind: config\nrules:\n  - include: ['**/*.md']\n    contract: ./nope.contract.yaml\n",
+        )
+        .unwrap();
+        let Err(e) = load_config_file(&dir.join("config.yaml")) else {
+            panic!("expected a DeclarativeError")
+        };
+        assert!(
+            matches!(&e, DeclarativeError::ContractRefRead { target, .. } if target == "./nope.contract.yaml"),
+            "{e:?}"
+        );
+
+        let missing = dir.join("absent.yaml");
+        let missing_name = missing.display().to_string();
+        let Err(e) = load_config_file(&missing) else {
+            panic!("expected a DeclarativeError")
+        };
+        assert!(
+            matches!(&e, DeclarativeError::FileRead { path, .. } if *path == missing_name),
+            "{e:?}"
+        );
+        let Err(e) = super::super::load::load_contract_file(&missing) else {
+            panic!("expected a DeclarativeError")
+        };
+        assert!(
+            matches!(&e, DeclarativeError::FileRead { path, .. } if *path == missing_name),
+            "{e:?}"
+        );
+
+        std::fs::write(dir.join("a.contract.yaml"), CONTRACT).unwrap();
+        assert!(
+            super::super::load::load_contract_file(&dir.join("a.contract.yaml"))
+                .unwrap()
+                .body
+                .is_some()
+        );
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 }

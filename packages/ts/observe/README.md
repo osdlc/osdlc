@@ -197,7 +197,8 @@ const id = deriveMachineId(linux)
 `machineId()` has side effects. It reads `OBSERVE_MACHINE_ID` (or
 `SDLC_MACHINE_ID`) from `process.env`. When that is unset, it reads the cache
 file `~/.cache/sdlc/machine-id` (under `$XDG_CACHE_HOME` when set). When the
-cache holds no id, it probes the platform (it runs `ioreg` on macOS or `reg` on
+cache holds no id written on this host (it keeps a hash of the hostname, so
+machines that share a home do not share an id), it probes the platform (it runs `ioreg` on macOS or `reg` on
 Windows, and reads `/etc/machine-id` on Linux) and writes the cache file. It
 computes the id once per process. `sessionEnv`, `isThisMachine` and the reconcile run
 take a machine id, so a caller can avoid the implicit call.

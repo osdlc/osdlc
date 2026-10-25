@@ -9,7 +9,7 @@ import { join } from 'node:path'
 
 import { spawnRunner, type CommandRunner } from '@osdlc/command-seam'
 
-import { legacyName, SESSION_ENV_VAR } from './envelope.ts'
+import { legacyName, readTag, SESSION_ENV_VAR } from './envelope.ts'
 import { TASK_ENV_VAR } from './env.ts'
 
 /** A running process that carries a session tag. */
@@ -47,6 +47,24 @@ function tagged(pid: number, environment: string): TaggedProcess | null {
   const sessionId = tagValue(SESSION_TAGS, environment)
   if (!sessionId) return null
   return { pid, sessionId, task: tagValue(TASK_TAGS, environment) || null }
+}
+
+/**
+ * Reads the tags from a NUL-separated `/proc/<pid>/environ`. Each entry is one
+ * exact `NAME=value`, so a tag is looked up by name with `readTag`, and text
+ * inside another variable's value (`CMD=run OBSERVE_SESSION=x`) is never a tag.
+ * The whitespace-anchored patterns are only for `ps -E`, which joins the
+ * environment with spaces.
+ */
+function taggedEnviron(pid: number, environ: string): TaggedProcess | null {
+  const env: Record<string, string> = {}
+  for (const entry of environ.split('\0')) {
+    const eq = entry.indexOf('=')
+    if (eq > 0) env[entry.slice(0, eq)] = entry.slice(eq + 1)
+  }
+  const sessionId = readTag(env, SESSION_ENV_VAR)
+  if (!sessionId) return null
+  return { pid, sessionId, task: readTag(env, TASK_ENV_VAR) || null }
 }
 
 /** `pid -> rest of line` for `ps -o pid=,command=` output. */
@@ -103,7 +121,7 @@ function scanProc(procDir: string): TaggedProcess[] {
     } catch {
       continue // exited, or owned by another user
     }
-    const entry = tagged(Number(name), environ.replaceAll('\0', '\n'))
+    const entry = taggedEnviron(Number(name), environ)
     if (entry !== null) found.push(entry)
   }
   return found
