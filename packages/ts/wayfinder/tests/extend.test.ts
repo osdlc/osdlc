@@ -73,7 +73,7 @@ async function run(argv: string[], home?: string) {
 describe('--config', () => {
   test('a module of ToolDefs adds its tasks to the catalog', async () => {
     const dir = await acmeRepo()
-    const ran = await run(['--list', '--config', EXAMPLE, '-C', dir])
+    const ran = await run(['list', '--config', EXAMPLE, '-C', dir])
     expect(ran.code).toBe(0)
     expect(ran.out.split('\n')).toEqual(expect.arrayContaining(['acme run build', 'acme run ship']))
   })
@@ -87,7 +87,7 @@ describe('--config', () => {
     const dir = await acmeRepo()
     const bad = join(dir, 'bad.mjs')
     await writeFile(bad, 'export const nothing = 1\n')
-    const ran = await run(['--list', '--config', bad, '-C', dir])
+    const ran = await run(['list', '--config', bad, '-C', dir])
     expect(ran.code).toBe(1)
     expect(ran.err).toContain('export `tools`')
   })
@@ -170,7 +170,7 @@ describe('duplicate tool ids', () => {
     const dir = await temp()
     const file = join(dir, 'npm.mjs')
     await writeFile(file, "export const tools = [{ id: 'npm', roles: {} }]\n")
-    const ran = await run(['--list', '--config', file, '-C', dir])
+    const ran = await run(['list', '--config', file, '-C', dir])
     expect(ran.code).toBe(1)
     expect(ran.err).toBe(`way: ${file}: tool "npm" is already a built-in tool\n`)
   })
@@ -182,7 +182,7 @@ describe('duplicate tool ids', () => {
       file,
       "export const tools = [{ id: 'acme', roles: {}, ecosystem: { id: 'node', name: 'Node' } }]\n",
     )
-    const ran = await run(['--list', '--config', file, '-C', dir])
+    const ran = await run(['list', '--config', file, '-C', dir])
     expect(ran.code).toBe(1)
     expect(ran.err).toMatch(/^way: .*"node".*\(from a tool module: .*eco\.mjs\)\n$/)
     expect(ran.err).not.toContain('    at ')
@@ -191,7 +191,7 @@ describe('duplicate tool ids', () => {
   test('two modules that define one id are an error naming both', async () => {
     const dir = await acmeRepo()
     const second = await acmeModule(dir)
-    const ran = await run(['--list', '--config', EXAMPLE, '--config', second, '-C', dir])
+    const ran = await run(['list', '--config', EXAMPLE, '--config', second, '-C', dir])
     expect(ran.code).toBe(1)
     expect(ran.err).toBe(`way: tool "acme" is defined twice: in ${EXAMPLE} and in ${second}\n`)
   })

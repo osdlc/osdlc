@@ -1,1 +1,1 @@
-way: github-actions: parameters unknown: this runner does not read them (1 task)
+way: warning: github-actions: parameters unknown: this runner does not read them (1 task)

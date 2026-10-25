@@ -1,1 +1,1 @@
-way: vscode-tasks: parameters unknown: the task uses an editor variable, so it cannot run here (1 task)
+way: warning: vscode-tasks: cannot run here: the task uses an editor variable (1 task)

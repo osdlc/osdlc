@@ -30,7 +30,7 @@
       "kind": "withheld",
       "runner": "mise",
       "reason": "exec-off",
-      "label": "withheld: execution is off"
+      "label": "withheld: --no-exec was given"
     }
   ]
 }

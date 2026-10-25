@@ -118,7 +118,7 @@
       "tasks": [
         "vscode-tasks:.vscode/tasks.json:open file"
       ],
-      "label": "parameters unknown: the task uses an editor variable, so it cannot run here"
+      "label": "cannot run here: the task uses an editor variable"
     }
   ],
   "trustedTools": [],

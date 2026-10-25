@@ -70,7 +70,7 @@
       "kind": "withheld",
       "runner": "moon",
       "reason": "exec-off",
-      "label": "withheld: execution is off"
+      "label": "withheld: --no-exec was given"
     }
   ],
   "trustedTools": [],
