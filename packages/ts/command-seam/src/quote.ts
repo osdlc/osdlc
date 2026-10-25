@@ -44,7 +44,7 @@ export interface CommandStringOptions {
   platform?: NodeJS.Platform | undefined
   /** The shell that will read the line. Overrides the one `platform` picks. */
   shell?: 'posix' | 'powershell' | 'cmd' | undefined
-  /** A folder to change to first. The command runs only if the change works, except in PowerShell. */
+  /** A folder to change to first. The command runs only if the change works. */
   cwd?: string | undefined
 }
 
@@ -58,8 +58,10 @@ export interface CommandStringOptions {
  *   or one of `_-./\` and holds only letters, digits and `_-./\:=`;
  *   otherwise it is single-quoted, with each single quote (including the
  *   typographic ones PowerShell also accepts) doubled. With `cwd`:
- *   `Set-Location -LiteralPath <dir>; <line>`, which runs the command even
- *   when the change fails. Windows PowerShell 5.1 and PowerShell before 7.3
+ *   `if (Set-Location -LiteralPath <dir> -PassThru) { <line> }`. On success
+ *   `-PassThru` returns the new location, which is true. On failure it
+ *   returns nothing, so the command does not run, in Windows PowerShell 5.1
+ *   and PowerShell 7 alike. Windows PowerShell 5.1 and PowerShell before 7.3
  *   drop an empty argument and mangle one with a `"` when calling a program.
  * - `'cmd'`: a word of only letters, digits and `_@+:./\-` is bare. Any
  *   other argument is quoted by the C runtime rules and then each `cmd.exe`
@@ -95,7 +97,8 @@ export function commandString(argv: readonly string[], opts: CommandStringOption
     }
     case 'powershell': {
       const line = `& ${argv.map(psWord).join(' ')}`
-      return cwd === undefined ? line : `Set-Location -LiteralPath ${psWord(cwd)}; ${line}`
+      if (cwd === undefined) return line
+      return `if (Set-Location -LiteralPath ${psWord(cwd)} -PassThru) { ${line} }`
     }
     case 'cmd': {
       const unsafe = [...argv, ...(cwd === undefined ? [] : [cwd])].find((w) => /[\r\n]/.test(w))

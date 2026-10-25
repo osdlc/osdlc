@@ -493,7 +493,7 @@ const argv = ['git', 'commit', '-m', "it's done"]
 commandString(argv, { platform: 'linux', cwd: '/my repo' })
 // cd '/my repo' && git commit -m 'it'\''s done'
 commandString(argv, { platform: 'win32', cwd: 'C:\\my repo' })
-// Set-Location -LiteralPath 'C:\my repo'; & git commit -m 'it''s done'
+// if (Set-Location -LiteralPath 'C:\my repo' -PassThru) { & git commit -m 'it''s done' }
 commandString(argv, { platform: 'win32', shell: 'cmd' })
 // git commit -m ^"it's^ done^"
 ```
@@ -501,11 +501,12 @@ commandString(argv, { platform: 'win32', shell: 'cmd' })
 | Shell        | Words                                                                                                                                                | With `cwd`                            |
 | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
 | `posix`      | `shellJoin`: bare when only `A-Za-z0-9_@%+=:,./-`, else single-quoted with `'` written `'\''`                                                          | `cd <dir> && <line>` (`cd --` for a folder starting with `-`) |
-| `powershell` | `&` first, always. Bare when it starts with a letter or `_-./\` and holds only letters, digits and `_-./\:=`; else single-quoted, each `'` (and `‘ ’ ‚ ‛`) doubled | `Set-Location -LiteralPath <dir>; <line>` |
+| `powershell` | `&` first, always. Bare when it starts with a letter or `_-./\` and holds only letters, digits and `_-./\:=`; else single-quoted, each `'` (and `‘ ’ ‚ ‛`) doubled | `if (Set-Location -LiteralPath <dir> -PassThru) { <line> }` |
 | `cmd`        | Bare when only `A-Za-z0-9_@+:./\-`; else quoted and `^`-escaped as in [Starting a program on Windows](#starting-a-program-on-windows). The program gets `^` escapes without quotes | `cd /d <dir> && <line>`               |
 
-In PowerShell the command runs even when `Set-Location` fails, since `;`
-does not stop on an error. Windows PowerShell 5.1, and PowerShell before
+In every shell the command runs only when the change of folder works.
+PowerShell's `;` does not stop on an error, so its form tests the result of
+`Set-Location -PassThru` instead. Windows PowerShell 5.1, and PowerShell before
 7.3, drop an empty argument and mangle one holding `"` when they call a
 program. `commandString` throws `RangeError` for an empty `argv`, and for
 `cmd` when a word or `cwd` holds a line break, which `cmd.exe` cannot quote.
