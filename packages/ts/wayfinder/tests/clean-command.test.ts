@@ -177,6 +177,27 @@ describe('way clean', () => {
     }
   })
 
+  test('a store that holds the home under a "..x" directory is not removed', async () => {
+    // `..x` is a name, not `..`: the home is inside the store.
+    const root = await fixtureRoot({})
+    roots.push(root)
+    const env = { WAYFINDER_CACHE_DIR: join(root, 'base') }
+    const report = (await clean(root, ['--json'], env)).json() as {
+      stores: { key: string; path: string }[]
+    }
+    const cache = report.stores.find((s) => s.key === 'cache')!.path
+    const home = join(cache, '..x', 'home')
+    const sentinel = join(home, 'keep.txt')
+    await put(sentinel, 'mine')
+    // The cache now holds the other stores under the home too. --yes passes
+    // that overlap check, so the home check is the one that refuses.
+    const ran = await clean(home, ['--cache', '--yes'], env)
+    expect(ran.exit).toBe(1)
+    expect(ran.err).toContain('not removing')
+    expect(ran.err).toContain('it is the home directory, a directory above it')
+    expect(await exists(sentinel)).toBe(true)
+  })
+
   test('a WAYFINDER_CONFIG file wayfinder did not write is not removed', async () => {
     const p = await populated()
     const own = join(p.home, 'notes.json')

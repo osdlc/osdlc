@@ -143,23 +143,34 @@ describe('the in-process sync runner leaves no temp dir behind', () => {
 })
 
 // The redirect path runs only on the Bun runtime with NODE_ENV=test, so these
-// run a probe under Bun, and skip when Bun is not on PATH.
-describe.skipIf(BUN === undefined)('the bun-test capture path, under Bun', () => {
+// run a probe under Bun. Bun is optional for contributors: they skip when no
+// `bun` is on PATH. The probe gets a fixed env, not this process's, so the
+// result does not depend on the caller's variables. POSIX only: that env's
+// PATH is the system binary dirs.
+const noBun = BUN === undefined || process.platform === 'win32'
+describe.skipIf(noBun)('the bun-test capture path, under Bun (skipped without bun on PATH)', () => {
   const ON_BUN = [BUN ?? 'bun', 'run']
+  const bunEnv = (dir: string, tmp: string): NodeJS.ProcessEnv => ({
+    PATH: ['/usr/bin', '/bin'].join(':'),
+    HOME: dir,
+    NODE_ENV: 'test',
+    TMPDIR: tmp,
+  })
 
-  test('is the path taken: a TMPDIR that does not exist makes it throw', () => {
+  test('is the path taken: the run captures through a temp dir under TMPDIR', () => {
+    // The child lists TMPDIR while it runs. The redirect path has made its
+    // capture dir there by then. The pipe path makes none.
     withTempDir((dir) => {
-      const env = { ...process.env, NODE_ENV: 'test', TMPDIR: join(dir, 'missing') }
+      const tmp = join(dir, 'tmp')
+      mkdirSync(tmp)
       const { result } = runProbe(
         dir,
         ON_BUN,
-        [
-          'try { seam.spawnRunner("sh").run(["-c", "true"], { cwd: process.cwd() }); report("ran") }',
-          'catch { report("threw") }',
-        ],
-        env,
+        [`report(seam.spawnRunner("ls").run([${JSON.stringify(tmp)}], { cwd: process.cwd() }));`],
+        bunEnv(dir, tmp),
       )
-      expect(result).toBe('threw')
+      expect((result as CommandResult).stdout).toMatch(/^command-seam-/)
+      expect(readdirSync(tmp)).toEqual([])
     })
   }, 20_000)
 
@@ -167,7 +178,6 @@ describe.skipIf(BUN === undefined)('the bun-test capture path, under Bun', () =>
     withTempDir((dir) => {
       const tmp = join(dir, 'tmp')
       mkdirSync(tmp)
-      const env = { ...process.env, NODE_ENV: 'test', TMPDIR: tmp }
       const argv = ['-c', 'printf "%s|" "$@"', 'sh', 'a b', '$(echo no)', "it's"]
       const { result } = runProbe(
         dir,
@@ -185,7 +195,7 @@ describe.skipIf(BUN === undefined)('the bun-test capture path, under Bun', () =>
           '  bytes: Buffer.from(raw.stdout).toString("base64"),',
           '});',
         ],
-        env,
+        bunEnv(dir, tmp),
       )
       const r = result as {
         [K in 'input' | 'argv' | 'missing' | 'option' | 'timeout']: CommandResult
@@ -515,6 +525,35 @@ describe('a failed kill() is not a spawn failure', () => {
         })
         expect(r).toMatchObject({ neverExited: true, reason: 'timeout' })
         expect(r.error).toBe('timed out after 200ms')
+      } finally {
+        spy.mockRestore()
+        reap(pid)
+      }
+    },
+    10_000,
+  )
+
+  // POSIX only: `sh` and `head`.
+  test.skipIf(process.platform === 'win32')(
+    'an async run past maxOutputBytes whose kill fails settles with the cap result',
+    async () => {
+      // No timeoutMs, so only the cap can settle the run while the child lives.
+      let pid = 0
+      const spy = failKills()
+      try {
+        const r = await spawnRunnerAsync('sh').run(
+          ['-c', `head -c 5000 /dev/zero | tr '\\0' x; exec sleep 10`],
+          {
+            cwd: CWD,
+            maxOutputBytes: 100,
+            onSpawn: (p) => {
+              pid = p
+            },
+          },
+        )
+        expect(r).toMatchObject({ exitCode: 1, neverExited: true, reason: 'output' })
+        expect(r.stdout).toBe('x'.repeat(100))
+        expect(r.error).toBe('stdout passed maxOutputBytes (100 bytes)')
       } finally {
         spy.mockRestore()
         reap(pid)

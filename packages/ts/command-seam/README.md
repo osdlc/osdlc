@@ -691,13 +691,17 @@ runner's `CommandResult`, a `StreamResult` or a `ManagedProcessExit`. A
 | ---------------- | -------------------------------------------------------------------- | -------------------------------------------------------------- |
 | `not-installed`  | spawn `ENOENT` on the binary                                         | `` `gh` is not installed or not on PATH. ``                    |
 | `not-executable` | spawn `EACCES`, `EPERM` or `ENOEXEC`                                 | `` `gh` cannot be run: permission denied or not an executable. `` |
-| `bad-cwd`        | the working directory is missing, is not a directory, or cannot be entered | `The working directory "/x" is missing or is not a directory.` |
+| `bad-cwd`        | the working directory is missing, is not a directory, or cannot be entered | `The working directory "/x" is missing or is not a directory.`, or `The working directory "/x" cannot be entered: permission denied.` |
 | `timeout`        | `timeoutMs` ran out                                                  | `` `gh` timed out and was stopped. ``                          |
 | `output-cap`     | the child passed `maxOutputBytes`                                    | `` `gh` wrote more output than allowed and was stopped. ``     |
 | `signal`         | a signal from elsewhere ended the child                              | `` `gh` was ended by SIGTERM. ``                               |
 | `aborted`        | an `AbortSignal` or `kill()` stopped it                              | `` `gh` was stopped before it finished. ``                     |
 | `spawn`          | any other failure to start (`EBADF`, `E2BIG`, a fake with no answer) | `` `gh` could not be started. ``                               |
 | `exit`           | it ran and exited with a code that is not accepted                   | the first line of the failure text (`failureText`)             |
+
+A working directory without search (execute) permission is `bad-cwd`, with
+the `cannot be entered` message. Earlier releases reported it as
+`not-executable`, which read as a binary that cannot be run.
 
 The messages say `The command` when the binary is not known. There is no
 `hint` at this layer. The layer that knows the tool knows how to install it.

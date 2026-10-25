@@ -435,9 +435,13 @@ function runAsync(
     })
     child.on('error', (err) => {
       // A failed `kill()` (such as EPERM) also emits `error`. The child is
-      // still running, and the timeout, abort or exit that sent the signal
-      // settles the run.
-      if ((err as NodeJS.ErrnoException).syscall === 'kill') return
+      // still running. A timeout, abort or exit that sent the signal settles
+      // the run itself. The output cap waits for the child to die, so a
+      // failed kill there settles now with the cap result.
+      if ((err as NodeJS.ErrnoException).syscall === 'kill') {
+        if (capOutcome !== undefined) finish(capOutcome.result, capOutcome.message)
+        return
+      }
       // A spawn failure. No exit code was reported, so the 1 is a stand-in.
       finish({ exitCode: 1, neverExited: true, reason: 'spawn' }, err.message)
     })
