@@ -13,7 +13,10 @@
  * trusted the repository is.
  */
 
+import { readFileSync } from 'node:fs'
+
 import { EXIT, defineCli, processIo, type CliIo } from '@osdlc/cli-tool'
+import { defineApp } from '@osdlc/cli-tool/command'
 import { runDevCli } from '@osdlc/cli-tool/devlink'
 import { installGroupSignalForwarding } from '@osdlc/command-seam'
 import {
@@ -38,7 +41,7 @@ import {
   readCachedCatalog,
   type WayOptions,
 } from './catalog.ts'
-import { runCleanCommand } from './clean-command.ts'
+import { cleanCommand } from './clean-command.ts'
 import {
   ConfigError,
   collectOptionsFromConfig,
@@ -46,17 +49,16 @@ import {
   trustPolicyFromConfig,
   trustPolicyOptions,
   type LoadedConfig,
-  type TaskConfig,
 } from './config.ts'
 import { appTrustStore } from './trust-store.ts'
-import { runConfigCommand, takeConfigDir } from './config-command.ts'
+import { configCommand } from './config-command.ts'
 import { WAYFINDER_SPEC, checkoutRoot } from './devlink.ts'
 import { catalogGroups } from './groups.ts'
-import { runGuideCommand, type GuideTool } from './guide.ts'
+import { guideCommand, type GuideTool } from './guide.ts'
 import { runProvidersCommand } from './providers-command.ts'
 import { serve } from './serve.ts'
 import { loadTools, ToolModuleError, type LoadedTool } from './tools.ts'
-import { runTrustCommand } from './trust-command.ts'
+import { trustCommand } from './trust-command.ts'
 import { jsonText, safeJsonStdout, safeStderr, safeStdout, terminalSafe } from './terminal-text.ts'
 import { runTui } from './tui.ts'
 
@@ -108,9 +110,8 @@ subcommands
   clean      remove the data this tool stores outside your repositories; see clean --help`
 
 /**
- * wayfinder's own `true` default for exec is applied in {@link main}, below
- * the config layer. So `exec` and the collection lists are absent unless
- * given, per `TristateFlag` in `@osdlc/cli-tool`. `autoHelp` is off for the
+ * `exec` and the collection lists are absent unless given, per
+ * `TristateFlag` in `@osdlc/cli-tool`, so the config layer supplies them. `autoHelp` is off for the
  * reason `CliDecl.autoHelp` gives: `help` and `all` are declared below as
  * ordinary flags.
  */
@@ -246,8 +247,7 @@ willing in principle, still gated on trust.`,
 
 /**
  * Optional fields are absent unless their flag was given, so the config layer
- * can supply the value instead. wayfinder's `allowExec: true` default is
- * applied in {@link main}, below that layer.
+ * can supply the value instead.
  */
 interface Flags {
   mode: 'tui' | 'serve' | 'json' | 'list' | 'query'
@@ -368,23 +368,40 @@ export function parseArgs(
   return flags
 }
 
-/**
- * wayfinder's own defaults, applied only where no config file answered.
- *
- * One constant, read in two places. {@link main} resolves the run with it, and
- * `config list` / `config get` receive it, so they report the value this tool
- * really uses rather than the library default.
- *
- * `allowExec: true` does not mean "run this repository's code". The repository
- * must also be trusted, and a configured `false` still means no execution.
- */
-const WAYFINDER_DEFAULTS: Partial<TaskConfig> = { allowExec: true }
-
-/** `allowExec` from the config files, or wayfinder's default when none sets it. */
+/** `allowExec` from the config files, or the built-in default (`true`) when none sets it. */
 function configuredAllowExec(cfg: LoadedConfig): boolean {
-  if (cfg.sources.get('allowExec') === 'default') return WAYFINDER_DEFAULTS.allowExec ?? true
-  return cfg.effective.allowExec ?? WAYFINDER_DEFAULTS.allowExec ?? true
+  return cfg.effective.allowExec ?? true
 }
+
+/** The global flags the shared commands read: `-C` is `dir`. */
+const GLOBALS = {
+  dir: {
+    kind: 'string',
+    short: 'C',
+    valueName: 'PATH',
+    help: 'the directory to inspect (default: cwd)',
+  },
+} as const
+
+const VERSION = (
+  JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
+    version: string
+  }
+).version
+
+/** `config`, `trust`, `guide` and `clean`, on cli-tool's command tree. */
+const SHARED = defineApp({
+  name: BIN,
+  version: VERSION,
+  summary: 'Browse and run every task in this repository.',
+  globals: GLOBALS,
+  commands: {
+    config: configCommand({ globals: GLOBALS }),
+    trust: trustCommand({ globals: GLOBALS }),
+    guide: guideCommand({ globals: GLOBALS, tool: () => GUIDE_TOOL }),
+    clean: cleanCommand({ globals: GLOBALS }),
+  },
+})
 
 /**
  * The single stderr line `--cached` prints, or null when there is nothing to
@@ -449,6 +466,31 @@ async function projectFor(
   }
 }
 
+/** Pull `-C PATH`, `-CPATH`, `--dir PATH` or `--dir=PATH` out of `providers`' arguments. */
+function takeDir(argv: string[]): { dir?: string; rest: string[] } | { error: string } {
+  let dir: string | undefined
+  const rest: string[] = []
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i] as string
+    const attached = arg.startsWith('--dir=')
+      ? arg.slice('--dir='.length)
+      : arg.startsWith('-C') && arg.length > 2
+        ? arg.slice(arg.startsWith('-C=') ? 3 : 2)
+        : undefined
+    if (attached !== undefined) {
+      if (attached === '') return { error: `${arg.split('=')[0] as string} needs a path` }
+      dir = attached
+    } else if (arg === '-C' || arg === '--dir') {
+      const value = argv[++i]
+      if (value === undefined) return { error: `${arg} needs a path` }
+      dir = value
+    } else {
+      rest.push(arg)
+    }
+  }
+  return { ...(dir !== undefined ? { dir } : {}), rest }
+}
+
 /**
  * `env` and `home` are injectable so a test never reads the developer's own
  * config, cache or trust store. `io` defaults to the real process streams.
@@ -475,21 +517,21 @@ export async function main(
     return EXIT.usage
   }
 
-  if (argv[0] === 'config' || argv[0] === 'trust' || argv[0] === 'providers') {
+  if (argv[0] === 'config' || argv[0] === 'trust' || argv[0] === 'guide' || argv[0] === 'clean') {
+    // Text answers are already terminal-safe; this escapes DEL, C1 and bidi
+    // controls inside a --json answer.
+    return SHARED.run(argv, {
+      io: safeJsonStdout(io),
+      cwd: process.cwd(),
+      env: { ...env, HOME: home },
+    })
+  }
+  if (argv[0] === 'providers') {
     // -C has to work here, so pointing at another directory shows that
-    // directory's configuration, trust and tools.
-    const taken = takeConfigDir(argv.slice(1))
+    // directory's tools.
+    const taken = takeDir(argv.slice(1))
     if ('error' in taken) return usageError(taken.error)
     const root = await findRoot(taken.dir ?? process.cwd())
-    if (argv[0] === 'config') {
-      return runConfigCommand(APP, root, taken.rest, {
-        ...io,
-        env,
-        home,
-        defaults: WAYFINDER_DEFAULTS,
-      })
-    }
-    if (argv[0] === 'trust') return runTrustCommand(APP, root, taken.rest, { ...io, env, home })
     return runProvidersCommand(root, taken.rest, {
       ...io,
       env,
@@ -499,8 +541,6 @@ export async function main(
     })
   }
 
-  if (argv[0] === 'clean') return runCleanCommand(APP, argv.slice(1), { ...io, env, home })
-  if (argv[0] === 'guide') return runGuideCommand(GUIDE_TOOL, argv.slice(1), io)
   // `dev` is a contributor tool, so the help does not list it. `self` is this
   // checkout, so `dev install` and a bare `dev link` know what to point at.
   if (argv[0] === 'dev') {
@@ -535,9 +575,8 @@ export async function main(
   for (const warning of cfg.warnings) io.stderr(`warning: ${warning}\n`)
 
   // Precedence for allowExec, highest first: --exec / --no-exec, then
-  // allowExec in the project file (false only), then the user file, then
-  // wayfinder's own default (true). Only `sources` tells "a file said false"
-  // apart from "no file set it".
+  // allowExec in the project file (false only), then the user file, then the
+  // built-in default (true).
   const configured = configuredAllowExec(cfg)
 
   // Trust is decided here. Collection never reads the trust store.
