@@ -257,7 +257,10 @@ describe('run', () => {
     expect(ran.code).toBe(0)
     expect(ran.out).toBe(`${line}\n`)
     const json = await way(['run', 'just deploy', '--dry-run', '--json', '--', 'prod'], dir)
-    expect(json.json()).toMatchObject({ display: 'just deploy', command: 'just deploy prod' })
+    expect(json.json()).toMatchObject({
+      display: 'just deploy',
+      command: shown('just deploy prod'),
+    })
   })
 
   test('the run usage line shows the arguments after --', async () => {
