@@ -1,22 +1,22 @@
- all 9  just 4  make 2  node-scripts 3                                  fuzzy
-> █
+[all 9] just 4  make 2  node-scripts 3                                   fuzzy
+> 
 9/9  checked HH:MM:SS   
->   just > . > build
-    just > . > deploy
-  * just > . > dev
+    just > . > build
+>   just > . > deploy
+ *  just > . > dev
     just > . > test
     make > . > all
     make > . > clean
     node-scripts > . > showcase > build
     node-scripts > . > showcase > lint
-  * node-scripts > . > showcase > start
+ *  node-scripts > . > showcase > start
 
 
 
 
 
-------------------------------------------------------------------------------
-just build                                         runner > justfile > recipe
-Build the thing.
+──────────────────────────────────────────────────────────────────────────────
+just deploy <env> [tag]                            runner > justfile > recipe
+Ship a build to an environment.
 $ just deploy staging█
   takes <env> [tag]    enter run  esc back

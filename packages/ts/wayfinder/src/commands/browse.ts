@@ -1,35 +1,63 @@
 /**
  * `way` and `way browse`: the terminal UI. Enter runs the selected task.
+ * `serve`: the same catalog as a live page.
  */
 
 import { UsageError } from '@osdlc/cli-tool/command'
 
+import type { Session } from '../core/session.ts'
+import { keyLines } from '../keys.ts'
 import { serve } from '../serve.ts'
-import { runTui } from '../tui.ts'
+import { runTui } from '../tui/index.ts'
 import { kit, openSession } from './shared.ts'
 
-/** Make the terminal UI command, the root's default. */
-export function browseCommand(home: string) {
+/** The terminal UI's list keys, for help text. */
+export const TUI_KEYS_HELP = `Keys in the list (? shows every key):\n${keyLines('tui', 'list').join('\n')}`
+
+/**
+ * Make the terminal UI command. With `followOpen` it is the bare `way`: it
+ * opens the web view instead when the user config says `open: "web"`.
+ */
+export function browseCommand(home: string, opts: { followOpen?: boolean } = {}) {
   return kit.command({
     summary: 'the terminal UI; Enter runs the selected task',
     description:
-      'Type to filter; the key line at the foot of the screen lists the keys. It starts from the ' +
-      'stored probe, then refreshes. Needs a terminal; "list" and "query" answer a script.',
+      'Type to filter. It starts from the stored probe, then refreshes. Needs a terminal; ' +
+      '"list" and "query" answer a script.' +
+      (opts.followOpen === true
+        ? ' The bare command opens the web view instead when the user config sets open to "web".'
+        : '') +
+      `\n\n${TUI_KEYS_HELP}`,
     positionals: [{ name: 'dir', help: 'the directory to inspect (beats -C)' }],
     interactive: true,
     async run({ globals, positionals }, ctx) {
       const session = await openSession(globals, ctx, home, positionals[0])
-      return runTui({
-        project: session.project,
-        projectToolsPending: session.projectToolsPending,
-        root: session.root,
-        options: session.options,
-        runnerOrder: session.runnerOrder(),
-        gate: session.gate,
-        env: session.env,
-        home: session.home,
-      })
+      if (opts.followOpen === true && openSurface(session) === 'web') {
+        return serveSession(session, { open: true })
+      }
+      return runTui(session)
     },
+  })
+}
+
+/** What the bare `way` opens, from the user config. */
+export function openSurface(session: Session): 'tui' | 'web' {
+  return session.settings().settings.open.value === 'web' ? 'web' : 'tui'
+}
+
+/** Serve `session` as a live page. */
+function serveSession(session: Session, opts: { open: boolean; port?: number }): Promise<number> {
+  return serve({
+    project: session.project,
+    projectToolsPending: session.projectToolsPending,
+    root: session.root,
+    collectOptions: session.options,
+    pinnedByFlag: session.pinnedByFlag,
+    open: opts.open,
+    runnerOrder: session.runnerOrder(),
+    env: session.env,
+    home: session.home,
+    ...(opts.port !== undefined ? { port: opts.port } : {}),
   })
 }
 
@@ -54,18 +82,7 @@ export function serveCommand(home: string) {
     async run({ flags, globals, positionals }, ctx) {
       const port = flags.port === undefined ? undefined : parsePort(flags.port)
       const session = await openSession(globals, ctx, home, positionals[0])
-      return serve({
-        project: session.project,
-        projectToolsPending: session.projectToolsPending,
-        root: session.root,
-        collectOptions: session.options,
-        pinnedByFlag: session.pinnedByFlag,
-        open: flags.open,
-        runnerOrder: session.runnerOrder(),
-        env: session.env,
-        home: session.home,
-        ...(port !== undefined ? { port } : {}),
-      })
+      return serveSession(session, { open: flags.open, ...(port !== undefined ? { port } : {}) })
     },
   })
 }

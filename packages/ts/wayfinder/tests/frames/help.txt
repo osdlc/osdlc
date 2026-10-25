@@ -1,0 +1,22 @@
+[all 9] just 4  make 2  node-scripts 3                                   fuzzy
+> 
+9/9  checked HH:MM:SS   
+LIST
+  type            narrow the list
+  enter           run the selected task, asking for its arguments first
+  ^y              copy the selected task's command line
+  tab, shift+tab  next / previous runner tab
+  ,               settings: runners, discovery, excluded paths and trust
+  ^s              trust this repository, after a y/n question
+  ^r              refresh: probe the repository again
+  ^t              only services: tasks that run until you stop them
+  ^e              exact search instead of fuzzy
+  ^d              only tasks a file declares, not inferred ones
+  ^o              scope: all, the root only, or at most 2 or 3 levels down
+  ↑, ↓, ^p, ^n    move by one row
+  pgup, pgdn      move by a screenful
+  home, end, ^a   first / last row
+  backspace, ^u   delete a character / clear the query
+  ?               this list of keys
+──────────────────────────────────────────────────────────────────────────────
+esc back

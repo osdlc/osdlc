@@ -70,6 +70,7 @@
     "@osdlc/tiered-dirs": "workspace:^",
     "@osdlc/trust-repo": "workspace:^",
     "@osdlc/typed-git": "workspace:^",
+    "@osdlc/ux": "workspace:^",
     "zod": "catalog:"
   },
   "devDependencies": {
