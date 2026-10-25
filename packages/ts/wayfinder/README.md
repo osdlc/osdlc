@@ -92,16 +92,24 @@ order.
 
 ```text
 enter  run the selected task, handing it this terminal
-       (a task with parameters asks for them first)
-^y     copy its command
-tab    next runner (all · just · node-scripts │ dependencies │ tools …)
-^e     exact search instead of fuzzy
-^t     only services — tasks that run until you stop them
-^s     trust this repository, when runners are hidden for want of it
+       (a task that takes arguments asks for them first)
+^y     copy its command line
+tab    next runner tab (all · just · node-scripts │ dependencies │ tools …)
+,      settings: runners, discovery, excluded paths and trust
+^s     trust this repository, when runners are withheld for want of it
 ^r     re-probe (always a real probe, never the store)
-,      this project's configuration, read-only
+^t     only services — tasks that run until you stop them
+^e     exact search instead of fuzzy
+^d     only tasks a file declares
+^o     scope: all, the root only, or at most 2 or 3 levels down
+?      every key
 esc    quit
 ```
+
+The footer shows as many of these as fit, and always `? help` and `esc quit`.
+`?` lists every key; `way --help --all` prints the same list. Both come from
+one table, `KEY_TABLE` in `src/keys.ts`, which the web view's key help reads
+too.
 
 `^s` asks first. The status line becomes `trust this repository? y/n`, and
 only `y` records a grant. A single key press should not decide whether this
@@ -110,8 +118,9 @@ repository's code may run.
 A recipe that takes arguments asks for them first. Enter on
 `just deploy <env>` turns the key line into a command line, with the command
 already on it and the cursor after it. Type `staging` and press Enter to run
-`just deploy staging`, or press `esc` to go back. A task with no arguments
-runs as soon as you press Enter.
+`just deploy staging`, or press `esc` to go back. A task whose parameters
+could not be read is marked `?` and asks too; an empty line runs it as it
+is. A task with no arguments runs as soon as you press Enter.
 
 Fuzzy by default. Terms are ANDed, so `photo dev` narrows to a photo app's dev
 server. A leading `'` forces one term to match exactly.
@@ -299,7 +308,8 @@ The session token proves who is asking, not that the request makes sense.
 
 When runners are withheld, every surface says so and offers a way to grant
 trust. `list` and `query` print one line on stderr. The terminal UI shows
-`N hidden — repo not trusted (^s to trust)` beside the counts. The web view
+`2 runners withheld: this repository is not trusted (^s to trust)` beside the
+counts, and a `–` in place of the count on each withheld tab. The web view
 shows a **Trust this repository** button in a bar above the list, in each
 withheld runner's info panel and in the runner picker.
 
