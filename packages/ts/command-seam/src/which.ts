@@ -191,9 +191,7 @@ export function absolutePathCandidates(binary: string, opts: PathCandidateOption
   const platform = opts.platform ?? process.platform
   const windows = platform === 'win32'
   if (binary === '' || hasSeparator(binary, platform) || opts.path === undefined) return []
-  const exts = windows
-    ? (opts.pathext || DEFAULT_PATHEXT).split(';').filter((e) => e !== '')
-    : []
+  const exts = windows ? (opts.pathext || DEFAULT_PATHEXT).split(';').filter((e) => e !== '') : []
   const suffixes =
     !windows || exts.some((e) => binary.toLowerCase().endsWith(e.toLowerCase())) ? [''] : exts
   const join = windows ? win32.join : posix.join
