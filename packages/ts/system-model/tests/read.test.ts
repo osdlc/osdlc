@@ -15,7 +15,7 @@ import { createLister } from '../src/discovery.ts'
 import { fingerprint } from '../src/fingerprint.ts'
 import { tasks } from '../src/model.ts'
 import { createProject } from '../src/project.ts'
-import { MAX_READ_BYTES, readBounded } from '../src/read.ts'
+import { MAX_READ_BYTES, readBounded, readRegular } from '../src/read.ts'
 import { collect, fakeRunners, fixtureRoot, removeRoot } from './support.ts'
 
 const roots: string[] = []
@@ -140,5 +140,46 @@ describe('walk caps', () => {
         message: 'the directory walk did not enter directories deeper than 32 levels',
       },
     ])
+  })
+})
+
+describe('containment', () => {
+  test('a symlinked parent directory that points out is not read', async () => {
+    const outside = await root({ 'sub/justfile': 'SECRET' })
+    const dir = await root({})
+    await symlink(join(outside, 'sub'), join(dir, 'sub'))
+
+    expect(await readBounded(dir, 'sub/justfile')).toEqual({
+      skipped: 'a symlink that leaves the repository',
+    })
+  })
+
+  test('a path with .. or an absolute path is not read', async () => {
+    const outside = await root({ justfile: 'SECRET' })
+    const dir = await root({ inner: '' })
+    const rel = join('..', outside.split('/').pop()!, 'justfile')
+
+    expect(await readBounded(dir, rel)).toEqual({ skipped: 'a path outside the repository' })
+    expect(await readBounded(dir, join(outside, 'justfile'))).toEqual({
+      skipped: 'a path outside the repository',
+    })
+  })
+
+  test('readRegular refuses a pipe on the handle as well as the path', async () => {
+    const dir = await root({})
+    runChecked(spawnRunner('mkfifo'), [join(dir, 'pipe')], { cwd: dir })
+    expect(await readRegular(join(dir, 'pipe'))).toEqual({ skipped: 'not a regular file' })
+  })
+
+  test('the fingerprint does not hash a file behind a symlinked parent', async () => {
+    const outside = await root({ 'sub/justfile': 'one' })
+    const dir = await root({})
+    await symlink(join(outside, 'sub'), join(dir, 'sub'))
+    const files = createLister(dir, 'walk', fakeRunners([]).make('git'))
+
+    const before = await fingerprint({ root: dir, paths: ['sub/justfile'], patterns: [], files })
+    await writeFile(join(outside, 'sub/justfile'), 'two')
+    const after = await fingerprint({ root: dir, paths: ['sub/justfile'], patterns: [], files })
+    expect(after.digest).toBe(before.digest)
   })
 })

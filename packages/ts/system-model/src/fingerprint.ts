@@ -13,6 +13,9 @@
  * An mtime-based cache would miss on all of those and pay for a JVM start for
  * nothing.
  *
+ * The one exception is a file over `MAX_READ_BYTES`. It is not read, so its
+ * size and mtime stand in for its bytes. A touched large file reads as stale.
+ *
  * ## What it covers
  *
  * For a `parse` runner, exactly what it read. Every read goes through `ctx`,
@@ -47,10 +50,9 @@
  */
 
 import { createHash } from 'node:crypto'
-import { join, sep } from 'node:path'
-import { lstat, readdir, readFile, realpath, stat } from 'node:fs/promises'
+import { readdir, stat } from 'node:fs/promises'
 
-import { MAX_READ_BYTES } from './read.ts'
+import { MAX_READ_BYTES, readRegular, resolveInside } from './read.ts'
 
 /**
  * The maximum number of paths one fingerprint hashes.
@@ -135,7 +137,7 @@ export async function fingerprint(args: {
 
   const digest = createHash('sha256')
   for (const rel of kept) {
-    digest.update(`${rel}\n${await hashPath(root, join(root, rel))}\n`)
+    digest.update(`${rel}\n${await hashPath(root, rel)}\n`)
   }
 
   return {
@@ -149,18 +151,17 @@ export async function fingerprint(args: {
 
 /**
  * A file hashes its bytes, a directory its immediate entry names. It follows
- * the reads' rules (`read.ts`): a symlink out of the root, a special file and a
- * file over `MAX_READ_BYTES` are never read, so each hashes to a fixed label.
+ * the reads' rules (`read.ts`): a path that leaves the root and a special file
+ * are never read, so each hashes to a fixed label. A file over
+ * `MAX_READ_BYTES` is never read by a runner either, but its size and mtime
+ * are hashed, so rewriting a large lockfile still changes the digest.
  */
-async function hashPath(root: string, abs: string): Promise<string> {
-  let target = abs
+async function hashPath(root: string, rel: string): Promise<string> {
+  const resolved = await resolveInside(root, rel)
+  if (!('real' in resolved)) return resolved.outside ? 'outside' : MISSING
+  const target = resolved.real
   let info
   try {
-    if ((await lstat(abs)).isSymbolicLink()) {
-      target = await realpath(abs)
-      const realRoot = await realpath(root)
-      if (target !== realRoot && !target.startsWith(realRoot + sep)) return `outside\n${target}`
-    }
     info = await stat(target)
   } catch {
     return MISSING
@@ -180,14 +181,9 @@ async function hashPath(root: string, abs: string): Promise<string> {
     }
   }
   if (!info.isFile()) return 'special'
-  // A runner sees a file this large as unreadable, whatever its bytes.
-  if (info.size > MAX_READ_BYTES) return 'large'
+  if (info.size > MAX_READ_BYTES) return `large\n${info.size}\n${info.mtimeMs}`
 
-  try {
-    return createHash('sha256')
-      .update(await readFile(target))
-      .digest('hex')
-  } catch {
-    return MISSING
-  }
+  const read = await readRegular(target)
+  if (!('bytes' in read)) return read.missing ? MISSING : 'special'
+  return createHash('sha256').update(read.bytes).digest('hex')
 }
