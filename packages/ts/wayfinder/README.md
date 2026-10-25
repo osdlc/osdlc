@@ -55,8 +55,9 @@ install. `way` never picks a checkout from the cwd, so a repository you run it
 in cannot choose the code that runs. A checkout must hold `src/cli.ts` and a
 `package.json` named `@osdlc/wayfinder`; anything else is skipped. The shim
 prints which one it chose on stderr, and `WAY_QUIET=1` silences it. State
-is kept in `${XDG_CONFIG_HOME:-~/.config}/way` on every platform, or under
-`$WAYFINDER_ROOT/config/way` when that is set. `way clean --dev` removes it,
+is kept in `${XDG_CONFIG_HOME:-~/.config}/way` on Linux and macOS and
+`%APPDATA%\way` on Windows, or under `$WAYFINDER_ROOT/config/way` when that
+is set. `way clean --dev` removes it,
 with the shims `way dev install` wrote. A checkout runs from
 source, so it needs [Bun](https://bun.sh) on an absolute PATH entry and a
 `pnpm install` in the checkout. A `bun` found only through a relative entry
