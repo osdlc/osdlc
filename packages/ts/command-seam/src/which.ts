@@ -166,7 +166,10 @@ function file(p: string): string | undefined {
  * @experimental
  */
 export interface PathCandidateOptions {
-  /** The `PATH` value. Unset means no candidates. */
+  /**
+   * The `PATH` value. Unset means `/usr/bin:/bin` on POSIX, as a spawn
+   * searches then, and no candidates on Windows.
+   */
   path: string | undefined
   /** The `PATHEXT` value, read on Windows only. Unset or empty means `.COM;.EXE;.BAT;.CMD`. */
   pathext?: string | undefined
@@ -191,13 +194,15 @@ export interface PathCandidateOptions {
 export function absolutePathCandidates(binary: string, opts: PathCandidateOptions): string[] {
   const platform = opts.platform ?? process.platform
   const windows = platform === 'win32'
-  if (binary === '' || hasSeparator(binary, platform) || opts.path === undefined) return []
+  if (binary === '' || hasSeparator(binary, platform)) return []
+  const path = opts.path ?? (windows ? undefined : '/usr/bin:/bin')
+  if (path === undefined) return []
   const exts = windows ? (opts.pathext || DEFAULT_PATHEXT).split(';').filter((e) => e !== '') : []
   const suffixes =
     !windows || exts.some((e) => binary.toLowerCase().endsWith(e.toLowerCase())) ? [''] : exts
   const join = windows ? win32.join : posix.join
   const out: string[] = []
-  for (const entry of opts.path.split(windows ? ';' : ':')) {
+  for (const entry of path.split(windows ? ';' : ':')) {
     // Windows strips the double quotes around an entry such as "C:\Program Files\x".
     const dir = windows && /^".*"$/.test(entry) ? entry.slice(1, -1) : entry
     if (!isAbsoluteEntry(dir, windows)) continue

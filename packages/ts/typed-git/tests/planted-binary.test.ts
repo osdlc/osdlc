@@ -23,7 +23,6 @@ beforeAll(() => {
   writeFileSync(join(dir, 'git'), `#!/bin/sh\necho ${MARKER}\n`)
   chmodSync(join(dir, 'git'), 0o755)
   savedPath = process.env['PATH']
-  process.env['PATH'] = ['.', savedPath ?? ''].join(delimiter)
 })
 
 afterAll(() => {
@@ -32,14 +31,28 @@ afterAll(() => {
   rmSync(dir, { recursive: true, force: true })
 })
 
-describe.skipIf(process.platform === 'win32')('a git file in the working directory', () => {
-  test('Git does not run it', () => {
-    const result = new Git(dir).raw(['--version'])
-    expect(result.stdout).not.toContain(MARKER)
-  })
+// Put ahead of the real PATH. A relative entry (`.`) and an empty one both mean `cwd`.
+const PREFIXES = {
+  'a relative PATH entry': `.${delimiter}`,
+  'an empty PATH entry': delimiter,
+}
 
-  test('AsyncGit does not run it', async () => {
-    const result = await new AsyncGit(dir).raw(['--version'])
-    expect(result.stdout).not.toContain(MARKER)
-  })
+describe.skipIf(process.platform === 'win32')('a git file in the working directory', () => {
+  for (const [name, prefix] of Object.entries(PREFIXES)) {
+    test(`Git runs the real git, not the planted one, through ${name}`, () => {
+      process.env['PATH'] = prefix + (savedPath ?? '')
+      const result = new Git(dir).raw(['--version'])
+      expect(result.stdout).not.toContain(MARKER)
+      expect(result.exitCode).toBe(0)
+      expect(result.stdout).toMatch(/^git version /)
+    })
+
+    test(`AsyncGit runs the real git, not the planted one, through ${name}`, async () => {
+      process.env['PATH'] = prefix + (savedPath ?? '')
+      const result = await new AsyncGit(dir).raw(['--version'])
+      expect(result.stdout).not.toContain(MARKER)
+      expect(result.exitCode).toBe(0)
+      expect(result.stdout).toMatch(/^git version /)
+    })
+  }
 })

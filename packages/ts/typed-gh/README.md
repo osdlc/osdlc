@@ -384,7 +384,8 @@ The awaitable form of `Gh`, with the same methods, for code that runs many calls
 not block the event loop. It has the same three call styles, as Promises. The plain method rejects
 with the classified failure. `try` resolves to a `Result<T, GhFailure>`. `soft` resolves `null` for
 a failed query. `raw` and `rawChecked` run any `gh` call. Both clients use the same verb table, so
-they cannot drift apart. It takes an `AsyncCommandRunner` and defaults to `spawnRunnerAsync("gh")`.
+they cannot drift apart. It takes an `AsyncCommandRunner` and defaults to
+`spawnRunnerAsync("gh", { absolutePathOnly: true })`.
 
 ```ts
 import { AsyncGh } from '@osdlc/typed-gh'
@@ -469,7 +470,9 @@ new Gh('/repo', { runner: empty }).prList() // { rows: [], truncated: false }
 This package re-exports `CommandFailed` and the runner and result types (`CommandRunner`,
 `AsyncCommandRunner`, `CommandResult`, `CommandRunOptions`), since they appear in its signatures.
 Import the runners themselves, such as `spawnRunner` and `spawnRunnerAsync`, from
-`@osdlc/command-seam`.
+`@osdlc/command-seam`. The default runners find `gh` on absolute `PATH` entries only, so a file
+named `gh` in the working directory cannot run in its place. Pass `{ absolutePathOnly: true }` when
+you build a real runner yourself.
 
 ## API
 

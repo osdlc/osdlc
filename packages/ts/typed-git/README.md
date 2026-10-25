@@ -698,6 +698,10 @@ const failing: CommandRunner = {
 new Git("/nowhere", { runner: failing }).currentBranch(); // throws FailureError (kind "not-a-repo")
 ```
 
+The default runner finds `git` on absolute `PATH` entries only, so a file named
+`git` in the checkout cannot run in its place. A real runner you build yourself
+should do the same: `spawnRunner("git", { absolutePathOnly: true })`.
+
 `runner: undefined` is the same as omitting it, so a caller holding an optional
 runner passes it straight through, without a conditional spread. `cliBackend`
 accepts it too.

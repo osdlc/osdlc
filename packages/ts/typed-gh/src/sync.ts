@@ -36,8 +36,8 @@ import type { IssueRow, Label, OwnerRepo, PrSearchHit, PullRequest, Repository }
 
 /**
  * Makes a runner for a binary. A CLI passes one factory to every place that
- * runs a command. Real code uses `spawnRunner`. Tests pass a factory that
- * records calls, so the CLI runs offline.
+ * runs a command. Real code uses {@link defaultRunnerFactory}. Tests pass a
+ * factory that records calls, so the CLI runs offline.
  */
 export type RunnerFactory = (binary: string) => CommandRunner
 
