@@ -12,7 +12,7 @@ import { renderShim } from '@osdlc/cli-tool/devlink'
 
 import { WAYFINDER_SPEC } from '../src/devlink.ts'
 import { runWay, wayApp } from './app-support.ts'
-import { fixtureRoot, removeRoot } from './support.ts'
+import { CACHE_HOME, CONFIG_HOME, STATE_HOME, fixtureRoot, removeRoot } from './support.ts'
 
 const roots: string[] = []
 afterAll(async () => {
@@ -41,9 +41,9 @@ async function populated(): Promise<{
   roots.push(home)
   const p = {
     home,
-    cache: join(home, '.cache', 'wayfinder'),
-    trust: join(home, '.local', 'state', 'wayfinder', 'trusted'),
-    config: join(home, '.config', 'wayfinder', 'config.json'),
+    cache: join(home, CACHE_HOME, 'wayfinder'),
+    trust: join(home, STATE_HOME, 'wayfinder', 'trusted'),
+    config: join(home, CONFIG_HOME, 'wayfinder', 'config.json'),
   }
   await put(join(p.cache, 'reports', 'v2', 'a.json'))
   await put(join(p.trust, 'repo-abc'), '')
@@ -90,15 +90,15 @@ describe('way clean', () => {
     const ran = await clean(p.home, ['--trust'])
     expect(ran.exit).toBe(0)
     expect(ran.err).toContain('will ask again')
-    expect(await exists(join(p.home, '.local', 'state', 'wayfinder'))).toBe(false)
-    expect(await exists(join(p.home, '.local', 'state'))).toBe(true)
+    expect(await exists(join(p.home, STATE_HOME, 'wayfinder'))).toBe(false)
+    expect(await exists(join(p.home, STATE_HOME))).toBe(true)
   })
 
   test('a parent that still holds something is kept', async () => {
     const p = await populated()
-    await put(join(p.home, '.local', 'state', 'wayfinder', 'other'))
+    await put(join(p.home, STATE_HOME, 'wayfinder', 'other'))
     await clean(p.home, ['--trust'])
-    expect(await readdir(join(p.home, '.local', 'state', 'wayfinder'))).toEqual(['other'])
+    expect(await readdir(join(p.home, STATE_HOME, 'wayfinder'))).toEqual(['other'])
   })
 
   test('--config without --yes is a usage error naming the file, and removes nothing', async () => {
@@ -113,7 +113,7 @@ describe('way clean', () => {
   test('--config --yes removes the file and its empty directory', async () => {
     const p = await populated()
     expect((await clean(p.home, ['--user-config', '--yes'])).exit).toBe(0)
-    expect(await exists(join(p.home, '.config', 'wayfinder'))).toBe(false)
+    expect(await exists(join(p.home, CONFIG_HOME, 'wayfinder'))).toBe(false)
   })
 
   test('a config WAYFINDER_CONFIG names is named in the report, the refusal and before removal', async () => {
@@ -134,7 +134,7 @@ describe('way clean', () => {
 
   test('--dev removes link state and the marked shims, and leaves other files on PATH', async () => {
     const p = await populated()
-    const state = join(p.home, '.config', 'way')
+    const state = join(p.home, CONFIG_HOME, 'way')
     await put(join(state, 'link.json'))
     const bin = join(p.home, '.local', 'bin')
     await put(join(bin, 'way'), renderShim(WAYFINDER_SPEC, '/checkout/bin/way.js'))
@@ -152,11 +152,11 @@ describe('way clean', () => {
   test('--legacy removes the files under the old name, and is listed only when they exist', async () => {
     const p = await populated()
     expect((await clean(p.home, [])).out).not.toContain('--legacy')
-    const old = join(p.home, '.config', 'waypost', 'config.json')
+    const old = join(p.home, CONFIG_HOME, 'waypost', 'config.json')
     await put(old)
     expect((await clean(p.home, [])).out).toContain('--legacy')
     expect((await clean(p.home, ['--legacy'])).exit).toBe(0)
-    expect(await exists(join(p.home, '.config', 'waypost'))).toBe(false)
+    expect(await exists(join(p.home, CONFIG_HOME, 'waypost'))).toBe(false)
     expect(await exists(p.config)).toBe(true)
   })
 

@@ -18,6 +18,7 @@ import { runArgv } from '../src/args.ts'
 import { makeProject } from '../src/catalog.ts'
 import { main } from '../src/cli.ts'
 import { providerRows, type ProviderRow } from '../src/providers-command.ts'
+import { CONFIG_HOME } from './support.ts'
 
 const EXAMPLE = fileURLToPath(new URL('./guide-example.ts', import.meta.url))
 
@@ -96,9 +97,9 @@ describe('tools in a config file', () => {
   test('the user file loads its modules', async () => {
     const home = await temp()
     const module = await acmeModule(home)
-    await mkdir(join(home, '.config', 'wayfinder'), { recursive: true })
+    await mkdir(join(home, CONFIG_HOME, 'wayfinder'), { recursive: true })
     await writeFile(
-      join(home, '.config', 'wayfinder', 'config.json'),
+      join(home, CONFIG_HOME, 'wayfinder', 'config.json'),
       JSON.stringify({ tools: [module] }),
     )
     const ran = await run(['--list', '-C', await acmeRepo()], home)
@@ -136,9 +137,9 @@ describe('tools that must not load', () => {
     const home = await temp()
     const marker = join(home, 'imported')
     await sideEffectModule(dir, marker)
-    await mkdir(join(home, '.config', 'wayfinder'), { recursive: true })
+    await mkdir(join(home, CONFIG_HOME, 'wayfinder'), { recursive: true })
     await writeFile(
-      join(home, '.config', 'wayfinder', 'config.json'),
+      join(home, CONFIG_HOME, 'wayfinder', 'config.json'),
       JSON.stringify({ allowExec: false }),
     )
     expect((await run(['trust', '-C', dir], home)).code).toBe(0)
@@ -226,8 +227,10 @@ describe('way providers', () => {
   test('on PATH counts absolute PATH entries only, as detection does', async () => {
     const dir = await temp()
     await mkdir(join(dir, 'bin'))
-    await writeFile(join(dir, 'bin', 'acme'), '#!/bin/sh\n')
-    chmodSync(join(dir, 'bin', 'acme'), 0o755)
+    // Windows finds a program by its PATHEXT extension.
+    const file = join(dir, 'bin', process.platform === 'win32' ? 'acme.cmd' : 'acme')
+    await writeFile(file, '#!/bin/sh\n')
+    chmodSync(file, 0o755)
     const tool = { id: 'acme', binary: 'acme', roles: {} } as unknown as ToolDef
     const saved = process.cwd()
     process.chdir(dir)

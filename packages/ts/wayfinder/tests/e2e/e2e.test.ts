@@ -251,7 +251,7 @@ function normalizer(root: string, dir: string): (text: string) => string {
         /<(bin|root|base)>((?:\\\\|\\|\/)[^"\s]*)/g,
         (_, tag: string, rest: string) => `<${tag}>${rest.replace(/\\\\|\\/g, '/')}`,
       )
-      .replace(/(<bin>\/[\w.-]+?)\.cmd\b/g, '$1')
+      .replace(/(<bin>\/[\w.-]+?)\.cmd\b/gi, '$1')
       .replace(/\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?Z/g, '<time>')
   }
 }

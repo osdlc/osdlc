@@ -18,3 +18,20 @@ export async function fixtureRoot(files: Record<string, string>): Promise<string
 export async function removeRoot(root: string): Promise<void> {
   await rm(root, { recursive: true, force: true })
 }
+
+const WINDOWS = process.platform === 'win32'
+
+/**
+ * The config home below the home directory when no XDG or APPDATA variable is
+ * set: `.config` under the xdg convention, `AppData/Roaming` on Windows.
+ */
+export const CONFIG_HOME = WINDOWS ? 'AppData/Roaming' : '.config'
+
+/** The state home below the home directory, as {@link CONFIG_HOME}. */
+export const STATE_HOME = WINDOWS ? 'AppData/Local/state' : '.local/state'
+
+/** The cache home below the home directory, as {@link CONFIG_HOME}. */
+export const CACHE_HOME = WINDOWS ? 'AppData/Local' : '.cache'
+
+/** The user config file below the home directory. */
+export const USER_CONFIG = `${CONFIG_HOME}/wayfinder/config.json`

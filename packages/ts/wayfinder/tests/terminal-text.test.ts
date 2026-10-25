@@ -183,7 +183,9 @@ describe('trust, config and providers output', () => {
   /** A repository whose directory name, config key and config value carry escapes. */
   async function hostile(): Promise<{ dir: string; home: string }> {
     const parent = await temp()
-    const dir = join(parent, `repo${TITLE}${BIDI}`)
+    // Windows file names cannot hold control characters, so there only the
+    // config carries them.
+    const dir = join(parent, process.platform === 'win32' ? 'repo' : `repo${TITLE}${BIDI}`)
     await mkdir(dir)
     await writeFile(
       join(dir, 'package.json'),

@@ -4,6 +4,7 @@
  */
 
 import { readFile } from 'node:fs/promises'
+import { basename } from 'node:path'
 
 import { afterAll, describe, expect, test, vi } from 'vitest'
 
@@ -188,7 +189,10 @@ describe('run', () => {
     const dir = await root(SCRIPTS)
     const ran = await way(['run', 'npm run exit-3'], dir)
     expect(ran.code).toBe(3)
-    expect(ran.err).toContain('$ npm run exit-3')
+    // On Windows the echoed line is PowerShell's, with its call operator.
+    expect(ran.err).toContain(
+      process.platform === 'win32' ? '$ & npm run exit-3' : '$ npm run exit-3',
+    )
   })
 
   test('an unknown id exits 1 with the closest ids', async () => {
@@ -246,7 +250,7 @@ describe('the command line', () => {
     }
     const io = captureIo()
     expect(await main(['-C', dir, 'trust', '--show'], {}, home, io)).toBe(0)
-    expect(io.out).toContain(dir.split('/').pop())
+    expect(io.out).toContain(basename(dir))
   })
 
   test('a legacy command refuses a directory that does not exist', async () => {

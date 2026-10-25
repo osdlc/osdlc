@@ -11,7 +11,7 @@ import { dirname, join } from 'node:path'
 
 import { CONFIG_SCHEMA_URL } from '../src/config.ts'
 import { runWay, wayApp } from './app-support.ts'
-import { fixtureRoot, removeRoot } from './support.ts'
+import { USER_CONFIG, fixtureRoot, removeRoot } from './support.ts'
 
 const roots: string[] = []
 afterAll(async () => {
@@ -31,7 +31,7 @@ async function scenario(
 ) {
   const root = await track({ 'package.json': '{}' })
   const home = await track()
-  const userFile = join(home, '.config/wayfinder/config.json')
+  const userFile = join(home, USER_CONFIG)
   const projectFile = join(root, 'wayfinder.config.json')
   const write = async (file: string, text: string): Promise<void> => {
     await mkdir(dirname(file), { recursive: true })

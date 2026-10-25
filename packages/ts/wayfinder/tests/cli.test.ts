@@ -14,6 +14,7 @@ import { resolveTrustRoot, trustStore } from '@osdlc/trust-repo'
 import { acceptedFlags } from './guide-support.ts'
 import { makeGitFixture } from '@osdlc/typed-git/testing'
 import { main, rewriteAliases } from '../src/cli.ts'
+import { CONFIG_HOME } from './support.ts'
 
 const WORDS = ['list', 'query', 'run', 'serve', 'providers', 'config', 'trust', 'help']
 
@@ -196,9 +197,9 @@ describe('main trust gate', () => {
     // A user-layer true, which is allowed to raise the configured value. Trust
     // is a second check on top of it, so the answer is still no.
     const home = await temp()
-    await mkdir(join(home, '.config', 'wayfinder'), { recursive: true })
+    await mkdir(join(home, CONFIG_HOME, 'wayfinder'), { recursive: true })
     await writeFile(
-      join(home, '.config', 'wayfinder', 'config.json'),
+      join(home, CONFIG_HOME, 'wayfinder', 'config.json'),
       JSON.stringify({ allowExec: true }),
       'utf-8',
     )
@@ -217,9 +218,9 @@ describe('main trust gate', () => {
     repo.git.remoteAdd('origin', 'https://github.com/AcmeOwner/dev.git')
     await writeFile(join(repo.dir, 'Makefile'), 'lint:\n\techo l\n', 'utf-8')
     const home = await temp()
-    await mkdir(join(home, '.config', 'wayfinder'), { recursive: true })
+    await mkdir(join(home, CONFIG_HOME, 'wayfinder'), { recursive: true })
     await writeFile(
-      join(home, '.config', 'wayfinder', 'config.json'),
+      join(home, CONFIG_HOME, 'wayfinder', 'config.json'),
       JSON.stringify({ allowExec: true, trust: { owners: ['acmeowner'] } }),
       'utf-8',
     )

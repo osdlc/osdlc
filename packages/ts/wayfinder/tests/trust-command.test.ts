@@ -13,7 +13,7 @@ import { makeGitFixture } from '@osdlc/typed-git/testing'
 
 import { appTrustStore } from '../src/trust-store.ts'
 import { runWay, wayApp } from './app-support.ts'
-import { fixtureRoot, removeRoot } from './support.ts'
+import { CONFIG_HOME, STATE_HOME, fixtureRoot, removeRoot } from './support.ts'
 
 const roots: string[] = []
 afterAll(async () => {
@@ -28,8 +28,8 @@ async function root(): Promise<string> {
 
 /** Write a user-layer trust policy at `home`. */
 async function userTrust(home: string, trust: Record<string, unknown>): Promise<void> {
-  await mkdir(join(home, '.config', 'wayfinder'), { recursive: true })
-  await writeFile(join(home, '.config', 'wayfinder', 'config.json'), JSON.stringify({ trust }))
+  await mkdir(join(home, CONFIG_HOME, 'wayfinder'), { recursive: true })
+  await writeFile(join(home, CONFIG_HOME, 'wayfinder', 'config.json'), JSON.stringify({ trust }))
 }
 
 async function setup() {
@@ -56,7 +56,7 @@ describe('way trust', () => {
   test('the store is under the state home', async () => {
     const s = await setup()
     await s.run(['trust'])
-    expect(s.store.dir()).toBe(join(s.home, '.local', 'state', 'wayfinder', 'trusted'))
+    expect(s.store.dir()).toBe(join(s.home, STATE_HOME, 'wayfinder', 'trusted'))
   })
 
   test('--json answers { action, changed, roots } with what decided', async () => {

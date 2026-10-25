@@ -27,7 +27,9 @@ import {
 import { cacheDir } from '../src/cache.ts'
 import { appTrustStore } from '../src/trust-store.ts'
 import { appDirs } from '../src/xdg.ts'
-import { fixtureRoot, removeRoot } from './support.ts'
+import { CONFIG_HOME, USER_CONFIG, fixtureRoot, removeRoot } from './support.ts'
+
+const WINDOWS = process.platform === 'win32'
 
 const roots: string[] = []
 afterAll(async () => {
@@ -172,7 +174,7 @@ describe('the project layer', () => {
 describe('readSettings', () => {
   test('gives every setting with its source, and the defaults wayfinder runs with', async () => {
     const home = await root({
-      '.config/wayfinder/config.json': JSON.stringify({ open: 'web', theme: 'dark' }),
+      [USER_CONFIG]: JSON.stringify({ open: 'web', theme: 'dark' }),
     })
     const project = await root({
       'wayfinder.config.json': JSON.stringify({ runners: { order: ['just'] } }),
@@ -203,14 +205,14 @@ describe('writeSetting and removeSetting', () => {
     const project = await root()
     const target = { layer: 'user' as const, root: project, env: {}, home }
     const written = await writeSetting(target, 'theme', 'dark')
-    expect(written.file).toBe(join(home, '.config', 'wayfinder', 'config.json'))
+    expect(written.file).toBe(join(home, CONFIG_HOME, 'wayfinder', 'config.json'))
     await writeSetting(target, 'runners.order', ['moon'])
     expect(JSON.parse(await readFile(written.file, 'utf8'))).toEqual({
       $schema: CONFIG_SCHEMA_URL,
       runners: { order: ['moon'] },
       theme: 'dark',
     })
-    expect(await readdir(join(home, '.config', 'wayfinder'))).toEqual(['config.json'])
+    expect(await readdir(join(home, CONFIG_HOME, 'wayfinder'))).toEqual(['config.json'])
     expect(await removeSetting(target, 'theme')).toEqual({ file: written.file, removed: true })
     expect(await removeSetting(target, 'theme')).toEqual({ file: written.file, removed: false })
   })
@@ -269,24 +271,30 @@ describe('paths', () => {
     expect(appTrustStore({ env, home }).dir()).toBe(join(top, 'state', 'wayfinder', 'trusted'))
   })
 
-  test('the xdg convention holds on macOS, and WAYFINDER_CONVENTION does not move it', () => {
-    const dirs = appDirs({
-      env: { WAYFINDER_CONVENTION: 'native' },
-      home: '/Users/ada',
-      platform: 'darwin',
-    })
-    expect(dirs.userConfig).toBe('/Users/ada/.config/wayfinder/config.json')
-    expect(dirs.trustStore).toBe('/Users/ada/.local/state/wayfinder/trusted')
-    expect(dirs.cache).toBe('/Users/ada/.cache/wayfinder')
-  })
+  // POSIX only: the expected paths are POSIX paths, which Node's path module on Windows does not produce.
+  test.skipIf(WINDOWS)(
+    'the xdg convention holds on macOS, and WAYFINDER_CONVENTION does not move it',
+    () => {
+      const dirs = appDirs({
+        env: { WAYFINDER_CONVENTION: 'native' },
+        home: '/Users/ada',
+        platform: 'darwin',
+      })
+      expect(dirs.userConfig).toBe('/Users/ada/.config/wayfinder/config.json')
+      expect(dirs.trustStore).toBe('/Users/ada/.local/state/wayfinder/trusted')
+      expect(dirs.cache).toBe('/Users/ada/.cache/wayfinder')
+    },
+  )
 
-  test('WAYFINDER_CONFIG_DIR moves the user config alone', () => {
+  // POSIX only: the expected paths are POSIX paths, which Node's path module on Windows does not produce.
+  test.skipIf(WINDOWS)('WAYFINDER_CONFIG_DIR moves the user config alone', () => {
     const dirs = appDirs({ env: { WAYFINDER_CONFIG_DIR: '/etc/way' }, home: '/home/ada' })
     expect(dirs.userConfig).toBe('/etc/way/wayfinder/config.json')
     expect(dirs.cache).toBe('/home/ada/.cache/wayfinder')
   })
 
-  test('a relative WAYFINDER_ROOT is an error, not a path under the cwd', () => {
+  // POSIX only: the expected paths are POSIX paths, which Node's path module on Windows does not produce.
+  test.skipIf(WINDOWS)('a relative WAYFINDER_ROOT is an error, not a path under the cwd', () => {
     expect(() => appDirs({ env: { WAYFINDER_ROOT: 'rel' }, home: '/home/ada' })).toThrow(
       'WAYFINDER_ROOT',
     )

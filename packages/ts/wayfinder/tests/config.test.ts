@@ -25,7 +25,9 @@ import {
   validateConfig,
   writeConfigFile,
 } from '../src/config.ts'
-import { fixtureRoot, removeRoot } from './support.ts'
+import { CONFIG_HOME, USER_CONFIG, fixtureRoot, removeRoot } from './support.ts'
+
+const WINDOWS = process.platform === 'win32'
 
 const roots: string[] = []
 afterAll(async () => {
@@ -44,13 +46,15 @@ function env(vars: Record<string, string | undefined> = {}): Record<string, stri
 }
 
 describe('configLocations', () => {
-  test('puts the user layer under XDG_CONFIG_HOME when it is set', () => {
+  // POSIX only: the expected paths are POSIX paths, which Node's path module on Windows does not produce.
+  test.skipIf(WINDOWS)('puts the user layer under XDG_CONFIG_HOME when it is set', () => {
     const at = configLocations('/repo', env({ XDG_CONFIG_HOME: '/xdg' }), '/home/dev')
     expect(at.user).toBe('/xdg/wayfinder/config.json')
     expect(at.userFromEnv).toBe(false)
   })
 
-  test('falls back to ~/.config on every platform, macOS included', () => {
+  // POSIX only: the expected paths are POSIX paths, which Node's path module on Windows does not produce.
+  test.skipIf(WINDOWS)('falls back to ~/.config on every platform, macOS included', () => {
     // Deliberate, and a choice rather than a universal macOS convention: this
     // follows gh's layout, so a dotfiles repo finds config where the rest of a
     // developer's tool configuration already lives. See `xdgHome` for the cost.
@@ -58,35 +62,45 @@ describe('configLocations', () => {
     expect(at.user).toBe('/home/dev/.config/wayfinder/config.json')
   })
 
-  test('treats an empty XDG_CONFIG_HOME as unset', () => {
+  // POSIX only: the expected paths are POSIX paths, which Node's path module on Windows does not produce.
+  test.skipIf(WINDOWS)('treats an empty XDG_CONFIG_HOME as unset', () => {
     // An exported-but-empty variable is a common shell accident, and joining
     // onto "" would point the user layer at /wayfinder/config.json.
     const at = configLocations('/repo', env({ XDG_CONFIG_HOME: '' }), '/home/dev')
     expect(at.user).toBe('/home/dev/.config/wayfinder/config.json')
   })
 
-  test('WAYFINDER_CONFIG replaces the user location and leaves the project one alone', () => {
-    // The env var moves one layer's file. It is not a way to disable the
-    // project layer, and a user who set it in their shell profile must still
-    // get the project's settings in every repo they enter.
-    const at = configLocations(
-      '/repo',
-      env({ [CONFIG_ENV_VAR]: '/elsewhere/mine.json', XDG_CONFIG_HOME: '/xdg' }),
-      '/home/dev',
-    )
-    expect(at.user).toBe('/elsewhere/mine.json')
-    expect(at.userFromEnv).toBe(true)
-    expect(at.project).toBe('/repo/wayfinder.config.json')
-  })
+  // POSIX only: the expected paths are POSIX paths, which Node's path module on Windows does not produce.
+  test.skipIf(WINDOWS)(
+    'WAYFINDER_CONFIG replaces the user location and leaves the project one alone',
+    () => {
+      // The env var moves one layer's file. It is not a way to disable the
+      // project layer, and a user who set it in their shell profile must still
+      // get the project's settings in every repo they enter.
+      const at = configLocations(
+        '/repo',
+        env({ [CONFIG_ENV_VAR]: '/elsewhere/mine.json', XDG_CONFIG_HOME: '/xdg' }),
+        '/home/dev',
+      )
+      expect(at.user).toBe('/elsewhere/mine.json')
+      expect(at.userFromEnv).toBe(true)
+      expect(at.project).toBe('/repo/wayfinder.config.json')
+    },
+  )
 
-  test('expands a leading ~ in WAYFINDER_CONFIG rather than making a literal directory', () => {
-    // A shell expands ~ before exec, but .env loaders, direnv and CI YAML pass
-    // the tilde through literally, and <cwd>/~/cfg.json is a silent wrong answer.
-    const at = configLocations('/repo', env({ [CONFIG_ENV_VAR]: '~/cfg.json' }), '/home/dev')
-    expect(at.user).toBe('/home/dev/cfg.json')
-  })
+  // POSIX only: the expected paths are POSIX paths, which Node's path module on Windows does not produce.
+  test.skipIf(WINDOWS)(
+    'expands a leading ~ in WAYFINDER_CONFIG rather than making a literal directory',
+    () => {
+      // A shell expands ~ before exec, but .env loaders, direnv and CI YAML pass
+      // the tilde through literally, and <cwd>/~/cfg.json is a silent wrong answer.
+      const at = configLocations('/repo', env({ [CONFIG_ENV_VAR]: '~/cfg.json' }), '/home/dev')
+      expect(at.user).toBe('/home/dev/cfg.json')
+    },
+  )
 
-  test('ignores a relative WAYFINDER_CONFIG and says so', () => {
+  // POSIX only: the expected paths are POSIX paths, which Node's path module on Windows does not produce.
+  test.skipIf(WINDOWS)('ignores a relative WAYFINDER_CONFIG and says so', () => {
     for (const value of ['cfg/mine.json', './cfg.json', 'cfg.json']) {
       const at = configLocations('/repo', env({ [CONFIG_ENV_VAR]: value }), '/home/dev')
       expect(at.user).toBe('/home/dev/.config/wayfinder/config.json')
@@ -105,7 +119,7 @@ describe('configLocations', () => {
     process.chdir(dir)
     try {
       const loaded = await loadConfig(dir, env({ [CONFIG_ENV_VAR]: 'cfg.json' }), home)
-      expect(loaded.locations.user).toBe(join(home, '.config', 'wayfinder', 'config.json'))
+      expect(loaded.locations.user).toBe(join(home, CONFIG_HOME, 'wayfinder', 'config.json'))
       // The repository file was not read: its false did not reach the merge.
       expect(loaded.effective.allowExec).toBe(true)
       expect(loaded.warnings.some((w) => w.includes(`${CONFIG_ENV_VAR}=cfg.json is ignored`))).toBe(
@@ -116,19 +130,24 @@ describe('configLocations', () => {
     }
   })
 
-  test('a relative HOME is treated as unset, so the user file is never under the cwd', () => {
-    const saved = process.env['HOME']
-    process.env['HOME'] = '.'
-    try {
-      expect(configLocations('/repo', env()).user).toBe(
-        join(userInfo().homedir, '.config', 'wayfinder', 'config.json'),
-      )
-    } finally {
-      process.env['HOME'] = saved
-    }
-  })
+  // POSIX only: the expected paths are POSIX paths, which Node's path module on Windows does not produce.
+  test.skipIf(WINDOWS)(
+    'a relative HOME is treated as unset, so the user file is never under the cwd',
+    () => {
+      const saved = process.env['HOME']
+      process.env['HOME'] = '.'
+      try {
+        expect(configLocations('/repo', env()).user).toBe(
+          join(userInfo().homedir, CONFIG_HOME, 'wayfinder', 'config.json'),
+        )
+      } finally {
+        process.env['HOME'] = saved
+      }
+    },
+  )
 
-  test('ignores a relative XDG_CONFIG_HOME, as the XDG spec says', () => {
+  // POSIX only: the expected paths are POSIX paths, which Node's path module on Windows does not produce.
+  test.skipIf(WINDOWS)('ignores a relative XDG_CONFIG_HOME, as the XDG spec says', () => {
     for (const value of ['.config', 'cfg/x', './c']) {
       const at = configLocations('/repo', env({ XDG_CONFIG_HOME: value }), '/home/dev')
       expect(at.user).toBe('/home/dev/.config/wayfinder/config.json')
@@ -138,21 +157,25 @@ describe('configLocations', () => {
   test('a relative XDG_CONFIG_HOME cannot make a file in the repository the user layer', async () => {
     const home = await root()
     const project = await root({
-      '.config/wayfinder/config.json': JSON.stringify({ tools: ['./x.mjs'] }),
+      [USER_CONFIG]: JSON.stringify({ tools: ['./x.mjs'] }),
     })
     const loaded = await loadConfig(project, env({ XDG_CONFIG_HOME: '.config' }), home)
     expect(loaded.layers.user).toBeNull()
     expect(loaded.effective.tools ?? []).toEqual([])
   })
 
-  test('trims a padded env value instead of resolving the whitespace into the path', () => {
-    const at = configLocations(
-      '/repo',
-      env({ [CONFIG_ENV_VAR]: '  /abs/mine.json  ' }),
-      '/home/dev',
-    )
-    expect(at.user).toBe('/abs/mine.json')
-  })
+  // POSIX only: the expected paths are POSIX paths, which Node's path module on Windows does not produce.
+  test.skipIf(WINDOWS)(
+    'trims a padded env value instead of resolving the whitespace into the path',
+    () => {
+      const at = configLocations(
+        '/repo',
+        env({ [CONFIG_ENV_VAR]: '  /abs/mine.json  ' }),
+        '/home/dev',
+      )
+      expect(at.user).toBe('/abs/mine.json')
+    },
+  )
 })
 
 describe('mergeConfig', () => {
@@ -285,7 +308,7 @@ describe('readConfigFile', () => {
 describe('loadConfig', () => {
   test('merges defaults, user and project, and reports which layer won', async () => {
     const home = await root({
-      '.config/wayfinder/config.json': JSON.stringify({
+      [USER_CONFIG]: JSON.stringify({
         runners: { disabled: ['cargo'], order: ['moon'] },
         allowExec: true,
       }),
@@ -315,7 +338,7 @@ describe('loadConfig', () => {
     // Presence, not equality: a project restating a value the user already
     // chose still owns it, because deleting the project line would be a change.
     const home = await root({
-      '.config/wayfinder/config.json': JSON.stringify({ discovery: 'git' }),
+      [USER_CONFIG]: JSON.stringify({ discovery: 'git' }),
     })
     const project = await root({ 'wayfinder.config.json': JSON.stringify({ discovery: 'git' }) })
 
@@ -327,7 +350,7 @@ describe('loadConfig', () => {
     // wayfinder.config.json lives INSIDE the repository being scanned, so honouring
     // it here would let a repository authorize running its own code.
     const home = await root({
-      '.config/wayfinder/config.json': JSON.stringify({ allowExec: false }),
+      [USER_CONFIG]: JSON.stringify({ allowExec: false }),
     })
     const project = await root({ 'wayfinder.config.json': JSON.stringify({ allowExec: true }) })
 
@@ -352,7 +375,7 @@ describe('loadConfig', () => {
     // Safe in the other direction: a repository asking not to be shelled out
     // for is asking for less, so there is nothing to withhold.
     const home = await root({
-      '.config/wayfinder/config.json': JSON.stringify({ allowExec: true }),
+      [USER_CONFIG]: JSON.stringify({ allowExec: true }),
     })
     const project = await root({ 'wayfinder.config.json': JSON.stringify({ allowExec: false }) })
 
@@ -366,7 +389,7 @@ describe('loadConfig', () => {
     // `config list` must name the layer that really supplied the value; naming
     // the ignored file is how a user concludes the project file worked.
     const home = await root({
-      '.config/wayfinder/config.json': JSON.stringify({ allowExec: true }),
+      [USER_CONFIG]: JSON.stringify({ allowExec: true }),
     })
     const project = await root({ 'wayfinder.config.json': JSON.stringify({ allowExec: true }) })
 
@@ -422,7 +445,7 @@ describe('loadConfig', () => {
     // `paths: []` is present as a key, so a plain deep-merge would overwrite
     // the user's list with nothing — the block is dropped whole instead.
     const home = await root({
-      '.config/wayfinder/config.json': JSON.stringify({
+      [USER_CONFIG]: JSON.stringify({
         trust: { paths: ['/home/me/work/**'], owners: ['my-org'] },
       }),
     })
@@ -444,7 +467,7 @@ describe('loadConfig', () => {
     // The layer this block is FOR — see the gate integration in cli.test.ts
     // for proof it actually reaches `policyExecGate`.
     const home = await root({
-      '.config/wayfinder/config.json': JSON.stringify({
+      [USER_CONFIG]: JSON.stringify({
         trust: { paths: ['/home/me/work/**'], owners: ['my-org'] },
       }),
     })
@@ -473,7 +496,7 @@ describe('loadConfig', () => {
 
   test('WAYFINDER_CONFIG swaps the user file without disabling the project file', async () => {
     const home = await root({
-      '.config/wayfinder/config.json': JSON.stringify({ discovery: 'git' }),
+      [USER_CONFIG]: JSON.stringify({ discovery: 'git' }),
     })
     const other = await root({ 'mine.json': JSON.stringify({ discovery: 'walk' }) })
     const project = await root({
